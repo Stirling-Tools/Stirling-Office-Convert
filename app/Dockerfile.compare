@@ -1,0 +1,69 @@
+FROM eclipse-temurin:25-jre-noble@sha256:b4c93a50fc67612798db73d68ca3b0ee4ebdd51736e59cca370e689b9797037e
+
+LABEL org.opencontainers.image.title="stirling-office-convert-compare" \
+      org.opencontainers.image.description="Stirling Office Convert and LibreOffice side by side: PDF to Word, OpenDocument, RTF, text and PowerPoint" \
+      org.opencontainers.image.vendor="Stirling-PDF" \
+      org.opencontainers.image.url="https://www.stirlingpdf.com"
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    LANG=C.UTF-8 \
+    LC_ALL=C.UTF-8 \
+    SAL_USE_VCLPLUGIN=svp \
+    SAL_DISABLE_PRINTERLIST=1 \
+    OOO_FORCE_DESKTOP=none \
+    SAL_LOG="-WARN-INFO" \
+    MALLOC_ARENA_MAX=2 \
+    DBUS_SESSION_BUS_ADDRESS=/dev/null \
+    HOME=/tmp
+
+RUN set -eux; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends software-properties-common gnupg tini; \
+    add-apt-repository -y ppa:libreoffice/ppa; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends \
+      libreoffice-writer-nogui libreoffice-impress-nogui libreoffice-draw-nogui \
+      fonts-dejavu fonts-liberation fonts-liberation2 \
+      fonts-crosextra-caladea fonts-crosextra-carlito \
+      fonts-noto-core fonts-noto-mono fonts-noto-color-emoji \
+      fontconfig \
+      libcairo2 libpango-1.0-0 libpangoft2-1.0-0 libgdk-pixbuf-2.0-0 \
+      libfreetype6 libfontconfig1 libx11-6 libxt6 libxext6 libxrender1 \
+      libxtst6 libxi6 libxinerama1 libxkbcommon0 libsm6 libice6 \
+      libglib2.0-0; \
+    apt-get remove --purge -y software-properties-common; \
+    apt-get autoremove --purge -y; \
+    rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/* \
+           /usr/lib/libreoffice/share/gallery /usr/lib/libreoffice/share/template \
+           /usr/lib/libreoffice/share/wizards /usr/lib/libreoffice/help \
+           /usr/share/doc/* /usr/share/man/* /usr/share/info/*; \
+    fc-cache -f; \
+    soffice --version
+
+RUN soffice --headless --norestore --terminate_after_init -env:UserInstallation=file:///opt/lo-template && \
+    test -d /opt/lo-template/user && chmod -R a+rX /opt/lo-template && rm -rf /tmp/* /tmp/.[!.]*
+
+RUN useradd --system --uid 10001 --no-create-home --shell /usr/sbin/nologin app
+COPY stirling-office-convert-app.jar /app/stirling-office-convert-app.jar
+
+ENV HOST=0.0.0.0 \
+    PORT=80 \
+    MAX_UPLOAD_MB=100 \
+    MAX_PAGES=300 \
+    CONVERT_TIMEOUT_SECONDS=180 \
+    MAX_QUEUED=8 \
+    QUEUE_WAIT_SECONDS=120 \
+    MAX_PER_CLIENT=4 \
+    REQUEST_TIMEOUT_SECONDS=300 \
+    MAX_CONNECTIONS=1000 \
+    EXIT_WHEN_STUCK=true \
+    LIBREOFFICE=/usr/bin/soffice \
+    LIBREOFFICE_CONCURRENT=2 \
+    LIBREOFFICE_TEMPLATE=/opt/lo-template
+
+USER app
+EXPOSE 80
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+    CMD bash -c 'exec 3<>/dev/tcp/127.0.0.1/${PORT} && printf "GET /health HTTP/1.0\r\n\r\n" >&3 && grep -q " 200 " <&3'
+
+ENTRYPOINT ["/usr/bin/tini", "--", "java", "-XX:MaxRAMPercentage=50", "-Djava.awt.headless=true", "-jar", "/app/stirling-office-convert-app.jar"]

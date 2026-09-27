@@ -1,0 +1,321 @@
+# Stirling Office Convert
+
+Office document conversion in plain Java on PDFBox, built to replace LibreOffice in Stirling-PDF. Today it converts
+PDF to Word (DOCX), OpenDocument (ODT, ODP, ODS), RTF, plain text, PowerPoint (PPTX, PPT) and Excel (XLSX); Office to
+PDF is planned. There are no native dependencies and no external processes. The output is editable content: real
+paragraphs, headings, lists, tables, footnotes, headers and footers, and section columns, not a page of positioned
+text boxes. Only page furniture and text the flow cannot hold (a footer some pages share, fragments set side by side)
+is placed.
+
+## Build and run
+
+```
+./gradlew build                      # core + CLI, runs the unit tests
+java -jar cli/build/libs/stirling-office-convert-cli.jar in.pdf -o out.docx
+java -jar cli/build/libs/stirling-office-convert-cli.jar folder/ -o outdir/
+```
+
+CLI options: `--pages a-b`, `--no-tables`, `--dpi n` (vector figures), `--password p`, `--picture-fallback`,
+`--pictures compact|lossless` (see Pictures below), `-q`.
+The output file's extension picks the format: `.docx`, `.odt`, `.fodt`, `.rtf`, `.doc`, `.txt`, `.pptx`, `.odp`,
+`.ppt`, `.xlsx` or `.ods` (see Other formats). For a folder of PDFs, `--format ext` names it; `--sheets
+page|table|single` sets a spreadsheet's layout. Each file prints its time and the heap in use when it finished.
+
+## Local test app
+
+`app` is a small page for trying the converter by hand: pick a format (Word, OpenDocument text,
+RTF, plain text, PowerPoint, OpenDocument presentation, Excel or OpenDocument spreadsheet), drop PDFs on it and
+download the results. By default it listens on this machine only. It is not part of the Maven release.
+
+```bash
+./gradlew :app:jar
+java -jar app/build/libs/stirling-office-convert-app.jar     # then open http://localhost:8177
+```
+
+Options on the page: page range, password, table detection, the picture fallback and lossless pictures. Scripts
+can POST a PDF to `/convert?format=docx|odt|rtf|txt|pptx|odp|xlsx|ods` with the same options in the query
+(`pictures=lossless` for lossless pictures).
+
+### Demo image
+
+The same page as a Docker image for public demos, listening on port 80 as a non-root user, on the Java
+25 base image Stirling-PDF ships:
+
+```bash
+./gradlew :app:jar
+docker build -t stirling-office-convert -f app/Dockerfile app/build/libs
+docker run --rm -p 8080:80 stirling-office-convert          # then open http://localhost:8080
+```
+
+A published build is `frooodle/test:stirling-office-convert` (amd64 and arm64). Settings, as
+environment variables (defaults in the image):
+
+| Variable | Image default | Meaning |
+|---|---|---|
+| `MAX_UPLOAD_MB` | 100 | Largest PDF accepted |
+| `MAX_PAGES` | 300 | Pages converted per request; longer PDFs get the first 300 and a note |
+| `CONVERT_TIMEOUT_SECONDS` | 180 | A conversion taking longer is stopped and the user told |
+| `MAX_CONCURRENT` | half the CPUs, at least 2 | Conversions running at once |
+| `MAX_QUEUED` | 8 | Requests waiting for a free converter; beyond that the user is asked to retry |
+| `QUEUE_WAIT_SECONDS` | 120 | How long a request waits for a free converter |
+| `MAX_PER_CLIENT` | 4 | Requests one address may have in flight, conversions that ran over their time included; 0 for no limit |
+| `CLIENT_IP_HEADER` | unset | Header a trusted reverse proxy puts the client's address in, such as `X-Forwarded-For` |
+| `REQUEST_TIMEOUT_SECONDS` | 300 | Time allowed for a request's headers and upload |
+| `MAX_CONNECTIONS` | 1000 | Open connections the server accepts |
+| `EXIT_WHEN_STUCK` | true | Exit, for a restart, once every converter is held by a conversion that ignored its timeout |
+| `HOST`, `PORT` | 0.0.0.0, 80 | Where the server listens |
+
+Uploaded files live in a temporary folder only for the length of the conversion, and a busy server refuses an
+upload before reading it. Passwords travel in a request header, never the URL. `/health` answers `ok`, or 503 once
+every converter is stuck. In public, run the image behind a reverse proxy that buffers uploads and limits
+connections per client, with a restart policy or liveness probe on `/health`.
+
+### Comparison image
+
+The same page with LibreOffice installed beside the converter, the way Stirling-PDF runs it (Fresh PPA,
+`writer_pdf_import` and `impress_pdf_import`), to see both engines' files side by side. Under Engine, pick
+Stirling Office Convert, LibreOffice or both; the viewer then switches between them or shows them together, at
+one zoom, with each file's time and size. LibreOffice makes no spreadsheets from a PDF, and its text export
+comes out empty (its import puts every line in a frame), so those show as not available.
+
+```bash
+./gradlew :app:jar
+docker build -t stirling-office-convert-compare -f app/Dockerfile.compare app/build/libs
+docker run --rm -p 8080:80 stirling-office-convert-compare  # then open http://localhost:8080
+```
+
+Scripts pick the engine with `engine=ours|libreoffice` in the query; the answer names it in `X-Engine`. The
+local app finds an installed LibreOffice by itself. Settings on top of the table above:
+
+| Variable | Image default | Meaning |
+|---|---|---|
+| `LIBREOFFICE` | /usr/bin/soffice | Path to soffice; `auto` finds it, `off` turns the engine off |
+| `LIBREOFFICE_CONCURRENT` | 2 | LibreOffice conversions at once, each with a profile of its own |
+| `LIBREOFFICE_TEMPLATE` | /opt/lo-template | An initialised profile each one starts from |
+
+## Library use
+
+Add the dependency (Java 21 or later):
+
+```kotlin
+implementation("com.stirling:stirling-office-convert:<version>")            // Gradle, Kotlin DSL
+```
+
+```groovy
+implementation 'com.stirling:stirling-office-convert:<version>'             // Gradle, Groovy DSL
+```
+
+```xml
+<dependency>                                                                <!-- Maven -->
+  <groupId>com.stirling</groupId>
+  <artifactId>stirling-office-convert</artifactId>
+  <version>VERSION</version>
+</dependency>
+```
+
+Then one class does it all, `stirling.software.officeconvert.OfficeConvert`. The output file's extension picks the
+format: `.docx`, `.odt`, `.fodt`, `.rtf`, `.doc` (RTF content), `.txt`, `.pptx`, `.odp`, `.xlsx` or `.ods`.
+
+```java
+import java.nio.file.Path;
+import java.time.Duration;
+import org.apache.pdfbox.Loader;
+import org.apache.pdfbox.pdmodel.PDDocument;
+import stirling.software.officeconvert.OfficeConvert;
+import stirling.software.officeconvert.OfficeConvert.Settings;
+import stirling.software.officeconvert.PdfToXlsx;
+import stirling.software.officeconvert.Pictures;
+
+OfficeConvert.convert(Path.of("in.pdf"), Path.of("out.docx"));             // every page, default settings
+OfficeConvert.convert(Path.of("in.pdf"), Path.of("out.xlsx"));             // same call, a spreadsheet
+
+OfficeConvert.convert(Path.of("in.pdf"), Path.of("out.pptx"), Settings.defaults()
+        .pages(2, 5)                  // 1-based, inclusive; 0 means first or last
+        .password("secret")           // for protected PDFs
+        .tables(false)                // skip table detection
+        .pictureFallback(true)        // keep a page that cannot be converted as a picture instead of failing
+        .figureDpi(200)               // resolution of drawings turned into pictures
+        .sheets(PdfToXlsx.Sheets.TABLE)   // spreadsheets: a sheet per table instead of per page
+        .pictures(Pictures.LOSSLESS)  // every pixel, no JPEG compression (see Pictures)
+        .timeout(Duration.ofMinutes(2)));  // interrupt and fail with OfficeConvert.TimedOut past this
+
+String text = OfficeConvert.text(Path.of("in.pdf"));                      // text in reading order
+
+// A document you already opened, into your own stream; you keep both, and the stream stays open.
+try (PDDocument doc = Loader.loadPDF(bytes)) {
+    OfficeConvert.convert(doc, response.getOutputStream(), OfficeConvert.Format.DOCX, Settings.defaults());
+}
+```
+
+For files from people you do not trust, always set a timeout. A server might do this:
+
+```java
+try {
+    OfficeConvert.convert(upload, target, Settings.defaults().timeout(Duration.ofMinutes(3)));
+} catch (OfficeConvert.TimedOut e) {
+    // too slow: stopped mid-page, and no partial file is left behind
+} catch (IOException e) {
+    // damaged, password protected (InvalidPasswordException) or not convertible; the message says why
+}
+```
+
+Conversions of different documents run safely in parallel; a `PDDocument` must not be converted on two threads at
+once. The per-format classes (`PdfToDocx`, `PdfToOdt`, `PdfToRtf`, `PdfToText`, `PdfToPptx`, `PdfToOdp`, `PdfToXlsx`)
+stay available for options the facade leaves out, such as untyped spreadsheet cells; see Other formats. PowerPoint
+97-2003 (`.ppt`) comes from `com.stirling:stirling-office-convert-legacy` (`PdfToPpt`), which adds Apache POI.
+
+### Pictures
+
+`Pictures.COMPACT`, the default, keeps pictures at 220 ppi or more at their printed size (Word's own default)
+and stores a large picture without transparency as a JPEG of quality 90. Files come out several times smaller,
+and the eye cannot tell those JPEGs from the originals, but flat artwork with lettering can show faint fuzz on
+sharp edges when zoomed right in. `Pictures.LOSSLESS` keeps every pixel the PDF holds and compresses nothing
+lossily: pictures, page backgrounds and slide art are PNG, and where a format needs a cropped or turned JPEG
+redrawn (ODT, ODP, RTF) it is redrawn as PNG. Either way, JPEGs in the PDF are copied as they are. Only a picture past the decoding budget of about 32 million pixels
+is thinned.
+
+The `Path` overload writes beside the target and moves the file into place, so a failed conversion leaves nothing
+behind. Every failure is an `IOException`; a page that cannot be converted fails the conversion naming the page.
+An interrupted thread stops within moments, mid-page, with an `InterruptedIOException`, which is how the timeout
+works. Warnings go through Commons Logging, like PDFBox's own, which reaches SLF4J or Log4j when either is present.
+
+Damaged input is read the way viewers read it: a broken operator is skipped, and a content stream that breaks off
+keeps what it drew before the break. Limits that keep one document from exhausting a shared server, each far above
+what 74,000 sampled real pages needed:
+
+- a page with more than 200,000 characters fails (or becomes a picture with fallback on);
+- a page runs at most 5,000,000 operators and shows at most 50,000 forms per pass, and keeps 10,000 image draws;
+  the rest of such a page is left out, with a warning;
+- a stream that inflates past 256 MB (a compression bomb) is emptied before PDFBox decodes it whole;
+- an image whose decoded pixels would take more than 256 MB is left out, with a warning, judged by the size a JPEG,
+  JPEG 2000 or fax stream declares for itself as well as the size the PDF claims;
+- a page larger than Word's 22 inches is shrunk whole, text and all, to fit;
+- a PDF encrypted with a certificate needs BouncyCastle (`bcpkix`) on the classpath.
+
+What reaches the output is inert: links keep only web, mail and FTP addresses, escaped, and mail links only their
+addresses, subject and body; spreadsheet cells never hold formulas; JPEGs copied as they are lose comments,
+metadata and anything after their end; bidi override characters are dropped from text and document properties.
+
+The library depends on `org.apache.pdfbox:pdfbox:3.0.8` and `commons-logging`, and runs on Java 21 or later.
+
+## Other formats
+
+The same document model also goes out as OpenDocument, RTF and plain text, each through its own writer
+(`odt`, `rtf` and `text` packages), with the options, streaming and failure contract of `PdfToDocx`:
+
+```java
+PdfToOdt.convert(pdf, Path.of("out.odt"), options);        // OpenDocument Text
+PdfToOdt.convertFlat(pdf, Path.of("out.fodt"), options);   // flat XML OpenDocument, one file, pictures inline
+PdfToRtf.convert(pdf, Path.of("out.rtf"), options);        // Rich Text Format
+PdfToRtf.convert(pdf, Path.of("out.doc"), options);        // the same RTF under a Word 97-2003 name
+PdfToText.convert(pdf, Path.of("out.txt"), options);       // UTF-8 text in reading order
+String text = PdfToText.text(pdDocument, options);
+```
+
+- ODT and flat ODT carry what the DOCX carries: styles, lists, tables with merged cells, pictures (cropped and turned
+  in their pixels), text boxes and turned text boxes as frames, shapes, sections with columns, page setup per section,
+  headers and footers with page fields, footnotes, links and bookmarks. Word and LibreOffice both open them.
+- RTF likewise, as Word writes it; `.doc` is that RTF, which Word and LibreOffice open by its content without a prompt.
+  Word lays RTF out in its 2007 compatibility mode, so it is a little further from the source than the DOCX.
+- Text reads columns one after the other, tables row by row with tabs between cells, running headers and footers once,
+  footnotes after the page that refers to them, list items with their numbers; pictures are left out and never decoded.
+
+
+### Slides (PPTX, ODP and PPT)
+
+Each page becomes a slide of its size, its text in text boxes placed where the page set it, with pictures, shapes,
+tables and links, stacked in the page's paint order:
+
+```java
+PdfToPptx.convert(pdf, Path.of("out.pptx"), PdfToPptx.Options.defaults());
+PdfToOdp.convert(pdf, Path.of("out.odp"), PdfToPptx.Options.defaults());   // OpenDocument Presentation
+PdfToPpt.convert(pdf, Path.of("out.ppt"), PdfToPptx.Options.defaults());   // PowerPoint 97-2003, legacy module
+```
+
+
+### Spreadsheets (XLSX and ODS)
+
+`PdfToXlsx` converts to an Excel workbook or an OpenDocument spreadsheet, with the same contract as `PdfToDocx`:
+Path and stream overloads, the file moved into place only when complete, failures as `IOException` naming the page,
+interrupts honoured mid-page, pages streamed so memory stays flat (a 1,000-page PDF converts in a 48 MB heap).
+
+```java
+PdfToXlsx.convert(Path.of("in.pdf"), Path.of("out.xlsx"), PdfToXlsx.Options.defaults()); // .ods writes ODS
+PdfToXlsx.convert(pdDocument, outputStream,
+        PdfToXlsx.Options.defaults().withFormat(PdfToXlsx.Format.ODS).withSheets(PdfToXlsx.Sheets.TABLE));
+```
+
+- One sheet per page by default (`Page 1`, `Page 2`...), a page with several large tables giving each its own sheet.
+  `Sheets.TABLE` gives one sheet per table, joining a table carried over page breaks; `Sheets.SINGLE` uses one sheet.
+- Each table is a real grid from column A: merged cells, bold header rows, the PDF's fills, borders, alignment and
+  column widths, a named range per table, a frozen and repeated header on long tables.
+- Numbers and dates become typed values formatted as the PDF showed them (grouping, brackets, currency, percentages);
+  ambiguous forms read the way their column proves, and identifiers (leading zeros, phone and account numbers) stay text.
+- Text outside tables fills rows above, between and below them in reading order, a paragraph to a row; running
+  headers and footers become the sheet's print header and footer.
+
+Options: page range, password, table detection on or off, `typedValues` off to keep every cell as text,
+`splitLargeTables`, and `textFallback` to keep an unanalysable page as plain lines instead of failing.
+
+## How it works
+
+Two passes over the pages:
+
+1. **Statistics.** A sample of pages (all of them under 40) gives the body font and size, heading tiers, line pitch,
+   page frames, running headers/footers and whether the text was auto-hyphenated.
+2. **Per page, streamed.** Extract, analyse, build, then write straight into the zip, so memory stays flat with page count.
+
+| Package | Role |
+|---|---|
+| `extract` | PDFBox glyph and graphics collection in display space (top-left origin); font name resolution and substitution |
+| `layout` | Lines, columns, paragraphs, lists, headings, footnotes, math, figures, text boxes, decorations |
+| `table` | Ruled and unruled table detection (grid from rules, whitespace alignment) |
+| `build` | Turns page layouts into Word model objects; list numbering, RTL ordering, page and column placement |
+| `docx` | Streaming OOXML writer: document, styles, numbering, footnotes, headers/footers, media |
+| `odt`, `rtf`, `text` | The same document model as OpenDocument Text, RTF and plain text |
+| `slides`, `pptx`, `odp` | Pages to slides: placed text boxes, pictures, shapes and tables in paint order, and their writers |
+| `sheet` | Spreadsheet model and layout: pages to rows, table grids, cell typing (numbers, dates, identifiers) |
+| `xlsx`, `ods` | Streaming spreadsheet writers: each sheet buffered (spilling to disk), shared strings and styles |
+
+Word's own layout rules are modelled so the DOCX re-flows back onto the same pages. For example, with exact line
+spacing the baseline sits 0.8 of the line height below the line top, and Word drops space-before at the top of a page.
+Fonts Word will not have are swapped for Arial, Times New Roman or Courier New, with per-run letter spacing that keeps
+the original widths, or a character scale where the stand-in is far wider (a condensed display face). Text whose
+ToUnicode map points into the private use area is read from the embedded font's glyph ids instead.
+
+## Performance
+
+Measured on Windows with JDK 25, one conversion per JVM, peak memory taken from the process working set:
+
+| Document | Stirling Office Convert | LibreOffice |
+|---|---|---|
+| 506 pages, 1.7M glyphs | 3.8 s, 194 MB (64 MB heap) | 112 s, 908 MB |
+| 204 pages, mixed content | 3.5 s, 221 MB (64 MB heap) | 55 s, about 880 MB |
+
+The output is byte-identical at a 64 MB heap and a 1 GB heap. Font caches are keyed weakly by font dictionary,
+so parsed font programs are dropped once no page uses them.
+
+Smallest heap giving byte-identical output: a 161-page text benchmark 28 MB, a 348-page manual
+94 MB, 40 magazine pages 85 MB, a 40-page handbook 34 MB. A page image is decoded at no more than the resolution
+it is shown at (220 ppi, Word's own default), and media past 4 MB spills to a temporary file.
+
+## Releasing
+
+Published to Maven Central as `com.stirling:stirling-office-convert` and `com.stirling:stirling-office-convert-legacy`
+(the `.ppt` writer), signed, the same way as JPDFium:
+
+- A `v1.2.3` tag runs `.github/workflows/release.yml`: build, test, then `publishAllToCentralPortal`, which uploads to
+  the Central Portal staging API and finalizes the deployment for review at
+  https://central.sonatype.com/publishing/deployments (dispatch with `autoRelease` to skip the review click).
+- Pushes to `main` publish a `-SNAPSHOT` (`snapshot.yml`) once the secrets below are set; pull requests build and test on Linux, macOS and Windows
+  with Java 21 and 25 (`ci.yml`).
+- Repository secrets: `CENTRAL_PORTAL_USERNAME`, `CENTRAL_PORTAL_PASSWORD` (a Central Portal user token),
+  `GPG_SIGNING_KEY` (ASCII-armoured private key) and `GPG_SIGNING_PASSWORD`. A release version without a signing key
+  is refused before anything is uploaded.
+- Locally: `./gradlew publishToMavenLocal` builds the jar, sources, javadoc and POM.
+
+## Tests
+
+- `./gradlew test`: unit tests for font names, list markers, line building, side notes, OCR text, table plausibility
+  and backdrop figures, plus an end-to-end conversion of a generated PDF that checks the heading, Word list, table and
+  page range in the DOCX.
