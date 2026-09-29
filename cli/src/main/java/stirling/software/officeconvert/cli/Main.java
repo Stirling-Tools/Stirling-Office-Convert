@@ -1,10 +1,14 @@
 package stirling.software.officeconvert.cli;
 
 import java.io.IOException;
+import java.lang.management.ManagementFactory;
+import java.lang.management.MemoryPoolMXBean;
+import java.lang.management.MemoryType;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -22,11 +26,13 @@ import stirling.software.officeconvert.PdfToText;
 import stirling.software.officeconvert.PdfToXlsx;
 import stirling.software.officeconvert.Pictures;
 import stirling.software.officeconvert.legacy.PdfToPpt;
+import stirling.software.officeconvert.topdf.OfficeToPdf;
+import stirling.software.officeconvert.topdf.io.PoiXml;
 
 public final class Main {
 
     private static final Set<String> FORMATS = Set.of("docx", "odt", "fodt", "rtf", "doc", "txt", "pptx", "odp", "ppt", "xlsx",
-            "ods");
+            "ods", "pdf");
 
     private Main() {}
 
@@ -51,6 +57,10 @@ public final class Main {
         String password = null;
         boolean quiet = false;
         String format = "docx";
+        boolean formatGiven = false;
+        boolean pagesGiven = false;
+        OfficeToPdf.Options office = OfficeToPdf.Options.defaults();
+        List<Path> fontDirs = new ArrayList<>();
         PdfToXlsx.Sheets sheets = PdfToXlsx.Sheets.PAGE;
         Pictures pictures = Pictures.COMPACT;
         PdfToDocx.Options options;
@@ -65,12 +75,20 @@ public final class Main {
                         int[] range = pages(value(args, ++i, a));
                         first = range[0];
                         last = range[1];
+                        pagesGiven = true;
                     }
                     case "--no-tables" -> tables = false;
                     case "--dpi" -> dpi = number(value(args, ++i, a), a);
                     case "--password" -> password = value(args, ++i, a);
                     case "--picture-fallback" -> pictureFallback = true;
-                    case "--format" -> format = known(value(args, ++i, a).toLowerCase(Locale.ROOT).replaceFirst("^\\.", ""));
+                    case "--format" -> {
+                        format = known(value(args, ++i, a).toLowerCase(Locale.ROOT).replaceFirst("^\\.", ""));
+                        formatGiven = true;
+                    }
+                    case "--timeout" -> office = office.timeout(Duration.ofMillis((long) Math.ceil(seconds(value(args, ++i, a),
+                            a) * 1000)));
+                    case "--max-pages" -> office = office.maxPages(count(value(args, ++i, a), a));
+                    case "--fonts" -> fontDirs.add(folder(value(args, ++i, a), a));
                     case "--sheets" -> sheets = sheets(value(args, ++i, a));
                     case "--pictures" -> pictures = pictures(value(args, ++i, a));
                     case "-q", "--quiet" -> quiet = true;
@@ -87,14 +105,41 @@ public final class Main {
                 }
             }
             if (inputs.isEmpty()) {
-                throw new Usage("no PDF given");
+                throw new Usage("no PDF or Office document given");
+            }
+            office = office.fontDirs(fontDirs);
+            boolean anyOffice = false;
+            boolean anyPdf = false;
+            for (Path in : inputs) {
+                if (Files.isDirectory(in)) {
+                    anyOffice |= formatGiven && "pdf".equals(format);
+                    anyPdf |= formatGiven && !"pdf".equals(format);
+                    continue;
+                }
+                boolean officeInput = isOffice(in);
+                anyOffice |= officeInput;
+                anyPdf |= !officeInput;
+            }
+            if (anyOffice && pagesGiven) {
+                throw new Usage("--pages is for PDF input; Office documents convert whole (--max-pages n limits them)");
+            }
+            if (anyOffice && formatGiven && !"pdf".equals(format)) {
+                throw new Usage("Office documents convert to PDF only; use --format pdf or leave it out");
+            }
+            if (anyPdf && "pdf".equals(format)) {
+                throw new Usage("PDF input converts to an Office format, not pdf");
             }
             options = new PdfToDocx.Options(first, last, tables, dpi, password, pictureFallback, pictures);
             slides = new PdfToPptx.Options(first, last, tables, dpi, password, pictureFallback, pictures);
             books = PdfToXlsx.Options.defaults().withPages(first, last).withTables(tables).withPassword(password)
                     .withSheets(sheets).withTextFallback(pictureFallback);
             if (output != null && !Files.isDirectory(output) && inputs.size() == 1 && !Files.isDirectory(inputs.get(0))) {
-                known(extension(output));
+                String ext = known(extension(output));
+                boolean officeInput = isOffice(inputs.get(0));
+                if (officeInput != "pdf".equals(ext)) {
+                    throw new Usage(officeInput ? "an Office document converts to PDF; name the output .pdf"
+                            : "PDF input converts to an Office format; the output cannot be .pdf");
+                }
             }
         } catch (Usage | IllegalArgumentException e) {
             System.err.println("office-convert: " + e.getMessage());
@@ -102,10 +147,14 @@ public final class Main {
             return 2;
         }
         List<Path> pdfs = new ArrayList<>();
+        boolean officeFolder = !formatGiven || "pdf".equals(format);
+        boolean pdfFolder = !formatGiven || !"pdf".equals(format);
         for (Path in : inputs) {
             if (Files.isDirectory(in)) {
                 try (Stream<Path> s = Files.list(in)) {
-                    s.filter(p -> p.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".pdf")).sorted().forEach(pdfs::add);
+                    s.filter(p -> Files.isRegularFile(p) && !lockFile(p) && (officeFolder && isOffice(p)
+                            || pdfFolder && p.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".pdf")))
+                            .sorted().forEach(pdfs::add);
                 } catch (IOException e) {
                     System.err.println("office-convert: cannot list " + in + ": " + e.getMessage());
                     return 1;
@@ -114,24 +163,40 @@ public final class Main {
                 pdfs.add(in);
             }
         }
+        warmUp(pdfs);
         int failures = 0;
-        for (Path pdf : pdfs) {
-            Path target = target(pdf, output, pdfs.size() > 1, format);
+        List<Path> targets = targets(pdfs, output, format, inputs.stream().anyMatch(Files::isDirectory));
+        for (int k = 0; k < pdfs.size(); k++) {
+            Path pdf = pdfs.get(k);
+            boolean officeInput = isOffice(pdf);
+            Path target = targets.get(k);
+            resetPeaks();
             long start = System.nanoTime();
             try {
                 if (target.getParent() != null) {
                     Files.createDirectories(target.getParent());
                 }
-                convert(pdf, target, options, slides, books);
+                OfficeToPdf.Result result = null;
+                if (officeInput) {
+                    result = officeToPdf(pdf, target, office);
+                } else {
+                    convert(pdf, target, options, slides, books);
+                }
                 long ms = (System.nanoTime() - start) / 1_000_000;
                 if (!quiet) {
                     Runtime rt = Runtime.getRuntime();
                     long usedMb = (rt.totalMemory() - rt.freeMemory()) / (1024 * 1024);
-                    System.out.printf("OK %s -> %s (%d ms, heap %d MB)%n", pdf, target, ms, usedMb);
+                    System.out.printf("OK %s -> %s (%d ms, heap %d MB, peak %d MB)%n", pdf, target, ms, usedMb,
+                            peakMb());
+                    if (result != null) {
+                        for (String w : result.warnings()) {
+                            System.err.println("warning: " + pdf.getFileName() + ": " + oneLine(w));
+                        }
+                    }
                 }
             } catch (IOException e) {
                 failures++;
-                System.err.println("FAIL " + pdf + ": " + describe(e));
+                System.err.println("FAIL " + pdf + ": " + oneLine(describe(e)));
             } catch (RuntimeException | OutOfMemoryError e) {
                 failures++;
                 System.err.println("FAIL " + pdf + ": unexpected " + e);
@@ -139,6 +204,74 @@ public final class Main {
             }
         }
         return failures == 0 ? 0 : 1;
+    }
+
+    private static void resetPeaks() {
+        for (MemoryPoolMXBean pool : ManagementFactory.getMemoryPoolMXBeans()) {
+            if (pool.getType() == MemoryType.HEAP) {
+                pool.resetPeakUsage();
+            }
+        }
+    }
+
+    // Heap pools peak apart, so their sum is an upper bound of the conversion's peak heap
+    private static long peakMb() {
+        long peak = 0;
+        for (MemoryPoolMXBean pool : ManagementFactory.getMemoryPoolMXBeans()) {
+            if (pool.getType() == MemoryType.HEAP && pool.getPeakUsage() != null) {
+                peak += pool.getPeakUsage().getUsed();
+            }
+        }
+        return peak >> 20;
+    }
+
+    // Messages quote document content; keep each to one line without terminal control codes
+    static String oneLine(String s) {
+        StringBuilder b = new StringBuilder(s.length());
+        s.codePoints().forEach(cp -> {
+            if (Character.isISOControl(cp) || cp >= 0x202A && cp <= 0x202E || cp >= 0x2066 && cp <= 0x2069) {
+                b.append(' ');
+            } else {
+                b.appendCodePoint(cp);
+            }
+        });
+        return b.toString();
+    }
+
+    // Office keeps "~$name" owner files beside open documents; they are never documents themselves
+    private static boolean lockFile(Path p) {
+        return p.getFileName().toString().startsWith("~$");
+    }
+
+    // Inputs that would share an output name keep their own extension in it instead of overwriting each other
+    static List<Path> targets(List<Path> inputs, Path output, String format, boolean folder) {
+        List<Path> out = new ArrayList<>();
+        java.util.Map<String, Integer> counts = new java.util.HashMap<>();
+        for (Path in : inputs) {
+            Path t = target(in, output, folder || inputs.size() > 1, isOffice(in) ? "pdf" : format);
+            out.add(t);
+            counts.merge(key(t), 1, Integer::sum);
+        }
+        java.util.Set<String> used = new java.util.HashSet<>();
+        for (int i = 0; i < out.size(); i++) {
+            Path t = out.get(i);
+            if (counts.get(key(t)) > 1) {
+                String ext = isOffice(inputs.get(i)) ? "pdf" : format;
+                t = t.resolveSibling(inputs.get(i).getFileName().toString() + "." + ext);
+            }
+            Path unique = t;
+            for (int n = 2; !used.add(key(unique)) && n < 10_000; n++) {
+                String name = t.getFileName().toString();
+                int dot = name.lastIndexOf('.');
+                unique = t.resolveSibling(name.substring(0, dot) + " (" + n + ")" + name.substring(dot));
+            }
+            out.set(i, unique);
+        }
+        return out;
+    }
+
+    private static String key(Path p) {
+        return p.toAbsolutePath().normalize().toString().toLowerCase(Locale.ROOT);
     }
 
     private static String describe(IOException e) {
@@ -167,6 +300,62 @@ public final class Main {
         }
     }
 
+    private static OfficeToPdf.Result officeToPdf(Path in, Path target, OfficeToPdf.Options office) throws IOException {
+        PoiXml.raiseProcessLimits();
+        return OfficeToPdf.convert(in, target, office);
+    }
+
+    // A spare core loads the converter's classes on a tiny document while the first real one is opened; a deck only
+    // warms up the fonts and PDF writing, so it does not compete for the jar with the POI classes the deck needs
+    private static void warmUp(List<Path> inputs) {
+        List<OfficeToPdf.Format> formats = new ArrayList<>();
+        boolean deck = false;
+        for (Path in : inputs) {
+            try {
+                OfficeToPdf.Format f = isOffice(in) ? OfficeToPdf.Format.of(in) : null;
+                deck |= f == OfficeToPdf.Format.PPTX;
+                if (f != null && f != OfficeToPdf.Format.PPTX && !formats.contains(f)) {
+                    formats.add(f);
+                }
+            } catch (IllegalArgumentException ignored) {
+                // legacy files fail on their own turn
+            }
+        }
+        if (formats.isEmpty() && !deck || Runtime.getRuntime().availableProcessors() < 2) {
+            return;
+        }
+        PoiXml.raiseProcessLimits();
+        Runnable work = formats.isEmpty() ? OfficeToPdf::warmUpFoundation
+                : () -> OfficeToPdf.warmUp(formats.toArray(OfficeToPdf.Format[]::new));
+        Thread t = new Thread(work, "office-warm-up");
+        t.setDaemon(true);
+        t.start();
+    }
+
+    private static boolean isOffice(Path file) {
+        return file.getFileName() != null && OfficeToPdf.Format.recognises(file);
+    }
+
+    private static float seconds(String s, String option) throws Usage {
+        float v = number(s, option);
+        if (!(v >= 0 && v <= 86_400)) {
+            throw new Usage(option + " needs seconds from 0 (no limit) to 86400, not '" + s + "'");
+        }
+        return v;
+    }
+
+    private static int count(String s, String option) throws Usage {
+        try {
+            int v = Integer.parseInt(s.strip());
+            if (v < 0) {
+                throw new NumberFormatException();
+            }
+            return v;
+        } catch (NumberFormatException e) {
+            throw new Usage(option + " needs a whole number of 0 or more, not '" + s + "'");
+        }
+    }
+
     private static String extension(Path file) {
         String name = file.getFileName().toString().toLowerCase(Locale.ROOT);
         int dot = name.lastIndexOf('.');
@@ -175,7 +364,8 @@ public final class Main {
 
     private static String known(String format) throws Usage {
         if (!FORMATS.contains(format)) {
-            throw new Usage("unknown output format '" + format + "': use docx, odt, fodt, rtf, doc, txt, pptx, odp, ppt, xlsx or ods");
+            throw new Usage("unknown output format '" + format
+                    + "': use docx, odt, fodt, rtf, doc, txt, pptx, odp, ppt, xlsx or ods (pdf for Office input)");
         }
         return format;
     }
@@ -185,6 +375,14 @@ public final class Main {
             throw new Usage(option + " needs a value");
         }
         return args[i];
+    }
+
+    private static Path folder(String s, String option) throws Usage {
+        Path p = path(s);
+        if (!Files.isDirectory(p)) {
+            throw new Usage(option + " needs a folder of fonts; " + s + " is not a folder");
+        }
+        return p;
     }
 
     private static Path path(String s) throws Usage {
@@ -230,7 +428,9 @@ public final class Main {
     }
 
     private static Path target(Path pdf, Path output, boolean many, String format) {
-        String name = pdf.getFileName().toString().replaceFirst("(?i)\\.pdf$", "") + "." + format;
+        String base = pdf.getFileName().toString();
+        String name = ("pdf".equals(format) ? base.replaceFirst("\\.[^.]+$", "") : base.replaceFirst("(?i)\\.pdf$", ""))
+                + "." + format;
         if (output == null) {
             return pdf.resolveSibling(name);
         }
@@ -245,6 +445,15 @@ public final class Main {
                 "Usage: office-convert <in.pdf|dir>... [-o out.docx|dir] [--format ext] [--sheets page|table|single]"
                         + " [--pages a-b] [--no-tables] [--dpi n] [--password p] [--picture-fallback]"
                         + " [--pictures compact|lossless] [-q]"
+                        + System.lineSeparator()
+                        + "       office-convert <in.docx|in.pptx|in.xlsx|dir>... [-o out.pdf|dir] [--format pdf]"
+                        + " [--max-pages n (default 10000, 0 = all)] [--timeout s (default 300, 0 = none)]"
+                        + " [--fonts dir]... [-q]"
+                        + System.lineSeparator()
+                        + "Word, PowerPoint and Excel files (.docx .docm .dotx .dotm .pptx .pptm .ppsx .ppsm .potx .potm"
+                        + " .xlsx .xlsm .xltx .xltm) convert to PDF. A folder converts its PDFs and Office files; --format pdf"
+                        + " takes only its Office files. Nothing a document"
+                        + " links to is fetched and no macro, field or formula is run."
                         + System.lineSeparator()
                         + "The output's extension picks the format: .docx, .odt, .fodt, .rtf, .doc (RTF content), .txt,"
                         + " .pptx, .odp, .ppt, .xlsx or .ods; --format names it for a directory of outputs."

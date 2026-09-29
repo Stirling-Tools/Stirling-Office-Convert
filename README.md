@@ -2,10 +2,11 @@
 
 Office document conversion in plain Java on PDFBox, built to replace LibreOffice in Stirling-PDF. Today it converts
 PDF to Word (DOCX), OpenDocument (ODT, ODP, ODS), RTF, plain text, PowerPoint (PPTX, PPT) and Excel (XLSX); Office to
-PDF is planned. There are no native dependencies and no external processes. The output is editable content: real
-paragraphs, headings, lists, tables, footnotes, headers and footers, and section columns, not a page of positioned
-text boxes. Only page furniture and text the flow cannot hold (a footer some pages share, fragments set side by side)
-is placed.
+PDF (DOCX, PPTX, XLSX) is in progress in the `topdf` module (`stirling-office-convert-topdf`), which never fetches
+anything a document links to and never runs macros, fields or formulas. There are no native dependencies and no
+external processes. The output is editable content: real paragraphs, headings, lists, tables, footnotes, headers and
+footers, and section columns, not a page of positioned text boxes. Only page furniture and text the flow cannot hold
+(a footer some pages share, fragments set side by side) is placed.
 
 ## Build and run
 
@@ -13,10 +14,18 @@ is placed.
 ./gradlew build                      # core + CLI, runs the unit tests
 java -jar cli/build/libs/stirling-office-convert-cli.jar in.pdf -o out.docx
 java -jar cli/build/libs/stirling-office-convert-cli.jar folder/ -o outdir/
+java -jar cli/build/libs/stirling-office-convert-cli.jar report.docx slides.pptx book.xlsx -o outdir/
 ```
 
-CLI options: `--pages a-b`, `--no-tables`, `--dpi n` (vector figures), `--password p`, `--picture-fallback`,
-`--pictures compact|lossless` (see Pictures below), `-q`.
+CLI options for PDF input: `--pages a-b`, `--no-tables`, `--dpi n` (vector figures), `--password p`,
+`--picture-fallback`, `--pictures compact|lossless` (see Pictures below), `-q`.
+For Word, PowerPoint and Excel input (`.docx .docm .dotx .dotm .pptx .pptm .ppsx .ppsm .potx .potm .xlsx .xlsm
+.xltx .xltm`), which converts to PDF: `--max-pages n` (default 10000, 0 = all), `--timeout s` (default 300, 0 =
+none), `--fonts dir` (repeatable; an extra folder of fonts), `-q`, and `--format pdf` to take only the Office files out
+of a folder. A folder converts both its PDFs and its Office files. Inputs that would write the same output name (such
+as `report.docx` and `report.xlsx`) keep their own extension in it (`report.docx.pdf`, `report.xlsx.pdf`), and Office
+owner files (`~$name`) are skipped. Warnings (substituted fonts, skipped active content, pictures that could not be
+drawn) print to stderr as `warning: <file>: <message>` unless `-q`.
 The output file's extension picks the format: `.docx`, `.odt`, `.fodt`, `.rtf`, `.doc`, `.txt`, `.pptx`, `.odp`,
 `.ppt`, `.xlsx` or `.ods` (see Other formats). For a folder of PDFs, `--format ext` names it; `--sheets
 page|table|single` sets a spreadsheet's layout. Each file prints its time and the heap in use when it finished.
@@ -198,6 +207,45 @@ metadata and anything after their end; bidi override characters are dropped from
 
 The library depends on `org.apache.pdfbox:pdfbox:3.0.8` and `commons-logging`, and runs on Java 21 or later.
 
+### Office to PDF
+
+`com.stirling:stirling-office-convert-topdf` converts Word, PowerPoint and Excel documents to PDF with one class,
+`stirling.software.officeconvert.topdf.OfficeToPdf`:
+
+```java
+import stirling.software.officeconvert.topdf.OfficeToPdf;
+
+OfficeToPdf.Result r = OfficeToPdf.convert(Path.of("in.docx"), Path.of("out.pdf"));    // 5 minute timeout
+OfficeToPdf.convert(Path.of("in.xlsx"), Path.of("out.pdf"), OfficeToPdf.Options.defaults()
+        .timeout(Duration.ofSeconds(60))       // Duration.ZERO = no limit
+        .maxPages(500)                         // 0 = every page; r.truncated() says whether it cut the document short
+        .fontDirs(List.of(Path.of("/opt/fonts"))));
+OfficeToPdf.convert(inputStream, OfficeToPdf.Format.PPTX, outputStream, OfficeToPdf.Options.defaults());
+r.pages();                                     // pages written
+r.warnings();                                  // substituted fonts, skipped active content, pictures left out
+```
+
+Unlike `OfficeConvert`, whose default is no time limit, `OfficeToPdf` stops after 5 minutes by default and throws
+`OfficeToPdf.TimedOut` (an `IOException`). Bad input gives an `IOException` with a plain reason, legacy and unknown
+file extensions included. Nothing a document links to is ever fetched, and no macro, field, formula or script is run:
+fields and formulas show their cached results, charts their cached values, embedded objects their stored preview.
+
+On Java 24 and later the JDK's default XML limits are much lower (`jdk.xml.maxElementDepth` 100, entity sizes
+100 000). The converter sets its own limits on every parser it makes, but POI parses slides, relationship parts and
+`[Content_Types].xml` with the JVM's defaults, so a slide nested more than about 90 groups deep or holding more than
+100 000 escaped characters fails with an `IOException` that names the limit. To convert those, call
+`PoiXml.raiseProcessLimits()` (package `stirling.software.officeconvert.topdf.io`) once at startup, or start the JVM
+with the same `-D` flags: `-Djdk.xml.maxElementDepth=1000 -Djdk.xml.totalEntitySizeLimit=0
+-Djdk.xml.maxGeneralEntitySizeLimit=0 -Djdk.xml.elementAttributeLimit=10000`. Both are JVM-wide: they apply to every
+XML parser in the process that does not set its own limits, which restores roughly the limits of Java 23 and earlier.
+The call sets only properties the host has not set and returns their names. The command-line tool makes this call.
+
+It depends on `org.apache.pdfbox:pdfbox:3.0.8`, `org.apache.poi:poi-ooxml` and `poi-scratchpad` 5.5.1 (with
+`xmlbeans`, `commons-io`, `commons-codec`, `commons-compress`, `commons-collections4`, `commons-math3`,
+`SparseBitSet`, `curvesapi` and `log4j-api`) and `de.rototor.pdfbox:graphics2d:3.0.5`, all Apache-2.0 apart from
+`curvesapi` (BSD-3-Clause). Automatic hyphenation uses the English Hyphen patterns bundled under
+`stirling/software/officeconvert/topdf/docx/hyph/` (BSD-style licence beside them).
+
 ## Other formats
 
 The same document model also goes out as OpenDocument, RTF and plain text, each through its own writer
@@ -301,8 +349,8 @@ it is shown at (220 ppi, Word's own default), and media past 4 MB spills to a te
 
 ## Releasing
 
-Published to Maven Central as `com.stirling:stirling-office-convert` and `com.stirling:stirling-office-convert-legacy`
-(the `.ppt` writer), signed, the same way as JPDFium:
+Published to Maven Central as `com.stirling:stirling-office-convert`, `com.stirling:stirling-office-convert-legacy`
+(the `.ppt` writer) and `com.stirling:stirling-office-convert-topdf` (Office to PDF), signed, the same way as JPDFium:
 
 - A `v1.2.3` tag runs `.github/workflows/release.yml`: build, test, then `publishAllToCentralPortal`, which uploads to
   the Central Portal staging API and finalizes the deployment for review at
@@ -319,3 +367,7 @@ Published to Maven Central as `com.stirling:stirling-office-convert` and `com.st
 - `./gradlew test`: unit tests for font names, list markers, line building, side notes, OCR text, table plausibility
   and backdrop figures, plus an end-to-end conversion of a generated PDF that checks the heading, Word list, table and
   page range in the DOCX.
+- `./gradlew :topdf:test`: Office to PDF, including the network-safety tests (hostile documents convert without a
+  single connection or DNS lookup, and a scan of every class for code that could reach the network or run scripts);
+  `./gradlew :topdf:testJava25` runs the same tests on a Java 25 toolchain, Stirling-PDF's runtime, when one is
+  installed.
