@@ -3,7 +3,11 @@ package stirling.software.officeconvert.layout;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
+import java.util.HashMap;
+import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
 
 import stirling.software.officeconvert.extract.Glyph;
 
@@ -11,7 +15,17 @@ final class GlyphRows {
 
     private static final float ROW_TOLERANCE = 0.3f;
 
+    private static final float ARABIC_TOLERANCE = 0.62f;
+
     private static final float SATELLITE_REACH = 0.62f;
+
+    private static final float CASCADE_RISE = 1.1f;
+
+    private static final float CASCADE_DROP = 0.35f;
+
+    private static final int MAIN_MIN = 5;
+
+    private static final int MAIN_SHARE = 4;
 
     private static final float SATELLITE_MAX_SIZE = 0.86f;
 
@@ -31,9 +45,11 @@ final class GlyphRows {
         float baseline;
         float size;
         double baseSum;
+        boolean arabic;
 
         void add(Glyph g) {
             glyphs.add(g);
+            arabic |= arabic(g);
             baseSum += g.baseline;
             baseline = (float) (baseSum / glyphs.size());
             size = Math.max(size, g.size);
@@ -49,14 +65,18 @@ final class GlyphRows {
     }
 
     private static List<Row> cluster(List<Glyph> ink) {
+        Map<Glyph, Float> key = cascadeBaselines(ink);
         List<Glyph> sorted = new ArrayList<>(ink);
-        sorted.sort(Comparator.comparingDouble((Glyph g) -> g.baseline));
+        sorted.sort(key.isEmpty() ? Comparator.comparingDouble((Glyph g) -> g.baseline)
+                : Comparator.comparingDouble((Glyph g) -> key.getOrDefault(g, g.baseline)));
         List<Row> rows = new ArrayList<>();
         Row row = null;
         for (Glyph g : sorted) {
             if (row != null) {
-                float tol = Math.max(0.8f, ROW_TOLERANCE * Math.min(g.size, row.size));
-                if (Math.abs(g.baseline - row.baseline) <= tol) {
+                float share = row.arabic && arabic(g) ? ARABIC_TOLERANCE : ROW_TOLERANCE;
+                float tol = Math.max(0.8f, share * Math.min(g.size, row.size));
+                float at = key.isEmpty() ? g.baseline : key.getOrDefault(g, g.baseline);
+                if (Math.abs(at - row.baseline) <= tol) {
                     row.add(g);
                     continue;
                 }
@@ -69,6 +89,58 @@ final class GlyphRows {
             r.glyphs.sort(Comparator.comparingDouble((Glyph g) -> g.x).thenComparingInt(g -> g.seq));
         }
         return rows;
+    }
+
+    private static Map<Glyph, Float> cascadeBaselines(List<Glyph> ink) {
+        Map<Glyph, Float> out = new IdentityHashMap<>();
+        if (ink.stream().noneMatch(GlyphRows::arabic)) {
+            return out;
+        }
+        Map<Integer, TreeMap<Integer, Integer>> bySize = new HashMap<>();
+        for (Glyph g : ink) {
+            bySize.computeIfAbsent(Math.round(g.size), k -> new TreeMap<>()).merge(Math.round(g.baseline * 2), 1, Integer::sum);
+        }
+        Map<Integer, List<Float>> mains = new HashMap<>();
+        for (Map.Entry<Integer, TreeMap<Integer, Integer>> size : bySize.entrySet()) {
+            TreeMap<Integer, Integer> counts = size.getValue();
+            int reach = Math.round(2 * CASCADE_RISE * size.getKey());
+            List<Float> main = new ArrayList<>();
+            for (Map.Entry<Integer, Integer> e : counts.entrySet()) {
+                int best = 0;
+                for (int c : counts.subMap(e.getKey() - reach, true, e.getKey() + reach, true).values()) {
+                    best = Math.max(best, c);
+                }
+                if (e.getValue() >= MAIN_MIN && e.getValue() * MAIN_SHARE >= best) {
+                    main.add(e.getKey() / 2f);
+                }
+            }
+            mains.put(size.getKey(), main);
+        }
+        for (Glyph g : ink) {
+            List<Float> main = mains.get(Math.round(g.size));
+            if (!arabic(g) || main == null) {
+                continue;
+            }
+            float near = Float.NaN;
+            float below = Float.NaN;
+            for (float m : main) {
+                if (Math.abs(m - g.baseline) <= ROW_TOLERANCE * g.size) {
+                    near = m;
+                }
+                if (Float.isNaN(below) && m >= g.baseline - CASCADE_DROP * g.size && m - g.baseline <= CASCADE_RISE * g.size) {
+                    below = m;
+                }
+            }
+            if (Float.isNaN(near) && !Float.isNaN(below)) {
+                out.put(g, below);
+            }
+        }
+        return out;
+    }
+
+    private static boolean arabic(Glyph g) {
+        return !g.text.isEmpty() && g.text.charAt(0) >= 0x0600
+                && Character.UnicodeScript.of(g.text.codePointAt(0)) == Character.UnicodeScript.ARABIC;
     }
 
     private static void mergeSatellites(List<Row> rows) {

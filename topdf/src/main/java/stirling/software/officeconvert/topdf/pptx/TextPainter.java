@@ -2,12 +2,14 @@ package stirling.software.officeconvert.topdf.pptx;
 
 import java.awt.Shape;
 import java.awt.geom.AffineTransform;
+import java.awt.geom.NoninvertibleTransformException;
 import java.awt.geom.Path2D;
 import java.awt.geom.Rectangle2D;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.function.UnaryOperator;
 
 import stirling.software.officeconvert.topdf.font.BidiRuns;
 import stirling.software.officeconvert.topdf.font.FontFace;
@@ -19,6 +21,21 @@ import stirling.software.officeconvert.topdf.pdf.TextStyle;
 final class TextPainter {
 
     private TextPainter() {}
+
+    // Text drawn in a warp's space: with a bend its glyph outlines are drawn bent and the text itself is written
+    // unpainted for search and copy; shadows fall on the slide from the shape's box, not in the warp's space
+    record Warped(UnaryOperator<Shape> bend, AffineTransform space, Rectangle2D box) {}
+
+    private static final ThreadLocal<Warped> WARPED = new ThreadLocal<>();
+
+    static void drawWarped(PdfCanvas canvas, TextBlock block, Deck deck, Warped warped) throws IOException {
+        WARPED.set(warped);
+        try {
+            draw(canvas, block, 0, 0, deck);
+        } finally {
+            WARPED.remove();
+        }
+    }
 
     static void draw(PdfCanvas canvas, TextBlock block, float left, float top, Deck deck) throws IOException {
         AffineTransform ctm = canvas.transform();
@@ -32,16 +49,34 @@ final class TextPainter {
             }
             Para.Bullet bullet = l.para.bullet();
             if (l.first && bullet != null && !l.para.isEmpty()) {
-                float bx = left + l.column + block.bulletX(l) + l.shift;
+                // A right-to-left bullet keeps its place beside the text's start, wherever the line is aligned
+                float bx = left + l.column + block.bulletX(l) + l.shift
+                        - (l.para.rtl() ? l.right - l.x - l.width : 0);
                 Piece b = bullet.piece();
                 if (bullet.picture() != null) {
                     float h = bullet.height();
                     canvas.image(bullet.picture(), bx, baseline - h, bullet.width(), h);
+                } else if (l.para.rtl()) {
+                    bulletRtl(canvas, b, bx, baseline);
                 } else {
                     canvas.text(b.text(), bx, baseline, b.style());
                 }
             }
             drawLine(canvas, l, x, baseline, deck);
+        }
+    }
+
+    // A number such as "1." in a right-to-left paragraph reads right to left: its full stop is on the left
+    private static void bulletRtl(PdfCanvas canvas, Piece b, float x, float baseline) throws IOException {
+        String t = b.text();
+        TextStyle style = b.style();
+        for (BidiRuns.Run run : BidiRuns.visual(BidiRuns.logical(t, true))) {
+            String part = run.of(t);
+            if ((run.rightToLeft() || FontFace.needsShaping(part)) && style.face().shapeable()) {
+                x += canvas.drawGlyphs(style.face().shape(part, run.rightToLeft()), x, baseline, style);
+            } else {
+                x += canvas.text(part, x, baseline, style);
+            }
         }
     }
 
@@ -120,8 +155,11 @@ final class TextPainter {
                     i++;
                     continue;
                 }
+                // Spaces of a justified line are parts of their own, so each takes its share of the free width
+                boolean spread = l.extraPerSpace > 0;
                 int j = i;
-                while (j < b && ch.piece[j] == ch.piece[i] && ch.codePoints[j] != '\t' && ch.codePoints[j] != '\n') {
+                while (j < b && ch.piece[j] == ch.piece[i] && ch.codePoints[j] != '\t' && ch.codePoints[j] != '\n'
+                        && !(spread && (ch.codePoints[j] == ' ') != (ch.codePoints[i] == ' '))) {
                     j++;
                 }
                 parts.add(new int[] {i, j});
@@ -139,7 +177,11 @@ final class TextPainter {
                 Piece p = ch.pieces.get(ch.piece[part[0]]);
                 String t = ch.text(part[0], part[1]);
                 TextStyle style = p.style();
-                if (run.rightToLeft() || FontFace.needsShaping(t)) {
+                if (l.extraPerSpace > 0 && t.isBlank()) {
+                    float w = ch.width(part[0], part[1]) + (part[1] - part[0]) * l.extraPerSpace;
+                    segment(canvas, ch, part[0], part[1], x, baseline, w, l.extraPerSpace, deck);
+                    x += w;
+                } else if (run.rightToLeft() || FontFace.needsShaping(t)) {
                     GlyphRun g = style.face().shape(t, run.rightToLeft());
                     float w = g.width(style.size()) * (style.horizontalScale() / 100f)
                             + t.codePointCount(0, t.length()) * style.charSpacing();
@@ -217,20 +259,65 @@ final class TextPainter {
             TextStyle style, float wordSpacing) throws IOException {
         if (p.metrics() != null) {
             emulated(canvas, ch, from, to, x, y, style.wordSpacing(0), wordSpacing);
+        } else if (FontFace.needsShaping(ch.text(from, to)) && style.face().shapeable()) {
+            shaped(canvas, ch, from, to, x, y, style, wordSpacing);
         } else {
             canvas.text(ch.text(from, to), x, y, style);
+        }
+    }
+
+    // Word by word, shaped as Chars measured them, so conjuncts, reordered vowels and marks come out right
+    private static void shaped(PdfCanvas canvas, Chars ch, int from, int to, float x, float y, TextStyle style,
+            float wordSpacing) throws IOException {
+        float at = x;
+        int i = from;
+        while (i < to) {
+            int cp = ch.codePoints[i];
+            if (Chars.space(cp) || cp == '\n') {
+                if (cp == ' ') {
+                    canvas.text(" ", at, y, style);
+                }
+                at += ch.advances[i] + (cp == ' ' ? wordSpacing : 0);
+                i++;
+                continue;
+            }
+            int j = ch.wordEnd(i, to);
+            String word = ch.text(i, j);
+            canvas.drawGlyphs(style.face().shape(word, BidiRuns.baseRightToLeft(word)), at, y, style);
+            at += ch.width(i, j);
+            i = j;
         }
     }
 
     // The shadow of the glyph outlines, soft or hard as for shapes; never a second copy of the text
     private static void shadow(PdfCanvas canvas, Chars ch, int from, int to, float x, float y, Piece p,
             float wordSpacing, Deck deck) throws IOException {
-        Path2D outline = outlines(ch, from, to, x, y, p, wordSpacing);
+        cast(canvas, outlines(ch, from, to, x, y, p, wordSpacing), p, deck);
+    }
+
+    private static void cast(PdfCanvas canvas, Shape outline, Piece p, Deck deck) throws IOException {
         Rectangle2D b = outline.getBounds2D();
         if (b.isEmpty()) {
             return;
         }
-        Shadows.draw(deck, canvas, p.shadow(), outline, new AffineTransform(), b);
+        Warped warped = WARPED.get();
+        AffineTransform back = null;
+        try {
+            back = warped == null ? null : warped.space().createInverse();
+        } catch (NoninvertibleTransformException e) {
+            back = null;
+        }
+        if (back == null) {
+            Shadows.draw(deck, canvas, p.shadow(), outline, new AffineTransform(), b);
+            return;
+        }
+        canvas.save();
+        try {
+            canvas.transform(back);
+            Shadows.draw(deck, canvas, p.shadow(), outline, warped.space(), warped.box());
+        } finally {
+            canvas.restore();
+        }
     }
 
     private static Path2D outlines(Chars ch, int from, int to, float x, float y, Piece p, float wordSpacing) {
@@ -256,6 +343,33 @@ final class TextPainter {
         return outline;
     }
 
+    private static void bent(PdfCanvas canvas, Chars ch, int from, int to, float x, float y, Piece p, TextStyle style,
+            float wordSpacing, UnaryOperator<Shape> bend, Deck deck) throws IOException {
+        boolean visible = style.color().getAlpha() > 0;
+        if (ch.text(from, to).isBlank() || !visible && p.outline() == null) {
+            return;
+        }
+        Shape outline = bend.apply(outlines(ch, from, to, x, y, p, wordSpacing));
+        if (outline.getBounds2D().isEmpty()) {
+            return;
+        }
+        if (p.shadow() != null) {
+            cast(canvas, outline, p, deck);
+        }
+        if (visible) {
+            canvas.draw(outline, Fill.solid(style.color()), null);
+            boolean was = canvas.hideText(true);
+            try {
+                glyphs(canvas, ch, from, to, x, y, p, style, wordSpacing);
+            } finally {
+                canvas.hideText(was);
+            }
+        }
+        if (p.outline() != null) {
+            canvas.draw(outline, null, p.outline());
+        }
+    }
+
     private static void segment(PdfCanvas canvas, Chars ch, int from, int to, float x, float baseline, float width,
             float wordSpacing, Deck deck) throws IOException {
         Piece p = ch.pieces.get(ch.piece[from]);
@@ -272,11 +386,20 @@ final class TextPainter {
             float desc = style.points(face.metrics().winDescent());
             canvas.rect(x, y - asc, width, asc + desc, Fill.solid(p.highlight()), null);
         }
+        Warped warped = WARPED.get();
+        if (warped != null && warped.bend() != null) {
+            bent(canvas, ch, from, to, x, y, p, style, wordSpacing, warped.bend(), deck);
+            return;
+        }
         if (!text.isBlank() && style.color().getAlpha() > 0) {
             if (p.shadow() != null) {
                 shadow(canvas, ch, from, to, x, y, p, wordSpacing, deck);
             }
             glyphs(canvas, ch, from, to, x, y, p, style, wordSpacing);
+        } else if (text.indexOf(' ') >= 0 && style.color().getAlpha() > 0) {
+            // Spaces between words set in another font are still written, so extracted text keeps them
+            canvas.text(text, x, y, style.charSpacing(0).wordSpacing(0).horizontalScale(100 * width / Math.max(
+                    0.01f, style.charSpacing(0).wordSpacing(0).horizontalScale(100).width(text))));
         }
         if (!text.isBlank() && p.outline() != null) {
             Path2D outline = outlines(ch, from, to, x, y, p, wordSpacing);

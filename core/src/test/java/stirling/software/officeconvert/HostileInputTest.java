@@ -62,6 +62,32 @@ class HostileInputTest {
     }
 
     @Test
+    void deepMarkedContentStaysLinearInTheGlyphCount() throws IOException {
+        Path pdf = dir.resolve("marked.pdf");
+        StringBuilder cs = new StringBuilder(20_000_000);
+        cs.append("/P BMC ".repeat(1_000_000)).append("BT /F1 1 Tf ");
+        String glyphs = "abcdefghijklmnopqrstuvwxyz".repeat(16).substring(0, 400);
+        for (int i = 0; i < 250; i++) {
+            cs.append("1 0 0 1 20 ").append(780 - i).append(" Tm (").append(glyphs).append(") Tj ");
+        }
+        cs.append("ET ").append("EMC ".repeat(1_000_000));
+        cs.append("/Span <</ActualText (Done)>> BDC BT /F1 12 Tf 72 100 Td (xy) Tj ET EMC");
+        try (PDDocument doc = new PDDocument()) {
+            PDPage page = new PDPage();
+            doc.addPage(page);
+            page.setResources(new PDResources());
+            page.getResources().put(COSName.getPDFName("F1"), new PDType1Font(Standard14Fonts.FontName.HELVETICA));
+            page.getCOSObject().setItem(COSName.CONTENTS, stream(doc, cs.toString()));
+            doc.save(pdf.toFile());
+        }
+        long start = System.nanoTime();
+        String text = documentXml(convert(pdf));
+        long ms = (System.nanoTime() - start) / 1_000_000;
+        assertTrue(ms < 30_000, "took " + ms + " ms");
+        assertTrue(text.contains("Done") && !text.contains(">xy<"), "the ActualText after the deep nesting still applies");
+    }
+
+    @Test
     void inflateBombPictureIsLeftOut() throws IOException {
         Path pdf = dir.resolve("picture.pdf");
         try (PDDocument doc = new PDDocument()) {

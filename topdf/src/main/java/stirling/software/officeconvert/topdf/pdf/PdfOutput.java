@@ -14,6 +14,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
+import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.io.MemoryUsageSetting;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDDocumentCatalog;
@@ -27,6 +28,7 @@ import org.apache.pdfbox.pdmodel.interactive.annotation.PDBorderStyleDictionary;
 import org.apache.pdfbox.pdmodel.interactive.documentnavigation.destination.PDPageXYZDestination;
 import org.apache.pdfbox.pdmodel.interactive.documentnavigation.outline.PDDocumentOutline;
 import org.apache.pdfbox.pdmodel.interactive.documentnavigation.outline.PDOutlineItem;
+import org.apache.pdfbox.util.DateConverter;
 
 import stirling.software.officeconvert.topdf.font.FontLibrary;
 import stirling.software.officeconvert.topdf.font.PdfFonts;
@@ -36,6 +38,8 @@ public final class PdfOutput implements Closeable {
     public static final String CREATOR = "Stirling Office Convert";
 
     public static final long MEMORY_BYTES = 64L << 20;
+
+    static final long MIN_MEMORY_BYTES = 4L << 20;
 
     private record Target(int page, float x, float yTop) {}
 
@@ -72,10 +76,15 @@ public final class PdfOutput implements Closeable {
         if (maxScratchBytes < 0) {
             throw new IllegalArgumentException("maxScratchBytes must be 0 (no limit) or more, was " + maxScratchBytes);
         }
-        MemoryUsageSetting memory = maxScratchBytes == 0 ? MemoryUsageSetting.setupMixed(MEMORY_BYTES)
-                : MemoryUsageSetting.setupMixed(Math.min(MEMORY_BYTES, maxScratchBytes), maxScratchBytes);
+        long inMemory = memoryBytes(Runtime.getRuntime().maxMemory());
+        MemoryUsageSetting memory = maxScratchBytes == 0 ? MemoryUsageSetting.setupMixed(inMemory)
+                : MemoryUsageSetting.setupMixed(Math.min(inMemory, maxScratchBytes), maxScratchBytes);
         this.document = new PDDocument(memory.streamCache);
         this.fonts = new PdfFonts(document, library);
+    }
+
+    static long memoryBytes(long maxHeap) {
+        return Math.max(MIN_MEMORY_BYTES, Math.min(MEMORY_BYTES, maxHeap / 32));
     }
 
     public PDDocument document() {
@@ -99,6 +108,16 @@ public final class PdfOutput implements Closeable {
         PdfCanvas canvas = new PdfCanvas(this, page, document.getNumberOfPages() - 1);
         open.add(canvas);
         return canvas;
+    }
+
+    /** A canvas of the given size whose drawing becomes a form XObject, to draw once and place many times; the
+     * margin around it is kept too, so nothing drawn a little outside the size is cut off. */
+    public PdfCanvas newForm(float width, float height, float margin) throws IOException {
+        checkWritable();
+        if (!(width > 0 && height > 0 && margin >= 0)) {
+            throw new IllegalArgumentException("A form needs a positive size, was " + width + "x" + height);
+        }
+        return new PdfCanvas(this, width, height, margin);
     }
 
     public int pageCount() {
@@ -290,9 +309,9 @@ public final class PdfOutput implements Closeable {
         pdi.setKeywords(info.keywords());
         pdi.setCreator(CREATOR);
         pdi.setProducer(CREATOR);
-        Calendar now = Calendar.getInstance();
-        pdi.setCreationDate(now);
-        pdi.setModificationDate(now);
+        String now = DateConverter.toString(Calendar.getInstance());
+        pdi.getCOSObject().setString(COSName.CREATION_DATE, now);
+        pdi.getCOSObject().setString(COSName.MOD_DATE, now);
         if (info.language() != null) {
             document.getDocumentCatalog().setLanguage(info.language());
         }

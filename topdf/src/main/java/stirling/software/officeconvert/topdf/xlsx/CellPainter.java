@@ -25,6 +25,8 @@ final class CellPainter {
 
     private final PdfCanvas canvas;
 
+    private boolean rtl;
+
     CellPainter(Grid grid, PdfCanvas canvas) {
         this.grid = grid;
         this.type = grid.book().typesetter();
@@ -33,22 +35,33 @@ final class CellPainter {
 
     void paint(CellEntry cell, Box box, double spillLeft, double spillRight, double descent, Box clip)
             throws IOException {
-        CellFormat f = cell.format();
         CellText text = cell.text();
         if (text == null || text.isEmpty() || box.width() <= 0 || box.height() <= 0) {
             return;
         }
-        text = colored(text);
+        rtl = CellLayout.rightToLeft(cell.format(), text, grid.rightToLeft());
+        Boolean was = type.direction(rtl);
+        try {
+            paint(cell, colored(text), box, spillLeft, spillRight, descent, clip);
+        } finally {
+            type.direction(was);
+        }
+    }
+
+    private void paint(CellEntry cell, CellText text, Box box, double spillLeft, double spillRight, double descent,
+            Box clip) throws IOException {
+        CellFormat f = cell.format();
         int rotation = f.rotation();
         if (rotation != 0) {
             rotated(cell, text, box, rotation, clip);
             return;
         }
-        CellFormat.HAlign h = CellLayout.horizontal(f, text);
+        CellFormat.HAlign h = CellLayout.horizontal(f, text, grid.rightToLeft());
         double indent = f.indent() > 0 ? f.indent() * grid.book().indentPoints() : 0;
         double pad = CellLayout.pad(type, text, f);
         double avail = box.width() - 2 * pad - indent;
-        if (f.wraps() && h != CellFormat.HAlign.FILL) {
+        boolean spread = text.numeric() && text.runs().size() == 1 && fillMarker(text.plain()) >= 0;
+        if (f.wraps() && h != CellFormat.HAlign.FILL && !spread) {
             wrapped(text, f, h, box, indent, pad, descent, clip);
             return;
         }
@@ -128,6 +141,9 @@ final class CellPainter {
     }
 
     private double drawRuns(List<TextRun> runs, double x, double baseline, double scale) throws IOException {
+        if (runs.size() > 1 && rtl != type.mirrored()) {
+            return drawBackwards(runs, x, baseline, scale);
+        }
         double at = x;
         for (TextRun r : runs) {
             double size = r.font().drawSize() * scale;
@@ -135,6 +151,17 @@ final class CellPainter {
             at += type.draw(canvas, r.text(), r.font(), size, at, baseline + shift);
         }
         return at - x;
+    }
+
+    // Runs of a right-to-left line follow each other leftwards
+    private double drawBackwards(List<TextRun> runs, double x, double baseline, double scale) throws IOException {
+        double at = x + type.width(runs, scale);
+        for (TextRun r : runs) {
+            double size = r.font().drawSize() * scale;
+            at -= type.width(r.text(), r.font(), size);
+            type.draw(canvas, r.text(), r.font(), size, at, baseline + shift(r.font(), scale));
+        }
+        return type.width(runs, scale);
     }
 
     private static double shift(FontSpec f, double scale) {
@@ -229,10 +256,10 @@ final class CellPainter {
             CellLayout.Line line = lines.get(i);
             double baseline = y + pitch[i] - Math.min(d, pitch[i] * 0.5);
             double x;
+            boolean endSide = h == CellFormat.HAlign.RIGHT || h == CellFormat.HAlign.JUSTIFY && rtl != type.mirrored();
             switch (h) {
-                case RIGHT -> x = box.x1() - pad - indent - line.width();
                 case CENTER, CENTER_CONTINUOUS -> x = box.x0() + (box.width() - line.width()) / 2;
-                default -> x = box.x0() + pad + indent;
+                default -> x = endSide ? box.x1() - pad - indent - line.width() : box.x0() + pad + indent;
             }
             boolean spread = (h == CellFormat.HAlign.JUSTIFY && !line.last())
                     || h == CellFormat.HAlign.DISTRIBUTED;
@@ -260,9 +287,17 @@ final class CellPainter {
             total += type.width(w, run.font(), size);
         }
         double gap = Math.max(type.width(" ", run.font(), size), (avail - total) / (words.length - 1));
-        double at = x;
+        boolean backwards = rtl != type.mirrored();
+        double at = backwards ? x + total + gap * (words.length - 1) : x;
         for (String w : words) {
-            at += type.draw(canvas, w, run.font(), size, at, baseline) + gap;
+            double ww = type.width(w, run.font(), size);
+            if (backwards) {
+                at -= ww;
+                type.draw(canvas, w, run.font(), size, at, baseline);
+                at -= gap;
+            } else {
+                at += type.draw(canvas, w, run.font(), size, at, baseline) + gap;
+            }
         }
     }
 
@@ -358,6 +393,12 @@ final class CellPainter {
                 return;
             }
             double angle = rotation <= 90 ? rotation : 90 - rotation;
+            if (type.mirrored()) {
+                angle = -angle;
+            }
+            if (Math.abs(angle) == 90 && f.wraps() && uprightLines(text, f, box, angle)) {
+                return;
+            }
             double rad = Math.toRadians(angle);
             double w = type.width(text.runs(), 1);
             double asc = maxAscent(text, 1);
@@ -367,7 +408,7 @@ final class CellPainter {
             double sin = Math.abs(Math.sin(rad));
             double bw = w * cos + hgt * sin;
             double bh = w * sin + hgt * cos;
-            CellFormat.HAlign h = CellLayout.horizontal(f, text);
+            CellFormat.HAlign h = CellLayout.horizontal(f, text, grid.rightToLeft());
             // Vertical text keeps its baseline side against the cell edge: the right when it reads up, else the left
             if (f.hAlign() == CellFormat.HAlign.GENERAL) {
                 h = angle > 0 ? CellFormat.HAlign.LEFT : angle < 0 ? CellFormat.HAlign.RIGHT : h;
@@ -394,6 +435,64 @@ final class CellPainter {
         } finally {
             canvas.restore();
         }
+    }
+
+    // Wrapped vertical text breaks at the cell's height; its lines stand side by side, the first on the side
+    // its tops face, each placed along the height as the vertical alignment says
+    private boolean uprightLines(CellText text, CellFormat f, Box box, double angle) throws IOException {
+        double avail = Math.max(1, box.height() - 2 * CellLayout.PAD);
+        List<CellLayout.Line> lines = CellLayout.wrap(type, text.runs(), avail + CellLayout.WRAP_SLACK, 1);
+        if (lines.size() < 2) {
+            return false;
+        }
+        double[] pitch = new double[lines.size()];
+        double total = 0;
+        for (int i = 0; i < lines.size(); i++) {
+            for (TextRun r : lines.get(i).runs()) {
+                pitch[i] = Math.max(pitch[i], grid.linePitch(r.font()));
+            }
+            if (pitch[i] == 0) {
+                pitch[i] = grid.linePitch(text.runs().get(0).font());
+            }
+            total += pitch[i];
+        }
+        CellFormat.HAlign h = f.hAlign() == CellFormat.HAlign.GENERAL
+                ? angle > 0 ? CellFormat.HAlign.RIGHT : CellFormat.HAlign.LEFT
+                : CellLayout.horizontal(f, text, grid.rightToLeft());
+        double x0 = switch (h) {
+            case RIGHT -> box.x1() - CellLayout.PAD - total;
+            case CENTER, CENTER_CONTINUOUS, DISTRIBUTED, JUSTIFY -> box.x0() + (box.width() - total) / 2;
+            default -> box.x0() + CellLayout.PAD;
+        };
+        double at = 0;
+        for (int i = 0; i < lines.size(); i++) {
+            CellLayout.Line line = lines.get(i);
+            double band = angle > 0 ? x0 + at : x0 + total - at - pitch[i];
+            at += pitch[i];
+            double w = type.width(line.runs(), 1);
+            double cy = switch (f.vAlign()) {
+                case TOP -> box.y0() + CellLayout.PAD + w / 2;
+                case CENTER, JUSTIFY, DISTRIBUTED -> box.y0() + box.height() / 2;
+                default -> box.y1() - CellLayout.PAD - w / 2;
+            };
+            double cx = band + pitch[i] / 2;
+            canvas.save();
+            try {
+                canvas.rotate((float) -angle, (float) cx, (float) cy);
+                drawRuns(line.runs(), cx - w / 2, cy + pitch[i] / 2 - maxDescent(line.runs()), 1);
+            } finally {
+                canvas.restore();
+            }
+        }
+        return true;
+    }
+
+    private double maxDescent(List<TextRun> runs) {
+        double d = 0;
+        for (TextRun r : runs) {
+            d = Math.max(d, type.measure(r.font()).descent(r.font().drawSize()));
+        }
+        return d;
     }
 
     private void stacked(CellText text, CellFormat f, Box box) throws IOException {

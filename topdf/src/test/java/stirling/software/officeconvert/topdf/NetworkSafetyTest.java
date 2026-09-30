@@ -106,7 +106,7 @@ class NetworkSafetyTest {
                 "javax/xml/stream/XMLInputFactory", "javax/xml/transform/TransformerFactory",
                 "org/apache/poi/util/XMLHelper", "OPCPackage.open", "XSSFWorkbook.<init>(Ljava/lang/String;");
         String topdf = "stirling/software/officeconvert/topdf/";
-        for (String pkg : new String[] {"docx", "pptx", "xlsx"}) {
+        for (String pkg : new String[] {"docx", "pptx", "xlsx", "ppt"}) {
             List<String> v = ClassScan.ownCodeViolations(probe.as(topdf + pkg + "/Probe"));
             List<String> missed = new ArrayList<>();
             for (String e : expected) {
@@ -123,7 +123,8 @@ class NetworkSafetyTest {
         }
         assertTrue(ClassScan.ownCodeViolations(probe).stream().anyMatch(s -> s.contains("javax/xml/transform/")));
         assertFalse(ClassScan.inFormatPackage(topdf + "docxextra/X"));
-        for (String renderer : new String[] {"docx/DocxRenderer", "pptx/PptxRenderer", "xlsx/XlsxRenderer"}) {
+        for (String renderer : new String[] {"docx/DocxRenderer", "pptx/PptxRenderer", "xlsx/XlsxRenderer",
+            "ppt/PptRenderer"}) {
             assertTrue(ClassScan.inFormatPackage(topdf + renderer));
         }
     }

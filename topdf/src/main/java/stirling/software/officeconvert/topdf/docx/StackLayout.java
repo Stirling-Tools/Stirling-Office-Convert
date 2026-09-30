@@ -39,15 +39,24 @@ final class StackLayout extends Region {
 
     private float pageTop = Float.NaN;
 
+    private float grid;
+
     private final List<PageBox.Exclusion> exclusions = new ArrayList<>();
 
     StackLayout(float width) {
         this.width = width;
     }
 
-    static StackLayout cell(float width) {
+    static StackLayout body(float width, float grid) {
+        StackLayout s = new StackLayout(width);
+        s.grid = grid;
+        return s;
+    }
+
+    static StackLayout cell(float width, Ctx ctx) {
         StackLayout s = new StackLayout(width);
         s.cell = true;
+        s.grid = ctx.settings.adjustLineHeightInTable ? ctx.bodyGrid() : 0;
         return s;
     }
 
@@ -59,8 +68,15 @@ final class StackLayout extends Region {
         return note;
     }
 
+    // Text boxes in the body snap to the section's document grid, and table cells when the document asks
+    @Override
+    float gridPitch() {
+        return note || page != null ? 0 : grid;
+    }
+
     static Result layout(List<Block> blocks, float width, Ctx ctx) {
         StackLayout s = new StackLayout(width);
+        s.grid = ctx.bodyGrid();
         new BlockFlow(ctx).place(blocks, s);
         return s.result();
     }

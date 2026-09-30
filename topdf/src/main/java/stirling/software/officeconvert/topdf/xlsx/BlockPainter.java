@@ -120,7 +120,7 @@ final class BlockPainter {
             if (info.hidden) {
                 continue;
             }
-            for (CellEntry e : info.cells.subMap(cols.first, true, cols.last, true).values()) {
+            for (CellEntry e : info.cells(cols.first, cols.last)) {
                 Overlays.Bar bar = grid.dataBar(info.index, e.col());
                 if (bar == null) {
                     continue;
@@ -237,7 +237,7 @@ final class BlockPainter {
             double y1 = rows.end(r);
             double descent = grid.rowDescent(r);
             spillIn(painter, info, cols, y0, y1, descent, clip);
-            for (CellEntry e : info.cells.subMap(cols.first, true, cols.last, true).values()) {
+            for (CellEntry e : info.cells(cols.first, cols.last)) {
                 if (!e.hasText() || cols.size(e.col()) <= 0) {
                     continue;
                 }
@@ -253,7 +253,7 @@ final class BlockPainter {
                 double left = 0;
                 double right = 0;
                 if (spills(e)) {
-                    CellFormat.HAlign h = CellLayout.horizontal(f, e.text());
+                    CellFormat.HAlign h = CellLayout.horizontal(f, e.text(), grid.rightToLeft());
                     double extra = need(e) - (x1 - x0);
                     if (extra > 0) {
                         if (h == CellFormat.HAlign.RIGHT) {
@@ -288,7 +288,7 @@ final class BlockPainter {
             CellPainter.Box clip) throws IOException {
         CellEntry before = nearestText(info, cols.first, -1);
         if (before != null && spills(before)) {
-            CellFormat.HAlign h = CellLayout.horizontal(before.format(), before.text());
+            CellFormat.HAlign h = CellLayout.horizontal(before.format(), before.text(), grid.rightToLeft());
             double x1 = cols.end(before.col());
             double extra = need(before) - (x1 - cols.start(before.col()));
             if (h == CellFormat.HAlign.CENTER) {
@@ -310,7 +310,7 @@ final class BlockPainter {
         }
         CellEntry after = nearestText(info, cols.last, 1);
         if (after != null && spills(after)) {
-            CellFormat.HAlign h = CellLayout.horizontal(after.format(), after.text());
+            CellFormat.HAlign h = CellLayout.horizontal(after.format(), after.text(), grid.rightToLeft());
             double x0 = cols.start(after.col());
             double extra = need(after) - (cols.end(after.col()) - x0);
             if (h == CellFormat.HAlign.CENTER) {
@@ -346,7 +346,7 @@ final class BlockPainter {
         if (at < 0 || at >= texts.length || Math.abs(texts[at] - from) > MAX_SPILL_COLUMNS) {
             return null;
         }
-        CellEntry c = info.cells.get(texts[at]);
+        CellEntry c = info.cell(texts[at]);
         boolean merged = !grid.merges().isEmpty() && grid.mergeCovering(info.index, c.col()) != null;
         return merged || grid.columnWidth(c.col()) <= 0 ? null : c;
     }

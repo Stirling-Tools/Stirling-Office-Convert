@@ -6,6 +6,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.function.IntFunction;
 
+import org.apache.poi.common.usermodel.fonts.FontGroup;
 import org.apache.poi.hslf.record.EscherTextboxWrapper;
 import org.apache.poi.hslf.record.RecordTypes;
 import org.apache.poi.hslf.record.TextRulerAtom;
@@ -24,6 +25,7 @@ import stirling.software.officeconvert.model.Inline;
 import stirling.software.officeconvert.model.Paragraph.Align;
 import stirling.software.officeconvert.model.Paragraph;
 import stirling.software.officeconvert.model.RunStyle;
+import stirling.software.officeconvert.model.Scripts;
 import stirling.software.officeconvert.sink.Links;
 import stirling.software.officeconvert.slides.Bullet;
 import stirling.software.officeconvert.slides.LineBoxes;
@@ -33,9 +35,11 @@ import stirling.software.officeconvert.slides.TextShape;
 final class PptText {
 
     private final IntFunction<HSLFSlide> slideOf;
+    private final Scripts.Profile scripts;
 
-    PptText(IntFunction<HSLFSlide> slideOf) {
+    PptText(IntFunction<HSLFSlide> slideOf, Scripts.Profile scripts) {
         this.slideOf = slideOf;
+        this.scripts = scripts;
     }
 
     void shape(HSLFSlide s, TextShape t) {
@@ -142,7 +146,7 @@ final class PptText {
             last = box.appendText(text, newParagraph);
             newParagraph = false;
             if (style != null) {
-                style(last, style);
+                style(last, style, text);
             }
             link(last, link, anchor);
         }
@@ -152,11 +156,18 @@ final class PptText {
         return last.getTextParagraph();
     }
 
-    private static void style(HSLFTextRun r, RunStyle s) {
+    private void style(HSLFTextRun r, RunStyle s, String text) {
         r.getCharacterStyle().removeByName("char_flags");
         r.getCharacterStyle().removeByName("superscript");
         if (s.font() != null) {
-            r.setFontFamily(s.font());
+            Scripts.Fonts slots = Scripts.fonts(s.font(), text, scripts);
+            r.setFontFamily(slots.latin());
+            if (!slots.eastAsian().equals(slots.latin())) {
+                r.setFontFamily(slots.eastAsian(), FontGroup.EAST_ASIAN);
+            }
+            if (!slots.complex().equals(slots.latin())) {
+                r.setFontFamily(slots.complex(), FontGroup.COMPLEX_SCRIPT);
+            }
         }
         r.setFontSize((double) Math.max(1f, s.size()));
         if (s.bold()) {

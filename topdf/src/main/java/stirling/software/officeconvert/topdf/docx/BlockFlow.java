@@ -78,16 +78,19 @@ final class BlockFlow {
                 return;
             }
         }
+        boolean headed = false;
         if (j < blocks.size()) {
             Block last = blocks.get(j);
             if (last instanceof Para p && hardBreak(p) != LEADING_BREAK) {
                 float[] m = paras.measure(p, width, null, r);
-                chain += paras.collapse(m[0], after) + m[3];
+                chain += paras.collapse(m[0], after) + (Boolean.TRUE.equals(p.pp.keepLines) ? m[1] : m[3]);
             } else if (last instanceof TableBlock t) {
                 chain += tables.firstRowHeight(t, width);
+                headed = !t.rows.isEmpty() && Boolean.TRUE.equals(t.rows.get(0).rp.header);
             }
         }
-        if (r.y + chain > r.limit() && chain <= r.frameHeight()) {
+        // A table whose header rows start no page here takes what keeps with it along, however tall they are
+        if (r.y + chain > r.limit() && (chain <= r.frameHeight() || headed)) {
             r.newFrame(false, false);
         }
     }

@@ -49,13 +49,14 @@ class OfficeConvertTest {
     @Test
     void everyFormatByExtension() throws IOException {
         Path pdf = sample();
-        for (String ext : new String[] {"docx", "odt", "fodt", "rtf", "doc", "txt", "pptx", "odp", "xlsx", "ods"}) {
+        for (String ext : new String[] {"docx", "odt", "fodt", "xml", "rtf", "doc", "txt", "pptx", "odp", "xlsx", "ods"}) {
             Path out = dir.resolve("out." + ext);
             OfficeConvert.convert(pdf, out);
             assertTrue(Files.size(out) > 0, ext);
         }
         assertTrue(Files.readString(dir.resolve("out.txt")).contains("Quarterly figures"));
         assertTrue(Files.readString(dir.resolve("out.doc"), StandardCharsets.ISO_8859_1).startsWith("{\\rtf"));
+        assertTrue(Files.readString(dir.resolve("out.xml")).contains("<office:document "));
     }
 
     @Test

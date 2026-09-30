@@ -35,8 +35,14 @@ final class Drawing {
     // Arrowheads at the start (head) and end (tail) of a line: type and width and length as sm, med or lg
     record LineEnds(String head, String headW, String headL, String tail, String tailW, String tailL) {}
 
+    // clip: Word shows only the lines that fit in a box that neither grows nor shrinks its text
     record TextBox(List<Block> blocks, float left, float top, float right, float bottom, String anchor, boolean grow,
-            boolean noWrap, String vert) {
+            boolean noWrap, String vert, boolean clip) {
+
+        TextBox(List<Block> blocks, float left, float top, float right, float bottom, String anchor, boolean grow,
+                boolean noWrap, String vert) {
+            this(blocks, left, top, right, bottom, anchor, grow, noWrap, vert, false);
+        }
 
         boolean vertical() {
             return vert != null && !vert.equals("horz");

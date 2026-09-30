@@ -7,6 +7,7 @@ import java.util.Set;
 
 import stirling.software.officeconvert.model.Picture;
 import stirling.software.officeconvert.model.RunStyle;
+import stirling.software.officeconvert.model.Scripts;
 import stirling.software.officeconvert.model.StyleSheet;
 
 final class OdtParts {
@@ -19,14 +20,21 @@ final class OdtParts {
         RunStyle normal = sheet.normal;
         fonts.add(normal.font());
         String font = OdtXml.esc(normal.font());
+        Scripts.Fonts slots = Scripts.defaults(normal.font(), sheet.scripts);
+        fonts.add(slots.eastAsian());
+        fonts.add(slots.complex());
         String size = OdtXml.pt(normal.size());
+        String latin = sheet.scripts.latin() != null ? sheet.scripts.latin() : "en-US";
+        String languages = Scripts.odfLanguages(new Scripts.Languages(latin, sheet.scripts.eastAsian(), sheet.scripts.complex()));
         sb.append("<office:styles>")
                 .append("<style:default-style style:family=\"paragraph\"><style:paragraph-properties fo:orphans=\"0\"")
                 .append(" fo:widows=\"0\" style:tab-stop-distance=\"36pt\" fo:hyphenation-ladder-count=\"no-limit\"")
                 .append(" style:writing-mode=\"page\"/><style:text-properties style:font-name=\"").append(font)
-                .append("\" style:font-name-asian=\"").append(font).append("\" style:font-name-complex=\"").append(font)
+                .append("\" style:font-name-asian=\"").append(OdtXml.esc(slots.eastAsian())).append("\" style:font-name-complex=\"")
+                .append(OdtXml.esc(slots.complex()))
                 .append("\" fo:font-size=\"").append(size).append("\" style:font-size-asian=\"").append(size)
-                .append("\" style:font-size-complex=\"").append(size).append("\" fo:language=\"en\" fo:country=\"US\"")
+                .append("\" style:font-size-complex=\"").append(size).append('"')
+                .append(languages)
                 .append(" style:letter-kerning=\"false\" fo:hyphenate=\"false\" fo:hyphenation-remain-char-count=\"2\"")
                 .append(" fo:hyphenation-push-char-count=\"2\"/></style:default-style>")
                 .append("<style:default-style style:family=\"table\"><style:table-properties table:border-model=\"collapsing\"/>")

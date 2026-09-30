@@ -2,8 +2,12 @@ package stirling.software.officeconvert.extract;
 
 import java.io.IOException;
 import java.io.Writer;
+import java.awt.geom.Rectangle2D;
 import java.text.Normalizer;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Deque;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.WeakHashMap;
@@ -22,11 +26,15 @@ import org.apache.pdfbox.contentstream.operator.color.SetStrokingDeviceCMYKColor
 import org.apache.pdfbox.contentstream.operator.color.SetStrokingDeviceGrayColor;
 import org.apache.pdfbox.contentstream.operator.color.SetStrokingDeviceRGBColor;
 import org.apache.pdfbox.cos.COSBase;
+import org.apache.pdfbox.cos.COSDictionary;
+import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.font.PDFont;
 import org.apache.pdfbox.pdmodel.font.PDFontDescriptor;
+import org.apache.pdfbox.pdmodel.font.PDSimpleFont;
 import org.apache.pdfbox.pdmodel.font.PDType3Font;
+import org.apache.pdfbox.pdmodel.font.PDVectorFont;
 import org.apache.pdfbox.pdmodel.graphics.color.PDColor;
 import org.apache.pdfbox.pdmodel.graphics.form.PDFormXObject;
 import org.apache.pdfbox.pdmodel.graphics.form.PDTransparencyGroup;
@@ -35,10 +43,13 @@ import org.apache.pdfbox.pdmodel.graphics.state.RenderingMode;
 import org.apache.pdfbox.text.PDFTextStripper;
 import org.apache.pdfbox.text.TextPosition;
 import org.apache.pdfbox.util.Matrix;
+import org.apache.pdfbox.util.Vector;
 
 final class GlyphCollector extends PDFTextStripper {
 
     private static final int MAX_PAGE_GLYPHS = 200_000;
+
+    private static final int MAX_SPAN_DEPTH = 256;
 
     private static final float MIN_SPACE_EM = 0.15f;
 
@@ -54,14 +65,37 @@ final class GlyphCollector extends PDFTextStripper {
 
     record RawGlyph(Glyph glyph, int direction, boolean invisible, float originX, float originY) {}
 
+    private static final String HIDDEN = new String(new char[] {'\uFFFC'});
+
+    private static final class Span {
+        final String actual;
+        final int start;
+        float lo = Float.MAX_VALUE;
+        float hi = -Float.MAX_VALUE;
+        float hiddenWidth;
+        float hiddenBaseline;
+
+        Span(String actual, int start) {
+            this.actual = actual;
+            this.start = start;
+        }
+    }
+
     private final FontResolver fonts;
     private final PageSink sink;
     private final UnicodeRecovery recovery;
     private final Map<org.apache.pdfbox.cos.COSDictionary, float[]> metrics = new WeakHashMap<>();
+    private final Map<COSDictionary, Map<Integer, float[]>> inks = new WeakHashMap<>();
+    private final Deque<Span> spans = new ArrayDeque<>();
+    private Span outerActual;
+    private int actualDepth;
+    private int untracked;
     private List<RawGlyph> current = new ArrayList<>();
     private boolean inPage;
     private int seq;
     private int pageIndex;
+
+    private int rotation;
     private int nextIndex;
     private PDDocument document;
     private OperatorBudget budget = new OperatorBudget("reading text");
@@ -148,15 +182,127 @@ final class GlyphCollector extends PDFTextStripper {
         budget = new OperatorBudget("reading text");
         inPage = true;
         pageIndex = getCurrentPageNo() - 1;
+        rotation = page.getRotation();
         blankPagesBefore(pageIndex);
         current = new ArrayList<>();
+        spans.clear();
+        outerActual = null;
+        actualDepth = 0;
+        untracked = 0;
         seq = 0;
+    }
+
+    @Override
+    public void beginMarkedContentSequence(COSName tag, COSDictionary properties) {
+        super.beginMarkedContentSequence(tag, properties);
+        if (spans.size() >= MAX_SPAN_DEPTH) {
+            untracked++;
+            return;
+        }
+        String actual = properties == null ? null : properties.getString(COSName.ACTUAL_TEXT);
+        Span span = new Span(actual, current.size());
+        spans.push(span);
+        if (actual != null && actualDepth++ == 0) {
+            outerActual = span;
+        }
+    }
+
+    @Override
+    public void endMarkedContentSequence() {
+        super.endMarkedContentSequence();
+        if (untracked > 0) {
+            untracked--;
+            return;
+        }
+        Span span = spans.poll();
+        if (span == null || span.actual == null) {
+            return;
+        }
+        if (--actualDepth == 0) {
+            outerActual = null;
+            actualText(span);
+        }
+    }
+
+    @Override
+    protected void showGlyph(Matrix trm, PDFont font, int code, Vector displacement) throws IOException {
+        super.showGlyph(trm, font, code, displacement);
+        Span open = outerActual;
+        if (open == null || font instanceof PDSimpleFont || font.toUnicode(code) != null
+                || rotation % 360 != 0 || Math.abs(trm.getShearX()) > 0.01f * Math.abs(trm.getScaleX())
+                || Math.abs(trm.getShearY()) > 0.01f * Math.abs(trm.getScaleX()) || !(trm.getScaleX() > 0)) {
+            return;
+        }
+        float x = trm.getTranslateX() - getCurrentPage().getCropBox().getLowerLeftX();
+        float advance = Math.max(0, displacement.getX() * trm.getScaleX());
+        open.lo = Math.min(open.lo, x);
+        open.hi = Math.max(open.hi, x + advance);
+        if (advance > open.hiddenWidth) {
+            open.hiddenWidth = advance;
+            open.hiddenBaseline = getCurrentPage().getCropBox().getUpperRightY() - trm.getTranslateY();
+        }
+    }
+
+    private void actualText(Span s) {
+        if (s.start < 0 || s.start >= current.size()) {
+            return;
+        }
+        List<RawGlyph> span = current.subList(s.start, current.size());
+        if (!merge(s, span)) {
+            span.removeIf(r -> r.glyph().text == HIDDEN);
+        }
+    }
+
+    private boolean merge(Span s, List<RawGlyph> span) {
+        String text = clean(s.actual);
+        if (text == null || text.isBlank()) {
+            return false;
+        }
+        RawGlyph main = span.getFirst();
+        for (RawGlyph r : span) {
+            if (r.glyph().width > main.glyph().width) {
+                main = r;
+            }
+        }
+        Glyph m = main.glyph();
+        StringBuilder drawn = new StringBuilder();
+        boolean upright = main.direction() == 0 && rotation % 360 == 0;
+        float lo = upright ? s.lo : Float.MAX_VALUE;
+        float hi = upright ? s.hi : -Float.MAX_VALUE;
+        for (RawGlyph r : span) {
+            Glyph g = r.glyph();
+            if (r.direction() != main.direction() || r.invisible() != main.invisible()
+                    || Math.abs(g.baseline - m.baseline) > 0.9f * Math.max(g.size, m.size)) {
+                return false;
+            }
+            if (g.text == HIDDEN) {
+                s.hiddenWidth = Math.max(s.hiddenWidth, Float.MIN_VALUE);
+            } else {
+                drawn.append(g.text);
+            }
+            lo = Math.min(lo, g.x);
+            hi = Math.max(hi, g.right());
+        }
+        if (joiners(text)) {
+            hi = lo + 0.01f;
+        }
+        if (drawn.toString().equals(text) && s.hiddenWidth == 0) {
+            return true;
+        }
+        float baseline = upright && s.hiddenWidth > m.width ? s.hiddenBaseline : m.baseline;
+        Glyph merged = new Glyph(text, lo, hi - lo, baseline, m.size, m.ascent, m.descent, m.font, m.rgb, m.seq,
+                m.spaceWidth, m.bold, m.italic);
+        merged.hscale = m.hscale;
+        span.clear();
+        current.add(new RawGlyph(merged, main.direction(), main.invisible(), main.originX(), main.originY()));
+        return true;
     }
 
     @Override
     protected void endPage(PDPage page) throws IOException {
         inPage = false;
         List<RawGlyph> glyphs = current;
+        glyphs.removeIf(r -> r.glyph().text == HIDDEN);
         current = new ArrayList<>();
         nextIndex = pageIndex + 1;
         sink.accept(pageIndex, page, glyphs);
@@ -172,6 +318,9 @@ final class GlyphCollector extends PDFTextStripper {
     @Override
     protected void processTextPosition(TextPosition tp) {
         String unicode = clean(recovery.text(tp, tp.getUnicode()));
+        if (unicode == null && outerActual != null) {
+            unicode = HIDDEN;
+        }
         if (unicode == null) {
             return;
         }
@@ -194,13 +343,22 @@ final class GlyphCollector extends PDFTextStripper {
         if (!(width > 0)) {
             width = Math.max(size * 0.1f, 0.1f);
         }
+        if (joiners(unicode)) {
+            width = 0.01f;
+        }
         if (!onPage(tp, size, width)) {
             return;
+        }
+        float x = tp.getXDirAdj();
+        float[] ink = combiningMarks(unicode) ? ink(tp) : null;
+        if (ink != null) {
+            x += ink[0];
+            width = Math.max(ink[1] - ink[0], size * 0.05f);
         }
         Glyph g =
                 new Glyph(
                         unicode,
-                        tp.getXDirAdj(),
+                        x,
                         width,
                         tp.getYDirAdj(),
                         size,
@@ -230,6 +388,48 @@ final class GlyphCollector extends PDFTextStripper {
                         tm.getTranslateY()));
     }
 
+    private static boolean joiners(String s) {
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            if (!(c >= 0x200B && c <= 0x200D || c == 0x2060)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    static boolean combiningMarks(String s) {
+        for (int i = 0; i < s.length(); ) {
+            int cp = s.codePointAt(i);
+            int type = Character.getType(cp);
+            if (type != Character.NON_SPACING_MARK && type != Character.ENCLOSING_MARK) {
+                return false;
+            }
+            i += Character.charCount(cp);
+        }
+        return !s.isEmpty();
+    }
+
+    private float[] ink(TextPosition tp) {
+        int[] codes = tp.getCharacterCodes();
+        if (!(tp.getFont() instanceof PDVectorFont vector) || codes == null || codes.length != 1) {
+            return null;
+        }
+        float along = Math.round(tp.getDir()) % 180 != 0 ? tp.getYScale() : tp.getXScale();
+        if (!(along > 0)) {
+            return null;
+        }
+        float[] em = inks.computeIfAbsent(tp.getFont().getCOSObject(), k -> new HashMap<>()).computeIfAbsent(codes[0], c -> {
+            try {
+                Rectangle2D box = vector.getNormalizedPath(c).getBounds2D();
+                return box.isEmpty() ? new float[0] : new float[] {(float) box.getMinX(), (float) box.getMaxX()};
+            } catch (IOException | RuntimeException e) {
+                return new float[0];
+            }
+        });
+        return em.length == 2 ? new float[] {em[0] / 1000f * along, em[1] / 1000f * along} : null;
+    }
+
     private boolean onPage(TextPosition tp, float size, float width) {
         float x = tp.getXDirAdj();
         float y = tp.getYDirAdj();
@@ -238,7 +438,7 @@ final class GlyphCollector extends PDFTextStripper {
         }
         float w = tp.getPageWidth();
         float h = tp.getPageHeight();
-        if (Math.round(tp.getDir()) == 0 && getCurrentPage().getRotation() % 360 == 0) {
+        if (Math.round(tp.getDir()) == 0 && rotation % 360 == 0) {
             return x < w + 1 && x + width > -1 && y > -1 && y - size < h + 1;
         }
         float side = Math.max(w, h) + size;
@@ -349,7 +549,10 @@ final class GlyphCollector extends PDFTextStripper {
         for (int i = 0; i < unicode.length(); i++) {
             char c = unicode.charAt(i);
             if (c >= 0xFB00 && c <= 0xFDFF || c >= 0xFE70 && c <= 0xFEFE) {
-                sb.append(Normalizer.normalize(String.valueOf(c), Normalizer.Form.NFKC));
+                String base = Normalizer.normalize(String.valueOf(c), Normalizer.Form.NFKC);
+                boolean carrier = base.length() > 1 && (base.charAt(0) == ' ' || base.charAt(0) == '\u0640')
+                        && combiningMarks(base.substring(1));
+                sb.append(carrier ? base.substring(1) : base);
             } else if (c == '\t' || c == '\n' || c == '\r') {
                 sb.append(' ');
             } else if (c >= 0x80 && c <= 0x9F) {

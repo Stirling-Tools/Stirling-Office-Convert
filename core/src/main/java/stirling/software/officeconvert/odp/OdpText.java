@@ -5,9 +5,11 @@ import java.util.Set;
 
 import stirling.software.officeconvert.layout.Marker;
 import stirling.software.officeconvert.model.Inline;
+import stirling.software.officeconvert.model.Numbering;
 import stirling.software.officeconvert.model.Paragraph.Align;
 import stirling.software.officeconvert.model.Paragraph;
 import stirling.software.officeconvert.model.RunStyle;
+import stirling.software.officeconvert.model.Scripts;
 import stirling.software.officeconvert.slides.Bullet;
 
 final class OdpText {
@@ -38,6 +40,9 @@ final class OdpText {
         props.append(" fo:text-align=\"").append(align(align, content.bidi)).append('"');
         if (content.bidi) {
             props.append(" style:writing-mode=\"rl-tb\"");
+        }
+        if (content.noHangingPunctuation) {
+            props.append(" style:punctuation-wrap=\"simple\"");
         }
         props.append('>');
         tabs(props, content.tabs);
@@ -114,13 +119,7 @@ final class OdpText {
     }
 
     private static String format(Marker m) {
-        return switch (m.kind()) {
-            case LOWER_LETTER -> "a";
-            case UPPER_LETTER -> "A";
-            case LOWER_ROMAN -> "i";
-            case UPPER_ROMAN -> "I";
-            default -> "1";
-        };
+        return Numbering.odfFormat(m.wordFormat());
     }
 
     private static void tabs(StringBuilder sb, List<Paragraph.TabStop> tabs) {
@@ -177,7 +176,7 @@ final class OdpText {
             int slide = links.slideOf(anchorPage);
             href = slide > 0 ? "#page" + slide : null;
         }
-        sb.append("<text:span text:style-name=\"").append(styles.style("text", "T", textProperties(style))).append("\">");
+        sb.append("<text:span text:style-name=\"").append(styles.style("text", "T", textProperties(style, text))).append("\">");
         if (href != null) {
             sb.append("<text:a xlink:type=\"simple\" xlink:href=\"").append(Odf.esc(href)).append("\">");
         }
@@ -212,12 +211,18 @@ final class OdpText {
     }
 
     String textProperties(RunStyle s) {
+        return textProperties(s, null);
+    }
+
+    String textProperties(RunStyle s, String text) {
         StringBuilder p = new StringBuilder("<style:text-properties");
         if (s.font() != null) {
-            String f = Odf.esc(styles.font(s.font()));
-            p.append(" style:font-name=\"").append(f).append("\" style:font-name-asian=\"").append(f)
-                    .append("\" style:font-name-complex=\"").append(f).append('"');
+            Scripts.Fonts slots = Scripts.fonts(s.font(), text, styles.scripts);
+            p.append(" style:font-name=\"").append(Odf.esc(styles.font(slots.latin()))).append("\" style:font-name-asian=\"")
+                    .append(Odf.esc(styles.font(slots.eastAsian()))).append("\" style:font-name-complex=\"")
+                    .append(Odf.esc(styles.font(slots.complex()))).append('"');
         }
+        p.append(Scripts.odfLanguages(Scripts.languages(text, styles.scripts)));
         String size = Odf.pt(s.size());
         p.append(" fo:font-size=\"").append(size).append("\" style:font-size-asian=\"").append(size)
                 .append("\" style:font-size-complex=\"").append(size).append('"');

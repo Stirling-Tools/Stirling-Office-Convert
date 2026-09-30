@@ -327,6 +327,23 @@ class DocxGraphicsTest {
         assertTrue(r.word("Inner").y() > 120 && r.word("Inner").y() < 135, r.word("Inner").toString());
     }
 
+    @Test
+    void linesPastTheBottomOfAFixedTextBoxAreHiddenAndAGrowingBoxShowsThemAll() throws IOException {
+        String words = DocxDoc.p("Alpha Beta Gamma Delta Epsilon Zeta Theta Kappa");
+        String fixed = textBox("page", 100, "page", 100, 60, 8, words);
+        String grows = textBox("page", 300, "page", 100, 60, 8, DocxDoc.p("Omega Nu Xi Mu Iota Tau Sigma"))
+                .replace("bIns=\"0\"/>", "bIns=\"0\"><a:spAutoFit/></wps:bodyPr>");
+        String vml = "<w:p><w:r><w:pict><v:shape id=\"b\" type=\"#_x0000_t202\" style=\"position:absolute;"
+                + "margin-left:100pt;margin-top:300pt;width:60pt;height:12pt;z-index:3;mso-position-horizontal-relative:"
+                + "page;mso-position-vertical-relative:page\" stroked=\"f\"><v:textbox inset=\"0,0,0,0\"><w:txbxContent>"
+                + DocxDoc.p("Upsilon Lambda Phi Chi Psi Rho") + "</w:txbxContent></v:textbox></v:shape></w:pict></w:r></w:p>";
+        DocxDoc.Rendered r = DocxDoc.render(dir, "overflow", doc().body(fixed + grows + vml + DocxDoc.p("Body")).bytes());
+        String text = r.text(1);
+        assertTrue(text.contains("Alpha") && !text.contains("Kappa") && !text.contains("Delta"), text);
+        assertTrue(text.contains("Omega") && text.contains("Sigma"), text);
+        assertTrue(text.contains("Upsilon") && !text.contains("Rho"), text);
+    }
+
     private static String textBox(String hRel, float x, String vRel, float y, float w, float h, String content) {
         return "<w:p><w:r><w:drawing><wp:anchor distT=\"0\" distB=\"0\" distL=\"0\" distR=\"0\" simplePos=\"0\""
                 + " relativeHeight=\"4\" behindDoc=\"0\" locked=\"0\" layoutInCell=\"1\" allowOverlap=\"1\"><wp:simplePos"

@@ -16,6 +16,8 @@ import org.apache.pdfbox.io.RandomAccessReadBufferedFile;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.encryption.InvalidPasswordException;
 
+import stirling.software.officeconvert.memory.Admission;
+
 public final class PdfFiles {
 
     private PdfFiles() {}
@@ -65,10 +67,12 @@ public final class PdfFiles {
         }
     }
 
+    /** Stops when the thread is interrupted, or when memory is nearly exhausted and this conversion must give way. */
     public static void stopIfInterrupted() throws InterruptedIOException {
         if (Thread.currentThread().isInterrupted()) {
             throw new InterruptedIOException("Conversion interrupted");
         }
+        Admission.checkpoint();
     }
 
     public static IOException interrupted(IOException e) {

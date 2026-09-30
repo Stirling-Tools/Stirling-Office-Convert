@@ -1,6 +1,7 @@
 package stirling.software.officeconvert.topdf.pptx;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
@@ -72,6 +73,7 @@ class PptxHardeningTest {
         Standins.Emulation e = new Standins(new CloudFonts(library)).emulate("Arial Narrow", false, false);
         assertEquals("Liberation Sans Narrow", e.face().family());
         assertEquals(100, e.scale());
-        assertTrue(e.face().note().contains("Arial Narrow"), e.face().note());
+        assertTrue(e.face().substituted());
+        assertNull(e.face().note(), "a metric-compatible stand-in is not reported");
     }
 }

@@ -33,6 +33,8 @@ final class ContentReader {
 
     private int depth;
 
+    static final int MAX_DEPTH = 40;
+
     ContentReader(DocxPackage pkg, String part) {
         this.pkg = pkg;
         this.part = part;
@@ -48,8 +50,11 @@ final class ContentReader {
         if (container == null) {
             return out;
         }
-        if (++depth > 40) {
+        if (++depth > MAX_DEPTH) {
             depth--;
+            if (!container.kids.isEmpty() && pkg != null) {
+                pkg.leftOut("Content nested more than " + MAX_DEPTH + " levels deep was left out");
+            }
             return out;
         }
         try {

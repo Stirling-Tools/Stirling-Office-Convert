@@ -14,6 +14,7 @@ import org.apache.xmlbeans.XmlCursor;
 import org.apache.xmlbeans.XmlObject;
 import org.openxmlformats.schemas.drawingml.x2006.main.CTTextBlipBullet;
 
+import stirling.software.officeconvert.topdf.dml.Numerals;
 import stirling.software.officeconvert.topdf.font.FontFace;
 import stirling.software.officeconvert.topdf.font.FontLibrary;
 import stirling.software.officeconvert.topdf.font.FontRun;
@@ -40,7 +41,10 @@ final class Bullets {
             Integer start = p.getAutoNumberingStartAt();
             int n = numbering.next(para.level(), scheme, start == null ? 1 : start);
             try {
-                text = scheme.format(n);
+                text = Numerals.autoNumber(scheme.name(), n);
+                if (text == null) {
+                    text = scheme.format(n);
+                }
             } catch (RuntimeException e) {
                 text = n + ".";
             }

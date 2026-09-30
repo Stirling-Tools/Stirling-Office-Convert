@@ -92,6 +92,42 @@ class DocxTableKeepTest {
     }
 
     @Test
+    void aParagraphKeptWithAThreeLineOneNeedsAllItsLines() throws IOException {
+        String three = "<w:p><w:r><w:t>A</w:t></w:r><w:r><w:br/><w:t>B</w:t></w:r><w:r><w:br/><w:t>C</w:t></w:r></w:p>";
+        String four = three.replace("</w:r></w:p>", "</w:r><w:r><w:br/><w:t>D</w:t></w:r></w:p>");
+        // After 53 lines and the kept one 27 pt are left: two lines fit but widow control splits three nowhere
+        DocxDoc.Rendered moved = render("keepthree", fillers(53) + para("Head", "<w:keepNext/>") + three);
+        assertEquals(2, moved.word("Head").page());
+        assertEquals(2, moved.word("A").page());
+        DocxDoc.Rendered split = render("keepfour", fillers(53) + para("Head", "<w:keepNext/>") + four);
+        assertEquals(1, split.word("Head").page());
+        assertEquals(1, split.word("B").page());
+        assertEquals(2, split.word("C").page());
+        DocxDoc.Rendered whole = render("keeplines", fillers(53) + para("Head", "<w:keepNext/>")
+                + four.replace("<w:p>", "<w:p><w:pPr><w:keepLines/></w:pPr>"));
+        assertEquals(2, whole.word("Head").page());
+    }
+
+    @Test
+    void headerRowsTallerThanAPageAreNotRepeated() throws IOException {
+        StringBuilder rows = new StringBuilder();
+        for (int h = 0; h < 4; h++) {
+            rows.append(row("<w:tblHeader/>", fillers(20).replace(">F", ">H" + h + "F")));
+        }
+        for (int b = 0; b < 10; b++) {
+            rows.append(row("", fillers(10).replace(">F", ">B" + b + "F")));
+        }
+        DocxDoc.Rendered r = render("tallheads", table(rows.toString()));
+        assertEquals(1, r.words().stream().filter(w -> w.text().equals("H0F0")).count());
+        assertEquals(4, r.pages(), "180 lines at 11.5 pt, 56 to a page, fill four pages");
+        // They still start the table on a new page, and a paragraph kept with it goes ahead of them alone
+        DocxDoc.Rendered led = render("tallheadslead",
+                fillers(10) + para("Lead", "<w:keepNext/>") + table(rows.toString()));
+        assertEquals(2, led.word("Lead").page());
+        assertEquals(3, led.word("H0F0").page());
+    }
+
+    @Test
     void aCaptionKeptWithATableNeedsItsHeaderRowsAndFirstRow() throws IOException {
         String rows = row("<w:tblHeader/>", para("Head", "")) + row("", para("Body", ""));
         DocxDoc.Rendered r = render("captionhead", fillers(54) + para("Cap", "<w:keepNext/>") + table(rows));

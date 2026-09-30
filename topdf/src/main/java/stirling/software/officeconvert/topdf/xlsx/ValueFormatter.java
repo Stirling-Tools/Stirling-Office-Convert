@@ -6,11 +6,14 @@ import java.math.MathContext;
 import java.math.RoundingMode;
 import java.util.List;
 import java.util.Locale;
+import java.util.regex.Pattern;
 
 import org.apache.poi.ss.usermodel.DataFormatter;
 import org.apache.poi.ss.usermodel.DateUtil;
 
 final class ValueFormatter {
+
+    private static final Pattern BRACKETS = Pattern.compile("\\[[^\\]]*\\]");
 
     private final DataFormatter formatter = new DataFormatter(Locale.US);
 
@@ -116,10 +119,14 @@ final class ValueFormatter {
         if (FormatCode.isGeneral(fmt)) {
             return new CellText(CellText.Kind.NUMBER, List.of(new TextRun(general(value, 11), font)), null, true, value);
         }
+        if (fmt != null && fmt.strip().equals("@")) {
+            // Excel shows a number in a Text cell as General, placed like text
+            return new CellText(CellText.Kind.TEXT, List.of(new TextRun(general(value, 11), font)), null, false, 0);
+        }
         int index = FormatCode.numberSectionIndex(fmt, value);
         String section = FormatCode.sections(fmt).get(index);
         Color color = FormatCode.color(section);
-        boolean generalSection = FormatCode.isGeneral(section.replaceAll("\\[[^\\]]*\\]", ""));
+        boolean generalSection = FormatCode.isGeneral(BRACKETS.matcher(section).replaceAll(""));
         String text;
         try {
             if (ExcelFormat.isDate(section)) {
@@ -142,6 +149,7 @@ final class ValueFormatter {
         } catch (RuntimeException e) {
             text = general(value, 11);
         }
+        text = ExcelFormat.nativeDigits(section, text);
         return new CellText(CellText.Kind.NUMBER, List.of(new TextRun(text, font)), color, generalSection, value);
     }
 

@@ -241,4 +241,44 @@ class DocxChartTest {
         assertTrue(lines.contains("North") && lines.contains("South"), lines.toString());
         assertFalse(lines.contains("3"), lines.toString());
     }
+
+    @Test
+    void aChartShownTwiceIsDrawnOnceAndLooksTheSame() throws IOException {
+        String catAx = "<c:catAx><c:axId val=\"1\"/><c:delete val=\"0\"/><c:axPos val=\"b\"/><c:crossAx"
+                + " val=\"2\"/></c:catAx>";
+        String valAx = "<c:valAx><c:axId val=\"2\"/><c:delete val=\"0\"/><c:axPos val=\"l\"/><c:majorGridlines/>"
+                + "<c:crossAx val=\"1\"/></c:valAx>";
+        String chart = lineChart(cache("str", null, "Alpha", "Beta", "Gamma"), new Object[] {1, 6, 3}, catAx, valAx);
+        String brk = "<w:p><w:r><w:br w:type=\"page\"/></w:r></w:p>";
+        String twice = "<w:p>" + DocxDoc.chartRun("rIdChart") + "</w:p>" + brk + "<w:p>" + DocxDoc.chartRun("rIdChart")
+                + "</w:p>";
+        String once = "<w:p>" + DocxDoc.chartRun("rIdChart") + "</w:p>" + brk + "<w:p/>";
+        DocxDoc.Rendered shared = DocxDoc.render(dir, "twice", new DocxDoc().chart("chart1.xml", "rIdChart", chart)
+                .body(twice).bytes());
+        DocxDoc.Rendered inline = DocxDoc.render(dir, "once", new DocxDoc().chart("chart1.xml", "rIdChart", chart)
+                .body(once).bytes());
+        try (org.apache.pdfbox.pdmodel.PDDocument a = shared.open();
+                org.apache.pdfbox.pdmodel.PDDocument b = inline.open()) {
+            assertEquals(2, a.getNumberOfPages());
+            java.util.List<Object> forms = new java.util.ArrayList<>();
+            for (org.apache.pdfbox.pdmodel.PDPage page : a.getPages()) {
+                for (org.apache.pdfbox.cos.COSName n : page.getResources().getXObjectNames()) {
+                    forms.add(page.getResources().getXObject(n).getCOSObject());
+                }
+            }
+            assertEquals(2, forms.size(), "each page places the chart once");
+            assertTrue(forms.get(0) == forms.get(1), "both pages place the same form XObject");
+            String text = new org.apache.pdfbox.text.PDFTextStripper().getText(a).replaceAll("\s", "");
+            assertEquals(2, text.split("Beta", -1).length - 1, text);
+            java.awt.image.BufferedImage x = new org.apache.pdfbox.rendering.PDFRenderer(a).renderImage(0, 1);
+            java.awt.image.BufferedImage y = new org.apache.pdfbox.rendering.PDFRenderer(b).renderImage(0, 1);
+            long differ = 0;
+            for (int j = 0; j < x.getHeight(); j++) {
+                for (int i = 0; i < x.getWidth(); i++) {
+                    differ += x.getRGB(i, j) != y.getRGB(i, j) ? 1 : 0;
+                }
+            }
+            assertTrue(differ <= x.getWidth() * x.getHeight() / 10_000, differ + " pixels differ; only rounding may");
+        }
+    }
 }

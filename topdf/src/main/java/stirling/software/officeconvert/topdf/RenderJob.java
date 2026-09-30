@@ -5,11 +5,14 @@ import java.io.InterruptedIOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 
 import org.apache.pdfbox.pdmodel.PDDocument;
 
+import stirling.software.officeconvert.memory.Admission;
 import stirling.software.officeconvert.topdf.font.FontLibrary;
 import stirling.software.officeconvert.topdf.io.OfficeZip;
 import stirling.software.officeconvert.topdf.io.PoiXml;
@@ -25,6 +28,15 @@ public final class RenderJob {
         }
     }
 
+    /** Thrown by {@link #checkpoint()} when the heap is nearly full and this conversion was chosen to stop. */
+    public static final class OutOfMemory extends InterruptedIOException {
+        OutOfMemory() {
+            super(NEEDS_MEMORY);
+        }
+    }
+
+    static final String NEEDS_MEMORY = Admission.NEEDS_MEMORY;
+
     public static final int MAX_WARNINGS = 200;
 
     private static final int MAX_WARNING_CHARS = 500;
@@ -32,6 +44,8 @@ public final class RenderJob {
     static final String MORE_WARNINGS = "Further warnings were left out";
 
     private final OfficeZip zip;
+
+    private final Path source;
 
     private final OfficeToPdf.Format format;
 
@@ -44,12 +58,30 @@ public final class RenderJob {
     private FontLibrary fonts;
 
     private boolean truncated;
+    private boolean partial;
 
     private boolean dropped;
+
+    private Admission.Ticket ticket;
+
+    private final Map<Object, Object> memo = new HashMap<>();
 
     public RenderJob(OfficeZip zip, OfficeToPdf.Format format, OfficeToPdf.Options options, FontLibrary fonts,
             PdfOutput output) {
         this.zip = Objects.requireNonNull(zip, "zip");
+        this.source = zip.path();
+        this.format = Objects.requireNonNull(format, "format");
+        this.options = Objects.requireNonNull(options, "options");
+        this.fonts = Objects.requireNonNull(fonts, "fonts");
+        this.output = Objects.requireNonNull(output, "output");
+        PoiXml.install();
+    }
+
+    /** A job for a legacy binary file, which has no package: {@link #zip()} is null. */
+    public RenderJob(Path source, OfficeToPdf.Format format, OfficeToPdf.Options options, FontLibrary fonts,
+            PdfOutput output) {
+        this.zip = null;
+        this.source = Objects.requireNonNull(source, "source");
         this.format = Objects.requireNonNull(format, "format");
         this.options = Objects.requireNonNull(options, "options");
         this.fonts = Objects.requireNonNull(fonts, "fonts");
@@ -58,9 +90,10 @@ public final class RenderJob {
     }
 
     public Path source() {
-        return zip.path();
+        return source;
     }
 
+    /** The package, or null for a legacy binary file. */
     public OfficeZip zip() {
         return zip;
     }
@@ -119,6 +152,14 @@ public final class RenderJob {
         truncated = true;
     }
 
+    public boolean partial() {
+        return partial;
+    }
+
+    public void losePart() {
+        partial = true;
+    }
+
     public boolean pageLimitReached() {
         return options.maxPages() > 0 && output.pageCount() >= options.maxPages();
     }
@@ -127,6 +168,22 @@ public final class RenderJob {
         if (Thread.currentThread().isInterrupted()) {
             throw new InterruptedIOException("Conversion interrupted");
         }
+        if (ticket != null && ticket.exhausted()) {
+            throw new OutOfMemory();
+        }
+    }
+
+    void admitted(Admission.Ticket t) {
+        ticket = t;
+    }
+
+    /** What this conversion keeps under the key for its later pages, such as a chart drawn once and placed often. */
+    public Object memo(Object key) {
+        return memo.get(Objects.requireNonNull(key, "key"));
+    }
+
+    public void memo(Object key, Object value) {
+        memo.put(Objects.requireNonNull(key, "key"), Objects.requireNonNull(value, "value"));
     }
 
     public void warn(String message) {

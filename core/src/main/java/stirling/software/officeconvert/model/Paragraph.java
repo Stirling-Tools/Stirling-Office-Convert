@@ -45,6 +45,7 @@ public final class Paragraph implements Block {
     public boolean pageBreakBefore;
     public boolean keepNext;
     public boolean bidi;
+    public boolean noHangingPunctuation;
     public int shading = -1;
     public float borderBottom;
     public int borderBottomRgb;

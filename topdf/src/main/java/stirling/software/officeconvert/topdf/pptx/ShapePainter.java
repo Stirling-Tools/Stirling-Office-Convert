@@ -221,7 +221,7 @@ final class ShapePainter {
             canvas.restore();
         }
         if (text != null) {
-            text(text, f, Geometry.textBox(s, box), space, cast == null ? shadow : null);
+            text(text, f, box, Geometry.textBox(s, box), space, cast == null ? shadow : null);
         }
     }
 
@@ -388,12 +388,12 @@ final class ShapePainter {
     }
 
     void text(XSLFTextShape t, Frame f, Rectangle2D textBox, Space space) throws IOException {
-        text(t, f, textBox, space, null);
+        text(t, f, textBox, textBox, space, null);
     }
 
     // A shape that shows neither fill nor line gives its shadow to its text
-    private void text(XSLFTextShape t, Frame f, Rectangle2D textBox, Space space, Shadows.Shadow shadow)
-            throws IOException {
+    private void text(XSLFTextShape t, Frame f, Rectangle2D box, Rectangle2D textBox, Space space,
+            Shadows.Shadow shadow) throws IOException {
         TextFrame frame = TextFrame.of(deck, t, new TextStyles.Scope(space.relsPart(), slideNumber,
                 defaults(t).withShadow(shadow)), null, null);
         if (frame == null) {
@@ -402,7 +402,7 @@ final class ShapePainter {
         canvas.save();
         try {
             canvas.transform(f.textTransform());
-            frame.draw(canvas, textBox);
+            frame.draw(canvas, frame.spun() ? box : textBox);
         } finally {
             canvas.restore();
         }

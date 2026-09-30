@@ -102,7 +102,7 @@ final class TextStyles {
             }
             pieces.addAll(pieces(r, text.replace('\u000B', '\n').replace('\r', '\n'), scope));
         }
-        Piece empty = probe(p, scope);
+        Para.EmptyLine empty = new Para.EmptyLine(() -> probe(p, scope));
         TextAlign align = p.getTextAlign();
         float marL = points(p.getLeftMargin(), 0);
         float marR = points(p.getRightMargin(), 0);

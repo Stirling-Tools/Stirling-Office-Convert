@@ -22,8 +22,13 @@ final class LinePainter {
     }
 
     static void align(Line line, ParaProps pp, Settings settings) {
+        align(line, pp, settings, false);
+    }
+
+    // A logical line runs from its start edge on the left and is mirrored afterwards, so start means left
+    static void align(Line line, ParaProps pp, Settings settings, boolean logical) {
         String jc = pp.jc == null ? "left" : pp.jc;
-        boolean rtl = Boolean.TRUE.equals(pp.bidi);
+        boolean rtl = Boolean.TRUE.equals(pp.bidi) && !logical;
         if (rtl) {
             jc = switch (jc) {
                 case "left", "start" -> "right";
@@ -50,6 +55,8 @@ final class LinePainter {
                         || (b.equals("textWrapping") || b.equals("clear")) && !settings.doNotExpandShiftReturn;
                 if (justify && !line.last() || distribute) {
                     justify(line, free, distribute);
+                } else if (rtl) {
+                    shift(line, free);
                 }
             }
             default -> {
@@ -286,7 +293,33 @@ final class LinePainter {
         if (start.charExtra != 0) {
             style = style.charSpacing(style.charSpacing() + start.charExtra);
         }
+        if (start.wordExtra > WIDE_SPACE * style.size() && start.charExtra == 0) {
+            wideSpaces(ops, run.toString(), start.x, base - look.rise(), style);
+            return;
+        }
         ops.add(new Op.Text(start.x, base - look.rise(), run.toString(), style));
+    }
+
+    static final float WIDE_SPACE = 0.3f;
+
+    // Wide justified gaps are drawn as stretched spaces, so text extraction still sees one line of words
+    private static void wideSpaces(List<Op> ops, String text, float x, float y, TextStyle style) {
+        TextStyle plain = style.wordSpacing(0);
+        float space = plain.width(" ");
+        TextStyle wide = space > 0 ? plain.horizontalScale(plain.horizontalScale() * (space + style.wordSpacing())
+                / space) : plain;
+        int i = 0;
+        while (i < text.length()) {
+            int j = i;
+            boolean blank = text.charAt(i) == ' ';
+            while (j < text.length() && (text.charAt(j) == ' ') == blank) {
+                j++;
+            }
+            String part = text.substring(i, j);
+            ops.add(new Op.Text(x, y, part, blank ? wide : plain));
+            x += blank ? (space + style.wordSpacing()) * part.length() : plain.width(part);
+            i = j;
+        }
     }
 
     private static boolean ideographic(List<Line.Slice> slices, int from, int to) {

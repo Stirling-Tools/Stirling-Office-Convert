@@ -55,12 +55,21 @@ public record TextStyle(FontFace face, float size, Color color, float charSpacin
     }
 
     public float width(String text) {
+        return width(text, 0, text.length());
+    }
+
+    /** The width of {@code text.substring(from, to)}, without making the substring. */
+    public float width(String text, int from, int to) {
         long units = 0;
         int glyphs = 0;
         int spaces = 0;
         int previous = -1;
-        for (int i = 0; i < text.length(); ) {
-            int cp = text.codePointAt(i);
+        for (int i = from; i < to; ) {
+            char c = text.charAt(i);
+            int cp = c;
+            if (Character.isHighSurrogate(c) && i + 1 < to && Character.isLowSurrogate(text.charAt(i + 1))) {
+                cp = Character.toCodePoint(c, text.charAt(i + 1));
+            }
             i += Character.charCount(cp);
             if (skipped(cp) && !face.symbolCode(cp)) {
                 continue;

@@ -28,6 +28,7 @@ import stirling.software.officeconvert.docx.DocxWriter;
 import stirling.software.officeconvert.extract.PageData;
 import stirling.software.officeconvert.extract.PageReader;
 import stirling.software.officeconvert.extract.PdfFiles;
+import stirling.software.officeconvert.extract.PdfFootprint;
 import stirling.software.officeconvert.extract.StreamGuard;
 import stirling.software.officeconvert.layout.DocStats;
 import stirling.software.officeconvert.layout.FallbackPage;
@@ -36,6 +37,7 @@ import stirling.software.officeconvert.layout.LineBuilder;
 import stirling.software.officeconvert.layout.OcrText;
 import stirling.software.officeconvert.layout.PageAnalyzer;
 import stirling.software.officeconvert.layout.PageLayout;
+import stirling.software.officeconvert.memory.Admission;
 
 public final class PdfToDocx {
 
@@ -113,6 +115,7 @@ public final class PdfToDocx {
                     OutputStream out = Files.newOutputStream(part)) {
                 convert(doc, out, options, format);
             }
+            PdfFiles.stopIfInterrupted();
             moveIntoPlace(part, target);
         } catch (IOException e) {
             throw PdfFiles.interrupted(e);
@@ -144,10 +147,14 @@ public final class PdfToDocx {
         Objects.requireNonNull(options, "options");
         PdfFiles.checkOpen(doc);
         PdfFiles.stopIfInterrupted();
+        Admission.Ticket ticket = Admission.jvm().enter(
+                PdfFootprint.estimate(doc, options.firstPage(), options.lastPage(), options.figureDpi()));
         try {
             write(doc, out, options, format);
         } catch (RuntimeException e) {
             throw new IOException("Conversion failed: " + e.getMessage(), e);
+        } finally {
+            ticket.close();
         }
     }
 
@@ -237,9 +244,7 @@ public final class PdfToDocx {
     }
 
     private static void stopIfInterrupted() throws InterruptedIOException {
-        if (Thread.currentThread().isInterrupted()) {
-            throw new InterruptedIOException("Conversion interrupted");
-        }
+        PdfFiles.stopIfInterrupted();
     }
 
     private static int weight(PageData page) {

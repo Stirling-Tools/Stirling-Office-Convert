@@ -54,6 +54,10 @@ final class Space {
         return depth;
     }
 
+    Space onSlide() {
+        return new Space(new AffineTransform(), 1, 1, 0, false, false, relsPart, depth, groupFill);
+    }
+
     Space withRelsPart(String part) {
         return new Space(toSlide, scaleX, scaleY, rotation, flipH, flipV, part, depth, groupFill);
     }

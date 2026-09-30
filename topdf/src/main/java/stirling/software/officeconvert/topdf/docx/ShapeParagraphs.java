@@ -10,7 +10,7 @@ import java.util.Set;
 // DrawingML text (a:p runs, as in SmartArt shapes) turned into Word paragraphs for the text box layout
 final class ShapeParagraphs {
 
-    private static final int MAX_PARAGRAPHS = 2000;
+    static final int MAX_PARAGRAPHS = 2000;
 
     private ShapeParagraphs() {}
 

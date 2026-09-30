@@ -39,9 +39,11 @@ final class TextBlock {
         return b;
     }
 
+    // A right-to-left bullet sits at the right, its margins measured from the right edge
     float bulletX(Line l) {
         Para p = l.para;
-        return Math.max(0, p.marL() + p.indent());
+        float start = Math.max(0, p.marL() + p.indent());
+        return p.rtl() && p.bullet() != null ? width - start - p.bullet().width() : start;
     }
 
     private void breakLines(Para para) {
@@ -53,7 +55,7 @@ final class TextBlock {
         int added = 0;
         while (i < n || first) {
             float x0 = lineStart(para, first, bulletWidth);
-            float right = right(para, first);
+            float right = right(para, first, bulletWidth);
             float limit = wrap ? Chars.floorDevice(right) : Float.MAX_VALUE;
             float x = x0;
             int lastBreak = -1;
@@ -74,6 +76,9 @@ final class TextBlock {
                 }
                 if (wrap && j > i && !Chars.space(cp) && x + a > limit + EPSILON) {
                     end = lastBreak >= i ? lastBreak + 1 : j;
+                    while (lastBreak < i && end > i + 1 && ch.joined[end]) {
+                        end--;
+                    }
                     break;
                 }
                 x += a;
@@ -104,7 +109,7 @@ final class TextBlock {
                 if (forced) {
                     Line tail = new Line(para, ch, n, n, false, false);
                     tail.x = lineStart(para, false, 0);
-                    tail.right = right(para, false);
+                    tail.right = right(para, false, 0);
                     lines.add(tail);
                     added++;
                 }
@@ -122,9 +127,9 @@ final class TextBlock {
         }
     }
 
-    private float right(Para para, boolean first) {
+    private float right(Para para, boolean first, float bulletWidth) {
         if (para.rtl()) {
-            return width - Math.max(0, para.marL() + (first ? para.indent() : 0));
+            return width - start(para, first, bulletWidth);
         }
         return width - para.marR();
     }
@@ -133,6 +138,11 @@ final class TextBlock {
         if (para.rtl()) {
             return Math.max(0, para.marR());
         }
+        return start(para, first, bulletWidth);
+    }
+
+    // How far the text of a line starts from its start edge: the margin, or the first line's indent and bullet
+    private static float start(Para para, boolean first, float bulletWidth) {
         if (!first) {
             return Math.max(0, para.marL());
         }
@@ -213,6 +223,8 @@ final class TextBlock {
                 int spaces = l.spaces();
                 if (wrap && free > 0 && spaces > 0 && (all || !l.last && !l.forced)) {
                     l.extraPerSpace = free / spaces;
+                } else if (p.rtl()) {
+                    l.shift = free;
                 }
             }
             default -> l.shift = 0;

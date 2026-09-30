@@ -48,6 +48,7 @@ final class Deck {
         this.styles = new TextStyles(this);
         this.tableStyles = new TableStyles(job);
         this.standins = new Standins(new CloudFonts(job.fonts()));
+        PlaceholderOrder.fix(ppt);
         CTPresentation pres = ppt.getCTPresentation();
         CTSlideSize size = pres == null ? null : pres.getSldSz();
         float w = size == null ? DEFAULT_WIDTH : Units.emu(size.getCx());

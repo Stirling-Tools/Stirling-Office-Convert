@@ -14,6 +14,8 @@ final class DrawingPainter {
 
     private static final Color PLACEHOLDER = new Color(0xD9D9D9);
 
+    private static final float OVERHANG = 2;
+
     private DrawingPainter() {}
 
     static void paint(Drawing d, float x, float y, List<Op> ops, Ctx ctx) {
@@ -26,6 +28,10 @@ final class DrawingPainter {
     private static void graphic(Drawing.Graphic g, float x, float y, float w, float h, List<Op> ops, Ctx ctx,
             int depth) {
         if (depth > 16) {
+            if (ctx.job != null) {
+                ctx.job.warn("Shapes grouped more than 16 levels deep were left out");
+                ctx.job.losePart();
+            }
             return;
         }
         switch (g) {
@@ -74,7 +80,7 @@ final class DrawingPainter {
             case Drawing.ChartGraphic c -> {
                 List<Op> chart = ctx.chart(c.chart(), w, h);
                 if (!chart.isEmpty()) {
-                    ops.add(new Op.Group(x, y, null, null, chart));
+                    ops.add(new Op.Chart(x, y, w, h, chart));
                 }
             }
             case Drawing.MathGraphic m -> ops.add(new Op.Group(x, y + m.box().ascent, null, null, m.box().ops));
@@ -134,6 +140,9 @@ final class DrawingPainter {
         }
         float top = y + tb.top();
         float avail = h - tb.top() - tb.bottom();
+        if (tb.clip() && r.height() > avail) {
+            r = fitting(r, avail);
+        }
         if ("ctr".equals(tb.anchor())) {
             top = y + tb.top() + (avail - r.height()) / 2;
         } else if ("b".equals(tb.anchor())) {
@@ -142,6 +151,32 @@ final class DrawingPainter {
         int textAt = ops.size();
         ops.add(new Op.Group(x + tb.left(), top, null, null, r.ops()));
         nested(r, x + tb.left(), top, inner, Math.max(1, avail), ops, textAt, ctx);
+    }
+
+    // The lines of a fixed-size box that fit its text area, the first one always; Word hides the rest, not cut
+    private static StackLayout.Result fitting(StackLayout.Result r, float avail) {
+        List<Op> ops = new ArrayList<>();
+        List<Placed> kept = new ArrayList<>();
+        List<Strip.Anchor> anchors = new ArrayList<>();
+        float bottom = 0;
+        for (Placed p : r.placed()) {
+            float end = p.y + p.strip.height;
+            if (!kept.isEmpty() && end - avail > Math.min(OVERHANG, p.strip.height / 4)) {
+                break;
+            }
+            kept.add(p);
+            bottom = Math.max(bottom, end);
+            if (!p.strip.ops.isEmpty()) {
+                ops.add(new Op.Group(p.x, p.y, null, null, p.strip.ops));
+            }
+            if (p.strip.anchors != null) {
+                p.strip.anchors.forEach(a -> anchors.add(a.shift(p.x, p.y)));
+            }
+        }
+        if (kept.size() == r.placed().size()) {
+            return r;
+        }
+        return new StackLayout.Result(ops, bottom, kept, anchors, r.notes(), r.pageOps());
     }
 
     // Objects anchored inside a text box are placed against the box's text area

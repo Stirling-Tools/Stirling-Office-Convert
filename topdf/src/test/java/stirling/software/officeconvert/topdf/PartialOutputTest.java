@@ -131,8 +131,35 @@ class PartialOutputTest {
                 });
         assertEquals(2, runs.get());
         assertEquals(2, r.pages());
-        assertFalse(r.truncated());
+        assertTrue(r.truncated(), "the damaged part's content is missing");
+        assertFalse(r.pageLimitReached());
+        assertFalse(r.warnings().stream().anyMatch(w -> w.startsWith("Only the first")), r.warnings().toString());
         assertTrue(r.warnings().stream().anyMatch(w -> w.startsWith("Left out a damaged part: ")), r.warnings().toString());
+    }
+
+    @Test
+    void aPartRefusedAsAZipBombIsLeftOutWithoutMakingThePdfPartial() throws Exception {
+        byte[] padding = new byte[3 << 20];
+        new java.util.Random(5).nextBytes(padding);
+        byte[] doc = Fixtures.zipBomb(Fixtures.edit(Fixtures.docx("x")).put("word/media/x.bin", padding).bytes(),
+                "word/media/bomb.bin", 200L << 20);
+        Path in = Fixtures.write(dir, "bomb.docx", doc);
+        OfficeToPdf.Result r = OfficeToPdf.render(in, Format.DOCX, new ByteArrayOutputStream(), Options.defaults(),
+                (source, job) -> {
+                    page(job, "Kept");
+                    if (job.zip().exists("/word/media/bomb.bin")) {
+                        try {
+                            job.zip().read("/word/media/bomb.bin");
+                        } catch (IOException e) {
+                            throw new UncheckedIOException(e);
+                        }
+                    }
+                });
+        assertFalse(r.truncated(), r.warnings().toString());
+        assertTrue(r.warnings().stream().anyMatch(w -> w.contains("zip bomb")), r.warnings().toString());
+        byte[] whole = Fixtures.zipBomb(Fixtures.docx("x"), "word/media/zeros.bin", 64L << 20);
+        assertThrows(OfficeZip.Oversized.class, () -> OfficeToPdf.convert(Fixtures.write(dir, "whole.docx", whole),
+                dir.resolve("whole.pdf")));
     }
 
     @Test
@@ -148,6 +175,36 @@ class PartialOutputTest {
             OfficeZip.DamagedPart d = assertThrows(OfficeZip.DamagedPart.class, () -> zip.xml("/word/extra.xml"));
             assertFalse(OfficeToPdf.keepsPages(new UncheckedIOException(d), 2));
         }
+    }
+
+    @Test
+    void aRendererThatLosesPartOfTheDocumentSaysSoWithoutAPageLimit() throws Exception {
+        Path in = Fixtures.write(dir, "g.docx", Fixtures.docx("x"));
+        OfficeToPdf.Result r = OfficeToPdf.render(in, Format.DOCX, new ByteArrayOutputStream(), Options.defaults(),
+                (source, job) -> {
+                    page(job, "Kept");
+                    job.losePart();
+                });
+        assertEquals(1, r.pages());
+        assertTrue(r.truncated());
+        assertFalse(r.warnings().stream().anyMatch(w -> w.contains("page limit")), r.warnings().toString());
+    }
+
+    @Test
+    void aWorksheetWhoseRowsCannotBeReadMakesThePdfPartial() throws Exception {
+        Fixtures.Zip z = Fixtures.edit(Fixtures.xlsx(new String[][] {{"kept"}}));
+        z.put("xl/worksheets/sheet1.xml", "<?xml version=\"1.0\"?><!DOCTYPE w [<!ENTITY e \"x\">]><worksheet xmlns=\""
+                + "http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><sheetData><row r=\"1\"><c r=\"A1\" "
+                + "t=\"inlineStr\"><is><t>&e;</t></is></c></row></sheetData></worksheet>");
+        Path in = Fixtures.write(dir, "h.xlsx", z.bytes());
+        OfficeToPdf.Result r = OfficeToPdf.convert(in, dir.resolve("h.pdf"), Options.defaults().maxPages(1));
+        assertEquals(1, r.pages());
+        assertTrue(r.truncated(), r.warnings().toString());
+        assertFalse(r.pageLimitReached(), "a partial PDF that happens to reach the page limit is not cut by it");
+        assertTrue(r.warnings().stream().anyMatch(w -> w.contains("Sheet1")), r.warnings().toString());
+        assertTrue(Files.size(dir.resolve("h.pdf")) > 0);
+        Path plain = Fixtures.write(dir, "i.xlsx", Fixtures.xlsx(new String[][] {{"kept"}}));
+        assertFalse(OfficeToPdf.convert(plain, dir.resolve("i.pdf")).truncated());
     }
 
     @Test

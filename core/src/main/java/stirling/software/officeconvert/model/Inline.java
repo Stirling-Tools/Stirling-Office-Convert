@@ -37,20 +37,21 @@ public sealed interface Inline {
             boolean rounded,
             boolean overlay,
             int direction,
-            int groundRgb)
+            int groundRgb,
+            boolean upright)
             implements Inline {
 
         public TextBox(float x, float y, float width, float height, int fillRgb, float insetLeft, float insetRight,
                 float wrapGap, List<Paragraph> paragraphs, int lineRgb, float lineWidth, boolean rounded, boolean overlay) {
             this(x, y, width, height, fillRgb, insetLeft, insetRight, wrapGap, paragraphs, lineRgb, lineWidth, rounded,
-                    overlay, 0, -1);
+                    overlay, 0, -1, false);
         }
 
         public TextBox(float x, float y, float width, float height, int fillRgb, float insetLeft, float insetRight,
                 float wrapGap, List<Paragraph> paragraphs, int lineRgb, float lineWidth, boolean rounded, boolean overlay,
                 int direction) {
             this(x, y, width, height, fillRgb, insetLeft, insetRight, wrapGap, paragraphs, lineRgb, lineWidth, rounded,
-                    overlay, direction, -1);
+                    overlay, direction, -1, false);
         }
     }
 

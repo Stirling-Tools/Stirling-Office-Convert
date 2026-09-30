@@ -24,7 +24,8 @@ final class Headings {
         String family = def.family().toLowerCase(Locale.ROOT).startsWith("aptos") ? "Segoe UI" : def.family();
         double size = def.family().toLowerCase(Locale.ROOT).startsWith("aptos") ? 10 : def.size();
         this.font = new FontSpec(family, size, false, false, null, false, java.awt.Color.BLACK, null);
-        this.digits = Math.max(1, String.valueOf(lastRow + 1).length());
+        // Excel keeps room for at least two digits of row numbers
+        this.digits = Math.max(2, String.valueOf(lastRow + 1).length());
     }
 
     double width(double device) {

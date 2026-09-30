@@ -111,6 +111,7 @@ final class SlidePainter {
             }
         }
         sheet(shapes, slide, false);
+        LegacyShapes.paint(deck, canvas, slide, number);
     }
 
     private void sheet(ShapePainter shapes, XSLFSheet sheet, boolean master) throws IOException {

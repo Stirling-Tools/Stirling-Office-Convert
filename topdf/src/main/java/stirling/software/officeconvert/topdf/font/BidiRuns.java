@@ -22,6 +22,15 @@ public final class BidiRuns {
 
     public static boolean needed(CharSequence text) {
         Objects.requireNonNull(text, "text");
+        int n = text.length();
+        int i = 0;
+        // No character before Hebrew has a right-to-left or Arabic-number direction
+        while (i < n && text.charAt(i) < 0x0590) {
+            i++;
+        }
+        if (i == n) {
+            return false;
+        }
         char[] chars = text.toString().toCharArray();
         return Bidi.requiresBidi(chars, 0, chars.length);
     }

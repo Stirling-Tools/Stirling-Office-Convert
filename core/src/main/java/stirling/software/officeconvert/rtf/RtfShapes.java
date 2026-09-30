@@ -105,7 +105,9 @@ final class RtfShapes {
         prop(sb, "dyTextBottom", "0");
         prop(sb, "fFitShapeToText", "0");
         int direction = Math.floorMod(t.direction(), 360);
-        if (direction == 270) {
+        if (t.upright()) {
+            prop(sb, "txflTextFlow", "1");
+        } else if (direction == 270) {
             prop(sb, "txflTextFlow", "3");
         } else if (direction == 90) {
             prop(sb, "txflTextFlow", "2");

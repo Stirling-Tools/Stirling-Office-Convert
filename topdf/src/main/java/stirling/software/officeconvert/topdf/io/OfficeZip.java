@@ -88,6 +88,8 @@ public final class OfficeZip implements Closeable {
 
     private final Set<String> notes = new LinkedHashSet<>();
 
+    private final Set<String> unreadableRelationships = ConcurrentHashMap.newKeySet();
+
     private final Map<String, String> dense = new HashMap<>();
 
     private final Set<String> denseRead = new HashSet<>();
@@ -106,7 +108,7 @@ public final class OfficeZip implements Closeable {
         this.scratch = scratch;
         this.limits = limits;
         if (zip.size() > limits.maxEntries()) {
-            throw new IOException("The document is too large: it has more than " + limits.maxEntries() + " parts");
+            throw new Oversized("The document is too large: it has more than " + limits.maxEntries() + " parts");
         }
         Map<String, ZipEntry> map = new HashMap<>();
         List<String> order = new ArrayList<>();
@@ -131,19 +133,19 @@ public final class OfficeZip implements Closeable {
                 throw new IOException("The document is damaged: the part /" + e.getName() + " has no size");
             }
             if (size > limits.maxEntryBytes()) {
-                throw new IOException("The document is too large: the part /" + e.getName() + " is " + mb(size)
+                throw new Oversized("The document is too large: the part /" + e.getName() + " is " + mb(size)
                         + " MB uncompressed, over the " + mb(limits.maxEntryBytes()) + " MB limit");
             }
             total += size;
             if (total > limits.maxTotalBytes()) {
-                throw new IOException("The document is too large: over " + mb(limits.maxTotalBytes())
+                throw new Oversized("The document is too large: over " + mb(limits.maxTotalBytes())
                         + " MB uncompressed");
             }
             if (size > limits.graceBytes() && (double) csize / size < limits.minInflateRatio()) {
                 String inflates = "The document looks like a zip bomb: the part /" + e.getName() + " inflates "
                         + (csize == 0 ? "without limit" : (size / csize) + " times");
                 if (csize == 0) {
-                    throw new IOException(inflates);
+                    throw new Oversized(inflates);
                 }
                 dense.put(key, inflates);
             }
@@ -155,7 +157,7 @@ public final class OfficeZip implements Closeable {
         }
         if (total > Math.max(limits.graceBytes(), limits.maxDenseBytes())
                 && (double) compressed / total < limits.minInflateRatio()) {
-            throw new IOException("The document looks like a zip bomb: it inflates "
+            throw new Oversized("The document looks like a zip bomb: it inflates "
                     + (compressed == 0 ? "without limit" : (total / compressed) + " times"));
         }
         Set<String> out = new LinkedHashSet<>();
@@ -353,6 +355,11 @@ public final class OfficeZip implements Closeable {
         }
     }
 
+    // Relationships parts other than the package's that could not be read (damaged or with a DOCTYPE)
+    public Set<String> unreadableRelationships() {
+        return Set.copyOf(unreadableRelationships);
+    }
+
     public List<String> partNames() {
         return names;
     }
@@ -378,6 +385,23 @@ public final class OfficeZip implements Closeable {
         }
         try {
             return new PartStream(zip.getInputStream(e), e.getSize(), canonical(part));
+        } catch (ZipException | EOFException x) {
+            throw PartStream.unreadable(canonical(part), x);
+        }
+    }
+
+    /** Up to max bytes from the start of a part, such as a picture's header, not counted as reading the part. */
+    public byte[] head(String part, int max) throws IOException {
+        ZipEntry e = entry(part);
+        if (e == null) {
+            throw new FileNotFoundException("The document has no part " + canonical(part));
+        }
+        checkNotInterrupted();
+        if (salvage.contains(key(e.getName()))) {
+            return new byte[0];
+        }
+        try (InputStream in = new PartStream(zip.getInputStream(e), e.getSize(), canonical(part))) {
+            return in.readNBytes(max);
         } catch (ZipException | EOFException x) {
             throw PartStream.unreadable(canonical(part), x);
         }
@@ -441,7 +465,17 @@ public final class OfficeZip implements Closeable {
             return known;
         }
         String rels = relsPartFor(source);
-        Relationships parsed = exists(rels) ? parseRelationships(source, rels) : Relationships.NONE;
+        Relationships parsed;
+        try {
+            parsed = exists(rels) ? parseRelationships(source, rels) : Relationships.NONE;
+        } catch (InterruptedIOException e) {
+            throw e;
+        } catch (IOException e) {
+            if (!source.equals("/")) {
+                unreadableRelationships.add(rels);
+            }
+            throw e;
+        }
         Relationships raced = relationships.putIfAbsent(source, parsed);
         return raced == null ? parsed : raced;
     }
@@ -538,7 +572,7 @@ public final class OfficeZip implements Closeable {
                 return;
             }
             if (denseBytes + size > limits.maxDenseBytes()) {
-                throw new DamagedPart(part, inflates, null);
+                throw new DamagedPart(part, inflates, new Oversized(inflates));
             }
             denseBytes += size;
             denseRead.add(key);
@@ -721,6 +755,14 @@ public final class OfficeZip implements Closeable {
     }
 
     /** A part that cannot be read or parsed; the rest of the package may still be usable. */
+    // Over a size limit or inflating like a zip bomb: no other reader should be handed it either
+    public static final class Oversized extends IOException {
+
+        public Oversized(String message) {
+            super(message);
+        }
+    }
+
     public static final class DamagedPart extends IOException {
 
         private final String part;

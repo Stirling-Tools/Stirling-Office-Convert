@@ -167,10 +167,33 @@ final class TableFlow {
         if (r.paginated() && !r.atTop() && breaksBefore(t)) {
             r.newFrame(true, true);
         }
+        l = repeatable(l, r);
         if (r.paginated()) {
             dodgeFloats(l, r);
         }
         flow(l, r, 0, false, false);
+    }
+
+    // Word repeats header rows only when they fit on a page with the first line of the row they head
+    private static Layout repeatable(Layout l, Region r) {
+        if (l.headerRows() == 0 || !r.paginated()) {
+            return l;
+        }
+        float need = leadHeight(l.rows().get(l.headerRows()));
+        for (int k = 0; k < l.headerRows(); k++) {
+            need += l.rows().get(k).height;
+        }
+        if (need <= r.frameHeight() + 0.01f) {
+            return l;
+        }
+        for (int k = 0; k < l.headerRows(); k++) {
+            l.rows().get(k).header = false;
+        }
+        // They still start the table on a fresh page, where they then break like any rows
+        if (!r.atTop()) {
+            r.newFrame(false, false);
+        }
+        return new Layout(l.x(), l.colX(), l.rows(), 0, l.spacing(), l.tp());
     }
 
     // A page break before the first paragraph of the first cell moves the whole table, as Word does
@@ -652,6 +675,14 @@ final class TableFlow {
             sum = target;
         }
         float fit = autoFitLimit(t, avail);
+        float[] content = fit > 0 && maxCells == ncols ? contentWidths(t, fit) : null;
+        if (content != null) {
+            grid = content;
+            sum = 0;
+            for (float g : grid) {
+                sum += g;
+            }
+        }
         if (sum > fit + 1 && fit > 0) {
             // An autofit table without a width of its own shrinks to fit between the margins
             float scale = fit / sum;
@@ -761,6 +792,109 @@ final class TableFlow {
         return limit;
     }
 
+    // Word sizes an autofit table whose cells set no width from their text: each column its widest line, or when
+    // that is too wide its longest word plus a share of the room left in proportion to what more it wants
+    private float[] contentWidths(TableBlock t, float limit) {
+        float[] min = new float[t.grid.length];
+        float[] max = new float[t.grid.length];
+        for (TableBlock.Row row : t.rows) {
+            if (row.rp.gridBefore != null && row.rp.gridBefore > 0 || row.rp.gridAfter != null && row.rp.gridAfter > 0
+                    || row.cells.size() != min.length) {
+                return null;
+            }
+            for (int c = 0; c < min.length; c++) {
+                TableBlock.Cell cell = row.cells.get(c);
+                if (cell.span != 1 || cell.cp.width != null && cell.cp.width > 0 && !"auto".equals(cell.cp.widthType)
+                        && !"nil".equals(cell.cp.widthType)) {
+                    return null;
+                }
+                float margins = margin(cell.cp.marLeft, t.tp.marLeft) + margin(cell.cp.marRight, t.tp.marRight);
+                for (Block b : cell.blocks) {
+                    if (!(b instanceof Para para)) {
+                        return null;
+                    }
+                    float[] w = textWidths(para);
+                    min[c] = Math.max(min[c], w[0] + margins);
+                    max[c] = Math.max(max[c], w[1] + margins);
+                }
+            }
+        }
+        float minSum = 0;
+        float maxSum = 0;
+        for (int c = 0; c < min.length; c++) {
+            minSum += min[c];
+            maxSum += max[c];
+        }
+        if (maxSum <= 0) {
+            return null;
+        }
+        if (maxSum <= limit) {
+            return max;
+        }
+        if (minSum >= limit) {
+            return min;
+        }
+        float share = (limit - minSum) / (maxSum - minSum);
+        float[] out = new float[min.length];
+        for (int c = 0; c < min.length; c++) {
+            out[c] = min[c] + (max[c] - min[c]) * share;
+        }
+        return out;
+    }
+
+    private static float margin(Float cell, Float table) {
+        return cell != null ? cell : table != null ? table : DEFAULT_MARGIN;
+    }
+
+    // The longest word and the widest line of a paragraph, with its indents
+    private float[] textWidths(Para para) {
+        float word = 0;
+        float line = 0;
+        float longest = 0;
+        float widest = 0;
+        for (Item it : new ParaItems(ctx, para, null).items) {
+            switch (it.kind) {
+                case TEXT -> {
+                    int from = 0;
+                    for (int i = 0; i <= it.length(); i++) {
+                        if (i == it.length() || it.text.charAt(i) == ' ') {
+                            word += it.width(from, i);
+                            if (i < it.length()) {
+                                longest = Math.max(longest, word);
+                                word = 0;
+                            }
+                            from = i + 1;
+                        }
+                    }
+                    line += it.width(0, it.length());
+                }
+                case OBJECT -> {
+                    word += it.objectWidth;
+                    line += it.objectWidth;
+                }
+                case TAB -> {
+                    longest = Math.max(longest, word);
+                    word = 0;
+                    line += ctx.settings.defaultTabStop;
+                }
+                case BREAK -> {
+                    longest = Math.max(longest, word);
+                    widest = Math.max(widest, line);
+                    word = 0;
+                    line = 0;
+                }
+                default -> {
+                }
+            }
+        }
+        longest = Math.max(longest, word);
+        widest = Math.max(widest, line);
+        ParaProps pp = para.pp;
+        float ind = (pp.indLeft == null ? 0 : pp.indLeft) + (pp.indRight == null ? 0 : pp.indRight);
+        float first = pp.indFirst == null ? 0 : Math.max(0, pp.indFirst);
+        return new float[] {longest + ind + first, widest + ind + first};
+    }
+
     private static void fromCells(TableBlock t, float[] grid, float total) {
         float[] widths = new float[grid.length];
         for (TableBlock.Row row : t.rows) {
@@ -832,7 +966,7 @@ final class TableFlow {
                 cb.contentH = alongLength(cell, h, cb.marT + cb.marB, rb.exact);
             } else if (!cb.continuation) {
                 float inner = Math.max(1, cb.w - cb.marL - cb.marR);
-                StackLayout region = StackLayout.cell(inner);
+                StackLayout region = StackLayout.cell(inner, ctx);
                 region.background = cb.fill != null ? cb.fill : background;
                 blocks.place(cell.blocks, region);
                 StackLayout.Result res = region.result();
@@ -923,7 +1057,7 @@ final class TableFlow {
             RunProps rp = st.defaultRun.copy();
             rp.mergeFrom(st.paragraphRun(id));
             rp.styleId = null;
-            StackLayout region = StackLayout.cell(MAX_ALONG);
+            StackLayout region = StackLayout.cell(MAX_ALONG, ctx);
             blocks.place(List.of(new Para(pp, rp, List.of(), id, null, null, null)), region);
             rowMark = region.result().height();
         }
@@ -947,7 +1081,7 @@ final class TableFlow {
         if (exact) {
             return set;
         }
-        StackLayout region = StackLayout.cell(MAX_ALONG);
+        StackLayout region = StackLayout.cell(MAX_ALONG, ctx);
         blocks.place(cell.blocks, region);
         float natural = Math.min(MAX_ALONG, longestWord(region.result().ops()));
         return Math.max(set, natural);
@@ -966,6 +1100,7 @@ final class TableFlow {
                 }
                 case Op.Glyphs g -> g.run().width(g.style().size());
                 case Op.Group g when g.transform() == null -> longestWord(g.ops());
+                case Op.Chart c -> longestWord(c.ops());
                 case Op.Image i -> i.w();
                 default -> 0;
             };
@@ -1462,7 +1597,7 @@ final class TableFlow {
 
     private void rotated(CellBox cb, float h, RowBox row, Strip s) {
         float along = Math.max(1, h - cb.marT - cb.marB - row.borderTop - row.borderBottom);
-        StackLayout region = StackLayout.cell(along);
+        StackLayout region = StackLayout.cell(along, ctx);
         region.background = cb.fill != null ? cb.fill : background;
         blocks.place(cb.cell.blocks, region);
         StackLayout.Result r = region.result();

@@ -30,15 +30,21 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.regex.Pattern;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
+import org.apache.poi.hslf.usermodel.HSLFSlideShow;
+import org.apache.poi.hslf.usermodel.HSLFTextBox;
+import org.apache.poi.poifs.filesystem.POIFSFileSystem;
 import org.apache.poi.xslf.usermodel.XMLSlideShow;
 import org.apache.poi.xslf.usermodel.XSLFTextBox;
 
+import stirling.software.officeconvert.memory.Admission;
 import stirling.software.officeconvert.topdf.docx.DocxRenderer;
 import stirling.software.officeconvert.topdf.font.FontLibrary;
 import stirling.software.officeconvert.topdf.io.ActiveContent;
+import stirling.software.officeconvert.topdf.io.LegacyOffice;
 import stirling.software.officeconvert.topdf.io.OfficeZip;
 import stirling.software.officeconvert.topdf.io.PictureDecoder;
 import stirling.software.officeconvert.topdf.io.SecureXml;
@@ -47,7 +53,9 @@ import stirling.software.officeconvert.topdf.pdf.PageSize;
 import stirling.software.officeconvert.topdf.pdf.PdfCanvas;
 import stirling.software.officeconvert.topdf.pdf.PdfOutput;
 import stirling.software.officeconvert.topdf.pdf.TextStyle;
+import stirling.software.officeconvert.topdf.ppt.PptRenderer;
 import stirling.software.officeconvert.topdf.pptx.PptxRenderer;
+import stirling.software.officeconvert.topdf.xls.XlsPackage;
 import stirling.software.officeconvert.topdf.xlsx.XlsxRenderer;
 
 /** Bad input fails with an IOException. On Java 24 and later, very deep or large slides need the JVM-wide XML limits
@@ -57,7 +65,8 @@ public final class OfficeToPdf {
     public enum Format {
         DOCX,
         PPTX,
-        XLSX;
+        XLSX,
+        PPT;
 
         public static Format of(Path file) {
             Objects.requireNonNull(file, "file");
@@ -65,15 +74,14 @@ public final class OfficeToPdf {
             return switch (ext) {
                 case "docx", "docm", "dotx", "dotm" -> DOCX;
                 case "pptx", "pptm", "ppsx", "ppsm", "potx", "potm" -> PPTX;
-                case "xlsx", "xlsm", "xltx", "xltm" -> XLSX;
+                case "xlsx", "xlsm", "xltx", "xltm", "xls", "xlt" -> XLSX;
                 case "doc", "dot" -> throw legacy("Word", ext, "docx");
-                case "ppt", "pps", "pot" -> throw legacy("PowerPoint", ext, "pptx");
-                case "xls", "xlt" -> throw legacy("Excel", ext, "xlsx");
+                case "ppt", "pps", "pot" -> PPT;
                 case "xlsb" -> throw new IllegalArgumentException(
                         "Excel binary workbooks (.xlsb) are not supported; save the file as .xlsx");
                 default -> throw new IllegalArgumentException("Not an Office document: " + file.getFileName()
                         + "; use .docx, .docm, .dotx, .dotm, .pptx, .pptm, .ppsx, .ppsm, .potx, .potm, .xlsx, .xlsm,"
-                        + " .xltx or .xltm");
+                        + " .xltx, .xltm, .xls, .xlt, .ppt, .pps or .pot");
             };
         }
 
@@ -145,17 +153,31 @@ public final class OfficeToPdf {
         }
     }
 
-    public record Result(int pages, boolean truncated, List<String> warnings) {
+    /** {@code truncated}: something is missing, the pages past the page limit ({@code pageLimitReached}) or content
+     * that could not be read. */
+    public record Result(int pages, boolean truncated, List<String> warnings, boolean pageLimitReached) {
 
         public Result {
             Objects.requireNonNull(warnings, "warnings");
             warnings = List.copyOf(warnings);
+            truncated = truncated || pageLimitReached;
+        }
+
+        public Result(int pages, boolean truncated, List<String> warnings) {
+            this(pages, truncated, warnings, false);
         }
     }
 
     public static final class TimedOut extends IOException {
         TimedOut(Duration limit) {
             super("The conversion took longer than " + limit.toMillis() + " ms and was stopped");
+        }
+    }
+
+    /** The PDF would outgrow {@link Options#maxScratchBytes()}. */
+    public static final class OutputTooLarge extends IOException {
+        public OutputTooLarge(Throwable cause) {
+            super("The PDF would be larger than the converter's output limit", cause);
         }
     }
 
@@ -218,6 +240,28 @@ public final class OfficeToPdf {
             if (pdf != null) {
                 deleteQuietly(pdf);
             }
+        }
+    }
+
+    /** The heap a conversion of this file is likely to need, from its parts alone, as the converter admits it: a host
+     * may queue or refuse work with it. An IOException when the file is not an Office document that can be opened. */
+    public static long memoryEstimate(Path in) throws IOException {
+        Objects.requireNonNull(in, "in");
+        Format format;
+        try {
+            format = Format.of(in);
+        } catch (IllegalArgumentException e) {
+            throw new IOException(e.getMessage(), e);
+        }
+        if (LegacyOffice.powerPoint(in)) {
+            return Footprint.legacy(Files.size(in));
+        }
+        Long legacy = legacyWorkbookEstimate(in);
+        if (legacy != null) {
+            return legacy;
+        }
+        try (OfficeZip zip = OfficeZip.open(in)) {
+            return Footprint.estimate(zip, detect(zip, format));
         }
     }
 
@@ -306,6 +350,15 @@ public final class OfficeToPdf {
     private static final String RELS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/";
 
     static byte[] sample(Format format) throws IOException {
+        if (format == Format.PPT) {
+            try (HSLFSlideShow ppt = new HSLFSlideShow(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+                HSLFTextBox box = ppt.createSlide().createTextBox();
+                box.setAnchor(new Rectangle2D.Double(40, 40, 400, 60));
+                box.setText("Warm up");
+                ppt.write(out);
+                return out.toByteArray();
+            }
+        }
         if (format == Format.PPTX) {
             try (XMLSlideShow ppt = new XMLSlideShow(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
                 XSLFTextBox box = ppt.createSlide().createTextBox();
@@ -363,6 +416,7 @@ public final class OfficeToPdf {
             case DOCX -> DocxRenderer.render(source, job);
             case PPTX -> PptxRenderer.render(source, job);
             case XLSX -> XlsxRenderer.render(source, job);
+            case PPT -> PptRenderer.render(source, job);
         }
     }
 
@@ -374,11 +428,27 @@ public final class OfficeToPdf {
         if (Files.size(source) > MAX_INPUT_BYTES) {
             throw tooLarge();
         }
+        Result legacy = legacyWorkbook(source, sink, options, renderer);
+        if (legacy != null) {
+            return legacy;
+        }
+        return render(source, requested, sink, options, renderer, OfficeZip.Limits.DEFAULT);
+    }
+
+    // Our own rewrite of a legacy workbook: its parts are trusted, so only their sizes are bounded
+    static final OfficeZip.Limits REWRITTEN = new OfficeZip.Limits(10_000, 512L << 20, 1L << 30, 0, 100L << 10,
+            48L << 20);
+
+    private static Result render(Path source, Format requested, OutputStream sink, Options options, Renderer renderer,
+            OfficeZip.Limits limits) throws IOException {
         FontLibrary fonts = FontLibrary.withSystem(options.fontDirs());
+        if (LegacyOffice.powerPoint(source)) {
+            return renderLegacy(source, Format.PPT, sink, options, renderer, fonts);
+        }
         Attempts attempts = new Attempts();
         while (true) {
             try {
-                return render(source, requested, sink, options, renderer, fonts, attempts);
+                return render(source, requested, sink, options, renderer, fonts, attempts, limits);
             } catch (IOException | RuntimeException e) {
                 if (!attempts.leaveOut(e) && !attempts.salvageMain(source, e)) {
                     Exception reported = attempts.first == null ? e : attempts.first;
@@ -398,6 +468,8 @@ public final class OfficeToPdf {
     private static final class Attempts {
 
         final Map<String, String> damaged = new LinkedHashMap<>();
+
+        final Set<String> refused = new LinkedHashSet<>();
 
         String main;
 
@@ -461,8 +533,23 @@ public final class OfficeToPdf {
             if (source != null) {
                 damaged.putIfAbsent(source, d.getMessage());
             }
+            if (d.getCause() instanceof OfficeZip.Oversized) {
+                refused.add(part);
+            }
             return true;
         }
+    }
+
+    private static final Pattern NO_CONTENT = Pattern.compile("^/(docprops|customxml|docmetadata|glossary)/"
+            + "|/(theme|printersettings|notesslides|notesmasters|handoutmasters|threadedcomments|persons)/"
+            + "|/(settings|websettings|fonttable|styleswitheffects|presprops|viewprops|tablestyles|calcchain"
+            + "|people|comments[a-z]*[0-9]*)[.]xml$|/(word|ppt)/styles[.]xml$");
+
+    // Whether leaving out a part (or a .rels part, and so its source) loses content rather than only looks
+    static boolean losesContent(String part) {
+        String p = OfficeZip.canonical(part);
+        String source = sourceOf(p);
+        return !NO_CONTENT.matcher((source == null ? p : source).toLowerCase(Locale.ROOT)).find();
     }
 
     // The part whose relationships a .rels part holds: without them it cannot be drawn either
@@ -491,14 +578,15 @@ public final class OfficeToPdf {
     }
 
     private static Result render(Path source, Format requested, OutputStream sink, Options options, Renderer renderer,
-            FontLibrary fonts, Attempts attempts) throws IOException {
-        try (OfficeZip zip = OfficeZip.open(source, OfficeZip.Limits.DEFAULT, attempts.damaged.keySet(),
-                attempts.salvaged)) {
+            FontLibrary fonts, Attempts attempts, OfficeZip.Limits limits) throws IOException {
+        try (OfficeZip zip = OfficeZip.open(source, limits, attempts.damaged.keySet(), attempts.salvaged)) {
             attempts.main = zip.mainPart();
             Format format = detect(zip, requested);
-            try (PdfOutput output = new PdfOutput(fonts, options.maxScratchBytes())) {
+            try (Admission.Ticket ticket = Admission.jvm().enter(Footprint.estimate(zip, format));
+                    PdfOutput output = new PdfOutput(fonts, options.maxScratchBytes())) {
                 output.info(DocumentInfo.read(zip));
                 RenderJob job = new RenderJob(zip, format, options, fonts, output);
+                job.admitted(ticket);
                 Throwable failed = null;
                 try {
                     renderer.render(source, job);
@@ -548,6 +636,20 @@ public final class OfficeToPdf {
                         warnings.add(c);
                     }
                 }
+                boolean lost = job.partial() || failed != null || !attempts.salvaged.isEmpty();
+                for (String part : attempts.damaged.keySet()) {
+                    lost |= losesContent(part) && !attempts.refused.contains(part);
+                }
+                for (String rels : zip.unreadableRelationships()) {
+                    if (losesContent(rels) && !attempts.damaged.containsKey(rels)) {
+                        lost = true;
+                        String c = RenderJob.clean("Left out the relationships of " + sourceOf(rels)
+                                + ", which could not be read");
+                        if (c != null && !warnings.contains(c)) {
+                            warnings.add(c);
+                        }
+                    }
+                }
                 for (String w : ActiveContent.describe(ActiveContent.scan(zip))) {
                     String c = RenderJob.clean(w);
                     if (c != null) {
@@ -559,7 +661,134 @@ public final class OfficeToPdf {
                         warnings.add(w);
                     }
                 }
-                return new Result(output.pageCount(), job.truncated() || failed != null, warnings);
+                return new Result(output.pageCount(), lost, warnings, job.truncated());
+            }
+        }
+    }
+
+    // A binary file has no parts to leave out: one attempt, the same page, save and warning rules
+    private static Result renderLegacy(Path source, Format format, OutputStream sink, Options options,
+            Renderer renderer, FontLibrary fonts) throws IOException {
+        try (Admission.Ticket ticket = Admission.jvm().enter(Footprint.legacy(Files.size(source)));
+                PdfOutput output = new PdfOutput(fonts, options.maxScratchBytes())) {
+            RenderJob job = new RenderJob(source, format, options, fonts, output);
+            job.admitted(ticket);
+            Throwable failed = null;
+            try {
+                renderer.render(source, job);
+            } catch (RenderJob.PageLimitReached e) {
+                stopIfInterrupted();
+            } catch (RuntimeException | StackOverflowError e) {
+                if (!keepsPages(e, output.pageCount())) {
+                    throw e;
+                }
+                failed = e;
+            }
+            stopIfInterrupted();
+            if (output.pageCount() == 0) {
+                output.newPage(PageSize.LETTER).close();
+            }
+            int pages = output.pageCount();
+            try {
+                output.save(sink);
+            } catch (IOException | RuntimeException e) {
+                if (failed == null) {
+                    throw e;
+                }
+                failed.addSuppressed(e);
+                if (failed instanceof RuntimeException r) {
+                    throw r;
+                }
+                throw (Error) failed;
+            }
+            List<String> warnings = new ArrayList<>();
+            if (failed != null) {
+                warnings.add(RenderJob.clean(stoppedEarly(failed, pages)));
+            }
+            if (job.truncated()) {
+                warnings.add("Stopped at the page limit of " + options.maxPages() + " pages");
+            }
+            for (String w : job.warnings()) {
+                if (!warnings.contains(w)) {
+                    warnings.add(w);
+                }
+            }
+            return new Result(output.pageCount(), job.partial() || failed != null, warnings, job.truncated());
+        }
+    }
+
+    private static POIFSFileSystem legacyFile(Path source) {
+        try {
+            if (!LegacyOffice.ole2(source)) {
+                return null;
+            }
+        } catch (IOException | RuntimeException e) {
+            return null;
+        }
+        POIFSFileSystem fs;
+        try {
+            fs = new POIFSFileSystem(source.toFile(), true);
+        } catch (IOException | RuntimeException e) {
+            return null;
+        }
+        if (XlsPackage.isWorkbook(fs.getRoot())) {
+            return fs;
+        }
+        closeQuietly(fs);
+        return null;
+    }
+
+    private static Long legacyWorkbookEstimate(Path source) throws IOException {
+        POIFSFileSystem fs = legacyFile(source);
+        if (fs == null) {
+            return null;
+        }
+        closeQuietly(fs);
+        return XlsPackage.estimate(Files.size(source)) + 2 * Admission.BASE_BYTES;
+    }
+
+    // An Excel 97-2003 workbook is rewritten as an XLSX package first, whatever its extension, and drawn from that
+    private static Result legacyWorkbook(Path source, OutputStream sink, Options options, Renderer renderer)
+            throws IOException {
+        POIFSFileSystem fs = legacyFile(source);
+        if (fs == null) {
+            return null;
+        }
+        Path xlsx = null;
+        try {
+            XlsPackage.Outcome outcome;
+            try (fs) {
+                xlsx = Files.createTempFile("office-to-pdf-", ".xlsx");
+                Admission.Ticket ticket = Admission.jvm().enter(XlsPackage.estimate(Files.size(source)));
+                try (OutputStream os = new BufferedOutputStream(Files.newOutputStream(xlsx), 1 << 16)) {
+                    outcome = XlsPackage.write(fs.getRoot(), os);
+                } finally {
+                    ticket.close();
+                }
+            }
+            stopIfInterrupted();
+            Result r = render(xlsx, Format.XLSX, sink, options, (s, job) -> renderer.render(source, job), REWRITTEN);
+            List<String> warnings = new ArrayList<>();
+            for (String w : r.warnings()) {
+                if (w.startsWith("Only the first ") || w.startsWith("Stopped at the page limit")) {
+                    warnings.add(w);
+                }
+            }
+            for (String w : outcome.warnings()) {
+                String c = RenderJob.clean(w);
+                if (c != null && !warnings.contains(c)) {
+                    warnings.add(c);
+                }
+            }
+            for (String w : r.warnings()) {
+                if (!warnings.contains(w)) {
+                    warnings.add(w);
+                }
+            }
+            return new Result(r.pages(), r.truncated() || outcome.lost(), warnings, r.pageLimitReached());
+        } finally {
+            if (xlsx != null) {
+                deleteQuietly(xlsx);
             }
         }
     }
@@ -570,7 +799,7 @@ public final class OfficeToPdf {
         if (pages < 2 || Thread.currentThread().isInterrupted() || damagedPart(e) != null) {
             return false;
         }
-        if (SecureXml.refusedDoctype(e)) {
+        if (SecureXml.refusedDoctype(e) || scratchExceeded(e)) {
             return false;
         }
         int depth = 0;
@@ -607,7 +836,7 @@ public final class OfficeToPdf {
         if (t.contains("drawingml") || t.contains("visio") || t.contains("xps")) {
             throw new IOException("The file is not a Word, PowerPoint or Excel document (its main part is " + type + ")");
         }
-        return requested;
+        return requested == Format.PPT ? Format.PPTX : requested;
     }
 
     @FunctionalInterface
@@ -677,10 +906,25 @@ public final class OfficeToPdf {
         try {
             return work.call();
         } catch (InterruptedIOException e) {
+            if (outOfMemory(e)) {
+                throw new IOException(RenderJob.NEEDS_MEMORY, e);
+            }
             throw e;
         } catch (IOException e) {
+            if (outOfMemory(e)) {
+                throw new IOException(RenderJob.NEEDS_MEMORY, e);
+            }
+            if (scratchExceeded(e)) {
+                throw new OutputTooLarge(e);
+            }
             throw plain(e);
         } catch (RuntimeException e) {
+            if (outOfMemory(e)) {
+                throw new IOException(RenderJob.NEEDS_MEMORY, e);
+            }
+            if (scratchExceeded(e)) {
+                throw new OutputTooLarge(e);
+            }
             if (Thread.currentThread().isInterrupted()) {
                 throw new InterruptedIOException("Conversion interrupted");
             }
@@ -689,8 +933,30 @@ public final class OfficeToPdf {
         } catch (StackOverflowError e) {
             throw new IOException("The document nests too deeply to convert", e);
         } catch (OutOfMemoryError e) {
-            throw new IOException("The document needs more memory to convert than is available", e);
+            throw new IOException(RenderJob.NEEDS_MEMORY, e);
         }
+    }
+
+    private static boolean outOfMemory(Throwable e) {
+        int depth = 0;
+        for (Throwable t = e; t != null && depth++ < 16; t = t.getCause()) {
+            if (t instanceof RenderJob.OutOfMemory || t instanceof Admission.Stopped) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // PDFBox's own words when the output passes maxScratchBytes
+    static boolean scratchExceeded(Throwable e) {
+        int depth = 0;
+        for (Throwable t = e; t != null && depth++ < 16; t = t.getCause()) {
+            if (t instanceof OutputTooLarge || t instanceof IOException && t.getMessage() != null
+                    && t.getMessage().startsWith("Maximum allowed scratch file memory exceeded")) {
+                return true;
+            }
+        }
+        return false;
     }
 
     // One plain reason for a refused DOCTYPE, whichever parser (ours or POI's) met it first
@@ -719,7 +985,7 @@ public final class OfficeToPdf {
     }
 
     private static IOException tooLarge() {
-        return new IOException("The document is too large: over " + (MAX_INPUT_BYTES >> 20) + " MB");
+        return new OfficeZip.Oversized("The document is too large: over " + (MAX_INPUT_BYTES >> 20) + " MB");
     }
 
     private static void move(Path from, Path to) throws IOException {
@@ -735,6 +1001,14 @@ public final class OfficeToPdf {
             Files.deleteIfExists(file);
         } catch (IOException | RuntimeException e) {
             file.toFile().deleteOnExit();
+        }
+    }
+
+    private static void closeQuietly(POIFSFileSystem fs) {
+        try {
+            fs.close();
+        } catch (IOException | RuntimeException ignored) {
+            // read-only; nothing to lose
         }
     }
 

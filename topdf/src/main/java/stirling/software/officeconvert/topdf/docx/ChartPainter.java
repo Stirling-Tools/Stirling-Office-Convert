@@ -88,6 +88,25 @@ final class ChartPainter {
         return TextStyle.of(face(bold, font), size).color(color == null ? ChartReader.TEXT : color);
     }
 
+    // Width as drawn: characters the chart font lacks are measured in the face that shows them
+    private float width(TextStyle s, String text) {
+        FontFace face = s.face();
+        float w = 0;
+        int start = 0;
+        FontFace current = null;
+        for (int i = 0; i < text.length(); ) {
+            int cp = text.codePointAt(i);
+            FontFace f = face.covers(cp) || Character.isWhitespace(cp) ? face : fonts.fallback(cp, face);
+            if (current != null && !f.equals(current)) {
+                w += s.face(current).width(text.substring(start, i));
+                start = i;
+            }
+            current = f;
+            i += Character.charCount(cp);
+        }
+        return current == null ? 0 : w + s.face(current).width(text.substring(start));
+    }
+
     private static float ascent(TextStyle s) {
         FontMetrics m = s.face().metrics();
         return m.winAscent() * s.size() / m.unitsPerEm();
@@ -102,9 +121,9 @@ final class ChartPainter {
         return ascent(s) + descent(s);
     }
 
-    // Office spaces automatic value gridlines at least about 1.7 times the axis label size apart
+    // Office spaces automatic value gridlines at least about the axis label size plus 7 pt apart
     private static float gridGap(TextStyle s) {
-        return s.size() * 1.7f;
+        return s.size() + 7;
     }
 
     private void paint(float x, float y, float w, float h) {
@@ -143,7 +162,7 @@ final class ChartPainter {
                 if (legend.position().equals("t") || legend.position().equals("b")) {
                     legendRow(entries, lx + lw / 2, ly + lh / 2 + (ascent(ls) - descent(ls)) / 2, ls);
                 } else {
-                    legendColumn(entries, lx, false, ly + lh / 2, ls, lw);
+                    legendColumn(fitting(entries, ls, lw, lh), lx, false, ly + lh / 2, ls, lw);
                 }
                 switch (legend.position()) {
                     case "t" -> top = Math.max(top, Math.min(ly + lh + gap, top + h / 2));
@@ -246,7 +265,7 @@ final class ChartPainter {
         float key = ls.size() * 0.55f;
         float total = 0;
         for (int i = 0; i < entries.size(); i++) {
-            total += keyWidth(entries.get(i), key) + KEY_GAP + ls.width(entries.get(i).text())
+            total += keyWidth(entries.get(i), key) + KEY_GAP + width(ls, entries.get(i).text())
                     + (i + 1 < entries.size() ? ENTRY_GAP : 0);
         }
         float at = center - total / 2;
@@ -254,13 +273,32 @@ final class ChartPainter {
             key(e, at, baseline - ls.size() * 0.28f, key);
             at += keyWidth(e, key) + KEY_GAP;
             ops.add(new Op.Text(at, baseline, e.text(), ls));
-            at += ls.width(e.text()) + ENTRY_GAP;
+            at += width(ls, e.text()) + ENTRY_GAP;
         }
     }
 
     // A line series shows a short stretch of its line in the legend, about four square keys long
     private static float keyWidth(Entry e, float key) {
         return e.line() ? key * 3.5f : key;
+    }
+
+    // A legend sized by hand shows only the entries that fit in its box, as Office's does
+    private List<Entry> fitting(List<Entry> entries, TextStyle ls, float maxWidth, float height) {
+        float key = ls.size() * 0.55f;
+        float keyW = 0;
+        for (Entry e : entries) {
+            keyW = Math.max(keyW, keyWidth(e, key));
+        }
+        float room = Math.max(ls.size() * 4, maxWidth - keyW - KEY_GAP);
+        float lh = lineHeight(ls);
+        float used = 0;
+        for (int i = 0; i < entries.size(); i++) {
+            used += wrap(entries.get(i).text(), ls, room).size() * lh + (i > 0 ? 2 : 0);
+            if (i > 0 && used > height + 0.5f) {
+                return entries.subList(0, i);
+            }
+        }
+        return entries;
     }
 
     // Entries stacked in a column; text wider than the room left wraps at spaces, as Office's legend does
@@ -280,7 +318,7 @@ final class ChartPainter {
             texts.add(l);
             lines += l.size();
             for (String t : l) {
-                widest = Math.max(widest, keyW + KEY_GAP + ls.width(t));
+                widest = Math.max(widest, keyW + KEY_GAP + width(ls, t));
             }
         }
         float lh = lineHeight(ls);
@@ -299,17 +337,17 @@ final class ChartPainter {
         return widest;
     }
 
-    // Office wraps chart text at spaces and after the hyphen of a hyphenated word
-    private static List<String> wrap(String text, TextStyle s, float room) {
+    // Office wraps chart text at spaces and after the hyphen of a hyphenated word, never before a digit
+    private List<String> wrap(String text, TextStyle s, float room) {
         List<String> out = new ArrayList<>();
         for (String para : text.split("\n")) {
-            if (s.width(para) <= room || para.indexOf(' ') < 0 && para.indexOf('-') <= 0) {
+            if (width(s, para) <= room || para.indexOf(' ') < 0 && para.indexOf('-') <= 0) {
                 out.add(para);
                 continue;
             }
             StringBuilder line = new StringBuilder();
-            for (String piece : para.split("(?= )|(?<=[^ -]-)")) {
-                if (line.length() > 0 && s.width(line + piece) > room) {
+            for (String piece : para.split("(?= )|(?<=[^ -]-)(?!\\d)")) {
+                if (line.length() > 0 && width(s, line + piece) > room) {
                     out.add(line.toString());
                     line.setLength(0);
                 }
@@ -334,7 +372,7 @@ final class ChartPainter {
     }
 
     private void center(String text, float cx, float baseline, TextStyle s) {
-        ops.add(new Op.Text(cx - s.width(text) / 2, baseline, text, s));
+        ops.add(new Op.Text(cx - width(s, text) / 2, baseline, text, s));
     }
 
     private Color pointColor(Chart.Group g, Chart.Series s, int i) {
@@ -397,7 +435,7 @@ final class ChartPainter {
                 float ly = (float) (cy - Math.sin(mid) * r * k);
                 String text = label(labels, s, v, v / total, i, "; ");
                 if (outside) {
-                    float tw = ls.width(text);
+                    float tw = width(ls, text);
                     float tx = Math.cos(mid) >= 0 ? lx : lx - tw;
                     ops.add(new Op.Text(tx, ly + ascent(ls) / 3, text, ls));
                 } else {
@@ -537,7 +575,7 @@ final class ChartPainter {
             float cw = 0;
             if (showCats) {
                 for (int i = 0; i < n; i++) {
-                    cw = Math.max(cw, cs.width(category(i)));
+                    cw = Math.max(cw, width(cs, category(i)));
                 }
             }
             plotLeft = inner != null ? inner.x : left + (showCats ? cw + VALUE_GAP : 0);
@@ -568,7 +606,7 @@ final class ChartPainter {
                 }
                 if (showValues) {
                     String t = ticks.get(i);
-                    ops.add(new Op.Text(plotLeft - VALUE_GAP - vs.width(t), gy + (ascent(vs) - descent(vs)) / 2, t,
+                    ops.add(new Op.Text(plotLeft - VALUE_GAP - width(vs, t), gy + (ascent(vs) - descent(vs)) / 2, t,
                             vs));
                 }
             } else {
@@ -676,7 +714,7 @@ final class ChartPainter {
                     int slot = reversed ? n - 1 - i : i;
                     float cy = plotBottom - (slot + 0.5f) * plotH / n;
                     String t = category(i);
-                    ops.add(new Op.Text(plotLeft - VALUE_GAP - cs.width(t), cy + (ascent(cs) - descent(cs)) / 2, t,
+                    ops.add(new Op.Text(plotLeft - VALUE_GAP - width(cs, t), cy + (ascent(cs) - descent(cs)) / 2, t,
                             cs));
                 }
             }
@@ -712,10 +750,10 @@ final class ChartPainter {
         return style(t.size(), t.bold(), t.color());
     }
 
-    private static float widest(List<String> ticks, TextStyle s) {
+    private float widest(List<String> ticks, TextStyle s) {
         float w = 0;
         for (String t : ticks) {
-            w = Math.max(w, s.width(t));
+            w = Math.max(w, width(s, t));
         }
         return w;
     }
@@ -734,7 +772,7 @@ final class ChartPainter {
 
     // Text rotated about its middle at (cx, cy), in degrees clockwise
     private void rotated(String text, float cx, float cy, float degrees, TextStyle s, float along) {
-        float w = s.width(text);
+        float w = width(s, text);
         AffineTransform t = AffineTransform.getRotateInstance(Math.toRadians(degrees), cx, cy);
         ops.add(new Op.Group(0, 0, t, null,
                 List.of(new Op.Text(cx - w / 2 + along, cy + (ascent(s) - descent(s)) / 2, text, s))));
@@ -750,9 +788,9 @@ final class ChartPainter {
         for (int i = 0; i < n; i++) {
             String t = category(i);
             texts.add(t);
-            maxW = Math.max(maxW, cs.width(t));
-            for (String word : t.split("[ \n]|(?<=[^ -]-)")) {
-                maxWord = Math.max(maxWord, cs.width(word));
+            maxW = Math.max(maxW, width(cs, t));
+            for (String word : t.split("[ \n]|(?<=[^ -]-)(?!\\d)")) {
+                maxWord = Math.max(maxWord, width(cs, word));
             }
         }
         Float explicit = ca == null ? null : ca.rotation();
@@ -798,7 +836,7 @@ final class ChartPainter {
             if (rotation == 0) {
                 extent = Math.max(extent, l.size() * lh);
             } else {
-                float w = cs.width(texts.get(i));
+                float w = width(cs, texts.get(i));
                 extent = Math.max(extent, (float) (w * Math.sin(rad) + lh * Math.cos(rad)));
             }
         }
@@ -830,7 +868,7 @@ final class ChartPainter {
                 continue;
             }
             String t = l.get(0);
-            float w = cs.width(t);
+            float w = width(cs, t);
             float r = cl.rotation();
             AffineTransform tr = AffineTransform.getRotateInstance(Math.toRadians(r), cx, top);
             float mid = (ascent(cs) - descent(cs)) / 2;
@@ -939,7 +977,7 @@ final class ChartPainter {
                     String t = label(labels, s, s.values()[i], 0, i, ", ");
                     boolean inside = stacked || "ctr".equals(labels.position()) || "inEnd".equals(labels.position())
                             || "inBase".equals(labels.position());
-                    float tw = ls.width(t);
+                    float tw = width(ls, t);
                     if (p.horizontal()) {
                         float tx = inside ? (a + b) / 2 - tw / 2 : Math.max(a, b) + 3;
                         ops.add(new Op.Text(tx, start + bw / 2 + (ascent(ls) - descent(ls)) / 2, t, ls));
@@ -1040,7 +1078,7 @@ final class ChartPainter {
                     int i = index.get(k);
                     String t = label(labels, s, s.values()[i], 0, i, ", ");
                     float[] pt = pts.get(k);
-                    float tw = ls.width(t);
+                    float tw = width(ls, t);
                     float mid = (ascent(ls) - descent(ls)) / 2;
                     String pos = labels.position() == null ? "r" : labels.position();
                     switch (pos) {

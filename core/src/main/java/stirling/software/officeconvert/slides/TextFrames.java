@@ -9,7 +9,9 @@ import java.util.Set;
 import stirling.software.officeconvert.build.PlacedContent;
 import stirling.software.officeconvert.extract.Glyph;
 import stirling.software.officeconvert.layout.Box;
+import stirling.software.officeconvert.layout.BreakUnits;
 import stirling.software.officeconvert.layout.Line;
+import stirling.software.officeconvert.layout.Marker;
 import stirling.software.officeconvert.layout.PageLayout;
 import stirling.software.officeconvert.layout.ParaDraft;
 import stirling.software.officeconvert.layout.Word;
@@ -116,8 +118,14 @@ final class TextFrames {
         float insetRight = right - textRight;
         float insetTop = textTop - top;
         Frame frame;
+        boolean vertical = tb.turn() != null && tb.turn().upright();
         if (tb.turn() == null) {
             frame = new Frame(left, top, right - left, bottom - top);
+        } else if (vertical) {
+            Box on = tb.turn().onPage();
+            float w = bottom - top;
+            float h = right - left;
+            frame = new Frame(on.centreX() - w / 2f, on.centreY() - h / 2f, w, h);
         } else {
             Box on = tb.turn().onPage();
             float w = right - left;
@@ -139,7 +147,7 @@ final class TextFrames {
             }
         }
         TextShape shape = new TextShape(frame, paras, insetLeft, insetTop, insetRight, fill, line, tb.lineWidth(), radius,
-                wraps(drafts), false);
+                wraps(drafts), false, vertical);
         int order = tb.turn() == null ? order(drafts) : paint.textOver(SlideBuilder.box(frame));
         return new Framed(shape, order, drawn);
     }
@@ -214,7 +222,8 @@ final class TextFrames {
         float size = firstLineSize(first);
         float pitch = d.pitch > 0 ? d.pitch : 1.2f * size;
         float lineHeight = LineBoxes.settle(Math.clamp(pitch, 0.7f * size, 3f * size), size);
-        Align align = bullet != null && d.lines.size() == 1 ? Align.LEFT : d.align;
+        boolean rtl = Marker.startIndex(first) > 0;
+        Align align = bullet != null && d.lines.size() == 1 ? rtl ? Align.RIGHT : Align.LEFT : d.align;
         int order = -1;
         boolean hidden = false;
         if (paint != null) {
@@ -291,37 +300,45 @@ final class TextFrames {
             float marginRight = 0;
             float indent = 0;
             Align align = g.align;
-            switch (align) {
-                case CENTER -> {
-                    float centre = 0;
-                    for (Line l : g.d.lines) {
-                        centre += l.centre();
+            boolean rtl = runs.bidi && (align == Align.RIGHT || align == Align.JUSTIFY);
+            if (rtl) {
+                marginRight = Math.max(0, boxRight - startEdge(g));
+                indent = boxRight - g.d.first().right - marginRight;
+                marginLeft = align == Align.JUSTIFY ? Math.max(0, g.left - boxLeft) : 0;
+            } else {
+                switch (align) {
+                    case CENTER -> {
+                        float centre = 0;
+                        for (Line l : g.d.lines) {
+                            centre += l.centre();
+                        }
+                        centre /= g.d.lines.size();
+                        float shift = 2 * centre - boxLeft - boxRight;
+                        float spare = Math.max(0, boxRight - boxLeft - (g.right - g.left) - 1f);
+                        shift = Math.clamp(shift, -spare, spare);
+                        marginLeft = Math.max(0, shift);
+                        marginRight = Math.max(0, -shift);
                     }
-                    centre /= g.d.lines.size();
-                    float shift = 2 * centre - boxLeft - boxRight;
-                    float spare = Math.max(0, boxRight - boxLeft - (g.right - g.left) - 1f);
-                    shift = Math.clamp(shift, -spare, spare);
-                    marginLeft = Math.max(0, shift);
-                    marginRight = Math.max(0, -shift);
-                }
-                case RIGHT -> marginRight = Math.max(0, boxRight - g.right);
-                default -> {
-                    marginLeft = Math.max(0, g.restX - boxLeft);
-                    float firstStart = g.bullet != null ? g.d.first().x : g.firstX;
-                    indent = firstStart - boxLeft - marginLeft;
-                    if (align == Align.JUSTIFY) {
-                        marginRight = Math.max(0, boxRight - g.right);
-                    } else {
-                        marginRight = wrapMargin(g, boxRight);
+                    case RIGHT -> marginRight = Math.max(0, boxRight - g.right);
+                    default -> {
+                        marginLeft = Math.max(0, g.restX - boxLeft);
+                        float firstStart = g.bullet != null ? g.d.first().x : g.firstX;
+                        indent = firstStart - boxLeft - marginLeft;
+                        if (align == Align.JUSTIFY) {
+                            marginRight = Math.max(0, boxRight - g.right);
+                        } else {
+                            marginRight = wrapMargin(g, boxRight);
+                        }
                     }
                 }
             }
-            if (g.bullet != null && align != Align.LEFT && align != Align.JUSTIFY) {
+            boolean listed = align == Align.LEFT || align == Align.JUSTIFY || rtl && align == Align.RIGHT;
+            if (g.bullet != null && !listed) {
                 runs = content.runs(g.d, 0, boxLeft, boxRight);
                 OfficeFonts.restore(runs, g.d);
                 iconsOut(runs, g.d, null);
             }
-            Bullet bullet = align == Align.LEFT || align == Align.JUSTIFY ? g.bullet : null;
+            Bullet bullet = listed ? g.bullet : null;
             out.add(new TextPara(runs, align, marginLeft, indent, marginRight, g.lineHeight, spaceBefore,
                     g.firstBaseline() - top, g.lastBaseline() - top, g.size, bullet, linkLines(g.d, runs)));
             prev = g;
@@ -447,10 +464,22 @@ final class TextFrames {
                 }
                 Line l = lines.get(i);
                 Word nextWord = lines.get(i + 1).words.getFirst();
-                room = Math.min(room, l.right + spaceWidth(l) + breakablePart(nextWord));
+                float part = BreakUnits.unspaced(lines.get(i + 1)) ? BreakUnits.syllable(nextWord) : breakablePart(nextWord);
+                room = Math.min(room, l.right + spaceWidth(l) + part);
             }
         }
         return room;
+    }
+
+    private static float startEdge(Draft g) {
+        if (g.d.lines.size() < 2) {
+            return g.bullet != null ? Bullets.textEnd(g.d) : g.d.first().right;
+        }
+        float edge = -Float.MAX_VALUE;
+        for (int i = 1; i < g.d.lines.size(); i++) {
+            edge = Math.max(edge, g.d.lines.get(i).right);
+        }
+        return edge;
     }
 
     private static float wrapMargin(Draft g, float boxRight) {

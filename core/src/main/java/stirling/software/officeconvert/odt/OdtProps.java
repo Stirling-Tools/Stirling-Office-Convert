@@ -1,21 +1,33 @@
 package stirling.software.officeconvert.odt;
 
+import java.util.Objects;
 import java.util.Set;
 
 import stirling.software.officeconvert.model.RunStyle;
+import stirling.software.officeconvert.model.Scripts;
 
 final class OdtProps {
 
     private OdtProps() {}
 
     static String text(RunStyle s, RunStyle base, Set<String> fonts) {
+        return text(s, base, fonts, null, null);
+    }
+
+    static String text(RunStyle s, RunStyle base, Set<String> fonts, String text, Scripts.Profile profile) {
         StringBuilder sb = new StringBuilder();
-        if (s.font() != null && !s.font().equals(base.font())) {
-            fonts.add(s.font());
-            String f = OdtXml.esc(s.font());
-            sb.append(" style:font-name=\"").append(f).append("\" style:font-name-asian=\"").append(f)
-                    .append("\" style:font-name-complex=\"").append(f).append('"');
+        String family = s.font() != null ? s.font() : base.font();
+        Scripts.Fonts f = Scripts.fonts(family, text, profile);
+        if (s.font() != null && !s.font().equals(base.font()) || !Objects.equals(f.latin(), family)
+                || !Objects.equals(f.eastAsian(), family) || !Objects.equals(f.complex(), family)) {
+            fonts.add(f.latin());
+            fonts.add(f.eastAsian());
+            fonts.add(f.complex());
+            sb.append(" style:font-name=\"").append(OdtXml.esc(f.latin())).append("\" style:font-name-asian=\"")
+                    .append(OdtXml.esc(f.eastAsian())).append("\" style:font-name-complex=\"").append(OdtXml.esc(f.complex()))
+                    .append('"');
         }
+        sb.append(Scripts.odfLanguages(Scripts.beyond(Scripts.languages(text, profile), profile)));
         if (Math.abs(s.size() - base.size()) > 0.01f) {
             String size = OdtXml.pt(Math.max(1f, Math.min(1638f, s.size())));
             sb.append(" fo:font-size=\"").append(size).append("\" style:font-size-asian=\"").append(size)

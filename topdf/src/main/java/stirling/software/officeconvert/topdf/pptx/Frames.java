@@ -43,7 +43,7 @@ final class Frames {
                 SmartArtLayout.paint(deck, shapes, d, space);
             } else {
                 String part = drawing.getPackagePart().getPartName().getName();
-                shapes.group(g, space.withRelsPart(part), true);
+                shapes.group(unscaled(g, space), space.onSlide().withRelsPart(part), true);
             }
             return;
         }
@@ -70,6 +70,21 @@ final class Frames {
         } finally {
             canvas.restore();
         }
+    }
+
+    // The stored drawing is laid out for the frame as it appears on the slide, so outer groups move it but do not scale it
+    private static XSLFGroupShape unscaled(XSLFGroupShape g, Space space) {
+        Rectangle2D anchor = g.getAnchor();
+        if (anchor == null) {
+            return g;
+        }
+        Frame f = space.place(anchor, g.getRotation(), g.getFlipHorizontal(), g.getFlipVertical());
+        g.setAnchor(new Rectangle2D.Double(f.x(), f.y(), f.width(), f.height()));
+        g.setInteriorAnchor(new Rectangle2D.Double(0, 0, f.width(), f.height()));
+        g.setRotation(f.rotation());
+        g.setFlipHorizontal(f.flipH());
+        g.setFlipVertical(f.flipV());
+        return g;
     }
 
     // Charts are drawn from their cached values; the embedded workbook is never opened

@@ -1,6 +1,11 @@
 package stirling.software.officeconvert.topdf.pptx;
 
+import java.awt.Shape;
 import java.awt.geom.AffineTransform;
+import java.awt.geom.FlatteningPathIterator;
+import java.awt.geom.NoninvertibleTransformException;
+import java.awt.geom.Path2D;
+import java.awt.geom.PathIterator;
 import java.awt.geom.Rectangle2D;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -22,6 +27,8 @@ import org.openxmlformats.schemas.drawingml.x2006.main.CTTextListStyle;
 import org.openxmlformats.schemas.presentationml.x2006.main.CTPlaceholder;
 import org.openxmlformats.schemas.presentationml.x2006.main.CTShape;
 
+import stirling.software.officeconvert.topdf.font.BidiRuns;
+import stirling.software.officeconvert.topdf.font.FontFace;
 import stirling.software.officeconvert.topdf.pdf.PdfCanvas;
 
 final class TextFrame {
@@ -52,8 +59,15 @@ final class TextFrame {
 
     private Warp warp;
 
-    // WordArt warps whose guide lines are straight: the text is stretched between them
-    record Warp(String preset, float adj) {}
+    private float spin;
+
+    // WordArt warps: straight guide lines stretch the text between them, curved ones bend its outlines
+    record Warp(String preset, float adj) {
+
+        boolean curved() {
+            return preset.equals("textDeflate") || preset.equals("textInflate");
+        }
+    }
 
     private TextFrame(Deck deck, List<Para> paras, Insets insets, VerticalAlignment anchor,
             boolean centered, boolean wrap, TextDirection direction, float rotation, int columns, float columnGap) {
@@ -121,6 +135,7 @@ final class TextFrame {
         TextFrame frame = new TextFrame(deck, paras, in, anchor == null ? VerticalAlignment.TOP : anchor,
                 shape.isHorizontalCentered(), shape.getWordWrap(), dir, rot, columns, gap);
         frame.warp = chain.isEmpty() ? null : warp(chain.get(0));
+        frame.spin = chain.isEmpty() ? 0 : Cameras.revolution(chain.get(0));
         return frame;
     }
 
@@ -173,20 +188,30 @@ final class TextFrame {
                 return null;
             }
             String prst = c.getAttributeText(new QName("", "prst"));
-            float adj = "textPlain".equals(prst) ? 50_000 : 55_556;
+            float fallback = switch (prst == null ? "" : prst) {
+                case "textPlain" -> 50_000;
+                case "textDeflate", "textInflate" -> 18_750;
+                default -> 55_556;
+            };
+            float adj = fallback;
             if (c.toChild(A, "avLst") && c.toChild(A, "gd")) {
                 String f = c.getAttributeText(new QName("", "fmla"));
                 if (f != null && f.strip().startsWith("val ")) {
                     try {
                         adj = Float.parseFloat(f.strip().substring(4).strip());
                     } catch (NumberFormatException e) {
-                        adj = "textPlain".equals(prst) ? 50_000 : 55_556;
+                        adj = fallback;
                     }
                 }
+            }
+            if (!Float.isFinite(adj)) {
+                adj = fallback;
             }
             return switch (prst == null ? "" : prst) {
                 case "textPlain", "textSlantUp", "textSlantDown" ->
                     new Warp(prst, Math.max(0, Math.min(100_000, adj)) / 100_000f);
+                case "textDeflate" -> new Warp(prst, Math.max(0, Math.min(37_500, adj)) / 100_000f);
+                case "textInflate" -> new Warp(prst, Math.max(0, Math.min(20_000, adj)) / 100_000f);
                 default -> null;
             };
         } catch (RuntimeException e) {
@@ -268,7 +293,33 @@ final class TextFrame {
         return b.height + insets.top() + insets.bottom();
     }
 
+    // A text body turned by a camera is laid out in the shape's whole box, not its geometry's text rectangle
+    boolean spun() {
+        return spin != 0;
+    }
+
     void draw(PdfCanvas canvas, Rectangle2D box) throws IOException {
+        if (spin == 0) {
+            drawUnturned(canvas, box);
+            return;
+        }
+        // A camera turning the text body turns the whole text box, its insets included, about its centre
+        double cx = box.getCenterX();
+        double cy = box.getCenterY();
+        Rectangle2D turned = spin == 90 || spin == 270
+                ? new Rectangle2D.Double(cx - box.getHeight() / 2, cy - box.getWidth() / 2, box.getHeight(),
+                        box.getWidth())
+                : box;
+        canvas.save();
+        try {
+            canvas.rotate(spin, (float) cx, (float) cy);
+            drawUnturned(canvas, turned);
+        } finally {
+            canvas.restore();
+        }
+    }
+
+    private void drawUnturned(PdfCanvas canvas, Rectangle2D box) throws IOException {
         Rectangle2D area = new Rectangle2D.Double(box.getX() + insets.left(), box.getY() + insets.top(),
                 box.getWidth() - insets.left() - insets.right(), box.getHeight() - insets.top() - insets.bottom());
         double turn = rotation;
@@ -332,7 +383,9 @@ final class TextFrame {
             return;
         }
         TextBlock b = TextBlock.layout(paras, areaW, wrap);
-        if (warp != null && direction == TextDirection.HORIZONTAL && warped(canvas, b, area)) {
+        Rectangle2D box = new Rectangle2D.Double(area.getX() - insets.left(), area.getY() - insets.top(),
+                area.getWidth() + insets.left() + insets.right(), area.getHeight() + insets.top() + insets.bottom());
+        if (warp != null && direction == TextDirection.HORIZONTAL && warped(canvas, b, box)) {
             return;
         }
         float dy = switch (anchor) {
@@ -357,7 +410,8 @@ final class TextFrame {
         TextPainter.draw(canvas, b, (float) area.getX() + dx, (float) area.getY() + dy, deck);
     }
 
-    // The text from the cap height of its first line to the baseline of its last fills the warp's band
+    // The ink of the text, from the top of its first line to the bottom of its last, fills the warp's band
+    // across the shape's whole box, its insets ignored
     private boolean warped(PdfCanvas canvas, TextBlock b, Rectangle2D area) throws IOException {
         float x0 = Float.MAX_VALUE;
         float x1 = -Float.MAX_VALUE;
@@ -377,14 +431,14 @@ final class TextFrame {
         if (first == null || !(x1 - x0 > 0.5f) || !(w > 1) || !(h > 1)) {
             return false;
         }
-        float y0 = first.baseline - capHeight(first);
-        float y1 = last.baseline;
+        float y0 = first.baseline + ink(first, true);
+        float y1 = last.baseline + ink(last, false);
         if (!(y1 - y0 > 0.5f)) {
             return false;
         }
         double dy = warp.adj() * h;
         double sx = w / (x1 - x0);
-        double band = warp.preset().equals("textPlain") ? h : h - dy;
+        double band = warp.preset().equals("textPlain") || warp.curved() ? h : h - dy;
         double sy = band / (y1 - y0);
         double shear = switch (warp.preset()) {
             case "textSlantUp" -> -dy / (x1 - x0);
@@ -397,11 +451,93 @@ final class TextFrame {
         canvas.save();
         try {
             canvas.transform(t);
+            AffineTransform back = t.createInverse();
+            Rectangle2D local = back.createTransformedShape(area).getBounds2D();
+            if (warp.curved() && plainScript(b)) {
+                boolean inflate = warp.preset().equals("textInflate");
+                TextPainter.drawWarped(canvas, b, deck, new TextPainter.Warped(
+                        s -> back.createTransformedShape(bend(t.createTransformedShape(s), area, dy, inflate)), t,
+                        local));
+            } else {
+                TextPainter.drawWarped(canvas, b, deck, new TextPainter.Warped(null, t, local));
+            }
+        } catch (NoninvertibleTransformException e) {
             TextPainter.draw(canvas, b, 0, 0, deck);
         } finally {
             canvas.restore();
         }
         return true;
+    }
+
+    private static boolean plainScript(TextBlock b) {
+        for (Line l : b.lines) {
+            String text = l.chars.text(l.start, l.contentEnd, true);
+            if (l.para.rtl() || BidiRuns.needed(text) || FontFace.needsShaping(text)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    // Each point keeps its place across the box and its share of the height between the two guide curves
+    static Shape bend(Shape s, Rectangle2D area, double dy, boolean inflate) {
+        Path2D.Double out = new Path2D.Double();
+        double[] c = new double[6];
+        double lx = 0;
+        double ly = 0;
+        for (PathIterator it = new FlatteningPathIterator(s.getPathIterator(null), 0.05, 12); !it.isDone();
+                it.next()) {
+            int type = it.currentSegment(c);
+            if (type == PathIterator.SEG_CLOSE) {
+                out.closePath();
+                continue;
+            }
+            if (type == PathIterator.SEG_LINETO) {
+                int steps = (int) Math.min(64, Math.ceil(Math.abs(c[0] - lx)));
+                for (int k = 1; k < steps; k++) {
+                    double f = (double) k / steps;
+                    out.lineTo(lx + (c[0] - lx) * f, bentY(lx + (c[0] - lx) * f, ly + (c[1] - ly) * f, area, dy,
+                            inflate));
+                }
+                out.lineTo(c[0], bentY(c[0], c[1], area, dy, inflate));
+            } else {
+                out.moveTo(c[0], bentY(c[0], c[1], area, dy, inflate));
+            }
+            lx = c[0];
+            ly = c[1];
+        }
+        return out;
+    }
+
+    private static double bentY(double x, double y, Rectangle2D area, double dy, boolean inflate) {
+        double u = Math.max(0, Math.min(1, (x - area.getX()) / area.getWidth()));
+        double v = (y - area.getY()) / area.getHeight();
+        double m = 1 - u;
+        double depth = inflate ? dy * (m * m * m - u * m * m - u * u * m + u * u * u) : 4 * u * m * dy;
+        return area.getY() + depth + v * (area.getHeight() - 2 * depth);
+    }
+
+    // How far the line's glyphs reach above (negative) or below its baseline
+    private static float ink(Line l, boolean top) {
+        Chars ch = l.chars;
+        float reach = Float.NaN;
+        for (int i = l.start; i < l.contentEnd; i++) {
+            Piece p = ch.pieces.get(ch.piece[i]);
+            var face = p.style().face();
+            int cp = ch.codePoints[i];
+            java.awt.Shape g = face.covers(cp) && face.glyph(cp) > 0 ? face.glyphOutline(face.glyph(cp)) : null;
+            Rectangle2D r = g == null ? null : g.getBounds2D();
+            if (r == null || r.isEmpty() || face.unitsPerEm() <= 0) {
+                continue;
+            }
+            float scale = p.style().size() / face.unitsPerEm();
+            float y = (float) (top ? r.getMinY() : r.getMaxY()) * scale;
+            reach = Float.isNaN(reach) ? y : top ? Math.min(reach, y) : Math.max(reach, y);
+        }
+        if (Float.isNaN(reach)) {
+            return top ? -capHeight(l) : 0;
+        }
+        return reach;
     }
 
     private static float capHeight(Line l) {

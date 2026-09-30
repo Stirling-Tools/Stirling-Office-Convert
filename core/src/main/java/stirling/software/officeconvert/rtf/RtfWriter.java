@@ -19,6 +19,7 @@ import stirling.software.officeconvert.model.Block;
 import stirling.software.officeconvert.model.Numbering;
 import stirling.software.officeconvert.model.Paragraph;
 import stirling.software.officeconvert.model.Picture;
+import stirling.software.officeconvert.model.Scripts;
 import stirling.software.officeconvert.model.Section;
 import stirling.software.officeconvert.model.StyleSheet;
 import stirling.software.officeconvert.model.Table;
@@ -179,7 +180,11 @@ public final class RtfWriter implements DocSink, Closeable {
         if (sectionOpen) {
             closeSection(last);
         }
-        StringBuilder head = new StringBuilder("{\\rtf1\\ansi\\ansicpg1252\\uc1\\deff0\\deflang1033\\deflangfe1033\\adeflang1025\n");
+        int fe = Scripts.lcid(styles.scripts.eastAsian());
+        int complex = Scripts.lcid(styles.scripts.complex());
+        int latin = Scripts.lcid(styles.scripts.latin());
+        StringBuilder head = new StringBuilder("{\\rtf1\\ansi\\ansicpg1252\\uc1\\deff0\\deflang").append(latin > 0 ? latin : 1033)
+                .append("\\deflangfe").append(fe > 0 ? fe : 1033).append("\\adeflang").append(complex > 0 ? complex : 1025).append('\n');
         StringBuilder sheet = new StringBuilder();
         RtfParts.stylesheet(sheet, styles, writer.styleNumbers, writer);
         StringBuilder lists = new StringBuilder();

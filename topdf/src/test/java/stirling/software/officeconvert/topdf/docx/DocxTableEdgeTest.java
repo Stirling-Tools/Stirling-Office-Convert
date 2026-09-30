@@ -172,6 +172,24 @@ class DocxTableEdgeTest {
     }
 
     @Test
+    void anAutofitTableWithoutCellWidthsIsSizedFromItsText() throws IOException {
+        String longText = "Plenty of words that run far wider than the whole text column of a letter page when set on"
+                + " one line";
+        String cells = "<w:tr><w:tc><w:p><w:r><w:t>Short</w:t></w:r></w:p></w:tc><w:tc>" + DocxDoc.p("Next " + longText)
+                + "</w:tc></w:tr><w:tr><w:tc>" + DocxDoc.p("Tiny") + "</w:tc><w:tc>" + DocxDoc.p("Cell") + "</w:tc></w:tr>";
+        String grid = "<w:tblPr><w:tblW w:w=\"0\" w:type=\"auto\"/></w:tblPr><w:tblGrid><w:gridCol w:w=\"4000\"/>"
+                + "<w:gridCol w:w=\"4000\"/></w:tblGrid>";
+        String small = "<w:tbl>" + grid + "<w:tr><w:tc>" + DocxDoc.p("Ab") + "</w:tc><w:tc>" + DocxDoc.p("Cd")
+                + "</w:tc></w:tr></w:tbl>";
+        DocxDoc.Rendered r = render("autofit", "<w:tbl>" + grid + cells + "</w:tbl>" + DocxDoc.p("Gap") + small);
+        // The first column is as wide as its longest line, Short, plus the two 5.4 pt cell margins
+        assertEquals(r.word("Short").x() + 23.9f + 10.8f, r.word("Next").x(), 1.5f);
+        assertEquals(r.word("Next").x(), r.word("Cell").x(), 0.1f);
+        assertTrue(r.word("line").y() > r.word("Next").y(), "the long text wraps inside the column");
+        assertEquals(r.word("Ab").x() + 12.2f + 10.8f, r.word("Cd").x(), 1.5f);
+    }
+
+    @Test
     void aPageBreakInsideATableClosesAndReopensItWithItsOuterBorders() throws IOException {
         String borders = border("top", "single", 18) + border("bottom", "single", 18) + border("insideH", "dotted", 4);
         StringBuilder rows = new StringBuilder();

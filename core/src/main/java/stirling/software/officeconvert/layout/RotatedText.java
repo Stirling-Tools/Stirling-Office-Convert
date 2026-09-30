@@ -9,7 +9,7 @@ import stirling.software.officeconvert.extract.Glyph;
 
 final class RotatedText {
 
-    record Block(int direction, List<Line> lines, Box onPage) {
+    record Block(int direction, List<Line> lines, Box onPage, boolean upright) {
 
         float size() {
             return lines.getFirst().size;
@@ -27,19 +27,21 @@ final class RotatedText {
     private RotatedText() {}
 
     static List<Block> blocks(List<Glyph> rotated, float pageW, float pageH) {
-        Map<Integer, List<Glyph>> byDirection = new TreeMap<>();
-        for (Glyph g : rotated) {
-            if (g.vertAlign == 90 || g.vertAlign == 180 || g.vertAlign == 270) {
-                byDirection.computeIfAbsent(g.vertAlign, k -> new ArrayList<>()).add(upright(g, pageW, pageH));
-            }
-        }
         List<Block> out = new ArrayList<>();
-        byDirection.forEach((direction, glyphs) -> {
-            List<Line> rows = LineGroups.joinRows(new ArrayList<>(LineBuilder.build(glyphs)));
-            for (List<Line> stack : stacks(rows)) {
-                out.add(new Block(direction, stack, onPage(bounds(stack), direction, pageW, pageH)));
+        for (boolean upright : new boolean[] {false, true}) {
+            Map<Integer, List<Glyph>> byDirection = new TreeMap<>();
+            for (Glyph g : rotated) {
+                if ((g.vertAlign == 90 || g.vertAlign == 180 || g.vertAlign == 270) && g.upright == upright) {
+                    byDirection.computeIfAbsent(g.vertAlign, k -> new ArrayList<>()).add(upright(g, pageW, pageH));
+                }
             }
-        });
+            byDirection.forEach((direction, glyphs) -> {
+                List<Line> rows = LineGroups.joinRows(new ArrayList<>(LineBuilder.build(glyphs)));
+                for (List<Line> stack : stacks(rows, upright ? UPRIGHT_GAP : GAP)) {
+                    out.add(new Block(direction, stack, onPage(bounds(stack), direction, pageW, pageH), upright));
+                }
+            });
+        }
         return out;
     }
 
@@ -72,13 +74,17 @@ final class RotatedText {
         return up;
     }
 
-    private static List<List<Line>> stacks(List<Line> rows) {
+    private static final float GAP = 0.8f;
+
+    private static final float UPRIGHT_GAP = 1.3f;
+
+    private static List<List<Line>> stacks(List<Line> rows, float gap) {
         List<List<Line>> out = new ArrayList<>();
         for (Line row : rows) {
             List<Line> last = out.isEmpty() ? null : out.getLast();
             Line prev = last == null ? null : last.getLast();
             boolean joins = prev != null
-                    && row.top - prev.bottom < 0.8f * row.size
+                    && row.top - prev.bottom < gap * row.size
                     && row.x < prev.right && prev.x < row.right
                     && Math.abs(row.size - prev.size) < 0.2f * prev.size;
             if (joins) {

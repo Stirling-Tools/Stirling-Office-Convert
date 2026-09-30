@@ -49,6 +49,11 @@ abstract class Region {
         return new float[] {top, x0, x1};
     }
 
+    // The document grid's line pitch that lines here snap to, or 0
+    float gridPitch() {
+        return 0;
+    }
+
     boolean wraps() {
         return paginated();
     }

@@ -45,6 +45,7 @@ public final class XlsxRenderer {
                 throw e;
             } catch (RuntimeException e) {
                 job.warn("Sheet " + ref.name() + " could not be read and was left out");
+                job.losePart();
             }
         }
         int total = 0;
@@ -58,7 +59,8 @@ public final class XlsxRenderer {
         PagePainter painter = new PagePainter(book);
         int number = 0;
         PageSize first = null;
-        for (Object entry : plans) {
+        for (int k = 0; k < plans.size(); k++) {
+            Object entry = plans.set(k, null);
             if (entry instanceof ChartSheet chart) {
                 number++;
                 chart.print(job, workbook.themePart);

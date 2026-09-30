@@ -3,6 +3,7 @@ package stirling.software.officeconvert.topdf.io;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InterruptedIOException;
+import java.util.concurrent.ArrayBlockingQueue;
 
 import javax.xml.XMLConstants;
 import javax.xml.parsers.DocumentBuilder;
@@ -42,8 +43,8 @@ public final class SecureXml {
 
     private static final XMLInputFactory STAX = staxFactory();
 
-    // Making a builder costs as much as parsing a small part; each thread keeps one, taken out while in use
-    private static final ThreadLocal<DocumentBuilder> REUSED = new ThreadLocal<>();
+    // Conversions use fresh threads; an exclusive, bounded pool avoids rebuilding parsers for each request.
+    private static final ArrayBlockingQueue<DocumentBuilder> REUSED = new ArrayBlockingQueue<>(8);
 
     private static final EntityResolver NO_ENTITIES = (publicId, systemId) -> {
         throw new SAXException("External entities are not allowed: " + systemId);
@@ -115,8 +116,7 @@ public final class SecureXml {
     }
 
     public static Document parse(InputStream in) throws IOException {
-        DocumentBuilder builder = REUSED.get();
-        REUSED.remove();
+        DocumentBuilder builder = REUSED.poll();
         if (builder == null) {
             builder = documentBuilder();
         }
@@ -134,7 +134,7 @@ public final class SecureXml {
                 builder.reset();
                 builder.setEntityResolver(NO_ENTITIES);
                 builder.setErrorHandler(STRICT);
-                REUSED.set(builder);
+                REUSED.offer(builder);
             }
         }
     }

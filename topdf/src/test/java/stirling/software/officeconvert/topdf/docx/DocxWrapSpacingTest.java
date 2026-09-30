@@ -121,8 +121,8 @@ class DocxWrapSpacingTest {
         for (int i = 0; i < 30; i++) {
             cell.append(DocxDoc.p("L" + i));
         }
-        String table = "<w:tbl><w:tblGrid><w:gridCol w:w=\"9000\"/></w:tblGrid><w:tr><w:tc>" + cell
-                + "</w:tc></w:tr></w:tbl>";
+        String table = "<w:tbl><w:tblGrid><w:gridCol w:w=\"9000\"/></w:tblGrid><w:tr><w:tc><w:tcPr><w:tcW w:w=\"9000\""
+                + " w:type=\"dxa\"/></w:tcPr>" + cell + "</w:tc></w:tr></w:tbl>";
         String sect = "<w:sectPr><w:footerReference w:type=\"default\" r:id=\"rIdf1xml\"/>" + LETTER + "</w:sectPr>";
         DocxDoc.Rendered r = DocxDoc.render(dir, "rowfoot", new DocxDoc().styles(DEFAULTS).footer("f1.xml", footer)
                 .body(fillers(30, "F") + table).section(sect).bytes());

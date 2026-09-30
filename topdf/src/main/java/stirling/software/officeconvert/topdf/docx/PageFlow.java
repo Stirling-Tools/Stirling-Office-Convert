@@ -69,6 +69,8 @@ final class PageFlow extends Region {
 
     private final Map<Drawing, Integer> anchoredOn = new IdentityHashMap<>();
 
+    private final Map<Drawing, Seed> refreshed = new IdentityHashMap<>();
+
     private boolean stopped;
 
     private boolean breakTop;
@@ -91,22 +93,29 @@ final class PageFlow extends Region {
         PageFlow flow = new PageFlow(ctx);
         flow.run();
         Set<Para> breaks = Collections.newSetFromMap(new IdentityHashMap<>());
+        Map<Drawing, Integer> before = Map.of();
         for (int pass = 1; pass < PASSES && !flow.stopped; pass++) {
             Map<Integer, List<Seed>> next = new HashMap<>();
             boolean changed = !flow.late.isEmpty();
+            int shifted = firstShift(before, flow.anchoredOn);
             for (Map.Entry<Integer, List<Seed>> e : flow.seeds.entrySet()) {
                 for (Seed s : e.getValue()) {
                     Integer on = flow.anchoredOn.get(s.drawing());
                     if (on != null && on.intValue() == e.getKey()) {
-                        next.computeIfAbsent(e.getKey(), k -> new ArrayList<>()).add(s);
+                        next.computeIfAbsent(e.getKey(), k -> new ArrayList<>())
+                                .add(flow.refreshed.getOrDefault(s.drawing(), s));
                         continue;
                     }
                     changed = true;
-                    if (on != null && on > e.getKey()) {
+                    if (on != null && e.getKey() > shifted) {
+                        // Pages moved earlier in the document, so the object goes with its anchor's new page
+                        next.computeIfAbsent(on, k -> new ArrayList<>()).add(s);
+                    } else if (on != null && on > e.getKey()) {
                         breaks.add(s.para());
                     }
                 }
             }
+            before = flow.anchoredOn;
             for (Map.Entry<Integer, List<Seed>> e : flow.late.entrySet()) {
                 next.computeIfAbsent(e.getKey(), k -> new ArrayList<>()).addAll(e.getValue());
             }
@@ -124,6 +133,18 @@ final class PageFlow extends Region {
             flow = again;
         }
         return flow;
+    }
+
+    // The first page, in the earlier pass, whose objects landed on another page in the later one
+    private static int firstShift(Map<Drawing, Integer> before, Map<Drawing, Integer> after) {
+        int first = Integer.MAX_VALUE;
+        for (Map.Entry<Drawing, Integer> e : before.entrySet()) {
+            Integer now = after.get(e.getKey());
+            if (now != null && !now.equals(e.getValue())) {
+                first = Math.min(first, e.getValue());
+            }
+        }
+        return first;
     }
 
     private static Map<Integer, Integer> sectionCounts(List<PageBox> pages) {
@@ -178,7 +199,12 @@ final class PageFlow extends Region {
         return !((type.equals("continuous") || type.equals("nextColumn")) && next.samePage(current));
     }
 
+    @Override
     float gridPitch() {
+        return pitch(sect);
+    }
+
+    private static float pitch(SectionProps sect) {
         if (sect == null || sect.gridType == null || sect.linePitch <= 1) {
             return 0;
         }
@@ -190,6 +216,7 @@ final class PageFlow extends Region {
 
     private void startSection(Section s, int index) {
         SectionProps props = s.props();
+        ctx.gridPitch = pitch(props);
         SectionProps previous = sect;
         int previousIndex = sectionIndex;
         sectionIndex = index;
@@ -597,7 +624,7 @@ final class PageFlow extends Region {
         if (!"continuous".equals(next.type) || !next.samePage(sect) || columnBreak(sections.get(i).blocks())) {
             return;
         }
-        StackLayout trial = new StackLayout(colW[0]);
+        StackLayout trial = StackLayout.body(colW[0], pitch(sections.get(i).props()));
         List<Block> blocks = sections.get(i).blocks();
         if (!blocks.isEmpty() && blocks.get(blocks.size() - 1) instanceof Para last && last.sectionMark()
                 && ParaFlow.listed(last)) {
@@ -912,11 +939,18 @@ final class PageFlow extends Region {
         int index = pages.size() - 1;
         anchoredOn.put(d, index);
         addFloat(f);
-        if (seed == null && p != null && d.wraps() && !follows(d)) {
+        if (p != null && d.wraps()) {
             for (PageBox.Exclusion e : page.exclusions) {
-                if (e.owner() == f && overlapsEarlier(e.box())) {
-                    late.computeIfAbsent(index, k -> new ArrayList<>())
-                            .add(new Seed(d, p, new PageBox.Exclusion(e.box(), e.side(), e.band(), null, e.shape())));
+                if (e.owner() != f) {
+                    continue;
+                }
+                Seed now = new Seed(d, p, new PageBox.Exclusion(e.box(), e.side(), e.band(), null, e.shape()));
+                if (seed != null) {
+                    refreshed.put(d, now);
+                    break;
+                }
+                if (overlapsEarlier(e.box(), follows(d))) {
+                    late.computeIfAbsent(index, k -> new ArrayList<>()).add(now);
                     break;
                 }
             }
@@ -928,9 +962,11 @@ final class PageFlow extends Region {
         return d.vRel == null || d.vRel.equals("paragraph") || d.vRel.equals("line");
     }
 
-    private boolean overlapsEarlier(Rectangle2D.Float b) {
+    // A float that follows its paragraph reflows only text in earlier columns, which its anchor cannot move
+    private boolean overlapsEarlier(Rectangle2D.Float b, boolean follows) {
         for (Placed pl : page.placed) {
-            if (pl.fixed || pl.y + pl.strip.height <= b.y + 0.5f || pl.y >= b.y + b.height - 0.5f) {
+            if (pl.fixed || pl.y + pl.strip.height <= b.y + 0.5f || pl.y >= b.y + b.height - 0.5f
+                    || follows && (pl.section != sectionIndex || pl.column >= col)) {
                 continue;
             }
             int c = Math.min(pl.column, colX.length - 1);
@@ -950,6 +986,7 @@ final class PageFlow extends Region {
             page.exclusions.removeIf(e -> e.owner() == h);
             if (h instanceof PageBox.FloatBox f) {
                 anchoredOn.remove(f.drawing());
+                refreshed.remove(f.drawing());
                 List<Seed> l = late.get(pages.size() - 1);
                 if (l != null) {
                     l.removeIf(s -> s.drawing() == f.drawing());

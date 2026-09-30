@@ -40,7 +40,12 @@ final class TablePainter {
         Rectangle2D anchor = table.getAnchor();
         int rows = table.getNumberOfRows();
         int cols = table.getNumberOfColumns();
-        if (anchor == null || rows == 0 || cols == 0 || (long) rows * cols > MAX_CELLS) {
+        if (anchor == null || rows == 0 || cols == 0) {
+            return;
+        }
+        if ((long) rows * cols > MAX_CELLS) {
+            deck.job().warn("A table of more than " + MAX_CELLS + " cells was left out");
+            deck.job().losePart();
             return;
         }
         float[] widths = new float[cols];
@@ -103,6 +108,11 @@ final class TablePainter {
         canvas.save();
         try {
             canvas.transform(f.moved(f.x(), f.y(), totalW * sx, totalH * sy).shapeTransform());
+            Rectangle2D whole = new Rectangle2D.Float(xs[0], ys[0], xs[cols] - xs[0], ys[rows] - ys[0]);
+            Fill background = deck.tableStyles().background(deck.ppt(), table, whole);
+            if (background != null) {
+                canvas.rect(xs[0], ys[0], xs[cols] - xs[0], ys[rows] - ys[0], background, null);
+            }
             for (Cell[] row : grid) {
                 for (Cell cell : row) {
                     if (cell != null) {

@@ -126,6 +126,7 @@ final class LineBreaker {
         boolean content = false;
         boolean words = false;
         float spaceW = 0;
+        float lastTrail = 0;
         List<Item> items = pi.items;
         while (item < items.size()) {
             Item it = items.get(item);
@@ -156,6 +157,7 @@ final class LineBreaker {
                 }
                 case TAB -> {
                     spaceW = 0;
+                    lastTrail = 0;
                     if (group != null) {
                         x = close(group, line);
                         group = null;
@@ -259,8 +261,8 @@ final class LineBreaker {
                     && over <= squeezeLimit(word, w - trail);
             // After nothing but tabs, a word wider than a whole line starts there and breaks at the margin
             boolean huge = !fits && content && !words && group == null && tooWide(word, w - trail, x, right);
-            List<Line.Slice> hyphenated = !fits && content && group == null && !huge ? hyphenPrefix(word, x, right)
-                    : null;
+            List<Line.Slice> hyphenated = !fits && content && group == null && !huge
+                    ? hyphenPrefix(word, x, x - lastTrail, right, spaceW) : null;
             if (hyphenated != null) {
                 float pw = 0;
                 for (Line.Slice s : hyphenated) {
@@ -321,6 +323,7 @@ final class LineBreaker {
             line.zero.addAll(zeros);
             x += w;
             spaceW = Math.max(0, spaceW + join) + (trail > 0 ? Math.max(0, trail + spaceKern(word)) : 0);
+            lastTrail = trail;
             if (group != null) {
                 group.width += w;
                 noteDecimal(group, word, groupW);
@@ -381,10 +384,10 @@ final class LineBreaker {
         return s.item.look == null ? 0 : s.item.look.style().width("-");
     }
 
-    // Word hyphenates a word that does not fit when the gap it would leave is wider than the hyphenation zone
-    private List<Line.Slice> hyphenPrefix(List<Line.Slice> word, float x, float right) {
+    // Word hyphenates a word that does not fit when the gap after the previous word is wider than the zone
+    private List<Line.Slice> hyphenPrefix(List<Line.Slice> word, float x, float textEnd, float right, float spaceW) {
         Settings h = hyphenation;
-        if (h == null || right - x <= h.hyphenationZone || h.consecutiveHyphenLimit > 0
+        if (h == null || right - textEnd <= h.hyphenationZone || h.consecutiveHyphenLimit > 0
                 && hyphenRun >= h.consecutiveHyphenLimit) {
             return null;
         }
@@ -424,7 +427,8 @@ final class LineBreaker {
             for (Line.Slice s : prefix) {
                 w += s.w;
             }
-            if (x + w + hyphenWidth(prefix.get(prefix.size() - 1)) <= right + EPS) {
+            float over = x + w + hyphenWidth(prefix.get(prefix.size() - 1)) - right;
+            if (over <= EPS || shrink > 0 && over - shrink * spaceW <= EPS && over <= squeezeLimit(prefix, w)) {
                 return prefix;
             }
         }
@@ -648,6 +652,15 @@ final class LineBreaker {
         }
     }
 
+    // The end of the character cluster at k: a word too long for the line is cut only between clusters
+    private static int next(String text, int k, int limit) {
+        int nk = k + Character.charCount(text.codePointAt(k));
+        while (nk < limit && Breaks.joined(text, nk)) {
+            nk += Character.charCount(text.codePointAt(nk));
+        }
+        return nk;
+    }
+
     private static List<Line.Slice> splitPrefix(List<Line.Slice> word, float avail) {
         List<Line.Slice> out = new ArrayList<>();
         float used = 0;
@@ -661,8 +674,7 @@ final class LineBreaker {
             int k = s.from;
             float w = 0;
             while (k < s.to) {
-                int cp = it.text.codePointAt(k);
-                int nk = k + Character.charCount(cp);
+                int nk = next(it.text, k, s.to);
                 float cw = it.width(s.from, nk);
                 if (used + cw > avail + EPS) {
                     break;
@@ -671,8 +683,7 @@ final class LineBreaker {
                 k = nk;
             }
             if (k == s.from && out.isEmpty()) {
-                int cp = it.text.codePointAt(k);
-                k += Character.charCount(cp);
+                k = next(it.text, k, s.to);
                 w = it.width(s.from, k);
             }
             if (k > s.from) {

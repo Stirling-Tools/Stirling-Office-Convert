@@ -3,6 +3,7 @@ package stirling.software.officeconvert.topdf.docx;
 import java.awt.Color;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.TreeMap;
 
@@ -136,7 +137,7 @@ final class ChartReader {
                 plotBorder = line(pp);
             }
         }
-        Chart.Text title = title(chart, groups);
+        Chart.Text title = title(chart, groups, space.child("c:txPr"));
         Chart.Legend legend = null;
         XEl lg = chart.child("c:legend");
         if (lg != null) {
@@ -202,18 +203,20 @@ final class ChartReader {
         return new Chart.Layout(inner, xEdge, yEdge, x.floatValue(), y.floatValue(), (float) ww, (float) hh);
     }
 
-    private Chart.Text title(XEl chart, List<Chart.Group> groups) {
+    // A chart whose own text size is set shows an unstyled title in bold at 1.2 times that size, as Office does
+    private Chart.Text title(XEl chart, List<Chart.Group> groups, XEl global) {
         XEl t = chart.child("c:title");
         if (t == null) {
             return null;
         }
-        return titleText(t, 14, groups);
+        float base = size(global, -1);
+        return base > 0 ? titleText(t, base * 1.2f, true, groups) : titleText(t, 14, false, groups);
     }
 
-    private Chart.Text titleText(XEl t, float defaultSize, List<Chart.Group> groups) {
+    private Chart.Text titleText(XEl t, float defaultSize, boolean defaultBold, List<Chart.Group> groups) {
         float size = size(t.child("c:txPr"), defaultSize);
         Color color = color(t.child("c:txPr"), Color.BLACK);
-        boolean bold = bold(t.child("c:txPr"), false);
+        boolean bold = bold(t.child("c:txPr"), defaultBold);
         XEl rich = t.path("c:tx", "c:rich");
         String text = null;
         if (rich != null) {
@@ -351,7 +354,7 @@ final class ChartReader {
         Chart.Marker mk = null;
         if (markers) {
             XEl m = s.child("c:marker");
-            float msize = m == null || m.child("c:size") == null ? 5
+            float msize = m == null ? AUTO_MARKER_SIZE : m.child("c:size") == null ? 5
                     : Math.max(2, Math.min(72, Ooxml.integer(m.child("c:size").val(), 5)));
             Color mfill = fill;
             Color mline = fill;
@@ -370,6 +373,11 @@ final class ChartReader {
         XEl val = s.child(kind == Chart.Kind.SCATTER ? "c:yVal" : "c:val");
         double[] values = numbers(val);
         double[] xs = kind == Chart.Kind.SCATTER ? numbers(s.child("c:xVal")) : null;
+        if (xs != null && Arrays.stream(xs).allMatch(Double::isNaN)) {
+            // Excel plots x values that are text, or missing, at 1, 2, 3 and so on
+            xs = new double[values.length];
+            Arrays.setAll(xs, i -> i + 1);
+        }
         if (categories.isEmpty()) {
             XEl cat = s.child("c:cat");
             if (cat != null) {
@@ -405,6 +413,9 @@ final class ChartReader {
         float blur = Ooxml.emu(s.attr("blurRad"), 0);
         return new Chart.Shadow((float) (dist * Math.cos(dir)), (float) (dist * Math.sin(dir)), Math.min(20, blur), c);
     }
+
+    // Office draws the markers a series gets automatically at size 7
+    private static final float AUTO_MARKER_SIZE = 7;
 
     private static final String[] AUTO_MARKERS = {"diamond", "square", "triangle", "x", "star", "circle", "plus",
         "dash"};
@@ -535,7 +546,7 @@ final class ChartReader {
             unit = null;
         }
         XEl t = ax.child("c:title");
-        Chart.Text title = t == null ? null : titleText(t, 10, null);
+        Chart.Text title = t == null ? null : titleText(t, 10, false, null);
         Float rotation = null;
         XEl body = ax.path("c:txPr", "a:bodyPr");
         if (body != null) {

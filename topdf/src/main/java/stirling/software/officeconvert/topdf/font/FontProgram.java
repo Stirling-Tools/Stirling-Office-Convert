@@ -19,6 +19,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReferenceArray;
 
 import org.apache.fontbox.ttf.CmapLookup;
 import org.apache.fontbox.ttf.CmapSubtable;
@@ -42,6 +44,10 @@ final class FontProgram {
 
     private static final int DIRECT = 0x250;
 
+    private static final int PUNCTUATION = 0x2000;
+
+    private static final int PUNCTUATION_END = 0x20D0;
+
     private final FontEntry entry;
 
     private final FontMetrics metrics;
@@ -53,6 +59,8 @@ final class FontProgram {
     private final int[] advances;
 
     private final int[] direct;
+
+    private final int[] punctuation;
 
     private final boolean symbol;
 
@@ -68,7 +76,9 @@ final class FontProgram {
 
     private final Map<Integer, float[]> inks = new ConcurrentHashMap<>();
 
-    private final Map<Long, Integer> hinted = new ConcurrentHashMap<>();
+    private final AtomicReferenceArray<int[]> hinted = new AtomicReferenceArray<>(401);
+
+    private final AtomicInteger hintedSizes = new AtomicInteger();
 
     private final Map<Integer, Font> pixelFonts = new ConcurrentHashMap<>();
 
@@ -137,6 +147,10 @@ final class FontProgram {
         direct = new int[DIRECT];
         for (int cp = 0; cp < DIRECT; cp++) {
             direct[cp] = search(cp);
+        }
+        punctuation = new int[PUNCTUATION_END - PUNCTUATION];
+        for (int cp = PUNCTUATION; cp < PUNCTUATION_END; cp++) {
+            punctuation[cp - PUNCTUATION] = search(cp);
         }
         kerning = kerning(ttf);
         notdefInk = notdefInk(ttf);
@@ -330,21 +344,25 @@ final class FontProgram {
     }
 
     int glyph(int codePoint) {
-        if (codePoint >= 0 && codePoint < DIRECT) {
-            int g = direct[codePoint];
-            if (g > 0 || !symbol) {
-                return g;
-            }
-        }
-        int g = search(codePoint);
+        int g = lookup(codePoint);
         if (g == 0 && symbol && codePoint >= 0x20 && codePoint <= 0xFF) {
             g = search(0xF000 + codePoint);
         }
         return g;
     }
 
+    private int lookup(int codePoint) {
+        if (codePoint >= 0 && codePoint < DIRECT) {
+            return direct[codePoint];
+        }
+        if (codePoint >= PUNCTUATION && codePoint < PUNCTUATION_END) {
+            return punctuation[codePoint - PUNCTUATION];
+        }
+        return search(codePoint);
+    }
+
     int encode(int codePoint) {
-        if (search(codePoint) > 0) {
+        if (lookup(codePoint) > 0) {
             return codePoint;
         }
         return symbol && codePoint >= 0x20 && codePoint <= 0xFF ? 0xF000 + codePoint : codePoint;
@@ -458,10 +476,17 @@ final class FontProgram {
         if (glyph < 0 || glyph >= advances.length || ppem < 1 || ppem > 400) {
             return -1;
         }
-        long key = (long) ppem << 32 | glyph;
-        Integer known = hinted.get(key);
-        if (known != null) {
-            return known;
+        int[] row = hinted.get(ppem);
+        if (row == null && hintedSizes.get() < 64) {
+            int[] fresh = new int[advances.length];
+            Arrays.fill(fresh, Integer.MIN_VALUE);
+            if (hinted.compareAndSet(ppem, null, fresh)) {
+                hintedSizes.incrementAndGet();
+            }
+            row = hinted.get(ppem);
+        }
+        if (row != null && row[glyph] != Integer.MIN_VALUE) {
+            return row[glyph];
         }
         int made = -1;
         Font f = pixelFont(ppem);
@@ -474,8 +499,8 @@ final class FontProgram {
                 made = -1;
             }
         }
-        if (hinted.size() < 262_144) {
-            hinted.put(key, made);
+        if (row != null) {
+            row[glyph] = made;
         }
         return made;
     }

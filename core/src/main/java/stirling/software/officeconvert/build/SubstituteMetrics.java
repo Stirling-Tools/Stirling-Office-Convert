@@ -1,6 +1,11 @@
 package stirling.software.officeconvert.build;
 
+import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -11,6 +16,8 @@ final class SubstituteMetrics {
 
     private static final Map<Standard14Fonts.FontName, Metrics> FONTS = new ConcurrentHashMap<>();
 
+    private static final Map<String, Short> EXTRA = load();
+
     private SubstituteMetrics() {}
 
     static float width(String text, String family, boolean bold, boolean italic, float size) {
@@ -19,11 +26,41 @@ final class SubstituteMetrics {
             return Float.NaN;
         }
         Metrics metrics = FONTS.computeIfAbsent(name, Metrics::new);
+        String key = family + "|" + ((bold ? 1 : 0) | (italic ? 2 : 0)) + "|";
         float total = 0;
         for (int i = 0; i < text.length(); i++) {
-            total += metrics.width(text.charAt(i));
+            char c = text.charAt(i);
+            float w = metrics.width(c);
+            if (Float.isNaN(w)) {
+                Short extra = EXTRA.get(key + (int) c);
+                w = extra == null ? Float.NaN : extra;
+            }
+            total += w;
         }
         return Float.isNaN(total) ? Float.NaN : total / 1000f * size;
+    }
+
+    private static Map<String, Short> load() {
+        Map<String, Short> out = new HashMap<>();
+        try (InputStream in = SubstituteMetrics.class.getResourceAsStream("stand-in-widths.txt")) {
+            if (in == null) {
+                return out;
+            }
+            BufferedReader r = new BufferedReader(new InputStreamReader(in, StandardCharsets.US_ASCII));
+            for (String line = r.readLine(); line != null; line = r.readLine()) {
+                String[] f = line.split("\\|");
+                if (f.length != 4 || line.startsWith("#")) {
+                    continue;
+                }
+                int cp = Integer.parseInt(f[2], 16);
+                for (String w : f[3].split(" ")) {
+                    out.put(f[0] + "|" + f[1] + "|" + cp++, Short.valueOf(w));
+                }
+            }
+        } catch (IOException | RuntimeException e) {
+            return Map.of();
+        }
+        return out;
     }
 
     private static final class Metrics {

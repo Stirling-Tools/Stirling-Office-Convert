@@ -22,6 +22,7 @@ import org.openxmlformats.schemas.spreadsheetml.x2006.main.CTColor;
 import org.openxmlformats.schemas.spreadsheetml.x2006.main.CTFill;
 import org.openxmlformats.schemas.spreadsheetml.x2006.main.CTPatternFill;
 import org.openxmlformats.schemas.spreadsheetml.x2006.main.CTXf;
+import org.openxmlformats.schemas.spreadsheetml.x2006.main.STFontScheme;
 import org.openxmlformats.schemas.spreadsheetml.x2006.main.STPatternType;
 import org.w3c.dom.Element;
 import org.w3c.dom.Node;
@@ -42,7 +43,7 @@ final class StyleCache {
         this.styles = styles;
         this.colors = colors;
         this.fallback = new CellFormat(defaultFont(), null, null, null, null, null, null, false, false, null, null,
-                false, false, 0, 0, 0, "General");
+                false, false, 0, 0, 0, "General", 0);
     }
 
     FontSpec defaultFont() {
@@ -123,7 +124,19 @@ final class StyleCache {
         }
         CTColor c = f.getCTFont().sizeOfColorArray() > 0 ? f.getCTFont().getColorArray(0) : null;
         Color color = colors.resolve(c, Color.BLACK);
-        return new FontSpec(f.getFontName(), size, f.getBold(), f.getItalic(), u, f.getStrikeout(), color, offset);
+        return new FontSpec(family(f), size, f.getBold(), f.getItalic(), u, f.getStrikeout(), color, offset);
+    }
+
+    // Without a theme part Excel resolves scheme fonts from its own default theme, not the stored name
+    private String family(XSSFFont f) {
+        if (styles == null || styles.getTheme() != null || f.getCTFont().sizeOfSchemeArray() == 0) {
+            return f.getFontName();
+        }
+        STFontScheme.Enum scheme = f.getCTFont().getSchemeArray(0).getVal();
+        if (scheme == STFontScheme.MINOR) {
+            return "Aptos Narrow";
+        }
+        return scheme == STFontScheme.MAJOR ? "Aptos Display" : f.getFontName();
     }
 
     private CellFormat build(XSSFCellStyle style) {
@@ -165,14 +178,18 @@ final class StyleCache {
         boolean shrink = false;
         int indent = 0;
         int rotation = 0;
+        int readingOrder = 0;
         CTCellAlignment a = xf != null && xf.isSetAlignment() ? xf.getAlignment() : null;
         if (a != null) {
-            h = hAlign(style.getAlignment());
-            v = vAlign(style.getVerticalAlignment());
+            h = a.isSetHorizontal() && a.getHorizontal() != null
+                    ? hAlign(HorizontalAlignment.forInt(a.getHorizontal().intValue() - 1)) : h;
+            v = a.isSetVertical() && a.getVertical() != null
+                    ? vAlign(VerticalAlignment.forInt(a.getVertical().intValue() - 1)) : v;
             wrap = a.isSetWrapText() && a.getWrapText();
             shrink = a.isSetShrinkToFit() && a.getShrinkToFit();
             indent = a.isSetIndent() ? (int) Math.min(250, a.getIndent()) : 0;
             rotation = a.isSetTextRotation() ? a.getTextRotation().intValue() : 0;
+            readingOrder = a.isSetReadingOrder() ? (int) Math.min(2, a.getReadingOrder()) : 0;
         }
         int formatIndex = style.getDataFormat();
         String formatString;
@@ -182,7 +199,7 @@ final class StyleCache {
             formatString = "General";
         }
         return new CellFormat(font, fill, left, right, top, bottom, diagonal, up, down, h, v, wrap, shrink, indent,
-                rotation, formatIndex, formatString);
+                rotation, formatIndex, formatString, readingOrder);
     }
 
     private BorderLine line(CTBorderPr pr) {
@@ -249,11 +266,11 @@ final class StyleCache {
         try {
             String rgb = Dml.attr(c, "rgb");
             Color base;
-            if (rgb != null) {
+            if (Dml.attr(c, "theme") != null) {
+                base = colors.themeColor(Integer.parseInt(Dml.attr(c, "theme")));
+            } else if (rgb != null) {
                 int v = (int) Long.parseLong(rgb, 16);
                 base = new Color(v & 0xFFFFFF);
-            } else if (Dml.attr(c, "theme") != null) {
-                base = colors.themeColor(Integer.parseInt(Dml.attr(c, "theme")));
             } else if (Dml.attr(c, "indexed") != null) {
                 base = colors.indexedColor(Integer.parseInt(Dml.attr(c, "indexed")), Color.WHITE);
             } else {

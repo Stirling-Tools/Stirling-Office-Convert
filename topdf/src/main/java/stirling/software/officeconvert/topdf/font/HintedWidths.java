@@ -1,9 +1,7 @@
 package stirling.software.officeconvert.topdf.font;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.Arrays;
+import java.util.TreeMap;
 
 /** Screen widths where Carlito's hinting rounds differently from Calibri's, so Excel-style layout keeps Calibri's. */
 final class HintedWidths {
@@ -26,7 +24,33 @@ final class HintedWidths {
     private static final String BOLD_ITALIC = ""
             + "15:24=7,30=7,31=7,32=7,33=7,34=7,35=7,36=7,37=7,38=7,39=7,a3=7,a5=7,20ac=7";
 
-    private static final List<Map<Long, Integer>> STYLES = styles();
+    private static final int[][][] CODES = new int[4][][];
+
+    private static final int[][][] PIXELS = new int[4][][];
+
+    static {
+        String[] data = {REGULAR, ITALIC, BOLD, BOLD_ITALIC};
+        for (int s = 0; s < 4; s++) {
+            TreeMap<Integer, TreeMap<Integer, Integer>> rows = new TreeMap<>();
+            for (String row : data[s].split(" ")) {
+                int colon = row.indexOf(':');
+                TreeMap<Integer, Integer> items = rows.computeIfAbsent(Integer.parseInt(row, 0, colon, 10),
+                        k -> new TreeMap<>());
+                for (String item : row.substring(colon + 1).split(",")) {
+                    int eq = item.indexOf('=');
+                    items.put(Integer.parseInt(item, 0, eq, 16), Integer.parseInt(item.substring(eq + 1)));
+                }
+            }
+            int[][] codes = new int[rows.lastKey() + 1][];
+            int[][] pixels = new int[rows.lastKey() + 1][];
+            rows.forEach((ppem, items) -> {
+                codes[ppem] = items.keySet().stream().mapToInt(Integer::intValue).toArray();
+                pixels[ppem] = items.values().stream().mapToInt(Integer::intValue).toArray();
+            });
+            CODES[s] = codes;
+            PIXELS[s] = pixels;
+        }
+    }
 
     private HintedWidths() {}
 
@@ -36,24 +60,12 @@ final class HintedWidths {
 
     // Calibri's whole-pixel advance for a Carlito face standing in for it, or -1 when Carlito's own is right
     static int calibri(FontEntry carlito, int codePoint, int ppem) {
-        Integer px = STYLES.get((carlito.bold() ? 2 : 0) + (carlito.italic() ? 1 : 0)).get((long) ppem << 32 | codePoint);
-        return px == null ? -1 : px;
-    }
-
-    private static List<Map<Long, Integer>> styles() {
-        List<Map<Long, Integer>> out = new ArrayList<>();
-        for (String data : new String[] {REGULAR, ITALIC, BOLD, BOLD_ITALIC}) {
-            Map<Long, Integer> style = new HashMap<>();
-            out.add(style);
-            for (String row : data.split(" ")) {
-                int colon = row.indexOf(':');
-                long ppem = Long.parseLong(row, 0, colon, 10);
-                for (String item : row.substring(colon + 1).split(",")) {
-                    int eq = item.indexOf('=');
-                    style.put(ppem << 32 | Integer.parseInt(item, 0, eq, 16), Integer.parseInt(item.substring(eq + 1)));
-                }
-            }
+        int style = (carlito.bold() ? 2 : 0) + (carlito.italic() ? 1 : 0);
+        int[][] codes = CODES[style];
+        if (ppem < 0 || ppem >= codes.length || codes[ppem] == null) {
+            return -1;
         }
-        return out;
+        int at = Arrays.binarySearch(codes[ppem], codePoint);
+        return at < 0 ? -1 : PIXELS[style][ppem][at];
     }
 }

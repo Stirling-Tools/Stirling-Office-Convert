@@ -103,21 +103,23 @@ record FontMeasure(int unitsPerEm, int digit, int winAscent, int winDescent, int
     }
 
     int printerLinePx(double size) {
-        return (int) Math.max(1, textHeightPx(ppem(size, 600)) + 8 + (typoMetrics ? 1 : 0));
+        return (int) Math.max(1, textHeightPx(ppem(size, 600), false) + 8 + (typoMetrics ? 1 : 0));
     }
 
     int screenLinePx(double size) {
         int ppem = ppem(size, 96);
         long text = typoMetrics ? pixels((double) hheaAscent * ppem / unitsPerEm)
                 + pixels((double) Math.abs(hheaDescent) * ppem / unitsPerEm) + pixels((double) hheaLineGap * ppem / unitsPerEm)
-                : textHeightPx(ppem);
+                : textHeightPx(ppem, true);
         return (int) Math.max(1, text + (ppem <= 9 ? 1 : 2));
     }
 
-    private long textHeightPx(int ppem) {
+    // GDI rounds the external leading on screen; the printer's row height drops its fraction
+    private long textHeightPx(int ppem, boolean screen) {
         int ext = Math.max(0, hheaLineGap - (winAscent + winDescent - (hheaAscent - hheaDescent)));
+        double leading = (double) ext * ppem / unitsPerEm;
         return pixels((double) winAscent * ppem / unitsPerEm) + pixels((double) winDescent * ppem / unitsPerEm)
-                + pixels((double) ext * ppem / unitsPerEm);
+                + (screen ? pixels(leading) : (long) Math.floor(leading));
     }
 
     private static long pixels(double v) {

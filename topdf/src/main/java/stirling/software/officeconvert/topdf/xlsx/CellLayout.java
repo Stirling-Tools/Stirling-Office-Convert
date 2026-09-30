@@ -3,6 +3,8 @@ package stirling.software.officeconvert.topdf.xlsx;
 import java.util.ArrayList;
 import java.util.List;
 
+import stirling.software.officeconvert.topdf.font.Clusters;
+
 final class CellLayout {
 
     static final double PAD = 1.92;
@@ -25,7 +27,8 @@ final class CellLayout {
         return (EDGE_PX + Math.ceil(t.measure(font).printerDigit(font.size()) / 4.0)) * PrintMetrics.PX;
     }
 
-    static CellFormat.HAlign horizontal(CellFormat format, CellText text) {
+    // General text starts on its own side: right when it reads right to left, which a mirrored sheet turns round
+    static CellFormat.HAlign horizontal(CellFormat format, CellText text, boolean sheetRtl) {
         CellFormat.HAlign h = format.hAlign();
         if (h != CellFormat.HAlign.GENERAL) {
             return h;
@@ -36,8 +39,29 @@ final class CellLayout {
         return switch (text.kind()) {
             case NUMBER -> CellFormat.HAlign.RIGHT;
             case BOOLEAN, ERROR -> CellFormat.HAlign.CENTER;
-            default -> CellFormat.HAlign.LEFT;
+            default -> rightToLeft(format, text, sheetRtl) != sheetRtl ? CellFormat.HAlign.RIGHT
+                    : CellFormat.HAlign.LEFT;
         };
+    }
+
+    // The cell's reading order: set, else its first strong character, else the sheet's
+    static boolean rightToLeft(CellFormat format, CellText text, boolean sheetRtl) {
+        if (format.readingOrder() == 1 || format.readingOrder() == 2) {
+            return format.readingOrder() == 2;
+        }
+        String s = text == null ? "" : text.plain();
+        for (int i = 0; i < s.length(); ) {
+            int cp = s.codePointAt(i);
+            byte d = Character.getDirectionality(cp);
+            if (d == Character.DIRECTIONALITY_LEFT_TO_RIGHT) {
+                return false;
+            }
+            if (d == Character.DIRECTIONALITY_RIGHT_TO_LEFT || d == Character.DIRECTIONALITY_RIGHT_TO_LEFT_ARABIC) {
+                return true;
+            }
+            i += Character.charCount(cp);
+        }
+        return sheetRtl;
     }
 
     interface Measure {
@@ -55,12 +79,16 @@ final class CellLayout {
         StringBuilder word = new StringBuilder();
         List<TextRun> wordRuns = new ArrayList<>();
         List<Object[]> chars = new ArrayList<>();
+        StringBuilder text = new StringBuilder();
         for (TextRun r : runs) {
             String s = r.text();
+            text.append(s);
             for (int i = 0; i < s.length(); i++) {
                 chars.add(new Object[] {s.charAt(i), r.font()});
             }
         }
+        String all = text.toString();
+        boolean[] words = Clusters.dictionaryBreaks(all);
         int i = 0;
         int n = chars.size();
         while (i < n) {
@@ -77,7 +105,7 @@ final class CellLayout {
             }
             int start = i;
             while (i < n && (char) chars.get(i)[0] != ' ' && (char) chars.get(i)[0] != '\n'
-                    && (char) chars.get(i)[0] != '\r' && (i == start || !breaksBefore(chars, start, i))) {
+                    && (char) chars.get(i)[0] != '\r' && (i == start || !breaksBefore(all, words, start, i))) {
                 i++;
             }
             while (i < n && (char) chars.get(i)[0] == ' ') {
@@ -125,9 +153,14 @@ final class CellLayout {
     }
 
     // Excel also breaks after a hyphen inside a word, even before a digit
-    private static boolean breaksBefore(List<Object[]> chars, int start, int i) {
-        char prev = (char) chars.get(i - 1)[0];
-        return prev == '-' && i - 1 > start || MissingGlyphs.breakBetween(prev, (char) chars.get(i)[0]);
+    // Also where a dictionary ends a Thai word or a zero width space stands, never inside a character cluster
+    private static boolean breaksBefore(String all, boolean[] words, int start, int i) {
+        if (Clusters.joined(all, i)) {
+            return false;
+        }
+        char prev = all.charAt(i - 1);
+        return prev == '-' && i - 1 > start || prev == '\u200B' || words[i]
+                || MissingGlyphs.breakBetween(Character.codePointBefore(all, i), all.codePointAt(i));
     }
 
     private static List<List<TextRun>> breakWord(Measure t, List<TextRun> runs, double width) {
@@ -137,8 +170,11 @@ final class CellLayout {
         for (TextRun r : runs) {
             StringBuilder b = new StringBuilder();
             for (int i = 0; i < r.text().length(); ) {
-                int cp = r.text().codePointAt(i);
-                String ch = new String(Character.toChars(cp));
+                int end = i + Character.charCount(r.text().codePointAt(i));
+                while (end < r.text().length() && Clusters.joined(r.text(), end)) {
+                    end += Character.charCount(r.text().codePointAt(end));
+                }
+                String ch = r.text().substring(i, end);
                 double cw = t.width(ch, r.font());
                 if (w + cw > width && (w > 0 || b.length() > 0)) {
                     if (b.length() > 0) {
@@ -151,7 +187,7 @@ final class CellLayout {
                 }
                 b.append(ch);
                 w += cw;
-                i += Character.charCount(cp);
+                i = end;
             }
             if (b.length() > 0) {
                 line.add(new TextRun(b.toString(), r.font()));

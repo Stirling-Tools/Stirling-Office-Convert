@@ -1,6 +1,7 @@
 package stirling.software.officeconvert.docx;
 
 import stirling.software.officeconvert.model.RunStyle;
+import stirling.software.officeconvert.model.Scripts;
 import stirling.software.officeconvert.model.StyleSheet;
 
 final class StylesPart {
@@ -13,10 +14,15 @@ final class StylesPart {
         sb.append("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n")
                 .append("<w:styles xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\">")
                 .append("<w:docDefaults><w:rPrDefault><w:rPr>");
-        fonts(sb, normal.font());
+        Scripts.Fonts slots = Scripts.defaults(normal.font(), sheet.scripts);
+        String latin = Xml.esc(normal.font());
+        sb.append("<w:rFonts w:ascii=\"").append(latin).append("\" w:hAnsi=\"").append(latin).append("\" w:eastAsia=\"")
+                .append(Xml.esc(slots.eastAsian())).append("\" w:cs=\"").append(Xml.esc(slots.complex())).append("\"/>");
         int hp = Xml.halfPoints(normal.size());
         sb.append("<w:sz w:val=\"").append(hp).append("\"/><w:szCs w:val=\"").append(hp).append("\"/>")
-                .append("<w:lang w:val=\"en-US\" w:eastAsia=\"en-US\" w:bidi=\"ar-SA\"/>")
+                .append("<w:lang w:val=\"").append(latinLanguage(sheet.scripts)).append("\" w:eastAsia=\"")
+                .append(eastAsianLanguage(sheet.scripts))
+                .append("\" w:bidi=\"").append(complexLanguage(sheet.scripts)).append("\"/>")
                 .append("</w:rPr></w:rPrDefault><w:pPrDefault><w:pPr><w:widowControl w:val=\"0\"/>")
                 .append("<w:spacing w:after=\"0\" w:line=\"240\" w:lineRule=\"auto\"/></w:pPr></w:pPrDefault>")
                 .append("</w:docDefaults>");
@@ -92,6 +98,21 @@ final class StylesPart {
         }
         sb.append("</w:styles>");
         return sb.toString();
+    }
+
+    static String latinLanguage(Scripts.Profile profile) {
+        String lang = profile == null ? null : profile.latin();
+        return lang != null ? lang : "en-US";
+    }
+
+    static String eastAsianLanguage(Scripts.Profile profile) {
+        String lang = profile == null ? null : profile.eastAsian();
+        return lang != null ? lang : "en-US";
+    }
+
+    static String complexLanguage(Scripts.Profile profile) {
+        String lang = profile == null ? null : profile.complex();
+        return lang != null ? lang : "ar-SA";
     }
 
     private static void fonts(StringBuilder sb, String font) {

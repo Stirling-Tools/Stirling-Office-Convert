@@ -53,6 +53,14 @@ final class DocxPackage {
         this.main = zip.mainPart();
     }
 
+    // Content a bound refused to read: say so and mark the PDF partial
+    void leftOut(String warning) {
+        if (job != null) {
+            job.warn(warning);
+            job.losePart();
+        }
+    }
+
     void load() throws IOException {
         XEl themeXml = partXml(first(main, "theme"));
         theme = new Theme(themeXml);
@@ -219,7 +227,8 @@ final class DocxPackage {
     XEl partXml(Relationship r) throws IOException {
         if (r == null || !ActiveContent.mayFollow(r) || !zip.exists(r.part())) {
             if (r != null && missingParts++ < 3) {
-                job.warn("A part the document refers to is missing or refused: " + r.target());
+                job.warn("A part the document refers to is missing or refused"
+                        + (r.part() == null ? "" : ": " + r.part()));
             }
             return null;
         }

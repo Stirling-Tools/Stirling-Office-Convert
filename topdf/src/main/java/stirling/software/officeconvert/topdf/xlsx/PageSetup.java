@@ -43,7 +43,7 @@ record PageSetup(PageSize paper, PageSize output, double left, double right, dou
         PageSize paper = paper(ps);
         PageSize output = paper;
         boolean fit = pr != null && pr.isSetFitToPage() && pr.getFitToPage();
-        if (letter(ps) && ps.isSetId() && !fit) {
+        if (letter(ps) && !fit) {
             paper = PageSize.LETTER;
             output = DEFAULT_PAPER;
         }

@@ -660,7 +660,7 @@ final class DrawingReader {
             noWrap = "none".equals(body.attr("wrap"));
             vert = body.attr("vert");
         }
-        return new Drawing.TextBox(blocks, l, t, r, b, anchor, grow, noWrap, vert);
+        return new Drawing.TextBox(blocks, l, t, r, b, anchor, grow, noWrap, vert, !grow);
     }
 
     private Drawing.Graphic group(XEl g, float w, float h) {
@@ -717,6 +717,9 @@ final class DrawingReader {
 
     private void collectChildren(XEl g, Frame f, List<Drawing.Child> out, int depth) {
         if (depth > 16) {
+            if (!g.kids.isEmpty()) {
+                pkg.leftOut("Shapes grouped more than 16 levels deep were left out");
+            }
             return;
         }
         for (XEl k : g.kids) {

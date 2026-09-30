@@ -4,6 +4,8 @@ import java.awt.Color;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 final class FormatCode {
 
@@ -19,7 +21,21 @@ final class FormatCode {
 
     private FormatCode() {}
 
+    private static final Map<String, List<String>> SECTIONS = new ConcurrentHashMap<>();
+
     static List<String> sections(String format) {
+        List<String> known = SECTIONS.get(format);
+        if (known == null) {
+            known = List.copyOf(split(format));
+            if (SECTIONS.size() >= 1024) {
+                SECTIONS.clear();
+            }
+            SECTIONS.put(format, known);
+        }
+        return known;
+    }
+
+    private static List<String> split(String format) {
         List<String> out = new ArrayList<>();
         StringBuilder cur = new StringBuilder();
         boolean quoted = false;

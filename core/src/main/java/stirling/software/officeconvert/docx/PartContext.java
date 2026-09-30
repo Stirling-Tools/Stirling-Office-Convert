@@ -6,6 +6,7 @@ import java.util.Map;
 import java.util.Set;
 
 import stirling.software.officeconvert.model.Picture;
+import stirling.software.officeconvert.model.Scripts;
 
 final class PartContext {
 
@@ -13,6 +14,7 @@ final class PartContext {
     final Map<String, String> linkRels = new LinkedHashMap<>();
     final Map<String, String> headerRelIds = new LinkedHashMap<>();
     final Set<String> fonts = new LinkedHashSet<>();
+    Scripts.Profile scripts = new Scripts.Profile();
     private int nextRel = 20;
     private int nextDocPr = 1;
     private int nextBookmark = 1;

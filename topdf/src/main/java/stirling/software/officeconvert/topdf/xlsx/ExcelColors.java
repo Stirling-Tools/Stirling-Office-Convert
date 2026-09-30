@@ -34,15 +34,13 @@ final class ExcelColors {
         if (c == null) {
             return automatic;
         }
-        Color base = null;
-        if (c.isSetRgb() && c.getRgb() != null) {
+        Color base = c.isSetTheme() ? themeColor((int) c.getTheme()) : null;
+        if (base == null && c.isSetRgb() && c.getRgb() != null) {
             byte[] v = c.getRgb();
             base = v.length >= 4 ? rgb(v[1], v[2], v[3]) : v.length == 3 ? rgb(v[0], v[1], v[2]) : null;
-        } else if (c.isSetTheme()) {
-            base = themeColor((int) c.getTheme());
-        } else if (c.isSetIndexed()) {
+        } else if (base == null && c.isSetIndexed()) {
             base = indexedColor((int) c.getIndexed(), automatic);
-        } else if (c.isSetAuto() && c.getAuto()) {
+        } else if (base == null && c.isSetAuto() && c.getAuto()) {
             return automatic;
         }
         if (base == null) {

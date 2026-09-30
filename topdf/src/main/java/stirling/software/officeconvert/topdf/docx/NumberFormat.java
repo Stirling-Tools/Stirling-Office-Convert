@@ -2,6 +2,8 @@ package stirling.software.officeconvert.topdf.docx;
 
 import java.util.Locale;
 
+import stirling.software.officeconvert.topdf.dml.Numerals;
+
 final class NumberFormat {
 
     private static final String[] ONES = {"", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine",
@@ -40,7 +42,10 @@ final class NumberFormat {
             case "decimalEnclosedFullstop" -> n >= 1 && n <= 20 ? String.valueOf((char) (0x2488 + n - 1)) : n + ".";
             case "decimalFullWidth", "decimalFullWidth2" -> fullWidth(Integer.toString(n));
             case "numberInDash" -> "- " + n + " -";
-            default -> Integer.toString(n);
+            default -> {
+                String world = Numerals.format(fmt, n);
+                yield world != null ? world : Integer.toString(n);
+            }
         };
     }
 

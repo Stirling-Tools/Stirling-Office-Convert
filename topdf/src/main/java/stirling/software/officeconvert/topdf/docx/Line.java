@@ -25,8 +25,13 @@ final class Line {
             this.w = w;
         }
 
+        private String text;
+
         String text() {
-            return item.text.substring(from, to);
+            if (text == null) {
+                text = item.text.substring(from, to);
+            }
+            return text;
         }
     }
 

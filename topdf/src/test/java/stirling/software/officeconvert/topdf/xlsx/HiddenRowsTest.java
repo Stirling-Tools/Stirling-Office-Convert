@@ -3,10 +3,12 @@ package stirling.software.officeconvert.topdf.xlsx;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.awt.image.BufferedImage;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.Arrays;
 
 import org.apache.pdfbox.Loader;
@@ -52,6 +54,24 @@ class HiddenRowsTest {
             }
         }
         return false;
+    }
+
+    @Test
+    void bordersBesideThousandsOfHiddenColumnsStayQuick() throws Exception {
+        StringBuilder sheet = new StringBuilder("<cols><col min=\"4\" max=\"16384\" width=\"0\" hidden=\"1\"/></cols>"
+                + "<sheetData>");
+        for (int r = 1; r <= 400; r++) {
+            sheet.append("<row r=\"").append(r).append("\">");
+            for (String col : new String[] {"A", "B", "C"}) {
+                sheet.append("<c r=\"").append(col).append(r).append("\" s=\"2\" t=\"inlineStr\"><is><t>Row").append(r)
+                        .append("</t></is></c>");
+            }
+            sheet.append("<c r=\"XFD").append(r).append("\" s=\"2\"/></row>");
+        }
+        byte[] xlsx = new RawXlsx().styles(STYLES).sheet("S", sheet + "</sheetData>").bytes();
+        XlsxTesting.Converted c = assertTimeoutPreemptively(Duration.ofSeconds(60),
+                () -> XlsxTesting.convert(dir, "wide.xlsx", xlsx));
+        assertTrue(c.all().contains("Row400"), c.all());
     }
 
     @Test

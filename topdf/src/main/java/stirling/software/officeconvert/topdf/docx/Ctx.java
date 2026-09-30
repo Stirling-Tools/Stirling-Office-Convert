@@ -79,6 +79,9 @@ final class Ctx {
 
     int headerDepth;
 
+    // The body's document grid pitch for the section being laid out
+    float gridPitch;
+
     boolean bodyTotals;
 
     int knownPages;
@@ -90,7 +93,7 @@ final class Ctx {
     Ctx(DocxPackage pkg) {
         this.pkg = pkg;
         this.job = pkg.job;
-        this.fonts = new Fonts(pkg.job, pkg.theme, pkg.settings.eastAsiaLang);
+        this.fonts = new Fonts(pkg.job, pkg.theme, pkg.settings.eastAsiaLang).bidi(pkg.settings.bidiLang);
         this.settings = pkg.settings;
         this.nextFootnote = pkg.settings.footnoteStart;
         this.nextEndnote = pkg.settings.endnoteStart;
@@ -152,5 +155,9 @@ final class Ctx {
         nextFootnote = settings.footnoteStart;
         nextEndnote = settings.endnoteStart;
         noteScope = -1;
+    }
+
+    float bodyGrid() {
+        return headerDepth > 0 ? 0 : gridPitch;
     }
 }

@@ -327,7 +327,18 @@ public final class FontLibrary {
 
     public static String normalize(String name) {
         String n = Normalizer.normalize(name, Normalizer.Form.NFKC).strip().toLowerCase(Locale.ROOT);
-        return SPACES.matcher(n).replaceAll(" ");
+        return plainSpaces(n) ? n : SPACES.matcher(n).replaceAll(" ");
+    }
+
+    private static boolean plainSpaces(String s) {
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            if (c == 0x09 || c == 0x0A || c == 0x0B || c == 0x0C || c == 0x0D
+                    || c == ' ' && i + 1 < s.length() && s.charAt(i + 1) == ' ') {
+                return false;
+            }
+        }
+        return true;
     }
 
     private FontFace resolve(String family, boolean bold, boolean italic) {
@@ -360,7 +371,11 @@ public final class FontLibrary {
             }
             FontFace f = exact(candidate, b, i);
             if (f != null) {
-                return Weights.emboldened(standIn(f, family, base, b, i, why + "; using " + f.family()), family, bold);
+                int named = alias != null && alias.bold() ? 700 : Weights.of(base);
+                boolean clone = Substitutes.metricClone(family, f)
+                        || Weights.of(family) == named && Substitutes.metricClone(base, f);
+                String note = clone ? null : why + "; using " + f.family();
+                return Weights.emboldened(standIn(f, family, base, b, i, note), family, bold);
             }
         }
         FontFace last = lastResort(b, i);

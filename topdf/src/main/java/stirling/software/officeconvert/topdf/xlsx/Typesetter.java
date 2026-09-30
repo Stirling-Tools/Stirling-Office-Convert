@@ -1,5 +1,6 @@
 package stirling.software.officeconvert.topdf.xlsx;
 
+import java.awt.geom.AffineTransform;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -44,6 +45,14 @@ final class Typesetter {
 
     private double pageScale = 1;
 
+    private FontSpec lastSpec;
+
+    private Look lastLook;
+
+    private boolean mirrored;
+
+    private Boolean direction;
+
     Typesetter(FontLibrary fonts) {
         this.fonts = fonts;
     }
@@ -57,7 +66,13 @@ final class Typesetter {
     }
 
     Look look(FontSpec f) {
-        return looks.computeIfAbsent(resolve(f), this::look);
+        if (f == lastSpec) {
+            return lastLook;
+        }
+        Look l = looks.computeIfAbsent(resolve(f), this::look);
+        lastSpec = f;
+        lastLook = l;
+        return l;
     }
 
     private Key resolve(FontSpec f) {
@@ -195,6 +210,21 @@ final class Typesetter {
         return w;
     }
 
+    // Text on a mirrored page is mirrored back about itself, so it reads normally where the mirror puts it
+    void mirrored(boolean mirrored) {
+        this.mirrored = mirrored;
+    }
+
+    boolean mirrored() {
+        return mirrored;
+    }
+
+    Boolean direction(Boolean rightToLeft) {
+        Boolean was = direction;
+        direction = rightToLeft;
+        return was;
+    }
+
     void pageScale(double scale) {
         this.pageScale = scale > 0 ? scale : 1;
     }
@@ -309,7 +339,14 @@ final class Typesetter {
             st = st.horizontalScale((float) (look.scale() * 100));
         }
         double hinted = runWidth(look, primary, r, size);
-        long glyphs = r.text().codePoints().filter(cp -> !skipped(cp)).count();
+        long glyphs = 0;
+        for (int i = 0; i < r.text().length(); ) {
+            int cp = r.text().codePointAt(i);
+            i += Character.charCount(cp);
+            if (!skipped(cp)) {
+                glyphs++;
+            }
+        }
         if (hinted >= 0 && glyphs > 0) {
             st = st.charSpacing((float) ((hinted - st.width(r.text())) / glyphs));
         }
@@ -321,6 +358,21 @@ final class Typesetter {
         if (text.isEmpty() || !(size > 0)) {
             return 0;
         }
+        if (!mirrored) {
+            return drawText(canvas, text, f, size, x, baseline);
+        }
+        double w = width(text, f, size);
+        canvas.save();
+        try {
+            canvas.transform(new AffineTransform(-1, 0, 0, 1, 2 * x + w, 0));
+            return drawText(canvas, text, f, size, x, baseline);
+        } finally {
+            canvas.restore();
+        }
+    }
+
+    private double drawText(PdfCanvas canvas, String text, FontSpec f, double size, double x, double baseline)
+            throws IOException {
         double at = x;
         int start = 0;
         for (int i = 0; i < text.length(); i++) {
@@ -403,7 +455,7 @@ final class Typesetter {
 
     private List<Piece> pieces(String text, FontFace primary) {
         List<Piece> out = new ArrayList<>();
-        List<BidiRuns.Run> runs = BidiRuns.visual(BidiRuns.logical(text, null));
+        List<BidiRuns.Run> runs = BidiRuns.visual(BidiRuns.logical(text, direction));
         for (BidiRuns.Run run : runs) {
             String part = text.substring(run.start(), run.end());
             List<FontRun> fr = fonts.runs(part, primary);

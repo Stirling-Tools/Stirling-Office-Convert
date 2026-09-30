@@ -1,5 +1,6 @@
 package stirling.software.officeconvert.topdf.xlsx;
 
+import java.awt.Color;
 import java.awt.geom.Path2D;
 import java.awt.geom.Rectangle2D;
 import java.io.IOException;
@@ -18,6 +19,10 @@ import stirling.software.officeconvert.topdf.pdf.Stroke;
 
 final class DrawingPainter {
 
+    private static final Color CONTROL_EDGE = new Color(0x45, 0x45, 0x45);
+
+    private static final Color BUTTON_FACE = new Color(0xF0, 0xF0, 0xF0);
+
     private final Grid grid;
 
     private final PdfCanvas canvas;
@@ -32,7 +37,12 @@ final class DrawingPainter {
 
     private final double colScale;
 
-    DrawingPainter(Grid grid, PdfCanvas canvas, Band rows, Band cols, double originX, double originY) {
+    private final double mirror;
+
+    // A mirror width above zero places each drawing mirrored across it, as a right-to-left sheet shows it
+    DrawingPainter(Grid grid, PdfCanvas canvas, Band rows, Band cols, double originX, double originY,
+            double mirror) {
+        this.mirror = mirror;
         this.grid = grid;
         this.canvas = canvas;
         this.rows = rows;
@@ -54,6 +64,9 @@ final class DrawingPainter {
                     || r[1] + r[3] < originY - 2) {
                 continue;
             }
+            if (mirror > 0) {
+                r[0] = mirror - r[0] - r[2];
+            }
             if (item.chart() != null) {
                 if (!Charts.draw(grid.book().job(), item.chart(), grid.book().workbook().themePart, canvas,
                         (float) r[0], (float) r[1], (float) r[2], (float) r[3])) {
@@ -61,6 +74,8 @@ final class DrawingPainter {
                 }
             } else if (item.picture() != null) {
                 picture(item, r);
+            } else if (item.control() != null) {
+                control(item, r);
             } else {
                 shape(item, r);
             }
@@ -79,14 +94,15 @@ final class DrawingPainter {
                 x1 = x(item.to());
                 y1 = y(item.to());
             } else {
-                x1 = x0 + item.absW() * colScale;
-                y1 = y0 + item.absH() * grid.rowFactor();
+                x1 = x0 + item.absW();
+                y1 = y0 + item.absH();
             }
         } else {
-            x0 = originX + item.absX() * colScale - absolute(cols.first, true);
-            y0 = originY + item.absY() * grid.rowFactor() - absolute(rows.first, false);
-            x1 = x0 + item.absW() * colScale;
-            y1 = y0 + item.absH() * grid.rowFactor();
+            // Excel prints an extent, and an absolute position, at its size in points; only cells stretch
+            x0 = originX + item.absX() - absolute(cols.first, true);
+            y0 = originY + item.absY() - absolute(rows.first, false);
+            x1 = x0 + item.absW();
+            y1 = y0 + item.absH();
         }
         if (item.child() != null) {
             Drawings.Rect c = item.child();
@@ -124,6 +140,65 @@ final class DrawingPainter {
         Crop crop = crop(item.crop());
         canvas.image(pic, (float) r[0], (float) r[1], (float) r[2], (float) r[3], crop, (float) item.rotation(),
                 item.flipH(), item.flipV(), 1);
+    }
+
+    // A form control as Excel prints it: its box, button or frame, then its label
+    private void control(Drawings.Item item, double[] r) throws IOException {
+        float x = (float) r[0];
+        float y = (float) r[1];
+        float w = (float) r[2];
+        float h = (float) r[3];
+        Stroke edge = Stroke.solid(0.75f, CONTROL_EDGE);
+        float s = Math.min(9.5f, Math.min(w, h) - 1);
+        float bx = x + 3.6f;
+        float by = y + (h - s) / 2;
+        switch (item.control()) {
+            case "checkbox" -> {
+                if (s > 2) {
+                    canvas.rect(bx, by, s, s, Fill.solid(Color.WHITE), edge);
+                    if (item.checked()) {
+                        Path2D.Float tick = new Path2D.Float();
+                        tick.moveTo(bx + 0.2f * s, by + 0.5f * s);
+                        tick.lineTo(bx + 0.42f * s, by + 0.72f * s);
+                        tick.lineTo(bx + 0.8f * s, by + 0.28f * s);
+                        canvas.draw(tick, null, Stroke.solid(Math.max(0.75f, s / 8), Color.BLACK));
+                    }
+                }
+            }
+            case "radio" -> {
+                if (s > 2) {
+                    canvas.ellipse(bx, by, s, s, Fill.solid(Color.WHITE), edge);
+                    if (item.checked()) {
+                        canvas.ellipse(bx + 0.3f * s, by + 0.3f * s, 0.4f * s, 0.4f * s, Fill.solid(Color.BLACK), null);
+                    }
+                }
+            }
+            case "button" -> canvas.rect(x, y, w, h, Fill.solid(BUTTON_FACE), edge);
+            case "gbox" -> canvas.rect(x, y + Math.min(4, h / 2), w, h - Math.min(4, h / 2), null, edge);
+            case "drop", "list" -> {
+                canvas.rect(x, y, w, h, Fill.solid(Color.WHITE), edge);
+                float b = Math.min(h, w / 2);
+                if (item.control().equals("drop") && b > 4) {
+                    canvas.rect(x + w - b, y, b, h, Fill.solid(BUTTON_FACE), edge);
+                    Path2D.Float arrow = new Path2D.Float();
+                    arrow.moveTo(x + w - b * 0.7f, y + h / 2 - b * 0.1f);
+                    arrow.lineTo(x + w - b * 0.3f, y + h / 2 - b * 0.1f);
+                    arrow.lineTo(x + w - b * 0.5f, y + h / 2 + b * 0.12f);
+                    arrow.closePath();
+                    canvas.draw(arrow, Fill.solid(Color.BLACK), null);
+                }
+            }
+            default -> {
+            }
+        }
+        if (item.text() != null && !item.text().isEmpty()) {
+            canvas.save();
+            try {
+                text(item, x, y, w, h);
+            } finally {
+                canvas.restore();
+            }
+        }
     }
 
     private static Crop crop(Element src) {

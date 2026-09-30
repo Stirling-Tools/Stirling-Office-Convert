@@ -26,6 +26,7 @@ import stirling.software.officeconvert.PdfToPptx;
 import stirling.software.officeconvert.extract.PageData;
 import stirling.software.officeconvert.extract.PageReader;
 import stirling.software.officeconvert.extract.PdfFiles;
+import stirling.software.officeconvert.extract.PdfFootprint;
 import stirling.software.officeconvert.extract.StreamGuard;
 import stirling.software.officeconvert.layout.DocStats;
 import stirling.software.officeconvert.layout.FallbackPage;
@@ -34,6 +35,7 @@ import stirling.software.officeconvert.layout.LineBuilder;
 import stirling.software.officeconvert.layout.OcrText;
 import stirling.software.officeconvert.layout.PageAnalyzer;
 import stirling.software.officeconvert.layout.PageLayout;
+import stirling.software.officeconvert.memory.Admission;
 
 public final class SlideConversion {
 
@@ -65,6 +67,7 @@ public final class SlideConversion {
                     OutputStream out = Files.newOutputStream(part)) {
                 convert(doc, out, options, writer);
             }
+            PdfFiles.stopIfInterrupted();
             moveIntoPlace(part, target);
         } catch (IOException e) {
             throw PdfFiles.interrupted(e);
@@ -80,10 +83,14 @@ public final class SlideConversion {
         Objects.requireNonNull(options, "options");
         PdfFiles.checkOpen(doc);
         PdfFiles.stopIfInterrupted();
+        Admission.Ticket ticket = Admission.jvm().enter(
+                PdfFootprint.estimate(doc, options.firstPage(), options.lastPage(), options.figureDpi()));
         try {
             write(doc, out, options, writer);
         } catch (RuntimeException e) {
             throw new IOException("Conversion failed: " + (e.getMessage() != null ? e.getMessage() : e.toString()), e);
+        } finally {
+            ticket.close();
         }
     }
 
@@ -135,6 +142,7 @@ public final class SlideConversion {
         float[] slide = slideSize(sizes, doc, first);
 
         try (SlideSink sink = writer.open(out)) {
+            sink.scripts(stats.scripts);
             sink.begin(slide[0], slide[1], first, count);
             boolean hyphenated = autoHyphenated(doc) || stats.autoHyphenated();
             SlideBuilder builder = new SlideBuilder(doc, stats, sink, options.figureDpi(), options.pictures(), hyphenated,
@@ -230,9 +238,7 @@ public final class SlideConversion {
     }
 
     private static void stopIfInterrupted() throws InterruptedIOException {
-        if (Thread.currentThread().isInterrupted()) {
-            throw new InterruptedIOException("Conversion interrupted");
-        }
+        PdfFiles.stopIfInterrupted();
     }
 
     private static int weight(PageData page) {

@@ -64,7 +64,12 @@ final class BorderPainter {
     }
 
     void paint(Band rows, Band cols) throws IOException {
+        int shown = rows.first - 1;
         for (int r = rows.first; r <= rows.last + 1; r++) {
+            int above = shown;
+            if (r <= rows.last && rows.size(r) > 0) {
+                shown = r;
+            }
             if (r > rows.first && r <= rows.last && rows.size(r) <= 0 && rows.size(r - 1) <= 0) {
                 continue;
             }
@@ -74,19 +79,24 @@ final class BorderPainter {
                 if (cols.size(c) <= 0) {
                     continue;
                 }
-                BorderLine line = horizontal(r, c, rows);
+                BorderLine line = horizontal(r, above, c, rows);
                 run.add(cols.start(c), cols.end(c), line);
             }
             run.flush();
         }
+        shown = cols.first - 1;
         for (int c = cols.first; c <= cols.last + 1; c++) {
             double x = cols.start(c);
+            int left = shown;
+            if (c <= cols.last && cols.size(c) > 0) {
+                shown = c;
+            }
             Run run = new Run(false, x);
             for (int r = rows.first; r <= rows.last; r++) {
                 if (rows.size(r) <= 0) {
                     continue;
                 }
-                BorderLine line = vertical(r, c, cols);
+                BorderLine line = vertical(r, c, left, cols);
                 run.add(rows.start(r), rows.end(r), line);
             }
             run.flush();
@@ -95,8 +105,7 @@ final class BorderPainter {
     }
 
     // A page prints only its own cells' edges, not those of the cells beyond its sides
-    private BorderLine horizontal(int r, int c, Band rows) {
-        int above = previousVisible(r, rows);
+    private BorderLine horizontal(int r, int above, int c, Band rows) {
         CellRangeAddress m = grid.merges().isEmpty() ? null : grid.mergeCovering(r, c);
         if (m != null && r > m.getFirstRow() && r <= m.getLastRow()) {
             return BorderLine.NONE;
@@ -106,11 +115,7 @@ final class BorderPainter {
         return BorderLine.stronger(a == null ? null : a.bottom(), b == null ? null : b.top());
     }
 
-    private BorderLine vertical(int r, int c, Band cols) {
-        int left = c - 1;
-        while (left >= 0 && left >= cols.first && cols.size(left) <= 0) {
-            left--;
-        }
+    private BorderLine vertical(int r, int c, int left, Band cols) {
         CellRangeAddress m = grid.merges().isEmpty() ? null : grid.mergeCovering(r, c);
         if (m != null && c > m.getFirstColumn() && c <= m.getLastColumn()) {
             return BorderLine.NONE;
@@ -120,17 +125,9 @@ final class BorderPainter {
         return BorderLine.stronger(a == null ? null : a.right(), b == null ? null : b.left());
     }
 
-    private int previousVisible(int r, Band rows) {
-        int p = r - 1;
-        while (p >= 0 && p >= rows.first && rows.size(p) <= 0) {
-            p--;
-        }
-        return p;
-    }
-
     private void diagonals(Band rows, Band cols) throws IOException {
         for (var re : grid.rows(rows.first, rows.last).entrySet()) {
-            for (CellEntry e : re.getValue().cells.subMap(cols.first, true, cols.last, true).values()) {
+            for (CellEntry e : re.getValue().cells(cols.first, cols.last)) {
                 CellFormat f = e.format();
                 if (!f.diagonal().visible() || !(f.diagonalUp() || f.diagonalDown())) {
                     continue;

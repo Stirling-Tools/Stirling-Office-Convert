@@ -174,6 +174,10 @@ final class GraphicsCollector extends PDFGraphicsStreamEngine {
             Matrix textRenderingMatrix, PDType3Font font, int code, Vector displacement) {
     }
 
+    // Glyphs draw nothing here, so their codes are not decoded at all
+    @Override
+    protected void showText(byte[] string) {}
+
     @Override
     protected void processType3Stream(PDType3CharProc charProc, Matrix textRenderingMatrix) {}
 

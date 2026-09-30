@@ -9,8 +9,12 @@ import java.awt.geom.Rectangle2D;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.List;
 import java.util.Objects;
+import java.util.function.Consumer;
 
+import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.pdmodel.graphics.form.PDFormXObject;
 import org.apache.poi.hemf.draw.HemfImageRenderer;
 import org.apache.poi.hwmf.draw.HwmfImageRenderer;
 import org.apache.poi.sl.draw.BitmapImageRenderer;
@@ -19,6 +23,8 @@ import org.apache.poi.sl.draw.Drawable;
 import org.apache.poi.sl.draw.ImageRenderer;
 import org.apache.poi.sl.usermodel.Shape;
 import org.apache.poi.sl.usermodel.Sheet;
+
+import de.rototor.pdfbox.graphics2d.IPdfBoxGraphics2DFontTextDrawer;
 
 public final class SafeImageRenderer implements ImageRenderer {
 
@@ -54,6 +60,24 @@ public final class SafeImageRenderer implements ImageRenderer {
         Objects.requireNonNull(shape, "shape");
         install(g);
         DrawFactory.getInstance(g).drawShape(g, shape, null);
+    }
+
+    /** A whole sheet (a legacy slide) drawn by POI into a form XObject of the given size, with this renderer, the
+     * metafile draw-call budget and interrupts; {@code text} writes the text, or null to draw it as outlines. */
+    public static PDFormXObject drawForm(PDDocument doc, Sheet<?, ?> sheet, float width, float height,
+            IPdfBoxGraphics2DFontTextDrawer text) throws IOException {
+        Objects.requireNonNull(doc, "doc");
+        Objects.requireNonNull(sheet, "sheet");
+        return Metafiles.sheet(doc, sheet, width, height, text);
+    }
+
+    /** The same sheet drawn again part by part, background, master and each shape on a form of its own, for when
+     * {@link #drawForm} fails: a part that fails is left out and handed to {@code skipped}. */
+    public static List<PDFormXObject> drawParts(PDDocument doc, Sheet<?, ?> sheet, float width, float height,
+            IPdfBoxGraphics2DFontTextDrawer text, Consumer<Throwable> skipped) throws IOException {
+        Objects.requireNonNull(doc, "doc");
+        Objects.requireNonNull(sheet, "sheet");
+        return Metafiles.sheetParts(doc, sheet, width, height, text, Objects.requireNonNull(skipped, "skipped"));
     }
 
     public PictureDecoder.Kind kind() {

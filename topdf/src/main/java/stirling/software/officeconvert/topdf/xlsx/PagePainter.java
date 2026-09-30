@@ -1,6 +1,8 @@
 package stirling.software.officeconvert.topdf.xlsx;
 
+import java.awt.geom.AffineTransform;
 import java.io.IOException;
+
 import stirling.software.officeconvert.topdf.RenderJob;
 import stirling.software.officeconvert.topdf.io.DecodedPicture;
 import stirling.software.officeconvert.topdf.pdf.PdfCanvas;
@@ -48,6 +50,12 @@ final class PagePainter {
             canvas.save();
             canvas.translate((float) ox, (float) oy);
             canvas.scale((float) s, (float) s);
+            boolean mirror = plan.grid.rightToLeft();
+            canvas.save();
+            if (mirror) {
+                canvas.transform(new AffineTransform(-1, 0, 0, 1, contentW, 0));
+                book.typesetter().mirrored(true);
+            }
             if (headings != null) {
                 headings.paint(canvas, page.rows(), page.cols(), s * k);
             }
@@ -75,15 +83,18 @@ final class PagePainter {
             if (setup.gridlines() || headings != null) {
                 frame(canvas, contentW, contentH, s * k);
             }
+            book.typesetter().mirrored(false);
+            canvas.restore();
             if (blocks.failures() > 0) {
                 job.warn("Some cells on sheet " + plan.name + " could not be drawn");
             }
             if (!plan.drawings.isEmpty()) {
+                double bodyW = page.bodyCols().length();
                 canvas.save();
-                canvas.clipRect((float) bodyX, (float) bodyY, (float) page.bodyCols().length(),
+                canvas.clipRect((float) (mirror ? contentW - bodyX - bodyW : bodyX), (float) bodyY, (float) bodyW,
                         (float) page.bodyRows().length());
-                new DrawingPainter(plan.grid, canvas, page.bodyRows(), page.bodyCols(), bodyX, bodyY)
-                        .paint(plan.drawings);
+                new DrawingPainter(plan.grid, canvas, page.bodyRows(), page.bodyCols(), bodyX, bodyY,
+                        mirror ? contentW : 0).paint(plan.drawings);
                 canvas.restore();
             }
             canvas.restore();

@@ -20,6 +20,8 @@ final class SmartArt {
 
     private int count;
 
+    private boolean cut;
+
     private SmartArt(DrawingReader shapes, Theme theme) {
         this.shapes = shapes;
         this.theme = theme;
@@ -42,6 +44,9 @@ final class SmartArt {
             SmartArt s = new SmartArt(reader.forPart(r.part()), pkg.theme);
             List<Drawing.Child> children = new ArrayList<>();
             s.collect(tree, 0, 0, 1 / EMU, 1 / EMU, 0, 0, children, 0);
+            if (s.cut) {
+                pkg.leftOut("Part of a SmartArt diagram too large or nested too deeply to draw was left out");
+            }
             return children.isEmpty() ? null : new Drawing.Group(children, 0, false, false, w, h);
         } catch (IOException | RuntimeException e) {
             pkg.job.warn("A SmartArt diagram could not be read: " + e.getMessage());
@@ -62,10 +67,12 @@ final class SmartArt {
     private void collect(XEl tree, float chX, float chY, float sx, float sy, float ox, float oy,
             List<Drawing.Child> out, int depth) {
         if (depth > 16) {
+            cut |= !tree.kids.isEmpty();
             return;
         }
         for (XEl k : tree.kids) {
             if (count > MAX_SHAPES) {
+                cut = true;
                 return;
             }
             if (!k.is("dsp:sp") && !k.is("dsp:grpSp")) {
@@ -146,6 +153,7 @@ final class SmartArt {
             }
         }
         List<Block> blocks = ShapeParagraphs.read(txBody, theme, color == null ? Color.BLACK : color, font);
+        cut |= txBody.children("a:p").size() > ShapeParagraphs.MAX_PARAGRAPHS;
         XEl body = txBody.child("a:bodyPr");
         float l = 7.2f;
         float t = 3.6f;

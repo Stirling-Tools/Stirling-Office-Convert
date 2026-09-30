@@ -3,6 +3,7 @@ package stirling.software.officeconvert.topdf.pptx;
 import java.util.List;
 
 import stirling.software.officeconvert.topdf.font.BidiRuns;
+import stirling.software.officeconvert.topdf.font.Clusters;
 import stirling.software.officeconvert.topdf.font.FontFace;
 import stirling.software.officeconvert.topdf.font.GlyphRun;
 import stirling.software.officeconvert.topdf.pdf.TextStyle;
@@ -25,6 +26,10 @@ final class Chars {
 
     final boolean[] breakAfter;
 
+    final boolean[] joined;
+
+    final boolean[] wordStart;
+
     Chars(List<Piece> pieces) {
         this.pieces = pieces;
         int n = 0;
@@ -37,6 +42,20 @@ final class Chars {
         piece = new int[n];
         offset = new int[n];
         breakAfter = new boolean[n];
+        joined = new boolean[n];
+        wordStart = new boolean[n];
+        StringBuilder text = new StringBuilder();
+        for (Piece p : pieces) {
+            text.append(p.text());
+        }
+        String all = text.toString();
+        boolean[] words = Clusters.dictionaryBreaks(all);
+        int at = 0;
+        for (int m = 0; m < n; m++) {
+            joined[m] = at > 0 && Clusters.joined(all, at);
+            wordStart[m] = words[at];
+            at += Character.charCount(all.codePointAt(at));
+        }
         int k = 0;
         for (int pi = 0; pi < pieces.size(); pi++) {
             Piece p = pieces.get(pi);
@@ -84,6 +103,8 @@ final class Chars {
         return (float) Math.floor(points * DEVICE_UNITS_PER_POINT + 1e-3f) / DEVICE_UNITS_PER_POINT;
     }
 
+    // Each word (a Thai word as the dictionary finds it) is shaped whole; its width is shared out over its
+    // clusters as their own advances share it, so a line can still break between clusters
     private void shapeWords(int from, int to, FontFace face, TextStyle s) {
         int i = from;
         while (i < to) {
@@ -91,18 +112,36 @@ final class Chars {
                 i++;
                 continue;
             }
-            int j = i;
-            while (j < to && !space(codePoints[j]) && codePoints[j] != '\n') {
-                j++;
-            }
+            int j = wordEnd(i, to);
             String word = text(i, j);
             GlyphRun run = face.shape(word, BidiRuns.baseRightToLeft(word));
-            advances[i] = run.width(s.size()) * (s.horizontalScale() / 100f) + (j - i) * s.charSpacing();
-            for (int m = i + 1; m < j; m++) {
-                advances[m] = 0;
+            float shaped = run.width(s.size()) * (s.horizontalScale() / 100f) + (j - i) * s.charSpacing();
+            float natural = 0;
+            for (int m = i; m < j; m++) {
+                natural += advances[m];
+            }
+            int cluster = i;
+            for (int m = i; m < j; m++) {
+                if (m > i && joined[m]) {
+                    advances[cluster] += advances[m];
+                    advances[m] = 0;
+                } else {
+                    cluster = m;
+                }
+            }
+            for (int m = i; m < j; m++) {
+                advances[m] = natural > 0 ? advances[m] * shaped / natural : m == i ? shaped : 0;
             }
             i = j;
         }
+    }
+
+    int wordEnd(int i, int to) {
+        int j = i + 1;
+        while (j < to && !space(codePoints[j]) && codePoints[j] != '\n' && !wordStart[j]) {
+            j++;
+        }
+        return j;
     }
 
     static boolean space(int cp) {
@@ -126,6 +165,12 @@ final class Chars {
         }
         if (next < 0 || space(next) || next == '\n') {
             return false;
+        }
+        if (joined[i + 1]) {
+            return false;
+        }
+        if (wordStart[i + 1]) {
+            return true;
         }
         if ((cp == '-' || cp == 0x2010 || cp == 0x2013 || cp == 0x2014) && i > 0
                 && Character.isLetterOrDigit(codePoints[i - 1]) && Character.isLetterOrDigit(next)) {

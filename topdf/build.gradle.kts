@@ -8,6 +8,7 @@ val poiVersion = "5.5.1"
 
 dependencies {
     api("org.apache.pdfbox:pdfbox:$pdfboxVersion")
+    implementation(project(":core"))
     implementation("org.apache.poi:poi-ooxml:$poiVersion")
     implementation("org.apache.poi:poi-scratchpad:$poiVersion")
     implementation("de.rototor.pdfbox:graphics2d:3.0.5")

@@ -45,6 +45,7 @@ final class RunProps {
     Border border;
     String styleId;
     String eastAsiaLang;
+    String bidiLang;
     String lang;
     Boolean snapToGrid;
 
@@ -108,6 +109,7 @@ final class RunProps {
         border = o.border != null ? o.border : border;
         eastAsiaLang = o.eastAsiaLang != null ? o.eastAsiaLang : eastAsiaLang;
         lang = o.lang != null ? o.lang : lang;
+        bidiLang = o.bidiLang != null ? o.bidiLang : bidiLang;
         snapToGrid = o.snapToGrid != null ? o.snapToGrid : snapToGrid;
     }
 
@@ -183,6 +185,7 @@ final class RunProps {
                 case "w:bdr" -> border = Border.parse(k, theme);
                 case "w:lang" -> {
                     eastAsiaLang = k.attr("eastAsia");
+                    bidiLang = k.attr("bidi");
                     lang = k.val();
                 }
                 case "w:snapToGrid" -> snapToGrid = Ooxml.on(k);

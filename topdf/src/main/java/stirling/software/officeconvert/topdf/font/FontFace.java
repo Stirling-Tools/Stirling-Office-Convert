@@ -36,6 +36,10 @@ public final class FontFace {
 
     private final float embolden;
 
+    private byte substitutedState;
+
+    private byte eastAsianGlyphs;
+
     FontFace(FontProgram program, String requestedFamily, boolean syntheticBold, boolean syntheticItalic, String note) {
         this(program, requestedFamily, syntheticBold, syntheticItalic, note, null, null, 1, null);
     }
@@ -72,7 +76,15 @@ public final class FontFace {
 
     /** True for a Chinese, Japanese or Korean font, also when a face without those scripts stands in for one. */
     public boolean eastAsian() {
-        return eastAsianName || covers(0x4E00) || covers(0x3042) || covers(0xAC00);
+        if (eastAsianName) {
+            return true;
+        }
+        byte known = eastAsianGlyphs;
+        if (known == 0) {
+            known = covers(0x4E00) || covers(0x3042) || covers(0xAC00) ? (byte) 2 : (byte) 1;
+            eastAsianGlyphs = known;
+        }
+        return known == 2;
     }
 
     /** False when the font's missing-glyph box (.notdef) has no outline. */
@@ -227,6 +239,15 @@ public final class FontFace {
     }
 
     public boolean substituted() {
+        byte known = substitutedState;
+        if (known == 0) {
+            known = findSubstituted() ? (byte) 2 : (byte) 1;
+            substitutedState = known;
+        }
+        return known == 2;
+    }
+
+    private boolean findSubstituted() {
         String wanted = FontLibrary.normalize(requestedFamily);
         FontEntry e = program.entry();
         if (FontLibrary.normalize(e.family()).equals(wanted)) {

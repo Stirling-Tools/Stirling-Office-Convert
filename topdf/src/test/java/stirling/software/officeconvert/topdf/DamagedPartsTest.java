@@ -93,6 +93,57 @@ class DamagedPartsTest {
     }
 
     @Test
+    void leavingOutContentMakesThePdfPartialButLeavingOutOnlyLooksDoesNot() throws Exception {
+        byte[] deck = Fixtures.edit(Fixtures.pptx("First slide", "Second slide", "Third slide"))
+                .put("ppt/slides/slide2.xml", BROKEN).bytes();
+        Converted slide = convert("partial.pptx", deck);
+        assertEquals(2, slide.result.pages());
+        assertTrue(slide.result.truncated(), slide.result.warnings().toString());
+        assertFalse(slide.result.pageLimitReached());
+        for (String type : List.of("footnotes", "endnotes", "numbering", "settings", "theme")) {
+            String part = type.equals("theme") ? "word/theme/theme1.xml" : "word/" + type + ".xml";
+            Fixtures.Zip z = Fixtures.edit(Fixtures.docx("Body survives"));
+            if (!z.has(part)) {
+                z.relationship("/word/document.xml", "rIdBroken", Fixtures.REL + type, part.substring(5), false);
+            }
+            Converted c = convert("look-" + type + ".docx", z.put(part, BROKEN).bytes());
+            boolean content = List.of("footnotes", "endnotes", "numbering").contains(type);
+            assertEquals(content, c.result.truncated(), type + ": " + c.result.warnings());
+        }
+        byte[] styles = Fixtures.edit(Fixtures.docx("Styled body")).put("word/styles.xml", BROKEN).bytes();
+        assertFalse(convert("look-styles.docx", styles).result.truncated());
+        assertFalse(convert("whole.pptx", Fixtures.pptx("One", "Two")).result.truncated());
+        assertTrue(OfficeToPdf.losesContent("/xl/worksheets/sheet1.xml"));
+        assertTrue(OfficeToPdf.losesContent("/xl/styles.xml"));
+        assertTrue(OfficeToPdf.losesContent("/ppt/slides/_rels/slide2.xml.rels"));
+        assertFalse(OfficeToPdf.losesContent("/docProps/app.xml"));
+        assertFalse(OfficeToPdf.losesContent("/word/comments.xml"));
+        assertFalse(OfficeToPdf.losesContent("/xl/comments1.xml"));
+        assertFalse(OfficeToPdf.losesContent("/ppt/theme/_rels/theme1.xml.rels"));
+    }
+
+    @Test
+    void aDoctypeInARelationshipsPartLeavesOutWhatItLinksAndSaysSo() throws Exception {
+        String rels = "word/_rels/document.xml.rels";
+        Converted plain = convert("header.docx", docxWithHeader("Body survives", "Header text"));
+        assertTrue(plain.text.contains("Header text"), plain.text);
+        assertFalse(plain.result.truncated(), plain.result.warnings().toString());
+        Fixtures.Zip z = Fixtures.edit(docxWithHeader("Body survives", "Header text"));
+        z.put(rels, z.text(rels).replaceFirst("<Relationships", "<!DOCTYPE Relationships><Relationships"));
+        Converted c = convert("doctype-rels.docx", z.bytes());
+        assertTrue(c.text.contains("Body survives"), c.text);
+        assertFalse(c.text.contains("Header text"), c.text);
+        assertTrue(c.result.truncated(), c.result.warnings().toString());
+        assertFalse(c.result.pageLimitReached());
+        assertTrue(c.warned("Left out the relationships of /word/document.xml"), c.result.warnings().toString());
+        String slideRels = "ppt/slides/_rels/slide2.xml.rels";
+        Fixtures.Zip p = Fixtures.edit(Fixtures.pptx("First slide", "Second slide"));
+        p.put(slideRels, p.text(slideRels).replaceFirst("<Relationships", "<!DOCTYPE Relationships><Relationships"));
+        IOException e = assertThrows(IOException.class, () -> convert("doctype-rels.pptx", p.bytes()));
+        assertEquals(OfficeToPdf.DOCTYPE, e.getMessage(), "POI reads every relationships part, so the deck is refused");
+    }
+
+    @Test
     void aDoctypeInThePackagePartsIsStillRefusedRatherThanRepaired() throws Exception {
         String doctype = "<?xml version=\"1.0\"?><!DOCTYPE t [<!ENTITY e \"x\">]><Types>&e;</Types>";
         for (String part : List.of("[Content_Types].xml", "_rels/.rels")) {

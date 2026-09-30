@@ -1,7 +1,9 @@
 package stirling.software.officeconvert.topdf.pptx;
 
 import java.awt.Color;
+import java.awt.geom.Rectangle2D;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -18,6 +20,7 @@ import org.apache.xmlbeans.XmlObject;
 import org.apache.xmlbeans.XmlOptions;
 import org.openxmlformats.schemas.drawingml.x2006.main.CTFillProperties;
 import org.openxmlformats.schemas.drawingml.x2006.main.CTLineProperties;
+import org.openxmlformats.schemas.drawingml.x2006.main.CTSolidColorFillProperties;
 import org.openxmlformats.schemas.drawingml.x2006.main.CTStyleMatrixReference;
 import org.openxmlformats.schemas.drawingml.x2006.main.CTTable;
 import org.openxmlformats.schemas.drawingml.x2006.main.CTTablePartStyle;
@@ -31,6 +34,9 @@ import org.w3c.dom.Element;
 import org.w3c.dom.Node;
 
 import stirling.software.officeconvert.topdf.RenderJob;
+import stirling.software.officeconvert.topdf.dml.DmlColors;
+import stirling.software.officeconvert.topdf.pdf.Fill;
+import stirling.software.officeconvert.topdf.pdf.Gradient;
 import stirling.software.officeconvert.topdf.pdf.Stroke;
 
 final class TableStyles {
@@ -62,6 +68,9 @@ final class TableStyles {
     }
 
     private static final String A = "http://schemas.openxmlformats.org/drawingml/2006/main";
+
+    // PowerPoint draws a table that names no style with No Style, Table Grid
+    private static final String TABLE_GRID = "{5940675A-B579-460E-94D1-54222C63F5DA}";
 
     private final RenderJob job;
 
@@ -106,7 +115,8 @@ final class TableStyles {
         if (pr == null) {
             return out;
         }
-        CTTableStyle style = pr.isSetTableStyle() ? pr.getTableStyle() : style(ppt, pr.getTableStyleId());
+        String id = pr.getTableStyleId() == null ? TABLE_GRID : pr.getTableStyleId();
+        CTTableStyle style = pr.isSetTableStyle() ? pr.getTableStyle() : style(ppt, id);
         if (style == null) {
             return out;
         }
@@ -289,6 +299,103 @@ final class TableStyles {
             };
         }
         return s;
+    }
+
+    // The table style's background under every cell: its own fill, or the theme fill style it names in its colour
+    Fill background(XMLSlideShow ppt, XSLFTable table, Rectangle2D box) {
+        try {
+            CTTableProperties pr = table.getCTTable().getTblPr();
+            CTTableStyle style = pr == null ? null
+                    : pr.isSetTableStyle() ? pr.getTableStyle() : style(ppt, pr.getTableStyleId());
+            Element bg = style == null ? null : child(style.getDomNode(), "tblBg");
+            if (bg == null) {
+                return null;
+            }
+            XSLFSheet sheet = table.getSheet();
+            Element fill = child(bg, "fill");
+            if (fill != null) {
+                CTFillProperties f = CTFillProperties.Factory.parse(fill, fragment());
+                Color c = f.isSetSolidFill() ? color(f.getSolidFill(), sheet)
+                        : f.isSetGradFill() && f.getGradFill().getGsLst() != null
+                                && f.getGradFill().getGsLst().sizeOfGsArray() > 0
+                                ? color(f.getGradFill().getGsLst().getGsArray(0), sheet) : null;
+                return c == null ? null : Fill.solid(c);
+            }
+            Element ref = child(bg, "fillRef");
+            CTStyleMatrixReference fillRef = ref == null ? null : CTStyleMatrixReference.Factory.parse(ref, fragment());
+            if (fillRef == null || fillRef.getIdx() < 1 || fillRef.getIdx() > 999) {
+                return null;
+            }
+            Color base = color(fillRef, sheet);
+            return base == null ? null : themeFill(sheet, (int) fillRef.getIdx(), base, box);
+        } catch (XmlException | RuntimeException e) {
+            return null;
+        }
+    }
+
+    // A theme fill style with the placeholder colour set, as a solid colour or a linear gradient
+    private static Fill themeFill(XSLFSheet sheet, int idx, Color base, Rectangle2D box) throws XmlException {
+        Node list = sheet.getTheme().getXmlObject().getThemeElements().getFmtScheme().getFillStyleLst().getDomNode();
+        List<Element> fills = elements(list);
+        if (idx > fills.size()) {
+            return Fill.solid(base);
+        }
+        Element style = fills.get(idx - 1);
+        if ("solidFill".equals(style.getLocalName())) {
+            List<Element> c = elements(style);
+            return Fill.solid(c.isEmpty() ? base : placeholder(c.get(0), base, sheet));
+        }
+        Element lin = child(style, "lin");
+        if (!"gradFill".equals(style.getLocalName())) {
+            return Fill.solid(base);
+        }
+        List<Gradient.Stop> stops = new ArrayList<>();
+        for (Element gs : elements(child(style, "gsLst"))) {
+            List<Element> c = elements(gs);
+            float pos = Integer.parseInt(gs.getAttribute("pos").strip()) / 100_000f;
+            stops.add(new Gradient.Stop(Math.max(0, Math.min(1, pos)), c.isEmpty() ? base : placeholder(c.get(0), base,
+                    sheet)));
+        }
+        if (stops.size() < 2 || lin == null) {
+            return Fill.solid(stops.isEmpty() ? base : stops.get(0).color());
+        }
+        stops.sort(Comparator.comparingDouble(Gradient.Stop::offset));
+        double a = Math.toRadians(Long.parseLong(lin.getAttribute("ang").strip()) / 60_000.0);
+        double dx = Math.cos(a);
+        double dy = Math.sin(a);
+        double half = (Math.abs(box.getWidth() * dx) + Math.abs(box.getHeight() * dy)) / 2;
+        double cx = box.getCenterX();
+        double cy = box.getCenterY();
+        return Fill.of(Gradient.linear((float) (cx - dx * half), (float) (cy - dy * half), (float) (cx + dx * half),
+                (float) (cy + dy * half), stops));
+    }
+
+    private static Color placeholder(Element colour, Color base, XSLFSheet sheet) throws XmlException {
+        if (!"schemeClr".equals(colour.getLocalName()) || !"phClr".equals(colour.getAttribute("val"))) {
+            Element solid = colour.getOwnerDocument().createElementNS(A, "a:solidFill");
+            solid.appendChild(colour.cloneNode(true));
+            Color c = color(CTSolidColorFillProperties.Factory.parse(solid, fragment()), sheet);
+            return c == null ? base : c;
+        }
+        Color c = base;
+        for (Element t : elements(colour)) {
+            try {
+                c = DmlColors.modify(c, t.getLocalName(), Long.parseLong(t.getAttribute("val").strip()));
+            } catch (NumberFormatException e) {
+                continue;
+            }
+        }
+        return c;
+    }
+
+    private static List<Element> elements(Node parent) {
+        List<Element> out = new ArrayList<>();
+        for (Node n = parent == null ? null : parent.getFirstChild(); n != null; n = n.getNextSibling()) {
+            if (n instanceof Element e) {
+                out.add(e);
+            }
+        }
+        return out;
     }
 
     static Color color(XmlObject holder, XSLFSheet sheet) {

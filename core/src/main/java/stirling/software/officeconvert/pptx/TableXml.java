@@ -26,7 +26,8 @@ final class TableXml {
                 .append("</p:nvGraphicFramePr><p:xfrm><a:off x=\"").append(Ooxml.offset(shape.x())).append("\" y=\"")
                 .append(Ooxml.offset(shape.y())).append("\"/><a:ext cx=\"").append(Ooxml.emu(shape.width()))
                 .append("\" cy=\"").append(Ooxml.emu(heightOf(t))).append("\"/></p:xfrm>")
-                .append("<a:graphic><a:graphicData uri=\"http://schemas.openxmlformats.org/drawingml/2006/table\"><a:tbl><a:tblPr/><a:tblGrid>");
+                .append("<a:graphic><a:graphicData uri=\"http://schemas.openxmlformats.org/drawingml/2006/table\"><a:tbl>")
+                .append(t.rightToLeft ? "<a:tblPr rtl=\"1\"/>" : "<a:tblPr/>").append("<a:tblGrid>");
         for (float w : t.columnWidths) {
             sb.append("<a:gridCol w=\"").append(Ooxml.emu(Math.max(1f, w))).append("\"/>");
         }

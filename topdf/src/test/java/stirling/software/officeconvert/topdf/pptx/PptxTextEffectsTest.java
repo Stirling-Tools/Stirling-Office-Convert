@@ -99,8 +99,12 @@ class PptxTextEffectsTest {
     }
 
     private static byte[] wordArt(String warp) {
+        return wordArt(warp, "");
+    }
+
+    private static byte[] wordArt(String warp, String effects) {
         String run = "<a:r><a:rPr lang=\"en-US\" sz=\"2000\"><a:solidFill><a:srgbClr val=\"0000FF\"/></a:solidFill>"
-                + "</a:rPr><a:t>HHHH</a:t></a:r>";
+                + effects + "</a:rPr><a:t>HHHH</a:t></a:r>";
         return Decks.slideXml(Decks.textBox(9, 1270000, 1270000, 5080000, 2540000, "<a:bodyPr wrap=\"none\" lIns=\"0\""
                 + " tIns=\"0\" rIns=\"0\" bIns=\"0\" fromWordArt=\"1\"><a:prstTxWarp prst=\"" + warp + "\"><a:avLst/>"
                 + "</a:prstTxWarp></a:bodyPr>", "<a:p><a:pPr algn=\"ctr\"/>" + run + "</a:p>"));
@@ -115,5 +119,38 @@ class PptxTextEffectsTest {
         int[] left = inkRows(up, 100, 130);
         int[] right = inkRows(up, 470, 500);
         assertTrue(left[0] > right[0] + 60 && left[1] > right[1] + 60, left[0] + " " + right[0]);
+    }
+
+    @Test
+    void curvedWarpsBendTheGlyphsAndKeepTheText() throws IOException {
+        Decks.Converted deflate = Decks.convert(dir, "deflate-warp.pptx", wordArt("textDeflate"));
+        BufferedImage img = deflate.render(0, 72);
+        int[] edge = inkRows(img, 110, 130);
+        int[] middle = inkRows(img, 260, 340);
+        assertTrue(edge[0] >= 100 && edge[0] < 115 && edge[1] > 285, edge[0] + " " + edge[1]);
+        assertTrue(middle[0] > edge[0] + 20 && middle[1] < edge[1] - 20, middle[0] + " " + middle[1]);
+        assertTrue(deflate.text().contains("HHHH"));
+        BufferedImage inflate = Decks.convert(dir, "inflate-warp.pptx", wordArt("textInflate")).render(0, 72);
+        int[] in = inkRows(inflate, 110, 130);
+        int[] out = inkRows(inflate, 260, 340);
+        assertTrue(in[0] > out[0] + 10 && in[1] < out[1] - 10, in[0] + " " + out[0]);
+    }
+
+    @Test
+    void aWarpedTextShadowFallsOnTheSlideFromTheBox() throws IOException {
+        String shadow = "<a:effectLst><a:outerShdw dist=\"254000\" dir=\"5400000\" algn=\"tl\" rotWithShape=\"0\">"
+                + "<a:srgbClr val=\"FF0000\"/></a:outerShdw></a:effectLst>";
+        BufferedImage img = Decks.convert(dir, "shadow-warp.pptx", wordArt("textPlain", shadow)).render(0, 72);
+        int below = 0;
+        int far = 0;
+        for (int y = 302; y < img.getHeight(); y++) {
+            for (int x = 100; x < 500; x++) {
+                if (red(img.getRGB(x, y) & 0xFFFFFF)) {
+                    below += y < 325 ? 1 : 0;
+                    far += y >= 330 ? 1 : 0;
+                }
+            }
+        }
+        assertTrue(below > 50 && far == 0, below + " " + far);
     }
 }

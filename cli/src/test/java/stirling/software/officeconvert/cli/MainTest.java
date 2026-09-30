@@ -106,6 +106,28 @@ class MainTest {
     }
 
     @Test
+    void legacyPowerPointConvertsBackToPdf() throws Exception {
+        Path pdf = helloPdf(dir.resolve("round.pdf"));
+        Path ppt = dir.resolve("round.ppt");
+        assertEquals(0, run(pdf.toString(), "-o", ppt.toString(), "-q").code());
+        Path back = dir.resolve("back.pdf");
+        Result r = run(ppt.toString(), "-o", back.toString());
+        assertEquals(0, r.code(), r.err());
+        assertTrue(r.out().startsWith("OK "), r.out());
+        assertTrue(Files.size(back) > 0);
+    }
+
+    @Test
+    void pdfConvertsToFlatOpenDocumentXml() throws Exception {
+        Path pdf = helloPdf(dir.resolve("in.pdf"));
+        Path xml = dir.resolve("in.xml");
+        Result r = run(pdf.toString(), "-o", xml.toString());
+        assertEquals(0, r.code(), r.err());
+        String out = Files.readString(xml);
+        assertTrue(out.contains("<office:document ") && out.contains("Hello PDF"), out);
+    }
+
+    @Test
     void formatPdfPicksOfficeFilesOutOfAFolder() throws Exception {
         Path in = Files.createDirectories(dir.resolve("in"));
         Files.writeString(in.resolve("x.docx"), "x");
@@ -122,7 +144,8 @@ class MainTest {
         Result r = run("--help");
         assertEquals(0, r.code());
         assertTrue(r.out().contains("in.docx") && r.out().contains("--max-pages"), r.out());
-        for (String ext : new String[] {".docm", ".dotm", ".ppsm", ".potx", ".potm", ".xlsm", ".xltx", ".xltm"}) {
+        for (String ext : new String[] {".docm", ".dotm", ".ppsm", ".potx", ".potm", ".xlsm", ".xltx", ".xltm",
+                ".xls", ".xlt", ".ppt", ".pps", ".pot"}) {
             assertTrue(r.out().contains(ext + " ") || r.out().contains(ext + ")"), ext + " missing from " + r.out());
         }
     }

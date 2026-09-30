@@ -110,7 +110,7 @@ class OfficeZipTest {
     @Test
     void refusesZipBombs() throws Exception {
         Path bomb = Fixtures.write(dir, "bomb.docx", Fixtures.zipBomb(Fixtures.docx("x"), "word/media/zeros.bin", 64L << 20));
-        IOException e = assertThrows(IOException.class, () -> OfficeZip.open(bomb));
+        IOException e = assertThrows(OfficeZip.Oversized.class, () -> OfficeZip.open(bomb));
         assertTrue(e.getMessage().contains("zip bomb"), e.getMessage());
     }
 
@@ -158,6 +158,7 @@ class OfficeZipTest {
                     () -> zip.open("/docProps/thumbnail.emf"));
             assertEquals("/docProps/thumbnail.emf", e.part());
             assertTrue(e.getMessage().contains("zip bomb"), e.getMessage());
+            assertTrue(e.getCause() instanceof OfficeZip.Oversized, String.valueOf(e.getCause()));
         }
     }
 

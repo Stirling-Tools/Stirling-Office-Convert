@@ -28,6 +28,23 @@ final class Cameras {
         }
     }
 
+    // The clockwise turn in degrees a head-on camera gives a text body, 0 when it has none or tilts it
+    static float revolution(XmlObject bodyPr) {
+        if (bodyPr == null) {
+            return 0;
+        }
+        try (XmlCursor c = bodyPr.newCursor()) {
+            if (!c.toChild(A, "scene3d") || !c.toChild(A, "camera") || !c.toChild(A, "rot")
+                    || angle(c, "lat") % 360 != 0 || angle(c, "lon") % 360 != 0) {
+                return 0;
+            }
+            double turn = ((-angle(c, "rev")) % 360 + 360) % 360;
+            return turn < 0.01 || turn > 359.99 ? 0 : (float) turn;
+        } catch (RuntimeException e) {
+            return 0;
+        }
+    }
+
     private static double angle(XmlCursor c, String name) {
         String v = c.getAttributeText(new QName("", name));
         if (v == null || v.isBlank()) {

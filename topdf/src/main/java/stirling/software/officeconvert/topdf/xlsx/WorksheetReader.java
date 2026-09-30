@@ -106,6 +106,7 @@ final class WorksheetReader {
 
     private static RawRow row(XMLStreamReader r, int index) throws XMLStreamException {
         double ht = number(RunProps.attr(r, "ht"));
+        boolean custom = flag(RunProps.attr(r, "customHeight"));
         boolean hidden = flag(RunProps.attr(r, "hidden"));
         int edges = (flag(RunProps.attr(r, "thickTop")) ? 1 : 0) + (flag(RunProps.attr(r, "thickBot")) ? 1 : 0);
         int style = flag(RunProps.attr(r, "customFormat")) ? (int) Math.max(-1, number(RunProps.attr(r, "s"), -1)) : -1;
@@ -129,7 +130,7 @@ final class WorksheetReader {
                 depth--;
             }
         }
-        return new RawRow(index, ht, hidden, style, cells, edges);
+        return new RawRow(index, ht, custom, hidden, style, cells, edges);
     }
 
     private static RawRow.Cell cell(XMLStreamReader r, int col) throws XMLStreamException {

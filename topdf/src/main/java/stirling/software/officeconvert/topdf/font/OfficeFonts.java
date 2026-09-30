@@ -57,7 +57,9 @@ final class OfficeFonts {
             "arial", Set.of("liberation sans", "arimo"),
             "times new roman", Set.of("liberation serif", "tinos"),
             "courier new", Set.of("liberation mono", "cousine"),
-            "arial narrow", Set.of("liberation sans narrow"));
+            "segoe ui", Set.of("selawik"),
+            "segoe ui light", Set.of("selawik"),
+            "segoe ui semilight", Set.of("selawik"));
 
     private static final Map<String, Style[]> TABLE = load();
 

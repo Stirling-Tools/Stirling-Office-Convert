@@ -13,7 +13,8 @@ final class TableContinuation {
     private TableContinuation() {}
 
     static boolean continues(Table prev, Table next) {
-        if (prev.columnWidths.size() != next.columnWidths.size() || Math.abs(prev.indent - next.indent) > TOLERANCE) {
+        if (prev.rightToLeft != next.rightToLeft || prev.columnWidths.size() != next.columnWidths.size()
+                || Math.abs(prev.indent - next.indent) > TOLERANCE) {
             return false;
         }
         for (int i = 0; i < prev.columnWidths.size(); i++) {
@@ -24,18 +25,28 @@ final class TableContinuation {
         return !prev.rows.isEmpty() && !next.rows.isEmpty();
     }
 
-    static void join(Table prev, Table next, String pageBookmark) {
+    static boolean join(Table prev, Table next, String pageBookmark) {
         List<Table.Row> rows = next.rows;
-        if (text(rows.getFirst()).equals(text(prev.rows.getFirst())) && !text(rows.getFirst()).isBlank()) {
-            prev.rows.getFirst().header = true;
+        boolean header = text(rows.getFirst()).equals(text(prev.rows.getFirst())) && !text(rows.getFirst()).isBlank();
+        if (header) {
             rows = rows.subList(1, rows.size());
+        }
+        Table.Row cut = prev.rows.getLast();
+        boolean cutRow = !rows.isEmpty() && !blank(rows.getFirst()) && continuesRow(cut, rows.getFirst());
+        if (!header && !cutRow) {
+            return false;
+        }
+        if (header) {
+            prev.rows.getFirst().header = true;
+            if (!rows.isEmpty() && blank(rows.getFirst())) {
+                rows = rows.subList(1, rows.size());
+            }
         }
         Paragraph first = firstParagraph(rows);
         if (pageBookmark != null && first != null && first.bookmark == null) {
             first.bookmark = pageBookmark;
         }
-        Table.Row cut = prev.rows.getLast();
-        if (!rows.isEmpty() && continuesRow(cut, rows.getFirst())) {
+        if (cutRow) {
             for (int i = 0; i < cut.cells.size(); i++) {
                 cut.cells.get(i).paragraphs.addAll(rows.getFirst().cells.get(i).paragraphs);
             }
@@ -45,6 +56,18 @@ final class TableContinuation {
             rows = rows.subList(1, rows.size());
         }
         prev.rows.addAll(rows);
+        return true;
+    }
+
+    static float dropLeftover(Table next) {
+        if (next.rows.size() < 2 || !blank(next.rows.getFirst())) {
+            return 0;
+        }
+        return next.rows.removeFirst().height;
+    }
+
+    private static boolean blank(Table.Row row) {
+        return text(row).replace("|", "").isBlank();
     }
 
     private static Paragraph firstParagraph(List<Table.Row> rows) {

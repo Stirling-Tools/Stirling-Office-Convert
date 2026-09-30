@@ -12,6 +12,8 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -395,5 +397,72 @@ class SubstitutionTest {
         assertEquals(Math.round(0.458f * upm), wingdings.advance(0xF0A7));
         assertNull(symbol.symbolFit(' '));
         assertNull(lib.find("Arial", false, false).symbolFit(0xF0B7));
+    }
+
+    @Test
+    void commonOfficeFamiliesTryTheirClosestFreeFaceFirst() {
+        Map<String, String> first = Map.ofEntries(Map.entry("Calibri", "Carlito"), Map.entry("Calibri Light", "Carlito"),
+                Map.entry("Cambria", "Caladea"), Map.entry("Arial", "Liberation Sans"),
+                Map.entry("Helvetica", "Liberation Sans"), Map.entry("Arial Narrow", "Liberation Sans Narrow"),
+                Map.entry("Times New Roman", "Liberation Serif"), Map.entry("Times", "Liberation Serif"),
+                Map.entry("Courier New", "Liberation Mono"), Map.entry("Courier", "Liberation Mono"),
+                Map.entry("Georgia", "Gelasio"), Map.entry("Segoe UI", "Selawik"),
+                Map.entry("Segoe UI Light", "Selawik Light"), Map.entry("Century Gothic", "URW Gothic"),
+                Map.entry("Book Antiqua", "P052"), Map.entry("Palatino Linotype", "P052"), Map.entry("Palatino", "P052"),
+                Map.entry("Bookman Old Style", "URW Bookman"), Map.entry("Century Schoolbook", "C059"),
+                Map.entry("Century", "C059"), Map.entry("Garamond", "EB Garamond"), Map.entry("Comic Sans MS", "Comic Neue"),
+                Map.entry("Consolas", "Inconsolata"), Map.entry("Verdana", "DejaVu Sans"),
+                Map.entry("Trebuchet MS", "Fira Sans"), Map.entry("Lucida Console", "DejaVu Sans Mono"),
+                Map.entry("Lucida Sans", "Open Sans"), Map.entry("Franklin Gothic Book", "Source Sans 3"),
+                Map.entry("Gill Sans MT", "Lato"), Map.entry("Candara", "Source Sans 3"), Map.entry("Corbel", "Carlito"),
+                Map.entry("Constantia", "Source Serif 4"), Map.entry("Monotype Corsiva", "Z003"),
+                Map.entry("Aptos", "Source Sans 3"), Map.entry("Aptos Display", "Source Sans 3"),
+                Map.entry("Aptos Narrow", "Roboto Condensed"), Map.entry("Cascadia Code", "Source Code Pro"));
+        Set<String> everywhere = Set.of("Liberation Sans", "Liberation Serif", "Liberation Mono",
+                "Liberation Sans Narrow", "DejaVu Sans", "DejaVu Serif", "DejaVu Sans Mono");
+        first.forEach((family, free) -> {
+            List<String> chain = Substitutes.table(family);
+            assertEquals(free, chain.get(0), family);
+            assertTrue(chain.stream().anyMatch(everywhere::contains), family + " has no stand-in every image has");
+        });
+        assertTrue(Substitutes.table("Tahoma").contains("DejaVu Sans Condensed"));
+        assertEquals(Substitutes.table("Arial"), Substitutes.table(" ARIAL "));
+    }
+
+    @Test
+    void metricClonesStandInSilentlyWhileOtherStandInsAreReported() throws Exception {
+        FontLibrary lib = library("Liberation Sans", "Liberation Serif", "Gelasio", "Selawik", "URW Gothic", "P052",
+                "C059", "URW Bookman", "Source Sans 3");
+        for (String family : List.of("Arial", "Helvetica", "ArialMT", "Times New Roman", "Georgia", "Segoe UI",
+                "Century Gothic", "Book Antiqua", "Palatino", "Century Schoolbook", "Bookman Old Style")) {
+            FontFace f = lib.find(family, false, false);
+            assertTrue(f.substituted(), family);
+            assertNull(f.note(), family + ": " + f.note());
+        }
+        assertEquals("Palatino Linotype is not installed; using P052",
+                lib.find("Palatino Linotype", false, false).note());
+        assertEquals("Aptos is not installed; using Source Sans 3", lib.find("Aptos", false, false).note());
+        assertEquals("Verdana is not installed; using Liberation Sans", lib.find("Verdana", false, false).note());
+        assertNotNull(lib.find("Georgia", false, true).note(), "a slanted upright face is not a clone");
+        assertNotNull(lib.find("Arial", true, false).note(), "an emboldened regular face is not a clone");
+        assertNotNull(lib.find("Arial Black", false, false).note(), "Arial Black is not Arial in bold");
+        assertNotNull(lib.find("Segoe UI Semibold", false, false).note(), "nor is Segoe UI Semibold Segoe UI");
+    }
+
+    @Test
+    void postScriptStyleWordsThatNameAFamilyStayInTheFamily() throws Exception {
+        assertEquals(new FontNames.Alias("Calibri Light", false, false), FontNames.alias("Calibri-Light"));
+        assertEquals(new FontNames.Alias("Segoe UI Semilight", false, true),
+                FontNames.alias("SegoeUI-SemilightItalic"));
+        assertEquals(new FontNames.Alias("Aptos Display", true, false), FontNames.alias("Aptos-DisplayBold"));
+        assertEquals(new FontNames.Alias("Century Gothic", true, false), FontNames.alias("CenturyGothic-Bold"));
+        assertEquals(new FontNames.Alias("Arial Narrow", true, true), FontNames.alias("ArialNarrow-BoldItalic"));
+        assertEquals(new FontNames.Alias("Hiragino Kaku Gothic Pro", false, false),
+                FontNames.alias("ヒラギノ角ゴ Pro W3"));
+        FontLibrary lib = library("Selawik Light", "Carlito");
+        FontFace light = lib.find("SegoeUI-Light", false, false);
+        assertEquals("Selawik Light", light.family());
+        assertNull(light.note());
+        assertEquals("Carlito", lib.find("Calibri-Light", false, false).family());
     }
 }

@@ -164,4 +164,24 @@ class DocxHardeningTest {
         String text = r.text().replaceAll("\\s", "");
         assertEquals(word.length() + 3, text.length());
     }
+
+    @Test
+    void contentNestedPastTheLimitIsLeftOutAndMakesThePdfPartial() throws IOException {
+        for (int depth : new int[] {5, ContentReader.MAX_DEPTH, 60}) {
+            String nested = DocxDoc.p("leaf");
+            for (int i = 0; i < depth; i++) {
+                nested = "<w:tbl><w:tblGrid><w:gridCol w:w=\"2000\"/></w:tblGrid><w:tr><w:tc>" + nested
+                        + "<w:p/></w:tc></w:tr></w:tbl>";
+            }
+            byte[] docx = new DocxDoc().styles(DEFAULTS).body(DocxDoc.p("before") + nested + DocxDoc.p("after")).bytes();
+            DocxDoc.Rendered r = DocxDoc.render(dir, "nest" + depth, docx);
+            String text = r.text();
+            assertTrue(text.contains("before") && text.contains("after"), depth + ": " + text);
+            boolean lost = depth > ContentReader.MAX_DEPTH;
+            assertEquals(!lost, text.contains("leaf"), depth + ": " + text);
+            assertEquals(lost, r.result().truncated(), depth + ": " + r.result().warnings());
+            assertEquals(lost, r.result().warnings().stream().anyMatch(w -> w.contains("levels deep was left out")),
+                    depth + ": " + r.result().warnings());
+        }
+    }
 }

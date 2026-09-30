@@ -15,12 +15,15 @@ final class Settings {
     int endnoteStart = 1;
     XEl colorMapping;
     String eastAsiaLang;
+
+    String bidiLang;
     boolean autoHyphenation;
     float hyphenationZone = 18;
     int consecutiveHyphenLimit;
     boolean doNotHyphenateCaps;
     boolean overrideTableStyleFontSize;
     boolean displayBackgroundShape;
+    boolean adjustLineHeightInTable;
 
     Settings(XEl settings) {
         if (settings == null) {
@@ -42,7 +45,10 @@ final class Settings {
                 case "w:consecutiveHyphenLimit" -> consecutiveHyphenLimit = Ooxml.integer(k.val(), 0);
                 case "w:doNotHyphenateCaps" -> doNotHyphenateCaps = Ooxml.on(k);
                 case "w:clrSchemeMapping" -> colorMapping = k;
-                case "w:themeFontLang" -> eastAsiaLang = k.attr("eastAsia");
+                case "w:themeFontLang" -> {
+                    eastAsiaLang = k.attr("eastAsia");
+                    bidiLang = k.attr("bidi");
+                }
                 case "w:footnotePr" -> {
                     XEl f = k.child("w:numFmt");
                     if (f != null && f.val() != null) {
@@ -79,6 +85,7 @@ final class Settings {
             switch (c.name) {
                 case "w:doNotExpandShiftReturn" -> doNotExpandShiftReturn = Ooxml.on(c);
                 case "w:doNotUseHTMLParagraphAutoSpacing" -> htmlAutoSpacingOff = Ooxml.on(c);
+                case "w:adjustLineHeightInTable" -> adjustLineHeightInTable = Ooxml.on(c);
                 case "w:compatSetting" -> {
                     if ("compatibilityMode".equals(c.attr("name"))) {
                         compatibilityMode = Ooxml.integer(c.attr("val"), compatibilityMode);

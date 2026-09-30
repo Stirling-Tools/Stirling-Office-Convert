@@ -7,6 +7,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.IntToDoubleFunction;
 
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
@@ -30,14 +31,19 @@ final class Drawings {
     record Item(Anchor from, Anchor to, double absX, double absY, double absW, double absH, Rect child,
             String picture, Element crop, String geometry, Color fill, Color line, double lineWidth,
             List<Para> text, double[] insets, String textAnchor, double rotation, boolean flipH, boolean flipV,
-            boolean connector, Element custom, Map<String, Long> adjust, String head, String tail, String chart) {}
+            boolean connector, Element custom, Map<String, Long> adjust, String head, String tail, String chart,
+            String control, boolean checked) {}
 
-    static final Drawings NONE = new Drawings(List.of());
+    static final Drawings NONE = new Drawings(List.of(), List.of());
 
     final List<Item> items;
 
-    private Drawings(List<Item> items) {
+    // The last row and column each item reaches, in the order of the items
+    final List<int[]> ends;
+
+    private Drawings(List<Item> items, List<int[]> ends) {
         this.items = items;
+        this.ends = ends;
     }
 
     boolean isEmpty() {
@@ -63,14 +69,38 @@ final class Drawings {
         } catch (IOException | RuntimeException e) {
             job.warn("A drawing on sheet " + sheetName + " could not be read");
         }
+        FormControls.read(book, part, sheetName, items);
+        PrintMetrics m = book.metrics();
+        double colScale = m.printerDigit() * PrintMetrics.PX / (m.screenDigit() * 0.75);
+        List<int[]> ends = new ArrayList<>();
         for (Item i : items) {
+            int[] end;
             if (i.to != null) {
-                grid.extend(i.to.row, i.to.col);
-            } else if (i.from != null) {
-                grid.extend(i.from.row, i.from.col);
+                end = new int[] {i.to.row, i.to.col};
+            } else {
+                double x = (i.from == null ? i.absX : i.from.colOff) + i.absW;
+                double y = (i.from == null ? i.absY : i.from.rowOff) + i.absH;
+                end = new int[] {past(i.from == null ? 0 : i.from.row, y * grid.rowFactor(), grid::rowHeight,
+                        Grid.MAX_ROWS), past(i.from == null ? 0 : i.from.col, x * colScale, grid::columnWidth, Columns.MAX)};
             }
+            grid.extend(end[0], end[1]);
+            ends.add(end);
         }
-        return items.isEmpty() ? NONE : new Drawings(items);
+        return items.isEmpty() ? NONE : new Drawings(items, ends);
+    }
+
+    private static int past(int start, double length, IntToDoubleFunction size, int max) {
+        int i = start;
+        double left = length;
+        for (int n = 0; n < 100_000 && i < max - 1; n++) {
+            double s = size.applyAsDouble(i);
+            if (left <= s) {
+                break;
+            }
+            left -= s;
+            i++;
+        }
+        return i;
     }
 
     private static final class Reader {
@@ -188,7 +218,7 @@ final class Drawings {
                 return;
             }
             out.add(new Item(from, to, ax, ay, aw, ah, child, null, null, null, null, null, 0, null, null, null, 0,
-                    false, false, false, null, null, null, null, r.part()));
+                    false, false, false, null, null, null, null, r.part(), null, false));
         }
 
         private void group(Element grp, Anchor from, Anchor to, double ax, double ay, double aw, double ah,
@@ -259,7 +289,7 @@ final class Drawings {
             double rot = Dml.number(xfrm, "rot", 0) / 60000.0;
             out.add(new Item(from, to, ax, ay, aw, ah, child, r.part(), Dml.path(pic, "blipFill", "srcRect"), null,
                     null, null, 0, null, null, null, rot, Dml.flag(xfrm, "flipH"), Dml.flag(xfrm, "flipV"), false, null,
-                    null, null, null, null));
+                    null, null, null, null, null, false));
         }
 
         private void shape(Element sp, Anchor from, Anchor to, double ax, double ay, double aw, double ah,
@@ -347,7 +377,7 @@ final class Drawings {
             double rot = Dml.number(xfrm, "rot", 0) / 60000.0;
             out.add(new Item(from, to, ax, ay, aw, ah, child, null, null, prst, fill, line, width, paras, insets,
                     anchor, rot, Dml.flag(xfrm, "flipH"), Dml.flag(xfrm, "flipV"), connector, custom, adjust,
-                    end(ln, "headEnd"), end(ln, "tailEnd"), null));
+                    end(ln, "headEnd"), end(ln, "tailEnd"), null, null, false));
         }
 
         private static String end(Element ln, String name) {

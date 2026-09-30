@@ -31,10 +31,17 @@ final class Fonts {
 
     private final String defaultLang;
 
+    private String bidiLang;
+
     Fonts(RenderJob job, Theme theme, String defaultLang) {
         this.job = job;
         this.theme = theme;
         this.defaultLang = defaultLang;
+    }
+
+    Fonts bidi(String lang) {
+        bidiLang = lang;
+        return this;
     }
 
     FontFace face(String family, boolean bold, boolean italic) {
@@ -123,7 +130,7 @@ final class Fonts {
             case HANSI -> pick(rp.hAnsiTheme, rp.hAnsi);
             case EAST_ASIA -> pick(rp.eastAsiaTheme, rp.eastAsia, rp.eastAsiaLang != null ? rp.eastAsiaLang
                     : defaultLang);
-            case COMPLEX -> pick(rp.csTheme, rp.cs);
+            case COMPLEX -> pick(rp.csTheme, rp.cs, rp.bidiLang != null ? rp.bidiLang : bidiLang);
         };
         if (name == null && slot == Slot.HANSI) {
             name = pick(rp.asciiTheme, rp.ascii);

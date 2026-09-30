@@ -171,7 +171,40 @@ final class Theme {
         return null;
     }
 
-    String font(String themeFont, String eastAsiaLang) {
+    // The theme's font for a complex script, named by the language's ISO 15924 code
+    static String complexScript(String lang) {
+        if (lang == null) {
+            return null;
+        }
+        String l = lang.toLowerCase(Locale.ROOT);
+        int dash = l.indexOf('-');
+        String code = dash < 0 ? l : l.substring(0, dash);
+        return switch (code) {
+            case "ar", "fa", "ur", "ps", "sd", "ug", "ku", "ckb" -> "Arab";
+            case "he", "yi" -> "Hebr";
+            case "th" -> "Thai";
+            case "hi", "mr", "ne", "sa", "kok" -> "Deva";
+            case "bn", "as" -> "Beng";
+            case "ta" -> "Taml";
+            case "te" -> "Telu";
+            case "kn" -> "Knda";
+            case "ml" -> "Mlym";
+            case "gu" -> "Gujr";
+            case "pa" -> "Guru";
+            case "or" -> "Orya";
+            case "si" -> "Sinh";
+            case "km" -> "Khmr";
+            case "lo" -> "Laoo";
+            case "my" -> "Mymr";
+            case "bo" -> "Tibt";
+            case "am", "ti" -> "Ethi";
+            case "dv" -> "Thaa";
+            case "syr" -> "Syrc";
+            default -> null;
+        };
+    }
+
+    String font(String themeFont, String lang) {
         if (themeFont == null) {
             return null;
         }
@@ -187,8 +220,11 @@ final class Theme {
         }
         String f = fonts.get(which + "." + slot);
         if ((f == null || f.isEmpty()) && slot.equals("ea")) {
-            String script = script(eastAsiaLang);
+            String script = script(lang);
             f = fonts.get(which + ".script." + (script == null ? "Jpan" : script));
+        } else if ((f == null || f.isEmpty()) && slot.equals("cs")) {
+            String script = complexScript(lang);
+            f = script == null ? null : fonts.get(which + ".script." + script);
         }
         return f == null || f.isEmpty() ? null : f;
     }

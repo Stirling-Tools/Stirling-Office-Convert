@@ -95,7 +95,8 @@ public final class ClassScan {
 
     private static final String TOPDF = "stirling/software/officeconvert/topdf/";
 
-    public static final List<String> FORMAT_PACKAGES = List.of(TOPDF + "docx/", TOPDF + "pptx/", TOPDF + "xlsx/");
+    public static final List<String> FORMAT_PACKAGES = List.of(TOPDF + "docx/", TOPDF + "pptx/", TOPDF + "xlsx/",
+            TOPDF + "xls/", TOPDF + "ppt/");
 
     public static final List<String> FORMAT_FILE_TYPES = List.of("java/io/File", "java/io/FileInputStream",
             "java/io/FileOutputStream", "java/io/FileReader", "java/io/FileWriter", "java/io/RandomAccessFile",

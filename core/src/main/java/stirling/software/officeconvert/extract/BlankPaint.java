@@ -1,5 +1,6 @@
 package stirling.software.officeconvert.extract;
 
+import java.awt.Rectangle;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
 import java.io.InputStream;
@@ -11,6 +12,7 @@ import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.WeakHashMap;
 
 import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.cos.COSStream;
@@ -34,6 +36,9 @@ final class BlankPaint {
     private static final long MAX_PIXELS = 4_000_000;
     private static final int WHITE = 250;
     private static final int QUICK = 4;
+    private static final int BAND = 16;
+
+    private static final Map<COSStream, Boolean> WHITE_IMAGES = Collections.synchronizedMap(new WeakHashMap<>());
 
     private BlankPaint() {}
 
@@ -108,6 +113,15 @@ final class BlankPaint {
         if (i.stencilRgb() >= 0 || !(i.image() instanceof PDImageXObject x)) {
             return false;
         }
+        Boolean known = WHITE_IMAGES.get(x.getCOSObject());
+        if (known == null) {
+            known = plainWhite(x);
+            WHITE_IMAGES.put(x.getCOSObject(), known);
+        }
+        return known;
+    }
+
+    private static boolean plainWhite(PDImageXObject x) {
         long pixels = (long) x.getWidth() * x.getHeight();
         if (pixels <= 0 || pixels > MAX_PIXELS || x.getCOSObject().getLength() > PLAIN_BYTES * pixels + ALLOWANCE
                 || !ImageBudget.affordable(x)) {
@@ -118,13 +132,27 @@ final class BlankPaint {
             if (raw != null) {
                 return raw;
             }
-            if (Math.min(x.getWidth(), x.getHeight()) >= QUICK * 16 && !allWhite(x.getImage(null, QUICK))) {
+            if (JpegDc.dark(x)) {
+                return false;
+            }
+            if (Math.min(x.getWidth(), x.getHeight()) >= QUICK * 16 && (dark(x) || !allWhite(x.getImage(null, QUICK)))) {
                 return false;
             }
             return allWhite(x.getImage());
         } catch (IOException | RuntimeException e) {
             return false;
         }
+    }
+
+    // The top rows of the quick image, decoded alone: a photo shows colour there without decoding the rest
+    private static boolean dark(PDImageXObject x) throws IOException {
+        COSStream s = x.getCOSObject();
+        boolean plain = s.getFilters() instanceof COSName f && (COSName.DCT_DECODE.equals(f)
+                || COSName.FLATE_DECODE.equals(f));
+        if (!plain || x.getHeight() <= BAND || s.containsKey(COSName.SMASK) || s.containsKey(COSName.MASK)) {
+            return false;
+        }
+        return !allWhite(x.getImage(new Rectangle(0, 0, x.getWidth(), BAND), QUICK));
     }
 
     private static boolean allWhite(BufferedImage img) {

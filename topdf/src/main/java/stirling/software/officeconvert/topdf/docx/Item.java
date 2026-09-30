@@ -42,6 +42,8 @@ final class Item {
 
     boolean shaped;
 
+    int level = -1;
+
     int start;
 
     float objectWidth;
@@ -54,6 +56,24 @@ final class Item {
 
     Item(Kind kind) {
         this.kind = kind;
+    }
+
+    // The part from..to of a text item, with its look and links; notes stay on the first part, spacing on the last
+    Item piece(int from, int to) {
+        Item p = new Item(kind);
+        p.text = text.substring(from, to);
+        p.look = look;
+        p.link = link;
+        p.field = field;
+        p.label = label;
+        p.lang = lang;
+        p.rtl = rtl;
+        p.shaped = shaped;
+        p.level = level;
+        p.start = start + from;
+        p.note = from == 0 ? note : null;
+        p.extra = to == text.length() ? extra : 0;
+        return p;
     }
 
     int length() {
@@ -78,7 +98,7 @@ final class Item {
             }
             return fullWidth + tail;
         }
-        return measure(text.substring(from, to)) + tail;
+        return (shaped ? measure(text.substring(from, to)) : look.style().width(text, from, to)) + tail;
     }
 
     private float measure(String s) {

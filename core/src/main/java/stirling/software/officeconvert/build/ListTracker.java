@@ -108,14 +108,7 @@ final class ListTracker {
         levelX.set(level, markerX);
         levelKind.set(level, m.kind());
         levelBullet.set(level, m.text());
-        String format = switch (m.kind()) {
-            case BULLET -> "bullet";
-            case DECIMAL -> "decimal";
-            case LOWER_LETTER -> "lowerLetter";
-            case UPPER_LETTER -> "upperLetter";
-            case LOWER_ROMAN -> "lowerRoman";
-            case UPPER_ROMAN -> "upperRoman";
-        };
+        String format = m.wordFormat();
         String text = m.kind() == Marker.Kind.BULLET ? m.text() : m.prefix() + "%" + (level + 1) + m.suffix();
         if (m.kind() != Marker.Kind.BULLET && level > 0) {
             current.starts[level] = m.value();
@@ -149,6 +142,10 @@ final class ListTracker {
 
     private static Marker reinterpret(Marker m, Marker.Kind wanted) {
         String body = letterBody(m);
+        if (wanted == Marker.Kind.ARABIC_ABJAD || wanted == Marker.Kind.ARABIC_ALPHA) {
+            int v = Marker.arabicValue(body, wanted);
+            return v > 0 ? new Marker(wanted, m.text(), v, m.prefix(), m.suffix()) : null;
+        }
         boolean lower = !body.isEmpty() && Character.isLowerCase(body.charAt(0));
         if ((wanted == Marker.Kind.LOWER_LETTER || wanted == Marker.Kind.UPPER_LETTER) && body.length() == 1) {
             boolean wantLower = wanted == Marker.Kind.LOWER_LETTER;

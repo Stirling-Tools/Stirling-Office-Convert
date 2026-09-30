@@ -181,35 +181,35 @@ public final class ActiveContent {
         return found;
     }
 
+    // Names and targets come from the document (author paths, internal URLs), so only kinds and counts are shown
     public static List<String> describe(Map<Kind, Set<String>> found) {
         List<String> out = new ArrayList<>();
         for (Map.Entry<Kind, Set<String>> e : found.entrySet()) {
-            List<String> items = new ArrayList<>(e.getValue());
-            String shown = String.join(", ", items.subList(0, Math.min(3, items.size())));
-            String more = items.size() > 3 ? " and " + (items.size() - 3) + " more" : "";
-            out.add("Skipped active content: " + label(e.getKey()) + " (" + shown + more + ")");
+            int n = e.getValue().size();
+            String label = label(e.getKey());
+            out.add("Skipped active content: " + (n > 1 ? label.replace(" (", " (" + n + ", ") : label));
         }
         return out;
     }
 
     static String label(Kind kind) {
         return switch (kind) {
-            case MACRO -> "macros, never run";
-            case ACTIVE_X -> "ActiveX controls, stored picture only";
-            case OLE_OBJECT -> "embedded OLE objects, stored preview only";
-            case EMBEDDED_PACKAGE -> "embedded files, never opened";
-            case DATA_CONNECTION -> "data connections, never refreshed";
-            case QUERY_TABLE -> "query tables, never refreshed";
-            case EXTERNAL_WORKBOOK -> "links to other workbooks, cached values only";
-            case WEB_EXTENSION -> "web add-ins, never loaded";
-            case ALT_CHUNK -> "imported HTML or RTF chunks, left out";
-            case ATTACHED_TEMPLATE -> "attached template, never loaded";
-            case FRAME -> "frames, never loaded";
-            case SUBDOCUMENT -> "subdocuments, never loaded";
-            case CUSTOM_UI -> "custom ribbon UI, ignored";
-            case MEDIA -> "audio and video, poster frame only";
-            case MAIL_MERGE -> "mail merge data sources, never read";
-            case EXTERNAL_TARGET -> "linked files and pictures, never fetched";
+            case MACRO -> "macros (not run)";
+            case ACTIVE_X -> "ActiveX controls (stored picture only)";
+            case OLE_OBJECT -> "embedded OLE objects (stored preview only)";
+            case EMBEDDED_PACKAGE -> "embedded files (not opened)";
+            case DATA_CONNECTION -> "data connections (not refreshed)";
+            case QUERY_TABLE -> "query tables (not refreshed)";
+            case EXTERNAL_WORKBOOK -> "links to other workbooks (cached values only)";
+            case WEB_EXTENSION -> "web add-ins (not loaded)";
+            case ALT_CHUNK -> "imported HTML or RTF chunks (left out)";
+            case ATTACHED_TEMPLATE -> "attached template (not loaded)";
+            case FRAME -> "frames (not loaded)";
+            case SUBDOCUMENT -> "subdocuments (not loaded)";
+            case CUSTOM_UI -> "custom ribbon UI (ignored)";
+            case MEDIA -> "audio and video (poster frame only)";
+            case MAIL_MERGE -> "mail merge data sources (not read)";
+            case EXTERNAL_TARGET -> "linked files and pictures (not fetched)";
         };
     }
 

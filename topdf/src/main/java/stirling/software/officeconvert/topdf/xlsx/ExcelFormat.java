@@ -9,6 +9,10 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 // Excel's number and date format codes, applied to the cached value the way Excel displays it
 final class ExcelFormat {
@@ -26,6 +30,10 @@ final class ExcelFormat {
     }
 
     private record Token(Kind kind, String text) {}
+
+    private record Parsed(List<Token> tokens, Locale locale, boolean dated, boolean fraction) {}
+
+    private static final Map<String, Parsed> PARSED = new ConcurrentHashMap<>();
 
     private static final Map<Integer, Locale> LCIDS = Map.ofEntries(Map.entry(0x409, Locale.US),
             Map.entry(0x809, Locale.UK), Map.entry(0x407, Locale.GERMANY), Map.entry(0x807, Locale.of("de", "CH")),
@@ -57,7 +65,21 @@ final class ExcelFormat {
     }
 
     static boolean isDate(String section) {
-        return dated(tokens(section, new Locale[1]));
+        return parsed(section).dated();
+    }
+
+    private static Parsed parsed(String section) {
+        Parsed known = PARSED.get(section);
+        if (known == null) {
+            Locale[] locale = {Locale.US};
+            List<Token> tokens = List.copyOf(tokens(section, locale));
+            known = new Parsed(tokens, locale[0], dated(tokens), fraction(tokens));
+            if (PARSED.size() >= 1024) {
+                PARSED.clear();
+            }
+            PARSED.put(section, known);
+        }
+        return known;
     }
 
     // Date letters count only when no digit placeholder makes it a number format ("0.0 EUR" is a number)
@@ -85,16 +107,14 @@ final class ExcelFormat {
 
     // Null when the section needs something this does not do (fractions); the caller then falls back
     static String format(double value, String section, boolean minus, boolean date1904) {
-        Locale[] locale = {Locale.US};
-        List<Token> tokens = tokens(section, locale);
-        boolean date = dated(tokens);
-        if (!date && fraction(tokens)) {
+        Parsed p = parsed(section);
+        if (!p.dated() && p.fraction()) {
             return null;
         }
-        if (date) {
-            return date(value, tokens, locale[0], date1904);
+        if (p.dated()) {
+            return date(value, p.tokens(), p.locale(), date1904);
         }
-        return number(value, tokens, minus);
+        return number(value, p.tokens(), minus);
     }
 
     private static boolean fraction(List<Token> tokens) {
@@ -172,6 +192,45 @@ final class ExcelFormat {
             }
         }
         return out;
+    }
+
+    private static final Pattern NUMERALS = Pattern.compile("\\[\\$[^\\]-]*-([0-9A-Fa-f]{7,8})\\]");
+
+    // The zero of each numeral system a locale tag's top byte names (02 Arabic-Indic, 04 Devanagari, 0D Thai, ...)
+    private static final int[] ZEROS = {0, 0, 0x0660, 0x06F0, 0x0966, 0x09E6, 0x0A66, 0x0AE6, 0x0B66, 0x0BE6, 0x0C66,
+        0x0CE6, 0x0D66, 0x0E50, 0x0ED0, 0x0F20, 0x1040, 0, 0x17E0, 0x1810};
+
+    // Excel shows the digits of a value in the numeral system its format's locale tag asks for
+    static String nativeDigits(String section, String text) {
+        if (text == null || section.indexOf('[') < 0) {
+            return text;
+        }
+        Matcher m = NUMERALS.matcher(section);
+        if (!m.find()) {
+            return text;
+        }
+        int system = (int) (Long.parseLong(m.group(1), 16) >>> 24);
+        int zero = system < ZEROS.length ? ZEROS[system] : 0;
+        if (zero == 0) {
+            return text;
+        }
+        boolean arabic = zero == 0x0660 || zero == 0x06F0;
+        StringBuilder b = new StringBuilder(text.length());
+        for (int i = 0; i < text.length(); i++) {
+            char c = text.charAt(i);
+            boolean between = i > 0 && i + 1 < text.length() && Character.isDigit(text.charAt(i - 1))
+                    && text.charAt(i + 1) >= '0' && text.charAt(i + 1) <= '9';
+            if (c >= '0' && c <= '9') {
+                b.append((char) (zero + c - '0'));
+            } else if (arabic && between && c == '.') {
+                b.append('\u066B');
+            } else if (arabic && between && c == ',') {
+                b.append('\u066C');
+            } else {
+                b.append(c);
+            }
+        }
+        return b.toString();
     }
 
     private static void bracket(String tag, List<Token> out, Locale[] locale) {
@@ -360,7 +419,12 @@ final class ExcelFormat {
         return false;
     }
 
+    // A shortest repr of at most 15 digits is what the exact value rounds to at 15 digits, without BigInteger powers
     private static BigDecimal round(double v, int decimals) {
+        BigDecimal shortest = BigDecimal.valueOf(v);
+        if (shortest.precision() <= 15) {
+            return shortest.setScale(decimals, RoundingMode.HALF_UP);
+        }
         BigDecimal bd = new BigDecimal(v);
         if (bd.signum() != 0) {
             bd = bd.round(new MathContext(15, RoundingMode.HALF_EVEN));

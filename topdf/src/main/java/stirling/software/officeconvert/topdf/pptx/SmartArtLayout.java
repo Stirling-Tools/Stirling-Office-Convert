@@ -58,6 +58,7 @@ final class SmartArtLayout {
         RADIAL,
         CLUSTER,
         CYCLE,
+        STACKED,
         ROW,
         COLUMN,
         GRID
@@ -129,6 +130,8 @@ final class SmartArtLayout {
 
     private int drawn;
 
+    private Document colors;
+
     private SmartArtLayout(Deck deck, PdfCanvas canvas, XSLFSheet sheet) {
         this.deck = deck;
         this.canvas = canvas;
@@ -182,6 +185,9 @@ final class SmartArtLayout {
 
     static Kind kind(String uniqueId) {
         String n = uniqueId.substring(uniqueId.lastIndexOf('/') + 1).toLowerCase(Locale.ROOT);
+        if (n.equals("lprocess2") || n.startsWith("lprocess2#")) {
+            return Kind.STACKED;
+        }
         if (n.equals("radial1") || n.startsWith("radial1#")) {
             return Kind.BASIC_RADIAL;
         }
@@ -362,8 +368,55 @@ final class SmartArtLayout {
             radial(center, around, x, y, w, h, kind == Kind.RADIAL);
         } else if (kind == Kind.CYCLE) {
             ring(top, x, y, w, h);
+        } else if (kind == Kind.STACKED) {
+            stacked(top, x, y, w, h);
         } else {
             blocks(kind, top, x, y, w, h);
+        }
+    }
+
+    // Stacked List: a background block per item 0.075 of a block apart, its text in the top 0.3, its children
+    // stacked in the 0.8 by 0.65 below, a tenth of a child apart
+    private void stacked(List<Point> top, float x, float y, float w, float h) throws IOException {
+        int n = top.size();
+        float cw = w / (n + 0.075f * (n - 1));
+        Color bg = label("bgShp", "fillClrLst");
+        if (bg == null) {
+            bg = DmlColors.modify(scheme(STSchemeColorVal.ACCENT_1), "tint", 40_000);
+        }
+        Color ink = label("bgShp", "txFillClrLst");
+        List<List<List<Run>>> texts = new ArrayList<>();
+        List<Standins.Emulation> fonts = new ArrayList<>();
+        List<Box> heads = new ArrayList<>();
+        List<Point> children = new ArrayList<>();
+        List<Box> boxes = new ArrayList<>();
+        float fitted = 65;
+        for (int i = 0; i < n; i++) {
+            Point p = top.get(i);
+            float left = x + i * cw * 1.075f;
+            Box head = new Box(left, y, cw, 0.3f * h, Form.SQUARE);
+            Standins.Emulation font = deck.standins().emulate(typeface(p.paragraphs), false, false);
+            while (fitted > 5 && !fits(p.paragraphs, font, fitted, head)) {
+                fitted -= 1;
+            }
+            texts.add(p.paragraphs);
+            fonts.add(font);
+            heads.add(head);
+            int k = p.children.size();
+            float ch = k == 0 ? 0 : 0.65f * h / (k + 0.1f * (k - 1));
+            for (int j = 0; j < k; j++) {
+                children.add(p.children.get(j));
+                boxes.add(new Box(left + 0.1f * cw, y + 0.3f * h + j * ch * 1.1f, 0.8f * cw, ch, Form.ROUNDED));
+            }
+        }
+        for (int i = 0; i < n; i++) {
+            Box head = heads.get(i);
+            float r = Math.min(cw, h) * 0.1f;
+            canvas.roundRect(head.x(), y, cw, h, r, r, Fill.solid(bg), null);
+            write(texts.get(i), fonts.get(i), fitted, ink == null ? Color.BLACK : ink, head);
+        }
+        if (!children.isEmpty()) {
+            nodes(children, boxes, false);
         }
     }
 
@@ -803,8 +856,23 @@ final class SmartArtLayout {
         }
     }
 
+    // The first colour of a list in the colour definition's style label
+    private Color label(String name, String list) {
+        if (colors == null) {
+            return null;
+        }
+        for (Element lbl : children(colors.getDocumentElement(), DGM, "styleLbl")) {
+            if (name.equals(lbl.getAttribute("name"))) {
+                List<Element> c = children(child(lbl, DGM, list), null, null);
+                return c.isEmpty() ? null : colour(c.get(0));
+            }
+        }
+        return null;
+    }
+
     // The colour definition's node fills, given out in turn as its repeat method says
     private void palette(Document colors) {
+        this.colors = colors;
         if (colors == null) {
             return;
         }

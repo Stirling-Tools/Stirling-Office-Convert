@@ -133,8 +133,10 @@ final class ParaFlow {
             topExtra = top.space() + top.width();
         }
         float bottomExtra = !joinNext && ParaProps.visible(bottom) ? bottom.space() + bottom.width() : 0;
-        float x0 = pp.left();
-        float x1 = width - pp.right();
+        boolean rtl = Boolean.TRUE.equals(pp.bidi);
+        float start = Math.min(pp.left(), pp.left() + pp.first());
+        float x0 = rtl ? pp.right() : start;
+        float x1 = width - (rtl ? start : pp.right());
         if (ParaProps.visible(pp.bdrLeft)) {
             x0 -= pp.bdrLeft.space() + pp.bdrLeft.width();
         }
@@ -155,9 +157,9 @@ final class ParaFlow {
                 r.lastAfter = after(p, next, r);
                 r.lastPara = p;
                 r.lastBoxed = false;
-            } else if (listed(p)) {
-                // A numbered mark shows nothing across a continuous break: its space after takes no room but still
-                // absorbs the next space before
+            } else {
+                // A mark shows nothing across a continuous break: its space after takes no room but still absorbs
+                // the next space before
                 r.lastAfter = after(p, next, r);
             }
             return;
@@ -410,8 +412,16 @@ final class ParaFlow {
                 right = span[2] - r.left();
             }
             line = lb.next(left, Math.max(left + 1, right));
-            LinePainter.align(line, pp, ctx.settings);
-            BidiLine.reorder(line, Boolean.TRUE.equals(pp.bidi));
+            // Right-to-left lines clear of floats are laid out from their start edge, indents and tabs included
+            boolean mirrored = Boolean.TRUE.equals(pp.bidi) && (span == null || span.length == 3
+                    && Math.abs(left - left0) < 0.01f && Math.abs(right - right0) < 0.01f);
+            if (mirrored) {
+                LinePainter.align(line, pp, ctx.settings, true);
+                BidiLine.mirror(line, r.width());
+            } else {
+                LinePainter.align(line, pp, ctx.settings);
+                BidiLine.reorder(line, Boolean.TRUE.equals(pp.bidi));
+            }
             for (int seg = 3; span != null && seg + 1 < span.length && !lb.done()
                     && line.breakType == null; seg += 2) {
                 Line more = lb.next(span[seg] - r.left(), Math.max(span[seg] - r.left() + 1,
@@ -449,11 +459,8 @@ final class ParaFlow {
         return lb;
     }
 
-    private float gridPitch(Region r) {
-        if (r instanceof PageFlow pf) {
-            return pf.gridPitch();
-        }
-        return 0;
+    private static float gridPitch(Region r) {
+        return r.gridPitch();
     }
 
     private List<Object> registerAnchors(ParaItems pi, Region r, float top, ParaProps pp) {
@@ -649,6 +656,7 @@ final class ParaFlow {
         float before = p.pp.before == null ? 0 : p.pp.before;
         float after = after(p, next, r);
         boolean widow = !Boolean.FALSE.equals(p.pp.widowControl) && count > 1;
-        return new float[] {before, total, after, widow ? firstTwo : first};
+        // Widow control splits a three-line paragraph nowhere, so it keeps with the paragraph before only whole
+        return new float[] {before, total, after, !widow ? first : count == 3 ? total : firstTwo};
     }
 }

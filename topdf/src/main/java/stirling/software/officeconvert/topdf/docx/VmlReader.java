@@ -305,7 +305,11 @@ final class VmlReader {
             fv ^= to[1] < from[1];
         }
         if (s.is("v:group")) {
-            return depth > 16 ? null : group(s, w, h, depth);
+            if (depth > 16) {
+                pkg.leftOut("Shapes grouped more than 16 levels deep were left out");
+                return null;
+            }
+            return group(s, w, h, depth);
         }
         XEl image = s.child("v:imagedata");
         if (image != null || s.is("v:image")) {
@@ -391,7 +395,7 @@ final class VmlReader {
                 vert = "bottom-to-top".equals(tbStyle.get("mso-layout-flow-alt")) ? "vert270" : "vert";
             }
             text = new Drawing.TextBox(content.blocks(tc, null), ins[0], ins[1], ins[2], ins[3], "t", grow, false,
-                    vert);
+                    vert, !grow);
         }
         return new Drawing.Shape(geometry, outline, fill, stroke, rot, fh, fv, text,
                 stroke == null || strokeEl == null ? null : ends(strokeEl), null);

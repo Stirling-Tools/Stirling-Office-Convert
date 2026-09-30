@@ -1,7 +1,6 @@
 package stirling.software.officeconvert.topdf.docx;
 
-import java.text.BreakIterator;
-import java.util.Locale;
+import stirling.software.officeconvert.topdf.font.Clusters;
 
 final class Breaks {
 
@@ -24,8 +23,15 @@ final class Breaks {
             brk[i] = between(text, i, prev, cur);
         }
         brk[n] = true;
-        dictionaryBreaks(text, brk);
+        boolean[] words = Clusters.dictionaryBreaks(text);
+        for (int i = 1; i < n; i++) {
+            brk[i] = (brk[i] || words[i]) && !joined(text, i);
+        }
         return brk;
+    }
+
+    static boolean joined(String text, int i) {
+        return Clusters.joined(text, i);
     }
 
     private static boolean between(String text, int i, char prev, char cur) {
@@ -66,32 +72,5 @@ final class Breaks {
     static boolean cjk(char c) {
         return c >= 0x2E80 && c <= 0x9FFF || c >= 0xF900 && c <= 0xFAFF || c >= 0xFF00 && c <= 0xFFEF
                 || c >= 0xAC00 && c <= 0xD7AF || c >= 0x3000 && c <= 0x303F || Character.isSurrogate(c);
-    }
-
-    private static boolean dictionary(char c) {
-        return c >= 0x0E00 && c <= 0x0EFF || c >= 0x1000 && c <= 0x109F || c >= 0x1780 && c <= 0x17FF;
-    }
-
-    private static void dictionaryBreaks(String text, boolean[] brk) {
-        int n = text.length();
-        int i = 0;
-        while (i < n) {
-            if (!dictionary(text.charAt(i))) {
-                i++;
-                continue;
-            }
-            int start = i;
-            while (i < n && dictionary(text.charAt(i))) {
-                i++;
-            }
-            String run = text.substring(start, i);
-            BreakIterator it = BreakIterator.getLineInstance(Locale.of("th"));
-            it.setText(run);
-            for (int b = it.first(); b != BreakIterator.DONE; b = it.next()) {
-                if (b > 0 && b < run.length()) {
-                    brk[start + b] = true;
-                }
-            }
-        }
     }
 }

@@ -320,7 +320,7 @@ final class Overlays {
         List<Value> out = new ArrayList<>();
         for (CellRangeAddress r : ranges) {
             for (Grid.RowInfo row : grid.rows(r.getFirstRow(), r.getLastRow()).values()) {
-                for (CellEntry e : row.cells.subMap(r.getFirstColumn(), true, r.getLastColumn(), true).values()) {
+                for (CellEntry e : row.cells(r.getFirstColumn(), r.getLastColumn())) {
                     out.add(new Value(row.index, e.col(), e));
                     if (out.size() > MAX_CELLS) {
                         return out;

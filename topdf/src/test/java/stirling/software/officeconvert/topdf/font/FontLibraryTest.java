@@ -77,8 +77,12 @@ class FontLibraryTest {
         FontFace calibri = lib.find("Calibri", false, false);
         assertEquals("Carlito", calibri.family());
         assertEquals("Calibri", calibri.requestedFamily());
-        assertTrue(calibri.note().contains("Calibri is not installed"), calibri.note());
-        assertEquals("Caladea", lib.find("Cambria", false, false).family());
+        assertTrue(calibri.substituted());
+        assertNull(calibri.note(), "Carlito has Calibri's metrics, so nothing moves and nothing is reported");
+        FontFace cambria = lib.find("Cambria", false, false);
+        assertEquals("Caladea", cambria.family());
+        assertEquals("Cambria is not installed; using Caladea", cambria.note());
+        assertTrue(lib.find("Calibri", false, true).note().contains("Calibri is not installed"));
         assertEquals("Carlito", lib.find("carlito", false, false).family());
         assertFalse(lib.find("Carlito", false, false).substituted());
         assertEquals("Carlito", lib.find("Carlito", true, false).family());

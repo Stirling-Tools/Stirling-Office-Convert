@@ -124,11 +124,14 @@ final class FootnoteFlow {
         return s.line >= 2 && (s.lines <= 0 || s.lines - s.line >= 2);
     }
 
-    private static PageBox.NotePart[] splitNote(PageBox.NotePart part, float room, boolean force) {
+    static PageBox.NotePart[] splitNote(PageBox.NotePart part, float room, boolean force) {
         List<Placed> strips = part.strips();
         int fit = 0;
         while (fit < strips.size() && strips.get(fit).y + strips.get(fit).strip.height <= room + 0.01f) {
             fit++;
+        }
+        if (fit >= strips.size()) {
+            return new PageBox.NotePart[] {part, null};
         }
         int k = fit;
         while (k > 0 && !breakable(strips, k)) {
@@ -136,9 +139,6 @@ final class FootnoteFlow {
         }
         if (k <= 0 && force && !strips.isEmpty()) {
             k = Math.max(1, Math.min(fit, strips.size() - 1));
-        }
-        if (k >= strips.size()) {
-            return new PageBox.NotePart[] {part, null};
         }
         if (k <= 0) {
             return new PageBox.NotePart[] {null, part};

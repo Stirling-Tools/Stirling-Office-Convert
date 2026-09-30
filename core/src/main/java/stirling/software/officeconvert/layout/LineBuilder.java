@@ -117,7 +117,7 @@ public final class LineBuilder {
     }
 
     private static boolean ideographic(Glyph g) {
-        if (g.text.isEmpty()) {
+        if (g.text.isEmpty() || g.text.charAt(0) < 0x1100) {
             return false;
         }
         Character.UnicodeScript script = Character.UnicodeScript.of(g.text.codePointAt(0));

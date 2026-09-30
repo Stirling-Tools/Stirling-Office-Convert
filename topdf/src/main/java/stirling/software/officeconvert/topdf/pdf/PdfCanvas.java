@@ -27,10 +27,12 @@ import java.util.Map;
 import java.util.Objects;
 
 import org.apache.pdfbox.cos.COSArray;
+import org.apache.pdfbox.cos.COSBase;
 import org.apache.pdfbox.cos.COSBoolean;
 import org.apache.pdfbox.cos.COSDictionary;
 import org.apache.pdfbox.cos.COSFloat;
 import org.apache.pdfbox.cos.COSName;
+import org.apache.pdfbox.cos.COSObject;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.PDPageContentStream;
 import org.apache.pdfbox.pdmodel.PDPageContentStream.AppendMode;
@@ -39,7 +41,6 @@ import org.apache.pdfbox.pdmodel.common.PDRectangle;
 import org.apache.pdfbox.pdmodel.common.function.PDFunction;
 import org.apache.pdfbox.pdmodel.common.function.PDFunctionType2;
 import org.apache.pdfbox.pdmodel.common.function.PDFunctionType3;
-import org.apache.pdfbox.pdmodel.font.PDType0Font;
 import org.apache.pdfbox.pdmodel.graphics.color.PDColor;
 import org.apache.pdfbox.pdmodel.graphics.color.PDDeviceRGB;
 import org.apache.pdfbox.pdmodel.graphics.form.PDFormXObject;
@@ -50,6 +51,7 @@ import org.apache.pdfbox.pdmodel.graphics.state.PDExtendedGraphicsState;
 import org.apache.pdfbox.pdmodel.interactive.action.PDActionURI;
 import org.apache.pdfbox.pdmodel.interactive.annotation.PDAnnotation;
 import org.apache.pdfbox.pdmodel.interactive.annotation.PDAnnotationLink;
+import org.apache.pdfbox.pdmodel.interactive.annotation.PDAppearanceStream;
 import org.apache.pdfbox.util.Matrix;
 
 import stirling.software.officeconvert.topdf.font.FontFace;
@@ -82,6 +84,8 @@ public final class PdfCanvas implements Closeable {
 
     private final PDPage page;
 
+    private final PDAppearanceStream form;
+
     private final int index;
 
     private final float width;
@@ -92,7 +96,7 @@ public final class PdfCanvas implements Closeable {
 
     private final Deque<AffineTransform> saved = new ArrayDeque<>();
 
-    private final Map<PDType0Font, String> fontNames = new IdentityHashMap<>();
+    private final Map<COSDictionary, String> fontNames = new IdentityHashMap<>();
 
     private AffineTransform ctm = new AffineTransform();
 
@@ -100,15 +104,43 @@ public final class PdfCanvas implements Closeable {
 
     private boolean closed;
 
+    private boolean hiddenText;
+
     PdfCanvas(PdfOutput output, PDPage page, int index) throws IOException {
         this.output = output;
         this.page = page;
+        this.form = null;
         this.index = index;
         this.width = page.getMediaBox().getWidth();
         this.height = page.getMediaBox().getHeight();
         this.cs = new PDPageContentStream(output.document(), page, AppendMode.OVERWRITE, true);
         cs.saveGraphicsState();
         cs.transform(new Matrix(1, 0, 0, -1, 0, height));
+    }
+
+    // A canvas whose drawing becomes a form XObject: the same coordinates as a page, links and destinations left out
+    PdfCanvas(PdfOutput output, float width, float height, float margin) throws IOException {
+        this.output = output;
+        this.page = null;
+        this.form = new PDAppearanceStream(output.document());
+        this.index = -1;
+        this.width = width;
+        this.height = height;
+        form.setBBox(new PDRectangle(-margin, -margin, width + 2 * margin, height + 2 * margin));
+        form.setResources(new PDResources());
+        this.cs = new PDPageContentStream(output.document(), form,
+                form.getContentStream().createOutputStream(COSName.FLATE_DECODE));
+        cs.saveGraphicsState();
+        cs.transform(new Matrix(1, 0, 0, -1, 0, height));
+    }
+
+    /** The form XObject a canvas made by {@link PdfOutput#newForm} draws into, or null for a page. */
+    public PDFormXObject form() {
+        return form;
+    }
+
+    private PDResources resources() {
+        return page != null ? page.getResources() : form.getResources();
     }
 
     public PdfOutput output() {
@@ -133,6 +165,13 @@ public final class PdfCanvas implements Closeable {
 
     public AffineTransform transform() {
         return new AffineTransform(ctm);
+    }
+
+    // Text written while hidden is kept for search and copy but not painted; returns the previous setting
+    public boolean hideText(boolean hide) {
+        boolean was = hiddenText;
+        hiddenText = hide;
+        return was;
     }
 
     public void save() throws IOException {
@@ -196,7 +235,7 @@ public final class PdfCanvas implements Closeable {
         }
         PdfFonts.Embedded embedded = output.fonts().font(style.face());
         FontFace face = embedded.face();
-        StringBuilder ops = new StringBuilder();
+        StringBuilder ops = new StringBuilder(text.length() * 5 + 96);
         int kind = SKIPPED;
         FontFace cover = null;
         int start = 0;
@@ -253,7 +292,10 @@ public final class PdfCanvas implements Closeable {
         boolean perGlyph = face.scaledPerGlyph();
         float scale = perGlyph ? 1 : face.glyphStretch();
         float unit = size * th * scale / 1000f;
-        StringBuilder tj = new StringBuilder(perGlyph ? "" : "[");
+        StringBuilder tj = new StringBuilder(text.length() * 4 + 32);
+        if (!perGlyph) {
+            tj.append('[');
+        }
         boolean segment = !perGlyph;
         int[] glyphs = new int[text.length()];
         int[] codes = new int[text.length()];
@@ -470,7 +512,7 @@ public final class PdfCanvas implements Closeable {
         float a = color.getAlpha() / 255f;
         b.append("q\n");
         if (a < 1) {
-            b.append('/').append(page.getResources().add(output.alpha(Math.max(0, a), Math.max(0, a))).getName())
+            b.append('/').append(resources().add(output.alpha(Math.max(0, a), Math.max(0, a))).getName())
                     .append(" gs\n");
         }
         rgb(b, color).append(" rg\n");
@@ -479,7 +521,9 @@ public final class PdfCanvas implements Closeable {
             Numbers.append(b, outline).append(" w 1 j\n");
         }
         b.append("BT\n");
-        if (outline > 0) {
+        if (hiddenText) {
+            b.append("3 Tr\n");
+        } else if (outline > 0) {
             b.append("2 Tr\n");
         }
     }
@@ -820,7 +864,7 @@ public final class PdfCanvas implements Closeable {
     public boolean link(float x, float y, float w, float h, String url) throws IOException {
         open();
         String safe = SafeLinks.safeUrl(url);
-        if (safe == null || !(w > 0 && h > 0)) {
+        if (safe == null || !(w > 0 && h > 0) || page == null) {
             return false;
         }
         PDAnnotationLink link = new PDAnnotationLink();
@@ -837,14 +881,14 @@ public final class PdfCanvas implements Closeable {
     public void linkTo(float x, float y, float w, float h, String destination) {
         Objects.requireNonNull(destination, "destination");
         open();
-        if (w > 0 && h > 0) {
+        if (w > 0 && h > 0 && page != null) {
             output.link(page, pdfRect(x, y, w, h), destination);
         }
     }
 
     public void linkToPage(float x, float y, float w, float h, int pageIndex, float yTop) {
         open();
-        if (w > 0 && h > 0) {
+        if (w > 0 && h > 0 && page != null) {
             output.link(page, pdfRect(x, y, w, h), pageIndex, 0, yTop);
         }
     }
@@ -852,6 +896,9 @@ public final class PdfCanvas implements Closeable {
     public void destination(String name, float x, float yTop) {
         Objects.requireNonNull(name, "name");
         open();
+        if (page == null) {
+            return;
+        }
         Point2D p = ctm.transform(new Point2D.Float(x, yTop), null);
         output.destination(name, index, (float) p.getX(), (float) p.getY());
     }
@@ -918,10 +965,35 @@ public final class PdfCanvas implements Closeable {
     private void font(StringBuilder b, PdfFonts.Embedded embedded, float size) {
         String name = fontNames.get(embedded.font());
         if (name == null) {
-            name = page.getResources().add(embedded.font()).getName();
+            name = fontName(resources(), embedded.font());
             fontNames.put(embedded.font(), name);
         }
         Numbers.append(b.append('/').append(name).append(' '), size).append(" Tf\n");
+    }
+
+    // What PDResources.add(PDFont) names a font, for a font dictionary without a PDFont around it
+    static String fontName(PDResources resources, COSDictionary font) {
+        COSDictionary fonts = resources.getCOSObject().getCOSDictionary(COSName.FONT);
+        if (fonts != null) {
+            for (Map.Entry<COSName, COSBase> e : fonts.entrySet()) {
+                COSBase v = e.getValue();
+                if (v == font || v instanceof COSObject o && o.getObject() == font) {
+                    return e.getKey().getName();
+                }
+            }
+        }
+        String key = "F1";
+        if (fonts == null) {
+            fonts = new COSDictionary();
+            resources.getCOSObject().setItem(COSName.FONT, fonts);
+        } else {
+            int n = fonts.keySet().size();
+            do {
+                key = "F" + ++n;
+            } while (fonts.containsKey(key));
+        }
+        fonts.setItem(COSName.getPDFName(key), font);
+        return key;
     }
 
     @SuppressWarnings("deprecation")
@@ -1190,11 +1262,17 @@ public final class PdfCanvas implements Closeable {
         cs.setStrokingColor(new PDColor(office(c), PDDeviceRGB.INSTANCE));
     }
 
-    private static float unit(int component) {
-        if (component <= 0 || component >= 255) {
-            return component <= 0 ? 0 : 1;
+    private static final float[] UNITS = new float[256];
+
+    static {
+        for (int i = 1; i < 255; i++) {
+            UNITS[i] = new BigDecimal(i / 255.0).round(new MathContext(3)).floatValue();
         }
-        return new BigDecimal(component / 255.0).round(new MathContext(3)).floatValue();
+        UNITS[255] = 1;
+    }
+
+    private static float unit(int component) {
+        return UNITS[Math.max(0, Math.min(255, component))];
     }
 
     private static COSArray floats(float... values) {

@@ -21,7 +21,7 @@ final class HeaderFooterPainter {
     }
 
     void header(HeaderFooterText.Sections s, PageSetup setup, double scale) throws IOException {
-        double top = setup.bandOffsetY() + setup.header() + PrintMetrics.ORIGIN;
+        double top = setup.header() + PrintMetrics.ORIGIN;
         section(s.left(), setup, scale, top, true, 0);
         section(s.center(), setup, scale, top, true, 1);
         section(s.right(), setup, scale, top, true, 2);
@@ -42,7 +42,7 @@ final class HeaderFooterPainter {
         double left = setup.bandOffsetX() + (setup.headerFooter().alignWithMargins() ? setup.left() + INSET : 0.5 * 72);
         double right = width - (setup.headerFooter().alignWithMargins() ? setup.right() + INSET : 36);
         double x = where == 0 ? left : where == 2 ? right - pw : (width + setup.bandOffsetX() - pw) / 2;
-        double y = header ? setup.bandOffsetY() + setup.header() + PrintMetrics.ORIGIN
+        double y = header ? setup.header() + PrintMetrics.ORIGIN
                 : setup.output().height() - setup.footer() - ph;
         canvas.image(pic, (float) x, (float) y, (float) pw, (float) ph, Crop.NONE, 0, false, false, 1);
     }

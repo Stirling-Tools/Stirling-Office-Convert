@@ -325,7 +325,8 @@ class DocxWordParityTest {
     void aTripleTableBorderIsDrawnInsideTheRoomItTakes() throws IOException {
         String edge = "w:val=\"triple\" w:sz=\"8\" w:space=\"0\" w:color=\"000000\"";
         String table = "<w:tbl><w:tblPr><w:tblBorders><w:top " + edge + "/><w:bottom " + edge + "/></w:tblBorders>"
-                + "</w:tblPr><w:tblGrid><w:gridCol w:w=\"4000\"/></w:tblGrid><w:tr><w:tc>" + DocxDoc.p("Cell")
+                + "</w:tblPr><w:tblGrid><w:gridCol w:w=\"4000\"/></w:tblGrid><w:tr><w:tc><w:tcPr><w:tcW w:w=\"4000\""
+                + " w:type=\"dxa\"/></w:tcPr>" + DocxDoc.p("Cell")
                 + "</w:tc></w:tr></w:tbl>";
         DocxDoc.Rendered r = render("triple", "", DocxDoc.p("Top") + table);
         List<Float> ys = new ArrayList<>();

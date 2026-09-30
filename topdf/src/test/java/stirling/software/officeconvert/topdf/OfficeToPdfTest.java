@@ -47,16 +47,20 @@ class OfficeToPdfTest {
         for (String ext : new String[] {"pptx", "pptm", "ppsx", "ppsm", "potx", "potm"}) {
             assertEquals(Format.PPTX, Format.of(Path.of("a." + ext)), ext);
         }
-        for (String ext : new String[] {"xlsx", "xlsm", "xltx", "xltm"}) {
+        for (String ext : new String[] {"xlsx", "xlsm", "xltx", "xltm", "xls", "xlt"}) {
             assertEquals(Format.XLSX, Format.of(Path.of("dir/a." + ext)), ext);
         }
-        for (String ext : new String[] {"doc", "xls", "ppt"}) {
+        for (String ext : new String[] {"ppt", "pps", "POT"}) {
+            assertEquals(Format.PPT, Format.of(Path.of("a." + ext)), ext);
+        }
+        for (String ext : new String[] {"doc"}) {
             IllegalArgumentException e = assertThrows(IllegalArgumentException.class, () -> Format.of(Path.of("a." + ext)));
             assertTrue(e.getMessage().contains("not supported yet"), e.getMessage());
             assertTrue(Format.recognises(Path.of("a." + ext)));
         }
         IllegalArgumentException pdf = assertThrows(IllegalArgumentException.class, () -> Format.of(Path.of("a.pdf")));
-        for (String ext : new String[] {".docm", ".dotm", ".ppsm", ".potx", ".potm", ".xlsm", ".xltx", ".xltm"}) {
+        for (String ext : new String[] {".docm", ".dotm", ".ppsm", ".potx", ".potm", ".xlsm", ".xltx", ".xltm",
+                ".ppt", ".pps", ".pot"}) {
             String m = pdf.getMessage();
             assertTrue(m.contains(ext + ",") || m.contains(ext + " ") || m.endsWith(ext), m);
         }
@@ -111,7 +115,9 @@ class OfficeToPdfTest {
         assertFails("bomb.docx", Fixtures.zipBomb(Fixtures.docx("x"), "word/media/z.bin", 64L << 20), "zip bomb");
         assertFails("vsdx.docx", Fixtures.edit(Fixtures.docx("x")).remove("[Content_Types].xml")
                 .remove("word/document.xml").bytes(), "not an Office document");
-        for (String name : List.of("legacy.doc", "old.xls", "deck.ppt", "binary.xlsb", "upload", "notes.txt")) {
+        assertFails("old.xls", new byte[] {1, 2, 3}, "not a zip");
+        assertFails("deck.ppt", new byte[] {1, 2, 3}, "not a zip");
+        for (String name : List.of("legacy.doc", "binary.xlsb", "upload", "notes.txt")) {
             Path in = Files.write(dir.resolve(name), new byte[] {1, 2, 3});
             IOException e = assertThrows(IOException.class, () -> OfficeToPdf.convert(in, dir.resolve(name + ".pdf")),
                     name);
@@ -350,18 +356,40 @@ class OfficeToPdfTest {
         });
         assertEquals(2, r.pages());
         assertTrue(r.truncated());
+        assertTrue(r.pageLimitReached());
         assertTrue(new String(pdf.toByteArray(), 0, 5, StandardCharsets.US_ASCII).startsWith("%PDF-"));
         List<String> w = r.warnings();
         assertTrue(w.get(0).contains("page limit of 2"), w.toString());
-        assertTrue(w.stream().anyMatch(s -> s.contains("macros") && s.contains("/word/vbaProject.bin")), w.toString());
-        assertTrue(w.stream().anyMatch(s -> s.contains("never fetched") && s.contains("192.0.2.7")), w.toString());
+        assertTrue(w.contains("Skipped active content: macros (not run)"), w.toString());
+        assertTrue(w.contains("Skipped active content: linked files and pictures (not fetched)"), w.toString());
+        assertFalse(w.stream().anyMatch(s -> s.contains("192.0.2.7") || s.contains("vbaProject")), w.toString());
         assertTrue(w.stream().anyMatch(s -> s.contains("No Such Family 4711 is not installed")), w.toString());
         assertFalse(w.contains("renderer note"), "a renderer that hit the page limit stops before its own warning");
         OfficeToPdf.Result plain = OfficeToPdf.render(Fixtures.write(dir, "plain.docx", Fixtures.docx("x")), Format.DOCX,
                 new ByteArrayOutputStream(), Options.defaults(), (source, job) -> job.warn("renderer note"));
         assertEquals(1, plain.pages());
         assertFalse(plain.truncated());
+        assertFalse(plain.pageLimitReached());
         assertEquals(List.of("renderer note"), plain.warnings());
+    }
+
+    @Test
+    void aResultAtThePageLimitIsAlsoTruncated() {
+        assertTrue(new OfficeToPdf.Result(2, false, List.of(), true).truncated());
+        assertFalse(new OfficeToPdf.Result(2, true, List.of()).pageLimitReached());
+    }
+
+    @Test
+    void anOutputPastTheScratchLimitIsItsOwnFailureAndLeavesNothingBehind() throws Exception {
+        String[] paragraphs = new String[4000];
+        java.util.Arrays.fill(paragraphs, "A paragraph long enough to fill the pages of this document quickly, again.");
+        Path in = Fixtures.write(dir, "big.docx", Fixtures.docx(paragraphs));
+        Path out = dir.resolve("big.pdf");
+        OfficeToPdf.OutputTooLarge e = assertThrows(OfficeToPdf.OutputTooLarge.class,
+                () -> OfficeToPdf.convert(in, out, Options.defaults().maxScratchBytes(64 << 10)));
+        assertTrue(e.getMessage().contains("output limit"), e.getMessage());
+        assertFalse(Files.exists(out));
+        assertTrue(OfficeToPdf.convert(in, out, Options.defaults()).pages() > 10);
     }
 
     @Test

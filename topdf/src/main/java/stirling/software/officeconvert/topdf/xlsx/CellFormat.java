@@ -4,7 +4,7 @@ import java.awt.Color;
 
 record CellFormat(FontSpec font, Color fill, BorderLine left, BorderLine right, BorderLine top, BorderLine bottom,
         BorderLine diagonal, boolean diagonalUp, boolean diagonalDown, HAlign hAlign, VAlign vAlign, boolean wrap,
-        boolean shrink, int indent, int rotation, int formatIndex, String formatString) {
+        boolean shrink, int indent, int rotation, int formatIndex, String formatString, int readingOrder) {
 
     enum HAlign {
         GENERAL,

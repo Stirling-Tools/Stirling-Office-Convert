@@ -29,6 +29,8 @@ final class WorkbookModel {
 
     final boolean date1904;
 
+    final boolean savedByExcel;
+
     final StylesTable styles;
 
     final ThemesTable theme;
@@ -49,6 +51,8 @@ final class WorkbookModel {
         Relationships rels = zip.relationships(main);
         Element pr = Dml.child(root, "workbookPr");
         date1904 = pr != null && Dml.flag(pr, "date1904");
+        Element version = Dml.child(root, "fileVersion");
+        savedByExcel = version != null && "xl".equals(Dml.attr(version, "appName"));
         int index = 0;
         for (Element s : Dml.children(Dml.child(root, "sheets"), "sheet")) {
             String name = Dml.attr(s, "name");

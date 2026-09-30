@@ -1,6 +1,7 @@
 package stirling.software.officeconvert.topdf.docx;
 
 import java.awt.Color;
+import java.text.Bidi;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -59,6 +60,7 @@ final class ParaItems {
             addInline(para.items.get(i));
         }
         text = all.toString();
+        levels();
         breaks = Breaks.compute(text);
         autoSpace();
     }
@@ -214,6 +216,45 @@ final class ParaItems {
                 add(bm);
             }
         }
+    }
+
+    // One bidi pass over the paragraph: text items are cut where the level changes and set in that level's direction
+    private void levels() {
+        boolean rtlPara = Boolean.TRUE.equals(para.pp.bidi);
+        if (text.isEmpty() || !rtlPara && !BidiRuns.needed(text)) {
+            return;
+        }
+        Bidi bidi = new Bidi(text, rtlPara ? Bidi.DIRECTION_RIGHT_TO_LEFT : Bidi.DIRECTION_LEFT_TO_RIGHT);
+        List<Item> out = new ArrayList<>(items.size());
+        for (Item it : items) {
+            if (it.start >= text.length()) {
+                it.level = rtlPara ? 1 : 0;
+                out.add(it);
+                continue;
+            }
+            it.level = bidi.getLevelAt(it.start);
+            if (it.kind != Item.Kind.TEXT || it.text.isEmpty()) {
+                out.add(it);
+                continue;
+            }
+            int n = it.text.length();
+            int from = 0;
+            for (int k = 1; k <= n; k++) {
+                if (k < n && (bidi.getLevelAt(it.start + k) == bidi.getLevelAt(it.start + from)
+                        || Character.isLowSurrogate(it.text.charAt(k)))) {
+                    continue;
+                }
+                Item part = from == 0 && k == n ? it : it.piece(from, k);
+                part.level = bidi.getLevelAt(part.start);
+                part.rtl = (part.level & 1) == 1;
+                part.shaped = part.look.face().shapeable()
+                        && (FontFace.needsShaping(part.text) || part.rtl && !part.text.isBlank());
+                out.add(part);
+                from = k;
+            }
+        }
+        items.clear();
+        items.addAll(out);
     }
 
     private void autoSpace() {

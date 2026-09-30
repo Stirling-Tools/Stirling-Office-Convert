@@ -99,14 +99,14 @@ final class SheetPlan {
     }
 
     private void content(CellRangeAddress range, Paginator.Sink sink) throws InterruptedIOException {
-        for (Drawings.Item i : drawings.items) {
+        for (int n = 0; n < drawings.items.size(); n++) {
+            Drawings.Item i = drawings.items.get(n);
             if (i.from() == null) {
                 sink.add(range.getFirstRow(), range.getLastRow(), range.getFirstColumn(), range.getLastColumn());
                 continue;
             }
-            int lr = i.to() == null ? i.from().row() : i.to().row();
-            int lc = i.to() == null ? i.from().col() : i.to().col();
-            sink.add(i.from().row(), lr, i.from().col(), lc);
+            int[] end = drawings.ends.get(n);
+            sink.add(i.from().row(), end[0], i.from().col(), end[1]);
         }
         for (Grid.RowInfo r : grid.rows(range.getFirstRow(), range.getLastRow()).values()) {
             if (r.hidden) {
@@ -115,7 +115,7 @@ final class SheetPlan {
             if (r.spillTo >= range.getFirstColumn() && r.spillFrom <= range.getLastColumn()) {
                 sink.add(r.index, r.index, r.spillFrom, r.spillTo);
             }
-            for (CellEntry e : r.cells.subMap(range.getFirstColumn(), true, range.getLastColumn(), true).values()) {
+            for (CellEntry e : r.cells(range.getFirstColumn(), range.getLastColumn())) {
                 if (e.hasText() || e.format().visible()) {
                     sink.add(r.index, r.index, e.col(), e.col());
                 }

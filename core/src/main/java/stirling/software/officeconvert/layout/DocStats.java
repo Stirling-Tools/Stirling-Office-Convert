@@ -9,6 +9,7 @@ import java.util.TreeMap;
 
 import stirling.software.officeconvert.extract.FontInfo;
 import stirling.software.officeconvert.extract.PageData;
+import stirling.software.officeconvert.model.Scripts;
 
 public final class DocStats {
 
@@ -44,10 +45,13 @@ public final class DocStats {
         return u == null || u[1] >= 0.9f * u[0];
     }
 
+    public final Scripts.Profile scripts = new Scripts.Profile();
+
     public void add(PageData page, List<Line> segments) {
         headerFooter.addPage(page, segments);
         for (Line l : segments) {
             for (Word w : l.words) {
+                scripts.add(w.text);
                 for (stirling.software.officeconvert.extract.Glyph g : w.glyphs) {
                     int[] u = fontUse.computeIfAbsent(g.font.postScriptName(), k -> new int[2]);
                     u[0]++;
@@ -82,11 +86,11 @@ public final class DocStats {
             Line a = sorted.get(i - 1);
             Line b = sorted.get(i);
             if (Math.abs(a.x - b.x) > 2f || Math.abs(a.size - b.size) > 0.3f
-                    || a.right < maxRight - wrapZone || a.words.size() < 4) {
+                    || a.right < maxRight - wrapZone || a.words.size() < 4 && !LineTraits.unspaced(a)) {
                 continue;
             }
             float pitch = b.baseline - a.baseline;
-            if (pitch > a.size * 0.8f && pitch < a.size * 2.6f) {
+            if (pitch > a.size * 0.8f && pitch < a.size * (tall(a) ? TALL_PITCH : 2.6f)) {
                 pitches.computeIfAbsent(a.size, k -> new HashMap<>())
                         .merge(Math.round(pitch * 4f) / 4f, 1, Integer::sum);
                 wrappedLines++;
@@ -99,6 +103,19 @@ public final class DocStats {
             }
         }
         frames.add(page, segments);
+    }
+
+    private static final float TALL_PITCH = 3.6f;
+
+    private static boolean tall(Line l) {
+        for (Word w : l.words) {
+            int cp = w.text.isEmpty() ? 0 : w.text.codePointAt(0);
+            Character.UnicodeScript s = Character.UnicodeScript.of(cp);
+            if (s == Character.UnicodeScript.TIBETAN || s == Character.UnicodeScript.MYANMAR) {
+                return true;
+            }
+        }
+        return false;
     }
 
     public PageFrame frame(float width, float height) {

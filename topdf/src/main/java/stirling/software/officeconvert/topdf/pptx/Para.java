@@ -1,16 +1,43 @@
 package stirling.software.officeconvert.topdf.pptx;
 
 import java.util.List;
+import java.util.function.Supplier;
 
 import org.apache.poi.sl.usermodel.TabStop.TabStopType;
 import org.apache.poi.sl.usermodel.TextParagraph.TextAlign;
 
 import stirling.software.officeconvert.topdf.io.DecodedPicture;
 
-record Para(List<Piece> pieces, Piece empty, TextAlign align, float marL, float marR, float indent, Spacing line,
+record Para(List<Piece> pieces, EmptyLine emptyLine, TextAlign align, float marL, float marR, float indent, Spacing line,
         Spacing before, Spacing after, float defTab, List<Tab> tabs, Bullet bullet, int level, boolean rtl) {
 
     record Tab(float position, TabStopType type) {}
+
+    // The look of a line without text, measured only when a line needs it
+    static final class EmptyLine {
+
+        private final Supplier<Piece> probe;
+
+        private boolean measured;
+
+        private Piece piece;
+
+        EmptyLine(Supplier<Piece> probe) {
+            this.probe = probe;
+        }
+
+        Piece get() {
+            if (!measured) {
+                measured = true;
+                piece = probe.get();
+            }
+            return piece;
+        }
+    }
+
+    Piece empty() {
+        return emptyLine == null ? null : emptyLine.get();
+    }
 
     record Spacing(float percent, float points) {
 

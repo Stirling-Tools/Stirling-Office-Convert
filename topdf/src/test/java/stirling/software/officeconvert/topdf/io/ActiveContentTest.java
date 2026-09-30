@@ -173,10 +173,22 @@ class ActiveContentTest {
             List<String> lines = ActiveContent.describe(found);
             assertEquals(found.size(), lines.size());
             assertTrue(lines.stream().allMatch(l -> l.startsWith("Skipped active content: ")), lines.toString());
+            assertFalse(lines.stream().anyMatch(l -> l.contains("/") || l.contains("\\")), lines.toString());
             net.assertNothingConnected();
         }
         assertEquals("/", ActiveContent.sourceOf("/_rels/.rels"));
         assertEquals("/word/document.xml", ActiveContent.sourceOf("/word/_rels/document.xml.rels"));
         assertNull(ActiveContent.sourceOf("/word/document.xml"));
+    }
+
+    @Test
+    void describesKindsAndCountsButNeverTheDocumentsPathsOrAddresses() {
+        Map<Kind, Set<String>> found = new LinkedHashMap<>();
+        found.put(Kind.ATTACHED_TEMPLATE, Set.of("file:///C:\\Users\\someone\\Templates\\Standard.dotm"));
+        found.put(Kind.EXTERNAL_TARGET, Set.of("http://intranet.example/a.png", "\\\\server\\share\\b.png", "c.png"));
+        found.put(Kind.MACRO, Set.of("/word/vbaProject.bin"));
+        assertEquals(List.of("Skipped active content: attached template (not loaded)",
+                "Skipped active content: linked files and pictures (3, not fetched)",
+                "Skipped active content: macros (not run)"), ActiveContent.describe(found));
     }
 }

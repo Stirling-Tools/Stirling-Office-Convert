@@ -14,15 +14,37 @@ import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InterruptedIOException;
 import java.io.UncheckedIOException;
+import java.text.AttributedCharacterIterator;
+import java.util.ArrayList;
 import java.util.IdentityHashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.function.Consumer;
 
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPageContentStream;
+import org.apache.pdfbox.pdmodel.graphics.form.PDFormXObject;
 import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
 import org.apache.poi.hemf.usermodel.HemfPicture;
+import org.apache.poi.hwmf.draw.HwmfDrawProperties;
+import org.apache.poi.hwmf.draw.HwmfGraphics;
+import org.apache.poi.hwmf.draw.HwmfGraphicsState;
+import org.apache.poi.hwmf.record.HwmfBrushStyle;
+import org.apache.poi.hwmf.record.HwmfColorRef;
+import org.apache.poi.hwmf.record.HwmfFill;
+import org.apache.poi.hwmf.record.HwmfPenStyle;
+import org.apache.poi.hwmf.record.HwmfRecord;
+import org.apache.poi.hwmf.record.HwmfTernaryRasterOp;
+import org.apache.poi.hwmf.record.HwmfText;
 import org.apache.poi.hwmf.usermodel.HwmfPicture;
+import org.apache.poi.sl.draw.DrawFactory;
+import org.apache.poi.sl.draw.Drawable;
+import org.apache.poi.sl.usermodel.Background;
+import org.apache.poi.sl.usermodel.MasterSheet;
+import org.apache.poi.sl.usermodel.Sheet;
+import org.apache.poi.sl.usermodel.Slide;
 
+import de.rototor.pdfbox.graphics2d.IPdfBoxGraphics2DFontTextDrawer;
 import de.rototor.pdfbox.graphics2d.IPdfBoxGraphics2DImageEncoder;
 import de.rototor.pdfbox.graphics2d.PdfBoxGraphics2D;
 
@@ -59,7 +81,7 @@ final class Metafiles {
             } else {
                 HwmfPicture wmf = new HwmfPicture(new ByteArrayInputStream(data));
                 bounds = wmf.getBoundsInPoints();
-                painter = wmf::draw;
+                painter = (g, r) -> drawWmf(wmf, g, r);
             }
         } catch (RuntimeException e) {
             throw new IOException("The metafile could not be read: " + e.getMessage(), e);
@@ -91,6 +113,58 @@ final class Metafiles {
         }
     }
 
+    // POI's own WMF drawing, except that a pattern copy fills its rectangle with the brush as Windows does
+    private static void drawWmf(HwmfPicture wmf, Graphics2D g, Rectangle2D target) {
+        HwmfGraphicsState state = new HwmfGraphicsState();
+        state.backup(g);
+        try {
+            Rectangle2D inner = wmf.getInnnerBounds();
+            if (inner == null) {
+                inner = wmf.getBounds();
+            }
+            g.translate(target.getCenterX(), target.getCenterY());
+            g.scale(target.getWidth() / inner.getWidth(), target.getHeight() / inner.getHeight());
+            g.translate(-inner.getCenterX(), -inner.getCenterY());
+            HwmfGraphics ctx = new HwmfGraphics(g, inner);
+            HwmfDrawProperties props = ctx.getProperties();
+            props.setViewportOrg(inner.getX(), inner.getY());
+            props.setViewportExt(inner.getWidth(), inner.getHeight());
+            for (HwmfRecord r : wmf.getRecords()) {
+                if (r instanceof HwmfFill.WmfPatBlt blt && blt.getRasterOperation() == HwmfTernaryRasterOp.PATCOPY) {
+                    fillWith(ctx, blt.getBounds(), null);
+                    continue;
+                }
+                if (r instanceof HwmfText.WmfExtTextOut text && text.getOptions().isOpaque()
+                        && text.getBounds() != null && !text.getBounds().isEmpty()) {
+                    fillWith(ctx, text.getBounds(), ctx.getProperties().getBackgroundColor());
+                }
+                r.draw(ctx);
+            }
+        } finally {
+            state.restore(g);
+        }
+    }
+
+    // A rectangle filled without its outline, with the current brush or else a solid colour
+    private static void fillWith(HwmfGraphics ctx, Rectangle2D area, HwmfColorRef colour) {
+        HwmfDrawProperties now = ctx.getProperties();
+        HwmfPenStyle pen = now.getPenStyle();
+        HwmfBrushStyle style = now.getBrushStyle();
+        HwmfColorRef brush = now.getBrushColor();
+        now.setPenStyle(HwmfPenStyle.valueOf(5));
+        if (colour != null) {
+            now.setBrushStyle(HwmfBrushStyle.BS_SOLID);
+            now.setBrushColor(colour);
+        }
+        try {
+            ctx.fill(area);
+        } finally {
+            now.setPenStyle(pen);
+            now.setBrushStyle(style);
+            now.setBrushColor(brush);
+        }
+    }
+
     private static DecodedPicture vector(PDDocument doc, PictureDecoder.Kind kind, Painter painter, float w, float h)
             throws IOException {
         Checked g = new Checked(doc, w, h);
@@ -104,6 +178,78 @@ final class Metafiles {
             throw g.stopped;
         }
         return DecodedPicture.vector(kind, g.getXFormObject(), w, h);
+    }
+
+    static PDFormXObject sheet(PDDocument doc, Sheet<?, ?> sheet, float w, float h, IPdfBoxGraphics2DFontTextDrawer text)
+            throws IOException {
+        return sheetPart(doc, sheet, w, h, text, g -> SafeImageRenderer.draw(g, sheet));
+    }
+
+    // Background, master and each shape on a form of its own, so one that fails loses only itself
+    static List<PDFormXObject> sheetParts(PDDocument doc, Sheet<?, ?> sheet, float w, float h,
+            IPdfBoxGraphics2DFontTextDrawer text, Consumer<Throwable> skipped) throws IOException {
+        List<Consumer<Graphics2D>> parts = new ArrayList<>();
+        parts.add(g -> {
+            Background<?, ?> bg = sheet.getBackground();
+            if (bg != null) {
+                DrawFactory.getInstance(g).getDrawable(bg).draw(g);
+            }
+        });
+        parts.add(g -> {
+            MasterSheet<?, ?> master = sheet.getMasterSheet();
+            if (sheet.getFollowMasterGraphics() && master != null) {
+                DrawFactory.getInstance(g).getDrawable(master).draw(g);
+            }
+        });
+        try {
+            for (org.apache.poi.sl.usermodel.Shape<?, ?> shape : sheet.getShapes()) {
+                parts.add(g -> SafeImageRenderer.draw(g, shape));
+            }
+        } catch (RuntimeException e) {
+            skipped.accept(e);
+        }
+        List<PDFormXObject> forms = new ArrayList<>();
+        for (Consumer<Graphics2D> part : parts) {
+            try {
+                forms.add(sheetPart(doc, sheet, w, h, text, part));
+            } catch (InterruptedIOException e) {
+                throw e;
+            } catch (IOException | RuntimeException | StackOverflowError e) {
+                stopIfInterrupted();
+                skipped.accept(e);
+            }
+        }
+        return forms;
+    }
+
+    private static PDFormXObject sheetPart(PDDocument doc, Sheet<?, ?> sheet, float w, float h,
+            IPdfBoxGraphics2DFontTextDrawer text, Consumer<Graphics2D> painter) throws IOException {
+        Checked g = new Checked(doc, w, h);
+        g.countText = true;
+        try {
+            if (text != null) {
+                g.setFontTextDrawer(text);
+            }
+            g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            g.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
+            g.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
+            g.setRenderingHint(RenderingHints.KEY_FRACTIONALMETRICS, RenderingHints.VALUE_FRACTIONALMETRICS_ON);
+            SafeImageRenderer.install(g);
+            if (sheet instanceof Slide<?, ?>) {
+                g.setRenderingHint(Drawable.CURRENT_SLIDE, sheet);
+            }
+            painter.accept(g);
+        } catch (Stop e) {
+            throw e.io();
+        } catch (UncheckedIOException e) {
+            throw e.getCause();
+        } finally {
+            g.dispose();
+        }
+        if (g.stopped != null) {
+            throw g.stopped.io();
+        }
+        return g.getXFormObject();
     }
 
     private static DecodedPicture raster(PDDocument doc, PictureDecoder.Kind kind, Painter painter, float w, float h)
@@ -198,6 +344,8 @@ final class Metafiles {
 
         private Stop stopped;
 
+        private boolean countText;
+
         Checked(PDDocument doc, float w, float h) throws IOException {
             super(doc, w, h);
             setImageEncoder(new Bitmaps());
@@ -261,6 +409,14 @@ final class Metafiles {
         public void drawString(String str, float x, float y) {
             tick();
             super.drawString(str, x, y);
+        }
+
+        @Override
+        public void drawString(AttributedCharacterIterator iterator, float x, float y) {
+            if (countText) {
+                tick();
+            }
+            super.drawString(iterator, x, y);
         }
 
         @Override

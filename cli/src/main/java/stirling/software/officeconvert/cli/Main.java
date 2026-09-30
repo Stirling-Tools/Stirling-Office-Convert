@@ -31,8 +31,8 @@ import stirling.software.officeconvert.topdf.io.PoiXml;
 
 public final class Main {
 
-    private static final Set<String> FORMATS = Set.of("docx", "odt", "fodt", "rtf", "doc", "txt", "pptx", "odp", "ppt", "xlsx",
-            "ods", "pdf");
+    private static final Set<String> FORMATS = Set.of("docx", "odt", "fodt", "xml", "rtf", "doc", "txt", "pptx",
+            "odp", "ppt", "xlsx", "ods", "pdf");
 
     private Main() {}
 
@@ -288,7 +288,7 @@ public final class Main {
             PdfToXlsx.Options books) throws IOException {
         switch (extension(target)) {
             case "odt" -> PdfToOdt.convert(pdf, target, options);
-            case "fodt" -> PdfToOdt.convertFlat(pdf, target, options);
+            case "fodt", "xml" -> PdfToOdt.convertFlat(pdf, target, options);
             case "rtf", "doc" -> PdfToRtf.convert(pdf, target, options);
             case "txt" -> PdfToText.convert(pdf, target, options);
             case "pptx" -> PdfToPptx.convert(pdf, target, slides);
@@ -313,8 +313,9 @@ public final class Main {
         for (Path in : inputs) {
             try {
                 OfficeToPdf.Format f = isOffice(in) ? OfficeToPdf.Format.of(in) : null;
-                deck |= f == OfficeToPdf.Format.PPTX;
-                if (f != null && f != OfficeToPdf.Format.PPTX && !formats.contains(f)) {
+                boolean slides = f == OfficeToPdf.Format.PPTX || f == OfficeToPdf.Format.PPT;
+                deck |= slides;
+                if (f != null && !slides && !formats.contains(f)) {
                     formats.add(f);
                 }
             } catch (IllegalArgumentException ignored) {
@@ -365,7 +366,7 @@ public final class Main {
     private static String known(String format) throws Usage {
         if (!FORMATS.contains(format)) {
             throw new Usage("unknown output format '" + format
-                    + "': use docx, odt, fodt, rtf, doc, txt, pptx, odp, ppt, xlsx or ods (pdf for Office input)");
+                    + "': use docx, odt, fodt, xml, rtf, doc, txt, pptx, odp, ppt, xlsx or ods (pdf for Office input)");
         }
         return format;
     }
@@ -446,17 +447,17 @@ public final class Main {
                         + " [--pages a-b] [--no-tables] [--dpi n] [--password p] [--picture-fallback]"
                         + " [--pictures compact|lossless] [-q]"
                         + System.lineSeparator()
-                        + "       office-convert <in.docx|in.pptx|in.xlsx|dir>... [-o out.pdf|dir] [--format pdf]"
+                        + "       office-convert <in.docx|in.pptx|in.xlsx|in.xls|in.ppt|dir>... [-o out.pdf|dir] [--format pdf]"
                         + " [--max-pages n (default 10000, 0 = all)] [--timeout s (default 300, 0 = none)]"
                         + " [--fonts dir]... [-q]"
                         + System.lineSeparator()
                         + "Word, PowerPoint and Excel files (.docx .docm .dotx .dotm .pptx .pptm .ppsx .ppsm .potx .potm"
-                        + " .xlsx .xlsm .xltx .xltm) convert to PDF. A folder converts its PDFs and Office files; --format pdf"
+                        + " .xlsx .xlsm .xltx .xltm and 97-2003 .xls .xlt .ppt .pps .pot) convert to PDF. A folder converts its PDFs and Office files; --format pdf"
                         + " takes only its Office files. Nothing a document"
                         + " links to is fetched and no macro, field or formula is run."
                         + System.lineSeparator()
-                        + "The output's extension picks the format: .docx, .odt, .fodt, .rtf, .doc (RTF content), .txt,"
-                        + " .pptx, .odp, .ppt, .xlsx or .ods; --format names it for a directory of outputs."
+                        + "The output's extension picks the format: .docx, .odt, .fodt, .xml (flat ODT), .rtf, .doc (RTF content),"
+                        + " .txt, .pptx, .odp, .ppt, .xlsx or .ods; --format names it for a directory of outputs."
                         + System.lineSeparator()
                         + "--pictures lossless keeps every pixel without JPEG compression; compact, the default, is smaller."
                         + System.lineSeparator()
