@@ -28,6 +28,7 @@ import stirling.software.officeconvert.Pictures;
 import stirling.software.officeconvert.legacy.PdfToPpt;
 import stirling.software.officeconvert.topdf.OfficeToPdf;
 import stirling.software.officeconvert.topdf.io.PoiXml;
+import stirling.software.officeconvert.topdf.text.TextFormats;
 
 public final class Main {
 
@@ -149,10 +150,12 @@ public final class Main {
         List<Path> pdfs = new ArrayList<>();
         boolean officeFolder = !formatGiven || "pdf".equals(format);
         boolean pdfFolder = !formatGiven || !"pdf".equals(format);
+        boolean textFolder = formatGiven;
         for (Path in : inputs) {
             if (Files.isDirectory(in)) {
                 try (Stream<Path> s = Files.list(in)) {
                     s.filter(p -> Files.isRegularFile(p) && !lockFile(p) && (officeFolder && isOffice(p)
+                            && (textFolder || TextFormats.kind(p) == null)
                             || pdfFolder && p.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".pdf")))
                             .sorted().forEach(pdfs::add);
                 } catch (IOException e) {
@@ -447,13 +450,15 @@ public final class Main {
                         + " [--pages a-b] [--no-tables] [--dpi n] [--password p] [--picture-fallback]"
                         + " [--pictures compact|lossless] [-q]"
                         + System.lineSeparator()
-                        + "       office-convert <in.docx|in.pptx|in.xlsx|in.doc|in.rtf|in.xls|in.ppt|dir>... [-o out.pdf|dir] [--format pdf]"
+                        + "       office-convert <in.docx|in.pptx|in.xlsx|in.doc|in.rtf|in.xls|in.ppt|in.txt|in.csv|dir>..."
+                        + " [-o out.pdf|dir] [--format pdf]"
                         + " [--max-pages n (default 10000, 0 = all)] [--timeout s (default 300, 0 = none)]"
                         + " [--fonts dir]... [-q]"
                         + System.lineSeparator()
                         + "Word, PowerPoint and Excel files (.docx .docm .dotx .dotm .pptx .pptm .ppsx .ppsm .potx .potm"
-                        + " .xlsx .xlsm .xltx .xltm and 97-2003 .doc .dot .xls .xlt .ppt .pps .pot plus RTF .rtf) convert to PDF. A folder converts its PDFs and Office files; --format pdf"
-                        + " takes only its Office files. Nothing a document"
+                        + " .xlsx .xlsm .xltx .xltm and 97-2003 .doc .dot .xls .xlt .ppt .pps .pot plus RTF .rtf), plain text"
+                        + " (.txt .text .log .asc) and comma or tab separated tables (.csv .tsv .tab) convert to PDF. A folder"
+                        + " converts its PDFs and Office files; --format pdf takes only its Office and text files. Nothing a document"
                         + " links to is fetched and no macro, field or formula is run."
                         + System.lineSeparator()
                         + "The output's extension picks the format: .docx, .odt, .fodt, .xml (flat ODT), .rtf, .doc (RTF content),"
