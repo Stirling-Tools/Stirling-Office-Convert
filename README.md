@@ -31,7 +31,7 @@ drawn) print to stderr as `warning: <file>: <message>` unless `-q`.
 The output file's extension picks the format: `.docx`, `.odt`, `.fodt`, `.xml` (flat ODT), `.rtf`, `.doc`, `.txt`,
 `.pptx`, `.odp`, `.ppt`, `.xlsx` or `.ods` (see Other formats). For a folder of PDFs, `--format ext` names it; `--sheets
 page|table|single` sets a spreadsheet's layout. Each file prints its time and the heap in use when it finished.
-`--pdfa 1b|2b|2u|3b|3u` makes an archival PDF/A copy of each PDF instead (see PDF to PDF/A): `in.pdfa.pdf` beside the
+`--pdfa 1a|1b|2a|2b|2u|3a|3b|3u` makes an archival PDF/A copy of each PDF instead (see PDF to PDF/A): `in.pdfa.pdf` beside the
 input, or the `-o` file or folder; it takes `--password`, `--timeout` and `--fonts`, and prints what it changed as
 `note: <file>: <message>`.
 
@@ -446,7 +446,7 @@ Options: page range, password, table detection on or off, `typedValues` off to k
 
 ## PDF to PDF/A
 
-The `pdfa` module (`stirling-office-convert-pdfa`) rewrites a PDF as PDF/A-1b, 2b, 2u, 3b or 3u in plain Java, without
+The `pdfa` module (`stirling-office-convert-pdfa`) rewrites a PDF as PDF/A-1a, 1b, 2a, 2b, 2u, 3a, 3b or 3u in plain Java, without
 Ghostscript or LibreOffice. It changes only what the level forbids, so pages keep their content streams, text stays
 text and fonts keep their glyphs:
 
@@ -465,8 +465,8 @@ PdfToPdfA.convert(pdDocument, outputStream, options);     // an open document, w
   widths disagree with its program, that lacks a glyph a page shows, or whose encoding PDF/A forbids is rebuilt from
   its own glyphs the same way (TrueType glyphs are copied with their hinting; Type 1 and CFF outlines are converted).
   Type 0 fonts keep their CIDs and CMaps behind a new `CIDToGIDMap`. CharSet and CIDSet are written for part 1 and
-  dropped for parts 2 and 3. For the u levels every shown code gets a ToUnicode value, a private-use one when the PDF
-  gives no clue.
+  dropped for parts 2 and 3. For the u and a levels every shown code gets a ToUnicode value, a private-use one (u) or
+  U+FFFD (a) when the PDF gives no clue.
 - Colour. An sRGB output intent with an ICC profile generated in code (version 2, so it serves part 1 too) is added
   unless the PDF already has a usable one. Device CMYK is given a `DefaultCMYK` space with the CC0 CMYK profile that
   PDFBox ships (its own DeviceCMYK profile), so nothing is converted. Invalid or, for part 1, version 4 ICC profiles are
@@ -486,8 +486,12 @@ PdfToPdfA.convert(pdDocument, outputStream, options);     // an open document, w
 - XMP metadata is written from the Info dictionary (the two agree), with `pdfaid:part` and `pdfaid:conformance`; the
   file gets a trailer ID and, for part 1, no object streams.
 
-Level a (1a, 2a, 3a) needs a tagged structure tree, which this module does not build; asking for it is an
-`IllegalArgumentException`. Limits and failure contract follow the other converters: a 1 GB input limit, `maxPages`
+Level a (1a, 2a, 3a) is for PDFs that are already tagged: the module does not build a structure tree, so an untagged
+file fails with an `IOException` that says to use b or u. For a tagged file it marks the document as tagged, maps
+structure types without a standard meaning to `NonStruct`, drops standard types from the role map and invalid language
+tags, gives every glyph real Unicode (Symbol and Wingdings private-use codes become their Unicode look-alikes, unknown
+ones U+FFFD) and marks flattened pictures as artifacts. It does not check that every piece of content is tagged; veraPDF
+does not either. Limits and failure contract follow the other converters: a 1 GB input limit, `maxPages`
 (10,000 by default) refuses longer documents rather than cutting them, the timeout and thread interrupts stop the work,
 and the output is moved into place only when complete.
 

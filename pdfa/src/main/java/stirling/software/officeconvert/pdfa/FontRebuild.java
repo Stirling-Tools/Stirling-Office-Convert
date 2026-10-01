@@ -67,10 +67,14 @@ final class FontRebuild {
         for (int code : codes) {
             int key = type0 ? cid.codeToCID(code) : code;
             String text = text(font, code);
-            if (ToUnicodeWriter.valid(text)) {
+            if (!ToUnicodeWriter.valid(text) || ToUnicodeWriter.privateUse(text)) {
+                String s = ToUnicodeWriter.symbol(text, original, code);
+                text = s != null ? s : text;
+            }
+            if (ToUnicodeWriter.valid(text) && !(level.tagged() && ToUnicodeWriter.privateUse(text))) {
                 unicode.put(code, text);
             } else if (level.unicode()) {
-                unicode.put(code, ToUnicodeWriter.privateUse(code));
+                unicode.put(code, ToUnicodeWriter.unknown(code, level));
             }
             if (slots.containsKey(key)) {
                 continue;

@@ -3,9 +3,12 @@ package stirling.software.officeconvert.pdfa;
 import java.util.Locale;
 
 public enum PdfALevel {
+    A1A(1, "A"),
     A1B(1, "B"),
+    A2A(2, "A"),
     A2B(2, "B"),
     A2U(2, "U"),
+    A3A(3, "A"),
     A3B(3, "B"),
     A3U(3, "U");
 
@@ -27,7 +30,11 @@ public enum PdfALevel {
     }
 
     public boolean unicode() {
-        return "U".equals(conformance);
+        return !"B".equals(conformance);
+    }
+
+    public boolean tagged() {
+        return "A".equals(conformance);
     }
 
     public float pdfVersion() {
@@ -47,10 +54,11 @@ public enum PdfALevel {
             case "2u" -> A2U;
             case "3b", "3" -> A3B;
             case "3u" -> A3U;
-            case "1a", "2a", "3a" -> throw new IllegalArgumentException(
-                    "PDF/A level a needs a tagged structure tree, which this converter does not build; use b or u");
+            case "1a" -> A1A;
+            case "2a" -> A2A;
+            case "3a" -> A3A;
             default -> throw new IllegalArgumentException(
-                    "Unknown PDF/A level '" + text + "': use 1b, 2b, 2u, 3b or 3u");
+                    "Unknown PDF/A level '" + text + "': use 1a, 1b, 2a, 2b, 2u, 3a, 3b or 3u");
         };
     }
 }

@@ -301,6 +301,8 @@ final class Transparency {
         }
         Matrix m = place.multiply(inverse);
         List<Object> ops = new ArrayList<>();
+        ops.add(COSName.getPDFName("Artifact"));
+        ops.add(Operator.getOperator("BMC"));
         ops.add(Operator.getOperator("q"));
         for (float v : new float[] {m.getScaleX(), m.getShearY(), m.getShearX(), m.getScaleY(), m.getTranslateX(),
                 m.getTranslateY()}) {
@@ -310,6 +312,7 @@ final class Transparency {
         ops.add(name);
         ops.add(Operator.getOperator("Do"));
         ops.add(Operator.getOperator("Q"));
+        ops.add(Operator.getOperator("EMC"));
         return ops;
     }
 

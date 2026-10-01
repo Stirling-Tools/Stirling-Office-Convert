@@ -15,7 +15,8 @@ class SamplesComplianceTest {
 
     static Stream<Arguments> cases() {
         return Samples.ALL.keySet().stream().filter(n -> !n.equals("s06_encrypted_user"))
-                .flatMap(n -> Stream.of(PdfALevel.values()).map(l -> Arguments.of(n, l)));
+                .flatMap(n -> Stream.of(PdfALevel.values()).filter(l -> !l.tagged() || n.equals("s21_tagged"))
+                        .map(l -> Arguments.of(n, l)));
     }
 
     @ParameterizedTest(name = "{0} to {1}")

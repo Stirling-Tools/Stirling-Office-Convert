@@ -32,6 +32,7 @@ import org.apache.pdfbox.pdmodel.PDPageContentStream;
 import org.apache.pdfbox.pdmodel.PDResources;
 import org.apache.pdfbox.pdmodel.common.PDRectangle;
 import org.apache.pdfbox.pdmodel.common.PDStream;
+import org.apache.pdfbox.pdmodel.documentinterchange.markedcontent.PDPropertyList;
 import org.apache.pdfbox.pdmodel.common.filespecification.PDComplexFileSpecification;
 import org.apache.pdfbox.pdmodel.common.filespecification.PDEmbeddedFile;
 import org.apache.pdfbox.pdmodel.common.filespecification.PDSimpleFileSpecification;
@@ -636,6 +637,49 @@ final class Samples {
                 cs.addRect(50, 600, 200, 100);
                 cs.fill();
             }
+        });
+        gen("s21_tagged", d -> {
+            PDPage p = page(d);
+            COSDictionary root = new COSDictionary();
+            root.setItem(COSName.TYPE, COSName.STRUCT_TREE_ROOT);
+            COSDictionary docElem = new COSDictionary();
+            docElem.setItem(COSName.TYPE, COSName.getPDFName("StructElem"));
+            docElem.setItem(COSName.S, COSName.getPDFName("Document"));
+            docElem.setItem(COSName.P, root);
+            COSDictionary para = new COSDictionary();
+            para.setItem(COSName.TYPE, COSName.getPDFName("StructElem"));
+            para.setItem(COSName.S, COSName.getPDFName("Paragraph"));
+            para.setItem(COSName.P, docElem);
+            para.setItem(COSName.PG, p.getCOSObject());
+            para.setInt(COSName.K, 0);
+            para.setString(COSName.LANG, "not a language!");
+            COSArray kids = new COSArray();
+            kids.add(para);
+            docElem.setItem(COSName.K, kids);
+            root.setItem(COSName.K, docElem);
+            COSDictionary roles = new COSDictionary();
+            roles.setName("P", "Span");
+            root.setItem(COSName.getPDFName("RoleMap"), roles);
+            d.getDocumentCatalog().getCOSObject().setItem(COSName.STRUCT_TREE_ROOT, root);
+            d.getDocumentCatalog().getCOSObject().setString(COSName.LANG, "en-GB");
+            p.getCOSObject().setInt(COSName.STRUCT_PARENTS, 0);
+            PDFont wing = PDFontFactory.createFont(trueTypeUnembedded("Wingdings-Regular", new int[] {1000, 1000}));
+            try (PDPageContentStream cs = new PDPageContentStream(d, p)) {
+                COSDictionary mcid = new COSDictionary();
+                mcid.setInt(COSName.MCID, 0);
+                cs.beginMarkedContent(COSName.getPDFName("Paragraph"), PDPropertyList.create(mcid));
+                text(cs, std(Standard14Fonts.FontName.HELVETICA), 12, 50, 780, "A tagged paragraph");
+                cs.endMarkedContent();
+            }
+            p.getResources().put(COSName.getPDFName("W1"), wing);
+            PDStream extra = new PDStream(d);
+            try (OutputStream o = extra.createOutputStream(COSName.FLATE_DECODE)) {
+                o.write("/Artifact BMC BT /W1 12 Tf 50 740 Td <21> Tj ET EMC".getBytes(StandardCharsets.ISO_8859_1));
+            }
+            COSArray contents = new COSArray();
+            contents.add(p.getCOSObject().getDictionaryObject(COSName.CONTENTS));
+            contents.add(extra.getCOSObject());
+            p.getCOSObject().setItem(COSName.CONTENTS, contents);
         });
     }
 

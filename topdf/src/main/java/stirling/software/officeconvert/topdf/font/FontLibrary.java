@@ -316,6 +316,12 @@ public final class FontLibrary {
                 || ScriptWidths.average(family, ScriptWidths.HEBREW) > 0;
     }
 
+    public static int symbolUnicode(String family, int code) {
+        int c = SymbolFonts.code(code);
+        int[] cps = c < 0 || !SymbolFonts.known(family) ? null : SymbolFonts.table(family)[c];
+        return cps == null || cps.length == 0 ? -1 : cps[0];
+    }
+
     public static boolean drawsScript(String family, int codePoint) {
         String sample = ScriptWidths.sample(codePoint);
         return sample != null && ScriptWidths.average(family, sample) > 0;

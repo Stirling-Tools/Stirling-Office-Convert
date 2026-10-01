@@ -235,8 +235,7 @@ class MainTest {
     @Test
     void pdfaRefusesOfficeInputAndUnknownLevels() throws Exception {
         Path pdf = helloPdf(dir.resolve("in.pdf"));
-        assertUsage(run(pdf.toString(), "--pdfa", "2a"), "tagged");
-        assertUsage(run(pdf.toString(), "--pdfa", "9"), "1b, 2b, 2u, 3b or 3u");
+        assertUsage(run(pdf.toString(), "--pdfa", "9"), "1a, 1b, 2a, 2b, 2u, 3a, 3b or 3u");
         assertUsage(run(pdf.toString(), "--pdfa", "2b", "-o", dir.resolve("x.docx").toString()), "name the output .pdf");
         Path docx = minimalDocx(dir.resolve("a.docx"));
         assertUsage(run(docx.toString(), "--pdfa", "2b"), "PDF input");

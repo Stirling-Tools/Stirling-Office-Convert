@@ -172,6 +172,10 @@ final class SymbolFonts {
 
     private SymbolFonts() {}
 
+    static int[][] table(String family) {
+        return TABLES.get(FontLibrary.normalize(family));
+    }
+
     static boolean known(String family) {
         return family != null && TABLES.containsKey(FontLibrary.normalize(family));
     }

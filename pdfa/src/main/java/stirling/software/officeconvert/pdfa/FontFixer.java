@@ -232,9 +232,10 @@ final class FontFixer {
             } catch (RuntimeException e) {
                 t = null;
             }
-            if (!ToUnicodeWriter.valid(t)) {
+            if (!ToUnicodeWriter.valid(t) || level.tagged() && ToUnicodeWriter.privateUse(t)) {
                 complete = false;
-                t = ToUnicodeWriter.privateUse(code);
+                String s = ToUnicodeWriter.symbol(t, font.getName(), code);
+                t = s != null ? s : ToUnicodeWriter.unknown(code, level);
             }
             map.put(code, t);
         }

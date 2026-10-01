@@ -486,7 +486,7 @@ public final class Main {
                         + " [--max-pages n (default 10000, 0 = all)] [--timeout s (default 300, 0 = none)]"
                         + " [--fonts dir]... [-q]"
                         + System.lineSeparator()
-                        + "       office-convert <in.pdf|dir>... --pdfa 1b|2b|2u|3b|3u [-o out.pdf|dir] [--password p]"
+                        + "       office-convert <in.pdf|dir>... --pdfa 1a|1b|2a|2b|2u|3a|3b|3u [-o out.pdf|dir] [--password p]"
                         + " [--timeout s] [--fonts dir]... [-q]"
                         + System.lineSeparator()
                         + "Word, PowerPoint and Excel files (.docx .docm .dotx .dotm .pptx .pptm .ppsx .ppsm .potx .potm"
@@ -500,7 +500,8 @@ public final class Main {
                         + " .txt, .pptx, .odp, .ppt, .xlsx or .ods; --format names it for a directory of outputs."
                         + System.lineSeparator()
                         + "--pdfa makes an archival PDF/A copy of each PDF (in.pdfa.pdf unless -o names it): fonts are embedded,"
-                        + " scripts and actions removed, colours given an sRGB output intent; 1b draws transparency as pictures."
+                        + " scripts and actions removed, colours given an sRGB output intent; 1a and 1b draw transparency as pictures;"
+                        + " the a levels need a tagged PDF."
                         + System.lineSeparator()
                         + "--pictures lossless keeps every pixel without JPEG compression; compact, the default, is smaller."
                         + System.lineSeparator()

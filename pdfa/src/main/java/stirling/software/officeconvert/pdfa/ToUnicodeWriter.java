@@ -12,6 +12,8 @@ import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.cos.COSStream;
 import org.apache.pdfbox.pdmodel.PDDocument;
 
+import stirling.software.officeconvert.topdf.font.FontLibrary;
+
 final class ToUnicodeWriter {
 
     private ToUnicodeWriter() {}
@@ -29,8 +31,19 @@ final class ToUnicodeWriter {
         return true;
     }
 
-    static String privateUse(int code) {
-        return String.valueOf((char) (0xE000 + (code & 0x17FF)));
+    static boolean privateUse(String text) {
+        return text != null && !text.isEmpty() && text.chars().allMatch(c -> c >= 0xE000 && c <= 0xF8FF);
+    }
+
+    static String symbol(String text, String baseFont, int code) {
+        String family = BaseFontName.parse(baseFont, 0, 0).family();
+        int key = privateUse(text) && text.length() == 1 ? text.charAt(0) : code;
+        int cp = FontLibrary.symbolUnicode(family, key);
+        return cp > 0 ? new String(Character.toChars(cp)) : null;
+    }
+
+    static String unknown(int code, PdfALevel level) {
+        return level.tagged() ? "\uFFFD" : String.valueOf((char) (0xE000 + (code & 0x17FF)));
     }
 
     static COSStream write(PDDocument doc, TreeMap<Integer, String> map, int bytesPerCode) throws IOException {

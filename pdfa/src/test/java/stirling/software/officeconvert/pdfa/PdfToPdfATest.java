@@ -32,9 +32,9 @@ class PdfToPdfATest {
         assertEquals(PdfALevel.A1B, PdfALevel.parse("PDF/A-1b"));
         assertEquals(PdfALevel.A3U, PdfALevel.parse("pdfa-3u"));
         assertEquals(PdfALevel.A2B, PdfALevel.parse("2"));
-        IllegalArgumentException a = assertThrows(IllegalArgumentException.class, () -> PdfALevel.parse("2a"));
-        assertTrue(a.getMessage().contains("tagged"));
-        assertThrows(IllegalArgumentException.class, () -> PdfALevel.parse("4"));
+        assertEquals(PdfALevel.A2A, PdfALevel.parse("2a"));
+        IllegalArgumentException e = assertThrows(IllegalArgumentException.class, () -> PdfALevel.parse("4"));
+        assertTrue(e.getMessage().contains("1a, 1b, 2a"));
     }
 
     @Test
@@ -63,6 +63,26 @@ class PdfToPdfATest {
         try (Stream<Path> files = Files.list(dir)) {
             assertEquals(List.of("many.pdf"), files.map(p -> p.getFileName().toString()).toList());
         }
+    }
+
+    @Test
+    void levelARefusesAnUntaggedFileAndFixesATaggedOne() throws Exception {
+        Path plain = Samples.write(dir, "s01_std14_unembedded");
+        IOException e = assertThrows(IOException.class, () -> PdfToPdfA.convert(plain, dir.resolve("a.pdf"),
+                PdfToPdfA.Options.defaults().level(PdfALevel.A2A)));
+        assertTrue(e.getMessage().contains("tagged"), e.getMessage());
+        Path tagged = Samples.write(dir, "s21_tagged");
+        Path out = dir.resolve("tagged.pdf");
+        PdfToPdfA.Result r = PdfToPdfA.convert(tagged, out, PdfToPdfA.Options.defaults().level(PdfALevel.A1A));
+        assertTrue(r.warnings().stream().anyMatch(w -> w.contains("Paragraph")), r.warnings().toString());
+        try (PDDocument d = Loader.loadPDF(out.toFile())) {
+            var root = d.getDocumentCatalog().getStructureTreeRoot().getCOSObject();
+            var roles = root.getCOSDictionary(org.apache.pdfbox.cos.COSName.getPDFName("RoleMap"));
+            assertEquals("NonStruct", roles.getNameAsString("Paragraph"));
+            assertEquals(null, roles.getDictionaryObject("P"));
+            assertTrue(d.getDocumentCatalog().getMarkInfo().isMarked());
+        }
+        VeraPdf.assertCompliant(out, PdfALevel.A1A);
     }
 
     @Test
