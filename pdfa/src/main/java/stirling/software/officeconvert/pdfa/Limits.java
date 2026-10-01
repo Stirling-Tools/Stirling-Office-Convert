@@ -43,6 +43,22 @@ final class Limits {
 
     static final int MAX_NAME_BYTES = 127;
 
+    private static final COSFloat MAX_REAL_1 = real("32767.0");
+
+    private static final COSFloat MIN_REAL_1 = real("-32767.0");
+
+    private static final COSFloat MAX_REAL = real("340000000000000000000000000000000000000.0");
+
+    private static final COSFloat MIN_REAL = real("-340000000000000000000000000000000000000.0");
+
+    private static COSFloat real(String digits) {
+        try {
+            return new COSFloat(digits);
+        } catch (IOException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
     static int maxString(PdfALevel level) {
         return level.part() == 1 ? 65_535 : 32_767;
     }
@@ -129,7 +145,7 @@ final class Limits {
             double v = f.floatValue();
             double max = level.part() == 1 ? 32_767 : 3.4e38;
             if (Math.abs(v) > max) {
-                return new COSFloat((float) Math.copySign(max, v));
+                return level.part() == 1 ? v < 0 ? MIN_REAL_1 : MAX_REAL_1 : v < 0 ? MIN_REAL : MAX_REAL;
             }
             if (level.part() > 1 && v != 0 && Math.abs(v) < 1.2e-38) {
                 return COSInteger.ZERO;

@@ -34,10 +34,11 @@ final class SyntaxSamples {
             return r.bytes();
         });
         raw("r02_streams_and_strings", Set.of("1:6.1.6-1", "1:6.1.6-2", "1:6.1.7-1", "1:6.1.7-3",
-                "1:6.1.12-1", "2:6.1.6-1", "2:6.1.6-2", "2:6.1.7.1-1", "2:6.1.7.1-3", "2:6.1.13-1",
+                "1:6.1.12-1", "2:6.1.6-1", "2:6.1.6-2", "2:6.1.7.1-1", "2:6.1.7.1-3", "2:6.1.13-1", "2:6.1.13-2",
                 "2:6.1.13-5"), () -> {
                     RawPdf r = RawPdf.page(RawPdf.helvetica() + "/Properties<</P1<</Odd<414>/Bad<41G2>"
-                            + "/Big 9999999999/Small 0.0000000000000000000000000000000000000000001>>>>",
+                            + "/Big 9999999999/Small 0.0000000000000000000000000000000000000000001/Huge "
+                            + "9".repeat(40) + ".0>>>>",
                             "/OC /P1 BDC " + TEXT + " EMC");
                     r.set(4, "<</Length 9999/F(external.dat)/FFilter/FlateDecode/FDecodeParms<<>>>>stream\n"
                             + "/OC /P1 BDC " + TEXT + " EMC\nendstream");
