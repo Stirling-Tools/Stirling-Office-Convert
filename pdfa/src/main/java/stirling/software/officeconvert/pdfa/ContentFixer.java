@@ -46,13 +46,20 @@ final class ContentFixer {
                 if (!(tokens.get(i) instanceof Operator op)) {
                     continue;
                 }
-                List<Object> operation = new ArrayList<>(tokens.subList(start, i + 1));
+                List<Object> operation = tokens.subList(start, i + 1);
                 start = i + 1;
+                boolean copied = false;
+                boolean limits = false;
                 for (int k = 0; k < operation.size() - 1; k++) {
                     colours.operand(operation.get(k));
+                    limits |= ContentLimits.candidate(operation.get(k), level);
                     if (operation.get(k) instanceof COSBase b) {
                         COSBase f = Limits.number(b, level);
                         if (f != b) {
+                            if (!copied) {
+                                operation = new ArrayList<>(operation);
+                                copied = true;
+                            }
                             operation.set(k, f);
                             changed = true;
                         }
@@ -67,6 +74,7 @@ final class ContentFixer {
                 }
                 if ("ri".equals(name) && operation.size() == 2
                         && !(operation.get(0) instanceof COSName intent && INTENTS.contains(intent.getName()))) {
+                    operation = new ArrayList<>(operation);
                     operation.set(0, COSName.getPDFName("RelativeColorimetric"));
                     changed = true;
                 }
@@ -76,7 +84,7 @@ final class ContentFixer {
                 if ("BI".equals(name) && inlineImage(op.getImageParameters())) {
                     changed = true;
                 }
-                List<Object> limited = ContentLimits.fix(operation, level);
+                List<Object> limited = limits || "BI".equals(name) ? ContentLimits.fix(operation, level) : null;
                 if (limited != null) {
                     operation = limited;
                     changed = true;

@@ -115,6 +115,15 @@ final class FontUsage {
             return;
         }
         CodeReader r = readers.computeIfAbsent(font, CodeReader::of);
+        if (!r.multiByte()) {
+            for (byte b : bytes) {
+                set.add(b & 0xFF);
+            }
+            if (bytes.length > 0) {
+                lengths.putIfAbsent(font, 1);
+            }
+            return;
+        }
         ByteArrayInputStream in = new ByteArrayInputStream(bytes);
         while (in.available() > 0) {
             int before = in.available();

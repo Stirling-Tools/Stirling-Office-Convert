@@ -21,15 +21,15 @@ final class DeviceColours {
     }
 
     void operand(Object o) {
-        if (o instanceof COSName n) {
-            name(n.getName());
+        if (o == COSName.DEVICERGB) {
+            rgb = true;
+        } else if (o == COSName.DEVICECMYK) {
+            cmyk = true;
         }
     }
 
     void value(COSBase b) {
-        if (b instanceof COSName n) {
-            name(n.getName());
-        }
+        operand(b);
     }
 
     void inlineImage(COSDictionary params) {

@@ -49,6 +49,9 @@ final class Limits {
     }
 
     static COSName name(COSName n) {
+        if (n.getName().length() <= MAX_NAME_BYTES / 3) {
+            return n;
+        }
         byte[] b = n.getName().getBytes(StandardCharsets.UTF_8);
         if (b.length <= MAX_NAME_BYTES) {
             return n;
@@ -67,7 +70,7 @@ final class Limits {
     static void names(PDDocument doc, Report report) throws IOException {
         boolean[] changed = {false};
         CosWalk.walk(doc, b -> {
-            if (b instanceof COSDictionary d) {
+            if (b instanceof COSDictionary d && longNames(d)) {
                 for (Map.Entry<COSName, COSBase> e : new ArrayList<>(d.entrySet())) {
                     COSName k = name(e.getKey());
                     COSBase v = e.getValue() instanceof COSName n ? name(n) : e.getValue();
@@ -89,6 +92,15 @@ final class Limits {
         if (changed[0]) {
             report.warn("Shortened names longer than " + MAX_NAME_BYTES + " bytes");
         }
+    }
+
+    private static boolean longNames(COSDictionary d) {
+        for (Map.Entry<COSName, COSBase> e : d.entrySet()) {
+            if (name(e.getKey()) != e.getKey() || e.getValue() instanceof COSName n && name(n) != n) {
+                return true;
+            }
+        }
+        return false;
     }
 
     static COSBase number(COSBase b, PdfALevel level) {
@@ -131,11 +143,20 @@ final class Limits {
             }
         }
         if (b instanceof COSDictionary d) {
-            for (Map.Entry<COSName, COSBase> e : new ArrayList<>(d.entrySet())) {
+            List<Map.Entry<COSName, COSBase>> changes = null;
+            for (Map.Entry<COSName, COSBase> e : d.entrySet()) {
                 COSBase v = e.getValue();
                 COSBase f = fix(v);
                 if (f != v) {
-                    d.setItem(e.getKey(), f);
+                    if (changes == null) {
+                        changes = new ArrayList<>();
+                    }
+                    changes.add(Map.entry(e.getKey(), f));
+                }
+            }
+            if (changes != null) {
+                for (Map.Entry<COSName, COSBase> c : changes) {
+                    d.setItem(c.getKey(), c.getValue());
                 }
             }
         } else if (b instanceof COSArray a) {

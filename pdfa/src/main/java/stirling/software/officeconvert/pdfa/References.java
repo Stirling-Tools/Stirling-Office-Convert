@@ -24,27 +24,22 @@ final class References {
 
     static Set<COSBase> once(COSDictionary... roots) {
         Map<COSBase, Integer> count = new IdentityHashMap<>();
-        Set<COSBase> seen = Collections.newSetFromMap(new IdentityHashMap<>());
         Deque<COSBase> stack = new ArrayDeque<>();
         for (COSDictionary r : roots) {
-            if (r != null) {
-                count.put(r, 2);
+            if (r != null && count.put(r, 2) == null) {
                 stack.push(r);
             }
         }
         while (!stack.isEmpty()) {
             COSBase b = stack.pop();
-            if (!seen.add(b)) {
-                continue;
-            }
-            Iterable<COSBase> children = b instanceof COSDictionary d ? d.getValues() : (COSArray) b;
-            for (COSBase v : children) {
-                COSBase t = v instanceof COSObject o ? o.getObject() : v;
-                if (t instanceof COSDictionary || t instanceof COSArray) {
-                    count.merge(t, 1, Integer::sum);
-                    if (!seen.contains(t)) {
-                        stack.push(t);
-                    }
+            if (b instanceof COSDictionary d) {
+                for (Map.Entry<COSName, COSBase> e : d.entrySet()) {
+                    visit(e.getValue(), count, stack);
+                }
+            } else {
+                COSArray a = (COSArray) b;
+                for (int i = 0, n = a.size(); i < n; i++) {
+                    visit(a.get(i), count, stack);
                 }
             }
         }
@@ -55,6 +50,18 @@ final class References {
             }
         }
         return out;
+    }
+
+    private static void visit(COSBase v, Map<COSBase, Integer> count, Deque<COSBase> stack) {
+        COSBase t = v instanceof COSObject o ? o.getObject() : v;
+        if (t instanceof COSDictionary || t instanceof COSArray) {
+            Integer n = count.put(t, 1);
+            if (n == null) {
+                stack.push(t);
+            } else {
+                count.put(t, n + 1);
+            }
+        }
     }
 
     private static boolean movable(COSBase b) {

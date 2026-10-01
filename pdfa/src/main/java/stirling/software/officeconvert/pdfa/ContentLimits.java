@@ -18,20 +18,42 @@ final class ContentLimits {
 
     private ContentLimits() {}
 
+    static boolean candidate(Object operand, PdfALevel level) {
+        return operand instanceof COSName n && n.getName().length() > Limits.MAX_NAME_BYTES / 3
+                || operand instanceof COSDictionary
+                || operand instanceof COSString s && s.getBytes().length > Limits.maxString(level)
+                || operand instanceof COSArray a && (a.size() > Limits.maxArray(level) || longString(a, level));
+    }
+
+    private static boolean longString(COSArray a, PdfALevel level) {
+        for (int i = 0; i < a.size(); i++) {
+            if (a.get(i) instanceof COSString s && s.getBytes().length > Limits.maxString(level)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     static List<Object> fix(List<Object> operation, PdfALevel level) {
         Operator op = (Operator) operation.get(operation.size() - 1);
         boolean changed = false;
-        List<Object> o = new ArrayList<>(operation);
+        List<Object> o = operation;
         for (int k = 0; k < o.size() - 1; k++) {
             Object v = o.get(k);
             if (v instanceof COSName n) {
                 COSName s = Limits.name(n);
                 if (s != n) {
+                    if (!changed) {
+                        o = new ArrayList<>(operation);
+                    }
                     o.set(k, s);
                     changed = true;
                 }
-            } else if (v instanceof COSDictionary d) {
-                changed |= names(d);
+            } else if (v instanceof COSDictionary d && names(d)) {
+                if (!changed) {
+                    o = new ArrayList<>(operation);
+                }
+                changed = true;
             }
         }
         if ("BI".equals(op.getName()) && op.getImageParameters() != null) {

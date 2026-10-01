@@ -257,7 +257,7 @@ final class PdfWriter {
     }
 
     static byte[] deflate(byte[] data) throws IOException {
-        Deflater d = new Deflater(Deflater.BEST_COMPRESSION);
+        Deflater d = new Deflater(Deflater.DEFAULT_COMPRESSION);
         try {
             ByteArrayOutputStream b = new ByteArrayOutputStream(Math.max(64, data.length / 3));
             try (DeflaterOutputStream z = new DeflaterOutputStream(b, d, 1 << 16)) {

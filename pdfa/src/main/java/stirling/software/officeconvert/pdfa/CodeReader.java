@@ -2,6 +2,8 @@ package stirling.software.officeconvert.pdfa;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 import org.apache.fontbox.cmap.CMap;
 import org.apache.fontbox.cmap.CMapParser;
@@ -12,6 +14,8 @@ import org.apache.pdfbox.cos.COSStream;
 import org.apache.pdfbox.io.RandomAccessReadBuffer;
 
 final class CodeReader {
+
+    private static final Map<String, CMap> PREDEFINED = new ConcurrentHashMap<>();
 
     private final CMap cmap;
 
@@ -33,7 +37,12 @@ final class CodeReader {
     static CMap cmap(COSBase encoding) {
         try {
             if (encoding instanceof COSName n) {
-                return new CMapParser().parsePredefined(n.getName());
+                CMap known = PREDEFINED.get(n.getName());
+                if (known == null) {
+                    known = new CMapParser().parsePredefined(n.getName());
+                    PREDEFINED.putIfAbsent(n.getName(), known);
+                }
+                return known;
             }
             if (encoding instanceof COSStream s) {
                 try (var in = s.createInputStream()) {
