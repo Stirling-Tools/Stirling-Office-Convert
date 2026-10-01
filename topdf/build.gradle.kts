@@ -25,23 +25,8 @@ base {
 tasks.test {
     val runtime = configurations.runtimeClasspath
     inputs.files(runtime)
-    systemProperty("topdf.reportDir", layout.buildDirectory.dir("reports").get().asFile.absolutePath)
-    doFirst {
-        systemProperty("topdf.runtimeClasspath", runtime.get().asPath)
-    }
-}
-
-val testJava25 by tasks.registering(Test::class) {
-    description = "Runs the topdf tests on Java 25, the runtime Stirling-PDF ships, with its stricter JAXP limits"
-    group = "verification"
-    val test = sourceSets["test"]
-    testClassesDirs = test.output.classesDirs
-    classpath = test.runtimeClasspath
-    javaLauncher.set(javaToolchains.launcherFor { languageVersion.set(JavaLanguageVersion.of(25)) })
-    val runtime = configurations.runtimeClasspath
-    inputs.files(runtime)
     systemProperty("topdf.expectJava", "25")
-    systemProperty("topdf.reportDir", layout.buildDirectory.dir("reports/java25").get().asFile.absolutePath)
+    systemProperty("topdf.reportDir", layout.buildDirectory.dir("reports").get().asFile.absolutePath)
     doFirst {
         systemProperty("topdf.runtimeClasspath", runtime.get().asPath)
     }

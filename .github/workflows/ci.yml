@@ -18,7 +18,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-14, windows-latest]
-        java: ['21', '25']
+        java: ['25']
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4

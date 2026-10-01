@@ -154,7 +154,7 @@ local app finds an installed LibreOffice by itself. Settings on top of the table
 
 ## Library use
 
-Add the dependency (Java 21 or later):
+Add the dependency (Java 25 or later):
 
 ```kotlin
 implementation("com.stirling:stirling-office-convert:<version>")            // Gradle, Kotlin DSL
@@ -256,7 +256,7 @@ What reaches the output is inert: links keep only web, mail and FTP addresses, e
 addresses, subject and body; spreadsheet cells never hold formulas; JPEGs copied as they are lose comments,
 metadata and anything after their end; bidi override characters are dropped from text and document properties.
 
-The library depends on `org.apache.pdfbox:pdfbox:3.0.8` and `commons-logging`, and runs on Java 21 or later.
+The library depends on `org.apache.pdfbox:pdfbox:3.0.8` and `commons-logging`, and runs on Java 25 or later.
 
 ### Office to PDF
 
@@ -574,7 +574,7 @@ Published to Maven Central as `com.stirling:stirling-office-convert`, `com.stirl
   the Central Portal staging API and finalizes the deployment for review at
   https://central.sonatype.com/publishing/deployments (dispatch with `autoRelease` to skip the review click).
 - Pushes to `main` publish a `-SNAPSHOT` (`snapshot.yml`) once the secrets below are set; pull requests build and test on Linux, macOS and Windows
-  with Java 21 and 25 (`ci.yml`).
+  with Java 25 (`ci.yml`).
 - Repository secrets: `CENTRAL_PORTAL_USERNAME`, `CENTRAL_PORTAL_PASSWORD` (a Central Portal user token),
   `GPG_SIGNING_KEY` (ASCII-armoured private key) and `GPG_SIGNING_PASSWORD`. A release version without a signing key
   is refused before anything is uploaded.
@@ -586,6 +586,4 @@ Published to Maven Central as `com.stirling:stirling-office-convert`, `com.stirl
   and backdrop figures, plus an end-to-end conversion of a generated PDF that checks the heading, Word list, table and
   page range in the DOCX.
 - `./gradlew :topdf:test`: Office to PDF, including the network-safety tests (hostile documents convert without a
-  single connection or DNS lookup, and a scan of every class for code that could reach the network or run scripts);
-  `./gradlew :topdf:testJava25` runs the same tests on a Java 25 toolchain, Stirling-PDF's runtime, when one is
-  installed.
+  single connection or DNS lookup, and a scan of every class for code that could reach the network or run scripts).
