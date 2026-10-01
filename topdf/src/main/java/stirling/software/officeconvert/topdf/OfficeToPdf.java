@@ -55,6 +55,7 @@ import stirling.software.officeconvert.topdf.pdf.PdfOutput;
 import stirling.software.officeconvert.topdf.pdf.TextStyle;
 import stirling.software.officeconvert.topdf.ppt.PptRenderer;
 import stirling.software.officeconvert.topdf.pptx.PptxRenderer;
+import stirling.software.officeconvert.topdf.rtf.RtfPackage;
 import stirling.software.officeconvert.topdf.xls.XlsPackage;
 import stirling.software.officeconvert.topdf.xlsx.XlsxRenderer;
 
@@ -75,13 +76,19 @@ public final class OfficeToPdf {
                 case "docx", "docm", "dotx", "dotm" -> DOCX;
                 case "pptx", "pptm", "ppsx", "ppsm", "potx", "potm" -> PPTX;
                 case "xlsx", "xlsm", "xltx", "xltm", "xls", "xlt" -> XLSX;
-                case "doc", "dot" -> throw legacy("Word", ext, "docx");
+                case "rtf" -> DOCX;
+                case "doc", "dot" -> {
+                    if (rtf(file)) {
+                        yield DOCX;
+                    }
+                    throw legacy("Word", ext, "docx");
+                }
                 case "ppt", "pps", "pot" -> PPT;
                 case "xlsb" -> throw new IllegalArgumentException(
                         "Excel binary workbooks (.xlsb) are not supported; save the file as .xlsx");
                 default -> throw new IllegalArgumentException("Not an Office document: " + file.getFileName()
                         + "; use .docx, .docm, .dotx, .dotm, .pptx, .pptm, .ppsx, .ppsm, .potx, .potm, .xlsx, .xlsm,"
-                        + " .xltx, .xltm, .xls, .xlt, .ppt, .pps or .pot");
+                        + " .xltx, .xltm, .xls, .xlt, .ppt, .pps, .pot or .rtf");
             };
         }
 
@@ -89,7 +96,7 @@ public final class OfficeToPdf {
             Objects.requireNonNull(file, "file");
             return switch (extension(file)) {
                 case "docx", "docm", "dotx", "dotm", "pptx", "pptm", "ppsx", "ppsm", "potx", "potm", "xlsx", "xlsm",
-                        "xltx", "xltm", "doc", "dot", "ppt", "pps", "pot", "xls", "xlt", "xlsb" -> true;
+                        "xltx", "xltm", "doc", "dot", "ppt", "pps", "pot", "xls", "xlt", "xlsb", "rtf" -> true;
                 default -> false;
             };
         }
@@ -99,6 +106,14 @@ public final class OfficeToPdf {
             String n = name == null ? "" : name.toString().toLowerCase(Locale.ROOT);
             int dot = n.lastIndexOf('.');
             return dot < 0 ? "" : n.substring(dot + 1);
+        }
+
+        private static boolean rtf(Path file) {
+            try {
+                return Files.isRegularFile(file) && RtfPackage.isRtf(file);
+            } catch (IOException | RuntimeException e) {
+                return false;
+            }
         }
 
         private static IllegalArgumentException legacy(String app, String ext, String modern) {
@@ -255,6 +270,9 @@ public final class OfficeToPdf {
         }
         if (LegacyOffice.powerPoint(in)) {
             return Footprint.legacy(Files.size(in));
+        }
+        if (RtfPackage.isRtf(in)) {
+            return RtfPackage.estimate(Files.size(in)) + 2 * Admission.BASE_BYTES;
         }
         Long legacy = legacyWorkbookEstimate(in);
         if (legacy != null) {
@@ -431,6 +449,10 @@ public final class OfficeToPdf {
         Result legacy = legacyWorkbook(source, sink, options, renderer);
         if (legacy != null) {
             return legacy;
+        }
+        Result rtf = richText(source, sink, options, renderer);
+        if (rtf != null) {
+            return rtf;
         }
         return render(source, requested, sink, options, renderer, OfficeZip.Limits.DEFAULT);
     }
@@ -790,6 +812,37 @@ public final class OfficeToPdf {
             if (xlsx != null) {
                 deleteQuietly(xlsx);
             }
+        }
+    }
+
+    // An RTF document is rewritten as a DOCX package first, whatever its extension, and drawn from that
+    private static Result richText(Path source, OutputStream sink, Options options, Renderer renderer)
+            throws IOException {
+        if (!RtfPackage.isRtf(source)) {
+            return null;
+        }
+        Path docx = Files.createTempFile("office-to-pdf-", ".docx");
+        try {
+            RtfPackage.Outcome outcome;
+            Admission.Ticket ticket = Admission.jvm().enter(RtfPackage.estimate(Files.size(source)));
+            try (InputStream in = Files.newInputStream(source);
+                    OutputStream os = new BufferedOutputStream(Files.newOutputStream(docx), 1 << 16)) {
+                outcome = RtfPackage.write(in, os);
+            } finally {
+                ticket.close();
+            }
+            stopIfInterrupted();
+            Result r = render(docx, Format.DOCX, sink, options, (s, job) -> renderer.render(source, job), REWRITTEN);
+            List<String> warnings = new ArrayList<>(r.warnings());
+            for (String w : outcome.warnings()) {
+                String c = RenderJob.clean(w);
+                if (c != null && !warnings.contains(c)) {
+                    warnings.add(c);
+                }
+            }
+            return new Result(r.pages(), r.truncated() || outcome.lost(), warnings, r.pageLimitReached());
+        } finally {
+            deleteQuietly(docx);
         }
     }
 

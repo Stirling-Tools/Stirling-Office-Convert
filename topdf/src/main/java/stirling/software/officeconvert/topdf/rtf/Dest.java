@@ -1,0 +1,31 @@
+package stirling.software.officeconvert.topdf.rtf;
+
+enum Dest {
+    NORMAL,
+    SKIP,
+    FONTTBL,
+    FALT,
+    COLORTBL,
+    STYLESHEET,
+    STYLE,
+    LISTTABLE,
+    LIST,
+    LISTLEVEL,
+    LEVELTEXT,
+    OVERRIDETABLE,
+    OVERRIDE,
+    LFOLEVEL,
+    INFO,
+    INFOTEXT,
+    PICT,
+    FIELD,
+    FLDINST,
+    SHP,
+    SHPINST,
+    SP,
+    SN,
+    SV,
+    DEFCHP,
+    DEFPAP,
+    OBJECT
+}
