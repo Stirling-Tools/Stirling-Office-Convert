@@ -135,6 +135,20 @@ class DocxCloudFontTest {
         assertEquals(10 * 1.3f, line, 0.2, "the fallback draws the Hangul on Batang's line");
     }
 
+    @Test
+    void aMissingSegoeUiSymbolKeepsItsTallerLine() throws Exception {
+        String styles = "<w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii=\"Arial\" w:hAnsi=\"Arial\"/>"
+                + "<w:sz w:val=\"20\"/></w:rPr></w:rPrDefault><w:pPrDefault><w:pPr><w:spacing w:after=\"0\""
+                + " w:line=\"240\" w:lineRule=\"auto\"/></w:pPr></w:pPrDefault></w:docDefaults>";
+        String box = "<w:r><w:rPr><w:rFonts w:ascii=\"Segoe UI Symbol\" w:hAnsi=\"Segoe UI Symbol\""
+                + " w:cs=\"Segoe UI Symbol\"/></w:rPr><w:t>☐</w:t></w:r>";
+        String body = DocxDoc.p("Ann") + DocxDoc.p("Bob") + "<w:p>" + box
+                + "<w:r><w:t xml:space=\"preserve\"> Cat</w:t></w:r></w:p>" + DocxDoc.p("Dan");
+        List<TextPosition> pos = convert(new DocxDoc().styles(styles).body(body).bytes());
+        float line = y(pos, "D") - y(pos, "B") - (y(pos, "B") - y(pos, "A"));
+        assertEquals(10 * (2210f + 514) / 2048, line, 0.2, "the box line is as tall as Segoe UI Symbol's in Word");
+    }
+
     private static float y(List<TextPosition> pos, String letter) {
         return pos.stream().filter(p -> p.getUnicode().equals(letter)).findFirst().orElseThrow().getYDirAdj();
     }
