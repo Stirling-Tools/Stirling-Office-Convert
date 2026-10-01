@@ -219,8 +219,10 @@ final class Paginator {
         return cut[0];
     }
 
+    static final int MAX_FILLED_PAGES = 10_000;
+
     private static void fillGaps(TreeSet<Long> picked, int limit) throws InterruptedIOException {
-        if (picked.isEmpty()) {
+        if (picked.isEmpty() || picked.last() >= MAX_FILLED_PAGES) {
             return;
         }
         long last = picked.last();
