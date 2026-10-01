@@ -68,8 +68,8 @@ class PptxTableTest {
         pptx = Fixtures.edit(pptx).put("ppt/tableStyles.xml", "<a:tblStyleLst xmlns:a=\"" + Decks.A
                 + "\" def=\"{5C22544A-7EE6-4342-B048-85BDC9FD1C3A}\"/>").bytes();
         BufferedImage img = Decks.convert(dir, "builtin.pptx", pptx).render(0, 72);
-        int head = img.getRGB(80, 80) & 0xFFFFFF;
-        int body = img.getRGB(80, 150) & 0xFFFFFF;
+        int head = img.getRGB(250, 100) & 0xFFFFFF;
+        int body = img.getRGB(250, 170) & 0xFFFFFF;
         assertTrue(head != 0xFFFFFF, Integer.toHexString(head));
         assertTrue(body != 0xFFFFFF && body != head, Integer.toHexString(body));
     }
