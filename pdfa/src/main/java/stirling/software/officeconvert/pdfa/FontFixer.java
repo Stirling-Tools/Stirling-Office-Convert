@@ -226,11 +226,9 @@ final class FontFixer {
         TreeMap<Integer, String> map = new TreeMap<>();
         boolean complete = font.getCOSObject().getDictionaryObject(COSName.TO_UNICODE) != null;
         for (int code : codes) {
-            String t;
-            try {
-                t = font.toUnicode(code);
-            } catch (RuntimeException e) {
-                t = null;
+            String t = UnicodeGuess.of(font, code, bytesPerCode);
+            if (complete && !ToUnicodeWriter.valid(UnicodeGuess.declared(font, code))) {
+                complete = false;
             }
             if (!ToUnicodeWriter.valid(t) || level.tagged() && ToUnicodeWriter.privateUse(t)) {
                 complete = false;

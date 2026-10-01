@@ -24,7 +24,7 @@ final class ToUnicodeWriter {
         }
         for (int i = 0; i < text.length(); i++) {
             char c = text.charAt(i);
-            if (c == 0 || c == 0xFEFF || c == 0xFFFE) {
+            if (c < 0x20 || c >= 0x7F && c < 0xA0 || c == 0xFEFF || c == 0xFFFE || c == 0xFFFF) {
                 return false;
             }
         }

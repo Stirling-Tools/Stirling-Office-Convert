@@ -66,7 +66,7 @@ final class FontRebuild {
         int missing = 0;
         for (int code : codes) {
             int key = type0 ? cid.codeToCID(code) : code;
-            String text = text(font, code);
+            String text = UnicodeGuess.of(font, code, type0 ? bytesPerCode : 1);
             if (!ToUnicodeWriter.valid(text) || ToUnicodeWriter.privateUse(text)) {
                 String s = ToUnicodeWriter.symbol(text, original, code);
                 text = s != null ? s : text;
@@ -133,14 +133,6 @@ final class FontRebuild {
             note += ", " + missing + (missing == 1 ? " character" : " characters") + " not in it";
         }
         return note;
-    }
-
-    private static String text(PDFont font, int code) {
-        try {
-            return font.toUnicode(code);
-        } catch (RuntimeException e) {
-            return null;
-        }
     }
 
     private static TrueTypeFont ownTrueType(PDFont font) {

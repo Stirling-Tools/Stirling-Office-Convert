@@ -120,7 +120,7 @@ final class FontCheck {
             if (subs.length == 1) {
                 return true;
             }
-            return cmap.getSubtable(3, 0) != null;
+            return level.part() > 1 && cmap.getSubtable(3, 0) != null;
         }
         if (cmap == null || cmap.getSubtable(3, 1) == null && cmap.getSubtable(1, 0) == null) {
             return false;

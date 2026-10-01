@@ -680,6 +680,34 @@ final class Samples {
             contents.add(extra.getCOSObject());
             p.getCOSObject().setItem(COSName.CONTENTS, contents);
         });
+        gen("s22_gaps_in_tounicode", d -> {
+            PDPage p = page(d);
+            PDType0Font f = PDType0Font.load(d, liberation(), false);
+            try (PDPageContentStream cs = new PDPageContentStream(d, p)) {
+                text(cs, f, 14, 50, 780, "Gaps in the map");
+            }
+            byte[] g = f.encode("G");
+            String cmap = "/CIDInit /ProcSet findresource begin 12 dict begin begincmap /CMapName /U def "
+                    + "1 begincodespacerange <0000> <FFFF> endcodespacerange 1 beginbfchar "
+                    + String.format("<%02X%02X> <0061>", g[0], g[1]) + " endbfchar endcmap CMapName currentdict "
+                    + "/CMap defineresource pop end end";
+            PDStream tu = new PDStream(d);
+            try (OutputStream o = tu.createOutputStream()) {
+                o.write(cmap.getBytes(StandardCharsets.US_ASCII));
+            }
+            f.getCOSObject().setItem(COSName.TO_UNICODE, tu);
+        });
+        gen("s23_symbolic_truetype", d -> {
+            PDPage p = page(d);
+            org.apache.pdfbox.pdmodel.font.PDTrueTypeFont f = org.apache.pdfbox.pdmodel.font.PDTrueTypeFont.load(d,
+                    liberation(), WinAnsiEncoding.INSTANCE);
+            try (PDPageContentStream cs = new PDPageContentStream(d, p)) {
+                text(cs, f, 14, 50, 780, "Symbolic flag, several cmaps");
+            }
+            f.getFontDescriptor().setSymbolic(true);
+            f.getFontDescriptor().setNonSymbolic(false);
+            f.getCOSObject().removeItem(COSName.ENCODING);
+        });
     }
 
     static org.apache.fontbox.ttf.TrueTypeFont liberation() throws IOException {
