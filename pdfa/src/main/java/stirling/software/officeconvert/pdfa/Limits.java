@@ -122,6 +122,14 @@ final class Limits {
     }
 
     private void visit(COSBase b) {
+        if (level.part() == 1) {
+            if (b instanceof COSDictionary d && LongArrays.fix(d)) {
+                report.warn("Split arrays longer than PDF/A-1 allows");
+            }
+            for (String what : LongArrays.unfixable(b)) {
+                report.warn("The PDF has " + what + ", more than PDF/A-1 allows, which could not be split");
+            }
+        }
         if (b instanceof COSDictionary d) {
             for (Map.Entry<COSName, COSBase> e : new ArrayList<>(d.entrySet())) {
                 COSBase v = e.getValue();

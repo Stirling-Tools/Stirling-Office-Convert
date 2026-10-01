@@ -32,6 +32,8 @@ final class PdfWriter {
 
     static final int BUFFERED_STREAM_BYTES = 16 << 20;
 
+    static final int MAX_OBJECTS = 8_388_607;
+
     private static final COSName OBJ_STM = COSName.getPDFName("ObjStm");
 
     private final CountingOutput out;
@@ -106,6 +108,10 @@ final class PdfWriter {
             }
         }
         flushPacked();
+        if (next - 1 > MAX_OBJECTS) {
+            throw new IOException("The PDF/A would have " + (next - 1) + " objects, more than the " + MAX_OBJECTS
+                    + " PDF/A allows");
+        }
         COSArray id = doc.getDocument().getDocumentID();
         if (objectStreams) {
             xrefStream(rootNumber, infoNumber, id);
