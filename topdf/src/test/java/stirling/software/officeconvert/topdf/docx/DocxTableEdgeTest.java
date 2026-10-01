@@ -346,6 +346,25 @@ class DocxTableEdgeTest {
     }
 
     @Test
+    void aRowBesideARotatedMergedCellStillSplitsAtThePageBottom() throws IOException {
+        StringBuilder body = new StringBuilder();
+        for (int i = 0; i < 40; i++) {
+            body.append(DocxDoc.p("Body" + i));
+        }
+        String merged = "<w:tc><w:tcPr><w:tcW w:w=\"700\" w:type=\"dxa\"/><w:vMerge w:val=\"restart\"/>"
+                + "<w:textDirection w:val=\"btLr\"/></w:tcPr>" + DocxDoc.p("Side") + "</w:tc>";
+        String below = "<w:tc><w:tcPr><w:tcW w:w=\"700\" w:type=\"dxa\"/><w:vMerge/></w:tcPr><w:p/></w:tc>";
+        String wide = "<w:tc><w:tcPr><w:tcW w:w=\"3300\" w:type=\"dxa\"/></w:tcPr>";
+        String table = "<w:tbl><w:tblPr><w:tblW w:w=\"4000\" w:type=\"dxa\"/></w:tblPr><w:tblGrid><w:gridCol"
+                + " w:w=\"700\"/><w:gridCol w:w=\"3300\"/></w:tblGrid><w:tr><w:trPr><w:trHeight w:val=\"1134\"/>"
+                + "</w:trPr>" + merged + wide + DocxDoc.p("Head") + "</w:tc></w:tr><w:tr>" + below + wide
+                + body + "</w:tc></w:tr></w:tbl>";
+        DocxDoc.Rendered r = render("rotatedsplit", fillers(30) + table + "<w:p/>");
+        assertEquals(1, r.word("Body0").page(), "the row starts on the first page");
+        assertEquals(2, r.word("Body39").page());
+    }
+
+    @Test
     void textAfterAPageAnchoredTableThatRunsOnGoesOnFromTheTopOfItsLastPage() throws IOException {
         StringBuilder rows = new StringBuilder();
         for (int i = 0; i < 70; i++) {

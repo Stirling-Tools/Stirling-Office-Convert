@@ -369,7 +369,7 @@ final class TableFlow {
             while (k < cb.content.size() && cb.content.get(k).y + cb.content.get(k).strip.height <= room + 0.01f) {
                 k++;
             }
-            k = widowSafe(cb.content, k);
+            k = cb.rotation != 0 ? cb.content.size() : widowSafe(cb.content, k);
             CellBox next = at(rows.get(index + m), cb.cell.col);
             if (next == null || !next.continuation) {
                 continue;
@@ -378,6 +378,7 @@ final class TableFlow {
             boolean split = k > 0 && k < cb.content.size();
             CellBox carry = copy(cb);
             carry.continuation = false;
+            carry.rotation = 0;
             carry.top = null;
             carry.vAlign = split ? "top" : cb.vAlign;
             carry.rowSpan = span - m;
