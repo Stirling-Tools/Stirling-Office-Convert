@@ -236,6 +236,29 @@ class DocxRendererTest {
                 text);
     }
 
+    private static DocxDoc.Word word(List<DocxDoc.Word> words, String text) {
+        for (DocxDoc.Word w : words) {
+            if (w.text().contains(text)) {
+                return w;
+            }
+        }
+        throw new AssertionError(text + " not in " + words);
+    }
+
+    @Test
+    void eqFieldsAndRtfMathAreLaidOutAsEquations() throws IOException {
+        String body = "<w:p><w:r><w:t xml:space=\"preserve\">Half </w:t></w:r><w:r><w:fldChar w:fldCharType=\"begin\"/>"
+                + "</w:r><w:r><w:instrText xml:space=\"preserve\"> EQ \\f(7,9) </w:instrText></w:r><w:r>"
+                + "<w:fldChar w:fldCharType=\"separate\"/></w:r><w:r><w:fldChar w:fldCharType=\"end\"/></w:r></w:p>";
+        List<DocxDoc.Word> words = DocxDoc.render(dir, "eq", new DocxDoc().body(body).bytes()).words();
+        assertTrue(word(words, "7").y() + 3 < word(words, "Half").y(), words.toString());
+        String rtf = "{\\rtf1\\ansi\\deff0{\\fonttbl{\\f0 Times New Roman;}}\\pard Third {\\mmath{\\*\\moMath{\\mf"
+                + "{\\mnum{\\mr 5}}{\\mden{\\mr 8}}}}}\\par}";
+        List<DocxDoc.Word> math = DocxDoc.render(dir, "math", rtf.getBytes(java.nio.charset.StandardCharsets.US_ASCII))
+                .words();
+        assertTrue(word(math, "5").y() + 3 < word(math, "Third").y(), math.toString());
+    }
+
     @Test
     void autonumFieldsWithoutAResultNumberTheirParagraphs() throws IOException {
         StringBuilder body = new StringBuilder();

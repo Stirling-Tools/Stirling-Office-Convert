@@ -5,6 +5,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
+import stirling.software.officeconvert.topdf.field.EqField;
 import stirling.software.officeconvert.topdf.field.FieldCase;
 import stirling.software.officeconvert.topdf.field.StoredFields;
 
@@ -86,6 +87,9 @@ final class Embeds {
             return;
         }
         g.field.result = true;
+        int[] length = new int[1];
+        g.field.resultPara = reader.content().para(g, length);
+        g.field.resultLength = length[0];
         Wrap w = wrap(g.field.inst.toString(), g.story.rels);
         if (w != null) {
             g.wrap = w;
@@ -93,7 +97,18 @@ final class Embeds {
     }
 
     void closeField(Group done, Group parent) {
-        if (done.field == null || done.field.result || parent.story == null || parent.dest != Dest.NORMAL) {
+        if (done.field == null || parent.story == null || parent.dest != Dest.NORMAL) {
+            return;
+        }
+        String inst = done.field.inst.toString();
+        if (EqField.isEq(inst) && (!done.field.result || emptyResult(done.field, parent))) {
+            String omml = EqField.omml(inst, reader.content().rPr(done));
+            if (omml != null) {
+                reader.content().math(parent, omml);
+            }
+            return;
+        }
+        if (done.field.result) {
             return;
         }
         List<String> args = arguments(done.field.inst.toString());
@@ -121,6 +136,12 @@ final class Embeds {
                 reader.content().text(parent, FieldCase.apply(value, args));
             }
         }
+    }
+
+    private boolean emptyResult(Group.Field f, Group parent) {
+        int[] length = new int[1];
+        return f.resultPara != null && reader.content().para(parent, length) == f.resultPara
+                && length[0] == f.resultLength;
     }
 
     static Wrap wrap(String instruction, Rels rels) {

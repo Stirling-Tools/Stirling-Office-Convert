@@ -173,7 +173,7 @@ final class Inline {
             element(rPr, "<w:fldChar w:fldCharType=\"end\"/>");
             f.open = false;
         }
-        if (f != null && !f.separated && fields.visible() && Fields.stored(f)) {
+        if (f != null && !f.separated && fields.visible() && Fields.drawnWithoutResult(f)) {
             element(rPr, "<w:fldChar w:fldCharType=\"begin\"/>");
             element(rPr, "<w:instrText xml:space=\"preserve\"> " + Xml.esc(f.code.toString().strip())
                     + " </w:instrText>");

@@ -104,9 +104,13 @@ final class Fields {
         return out;
     }
 
-    static boolean stored(Frame f) {
+    static boolean drawnWithoutResult(Frame f) {
         List<String> t = tokens(f.code.toString());
-        return !t.isEmpty() && StoredFields.stored(t.get(0).toUpperCase(Locale.ROOT));
+        if (t.isEmpty()) {
+            return false;
+        }
+        String name = t.get(0).toUpperCase(Locale.ROOT);
+        return StoredFields.stored(name) || name.equals("EQ");
     }
 
     static void interpret(Frame f) {
@@ -117,6 +121,7 @@ final class Fields {
         String name = t.get(0).toUpperCase(Locale.ROOT);
         switch (name) {
             case "PAGE", "NUMPAGES", "SECTIONPAGES" -> f.complex = String.join(" ", t);
+            case "EQ" -> f.complex = f.code.toString().strip();
             case "HYPERLINK" -> hyperlink(f, t);
             default -> {
             }

@@ -144,6 +144,20 @@ class DocTest {
     }
 
     @Test
+    void eqFieldsReachTheEquationLayout() throws IOException {
+        byte[] doc = new WordFixture().para(List.of(WordFixture.run("Half "),
+                WordFixture.run("\u0013", Sprms.special()), WordFixture.run(" EQ \\f(1,2) "),
+                WordFixture.run("\u0015", Sprms.special()), WordFixture.run(" and "),
+                WordFixture.run("\u0013", Sprms.special()), WordFixture.run(" EQ \\r(9) "),
+                WordFixture.run("\u0014", Sprms.special()), WordFixture.run("\u0015", Sprms.special())), 0).build();
+        String xml = body(doc);
+        assertTrue(xml.contains("<w:instrText xml:space=\"preserve\"> EQ \\f(1,2) </w:instrText>")
+                && xml.contains("<w:instrText xml:space=\"preserve\"> EQ \\r(9) </w:instrText>"), xml);
+        String text = pdfText(doc, "eq.doc");
+        assertTrue(text.contains("1") && text.contains("2") && text.contains("9"), text);
+    }
+
+    @Test
     void onlyWebAndMailLinksBecomeHyperlinks() throws IOException {
         byte[] doc = new WordFixture().para(List.of(
                 WordFixture.run("\u0013", Sprms.special()), WordFixture.run(" HYPERLINK \"https://example.com/a\" "),

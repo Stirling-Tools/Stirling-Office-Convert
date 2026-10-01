@@ -28,5 +28,6 @@ enum Dest {
     SV,
     DEFCHP,
     DEFPAP,
-    OBJECT
+    OBJECT,
+    MATH
 }

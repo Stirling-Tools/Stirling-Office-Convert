@@ -258,6 +258,11 @@ final class RtfReader {
                     embeds.closeField(done, parent);
                 }
             }
+            case MATH -> {
+                if (parent.dest != Dest.MATH && done.mathNode != null) {
+                    content.math(parent, RtfMath.xml(done.mathNode.root));
+                }
+            }
             case SHP -> {
                 if (done.shape != parent.shape) {
                     embeds.closeShape(done, parent);
@@ -329,6 +334,7 @@ final class RtfReader {
                     content.word(this, g, w, p, has);
                 }
             }
+            case MATH -> mathWord(w, p, has);
             case FONTTBL, FALT -> defs.fontWord(g, w, p);
             case COLORTBL -> doc.colors.word(w, p);
             case STYLE -> defs.styleWord(g, w, p, has);
@@ -344,6 +350,22 @@ final class RtfReader {
             default -> {
             }
         }
+    }
+
+    private void mathWord(String w, int p, boolean has) {
+        if (w.equals("mmathPict") || w.equals("mctrlPr")) {
+            skip();
+            return;
+        }
+        if (RtfMath.runWord(g.mathNode, w, p)) {
+            return;
+        }
+        String name = RtfMath.element(w);
+        if (name != null) {
+            g.mathNode = RtfMath.open(g.mathNode, name);
+            return;
+        }
+        CharWords.apply(g.chp, w, p, has);
     }
 
     private void time(String w, int p) {
@@ -541,11 +563,13 @@ final class RtfReader {
             }
             case "nesttableprops" -> g.nestProps = true;
             case "mmath" -> {
-                if (g.dest != Dest.NORMAL) {
+                if (g.dest != Dest.NORMAL || g.story == null) {
                     skip();
                     return true;
                 }
                 g.math = true;
+                g.dest = Dest.MATH;
+                g.mathNode = RtfMath.root();
             }
             case "background" -> {
                 g.background = true;
@@ -742,6 +766,7 @@ final class RtfReader {
     private void deliver(String s) {
         switch (g.dest) {
             case NORMAL -> content.text(g, s);
+            case MATH -> RtfMath.text(g.mathNode, s, content.rPr(g));
             case FONTTBL -> defs.fontText(s);
             case FALT -> defs.fontAlt(g, s);
             case STYLE, INFOTEXT, FLDINST, SN, SV -> {
