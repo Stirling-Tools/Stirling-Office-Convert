@@ -76,8 +76,17 @@ final class Metafiles {
         try {
             if (kind == PictureDecoder.Kind.EMF) {
                 HemfPicture emf = new HemfPicture(new ByteArrayInputStream(data));
-                bounds = emf.getBoundsInPoints();
-                painter = emf::draw;
+                EmfFrames.Placement place = EmfFrames.of(emf.getHeader());
+                if (place == null) {
+                    bounds = emf.getBoundsInPoints();
+                    painter = emf::draw;
+                } else {
+                    bounds = new Rectangle2D.Double(0, 0, place.widthPoints(), place.heightPoints());
+                    painter = (g, r) -> {
+                        g.setRenderingHint(Drawable.EMF_FORCE_HEADER_BOUNDS, true);
+                        emf.draw(g, place.target(r));
+                    };
+                }
             } else {
                 HwmfPicture wmf = new HwmfPicture(new ByteArrayInputStream(data));
                 bounds = wmf.getBoundsInPoints();
