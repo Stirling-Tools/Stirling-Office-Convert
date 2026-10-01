@@ -102,7 +102,7 @@ final class OutlineCompaction {
     private static boolean smaller(COSStream program, byte[] data) throws IOException {
         long before = program.getLength();
         long after = PdfWriter.deflate(data).length;
-        return after <= before * FontCompaction.MAX_RATIO && before - after >= FontCompaction.MIN_SAVING;
+        return before - after >= FontCompaction.MIN_SAVING;
     }
 
     private static COSStream stream(PDDocument doc, byte[] data) throws IOException {
