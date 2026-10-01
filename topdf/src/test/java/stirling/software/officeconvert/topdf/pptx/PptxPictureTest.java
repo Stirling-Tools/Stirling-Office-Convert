@@ -63,6 +63,16 @@ class PptxPictureTest {
     }
 
     @Test
+    void aHueOffsetIsInSixtiethThousandthsOfADegree() throws IOException {
+        String sp = "<p:sp " + Decks.NS + "><p:nvSpPr><p:cNvPr id=\"8\" name=\"Red\"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr>"
+                + "<p:spPr><a:xfrm><a:off x=\"1270000\" y=\"1270000\"/><a:ext cx=\"1270000\" cy=\"1270000\"/></a:xfrm>"
+                + "<a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom><a:solidFill><a:srgbClr val=\"FF0000\"><a:hueOff "
+                + "val=\"-99754\"/></a:srgbClr></a:solidFill><a:ln><a:noFill/></a:ln></p:spPr></p:sp>";
+        Color c = new Color(Decks.convert(dir, "hue.pptx", Decks.slideXml(sp)).render(0, 72).getRGB(150, 150));
+        assertTrue(c.getRed() > 240 && c.getGreen() < 20 && c.getBlue() < 20, c.toString());
+    }
+
+    @Test
     void shapesThatUseTheBackgroundFillShowTheSlideBackground() throws IOException {
         String sp = "<p:sp " + Decks.NS + " useBgFill=\"1\"><p:nvSpPr><p:cNvPr id=\"8\" name=\"Cover\"/><p:cNvSpPr/>"
                 + "<p:nvPr/></p:nvSpPr><p:spPr><a:xfrm><a:off x=\"1270000\" y=\"1270000\"/><a:ext cx=\"1270000\""
