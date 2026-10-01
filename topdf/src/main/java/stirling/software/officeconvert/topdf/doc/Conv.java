@@ -43,6 +43,15 @@ final class Conv {
 
     private Textboxes textboxes;
 
+    private Marks marks;
+
+    Marks marks() {
+        if (marks == null) {
+            marks = new Marks(src);
+        }
+        return marks;
+    }
+
     Textboxes textboxes() {
         if (textboxes == null) {
             textboxes = new Textboxes(src);

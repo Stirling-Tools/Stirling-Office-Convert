@@ -45,6 +45,8 @@ final class WordFixture {
 
     private int[] headerStories;
 
+    private final List<Object[]> bookmarks = new ArrayList<>();
+
     private int nFib = 0xC1;
 
     private int fibFlags;
@@ -123,6 +125,11 @@ final class WordFixture {
     WordFixture textbox(int spid, String text) {
         textboxes.add(new Para(List.of(run(text)), new byte[0], 0, '\r'));
         textboxIds.add(spid);
+        return this;
+    }
+
+    WordFixture bookmark(String name, int start, int end) {
+        bookmarks.add(new Object[] {name, start, end});
         return this;
     }
 
@@ -258,6 +265,32 @@ final class WordFixture {
                         .putInt(0);
             }
             fcLcb[56] = put(table, plc.array());
+        }
+        if (!bookmarks.isEmpty()) {
+            ByteArrayOutputStream names = new ByteArrayOutputStream();
+            names.writeBytes(new byte[] {(byte) 0xFF, (byte) 0xFF, (byte) bookmarks.size(), 0, 0, 0});
+            ByteBuffer bkf = ByteBuffer.allocate(4 * (bookmarks.size() + 1) + 4 * bookmarks.size())
+                    .order(ByteOrder.LITTLE_ENDIAN);
+            ByteBuffer bkl = ByteBuffer.allocate(4 * (bookmarks.size() + 1)).order(ByteOrder.LITTLE_ENDIAN);
+            for (Object[] b : bookmarks) {
+                String name = (String) b[0];
+                names.write(name.length());
+                names.write(0);
+                for (char ch : name.toCharArray()) {
+                    names.write(ch & 0xFF);
+                    names.write(ch >> 8);
+                }
+                bkf.putInt((Integer) b[1]);
+                bkl.putInt((Integer) b[2]);
+            }
+            bkf.putInt(ccpText);
+            bkl.putInt(ccpText);
+            for (int i = 0; i < bookmarks.size(); i++) {
+                bkf.putShort((short) i).putShort((short) 0);
+            }
+            fcLcb[21] = put(table, names.toByteArray());
+            fcLcb[22] = put(table, bkf.array());
+            fcLcb[23] = put(table, bkl.array());
         }
         if (lists != null) {
             fcLcb[73] = put(table, lists);

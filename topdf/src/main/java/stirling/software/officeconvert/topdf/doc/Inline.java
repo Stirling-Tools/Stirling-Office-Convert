@@ -1,6 +1,7 @@
 package stirling.software.officeconvert.topdf.doc;
 
 import java.io.IOException;
+import java.util.NavigableMap;
 
 import org.apache.poi.hwpf.usermodel.CharacterProperties;
 
@@ -22,15 +23,24 @@ final class Inline {
         this.story = story;
     }
 
-    void write(int start, int end, int istd, StringBuilder out) throws IOException {
+    void write(int start, int end, int paragraphEnd, int istd, StringBuilder out) throws IOException {
         this.out = out;
         Conv c = story.c;
         CharSequence src = c.src.text;
+        NavigableMap<Integer, StringBuilder> marks = story.kind == Story.Kind.MAIN ? c.marks().within(start,
+                paragraphEnd) : null;
         for (Source.Segment seg : c.src.segments(start, end, istd)) {
             CharacterProperties chp = seg.chp();
             String rPr = c.src.runs.props(chp, seg.sprms());
             boolean special = chp.isFSpec();
             for (int cp = seg.start(); cp < seg.end() && cp < src.length(); cp++) {
+                if (marks != null && !marks.isEmpty()) {
+                    StringBuilder m = marks.get(cp);
+                    if (m != null) {
+                        flush();
+                        out.append(m);
+                    }
+                }
                 char ch = src.charAt(cp);
                 switch (ch) {
                     case '\u0013' -> fields.begin();
@@ -48,6 +58,11 @@ final class Inline {
             c.checkpoint();
         }
         flush();
+        if (marks != null) {
+            for (StringBuilder m : marks.tailMap(end, true).values()) {
+                out.append(m);
+            }
+        }
         closeLink();
         for (Fields.Frame f : fields.openComplex()) {
             element(props == null ? "" : props, "<w:fldChar w:fldCharType=\"end\"/>");

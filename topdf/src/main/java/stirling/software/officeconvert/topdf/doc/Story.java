@@ -116,7 +116,7 @@ final class Story {
         String sect = depth == 0 && breaks != null ? breaks.at(end) : null;
         out.append("<w:p>");
         ParaXml.write(out, props, sprms, c.styles.id(istd), numbering, mark, sect);
-        inline.write(par.start(), contentEnd, istd, out);
+        inline.write(par.start(), contentEnd, end, istd, out);
         out.append("</w:p>");
     }
 }

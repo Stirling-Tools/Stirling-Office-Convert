@@ -340,4 +340,17 @@ class DocTest {
                 () -> OfficeToPdf.convert(in, dir.resolve("old2.pdf")));
         assertTrue(e.getMessage().contains("Word 2.0"), e.getMessage());
     }
+
+    @Test
+    void bookmarksAndInternalLinksAreKept() throws IOException {
+        byte[] doc = new WordFixture().para(List.of(
+                WordFixture.run("\u0013", Sprms.special()), WordFixture.run(" HYPERLINK \\l \"target\" "),
+                WordFixture.run("\u0014", Sprms.special()), WordFixture.run("go"),
+                WordFixture.run("\u0015", Sprms.special())), 0)
+                .para("Destination").bookmark("target", 29, 40).build();
+        String xml = body(doc);
+        assertTrue(xml.contains("<w:hyperlink w:anchor=\"target\">"), xml);
+        assertTrue(xml.contains("<w:bookmarkStart w:id=\"0\" w:name=\"target\"/>"), xml);
+        assertTrue(xml.indexOf("bookmarkStart") < xml.indexOf("Destination"), xml);
+    }
 }
