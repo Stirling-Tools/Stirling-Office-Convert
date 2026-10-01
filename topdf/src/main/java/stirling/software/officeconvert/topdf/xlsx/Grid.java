@@ -26,7 +26,7 @@ final class Grid {
 
         final int index;
 
-        final double source;
+        double source;
 
         final boolean hidden;
 
@@ -148,6 +148,12 @@ final class Grid {
 
     private final boolean defaultHidden;
 
+    private final boolean fixedDefault;
+
+    private boolean storedHeights;
+
+    private final List<RowInfo> fitted = new ArrayList<>();
+
     private final boolean columnTops;
 
     private final boolean rightToLeft;
@@ -191,6 +197,7 @@ final class Grid {
         this.defaultSource = fileDefault > 0 && (customDefault || !near) ? fileDefault : screenDefault;
         this.rowFactor = metrics.rowFactor(screenDefault);
         this.defaultHidden = zero;
+        this.fixedDefault = customDefault;
         this.columnTops = columns.anyStyle(st -> book.styles().at(st).top().visible());
         this.rightToLeft = rightToLeft(ws);
         this.defaultDescent = descentPoints(book.styles().defaultFont());
@@ -212,6 +219,7 @@ final class Grid {
             }
         }, job);
         lastCol = Math.max(lastCol, -1);
+        keepDefaultHeights();
         if (sheetPart != null) {
             overlay(Overlays.read(book, sheetPart, ws, this, job));
         }
@@ -220,6 +228,15 @@ final class Grid {
             job.warn("Sheet " + sheetName + " is damaged; some rows could not be read");
             job.losePart();
         }
+    }
+
+    private void keepDefaultHeights() {
+        if (!storedHeights) {
+            for (RowInfo r : fitted) {
+                r.source = defaultSource;
+            }
+        }
+        fitted.clear();
     }
 
     private static boolean rightToLeft(CTWorksheet ws) {
@@ -335,6 +352,10 @@ final class Grid {
             }
         }
         RowInfo info = new RowInfo(packed, index, height, gone || height <= 0, style);
+        storedHeights |= !auto;
+        if (auto && !gone && fixedDefault && !storedHeights && height != defaultSource) {
+            fitted.add(info);
+        }
         info.descent = descent > 0 ? descent : defaultDescent;
         if (!gone) {
             info.markFrom = markFrom;
