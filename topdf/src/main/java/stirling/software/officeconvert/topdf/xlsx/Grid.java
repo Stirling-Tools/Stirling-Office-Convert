@@ -48,6 +48,10 @@ final class Grid {
 
         int spillTo = -1;
 
+        int markFrom = -1;
+
+        int markTo = -1;
+
         private int[] textCols;
 
         RowInfo(PackedCells store, int index, double source, boolean hidden, int style) {
@@ -267,6 +271,8 @@ final class Grid {
         boolean auto = !(row.hasHeight() && row.height() >= 0);
         boolean fit = auto || !row.custom();
         int lastBlank = -1;
+        int markFrom = -1;
+        int markTo = -1;
         FontSpec base = style >= 0 ? book.styles().at(style).font() : book.styles().defaultFont();
         double descent = 0;
         for (RawRow.Cell cell : row.cells()) {
@@ -277,6 +283,10 @@ final class Grid {
                 text = null;
             }
             if (text == null && !format.visible() && format.hAlign() != CellFormat.HAlign.CENTER_CONTINUOUS) {
+                if (book.styles().ruled(cell.style())) {
+                    markFrom = markFrom < 0 ? col : markFrom;
+                    markTo = col;
+                }
                 if (fit && cell.style() != lastBlank && blanks.size() < MAX_BLANK_FONTS
                         && !format.font().equals(base)) {
                     blanks.add(format.font());
@@ -309,6 +319,10 @@ final class Grid {
                 lastCol = Math.max(lastCol, e.col());
             }
         }
+        if (markTo >= 0 && !gone) {
+            lastRow = Math.max(lastRow, index);
+            lastCol = Math.max(lastCol, markTo);
+        }
         if (gone) {
             entries.removeIf(e -> !keptWhenHidden(style, e));
             if (entries.isEmpty() && defaultHidden && plainHiddenRow(style)) {
@@ -317,6 +331,10 @@ final class Grid {
         }
         RowInfo info = new RowInfo(packed, index, height, gone || height <= 0, style);
         info.descent = descent > 0 ? descent : defaultDescent;
+        if (!gone) {
+            info.markFrom = markFrom;
+            info.markTo = markTo;
+        }
         TreeMap<Integer, CellEntry> cells = new TreeMap<>();
         for (CellEntry e : entries) {
             cells.put(e.col(), e);

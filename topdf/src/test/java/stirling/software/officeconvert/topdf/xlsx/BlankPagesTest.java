@@ -43,6 +43,13 @@ class BlankPagesTest {
     }
 
     @Test
+    void anEmptyCellWithItsOwnBorderRecordIsPrintedEvenWhenTheBorderDrawsNothing() throws IOException {
+        String rows = "<row r=\"1\">" + RawXlsx.inline("A1", "First") + "</row><row r=\"25\"><c r=\"A25\" s=\"2\"/>"
+                + "</row>";
+        assertEquals(3, convert("ruled.xlsx", rows).pages().size());
+    }
+
+    @Test
     void aBlankMergedRangeIsPrinted() throws IOException {
         String sheet = "<sheetData><row r=\"1\">" + RawXlsx.inline("A1", "First") + "</row></sheetData>"
                 + "<mergeCells count=\"1\"><mergeCell ref=\"A24:B25\"/></mergeCells>" + BREAKS;
