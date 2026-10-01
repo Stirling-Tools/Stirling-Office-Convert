@@ -989,6 +989,31 @@ final class PageFlow extends Region {
         return false;
     }
 
+    boolean overlapsPlaced(Rectangle2D.Float b) {
+        for (Placed pl : page.placed) {
+            if (pl.fixed || pl.y + pl.strip.height <= b.y + 0.5f || pl.y >= b.y + b.height - 0.5f
+                    || !inked(pl.strip)) {
+                continue;
+            }
+            int c = Math.min(pl.column, colX.length - 1);
+            float x0 = Math.min(pl.x, colX[c]);
+            float x1 = Math.max(pl.x, colX[c]) + colW[c];
+            if (x1 > b.x && x0 < b.x + b.width) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean inked(Strip s) {
+        for (Op op : s.ops) {
+            if (op instanceof Op.Text t ? !t.text().isBlank() : !(op instanceof Op.Dest || op instanceof Op.Link)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     @Override
     void unanchor(List<Object> handles) {
         for (Object h : handles) {

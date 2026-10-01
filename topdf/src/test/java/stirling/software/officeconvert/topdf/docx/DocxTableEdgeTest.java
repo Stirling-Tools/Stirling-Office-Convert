@@ -365,6 +365,19 @@ class DocxTableEdgeTest {
     }
 
     @Test
+    void aPageAnchoredTableOverTextAboveItsAnchorMovesToTheNextPage() throws IOException {
+        String table = "<w:tbl><w:tblPr><w:tblpPr w:leftFromText=\"180\" w:rightFromText=\"180\""
+                + " w:vertAnchor=\"page\" w:horzAnchor=\"margin\" w:tblpY=\"1440\"/><w:tblW w:w=\"9360\""
+                + " w:type=\"dxa\"/></w:tblPr><w:tblGrid><w:gridCol w:w=\"9360\"/></w:tblGrid>"
+                + row("", DocxDoc.p("Cell")) + "</w:tbl>";
+        DocxDoc.Rendered moved = render("floatover", DocxDoc.p("Contents") + table + "<w:p/>");
+        assertEquals(1, moved.word("Contents").page());
+        assertEquals(2, moved.word("Cell").page());
+        DocxDoc.Rendered kept = render("floatempty", "<w:p/><w:p/>" + table + "<w:p/>");
+        assertEquals(1, kept.word("Cell").page(), "empty paragraphs above it do not move it");
+    }
+
+    @Test
     void textAfterAPageAnchoredTableThatRunsOnGoesOnFromTheTopOfItsLastPage() throws IOException {
         StringBuilder rows = new StringBuilder();
         for (int i = 0; i < 70; i++) {

@@ -535,6 +535,16 @@ final class TableFlow {
         for (RowBox row : l.rows()) {
             height += row.height;
         }
+        float[] at = position(f, l, pf, width, height);
+        if (!"text".equals(f.attr("vertAnchor")) && !pf.atTop()
+                && pf.overlapsPlaced(new java.awt.geom.Rectangle2D.Float(at[0], at[1], width, height))) {
+            pf.newFrame(true, false);
+            at = position(f, l, pf, width, height);
+        }
+        place(f, l, pf, at[0], at[1], width);
+    }
+
+    private static float[] position(XEl f, Layout l, PageFlow pf, float width, float height) {
         String horz = f.attr("horzAnchor");
         // Without a vertical anchor Word measures a floating table from the top margin
         String vert = f.attr("vertAnchor", "margin");
@@ -564,6 +574,10 @@ final class TableFlow {
         } else {
             y += Ooxml.twips(f.attr("tblpY"), 0);
         }
+        return new float[] {x, y};
+    }
+
+    private void place(XEl f, Layout l, PageFlow pf, float x, float y, float width) {
         float at = y;
         int fit = 0;
         float fitted = 0;
