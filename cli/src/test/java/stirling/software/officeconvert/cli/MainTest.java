@@ -215,6 +215,33 @@ class MainTest {
         assertEquals("OFF", p.getProperty("org.apache.logging.log4j.simplelog.level"));
     }
 
+    @Test
+    void pdfaWritesAnArchivalCopyBesideTheInput() throws Exception {
+        Path pdf = helloPdf(dir.resolve("in.pdf"));
+        Result r = run(pdf.toString(), "--pdfa", "2b");
+        assertEquals(0, r.code(), r.err());
+        Path out = dir.resolve("in.pdfa.pdf");
+        assertTrue(Files.size(out) > 0);
+        try (PDDocument d = org.apache.pdfbox.Loader.loadPDF(out.toFile())) {
+            String xmp = new String(d.getDocumentCatalog().getMetadata().toByteArray(), StandardCharsets.UTF_8);
+            assertTrue(xmp.contains("<pdfaid:part>2</pdfaid:part>"), xmp);
+        }
+        Result again = run(dir.toString(), "--pdfa", "1b", "-o", dir.resolve("archive").toString(), "-q");
+        assertEquals(0, again.code(), again.err());
+        assertTrue(Files.exists(dir.resolve("archive/in.pdfa.pdf")));
+        assertFalse(Files.exists(dir.resolve("archive/in.pdfa.pdfa.pdf")));
+    }
+
+    @Test
+    void pdfaRefusesOfficeInputAndUnknownLevels() throws Exception {
+        Path pdf = helloPdf(dir.resolve("in.pdf"));
+        assertUsage(run(pdf.toString(), "--pdfa", "2a"), "tagged");
+        assertUsage(run(pdf.toString(), "--pdfa", "9"), "1b, 2b, 2u, 3b or 3u");
+        assertUsage(run(pdf.toString(), "--pdfa", "2b", "-o", dir.resolve("x.docx").toString()), "name the output .pdf");
+        Path docx = minimalDocx(dir.resolve("a.docx"));
+        assertUsage(run(docx.toString(), "--pdfa", "2b"), "PDF input");
+    }
+
     private static Path minimalXlsx(Path file) throws IOException {
         try (OutputStream os = Files.newOutputStream(file); ZipOutputStream zip = new ZipOutputStream(os)) {
             entry(zip, "[Content_Types].xml", "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"

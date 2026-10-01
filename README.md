@@ -31,6 +31,9 @@ drawn) print to stderr as `warning: <file>: <message>` unless `-q`.
 The output file's extension picks the format: `.docx`, `.odt`, `.fodt`, `.xml` (flat ODT), `.rtf`, `.doc`, `.txt`,
 `.pptx`, `.odp`, `.ppt`, `.xlsx` or `.ods` (see Other formats). For a folder of PDFs, `--format ext` names it; `--sheets
 page|table|single` sets a spreadsheet's layout. Each file prints its time and the heap in use when it finished.
+`--pdfa 1b|2b|2u|3b|3u` makes an archival PDF/A copy of each PDF instead (see PDF to PDF/A): `in.pdfa.pdf` beside the
+input, or the `-o` file or folder; it takes `--password`, `--timeout` and `--fonts`, and prints what it changed as
+`note: <file>: <message>`.
 
 ## Local test app
 
@@ -440,6 +443,53 @@ PdfToXlsx.convert(pdDocument, outputStream,
 
 Options: page range, password, table detection on or off, `typedValues` off to keep every cell as text,
 `splitLargeTables`, and `textFallback` to keep an unanalysable page as plain lines instead of failing.
+
+## PDF to PDF/A
+
+The `pdfa` module (`stirling-office-convert-pdfa`) rewrites a PDF as PDF/A-1b, 2b, 2u, 3b or 3u in plain Java, without
+Ghostscript or LibreOffice. It changes only what the level forbids, so pages keep their content streams, text stays
+text and fonts keep their glyphs:
+
+```java
+PdfToPdfA.Result r = PdfToPdfA.convert(Path.of("in.pdf"), Path.of("out.pdf"),
+        PdfToPdfA.Options.defaults().level(PdfALevel.A2B).password(null).timeout(Duration.ofMinutes(5)));
+r.warnings();          // what was removed or replaced, in plain words
+r.substitutedFonts();  // "Helvetica as Liberation Sans Regular (LiberationSans-Regular.ttf)"
+r.flattenedPages();    // PDF/A-1 pages whose transparency was drawn as pictures
+PdfToPdfA.convert(pdDocument, outputStream, options);     // an open document, written to a stream
+```
+
+- Fonts. Every font a page uses is embedded. A font without a program is drawn from a metric-compatible stand-in
+  from the font library (Liberation, URW base 35, Carlito and the rest of the production set; `fontDirs` adds folders)
+  as a new subset TrueType font whose glyph advances are the PDF's own widths, so no line moves. An embedded font whose
+  widths disagree with its program, that lacks a glyph a page shows, or whose encoding PDF/A forbids is rebuilt from
+  its own glyphs the same way (TrueType glyphs are copied with their hinting; Type 1 and CFF outlines are converted).
+  Type 0 fonts keep their CIDs and CMaps behind a new `CIDToGIDMap`. CharSet and CIDSet are written for part 1 and
+  dropped for parts 2 and 3. For the u levels every shown code gets a ToUnicode value, a private-use one when the PDF
+  gives no clue.
+- Colour. An sRGB output intent with an ICC profile generated in code (version 2, so it serves part 1 too) is added
+  unless the PDF already has a usable one. Device CMYK is given a `DefaultCMYK` space with the CC0 CMYK profile that
+  PDFBox ships (its own DeviceCMYK profile), so nothing is converted. Invalid or, for part 1, version 4 ICC profiles are
+  replaced.
+- Transparency. Parts 2 and 3 keep it. For part 1 each transparent object (soft masks, constant alpha, blend modes,
+  transparency groups, translucent annotations) is drawn into a picture of the smallest box covering all of them on
+  that page, at `flattenDpi` (200 by default), placed where the last of them was drawn; what comes after stays vector,
+  and transparent text stays in the page as invisible text, so it can still be searched and copied.
+- Removed, with a warning each: JavaScript, launch, sound, movie, reset, import and hide actions and every additional
+  action, forbidden annotation types and hidden annotations, XFA, PostScript XObjects, image alternates, transfer
+  functions, halftones and undefined operators. Annotations without an appearance get one; LZW streams are recompressed
+  with Flate; encryption is removed (give the password for a protected file).
+- Embedded files: removed for part 1, kept for part 2 only when they are PDF/A themselves, kept for part 3 with a MIME
+  type, a modification date, an `AFRelationship` and the catalog's `AF` array.
+- Optional content: part 1 has none, so content in hidden layers is deleted and the rest kept; parts 2 and 3 keep the
+  layers and fix their configurations.
+- XMP metadata is written from the Info dictionary (the two agree), with `pdfaid:part` and `pdfaid:conformance`; the
+  file gets a trailer ID and, for part 1, no object streams.
+
+Level a (1a, 2a, 3a) needs a tagged structure tree, which this module does not build; asking for it is an
+`IllegalArgumentException`. Limits and failure contract follow the other converters: a 1 GB input limit, `maxPages`
+(10,000 by default) refuses longer documents rather than cutting them, the timeout and thread interrupts stop the work,
+and the output is moved into place only when complete.
 
 ## How it works
 
