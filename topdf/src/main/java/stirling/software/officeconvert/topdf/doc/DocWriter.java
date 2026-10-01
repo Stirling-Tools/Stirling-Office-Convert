@@ -9,7 +9,7 @@ import org.apache.poi.hwpf.usermodel.Range;
 
 final class DocWriter {
 
-    static final int COMPATIBILITY = Integer.getInteger("fdoc.compat", 15);
+    static final int COMPATIBILITY = 11;
 
     private static final String CT = "application/vnd.openxmlformats-officedocument.wordprocessingml.";
 
