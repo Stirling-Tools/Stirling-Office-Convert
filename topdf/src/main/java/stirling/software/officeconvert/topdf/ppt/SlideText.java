@@ -7,6 +7,7 @@ import java.awt.Paint;
 import java.awt.font.FontRenderContext;
 import java.awt.font.TextAttribute;
 import java.awt.geom.AffineTransform;
+import java.awt.geom.Rectangle2D;
 import java.io.IOException;
 import java.text.AttributedCharacterIterator;
 import java.util.ArrayList;
@@ -18,6 +19,7 @@ import java.util.Map;
 
 import org.apache.pdfbox.pdmodel.PDPageContentStream;
 import org.apache.pdfbox.util.Matrix;
+import org.apache.poi.sl.draw.DrawTextParagraph;
 
 import de.rototor.pdfbox.graphics2d.IPdfBoxGraphics2DFontTextDrawer;
 
@@ -33,7 +35,7 @@ import stirling.software.officeconvert.topdf.pdf.TextStyle;
 final class SlideText implements IPdfBoxGraphics2DFontTextDrawer {
 
     private record Piece(String text, FontFace face, float size, float rise, float advance, Color color,
-            boolean underline, boolean strike) {}
+            boolean underline, boolean strike, SlideLinks.Target link) {}
 
     private final RenderJob job;
 
@@ -41,9 +43,25 @@ final class SlideText implements IPdfBoxGraphics2DFontTextDrawer {
 
     private final Map<String, FontFace> faces = new HashMap<>();
 
+    private Map<String, SlideLinks.Target> targets = Map.of();
+
+    private final List<SlideLinks.Area> areas = new ArrayList<>();
+
+    private float pageHeight;
+
     SlideText(RenderJob job, Map<String, String> families) {
         this.job = job;
         this.families = families;
+    }
+
+    void startSlide(Map<String, SlideLinks.Target> links, float height) {
+        targets = links;
+        pageHeight = height;
+        areas.clear();
+    }
+
+    List<SlideLinks.Area> links() {
+        return List.copyOf(areas);
     }
 
     // Gradient and pattern text stays with POI's outlines
@@ -75,6 +93,8 @@ final class SlideText implements IPdfBoxGraphics2DFontTextDrawer {
             Color color = fg instanceof Color c ? c : env.getPaint() instanceof Color c ? c : Color.BLACK;
             boolean underline = TextAttribute.UNDERLINE_ON.equals(it.getAttribute(TextAttribute.UNDERLINE));
             boolean strike = TextAttribute.STRIKETHROUGH_ON.equals(it.getAttribute(TextAttribute.STRIKETHROUGH));
+            SlideLinks.Target link = it.getAttribute(DrawTextParagraph.HYPERLINK_HREF) instanceof String href
+                    ? targets.get(href) : null;
             StringBuilder b = new StringBuilder(limit - i);
             for (char c = it.current(); it.getIndex() < limit; c = it.next()) {
                 b.append(c);
@@ -91,7 +111,8 @@ final class SlideText implements IPdfBoxGraphics2DFontTextDrawer {
             if (!(size > 0 && size <= 10_000) || !Float.isFinite(advance)) {
                 continue;
             }
-            pieces.add(new Piece(text, face(font), size, (float) t.getTranslateY(), advance, color, underline, strike));
+            pieces.add(new Piece(text, face(font), size, (float) t.getTranslateY(), advance, color, underline, strike,
+                    link));
             total += Math.max(0, advance);
             largest = Math.max(largest, size);
         }
@@ -126,6 +147,9 @@ final class SlideText implements IPdfBoxGraphics2DFontTextDrawer {
                 if (p.strike()) {
                     canvas.strikeout(x, baseline, p.advance(), style);
                 }
+                if (p.link() != null) {
+                    area(env.getCurrentEffectiveTransform(), x, p, p.link());
+                }
                 x += p.advance();
             }
         }
@@ -134,6 +158,19 @@ final class SlideText implements IPdfBoxGraphics2DFontTextDrawer {
         cs.transform(new Matrix(1, 0, 0, -1, 0, height - pad));
         cs.drawForm(canvas.form());
         cs.restoreGraphicsState();
+    }
+
+    private void area(AffineTransform toPage, float x, Piece p, SlideLinks.Target target) {
+        if (areas.size() >= 2000 || !(p.advance() > 0)) {
+            return;
+        }
+        Rectangle2D user = new Rectangle2D.Float(x, p.rise() - 0.9f * p.size(), p.advance(), 1.15f * p.size());
+        Rectangle2D pdf = toPage.createTransformedShape(user).getBounds2D();
+        double top = pageHeight - pdf.getMaxY();
+        if (pdf.getWidth() > 0 && pdf.getHeight() > 0 && Double.isFinite(top)) {
+            areas.add(new SlideLinks.Area(new Rectangle2D.Double(pdf.getX(), top, pdf.getWidth(), pdf.getHeight()),
+                    target));
+        }
     }
 
     // Right-to-left runs in visual order, each shaped with the face that covers it
