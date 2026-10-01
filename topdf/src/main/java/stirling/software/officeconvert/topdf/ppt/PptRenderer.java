@@ -54,25 +54,60 @@ public final class PptRenderer {
             info(job, ppt);
             boundPictures(job, ppt);
             WordArt.flatten(ppt);
+            fixUp(ppt);
             SlideText text = new SlideText(job, fonts(job, ppt));
             Dimension size = ppt.getPageSize();
             float w = clamp(size == null ? 0 : size.width, DEFAULT_WIDTH);
             float h = clamp(size == null ? 0 : size.height, DEFAULT_HEIGHT);
             List<HSLFSlide> slides = ppt.getSlides();
+            SlideLinks links = new SlideLinks(slides);
             for (HSLFSlide slide : slides) {
                 job.checkpoint();
                 if (slide.isHidden()) {
                     continue;
                 }
+                text.startSlide(textLinks(links, slide));
                 try (PdfCanvas canvas = job.newPage(w, h)) {
-                    for (PDFormXObject form : draw(job, slide, text, w, h)) {
+                    List<PDFormXObject> forms = draw(job, slide, text, w, h);
+                    for (PDFormXObject form : forms) {
                         canvas.form(form, 0, 0, w, h);
+                    }
+                    for (SlideLinks.Area a : shapeLinks(links, slide)) {
+                        SlideLinks.place(canvas, a.box(), a.target());
+                    }
+                    for (SlideLinks.Area a : LinkLocator.locate(forms, text.pendingLinks(), w, h)) {
+                        SlideLinks.place(canvas, a.box(), a.target());
                     }
                 }
             }
             for (String line : ActiveContent.describe(activeContent(ppt))) {
                 job.warn(line);
             }
+        }
+    }
+
+    private static void fixUp(HSLFSlideShow ppt) {
+        try {
+            TitleFooters.apply(ppt);
+            RtlParagraphs.apply(ppt);
+        } catch (RuntimeException e) {
+            return;
+        }
+    }
+
+    private static Map<String, SlideLinks.Target> textLinks(SlideLinks links, HSLFSlide slide) {
+        try {
+            return links.textTargets(slide);
+        } catch (RuntimeException e) {
+            return Map.of();
+        }
+    }
+
+    private static List<SlideLinks.Area> shapeLinks(SlideLinks links, HSLFSlide slide) {
+        try {
+            return links.shapeAreas(slide);
+        } catch (RuntimeException e) {
+            return List.of();
         }
     }
 

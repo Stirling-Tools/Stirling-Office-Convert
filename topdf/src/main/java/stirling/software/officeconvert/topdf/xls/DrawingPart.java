@@ -25,7 +25,7 @@ import org.apache.poi.hssf.usermodel.HSSFTextbox;
 import org.apache.poi.hssf.usermodel.HSSFWorkbook;
 import org.apache.poi.ss.usermodel.Font;
 
-// Pictures, text boxes and plain shapes of a sheet's drawing as a DrawingML part; charts and controls are counted
+// Pictures, text boxes, plain shapes and chart frames of a sheet's drawing as a DrawingML part; controls are left out
 final class DrawingPart {
 
     static final int MAX_SHAPES = 2000;
@@ -33,6 +33,8 @@ final class DrawingPart {
     private static final String XDR = "http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing";
 
     private static final String A = "http://schemas.openxmlformats.org/drawingml/2006/main";
+
+    private static final String CHART = "http://schemas.openxmlformats.org/drawingml/2006/chart";
 
     private static final int HOST_CONTROL = 201;
 
@@ -82,6 +84,30 @@ final class DrawingPart {
             }
         }
         return xml.length() > 0;
+    }
+
+    void chart(int[] a, String rel) {
+        HSSFClientAnchor anchor = new HSSFClientAnchor(fit(a[1], 1023), fit(a[3], 255), fit(a[5], 1023),
+                fit(a[7], 255), (short) fit(a[0], 255), fit(a[2], 65535), (short) fit(a[4], 255), fit(a[6], 65535));
+        xml.append("<xdr:twoCellAnchor editAs=\"oneCell\">").append(anchor(anchor)).append(frame(id++, rel))
+                .append("<xdr:clientData/></xdr:twoCellAnchor>");
+    }
+
+    private static int fit(int v, int max) {
+        return Math.max(0, Math.min(max, v));
+    }
+
+    static String absoluteChart(String rel) {
+        return Xml.HEAD + "<xdr:wsDr xmlns:xdr=\"" + XDR + "\" xmlns:a=\"" + A + "\" xmlns:r=\"" + Xml.REL
+                + "\"><xdr:absoluteAnchor><xdr:pos x=\"0\" y=\"0\"/><xdr:ext cx=\"9293679\" cy=\"6068786\"/>"
+                + frame(1, rel) + "<xdr:clientData/></xdr:absoluteAnchor></xdr:wsDr>";
+    }
+
+    private static String frame(int id, String rel) {
+        return "<xdr:graphicFrame macro=\"\"><xdr:nvGraphicFramePr><xdr:cNvPr id=\"" + id + "\" name=\"Chart\"/>"
+                + "<xdr:cNvGraphicFramePr/></xdr:nvGraphicFramePr><xdr:xfrm><a:off x=\"0\" y=\"0\"/><a:ext cx=\"0\""
+                + " cy=\"0\"/></xdr:xfrm><a:graphic><a:graphicData uri=\"" + CHART + "\"><c:chart xmlns:c=\"" + CHART
+                + "\" r:id=\"" + rel + "\"/></a:graphicData></a:graphic></xdr:graphicFrame>";
     }
 
     List<String> relationships() {

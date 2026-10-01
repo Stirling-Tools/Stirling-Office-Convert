@@ -112,6 +112,10 @@ public final class XlsPackage {
 
         private boolean drawingsRefused;
 
+        private ChartStream chartStream;
+
+        private int chartParts;
+
         Writer(HSSFWorkbook wb, DirectoryNode root, Parts parts) {
             this.wb = wb;
             this.root = root;
@@ -125,6 +129,8 @@ public final class XlsPackage {
             if (!drawings) {
                 drawingsRefused = true;
             }
+            ChartLookup fonts = new ChartLookup(wb);
+            chartStream = ChartStream.read(root, fonts, fonts.autoColors(false), fonts.autoColors(true));
             StringBuilder book = new StringBuilder(Xml.HEAD).append("<workbook xmlns=\"").append(Xml.MAIN)
                     .append("\" xmlns:r=\"").append(Xml.REL).append("\"><fileVersion appName=\"xl\"/>");
             if (wb.getInternalWorkbook().isUsing1904DateWindowing()) {
@@ -142,12 +148,20 @@ public final class XlsPackage {
                         : wb.isSheetHidden(i) ? " state=\"hidden\"" : "";
                 book.append("<sheet name=\"").append(Xml.attr(name)).append("\" sheetId=\"").append(i + 1).append('"')
                         .append(state).append(" r:id=\"rId").append(i + 1).append("\"/>");
+                if (chartStream.chartSheets.contains(i)) {
+                    rels.append("<Relationship Id=\"rId").append(i + 1).append("\" Type=\"").append(Xml.REL)
+                            .append("/chartsheet\" Target=\"chartsheets/sheet").append(i + 1).append(".xml\"/>");
+                    chartSheet(sheet, i + 1, types);
+                    continue;
+                }
                 rels.append("<Relationship Id=\"rId").append(i + 1).append("\" Type=\"").append(Xml.REL)
                         .append("/worksheet\" Target=\"worksheets/sheet").append(i + 1).append(".xml\"/>");
                 types.append("<Override PartName=\"/xl/worksheets/sheet").append(i + 1).append(".xml\" ContentType=\"")
                         .append(CT).append("spreadsheetml.worksheet+xml\"/>");
                 SheetPart part = new SheetPart(sheet);
                 String drawing = drawings ? drawing(sheet, part, i + 1, types) : null;
+                int drawn = drawing == null ? 0 : chartStream.embedded.getOrDefault(i, List.of()).size();
+                charts += Math.max(0, charts(sheet) - drawn);
                 boolean complete;
                 try (Parts.Part p = parts.open("xl/worksheets/sheet" + (i + 1) + ".xml")) {
                     complete = part.write(parts, p, strings, drawing);
@@ -165,7 +179,6 @@ public final class XlsPackage {
                             + Xml.PKG_REL + "\"><Relationship Id=\"" + drawing + "\" Type=\"" + Xml.REL
                             + "/drawing\" Target=\"../drawings/drawing" + (i + 1) + ".xml\"/></Relationships>");
                 }
-                charts += charts(sheet);
                 names.append(names(i, name, sheet));
             }
             if (wb.getNumberOfSheets() > sheets) {
@@ -204,7 +217,7 @@ public final class XlsPackage {
                         + " converter's limit");
             }
             if (charts > 0) {
-                out.add("Charts in Excel 97-2003 workbooks are not drawn yet (" + charts + " left out)");
+                out.add("Some charts could not be drawn (" + charts + " left out)");
             }
             if (pict > 0) {
                 out.add("Macintosh PICT pictures are not supported (" + pict + " left out)");
@@ -277,6 +290,39 @@ public final class XlsPackage {
             return n;
         }
 
+        private void chartSheet(HSSFSheet sheet, int number, StringBuilder types) throws IOException {
+            types.append("<Override PartName=\"/xl/chartsheets/sheet").append(number).append(".xml\" ContentType=\"")
+                    .append(CT).append("spreadsheetml.chartsheet+xml\"/>");
+            BiffChart chart = chartStream.sheetCharts.get(number - 1);
+            StringBuilder xml = new StringBuilder(Xml.HEAD).append("<chartsheet xmlns=\"").append(Xml.MAIN)
+                    .append("\" xmlns:r=\"").append(Xml.REL).append("\"><sheetViews><sheetView workbookViewId=\"0\"/>")
+                    .append("</sheetViews>").append(new SheetPart(sheet).chartSetup());
+            if (chart != null) {
+                String target = chartPart(chart, types);
+                xml.append("<drawing r:id=\"rId1\"/>");
+                parts.put("xl/chartsheets/_rels/sheet" + number + ".xml.rels", Xml.HEAD + "<Relationships xmlns=\""
+                        + Xml.PKG_REL + "\"><Relationship Id=\"rId1\" Type=\"" + Xml.REL
+                        + "/drawing\" Target=\"../drawings/drawing" + number + ".xml\"/></Relationships>");
+                parts.put("xl/drawings/drawing" + number + ".xml", DrawingPart.absoluteChart("rId1"));
+                parts.put("xl/drawings/_rels/drawing" + number + ".xml.rels", Xml.HEAD + "<Relationships xmlns=\""
+                        + Xml.PKG_REL + "\"><Relationship Id=\"rId1\" Type=\"" + Xml.REL + "/chart\" Target=\""
+                        + target + "\"/></Relationships>");
+                types.append("<Override PartName=\"/xl/drawings/drawing").append(number)
+                        .append(".xml\" ContentType=\"application/vnd.openxmlformats-officedocument.drawing+xml\"/>");
+            } else {
+                charts++;
+            }
+            parts.put("xl/chartsheets/sheet" + number + ".xml", xml.append("</chartsheet>").toString());
+        }
+
+        private String chartPart(BiffChart chart, StringBuilder types) throws IOException {
+            String name = "chart" + ++chartParts + ".xml";
+            parts.put("xl/charts/" + name, ChartXml.write(chart));
+            types.append("<Override PartName=\"/xl/charts/").append(name).append("\" ContentType=\"")
+                    .append("application/vnd.openxmlformats-officedocument.drawingml.chart+xml\"/>");
+            return "../charts/" + name;
+        }
+
         private String drawing(HSSFSheet sheet, SheetPart geometry, int number, StringBuilder types)
                 throws IOException {
             byte[] escher = sheetDrawing(sheet);
@@ -288,9 +334,20 @@ public final class XlsPackage {
                 return null;
             }
             DrawingPart d = new DrawingPart(wb, geometry, media);
+            List<ChartStream.Embedded> embedded = chartStream.embedded.getOrDefault(number - 1, List.of());
+            List<String> chartTargets = new ArrayList<>();
             try {
                 HSSFPatriarch patriarch = sheet.getDrawingPatriarch();
-                if (patriarch == null || !d.read(patriarch, this::picture)) {
+                boolean shapes = patriarch != null && d.read(patriarch, this::picture);
+                for (ChartStream.Embedded e : embedded) {
+                    int[] a = e.anchor();
+                    if (a[0] == a[4] && a[1] == a[5] || a[2] == a[6] && a[3] == a[7]) {
+                        continue;
+                    }
+                    chartTargets.add(chartPart(e.chart(), types));
+                    d.chart(e.anchor(), "rIdChart" + chartTargets.size());
+                }
+                if (!shapes && embedded.isEmpty()) {
                     return null;
                 }
             } catch (DrawingPart.Stop e) {
@@ -308,6 +365,10 @@ public final class XlsPackage {
             for (int k = 0; k < targets.size(); k++) {
                 rels.append("<Relationship Id=\"rId").append(k + 1).append("\" Type=\"").append(Xml.REL)
                         .append("/image\" Target=\"").append(targets.get(k)).append("\"/>");
+            }
+            for (int k = 0; k < chartTargets.size(); k++) {
+                rels.append("<Relationship Id=\"rIdChart").append(k + 1).append("\" Type=\"").append(Xml.REL)
+                        .append("/chart\" Target=\"").append(chartTargets.get(k)).append("\"/>");
             }
             parts.put("xl/drawings/drawing" + number + ".xml", d.xml());
             parts.put("xl/drawings/_rels/drawing" + number + ".xml.rels", rels.append("</Relationships>").toString());

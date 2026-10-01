@@ -265,21 +265,12 @@ final class SheetPart {
         return p.append("</mergeCells>").toString();
     }
 
-    private String print() {
-        StringBuilder b = new StringBuilder("<printOptions");
-        if (flag(sheet::getHorizontallyCenter)) {
-            b.append(" horizontalCentered=\"1\"");
-        }
-        if (flag(sheet::getVerticallyCenter)) {
-            b.append(" verticalCentered=\"1\"");
-        }
-        if (flag(sheet::isPrintRowAndColumnHeadings)) {
-            b.append(" headings=\"1\"");
-        }
-        if (flag(sheet::isPrintGridlines)) {
-            b.append(" gridLines=\"1\"");
-        }
-        b.append("/><pageMargins left=\"").append(margin(PageMargin.LEFT, 0.75))
+    String chartSetup() {
+        return guarded(this::pageSetup, "");
+    }
+
+    private String pageSetup() {
+        StringBuilder b = new StringBuilder("<pageMargins left=\"").append(margin(PageMargin.LEFT, 0.75))
                 .append("\" right=\"").append(margin(PageMargin.RIGHT, 0.75))
                 .append("\" top=\"").append(margin(PageMargin.TOP, 1))
                 .append("\" bottom=\"").append(margin(PageMargin.BOTTOM, 1))
@@ -314,6 +305,24 @@ final class SheetPart {
             b.append(" draft=\"1\"");
         }
         b.append("/>");
+        return b.toString();
+    }
+
+    private String print() {
+        StringBuilder b = new StringBuilder("<printOptions");
+        if (flag(sheet::getHorizontallyCenter)) {
+            b.append(" horizontalCentered=\"1\"");
+        }
+        if (flag(sheet::getVerticallyCenter)) {
+            b.append(" verticalCentered=\"1\"");
+        }
+        if (flag(sheet::isPrintRowAndColumnHeadings)) {
+            b.append(" headings=\"1\"");
+        }
+        if (flag(sheet::isPrintGridlines)) {
+            b.append(" gridLines=\"1\"");
+        }
+        b.append("/>").append(pageSetup());
         PageSettingsBlock settings = sheet.getSheet().getPageSettings();
         String header = text(settings.getHeader());
         String footer = text(settings.getFooter());
