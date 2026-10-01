@@ -66,10 +66,13 @@ class OfficeFilesTest {
     }
 
     @Test
-    void refusesOpenDocumentAndOtherZips() throws IOException {
-        IOException odf = assertThrows(IOException.class, () -> OfficeFiles.extension(
+    void recognisesOpenDocumentAndRefusesOtherZips() throws IOException {
+        assertEquals("odt", OfficeFiles.extension(
                 write(Fixtures.zip("mimetype", "application/vnd.oasis.opendocument.text", "content.xml", "<x/>"))));
-        assertTrue(odf.getMessage().startsWith("OpenDocument files"));
+        assertEquals("docx", OfficeFiles.family("odt"));
+        IOException odf = assertThrows(IOException.class, () -> OfficeFiles.extension(
+                write(Fixtures.zip("mimetype", "application/vnd.oasis.opendocument.graphics", "content.xml", "<x/>"))));
+        assertTrue(odf.getMessage().startsWith("OpenDocument drawings"));
         IOException other = assertThrows(IOException.class,
                 () -> OfficeFiles.extension(write(Fixtures.zip("readme.txt", "hello"))));
         assertTrue(other.getMessage().contains("holds no Word, PowerPoint or Excel"));

@@ -144,7 +144,7 @@ class MainTest {
         assertEquals(0, r.code());
         assertTrue(r.out().contains("in.docx") && r.out().contains("--max-pages"), r.out());
         for (String ext : new String[] {".docm", ".dotm", ".ppsm", ".potx", ".potm", ".xlsm", ".xltx", ".xltm",
-                ".xls", ".xlt", ".ppt", ".pps", ".pot", ".rtf"}) {
+                ".xls", ".xlt", ".ppt", ".pps", ".pot", ".rtf", ".odt", ".fodt", ".ods", ".odp", ".fodp"}) {
             assertTrue(r.out().contains(ext + " ") || r.out().contains(ext + ")"), ext + " missing from " + r.out());
         }
     }

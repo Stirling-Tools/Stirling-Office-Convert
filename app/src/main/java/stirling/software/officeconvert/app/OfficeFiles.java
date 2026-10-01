@@ -13,6 +13,8 @@ import java.util.zip.ZipFile;
 
 import stirling.software.officeconvert.topdf.io.LegacyOffice;
 import stirling.software.officeconvert.topdf.rtf.RtfPackage;
+import stirling.software.officeconvert.topdf.odf.OdfDocument;
+import stirling.software.officeconvert.topdf.odf.OdfPackage;
 
 final class OfficeFiles {
 
@@ -58,9 +60,9 @@ final class OfficeFiles {
 
     static String family(String extension) {
         return switch (extension) {
-            case "docx", "docm", "dotx", "dotm", "doc", "dot", "rtf" -> "docx";
-            case "pptx", "pptm", "ppsx", "ppsm", "potx", "potm", "ppt", "pps", "pot" -> "pptx";
-            case "xlsx", "xlsm", "xltx", "xltm", "xls", "xlt" -> "xlsx";
+            case "docx", "docm", "dotx", "dotm", "doc", "dot", "rtf", "odt" -> "docx";
+            case "pptx", "pptm", "ppsx", "ppsm", "potx", "potm", "ppt", "pps", "pot", "odp" -> "pptx";
+            case "xlsx", "xlsm", "xltx", "xltm", "xls", "xlt", "ods" -> "xlsx";
             default -> throw new IllegalArgumentException("Not an Office extension: " + extension);
         };
     }
@@ -68,6 +70,14 @@ final class OfficeFiles {
     static String extension(Path zip) throws IOException {
         if (RtfPackage.isRtf(zip)) {
             return "rtf";
+        }
+        OdfDocument.Kind odf = OdfPackage.sniff(zip);
+        if (odf != null) {
+            return switch (odf) {
+                case TEXT -> "odt";
+                case SPREADSHEET -> "ods";
+                case PRESENTATION -> "odp";
+            };
         }
         if (ole2(zip)) {
             String kind = LegacyOffice.kind(zip);
@@ -79,8 +89,8 @@ final class OfficeFiles {
         try (ZipFile file = new ZipFile(zip.toFile())) {
             ZipEntry mimetype = file.getEntry("mimetype");
             if (mimetype != null && read(file, mimetype).startsWith("application/vnd.oasis.opendocument")) {
-                throw new IOException("OpenDocument files (.odt, .odp, .ods) are not supported. Save the file as .docx,"
-                        + " .pptx or .xlsx.");
+                throw new IOException("OpenDocument drawings, charts and formulas are not supported; text documents,"
+                        + " spreadsheets and presentations are.");
             }
             ZipEntry types = file.getEntry("[Content_Types].xml");
             String xml = types == null ? "" : read(file, types);
