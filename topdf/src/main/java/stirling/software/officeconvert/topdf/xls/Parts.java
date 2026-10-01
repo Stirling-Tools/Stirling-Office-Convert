@@ -12,7 +12,7 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
 // The zip package the XLSX renderer reads, with each part and the whole package kept inside OfficeZip's limits
-final class Parts {
+public final class Parts {
 
     static final long MAX_PART_BYTES = 480L << 20;
 
@@ -22,7 +22,7 @@ final class Parts {
 
     private long total;
 
-    Parts(OutputStream out) {
+    public Parts(OutputStream out) {
         this.zip = new ZipOutputStream(new FilterOutputStream(out) {
             @Override
             public void write(byte[] b, int off, int len) throws IOException {
@@ -37,34 +37,45 @@ final class Parts {
         zip.setLevel(Deflater.BEST_SPEED);
     }
 
-    Part open(String name) throws IOException {
+    public Part open(String name) throws IOException {
         zip.putNextEntry(new ZipEntry(name));
         return new Part();
     }
 
-    void put(String name, String xml) throws IOException {
+    public void put(String name, String xml) throws IOException {
         try (Part p = open(name)) {
             p.write(xml);
         }
     }
 
-    void put(String name, byte[] data) throws IOException {
+    public void put(String name, byte[] data) throws IOException {
         zip.putNextEntry(new ZipEntry(name));
         zip.write(data);
         zip.closeEntry();
         total += data.length;
     }
 
-    boolean full(long more) {
+    public void put(String name, java.io.InputStream in) throws IOException {
+        zip.putNextEntry(new ZipEntry(name));
+        byte[] buffer = new byte[1 << 16];
+        int n;
+        while ((n = in.read(buffer)) >= 0) {
+            zip.write(buffer, 0, n);
+            total += n;
+        }
+        zip.closeEntry();
+    }
+
+    public boolean full(long more) {
         return total + more > MAX_TOTAL_BYTES;
     }
 
-    void finish() throws IOException {
+    public void finish() throws IOException {
         zip.finish();
         zip.flush();
     }
 
-    final class Part implements AutoCloseable {
+    public final class Part implements AutoCloseable {
 
         private long count;
 
@@ -82,16 +93,16 @@ final class Parts {
             }
         }, StandardCharsets.UTF_8), 1 << 16);
 
-        void write(String s) throws IOException {
+        public void write(String s) throws IOException {
             writer.write(s);
         }
 
-        Part append(String s) throws IOException {
+        public Part append(String s) throws IOException {
             writer.write(s);
             return this;
         }
 
-        boolean full() {
+        public boolean full() {
             return count > MAX_PART_BYTES || total + count > MAX_TOTAL_BYTES;
         }
 

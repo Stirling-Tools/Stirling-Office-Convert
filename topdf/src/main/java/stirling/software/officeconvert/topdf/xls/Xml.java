@@ -1,19 +1,19 @@
 package stirling.software.officeconvert.topdf.xls;
 
-final class Xml {
+public final class Xml {
 
-    static final String MAIN = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
+    public static final String MAIN = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
 
-    static final String REL = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+    public static final String REL = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
 
-    static final String PKG_REL = "http://schemas.openxmlformats.org/package/2006/relationships";
+    public static final String PKG_REL = "http://schemas.openxmlformats.org/package/2006/relationships";
 
-    static final String HEAD = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n";
+    public static final String HEAD = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n";
 
     private Xml() {}
 
     // Attribute values and plain element text: characters XML cannot hold are left out
-    static String attr(String s) {
+    public static String attr(String s) {
         if (s == null) {
             return "";
         }
@@ -45,7 +45,7 @@ final class Xml {
     }
 
     // Cell text as SpreadsheetML writes it: other controls as _xHHHH_ and a literal _xHHHH_ with its underscore escaped
-    static String text(String s) {
+    public static String text(String s) {
         if (s == null) {
             return "";
         }

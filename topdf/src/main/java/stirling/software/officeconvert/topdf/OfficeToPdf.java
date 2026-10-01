@@ -62,6 +62,7 @@ import stirling.software.officeconvert.topdf.ppt.PptRenderer;
 import stirling.software.officeconvert.topdf.pptx.PptxRenderer;
 import stirling.software.officeconvert.topdf.rtf.RtfPackage;
 import stirling.software.officeconvert.topdf.xls.XlsPackage;
+import stirling.software.officeconvert.topdf.xlsb.XlsbPackage;
 import stirling.software.officeconvert.topdf.xlsx.XlsxRenderer;
 
 /** Bad input fails with an IOException. On Java 24 and later, very deep or large slides need the JVM-wide XML limits
@@ -84,15 +85,13 @@ public final class OfficeToPdf {
                 case "docx", "docm", "dotx", "dotm", "doc", "dot", "rtf", "odt", "ott", "fodt" -> DOCX;
                 case "txt", "text", "log", "asc" -> TEXT;
                 case "pptx", "pptm", "ppsx", "ppsm", "potx", "potm", "odp", "otp", "fodp" -> PPTX;
-                case "xlsx", "xlsm", "xltx", "xltm", "xls", "xlt", "ods", "ots", "fods" -> XLSX;
+                case "xlsx", "xlsm", "xltx", "xltm", "xls", "xlt", "xlsb", "ods", "ots", "fods" -> XLSX;
                 case "csv" -> CSV;
                 case "tsv", "tab" -> TSV;
                 case "ppt", "pps", "pot" -> PPT;
-                case "xlsb" -> throw new IllegalArgumentException(
-                        "Excel binary workbooks (.xlsb) are not supported; save the file as .xlsx");
                 default -> throw new IllegalArgumentException("Not an Office document: " + file.getFileName()
                         + "; use .docx, .docm, .dotx, .dotm, .doc, .dot, .rtf, .pptx, .pptm, .ppsx, .ppsm, .potx, .potm,"
-                        + " .xlsx, .xlsm, .xltx, .xltm, .xls, .xlt, .ppt, .pps, .pot, .odt, .ott, .fodt, .ods, .ots, .fods,"
+                        + " .xlsx, .xlsm, .xltx, .xltm, .xlsb, .xls, .xlt, .ppt, .pps, .pot, .odt, .ott, .fodt, .ods, .ots, .fods,"
                         + " .odp, .otp, .fodp, .txt, .text, .log, .asc, .csv, .tsv or .tab");
             };
         }
@@ -316,6 +315,9 @@ public final class OfficeToPdf {
         if (EncryptedPackage.is(in)) {
             return Footprint.legacy(Files.size(in)) + 2 * Admission.BASE_BYTES;
         }
+        if (XlsbPackage.is(in)) {
+            return XlsbPackage.estimate(Files.size(in)) + 2 * Admission.BASE_BYTES;
+        }
         if (RtfPackage.isRtf(in)) {
             return RtfPackage.estimate(Files.size(in)) + 2 * Admission.BASE_BYTES;
         }
@@ -520,6 +522,10 @@ public final class OfficeToPdf {
         Result word = LegacyWord.render(source, sink, options, renderer);
         if (word != null) {
             return word;
+        }
+        Result xlsb = binaryWorkbook(source, sink, options, renderer);
+        if (xlsb != null) {
+            return xlsb;
         }
         Result rtf = richText(source, sink, options, renderer);
         if (rtf != null) {
@@ -917,6 +923,35 @@ public final class OfficeToPdf {
         }
     }
 
+    private static Result binaryWorkbook(Path source, OutputStream sink, Options options, Renderer renderer)
+            throws IOException {
+        if (!XlsbPackage.is(source)) {
+            return null;
+        }
+        Path xlsx = Files.createTempFile("office-to-pdf-", ".xlsx");
+        try {
+            XlsbPackage.Outcome outcome;
+            Admission.Ticket ticket = Admission.jvm().enter(XlsbPackage.estimate(Files.size(source)));
+            try (OutputStream os = new BufferedOutputStream(Files.newOutputStream(xlsx), 1 << 16)) {
+                outcome = XlsbPackage.write(source, os);
+            } finally {
+                ticket.close();
+            }
+            stopIfInterrupted();
+            Result r = render(xlsx, Format.XLSX, sink, options, (s, job) -> renderer.render(source, job), REWRITTEN);
+            List<String> warnings = new ArrayList<>(r.warnings());
+            for (String w : outcome.warnings()) {
+                String c = RenderJob.clean(w);
+                if (c != null && !warnings.contains(c)) {
+                    warnings.add(c);
+                }
+            }
+            return new Result(r.pages(), r.truncated() || outcome.lost(), warnings, r.pageLimitReached());
+        } finally {
+            deleteQuietly(xlsx);
+        }
+    }
+
     private static Result richText(Path source, OutputStream sink, Options options, Renderer renderer)
             throws IOException {
         if (!RtfPackage.isRtf(source)) {
@@ -1013,9 +1048,6 @@ public final class OfficeToPdf {
     static Format detect(OfficeZip zip, Format requested) throws IOException {
         String type = zip.mainContentType();
         String t = type == null ? "" : type.toLowerCase(Locale.ROOT);
-        if (t.contains("sheet.binary")) {
-            throw new IOException("The file is an Excel binary workbook (.xlsb), which is not supported");
-        }
         if (t.contains("wordprocessingml") || t.startsWith("application/vnd.ms-word.")) {
             return Format.DOCX;
         }
