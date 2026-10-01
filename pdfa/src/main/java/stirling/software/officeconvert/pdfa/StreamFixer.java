@@ -27,6 +27,8 @@ final class StreamFixer {
 
     private static final COSName HT = COSName.getPDFName("HT");
 
+    private static final COSName OPM = COSName.getPDFName("OPM");
+
     private static final COSName OPI = COSName.getPDFName("OPI");
 
     private static final COSName ALTERNATES = COSName.getPDFName("Alternates");
@@ -64,7 +66,7 @@ final class StreamFixer {
             stream(s);
         }
         if (COSName.EXT_G_STATE.equals(d.getCOSName(COSName.TYPE)) || d.containsKey(COSName.TR)
-                || d.containsKey(TR2) || d.containsKey(HT)) {
+                || d.containsKey(TR2) || d.containsKey(HT) || d.containsKey(OPM)) {
             extGState(d);
         }
     }
@@ -159,6 +161,9 @@ final class StreamFixer {
             gs.removeItem(TR2);
         }
         gs.removeItem(HT);
+        if (gs.getInt(OPM, 0) == 1) {
+            gs.setInt(OPM, 0);
+        }
         COSBase ri = gs.getDictionaryObject(COSName.RI);
         if (ri != null && !(ri instanceof COSName n && INTENTS.contains(n.getName()))) {
             gs.setItem(COSName.RI, COSName.getPDFName("RelativeColorimetric"));

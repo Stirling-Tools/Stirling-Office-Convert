@@ -20,6 +20,16 @@ final class Conversion {
     private Conversion() {}
 
     static PdfToPdfA.Result run(PDDocument doc, OutputStream out, PdfToPdfA.Options options) throws IOException {
+        try {
+            return convert(doc, out, options);
+        } catch (RuntimeException e) {
+            PdfFiles.stopIfInterrupted();
+            throw new IOException("The PDF could not be made PDF/A: " + e, e);
+        }
+    }
+
+    private static PdfToPdfA.Result convert(PDDocument doc, OutputStream out, PdfToPdfA.Options options)
+            throws IOException {
         PdfALevel level = options.level();
         int pages = doc.getNumberOfPages();
         if (options.maxPages() > 0 && pages > options.maxPages()) {
@@ -66,7 +76,7 @@ final class Conversion {
             a.add(new COSString(h));
             doc.getDocument().setDocumentID(a);
         }
-        doc.save(out, level.part() == 1 ? CompressParameters.NO_COMPRESSION : CompressParameters.DEFAULT_COMPRESSION);
+        doc.save(out, CompressParameters.NO_COMPRESSION);
     }
 
     private static byte[] digest(PDDocument doc) {
