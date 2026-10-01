@@ -287,6 +287,19 @@ class DocxLineRulesTest {
         assertTrue(x > 86.4 && x < 92, "a space after the label, no default tab gap: " + x);
     }
 
+    @Test
+    void aLeaderTabWithNoRoomToDrawDotsDoesNotSizeTheLine() throws IOException {
+        String words = "Alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu nu xi omicron pi rho sigma"
+                + " tau upsilon phi chi psi omega alpha beta gamma delta epsilon zeta eta theta";
+        String body = "<w:p><w:pPr><w:tabs><w:tab w:val=\"right\" w:leader=\"dot\" w:pos=\"300\"/></w:tabs></w:pPr>"
+                + "<w:r><w:t>9.</w:t></w:r><w:r><w:rPr><w:sz w:val=\"40\"/></w:rPr><w:tab/></w:r><w:r><w:t>" + words
+                + "</w:t></w:r></w:p>";
+        DocxDoc.Rendered r = DocxDoc.render(dir, "leaderroom", new DocxDoc().styles(STYLES).body(body).bytes());
+        float first = r.words().stream().filter(w -> w.text().startsWith("9.")).findFirst().orElseThrow().y();
+        float second = r.words().stream().filter(w -> w.y() > first + 1).findFirst().orElseThrow().y();
+        assertEquals(11.5, second - first, 0.3, "the line keeps the height of its 10 pt text");
+    }
+
     private int firstLineLength(String text, String jc) throws IOException {
         String body = "<w:p><w:pPr><w:jc w:val=\"" + jc + "\"/></w:pPr><w:r><w:rPr><w:rFonts w:eastAsia=\"SimSun\"/>"
                 + "<w:lang w:eastAsia=\"zh-CN\"/></w:rPr><w:t>" + text + "</w:t></w:r></w:p>";

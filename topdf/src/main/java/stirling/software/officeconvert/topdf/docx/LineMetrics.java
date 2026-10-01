@@ -2,6 +2,8 @@ package stirling.software.officeconvert.topdf.docx;
 
 final class LineMetrics {
 
+    private static final float LEADER_ROOM = 1f;
+
     private LineMetrics() {}
 
     static void measure(Line line, ParaItems pi, ParaProps pp, float gridPitch) {
@@ -80,8 +82,8 @@ final class LineMetrics {
                         continue;
                     }
                     // A plain tab takes no part in the line height; only its leader, if any, is text
-                    boolean sized = it.kind == Item.Kind.BREAK || s.tab != null && s.tab.leader() != 0
-                            || look != null && inked(look);
+                    boolean sized = it.kind == Item.Kind.BREAK
+                            || s.tab != null && s.tab.leader() != 0 && s.w > LEADER_ROOM || look != null && inked(look);
                     if (look != null && k <= last && sized) {
                         if (it.label) {
                             labelAsc = Math.max(labelAsc, look.ascent() + look.leading());
