@@ -393,4 +393,16 @@ class OdtTest {
             assertTrue(new PDFTextStripper().getText(doc).contains("Kept text"));
         }
     }
+
+    @Test
+    void anInlineGroupKeepsItsShapesTogether() throws IOException {
+        String shape = "<draw:custom-shape svg:x=\"%s\" svg:y=\"%s\" svg:width=\"1in\" svg:height=\"1in\">"
+                + "<draw:enhanced-geometry svg:viewBox=\"0 0 21600 21600\" draw:type=\"rectangle\"/></draw:custom-shape>";
+        String body = "<text:p><draw:g text:anchor-type=\"as-char\">" + String.format(shape, "0in", "0in")
+                + String.format(shape, "2in", "1in") + "</draw:g></text:p><text:p>After</text:p>";
+        String xml = document(odt("", body, null));
+        assertEquals(1, xml.split("<wp:inline").length - 1, xml);
+        assertTrue(xml.contains("<wpg:wgp") && xml.contains("<wp:extent cx=\"2743200\" cy=\"1828800\"/>"), xml);
+        assertTrue(xml.contains("<a:off x=\"1828800\" y=\"914400\"/>"), xml);
+    }
 }

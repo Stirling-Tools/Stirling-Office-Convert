@@ -17,6 +17,10 @@ final class WordDrawings {
 
     private int count;
 
+    private record Drawn(Box box, String inner) {}
+
+    private List<Drawn> collecting;
+
     WordDrawings(OdtWriter w) {
         this.w = w;
     }
@@ -50,16 +54,26 @@ final class WordDrawings {
                 return b.isEmpty() ? null : b.toString();
             }
             case "g" -> {
-                StringBuilder b = new StringBuilder();
-                for (Element c : Dom.kids(k)) {
-                    if (Ns.DRAW.equals(c.getNamespaceURI())) {
-                        String d = drawing(c, body, group == null ? k : group);
-                        if (d != null) {
-                            b.append(d);
+                if (collecting != null) {
+                    for (Element c : Dom.kids(k)) {
+                        if (Ns.DRAW.equals(c.getNamespaceURI())) {
+                            drawing(c, body, group);
                         }
                     }
+                    return null;
                 }
-                return b.isEmpty() ? null : b.toString();
+                List<Drawn> parts = new ArrayList<>();
+                collecting = parts;
+                try {
+                    for (Element c : Dom.kids(k)) {
+                        if (Ns.DRAW.equals(c.getNamespaceURI())) {
+                            drawing(c, body, k);
+                        }
+                    }
+                } finally {
+                    collecting = null;
+                }
+                return group(k, body, parts);
             }
             case "frame" -> {
                 return frame(k, body, group);
@@ -359,7 +373,50 @@ final class WordDrawings {
         return " rot=\"" + Math.round(deg * 60000) + "\"";
     }
 
+    private String group(Element g, TextBody body, List<Drawn> parts) {
+        if (parts.isEmpty()) {
+            return null;
+        }
+        double x0 = Double.MAX_VALUE;
+        double y0 = Double.MAX_VALUE;
+        double x1 = -Double.MAX_VALUE;
+        double y1 = -Double.MAX_VALUE;
+        for (Drawn d : parts) {
+            x0 = Math.min(x0, d.box().x());
+            y0 = Math.min(y0, d.box().y());
+            x1 = Math.max(x1, d.box().x() + d.box().w());
+            y1 = Math.max(y1, d.box().y() + d.box().h());
+        }
+        long cx = Length.emu(Math.max(0.01, x1 - x0));
+        long cy = Length.emu(Math.max(0.01, y1 - y0));
+        StringBuilder b = new StringBuilder("<a:graphic xmlns:a=\"").append(Xml.A).append("\"><a:graphicData uri=\"")
+                .append(WPG).append("\"><wpg:wgp xmlns:wpg=\"").append(WPG).append("\"><wpg:cNvGrpSpPr/><wpg:grpSpPr>")
+                .append("<a:xfrm><a:off x=\"0\" y=\"0\"/><a:ext cx=\"").append(cx).append("\" cy=\"").append(cy)
+                .append("\"/><a:chOff x=\"").append(Length.emu(x0)).append("\" y=\"").append(Length.emu(y0))
+                .append("\"/><a:chExt cx=\"").append(cx).append("\" cy=\"").append(cy).append("\"/></a:xfrm></wpg:grpSpPr>");
+        for (Drawn d : parts) {
+            b.append(d.inner().replaceFirst("<a:off x=\"0\" y=\"0\"/>", "<a:off x=\"" + Length.emu(d.box().x())
+                    + "\" y=\"" + Length.emu(d.box().y()) + "\"/>"));
+        }
+        b.append("</wpg:wgp></a:graphicData></a:graphic>");
+        Props gp = graphic(g, body, null);
+        int id = ++count;
+        return wrap(g, null, gp, new Box(x0, y0, x1 - x0, y1 - y0, 0), b.toString(), id);
+    }
+
+    static final String WPG = "http://schemas.microsoft.com/office/word/2010/wordprocessingGroup";
+
     private String wrap(Element e, Element group, Props g, Box b, String graphic, int id) {
+        if (collecting != null) {
+            int start = graphic.indexOf("<a:graphicData");
+            int open = graphic.indexOf('>', start) + 1;
+            int close = graphic.lastIndexOf("</a:graphicData>");
+            String inner = start < 0 || close < open ? null : graphic.substring(open, close);
+            if (inner != null && !inner.startsWith("<c:chart")) {
+                collecting.add(new Drawn(b, inner));
+            }
+            return null;
+        }
         String anchorType = Dom.attr(group != null ? group : e, Ns.TEXT, "anchor-type", "paragraph");
         String distT = String.valueOf(Length.emu(g.pt("fo:margin-top", 0)));
         String distB = String.valueOf(Length.emu(g.pt("fo:margin-bottom", 0)));
