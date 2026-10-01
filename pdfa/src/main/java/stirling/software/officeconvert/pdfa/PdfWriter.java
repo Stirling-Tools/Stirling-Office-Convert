@@ -91,7 +91,7 @@ final class PdfWriter {
         if (root == null) {
             throw new IOException("The PDF has no document catalog");
         }
-        out.write(String.format(Locale.ROOT, "%%PDF-%.1f\n%%âãÏÓ\n", level.pdfVersion())
+        out.write(String.format(Locale.ROOT, "%%PDF-%.1f\n%%\u00e2\u00e3\u00cf\u00d3\n", level.pdfVersion())
                 .getBytes(StandardCharsets.ISO_8859_1));
         COSDictionary info = ContentGraph.dict(trailer.getDictionaryObject(COSName.INFO));
         once = References.once(root, info);

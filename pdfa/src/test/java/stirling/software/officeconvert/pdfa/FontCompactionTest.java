@@ -44,7 +44,7 @@ class FontCompactionTest {
             PDPage p = Samples.page(d);
             try (PDPageContentStream cs = new PDPageContentStream(d, p)) {
                 Samples.text(cs, simple, 14, 72, 700, TEXT);
-                Samples.text(cs, cid, 14, 72, 650, TEXT + " éß");
+                Samples.text(cs, cid, 14, 72, 650, TEXT + " \u00e9\u00df");
             }
             d.save(in.toFile());
         }

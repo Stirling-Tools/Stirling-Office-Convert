@@ -51,7 +51,7 @@ class DefaultColourSpaceTest {
     @ParameterizedTest
     @CsvSource({"0 0 1 rg 10 10 50 50 re f,false", "0 0 0 1 k 10 10 50 50 re f,true",
             "/DeviceCMYK cs 0 1 0 0 sc 10 10 50 50 re f,true",
-            "BI /W 1 /H 1 /CS /CMYK /BPC 8 ID \u0000\u0000\u0000ÿ EI,true"})
+            "BI /W 1 /H 1 /CS /CMYK /BPC 8 ID \u0000\u0000\u0000\u00ff EI,true"})
     void cmykGetsAProfileOnlyWhenThePageUsesIt(String content, boolean cmyk) throws Exception {
         Path out = dir.resolve("out.pdf");
         PdfToPdfA.convert(page(content), out, PdfToPdfA.Options.defaults().level(PdfALevel.A2B));
