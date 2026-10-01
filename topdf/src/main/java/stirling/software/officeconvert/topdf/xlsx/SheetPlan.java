@@ -51,6 +51,7 @@ final class SheetPlan {
         if (area != null) {
             ranges.addAll(PrintRanges.parse(area, Math.max(0, grid.lastRow()), Math.max(0, grid.lastCol())));
         }
+        boolean printArea = !ranges.isEmpty();
         if (ranges.isEmpty() && grid.lastRow() >= 0 && grid.lastCol() >= 0) {
             ranges.add(new CellRangeAddress(0, grid.lastRow(), 0, grid.lastCol()));
         }
@@ -66,6 +67,7 @@ final class SheetPlan {
         if (setup.headings()) {
             p.headings(new Headings(grid, grid.lastRow()));
         }
+        p.wholeArea(printArea);
         Paginator.Result result = p.paginate(ranges, this::content, budget);
         this.scale = result.scale();
         pages.addAll(result.pages());

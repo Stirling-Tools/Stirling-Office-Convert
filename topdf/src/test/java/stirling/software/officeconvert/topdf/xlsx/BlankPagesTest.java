@@ -64,6 +64,17 @@ class BlankPagesTest {
         assertEquals(1, convert("tail.xlsx", rows).pages().size());
     }
 
+    @Test
+    void everyPageOfAPrintAreaIsPrintedEvenWhenItIsBlank() throws IOException {
+        String sheet = "<sheetData><row r=\"1\">" + RawXlsx.inline("A1", "First") + "</row></sheetData>" + BREAKS;
+        String area = "<definedNames><definedName name=\"_xlnm.Print_Area\" localSheetId=\"0\">S!$A$1:$B$25"
+                + "</definedName></definedNames>";
+        XlsxTesting.Converted c = XlsxTesting.convert(dir, "area.xlsx", new RawXlsx().styles(STYLES)
+                .sheet("S", sheet).workbookExtra(area).bytes());
+        assertEquals(3, c.pages().size());
+        assertTrue(c.pages().get(0).contains("First"));
+    }
+
     private XlsxTesting.Converted convert(String name, String rows) throws IOException {
         String sheet = "<sheetData>" + rows + "</sheetData>" + BREAKS;
         return XlsxTesting.convert(dir, name, new RawXlsx().styles(STYLES).sheet("S", sheet).bytes());
