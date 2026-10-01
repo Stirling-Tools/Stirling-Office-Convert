@@ -479,7 +479,8 @@ final class LineBreaker {
 
     private float hanging(List<Line.Slice> word) {
         Line.Slice last = word.get(word.size() - 1);
-        if (Boolean.FALSE.equals(pp.overflowPunct) || last.item.kind != Item.Kind.TEXT || last.to <= last.from) {
+        if (Boolean.FALSE.equals(pp.overflowPunct) || !LinePainter.justified(pp) || last.item.kind != Item.Kind.TEXT
+                || last.to <= last.from) {
             return 0;
         }
         char c = last.item.text.charAt(last.to - 1);

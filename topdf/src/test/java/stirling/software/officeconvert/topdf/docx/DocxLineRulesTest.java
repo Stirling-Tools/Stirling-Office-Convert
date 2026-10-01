@@ -265,6 +265,7 @@ class DocxLineRulesTest {
         assertEquals(47, hanging, "the comma ends the first line");
         assertEquals(45, kept);
         assertEquals(47, firstLineLength(text.substring(0, 47), "both"), "on the paragraph's last line too");
+        assertEquals(45, firstLineLength(text, "left"), "only in a justified paragraph");
         String cell = "<w:tbl><w:tblPr><w:tblW w:w=\"9600\" w:type=\"dxa\"/></w:tblPr><w:tblGrid><w:gridCol"
                 + " w:w=\"9600\"/></w:tblGrid><w:tr><w:tc><w:tcPr><w:tcW w:w=\"9600\" w:type=\"dxa\"/></w:tcPr>"
                 + "<w:p><w:pPr><w:jc w:val=\"both\"/></w:pPr><w:r><w:rPr><w:rFonts w:eastAsia=\"SimSun\"/></w:rPr><w:t>"
