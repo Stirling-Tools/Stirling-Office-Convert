@@ -452,7 +452,7 @@ public final class Main {
                         + " [--fonts dir]... [-q]"
                         + System.lineSeparator()
                         + "Word, PowerPoint and Excel files (.docx .docm .dotx .dotm .pptx .pptm .ppsx .ppsm .potx .potm"
-                        + " .xlsx .xlsm .xltx .xltm, 97-2003 .xls .xlt .ppt .pps .pot, and .rtf) convert to PDF. A folder converts its PDFs and Office files; --format pdf"
+                        + " .xlsx .xlsm .xltx .xltm and 97-2003 .xls .xlt .ppt .pps .pot plus RTF .rtf) convert to PDF. A folder converts its PDFs and Office files; --format pdf"
                         + " takes only its Office files. Nothing a document"
                         + " links to is fetched and no macro, field or formula is run."
                         + System.lineSeparator()
