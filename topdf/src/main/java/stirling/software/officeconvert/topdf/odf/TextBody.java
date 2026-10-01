@@ -12,11 +12,14 @@ final class TextBody {
 
     static final int MAX_DEPTH = 48;
 
+    private static final String TINY = "<w:spacing w:before=\"0\" w:after=\"0\" w:line=\"20\" w:lineRule=\"exact\"/>"
+            + "<w:rPr><w:sz w:val=\"2\"/></w:rPr>";
+
     record ListPos(WordLists.Chain chain, int level, boolean label, Element style) {}
 
     private static final class Block {
         final String ppr;
-        final String content;
+        String content;
         final boolean paragraph;
         String sectPr;
 
@@ -297,8 +300,7 @@ final class TextBody {
         }
         Block last = blocks.get(blocks.size() - 1);
         if (!last.paragraph || last.sectPr != null) {
-            last = new Block("<w:spacing w:before=\"0\" w:after=\"0\" w:line=\"20\" w:lineRule=\"exact\"/>"
-                    + "<w:rPr><w:sz w:val=\"2\"/></w:rPr>", "", true);
+            last = new Block(TINY, "", true);
             blocks.add(last);
         }
         last.sectPr = w.pages.sectPr(section.master, section.columns, section.continuous, section.pageStart);
@@ -447,7 +449,7 @@ final class TextBody {
         }
         TextRuns runs = new TextRuns(this);
         if ("column".equals(before)) {
-            runs.prefix.append("<w:r><w:br w:type=\"column\"/></w:r>");
+            add(new Block(TINY, "<w:r><w:br w:type=\"column\"/></w:r>", true));
         }
         for (String a : anchors) {
             runs.prefix.append(a);

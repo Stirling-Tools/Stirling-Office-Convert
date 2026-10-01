@@ -154,11 +154,10 @@ final class WordPages {
             return fixed;
         }
         double min = p.pt("fo:min-height", 0);
-        double text = estimate(content);
-        if (!"false".equals(p.get("style:dynamic-spacing"))) {
-            return Math.max(min, text);
+        if ("true".equals(p.get("style:dynamic-spacing"))) {
+            return min;
         }
-        return Math.max(min, spacing + text);
+        return Math.max(min, spacing + estimate(content));
     }
 
     private double estimate(Element content) {

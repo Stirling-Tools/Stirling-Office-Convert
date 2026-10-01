@@ -37,8 +37,8 @@ public final class OdfPackage {
             }
             warnings.addAll(switch (doc.kind()) {
                 case TEXT -> new OdtWriter(doc, pkg).write();
-                case SPREADSHEET, PRESENTATION -> throw new IOException("OpenDocument spreadsheets and presentations"
-                        + " are not supported yet");
+                case SPREADSHEET -> new OdsWriter(doc, pkg).write();
+                case PRESENTATION -> throw new IOException("OpenDocument presentations are not supported yet");
             });
             return new Outcome(warnings, false);
         }
