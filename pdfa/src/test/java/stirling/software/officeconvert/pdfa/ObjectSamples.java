@@ -23,6 +23,40 @@ final class ObjectSamples {
     private ObjectSamples() {}
 
     static void register() {
+        doc("o02_big_dictionaries", Set.of("1:6.1.12-6"), d -> {
+            PDPage p = Samples.page(d);
+            PDResources res = new PDResources();
+            PDFont f = Samples.std(Standard14Fonts.FontName.HELVETICA);
+            COSDictionary fonts = new COSDictionary();
+            for (int i = 0; i < 5000; i++) {
+                fonts.setItem("F" + i, f.getCOSObject());
+            }
+            res.getCOSObject().setItem(COSName.FONT, fonts);
+            p.setResources(res);
+            Samples.raw(p, d, "BT /F7 14 Tf 50 780 Td (Five thousand fonts, one used) Tj ET");
+            COSDictionary dests = new COSDictionary();
+            for (int i = 0; i < 5000; i++) {
+                COSArray dest = new COSArray();
+                dest.add(p.getCOSObject());
+                dest.add(COSName.getPDFName("Fit"));
+                dests.setItem("D" + i, dest);
+            }
+            d.getDocumentCatalog().getCOSObject().setItem(COSName.getPDFName("Dests"), dests);
+            COSDictionary info = d.getDocumentInformation().getCOSObject();
+            info.setString(COSName.TITLE, "Big dictionaries");
+            for (int i = 0; i < 5000; i++) {
+                info.setString("Custom" + i, "value " + i);
+            }
+            COSDictionary piece = new COSDictionary();
+            COSDictionary app = new COSDictionary();
+            COSDictionary priv = new COSDictionary();
+            for (int i = 0; i < 5000; i++) {
+                priv.setInt("AIPrivateData" + i, i);
+            }
+            app.setItem(COSName.getPDFName("Private"), priv);
+            piece.setItem("Illustrator", app);
+            p.getCOSObject().setItem(COSName.getPDFName("PieceInfo"), piece);
+        });
         doc("o03_long_arrays", Set.of("1:6.1.12-5"), d -> {
             PDPage p = Samples.page(d);
             PDResources res = new PDResources();

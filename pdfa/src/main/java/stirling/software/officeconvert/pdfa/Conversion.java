@@ -74,6 +74,7 @@ final class Conversion {
             StructureCheck.run(doc, level, report);
         }
         graph = ContentGraph.of(doc);
+        BigDictionaries.run(doc, graph, level, report);
         WideStructure.run(doc, level, report);
         ColourFixer.run(doc, graph, level, report, colours, Limits.prepare(doc, level, report));
         Metadata.run(doc, level);
