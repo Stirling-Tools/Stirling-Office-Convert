@@ -448,11 +448,16 @@ final class ParaFlow {
 
     static final float SHRINK = 0.25f;
 
+    static final float AUTO_SPACE_SHRINK = 0.35f;
+
     private LineBreaker breaker(ParaItems pi, ParaProps pp, float width) {
         ShapeRules.fit(pi, width - pp.left() - pp.right());
         LineBreaker lb = new LineBreaker(pi, pp, ctx.settings.defaultTabStop, width);
         if (ctx.settings.compatibilityMode >= 15 && LinePainter.justified(pp)) {
             lb.shrink(SHRINK);
+        }
+        if (LinePainter.justified(pp)) {
+            lb.squeezeAutoSpace(AUTO_SPACE_SHRINK);
         }
         if (ctx.settings.autoHyphenation && !Boolean.TRUE.equals(pp.suppressAutoHyphens)) {
             lb.hyphenate(ctx.settings);

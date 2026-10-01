@@ -36,6 +36,8 @@ final class LineBreaker {
 
     private float shrink;
 
+    private float autoShrink;
+
     private Settings hyphenation;
 
     private int hyphenRun;
@@ -65,6 +67,10 @@ final class LineBreaker {
 
     void shrink(float factor) {
         shrink = factor;
+    }
+
+    void squeezeAutoSpace(float factor) {
+        autoShrink = factor;
     }
 
     void hyphenate(Settings settings) {
@@ -126,6 +132,7 @@ final class LineBreaker {
         boolean content = false;
         boolean words = false;
         float spaceW = 0;
+        float autoW = 0;
         float lastTrail = 0;
         List<Item> items = pi.items;
         while (item < items.size()) {
@@ -157,6 +164,7 @@ final class LineBreaker {
                 }
                 case TAB -> {
                     spaceW = 0;
+                    autoW = 0;
                     lastTrail = 0;
                     if (group != null) {
                         x = close(group, line);
@@ -257,8 +265,10 @@ final class LineBreaker {
             float groupW = group == null ? 0 : group.width;
             float endX = group == null ? x + w - trail : effectiveEnd(group, groupW + w - trail, word);
             float over = endX - right;
+            float wordAuto = autoSpace(word);
             boolean fits = over <= EPS || shrink > 0 && over - shrink * spaceW <= EPS
-                    && over <= squeezeLimit(word, w - trail);
+                    && over <= squeezeLimit(word, w - trail)
+                    || autoShrink > 0 && over - autoShrink * (autoW + wordAuto) <= EPS;
             // After nothing but tabs, a word wider than a whole line starts there and breaks at the margin
             boolean huge = !fits && content && !words && group == null && tooWide(word, w - trail, x, right);
             List<Line.Slice> hyphenated = !fits && content && group == null && !huge
@@ -322,6 +332,7 @@ final class LineBreaker {
             placeWord(line, word, x, group);
             line.zero.addAll(zeros);
             x += w;
+            autoW += wordAuto;
             spaceW = Math.max(0, spaceW + join) + (trail > 0 ? Math.max(0, trail + spaceKern(word)) : 0);
             lastTrail = trail;
             if (group != null) {
@@ -453,6 +464,16 @@ final class LineBreaker {
             break;
         }
         return out;
+    }
+
+    private static float autoSpace(List<Line.Slice> word) {
+        float sum = 0;
+        for (Line.Slice s : word) {
+            if (s.item.kind == Item.Kind.TEXT && s.to == s.item.text.length()) {
+                sum += s.item.extra;
+            }
+        }
+        return sum;
     }
 
     private static float squeezeLimit(List<Line.Slice> word, float width) {

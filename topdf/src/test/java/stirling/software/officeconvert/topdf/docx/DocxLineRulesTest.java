@@ -248,4 +248,19 @@ class DocxLineRulesTest {
                 .section(second));
         assertEquals(3, r.word("Contents").page());
     }
+
+    @Test
+    void aJustifiedLineSqueezesTheSpaceBetweenIdeographsAndDigitsToFitOneMoreCharacter() throws IOException {
+        String text = "\u4E00" + "1\u4E00".repeat(60);
+        int left = firstLineLength(text, "left");
+        int justified = firstLineLength(text, "both");
+        assertTrue(justified > left, left + " then " + justified);
+    }
+
+    private int firstLineLength(String text, String jc) throws IOException {
+        String body = "<w:p><w:pPr><w:jc w:val=\"" + jc + "\"/></w:pPr><w:r><w:rPr><w:rFonts w:eastAsia=\"SimSun\"/>"
+                + "<w:lang w:eastAsia=\"zh-CN\"/></w:rPr><w:t>" + text + "</w:t></w:r></w:p>";
+        String out = DocxDoc.render(dir, "autospace-" + jc, new DocxDoc().styles(STYLES).body(body).bytes()).text();
+        return out.strip().split("\\R")[0].strip().length();
+    }
 }

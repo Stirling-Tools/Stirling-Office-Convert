@@ -158,7 +158,8 @@ final class LinePainter {
             return;
         }
         int gaps = spaces + chars - 1;
-        if (gaps <= 0 || free < 0 || !distribute && !ideographic(slices, from, lastContent)) {
+        if (gaps <= 0 || free < 0 && -free > autoSpace(slices) + 0.01f
+                || !distribute && !ideographic(slices, from, lastContent)) {
             return;
         }
         float extra = free / gaps;
@@ -182,6 +183,16 @@ final class LinePainter {
             acc += Math.max(0, n) * extra;
         }
         line.end += free;
+    }
+
+    private static float autoSpace(List<Line.Slice> slices) {
+        float sum = 0;
+        for (Line.Slice s : slices) {
+            if (s.item.kind == Item.Kind.TEXT && s.to == s.item.text.length()) {
+                sum += s.item.extra;
+            }
+        }
+        return sum;
     }
 
     static void paint(Line line, List<Op> ops, Ctx ctx, List<Inline.NoteRef> notes) {
