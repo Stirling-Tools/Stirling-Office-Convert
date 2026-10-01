@@ -9,6 +9,7 @@ import org.apache.pdfbox.cos.COSInteger;
 import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.cos.COSNumber;
 import org.apache.pdfbox.cos.COSStream;
+import org.apache.pdfbox.pdmodel.graphics.color.PDColorSpace;
 
 final class ImageDepth {
 
@@ -23,6 +24,10 @@ final class ImageDepth {
         }
         if (level.part() == 1 && bpc == 16 && !mask) {
             return sixteen(s) ? "Stored 16-bit images, which PDF/A-1 does not allow, with 8 bits per sample" : null;
+        }
+        if (!mask && bpc > 0 && bpc != 1 && bpc != 2 && bpc != 4 && bpc != 8 && bpc != 16) {
+            return rescale(s, bpc) ? "Stored images with " + bpc + " bits per sample, which PDF/A does not allow, "
+                    + "with 8" : null;
         }
         return null;
     }
@@ -77,6 +82,52 @@ final class ImageDepth {
             s.setItem(COSName.MASK, scaled);
         }
         return true;
+    }
+
+    private static boolean rescale(COSStream s, int bpc) throws IOException {
+        int w = s.getInt(COSName.WIDTH);
+        int h = s.getInt(COSName.HEIGHT);
+        int comps = components(s);
+        byte[] data = samples(s);
+        if (data == null || comps <= 0 || w <= 0 || h <= 0 || bpc > 16 || (long) w * h * comps > 256L << 20) {
+            return false;
+        }
+        int stride = (w * comps * bpc + 7) / 8;
+        int max = (1 << bpc) - 1;
+        byte[] out = new byte[w * h * comps];
+        for (int y = 0; y < h; y++) {
+            for (int i = 0; i < w * comps; i++) {
+                long bit = (long) y * stride * 8 + (long) i * bpc;
+                out[y * w * comps + i] = (byte) Math.round(sample(data, bit, bpc) * 255.0 / max);
+            }
+        }
+        write(s, out, 8);
+        if (s.getDictionaryObject(COSName.MASK) instanceof COSArray key) {
+            COSArray scaled = new COSArray();
+            for (int i = 0; i < key.size(); i++) {
+                scaled.add(key.getObject(i) instanceof COSNumber n
+                        ? COSInteger.get(Math.round(n.intValue() * 255.0 / max)) : key.get(i));
+            }
+            s.setItem(COSName.MASK, scaled);
+        }
+        return true;
+    }
+
+    private static int components(COSStream s) {
+        COSBase cs = s.getDictionaryObject(COSName.COLORSPACE);
+        if (cs instanceof COSName n) {
+            return switch (n.getName()) {
+                case "DeviceGray", "CalGray", "G" -> 1;
+                case "DeviceRGB", "CalRGB", "RGB" -> 3;
+                case "DeviceCMYK", "CMYK" -> 4;
+                default -> -1;
+            };
+        }
+        try {
+            return PDColorSpace.create(cs).getNumberOfComponents();
+        } catch (IOException | RuntimeException e) {
+            return -1;
+        }
     }
 
     private static int sample(byte[] data, long bit, int bpc) {

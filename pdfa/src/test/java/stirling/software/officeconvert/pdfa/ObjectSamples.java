@@ -48,6 +48,29 @@ final class ObjectSamples {
                             + "Tj ET q 200 0 0 100 50 600 cm /Deep Do Q q 200 0 0 100 300 600 cm /Mask Do Q "
                             + "q 1 0 0 1 50 500 cm /Form Do Q");
                 });
+        doc("o05_odd_depth", Set.of("1:6.2.4-4", "2:6.2.8-4"), d -> {
+            PDPage p = Samples.page(d);
+            COSStream odd = d.getDocument().createCOSStream();
+            odd.setItem(COSName.TYPE, COSName.XOBJECT);
+            odd.setItem(COSName.SUBTYPE, COSName.IMAGE);
+            odd.setInt(COSName.WIDTH, 8);
+            odd.setInt(COSName.HEIGHT, 8);
+            odd.setInt(COSName.BITS_PER_COMPONENT, 3);
+            odd.setItem(COSName.COLORSPACE, COSName.DEVICEGRAY);
+            byte[] data = new byte[8 * 3];
+            for (int i = 0; i < data.length; i++) {
+                data[i] = (byte) (i * 53);
+            }
+            try (OutputStream o = odd.createOutputStream(COSName.FLATE_DECODE)) {
+                o.write(data);
+            }
+            PDResources res = new PDResources();
+            COSDictionary xo = new COSDictionary();
+            xo.setItem("Odd", odd);
+            res.getCOSObject().setItem(COSName.XOBJECT, xo);
+            p.setResources(res);
+            Samples.raw(p, d, "q 200 0 0 200 50 500 cm /Odd Do Q");
+        });
         doc("o02_big_dictionaries", Set.of("1:6.1.12-6"), d -> {
             PDPage p = Samples.page(d);
             PDResources res = new PDResources();
