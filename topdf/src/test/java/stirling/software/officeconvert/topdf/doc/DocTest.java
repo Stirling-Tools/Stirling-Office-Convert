@@ -453,4 +453,11 @@ class DocTest {
         String xml = body(doc);
         assertTrue(xml.contains("<a:prstDash val=\"dash\"/><a:tailEnd type=\"triangle\"/>"), xml);
     }
+
+    @Test
+    void presetShapesMapToTheirDrawingMlGeometry() {
+        assertEquals("flowChartDecision", Shapes.geometry(110));
+        assertEquals("ellipse", Shapes.geometry(3));
+        assertEquals("rect", Shapes.geometry(999));
+    }
 }

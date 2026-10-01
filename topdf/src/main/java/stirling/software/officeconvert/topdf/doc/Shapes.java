@@ -1,6 +1,7 @@
 package stirling.software.officeconvert.topdf.doc;
 
 import java.io.IOException;
+import java.util.Map;
 
 import org.apache.poi.ddf.EscherComplexProperty;
 import org.apache.poi.ddf.EscherContainerRecord;
@@ -55,20 +56,12 @@ final class Shapes {
         if (rec == null) {
             return null;
         }
-        String geom = switch (rec.getShapeType()) {
-            case 1, 202, 75 -> "rect";
-            case 2 -> "roundRect";
-            case 3 -> "ellipse";
-            case 4 -> "diamond";
-            case 5 -> "triangle";
-            case 20, 32 -> "line";
-            default -> "rect";
-        };
+        String geom = geometry(rec.getShapeType());
         String art = rec.getShapeType() >= 136 && rec.getShapeType() <= 175 ? string(sp, 0x00C0) : null;
         if (art != null && !art.isBlank()) {
             return wordArt(sp, rec, art, x, y, cx, cy);
         }
-        boolean line = geom.equals("line");
+        boolean line = geom.equals("line") || geom.endsWith("Connector2") || geom.endsWith("Connector3");
         int[] text = line ? null : c.textboxes().text(rec.getShapeId(), story.kind == Story.Kind.HEADER);
         Boolean fill = bit(sp, 0x01BF, 4);
         boolean filled = fill == null || fill;
@@ -130,6 +123,27 @@ final class Shapes {
                     default -> "t";
                 }).append("\"/></wps:wsp>");
         return b.toString();
+    }
+
+    private static final Map<Integer, String> GEOMETRY = Map.ofEntries(Map.entry(2, "roundRect"),
+            Map.entry(3, "ellipse"), Map.entry(4, "diamond"), Map.entry(5, "triangle"), Map.entry(6, "rtTriangle"),
+            Map.entry(7, "parallelogram"), Map.entry(8, "trapezoid"), Map.entry(9, "hexagon"), Map.entry(10, "octagon"),
+            Map.entry(11, "plus"), Map.entry(12, "star5"), Map.entry(13, "rightArrow"), Map.entry(15, "homePlate"),
+            Map.entry(16, "cube"), Map.entry(20, "line"), Map.entry(22, "can"), Map.entry(23, "donut"),
+            Map.entry(32, "line"), Map.entry(33, "bentConnector2"), Map.entry(34, "bentConnector3"),
+            Map.entry(38, "curvedConnector3"), Map.entry(55, "chevron"), Map.entry(56, "pentagon"),
+            Map.entry(66, "leftArrow"), Map.entry(67, "downArrow"), Map.entry(68, "upArrow"),
+            Map.entry(69, "leftRightArrow"), Map.entry(70, "upDownArrow"), Map.entry(109, "flowChartProcess"),
+            Map.entry(110, "flowChartDecision"), Map.entry(111, "flowChartInputOutput"),
+            Map.entry(112, "flowChartPredefinedProcess"), Map.entry(113, "flowChartInternalStorage"),
+            Map.entry(114, "flowChartDocument"), Map.entry(115, "flowChartMultidocument"),
+            Map.entry(116, "flowChartTerminator"), Map.entry(117, "flowChartPreparation"),
+            Map.entry(118, "flowChartManualInput"), Map.entry(119, "flowChartManualOperation"),
+            Map.entry(120, "flowChartConnector"), Map.entry(176, "flowChartAlternateProcess"),
+            Map.entry(177, "flowChartOffpageConnector"));
+
+    static String geometry(int type) {
+        return GEOMETRY.getOrDefault(type, "rect");
     }
 
     private static void arrow(StringBuilder b, String end, long kind) {
