@@ -86,6 +86,15 @@ class AutofitTest {
     }
 
     @Test
+    void blankCellsInsideATallMergeDoNotGrowItsRows() throws Exception {
+        String sheet = "<sheetFormatPr defaultRowHeight=\"15\"/><sheetData>" + row(1, "", "") + row(2, "", "")
+                + row(3, "", "<c r=\"C3\" s=\"1\"/>") + row(4, "", "") + row(5, "", "") + "</sheetData>"
+                + "<mergeCells count=\"1\"><mergeCell ref=\"B2:C4\"/></mergeCells>";
+        Map<Integer, Float> y = baselines("tallmerge.xlsx", sheet);
+        assertEquals(3 * printed(15), y.get(5) - y.get(2), 0.02, y.toString());
+    }
+
+    @Test
     void fontsThatAskForTypoMetricsUseThemOnScreen() {
         FontMeasure aptos = FontMeasure.of(FontLibrary.of(List.of()), "Aptos Narrow", false, false);
         assertEquals(20, aptos.screenLinePx(11));

@@ -289,6 +289,9 @@ final class Grid {
                 }
                 if (fit && cell.style() != lastBlank && blanks.size() < MAX_BLANK_FONTS
                         && !format.font().equals(base)) {
+                    if (inTallMerge(index, col)) {
+                        continue;
+                    }
                     blanks.add(format.font());
                 }
                 lastBlank = cell.style();
@@ -479,6 +482,11 @@ final class Grid {
             return Math.min(409.5, fitted);
         }
         return stored;
+    }
+
+    private boolean inTallMerge(int row, int col) {
+        CellRangeAddress m = mergeCovering(row, col);
+        return m != null && m.getFirstRow() != m.getLastRow();
     }
 
     private static boolean wrapsText(List<CellEntry> entries) {
