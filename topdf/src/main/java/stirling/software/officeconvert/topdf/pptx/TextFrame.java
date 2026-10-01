@@ -459,17 +459,7 @@ final class TextFrame {
             return followed(canvas, b, area, x0, x1, y0, y1);
         }
         double dy = warp.adj() * h;
-        double sx = w / (x1 - x0);
-        double band = warp.preset().equals("textPlain") || warp.curved() ? h : h - dy;
-        double sy = band / (y1 - y0);
-        double shear = switch (warp.preset()) {
-            case "textSlantUp" -> -dy / (x1 - x0);
-            case "textSlantDown" -> dy / (x1 - x0);
-            default -> 0;
-        };
-        double top = warp.preset().equals("textSlantUp") ? dy : 0;
-        AffineTransform t = new AffineTransform(sx, shear, 0, sy, area.getX() - x0 * sx,
-                area.getY() + top - x0 * shear - y0 * sy);
+        AffineTransform t = WordArtWarp.frame(warp, area, x0, x1, y0, y1);
         canvas.save();
         try {
             canvas.transform(t);

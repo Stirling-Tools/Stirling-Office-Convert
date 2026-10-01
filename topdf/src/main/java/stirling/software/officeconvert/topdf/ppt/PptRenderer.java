@@ -54,7 +54,7 @@ public final class PptRenderer {
         try (HSLFSlideShow ppt = LegacyOffice.slideShow(Objects.requireNonNull(source, "source"))) {
             info(job, ppt);
             boundPictures(job, ppt);
-            WordArt.flatten(ppt);
+            Map<HSLFSlide, List<WordArt.Hidden>> wordArt = wordArt(job, ppt);
             fixUp(ppt);
             SlideText text = new SlideText(job, fonts(job, ppt));
             Dimension size = ppt.getPageSize();
@@ -74,6 +74,7 @@ public final class PptRenderer {
                     for (PDFormXObject form : forms) {
                         canvas.form(form, 0, 0, w, h);
                     }
+                    WordArt.writeHidden(canvas, wordArt.get(slide));
                     for (SlideLinks.Area a : shapeLinks(links, slide)) {
                         SlideLinks.place(canvas, a.box(), a.target());
                     }
@@ -85,6 +86,14 @@ public final class PptRenderer {
             for (String line : ActiveContent.describe(activeContent(ppt))) {
                 job.warn(line);
             }
+        }
+    }
+
+    private static Map<HSLFSlide, List<WordArt.Hidden>> wordArt(RenderJob job, HSLFSlideShow ppt) {
+        try {
+            return WordArt.flatten(ppt, job.fonts());
+        } catch (RuntimeException e) {
+            return Map.of();
         }
     }
 

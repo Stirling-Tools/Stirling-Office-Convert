@@ -272,6 +272,37 @@ class PptRendererTest {
         assertTrue(dark < 0.5 * 140 * 55, "the outline was filled: " + dark);
     }
 
+    private static int topInk(BufferedImage page, int fromX, int toX, int fromY, int toY) {
+        for (int y = fromY; y < toY; y++) {
+            for (int x = fromX; x < toX; x++) {
+                if ((page.getRGB(x, y) & 0xff) < 128) {
+                    return y;
+                }
+            }
+        }
+        return toY;
+    }
+
+    @Test
+    void wordArtArchesFollowTheirCurveAndKeepTheirText() throws IOException {
+        Converted c = convert("arch.ppt", deck(p -> {
+            HSLFAutoShape art = new HSLFAutoShape(ShapeType.TEXT_ARCH_UP_CURVE);
+            art.setAnchor(new Rectangle2D.Double(60, 60, 300, 300));
+            art.setFillColor(Color.BLACK);
+            byte[] data = "ARCHING OVER THE TOP\0".getBytes(StandardCharsets.UTF_16LE);
+            EscherComplexProperty text = new EscherComplexProperty(EscherPropertyTypes.GEOTEXT__UNICODE, false,
+                    data.length);
+            text.setComplexData(data);
+            art.getEscherOptRecord().addEscherProperty(text);
+            p.createSlide().addShape(art);
+        }));
+        assertTrue(c.text().contains("ARCHING OVER THE TOP"), c.text());
+        BufferedImage page = c.render(0);
+        int centre = topInk(page, 200, 220, 40, 380);
+        int left = topInk(page, 60, 90, 40, 380);
+        assertTrue(centre < 110 && left > centre + 60, "centre " + centre + ", left " + left);
+    }
+
     @Test
     void wideSlidesKeepTheirSize() throws IOException {
         Converted c = convert("wide.ppt", deck(p -> {
