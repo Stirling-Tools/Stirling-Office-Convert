@@ -3,12 +3,19 @@ package stirling.software.officeconvert.pdfa;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.awt.Color;
 import java.awt.image.BufferedImage;
 import java.nio.file.Path;
 import java.util.List;
 
 import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.pdmodel.PDPage;
+import org.apache.pdfbox.pdmodel.PDPageContentStream;
+import org.apache.pdfbox.pdmodel.font.PDFont;
+import org.apache.pdfbox.pdmodel.font.PDType1Font;
+import org.apache.pdfbox.pdmodel.font.Standard14Fonts;
+import org.apache.pdfbox.pdmodel.graphics.state.PDExtendedGraphicsState;
 import org.apache.pdfbox.rendering.PDFRenderer;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -45,6 +52,44 @@ class TransparencyTest {
             int rgb = img.getRGB(100, (int) (d.getPage(0).getMediaBox().getHeight() - 597));
             assertTrue((rgb & 0xFF) < 200, "the highlight should still tint the line yellow");
         }
+    }
+
+    @Test
+    void aPictureIsNotClippedByTheLastTransparentObjectsClip() throws Exception {
+        Path in = dir.resolve("clipped.pdf");
+        try (PDDocument d = new PDDocument()) {
+            PDPage p = new PDPage();
+            d.addPage(p);
+            PDExtendedGraphicsState half = new PDExtendedGraphicsState();
+            half.setNonStrokingAlphaConstant(0.5f);
+            PDFont f = new PDType1Font(Standard14Fonts.FontName.HELVETICA);
+            try (PDPageContentStream cs = new PDPageContentStream(d, p)) {
+                cs.saveGraphicsState();
+                cs.setGraphicsStateParameters(half);
+                cs.setNonStrokingColor(Color.BLUE);
+                cs.addRect(50, 300, 400, 300);
+                cs.fill();
+                cs.saveGraphicsState();
+                cs.addRect(400, 550, 100, 100);
+                cs.clip();
+                cs.setNonStrokingColor(Color.RED);
+                cs.addRect(400, 550, 100, 100);
+                cs.fill();
+                cs.restoreGraphicsState();
+                cs.restoreGraphicsState();
+                cs.beginText();
+                cs.setFont(f, 14);
+                cs.newLineAtOffset(60, 320);
+                cs.showText("Drawn once, over the picture");
+                cs.endText();
+            }
+            d.save(in.toFile());
+        }
+        Path out = dir.resolve("clipped-1b.pdf");
+        PdfToPdfA.convert(in, out, PdfToPdfA.Options.defaults().level(PdfALevel.A1B));
+        assertTrue(similarity(in, out, 0) > 0.98, "similarity " + similarity(in, out, 0));
+        assertTrue(Converted.text(out).contains("Drawn once, over the picture"));
+        VeraPdf.assertCompliant(out, PdfALevel.A1B);
     }
 
     static double similarity(Path a, Path b, int page) throws Exception {

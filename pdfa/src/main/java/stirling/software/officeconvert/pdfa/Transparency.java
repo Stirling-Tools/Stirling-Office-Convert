@@ -24,6 +24,7 @@ import org.apache.pdfbox.cos.COSStream;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.common.PDRectangle;
+import org.apache.pdfbox.pdmodel.graphics.image.JPEGFactory;
 import org.apache.pdfbox.pdmodel.graphics.image.LosslessFactory;
 import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
 import org.apache.pdfbox.rendering.ImageType;
@@ -101,8 +102,18 @@ final class Transparency {
         }
         region = region == null ? null : region.createIntersection(cropBox);
         int insert = annots.isEmpty() ? insertionPoint(tokens, ops.get(ops.size() - 1).end() + 1) : tokens.size();
-        PDImageXObject image = region == null || region.getWidth() < 0.5 || region.getHeight() < 0.5 ? null
-                : render(page, index, region, cropBox, annots);
+        PDImageXObject image = null;
+        if (region != null && region.getWidth() >= 0.5 && region.getHeight() >= 0.5) {
+            COSBase original = p.getItem(COSName.CONTENTS);
+            COSStream prefix = doc.getDocument().createCOSStream();
+            ContentTokens.write(prefix, tokens.subList(0, insert));
+            p.setItem(COSName.CONTENTS, prefix);
+            try {
+                image = render(page, index, region, cropBox, annots);
+            } finally {
+                p.setItem(COSName.CONTENTS, original);
+            }
+        }
         List<Object> out = rewrite(tokens, ops, insert, image, region, res, page);
         COSStream target = streams.isEmpty() ? doc.getDocument().createCOSStream() : streams.get(0);
         ContentTokens.write(target, out);
@@ -166,7 +177,22 @@ final class Transparency {
         }
         BufferedImage part = full.getSubimage(x0, y0, x1 - x0, y1 - y0);
         region.setRect(crop.getMinX() + x0 / scale, crop.getMaxY() - y1 / scale, (x1 - x0) / scale, (y1 - y0) / scale);
-        return LosslessFactory.createFromImage(doc, part);
+        return photographic(part) ? JPEGFactory.createFromImage(doc, part, 0.92f)
+                : LosslessFactory.createFromImage(doc, part);
+    }
+
+    static boolean photographic(BufferedImage img) {
+        int w = img.getWidth();
+        int h = img.getHeight();
+        long step = Math.max(1, (long) w * h / 65_536);
+        java.util.HashSet<Integer> colours = new java.util.HashSet<>();
+        for (long i = 0; i < (long) w * h; i += step) {
+            colours.add(img.getRGB((int) (i % w), (int) (i / w)) & 0xFFFFFF);
+            if (colours.size() > 1500) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static int clamp(int v, int max) {
@@ -175,21 +201,20 @@ final class Transparency {
 
     private static int insertionPoint(List<Object> tokens, int after) {
         int depth = 0;
-        for (int i = 0; i < after && i < tokens.size(); i++) {
-            if (tokens.get(i) instanceof Operator op) {
-                if ("BT".equals(op.getName())) {
-                    depth = 1;
-                } else if ("ET".equals(op.getName())) {
-                    depth = 0;
-                }
+        boolean text = false;
+        for (int i = 0; i < tokens.size(); i++) {
+            if (i >= after && depth <= 0 && !text) {
+                return i;
             }
-        }
-        if (depth == 0) {
-            return Math.min(after, tokens.size());
-        }
-        for (int i = after; i < tokens.size(); i++) {
-            if (tokens.get(i) instanceof Operator op && "ET".equals(op.getName())) {
-                return i + 1;
+            if (tokens.get(i) instanceof Operator op) {
+                switch (op.getName()) {
+                    case "q" -> depth++;
+                    case "Q" -> depth--;
+                    case "BT" -> text = true;
+                    case "ET" -> text = false;
+                    default -> {
+                    }
+                }
             }
         }
         return tokens.size();
