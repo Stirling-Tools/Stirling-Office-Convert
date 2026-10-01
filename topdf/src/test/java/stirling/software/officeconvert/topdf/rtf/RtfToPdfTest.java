@@ -73,5 +73,7 @@ class RtfToPdfTest {
         String broken = convert("broken.rtf", "{\\rtf1\\ansi{\\fonttbl{\\f0 A;}}\\pard text {\\b more");
         assertTrue(broken.contains("text more"), broken);
         assertFalse(broken.isEmpty());
+        IOException e = assertThrows(IOException.class, () -> convert("fake.rtf", "{b{\\fi0 not rtf}"));
+        assertTrue(e.getMessage().contains("not an RTF document"), e.getMessage());
     }
 }

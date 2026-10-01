@@ -454,6 +454,10 @@ public final class OfficeToPdf {
         if (rtf != null) {
             return rtf;
         }
+        Path name = source.getFileName();
+        if (name != null && name.toString().toLowerCase(Locale.ROOT).endsWith(".rtf")) {
+            throw new IOException("The file is not an RTF document: it does not start with {\\rtf");
+        }
         return render(source, requested, sink, options, renderer, OfficeZip.Limits.DEFAULT);
     }
 
