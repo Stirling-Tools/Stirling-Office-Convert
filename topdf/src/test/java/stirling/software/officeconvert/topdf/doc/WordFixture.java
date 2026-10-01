@@ -47,6 +47,8 @@ final class WordFixture {
 
     private final List<Object[]> bookmarks = new ArrayList<>();
 
+    private String title;
+
     private int nFib = 0xC1;
 
     private int fibFlags;
@@ -135,6 +137,11 @@ final class WordFixture {
 
     WordFixture bookmark(String name, int start, int end) {
         bookmarks.add(new Object[] {name, start, end});
+        return this;
+    }
+
+    WordFixture title(String value) {
+        title = value;
         return this;
     }
 
@@ -310,10 +317,21 @@ final class WordFixture {
             if (data.length > 0) {
                 fs.createDocument(new ByteArrayInputStream(data), "Data");
             }
+            if (title != null) {
+                org.apache.poi.hpsf.SummaryInformation si = org.apache.poi.hpsf.PropertySetFactory.newSummaryInformation();
+                si.setTitle(title);
+                si.setAuthor("Fixture Author");
+                ByteArrayOutputStream props = new ByteArrayOutputStream();
+                si.write(props);
+                fs.createDocument(new ByteArrayInputStream(props.toByteArray()),
+                        org.apache.poi.hpsf.SummaryInformation.DEFAULT_STREAM_NAME);
+            }
             fs.writeFilesystem(out);
             return out.toByteArray();
         } catch (IOException e) {
             throw new UncheckedIOException(e);
+        } catch (org.apache.poi.hpsf.WritingNotSupportedException e) {
+            throw new IllegalStateException(e);
         }
     }
 

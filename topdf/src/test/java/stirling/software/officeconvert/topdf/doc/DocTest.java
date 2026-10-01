@@ -460,4 +460,16 @@ class DocTest {
         assertEquals("ellipse", Shapes.geometry(3));
         assertEquals("rect", Shapes.geometry(999));
     }
+
+    @Test
+    void theTitleAndAuthorReachThePdf() throws IOException {
+        byte[] doc = new WordFixture().para("Body").title("Quarterly Notes").build();
+        Path in = Files.write(dir.resolve("titled.doc"), doc);
+        Path out = dir.resolve("titled.pdf");
+        OfficeToPdf.convert(in, out);
+        try (PDDocument pdf = Loader.loadPDF(out.toFile())) {
+            assertEquals("Quarterly Notes", pdf.getDocumentInformation().getTitle());
+            assertEquals("Fixture Author", pdf.getDocumentInformation().getAuthor());
+        }
+    }
 }

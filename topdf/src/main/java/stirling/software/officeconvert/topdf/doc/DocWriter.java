@@ -3,6 +3,7 @@ package stirling.software.officeconvert.topdf.doc;
 import java.io.IOException;
 import java.io.OutputStream;
 
+import org.apache.poi.hpsf.SummaryInformation;
 import org.apache.poi.hwpf.HWPFDocument;
 import org.apache.poi.hwpf.model.DocumentProperties;
 import org.apache.poi.hwpf.usermodel.Range;
@@ -68,16 +69,54 @@ final class DocWriter {
                     .append("endnotes+xml\"/>");
         }
         c.zip.put("word/_rels/document.xml.rels", rels.part());
+        String core = core();
+        if (core != null) {
+            types.append("<Override PartName=\"/docProps/core.xml\" ContentType=\"application/vnd.openxmlformats-")
+                    .append("package.core-properties+xml\"/>");
+        }
         c.zip.put("[Content_Types].xml", types.append("</Types>"));
+        if (core != null) {
+            c.zip.put("docProps/core.xml", core);
+        }
         c.zip.put("_rels/.rels", Xml.HEAD + "<Relationships xmlns=\"" + Xml.PKG_REL + "\"><Relationship Id=\"rId1\""
                 + " Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument\""
-                + " Target=\"word/document.xml\"/></Relationships>");
+                + " Target=\"word/document.xml\"/>" + (core == null ? "" : "<Relationship Id=\"rId2\" Type=\"http://"
+                + "schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties\" Target=\"docProps/"
+                + "core.xml\"/>") + "</Relationships>");
         c.zip.finish();
         if (defused || c.media.dropped) {
             c.lost = true;
             c.warn("Some pictures were too large to convert and were left out");
         }
         return new DocPackage.Outcome(c.warnings, c.lost);
+    }
+
+    private String core() {
+        SummaryInformation info;
+        try {
+            info = c.src.doc.getSummaryInformation();
+        } catch (RuntimeException e) {
+            return null;
+        }
+        if (info == null) {
+            return null;
+        }
+        StringBuilder b = new StringBuilder();
+        element(b, "dc:title", info.getTitle());
+        element(b, "dc:creator", info.getAuthor());
+        element(b, "dc:subject", info.getSubject());
+        element(b, "cp:keywords", info.getKeywords());
+        if (b.isEmpty()) {
+            return null;
+        }
+        return Xml.HEAD + "<cp:coreProperties xmlns:cp=\"http://schemas.openxmlformats.org/package/2006/metadata/"
+                + "core-properties\" xmlns:dc=\"http://purl.org/dc/elements/1.1/\">" + b + "</cp:coreProperties>";
+    }
+
+    private static void element(StringBuilder b, String name, String value) {
+        if (value != null && !value.isBlank() && value.length() < 4096) {
+            b.append('<').append(name).append('>').append(Xml.esc(value.strip())).append("</").append(name).append('>');
+        }
     }
 
     private void part(StringBuilder types, Rels rels, String name, String xml) throws IOException {
