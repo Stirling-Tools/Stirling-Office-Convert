@@ -63,6 +63,29 @@ final class WordPara {
         return b.isEmpty() ? "" : "<w:spacing" + b + "/>";
     }
 
+    static Props charUnits(Props pp, Props tp) {
+        String[] keys = {"margin-left", "margin-right", "text-indent"};
+        Props out = pp;
+        for (String key : keys) {
+            String v = pp.get("loext:" + key);
+            if (v == null || !v.trim().endsWith("ic")) {
+                continue;
+            }
+            double size = tp.pt("style:font-size-asian", tp.pt("fo:font-size", 12));
+            double chars;
+            try {
+                chars = Double.parseDouble(v.trim().substring(0, v.trim().length() - 2));
+            } catch (NumberFormatException e) {
+                continue;
+            }
+            if (out == pp) {
+                out = new Props(pp);
+            }
+            out.put("fo:" + key, (chars * size) + "pt");
+        }
+        return out;
+    }
+
     static String indent(Props p) {
         if (!p.has("fo:margin-left") && !p.has("fo:margin-right") && !p.has("fo:text-indent")) {
             return "";

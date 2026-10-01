@@ -389,8 +389,8 @@ final class TextBody {
 
     void paragraph(Element p, ListPos list, boolean heading) throws IOException {
         String name = Dom.attr(p, Ns.TEXT, "style-name");
-        Props pp = paragraphProps(name, "paragraph-properties");
         Props tp = paragraphProps(name, "text-properties");
+        Props pp = WordPara.charUnits(paragraphProps(name, "paragraph-properties"), tp);
         masterBreak("paragraph", name, pp);
         StringBuilder ppr = new StringBuilder();
         String common = commonStyle(name);

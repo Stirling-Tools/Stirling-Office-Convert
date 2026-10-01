@@ -97,6 +97,15 @@ class OdtTest {
     }
 
     @Test
+    void indentsInCharacterUnitsScaleWithTheFontSize() throws IOException {
+        String auto = "<style:style style:name=\"P1\" style:family=\"paragraph\"><style:paragraph-properties"
+                + " loext:margin-left=\"1ic\" loext:text-indent=\"-2.5ic\"/><style:text-properties fo:font-size=\"10pt\"/>"
+                + "</style:style>";
+        String xml = document(odt(auto, "<text:p text:style-name=\"P1\">Indented</text:p>", null));
+        assertTrue(xml.contains("<w:ind w:left=\"200\" w:right=\"0\" w:hanging=\"500\"/>"), xml);
+    }
+
+    @Test
     void whiteSpaceCollapsesButSpacesAndTabsStay() throws IOException {
         String xml = document(odt("", "<text:p>  a   b<text:s text:c=\"3\"/>c<text:tab/>d</text:p>", null));
         assertTrue(xml.contains(">a b   c</w:t>"), xml);
