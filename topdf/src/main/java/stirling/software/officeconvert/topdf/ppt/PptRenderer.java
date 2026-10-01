@@ -66,15 +66,16 @@ public final class PptRenderer {
                 if (slide.isHidden()) {
                     continue;
                 }
-                text.startSlide(textLinks(links, slide), h);
+                text.startSlide(textLinks(links, slide));
                 try (PdfCanvas canvas = job.newPage(w, h)) {
-                    for (PDFormXObject form : draw(job, slide, text, w, h)) {
+                    List<PDFormXObject> forms = draw(job, slide, text, w, h);
+                    for (PDFormXObject form : forms) {
                         canvas.form(form, 0, 0, w, h);
                     }
                     for (SlideLinks.Area a : shapeLinks(links, slide)) {
                         SlideLinks.place(canvas, a.box(), a.target());
                     }
-                    for (SlideLinks.Area a : text.links()) {
+                    for (SlideLinks.Area a : LinkLocator.locate(forms, text.pendingLinks(), w, h)) {
                         SlideLinks.place(canvas, a.box(), a.target());
                     }
                 }

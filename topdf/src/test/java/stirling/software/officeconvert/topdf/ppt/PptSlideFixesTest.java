@@ -19,6 +19,7 @@ import java.util.function.Consumer;
 
 import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.pdmodel.common.PDRectangle;
 import org.apache.pdfbox.pdmodel.interactive.action.PDActionGoTo;
 import org.apache.pdfbox.pdmodel.interactive.action.PDActionURI;
 import org.apache.pdfbox.pdmodel.interactive.annotation.PDAnnotation;
@@ -143,11 +144,13 @@ class PptSlideFixesTest {
             }));
             List<String> uris = new ArrayList<>();
             List<Integer> pages = new ArrayList<>();
+            PDRectangle web = null;
             try (PDDocument d = Loader.loadPDF(pdf.toFile())) {
                 for (PDAnnotation a : d.getPage(0).getAnnotations()) {
                     if (a instanceof PDAnnotationLink link) {
                         if (link.getAction() instanceof PDActionURI uri) {
                             uris.add(uri.getURI());
+                            web = link.getRectangle();
                         } else if (link.getAction() instanceof PDActionGoTo go
                                 && go.getDestination() instanceof PDPageDestination dest) {
                             pages.add(d.getPages().indexOf(dest.getPage()));
@@ -158,6 +161,9 @@ class PptSlideFixesTest {
                 }
             }
             assertEquals(List.of("https://example.invalid/page"), uris);
+            assertTrue(web.getLowerLeftX() > 55 && web.getLowerLeftX() < 90, "x " + web.getLowerLeftX());
+            assertTrue(web.getUpperRightY() > 440 && web.getUpperRightY() < 485, "top " + web.getUpperRightY());
+            assertTrue(web.getWidth() > 10 && web.getWidth() < 80, "width " + web.getWidth());
             assertEquals(List.of(1, 1), pages);
             net.assertNothingConnected();
         }

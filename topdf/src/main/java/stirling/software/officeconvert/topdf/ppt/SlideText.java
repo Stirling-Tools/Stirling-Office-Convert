@@ -13,10 +13,12 @@ import java.text.AttributedCharacterIterator;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
+import org.apache.pdfbox.cos.COSStream;
 import org.apache.pdfbox.pdmodel.PDPageContentStream;
 import org.apache.pdfbox.util.Matrix;
 import org.apache.poi.sl.draw.DrawTextParagraph;
@@ -34,6 +36,8 @@ import stirling.software.officeconvert.topdf.pdf.TextStyle;
 // POI lays text out with AWT fonts; each run is written with our fonts, fitted to the width AWT gave it
 final class SlideText implements IPdfBoxGraphics2DFontTextDrawer {
 
+    private static final int MAX_LINKS = 2000;
+
     private record Piece(String text, FontFace face, float size, float rise, float advance, Color color,
             boolean underline, boolean strike, SlideLinks.Target link) {}
 
@@ -45,23 +49,20 @@ final class SlideText implements IPdfBoxGraphics2DFontTextDrawer {
 
     private Map<String, SlideLinks.Target> targets = Map.of();
 
-    private final List<SlideLinks.Area> areas = new ArrayList<>();
-
-    private float pageHeight;
+    private final Map<COSStream, List<LinkLocator.Pending>> pending = new IdentityHashMap<>();
 
     SlideText(RenderJob job, Map<String, String> families) {
         this.job = job;
         this.families = families;
     }
 
-    void startSlide(Map<String, SlideLinks.Target> links, float height) {
+    void startSlide(Map<String, SlideLinks.Target> links) {
         targets = links;
-        pageHeight = height;
-        areas.clear();
+        pending.clear();
     }
 
-    List<SlideLinks.Area> links() {
-        return List.copyOf(areas);
+    Map<COSStream, List<LinkLocator.Pending>> pendingLinks() {
+        return pending;
     }
 
     // Gradient and pattern text stays with POI's outlines
@@ -147,12 +148,10 @@ final class SlideText implements IPdfBoxGraphics2DFontTextDrawer {
                 if (p.strike()) {
                     canvas.strikeout(x, baseline, p.advance(), style);
                 }
-                if (p.link() != null) {
-                    area(env.getCurrentEffectiveTransform(), x, p, p.link());
-                }
                 x += p.advance();
             }
         }
+        links(canvas, pieces, pad, height);
         PDPageContentStream cs = env.getContentStream();
         cs.saveGraphicsState();
         cs.transform(new Matrix(1, 0, 0, -1, 0, height - pad));
@@ -160,16 +159,22 @@ final class SlideText implements IPdfBoxGraphics2DFontTextDrawer {
         cs.restoreGraphicsState();
     }
 
-    private void area(AffineTransform toPage, float x, Piece p, SlideLinks.Target target) {
-        if (areas.size() >= 2000 || !(p.advance() > 0)) {
-            return;
+    private void links(PdfCanvas canvas, List<Piece> pieces, float pad, float height) {
+        float x = 0;
+        List<LinkLocator.Pending> out = null;
+        for (Piece p : pieces) {
+            if (p.link() != null && p.advance() > 0 && pending.size() < MAX_LINKS) {
+                if (out == null) {
+                    out = new ArrayList<>();
+                }
+                float baseline = pad + p.rise();
+                out.add(new LinkLocator.Pending(new Rectangle2D.Float(x, height - baseline - 0.25f * p.size(),
+                        p.advance(), 1.15f * p.size()), p.link()));
+            }
+            x += p.advance();
         }
-        Rectangle2D user = new Rectangle2D.Float(x, p.rise() - 0.9f * p.size(), p.advance(), 1.15f * p.size());
-        Rectangle2D pdf = toPage.createTransformedShape(user).getBounds2D();
-        double top = pageHeight - pdf.getMaxY();
-        if (pdf.getWidth() > 0 && pdf.getHeight() > 0 && Double.isFinite(top)) {
-            areas.add(new SlideLinks.Area(new Rectangle2D.Double(pdf.getX(), top, pdf.getWidth(), pdf.getHeight()),
-                    target));
+        if (out != null) {
+            pending.put(canvas.form().getCOSObject(), out);
         }
     }
 
