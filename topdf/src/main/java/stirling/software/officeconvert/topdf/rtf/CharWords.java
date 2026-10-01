@@ -97,6 +97,10 @@ final class CharWords {
                 c.smallCaps = on;
                 c.mark(CharProps.SMALL_CAPS);
             }
+            case "deleted" -> {
+                c.hidden = on;
+                c.mark(CharProps.HIDDEN);
+            }
             case "v" -> {
                 c.hidden = on;
                 c.mark(CharProps.HIDDEN);

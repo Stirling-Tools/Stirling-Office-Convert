@@ -21,7 +21,7 @@ final class RtfReader {
             "ftnsep", "ftnsepc", "ftncn", "aftnsep", "aftnsepc", "aftncn", "pgdsctbl", "comment", "doccomm",
             "operator", "company", "manager", "category", "hlinkbase", "fchars", "lchars", "protusertbl",
             "password", "passwordhash", "wgrffmtfilter", "do", "panose", "fname", "file", "filetbl",
-            "blipuid", "picprop", "mhtmltag", "htmltag", "mmath", "mmathPr", "formfield", "datafield",
+            "blipuid", "picprop", "mhtmltag", "htmltag", "mmathPr", "formfield", "datafield",
             "levelnumbers", "listname", "listpicture", "pntxta", "pntxtb", "objdata", "objclass", "objname",
             "objalias", "objsect", "objitem", "objtopic", "oleclsid", "nonshppict", "shprslt", "nextfile",
             "private", "ebcstart", "ebcend", "bkmkcolf", "bkmkcoll", "fldtype", "ffdeftext",
@@ -296,7 +296,7 @@ final class RtfReader {
         if (destination(w, star)) {
             return;
         }
-        if (star && !"cs".equals(w) && !"ts".equals(w) && !"ds".equals(w)) {
+        if (star && !"cs".equals(w) && !"ts".equals(w) && !"ds".equals(w) && !(g.math && w.startsWith("m"))) {
             skip();
             return;
         }
@@ -477,6 +477,13 @@ final class RtfReader {
                 g.dest = Dest.NORMAL;
             }
             case "nesttableprops" -> g.nestProps = true;
+            case "mmath" -> {
+                if (g.dest != Dest.NORMAL) {
+                    skip();
+                    return true;
+                }
+                g.math = true;
+            }
             case "background" -> {
                 g.background = true;
                 g.story = null;

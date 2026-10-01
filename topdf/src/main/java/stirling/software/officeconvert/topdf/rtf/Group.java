@@ -24,6 +24,7 @@ final class Group {
     String header;
     boolean textbox;
     boolean background;
+    boolean math;
 
     static final class Sp {
         final StringBuilder name = new StringBuilder();
@@ -65,6 +66,7 @@ final class Group {
         g.text = dest == Dest.NORMAL ? null : text;
         g.key = key;
         g.background = background;
+        g.math = math;
         return g;
     }
 }

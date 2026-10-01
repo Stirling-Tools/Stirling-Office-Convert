@@ -242,6 +242,25 @@ class RtfPackageTest {
     }
 
     @Test
+    void mathKeepsItsTextAndDeletedTextIsHidden() throws IOException {
+        String b = convert(HEAD + "{\\mmath{\\*\\moMath{\\mr\\i x}{\\mr =1}}}\\pard {\\deleted gone}kept\\par}").body();
+        assertTrue(b.contains(">x<") && b.contains(">=1<"), b);
+        assertTrue(b.contains("<w:vanish/><w:t xml:space=\"preserve\">gone<") || b.contains("<w:vanish/></w:rPr><w:t"), b);
+    }
+
+    @Test
+    void libreOfficeListParagraphsDropTheStyleIndent() throws IOException {
+        String lists = "{\\*\\listtable{\\list{\\listlevel\\levelnfc23{\\leveltext\\'01\\u8226 ?;}\\fi-360\\li360}"
+                + "\\listid1}}{\\listoverridetable{\\listoverride\\listid1\\ls1}}"
+                + "{\\stylesheet{\\s0 Normal;}{\\s5\\sbasedon0\\li720 List Paragraph;}}";
+        String para = "\\pard\\plain\\s5\\li720{\\listtext x\\tab}\\ilvl0\\ls1\\fi-360\\li1080 item\\par}";
+        String lo = convert(HEAD + "{\\*\\generator LibreOffice}" + lists + para).body();
+        assertTrue(lo.contains("<w:ind w:left=\"360\" w:hanging=\"360\"/>"), lo);
+        String other = convert(HEAD + lists + para).body();
+        assertTrue(other.contains("<w:ind w:left=\"1080\" w:hanging=\"360\"/>"), other);
+    }
+
+    @Test
     void hyperlinksOnlyForWebAndMail() throws IOException {
         Pkg p = convert(HEAD + "\\pard{\\field{\\*\\fldinst HYPERLINK \"https://example.com/a\"}{\\fldrslt web}}"
                 + "{\\field{\\*\\fldinst HYPERLINK \"file:///etc/passwd\"}{\\fldrslt file}}"

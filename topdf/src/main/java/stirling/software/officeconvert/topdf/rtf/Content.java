@@ -243,6 +243,25 @@ final class Content {
         return false;
     }
 
+    private ParaProps listIndent(ParaProps p) {
+        if (!doc.libreOffice || !p.has(ParaProps.LEFT) || !numbered(p)) {
+            return p;
+        }
+        StyleSheet.Style s = doc.styles.paragraph(p.style);
+        for (int i = 0; s != null && i < 32; i++) {
+            if (s.pap.has(ParaProps.LEFT)) {
+                if (s.pap.left <= 0 || p.left < s.pap.left) {
+                    return p;
+                }
+                ParaProps q = p.copy();
+                q.left -= s.pap.left;
+                return q;
+            }
+            s = doc.styles.basedOn(s);
+        }
+        return p;
+    }
+
     void endPara(Group g, String extra, int depth) throws IOException {
         Story s = g.story;
         if (s == null || g.listText) {
@@ -250,7 +269,7 @@ final class Content {
         }
         String lt = s.listText.takeRuns();
         String prefix = numbered(g.pap) ? "" : lt;
-        String pPr = props.pPr(g.pap, g.chp, extra, true);
+        String pPr = props.pPr(listIndent(g.pap), g.chp, extra, true);
         s.block(s.para.finish(pPr, prefix), depth);
         if (s == body) {
             pendingNote = 0;
@@ -287,8 +306,9 @@ final class Content {
             return;
         }
         String sectPr = sect.xml();
-        String with = props.pPr(g.pap, g.chp, sectPr, true);
-        String plain = props.pPr(g.pap, g.chp, null, true);
+        ParaProps pap = listIndent(g.pap);
+        String with = props.pPr(pap, g.chp, sectPr, true);
+        String plain = props.pPr(pap, g.chp, null, true);
         String lt = body.listText.takeRuns();
         String xml = body.para.finish(with, numbered(g.pap) ? "" : lt);
         body.defer(xml, "<w:p>" + plain + xml.substring("<w:p>".length() + with.length()));
