@@ -336,4 +336,14 @@ class OdtTest {
         assertTrue(xml.contains("<w:bottom w:val=\"single\""), xml);
         assertTrue(xml.contains("w:before=\"144\" w:after=\"144\""), xml);
     }
+
+    @Test
+    void aColumnBreakEndsAnEmptyParagraphBeforeOrStartsItsOwn() throws IOException {
+        String auto = "<style:style style:name=\"B\" style:family=\"paragraph\"><style:paragraph-properties"
+                + " fo:break-before=\"column\"/></style:style>";
+        String after = document(odt(auto, "<text:p/><text:p text:style-name=\"B\">x</text:p>", null));
+        assertTrue(after.contains("<w:p><w:r><w:br w:type=\"column\"/></w:r></w:p>"), after);
+        String own = document(odt(auto, "<text:p>a</text:p><text:p text:style-name=\"B\">x</text:p>", null));
+        assertTrue(own.contains("<w:r><w:br w:type=\"column\"/></w:r><w:r><w:t"), own);
+    }
 }

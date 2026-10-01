@@ -449,7 +449,12 @@ final class TextBody {
         }
         TextRuns runs = new TextRuns(this);
         if ("column".equals(before)) {
-            add(new Block(TINY, "<w:r><w:br w:type=\"column\"/></w:r>", true));
+            Block last = blocks.isEmpty() ? null : blocks.get(blocks.size() - 1);
+            if (last != null && last.paragraph && last.sectPr == null && last.content.isEmpty()) {
+                last.content = "<w:r><w:br w:type=\"column\"/></w:r>";
+            } else {
+                runs.prefix.append("<w:r><w:br w:type=\"column\"/></w:r>");
+            }
         }
         for (String a : anchors) {
             runs.prefix.append(a);
