@@ -35,11 +35,12 @@ final class RunXml {
 
     String props(CharacterProperties c, List<Sprm> direct) {
         StringBuilder b = new StringBuilder(160);
-        fonts(b, c);
+        Sprm bi = Sprm.find(direct, 0x4A5E);
+        fonts(b, c, bi == null ? c.getFtcBi() : bi.u16());
         flag(b, "b", c.isFBold());
-        flag(b, "bCs", c.isFBoldBi());
+        flag(b, "bCs", toggle(direct, 0x085C, c.isFBoldBi()));
         flag(b, "i", c.isFItalic());
-        flag(b, "iCs", c.isFItalicBi());
+        flag(b, "iCs", toggle(direct, 0x085D, c.isFItalicBi()));
         on(b, "caps", c.isFCaps());
         on(b, "smallCaps", c.isFSmallCaps());
         on(b, "strike", c.isFStrike());
@@ -56,7 +57,8 @@ final class RunXml {
         if (c.getDxaSpace() != 0) {
             b.append("<w:spacing w:val=\"").append(c.getDxaSpace()).append("\"/>");
         }
-        int scale = c.getWCharScale();
+        Sprm scaled = Sprm.find(direct, 0x4852);
+        int scale = scaled != null ? scaled.u16() : c.getWCharScale();
         if (scale > 0 && scale != 100 && scale <= 600) {
             b.append("<w:w w:val=\"").append(scale).append("\"/>");
         }
@@ -67,7 +69,8 @@ final class RunXml {
             b.append("<w:position w:val=\"").append(c.getHpsPos()).append("\"/>");
         }
         b.append("<w:sz w:val=\"").append(size(c.getHps())).append("\"/>");
-        b.append("<w:szCs w:val=\"").append(size(c.getHpsBi() > 0 ? c.getHpsBi() : c.getHps())).append("\"/>");
+        Sprm hpsBi = Sprm.find(direct, 0x4A61);
+        b.append("<w:szCs w:val=\"").append(size(hpsBi != null ? hpsBi.u16() : c.getHps())).append("\"/>");
         if (c.isFHighlight() && c.getIcoHighlight() > 0 && c.getIcoHighlight() < HIGHLIGHT.length) {
             b.append("<w:highlight w:val=\"").append(HIGHLIGHT[c.getIcoHighlight()]).append("\"/>");
         }
@@ -95,11 +98,13 @@ final class RunXml {
         } else if (c.getIss() == 2) {
             b.append("<w:vertAlign w:val=\"subscript\"/>");
         }
-        on(b, "rtl", c.isFBiDi());
-        on(b, "cs", c.isFComplexScripts());
+        on(b, "rtl", toggle(direct, 0x085A, c.isFBiDi()));
+        on(b, "cs", toggle(direct, 0x0882, c.isFComplexScripts()));
         String lang = Lcid.tag(c.getLidDefault());
         String fe = Lcid.tag(c.getLidFE());
-        if (lang != null || fe != null) {
+        Sprm lidBi = Sprm.find(direct, 0x485F);
+        String bidi = lidBi == null ? null : Lcid.tag(lidBi.u16());
+        if (lang != null || fe != null || bidi != null) {
             b.append("<w:lang");
             if (lang != null) {
                 b.append(" w:val=\"").append(lang).append('"');
@@ -107,16 +112,19 @@ final class RunXml {
             if (fe != null) {
                 b.append(" w:eastAsia=\"").append(fe).append('"');
             }
+            if (bidi != null) {
+                b.append(" w:bidi=\"").append(bidi).append('"');
+            }
             b.append("/>");
         }
         return b.toString();
     }
 
-    private void fonts(StringBuilder b, CharacterProperties c) {
+    private void fonts(StringBuilder b, CharacterProperties c, int ftcBi) {
         String ascii = font(c.getFtcAscii());
         String other = font(c.getFtcOther());
         String fe = font(c.getFtcFE());
-        String bi = font(c.getFtcBi());
+        String bi = font(ftcBi);
         if (ascii == null && other == null && fe == null && bi == null) {
             return;
         }
@@ -129,6 +137,18 @@ final class RunXml {
             b.append(" w:hint=\"eastAsia\"");
         }
         b.append("/>");
+    }
+
+    static boolean toggle(List<Sprm> sprms, int op, boolean initial) {
+        boolean v = initial;
+        boolean base = initial;
+        for (Sprm s : sprms) {
+            if (s.opcode() == op) {
+                int x = s.u8();
+                v = x == 0x80 ? base : x == 0x81 ? !base : x != 0;
+            }
+        }
+        return v;
     }
 
     static int color(CharacterProperties c) {

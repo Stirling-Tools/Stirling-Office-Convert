@@ -188,6 +188,22 @@ class DocTest {
         assertTrue(xml.contains("<w:shd w:val=\"clear\" w:color=\"auto\" w:fill=\"336699\"/>"), xml);
         assertTrue(xml.contains("<w:shd w:val=\"clear\" w:color=\"auto\" w:fill=\"FFFF00\"/>"), xml);
         assertTrue(xml.contains("<w:bdr w:val=\"single\" w:sz=\"8\" w:space=\"0\" w:color=\"0000FF\"/>"), xml);
-        assertEquals(2, xml.split("<w:shd ").length - 1, xml);
+        String plain = xml.substring(xml.lastIndexOf("<w:p>"));
+        assertTrue(plain.contains("Plain") && !plain.contains("<w:shd "), xml);
+    }
+
+    @Test
+    void rightToLeftAndScaledRunsKeepTheirProperties() throws IOException {
+        byte[] doc = new WordFixture()
+                .para(List.of(WordFixture.run("\u05e9\u05dc\u05d5\u05dd", Sprms.u8(0x085A, 1), Sprms.u8(0x085C, 1),
+                        Sprms.u16(0x4A61, 32)), WordFixture.run("narrow", Sprms.u16(0x4852, 69))), 0,
+                        Sprms.u8(0x2441, 1))
+                .build();
+        String xml = body(doc);
+        assertTrue(xml.contains("<w:rtl/>"), xml);
+        assertTrue(xml.contains("<w:bCs/>"), xml);
+        assertTrue(xml.contains("<w:szCs w:val=\"32\"/>"), xml);
+        assertTrue(xml.contains("<w:w w:val=\"69\"/>"), xml);
+        assertTrue(xml.contains("<w:bidi/>"), xml);
     }
 }

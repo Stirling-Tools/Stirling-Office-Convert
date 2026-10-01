@@ -111,7 +111,8 @@ final class Story {
         int contentEnd = last == '\r' || last == '\u0007' || last == '\u000C' ? end - 1 : end;
         List<Sprm> sprms = c.src.resolved(istd, par.start());
         String numbering = c.lists.numPr(props.getIlfo(), props.getIlvl());
-        String mark = c.src.runs.props(c.src.chp(Math.max(par.start(), end - 1), istd));
+        List<Source.Segment> markRun = c.src.segments(Math.max(par.start(), end - 1), end, istd);
+        String mark = markRun.isEmpty() ? null : c.src.runs.props(markRun.get(0).chp(), markRun.get(0).sprms());
         String sect = depth == 0 && breaks != null ? breaks.at(end) : null;
         out.append("<w:p>");
         ParaXml.write(out, props, sprms, c.styles.id(istd), numbering, mark, sect);

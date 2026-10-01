@@ -54,18 +54,6 @@ final class Source {
         this.lists = lt;
     }
 
-    CharacterProperties chp(int cp, int istd) {
-        CHPX x = find(chpx, cp);
-        if (x == null) {
-            return styleChp(istd);
-        }
-        try {
-            return x.getCharacterProperties(styles, (short) istd);
-        } catch (RuntimeException e) {
-            return new CharacterProperties();
-        }
-    }
-
     record Segment(int start, int end, CharacterProperties chp, List<Sprm> sprms) {}
 
     List<Segment> segments(int start, int end, int istd) {
@@ -76,7 +64,7 @@ final class Source {
             CHPX x = i >= 0 && i < chpx.size() ? chpx.get(i) : null;
             if (x == null || x.getStart() > at) {
                 int stop = x == null ? end : Math.min(end, x.getStart());
-                out.add(new Segment(at, stop, styleChp(istd), List.of()));
+                out.add(new Segment(at, stop, styleChp(istd), characters(istd, List.of())));
                 at = stop;
                 continue;
             }
@@ -88,7 +76,7 @@ final class Source {
                 } catch (RuntimeException e) {
                     chp = new CharacterProperties();
                 }
-                out.add(new Segment(at, stop, chp, Sprm.parse(x.getGrpprl(), 0)));
+                out.add(new Segment(at, stop, chp, characters(istd, Sprm.parse(x.getGrpprl(), 0))));
                 at = stop;
             }
             i++;
@@ -195,6 +183,42 @@ final class Source {
     List<Sprm> resolved(int istd, int cp) {
         List<Sprm> out = new ArrayList<>(style(istd));
         out.addAll(direct(cp));
+        return out;
+    }
+
+    private final Map<Integer, List<Sprm>> styleChpx = new HashMap<>();
+
+    List<Sprm> characters(int istd, List<Sprm> direct) {
+        List<Sprm> out = new ArrayList<>(styleRuns(istd));
+        Sprm cs = Sprm.find(direct, 0x4A30);
+        if (cs != null) {
+            out.addAll(styleRuns(cs.u16()));
+        }
+        out.addAll(direct);
+        return out;
+    }
+
+    private List<Sprm> styleRuns(int istd) {
+        List<Sprm> cached = styleChpx.get(istd);
+        if (cached != null) {
+            return cached;
+        }
+        List<List<Sprm>> chain = new ArrayList<>();
+        int at = istd;
+        for (int depth = 0; depth < 16 && at != NO_STYLE && styles != null && at >= 0 && at < styles.numStyles();
+                depth++) {
+            StyleDescription sd = styles.getStyleDescription(at);
+            if (sd == null) {
+                break;
+            }
+            chain.add(0, Sprm.parse(sd.getCHPX(), 0));
+            at = sd.getBaseStyle();
+        }
+        List<Sprm> out = new ArrayList<>();
+        for (List<Sprm> l : chain) {
+            out.addAll(l);
+        }
+        styleChpx.put(istd, out);
         return out;
     }
 
