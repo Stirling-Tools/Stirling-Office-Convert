@@ -245,7 +245,13 @@ final class WordDrawings {
             String va = g.get("style:vertical-align");
             anchor = "middle".equals(va) ? "ctr" : "bottom".equals(va) ? "b" : anchor;
         }
-        return "<wps:bodyPr rot=\"0\" vert=\"horz\" wrap=\"square\" lIns=\"" + Length.emu(l) + "\" tIns=\""
+        String mode = g.get("loext:writing-mode", g.get("style:writing-mode", "lr-tb"));
+        String vert = switch (mode) {
+            case "tb-rl", "tb" -> "vert";
+            case "bt-lr" -> "vert270";
+            default -> "horz";
+        };
+        return "<wps:bodyPr rot=\"0\" vert=\"" + vert + "\" wrap=\"square\" lIns=\"" + Length.emu(l) + "\" tIns=\""
                 + Length.emu(t) + "\" rIns=\"" + Length.emu(r) + "\" bIns=\"" + Length.emu(bt) + "\" anchor=\"" + anchor
                 + "\" anchorCtr=\"0\">" + (grow ? "<a:spAutoFit/>" : "<a:noAutofit/>") + "</wps:bodyPr>";
     }

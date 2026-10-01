@@ -31,7 +31,10 @@ final class WordRun {
         if (name != null) {
             return styles.font(name);
         }
-        return fam == null ? null : Styles.unquote(fam);
+        if (fam == null || Styles.unquote(fam).isBlank()) {
+            return null;
+        }
+        return Styles.unquote(fam);
     }
 
     /** The run properties (the inside of w:rPr) for resolved ODF text properties. */

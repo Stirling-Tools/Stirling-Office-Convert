@@ -111,7 +111,7 @@ final class Styles {
             String name = Dom.attr(f, Ns.STYLE, "name");
             String family = Dom.attr(f, Ns.SVG, "font-family");
             if (name != null) {
-                fonts.putIfAbsent(name, family == null || unquote(family).isBlank() ? name : unquote(family));
+                fonts.putIfAbsent(name, family == null ? name : unquote(family));
             }
         }
     }
@@ -134,7 +134,11 @@ final class Styles {
     }
 
     String font(String name) {
-        return name == null ? null : fonts.getOrDefault(name, name);
+        if (name == null) {
+            return null;
+        }
+        String f = fonts.getOrDefault(name, name);
+        return f.isBlank() ? null : f;
     }
 
     Element style(String family, String name, Scope scope) {

@@ -242,4 +242,83 @@ class OdtTest {
         Path p = OdfFixtures.write(dir, "dtd.odt", OdfFixtures.odf(OdfFixtures.TEXT, content, null));
         assertThrows(IOException.class, () -> OfficeToPdf.convert(p, dir.resolve("d.pdf")));
     }
+
+    @Test
+    void relativeColumnWidthsShareTheTextWidth() throws IOException {
+        String auto = "<style:style style:name=\"T\" style:family=\"table\"><style:table-properties style:rel-width=\"100%\""
+                + " table:align=\"margins\"/></style:style><style:style style:name=\"A\" style:family=\"table-column\">"
+                + "<style:table-column-properties style:rel-column-width=\"1*\"/></style:style><style:style"
+                + " style:name=\"B\" style:family=\"table-column\"><style:table-column-properties"
+                + " style:rel-column-width=\"3*\"/></style:style>";
+        String body = "<table:table table:style-name=\"T\"><table:table-column table:style-name=\"A\"/><table:table-column"
+                + " table:style-name=\"B\"/><table:table-row><table:table-cell><text:p>a</text:p></table:table-cell>"
+                + "<table:table-cell><text:p>b</text:p></table:table-cell></table:table-row></table:table>";
+        String xml = document(odt(auto, body, null));
+        assertTrue(xml.contains("<w:gridCol w:w=\"2493\"/><w:gridCol w:w=\"7479\"/>"), xml);
+    }
+
+    @Test
+    void aPageStyleWithoutHeadersGetsNoHeaderParts() throws IOException {
+        Map<String, String> parts = OdfFixtures.rewrite(odt("", "<text:p>Body</text:p>", OdfFixtures.styles("",
+                "<style:page-layout style:name=\"pm1\"><style:page-layout-properties fo:margin-top=\"1in\"/>"
+                + "<style:header-style/></style:page-layout>",
+                "<style:master-page style:name=\"Standard\" style:page-layout-name=\"pm1\"/>")));
+        assertFalse(parts.keySet().stream().anyMatch(k -> k.startsWith("word/header")), parts.keySet().toString());
+        assertFalse(parts.get("word/document.xml").contains("headerReference"));
+    }
+
+    @Test
+    void sectionColumnsSurviveAPageStyleChange() throws IOException {
+        String styles = OdfFixtures.styles("", "<style:page-layout style:name=\"pm1\"><style:page-layout-properties"
+                + " fo:page-width=\"8.5in\" fo:page-height=\"11in\"/></style:page-layout>",
+                "<style:master-page style:name=\"Standard\" style:page-layout-name=\"pm1\"/><style:master-page"
+                + " style:name=\"Next\" style:page-layout-name=\"pm1\"/>");
+        String auto = "<style:style style:name=\"S1\" style:family=\"section\"><style:section-properties>"
+                + "<style:columns fo:column-count=\"2\" fo:column-gap=\"0.25in\"/></style:section-properties>"
+                + "</style:style><style:style style:name=\"P1\" style:family=\"paragraph\""
+                + " style:master-page-name=\"Next\"/>";
+        String xml = document(odt(auto, "<text:p>one</text:p><text:section text:style-name=\"S1\" text:name=\"s\">"
+                + "<text:p>a</text:p><text:p text:style-name=\"P1\">b</text:p></text:section><text:p>end</text:p>",
+                styles));
+        assertEquals(2, xml.split("<w:cols w:num=\"2\"").length - 1, xml);
+        assertTrue(xml.endsWith("<w:cols w:space=\"720\"/></w:sectPr></w:body></w:document>"), xml);
+    }
+
+    @Test
+    void verticalTextBoxesTurnTheirText() throws IOException {
+        String auto = "<style:style style:name=\"gr1\" style:family=\"graphic\"><style:graphic-properties"
+                + " loext:writing-mode=\"bt-lr\"/></style:style>";
+        String body = "<text:p><draw:custom-shape text:anchor-type=\"char\" draw:style-name=\"gr1\" svg:width=\"0.3in\""
+                + " svg:height=\"4in\" svg:x=\"0in\" svg:y=\"0in\"><text:p>side</text:p><draw:enhanced-geometry"
+                + " svg:viewBox=\"0 0 21600 21600\" draw:type=\"rectangle\" draw:enhanced-path=\"M 0 0 L 21600 0 21600"
+                + " 21600 0 21600 Z N\"/></draw:custom-shape></text:p>";
+        String xml = document(odt(auto, body, null));
+        assertTrue(xml.contains("vert=\"vert270\""), xml);
+        assertTrue(xml.contains("<a:custGeom>"), xml);
+    }
+
+    @Test
+    void anEmptyFontFamilyIsNoFont() throws IOException {
+        String content = "<?xml version=\"1.0\"?><office:document-content " + OdfFixtures.NS + "><office:font-face-decls>"
+                + "<style:font-face style:name=\"F\" svg:font-family=\"\"/></office:font-face-decls>"
+                + "<office:automatic-styles><style:style style:name=\"P1\" style:family=\"paragraph\">"
+                + "<style:text-properties style:font-name-complex=\"F\"/></style:style></office:automatic-styles>"
+                + "<office:body>" + OdfFixtures.text("<text:p text:style-name=\"P1\">x</text:p>")
+                + "</office:body></office:document-content>";
+        Path p = OdfFixtures.write(dir, "f.odt", OdfFixtures.odf(OdfFixtures.TEXT, content, null));
+        assertFalse(document(p).contains("w:cs=\"F\""));
+    }
+
+    @Test
+    void theLevelsOwnBulletFontWinsOverItsCharacterStyle() throws IOException {
+        String styles = OdfFixtures.styles("<style:style style:name=\"LL\" style:family=\"text\"><style:text-properties"
+                + " style:font-name=\"Aptos\" fo:font-family=\"Aptos\"/></style:style>", "", "");
+        String list = "<text:list-style style:name=\"L1\"><text:list-level-style-bullet text:level=\"1\""
+                + " text:style-name=\"LL\" text:bullet-char=\"\uF0B7\"><style:text-properties fo:font-family=\"Symbol\"/>"
+                + "</text:list-level-style-bullet></text:list-style>";
+        Path p = odt(list, "<text:list text:style-name=\"L1\"><text:list-item><text:p>x</text:p></text:list-item>"
+                + "</text:list>", styles);
+        String numbering = OdfFixtures.rewrite(p).get("word/numbering.xml");
+        assertTrue(numbering.contains("w:ascii=\"Symbol\""), numbering);
+    }
 }

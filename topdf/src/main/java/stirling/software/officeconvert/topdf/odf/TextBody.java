@@ -51,6 +51,8 @@ final class TextBody {
 
     private boolean pageBreak;
 
+    private Element sectionColumns;
+
     private Props paraBase;
 
     private Props textBase;
@@ -262,14 +264,24 @@ final class TextBody {
         }
         Props sp = w.styles.props("section", Dom.attr(s, Ns.TEXT, "style-name"), scope, "section-properties", false);
         Element cols = sp.kid("columns");
-        Element outer = section.columns;
-        if (WordPages.columnCount(cols) == WordPages.columnCount(outer)) {
-            blocks(s, null);
-            return;
+        Element outer = sectionColumns;
+        if (cols == null) {
+            cols = outer;
         }
-        newSection(section.master, cols, true, null);
+        sectionColumns = cols;
+        if (WordPages.columnCount(cols) != WordPages.columnCount(section.columns)) {
+            newSection(section.master, cols, true, null);
+        }
         blocks(s, null);
-        newSection(section.master, outer, true, null);
+        sectionColumns = outer;
+        Element after = columnsFor(section.master);
+        if (WordPages.columnCount(after) != WordPages.columnCount(section.columns)) {
+            newSection(section.master, after, true, null);
+        }
+    }
+
+    private Element columnsFor(String master) {
+        return sectionColumns != null ? sectionColumns : w.pages.columns(master);
     }
 
     private void newSection(String master, Element columns, boolean continuous, String pageStart) {
@@ -321,7 +333,7 @@ final class TextBody {
             }
             return;
         }
-        newSection(mp, w.pages.columns(mp), false, number);
+        newSection(mp, columnsFor(mp), false, number);
         pageBreak = false;
     }
 
