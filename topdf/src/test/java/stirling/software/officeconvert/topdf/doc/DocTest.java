@@ -478,4 +478,22 @@ class DocTest {
         assertTrue(xml.contains("<a:xfrm rot=\"18900000\">"), xml);
         assertTrue(xml.contains("<w:color w:val=\"C0C0C0\"/>"), xml);
     }
+
+    @Test
+    void drawingsStackInTheirDrawingLayerOrder() throws IOException {
+        byte[] doc = new WordFixture()
+                .para(List.of(WordFixture.run("\u0008", Sprms.special()), WordFixture.run("\u0008", Sprms.special())), 0)
+                .shape(new ShapeFixture.Shape(1025, 1, new int[] {0, 0, 1000, 1000},
+                        ShapeFixture.fspaFlags(2, 2, 3, 0, false), java.util.Map.of(0x0181, 0x0000FF), java.util.Map.of()))
+                .shape(new ShapeFixture.Shape(1026, 1, new int[] {0, 0, 1000, 1000},
+                        ShapeFixture.fspaFlags(2, 2, 3, 0, false), java.util.Map.of(0x0181, 0x00FF00), java.util.Map.of()))
+                .reverseDrawingOrder().build();
+        String xml = body(doc);
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("relativeHeight=\"(\\d+)\"").matcher(xml);
+        assertTrue(m.find());
+        long first = Long.parseLong(m.group(1));
+        assertTrue(m.find());
+        long second = Long.parseLong(m.group(1));
+        assertTrue(first > second, xml);
+    }
 }

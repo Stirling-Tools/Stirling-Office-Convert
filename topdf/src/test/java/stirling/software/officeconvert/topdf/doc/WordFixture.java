@@ -49,6 +49,8 @@ final class WordFixture {
 
     private String title;
 
+    private boolean reversed;
+
     private int nFib = 0xC1;
 
     private int fibFlags;
@@ -137,6 +139,11 @@ final class WordFixture {
 
     WordFixture bookmark(String name, int start, int end) {
         bookmarks.add(new Object[] {name, start, end});
+        return this;
+    }
+
+    WordFixture reverseDrawingOrder() {
+        reversed = true;
         return this;
     }
 
@@ -259,7 +266,11 @@ final class WordFixture {
                 }
             }
             fcLcb[40] = put(table, ShapeFixture.fspa(shapes, cps, ccpText));
-            fcLcb[50] = put(table, ShapeFixture.dggInfo(shapes));
+            List<ShapeFixture.Shape> layered = new ArrayList<>(shapes);
+            if (reversed) {
+                java.util.Collections.reverse(layered);
+            }
+            fcLcb[50] = put(table, ShapeFixture.dggInfo(layered));
         }
         if (ccpTxbx > 0) {
             int k = textboxes.size();
