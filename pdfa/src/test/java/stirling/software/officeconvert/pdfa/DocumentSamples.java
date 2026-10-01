@@ -120,6 +120,30 @@ final class DocumentSamples {
             perms.setItem("DocMDP", sig);
             d.getDocumentCatalog().getCOSObject().setItem(COSName.PERMS, perms);
         });
+        doc("d03_metadata", Set.of("1:6.7.2-2", "1:6.7.5-1", "1:6.7.5-2", "1:6.7.9-2", "1:6.7.11-4",
+                "2:6.6.2.1-2", "2:6.6.2.1-3", "2:6.6.2.1-4", "2:6.6.2.3.1-1", "2:6.6.4-4"), d -> {
+            PDPage p = page(d, "Metadata that PDF/A does not accept");
+            String xmp = XMP_HEAD + "<x:xmpmeta xmlns:x=\"adobe:ns:meta/\"><rdf:RDF "
+                    + "xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\"><rdf:Description rdf:about=\"\" "
+                    + "xmlns:id=\"http://www.aiim.org/pdfa/ns/id/\" xmlns:my=\"http://example.com/my/\">"
+                    + "<id:part>1</id:part><id:conformance>B</id:conformance><my:thing>value</my:thing>"
+                    + "</rdf:Description></rdf:RDF></x:xmpmeta><?xpacket end=\"w\"?>";
+            COSStream m = d.getDocument().createCOSStream();
+            m.setItem(COSName.TYPE, COSName.METADATA);
+            m.setItem(COSName.SUBTYPE, COSName.getPDFName("XML"));
+            try (OutputStream o = m.createOutputStream(COSName.FLATE_DECODE)) {
+                o.write(xmp.getBytes(StandardCharsets.UTF_8));
+            }
+            d.getDocumentCatalog().getCOSObject().setItem(COSName.METADATA, m);
+            COSStream broken = d.getDocument().createCOSStream();
+            broken.setItem(COSName.TYPE, COSName.METADATA);
+            broken.setItem(COSName.SUBTYPE, COSName.getPDFName("XML"));
+            try (OutputStream o = broken.createOutputStream()) {
+                o.write((XMP_HEAD + "<x:xmpmeta xmlns:x=\"adobe:ns:meta/\"><rdf:RDF><unclosed>")
+                        .getBytes(StandardCharsets.UTF_8));
+            }
+            p.getCOSObject().setItem(COSName.METADATA, broken);
+        });
         doc("d04_optional_content_configs", Set.of("2:6.9-1", "2:6.9-2", "2:6.9-3"), d -> {
             PDPage p = page(d, "Optional content configurations");
             COSDictionary a = ocg("A");

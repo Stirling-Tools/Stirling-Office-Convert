@@ -44,6 +44,7 @@ final class Conversion {
         }
         Signatures.run(doc, report);
         Interactive.run(doc, level, report);
+        ObjectMetadata.run(doc, report);
         EmbeddedFiles.run(doc, level, report);
         if (level.part() == 1) {
             OptionalContentRemoval.run(doc, report);
