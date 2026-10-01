@@ -34,9 +34,11 @@ public final class PageReader {
     private final PDDocument document;
     private final FontResolver fonts = new FontResolver();
     private final ParsedStreams parsed = new ParsedStreams();
+    private final PageIndex pages;
 
     public PageReader(PDDocument document) {
         this.document = document;
+        this.pages = new PageIndex(document);
         TextMaps.seed(document);
     }
 
@@ -95,13 +97,17 @@ public final class PageReader {
         float width = 612;
         float height = 792;
         try {
-            PDRectangle crop = document.getPage(index).getCropBox();
+            PDRectangle crop = pages.cropBox(index);
             width = crop.getWidth() * fitScale(crop);
             height = crop.getHeight() * fitScale(crop);
         } catch (RuntimeException e) {
         }
         return new PageData(index, width, height, 0, List.of(), List.of(), List.of(),
                 new PageGraphics(List.of(), List.of(), List.of(), List.of()), List.of());
+    }
+
+    public PDRectangle cropBox(int index) {
+        return pages.cropBox(index);
     }
 
     public PageData complete(PageData glyphsOnly) throws IOException {
