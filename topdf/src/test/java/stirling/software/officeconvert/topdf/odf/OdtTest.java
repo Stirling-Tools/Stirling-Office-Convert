@@ -235,6 +235,24 @@ class OdtTest {
     }
 
     @Test
+    void anInlinePictureKeepsTheFontOfItsParagraph() throws IOException {
+        byte[] png = java.util.HexFormat.of().parseHex("89504e470d0a1a0a0000000d494844520000000200000002080600000072b6"
+                + "0d240000001249444154789c63f8cfc0d0c0f01f0c210c003c5f06fb4398423e0000000049454e44ae426082");
+        String automatic = "<style:style style:name=\"P1\" style:family=\"paragraph\"><style:text-properties"
+                + " style:font-name=\"Arial\" fo:font-size=\"10pt\"/></style:style>";
+        String body = "<text:p text:style-name=\"P1\"><draw:frame text:anchor-type=\"as-char\" svg:width=\"1in\""
+                + " svg:height=\"1in\"><draw:image xlink:href=\"Pictures/a.png\"/></draw:frame>Logo</text:p>";
+        Map<String, byte[]> parts = new LinkedHashMap<>();
+        parts.put("content.xml", OdfFixtures.content(automatic, OdfFixtures.text(body)).getBytes(StandardCharsets.UTF_8));
+        parts.put("Pictures/a.png", png);
+        Path p = OdfFixtures.write(dir, "logo.odt", OdfFixtures.zip(OdfFixtures.TEXT, parts));
+        String xml = OdfFixtures.rewrite(p).get("word/document.xml");
+        int drawing = xml.indexOf("<w:drawing>");
+        String run = xml.substring(xml.lastIndexOf("<w:r>", drawing), drawing);
+        assertTrue(run.contains("w:ascii=\"Arial\"") && run.contains("<w:sz w:val=\"20\"/>"), xml);
+    }
+
+    @Test
     void encryptedDocumentAsksForThePassword() throws IOException {
         Map<String, byte[]> parts = new LinkedHashMap<>();
         parts.put("content.xml", "not xml".getBytes(StandardCharsets.UTF_8));
