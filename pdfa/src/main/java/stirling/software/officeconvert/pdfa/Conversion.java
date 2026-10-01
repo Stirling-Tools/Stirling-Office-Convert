@@ -57,6 +57,7 @@ final class Conversion {
         FontFixer.run(doc, usage, level, FontLibrary.withSystem(options.fontDirs()), report);
         FontCompaction.run(doc, usage, level);
         PdfFiles.stopIfInterrupted();
+        JpxImages.run(doc, level, report);
         StreamFixer.run(doc, level, report);
         if (level.part() == 1) {
             Transparency.run(doc, options.flattenDpi(), report);

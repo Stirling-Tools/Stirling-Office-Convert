@@ -13,6 +13,7 @@ dependencies {
     testImplementation(platform("org.junit:junit-bom:5.13.4"))
     testImplementation("org.junit.jupiter:junit-jupiter")
     testImplementation("org.verapdf:validation-model:1.30.2")
+    testImplementation("com.github.jai-imageio:jai-imageio-jpeg2000:1.4.0")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 
