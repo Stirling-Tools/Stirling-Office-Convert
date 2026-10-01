@@ -173,6 +173,32 @@ final class FontSamples {
                 Samples.text(cs, f, 14, 50, 780, "A range across a byte boundary: \u0141\u00f3d\u017a");
             }
         });
+        doc("f09_font_types_and_maps", Set.of("2:6.2.11.6-1"), d -> {
+            PDFont noSubtype = trueType(d);
+            noSubtype.getCOSObject().setItem(COSName.SUBTYPE, COSName.getPDFName("Bogus"));
+            PDType0Font noMap = PDType0Font.load(d, Samples.liberation(), false);
+            org.apache.fontbox.ttf.TrueTypeFont lib = Samples.liberation();
+            java.util.TreeMap<Integer, Integer> map = new java.util.TreeMap<>();
+            for (char c = 'A'; c <= 'Z'; c++) {
+                map.put(0xF000 + c, lib.nameToGID(String.valueOf(c)));
+            }
+            byte[] program = withCmap(lib, Cmaps.table(java.util.List.of(new Cmaps.Subtable(3, 0, map))));
+            COSDictionary symbolOnly = Samples.trueTypeUnembedded("SymbolOnly", Samples.arialWidths());
+            COSStream file = d.getDocument().createCOSStream();
+            try (OutputStream o = file.createOutputStream(COSName.FLATE_DECODE)) {
+                o.write(program);
+            }
+            file.setInt(COSName.LENGTH1, program.length);
+            ((COSDictionary) symbolOnly.getDictionaryObject(COSName.FONT_DESC)).setItem(COSName.FONT_FILE2, file);
+            PDPage p = page(d, "", noSubtype, noMap, PDFontFactory.createFont(symbolOnly));
+            try (var cs = new PDPageContentStream(d, p, PDPageContentStream.AppendMode.APPEND, false)) {
+                Samples.text(cs, noMap, 14, 50, 740, "No CIDToGIDMap");
+            }
+            Samples.raw(p, d, "BT /A 14 Tf 50 780 Td (No Subtype) Tj ET BT /C 14 Tf 50 700 Td (ABC) Tj ET");
+            d.save(new ByteArrayOutputStream());
+            ((COSDictionary) ((COSArray) noMap.getCOSObject().getDictionaryObject(COSName.DESCENDANT_FONTS))
+                    .getObject(0)).setItem(COSName.CID_TO_GID_MAP, COSName.getPDFName("Bogus"));
+        });
     }
 
     static byte[] withCmap(org.apache.fontbox.ttf.TrueTypeFont font, byte[] cmap) throws Exception {
