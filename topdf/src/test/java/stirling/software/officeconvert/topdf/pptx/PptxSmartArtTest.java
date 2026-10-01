@@ -94,6 +94,13 @@ class PptxSmartArtTest {
     }
 
     @Test
+    void smartArtFindsADrawingNumberedApartFromItsData() throws IOException {
+        byte[] pptx = smartArt(shape(1, "ellipse", 0, 0, 2743200, 1371600, "Literacy outcome"), true, "drawing7.xml");
+        Decks.Converted c = Decks.convert(dir, "smartart7.pptx", pptx);
+        assertTrue(c.text().contains("Literacy outcome"), c.text() + " " + c.result().warnings());
+    }
+
+    @Test
     void smartArtDrawsWithALowerCaseContentType() throws IOException {
         byte[] pptx = smartArt(shape(1, "ellipse", 0, 0, 2743200, 1371600, "Literacy outcome"), true, "drawing1.xml");
         Fixtures.Zip z = Fixtures.edit(pptx);

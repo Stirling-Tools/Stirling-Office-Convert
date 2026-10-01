@@ -211,7 +211,7 @@ final class SmartArtLayout {
         return n.startsWith("default") || n.startsWith("bprocess") || n.startsWith("list") ? Kind.GRID : null;
     }
 
-    private static String[] relIds(XSLFGraphicFrame frame) {
+    static String[] relIds(XSLFGraphicFrame frame) {
         try (XmlCursor c = frame.getXmlObject().newCursor()) {
             int tokens = 0;
             while (c.hasNextToken() && tokens++ < MAX_TOKENS) {

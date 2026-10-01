@@ -39,11 +39,16 @@ final class Frames {
         if (frame instanceof XSLFDiagram d) {
             XSLFGroupShape g = d.getGroupShape();
             XSLFDiagramDrawing drawing = d.getDiagramDrawing();
-            if (g == null || drawing == null || g.getShapes().isEmpty()) {
-                SmartArtLayout.paint(deck, shapes, d, space);
-            } else {
+            if (g != null && drawing != null && !g.getShapes().isEmpty()) {
                 String part = drawing.getPackagePart().getPartName().getName();
                 shapes.group(unscaled(g, space), space.onSlide().withRelsPart(part), true);
+                return;
+            }
+            DiagramDrawings.Found found = DiagramDrawings.find(deck, d, space);
+            if (found != null && !found.group().getShapes().isEmpty()) {
+                shapes.group(unscaled(found.group(), space), space.onSlide().withRelsPart(found.part()), true);
+            } else {
+                SmartArtLayout.paint(deck, shapes, d, space);
             }
             return;
         }
