@@ -28,4 +28,13 @@ class WorldNumbersTest {
         assertEquals("\u0628-", Numerals.autoNumber("arabic1Minus", 2));
         assertNull(Numerals.autoNumber("arabicPeriod", 2));
     }
+
+    @Test
+    void legalNumbersUseFinancialSigns() {
+        assertEquals("\u58F9\u62FE", NumberFormat.format(10, "chineseLegalSimplified"));
+        assertEquals("\u58F9\u4F70\u96F6\u4F0D", NumberFormat.format(105, "chineseLegalSimplified"));
+        assertEquals("\u8CB3\u62FE\u53C3", NumberFormat.format(23, "ideographLegalTraditional"));
+        assertEquals("\u58F1\u767E\u4F0D", NumberFormat.format(105, "japaneseLegal"));
+        assertEquals("\u5F10\u62FE", NumberFormat.format(20, "japaneseLegal"));
+    }
 }
