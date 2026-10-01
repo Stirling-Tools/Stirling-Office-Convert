@@ -31,12 +31,12 @@ public final class LineBuilder {
     }
 
     private static List<Line> segment(GlyphRows.Row row) {
-        List<Word> words = words(row);
+        float tracking = trackingOf(row.glyphs);
+        List<Word> words = words(row, tracking);
         if (words.isEmpty()) {
             return List.of();
         }
         float drawnSpace = medianSpace(row.spaces);
-        float tracking = trackingOf(row.glyphs);
         List<Line> out = new ArrayList<>();
         int start = 0;
         for (int i = 1; i < words.size(); i++) {
@@ -73,13 +73,12 @@ public final class LineBuilder {
         return Leaders.isLeader(words.get(i - 1).text) || Leaders.isLeader(words.get(i).text);
     }
 
-    private static List<Word> words(GlyphRows.Row row) {
+    private static List<Word> words(GlyphRows.Row row, float tracking) {
         List<Glyph> glyphs = row.glyphs;
         List<Glyph> spaces = row.spaces;
         spaces.sort(Comparator.comparingDouble((Glyph g) -> g.x));
         List<Word> words = new ArrayList<>();
         List<Glyph> current = new ArrayList<>();
-        float tracking = trackingOf(glyphs);
         int si = 0;
         Glyph prev = null;
         for (Glyph g : glyphs) {
