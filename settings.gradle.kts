@@ -1,3 +1,3 @@
 rootProject.name = "stirling-office-convert"
 
-include("core", "legacy", "topdf", "cli", "app")
+include("core", "legacy", "topdf", "pdfa", "cli", "app")

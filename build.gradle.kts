@@ -154,6 +154,6 @@ tasks.register("publishAllToCentralPortal") {
     group = "publishing"
     description = "Publish every published module to the Central Portal (upload + finalize)"
     dependsOn(":core:publishAllPublicationsToCentralPortalRepository", ":legacy:publishAllPublicationsToCentralPortalRepository",
-        ":topdf:publishAllPublicationsToCentralPortalRepository")
+        ":topdf:publishAllPublicationsToCentralPortalRepository", ":pdfa:publishAllPublicationsToCentralPortalRepository")
     finalizedBy("finalizePortalDeployment")
 }
