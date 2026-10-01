@@ -76,17 +76,43 @@ final class ContentFixer {
                 if ("BI".equals(name) && inlineImage(op.getImageParameters())) {
                     changed = true;
                 }
+                List<Object> limited = ContentLimits.fix(operation, level);
+                if (limited != null) {
+                    operation = limited;
+                    changed = true;
+                }
                 out.addAll(operation);
             }
-            usage.scan(changed ? out : tokens, n.resources());
+            List<Object> result = changed ? out : tokens;
+            usage.scan(result, n.resources());
+            if (Nesting.depth(result) > Nesting.MAX_DEPTH) {
+                COSDictionary res = resources(n);
+                if (res != null) {
+                    result = Nesting.flatten(result, res, level, report);
+                    changed = true;
+                }
+            }
             if (changed) {
                 COSStream target = n.streams().get(0);
-                ContentTokens.write(target, out);
+                ContentTokens.write(target, result);
                 if (n.kind() == ContentGraph.Kind.PAGE && n.streams().size() > 1) {
                     n.owner().setItem(COSName.CONTENTS, target);
                 }
             }
         }
+    }
+
+    private static COSDictionary resources(ContentGraph.Node n) {
+        if (n.resources() != null) {
+            n.resources().setDirect(false);
+            return n.resources();
+        }
+        if (n.kind() != ContentGraph.Kind.PAGE) {
+            return null;
+        }
+        COSDictionary res = new COSDictionary();
+        n.owner().setItem(COSName.RESOURCES, res);
+        return res;
     }
 
     private static boolean inlineImage(COSDictionary params) {

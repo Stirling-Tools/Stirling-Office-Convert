@@ -1,6 +1,7 @@
 package stirling.software.officeconvert.pdfa;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -37,6 +38,59 @@ final class Limits {
         CosWalk.walk(doc, l::visit);
     }
 
+    static final int MAX_NAME_BYTES = 127;
+
+    static int maxString(PdfALevel level) {
+        return level.part() == 1 ? 65_535 : 32_767;
+    }
+
+    static int maxArray(PdfALevel level) {
+        return level.part() == 1 ? 8191 : Integer.MAX_VALUE;
+    }
+
+    static COSName name(COSName n) {
+        byte[] b = n.getName().getBytes(StandardCharsets.UTF_8);
+        if (b.length <= MAX_NAME_BYTES) {
+            return n;
+        }
+        String s = n.getName();
+        int keep = s.length();
+        while (s.substring(0, keep).getBytes(StandardCharsets.UTF_8).length > 100) {
+            keep--;
+        }
+        if (keep > 0 && Character.isHighSurrogate(s.charAt(keep - 1))) {
+            keep--;
+        }
+        return COSName.getPDFName(s.substring(0, keep) + "_" + Integer.toHexString(s.hashCode()));
+    }
+
+    static void names(PDDocument doc, Report report) throws IOException {
+        boolean[] changed = {false};
+        CosWalk.walk(doc, b -> {
+            if (b instanceof COSDictionary d) {
+                for (Map.Entry<COSName, COSBase> e : new ArrayList<>(d.entrySet())) {
+                    COSName k = name(e.getKey());
+                    COSBase v = e.getValue() instanceof COSName n ? name(n) : e.getValue();
+                    if (k != e.getKey() || v != e.getValue()) {
+                        d.removeItem(e.getKey());
+                        d.setItem(k, v);
+                        changed[0] = true;
+                    }
+                }
+            } else if (b instanceof COSArray a) {
+                for (int i = 0; i < a.size(); i++) {
+                    if (a.get(i) instanceof COSName n && name(n) != n) {
+                        a.set(i, name(n));
+                        changed[0] = true;
+                    }
+                }
+            }
+        });
+        if (changed[0]) {
+            report.warn("Shortened names longer than " + MAX_NAME_BYTES + " bytes");
+        }
+    }
+
     static COSBase number(COSBase b, PdfALevel level) {
         if (b instanceof COSFloat f) {
             double v = f.floatValue();
@@ -59,7 +113,7 @@ final class Limits {
             report.warn("Clamped numbers beyond the range " + level.label() + " allows");
             return n;
         }
-        int max = level.part() == 1 ? 65_535 : 32_767;
+        int max = maxString(level);
         if (b instanceof COSString s && s.getBytes().length > max) {
             report.warn("Shortened a string longer than " + level.label() + " allows");
             return new COSString(java.util.Arrays.copyOf(s.getBytes(), max));

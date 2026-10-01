@@ -50,6 +50,8 @@ final class Conversion {
             OptionalContent.configure(doc);
         }
         PdfFiles.stopIfInterrupted();
+        PageSize.run(doc, level, report);
+        Limits.names(doc, report);
         ContentGraph graph = ContentGraph.of(doc);
         FontUsage usage = new FontUsage();
         DeviceColours colours = new DeviceColours();
