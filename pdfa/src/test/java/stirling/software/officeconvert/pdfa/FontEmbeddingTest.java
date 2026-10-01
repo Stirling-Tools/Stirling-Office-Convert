@@ -20,6 +20,8 @@ import org.apache.pdfbox.pdmodel.font.PDType0Font;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import stirling.software.officeconvert.topdf.font.FontSet;
+
 class FontEmbeddingTest {
 
     @TempDir
@@ -41,6 +43,22 @@ class FontEmbeddingTest {
         assertEmbedded(out);
         assertTrue(r.substitutedFonts().size() >= 13, r.substitutedFonts().toString());
         assertTrue(r.substitutedFonts().stream().anyMatch(s -> s.startsWith("Helvetica as ")), r.substitutedFonts().toString());
+    }
+
+    @Test
+    void theHostsFontSetPicksTheEmbeddedFonts() throws Exception {
+        Path in = Samples.write(dir, "s01_std14_unembedded");
+        Path out = dir.resolve("hosted.pdf");
+        PdfToPdfA.Options options = PdfToPdfA.Options.defaults()
+                .fonts(FontSet.builder().systemFonts(false).build());
+        PdfToPdfA.Result r = PdfToPdfA.convert(in, out, options);
+        assertEmbedded(out);
+        assertFalse(r.substitutedFonts().isEmpty());
+        for (String s : r.substitutedFonts()) {
+            assertTrue(!s.contains(" as ") || s.contains(" as Liberation Sans "), r.substitutedFonts().toString());
+        }
+        assertTrue(r.substitutedFonts().stream().anyMatch(s -> s.startsWith("Times-Roman as Liberation Sans ")));
+        assertTrue(options.toString().contains("systemFonts=false"), options.toString());
     }
 
     @Test

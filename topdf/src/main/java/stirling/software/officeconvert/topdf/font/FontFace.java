@@ -334,6 +334,9 @@ public final class FontFace {
         }
         int glyph = program.glyph(mapped(codePoint));
         if (glyph > 0) {
+            if (hangulCell(codePoint)) {
+                return unitsPerEm();
+            }
             float script = scriptScale(codePoint);
             if (script > 0) {
                 return Math.round(program.advanceOfGlyph(glyph) * script);
@@ -358,6 +361,11 @@ public final class FontFace {
     private int symbolAdvance(int codePoint) {
         int code = symbols == null ? -1 : SymbolFonts.code(codePoint);
         return code < 0 ? -1 : symbols.advance(code);
+    }
+
+    private boolean hangulCell(int cp) {
+        return eastAsianName && (cp >= 0xAC00 && cp <= 0xD7A3 || cp >= 0x1100 && cp <= 0x11FF
+                || cp >= 0x3130 && cp <= 0x318F) && substituted();
     }
 
     // East Asian wide characters take a full em in every CJK font, so a missing one keeps that width

@@ -13,7 +13,6 @@ import stirling.software.officeconvert.memory.Admission;
 import stirling.software.officeconvert.topdf.OfficeToPdf.Format;
 import stirling.software.officeconvert.topdf.OfficeToPdf.Options;
 import stirling.software.officeconvert.topdf.OfficeToPdf.Result;
-import stirling.software.officeconvert.topdf.font.FontLibrary;
 import stirling.software.officeconvert.topdf.text.Converted;
 import stirling.software.officeconvert.topdf.text.CsvPackage;
 import stirling.software.officeconvert.topdf.text.TextFormats;
@@ -65,7 +64,7 @@ final class TextInput {
             try (OutputStream os = new BufferedOutputStream(Files.newOutputStream(pkg), 1 << 16)) {
                 outcome = plain ? TextPackage.write(source, os, options.maxPages())
                         : CsvPackage.write(source, os, kind == TextFormats.Kind.CSV ? ',' : '\t', sheetName(source),
-                                options.maxPages(), FontLibrary.withSystem(options.fontDirs()));
+                                options.maxPages(), options.fontLibrary());
             } finally {
                 ticket.close();
             }

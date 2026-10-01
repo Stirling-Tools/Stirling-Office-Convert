@@ -12,7 +12,6 @@ import org.apache.pdfbox.cos.COSString;
 import org.apache.pdfbox.pdmodel.PDDocument;
 
 import stirling.software.officeconvert.extract.PdfFiles;
-import stirling.software.officeconvert.topdf.font.FontLibrary;
 
 final class Conversion {
 
@@ -56,7 +55,7 @@ final class Conversion {
         FontUsage usage = new FontUsage();
         DeviceColours colours = new DeviceColours();
         ContentFixer.run(graph, level, report, usage, colours);
-        FontFixer.run(doc, usage, level, () -> FontLibrary.withSystem(options.fontDirs()), report);
+        FontFixer.run(doc, usage, level, options::fontLibrary, report);
         PdfFiles.stopIfInterrupted();
         FontCompaction compaction = new FontCompaction(doc, usage, level);
         CosWalk.Visitor jpx = JpxImages.visitor(doc, level, report);
