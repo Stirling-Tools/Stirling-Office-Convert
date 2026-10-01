@@ -39,19 +39,19 @@ final class ChartStream {
 
     final Map<Integer, List<Embedded>> embedded = new HashMap<>();
 
-    private final ChartRecords.Fonts fonts;
+    private final ChartRecords.Lookup fonts;
 
     private final List<Integer> autoFills;
 
     private final List<Integer> autoLines;
 
-    private ChartStream(ChartRecords.Fonts fonts, List<Integer> autoFills, List<Integer> autoLines) {
+    private ChartStream(ChartRecords.Lookup fonts, List<Integer> autoFills, List<Integer> autoLines) {
         this.fonts = fonts;
         this.autoFills = autoFills;
         this.autoLines = autoLines;
     }
 
-    static ChartStream read(DirectoryNode root, ChartRecords.Fonts fonts, List<Integer> autoFills,
+    static ChartStream read(DirectoryNode root, ChartRecords.Lookup fonts, List<Integer> autoFills,
             List<Integer> autoLines) throws IOException {
         ChartStream out = new ChartStream(fonts, autoFills, autoLines);
         Entry e = root.hasEntryCaseInsensitive("Workbook") ? root.getEntryCaseInsensitive("Workbook") : null;

@@ -12,10 +12,12 @@ import org.apache.poi.hssf.record.WindowTwoRecord;
 import org.apache.poi.hssf.record.chart.BeginRecord;
 import org.apache.poi.hssf.record.chart.ChartRecord;
 import org.apache.poi.hssf.record.chart.EndRecord;
+import org.apache.poi.hssf.record.chart.LinkedDataRecord;
 import org.apache.poi.hssf.record.chart.SeriesRecord;
 import org.apache.poi.hssf.record.chart.SeriesTextRecord;
 import org.apache.poi.hssf.usermodel.HSSFSheet;
 import org.apache.poi.hssf.usermodel.HSSFWorkbook;
+import org.apache.poi.ss.formula.ptg.Ptg;
 
 final class ChartFixtures {
 
@@ -30,6 +32,33 @@ final class ChartFixtures {
             at++;
         }
         records.addAll(at, chart);
+    }
+
+    static List<RecordBase> linkedChart(int type, String name, int points, Ptg values) {
+        List<RecordBase> r = new ArrayList<>();
+        r.add(new ChartRecord());
+        r.add(new BeginRecord());
+        SeriesRecord s = new SeriesRecord();
+        s.setNumCategories((short) points);
+        s.setNumValues((short) points);
+        r.add(s);
+        r.add(new BeginRecord());
+        LinkedDataRecord link = new LinkedDataRecord();
+        link.setLinkType((byte) 1);
+        link.setReferenceType((byte) 2);
+        link.setFormulaOfLink(new Ptg[] {values});
+        r.add(link);
+        r.add(text(name));
+        r.add(new EndRecord());
+        r.add(new UnknownRecord(0x1041, new byte[18]));
+        r.add(new BeginRecord());
+        r.add(new UnknownRecord(0x1014, new byte[20]));
+        r.add(new BeginRecord());
+        r.add(new UnknownRecord(type, new byte[6]));
+        r.add(new EndRecord());
+        r.add(new EndRecord());
+        r.add(new EndRecord());
+        return r;
     }
 
     static List<RecordBase> chart(String title, int type, byte[] flags, String[] series, String[] categories,

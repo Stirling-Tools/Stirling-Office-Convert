@@ -129,7 +129,7 @@ public final class XlsPackage {
             if (!drawings) {
                 drawingsRefused = true;
             }
-            ChartFonts fonts = new ChartFonts(wb);
+            ChartLookup fonts = new ChartLookup(wb);
             chartStream = ChartStream.read(root, fonts, fonts.autoColors(false), fonts.autoColors(true));
             StringBuilder book = new StringBuilder(Xml.HEAD).append("<workbook xmlns=\"").append(Xml.MAIN)
                     .append("\" xmlns:r=\"").append(Xml.REL).append("\"><fileVersion appName=\"xl\"/>");

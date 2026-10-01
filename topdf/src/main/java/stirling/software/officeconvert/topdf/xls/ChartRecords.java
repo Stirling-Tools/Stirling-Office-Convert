@@ -17,6 +17,7 @@ import org.apache.poi.hssf.record.chart.LinkedDataRecord;
 import org.apache.poi.hssf.record.chart.SeriesRecord;
 import org.apache.poi.hssf.record.chart.SeriesTextRecord;
 import org.apache.poi.hssf.record.chart.ValueRangeRecord;
+import org.apache.poi.ss.formula.ptg.Ptg;
 
 final class ChartRecords {
 
@@ -33,7 +34,7 @@ final class ChartRecords {
             AXIS_PARENT = 0x1041, SERIES_GROUP = 0x1045, IFMT = 0x104E, SERFMT = 0x105D, BOP_POP = 0x1061,
             SERIES_INDEX = 0x1065;
 
-    interface Fonts {
+    interface Lookup {
         BiffChart.Text font(int index, String text);
 
         String face(int index);
@@ -41,9 +42,11 @@ final class ChartRecords {
         String format(int index);
 
         String number(double value, int xf, int fallbackFormat);
+
+        List<Object> cells(Ptg[] reference);
     }
 
-    private final Fonts fonts;
+    private final Lookup fonts;
 
     private final Deque<Integer> stack = new ArrayDeque<>();
 
@@ -87,7 +90,7 @@ final class ChartRecords {
 
     private BiffChart.Text base;
 
-    ChartRecords(Fonts fonts) {
+    ChartRecords(Lookup fonts) {
         this.fonts = fonts;
     }
 
@@ -224,10 +227,40 @@ final class ChartRecords {
     }
 
     private void linked(LinkedDataRecord r) {
-        if (stack.peek() != null && stack.peek() == SERIES && !series.isEmpty() && r.getLinkType() == 1) {
-            series.get(series.size() - 1).format = r.getIndexNumberFmtRecord();
-        } else if (stack.peek() != null && stack.peek() == SERIES && !series.isEmpty() && r.getLinkType() == 2) {
-            series.get(series.size() - 1).categoryFormat = r.getIndexNumberFmtRecord();
+        if (stack.peek() == null || stack.peek() != SERIES || series.isEmpty()) {
+            return;
+        }
+        SeriesBuilder s = series.get(series.size() - 1);
+        Ptg[] ref = r.getReferenceType() == 2 ? r.getFormulaOfLink() : null;
+        if (r.getLinkType() == 1) {
+            s.format = r.getIndexNumberFmtRecord();
+            s.valueRef = ref;
+        } else if (r.getLinkType() == 2) {
+            s.categoryFormat = r.getIndexNumberFmtRecord();
+            s.categoryRef = ref;
+        }
+    }
+
+    private void fromCells(SeriesBuilder s) {
+        if (s.values.isEmpty() && s.valueRef != null) {
+            List<Object> cells = fonts.cells(s.valueRef);
+            for (int i = 0; i < cells.size() && i < MAX_POINTS; i++) {
+                if (cells.get(i) instanceof Double d && Double.isFinite(d)) {
+                    s.values.put(i, d);
+                }
+            }
+        }
+        if (s.categories.isEmpty() && s.categoryRef != null) {
+            List<Object> cells = fonts.cells(s.categoryRef);
+            for (int i = 0; i < cells.size() && i < MAX_POINTS; i++) {
+                Object v = cells.get(i);
+                if (v instanceof Double d) {
+                    s.xs.put(i, d);
+                    s.categories.put(i, fonts.number(d, -1, s.categoryFormat));
+                } else if (v instanceof String t) {
+                    s.categories.put(i, t);
+                }
+            }
         }
     }
 
@@ -435,6 +468,7 @@ final class ChartRecords {
         Map<Integer, List<BiffChart.Series>> bySeries = new HashMap<>();
         for (int i = 0; i < series.size(); i++) {
             SeriesBuilder s = series.get(i);
+            fromCells(s);
             GroupBuilder g = groups.get(s.group);
             boolean lines = g != null && (g.kind == BiffChart.Kind.LINE || g.kind == BiffChart.Kind.SCATTER
                     || g.kind == BiffChart.Kind.RADAR);
@@ -483,7 +517,7 @@ final class ChartRecords {
     }
 
     private BiffChart.Legend legend() {
-        if (legend == null) {
+        if (legend == null || legend.isDataTable()) {
             return null;
         }
         String pos = switch (legend.getType()) {
@@ -611,6 +645,10 @@ final class ChartRecords {
         int format;
 
         int categoryFormat;
+
+        Ptg[] valueRef;
+
+        Ptg[] categoryRef;
 
         int iss = -1;
 

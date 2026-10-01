@@ -13,7 +13,11 @@ import java.time.Duration;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
+import org.apache.poi.hssf.usermodel.HSSFSheet;
 import org.apache.poi.poifs.filesystem.POIFSFileSystem;
+import org.apache.poi.ss.SpreadsheetVersion;
+import org.apache.poi.ss.formula.ptg.Area3DPtg;
+import org.apache.poi.ss.util.AreaReference;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -67,6 +71,21 @@ class XlsChartTest {
         assertTrue(chart.contains("<c:lineChart>"), chart);
         assertTrue(chart.contains("<a:ln w=\"9525\"><a:solidFill><a:srgbClr val=\"000080\"/>"), chart);
         assertTrue(chart.contains("<c:v>z</c:v>") && chart.contains("<c:v>3.0</c:v>"), chart);
+    }
+
+    @Test
+    void aChartWithoutCachedValuesReadsTheCellsItRefersTo() throws Exception {
+        byte[] data = XlsTest.xls(wb -> {
+            HSSFSheet sheet = wb.createSheet("Data");
+            for (int i = 0; i < 3; i++) {
+                sheet.createRow(i).createCell(0).setCellValue(10 * (i + 1));
+            }
+            int extern = wb.getInternalWorkbook().checkExternSheet(0);
+            ChartFixtures.chartSheet(wb, "Chart1", ChartFixtures.linkedChart(BAR, "Linked", 3,
+                    new Area3DPtg(new AreaReference("A1:A3", SpreadsheetVersion.EXCEL97), extern)));
+        });
+        String chart = chartXml(data);
+        assertTrue(chart.contains("<c:v>10.0</c:v>") && chart.contains("<c:v>30.0</c:v>"), chart);
     }
 
     private static String chartXml(byte[] xls) throws IOException {
