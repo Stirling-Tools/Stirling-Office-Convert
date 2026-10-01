@@ -33,6 +33,10 @@ final class Styles {
 
     private final Map<String, TableStyle> tableCache = new HashMap<>();
 
+    static final float WORD_AFTER = 10;
+
+    static final float WORD_LINE = 1.15f;
+
     Styles(XEl styles, Theme theme) {
         this.theme = theme;
         defaultRun.size = 10f;
@@ -43,6 +47,11 @@ final class Styles {
         if (dd != null) {
             defaultRun.apply(dd.path("w:rPrDefault", "w:rPr"), theme);
             defaultPara.apply(dd.path("w:pPrDefault", "w:pPr"), theme);
+            if (dd.child("w:pPrDefault") == null) {
+                defaultPara.after = WORD_AFTER;
+                defaultPara.line = WORD_LINE;
+                defaultPara.lineRule = ParaProps.Rule.AUTO;
+            }
         }
         for (XEl s : styles.children("w:style")) {
             String id = s.attr("styleId");

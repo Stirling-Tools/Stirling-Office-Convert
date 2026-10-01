@@ -110,6 +110,17 @@ class DocxLineRulesTest {
     }
 
     @Test
+    void defaultsWithoutParagraphPropertiesTakeWordsOwnSpacing() throws IOException {
+        String body = DocxDoc.p("First") + DocxDoc.p("Second");
+        String bare = STYLES.substring(0, STYLES.indexOf("<w:pPrDefault>")) + "</w:docDefaults>";
+        DocxDoc.Rendered set = render("pprset", new DocxDoc().styles(STYLES).body(body));
+        DocxDoc.Rendered missing = render("pprmissing", new DocxDoc().styles(bare).body(body));
+        float single = set.word("Second").y() - set.word("First").y();
+        float word = missing.word("Second").y() - missing.word("First").y();
+        assertEquals(single * 1.15f + 10, word, 0.3f);
+    }
+
+    @Test
     void aCharacterGridNarrowsEveryCharacter() throws IOException {
         String body = DocxDoc.p("AAAAAAAAAA End");
         String grid = DocxDoc.LETTER.replace("</w:sectPr>", "<w:docGrid w:type=\"linesAndChars\" w:linePitch=\"240\""
