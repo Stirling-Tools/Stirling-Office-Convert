@@ -29,6 +29,7 @@ import stirling.software.officeconvert.legacy.PdfToPpt;
 import stirling.software.officeconvert.pdfa.PdfALevel;
 import stirling.software.officeconvert.pdfa.PdfToPdfA;
 import stirling.software.officeconvert.topdf.OfficeToPdf;
+import stirling.software.officeconvert.topdf.font.FontSet;
 import stirling.software.officeconvert.topdf.io.PoiXml;
 import stirling.software.officeconvert.topdf.text.TextFormats;
 
@@ -64,12 +65,14 @@ public final class Main {
         boolean pagesGiven = false;
         OfficeToPdf.Options office = OfficeToPdf.Options.defaults();
         List<Path> fontDirs = new ArrayList<>();
+        FontSet.Builder fontSet = FontSet.builder();
         PdfToXlsx.Sheets sheets = PdfToXlsx.Sheets.PAGE;
         Pictures pictures = Pictures.COMPACT;
         PdfToDocx.Options options;
         PdfToPptx.Options slides;
         PdfToXlsx.Options books;
         PdfALevel pdfa = null;
+        FontSet fonts;
         try {
             for (int i = 0; i < args.length; i++) {
                 String a = args[i];
@@ -93,6 +96,15 @@ public final class Main {
                             a) * 1000)));
                     case "--max-pages" -> office = office.maxPages(count(value(args, ++i, a), a));
                     case "--fonts" -> fontDirs.add(folder(value(args, ++i, a), a));
+                    case "--font-map" -> {
+                        String[] pair = pair(value(args, ++i, a), a);
+                        fontSet.substitute(pair[0], pair[1]);
+                    }
+                    case "--font-width" -> {
+                        String[] pair = pair(value(args, ++i, a), a);
+                        fontSet.widthScale(pair[0], number(pair[1], a));
+                    }
+                    case "--no-system-fonts" -> fontSet.systemFonts(false);
                     case "--sheets" -> sheets = sheets(value(args, ++i, a));
                     case "--pdfa" -> pdfa = level(value(args, ++i, a));
                     case "--pictures" -> pictures = pictures(value(args, ++i, a));
@@ -112,7 +124,8 @@ public final class Main {
             if (inputs.isEmpty()) {
                 throw new Usage("no PDF or Office document given");
             }
-            office = office.fontDirs(fontDirs);
+            fonts = fontSet.directories(fontDirs).build();
+            office = office.fonts(fonts);
             boolean anyOffice = false;
             boolean anyPdf = false;
             for (Path in : inputs) {
@@ -180,12 +193,17 @@ public final class Main {
                 pdfs.add(in);
             }
         }
+        if (!quiet) {
+            for (String problem : fonts.problems()) {
+                System.err.println("warning: fonts: " + oneLine(problem));
+            }
+        }
         warmUp(pdfs);
         int failures = 0;
         List<Path> targets = targets(pdfs, output, pdfa != null ? "pdfa.pdf" : format,
                 inputs.stream().anyMatch(Files::isDirectory));
         PdfToPdfA.Options archival = pdfa == null ? null : PdfToPdfA.Options.defaults().level(pdfa).password(password)
-                .timeout(office.timeout()).fontDirs(fontDirs);
+                .timeout(office.timeout()).fonts(fonts);
         for (int k = 0; k < pdfs.size(); k++) {
             Path pdf = pdfs.get(k);
             boolean officeInput = isOffice(pdf);
@@ -404,6 +422,14 @@ public final class Main {
         return args[i];
     }
 
+    private static String[] pair(String s, String option) throws Usage {
+        int eq = s.lastIndexOf('=');
+        if (eq <= 0 || eq == s.length() - 1 || s.substring(0, eq).isBlank() || s.substring(eq + 1).isBlank()) {
+            throw new Usage(option + " needs Family=value, was " + s);
+        }
+        return new String[] {s.substring(0, eq).strip(), s.substring(eq + 1).strip()};
+    }
+
     private static Path folder(String s, String option) throws Usage {
         Path p = path(s);
         if (!Files.isDirectory(p)) {
@@ -484,10 +510,11 @@ public final class Main {
                         + "       office-convert <in.docx|in.pptx|in.xlsx|in.doc|in.rtf|in.xls|in.ppt|in.odt|in.ods|in.odp|in.txt|in.csv|dir>..."
                         + " [-o out.pdf|dir] [--format pdf]"
                         + " [--max-pages n (default 10000, 0 = all)] [--timeout s (default 300, 0 = none)]"
-                        + " [--fonts dir]... [-q]"
+                        + " [--fonts dir]... [--font-map Family=Installed]... [--font-width Family=scale]..."
+                        + " [--no-system-fonts] [-q]"
                         + System.lineSeparator()
                         + "       office-convert <in.pdf|dir>... --pdfa 1a|1b|2a|2b|2u|3a|3b|3u [-o out.pdf|dir] [--password p]"
-                        + " [--timeout s] [--fonts dir]... [-q]"
+                        + " [--timeout s] [--fonts dir]... [--font-map Family=Installed]... [--no-system-fonts] [-q]"
                         + System.lineSeparator()
                         + "Word, PowerPoint and Excel files (.docx .docm .dotx .dotm .pptx .pptm .ppsx .ppsm .potx .potm"
                         + " .xlsx .xlsm .xltx .xltm and 97-2003 .doc .dot .xls .xlt .ppt .pps .pot), RTF (.rtf), OpenDocument"
@@ -502,6 +529,11 @@ public final class Main {
                         + "--pdfa makes an archival PDF/A copy of each PDF (in.pdfa.pdf unless -o names it): fonts are embedded,"
                         + " scripts and actions removed, colours given an sRGB output intent; 1a and 1b draw transparency as pictures;"
                         + " the a levels need a tagged PDF."
+                        + System.lineSeparator()
+                        + "--fonts adds a folder of .ttf, .ttc, .otf or .otc fonts (searched to a depth of 8, links not"
+                        + " followed); --font-map draws a family with an installed one (Aptos=Inter); --font-width scales"
+                        + " a substituted family's widths (0.5 to 2); --no-system-fonts uses only the given fonts and the"
+                        + " bundled Liberation Sans. Fonts whose licence forbids embedding are not used."
                         + System.lineSeparator()
                         + "--pictures lossless keeps every pixel without JPEG compression; compact, the default, is smaller."
                         + System.lineSeparator()

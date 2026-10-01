@@ -201,6 +201,27 @@ class MainTest {
     }
 
     @Test
+    void fontOptionsBuildTheFontSetAndReportBadFonts() throws Exception {
+        Path docx = minimalDocx(dir.resolve("fonts.docx"));
+        Path fonts = Files.createDirectories(dir.resolve("user-fonts"));
+        String bundled = "/org/apache/pdfbox/resources/ttf/LiberationSans-Regular.ttf";
+        try (InputStream in = PDDocument.class.getResourceAsStream(bundled)) {
+            Files.write(fonts.resolve("sans.ttf"), in.readAllBytes());
+        }
+        Files.writeString(fonts.resolve("broken.ttf"), "not a font");
+        Result r = run(docx.toString(), "--fonts", fonts.toString(), "--no-system-fonts", "--font-map",
+                "Calibri=Liberation Sans", "--font-width", "Aptos=0.95", "-o", dir.resolve("fonts.pdf").toString());
+        assertEquals(0, r.code(), r.err());
+        assertTrue(r.err().contains("warning: fonts: ") && r.err().contains("broken.ttf"), r.err());
+        assertTrue(Files.size(dir.resolve("fonts.pdf")) > 0);
+        assertUsage(run(docx.toString(), "--font-map", "Aptos"), "--font-map");
+        assertUsage(run(docx.toString(), "--font-map", "=Inter"), "--font-map");
+        assertUsage(run(docx.toString(), "--font-width", "Aptos=9"), "width scale");
+        assertUsage(run(docx.toString(), "--font-width", "Aptos=wide"), "--font-width");
+        assertTrue(run("--help").out().contains("--no-system-fonts"));
+    }
+
+    @Test
     void messagesStayOnOneLine() {
         assertEquals("a b c", Main.oneLine("a\nb\u001bc"));
         assertFalse(Main.oneLine("x\u202Ey\r\nz").chars().anyMatch(c -> c < 32 || c == 0x202E));
