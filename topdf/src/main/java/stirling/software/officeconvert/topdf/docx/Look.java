@@ -106,6 +106,15 @@ record Look(TextStyle style, float ascent, float descent, float leading, float r
                 highlight, shading, link, nominalSize);
     }
 
+    Look spaced(float extra) {
+        if (extra == 0) {
+            return this;
+        }
+        TextStyle s = style.charSpacing(Math.max(-style.size(), style.charSpacing() + extra));
+        return new Look(s, ascent, descent, leading, rise, underline, underlineColor, strike, dstrike, highlight,
+                shading, link, nominalSize);
+    }
+
     FontFace face() {
         return style.face();
     }

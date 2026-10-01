@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.awt.Color;
+import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -17,8 +18,11 @@ import java.util.Map;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
+import javax.imageio.ImageIO;
+
 import org.junit.jupiter.api.Test;
 
+import stirling.software.officeconvert.topdf.io.PictureDecoder;
 import stirling.software.officeconvert.topdf.testing.Fixtures;
 
 class RtfPackageTest {
@@ -227,6 +231,39 @@ class RtfPackageTest {
         assertEquals(1, b.split("<w:drawing>", -1).length - 1, b);
         assertNotNull(p.parts().get("word/media/image1.png"));
         assertNull(p.parts().get("word/media/image2.wmf"));
+    }
+
+    @Test
+    void dateFieldsWithoutAResultShowTheSavedDate() throws IOException {
+        String info = "{\\info{\\revtim\\yr2021\\mo3\\dy4\\hr13\\min5}{\\creatim\\yr2020\\mo1\\dy2}}";
+        Pkg p = convert(HEAD.replace("{\\fonttbl", info + "{\\fonttbl") + "\\pard On {\\field{\\*\\fldinst DATE \\\\@ "
+                + "\"dddd d MMMM yyyy\"}} at {\\field{\\*\\fldinst TIME}} made {\\field{\\*\\fldinst CREATEDATE \\\\@ "
+                + "\"dd/MM/yy\"}}, kept {\\field{\\*\\fldinst DATE}{\\fldrslt 1 May 1999}}\\par}");
+        String b = p.body();
+        assertTrue(b.contains("Thursday 4 March 2021") && b.contains("1:05 PM") && b.contains("02/01/20")
+                && b.contains("1 May 1999"), b);
+    }
+
+    @Test
+    void macAndWindowsBitmapPicturesAreKept() throws IOException {
+        String pict = "0000" + "0000000000140014" + "001102FF0C00FFFF" + "00".repeat(22) + "001AFFFF00000000"
+                + "00310000000000140014" + "00FF";
+        String bits = "7F" + "00" + "FF" + "00";
+        Pkg p = convert(HEAD + "\\pard{\\pict\\macpict\\picw20\\pich20 " + pict + "}{\\pict\\wbitmap0"
+                + "\\picw8\\pich2\\wbmbitspixel1\\wbmplanes1\\wbmwidthbytes2 " + bits + "}\\par}");
+        String b = p.body();
+        assertEquals(2, b.split("<w:drawing>", -1).length - 1, b);
+        assertTrue(b.contains("cx=\"254000\" cy=\"254000\""), b);
+        byte[] pictPart = p.parts().get("word/media/image1.pict");
+        assertNotNull(pictPart);
+        assertEquals(PictureDecoder.Kind.PICT, PictureDecoder.sniff(pictPart));
+        byte[] bmp = p.parts().get("word/media/image2.bmp");
+        assertNotNull(bmp);
+        BufferedImage img = ImageIO.read(new ByteArrayInputStream(bmp));
+        assertEquals(8, img.getWidth());
+        assertEquals(0x000000, img.getRGB(0, 0) & 0xFFFFFF);
+        assertEquals(0xFFFFFF, img.getRGB(1, 0) & 0xFFFFFF);
+        assertEquals(0xFFFFFF, img.getRGB(0, 1) & 0xFFFFFF);
     }
 
     @Test

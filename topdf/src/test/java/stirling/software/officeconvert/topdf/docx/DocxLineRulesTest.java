@@ -110,6 +110,53 @@ class DocxLineRulesTest {
     }
 
     @Test
+    void defaultsWithoutParagraphPropertiesTakeWordsOwnSpacing() throws IOException {
+        String body = DocxDoc.p("First") + DocxDoc.p("Second");
+        String bare = STYLES.substring(0, STYLES.indexOf("<w:pPrDefault>")) + "</w:docDefaults>";
+        DocxDoc.Rendered set = render("pprset", new DocxDoc().styles(STYLES).body(body));
+        DocxDoc.Rendered missing = render("pprmissing", new DocxDoc().styles(bare).body(body));
+        float single = set.word("Second").y() - set.word("First").y();
+        float word = missing.word("Second").y() - missing.word("First").y();
+        assertEquals(single * 1.15f + 10, word, 0.3f);
+    }
+
+    @Test
+    void anEmptyNumberingPartStillNumbersItsListItems() throws IOException {
+        String item = "<w:numPr><w:ilvl w:val=\"0\"/><w:numId w:val=\"1\"/></w:numPr>";
+        String body = para(item, run("Apples")) + para(item, run("Pears"));
+        DocxDoc.Rendered r = render("emptylist", new DocxDoc().styles(STYLES).numbering("").body(body));
+        assertEquals("1.", r.words().get(0).text());
+        assertEquals("2.", r.words().get(2).text());
+        assertEquals(72 + 36, r.word("Pears").x(), 0.5f);
+    }
+
+    @Test
+    void aDeletedParagraphMarkTakesItsSectionBreakWithIt() throws IOException {
+        String del = "<w:del w:id=\"1\" w:author=\"a\" w:date=\"2020-01-01T00:00:00Z\"/>";
+        String body = para("<w:rPr>" + del + "</w:rPr><w:sectPr><w:pgSz w:w=\"12240\" w:h=\"15840\"/></w:sectPr>",
+                "<w:del w:id=\"2\" w:author=\"a\" w:date=\"2020-01-01T00:00:00Z\"><w:r><w:delText>Gone</w:delText>"
+                + "</w:r></w:del>") + DocxDoc.p("Kept");
+        DocxDoc.Rendered r = render("delsect", new DocxDoc().styles(STYLES).body(body));
+        try (var d = r.open()) {
+            assertEquals(1, d.getNumberOfPages());
+        }
+        assertEquals(1, r.word("Kept").page());
+    }
+
+    @Test
+    void aCharacterGridNarrowsEveryCharacter() throws IOException {
+        String body = DocxDoc.p("AAAAAAAAAA End");
+        String grid = DocxDoc.LETTER.replace("</w:sectPr>", "<w:docGrid w:type=\"linesAndChars\" w:linePitch=\"240\""
+                + " w:charSpace=\"-8192\"/></w:sectPr>");
+        float plain = render("nogrid", new DocxDoc().styles(STYLES).body(body)).word("End").x();
+        float narrow = render("chargrid", new DocxDoc().styles(STYLES).body(body).section(grid)).word("End").x();
+        assertEquals(plain - 11, narrow, 0.5f);
+        String lines = grid.replace("linesAndChars", "lines");
+        assertEquals(plain, render("linegrid", new DocxDoc().styles(STYLES).body(body).section(lines)).word("End").x(),
+                0.05f);
+    }
+
+    @Test
     void lineBreaksOutsideARunStillBreakTheLine() throws IOException {
         DocxDoc.Rendered r = plain("barebr", "<w:p>" + run("First") + "<w:br/>" + run("Second") + "</w:p>");
         assertTrue(r.word("Second").y() > r.word("First").y() + 5, "the bare w:br should start a new line");

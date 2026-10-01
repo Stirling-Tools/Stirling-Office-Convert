@@ -29,6 +29,10 @@ final class PictureXml {
                 ext = "bmp";
             }
             case "wmf" -> bytes = placeable(raw, natural[0], natural[1]);
+            case "wbitmap" -> {
+                bytes = WindowsBitmap.bmp(raw, p.picw, p.pich, p.bitsPixel, p.widthBytes);
+                ext = "bmp";
+            }
             case "jpeg" -> ext = "jpeg";
             default -> {
             }
@@ -48,6 +52,7 @@ final class PictureXml {
             case TIFF -> "tiff";
             case EMF -> "emf";
             case WMF -> "wmf";
+            case PICT -> "pict";
             default -> ext;
         };
         String target = media.add(bytes, ext);
@@ -80,6 +85,9 @@ final class PictureXml {
     private static int[] natural(Picture p, byte[] raw) {
         if (p.goalw > 0 && p.goalh > 0) {
             return new int[] {p.goalw, p.goalh};
+        }
+        if ("pict".equals(p.type) && p.picw > 0 && p.pich > 0) {
+            return new int[] {p.picw * 20, p.pich * 20};
         }
         boolean metafile = "emf".equals(p.type) || "wmf".equals(p.type);
         if (metafile && p.picw > 0 && p.pich > 0) {

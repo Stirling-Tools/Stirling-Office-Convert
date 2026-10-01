@@ -75,6 +75,19 @@ class DocxMathTest {
     }
 
     @Test
+    void anEquationAloneInItsParagraphIsCentredLikeADisplayEquation() throws IOException {
+        String alone = "<w:p" + M + "><w:r><w:rPr/></w:r><m:oMath>" + r("abc") + "</m:oMath><w:r/><m:oMath>"
+                + r("def") + "</m:oMath></w:p>";
+        DocxDoc.Rendered out = render("alone", alone + inline("Text ", r("ghi"), ""));
+        List<Glyph> g = glyphs(out);
+        float left = at(g, "abc").x();
+        float right = at(g, "def").x();
+        assertTrue(left > 200 && left < 306, "the equations start at " + left);
+        assertTrue(right > left, "the second follows the first: " + right);
+        assertTrue(at(g, "ghi").x() < 140, "an equation beside text stays inline");
+    }
+
+    @Test
     void aFractionStacksItsNumeratorOverItsDenominatorInTheMiddleOfTheLine() throws IOException {
         DocxDoc.Rendered out = render("fraction",
                 display("<m:f><m:num>" + r("top") + "</m:num><m:den>" + r("bottomline") + "</m:den></m:f>"));

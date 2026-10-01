@@ -59,6 +59,25 @@ class RefitAndLetterTest {
     }
 
     @Test
+    void windowsExcelRefitsTheRowsMacExcelSized() throws Exception {
+        String words = "one two three four five six seven eight nine ten eleven twelve";
+        String sheet = "<cols><col min=\"1\" max=\"1\" width=\"8\" customWidth=\"1\"/></cols><sheetData>"
+                + "<row r=\"1\" ht=\"15\"><c r=\"A1\" s=\"1\" t=\"inlineStr\"><is><t>" + words
+                + "</t></is></c></row><row r=\"2\">" + RawXlsx.inline("A2", "Below") + "</row></sheetData>";
+        String app = "<Properties xmlns=\"http://schemas.openxmlformats.org/officeDocument/2006/extended-properties\">"
+                + "<Application>Microsoft Macintosh Excel</Application></Properties>";
+        XlsxTesting.convert(dir, "windows.xlsx", new RawXlsx().styles(WRAP_STYLES).sheet("S", sheet)
+                .workbookExtra("<fileVersion appName=\"xl\"/>").bytes());
+        XlsxTesting.convert(dir, "mac.xlsx", new RawXlsx().styles(WRAP_STYLES).sheet("S", sheet)
+                .workbookExtra("<fileVersion appName=\"xl\"/>")
+                .part("docProps/app.xml", "application/vnd.openxmlformats-officedocument.extended-properties+xml", app)
+                .rel("", "rId2", "extended-properties", "docProps/app.xml").bytes());
+        float windows = position(dir.resolve("windows.xlsx.pdf"), "Below")[1];
+        float mac = position(dir.resolve("mac.xlsx.pdf"), "Below")[1];
+        assertTrue(mac > windows + 30, "refit " + mac + ", stored " + windows);
+    }
+
+    @Test
     void alignmentAppliesWithoutApplyAlignment() throws Exception {
         String styles = "<fonts count=\"1\"><font><sz val=\"11\"/><name val=\"Calibri\"/></font></fonts><fills "
                 + "count=\"1\"><fill><patternFill patternType=\"none\"/></fill></fills><borders count=\"1\"><border/>"

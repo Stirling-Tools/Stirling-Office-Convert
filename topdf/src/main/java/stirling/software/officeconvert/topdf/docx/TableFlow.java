@@ -110,6 +110,17 @@ final class TableFlow {
         return k - from;
     }
 
+    private static boolean breaksBefore(RowBox row) {
+        for (CellBox cb : row.cells) {
+            if (cb.continuation || cb.cell == null) {
+                continue;
+            }
+            List<Block> blocks = cb.cell.blocks;
+            return !blocks.isEmpty() && blocks.get(0) instanceof Para p && Boolean.TRUE.equals(p.pp.pageBreakBefore);
+        }
+        return false;
+    }
+
     private static boolean keepsWithNext(RowBox row) {
         boolean any = false;
         for (CellBox cb : row.cells) {
@@ -248,6 +259,16 @@ final class TableFlow {
                     }
                     lastStrip = null;
                 }
+            }
+            if (r.paginated() && !r.atTop() && (placedAny || i == 0) && i >= l.headerRows() && breaksBefore(row)) {
+                close(lastStrip, lastRow, l, edges);
+                r.newFrame(true, false);
+                opening = edges;
+                for (RowBox h : headers) {
+                    placeRow(h, l, r);
+                    opening = false;
+                }
+                lastStrip = null;
             }
             boolean fresh = r.atTop();
             while (current != null && guard++ < 10_000) {
@@ -535,6 +556,16 @@ final class TableFlow {
         for (RowBox row : l.rows()) {
             height += row.height;
         }
+        float[] at = position(f, l, pf, width, height);
+        if (!"text".equals(f.attr("vertAnchor")) && !pf.atTop()
+                && pf.overlapsPlaced(new java.awt.geom.Rectangle2D.Float(at[0], at[1], width, height))) {
+            pf.newFrame(true, false);
+            at = position(f, l, pf, width, height);
+        }
+        place(f, l, pf, at[0], at[1], width);
+    }
+
+    private static float[] position(XEl f, Layout l, PageFlow pf, float width, float height) {
         String horz = f.attr("horzAnchor");
         // Without a vertical anchor Word measures a floating table from the top margin
         String vert = f.attr("vertAnchor", "margin");
@@ -564,6 +595,10 @@ final class TableFlow {
         } else {
             y += Ooxml.twips(f.attr("tblpY"), 0);
         }
+        return new float[] {x, y};
+    }
+
+    private void place(XEl f, Layout l, PageFlow pf, float x, float y, float width) {
         float at = y;
         int fit = 0;
         float fitted = 0;
@@ -659,6 +694,23 @@ final class TableFlow {
         };
     }
 
+    private float pctBase(TableBlock t, float avail) {
+        if (ctx.settings.compatibilityMode >= 15 || t.rows.isEmpty() || t.rows.get(0).cells.isEmpty()) {
+            return avail;
+        }
+        return avail + hangingMargins(t);
+    }
+
+    private static float hangingMargins(TableBlock t) {
+        TableProps tp = t.tp;
+        List<TableBlock.Cell> cells = t.rows.get(0).cells;
+        CellProps first = cells.get(0).cp;
+        CellProps last = cells.get(cells.size() - 1).cp;
+        float ml = first.marLeft != null ? first.marLeft : tp.marLeft != null ? tp.marLeft : DEFAULT_MARGIN;
+        float mr = last.marRight != null ? last.marRight : tp.marRight != null ? tp.marRight : DEFAULT_MARGIN;
+        return ml + mr;
+    }
+
     private Layout layout(TableBlock t, float avail, int maxRows) {
         TableProps tp = t.tp;
         int ncols = t.grid.length;
@@ -678,7 +730,7 @@ final class TableFlow {
         }
         float target = 0;
         if (tp.width != null && tp.width > 0) {
-            target = "pct".equals(tp.widthType) ? avail * Math.min(tp.width, 1000) / 100f : tp.width;
+            target = "pct".equals(tp.widthType) ? pctBase(t, avail) * Math.min(tp.width, 1000) / 100f : tp.width;
         }
         if (sum <= 0.5f) {
             float total = target > 0 ? target : avail;
@@ -809,11 +861,7 @@ final class TableFlow {
         float limit = avail - (tp.ind == null ? 0 : tp.ind);
         if (ctx.settings.compatibilityMode < 15) {
             // Old layouts hang the cell margins outside the text column
-            CellProps first = t.rows.get(0).cells.get(0).cp;
-            List<TableBlock.Cell> cells = t.rows.get(0).cells;
-            CellProps last = cells.get(cells.size() - 1).cp;
-            limit += first.marLeft != null ? first.marLeft : tp.marLeft != null ? tp.marLeft : DEFAULT_MARGIN;
-            limit += last.marRight != null ? last.marRight : tp.marRight != null ? tp.marRight : DEFAULT_MARGIN;
+            limit += hangingMargins(t);
         }
         return limit;
     }

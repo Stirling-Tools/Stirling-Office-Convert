@@ -54,6 +54,14 @@ final class Source {
         this.lists = lt;
     }
 
+    String fontName(int ftc) {
+        try {
+            return doc.getFontTable() == null ? null : doc.getFontTable().getMainFont(ftc);
+        } catch (RuntimeException e) {
+            return null;
+        }
+    }
+
     record Segment(int start, int end, CharacterProperties chp, List<Sprm> sprms) {}
 
     List<Segment> segments(int start, int end, int istd) {

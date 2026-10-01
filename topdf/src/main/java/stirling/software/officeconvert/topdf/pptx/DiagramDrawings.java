@@ -17,6 +17,7 @@ import org.openxmlformats.schemas.presentationml.x2006.main.CTGroupShape;
 import org.openxmlformats.schemas.presentationml.x2006.main.CTGroupShapeNonVisual;
 import org.openxmlformats.schemas.presentationml.x2006.main.CTShape;
 import org.openxmlformats.schemas.presentationml.x2006.main.CTShapeNonVisual;
+import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 import org.w3c.dom.NodeList;
 
@@ -54,7 +55,8 @@ final class DiagramDrawings {
         if (dm == null || !ActiveContent.mayFollow(dm)) {
             return null;
         }
-        NodeList ext = deck.job().zip().xml(dm).getElementsByTagNameNS(DSP, "dataModelExt");
+        Document data = deck.job().zip().xml(dm);
+        NodeList ext = data.getElementsByTagNameNS(DSP, "dataModelExt");
         if (ext.getLength() == 0) {
             return null;
         }
@@ -70,11 +72,12 @@ final class DiagramDrawings {
         if (d == null || d.getSpTree() == null || d.getSpTree().getSpList().isEmpty()) {
             return null;
         }
-        return new Found(group(frame, d.getSpTree()), drawing.getPackagePart().getPartName().getName());
+        DiagramTextFills fills = DiagramTextFills.read(deck.job().zip(), rels, data, ids[2]);
+        return new Found(group(frame, d.getSpTree(), fills), drawing.getPackagePart().getPartName().getName());
     }
 
     private static XSLFGroupShape group(XSLFDiagram frame,
-            com.microsoft.schemas.office.drawing.x2008.diagram.CTGroupShape tree) {
+            com.microsoft.schemas.office.drawing.x2008.diagram.CTGroupShape tree, DiagramTextFills fills) {
         CTGroupShape g = CTGroupShape.Factory.newInstance();
         g.addNewGrpSpPr();
         CTGroupShapeNonVisual nv = g.addNewNvGrpSpPr();
@@ -82,7 +85,7 @@ final class DiagramDrawings {
         nv.setCNvGrpSpPr(tree.getNvGrpSpPr().getCNvGrpSpPr());
         nv.setNvPr(CTApplicationNonVisualDrawingProps.Factory.newInstance());
         for (com.microsoft.schemas.office.drawing.x2008.diagram.CTShape s : tree.getSpList()) {
-            g.getSpList().addAll(shapes(s));
+            g.getSpList().addAll(shapes(s, fills));
         }
         Group shape = new Group(g, frame.getSheet());
         Rectangle2D a = frame.getAnchor();
@@ -92,10 +95,12 @@ final class DiagramDrawings {
         return shape;
     }
 
-    private static List<CTShape> shapes(com.microsoft.schemas.office.drawing.x2008.diagram.CTShape s) {
+    private static List<CTShape> shapes(com.microsoft.schemas.office.drawing.x2008.diagram.CTShape s,
+            DiagramTextFills fills) {
         List<CTShape> out = new ArrayList<>();
         CTShape sp = CTShape.Factory.newInstance();
         sp.setStyle(s.getStyle());
+        fills.apply(modelId(s), sp.getStyle());
         sp.setSpPr(s.getSpPr());
         CTShapeNonVisual nv = sp.addNewNvSpPr();
         nv.setCNvPr(s.getNvSpPr().getCNvPr());
@@ -106,7 +111,7 @@ final class DiagramDrawings {
             CTShape tx = CTShape.Factory.newInstance();
             tx.addNewSpPr();
             tx.setTxBody(s.getTxBody());
-            tx.setStyle(s.getStyle());
+            tx.setStyle(sp.getStyle());
             tx.setNvSpPr((CTShapeNonVisual) nv.copy());
             tx.getNvSpPr().getCNvSpPr().setTxBox(true);
             CTTransform2D t = s.getTxXfrm();
@@ -118,6 +123,10 @@ final class DiagramDrawings {
             out.add(tx);
         }
         return out;
+    }
+
+    private static String modelId(com.microsoft.schemas.office.drawing.x2008.diagram.CTShape s) {
+        return s.getDomNode() instanceof Element e ? e.getAttribute("modelId") : null;
     }
 
     private static boolean hasText(com.microsoft.schemas.office.drawing.x2008.diagram.CTShape s) {

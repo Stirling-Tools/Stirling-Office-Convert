@@ -190,8 +190,8 @@ public final class PptRenderer {
             }
         }
         if (dropped > 0) {
-            job.warn("Left out " + dropped + (dropped == 1 ? " picture" : " pictures") + " in a format that cannot be"
-                    + " drawn (PICT), damaged, or unpacking past " + (PictureDecoder.MAX_METAFILE_BYTES >> 20) + " MB");
+            job.warn("Left out " + dropped + (dropped == 1 ? " picture" : " pictures") + " damaged or unpacking past "
+                    + (PictureDecoder.MAX_METAFILE_BYTES >> 20) + " MB");
         }
     }
 

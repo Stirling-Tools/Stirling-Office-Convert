@@ -77,7 +77,10 @@ final class Shapes {
         xfrm(b, rec, rotation(sp), x, y, cx, cy);
         b.append("<a:prstGeom prst=\"").append(geom).append("\"><a:avLst/></a:prstGeom>");
         long opacity = prop(sp, 0x0182, 0x10000);
-        if (filled && !line && opacity > 0) {
+        String picture = filled && !line ? pictureFill(c, story, sp) : null;
+        if (picture != null) {
+            b.append(picture);
+        } else if (filled && !line && opacity > 0) {
             b.append("<a:solidFill><a:srgbClr val=\"").append(color(prop(sp, 0x0181, 0xFFFFFF), 0xFFFFFF))
                     .append(opacity < 0x10000 ? "\"><a:alpha val=\"" + opacity * 100000 / 0x10000 + "\"/></a:srgbClr>"
                             : "\"/>").append("</a:solidFill>");
@@ -125,6 +128,20 @@ final class Shapes {
                     default -> "t";
                 }).append("\"/></wps:wsp>");
         return b.toString();
+    }
+
+    private static String pictureFill(Conv c, Story story, EscherContainerRecord sp) throws IOException {
+        long type = prop(sp, 0x0180, 0);
+        long pib = prop(sp, 0x0186, 0);
+        if (type != 2 && type != 3 || pib <= 0 || pib > Integer.MAX_VALUE) {
+            return null;
+        }
+        String name = c.media.add(Groups.blip(c, (int) pib));
+        if (name == null) {
+            return null;
+        }
+        return "<a:blipFill><a:blip r:embed=\"" + story.rels.image(name) + "\"/>"
+                + (type == 2 ? "<a:tile/>" : "<a:stretch><a:fillRect/></a:stretch>") + "</a:blipFill>";
     }
 
     private static final Map<Integer, String> GEOMETRY = Map.ofEntries(Map.entry(2, "roundRect"),

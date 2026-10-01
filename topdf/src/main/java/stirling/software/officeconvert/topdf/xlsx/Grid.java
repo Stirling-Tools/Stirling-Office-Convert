@@ -309,7 +309,7 @@ final class Grid {
             height = Math.min(409.5, autofit(index, entries, blanks, base) + Math.max(0, row.thickEdges()) * SCREEN_PX);
         } else if (fit) {
             height = refit(row, autofit(index, entries, blanks, base) + Math.max(0, row.thickEdges()) * SCREEN_PX,
-                    entries.isEmpty() && blanks.isEmpty());
+                    entries.isEmpty() && blanks.isEmpty(), wrapsText(entries));
         } else {
             height = Math.min(409.5, row.height());
         }
@@ -467,13 +467,25 @@ final class Grid {
     }
 
     // Excel re-fits a row without customHeight: an empty one drops to the default, and wrapped text grows
-    // a height another program stored (Excel's own stored height is already its fit)
-    private double refit(RawRow row, double fitted, boolean empty) {
+    // a height another program stored (Excel's own stored height is already its fit, but not the Mac's wrapping)
+    private double refit(RawRow row, double fitted, boolean empty, boolean wrapped) {
         double stored = Math.min(409.5, row.height());
+        if (book.workbook().savedOnMac && wrapped) {
+            return Math.min(409.5, fitted);
+        }
         if (empty && row.style() < 0 || !book.workbook().savedByExcel && fitted > stored + defaultSource / 4) {
             return Math.min(409.5, fitted);
         }
         return stored;
+    }
+
+    private static boolean wrapsText(List<CellEntry> entries) {
+        for (CellEntry e : entries) {
+            if (e.text() != null && e.format().wraps()) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private double autofit(int row, List<CellEntry> entries, List<FontSpec> blanks, FontSpec base) {

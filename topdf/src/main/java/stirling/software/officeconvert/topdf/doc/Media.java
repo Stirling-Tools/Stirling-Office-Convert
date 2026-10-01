@@ -61,6 +61,7 @@ final class Media {
             case TIFF -> "tiff";
             case EMF -> "emf";
             case WMF -> "wmf";
+            case PICT -> "pict";
             default -> null;
         };
     }

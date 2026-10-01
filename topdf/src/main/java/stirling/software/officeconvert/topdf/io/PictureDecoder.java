@@ -40,6 +40,7 @@ public final class PictureDecoder {
         TIFF,
         EMF,
         WMF,
+        PICT,
         SVG,
         UNKNOWN
     }
@@ -93,7 +94,7 @@ public final class PictureDecoder {
         if (lower.startsWith("<svg") || (lower.startsWith("<?xml") || lower.startsWith("<!--")) && lower.contains("<svg")) {
             return Kind.SVG;
         }
-        return Kind.UNKNOWN;
+        return Pict.sniff(data) ? Kind.PICT : Kind.UNKNOWN;
     }
 
     public static DecodedPicture decode(PDDocument doc, byte[] data) throws IOException {
@@ -103,7 +104,7 @@ public final class PictureDecoder {
         byte[] bytes = gunzip(data);
         Kind kind = sniff(bytes);
         switch (kind) {
-            case EMF, WMF -> {
+            case EMF, WMF, PICT -> {
                 return Metafiles.render(doc, bytes, kind);
             }
             case SVG -> throw new IOException("SVG pictures are not supported; use the PNG copy the document keeps");

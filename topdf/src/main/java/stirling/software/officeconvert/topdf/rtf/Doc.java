@@ -52,6 +52,8 @@ final class Doc {
 
     String keywords;
 
+    final java.util.Map<String, int[]> times = new java.util.HashMap<>();
+
     int effectiveFont(CharProps c, ParaProps p) {
         if (c.has(CharProps.FONT)) {
             return c.font;

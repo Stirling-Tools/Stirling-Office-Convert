@@ -52,6 +52,10 @@ final class ShapeFixture {
     }
 
     static byte[] dggInfo(List<Shape> shapes) {
+        return dggInfo(shapes, List.of());
+    }
+
+    static byte[] dggInfo(List<Shape> shapes, List<byte[]> pictures) {
         EscherContainerRecord dgg = container(0xF000);
         EscherDggRecord fdgg = new EscherDggRecord();
         fdgg.setRecordId(EscherDggRecord.RECORD_ID);
@@ -61,6 +65,14 @@ final class ShapeFixture {
         fdgg.setNumShapesSaved(shapes.size() + 1);
         fdgg.addCluster(1, shapes.size() + 1);
         dgg.addChildRecord(fdgg);
+        if (!pictures.isEmpty()) {
+            EscherContainerRecord store = container(0xF001);
+            store.setOptions((short) (pictures.size() << 4 | 0xF));
+            for (byte[] png : pictures) {
+                store.addChildRecord(PictureFixture.bse(png));
+            }
+            dgg.addChildRecord(store);
+        }
         EscherContainerRecord dg = container(0xF002);
         EscherDgRecord fdg = new EscherDgRecord();
         fdg.setRecordId(EscherDgRecord.RECORD_ID);

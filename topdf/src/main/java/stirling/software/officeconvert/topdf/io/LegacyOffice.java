@@ -10,6 +10,7 @@ import java.util.Objects;
 import java.util.zip.DataFormatException;
 import java.util.zip.Inflater;
 
+import org.apache.poi.hslf.blip.PICT;
 import org.apache.poi.hslf.exceptions.EncryptedPowerPointFileException;
 import org.apache.poi.hslf.exceptions.OldPowerPointFormatException;
 import org.apache.poi.hslf.usermodel.HSLFPictureData;
@@ -27,6 +28,8 @@ public final class LegacyOffice {
         (byte) 0xE1};
 
     private static final int METAFILE_HEADER = 16 + 34;
+
+    private static final int PICT_TWO_IDS = 0x5430;
 
     private static final byte[] EMPTY_DEFLATE = {0x78, (byte) 0x9C, 0x03, 0x00, 0x00, 0x00, 0x00, 0x01};
 
@@ -108,18 +111,15 @@ public final class LegacyOffice {
     @SuppressWarnings("deprecation")
     public static boolean boundPicture(HSLFPictureData picture, int maxBytes) {
         PictureType type = picture.getType();
-        if (type == PictureType.PICT) {
-            picture.setRawData(neutral(picture.getRawData(), 2));
-            return false;
-        }
-        if (type != PictureType.EMF && type != PictureType.WMF) {
+        if (type != PictureType.EMF && type != PictureType.WMF && type != PictureType.PICT) {
             return true;
         }
         byte[] raw = picture.getRawData();
-        if (raw != null && inflatesWithin(raw, METAFILE_HEADER, maxBytes)) {
+        int ids = picture instanceof PICT p && p.getSignature() == PICT_TWO_IDS ? 2 : 1;
+        if (raw != null && inflatesWithin(raw, METAFILE_HEADER + 16 * (ids - 1), maxBytes)) {
             return true;
         }
-        picture.setRawData(neutral(raw, 1));
+        picture.setRawData(neutral(raw, type == PictureType.PICT ? 2 : 1));
         return false;
     }
 

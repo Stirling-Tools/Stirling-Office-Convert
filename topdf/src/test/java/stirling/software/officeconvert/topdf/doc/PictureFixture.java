@@ -51,6 +51,18 @@ final class PictureFixture {
         opt.setRecordId(EscherOptRecord.RECORD_ID);
         opt.addEscherProperty(new EscherSimpleProperty(EscherPropertyTypes.forPropertyID(0x0104), false, true, 1));
         sp.addChildRecord(opt);
+        byte[] art = WordFixture.concat(sp.serialize(), bse(png).serialize());
+        ByteBuffer b = ByteBuffer.allocate(68 + art.length).order(ByteOrder.LITTLE_ENDIAN);
+        b.putInt(68 + art.length).putShort((short) 68).putShort((short) 0x64).putShort((short) 0).putShort((short) 0)
+                .putShort((short) 0);
+        b.position(28);
+        b.putShort((short) dxaGoal).putShort((short) dyaGoal).putShort((short) 1000).putShort((short) 1000);
+        b.position(68);
+        b.put(art);
+        return b.array();
+    }
+
+    static EscherBSERecord bse(byte[] png) {
         EscherBitmapBlip blip = new EscherBitmapBlip();
         blip.setRecordId(EscherBitmapBlip.RECORD_ID_PNG);
         blip.setOptions((short) 0x6E00);
@@ -66,14 +78,6 @@ final class PictureFixture {
         bse.setSize(png.length + 25);
         bse.setRef(1);
         bse.setBlipRecord(blip);
-        byte[] art = WordFixture.concat(sp.serialize(), bse.serialize());
-        ByteBuffer b = ByteBuffer.allocate(68 + art.length).order(ByteOrder.LITTLE_ENDIAN);
-        b.putInt(68 + art.length).putShort((short) 68).putShort((short) 0x64).putShort((short) 0).putShort((short) 0)
-                .putShort((short) 0);
-        b.position(28);
-        b.putShort((short) dxaGoal).putShort((short) dyaGoal).putShort((short) 1000).putShort((short) 1000);
-        b.position(68);
-        b.put(art);
-        return b.array();
+        return bse;
     }
 }

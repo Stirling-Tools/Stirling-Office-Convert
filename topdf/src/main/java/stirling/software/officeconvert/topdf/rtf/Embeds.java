@@ -100,6 +100,12 @@ final class Embeds {
         String kind = args.get(0).toUpperCase(Locale.ROOT);
         if (kind.equals("PAGE") || kind.equals("NUMPAGES") || kind.equals("SECTIONPAGES")) {
             reader.content().field(parent, kind);
+        } else if (DateField.dated(kind)) {
+            String text = DateField.text(kind, args, doc.times.get("creatim"), doc.times.get("revtim"),
+                    doc.times.get("printim"));
+            if (text != null) {
+                reader.content().text(parent, text);
+            }
         }
     }
 

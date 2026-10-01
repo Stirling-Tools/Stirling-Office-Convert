@@ -20,7 +20,9 @@ import org.apache.poi.ooxml.util.POIXMLUnits;
 import org.apache.poi.xslf.usermodel.XSLFPictureShape;
 import org.apache.poi.xslf.usermodel.XSLFSimpleShape;
 import org.apache.xmlbeans.XmlCursor;
+import org.apache.xmlbeans.XmlException;
 import org.apache.xmlbeans.XmlObject;
+import org.apache.xmlbeans.XmlOptions;
 import org.openxmlformats.schemas.drawingml.x2006.main.CTBlipFillProperties;
 import org.openxmlformats.schemas.drawingml.x2006.main.CTPresetGeometry2D;
 import org.openxmlformats.schemas.drawingml.x2006.main.CTShapeProperties;
@@ -50,11 +52,30 @@ final class PicturePainter {
     }
 
     boolean isEmpty(XSLFPictureShape p) {
-        CTPicture pic = (CTPicture) p.getXmlObject();
-        CTBlipFillProperties fill = pic.getBlipFill();
+        CTBlipFillProperties fill = blipFill((CTPicture) p.getXmlObject());
         return fill == null || fill.getBlip() == null || !fill.getBlip().isSetEmbed()
                 || fill.getBlip().getEmbed().isBlank();
     }
+
+    static CTBlipFillProperties blipFill(CTPicture pic) {
+        CTBlipFillProperties own = pic.getBlipFill();
+        if (own != null) {
+            return own;
+        }
+        XmlObject[] found = pic.selectPath("declare namespace mc='" + Fallbacks.MC + "' declare namespace p='"
+                + P_NS + "' ./mc:AlternateContent/mc:Fallback/p:blipFill");
+        if (found.length == 0) {
+            return null;
+        }
+        try {
+            return CTBlipFillProperties.Factory.parse(found[0].getDomNode(),
+                    new XmlOptions().setLoadReplaceDocumentElement(null));
+        } catch (XmlException | RuntimeException e) {
+            return null;
+        }
+    }
+
+    private static final String P_NS = "http://schemas.openxmlformats.org/presentationml/2006/main";
 
     void paint(XSLFPictureShape p, Space space) throws IOException {
         Rectangle2D anchor = p.getAnchor();
@@ -64,7 +85,7 @@ final class PicturePainter {
         CTPicture pic = (CTPicture) p.getXmlObject();
         Frame f = space.place(anchor, p.getRotation(), p.getFlipHorizontal(), p.getFlipVertical())
                 .viewed(Cameras.view(pic.getSpPr()));
-        CTBlipFillProperties fill = pic.getBlipFill();
+        CTBlipFillProperties fill = blipFill(pic);
         Rectangle2D box = f.bounds();
         DecodedPicture picture = BlipFills.picture(deck, fill, space.relsPart(),
                 BlipFills.duotone(fill == null ? null : fill.getBlip(), p.getSheet()), p.getSheet(),

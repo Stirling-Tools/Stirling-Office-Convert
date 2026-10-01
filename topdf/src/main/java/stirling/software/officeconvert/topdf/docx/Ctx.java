@@ -82,6 +82,8 @@ final class Ctx {
     // The body's document grid pitch for the section being laid out
     float gridPitch;
 
+    float charGrid;
+
     boolean bodyTotals;
 
     int knownPages;
@@ -160,5 +162,9 @@ final class Ctx {
 
     float bodyGrid() {
         return headerDepth > 0 ? 0 : gridPitch;
+    }
+
+    float charGrid() {
+        return headerDepth > 0 ? 0 : charGrid;
     }
 }

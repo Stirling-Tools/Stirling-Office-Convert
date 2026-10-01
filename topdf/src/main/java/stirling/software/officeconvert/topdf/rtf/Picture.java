@@ -18,6 +18,8 @@ final class Picture {
     int cropt;
     int cropb;
     int mapMode;
+    int bitsPixel = 1;
+    int widthBytes;
 
     final ByteArrayOutputStream data = new ByteArrayOutputStream();
 
@@ -35,7 +37,11 @@ final class Picture {
                 mapMode = param;
             }
             case "dibitmap" -> type = "dib";
-            case "wbitmap", "macpict", "pmmetafile" -> type = "unsupported";
+            case "macpict" -> type = "pict";
+            case "wbitmap" -> type = "wbitmap";
+            case "wbmbitspixel" -> bitsPixel = param;
+            case "wbmwidthbytes" -> widthBytes = param;
+            case "pmmetafile" -> type = "unsupported";
             case "picw" -> picw = param;
             case "pich" -> pich = param;
             case "picwgoal" -> goalw = param;

@@ -128,6 +128,12 @@ public final class SafeImageRenderer implements ImageRenderer {
                 next = k == PictureDecoder.Kind.EMF ? new HemfImageRenderer() : new HwmfImageRenderer();
                 next.loadImage(bytes, contentType);
             }
+            case PICT -> {
+                if (bytes.length > PictureDecoder.MAX_METAFILE_BYTES) {
+                    throw new IOException("The picture is too large: " + bytes.length + " bytes");
+                }
+                next = new PictRenderer(Pict.read(bytes));
+            }
             default -> {
                 kind = k;
                 // POI moves on to the next picture (the PNG Office keeps beside an SVG) only after an IOException
@@ -177,7 +183,7 @@ public final class SafeImageRenderer implements ImageRenderer {
     }
 
     private boolean metafile() {
-        return kind == PictureDecoder.Kind.EMF || kind == PictureDecoder.Kind.WMF;
+        return kind == PictureDecoder.Kind.EMF || kind == PictureDecoder.Kind.WMF || kind == PictureDecoder.Kind.PICT;
     }
 
     private BufferedImage metafileImage(Dimension2D dimension) {
@@ -299,6 +305,65 @@ public final class SafeImageRenderer implements ImageRenderer {
         @Override
         public boolean drawImage(Graphics2D graphics, Rectangle2D anchor, Insets clip) {
             return false;
+        }
+    }
+
+    private static final class PictRenderer implements ImageRenderer {
+
+        private final Pict pict;
+
+        PictRenderer(Pict pict) {
+            this.pict = pict;
+        }
+
+        @Override
+        public boolean canRender(String contentType) {
+            return true;
+        }
+
+        @Override
+        public void loadImage(InputStream data, String contentType) throws IOException {
+            throw new IOException("A decoded picture cannot be reloaded");
+        }
+
+        @Override
+        public void loadImage(byte[] data, String contentType) throws IOException {
+            throw new IOException("A decoded picture cannot be reloaded");
+        }
+
+        @Override
+        public Rectangle2D getNativeBounds() {
+            return pict.bounds();
+        }
+
+        @Override
+        public Rectangle2D getBounds() {
+            return pict.bounds();
+        }
+
+        @Override
+        public void setAlpha(double alpha) {}
+
+        @Override
+        public BufferedImage getImage() {
+            return null;
+        }
+
+        @Override
+        public BufferedImage getImage(Dimension2D dimension) {
+            return null;
+        }
+
+        @Override
+        public boolean drawImage(Graphics2D graphics, Rectangle2D anchor) {
+            pict.draw(graphics, anchor);
+            return true;
+        }
+
+        @Override
+        public boolean drawImage(Graphics2D graphics, Rectangle2D anchor, Insets clip) {
+            pict.draw(graphics, anchor);
+            return true;
         }
     }
 }
