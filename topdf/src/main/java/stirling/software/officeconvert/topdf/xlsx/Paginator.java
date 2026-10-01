@@ -164,8 +164,9 @@ final class Paginator {
     // Excel prints every page up to the last one with content, so find that page instead of walking every page
     private boolean pages(CellRangeAddress range, double scale, Content content, int limit, List<Page> out)
             throws InterruptedIOException {
+        double across = fitWidth(setup.printableWidth()) / scale - headWidth();
         List<Span> colSpans = spans(range.getFirstColumn(), range.getLastColumn(), grid::columnWidth,
-                first(titleCols, false), last(titleCols, false), (setup.printableWidth() / scale - headWidth()),
+                first(titleCols, false), last(titleCols, false), across,
                 manualBreaks(setup.fitWidth()) ? colBreaks : null, Integer.MAX_VALUE);
         List<Span> rowSpans = spans(range.getFirstRow(), range.getLastRow(), grid::rowHeight, first(titleRows, true),
                 last(titleRows, true), (rowRoom(setup.printableHeight(), scale) - headHeight()),

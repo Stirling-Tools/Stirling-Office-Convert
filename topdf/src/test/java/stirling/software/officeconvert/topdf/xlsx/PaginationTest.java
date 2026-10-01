@@ -14,6 +14,8 @@ import org.apache.pdfbox.text.TextPosition;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import stirling.software.officeconvert.topdf.font.FontLibrary;
+
 class PaginationTest {
 
     @TempDir
@@ -55,6 +57,27 @@ class PaginationTest {
         List<Paginator.Span> spans = Paginator.spans(0, 99, i -> row, -1, -1, Paginator.rowRoom(printable, 1), null,
                 Integer.MAX_VALUE);
         assertEquals(new Paginator.Span(0, 39), spans.get(0));
+    }
+
+    @Test
+    void columnsStopFivePrinterPixelsShortOfTheRightMargin() throws Exception {
+        PrintMetrics m = new PrintMetrics(FontMeasure.of(FontLibrary.system(), "Calibri", false, false), 11);
+        double printable = 595.2756 - 2 * 0.7 * 72 - PrintMetrics.ORIGIN;
+        double first = m.columnPoints(10);
+        double second = 1;
+        while (first + m.columnPoints(second) <= Paginator.fitWidth(printable)) {
+            second += 0.01;
+        }
+        assertTrue(first + m.columnPoints(second) <= printable);
+        String width = String.format(java.util.Locale.ROOT, "%.2f", second);
+        String sheet = "<cols><col min=\"1\" max=\"1\" width=\"10\" customWidth=\"1\"/><col min=\"2\" max=\"2\""
+                + " width=\"" + width + "\" customWidth=\"1\"/></cols><sheetData>"
+                + "<row r=\"1\">" + RawXlsx.inline("A1", "Left") + RawXlsx.inline("B1", "Right") + "</row></sheetData>"
+                + "<pageMargins left=\"0.7\" right=\"0.7\" top=\"0.75\" bottom=\"0.75\" header=\"0.3\" footer=\"0.3\"/>"
+                + "<pageSetup paperSize=\"9\"/>";
+        XlsxTesting.Converted c = XlsxTesting.convert(dir, "edge.xlsx", new RawXlsx().sheet("S", sheet).bytes());
+        assertEquals(2, c.pages().size());
+        assertTrue(c.pages().get(1).contains("Right"), c.pages().get(1));
     }
 
     @Test
