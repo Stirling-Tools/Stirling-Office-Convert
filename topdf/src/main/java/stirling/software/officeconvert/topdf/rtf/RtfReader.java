@@ -236,6 +236,11 @@ final class RtfReader {
                 }
             }
             case INFOTEXT -> defs.infoText(done);
+            case INFOTIME -> {
+                if (own && done.payload instanceof int[] t && done.key != null) {
+                    doc.times.put(done.key, t);
+                }
+            }
             case DEFCHP -> doc.defChp.inherit(done.chp);
             case DEFPAP -> doc.defPap.inherit(done.pap);
             case PICT -> {
@@ -335,8 +340,26 @@ final class RtfReader {
             case DEFCHP -> CharWords.apply(g.chp, w, p, has);
             case DEFPAP -> ParaWords.apply(g.pap, w, p, has);
             case FIELD, OBJECT -> CharWords.apply(g.chp, w, p, has);
+            case INFOTIME -> time(w, p);
             default -> {
             }
+        }
+    }
+
+    private void time(String w, int p) {
+        if (!(g.payload instanceof int[] t)) {
+            return;
+        }
+        int at = switch (w) {
+            case "yr" -> 0;
+            case "mo" -> 1;
+            case "dy" -> 2;
+            case "hr" -> 3;
+            case "min" -> 4;
+            default -> -1;
+        };
+        if (at >= 0) {
+            t[at] = Math.max(0, Math.min(9999, p));
         }
     }
 
@@ -381,6 +404,14 @@ final class RtfReader {
             case "generator" -> {
                 set(Dest.INFOTEXT);
                 g.key = w;
+            }
+            case "creatim", "revtim", "printim" -> {
+                if (g.dest != Dest.INFO) {
+                    return false;
+                }
+                set(Dest.INFOTIME);
+                g.key = w;
+                g.payload = new int[5];
             }
             case "title", "subject", "author", "keywords" -> {
                 if (g.dest != Dest.INFO) {

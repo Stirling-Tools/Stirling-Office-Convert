@@ -234,6 +234,17 @@ class RtfPackageTest {
     }
 
     @Test
+    void dateFieldsWithoutAResultShowTheSavedDate() throws IOException {
+        String info = "{\\info{\\revtim\\yr2021\\mo3\\dy4\\hr13\\min5}{\\creatim\\yr2020\\mo1\\dy2}}";
+        Pkg p = convert(HEAD.replace("{\\fonttbl", info + "{\\fonttbl") + "\\pard On {\\field{\\*\\fldinst DATE \\\\@ "
+                + "\"dddd d MMMM yyyy\"}} at {\\field{\\*\\fldinst TIME}} made {\\field{\\*\\fldinst CREATEDATE \\\\@ "
+                + "\"dd/MM/yy\"}}, kept {\\field{\\*\\fldinst DATE}{\\fldrslt 1 May 1999}}\\par}");
+        String b = p.body();
+        assertTrue(b.contains("Thursday 4 March 2021") && b.contains("1:05 PM") && b.contains("02/01/20")
+                && b.contains("1 May 1999"), b);
+    }
+
+    @Test
     void macAndWindowsBitmapPicturesAreKept() throws IOException {
         String pict = "0000" + "0000000000140014" + "001102FF0C00FFFF" + "00".repeat(22) + "001AFFFF00000000"
                 + "00310000000000140014" + "00FF";

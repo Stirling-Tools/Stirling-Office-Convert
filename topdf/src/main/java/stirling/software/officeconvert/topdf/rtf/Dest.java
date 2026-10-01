@@ -17,6 +17,7 @@ enum Dest {
     LFOLEVEL,
     INFO,
     INFOTEXT,
+    INFOTIME,
     PICT,
     FIELD,
     FLDINST,
