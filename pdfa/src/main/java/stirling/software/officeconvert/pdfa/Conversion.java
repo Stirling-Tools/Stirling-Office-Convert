@@ -56,7 +56,7 @@ final class Conversion {
         FontUsage usage = new FontUsage();
         DeviceColours colours = new DeviceColours();
         ContentFixer.run(graph, level, report, usage, colours);
-        FontFixer.run(doc, usage, level, FontLibrary.withSystem(options.fontDirs()), report);
+        FontFixer.run(doc, usage, level, () -> FontLibrary.withSystem(options.fontDirs()), report);
         FontCompaction.run(doc, usage, level);
         PdfFiles.stopIfInterrupted();
         JpxImages.run(doc, level, report);

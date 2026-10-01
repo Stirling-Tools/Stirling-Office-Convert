@@ -5,6 +5,7 @@ import java.io.OutputStream;
 import java.util.Map;
 import java.util.TreeMap;
 import java.util.TreeSet;
+import java.util.function.Supplier;
 
 import org.apache.fontbox.cff.CFFCIDFont;
 import org.apache.fontbox.cff.CFFFont;
@@ -35,20 +36,22 @@ final class FontFixer {
 
     private final PdfALevel level;
 
-    private final FontLibrary library;
+    private final Supplier<FontLibrary> libraries;
+
+    private FontLibrary library;
 
     private final Report report;
 
-    private FontFixer(PDDocument doc, PdfALevel level, FontLibrary library, Report report) {
+    private FontFixer(PDDocument doc, PdfALevel level, Supplier<FontLibrary> libraries, Report report) {
         this.doc = doc;
         this.level = level;
-        this.library = library;
+        this.libraries = libraries;
         this.report = report;
     }
 
-    static void run(PDDocument doc, FontUsage usage, PdfALevel level, FontLibrary library, Report report)
+    static void run(PDDocument doc, FontUsage usage, PdfALevel level, Supplier<FontLibrary> libraries, Report report)
             throws IOException {
-        FontFixer f = new FontFixer(doc, level, library, report);
+        FontFixer f = new FontFixer(doc, level, libraries, report);
         for (Map.Entry<COSDictionary, TreeSet<Integer>> e : usage.codes().entrySet()) {
             PdfFiles.stopIfInterrupted();
             f.fix(e.getKey(), e.getValue(), usage.bytesPerCode(e.getKey()));
@@ -83,6 +86,9 @@ final class FontFixer {
                 BaseFontName name = BaseFontName.parse(font instanceof PDType0Font t0 && t0.getDescendantFont() != null
                         ? t0.getDescendantFont().getBaseFont() : font.getName(), fd == null ? 0 : fd.getFlags(),
                         fd == null ? 0 : fd.getFontWeight());
+                if (library == null) {
+                    library = libraries.get();
+                }
                 try (GlyphSource source = GlyphSource.open(library, name)) {
                     String note = FontRebuild.rebuild(doc, font, codes, FontRebuild.Mode.SUBSTITUTE, source, level,
                             bytesPerCode);
