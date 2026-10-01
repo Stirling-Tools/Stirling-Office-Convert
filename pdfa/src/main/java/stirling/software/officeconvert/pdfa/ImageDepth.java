@@ -19,8 +19,9 @@ final class ImageDepth {
         int bpc = s.getInt(COSName.BITS_PER_COMPONENT, -1);
         boolean mask = s.getBoolean(COSName.IMAGE_MASK, false);
         if (mask && bpc != 1 && bpc != -1) {
-            return stencil(s, bpc) ? "Stored image masks with more than one bit per sample, which PDF/A does not allow, "
-                    + "as one bit masks" : null;
+            return stencil(s, bpc)
+                    ? "Stored image masks with more than one bit per sample, which PDF/A does not allow, as one bit masks"
+                    : null;
         }
         if (level.part() == 1 && bpc == 16 && !mask) {
             return sixteen(s) ? "Stored 16-bit images, which PDF/A-1 does not allow, with 8 bits per sample" : null;

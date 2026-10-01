@@ -35,7 +35,8 @@ final class CMapFixer {
 
     private static final COSName USE_CMAP = COSName.getPDFName("UseCMap");
 
-    private static final Pattern CODESPACE = Pattern.compile("begincodespacerange(.*?)endcodespacerange", Pattern.DOTALL);
+    private static final Pattern CODESPACE = Pattern.compile("begincodespacerange(.*?)endcodespacerange",
+            Pattern.DOTALL);
 
     private static final Pattern HEX = Pattern.compile("<([0-9A-Fa-f]+)>\\s*<([0-9A-Fa-f]+)>");
 
@@ -364,7 +365,8 @@ final class CMapFixer {
         }
         for (Map.Entry<Integer, Integer> e : remap.entrySet()) {
             int from = e.getKey();
-            int gid = old != null && from * 2L + 1 < old.length ? (old[2 * from] & 0xFF) << 8 | old[2 * from + 1] & 0xFF : 0;
+            int gid = old != null && from * 2L + 1 < old.length
+                    ? (old[2 * from] & 0xFF) << 8 | old[2 * from + 1] & 0xFF : 0;
             out[2 * e.getValue()] = (byte) (gid >> 8);
             out[2 * e.getValue() + 1] = (byte) gid;
         }

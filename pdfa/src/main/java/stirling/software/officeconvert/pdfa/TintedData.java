@@ -62,7 +62,8 @@ final class TintedData {
         float[] decode = new float[2 * n];
         COSArray d = ContentGraph.array(s.getDictionaryObject(COSName.DECODE));
         for (int i = 0; i < n; i++) {
-            decode[2 * i] = d != null && d.size() == 2 * n && d.getObject(2 * i) instanceof COSNumber v ? v.floatValue() : 0;
+            decode[2 * i] = d != null && d.size() == 2 * n && d.getObject(2 * i) instanceof COSNumber v
+                    ? v.floatValue() : 0;
             decode[2 * i + 1] = d != null && d.size() == 2 * n && d.getObject(2 * i + 1) instanceof COSNumber v
                     ? v.floatValue() : 1;
         }
@@ -192,13 +193,14 @@ final class TintedData {
         }
         int inputs = type == 1 ? 2 : 1;
         float[] domain = new float[2 * inputs];
-        COSArray dom = ContentGraph.array(d.getDictionaryObject(type == 1 || type == 2 || type == 3 ? COSName.DOMAIN : COSName.DECODE));
+        COSArray dom = ContentGraph.array(d.getDictionaryObject(type <= 3 ? COSName.DOMAIN : COSName.DECODE));
         for (int i = 0; i < 2 * inputs; i++) {
             domain[i] = i % 2;
         }
         if (type >= 4) {
             COSArray dec = dom;
-            if (dec != null && dec.size() >= 6 && dec.getObject(4) instanceof COSNumber a && dec.getObject(5) instanceof COSNumber b) {
+            if (dec != null && dec.size() >= 6 && dec.getObject(4) instanceof COSNumber a
+                    && dec.getObject(5) instanceof COSNumber b) {
                 domain[0] = a.floatValue();
                 domain[1] = b.floatValue();
             }

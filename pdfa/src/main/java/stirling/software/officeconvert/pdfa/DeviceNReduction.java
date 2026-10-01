@@ -172,7 +172,8 @@ final class DeviceNReduction {
                 case "q" -> stack.push(current.clone());
                 case "Q" -> current = stack.isEmpty() ? new Space[2] : stack.pop();
                 case "CS", "cs" -> {
-                    current[which] = operands.size() == 1 && operands.get(0) instanceof COSName cs ? spaces.get(cs) : null;
+                    current[which] = operands.size() == 1 && operands.get(0) instanceof COSName cs ? spaces.get(cs)
+                            : null;
                     out.addAll(operands);
                     out.add(op);
                     if (current[which] != null && !current[which].pattern()) {

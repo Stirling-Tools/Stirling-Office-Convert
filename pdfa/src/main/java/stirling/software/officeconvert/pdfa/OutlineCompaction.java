@@ -25,8 +25,8 @@ final class OutlineCompaction {
 
     private OutlineCompaction() {}
 
-    static COSStream type1(PDDocument doc, COSStream program, List<PDFont> fonts, Map<COSDictionary, TreeSet<Integer>> codes)
-            throws IOException {
+    static COSStream type1(PDDocument doc, COSStream program, List<PDFont> fonts,
+            Map<COSDictionary, TreeSet<Integer>> codes) throws IOException {
         Set<String> names = new HashSet<>();
         for (PDFont f : fonts) {
             if (!(f instanceof PDType1Font t1)) {
@@ -52,8 +52,8 @@ final class OutlineCompaction {
         return s;
     }
 
-    static COSStream cff(PDDocument doc, COSStream program, List<PDFont> fonts, Map<COSDictionary, TreeSet<Integer>> codes)
-            throws IOException {
+    static COSStream cff(PDDocument doc, COSStream program, List<PDFont> fonts,
+            Map<COSDictionary, TreeSet<Integer>> codes) throws IOException {
         Set<Integer> gids = new TreeSet<>();
         boolean simple = false;
         for (PDFont f : fonts) {

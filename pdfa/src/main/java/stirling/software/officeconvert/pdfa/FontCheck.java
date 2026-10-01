@@ -39,8 +39,8 @@ final class FontCheck {
                 if (cid == null || !embedded(cid.getFontDescriptor()) || t0.isDamaged() || isDamaged(cid)) {
                     return Verdict.SUBSTITUTE;
                 }
-                if (cid instanceof PDCIDFontType0
-                        && CMapFixer.maxCid(t0.getCOSObject().getDictionaryObject(COSName.ENCODING)) > CMapFixer.MAX_CID) {
+                COSBase encoding = t0.getCOSObject().getDictionaryObject(COSName.ENCODING);
+                if (cid instanceof PDCIDFontType0 && CMapFixer.maxCid(encoding) > CMapFixer.MAX_CID) {
                     return Verdict.REBUILD;
                 }
                 return glyphsAndWidths(font, codes) ? Verdict.OK : Verdict.REBUILD;
