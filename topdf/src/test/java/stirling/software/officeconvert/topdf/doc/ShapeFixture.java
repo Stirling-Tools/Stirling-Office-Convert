@@ -6,6 +6,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
+import org.apache.poi.ddf.EscherChildAnchorRecord;
 import org.apache.poi.ddf.EscherComplexProperty;
 import org.apache.poi.ddf.EscherContainerRecord;
 import org.apache.poi.ddf.EscherDgRecord;
@@ -20,6 +21,15 @@ import org.apache.poi.ddf.EscherSpgrRecord;
 final class ShapeFixture {
 
     record Shape(int spid, int type, int[] rect, int flags, Map<Integer, Integer> props, byte[] polygon) {}
+
+    record Member(int spid, int[] anchor, int fill) {}
+
+    static Shape group(int spid, int[] rect, int flags, int[] frame, List<Member> members) {
+        GROUPS.put(spid, new Object[] {frame, members});
+        return new Shape(spid, 0, rect, flags, Map.of(), null);
+    }
+
+    private static final Map<Integer, Object[]> GROUPS = new java.util.concurrent.ConcurrentHashMap<>();
 
     private ShapeFixture() {}
 
@@ -71,6 +81,11 @@ final class ShapeFixture {
         patriarch.addChildRecord(top);
         group.addChildRecord(patriarch);
         for (Shape s : shapes) {
+            Object[] g = GROUPS.remove(s.spid());
+            if (g != null) {
+                group.addChildRecord(group(s.spid(), (int[]) g[0], memberList(g[1])));
+                continue;
+            }
             EscherContainerRecord sp = container(0xF004);
             EscherSpRecord fsp = new EscherSpRecord();
             fsp.setRecordId(EscherSpRecord.RECORD_ID);
@@ -95,6 +110,53 @@ final class ShapeFixture {
         }
         dg.addChildRecord(group);
         return WordFixture.concat(dgg.serialize(), new byte[] {0}, dg.serialize());
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List<Member> memberList(Object o) {
+        return (List<Member>) o;
+    }
+
+    private static EscherContainerRecord group(int spid, int[] frame, List<Member> members) {
+        EscherContainerRecord spgr = container(0xF003);
+        EscherContainerRecord head = container(0xF004);
+        EscherSpgrRecord rect = new EscherSpgrRecord();
+        rect.setRecordId(EscherSpgrRecord.RECORD_ID);
+        rect.setOptions((short) 0x0001);
+        rect.setRectX1(frame[0]);
+        rect.setRectY1(frame[1]);
+        rect.setRectX2(frame[2]);
+        rect.setRectY2(frame[3]);
+        head.addChildRecord(rect);
+        EscherSpRecord fsp = new EscherSpRecord();
+        fsp.setRecordId(EscherSpRecord.RECORD_ID);
+        fsp.setOptions((short) 0x0002);
+        fsp.setShapeId(spid);
+        fsp.setFlags(0x0201);
+        head.addChildRecord(fsp);
+        spgr.addChildRecord(head);
+        for (Member m : members) {
+            EscherContainerRecord sp = container(0xF004);
+            EscherSpRecord child = new EscherSpRecord();
+            child.setRecordId(EscherSpRecord.RECORD_ID);
+            child.setOptions((short) (1 << 4 | 2));
+            child.setShapeId(m.spid());
+            child.setFlags(0x0A02);
+            sp.addChildRecord(child);
+            EscherOptRecord opt = new EscherOptRecord();
+            opt.setRecordId(EscherOptRecord.RECORD_ID);
+            opt.addEscherProperty(new EscherSimpleProperty(EscherPropertyTypes.forPropertyID(0x0181), m.fill()));
+            sp.addChildRecord(opt);
+            EscherChildAnchorRecord a = new EscherChildAnchorRecord();
+            a.setRecordId(EscherChildAnchorRecord.RECORD_ID);
+            a.setDx1(m.anchor()[0]);
+            a.setDy1(m.anchor()[1]);
+            a.setDx2(m.anchor()[2]);
+            a.setDy2(m.anchor()[3]);
+            sp.addChildRecord(a);
+            spgr.addChildRecord(sp);
+        }
+        return spgr;
     }
 
     private static EscherContainerRecord container(int id) {

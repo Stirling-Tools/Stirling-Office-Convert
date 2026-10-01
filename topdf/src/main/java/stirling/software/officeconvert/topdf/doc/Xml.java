@@ -18,8 +18,10 @@ final class Xml {
 
     static final String WPS = "http://schemas.microsoft.com/office/word/2010/wordprocessingShape";
 
+    static final String WPG = "http://schemas.microsoft.com/office/word/2010/wordprocessingGroup";
+
     static final String NAMESPACES = " xmlns:w=\"" + W + "\" xmlns:r=\"" + R + "\" xmlns:wp=\"" + WP + "\" xmlns:a=\""
-            + A + "\" xmlns:pic=\"" + PIC + "\" xmlns:wps=\"" + WPS + "\"";
+            + A + "\" xmlns:pic=\"" + PIC + "\" xmlns:wps=\"" + WPS + "\" xmlns:wpg=\"" + WPG + "\"";
 
     private Xml() {}
 

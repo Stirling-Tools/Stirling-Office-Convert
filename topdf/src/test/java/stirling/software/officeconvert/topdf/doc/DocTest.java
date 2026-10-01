@@ -387,4 +387,20 @@ class DocTest {
         String rest = xml.substring(xml.indexOf("Column text"));
         assertTrue(rest.contains("w:line=\"20\" w:lineRule=\"exact\"") && rest.contains("<w:br w:type=\"column\"/>"), xml);
     }
+
+    @Test
+    void groupedShapesKeepTheirMembers() throws IOException {
+        byte[] doc = new WordFixture()
+                .para(List.of(WordFixture.run("Group "), WordFixture.run("\u0008", Sprms.special())), 0)
+                .shape(ShapeFixture.group(1030, new int[] {0, 0, 4000, 2000}, ShapeFixture.fspaFlags(2, 2, 3, 0, false),
+                        new int[] {0, 0, 100, 50}, List.of(new ShapeFixture.Member(1031, new int[] {0, 0, 50, 50}, 0x0000FF),
+                                new ShapeFixture.Member(1032, new int[] {50, 0, 100, 50}, 0x00FF00))))
+                .build();
+        String xml = body(doc);
+        assertTrue(xml.contains("<wpg:wgp>"), xml);
+        assertTrue(xml.contains("<a:chOff x=\"0\" y=\"0\"/><a:chExt cx=\"100\" cy=\"50\"/>"), xml);
+        assertEquals(2, xml.split("<wps:wsp>").length - 1, xml);
+        assertTrue(xml.contains("<a:off x=\"50\" y=\"0\"/><a:ext cx=\"50\" cy=\"50\"/>"), xml);
+        assertTrue(xml.contains("FF0000") && xml.contains("00FF00"), xml);
+    }
 }

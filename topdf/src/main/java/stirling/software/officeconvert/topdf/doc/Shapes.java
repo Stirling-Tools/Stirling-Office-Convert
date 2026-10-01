@@ -26,15 +26,41 @@ final class Shapes {
 
     static String anchor(Conv c, Story story, OfficeDrawing d, FSPA fspa) throws IOException {
         EscherContainerRecord sp = container(d);
-        if (sp == null) {
+        EscherSpRecord rec = sp == null ? null : sp.getChildById(EscherSpRecord.RECORD_ID);
+        if (rec == null) {
+            sp = Groups.head(c, d.getShapeId());
+            rec = sp == null ? null : sp.getChildById(EscherSpRecord.RECORD_ID);
+        }
+        if (rec == null) {
             return null;
         }
+        long cx = Math.max(1, (long) d.getRectangleRight() - d.getRectangleLeft()) * Drawings.EMU_PER_TWIP;
+        long cy = Math.max(1, (long) d.getRectangleBottom() - d.getRectangleTop()) * Drawings.EMU_PER_TWIP;
+        boolean wraps = fspa != null && fspa.getWr() != 3;
+        String inner;
+        String uri;
+        if ((rec.getFlags() & 0x01) != 0) {
+            inner = Groups.group(c, story, d.getShapeId(), cx, cy);
+            uri = Groups.WPG;
+        } else {
+            inner = shape(c, story, sp, 0, 0, cx, cy, wraps);
+            uri = Xml.WPS;
+        }
+        if (inner == null) {
+            return null;
+        }
+        int id = c.nextId();
+        return "<w:drawing>" + open(d, sp, fspa, id, cx, cy) + "<a:graphic><a:graphicData uri=\"" + uri + "\">" + inner
+                + "</a:graphicData></a:graphic></wp:anchor></w:drawing>";
+    }
+
+    static String shape(Conv c, Story story, EscherContainerRecord sp, long x, long y, long cx, long cy,
+            boolean keepInvisible) throws IOException {
         EscherSpRecord rec = sp.getChildById(EscherSpRecord.RECORD_ID);
-        if (rec == null || (rec.getFlags() & 0x01) != 0) {
+        if (rec == null) {
             return null;
         }
-        int type = rec.getShapeType();
-        String geom = switch (type) {
+        String geom = switch (rec.getShapeType()) {
             case 1, 202, 75 -> "rect";
             case 2 -> "roundRect";
             case 3 -> "ellipse";
@@ -43,30 +69,19 @@ final class Shapes {
             case 20, 32 -> "line";
             default -> "rect";
         };
-        long cx = Math.max(0, (long) d.getRectangleRight() - d.getRectangleLeft()) * Drawings.EMU_PER_TWIP;
-        long cy = Math.max(0, (long) d.getRectangleBottom() - d.getRectangleTop()) * Drawings.EMU_PER_TWIP;
         boolean line = geom.equals("line");
-        int[] text = line ? null : c.textboxes().text(d.getShapeId(), story.kind == Story.Kind.HEADER);
+        int[] text = line ? null : c.textboxes().text(rec.getShapeId(), story.kind == Story.Kind.HEADER);
         Boolean fill = bit(sp, 0x01BF, 4);
         boolean filled = fill == null || fill;
         Boolean stroke = bit(sp, 0x01FF, 3);
         boolean stroked = stroke == null || stroke;
-        boolean wraps = fspa != null && fspa.getWr() != 3;
-        if (text == null && !stroked && (!filled || line) && !wraps) {
+        if (text == null && !stroked && (!filled || line) && !keepInvisible) {
             return null;
         }
-        int id = c.nextId();
-        StringBuilder b = new StringBuilder("<w:drawing>").append(open(c, d, fspa, id, Math.max(1, cx), Math.max(1, cy)));
-        b.append("<a:graphic><a:graphicData uri=\"").append(Xml.WPS).append("\"><wps:wsp><wps:cNvSpPr")
-                .append(text != null ? " txBox=\"1\"" : "").append("/><wps:spPr><a:xfrm");
-        if ((rec.getFlags() & 0x40) != 0) {
-            b.append(" flipH=\"1\"");
-        }
-        if ((rec.getFlags() & 0x80) != 0) {
-            b.append(" flipV=\"1\"");
-        }
-        b.append("><a:off x=\"0\" y=\"0\"/><a:ext cx=\"").append(cx).append("\" cy=\"").append(cy)
-                .append("\"/></a:xfrm><a:prstGeom prst=\"").append(geom).append("\"><a:avLst/></a:prstGeom>");
+        StringBuilder b = new StringBuilder("<wps:wsp><wps:cNvSpPr").append(text != null ? " txBox=\"1\"" : "")
+                .append("/><wps:spPr>");
+        xfrm(b, rec, x, y, cx, cy);
+        b.append("<a:prstGeom prst=\"").append(geom).append("\"><a:avLst/></a:prstGeom>");
         long opacity = prop(sp, 0x0182, 0x10000);
         if (filled && !line && opacity > 0) {
             b.append("<a:solidFill><a:srgbClr val=\"").append(color(prop(sp, 0x0181, 0xFFFFFF), 0xFFFFFF))
@@ -99,8 +114,20 @@ final class Shapes {
                     case 1, 4 -> "ctr";
                     case 2, 5, 7, 9 -> "b";
                     default -> "t";
-                }).append("\"/></wps:wsp></a:graphicData></a:graphic></wp:anchor></w:drawing>");
+                }).append("\"/></wps:wsp>");
         return b.toString();
+    }
+
+    static void xfrm(StringBuilder b, EscherSpRecord rec, long x, long y, long cx, long cy) {
+        b.append("<a:xfrm");
+        if ((rec.getFlags() & 0x40) != 0) {
+            b.append(" flipH=\"1\"");
+        }
+        if ((rec.getFlags() & 0x80) != 0) {
+            b.append(" flipV=\"1\"");
+        }
+        b.append("><a:off x=\"").append(x).append("\" y=\"").append(y).append("\"/><a:ext cx=\"").append(cx)
+                .append("\" cy=\"").append(cy).append("\"/></a:xfrm>");
     }
 
     private static String color(long v, int fallback) {
@@ -109,8 +136,7 @@ final class Shapes {
         return Xml.hex(rgb);
     }
 
-    static String open(Conv c, OfficeDrawing d, FSPA fspa, int id, long cx, long cy) {
-        EscherContainerRecord sp = container(d);
+    static String open(OfficeDrawing d, EscherContainerRecord sp, FSPA fspa, int id, long cx, long cy) {
         long left = prop(sp, WRAP_LEFT, 114300);
         long right = prop(sp, WRAP_RIGHT, 114300);
         long top = prop(sp, WRAP_TOP, 0);

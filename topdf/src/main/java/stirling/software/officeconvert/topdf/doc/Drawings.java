@@ -148,7 +148,7 @@ final class Drawings {
         String rid = story.rels.image(name);
         long cx = Math.max(1, (long) d.getRectangleRight() - d.getRectangleLeft()) * EMU_PER_TWIP;
         long cy = Math.max(1, (long) d.getRectangleBottom() - d.getRectangleTop()) * EMU_PER_TWIP;
-        return "<w:drawing>" + Shapes.open(c, d, fspa, id, cx, cy) + graphic(id, rid, cx, cy, "")
+        return "<w:drawing>" + Shapes.open(d, Shapes.container(d), fspa, id, cx, cy) + graphic(id, rid, cx, cy, "")
                 + "</wp:anchor></w:drawing>";
     }
 
