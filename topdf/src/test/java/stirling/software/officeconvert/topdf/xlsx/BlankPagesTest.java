@@ -17,8 +17,9 @@ class BlankPagesTest {
     private static final String STYLES = "<fonts count=\"2\"><font><sz val=\"11\"/><name val=\"Calibri\"/></font><font>"
             + "<b/><sz val=\"11\"/><name val=\"Calibri\"/></font></fonts><fills count=\"2\"><fill><patternFill"
             + " patternType=\"none\"/></fill><fill><patternFill patternType=\"gray125\"/></fill></fills><borders"
-            + " count=\"1\"><border/></borders><cellStyleXfs count=\"1\"><xf/></cellStyleXfs><cellXfs count=\"2\"><xf/>"
-            + "<xf fontId=\"1\" applyFont=\"1\"/></cellXfs>";
+            + " count=\"2\"><border/><border><left/><right/><top/><bottom/><diagonal/></border></borders><cellStyleXfs"
+            + " count=\"1\"><xf/></cellStyleXfs><cellXfs count=\"3\"><xf/><xf fontId=\"1\" applyFont=\"1\"/><xf"
+            + " borderId=\"1\" applyBorder=\"1\"/></cellXfs>";
 
     @TempDir
     Path dir;
@@ -39,6 +40,14 @@ class BlankPagesTest {
         String rows = "<row r=\"1\">" + RawXlsx.inline("A1", "First") + "</row><row r=\"15\"><c r=\"A15\" s=\"1\"/>"
                 + "</row>";
         assertEquals(1, convert("styled.xlsx", rows).pages().size());
+    }
+
+    @Test
+    void aBlankMergedRangeIsPrinted() throws IOException {
+        String sheet = "<sheetData><row r=\"1\">" + RawXlsx.inline("A1", "First") + "</row></sheetData>"
+                + "<mergeCells count=\"1\"><mergeCell ref=\"A24:B25\"/></mergeCells>" + BREAKS;
+        assertEquals(3, XlsxTesting.convert(dir, "merge.xlsx", new RawXlsx().styles(STYLES).sheet("S", sheet).bytes())
+                .pages().size());
     }
 
     @Test

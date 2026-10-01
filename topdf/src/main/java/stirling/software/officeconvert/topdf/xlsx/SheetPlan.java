@@ -127,9 +127,7 @@ final class SheetPlan {
         grid.mergesIn(range.getFirstRow(), range.getLastRow(), range.getFirstColumn(), range.getLastColumn(),
                 merges::add);
         for (CellRangeAddress m : merges) {
-            if (grid.cell(m.getFirstRow(), m.getFirstColumn()) != null) {
-                sink.add(m.getFirstRow(), m.getLastRow(), m.getFirstColumn(), m.getLastColumn());
-            }
+            sink.add(m.getFirstRow(), m.getLastRow(), m.getFirstColumn(), m.getLastColumn());
         }
     }
 }
