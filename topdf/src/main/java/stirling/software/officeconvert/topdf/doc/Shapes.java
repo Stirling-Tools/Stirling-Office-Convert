@@ -46,10 +46,10 @@ final class Shapes {
         long cy = Math.max(0, (long) d.getRectangleBottom() - d.getRectangleTop()) * Drawings.EMU_PER_TWIP;
         boolean line = geom.equals("line");
         int[] text = line ? null : c.textboxes().text(d.getShapeId(), story.kind == Story.Kind.HEADER);
-        long fillBits = prop(sp, 0x01BF, 0x10);
-        boolean filled = (fillBits & 0x10) != 0 || (fillBits & 0x100000) == 0;
-        long lineBits = prop(sp, 0x01FF, 0x08);
-        boolean stroked = (lineBits & 0x08) != 0 || (lineBits & 0x80000) == 0;
+        Boolean fill = bit(sp, 0x01BF, 4);
+        boolean filled = fill == null || fill;
+        Boolean stroke = bit(sp, 0x01FF, 3);
+        boolean stroked = stroke == null || stroke;
         if (text == null && !stroked && (!filled || line)) {
             return null;
         }
@@ -114,11 +114,12 @@ final class Shapes {
         long top = prop(sp, WRAP_TOP, 0);
         long bottom = prop(sp, WRAP_BOTTOM, 0);
         int wr = fspa == null ? 3 : fspa.getWr();
-        boolean behind = fspa != null && fspa.isFBelowText();
+        Boolean flag = bit(sp, 0x03BF, 5);
+        boolean behind = flag != null ? flag : fspa != null && fspa.isFBelowText();
         StringBuilder b = new StringBuilder(512);
         b.append("<wp:anchor distT=\"").append(top).append("\" distB=\"").append(bottom).append("\" distL=\"")
                 .append(left).append("\" distR=\"").append(right).append("\" simplePos=\"0\" relativeHeight=\"")
-                .append(id).append("\" behindDoc=\"").append(behind && wr == 3 ? 1 : 0)
+                .append(id).append("\" behindDoc=\"").append(behind ? 1 : 0)
                 .append("\" locked=\"0\" layoutInCell=\"1\" allowOverlap=\"1\"><wp:simplePos x=\"0\" y=\"0\"/>");
         b.append("<wp:positionH relativeFrom=\"").append(horizontalFrom(sp, fspa)).append("\">");
         String h = horizontalAlign(sp);
@@ -174,6 +175,19 @@ final class Shapes {
             }
         }
         return fallback;
+    }
+
+    static Boolean bit(EscherContainerRecord sp, int number, int bit) {
+        if (sp == null) {
+            return null;
+        }
+        for (EscherRecord r : sp.getChildRecords()) {
+            if (r instanceof AbstractEscherOptRecord opt && opt.lookup(number) instanceof EscherSimpleProperty s
+                    && (s.getPropertyValue() & (1 << (bit + 16))) != 0) {
+                return (s.getPropertyValue() & (1 << bit)) != 0;
+            }
+        }
+        return null;
     }
 
     private static String horizontalFrom(EscherContainerRecord sp, FSPA fspa) {
