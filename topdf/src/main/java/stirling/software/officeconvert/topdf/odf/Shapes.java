@@ -223,18 +223,27 @@ final class Shapes {
             if (current.isEmpty()) {
                 move(cx, cy);
             }
-            current.append("<a:arcTo wR=\"").append(Math.round(wr * k)).append("\" hR=\"").append(Math.round(hr * k))
-                    .append("\" stAng=\"").append(Math.round(stDeg * 60000)).append("\" swAng=\"")
-                    .append(Math.round(swDeg * 60000)).append("\"/>");
+            if (wr <= 0 || hr <= 0 || swDeg == 0) {
+                return;
+            }
             double st = Math.toRadians(stDeg);
             double en = Math.toRadians(stDeg + swDeg);
-            double a0 = Math.atan2(wr * Math.sin(st), hr * Math.cos(st));
-            double a1 = Math.atan2(wr * Math.sin(en), hr * Math.cos(en));
-            double centerX = cx - wr * Math.cos(a0);
-            double centerY = cy - hr * Math.sin(a0);
-            cx = centerX + wr * Math.cos(a1);
-            cy = centerY + hr * Math.sin(a1);
-            segments++;
+            double t0 = Math.atan2(wr * Math.sin(st), hr * Math.cos(st));
+            double t1 = Math.atan2(wr * Math.sin(en), hr * Math.cos(en));
+            if (Math.abs(swDeg) >= 360) {
+                t1 = t0 + Math.signum(swDeg) * 2 * Math.PI;
+            } else if (swDeg > 0) {
+                while (t1 <= t0) {
+                    t1 += 2 * Math.PI;
+                }
+            } else {
+                while (t1 >= t0) {
+                    t1 -= 2 * Math.PI;
+                }
+            }
+            double centerX = cx - wr * Math.cos(t0);
+            double centerY = cy - hr * Math.sin(t0);
+            ellipse(centerX, centerY, wr, hr, t0, t1, false);
         }
 
         /** An elliptical arc on the ellipse centred at (ecx, ecy) with radii rx, ry, from parametric angle t0 to t1
@@ -244,7 +253,7 @@ final class Shapes {
             double y0 = ecy + ry * Math.sin(t0);
             if (moveFirst || current.isEmpty()) {
                 move(x0, y0);
-            } else {
+            } else if (Math.abs(x0 - cx) > 1e-9 * Math.max(w, h) || Math.abs(y0 - cy) > 1e-9 * Math.max(w, h)) {
                 line(x0, y0);
             }
             double sweep = t1 - t0;

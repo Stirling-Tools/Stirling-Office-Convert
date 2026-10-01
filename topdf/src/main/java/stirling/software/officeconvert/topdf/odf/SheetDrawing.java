@@ -136,6 +136,9 @@ final class SheetDrawing {
             geom = sg.xml();
             flipH = sg.flipH();
             flipV = sg.flipV();
+            if (flipV && box.rot() != 0) {
+                box = new Box(box.x(), box.y(), box.w(), box.h(), (360 - box.rot()) % 360);
+            }
         }
         String fill = line ? "<a:noFill/>" : Dml.fill(g, w.styles, null);
         String ln = Dml.line(g);

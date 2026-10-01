@@ -98,7 +98,8 @@ class OdpTest {
                 + " draw:name=\"f13\" draw:formula=\"(5400000)/60000.0\"/></draw:enhanced-geometry></draw:custom-shape>"
                 + "</draw:page>";
         String slide = OdfFixtures.rewrite(odp("", page)).get("ppt/slides/slide1.xml");
-        assertTrue(slide.contains("<a:arcTo wR=\"8334\" hR=\"8334\" stAng=\"10800000\" swAng=\"5400000\"/>"), slide);
+        assertTrue(slide.contains("<a:moveTo><a:pt x=\"0\" y=\"8334\"/></a:moveTo><a:cubicBezTo><a:pt x=\"0\""), slide);
+        assertTrue(slide.contains("<a:pt x=\"8333\" y=\"0\"/></a:cubicBezTo>"), slide);
         assertTrue(slide.contains("Inside"), slide);
     }
 
@@ -130,5 +131,44 @@ class OdpTest {
         String slide = OdfFixtures.rewrite(odp(auto, page)).get("ppt/slides/slide1.xml");
         assertTrue(slide.contains("<a:tc gridSpan=\"2\">") && slide.contains("hMerge=\"1\""), slide);
         assertTrue(slide.contains("<a:srgbClr val=\"156082\"/>"), slide);
+    }
+
+    @Test
+    void shrinkToFitTextGetsTheScaleItNeeds() throws IOException {
+        String auto = "<style:style style:name=\"gr1\" style:family=\"graphic\"><style:graphic-properties"
+                + " style:shrink-to-fit=\"true\"/><style:text-properties fo:font-size=\"40pt\"/></style:style>";
+        StringBuilder text = new StringBuilder();
+        for (int i = 0; i < 12; i++) {
+            text.append("<text:p>A line of text that needs room number ").append(i).append("</text:p>");
+        }
+        String page = "<draw:page draw:name=\"S\" draw:master-page-name=\"Default\"><draw:frame draw:style-name=\"gr1\""
+                + " svg:x=\"1cm\" svg:y=\"1cm\" svg:width=\"20cm\" svg:height=\"8cm\"><draw:text-box>" + text
+                + "</draw:text-box></draw:frame></draw:page>";
+        Path p = odp(auto, page);
+        java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+        OdfPackage.write(p, out, stirling.software.officeconvert.topdf.font.FontLibrary.system());
+        String slide = new String(out.toByteArray(), java.nio.charset.StandardCharsets.ISO_8859_1);
+        Map<String, String> parts = OdfFixtures.rewrite(p);
+        assertTrue(parts.get("ppt/slides/slide1.xml").contains("<a:normAutofit/>"));
+        try (java.util.zip.ZipInputStream zip = new java.util.zip.ZipInputStream(
+                new java.io.ByteArrayInputStream(out.toByteArray()))) {
+            for (java.util.zip.ZipEntry e; (e = zip.getNextEntry()) != null; ) {
+                if (e.getName().equals("ppt/slides/slide1.xml")) {
+                    slide = new String(zip.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+                }
+            }
+        }
+        assertTrue(slide.contains("<a:normAutofit fontScale=\""), slide);
+    }
+
+    @Test
+    void aVerticallyMirroredShapeTurnsTheOtherWay() throws IOException {
+        String page = "<draw:page draw:name=\"S\" draw:master-page-name=\"Default\"><draw:custom-shape svg:width=\"5cm\""
+                + " svg:height=\"2cm\" draw:transform=\"rotate (-0.785398163397449) translate (12cm 12cm)\">"
+                + "<draw:enhanced-geometry svg:viewBox=\"0 0 21600 21600\" draw:type=\"right-arrow\""
+                + " draw:mirror-vertical=\"true\" draw:enhanced-path=\"M 0 0 L 21600 10800 0 21600 Z N\"/>"
+                + "</draw:custom-shape></draw:page>";
+        String slide = OdfFixtures.rewrite(odp("", page)).get("ppt/slides/slide1.xml");
+        assertTrue(slide.contains("rot=\"18900000\" flipV=\"1\""), slide);
     }
 }

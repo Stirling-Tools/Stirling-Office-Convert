@@ -1,5 +1,7 @@
 package stirling.software.officeconvert.topdf.odf;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
 
 import org.w3c.dom.Element;
@@ -24,6 +26,15 @@ final class DmlText {
 
     static final int MAX_PARAGRAPHS = 20_000;
 
+    record Run(String text, String font, double size, boolean bold, boolean italic, boolean lineBreak) {}
+
+    record Para(double before, double after, double linePct, double linePts, double margin, double indent,
+            List<Run> runs, double endSize) {}
+
+    final List<Para> layout = new ArrayList<>();
+
+    private List<Run> current;
+
     private final Styles styles;
 
     private final Styles.Scope scope;
@@ -35,6 +46,8 @@ final class DmlText {
     private final StringBuilder out = new StringBuilder();
 
     private int paragraphs;
+
+    private Props last;
 
     DmlText(Styles styles, Styles.Scope scope, Levels levels, Fields fields) {
         this.styles = styles;
@@ -179,9 +192,23 @@ final class DmlText {
         ppr.append(tabs(pp, margin));
         ppr.append("</a:pPr>");
         StringBuilder runs = new StringBuilder();
+        last = tp;
+        current = new ArrayList<>();
         inline(p, tp, runs, new boolean[] {true}, 0);
-        out.append("<a:p>").append(ppr).append(runs).append("<a:endParaRPr").append(runAttrs(tp)).append('>')
-                .append(runChildren(tp)).append("</a:endParaRPr></a:p>");
+        Props end = last;
+        double linePct = 100;
+        double linePts = 0;
+        if (lh != null && Length.isPercent(lh)) {
+            linePct = Length.percent(lh, 100);
+        } else if (lh != null && !lh.equals("normal")) {
+            linePts = Length.pt(lh, 0);
+        } else if (pp.has("style:line-height-at-least")) {
+            linePts = pp.pt("style:line-height-at-least", 0);
+        }
+        layout.add(new Para(pp.pt("fo:margin-top", 0), pp.pt("fo:margin-bottom", 0), linePct, linePts,
+                Math.max(0, margin), indent, current, end.pt("fo:font-size", 18)));
+        out.append("<a:p>").append(ppr).append(runs).append("<a:endParaRPr").append(runAttrs(end)).append('>')
+                .append(runChildren(end)).append("</a:endParaRPr></a:p>");
     }
 
     private String bullet(Element lvl, boolean label, Props text) {
@@ -288,6 +315,7 @@ final class DmlText {
                         Props p = new Props(run);
                         p.merge(styles.props("text", Dom.attr(k, Ns.TEXT, "style-name"), scope, "text-properties",
                                 false));
+                        last = p;
                         inline(k, p, out, lineStart, depth + 1);
                     }
                     case "a" -> inline(k, run, out, lineStart, depth + 1);
@@ -300,6 +328,9 @@ final class DmlText {
                         lineStart[0] = false;
                     }
                     case "line-break" -> {
+                        if (current != null) {
+                            current.add(new Run("", null, run.pt("fo:font-size", 18), false, false, true));
+                        }
                         out.append("<a:br><a:rPr").append(runAttrs(run)).append('>').append(runChildren(run))
                                 .append("</a:rPr></a:br>");
                         lineStart[0] = true;
@@ -342,6 +373,10 @@ final class DmlText {
 
     private String run(Props p, String text) {
         String t = text;
+        if (current != null && current.size() < 10_000) {
+            current.add(new Run(text, WordRun.font(p, styles, ""), p.pt("fo:font-size", 18),
+                    WordRun.bold(p.get("fo:font-weight")), WordRun.italic(p.get("fo:font-style")), false));
+        }
         if ("uppercase".equals(p.get("fo:text-transform"))) {
             t = t.toUpperCase(Locale.ROOT);
         } else if ("lowercase".equals(p.get("fo:text-transform"))) {

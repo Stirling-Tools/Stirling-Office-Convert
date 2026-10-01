@@ -299,6 +299,9 @@ final class WordDrawings {
             geom = sg.xml();
             flipH = sg.flipH();
             flipV = sg.flipV();
+            if (flipV && b.rot() != 0) {
+                b = new Box(b.x(), b.y(), b.w(), b.h(), (360 - b.rot()) % 360);
+            }
         }
         if (b.w() <= 0 && b.h() <= 0) {
             return null;

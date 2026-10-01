@@ -822,7 +822,7 @@ public final class OfficeToPdf {
             OdfPackage.Outcome outcome;
             Admission.Ticket ticket = Admission.jvm().enter(OdfPackage.estimate(source));
             try (OutputStream os = new BufferedOutputStream(Files.newOutputStream(rewritten), 1 << 16)) {
-                outcome = OdfPackage.write(source, os);
+                outcome = OdfPackage.write(source, os, FontLibrary.withSystem(options.fontDirs()));
             } finally {
                 ticket.close();
             }

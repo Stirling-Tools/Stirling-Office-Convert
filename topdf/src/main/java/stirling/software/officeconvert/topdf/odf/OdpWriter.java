@@ -8,6 +8,8 @@ import java.util.Map;
 
 import org.w3c.dom.Element;
 
+import stirling.software.officeconvert.topdf.font.FontLibrary;
+
 /** An OpenDocument presentation rewritten as the PresentationML package the PPTX renderer draws. Every slide carries
  * its own shapes, with the master page's background objects drawn in, so no placeholder inheritance is needed. */
 final class OdpWriter {
@@ -30,8 +32,11 @@ final class OdpWriter {
 
     boolean externalSkipped;
 
-    OdpWriter(OdfDocument doc, PackageOut out) {
+    final FontLibrary fonts;
+
+    OdpWriter(OdfDocument doc, PackageOut out, FontLibrary fonts) {
         this.doc = doc;
+        this.fonts = fonts;
         this.out = out;
         this.styles = new Styles(doc);
     }

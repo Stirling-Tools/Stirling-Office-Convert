@@ -6,6 +6,8 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 
+import stirling.software.officeconvert.topdf.font.FontLibrary;
+
 /** An OpenDocument text, spreadsheet or presentation rewritten in memory as the matching Office Open XML package
  * (WordprocessingML, SpreadsheetML or PresentationML) for the existing renderers. Formulas are never evaluated (cached
  * values only), macros and scripts are never run, and nothing outside the package is ever read. */
@@ -29,6 +31,11 @@ public final class OdfPackage {
     }
 
     public static Outcome write(Path source, OutputStream out) throws IOException {
+        return write(source, out, null);
+    }
+
+    /** The fonts measure text that must shrink to fit its shape, as PowerPoint stores the shrink and ODF does not. */
+    public static Outcome write(Path source, OutputStream out, FontLibrary fonts) throws IOException {
         try (OdfDocument doc = OdfDocument.open(source)) {
             PackageOut pkg = new PackageOut(out);
             List<String> warnings = new ArrayList<>();
@@ -38,7 +45,7 @@ public final class OdfPackage {
             warnings.addAll(switch (doc.kind()) {
                 case TEXT -> new OdtWriter(doc, pkg).write();
                 case SPREADSHEET -> new OdsWriter(doc, pkg).write();
-                case PRESENTATION -> new OdpWriter(doc, pkg).write();
+                case PRESENTATION -> new OdpWriter(doc, pkg, fonts).write();
             });
             return new Outcome(warnings, false);
         }

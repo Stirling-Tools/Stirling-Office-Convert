@@ -226,12 +226,24 @@ final class SlideWriter {
         };
     }
 
-    private String text(Element container, Element shape, Styles.Scope scope) {
+    private String body(Element container, Element shape, Styles.Scope scope, Props g, Box box) {
         DmlText t = new DmlText(w.styles, scope, levels(shape, scope), fields());
-        return t.paragraphs(container);
+        String paragraphs = t.paragraphs(container);
+        int[] fit = null;
+        if (shrinks(g)) {
+            double width = box.w() - g.pt("fo:padding-left", 7.2) - g.pt("fo:padding-right", 7.2);
+            double height = box.h() - g.pt("fo:padding-top", 3.6) - g.pt("fo:padding-bottom", 3.6);
+            fit = Autofit.fit(t.layout, width, height, w.fonts);
+        }
+        return "<p:txBody>" + bodyPr(g, fit) + "<a:lstStyle/>" + paragraphs + "</p:txBody>";
     }
 
-    private static String bodyPr(Props g, double[] rect) {
+    private static boolean shrinks(Props g) {
+        String fit = g.get("draw:fit-to-size", "false");
+        return "true".equals(g.get("style:shrink-to-fit")) || fit.equals("shrink-to-fit") || fit.equals("true");
+    }
+
+    private static String bodyPr(Props g, int[] fit) {
         double l = g.pt("fo:padding-left", 7.2);
         double r = g.pt("fo:padding-right", 7.2);
         double t = g.pt("fo:padding-top", 3.6);
@@ -256,9 +268,15 @@ final class SlideWriter {
             x.append(" anchorCtr=\"1\"");
         }
         x.append('>');
-        String fit = g.get("draw:fit-to-size", "false");
-        if ("true".equals(g.get("style:shrink-to-fit")) || fit.equals("shrink-to-fit") || fit.equals("true")) {
-            x.append("<a:normAutofit/>");
+        if (shrinks(g)) {
+            x.append("<a:normAutofit");
+            if (fit != null) {
+                x.append(" fontScale=\"").append(fit[0]).append('"');
+                if (fit[1] > 0) {
+                    x.append(" lnSpcReduction=\"").append(fit[1]).append('"');
+                }
+            }
+            x.append("/>");
         } else if ("true".equals(g.get("draw:auto-grow-height"))) {
             x.append("<a:spAutoFit/>");
         } else {
@@ -299,8 +317,7 @@ final class SlideWriter {
             shapes.append("<p:sp>").append(nv("Sp", " txBox=\"1\"")).append("<p:spPr>").append(xfrm(box, false, false))
                     .append("<a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom>")
                     .append(fill == null ? "<a:noFill/>" : fill).append(ln == null ? "<a:ln><a:noFill/></a:ln>" : ln)
-                    .append("</p:spPr><p:txBody>").append(bodyPr(g, null)).append("<a:lstStyle/>")
-                    .append(text(textBox, f, scope)).append("</p:txBody></p:sp>");
+                    .append("</p:spPr>").append(body(textBox, f, scope, g, box)).append("</p:sp>");
             return;
         }
         Element table = Dom.kid(f, Ns.TABLE, "table");
@@ -392,6 +409,9 @@ final class SlideWriter {
         Box box = Box.of(s);
         Props g = graphic(s, scope);
         Shapes.Geometry geom = Shapes.geometry(s, box.w(), box.h());
+        if (geom.flipV() && box.rot() != 0) {
+            box = new Box(box.x(), box.y(), box.w(), box.h(), (360 - box.rot()) % 360);
+        }
         String fill = Dom.local(s).equals("polyline") ? "<a:noFill/>" : Dml.fill(g, w.styles, this::blip);
         String ln = Dml.line(g);
         shapes.append("<p:sp>").append(nv("Sp", "")).append("<p:spPr>").append(xfrm(box, geom.flipH(), geom.flipV()))
@@ -399,8 +419,7 @@ final class SlideWriter {
                 .append(ln == null ? "<a:ln w=\"0\"><a:solidFill><a:srgbClr val=\"3465A4\"/></a:solidFill></a:ln>" : ln)
                 .append("</p:spPr>");
         if (hasText(s)) {
-            shapes.append("<p:txBody>").append(bodyPr(g, null)).append("<a:lstStyle/>").append(text(s, s, scope))
-                    .append("</p:txBody>");
+            shapes.append(body(s, s, scope, g, box));
         }
         shapes.append("</p:sp>");
     }
