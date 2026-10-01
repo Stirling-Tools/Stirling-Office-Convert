@@ -30,12 +30,12 @@ final class TextBlock {
         this.wrap = wrap;
     }
 
-    static TextBlock layout(List<Para> paras, float width, boolean wrap) {
+    static TextBlock layout(List<Para> paras, float width, boolean wrap, boolean edges) {
         TextBlock b = new TextBlock(Math.max(0, width), wrap);
         for (Para p : paras) {
             b.breakLines(p);
         }
-        b.place();
+        b.place(edges);
         return b;
     }
 
@@ -187,7 +187,7 @@ final class TextBlock {
         return next - x;
     }
 
-    private void place() {
+    private void place(boolean edges) {
         float y = 0;
         Para previous = null;
         float previousSize = 0;
@@ -198,7 +198,7 @@ final class TextBlock {
                 if (previous != null) {
                     y += previous.after().amount(previousSize);
                 }
-                if (previous != null) {
+                if (previous != null || edges) {
                     y += l.para.before().amount(l.size);
                 }
             }
@@ -209,6 +209,9 @@ final class TextBlock {
             previousSize = l.size;
         }
         height = lines.isEmpty() ? y : lines.get(lines.size() - 1).baseline + lines.get(lines.size() - 1).tail;
+        if (edges && previous != null) {
+            height += previous.after().amount(previousSize);
+        }
     }
 
     private void align(Line l) {

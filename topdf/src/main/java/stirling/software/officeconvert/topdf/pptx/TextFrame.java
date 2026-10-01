@@ -61,6 +61,8 @@ final class TextFrame {
 
     private float spin;
 
+    private boolean edges;
+
     // WordArt warps: straight guide lines stretch the text between them, curved ones bend its outlines
     record Warp(String preset, float adj) {
 
@@ -136,6 +138,8 @@ final class TextFrame {
                 shape.isHorizontalCentered(), shape.getWordWrap(), dir, rot, columns, gap);
         frame.warp = chain.isEmpty() ? null : warp(chain.get(0));
         frame.spin = chain.isEmpty() ? 0 : Cameras.revolution(chain.get(0));
+        String edges = text(chain, "spcFirstLastPara");
+        frame.edges = "1".equals(edges) || "true".equals(edges);
         return frame;
     }
 
@@ -289,7 +293,7 @@ final class TextFrame {
 
     float height(float width) {
         float w = Math.max(0, width - insets.left() - insets.right());
-        TextBlock b = TextBlock.layout(paras, w, wrap);
+        TextBlock b = TextBlock.layout(paras, w, wrap, edges);
         return b.height + insets.top() + insets.bottom();
     }
 
@@ -356,7 +360,7 @@ final class TextFrame {
         float areaH = (float) area.getHeight();
         if (columns > 1 && wrap) {
             float cw = Math.max(1, (areaW - columnGap * (columns - 1)) / columns);
-            TextBlock b = TextBlock.layout(paras, cw, true);
+            TextBlock b = TextBlock.layout(paras, cw, true, edges);
             float offset = 0;
             int column = 0;
             float columnTop = 0;
@@ -382,7 +386,7 @@ final class TextFrame {
             TextPainter.draw(canvas, b, (float) area.getX(), (float) area.getY() + offset, deck);
             return;
         }
-        TextBlock b = TextBlock.layout(paras, areaW, wrap);
+        TextBlock b = TextBlock.layout(paras, areaW, wrap, edges);
         Rectangle2D box = new Rectangle2D.Double(area.getX() - insets.left(), area.getY() - insets.top(),
                 area.getWidth() + insets.left() + insets.right(), area.getHeight() + insets.top() + insets.bottom());
         if (warp != null && direction == TextDirection.HORIZONTAL && warped(canvas, b, box)) {

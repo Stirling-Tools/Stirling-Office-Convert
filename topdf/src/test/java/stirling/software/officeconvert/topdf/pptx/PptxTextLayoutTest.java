@@ -153,6 +153,20 @@ class PptxTextLayoutTest {
         }
     }
 
+    @Test
+    void theFirstParagraphKeepsItsSpaceBeforeWhenTheBodySaysSo() throws IOException {
+        String para = "<a:p><a:pPr><a:spcBef><a:spcPts val=\"2400\"/></a:spcBef></a:pPr>" + Decks.run("Q", "sz=\"1800\"")
+                + "</a:p>";
+        float[] y = new float[2];
+        for (int i = 0; i < 2; i++) {
+            String bodyPr = "<a:bodyPr lIns=\"0\" tIns=\"0\" rIns=\"0\" bIns=\"0\" anchor=\"t\""
+                    + (i == 1 ? " spcFirstLastPara=\"1\"" : "") + "/>";
+            byte[] pptx = Decks.slideXml(Decks.textBox(5, 1270000, 1270000, 3810000, 1270000, bodyPr, para));
+            y[i] = baseline(Decks.convert(dir, "edges" + i + ".pptx", pptx).positions(0), 'Q');
+        }
+        assertEquals(24, y[1] - y[0], 0.5);
+    }
+
     private static float x(List<TextPosition> pos, char c) {
         return xAfter(pos, c, 0);
     }
