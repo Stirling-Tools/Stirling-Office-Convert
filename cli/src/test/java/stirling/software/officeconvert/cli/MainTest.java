@@ -64,7 +64,6 @@ class MainTest {
         Result r = run(a.toString(), b.toString(), c.toString(), d.toString(), "-o", out.toString(), "-q");
         assertEquals(1, r.code());
         assertEquals(4, r.err().lines().filter(l -> l.startsWith("FAIL ")).count(), r.err());
-        assertTrue(r.err().contains("not supported yet"), r.err());
         assertFalse(r.err().contains("Exception"), r.err());
     }
 

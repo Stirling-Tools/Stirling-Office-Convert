@@ -141,8 +141,7 @@ class PptRendererTest {
         for (String name : List.of("a.ppt", "b.PPS", "c.pot")) {
             assertEquals(Format.PPT, Format.of(Path.of(name)), name);
         }
-        IllegalArgumentException e = assertThrows(IllegalArgumentException.class, () -> Format.of(Path.of("x.doc")));
-        assertTrue(e.getMessage().contains("not supported yet"), e.getMessage());
+        assertEquals(Format.DOCX, Format.of(Path.of("x.doc")));
     }
 
     @Test
