@@ -9,9 +9,81 @@ import java.util.TreeMap;
 
 final class Cmaps {
 
+    record Subtable(int platform, int encoding, TreeMap<Integer, Integer> map) {}
+
     private Cmaps() {}
 
     static byte[] format4(TreeMap<Integer, Integer> map, int encodingId) {
+        return table(List.of(new Subtable(3, encodingId, map)));
+    }
+
+    static byte[] table(List<Subtable> subtables) {
+        List<byte[]> bodies = new ArrayList<>();
+        for (Subtable s : subtables) {
+            boolean bytes = s.platform() == 1 && s.encoding() == 0 && (s.map().isEmpty() || s.map().lastKey() < 256)
+                    && s.map().values().stream().allMatch(g -> g < 256);
+            boolean wide = !s.map().isEmpty() && s.map().lastKey() >= 0xFFFF;
+            bodies.add(bytes ? format0(s.map()) : wide ? format12(s.map()) : format4(s.map()));
+        }
+        ByteBuffer head = ByteBuffer.allocate(4 + 8 * subtables.size());
+        head.putShort((short) 0);
+        head.putShort((short) subtables.size());
+        int offset = head.capacity();
+        for (int i = 0; i < subtables.size(); i++) {
+            head.putShort((short) subtables.get(i).platform());
+            head.putShort((short) subtables.get(i).encoding());
+            head.putInt(offset);
+            offset += bodies.get(i).length;
+        }
+        ByteArrayOutputStream out = new ByteArrayOutputStream(offset);
+        out.writeBytes(head.array());
+        for (byte[] b : bodies) {
+            out.writeBytes(b);
+        }
+        return out.toByteArray();
+    }
+
+    private static byte[] format0(TreeMap<Integer, Integer> map) {
+        ByteBuffer sub = ByteBuffer.allocate(262);
+        sub.putShort((short) 0);
+        sub.putShort((short) 262);
+        sub.putShort((short) 0);
+        for (Map.Entry<Integer, Integer> e : map.entrySet()) {
+            if (e.getKey() >= 0 && e.getKey() < 256 && e.getValue() < 256) {
+                sub.put(6 + e.getKey(), (byte) (int) e.getValue());
+            }
+        }
+        return sub.array();
+    }
+
+    private static byte[] format12(TreeMap<Integer, Integer> map) {
+        List<int[]> groups = new ArrayList<>();
+        int[] cur = null;
+        for (Map.Entry<Integer, Integer> e : map.entrySet()) {
+            int code = e.getKey();
+            int gid = e.getValue();
+            if (cur != null && code == cur[1] + 1 && gid == cur[2] + (code - cur[0])) {
+                cur[1] = code;
+            } else {
+                cur = new int[] {code, code, gid};
+                groups.add(cur);
+            }
+        }
+        ByteBuffer sub = ByteBuffer.allocate(16 + 12 * groups.size());
+        sub.putShort((short) 12);
+        sub.putShort((short) 0);
+        sub.putInt(sub.capacity());
+        sub.putInt(0);
+        sub.putInt(groups.size());
+        for (int[] g : groups) {
+            sub.putInt(g[0]);
+            sub.putInt(g[1]);
+            sub.putInt(g[2]);
+        }
+        return sub.array();
+    }
+
+    private static byte[] format4(TreeMap<Integer, Integer> map) {
         List<int[]> segments = new ArrayList<>();
         int[] cur = null;
         for (Map.Entry<Integer, Integer> e : map.entrySet()) {
@@ -53,15 +125,6 @@ final class Cmaps {
         for (int i = 0; i < segments.size(); i++) {
             sub.putShort((short) 0);
         }
-        ByteArrayOutputStream out = new ByteArrayOutputStream();
-        ByteBuffer head = ByteBuffer.allocate(12);
-        head.putShort((short) 0);
-        head.putShort((short) 1);
-        head.putShort((short) 3);
-        head.putShort((short) encodingId);
-        head.putInt(12);
-        out.writeBytes(head.array());
-        out.writeBytes(sub.array());
-        return out.toByteArray();
+        return sub.array();
     }
 }

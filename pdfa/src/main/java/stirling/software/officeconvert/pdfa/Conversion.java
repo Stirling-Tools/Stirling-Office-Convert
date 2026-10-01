@@ -55,6 +55,7 @@ final class Conversion {
         DeviceColours colours = new DeviceColours();
         ContentFixer.run(graph, level, report, usage, colours);
         FontFixer.run(doc, usage, level, FontLibrary.withSystem(options.fontDirs()), report);
+        FontCompaction.run(doc, usage, level);
         PdfFiles.stopIfInterrupted();
         StreamFixer.run(doc, level, report);
         if (level.part() == 1) {

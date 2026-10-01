@@ -154,6 +154,10 @@ final class TrueTypeWriter {
     }
 
     byte[] build(String postScriptName, TreeMap<Integer, Integer> cmap, int platformEncoding) throws IOException {
+        return build(postScriptName, Cmaps.format4(cmap, platformEncoding));
+    }
+
+    byte[] build(String postScriptName, byte[] cmapTable) throws IOException {
         resolveComponents();
         if (glyphs.size() > 65_535) {
             throw new IOException("The font needs more than 65535 glyphs");
@@ -183,7 +187,7 @@ final class TrueTypeWriter {
         tables.put("maxp", maxp());
         tables.put("post", post());
         tables.put("name", name(postScriptName));
-        tables.put("cmap", Cmaps.format4(cmap, platformEncoding));
+        tables.put("cmap", cmapTable);
         if (source != null) {
             for (String tag : List.of("cvt ", "fpgm", "prep", "gasp", "OS/2")) {
                 TTFTable t = source.getTableMap().get(tag);
