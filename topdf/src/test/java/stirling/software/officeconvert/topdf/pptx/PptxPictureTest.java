@@ -194,6 +194,25 @@ class PptxPictureTest {
     }
 
     @Test
+    void anEmptyPlaceholderStillShowsTheFillItTakesFromItsLayout() throws IOException {
+        String xfrm = "<a:xfrm><a:off x=\"1270000\" y=\"1270000\"/><a:ext cx=\"2540000\" cy=\"2540000\"/></a:xfrm>";
+        String sp = "<p:sp " + Decks.NS + "><p:nvSpPr><p:cNvPr id=\"7\" name=\"Media\"/><p:cNvSpPr/><p:nvPr>"
+                + "<p:ph type=\"media\" idx=\"14\"/></p:nvPr></p:nvSpPr><p:spPr/></p:sp>";
+        Fixtures.Zip z = Fixtures.edit(Decks.slideXml(sp));
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("slideLayouts/(slideLayout[0-9]+[.]xml)")
+                .matcher(z.text("ppt/slides/_rels/slide1.xml.rels"));
+        assertTrue(m.find());
+        z.insertBefore("ppt/slideLayouts/" + m.group(1), "</p:spTree>", "<p:sp " + Decks.NS + "><p:nvSpPr><p:cNvPr "
+                + "id=\"31\" name=\"Media Placeholder\"/><p:cNvSpPr/><p:nvPr><p:ph type=\"media\" idx=\"14\"/></p:nvPr>"
+                + "</p:nvSpPr><p:spPr>" + xfrm + "<a:solidFill><a:srgbClr val=\"FF0000\"/></a:solidFill></p:spPr>"
+                + "<p:txBody><a:bodyPr/><a:lstStyle/><a:p><a:r><a:rPr lang=\"en-US\"/><a:t>Click icon to add media</a:t>"
+                + "</a:r></a:p></p:txBody></p:sp>");
+        Decks.Converted c = Decks.convert(dir, "emptyph.pptx", z.bytes());
+        assertEquals(Color.RED.getRGB(), c.render(0, 72).getRGB(200, 200));
+        assertTrue(!c.text().contains("Click icon"), c.text());
+    }
+
+    @Test
     void brightnessAndContrastWashPicturesOut() throws IOException {
         String pic = "<p:pic " + Decks.NS + "><p:nvPicPr><p:cNvPr id=\"7\" name=\"Picture\"/><p:cNvPicPr/><p:nvPr/>"
                 + "</p:nvPicPr><p:blipFill><a:blip r:embed=\"rIdP\"><a:lum bright=\"50000\" contrast=\"-60000\"/>"

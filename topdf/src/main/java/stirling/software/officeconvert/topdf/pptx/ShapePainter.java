@@ -181,9 +181,7 @@ final class ShapePainter {
             return;
         }
         XSLFTextShape text = s instanceof XSLFTextShape t ? t : null;
-        if (onSlide && s.isPlaceholder() && !ownFormatting(s) && (text == null || !hasText(text))) {
-            return;
-        }
+        boolean prompt = onSlide && s.isPlaceholder() && (text == null || !hasText(text));
         Frame f = space.place(anchor, s.getRotation(), s.getFlipHorizontal(), s.getFlipVertical())
                 .viewed(Cameras.view(spPr(s)));
         Rectangle2D box = f.bounds();
@@ -220,7 +218,7 @@ final class ShapePainter {
         } finally {
             canvas.restore();
         }
-        if (text != null) {
+        if (text != null && !prompt) {
             text(text, f, box, Geometry.textBox(s, box), space, cast == null ? shadow : null);
         }
     }
@@ -374,12 +372,6 @@ final class ShapePainter {
             return c.getSpPr();
         }
         return null;
-    }
-
-    private static boolean ownFormatting(XSLFSimpleShape s) {
-        CTShapeProperties spPr = spPr(s);
-        return spPr != null && (spPr.isSetSolidFill() || spPr.isSetGradFill() || spPr.isSetBlipFill()
-                || spPr.isSetPattFill() || spPr.isSetLn() && !spPr.getLn().isSetNoFill());
     }
 
     static boolean hasText(XSLFTextShape t) {
