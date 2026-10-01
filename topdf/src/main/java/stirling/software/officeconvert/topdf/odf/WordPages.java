@@ -16,6 +16,10 @@ final class WordPages {
 
     private int parts;
 
+    private final java.util.Set<String> used = new java.util.HashSet<>();
+
+    private final Map<String, String> empties = new HashMap<>();
+
     final boolean evenAndOdd;
 
     final boolean mirrored;
@@ -26,6 +30,12 @@ final class WordPages {
         boolean mirror = false;
         for (Element m : w.styles.masters()) {
             even |= shown(Dom.kid(m, Ns.STYLE, "header-left")) || shown(Dom.kid(m, Ns.STYLE, "footer-left"));
+            for (String kind : new String[] {"header", "footer"}) {
+                if (shown(Dom.kid(m, Ns.STYLE, kind)) || shown(Dom.kid(m, Ns.STYLE, kind + "-left"))
+                        || shown(Dom.kid(m, Ns.STYLE, kind + "-first"))) {
+                    used.add(kind);
+                }
+            }
             Element layout = w.styles.pageLayout(Dom.attr(m, Ns.STYLE, "page-layout-name"));
             mirror |= "mirrored".equals(Dom.attr(layout, Ns.STYLE, "page-usage"));
         }
@@ -228,6 +238,16 @@ final class WordPages {
                 Element main = Dom.kid(m, Ns.STYLE, kind);
                 Element left = Dom.kid(m, Ns.STYLE, kind + "-left");
                 Element first = Dom.kid(m, Ns.STYLE, kind + "-first");
+                if (!shown(main) && !shown(left) && !shown(first)) {
+                    if (used.contains(kind)) {
+                        b.append(ref(kind, "default", empty(kind)));
+                        if (evenAndOdd) {
+                            b.append(ref(kind, "even", empty(kind)));
+                        }
+                        b.append(ref(kind, "first", empty(kind)));
+                    }
+                    continue;
+                }
                 String mainId = shown(main) ? part(kind, main) : part(kind, null);
                 b.append(ref(kind, "default", mainId));
                 if (evenAndOdd) {
@@ -243,6 +263,15 @@ final class WordPages {
         }
         refs.put(name, b.toString());
         return b.toString();
+    }
+
+    private String empty(String kind) throws IOException {
+        String id = empties.get(kind);
+        if (id == null) {
+            id = part(kind, null);
+            empties.put(kind, id);
+        }
+        return id;
     }
 
     private static String ref(String kind, String type, String id) {
