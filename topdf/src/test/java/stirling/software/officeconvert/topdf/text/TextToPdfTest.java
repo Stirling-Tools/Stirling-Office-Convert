@@ -1,0 +1,122 @@
+package stirling.software.officeconvert.topdf.text;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.time.Duration;
+
+import org.apache.pdfbox.Loader;
+import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.pdmodel.common.PDRectangle;
+import org.apache.pdfbox.text.PDFTextStripper;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+
+import stirling.software.officeconvert.topdf.OfficeToPdf;
+import stirling.software.officeconvert.topdf.testing.Fixtures;
+
+class TextToPdfTest {
+
+    @TempDir
+    Path dir;
+
+    record Pdf(int pages, String text, PDRectangle size, OfficeToPdf.Result result) {}
+
+    Pdf convert(String name, byte[] content, int maxPages) throws IOException {
+        Path in = Files.write(dir.resolve(name), content);
+        Path out = dir.resolve(name + ".pdf");
+        OfficeToPdf.Result r = OfficeToPdf.convert(in, out,
+                OfficeToPdf.Options.defaults().timeout(Duration.ofMinutes(2)).maxPages(maxPages));
+        try (PDDocument doc = Loader.loadPDF(out.toFile())) {
+            return new Pdf(doc.getNumberOfPages(), new PDFTextStripper().getText(doc), doc.getPage(0).getMediaBox(), r);
+        }
+    }
+
+    Pdf convert(String name, String content) throws IOException {
+        return convert(name, content.getBytes(StandardCharsets.UTF_8), 0);
+    }
+
+    static String lines(int n) {
+        StringBuilder s = new StringBuilder();
+        for (int i = 1; i <= n; i++) {
+            s.append("line ").append(i).append('\n');
+        }
+        return s.toString();
+    }
+
+    @Test
+    void plainTextFillsSixtyFourLinesAnA4Page() throws IOException {
+        Pdf p = convert("notes.txt", lines(64));
+        assertEquals(1, p.pages());
+        assertEquals(PDRectangle.A4.getWidth(), p.size().getWidth(), 0.5);
+        assertEquals(PDRectangle.A4.getHeight(), p.size().getHeight(), 0.5);
+        assertEquals(2, convert("more.log", lines(65)).pages());
+        Pdf three = convert("three.text", lines(130));
+        assertEquals(3, three.pages());
+        assertTrue(three.text().contains("line 1\n") && three.text().contains("line 130"), three.text());
+        assertFalse(three.result().truncated());
+    }
+
+    @Test
+    void formFeedsStartNewPages() throws IOException {
+        Pdf p = convert("ff.txt", "one\ftwo\n\f\fthree\n");
+        assertEquals(4, p.pages());
+        assertTrue(p.text().contains("one") && p.text().contains("three"), p.text());
+        assertEquals(1, convert("empty.txt", "").pages());
+    }
+
+    @Test
+    void textPastThePageLimitIsCutAndReported() throws IOException {
+        Pdf p = convert("long.txt", lines(5000).getBytes(StandardCharsets.UTF_8), 2);
+        assertEquals(2, p.pages());
+        assertTrue(p.result().pageLimitReached() && p.result().truncated());
+        assertTrue(p.result().warnings().stream().anyMatch(w -> w.startsWith("Stopped at the page limit")),
+                p.result().warnings().toString());
+        assertTrue(p.result().warnings().stream().noneMatch(w -> w.contains("past the page limit")),
+                p.result().warnings().toString());
+    }
+
+    @Test
+    void aCsvPrintsLikeLibreOfficeWithTheNameOnTopAndPageNumbersBelow() throws IOException {
+        StringBuilder csv = new StringBuilder("item,amount\n");
+        for (int i = 0; i < 199; i++) {
+            csv.append("thing ").append(i).append(',').append(i * 1.25).append('\n');
+        }
+        Pdf p = convert("ledger.csv", csv.toString());
+        assertEquals(4, p.pages());
+        assertTrue(p.text().contains("ledger") && p.text().contains("Page 1") && p.text().contains("Page 4"), p.text());
+        assertTrue(p.text().contains("thing 198") && p.text().contains("247.5"), p.text());
+        assertEquals(PDRectangle.A4.getWidth(), p.size().getWidth(), 0.5);
+    }
+
+    @Test
+    void tabSeparatedFilesSplitIntoColumns() throws IOException {
+        Pdf p = convert("data.tsv", "left\tright\n1\t2\n");
+        assertTrue(p.text().contains("left") && p.text().contains("right"), p.text());
+        assertFalse(p.text().contains("leftright"), p.text());
+    }
+
+    @Test
+    void contentDecidesWhenATextNameHoldsAnOfficeFile() throws IOException {
+        Pdf p = convert("report.txt", Fixtures.docx("Real Word body"), 0);
+        assertTrue(p.text().contains("Real Word body"), p.text());
+    }
+
+    @Test
+    void textNamesAreRecognisedAndEstimated() throws IOException {
+        for (String n : new String[] {"a.txt", "a.TEXT", "a.log", "a.asc"}) {
+            assertEquals(OfficeToPdf.Format.DOCX, OfficeToPdf.Format.of(Path.of(n)), n);
+        }
+        for (String n : new String[] {"a.csv", "a.tsv", "a.tab"}) {
+            assertEquals(OfficeToPdf.Format.XLSX, OfficeToPdf.Format.of(Path.of(n)), n);
+            assertTrue(OfficeToPdf.Format.recognises(Path.of(n)), n);
+        }
+        Path big = Files.write(dir.resolve("big.csv"), "1,2\n".repeat(10_000).getBytes(StandardCharsets.US_ASCII));
+        assertTrue(OfficeToPdf.memoryEstimate(big) > Files.size(big));
+    }
+}

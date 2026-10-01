@@ -21,9 +21,10 @@ CLI options for PDF input: `--pages a-b`, `--no-tables`, `--dpi n` (vector figur
 `--picture-fallback`, `--pictures compact|lossless` (see Pictures below), `-q`.
 For Word, PowerPoint and Excel input (`.docx .docm .dotx .dotm .pptx .pptm .ppsx .ppsm .potx .potm .xlsx .xlsm
 .xltx .xltm`, Word 97-2003 `.doc .dot`, Excel 97-2003 `.xls .xlt`, PowerPoint 97-2003 `.ppt .pps .pot`, `.rtf` and
-OpenDocument `.odt .ott .fodt .ods .ots .fods .odp .otp .fodp`), which converts to PDF: `--max-pages n` (default 10000, 0 = all), `--timeout s` (default 300, 0 =
+OpenDocument `.odt .ott .fodt .ods .ots .fods .odp .otp .fodp`, plain
+text `.txt .text .log .asc` and tables `.csv .tsv .tab`), which converts to PDF: `--max-pages n` (default 10000, 0 = all), `--timeout s` (default 300, 0 =
 none), `--fonts dir` (repeatable; an extra folder of fonts), `-q`, and `--format pdf` to take only the Office files out
-of a folder. A folder converts both its PDFs and its Office files. Inputs that would write the same output name (such
+of a folder. A folder converts both its PDFs and its Office files; its text and CSV files only with `--format pdf`. Inputs that would write the same output name (such
 as `report.docx` and `report.xlsx`) keep their own extension in it (`report.docx.pdf`, `report.xlsx.pdf`), and Office
 owner files (`~$name`) are skipped. Warnings (substituted fonts, skipped active content, pictures that could not be
 drawn) print to stderr as `warning: <file>: <message>` unless `-q`.
@@ -317,6 +318,22 @@ cells with their cached values (formulas are never evaluated), number formats, m
 print ranges and page setup; master pages, outlines and shrink-to-fit text on slides. Only pictures inside the
 package are drawn: linked files are never fetched, and macros and scripts are never run. Embedded charts are not
 drawn yet. Password protected files are refused with a plain reason.
+
+Plain text (`.txt .text .log .asc`) prints the way LibreOffice Writer prints it: A4 with 2 cm margins, Liberation Mono
+10 pt at 64 lines a page, tab stops every 1.25 cm, long lines wrapped, no widow control, and a form feed starts a new
+page. The encoding comes from a byte order mark (UTF-8, UTF-16 or UTF-32), else the file is UTF-8 when it decodes
+strictly and Windows-1252 otherwise; CR, LF and CRLF all end a line, and control characters are dropped. The text is
+rewritten as a WordprocessingML package that the DOCX renderer draws; nothing past the page limit is written.
+
+Comma separated (`.csv`) and tab separated (`.tsv .tab`) tables print the way LibreOffice Calc prints a CSV: A4, the
+file name centred above and "Page n" below, no grid, Liberation Sans 10 pt, each column as wide as LibreOffice makes
+it (from its longest shown value), pages down then across. Fields follow RFC 4180 quoting, with LibreOffice's
+leniency for a stray or unclosed quote. Plain numbers (with thousands separators and exponents) are right aligned and
+shown in LibreOffice's general format, valid ISO 8601 dates are right aligned as written, and everything else is text:
+formulas are never evaluated. Text wider than the page, or on several lines, wraps. A cell holds at most 32767
+characters, a row 16384 columns and a sheet 1048576 rows, and rows past the page limit are left out. The table is
+rewritten as a SpreadsheetML package that the XLSX renderer draws. Both kinds are recognised by their extension, and a
+file with one of these names that is really an Office package or RTF converts as what it is.
 
 Memory is shared out across the JVM, by both directions (`stirling.software.officeconvert.memory.Admission` in the
 core module, which the topdf module now depends on). Before a document is laid out, an estimate of the heap it needs

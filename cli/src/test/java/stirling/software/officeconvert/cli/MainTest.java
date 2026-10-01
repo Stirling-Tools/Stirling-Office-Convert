@@ -131,11 +131,25 @@ class MainTest {
         Path in = Files.createDirectories(dir.resolve("in"));
         Files.writeString(in.resolve("x.docx"), "x");
         Files.writeString(in.resolve("y.pdf"), "x");
-        Files.writeString(in.resolve("z.txt"), "x");
+        Files.writeString(in.resolve("z.md"), "x");
+        Files.writeString(in.resolve("notes.txt"), "plain text");
         Result r = run(in.toString(), "--format", "pdf", "-o", dir.resolve("out").toString());
         assertEquals(1, r.code());
         assertTrue(r.err().contains("x.docx"), r.err());
-        assertFalse(r.err().contains("y.pdf") || r.err().contains("z.txt"), r.err());
+        assertFalse(r.err().contains("y.pdf") || r.err().contains("z.md"), r.err());
+        assertTrue(Files.isRegularFile(dir.resolve("out").resolve("notes.pdf")), r.out());
+    }
+
+    @Test
+    void aFolderLeavesItsTextFilesAloneUnlessAskedForPdf() throws Exception {
+        Path in = Files.createDirectories(dir.resolve("mixed"));
+        helloPdf(in.resolve("doc.pdf"));
+        Files.writeString(in.resolve("readme.txt"), "notes");
+        Path out = dir.resolve("mixed-out");
+        Result r = run(in.toString(), "-o", out.toString(), "--pages", "1");
+        assertEquals(0, r.code(), r.err());
+        assertTrue(Files.isRegularFile(out.resolve("doc.docx")), r.out());
+        assertFalse(Files.exists(out.resolve("readme.pdf")), r.out());
     }
 
     @Test

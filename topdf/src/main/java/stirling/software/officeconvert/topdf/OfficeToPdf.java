@@ -76,15 +76,17 @@ public final class OfficeToPdf {
             String ext = extension(file);
             return switch (ext) {
                 case "docx", "docm", "dotx", "dotm", "doc", "dot", "rtf", "odt", "ott", "fodt" -> DOCX;
+                case "txt", "text", "log", "asc" -> DOCX;
                 case "pptx", "pptm", "ppsx", "ppsm", "potx", "potm", "odp", "otp", "fodp" -> PPTX;
                 case "xlsx", "xlsm", "xltx", "xltm", "xls", "xlt", "ods", "ots", "fods" -> XLSX;
+                case "csv", "tsv", "tab" -> XLSX;
                 case "ppt", "pps", "pot" -> PPT;
                 case "xlsb" -> throw new IllegalArgumentException(
                         "Excel binary workbooks (.xlsb) are not supported; save the file as .xlsx");
                 default -> throw new IllegalArgumentException("Not an Office document: " + file.getFileName()
                         + "; use .docx, .docm, .dotx, .dotm, .doc, .dot, .rtf, .pptx, .pptm, .ppsx, .ppsm, .potx, .potm,"
                         + " .xlsx, .xlsm, .xltx, .xltm, .xls, .xlt, .ppt, .pps, .pot, .odt, .ott, .fodt, .ods, .ots, .fods,"
-                        + " .odp, .otp or .fodp");
+                        + " .odp, .otp, .fodp, .txt, .text, .log, .asc, .csv, .tsv or .tab");
             };
         }
 
@@ -94,6 +96,7 @@ public final class OfficeToPdf {
                 case "docx", "docm", "dotx", "dotm", "pptx", "pptm", "ppsx", "ppsm", "potx", "potm", "xlsx", "xlsm",
                         "xltx", "xltm", "doc", "dot", "ppt", "pps", "pot", "xls", "xlt", "xlsb", "rtf", "odt", "ott", "fodt",
                         "ods", "ots", "fods", "odp", "otp", "fodp" -> true;
+                case "txt", "text", "log", "asc", "csv", "tsv", "tab" -> true;
                 default -> false;
             };
         }
@@ -268,6 +271,10 @@ public final class OfficeToPdf {
         }
         if (OdfPackage.sniff(in) != null) {
             return OdfPackage.estimate(in) + 2 * Admission.BASE_BYTES;
+        }
+        Long text = TextInput.estimate(in);
+        if (text != null) {
+            return text;
         }
         try (OfficeZip zip = OfficeZip.open(in)) {
             return Footprint.estimate(zip, detect(zip, format));
@@ -452,6 +459,10 @@ public final class OfficeToPdf {
         Result odf = openDocument(source, sink, options, renderer);
         if (odf != null) {
             return odf;
+        }
+        Result text = TextInput.render(source, sink, options, renderer);
+        if (text != null) {
+            return text;
         }
         Path name = source.getFileName();
         if (name != null && name.toString().toLowerCase(Locale.ROOT).endsWith(".rtf")) {
