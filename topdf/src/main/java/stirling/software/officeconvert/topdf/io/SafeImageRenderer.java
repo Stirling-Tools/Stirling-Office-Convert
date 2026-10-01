@@ -128,6 +128,12 @@ public final class SafeImageRenderer implements ImageRenderer {
                 next = k == PictureDecoder.Kind.EMF ? new HemfImageRenderer() : new HwmfImageRenderer();
                 next.loadImage(bytes, contentType);
             }
+            case PICT -> {
+                if (bytes.length > PictureDecoder.MAX_METAFILE_BYTES) {
+                    throw new IOException("The picture is too large: " + bytes.length + " bytes");
+                }
+                next = new PictRenderer(Pict.read(bytes));
+            }
             default -> {
                 kind = k;
                 // POI moves on to the next picture (the PNG Office keeps beside an SVG) only after an IOException
@@ -177,7 +183,7 @@ public final class SafeImageRenderer implements ImageRenderer {
     }
 
     private boolean metafile() {
-        return kind == PictureDecoder.Kind.EMF || kind == PictureDecoder.Kind.WMF;
+        return kind == PictureDecoder.Kind.EMF || kind == PictureDecoder.Kind.WMF || kind == PictureDecoder.Kind.PICT;
     }
 
     private BufferedImage metafileImage(Dimension2D dimension) {

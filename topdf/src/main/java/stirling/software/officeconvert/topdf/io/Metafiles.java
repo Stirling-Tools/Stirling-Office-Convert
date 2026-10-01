@@ -69,12 +69,18 @@ final class Metafiles {
         if (data.length > PictureDecoder.MAX_METAFILE_BYTES) {
             throw new IOException("The metafile is too large: " + data.length + " bytes");
         }
-        MetafileGuard.check(data, kind == PictureDecoder.Kind.EMF, PictureDecoder.DECODE_PIXELS,
-                2 * PictureDecoder.DECODE_PIXELS);
+        if (kind != PictureDecoder.Kind.PICT) {
+            MetafileGuard.check(data, kind == PictureDecoder.Kind.EMF, PictureDecoder.DECODE_PIXELS,
+                    2 * PictureDecoder.DECODE_PIXELS);
+        }
         Painter painter;
         Rectangle2D bounds;
         try {
-            if (kind == PictureDecoder.Kind.EMF) {
+            if (kind == PictureDecoder.Kind.PICT) {
+                Pict pict = Pict.read(data);
+                bounds = pict.bounds();
+                painter = pict::draw;
+            } else if (kind == PictureDecoder.Kind.EMF) {
                 HemfPicture emf = new HemfPicture(new ByteArrayInputStream(data));
                 EmfFrames.Placement place = EmfFrames.of(emf.getHeader());
                 if (place == null) {
