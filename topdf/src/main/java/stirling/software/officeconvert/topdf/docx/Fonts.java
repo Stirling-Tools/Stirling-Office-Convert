@@ -194,7 +194,7 @@ final class Fonts {
 
     static Slot slot(int cp, RunProps rp) {
         boolean cs = Boolean.TRUE.equals(rp.complex) || Boolean.TRUE.equals(rp.rtl);
-        if (cs && !Character.isWhitespace(cp)) {
+        if (cs) {
             return Slot.COMPLEX;
         }
         if (cp < 0x80) {

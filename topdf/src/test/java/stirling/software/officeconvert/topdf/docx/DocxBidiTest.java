@@ -143,6 +143,16 @@ class DocxBidiTest {
     }
 
     @Test
+    void spacesInARightToLeftRunTakeTheComplexScriptFont() throws IOException {
+        String body = "<w:p><w:pPr><w:bidi/></w:pPr><w:r><w:rPr><w:rFonts w:ascii=\"Liberation Sans\""
+                + " w:hAnsi=\"Liberation Sans\" w:cs=\"Courier New\"/><w:rtl/><w:sz w:val=\"20\"/><w:szCs w:val=\"20\"/>"
+                + "</w:rPr><w:t>1 2 3 4 5 6 7 8 9</w:t></w:r></w:p>";
+        List<Glyph> g = glyphs("rtlspaces", body);
+        float span = Math.abs(x(g, "9") - x(g, "1"));
+        assertEquals(96, span, 2, "eight Courier digits and eight Courier spaces: " + g);
+    }
+
+    @Test
     void aSymbolBulletOnARightToLeftParagraphMarkIsDrawnFromTheSymbolFont() throws IOException {
         assertEquals(labelFont("ltrbullet", ""), labelFont("rtlbullet", "<w:rtl/>"));
     }
