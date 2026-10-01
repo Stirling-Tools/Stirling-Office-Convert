@@ -90,6 +90,7 @@ class OutlineCompactionTest {
         long before = program(in);
         long after = program(out);
         assertTrue(after < before / 2, before + " to " + after);
+        assertTrue(ColourRenderingTest.dark(ColourRenderingTest.render(in)) > 100);
         assertEquals(0, ColourRenderingTest.differing(ColourRenderingTest.render(in), ColourRenderingTest.render(out)),
                 0.0005);
         assertTrue(Files.size(out) > 0);
@@ -105,5 +106,68 @@ class OutlineCompactionTest {
                 return in.readAllBytes().length;
             }
         }
+    }
+
+    @ParameterizedTest
+    @CsvSource({"A1B", "A2B"})
+    void cidKeyedCffProgramsKeepOnlyTheGlyphsInUse(PdfALevel level) throws Exception {
+        Path in = dir.resolve("cid.pdf");
+        try (PDDocument d = new PDDocument()) {
+            COSStream file = d.getDocument().createCOSStream();
+            try (OutputStream o = file.createOutputStream(COSName.FLATE_DECODE)) {
+                o.write(FontPrograms.cidCff("TestCid"));
+            }
+            file.setItem(COSName.SUBTYPE, COSName.getPDFName("CIDFontType0C"));
+            PDFontDescriptor fd = new PDFontDescriptor(new COSDictionary());
+            fd.setFontName("TestCid");
+            fd.setFlags(4);
+            fd.setFontBoundingBox(new org.apache.pdfbox.pdmodel.common.PDRectangle(0, -10, 900, 770));
+            fd.setItalicAngle(0);
+            fd.setAscent(760);
+            fd.setDescent(-10);
+            fd.setCapHeight(700);
+            fd.setStemV(80);
+            fd.getCOSObject().setItem(COSName.FONT_FILE3, file);
+            COSDictionary cid = new COSDictionary();
+            cid.setItem(COSName.TYPE, COSName.FONT);
+            cid.setItem(COSName.SUBTYPE, COSName.CID_FONT_TYPE0);
+            cid.setName(COSName.BASE_FONT, "TestCid");
+            COSDictionary info = new COSDictionary();
+            info.setString(COSName.REGISTRY, "Adobe");
+            info.setString(COSName.ORDERING, "Identity");
+            info.setInt(COSName.SUPPLEMENT, 0);
+            cid.setItem(COSName.CIDSYSTEMINFO, info);
+            cid.setItem(COSName.FONT_DESC, fd.getCOSObject());
+            cid.setInt(COSName.DW, 500);
+            COSDictionary t0 = new COSDictionary();
+            t0.setItem(COSName.TYPE, COSName.FONT);
+            t0.setItem(COSName.SUBTYPE, COSName.TYPE0);
+            t0.setName(COSName.BASE_FONT, "TestCid");
+            t0.setItem(COSName.ENCODING, COSName.IDENTITY_H);
+            COSArray kids = new COSArray();
+            kids.add(cid);
+            t0.setItem(COSName.DESCENDANT_FONTS, kids);
+            PDPage p = Samples.page(d);
+            PDResources res = new PDResources();
+            res.put(COSName.getPDFName("T"), PDFontFactory.createFont(t0));
+            p.setResources(res);
+            Samples.raw(p, d, "BT /T 40 Tf 50 700 Td <000200030005> Tj ET");
+            d.save(in.toFile());
+        }
+        Path out = dir.resolve("cid-out.pdf");
+        PdfToPdfA.convert(in, out, PdfToPdfA.Options.defaults().level(level));
+        VeraPdf.assertCompliant(out, level);
+        try (PDDocument d = Loader.loadPDF(out.toFile())) {
+            COSDictionary t0 = d.getPage(0).getResources().getFont(COSName.getPDFName("T")).getCOSObject();
+            COSDictionary cid = (COSDictionary) ((COSArray) t0.getDictionaryObject(COSName.DESCENDANT_FONTS)).getObject(0);
+            COSDictionary fd = (COSDictionary) cid.getDictionaryObject(COSName.FONT_DESC);
+            try (var s = ((COSStream) fd.getDictionaryObject(COSName.FONT_FILE3)).createInputStream()) {
+                int after = s.readAllBytes().length;
+                assertTrue(after < FontPrograms.cidCff("TestCid").length / 2, "size " + after);
+            }
+        }
+        assertTrue(ColourRenderingTest.dark(ColourRenderingTest.render(in)) > 100);
+        assertEquals(0, ColourRenderingTest.differing(ColourRenderingTest.render(in), ColourRenderingTest.render(out)),
+                0.0005);
     }
 }

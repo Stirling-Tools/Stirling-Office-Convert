@@ -23,6 +23,18 @@ class ColourRenderingTest {
         }
     }
 
+    static int dark(BufferedImage a) {
+        int n = 0;
+        for (int y = 0; y < a.getHeight(); y++) {
+            for (int x = 0; x < a.getWidth(); x++) {
+                if ((a.getRGB(x, y) & 0xFF) < 128) {
+                    n++;
+                }
+            }
+        }
+        return n;
+    }
+
     static double differing(BufferedImage a, BufferedImage b) {
         int n = 0;
         for (int y = 0; y < a.getHeight(); y++) {

@@ -35,7 +35,8 @@ final class FontPrograms {
         int subrs = 5 + subrPadding;
         write(plain, "/Subrs " + subrs + " array\n");
         for (int i = 0; i < subrs; i++) {
-            byte[] cs = i == 4 ? concat(num(0), num(700), new byte[] {5}, num(400), num(0), new byte[] {5, 11})
+            byte[] cs = i == 4 ? concat(num(0), num(700), new byte[] {5}, num(400), num(0), new byte[] {5}, num(0),
+                    num(-700), new byte[] {5, 11})
                     : i >= 5 ? concat(repeat(num(1), 40), new byte[] {11}) : new byte[] {11};
             byte[] enc = charstring(cs);
             write(plain, "dup " + i + " " + enc.length + " RD ");
@@ -54,7 +55,7 @@ final class FontPrograms {
             } else {
                 int w = width(n);
                 body = concat(num(0), num(w), new byte[] {13}, num(50), num(0), new byte[] {21}, num(4),
-                        new byte[] {10}, num(-400), num(0), new byte[] {5, 9},
+                        new byte[] {10, 9},
                         repeat(concat(num(10), num(0), new byte[] {5}, num(-10), num(0), new byte[] {5}), 30),
                         new byte[] {14});
             }
@@ -227,5 +228,51 @@ final class FontPrograms {
             o.writeBytes(b);
         }
         return o.toByteArray();
+    }
+
+    static byte[] cidCff(String fontName) {
+        int n = NAMES.size() + 1;
+        byte[][] glyphs = new byte[n][];
+        glyphs[0] = concat(num2(500), new byte[] {14});
+        for (int i = 1; i < n; i++) {
+            java.util.Random r = new java.util.Random(i * 7919L);
+            ByteArrayOutputStream noise = new ByteArrayOutputStream();
+            for (int k = 0; k < 60; k++) {
+                noise.writeBytes(concat(num2(r.nextInt(400) - 200), num2(r.nextInt(400) - 200), new byte[] {5}));
+            }
+            glyphs[i] = concat(num2(500), num2(50), num2(0), new byte[] {21}, num2(300), num2(0), new byte[] {5},
+                    num2(0), num2(700), new byte[] {5}, num2(-300), num2(0), new byte[] {5}, noise.toByteArray(),
+                    new byte[] {14});
+        }
+        byte[] name = index(new byte[][] {fontName.getBytes(StandardCharsets.US_ASCII)});
+        byte[] strings = index(new byte[][] {"Adobe".getBytes(StandardCharsets.US_ASCII),
+                "Identity".getBytes(StandardCharsets.US_ASCII)});
+        byte[] gsubrs = index(new byte[0][]);
+        ByteArrayOutputStream charset = new ByteArrayOutputStream();
+        charset.write(0);
+        for (int i = 1; i < n; i++) {
+            charset.write(i >> 8);
+            charset.write(i);
+        }
+        byte[] fdSelect = {3, 0, 1, 0, 0, 0, 0, (byte) n};
+        byte[] charstrings = index(glyphs);
+        byte[] priv = concat(num2(0), new byte[] {20}, num2(0), new byte[] {21});
+        byte[] probe = index(new byte[][] {cidTop(0, 0, 0, 0, n)});
+        int charsetAt = 4 + name.length + probe.length + strings.length + gsubrs.length;
+        int fdSelectAt = charsetAt + charset.size();
+        int charstringsAt = fdSelectAt + fdSelect.length;
+        int fdArrayAt = charstringsAt + charstrings.length;
+        byte[] fdProbe = index(new byte[][] {concat(int5(0), int5(0), new byte[] {18})});
+        int privateAt = fdArrayAt + fdProbe.length;
+        byte[] fdArray = index(new byte[][] {concat(int5(priv.length), int5(privateAt), new byte[] {18})});
+        byte[] topIndex = index(new byte[][] {cidTop(charsetAt, fdSelectAt, charstringsAt, fdArrayAt, n)});
+        return concat(new byte[] {1, 0, 4, 4}, name, topIndex, strings, gsubrs, charset.toByteArray(), fdSelect,
+                charstrings, fdArray, priv);
+    }
+
+    private static byte[] cidTop(int charset, int fdSelect, int charstrings, int fdArray, int count) {
+        return concat(num2(391), num2(392), num2(0), new byte[] {12, 30}, num2(0), num2(-10), num2(900), num2(760),
+                new byte[] {5}, int5(count), new byte[] {12, 34}, int5(charset), new byte[] {15}, int5(fdSelect),
+                new byte[] {12, 37}, int5(charstrings), new byte[] {17}, int5(fdArray), new byte[] {12, 36});
     }
 }

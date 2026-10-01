@@ -3,7 +3,6 @@ package stirling.software.officeconvert.pdfa;
 import java.io.ByteArrayOutputStream;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
@@ -452,11 +451,5 @@ final class CffSubset {
             o.writeBytes(p);
         }
         return o.toByteArray();
-    }
-
-    static Set<Integer> union(Set<Integer> a, List<Integer> b) {
-        Set<Integer> out = new HashSet<>(a);
-        out.addAll(b);
-        return out;
     }
 }
