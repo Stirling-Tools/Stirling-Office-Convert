@@ -31,7 +31,7 @@ public final class CloudFonts {
 
     public Emulation emulate(String family, boolean bold, boolean italic) {
         FontFace face = fonts.find(family, bold, italic);
-        if (!face.substituted()) {
+        if (!face.substituted() || fonts.widthScale(family) > 0) {
             return new Emulation(face, 100, null, null, null);
         }
         OfficeFonts.Style office = face.officeWidths();
