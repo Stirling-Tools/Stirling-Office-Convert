@@ -23,6 +23,31 @@ final class ObjectSamples {
     private ObjectSamples() {}
 
     static void register() {
+        doc("o01_xobjects", Set.of("1:6.2.4-2", "1:6.2.4-4", "1:6.2.4-5", "1:6.2.5-1", "1:6.2.6-1", "2:6.2.8-2",
+                "2:6.2.8-5", "2:6.2.9-1", "2:6.2.9-2", "2:6.2.2-2"), d -> {
+                    PDPage p = Samples.page(d);
+                    PDResources res = new PDResources();
+                    PDFont f = Samples.std(Standard14Fonts.FontName.HELVETICA);
+                    res.put(COSName.getPDFName("F1"), f);
+                    COSDictionary xo = new COSDictionary();
+                    COSStream deep = image(d, 16, false);
+                    deep.setItem(COSName.getPDFName("OPI"), new COSDictionary());
+                    xo.setItem("Deep", deep);
+                    COSStream masked = image(d, 8, false);
+                    masked.setItem(COSName.MASK, image(d, 8, true));
+                    xo.setItem("Mask", masked);
+                    COSStream form = form(d, "BT /F1 12 Tf 0 0 Td (A form that borrows the page font) Tj ET");
+                    form.setItem(COSName.getPDFName("OPI"), new COSDictionary());
+                    form.setItem(COSName.getPDFName("Subtype2"), COSName.PS);
+                    form.setItem(COSName.PS, form(d, ""));
+                    form.setItem(COSName.getPDFName("Ref"), new COSDictionary());
+                    xo.setItem("Form", form);
+                    res.getCOSObject().setItem(COSName.XOBJECT, xo);
+                    p.setResources(res);
+                    Samples.raw(p, d, "BT /F1 14 Tf 50 780 Td (Image depth, masks, OPI, PostScript and reference forms) "
+                            + "Tj ET q 200 0 0 100 50 600 cm /Deep Do Q q 200 0 0 100 300 600 cm /Mask Do Q "
+                            + "q 1 0 0 1 50 500 cm /Form Do Q");
+                });
         doc("o02_big_dictionaries", Set.of("1:6.1.12-6"), d -> {
             PDPage p = Samples.page(d);
             PDResources res = new PDResources();

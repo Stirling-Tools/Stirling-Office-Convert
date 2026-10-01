@@ -29,6 +29,7 @@ final class ContentFixer {
 
     static void run(ContentGraph graph, PdfALevel level, Report report, FontUsage usage, DeviceColours colours)
             throws IOException {
+        explicitResources(graph);
         for (ContentGraph.Node n : graph.nodes()) {
             PdfFiles.stopIfInterrupted();
             List<Object> tokens;
@@ -117,6 +118,20 @@ final class ContentFixer {
                 if (n.kind() == ContentGraph.Kind.PAGE && n.streams().size() > 1) {
                     n.owner().setItem(COSName.CONTENTS, target);
                 }
+            }
+        }
+    }
+
+    private static void explicitResources(ContentGraph graph) {
+        for (ContentGraph.Node n : graph.nodes()) {
+            if (n.resources() != null && n.kind() != ContentGraph.Kind.GLYPH
+                    && n.owner().getDictionaryObject(COSName.RESOURCES) == null) {
+                n.owner().setItem(COSName.RESOURCES, n.resources());
+            }
+        }
+        for (var e : graph.type3Fonts().entrySet()) {
+            if (e.getValue() != null && e.getKey().getDictionaryObject(COSName.RESOURCES) == null) {
+                e.getKey().setItem(COSName.RESOURCES, e.getValue());
             }
         }
     }

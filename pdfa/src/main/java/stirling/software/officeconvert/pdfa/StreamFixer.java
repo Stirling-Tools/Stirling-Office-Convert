@@ -142,7 +142,11 @@ final class StreamFixer {
         report.warn("Recompressed LZW streams with Flate, as PDF/A needs");
     }
 
-    private void image(COSStream s) {
+    private void image(COSStream s) throws IOException {
+        String depth = ImageDepth.fix(s, level);
+        if (depth != null) {
+            report.warn(depth);
+        }
         if (s.getBoolean(COSName.INTERPOLATE, false)) {
             s.setBoolean(COSName.INTERPOLATE, false);
         }
