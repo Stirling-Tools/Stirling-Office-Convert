@@ -19,6 +19,8 @@ import org.apache.poi.poifs.filesystem.DirectoryNode;
 import org.apache.poi.poifs.filesystem.POIFSFileSystem;
 import org.apache.poi.sl.usermodel.PictureData.PictureType;
 
+import stirling.software.officeconvert.topdf.crypt.Passwords;
+
 /** Legacy binary Office files (OLE2): the one way for tracks to open them, with their pictures bounded. */
 public final class LegacyOffice {
 
@@ -79,6 +81,12 @@ public final class LegacyOffice {
 
     /** Opens a PowerPoint 97-2003 file read-only; its metafile and PICT pictures are checked before anything draws. */
     public static HSLFSlideShow slideShow(Path file) throws IOException {
+        return slideShow(file, null);
+    }
+
+    /** As {@link #slideShow(Path)}, decrypting with {@code password}, which must stay set in
+     * {@link Passwords#legacy(String)} for as long as the slide show is read. */
+    public static HSLFSlideShow slideShow(Path file, String password) throws IOException {
         Objects.requireNonNull(file, "file");
         POIFSFileSystem fs;
         try {
@@ -90,7 +98,7 @@ public final class LegacyOffice {
             return new HSLFSlideShow(fs);
         } catch (EncryptedPowerPointFileException e) {
             fs.close();
-            throw new IOException("The document is password protected; remove the password and try again", e);
+            throw new Passwords.Refused(Passwords.refusal(password), e);
         } catch (OldPowerPointFormatException e) {
             fs.close();
             throw new IOException("PowerPoint 95 and older files are not supported; save the file as .pptx", e);

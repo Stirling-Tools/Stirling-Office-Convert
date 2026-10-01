@@ -67,7 +67,7 @@ final class LegacyWord {
                 docx = Files.createTempFile("office-to-pdf-", ".docx");
                 Admission.Ticket ticket = Admission.jvm().enter(DocPackage.estimate(Files.size(source)));
                 try (OutputStream os = new BufferedOutputStream(Files.newOutputStream(docx), 1 << 16)) {
-                    outcome = DocPackage.write(fs.getRoot(), os);
+                    outcome = DocPackage.write(fs.getRoot(), os, options.password());
                 } finally {
                     ticket.close();
                 }

@@ -29,6 +29,7 @@ import stirling.software.officeconvert.legacy.PdfToPpt;
 import stirling.software.officeconvert.pdfa.PdfALevel;
 import stirling.software.officeconvert.pdfa.PdfToPdfA;
 import stirling.software.officeconvert.topdf.OfficeToPdf;
+import stirling.software.officeconvert.topdf.crypt.Passwords;
 import stirling.software.officeconvert.topdf.font.FontSet;
 import stirling.software.officeconvert.topdf.io.PoiXml;
 import stirling.software.officeconvert.topdf.text.TextFormats;
@@ -125,7 +126,7 @@ public final class Main {
                 throw new Usage("no PDF or Office document given");
             }
             fonts = fontSet.directories(fontDirs).build();
-            office = office.fonts(fonts);
+            office = office.fonts(fonts).password(password);
             boolean anyOffice = false;
             boolean anyPdf = false;
             for (Path in : inputs) {
@@ -322,6 +323,10 @@ public final class Main {
         if (e instanceof InvalidPasswordException) {
             return "the PDF is password protected; give its password with --password";
         }
+        if (e instanceof Passwords.Refused) {
+            return Passwords.PROTECTED.equals(e.getMessage())
+                    ? "the document is password protected; give its password with --password" : e.getMessage();
+        }
         if (e instanceof NoSuchFileException missing) {
             return "no such file or folder: " + missing.getFile() + (missing.getReason() == null ? "" : " (" + missing.getReason() + ")");
         }
@@ -508,7 +513,7 @@ public final class Main {
                         + " [--pictures compact|lossless] [-q]"
                         + System.lineSeparator()
                         + "       office-convert <in.docx|in.pptx|in.xlsx|in.doc|in.rtf|in.xls|in.ppt|in.odt|in.ods|in.odp|in.txt|in.csv|dir>..."
-                        + " [-o out.pdf|dir] [--format pdf]"
+                        + " [-o out.pdf|dir] [--format pdf] [--password p]"
                         + " [--max-pages n (default 10000, 0 = all)] [--timeout s (default 300, 0 = none)]"
                         + " [--fonts dir]... [--font-map Family=Installed]... [--font-width Family=scale]..."
                         + " [--no-system-fonts] [-q]"

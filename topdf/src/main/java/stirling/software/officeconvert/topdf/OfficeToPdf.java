@@ -41,6 +41,8 @@ import org.apache.poi.xslf.usermodel.XMLSlideShow;
 import org.apache.poi.xslf.usermodel.XSLFTextBox;
 
 import stirling.software.officeconvert.memory.Admission;
+import stirling.software.officeconvert.topdf.crypt.EncryptedPackage;
+import stirling.software.officeconvert.topdf.crypt.EncryptedWorkbook;
 import stirling.software.officeconvert.topdf.docx.DocxRenderer;
 import stirling.software.officeconvert.topdf.font.FontLibrary;
 import stirling.software.officeconvert.topdf.font.FontSet;
@@ -114,8 +116,10 @@ public final class OfficeToPdf {
         }
     }
 
+    /** {@code password} opens a password protected document; it is never written anywhere, nor printed by
+     * {@link #toString()}. */
     public record Options(Duration timeout, List<Path> fontDirs, int maxPages, long maxScratchBytes, FontSet fonts,
-            String displayName) {
+            String displayName, String password) {
 
         public static final int DEFAULT_MAX_PAGES = 10_000;
 
@@ -139,6 +143,14 @@ public final class OfficeToPdf {
             if (displayName != null && displayName.length() > 255) {
                 displayName = displayName.substring(0, Character.isHighSurrogate(displayName.charAt(254)) ? 254 : 255);
             }
+            if (password != null && password.length() > MAX_PASSWORD_CHARS) {
+                throw new IllegalArgumentException("The password is longer than " + MAX_PASSWORD_CHARS + " characters");
+            }
+        }
+
+        public Options(Duration timeout, List<Path> fontDirs, int maxPages, long maxScratchBytes, FontSet fonts,
+                String displayName) {
+            this(timeout, fontDirs, maxPages, maxScratchBytes, fonts, displayName, null);
         }
 
         public Options(Duration timeout, List<Path> fontDirs, int maxPages, long maxScratchBytes) {
@@ -154,33 +166,46 @@ public final class OfficeToPdf {
         }
 
         public Options timeout(Duration limit) {
-            return new Options(limit, fontDirs, maxPages, maxScratchBytes, fonts, displayName);
+            return new Options(limit, fontDirs, maxPages, maxScratchBytes, fonts, displayName, password);
         }
 
         public Options fontDirs(List<Path> dirs) {
-            return new Options(timeout, dirs, maxPages, maxScratchBytes, fonts, displayName);
+            return new Options(timeout, dirs, maxPages, maxScratchBytes, fonts, displayName, password);
         }
 
         public Options fonts(FontSet set) {
-            return new Options(timeout, fontDirs, maxPages, maxScratchBytes, set, displayName);
+            return new Options(timeout, fontDirs, maxPages, maxScratchBytes, set, displayName, password);
         }
 
         public Options maxPages(int pages) {
-            return new Options(timeout, fontDirs, pages, maxScratchBytes, fonts, displayName);
+            return new Options(timeout, fontDirs, pages, maxScratchBytes, fonts, displayName, password);
         }
 
         public Options maxScratchBytes(long bytes) {
-            return new Options(timeout, fontDirs, maxPages, bytes, fonts, displayName);
+            return new Options(timeout, fontDirs, maxPages, bytes, fonts, displayName, password);
         }
 
         public Options displayName(String name) {
-            return new Options(timeout, fontDirs, maxPages, maxScratchBytes, fonts, name);
+            return new Options(timeout, fontDirs, maxPages, maxScratchBytes, fonts, name, password);
+        }
+
+        public Options password(String secret) {
+            return new Options(timeout, fontDirs, maxPages, maxScratchBytes, fonts, displayName, secret);
         }
 
         public FontLibrary fontLibrary() {
             return fonts.withDirectories(fontDirs).library();
         }
+
+        @Override
+        public String toString() {
+            return "Options[timeout=" + timeout + ", fontDirs=" + fontDirs + ", maxPages=" + maxPages
+                    + ", maxScratchBytes=" + maxScratchBytes + ", fonts=" + fonts + ", displayName=" + displayName
+                    + ", password=" + (password == null ? "none" : "given") + "]";
+        }
     }
+
+    public static final int MAX_PASSWORD_CHARS = 255;
 
     /** {@code truncated}: something is missing, the pages past the page limit ({@code pageLimitReached}) or content
      * that could not be read. */
@@ -287,6 +312,9 @@ public final class OfficeToPdf {
         }
         if (LegacyOffice.powerPoint(in)) {
             return Footprint.legacy(Files.size(in));
+        }
+        if (EncryptedPackage.is(in)) {
+            return Footprint.legacy(Files.size(in)) + 2 * Admission.BASE_BYTES;
         }
         if (RtfPackage.isRtf(in)) {
             return RtfPackage.estimate(Files.size(in)) + 2 * Admission.BASE_BYTES;
@@ -480,6 +508,10 @@ public final class OfficeToPdf {
         stopIfInterrupted();
         if (Files.size(source) > MAX_INPUT_BYTES) {
             throw tooLarge();
+        }
+        Result unlocked = encryptedPackage(source, requested, sink, options, renderer);
+        if (unlocked != null) {
+            return unlocked;
         }
         Result legacy = legacyWorkbook(source, sink, options, renderer);
         if (legacy != null) {
@@ -830,11 +862,11 @@ public final class OfficeToPdf {
         Path xlsx = null;
         try {
             XlsPackage.Outcome outcome;
-            try (fs) {
+            try (fs; POIFSFileSystem plain = EncryptedWorkbook.decrypt(fs.getRoot(), options.password())) {
                 xlsx = Files.createTempFile("office-to-pdf-", ".xlsx");
                 Admission.Ticket ticket = Admission.jvm().enter(XlsPackage.estimate(Files.size(source)));
                 try (OutputStream os = new BufferedOutputStream(Files.newOutputStream(xlsx), 1 << 16)) {
-                    outcome = XlsPackage.write(fs.getRoot(), os);
+                    outcome = XlsPackage.write(plain == null ? fs.getRoot() : plain.getRoot(), os);
                 } finally {
                     ticket.close();
                 }
@@ -863,6 +895,25 @@ public final class OfficeToPdf {
             if (xlsx != null) {
                 deleteQuietly(xlsx);
             }
+        }
+    }
+
+    // A password protected OOXML package is decrypted to a scratch file, converted like any other, and deleted
+    private static Result encryptedPackage(Path source, Format requested, OutputStream sink, Options options,
+            Renderer renderer) throws IOException {
+        if (!EncryptedPackage.is(source)) {
+            return null;
+        }
+        Path plain = Files.createTempFile("office-to-pdf-", ".package");
+        try {
+            EncryptedPackage.decrypt(source, options.password(), plain, MAX_INPUT_BYTES);
+            stopIfInterrupted();
+            if (EncryptedPackage.is(plain)) {
+                throw new IOException("The document is encrypted more than once, which Office never does");
+            }
+            return render(plain, requested, sink, options, renderer);
+        } finally {
+            deleteQuietly(plain);
         }
     }
 
