@@ -214,9 +214,19 @@ final class PageFlow extends Region {
         };
     }
 
+    private static float charGrid(SectionProps sect) {
+        if (sect == null || !"linesAndChars".equals(sect.gridType)) {
+            return 0;
+        }
+        return Math.max(-MAX_CHAR_GRID, Math.min(MAX_CHAR_GRID, sect.charSpace));
+    }
+
+    static final float MAX_CHAR_GRID = 50;
+
     private void startSection(Section s, int index) {
         SectionProps props = s.props();
         ctx.gridPitch = pitch(props);
+        ctx.charGrid = charGrid(props);
         SectionProps previous = sect;
         int previousIndex = sectionIndex;
         sectionIndex = index;

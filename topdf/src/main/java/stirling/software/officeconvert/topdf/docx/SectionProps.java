@@ -31,6 +31,7 @@ final class SectionProps {
     String vAlign = "top";
     String gridType;
     float linePitch;
+    float charSpace;
     XEl pageBorders;
     int lineNumberStep;
     int lineNumberStart;
@@ -105,6 +106,7 @@ final class SectionProps {
                 case "w:docGrid" -> {
                     s.gridType = k.attr("type");
                     s.linePitch = Ooxml.twips(k.attr("linePitch"), 0);
+                    s.charSpace = Ooxml.integer(k.attr("charSpace"), 0) / 4096f;
                 }
                 case "w:pgBorders" -> s.pageBorders = k;
                 case "w:lnNumType" -> {

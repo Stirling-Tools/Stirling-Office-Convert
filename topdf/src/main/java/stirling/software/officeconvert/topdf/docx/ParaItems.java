@@ -349,7 +349,7 @@ final class ParaItems {
             }
             FontFace face = face(rp, slot);
             piece = SymbolChars.remap(piece, face, label, c -> covers(faceFor(face, c), c));
-            addCovered(piece, face, rp, nominal, full, link, slot == Fonts.Slot.COMPLEX);
+            addCovered(piece, face, rp, nominal, full, link, slot == Fonts.Slot.COMPLEX, gridSpacing(rp, slot));
             i = j;
         }
     }
@@ -368,8 +368,16 @@ final class ParaItems {
         return cp == ' ' || cp == 0x00A0;
     }
 
+    private float gridSpacing(RunProps rp, Fonts.Slot slot) {
+        float grid = ctx.charGrid();
+        if (grid == 0 || Boolean.FALSE.equals(para.pp.snapToGrid) || Boolean.FALSE.equals(rp.snapToGrid)) {
+            return 0;
+        }
+        return slot == Fonts.Slot.EAST_ASIA ? grid : grid / 2;
+    }
+
     private void addCovered(String piece, FontFace face, RunProps rp, float nominal, float full, Inline.Link link,
-            boolean ownSpaces) {
+            boolean ownSpaces, float grid) {
         int i = 0;
         int n = piece.length();
         while (i < n) {
@@ -390,6 +398,7 @@ final class ParaItems {
                 // Small capitals keep the line height of the full size
                 it.look = it.look.scaledMetrics(full / nominal);
             }
+            it.look = it.look.spaced(grid);
             it.link = link;
             it.lang = rp.lang;
             it.shaped = FontFace.needsShaping(it.text) && f.shapeable();

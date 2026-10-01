@@ -110,6 +110,19 @@ class DocxLineRulesTest {
     }
 
     @Test
+    void aCharacterGridNarrowsEveryCharacter() throws IOException {
+        String body = DocxDoc.p("AAAAAAAAAA End");
+        String grid = DocxDoc.LETTER.replace("</w:sectPr>", "<w:docGrid w:type=\"linesAndChars\" w:linePitch=\"240\""
+                + " w:charSpace=\"-8192\"/></w:sectPr>");
+        float plain = render("nogrid", new DocxDoc().styles(STYLES).body(body)).word("End").x();
+        float narrow = render("chargrid", new DocxDoc().styles(STYLES).body(body).section(grid)).word("End").x();
+        assertEquals(plain - 11, narrow, 0.5f);
+        String lines = grid.replace("linesAndChars", "lines");
+        assertEquals(plain, render("linegrid", new DocxDoc().styles(STYLES).body(body).section(lines)).word("End").x(),
+                0.05f);
+    }
+
+    @Test
     void lineBreaksOutsideARunStillBreakTheLine() throws IOException {
         DocxDoc.Rendered r = plain("barebr", "<w:p>" + run("First") + "<w:br/>" + run("Second") + "</w:p>");
         assertTrue(r.word("Second").y() > r.word("First").y() + 5, "the bare w:br should start a new line");
