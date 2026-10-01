@@ -269,6 +269,10 @@ public final class FontLibrary {
         if (f == null) {
             return null;
         }
+        OfficeFonts.Style widths = like.officeWidths();
+        if (widths != null && widths.advance(codePoint) >= 0 && !f.emulated() && !f.symbolStandIn()) {
+            return officeWidths(f, like, widths);
+        }
         String sample = ScriptWidths.sample(codePoint);
         boolean scalable = sample != null && !f.emulated() && !f.symbolStandIn()
                 && ScriptWidths.average(like.requestedFamily(), sample) > 0;
@@ -287,6 +291,19 @@ public final class FontLibrary {
                     : new FontFace(f.program(), f.requestedFamily(), f.syntheticBold(), f.syntheticItalic(), f.note(),
                             null, null, k);
             known = Optional.of(stroke > 0 ? scaled.withEmbolden(stroke) : scaled);
+            Optional<FontFace> raced = faces.putIfAbsent(key, known);
+            known = raced == null ? known : raced;
+        }
+        return known.get();
+    }
+
+    private FontFace officeWidths(FontFace f, FontFace like, OfficeFonts.Style widths) {
+        String key = "w\u0000" + normalize(like.requestedFamily()) + '\u0000' + like.boldStyle() + like.italicStyle()
+                + '\u0000' + f.program().entry().describe() + (f.syntheticBold() ? 2 : 0) + (f.syntheticItalic() ? 1 : 0);
+        Optional<FontFace> known = faces.get(key);
+        if (known == null) {
+            known = Optional.of(new FontFace(f.program(), f.requestedFamily(), f.syntheticBold(), f.syntheticItalic(),
+                    f.note(), null, widths, 1));
             Optional<FontFace> raced = faces.putIfAbsent(key, known);
             known = raced == null ? known : raced;
         }
