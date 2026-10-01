@@ -144,6 +144,10 @@ final class FontFixer {
             return;
         }
         COSDictionary d = fd.getCOSObject();
+        String subtype = FontFileSubtype.fix(doc, d, font instanceof PDType0Font, level);
+        if (subtype != null) {
+            report.warn(subtype);
+        }
         if (level.part() > 1) {
             d.removeItem(COSName.CHAR_SET);
             d.removeItem(COSName.CID_SET);

@@ -17,6 +17,7 @@ import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.PDPageContentStream;
 import org.apache.pdfbox.pdmodel.PDResources;
 import org.apache.pdfbox.pdmodel.font.PDFont;
+import org.apache.pdfbox.pdmodel.font.PDFontFactory;
 import org.apache.pdfbox.pdmodel.font.PDTrueTypeFont;
 import org.apache.pdfbox.pdmodel.font.PDType0Font;
 import org.apache.pdfbox.pdmodel.font.encoding.WinAnsiEncoding;
@@ -116,6 +117,20 @@ final class FontSamples {
                         .getBytes(StandardCharsets.US_ASCII));
             }
             ((COSArray) p.getCOSObject().getDictionaryObject(COSName.CONTENTS)).add(extra);
+        });
+        doc("f06_font_programs", Set.of("1:6.3.5-2", "1:6.3.2-7", "2:6.2.11.4.2-1", "2:6.2.11.2-7"), d -> {
+            COSDictionary subset = OutlineCompactionTest.font(d, false);
+            subset.setName(COSName.BASE_FONT, "ABCDEF+TestType");
+            ((COSDictionary) subset.getDictionaryObject(COSName.FONT_DESC)).setName(COSName.FONT_NAME, "ABCDEF+TestType");
+            COSDictionary charset = OutlineCompactionTest.font(d, false);
+            charset.setName(COSName.BASE_FONT, "GHIJKL+TestType");
+            ((COSDictionary) charset.getDictionaryObject(COSName.FONT_DESC)).setName(COSName.FONT_NAME, "GHIJKL+TestType");
+            ((COSDictionary) charset.getDictionaryObject(COSName.FONT_DESC)).setString(COSName.CHAR_SET, "/A/B");
+            COSDictionary bogus = OutlineCompactionTest.font(d, true);
+            COSDictionary fd = (COSDictionary) bogus.getDictionaryObject(COSName.FONT_DESC);
+            ((COSStream) fd.getDictionaryObject(COSName.FONT_FILE3)).setItem(COSName.SUBTYPE, COSName.getPDFName("Bogus"));
+            page(d, "BT /A 20 Tf 50 760 Td (ABC) Tj /B 20 Tf 0 -40 Td (ABC) Tj /C 20 Tf 0 -40 Td (ABC) Tj ET",
+                    PDFontFactory.createFont(subset), PDFontFactory.createFont(charset), PDFontFactory.createFont(bogus));
         });
     }
 
