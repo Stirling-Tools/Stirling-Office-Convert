@@ -326,6 +326,26 @@ class DocxTableEdgeTest {
     }
 
     @Test
+    void aFloatingTableRowAtThePageBottomSplitsLikeAnInlineOne() throws IOException {
+        StringBuilder a = new StringBuilder();
+        StringBuilder b = new StringBuilder();
+        for (int i = 0; i < 40; i++) {
+            a.append(DocxDoc.p("A" + i));
+        }
+        for (int i = 0; i < 20; i++) {
+            b.append(DocxDoc.p("B" + i));
+        }
+        String table = "<w:tbl><w:tblPr><w:tblpPr w:leftFromText=\"180\" w:rightFromText=\"180\""
+                + " w:vertAnchor=\"text\" w:horzAnchor=\"margin\" w:tblpY=\"1\"/><w:tblW w:w=\"4000\""
+                + " w:type=\"dxa\"/></w:tblPr><w:tblGrid><w:gridCol w:w=\"4000\"/></w:tblGrid>" + row("", a.toString())
+                + row("", b.toString()) + row("", DocxDoc.p("C")) + "</w:tbl>";
+        DocxDoc.Rendered r = render("floatsplit", DocxDoc.p("Intro") + table + DocxDoc.p("After"));
+        assertEquals(1, r.word("B0").page(), "the second row starts where the first ends");
+        assertEquals(2, r.word("B19").page());
+        assertEquals(2, r.word("C").page());
+    }
+
+    @Test
     void textAfterAPageAnchoredTableThatRunsOnGoesOnFromTheTopOfItsLastPage() throws IOException {
         StringBuilder rows = new StringBuilder();
         for (int i = 0; i < 70; i++) {

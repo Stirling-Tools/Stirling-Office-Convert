@@ -484,6 +484,18 @@ final class TableFlow {
         return refs.isEmpty() || r.notesFit(refs, top + row.height);
     }
 
+    private RowBox[] straddling(RowBox row, float avail) {
+        if (row.exact || row.cantSplit || row.header || row.minHeight > avail + 0.01f) {
+            return null;
+        }
+        for (CellBox cb : row.cells) {
+            if (cb.rowSpan > 1 || !cb.notes.isEmpty()) {
+                return null;
+            }
+        }
+        return split(row, avail, true);
+    }
+
     private RowBox[] splitWithNotes(RowBox row, float avail, Region r, boolean keeps) {
         float room = avail;
         for (int tries = 0; tries < 60 && room >= 12; tries++) {
@@ -559,38 +571,51 @@ final class TableFlow {
             fitted += l.rows().get(fit).height;
             fit++;
         }
-        if (fit < l.rows().size() && fit <= l.headerRows()) {
+        RowBox[] parts = flows && fit > l.headerRows() && fit < l.rows().size()
+                ? straddling(l.rows().get(fit), pf.limit() - at - fitted) : null;
+        if (fit < l.rows().size() && fit <= l.headerRows() && parts == null) {
             fit = 0;
             fitted = 0;
         }
         boolean edges = l.spacing() <= 0 && fit < l.rows().size();
         for (int k = 0; k < fit; k++) {
             RowBox row = l.rows().get(k);
-            pf.placeFixed(render(edges && k == fit - 1 ? edged(row, false, true) : row, l), x, at);
+            pf.placeFixed(render(edges && k == fit - 1 && parts == null ? edged(row, false, true) : row, l), x, at);
             at += row.height;
+        }
+        List<RowBox> rows = l.rows();
+        if (parts != null) {
+            pf.placeFixed(render(edges ? edged(parts[0], false, true) : parts[0], l), x, at);
+            at += parts[0].height;
+            fitted += parts[0].height;
+            rows = new ArrayList<>(rows);
+            parts[1].index = rows.get(fit).index;
+            parts[1].last = rows.get(fit).last;
+            rows.set(fit, parts[1]);
         }
         float lft = Ooxml.twips(f.attr("leftFromText"), 0);
         float rgt = Ooxml.twips(f.attr("rightFromText"), 0);
         float top = Ooxml.twips(f.attr("topFromText"), 0);
         float bot = Ooxml.twips(f.attr("bottomFromText"), 0);
-        if (fit > 0) {
+        if (fit > 0 || parts != null) {
             pf.exclude(new java.awt.geom.Rectangle2D.Float(x - lft, y - top, width + lft + rgt, fitted + top + bot));
         }
         if (fit == l.rows().size()) {
             return;
         }
-        if (fit > 0 || !pf.atTop()) {
+        if (fit > 0 || parts != null || !pf.atTop()) {
             pf.newFrame(true, false);
         } else {
             pf.y = Math.max(pf.y, at);
         }
-        Layout rest = new Layout(x - pf.left(), l.colX(), l.rows(), l.headerRows(), l.spacing(), l.tp());
-        if (fit > 0) {
+        Layout rest = new Layout(x - pf.left(), l.colX(), rows, l.headerRows(), l.spacing(), l.tp());
+        if (fit > 0 || parts != null) {
             for (int k = 0; k < l.headerRows(); k++) {
                 placeRow(l.rows().get(k), rest, pf);
             }
         }
-        flow(rest, pf, fit, fit > 0, edges && fit > 0 && l.headerRows() == 0);
+        boolean placed = fit > 0 || parts != null;
+        flow(rest, pf, fit, placed, edges && placed && l.headerRows() == 0);
         if (!"text".equals(f.attr("vertAnchor"))) {
             // The rows that run on stay floating: text goes on from the top of the table's last page, around them
             float from = pf.frameTop();
