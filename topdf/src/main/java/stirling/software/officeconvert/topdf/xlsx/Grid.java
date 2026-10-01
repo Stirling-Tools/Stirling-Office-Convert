@@ -327,6 +327,10 @@ final class Grid {
             height = auto ? defaultSource : Math.min(409.5, row.height());
         } else if (auto) {
             height = Math.min(409.5, autofit(index, entries, blanks, base) + Math.max(0, row.thickEdges()) * SCREEN_PX);
+        } else if (fit && fixedDefault && book.workbook().savedOnMac) {
+            double screenPx = screenLine(book.styles().defaultFont()) / 0.75;
+            height = Math.min(409.5, autofit(index, entries, blanks, base, screenPx)
+                    + Math.max(0, row.thickEdges()) * SCREEN_PX);
         } else if (fit) {
             height = refit(row, autofit(index, entries, blanks, base) + Math.max(0, row.thickEdges()) * SCREEN_PX,
                     entries.isEmpty() && blanks.isEmpty(), wrapsText(entries));
@@ -520,7 +524,10 @@ final class Grid {
     }
 
     private double autofit(int row, List<CellEntry> entries, List<FontSpec> blanks, FontSpec base) {
-        double defaultPx = defaultSource / 0.75;
+        return autofit(row, entries, blanks, base, defaultSource / 0.75);
+    }
+
+    private double autofit(int row, List<CellEntry> entries, List<FontSpec> blanks, FontSpec base, double defaultPx) {
         double best = Math.min(546, fontLine(base, defaultPx));
         PrintMetrics m = book.metrics();
         for (FontSpec f : blanks) {

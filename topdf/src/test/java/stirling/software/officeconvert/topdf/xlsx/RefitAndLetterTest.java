@@ -78,6 +78,26 @@ class RefitAndLetterTest {
     }
 
     @Test
+    void windowsExcelRefitsMacRowsUnderACustomDefaultToItsOwnFontHeight() throws Exception {
+        String sheet = "<sheetFormatPr defaultRowHeight=\"15\" customHeight=\"1\"/><sheetData><row r=\"1\" ht=\"12\">"
+                + RawXlsx.inline("A1", "One") + "</row><row r=\"2\" ht=\"12\">" + RawXlsx.inline("A2", "Two")
+                + "</row><row r=\"3\" ht=\"12\">" + RawXlsx.inline("A3", "Three") + "</row></sheetData>";
+        String app = "<Properties xmlns=\"http://schemas.openxmlformats.org/officeDocument/2006/extended-properties\">"
+                + "<Application>Microsoft Macintosh Excel</Application></Properties>";
+        XlsxTesting.convert(dir, "win12.xlsx", new RawXlsx().sheet("S", sheet)
+                .workbookExtra("<fileVersion appName=\"xl\"/>").bytes());
+        XlsxTesting.convert(dir, "mac12.xlsx", new RawXlsx().sheet("S", sheet)
+                .workbookExtra("<fileVersion appName=\"xl\"/>")
+                .part("docProps/app.xml", "application/vnd.openxmlformats-officedocument.extended-properties+xml", app)
+                .rel("", "rId2", "extended-properties", "docProps/app.xml").bytes());
+        Path win = dir.resolve("win12.xlsx.pdf");
+        Path mac = dir.resolve("mac12.xlsx.pdf");
+        float stored = position(win, "Three")[1] - position(win, "One")[1];
+        float refit = position(mac, "Three")[1] - position(mac, "One")[1];
+        assertTrue(refit > stored + 4, "refit " + refit + ", stored " + stored);
+    }
+
+    @Test
     void alignmentAppliesWithoutApplyAlignment() throws Exception {
         String styles = "<fonts count=\"1\"><font><sz val=\"11\"/><name val=\"Calibri\"/></font></fonts><fills "
                 + "count=\"1\"><fill><patternFill patternType=\"none\"/></fill></fills><borders count=\"1\"><border/>"
