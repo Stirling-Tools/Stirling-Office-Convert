@@ -673,6 +673,23 @@ final class TableFlow {
         };
     }
 
+    private float pctBase(TableBlock t, float avail) {
+        if (ctx.settings.compatibilityMode >= 15 || t.rows.isEmpty() || t.rows.get(0).cells.isEmpty()) {
+            return avail;
+        }
+        return avail + hangingMargins(t);
+    }
+
+    private static float hangingMargins(TableBlock t) {
+        TableProps tp = t.tp;
+        List<TableBlock.Cell> cells = t.rows.get(0).cells;
+        CellProps first = cells.get(0).cp;
+        CellProps last = cells.get(cells.size() - 1).cp;
+        float ml = first.marLeft != null ? first.marLeft : tp.marLeft != null ? tp.marLeft : DEFAULT_MARGIN;
+        float mr = last.marRight != null ? last.marRight : tp.marRight != null ? tp.marRight : DEFAULT_MARGIN;
+        return ml + mr;
+    }
+
     private Layout layout(TableBlock t, float avail, int maxRows) {
         TableProps tp = t.tp;
         int ncols = t.grid.length;
@@ -692,7 +709,7 @@ final class TableFlow {
         }
         float target = 0;
         if (tp.width != null && tp.width > 0) {
-            target = "pct".equals(tp.widthType) ? avail * Math.min(tp.width, 1000) / 100f : tp.width;
+            target = "pct".equals(tp.widthType) ? pctBase(t, avail) * Math.min(tp.width, 1000) / 100f : tp.width;
         }
         if (sum <= 0.5f) {
             float total = target > 0 ? target : avail;
@@ -823,11 +840,7 @@ final class TableFlow {
         float limit = avail - (tp.ind == null ? 0 : tp.ind);
         if (ctx.settings.compatibilityMode < 15) {
             // Old layouts hang the cell margins outside the text column
-            CellProps first = t.rows.get(0).cells.get(0).cp;
-            List<TableBlock.Cell> cells = t.rows.get(0).cells;
-            CellProps last = cells.get(cells.size() - 1).cp;
-            limit += first.marLeft != null ? first.marLeft : tp.marLeft != null ? tp.marLeft : DEFAULT_MARGIN;
-            limit += last.marRight != null ? last.marRight : tp.marRight != null ? tp.marRight : DEFAULT_MARGIN;
+            limit += hangingMargins(t);
         }
         return limit;
     }

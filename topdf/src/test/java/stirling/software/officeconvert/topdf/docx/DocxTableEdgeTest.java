@@ -365,6 +365,28 @@ class DocxTableEdgeTest {
     }
 
     @Test
+    void anOldLayoutSpreadsAPercentageWidthOverTheHangingCellMargins() throws IOException {
+        String table = "<w:tbl><w:tblPr><w:tblW w:w=\"5000\" w:type=\"pct\"/><w:tblBorders>" + border("top", "single", 24)
+                + "</w:tblBorders></w:tblPr><w:tblGrid><w:gridCol w:w=\"9360\"/></w:tblGrid><w:tr><w:tc><w:tcPr>"
+                + "<w:tcW w:w=\"5000\" w:type=\"pct\"/></w:tcPr>" + DocxDoc.p("Cell") + "</w:tc></w:tr></w:tbl><w:p/>";
+        float[] widths = new float[2];
+        int i = 0;
+        for (int mode : new int[] {15, 14}) {
+            String settings = "<w:settings " + DocxDoc.NS + "><w:compat><w:compatSetting w:name=\"compatibilityMode\""
+                    + " w:uri=\"http://schemas.microsoft.com/office/word\" w:val=\"" + mode + "\"/></w:compat>"
+                    + "</w:settings>";
+            DocxDoc.Rendered r = DocxDoc.render(dir, "pct" + mode, new DocxDoc().styles(DEFAULTS).body(table)
+                    .part("settings.xml", "settings",
+                            "application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml", settings)
+                    .bytes());
+            List<Stroke> top = heavy(ink(r, 1), 3);
+            widths[i++] = (float) top.stream().mapToDouble(st -> Math.abs(st.x1() - st.x0())).sum();
+        }
+        assertEquals(468, widths[0], 1);
+        assertEquals(468 + 10.8f, widths[1], 1);
+    }
+
+    @Test
     void aPageAnchoredTableOverTextAboveItsAnchorMovesToTheNextPage() throws IOException {
         String table = "<w:tbl><w:tblPr><w:tblpPr w:leftFromText=\"180\" w:rightFromText=\"180\""
                 + " w:vertAnchor=\"page\" w:horzAnchor=\"margin\" w:tblpY=\"1440\"/><w:tblW w:w=\"9360\""
