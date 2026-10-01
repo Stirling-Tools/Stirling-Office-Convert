@@ -63,6 +63,18 @@ class OdtTest {
     }
 
     @Test
+    void aFlatOdtThatNeverDeclaresItsMetadataPrefixesStillConverts() throws IOException {
+        String flat = "<?xml version=\"1.0\"?><office:document"
+                + " xmlns:office=\"urn:oasis:names:tc:opendocument:xmlns:office:1.0\""
+                + " xmlns:text=\"urn:oasis:names:tc:opendocument:xmlns:text:1.0\" office:mimetype=\"" + OdfFixtures.TEXT
+                + "\"><office:meta><meta:creation-date>2023-12-07T18:38:07</meta:creation-date><dc:date>2023-12-07</dc:date>"
+                + "</office:meta><office:body><office:text><text:p>After the metadata</text:p></office:text></office:body>"
+                + "</office:document>";
+        Path p = OdfFixtures.write(dir, "bare.fodt", flat.getBytes(StandardCharsets.UTF_8));
+        assertTrue(pdfText(p).contains("After the metadata"));
+    }
+
+    @Test
     void otherXmlIsNotAnOpenDocument() throws IOException {
         Path p = OdfFixtures.write(dir, "x.fodt", "<root/>".getBytes(StandardCharsets.UTF_8));
         assertNull(OdfPackage.sniff(p));

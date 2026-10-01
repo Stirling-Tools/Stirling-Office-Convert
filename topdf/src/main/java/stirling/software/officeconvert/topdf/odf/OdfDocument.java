@@ -161,12 +161,18 @@ public final class OdfDocument implements Closeable {
         try {
             doc = SecureXml.parse(new ByteArrayInputStream(data));
         } catch (IOException e) {
-            byte[] salvaged = SecureXml.refusedDoctype(e) ? null : XmlSalvage.salvage(data);
-            if (salvaged == null || salvaged == data) {
-                throw e;
+            byte[] declared = withPrefixes(data, e);
+            Document fixed = declared == data ? null : parseOrNull(declared);
+            if (fixed != null) {
+                doc = fixed;
+            } else {
+                byte[] salvaged = SecureXml.refusedDoctype(e) ? null : XmlSalvage.salvage(declared);
+                if (salvaged == null || salvaged == declared) {
+                    throw e;
+                }
+                doc = SecureXml.parse(new ByteArrayInputStream(salvaged));
+                damaged = true;
             }
-            doc = SecureXml.parse(new ByteArrayInputStream(salvaged));
-            damaged = true;
         }
         Element root = doc.getDocumentElement();
         OdfDocument d = new OdfDocument(kind, null, root, root, Dom.kid(root, Ns.OFFICE, "settings"));
@@ -244,6 +250,12 @@ public final class OdfDocument implements Closeable {
         try {
             return SecureXml.parse(new ByteArrayInputStream(data)).getDocumentElement();
         } catch (IOException e) {
+            byte[] declared = withPrefixes(data, e);
+            Document fixed = declared == data ? null : parseOrNull(declared);
+            if (fixed != null) {
+                return fixed.getDocumentElement();
+            }
+            data = declared;
             byte[] salvaged = SecureXml.refusedDoctype(e) ? null : XmlSalvage.salvage(data);
             if (salvaged != null && salvaged != data) {
                 damaged = true;
@@ -252,6 +264,19 @@ public final class OdfDocument implements Closeable {
             if (required || SecureXml.refusedDoctype(e)) {
                 throw new IOException("The document is damaged: " + name + " is not well-formed XML", e);
             }
+            return null;
+        }
+    }
+
+    private static byte[] withPrefixes(byte[] data, IOException e) {
+        byte[] declared = OdfPrefixes.unbound(e) ? OdfPrefixes.declare(data) : null;
+        return declared == null ? data : declared;
+    }
+
+    private static Document parseOrNull(byte[] data) {
+        try {
+            return SecureXml.parse(new ByteArrayInputStream(data));
+        } catch (IOException e) {
             return null;
         }
     }
