@@ -13,7 +13,6 @@ import org.apache.pdfbox.pdfwriter.compress.CompressParameters;
 import org.apache.pdfbox.pdmodel.PDDocument;
 
 import stirling.software.officeconvert.extract.PdfFiles;
-import stirling.software.officeconvert.topdf.font.FontLibrary;
 
 final class Conversion {
 
@@ -54,7 +53,7 @@ final class Conversion {
         ContentGraph graph = ContentGraph.of(doc);
         FontUsage usage = new FontUsage();
         ContentFixer.run(graph, level, report, usage);
-        FontFixer.run(doc, usage, level, FontLibrary.withSystem(options.fontDirs()), report);
+        FontFixer.run(doc, usage, level, options.fontLibrary(), report);
         PdfFiles.stopIfInterrupted();
         StreamFixer.run(doc, level, report);
         if (level.part() == 1) {

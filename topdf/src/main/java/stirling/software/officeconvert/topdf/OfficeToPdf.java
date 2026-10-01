@@ -43,6 +43,7 @@ import org.apache.poi.xslf.usermodel.XSLFTextBox;
 import stirling.software.officeconvert.memory.Admission;
 import stirling.software.officeconvert.topdf.docx.DocxRenderer;
 import stirling.software.officeconvert.topdf.font.FontLibrary;
+import stirling.software.officeconvert.topdf.font.FontSet;
 import stirling.software.officeconvert.topdf.io.ActiveContent;
 import stirling.software.officeconvert.topdf.io.LegacyOffice;
 import stirling.software.officeconvert.topdf.io.OfficeZip;
@@ -109,7 +110,7 @@ public final class OfficeToPdf {
         }
     }
 
-    public record Options(Duration timeout, List<Path> fontDirs, int maxPages, long maxScratchBytes) {
+    public record Options(Duration timeout, List<Path> fontDirs, int maxPages, long maxScratchBytes, FontSet fonts) {
 
         public static final int DEFAULT_MAX_PAGES = 10_000;
 
@@ -118,6 +119,7 @@ public final class OfficeToPdf {
         public Options {
             Objects.requireNonNull(timeout, "timeout");
             Objects.requireNonNull(fontDirs, "fontDirs");
+            Objects.requireNonNull(fonts, "fonts");
             if (timeout.isNegative()) {
                 throw new IllegalArgumentException("The timeout must be zero (none) or more, was " + timeout);
             }
@@ -130,6 +132,10 @@ public final class OfficeToPdf {
             fontDirs = List.copyOf(fontDirs);
         }
 
+        public Options(Duration timeout, List<Path> fontDirs, int maxPages, long maxScratchBytes) {
+            this(timeout, fontDirs, maxPages, maxScratchBytes, FontSet.system());
+        }
+
         public Options(Duration timeout, List<Path> fontDirs, int maxPages) {
             this(timeout, fontDirs, maxPages, DEFAULT_MAX_SCRATCH_BYTES);
         }
@@ -139,19 +145,27 @@ public final class OfficeToPdf {
         }
 
         public Options timeout(Duration limit) {
-            return new Options(limit, fontDirs, maxPages, maxScratchBytes);
+            return new Options(limit, fontDirs, maxPages, maxScratchBytes, fonts);
         }
 
         public Options fontDirs(List<Path> dirs) {
-            return new Options(timeout, dirs, maxPages, maxScratchBytes);
+            return new Options(timeout, dirs, maxPages, maxScratchBytes, fonts);
+        }
+
+        public Options fonts(FontSet set) {
+            return new Options(timeout, fontDirs, maxPages, maxScratchBytes, set);
         }
 
         public Options maxPages(int pages) {
-            return new Options(timeout, fontDirs, pages, maxScratchBytes);
+            return new Options(timeout, fontDirs, pages, maxScratchBytes, fonts);
         }
 
         public Options maxScratchBytes(long bytes) {
-            return new Options(timeout, fontDirs, maxPages, bytes);
+            return new Options(timeout, fontDirs, maxPages, bytes, fonts);
+        }
+
+        public FontLibrary fontLibrary() {
+            return fonts.withDirectories(fontDirs).library();
         }
     }
 
@@ -477,7 +491,7 @@ public final class OfficeToPdf {
 
     static Result render(Path source, Format requested, OutputStream sink, Options options, Renderer renderer,
             OfficeZip.Limits limits) throws IOException {
-        FontLibrary fonts = FontLibrary.withSystem(options.fontDirs());
+        FontLibrary fonts = options.fontLibrary();
         if (LegacyOffice.powerPoint(source)) {
             return renderLegacy(source, Format.PPT, sink, options, renderer, fonts);
         }
@@ -876,7 +890,7 @@ public final class OfficeToPdf {
             OdfPackage.Outcome outcome;
             Admission.Ticket ticket = Admission.jvm().enter(OdfPackage.estimate(source));
             try (OutputStream os = new BufferedOutputStream(Files.newOutputStream(rewritten), 1 << 16)) {
-                outcome = OdfPackage.write(source, os, FontLibrary.withSystem(options.fontDirs()));
+                outcome = OdfPackage.write(source, os, options.fontLibrary());
             } finally {
                 ticket.close();
             }

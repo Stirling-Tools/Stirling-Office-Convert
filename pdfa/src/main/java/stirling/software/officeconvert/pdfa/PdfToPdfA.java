@@ -15,13 +15,15 @@ import org.apache.pdfbox.pdmodel.PDDocument;
 
 import stirling.software.officeconvert.extract.PdfFiles;
 import stirling.software.officeconvert.memory.Admission;
+import stirling.software.officeconvert.topdf.font.FontLibrary;
+import stirling.software.officeconvert.topdf.font.FontSet;
 
 public final class PdfToPdfA {
 
     public static final long MAX_INPUT_BYTES = 1L << 30;
 
     public record Options(PdfALevel level, String password, Duration timeout, List<Path> fontDirs, int maxPages,
-            float flattenDpi) {
+            float flattenDpi, FontSet fonts) {
 
         public static final int DEFAULT_MAX_PAGES = 10_000;
 
@@ -31,6 +33,7 @@ public final class PdfToPdfA {
             Objects.requireNonNull(level, "level");
             Objects.requireNonNull(timeout, "timeout");
             Objects.requireNonNull(fontDirs, "fontDirs");
+            Objects.requireNonNull(fonts, "fonts");
             if (timeout.isNegative()) {
                 throw new IllegalArgumentException("The timeout must be zero (none) or more, was " + timeout);
             }
@@ -43,39 +46,52 @@ public final class PdfToPdfA {
             fontDirs = List.copyOf(fontDirs);
         }
 
+        public Options(PdfALevel level, String password, Duration timeout, List<Path> fontDirs, int maxPages,
+                float flattenDpi) {
+            this(level, password, timeout, fontDirs, maxPages, flattenDpi, FontSet.system());
+        }
+
         public static Options defaults() {
             return new Options(PdfALevel.A2B, null, Duration.ofMinutes(5), List.of(), DEFAULT_MAX_PAGES,
                     DEFAULT_FLATTEN_DPI);
         }
 
         public Options level(PdfALevel to) {
-            return new Options(to, password, timeout, fontDirs, maxPages, flattenDpi);
+            return new Options(to, password, timeout, fontDirs, maxPages, flattenDpi, fonts);
         }
 
         public Options password(String secret) {
-            return new Options(level, secret, timeout, fontDirs, maxPages, flattenDpi);
+            return new Options(level, secret, timeout, fontDirs, maxPages, flattenDpi, fonts);
         }
 
         public Options timeout(Duration limit) {
-            return new Options(level, password, limit, fontDirs, maxPages, flattenDpi);
+            return new Options(level, password, limit, fontDirs, maxPages, flattenDpi, fonts);
         }
 
         public Options fontDirs(List<Path> dirs) {
-            return new Options(level, password, timeout, dirs, maxPages, flattenDpi);
+            return new Options(level, password, timeout, dirs, maxPages, flattenDpi, fonts);
+        }
+
+        public Options fonts(FontSet set) {
+            return new Options(level, password, timeout, fontDirs, maxPages, flattenDpi, set);
+        }
+
+        public FontLibrary fontLibrary() {
+            return fonts.withDirectories(fontDirs).library();
         }
 
         public Options maxPages(int pages) {
-            return new Options(level, password, timeout, fontDirs, pages, flattenDpi);
+            return new Options(level, password, timeout, fontDirs, pages, flattenDpi, fonts);
         }
 
         public Options flattenDpi(float dpi) {
-            return new Options(level, password, timeout, fontDirs, maxPages, dpi);
+            return new Options(level, password, timeout, fontDirs, maxPages, dpi, fonts);
         }
 
         @Override
         public String toString() {
             return "Options[level=" + level + ", password=" + (password == null ? "none" : "given") + ", timeout="
-                    + timeout + ", fontDirs=" + fontDirs + ", maxPages=" + maxPages + ", flattenDpi=" + flattenDpi + "]";
+                    + timeout + ", fontDirs=" + fontDirs + ", maxPages=" + maxPages + ", flattenDpi=" + flattenDpi + ", fonts=" + fonts + "]";
         }
     }
 
