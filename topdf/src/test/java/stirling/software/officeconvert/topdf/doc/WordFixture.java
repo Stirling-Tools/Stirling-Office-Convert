@@ -57,6 +57,8 @@ final class WordFixture {
 
     private final List<ShapeFixture.Shape> shapes = new ArrayList<>();
 
+    private final List<byte[]> pictures = new ArrayList<>();
+
     private final List<Para> textboxes = new ArrayList<>();
 
     private final List<Integer> textboxIds = new ArrayList<>();
@@ -123,6 +125,11 @@ final class WordFixture {
     WordFixture lists(byte[] plfLst, byte[] plfLfo) {
         lists = plfLst;
         listOverrides = plfLfo;
+        return this;
+    }
+
+    WordFixture picture(byte[] png) {
+        pictures.add(png);
         return this;
     }
 
@@ -270,7 +277,7 @@ final class WordFixture {
             if (reversed) {
                 java.util.Collections.reverse(layered);
             }
-            fcLcb[50] = put(table, ShapeFixture.dggInfo(layered));
+            fcLcb[50] = put(table, ShapeFixture.dggInfo(layered, pictures));
         }
         if (ccpTxbx > 0) {
             int k = textboxes.size();

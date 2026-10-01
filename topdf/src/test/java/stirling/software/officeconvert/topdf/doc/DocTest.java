@@ -253,6 +253,20 @@ class DocTest {
     }
 
     @Test
+    void aShapeFilledWithAPictureKeepsThePicture() throws IOException {
+        byte[] doc = new WordFixture()
+                .para(List.of(WordFixture.run("Anchor "), WordFixture.run("\u0008", Sprms.special())), 0)
+                .picture(PictureFixture.png(4, 4, java.awt.Color.RED))
+                .shape(new ShapeFixture.Shape(1025, 1, new int[] {0, 0, 2000, 1000},
+                        ShapeFixture.fspaFlags(2, 2, 3, 0, false), java.util.Map.of(0x0180, 3, 0x0186, 1),
+                        java.util.Map.of()))
+                .build();
+        String xml = body(doc);
+        assertTrue(xml.contains("<a:blipFill><a:blip r:embed=") && xml.contains("<a:stretch><a:fillRect/>"), xml);
+        assertTrue(part(doc, "word/media/image1.png") != null);
+    }
+
+    @Test
     void aTextFreeContinuousSectionRunsIntoTheNext() throws IOException {
         byte[] cols = WordFixture.concat(Sprms.u16(0x500B, 1), Sprms.u8(0x3009, 0));
         byte[] doc = new WordFixture().sectionBreak("", cols).para("Body").section(cols).build();
