@@ -26,6 +26,8 @@ final class SheetWriter {
 
     static final int FILLER = 2000;
 
+    static final int STYLED_RUN = 100;
+
     private static final String ROW = "\u0001";
 
     private final OdsWriter w;
@@ -270,11 +272,12 @@ final class SheetWriter {
         StringBuilder cellsXml = new StringBuilder();
         List<int[]> rowMerges = new ArrayList<>();
         boolean content = cells(r, start, cellsXml, rowMerges);
+        boolean hasValue = cellsXml.indexOf("<v>") >= 0;
         boolean custom = !optimal && !Double.isNaN(height);
         if (!content && !custom && !rowHidden) {
             return;
         }
-        if (!content && repeat > FILLER) {
+        if (!hasValue && repeat > STYLED_RUN) {
             return;
         }
         int copies = content ? Math.min(repeat, 10_000) : repeat;
@@ -328,12 +331,14 @@ final class SheetWriter {
                 continue;
             }
             String style = Dom.attr(c, Ns.TABLE, "style-name");
+            String columnDefault = col < columnDefaults.size() ? columnDefaults.get(col) : null;
+            boolean implied = style == null || style.equals(columnDefault);
             if (style == null) {
-                style = rowDefault != null ? rowDefault : col < columnDefaults.size() ? columnDefaults.get(col) : null;
+                style = rowDefault != null ? rowDefault : columnDefault;
             }
             SheetStyles.Xf xf = w.cellStyles.xf(style);
             String value = value(c, xf);
-            boolean visible = value != null || xf.visible();
+            boolean visible = value != null || xf.visible() && !implied;
             int cs = Dom.integer(c, Ns.TABLE, "number-columns-spanned", 1);
             int rs = Dom.integer(c, Ns.TABLE, "number-rows-spanned", 1);
             if ((cs > 1 || rs > 1) && merges.size() < 100_000) {

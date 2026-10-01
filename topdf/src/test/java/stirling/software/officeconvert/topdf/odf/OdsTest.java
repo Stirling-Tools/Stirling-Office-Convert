@@ -152,4 +152,27 @@ class OdsTest {
         String text = pdfText(p);
         assertTrue(text.contains("visible") && !text.contains("hidden text"), text);
     }
+
+    @Test
+    void columnStyledEmptyCellsDoNotStretchThePrintedArea() throws IOException {
+        String table = "<table:table table:name=\"S\"><table:table-column table:default-cell-style-name=\"ce3\"/>"
+                + "<table:table-row><table:table-cell table:style-name=\"ce3\" office:value-type=\"string\"><text:p>x"
+                + "</text:p></table:table-cell></table:table-row><table:table-row table:number-rows-repeated=\"500\">"
+                + "<table:table-cell table:style-name=\"ce3\"/></table:table-row></table:table>";
+        String sheet = OdfFixtures.rewrite(ods(NUMBER_STYLES, table, null)).get("xl/worksheets/sheet1.xml");
+        assertEquals(1, sheet.split("<row ").length - 1, sheet);
+    }
+
+    @Test
+    void aCalcHeaderHeightIncludesItsSpacing() throws IOException {
+        String styles = OdfFixtures.styles("", "<style:page-layout style:name=\"pm1\"><style:page-layout-properties"
+                + " fo:margin-top=\"0.3in\"/><style:header-style><style:header-footer-properties fo:min-height=\"0.45in\""
+                + " fo:margin-bottom=\"0.3in\"/></style:header-style></style:page-layout>",
+                "<style:master-page style:name=\"Default\" style:page-layout-name=\"pm1\"><style:header><text:p>H"
+                + "</text:p></style:header></style:master-page>");
+        String sheet = OdfFixtures.rewrite(ods("", "<table:table table:name=\"S\"><table:table-row><table:table-cell"
+                + " office:value-type=\"float\" office:value=\"1\"/></table:table-row></table:table>", styles))
+                .get("xl/worksheets/sheet1.xml");
+        assertTrue(sheet.contains("top=\"0.75\"") && sheet.contains("header=\"0.3\""), sheet);
+    }
 }

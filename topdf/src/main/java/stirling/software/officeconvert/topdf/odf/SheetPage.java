@@ -13,6 +13,8 @@ final class SheetPage {
 
     private final Element master;
 
+    private final Styles styles;
+
     private final Props page;
 
     private final Props header;
@@ -28,6 +30,7 @@ final class SheetPage {
             m = styles.firstMaster();
         }
         master = m;
+        this.styles = styles;
         Element layout = styles.pageLayout(Dom.attr(m, Ns.STYLE, "page-layout-name"));
         page = new Props();
         page.merge(Dom.kid(layout, Ns.STYLE, "page-layout-properties"));
@@ -67,13 +70,11 @@ final class SheetPage {
         boolean hasFooter = master != null && shown(Dom.kid(master, Ns.STYLE, "footer"));
         if (hasHeader) {
             headerDist = top;
-            top += header.pt("fo:min-height", 0) + ("true".equals(header.get("style:dynamic-spacing")) ? 0
-                    : header.pt("fo:margin-bottom", 0));
+            top += Math.max(header.pt("fo:min-height", 0), header.pt("fo:margin-bottom", 0));
         }
         if (hasFooter) {
             footerDist = bottom;
-            bottom += footer.pt("fo:min-height", 0) + ("true".equals(footer.get("style:dynamic-spacing")) ? 0
-                    : footer.pt("fo:margin-top", 0));
+            bottom += Math.max(footer.pt("fo:min-height", 0), footer.pt("fo:margin-top", 0));
         }
         b.append("<pageMargins left=\"").append(in(left)).append("\" right=\"").append(in(right)).append("\" top=\"")
                 .append(in(top)).append("\" bottom=\"").append(in(bottom)).append("\" header=\"").append(in(headerDist))
@@ -106,19 +107,68 @@ final class SheetPage {
             b.append(" firstPageNumber=\"").append(first).append("\" useFirstPageNumber=\"1\"");
         }
         b.append("/>");
-        String head = hasHeader ? text(Dom.kid(master, Ns.STYLE, "header")) : "";
-        String foot = hasFooter ? text(Dom.kid(master, Ns.STYLE, "footer")) : "";
-        if (!head.isEmpty() || !foot.isEmpty()) {
-            b.append("<headerFooter>");
-            if (!head.isEmpty()) {
-                b.append("<oddHeader>").append(Xml.esc(head)).append("</oddHeader>");
-            }
-            if (!foot.isEmpty()) {
-                b.append("<oddFooter>").append(Xml.esc(foot)).append("</oddFooter>");
-            }
-            b.append("</headerFooter>");
+        String[][] parts = new String[3][2];
+        String[] kinds = {"", "-first", "-left"};
+        for (int i = 0; i < 3; i++) {
+            Element hd = master == null ? null : Dom.kid(master, Ns.STYLE, "header" + kinds[i]);
+            Element ft = master == null ? null : Dom.kid(master, Ns.STYLE, "footer" + kinds[i]);
+            parts[i][0] = hasHeader && shown(hd) ? text(hd) : i > 0 && hd == null ? null : "";
+            parts[i][1] = hasFooter && shown(ft) ? text(ft) : i > 0 && ft == null ? null : "";
+        }
+        boolean firstPage = parts[1][0] != null && !"false".equals(attr(master, "header-first"))
+                || parts[1][1] != null && !"false".equals(attr(master, "footer-first"));
+        boolean even = parts[2][0] != null && shown(Dom.kid(master, Ns.STYLE, "header-left"))
+                || parts[2][1] != null && shown(Dom.kid(master, Ns.STYLE, "footer-left"));
+        firstPage &= shown(Dom.kid(master, Ns.STYLE, "header-first")) || shown(Dom.kid(master, Ns.STYLE, "footer-first"));
+        StringBuilder hf = new StringBuilder();
+        element(hf, "oddHeader", parts[0][0]);
+        element(hf, "oddFooter", parts[0][1]);
+        if (even) {
+            element(hf, "evenHeader", parts[2][0] == null ? parts[0][0] : parts[2][0]);
+            element(hf, "evenFooter", parts[2][1] == null ? parts[0][1] : parts[2][1]);
+        }
+        if (firstPage) {
+            element(hf, "firstHeader", parts[1][0] == null ? parts[0][0] : parts[1][0]);
+            element(hf, "firstFooter", parts[1][1] == null ? parts[0][1] : parts[1][1]);
+        }
+        if (!hf.isEmpty() || firstPage || even) {
+            b.append("<headerFooter").append(even ? " differentOddEven=\"1\"" : "")
+                    .append(firstPage ? " differentFirst=\"1\"" : "").append('>').append(hf).append("</headerFooter>");
         }
         return b.toString();
+    }
+
+    private String codes(Props p) {
+        if (p.isEmpty()) {
+            return "";
+        }
+        StringBuilder b = new StringBuilder();
+        String font = WordRun.font(p, styles, "");
+        boolean bold = WordRun.bold(p.get("fo:font-weight"));
+        boolean italic = WordRun.italic(p.get("fo:font-style"));
+        if (font != null || p.has("fo:font-weight") || p.has("fo:font-style")) {
+            String style = bold && italic ? "Bold Italic" : bold ? "Bold" : italic ? "Italic" : "Regular";
+            b.append("&\"").append(font == null ? "-" : font.replace("\"", "")).append(',').append(style).append('"');
+        }
+        double size = p.pt("fo:font-size", Double.NaN);
+        if (size > 0) {
+            b.append('&').append(Math.max(1, Math.round(size))).append(' ');
+        }
+        String color = Colors.fill(p.get("fo:color"));
+        if (color != null) {
+            b.append("&K").append(color);
+        }
+        return b.toString();
+    }
+
+    private static String attr(Element master, String kind) {
+        return Dom.attr(Dom.kid(master, Ns.STYLE, kind), Ns.STYLE, "display");
+    }
+
+    private static void element(StringBuilder b, String tag, String text) {
+        if (text != null && !text.isEmpty()) {
+            b.append('<').append(tag).append('>').append(Xml.esc(text)).append("</").append(tag).append('>');
+        }
     }
 
     private static int parse(String v, int fallback) {
@@ -145,7 +195,7 @@ final class SheetPage {
         return w < 600 ? 9 : 1;
     }
 
-    static String text(Element hf) {
+    String text(Element hf) {
         if (hf == null) {
             return "";
         }
@@ -170,7 +220,7 @@ final class SheetPage {
         return b.length() > 255 ? b.substring(0, 255) : b.toString();
     }
 
-    private static String paragraphs(Element e) {
+    private String paragraphs(Element e) {
         StringBuilder b = new StringBuilder();
         boolean first = true;
         for (Element p : Dom.kids(e, Ns.TEXT, "p")) {
@@ -183,7 +233,7 @@ final class SheetPage {
         return b.toString().strip().isEmpty() ? "" : b.toString();
     }
 
-    private static void fields(Element e, StringBuilder b, int depth) {
+    private void fields(Element e, StringBuilder b, int depth) {
         if (depth > 16) {
             return;
         }
@@ -201,6 +251,11 @@ final class SheetPage {
                     case "s" -> b.append(" ".repeat(Math.max(1, Math.min(100, Dom.integer(k, Ns.TEXT, "c", 1)))));
                     case "tab" -> b.append(' ');
                     case "line-break" -> b.append('\n');
+                    case "span" -> {
+                        b.append(codes(styles.props("text", Dom.attr(k, Ns.TEXT, "style-name"), Styles.Scope.STYLES,
+                                "text-properties", false)));
+                        fields(k, b, depth + 1);
+                    }
                     default -> fields(k, b, depth + 1);
                 }
             }
