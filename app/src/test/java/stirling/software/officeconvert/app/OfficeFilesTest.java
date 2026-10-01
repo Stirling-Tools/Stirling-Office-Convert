@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
@@ -39,6 +40,13 @@ class OfficeFilesTest {
         System.arraycopy(new byte[] {(byte) 0xd0, (byte) 0xcf, 0x11, (byte) 0xe0}, 0, ole, 0, 4);
         IOException e = assertThrows(OfficeFiles.Unsupported.class, () -> OfficeFiles.extension(write(ole)));
         assertTrue(e.getMessage().contains("97-2003"));
+    }
+
+    @Test
+    void recognisesRtfFromItsHeader() throws IOException {
+        assertEquals("rtf", OfficeFiles.extension(write("{\\rtf1\\ansi Hello\\par}".getBytes(
+                StandardCharsets.US_ASCII))));
+        assertEquals("docx", OfficeFiles.family("rtf"));
     }
 
     @ParameterizedTest
