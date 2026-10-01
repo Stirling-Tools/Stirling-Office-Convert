@@ -56,7 +56,9 @@ final class Tagging {
             COSBase b = stack.pop();
             if (b instanceof COSArray a) {
                 for (int i = 0; i < a.size(); i++) {
-                    stack.push(a.getObject(i));
+                    if (a.getObject(i) != null) {
+                        stack.push(a.getObject(i));
+                    }
                 }
                 continue;
             }

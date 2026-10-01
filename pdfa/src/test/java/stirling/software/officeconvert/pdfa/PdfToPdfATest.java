@@ -86,6 +86,23 @@ class PdfToPdfATest {
     }
 
     @Test
+    void aBrokenStructureTreeEntryIsSkipped() throws Exception {
+        Path tagged = Samples.write(dir, "s21_tagged");
+        Path broken = dir.resolve("broken-tags.pdf");
+        try (PDDocument d = Loader.loadPDF(tagged.toFile())) {
+            var root = d.getDocumentCatalog().getStructureTreeRoot().getCOSObject();
+            var kids = new org.apache.pdfbox.cos.COSArray();
+            kids.add(org.apache.pdfbox.cos.COSNull.NULL);
+            kids.add(root.getDictionaryObject(org.apache.pdfbox.cos.COSName.K));
+            root.setItem(org.apache.pdfbox.cos.COSName.K, kids);
+            d.save(broken.toFile());
+        }
+        Path out = dir.resolve("broken-tags-a.pdf");
+        PdfToPdfA.convert(broken, out, PdfToPdfA.Options.defaults().level(PdfALevel.A2A));
+        VeraPdf.assertCompliant(out, PdfALevel.A2A);
+    }
+
+    @Test
     void aSlowConversionTimesOut() throws Exception {
         Path in = Samples.write(dir, "s01_std14_unembedded");
         Path out = dir.resolve("out.pdf");
