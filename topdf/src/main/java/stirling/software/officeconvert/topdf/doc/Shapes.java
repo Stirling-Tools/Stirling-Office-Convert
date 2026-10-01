@@ -91,7 +91,22 @@ final class Shapes {
         }
         if (stroked) {
             b.append("<a:ln w=\"").append(prop(sp, 0x01CB, 9525)).append("\"><a:solidFill><a:srgbClr val=\"")
-                    .append(color(prop(sp, 0x01C0, 0), 0)).append("\"/></a:solidFill></a:ln>");
+                    .append(color(prop(sp, 0x01C0, 0), 0)).append("\"/></a:solidFill>");
+            String dash = switch ((int) prop(sp, 0x01CE, 0)) {
+                case 1, 6 -> "dash";
+                case 2, 5 -> "sysDot";
+                case 3, 7 -> "dashDot";
+                case 4, 9 -> "sysDashDotDot";
+                case 8 -> "lgDash";
+                case 10 -> "lgDashDot";
+                default -> null;
+            };
+            if (dash != null) {
+                b.append("<a:prstDash val=\"").append(dash).append("\"/>");
+            }
+            arrow(b, "headEnd", prop(sp, 0x01D0, 0));
+            arrow(b, "tailEnd", prop(sp, 0x01D1, 0));
+            b.append("</a:ln>");
         } else {
             b.append("<a:ln><a:noFill/></a:ln>");
         }
@@ -115,6 +130,20 @@ final class Shapes {
                     default -> "t";
                 }).append("\"/></wps:wsp>");
         return b.toString();
+    }
+
+    private static void arrow(StringBuilder b, String end, long kind) {
+        String type = switch ((int) kind) {
+            case 1 -> "triangle";
+            case 2 -> "stealth";
+            case 3 -> "diamond";
+            case 4 -> "oval";
+            case 5 -> "arrow";
+            default -> null;
+        };
+        if (type != null) {
+            b.append("<a:").append(end).append(" type=\"").append(type).append("\"/>");
+        }
     }
 
     private static String wordArt(EscherContainerRecord sp, EscherSpRecord rec, String text, long x, long y, long cx,

@@ -441,4 +441,16 @@ class DocTest {
         assertTrue(xml.contains(">Draft</w:t>") && xml.contains("<w:color w:val=\"FF0000\"/>"), xml);
         assertTrue(xml.contains("<w:sz w:val=\"80\"/>"), xml);
     }
+
+    @Test
+    void linesKeepTheirDashesAndArrowheads() throws IOException {
+        byte[] doc = new WordFixture()
+                .para(List.of(WordFixture.run("Line "), WordFixture.run("\u0008", Sprms.special())), 0)
+                .shape(new ShapeFixture.Shape(1025, 20, new int[] {0, 0, 4000, 10},
+                        ShapeFixture.fspaFlags(2, 2, 3, 0, false), java.util.Map.of(0x01CE, 1, 0x01D1, 1),
+                        java.util.Map.of()))
+                .build();
+        String xml = body(doc);
+        assertTrue(xml.contains("<a:prstDash val=\"dash\"/><a:tailEnd type=\"triangle\"/>"), xml);
+    }
 }
