@@ -170,7 +170,7 @@ final class Sections implements Story.Breaks {
         int w = s.getXaPage() > 0 ? s.getXaPage() : 12240;
         int h = s.getYaPage() > 0 ? s.getYaPage() : 15840;
         b.append("<w:pgSz w:w=\"").append(w).append("\" w:h=\"").append(h).append('"');
-        if (s.getDmOrientPage()) {
+        if (w > h) {
             b.append(" w:orient=\"landscape\"");
         }
         b.append("/><w:pgMar w:top=\"").append(s.getDyaTop()).append("\" w:right=\"").append(s.getDxaRight())

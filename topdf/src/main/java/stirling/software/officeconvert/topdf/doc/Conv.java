@@ -41,6 +41,15 @@ final class Conv {
         this.drawings = new Drawings(this);
     }
 
+    private Textboxes textboxes;
+
+    Textboxes textboxes() {
+        if (textboxes == null) {
+            textboxes = new Textboxes(src);
+        }
+        return textboxes;
+    }
+
     int nextId() {
         return ids++;
     }

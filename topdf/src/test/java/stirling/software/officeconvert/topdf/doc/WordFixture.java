@@ -128,7 +128,7 @@ final class WordFixture {
         if (!headers.isEmpty()) {
             ccpHdd = append(headers, text, all, ends, runSpans, runProps);
             headerStories = new int[13];
-            for (int i = 7; i < 13; i++) {
+            for (int i = 8; i < 13; i++) {
                 headerStories[i] = ccpHdd;
             }
         }

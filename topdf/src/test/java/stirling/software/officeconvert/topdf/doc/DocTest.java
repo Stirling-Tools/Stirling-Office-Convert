@@ -1,5 +1,6 @@
 package stirling.software.officeconvert.topdf.doc;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.ByteArrayInputStream;
@@ -69,5 +70,101 @@ class DocTest {
         String text = pdfText(doc, "basic.doc");
         assertTrue(text.contains("Plain bold"), text);
         assertTrue(text.contains("Second paragraph"), text);
+    }
+
+    @Test
+    void anUnknownShadingPatternDoesNotStopTheConversion() throws IOException {
+        byte[] shd = {0, 0, 0, 0, (byte) 0xFF, (byte) 0xEE, (byte) 0xDD, 0, 0, (byte) 0xFF};
+        byte[] doc = new WordFixture().para("Shaded", Sprms.op(0xC64D, 10, shd[0], shd[1], shd[2], shd[3], shd[4],
+                shd[5], shd[6], shd[7], shd[8], shd[9])).build();
+        String xml = body(doc);
+        assertTrue(xml.contains("Shaded"), xml);
+    }
+
+    @Test
+    void aTruncatedParagraphPropertyKeepsTheParagraph() throws IOException {
+        byte[] doc = new WordFixture().para("Kept text", Sprms.jc(2), new byte[] {0x2F, (byte) 0xD6, 20, 1, 2})
+                .build();
+        String xml = body(doc);
+        assertTrue(xml.contains("Kept text"), xml);
+        assertTrue(xml.contains("<w:jc w:val=\"right\"/>"), xml);
+    }
+
+    @Test
+    void tablesKeepTheirCellsAndWidths() throws IOException {
+        int[][] tc = new int[2][20];
+        for (int[] c : tc) {
+            for (int k = 4; k < 20; k += 4) {
+                c[k] = 8;
+                c[k + 1] = 1;
+            }
+        }
+        byte[] doc = new WordFixture().para("Before")
+                .cell("A1").cell("B1").rowEnd(Sprms.u16(0x9602, 108), Sprms.defTable(new int[] {-108, 2000, 5000}, tc))
+                .cell("A2").cell("B2").rowEnd(Sprms.u16(0x9602, 108), Sprms.defTable(new int[] {-108, 2000, 5000}, tc))
+                .para("After").build();
+        String xml = body(doc);
+        assertTrue(xml.contains("<w:gridCol w:w=\"2108\"/><w:gridCol w:w=\"3000\"/>"), xml);
+        assertTrue(xml.contains("<w:tblInd w:w=\"0\" w:type=\"dxa\"/>"), xml);
+        assertTrue(xml.contains("<w:top w:val=\"single\" w:sz=\"8\""), xml);
+        assertTrue(xml.indexOf("A1") < xml.indexOf("B1") && xml.indexOf("B1") < xml.indexOf("A2"), xml);
+        assertTrue(xml.indexOf("<w:tr>") > 0 && xml.split("<w:tc>").length == 5, xml);
+        String text = pdfText(doc, "table.doc");
+        assertTrue(text.contains("A1") && text.contains("B2") && text.contains("After"), text);
+    }
+
+    @Test
+    void pageNumberFieldsCountAndOtherFieldsShowTheirResult() throws IOException {
+        byte[] doc = new WordFixture().para(List.of(WordFixture.run("Page "),
+                WordFixture.run("\u0013", Sprms.special()), WordFixture.run(" PAGE "),
+                WordFixture.run("\u0014", Sprms.special()), WordFixture.run("9"),
+                WordFixture.run("\u0015", Sprms.special()), WordFixture.run(" date "),
+                WordFixture.run("\u0013", Sprms.special()), WordFixture.run(" DATE "),
+                WordFixture.run("\u0014", Sprms.special()), WordFixture.run("1 May 2001"),
+                WordFixture.run("\u0015", Sprms.special())), 0).build();
+        String xml = body(doc);
+        assertTrue(xml.contains("<w:instrText xml:space=\"preserve\"> PAGE </w:instrText>"), xml);
+        assertTrue(xml.contains("1 May 2001") && !xml.contains("DATE"), xml);
+        String text = pdfText(doc, "fields.doc");
+        assertTrue(text.contains("Page 1 date 1 May 2001"), text);
+    }
+
+    @Test
+    void onlyWebAndMailLinksBecomeHyperlinks() throws IOException {
+        byte[] doc = new WordFixture().para(List.of(
+                WordFixture.run("\u0013", Sprms.special()), WordFixture.run(" HYPERLINK \"https://example.com/a\" "),
+                WordFixture.run("\u0014", Sprms.special()), WordFixture.run("web"),
+                WordFixture.run("\u0015", Sprms.special()), WordFixture.run(" "),
+                WordFixture.run("\u0013", Sprms.special()), WordFixture.run(" HYPERLINK \"file:///etc/passwd\" "),
+                WordFixture.run("\u0014", Sprms.special()), WordFixture.run("file"),
+                WordFixture.run("\u0015", Sprms.special())), 0).build();
+        String xml = body(doc);
+        assertEquals(1, xml.split("<w:hyperlink ").length - 1, xml);
+        String rels = part(doc, "word/_rels/document.xml.rels");
+        assertTrue(rels.contains("https://example.com/a") && !rels.contains("passwd"), rels);
+    }
+
+    @Test
+    void headersAndFootnotesGetTheirOwnParts() throws IOException {
+        byte[] doc = new WordFixture()
+                .para(List.of(WordFixture.run("Body"), WordFixture.run("\u0002", Sprms.special())), 0)
+                .footnoteRef(4).footnote("The note").header("Running head").build();
+        String xml = body(doc);
+        assertTrue(xml.contains("<w:footnoteReference w:id=\"1\"/>"), xml);
+        assertTrue(xml.contains("<w:headerReference w:type=\"default\""), xml);
+        String notes = part(doc, "word/footnotes.xml");
+        assertTrue(notes.contains("The note") && notes.contains("<w:footnoteRef/>"), notes);
+        String header = part(doc, "word/header1.xml");
+        assertTrue(header.contains("Running head"), header);
+        String text = pdfText(doc, "notes.doc");
+        assertTrue(text.contains("Running head") && text.contains("The note"), text);
+    }
+
+    @Test
+    void sectionsKeepPageSizeAndOrientation() throws IOException {
+        byte[] doc = new WordFixture().para("Wide")
+                .section(Sprms.u16(0xB01F, 15840), Sprms.u16(0xB020, 12240), Sprms.u8(0x301D, 1)).build();
+        String xml = body(doc);
+        assertTrue(xml.contains("<w:pgSz w:w=\"15840\" w:h=\"12240\" w:orient=\"landscape\"/>"), xml);
     }
 }
