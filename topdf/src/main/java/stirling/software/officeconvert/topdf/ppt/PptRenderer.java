@@ -100,6 +100,7 @@ public final class PptRenderer {
     private static void fixUp(HSLFSlideShow ppt) {
         try {
             TitleFooters.apply(ppt);
+            SavedDates.apply(ppt);
             RtlParagraphs.apply(ppt);
         } catch (RuntimeException e) {
             return;
