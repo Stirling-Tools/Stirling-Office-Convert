@@ -140,7 +140,7 @@ final class PropsXml {
         flag(b, p, ParaProps.KEEP_NEXT, p.keepNext, "keepNext");
         flag(b, p, ParaProps.KEEP, p.keep, "keepLines");
         flag(b, p, ParaProps.PAGE_BREAK, p.pageBreak, "pageBreakBefore");
-        if (p.frame != null) {
+        if (p.frame != null && p.frame.positioned()) {
             b.append(p.frame.xml());
         }
         flag(b, p, ParaProps.WIDOW, p.widow, "widowControl");

@@ -107,6 +107,8 @@ final class ParaProps implements Cloneable {
     void reset() {
         set = 0;
         style = 0;
+        list = 0;
+        level = 0;
         tabs = new ArrayList<>();
         top = null;
         leftBorder = null;

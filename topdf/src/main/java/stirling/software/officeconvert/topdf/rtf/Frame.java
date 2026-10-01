@@ -68,6 +68,10 @@ final class Frame implements Cloneable {
         return true;
     }
 
+    boolean positioned() {
+        return width > 0 || height > 0 || x != null || y != null || xAlign != null || yAlign != null;
+    }
+
     String xml() {
         StringBuilder b = new StringBuilder("<w:framePr");
         if (width > 0) {

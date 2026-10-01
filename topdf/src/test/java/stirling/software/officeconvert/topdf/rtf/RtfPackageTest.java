@@ -105,6 +105,17 @@ class RtfPackageTest {
     }
 
     @Test
+    void wordParagraphDefaultsMakeNoFramesAndPardResetsTheListLevel() throws IOException {
+        String b = convert(HEAD + "{\\*\\listtable{\\list{\\listlevel\\levelnfc0{\\leveltext\\'02\\'00.;}}{\\listlevel"
+                + "\\levelnfc0{\\leveltext\\'02\\'01.;}}\\listid1}}{\\*\\listoverridetable{\\listoverride\\listid1\\ls1}}"
+                + "\\pard\\wrapdefault\\phmrg\\pvmrg plain\\par\\pard\\ls1\\ilvl1 deep\\par\\pard\\ls1 top\\par"
+                + "\\pard\\absw2000\\posx100\\posy200 framed\\par}").body();
+        assertEquals(1, b.split("<w:framePr", -1).length - 1, b);
+        assertTrue(b.contains("<w:ilvl w:val=\"0\"/><w:numId w:val=\"1\"/></w:numPr></w:pPr><w:r><w:t xml:space=\"preserve\">top"),
+                b);
+    }
+
+    @Test
     void listsBecomeNumberingAndSkipTheirFallbackText() throws IOException {
         Pkg p = convert(HEAD + "{\\*\\listtable{\\list\\listtemplateid1{\\listlevel\\levelnfc0\\leveljc0"
                 + "\\levelfollow0\\levelstartat3{\\leveltext\\'02\\'00.;}{\\levelnumbers\\'01;}\\fi-360\\li720}"
