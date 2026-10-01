@@ -261,7 +261,8 @@ final class ParaFlow {
                     // The extra space of multiple line spacing may hang into the bottom margin, not over footnotes or
                     // past a balanced column's end
                     float slack = r.hardLimit() ? 0 : lines.get(i).slack;
-                    if (bottom - slack > r.limit() + 0.01f) {
+                    boolean roomless = lines.get(i).height == 0 && breakOnly(lines.get(i));
+                    if (bottom - slack > r.limit() + 0.01f && !roomless) {
                         break;
                     }
                     // Nor may the space after a paragraph's last line run over the footnotes below it
