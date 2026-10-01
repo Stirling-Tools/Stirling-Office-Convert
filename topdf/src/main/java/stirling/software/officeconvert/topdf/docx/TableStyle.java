@@ -43,6 +43,7 @@ final class TableStyle {
         p.rPr.apply(holder.child("w:rPr"), theme);
         p.tblPr.apply(holder.child("w:tblPr"), theme);
         p.trPr.apply(holder.child("w:trPr"));
+        p.trPr.hidden = null;
         p.tcPr.apply(holder.child("w:tcPr"), theme);
         return p;
     }
