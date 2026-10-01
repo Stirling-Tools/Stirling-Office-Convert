@@ -20,7 +20,7 @@ java -jar cli/build/libs/stirling-office-convert-cli.jar report.docx slides.pptx
 CLI options for PDF input: `--pages a-b`, `--no-tables`, `--dpi n` (vector figures), `--password p`,
 `--picture-fallback`, `--pictures compact|lossless` (see Pictures below), `-q`.
 For Word, PowerPoint and Excel input (`.docx .docm .dotx .dotm .pptx .pptm .ppsx .ppsm .potx .potm .xlsx .xlsm
-.xltx .xltm`, Excel 97-2003 `.xls .xlt` and PowerPoint 97-2003 `.ppt .pps .pot`), which converts to PDF: `--max-pages n` (default 10000, 0 = all), `--timeout s` (default 300, 0 =
+.xltx .xltm`, Word 97-2003 `.doc .dot`, Excel 97-2003 `.xls .xlt` and PowerPoint 97-2003 `.ppt .pps .pot`), which converts to PDF: `--max-pages n` (default 10000, 0 = all), `--timeout s` (default 300, 0 =
 none), `--fonts dir` (repeatable; an extra folder of fonts), `-q`, and `--format pdf` to take only the Office files out
 of a folder. A folder converts both its PDFs and its Office files. Inputs that would write the same output name (such
 as `report.docx` and `report.xlsx`) keep their own extension in it (`report.docx.pdf`, `report.xlsx.pdf`), and Office
@@ -35,7 +35,7 @@ page|table|single` sets a spreadsheet's layout. Each file prints its time and th
 `app` is a small page for trying the converter by hand, in both directions: drop PDFs on it to get the formats
 you picked (Word, OpenDocument text, RTF, plain text, PowerPoint, OpenDocument presentation, Excel or OpenDocument
 spreadsheet, or flat OpenDocument XML), or drop Word, PowerPoint and Excel files (`.docx .docm .dotx .dotm .pptx
-.pptm .ppsx .ppsm .potx .potm .xlsx .xlsm .xltx .xltm`, and 97-2003 `.xls .xlt .ppt .pps .pot`) to get PDFs. The direction comes from the file itself: a PDF goes to Office, an
+.pptm .ppsx .ppsm .potx .potm .xlsx .xlsm .xltx .xltm`, and 97-2003 `.doc .dot .xls .xlt .ppt .pps .pot`) to get PDFs. The direction comes from the file itself: a PDF goes to Office, an
 Office package goes to PDF, whatever its name. View shows the result beside the original, a PDF in the browser's
 own viewer and an Office file as a quick look drawn in the page. By default it listens on this machine only. It is
 not part of the Maven release.
@@ -290,6 +290,14 @@ columns, print areas and titles, page setup, headers and footers, page breaks, p
 shapes. Charts in `.xls` files are not drawn yet (a warning says so); macros, OLE objects and links are never
 opened. A compressed picture that would inflate past 32 MB leaves the drawings out, a sheet past 480 MB of cells is
 cut short, and password protected or Excel 5.0/95 workbooks are refused with a plain reason.
+
+Word 97-2003 documents (`.doc`, `.dot`, found by their content whatever the extension) are read with Apache POI
+HWPF and rewritten as a WordprocessingML package that the DOCX renderer draws: text with its character and paragraph
+formatting, styles, lists, tables (merged cells, borders, shading, nested tables), sections with their page setup,
+columns, headers and footers, footnotes and endnotes, inline and floating pictures, and hyperlinks (http, https and
+mailto only). Fields show their cached results, except page numbers, which are counted; macros, OLE objects (beyond
+their stored preview picture) and links are never opened. A compressed picture that would inflate past 32 MB is left
+out, and password protected or Word 6.0/95 documents are refused with a plain reason.
 
 Memory is shared out across the JVM, by both directions (`stirling.software.officeconvert.memory.Admission` in the
 core module, which the topdf module now depends on). Before a document is laid out, an estimate of the heap it needs

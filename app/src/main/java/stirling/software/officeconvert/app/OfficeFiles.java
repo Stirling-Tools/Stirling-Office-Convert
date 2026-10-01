@@ -42,8 +42,9 @@ final class OfficeFiles {
 
     static final String NOT_OFFICE = "That file is not a PDF or a Word, PowerPoint or Excel document.";
 
-    static final String LEGACY = "Word 97-2003 files (.doc) and password protected Office files are not supported. Save"
-            + " the file as .docx, .pptx or .xlsx without a password.";
+    static final String LEGACY = "Only Word, PowerPoint and Excel 97-2003 files convert from the binary formats, and"
+            + " password protected Office files are not supported. Save the file as .docx, .pptx or .xlsx without a"
+            + " password.";
 
     /** A file this demo does not convert at all, as opposed to a damaged one. */
     static final class Unsupported extends IOException {
@@ -56,7 +57,7 @@ final class OfficeFiles {
 
     static String family(String extension) {
         return switch (extension) {
-            case "docx", "docm", "dotx", "dotm" -> "docx";
+            case "docx", "docm", "dotx", "dotm", "doc", "dot" -> "docx";
             case "pptx", "pptm", "ppsx", "ppsm", "potx", "potm", "ppt", "pps", "pot" -> "pptx";
             case "xlsx", "xlsm", "xltx", "xltm", "xls", "xlt" -> "xlsx";
             default -> throw new IllegalArgumentException("Not an Office extension: " + extension);
@@ -66,7 +67,7 @@ final class OfficeFiles {
     static String extension(Path zip) throws IOException {
         if (ole2(zip)) {
             String kind = LegacyOffice.kind(zip);
-            if ("xls".equals(kind) || "ppt".equals(kind)) {
+            if ("xls".equals(kind) || "ppt".equals(kind) || "doc".equals(kind)) {
                 return kind;
             }
             throw new Unsupported(LEGACY);

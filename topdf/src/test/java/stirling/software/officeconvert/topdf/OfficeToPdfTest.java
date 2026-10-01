@@ -53,13 +53,12 @@ class OfficeToPdfTest {
         for (String ext : new String[] {"ppt", "pps", "POT"}) {
             assertEquals(Format.PPT, Format.of(Path.of("a." + ext)), ext);
         }
-        for (String ext : new String[] {"doc"}) {
-            IllegalArgumentException e = assertThrows(IllegalArgumentException.class, () -> Format.of(Path.of("a." + ext)));
-            assertTrue(e.getMessage().contains("not supported yet"), e.getMessage());
+        for (String ext : new String[] {"doc", "DOT"}) {
+            assertEquals(Format.DOCX, Format.of(Path.of("a." + ext)), ext);
             assertTrue(Format.recognises(Path.of("a." + ext)));
         }
         IllegalArgumentException pdf = assertThrows(IllegalArgumentException.class, () -> Format.of(Path.of("a.pdf")));
-        for (String ext : new String[] {".docm", ".dotm", ".ppsm", ".potx", ".potm", ".xlsm", ".xltx", ".xltm",
+        for (String ext : new String[] {".docm", ".dotm", ".doc", ".dot", ".ppsm", ".potx", ".potm", ".xlsm", ".xltx", ".xltm",
                 ".ppt", ".pps", ".pot"}) {
             String m = pdf.getMessage();
             assertTrue(m.contains(ext + ",") || m.contains(ext + " ") || m.endsWith(ext), m);
@@ -117,7 +116,8 @@ class OfficeToPdfTest {
                 .remove("word/document.xml").bytes(), "not an Office document");
         assertFails("old.xls", new byte[] {1, 2, 3}, "not a zip");
         assertFails("deck.ppt", new byte[] {1, 2, 3}, "not a zip");
-        for (String name : List.of("legacy.doc", "binary.xlsb", "upload", "notes.txt")) {
+        assertFails("legacy.doc", new byte[] {1, 2, 3}, "not a zip");
+        for (String name : List.of("binary.xlsb", "upload", "notes.txt")) {
             Path in = Files.write(dir.resolve(name), new byte[] {1, 2, 3});
             IOException e = assertThrows(IOException.class, () -> OfficeToPdf.convert(in, dir.resolve(name + ".pdf")),
                     name);
