@@ -176,6 +176,23 @@ class DocxBidiTest {
     }
 
     @Test
+    void spacesBetweenArabicWordsDrawnByAStandInStillTakeTheRunsOwnFont() throws IOException {
+        String body = "<w:p><w:pPr><w:bidi/></w:pPr><w:r><w:rPr><w:rFonts w:cs=\"Liberation Sans\"/><w:rtl/></w:rPr>"
+                + "<w:t>\u0645\u0631\u062D\u0628\u0627 \u0645\u0631\u062D\u0628\u0627 X</w:t></w:r></w:p>";
+        DocxDoc.Rendered r = DocxDoc.render(dir, "rtlstandin", new DocxDoc().body(body).bytes());
+        java.util.Map<String, String> fonts = new java.util.HashMap<>();
+        try (PDDocument d = r.open()) {
+            new PDFTextStripper() {
+                @Override
+                protected void writeString(String text, List<TextPosition> positions) {
+                    positions.forEach(p -> fonts.putIfAbsent(p.getUnicode(), p.getFont().getName()));
+                }
+            }.getText(d);
+        }
+        assertEquals(fonts.get("X"), fonts.get(" "), fonts.toString());
+    }
+
+    @Test
     void aSymbolBulletOnARightToLeftParagraphMarkIsDrawnFromTheSymbolFont() throws IOException {
         assertEquals(labelFont("ltrbullet", ""), labelFont("rtlbullet", "<w:rtl/>"));
     }

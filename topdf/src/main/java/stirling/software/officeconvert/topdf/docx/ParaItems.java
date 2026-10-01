@@ -349,7 +349,7 @@ final class ParaItems {
             }
             FontFace face = face(rp, slot);
             piece = SymbolChars.remap(piece, face, label, c -> covers(faceFor(face, c), c));
-            addCovered(piece, face, rp, nominal, full, link);
+            addCovered(piece, face, rp, nominal, full, link, slot == Fonts.Slot.COMPLEX);
             i = j;
         }
     }
@@ -368,7 +368,8 @@ final class ParaItems {
         return cp == ' ' || cp == 0x00A0;
     }
 
-    private void addCovered(String piece, FontFace face, RunProps rp, float nominal, float full, Inline.Link link) {
+    private void addCovered(String piece, FontFace face, RunProps rp, float nominal, float full, Inline.Link link,
+            boolean ownSpaces) {
         int i = 0;
         int n = piece.length();
         while (i < n) {
@@ -377,7 +378,7 @@ final class ParaItems {
             int j = i + Character.charCount(cp);
             while (j < n) {
                 int c2 = piece.codePointAt(j);
-                if (!faceFor(face, c2).equals(f) && !(covers(f, c2) && neutral(c2))) {
+                if (!faceFor(face, c2).equals(f) && !(covers(f, c2) && neutral(c2) && !ownSpaces)) {
                     break;
                 }
                 j += Character.charCount(c2);
