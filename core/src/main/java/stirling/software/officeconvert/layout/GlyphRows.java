@@ -93,7 +93,7 @@ final class GlyphRows {
 
     private static Map<Glyph, Float> cascadeBaselines(List<Glyph> ink) {
         Map<Glyph, Float> out = new IdentityHashMap<>();
-        if (ink.stream().noneMatch(GlyphRows::arabic)) {
+        if (!anyArabic(ink)) {
             return out;
         }
         Map<Integer, TreeMap<Integer, Integer>> bySize = new HashMap<>();
@@ -136,6 +136,15 @@ final class GlyphRows {
             }
         }
         return out;
+    }
+
+    private static boolean anyArabic(List<Glyph> glyphs) {
+        for (Glyph g : glyphs) {
+            if (arabic(g)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static boolean arabic(Glyph g) {

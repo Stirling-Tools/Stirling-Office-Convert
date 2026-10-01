@@ -207,7 +207,7 @@ final class FontProgram {
 
     static final long POOL_BYTES = 64L << 20;
 
-    static final long POOL_FILE_BYTES = 8L << 20;
+    static final long POOL_FILE_BYTES = 32L << 20;
 
     private record Idle(SoftReference<Opened> font, long bytes) {}
 

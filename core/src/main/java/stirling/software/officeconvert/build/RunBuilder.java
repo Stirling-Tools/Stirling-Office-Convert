@@ -144,8 +144,9 @@ final class RunBuilder {
         boolean eastAsian = false;
         for (Line l : lines) {
             for (Word w : l.words) {
-                eastAsian |= w.glyphs.stream().anyMatch(g -> g.text.chars().anyMatch(c -> isCjk((char) c)
-                        || Character.UnicodeScript.of(c) == Character.UnicodeScript.HANGUL));
+                for (int gi = 0; !eastAsian && gi < w.glyphs.size(); gi++) {
+                    eastAsian = eastAsian(w.glyphs.get(gi).text);
+                }
             }
         }
         if (!eastAsian) {
@@ -204,8 +205,32 @@ final class RunBuilder {
     private static final java.util.regex.Pattern NASKH_OR_NASTALIQ =
             java.util.regex.Pattern.compile("(?i)naskh|nasta|amiri|scheherazade|lateef|traditional|harmattan|mirza");
 
+    private static final int LATIN_OR_COMMON_BELOW = 0x2B0;
+
+    private static boolean eastAsian(String text) {
+        for (int i = 0; i < text.length(); i++) {
+            char c = text.charAt(i);
+            if (c >= LATIN_OR_COMMON_BELOW
+                    && (isCjk(c) || Character.UnicodeScript.of(c) == Character.UnicodeScript.HANGUL)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean anyScript(String text, Character.UnicodeScript script) {
+        for (int i = 0; i < text.length(); ) {
+            int cp = text.codePointAt(i);
+            if (cp >= LATIN_OR_COMMON_BELOW && Character.UnicodeScript.of(cp) == script) {
+                return true;
+            }
+            i += Character.charCount(cp);
+        }
+        return false;
+    }
+
     static boolean hebrew(Glyph g) {
-        return g.text.codePoints().anyMatch(cp -> Character.UnicodeScript.of(cp) == Character.UnicodeScript.HEBREW);
+        return anyScript(g.text, Character.UnicodeScript.HEBREW);
     }
 
     static boolean arabicStandIn(Glyph g) {
@@ -216,7 +241,7 @@ final class RunBuilder {
         if (ps != null && NASKH_OR_NASTALIQ.matcher(ps).find()) {
             return false;
         }
-        return g.text.codePoints().anyMatch(cp -> Character.UnicodeScript.of(cp) == Character.UnicodeScript.ARABIC);
+        return anyScript(g.text, Character.UnicodeScript.ARABIC);
     }
 
     private static void arabicWidths(Map<String, float[]> sums, Word w) {
@@ -386,12 +411,24 @@ final class RunBuilder {
         }
         boolean arabic = arabicStandIn(g);
         boolean standIn = g.font.substituted();
-        return g.text.codePoints().anyMatch(cp -> switch (Character.UnicodeScript.of(cp)) {
-            case LATIN, GREEK, CYRILLIC, COMMON, INHERITED, HAN, HIRAGANA, KATAKANA -> false;
-            case HEBREW -> !standIn;
-            case ARABIC -> !arabic;
-            default -> true;
-        });
+        String text = g.text;
+        for (int i = 0; i < text.length(); ) {
+            int cp = text.codePointAt(i);
+            i += Character.charCount(cp);
+            if (cp < LATIN_OR_COMMON_BELOW) {
+                continue;
+            }
+            boolean odd = switch (Character.UnicodeScript.of(cp)) {
+                case LATIN, GREEK, CYRILLIC, COMMON, INHERITED, HAN, HIRAGANA, KATAKANA -> false;
+                case HEBREW -> !standIn;
+                case ARABIC -> !arabic;
+                default -> true;
+            };
+            if (odd) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static float naturalGap(List<Line> lines) {
@@ -664,6 +701,9 @@ final class RunBuilder {
     }
 
     static boolean isCjk(char c) {
+        if (c < 0x3000) {
+            return false;
+        }
         Character.UnicodeBlock b = Character.UnicodeBlock.of(c);
         return b == Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS
                 || b == Character.UnicodeBlock.HIRAGANA
