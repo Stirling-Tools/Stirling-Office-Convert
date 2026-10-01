@@ -815,7 +815,6 @@ public final class OfficeToPdf {
         }
     }
 
-    // An RTF document is rewritten as a DOCX package first, whatever its extension, and drawn from that
     private static Result richText(Path source, OutputStream sink, Options options, Renderer renderer)
             throws IOException {
         if (!RtfPackage.isRtf(source)) {

@@ -20,10 +20,6 @@ final class Definitions {
         return font == null ? doc.ansi : doc.fonts.charset(font.id, doc.ansi);
     }
 
-    boolean fontSymbol() {
-        return font != null && font.symbol();
-    }
-
     void fontWord(Group g, String w, int p) {
         switch (w) {
             case "f" -> {

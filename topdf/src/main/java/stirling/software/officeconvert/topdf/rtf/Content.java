@@ -115,21 +115,21 @@ final class Content {
                     n.note.endnote = true;
                 }
             }
-            case "emdash" -> r.chr('—');
-            case "endash" -> r.chr('–');
-            case "emspace" -> r.chr(' ');
-            case "enspace" -> r.chr(' ');
-            case "qmspace" -> r.chr(' ');
-            case "bullet" -> r.chr('•');
-            case "lquote" -> r.chr('‘');
-            case "rquote" -> r.chr('’');
-            case "ldblquote" -> r.chr('“');
-            case "rdblquote" -> r.chr('”');
-            case "zwj" -> r.chr('‍');
-            case "zwnj" -> r.chr('‌');
-            case "zwbo" -> r.chr('​');
-            case "ltrmark" -> r.chr('‎');
-            case "rtlmark" -> r.chr('‏');
+            case "emdash" -> r.chr('\u2014');
+            case "endash" -> r.chr('\u2013');
+            case "emspace" -> r.chr('\u2003');
+            case "enspace" -> r.chr('\u2002');
+            case "qmspace" -> r.chr('\u2005');
+            case "bullet" -> r.chr('\u2022');
+            case "lquote" -> r.chr('\u2018');
+            case "rquote" -> r.chr('\u2019');
+            case "ldblquote" -> r.chr('\u201c');
+            case "rdblquote" -> r.chr('\u201d');
+            case "zwj" -> r.chr('\u200d');
+            case "zwnj" -> r.chr('\u200c');
+            case "zwbo" -> r.chr('\u200b');
+            case "ltrmark" -> r.chr('\u200e');
+            case "rtlmark" -> r.chr('\u200f');
             default -> {
                 return property(g, w, p, has);
             }

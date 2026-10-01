@@ -103,10 +103,6 @@ final class Story {
         return buffer == null ? "" : buffer.toString();
     }
 
-    long size() {
-        return written;
-    }
-
     private TableBuilder open(int d) {
         while (tables.size() < d) {
             tables.add(new TableBuilder());

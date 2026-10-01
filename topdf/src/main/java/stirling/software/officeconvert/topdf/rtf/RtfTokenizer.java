@@ -28,8 +28,6 @@ final class RtfTokenizer {
 
     private int pushed = -1;
 
-    private long read;
-
     String word;
 
     int param;
@@ -44,10 +42,6 @@ final class RtfTokenizer {
 
     RtfTokenizer(InputStream in) {
         this.in = in;
-    }
-
-    long position() {
-        return read;
     }
 
     int next() throws IOException {
@@ -232,7 +226,6 @@ final class RtfTokenizer {
             pos = 0;
             return false;
         }
-        read += n;
         len = n;
         pos = 0;
         return true;

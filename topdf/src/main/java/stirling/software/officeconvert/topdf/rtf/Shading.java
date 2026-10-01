@@ -26,10 +26,6 @@ final class Shading {
         percent = 0;
     }
 
-    boolean empty() {
-        return background < 0 && (percent <= 0 || foreground < 0 && percent <= 0);
-    }
-
     String fill(ColorTable colors) {
         int bg = background >= 0 ? colors.rgb(background, 0xFFFFFF) : -1;
         int p = Math.max(0, Math.min(10_000, percent));

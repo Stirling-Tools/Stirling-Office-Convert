@@ -39,7 +39,7 @@ class RtfToPdfTest {
         String text = convert("letter.rtf", "{\\rtf1\\ansi\\deff0{\\fonttbl{\\f0 Arial;}}\\pard Dear reader,\\par"
                 + "\\pard\\qc Centred caf\\'e9\\page Second page\\par}");
         assertTrue(text.startsWith("2\n"), text);
-        assertTrue(text.contains("Dear reader,") && text.contains("Centred café") && text.contains("Second page"),
+        assertTrue(text.contains("Dear reader,") && text.contains("Centred caf\u00e9") && text.contains("Second page"),
                 text);
     }
 

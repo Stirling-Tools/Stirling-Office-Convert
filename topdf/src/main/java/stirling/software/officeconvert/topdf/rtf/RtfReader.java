@@ -127,10 +127,6 @@ final class RtfReader {
         }
     }
 
-    boolean stopped() {
-        return stopped;
-    }
-
     private void skipped(int t) throws IOException {
         switch (t) {
             case RtfTokenizer.OPEN -> skipDepth++;
@@ -554,9 +550,9 @@ final class RtfReader {
             return;
         }
         switch (c) {
-            case '~' -> chr(' ');
-            case '-' -> chr('­');
-            case '_' -> chr('‑');
+            case '~' -> chr('\u00a0');
+            case '-' -> chr('\u00ad');
+            case '_' -> chr('\u2011');
             case '{', '}', '\\' -> text(c, true);
             default -> {
             }

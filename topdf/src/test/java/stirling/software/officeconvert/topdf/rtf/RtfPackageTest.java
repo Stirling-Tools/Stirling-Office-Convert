@@ -70,8 +70,8 @@ class RtfPackageTest {
         assertTrue(b.contains("<w:b/>") && b.contains("<w:i/>") && b.contains("<w:u w:val=\"single\"/>"), b);
         assertTrue(b.contains("<w:color w:val=\"FF0000\"/>") && b.contains("<w:sz w:val=\"40\"/>"), b);
         assertTrue(b.contains("<w:strike/>") && b.contains("superscript"), b);
-        assertTrue(b.contains("café") && b.contains("При") && b.contains("你") && b.contains("€中"), b);
-        assertFalse(b.contains("€?") || b.contains("中?"), b);
+        assertTrue(b.contains("caf\u00e9") && b.contains("\u041f\u0440\u0438") && b.contains("\u4f60") && b.contains("\u20ac\u4e2d"), b);
+        assertFalse(b.contains("\u20ac?") || b.contains("\u4e2d?"), b);
         assertTrue(b.contains("\uF0B7"), b);
     }
 

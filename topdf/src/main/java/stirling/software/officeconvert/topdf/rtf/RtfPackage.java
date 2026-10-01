@@ -22,12 +22,8 @@ import java.util.zip.ZipOutputStream;
 
 import stirling.software.officeconvert.memory.Admission;
 
-/** A Rich Text Format document rewritten as the WordprocessingML package the DOCX renderer draws. Field results are
- * kept as they were saved (fields are never updated), embedded objects show only their saved picture, and nothing the
- * document links to is followed. */
 public final class RtfPackage {
 
-    /** What the rewrite left out: warnings for the result, and whether content is missing. */
     public record Outcome(List<String> warnings, boolean lost) {
         public Outcome {
             warnings = List.copyOf(warnings);
@@ -55,7 +51,6 @@ public final class RtfPackage {
 
     private RtfPackage() {}
 
-    /** Whether the file starts like an RTF document, whatever its extension. */
     public static boolean isRtf(Path file) throws IOException {
         Objects.requireNonNull(file, "file");
         try (InputStream in = Files.newInputStream(file)) {
@@ -82,7 +77,6 @@ public final class RtfPackage {
         return true;
     }
 
-    /** The heap rewriting an RTF file of this many bytes may need, for the shared memory gate. */
     public static long estimate(long bytes) {
         long v = Admission.BASE_BYTES + Math.max(0, bytes) * 3;
         return v < 0 ? Long.MAX_VALUE : v;
