@@ -34,6 +34,10 @@ final class SheetPlan {
         this.grid = new Grid(book, reader, ref.name(), ref.part(), job);
         CTWorksheet ws = reader.skeleton();
         this.setup = PageSetup.safe(ws);
+        if (!setup.fitToPage()) {
+            double head = setup.headings() ? new Headings(grid, grid.lastRow()).width(1) : 0;
+            grid.capColumns(setup.printableWidth() * 100.0 / setup.scale() - head);
+        }
         this.drawings = Drawings.read(book, ref.part(), ref.name(), grid);
         String hfDrawing = null;
         try {

@@ -140,6 +140,8 @@ final class Grid {
 
     private final double rowFactor;
 
+    private double columnCap = Double.POSITIVE_INFINITY;
+
     private final boolean defaultHidden;
 
     private final boolean columnTops;
@@ -265,6 +267,7 @@ final class Grid {
         boolean auto = !(row.hasHeight() && row.height() >= 0);
         boolean fit = auto || !row.custom();
         int lastBlank = -1;
+        FontSpec base = style >= 0 ? book.styles().at(style).font() : book.styles().defaultFont();
         double descent = 0;
         for (RawRow.Cell cell : row.cells()) {
             int col = cell.col();
@@ -275,7 +278,7 @@ final class Grid {
             }
             if (text == null && !format.visible() && format.hAlign() != CellFormat.HAlign.CENTER_CONTINUOUS) {
                 if (fit && cell.style() != lastBlank && blanks.size() < MAX_BLANK_FONTS
-                        && !format.font().equals(book.styles().defaultFont())) {
+                        && !format.font().equals(base)) {
                     blanks.add(format.font());
                 }
                 lastBlank = cell.style();
@@ -293,9 +296,9 @@ final class Grid {
         if (gone) {
             height = auto ? defaultSource : Math.min(409.5, row.height());
         } else if (auto) {
-            height = Math.min(409.5, autofit(index, entries, blanks) + Math.max(0, row.thickEdges()) * SCREEN_PX);
+            height = Math.min(409.5, autofit(index, entries, blanks, base) + Math.max(0, row.thickEdges()) * SCREEN_PX);
         } else if (fit) {
-            height = refit(row, autofit(index, entries, blanks) + Math.max(0, row.thickEdges()) * SCREEN_PX,
+            height = refit(row, autofit(index, entries, blanks, base) + Math.max(0, row.thickEdges()) * SCREEN_PX,
                     entries.isEmpty() && blanks.isEmpty());
         } else {
             height = Math.min(409.5, row.height());
@@ -455,9 +458,9 @@ final class Grid {
         return stored;
     }
 
-    private double autofit(int row, List<CellEntry> entries, List<FontSpec> blanks) {
+    private double autofit(int row, List<CellEntry> entries, List<FontSpec> blanks, FontSpec base) {
         double defaultPx = defaultSource / 0.75;
-        double best = defaultPx;
+        double best = Math.min(546, fontLine(base, defaultPx));
         PrintMetrics m = book.metrics();
         for (FontSpec f : blanks) {
             best = Math.max(best, Math.min(546, fontLine(f, defaultPx)));
@@ -548,7 +551,7 @@ final class Grid {
             }
             double span = 0;
             for (int c = first; c <= last; c++) {
-                span += columns.width(c);
+                span += columnWidth(c);
             }
             Typesetter t = book.typesetter();
             double need = t.width(e.text().runs(), 1) + 2 * CellLayout.pad(t, e.text(), e.format());
@@ -559,7 +562,7 @@ final class Grid {
             int c = last;
             while (extra > 0 && c + 1 < Columns.MAX && c - last < 256) {
                 c++;
-                extra -= columns.width(c);
+                extra -= columnWidth(c);
             }
             if (c > last) {
                 row.spillFrom = first;
@@ -618,7 +621,14 @@ final class Grid {
     }
 
     double columnWidth(int col) {
-        return columns.width(col);
+        return Math.min(columnCap, columns.width(col));
+    }
+
+    void capColumns(double cap) {
+        if (cap > 0 && cap < columnCap) {
+            columnCap = cap;
+            extendForOverflow();
+        }
     }
 
     // Painters alternate between a row and the one above it, so the last two rows found are kept
