@@ -17,10 +17,10 @@ final class RtfReader {
     private static final Set<String> SKIPPED = Set.of("nonesttables", "pn", "pnseclvl", "xe", "tc", "tcn", "txe",
             "bxe", "rxe", "pxe", "annotation", "atnid", "atnauthor", "atrfstart", "atrfend", "atntime", "atnref",
             "atndate", "atnicn", "atnparent", "bkmkstart", "bkmkend", "template", "revtbl", "rsidtbl", "xmlnstbl",
-            "datastore", "themedata", "colorschememapping", "latentstyles", "generator", "userprops", "docvar",
+            "datastore", "themedata", "colorschememapping", "latentstyles", "userprops", "docvar",
             "ftnsep", "ftnsepc", "ftncn", "aftnsep", "aftnsepc", "aftncn", "pgdsctbl", "comment", "doccomm",
             "operator", "company", "manager", "category", "hlinkbase", "fchars", "lchars", "protusertbl",
-            "password", "passwordhash", "wgrffmtfilter", "background", "do", "panose", "fname", "file", "filetbl",
+            "password", "passwordhash", "wgrffmtfilter", "do", "panose", "fname", "file", "filetbl",
             "blipuid", "picprop", "mhtmltag", "htmltag", "mmath", "mmathPr", "formfield", "datafield",
             "levelnumbers", "listname", "listpicture", "pntxta", "pntxtb", "objdata", "objclass", "objname",
             "objalias", "objsect", "objitem", "objtopic", "oleclsid", "nonshppict", "shprslt", "nextfile",
@@ -356,6 +356,10 @@ final class RtfReader {
                 defs.openLfo(g);
             }
             case "info" -> set(Dest.INFO);
+            case "generator" -> {
+                set(Dest.INFOTEXT);
+                g.key = w;
+            }
             case "title", "subject", "author", "keywords" -> {
                 if (g.dest != Dest.INFO) {
                     return false;
@@ -473,6 +477,10 @@ final class RtfReader {
                 g.dest = Dest.NORMAL;
             }
             case "nesttableprops" -> g.nestProps = true;
+            case "background" -> {
+                g.background = true;
+                g.story = null;
+            }
             default -> {
                 if (SKIPPED.contains(w)) {
                     skip();

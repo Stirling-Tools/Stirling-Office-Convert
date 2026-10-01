@@ -100,6 +100,9 @@ final class PackageParts {
             b.append("<w:autoHyphenation/>");
         }
         b.append("<w:defaultTabStop w:val=\"").append(doc.defaultTab).append("\"/>");
+        if (doc.background >= 0) {
+            b.append("<w:displayBackgroundShape/>");
+        }
         if (doc.facingPages) {
             b.append("<w:evenAndOddHeaders/>");
         }

@@ -282,6 +282,7 @@ final class Definitions {
             case "subject" -> doc.subject = v;
             case "author" -> doc.author = v;
             case "keywords" -> doc.keywords = v;
+            case "generator" -> doc.libreOffice = v.startsWith("LibreOffice") || v.startsWith("OpenOffice");
             default -> {
             }
         }

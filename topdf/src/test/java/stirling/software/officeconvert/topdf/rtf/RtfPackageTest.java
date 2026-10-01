@@ -220,6 +220,28 @@ class RtfPackageTest {
     }
 
     @Test
+    void libreOfficeShapesArePageAnchoredAndUnfilledByDefault() throws IOException {
+        String shape = "{\\shp{\\*\\shpinst\\shpleft100\\shptop200\\shpright2100\\shpbottom1200\\shpbxignore"
+                + "\\shpbyignore{\\sp{\\sn shapeType}{\\sv 1}}{\\sp{\\sn posrelh}{\\sv 3}}{\\shptxt\\pard t\\par}}}";
+        String lo = convert(HEAD + "{\\*\\generator LibreOffice/26.2}\\pard " + shape + "x\\par}").body();
+        assertTrue(lo.contains("<wp:positionH relativeFrom=\"page\">") && lo.contains("<wp:positionV relativeFrom=\"page\">"),
+                lo);
+        assertTrue(lo.contains("<a:noFill/>") && !lo.contains("FFFFFF"), lo);
+        String word = convert(HEAD + "\\pard " + shape + "x\\par}").body();
+        assertTrue(word.contains("relativeFrom=\"character\">") && word.contains("<a:srgbClr val=\"FFFFFF\"/>"), word);
+    }
+
+    @Test
+    void pageBackgroundAndPortraitSizedLandscape() throws IOException {
+        Pkg p = convert(HEAD + "{\\*\\background{\\shp{\\*\\shpinst{\\sp{\\sn fillColor}{\\sv 15790320}}}}}"
+                + "\\landscape\\paperw8419\\paperh11906\\pard x\\par}");
+        String b = p.body();
+        assertTrue(b.contains("<w:background w:color=\"F0F0F0\"/><w:body>"), b);
+        assertTrue(p.part("word/settings.xml").contains("<w:displayBackgroundShape/>"));
+        assertTrue(b.contains("<w:pgSz w:w=\"8419\" w:h=\"11906\" w:orient=\"landscape\"/>"), b);
+    }
+
+    @Test
     void hyperlinksOnlyForWebAndMail() throws IOException {
         Pkg p = convert(HEAD + "\\pard{\\field{\\*\\fldinst HYPERLINK \"https://example.com/a\"}{\\fldrslt web}}"
                 + "{\\field{\\*\\fldinst HYPERLINK \"file:///etc/passwd\"}{\\fldrslt file}}"

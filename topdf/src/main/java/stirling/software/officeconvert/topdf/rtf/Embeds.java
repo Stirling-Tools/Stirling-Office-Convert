@@ -207,6 +207,13 @@ final class Embeds {
         if (s == null) {
             return;
         }
+        if (done.background) {
+            int bgr = s.integer("fillColor", 0xFFFFFF);
+            if (bgr >>> 24 == 0 && s.flag("fFilled", true)) {
+                doc.background = (bgr & 0xFF) << 16 | (bgr >> 8 & 0xFF) << 8 | bgr >> 16 & 0xFF;
+            }
+            return;
+        }
         if (parent.dest == Dest.SHP && parent.shape != null && parent.shape.group && parent.shape != s) {
             parent.shape.add(s);
             return;
@@ -216,7 +223,7 @@ final class Embeds {
             return;
         }
         List<String> drawings = new ArrayList<>();
-        ShapeXml.drawings(s, parent.story.rels, doc.media, drawings);
+        ShapeXml.drawings(s, parent.story.rels, doc.media, doc.libreOffice, drawings);
         for (String d : drawings) {
             reader.content().item(parent, d);
         }

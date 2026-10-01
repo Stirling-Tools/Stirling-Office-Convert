@@ -38,6 +38,10 @@ final class Doc {
 
     boolean autoHyphenation;
 
+    boolean libreOffice;
+
+    int background = -1;
+
     boolean endnotesAtSectionEnd;
 
     String title;

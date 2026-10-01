@@ -8,13 +8,17 @@ final class ShapeXml {
 
     private static final int MAX_TWIPS = 31680 * 4;
 
-    private ShapeXml() {}
-
-    static void drawings(Shape s, Rels rels, Media media, List<String> out) {
-        frame(s, s, s.left, s.top, s.right, s.bottom, rels, media, out, 0);
+    static void drawings(Shape s, Rels rels, Media media, boolean libreOffice, List<String> out) {
+        new ShapeXml(libreOffice).frame(s, s, s.left, s.top, s.right, s.bottom, rels, media, out, 0);
     }
 
-    private static void frame(Shape root, Shape s, long l, long t, long r, long b, Rels rels, Media media,
+    private final boolean libreOffice;
+
+    private ShapeXml(boolean libreOffice) {
+        this.libreOffice = libreOffice;
+    }
+
+    private void frame(Shape root, Shape s, long l, long t, long r, long b, Rels rels, Media media,
             List<String> out, int depth) {
         if (s.flag("fHidden", false) || depth > 16) {
             return;
@@ -42,7 +46,7 @@ final class ShapeXml {
         }
     }
 
-    private static String drawing(Shape root, Shape s, long l, long t, long r, long b, Rels rels, Media media) {
+    private String drawing(Shape root, Shape s, long l, long t, long r, long b, Rels rels, Media media) {
         long left = Math.min(l, r);
         long top = Math.min(t, b);
         long w = clamp(Math.abs(r - l));
@@ -117,31 +121,36 @@ final class ShapeXml {
         x.append("</wp:position").append(axis).append('>');
     }
 
-    private static String horizontal(Shape s) {
-        if (s.bx != null) {
-            return s.bx;
+    private String horizontal(Shape s) {
+        String rel = s.props.get("posrelh");
+        if (rel != null && (s.bxIgnore || s.bx == null)) {
+            if (libreOffice && "3".equals(rel) && !s.props.containsKey("posrelv")) {
+                return "page";
+            }
+            return switch (s.integer("posrelh", 2)) {
+                case 0 -> "margin";
+                case 1 -> "page";
+                case 3 -> "character";
+                default -> "column";
+            };
         }
-        return switch (s.integer("posrelh", 2)) {
-            case 0 -> "margin";
-            case 1 -> "page";
-            case 3 -> "character";
-            default -> "column";
-        };
+        return s.bx != null ? s.bx : "page";
     }
 
-    private static String vertical(Shape s) {
-        if (s.by != null) {
-            return s.by;
+    private String vertical(Shape s) {
+        String rel = s.props.get("posrelv");
+        if (rel != null && (s.byIgnore || s.by == null)) {
+            return switch (s.integer("posrelv", 2)) {
+                case 0 -> "margin";
+                case 1 -> "page";
+                case 3 -> "line";
+                default -> "paragraph";
+            };
         }
-        return switch (s.integer("posrelv", 2)) {
-            case 0 -> "margin";
-            case 1 -> "page";
-            case 3 -> "line";
-            default -> "paragraph";
-        };
+        return s.by != null ? s.by : "page";
     }
 
-    private static String shape(Shape s, int type, boolean line, long w, long h) {
+    private String shape(Shape s, int type, boolean line, long w, long h) {
         StringBuilder x = new StringBuilder(512);
         x.append("<a:graphic><a:graphicData uri=\"http://schemas.microsoft.com/office/word/2010/wordprocessingShape\">")
                 .append("<wps:wsp><wps:cNvSpPr");
@@ -162,7 +171,9 @@ final class ShapeXml {
         x.append("><a:off x=\"0\" y=\"0\"/><a:ext cx=\"").append(w * EMU).append("\" cy=\"").append(h * EMU)
                 .append("\"/></a:xfrm><a:prstGeom prst=\"").append(line ? "line" : geometry(type))
                 .append("\"><a:avLst/></a:prstGeom>");
-        if (!line && s.flag("fFilled", true)) {
+        boolean filled = libreOffice && !s.props.containsKey("fillColor") && !s.props.containsKey("fillType")
+                ? s.flag("fFilled", false) : s.flag("fFilled", true);
+        if (!line && filled) {
             x.append("<a:solidFill>").append(color(s.integer("fillColor", 0xFFFFFF), 0xFFFFFF,
                     s.integer("fillOpacity", 65536))).append("</a:solidFill>");
         } else {

@@ -138,11 +138,6 @@ final class SectProps {
         }
         int w = Math.max(144, Math.min(31680, page.width));
         int h = Math.max(144, Math.min(31680, page.height));
-        if (page.landscape && w < h) {
-            int t = w;
-            w = h;
-            h = t;
-        }
         b.append("<w:pgSz w:w=\"").append(w).append("\" w:h=\"").append(h).append('"');
         if (page.landscape) {
             b.append(" w:orient=\"landscape\"");

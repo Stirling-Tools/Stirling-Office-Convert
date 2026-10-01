@@ -19,6 +19,8 @@ final class Shape {
     int bottom;
     String bx;
     String by;
+    boolean bxIgnore;
+    boolean byIgnore;
     int wrap = -1;
     int wrapSide;
     boolean behind;
@@ -41,11 +43,11 @@ final class Shape {
             case "shpbxpage" -> bx = "page";
             case "shpbxmargin" -> bx = "margin";
             case "shpbxcolumn" -> bx = "column";
-            case "shpbxignore" -> bx = null;
+            case "shpbxignore" -> bxIgnore = true;
             case "shpbypage" -> by = "page";
             case "shpbymargin" -> by = "margin";
             case "shpbypara" -> by = "paragraph";
-            case "shpbyignore" -> by = null;
+            case "shpbyignore" -> byIgnore = true;
             case "shpwr" -> wrap = v;
             case "shpwrk" -> wrapSide = v;
             case "shpfblwtxt" -> behind = v != 0;

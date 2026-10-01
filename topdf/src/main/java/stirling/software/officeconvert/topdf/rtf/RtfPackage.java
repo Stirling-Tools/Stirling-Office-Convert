@@ -3,6 +3,7 @@ package stirling.software.officeconvert.topdf.rtf;
 import java.io.BufferedInputStream;
 import java.io.BufferedWriter;
 import java.io.FilterOutputStream;
+import java.io.FilterWriter;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -14,6 +15,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.function.Supplier;
 import java.util.zip.Deflater;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
@@ -94,8 +96,9 @@ public final class RtfPackage {
         Doc doc = new Doc();
         PropsXml props = new PropsXml(doc);
         zip.putNextEntry(new ZipEntry("word/document.xml"));
-        Writer w = new BufferedWriter(new OutputStreamWriter(keepOpen(zip), StandardCharsets.UTF_8), 1 << 16);
-        w.write(Xml.HEAD + "<w:document " + NS + "><w:body>");
+        Writer w = new Head(new BufferedWriter(new OutputStreamWriter(keepOpen(zip), StandardCharsets.UTF_8), 1 << 16),
+                () -> Xml.HEAD + "<w:document " + NS + ">" + (doc.background < 0 ? ""
+                        : "<w:background w:color=\"" + Shading.hex(doc.background) + "\"/>") + "<w:body>");
         Rels bodyRels = new Rels("rId");
         Story body = new Story(bodyRels, doc.colors, w, BODY_LIMIT);
         Content content = new Content(doc, props, body);
@@ -113,6 +116,41 @@ public final class RtfPackage {
             warnings.add("Some pictures were left out: the document holds too many or too large pictures");
         }
         return new Outcome(warnings, reader.lost || doc.media.lost);
+    }
+
+    private static final class Head extends FilterWriter {
+        private Supplier<String> head;
+
+        Head(Writer out, Supplier<String> head) {
+            super(out);
+            this.head = head;
+        }
+
+        private void start() throws IOException {
+            if (head != null) {
+                String h = head.get();
+                head = null;
+                out.write(h);
+            }
+        }
+
+        @Override
+        public void write(int c) throws IOException {
+            start();
+            out.write(c);
+        }
+
+        @Override
+        public void write(char[] cbuf, int off, int len) throws IOException {
+            start();
+            out.write(cbuf, off, len);
+        }
+
+        @Override
+        public void write(String str, int off, int len) throws IOException {
+            start();
+            out.write(str, off, len);
+        }
     }
 
     private static OutputStream keepOpen(OutputStream out) {
