@@ -88,7 +88,7 @@ class OfficeFilesTest {
 
     @Test
     void familiesCoverEveryExtension() {
-        for (String ext : new String[] {"docx", "docm", "dotx", "dotm", "doc", "dot"}) {
+        for (String ext : new String[] {"docx", "docm", "dotx", "dotm", "doc", "dot", "rtf"}) {
             assertEquals("docx", OfficeFiles.family(ext));
         }
         for (String ext : new String[] {"pptx", "pptm", "ppsx", "ppsm", "potx", "potm"}) {
@@ -97,6 +97,6 @@ class OfficeFilesTest {
         for (String ext : new String[] {"xlsx", "xlsm", "xltx", "xltm"}) {
             assertEquals("xlsx", OfficeFiles.family(ext));
         }
-        assertThrows(IllegalArgumentException.class, () -> OfficeFiles.family("rtf"));
+        assertThrows(IllegalArgumentException.class, () -> OfficeFiles.family("xlsb"));
     }
 }

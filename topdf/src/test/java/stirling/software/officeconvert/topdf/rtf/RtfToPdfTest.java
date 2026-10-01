@@ -49,8 +49,6 @@ class RtfToPdfTest {
                 "{\\rtf1 x}".getBytes(StandardCharsets.US_ASCII))));
         String text = convert("saved.doc", "{\\rtf1\\ansi Saved as doc\\par}");
         assertTrue(text.contains("Saved as doc"), text);
-        Path real = Files.write(dir.resolve("real.doc"), new byte[] {(byte) 0xD0, (byte) 0xCF, 0x11, (byte) 0xE0});
-        assertThrows(IllegalArgumentException.class, () -> OfficeToPdf.Format.of(real));
     }
 
     @Test
