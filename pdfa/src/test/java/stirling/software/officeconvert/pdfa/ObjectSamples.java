@@ -71,6 +71,41 @@ final class ObjectSamples {
             p.setResources(res);
             Samples.raw(p, d, "q 200 0 0 200 50 500 cm /Odd Do Q");
         });
+        doc("o06_borrowed_resources", Set.of("2:6.2.2-2"), d -> {
+            PDPage p = Samples.page(d);
+            COSDictionary t3 = new COSDictionary();
+            t3.setItem(COSName.TYPE, COSName.FONT);
+            t3.setItem(COSName.SUBTYPE, COSName.TYPE3);
+            t3.setItem(COSName.FONT_BBOX, ColourSamples.floats(0, 0, 1000, 1000));
+            t3.setItem(COSName.FONT_MATRIX, ColourSamples.floats(0.001f, 0, 0, 0.001f, 0, 0));
+            COSStream square = d.getDocument().createCOSStream();
+            try (OutputStream o = square.createOutputStream()) {
+                o.write("1000 0 0 0 800 800 d1 0 0 800 800 re f".getBytes(StandardCharsets.US_ASCII));
+            }
+            COSDictionary procs = new COSDictionary();
+            procs.setItem("sq", square);
+            t3.setItem(COSName.CHAR_PROCS, procs);
+            COSDictionary enc = new COSDictionary();
+            COSArray diff = new COSArray();
+            diff.add(COSInteger.get(65));
+            diff.add(COSName.getPDFName("sq"));
+            enc.setItem(COSName.DIFFERENCES, diff);
+            t3.setItem(COSName.ENCODING, enc);
+            t3.setInt(COSName.FIRST_CHAR, 65);
+            t3.setInt(COSName.LAST_CHAR, 65);
+            COSArray w = new COSArray();
+            w.add(COSInteger.get(1000));
+            t3.setItem(COSName.WIDTHS, w);
+            PDResources res = new PDResources();
+            res.getCOSObject().setItem(COSName.FONT, new COSDictionary());
+            res.getCOSObject().getCOSDictionary(COSName.FONT).setItem("T3", t3);
+            COSStream form = form(d, "BT /T3 20 Tf 0 0 Td (A) Tj ET");
+            COSDictionary xo = new COSDictionary();
+            xo.setItem("Fm", form);
+            res.getCOSObject().setItem(COSName.XOBJECT, xo);
+            p.setResources(res);
+            Samples.raw(p, d, "BT /T3 30 Tf 50 760 Td (AAA) Tj ET q 1 0 0 1 50 600 cm /Fm Do Q");
+        });
         doc("o02_big_dictionaries", Set.of("1:6.1.12-6"), d -> {
             PDPage p = Samples.page(d);
             PDResources res = new PDResources();
