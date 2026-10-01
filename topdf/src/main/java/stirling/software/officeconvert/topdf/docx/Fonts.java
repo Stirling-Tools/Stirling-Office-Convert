@@ -90,6 +90,7 @@ final class Fonts {
                     new float[] {220f / 256, 36f / 256};
             case "malgun gothic" -> new float[] {2229f / 2048, 495f / 2048};
             case "yu gothic", "yu gothic ui" -> new float[] {2017f / 2048, 619f / 2048};
+            case "dengxian", "dengxian light" -> new float[] {0.81f, 0.232f};
             default -> null;
         };
         if (m == null) {

@@ -149,6 +149,19 @@ class DocxCloudFontTest {
         assertEquals(10 * (2210f + 514) / 2048, line, 0.2, "the box line is as tall as Segoe UI Symbol's in Word");
     }
 
+    @Test
+    void aMissingDengXianKeepsItsLine() throws Exception {
+        String styles = "<w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii=\"Arial\" w:hAnsi=\"Arial\"/>"
+                + "<w:sz w:val=\"20\"/></w:rPr></w:rPrDefault><w:pPrDefault><w:pPr><w:spacing w:after=\"0\""
+                + " w:line=\"240\" w:lineRule=\"auto\"/></w:pPr></w:pPrDefault></w:docDefaults>";
+        String run = "<w:r><w:rPr><w:rFonts w:ascii=\"等线 Light\" w:eastAsia=\"等线 Light\" w:hAnsi=\"等线 Light\"/>"
+                + "<w:sz w:val=\"40\"/></w:rPr><w:t>Cat</w:t></w:r>";
+        String body = DocxDoc.p("Ann") + DocxDoc.p("Bob") + "<w:p>" + run + "</w:p>" + DocxDoc.p("Dan");
+        List<TextPosition> pos = convert(new DocxDoc().styles(styles).body(body).bytes());
+        float line = y(pos, "D") - y(pos, "B") - (y(pos, "B") - y(pos, "A"));
+        assertEquals(20 * 1.3f * (0.81f + 0.232f), line, 0.2, "the line is as tall as DengXian Light's in Word");
+    }
+
     private static float y(List<TextPosition> pos, String letter) {
         return pos.stream().filter(p -> p.getUnicode().equals(letter)).findFirst().orElseThrow().getYDirAdj();
     }
