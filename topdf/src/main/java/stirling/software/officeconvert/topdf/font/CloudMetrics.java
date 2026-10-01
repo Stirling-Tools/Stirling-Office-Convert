@@ -1,5 +1,6 @@
 package stirling.software.officeconvert.topdf.font;
 
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -13,7 +14,7 @@ public final class CloudMetrics {
 
     private static final int NONE = 36 * 36 - 1;
 
-    private static final Map<Integer, Integer> INDEX = index();
+    private static final short[] INDEX = index();
 
     private static final Map<String, CloudMetrics[]> TABLE = table();
 
@@ -44,8 +45,8 @@ public final class CloudMetrics {
 
     /** The advance in ems, or NaN when the cloud font has no glyph for it. */
     public float advance(int codePoint) {
-        Integer i = INDEX.get(codePoint);
-        return i == null || advances[i] == NONE ? Float.NaN : advances[i] / 1000f;
+        int i = codePoint >= 0 && codePoint < INDEX.length ? INDEX[codePoint] : -1;
+        return i < 0 || advances[i] == NONE ? Float.NaN : advances[i] / 1000f;
     }
 
     private static String range(int from, int to) {
@@ -56,12 +57,17 @@ public final class CloudMetrics {
         return b.toString();
     }
 
-    private static Map<Integer, Integer> index() {
-        Map<Integer, Integer> m = new HashMap<>();
+    private static short[] index() {
+        int top = 0;
         for (int i = 0; i < CHARS.length(); i++) {
-            m.put((int) CHARS.charAt(i), i);
+            top = Math.max(top, CHARS.charAt(i));
         }
-        return m;
+        short[] index = new short[top + 1];
+        Arrays.fill(index, (short) -1);
+        for (int i = 0; i < CHARS.length(); i++) {
+            index[CHARS.charAt(i)] = (short) i;
+        }
+        return index;
     }
 
     private static void put(Map<String, CloudMetrics[]> m, String family, int style, String advances) {
