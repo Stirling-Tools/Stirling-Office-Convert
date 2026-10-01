@@ -140,6 +140,16 @@ class RtfPackageTest {
     }
 
     @Test
+    void floatingTablesAndPageBorders() throws IOException {
+        String b = convert(HEAD + "\\pgbrdrt\\brdrs\\brdrw20\\pgbrdrb\\brdrs\\brdrw20\\pgbrdropt32"
+                + "\\trowd\\tphpg\\tpvpg\\tposx2000\\tposy3000\\tdfrmtxtLeft180\\cellx3000\\pard\\intbl a\\cell\\row"
+                + "\\pard after\\par}").body();
+        assertTrue(b.contains("<w:tblpPr w:leftFromText=\"180\" w:rightFromText=\"0\" w:topFromText=\"0\""
+                + " w:bottomFromText=\"0\" w:vertAnchor=\"page\" w:horzAnchor=\"page\" w:tblpX=\"2000\" w:tblpY=\"3000\"/>"), b);
+        assertTrue(b.contains("<w:pgBorders w:offsetFrom=\"text\"><w:top w:val=\"single\" w:sz=\"8\""), b);
+    }
+
+    @Test
     void nestedTablesLandInTheirCell() throws IOException {
         Pkg p = convert(HEAD + "\\trowd\\cellx5000\\pard\\intbl outer\\par"
                 + "\\pard\\intbl\\itap2 inner\\nestcell{\\*\\nesttableprops\\trowd\\cellx2000\\nestrow}"

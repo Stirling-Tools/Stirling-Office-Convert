@@ -88,6 +88,13 @@ final class TableWords {
             case "clNoWrap" -> c.noWrap = true;
             case "cellx" -> r.addCell(v);
             default -> {
+                if (w.startsWith("tpos") || w.startsWith("tph") || w.startsWith("tpv") || w.startsWith("tdfrmtxt")
+                        || "tabsnoovrlp".equals(w)) {
+                    if (r.floating == null) {
+                        r.floating = new TableFloat();
+                    }
+                    return r.floating.apply(w, v) ? HANDLED : null;
+                }
                 return null;
             }
         }

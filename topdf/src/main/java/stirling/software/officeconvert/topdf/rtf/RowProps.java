@@ -28,7 +28,7 @@ final class RowProps {
     int width;
     int widthType;
     int shadeColor = -1;
-    String floating;
+    TableFloat floating;
     List<CellDef> cells = new ArrayList<>();
     CellDef pending = new CellDef();
 

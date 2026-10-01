@@ -78,8 +78,9 @@ final class TableBuilder {
         if (!borders.isEmpty()) {
             b.append("<w:tblBorders>").append(borders).append("</w:tblBorders>");
         }
-        if (first.floating != null) {
-            b.append(first.floating);
+        if (first.floating != null && (first.floating.x != null || first.floating.y != null
+                || first.floating.xSpec != null || first.floating.ySpec != null)) {
+            b.append(first.floating.xml());
         }
         if (!first.autofit) {
             b.append("<w:tblLayout w:type=\"fixed\"/>");
