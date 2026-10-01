@@ -112,6 +112,13 @@ class RtfPackageTest {
     }
 
     @Test
+    void doubleByteLevelTextCountsCharacters() throws IOException {
+        Pkg p = convert("{\\rtf1\\ansi\\ansicpg950{\\*\\listtable{\\list{\\listlevel\\levelnfc0{\\leveltext\\'03\\'abe\\'00"
+                + "\\'a1B;}}\\listid1}}{\\*\\listoverridetable{\\listoverride\\listid1\\ls1}}\\pard\\ls1 x\\par}");
+        assertTrue(p.part("word/numbering.xml").contains("<w:lvlText w:val=\"\u524d%1\u3001\"/>"), p.part("word/numbering.xml"));
+    }
+
+    @Test
     void wordParagraphDefaultsMakeNoFramesAndPardResetsTheListLevel() throws IOException {
         String b = convert(HEAD + "{\\*\\listtable{\\list{\\listlevel\\levelnfc0{\\leveltext\\'02\\'00.;}}{\\listlevel"
                 + "\\levelnfc0{\\leveltext\\'02\\'01.;}}\\listid1}}{\\*\\listoverridetable{\\listoverride\\listid1\\ls1}}"

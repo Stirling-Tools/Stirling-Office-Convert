@@ -2,6 +2,7 @@ package stirling.software.officeconvert.topdf.rtf;
 
 import java.io.ByteArrayOutputStream;
 import java.nio.charset.Charset;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -72,31 +73,36 @@ final class NumberingXml {
         int font = l.chp.has(CharProps.FONT) ? l.chp.font : -1;
         boolean symbol = font >= 0 && doc.fonts.symbol(font);
         Charset cs = font >= 0 ? doc.charset(font) : doc.ansi;
-        StringBuilder out = new StringBuilder();
+        List<String> units = new ArrayList<>();
         ByteArrayOutputStream bytes = new ByteArrayOutputStream();
-        int count = 0;
-        for (int i = 1; i < t.size() && count < length; i++) {
+        for (int i = 1; i < t.size(); i++) {
             int v = t.get(i);
             if (v >= 0x10000) {
-                drain(bytes, cs, out);
-                out.append((char) (v & 0xFFFF));
+                drain(bytes, cs, units);
+                units.add(String.valueOf((char) (v & 0xFFFF)));
             } else if (v < 9) {
-                drain(bytes, cs, out);
-                out.append('%').append(v + 1);
+                drain(bytes, cs, units);
+                units.add("%" + (v + 1));
             } else if (symbol) {
-                out.append((char) (v >= 0x20 ? 0xF000 + v : v));
+                units.add(String.valueOf((char) (v >= 0x20 ? 0xF000 + v : v)));
             } else {
                 bytes.write(v);
             }
-            count++;
         }
-        drain(bytes, cs, out);
+        drain(bytes, cs, units);
+        StringBuilder out = new StringBuilder();
+        for (int i = 0; i < Math.min(length, units.size()); i++) {
+            out.append(units.get(i));
+        }
         return out.toString();
     }
 
-    private static void drain(ByteArrayOutputStream bytes, Charset cs, StringBuilder out) {
+    private static void drain(ByteArrayOutputStream bytes, Charset cs, List<String> units) {
         if (bytes.size() > 0) {
-            out.append(new String(bytes.toByteArray(), cs));
+            String s = new String(bytes.toByteArray(), cs);
+            for (int i = 0; i < s.length(); i += Character.charCount(s.codePointAt(i))) {
+                units.add(new String(Character.toChars(s.codePointAt(i))));
+            }
             bytes.reset();
         }
     }
