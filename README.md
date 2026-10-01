@@ -294,8 +294,8 @@ cut short, and password protected or Excel 5.0/95 workbooks are refused with a p
 Word 97-2003 documents (`.doc`, `.dot`, found by their content whatever the extension) are read with Apache POI
 HWPF and rewritten as a WordprocessingML package that the DOCX renderer draws: text with its character and paragraph
 formatting, styles, lists, tables (merged cells, borders, shading, nested tables), sections with their page setup,
-columns, headers and footers, footnotes and endnotes, inline and floating pictures, and hyperlinks (http, https and
-mailto only). Fields show their cached results, except page numbers, which are counted; macros, OLE objects (beyond
+columns, headers and footers, footnotes and endnotes, inline and floating pictures, text boxes and simple shapes,
+bookmarks, and hyperlinks (http, https and mailto only). Fields show their cached results, except page numbers, which are counted; macros, OLE objects (beyond
 their stored preview picture) and links are never opened. A compressed picture that would inflate past 32 MB is left
 out, and password protected or Word 6.0/95 documents are refused with a plain reason.
 
