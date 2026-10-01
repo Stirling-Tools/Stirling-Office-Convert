@@ -265,6 +265,7 @@ final class Grid {
         boolean auto = !(row.hasHeight() && row.height() >= 0);
         boolean fit = auto || !row.custom();
         int lastBlank = -1;
+        FontSpec base = style >= 0 ? book.styles().at(style).font() : book.styles().defaultFont();
         double descent = 0;
         for (RawRow.Cell cell : row.cells()) {
             int col = cell.col();
@@ -275,7 +276,7 @@ final class Grid {
             }
             if (text == null && !format.visible() && format.hAlign() != CellFormat.HAlign.CENTER_CONTINUOUS) {
                 if (fit && cell.style() != lastBlank && blanks.size() < MAX_BLANK_FONTS
-                        && !format.font().equals(book.styles().defaultFont())) {
+                        && !format.font().equals(base)) {
                     blanks.add(format.font());
                 }
                 lastBlank = cell.style();
@@ -293,9 +294,9 @@ final class Grid {
         if (gone) {
             height = auto ? defaultSource : Math.min(409.5, row.height());
         } else if (auto) {
-            height = Math.min(409.5, autofit(index, entries, blanks) + Math.max(0, row.thickEdges()) * SCREEN_PX);
+            height = Math.min(409.5, autofit(index, entries, blanks, base) + Math.max(0, row.thickEdges()) * SCREEN_PX);
         } else if (fit) {
-            height = refit(row, autofit(index, entries, blanks) + Math.max(0, row.thickEdges()) * SCREEN_PX,
+            height = refit(row, autofit(index, entries, blanks, base) + Math.max(0, row.thickEdges()) * SCREEN_PX,
                     entries.isEmpty() && blanks.isEmpty());
         } else {
             height = Math.min(409.5, row.height());
@@ -455,9 +456,9 @@ final class Grid {
         return stored;
     }
 
-    private double autofit(int row, List<CellEntry> entries, List<FontSpec> blanks) {
+    private double autofit(int row, List<CellEntry> entries, List<FontSpec> blanks, FontSpec base) {
         double defaultPx = defaultSource / 0.75;
-        double best = defaultPx;
+        double best = Math.min(546, fontLine(base, defaultPx));
         PrintMetrics m = book.metrics();
         for (FontSpec f : blanks) {
             best = Math.max(best, Math.min(546, fontLine(f, defaultPx)));
