@@ -113,6 +113,17 @@ class OdsTest {
     }
 
     @Test
+    void aSpreadsheetWithoutPageStylesPrintsLibreOfficesDefaultHeaderAndFooter() throws IOException {
+        String table = "<table:table table:name=\"Data\"><table:table-row><table:table-cell office:value-type=\"string\">"
+                + "<text:p>A1</text:p></table:table-cell></table:table-row></table:table>";
+        Path p = ods("", table, null);
+        String sheet = OdfFixtures.rewrite(p).get("xl/worksheets/sheet1.xml");
+        assertTrue(sheet.contains("<oddHeader>&amp;C&amp;A</oddHeader><oddFooter>&amp;CPage &amp;P</oddFooter>"), sheet);
+        String text = pdfText(p);
+        assertTrue(text.contains("Data") && text.contains("Page 1") && text.contains("A1"), text);
+    }
+
+    @Test
     void mergesWidthsHiddenRowsAndFormats() throws IOException {
         String auto = NUMBER_STYLES + "<style:style style:name=\"co1\" style:family=\"table-column\">"
                 + "<style:table-column-properties style:column-width=\"2in\"/></style:style><style:style"

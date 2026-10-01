@@ -20,6 +20,8 @@ final class SheetPage {
 
     private final Props footer;
 
+    private static final double DEFAULT_BAND = 21.3;
+
     SheetPage(Styles styles, String masterName) {
         Element m = styles.master(masterName);
         if (m == null) {
@@ -65,15 +67,15 @@ final class SheetPage {
         double right = page.pt("fo:margin-right", 56.7);
         double headerDist = 21.6;
         double footerDist = 21.6;
-        boolean hasHeader = master != null && shown(Dom.kid(master, Ns.STYLE, "header"));
-        boolean hasFooter = master != null && shown(Dom.kid(master, Ns.STYLE, "footer"));
+        boolean hasHeader = master == null || shown(Dom.kid(master, Ns.STYLE, "header"));
+        boolean hasFooter = master == null || shown(Dom.kid(master, Ns.STYLE, "footer"));
         if (hasHeader) {
             headerDist = top;
-            top += Math.max(header.pt("fo:min-height", 0), header.pt("fo:margin-bottom", 0));
+            top += master == null ? DEFAULT_BAND : Math.max(header.pt("fo:min-height", 0), header.pt("fo:margin-bottom", 0));
         }
         if (hasFooter) {
             footerDist = bottom;
-            bottom += Math.max(footer.pt("fo:min-height", 0), footer.pt("fo:margin-top", 0));
+            bottom += master == null ? DEFAULT_BAND : Math.max(footer.pt("fo:min-height", 0), footer.pt("fo:margin-top", 0));
         }
         b.append("<pageMargins left=\"").append(in(left)).append("\" right=\"").append(in(right)).append("\" top=\"")
                 .append(in(top)).append("\" bottom=\"").append(in(bottom)).append("\" header=\"").append(in(headerDist))
@@ -106,6 +108,11 @@ final class SheetPage {
             b.append(" firstPageNumber=\"").append(first).append("\" useFirstPageNumber=\"1\"");
         }
         b.append("/>");
+        if (master == null) {
+            b.append("<headerFooter><oddHeader>&amp;C&amp;A</oddHeader><oddFooter>&amp;CPage &amp;P</oddFooter>")
+                    .append("</headerFooter>");
+            return b.toString();
+        }
         String[][] parts = new String[3][2];
         String[] kinds = {"", "-first", "-left"};
         for (int i = 0; i < 3; i++) {
