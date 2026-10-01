@@ -131,6 +131,19 @@ class DocxLineRulesTest {
     }
 
     @Test
+    void aDeletedParagraphMarkTakesItsSectionBreakWithIt() throws IOException {
+        String del = "<w:del w:id=\"1\" w:author=\"a\" w:date=\"2020-01-01T00:00:00Z\"/>";
+        String body = para("<w:rPr>" + del + "</w:rPr><w:sectPr><w:pgSz w:w=\"12240\" w:h=\"15840\"/></w:sectPr>",
+                "<w:del w:id=\"2\" w:author=\"a\" w:date=\"2020-01-01T00:00:00Z\"><w:r><w:delText>Gone</w:delText>"
+                + "</w:r></w:del>") + DocxDoc.p("Kept");
+        DocxDoc.Rendered r = render("delsect", new DocxDoc().styles(STYLES).body(body));
+        try (var d = r.open()) {
+            assertEquals(1, d.getNumberOfPages());
+        }
+        assertEquals(1, r.word("Kept").page());
+    }
+
+    @Test
     void aCharacterGridNarrowsEveryCharacter() throws IOException {
         String body = DocxDoc.p("AAAAAAAAAA End");
         String grid = DocxDoc.LETTER.replace("</w:sectPr>", "<w:docGrid w:type=\"linesAndChars\" w:linePitch=\"240\""

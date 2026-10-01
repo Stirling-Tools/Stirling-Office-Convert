@@ -184,7 +184,7 @@ final class ContentReader {
         }
         Para para = new Para(pp, mark, items, styleId, label, labelProps, level);
         para.joinsNext = deleted || mark.hidden();
-        if (pPr != null && pPr.child("w:sectPr") != null) {
+        if (pPr != null && pPr.child("w:sectPr") != null && !deleted) {
             para.section = SectionProps.parse(pPr.child("w:sectPr"));
         }
         return para;
