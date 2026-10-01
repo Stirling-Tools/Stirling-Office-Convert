@@ -303,7 +303,7 @@ final class SheetWriter {
             emittedRows++;
             int n = start + i;
             data.append("<row r=\"").append(n + 1).append('"');
-            if (!Double.isNaN(height) && (custom || rowHidden || !wraps)) {
+            if (!Double.isNaN(height) && (custom || rowHidden || !wraps && height <= defaultRowPoints())) {
                 data.append(" ht=\"").append(Math.round(height * 100) / 100.0).append('"');
                 if (custom || rowHidden) {
                     data.append(" customHeight=\"1\"");

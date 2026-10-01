@@ -99,6 +99,20 @@ class OdsTest {
     }
 
     @Test
+    void anOptimalRowTallerThanTheDefaultIsLeftToFitItsText() throws IOException {
+        String auto = "<style:style style:name=\"ro1\" style:family=\"table-row\"><style:table-row-properties"
+                + " style:row-height=\"0.4in\" style:use-optimal-row-height=\"true\"/></style:style><style:style"
+                + " style:name=\"ro2\" style:family=\"table-row\"><style:table-row-properties style:row-height=\"0.15in\""
+                + " style:use-optimal-row-height=\"true\"/></style:style>";
+        String table = "<table:table table:name=\"S\"><table:table-column/><table:table-row table:style-name=\"ro1\">"
+                + "<table:table-cell office:value-type=\"string\"><text:p>Tall</text:p></table:table-cell></table:table-row>"
+                + "<table:table-row table:style-name=\"ro2\"><table:table-cell office:value-type=\"string\"><text:p>Small"
+                + "</text:p></table:table-cell></table:table-row></table:table>";
+        String sheet = OdfFixtures.rewrite(ods(auto, table, null)).get("xl/worksheets/sheet1.xml");
+        assertTrue(sheet.contains("<row r=\"1\">") && sheet.contains("<row r=\"2\" ht=\"10.8\">"), sheet);
+    }
+
+    @Test
     void mergesWidthsHiddenRowsAndFormats() throws IOException {
         String auto = NUMBER_STYLES + "<style:style style:name=\"co1\" style:family=\"table-column\">"
                 + "<style:table-column-properties style:column-width=\"2in\"/></style:style><style:style"
