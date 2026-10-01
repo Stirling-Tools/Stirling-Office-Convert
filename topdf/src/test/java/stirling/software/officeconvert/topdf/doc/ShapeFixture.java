@@ -20,13 +20,13 @@ import org.apache.poi.ddf.EscherSpgrRecord;
 
 final class ShapeFixture {
 
-    record Shape(int spid, int type, int[] rect, int flags, Map<Integer, Integer> props, byte[] polygon) {}
+    record Shape(int spid, int type, int[] rect, int flags, Map<Integer, Integer> props, Map<Integer, byte[]> complex) {}
 
     record Member(int spid, int[] anchor, int fill) {}
 
     static Shape group(int spid, int[] rect, int flags, int[] frame, List<Member> members) {
         GROUPS.put(spid, new Object[] {frame, members});
-        return new Shape(spid, 0, rect, flags, Map.of(), null);
+        return new Shape(spid, 0, rect, flags, Map.of(), Map.of());
     }
 
     private static final Map<Integer, Object[]> GROUPS = new java.util.concurrent.ConcurrentHashMap<>();
@@ -97,12 +97,11 @@ final class ShapeFixture {
             opt.setRecordId(EscherOptRecord.RECORD_ID);
             List<EscherProperty> props = new ArrayList<>();
             s.props().forEach((k, v) -> props.add(new EscherSimpleProperty(EscherPropertyTypes.forPropertyID(k), v)));
-            if (s.polygon() != null) {
-                EscherComplexProperty poly = new EscherComplexProperty(EscherPropertyTypes.forPropertyID(0x0383), false,
-                        s.polygon().length);
-                poly.setComplexData(s.polygon());
-                props.add(poly);
-            }
+            s.complex().forEach((k, v) -> {
+                EscherComplexProperty p = new EscherComplexProperty(EscherPropertyTypes.forPropertyID(k), false, v.length);
+                p.setComplexData(v);
+                props.add(p);
+            });
             props.forEach(opt::addEscherProperty);
             opt.sortProperties();
             sp.addChildRecord(opt);

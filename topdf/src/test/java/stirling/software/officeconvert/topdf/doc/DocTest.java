@@ -230,12 +230,13 @@ class DocTest {
                         WordFixture.run("\u0008", Sprms.special()), WordFixture.run("\u0008", Sprms.special())), 0)
                 .shape(new ShapeFixture.Shape(1025, 1, new int[] {0, 2123, 3000, 4000},
                         ShapeFixture.fspaFlags(2, 2, 3, 0, false), java.util.Map.of(0x0181, 0x0000FF, 0x0182, 0x8000,
-                                0x0390, 1, 0x0392, 1, 0x03BF, 0x200020), null))
+                                0x0390, 1, 0x0392, 1, 0x03BF, 0x200020), java.util.Map.of()))
                 .shape(new ShapeFixture.Shape(1026, 1, new int[] {0, 0, 9000, 1000},
                         ShapeFixture.fspaFlags(2, 2, 2, 0, false), java.util.Map.of(0x01BF, 0x100000, 0x01FF, 0x80000),
-                        null))
+                        java.util.Map.of()))
                 .shape(new ShapeFixture.Shape(1027, 202, new int[] {0, 0, 2000, 1000},
-                        ShapeFixture.fspaFlags(2, 2, 4, 0, false), java.util.Map.of(0x0080, 0x10000), polygon))
+                        ShapeFixture.fspaFlags(2, 2, 4, 0, false), java.util.Map.of(0x0080, 0x10000),
+                        java.util.Map.of(0x0383, polygon)))
                 .textbox(1027, "Boxed words").build();
         String xml = body(doc);
         assertTrue(xml.contains("<wp:positionH relativeFrom=\"page\"><wp:posOffset>0</wp:posOffset>"), xml);
@@ -409,7 +410,7 @@ class DocTest {
         byte[] doc = new WordFixture()
                 .para(List.of(WordFixture.run("Turn "), WordFixture.run("\u0008", Sprms.special())), 0)
                 .shape(new ShapeFixture.Shape(1025, 1, new int[] {0, 0, 1000, 3000},
-                        ShapeFixture.fspaFlags(2, 2, 3, 0, false), java.util.Map.of(0x0004, 90 << 16), null))
+                        ShapeFixture.fspaFlags(2, 2, 3, 0, false), java.util.Map.of(0x0004, 90 << 16), java.util.Map.of()))
                 .build();
         String xml = body(doc);
         assertTrue(xml.contains("<a:xfrm rot=\"5400000\">"), xml);
@@ -424,5 +425,20 @@ class DocTest {
                 .build();
         String xml = body(doc);
         assertTrue(xml.contains("kept") && xml.contains("added") && !xml.contains("removed"), xml);
+    }
+
+    @Test
+    void wordArtKeepsItsText() throws IOException {
+        byte[] text = "Draft\u0000".getBytes(java.nio.charset.StandardCharsets.UTF_16LE);
+        byte[] doc = new WordFixture()
+                .para(List.of(WordFixture.run("Art "), WordFixture.run("\u0008", Sprms.special())), 0)
+                .shape(new ShapeFixture.Shape(1025, 136, new int[] {0, 0, 4000, 1000},
+                        ShapeFixture.fspaFlags(2, 2, 3, 0, false), java.util.Map.of(0x0181, 0x0000FF, 0x00C3, 40 << 16),
+                        java.util.Map.of(0x00C0, text)))
+                .build();
+        String xml = body(doc);
+        assertTrue(xml.contains("<a:prstTxWarp prst=\"textPlain\">"), xml);
+        assertTrue(xml.contains(">Draft</w:t>") && xml.contains("<w:color w:val=\"FF0000\"/>"), xml);
+        assertTrue(xml.contains("<w:sz w:val=\"80\"/>"), xml);
     }
 }

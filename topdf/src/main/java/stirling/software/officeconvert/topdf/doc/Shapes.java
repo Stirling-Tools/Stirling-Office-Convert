@@ -64,6 +64,10 @@ final class Shapes {
             case 20, 32 -> "line";
             default -> "rect";
         };
+        String art = rec.getShapeType() >= 136 && rec.getShapeType() <= 175 ? string(sp, 0x00C0) : null;
+        if (art != null && !art.isBlank()) {
+            return wordArt(sp, rec, art, x, y, cx, cy);
+        }
         boolean line = geom.equals("line");
         int[] text = line ? null : c.textboxes().text(rec.getShapeId(), story.kind == Story.Kind.HEADER);
         Boolean fill = bit(sp, 0x01BF, 4);
@@ -111,6 +115,51 @@ final class Shapes {
                     default -> "t";
                 }).append("\"/></wps:wsp>");
         return b.toString();
+    }
+
+    private static String wordArt(EscherContainerRecord sp, EscherSpRecord rec, String text, long x, long y, long cx,
+            long cy) {
+        StringBuilder b = new StringBuilder("<wps:wsp><wps:cNvSpPr/><wps:spPr>");
+        xfrm(b, rec, rotation(sp), x, y, cx, cy);
+        b.append("<a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom><a:noFill/><a:ln><a:noFill/></a:ln></wps:spPr>")
+                .append("<wps:txbx><w:txbxContent><w:p><w:pPr><w:jc w:val=\"center\"/></w:pPr><w:r><w:rPr>");
+        String font = string(sp, 0x00C5);
+        if (font != null && !font.isBlank()) {
+            String f = Xml.esc(font.strip());
+            b.append("<w:rFonts w:ascii=\"").append(f).append("\" w:hAnsi=\"").append(f).append("\" w:cs=\"").append(f)
+                    .append("\"/>");
+        }
+        Boolean bold = bit(sp, 0x00FF, 5);
+        Boolean italic = bit(sp, 0x00FF, 4);
+        if (bold != null && bold) {
+            b.append("<w:b/>");
+        }
+        if (italic != null && italic) {
+            b.append("<w:i/>");
+        }
+        b.append("<w:color w:val=\"").append(color(prop(sp, 0x0181, 0), 0)).append("\"/>");
+        long size = prop(sp, 0x00C3, 36 << 16) >> 15;
+        b.append("<w:sz w:val=\"").append(Math.max(2, Math.min(3276, size))).append("\"/></w:rPr><w:t xml:space=\"preserve\">")
+                .append(Xml.esc(text.replace('\n', ' ').replace('\r', ' '))).append("</w:t></w:r></w:p></w:txbxContent></wps:txbx>")
+                .append("<wps:bodyPr wrap=\"none\" lIns=\"0\" tIns=\"0\" rIns=\"0\" bIns=\"0\"><a:prstTxWarp prst=\"textPlain\">")
+                .append("<a:avLst/></a:prstTxWarp></wps:bodyPr></wps:wsp>");
+        return b.toString();
+    }
+
+    private static String string(EscherContainerRecord sp, int number) {
+        byte[] d = complex(sp, number);
+        if (d == null || d.length < 2) {
+            return null;
+        }
+        StringBuilder out = new StringBuilder();
+        for (int i = 0; i + 1 < d.length && out.length() < 4096; i += 2) {
+            char ch = (char) Sprm.u16(d, i);
+            if (ch == 0) {
+                break;
+            }
+            out.append(ch);
+        }
+        return out.toString();
     }
 
     static void xfrm(StringBuilder b, EscherSpRecord rec, double deg, long x, long y, long cx, long cy) {
