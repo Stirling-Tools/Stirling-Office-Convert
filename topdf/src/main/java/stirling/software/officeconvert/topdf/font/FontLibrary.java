@@ -325,6 +325,11 @@ public final class FontLibrary {
         return out;
     }
 
+    public static String english(String family) {
+        String e = FontNames.english(family);
+        return e == null ? family : e;
+    }
+
     public static String normalize(String name) {
         String n = Normalizer.normalize(name, Normalizer.Form.NFKC).strip().toLowerCase(Locale.ROOT);
         return plainSpaces(n) ? n : SPACES.matcher(n).replaceAll(" ");

@@ -9,6 +9,7 @@ import java.util.Optional;
 import stirling.software.officeconvert.topdf.RenderJob;
 import stirling.software.officeconvert.topdf.font.CloudFonts;
 import stirling.software.officeconvert.topdf.font.FontFace;
+import stirling.software.officeconvert.topdf.font.FontLibrary;
 
 final class Fonts {
 
@@ -65,7 +66,7 @@ final class Fonts {
             return new CloudFonts.Emulation(face, 100, symbol, null, null);
         }
         float[] asian = eastAsianVertical(face.requestedFamily());
-        if (asian != null && !Look.eastAsianGlyphs(face)) {
+        if (asian != null) {
             return new CloudFonts.Emulation(face, 100, asian, null, null);
         }
         return emulations.computeIfAbsent(face, f -> {
@@ -83,8 +84,9 @@ final class Fonts {
         if (family == null) {
             return null;
         }
-        float[] m = switch (family.strip().toLowerCase(Locale.ROOT)) {
-            case "ms gothic", "ms pgothic", "ms ui gothic", "ms mincho", "ms pmincho", "simsun", "nsimsun" ->
+        float[] m = switch (FontLibrary.english(family).strip().toLowerCase(Locale.ROOT)) {
+            case "ms gothic", "ms pgothic", "ms ui gothic", "ms mincho", "ms pmincho", "simsun", "nsimsun", "simhei",
+                    "batang", "batangche", "gulim", "gulimche", "dotum", "dotumche", "gungsuh", "gungsuhche" ->
                     new float[] {220f / 256, 36f / 256};
             case "malgun gothic" -> new float[] {2229f / 2048, 495f / 2048};
             case "yu gothic", "yu gothic ui" -> new float[] {2017f / 2048, 619f / 2048};

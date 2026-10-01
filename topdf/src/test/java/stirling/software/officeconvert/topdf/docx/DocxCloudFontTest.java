@@ -20,6 +20,7 @@ import stirling.software.officeconvert.topdf.OfficeToPdf;
 import stirling.software.officeconvert.topdf.RenderJob;
 import stirling.software.officeconvert.topdf.font.CloudFonts;
 import stirling.software.officeconvert.topdf.font.CloudMetrics;
+import stirling.software.officeconvert.topdf.font.FontFace;
 import stirling.software.officeconvert.topdf.font.FontLibrary;
 import stirling.software.officeconvert.topdf.io.OfficeZip;
 import stirling.software.officeconvert.topdf.pdf.PdfOutput;
@@ -94,6 +95,25 @@ class DocxCloudFontTest {
         pos = convert(new DocxDoc().styles(styles).body(body).bytes(), FontLibrary.of(List.of(linux)));
         boxed = y(pos, "D") - y(pos, "B") - (y(pos, "B") - y(pos, "A"));
         assertEquals(10 * 1.3f, boxed, 0.2, "a Linux stand-in named for MS Gothic keeps MS Gothic's line");
+    }
+
+    @Test
+    void aStandInWithEastAsianGlyphsKeepsTheLineOfTheEastAsianFontItReplaces() throws Exception {
+        Path linux = Files.createDirectories(dir.resolve("cjk"));
+        Files.write(linux.resolve("Cjk.ttf"), TestFonts.withEastAsianGlyphs("WenQuanYi Zen Hei"));
+        FontLibrary fonts = FontLibrary.of(List.of(linux));
+        Path in = Fixtures.write(dir, "cjk.docx", new DocxDoc().body(DocxDoc.p("Ann")).bytes());
+        try (OfficeZip zip = OfficeZip.open(in); PdfOutput output = new PdfOutput(fonts)) {
+            RenderJob job = new RenderJob(zip, OfficeToPdf.Format.DOCX, OfficeToPdf.Options.defaults(), fonts, output);
+            Fonts f = new Fonts(job, null, "en-US");
+            for (String family : new String[] {"MS Gothic", "ＭＳ ゴシック"}) {
+                FontFace face = f.face(family, false, false);
+                assertTrue(face.covers(0x4E00));
+                CloudFonts.Emulation e = f.emulation(face);
+                assertTrue(e != null && Fonts.withEastAsianExtra(e), family);
+                assertEquals(Fonts.eastAsianVertical("MS Gothic")[0], e.vertical()[0], 1e-6, family);
+            }
+        }
     }
 
     private static float y(List<TextPosition> pos, String letter) {
