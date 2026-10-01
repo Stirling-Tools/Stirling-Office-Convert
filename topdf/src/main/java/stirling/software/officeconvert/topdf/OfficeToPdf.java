@@ -72,15 +72,14 @@ public final class OfficeToPdf {
             Objects.requireNonNull(file, "file");
             String ext = extension(file);
             return switch (ext) {
-                case "docx", "docm", "dotx", "dotm" -> DOCX;
+                case "docx", "docm", "dotx", "dotm", "doc", "dot" -> DOCX;
                 case "pptx", "pptm", "ppsx", "ppsm", "potx", "potm" -> PPTX;
                 case "xlsx", "xlsm", "xltx", "xltm", "xls", "xlt" -> XLSX;
-                case "doc", "dot" -> throw legacy("Word", ext, "docx");
                 case "ppt", "pps", "pot" -> PPT;
                 case "xlsb" -> throw new IllegalArgumentException(
                         "Excel binary workbooks (.xlsb) are not supported; save the file as .xlsx");
                 default -> throw new IllegalArgumentException("Not an Office document: " + file.getFileName()
-                        + "; use .docx, .docm, .dotx, .dotm, .pptx, .pptm, .ppsx, .ppsm, .potx, .potm, .xlsx, .xlsm,"
+                        + "; use .docx, .docm, .dotx, .dotm, .doc, .dot, .pptx, .pptm, .ppsx, .ppsm, .potx, .potm, .xlsx, .xlsm,"
                         + " .xltx, .xltm, .xls, .xlt, .ppt, .pps or .pot");
             };
         }
@@ -99,11 +98,6 @@ public final class OfficeToPdf {
             String n = name == null ? "" : name.toString().toLowerCase(Locale.ROOT);
             int dot = n.lastIndexOf('.');
             return dot < 0 ? "" : n.substring(dot + 1);
-        }
-
-        private static IllegalArgumentException legacy(String app, String ext, String modern) {
-            return new IllegalArgumentException("Legacy " + app + " 97-2003 files (." + ext
-                    + ") are not supported yet; save the file as ." + modern);
         }
     }
 
@@ -259,6 +253,10 @@ public final class OfficeToPdf {
         Long legacy = legacyWorkbookEstimate(in);
         if (legacy != null) {
             return legacy;
+        }
+        Long word = LegacyWord.estimate(in);
+        if (word != null) {
+            return word;
         }
         try (OfficeZip zip = OfficeZip.open(in)) {
             return Footprint.estimate(zip, detect(zip, format));
@@ -432,6 +430,10 @@ public final class OfficeToPdf {
         if (legacy != null) {
             return legacy;
         }
+        Result word = LegacyWord.render(source, sink, options, renderer);
+        if (word != null) {
+            return word;
+        }
         return render(source, requested, sink, options, renderer, OfficeZip.Limits.DEFAULT);
     }
 
@@ -439,7 +441,7 @@ public final class OfficeToPdf {
     static final OfficeZip.Limits REWRITTEN = new OfficeZip.Limits(10_000, 512L << 20, 1L << 30, 0, 100L << 10,
             48L << 20);
 
-    private static Result render(Path source, Format requested, OutputStream sink, Options options, Renderer renderer,
+    static Result render(Path source, Format requested, OutputStream sink, Options options, Renderer renderer,
             OfficeZip.Limits limits) throws IOException {
         FontLibrary fonts = FontLibrary.withSystem(options.fontDirs());
         if (LegacyOffice.powerPoint(source)) {
@@ -996,7 +998,7 @@ public final class OfficeToPdf {
         }
     }
 
-    private static void deleteQuietly(Path file) {
+    static void deleteQuietly(Path file) {
         try {
             Files.deleteIfExists(file);
         } catch (IOException | RuntimeException e) {
@@ -1020,7 +1022,7 @@ public final class OfficeToPdf {
         }
     }
 
-    private static void stopIfInterrupted() throws InterruptedIOException {
+    static void stopIfInterrupted() throws InterruptedIOException {
         if (Thread.currentThread().isInterrupted()) {
             throw new InterruptedIOException("Conversion interrupted");
         }
