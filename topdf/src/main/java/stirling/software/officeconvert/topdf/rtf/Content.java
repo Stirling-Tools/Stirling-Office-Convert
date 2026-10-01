@@ -244,7 +244,7 @@ final class Content {
     }
 
     private ParaProps listIndent(ParaProps p) {
-        if (!doc.libreOffice || !p.has(ParaProps.LEFT) || !numbered(p)) {
+        if (!doc.libreOffice || !p.has(ParaProps.LEFT) || p.leftsAfterList != 1 || !numbered(p)) {
             return p;
         }
         StyleSheet.Style s = doc.styles.paragraph(p.style);

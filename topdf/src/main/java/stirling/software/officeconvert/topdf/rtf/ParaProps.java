@@ -67,6 +67,9 @@ final class ParaProps implements Cloneable {
     int depth = 1;
     Frame frame;
 
+    boolean listSeen;
+    int leftsAfterList;
+
     String tabAlign;
     String tabLeader;
 
@@ -116,6 +119,8 @@ final class ParaProps implements Cloneable {
         frame = null;
         tabAlign = null;
         tabLeader = null;
+        listSeen = false;
+        leftsAfterList = 0;
     }
 
     void inherit(ParaProps s) {

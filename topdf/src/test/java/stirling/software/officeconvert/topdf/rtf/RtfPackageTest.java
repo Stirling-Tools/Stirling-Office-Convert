@@ -273,6 +273,9 @@ class RtfPackageTest {
         String para = "\\pard\\plain\\s5\\li720{\\listtext x\\tab}\\ilvl0\\ls1\\fi-360\\li1080 item\\par}";
         String lo = convert(HEAD + "{\\*\\generator LibreOffice}" + lists + para).body();
         assertTrue(lo.contains("<w:ind w:left=\"360\" w:hanging=\"360\"/>"), lo);
+        String direct = convert(HEAD + "{\\*\\generator LibreOffice}" + lists + para.replace(" item",
+                "\\fi-360\\li720 item")).body();
+        assertTrue(direct.contains("<w:ind w:left=\"720\" w:hanging=\"360\"/>"), direct);
         String other = convert(HEAD + lists + para).body();
         assertTrue(other.contains("<w:ind w:left=\"1080\" w:hanging=\"360\"/>"), other);
     }

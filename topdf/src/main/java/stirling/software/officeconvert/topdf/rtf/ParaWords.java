@@ -20,6 +20,9 @@ final class ParaWords {
             case "li", "lin" -> {
                 p.left = v;
                 p.mark(ParaProps.LEFT);
+                if ("li".equals(w) && p.listSeen) {
+                    p.leftsAfterList++;
+                }
             }
             case "ri", "rin" -> {
                 p.right = v;
@@ -79,6 +82,8 @@ final class ParaWords {
             case "ls" -> {
                 p.list = Math.max(0, v);
                 p.mark(ParaProps.LIST);
+                p.listSeen = true;
+                p.leftsAfterList = 0;
             }
             case "ilvl" -> {
                 p.level = Math.max(0, Math.min(ListTable.MAX_LEVELS - 1, v));
