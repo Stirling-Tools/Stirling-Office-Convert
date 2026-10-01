@@ -210,6 +210,22 @@ class DocxRendererTest {
     }
 
     @Test
+    void aListThatLinksToANumberingStyleTakesThatStylesLevels() throws IOException {
+        String numbering = "<w:abstractNum w:abstractNumId=\"0\"><w:styleLink w:val=\"HouseList\"/><w:lvl w:ilvl=\"0\">"
+                + "<w:start w:val=\"7\"/><w:numFmt w:val=\"decimal\"/><w:lvlText w:val=\"%1)\"/><w:lvlJc w:val=\"left\"/>"
+                + "</w:lvl></w:abstractNum><w:abstractNum w:abstractNumId=\"1\"><w:numStyleLink w:val=\"HouseList\"/>"
+                + "</w:abstractNum><w:num w:numId=\"1\"><w:abstractNumId w:val=\"0\"/></w:num><w:num w:numId=\"2\">"
+                + "<w:abstractNumId w:val=\"1\"/></w:num>";
+        String styles = "<w:style w:type=\"numbering\" w:styleId=\"HouseList\"><w:name w:val=\"House List\"/><w:pPr>"
+                + "<w:numPr><w:numId w:val=\"1\"/></w:numPr></w:pPr></w:style>";
+        String body = "<w:p><w:pPr><w:numPr><w:ilvl w:val=\"0\"/><w:numId w:val=\"2\"/></w:numPr></w:pPr><w:r><w:t>Item"
+                + "</w:t></w:r></w:p>";
+        String text = DocxDoc.render(dir, "stylelink", new DocxDoc().styles(styles).numbering(numbering).body(body)
+                .bytes()).text();
+        assertTrue(text.contains("7)"), text);
+    }
+
+    @Test
     void footnotesAppearOnTheirPage() throws IOException {
         String notes = "<w:footnote w:type=\"separator\" w:id=\"-1\"><w:p><w:r><w:separator/></w:r></w:p></w:footnote>"
                 + "<w:footnote w:id=\"1\"><w:p><w:r><w:rPr><w:vertAlign w:val=\"superscript\"/></w:rPr>"

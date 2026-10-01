@@ -94,6 +94,18 @@ final class Styles {
         return out;
     }
 
+    Integer listNum(String id) {
+        if (id == null || !defs.containsKey(id)) {
+            return null;
+        }
+        String type = defs.get(id).type;
+        ParaProps p = new ParaProps();
+        for (Def d : chain(id, type)) {
+            p.mergeFrom(ParaProps.parse(d.el.child("w:pPr"), theme));
+        }
+        return p.numId;
+    }
+
     ParaProps paragraph(String id) {
         String key = id == null || !defs.containsKey(id) ? defaultParagraph : id;
         if (key == null) {
