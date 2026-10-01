@@ -253,6 +253,25 @@ class DocTest {
     }
 
     @Test
+    void wordSixNumberingInAWord97FileStillNumbers() throws IOException {
+        int[] anld = new int[84];
+        anld[2] = 1;
+        anld[10] = 1;
+        anld[12] = 0x68;
+        anld[13] = 0x01;
+        anld[20] = '.';
+        byte[] numbered = WordFixture.concat(Sprms.u8(0x240D, 10), Sprms.var(0xC63E, anld));
+        byte[] doc = new WordFixture().para("Apples", numbered).para("Pears", numbered).build();
+        String xml = body(doc);
+        assertTrue(xml.contains("<w:numPr><w:ilvl w:val=\"0\"/><w:numId w:val=\""), xml);
+        String numbering = part(doc, "word/numbering.xml");
+        assertTrue(numbering != null && numbering.contains("<w:lvlText w:val=\"%1.\"/>")
+                && numbering.contains("<w:numFmt w:val=\"decimal\"/>"), numbering);
+        String text = pdfText(doc, "anld.doc");
+        assertTrue(text.contains("1.") && text.contains("2."), text);
+    }
+
+    @Test
     void aShapeFilledWithAPictureKeepsThePicture() throws IOException {
         byte[] doc = new WordFixture()
                 .para(List.of(WordFixture.run("Anchor "), WordFixture.run("\u0008", Sprms.special())), 0)

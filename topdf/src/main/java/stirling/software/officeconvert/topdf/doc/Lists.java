@@ -40,6 +40,10 @@ final class Lists {
 
     private final Map<Integer, Integer> abstracts = new LinkedHashMap<>();
 
+    private final Map<Anld, Integer> anlds = new LinkedHashMap<>();
+
+    static final int ANLD_IDS = 4096;
+
     Lists(Source src) {
         this.src = src;
         ListTables lt;
@@ -84,8 +88,33 @@ final class Lists {
                 + "\"/></w:numPr>";
     }
 
+    String numPr(Anld a, String font) {
+        if (a == null || anlds.size() >= MAX_LISTS && !anlds.containsKey(a)) {
+            return null;
+        }
+        Anld key = new Anld(a.level() <= 9 ? 1 : a.level(), a.level() <= 9 ? "outline" : a.format(),
+                a.level() <= 9 ? "" : a.text(), a.level() <= 9 ? 0 : a.start(), 0, false, false, 0);
+        Integer id = anlds.get(key);
+        if (id == null) {
+            id = ANLD_IDS + anlds.size();
+            anlds.put(key, id);
+            levels.put(id, new Anld[9]);
+            fonts.put(id, font);
+        }
+        int ilvl = a.level() <= 9 ? a.level() - 1 : 0;
+        Anld[] known = levels.get(id);
+        if (known[ilvl] == null) {
+            known[ilvl] = a;
+        }
+        return "<w:numPr><w:ilvl w:val=\"" + ilvl + "\"/><w:numId w:val=\"" + id + "\"/></w:numPr>";
+    }
+
+    private final Map<Integer, Anld[]> levels = new LinkedHashMap<>();
+
+    private final Map<Integer, String> fonts = new LinkedHashMap<>();
+
     boolean isEmpty() {
-        return lfos.isEmpty();
+        return lfos.isEmpty() && anlds.isEmpty();
     }
 
     String part() {
@@ -99,6 +128,21 @@ final class Lists {
                 level(b, i, levels[i]);
             }
             b.append("</w:abstractNum>");
+        }
+        for (int id : anlds.values()) {
+            b.append("<w:abstractNum w:abstractNumId=\"").append(id).append("\"><w:multiLevelType w:val=\"")
+                    .append("multilevel\"/>");
+            Anld[] lv = levels.get(id);
+            for (int i = 0; i < 9; i++) {
+                if (lv[i] != null) {
+                    anldLevel(b, i, lv[i], fonts.get(id));
+                }
+            }
+            b.append("</w:abstractNum>");
+        }
+        for (int id : anlds.values()) {
+            b.append("<w:num w:numId=\"").append(id).append("\"><w:abstractNumId w:val=\"").append(id)
+                    .append("\"/></w:num>");
         }
         for (Map.Entry<Integer, LFO> e : lfos.entrySet()) {
             b.append("<w:num w:numId=\"").append(e.getKey()).append("\"><w:abstractNumId w:val=\"")
@@ -162,6 +206,22 @@ final class Lists {
         paragraph(b, l.getGrpprlPapx());
         run(b, l.getGrpprlChpx());
         b.append("</w:lvl>");
+    }
+
+    private static void anldLevel(StringBuilder b, int i, Anld a, String font) {
+        b.append("<w:lvl w:ilvl=\"").append(i).append("\"><w:start w:val=\"").append(a.start())
+                .append("\"/><w:numFmt w:val=\"").append(a.format()).append("\"/><w:suff w:val=\"tab\"/><w:lvlText w:val=\"")
+                .append(Xml.esc(a.text().replace("%1", "%" + (i + 1)))).append("\"/><w:lvlJc w:val=\"left\"/>");
+        if (a.indent() > 0) {
+            b.append("<w:pPr><w:ind w:left=\"").append(a.indent()).append("\" w:hanging=\"").append(a.indent())
+                    .append("\"/></w:pPr>");
+        }
+        b.append("<w:rPr>");
+        if (font != null) {
+            String f = Xml.esc(font);
+            b.append("<w:rFonts w:ascii=\"").append(f).append("\" w:hAnsi=\"").append(f).append("\"/>");
+        }
+        b.append(a.bold() ? "<w:b/>" : "").append(a.italic() ? "<w:i/>" : "").append("</w:rPr></w:lvl>");
     }
 
     private static String text(ListLevel l) {

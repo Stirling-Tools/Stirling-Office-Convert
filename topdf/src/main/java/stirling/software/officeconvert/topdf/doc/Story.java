@@ -123,6 +123,10 @@ final class Story {
         pageBreak = last == '\u000C' && depth == 0 && breaks != null && !breaks.ends(end);
         List<Sprm> sprms = c.src.resolved(istd, par.start());
         String numbering = c.lists.numPr(props.getIlfo(), props.getIlvl());
+        if (numbering == null && props.getIlfo() == 0) {
+            Anld anld = Anld.of(sprms);
+            numbering = anld == null ? null : c.lists.numPr(anld, c.src.fontName(anld.font()));
+        }
         List<Source.Segment> markRun = c.src.segments(Math.max(par.start(), end - 1), end, istd);
         String mark = markRun.isEmpty() ? null : c.src.runs.props(markRun.get(0).chp(), markRun.get(0).sprms());
         String sect = depth == 0 && breaks != null ? breaks.at(end) : null;
