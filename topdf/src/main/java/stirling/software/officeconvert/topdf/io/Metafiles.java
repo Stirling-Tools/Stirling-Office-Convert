@@ -185,6 +185,16 @@ final class Metafiles {
         return sheetPart(doc, sheet, w, h, text, g -> SafeImageRenderer.draw(g, sheet));
     }
 
+    static PDFormXObject shapes(PDDocument doc, Sheet<?, ?> sheet,
+            List<? extends org.apache.poi.sl.usermodel.Shape<?, ?>> shapes, float w, float h,
+            IPdfBoxGraphics2DFontTextDrawer text) throws IOException {
+        return sheetPart(doc, sheet, w, h, text, g -> {
+            for (org.apache.poi.sl.usermodel.Shape<?, ?> shape : shapes) {
+                SafeImageRenderer.draw(g, shape);
+            }
+        });
+    }
+
     // Background, master and each shape on a form of its own, so one that fails loses only itself
     static List<PDFormXObject> sheetParts(PDDocument doc, Sheet<?, ?> sheet, float w, float h,
             IPdfBoxGraphics2DFontTextDrawer text, Consumer<Throwable> skipped) throws IOException {

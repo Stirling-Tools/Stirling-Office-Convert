@@ -71,6 +71,15 @@ public final class SafeImageRenderer implements ImageRenderer {
         return Metafiles.sheet(doc, sheet, width, height, text);
     }
 
+    /** Some of a sheet's shapes (or its master's) drawn over that sheet, on a form of the given size. */
+    public static PDFormXObject drawShapes(PDDocument doc, Sheet<?, ?> sheet,
+            List<? extends Shape<?, ?>> shapes, float width, float height, IPdfBoxGraphics2DFontTextDrawer text)
+            throws IOException {
+        Objects.requireNonNull(doc, "doc");
+        Objects.requireNonNull(sheet, "sheet");
+        return Metafiles.shapes(doc, sheet, List.copyOf(shapes), width, height, text);
+    }
+
     /** The same sheet drawn again part by part, background, master and each shape on a form of its own, for when
      * {@link #drawForm} fails: a part that fails is left out and handed to {@code skipped}. */
     public static List<PDFormXObject> drawParts(PDDocument doc, Sheet<?, ?> sheet, float width, float height,

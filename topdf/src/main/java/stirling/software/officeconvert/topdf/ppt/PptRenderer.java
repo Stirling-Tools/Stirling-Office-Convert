@@ -27,6 +27,7 @@ import org.apache.poi.hslf.usermodel.HSLFShape;
 import org.apache.poi.hslf.usermodel.HSLFSlide;
 import org.apache.poi.hslf.usermodel.HSLFSlideShow;
 import org.apache.poi.hslf.usermodel.HSLFSoundData;
+import org.apache.poi.hslf.usermodel.HSLFTextShape;
 
 import stirling.software.officeconvert.topdf.RenderJob;
 import stirling.software.officeconvert.topdf.font.FontFace;
@@ -61,6 +62,7 @@ public final class PptRenderer {
             float h = clamp(size == null ? 0 : size.height, DEFAULT_HEIGHT);
             List<HSLFSlide> slides = ppt.getSlides();
             SlideLinks links = new SlideLinks(slides);
+            SlideFooters footers = new SlideFooters();
             for (HSLFSlide slide : slides) {
                 job.checkpoint();
                 if (slide.isHidden()) {
@@ -68,7 +70,7 @@ public final class PptRenderer {
                 }
                 text.startSlide(textLinks(links, slide));
                 try (PdfCanvas canvas = job.newPage(w, h)) {
-                    List<PDFormXObject> forms = draw(job, slide, text, w, h);
+                    List<PDFormXObject> forms = new ArrayList<>(draw(job, slide, footers, text, w, h));
                     for (PDFormXObject form : forms) {
                         canvas.form(form, 0, 0, w, h);
                     }
@@ -112,10 +114,16 @@ public final class PptRenderer {
     }
 
     // A slide POI cannot draw whole is drawn again shape by shape, leaving out only what fails
-    private static List<PDFormXObject> draw(RenderJob job, HSLFSlide slide, SlideText text, float w, float h)
-            throws IOException {
+    private static List<PDFormXObject> draw(RenderJob job, HSLFSlide slide, SlideFooters footers, SlideText text,
+            float w, float h) throws IOException {
+        List<HSLFTextShape> extra = footerShapes(slide, footers);
         try {
-            return List.of(SafeImageRenderer.drawForm(job.document(), slide, w, h, text));
+            List<PDFormXObject> forms = new ArrayList<>();
+            forms.add(SafeImageRenderer.drawForm(job.document(), slide, w, h, text));
+            if (!extra.isEmpty()) {
+                forms.add(SafeImageRenderer.drawShapes(job.document(), slide, extra, w, h, text));
+            }
+            return forms;
         } catch (InterruptedIOException e) {
             throw e;
         } catch (IOException | RuntimeException | StackOverflowError e) {
@@ -132,6 +140,15 @@ public final class PptRenderer {
             job.losePart();
         }
         return forms;
+    }
+
+    private static List<HSLFTextShape> footerShapes(HSLFSlide slide, SlideFooters footers) {
+        try {
+            footers.writeFooter(slide);
+            return footers.slideNumbers(slide);
+        } catch (RuntimeException e) {
+            return List.of();
+        }
     }
 
     private static void info(RenderJob job, HSLFSlideShow ppt) {

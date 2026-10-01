@@ -188,6 +188,31 @@ class PptSlideFixesTest {
         assertFalse(pageText(convert("omitted.ppt", omitTitlePlaceholders(shown)), 1).contains("Deck footer"));
     }
 
+    @Test
+    void footerPlaceholdersShowTheFooterTextAndSlideNumber() throws IOException {
+        byte[] ppt = deck(p -> {
+            for (int i = 0; i < 2; i++) {
+                text(p.createSlide(), "Body " + i, 60, 60, 400, 60);
+            }
+            p.getSlideHeadersFooters().setFootersText("Deck footer");
+            p.getSlideHeadersFooters().setFooterVisible(true);
+            p.getSlideHeadersFooters().setSlideNumberVisible(true);
+            for (HSLFShape shape : p.getSlides().get(0).getMasterSheet().getShapes()) {
+                if (shape instanceof HSLFTextShape t && (t.getPlaceholder() == Placeholder.FOOTER
+                        || t.getPlaceholder() == Placeholder.SLIDE_NUMBER)) {
+                    t.setText("*");
+                }
+            }
+        });
+        Path pdf = convert("footers.ppt", ppt);
+        for (int page = 1; page <= 2; page++) {
+            String text = pageText(pdf, page);
+            assertTrue(text.contains("Deck footer"), text);
+            assertTrue(text.contains(String.valueOf(page)), text);
+            assertFalse(text.contains("*"), text);
+        }
+    }
+
     private static byte[] omitTitlePlaceholders(byte[] ppt) throws IOException {
         try (POIFSFileSystem fs = new POIFSFileSystem(new ByteArrayInputStream(ppt))) {
             byte[] stream;
