@@ -95,4 +95,26 @@ class PrintEdgesTest {
         assertTrue(full >= 4, "strokes at 100%: " + full);
         assertEquals(0, scaled);
     }
+
+    @Test
+    void aStrictSheetKeepsItsPageSetup() throws Exception {
+        String cols = "<cols><col min=\"1\" max=\"2\" width=\"60\" customWidth=\"1\"/></cols>";
+        String sheet = "<worksheet xmlns=\"http://purl.oclc.org/ooxml/spreadsheetml/main\" xmlns:r=\""
+                + "http://purl.oclc.org/ooxml/officeDocument/relationships\"><sheetPr><pageSetUpPr fitToPage=\"1\"/>"
+                + "</sheetPr>" + cols + "<sheetData><row r=\"1\">" + RawXlsx.inline("A1", "Left")
+                + RawXlsx.inline("B1", "Right") + "</row></sheetData><pageSetup paperSize=\"9\" fitToHeight=\"0\"/>"
+                + "</worksheet>";
+        XlsxTesting.Converted c = XlsxTesting.convert(dir, "strict.xlsx", new RawXlsx().sheet("S", sheet).bytes());
+        assertEquals(1, c.pages().size());
+        try (PDDocument doc = Loader.loadPDF(dir.resolve("strict.xlsx.pdf").toFile())) {
+            float[] x = new float[2];
+            new org.apache.pdfbox.text.PDFTextStripper() {
+                @Override
+                protected void writeString(String text, List<org.apache.pdfbox.text.TextPosition> p) {
+                    x[text.startsWith("Left") ? 0 : 1] = p.get(0).getXDirAdj();
+                }
+            }.getText(doc);
+            assertTrue(x[1] - x[0] > 200 && x[1] < 500, "text starts " + x[0] + " and " + x[1]);
+        }
+    }
 }
