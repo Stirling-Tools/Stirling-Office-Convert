@@ -94,6 +94,16 @@ public final class PptRenderer {
             RtlParagraphs.apply(ppt);
         } catch (RuntimeException e) {
             return;
+        } finally {
+            shadows(ppt);
+        }
+    }
+
+    private static void shadows(HSLFSlideShow ppt) {
+        try {
+            ShapeShadows.apply(ppt);
+        } catch (RuntimeException e) {
+            return;
         }
     }
 

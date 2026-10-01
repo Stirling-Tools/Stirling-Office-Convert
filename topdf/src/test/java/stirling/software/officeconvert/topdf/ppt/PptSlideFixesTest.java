@@ -213,6 +213,33 @@ class PptSlideFixesTest {
         }
     }
 
+    @Test
+    void aShapeShadowIsDrawnWhenItsFlagIsOnAndOnlyThen() throws IOException {
+        byte[] ppt = deck(p -> {
+            HSLFSlide slide = p.createSlide();
+            for (int i = 0; i < 2; i++) {
+                HSLFAutoShape r = new HSLFAutoShape(ShapeType.RECT);
+                r.setAnchor(new Rectangle2D.Double(100 + 300 * i, 100, 100, 100));
+                r.setFillColor(Color.BLUE);
+                r.setLineColor(null);
+                r.setEscherProperty(org.apache.poi.ddf.EscherPropertyTypes.SHADOWSTYLE__SHADOWOBSURED,
+                        i == 0 ? 0x20002 : 0x20000);
+                if (i == 1) {
+                    r.setEscherProperty(org.apache.poi.ddf.EscherPropertyTypes.SHADOWSTYLE__TYPE, 0);
+                    r.setEscherProperty(org.apache.poi.ddf.EscherPropertyTypes.SHADOWSTYLE__OFFSETX, 50_800);
+                    r.setEscherProperty(org.apache.poi.ddf.EscherPropertyTypes.SHADOWSTYLE__OFFSETY, 50_800);
+                }
+                slide.addShape(r);
+            }
+        });
+        Path pdf = convert("shadow.ppt", ppt);
+        try (PDDocument d = Loader.loadPDF(pdf.toFile())) {
+            java.awt.image.BufferedImage img = new org.apache.pdfbox.rendering.PDFRenderer(d).renderImageWithDPI(0, 72);
+            assertEquals(0x808080, img.getRGB(201, 150) & 0xFFFFFF);
+            assertEquals(0xFFFFFF, img.getRGB(502, 150) & 0xFFFFFF);
+        }
+    }
+
     private static byte[] omitTitlePlaceholders(byte[] ppt) throws IOException {
         try (POIFSFileSystem fs = new POIFSFileSystem(new ByteArrayInputStream(ppt))) {
             byte[] stream;
