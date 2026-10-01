@@ -390,7 +390,8 @@ final class TextBody {
         pageBreak = false;
         WordLists.Chain chain = list == null ? null : list.chain();
         int level = list == null ? 0 : list.level();
-        if (chain == null && heading && list == null) {
+        if (chain == null && heading && list == null
+                && !"".equals(w.styles.inherited("paragraph", name, scope, Ns.STYLE, "list-style-name"))) {
             int outline = Dom.integer(p, Ns.TEXT, "outline-level", 0);
             if (outline >= 1 && w.outlineNumbered(outline - 1)) {
                 chain = w.outlineChain();

@@ -154,6 +154,21 @@ class OdtTest {
     }
 
     @Test
+    void aHeadingStyleWithAnEmptyListStyleIsNotOutlineNumbered() throws IOException {
+        String styles = OdfFixtures.styles("<style:style style:name=\"Manual\" style:family=\"paragraph\""
+                + " style:default-outline-level=\"1\" style:list-style-name=\"\"/><style:style style:name=\"Numbered\""
+                + " style:family=\"paragraph\" style:default-outline-level=\"1\"/><text:outline-style"
+                + " style:name=\"Outline\"><text:outline-level-style text:level=\"1\" style:num-format=\"1\""
+                + " style:num-suffix=\".\"/></text:outline-style>", "", "");
+        String xml = document(odt("", "<text:h text:style-name=\"Manual\" text:outline-level=\"1\">1.<text:tab/>Typed</text:h>"
+                + "<text:h text:style-name=\"Numbered\" text:outline-level=\"1\">Counted</text:h>", styles));
+        int typed = xml.indexOf("Typed");
+        int counted = xml.indexOf("Counted");
+        assertFalse(xml.substring(0, typed).contains("<w:numPr>"), xml);
+        assertTrue(xml.substring(typed, counted).contains("<w:numPr>"), xml);
+    }
+
+    @Test
     void spannedCellsBecomeMergedCells() throws IOException {
         String body = "<table:table><table:table-column table:number-columns-repeated=\"2\"/><table:table-row>"
                 + "<table:table-cell table:number-columns-spanned=\"2\"><text:p>wide</text:p></table:table-cell>"
