@@ -232,6 +232,23 @@ class RtfPackageTest {
     }
 
     @Test
+    void libreOfficeShapeFieldsAndWordArt() throws IOException {
+        String png = HexFormat.of().formatHex(Fixtures.png(2, 2, Color.RED));
+        String inline = "{\\field{\\*\\fldinst SHAPE }{\\fldrslt{\\shp{\\*\\shpinst\\shpleft0\\shptop-1440\\shpright1440"
+                + "\\shpbottom-2\\shpbxignore\\shpbyignore{\\sp{\\sn shapeType}{\\sv 75}}{\\sp{\\sn posrelh}{\\sv 3}}"
+                + "{\\sp{\\sn pib}{\\sv {\\pict\\pngblip " + png + "}}}}}}}";
+        String negative = "{\\shp{\\*\\shpinst\\shpleft-1000\\shptop-900\\shpright100\\shpbottom100"
+                + "{\\sp{\\sn shapeType}{\\sv 1}}{\\sp{\\sn fillColor}{\\sv 255}}}}";
+        String art = "{\\shp{\\*\\shpinst\\shpleft0\\shptop0\\shpright4000\\shpbottom2000{\\sp{\\sn shapeType}{\\sv 136}}"
+                + "{\\sp{\\sn fillColor}{\\sv 12632256}}{\\sp{\\sn gtextUNICODE}{\\sv DRAFT}}}}";
+        String b = convert(HEAD + "{\\*\\generator LibreOffice}\\pard " + inline + negative + art + "x\\par}").body();
+        assertTrue(b.contains("<wp:inline") && b.contains("cx=\"914400\""), b);
+        assertTrue(b.contains("<wp:positionH relativeFrom=\"margin\"><wp:posOffset>-635000<"), b);
+        assertTrue(b.contains("<wp:positionV relativeFrom=\"paragraph\"><wp:posOffset>-571500<"), b);
+        assertTrue(b.contains(">DRAFT<") && b.contains("<w:color w:val=\"C0C0C0\"/>"), b);
+    }
+
+    @Test
     void pageBackgroundAndPortraitSizedLandscape() throws IOException {
         Pkg p = convert(HEAD + "{\\*\\background{\\shp{\\*\\shpinst{\\sp{\\sn fillColor}{\\sv 15790320}}}}}"
                 + "\\landscape\\paperw8419\\paperh11906\\pard x\\par}");
@@ -280,7 +297,7 @@ class RtfPackageTest {
         Pkg p = convert(HEAD + "{\\*\\themedata 504b0304}{\\*\\datastore 0105}{\\*\\xmlnstbl {\\xmlns1 http://x}}"
                 + "{\\*\\template C:\\\\t.dot}{\\info{\\title The title}{\\author Someone}}{\\*\\unknownthing junk}"
                 + "{\\object\\objemb{\\*\\objclass Excel}{\\*\\objdata 0102}{\\result shown}}"
-                + "\\pard visible\\par}");
+                + "\\rsidroot123\\jexpand\\trackmoves0\\ilfomacatclnup0\\wptab\\pard visible\\par}");
         String b = p.body();
         assertTrue(b.contains("shownvisible"), b);
         for (String junk : new String[] {"504b", "0105", "xmlns1", "t.dot", "junk", "Excel", "Someone"}) {

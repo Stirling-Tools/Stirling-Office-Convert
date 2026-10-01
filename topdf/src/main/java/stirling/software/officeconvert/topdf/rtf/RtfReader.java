@@ -17,19 +17,17 @@ final class RtfReader {
     private static final Set<String> SKIPPED = Set.of("nonesttables", "pn", "pnseclvl", "xe", "tc", "tcn", "txe",
             "bxe", "rxe", "pxe", "annotation", "atnid", "atnauthor", "atrfstart", "atrfend", "atntime", "atnref",
             "atndate", "atnicn", "atnparent", "bkmkstart", "bkmkend", "template", "revtbl", "rsidtbl", "xmlnstbl",
-            "datastore", "themedata", "colorschememapping", "latentstyles", "userprops", "docvar",
-            "ftnsep", "ftnsepc", "ftncn", "aftnsep", "aftnsepc", "aftncn", "pgdsctbl", "comment", "doccomm",
-            "operator", "company", "manager", "category", "hlinkbase", "fchars", "lchars", "protusertbl",
-            "password", "passwordhash", "wgrffmtfilter", "do", "panose", "fname", "file", "filetbl",
-            "blipuid", "picprop", "mhtmltag", "htmltag", "mmathPr", "formfield", "datafield",
-            "levelnumbers", "listname", "listpicture", "pntxta", "pntxtb", "objdata", "objclass", "objname",
-            "objalias", "objsect", "objitem", "objtopic", "oleclsid", "nonshppict", "shprslt", "nextfile",
-            "private", "ebcstart", "ebcend", "bkmkcolf", "bkmkcoll", "fldtype", "ffdeftext",
+            "datastore", "themedata", "colorschememapping", "latentstyles", "userprops", "docvar", "ftnsep",
+            "ftnsepc", "ftncn", "aftnsep", "aftnsepc", "aftncn", "pgdsctbl", "comment", "doccomm", "operator",
+            "company", "manager", "category", "hlinkbase", "fchars", "lchars", "protusertbl", "password",
+            "passwordhash", "wgrffmtfilter", "do", "panose", "fname", "file", "filetbl", "blipuid", "picprop",
+            "mhtmltag", "htmltag", "mmathPr", "formfield", "datafield", "levelnumbers", "listname", "listpicture",
+            "pntxta", "pntxtb", "objdata", "objclass", "objname", "objalias", "objsect", "objitem", "objtopic",
+            "oleclsid", "nonshppict", "shprslt", "nextfile", "private", "ebcstart", "ebcend", "fldtype", "ffdeftext",
             "ffformat", "ffhelptext", "ffstattext", "ffentrymcr", "ffexitmcr", "ffname", "ffl", "pgptbl",
-            "oldcprops", "oldpprops", "oldtprops", "oldsprops", "factoidname", "svb", "gridtbl", "trackmoves", "trackformatting", "mvfmf", "mvfml", "mvtof", "mvtol", "dptxbxtext",
-            "keycode", "macrocode", "jexpand", "xform", "linkval",
-            "propname", "staticval", "pnfont", "fontemb", "fontfile", "rsidroot", "ilfomacatclnup",
-            "wpjst", "wptab");
+            "oldcprops", "oldpprops", "oldtprops", "oldsprops", "factoidname", "svb", "gridtbl", "mvfmf", "mvfml",
+            "mvtof", "mvtol", "dptxbxtext", "keycode", "xform", "linkval", "propname", "staticval", "fontemb",
+            "fontfile");
 
     private final RtfTokenizer tok;
 

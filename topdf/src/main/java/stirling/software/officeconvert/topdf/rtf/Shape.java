@@ -25,6 +25,7 @@ final class Shape {
     int wrapSide;
     boolean behind;
     int z;
+    boolean inline;
     final Map<String, String> props = new HashMap<>();
     PictureXml.Image picture;
     String text;

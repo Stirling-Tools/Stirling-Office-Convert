@@ -57,6 +57,9 @@ final class ShapeXml {
             return null;
         }
         int id = media.nextId();
+        if (root.inline && root == s) {
+            return inline(s, type, line, w, h, rels, id);
+        }
         boolean behind = root.behind || root.flag("fBehindDocument", false);
         int wrap = root.wrap < 0 ? 3 : root.wrap;
         StringBuilder x = new StringBuilder(1024);
@@ -95,6 +98,38 @@ final class ShapeXml {
         return x.append("</wp:anchor></w:drawing>").toString();
     }
 
+    private String inline(Shape s, int type, boolean line, long w, long h, Rels rels, int id) {
+        StringBuilder x = new StringBuilder(1024).append("<w:drawing><wp:inline distT=\"0\" distB=\"0\" distL=\"0\"")
+                .append(" distR=\"0\"><wp:extent cx=\"").append(w * EMU).append("\" cy=\"").append(h * EMU)
+                .append("\"/><wp:effectExtent l=\"0\" t=\"0\" r=\"0\" b=\"0\"/><wp:docPr id=\"").append(id)
+                .append("\" name=\"Shape ").append(id).append("\"/>");
+        if (s.picture != null) {
+            String rid = rels.add("image", s.picture.target(), false);
+            x.append(PictureXml.graphic(new PictureXml.Image(s.picture.target(), w * EMU, h * EMU, s.picture.crop()),
+                    rid, id));
+        } else {
+            x.append(shape(s, type, line, w, h));
+        }
+        return x.append("</wp:inline></w:drawing>").toString();
+    }
+
+    private static String wordArt(Shape s, String text, long h) {
+        int bgr = s.integer("fillColor", 0xC0C0C0);
+        int rgb = bgr >>> 24 != 0 ? 0xC0C0C0 : (bgr & 0xFF) << 16 | (bgr >> 8 & 0xFF) << 8 | bgr >> 16 & 0xFF;
+        long size = Math.max(2, Math.min(3276, h / 10 * 3 / 2));
+        StringBuilder b = new StringBuilder("<w:p><w:pPr><w:spacing w:before=\"0\" w:after=\"0\" w:line=\"240\""
+                + " w:lineRule=\"auto\"/><w:jc w:val=\"center\"/></w:pPr><w:r><w:rPr>");
+        String font = s.props.get("gtextFont");
+        if (font != null && !font.isBlank()) {
+            b.append("<w:rFonts w:ascii=\"").append(Xml.attr(font)).append("\" w:hAnsi=\"").append(Xml.attr(font))
+                    .append("\"/>");
+        }
+        b.append("<w:color w:val=\"").append(Shading.hex(rgb)).append("\"/><w:sz w:val=\"").append(size)
+                .append("\"/></w:rPr><w:t xml:space=\"preserve\">");
+        Xml.text(text, b);
+        return b.append("</w:t></w:r></w:p>").toString();
+    }
+
     private static long clamp(long v) {
         return Math.max(0, Math.min(MAX_TWIPS, v));
     }
@@ -125,7 +160,7 @@ final class ShapeXml {
         String rel = s.props.get("posrelh");
         if (rel != null && (s.bxIgnore || s.bx == null)) {
             if (libreOffice && "3".equals(rel) && !s.props.containsKey("posrelv")) {
-                return "page";
+                return s.left < 0 ? "margin" : "page";
             }
             return switch (s.integer("posrelh", 2)) {
                 case 0 -> "margin";
@@ -134,7 +169,7 @@ final class ShapeXml {
                 default -> "column";
             };
         }
-        return s.bx != null ? s.bx : "page";
+        return s.bx != null ? s.bx : libreOffice && s.left < 0 ? "margin" : "page";
     }
 
     private String vertical(Shape s) {
@@ -147,7 +182,7 @@ final class ShapeXml {
                 default -> "paragraph";
             };
         }
-        return s.by != null ? s.by : "page";
+        return s.by != null ? s.by : libreOffice && s.top < 0 ? "paragraph" : "page";
     }
 
     private String shape(Shape s, int type, boolean line, long w, long h) {
@@ -171,15 +206,19 @@ final class ShapeXml {
         x.append("><a:off x=\"0\" y=\"0\"/><a:ext cx=\"").append(w * EMU).append("\" cy=\"").append(h * EMU)
                 .append("\"/></a:xfrm><a:prstGeom prst=\"").append(line ? "line" : geometry(type))
                 .append("\"><a:avLst/></a:prstGeom>");
-        boolean filled = libreOffice && !s.props.containsKey("fillColor") && !s.props.containsKey("fillType")
-                ? s.flag("fFilled", false) : s.flag("fFilled", true);
+        String art = s.props.get("gtextUNICODE");
+        if (art != null && !art.isBlank() && s.text == null) {
+            s.text = wordArt(s, art, h);
+        }
+        boolean unstated = !s.props.containsKey("fillColor") && !s.props.containsKey("fillType");
+        boolean filled = art == null && (libreOffice && unstated ? s.flag("fFilled", false) : s.flag("fFilled", true));
         if (!line && filled) {
             x.append("<a:solidFill>").append(color(s.integer("fillColor", 0xFFFFFF), 0xFFFFFF,
                     s.integer("fillOpacity", 65536))).append("</a:solidFill>");
         } else {
             x.append("<a:noFill/>");
         }
-        if (s.flag("fLine", true)) {
+        if (art == null && s.flag("fLine", true)) {
             x.append("<a:ln w=\"").append(Math.max(0, s.integer("lineWidth", 9525))).append("\"><a:solidFill>")
                     .append(color(s.integer("lineColor", 0), 0, 65536)).append("</a:solidFill>");
             String dash = dash(s.integer("lineDashing", 0));

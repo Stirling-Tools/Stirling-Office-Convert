@@ -222,6 +222,10 @@ final class Embeds {
                 && parent.dest != Dest.OBJECT) {
             return;
         }
+        if (doc.libreOffice && done.field != null && done.field.inst.toString().strip().startsWith("SHAPE")
+                && s.left == 0 && s.bottom <= 0 && s.bottom >= -40 && s.top < s.bottom) {
+            s.inline = true;
+        }
         List<String> drawings = new ArrayList<>();
         ShapeXml.drawings(s, parent.story.rels, doc.media, doc.libreOffice, drawings);
         for (String d : drawings) {
