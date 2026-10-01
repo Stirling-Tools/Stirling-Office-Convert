@@ -94,8 +94,24 @@ final class Definitions {
             String n = fontName.toString().strip();
             if (!n.isEmpty()) {
                 font.name = n;
+                if (font.charset < 0 && font.codePage <= 0) {
+                    suffix(font);
+                }
             }
             fontDone = true;
+        }
+    }
+
+    private static final String[][] SUFFIXES = {{" CE", "238"}, {" Cyr", "204"}, {" Greek", "161"},
+        {" Tur", "162"}, {" Baltic", "186"}, {" (Hebrew)", "177"}, {" (Arabic)", "178"}, {" (Vietnamese)", "163"}};
+
+    private static void suffix(FontTable.Font f) {
+        for (String[] s : SUFFIXES) {
+            if (f.name.length() > s[0].length() && f.name.endsWith(s[0])) {
+                f.name = f.name.substring(0, f.name.length() - s[0].length()).strip();
+                f.charset = Integer.parseInt(s[1]);
+                return;
+            }
         }
     }
 

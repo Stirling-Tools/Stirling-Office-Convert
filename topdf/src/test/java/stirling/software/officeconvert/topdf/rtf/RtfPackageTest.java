@@ -76,6 +76,13 @@ class RtfPackageTest {
     }
 
     @Test
+    void fontNameSuffixesPickTheCodePage() throws IOException {
+        String b = convert("{\\rtf1\\ansi{\\fonttbl{\\f1 Arial Cyr;}{\\f2 Arial CE;}}\\pard\\f1 \\'c0\\'c1\\par"
+                + "\\pard\\f2 \\'c3\\par}").body();
+        assertTrue(b.contains("w:ascii=\"Arial\"") && b.contains(">\u0410\u0411<") && b.contains(">\u0102<"), b);
+    }
+
+    @Test
     void stylesInheritThroughBasedOn() throws IOException {
         Pkg p = convert(HEAD + "{\\stylesheet{\\s0\\f1\\fs22 Normal;}{\\s1\\sbasedon0\\snext0\\b\\fs32\\keepn"
                 + " heading 1;}{\\*\\cs10\\additive\\i Emphasis;}}\\pard\\plain\\s1 Title\\par"
