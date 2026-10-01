@@ -201,8 +201,13 @@ final class WordDrawings {
     }
 
     private String borderLine(Props g) {
-        String spec = g.get("fo:border");
-        Border border = Border.parse(spec, g.get("style:border-line-width"));
+        Border border = null;
+        for (String side : new String[] {"top", "left", "bottom", "right"}) {
+            border = Border.parse(g.get("fo:border-" + side), g.get("style:border-line-width-" + side));
+            if (border != null) {
+                break;
+            }
+        }
         if (border == null) {
             return null;
         }

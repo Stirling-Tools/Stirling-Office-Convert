@@ -321,4 +321,19 @@ class OdtTest {
         String numbering = OdfFixtures.rewrite(p).get("word/numbering.xml");
         assertTrue(numbering.contains("w:ascii=\"Symbol\""), numbering);
     }
+
+    @Test
+    void theNearestLineSpacingKindWins() throws IOException {
+        String styles = OdfFixtures.styles("<style:style style:name=\"Standard\" style:family=\"paragraph\">"
+                + "<style:paragraph-properties fo:line-height=\"115%\" fo:border=\"0.5pt solid #000000\"/></style:style>",
+                "", "");
+        String auto = "<style:style style:name=\"P1\" style:family=\"paragraph\" style:parent-style-name=\"Standard\">"
+                + "<style:paragraph-properties style:line-height-at-least=\"1pt\" fo:border-top=\"none\""
+                + " fo:margin=\"0.1in\"/></style:style>";
+        String xml = document(odt(auto, "<text:p text:style-name=\"P1\">x</text:p>", styles));
+        assertTrue(xml.contains("w:line=\"20\" w:lineRule=\"atLeast\""), xml);
+        assertFalse(xml.contains("<w:top w:val"), xml);
+        assertTrue(xml.contains("<w:bottom w:val=\"single\""), xml);
+        assertTrue(xml.contains("w:before=\"144\" w:after=\"144\""), xml);
+    }
 }

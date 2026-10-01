@@ -18,6 +18,16 @@ final class Props {
     private static final Set<String> RELATIVE_LENGTHS = Set.of("fo:margin-left", "fo:margin-right", "fo:margin-top",
             "fo:margin-bottom", "fo:text-indent");
 
+    private static final Map<String, String[]> SHORTHANDS = Map.of(
+            "fo:margin", new String[] {"fo:margin-top", "fo:margin-bottom", "fo:margin-left", "fo:margin-right"},
+            "fo:padding", new String[] {"fo:padding-top", "fo:padding-bottom", "fo:padding-left", "fo:padding-right"},
+            "fo:border", new String[] {"fo:border-top", "fo:border-bottom", "fo:border-left", "fo:border-right"},
+            "style:border-line-width", new String[] {"style:border-line-width-top", "style:border-line-width-bottom",
+                "style:border-line-width-left", "style:border-line-width-right"});
+
+    private static final Set<String> LINE_SPACING = Set.of("fo:line-height", "style:line-height-at-least",
+            "style:line-spacing");
+
     private static final String[][] FONT_KEYS = {{"font-name", "font-family", Ns.FO},
         {"font-name-asian", "font-family-asian", Ns.STYLE}, {"font-name-complex", "font-family-complex", Ns.STYLE}};
 
@@ -75,6 +85,18 @@ final class Props {
     void put(String key, String value) {
         if (value == null) {
             return;
+        }
+        String[] sides = SHORTHANDS.get(key);
+        if (sides != null) {
+            for (String side : sides) {
+                put(side, value);
+            }
+            return;
+        }
+        if (LINE_SPACING.contains(key)) {
+            for (String other : LINE_SPACING) {
+                attrs.remove(other);
+            }
         }
         if (Length.isPercent(value) && (RELATIVE_SIZES.contains(key) || RELATIVE_LENGTHS.contains(key))) {
             double base = Length.pt(attrs.get(key), Double.NaN);
