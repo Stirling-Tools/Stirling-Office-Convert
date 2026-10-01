@@ -25,6 +25,7 @@ final class Group {
     boolean textbox;
     boolean background;
     boolean math;
+    RtfMath.Node mathNode;
 
     static final class Sp {
         final StringBuilder name = new StringBuilder();
@@ -34,6 +35,8 @@ final class Group {
     static final class Field {
         final StringBuilder inst = new StringBuilder();
         boolean result;
+        Object resultPara;
+        int resultLength;
     }
 
     static final class Note {
@@ -68,6 +71,7 @@ final class Group {
         g.key = key;
         g.background = background;
         g.math = math;
+        g.mathNode = mathNode;
         return g;
     }
 }

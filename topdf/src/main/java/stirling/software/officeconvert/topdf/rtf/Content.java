@@ -69,6 +69,25 @@ final class Content {
         }
     }
 
+    void math(Group g, String xml) {
+        if (g.story != null) {
+            para(g).math(xml);
+        }
+    }
+
+    Object para(Group g, int[] length) {
+        if (g.story == null) {
+            return null;
+        }
+        ParaBuilder p = para(g);
+        length[0] = p.length();
+        return p;
+    }
+
+    String rPr(Group g) {
+        return props.rPr(g.chp);
+    }
+
     void field(Group g, String instr) {
         if (g.story != null) {
             para(g).raw("<w:fldSimple w:instr=\"" + instr + "\"><w:r>" + props.rPr(g.chp)

@@ -245,6 +245,41 @@ class RtfPackageTest {
     }
 
     @Test
+    void propertyFieldsWithoutAResultShowTheDocumentInfo() throws IOException {
+        String info = "{\\info{\\title Plan B}{\\author Ann Example}{\\revtim\\yr2021\\mo3\\dy4}}";
+        Pkg p = convert(HEAD.replace("{\\fonttbl", info + "{\\fonttbl") + "\\pard By {\\field{\\*\\fldinst AUTHOR"
+                + " \\\\* Upper}}: {\\field{\\*\\fldinst TITLE}} in {\\field{\\*\\fldinst DATE \\\\@ \"MMMM\" \\\\* Upper}}"
+                + " {\\field{\\*\\fldinst USERNAME}}\\par}");
+        assertTrue(p.body().contains("ANN EXAMPLE") && p.body().contains("Plan B") && p.body().contains("MARCH"),
+                p.body());
+    }
+
+    @Test
+    void officeMathBecomesOmml() throws IOException {
+        Pkg p = convert(HEAD + "\\pard Sum {\\mmath{\\*\\moMath{\\mnary{\\mnaryPr{\\mchr \\u8721 ?}"
+                + "{\\mctrlPr\\f0 }}{\\msub{\\mr\\mscr0\\msty2 i}}{\\msup}{\\me{\\i{\\mr\\mscr0\\msty2 x}}}}"
+                + "{\\mf{\\mfPr{\\mtype lin}}{\\mnum{\\mr a}}{\\mden{\\mr \\mnor b c}}}{\\md{\\mdPr"
+                + "{\\mbegChr [}{\\mendChr }}{\\me{\\mr y}}}}}{\\*\\mmathPict{\\pict\\pngblip 00}} end\\par}");
+        String b = p.body();
+        assertTrue(b.contains("<m:oMath><m:nary><m:naryPr><m:chr m:val=\"\u2211\"/></m:naryPr><m:sub><m:r><m:rPr>"
+                + "<m:scr m:val=\"roman\"/><m:sty m:val=\"i\"/></m:rPr>"), b);
+        assertTrue(b.contains("<m:f><m:fPr><m:type m:val=\"lin\"/></m:fPr><m:num><m:r>"), b);
+        assertTrue(b.contains("<m:rPr><m:nor/></m:rPr>") && b.contains("b c</m:t>"), b);
+        assertTrue(b.contains("<m:begChr m:val=\"[\"/><m:endChr m:val=\"\"/>"), b);
+        assertTrue(b.contains("Sum") && b.contains("end") && !b.contains("pngblip") && !b.contains("<w:drawing"), b);
+        assertFalse(b.contains("<w:t xml:space=\"preserve\">ix"), b);
+    }
+
+    @Test
+    void eqFieldsWithoutAResultBecomeOmml() throws IOException {
+        Pkg p = convert(HEAD + "\\pard Half is {\\field{\\*\\fldinst EQ \\\\f(1,2)}{\\fldrslt }} and "
+                + "{\\field{\\*\\fldinst EQ \\\\r(x)}{\\fldrslt kept}}\\par}");
+        String b = p.body();
+        assertTrue(b.contains("<m:f><m:num>") && b.contains(">1</w:t>") && b.contains(">2</w:t>"), b);
+        assertTrue(b.contains("kept") && !b.contains("<m:rad>"), b);
+    }
+
+    @Test
     void macAndWindowsBitmapPicturesAreKept() throws IOException {
         String pict = "0000" + "0000000000140014" + "001102FF0C00FFFF" + "00".repeat(22) + "001AFFFF00000000"
                 + "00310000000000140014" + "00FF";

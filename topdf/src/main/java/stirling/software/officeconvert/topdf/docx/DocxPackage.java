@@ -49,10 +49,26 @@ final class DocxPackage {
 
     private int missingParts;
 
+    private FieldValues fieldValues;
+
     DocxPackage(OfficeZip zip, RenderJob job) throws IOException {
         this.zip = zip;
         this.job = job;
         this.main = zip.mainPart();
+    }
+
+    FieldValues fieldValues() {
+        if (fieldValues == null) {
+            try {
+                fieldValues = FieldValues.read(zip, job == null ? null : job.options().displayName());
+            } catch (java.io.InterruptedIOException e) {
+                Thread.currentThread().interrupt();
+                fieldValues = FieldValues.NONE;
+            } catch (IOException | RuntimeException e) {
+                fieldValues = FieldValues.NONE;
+            }
+        }
+        return fieldValues;
     }
 
     // Content a bound refused to read: say so and mark the PDF partial

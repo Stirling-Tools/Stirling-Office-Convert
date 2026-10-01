@@ -42,6 +42,11 @@ final class ParaBuilder {
         runs.append(xml);
     }
 
+    void math(String xml) {
+        raw(xml);
+        content = true;
+    }
+
     boolean empty() {
         return !content;
     }

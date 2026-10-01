@@ -63,7 +63,7 @@ final class ConvertHandler implements HttpHandler {
         Done run() throws Exception;
     }
 
-    private enum Input { PDF, OFFICE }
+    private enum Input { PDF, OFFICE, TEXT }
 
     private static final String PDF = "application/pdf";
 
@@ -138,6 +138,7 @@ final class ConvertHandler implements HttpHandler {
         final Path dir;
         final Path upload;
         Path input;
+        String name;
         private final String client;
         private long bytes;
         private boolean converting;
@@ -232,6 +233,7 @@ final class ConvertHandler implements HttpHandler {
                 }
                 Job current = new Job(Files.createTempDirectory("office-convert-app"), client);
                 job = current;
+                current.name = q.get("name");
                 Input input = receive(ex.getRequestBody(), current);
                 if (input == Input.PDF) {
                     String target = format == null ? "docx" : format;
@@ -250,7 +252,8 @@ final class ConvertHandler implements HttpHandler {
                     if (format != null && !"pdf".equals(format)) {
                         throw new Refusal(422, "format", "Word, PowerPoint and Excel documents convert to pdf here.");
                     }
-                    String ext = officeType(current.upload);
+                    String ext = input == Input.TEXT ? OfficeFiles.textExtension(current.name)
+                            : officeType(current.upload);
                     current.input = Files.move(current.upload, current.dir.resolve("in." + ext));
                     Path out = current.dir.resolve("out.pdf");
                     Done done = convert(current, office, false, () -> toPdf(current, out, office));
@@ -381,7 +384,8 @@ final class ConvertHandler implements HttpHandler {
             return new Done(pages >= cap ? "The PDF may stop at page " + cap + ": " + capped + "." : null, pages, List.of());
         }
         OfficeToPdf.Options options = OfficeToPdf.Options.defaults().maxPages(cap)
-                .timeout(limits.timeoutSeconds() > 0 ? Duration.ofSeconds(limits.timeoutSeconds()) : Duration.ZERO);
+                .timeout(limits.timeoutSeconds() > 0 ? Duration.ofSeconds(limits.timeoutSeconds()) : Duration.ZERO)
+                .displayName(job.name);
         try {
             OfficeToPdf.Result r = OfficeToPdf.convert(job.input, out, options);
             String note = r.pageLimitReached() ? "Converted the first " + cap + " pages: " + capped + "."
@@ -587,7 +591,7 @@ final class ConvertHandler implements HttpHandler {
             if (head.length == 0) {
                 throw new Refusal(400, "empty", "The file is empty.");
             }
-            Input input = kind(head);
+            Input input = kind(head, job.name);
             keep(job, head.length);
             out.write(head);
             long total = head.length;
@@ -604,7 +608,7 @@ final class ConvertHandler implements HttpHandler {
         }
     }
 
-    private static Input kind(byte[] head) throws Refusal {
+    private static Input kind(byte[] head, String name) throws Refusal {
         if (starts(head, 0x50, 0x4b, 0x03, 0x04)) {
             return Input.OFFICE;
         }
@@ -613,6 +617,9 @@ final class ConvertHandler implements HttpHandler {
         }
         if (new String(head, StandardCharsets.ISO_8859_1).contains("%PDF-")) {
             return Input.PDF;
+        }
+        if (OfficeFiles.textExtension(name) != null) {
+            return Input.TEXT;
         }
         throw new Refusal(415, "type", OfficeFiles.NOT_OFFICE);
     }

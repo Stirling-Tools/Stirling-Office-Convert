@@ -49,6 +49,8 @@ final class WordFixture {
 
     private String title;
 
+    private java.util.Date saved;
+
     private boolean reversed;
 
     private int nFib = 0xC1;
@@ -139,7 +141,11 @@ final class WordFixture {
     }
 
     WordFixture textbox(int spid, String text) {
-        textboxes.add(new Para(List.of(run(text)), new byte[0], 0, '\r'));
+        return textbox(spid, List.of(run(text)));
+    }
+
+    WordFixture textbox(int spid, List<Run> runs) {
+        textboxes.add(new Para(runs, new byte[0], 0, '\r'));
         textboxIds.add(spid);
         return this;
     }
@@ -156,6 +162,11 @@ final class WordFixture {
 
     WordFixture title(String value) {
         title = value;
+        return this;
+    }
+
+    WordFixture saved(java.util.Date value) {
+        saved = value;
         return this;
     }
 
@@ -267,12 +278,14 @@ final class WordFixture {
         }
         if (!shapes.isEmpty()) {
             List<Integer> cps = new ArrayList<>();
-            for (int i = 0; i < ccpText && cps.size() < shapes.size(); i++) {
-                if (text.charAt(i) == '\u0008') {
+            int boxes = ccpText + ccpFtn + ccpHdd;
+            for (int i = 0; i < text.length() && cps.size() < shapes.size(); i++) {
+                if (text.charAt(i) == '\u0008' && (i < ccpText || i >= boxes && ccpTxbx > 0)) {
                     cps.add(i);
                 }
             }
-            fcLcb[40] = put(table, ShapeFixture.fspa(shapes, cps, ccpText));
+            int lastCp = cps.isEmpty() ? ccpText : Math.max(ccpText, cps.get(cps.size() - 1) + 1);
+            fcLcb[40] = put(table, ShapeFixture.fspa(shapes, cps, lastCp));
             List<ShapeFixture.Shape> layered = new ArrayList<>(shapes);
             if (reversed) {
                 java.util.Collections.reverse(layered);
@@ -286,7 +299,10 @@ final class WordFixture {
             for (int i = 0; i <= k; i++) {
                 plc.putInt(at);
                 if (i < k) {
-                    at += textboxes.get(i).runs().get(0).text().length() + 1;
+                    for (Run r : textboxes.get(i).runs()) {
+                        at += r.text().length();
+                    }
+                    at++;
                 }
             }
             plc.putInt(at + 1);
@@ -340,6 +356,9 @@ final class WordFixture {
                         org.apache.poi.hpsf.PropertySetFactory.newSummaryInformation();
                 si.setTitle(title);
                 si.setAuthor("Fixture Author");
+                if (saved != null) {
+                    si.setLastSaveDateTime(saved);
+                }
                 ByteArrayOutputStream props = new ByteArrayOutputStream();
                 si.write(props);
                 fs.createDocument(new ByteArrayInputStream(props.toByteArray()),

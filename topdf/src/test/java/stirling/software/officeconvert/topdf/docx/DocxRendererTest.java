@@ -195,6 +195,71 @@ class DocxRendererTest {
     }
 
     @Test
+    void fieldsWithoutAResultShowTheDocumentsStoredProperties() throws IOException {
+        String body = "<w:p><w:r><w:fldChar w:fldCharType=\"begin\"/></w:r><w:r><w:instrText xml:space=\"preserve\">"
+                + " DATE \\@ \"dddd d MMMM yyyy\" </w:instrText></w:r><w:r><w:fldChar w:fldCharType=\"end\"/></w:r>"
+                + "<w:r><w:t xml:space=\"preserve\"> made </w:t></w:r>"
+                + "<w:fldSimple w:instr=\" CREATEDATE \\@ &quot;dd/MM/yy HH:mm:ss&quot; \"/></w:p>"
+                + "<w:p><w:fldSimple w:instr=\" AUTHOR \\* Upper \\* MERGEFORMAT \"/><w:r><w:t xml:space=\"preserve\">"
+                + " | </w:t></w:r><w:fldSimple w:instr=\" TITLE \"/><w:r><w:t xml:space=\"preserve\"> | </w:t></w:r>"
+                + "<w:fldSimple w:instr=\" DOCPROPERTY &quot;Classification&quot; \"/><w:r><w:t xml:space=\"preserve\">"
+                + " | </w:t></w:r><w:fldSimple w:instr=\" NUMWORDS \"/><w:r><w:t xml:space=\"preserve\"> | </w:t></w:r>"
+                + "<w:fldSimple w:instr=\" FILENAME \"/><w:r><w:t xml:space=\"preserve\"> | </w:t></w:r>"
+                + "<w:fldSimple w:instr=\" USERNAME \"/><w:r><w:t xml:space=\"preserve\">end</w:t></w:r></w:p>"
+                + "<w:p><w:r><w:fldChar w:fldCharType=\"begin\"/></w:r><w:r><w:instrText xml:space=\"preserve\">"
+                + " IF </w:instrText></w:r><w:fldSimple w:instr=\" TITLE \"/><w:r><w:instrText xml:space=\"preserve\">"
+                + " = \"x\" \"yes\" \"no\" </w:instrText></w:r><w:r><w:fldChar w:fldCharType=\"separate\"/></w:r>"
+                + "<w:r><w:t>CACHEDIF</w:t></w:r><w:r><w:fldChar w:fldCharType=\"end\"/></w:r>"
+                + "<w:fldSimple w:instr=\" SAVEDATE \"><w:r><w:t>kept 1999</w:t></w:r></w:fldSimple></w:p>";
+        DocxDoc doc = new DocxDoc().body(body);
+        doc.zip().put("docProps/core.xml", "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
+                + "<cp:coreProperties xmlns:cp=\"http://schemas.openxmlformats.org/package/2006/metadata/core-properties\""
+                + " xmlns:dc=\"http://purl.org/dc/elements/1.1/\" xmlns:dcterms=\"http://purl.org/dc/terms/\""
+                + " xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\"><dc:title>Quarterly plan</dc:title>"
+                + "<dc:creator>Ann Example</dc:creator><dcterms:created xsi:type=\"dcterms:W3CDTF\">2020-01-02T03:04:05Z"
+                + "</dcterms:created><dcterms:modified xsi:type=\"dcterms:W3CDTF\">2021-03-04T13:05:00Z</dcterms:modified>"
+                + "</cp:coreProperties>");
+        doc.zip().put("docProps/app.xml", "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
+                + "<Properties xmlns=\"http://schemas.openxmlformats.org/officeDocument/2006/extended-properties\">"
+                + "<Words>421</Words></Properties>");
+        doc.zip().put("docProps/custom.xml", "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
+                + "<Properties xmlns=\"http://schemas.openxmlformats.org/officeDocument/2006/custom-properties\""
+                + " xmlns:vt=\"http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes\"><property"
+                + " fmtid=\"{D5CDD505-2E9C-101B-9397-08002B2CF9AE}\" pid=\"2\" name=\"Classification\"><vt:lpwstr>"
+                + "OFFICIAL</vt:lpwstr></property></Properties>");
+        doc.zip().relationship("/", "rIdCustom", "http://schemas.openxmlformats.org/officeDocument/2006/relationships/"
+                + "custom-properties", "docProps/custom.xml", false);
+        String text = DocxDoc.render(dir, "stored", doc.bytes()).text().replaceAll("\\s+", " ");
+        assertTrue(text.contains("Thursday 4 March 2021 made 02/01/20 03:04:05"), text);
+        assertTrue(text.contains("ANN EXAMPLE | Quarterly plan | OFFICIAL | 421 | stored.docx | end"), text);
+        assertTrue(text.contains("CACHEDIF") && text.contains("kept 1999") && !text.contains("Quarterly planCACHED"),
+                text);
+    }
+
+    private static DocxDoc.Word word(List<DocxDoc.Word> words, String text) {
+        for (DocxDoc.Word w : words) {
+            if (w.text().contains(text)) {
+                return w;
+            }
+        }
+        throw new AssertionError(text + " not in " + words);
+    }
+
+    @Test
+    void eqFieldsAndRtfMathAreLaidOutAsEquations() throws IOException {
+        String body = "<w:p><w:r><w:t xml:space=\"preserve\">Half </w:t></w:r><w:r><w:fldChar w:fldCharType=\"begin\"/>"
+                + "</w:r><w:r><w:instrText xml:space=\"preserve\"> EQ \\f(7,9) </w:instrText></w:r><w:r>"
+                + "<w:fldChar w:fldCharType=\"separate\"/></w:r><w:r><w:fldChar w:fldCharType=\"end\"/></w:r></w:p>";
+        List<DocxDoc.Word> words = DocxDoc.render(dir, "eq", new DocxDoc().body(body).bytes()).words();
+        assertTrue(word(words, "7").y() + 3 < word(words, "Half").y(), words.toString());
+        String rtf = "{\\rtf1\\ansi\\deff0{\\fonttbl{\\f0 Times New Roman;}}\\pard Third {\\mmath{\\*\\moMath{\\mf"
+                + "{\\mnum{\\mr 5}}{\\mden{\\mr 8}}}}}\\par}";
+        List<DocxDoc.Word> math = DocxDoc.render(dir, "math", rtf.getBytes(java.nio.charset.StandardCharsets.US_ASCII))
+                .words();
+        assertTrue(word(math, "5").y() + 3 < word(math, "Third").y(), math.toString());
+    }
+
+    @Test
     void autonumFieldsWithoutAResultNumberTheirParagraphs() throws IOException {
         StringBuilder body = new StringBuilder();
         for (String switches : new String[] {"", "", " \\s :"}) {

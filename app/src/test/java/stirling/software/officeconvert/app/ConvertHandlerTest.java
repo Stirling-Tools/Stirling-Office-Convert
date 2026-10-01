@@ -129,6 +129,19 @@ class ConvertHandlerTest {
     }
 
     @Test
+    void convertsTextAndCsvUploadsNamedAsSuch() throws Exception {
+        String url = start(60);
+        assertPdf(post(url + "?name=notes.TXT", "Plain upload text".getBytes()), "txt", "Plain upload text");
+        HttpResponse<byte[]> csv = post(url + "?name=" + java.net.URLEncoder.encode("Team list.csv",
+                java.nio.charset.StandardCharsets.UTF_8), "who,role\nAnn,lead\n".getBytes());
+        assertPdf(csv, "csv", "lead");
+        assertTrue(text(csv.body()).contains("Team list"), text(csv.body()));
+        HttpResponse<byte[]> other = post(url + "?name=notes.md", "Plain upload text".getBytes());
+        assertEquals(415, other.statusCode());
+        assertPdf(post(url + "?name=report.txt", Fixtures.docx("Word text", 1)), "docx", "Word text 1");
+    }
+
+    @Test
     void refusesFilesItCannotRead() throws Exception {
         String url = start(60);
         HttpResponse<byte[]> random = post(url, "just some text, not a document".getBytes());

@@ -74,7 +74,7 @@ public record DocumentInfo(String title, String author, String subject, String k
         return info;
     }
 
-    static String clean(String value) {
+    public static String clean(String value) {
         if (value == null) {
             return null;
         }

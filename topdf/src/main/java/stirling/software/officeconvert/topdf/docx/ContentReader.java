@@ -6,6 +6,7 @@ import java.util.Deque;
 import java.util.List;
 import java.util.Objects;
 
+import stirling.software.officeconvert.topdf.field.EqField;
 import stirling.software.officeconvert.topdf.io.ActiveContent;
 import stirling.software.officeconvert.topdf.io.Relationship;
 
@@ -21,6 +22,8 @@ final class ContentReader {
         boolean computed;
         RunProps rp;
         final StringBuilder cached = new StringBuilder();
+        List<Inline> resultOut;
+        int resultSize;
     }
 
     private final DocxPackage pkg;
@@ -483,7 +486,33 @@ final class ContentReader {
             return;
         }
         Inline.Link inner = name.equals("HYPERLINK") ? fieldLink(instr) : null;
+        if (k.child("w:r") == null && !inInstruction() && computedParentAllowsOutput()) {
+            String value = storedValue(instr);
+            if (value != null) {
+                text(value, runProps(null, paraRun), out, link);
+                return;
+            }
+        }
         inline(k.kids, out, paraRun, inner != null ? inner : link);
+    }
+
+    private void equation(FieldState f, List<Inline> out, Inline.Link link) {
+        String omml = EqField.omml(f.instr.toString(), "");
+        if (omml == null) {
+            return;
+        }
+        XEl zone;
+        try {
+            zone = XTree.parse(new java.io.ByteArrayInputStream(omml.getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+        } catch (java.io.IOException e) {
+            return;
+        }
+        RunProps rp = f.rp;
+        MathReader.read(zone, out, rp, link, drawings.fonts(), r -> r == null ? rp : runProps(r, rp));
+    }
+
+    private String storedValue(String instr) {
+        return pkg == null ? null : pkg.fieldValues().text(tokens(instr));
     }
 
     // A page field's format switch picks its number format; applying it is formatting, not execution
@@ -633,6 +662,8 @@ final class ContentReader {
                 if (!fields.isEmpty()) {
                     FieldState f = fields.peek();
                     separate(f);
+                    f.resultOut = out;
+                    f.resultSize = out.size();
                 }
             }
             case "end" -> {
@@ -642,8 +673,16 @@ final class ContentReader {
                     if (!f.separated) {
                         separate(f);
                     }
-                    if (!result && "AUTONUM".equals(f.name) && !inInstruction() && computedParentAllowsOutput()) {
+                    boolean empty = !result || f.resultOut == out && out.size() == f.resultSize;
+                    if (empty && "EQ".equals(f.name) && !inInstruction() && computedParentAllowsOutput()) {
+                        equation(f, out, fieldLinkInScope(link));
+                    } else if (!result && "AUTONUM".equals(f.name) && !inInstruction() && computedParentAllowsOutput()) {
                         text(++autonum + autonumSeparator(f.instr.toString()), f.rp, out, fieldLinkInScope(link));
+                    } else if (!result && !f.computed && !inInstruction() && computedParentAllowsOutput()) {
+                        String value = storedValue(f.instr.toString());
+                        if (value != null) {
+                            text(value, f.rp, out, fieldLinkInScope(link));
+                        }
                     }
                     if (f.computed && !inInstruction() && computedParentAllowsOutput()) {
                         out.add(new Inline.Field(f.name, f.rp, f.cached.toString(), fieldLinkInScope(link),

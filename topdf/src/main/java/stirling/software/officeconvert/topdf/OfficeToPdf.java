@@ -70,17 +70,21 @@ public final class OfficeToPdf {
         DOCX,
         PPTX,
         XLSX,
-        PPT;
+        PPT,
+        TEXT,
+        CSV,
+        TSV;
 
         public static Format of(Path file) {
             Objects.requireNonNull(file, "file");
             String ext = extension(file);
             return switch (ext) {
                 case "docx", "docm", "dotx", "dotm", "doc", "dot", "rtf", "odt", "ott", "fodt" -> DOCX;
-                case "txt", "text", "log", "asc" -> DOCX;
+                case "txt", "text", "log", "asc" -> TEXT;
                 case "pptx", "pptm", "ppsx", "ppsm", "potx", "potm", "odp", "otp", "fodp" -> PPTX;
                 case "xlsx", "xlsm", "xltx", "xltm", "xls", "xlt", "ods", "ots", "fods" -> XLSX;
-                case "csv", "tsv", "tab" -> XLSX;
+                case "csv" -> CSV;
+                case "tsv", "tab" -> TSV;
                 case "ppt", "pps", "pot" -> PPT;
                 case "xlsb" -> throw new IllegalArgumentException(
                         "Excel binary workbooks (.xlsb) are not supported; save the file as .xlsx");
@@ -110,7 +114,8 @@ public final class OfficeToPdf {
         }
     }
 
-    public record Options(Duration timeout, List<Path> fontDirs, int maxPages, long maxScratchBytes, FontSet fonts) {
+    public record Options(Duration timeout, List<Path> fontDirs, int maxPages, long maxScratchBytes, FontSet fonts,
+            String displayName) {
 
         public static final int DEFAULT_MAX_PAGES = 10_000;
 
@@ -130,10 +135,14 @@ public final class OfficeToPdf {
                 throw new IllegalArgumentException("maxScratchBytes must be 0 (no limit) or more, was " + maxScratchBytes);
             }
             fontDirs = List.copyOf(fontDirs);
+            displayName = displayName == null ? null : DocumentInfo.clean(displayName);
+            if (displayName != null && displayName.length() > 255) {
+                displayName = displayName.substring(0, Character.isHighSurrogate(displayName.charAt(254)) ? 254 : 255);
+            }
         }
 
         public Options(Duration timeout, List<Path> fontDirs, int maxPages, long maxScratchBytes) {
-            this(timeout, fontDirs, maxPages, maxScratchBytes, FontSet.system());
+            this(timeout, fontDirs, maxPages, maxScratchBytes, FontSet.system(), null);
         }
 
         public Options(Duration timeout, List<Path> fontDirs, int maxPages) {
@@ -145,23 +154,27 @@ public final class OfficeToPdf {
         }
 
         public Options timeout(Duration limit) {
-            return new Options(limit, fontDirs, maxPages, maxScratchBytes, fonts);
+            return new Options(limit, fontDirs, maxPages, maxScratchBytes, fonts, displayName);
         }
 
         public Options fontDirs(List<Path> dirs) {
-            return new Options(timeout, dirs, maxPages, maxScratchBytes, fonts);
+            return new Options(timeout, dirs, maxPages, maxScratchBytes, fonts, displayName);
         }
 
         public Options fonts(FontSet set) {
-            return new Options(timeout, fontDirs, maxPages, maxScratchBytes, set);
+            return new Options(timeout, fontDirs, maxPages, maxScratchBytes, set, displayName);
         }
 
         public Options maxPages(int pages) {
-            return new Options(timeout, fontDirs, pages, maxScratchBytes, fonts);
+            return new Options(timeout, fontDirs, pages, maxScratchBytes, fonts, displayName);
         }
 
         public Options maxScratchBytes(long bytes) {
-            return new Options(timeout, fontDirs, maxPages, bytes, fonts);
+            return new Options(timeout, fontDirs, maxPages, bytes, fonts, displayName);
+        }
+
+        public Options displayName(String name) {
+            return new Options(timeout, fontDirs, maxPages, maxScratchBytes, fonts, name);
         }
 
         public FontLibrary fontLibrary() {
@@ -220,8 +233,11 @@ public final class OfficeToPdf {
             throw new IOException(e.getMessage(), e);
         }
         AtomicReference<Result> result = new AtomicReference<>();
+        Path inName = in.getFileName();
+        Options named = options.displayName() == null && inName != null ? options.displayName(inName.toString())
+                : options;
         writeAtomically(out.toAbsolutePath(), options.timeout(), STOP_MILLIS,
-                os -> result.set(render(in, format, os, options)));
+                os -> result.set(render(in, format, os, named)));
         return result.get();
     }
 
@@ -380,6 +396,11 @@ public final class OfficeToPdf {
     private static final String RELS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/";
 
     static byte[] sample(Format format) throws IOException {
+        if (format == Format.TEXT || format == Format.CSV || format == Format.TSV) {
+            String sep = format == Format.TSV ? "\t" : ",";
+            return (format == Format.TEXT ? "Warm up\n" : "Warm up" + sep + "1.5\n")
+                    .getBytes(StandardCharsets.UTF_8);
+        }
         if (format == Format.PPT) {
             try (HSLFSlideShow ppt = new HSLFSlideShow(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
                 HSLFTextBox box = ppt.createSlide().createTextBox();
@@ -447,6 +468,8 @@ public final class OfficeToPdf {
             case PPTX -> PptxRenderer.render(source, job);
             case XLSX -> XlsxRenderer.render(source, job);
             case PPT -> PptRenderer.render(source, job);
+            case TEXT -> DocxRenderer.render(source, job);
+            case CSV, TSV -> XlsxRenderer.render(source, job);
         }
     }
 
@@ -474,7 +497,7 @@ public final class OfficeToPdf {
         if (odf != null) {
             return odf;
         }
-        Result text = TextInput.render(source, sink, options, renderer);
+        Result text = TextInput.render(source, requested, sink, options, renderer);
         if (text != null) {
             return text;
         }
@@ -954,7 +977,12 @@ public final class OfficeToPdf {
         if (t.contains("drawingml") || t.contains("visio") || t.contains("xps")) {
             throw new IOException("The file is not a Word, PowerPoint or Excel document (its main part is " + type + ")");
         }
-        return requested == Format.PPT ? Format.PPTX : requested;
+        return switch (requested) {
+            case PPT -> Format.PPTX;
+            case TEXT -> Format.DOCX;
+            case CSV, TSV -> Format.XLSX;
+            default -> requested;
+        };
     }
 
     @FunctionalInterface

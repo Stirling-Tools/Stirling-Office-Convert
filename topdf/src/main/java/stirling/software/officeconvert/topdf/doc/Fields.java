@@ -6,6 +6,8 @@ import java.util.Deque;
 import java.util.List;
 import java.util.Locale;
 
+import stirling.software.officeconvert.topdf.field.StoredFields;
+
 final class Fields {
 
     static final int MAX_DEPTH = 32;
@@ -102,6 +104,15 @@ final class Fields {
         return out;
     }
 
+    static boolean drawnWithoutResult(Frame f) {
+        List<String> t = tokens(f.code.toString());
+        if (t.isEmpty()) {
+            return false;
+        }
+        String name = t.get(0).toUpperCase(Locale.ROOT);
+        return StoredFields.stored(name) || name.equals("EQ");
+    }
+
     static void interpret(Frame f) {
         List<String> t = tokens(f.code.toString());
         if (t.isEmpty()) {
@@ -110,6 +121,7 @@ final class Fields {
         String name = t.get(0).toUpperCase(Locale.ROOT);
         switch (name) {
             case "PAGE", "NUMPAGES", "SECTIONPAGES" -> f.complex = String.join(" ", t);
+            case "EQ" -> f.complex = f.code.toString().strip();
             case "HYPERLINK" -> hyperlink(f, t);
             default -> {
             }

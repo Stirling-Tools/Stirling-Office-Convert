@@ -35,7 +35,8 @@ public final class RtfPackage {
             + " xmlns:wp=\"http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing\""
             + " xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\""
             + " xmlns:pic=\"http://schemas.openxmlformats.org/drawingml/2006/picture\""
-            + " xmlns:wps=\"http://schemas.microsoft.com/office/word/2010/wordprocessingShape\"";
+            + " xmlns:wps=\"http://schemas.microsoft.com/office/word/2010/wordprocessingShape\""
+            + " xmlns:m=\"http://schemas.openxmlformats.org/officeDocument/2006/math\"";
 
     static final long BODY_LIMIT = 400L << 20;
 

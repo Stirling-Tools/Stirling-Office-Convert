@@ -130,6 +130,34 @@ class DocTest {
     }
 
     @Test
+    void fieldsWithoutAResultShowTheStoredProperties() throws IOException {
+        byte[] doc = new WordFixture().title("Plan B").saved(java.util.Date.from(java.time.Instant.parse(
+                "2021-03-04T13:05:00Z"))).para(List.of(WordFixture.run("By "),
+                WordFixture.run("\u0013", Sprms.special()), WordFixture.run(" AUTHOR \\* Upper "),
+                WordFixture.run("\u0015", Sprms.special()), WordFixture.run(" on "),
+                WordFixture.run("\u0013", Sprms.special()), WordFixture.run(" SAVEDATE \\@ \"d MMMM yyyy\" "),
+                WordFixture.run("\u0015", Sprms.special()), WordFixture.run(": "),
+                WordFixture.run("\u0013", Sprms.special()), WordFixture.run(" TITLE "),
+                WordFixture.run("\u0015", Sprms.special())), 0).build();
+        String text = pdfText(doc, "stored.doc");
+        assertTrue(text.contains("By FIXTURE AUTHOR on 4 March 2021: Plan B"), text);
+    }
+
+    @Test
+    void eqFieldsReachTheEquationLayout() throws IOException {
+        byte[] doc = new WordFixture().para(List.of(WordFixture.run("Half "),
+                WordFixture.run("\u0013", Sprms.special()), WordFixture.run(" EQ \\f(1,2) "),
+                WordFixture.run("\u0015", Sprms.special()), WordFixture.run(" and "),
+                WordFixture.run("\u0013", Sprms.special()), WordFixture.run(" EQ \\r(9) "),
+                WordFixture.run("\u0014", Sprms.special()), WordFixture.run("\u0015", Sprms.special())), 0).build();
+        String xml = body(doc);
+        assertTrue(xml.contains("<w:instrText xml:space=\"preserve\"> EQ \\f(1,2) </w:instrText>")
+                && xml.contains("<w:instrText xml:space=\"preserve\"> EQ \\r(9) </w:instrText>"), xml);
+        String text = pdfText(doc, "eq.doc");
+        assertTrue(text.contains("1") && text.contains("2") && text.contains("9"), text);
+    }
+
+    @Test
     void onlyWebAndMailLinksBecomeHyperlinks() throws IOException {
         byte[] doc = new WordFixture().para(List.of(
                 WordFixture.run("\u0013", Sprms.special()), WordFixture.run(" HYPERLINK \"https://example.com/a\" "),
@@ -250,6 +278,25 @@ class DocTest {
         assertTrue(xml.contains("<w:txbxContent>") && xml.contains("Boxed words"), xml);
         String text = pdfText(doc, "shapes.doc");
         assertTrue(text.contains("Boxed words"), text);
+    }
+
+    @Test
+    void textBoxesInsideTextBoxesKeepTheirText() throws IOException {
+        byte[] doc = new WordFixture()
+                .para(List.of(WordFixture.run("Anchor "), WordFixture.run("\u0008", Sprms.special())), 0)
+                .shape(new ShapeFixture.Shape(1025, 202, new int[] {1440, 1440, 7200, 5760},
+                        ShapeFixture.fspaFlags(1, 1, 3, 0, false), java.util.Map.of(), java.util.Map.of()))
+                .shape(new ShapeFixture.Shape(1026, 202, new int[] {2160, 2880, 5040, 4320},
+                        ShapeFixture.fspaFlags(1, 1, 3, 0, false), java.util.Map.of(), java.util.Map.of()))
+                .textbox(1025, List.of(WordFixture.run("Outer words "), WordFixture.run("\u0008", Sprms.special())))
+                .textbox(1026, "Inner words").build();
+        String xml = body(doc);
+        int outer = xml.indexOf("<w:txbxContent>");
+        int inner = xml.indexOf("<w:txbxContent>", outer + 1);
+        assertTrue(outer > 0 && inner > outer && inner < xml.indexOf("</w:txbxContent>"), xml);
+        assertTrue(xml.indexOf("Outer words") > outer && xml.indexOf("Inner words") > inner, xml);
+        String text = pdfText(doc, "nested.doc");
+        assertTrue(text.contains("Outer words") && text.contains("Inner words"), text);
     }
 
     @Test

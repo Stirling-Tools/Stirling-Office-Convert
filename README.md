@@ -267,7 +267,9 @@ The library depends on `org.apache.pdfbox:pdfbox:3.0.8` and `commons-logging`, a
 `com.stirling:stirling-office-convert-topdf` converts Word, PowerPoint and Excel documents to PDF with one class,
 `stirling.software.officeconvert.topdf.OfficeToPdf`. PowerPoint 97-2003 files (`.ppt .pps .pot`) convert too: Apache
 POI draws their slides through its common drawing interfaces, with the same picture guards and fonts, and their text
-is written as real text. The file's content decides, so a `.ppt` that is really a `.pptx` converts either way.
+is written as real text. WordArt is drawn bent along the same arch, circle, wave, inflate, deflate and slant warps as
+in PPTX, its text written hidden for search. The file's content decides, so a `.ppt` that is really a `.pptx` converts
+either way.
 
 ```java
 import stirling.software.officeconvert.topdf.OfficeToPdf;
@@ -277,8 +279,11 @@ OfficeToPdf.convert(Path.of("in.xlsx"), Path.of("out.pdf"), OfficeToPdf.Options.
         .timeout(Duration.ofSeconds(60))       // Duration.ZERO = no limit
         .maxPages(500)                         // 0 = every page; r.pageLimitReached(): cut at this limit
         .maxScratchBytes(1L << 30)             // past it OfficeToPdf.OutputTooLarge; 0 = no limit
-        .fonts(fonts));                        // see Fonts below
+        .fonts(fonts)                          // see Fonts below
+        .displayName("Sales Q3.xlsx"));        // the name a CSV header and FILENAME fields show
 OfficeToPdf.convert(inputStream, OfficeToPdf.Format.PPTX, outputStream, OfficeToPdf.Options.defaults());
+OfficeToPdf.convert(inputStream, OfficeToPdf.Format.of(Path.of(uploadName)), outputStream,
+        OfficeToPdf.Options.defaults().displayName(uploadName));   // TEXT, CSV and TSV say what a stream holds
 r.pages();                                     // pages written
 r.truncated();                                 // something is missing: the page limit, or content left out
 r.warnings();                                  // substituted fonts, skipped active content, pictures left out
@@ -331,6 +336,10 @@ Unlike `OfficeConvert`, whose default is no time limit, `OfficeToPdf` stops afte
 `OfficeToPdf.TimedOut` (an `IOException`). Bad input gives an `IOException` with a plain reason, legacy and unknown
 file extensions included. Nothing a document links to is ever fetched, and no macro, field, formula or script is run:
 fields and formulas show their cached results, charts their cached values, embedded objects their stored preview.
+A Word field saved without a result (DATE, TIME, CREATEDATE, SAVEDATE, PRINTDATE, AUTHOR, TITLE, SUBJECT, KEYWORDS,
+COMMENTS, LASTSAVEDBY, REVNUM, TEMPLATE, NUMWORDS, NUMCHARS, EDITTIME, FILENAME, DOCPROPERTY) shows the document's
+stored properties with its `\@` date picture and `\*` case switches: dates come from the saved metadata in UTC, never
+the clock, and FILENAME is `Options.displayName`.
 
 Excel 97-2003 workbooks (`.xls`, `.xlt`, found by their content whatever the extension) are read with Apache POI
 HSSF and rewritten as a SpreadsheetML package that the XLSX renderer draws: cells with their cached values (formulas
@@ -343,8 +352,10 @@ cut short, and password protected or Excel 5.0/95 workbooks are refused with a p
 Word 97-2003 documents (`.doc`, `.dot`, found by their content whatever the extension) are read with Apache POI
 HWPF and rewritten as a WordprocessingML package that the DOCX renderer draws: text with its character and paragraph
 formatting, styles, lists, tables (merged cells, borders, shading, nested tables), sections with their page setup,
-columns, headers and footers, footnotes and endnotes, inline and floating pictures, text boxes and simple shapes,
-bookmarks, and hyperlinks (http, https and mailto only). Fields show their cached results, except page numbers, which are counted; macros, OLE objects (beyond
+columns, headers and footers, footnotes and endnotes, inline and floating pictures, text boxes (shapes anchored inside
+them included, nested up to four deep) and simple shapes, bookmarks, and hyperlinks (http, https and mailto only).
+Fields show their cached results, except page numbers, which are counted, and EQ fields, which are laid out as
+equations; macros, OLE objects (beyond
 their stored preview picture) and links are never opened. A compressed picture that would inflate past 32 MB is left
 out, and password protected or Word 6.0/95 documents are refused with a plain reason.
 
@@ -352,7 +363,9 @@ RTF documents (`.rtf`, and a `.doc` or `.dot` that is really RTF, found by their
 streaming tokenizer and rewritten as a WordprocessingML package that the DOCX renderer draws: fonts and code pages,
 colours, styles, character and paragraph formatting, lists, tables (merged and nested cells, borders, shading),
 sections and page setup, headers and footers, footnotes and endnotes, pictures (PNG, JPEG, EMF, WMF, DIB), floating
-shapes and text boxes. Fields show their saved result (page numbers stay live); hyperlinks keep only `http`, `https`
+shapes and text boxes, and Office math (`\mmath`) laid out as equations by the DOCX math layout. Fields show their
+saved result (page numbers stay live, EQ fields without a result are laid out as equations); hyperlinks keep only
+`http`, `https`
 and `mailto` targets; embedded objects show only their saved picture. Group nesting, pictures and output size are
 bounded.
 
@@ -378,8 +391,10 @@ leniency for a stray or unclosed quote. Plain numbers (with thousands separators
 shown in LibreOffice's general format, valid ISO 8601 dates are right aligned as written, and everything else is text:
 formulas are never evaluated. Text wider than the page, or on several lines, wraps. A cell holds at most 32767
 characters, a row 16384 columns and a sheet 1048576 rows, and rows past the page limit are left out. The table is
-rewritten as a SpreadsheetML package that the XLSX renderer draws. Both kinds are recognised by their extension, and a
-file with one of these names that is really an Office package or RTF converts as what it is.
+rewritten as a SpreadsheetML package that the XLSX renderer draws. Both kinds are recognised by their extension, or
+on a stream by `Format.TEXT`, `Format.CSV` or `Format.TSV` (what `Format.of` gives for those names), and a file with
+one of these names that is really an Office package or RTF converts as what it is. The CSV header shows
+`Options.displayName` without its extension when one is given (the Path overload gives the file's own name).
 
 Memory is shared out across the JVM, by both directions (`stirling.software.officeconvert.memory.Admission` in the
 core module, which the topdf module now depends on). Before a document is laid out, an estimate of the heap it needs
