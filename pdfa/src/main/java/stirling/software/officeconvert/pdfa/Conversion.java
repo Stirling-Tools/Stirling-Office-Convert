@@ -55,6 +55,7 @@ final class Conversion {
         ContentGraph graph = ContentGraph.of(doc);
         FontUsage usage = new FontUsage();
         DeviceColours colours = new DeviceColours();
+        DeviceNReduction.run(doc, graph, level, report);
         ContentFixer.run(graph, level, report, usage, colours);
         FontFixer.run(doc, usage, level, () -> FontLibrary.withSystem(options.fontDirs()), report);
         PdfFiles.stopIfInterrupted();

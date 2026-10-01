@@ -21,6 +21,7 @@ final class RuleSamples {
 
     static {
         SyntaxSamples.register();
+        ColourSamples.register();
     }
 
     private RuleSamples() {}
