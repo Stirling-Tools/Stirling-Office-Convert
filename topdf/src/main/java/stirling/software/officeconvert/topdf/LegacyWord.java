@@ -103,7 +103,8 @@ final class LegacyWord {
     private static boolean ancient(Path source) throws IOException {
         try (InputStream in = Files.newInputStream(source)) {
             byte[] head = in.readNBytes(2);
-            return head.length == 2 && (head[1] & 0xFF) == 0xA5 && ((head[0] & 0xFF) == 0xDB || (head[0] & 0xFF) == 0x9B);
+            return head.length == 2 && (head[1] & 0xFF) == 0xA5
+                    && ((head[0] & 0xFF) == 0xDB || (head[0] & 0xFF) == 0x9B);
         }
     }
 
