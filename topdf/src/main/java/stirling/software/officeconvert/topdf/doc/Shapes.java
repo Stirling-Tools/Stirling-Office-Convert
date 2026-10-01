@@ -15,6 +15,8 @@ import org.apache.poi.hwpf.usermodel.OfficeDrawing;
 
 final class Shapes {
 
+    static final int MAX_TEXTBOX_DEPTH = 4;
+
     private static final int WRAP_LEFT = 0x0384;
 
     private static final int WRAP_TOP = 0x0385;
@@ -64,7 +66,8 @@ final class Shapes {
             return WordArt.shape(sp, rec, art, x, y, cx, cy);
         }
         boolean line = geom.equals("line") || geom.endsWith("Connector2") || geom.endsWith("Connector3");
-        int[] text = line ? null : c.textboxes().text(rec.getShapeId(), story.kind == Story.Kind.HEADER);
+        int[] text = line || c.textboxDepth >= MAX_TEXTBOX_DEPTH ? null
+                : c.textboxes().text(rec.getShapeId(), story.kind == Story.Kind.HEADER);
         Boolean fill = bit(sp, 0x01BF, 4);
         boolean filled = fill == null || fill;
         Boolean stroke = bit(sp, 0x01FF, 3);
@@ -112,8 +115,13 @@ final class Shapes {
         if (text != null) {
             b.append("<wps:txbx><w:txbxContent>");
             int mark = b.length();
-            new Story(c, story.rels, Story.Kind.TEXTBOX, 0, null).write(text[0],
-                    Stories.trim(c.src.text, text[0], text[1]), b);
+            c.textboxDepth++;
+            try {
+                new Story(c, story.rels, Story.Kind.TEXTBOX, 0, null).write(text[0],
+                        Stories.trim(c.src.text, text[0], text[1]), b);
+            } finally {
+                c.textboxDepth--;
+            }
             if (b.length() == mark) {
                 b.append("<w:p/>");
             }

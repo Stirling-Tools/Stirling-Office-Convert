@@ -281,6 +281,25 @@ class DocTest {
     }
 
     @Test
+    void textBoxesInsideTextBoxesKeepTheirText() throws IOException {
+        byte[] doc = new WordFixture()
+                .para(List.of(WordFixture.run("Anchor "), WordFixture.run("\u0008", Sprms.special())), 0)
+                .shape(new ShapeFixture.Shape(1025, 202, new int[] {1440, 1440, 7200, 5760},
+                        ShapeFixture.fspaFlags(1, 1, 3, 0, false), java.util.Map.of(), java.util.Map.of()))
+                .shape(new ShapeFixture.Shape(1026, 202, new int[] {2160, 2880, 5040, 4320},
+                        ShapeFixture.fspaFlags(1, 1, 3, 0, false), java.util.Map.of(), java.util.Map.of()))
+                .textbox(1025, List.of(WordFixture.run("Outer words "), WordFixture.run("\u0008", Sprms.special())))
+                .textbox(1026, "Inner words").build();
+        String xml = body(doc);
+        int outer = xml.indexOf("<w:txbxContent>");
+        int inner = xml.indexOf("<w:txbxContent>", outer + 1);
+        assertTrue(outer > 0 && inner > outer && inner < xml.indexOf("</w:txbxContent>"), xml);
+        assertTrue(xml.indexOf("Outer words") > outer && xml.indexOf("Inner words") > inner, xml);
+        String text = pdfText(doc, "nested.doc");
+        assertTrue(text.contains("Outer words") && text.contains("Inner words"), text);
+    }
+
+    @Test
     void wordSixNumberingInAWord97FileStillNumbers() throws IOException {
         int[] anld = new int[84];
         anld[2] = 1;

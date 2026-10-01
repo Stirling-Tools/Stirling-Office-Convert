@@ -29,6 +29,8 @@ final class Conv {
 
     boolean truncated;
 
+    int textboxDepth;
+
     private int ids = 1;
 
     private int ticks;

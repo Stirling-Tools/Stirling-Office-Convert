@@ -114,7 +114,8 @@ final class Drawings {
 
     String anchor(Story story, int cp) throws IOException {
         boolean header = story.kind == Story.Kind.HEADER;
-        if (story.kind != Story.Kind.MAIN && !header || pictures >= MAX_PICTURES) {
+        boolean inBox = story.kind == Story.Kind.TEXTBOX;
+        if (story.kind != Story.Kind.MAIN && !header && !inBox || pictures >= MAX_PICTURES) {
             return null;
         }
         int rel = header ? cp - story.base : cp;
