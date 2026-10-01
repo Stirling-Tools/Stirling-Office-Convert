@@ -2,6 +2,7 @@ package stirling.software.officeconvert.topdf.doc;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.TreeSet;
 
@@ -58,7 +59,7 @@ final class TableXml {
         }
         out.append("</w:tblGrid>");
         for (Row r : rows) {
-            row(ps, r, cols, level, out);
+            row(ps, r, cols, level, pad, out);
         }
         out.append("</w:tbl>");
     }
@@ -124,7 +125,9 @@ final class TableXml {
         return m;
     }
 
-    private void row(List<Story.Par> ps, Row r, List<Integer> cols, int level, StringBuilder out) throws IOException {
+    private void row(List<Story.Par> ps, Row r, List<Integer> cols, int level, int[] table, StringBuilder out)
+            throws IOException {
+        int[] rowPad = margins(r.tap);
         Tap t = r.tap;
         int before = cols.indexOf(r.edges[0]);
         int n = r.edges.length - 1;
@@ -161,13 +164,25 @@ final class TableXml {
             int left = r.edges[i];
             int right = r.edges[Math.min(end, n)];
             int span = cols.indexOf(right) - cols.indexOf(left);
-            cell(ps, r.cells.get(i), tc, right - left, span, t, level, out);
+            int[] pad = tc != null && tc.padding != null ? merge(rowPad, tc.padding) : rowPad;
+            cell(ps, r.cells.get(i), tc, right - left, span, Arrays.equals(pad, table) ? null : pad, level,
+                    out);
             i = end;
         }
         out.append("</w:tr>");
     }
 
-    private void cell(List<Story.Par> ps, int[] range, Tap.Cell tc, int width, int span, Tap t, int level,
+    private static int[] merge(int[] row, int[] cell) {
+        int[] m = row.clone();
+        for (int k = 0; k < 4; k++) {
+            if (cell[k] >= 0) {
+                m[k] = cell[k];
+            }
+        }
+        return m;
+    }
+
+    private void cell(List<Story.Par> ps, int[] range, Tap.Cell tc, int width, int span, int[] pad, int level,
             StringBuilder out) throws IOException {
         out.append("<w:tc><w:tcPr><w:tcW w:w=\"").append(width).append("\" w:type=\"dxa\"/>");
         if (span > 1) {
@@ -190,13 +205,10 @@ final class TableXml {
             if (tc.shading != null) {
                 out.append(tc.shading);
             }
-            if (tc.padding != null) {
+            if (pad != null) {
                 out.append("<w:tcMar>");
                 for (int k = 0; k < 4; k++) {
-                    if (tc.padding[k] >= 0) {
-                        out.append("<w:").append(SIDES[k]).append(" w:w=\"").append(tc.padding[k])
-                                .append("\" w:type=\"dxa\"/>");
-                    }
+                    out.append("<w:").append(SIDES[k]).append(" w:w=\"").append(pad[k]).append("\" w:type=\"dxa\"/>");
                 }
                 out.append("</w:tcMar>");
             }

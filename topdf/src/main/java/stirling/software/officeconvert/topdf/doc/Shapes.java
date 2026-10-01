@@ -50,7 +50,8 @@ final class Shapes {
         boolean filled = fill == null || fill;
         Boolean stroke = bit(sp, 0x01FF, 3);
         boolean stroked = stroke == null || stroke;
-        if (text == null && !stroked && (!filled || line)) {
+        boolean wraps = fspa != null && fspa.getWr() != 3;
+        if (text == null && !stroked && (!filled || line) && !wraps) {
             return null;
         }
         int id = c.nextId();

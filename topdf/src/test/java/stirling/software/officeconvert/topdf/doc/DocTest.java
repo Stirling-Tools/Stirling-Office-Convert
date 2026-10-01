@@ -206,4 +206,18 @@ class DocTest {
         assertTrue(xml.contains("<w:w w:val=\"69\"/>"), xml);
         assertTrue(xml.contains("<w:bidi/>"), xml);
     }
+
+    @Test
+    void aRowsOwnCellPaddingReachesItsCells() throws IOException {
+        int[] centers = {0, 3000};
+        byte[] doc = new WordFixture()
+                .cell("first").rowEnd(Sprms.defTable(centers, null), Sprms.op(0xD634, 6, 0, 1, 5, 3, 0, 0))
+                .cell("second").rowEnd(Sprms.defTable(centers, null), Sprms.op(0xD634, 6, 0, 1, 5, 3, 113, 0))
+                .para("After").build();
+        String xml = body(doc);
+        String second = xml.substring(xml.lastIndexOf("<w:tr>"));
+        assertTrue(second.contains("<w:tcMar><w:top w:w=\"113\" w:type=\"dxa\"/>"), xml);
+        String first = xml.substring(xml.indexOf("<w:tr>"), xml.lastIndexOf("<w:tr>"));
+        assertTrue(!first.contains("<w:tcMar>"), xml);
+    }
 }
