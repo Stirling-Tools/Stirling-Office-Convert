@@ -27,6 +27,8 @@ final class Sections implements Story.Breaks {
 
     private final List<SEPX> seps = new ArrayList<>();
 
+    private final List<List<Sprm>> raw = new ArrayList<>();
+
     private final List<String> refs = new ArrayList<>();
 
     private final Map<Long, String> parts = new HashMap<>();
@@ -48,9 +50,11 @@ final class Sections implements Story.Breaks {
                     break;
                 }
                 seps.add(s);
+                raw.add(Sprm.parse(s.getGrpprl(), 0));
             }
         } catch (RuntimeException e) {
             seps.clear();
+            raw.clear();
         }
     }
 
@@ -194,7 +198,7 @@ final class Sections implements Story.Breaks {
             b.append(" w:start=\"").append(Math.max(0, s.getPgnStart())).append('"');
         }
         b.append("/>");
-        columns(b, s);
+        columns(b, s, raw.get(k));
         String vAlign = switch (s.getVjc()) {
             case 1 -> "center";
             case 2 -> "both";
@@ -217,7 +221,7 @@ final class Sections implements Story.Breaks {
         return b.append("</w:sectPr>").toString();
     }
 
-    private static void columns(StringBuilder b, SectionProperties s) {
+    private static void columns(StringBuilder b, SectionProperties s, List<Sprm> sprms) {
         int n = s.getCcolM1() + 1;
         if (n <= 1) {
             b.append("<w:cols w:space=\"").append(Math.max(0, s.getDxaColumns())).append("\"/>");
@@ -229,13 +233,41 @@ final class Sections implements Story.Breaks {
         if (s.getFLBetween()) {
             b.append(" w:sep=\"1\"");
         }
-        int[] widths = s.getRgdxaColumn();
-        if (!s.getFEvenlySpaced() && widths != null && widths.length >= n * 2 - 1) {
+        int[] widths = new int[n];
+        int[] spaces = new int[n];
+        boolean all = true;
+        for (int i = 0; i < n; i++) {
+            spaces[i] = Math.max(0, s.getDxaColumns());
+        }
+        boolean[] seen = new boolean[n];
+        boolean even = s.getFEvenlySpaced();
+        for (Sprm sp : sprms) {
+            if (sp.opcode() == 0x3005) {
+                even = sp.u8() != 0;
+            }
+            if ((sp.opcode() == 0xF203 || sp.opcode() == 0xF204) && sp.length() >= 3) {
+                int i = sp.u8();
+                int v = Sprm.u16(sp.data(), sp.at() + 1);
+                if (i < n) {
+                    if (sp.opcode() == 0xF203) {
+                        widths[i] = v;
+                        seen[i] = true;
+                    } else {
+                        spaces[i] = v;
+                    }
+                }
+            }
+        }
+        for (boolean x : seen) {
+            all &= x;
+        }
+
+        if (!even && all) {
             b.append(" w:equalWidth=\"0\">");
             for (int i = 0; i < n; i++) {
-                b.append("<w:col w:w=\"").append(widths[i * 2]).append('"');
+                b.append("<w:col w:w=\"").append(widths[i]).append('"');
                 if (i < n - 1) {
-                    b.append(" w:space=\"").append(widths[i * 2 + 1]).append('"');
+                    b.append(" w:space=\"").append(spaces[i]).append('"');
                 }
                 b.append("/>");
             }

@@ -167,4 +167,13 @@ class DocTest {
         String xml = body(doc);
         assertTrue(xml.contains("<w:pgSz w:w=\"15840\" w:h=\"12240\" w:orient=\"landscape\"/>"), xml);
     }
+
+    @Test
+    void unequalColumnsKeepTheirWidths() throws IOException {
+        byte[] doc = new WordFixture().para("Columns").section(Sprms.u16(0x500B, 1), Sprms.u8(0x3005, 0),
+                Sprms.op(0xF203, 0, 0x37, 0x14), Sprms.op(0xF204, 0, 0x6E, 0x01), Sprms.op(0xF203, 1, 0x68, 0x12))
+                .build();
+        String xml = body(doc);
+        assertTrue(xml.contains("<w:col w:w=\"5175\" w:space=\"366\"/><w:col w:w=\"4712\"/>"), xml);
+    }
 }
