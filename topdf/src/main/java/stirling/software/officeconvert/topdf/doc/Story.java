@@ -15,6 +15,8 @@ final class Story {
 
     interface Breaks {
         String at(int end);
+
+        boolean ends(int end);
     }
 
     record Par(ParagraphProperties props, int start, int end, int level, boolean rowEnd, boolean cellEnd) {}
@@ -30,6 +32,8 @@ final class Story {
     private final Breaks breaks;
 
     private final Inline inline;
+
+    private boolean pageBreak;
 
     Story(Conv c, Rels rels, Kind kind, int base, Breaks breaks) {
         this.c = c;
@@ -85,6 +89,11 @@ final class Story {
                 while (j < to && ps.get(j).level() > depth) {
                     j++;
                 }
+                if (pageBreak && depth == 0) {
+                    out.append("<w:p><w:pPr><w:spacing w:before=\"0\" w:after=\"0\" w:line=\"20\" w:lineRule=\"exact\"/>")
+                            .append("</w:pPr><w:r><w:br w:type=\"page\"/></w:r></w:p>");
+                    pageBreak = false;
+                }
                 TableXml.write(this, ps, i, j, depth + 1, out);
                 if (depth == 0 && breaks != null) {
                     String sect = breaks.at(ps.get(j - 1).end());
@@ -109,13 +118,15 @@ final class Story {
         int end = par.end();
         char last = end - 1 < text.length() ? text.charAt(end - 1) : 0;
         int contentEnd = last == '\r' || last == '\u0007' || last == '\u000C' ? end - 1 : end;
+        boolean breakBefore = pageBreak && depth == 0;
+        pageBreak = last == '\u000C' && depth == 0 && breaks != null && !breaks.ends(end);
         List<Sprm> sprms = c.src.resolved(istd, par.start());
         String numbering = c.lists.numPr(props.getIlfo(), props.getIlvl());
         List<Source.Segment> markRun = c.src.segments(Math.max(par.start(), end - 1), end, istd);
         String mark = markRun.isEmpty() ? null : c.src.runs.props(markRun.get(0).chp(), markRun.get(0).sprms());
         String sect = depth == 0 && breaks != null ? breaks.at(end) : null;
         out.append("<w:p>");
-        ParaXml.write(out, props, sprms, c.styles.id(istd), numbering, mark, sect);
+        ParaXml.write(out, props, sprms, c.styles.id(istd), numbering, mark, sect, breakBefore);
         inline.write(par.start(), contentEnd, end, istd, out);
         out.append("</w:p>");
     }

@@ -45,7 +45,7 @@ final class TableXml {
         } else if (first.jc == 2) {
             out.append("<w:jc w:val=\"right\"/>");
         }
-        out.append("<w:tblInd w:w=\"").append(cols.get(0) + pad[1]).append("\" w:type=\"dxa\"/>");
+        out.append("<w:tblInd w:w=\"").append(cols.get(0) + (DocWriter.COMPATIBILITY < 15 ? pad[1] : 0)).append("\" w:type=\"dxa\"/>");
         if (first.bidi) {
             out.append("<w:bidiVisual/>");
         }

@@ -353,4 +353,28 @@ class DocTest {
         assertTrue(xml.contains("<w:bookmarkStart w:id=\"0\" w:name=\"target\"/>"), xml);
         assertTrue(xml.indexOf("bookmarkStart") < xml.indexOf("Destination"), xml);
     }
+
+    @Test
+    void paragraphStylesLendTheirProperties() throws IOException {
+        byte[] doc = new WordFixture().style("Body", 0, WordFixture.concat(Sprms.u16(0xA414, 200), Sprms.u32(0x6412,
+                276 | 1 << 16)), Sprms.bold())
+                .para(List.of(WordFixture.run("Styled")), 1).build();
+        String xml = body(doc);
+        assertTrue(xml.contains("<w:spacing w:before=\"0\" w:after=\"200\" w:line=\"276\" w:lineRule=\"auto\"/>"), xml);
+        assertTrue(xml.contains("<w:b/>"), xml);
+    }
+
+    @Test
+    void aPageBreakThatEndsAParagraphStartsANewPage() throws IOException {
+        byte[] doc = new WordFixture().pageBreak("Page one").para("Page two").build();
+        String xml = body(doc);
+        String second = xml.substring(xml.indexOf("<w:p>", xml.indexOf("Page one")));
+        assertTrue(second.contains("<w:pageBreakBefore/>") && second.contains("Page two"), xml);
+        Path in = Files.write(dir.resolve("break.doc"), doc);
+        Path out = dir.resolve("break.pdf");
+        OfficeToPdf.convert(in, out);
+        try (PDDocument pdf = Loader.loadPDF(out.toFile())) {
+            assertEquals(2, pdf.getNumberOfPages());
+        }
+    }
 }

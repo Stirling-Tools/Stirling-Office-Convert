@@ -21,14 +21,14 @@ final class ParaXml {
     private ParaXml() {}
 
     static void write(StringBuilder b, ParagraphProperties p, List<Sprm> sprms, String style, String numbering,
-            String mark, String sectPr) {
+            String mark, String sectPr, boolean breakBefore) {
         b.append("<w:pPr>");
         if (style != null) {
             b.append("<w:pStyle w:val=\"").append(style).append("\"/>");
         }
         on(b, "keepNext", p.getFKeepFollow());
         on(b, "keepLines", p.getFKeep());
-        on(b, "pageBreakBefore", p.getFPageBreakBefore());
+        on(b, "pageBreakBefore", p.getFPageBreakBefore() || breakBefore);
         FrameXml.write(b, p, sprms);
         b.append(p.getFWidowControl() ? "<w:widowControl/>" : "<w:widowControl w:val=\"0\"/>");
         if (numbering != null) {

@@ -104,6 +104,11 @@ final class WordFixture {
         return this;
     }
 
+    WordFixture pageBreak(String text) {
+        main.add(new Para(List.of(run(text)), new byte[0], 0, '\u000C'));
+        return this;
+    }
+
     WordFixture sectionBreak(String text, byte[]... sprms) {
         main.add(new Para(List.of(run(text)), new byte[0], 0, '\u000C'));
         earlier.add(concat(sprms));

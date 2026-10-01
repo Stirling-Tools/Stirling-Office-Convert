@@ -166,6 +166,16 @@ final class Sections implements Story.Breaks {
         return true;
     }
 
+    @Override
+    public boolean ends(int end) {
+        for (SEPX s : seps) {
+            if (s.getEnd() == end) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     String last() {
         return sectPr(Math.max(0, seps.size() - 1));
     }

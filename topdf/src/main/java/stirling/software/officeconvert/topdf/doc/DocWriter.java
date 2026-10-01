@@ -9,6 +9,8 @@ import org.apache.poi.hwpf.usermodel.Range;
 
 final class DocWriter {
 
+    static final int COMPATIBILITY = Integer.getInteger("fdoc.compat", 15);
+
     private static final String CT = "application/vnd.openxmlformats-officedocument.wordprocessingml.";
 
     private final Conv c;
@@ -107,7 +109,7 @@ final class DocWriter {
             }
         }
         b.append("<w:compat><w:compatSetting w:name=\"compatibilityMode\" w:uri=\"http://schemas.microsoft.com/")
-                .append("office/word\" w:val=\"11\"/></w:compat>");
+                .append("office/word\" w:val=\"").append(COMPATIBILITY).append("\"/></w:compat>");
         return b.append("</w:settings>").toString();
     }
 }
