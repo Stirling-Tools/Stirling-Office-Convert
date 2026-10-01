@@ -244,7 +244,8 @@ class DocTest {
         assertTrue(xml.contains("behindDoc=\"1\""), xml);
         assertTrue(xml.contains("<a:srgbClr val=\"FF0000\"><a:alpha val=\"50000\"/>"), xml);
         assertEquals(3, xml.split("<wp:anchor ").length - 1, xml);
-        assertTrue(xml.contains("<wp:wrapTight wrapText=\"bothSides\"><wp:wrapPolygon edited=\"0\"><wp:start x=\"0\" y=\"0\"/>"
+        assertTrue(xml.contains("<wp:wrapTight wrapText=\"bothSides\"><wp:wrapPolygon edited=\"0\">"
+                + "<wp:start x=\"0\" y=\"0\"/>"
                 + "<wp:lineTo x=\"0\" y=\"21600\"/><wp:lineTo x=\"21600\" y=\"0\"/>"), xml);
         assertTrue(xml.contains("<w:txbxContent>") && xml.contains("Boxed words"), xml);
         String text = pdfText(doc, "shapes.doc");
@@ -281,7 +282,8 @@ class DocTest {
 
     @Test
     void listsBecomeNumbering() throws IOException {
-        byte[][] list = Sprms.simpleList(0, "\u0000.", WordFixture.concat(Sprms.u16(0x845E, 720), Sprms.u16(0x8460, -360)),
+        byte[][] list = Sprms.simpleList(0, "\u0000.",
+                WordFixture.concat(Sprms.u16(0x845E, 720), Sprms.u16(0x8460, -360)),
                 new byte[0]);
         byte[] doc = new WordFixture().lists(list[0], list[1])
                 .para("First", Sprms.u16(0x460B, 1), Sprms.u8(0x260A, 0))
@@ -290,7 +292,8 @@ class DocTest {
         assertTrue(xml.contains("<w:numPr><w:ilvl w:val=\"0\"/><w:numId w:val=\"1\"/></w:numPr>"), xml);
         assertTrue(xml.contains("<w:ind w:left=\"720\" w:right=\"0\" w:hanging=\"360\"/>"), xml);
         String numbering = part(doc, "word/numbering.xml");
-        assertTrue(numbering.contains("<w:numFmt w:val=\"decimal\"/>") && numbering.contains("<w:lvlText w:val=\"%1.\"/>"),
+        assertTrue(numbering.contains("<w:numFmt w:val=\"decimal\"/>")
+                && numbering.contains("<w:lvlText w:val=\"%1.\"/>"),
                 numbering);
         String text = pdfText(doc, "list.doc");
         assertTrue(text.contains("1.") && text.contains("2.") && text.contains("Second"), text);
@@ -301,7 +304,8 @@ class DocTest {
         byte[] png = PictureFixture.png(8, 4, java.awt.Color.RED);
         byte[] data = WordFixture.concat(new byte[16], PictureFixture.picf(png, 1440, 720));
         byte[] doc = new WordFixture().data(data)
-                .para(List.of(WordFixture.run("Logo "), WordFixture.run("\u0001", Sprms.special(), Sprms.u32(0x6A03, 16))),
+                .para(List.of(WordFixture.run("Logo "),
+                        WordFixture.run("\u0001", Sprms.special(), Sprms.u32(0x6A03, 16))),
                         0)
                 .build();
         String xml = body(doc);
@@ -384,7 +388,8 @@ class DocTest {
         byte[] doc = new WordFixture()
                 .para(List.of(WordFixture.run("Group "), WordFixture.run("\u0008", Sprms.special())), 0)
                 .shape(ShapeFixture.group(1030, new int[] {0, 0, 4000, 2000}, ShapeFixture.fspaFlags(2, 2, 3, 0, false),
-                        new int[] {0, 0, 100, 50}, List.of(new ShapeFixture.Member(1031, new int[] {0, 0, 50, 50}, 0x0000FF),
+                        new int[] {0, 0, 100, 50},
+                        List.of(new ShapeFixture.Member(1031, new int[] {0, 0, 50, 50}, 0x0000FF),
                                 new ShapeFixture.Member(1032, new int[] {50, 0, 100, 50}, 0x00FF00))))
                 .build();
         String xml = body(doc);
@@ -400,7 +405,8 @@ class DocTest {
         byte[] doc = new WordFixture()
                 .para(List.of(WordFixture.run("Turn "), WordFixture.run("\u0008", Sprms.special())), 0)
                 .shape(new ShapeFixture.Shape(1025, 1, new int[] {0, 0, 1000, 3000},
-                        ShapeFixture.fspaFlags(2, 2, 3, 0, false), java.util.Map.of(0x0004, 90 << 16), java.util.Map.of()))
+                        ShapeFixture.fspaFlags(2, 2, 3, 0, false), java.util.Map.of(0x0004, 90 << 16),
+                        java.util.Map.of()))
                 .build();
         String xml = body(doc);
         assertTrue(xml.contains("<a:xfrm rot=\"5400000\">"), xml);
@@ -482,11 +488,14 @@ class DocTest {
     @Test
     void drawingsStackInTheirDrawingLayerOrder() throws IOException {
         byte[] doc = new WordFixture()
-                .para(List.of(WordFixture.run("\u0008", Sprms.special()), WordFixture.run("\u0008", Sprms.special())), 0)
+                .para(List.of(WordFixture.run("\u0008", Sprms.special()),
+                        WordFixture.run("\u0008", Sprms.special())), 0)
                 .shape(new ShapeFixture.Shape(1025, 1, new int[] {0, 0, 1000, 1000},
-                        ShapeFixture.fspaFlags(2, 2, 3, 0, false), java.util.Map.of(0x0181, 0x0000FF), java.util.Map.of()))
+                        ShapeFixture.fspaFlags(2, 2, 3, 0, false), java.util.Map.of(0x0181, 0x0000FF),
+                        java.util.Map.of()))
                 .shape(new ShapeFixture.Shape(1026, 1, new int[] {0, 0, 1000, 1000},
-                        ShapeFixture.fspaFlags(2, 2, 3, 0, false), java.util.Map.of(0x0181, 0x00FF00), java.util.Map.of()))
+                        ShapeFixture.fspaFlags(2, 2, 3, 0, false), java.util.Map.of(0x0181, 0x00FF00),
+                        java.util.Map.of()))
                 .reverseDrawingOrder().build();
         String xml = body(doc);
         java.util.regex.Matcher m = java.util.regex.Pattern.compile("relativeHeight=\"(\\d+)\"").matcher(xml);

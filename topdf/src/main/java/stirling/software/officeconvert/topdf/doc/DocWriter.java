@@ -37,7 +37,8 @@ final class DocWriter {
         body = null;
         StringBuilder types = new StringBuilder(Xml.HEAD)
                 .append("<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\">")
-                .append("<Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/>")
+                .append("<Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.")
+                .append("relationships+xml\"/>")
                 .append("<Default Extension=\"xml\" ContentType=\"application/xml\"/>")
                 .append("<Default Extension=\"png\" ContentType=\"image/png\"/>")
                 .append("<Default Extension=\"jpeg\" ContentType=\"image/jpeg\"/>")

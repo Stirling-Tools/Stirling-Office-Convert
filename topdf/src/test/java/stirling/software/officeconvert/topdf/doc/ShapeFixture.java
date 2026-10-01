@@ -20,7 +20,8 @@ import org.apache.poi.ddf.EscherSpgrRecord;
 
 final class ShapeFixture {
 
-    record Shape(int spid, int type, int[] rect, int flags, Map<Integer, Integer> props, Map<Integer, byte[]> complex) {}
+    record Shape(int spid, int type, int[] rect, int flags, Map<Integer, Integer> props,
+            Map<Integer, byte[]> complex) {}
 
     record Member(int spid, int[] anchor, int fill) {}
 
@@ -98,7 +99,8 @@ final class ShapeFixture {
             List<EscherProperty> props = new ArrayList<>();
             s.props().forEach((k, v) -> props.add(new EscherSimpleProperty(EscherPropertyTypes.forPropertyID(k), v)));
             s.complex().forEach((k, v) -> {
-                EscherComplexProperty p = new EscherComplexProperty(EscherPropertyTypes.forPropertyID(k), false, v.length);
+                EscherComplexProperty p = new EscherComplexProperty(EscherPropertyTypes.forPropertyID(k), false,
+                        v.length);
                 p.setComplexData(v);
                 props.add(p);
             });

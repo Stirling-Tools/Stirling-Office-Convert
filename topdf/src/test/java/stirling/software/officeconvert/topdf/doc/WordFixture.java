@@ -329,7 +329,8 @@ final class WordFixture {
                 fs.createDocument(new ByteArrayInputStream(data), "Data");
             }
             if (title != null) {
-                org.apache.poi.hpsf.SummaryInformation si = org.apache.poi.hpsf.PropertySetFactory.newSummaryInformation();
+                org.apache.poi.hpsf.SummaryInformation si =
+                        org.apache.poi.hpsf.PropertySetFactory.newSummaryInformation();
                 si.setTitle(title);
                 si.setAuthor("Fixture Author");
                 ByteArrayOutputStream props = new ByteArrayOutputStream();

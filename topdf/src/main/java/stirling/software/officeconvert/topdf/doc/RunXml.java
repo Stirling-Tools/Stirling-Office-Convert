@@ -29,10 +29,6 @@ final class RunXml {
         }
     }
 
-    String props(CharacterProperties c) {
-        return props(c, List.of());
-    }
-
     String props(CharacterProperties c, List<Sprm> direct) {
         StringBuilder b = new StringBuilder(160);
         Sprm bi = Sprm.find(direct, 0x4A5E);

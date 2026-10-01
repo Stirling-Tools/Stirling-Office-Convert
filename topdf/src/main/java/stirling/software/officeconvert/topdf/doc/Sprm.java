@@ -116,10 +116,6 @@ record Sprm(int opcode, byte[] data, int at, int length) {
         return u16(data, at);
     }
 
-    int s32() {
-        return s32(data, at);
-    }
-
     static int u16(byte[] d, int i) {
         return (d[i] & 0xFF) | (d[i + 1] & 0xFF) << 8;
     }

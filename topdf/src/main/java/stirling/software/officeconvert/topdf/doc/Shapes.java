@@ -46,8 +46,10 @@ final class Shapes {
             return null;
         }
         int id = c.nextId();
-        return "<w:drawing>" + open(d, sp, fspa, id, c.layer(d.getShapeId(), id, story.kind == Story.Kind.HEADER), box[2], box[3], box[0], box[1]) + "<a:graphic><a:graphicData uri=\""
-                + (group ? Groups.WPG : Xml.WPS) + "\">" + inner + "</a:graphicData></a:graphic></wp:anchor></w:drawing>";
+        int z = c.layer(d.getShapeId(), id, story.kind == Story.Kind.HEADER);
+        return "<w:drawing>" + open(d, sp, fspa, id, z, box[2], box[3], box[0], box[1])
+                + "<a:graphic><a:graphicData uri=\"" + (group ? Groups.WPG : Xml.WPS) + "\">" + inner
+                + "</a:graphicData></a:graphic></wp:anchor></w:drawing>";
     }
 
     static String shape(Conv c, Story story, EscherContainerRecord sp, long x, long y, long cx, long cy,
@@ -57,9 +59,9 @@ final class Shapes {
             return null;
         }
         String geom = geometry(rec.getShapeType());
-        String art = rec.getShapeType() >= 136 && rec.getShapeType() <= 175 ? string(sp, 0x00C0) : null;
+        String art = rec.getShapeType() >= 136 && rec.getShapeType() <= 175 ? WordArt.string(sp, 0x00C0) : null;
         if (art != null && !art.isBlank()) {
-            return wordArt(sp, rec, art, x, y, cx, cy);
+            return WordArt.shape(sp, rec, art, x, y, cx, cy);
         }
         boolean line = geom.equals("line") || geom.endsWith("Connector2") || geom.endsWith("Connector3");
         int[] text = line ? null : c.textboxes().text(rec.getShapeId(), story.kind == Story.Kind.HEADER);
@@ -160,64 +162,6 @@ final class Shapes {
         }
     }
 
-    private static String wordArt(EscherContainerRecord sp, EscherSpRecord rec, String text, long x, long y, long cx,
-            long cy) {
-        StringBuilder b = new StringBuilder("<wps:wsp><wps:cNvSpPr/><wps:spPr>");
-        xfrm(b, rec, rotation(sp), x, y, cx, cy);
-        b.append("<a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom><a:noFill/><a:ln><a:noFill/></a:ln></wps:spPr>")
-                .append("<wps:txbx><w:txbxContent><w:p><w:pPr><w:jc w:val=\"center\"/></w:pPr><w:r><w:rPr>");
-        String font = string(sp, 0x00C5);
-        if (font != null && !font.isBlank()) {
-            String f = Xml.esc(font.strip());
-            b.append("<w:rFonts w:ascii=\"").append(f).append("\" w:hAnsi=\"").append(f).append("\" w:cs=\"").append(f)
-                    .append("\"/>");
-        }
-        Boolean bold = bit(sp, 0x00FF, 5);
-        Boolean italic = bit(sp, 0x00FF, 4);
-        if (bold != null && bold) {
-            b.append("<w:b/>");
-        }
-        if (italic != null && italic) {
-            b.append("<w:i/>");
-        }
-        b.append("<w:color w:val=\"").append(faded(color(prop(sp, 0x0181, 0), 0), prop(sp, 0x0182, 0x10000)))
-                .append("\"/>");
-        long size = prop(sp, 0x00C3, 36 << 16) >> 15;
-        b.append("<w:sz w:val=\"").append(Math.max(2, Math.min(3276, size))).append("\"/></w:rPr><w:t xml:space=\"preserve\">")
-                .append(Xml.esc(text.replace('\n', ' ').replace('\r', ' '))).append("</w:t></w:r></w:p></w:txbxContent></wps:txbx>")
-                .append("<wps:bodyPr wrap=\"none\" lIns=\"0\" tIns=\"0\" rIns=\"0\" bIns=\"0\"><a:prstTxWarp prst=\"textPlain\">")
-                .append("<a:avLst/></a:prstTxWarp></wps:bodyPr></wps:wsp>");
-        return b.toString();
-    }
-
-    private static String faded(String hex, long opacity) {
-        if (opacity >= 0x10000 || opacity < 0) {
-            return hex;
-        }
-        int rgb = Integer.parseInt(hex, 16);
-        double a = opacity / 65536.0;
-        int r = (int) Math.round((rgb >> 16 & 0xFF) * a + 255 * (1 - a));
-        int g = (int) Math.round((rgb >> 8 & 0xFF) * a + 255 * (1 - a));
-        int bl = (int) Math.round((rgb & 0xFF) * a + 255 * (1 - a));
-        return Xml.hex(r << 16 | g << 8 | bl);
-    }
-
-    private static String string(EscherContainerRecord sp, int number) {
-        byte[] d = complex(sp, number);
-        if (d == null || d.length < 2) {
-            return null;
-        }
-        StringBuilder out = new StringBuilder();
-        for (int i = 0; i + 1 < d.length && out.length() < 4096; i += 2) {
-            char ch = (char) Sprm.u16(d, i);
-            if (ch == 0) {
-                break;
-            }
-            out.append(ch);
-        }
-        return out.toString();
-    }
-
     static void xfrm(StringBuilder b, EscherSpRecord rec, double deg, long x, long y, long cx, long cy) {
         b.append("<a:xfrm");
         if (deg != 0) {
@@ -233,7 +177,7 @@ final class Shapes {
                 .append("\" cy=\"").append(cy).append("\"/></a:xfrm>");
     }
 
-    private static String color(long v, int fallback) {
+    static String color(long v, int fallback) {
         int rgb = (v & 0xFF000000L) != 0 ? fallback
                 : (int) ((v & 0xFF) << 16 | (v & 0xFF00) | (v >> 16) & 0xFF);
         return Xml.hex(rgb);
@@ -296,7 +240,8 @@ final class Shapes {
             case 3 -> b.append("<wp:wrapNone/>");
             case 4, 5 -> {
                 String tag = wr == 4 ? "wrapTight" : "wrapThrough";
-                b.append("<wp:").append(tag).append(" wrapText=\"").append(side).append("\"><wp:wrapPolygon edited=\"0\">")
+                b.append("<wp:").append(tag).append(" wrapText=\"").append(side)
+                        .append("\"><wp:wrapPolygon edited=\"0\">")
                         .append(polygon(sp)).append("</wp:wrapPolygon></wp:").append(tag).append('>');
             }
             default -> b.append("<wp:wrapSquare wrapText=\"").append(side).append("\"/>");
@@ -330,7 +275,7 @@ final class Shapes {
         return b.toString();
     }
 
-    private static byte[] complex(EscherContainerRecord sp, int number) {
+    static byte[] complex(EscherContainerRecord sp, int number) {
         if (sp == null) {
             return null;
         }

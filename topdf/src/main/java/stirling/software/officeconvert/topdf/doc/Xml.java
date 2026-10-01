@@ -43,7 +43,8 @@ final class Xml {
                 case '>' -> b.append("&gt;");
                 case '"' -> b.append("&quot;");
                 default -> {
-                    if (Character.isHighSurrogate(c) && i + 1 < s.length() && Character.isLowSurrogate(s.charAt(i + 1))) {
+                    if (Character.isHighSurrogate(c) && i + 1 < s.length()
+                            && Character.isLowSurrogate(s.charAt(i + 1))) {
                         b.append(c).append(s.charAt(++i));
                     } else if (legal(c)) {
                         b.append(c);

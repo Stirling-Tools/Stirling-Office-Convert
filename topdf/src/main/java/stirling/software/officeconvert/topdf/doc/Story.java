@@ -90,7 +90,8 @@ final class Story {
                     j++;
                 }
                 if (pageBreak && depth == 0) {
-                    out.append("<w:p><w:pPr><w:spacing w:before=\"0\" w:after=\"0\" w:line=\"20\" w:lineRule=\"exact\"/>")
+                    out.append("<w:p><w:pPr><w:spacing w:before=\"0\" w:after=\"0\" w:line=\"20\"")
+                            .append(" w:lineRule=\"exact\"/>")
                             .append("</w:pPr><w:r><w:br w:type=\"page\"/></w:r></w:p>");
                     pageBreak = false;
                 }

@@ -206,7 +206,8 @@ final class Groups {
             }
             if (kid.getRecordId() == (short) 0xF003) {
                 if (!kid.getChildRecords().isEmpty() && kid.getChildRecords().get(0) instanceof EscherContainerRecord h
-                        && h.getChildById(EscherSpRecord.RECORD_ID) instanceof EscherSpRecord r && r.getShapeId() == spid) {
+                        && h.getChildById(EscherSpRecord.RECORD_ID) instanceof EscherSpRecord r
+                        && r.getShapeId() == spid) {
                     return kid;
                 }
                 EscherContainerRecord deeper = search(kid, spid, depth + 1);
