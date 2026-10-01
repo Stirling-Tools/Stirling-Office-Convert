@@ -93,12 +93,20 @@ final class FontCompaction {
         if (COSName.TYPE0.equals(sub)) {
             COSArray kids = ContentGraph.array(font.getDictionaryObject(COSName.DESCENDANT_FONTS));
             descriptorOwner = kids == null || kids.size() != 1 ? null : ContentGraph.dict(kids.getObject(0));
-        } else if (!COSName.TRUE_TYPE.equals(sub)) {
+        } else if (!COSName.TRUE_TYPE.equals(sub) && !COSName.TYPE1.equals(sub)) {
             return null;
         }
         COSDictionary fd = descriptorOwner == null ? null
                 : ContentGraph.dict(descriptorOwner.getDictionaryObject(COSName.FONT_DESC));
-        return fd != null && fd.getDictionaryObject(COSName.FONT_FILE2) instanceof COSStream s ? s : null;
+        if (fd == null) {
+            return null;
+        }
+        for (COSName key : new COSName[] {COSName.FONT_FILE2, COSName.FONT_FILE, COSName.FONT_FILE3}) {
+            if (fd.getDictionaryObject(key) instanceof COSStream s) {
+                return s;
+            }
+        }
+        return null;
     }
 
     private void compact(COSStream program, List<COSDictionary> fonts) throws IOException {
@@ -113,6 +121,11 @@ final class FontCompaction {
                 return;
             }
             loaded.add(f);
+        }
+        COSName key = programKey(loaded.get(0), program);
+        if (!COSName.FONT_FILE2.equals(key)) {
+            outlines(program, loaded, key);
+            return;
         }
         boolean cid = loaded.get(0) instanceof PDType0Font;
         for (PDFont f : loaded) {
@@ -173,6 +186,40 @@ final class FontCompaction {
         for (Map.Entry<COSDictionary, TreeMap<Integer, Integer>> e : cidMaps.entrySet()) {
             cidToGid(e.getKey(), e.getValue(), remap);
         }
+    }
+
+    private void outlines(COSStream program, List<PDFont> loaded, COSName key) throws IOException {
+        for (PDFont f : loaded) {
+            if (programKey(f, program) != key) {
+                return;
+            }
+        }
+        COSStream file = COSName.FONT_FILE.equals(key)
+                ? OutlineCompaction.type1(doc, program, loaded, usage.codes())
+                : OutlineCompaction.cff(doc, program, loaded, usage.codes());
+        if (file == null) {
+            return;
+        }
+        String tag = tag(Map.of(usage.codes().get(loaded.get(0).getCOSObject()).hashCode(),
+                String.valueOf(loaded.get(0).getName()).hashCode()));
+        for (PDFont f : loaded) {
+            COSDictionary fd = descriptor(f);
+            fd.setItem(key, file);
+            retag(f, fd, tag);
+        }
+    }
+
+    private static COSName programKey(PDFont f, COSStream program) {
+        COSDictionary fd = descriptor(f);
+        if (fd == null) {
+            return null;
+        }
+        for (COSName key : new COSName[] {COSName.FONT_FILE2, COSName.FONT_FILE, COSName.FONT_FILE3}) {
+            if (fd.getDictionaryObject(key) == program) {
+                return key;
+            }
+        }
+        return null;
     }
 
     private static boolean vertical(PDFont f) {
