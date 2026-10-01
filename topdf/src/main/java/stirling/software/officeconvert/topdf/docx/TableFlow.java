@@ -110,6 +110,17 @@ final class TableFlow {
         return k - from;
     }
 
+    private static boolean breaksBefore(RowBox row) {
+        for (CellBox cb : row.cells) {
+            if (cb.continuation || cb.cell == null) {
+                continue;
+            }
+            List<Block> blocks = cb.cell.blocks;
+            return !blocks.isEmpty() && blocks.get(0) instanceof Para p && Boolean.TRUE.equals(p.pp.pageBreakBefore);
+        }
+        return false;
+    }
+
     private static boolean keepsWithNext(RowBox row) {
         boolean any = false;
         for (CellBox cb : row.cells) {
@@ -248,6 +259,16 @@ final class TableFlow {
                     }
                     lastStrip = null;
                 }
+            }
+            if (r.paginated() && !r.atTop() && (placedAny || i == 0) && i >= l.headerRows() && breaksBefore(row)) {
+                close(lastStrip, lastRow, l, edges);
+                r.newFrame(true, false);
+                opening = edges;
+                for (RowBox h : headers) {
+                    placeRow(h, l, r);
+                    opening = false;
+                }
+                lastStrip = null;
             }
             boolean fresh = r.atTop();
             while (current != null && guard++ < 10_000) {

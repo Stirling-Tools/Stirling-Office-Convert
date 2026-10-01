@@ -387,6 +387,18 @@ class DocxTableEdgeTest {
     }
 
     @Test
+    void aRowWhoseFirstParagraphBreaksThePageStartsTheNextPage() throws IOException {
+        String breaking = "<w:p><w:pPr><w:pageBreakBefore/></w:pPr><w:r><w:t>Second</w:t></w:r></w:p>";
+        String inner = "<w:p><w:r><w:t>Head</w:t></w:r></w:p><w:p><w:pPr><w:pageBreakBefore/></w:pPr><w:r>"
+                + "<w:t>Inside</w:t></w:r></w:p>";
+        DocxDoc.Rendered r = render("rowbreak", table("", row("", DocxDoc.p("First")) + row("", breaking)
+                + row("", inner)) + "<w:p/>");
+        assertEquals(1, r.word("First").page());
+        assertEquals(2, r.word("Second").page());
+        assertEquals(2, r.word("Inside").page(), "a break further down a cell is not a row break");
+    }
+
+    @Test
     void aPageAnchoredTableOverTextAboveItsAnchorMovesToTheNextPage() throws IOException {
         String table = "<w:tbl><w:tblPr><w:tblpPr w:leftFromText=\"180\" w:rightFromText=\"180\""
                 + " w:vertAnchor=\"page\" w:horzAnchor=\"margin\" w:tblpY=\"1440\"/><w:tblW w:w=\"9360\""
