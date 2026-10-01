@@ -94,6 +94,10 @@ final class RtfReader {
                 if ((++ticks & 0x3FFF) == 0 && Thread.currentThread().isInterrupted()) {
                     throw new InterruptedIOException("Conversion interrupted");
                 }
+                if (overflow > 0) {
+                    overflowed(t);
+                    continue;
+                }
                 if (skipDepth > 0) {
                     skipped(t);
                     continue;
@@ -130,10 +134,24 @@ final class RtfReader {
             case RtfTokenizer.OPEN -> skipDepth++;
             case RtfTokenizer.CLOSE -> {
                 skipDepth--;
-                if (skipDepth == 0) {
+                if (skipDepth == 0 && stack.size() > 1) {
                     pop();
                 }
             }
+            case RtfTokenizer.WORD -> {
+                if ("bin".equals(tok.word) && tok.param > 0) {
+                    tok.skipBinary(tok.param);
+                }
+            }
+            default -> {
+            }
+        }
+    }
+
+    private void overflowed(int t) throws IOException {
+        switch (t) {
+            case RtfTokenizer.OPEN -> overflow++;
+            case RtfTokenizer.CLOSE -> overflow--;
             case RtfTokenizer.WORD -> {
                 if ("bin".equals(tok.word) && tok.param > 0) {
                     tok.skipBinary(tok.param);
@@ -177,10 +195,6 @@ final class RtfReader {
         flush();
         ucSkip = 0;
         starred = false;
-        if (overflow > 0) {
-            overflow--;
-            return;
-        }
         if (stack.size() <= 1) {
             return;
         }
@@ -258,6 +272,9 @@ final class RtfReader {
     }
 
     private void skip() {
+        if (stack.size() <= 1) {
+            return;
+        }
         g.dest = Dest.SKIP;
         skipDepth = 1;
     }
@@ -428,7 +445,8 @@ final class RtfReader {
                 }
                 content.openHeader(g, w);
                 if (g.dest == Dest.SKIP) {
-                    skipDepth = 1;
+                    g.dest = Dest.NORMAL;
+                    skip();
                 }
             }
             case "footnote" -> {
@@ -438,7 +456,8 @@ final class RtfReader {
                 }
                 content.openNote(g);
                 if (g.dest == Dest.SKIP) {
-                    skipDepth = 1;
+                    g.dest = Dest.NORMAL;
+                    skip();
                 }
             }
             case "listtext", "pntext" -> {

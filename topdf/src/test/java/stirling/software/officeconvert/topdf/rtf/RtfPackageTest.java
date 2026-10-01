@@ -327,6 +327,11 @@ class RtfPackageTest {
         assertNotNull(p.body());
         Pkg cut = convert(HEAD + "\\pard unterminated {\\b bold \\u-3913");
         assertTrue(cut.body().contains("unterminated"), cut.body());
+        Pkg root = convert("{\\rtf1\\*\\unknown text}}}{\\*\\x}{{}}}\\par after\\*\\y text}}");
+        assertNotNull(root.body());
+        StringBuilder overflow = new StringBuilder(HEAD);
+        overflow.append("{".repeat(3000)).append("{\\*\\skipme deep}").append("}".repeat(3000)).append("\\pard tail\\par}");
+        assertTrue(convert(overflow.toString()).body().contains(">tail<"));
         Pkg bin = convert(HEAD + "\\pard x{\\bin999999999 }y");
         assertTrue(bin.body().contains(">x<"), bin.body());
     }
