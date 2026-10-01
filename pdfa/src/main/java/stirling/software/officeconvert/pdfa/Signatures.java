@@ -1,6 +1,5 @@
 package stirling.software.officeconvert.pdfa;
 
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -15,13 +14,13 @@ final class Signatures {
 
     private Signatures() {}
 
-    static void run(PDDocument doc, Report report) throws IOException {
+    static void run(PDDocument doc, Census census, Report report) {
         List<COSDictionary> owners = new ArrayList<>();
-        CosWalk.walk(doc, b -> {
-            if (b instanceof COSDictionary d && signature(d.getDictionaryObject(COSName.V))) {
+        for (COSDictionary d : census.valued) {
+            if (signature(d.getDictionaryObject(COSName.V))) {
                 owners.add(d);
             }
-        });
+        }
         COSDictionary cat = doc.getDocumentCatalog().getCOSObject();
         COSDictionary perms = ContentGraph.dict(cat.getDictionaryObject(COSName.PERMS));
         boolean signedPerms = false;

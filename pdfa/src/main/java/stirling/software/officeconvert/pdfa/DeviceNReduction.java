@@ -39,22 +39,22 @@ final class DeviceNReduction {
         return level.part() == 1 ? 8 : 32;
     }
 
-    static void run(PDDocument doc, ContentGraph graph, PdfALevel level, Report report) throws IOException {
+    static void run(PDDocument doc, Census census, ContentGraph graph, PdfALevel level, Report report)
+            throws IOException {
         int max = maxColourants(level);
         Map<COSArray, Tint> tints = new IdentityHashMap<>();
-        boolean[] unknown = {false};
-        CosWalk.walk(doc, b -> {
-            if (Tint.deviceN(b) && b instanceof COSArray a && ContentGraph.array(a.getObject(1)) instanceof COSArray names
-                    && names.size() > max) {
+        boolean unknown = false;
+        for (COSArray a : census.deviceNs) {
+            if (ContentGraph.array(a.getObject(1)) instanceof COSArray names && names.size() > max) {
                 Tint t = Tint.of(a);
                 if (t == null) {
-                    unknown[0] = true;
+                    unknown = true;
                 } else {
                     tints.put(a, t);
                 }
             }
-        });
-        if (unknown[0]) {
+        }
+        if (unknown) {
             report.warn("A DeviceN colour space has more colourants than " + level.label()
                     + " allows and an alternate space that could not be read");
         }

@@ -46,12 +46,19 @@ final class SpotColours {
         this.doc = doc;
     }
 
-    static void run(PDDocument doc, PdfALevel level, Report report) throws IOException {
+    static void run(PDDocument doc, Census census, PdfALevel level, Report report) throws IOException {
         if (level.part() == 1) {
             return;
         }
         SpotColours s = new SpotColours(doc);
-        CosWalk.walk(doc, s::collect);
+        for (COSArray a : census.separations) {
+            s.collect(a);
+        }
+        for (COSArray a : census.deviceNs) {
+            if (Tint.deviceN(a)) {
+                s.collect(a);
+            }
+        }
         if (s.deviceNs.isEmpty() && s.separations.isEmpty()) {
             return;
         }

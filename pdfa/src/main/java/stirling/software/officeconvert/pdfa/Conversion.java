@@ -42,9 +42,10 @@ final class Conversion {
         if (level.tagged()) {
             Tagging.run(doc, level, report);
         }
-        Signatures.run(doc, report);
+        Census census = Census.of(doc);
+        Signatures.run(doc, census, report);
         Interactive.run(doc, level, report);
-        ObjectMetadata.run(doc, level, report);
+        ObjectMetadata.run(doc, census, level, report);
         EmbeddedFiles.run(doc, level, report);
         if (level.part() == 1) {
             OptionalContentRemoval.run(doc, report);
@@ -57,8 +58,8 @@ final class Conversion {
         ContentGraph graph = ContentGraph.of(doc);
         FontUsage usage = new FontUsage();
         DeviceColours colours = new DeviceColours();
-        DeviceNReduction.run(doc, graph, level, report);
-        SpotColours.run(doc, level, report);
+        DeviceNReduction.run(doc, census, graph, level, report);
+        SpotColours.run(doc, census, level, report);
         ContentFixer.run(graph, level, report, usage, colours);
         FontFixer.run(doc, usage, level, () -> FontLibrary.withSystem(options.fontDirs()), report);
         PdfFiles.stopIfInterrupted();
@@ -76,7 +77,7 @@ final class Conversion {
             StructureCheck.run(doc, level, report);
         }
         graph = ContentGraph.of(doc);
-        BigDictionaries.run(doc, graph, level, report);
+        BigDictionaries.run(doc, census, graph, level, report);
         WideStructure.run(doc, level, report);
         ColourFixer.run(doc, graph, level, report, colours, Limits.prepare(doc, level, report));
         StructureSlimming.run(doc);

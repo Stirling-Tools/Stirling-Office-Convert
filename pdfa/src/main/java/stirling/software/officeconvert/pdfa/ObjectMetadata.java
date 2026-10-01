@@ -35,16 +35,15 @@ final class ObjectMetadata {
 
     private ObjectMetadata() {}
 
-    static void run(PDDocument doc, PdfALevel level, Report report) throws IOException {
+    static void run(PDDocument doc, Census census, PdfALevel level, Report report) throws IOException {
         COSDictionary cat = doc.getDocumentCatalog().getCOSObject();
         COSStream main = cat.getDictionaryObject(COSName.METADATA) instanceof COSStream s ? s : null;
         List<COSDictionary> owners = new ArrayList<>();
-        CosWalk.walk(doc, b -> {
-            if (b instanceof COSDictionary d && d.getDictionaryObject(COSName.METADATA) instanceof COSStream s
-                    && s != main) {
+        for (COSDictionary d : census.withMetadata) {
+            if (d.getDictionaryObject(COSName.METADATA) instanceof COSStream s && s != main) {
                 owners.add(d);
             }
-        });
+        }
         if (level.part() > 1) {
             for (COSDictionary d : owners) {
                 d.removeItem(COSName.METADATA);

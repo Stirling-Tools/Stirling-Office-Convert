@@ -36,14 +36,15 @@ final class BigDictionaries {
 
     private BigDictionaries() {}
 
-    static void run(PDDocument doc, ContentGraph graph, PdfALevel level, Report report) throws IOException {
+    static void run(PDDocument doc, Census census, ContentGraph graph, PdfALevel level, Report report)
+            throws IOException {
         if (level.part() > 1) {
             return;
         }
         resources(graph, report);
         dests(doc, report);
         info(doc, report);
-        pieceInfo(doc, report);
+        pieceInfo(census, report);
     }
 
     private static void resources(ContentGraph graph, Report report) throws IOException {
@@ -151,14 +152,8 @@ final class BigDictionaries {
         report.warn("Removed custom document properties past the " + MAX + " entries PDF/A-1 allows");
     }
 
-    private static void pieceInfo(PDDocument doc, Report report) throws IOException {
-        List<COSDictionary> owners = new ArrayList<>();
-        CosWalk.walk(doc, b -> {
-            if (b instanceof COSDictionary d && d.containsKey(PIECE_INFO)) {
-                owners.add(d);
-            }
-        });
-        for (COSDictionary d : owners) {
+    private static void pieceInfo(Census census, Report report) {
+        for (COSDictionary d : census.withPieceInfo) {
             if (oversized(d.getDictionaryObject(PIECE_INFO), 0)) {
                 d.removeItem(PIECE_INFO);
                 report.warn("Removed application data larger than PDF/A-1 allows");
