@@ -24,6 +24,7 @@ final class RuleSamples {
         ColourSamples.register();
         ObjectSamples.register();
         DocumentSamples.register();
+        FontSamples.register();
     }
 
     private RuleSamples() {}

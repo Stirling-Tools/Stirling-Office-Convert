@@ -1,0 +1,118 @@
+package stirling.software.officeconvert.pdfa;
+
+import static stirling.software.officeconvert.pdfa.RuleSamples.doc;
+import static stirling.software.officeconvert.pdfa.RuleSamples.tagged;
+
+import java.io.ByteArrayOutputStream;
+import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
+import java.util.Set;
+
+import org.apache.pdfbox.cos.COSArray;
+import org.apache.pdfbox.cos.COSDictionary;
+import org.apache.pdfbox.cos.COSName;
+import org.apache.pdfbox.cos.COSStream;
+import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.pdmodel.PDPage;
+import org.apache.pdfbox.pdmodel.PDPageContentStream;
+import org.apache.pdfbox.pdmodel.PDResources;
+import org.apache.pdfbox.pdmodel.font.PDFont;
+import org.apache.pdfbox.pdmodel.font.PDTrueTypeFont;
+import org.apache.pdfbox.pdmodel.font.PDType0Font;
+import org.apache.pdfbox.pdmodel.font.encoding.WinAnsiEncoding;
+
+final class FontSamples {
+
+    private FontSamples() {}
+
+    static void register() {
+        doc("f01_font_dictionaries", Set.of("1:6.3.2-1", "1:6.3.2-3", "1:6.3.2-4", "1:6.3.2-5", "1:6.3.2-6",
+                "2:6.2.11.2-1", "2:6.2.11.2-3", "2:6.2.11.2-4", "2:6.2.11.2-5", "2:6.2.11.2-6"), d -> {
+                    PDFont a = trueType(d);
+                    PDFont b = trueType(d);
+                    PDFont c = trueType(d);
+                    a.getCOSObject().removeItem(COSName.TYPE);
+                    b.getCOSObject().removeItem(COSName.BASE_FONT);
+                    for (COSName k : new COSName[] {COSName.FIRST_CHAR, COSName.LAST_CHAR, COSName.WIDTHS}) {
+                        c.getCOSObject().removeItem(k);
+                    }
+                    page(d, "BT /A 14 Tf 50 780 Td (No Type entry) Tj /B 14 Tf 0 -30 Td (No BaseFont entry) Tj "
+                            + "/C 14 Tf 0 -30 Td (No widths) Tj ET", a, b, c);
+                });
+        doc("f03_glyphs_and_unicode", Set.of("1:6.3.5-3", "2:6.2.11.4.2-2", "2:6.2.11.7.2-2"), d -> {
+            PDType0Font noSet = PDType0Font.load(d, Samples.liberation(), true);
+            PDType0Font badSet = PDType0Font.load(d, Samples.liberation(), true);
+            PDType0Font full = PDType0Font.load(d, Samples.liberation(), false);
+            PDPage p = page(d, "", noSet, badSet, full);
+            try (var cs = new PDPageContentStream(d, p, PDPageContentStream.AppendMode.APPEND, false)) {
+                Samples.text(cs, noSet, 14, 50, 780, "A subset without a CIDSet");
+                Samples.text(cs, badSet, 14, 50, 740, "A CIDSet that lacks glyphs the subset has");
+                Samples.text(cs, full, 14, 50, 700, "A ToUnicode map to U+FEFF");
+            }
+            d.save(new ByteArrayOutputStream());
+            descriptor(noSet).removeItem(COSName.CID_SET);
+            COSStream set = d.getDocument().createCOSStream();
+            try (OutputStream o = set.createOutputStream()) {
+                o.write(new byte[] {(byte) 0x80});
+            }
+            descriptor(badSet).setItem(COSName.CID_SET, set);
+            byte[] code = full.encode("A");
+            COSStream tu = d.getDocument().createCOSStream();
+            try (OutputStream o = tu.createOutputStream()) {
+                o.write(("/CIDInit /ProcSet findresource begin 12 dict begin begincmap /CMapName /Bad def "
+                        + "1 begincodespacerange <0000> <FFFF> endcodespacerange 1 beginbfchar "
+                        + String.format("<%02X%02X> <FEFF>", code[0], code[1])
+                        + " endbfchar endcmap CMapName currentdict /CMap defineresource pop end end")
+                        .getBytes(StandardCharsets.US_ASCII));
+            }
+            full.getCOSObject().setItem(COSName.TO_UNICODE, tu);
+        });
+    }
+
+    static COSDictionary descriptor(PDType0Font f) {
+        return (COSDictionary) ((COSDictionary) ((COSArray) f.getCOSObject().getDictionaryObject(COSName.DESCENDANT_FONTS))
+                .getObject(0)).getDictionaryObject(COSName.FONT_DESC);
+    }
+
+    static PDFont trueType(PDDocument d) throws Exception {
+        return PDTrueTypeFont.load(d, Samples.liberation(), WinAnsiEncoding.INSTANCE);
+    }
+
+    static PDPage page(PDDocument d, String content, PDFont... fonts) throws Exception {
+        PDPage p = Samples.page(d);
+        PDResources res = new PDResources();
+        for (int i = 0; i < fonts.length; i++) {
+            res.getCOSObject().setItem(COSName.FONT, res.getCOSObject().getDictionaryObject(COSName.FONT) == null
+                    ? new COSDictionary() : res.getCOSObject().getDictionaryObject(COSName.FONT));
+            ((COSDictionary) res.getCOSObject().getDictionaryObject(COSName.FONT))
+                    .setItem(String.valueOf((char) ('A' + i)), fonts[i].getCOSObject());
+        }
+        p.setResources(res);
+        if (!content.isEmpty()) {
+            Samples.raw(p, d, content);
+        }
+        return p;
+    }
+
+    static COSStream cmap(PDDocument d, String name, int dictMode, int streamMode, String use, int cid)
+            throws Exception {
+        COSStream s = d.getDocument().createCOSStream();
+        s.setItem(COSName.TYPE, COSName.getPDFName("CMap"));
+        s.setName(COSName.getPDFName("CMapName"), name);
+        COSDictionary info = new COSDictionary();
+        info.setString(COSName.REGISTRY, "Adobe");
+        info.setString(COSName.ORDERING, "Identity");
+        info.setInt(COSName.SUPPLEMENT, 0);
+        s.setItem(COSName.CIDSYSTEMINFO, info);
+        s.setInt(COSName.getPDFName("WMode"), dictMode);
+        String body = "/CIDInit /ProcSet findresource begin 12 dict begin begincmap " + use
+                + "/CIDSystemInfo << /Registry (Adobe) /Ordering (Identity) /Supplement 0 >> def /CMapName /" + name
+                + " def /CMapType 1 def /WMode " + streamMode + " def 1 begincodespacerange <0000> <FFFF> "
+                + "endcodespacerange 2 begincidrange <0000> <0040> 0 <0041> <0041> " + cid + " endcidrange "
+                + "endcmap CMapName currentdict /CMap defineresource pop end end";
+        try (OutputStream o = s.createOutputStream()) {
+            o.write(body.getBytes(StandardCharsets.US_ASCII));
+        }
+        return s;
+    }
+}

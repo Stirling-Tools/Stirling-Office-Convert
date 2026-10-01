@@ -77,7 +77,7 @@ final class FontFixer {
         }
         FontCheck.Verdict v = FontCheck.check(font, codes, level);
         if (v == FontCheck.Verdict.OK) {
-            tidy(font);
+            tidy(font, codes);
             if (level.unicode()) {
                 unicode(font, codes, bytesPerCode);
             }
@@ -107,7 +107,8 @@ final class FontFixer {
         return null;
     }
 
-    private void tidy(PDFont font) throws IOException {
+    private void tidy(PDFont font, TreeSet<Integer> codes) throws IOException {
+        SimpleFontEntries.complete(font, codes);
         PDFontDescriptor fd = font.getFontDescriptor();
         if (font instanceof PDType0Font t0) {
             PDCIDFont cid = t0.getDescendantFont();
