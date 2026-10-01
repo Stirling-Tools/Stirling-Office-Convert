@@ -173,7 +173,8 @@ public final class OfficeZip implements Closeable {
         this.names = Collections.unmodifiableList(order);
         if (!exists(CONTENT_TYPES)) {
             if (exists("/mimetype") && exists("/META-INF/manifest.xml")) {
-                throw new IOException("The file is an OpenDocument file (ODT, ODS or ODP), which is not supported");
+                throw new IOException("The file is an OpenDocument file of a kind that is not supported (only text,"
+                        + " spreadsheets and presentations are)");
             }
             throw new LostPart("The file is not an Office document: the zip package has no [Content_Types].xml", null);
         }
