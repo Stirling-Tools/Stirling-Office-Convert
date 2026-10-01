@@ -204,7 +204,31 @@ class SubstitutionTest {
         assertTrue(gulim.indexOf("Noto Sans KR") < gulim.indexOf("Noto Sans JP"));
         assertTrue(gulim.indexOf("Liberation Sans") < gulim.indexOf("Liberation Serif"));
         List<String> mingLiU = Substitutes.generic("MingLiU");
+        assertTrue(mingLiU.indexOf("Noto Serif TC") < mingLiU.indexOf("Noto Sans TC"));
         assertTrue(mingLiU.indexOf("Noto Sans TC") < mingLiU.indexOf("Noto Sans SC"));
+        List<String> batang = Substitutes.generic("바탕");
+        assertTrue(batang.indexOf("Noto Serif KR") < batang.indexOf("Noto Sans KR"));
+        assertTrue(batang.indexOf("Noto Sans KR") < batang.indexOf("Noto Sans JP"));
+        assertTrue(Substitutes.eastAsian("新細明體") && Substitutes.eastAsian("Gungsuh"));
+    }
+
+    @Test
+    void freeMetricClonesOfComicSansAndArialBlackStandInSilentlyAtTheirOwnWeight() throws Exception {
+        FontLibrary lib = library("Comic Relief", "Archivo Black", "Liberation Sans");
+        FontFace comic = lib.find("Comic Sans MS", false, false);
+        assertEquals("Comic Relief", comic.family());
+        assertNull(comic.note());
+        assertTrue(comic.emulated(), "Comic Sans MS keeps its own line metrics");
+        FontFace black = lib.find("Arial Black", false, false);
+        assertEquals("Archivo Black", black.family());
+        assertNull(black.note());
+        assertFalse(black.syntheticBold());
+        assertEquals(0f, black.embolden());
+        assertEquals(900, black.weight());
+        assertTrue(black.emulated(), "Arial Black keeps its own line metrics");
+        FontFace maori = lib.find("Arial Mäori", false, false);
+        assertEquals("Liberation Sans", maori.family());
+        assertNull(maori.note());
     }
 
     @Test
@@ -434,14 +458,15 @@ class SubstitutionTest {
                 Map.entry("Segoe UI Light", "Selawik Light"), Map.entry("Century Gothic", "URW Gothic"),
                 Map.entry("Book Antiqua", "P052"), Map.entry("Palatino Linotype", "P052"), Map.entry("Palatino", "P052"),
                 Map.entry("Bookman Old Style", "URW Bookman"), Map.entry("Century Schoolbook", "C059"),
-                Map.entry("Century", "C059"), Map.entry("Garamond", "EB Garamond"), Map.entry("Comic Sans MS", "Comic Neue"),
+                Map.entry("Century", "C059"), Map.entry("Garamond", "EB Garamond"),
                 Map.entry("Consolas", "Inconsolata"), Map.entry("Verdana", "DejaVu Sans"),
                 Map.entry("Trebuchet MS", "Fira Sans"), Map.entry("Lucida Console", "DejaVu Sans Mono"),
                 Map.entry("Lucida Sans", "Open Sans"), Map.entry("Franklin Gothic Book", "Source Sans 3"),
                 Map.entry("Gill Sans MT", "Lato"), Map.entry("Candara", "Source Sans 3"), Map.entry("Corbel", "Carlito"),
                 Map.entry("Constantia", "Source Serif 4"), Map.entry("Monotype Corsiva", "Z003"),
                 Map.entry("Aptos", "Source Sans 3"), Map.entry("Aptos Display", "Source Sans 3"),
-                Map.entry("Aptos Narrow", "Roboto Condensed"), Map.entry("Cascadia Code", "Source Code Pro"));
+                Map.entry("Aptos Narrow", "Roboto Condensed"), Map.entry("Cascadia Code", "Source Code Pro"),
+                Map.entry("Arial Black", "Archivo Black"), Map.entry("Comic Sans MS", "Comic Relief"));
         Set<String> everywhere = Set.of("Liberation Sans", "Liberation Serif", "Liberation Mono",
                 "Liberation Sans Narrow", "DejaVu Sans", "DejaVu Serif", "DejaVu Sans Mono");
         first.forEach((family, free) -> {
@@ -450,6 +475,12 @@ class SubstitutionTest {
             assertTrue(chain.stream().anyMatch(everywhere::contains), family + " has no stand-in every image has");
         });
         assertTrue(Substitutes.table("Tahoma").contains("DejaVu Sans Condensed"));
+        List<String> batang = Substitutes.table("Batang");
+        assertTrue(batang.contains("Noto Serif KR"));
+        assertTrue(batang.indexOf("Noto Serif KR") < batang.indexOf("Noto Sans KR"));
+        List<String> ming = Substitutes.table("新細明體");
+        assertTrue(ming.contains("Noto Serif TC"));
+        assertTrue(ming.indexOf("Noto Serif TC") < ming.indexOf("Noto Sans TC"));
         assertEquals(Substitutes.table("Arial"), Substitutes.table(" ARIAL "));
     }
 
