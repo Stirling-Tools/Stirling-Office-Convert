@@ -58,8 +58,8 @@ final class Inline {
             c.checkpoint();
         }
         flush();
-        if (marks != null) {
-            for (StringBuilder m : marks.tailMap(end, true).values()) {
+        if (marks != null && end < paragraphEnd) {
+            for (StringBuilder m : c.marks().within(end, paragraphEnd).values()) {
                 out.append(m);
             }
         }

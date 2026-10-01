@@ -17,7 +17,6 @@ import stirling.software.officeconvert.topdf.OfficeToPdf.Result;
 import stirling.software.officeconvert.topdf.doc.DocPackage;
 import stirling.software.officeconvert.topdf.io.LegacyOffice;
 
-// A Word 97-2003 document is rewritten as a DOCX package first, whatever its extension, and drawn from that
 final class LegacyWord {
 
     private LegacyWord() {}

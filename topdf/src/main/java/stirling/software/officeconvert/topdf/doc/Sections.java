@@ -149,7 +149,6 @@ final class Sections implements Story.Breaks {
         return s;
     }
 
-    // A text-free section that runs on, unchanged and continuous, into the next lays out as part of it
     private boolean absorbed(int k) {
         if (k + 1 >= seps.size() || seps.get(k + 1).getSectionProperties().getBkc() != 0
                 || !Arrays.equals(Sprm.encode(raw.get(k)), Sprm.encode(raw.get(k + 1)))

@@ -377,4 +377,14 @@ class DocTest {
             assertEquals(2, pdf.getNumberOfPages());
         }
     }
+
+    @Test
+    void textBeforeAHairlineBreakKeepsANormalLineHeight() throws IOException {
+        byte[] doc = new WordFixture().para("Column text\u000E", Sprms.u32(0x6412, -20 & 0xFFFF)).para("Next").build();
+        String xml = body(doc);
+        String text = xml.substring(xml.lastIndexOf("<w:p>", xml.indexOf("Column text")), xml.indexOf("Column text"));
+        assertTrue(text.contains("w:line=\"240\" w:lineRule=\"auto\""), xml);
+        String rest = xml.substring(xml.indexOf("Column text"));
+        assertTrue(rest.contains("w:line=\"20\" w:lineRule=\"exact\"") && rest.contains("<w:br w:type=\"column\"/>"), xml);
+    }
 }

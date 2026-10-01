@@ -5,6 +5,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import org.apache.poi.hwpf.model.PAPX;
+import org.apache.poi.hwpf.usermodel.LineSpacingDescriptor;
 import org.apache.poi.hwpf.usermodel.ParagraphProperties;
 
 final class Story {
@@ -12,6 +13,8 @@ final class Story {
     enum Kind { MAIN, HEADER, FOOTNOTE, ENDNOTE, TEXTBOX }
 
     static final int MAX_DEPTH = 8;
+
+    static final int HAIRLINE = 120;
 
     interface Breaks {
         String at(int end);
@@ -125,9 +128,30 @@ final class Story {
         List<Source.Segment> markRun = c.src.segments(Math.max(par.start(), end - 1), end, istd);
         String mark = markRun.isEmpty() ? null : c.src.runs.props(markRun.get(0).chp(), markRun.get(0).sprms());
         String sect = depth == 0 && breaks != null ? breaks.at(end) : null;
+        int split = hairlineBreak(props, par.start(), contentEnd);
+        if (split > par.start()) {
+            ParagraphProperties head = props.copy();
+            head.setLspd(new LineSpacingDescriptor());
+            out.append("<w:p>");
+            ParaXml.write(out, head, sprms, c.styles.id(istd), numbering, mark, null, breakBefore);
+            inline.write(par.start(), split, split, istd, out);
+            out.append("</w:p>");
+            breakBefore = false;
+            numbering = null;
+        }
         out.append("<w:p>");
         ParaXml.write(out, props, sprms, c.styles.id(istd), numbering, mark, sect, breakBefore);
-        inline.write(par.start(), contentEnd, end, istd, out);
+        inline.write(Math.max(par.start(), split), contentEnd, end, istd, out);
         out.append("</w:p>");
+    }
+
+    private int hairlineBreak(ParagraphProperties props, int start, int contentEnd) {
+        int lspd = props.getLspd() == null ? 0 : props.getLspd().toInt();
+        int line = (short) (lspd & 0xFFFF);
+        if (lspd >>> 16 != 0 || line >= 0 || -line >= HAIRLINE || contentEnd - start < 2) {
+            return -1;
+        }
+        char ch = c.src.text.charAt(contentEnd - 1);
+        return ch == '\u000E' || ch == '\u000C' ? contentEnd - 1 : -1;
     }
 }
