@@ -169,6 +169,9 @@ final class ShapeXml {
                 default -> "column";
             };
         }
+        if (libreOffice && "column".equals(s.bx)) {
+            return "margin";
+        }
         return s.bx != null ? s.bx : "page";
     }
 
