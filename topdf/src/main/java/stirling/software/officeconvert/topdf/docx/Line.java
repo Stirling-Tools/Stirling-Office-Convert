@@ -55,6 +55,8 @@ final class Line {
 
     float slack;
 
+    float hang;
+
     float baseline;
 
     float top;

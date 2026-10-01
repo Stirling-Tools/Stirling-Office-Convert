@@ -180,6 +180,9 @@ final class ParaFlow {
         ParaItems pi = new ParaItems(ctx, p, box != null && box.fill() != null ? box.fill() : r.background,
                 r.paginated());
         LineBreaker lb = breaker(pi, pp, r.width());
+        if (r instanceof StackLayout s && s.inCell()) {
+            lb.hangPunctuation(false);
+        }
         float grid = gridPitch(r);
         boolean firstFrame = true;
         boolean reopened = false;
@@ -635,6 +638,9 @@ final class ParaFlow {
         }
         ParaItems pi = new ParaItems(ctx, p, null, r.paginated());
         LineBreaker lb = breaker(pi, p.pp, width);
+        if (r instanceof StackLayout s && s.inCell()) {
+            lb.hangPunctuation(false);
+        }
         float total = 0;
         float first = 0;
         float firstTwo = 0;

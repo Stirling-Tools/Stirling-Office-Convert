@@ -36,7 +36,7 @@ final class LinePainter {
                 default -> jc;
             };
         }
-        float free = line.right - line.end;
+        float free = line.right - line.end + line.hang;
         if (free < -0.01f && justified(pp)) {
             justify(line, free, false);
             return;

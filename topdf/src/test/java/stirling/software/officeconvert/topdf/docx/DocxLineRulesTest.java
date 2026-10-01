@@ -257,10 +257,26 @@ class DocxLineRulesTest {
         assertTrue(justified > left, left + " then " + justified);
     }
 
+    @Test
+    void anIdeographicCommaHangsPastTheMarginRatherThanWrapWithTheCharacterBeforeIt() throws IOException {
+        String text = "\u4E00".repeat(45) + "\u89C1\uFF0C" + "\u4E00".repeat(10);
+        int hanging = firstLineLength(text, "both");
+        int kept = firstLineLength(text, "both\"/><w:overflowPunct w:val=\"0");
+        assertEquals(47, hanging, "the comma ends the first line");
+        assertEquals(45, kept);
+        assertEquals(47, firstLineLength(text.substring(0, 47), "both"), "on the paragraph's last line too");
+        String cell = "<w:tbl><w:tblPr><w:tblW w:w=\"9600\" w:type=\"dxa\"/></w:tblPr><w:tblGrid><w:gridCol"
+                + " w:w=\"9600\"/></w:tblGrid><w:tr><w:tc><w:tcPr><w:tcW w:w=\"9600\" w:type=\"dxa\"/></w:tcPr>"
+                + "<w:p><w:pPr><w:jc w:val=\"both\"/></w:pPr><w:r><w:rPr><w:rFonts w:eastAsia=\"SimSun\"/></w:rPr><w:t>"
+                + text + "</w:t></w:r></w:p></w:tc></w:tr></w:tbl><w:p/>";
+        String out = DocxDoc.render(dir, "hangcell", new DocxDoc().styles(STYLES).body(cell).bytes()).text();
+        assertEquals(45, out.strip().split("\\R")[0].strip().length(), "a table cell lets nothing hang");
+    }
+
     private int firstLineLength(String text, String jc) throws IOException {
         String body = "<w:p><w:pPr><w:jc w:val=\"" + jc + "\"/></w:pPr><w:r><w:rPr><w:rFonts w:eastAsia=\"SimSun\"/>"
                 + "<w:lang w:eastAsia=\"zh-CN\"/></w:rPr><w:t>" + text + "</w:t></w:r></w:p>";
-        String out = DocxDoc.render(dir, "autospace-" + jc, new DocxDoc().styles(STYLES).body(body).bytes()).text();
+        String out = DocxDoc.render(dir, "line-" + Integer.toHexString(jc.hashCode()), new DocxDoc().styles(STYLES).body(body).bytes()).text();
         return out.strip().split("\\R")[0].strip().length();
     }
 }
