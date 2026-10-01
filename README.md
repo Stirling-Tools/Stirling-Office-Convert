@@ -23,7 +23,10 @@ For Word, PowerPoint and Excel input (`.docx .docm .dotx .dotm .pptx .pptm .ppsx
 .xltx .xltm`, Word 97-2003 `.doc .dot`, Excel 97-2003 `.xls .xlt`, PowerPoint 97-2003 `.ppt .pps .pot`, `.rtf` and
 OpenDocument `.odt .ott .fodt .ods .ots .fods .odp .otp .fodp`, plain
 text `.txt .text .log .asc` and tables `.csv .tsv .tab`), which converts to PDF: `--max-pages n` (default 10000, 0 = all), `--timeout s` (default 300, 0 =
-none), `--fonts dir` (repeatable; an extra folder of fonts), `-q`, and `--format pdf` to take only the Office files out
+none), `--fonts dir` (repeatable; an extra folder of fonts), `--font-map Family=Installed` (repeatable; draw a
+family with an installed one, such as `Aptos=Inter`), `--font-width Family=scale` (repeatable; scale a substituted
+family's widths, 0.5 to 2), `--no-system-fonts` (only the given fonts and the bundled Liberation Sans, for
+reproducible output), `-q`, and `--format pdf` to take only the Office files out
 of a folder. A folder converts both its PDFs and its Office files; its text and CSV files only with `--format pdf`. Inputs that would write the same output name (such
 as `report.docx` and `report.xlsx`) keep their own extension in it (`report.docx.pdf`, `report.xlsx.pdf`), and Office
 owner files (`~$name`) are skipped. Warnings (substituted fonts, skipped active content, pictures that could not be
@@ -32,7 +35,8 @@ The output file's extension picks the format: `.docx`, `.odt`, `.fodt`, `.xml` (
 `.pptx`, `.odp`, `.ppt`, `.xlsx` or `.ods` (see Other formats). For a folder of PDFs, `--format ext` names it; `--sheets
 page|table|single` sets a spreadsheet's layout. Each file prints its time and the heap in use when it finished.
 `--pdfa 1a|1b|2a|2b|2u|3a|3b|3u` makes an archival PDF/A copy of each PDF instead (see PDF to PDF/A): `in.pdfa.pdf` beside the
-input, or the `-o` file or folder; it takes `--password`, `--timeout` and `--fonts`, and prints what it changed as
+input, or the `-o` file or folder; it takes `--password`, `--timeout`, `--fonts`, `--font-map` and
+`--no-system-fonts`, and prints what it changed as
 `note: <file>: <message>`.
 
 ## Local test app
@@ -273,12 +277,51 @@ OfficeToPdf.convert(Path.of("in.xlsx"), Path.of("out.pdf"), OfficeToPdf.Options.
         .timeout(Duration.ofSeconds(60))       // Duration.ZERO = no limit
         .maxPages(500)                         // 0 = every page; r.pageLimitReached(): cut at this limit
         .maxScratchBytes(1L << 30)             // past it OfficeToPdf.OutputTooLarge; 0 = no limit
-        .fontDirs(List.of(Path.of("/opt/fonts"))));
+        .fonts(fonts));                        // see Fonts below
 OfficeToPdf.convert(inputStream, OfficeToPdf.Format.PPTX, outputStream, OfficeToPdf.Options.defaults());
 r.pages();                                     // pages written
 r.truncated();                                 // something is missing: the page limit, or content left out
 r.warnings();                                  // substituted fonts, skipped active content, pictures left out
 ```
+
+#### Fonts
+
+A `FontSet` (package `stirling.software.officeconvert.topdf.font`) says which fonts a conversion may use. Build one
+when the host starts, or whenever its font folders change, and pass the same instance to every conversion:
+`OfficeToPdf.Options.fonts(set)` and `PdfToPdfA.Options.fonts(set)` take it.
+
+```java
+FontSet fonts = FontSet.builder()
+        .directory(Path.of("/srv/fonts/customer-a"))  // .ttf .ttc .otf .otc, to a depth of 8; links not followed
+        .font(bytes)                                  // a font held in memory
+        .substitute("Aptos", "Inter")                 // draw a family with an installed one
+        .widthScale("Aptos", 0.97f)                   // a substituted family's widths, 0.5 to 2
+        .systemFonts(false)                           // only these fonts and the bundled Liberation Sans
+        .build();
+fonts.problems();                                     // files that were skipped, and why, for the host's log
+```
+
+- Scanning and caching. A set reads its folders once, on first use, and keeps that snapshot; build a new set to
+  pick up fonts added later. Each file's scan is cached by path, size and modification time, so a new set only
+  parses the files that changed, and sets with equal contents share one font library and its caches (shaping,
+  widths, fallbacks). A set is immutable and safe to share between threads and conversions.
+  `FontSet.system()` is the platform's font folders (the default); `fontDirs` on the options still works and adds
+  its folders to the set.
+- Order. The set's own fonts come before the system fonts, so a family in both is drawn from the set's file.
+- Substitutions. `substitute` wins over the converter's built-in table, without a warning. If the target is not
+  installed, the built-in table is used and the usual warning is given. The stand-in keeps the requested Office
+  font's widths and line metrics when the converter has a table for it (Aptos, Calibri, Verdana and about 140
+  others), so pages break where Word breaks them; `widthScale` replaces that with one fixed scale for the family. A
+  family that is installed is never scaled.
+- Untrusted fonts. Fonts from a set are treated as untrusted input: at most 64 MB per file, 10,000 files and 1,000
+  fonts given as bytes; a symbolic link, an unreadable, truncated or malformed file, or a font with PostScript (CFF)
+  outlines, which cannot be embedded, is skipped with a problem line and never fails a conversion. A face that fails
+  later, while being drawn or subset, is replaced by a stand-in with a warning. No font is ever downloaded.
+- Licences (OS/2 `fsType`). A font marked restricted licence embedding (`0x0002`, unless a less restrictive bit is
+  also set) or bitmap embedding only (`0x0200`) is never used: its text is drawn with a stand-in and the warning
+  says `X is installed but its licence does not permit embedding; using Y`. Installable, editable and preview and
+  print fonts are embedded as subsets; a font that forbids subsetting (`0x0100`) is embedded whole when it is not
+  in a collection, and replaced by a stand-in otherwise.
 
 `truncated()` is also set when content could not be read or was past a bound (a damaged slide, sheet or footnotes
 part, unreadable relationships, tables nested too deeply); the warnings say what. A host that must not serve an
@@ -460,7 +503,8 @@ PdfToPdfA.convert(pdDocument, outputStream, options);     // an open document, w
 ```
 
 - Fonts. Every font a page uses is embedded. A font without a program is drawn from a metric-compatible stand-in
-  from the font library (Liberation, URW base 35, Carlito and the rest of the production set; `fontDirs` adds folders)
+  from the font library (Liberation, URW base 35, Carlito and the rest of the production set; `fonts` takes a
+  `FontSet`, see Fonts, and `fontDirs` adds folders)
   as a new subset TrueType font whose glyph advances are the PDF's own widths, so no line moves. An embedded font whose
   widths disagree with its program, that lacks a glyph a page shows, or whose encoding PDF/A forbids is rebuilt from
   its own glyphs the same way (TrueType glyphs are copied with their hinting; Type 1 and CFF outlines are converted).
