@@ -33,7 +33,7 @@ final class TrueTypeWriter {
 
     private final Map<Integer, Integer> components = new HashMap<>();
 
-    private final List<int[]> pending = new ArrayList<>();
+    private final List<Integer> pending = new ArrayList<>();
 
     private int maxPoints;
 
@@ -115,14 +115,14 @@ final class TrueTypeWriter {
         byte[] data = java.util.Arrays.copyOfRange(glyf, (int) start, (int) end);
         int lsb = hmtx == null ? 0 : hmtx.getLeftSideBearing(gid);
         if (data.length >= 10 && ByteBuffer.wrap(data).getShort(0) < 0) {
-            pending.add(new int[] {glyphs.size(), 0});
+            pending.add(glyphs.size());
         }
         return new Glyph(data, advance, lsb);
     }
 
     private void resolveComponents() {
         for (int p = 0; p < pending.size(); p++) {
-            int index = pending.get(p)[0];
+            int index = pending.get(p);
             byte[] data = glyphs.get(index).data().clone();
             ByteBuffer b = ByteBuffer.wrap(data);
             int at = 10;
