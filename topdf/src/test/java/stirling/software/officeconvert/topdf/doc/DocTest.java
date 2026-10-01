@@ -270,4 +270,11 @@ class DocTest {
                 .rowEnd(Sprms.defTable(centers, null), Sprms.u16(0x560B, 1)).para("After").build();
         assertTrue(body(rtl).contains("<w:bidiVisual/>"), body(rtl));
     }
+
+    @Test
+    void paragraphTabStopsAreKept() throws IOException {
+        byte[] doc = new WordFixture().para("a\tb", Sprms.op(0xC60D, 5, 0, 1, 0xE0, 0x12, 0x02)).build();
+        String xml = body(doc);
+        assertTrue(xml.contains("<w:tab w:val=\"right\" w:pos=\"4832\"/>"), xml);
+    }
 }

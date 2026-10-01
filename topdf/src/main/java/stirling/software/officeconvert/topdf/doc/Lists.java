@@ -3,6 +3,7 @@ package stirling.software.officeconvert.topdf.doc;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import org.apache.poi.hwpf.model.LFO;
 import org.apache.poi.hwpf.model.LFOData;
@@ -191,12 +192,11 @@ final class Lists {
             return;
         }
         b.append("<w:pPr>");
-        int n = p.getItbdMac();
-        int[] tabs = p.getRgdxaTab();
-        if (n > 0 && tabs != null) {
+        Set<Integer> tabs = ParaXml.tabStops(Sprm.parse(grpprl, 0)).keySet();
+        if (!tabs.isEmpty()) {
             b.append("<w:tabs>");
-            for (int k = 0; k < Math.min(n, tabs.length); k++) {
-                b.append("<w:tab w:val=\"num\" w:pos=\"").append(tabs[k]).append("\"/>");
+            for (int pos : tabs) {
+                b.append("<w:tab w:val=\"num\" w:pos=\"").append(pos).append("\"/>");
             }
             b.append("</w:tabs>");
         }

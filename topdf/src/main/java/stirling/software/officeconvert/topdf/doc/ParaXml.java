@@ -1,8 +1,9 @@
 package stirling.software.officeconvert.topdf.doc;
 
 import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
 
-import org.apache.poi.hwpf.model.TabDescriptor;
 import org.apache.poi.hwpf.usermodel.ParagraphProperties;
 
 final class ParaXml {
@@ -38,7 +39,7 @@ final class ParaXml {
         if (shd != null) {
             b.append(shd);
         }
-        tabs(b, p);
+        tabs(b, sprms);
         on(b, "suppressAutoHyphens", p.getFNoAutoHyph());
         on(b, "bidi", p.getFBiDi());
         spacing(b, p, sprms);
@@ -132,28 +133,56 @@ final class ParaXml {
         return out;
     }
 
-    private static void tabs(StringBuilder b, ParagraphProperties p) {
-        int n = p.getItbdMac();
-        int[] pos = p.getRgdxaTab();
-        TabDescriptor[] tbd = p.getRgtbd();
-        if (n <= 0 || pos == null) {
+    static final int MAX_TABS = 64;
+
+    private static void tabs(StringBuilder b, List<Sprm> sprms) {
+        TreeMap<Integer, Integer> tabs = tabStops(sprms);
+        if (tabs.isEmpty()) {
             return;
         }
         b.append("<w:tabs>");
-        for (int i = 0; i < Math.min(n, pos.length); i++) {
-            int jc = 0;
-            int tlc = 0;
-            if (tbd != null && i < tbd.length && tbd[i] != null) {
-                jc = tbd[i].getJc() & 7;
-                tlc = tbd[i].getTlc() & 7;
-            }
-            b.append("<w:tab w:val=\"").append(TAB_JC[jc]).append("\" w:pos=\"").append(pos[i]).append('"');
+        for (Map.Entry<Integer, Integer> t : tabs.entrySet()) {
+            int jc = t.getValue() & 7;
+            int tlc = (t.getValue() >> 3) & 7;
+            b.append("<w:tab w:val=\"").append(TAB_JC[jc]).append("\" w:pos=\"").append(t.getKey()).append('"');
             if (LEADER[tlc] != null) {
                 b.append(" w:leader=\"").append(LEADER[tlc]).append('"');
             }
             b.append("/>");
         }
         b.append("</w:tabs>");
+    }
+
+    static TreeMap<Integer, Integer> tabStops(List<Sprm> sprms) {
+        TreeMap<Integer, Integer> tabs = new TreeMap<>();
+        for (Sprm s : sprms) {
+            if (s.opcode() != 0xC60D && s.opcode() != 0xC615) {
+                continue;
+            }
+            byte[] d = s.data();
+            int at = s.payload();
+            int end = s.at() + s.length();
+            if (at >= end) {
+                continue;
+            }
+            int del = d[at++] & 0xFF;
+            for (int i = 0; i < del && at + 2 <= end; i++, at += 2) {
+                tabs.remove((int) (short) Sprm.u16(d, at));
+            }
+            if (s.opcode() == 0xC615) {
+                at += del * 2;
+            }
+            if (at >= end) {
+                continue;
+            }
+            int add = d[at++] & 0xFF;
+            for (int i = 0; i < add && at + 2 * i + 2 <= end && at + 2 * add + i < end; i++) {
+                if (tabs.size() < MAX_TABS) {
+                    tabs.put((int) (short) Sprm.u16(d, at + 2 * i), d[at + 2 * add + i] & 0xFF);
+                }
+            }
+        }
+        return tabs;
     }
 
     private static void spacing(StringBuilder b, ParagraphProperties p, List<Sprm> sprms) {
