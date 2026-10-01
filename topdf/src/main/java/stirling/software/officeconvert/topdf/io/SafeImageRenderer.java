@@ -307,4 +307,63 @@ public final class SafeImageRenderer implements ImageRenderer {
             return false;
         }
     }
+
+    private static final class PictRenderer implements ImageRenderer {
+
+        private final Pict pict;
+
+        PictRenderer(Pict pict) {
+            this.pict = pict;
+        }
+
+        @Override
+        public boolean canRender(String contentType) {
+            return true;
+        }
+
+        @Override
+        public void loadImage(InputStream data, String contentType) throws IOException {
+            throw new IOException("A decoded picture cannot be reloaded");
+        }
+
+        @Override
+        public void loadImage(byte[] data, String contentType) throws IOException {
+            throw new IOException("A decoded picture cannot be reloaded");
+        }
+
+        @Override
+        public Rectangle2D getNativeBounds() {
+            return pict.bounds();
+        }
+
+        @Override
+        public Rectangle2D getBounds() {
+            return pict.bounds();
+        }
+
+        @Override
+        public void setAlpha(double alpha) {}
+
+        @Override
+        public BufferedImage getImage() {
+            return null;
+        }
+
+        @Override
+        public BufferedImage getImage(Dimension2D dimension) {
+            return null;
+        }
+
+        @Override
+        public boolean drawImage(Graphics2D graphics, Rectangle2D anchor) {
+            pict.draw(graphics, anchor);
+            return true;
+        }
+
+        @Override
+        public boolean drawImage(Graphics2D graphics, Rectangle2D anchor, Insets clip) {
+            pict.draw(graphics, anchor);
+            return true;
+        }
+    }
 }
