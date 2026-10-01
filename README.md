@@ -464,13 +464,24 @@ PdfToPdfA.convert(pdDocument, outputStream, options);     // an open document, w
   as a new subset TrueType font whose glyph advances are the PDF's own widths, so no line moves. An embedded font whose
   widths disagree with its program, that lacks a glyph a page shows, or whose encoding PDF/A forbids is rebuilt from
   its own glyphs the same way (TrueType glyphs are copied with their hinting; Type 1 and CFF outlines are converted).
-  Type 0 fonts keep their CIDs and CMaps behind a new `CIDToGIDMap`. CharSet and CIDSet are written for part 1 and
+  Type 0 fonts keep their CIDs and CMaps behind a new `CIDToGIDMap`. An embedded TrueType font that carries far more
+  glyphs than the pages show (Office keeps every glyph slot) is cut down to the glyphs in use, keeping its glyph
+  outlines, hinting, advances and every cmap entry that leads to them. CharSet and CIDSet are written for part 1 and
   dropped for parts 2 and 3. For the u and a levels every shown code gets a ToUnicode value, a private-use one (u) or
   U+FFFD (a) when the PDF gives no clue.
 - Colour. An sRGB output intent with an ICC profile generated in code (version 2, so it serves part 1 too) is added
   unless the PDF already has a usable one. Device CMYK is given a `DefaultCMYK` space with the CC0 CMYK profile that
-  PDFBox ships (its own DeviceCMYK profile), so nothing is converted. Invalid or, for part 1, version 4 ICC profiles are
-  replaced.
+  PDFBox ships (its own DeviceCMYK profile), so nothing is converted; it is added only when a page uses device CMYK.
+  Invalid or, for part 1, version 4 ICC profiles are replaced.
+- JPEG 2000. Part 1 does not allow JPX images, so they are decoded and stored again (JPEG when photographic, lossless
+  otherwise, with any alpha as a soft mask); parts 2 and 3 keep them unless they break the part 2 JPX rules (channel
+  count, bit depth, colour boxes). Decoding needs a JPEG 2000 ImageIO reader on the classpath, such as
+  `com.github.jai-imageio:jai-imageio-jpeg2000`, which this module does not bundle (its JJ2000 licence is not a plain
+  open source licence); without one such a file fails with a message saying so.
+- Limits. Content nested deeper than 28 graphics states moves into form XObjects; names over 127 bytes are shortened
+  everywhere they are used; long strings and `TJ` arrays in content are split without moving a glyph; numbers are
+  clamped; for part 1 long number trees, name trees, page trees and CID width arrays are split; for parts 2 and 3 a
+  page larger than 14,400 units gets a `UserUnit`, with its content, annotations and destinations scaled to match.
 - Transparency. Parts 2 and 3 keep it. For part 1 each transparent object (soft masks, constant alpha, blend modes,
   transparency groups, translucent annotations) is drawn into a picture of the smallest box covering all of them on
   that page, at `flattenDpi` (200 by default; JPEG when the box is photographic, lossless otherwise), drawn from the
@@ -485,14 +496,19 @@ PdfToPdfA.convert(pdDocument, outputStream, options);     // an open document, w
 - Optional content: part 1 has none, so content in hidden layers is deleted and the rest kept; parts 2 and 3 keep the
   layers and fix their configurations.
 - XMP metadata is written from the Info dictionary (the two agree), with `pdfaid:part` and `pdfaid:conformance`; the
-  file gets a trailer ID and, for part 1, no object streams.
+  file gets a trailer ID. Parts 2 and 3 are written with object streams and a cross-reference stream; part 1 with a
+  classic table. Objects are numbered without gaps and unfiltered streams are compressed.
 
 Level a (1a, 2a, 3a) is for PDFs that are already tagged: the module does not build a structure tree, so an untagged
 file fails with an `IOException` that says to use b or u. For a tagged file it marks the document as tagged, maps
 structure types without a standard meaning to `NonStruct`, drops standard types from the role map and invalid language
 tags, gives every glyph real Unicode (Symbol and Wingdings private-use codes become their Unicode look-alikes, unknown
-ones U+FFFD) and marks flattened pictures as artifacts. It does not check that every piece of content is tagged; veraPDF
-does not either. Limits and failure contract follow the other converters: a 1 GB input limit, `maxPages`
+ones U+FFFD) and marks flattened pictures as artifacts. It then checks what veraPDF does not: every piece of text and
+every image on a page must sit in marked content that the structure tree refers to, or in an artifact; every figure
+needs alternative text; and the document needs a language. Untagged drawings, and marked drawings no element refers
+to, become artifacts; a missing document language is taken from the structure; a parent tree that does not match the
+structure is rebuilt from it. Anything else (untagged text or images, figures without alternative text, no language
+anywhere) fails with an `IOException` naming the problem and the pages, rather than claiming level a. Limits and failure contract follow the other converters: a 1 GB input limit, `maxPages`
 (10,000 by default) refuses longer documents rather than cutting them, the timeout and thread interrupts stop the work,
 and the output is moved into place only when complete.
 
