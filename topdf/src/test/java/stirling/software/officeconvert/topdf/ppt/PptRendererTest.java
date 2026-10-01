@@ -13,6 +13,7 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
@@ -322,7 +323,7 @@ class PptRendererTest {
         byte[] ppt = deck(p -> {
             HSLFSlide slide = p.createSlide();
             slide.createPicture(picture(p, bomb, PictureType.EMF)).setAnchor(new Rectangle2D.Double(10, 10, 100, 100));
-            slide.createPicture(picture(p, new byte[2048], PictureType.PICT))
+            slide.createPicture(picture(p, new byte[40 << 20], PictureType.PICT))
                     .setAnchor(new Rectangle2D.Double(200, 10, 100, 100));
             text(slide, "Still here", 60, 300, 400, 60);
         });
@@ -331,6 +332,22 @@ class PptRendererTest {
         assertTrue(c.text().contains("Still here"));
         assertTrue(c.result().warnings().stream().anyMatch(w -> w.contains("Left out 2 pictures")),
                 c.result().warnings().toString());
+    }
+
+    @Test
+    void macPictPicturesAreDrawn() throws IOException {
+        ByteBuffer pict = ByteBuffer.allocate(512 + 60);
+        pict.position(512);
+        pict.putShort((short) 0).putShort((short) 0).putShort((short) 0).putShort((short) 20).putShort((short) 20);
+        pict.putShort((short) 0x0011).putShort((short) 0x02FF).putShort((short) 0x0C00).putShort((short) -1);
+        pict.put(new byte[22]);
+        pict.putShort((short) 0x001A).putShort((short) -1).putShort((short) 0).putShort((short) 0);
+        pict.putShort((short) 0x0031).putShort((short) 0).putShort((short) 0).putShort((short) 20).putShort((short) 20);
+        pict.putShort((short) 0x00FF);
+        byte[] ppt = deck(p -> p.createSlide().createPicture(picture(p, pict.array(), PictureType.PICT))
+                .setAnchor(new Rectangle2D.Double(100, 100, 200, 100)));
+        Converted c = convert("pict.ppt", ppt);
+        assertEquals(Color.RED.getRGB(), c.render(0).getRGB(200, 150), c.result().warnings().toString());
     }
 
     @Test
