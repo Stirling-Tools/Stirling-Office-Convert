@@ -26,7 +26,7 @@ final class ContentFixer {
 
     private ContentFixer() {}
 
-    static void run(ContentGraph graph, Report report) throws IOException {
+    static void run(ContentGraph graph, Report report, FontUsage usage) throws IOException {
         for (ContentGraph.Node n : graph.nodes()) {
             PdfFiles.stopIfInterrupted();
             List<Object> tokens;
@@ -61,6 +61,7 @@ final class ContentFixer {
                 }
                 out.addAll(operation);
             }
+            usage.scan(changed ? out : tokens, n.resources());
             if (changed) {
                 COSStream target = n.streams().get(0);
                 ContentTokens.write(target, out);

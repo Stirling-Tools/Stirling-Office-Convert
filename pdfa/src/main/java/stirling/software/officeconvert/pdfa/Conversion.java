@@ -39,8 +39,8 @@ final class Conversion {
         }
         PdfFiles.stopIfInterrupted();
         ContentGraph graph = ContentGraph.of(doc);
-        ContentFixer.run(graph, report);
-        FontUsage usage = FontUsage.scan(graph);
+        FontUsage usage = new FontUsage();
+        ContentFixer.run(graph, report, usage);
         FontFixer.run(doc, usage, level, FontLibrary.withSystem(options.fontDirs()), report);
         PdfFiles.stopIfInterrupted();
         StreamFixer.run(doc, level, report);

@@ -16,7 +16,6 @@ import org.apache.pdfbox.cos.COSDictionary;
 import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.cos.COSString;
 
-import stirling.software.officeconvert.extract.PdfFiles;
 
 final class FontUsage {
 
@@ -28,23 +27,7 @@ final class FontUsage {
 
     private final Map<COSDictionary, Integer> lengths = new IdentityHashMap<>();
 
-    private FontUsage() {}
-
-    static FontUsage scan(ContentGraph graph) throws IOException {
-        FontUsage u = new FontUsage();
-        for (ContentGraph.Node node : graph.nodes()) {
-            PdfFiles.stopIfInterrupted();
-            List<Object> tokens;
-            try {
-                tokens = ContentTokens.parse(node.streams());
-            } catch (IOException e) {
-                PdfFiles.stopIfInterrupted();
-                continue;
-            }
-            u.scan(tokens, node.resources());
-        }
-        return u;
-    }
+    FontUsage() {}
 
     Map<COSDictionary, TreeSet<Integer>> codes() {
         return codes;
@@ -58,7 +41,7 @@ final class FontUsage {
         return codes.getOrDefault(font, new TreeSet<>());
     }
 
-    private void scan(List<Object> tokens, COSDictionary resources) {
+    void scan(List<Object> tokens, COSDictionary resources) {
         Deque<COSDictionary> stack = new ArrayDeque<>();
         COSDictionary font = null;
         int start = 0;
