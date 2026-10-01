@@ -179,7 +179,8 @@ final class Fonts {
     }
 
     private String pick(String themeName, String name) {
-        return pick(themeName, name, defaultLang);
+        boolean bidi = themeName != null && themeName.toLowerCase(Locale.ROOT).endsWith("bidi");
+        return pick(themeName, name, bidi && bidiLang != null ? bidiLang : defaultLang);
     }
 
     private String pick(String themeName, String name, String lang) {
