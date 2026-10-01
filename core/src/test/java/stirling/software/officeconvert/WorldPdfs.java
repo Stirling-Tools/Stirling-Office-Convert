@@ -69,16 +69,28 @@ final class WorldPdfs {
     private WorldPdfs() {}
 
     static Path font(String... names) {
+        return covering(null, names);
+    }
+
+    static Path covering(String text, String... names) {
         for (String name : names) {
             for (String dir : new String[] {"C:/Windows/Fonts", "/usr/share/fonts/truetype/noto", "/usr/share/fonts/opentype/noto",
-                "/usr/share/fonts/truetype", "/Library/Fonts", "/System/Library/Fonts"}) {
+                "/usr/share/fonts/truetype/dejavu", "/usr/share/fonts/truetype", "/Library/Fonts", "/System/Library/Fonts"}) {
                 Path p = Path.of(dir, name);
-                if (Files.isRegularFile(p)) {
+                if (Files.isRegularFile(p) && (text == null || covers(p, text))) {
                     return p;
                 }
             }
         }
         return null;
+    }
+
+    private static boolean covers(Path file, String text) {
+        try {
+            return Font.createFont(Font.TRUETYPE_FONT, file.toFile()).canDisplayUpTo(text) < 0;
+        } catch (IOException | java.awt.FontFormatException e) {
+            return false;
+        }
     }
 
     static byte[] shaped(Path fontFile, String faceName, Mode mode, List<Text> texts) throws IOException {
@@ -160,6 +172,9 @@ final class WorldPdfs {
                         StringBuilder rest = new StringBuilder(clusterText);
                         for (int m : members) {
                             String own = own(cmap, gv.getGlyphCode(m), clusterText);
+                            if (own != null && rest.indexOf(own) < 0) {
+                                own = java.text.Normalizer.normalize(own, java.text.Normalizer.Form.NFD);
+                            }
                             int at = own == null ? -1 : rest.indexOf(own);
                             if (at >= 0) {
                                 rest.delete(at, at + own.length());

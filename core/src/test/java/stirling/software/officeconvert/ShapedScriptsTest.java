@@ -36,7 +36,7 @@ class ShapedScriptsTest {
         List<String> wrong = new ArrayList<>();
         int tried = 0;
         for (Sample s : SAMPLES) {
-            Path font = WorldPdfs.font(s.fonts());
+            Path font = WorldPdfs.covering(s.text(), s.fonts());
             if (font == null) {
                 continue;
             }
