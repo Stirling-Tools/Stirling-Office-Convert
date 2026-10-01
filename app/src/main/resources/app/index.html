@@ -265,7 +265,7 @@
     <span class="hint" id="picked-hint">PDFs convert to Word</span>
     <span class="hint" id="limits">PDF, Word, PowerPoint and Excel files</span>
     <span class="choose button primary" aria-hidden="true">Choose files</span>
-    <input id="pick" type="file" accept="application/pdf,.pdf,.docx,.docm,.dotx,.dotm,.pptx,.pptm,.ppsx,.ppsm,.potx,.potm,.xlsx,.xlsm,.xltx,.xltm,.xls,.xlt,.ppt,.pps,.pot" multiple hidden>
+    <input id="pick" type="file" accept="application/pdf,.pdf,.docx,.docm,.dotx,.dotm,.pptx,.pptm,.ppsx,.ppsm,.potx,.potm,.xlsx,.xlsm,.xltx,.xltm,.xls,.xlt,.ppt,.pps,.pot,.odt,.ott,.fodt,.ods,.ots,.fods,.odp,.otp,.fodp" multiple hidden>
   </div>
   <p class="privacy">
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
@@ -356,7 +356,8 @@ const OFFICE = {
   docx: ['docx', 'docm', 'dotx', 'dotm'], pptx: ['pptx', 'pptm', 'ppsx', 'ppsm', 'potx', 'potm'], xlsx: ['xlsx', 'xlsm', 'xltx', 'xltm'],
 };
 const FAMILY = Object.fromEntries(Object.entries(OFFICE).flatMap(([family, exts]) => exts.map(e => [e, family])));
-const LEGACY = { xls: 'xlsx', xlt: 'xlsx', ppt: 'pptx', pps: 'pptx', pot: 'pptx' };
+const LEGACY = { xls: 'xlsx', xlt: 'xlsx', ppt: 'pptx', pps: 'pptx', pot: 'pptx', odt: 'docx', ott: 'docx', fodt: 'docx',
+  ods: 'xlsx', ots: 'xlsx', fods: 'xlsx', odp: 'pptx', otp: 'pptx', fodp: 'pptx' };
 const extOf = name => (/\.([a-z0-9]+)$/i.exec(name)?.[1] || '').toLowerCase();
 const targets = doc => doc.office ? [FORMAT.pdf] : FORMATS;
 const picked = new Set(stored('formats', ['docx']).filter(id => FORMAT[id]));
