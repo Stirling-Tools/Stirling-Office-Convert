@@ -9,6 +9,7 @@ import java.awt.geom.Rectangle2D;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Deque;
 import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.List;
@@ -31,6 +32,8 @@ import org.apache.pdfbox.pdmodel.graphics.form.PDTransparencyGroup;
 import org.apache.pdfbox.pdmodel.graphics.image.PDImage;
 import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
 import org.apache.pdfbox.pdmodel.graphics.state.PDGraphicsState;
+import org.apache.pdfbox.pdmodel.interactive.annotation.PDAnnotation;
+import org.apache.pdfbox.pdmodel.interactive.annotation.PDAppearanceStream;
 import org.apache.pdfbox.util.Matrix;
 import org.apache.pdfbox.util.Vector;
 
@@ -85,8 +88,31 @@ final class GraphicsCollector extends PDFGraphicsStreamEngine {
     private final List<ImageDraw> images = new ArrayList<>();
     private final List<VectorMark> marks = new ArrayList<>();
 
-    private GraphicsCollector(PDPage page, AffineTransform toDisplay, float w, float h) {
+    private final StreamRunner runner;
+
+    private GraphicsCollector(PDPage page, AffineTransform toDisplay, float w, float h, ParsedStreams parsed) {
         super(page);
+        this.runner = new StreamRunner(new StreamRunner.Host() {
+            @Override
+            public PDGraphicsState state() {
+                return getGraphicsState();
+            }
+
+            @Override
+            public Deque<PDGraphicsState> save() {
+                return saveGraphicsStack();
+            }
+
+            @Override
+            public void restore(Deque<PDGraphicsState> stack) {
+                restoreGraphicsStack(stack);
+            }
+
+            @Override
+            public void operator(Operator operator, List<COSBase> operands) throws IOException {
+                processOperator(operator, operands);
+            }
+        }, parsed);
         this.toDisplay = toDisplay;
         this.displayScale = (float) Math.sqrt(Math.abs(toDisplay.getDeterminant()));
         this.pageWidth = w;
@@ -94,9 +120,9 @@ final class GraphicsCollector extends PDFGraphicsStreamEngine {
         this.pastBudget = new PastBudget(w, h);
     }
 
-    static PageGraphics read(PDPage page, AffineTransform toDisplay, float width, float height)
+    static PageGraphics read(PDPage page, AffineTransform toDisplay, float width, float height, ParsedStreams parsed)
             throws IOException {
-        GraphicsCollector c = new GraphicsCollector(page, toDisplay, width, height);
+        GraphicsCollector c = new GraphicsCollector(page, toDisplay, width, height, parsed);
         try {
             c.processPage(page);
             Annotations.show(c, page);
@@ -149,10 +175,45 @@ final class GraphicsCollector extends PDFGraphicsStreamEngine {
     }
 
     @Override
+    public void processPage(PDPage page) throws IOException {
+        runner.processPage(page);
+    }
+
+    @Override
     public void showForm(PDFormXObject form) throws IOException {
         if (budget.form()) {
-            super.showForm(form);
+            runner.showForm(form);
         }
+    }
+
+    @Override
+    protected void processTransparencyGroup(PDTransparencyGroup group) throws IOException {
+        runner.processTransparencyGroup(group);
+    }
+
+    @Override
+    protected void processAnnotation(PDAnnotation annotation, PDAppearanceStream appearance) throws IOException {
+        runner.processAnnotation(annotation, appearance);
+    }
+
+    @Override
+    public PDResources getResources() {
+        return runner.resources();
+    }
+
+    @Override
+    public PDPage getCurrentPage() {
+        return runner.page();
+    }
+
+    @Override
+    public Matrix getInitialMatrix() {
+        return runner.initialMatrix();
+    }
+
+    @Override
+    public boolean isShouldProcessColorOperators() {
+        return runner.colors();
     }
 
     @Override

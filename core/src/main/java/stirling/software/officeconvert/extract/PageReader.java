@@ -33,6 +33,7 @@ public final class PageReader {
 
     private final PDDocument document;
     private final FontResolver fonts = new FontResolver();
+    private final ParsedStreams parsed = new ParsedStreams();
 
     public PageReader(PDDocument document) {
         this.document = document;
@@ -50,6 +51,7 @@ public final class PageReader {
                 first,
                 last,
                 fonts,
+                withGraphics ? parsed : null,
                 (index, page, raw) -> consumer.accept(build(index, page, raw, withGraphics)));
     }
 
@@ -82,7 +84,7 @@ public final class PageReader {
         glyphs = dedupe(Clusters.join(glyphs));
         PageGraphics graphics =
                 withGraphics
-                        ? GraphicsCollector.read(page, toDisplay, width, height)
+                        ? GraphicsCollector.read(page, toDisplay, width, height, parsed)
                         : new PageGraphics(List.of(), List.of(), List.of(), List.of());
         List<PageData.Link> links = withGraphics ? links(page, toDisplay) : List.of();
         return new PageData(
@@ -106,7 +108,7 @@ public final class PageReader {
         PDPage page = document.getPage(glyphsOnly.index());
         AffineTransform toDisplay = displayTransform(page.getCropBox(), glyphsOnly.direction());
         PageGraphics graphics =
-                GraphicsCollector.read(page, toDisplay, glyphsOnly.width(), glyphsOnly.height());
+                GraphicsCollector.read(page, toDisplay, glyphsOnly.width(), glyphsOnly.height(), parsed);
         return new PageData(
                 glyphsOnly.index(),
                 glyphsOnly.width(),

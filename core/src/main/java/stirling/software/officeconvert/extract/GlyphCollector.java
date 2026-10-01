@@ -40,6 +40,8 @@ import org.apache.pdfbox.pdmodel.graphics.form.PDFormXObject;
 import org.apache.pdfbox.pdmodel.graphics.form.PDTransparencyGroup;
 import org.apache.pdfbox.pdmodel.graphics.state.PDGraphicsState;
 import org.apache.pdfbox.pdmodel.graphics.state.RenderingMode;
+import org.apache.pdfbox.pdmodel.interactive.annotation.PDAnnotation;
+import org.apache.pdfbox.pdmodel.interactive.annotation.PDAppearanceStream;
 import org.apache.pdfbox.text.PDFTextStripper;
 import org.apache.pdfbox.text.TextPosition;
 import org.apache.pdfbox.util.Matrix;
@@ -99,10 +101,12 @@ final class GlyphCollector extends PDFTextStripper {
     private int nextIndex;
     private PDDocument document;
     private OperatorBudget budget = new OperatorBudget("reading text");
+    private final StreamRecorder recorder;
 
-    private GlyphCollector(FontResolver fonts, PageSink sink) {
+    private GlyphCollector(FontResolver fonts, PageSink sink, StreamRecorder recorder) {
         this.fonts = fonts;
         this.sink = sink;
+        this.recorder = recorder;
         this.recovery = new UnicodeRecovery(fonts);
         addOperator(new SetStrokingColorSpace(this));
         addOperator(new SetNonStrokingColorSpace(this));
@@ -121,9 +125,9 @@ final class GlyphCollector extends PDFTextStripper {
         setSuppressDuplicateOverlappingText(false);
     }
 
-    static void read(PDDocument doc, int first, int last, FontResolver fonts, PageSink sink)
+    static void read(PDDocument doc, int first, int last, FontResolver fonts, ParsedStreams parsed, PageSink sink)
             throws IOException {
-        GlyphCollector collector = new GlyphCollector(fonts, sink);
+        GlyphCollector collector = new GlyphCollector(fonts, sink, new StreamRecorder(parsed));
         collector.document = doc;
         collector.setStartPage(first + 1);
         collector.setEndPage(last + 1);
@@ -134,6 +138,19 @@ final class GlyphCollector extends PDFTextStripper {
 
     @Override
     protected void processOperator(Operator operator, List<COSBase> operands) throws IOException {
+        recorder.operator(operator, operands);
+        recorder.enter();
+        try {
+            run(operator, operands);
+        } catch (IOException | RuntimeException | Error e) {
+            recorder.abort();
+            throw e;
+        } finally {
+            recorder.leave();
+        }
+    }
+
+    private void run(Operator operator, List<COSBase> operands) throws IOException {
         if (!budget.run(operator)) {
             return;
         }
@@ -147,7 +164,14 @@ final class GlyphCollector extends PDFTextStripper {
     @Override
     public void showForm(PDFormXObject form) throws IOException {
         if (budget.form()) {
-            super.showForm(form);
+            recorder.begin(form.getCOSObject(), true);
+            boolean done = false;
+            try {
+                super.showForm(form);
+                done = true;
+            } finally {
+                recorder.end(done);
+            }
         }
     }
 
@@ -155,6 +179,30 @@ final class GlyphCollector extends PDFTextStripper {
     public void showTransparencyGroup(PDTransparencyGroup form) throws IOException {
         if (budget.form()) {
             super.showTransparencyGroup(form);
+        }
+    }
+
+    @Override
+    protected void processTransparencyGroup(PDTransparencyGroup group) throws IOException {
+        recorder.begin(group.getCOSObject(), true);
+        boolean done = false;
+        try {
+            super.processTransparencyGroup(group);
+            done = true;
+        } finally {
+            recorder.end(done);
+        }
+    }
+
+    @Override
+    protected void processAnnotation(PDAnnotation annotation, PDAppearanceStream appearance) throws IOException {
+        recorder.begin(appearance.getCOSObject(), true);
+        boolean done = false;
+        try {
+            super.processAnnotation(annotation, appearance);
+            done = true;
+        } finally {
+            recorder.end(done);
         }
     }
 
@@ -168,11 +216,14 @@ final class GlyphCollector extends PDFTextStripper {
             }
             BrokenOperators.brokenStream(e);
             endPage(page);
+        } finally {
+            recorder.close();
         }
     }
 
     @Override
     protected void writePage() throws IOException {
+        recorder.end(true);
         Annotations.show(this, getCurrentPage());
         super.writePage();
     }
@@ -183,6 +234,7 @@ final class GlyphCollector extends PDFTextStripper {
         inPage = true;
         pageIndex = getCurrentPageNo() - 1;
         rotation = page.getRotation();
+        recorder.begin(page.getCOSObject(), false);
         blankPagesBefore(pageIndex);
         current = new ArrayList<>();
         spans.clear();
