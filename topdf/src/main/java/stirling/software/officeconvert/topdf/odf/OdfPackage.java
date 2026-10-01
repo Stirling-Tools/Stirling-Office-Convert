@@ -47,7 +47,11 @@ public final class OdfPackage {
                 case SPREADSHEET -> new OdsWriter(doc, pkg).write();
                 case PRESENTATION -> new OdpWriter(doc, pkg, fonts).write();
             });
-            return new Outcome(warnings, false);
+            if (doc.damaged()) {
+                warnings.add("Left out a damaged part: the document's XML is not well-formed, so only its readable"
+                        + " start was converted");
+            }
+            return new Outcome(warnings, doc.damaged());
         }
     }
 }

@@ -379,4 +379,18 @@ class OdtTest {
                 xml);
         assertTrue(xml.contains("w:top=\"1100\""), xml);
     }
+
+    @Test
+    void aDamagedContentPartKeepsItsReadableStart() throws IOException {
+        String content = OdfFixtures.content("", OdfFixtures.text("<text:p>Kept text</text:p><text:p>Lost <text:span>"));
+        content = content.substring(0, content.indexOf("<text:span>") + 11) + "</text:p>";
+        Path p = OdfFixtures.write(dir, "cut.odt", OdfFixtures.odf(OdfFixtures.TEXT, content, null));
+        Path pdf = dir.resolve("cut.pdf");
+        OfficeToPdf.Result r = OfficeToPdf.convert(p, pdf);
+        assertTrue(r.truncated(), r.toString());
+        assertTrue(String.join("\n", r.warnings()).contains("damaged"), r.warnings().toString());
+        try (PDDocument doc = Loader.loadPDF(pdf.toFile())) {
+            assertTrue(new PDFTextStripper().getText(doc).contains("Kept text"));
+        }
+    }
 }

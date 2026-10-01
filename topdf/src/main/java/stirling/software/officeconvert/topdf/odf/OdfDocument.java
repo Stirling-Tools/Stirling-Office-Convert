@@ -24,6 +24,7 @@ import org.w3c.dom.Element;
 
 import stirling.software.officeconvert.topdf.io.OfficeZip;
 import stirling.software.officeconvert.topdf.io.SecureXml;
+import stirling.software.officeconvert.topdf.io.XmlSalvage;
 
 /** An OpenDocument text, spreadsheet or presentation, packaged (zip with a {@code mimetype} entry) or flat XML. Only
  * parts inside the package are ever read: scripts, macros and linked files are never opened. */
@@ -61,6 +62,8 @@ public final class OdfDocument implements Closeable {
 
     private long budget = MAX_TOTAL_BYTES;
 
+    private boolean damaged;
+
     private OdfDocument(Kind kind, ZipFile zip, Element content, Element styles, Element settings) {
         this.kind = kind;
         this.zip = zip;
@@ -83,6 +86,11 @@ public final class OdfDocument implements Closeable {
 
     Element settings() {
         return settings;
+    }
+
+    /** Whether a part was cut short where its XML was damaged, so some content is missing. */
+    boolean damaged() {
+        return damaged;
     }
 
     boolean flat() {
@@ -152,12 +160,23 @@ public final class OdfDocument implements Closeable {
         if (kind == null) {
             throw new IOException("The file is not an OpenDocument text, spreadsheet or presentation");
         }
+        byte[] data = Files.readAllBytes(file);
         Document doc;
-        try (InputStream in = Files.newInputStream(file)) {
-            doc = SecureXml.parse(in);
+        boolean damaged = false;
+        try {
+            doc = SecureXml.parse(new ByteArrayInputStream(data));
+        } catch (IOException e) {
+            byte[] salvaged = SecureXml.refusedDoctype(e) ? null : XmlSalvage.salvage(data);
+            if (salvaged == null || salvaged == data) {
+                throw e;
+            }
+            doc = SecureXml.parse(new ByteArrayInputStream(salvaged));
+            damaged = true;
         }
         Element root = doc.getDocumentElement();
-        return new OdfDocument(kind, null, root, root, Dom.kid(root, Ns.OFFICE, "settings"));
+        OdfDocument d = new OdfDocument(kind, null, root, root, Dom.kid(root, Ns.OFFICE, "settings"));
+        d.damaged = damaged;
+        return d;
     }
 
     private static OdfDocument openZip(Path file) throws IOException {
@@ -192,6 +211,7 @@ public final class OdfDocument implements Closeable {
             OdfDocument doc = new OdfDocument(kind, z, content, styles, settings);
             doc.entries.putAll(map);
             doc.budget = probe.budget;
+            doc.damaged = probe.damaged;
             return doc;
         } catch (IOException | RuntimeException e) {
             z.close();
@@ -229,6 +249,11 @@ public final class OdfDocument implements Closeable {
         try {
             return SecureXml.parse(new ByteArrayInputStream(data)).getDocumentElement();
         } catch (IOException e) {
+            byte[] salvaged = SecureXml.refusedDoctype(e) ? null : XmlSalvage.salvage(data);
+            if (salvaged != null && salvaged != data) {
+                damaged = true;
+                return SecureXml.parse(new ByteArrayInputStream(salvaged)).getDocumentElement();
+            }
             if (required || SecureXml.refusedDoctype(e)) {
                 throw new IOException("The document is damaged: " + name + " is not well-formed XML", e);
             }

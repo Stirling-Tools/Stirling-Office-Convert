@@ -12,14 +12,14 @@ import javax.xml.stream.XMLStreamReader;
 
 // Keeps the well-formed start of an XML part that was cut short, written out again up to its last complete tag with
 // the elements still open there closed, as Office keeps what it can read of a damaged part
-final class XmlSalvage {
+public final class XmlSalvage {
 
     static final int MAX_BYTES = 16 << 20;
 
     private XmlSalvage() {}
 
     // The part itself when it is whole; null when no element was complete before the damage or it has a DOCTYPE
-    static byte[] salvage(byte[] data) {
+    public static byte[] salvage(byte[] data) {
         if (data.length == 0 || data.length > MAX_BYTES) {
             return null;
         }
