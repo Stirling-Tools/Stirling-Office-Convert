@@ -2,6 +2,7 @@ package stirling.software.officeconvert.topdf.doc;
 
 import java.io.IOException;
 
+import org.apache.poi.ddf.EscherComplexProperty;
 import org.apache.poi.ddf.EscherContainerRecord;
 import org.apache.poi.ddf.EscherProperty;
 import org.apache.poi.ddf.EscherRecord;
@@ -149,10 +150,52 @@ final class Shapes {
         switch (wr) {
             case 1 -> b.append("<wp:wrapTopAndBottom/>");
             case 3 -> b.append("<wp:wrapNone/>");
+            case 4, 5 -> {
+                String tag = wr == 4 ? "wrapTight" : "wrapThrough";
+                b.append("<wp:").append(tag).append(" wrapText=\"").append(side).append("\"><wp:wrapPolygon edited=\"0\">")
+                        .append(polygon(sp)).append("</wp:wrapPolygon></wp:").append(tag).append('>');
+            }
             default -> b.append("<wp:wrapSquare wrapText=\"").append(side).append("\"/>");
         }
         b.append("<wp:docPr id=\"").append(id).append("\" name=\"Shape ").append(id).append("\"/>");
         return b.toString();
+    }
+
+    static final int MAX_POINTS = 4096;
+
+    private static String polygon(EscherContainerRecord sp) {
+        byte[] d = complex(sp, 0x0383);
+        StringBuilder b = new StringBuilder();
+        if (d != null && d.length >= 6) {
+            int n = Sprm.u16(d, 0);
+            int cb = Sprm.u16(d, 4);
+            int size = cb == 0xFFF0 ? 4 : cb;
+            for (int i = 0; i < Math.min(n, MAX_POINTS) && (size == 4 || size == 8) && 6 + (i + 1) * size <= d.length;
+                    i++) {
+                int at = 6 + i * size;
+                int x = size == 4 ? (short) Sprm.u16(d, at) : Sprm.s32(d, at);
+                int y = size == 4 ? (short) Sprm.u16(d, at + 2) : Sprm.s32(d, at + 4);
+                b.append(i == 0 ? "<wp:start" : "<wp:lineTo").append(" x=\"").append(x).append("\" y=\"").append(y)
+                        .append("\"/>");
+            }
+        }
+        if (b.isEmpty()) {
+            b.append("<wp:start x=\"0\" y=\"0\"/><wp:lineTo x=\"0\" y=\"21600\"/><wp:lineTo x=\"21600\" y=\"21600\"/>")
+                    .append("<wp:lineTo x=\"21600\" y=\"0\"/><wp:lineTo x=\"0\" y=\"0\"/>");
+        }
+        return b.toString();
+    }
+
+    private static byte[] complex(EscherContainerRecord sp, int number) {
+        if (sp == null) {
+            return null;
+        }
+        for (EscherRecord r : sp.getChildRecords()) {
+            if (r instanceof AbstractEscherOptRecord opt && opt.lookup(number) instanceof EscherComplexProperty c) {
+                return c.getComplexData();
+            }
+        }
+        return null;
     }
 
     static EscherContainerRecord container(OfficeDrawing d) {
