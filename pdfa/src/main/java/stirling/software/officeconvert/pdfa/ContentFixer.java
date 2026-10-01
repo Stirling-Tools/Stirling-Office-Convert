@@ -80,6 +80,17 @@ final class ContentFixer {
                 }
                 if ("BI".equals(name)) {
                     colours.inlineImage(op.getImageParameters());
+                    InlineImages.Outcome o = InlineImages.fix(op);
+                    if (o == InlineImages.Outcome.UNREADABLE) {
+                        changed = true;
+                        report.warn("Removed an inline image whose filter PDF/A does not allow and that could not "
+                                + "be decoded");
+                        continue;
+                    }
+                    if (o == InlineImages.Outcome.REENCODED) {
+                        changed = true;
+                        report.warn("Decoded inline images whose filter PDF/A does not allow");
+                    }
                 }
                 if ("BI".equals(name) && inlineImage(op.getImageParameters())) {
                     changed = true;

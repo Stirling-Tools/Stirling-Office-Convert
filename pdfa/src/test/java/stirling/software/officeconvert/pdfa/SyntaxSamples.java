@@ -2,6 +2,8 @@ package stirling.software.officeconvert.pdfa;
 
 import static stirling.software.officeconvert.pdfa.RuleSamples.raw;
 
+import java.io.ByteArrayOutputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.Set;
 
 final class SyntaxSamples {
@@ -46,5 +48,31 @@ final class SyntaxSamples {
             r.set(4, "<</Length " + TEXT.length() + ">>stream\r" + TEXT + "\nendstream");
             return r.bytes();
         });
+        raw("r04_inline_images_and_operators", Set.of("1:6.1.10-2", "1:6.2.10-1", "2:6.1.10-1", "2:6.2.2-1"),
+                () -> {
+                    String lzw = new String(lzwGray(), StandardCharsets.ISO_8859_1);
+                    String content = TEXT + " q 100 0 0 100 72 500 cm BI /W 4 /H 4 /CS /G /BPC 8 /F /LZW ID "
+                            + lzw + " EI Q 1 2 3 bogusop";
+                    return RawPdf.page(RawPdf.helvetica(), content).bytes();
+                });
+    }
+
+    private static byte[] lzwGray() {
+        int[] codes = {256, 0, 50, 100, 150, 200, 250, 258, 260, 262, 264, 266, 268, 257};
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        int buffer = 0;
+        int bits = 0;
+        for (int c : codes) {
+            buffer = buffer << 9 | c;
+            bits += 9;
+            while (bits >= 8) {
+                out.write(buffer >>> (bits - 8) & 0xFF);
+                bits -= 8;
+            }
+        }
+        if (bits > 0) {
+            out.write(buffer << (8 - bits) & 0xFF);
+        }
+        return out.toByteArray();
     }
 }
