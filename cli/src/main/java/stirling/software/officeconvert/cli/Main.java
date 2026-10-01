@@ -447,12 +447,12 @@ public final class Main {
                         + " [--pages a-b] [--no-tables] [--dpi n] [--password p] [--picture-fallback]"
                         + " [--pictures compact|lossless] [-q]"
                         + System.lineSeparator()
-                        + "       office-convert <in.docx|in.pptx|in.xlsx|in.doc|in.xls|in.ppt|dir>... [-o out.pdf|dir] [--format pdf]"
+                        + "       office-convert <in.docx|in.pptx|in.xlsx|in.doc|in.rtf|in.xls|in.ppt|dir>... [-o out.pdf|dir] [--format pdf]"
                         + " [--max-pages n (default 10000, 0 = all)] [--timeout s (default 300, 0 = none)]"
                         + " [--fonts dir]... [-q]"
                         + System.lineSeparator()
                         + "Word, PowerPoint and Excel files (.docx .docm .dotx .dotm .pptx .pptm .ppsx .ppsm .potx .potm"
-                        + " .xlsx .xlsm .xltx .xltm and 97-2003 .doc .dot .xls .xlt .ppt .pps .pot) convert to PDF. A folder converts its PDFs and Office files; --format pdf"
+                        + " .xlsx .xlsm .xltx .xltm and 97-2003 .doc .dot .xls .xlt .ppt .pps .pot plus RTF .rtf) convert to PDF. A folder converts its PDFs and Office files; --format pdf"
                         + " takes only its Office files. Nothing a document"
                         + " links to is fetched and no macro, field or formula is run."
                         + System.lineSeparator()

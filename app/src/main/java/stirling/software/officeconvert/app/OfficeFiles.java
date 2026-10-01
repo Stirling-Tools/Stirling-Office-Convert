@@ -12,6 +12,7 @@ import java.util.zip.ZipException;
 import java.util.zip.ZipFile;
 
 import stirling.software.officeconvert.topdf.io.LegacyOffice;
+import stirling.software.officeconvert.topdf.rtf.RtfPackage;
 
 final class OfficeFiles {
 
@@ -57,7 +58,7 @@ final class OfficeFiles {
 
     static String family(String extension) {
         return switch (extension) {
-            case "docx", "docm", "dotx", "dotm", "doc", "dot" -> "docx";
+            case "docx", "docm", "dotx", "dotm", "doc", "dot", "rtf" -> "docx";
             case "pptx", "pptm", "ppsx", "ppsm", "potx", "potm", "ppt", "pps", "pot" -> "pptx";
             case "xlsx", "xlsm", "xltx", "xltm", "xls", "xlt" -> "xlsx";
             default -> throw new IllegalArgumentException("Not an Office extension: " + extension);
@@ -65,6 +66,9 @@ final class OfficeFiles {
     }
 
     static String extension(Path zip) throws IOException {
+        if (RtfPackage.isRtf(zip)) {
+            return "rtf";
+        }
         if (ole2(zip)) {
             String kind = LegacyOffice.kind(zip);
             if ("xls".equals(kind) || "ppt".equals(kind) || "doc".equals(kind)) {
