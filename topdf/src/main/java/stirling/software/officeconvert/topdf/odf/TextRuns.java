@@ -122,7 +122,17 @@ final class TextRuns {
             case "page-count" -> field(k, run, "NUMPAGES");
             case "ruby" -> children(Dom.kid(k, Ns.TEXT, "ruby-base"), run);
             case "conditional-text" -> text(Dom.text(k), run, true);
-            default -> children(k, run);
+            default -> {
+                if (DateFields.is(local) && k.getTextContent().isBlank()) {
+                    String date = DateFields.text(k, w.doc.meta(), w.styles);
+                    if (date != null && !date.isEmpty()) {
+                        text(date, run, false);
+                        lastSpace = false;
+                    }
+                } else {
+                    children(k, run);
+                }
+            }
         }
     }
 

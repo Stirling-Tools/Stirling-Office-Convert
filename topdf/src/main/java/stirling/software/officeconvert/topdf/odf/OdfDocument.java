@@ -62,6 +62,10 @@ public final class OdfDocument implements Closeable {
 
     private boolean damaged;
 
+    private Element meta;
+
+    private boolean metaRead;
+
     private OdfDocument(Kind kind, ZipFile zip, Element content, Element styles, Element settings) {
         this.kind = kind;
         this.zip = zip;
@@ -84,6 +88,19 @@ public final class OdfDocument implements Closeable {
 
     Element settings() {
         return settings;
+    }
+
+    Element meta() {
+        if (!metaRead) {
+            metaRead = true;
+            try {
+                Element root = zip == null ? content : xml("meta.xml", false);
+                meta = Dom.kid(root, Ns.OFFICE, "meta");
+            } catch (IOException | RuntimeException e) {
+                meta = null;
+            }
+        }
+        return meta;
     }
 
     boolean damaged() {

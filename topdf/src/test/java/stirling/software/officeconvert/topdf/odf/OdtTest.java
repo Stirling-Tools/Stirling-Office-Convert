@@ -106,6 +106,15 @@ class OdtTest {
     }
 
     @Test
+    void indentsInCharacterUnitsScaleWithTheFontSize() throws IOException {
+        String auto = "<style:style style:name=\"P1\" style:family=\"paragraph\"><style:paragraph-properties"
+                + " loext:margin-left=\"1ic\" loext:text-indent=\"-2.5ic\"/><style:text-properties fo:font-size=\"10pt\"/>"
+                + "</style:style>";
+        String xml = document(odt(auto, "<text:p text:style-name=\"P1\">Indented</text:p>", null));
+        assertTrue(xml.contains("<w:ind w:left=\"200\" w:right=\"0\" w:hanging=\"500\"/>"), xml);
+    }
+
+    @Test
     void whiteSpaceCollapsesButSpacesAndTabsStay() throws IOException {
         String xml = document(odt("", "<text:p>  a   b<text:s text:c=\"3\"/>c<text:tab/>d</text:p>", null));
         assertTrue(xml.contains(">a b   c</w:t>"), xml);
@@ -371,6 +380,25 @@ class OdtTest {
         String between = xml.substring(xml.indexOf("One"), xml.indexOf("After"));
         assertEquals(2, between.split("</w:tbl>").length - 1, xml);
         assertEquals(1, between.replaceAll("<w:tc>.*?</w:tc>", "").split("<w:p>").length - 1, xml);
+    }
+
+    @Test
+    void anEmptyDateFieldShowsTheSavedDateNeverToday() throws IOException {
+        String automatic = "<number:date-style style:name=\"N1\"><number:day number:style=\"long\"/><number:text>/"
+                + "</number:text><number:month number:style=\"long\"/><number:text>/</number:text><number:year"
+                + " number:style=\"long\"/></number:date-style>";
+        String body = "<text:p>Saved <text:date style:data-style-name=\"N1\"/> created <text:creation-date"
+                + " style:data-style-name=\"N1\"/> fixed <text:date text:date-value=\"2020-01-02\""
+                + " style:data-style-name=\"N1\"/> cached <text:date>kept</text:date></text:p>";
+        Map<String, byte[]> parts = new LinkedHashMap<>();
+        parts.put("content.xml", OdfFixtures.content(automatic, OdfFixtures.text(body)).getBytes(StandardCharsets.UTF_8));
+        parts.put("meta.xml", ("<office:document-meta " + OdfFixtures.NS + " xmlns:meta=\"urn:oasis:names:tc:opendocument:"
+                + "xmlns:meta:1.0\" xmlns:dc=\"http://purl.org/dc/elements/1.1/\"><office:meta><meta:creation-date>"
+                + "2019-05-06T07:08:09</meta:creation-date><dc:date>2021-03-04T10:00:00.123456789</dc:date>"
+                + "</office:meta></office:document-meta>").getBytes(StandardCharsets.UTF_8));
+        Path p = OdfFixtures.write(dir, "dates.odt", OdfFixtures.zip(OdfFixtures.TEXT, parts));
+        String text = pdfText(p).replaceAll("\\s+", " ");
+        assertTrue(text.contains("Saved 04/03/2021 created 06/05/2019 fixed 02/01/2020 cached kept"), text);
     }
 
     @Test
