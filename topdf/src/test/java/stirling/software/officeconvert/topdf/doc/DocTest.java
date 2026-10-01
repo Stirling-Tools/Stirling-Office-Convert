@@ -277,4 +277,42 @@ class DocTest {
         String xml = body(doc);
         assertTrue(xml.contains("<w:tab w:val=\"right\" w:pos=\"4832\"/>"), xml);
     }
+
+    @Test
+    void listsBecomeNumbering() throws IOException {
+        byte[][] list = Sprms.simpleList(0, "\u0000.", WordFixture.concat(Sprms.u16(0x845E, 720), Sprms.u16(0x8460, -360)),
+                new byte[0]);
+        byte[] doc = new WordFixture().lists(list[0], list[1])
+                .para("First", Sprms.u16(0x460B, 1), Sprms.u8(0x260A, 0))
+                .para("Second", Sprms.u16(0x460B, 1), Sprms.u8(0x260A, 0)).build();
+        String xml = body(doc);
+        assertTrue(xml.contains("<w:numPr><w:ilvl w:val=\"0\"/><w:numId w:val=\"1\"/></w:numPr>"), xml);
+        assertTrue(xml.contains("<w:ind w:left=\"720\" w:right=\"0\" w:hanging=\"360\"/>"), xml);
+        String numbering = part(doc, "word/numbering.xml");
+        assertTrue(numbering.contains("<w:numFmt w:val=\"decimal\"/>") && numbering.contains("<w:lvlText w:val=\"%1.\"/>"),
+                numbering);
+        String text = pdfText(doc, "list.doc");
+        assertTrue(text.contains("1.") && text.contains("2.") && text.contains("Second"), text);
+    }
+
+    @Test
+    void inlinePicturesAreEmbedded() throws IOException {
+        byte[] png = PictureFixture.png(8, 4, java.awt.Color.RED);
+        byte[] data = WordFixture.concat(new byte[16], PictureFixture.picf(png, 1440, 720));
+        byte[] doc = new WordFixture().data(data)
+                .para(List.of(WordFixture.run("Logo "), WordFixture.run("\u0001", Sprms.special(), Sprms.u32(0x6A03, 16))),
+                        0)
+                .build();
+        String xml = body(doc);
+        assertTrue(xml.contains("<wp:extent cx=\"914400\" cy=\"457200\"/>"), xml);
+        String rels = part(doc, "word/_rels/document.xml.rels");
+        assertTrue(rels.contains("media/image1.png"), rels);
+        Path in = dir.resolve("picture.doc");
+        Files.write(in, doc);
+        Path out = dir.resolve("picture.pdf");
+        OfficeToPdf.convert(in, out);
+        try (PDDocument pdf = Loader.loadPDF(out.toFile())) {
+            assertTrue(pdf.getPage(0).getResources().getXObjectNames().iterator().hasNext());
+        }
+    }
 }

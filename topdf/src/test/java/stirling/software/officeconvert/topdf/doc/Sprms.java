@@ -89,4 +89,26 @@ final class Sprms {
         }
         return op(0xD608, operand);
     }
+
+    static byte[][] simpleList(int nfc, String text, byte[] papx, byte[] chpx) {
+        java.nio.ByteBuffer lst = java.nio.ByteBuffer.allocate(2 + 28 + 28 + papx.length + chpx.length + 2
+                + text.length() * 2).order(java.nio.ByteOrder.LITTLE_ENDIAN);
+        lst.putShort((short) 1).putInt(1).putInt(0);
+        for (int i = 0; i < 9; i++) {
+            lst.putShort((short) 0x0FFF);
+        }
+        lst.put((byte) 1).put((byte) 0);
+        lst.putInt(1).put((byte) nfc).put((byte) 0);
+        lst.put(new byte[] {1, 0, 0, 0, 0, 0, 0, 0, 0});
+        lst.put((byte) 0).putInt(0).putInt(0).put((byte) chpx.length).put((byte) papx.length).put((byte) 0)
+                .put((byte) 0);
+        lst.put(papx).put(chpx).putShort((short) text.length());
+        for (char c : text.toCharArray()) {
+            lst.putShort((short) c);
+        }
+        java.nio.ByteBuffer lfo = java.nio.ByteBuffer.allocate(4 + 16 + 4).order(java.nio.ByteOrder.LITTLE_ENDIAN);
+        lfo.putInt(1).putInt(1).putInt(0).putInt(0).put((byte) 0).put((byte) 0).put((byte) 0).put((byte) 0);
+        lfo.putInt(0);
+        return new byte[][] {lst.array(), lfo.array()};
+    }
 }
