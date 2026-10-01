@@ -249,4 +249,14 @@ class DocTest {
         String text = pdfText(doc, "shapes.doc");
         assertTrue(text.contains("Boxed words"), text);
     }
+
+    @Test
+    void aTextFreeContinuousSectionRunsIntoTheNext() throws IOException {
+        byte[] cols = WordFixture.concat(Sprms.u16(0x500B, 1), Sprms.u8(0x3009, 0));
+        byte[] doc = new WordFixture().sectionBreak("", cols).para("Body").section(cols).build();
+        String xml = body(doc);
+        assertEquals(1, xml.split("<w:sectPr>").length - 1, xml);
+        byte[] split = new WordFixture().sectionBreak("Words", cols).para("Body").section(cols).build();
+        assertEquals(2, body(split).split("<w:sectPr>").length - 1);
+    }
 }

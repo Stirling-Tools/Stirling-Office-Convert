@@ -2,6 +2,7 @@ package stirling.software.officeconvert.topdf.doc;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -141,11 +142,28 @@ final class Sections implements Story.Breaks {
         if (end < seps.get(next).getEnd()) {
             return null;
         }
-        String s = sectPr(next);
+        String s = absorbed(next) ? null : sectPr(next);
         while (next < seps.size() - 1 && end >= seps.get(next).getEnd()) {
             next++;
         }
         return s;
+    }
+
+    // A text-free section that runs on, unchanged and continuous, into the next lays out as part of it
+    private boolean absorbed(int k) {
+        if (k + 1 >= seps.size() || seps.get(k + 1).getSectionProperties().getBkc() != 0
+                || !Arrays.equals(Sprm.encode(raw.get(k)), Sprm.encode(raw.get(k + 1)))
+                || k + 1 < refs.size() && !refs.get(k).equals(refs.get(k + 1))) {
+            return false;
+        }
+        CharSequence text = c.src.text;
+        for (int i = Math.max(0, seps.get(k).getStart()); i < Math.min(text.length(), seps.get(k).getEnd()); i++) {
+            char ch = text.charAt(i);
+            if (ch > ' ' && ch != '\u00A0') {
+                return false;
+            }
+        }
+        return true;
     }
 
     String last() {

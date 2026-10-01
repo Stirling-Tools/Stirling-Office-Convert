@@ -33,6 +33,10 @@ final class WordFixture {
 
     private byte[] sepx = new byte[0];
 
+    private final List<byte[]> earlier = new ArrayList<>();
+
+    private final List<Integer> breaks = new ArrayList<>();
+
     private byte[] lists;
 
     private byte[] listOverrides;
@@ -91,6 +95,13 @@ final class WordFixture {
 
     WordFixture section(byte[]... sprms) {
         sepx = concat(sprms);
+        return this;
+    }
+
+    WordFixture sectionBreak(String text, byte[]... sprms) {
+        main.add(new Para(List.of(run(text)), new byte[0], 0, '\u000C'));
+        earlier.add(concat(sprms));
+        breaks.add(main.size() - 1);
         return this;
     }
 
@@ -161,21 +172,38 @@ final class WordFixture {
         int chpPage = align(fcText + textBytes, 512);
         int papPage = chpPage + 512;
         int sepxAt = papPage + 512;
-        ByteBuffer wd = ByteBuffer.allocate(sepxAt + 2 + sepx.length + 16).order(ByteOrder.LITTLE_ENDIAN);
+        List<byte[]> seps = new ArrayList<>(earlier);
+        seps.add(sepx);
+        int sepBytes = 0;
+        for (byte[] g : seps) {
+            sepBytes += 2 + g.length + (g.length & 1);
+        }
+        ByteBuffer wd = ByteBuffer.allocate(sepxAt + sepBytes + 16).order(ByteOrder.LITTLE_ENDIAN);
         for (int i = 0; i < text.length(); i++) {
             wd.putShort(fcText + i * 2, (short) text.charAt(i));
         }
         wd.put(chpPage, chpFkp(fcText, runSpans, runProps));
         wd.put(papPage, papFkp(fcText, all, ends));
-        wd.putShort(sepxAt, (short) sepx.length);
-        wd.put(sepxAt + 2, sepx);
+        int[] sepAt = new int[seps.size()];
+        int sepPos = sepxAt;
+        for (int i = 0; i < seps.size(); i++) {
+            sepAt[i] = sepPos;
+            wd.putShort(sepPos, (short) seps.get(i).length);
+            wd.put(sepPos + 2, seps.get(i));
+            sepPos += 2 + seps.get(i).length + (seps.get(i).length & 1);
+        }
+        int[] sepEnds = new int[seps.size()];
+        for (int i = 0; i < breaks.size(); i++) {
+            sepEnds[i] = ends.get(breaks.get(i));
+        }
+        sepEnds[seps.size() - 1] = ccpText;
 
         ByteArrayOutputStream table = new ByteArrayOutputStream();
         int[][] fcLcb = new int[93][];
         fcLcb[1] = put(table, stylesheet());
         fcLcb[12] = put(table, plc(new int[] {fcText, fcText + textBytes}, new int[] {chpPage / 512}));
         fcLcb[13] = put(table, plc(new int[] {fcText, fcText + textBytes}, new int[] {papPage / 512}));
-        fcLcb[6] = put(table, sed(text.length(), ccpText, sepxAt));
+        fcLcb[6] = put(table, sed(sepEnds, sepAt));
         fcLcb[15] = put(table, fontTable());
         fcLcb[31] = put(table, new byte[500]);
         table.writeBytes(new byte[600]);
@@ -370,10 +398,15 @@ final class WordFixture {
         return b.array();
     }
 
-    private static byte[] sed(int cpEnd, int ccpText, int sepxAt) {
-        ByteBuffer b = ByteBuffer.allocate(8 + 12).order(ByteOrder.LITTLE_ENDIAN);
-        b.putInt(0).putInt(ccpText);
-        b.putShort((short) 0).putInt(sepxAt).putShort((short) 0).putInt(-1);
+    private static byte[] sed(int[] ends, int[] at) {
+        ByteBuffer b = ByteBuffer.allocate(4 * (ends.length + 1) + 12 * ends.length).order(ByteOrder.LITTLE_ENDIAN);
+        b.putInt(0);
+        for (int e : ends) {
+            b.putInt(e);
+        }
+        for (int a : at) {
+            b.putShort((short) 0).putInt(a).putShort((short) 0).putInt(-1);
+        }
         return b.array();
     }
 
