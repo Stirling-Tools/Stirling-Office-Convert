@@ -64,6 +64,9 @@ final class Conversion {
         if (level.part() == 1) {
             Transparency.run(doc, options.flattenDpi(), report);
         }
+        if (level.tagged()) {
+            StructureCheck.run(doc, level, report);
+        }
         graph = ContentGraph.of(doc);
         ColourFixer.run(doc, graph, level, report, colours);
         Limits.run(doc, level, report);
