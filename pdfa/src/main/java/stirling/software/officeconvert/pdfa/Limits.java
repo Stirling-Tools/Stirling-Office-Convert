@@ -133,7 +133,7 @@ final class Limits {
         return b;
     }
 
-    private void visit(COSBase b) {
+    private void visit(COSBase b) throws IOException {
         if (level.part() == 1) {
             if (b instanceof COSDictionary d && LongArrays.fix(d)) {
                 report.warn("Split arrays longer than PDF/A-1 allows");
