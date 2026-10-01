@@ -31,7 +31,8 @@ final class DrawingReader {
     // Faces for laying out equations while the document is read
     Fonts fonts() {
         if (fonts == null && pkg.job != null) {
-            fonts = new Fonts(pkg.job, pkg.theme, pkg.settings == null ? null : pkg.settings.eastAsiaLang);
+            fonts = new Fonts(pkg.job, pkg.theme, pkg.settings == null ? null : pkg.settings.eastAsiaLang)
+                    .alternatives(pkg.altFonts);
         }
         return fonts;
     }

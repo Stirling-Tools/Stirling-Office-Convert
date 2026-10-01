@@ -269,6 +269,10 @@ public final class FontLibrary {
         if (f == null) {
             return null;
         }
+        OfficeFonts.Style widths = like.officeWidths();
+        if (widths != null && widths.advance(codePoint) >= 0 && !f.emulated() && !f.symbolStandIn()) {
+            return officeWidths(f, like, widths);
+        }
         String sample = ScriptWidths.sample(codePoint);
         boolean scalable = sample != null && !f.emulated() && !f.symbolStandIn()
                 && ScriptWidths.average(like.requestedFamily(), sample) > 0;
@@ -291,6 +295,30 @@ public final class FontLibrary {
             known = raced == null ? known : raced;
         }
         return known.get();
+    }
+
+    private FontFace officeWidths(FontFace f, FontFace like, OfficeFonts.Style widths) {
+        String key = "w\u0000" + normalize(like.requestedFamily()) + '\u0000' + like.boldStyle() + like.italicStyle()
+                + '\u0000' + f.program().entry().describe() + (f.syntheticBold() ? 2 : 0) + (f.syntheticItalic() ? 1 : 0);
+        Optional<FontFace> known = faces.get(key);
+        if (known == null) {
+            known = Optional.of(new FontFace(f.program(), f.requestedFamily(), f.syntheticBold(), f.syntheticItalic(),
+                    f.note(), null, widths, 1));
+            Optional<FontFace> raced = faces.putIfAbsent(key, known);
+            known = raced == null ? known : raced;
+        }
+        return known.get();
+    }
+
+    public static boolean officeFont(String family) {
+        return OfficeFonts.style(family, false, false) != null || OfficeFonts.style(english(family), false, false) != null
+                || ScriptWidths.average(family, ScriptWidths.ARABIC) > 0
+                || ScriptWidths.average(family, ScriptWidths.HEBREW) > 0;
+    }
+
+    public static boolean drawsScript(String family, int codePoint) {
+        String sample = ScriptWidths.sample(codePoint);
+        return sample != null && ScriptWidths.average(family, sample) > 0;
     }
 
     public List<FontRun> runs(String text, FontFace primary) {
@@ -323,6 +351,11 @@ public final class FontLibrary {
             out.add(new FontRun(current, start, text.length(), text.substring(start)));
         }
         return out;
+    }
+
+    public static String english(String family) {
+        String e = FontNames.english(family);
+        return e == null ? family : e;
     }
 
     public static String normalize(String name) {

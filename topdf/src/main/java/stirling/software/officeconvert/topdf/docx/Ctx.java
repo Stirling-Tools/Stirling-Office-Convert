@@ -93,7 +93,8 @@ final class Ctx {
     Ctx(DocxPackage pkg) {
         this.pkg = pkg;
         this.job = pkg.job;
-        this.fonts = new Fonts(pkg.job, pkg.theme, pkg.settings.eastAsiaLang).bidi(pkg.settings.bidiLang);
+        this.fonts = new Fonts(pkg.job, pkg.theme, pkg.settings.eastAsiaLang).bidi(pkg.settings.bidiLang)
+                .alternatives(pkg.altFonts);
         this.settings = pkg.settings;
         this.nextFootnote = pkg.settings.footnoteStart;
         this.nextEndnote = pkg.settings.endnoteStart;

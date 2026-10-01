@@ -9,6 +9,7 @@ import java.util.Optional;
 import stirling.software.officeconvert.topdf.RenderJob;
 import stirling.software.officeconvert.topdf.font.CloudFonts;
 import stirling.software.officeconvert.topdf.font.FontFace;
+import stirling.software.officeconvert.topdf.font.FontLibrary;
 
 final class Fonts {
 
@@ -33,6 +34,8 @@ final class Fonts {
 
     private String bidiLang;
 
+    private Map<String, String> alternatives = Map.of();
+
     Fonts(RenderJob job, Theme theme, String defaultLang) {
         this.job = job;
         this.theme = theme;
@@ -44,11 +47,20 @@ final class Fonts {
         return this;
     }
 
+    Fonts alternatives(Map<String, String> altNames) {
+        alternatives = altNames;
+        return this;
+    }
+
     FontFace face(String family, boolean bold, boolean italic) {
         String key = family + "|" + bold + "|" + italic;
         FontFace f = cache.get(key);
         if (f == null) {
             f = job.fonts().find(family, bold, italic);
+            String alt = alternatives.get(FontLibrary.normalize(family));
+            if (f.substituted() && alt != null && !windowsFont(family) && FontLibrary.officeFont(alt)) {
+                f = job.fonts().find(alt, bold, italic);
+            }
             f = synthetic(f, bold, italic);
             cache.put(key, f);
         }
@@ -65,7 +77,7 @@ final class Fonts {
             return new CloudFonts.Emulation(face, 100, symbol, null, null);
         }
         float[] asian = eastAsianVertical(face.requestedFamily());
-        if (asian != null && !Look.eastAsianGlyphs(face)) {
+        if (asian != null) {
             return new CloudFonts.Emulation(face, 100, asian, null, null);
         }
         return emulations.computeIfAbsent(face, f -> {
@@ -78,16 +90,35 @@ final class Fonts {
         }).orElse(null);
     }
 
+    private static boolean windowsFont(String family) {
+        if (SymbolChars.vertical(family) != null) {
+            return true;
+        }
+        String name = family.strip();
+        while (true) {
+            if (FontLibrary.officeFont(name)) {
+                return true;
+            }
+            int space = name.lastIndexOf(' ');
+            if (space <= 0) {
+                return false;
+            }
+            name = name.substring(0, space);
+        }
+    }
+
     // Win ascent and descent in ems of common Windows East Asian fonts, with the extra Word gives such fonts
     static float[] eastAsianVertical(String family) {
         if (family == null) {
             return null;
         }
-        float[] m = switch (family.strip().toLowerCase(Locale.ROOT)) {
-            case "ms gothic", "ms pgothic", "ms ui gothic", "ms mincho", "ms pmincho", "simsun", "nsimsun" ->
+        float[] m = switch (FontLibrary.english(family).strip().toLowerCase(Locale.ROOT)) {
+            case "ms gothic", "ms pgothic", "ms ui gothic", "ms mincho", "ms pmincho", "simsun", "nsimsun", "simhei",
+                    "batang", "batangche", "gulim", "gulimche", "dotum", "dotumche", "gungsuh", "gungsuhche" ->
                     new float[] {220f / 256, 36f / 256};
             case "malgun gothic" -> new float[] {2229f / 2048, 495f / 2048};
             case "yu gothic", "yu gothic ui" -> new float[] {2017f / 2048, 619f / 2048};
+            case "dengxian", "dengxian light" -> new float[] {0.81f, 0.232f};
             default -> null;
         };
         if (m == null) {

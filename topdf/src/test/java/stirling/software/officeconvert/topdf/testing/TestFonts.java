@@ -7,6 +7,7 @@ import java.io.UncheckedIOException;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
+import java.util.TreeMap;
 
 import org.apache.fontbox.ttf.TTFParser;
 import org.apache.fontbox.ttf.TrueTypeFont;
@@ -49,6 +50,82 @@ public final class TestFonts {
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }
+    }
+
+    public static byte[] withEastAsianGlyphs(String family) {
+        return withGlyphs(family, 'A', 0x3042, 0x4E00, 0xAC00);
+    }
+
+    public static byte[] withGlyphs(String family, char source, int... codePoints) {
+        byte[] ttf = renamed(family);
+        try (TrueTypeFont font = new TTFParser().parse(new RandomAccessReadBuffer(ttf))) {
+            int glyph = font.getUnicodeCmapLookup().getGlyphId(source);
+            TreeMap<Integer, Integer> map = new TreeMap<>();
+            for (int c = 0x20; c < 0x7F; c++) {
+                map.put(c, font.getUnicodeCmapLookup().getGlyphId(c));
+            }
+            for (int c : codePoints) {
+                map.put(c, glyph);
+            }
+            return replaced(ttf, "cmap", cmap(map));
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+    }
+
+    public static byte[] withLineMetrics(byte[] ttf, int ascent, int descent) {
+        try (TrueTypeFont font = new TTFParser().parse(new RandomAccessReadBuffer(ttf))) {
+            byte[] out = ttf.clone();
+            ByteBuffer b = ByteBuffer.wrap(out);
+            int hhea = (int) font.getTableMap().get("hhea").getOffset();
+            int os2 = (int) font.getTableMap().get("OS/2").getOffset();
+            b.putShort(hhea + 4, (short) ascent).putShort(hhea + 6, (short) -descent).putShort(hhea + 8, (short) 0);
+            b.putShort(os2 + 68, (short) ascent).putShort(os2 + 70, (short) -descent).putShort(os2 + 72, (short) 0);
+            b.putShort(os2 + 74, (short) ascent).putShort(os2 + 76, (short) descent);
+            return out;
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+    }
+
+    private static byte[] cmap(TreeMap<Integer, Integer> map) {
+        int segments = map.size() + 1;
+        ByteBuffer b = ByteBuffer.allocate(12 + 16 + 8 * segments);
+        b.putShort((short) 0).putShort((short) 1).putShort((short) 3).putShort((short) 1).putInt(12);
+        b.putShort((short) 4).putShort((short) (16 + 8 * segments)).putShort((short) 0)
+                .putShort((short) (2 * segments)).putShort((short) 0).putShort((short) 0).putShort((short) 0);
+        for (int c : map.keySet()) {
+            b.putShort((short) c);
+        }
+        b.putShort((short) 0xFFFF).putShort((short) 0);
+        for (int c : map.keySet()) {
+            b.putShort((short) c);
+        }
+        b.putShort((short) 0xFFFF);
+        for (var e : map.entrySet()) {
+            b.putShort((short) (e.getValue() - e.getKey()));
+        }
+        b.putShort((short) 1);
+        for (int i = 0; i < segments; i++) {
+            b.putShort((short) 0);
+        }
+        return b.array();
+    }
+
+    private static byte[] replaced(byte[] ttf, String table, byte[] data) {
+        ByteBuffer in = ByteBuffer.wrap(ttf);
+        int tables = in.getShort(4) & 0xFFFF;
+        for (int i = 0; i < tables; i++) {
+            int at = 12 + 16 * i;
+            if (new String(ttf, at, 4, StandardCharsets.ISO_8859_1).equals(table)) {
+                int offset = (ttf.length + 3) & ~3;
+                byte[] out = Arrays.copyOf(ttf, offset + data.length);
+                System.arraycopy(data, 0, out, offset, data.length);
+                ByteBuffer.wrap(out).putInt(at + 8, offset).putInt(at + 12, data.length);
+                return out;
+            }
+        }
+        throw new IllegalArgumentException("The font has no " + table + " table");
     }
 
     public static byte[] renamedCff(String family) {

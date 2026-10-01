@@ -77,7 +77,7 @@ final class ScriptWidths {
         if (!(k > 0) || Math.abs(k - 1) < 0.02f) {
             return 0;
         }
-        return Math.max(0.6f, Math.min(1.4f, k));
+        return Math.max(0.4f, Math.min(1.4f, k));
     }
 
     /** Scales for {Arabic, Hebrew} when a stand-in draws either script itself, else null. */

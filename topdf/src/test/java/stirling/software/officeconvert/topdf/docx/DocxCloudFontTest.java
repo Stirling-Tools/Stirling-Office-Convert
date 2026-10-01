@@ -20,6 +20,7 @@ import stirling.software.officeconvert.topdf.OfficeToPdf;
 import stirling.software.officeconvert.topdf.RenderJob;
 import stirling.software.officeconvert.topdf.font.CloudFonts;
 import stirling.software.officeconvert.topdf.font.CloudMetrics;
+import stirling.software.officeconvert.topdf.font.FontFace;
 import stirling.software.officeconvert.topdf.font.FontLibrary;
 import stirling.software.officeconvert.topdf.io.OfficeZip;
 import stirling.software.officeconvert.topdf.pdf.PdfOutput;
@@ -94,6 +95,108 @@ class DocxCloudFontTest {
         pos = convert(new DocxDoc().styles(styles).body(body).bytes(), FontLibrary.of(List.of(linux)));
         boxed = y(pos, "D") - y(pos, "B") - (y(pos, "B") - y(pos, "A"));
         assertEquals(10 * 1.3f, boxed, 0.2, "a Linux stand-in named for MS Gothic keeps MS Gothic's line");
+    }
+
+    @Test
+    void aStandInWithEastAsianGlyphsKeepsTheLineOfTheEastAsianFontItReplaces() throws Exception {
+        Path linux = Files.createDirectories(dir.resolve("cjk"));
+        Files.write(linux.resolve("Cjk.ttf"), TestFonts.withEastAsianGlyphs("WenQuanYi Zen Hei"));
+        FontLibrary fonts = FontLibrary.of(List.of(linux));
+        Path in = Fixtures.write(dir, "cjk.docx", new DocxDoc().body(DocxDoc.p("Ann")).bytes());
+        try (OfficeZip zip = OfficeZip.open(in); PdfOutput output = new PdfOutput(fonts)) {
+            RenderJob job = new RenderJob(zip, OfficeToPdf.Format.DOCX, OfficeToPdf.Options.defaults(), fonts, output);
+            Fonts f = new Fonts(job, null, "en-US");
+            for (String family : new String[] {"MS Gothic", "ＭＳ ゴシック"}) {
+                FontFace face = f.face(family, false, false);
+                assertTrue(face.covers(0x4E00));
+                CloudFonts.Emulation e = f.emulation(face);
+                assertTrue(e != null && Fonts.withEastAsianExtra(e), family);
+                assertEquals(Fonts.eastAsianVertical("MS Gothic")[0], e.vertical()[0], 1e-6, family);
+            }
+        }
+    }
+
+    @Test
+    void hangulFallingBackFromBatangsStandInKeepsBatangsLine() throws Exception {
+        String styles = "<w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii=\"Arial\" w:hAnsi=\"Arial\"/>"
+                + "<w:sz w:val=\"20\"/></w:rPr></w:rPrDefault><w:pPrDefault><w:pPr><w:spacing w:after=\"0\""
+                + " w:line=\"240\" w:lineRule=\"auto\"/></w:pPr></w:pPrDefault></w:docDefaults>";
+        String batang = "<w:r><w:rPr><w:rFonts w:ascii=\"Batang\" w:eastAsia=\"Batang\" w:hAnsi=\"Batang\""
+                + " w:hint=\"eastAsia\"/></w:rPr><w:t>가</w:t></w:r>";
+        String body = DocxDoc.p("Ann") + DocxDoc.p("Bob") + "<w:p><w:r><w:t xml:space=\"preserve\">Cat </w:t></w:r>"
+                + batang + "</w:p>" + DocxDoc.p("Dan");
+        Path linux = Files.createDirectories(dir.resolve("hangul"));
+        Files.write(linux.resolve("Serif.ttf"), TestFonts.renamed("Liberation Serif"));
+        Files.write(linux.resolve("Cjk.ttf"), TestFonts.withEastAsianGlyphs("WenQuanYi Zen Hei"));
+        FontLibrary fonts = FontLibrary.of(List.of(linux));
+        assertTrue(!fonts.find("Batang", false, false).covers(0xAC00));
+        List<TextPosition> pos = convert(new DocxDoc().styles(styles).body(body).bytes(), fonts);
+        float line = y(pos, "D") - y(pos, "B") - (y(pos, "B") - y(pos, "A"));
+        assertEquals(10 * 1.3f, line, 0.2, "the fallback draws the Hangul on Batang's line");
+    }
+
+    @Test
+    void aMissingSegoeUiSymbolKeepsItsTallerLine() throws Exception {
+        String styles = "<w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii=\"Arial\" w:hAnsi=\"Arial\"/>"
+                + "<w:sz w:val=\"20\"/></w:rPr></w:rPrDefault><w:pPrDefault><w:pPr><w:spacing w:after=\"0\""
+                + " w:line=\"240\" w:lineRule=\"auto\"/></w:pPr></w:pPrDefault></w:docDefaults>";
+        String box = "<w:r><w:rPr><w:rFonts w:ascii=\"Segoe UI Symbol\" w:hAnsi=\"Segoe UI Symbol\""
+                + " w:cs=\"Segoe UI Symbol\"/></w:rPr><w:t>☐</w:t></w:r>";
+        String body = DocxDoc.p("Ann") + DocxDoc.p("Bob") + "<w:p>" + box
+                + "<w:r><w:t xml:space=\"preserve\"> Cat</w:t></w:r></w:p>" + DocxDoc.p("Dan");
+        List<TextPosition> pos = convert(new DocxDoc().styles(styles).body(body).bytes());
+        float line = y(pos, "D") - y(pos, "B") - (y(pos, "B") - y(pos, "A"));
+        assertEquals(10 * (2210f + 514) / 2048, line, 0.2, "the box line is as tall as Segoe UI Symbol's in Word");
+    }
+
+    @Test
+    void aMissingDengXianKeepsItsLine() throws Exception {
+        String styles = "<w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii=\"Arial\" w:hAnsi=\"Arial\"/>"
+                + "<w:sz w:val=\"20\"/></w:rPr></w:rPrDefault><w:pPrDefault><w:pPr><w:spacing w:after=\"0\""
+                + " w:line=\"240\" w:lineRule=\"auto\"/></w:pPr></w:pPrDefault></w:docDefaults>";
+        String run = "<w:r><w:rPr><w:rFonts w:ascii=\"等线 Light\" w:eastAsia=\"等线 Light\" w:hAnsi=\"等线 Light\"/>"
+                + "<w:sz w:val=\"40\"/></w:rPr><w:t>Cat</w:t></w:r>";
+        String body = DocxDoc.p("Ann") + DocxDoc.p("Bob") + "<w:p>" + run + "</w:p>" + DocxDoc.p("Dan");
+        List<TextPosition> pos = convert(new DocxDoc().styles(styles).body(body).bytes());
+        float line = y(pos, "D") - y(pos, "B") - (y(pos, "B") - y(pos, "A"));
+        assertEquals(20 * 1.3f * (0.81f + 0.232f), line, 0.2, "the line is as tall as DengXian Light's in Word");
+    }
+
+    @Test
+    void arabicFallingBackFromArialKeepsArialsLine() throws Exception {
+        String styles = "<w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii=\"Arial\" w:hAnsi=\"Arial\""
+                + " w:cs=\"Arial\"/><w:sz w:val=\"20\"/><w:szCs w:val=\"20\"/></w:rPr></w:rPrDefault><w:pPrDefault><w:pPr>"
+                + "<w:spacing w:after=\"0\" w:line=\"240\" w:lineRule=\"auto\"/></w:pPr></w:pPrDefault></w:docDefaults>";
+        String body = DocxDoc.p("Ann") + DocxDoc.p("Bob") + "<w:p><w:r><w:t xml:space=\"preserve\">Cat </w:t></w:r>"
+                + "<w:r><w:rPr><w:rtl/></w:rPr><w:t>\u0628</w:t></w:r></w:p>" + DocxDoc.p("Dan");
+        Path linux = Files.createDirectories(dir.resolve("arabic"));
+        Files.write(linux.resolve("Sans.ttf"), TestFonts.renamed("Liberation Sans"));
+        byte[] tall = TestFonts.withGlyphs("Tall Arabic", 'A', 0x0628);
+        Files.write(linux.resolve("Tall.ttf"), TestFonts.withLineMetrics(tall, 3000, 1500));
+        FontLibrary fonts = FontLibrary.of(List.of(linux));
+        assertTrue(!fonts.find("Arial", false, false).covers(0x0628));
+        List<TextPosition> pos = convert(new DocxDoc().styles(styles).body(body).bytes(), fonts);
+        float plain = y(pos, "B") - y(pos, "A");
+        float arabic = y(pos, "D") - y(pos, "B");
+        assertEquals(2 * plain, arabic, 0.2, "Word draws Arabic with Arial itself, on Arial's line");
+    }
+
+    @Test
+    void aMissingFontTakesTheAlternativeTheFontTableNames() throws Exception {
+        String styles = "<w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii=\"Arial\" w:hAnsi=\"Arial\"/>"
+                + "<w:sz w:val=\"20\"/></w:rPr></w:rPrDefault><w:pPrDefault><w:pPr><w:spacing w:after=\"0\""
+                + " w:line=\"240\" w:lineRule=\"auto\"/></w:pPr></w:pPrDefault></w:docDefaults>";
+        String run = "<w:r><w:rPr><w:rFonts w:ascii=\"Helvetica Neue\" w:hAnsi=\"Helvetica Neue\"/></w:rPr>"
+                + "<w:t>Cat</w:t></w:r>";
+        String body = DocxDoc.p("Ann") + DocxDoc.p("Bob") + "<w:p>" + run + "</w:p>" + DocxDoc.p("Dan");
+        String table = "<w:fonts xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\">"
+                + "<w:font w:name=\"Helvetica Neue\"><w:altName w:val=\"Malgun Gothic\"/></w:font></w:fonts>";
+        byte[] docx = new DocxDoc().styles(styles).body(body).part("fontTable.xml", "fontTable",
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.fontTable+xml", table).bytes();
+        List<TextPosition> pos = convert(docx);
+        float line = y(pos, "D") - y(pos, "B") - (y(pos, "B") - y(pos, "A"));
+        float[] malgun = Fonts.eastAsianVertical("Malgun Gothic");
+        assertEquals(10 * (malgun[0] + malgun[1]), line, 0.2, "Word draws the missing font with Malgun Gothic");
     }
 
     private static float y(List<TextPosition> pos, String letter) {

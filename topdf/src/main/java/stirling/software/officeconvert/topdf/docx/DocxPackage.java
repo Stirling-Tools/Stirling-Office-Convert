@@ -31,6 +31,8 @@ final class DocxPackage {
 
     Numbering numbering;
 
+    Map<String, String> altFonts = Map.of();
+
     // The page colour, painted under every page when the document shows its background
     java.awt.Color pageColor;
 
@@ -70,6 +72,7 @@ final class DocxPackage {
         styles = new Styles(partXml(first(main, "styles")), theme);
         numbering = new Numbering(partXml(first(main, "numbering")), styles, theme);
         EmbeddedFonts.load(this);
+        altFonts = AltFonts.read(this);
         readBody();
         notes(first(main, "footnotes"), footnotes, "w:footnote");
         notes(first(main, "endnotes"), endnotes, "w:endnote");

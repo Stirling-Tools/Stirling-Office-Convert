@@ -96,6 +96,11 @@ record Look(TextStyle style, float ascent, float descent, float leading, float r
         return face.covers(0x4E00) || face.covers(0x3042) || face.covers(0xAC00);
     }
 
+    Look withLineOf(Look other) {
+        return new Look(style, other.ascent, other.descent, other.leading, rise, underline, underlineColor, strike,
+                dstrike, highlight, shading, link, nominalSize);
+    }
+
     Look scaledMetrics(float k) {
         return new Look(style, ascent * k, descent * k, leading * k, rise, underline, underlineColor, strike, dstrike,
                 highlight, shading, link, nominalSize);
