@@ -75,6 +75,26 @@ class BlankPagesTest {
         assertTrue(c.pages().get(0).contains("First"));
     }
 
+    @Test
+    void aValueInAHiddenColumnDoesNotPrintTheEmptyColumnsBeforeIt() throws IOException {
+        String sheet = "<cols><col min=\"2\" max=\"20\" width=\"40\" customWidth=\"1\"/><col min=\"26\""
+                + " max=\"26\" width=\"9\" hidden=\"1\" customWidth=\"1\"/></cols><sheetData><row r=\"1\">"
+                + RawXlsx.inline("A1", "Shown") + RawXlsx.inline("Z1", "Hidden") + "</row></sheetData>";
+        XlsxTesting.Converted c = XlsxTesting.convert(dir, "hidden.xlsx", new RawXlsx().styles(STYLES)
+                .sheet("S", sheet).bytes());
+        assertEquals(1, c.pages().size());
+        assertTrue(c.pages().get(0).contains("Shown"));
+    }
+
+    @Test
+    void aValueInAHiddenColumnStillPrintsTheRowsItSitsIn() throws IOException {
+        String sheet = "<cols><col min=\"2\" max=\"2\" width=\"9\" hidden=\"1\" customWidth=\"1\"/></cols>"
+                + "<sheetData><row r=\"1\">" + RawXlsx.inline("A1", "Shown") + "</row><row r=\"25\">"
+                + RawXlsx.inline("B25", "Hidden") + "</row></sheetData>" + BREAKS;
+        assertEquals(3, XlsxTesting.convert(dir, "rows.xlsx", new RawXlsx().styles(STYLES).sheet("S", sheet).bytes())
+                .pages().size());
+    }
+
     private XlsxTesting.Converted convert(String name, String rows) throws IOException {
         String sheet = "<sheetData>" + rows + "</sheetData>" + BREAKS;
         return XlsxTesting.convert(dir, name, new RawXlsx().styles(STYLES).sheet("S", sheet).bytes());

@@ -316,7 +316,9 @@ final class Grid {
         for (CellEntry e : entries) {
             if (e.text() != null || e.format().visible()) {
                 lastRow = Math.max(lastRow, index);
-                lastCol = Math.max(lastCol, e.col());
+                if (columns.width(e.col()) > 0) {
+                    lastCol = Math.max(lastCol, e.col());
+                }
             }
         }
         if (markTo >= 0 && !gone) {
@@ -558,7 +560,7 @@ final class Grid {
             }
             NavigableMap<Integer, CellEntry> cells = row.cells();
             CellEntry e = cells.lastEntry().getValue();
-            while (e != null && !e.hasText()) {
+            while (e != null && (!e.hasText() || columns.width(e.col()) <= 0)) {
                 var lower = cells.lowerEntry(e.col());
                 e = lower == null ? null : lower.getValue();
             }
