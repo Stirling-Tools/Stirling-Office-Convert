@@ -141,4 +141,36 @@ class DocxBidiTest {
         }
         assertTrue(!fonts.isEmpty() && fonts.stream().allMatch(f -> f.contains("TimesNewRoman")), fonts.toString());
     }
+
+    @Test
+    void aSymbolBulletOnARightToLeftParagraphMarkIsDrawnFromTheSymbolFont() throws IOException {
+        assertEquals(labelFont("ltrbullet", ""), labelFont("rtlbullet", "<w:rtl/>"));
+    }
+
+    private String labelFont(String name, String rtl) throws IOException {
+        String numbering = "<w:abstractNum w:abstractNumId=\"0\"><w:lvl w:ilvl=\"0\"><w:start w:val=\"1\"/>"
+                + "<w:numFmt w:val=\"bullet\"/><w:lvlText w:val=\"\uF0B7\"/><w:lvlJc w:val=\"left\"/><w:rPr>"
+                + "<w:rFonts w:ascii=\"Symbol\" w:hAnsi=\"Symbol\" w:hint=\"default\"/></w:rPr></w:lvl>"
+                + "</w:abstractNum><w:num w:numId=\"1\"><w:abstractNumId w:val=\"0\"/></w:num>";
+        String body = "<w:p><w:pPr><w:bidi/><w:numPr><w:ilvl w:val=\"0\"/><w:numId w:val=\"1\"/></w:numPr><w:rPr>"
+                + "<w:rFonts w:cs=\"Calibri\"/>" + rtl + "</w:rPr></w:pPr><w:r><w:rPr><w:rFonts w:cs=\"Calibri\"/>"
+                + "<w:rtl/></w:rPr><w:t>\u0627\u0644\u0645\u0631\u0641\u0642</w:t></w:r></w:p>";
+        DocxDoc.Rendered r = DocxDoc.render(dir, name, new DocxDoc().numbering(numbering).body(body).bytes());
+        List<String> fonts = new ArrayList<>();
+        try (PDDocument d = r.open()) {
+            PDFTextStripper s = new PDFTextStripper() {
+                @Override
+                protected void writeString(String text, List<TextPosition> positions) {
+                    for (TextPosition p : positions) {
+                        if (p.getUnicode().charAt(0) < 0x0600 || p.getUnicode().charAt(0) > 0x06FF) {
+                            fonts.add(p.getFont().getName().replaceAll("^[A-Z]{6}\\+", ""));
+                        }
+                    }
+                }
+            };
+            s.getText(d);
+        }
+        assertEquals(1, fonts.size(), fonts.toString());
+        return fonts.get(0);
+    }
 }

@@ -325,12 +325,12 @@ final class ParaItems {
         int n = s.length();
         while (i < n) {
             int cp = s.codePointAt(i);
-            Fonts.Slot slot = Fonts.slot(cp, rp);
+            Fonts.Slot slot = slot(cp, rp);
             boolean lower = small && Character.isLowerCase(cp);
             int j = i + Character.charCount(cp);
             while (j < n) {
                 int c2 = s.codePointAt(j);
-                if (Fonts.slot(c2, rp) != slot && !(neutral(c2) && slot != Fonts.Slot.COMPLEX)) {
+                if (slot(c2, rp) != slot && !(neutral(c2) && slot != Fonts.Slot.COMPLEX)) {
                     break;
                 }
                 if (small && Character.isLowerCase(c2) != lower && !neutral(c2)) {
@@ -351,6 +351,16 @@ final class ParaItems {
             addCovered(piece, face, rp, nominal, full, link);
             i = j;
         }
+    }
+
+    private Fonts.Slot slot(int cp, RunProps rp) {
+        Fonts.Slot slot = Fonts.slot(cp, rp);
+        if (slot == Fonts.Slot.COMPLEX && cp >= 0xF020 && cp <= 0xF0FF
+                && !SymbolChars.symbolFont(ctx.fonts.family(rp, slot))
+                && SymbolChars.symbolFont(ctx.fonts.family(rp, Fonts.Slot.ASCII))) {
+            return Fonts.Slot.ASCII;
+        }
+        return slot;
     }
 
     private static boolean neutral(int cp) {

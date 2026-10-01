@@ -126,6 +126,10 @@ final class SymbolChars {
         };
     }
 
+    static boolean symbolFont(String family) {
+        return table(family) != null;
+    }
+
     private static String table(String family) {
         if (family == null) {
             return null;
