@@ -29,7 +29,13 @@ final class WordNotes {
 
     String citationStyle(boolean endnote, boolean body) {
         Element config = w.styles.notesConfiguration(endnote);
-        return Dom.attr(config, Ns.TEXT, body ? "citation-body-style-name" : "citation-style-name");
+        String name = Dom.attr(config, Ns.TEXT, body ? "citation-body-style-name" : "citation-style-name");
+        if (name != null) {
+            return name;
+        }
+        String fallback = endnote ? (body ? "Endnote_20_anchor" : "Endnote_20_Symbol")
+                : (body ? "Footnote_20_anchor" : "Footnote_20_Symbol");
+        return w.styles.common("text", fallback) != null ? fallback : null;
     }
 
     int add(Element note, boolean endnote, boolean custom, Styles.Scope scope) throws IOException {
