@@ -416,9 +416,10 @@ final class ParaItems {
     // A character the stand-in for a missing font lacks still takes that font's line height
     private Look fallbackLook(RunProps rp, FontFace f, FontFace requested, Inline.Link link, float nominal) {
         CloudFonts.Emulation own = ctx.fonts.emulation(f);
-        if (own == null && !Look.eastAsianGlyphs(f)) {
+        if (own == null) {
             CloudFonts.Emulation wanted = ctx.fonts.emulation(requested);
-            if (wanted != null && wanted.vertical() != null && wanted.scale() == 100) {
+            boolean usable = wanted != null && wanted.vertical() != null && wanted.scale() == 100;
+            if (usable && (!Look.eastAsianGlyphs(f) || Fonts.withEastAsianExtra(wanted))) {
                 own = wanted;
             }
         }

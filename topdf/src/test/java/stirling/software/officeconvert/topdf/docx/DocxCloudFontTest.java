@@ -116,6 +116,25 @@ class DocxCloudFontTest {
         }
     }
 
+    @Test
+    void hangulFallingBackFromBatangsStandInKeepsBatangsLine() throws Exception {
+        String styles = "<w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii=\"Arial\" w:hAnsi=\"Arial\"/>"
+                + "<w:sz w:val=\"20\"/></w:rPr></w:rPrDefault><w:pPrDefault><w:pPr><w:spacing w:after=\"0\""
+                + " w:line=\"240\" w:lineRule=\"auto\"/></w:pPr></w:pPrDefault></w:docDefaults>";
+        String batang = "<w:r><w:rPr><w:rFonts w:ascii=\"Batang\" w:eastAsia=\"Batang\" w:hAnsi=\"Batang\""
+                + " w:hint=\"eastAsia\"/></w:rPr><w:t>가</w:t></w:r>";
+        String body = DocxDoc.p("Ann") + DocxDoc.p("Bob") + "<w:p><w:r><w:t xml:space=\"preserve\">Cat </w:t></w:r>"
+                + batang + "</w:p>" + DocxDoc.p("Dan");
+        Path linux = Files.createDirectories(dir.resolve("hangul"));
+        Files.write(linux.resolve("Serif.ttf"), TestFonts.renamed("Liberation Serif"));
+        Files.write(linux.resolve("Cjk.ttf"), TestFonts.withEastAsianGlyphs("WenQuanYi Zen Hei"));
+        FontLibrary fonts = FontLibrary.of(List.of(linux));
+        assertTrue(!fonts.find("Batang", false, false).covers(0xAC00));
+        List<TextPosition> pos = convert(new DocxDoc().styles(styles).body(body).bytes(), fonts);
+        float line = y(pos, "D") - y(pos, "B") - (y(pos, "B") - y(pos, "A"));
+        assertEquals(10 * 1.3f, line, 0.2, "the fallback draws the Hangul on Batang's line");
+    }
+
     private static float y(List<TextPosition> pos, String letter) {
         return pos.stream().filter(p -> p.getUnicode().equals(letter)).findFirst().orElseThrow().getYDirAdj();
     }
