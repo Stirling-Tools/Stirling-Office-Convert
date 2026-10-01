@@ -135,6 +135,27 @@ final class ColourSamples {
                     + "q /G1 gs /C1 cs /C1 CS 0 1 0 0 scn 0 1 0 0 SCN 50 650 200 80 re f Q "
                     + "q /G2 gs 0 0 1 rg 50 500 200 80 re f Q");
         });
+        doc("c04_output_intents", Set.of("1:6.2.2-1", "1:6.2.2-2", "1:6.2.3.2-1", "1:6.2.3.2-2", "2:6.2.3-1",
+                "2:6.2.3-2", "2:6.2.3-3", "2:6.2.4.2-1"), d -> {
+            PDPage p = Samples.page(d);
+            PDResources res = new PDResources();
+            res.put(COSName.getPDFName("F1"), Samples.std(Standard14Fonts.FontName.HELVETICA));
+            byte[] scanner = IccProfiles.srgb().clone();
+            System.arraycopy("scnr".getBytes(StandardCharsets.US_ASCII), 0, scanner, 12, 4);
+            COSArray intents = new COSArray();
+            intents.add(intent(d, scanner, "GTS_PDFA1"));
+            COSDictionary x = intent(d, IccProfiles.cmyk(), "GTS_PDFX");
+            x.setItem(COSName.getPDFName("DestOutputProfileRef"), new COSDictionary());
+            intents.add(x);
+            d.getDocumentCatalog().getCOSObject().setItem(COSName.OUTPUT_INTENTS, intents);
+            COSDictionary cs = new COSDictionary();
+            cs.setItem("Wrong", iccBased(d, IccProfiles.cmyk(), 3));
+            cs.setItem("Junk", iccBased(d, "not a profile at all, just some bytes".repeat(10).getBytes(StandardCharsets.US_ASCII), 3));
+            res.getCOSObject().setItem(COSName.COLORSPACE, cs);
+            p.setResources(res);
+            Samples.raw(p, d, "BT /F1 14 Tf 50 780 Td (Output intents and broken profiles) Tj ET "
+                    + "/Wrong cs 0.2 0.4 0.6 sc 50 650 200 80 re f /Junk cs 0.6 0.4 0.2 sc 50 550 200 80 re f");
+        });
     }
 
     static COSDictionary intent(PDDocument d, byte[] profile, String s) throws Exception {
