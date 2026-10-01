@@ -81,6 +81,28 @@ final class ColourSamples {
                     + "q 50 400 300 100 re W n /Sh1 sh Q "
                     + "q 200 0 0 120 300 400 cm /Im1 Do Q");
         });
+        doc("c02_spot_colours", Set.of("2:6.2.4.4-1", "2:6.2.4.4-2"), d -> {
+            PDPage p = Samples.page(d);
+            PDResources res = new PDResources();
+            res.put(COSName.getPDFName("F1"), Samples.std(Standard14Fonts.FontName.HELVETICA));
+            COSArray bare = deviceN(d, 6);
+            bare.remove(4);
+            COSArray first = separation(d, "Spot4");
+            COSArray second = new COSArray();
+            second.add(COSName.SEPARATION);
+            second.add(COSName.getPDFName("Spot4"));
+            second.add(COSName.DEVICERGB);
+            second.add(postScript(d, 1, 3, "{ dup 0 exch }"));
+            COSDictionary cs = new COSDictionary();
+            cs.setItem("DN", bare);
+            cs.setItem("S1", first);
+            cs.setItem("S2", second);
+            res.getCOSObject().setItem(COSName.COLORSPACE, cs);
+            p.setResources(res);
+            Samples.raw(p, d, "BT /F1 14 Tf 50 780 Td (Spot colours) Tj ET "
+                    + "/DN cs 0 0 0 0 1 0.5 scn 50 650 200 80 re f "
+                    + "/S1 cs 0.8 scn 50 550 200 80 re f /S2 cs 0.6 scn 300 550 200 80 re f");
+        });
         doc("c03_graphics_state", Set.of("1:6.4-1", "1:6.4-5", "2:6.2.5-3", "2:6.2.5-4", "2:6.2.5-5",
                 "2:6.2.4.2-2", "2:6.2.10-1"), d -> {
             PDPage p = Samples.page(d);

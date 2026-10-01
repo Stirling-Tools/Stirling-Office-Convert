@@ -10,9 +10,9 @@ import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.rendering.PDFRenderer;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.EnumSource;
+import org.junit.jupiter.params.provider.CsvSource;
 
-class DeviceNReductionTest {
+class ColourRenderingTest {
 
     @TempDir
     Path dir;
@@ -40,10 +40,10 @@ class DeviceNReductionTest {
     }
 
     @ParameterizedTest
-    @EnumSource(value = PdfALevel.class, names = {"A1B", "A2B"})
-    void oversizedDeviceNColoursLookTheSameInTheirAlternateSpace(PdfALevel level) throws Exception {
-        Path in = RuleSamples.write(dir, "c01_devicen_colourants");
-        Path out = dir.resolve("out-" + level + ".pdf");
+    @CsvSource({"c01_devicen_colourants, A1B", "c01_devicen_colourants, A2B", "c02_spot_colours, A2B"})
+    void reducedAndRenamedColoursLookTheSame(String sample, PdfALevel level) throws Exception {
+        Path in = RuleSamples.write(dir, sample);
+        Path out = dir.resolve(sample + "-" + level + ".pdf");
         PdfToPdfA.convert(in, out, PdfToPdfA.Options.defaults().level(level));
         double diff = differing(render(in), render(out));
         assertTrue(diff < 0.002, "pixels differing: " + diff);
