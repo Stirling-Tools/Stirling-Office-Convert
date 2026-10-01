@@ -193,10 +193,12 @@ final class Styles {
         Props p = new Props();
         if (withDefaults) {
             p.merge(Dom.kid(defaults.get(family), Ns.STYLE, kind));
+            p.merge(Dom.kid(defaults.get(family), Ns.LOEXT, kind));
         }
         List<Element> chain = chain(family, name, scope);
         for (int i = chain.size() - 1; i >= 0; i--) {
             p.merge(Dom.kid(chain.get(i), Ns.STYLE, kind));
+            p.merge(Dom.kid(chain.get(i), Ns.LOEXT, kind));
         }
         cache.put(k, p);
         return p;

@@ -48,7 +48,13 @@ final class Dml {
             }
             case "solid" -> {
                 String hex = Colors.hex(g.get("draw:fill-color"), "729FCF");
-                return "<a:solidFill>" + color(hex, opacity(g)) + "</a:solidFill>";
+                Element fade = styles.named("opacity", g.get("draw:opacity-name"));
+                double op = opacity(g);
+                if (fade != null) {
+                    op = (Length.percent(Dom.attr(fade, Ns.DRAW, "start"), 100)
+                            + Length.percent(Dom.attr(fade, Ns.DRAW, "end"), 100)) / 2;
+                }
+                return "<a:solidFill>" + color(hex, op) + "</a:solidFill>";
             }
             case "gradient" -> {
                 Element grad = styles.named("gradient", g.get("draw:fill-gradient-name"));
@@ -56,7 +62,14 @@ final class Dml {
                     return "<a:solidFill>" + color(Colors.hex(g.get("draw:fill-color"), "729FCF"), opacity(g))
                             + "</a:solidFill>";
                 }
-                return gradient(grad, opacity(g));
+                Element fade = styles.named("opacity", g.get("draw:opacity-name"));
+                double startOpacity = opacity(g);
+                double endOpacity = startOpacity;
+                if (fade != null) {
+                    startOpacity = Length.percent(Dom.attr(fade, Ns.DRAW, "start"), 100);
+                    endOpacity = Length.percent(Dom.attr(fade, Ns.DRAW, "end"), 100);
+                }
+                return gradient(grad, startOpacity, endOpacity);
             }
             case "bitmap" -> {
                 Element img = styles.named("fill-image", g.get("draw:fill-image-name"));
@@ -86,7 +99,7 @@ final class Dml {
         }
     }
 
-    private static String gradient(Element grad, double opacity) {
+    private static String gradient(Element grad, double opacity, double endOpacity) {
         String start = Colors.hex(Dom.attr(grad, Ns.DRAW, "start-color"), "000000");
         String end = Colors.hex(Dom.attr(grad, Ns.DRAW, "end-color"), "FFFFFF");
         double startI = Length.percent(Dom.attr(grad, Ns.DRAW, "start-intensity"), 100) / 100;
@@ -98,13 +111,13 @@ final class Dml {
         double border = Length.percent(Dom.attr(grad, Ns.DRAW, "border"), 0);
         StringBuilder b = new StringBuilder("<a:gradFill rotWithShape=\"1\"><a:gsLst>");
         switch (style) {
-            case "axial" -> b.append(gs(0, end, opacity)).append(gs(50_000, start, opacity)).append(gs(100_000, end,
-                    opacity));
-            case "radial", "ellipsoid", "square", "rectangular" -> b.append(gs(0, end, opacity))
+            case "axial" -> b.append(gs(0, end, endOpacity)).append(gs(50_000, start, opacity)).append(gs(100_000, end,
+                    endOpacity));
+            case "radial", "ellipsoid", "square", "rectangular" -> b.append(gs(0, end, endOpacity))
                     .append(gs(Math.round(100_000 - border * 1000), start, opacity))
                     .append(gs(100_000, start, opacity));
             default -> b.append(gs(0, start, opacity)).append(gs(Math.round(border * 1000), start, opacity))
-                    .append(gs(100_000, end, opacity));
+                    .append(gs(100_000, end, endOpacity));
         }
         b.append("</a:gsLst>");
         if (style.equals("radial") || style.equals("ellipsoid")) {

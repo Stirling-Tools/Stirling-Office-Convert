@@ -16,6 +16,8 @@ final class Shapes {
 
     static final int MAX_EQUATIONS = 4096;
 
+    static final String DRAWOOO = "http://openoffice.org/2010/draw";
+
     static final int MAX_TOKENS = 200_000;
 
     private static final Map<String, String> PRESETS = Map.ofEntries(Map.entry("rectangle", "rect"),
@@ -66,7 +68,10 @@ final class Shapes {
         boolean flipH = "true".equals(Dom.attr(g, Ns.DRAW, "mirror-horizontal"));
         boolean flipV = "true".equals(Dom.attr(g, Ns.DRAW, "mirror-vertical"));
         String type = Dom.attr(g, Ns.DRAW, "type", "non-primitive");
-        String path = Dom.attr(g, Ns.DRAW, "enhanced-path");
+        String path = Dom.attr(g, DRAWOOO, "enhanced-path");
+        if (path == null || path.isBlank()) {
+            path = Dom.attr(g, Ns.DRAW, "enhanced-path");
+        }
         if (path != null && !path.isBlank()) {
             try {
                 String xml = new Evaluator(g, widthPt, heightPt).custGeom(path);
@@ -294,15 +299,21 @@ final class Shapes {
         }
 
         String xml(double[] textRect) {
+            return xml(textRect, w * k, h * k);
+        }
+
+        String xml(double[] textRect, double shapeW, double shapeH) {
             if (paths.isEmpty()) {
                 return null;
             }
             StringBuilder b = new StringBuilder("<a:custGeom><a:avLst/><a:gdLst/><a:ahLst/><a:cxnLst/>");
             if (textRect != null) {
-                b.append("<a:rect l=\"").append(Math.round((textRect[0] - ox) * k)).append("\" t=\"")
-                        .append(Math.round((textRect[1] - oy) * k)).append("\" r=\"")
-                        .append(Math.round((textRect[2] - ox) * k)).append("\" b=\"")
-                        .append(Math.round((textRect[3] - oy) * k)).append("\"/>");
+                double sx = shapeW / w;
+                double sy = shapeH / h;
+                b.append("<a:rect l=\"").append(Math.round((textRect[0] - ox) * sx)).append("\" t=\"")
+                        .append(Math.round((textRect[1] - oy) * sy)).append("\" r=\"")
+                        .append(Math.round((textRect[2] - ox) * sx)).append("\" b=\"")
+                        .append(Math.round((textRect[3] - oy) * sy)).append("\"/>");
             } else {
                 b.append("<a:rect l=\"l\" t=\"t\" r=\"r\" b=\"b\"/>");
             }
@@ -324,9 +335,13 @@ final class Shapes {
         private final double logH;
         private final boolean logical;
         private final Element g;
+        private final double widthPt;
+        private final double heightPt;
 
         Evaluator(Element g, double widthPt, double heightPt) {
             this.g = g;
+            this.widthPt = widthPt;
+            this.heightPt = heightPt;
             String mods = Dom.attr(g, Ns.DRAW, "modifiers");
             List<Double> m = new ArrayList<>();
             if (mods != null && !mods.isBlank()) {
@@ -376,6 +391,8 @@ final class Shapes {
             int i = 0;
             char cmd = 'M';
             boolean any = false;
+            int subpath = 0;
+            double[] sub = logical ? subViews() : null;
             while (i < tokens.size() && !p.tooLong()) {
                 String t = tokens.get(i);
                 if (t.length() == 1 && Character.isLetter(t.charAt(0))) {
@@ -383,7 +400,10 @@ final class Shapes {
                     i++;
                     switch (cmd) {
                         case 'Z' -> p.close();
-                        case 'N' -> p.end(false, false);
+                        case 'N' -> {
+                            p.end(false, false);
+                            subpath++;
+                        }
                         case 'F' -> p.flags(true, false);
                         case 'S' -> p.flags(false, true);
                         default -> {
@@ -406,7 +426,14 @@ final class Shapes {
                 }
                 double[] a = new double[need];
                 for (int j = 0; j < need; j++) {
-                    a[j] = value(tokens.get(i + j));
+                    String tok = tokens.get(i + j);
+                    a[j] = value(tok);
+                    int axis = axis(cmd, j);
+                    if (axis < 2 && sub != null && subpath < sub.length / 2 && isNumber(tok)) {
+                        double scale = axis == 0 ? vw / Math.max(1e-9, sub[subpath * 2])
+                                : vh / Math.max(1e-9, sub[subpath * 2 + 1]);
+                        a[j] *= scale;
+                    }
                 }
                 i += need;
                 any = true;
@@ -449,7 +476,33 @@ final class Shapes {
                 return null;
             }
             double[] text = textArea();
-            return p.xml(text);
+            return p.xml(text, Length.emu(widthPt), Length.emu(heightPt));
+        }
+
+        private double[] subViews() {
+            String v = Dom.attr(g, DRAWOOO, "sub-view-size");
+            if (v == null || v.isBlank()) {
+                return null;
+            }
+            String[] t = v.trim().split("[\\s,]+");
+            double[] out = new double[t.length - t.length % 2];
+            for (int i = 0; i < out.length; i++) {
+                out[i] = parse(t[i]);
+            }
+            return out.length == 0 ? null : out;
+        }
+
+        private static boolean isNumber(String t) {
+            char c = t.charAt(0);
+            return Character.isDigit(c) || c == '-' || c == '.' || c == '+';
+        }
+
+        private static int axis(char cmd, int j) {
+            return switch (cmd) {
+                case 'T', 'U' -> j < 4 ? j % 2 : 2;
+                case 'G' -> j < 2 ? j : 2;
+                default -> j % 2;
+            };
         }
 
         private double[] textArea() {
