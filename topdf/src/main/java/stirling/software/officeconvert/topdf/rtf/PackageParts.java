@@ -169,6 +169,7 @@ final class PackageParts {
             case "tiff" -> "image/tiff";
             case "emf" -> "image/x-emf";
             case "wmf" -> "image/x-wmf";
+            case "pict" -> "image/pict";
             default -> "application/octet-stream";
         };
     }

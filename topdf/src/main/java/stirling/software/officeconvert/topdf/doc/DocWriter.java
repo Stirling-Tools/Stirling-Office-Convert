@@ -47,6 +47,7 @@ final class DocWriter {
                 .append("<Default Extension=\"tiff\" ContentType=\"image/tiff\"/>")
                 .append("<Default Extension=\"emf\" ContentType=\"image/x-emf\"/>")
                 .append("<Default Extension=\"wmf\" ContentType=\"image/x-wmf\"/>")
+                .append("<Default Extension=\"pict\" ContentType=\"image/pict\"/>")
                 .append("<Override PartName=\"/word/document.xml\" ContentType=\"").append(CT)
                 .append("document.main+xml\"/>");
         for (String o : sections.overrides) {
