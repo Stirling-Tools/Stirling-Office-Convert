@@ -10,8 +10,6 @@ import org.w3c.dom.Element;
 
 import stirling.software.officeconvert.topdf.font.FontLibrary;
 
-/** An OpenDocument presentation rewritten as the PresentationML package the PPTX renderer draws. Every slide carries
- * its own shapes, with the master page's background objects drawn in, so no placeholder inheritance is needed. */
 final class OdpWriter {
 
     static final int MAX_SLIDES = 5000;

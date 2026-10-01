@@ -98,7 +98,6 @@ final class OdfFixtures {
         return p;
     }
 
-    /** The parts of the rewritten Office Open XML package. */
     static Map<String, String> rewrite(Path source) throws IOException {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         OdfPackage.write(source, out);

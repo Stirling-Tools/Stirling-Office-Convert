@@ -4,7 +4,6 @@ import java.util.Locale;
 
 import org.w3c.dom.Element;
 
-/** DrawingML fills and outlines for ODF graphic properties, shared by text documents and presentations. */
 final class Dml {
 
     private Dml() {}
@@ -31,7 +30,6 @@ final class Dml {
         return o;
     }
 
-    /** The fill, or null when the properties do not say (the caller's default then applies). */
     static String fill(Props g, Styles styles, BlipSource blips) {
         String fill = g.get("draw:fill");
         if (fill == null) {
@@ -167,7 +165,6 @@ final class Dml {
         return String.format(Locale.ROOT, "%02X%02X%02X", r, gg, bb);
     }
 
-    /** The outline, or null when the properties do not say. */
     static String line(Props g) {
         String stroke = g.get("draw:stroke");
         if (stroke == null && !g.has("svg:stroke-color") && !g.has("svg:stroke-width")) {

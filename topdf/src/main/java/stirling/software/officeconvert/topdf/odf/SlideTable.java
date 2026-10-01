@@ -5,7 +5,6 @@ import java.util.List;
 
 import org.w3c.dom.Element;
 
-/** A table on a slide written as a DrawingML table inside a graphic frame. */
 final class SlideTable {
 
     static final int MAX_CELLS = 10_000;

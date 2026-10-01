@@ -7,10 +7,8 @@ import java.util.Locale;
 import org.w3c.dom.Element;
 import org.w3c.dom.Node;
 
-/** ODF paragraphs and lists inside a shape written as DrawingML paragraphs (a:p), with every property resolved. */
 final class DmlText {
 
-    /** The paragraph and character properties a shape gives its text at each outline level, and its list style. */
     interface Levels {
         Props paragraph(int level);
 
@@ -19,7 +17,6 @@ final class DmlText {
         Element listStyle();
     }
 
-    /** Text the converter fills in for fields: slide numbers, footers and dates. */
     interface Fields {
         String field(Element field);
     }
@@ -56,7 +53,6 @@ final class DmlText {
         this.fields = fields;
     }
 
-    /** The a:p elements of the container's text; one empty paragraph when it has none. */
     String paragraphs(Element container) {
         blocks(container, -1, null, 0);
         if (out.isEmpty()) {

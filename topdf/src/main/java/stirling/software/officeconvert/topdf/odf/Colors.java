@@ -38,7 +38,6 @@ final class Colors {
         return NAMED.get(v.toLowerCase(Locale.ROOT));
     }
 
-    /** A colour, or null for transparent, none or anything unreadable. */
     static String fill(String v) {
         if (v == null || v.isBlank() || "transparent".equalsIgnoreCase(v.trim()) || "none".equalsIgnoreCase(v.trim())) {
             return null;

@@ -8,7 +8,6 @@ import org.w3c.dom.Element;
 
 import stirling.software.officeconvert.topdf.io.PictureDecoder;
 
-/** ODF frames (pictures, text boxes, object previews) and shapes written as Word drawings, inline or anchored. */
 final class WordDrawings {
 
     static final int MAX_DRAWINGS = 50_000;
@@ -25,12 +24,10 @@ final class WordDrawings {
         this.w = w;
     }
 
-    /** A drawing met inside a paragraph. */
     String inline(Element k, TextBody body) throws IOException {
         return drawing(k, body, null);
     }
 
-    /** A drawing met between paragraphs (anchored to the page): it goes into the next paragraph. */
     String anchored(Element k, TextBody body) throws IOException {
         return drawing(k, body, null);
     }

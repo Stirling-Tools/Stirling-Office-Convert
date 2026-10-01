@@ -6,7 +6,6 @@ import java.util.Locale;
 import org.w3c.dom.Element;
 import org.w3c.dom.Node;
 
-/** The inline content of one ODF paragraph written as Word runs. */
 final class TextRuns {
 
     private final TextBody body;

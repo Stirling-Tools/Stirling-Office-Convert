@@ -4,8 +4,6 @@ import java.util.Locale;
 
 import org.w3c.dom.Element;
 
-/** A drawing object's box in points: position, size and clockwise rotation in degrees, read from svg:x/y/width/height
- * or from draw:transform. */
 record Box(double x, double y, double w, double h, double rot) {
 
     static Box of(Element e) {

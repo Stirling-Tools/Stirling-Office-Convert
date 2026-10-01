@@ -5,8 +5,6 @@ import java.util.Map;
 
 import org.w3c.dom.Element;
 
-/** ODF list styles written as Word numbering: each list that restarts is its own abstract numbering, so its counters
- * run on their own the way ODF counts a list. */
 final class WordLists {
 
     static final int MAX_LISTS = 20_000;
@@ -87,7 +85,6 @@ final class WordLists {
         return best;
     }
 
-    /** The left indent of a level's text, for paragraphs that sit in the list without a label. */
     static double textIndent(Element listStyle, int level) {
         Element l = level(listStyle, level);
         if (l == null) {

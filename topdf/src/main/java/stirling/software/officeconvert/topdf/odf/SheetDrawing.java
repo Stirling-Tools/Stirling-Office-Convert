@@ -7,7 +7,6 @@ import org.w3c.dom.Element;
 
 import stirling.software.officeconvert.topdf.io.PictureDecoder;
 
-/** The pictures and shapes of one sheet as a SpreadsheetML drawing, each anchored to the cells it covers. */
 final class SheetDrawing {
 
     static final int MAX_OBJECTS = 10_000;

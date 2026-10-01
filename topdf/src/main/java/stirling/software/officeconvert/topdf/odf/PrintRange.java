@@ -4,7 +4,6 @@ final class PrintRange {
 
     private PrintRange() {}
 
-    /** An ODF cell range address ("Sheet1.A1:Sheet1.D20", "$'My sheet'.$A$1:.$D$20") as an absolute Excel area. */
     static String area(String range) {
         if (range == null || range.isBlank()) {
             return null;
@@ -21,7 +20,6 @@ final class PrintRange {
         return a + ":" + b;
     }
 
-    /** The ranges of a space separated list, keeping quoted sheet names whole. */
     static java.util.List<String> split(String ranges) {
         java.util.List<String> out = new java.util.ArrayList<>();
         StringBuilder cur = new StringBuilder();

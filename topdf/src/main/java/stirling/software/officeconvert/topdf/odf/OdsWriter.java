@@ -10,8 +10,6 @@ import java.util.Map;
 
 import org.w3c.dom.Element;
 
-/** An OpenDocument spreadsheet rewritten as the SpreadsheetML package the XLSX renderer draws. Cells keep their cached
- * values; formulas are never evaluated. */
 final class OdsWriter {
 
     static final int MAX_SHEETS = 4096;

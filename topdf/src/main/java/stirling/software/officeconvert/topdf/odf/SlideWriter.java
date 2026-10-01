@@ -9,8 +9,6 @@ import org.w3c.dom.Element;
 
 import stirling.software.officeconvert.topdf.io.PictureDecoder;
 
-/** One ODF draw:page written as a PresentationML slide: background, the master page's background objects, and the
- * page's own frames, shapes, pictures and tables. */
 final class SlideWriter {
 
     static final int MAX_SHAPES = 20_000;

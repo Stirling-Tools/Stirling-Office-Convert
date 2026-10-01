@@ -8,8 +8,6 @@ import java.util.Map;
 
 import org.w3c.dom.Element;
 
-/** ODF shape geometry as DrawingML: an enhanced geometry's path is evaluated (equations, modifiers, arcs) into a
- * custom geometry; simple shapes and shapes without a path use the matching preset. */
 final class Shapes {
 
     record Geometry(String xml, boolean flipH, boolean flipV) {}
@@ -79,7 +77,6 @@ final class Shapes {
                     return new Geometry(xml, flipH, flipV);
                 }
             } catch (RuntimeException e) {
-                // an unreadable path falls back to the preset of its type
             }
         }
         String prst = type.startsWith("ooxml-") ? type.substring(6) : PRESETS.getOrDefault(type, "rect");
@@ -157,7 +154,6 @@ final class Shapes {
         }
     }
 
-    /** Path segments in viewBox units, written as one DrawingML path per ODF sub-path. */
     static final class Path {
         private final double ox;
         private final double oy;
@@ -246,8 +242,6 @@ final class Shapes {
             ellipse(centerX, centerY, wr, hr, t0, t1, false);
         }
 
-        /** An elliptical arc on the ellipse centred at (ecx, ecy) with radii rx, ry, from parametric angle t0 to t1
-         * (radians, y down), as cubic Beziers. */
         void ellipse(double ecx, double ecy, double rx, double ry, double t0, double t1, boolean moveFirst) {
             double x0 = ecx + rx * Math.cos(t0);
             double y0 = ecy + ry * Math.sin(t0);
@@ -330,7 +324,6 @@ final class Shapes {
         }
     }
 
-    /** Evaluates an enhanced geometry: modifiers ($n), equations (?fn), the functions and identifiers of ODF 19.171. */
     static final class Evaluator {
         private final double[] modifiers;
         private final Map<String, String> equations = new HashMap<>();

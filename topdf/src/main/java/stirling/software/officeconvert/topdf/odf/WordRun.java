@@ -37,7 +37,6 @@ final class WordRun {
         return Styles.unquote(fam);
     }
 
-    /** The run properties (the inside of w:rPr) for resolved ODF text properties. */
     static String rPr(Props p, Styles styles) {
         StringBuilder b = new StringBuilder();
         String latin = font(p, styles, "");

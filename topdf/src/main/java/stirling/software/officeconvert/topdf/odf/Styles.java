@@ -7,8 +7,6 @@ import java.util.Map;
 
 import org.w3c.dom.Element;
 
-/** The styles of an OpenDocument file: common styles, the automatic styles of content and of styles (master pages
- * use the latter), default styles, list styles, page layouts, master pages, data styles and font faces. */
 final class Styles {
 
     enum Scope {
@@ -174,7 +172,6 @@ final class Styles {
         return defaults.get(family);
     }
 
-    /** The style and its ancestors, nearest first. */
     List<Element> chain(String family, String name, Scope scope) {
         List<Element> out = new ArrayList<>();
         Element s = style(family, name, scope);
@@ -206,7 +203,6 @@ final class Styles {
         return p;
     }
 
-    /** An attribute of the style element itself (not its properties), looked up through its ancestors. */
     String inherited(String family, String name, Scope scope, String ns, String local) {
         for (Element s : chain(family, name, scope)) {
             String v = Dom.attr(s, ns, local);

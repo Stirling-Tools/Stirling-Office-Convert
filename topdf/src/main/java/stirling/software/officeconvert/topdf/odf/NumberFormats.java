@@ -6,8 +6,6 @@ import java.util.Locale;
 
 import org.w3c.dom.Element;
 
-/** ODF data styles (number, percentage, currency, date, time, boolean and text styles, with their conditional maps)
- * written as Excel number format codes. */
 final class NumberFormats {
 
     private final Styles styles;
@@ -16,7 +14,6 @@ final class NumberFormats {
         this.styles = styles;
     }
 
-    /** The format code for a data style, or null for General. */
     String code(String dataStyle) {
         Element s = styles.dataStyle(dataStyle);
         if (s == null) {

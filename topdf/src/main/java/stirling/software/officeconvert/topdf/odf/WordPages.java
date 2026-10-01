@@ -7,7 +7,6 @@ import java.util.Map;
 
 import org.w3c.dom.Element;
 
-/** ODF master pages and page layouts written as Word section properties, with their headers and footers. */
 final class WordPages {
 
     private final OdtWriter w;

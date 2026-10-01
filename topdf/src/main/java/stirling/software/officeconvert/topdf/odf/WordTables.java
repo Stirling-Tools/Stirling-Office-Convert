@@ -6,8 +6,6 @@ import java.util.List;
 
 import org.w3c.dom.Element;
 
-/** ODF text tables written as Word tables: column widths, row heights, spans (covered cells become merged cells),
- * borders, padding, shading and header rows. */
 final class WordTables {
 
     static final int MAX_COLUMNS = 63;

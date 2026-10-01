@@ -50,7 +50,6 @@ final class PackageOut {
         }
     }
 
-    /** Stores a picture once per distinct content and returns its part name, or null when it is not a picture. */
     String picture(String dir, byte[] data) throws IOException {
         if (data == null || data.length == 0) {
             return null;
@@ -82,7 +81,6 @@ final class PackageOut {
 
     private int charts;
 
-    /** Stores a chart part and returns its name. */
     String chart(String dir, String xml) throws IOException {
         String name = dir + "chart" + (++charts) + ".xml";
         xml(name, Xml.CT + "drawingml.chart+xml", xml);

@@ -4,8 +4,6 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-/** ODF cell styles written as SpreadsheetML cell formats: fonts, fills, borders, number formats and alignment, each
- * shared by every style that resolves to the same thing. */
 final class SheetStyles {
 
     static final int MAX_FORMATS = 60_000;

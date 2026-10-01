@@ -6,8 +6,6 @@ import java.util.Locale;
 
 import org.w3c.dom.Element;
 
-/** An embedded ODF chart (an object's chart:chart) written as a DrawingML chart part from the data the chart keeps in
- * its own local table: nothing it links to is read and no formula is evaluated. */
 final class OdfChart {
 
     static final int MAX_POINTS = 4000;
@@ -26,7 +24,6 @@ final class OdfChart {
         this.chart = chart;
     }
 
-    /** The chart part for an embedded object's content and styles, or null when it holds no chart. */
     static String part(Element content, Element objectStyles) {
         Element body = Dom.kid(Dom.kid(content, Ns.OFFICE, "body"), Ns.OFFICE, "chart");
         Element chart = Dom.kid(body, CHART, "chart");

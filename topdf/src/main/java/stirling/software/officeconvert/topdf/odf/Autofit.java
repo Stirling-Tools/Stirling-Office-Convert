@@ -5,15 +5,12 @@ import java.util.List;
 import stirling.software.officeconvert.topdf.font.FontFace;
 import stirling.software.officeconvert.topdf.font.FontLibrary;
 
-/** The shrink a text body needs to fit its box, as PowerPoint stores it (font scale and line spacing reduction):
- * LibreOffice keeps only the shrink-to-fit flag, so the scale is measured here with the converter's own fonts. */
 final class Autofit {
 
     private static final double LINE = 1.2;
 
     private Autofit() {}
 
-    /** {fontScale, lnSpcReduction} in thousandths of a percent, or null when the text already fits. */
     static int[] fit(List<DmlText.Para> paras, double width, double height, FontLibrary fonts) {
         if (fonts == null || paras.isEmpty() || width <= 1 || height <= 1) {
             return null;

@@ -804,7 +804,6 @@ public final class OfficeToPdf {
         }
     }
 
-    // An OpenDocument file is rewritten as the matching Office Open XML package, whatever its extension
     private static Result openDocument(Path source, OutputStream sink, Options options, Renderer renderer)
             throws IOException {
         OdfDocument.Kind kind = OdfPackage.sniff(source);

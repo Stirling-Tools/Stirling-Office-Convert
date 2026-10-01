@@ -6,8 +6,6 @@ import java.util.List;
 
 import org.w3c.dom.Element;
 
-/** A sequence of ODF block content (paragraphs, lists, tables, sections) written as WordprocessingML blocks. The
- * document body also tracks page styles and column sections, which become Word sections. */
 final class TextBody {
 
     static final int MAX_DEPTH = 48;
@@ -492,7 +490,6 @@ final class TextBody {
         return parent != null && w.styles.isCommon("paragraph", parent) ? parent : null;
     }
 
-    /** Ends the body: anchors left over go into a last paragraph. */
     void finish() {
         if (!anchors.isEmpty()) {
             StringBuilder c = new StringBuilder();
@@ -536,7 +533,6 @@ final class TextBody {
         return b.toString();
     }
 
-    /** The blocks of a cell, note or text box: Word needs at least one paragraph, and one after a table. */
     String cellXml() {
         finish();
         if (blocks.isEmpty() || endsWithTable()) {

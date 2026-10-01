@@ -4,7 +4,6 @@ import java.io.IOException;
 
 import org.w3c.dom.Element;
 
-/** Footnotes and endnotes: each ODF note body becomes a Word note whose first paragraph starts with the note mark. */
 final class WordNotes {
 
     static final int MAX_NOTES = 20_000;

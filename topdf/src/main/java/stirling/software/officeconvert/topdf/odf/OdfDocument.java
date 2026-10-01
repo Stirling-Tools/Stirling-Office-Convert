@@ -26,8 +26,6 @@ import stirling.software.officeconvert.topdf.io.OfficeZip;
 import stirling.software.officeconvert.topdf.io.SecureXml;
 import stirling.software.officeconvert.topdf.io.XmlSalvage;
 
-/** An OpenDocument text, spreadsheet or presentation, packaged (zip with a {@code mimetype} entry) or flat XML. Only
- * parts inside the package are ever read: scripts, macros and linked files are never opened. */
 public final class OdfDocument implements Closeable {
 
     public enum Kind {
@@ -88,7 +86,6 @@ public final class OdfDocument implements Closeable {
         return settings;
     }
 
-    /** Whether a part was cut short where its XML was damaged, so some content is missing. */
     boolean damaged() {
         return damaged;
     }
@@ -112,7 +109,6 @@ public final class OdfDocument implements Closeable {
         return scripts != null && !Dom.kids(scripts).isEmpty();
     }
 
-    /** The heap reading this file may need. */
     public static long estimate(Path file) {
         try {
             long size = Files.size(file);
@@ -134,7 +130,6 @@ public final class OdfDocument implements Closeable {
         }
     }
 
-    /** What kind of OpenDocument file this is, by its content, or null when it is not one. */
     public static Kind sniff(Path file) {
         try {
             if (isZip(file)) {
@@ -285,7 +280,6 @@ public final class OdfDocument implements Closeable {
         }
     }
 
-    /** A picture or object stored in the package, by its xlink:href; null for anything outside the package. */
     byte[] picture(String href) {
         String name = internal(href);
         if (name == null || zip == null) {
@@ -298,7 +292,6 @@ public final class OdfDocument implements Closeable {
         }
     }
 
-    /** The DrawingML chart part for an embedded chart object (draw:object), or null when it is not a chart. */
     String chart(Element object) {
         Element inline = Dom.kid(object, Ns.OFFICE, "document");
         if (inline != null) {

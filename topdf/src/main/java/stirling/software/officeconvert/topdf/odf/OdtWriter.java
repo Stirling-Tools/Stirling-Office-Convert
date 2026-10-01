@@ -10,7 +10,6 @@ import java.util.Map;
 
 import org.w3c.dom.Element;
 
-/** An OpenDocument text rewritten as the WordprocessingML package the DOCX renderer draws. */
 final class OdtWriter {
 
     static final String NAMESPACES = "xmlns:w=\"" + Xml.W + "\" xmlns:r=\"" + Xml.R + "\" xmlns:wp=\"" + Xml.WP
@@ -180,7 +179,6 @@ final class OdtWriter {
                         i = end + 1;
                         continue;
                     } catch (IllegalArgumentException e) {
-                        // not an escaped character
                     }
                 }
             }

@@ -12,8 +12,6 @@ import java.util.Locale;
 import org.w3c.dom.Element;
 import org.w3c.dom.Node;
 
-/** One ODF table (sheet) written as a SpreadsheetML worksheet: columns, rows, cells with cached values, merges, page
- * setup, print ranges and pictures. */
 final class SheetWriter {
 
     static final int MAX_ROWS = 1_048_576;
