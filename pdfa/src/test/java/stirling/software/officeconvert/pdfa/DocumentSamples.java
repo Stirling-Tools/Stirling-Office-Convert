@@ -143,6 +143,23 @@ final class DocumentSamples {
                         .getBytes(StandardCharsets.UTF_8));
             }
             p.getCOSObject().setItem(COSName.METADATA, broken);
+            COSStream custom = d.getDocument().createCOSStream();
+            custom.setItem(COSName.TYPE, COSName.METADATA);
+            custom.setItem(COSName.SUBTYPE, COSName.getPDFName("XML"));
+            try (OutputStream o = custom.createOutputStream()) {
+                o.write(("<?xpacket begin=\"\" id=\"W5M0MpCehiHzreSzNTczkc9d\"?><x:xmpmeta xmlns:x=\"adobe:ns:meta/\">"
+                        + "<rdf:RDF xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\"><rdf:Description "
+                        + "rdf:about=\"\" xmlns:prism=\"http://prismstandard.org/namespaces/basic/2.0/\">"
+                        + "<prism:issn>1234-5678</prism:issn></rdf:Description></rdf:RDF></x:xmpmeta>"
+                        + "<?xpacket end=\"w\"?>").getBytes(StandardCharsets.UTF_8));
+            }
+            COSStream image = ObjectSamples.image(d, 8, false);
+            image.setItem(COSName.METADATA, custom);
+            COSDictionary xo = new COSDictionary();
+            xo.setItem("Im1", image);
+            p.getResources().getCOSObject().setItem(COSName.XOBJECT, xo);
+            Samples.raw(p, d, "BT /F1 14 Tf 50 780 Td (Metadata that PDF/A does not accept) Tj ET "
+                    + "q 100 0 0 100 50 500 cm /Im1 Do Q");
         });
         doc("d04_optional_content_configs", Set.of("2:6.9-1", "2:6.9-2", "2:6.9-3"), d -> {
             PDPage p = page(d, "Optional content configurations");

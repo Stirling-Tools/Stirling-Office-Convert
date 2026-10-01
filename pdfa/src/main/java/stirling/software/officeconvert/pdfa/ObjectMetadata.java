@@ -35,7 +35,7 @@ final class ObjectMetadata {
 
     private ObjectMetadata() {}
 
-    static void run(PDDocument doc, Report report) throws IOException {
+    static void run(PDDocument doc, PdfALevel level, Report report) throws IOException {
         COSDictionary cat = doc.getDocumentCatalog().getCOSObject();
         COSStream main = cat.getDictionaryObject(COSName.METADATA) instanceof COSStream s ? s : null;
         List<COSDictionary> owners = new ArrayList<>();
@@ -45,6 +45,16 @@ final class ObjectMetadata {
                 owners.add(d);
             }
         });
+        if (level.part() > 1) {
+            for (COSDictionary d : owners) {
+                d.removeItem(COSName.METADATA);
+            }
+            if (!owners.isEmpty()) {
+                report.warn("Removed metadata of pages, images and fonts, as PDF/A-2 and 3 allow only predefined XMP "
+                        + "properties there");
+            }
+            return;
+        }
         Map<COSStream, Boolean> verdicts = new IdentityHashMap<>();
         boolean removed = false;
         for (COSDictionary d : owners) {
