@@ -33,6 +33,8 @@ final class OdtWriter {
 
     final WordDrawings drawings;
 
+    final FloatingTables floating;
+
     final boolean tabsRelative;
 
     final boolean autoHyphenation;
@@ -64,6 +66,7 @@ final class OdtWriter {
         this.pages = new WordPages(this);
         this.tables = new WordTables(this);
         this.drawings = new WordDrawings(this);
+        this.floating = new FloatingTables(this);
         this.tabsRelative = config("TabsRelativeToIndent", true);
         this.compatibilityMode = !config("JustifyLinesWithShrinking", false) && config("TabOverMargin", false) ? 14 : 15;
         Props dt = styles.props("paragraph", null, Styles.Scope.CONTENT, "text-properties", true);

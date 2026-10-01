@@ -445,6 +445,7 @@ final class TextBody {
         if (!markRpr.isEmpty()) {
             ppr.append("<w:rPr>").append(markRpr).append("</w:rPr>");
         }
+        boolean hoisted = hoistFloatingTables(p, ppr);
         TextRuns runs = new TextRuns(this);
         if ("column".equals(before)) {
             Block last = blocks.isEmpty() ? null : blocks.get(blocks.size() - 1);
@@ -466,7 +467,27 @@ final class TextBody {
         } else if ("page".equals(after)) {
             pageBreak = true;
         }
+        if (hoisted && content.isEmpty() && chain == null && !pageBreak && pp.pt("fo:line-height", 1) == 0) {
+            return;
+        }
         add(new Block(ppr.toString(), content, true));
+    }
+
+    private boolean hoistFloatingTables(Element p, StringBuilder ppr) throws IOException {
+        List<String> tables = w.floating.hoist(p, this);
+        if (tables.isEmpty()) {
+            return false;
+        }
+        String pageBreakBefore = "<w:pageBreakBefore/>";
+        int at = ppr.indexOf(pageBreakBefore);
+        if (at >= 0) {
+            ppr.delete(at, at + pageBreakBefore.length());
+            add(new Block(pageBreakBefore + TINY, "", true));
+        }
+        for (String t : tables) {
+            add(new Block(null, t, false));
+        }
+        return true;
     }
 
     private boolean ownIndent(String styleName) {

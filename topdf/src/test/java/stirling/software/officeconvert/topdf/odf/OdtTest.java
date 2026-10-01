@@ -271,6 +271,45 @@ class OdtTest {
     }
 
     @Test
+    void aFrameHoldingOnlyATableBecomesAFloatingTableThatCanBreakAcrossPages() throws IOException {
+        String automatic = "<style:style style:name=\"fr1\" style:family=\"graphic\"><style:graphic-properties"
+                + " fo:margin-left=\"0.125in\" fo:margin-right=\"0.125in\" style:vertical-pos=\"from-top\""
+                + " style:vertical-rel=\"page\" style:horizontal-pos=\"from-left\" style:horizontal-rel=\"page-content\""
+                + " fo:border=\"none\"/></style:style>";
+        StringBuilder rows = new StringBuilder();
+        for (int i = 0; i < 80; i++) {
+            rows.append("<table:table-row><table:table-cell><text:p>Row ").append(i).append("</text:p></table:table-cell>")
+                    .append("</table:table-row>");
+        }
+        String body = "<text:p><draw:frame draw:style-name=\"fr1\" text:anchor-type=\"paragraph\" svg:x=\"-0.25in\""
+                + " svg:y=\"1.5in\" svg:width=\"6in\" loext:may-break-between-pages=\"true\"><draw:text-box>"
+                + "<table:table><table:table-column/>" + rows + "</table:table></draw:text-box></draw:frame>After</text:p>";
+        Path p = odt(automatic, body, null);
+        String xml = document(p);
+        assertTrue(xml.contains("<w:tblpPr w:leftFromText=\"180\" w:rightFromText=\"180\" w:topFromText=\"0\""
+                + " w:bottomFromText=\"0\" w:vertAnchor=\"page\" w:horzAnchor=\"margin\" w:tblpX=\"-360\""
+                + " w:tblpY=\"2160\"/>"), xml);
+        assertTrue(xml.indexOf("<w:tbl>") < xml.indexOf("After"), xml);
+        assertFalse(xml.contains("<wps:txbx>"), xml);
+        String text = pdfText(p);
+        assertTrue(text.contains("Row 0") && text.contains("Row 79"), text);
+    }
+
+    @Test
+    void theZeroHeightParagraphThatOnlyAnchorsAFloatingTableIsDropped() throws IOException {
+        String automatic = "<style:style style:name=\"P1\" style:family=\"paragraph\"><style:paragraph-properties"
+                + " fo:line-height=\"0in\"/></style:style>";
+        String frame = "<draw:frame text:anchor-type=\"paragraph\" svg:y=\"0in\" svg:width=\"3in\"><draw:text-box>"
+                + "<table:table><table:table-column/><table:table-row><table:table-cell><text:p>%s</text:p>"
+                + "</table:table-cell></table:table-row></table:table></draw:text-box></draw:frame>";
+        String xml = document(odt(automatic, "<text:p text:style-name=\"P1\">" + frame.formatted("One") + "</text:p>"
+                + "<text:p text:style-name=\"P1\">" + frame.formatted("Two") + "</text:p><text:p>After</text:p>", null));
+        String between = xml.substring(xml.indexOf("One"), xml.indexOf("After"));
+        assertEquals(2, between.split("</w:tbl>").length - 1, xml);
+        assertEquals(1, between.replaceAll("<w:tc>.*?</w:tc>", "").split("<w:p>").length - 1, xml);
+    }
+
+    @Test
     void encryptedDocumentAsksForThePassword() throws IOException {
         Map<String, byte[]> parts = new LinkedHashMap<>();
         parts.put("content.xml", "not xml".getBytes(StandardCharsets.UTF_8));

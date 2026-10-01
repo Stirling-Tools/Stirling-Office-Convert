@@ -86,6 +86,9 @@ final class WordDrawings {
     }
 
     private String frame(Element f, TextBody body, Element group) throws IOException {
+        if (w.floating.hoisted(f)) {
+            return null;
+        }
         Element box = Dom.kid(f, Ns.DRAW, "text-box");
         if (box != null) {
             return textBox(f, box, body, group);
