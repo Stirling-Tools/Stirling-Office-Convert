@@ -273,6 +273,20 @@ class DocxLineRulesTest {
         assertEquals(45, out.strip().split("\\R")[0].strip().length(), "a table cell lets nothing hang");
     }
 
+    @Test
+    void textAfterARightAlignedLabelEndingAtTheIndentStartsThere() throws IOException {
+        String numbering = "<w:abstractNum w:abstractNumId=\"0\"><w:lvl w:ilvl=\"0\"><w:start w:val=\"4\"/>"
+                + "<w:numFmt w:val=\"upperRoman\"/><w:lvlText w:val=\"%1.\"/><w:lvlJc w:val=\"right\"/><w:pPr>"
+                + "<w:ind w:left=\"173\" w:hanging=\"173\"/></w:pPr></w:lvl></w:abstractNum><w:num w:numId=\"1\">"
+                + "<w:abstractNumId w:val=\"0\"/></w:num>";
+        String body = "<w:p><w:pPr><w:numPr><w:ilvl w:val=\"0\"/><w:numId w:val=\"1\"/></w:numPr><w:ind w:left=\"288\""
+                + " w:firstLine=\"0\"/></w:pPr><w:r><w:t xml:space=\"preserve\"> Heading</w:t></w:r></w:p>";
+        DocxDoc.Rendered r = DocxDoc.render(dir, "rightlabel", new DocxDoc().styles(STYLES).numbering(numbering)
+                .body(body).bytes());
+        float x = r.word("Heading").x();
+        assertTrue(x > 86.4 && x < 92, "a space after the label, no default tab gap: " + x);
+    }
+
     private int firstLineLength(String text, String jc) throws IOException {
         String body = "<w:p><w:pPr><w:jc w:val=\"" + jc + "\"/></w:pPr><w:r><w:rPr><w:rFonts w:eastAsia=\"SimSun\"/>"
                 + "<w:lang w:eastAsia=\"zh-CN\"/></w:rPr><w:t>" + text + "</w:t></w:r></w:p>";

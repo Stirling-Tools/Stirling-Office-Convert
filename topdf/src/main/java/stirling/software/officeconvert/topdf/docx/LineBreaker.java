@@ -7,6 +7,8 @@ final class LineBreaker {
 
     private static final float EPS = 0.01f;
 
+    private static final float LABEL_SNAP = 0.5f;
+
     private static final float SQUEEZE_WORD = 0.34f;
 
     private static final float SQUEEZE_EM = 0.1f;
@@ -805,6 +807,9 @@ final class LineBreaker {
         float hang = pp.left();
         if (firstLine && pp.first() < 0 && hang > x + EPS && (best == null || hang < best.pos())) {
             return new TabStop(hang, TabStop.Kind.LEFT, (char) 0);
+        }
+        if (firstLine && tabItem.label && pp.first() >= 0 && Math.abs(hang - x) <= LABEL_SNAP) {
+            return new TabStop(Math.max(hang, x), TabStop.Kind.LEFT, (char) 0);
         }
         return best;
     }
