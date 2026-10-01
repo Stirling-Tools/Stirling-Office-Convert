@@ -226,6 +226,16 @@ class SubstitutionTest {
         assertEquals(plain, lib.fallback(0x0416, times));
     }
 
+    @Test
+    void aNarrowArabicFontNarrowsAWideStandInPastSixTenths() throws Exception {
+        Path wide = Files.createDirectories(dir.resolve("wide"));
+        int[] letters = ScriptWidths.ARABIC.codePoints().filter(c -> c != ' ').distinct().toArray();
+        Files.write(wide.resolve("Wide.ttf"), TestFonts.withGlyphs("Wide Arabic", 'W', letters));
+        FontProgram program = FontLibrary.of(List.of(wide)).find("Wide Arabic", false, false).program();
+        float k = ScriptWidths.scale("Arabic Typesetting", program, ScriptWidths.ARABIC, false);
+        assertTrue(k > 0 && k < 0.6f, "" + k);
+    }
+
     // Average advance in ems over a sample whose letters come from one face and spaces from another
     private static float sampleWidth(FontFace letters, FontFace spaces, String sample) {
         float units = 0;

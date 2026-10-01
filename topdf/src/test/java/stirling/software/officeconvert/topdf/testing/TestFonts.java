@@ -53,14 +53,18 @@ public final class TestFonts {
     }
 
     public static byte[] withEastAsianGlyphs(String family) {
+        return withGlyphs(family, 'A', 0x3042, 0x4E00, 0xAC00);
+    }
+
+    public static byte[] withGlyphs(String family, char source, int... codePoints) {
         byte[] ttf = renamed(family);
         try (TrueTypeFont font = new TTFParser().parse(new RandomAccessReadBuffer(ttf))) {
-            int glyph = font.getUnicodeCmapLookup().getGlyphId('A');
+            int glyph = font.getUnicodeCmapLookup().getGlyphId(source);
             TreeMap<Integer, Integer> map = new TreeMap<>();
             for (int c = 0x20; c < 0x7F; c++) {
                 map.put(c, font.getUnicodeCmapLookup().getGlyphId(c));
             }
-            for (int c : new int[] {0x3042, 0x4E00, 0xAC00}) {
+            for (int c : codePoints) {
                 map.put(c, glyph);
             }
             return replaced(ttf, "cmap", cmap(map));
