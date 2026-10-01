@@ -7,7 +7,10 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
+import org.apache.pdfbox.cos.COSBase;
 import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.cos.COSStream;
 import org.apache.pdfbox.pdmodel.PDDocument;
@@ -15,6 +18,8 @@ import org.apache.pdfbox.pdmodel.PDDocument;
 import stirling.software.officeconvert.topdf.font.FontLibrary;
 
 final class ToUnicodeWriter {
+
+    private static final Pattern RANGE = Pattern.compile("<([0-9A-Fa-f]+)>\\s*<([0-9A-Fa-f]+)>\\s*[<\\[]");
 
     private ToUnicodeWriter() {}
 
@@ -27,6 +32,35 @@ final class ToUnicodeWriter {
             if (c < 0x20 || c >= 0x7F && c < 0xA0 || c == 0xFEFF || c == 0xFFFE || c == 0xFFFF) {
                 return false;
             }
+        }
+        return true;
+    }
+
+    static boolean wellFormed(COSBase map) {
+        if (!(map instanceof COSStream s)) {
+            return map == null;
+        }
+        byte[] b = StreamFixer.read(s);
+        if (b == null) {
+            return false;
+        }
+        String text = new String(b, StandardCharsets.ISO_8859_1);
+        int at = 0;
+        while ((at = text.indexOf("beginbfrange", at)) >= 0) {
+            int end = text.indexOf("endbfrange", at);
+            if (end < 0) {
+                return false;
+            }
+            Matcher m = RANGE.matcher(text.substring(at, end));
+            while (m.find()) {
+                String lo = m.group(1);
+                String hi = m.group(2);
+                if (lo.length() != hi.length() || lo.length() > 2
+                        && !lo.substring(0, lo.length() - 2).equalsIgnoreCase(hi.substring(0, hi.length() - 2))) {
+                    return false;
+                }
+            }
+            at = end;
         }
         return true;
     }

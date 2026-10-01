@@ -156,6 +156,23 @@ final class FontSamples {
             ((COSDictionary) f.getDictionaryObject(COSName.FONT_DESC)).setItem(COSName.FONT_FILE2, file);
             page(d, "BT /A 30 Tf 50 760 Td (A\\222A) Tj ET", PDFontFactory.createFont(f));
         });
+        doc("f08_tounicode_ranges", Set.of("2:6.2.11.7.2-1"), d -> {
+            PDType0Font f = PDType0Font.load(d, Samples.liberation(), false);
+            String lo = "0000";
+            String hi = "03FF";
+            COSStream tu = d.getDocument().createCOSStream();
+            try (OutputStream o = tu.createOutputStream()) {
+                o.write(("/CIDInit /ProcSet findresource begin 12 dict begin begincmap /CMapName /Wide def "
+                        + "1 begincodespacerange <0000> <FFFF> endcodespacerange 1 beginbfrange <" + lo + "> <" + hi
+                        + "> <0020> endbfrange endcmap CMapName currentdict /CMap defineresource pop end end")
+                        .getBytes(StandardCharsets.US_ASCII));
+            }
+            f.getCOSObject().setItem(COSName.TO_UNICODE, tu);
+            PDPage p = page(d, "", f);
+            try (var cs = new PDPageContentStream(d, p, PDPageContentStream.AppendMode.APPEND, false)) {
+                Samples.text(cs, f, 14, 50, 780, "A range across a byte boundary: \u0141\u00f3d\u017a");
+            }
+        });
     }
 
     static byte[] withCmap(org.apache.fontbox.ttf.TrueTypeFont font, byte[] cmap) throws Exception {
