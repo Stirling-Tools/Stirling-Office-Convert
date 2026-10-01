@@ -67,7 +67,15 @@ final class TextFrame {
     record Warp(String preset, float adj) {
 
         boolean curved() {
-            return preset.equals("textDeflate") || preset.equals("textInflate");
+            return preset.equals("textDeflate") || preset.equals("textInflate") || wave();
+        }
+
+        boolean wave() {
+            return preset.equals("textWave1") || preset.equals("textWave2") || preset.equals("textDoubleWave1");
+        }
+
+        boolean path() {
+            return preset.equals("textArchUp") || preset.equals("textArchDown") || preset.equals("textCircle");
         }
     }
 
@@ -195,6 +203,9 @@ final class TextFrame {
             float fallback = switch (prst == null ? "" : prst) {
                 case "textPlain" -> 50_000;
                 case "textDeflate", "textInflate" -> 18_750;
+                case "textWave1", "textWave2", "textDoubleWave1" -> 12_500;
+                case "textArchUp", "textCircle" -> 10_800_000;
+                case "textArchDown" -> 0;
                 default -> 55_556;
             };
             float adj = fallback;
@@ -216,6 +227,10 @@ final class TextFrame {
                     new Warp(prst, Math.max(0, Math.min(100_000, adj)) / 100_000f);
                 case "textDeflate" -> new Warp(prst, Math.max(0, Math.min(37_500, adj)) / 100_000f);
                 case "textInflate" -> new Warp(prst, Math.max(0, Math.min(20_000, adj)) / 100_000f);
+                case "textWave1", "textWave2", "textDoubleWave1" ->
+                    new Warp(prst, Math.max(0, Math.min(20_000, adj)) / 100_000f);
+                case "textArchUp", "textArchDown", "textCircle" ->
+                    new Warp(prst, Math.max(0, Math.min(21_599_999, adj)) / 60_000f);
                 default -> null;
             };
         } catch (RuntimeException e) {
@@ -440,6 +455,9 @@ final class TextFrame {
         if (!(y1 - y0 > 0.5f)) {
             return false;
         }
+        if (warp.path()) {
+            return followed(canvas, b, area, x0, x1, y0, y1);
+        }
         double dy = warp.adj() * h;
         double sx = w / (x1 - x0);
         double band = warp.preset().equals("textPlain") || warp.curved() ? h : h - dy;
@@ -458,9 +476,9 @@ final class TextFrame {
             AffineTransform back = t.createInverse();
             Rectangle2D local = back.createTransformedShape(area).getBounds2D();
             if (warp.curved() && plainScript(b)) {
-                boolean inflate = warp.preset().equals("textInflate");
+                String kind = warp.preset();
                 TextPainter.drawWarped(canvas, b, deck, new TextPainter.Warped(
-                        s -> back.createTransformedShape(bend(t.createTransformedShape(s), area, dy, inflate)), t,
+                        s -> back.createTransformedShape(bend(t.createTransformedShape(s), area, dy, kind)), t,
                         local));
             } else {
                 TextPainter.drawWarped(canvas, b, deck, new TextPainter.Warped(null, t, local));
@@ -484,7 +502,31 @@ final class TextFrame {
     }
 
     // Each point keeps its place across the box and its share of the height between the two guide curves
-    static Shape bend(Shape s, Rectangle2D area, double dy, boolean inflate) {
+    private boolean followed(PdfCanvas canvas, TextBlock b, Rectangle2D area, float x0, float x1, float y0, float y1)
+            throws IOException {
+        WarpPath path = plainScript(b) ? WarpPath.of(warp, area, x0, x1, y0, y1) : null;
+        if (path == null) {
+            return false;
+        }
+        double sx = area.getWidth() / (x1 - x0);
+        double sy = area.getHeight() / (y1 - y0);
+        AffineTransform t = new AffineTransform(sx, 0, 0, sy, area.getX() - x0 * sx, area.getY() - y0 * sy);
+        canvas.save();
+        try {
+            canvas.transform(t);
+            AffineTransform back = t.createInverse();
+            Rectangle2D local = back.createTransformedShape(area).getBounds2D();
+            TextPainter.drawWarped(canvas, b, deck, new TextPainter.Warped(
+                    s -> back.createTransformedShape(path.follow(s)), t, local));
+        } catch (NoninvertibleTransformException e) {
+            TextPainter.draw(canvas, b, 0, 0, deck);
+        } finally {
+            canvas.restore();
+        }
+        return true;
+    }
+
+    static Shape bend(Shape s, Rectangle2D area, double dy, String kind) {
         Path2D.Double out = new Path2D.Double();
         double[] c = new double[6];
         double lx = 0;
@@ -501,11 +543,11 @@ final class TextFrame {
                 for (int k = 1; k < steps; k++) {
                     double f = (double) k / steps;
                     out.lineTo(lx + (c[0] - lx) * f, bentY(lx + (c[0] - lx) * f, ly + (c[1] - ly) * f, area, dy,
-                            inflate));
+                            kind));
                 }
-                out.lineTo(c[0], bentY(c[0], c[1], area, dy, inflate));
+                out.lineTo(c[0], bentY(c[0], c[1], area, dy, kind));
             } else {
-                out.moveTo(c[0], bentY(c[0], c[1], area, dy, inflate));
+                out.moveTo(c[0], bentY(c[0], c[1], area, dy, kind));
             }
             lx = c[0];
             ly = c[1];
@@ -513,11 +555,21 @@ final class TextFrame {
         return out;
     }
 
-    private static double bentY(double x, double y, Rectangle2D area, double dy, boolean inflate) {
+    private static double bentY(double x, double y, Rectangle2D area, double dy, String kind) {
         double u = Math.max(0, Math.min(1, (x - area.getX()) / area.getWidth()));
         double v = (y - area.getY()) / area.getHeight();
         double m = 1 - u;
-        double depth = inflate ? dy * (m * m * m - u * m * m - u * u * m + u * u * u) : 4 * u * m * dy;
+        double shift = switch (kind) {
+            case "textWave1" -> -dy * Math.sin(2 * Math.PI * u);
+            case "textWave2" -> dy * Math.sin(2 * Math.PI * u);
+            case "textDoubleWave1" -> -dy * Math.sin(4 * Math.PI * u);
+            default -> Double.NaN;
+        };
+        if (!Double.isNaN(shift)) {
+            return area.getY() + dy + shift + v * (area.getHeight() - 2 * dy);
+        }
+        double depth = kind.equals("textInflate") ? dy * (m * m * m - u * m * m - u * u * m + u * u * u)
+                : 4 * u * m * dy;
         return area.getY() + depth + v * (area.getHeight() - 2 * depth);
     }
 

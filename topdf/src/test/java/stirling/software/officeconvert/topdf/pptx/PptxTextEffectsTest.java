@@ -137,6 +137,22 @@ class PptxTextEffectsTest {
     }
 
     @Test
+    void archesCirclesAndWavesCarryTheTextAlongTheirPaths() throws IOException {
+        Decks.Converted arch = Decks.convert(dir, "arch-up.pptx", wordArt("textArchUp"));
+        int[] top = inkRows(arch.render(0, 72), 295, 305);
+        assertTrue(top[0] >= 100 && top[0] < 108 && top[1] < 150, top[0] + " " + top[1]);
+        assertTrue(arch.text().contains("HHHH"));
+        int[] bottom = inkRows(Decks.convert(dir, "arch-down.pptx", wordArt("textArchDown")).render(0, 72), 295, 305);
+        assertTrue(bottom[1] <= 300 && bottom[1] > 292 && bottom[0] > 250, bottom[0] + " " + bottom[1]);
+        int[] circle = inkRows(Decks.convert(dir, "circle.pptx", wordArt("textCircle")).render(0, 72), 295, 305);
+        assertTrue(circle[0] >= 100 && circle[0] < 108 && circle[1] < 150, circle[0] + " " + circle[1]);
+        BufferedImage wave = Decks.convert(dir, "wave.pptx", wordArt("textWave1")).render(0, 72);
+        int[] crest = inkRows(wave, 180, 220);
+        int[] trough = inkRows(wave, 380, 420);
+        assertTrue(trough[0] > crest[0] + 20, crest[0] + " " + trough[0]);
+    }
+
+    @Test
     void aWarpedTextShadowFallsOnTheSlideFromTheBox() throws IOException {
         String shadow = "<a:effectLst><a:outerShdw dist=\"254000\" dir=\"5400000\" algn=\"tl\" rotWithShape=\"0\">"
                 + "<a:srgbClr val=\"FF0000\"/></a:outerShdw></a:effectLst>";
