@@ -13,7 +13,8 @@ import org.w3c.dom.Element;
 final class OdtWriter {
 
     static final String NAMESPACES = "xmlns:w=\"" + Xml.W + "\" xmlns:r=\"" + Xml.R + "\" xmlns:wp=\"" + Xml.WP
-            + "\" xmlns:a=\"" + Xml.A + "\" xmlns:pic=\"" + Xml.PIC + "\" xmlns:wps=\"" + Xml.WPS + "\"";
+            + "\" xmlns:a=\"" + Xml.A + "\" xmlns:pic=\"" + Xml.PIC + "\" xmlns:wps=\"" + Xml.WPS + "\" xmlns:m=\""
+            + MathOmml.M + "\"";
 
     final OdfDocument doc;
 

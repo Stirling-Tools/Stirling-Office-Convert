@@ -103,6 +103,10 @@ final class WordDrawings {
                     + " xmlns:c=\"" + CHART_URI + "\" r:id=\"" + rid + "\"/></a:graphicData></a:graphic>";
             return wrap(f, group, g, b, graphic, id);
         }
+        String math = group == null && collecting == null ? math(f) : null;
+        if (math != null) {
+            return math;
+        }
         byte[] data = image(f);
         if (data == null) {
             return null;
@@ -183,6 +187,11 @@ final class WordDrawings {
     private String chart(Element frame) {
         Element object = Dom.kid(frame, Ns.DRAW, "object");
         return object == null ? null : w.doc.chart(object);
+    }
+
+    private String math(Element frame) {
+        Element object = Dom.kid(frame, Ns.DRAW, "object");
+        return object == null ? null : w.doc.math(object);
     }
 
     private byte[] image(Element frame) {

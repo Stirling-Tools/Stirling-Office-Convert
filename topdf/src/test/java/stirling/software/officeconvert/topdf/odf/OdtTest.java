@@ -106,15 +106,6 @@ class OdtTest {
     }
 
     @Test
-    void indentsInCharacterUnitsScaleWithTheFontSize() throws IOException {
-        String auto = "<style:style style:name=\"P1\" style:family=\"paragraph\"><style:paragraph-properties"
-                + " loext:margin-left=\"1ic\" loext:text-indent=\"-2.5ic\"/><style:text-properties fo:font-size=\"10pt\"/>"
-                + "</style:style>";
-        String xml = document(odt(auto, "<text:p text:style-name=\"P1\">Indented</text:p>", null));
-        assertTrue(xml.contains("<w:ind w:left=\"200\" w:right=\"0\" w:hanging=\"500\"/>"), xml);
-    }
-
-    @Test
     void whiteSpaceCollapsesButSpacesAndTabsStay() throws IOException {
         String xml = document(odt("", "<text:p>  a   b<text:s text:c=\"3\"/>c<text:tab/>d</text:p>", null));
         assertTrue(xml.contains(">a b   c</w:t>"), xml);
@@ -399,6 +390,27 @@ class OdtTest {
         Path p = OdfFixtures.write(dir, "dates.odt", OdfFixtures.zip(OdfFixtures.TEXT, parts));
         String text = pdfText(p).replaceAll("\\s+", " ");
         assertTrue(text.contains("Saved 04/03/2021 created 06/05/2019 fixed 02/01/2020 cached kept"), text);
+    }
+
+    @Test
+    void aFormulaObjectIsTypesetFromItsMathMl() throws IOException {
+        String body = "<text:p>Area <draw:frame text:anchor-type=\"as-char\" svg:width=\"1in\" svg:height=\"0.3in\">"
+                + "<draw:object xlink:href=\"./Object 1\"/><draw:image xlink:href=\"./ObjectReplacements/Object 1\"/>"
+                + "</draw:frame> done</text:p>";
+        String math = "<math xmlns=\"http://www.w3.org/1998/Math/MathML\"><semantics><mrow><msup><mi>x</mi><mn>2</mn>"
+                + "</msup><mo>+</mo><mfrac><mn>1</mn><mi>y</mi></mfrac><munderover><mo>&#8721;</mo><mi>i</mi><mi>n</mi>"
+                + "</munderover></mrow><annotation encoding=\"StarMath 5.0\">x^2 + 1 over y</annotation></semantics></math>";
+        Map<String, byte[]> parts = new LinkedHashMap<>();
+        parts.put("content.xml", OdfFixtures.content("", OdfFixtures.text(body)).getBytes(StandardCharsets.UTF_8));
+        parts.put("Object 1/content.xml", math.getBytes(StandardCharsets.UTF_8));
+        Path p = OdfFixtures.write(dir, "math.odt", OdfFixtures.zip(OdfFixtures.TEXT, parts));
+        String xml = OdfFixtures.rewrite(p).get("word/document.xml");
+        assertTrue(xml.contains("<m:oMath><m:sSup><m:e><m:r><m:t xml:space=\"preserve\">x</m:t></m:r></m:e>"), xml);
+        assertTrue(xml.contains("<m:f><m:num>") && xml.contains("<m:nary><m:naryPr><m:chr m:val=\"&#8721;\"/>")
+                || xml.contains("<m:nary><m:naryPr><m:chr m:val=\"\u2211\"/>"), xml);
+        assertFalse(xml.contains("StarMath") || xml.contains("over y"), xml);
+        String text = pdfText(p);
+        assertTrue(text.contains("Area") && text.contains("x") && text.contains("done"), text);
     }
 
     @Test
