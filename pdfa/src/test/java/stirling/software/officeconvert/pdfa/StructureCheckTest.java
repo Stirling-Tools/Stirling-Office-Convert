@@ -131,6 +131,21 @@ class StructureCheckTest {
     }
 
     @Test
+    void partOneMapsStructureTypesAddedAfterPdf14() throws Exception {
+        Path in = tagged("tbody", (d, p) -> p.setItem(COSName.S, COSName.getPDFName("TBody")));
+        for (PdfALevel level : new PdfALevel[] {PdfALevel.A1A, PdfALevel.A2A}) {
+            Path out = dir.resolve("tbody-" + level + ".pdf");
+            PdfToPdfA.convert(in, out, PdfToPdfA.Options.defaults().level(level));
+            VeraPdf.assertCompliant(out, level);
+            try (PDDocument d = Loader.loadPDF(out.toFile())) {
+                COSDictionary roles = (COSDictionary) d.getDocumentCatalog().getStructureTreeRoot().getCOSObject()
+                        .getDictionaryObject(COSName.getPDFName("RoleMap"));
+                assertEquals(level.part() == 1 ? "NonStruct" : null, roles.getNameAsString("TBody"));
+            }
+        }
+    }
+
+    @Test
     void aDocumentWithNoLanguageAnywhereIsRefused() throws Exception {
         Path in = tagged("no-language", (d, p) -> d.getDocumentCatalog().getCOSObject().removeItem(COSName.LANG));
         IOException e = refused(in);

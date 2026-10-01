@@ -40,7 +40,7 @@ final class Conversion {
         }
         doc.getDocument().setEncryptionDictionary(null);
         if (level.tagged()) {
-            Tagging.run(doc, report);
+            Tagging.run(doc, level, report);
         }
         Interactive.run(doc, level, report);
         EmbeddedFiles.run(doc, level, report);

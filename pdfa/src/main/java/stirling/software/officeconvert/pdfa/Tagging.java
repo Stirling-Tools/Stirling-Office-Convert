@@ -25,6 +25,9 @@ final class Tagging {
             "BibEntry", "Code", "Link", "Annot", "Ruby", "RB", "RT", "RP", "Warichu", "WT", "WP", "Figure", "Formula",
             "Form");
 
+    private static final Set<String> SINCE_PDF_15 = Set.of("THead", "TBody", "TFoot", "Annot", "Ruby", "RB", "RT",
+            "RP", "Warichu", "WT", "WP");
+
     private static final Pattern LANGUAGE = Pattern.compile("[A-Za-z]{1,8}(-[A-Za-z0-9]{1,8})*");
 
     private static final COSName ROLE_MAP = COSName.getPDFName("RoleMap");
@@ -35,7 +38,17 @@ final class Tagging {
 
     private Tagging() {}
 
-    static void run(PDDocument doc, Report report) throws IOException {
+    static Set<String> standard(PdfALevel level) {
+        if (level.part() > 1) {
+            return STANDARD;
+        }
+        Set<String> s = new HashSet<>(STANDARD);
+        s.removeAll(SINCE_PDF_15);
+        return s;
+    }
+
+    static void run(PDDocument doc, PdfALevel level, Report report) throws IOException {
+        Set<String> standard = standard(level);
         COSDictionary cat = doc.getDocumentCatalog().getCOSObject();
         COSDictionary root = ContentGraph.dict(cat.getDictionaryObject(COSName.STRUCT_TREE_ROOT));
         if (root == null) {
@@ -81,23 +94,24 @@ final class Tagging {
             root.setItem(ROLE_MAP, roles);
         }
         for (COSName k : new ArrayList<>(roles.keySet())) {
-            if (STANDARD.contains(k.getName())) {
+            if (standard.contains(k.getName())) {
                 roles.removeItem(k);
             }
         }
         for (String type : types) {
-            if (!STANDARD.contains(type) && !resolves(roles, type)) {
+            if (!standard.contains(type) && !resolves(roles, type, standard)) {
                 roles.setName(type, "NonStruct");
-                report.warn("Mapped the structure type " + type + ", which has no standard meaning, to NonStruct");
+                report.warn("Mapped the structure type " + type + ", which has no standard meaning in "
+                        + level.label() + ", to NonStruct");
             }
         }
     }
 
-    private static boolean resolves(COSDictionary roles, String type) {
+    private static boolean resolves(COSDictionary roles, String type, Set<String> standard) {
         Set<String> visited = new HashSet<>();
         String t = type;
         while (visited.add(t)) {
-            if (STANDARD.contains(t)) {
+            if (standard.contains(t)) {
                 return true;
             }
             if (!(roles.getDictionaryObject(COSName.getPDFName(t)) instanceof COSName next)) {
