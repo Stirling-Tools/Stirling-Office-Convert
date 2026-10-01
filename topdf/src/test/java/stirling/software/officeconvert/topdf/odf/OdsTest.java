@@ -85,6 +85,20 @@ class OdsTest {
     }
 
     @Test
+    void theWidthOfTheTrailingFillerColumnsIsTheSheetDefault() throws IOException {
+        String auto = "<style:style style:name=\"co1\" style:family=\"table-column\"><style:table-column-properties"
+                + " style:column-width=\"1in\"/></style:style><style:style style:name=\"co2\" style:family=\"table-column\">"
+                + "<style:table-column-properties style:column-width=\"0.5in\"/></style:style>";
+        String table = "<table:table table:name=\"S\"><table:table-column table:style-name=\"co1\"/><table:table-column"
+                + " table:style-name=\"co2\" table:number-columns-repeated=\"16383\"/><table:table-row><table:table-cell"
+                + " office:value-type=\"string\"><text:p>A</text:p></table:table-cell></table:table-row></table:table>";
+        String sheet = OdfFixtures.rewrite(ods(auto, table, null)).get("xl/worksheets/sheet1.xml");
+        String full = sheet.replaceAll("(?s).*<col min=\"1\" max=\"1\" width=\"([0-9.]+)\".*", "$1");
+        String filler = sheet.replaceAll("(?s).*<sheetFormatPr defaultColWidth=\"([0-9.]+)\".*", "$1");
+        assertEquals(Double.parseDouble(full) / 2, Double.parseDouble(filler), 0.01, sheet);
+    }
+
+    @Test
     void mergesWidthsHiddenRowsAndFormats() throws IOException {
         String auto = NUMBER_STYLES + "<style:style style:name=\"co1\" style:family=\"table-column\">"
                 + "<style:table-column-properties style:column-width=\"2in\"/></style:style><style:style"

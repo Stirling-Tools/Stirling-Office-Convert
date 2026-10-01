@@ -58,6 +58,8 @@ final class SheetWriter {
 
     private int headerColStart = -1;
 
+    private double fillerWidth = Double.NaN;
+
     private int headerColEnd = -1;
 
     private long cells;
@@ -117,7 +119,8 @@ final class SheetWriter {
         }
         x.append("<sheetViews><sheetView workbookViewId=\"0\"").append(rtl ? " rightToLeft=\"1\"" : "")
                 .append("/></sheetViews>");
-        x.append("<sheetFormatPr defaultColWidth=\"").append(chars(64)).append("\" defaultRowHeight=\"")
+        x.append("<sheetFormatPr defaultColWidth=\"").append(chars(Double.isNaN(fillerWidth) ? 64 : fillerWidth))
+                .append("\" defaultRowHeight=\"")
                 .append(defaultRowHeight()).append("\"/>");
         if (!cols.isEmpty()) {
             x.append("<cols>").append(cols).append("</cols>");
@@ -155,8 +158,11 @@ final class SheetWriter {
     }
 
     private String defaultRowHeight() {
-        double size = w.cellStyles.defaultSize();
-        return String.valueOf(Math.round(size * 1.28 * 4) / 4.0);
+        return String.valueOf(defaultRowPoints());
+    }
+
+    private double defaultRowPoints() {
+        return Math.round(w.cellStyles.defaultSize() * 1.28 * 4) / 4.0;
     }
 
     private void columns(Element parent, StringBuilder cols, int depth) {
@@ -190,6 +196,9 @@ final class SheetWriter {
                     colBreaks.add(start);
                 }
                 if (repeat > FILLER && (xf == null || !xf.visible()) && !colHidden) {
+                    if (!Double.isNaN(width)) {
+                        fillerWidth = width;
+                    }
                     continue;
                 }
                 cols.append("<col min=\"").append(start + 1).append("\" max=\"").append(start + repeat).append('"');
