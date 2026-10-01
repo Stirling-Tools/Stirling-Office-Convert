@@ -615,7 +615,7 @@ final class Grid {
                 span += columnWidth(c);
             }
             Typesetter t = book.typesetter();
-            double need = t.width(e.text().runs(), 1) + 2 * CellLayout.pad(t, e.text(), e.format());
+            double need = t.width(shown(e.text().runs()), 1) + 2 * CellLayout.pad(t, e.text(), e.format());
             double extra = need - span;
             if (h == CellFormat.HAlign.CENTER || h == CellFormat.HAlign.CENTER_CONTINUOUS) {
                 extra /= 2;
@@ -632,6 +632,27 @@ final class Grid {
             limit = Math.max(limit, c);
         }
         lastCol = limit;
+    }
+
+    static final int SHOWN_CHARS = 1024;
+
+    static List<TextRun> shown(List<TextRun> runs) {
+        List<TextRun> out = new ArrayList<>();
+        int left = SHOWN_CHARS;
+        for (TextRun r : runs) {
+            if (left <= 0) {
+                break;
+            }
+            if (r.text().length() <= left) {
+                out.add(r);
+                left -= r.text().length();
+                continue;
+            }
+            int cut = Character.isHighSurrogate(r.text().charAt(left - 1)) ? left - 1 : left;
+            out.add(new TextRun(r.text().substring(0, cut), r.font()));
+            left = 0;
+        }
+        return out;
     }
 
     double textWidth(CellEntry e) {

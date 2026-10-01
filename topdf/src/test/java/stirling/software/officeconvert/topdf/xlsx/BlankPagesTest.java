@@ -95,6 +95,19 @@ class BlankPagesTest {
                 .pages().size());
     }
 
+    @Test
+    void textPastTheFirst1024CharactersDoesNotSpillOntoMorePages() throws IOException {
+        String words = "spill over ".repeat(300);
+        int shown = spilled("shown.xlsx", words.substring(0, Grid.SHOWN_CHARS));
+        assertTrue(shown > 1, "pages " + shown);
+        assertEquals(shown, spilled("long.xlsx", words));
+    }
+
+    private int spilled(String name, String text) throws IOException {
+        String sheet = "<sheetData><row r=\"1\">" + RawXlsx.inline("A1", text) + "</row></sheetData>";
+        return XlsxTesting.convert(dir, name, new RawXlsx().styles(STYLES).sheet("S", sheet).bytes()).pages().size();
+    }
+
     private XlsxTesting.Converted convert(String name, String rows) throws IOException {
         String sheet = "<sheetData>" + rows + "</sheetData>" + BREAKS;
         return XlsxTesting.convert(dir, name, new RawXlsx().styles(STYLES).sheet("S", sheet).bytes());
