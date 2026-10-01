@@ -24,6 +24,7 @@ import stirling.software.officeconvert.topdf.font.FontFace;
 import stirling.software.officeconvert.topdf.font.FontLibrary;
 import stirling.software.officeconvert.topdf.font.FontMetrics;
 import stirling.software.officeconvert.topdf.testing.Fixtures;
+import stirling.software.officeconvert.topdf.testing.TestFonts;
 
 class PptxTextLayoutTest {
 
@@ -91,6 +92,7 @@ class PptxTextLayoutTest {
 
     @Test
     void linesBelowSingleSpacingKeepTheSingleDescent() throws IOException {
+        TestFonts.assumeInstalled("Calibri", false, TestFonts.CALIBRI);
         String p90 = "<a:p><a:pPr><a:lnSpc><a:spcPct val=\"90000\"/></a:lnSpc></a:pPr>"
                 + Decks.run("Alpha", "sz=\"4000\"") + "</a:p>";
         String p60 = "<a:p><a:pPr><a:lnSpc><a:spcPct val=\"60000\"/></a:lnSpc></a:pPr>"

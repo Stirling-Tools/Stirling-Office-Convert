@@ -13,12 +13,25 @@ import org.apache.fontbox.ttf.TTFParser;
 import org.apache.fontbox.ttf.TrueTypeFont;
 import org.apache.pdfbox.io.RandomAccessReadBuffer;
 import org.apache.pdfbox.pdmodel.PDDocument;
+import org.junit.jupiter.api.Assumptions;
+
+import stirling.software.officeconvert.topdf.font.FontFace;
+import stirling.software.officeconvert.topdf.font.FontLibrary;
 
 public final class TestFonts {
 
     public static final String BUNDLED = "/org/apache/pdfbox/resources/ttf/LiberationSans-Regular.ttf";
 
     private TestFonts() {}
+
+    public static final String[] CALIBRI = {"Calibri", "Carlito"};
+
+    public static void assumeInstalled(String requested, boolean bold, String... families) {
+        FontFace face = FontLibrary.system().find(requested, bold, false);
+        boolean found = Arrays.stream(families).anyMatch(f -> f.equalsIgnoreCase(face.family()))
+                && !(bold && face.syntheticBold());
+        Assumptions.assumeTrue(found, requested + (bold ? " Bold" : "") + " or a metric twin is not installed here");
+    }
 
     public static byte[] bundled() {
         try (InputStream in = PDDocument.class.getResourceAsStream(BUNDLED)) {

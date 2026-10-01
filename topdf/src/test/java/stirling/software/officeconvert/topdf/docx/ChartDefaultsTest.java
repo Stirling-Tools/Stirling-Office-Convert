@@ -12,6 +12,7 @@ import org.apache.pdfbox.text.PDFTextStripper;
 import org.apache.pdfbox.text.TextPosition;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import stirling.software.officeconvert.topdf.testing.TestFonts;
 
 class ChartDefaultsTest {
 
@@ -53,6 +54,7 @@ class ChartDefaultsTest {
 
     @Test
     void anUnstyledTitleIsBoldAtASizeAboveTheChartText() throws IOException {
+        TestFonts.assumeInstalled("Calibri", true, TestFonts.CALIBRI);
         String x = "<c:xVal><c:numRef><c:f>S!$A$2:$A$5</c:f><c:numCache><c:formatCode>General</c:formatCode>"
                 + points(1, 2, 3, 4) + "</c:numCache></c:numRef></c:xVal>";
         DocxDoc.Rendered r = render("title", scatter(x));
