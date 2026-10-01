@@ -173,7 +173,7 @@ final class FontSamples {
                 Samples.text(cs, f, 14, 50, 780, "A range across a byte boundary: \u0141\u00f3d\u017a");
             }
         });
-        doc("f09_font_types_and_maps", Set.of("2:6.2.11.6-1"), d -> {
+        doc("f09_font_types_and_maps", Set.of("2:6.2.11.3.2-1", "2:6.2.11.6-1"), d -> {
             PDFont noSubtype = trueType(d);
             noSubtype.getCOSObject().setItem(COSName.SUBTYPE, COSName.getPDFName("Bogus"));
             PDType0Font noMap = PDType0Font.load(d, Samples.liberation(), false);
@@ -190,14 +190,15 @@ final class FontSamples {
             }
             file.setInt(COSName.LENGTH1, program.length);
             ((COSDictionary) symbolOnly.getDictionaryObject(COSName.FONT_DESC)).setItem(COSName.FONT_FILE2, file);
-            PDPage p = page(d, "", noSubtype, noMap, PDFontFactory.createFont(symbolOnly));
-            try (var cs = new PDPageContentStream(d, p, PDPageContentStream.AppendMode.APPEND, false)) {
-                Samples.text(cs, noMap, 14, 50, 740, "No CIDToGIDMap");
+            StringBuilder hex = new StringBuilder();
+            for (byte b : noMap.encode("No CIDToGIDMap")) {
+                hex.append(String.format("%02X", b));
             }
-            Samples.raw(p, d, "BT /A 14 Tf 50 780 Td (No Subtype) Tj ET BT /C 14 Tf 50 700 Td (ABC) Tj ET");
+            PDPage p = page(d, "BT /A 14 Tf 50 780 Td (No Subtype) Tj ET BT /B 14 Tf 50 740 Td <" + hex + "> Tj ET "
+                    + "BT /C 14 Tf 50 700 Td (ABC) Tj ET", noSubtype, noMap, PDFontFactory.createFont(symbolOnly));
             d.save(new ByteArrayOutputStream());
             ((COSDictionary) ((COSArray) noMap.getCOSObject().getDictionaryObject(COSName.DESCENDANT_FONTS))
-                    .getObject(0)).setItem(COSName.CID_TO_GID_MAP, COSName.getPDFName("Bogus"));
+                    .getObject(0)).removeItem(COSName.CID_TO_GID_MAP);
         });
     }
 
