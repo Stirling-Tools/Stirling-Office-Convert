@@ -706,6 +706,10 @@ final class Grid {
         return Math.min(columnCap, columns.width(col));
     }
 
+    double screenColumnWidth(int col) {
+        return columns.width(col) > 0 ? book.metrics().screenColumnPixels(columns.chars(col)) * SCREEN_PX : 0;
+    }
+
     void capColumns(double cap) {
         if (cap > 0 && cap < columnCap) {
             columnCap = cap;

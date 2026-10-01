@@ -103,6 +103,24 @@ class BlankPagesTest {
         assertEquals(shown, spilled("long.xlsx", words));
     }
 
+    @Test
+    void aShapeEndingInsideAColumnWiderThanThePageDoesNotPrintTheNextColumn() throws IOException {
+        String drawing = "<xdr:wsDr xmlns:xdr=\"http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing\" "
+                + "xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><xdr:oneCellAnchor><xdr:from>"
+                + "<xdr:col>0</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>1</xdr:row><xdr:rowOff>0</xdr:rowOff>"
+                + "</xdr:from>"
+                + "<xdr:ext cx=\"7620000\" cy=\"635000\"/><xdr:sp><xdr:nvSpPr><xdr:cNvPr id=\"2\" name=\"Box\"/>"
+                + "<xdr:cNvSpPr/></xdr:nvSpPr><xdr:spPr><a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom><a:solidFill>"
+                + "<a:srgbClr val=\"FF0000\"/></a:solidFill></xdr:spPr></xdr:sp><xdr:clientData/></xdr:oneCellAnchor>"
+                + "</xdr:wsDr>";
+        String sheet = "<cols><col min=\"1\" max=\"1\" width=\"120\" customWidth=\"1\"/></cols><sheetData>"
+                + "<row r=\"1\">" + RawXlsx.inline("A1", "Wide") + "</row></sheetData><drawing r:id=\"rIdD\"/>";
+        byte[] xlsx = new RawXlsx().styles(STYLES).sheet("S", sheet)
+                .part("xl/drawings/drawing1.xml", "application/vnd.openxmlformats-officedocument.drawing+xml", drawing)
+                .rel("xl/worksheets/sheet1.xml", "rIdD", "drawing", "../drawings/drawing1.xml").bytes();
+        assertEquals(1, XlsxTesting.convert(dir, "shape.xlsx", xlsx).pages().size());
+    }
+
     private int spilled(String name, String text) throws IOException {
         String sheet = "<sheetData><row r=\"1\">" + RawXlsx.inline("A1", text) + "</row></sheetData>";
         return XlsxTesting.convert(dir, name, new RawXlsx().styles(STYLES).sheet("S", sheet).bytes()).pages().size();

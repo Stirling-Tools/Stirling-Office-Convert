@@ -70,8 +70,6 @@ final class Drawings {
             job.warn("A drawing on sheet " + sheetName + " could not be read");
         }
         FormControls.read(book, part, sheetName, items);
-        PrintMetrics m = book.metrics();
-        double colScale = m.printerDigit() * PrintMetrics.PX / (m.screenDigit() * 0.75);
         List<int[]> ends = new ArrayList<>();
         for (Item i : items) {
             int[] end;
@@ -81,7 +79,7 @@ final class Drawings {
                 double x = (i.from == null ? i.absX : i.from.colOff) + i.absW;
                 double y = (i.from == null ? i.absY : i.from.rowOff) + i.absH;
                 end = new int[] {past(i.from == null ? 0 : i.from.row, y * grid.rowFactor(), grid::rowHeight,
-                        Grid.MAX_ROWS), past(i.from == null ? 0 : i.from.col, x * colScale, grid::columnWidth, Columns.MAX)};
+                        Grid.MAX_ROWS), past(i.from == null ? 0 : i.from.col, x, grid::screenColumnWidth, Columns.MAX)};
             }
             grid.extend(end[0], end[1]);
             ends.add(end);
