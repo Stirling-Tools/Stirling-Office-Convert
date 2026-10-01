@@ -127,9 +127,6 @@ final class Metadata {
         x.append("<xmp:ModifyDate>").append(iso(modified)).append("</xmp:ModifyDate>\n");
         x.append("<xmp:MetadataDate>").append(iso(modified)).append("</xmp:MetadataDate>\n");
         x.append("</rdf:Description>\n</rdf:RDF>\n</x:xmpmeta>\n");
-        for (int i = 0; i < 20; i++) {
-            x.append(" ".repeat(99)).append('\n');
-        }
         x.append("<?xpacket end=\"w\"?>");
         return x.toString();
     }

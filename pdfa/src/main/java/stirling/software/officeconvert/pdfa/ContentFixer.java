@@ -27,7 +27,8 @@ final class ContentFixer {
 
     private ContentFixer() {}
 
-    static void run(ContentGraph graph, PdfALevel level, Report report, FontUsage usage) throws IOException {
+    static void run(ContentGraph graph, PdfALevel level, Report report, FontUsage usage, DeviceColours colours)
+            throws IOException {
         for (ContentGraph.Node n : graph.nodes()) {
             PdfFiles.stopIfInterrupted();
             List<Object> tokens;
@@ -35,6 +36,7 @@ final class ContentFixer {
                 tokens = ContentTokens.parse(n.streams());
             } catch (IOException e) {
                 PdfFiles.stopIfInterrupted();
+                colours.unknown();
                 continue;
             }
             List<Object> out = new ArrayList<>(tokens.size());
@@ -47,6 +49,7 @@ final class ContentFixer {
                 List<Object> operation = new ArrayList<>(tokens.subList(start, i + 1));
                 start = i + 1;
                 for (int k = 0; k < operation.size() - 1; k++) {
+                    colours.operand(operation.get(k));
                     if (operation.get(k) instanceof COSBase b) {
                         COSBase f = Limits.number(b, level);
                         if (f != b) {
@@ -56,6 +59,7 @@ final class ContentFixer {
                     }
                 }
                 String name = op.getName();
+                colours.operator(name);
                 if (!OPERATORS.contains(name)) {
                     changed = true;
                     report.warn("Removed content operators that PDF/A does not allow (" + clip(name) + ")");
@@ -65,6 +69,9 @@ final class ContentFixer {
                         && !(operation.get(0) instanceof COSName intent && INTENTS.contains(intent.getName()))) {
                     operation.set(0, COSName.getPDFName("RelativeColorimetric"));
                     changed = true;
+                }
+                if ("BI".equals(name)) {
+                    colours.inlineImage(op.getImageParameters());
                 }
                 if ("BI".equals(name) && inlineImage(op.getImageParameters())) {
                     changed = true;

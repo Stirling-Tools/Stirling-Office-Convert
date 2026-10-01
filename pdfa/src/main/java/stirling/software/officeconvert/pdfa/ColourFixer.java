@@ -27,22 +27,26 @@ final class ColourFixer {
 
     private final Report report;
 
-    private ColourFixer(PDDocument doc, PdfALevel level, Report report) {
+    private final DeviceColours colours;
+
+    private ColourFixer(PDDocument doc, PdfALevel level, Report report, DeviceColours colours) {
         this.doc = doc;
         this.level = level;
         this.report = report;
+        this.colours = colours;
     }
 
-    static void run(PDDocument doc, ContentGraph graph, PdfALevel level, Report report) throws IOException {
-        ColourFixer c = new ColourFixer(doc, level, report);
-        CosWalk.walk(doc, c::profiles);
+    static void run(PDDocument doc, ContentGraph graph, PdfALevel level, Report report, DeviceColours colours)
+            throws IOException {
+        ColourFixer c = new ColourFixer(doc, level, report, colours);
+        CosWalk.walk(doc, c::visit);
         int components = c.outputIntent();
-        COSArray fallback = components == 3 ? c.iccBased(IccProfiles.cmyk(), 4) : components == 4
-                ? c.iccBased(IccProfiles.srgb(), 3) : null;
-        COSName key = components == 3 ? DEFAULT_CMYK : components == 4 ? DEFAULT_RGB : null;
+        COSName key = components == 3 && colours.cmyk() ? DEFAULT_CMYK
+                : components == 4 && colours.rgb() ? DEFAULT_RGB : null;
         if (key == null) {
             return;
         }
+        COSArray fallback = key == DEFAULT_CMYK ? c.iccBased(IccProfiles.cmyk(), 4) : c.iccBased(IccProfiles.srgb(), 3);
         for (COSDictionary res : graph.resources()) {
             COSDictionary cs = ContentGraph.dict(res.getDictionaryObject(COSName.COLORSPACE));
             if (cs == null) {
@@ -125,6 +129,19 @@ final class ColourFixer {
         }
         String c = h.deviceClass();
         return "mntr".equals(c) || "prtr".equals(c) || "scnr".equals(c) || "spac".equals(c);
+    }
+
+    private void visit(COSBase b) throws IOException {
+        if (b instanceof COSDictionary d) {
+            for (COSBase v : d.getValues()) {
+                colours.value(v);
+            }
+        } else if (b instanceof COSArray a) {
+            for (int i = 0; i < a.size(); i++) {
+                colours.value(a.get(i));
+            }
+        }
+        profiles(b);
     }
 
     private void profiles(COSBase b) throws IOException {

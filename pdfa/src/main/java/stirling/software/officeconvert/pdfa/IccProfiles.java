@@ -145,7 +145,7 @@ final class IccProfiles {
     }
 
     private static byte[] curve() {
-        int n = 1024;
+        int n = 256;
         ByteBuffer b = ByteBuffer.allocate(12 + 2 * n);
         b.put("curv".getBytes(StandardCharsets.US_ASCII));
         b.putInt(0);

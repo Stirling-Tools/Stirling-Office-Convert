@@ -52,7 +52,8 @@ final class Conversion {
         PdfFiles.stopIfInterrupted();
         ContentGraph graph = ContentGraph.of(doc);
         FontUsage usage = new FontUsage();
-        ContentFixer.run(graph, level, report, usage);
+        DeviceColours colours = new DeviceColours();
+        ContentFixer.run(graph, level, report, usage, colours);
         FontFixer.run(doc, usage, level, FontLibrary.withSystem(options.fontDirs()), report);
         PdfFiles.stopIfInterrupted();
         StreamFixer.run(doc, level, report);
@@ -60,7 +61,7 @@ final class Conversion {
             Transparency.run(doc, options.flattenDpi(), report);
         }
         graph = ContentGraph.of(doc);
-        ColourFixer.run(doc, graph, level, report);
+        ColourFixer.run(doc, graph, level, report, colours);
         Limits.run(doc, level, report);
         Metadata.run(doc, level);
         PdfFiles.stopIfInterrupted();
