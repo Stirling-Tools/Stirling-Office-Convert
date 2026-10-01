@@ -483,7 +483,18 @@ final class ContentReader {
             return;
         }
         Inline.Link inner = name.equals("HYPERLINK") ? fieldLink(instr) : null;
+        if (k.child("w:r") == null && !inInstruction() && computedParentAllowsOutput()) {
+            String value = storedValue(instr);
+            if (value != null) {
+                text(value, runProps(null, paraRun), out, link);
+                return;
+            }
+        }
         inline(k.kids, out, paraRun, inner != null ? inner : link);
+    }
+
+    private String storedValue(String instr) {
+        return pkg == null ? null : pkg.fieldValues().text(tokens(instr));
     }
 
     // A page field's format switch picks its number format; applying it is formatting, not execution
@@ -644,6 +655,11 @@ final class ContentReader {
                     }
                     if (!result && "AUTONUM".equals(f.name) && !inInstruction() && computedParentAllowsOutput()) {
                         text(++autonum + autonumSeparator(f.instr.toString()), f.rp, out, fieldLinkInScope(link));
+                    } else if (!result && !f.computed && !inInstruction() && computedParentAllowsOutput()) {
+                        String value = storedValue(f.instr.toString());
+                        if (value != null) {
+                            text(value, f.rp, out, fieldLinkInScope(link));
+                        }
                     }
                     if (f.computed && !inInstruction() && computedParentAllowsOutput()) {
                         out.add(new Inline.Field(f.name, f.rp, f.cached.toString(), fieldLinkInScope(link),

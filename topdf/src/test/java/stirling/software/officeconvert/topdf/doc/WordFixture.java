@@ -49,6 +49,8 @@ final class WordFixture {
 
     private String title;
 
+    private java.util.Date saved;
+
     private boolean reversed;
 
     private int nFib = 0xC1;
@@ -156,6 +158,11 @@ final class WordFixture {
 
     WordFixture title(String value) {
         title = value;
+        return this;
+    }
+
+    WordFixture saved(java.util.Date value) {
+        saved = value;
         return this;
     }
 
@@ -340,6 +347,9 @@ final class WordFixture {
                         org.apache.poi.hpsf.PropertySetFactory.newSummaryInformation();
                 si.setTitle(title);
                 si.setAuthor("Fixture Author");
+                if (saved != null) {
+                    si.setLastSaveDateTime(saved);
+                }
                 ByteArrayOutputStream props = new ByteArrayOutputStream();
                 si.write(props);
                 fs.createDocument(new ByteArrayInputStream(props.toByteArray()),

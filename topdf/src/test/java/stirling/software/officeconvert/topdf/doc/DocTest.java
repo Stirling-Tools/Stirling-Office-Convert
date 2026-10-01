@@ -130,6 +130,20 @@ class DocTest {
     }
 
     @Test
+    void fieldsWithoutAResultShowTheStoredProperties() throws IOException {
+        byte[] doc = new WordFixture().title("Plan B").saved(java.util.Date.from(java.time.Instant.parse(
+                "2021-03-04T13:05:00Z"))).para(List.of(WordFixture.run("By "),
+                WordFixture.run("\u0013", Sprms.special()), WordFixture.run(" AUTHOR \\* Upper "),
+                WordFixture.run("\u0015", Sprms.special()), WordFixture.run(" on "),
+                WordFixture.run("\u0013", Sprms.special()), WordFixture.run(" SAVEDATE \\@ \"d MMMM yyyy\" "),
+                WordFixture.run("\u0015", Sprms.special()), WordFixture.run(": "),
+                WordFixture.run("\u0013", Sprms.special()), WordFixture.run(" TITLE "),
+                WordFixture.run("\u0015", Sprms.special())), 0).build();
+        String text = pdfText(doc, "stored.doc");
+        assertTrue(text.contains("By FIXTURE AUTHOR on 4 March 2021: Plan B"), text);
+    }
+
+    @Test
     void onlyWebAndMailLinksBecomeHyperlinks() throws IOException {
         byte[] doc = new WordFixture().para(List.of(
                 WordFixture.run("\u0013", Sprms.special()), WordFixture.run(" HYPERLINK \"https://example.com/a\" "),

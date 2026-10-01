@@ -6,6 +6,8 @@ import java.util.Deque;
 import java.util.List;
 import java.util.Locale;
 
+import stirling.software.officeconvert.topdf.field.StoredFields;
+
 final class Fields {
 
     static final int MAX_DEPTH = 32;
@@ -100,6 +102,11 @@ final class Fields {
             }
         }
         return out;
+    }
+
+    static boolean stored(Frame f) {
+        List<String> t = tokens(f.code.toString());
+        return !t.isEmpty() && StoredFields.stored(t.get(0).toUpperCase(Locale.ROOT));
     }
 
     static void interpret(Frame f) {

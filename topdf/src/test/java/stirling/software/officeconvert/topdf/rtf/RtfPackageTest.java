@@ -245,6 +245,16 @@ class RtfPackageTest {
     }
 
     @Test
+    void propertyFieldsWithoutAResultShowTheDocumentInfo() throws IOException {
+        String info = "{\\info{\\title Plan B}{\\author Ann Example}{\\revtim\\yr2021\\mo3\\dy4}}";
+        Pkg p = convert(HEAD.replace("{\\fonttbl", info + "{\\fonttbl") + "\\pard By {\\field{\\*\\fldinst AUTHOR"
+                + " \\\\* Upper}}: {\\field{\\*\\fldinst TITLE}} in {\\field{\\*\\fldinst DATE \\\\@ \"MMMM\" \\\\* Upper}}"
+                + " {\\field{\\*\\fldinst USERNAME}}\\par}");
+        assertTrue(p.body().contains("ANN EXAMPLE") && p.body().contains("Plan B") && p.body().contains("MARCH"),
+                p.body());
+    }
+
+    @Test
     void macAndWindowsBitmapPicturesAreKept() throws IOException {
         String pict = "0000" + "0000000000140014" + "001102FF0C00FFFF" + "00".repeat(22) + "001AFFFF00000000"
                 + "00310000000000140014" + "00FF";

@@ -291,6 +291,10 @@ Unlike `OfficeConvert`, whose default is no time limit, `OfficeToPdf` stops afte
 `OfficeToPdf.TimedOut` (an `IOException`). Bad input gives an `IOException` with a plain reason, legacy and unknown
 file extensions included. Nothing a document links to is ever fetched, and no macro, field, formula or script is run:
 fields and formulas show their cached results, charts their cached values, embedded objects their stored preview.
+A Word field saved without a result (DATE, TIME, CREATEDATE, SAVEDATE, PRINTDATE, AUTHOR, TITLE, SUBJECT, KEYWORDS,
+COMMENTS, LASTSAVEDBY, REVNUM, TEMPLATE, NUMWORDS, NUMCHARS, EDITTIME, FILENAME, DOCPROPERTY) shows the document's
+stored properties with its `\@` date picture and `\*` case switches: dates come from the saved metadata in UTC, never
+the clock, and FILENAME is `Options.displayName`.
 
 Excel 97-2003 workbooks (`.xls`, `.xlt`, found by their content whatever the extension) are read with Apache POI
 HSSF and rewritten as a SpreadsheetML package that the XLSX renderer draws: cells with their cached values (formulas

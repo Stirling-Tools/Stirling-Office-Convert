@@ -5,6 +5,9 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
+import stirling.software.officeconvert.topdf.field.FieldCase;
+import stirling.software.officeconvert.topdf.field.StoredFields;
+
 final class Embeds {
 
     private final RtfReader reader;
@@ -104,7 +107,18 @@ final class Embeds {
             String text = DateField.text(kind, args, doc.times.get("creatim"), doc.times.get("revtim"),
                     doc.times.get("printim"));
             if (text != null) {
-                reader.content().text(parent, text);
+                reader.content().text(parent, FieldCase.apply(text, args));
+            }
+        } else if (StoredFields.stored(kind)) {
+            String value = switch (kind) {
+                case "AUTHOR" -> doc.author;
+                case "TITLE" -> doc.title;
+                case "SUBJECT" -> doc.subject;
+                case "KEYWORDS" -> doc.keywords;
+                default -> null;
+            };
+            if (value != null) {
+                reader.content().text(parent, FieldCase.apply(value, args));
             }
         }
     }
