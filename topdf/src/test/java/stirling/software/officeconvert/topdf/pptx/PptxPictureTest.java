@@ -130,6 +130,27 @@ class PptxPictureTest {
     }
 
     @Test
+    void aPicturePlaceholderTakesTheShapeOfItsLayoutPlaceholder() throws IOException {
+        String xfrm = "<a:xfrm><a:off x=\"1270000\" y=\"1270000\"/><a:ext cx=\"2540000\" cy=\"2540000\"/></a:xfrm>";
+        String pic = "<p:pic " + Decks.NS + "><p:nvPicPr><p:cNvPr id=\"7\" name=\"Picture\"/><p:cNvPicPr/><p:nvPr>"
+                + "<p:ph type=\"pic\" idx=\"27\"/></p:nvPr></p:nvPicPr><p:blipFill><a:blip r:embed=\"rIdP\"/>"
+                + "<a:stretch/></p:blipFill><p:spPr>" + xfrm + "</p:spPr></p:pic>";
+        Fixtures.Zip z = Fixtures.edit(Decks.slideXml(pic));
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("slideLayouts/(slideLayout[0-9]+[.]xml)")
+                .matcher(z.text("ppt/slides/_rels/slide1.xml.rels"));
+        assertTrue(m.find());
+        z.insertBefore("ppt/slideLayouts/" + m.group(1), "</p:spTree>", "<p:sp " + Decks.NS + "><p:nvSpPr><p:cNvPr "
+                + "id=\"31\" name=\"Picture Placeholder\"/><p:cNvSpPr/><p:nvPr><p:ph type=\"pic\" idx=\"27\"/></p:nvPr>"
+                + "</p:nvSpPr><p:spPr>" + xfrm + "<a:prstGeom prst=\"ellipse\"><a:avLst/></a:prstGeom></p:spPr></p:sp>");
+        z.put("ppt/media/red.png", Fixtures.png(4, 4, Color.RED));
+        z.defaultType("png", "image/png");
+        z.relationship("/ppt/slides/slide1.xml", "rIdP", Fixtures.REL + "image", "../media/red.png", false);
+        BufferedImage img = Decks.convert(dir, "phgeom.pptx", z.bytes()).render(0, 72);
+        assertEquals(Color.RED.getRGB(), img.getRGB(200, 200));
+        assertEquals(Color.WHITE.getRGB(), img.getRGB(104, 104));
+    }
+
+    @Test
     void brightnessAndContrastWashPicturesOut() throws IOException {
         String pic = "<p:pic " + Decks.NS + "><p:nvPicPr><p:cNvPr id=\"7\" name=\"Picture\"/><p:cNvPicPr/><p:nvPr/>"
                 + "</p:nvPicPr><p:blipFill><a:blip r:embed=\"rIdP\"><a:lum bright=\"50000\" contrast=\"-60000\"/>"

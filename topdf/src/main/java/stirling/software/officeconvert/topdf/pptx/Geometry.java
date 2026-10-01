@@ -13,7 +13,15 @@ import org.apache.poi.sl.draw.geom.CustomGeometry;
 import org.apache.poi.sl.draw.geom.Path;
 import org.apache.poi.sl.draw.geom.PathIf;
 import org.apache.poi.sl.usermodel.PaintStyle.PaintModifier;
+import org.apache.poi.xslf.usermodel.XSLFSheet;
 import org.apache.poi.xslf.usermodel.XSLFSimpleShape;
+import org.apache.xmlbeans.XmlObject;
+import org.openxmlformats.schemas.drawingml.x2006.main.CTShapeProperties;
+import org.openxmlformats.schemas.presentationml.x2006.main.CTApplicationNonVisualDrawingProps;
+import org.openxmlformats.schemas.presentationml.x2006.main.CTConnector;
+import org.openxmlformats.schemas.presentationml.x2006.main.CTPicture;
+import org.openxmlformats.schemas.presentationml.x2006.main.CTPlaceholder;
+import org.openxmlformats.schemas.presentationml.x2006.main.CTShape;
 
 final class Geometry {
 
@@ -36,7 +44,49 @@ final class Geometry {
         }
     }
 
-    static List<Outline> outlines(XSLFSimpleShape shape, Rectangle2D box) {
+    static XSLFSimpleShape source(XSLFSimpleShape shape) {
+        try {
+            if (hasGeometry(shape)) {
+                return shape;
+            }
+            CTPlaceholder ph = placeholder(shape.getXmlObject());
+            XSLFSheet sheet = shape.getSheet();
+            for (int depth = 0; ph != null && depth < 2 && sheet != null; depth++) {
+                if (!(sheet.getMasterSheet() instanceof XSLFSheet parent) || parent == sheet) {
+                    break;
+                }
+                if (parent.getPlaceholder(ph) instanceof XSLFSimpleShape s && hasGeometry(s)) {
+                    return s;
+                }
+                sheet = parent;
+            }
+        } catch (RuntimeException e) {
+            return shape;
+        }
+        return shape;
+    }
+
+    private static boolean hasGeometry(XSLFSimpleShape shape) {
+        CTShapeProperties spPr = switch (shape.getXmlObject()) {
+            case CTShape s -> s.getSpPr();
+            case CTPicture p -> p.getSpPr();
+            case CTConnector c -> c.getSpPr();
+            default -> null;
+        };
+        return spPr == null || spPr.isSetCustGeom() || spPr.isSetPrstGeom();
+    }
+
+    private static CTPlaceholder placeholder(XmlObject x) {
+        CTApplicationNonVisualDrawingProps nv = switch (x) {
+            case CTShape s -> s.getNvSpPr() == null ? null : s.getNvSpPr().getNvPr();
+            case CTPicture p -> p.getNvPicPr() == null ? null : p.getNvPicPr().getNvPr();
+            default -> null;
+        };
+        return nv == null || !nv.isSetPh() ? null : nv.getPh();
+    }
+
+    static List<Outline> outlines(XSLFSimpleShape own, Rectangle2D box) {
+        XSLFSimpleShape shape = source(own);
         CustomGeometry geom = of(shape);
         List<Outline> out = new ArrayList<>();
         if (geom != null) {
@@ -58,7 +108,8 @@ final class Geometry {
         return out;
     }
 
-    static Rectangle2D textBox(XSLFSimpleShape shape, Rectangle2D box) {
+    static Rectangle2D textBox(XSLFSimpleShape own, Rectangle2D box) {
+        XSLFSimpleShape shape = source(own);
         CustomGeometry geom = of(shape);
         if (geom == null) {
             return box;

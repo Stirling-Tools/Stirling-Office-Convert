@@ -18,6 +18,7 @@ import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
 import org.apache.poi.ooxml.util.POIXMLUnits;
 import org.apache.poi.xslf.usermodel.XSLFPictureShape;
+import org.apache.poi.xslf.usermodel.XSLFSimpleShape;
 import org.apache.xmlbeans.XmlCursor;
 import org.apache.xmlbeans.XmlObject;
 import org.openxmlformats.schemas.drawingml.x2006.main.CTBlipFillProperties;
@@ -26,6 +27,7 @@ import org.openxmlformats.schemas.drawingml.x2006.main.CTShapeProperties;
 import org.openxmlformats.schemas.drawingml.x2006.main.CTTransform2D;
 import org.openxmlformats.schemas.drawingml.x2006.main.STShapeType;
 import org.openxmlformats.schemas.presentationml.x2006.main.CTPicture;
+import org.openxmlformats.schemas.presentationml.x2006.main.CTShape;
 
 import stirling.software.officeconvert.topdf.io.DecodedPicture;
 import stirling.software.officeconvert.topdf.pdf.Crop;
@@ -126,7 +128,7 @@ final class PicturePainter {
         double dy = dist * Math.sin(dir);
         canvas.save();
         try {
-            if (!rectangular(pic.getSpPr())) {
+            if (!rectangular(Geometry.source(p))) {
                 for (Geometry.Outline o : Geometry.outlines(p, box)) {
                     if (o.filled()) {
                         AffineTransform mirror = AffineTransform.getTranslateInstance(dx, 2 * box.getMaxY() + dy);
@@ -181,7 +183,7 @@ final class PicturePainter {
 
     private void draw(XSLFPictureShape p, CTPicture pic, CTBlipFillProperties fill, DecodedPicture picture,
             Rectangle2D box) throws IOException {
-        boolean clip = !rectangular(pic.getSpPr());
+        boolean clip = !rectangular(Geometry.source(p));
         canvas.save();
         try {
             if (clip) {
@@ -297,6 +299,11 @@ final class PicturePainter {
         } catch (IOException | RuntimeException e) {
             return false;
         }
+    }
+
+    private static boolean rectangular(XSLFSimpleShape shape) {
+        return rectangular(shape.getXmlObject() instanceof CTPicture c ? c.getSpPr()
+                : shape.getXmlObject() instanceof CTShape s ? s.getSpPr() : null);
     }
 
     private static boolean rectangular(CTShapeProperties spPr) {
