@@ -107,9 +107,12 @@ class OdsTest {
         String table = "<table:table table:name=\"S\"><table:table-column/><table:table-row table:style-name=\"ro1\">"
                 + "<table:table-cell office:value-type=\"string\"><text:p>Tall</text:p></table:table-cell></table:table-row>"
                 + "<table:table-row table:style-name=\"ro2\"><table:table-cell office:value-type=\"string\"><text:p>Small"
-                + "</text:p></table:table-cell></table:table-row></table:table>";
+                + "</text:p></table:table-cell></table:table-row><table:table-row table:style-name=\"ro1\"><table:table-cell"
+                + " office:value-type=\"string\"><text:p>Two</text:p><text:p>lines</text:p></table:table-cell>"
+                + "</table:table-row></table:table>";
         String sheet = OdfFixtures.rewrite(ods(auto, table, null)).get("xl/worksheets/sheet1.xml");
-        assertTrue(sheet.contains("<row r=\"1\">") && sheet.contains("<row r=\"2\" ht=\"10.8\">"), sheet);
+        assertTrue(sheet.contains("<row r=\"1\">") && sheet.contains("<row r=\"2\" ht=\"10.8\">")
+                && sheet.contains("<row r=\"3\" ht=\"28.8\">"), sheet);
     }
 
     @Test

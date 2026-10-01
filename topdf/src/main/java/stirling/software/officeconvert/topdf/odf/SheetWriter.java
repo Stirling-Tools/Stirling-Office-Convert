@@ -303,7 +303,7 @@ final class SheetWriter {
             emittedRows++;
             int n = start + i;
             data.append("<row r=\"").append(n + 1).append('"');
-            if (!Double.isNaN(height) && (custom || rowHidden || !wraps && height <= defaultRowPoints())) {
+            if (!Double.isNaN(height) && (custom || rowHidden || !wraps && (rowMultiline || height <= defaultRowPoints()))) {
                 data.append(" ht=\"").append(Math.round(height * 100) / 100.0).append('"');
                 if (custom || rowHidden) {
                     data.append(" customHeight=\"1\"");
@@ -331,8 +331,11 @@ final class SheetWriter {
 
     private boolean rowWraps;
 
+    private boolean rowMultiline;
+
     private boolean cells(Element r, int row, StringBuilder out, List<int[]> rowMerges) {
         rowWraps = false;
+        rowMultiline = false;
         int col = 0;
         boolean any = false;
         String rowDefault = Dom.attr(r, Ns.TABLE, "default-cell-style-name");
@@ -360,6 +363,7 @@ final class SheetWriter {
             SheetStyles.Xf xf = w.cellStyles.xf(style);
             String value = covered ? null : value(c, xf);
             rowWraps |= value != null && xf.wrap();
+            rowMultiline |= value != null && Dom.kids(c, Ns.TEXT, "p").size() > 1;
             boolean override = xf.index() != 0 && xf.visible();
             if (!covered) {
                 int cs = Dom.integer(c, Ns.TABLE, "number-columns-spanned", 1);
