@@ -190,6 +190,16 @@ class OdtTest {
     }
 
     @Test
+    void theGutterIsPartOfTheLeftMarginNotAddedToIt() throws IOException {
+        String styles = OdfFixtures.styles("", "<style:page-layout style:name=\"pm1\"><style:page-layout-properties"
+                + " fo:page-width=\"8.5in\" fo:page-height=\"11in\" fo:margin-left=\"1.25in\" fo:margin-right=\"1in\""
+                + " loext:margin-gutter=\"0.25in\"/></style:page-layout>",
+                "<style:master-page style:name=\"Standard\" style:page-layout-name=\"pm1\"/>");
+        String xml = document(odt("", "<text:p>Body</text:p>", styles));
+        assertTrue(xml.contains("w:left=\"1440\"") && xml.contains("w:gutter=\"360\""), xml);
+    }
+
+    @Test
     void masterPageChangeStartsANewSection() throws IOException {
         String styles = OdfFixtures.styles("", "<style:page-layout style:name=\"pm1\"><style:page-layout-properties"
                 + " fo:page-width=\"8.5in\" fo:page-height=\"11in\"/></style:page-layout><style:page-layout"
