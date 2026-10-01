@@ -50,6 +50,39 @@ class PptxPictureTest {
     }
 
     @Test
+    void theStandInForAnSvgHidesNoBlackBehindItsTransparentPixels() throws IOException {
+        String pic = "<p:pic " + Decks.NS + "><p:nvPicPr><p:cNvPr id=\"7\" name=\"Graphic\"/><p:cNvPicPr/><p:nvPr/>"
+                + "</p:nvPicPr><p:blipFill><a:blip r:embed=\"rIdP\"><a:extLst><a:ext "
+                + "uri=\"{96DAC541-7B7A-43D3-8B79-37D633B846F1}\"><asvg:svgBlip xmlns:asvg=\"http://schemas.microsoft.com/"
+                + "office/drawing/2016/SVG/main\" r:embed=\"rIdS\"/></a:ext></a:extLst></a:blip><a:stretch><a:fillRect/>"
+                + "</a:stretch></p:blipFill><p:spPr><a:xfrm><a:off x=\"1270000\" y=\"1270000\"/><a:ext cx=\"1270000\" "
+                + "cy=\"1270000\"/></a:xfrm><a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom></p:spPr></p:pic>";
+        BufferedImage line = new BufferedImage(8, 8, BufferedImage.TYPE_INT_ARGB);
+        for (int y = 0; y < 8; y++) {
+            line.setRGB(3, y, 0xFFFF0000);
+        }
+        java.io.ByteArrayOutputStream png = new java.io.ByteArrayOutputStream();
+        javax.imageio.ImageIO.write(line, "png", png);
+        Fixtures.Zip z = Fixtures.edit(Decks.slideXml(pic));
+        z.put("ppt/media/line.png", png.toByteArray());
+        z.defaultType("png", "image/png");
+        z.relationship("/ppt/slides/slide1.xml", "rIdP", Fixtures.REL + "image", "../media/line.png", false);
+        Decks.Converted c = Decks.convert(dir, "svgstandin.pptx", z.bytes());
+        try (PDDocument d = c.open()) {
+            var res = d.getPage(0).getResources();
+            BufferedImage back = null;
+            for (var n : res.getXObjectNames()) {
+                if (res.getXObject(n) instanceof org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject x) {
+                    back = x.getOpaqueImage();
+                }
+            }
+            assertTrue(back != null);
+            assertEquals(0xFF0000, back.getRGB(0, 0) & 0xFFFFFF);
+            assertEquals(0xFF0000, back.getRGB(back.getWidth() - 1, back.getHeight() - 1) & 0xFFFFFF);
+        }
+    }
+
+    @Test
     void coloursAreWrittenWithThreeSignificantDigitsLikeOffice() throws IOException {
         String sp = "<p:sp " + Decks.NS + "><p:nvSpPr><p:cNvPr id=\"8\" name=\"Teal\"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr>"
                 + "<p:spPr><a:xfrm><a:off x=\"1270000\" y=\"1270000\"/><a:ext cx=\"1270000\" cy=\"1270000\"/></a:xfrm>"

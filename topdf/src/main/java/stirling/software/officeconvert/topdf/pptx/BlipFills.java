@@ -34,6 +34,8 @@ final class BlipFills {
 
     private BlipFills() {}
 
+    private static final String SVG_BLIP = "{96DAC541-7B7A-43D3-8B79-37D633B846F1}";
+
     static DecodedPicture picture(Deck deck, CTBlipFillProperties fill, String relsPart) throws IOException {
         return picture(deck, fill, relsPart, null);
     }
@@ -110,7 +112,22 @@ final class BlipFills {
         if (duo != null) {
             out.add(duo);
         }
+        if (standsInForSvg(blip)) {
+            out.add(new Pictures.Step("svgStandIn", (img, kind) -> HiddenPixels.tinted(img)));
+        }
         return out;
+    }
+
+    private static boolean standsInForSvg(CTBlip blip) {
+        if (!blip.isSetExtLst()) {
+            return false;
+        }
+        for (var ext : blip.getExtLst().getExtList()) {
+            if (SVG_BLIP.equalsIgnoreCase(ext.getUri())) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static Pictures.Step change(XmlObject x, XSLFSheet sheet) {
