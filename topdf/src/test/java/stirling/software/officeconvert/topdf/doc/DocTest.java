@@ -416,4 +416,13 @@ class DocTest {
         assertTrue(xml.contains("<wp:extent cx=\"1905000\" cy=\"635000\"/>"), xml);
         assertTrue(xml.contains("<wp:posOffset>-635000</wp:posOffset>"), xml);
     }
+
+    @Test
+    void trackedDeletionsAreLeftOutLikeTheFinalView() throws IOException {
+        byte[] doc = new WordFixture().para(List.of(WordFixture.run("kept "),
+                WordFixture.run("removed ", Sprms.u8(0x0800, 1)), WordFixture.run("added", Sprms.u8(0x0801, 1))), 0)
+                .build();
+        String xml = body(doc);
+        assertTrue(xml.contains("kept") && xml.contains("added") && !xml.contains("removed"), xml);
+    }
 }

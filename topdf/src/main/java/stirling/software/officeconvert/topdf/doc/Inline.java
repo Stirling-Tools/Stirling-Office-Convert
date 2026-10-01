@@ -33,6 +33,7 @@ final class Inline {
             CharacterProperties chp = seg.chp();
             String rPr = c.src.runs.props(chp, seg.sprms());
             boolean special = chp.isFSpec();
+            boolean deleted = chp.isFRMarkDel();
             for (int cp = seg.start(); cp < seg.end() && cp < src.length(); cp++) {
                 if (marks != null && !marks.isEmpty()) {
                     StringBuilder m = marks.get(cp);
@@ -49,7 +50,7 @@ final class Inline {
                     default -> {
                         if (!fields.visible()) {
                             fields.code(ch);
-                        } else {
+                        } else if (!deleted) {
                             character(ch, cp, special, chp, rPr);
                         }
                     }
