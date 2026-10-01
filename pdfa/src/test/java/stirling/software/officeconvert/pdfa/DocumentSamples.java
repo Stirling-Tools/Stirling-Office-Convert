@@ -208,6 +208,63 @@ final class DocumentSamples {
             table.setItem(COSName.P, doc);
             ((COSArray) doc.getDictionaryObject(COSName.K)).add(table);
         });
+        doc("d07_extension_schemas", Set.of("1:6.7.8-1", "1:6.7.8-2", "1:6.7.8-3", "1:6.7.8-4", "1:6.7.8-5",
+                "1:6.7.8-6", "1:6.7.8-7", "1:6.7.8-8", "1:6.7.8-9", "1:6.7.8-10", "1:6.7.8-11", "1:6.7.8-12",
+                "1:6.7.8-13", "1:6.7.8-14", "1:6.7.8-15", "1:6.7.8-16", "1:6.7.8-17", "1:6.7.8-18", "1:6.7.8-19",
+                "1:6.7.11-6", "2:6.6.2.3.2-1", "2:6.6.2.3.3-1", "2:6.6.2.3.3-2", "2:6.6.2.3.3-3", "2:6.6.2.3.3-4",
+                "2:6.6.2.3.3-5", "2:6.6.2.3.3-6", "2:6.6.2.3.3-7", "2:6.6.2.3.3-8", "2:6.6.2.3.3-9", "2:6.6.2.3.3-10",
+                "2:6.6.2.3.3-11", "2:6.6.2.3.3-12", "2:6.6.2.3.3-13", "2:6.6.2.3.3-14", "2:6.6.2.3.3-15",
+                "2:6.6.2.3.3-16", "2:6.6.2.3.3-17", "2:6.6.2.3.3-18", "2:6.6.4-6", "2:6.6.4-7"), d -> {
+                    page(d, "A broken extension schema");
+                    catalogXmp(d, "<rdf:Description rdf:about=\"\" xmlns:pdfaid=\"http://www.aiim.org/pdfa/ns/id/\" "
+                            + "xmlns:id=\"http://www.aiim.org/pdfa/ns/id/\"><pdfaid:part>1</pdfaid:part>"
+                            + "<pdfaid:conformance>B</pdfaid:conformance></rdf:Description>"
+                            + "<rdf:Description rdf:about=\"\" xmlns:id2=\"http://www.aiim.org/pdfa/ns/id/\">"
+                            + "<id2:amd>2005</id2:amd><id2:corr>1</id2:corr></rdf:Description>"
+                            + "<rdf:Description rdf:about=\"\" xmlns:ext=\"http://www.aiim.org/pdfa/ns/extension/\" "
+                            + "xmlns:pdfaSchema=\"http://www.aiim.org/pdfa/ns/schema#\" "
+                            + "xmlns:pdfaProperty=\"http://www.aiim.org/pdfa/ns/property#\" "
+                            + "xmlns:pdfaType=\"http://www.aiim.org/pdfa/ns/type#\" "
+                            + "xmlns:pdfaField=\"http://www.aiim.org/pdfa/ns/field#\"><ext:schemas><rdf:Seq>"
+                            + "<rdf:li rdf:parseType=\"Resource\"><pdfaSchema:extra>x</pdfaSchema:extra>"
+                            + "<pdfaSchema:namespaceURI><rdf:Bag/></pdfaSchema:namespaceURI>"
+                            + "<pdfaSchema:property><rdf:Bag><rdf:li rdf:parseType=\"Resource\">"
+                            + "<pdfaProperty:category>bogus</pdfaProperty:category></rdf:li></rdf:Bag>"
+                            + "</pdfaSchema:property><pdfaSchema:valueType><rdf:Bag><rdf:li rdf:parseType=\"Resource\">"
+                            + "<pdfaType:field><rdf:Bag><rdf:li rdf:parseType=\"Resource\"><pdfaField:name><rdf:Bag/>"
+                            + "</pdfaField:name><pdfaField:valueType>Undefined</pdfaField:valueType></rdf:li></rdf:Bag>"
+                            + "</pdfaType:field></rdf:li></rdf:Bag></pdfaSchema:valueType></rdf:li></rdf:Seq>"
+                            + "</ext:schemas></rdf:Description>");
+                });
+        doc("d08_no_identification", Set.of("1:6.7.11-1", "2:6.6.4-1"), d -> {
+            page(d, "No PDF/A identification");
+            catalogXmp(d, "<rdf:Description rdf:about=\"\" xmlns:dc=\"http://purl.org/dc/elements/1.1/\">"
+                    + "<dc:format>application/pdf</dc:format></rdf:Description>");
+        });
+        doc("d09_broken_xmp", Set.of("1:6.7.9-1"), d -> {
+            page(d, "Broken XMP");
+            COSStream m = d.getDocument().createCOSStream();
+            m.setItem(COSName.TYPE, COSName.METADATA);
+            m.setItem(COSName.SUBTYPE, COSName.getPDFName("XML"));
+            try (OutputStream o = m.createOutputStream()) {
+                o.write("<?xpacket begin=\"\" id=\"W5M0MpCehiHzreSzNTczkc9d\"?><x:xmpmeta xmlns:x=\"adobe:ns:meta/\"><rdf:RDF><a>"
+                        .getBytes(StandardCharsets.UTF_8));
+            }
+            d.getDocumentCatalog().getCOSObject().setItem(COSName.METADATA, m);
+        });
+    }
+
+    static void catalogXmp(PDDocument d, String descriptions) throws Exception {
+        String xmp = "<?xpacket begin=\"\" id=\"W5M0MpCehiHzreSzNTczkc9d\"?><x:xmpmeta xmlns:x=\"adobe:ns:meta/\">"
+                + "<rdf:RDF xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\">" + descriptions
+                + "</rdf:RDF></x:xmpmeta><?xpacket end=\"w\"?>";
+        COSStream m = d.getDocument().createCOSStream();
+        m.setItem(COSName.TYPE, COSName.METADATA);
+        m.setItem(COSName.SUBTYPE, COSName.getPDFName("XML"));
+        try (OutputStream o = m.createOutputStream()) {
+            o.write(xmp.getBytes(StandardCharsets.UTF_8));
+        }
+        d.getDocumentCatalog().getCOSObject().setItem(COSName.METADATA, m);
     }
 
     static PDPage page(PDDocument d, String title) throws Exception {
