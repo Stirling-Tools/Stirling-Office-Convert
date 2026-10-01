@@ -121,6 +121,16 @@ class DocxLineRulesTest {
     }
 
     @Test
+    void anEmptyNumberingPartStillNumbersItsListItems() throws IOException {
+        String item = "<w:numPr><w:ilvl w:val=\"0\"/><w:numId w:val=\"1\"/></w:numPr>";
+        String body = para(item, run("Apples")) + para(item, run("Pears"));
+        DocxDoc.Rendered r = render("emptylist", new DocxDoc().styles(STYLES).numbering("").body(body));
+        assertEquals("1.", r.words().get(0).text());
+        assertEquals("2.", r.words().get(2).text());
+        assertEquals(72 + 36, r.word("Pears").x(), 0.5f);
+    }
+
+    @Test
     void aCharacterGridNarrowsEveryCharacter() throws IOException {
         String body = DocxDoc.p("AAAAAAAAAA End");
         String grid = DocxDoc.LETTER.replace("</w:sectPr>", "<w:docGrid w:type=\"linesAndChars\" w:linePitch=\"240\""
