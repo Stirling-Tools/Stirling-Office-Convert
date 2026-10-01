@@ -35,6 +35,8 @@ final class ContentReader {
 
     private int autonum;
 
+    private int displayMath = -1;
+
     static final int MAX_DEPTH = 40;
 
     ContentReader(DocxPackage pkg, String part) {
@@ -169,7 +171,13 @@ final class ContentReader {
             mark.mergeFrom(markDirect);
         }
         List<Inline> items = new ArrayList<>();
-        inline(p.kids, items, paraRun, null);
+        int outerMath = displayMath;
+        displayMath = MathReader.alone(p.kids) ? 0 : -1;
+        try {
+            inline(p.kids, items, paraRun, null);
+        } finally {
+            displayMath = outerMath;
+        }
         boolean deleted = markPr != null && (markPr.child("w:del") != null || markPr.child("w:moveFrom") != null);
         String label = null;
         RunProps labelProps = null;
@@ -241,6 +249,13 @@ final class ContentReader {
                     }
                 }
                 case "m:oMathPara", "m:oMath" -> {
+                    if (displayMath >= 0 && k.is("m:oMath")) {
+                        if (MathReader.display(k, out, paraRun, link, drawings.fonts(), r -> runProps(r, paraRun),
+                                displayMath == 0)) {
+                            displayMath++;
+                            continue;
+                        }
+                    }
                     if (!MathReader.read(k, out, paraRun, link, drawings.fonts(), r -> runProps(r, paraRun))) {
                         math(k, out, paraRun, link);
                     }

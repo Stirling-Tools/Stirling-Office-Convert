@@ -23,6 +23,45 @@ final class MathReader {
         return true;
     }
 
+    static boolean display(XEl zone, List<Inline> out, RunProps paraRun, Inline.Link link, Fonts fonts,
+            Function<XEl, RunProps> runProps, boolean first) {
+        if (fonts == null || zone == null) {
+            return false;
+        }
+        try {
+            Inline.Obj o = object(zone, paraRun, link, fonts, runProps, true);
+            if (first) {
+                out.add(new Inline.PTab("center", "margin", (char) 0, paraRun));
+            }
+            out.add(o);
+            return true;
+        } catch (RuntimeException | StackOverflowError e) {
+            return false;
+        }
+    }
+
+    static boolean alone(List<XEl> kids) {
+        boolean math = false;
+        for (XEl k : kids) {
+            switch (k.name) {
+                case "m:oMath" -> math = true;
+                case "w:pPr", "w:bookmarkStart", "w:bookmarkEnd", "w:proofErr", "w:permStart", "w:permEnd" -> {
+                }
+                case "w:r" -> {
+                    for (XEl c : k.kids) {
+                        if (!c.is("w:rPr")) {
+                            return false;
+                        }
+                    }
+                }
+                default -> {
+                    return false;
+                }
+            }
+        }
+        return math;
+    }
+
     private static boolean laidOut(XEl zone, List<Inline> out, RunProps paraRun, Inline.Link link, Fonts fonts,
             Function<XEl, RunProps> runProps) {
         try {
