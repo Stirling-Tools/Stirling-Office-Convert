@@ -30,12 +30,12 @@ final class Limits {
         this.report = report;
     }
 
-    static void run(PDDocument doc, PdfALevel level, Report report) throws IOException {
+    static CosWalk.Visitor prepare(PDDocument doc, PdfALevel level, Report report) {
         Limits l = new Limits(level, report);
         if (level.part() == 1) {
             l.pageTree(doc);
         }
-        CosWalk.walk(doc, l::visit);
+        return l::visit;
     }
 
     static final int MAX_NAME_BYTES = 127;

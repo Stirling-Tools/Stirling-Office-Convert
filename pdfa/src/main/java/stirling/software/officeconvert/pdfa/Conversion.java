@@ -57,10 +57,14 @@ final class Conversion {
         DeviceColours colours = new DeviceColours();
         ContentFixer.run(graph, level, report, usage, colours);
         FontFixer.run(doc, usage, level, () -> FontLibrary.withSystem(options.fontDirs()), report);
-        FontCompaction.run(doc, usage, level);
         PdfFiles.stopIfInterrupted();
-        JpxImages.run(doc, level, report);
-        StreamFixer.run(doc, level, report);
+        FontCompaction compaction = new FontCompaction(doc, usage, level);
+        CosWalk.Visitor jpx = JpxImages.visitor(doc, level, report);
+        StreamFixer.run(doc, level, report, b -> {
+            compaction.collect(b);
+            jpx.visit(b);
+        });
+        compaction.run();
         if (level.part() == 1) {
             Transparency.run(doc, options.flattenDpi(), report);
         }
@@ -68,8 +72,7 @@ final class Conversion {
             StructureCheck.run(doc, level, report);
         }
         graph = ContentGraph.of(doc);
-        ColourFixer.run(doc, graph, level, report, colours);
-        Limits.run(doc, level, report);
+        ColourFixer.run(doc, graph, level, report, colours, Limits.prepare(doc, level, report));
         Metadata.run(doc, level);
         PdfFiles.stopIfInterrupted();
         save(doc, out, level);

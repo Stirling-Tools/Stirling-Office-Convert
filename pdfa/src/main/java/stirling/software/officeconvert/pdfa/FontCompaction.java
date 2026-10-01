@@ -43,22 +43,22 @@ final class FontCompaction {
 
     private final PdfALevel level;
 
-    private FontCompaction(PDDocument doc, FontUsage usage, PdfALevel level) {
+    private final Map<COSStream, List<COSDictionary>> users = new IdentityHashMap<>();
+
+    private final Set<COSDictionary> form = Collections.newSetFromMap(new IdentityHashMap<>());
+
+    FontCompaction(PDDocument doc, FontUsage usage, PdfALevel level) {
         this.doc = doc;
         this.usage = usage;
         this.level = level;
     }
 
-    static void run(PDDocument doc, FontUsage usage, PdfALevel level) throws IOException {
-        FontCompaction c = new FontCompaction(doc, usage, level);
-        Map<COSStream, List<COSDictionary>> users = new IdentityHashMap<>();
-        Set<COSDictionary> form = Collections.newSetFromMap(new IdentityHashMap<>());
-        CosWalk.walk(doc, b -> c.collect(b, users, form));
+    void run() throws IOException {
         for (Map.Entry<COSStream, List<COSDictionary>> e : users.entrySet()) {
             PdfFiles.stopIfInterrupted();
             if (Collections.disjoint(form, e.getValue())) {
                 try {
-                    c.compact(e.getKey(), e.getValue());
+                    compact(e.getKey(), e.getValue());
                 } catch (IOException | RuntimeException ex) {
                     PdfFiles.stopIfInterrupted();
                 }
@@ -66,7 +66,7 @@ final class FontCompaction {
         }
     }
 
-    private void collect(COSBase b, Map<COSStream, List<COSDictionary>> users, Set<COSDictionary> form) {
+    void collect(COSBase b) {
         if (!(b instanceof COSDictionary d) || b instanceof COSStream) {
             return;
         }

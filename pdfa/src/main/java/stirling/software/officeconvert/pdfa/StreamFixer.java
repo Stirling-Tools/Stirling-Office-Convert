@@ -53,9 +53,12 @@ final class StreamFixer {
         this.report = report;
     }
 
-    static void run(PDDocument doc, PdfALevel level, Report report) throws IOException {
+    static void run(PDDocument doc, PdfALevel level, Report report, CosWalk.Visitor first) throws IOException {
         StreamFixer f = new StreamFixer(doc, level, report);
-        CosWalk.walk(doc, f::visit);
+        CosWalk.walk(doc, b -> {
+            first.visit(b);
+            f.visit(b);
+        });
     }
 
     private void visit(COSBase b) throws IOException {

@@ -36,10 +36,13 @@ final class ColourFixer {
         this.colours = colours;
     }
 
-    static void run(PDDocument doc, ContentGraph graph, PdfALevel level, Report report, DeviceColours colours)
-            throws IOException {
+    static void run(PDDocument doc, ContentGraph graph, PdfALevel level, Report report, DeviceColours colours,
+            CosWalk.Visitor alongside) throws IOException {
         ColourFixer c = new ColourFixer(doc, level, report, colours);
-        CosWalk.walk(doc, c::visit);
+        CosWalk.walk(doc, b -> {
+            c.visit(b);
+            alongside.visit(b);
+        });
         int components = c.outputIntent();
         COSName key = components == 3 && colours.cmyk() ? DEFAULT_CMYK
                 : components == 4 && colours.rgb() ? DEFAULT_RGB : null;

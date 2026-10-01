@@ -6,7 +6,6 @@ import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -46,17 +45,13 @@ final class JpxImages {
         this.report = report;
     }
 
-    static void run(PDDocument doc, PdfALevel level, Report report) throws IOException {
+    static CosWalk.Visitor visitor(PDDocument doc, PdfALevel level, Report report) {
         JpxImages j = new JpxImages(doc, level, report);
-        List<COSStream> images = new ArrayList<>();
-        CosWalk.walk(doc, b -> {
+        return b -> {
             if (b instanceof COSStream s && COSName.IMAGE.equals(s.getCOSName(COSName.SUBTYPE)) && jpx(s)) {
-                images.add(s);
+                j.fix(s);
             }
-        });
-        for (COSStream s : images) {
-            j.fix(s);
-        }
+        };
     }
 
     static boolean decoderAvailable() {
