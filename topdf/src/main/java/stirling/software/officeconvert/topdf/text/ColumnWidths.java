@@ -17,6 +17,10 @@ final class ColumnWidths {
 
     static final double DEFAULT_WIDTH = 64.0;
 
+    static final double FONT_SIZE = 10;
+
+    static final double CELL_PADDING = 6;
+
     static final double PRINTABLE_WIDTH = 595.28 - 2 * 56.69;
 
     static final double OUR_PIXEL = 0.12 * 46 / 7;
@@ -87,7 +91,21 @@ final class ColumnWidths {
     }
 
     boolean overflows(String text) {
-        return text.indexOf('\n') >= 0 || loPoints(pixels(text)) > PRINTABLE_WIDTH;
+        return text.indexOf('\n') >= 0 || loPoints(pixels(text)) > PRINTABLE_WIDTH
+                && printedPoints(text) + CELL_PADDING > PRINTABLE_WIDTH;
+    }
+
+    double printedPoints(String text) {
+        double units = 0;
+        for (int i = 0; i < text.length(); ) {
+            int cp = text.codePointAt(i);
+            i += Character.charCount(cp);
+            if (TextScanner.visible(cp)) {
+                FontFace f = face(cp);
+                units += f == null ? 0.5 : (double) f.advance(cp) / f.unitsPerEm();
+            }
+        }
+        return units * FONT_SIZE;
     }
 
     static double loPoints(int pixels) {
@@ -115,16 +133,18 @@ final class ColumnWidths {
         return Math.max(best, line);
     }
 
+    private FontFace face(int cp) {
+        FontFace f = face != null && face.covers(cp) ? face : fonts.fallback(cp, face);
+        return f == null ? face : f;
+    }
+
     private int advance(int cp) {
         if (cp < CACHED && cache[cp] >= 0) {
             return cache[cp];
         }
         int px = 0;
         if (TextScanner.visible(cp)) {
-            FontFace f = face != null && face.covers(cp) ? face : fonts.fallback(cp, face);
-            if (f == null) {
-                f = face;
-            }
+            FontFace f = face(cp);
             px = f == null ? MEASURE_PPEM / 2
                     : (int) Math.round((double) f.advance(cp) * MEASURE_PPEM / f.unitsPerEm());
         }

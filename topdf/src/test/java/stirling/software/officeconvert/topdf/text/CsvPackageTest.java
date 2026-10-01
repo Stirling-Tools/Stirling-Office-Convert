@@ -100,6 +100,8 @@ class CsvPackageTest {
         assertTrue(s.contains("<c r=\"B2\" s=\"2\""), s);
         assertTrue(s.contains("<c r=\"B3\" s=\"2\""), s);
         assertTrue(widths(s).get(1) <= ColumnWidths.chars(ColumnWidths.PRINTABLE_WIDTH) + 1e-4, s);
+        String fits = convert("id,body\n1," + "x".repeat(89) + "\n").sheet();
+        assertTrue(fits.contains("<c r=\"B2\" t=\"inlineStr\">"), "printed text that fits the page does not wrap");
     }
 
     @Test
