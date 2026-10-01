@@ -119,6 +119,9 @@ final class SheetPlan {
             if (r.spillTo >= range.getFirstColumn() && r.spillFrom <= range.getLastColumn()) {
                 sink.add(r.index, r.index, r.spillFrom, r.spillTo);
             }
+            if (r.markTo >= 0) {
+                sink.add(r.index, r.index, r.markFrom, r.markTo);
+            }
             for (CellEntry e : r.cells(range.getFirstColumn(), range.getLastColumn())) {
                 sink.add(r.index, r.index, e.col(), e.col());
             }
@@ -127,9 +130,7 @@ final class SheetPlan {
         grid.mergesIn(range.getFirstRow(), range.getLastRow(), range.getFirstColumn(), range.getLastColumn(),
                 merges::add);
         for (CellRangeAddress m : merges) {
-            if (grid.cell(m.getFirstRow(), m.getFirstColumn()) != null) {
-                sink.add(m.getFirstRow(), m.getLastRow(), m.getFirstColumn(), m.getLastColumn());
-            }
+            sink.add(m.getFirstRow(), m.getLastRow(), m.getFirstColumn(), m.getLastColumn());
         }
     }
 }
