@@ -132,6 +132,57 @@ final class FontSamples {
             page(d, "BT /A 20 Tf 50 760 Td (ABC) Tj /B 20 Tf 0 -40 Td (ABC) Tj /C 20 Tf 0 -40 Td (ABC) Tj ET",
                     PDFontFactory.createFont(subset), PDFontFactory.createFont(charset), PDFontFactory.createFont(bogus));
         });
+        doc("f07_codes_in_the_cmap", Set.of(), d -> {
+            org.apache.fontbox.ttf.TrueTypeFont lib = Samples.liberation();
+            java.util.TreeMap<Integer, Integer> map = new java.util.TreeMap<>(java.util.Map.of(0x41, lib.nameToGID("A"),
+                    0x92, lib.nameToGID("quoteright")));
+            byte[] program = withCmap(lib, Cmaps.table(java.util.List.of(new Cmaps.Subtable(1, 0, map),
+                    new Cmaps.Subtable(3, 1, map))));
+            COSDictionary f = Samples.trueTypeUnembedded("Broken", new int[0]);
+            f.setInt(COSName.FIRST_CHAR, 65);
+            f.setInt(COSName.LAST_CHAR, 146);
+            COSArray widths = new COSArray();
+            for (int c = 65; c <= 146; c++) {
+                int gid = c == 65 ? lib.nameToGID("A") : c == 146 ? lib.nameToGID("quoteright") : 0;
+                widths.add(org.apache.pdfbox.cos.COSInteger.get(gid == 0 ? 0
+                        : Math.round(lib.getAdvanceWidth(gid) * 1000f / lib.getUnitsPerEm())));
+            }
+            f.setItem(COSName.WIDTHS, widths);
+            COSStream file = d.getDocument().createCOSStream();
+            try (OutputStream o = file.createOutputStream(COSName.FLATE_DECODE)) {
+                o.write(program);
+            }
+            file.setInt(COSName.LENGTH1, program.length);
+            ((COSDictionary) f.getDictionaryObject(COSName.FONT_DESC)).setItem(COSName.FONT_FILE2, file);
+            page(d, "BT /A 30 Tf 50 760 Td (A\\222A) Tj ET", PDFontFactory.createFont(f));
+        });
+    }
+
+    static byte[] withCmap(org.apache.fontbox.ttf.TrueTypeFont font, byte[] cmap) throws Exception {
+        java.util.TreeMap<String, byte[]> tables = new java.util.TreeMap<>();
+        for (var e : font.getTableMap().entrySet()) {
+            tables.put(e.getKey(), "cmap".equals(e.getKey()) ? cmap : font.getTableBytes(e.getValue()));
+        }
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        java.io.DataOutputStream o = new java.io.DataOutputStream(out);
+        o.writeInt(0x00010000);
+        o.writeShort(tables.size());
+        o.writeShort(0);
+        o.writeShort(0);
+        o.writeShort(0);
+        int offset = 12 + 16 * tables.size();
+        for (var e : tables.entrySet()) {
+            o.writeBytes(e.getKey());
+            o.writeInt(0);
+            o.writeInt(offset);
+            o.writeInt(e.getValue().length);
+            offset += (e.getValue().length + 3) & ~3;
+        }
+        for (byte[] t : tables.values()) {
+            o.write(t);
+            o.write(new byte[((t.length + 3) & ~3) - t.length]);
+        }
+        return out.toByteArray();
     }
 
     static COSDictionary descriptor(PDType0Font f) {

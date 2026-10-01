@@ -139,6 +139,8 @@ final class FontCompaction {
             return;
         }
         TreeSet<Integer> keep = new TreeSet<>();
+        Map<Integer, Integer> unicode = new TreeMap<>();
+        Map<Integer, Integer> macRoman = new TreeMap<>();
         Map<COSDictionary, TreeMap<Integer, Integer>> cidMaps = new LinkedHashMap<>();
         for (PDFont f : loaded) {
             TreeSet<Integer> codes = usage.codes().get(f.getCOSObject());
@@ -150,7 +152,7 @@ final class FontCompaction {
                     map.put(c.codeToCID(code), gid);
                     keep.add(gid);
                 }
-            } else if (!SimpleGlyphs.collect((PDTrueTypeFont) f, ttf, codes, keep)) {
+            } else if (!SimpleGlyphs.collect((PDTrueTypeFont) f, ttf, codes, keep, unicode, macRoman)) {
                 return;
             }
         }
@@ -165,7 +167,7 @@ final class FontCompaction {
             remap.put(gid, w.addCopy(gid, hmtx == null ? 0 : hmtx.getAdvanceWidth(gid)));
         }
         String name = ttf.getName() == null ? "Font" : ttf.getName();
-        byte[] font = w.build(FontRebuild.cleanName(name), cmap(ttf, remap));
+        byte[] font = w.build(FontRebuild.cleanName(name), cmap(ttf, remap, unicode, macRoman));
         byte[] packed = PdfWriter.deflate(font);
         long before = program.getLength();
         if (packed.length > before * MAX_RATIO || before - packed.length < MIN_SAVING) {
@@ -239,7 +241,8 @@ final class FontCompaction {
         return ContentGraph.dict(owner.getDictionaryObject(COSName.FONT_DESC));
     }
 
-    private static byte[] cmap(TrueTypeFont ttf, Map<Integer, Integer> remap) throws IOException {
+    private static byte[] cmap(TrueTypeFont ttf, Map<Integer, Integer> remap, Map<Integer, Integer> unicode,
+            Map<Integer, Integer> macRoman) throws IOException {
         CmapTable table = ttf.getCmap();
         List<Cmaps.Subtable> subs = new ArrayList<>();
         if (table != null) {
@@ -251,6 +254,14 @@ final class FontCompaction {
                         for (int code : codes) {
                             map.put(code, e.getValue());
                         }
+                    }
+                }
+                Map<Integer, Integer> named = s.getPlatformId() == 3 && s.getPlatformEncodingId() == 1 ? unicode
+                        : s.getPlatformId() == 1 && s.getPlatformEncodingId() == 0 ? macRoman : Map.of();
+                for (Map.Entry<Integer, Integer> e : named.entrySet()) {
+                    Integer gid = remap.get(e.getValue());
+                    if (gid != null && gid > 0) {
+                        map.putIfAbsent(e.getKey(), gid);
                     }
                 }
                 subs.add(new Cmaps.Subtable(s.getPlatformId(), s.getPlatformEncodingId(), map));
