@@ -319,7 +319,7 @@ final class Samples {
             try (OutputStream o = s.createOutputStream(COSName.LZW_DECODE)) { o.write(content); }
             p.getCOSObject().setItem(COSName.CONTENTS, s);
         });
-        gen("s08_cmyk_lab_sePARAtion", d -> {
+        gen("s08_cmyk_lab_separation", d -> {
             PDPage p = page(d);
             PDFont f = std(Standard14Fonts.FontName.HELVETICA_BOLD);
             BufferedImage rgb = picture(false);
