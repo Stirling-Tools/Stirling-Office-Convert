@@ -1,0 +1,55 @@
+package stirling.software.officeconvert.topdf.xlsx;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import java.io.IOException;
+import java.nio.file.Path;
+
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+
+class BlankPagesTest {
+
+    private static final String BREAKS = "<rowBreaks count=\"2\" manualBreakCount=\"2\"><brk id=\"10\" max=\"16383\""
+            + " man=\"1\"/><brk id=\"20\" max=\"16383\" man=\"1\"/></rowBreaks>";
+
+    private static final String STYLES = "<fonts count=\"2\"><font><sz val=\"11\"/><name val=\"Calibri\"/></font><font>"
+            + "<b/><sz val=\"11\"/><name val=\"Calibri\"/></font></fonts><fills count=\"2\"><fill><patternFill"
+            + " patternType=\"none\"/></fill><fill><patternFill patternType=\"gray125\"/></fill></fills><borders"
+            + " count=\"1\"><border/></borders><cellStyleXfs count=\"1\"><xf/></cellStyleXfs><cellXfs count=\"2\"><xf/>"
+            + "<xf fontId=\"1\" applyFont=\"1\"/></cellXfs>";
+
+    @TempDir
+    Path dir;
+
+    @Test
+    void aBlankPageBeforeTheLastPrintedPageIsStillPrinted() throws IOException {
+        String rows = "<row r=\"1\">" + RawXlsx.inline("A1", "First") + "</row><row r=\"25\">"
+                + RawXlsx.inline("A25", "Last") + "</row>";
+        XlsxTesting.Converted c = convert("gap.xlsx", rows);
+        assertEquals(3, c.pages().size());
+        assertTrue(c.pages().get(0).contains("First"));
+        assertEquals("", c.pages().get(1).strip());
+        assertTrue(c.pages().get(2).contains("Last"));
+    }
+
+    @Test
+    void anEmptyCellWithAnInvisibleStyleIsNotPrinted() throws IOException {
+        String rows = "<row r=\"1\">" + RawXlsx.inline("A1", "First") + "</row><row r=\"15\"><c r=\"A15\" s=\"1\"/>"
+                + "</row>";
+        assertEquals(1, convert("styled.xlsx", rows).pages().size());
+    }
+
+    @Test
+    void blankPagesAfterTheLastPrintedPageAreLeftOut() throws IOException {
+        String rows = "<row r=\"1\">" + RawXlsx.inline("A1", "Only") + "</row><row r=\"25\" ht=\"30\""
+                + " customHeight=\"1\"/>";
+        assertEquals(1, convert("tail.xlsx", rows).pages().size());
+    }
+
+    private XlsxTesting.Converted convert(String name, String rows) throws IOException {
+        String sheet = "<sheetData>" + rows + "</sheetData>" + BREAKS;
+        return XlsxTesting.convert(dir, name, new RawXlsx().styles(STYLES).sheet("S", sheet).bytes());
+    }
+}

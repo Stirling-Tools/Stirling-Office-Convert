@@ -116,9 +116,7 @@ final class SheetPlan {
                 sink.add(r.index, r.index, r.spillFrom, r.spillTo);
             }
             for (CellEntry e : r.cells(range.getFirstColumn(), range.getLastColumn())) {
-                if (e.hasText() || e.format().visible()) {
-                    sink.add(r.index, r.index, e.col(), e.col());
-                }
+                sink.add(r.index, r.index, e.col(), e.col());
             }
         }
         List<CellRangeAddress> merges = new ArrayList<>();

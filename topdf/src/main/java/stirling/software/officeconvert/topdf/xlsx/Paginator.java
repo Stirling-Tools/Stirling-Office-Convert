@@ -150,7 +150,7 @@ final class Paginator {
 
     static final int FIT_EDGE_PX = 5;
 
-    // Only pages with something on them are printed, so pick them from the content instead of walking every page
+    // Excel prints every page up to the last one with content, so find that page instead of walking every page
     private boolean pages(CellRangeAddress range, double scale, boolean manualBreaks, Content content, int limit,
             List<Page> out) throws InterruptedIOException {
         List<Span> colSpans = spans(range.getFirstColumn(), range.getLastColumn(), grid::columnWidth,
@@ -204,6 +204,7 @@ final class Paginator {
                 }
             }
         });
+        fillGaps(picked, limit);
         Map<Integer, Band> rowBands = new HashMap<>();
         Map<Integer, Band> colBands = new HashMap<>();
         Band[] titles = new Band[2];
@@ -216,6 +217,17 @@ final class Paginator {
             checkpoint(out.size());
         }
         return cut[0];
+    }
+
+    private static void fillGaps(TreeSet<Long> picked, int limit) throws InterruptedIOException {
+        if (picked.isEmpty()) {
+            return;
+        }
+        long last = picked.last();
+        for (long k = 0; k < last && picked.size() < limit; k++) {
+            checkpoint(k);
+            picked.add(k);
+        }
     }
 
     private static int[] starts(List<Span> spans) {
