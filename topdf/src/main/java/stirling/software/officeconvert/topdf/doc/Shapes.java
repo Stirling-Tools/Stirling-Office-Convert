@@ -37,21 +37,16 @@ final class Shapes {
         long cx = Math.max(1, (long) d.getRectangleRight() - d.getRectangleLeft()) * Drawings.EMU_PER_TWIP;
         long cy = Math.max(1, (long) d.getRectangleBottom() - d.getRectangleTop()) * Drawings.EMU_PER_TWIP;
         boolean wraps = fspa != null && fspa.getWr() != 3;
-        String inner;
-        String uri;
-        if ((rec.getFlags() & 0x01) != 0) {
-            inner = Groups.group(c, story, d.getShapeId(), cx, cy);
-            uri = Groups.WPG;
-        } else {
-            inner = shape(c, story, sp, 0, 0, cx, cy, wraps);
-            uri = Xml.WPS;
-        }
+        boolean group = (rec.getFlags() & 0x01) != 0;
+        long[] box = group ? new long[] {0, 0, cx, cy} : unrotated(sp, 0, 0, cx, cy);
+        String inner = group ? Groups.group(c, story, d.getShapeId(), cx, cy)
+                : shape(c, story, sp, 0, 0, box[2], box[3], wraps);
         if (inner == null) {
             return null;
         }
         int id = c.nextId();
-        return "<w:drawing>" + open(d, sp, fspa, id, cx, cy) + "<a:graphic><a:graphicData uri=\"" + uri + "\">" + inner
-                + "</a:graphicData></a:graphic></wp:anchor></w:drawing>";
+        return "<w:drawing>" + open(d, sp, fspa, id, box[2], box[3], box[0], box[1]) + "<a:graphic><a:graphicData uri=\""
+                + (group ? Groups.WPG : Xml.WPS) + "\">" + inner + "</a:graphicData></a:graphic></wp:anchor></w:drawing>";
     }
 
     static String shape(Conv c, Story story, EscherContainerRecord sp, long x, long y, long cx, long cy,
@@ -80,7 +75,7 @@ final class Shapes {
         }
         StringBuilder b = new StringBuilder("<wps:wsp><wps:cNvSpPr").append(text != null ? " txBox=\"1\"" : "")
                 .append("/><wps:spPr>");
-        xfrm(b, rec, x, y, cx, cy);
+        xfrm(b, rec, rotation(sp), x, y, cx, cy);
         b.append("<a:prstGeom prst=\"").append(geom).append("\"><a:avLst/></a:prstGeom>");
         long opacity = prop(sp, 0x0182, 0x10000);
         if (filled && !line && opacity > 0) {
@@ -118,8 +113,11 @@ final class Shapes {
         return b.toString();
     }
 
-    static void xfrm(StringBuilder b, EscherSpRecord rec, long x, long y, long cx, long cy) {
+    static void xfrm(StringBuilder b, EscherSpRecord rec, double deg, long x, long y, long cx, long cy) {
         b.append("<a:xfrm");
+        if (deg != 0) {
+            b.append(" rot=\"").append(Math.round(deg * 60000)).append('"');
+        }
         if ((rec.getFlags() & 0x40) != 0) {
             b.append(" flipH=\"1\"");
         }
@@ -136,7 +134,22 @@ final class Shapes {
         return Xml.hex(rgb);
     }
 
-    static String open(OfficeDrawing d, EscherContainerRecord sp, FSPA fspa, int id, long cx, long cy) {
+    static long[] unrotated(EscherContainerRecord sp, long x, long y, long cx, long cy) {
+        double deg = rotation(sp);
+        boolean sideways = deg > 45 && deg <= 135 || deg > 225 && deg <= 315;
+        if (!sideways) {
+            return new long[] {x, y, cx, cy};
+        }
+        return new long[] {x + (cx - cy) / 2, y + (cy - cx) / 2, cy, cx};
+    }
+
+    static double rotation(EscherContainerRecord sp) {
+        double deg = ((int) prop(sp, 0x0004, 0)) / 65536.0 % 360;
+        return deg < 0 ? deg + 360 : deg;
+    }
+
+    static String open(OfficeDrawing d, EscherContainerRecord sp, FSPA fspa, int id, long cx, long cy, long shiftX,
+            long shiftY) {
         long left = prop(sp, WRAP_LEFT, 114300);
         long right = prop(sp, WRAP_RIGHT, 114300);
         long top = prop(sp, WRAP_TOP, 0);
@@ -154,7 +167,7 @@ final class Shapes {
         if (h != null) {
             b.append("<wp:align>").append(h).append("</wp:align>");
         } else {
-            b.append("<wp:posOffset>").append((long) d.getRectangleLeft() * Drawings.EMU_PER_TWIP)
+            b.append("<wp:posOffset>").append((long) d.getRectangleLeft() * Drawings.EMU_PER_TWIP + shiftX)
                     .append("</wp:posOffset>");
         }
         b.append("</wp:positionH><wp:positionV relativeFrom=\"").append(verticalFrom(sp, fspa)).append("\">");
@@ -162,7 +175,7 @@ final class Shapes {
         if (v != null) {
             b.append("<wp:align>").append(v).append("</wp:align>");
         } else {
-            b.append("<wp:posOffset>").append((long) d.getRectangleTop() * Drawings.EMU_PER_TWIP)
+            b.append("<wp:posOffset>").append((long) d.getRectangleTop() * Drawings.EMU_PER_TWIP + shiftY)
                     .append("</wp:posOffset>");
         }
         b.append("</wp:positionV><wp:extent cx=\"").append(cx).append("\" cy=\"").append(cy)

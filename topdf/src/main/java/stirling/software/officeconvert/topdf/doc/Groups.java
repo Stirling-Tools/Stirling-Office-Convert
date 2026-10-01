@@ -108,11 +108,13 @@ final class Groups {
                     .append("<a:blip r:embed=\"").append(story.rels.image(name)).append("\"/><a:stretch><a:fillRect/>")
                     .append("</a:stretch></pic:blipFill><pic:spPr>");
             if (rec != null) {
-                Shapes.xfrm(b, rec, r[0], r[1], r[2], r[3]);
+                long[] box = Shapes.unrotated(sp, r[0], r[1], r[2], r[3]);
+                Shapes.xfrm(b, rec, Shapes.rotation(sp), box[0], box[1], box[2], box[3]);
             }
             return b.append("<a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom></pic:spPr></pic:pic>").toString();
         }
-        return Shapes.shape(c, story, sp, r[0], r[1], r[2], r[3], false);
+        long[] box = Shapes.unrotated(sp, r[0], r[1], r[2], r[3]);
+        return Shapes.shape(c, story, sp, box[0], box[1], box[2], box[3], false);
     }
 
     static byte[] blip(Conv c, int pib) {

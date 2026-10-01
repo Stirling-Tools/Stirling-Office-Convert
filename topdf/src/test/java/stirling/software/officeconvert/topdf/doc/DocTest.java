@@ -403,4 +403,17 @@ class DocTest {
         assertTrue(xml.contains("<a:off x=\"50\" y=\"0\"/><a:ext cx=\"50\" cy=\"50\"/>"), xml);
         assertTrue(xml.contains("FF0000") && xml.contains("00FF00"), xml);
     }
+
+    @Test
+    void aSidewaysShapeIsRotatedAboutItsCentre() throws IOException {
+        byte[] doc = new WordFixture()
+                .para(List.of(WordFixture.run("Turn "), WordFixture.run("\u0008", Sprms.special())), 0)
+                .shape(new ShapeFixture.Shape(1025, 1, new int[] {0, 0, 1000, 3000},
+                        ShapeFixture.fspaFlags(2, 2, 3, 0, false), java.util.Map.of(0x0004, 90 << 16), null))
+                .build();
+        String xml = body(doc);
+        assertTrue(xml.contains("<a:xfrm rot=\"5400000\">"), xml);
+        assertTrue(xml.contains("<wp:extent cx=\"1905000\" cy=\"635000\"/>"), xml);
+        assertTrue(xml.contains("<wp:posOffset>-635000</wp:posOffset>"), xml);
+    }
 }
