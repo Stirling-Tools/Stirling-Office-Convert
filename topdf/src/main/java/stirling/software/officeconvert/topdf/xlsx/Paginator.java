@@ -109,7 +109,7 @@ final class Paginator {
                 cut = true;
                 break;
             }
-            cut |= pages(r, scale, !setup.fitToPage(), content, limit - pages.size(), pages);
+            cut |= pages(r, scale, content, limit - pages.size(), pages);
         }
         return new Result(scale, pages, cut);
     }
@@ -151,14 +151,14 @@ final class Paginator {
     static final int FIT_EDGE_PX = 5;
 
     // Only pages with something on them are printed, so pick them from the content instead of walking every page
-    private boolean pages(CellRangeAddress range, double scale, boolean manualBreaks, Content content, int limit,
-            List<Page> out) throws InterruptedIOException {
+    private boolean pages(CellRangeAddress range, double scale, Content content, int limit, List<Page> out)
+            throws InterruptedIOException {
         List<Span> colSpans = spans(range.getFirstColumn(), range.getLastColumn(), grid::columnWidth,
                 first(titleCols, false), last(titleCols, false), (setup.printableWidth() / scale - headWidth()),
-                manualBreaks ? colBreaks : null, Integer.MAX_VALUE);
+                manualBreaks(setup.fitWidth()) ? colBreaks : null, Integer.MAX_VALUE);
         List<Span> rowSpans = spans(range.getFirstRow(), range.getLastRow(), grid::rowHeight, first(titleRows, true),
                 last(titleRows, true), (setup.printableHeight() / scale - headHeight()),
-                manualBreaks ? rowBreaks : null, Integer.MAX_VALUE);
+                manualBreaks(setup.fitHeight()) ? rowBreaks : null, Integer.MAX_VALUE);
         boolean rowMajor = setup.overThenDown();
         int[] rowStarts = starts(rowSpans);
         int[] colStarts = starts(colSpans);
@@ -216,6 +216,10 @@ final class Paginator {
             checkpoint(out.size());
         }
         return cut[0];
+    }
+
+    private boolean manualBreaks(int fitPages) {
+        return !setup.fitToPage() || fitPages == 0;
     }
 
     private static int[] starts(List<Span> spans) {
