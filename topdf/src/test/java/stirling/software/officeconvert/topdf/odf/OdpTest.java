@@ -56,6 +56,17 @@ class OdpTest {
     }
 
     @Test
+    void aParagraphRightMarginNarrowsTheLines() throws IOException {
+        String auto = "<style:style style:name=\"P1\" style:family=\"paragraph\"><style:paragraph-properties"
+                + " fo:margin-left=\"0cm\" fo:margin-right=\"0.5cm\"/></style:style>";
+        String page = "<draw:page draw:name=\"One\" draw:master-page-name=\"Default\"><draw:frame svg:x=\"1cm\""
+                + " svg:y=\"4cm\" svg:width=\"20cm\" svg:height=\"8cm\"><draw:text-box><text:p text:style-name=\"P1\">"
+                + "Narrow</text:p></draw:text-box></draw:frame></draw:page>";
+        String slide = OdfFixtures.rewrite(odp(auto, page)).get("ppt/slides/slide1.xml");
+        assertTrue(slide.contains("marR=\"180000\""), slide);
+    }
+
+    @Test
     void slidesCarryTheirTextOutlinesAndMasterBackground() throws IOException {
         String auto = "<style:style style:name=\"pr1\" style:family=\"presentation\""
                 + " style:parent-style-name=\"Default-outline1\"/><style:style style:name=\"dp1\""

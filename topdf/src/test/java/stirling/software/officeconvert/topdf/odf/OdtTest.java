@@ -97,6 +97,15 @@ class OdtTest {
     }
 
     @Test
+    void indentsInCharacterUnitsScaleWithTheFontSize() throws IOException {
+        String auto = "<style:style style:name=\"P1\" style:family=\"paragraph\"><style:paragraph-properties"
+                + " loext:margin-left=\"1ic\" loext:text-indent=\"-2.5ic\"/><style:text-properties fo:font-size=\"10pt\"/>"
+                + "</style:style>";
+        String xml = document(odt(auto, "<text:p text:style-name=\"P1\">Indented</text:p>", null));
+        assertTrue(xml.contains("<w:ind w:left=\"200\" w:right=\"0\" w:hanging=\"500\"/>"), xml);
+    }
+
+    @Test
     void whiteSpaceCollapsesButSpacesAndTabsStay() throws IOException {
         String xml = document(odt("", "<text:p>  a   b<text:s text:c=\"3\"/>c<text:tab/>d</text:p>", null));
         assertTrue(xml.contains(">a b   c</w:t>"), xml);
@@ -125,6 +134,24 @@ class OdtTest {
     }
 
     @Test
+    void aBulletKeepsTheSizeOfItsLabelStyle() throws IOException {
+        String styles = OdfFixtures.styles("<style:style style:name=\"Label\" style:family=\"text\">"
+                + "<style:text-properties fo:font-size=\"10pt\"/></style:style>", "", "");
+        String list = "<text:list-style style:name=\"L1\"><text:list-level-style-bullet text:level=\"1\""
+                + " text:style-name=\"Label\" text:bullet-char=\"&#8226;\"><style:text-properties"
+                + " fo:font-family=\"Symbol\"/></text:list-level-style-bullet><text:list-level-style-bullet"
+                + " text:level=\"2\" text:bullet-char=\"o\"><style:text-properties fo:font-size=\"50%\"/>"
+                + "</text:list-level-style-bullet></text:list-style>";
+        Path p = odt(list, "<text:list text:style-name=\"L1\"><text:list-item><text:p>one</text:p></text:list-item>"
+                + "</text:list>", styles);
+        String numbering = OdfFixtures.rewrite(p).get("word/numbering.xml");
+        String first = numbering.substring(numbering.indexOf("<w:lvl w:ilvl=\"0\">"), numbering.indexOf("<w:lvl w:ilvl=\"1\">"));
+        String second = numbering.substring(numbering.indexOf("<w:lvl w:ilvl=\"1\">"), numbering.indexOf("<w:lvl w:ilvl=\"2\">"));
+        assertTrue(first.contains("<w:sz w:val=\"20\"/>"), numbering);
+        assertFalse(second.contains("<w:sz "), numbering);
+    }
+
+    @Test
     void continuedListKeepsCounting() throws IOException {
         String list = "<text:list-style style:name=\"L1\"><text:list-level-style-number text:level=\"1\""
                 + " style:num-suffix=\")\" style:num-format=\"a\"/></text:list-style>";
@@ -133,6 +160,21 @@ class OdtTest {
                 + " text:style-name=\"L1\"><text:list-item><text:p>two</text:p></text:list-item></text:list>", null);
         String text = pdfText(p);
         assertTrue(text.contains("b)"), text);
+    }
+
+    @Test
+    void aHeadingStyleWithAnEmptyListStyleIsNotOutlineNumbered() throws IOException {
+        String styles = OdfFixtures.styles("<style:style style:name=\"Manual\" style:family=\"paragraph\""
+                + " style:default-outline-level=\"1\" style:list-style-name=\"\"/><style:style style:name=\"Numbered\""
+                + " style:family=\"paragraph\" style:default-outline-level=\"1\"/><text:outline-style"
+                + " style:name=\"Outline\"><text:outline-level-style text:level=\"1\" style:num-format=\"1\""
+                + " style:num-suffix=\".\"/></text:outline-style>", "", "");
+        String xml = document(odt("", "<text:h text:style-name=\"Manual\" text:outline-level=\"1\">1.<text:tab/>Typed</text:h>"
+                + "<text:h text:style-name=\"Numbered\" text:outline-level=\"1\">Counted</text:h>", styles));
+        int typed = xml.indexOf("Typed");
+        int counted = xml.indexOf("Counted");
+        assertFalse(xml.substring(0, typed).contains("<w:numPr>"), xml);
+        assertTrue(xml.substring(typed, counted).contains("<w:numPr>"), xml);
     }
 
     @Test
@@ -172,6 +214,16 @@ class OdtTest {
     }
 
     @Test
+    void theGutterIsPartOfTheLeftMarginNotAddedToIt() throws IOException {
+        String styles = OdfFixtures.styles("", "<style:page-layout style:name=\"pm1\"><style:page-layout-properties"
+                + " fo:page-width=\"8.5in\" fo:page-height=\"11in\" fo:margin-left=\"1.25in\" fo:margin-right=\"1in\""
+                + " loext:margin-gutter=\"0.25in\"/></style:page-layout>",
+                "<style:master-page style:name=\"Standard\" style:page-layout-name=\"pm1\"/>");
+        String xml = document(odt("", "<text:p>Body</text:p>", styles));
+        assertTrue(xml.contains("w:left=\"1440\"") && xml.contains("w:gutter=\"360\""), xml);
+    }
+
+    @Test
     void masterPageChangeStartsANewSection() throws IOException {
         String styles = OdfFixtures.styles("", "<style:page-layout style:name=\"pm1\"><style:page-layout-properties"
                 + " fo:page-width=\"8.5in\" fo:page-height=\"11in\"/></style:page-layout><style:page-layout"
@@ -189,6 +241,21 @@ class OdtTest {
     }
 
     @Test
+    void anUnbalancedLastSectionKeepsItsColumnsToTheEnd() throws IOException {
+        String auto = "<style:style style:name=\"Sect1\" style:family=\"section\"><style:section-properties"
+                + " text:dont-balance-text-columns=\"true\"><style:columns fo:column-count=\"2\" fo:column-gap=\"0.5in\"/>"
+                + "</style:section-properties></style:style>";
+        String xml = document(odt(auto, "<text:p>Before</text:p><text:section text:style-name=\"Sect1\""
+                + " text:name=\"S\"><text:p>Left</text:p></text:section>", null));
+        assertEquals(2, xml.split("<w:sectPr>").length - 1, xml);
+        String last = xml.substring(xml.lastIndexOf("<w:sectPr>"));
+        assertTrue(last.contains("w:num=\"2\""), xml);
+        String balanced = document(odt(auto.replace("true", "false"), "<text:p>Before</text:p><text:section"
+                + " text:style-name=\"Sect1\" text:name=\"S\"><text:p>Left</text:p></text:section>", null));
+        assertEquals(3, balanced.split("<w:sectPr>").length - 1, balanced);
+    }
+
+    @Test
     void footnotesKeepTheirBodies() throws IOException {
         Path p = odt("", "<text:p>Main<text:note text:id=\"n1\" text:note-class=\"footnote\"><text:note-citation>1"
                 + "</text:note-citation><text:note-body><text:p>Note text</text:p></text:note-body></text:note></text:p>",
@@ -198,6 +265,21 @@ class OdtTest {
         assertTrue(parts.get("word/footnotes.xml").contains("<w:footnoteRef/>"));
         assertTrue(parts.get("word/document.xml").contains("<w:footnoteReference w:id=\"1\"/>"));
         assertTrue(pdfText(p).contains("Note text"));
+    }
+
+    @Test
+    void theFootnoteAreaNumberTakesTheSizeOfTheNoteParagraph() throws IOException {
+        String styles = OdfFixtures.styles("<style:style style:name=\"Footnote\" style:family=\"paragraph\">"
+                + "<style:text-properties fo:font-size=\"10pt\"/></style:style><style:style"
+                + " style:name=\"Footnote_20_Symbol\" style:family=\"text\"><style:text-properties"
+                + " style:text-position=\"super 58%\"/></style:style>", "", "");
+        Path p = odt("", "<text:p>Main<text:note text:id=\"n1\" text:note-class=\"footnote\"><text:note-citation>1"
+                + "</text:note-citation><text:note-body><text:p text:style-name=\"Footnote\">Note text</text:p>"
+                + "</text:note-body></text:note></text:p>", styles);
+        String notes = OdfFixtures.rewrite(p).get("word/footnotes.xml");
+        String mark = notes.substring(notes.lastIndexOf("<w:r>", notes.indexOf("<w:footnoteRef/>")),
+                notes.indexOf("<w:footnoteRef/>"));
+        assertTrue(mark.contains("<w:sz w:val=\"20\"/>") && mark.contains("superscript"), notes);
     }
 
     @Test
@@ -232,6 +314,103 @@ class OdtTest {
         Path pdf = dir.resolve("p.pdf");
         OfficeToPdf.Result r = OfficeToPdf.convert(p, pdf);
         assertTrue(String.join("\n", r.warnings()).contains("linked files"), r.warnings().toString());
+    }
+
+    @Test
+    void anInlinePictureKeepsTheFontOfItsParagraph() throws IOException {
+        byte[] png = java.util.HexFormat.of().parseHex("89504e470d0a1a0a0000000d494844520000000200000002080600000072b6"
+                + "0d240000001249444154789c63f8cfc0d0c0f01f0c210c003c5f06fb4398423e0000000049454e44ae426082");
+        String automatic = "<style:style style:name=\"P1\" style:family=\"paragraph\"><style:text-properties"
+                + " style:font-name=\"Arial\" fo:font-size=\"10pt\"/></style:style>";
+        String body = "<text:p text:style-name=\"P1\"><draw:frame text:anchor-type=\"as-char\" svg:width=\"1in\""
+                + " svg:height=\"1in\"><draw:image xlink:href=\"Pictures/a.png\"/></draw:frame>Logo</text:p>";
+        Map<String, byte[]> parts = new LinkedHashMap<>();
+        parts.put("content.xml", OdfFixtures.content(automatic, OdfFixtures.text(body)).getBytes(StandardCharsets.UTF_8));
+        parts.put("Pictures/a.png", png);
+        Path p = OdfFixtures.write(dir, "logo.odt", OdfFixtures.zip(OdfFixtures.TEXT, parts));
+        String xml = OdfFixtures.rewrite(p).get("word/document.xml");
+        int drawing = xml.indexOf("<w:drawing>");
+        String run = xml.substring(xml.lastIndexOf("<w:r>", drawing), drawing);
+        assertTrue(run.contains("w:ascii=\"Arial\"") && run.contains("<w:sz w:val=\"20\"/>"), xml);
+    }
+
+    @Test
+    void aFrameHoldingOnlyATableBecomesAFloatingTableThatCanBreakAcrossPages() throws IOException {
+        String automatic = "<style:style style:name=\"fr1\" style:family=\"graphic\"><style:graphic-properties"
+                + " fo:margin-left=\"0.125in\" fo:margin-right=\"0.125in\" style:vertical-pos=\"from-top\""
+                + " style:vertical-rel=\"page\" style:horizontal-pos=\"from-left\" style:horizontal-rel=\"page-content\""
+                + " fo:border=\"none\"/></style:style>";
+        StringBuilder rows = new StringBuilder();
+        for (int i = 0; i < 80; i++) {
+            rows.append("<table:table-row><table:table-cell><text:p>Row ").append(i).append("</text:p></table:table-cell>")
+                    .append("</table:table-row>");
+        }
+        String body = "<text:p><draw:frame draw:style-name=\"fr1\" text:anchor-type=\"paragraph\" svg:x=\"-0.25in\""
+                + " svg:y=\"1.5in\" svg:width=\"6in\" loext:may-break-between-pages=\"true\"><draw:text-box>"
+                + "<table:table><table:table-column/>" + rows + "</table:table></draw:text-box></draw:frame>After</text:p>";
+        Path p = odt(automatic, body, null);
+        String xml = document(p);
+        assertTrue(xml.contains("<w:tblpPr w:leftFromText=\"180\" w:rightFromText=\"180\" w:topFromText=\"0\""
+                + " w:bottomFromText=\"0\" w:vertAnchor=\"page\" w:horzAnchor=\"margin\" w:tblpX=\"-360\""
+                + " w:tblpY=\"2160\"/>"), xml);
+        assertTrue(xml.indexOf("<w:tbl>") < xml.indexOf("After"), xml);
+        assertFalse(xml.contains("<wps:txbx>"), xml);
+        String text = pdfText(p);
+        assertTrue(text.contains("Row 0") && text.contains("Row 79"), text);
+    }
+
+    @Test
+    void theZeroHeightParagraphThatOnlyAnchorsAFloatingTableIsDropped() throws IOException {
+        String automatic = "<style:style style:name=\"P1\" style:family=\"paragraph\"><style:paragraph-properties"
+                + " fo:line-height=\"0in\"/></style:style>";
+        String frame = "<draw:frame text:anchor-type=\"paragraph\" svg:y=\"0in\" svg:width=\"3in\"><draw:text-box>"
+                + "<table:table><table:table-column/><table:table-row><table:table-cell><text:p>%s</text:p>"
+                + "</table:table-cell></table:table-row></table:table></draw:text-box></draw:frame>";
+        String xml = document(odt(automatic, "<text:p text:style-name=\"P1\">" + frame.formatted("One") + "</text:p>"
+                + "<text:p text:style-name=\"P1\">" + frame.formatted("Two") + "</text:p><text:p>After</text:p>", null));
+        String between = xml.substring(xml.indexOf("One"), xml.indexOf("After"));
+        assertEquals(2, between.split("</w:tbl>").length - 1, xml);
+        assertEquals(1, between.replaceAll("<w:tc>.*?</w:tc>", "").split("<w:p>").length - 1, xml);
+    }
+
+    @Test
+    void anEmptyDateFieldShowsTheSavedDateNeverToday() throws IOException {
+        String automatic = "<number:date-style style:name=\"N1\"><number:day number:style=\"long\"/><number:text>/"
+                + "</number:text><number:month number:style=\"long\"/><number:text>/</number:text><number:year"
+                + " number:style=\"long\"/></number:date-style>";
+        String body = "<text:p>Saved <text:date style:data-style-name=\"N1\"/> created <text:creation-date"
+                + " style:data-style-name=\"N1\"/> fixed <text:date text:date-value=\"2020-01-02\""
+                + " style:data-style-name=\"N1\"/> cached <text:date>kept</text:date></text:p>";
+        Map<String, byte[]> parts = new LinkedHashMap<>();
+        parts.put("content.xml", OdfFixtures.content(automatic, OdfFixtures.text(body)).getBytes(StandardCharsets.UTF_8));
+        parts.put("meta.xml", ("<office:document-meta " + OdfFixtures.NS + " xmlns:meta=\"urn:oasis:names:tc:opendocument:"
+                + "xmlns:meta:1.0\" xmlns:dc=\"http://purl.org/dc/elements/1.1/\"><office:meta><meta:creation-date>"
+                + "2019-05-06T07:08:09</meta:creation-date><dc:date>2021-03-04T10:00:00.123456789</dc:date>"
+                + "</office:meta></office:document-meta>").getBytes(StandardCharsets.UTF_8));
+        Path p = OdfFixtures.write(dir, "dates.odt", OdfFixtures.zip(OdfFixtures.TEXT, parts));
+        String text = pdfText(p).replaceAll("\\s+", " ");
+        assertTrue(text.contains("Saved 04/03/2021 created 06/05/2019 fixed 02/01/2020 cached kept"), text);
+    }
+
+    @Test
+    void aFormulaObjectIsTypesetFromItsMathMl() throws IOException {
+        String body = "<text:p>Area <draw:frame text:anchor-type=\"as-char\" svg:width=\"1in\" svg:height=\"0.3in\">"
+                + "<draw:object xlink:href=\"./Object 1\"/><draw:image xlink:href=\"./ObjectReplacements/Object 1\"/>"
+                + "</draw:frame> done</text:p>";
+        String math = "<math xmlns=\"http://www.w3.org/1998/Math/MathML\"><semantics><mrow><msup><mi>x</mi><mn>2</mn>"
+                + "</msup><mo>+</mo><mfrac><mn>1</mn><mi>y</mi></mfrac><munderover><mo>&#8721;</mo><mi>i</mi><mi>n</mi>"
+                + "</munderover></mrow><annotation encoding=\"StarMath 5.0\">x^2 + 1 over y</annotation></semantics></math>";
+        Map<String, byte[]> parts = new LinkedHashMap<>();
+        parts.put("content.xml", OdfFixtures.content("", OdfFixtures.text(body)).getBytes(StandardCharsets.UTF_8));
+        parts.put("Object 1/content.xml", math.getBytes(StandardCharsets.UTF_8));
+        Path p = OdfFixtures.write(dir, "math.odt", OdfFixtures.zip(OdfFixtures.TEXT, parts));
+        String xml = OdfFixtures.rewrite(p).get("word/document.xml");
+        assertTrue(xml.contains("<m:oMath><m:sSup><m:e><m:r><m:t xml:space=\"preserve\">x</m:t></m:r></m:e>"), xml);
+        assertTrue(xml.contains("<m:f><m:num>") && xml.contains("<m:nary><m:naryPr><m:chr m:val=\"&#8721;\"/>")
+                || xml.contains("<m:nary><m:naryPr><m:chr m:val=\"\u2211\"/>"), xml);
+        assertFalse(xml.contains("StarMath") || xml.contains("over y"), xml);
+        String text = pdfText(p);
+        assertTrue(text.contains("Area") && text.contains("x") && text.contains("done"), text);
     }
 
     @Test

@@ -58,7 +58,7 @@ final class TextRuns {
             flush();
             String d = w.drawings.inline(k, body);
             if (d != null) {
-                out.append(d);
+                out.append(drawingRun(d, run));
                 hasContent = true;
             }
             return;
@@ -122,8 +122,27 @@ final class TextRuns {
             case "page-count" -> field(k, run, "NUMPAGES");
             case "ruby" -> children(Dom.kid(k, Ns.TEXT, "ruby-base"), run);
             case "conditional-text" -> text(Dom.text(k), run, true);
-            default -> children(k, run);
+            default -> {
+                if (DateFields.is(local) && k.getTextContent().isBlank()) {
+                    String date = DateFields.text(k, w.doc.meta(), w.styles);
+                    if (date != null && !date.isEmpty()) {
+                        text(date, run, false);
+                        lastSpace = false;
+                    }
+                } else {
+                    children(k, run);
+                }
+            }
         }
+    }
+
+    private String drawingRun(String drawing, Props run) {
+        String start = "<w:r><w:drawing>";
+        if (!drawing.startsWith(start)) {
+            return drawing;
+        }
+        String rpr = WordRun.rPr(run, w.styles);
+        return rpr.isEmpty() ? drawing : "<w:r><w:rPr>" + rpr + "</w:rPr>" + drawing.substring(5);
     }
 
     private void link(Element a, Props run) throws IOException {

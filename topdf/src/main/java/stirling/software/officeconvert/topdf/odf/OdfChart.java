@@ -50,7 +50,7 @@ final class OdfChart {
         List<String> categories = new ArrayList<>();
         List<String> names = new ArrayList<>();
         List<List<Double>> columns = new ArrayList<>();
-        table(categories, names, columns);
+        table(categories, names, columns, "rows".equals(pc.get("chart:series-source")));
         List<Element> series = Dom.kids(plot, CHART, "series");
         StringBuilder b = new StringBuilder(Xml.HEAD).append("<c:chartSpace xmlns:c=\"")
                 .append("http://schemas.openxmlformats.org/drawingml/2006/chart\" xmlns:a=\"").append(Xml.A)
@@ -328,7 +328,7 @@ final class OdfChart {
         return b.append("</c:spPr>").toString();
     }
 
-    private void table(List<String> categories, List<String> names, List<List<Double>> columns) {
+    private void table(List<String> categories, List<String> names, List<List<Double>> columns, boolean byRows) {
         Element table = null;
         for (Element t : Dom.kids(chart, Ns.TABLE, "table")) {
             table = t;
@@ -346,6 +346,10 @@ final class OdfChart {
             rows.add(r);
         }
         boolean labelColumn = Dom.kid(table, Ns.TABLE, "table-header-columns") != null;
+        if (byRows) {
+            byRows(headerRow, rows, labelColumn, categories, names, columns);
+            return;
+        }
         if (headerRow != null) {
             List<Element> cells = cells(headerRow);
             for (int i = labelColumn ? 1 : 0; i < cells.size() && names.size() < MAX_SERIES; i++) {
@@ -368,6 +372,26 @@ final class OdfChart {
                 }
                 col.add(value(cells.get(i)));
             }
+        }
+    }
+
+    private static void byRows(Element headerRow, List<Element> rows, boolean labelColumn, List<String> categories,
+            List<String> names, List<List<Double>> columns) {
+        int start = labelColumn ? 1 : 0;
+        if (headerRow != null) {
+            List<Element> cells = cells(headerRow);
+            for (int i = start; i < cells.size() && categories.size() < MAX_POINTS; i++) {
+                categories.add(SheetWriter.text(cells.get(i)));
+            }
+        }
+        for (int r = 0; r < rows.size() && r < MAX_SERIES; r++) {
+            List<Element> cells = cells(rows.get(r));
+            names.add(labelColumn && !cells.isEmpty() ? SheetWriter.text(cells.get(0)) : "Series " + (r + 1));
+            List<Double> values = new ArrayList<>();
+            for (int i = start; i < cells.size() && values.size() < MAX_POINTS; i++) {
+                values.add(value(cells.get(i)));
+            }
+            columns.add(values);
         }
     }
 

@@ -86,6 +86,9 @@ final class WordDrawings {
     }
 
     private String frame(Element f, TextBody body, Element group) throws IOException {
+        if (w.floating.hoisted(f)) {
+            return null;
+        }
         Element box = Dom.kid(f, Ns.DRAW, "text-box");
         if (box != null) {
             return textBox(f, box, body, group);
@@ -99,6 +102,10 @@ final class WordDrawings {
             String graphic = "<a:graphic xmlns:a=\"" + Xml.A + "\"><a:graphicData uri=\"" + CHART_URI + "\"><c:chart"
                     + " xmlns:c=\"" + CHART_URI + "\" r:id=\"" + rid + "\"/></a:graphicData></a:graphic>";
             return wrap(f, group, g, b, graphic, id);
+        }
+        String math = group == null && collecting == null ? math(f) : null;
+        if (math != null) {
+            return math;
         }
         byte[] data = image(f);
         if (data == null) {
@@ -180,6 +187,11 @@ final class WordDrawings {
     private String chart(Element frame) {
         Element object = Dom.kid(frame, Ns.DRAW, "object");
         return object == null ? null : w.doc.chart(object);
+    }
+
+    private String math(Element frame) {
+        Element object = Dom.kid(frame, Ns.DRAW, "object");
+        return object == null ? null : w.doc.math(object);
     }
 
     private byte[] image(Element frame) {

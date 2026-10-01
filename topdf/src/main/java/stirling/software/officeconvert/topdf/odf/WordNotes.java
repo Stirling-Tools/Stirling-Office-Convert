@@ -52,7 +52,8 @@ final class WordNotes {
         body.blocks(Dom.kid(note, Ns.TEXT, "note-body"), null);
         String xml = body.cellXml();
         if (!custom) {
-            Props mark = w.styles.props("text", citationStyle(endnote, false), scope, "text-properties", false);
+            Props mark = new Props(w.styles.props("paragraph", firstParagraphStyle(note), scope, "text-properties", true));
+            mark.merge(w.styles.props("text", citationStyle(endnote, false), scope, "text-properties", false));
             String rpr = WordRun.rPr(mark, w.styles);
             String run = "<w:r><w:rPr>" + rpr + "</w:rPr><w:" + (endnote ? "endnoteRef" : "footnoteRef") + "/></w:r>";
             int at = xml.indexOf("</w:pPr>");
@@ -68,6 +69,25 @@ final class WordNotes {
         target.append("<w:").append(tag).append(" w:id=\"").append(id).append("\">").append(xml).append("</w:")
                 .append(tag).append('>');
         return id;
+    }
+
+    private static String firstParagraphStyle(Element note) {
+        Element body = Dom.kid(note, Ns.TEXT, "note-body");
+        Element e = body;
+        for (int depth = 0; e != null && depth < 8; depth++) {
+            Element next = null;
+            for (Element k : Dom.kids(e)) {
+                if (Dom.is(k, Ns.TEXT, "p") || Dom.is(k, Ns.TEXT, "h")) {
+                    return Dom.attr(k, Ns.TEXT, "style-name");
+                }
+                if (Dom.is(k, Ns.TEXT, "list") || Dom.is(k, Ns.TEXT, "list-item")) {
+                    next = k;
+                    break;
+                }
+            }
+            e = next;
+        }
+        return null;
     }
 
     private static int nextParagraphEnd(String xml, int from) {

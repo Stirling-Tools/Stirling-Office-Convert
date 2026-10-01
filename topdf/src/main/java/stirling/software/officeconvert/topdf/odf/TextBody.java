@@ -275,10 +275,25 @@ final class TextBody {
         }
         blocks(s, null);
         sectionColumns = outer;
+        if (endsUnbalanced(s, sp)) {
+            return;
+        }
         Element after = columnsFor(section.master);
         if (WordPages.columnCount(after) != WordPages.columnCount(section.columns)) {
             newSection(section.master, after, true, null);
         }
+    }
+
+    private boolean endsUnbalanced(Element s, Props sp) {
+        if (!"true".equals(sp.get("text:dont-balance-text-columns")) || s.getParentNode() != w.bodyText) {
+            return false;
+        }
+        for (org.w3c.dom.Node n = s.getNextSibling(); n != null; n = n.getNextSibling()) {
+            if (n instanceof Element) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private Element columnsFor(String master) {
@@ -374,8 +389,8 @@ final class TextBody {
 
     void paragraph(Element p, ListPos list, boolean heading) throws IOException {
         String name = Dom.attr(p, Ns.TEXT, "style-name");
-        Props pp = paragraphProps(name, "paragraph-properties");
         Props tp = paragraphProps(name, "text-properties");
+        Props pp = WordPara.charUnits(paragraphProps(name, "paragraph-properties"), tp);
         masterBreak("paragraph", name, pp);
         StringBuilder ppr = new StringBuilder();
         String common = commonStyle(name);
@@ -390,7 +405,8 @@ final class TextBody {
         pageBreak = false;
         WordLists.Chain chain = list == null ? null : list.chain();
         int level = list == null ? 0 : list.level();
-        if (chain == null && heading && list == null) {
+        if (chain == null && heading && list == null
+                && !"".equals(w.styles.inherited("paragraph", name, scope, Ns.STYLE, "list-style-name"))) {
             int outline = Dom.integer(p, Ns.TEXT, "outline-level", 0);
             if (outline >= 1 && w.outlineNumbered(outline - 1)) {
                 chain = w.outlineChain();
@@ -445,6 +461,7 @@ final class TextBody {
         if (!markRpr.isEmpty()) {
             ppr.append("<w:rPr>").append(markRpr).append("</w:rPr>");
         }
+        boolean hoisted = hoistFloatingTables(p, ppr);
         TextRuns runs = new TextRuns(this);
         if ("column".equals(before)) {
             Block last = blocks.isEmpty() ? null : blocks.get(blocks.size() - 1);
@@ -466,7 +483,27 @@ final class TextBody {
         } else if ("page".equals(after)) {
             pageBreak = true;
         }
+        if (hoisted && content.isEmpty() && chain == null && !pageBreak && pp.pt("fo:line-height", 1) == 0) {
+            return;
+        }
         add(new Block(ppr.toString(), content, true));
+    }
+
+    private boolean hoistFloatingTables(Element p, StringBuilder ppr) throws IOException {
+        List<String> tables = w.floating.hoist(p, this);
+        if (tables.isEmpty()) {
+            return false;
+        }
+        String pageBreakBefore = "<w:pageBreakBefore/>";
+        int at = ppr.indexOf(pageBreakBefore);
+        if (at >= 0) {
+            ppr.delete(at, at + pageBreakBefore.length());
+            add(new Block(pageBreakBefore + TINY, "", true));
+        }
+        for (String t : tables) {
+            add(new Block(null, t, false));
+        }
+        return true;
     }
 
     private boolean ownIndent(String styleName) {

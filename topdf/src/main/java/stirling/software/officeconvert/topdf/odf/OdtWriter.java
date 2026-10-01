@@ -13,7 +13,8 @@ import org.w3c.dom.Element;
 final class OdtWriter {
 
     static final String NAMESPACES = "xmlns:w=\"" + Xml.W + "\" xmlns:r=\"" + Xml.R + "\" xmlns:wp=\"" + Xml.WP
-            + "\" xmlns:a=\"" + Xml.A + "\" xmlns:pic=\"" + Xml.PIC + "\" xmlns:wps=\"" + Xml.WPS + "\"";
+            + "\" xmlns:a=\"" + Xml.A + "\" xmlns:pic=\"" + Xml.PIC + "\" xmlns:wps=\"" + Xml.WPS + "\" xmlns:m=\""
+            + MathOmml.M + "\"";
 
     final OdfDocument doc;
 
@@ -33,6 +34,8 @@ final class OdtWriter {
 
     final WordDrawings drawings;
 
+    final FloatingTables floating;
+
     final boolean tabsRelative;
 
     final boolean autoHyphenation;
@@ -51,6 +54,8 @@ final class OdtWriter {
 
     String currentMaster;
 
+    Element bodyText;
+
     boolean externalSkipped;
 
     private WordLists.Chain outline;
@@ -64,6 +69,7 @@ final class OdtWriter {
         this.pages = new WordPages(this);
         this.tables = new WordTables(this);
         this.drawings = new WordDrawings(this);
+        this.floating = new FloatingTables(this);
         this.tabsRelative = config("TabsRelativeToIndent", true);
         this.compatibilityMode = !config("JustifyLinesWithShrinking", false) && config("TabOverMargin", false) ? 14 : 15;
         Props dt = styles.props("paragraph", null, Styles.Scope.CONTENT, "text-properties", true);
@@ -88,6 +94,7 @@ final class OdtWriter {
 
     List<String> write() throws IOException {
         Element body = Dom.kid(Dom.kid(doc.content(), Ns.OFFICE, "body"), Ns.OFFICE, "text");
+        bodyText = body;
         TextBody text = new TextBody(this, main, Styles.Scope.CONTENT, true, 0);
         if (body != null) {
             text.blocks(body, null);

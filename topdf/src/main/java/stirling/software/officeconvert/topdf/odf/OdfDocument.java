@@ -62,6 +62,10 @@ public final class OdfDocument implements Closeable {
 
     private boolean damaged;
 
+    private Element meta;
+
+    private boolean metaRead;
+
     private OdfDocument(Kind kind, ZipFile zip, Element content, Element styles, Element settings) {
         this.kind = kind;
         this.zip = zip;
@@ -84,6 +88,19 @@ public final class OdfDocument implements Closeable {
 
     Element settings() {
         return settings;
+    }
+
+    Element meta() {
+        if (!metaRead) {
+            metaRead = true;
+            try {
+                Element root = zip == null ? content : xml("meta.xml", false);
+                meta = Dom.kid(root, Ns.OFFICE, "meta");
+            } catch (IOException | RuntimeException e) {
+                meta = null;
+            }
+        }
+        return meta;
     }
 
     boolean damaged() {
@@ -318,9 +335,36 @@ public final class OdfDocument implements Closeable {
     }
 
     String chart(Element object) {
+        Element[] parts = objectParts(object);
+        return parts == null ? null : OdfChart.part(parts[0], parts[1]);
+    }
+
+    String math(Element object) {
+        Element[] parts = objectParts(object);
+        if (parts == null) {
+            return null;
+        }
+        Element root = parts[0];
+        Element math = MathOmml.root(root);
+        if (math == null) {
+            Element body = Dom.kid(root, Ns.OFFICE, "body");
+            math = MathOmml.root(Dom.kid(body, Ns.OFFICE, "formula"));
+        }
+        try {
+            return MathOmml.omml(math);
+        } catch (RuntimeException e) {
+            return null;
+        }
+    }
+
+    private Element[] objectParts(Element object) {
         Element inline = Dom.kid(object, Ns.OFFICE, "document");
         if (inline != null) {
-            return OdfChart.part(inline, inline);
+            return new Element[] {inline, inline};
+        }
+        Element math = MathOmml.root(object);
+        if (math != null) {
+            return new Element[] {math, null};
         }
         String dir = internal(Dom.attr(object, Ns.XLINK, "href"));
         if (dir == null || zip == null) {
@@ -337,7 +381,7 @@ public final class OdfDocument implements Closeable {
             byte[] styles = bytes(dir + "/styles.xml", MAX_PICTURE_BYTES);
             Element c = SecureXml.parse(new ByteArrayInputStream(content)).getDocumentElement();
             Element st = styles == null ? null : SecureXml.parse(new ByteArrayInputStream(styles)).getDocumentElement();
-            return OdfChart.part(c, st);
+            return new Element[] {c, st};
         } catch (IOException | RuntimeException e) {
             return null;
         }

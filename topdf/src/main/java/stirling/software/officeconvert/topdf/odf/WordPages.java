@@ -111,11 +111,12 @@ final class WordPages {
             b.append(" w:orient=\"landscape\"");
         }
         b.append("/>");
+        double gutter = Math.max(0, Math.min(left, p.pt("loext:margin-gutter", 0)));
         b.append("<w:pgMar w:top=\"").append(Length.twips(top)).append("\" w:right=\"").append(Length.twips(right))
                 .append("\" w:bottom=\"").append(Length.twips(bottom)).append("\" w:left=\"")
-                .append(Length.twips(left)).append("\" w:header=\"").append(Length.twips(headerTop))
+                .append(Length.twips(left - gutter)).append("\" w:header=\"").append(Length.twips(headerTop))
                 .append("\" w:footer=\"").append(Length.twips(footerBottom)).append("\" w:gutter=\"")
-                .append(Length.twips(p.pt("loext:margin-gutter", 0))).append("\"/>");
+                .append(Length.twips(gutter)).append("\"/>");
         String fmt = switch (p.get("style:num-format", "1")) {
             case "i" -> "lowerRoman";
             case "I" -> "upperRoman";
