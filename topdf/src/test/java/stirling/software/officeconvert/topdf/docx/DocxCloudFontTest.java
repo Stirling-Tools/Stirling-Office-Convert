@@ -181,6 +181,24 @@ class DocxCloudFontTest {
         assertEquals(2 * plain, arabic, 0.2, "Word draws Arabic with Arial itself, on Arial's line");
     }
 
+    @Test
+    void aMissingFontTakesTheAlternativeTheFontTableNames() throws Exception {
+        String styles = "<w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii=\"Arial\" w:hAnsi=\"Arial\"/>"
+                + "<w:sz w:val=\"20\"/></w:rPr></w:rPrDefault><w:pPrDefault><w:pPr><w:spacing w:after=\"0\""
+                + " w:line=\"240\" w:lineRule=\"auto\"/></w:pPr></w:pPrDefault></w:docDefaults>";
+        String run = "<w:r><w:rPr><w:rFonts w:ascii=\"Helvetica Neue\" w:hAnsi=\"Helvetica Neue\"/></w:rPr>"
+                + "<w:t>Cat</w:t></w:r>";
+        String body = DocxDoc.p("Ann") + DocxDoc.p("Bob") + "<w:p>" + run + "</w:p>" + DocxDoc.p("Dan");
+        String table = "<w:fonts xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\">"
+                + "<w:font w:name=\"Helvetica Neue\"><w:altName w:val=\"Malgun Gothic\"/></w:font></w:fonts>";
+        byte[] docx = new DocxDoc().styles(styles).body(body).part("fontTable.xml", "fontTable",
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.fontTable+xml", table).bytes();
+        List<TextPosition> pos = convert(docx);
+        float line = y(pos, "D") - y(pos, "B") - (y(pos, "B") - y(pos, "A"));
+        float[] malgun = Fonts.eastAsianVertical("Malgun Gothic");
+        assertEquals(10 * (malgun[0] + malgun[1]), line, 0.2, "Word draws the missing font with Malgun Gothic");
+    }
+
     private static float y(List<TextPosition> pos, String letter) {
         return pos.stream().filter(p -> p.getUnicode().equals(letter)).findFirst().orElseThrow().getYDirAdj();
     }

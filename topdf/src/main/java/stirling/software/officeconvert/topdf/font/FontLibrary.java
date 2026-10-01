@@ -310,6 +310,12 @@ public final class FontLibrary {
         return known.get();
     }
 
+    public static boolean officeFont(String family) {
+        return OfficeFonts.style(family, false, false) != null || OfficeFonts.style(english(family), false, false) != null
+                || ScriptWidths.average(family, ScriptWidths.ARABIC) > 0
+                || ScriptWidths.average(family, ScriptWidths.HEBREW) > 0;
+    }
+
     public static boolean drawsScript(String family, int codePoint) {
         String sample = ScriptWidths.sample(codePoint);
         return sample != null && ScriptWidths.average(family, sample) > 0;

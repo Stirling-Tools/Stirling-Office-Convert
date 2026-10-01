@@ -34,6 +34,8 @@ final class Fonts {
 
     private String bidiLang;
 
+    private Map<String, String> alternatives = Map.of();
+
     Fonts(RenderJob job, Theme theme, String defaultLang) {
         this.job = job;
         this.theme = theme;
@@ -45,11 +47,20 @@ final class Fonts {
         return this;
     }
 
+    Fonts alternatives(Map<String, String> altNames) {
+        alternatives = altNames;
+        return this;
+    }
+
     FontFace face(String family, boolean bold, boolean italic) {
         String key = family + "|" + bold + "|" + italic;
         FontFace f = cache.get(key);
         if (f == null) {
             f = job.fonts().find(family, bold, italic);
+            String alt = alternatives.get(FontLibrary.normalize(family));
+            if (f.substituted() && alt != null && !windowsFont(family) && FontLibrary.officeFont(alt)) {
+                f = job.fonts().find(alt, bold, italic);
+            }
             f = synthetic(f, bold, italic);
             cache.put(key, f);
         }
@@ -77,6 +88,23 @@ final class Fonts {
             boolean useful = e.vertical() != null && e.face().sameProgram(f);
             return useful ? Optional.of(e) : Optional.empty();
         }).orElse(null);
+    }
+
+    private static boolean windowsFont(String family) {
+        if (SymbolChars.vertical(family) != null) {
+            return true;
+        }
+        String name = family.strip();
+        while (true) {
+            if (FontLibrary.officeFont(name)) {
+                return true;
+            }
+            int space = name.lastIndexOf(' ');
+            if (space <= 0) {
+                return false;
+            }
+            name = name.substring(0, space);
+        }
     }
 
     // Win ascent and descent in ems of common Windows East Asian fonts, with the extra Word gives such fonts
