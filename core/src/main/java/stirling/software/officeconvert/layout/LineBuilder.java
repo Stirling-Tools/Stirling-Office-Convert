@@ -132,9 +132,57 @@ public final class LineBuilder {
         for (int i = 1; i < glyphs.size(); i++) {
             gaps[i - 1] = glyphs.get(i).x - glyphs.get(i - 1).right();
         }
-        Arrays.sort(gaps);
-        float median = gaps[gaps.length / 2];
+        float median = select(gaps, gaps.length / 2);
         return median > 0.05f * glyphs.getFirst().size ? median : 0f;
+    }
+
+    static float select(float[] a, int k) {
+        int lo = 0;
+        int hi = a.length - 1;
+        int budget = 2 * (32 - Integer.numberOfLeadingZeros(a.length));
+        while (lo < hi) {
+            if (budget-- == 0) {
+                Arrays.sort(a, lo, hi + 1);
+                return a[k];
+            }
+            float pivot = middle(a[lo], a[(lo + hi) >>> 1], a[hi]);
+            int lt = lo;
+            int i = lo;
+            int gt = hi;
+            while (i <= gt) {
+                int c = Float.compare(a[i], pivot);
+                if (c < 0) {
+                    swap(a, lt++, i++);
+                } else if (c > 0) {
+                    swap(a, i, gt--);
+                } else {
+                    i++;
+                }
+            }
+            if (k < lt) {
+                hi = lt - 1;
+            } else if (k > gt) {
+                lo = gt + 1;
+            } else {
+                return a[k];
+            }
+        }
+        return a[k];
+    }
+
+    private static float middle(float x, float y, float z) {
+        if (Float.compare(x, y) > 0) {
+            float t = x;
+            x = y;
+            y = t;
+        }
+        return Float.compare(y, z) <= 0 ? y : Float.compare(x, z) >= 0 ? x : z;
+    }
+
+    private static void swap(float[] a, int i, int j) {
+        float t = a[i];
+        a[i] = a[j];
+        a[j] = t;
     }
 
     private static Line toLine(List<Word> words) {
