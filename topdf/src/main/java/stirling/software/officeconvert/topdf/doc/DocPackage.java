@@ -69,8 +69,7 @@ public final class DocPackage {
                 if (Thread.currentThread().isInterrupted()) {
                     throw new InterruptedIOException("Conversion interrupted");
                 }
-                if (e instanceof IOException io && io.getMessage() != null
-                        && io.getMessage().toLowerCase(java.util.Locale.ROOT).contains("encrypt")) {
+                if (file.encrypted()) {
                     throw new IOException(PASSWORD, e);
                 }
                 throw new IOException("The Word 97-2003 document could not be read: " + reason(e), e);

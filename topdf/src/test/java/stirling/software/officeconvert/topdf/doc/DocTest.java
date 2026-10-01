@@ -315,4 +315,18 @@ class DocTest {
             assertTrue(pdf.getPage(0).getResources().getXObjectNames().iterator().hasNext());
         }
     }
+
+    @Test
+    void encryptedAndWord95DocumentsAreRefusedPlainly() throws IOException {
+        byte[] locked = new WordFixture().para("Secret").fib(0xC1, 0x0100).build();
+        Path in = Files.write(dir.resolve("locked.doc"), locked);
+        IOException e = org.junit.jupiter.api.Assertions.assertThrows(IOException.class,
+                () -> OfficeToPdf.convert(in, dir.resolve("locked.pdf")));
+        assertTrue(e.getMessage().contains("password"), e.getMessage());
+        byte[] old = new WordFixture().para("Old").fib(0x65, 0).build();
+        Path in95 = Files.write(dir.resolve("old.doc"), old);
+        IOException o = org.junit.jupiter.api.Assertions.assertThrows(IOException.class,
+                () -> OfficeToPdf.convert(in95, dir.resolve("old.pdf")));
+        assertTrue(o.getMessage().contains("Word 6.0/95"), o.getMessage());
+    }
 }

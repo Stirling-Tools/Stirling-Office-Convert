@@ -45,6 +45,10 @@ final class WordFixture {
 
     private int[] headerStories;
 
+    private int nFib = 0xC1;
+
+    private int fibFlags;
+
     private final List<ShapeFixture.Shape> shapes = new ArrayList<>();
 
     private final List<Para> textboxes = new ArrayList<>();
@@ -119,6 +123,12 @@ final class WordFixture {
     WordFixture textbox(int spid, String text) {
         textboxes.add(new Para(List.of(run(text)), new byte[0], 0, '\r'));
         textboxIds.add(spid);
+        return this;
+    }
+
+    WordFixture fib(int version, int flags) {
+        nFib = version;
+        fibFlags = flags;
         return this;
     }
 
@@ -254,6 +264,8 @@ final class WordFixture {
             fcLcb[74] = put(table, listOverrides);
         }
         wd.put(0, fib(text.length(), ccpText, ccpFtn, ccpHdd, ccpTxbx, fcText, fcText + textBytes, fcLcb));
+        wd.putShort(2, (short) nFib);
+        wd.putShort(10, (short) (wd.getShort(10) | fibFlags));
         try (POIFSFileSystem fs = new POIFSFileSystem(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
             fs.createDocument(new ByteArrayInputStream(wd.array()), "WordDocument");
             fs.createDocument(new ByteArrayInputStream(table.toByteArray()), "1Table");
