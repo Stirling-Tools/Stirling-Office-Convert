@@ -237,14 +237,14 @@ class RtfPackageTest {
         String inline = "{\\field{\\*\\fldinst SHAPE }{\\fldrslt{\\shp{\\*\\shpinst\\shpleft0\\shptop-1440\\shpright1440"
                 + "\\shpbottom-2\\shpbxignore\\shpbyignore{\\sp{\\sn shapeType}{\\sv 75}}{\\sp{\\sn posrelh}{\\sv 3}}"
                 + "{\\sp{\\sn pib}{\\sv {\\pict\\pngblip " + png + "}}}}}}}";
-        String negative = "{\\shp{\\*\\shpinst\\shpleft-1000\\shptop-900\\shpright100\\shpbottom100"
-                + "{\\sp{\\sn shapeType}{\\sv 1}}{\\sp{\\sn fillColor}{\\sv 255}}}}";
+        String negative = "{\\shp{\\*\\shpinst\\shpleft-1000\\shptop-900\\shpright100\\shpbottom100\\shpbxignore"
+                + "\\shpbyignore{\\sp{\\sn shapeType}{\\sv 1}}{\\sp{\\sn posrelh}{\\sv 3}}{\\sp{\\sn fillColor}{\\sv 255}}}}";
         String art = "{\\shp{\\*\\shpinst\\shpleft0\\shptop0\\shpright4000\\shpbottom2000{\\sp{\\sn shapeType}{\\sv 136}}"
                 + "{\\sp{\\sn fillColor}{\\sv 12632256}}{\\sp{\\sn gtextUNICODE}{\\sv DRAFT}}}}";
         String b = convert(HEAD + "{\\*\\generator LibreOffice}\\pard " + inline + negative + art + "x\\par}").body();
         assertTrue(b.contains("<wp:inline") && b.contains("cx=\"914400\""), b);
         assertTrue(b.contains("<wp:positionH relativeFrom=\"margin\"><wp:posOffset>-635000<"), b);
-        assertTrue(b.contains("<wp:positionV relativeFrom=\"paragraph\"><wp:posOffset>-571500<"), b);
+        assertTrue(b.contains("<wp:positionV relativeFrom=\"margin\"><wp:posOffset>-571500<"), b);
         assertTrue(b.contains(">DRAFT<") && b.contains("<w:color w:val=\"C0C0C0\"/>"), b);
     }
 

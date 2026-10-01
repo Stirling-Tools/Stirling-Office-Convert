@@ -160,7 +160,7 @@ final class ShapeXml {
         String rel = s.props.get("posrelh");
         if (rel != null && (s.bxIgnore || s.bx == null)) {
             if (libreOffice && "3".equals(rel) && !s.props.containsKey("posrelv")) {
-                return s.left < 0 ? "margin" : "page";
+                return s.left < 0 || s.top < 0 ? "margin" : "page";
             }
             return switch (s.integer("posrelh", 2)) {
                 case 0 -> "margin";
@@ -169,7 +169,7 @@ final class ShapeXml {
                 default -> "column";
             };
         }
-        return s.bx != null ? s.bx : libreOffice && s.left < 0 ? "margin" : "page";
+        return s.bx != null ? s.bx : "page";
     }
 
     private String vertical(Shape s) {
@@ -182,7 +182,10 @@ final class ShapeXml {
                 default -> "paragraph";
             };
         }
-        return s.by != null ? s.by : libreOffice && s.top < 0 ? "paragraph" : "page";
+        if (s.by == null && libreOffice && "3".equals(s.props.get("posrelh")) && rel == null) {
+            return s.left < 0 || s.top < 0 ? "margin" : "page";
+        }
+        return s.by != null ? s.by : "page";
     }
 
     private String shape(Shape s, int type, boolean line, long w, long h) {

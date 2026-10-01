@@ -62,6 +62,8 @@ final class SectProps {
     String pageFormat;
     String valign;
     boolean rtl;
+    final Map<Character, Border> pageBorders = new LinkedHashMap<>();
+    int pageBorderOptions;
     final Map<String, String> headers = new LinkedHashMap<>();
     final Map<String, String> footers = new LinkedHashMap<>();
 
@@ -121,6 +123,7 @@ final class SectProps {
             case "vertalb" -> valign = "bottom";
             case "vertalj" -> valign = "both";
             case "rtlsect" -> rtl = true;
+            case "pgbrdropt" -> pageBorderOptions = v;
             case "ltrsect" -> rtl = false;
             default -> {
                 return false;
@@ -129,7 +132,7 @@ final class SectProps {
         return true;
     }
 
-    String xml() {
+    String xml(ColorTable colors) {
         StringBuilder b = new StringBuilder(512).append("<w:sectPr>");
         header(b, "headerReference", headers);
         header(b, "footerReference", footers);
@@ -146,6 +149,18 @@ final class SectProps {
                 .append("\" w:bottom=\"").append(page.bottom).append("\" w:left=\"").append(Math.max(0, page.left))
                 .append("\" w:header=\"").append(Math.max(0, headerY)).append("\" w:footer=\"")
                 .append(Math.max(0, footerY)).append("\" w:gutter=\"").append(Math.max(0, page.gutter)).append("\"/>");
+        if (!pageBorders.isEmpty()) {
+            b.append("<w:pgBorders w:offsetFrom=\"").append((pageBorderOptions & 32) != 0 ? "text" : "page")
+                    .append("\">");
+            for (char side : new char[] {'t', 'l', 'b', 'r'}) {
+                Border border = pageBorders.get(side);
+                if (border != null) {
+                    b.append(border.xml(side == 't' ? "top" : side == 'l' ? "left" : side == 'b' ? "bottom" : "right",
+                            colors));
+                }
+            }
+            b.append("</w:pgBorders>");
+        }
         if (pageStart != null && restart || pageFormat != null && !"decimal".equals(pageFormat)) {
             b.append("<w:pgNumType");
             if (pageFormat != null) {

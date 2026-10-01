@@ -173,8 +173,13 @@ final class Content {
                 g.pap.leftBorder = b;
                 g.pap.rightBorder = b;
             }
-            case "brdrbar", "pgbrdrt", "pgbrdrb", "pgbrdrl", "pgbrdrr" -> {
+            case "brdrbar" -> {
                 target = new Border();
+                return true;
+            }
+            case "pgbrdrt", "pgbrdrb", "pgbrdrl", "pgbrdrr" -> {
+                target = new Border();
+                sect.pageBorders.put(w.charAt(6), target);
                 return true;
             }
             case "chbrdr" -> {
@@ -305,7 +310,7 @@ final class Content {
             endPara(g, null, g.pap.tableDepth());
             return;
         }
-        String sectPr = sect.xml();
+        String sectPr = sect.xml(doc.colors);
         ParaProps pap = listIndent(g.pap);
         String with = props.pPr(pap, g.chp, sectPr, true);
         String plain = props.pPr(pap, g.chp, null, true);
@@ -429,6 +434,6 @@ final class Content {
     }
 
     String finalSectPr() {
-        return finalSect != null ? finalSect : sect.xml();
+        return finalSect != null ? finalSect : sect.xml(doc.colors);
     }
 }
