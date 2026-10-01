@@ -329,4 +329,15 @@ class DocTest {
                 () -> OfficeToPdf.convert(in95, dir.resolve("old.pdf")));
         assertTrue(o.getMessage().contains("Word 6.0/95"), o.getMessage());
     }
+
+    @Test
+    void word2FilesAreRefusedPlainly() throws IOException {
+        byte[] word2 = new byte[512];
+        word2[0] = (byte) 0xDB;
+        word2[1] = (byte) 0xA5;
+        Path in = Files.write(dir.resolve("old2.doc"), word2);
+        IOException e = org.junit.jupiter.api.Assertions.assertThrows(IOException.class,
+                () -> OfficeToPdf.convert(in, dir.resolve("old2.pdf")));
+        assertTrue(e.getMessage().contains("Word 2.0"), e.getMessage());
+    }
 }

@@ -2,6 +2,7 @@ package stirling.software.officeconvert.topdf;
 
 import java.io.BufferedOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -53,6 +54,9 @@ final class LegacyWord {
 
     static Result render(Path source, OutputStream sink, Options options, OfficeToPdf.Renderer renderer)
             throws IOException {
+        if (ancient(source)) {
+            throw new IOException("The file is a Word 2.0 or older document, which is not supported; save it as .docx");
+        }
         POIFSFileSystem fs = open(source);
         if (fs == null) {
             return null;
@@ -94,6 +98,13 @@ final class LegacyWord {
             if (docx != null) {
                 OfficeToPdf.deleteQuietly(docx);
             }
+        }
+    }
+
+    private static boolean ancient(Path source) throws IOException {
+        try (InputStream in = Files.newInputStream(source)) {
+            byte[] head = in.readNBytes(2);
+            return head.length == 2 && (head[1] & 0xFF) == 0xA5 && ((head[0] & 0xFF) == 0xDB || (head[0] & 0xFF) == 0x9B);
         }
     }
 

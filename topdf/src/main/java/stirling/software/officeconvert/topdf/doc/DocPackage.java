@@ -57,7 +57,15 @@ public final class DocPackage {
     record Opened(HWPFDocument doc, boolean defused) {
 
         static Opened open(DirectoryNode root) throws IOException {
-            WordFile file = WordFile.read(root);
+            WordFile file;
+            try {
+                file = WordFile.read(root);
+            } catch (IOException | RuntimeException e) {
+                if (Thread.currentThread().isInterrupted()) {
+                    throw new InterruptedIOException("Conversion interrupted");
+                }
+                throw new IOException("The Word 97-2003 document could not be read: " + reason(e), e);
+            }
             try {
                 return new Opened(new HWPFDocument(file.root()), file.defused());
             } catch (EncryptedDocumentException e) {
