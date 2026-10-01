@@ -259,4 +259,15 @@ class DocTest {
         byte[] split = new WordFixture().sectionBreak("Words", cols).para("Body").section(cols).build();
         assertEquals(2, body(split).split("<w:sectPr>").length - 1);
     }
+
+    @Test
+    void onlyTheTableDirectionPropertyMakesATableRightToLeft() throws IOException {
+        int[] centers = {0, 2000, 4000};
+        byte[] doc = new WordFixture().cell("A").cell("B")
+                .rowEnd(Sprms.defTable(centers, null), Sprms.u8(0x3466, 1)).para("After").build();
+        assertTrue(!body(doc).contains("<w:bidiVisual/>"), body(doc));
+        byte[] rtl = new WordFixture().cell("A").cell("B")
+                .rowEnd(Sprms.defTable(centers, null), Sprms.u16(0x560B, 1)).para("After").build();
+        assertTrue(body(rtl).contains("<w:bidiVisual/>"), body(rtl));
+    }
 }

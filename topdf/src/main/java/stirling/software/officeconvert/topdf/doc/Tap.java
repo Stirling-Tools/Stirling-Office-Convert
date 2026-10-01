@@ -100,7 +100,7 @@ final class Tap {
                 case 0x9407 -> t.height = s.s16();
                 case 0x3403, 0x3644 -> t.cantSplit = s.u8() != 0;
                 case 0x3404 -> t.header = s.u8() != 0;
-                case 0x560B, 0x3466 -> t.bidi = s.u8() != 0;
+                case 0x560B -> t.bidi = s.u16() != 0;
                 case 0xD605 -> t.tableBorders = borders80(s);
                 case 0xD613 -> t.tableBorders = borders(s);
                 case 0xD612 -> shd = shading(s, shd, 0);
