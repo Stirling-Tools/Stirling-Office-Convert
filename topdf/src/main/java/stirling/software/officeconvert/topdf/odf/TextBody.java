@@ -275,10 +275,25 @@ final class TextBody {
         }
         blocks(s, null);
         sectionColumns = outer;
+        if (endsUnbalanced(s, sp)) {
+            return;
+        }
         Element after = columnsFor(section.master);
         if (WordPages.columnCount(after) != WordPages.columnCount(section.columns)) {
             newSection(section.master, after, true, null);
         }
+    }
+
+    private boolean endsUnbalanced(Element s, Props sp) {
+        if (!"true".equals(sp.get("text:dont-balance-text-columns")) || s.getParentNode() != w.bodyText) {
+            return false;
+        }
+        for (org.w3c.dom.Node n = s.getNextSibling(); n != null; n = n.getNextSibling()) {
+            if (n instanceof Element) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private Element columnsFor(String master) {

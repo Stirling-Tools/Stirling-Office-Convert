@@ -53,6 +53,8 @@ final class OdtWriter {
 
     String currentMaster;
 
+    Element bodyText;
+
     boolean externalSkipped;
 
     private WordLists.Chain outline;
@@ -91,6 +93,7 @@ final class OdtWriter {
 
     List<String> write() throws IOException {
         Element body = Dom.kid(Dom.kid(doc.content(), Ns.OFFICE, "body"), Ns.OFFICE, "text");
+        bodyText = body;
         TextBody text = new TextBody(this, main, Styles.Scope.CONTENT, true, 0);
         if (body != null) {
             text.blocks(body, null);

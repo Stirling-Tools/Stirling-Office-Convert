@@ -232,6 +232,21 @@ class OdtTest {
     }
 
     @Test
+    void anUnbalancedLastSectionKeepsItsColumnsToTheEnd() throws IOException {
+        String auto = "<style:style style:name=\"Sect1\" style:family=\"section\"><style:section-properties"
+                + " text:dont-balance-text-columns=\"true\"><style:columns fo:column-count=\"2\" fo:column-gap=\"0.5in\"/>"
+                + "</style:section-properties></style:style>";
+        String xml = document(odt(auto, "<text:p>Before</text:p><text:section text:style-name=\"Sect1\""
+                + " text:name=\"S\"><text:p>Left</text:p></text:section>", null));
+        assertEquals(2, xml.split("<w:sectPr>").length - 1, xml);
+        String last = xml.substring(xml.lastIndexOf("<w:sectPr>"));
+        assertTrue(last.contains("w:num=\"2\""), xml);
+        String balanced = document(odt(auto.replace("true", "false"), "<text:p>Before</text:p><text:section"
+                + " text:style-name=\"Sect1\" text:name=\"S\"><text:p>Left</text:p></text:section>", null));
+        assertEquals(3, balanced.split("<w:sectPr>").length - 1, balanced);
+    }
+
+    @Test
     void footnotesKeepTheirBodies() throws IOException {
         Path p = odt("", "<text:p>Main<text:note text:id=\"n1\" text:note-class=\"footnote\"><text:note-citation>1"
                 + "</text:note-citation><text:note-body><text:p>Note text</text:p></text:note-body></text:note></text:p>",
