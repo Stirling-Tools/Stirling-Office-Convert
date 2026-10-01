@@ -213,6 +213,21 @@ class SubstitutionTest {
     }
 
     @Test
+    void aStandInForAKoreanFontDrawsEachHangulSyllableAFullEmWide() throws Exception {
+        Path fonts = Files.createDirectories(dir.resolve("korean"));
+        Files.write(fonts.resolve("kr.ttf"), TestFonts.withGlyphs("Noto Sans KR", 'A', 0xAC00, 0x3131));
+        FontLibrary lib = FontLibrary.of(List.of(fonts));
+        FontFace gulim = lib.find("Gulim", false, false);
+        assertEquals("Noto Sans KR", gulim.family());
+        assertEquals(gulim.unitsPerEm(), gulim.advance(0xAC00));
+        assertEquals(gulim.unitsPerEm(), gulim.advance(0x3131));
+        FontFace own = lib.find("Noto Sans KR", false, false);
+        assertFalse(own.substituted());
+        assertEquals(own.advance('A'), own.advance(0xAC00));
+        assertTrue(own.advance(0xAC00) < own.unitsPerEm());
+    }
+
+    @Test
     void freeMetricClonesOfComicSansAndArialBlackStandInSilentlyAtTheirOwnWeight() throws Exception {
         FontLibrary lib = library("Comic Relief", "Archivo Black", "Liberation Sans");
         FontFace comic = lib.find("Comic Sans MS", false, false);
