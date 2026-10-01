@@ -49,6 +49,8 @@ final class Substitutes {
     private static final List<String> KOREAN_SERIF = List.of("Batang", "Gungsuh", "Noto Serif KR", "Noto Serif CJK KR",
             "NanumMyeongjo", "UnBatang", "Baekmuk Batang", "Malgun Gothic", "Noto Sans KR", "Noto Sans CJK KR");
 
+    private static final List<String> HANGUL_CELLS = List.of("WenQuanYi Zen Hei", "WenQuanYi Micro Hei");
+
     private static final List<String> SYMBOLS = List.of("Segoe UI Symbol", "Cambria Math", "DejaVu Sans",
             "Noto Sans Symbols", "Noto Sans Symbols 2", "Noto Sans Math", "Symbola", "Arial Unicode MS",
             "FreeSerif");
@@ -249,7 +251,6 @@ final class Substitutes {
         if (containsAny(f, "batang", "gulim", "dotum", "gungsuh", "malgun", "nanum", "바탕", "굴림", "돋움", "궁서", "고딕")) {
             chain.addAll(serif ? KOREAN_SERIF : KOREAN);
             chain.addAll(serif ? KOREAN : KOREAN_SERIF);
-            chain.addAll(JAPANESE_SANS);
         } else if (containsAny(f, "mingliu", "jhenghei", "dfkai", "明體", "正黑", "標楷")) {
             chain.addAll(serif ? TAIWAN_SERIF : TAIWAN);
             chain.addAll(CHINESE_SANS);
@@ -326,6 +327,7 @@ final class Substitutes {
             }
             case HANGUL -> {
                 out.addAll(KOREAN);
+                out.addAll(HANGUL_CELLS);
                 out.addAll(JAPANESE_SANS);
             }
             // DejaVu before Noto: Noto Sans Arabic lines are 2.1 em tall against 1.15 for Arial's Arabic

@@ -201,14 +201,18 @@ class SubstitutionTest {
         assertTrue(simSun.indexOf("Noto Serif SC") < simSun.indexOf("Noto Sans SC"));
         assertTrue(simSun.indexOf("Noto Sans SC") < simSun.indexOf("Noto Sans JP"));
         List<String> gulim = Substitutes.generic("굴림");
-        assertTrue(gulim.indexOf("Noto Sans KR") < gulim.indexOf("Noto Sans JP"));
+        assertTrue(gulim.contains("Noto Sans KR"));
+        assertFalse(gulim.contains("Noto Sans JP"), "a Japanese face draws Hangul narrower than a Korean font");
+        List<String> hangul = Substitutes.script(0xAC00);
+        assertTrue(hangul.indexOf("Noto Sans KR") < hangul.indexOf("WenQuanYi Zen Hei"));
+        assertTrue(hangul.indexOf("WenQuanYi Zen Hei") < hangul.indexOf("Noto Sans JP"));
         assertTrue(gulim.indexOf("Liberation Sans") < gulim.indexOf("Liberation Serif"));
         List<String> mingLiU = Substitutes.generic("MingLiU");
         assertTrue(mingLiU.indexOf("Noto Serif TC") < mingLiU.indexOf("Noto Sans TC"));
         assertTrue(mingLiU.indexOf("Noto Sans TC") < mingLiU.indexOf("Noto Sans SC"));
         List<String> batang = Substitutes.generic("바탕");
         assertTrue(batang.indexOf("Noto Serif KR") < batang.indexOf("Noto Sans KR"));
-        assertTrue(batang.indexOf("Noto Sans KR") < batang.indexOf("Noto Sans JP"));
+        assertTrue(batang.indexOf("Noto Sans KR") < batang.indexOf("Liberation Serif"));
         assertTrue(Substitutes.eastAsian("新細明體") && Substitutes.eastAsian("Gungsuh"));
     }
 
