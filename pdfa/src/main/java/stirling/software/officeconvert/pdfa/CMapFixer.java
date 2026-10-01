@@ -128,9 +128,13 @@ final class CMapFixer {
             return null;
         }
         StringBuilder blocks = new StringBuilder("\n");
-        for (String[] kind : new String[][] {{"begincodespacerange", "endcodespacerange"},
-                {"begincidrange", "endcidrange"}, {"begincidchar", "endcidchar"},
-                {"beginnotdefrange", "endnotdefrange"}, {"beginnotdefchar", "endnotdefchar"}}) {
+        String[][] kinds = text.contains("begincodespacerange")
+                ? new String[][] {{"begincidrange", "endcidrange"}, {"begincidchar", "endcidchar"},
+                        {"beginnotdefrange", "endnotdefrange"}, {"beginnotdefchar", "endnotdefchar"}}
+                : new String[][] {{"begincodespacerange", "endcodespacerange"}, {"begincidrange", "endcidrange"},
+                        {"begincidchar", "endcidchar"}, {"beginnotdefrange", "endnotdefrange"},
+                        {"beginnotdefchar", "endnotdefchar"}};
+        for (String[] kind : kinds) {
             Matcher m = Pattern.compile("\\d+\\s+" + kind[0] + ".*?" + kind[1], Pattern.DOTALL).matcher(up);
             while (m.find()) {
                 blocks.append(m.group()).append('\n');
@@ -151,6 +155,11 @@ final class CMapFixer {
         CMap cmap = font.getCMap();
         if (cid == null || cmap == null) {
             return null;
+        }
+        if (level.part() > 1 && showsCidZero(font, codes)) {
+            String text = enc instanceof COSStream st ? text(st) : null;
+            return flatten(font, cid, cmap, codes, text) ? "Moved glyphs shown as CID 0, which PDF/A-2 reserves for "
+                    + ".notdef, to another CID" : null;
         }
         if (enc instanceof COSName n) {
             String name = n.getName();
@@ -183,6 +192,19 @@ final class CMapFixer {
             }
         }
         return note;
+    }
+
+    private static boolean showsCidZero(PDType0Font font, Set<Integer> codes) {
+        for (int code : codes) {
+            try {
+                if (font.codeToCID(code) == 0) {
+                    return true;
+                }
+            } catch (RuntimeException e) {
+                return false;
+            }
+        }
+        return false;
     }
 
     private static boolean usesPredefined(String text) {
@@ -246,14 +268,14 @@ final class CMapFixer {
             mapping.put(code, c);
             lengths.put(code, len);
             usedCids.add(c);
-            if (c > MAX_CID) {
+            if (c > MAX_CID || c == 0) {
                 widths.put(c, font.getWidth(code));
             }
         }
         Map<Integer, Integer> remap = new TreeMap<>();
         int free = 1;
         for (Map.Entry<Integer, Integer> e : mapping.entrySet()) {
-            if (e.getValue() > MAX_CID) {
+            if (e.getValue() > MAX_CID || e.getValue() == 0 && level.part() > 1) {
                 Integer to = remap.get(e.getValue());
                 if (to == null) {
                     while (usedCids.contains(free)) {

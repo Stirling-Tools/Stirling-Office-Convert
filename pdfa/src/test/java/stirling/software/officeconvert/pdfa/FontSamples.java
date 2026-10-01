@@ -80,6 +80,43 @@ final class FontSamples {
             }
             full.getCOSObject().setItem(COSName.TO_UNICODE, tu);
         });
+        doc("f04_truetype_encodings", Set.of("1:6.3.5-1", "1:6.3.7-1", "1:6.3.7-2", "2:6.2.11.4.1-2",
+                "2:6.2.11.6-2", "2:6.2.11.6-3", "2:6.2.11.8-1"), d -> {
+                    PDFont notdef = trueType(d);
+                    PDFont standard = trueType(d);
+                    COSDictionary enc = new COSDictionary();
+                    enc.setItem(COSName.BASE_ENCODING, COSName.STANDARD_ENCODING);
+                    standard.getCOSObject().setItem(COSName.ENCODING, enc);
+                    PDFont symbolic = trueType(d);
+                    symbolic.getFontDescriptor().setSymbolic(true);
+                    symbolic.getFontDescriptor().setNonSymbolic(false);
+                    PDType0Font cid = PDType0Font.load(d, Samples.liberation(), false);
+                    page(d, "BT /A 14 Tf 50 780 Td (Undefined code: ) Tj <81> Tj /B 14 Tf 0 -30 Td "
+                            + "(StandardEncoding) Tj /C 14 Tf 0 -30 Td (Symbolic with an encoding) Tj "
+                            + "/D 14 Tf 0 -30 Td <002C270F0000> Tj ET", notdef, standard, symbolic, cid);
+                });
+        tagged("f05_private_use_text", Set.of("2:6.2.11.7.3-1"), d -> {
+            Samples.ALL.get("s21_tagged").make(d);
+            PDPage p = d.getPage(0);
+            PDType0Font f = PDType0Font.load(d, Samples.liberation(), false);
+            p.getResources().put(COSName.getPDFName("PU"), f);
+            byte[] code = f.encode("A");
+            COSStream tu = d.getDocument().createCOSStream();
+            try (OutputStream o = tu.createOutputStream()) {
+                o.write(("/CIDInit /ProcSet findresource begin 12 dict begin begincmap /CMapName /P def "
+                        + "1 begincodespacerange <0000> <FFFF> endcodespacerange 1 beginbfchar "
+                        + String.format("<%02X%02X> <E000>", code[0], code[1])
+                        + " endbfchar endcmap CMapName currentdict /CMap defineresource pop end end")
+                        .getBytes(StandardCharsets.US_ASCII));
+            }
+            f.getCOSObject().setItem(COSName.TO_UNICODE, tu);
+            COSStream extra = d.getDocument().createCOSStream();
+            try (OutputStream o = extra.createOutputStream()) {
+                o.write(String.format("/Artifact BMC BT /PU 12 Tf 50 700 Td <%02X%02X> Tj ET EMC", code[0], code[1])
+                        .getBytes(StandardCharsets.US_ASCII));
+            }
+            ((COSArray) p.getCOSObject().getDictionaryObject(COSName.CONTENTS)).add(extra);
+        });
     }
 
     static COSDictionary descriptor(PDType0Font f) {
