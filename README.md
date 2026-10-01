@@ -473,8 +473,9 @@ PdfToPdfA.convert(pdDocument, outputStream, options);     // an open document, w
   replaced.
 - Transparency. Parts 2 and 3 keep it. For part 1 each transparent object (soft masks, constant alpha, blend modes,
   transparency groups, translucent annotations) is drawn into a picture of the smallest box covering all of them on
-  that page, at `flattenDpi` (200 by default), placed where the last of them was drawn; what comes after stays vector,
-  and transparent text stays in the page as invisible text, so it can still be searched and copied.
+  that page, at `flattenDpi` (200 by default; JPEG when the box is photographic, lossless otherwise), drawn from the
+  content up to the last of them and placed after it; what comes after stays vector and is drawn once, and transparent
+  text stays in the page as invisible text, so it can still be searched and copied.
 - Removed, with a warning each: JavaScript, launch, sound, movie, reset, import and hide actions and every additional
   action, forbidden annotation types and hidden annotations, XFA, PostScript XObjects, image alternates, transfer
   functions, halftones and undefined operators. Annotations without an appearance get one; LZW streams are recompressed
