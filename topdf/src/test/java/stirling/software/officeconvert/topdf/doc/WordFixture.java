@@ -41,6 +41,12 @@ final class WordFixture {
 
     private int[] headerStories;
 
+    private final List<ShapeFixture.Shape> shapes = new ArrayList<>();
+
+    private final List<Para> textboxes = new ArrayList<>();
+
+    private final List<Integer> textboxIds = new ArrayList<>();
+
     WordFixture() {
         styles.add(new Style("Normal", 0x0FFF, new byte[0], new byte[0]));
     }
@@ -94,6 +100,17 @@ final class WordFixture {
         return this;
     }
 
+    WordFixture shape(ShapeFixture.Shape s) {
+        shapes.add(s);
+        return this;
+    }
+
+    WordFixture textbox(int spid, String text) {
+        textboxes.add(new Para(List.of(run(text)), new byte[0], 0, '\r'));
+        textboxIds.add(spid);
+        return this;
+    }
+
     WordFixture data(byte[] d) {
         data = d;
         return this;
@@ -132,7 +149,11 @@ final class WordFixture {
                 headerStories[i] = ccpHdd;
             }
         }
-        if (ccpFtn > 0 || ccpHdd > 0) {
+        int ccpTxbx = textboxes.isEmpty() ? 0 : append(textboxes, text, all, ends, runSpans, runProps) + 1;
+        if (ccpTxbx > 0) {
+            guard(text, all, ends, runSpans, runProps);
+        }
+        if ((ccpFtn > 0 || ccpHdd > 0) && ccpTxbx == 0) {
             guard(text, all, ends, runSpans, runProps);
         }
         int fcText = 1024;
@@ -173,11 +194,38 @@ final class WordFixture {
             fcLcb[2] = put(table, concat(ints(refs), frd));
             fcLcb[3] = put(table, ints(footnoteTextCps()));
         }
+        if (!shapes.isEmpty()) {
+            List<Integer> cps = new ArrayList<>();
+            for (int i = 0; i < ccpText && cps.size() < shapes.size(); i++) {
+                if (text.charAt(i) == '\u0008') {
+                    cps.add(i);
+                }
+            }
+            fcLcb[40] = put(table, ShapeFixture.fspa(shapes, cps, ccpText));
+            fcLcb[50] = put(table, ShapeFixture.dggInfo(shapes));
+        }
+        if (ccpTxbx > 0) {
+            int k = textboxes.size();
+            ByteBuffer plc = ByteBuffer.allocate(4 * (k + 2) + 22 * (k + 1)).order(ByteOrder.LITTLE_ENDIAN);
+            int at = 0;
+            for (int i = 0; i <= k; i++) {
+                plc.putInt(at);
+                if (i < k) {
+                    at += textboxes.get(i).runs().get(0).text().length() + 1;
+                }
+            }
+            plc.putInt(at + 1);
+            for (int i = 0; i <= k; i++) {
+                plc.putInt(i < k ? 1 : 0).putInt(0).putShort((short) 0).putInt(0).putInt(i < k ? textboxIds.get(i) : 0)
+                        .putInt(0);
+            }
+            fcLcb[56] = put(table, plc.array());
+        }
         if (lists != null) {
             fcLcb[73] = put(table, lists);
             fcLcb[74] = put(table, listOverrides);
         }
-        wd.put(0, fib(text.length(), ccpText, ccpFtn, ccpHdd, fcText, fcText + textBytes, fcLcb));
+        wd.put(0, fib(text.length(), ccpText, ccpFtn, ccpHdd, ccpTxbx, fcText, fcText + textBytes, fcLcb));
         try (POIFSFileSystem fs = new POIFSFileSystem(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
             fs.createDocument(new ByteArrayInputStream(wd.array()), "WordDocument");
             fs.createDocument(new ByteArrayInputStream(table.toByteArray()), "1Table");
@@ -395,7 +443,8 @@ final class WordFixture {
         std.writeBytes(grpprl);
     }
 
-    private static byte[] fib(int cpAll, int ccpText, int ccpFtn, int ccpHdd, int fcMin, int fcMac, int[][] fcLcb) {
+    private static byte[] fib(int cpAll, int ccpText, int ccpFtn, int ccpHdd, int ccpTxbx, int fcMin, int fcMac,
+            int[][] fcLcb) {
         ByteBuffer b = ByteBuffer.allocate(32 + 2 + 28 + 2 + 88 + 2 + 93 * 8 + 2).order(ByteOrder.LITTLE_ENDIAN);
         b.putShort((short) 0xA5EC).putShort((short) 0xC1).putShort((short) 0).putShort((short) 0x0409)
                 .putShort((short) 0).putShort((short) (0x0200 | 0x0004)).putShort((short) 0xBF).putInt(0)
@@ -408,6 +457,7 @@ final class WordFixture {
         b.putInt(lw + 12, ccpText);
         b.putInt(lw + 16, ccpFtn);
         b.putInt(lw + 20, ccpHdd);
+        b.putInt(lw + 36, ccpTxbx);
         b.position(lw + 88);
         b.putShort((short) 93);
         for (int i = 0; i < 93; i++) {

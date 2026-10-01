@@ -220,4 +220,33 @@ class DocTest {
         String first = xml.substring(xml.indexOf("<w:tr>"), xml.lastIndexOf("<w:tr>"));
         assertTrue(!first.contains("<w:tcMar>"), xml);
     }
+
+    @Test
+    void shapesUseTheirOwnAnchorAndLayerProperties() throws IOException {
+        byte[] polygon = {4, 0, 4, 0, (byte) 0xF0, (byte) 0xFF, 0, 0, 0, 0, 0, 0, (byte) 0x60, 0x54, (byte) 0x60, 0x54,
+            0, 0, 0, 0, 0, 0};
+        byte[] doc = new WordFixture()
+                .para(List.of(WordFixture.run("Anchor "), WordFixture.run("\u0008", Sprms.special()),
+                        WordFixture.run("\u0008", Sprms.special()), WordFixture.run("\u0008", Sprms.special())), 0)
+                .shape(new ShapeFixture.Shape(1025, 1, new int[] {0, 2123, 3000, 4000},
+                        ShapeFixture.fspaFlags(2, 2, 3, 0, false), java.util.Map.of(0x0181, 0x0000FF, 0x0182, 0x8000,
+                                0x0390, 1, 0x0392, 1, 0x03BF, 0x200020), null))
+                .shape(new ShapeFixture.Shape(1026, 1, new int[] {0, 0, 9000, 1000},
+                        ShapeFixture.fspaFlags(2, 2, 2, 0, false), java.util.Map.of(0x01BF, 0x100000, 0x01FF, 0x80000),
+                        null))
+                .shape(new ShapeFixture.Shape(1027, 202, new int[] {0, 0, 2000, 1000},
+                        ShapeFixture.fspaFlags(2, 2, 4, 0, false), java.util.Map.of(0x0080, 0x10000), polygon))
+                .textbox(1027, "Boxed words").build();
+        String xml = body(doc);
+        assertTrue(xml.contains("<wp:positionH relativeFrom=\"page\"><wp:posOffset>0</wp:posOffset>"), xml);
+        assertTrue(xml.contains("<wp:positionV relativeFrom=\"page\"><wp:posOffset>" + 2123 * 635 + "<"), xml);
+        assertTrue(xml.contains("behindDoc=\"1\""), xml);
+        assertTrue(xml.contains("<a:srgbClr val=\"FF0000\"><a:alpha val=\"50000\"/>"), xml);
+        assertEquals(3, xml.split("<wp:anchor ").length - 1, xml);
+        assertTrue(xml.contains("<wp:wrapTight wrapText=\"bothSides\"><wp:wrapPolygon edited=\"0\"><wp:start x=\"0\" y=\"0\"/>"
+                + "<wp:lineTo x=\"0\" y=\"21600\"/><wp:lineTo x=\"21600\" y=\"0\"/>"), xml);
+        assertTrue(xml.contains("<w:txbxContent>") && xml.contains("Boxed words"), xml);
+        String text = pdfText(doc, "shapes.doc");
+        assertTrue(text.contains("Boxed words"), text);
+    }
 }
