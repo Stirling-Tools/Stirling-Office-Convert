@@ -140,6 +140,8 @@ final class Grid {
 
     private final double rowFactor;
 
+    private double columnCap = Double.POSITIVE_INFINITY;
+
     private final boolean defaultHidden;
 
     private final boolean columnTops;
@@ -549,7 +551,7 @@ final class Grid {
             }
             double span = 0;
             for (int c = first; c <= last; c++) {
-                span += columns.width(c);
+                span += columnWidth(c);
             }
             Typesetter t = book.typesetter();
             double need = t.width(e.text().runs(), 1) + 2 * CellLayout.pad(t, e.text(), e.format());
@@ -560,7 +562,7 @@ final class Grid {
             int c = last;
             while (extra > 0 && c + 1 < Columns.MAX && c - last < 256) {
                 c++;
-                extra -= columns.width(c);
+                extra -= columnWidth(c);
             }
             if (c > last) {
                 row.spillFrom = first;
@@ -619,7 +621,14 @@ final class Grid {
     }
 
     double columnWidth(int col) {
-        return columns.width(col);
+        return Math.min(columnCap, columns.width(col));
+    }
+
+    void capColumns(double cap) {
+        if (cap > 0 && cap < columnCap) {
+            columnCap = cap;
+            extendForOverflow();
+        }
     }
 
     // Painters alternate between a row and the one above it, so the last two rows found are kept
