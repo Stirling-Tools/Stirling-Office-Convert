@@ -125,6 +125,24 @@ class OdtTest {
     }
 
     @Test
+    void aBulletKeepsTheSizeOfItsLabelStyle() throws IOException {
+        String styles = OdfFixtures.styles("<style:style style:name=\"Label\" style:family=\"text\">"
+                + "<style:text-properties fo:font-size=\"10pt\"/></style:style>", "", "");
+        String list = "<text:list-style style:name=\"L1\"><text:list-level-style-bullet text:level=\"1\""
+                + " text:style-name=\"Label\" text:bullet-char=\"&#8226;\"><style:text-properties"
+                + " fo:font-family=\"Symbol\"/></text:list-level-style-bullet><text:list-level-style-bullet"
+                + " text:level=\"2\" text:bullet-char=\"o\"><style:text-properties fo:font-size=\"50%\"/>"
+                + "</text:list-level-style-bullet></text:list-style>";
+        Path p = odt(list, "<text:list text:style-name=\"L1\"><text:list-item><text:p>one</text:p></text:list-item>"
+                + "</text:list>", styles);
+        String numbering = OdfFixtures.rewrite(p).get("word/numbering.xml");
+        String first = numbering.substring(numbering.indexOf("<w:lvl w:ilvl=\"0\">"), numbering.indexOf("<w:lvl w:ilvl=\"1\">"));
+        String second = numbering.substring(numbering.indexOf("<w:lvl w:ilvl=\"1\">"), numbering.indexOf("<w:lvl w:ilvl=\"2\">"));
+        assertTrue(first.contains("<w:sz w:val=\"20\"/>"), numbering);
+        assertFalse(second.contains("<w:sz "), numbering);
+    }
+
+    @Test
     void continuedListKeepsCounting() throws IOException {
         String list = "<text:list-style style:name=\"L1\"><text:list-level-style-number text:level=\"1\""
                 + " style:num-suffix=\")\" style:num-format=\"a\"/></text:list-style>";

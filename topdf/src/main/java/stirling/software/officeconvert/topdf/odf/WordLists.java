@@ -192,7 +192,9 @@ final class WordLists {
                 rp.remove("fo:font-family");
             }
         }
-        rp.remove("fo:font-size");
+        if (Length.isPercent(rp.get("fo:font-size"))) {
+            rp.remove("fo:font-size");
+        }
         String rpr = WordRun.rPr(rp, styles);
         if (!rpr.isEmpty()) {
             b.append("<w:rPr>").append(rpr).append("</w:rPr>");
