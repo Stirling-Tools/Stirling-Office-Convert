@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Set;
 
 import org.apache.pdfbox.contentstream.operator.Operator;
+import org.apache.pdfbox.cos.COSBase;
 import org.apache.pdfbox.cos.COSBoolean;
 import org.apache.pdfbox.cos.COSDictionary;
 import org.apache.pdfbox.cos.COSName;
@@ -26,7 +27,7 @@ final class ContentFixer {
 
     private ContentFixer() {}
 
-    static void run(ContentGraph graph, Report report, FontUsage usage) throws IOException {
+    static void run(ContentGraph graph, PdfALevel level, Report report, FontUsage usage) throws IOException {
         for (ContentGraph.Node n : graph.nodes()) {
             PdfFiles.stopIfInterrupted();
             List<Object> tokens;
@@ -45,6 +46,15 @@ final class ContentFixer {
                 }
                 List<Object> operation = new ArrayList<>(tokens.subList(start, i + 1));
                 start = i + 1;
+                for (int k = 0; k < operation.size() - 1; k++) {
+                    if (operation.get(k) instanceof COSBase b) {
+                        COSBase f = Limits.number(b, level);
+                        if (f != b) {
+                            operation.set(k, f);
+                            changed = true;
+                        }
+                    }
+                }
                 String name = op.getName();
                 if (!OPERATORS.contains(name)) {
                     changed = true;

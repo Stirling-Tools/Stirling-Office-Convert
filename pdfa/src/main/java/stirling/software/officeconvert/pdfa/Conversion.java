@@ -53,7 +53,7 @@ final class Conversion {
         PdfFiles.stopIfInterrupted();
         ContentGraph graph = ContentGraph.of(doc);
         FontUsage usage = new FontUsage();
-        ContentFixer.run(graph, report, usage);
+        ContentFixer.run(graph, level, report, usage);
         FontFixer.run(doc, usage, level, FontLibrary.withSystem(options.fontDirs()), report);
         PdfFiles.stopIfInterrupted();
         StreamFixer.run(doc, level, report);
@@ -62,6 +62,7 @@ final class Conversion {
         }
         graph = ContentGraph.of(doc);
         ColourFixer.run(doc, graph, level, report);
+        Limits.run(doc, level, report);
         Metadata.run(doc, level);
         PdfFiles.stopIfInterrupted();
         save(doc, out, level);
