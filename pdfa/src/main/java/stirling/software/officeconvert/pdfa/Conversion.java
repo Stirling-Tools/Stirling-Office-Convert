@@ -42,6 +42,7 @@ final class Conversion {
         if (level.tagged()) {
             Tagging.run(doc, level, report);
         }
+        Signatures.run(doc, report);
         Interactive.run(doc, level, report);
         EmbeddedFiles.run(doc, level, report);
         if (level.part() == 1) {

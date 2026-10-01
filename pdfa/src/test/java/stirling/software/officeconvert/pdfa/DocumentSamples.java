@@ -80,6 +80,46 @@ final class DocumentSamples {
                     cat.setItem(COSName.getPDFName("Requirements"), new COSArray());
                     p.getCOSObject().setItem(COSName.getPDFName("PresSteps"), new COSDictionary());
                 });
+        doc("d02_signature", Set.of("2:6.1.12-2", "2:6.4.3-1"), d -> {
+            PDPage p = page(d, "A signed document");
+            COSDictionary sig = new COSDictionary();
+            sig.setItem(COSName.TYPE, COSName.SIG);
+            sig.setItem(COSName.FILTER, COSName.getPDFName("Adobe.PPKLite"));
+            sig.setItem(COSName.SUB_FILTER, COSName.getPDFName("adbe.pkcs7.detached"));
+            COSArray range = new COSArray();
+            for (int v : new int[] {0, 100, 200, 50}) {
+                range.add(COSInteger.get(v));
+            }
+            sig.setItem(COSName.BYTERANGE, range);
+            sig.setItem(COSName.CONTENTS, new COSString(new byte[64]));
+            COSDictionary ref = new COSDictionary();
+            ref.setItem(COSName.TYPE, COSName.getPDFName("SigRef"));
+            ref.setItem(COSName.getPDFName("TransformMethod"), COSName.getPDFName("DocMDP"));
+            ref.setItem(COSName.getPDFName("DigestLocation"), new COSArray());
+            ref.setItem(COSName.getPDFName("DigestMethod"), COSName.getPDFName("MD5"));
+            COSArray refs = new COSArray();
+            refs.add(ref);
+            sig.setItem(COSName.getPDFName("Reference"), refs);
+            COSDictionary field = annot("Widget", 50, 700);
+            field.setItem(COSName.FT, COSName.SIG);
+            field.setString(COSName.T, "signature");
+            field.setItem(COSName.V, sig);
+            COSDictionary ap = new COSDictionary();
+            ap.setItem(COSName.N, ObjectSamples.form(d, "0 0 100 20 re S"));
+            field.setItem(COSName.AP, ap);
+            COSArray annots = new COSArray();
+            annots.add(field);
+            p.getCOSObject().setItem(COSName.ANNOTS, annots);
+            COSDictionary acro = new COSDictionary();
+            COSArray fields = new COSArray();
+            fields.add(field);
+            acro.setItem(COSName.FIELDS, fields);
+            acro.setInt(COSName.getPDFName("SigFlags"), 3);
+            d.getDocumentCatalog().getCOSObject().setItem(COSName.ACRO_FORM, acro);
+            COSDictionary perms = new COSDictionary();
+            perms.setItem("DocMDP", sig);
+            d.getDocumentCatalog().getCOSObject().setItem(COSName.PERMS, perms);
+        });
         doc("d04_optional_content_configs", Set.of("2:6.9-1", "2:6.9-2", "2:6.9-3"), d -> {
             PDPage p = page(d, "Optional content configurations");
             COSDictionary a = ocg("A");
