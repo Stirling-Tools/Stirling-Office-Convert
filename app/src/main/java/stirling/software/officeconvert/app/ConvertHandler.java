@@ -389,6 +389,8 @@ final class ConvertHandler implements HttpHandler {
             return new Done(note, r.pages(), r.warnings());
         } catch (InterruptedIOException e) {
             throw e;
+        } catch (OfficeToPdf.TimedOut e) {
+            throw timedOut(false);
         } catch (IOException e) {
             throw new Refusal(422, "convert", plain(e.getMessage()));
         }
