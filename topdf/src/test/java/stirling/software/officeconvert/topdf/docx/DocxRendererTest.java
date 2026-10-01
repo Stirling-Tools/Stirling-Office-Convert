@@ -195,6 +195,37 @@ class DocxRendererTest {
     }
 
     @Test
+    void autonumFieldsWithoutAResultNumberTheirParagraphs() throws IOException {
+        StringBuilder body = new StringBuilder();
+        for (String switches : new String[] {"", "", " \\s :"}) {
+            body.append("<w:p><w:r><w:fldChar w:fldCharType=\"begin\"/></w:r><w:r><w:instrText xml:space=\"preserve\">")
+                    .append(" AUTONUM").append(switches).append(" </w:instrText></w:r><w:r><w:fldChar")
+                    .append(" w:fldCharType=\"end\"/></w:r><w:r><w:t xml:space=\"preserve\"> Item</w:t></w:r></w:p>");
+        }
+        String text = DocxDoc.render(dir, "autonum", new DocxDoc().body(body.toString()).bytes()).text();
+        assertTrue(text.contains("1. Item"), text);
+        assertTrue(text.contains("2. Item"), text);
+        assertTrue(text.contains("3: Item"), text);
+        assertFalse(text.contains("AUTONUM"), text);
+    }
+
+    @Test
+    void aListThatLinksToANumberingStyleTakesThatStylesLevels() throws IOException {
+        String numbering = "<w:abstractNum w:abstractNumId=\"0\"><w:styleLink w:val=\"HouseList\"/><w:lvl w:ilvl=\"0\">"
+                + "<w:start w:val=\"7\"/><w:numFmt w:val=\"decimal\"/><w:lvlText w:val=\"%1)\"/><w:lvlJc w:val=\"left\"/>"
+                + "</w:lvl></w:abstractNum><w:abstractNum w:abstractNumId=\"1\"><w:numStyleLink w:val=\"HouseList\"/>"
+                + "</w:abstractNum><w:num w:numId=\"1\"><w:abstractNumId w:val=\"0\"/></w:num><w:num w:numId=\"2\">"
+                + "<w:abstractNumId w:val=\"1\"/></w:num>";
+        String styles = "<w:style w:type=\"numbering\" w:styleId=\"HouseList\"><w:name w:val=\"House List\"/><w:pPr>"
+                + "<w:numPr><w:numId w:val=\"1\"/></w:numPr></w:pPr></w:style>";
+        String body = "<w:p><w:pPr><w:numPr><w:ilvl w:val=\"0\"/><w:numId w:val=\"2\"/></w:numPr></w:pPr><w:r><w:t>Item"
+                + "</w:t></w:r></w:p>";
+        String text = DocxDoc.render(dir, "stylelink", new DocxDoc().styles(styles).numbering(numbering).body(body)
+                .bytes()).text();
+        assertTrue(text.contains("7)"), text);
+    }
+
+    @Test
     void footnotesAppearOnTheirPage() throws IOException {
         String notes = "<w:footnote w:type=\"separator\" w:id=\"-1\"><w:p><w:r><w:separator/></w:r></w:p></w:footnote>"
                 + "<w:footnote w:id=\"1\"><w:p><w:r><w:rPr><w:vertAlign w:val=\"superscript\"/></w:rPr>"

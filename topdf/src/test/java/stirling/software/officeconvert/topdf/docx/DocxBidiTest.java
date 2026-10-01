@@ -33,7 +33,11 @@ class DocxBidiTest {
     }
 
     private List<Glyph> glyphs(String name, String body) throws IOException {
-        DocxDoc.Rendered r = DocxDoc.render(dir, name, new DocxDoc().body(body).bytes());
+        return glyphs(new DocxDoc().body(body), name);
+    }
+
+    private List<Glyph> glyphs(DocxDoc doc, String name) throws IOException {
+        DocxDoc.Rendered r = DocxDoc.render(dir, name, doc.bytes());
         List<Glyph> out = new ArrayList<>();
         try (PDDocument d = r.open()) {
             PDFTextStripper s = new PDFTextStripper() {
@@ -140,5 +144,83 @@ class DocxBidiTest {
             }.getText(d);
         }
         assertTrue(!fonts.isEmpty() && fonts.stream().allMatch(f -> f.contains("TimesNewRoman")), fonts.toString());
+    }
+
+    @Test
+    void latinTextSetInTheBidiThemeFontTakesTheDocumentsBidiScriptFont() throws IOException {
+        String theme = "<a:theme xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\" name=\"T\">"
+                + "<a:themeElements><a:fontScheme name=\"F\"><a:majorFont><a:latin typeface=\"Liberation Sans\"/>"
+                + "<a:ea typeface=\"\"/><a:cs typeface=\"\"/></a:majorFont><a:minorFont><a:latin"
+                + " typeface=\"Liberation Sans\"/><a:ea typeface=\"\"/><a:cs typeface=\"\"/><a:font script=\"Arab\""
+                + " typeface=\"Courier New\"/></a:minorFont></a:fontScheme></a:themeElements></a:theme>";
+        String settings = "<w:settings " + DocxDoc.NS + "><w:themeFontLang w:val=\"en-GB\" w:bidi=\"ar-SA\"/>"
+                + "</w:settings>";
+        String body = "<w:p><w:r><w:rPr><w:rFonts w:asciiTheme=\"minorBidi\" w:hAnsiTheme=\"minorBidi\"/>"
+                + "<w:sz w:val=\"20\"/></w:rPr><w:t>iiiiiiiiii X</w:t></w:r></w:p>";
+        DocxDoc doc = new DocxDoc().part("theme/theme1.xml", "theme",
+                "application/vnd.openxmlformats-officedocument.theme+xml", theme)
+                .part("settings.xml", "settings", "application/vnd.openxmlformats-officedocument.wordprocessingml"
+                        + ".settings+xml", settings).body(body);
+        List<Glyph> g = glyphs(doc, "bidithemelatin");
+        assertEquals(66, x(g, "X") - 72, 1, "eleven Courier advances: " + g);
+    }
+
+    @Test
+    void spacesInARightToLeftRunTakeTheComplexScriptFont() throws IOException {
+        String body = "<w:p><w:pPr><w:bidi/></w:pPr><w:r><w:rPr><w:rFonts w:ascii=\"Liberation Sans\""
+                + " w:hAnsi=\"Liberation Sans\" w:cs=\"Courier New\"/><w:rtl/><w:sz w:val=\"20\"/><w:szCs w:val=\"20\"/>"
+                + "</w:rPr><w:t>1 2 3 4 5 6 7 8 9</w:t></w:r></w:p>";
+        List<Glyph> g = glyphs("rtlspaces", body);
+        float span = Math.abs(x(g, "9") - x(g, "1"));
+        assertEquals(96, span, 2, "eight Courier digits and eight Courier spaces: " + g);
+    }
+
+    @Test
+    void spacesBetweenArabicWordsDrawnByAStandInStillTakeTheRunsOwnFont() throws IOException {
+        String body = "<w:p><w:pPr><w:bidi/></w:pPr><w:r><w:rPr><w:rFonts w:cs=\"Liberation Sans\"/><w:rtl/></w:rPr>"
+                + "<w:t>\u0645\u0631\u062D\u0628\u0627 \u0645\u0631\u062D\u0628\u0627 X</w:t></w:r></w:p>";
+        DocxDoc.Rendered r = DocxDoc.render(dir, "rtlstandin", new DocxDoc().body(body).bytes());
+        java.util.Map<String, String> fonts = new java.util.HashMap<>();
+        try (PDDocument d = r.open()) {
+            new PDFTextStripper() {
+                @Override
+                protected void writeString(String text, List<TextPosition> positions) {
+                    positions.forEach(p -> fonts.putIfAbsent(p.getUnicode(), p.getFont().getName()));
+                }
+            }.getText(d);
+        }
+        assertEquals(fonts.get("X"), fonts.get(" "), fonts.toString());
+    }
+
+    @Test
+    void aSymbolBulletOnARightToLeftParagraphMarkIsDrawnFromTheSymbolFont() throws IOException {
+        assertEquals(labelFont("ltrbullet", ""), labelFont("rtlbullet", "<w:rtl/>"));
+    }
+
+    private String labelFont(String name, String rtl) throws IOException {
+        String numbering = "<w:abstractNum w:abstractNumId=\"0\"><w:lvl w:ilvl=\"0\"><w:start w:val=\"1\"/>"
+                + "<w:numFmt w:val=\"bullet\"/><w:lvlText w:val=\"\uF0B7\"/><w:lvlJc w:val=\"left\"/><w:rPr>"
+                + "<w:rFonts w:ascii=\"Symbol\" w:hAnsi=\"Symbol\" w:hint=\"default\"/></w:rPr></w:lvl>"
+                + "</w:abstractNum><w:num w:numId=\"1\"><w:abstractNumId w:val=\"0\"/></w:num>";
+        String body = "<w:p><w:pPr><w:bidi/><w:numPr><w:ilvl w:val=\"0\"/><w:numId w:val=\"1\"/></w:numPr><w:rPr>"
+                + "<w:rFonts w:cs=\"Calibri\"/>" + rtl + "</w:rPr></w:pPr><w:r><w:rPr><w:rFonts w:cs=\"Calibri\"/>"
+                + "<w:rtl/></w:rPr><w:t>\u0627\u0644\u0645\u0631\u0641\u0642</w:t></w:r></w:p>";
+        DocxDoc.Rendered r = DocxDoc.render(dir, name, new DocxDoc().numbering(numbering).body(body).bytes());
+        List<String> fonts = new ArrayList<>();
+        try (PDDocument d = r.open()) {
+            PDFTextStripper s = new PDFTextStripper() {
+                @Override
+                protected void writeString(String text, List<TextPosition> positions) {
+                    for (TextPosition p : positions) {
+                        if (p.getUnicode().charAt(0) < 0x0600 || p.getUnicode().charAt(0) > 0x06FF) {
+                            fonts.add(p.getFont().getName().replaceAll("^[A-Z]{6}\\+", ""));
+                        }
+                    }
+                }
+            };
+            s.getText(d);
+        }
+        assertEquals(1, fonts.size(), fonts.toString());
+        return fonts.get(0);
     }
 }

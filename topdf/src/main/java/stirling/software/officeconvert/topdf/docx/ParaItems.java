@@ -195,6 +195,7 @@ final class ParaItems {
             case Inline.Obj o -> {
                 Drawing d = o.drawing();
                 if (d.inline) {
+                    DrawingPainter.fitText(d, ctx);
                     Item obj = new Item(Item.Kind.OBJECT);
                     obj.text = "\uFFFC";
                     obj.drawing = d;
@@ -325,12 +326,12 @@ final class ParaItems {
         int n = s.length();
         while (i < n) {
             int cp = s.codePointAt(i);
-            Fonts.Slot slot = Fonts.slot(cp, rp);
+            Fonts.Slot slot = slot(cp, rp);
             boolean lower = small && Character.isLowerCase(cp);
             int j = i + Character.charCount(cp);
             while (j < n) {
                 int c2 = s.codePointAt(j);
-                if (Fonts.slot(c2, rp) != slot && !(neutral(c2) && slot != Fonts.Slot.COMPLEX)) {
+                if (slot(c2, rp) != slot && !(neutral(c2) && slot != Fonts.Slot.COMPLEX)) {
                     break;
                 }
                 if (small && Character.isLowerCase(c2) != lower && !neutral(c2)) {
@@ -348,16 +349,27 @@ final class ParaItems {
             }
             FontFace face = face(rp, slot);
             piece = SymbolChars.remap(piece, face, label, c -> covers(faceFor(face, c), c));
-            addCovered(piece, face, rp, nominal, full, link);
+            addCovered(piece, face, rp, nominal, full, link, slot == Fonts.Slot.COMPLEX);
             i = j;
         }
+    }
+
+    private Fonts.Slot slot(int cp, RunProps rp) {
+        Fonts.Slot slot = Fonts.slot(cp, rp);
+        if (slot == Fonts.Slot.COMPLEX && cp >= 0xF020 && cp <= 0xF0FF
+                && !SymbolChars.symbolFont(ctx.fonts.family(rp, slot))
+                && SymbolChars.symbolFont(ctx.fonts.family(rp, Fonts.Slot.ASCII))) {
+            return Fonts.Slot.ASCII;
+        }
+        return slot;
     }
 
     private static boolean neutral(int cp) {
         return cp == ' ' || cp == 0x00A0;
     }
 
-    private void addCovered(String piece, FontFace face, RunProps rp, float nominal, float full, Inline.Link link) {
+    private void addCovered(String piece, FontFace face, RunProps rp, float nominal, float full, Inline.Link link,
+            boolean ownSpaces) {
         int i = 0;
         int n = piece.length();
         while (i < n) {
@@ -366,7 +378,7 @@ final class ParaItems {
             int j = i + Character.charCount(cp);
             while (j < n) {
                 int c2 = piece.codePointAt(j);
-                if (!faceFor(face, c2).equals(f) && !(covers(f, c2) && neutral(c2))) {
+                if (!faceFor(face, c2).equals(f) && !(covers(f, c2) && neutral(c2) && !ownSpaces)) {
                     break;
                 }
                 j += Character.charCount(c2);

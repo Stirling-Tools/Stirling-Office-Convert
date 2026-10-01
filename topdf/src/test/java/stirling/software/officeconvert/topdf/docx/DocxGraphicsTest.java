@@ -591,4 +591,24 @@ class DocxGraphicsTest {
         }
         return min;
     }
+
+    @Test
+    void anInlineTextBoxThatFitsItsTextGrowsPastTheSavedHeight() throws IOException {
+        float fitted = afterBox("fitbox", "<a:spAutoFit/>");
+        float fixed = afterBox("fixedbox", "");
+        assertTrue(fitted > fixed + 10, fixed + " then " + fitted);
+    }
+
+    private float afterBox(String name, String fit) throws IOException {
+        String text = "<w:p><w:pPr><w:spacing w:after=\"240\"/></w:pPr><w:r><w:t>Inside</w:t></w:r></w:p>";
+        String box = "<w:p><w:r><w:drawing><wp:inline distT=\"0\" distB=\"0\" distL=\"0\" distR=\"0\"><wp:extent"
+                + " cx=\"3000000\" cy=\"200000\"/><wp:docPr id=\"1\" name=\"t\"/><a:graphic><a:graphicData"
+                + " uri=\"http://schemas.microsoft.com/office/word/2010/wordprocessingShape\"><wps:wsp><wps:cNvSpPr"
+                + " txBox=\"1\"/><wps:spPr><a:xfrm><a:off x=\"0\" y=\"0\"/><a:ext cx=\"3000000\" cy=\"200000\"/></a:xfrm>"
+                + "<a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom></wps:spPr><wps:txbx><w:txbxContent>" + text + text
+                + "</w:txbxContent></wps:txbx><wps:bodyPr lIns=\"91440\" tIns=\"45720\" rIns=\"91440\" bIns=\"45720\">"
+                + fit + "</wps:bodyPr></wps:wsp></a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>";
+        DocxDoc.Rendered r = DocxDoc.render(dir, name, doc().body(box + DocxDoc.p("After")).bytes());
+        return r.word("After").y();
+    }
 }

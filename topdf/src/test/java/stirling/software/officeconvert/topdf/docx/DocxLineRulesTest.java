@@ -248,4 +248,63 @@ class DocxLineRulesTest {
                 .section(second));
         assertEquals(3, r.word("Contents").page());
     }
+
+    @Test
+    void aJustifiedLineSqueezesTheSpaceBetweenIdeographsAndDigitsToFitOneMoreCharacter() throws IOException {
+        String text = "\u4E00" + "1\u4E00".repeat(60);
+        int left = firstLineLength(text, "left");
+        int justified = firstLineLength(text, "both");
+        assertTrue(justified > left, left + " then " + justified);
+    }
+
+    @Test
+    void anIdeographicCommaHangsPastTheMarginRatherThanWrapWithTheCharacterBeforeIt() throws IOException {
+        String text = "\u4E00".repeat(45) + "\u89C1\uFF0C" + "\u4E00".repeat(10);
+        int hanging = firstLineLength(text, "both");
+        int kept = firstLineLength(text, "both\"/><w:overflowPunct w:val=\"0");
+        assertEquals(47, hanging, "the comma ends the first line");
+        assertEquals(45, kept);
+        assertEquals(47, firstLineLength(text.substring(0, 47), "both"), "on the paragraph's last line too");
+        assertEquals(45, firstLineLength(text, "left"), "only in a justified paragraph");
+        String cell = "<w:tbl><w:tblPr><w:tblW w:w=\"9600\" w:type=\"dxa\"/></w:tblPr><w:tblGrid><w:gridCol"
+                + " w:w=\"9600\"/></w:tblGrid><w:tr><w:tc><w:tcPr><w:tcW w:w=\"9600\" w:type=\"dxa\"/></w:tcPr>"
+                + "<w:p><w:pPr><w:jc w:val=\"both\"/></w:pPr><w:r><w:rPr><w:rFonts w:eastAsia=\"SimSun\"/></w:rPr><w:t>"
+                + text + "</w:t></w:r></w:p></w:tc></w:tr></w:tbl><w:p/>";
+        String out = DocxDoc.render(dir, "hangcell", new DocxDoc().styles(STYLES).body(cell).bytes()).text();
+        assertEquals(45, out.strip().split("\\R")[0].strip().length(), "a table cell lets nothing hang");
+    }
+
+    @Test
+    void textAfterARightAlignedLabelEndingAtTheIndentStartsThere() throws IOException {
+        String numbering = "<w:abstractNum w:abstractNumId=\"0\"><w:lvl w:ilvl=\"0\"><w:start w:val=\"4\"/>"
+                + "<w:numFmt w:val=\"upperRoman\"/><w:lvlText w:val=\"%1.\"/><w:lvlJc w:val=\"right\"/><w:pPr>"
+                + "<w:ind w:left=\"173\" w:hanging=\"173\"/></w:pPr></w:lvl></w:abstractNum><w:num w:numId=\"1\">"
+                + "<w:abstractNumId w:val=\"0\"/></w:num>";
+        String body = "<w:p><w:pPr><w:numPr><w:ilvl w:val=\"0\"/><w:numId w:val=\"1\"/></w:numPr><w:ind w:left=\"288\""
+                + " w:firstLine=\"0\"/></w:pPr><w:r><w:t xml:space=\"preserve\"> Heading</w:t></w:r></w:p>";
+        DocxDoc.Rendered r = DocxDoc.render(dir, "rightlabel", new DocxDoc().styles(STYLES).numbering(numbering)
+                .body(body).bytes());
+        float x = r.word("Heading").x();
+        assertTrue(x > 86.4 && x < 92, "a space after the label, no default tab gap: " + x);
+    }
+
+    @Test
+    void aLeaderTabWithNoRoomToDrawDotsDoesNotSizeTheLine() throws IOException {
+        String words = "Alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu nu xi omicron pi rho sigma"
+                + " tau upsilon phi chi psi omega alpha beta gamma delta epsilon zeta eta theta";
+        String body = "<w:p><w:pPr><w:tabs><w:tab w:val=\"right\" w:leader=\"dot\" w:pos=\"300\"/></w:tabs></w:pPr>"
+                + "<w:r><w:t>9.</w:t></w:r><w:r><w:rPr><w:sz w:val=\"40\"/></w:rPr><w:tab/></w:r><w:r><w:t>" + words
+                + "</w:t></w:r></w:p>";
+        DocxDoc.Rendered r = DocxDoc.render(dir, "leaderroom", new DocxDoc().styles(STYLES).body(body).bytes());
+        float first = r.words().stream().filter(w -> w.text().startsWith("9.")).findFirst().orElseThrow().y();
+        float second = r.words().stream().filter(w -> w.y() > first + 1).findFirst().orElseThrow().y();
+        assertEquals(11.5, second - first, 0.3, "the line keeps the height of its 10 pt text");
+    }
+
+    private int firstLineLength(String text, String jc) throws IOException {
+        String body = "<w:p><w:pPr><w:jc w:val=\"" + jc + "\"/></w:pPr><w:r><w:rPr><w:rFonts w:eastAsia=\"SimSun\"/>"
+                + "<w:lang w:eastAsia=\"zh-CN\"/></w:rPr><w:t>" + text + "</w:t></w:r></w:p>";
+        String out = DocxDoc.render(dir, "line-" + Integer.toHexString(jc.hashCode()), new DocxDoc().styles(STYLES).body(body).bytes()).text();
+        return out.strip().split("\\R")[0].strip().length();
+    }
 }

@@ -129,12 +129,11 @@ final class Numbering {
         }
         int a = n.abstractId;
         for (int hop = 0; hop < 4 && styleLinks.containsKey(a); hop++) {
-            String style = styleLinks.get(a);
-            ParaProps p = styles.paragraph(style);
-            if (p.numId == null || !nums.containsKey(p.numId)) {
+            Integer linked = styles.listNum(styleLinks.get(a));
+            if (linked == null || !nums.containsKey(linked)) {
                 break;
             }
-            int next = nums.get(p.numId).abstractId;
+            int next = nums.get(linked).abstractId;
             if (next == a) {
                 break;
             }

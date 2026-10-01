@@ -326,6 +326,45 @@ class DocxTableEdgeTest {
     }
 
     @Test
+    void aFloatingTableRowAtThePageBottomSplitsLikeAnInlineOne() throws IOException {
+        StringBuilder a = new StringBuilder();
+        StringBuilder b = new StringBuilder();
+        for (int i = 0; i < 40; i++) {
+            a.append(DocxDoc.p("A" + i));
+        }
+        for (int i = 0; i < 20; i++) {
+            b.append(DocxDoc.p("B" + i));
+        }
+        String table = "<w:tbl><w:tblPr><w:tblpPr w:leftFromText=\"180\" w:rightFromText=\"180\""
+                + " w:vertAnchor=\"text\" w:horzAnchor=\"margin\" w:tblpY=\"1\"/><w:tblW w:w=\"4000\""
+                + " w:type=\"dxa\"/></w:tblPr><w:tblGrid><w:gridCol w:w=\"4000\"/></w:tblGrid>" + row("", a.toString())
+                + row("", b.toString()) + row("", DocxDoc.p("C")) + "</w:tbl>";
+        DocxDoc.Rendered r = render("floatsplit", DocxDoc.p("Intro") + table + DocxDoc.p("After"));
+        assertEquals(1, r.word("B0").page(), "the second row starts where the first ends");
+        assertEquals(2, r.word("B19").page());
+        assertEquals(2, r.word("C").page());
+    }
+
+    @Test
+    void aRowBesideARotatedMergedCellStillSplitsAtThePageBottom() throws IOException {
+        StringBuilder body = new StringBuilder();
+        for (int i = 0; i < 40; i++) {
+            body.append(DocxDoc.p("Body" + i));
+        }
+        String merged = "<w:tc><w:tcPr><w:tcW w:w=\"700\" w:type=\"dxa\"/><w:vMerge w:val=\"restart\"/>"
+                + "<w:textDirection w:val=\"btLr\"/></w:tcPr>" + DocxDoc.p("Side") + "</w:tc>";
+        String below = "<w:tc><w:tcPr><w:tcW w:w=\"700\" w:type=\"dxa\"/><w:vMerge/></w:tcPr><w:p/></w:tc>";
+        String wide = "<w:tc><w:tcPr><w:tcW w:w=\"3300\" w:type=\"dxa\"/></w:tcPr>";
+        String table = "<w:tbl><w:tblPr><w:tblW w:w=\"4000\" w:type=\"dxa\"/></w:tblPr><w:tblGrid><w:gridCol"
+                + " w:w=\"700\"/><w:gridCol w:w=\"3300\"/></w:tblGrid><w:tr><w:trPr><w:trHeight w:val=\"1134\"/>"
+                + "</w:trPr>" + merged + wide + DocxDoc.p("Head") + "</w:tc></w:tr><w:tr>" + below + wide
+                + body + "</w:tc></w:tr></w:tbl>";
+        DocxDoc.Rendered r = render("rotatedsplit", fillers(30) + table + "<w:p/>");
+        assertEquals(1, r.word("Body0").page(), "the row starts on the first page");
+        assertEquals(2, r.word("Body39").page());
+    }
+
+    @Test
     void textAfterAPageAnchoredTableThatRunsOnGoesOnFromTheTopOfItsLastPage() throws IOException {
         StringBuilder rows = new StringBuilder();
         for (int i = 0; i < 70; i++) {
