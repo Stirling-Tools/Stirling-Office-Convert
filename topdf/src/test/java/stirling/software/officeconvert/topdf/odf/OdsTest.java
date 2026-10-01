@@ -164,6 +164,17 @@ class OdsTest {
     }
 
     @Test
+    void aLongTailOfColumnStyledRowsIsNotPrinted() throws IOException {
+        String table = "<table:table table:name=\"S\"><table:table-column table:default-cell-style-name=\"ce3\"/>"
+                + "<table:table-row><table:table-cell office:value-type=\"string\"><text:p>x</text:p>"
+                + "</table:table-cell></table:table-row>"
+                + "<table:table-row><table:table-cell/></table:table-row>".repeat(150) + "</table:table>";
+        String sheet = OdfFixtures.rewrite(ods(NUMBER_STYLES, table, null)).get("xl/worksheets/sheet1.xml");
+        assertEquals(1, sheet.split("<row ").length - 1, sheet);
+        assertTrue(sheet.contains("<dimension ref=\"A1:A1\"/>"), sheet);
+    }
+
+    @Test
     void aCalcHeaderHeightIncludesItsSpacing() throws IOException {
         String styles = OdfFixtures.styles("", "<style:page-layout style:name=\"pm1\"><style:page-layout-properties"
                 + " fo:margin-top=\"0.3in\"/><style:header-style><style:header-footer-properties fo:min-height=\"0.45in\""
@@ -186,7 +197,9 @@ class OdsTest {
                 + "<table:table-row><table:table-cell office:value-type=\"float\" office:value=\"1\"/><table:table-cell"
                 + " office:value-type=\"float\" office:value=\"2\"/></table:table-row></table:table>";
         String sheet = OdfFixtures.rewrite(ods(auto, table, null)).get("xl/worksheets/sheet1.xml");
-        assertTrue(sheet.contains("<c r=\"B1\" s=\"0\"/>"), sheet);
+        assertFalse(sheet.contains("<c r=\"B1\""), sheet);
+        assertFalse(sheet.contains(" style=\""), sheet);
+        assertTrue(sheet.contains("<c r=\"B2\" s=\""), sheet);
     }
 
     @Test

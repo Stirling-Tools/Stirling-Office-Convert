@@ -10,7 +10,7 @@ final class SheetStyles {
 
     static final int MAX_FORMATS = 60_000;
 
-    record Xf(int index, boolean visible, boolean date) {}
+    record Xf(int index, boolean visible, boolean date, boolean wrap) {}
 
     private final Styles styles;
 
@@ -63,7 +63,7 @@ final class SheetStyles {
             return cached;
         }
         if (xfs.size() >= MAX_FORMATS) {
-            return new Xf(0, false, false);
+            return new Xf(0, false, false, false);
         }
         String name = style == null ? "Default" : style;
         Props cell = styles.props("table-cell", name, Styles.Scope.CONTENT, "table-cell-properties", true);
@@ -92,7 +92,8 @@ final class SheetStyles {
             x.append("/>");
         }
         int index = index(xfs, x.toString());
-        Xf xf = new Xf(index, fill != 0 || border != 0, NumberFormats.isDate(code));
+        Xf xf = new Xf(index, fill != 0 || border != 0, NumberFormats.isDate(code),
+                align != null && align.contains("wrapText"));
         byStyle.put(key, xf);
         return xf;
     }

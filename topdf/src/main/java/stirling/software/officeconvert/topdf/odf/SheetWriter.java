@@ -66,6 +66,12 @@ final class SheetWriter {
 
     private int emittedRows;
 
+    private int valueEnd;
+
+    private int valueRow = -1;
+
+    private int valueMaxRow = -1;
+
     private int maxCol = -1;
 
     private int maxRow = -1;
@@ -92,6 +98,10 @@ final class SheetWriter {
         columns(table, cols, 0);
         StringBuilder data = new StringBuilder();
         rows(table, data, new int[] {0}, false, 0);
+        if (maxRow - valueRow > STYLED_RUN) {
+            data.setLength(valueEnd);
+            maxRow = valueMaxRow;
+        }
         for (Element s : Dom.kids(Dom.kid(table, Ns.TABLE, "shapes"))) {
             frames.add(s);
             frameCells.add(null);
@@ -188,9 +198,6 @@ final class SheetWriter {
                 if (!Double.isNaN(width)) {
                     cols.append(" width=\"").append(chars(width)).append("\" customWidth=\"1\"");
                 }
-                if (xf != null && xf.index() != 0) {
-                    cols.append(" style=\"").append(xf.index()).append('"');
-                }
                 if (colHidden) {
                     cols.append(" hidden=\"1\"");
                 }
@@ -273,6 +280,7 @@ final class SheetWriter {
         List<int[]> rowMerges = new ArrayList<>();
         boolean content = cells(r, start, cellsXml, rowMerges);
         boolean hasValue = cellsXml.indexOf("<v>") >= 0;
+        boolean wraps = rowWraps;
         boolean custom = !optimal && !Double.isNaN(height);
         if (!content && !custom && !rowHidden) {
             return;
@@ -288,8 +296,11 @@ final class SheetWriter {
             emittedRows++;
             int n = start + i;
             data.append("<row r=\"").append(n + 1).append('"');
-            if (!Double.isNaN(height) && (custom || rowHidden)) {
-                data.append(" ht=\"").append(Math.round(height * 100) / 100.0).append("\" customHeight=\"1\"");
+            if (!Double.isNaN(height) && (custom || rowHidden || !wraps)) {
+                data.append(" ht=\"").append(Math.round(height * 100) / 100.0).append('"');
+                if (custom || rowHidden) {
+                    data.append(" customHeight=\"1\"");
+                }
             }
             if (rowHidden) {
                 data.append(" hidden=\"1\"");
@@ -303,10 +314,18 @@ final class SheetWriter {
             for (int[] m : rowMerges) {
                 merges.add(new int[] {m[0], n, m[2], Math.min(MAX_ROWS - 1, n + m[3] - m[1])});
             }
+            if (hasValue) {
+                valueEnd = data.length();
+                valueRow = n;
+                valueMaxRow = maxRow;
+            }
         }
     }
 
+    private boolean rowWraps;
+
     private boolean cells(Element r, int row, StringBuilder out, List<int[]> rowMerges) {
+        rowWraps = false;
         int col = 0;
         boolean any = false;
         String rowDefault = Dom.attr(r, Ns.TABLE, "default-cell-style-name");
@@ -332,9 +351,9 @@ final class SheetWriter {
                 style = rowDefault != null ? rowDefault : columnDefault;
             }
             SheetStyles.Xf xf = w.cellStyles.xf(style);
-            SheetStyles.Xf colXf = columnDefault == null ? w.cellStyles.xf(null) : w.cellStyles.xf(columnDefault);
             String value = covered ? null : value(c, xf);
-            boolean override = xf.index() != colXf.index() && (xf.visible() || colXf.visible());
+            rowWraps |= value != null && xf.wrap();
+            boolean override = xf.index() != 0 && xf.visible();
             if (!covered) {
                 int cs = Dom.integer(c, Ns.TABLE, "number-columns-spanned", 1);
                 int rs = Dom.integer(c, Ns.TABLE, "number-rows-spanned", 1);
@@ -347,7 +366,7 @@ final class SheetWriter {
             if ((value != null || override) && !(value == null && repeat > FILLER)) {
                 for (int i = 0; i < repeat && cells < MAX_CELLS; i++) {
                     out.append("<c r=\"").append(column(col + i)).append(ROW).append('"');
-                    if (xf.index() != 0 || colXf.index() != 0) {
+                    if (xf.index() != 0) {
                         out.append(" s=\"").append(xf.index()).append('"');
                     }
                     out.append(value == null ? "/>" : value);
