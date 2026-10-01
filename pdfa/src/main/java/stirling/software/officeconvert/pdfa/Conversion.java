@@ -9,7 +9,6 @@ import java.security.NoSuchAlgorithmException;
 import org.apache.pdfbox.cos.COSArray;
 import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.cos.COSString;
-import org.apache.pdfbox.pdfwriter.compress.CompressParameters;
 import org.apache.pdfbox.pdmodel.PDDocument;
 
 import stirling.software.officeconvert.extract.PdfFiles;
@@ -80,7 +79,7 @@ final class Conversion {
             a.add(new COSString(h));
             doc.getDocument().setDocumentID(a);
         }
-        doc.save(out, CompressParameters.NO_COMPRESSION);
+        PdfWriter.write(doc, out, level);
     }
 
     private static byte[] digest(PDDocument doc) {
