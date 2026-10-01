@@ -39,6 +39,19 @@ final class FontSamples {
                     page(d, "BT /A 14 Tf 50 780 Td (No Type entry) Tj /B 14 Tf 0 -30 Td (No BaseFont entry) Tj "
                             + "/C 14 Tf 0 -30 Td (No widths) Tj ET", a, b, c);
                 });
+        doc("f02_cmaps", Set.of("1:6.3.3.1-1", "1:6.3.3.3-1", "1:6.3.3.3-2", "1:6.1.12-10", "2:6.2.11.3.1-1",
+                "2:6.2.11.3.3-2", "2:6.2.11.3.3-3", "2:6.1.13-10"), d -> {
+                    PDType0Font predefined = PDType0Font.load(d, Samples.liberation(), false);
+                    predefined.getCOSObject().setItem(COSName.ENCODING, COSName.getPDFName("UniJIS-UCS2-H"));
+                    PDType0Font vertical = PDType0Font.load(d, Samples.liberation(), false);
+                    vertical.getCOSObject().setItem(COSName.ENCODING, cmap(d, "Custom-V", 0, 1, "", 65_536));
+                    PDType0Font chained = PDType0Font.load(d, Samples.liberation(), false);
+                    COSStream chain = cmap(d, "Chained", 0, 0, "/Base usecmap ", 40);
+                    chain.setItem(COSName.getPDFName("UseCMap"), cmap(d, "Base", 0, 0, "", 30));
+                    chained.getCOSObject().setItem(COSName.ENCODING, chain);
+                    page(d, "BT /A 14 Tf 50 780 Td <00410042> Tj /B 14 Tf 0 -30 Td <0041> Tj "
+                            + "/C 14 Tf 0 -30 Td <0041> Tj ET", predefined, vertical, chained);
+                });
         doc("f03_glyphs_and_unicode", Set.of("1:6.3.5-3", "2:6.2.11.4.2-2", "2:6.2.11.7.2-2"), d -> {
             PDType0Font noSet = PDType0Font.load(d, Samples.liberation(), true);
             PDType0Font badSet = PDType0Font.load(d, Samples.liberation(), true);

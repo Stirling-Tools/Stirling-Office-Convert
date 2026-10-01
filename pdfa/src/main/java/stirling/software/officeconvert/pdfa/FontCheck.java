@@ -39,6 +39,10 @@ final class FontCheck {
                 if (cid == null || !embedded(cid.getFontDescriptor()) || t0.isDamaged() || isDamaged(cid)) {
                     return Verdict.SUBSTITUTE;
                 }
+                if (cid instanceof PDCIDFontType0
+                        && CMapFixer.maxCid(t0.getCOSObject().getDictionaryObject(COSName.ENCODING)) > CMapFixer.MAX_CID) {
+                    return Verdict.REBUILD;
+                }
                 return glyphsAndWidths(font, codes) ? Verdict.OK : Verdict.REBUILD;
             }
             if (!(font instanceof PDSimpleFont simple)) {
