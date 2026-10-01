@@ -171,6 +171,11 @@ final class DocumentSamples {
             propsRes.setItem("A", a);
             p.getResources().getCOSObject().setItem(COSName.PROPERTIES, propsRes);
         });
+        RuleSamples.raw("d05_unicode_names", Set.of("2:6.1.8-1"), () -> RawPdf.page(
+                "/Font<</F1<</Type/Font/Subtype/Type1/BaseFont/Helv#E9tica/Encoding/WinAnsiEncoding>>>>"
+                        + "/ColorSpace<</S1[/Separation/Sp#E9cial/DeviceRGB<</FunctionType 2/Domain[0 1]/C0[1 1 1]"
+                        + "/C1[1 0 0]/N 1>>]>>",
+                "BT /F1 14 Tf 50 780 Td (Names that are not UTF-8) Tj ET /S1 cs 1 scn 50 600 100 100 re f").bytes());
         tagged("d06_role_map", Set.of("1:6.8.3.4-2", "2:6.7.3.4-2", "2:6.7.3.4-3"), d -> {
             Samples.ALL.get("s21_tagged").make(d);
             COSDictionary root = d.getDocumentCatalog().getCOSObject().getCOSDictionary(COSName.STRUCT_TREE_ROOT);
