@@ -86,7 +86,9 @@ final class Backgrounds {
             part = theme == null ? null : theme.getPackagePart().getPartName().getName();
         }
         if (blip != null && part != null) {
-            BlipFills.draw(deck, canvas, blip, part, page, page, BlipFills.duotone(ps), sheet);
+            List<Color> duotone = BlipFills.duotone(blip.getBlip(), sheet);
+            BlipFills.draw(deck, canvas, blip, part, page, page, duotone != null ? duotone : BlipFills.duotone(ps),
+                    sheet);
         }
     }
 

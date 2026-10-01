@@ -36,6 +36,20 @@ class PptxPictureTest {
     }
 
     @Test
+    void duotoneBackgroundPicturesAreRecolouredWithAnyColourModel() throws IOException {
+        Fixtures.Zip z = Fixtures.edit(Decks.slideXml(""));
+        z.insertAfter("ppt/slides/slide1.xml", "<p:cSld>", "<p:bg><p:bgPr><a:blipFill><a:blip xmlns:r=\"" + Decks.R + "\" r:embed=\"rIdP\">"
+                + "<a:duotone><a:schemeClr val=\"accent2\"><a:shade val=\"45000\"/></a:schemeClr><a:prstClr "
+                + "val=\"red\"/></a:duotone></a:blip><a:stretch><a:fillRect/></a:stretch></a:blipFill><a:effectLst/>"
+                + "</p:bgPr></p:bg>");
+        z.put("ppt/media/white.png", Fixtures.png(4, 4, Color.WHITE));
+        z.defaultType("png", "image/png");
+        z.relationship("/ppt/slides/slide1.xml", "rIdP", Fixtures.REL + "image", "../media/white.png", false);
+        Decks.Converted c = Decks.convert(dir, "duotonebg.pptx", z.bytes());
+        assertEquals(Color.RED.getRGB(), c.render(0, 72).getRGB(150, 150), c.result().warnings().toString());
+    }
+
+    @Test
     void coloursAreWrittenWithThreeSignificantDigitsLikeOffice() throws IOException {
         String sp = "<p:sp " + Decks.NS + "><p:nvSpPr><p:cNvPr id=\"8\" name=\"Teal\"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr>"
                 + "<p:spPr><a:xfrm><a:off x=\"1270000\" y=\"1270000\"/><a:ext cx=\"1270000\" cy=\"1270000\"/></a:xfrm>"
