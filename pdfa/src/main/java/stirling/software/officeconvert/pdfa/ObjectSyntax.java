@@ -25,6 +25,8 @@ final class ObjectSyntax {
 
     interface Numbering {
         int number(COSBase indirect);
+
+        boolean single(COSBase container);
     }
 
     private static final int MAX_NESTING = 512;
@@ -98,6 +100,13 @@ final class ObjectSyntax {
             COSBase target = o.getObject();
             if (target == null) {
                 out.write(NULL);
+            } else if (shared(target) && path.add(target)) {
+                if (target instanceof COSDictionary d) {
+                    dictionary(d, out, null);
+                } else {
+                    array((COSArray) target, out);
+                }
+                path.remove(target);
             } else {
                 reference(target, out);
             }
@@ -133,14 +142,19 @@ final class ObjectSyntax {
     }
 
     private boolean inline(COSDictionary d) {
-        return d.isDirect() && path.size() < MAX_NESTING;
+        return (d.isDirect() || numbering.single(d)) && path.size() < MAX_NESTING;
+    }
+
+    private boolean shared(COSBase target) {
+        return (target instanceof COSArray || target instanceof COSDictionary && !(target instanceof COSStream))
+                && path.size() < MAX_NESTING && !path.contains(target) && numbering.single(target);
     }
 
     private boolean inline(COSArray a) {
         if (path.size() >= MAX_NESTING) {
             return false;
         }
-        if (a.isDirect()) {
+        if (a.isDirect() || numbering.single(a)) {
             return true;
         }
         for (int i = 0; i < a.size(); i++) {
@@ -163,6 +177,9 @@ final class ObjectSyntax {
         }
         if (v instanceof COSStream) {
             return false;
+        }
+        if (v instanceof COSObject o) {
+            return o.getObject() != null && shared(o.getObject());
         }
         if (v instanceof COSDictionary d) {
             return inline(d) && !path.contains(d);

@@ -12,6 +12,7 @@ import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.zip.Deflater;
 import java.util.zip.DeflaterOutputStream;
 
@@ -46,6 +47,8 @@ final class PdfWriter {
 
     private final ArrayDeque<COSBase> queue = new ArrayDeque<>();
 
+    private Set<COSBase> once = Set.of();
+
     private final Map<Integer, COSInteger> lateLengths = new HashMap<>();
 
     private long[] offsets = new long[1024];
@@ -65,7 +68,17 @@ final class PdfWriter {
     private PdfWriter(OutputStream os, boolean objectStreams) {
         this.out = new CountingOutput(new BufferedOutputStream(os, 1 << 16));
         this.objectStreams = objectStreams;
-        this.syntax = new ObjectSyntax(this::number);
+        this.syntax = new ObjectSyntax(new ObjectSyntax.Numbering() {
+            @Override
+            public int number(COSBase indirect) {
+                return PdfWriter.this.number(indirect);
+            }
+
+            @Override
+            public boolean single(COSBase container) {
+                return once.contains(container);
+            }
+        });
     }
 
     static void write(PDDocument doc, OutputStream os, PdfALevel level) throws IOException {
@@ -80,8 +93,9 @@ final class PdfWriter {
         }
         out.write(String.format(Locale.ROOT, "%%PDF-%.1f\n%%âãÏÓ\n", level.pdfVersion())
                 .getBytes(StandardCharsets.ISO_8859_1));
-        int rootNumber = number(root);
         COSDictionary info = ContentGraph.dict(trailer.getDictionaryObject(COSName.INFO));
+        once = References.once(root, info);
+        int rootNumber = number(root);
         int infoNumber = info == null ? 0 : number(info);
         int written = 0;
         while (!queue.isEmpty()) {

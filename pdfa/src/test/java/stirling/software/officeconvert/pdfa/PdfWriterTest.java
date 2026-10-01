@@ -136,6 +136,40 @@ class PdfWriterTest {
         }
     }
 
+    @Test
+    void objectsUsedOnceAreWrittenInPlaceAndSharedOnesStayShared() throws Exception {
+        Path in = dir.resolve("refs.pdf");
+        try (PDDocument d = new PDDocument()) {
+            Samples.page(d);
+            COSArray list = new COSArray();
+            COSDictionary shared = new COSDictionary();
+            shared.setInt(COSName.N, 42);
+            for (int i = 0; i < 400; i++) {
+                COSDictionary item = new COSDictionary();
+                COSDictionary own = new COSDictionary();
+                own.setInt(COSName.K, i);
+                item.setItem(COSName.A, own);
+                item.setItem(COSName.getPDFName("Shared"), shared);
+                list.add(item);
+            }
+            d.getDocumentCatalog().getCOSObject().setItem(ITEMS, list);
+            d.save(in.toFile());
+        }
+        Path out = dir.resolve("refs-1b.pdf");
+        PdfToPdfA.convert(in, out, PdfToPdfA.Options.defaults().level(PdfALevel.A1B));
+        assertTrue(Pattern.compile("\n\\d+ 0 obj\n").matcher(latin(out)).results().count() < 450);
+        try (PDDocument d = Loader.loadPDF(out.toFile())) {
+            COSArray list = (COSArray) d.getDocumentCatalog().getCOSObject().getDictionaryObject(ITEMS);
+            COSObject first = (COSObject) ((COSDictionary) list.getObject(0)).getItem(COSName.getPDFName("Shared"));
+            COSObject last = (COSObject) ((COSDictionary) list.getObject(399)).getItem(COSName.getPDFName("Shared"));
+            assertEquals(first.getKey(), last.getKey());
+            assertEquals(42, ((COSDictionary) first.getObject()).getInt(COSName.N));
+            assertEquals(399, ((COSDictionary) ((COSDictionary) list.getObject(399)).getDictionaryObject(COSName.A))
+                    .getInt(COSName.K));
+        }
+        VeraPdf.assertCompliant(out, PdfALevel.A1B);
+    }
+
     private static void checkItems(Path out, int n) throws Exception {
         try (PDDocument d = Loader.loadPDF(out.toFile())) {
             COSArray list = (COSArray) d.getDocumentCatalog().getCOSObject().getDictionaryObject(ITEMS);
