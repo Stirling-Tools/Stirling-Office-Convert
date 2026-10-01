@@ -101,6 +101,42 @@ class TextToPdfTest {
         assertFalse(p.text().contains("leftright"), p.text());
     }
 
+    Pdf stream(OfficeToPdf.Format format, byte[] content, OfficeToPdf.Options options) throws IOException {
+        java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+        OfficeToPdf.Result r = OfficeToPdf.convert(new java.io.ByteArrayInputStream(content), format, out, options);
+        try (PDDocument doc = Loader.loadPDF(out.toByteArray())) {
+            return new Pdf(doc.getNumberOfPages(), new PDFTextStripper().getText(doc), doc.getPage(0).getMediaBox(), r);
+        }
+    }
+
+    @Test
+    void streamsOfTextAndTablesConvertByTheirFormat() throws IOException {
+        Pdf text = stream(OfficeToPdf.Format.TEXT, lines(65).getBytes(StandardCharsets.UTF_8),
+                OfficeToPdf.Options.defaults());
+        assertEquals(2, text.pages());
+        assertTrue(text.text().contains("line 65"), text.text());
+        Pdf csv = stream(OfficeToPdf.Format.CSV, "item,amount\nrent,12.5\n".getBytes(StandardCharsets.UTF_8),
+                OfficeToPdf.Options.defaults().displayName("Household budget.csv"));
+        assertTrue(csv.text().contains("Household budget") && !csv.text().contains("budget.csv")
+                && csv.text().contains("12.5"), csv.text());
+        Pdf tsv = stream(OfficeToPdf.Format.TSV, "left\tright\n".getBytes(StandardCharsets.UTF_8),
+                OfficeToPdf.Options.defaults());
+        assertFalse(tsv.text().contains("leftright"), tsv.text());
+        Pdf word = stream(OfficeToPdf.Format.TEXT, Fixtures.docx("Real Word body"), OfficeToPdf.Options.defaults());
+        assertTrue(word.text().contains("Real Word body"), word.text());
+    }
+
+    @Test
+    void aRenamedCsvPrintsTheNameTheCallerGives() throws IOException {
+        Path in = Files.write(dir.resolve("upload-7f3a.csv"), "a,b\n".getBytes(StandardCharsets.UTF_8));
+        Path out = dir.resolve("named.pdf");
+        OfficeToPdf.convert(in, out, OfficeToPdf.Options.defaults().displayName("C:\\Users\\me\\Team list.csv"));
+        try (PDDocument doc = Loader.loadPDF(out.toFile())) {
+            String t = new PDFTextStripper().getText(doc);
+            assertTrue(t.contains("Team list") && !t.contains("upload-7f3a") && !t.contains("Users"), t);
+        }
+    }
+
     @Test
     void contentDecidesWhenATextNameHoldsAnOfficeFile() throws IOException {
         Pdf p = convert("report.txt", Fixtures.docx("Real Word body"), 0);
@@ -110,10 +146,12 @@ class TextToPdfTest {
     @Test
     void textNamesAreRecognisedAndEstimated() throws IOException {
         for (String n : new String[] {"a.txt", "a.TEXT", "a.log", "a.asc"}) {
-            assertEquals(OfficeToPdf.Format.DOCX, OfficeToPdf.Format.of(Path.of(n)), n);
+            assertEquals(OfficeToPdf.Format.TEXT, OfficeToPdf.Format.of(Path.of(n)), n);
         }
+        assertEquals(OfficeToPdf.Format.CSV, OfficeToPdf.Format.of(Path.of("a.csv")));
         for (String n : new String[] {"a.csv", "a.tsv", "a.tab"}) {
-            assertEquals(OfficeToPdf.Format.XLSX, OfficeToPdf.Format.of(Path.of(n)), n);
+            assertEquals(n.endsWith("csv") ? OfficeToPdf.Format.CSV : OfficeToPdf.Format.TSV,
+                    OfficeToPdf.Format.of(Path.of(n)), n);
             assertTrue(OfficeToPdf.Format.recognises(Path.of(n)), n);
         }
         Path big = Files.write(dir.resolve("big.csv"), "1,2\n".repeat(10_000).getBytes(StandardCharsets.US_ASCII));

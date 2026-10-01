@@ -26,7 +26,19 @@ final class TextInput {
     private TextInput() {}
 
     static TextFormats.Kind kind(Path source) throws IOException {
-        TextFormats.Kind kind = TextFormats.kind(source);
+        return kind(source, null);
+    }
+
+    static TextFormats.Kind kind(Path source, Format requested) throws IOException {
+        TextFormats.Kind kind = requested == null ? null : switch (requested) {
+            case TEXT -> TextFormats.Kind.PLAIN;
+            case CSV -> TextFormats.Kind.CSV;
+            case TSV -> TextFormats.Kind.TSV;
+            default -> null;
+        };
+        if (kind == null) {
+            kind = TextFormats.kind(source);
+        }
         if (kind == null) {
             return null;
         }
@@ -49,9 +61,9 @@ final class TextInput {
                 + 2 * Admission.BASE_BYTES;
     }
 
-    static Result render(Path source, OutputStream sink, Options options, OfficeToPdf.Renderer renderer)
-            throws IOException {
-        TextFormats.Kind kind = kind(source);
+    static Result render(Path source, Format requested, OutputStream sink, Options options,
+            OfficeToPdf.Renderer renderer) throws IOException {
+        TextFormats.Kind kind = kind(source, requested);
         if (kind == null) {
             return null;
         }
@@ -64,7 +76,7 @@ final class TextInput {
                     : CsvPackage.estimate(bytes));
             try (OutputStream os = new BufferedOutputStream(Files.newOutputStream(pkg), 1 << 16)) {
                 outcome = plain ? TextPackage.write(source, os, options.maxPages())
-                        : CsvPackage.write(source, os, kind == TextFormats.Kind.CSV ? ',' : '\t', sheetName(source),
+                        : CsvPackage.write(source, os, kind == TextFormats.Kind.CSV ? ',' : '\t', sheetName(source, options),
                                 options.maxPages(), FontLibrary.withSystem(options.fontDirs()));
             } finally {
                 ticket.close();
@@ -85,9 +97,10 @@ final class TextInput {
         }
     }
 
-    private static String sheetName(Path source) {
+    static String sheetName(Path source, Options options) {
         Path name = source.getFileName();
-        String n = name == null ? "" : name.toString();
+        String n = options.displayName() != null ? options.displayName() : name == null ? "" : name.toString();
+        n = n.substring(Math.max(n.lastIndexOf('/'), n.lastIndexOf('\\')) + 1);
         int dot = n.lastIndexOf('.');
         return dot > 0 ? n.substring(0, dot) : n;
     }

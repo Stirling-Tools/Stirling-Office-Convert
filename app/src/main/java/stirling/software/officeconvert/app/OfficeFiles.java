@@ -6,6 +6,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipException;
@@ -15,6 +16,7 @@ import stirling.software.officeconvert.topdf.io.LegacyOffice;
 import stirling.software.officeconvert.topdf.rtf.RtfPackage;
 import stirling.software.officeconvert.topdf.odf.OdfDocument;
 import stirling.software.officeconvert.topdf.odf.OdfPackage;
+import stirling.software.officeconvert.topdf.text.TextFormats;
 
 final class OfficeFiles {
 
@@ -63,8 +65,19 @@ final class OfficeFiles {
             case "docx", "docm", "dotx", "dotm", "doc", "dot", "rtf", "odt" -> "docx";
             case "pptx", "pptm", "ppsx", "ppsm", "potx", "potm", "ppt", "pps", "pot", "odp" -> "pptx";
             case "xlsx", "xlsm", "xltx", "xltm", "xls", "xlt", "ods" -> "xlsx";
+            case "txt", "text", "log", "asc" -> "docx";
+            case "csv", "tsv", "tab" -> "xlsx";
             default -> throw new IllegalArgumentException("Not an Office extension: " + extension);
         };
+    }
+
+    static String textExtension(String name) {
+        if (name == null) {
+            return null;
+        }
+        int dot = name.lastIndexOf('.');
+        String ext = dot < 0 ? "" : name.substring(dot + 1).toLowerCase(Locale.ROOT);
+        return TextFormats.kind(ext) == null ? null : ext;
     }
 
     static String extension(Path zip) throws IOException {

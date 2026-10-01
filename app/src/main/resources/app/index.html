@@ -265,7 +265,7 @@
     <span class="hint" id="picked-hint">PDFs convert to Word</span>
     <span class="hint" id="limits">PDF, Word, PowerPoint and Excel files</span>
     <span class="choose button primary" aria-hidden="true">Choose files</span>
-    <input id="pick" type="file" accept="application/pdf,.pdf,.docx,.docm,.dotx,.dotm,.pptx,.pptm,.ppsx,.ppsm,.potx,.potm,.xlsx,.xlsm,.xltx,.xltm,.xls,.xlt,.ppt,.pps,.pot,.doc,.dot,.rtf,.odt,.ott,.fodt,.ods,.ots,.fods,.odp,.otp,.fodp" multiple hidden>
+    <input id="pick" type="file" accept="application/pdf,.pdf,.docx,.docm,.dotx,.dotm,.pptx,.pptm,.ppsx,.ppsm,.potx,.potm,.xlsx,.xlsm,.xltx,.xltm,.xls,.xlt,.ppt,.pps,.pot,.doc,.dot,.rtf,.odt,.ott,.fodt,.ods,.ots,.fods,.odp,.otp,.fodp,.txt,.text,.log,.asc,.csv,.tsv,.tab" multiple hidden>
   </div>
   <p class="privacy">
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
@@ -358,6 +358,7 @@ const OFFICE = {
 const FAMILY = Object.fromEntries(Object.entries(OFFICE).flatMap(([family, exts]) => exts.map(e => [e, family])));
 const LEGACY = { xls: 'xlsx', xlt: 'xlsx', ppt: 'pptx', pps: 'pptx', pot: 'pptx', doc: 'docx', dot: 'docx', odt: 'docx', ott: 'docx', fodt: 'docx',
   ods: 'xlsx', ots: 'xlsx', fods: 'xlsx', odp: 'pptx', otp: 'pptx', fodp: 'pptx' };
+const TEXT = { txt: 'docx', text: 'docx', log: 'docx', asc: 'docx', csv: 'xlsx', tsv: 'xlsx', tab: 'xlsx' };
 const extOf = name => (/\.([a-z0-9]+)$/i.exec(name)?.[1] || '').toLowerCase();
 const targets = doc => doc.office ? [FORMAT.pdf] : FORMATS;
 const picked = new Set(stored('formats', ['docx']).filter(id => FORMAT[id]));
@@ -488,7 +489,8 @@ async function sniff(file) {
   const head = new Uint8Array(await file.slice(0, 1024).arrayBuffer());
   if (head[0] === 0x50 && head[1] === 0x4b && head[2] === 0x03 && head[3] === 0x04) return 'office';
   if (head[0] === 0xd0 && head[1] === 0xcf && head[2] === 0x11 && head[3] === 0xe0) return 'legacy';
-  return new TextDecoder('latin1').decode(head).includes('%PDF-') ? 'pdf' : null;
+  if (new TextDecoder('latin1').decode(head).includes('%PDF-')) return 'pdf';
+  return TEXT[extOf(file.name)] ? 'text' : null;
 }
 
 async function add(files) {
@@ -499,9 +501,9 @@ async function add(files) {
   for (const file of list) {
     const kind = await sniff(file).catch(() => null);
     const doc = { file, options: options(), results: new Map(), li: el('li', 'doc'), error: null, url: null };
-    doc.office = kind === 'office' || kind === 'legacy';
-    doc.legacy = kind === 'legacy';
-    doc.family = (doc.legacy ? LEGACY : FAMILY)[extOf(file.name)] || null;
+    doc.office = kind === 'office' || kind === 'legacy' || kind === 'text';
+    doc.legacy = kind === 'legacy' || kind === 'text';
+    doc.family = (kind === 'text' ? TEXT : doc.legacy ? LEGACY : FAMILY)[extOf(file.name)] || null;
     docs.push(doc);
     jobs.prepend(doc.li);
     if (!kind) doc.error = 'That file is not a PDF or a Word, PowerPoint or Excel document.';
@@ -559,6 +561,7 @@ function convert({ doc, res }) {
     if (!doc.li.isConnected) { resolve(); return; }
     const q = new URLSearchParams(doc.options.query);
     q.set('format', res.fmt);
+    if (doc.office) q.set('name', doc.file.name);
     if (compare) q.set('engine', res.engine === 'lo' ? 'libreoffice' : 'ours');
     res.state = 'uploading';
     draw(doc);

@@ -273,8 +273,11 @@ OfficeToPdf.convert(Path.of("in.xlsx"), Path.of("out.pdf"), OfficeToPdf.Options.
         .timeout(Duration.ofSeconds(60))       // Duration.ZERO = no limit
         .maxPages(500)                         // 0 = every page; r.pageLimitReached(): cut at this limit
         .maxScratchBytes(1L << 30)             // past it OfficeToPdf.OutputTooLarge; 0 = no limit
-        .fontDirs(List.of(Path.of("/opt/fonts"))));
+        .fontDirs(List.of(Path.of("/opt/fonts")))
+        .displayName("Sales Q3.xlsx"));        // the name a CSV header and FILENAME fields show
 OfficeToPdf.convert(inputStream, OfficeToPdf.Format.PPTX, outputStream, OfficeToPdf.Options.defaults());
+OfficeToPdf.convert(inputStream, OfficeToPdf.Format.of(Path.of(uploadName)), outputStream,
+        OfficeToPdf.Options.defaults().displayName(uploadName));   // TEXT, CSV and TSV say what a stream holds
 r.pages();                                     // pages written
 r.truncated();                                 // something is missing: the page limit, or content left out
 r.warnings();                                  // substituted fonts, skipped active content, pictures left out
@@ -335,8 +338,10 @@ leniency for a stray or unclosed quote. Plain numbers (with thousands separators
 shown in LibreOffice's general format, valid ISO 8601 dates are right aligned as written, and everything else is text:
 formulas are never evaluated. Text wider than the page, or on several lines, wraps. A cell holds at most 32767
 characters, a row 16384 columns and a sheet 1048576 rows, and rows past the page limit are left out. The table is
-rewritten as a SpreadsheetML package that the XLSX renderer draws. Both kinds are recognised by their extension, and a
-file with one of these names that is really an Office package or RTF converts as what it is.
+rewritten as a SpreadsheetML package that the XLSX renderer draws. Both kinds are recognised by their extension, or
+on a stream by `Format.TEXT`, `Format.CSV` or `Format.TSV` (what `Format.of` gives for those names), and a file with
+one of these names that is really an Office package or RTF converts as what it is. The CSV header shows
+`Options.displayName` without its extension when one is given (the Path overload gives the file's own name).
 
 Memory is shared out across the JVM, by both directions (`stirling.software.officeconvert.memory.Admission` in the
 core module, which the topdf module now depends on). Before a document is laid out, an estimate of the heap it needs
