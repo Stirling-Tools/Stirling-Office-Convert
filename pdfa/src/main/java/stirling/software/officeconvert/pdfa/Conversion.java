@@ -79,6 +79,7 @@ final class Conversion {
         BigDictionaries.run(doc, graph, level, report);
         WideStructure.run(doc, level, report);
         ColourFixer.run(doc, graph, level, report, colours, Limits.prepare(doc, level, report));
+        StructureSlimming.run(doc);
         Metadata.run(doc, level);
         PdfFiles.stopIfInterrupted();
         save(doc, out, level);
