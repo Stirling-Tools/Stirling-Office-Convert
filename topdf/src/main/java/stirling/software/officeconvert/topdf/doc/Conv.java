@@ -3,6 +3,7 @@ package stirling.software.officeconvert.topdf.doc;
 import java.io.InterruptedIOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 final class Conv {
 
@@ -44,6 +45,17 @@ final class Conv {
     private Textboxes textboxes;
 
     private Marks marks;
+
+    private Map<Integer, Integer> order;
+
+    int layer(int spid, int fallback, boolean header) {
+        if (order == null) {
+            order = Groups.order(this);
+        }
+        Integer z = order.get(spid);
+        int base = header ? 0 : 1 << 20;
+        return base + (z == null ? order.size() + fallback : z);
+    }
 
     Marks marks() {
         if (marks == null) {

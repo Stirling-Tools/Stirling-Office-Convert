@@ -1,7 +1,9 @@
 package stirling.software.officeconvert.topdf.doc;
 
 import java.io.IOException;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import org.apache.poi.ddf.DefaultEscherRecordFactory;
 import org.apache.poi.ddf.EscherBSERecord;
@@ -148,6 +150,31 @@ final class Groups {
     static EscherContainerRecord head(Conv c, int spid) {
         EscherContainerRecord spgr = find(c, spid);
         return spgr == null || !(spgr.getChildRecords().get(0) instanceof EscherContainerRecord h) ? null : h;
+    }
+
+    static Map<Integer, Integer> order(Conv c) {
+        Map<Integer, Integer> z = new HashMap<>();
+        try {
+            OfficeArtContent art = c.src.doc.getOfficeArtContent();
+            if (art == null) {
+                return z;
+            }
+            for (EscherContainerRecord top : art.getSpgrContainers()) {
+                for (EscherRecord r : top.getChildRecords()) {
+                    if (!(r instanceof EscherContainerRecord kid)) {
+                        continue;
+                    }
+                    EscherContainerRecord sp = kid.getRecordId() == (short) 0xF003 && !kid.getChildRecords().isEmpty()
+                            && kid.getChildRecords().get(0) instanceof EscherContainerRecord h ? h : kid;
+                    if (sp.getChildById(EscherSpRecord.RECORD_ID) instanceof EscherSpRecord rec) {
+                        z.putIfAbsent(rec.getShapeId(), z.size() + 1);
+                    }
+                }
+            }
+        } catch (RuntimeException e) {
+            z.clear();
+        }
+        return z;
     }
 
     private static EscherContainerRecord find(Conv c, int spid) {

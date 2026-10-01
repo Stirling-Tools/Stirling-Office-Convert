@@ -46,7 +46,7 @@ final class Shapes {
             return null;
         }
         int id = c.nextId();
-        return "<w:drawing>" + open(d, sp, fspa, id, box[2], box[3], box[0], box[1]) + "<a:graphic><a:graphicData uri=\""
+        return "<w:drawing>" + open(d, sp, fspa, id, c.layer(d.getShapeId(), id, story.kind == Story.Kind.HEADER), box[2], box[3], box[0], box[1]) + "<a:graphic><a:graphicData uri=\""
                 + (group ? Groups.WPG : Xml.WPS) + "\">" + inner + "</a:graphicData></a:graphic></wp:anchor></w:drawing>";
     }
 
@@ -180,13 +180,26 @@ final class Shapes {
         if (italic != null && italic) {
             b.append("<w:i/>");
         }
-        b.append("<w:color w:val=\"").append(color(prop(sp, 0x0181, 0), 0)).append("\"/>");
+        b.append("<w:color w:val=\"").append(faded(color(prop(sp, 0x0181, 0), 0), prop(sp, 0x0182, 0x10000)))
+                .append("\"/>");
         long size = prop(sp, 0x00C3, 36 << 16) >> 15;
         b.append("<w:sz w:val=\"").append(Math.max(2, Math.min(3276, size))).append("\"/></w:rPr><w:t xml:space=\"preserve\">")
                 .append(Xml.esc(text.replace('\n', ' ').replace('\r', ' '))).append("</w:t></w:r></w:p></w:txbxContent></wps:txbx>")
                 .append("<wps:bodyPr wrap=\"none\" lIns=\"0\" tIns=\"0\" rIns=\"0\" bIns=\"0\"><a:prstTxWarp prst=\"textPlain\">")
                 .append("<a:avLst/></a:prstTxWarp></wps:bodyPr></wps:wsp>");
         return b.toString();
+    }
+
+    private static String faded(String hex, long opacity) {
+        if (opacity >= 0x10000 || opacity < 0) {
+            return hex;
+        }
+        int rgb = Integer.parseInt(hex, 16);
+        double a = opacity / 65536.0;
+        int r = (int) Math.round((rgb >> 16 & 0xFF) * a + 255 * (1 - a));
+        int g = (int) Math.round((rgb >> 8 & 0xFF) * a + 255 * (1 - a));
+        int bl = (int) Math.round((rgb & 0xFF) * a + 255 * (1 - a));
+        return Xml.hex(r << 16 | g << 8 | bl);
     }
 
     private static String string(EscherContainerRecord sp, int number) {
@@ -228,7 +241,7 @@ final class Shapes {
 
     static long[] unrotated(EscherContainerRecord sp, long x, long y, long cx, long cy) {
         double deg = rotation(sp);
-        boolean sideways = deg > 45 && deg <= 135 || deg > 225 && deg <= 315;
+        boolean sideways = deg >= 45 && deg < 135 || deg >= 225 && deg < 315;
         if (!sideways) {
             return new long[] {x, y, cx, cy};
         }
@@ -240,8 +253,8 @@ final class Shapes {
         return deg < 0 ? deg + 360 : deg;
     }
 
-    static String open(OfficeDrawing d, EscherContainerRecord sp, FSPA fspa, int id, long cx, long cy, long shiftX,
-            long shiftY) {
+    static String open(OfficeDrawing d, EscherContainerRecord sp, FSPA fspa, int id, int z, long cx, long cy,
+            long shiftX, long shiftY) {
         long left = prop(sp, WRAP_LEFT, 114300);
         long right = prop(sp, WRAP_RIGHT, 114300);
         long top = prop(sp, WRAP_TOP, 0);
@@ -252,7 +265,7 @@ final class Shapes {
         StringBuilder b = new StringBuilder(512);
         b.append("<wp:anchor distT=\"").append(top).append("\" distB=\"").append(bottom).append("\" distL=\"")
                 .append(left).append("\" distR=\"").append(right).append("\" simplePos=\"0\" relativeHeight=\"")
-                .append(id).append("\" behindDoc=\"").append(behind ? 1 : 0)
+                .append(z).append("\" behindDoc=\"").append(behind ? 1 : 0)
                 .append("\" locked=\"0\" layoutInCell=\"1\" allowOverlap=\"1\"><wp:simplePos x=\"0\" y=\"0\"/>");
         b.append("<wp:positionH relativeFrom=\"").append(horizontalFrom(sp, fspa)).append("\">");
         String h = horizontalAlign(sp);

@@ -462,4 +462,20 @@ class DocTest {
             assertEquals("Fixture Author", pdf.getDocumentInformation().getAuthor());
         }
     }
+
+    @Test
+    void aDiagonalWatermarkKeepsItsBoxAndFadesWithItsOpacity() throws IOException {
+        byte[] text = "DRAFT\u0000".getBytes(java.nio.charset.StandardCharsets.UTF_16LE);
+        byte[] doc = new WordFixture()
+                .para(List.of(WordFixture.run("Mark "), WordFixture.run("\u0008", Sprms.special())), 0)
+                .shape(new ShapeFixture.Shape(1025, 136, new int[] {0, 0, 4000, 1000},
+                        ShapeFixture.fspaFlags(2, 2, 3, 0, false),
+                        java.util.Map.of(0x0004, 315 << 16, 0x0181, 0x808080, 0x0182, 0x8000),
+                        java.util.Map.of(0x00C0, text)))
+                .build();
+        String xml = body(doc);
+        assertTrue(xml.contains("<wp:extent cx=\"2540000\" cy=\"635000\"/>"), xml);
+        assertTrue(xml.contains("<a:xfrm rot=\"18900000\">"), xml);
+        assertTrue(xml.contains("<w:color w:val=\"C0C0C0\"/>"), xml);
+    }
 }
