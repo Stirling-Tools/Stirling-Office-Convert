@@ -148,8 +148,12 @@ final class DmlText {
                 indent += -width;
             }
         }
+        double right = Math.max(0, pp.pt("fo:margin-right", 0));
         ppr.append(" marL=\"").append(Length.emu(Math.max(0, margin))).append("\" indent=\"")
                 .append(Length.emu(indent)).append('"');
+        if (right > 0) {
+            ppr.append(" marR=\"").append(Length.emu(right)).append('"');
+        }
         if (level > 0) {
             ppr.append(" lvl=\"").append(level).append('"');
         }
@@ -202,7 +206,7 @@ final class DmlText {
             linePts = pp.pt("style:line-height-at-least", 0);
         }
         layout.add(new Para(pp.pt("fo:margin-top", 0), pp.pt("fo:margin-bottom", 0), linePct, linePts,
-                Math.max(0, margin), indent, current, end.pt("fo:font-size", 18)));
+                Math.max(0, margin) + right, indent, current, end.pt("fo:font-size", 18)));
         out.append("<a:p>").append(ppr).append(runs).append("<a:endParaRPr").append(runAttrs(end)).append('>')
                 .append(runChildren(end)).append("</a:endParaRPr></a:p>");
     }
