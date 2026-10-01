@@ -81,6 +81,86 @@ final class ColourSamples {
                     + "q 50 400 300 100 re W n /Sh1 sh Q "
                     + "q 200 0 0 120 300 400 cm /Im1 Do Q");
         });
+        doc("c03_graphics_state", Set.of("1:6.4-1", "1:6.4-5", "2:6.2.5-3", "2:6.2.5-4", "2:6.2.5-5",
+                "2:6.2.4.2-2", "2:6.2.10-1"), d -> {
+            PDPage p = Samples.page(d);
+            PDResources res = new PDResources();
+            res.put(COSName.getPDFName("F1"), Samples.std(Standard14Fonts.FontName.HELVETICA));
+            COSDictionary gs = new COSDictionary();
+            COSDictionary ht = new COSDictionary();
+            ht.setInt(COSName.getPDFName("HalftoneType"), 6);
+            ht.setString(COSName.getPDFName("HalftoneName"), "Custom");
+            ht.setItem(COSName.getPDFName("TransferFunction"), COSName.IDENTITY);
+            COSDictionary g1 = new COSDictionary();
+            g1.setItem(COSName.getPDFName("HT"), ht);
+            g1.setItem(COSName.getPDFName("HTP"), floats(1, 1));
+            g1.setItem(COSName.BM, COSName.getPDFName("Fancy"));
+            g1.setBoolean(COSName.getPDFName("OP"), true);
+            g1.setBoolean(COSName.getPDFName("op"), true);
+            g1.setInt(COSName.getPDFName("OPM"), 1);
+            gs.setItem("G1", g1);
+            COSDictionary g2 = new COSDictionary();
+            g2.setFloat(COSName.CA, 0.5f);
+            COSDictionary mask = new COSDictionary();
+            mask.setItem(COSName.TYPE, COSName.MASK);
+            mask.setItem(COSName.S, COSName.LUMINOSITY);
+            COSStream group = d.getDocument().createCOSStream();
+            group.setItem(COSName.TYPE, COSName.XOBJECT);
+            group.setItem(COSName.SUBTYPE, COSName.FORM);
+            group.setItem(COSName.BBOX, floats(0, 0, 595, 842));
+            COSDictionary g = new COSDictionary();
+            g.setItem(COSName.S, COSName.TRANSPARENCY);
+            g.setItem(COSName.CS, COSName.DEVICEGRAY);
+            group.setItem(COSName.GROUP, g);
+            try (OutputStream o = group.createOutputStream()) {
+                o.write("0.7 g 0 0 595 842 re f".getBytes(StandardCharsets.US_ASCII));
+            }
+            mask.setItem(COSName.G, group);
+            g2.setItem(COSName.SMASK, mask);
+            gs.setItem("G2", g2);
+            res.getCOSObject().setItem(COSName.EXT_G_STATE, gs);
+            COSArray icc = new COSArray();
+            icc.add(COSName.ICCBASED);
+            COSStream profile = d.getDocument().createCOSStream();
+            profile.setInt(COSName.N, 4);
+            try (OutputStream o = profile.createOutputStream(COSName.FLATE_DECODE)) {
+                o.write(IccProfiles.cmyk());
+            }
+            icc.add(profile);
+            COSDictionary cs = new COSDictionary();
+            cs.setItem("C1", icc);
+            res.getCOSObject().setItem(COSName.COLORSPACE, cs);
+            p.setResources(res);
+            Samples.raw(p, d, "BT /F1 14 Tf 50 780 Td (Halftones, overprint, blend modes, soft masks) Tj ET "
+                    + "q /G1 gs /C1 cs /C1 CS 0 1 0 0 scn 0 1 0 0 SCN 50 650 200 80 re f Q "
+                    + "q /G2 gs 0 0 1 rg 50 500 200 80 re f Q");
+        });
+    }
+
+    static COSDictionary intent(PDDocument d, byte[] profile, String s) throws Exception {
+        COSDictionary oi = new COSDictionary();
+        oi.setItem(COSName.TYPE, COSName.getPDFName("OutputIntent"));
+        oi.setItem(COSName.S, COSName.getPDFName(s));
+        oi.setString(COSName.getPDFName("OutputConditionIdentifier"), "Custom");
+        COSStream st = d.getDocument().createCOSStream();
+        st.setInt(COSName.N, profile == IccProfiles.cmyk() ? 4 : 3);
+        try (OutputStream o = st.createOutputStream(COSName.FLATE_DECODE)) {
+            o.write(profile);
+        }
+        oi.setItem(COSName.getPDFName("DestOutputProfile"), st);
+        return oi;
+    }
+
+    static COSArray iccBased(PDDocument d, byte[] profile, int n) throws Exception {
+        COSStream st = d.getDocument().createCOSStream();
+        st.setInt(COSName.N, n);
+        try (OutputStream o = st.createOutputStream(COSName.FLATE_DECODE)) {
+            o.write(profile);
+        }
+        COSArray a = new COSArray();
+        a.add(COSName.ICCBASED);
+        a.add(st);
+        return a;
     }
 
     static COSArray deviceN(PDDocument d, int n) throws Exception {

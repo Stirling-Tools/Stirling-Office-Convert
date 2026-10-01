@@ -29,6 +29,8 @@ final class StreamFixer {
 
     private static final COSName OPM = COSName.getPDFName("OPM");
 
+    private static final COSName HTP = COSName.getPDFName("HTP");
+
     private static final COSName OPI = COSName.getPDFName("OPI");
 
     private static final COSName ALTERNATES = COSName.getPDFName("Alternates");
@@ -69,7 +71,7 @@ final class StreamFixer {
             stream(s);
         }
         if (COSName.EXT_G_STATE.equals(d.getCOSName(COSName.TYPE)) || d.containsKey(COSName.TR)
-                || d.containsKey(TR2) || d.containsKey(HT) || d.containsKey(OPM)) {
+                || d.containsKey(TR2) || d.containsKey(HT) || d.containsKey(HTP) || d.containsKey(OPM)) {
             extGState(d);
         }
     }
@@ -164,6 +166,7 @@ final class StreamFixer {
             gs.removeItem(TR2);
         }
         gs.removeItem(HT);
+        gs.removeItem(HTP);
         if (gs.getInt(OPM, 0) == 1) {
             gs.setInt(OPM, 0);
         }
