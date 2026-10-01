@@ -195,6 +195,7 @@ final class ParaItems {
             case Inline.Obj o -> {
                 Drawing d = o.drawing();
                 if (d.inline) {
+                    DrawingPainter.fitText(d, ctx);
                     Item obj = new Item(Item.Kind.OBJECT);
                     obj.text = "\uFFFC";
                     obj.drawing = d;
