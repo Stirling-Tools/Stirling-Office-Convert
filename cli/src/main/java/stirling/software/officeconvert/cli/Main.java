@@ -26,6 +26,8 @@ import stirling.software.officeconvert.PdfToText;
 import stirling.software.officeconvert.PdfToXlsx;
 import stirling.software.officeconvert.Pictures;
 import stirling.software.officeconvert.legacy.PdfToPpt;
+import stirling.software.officeconvert.pdfa.PdfALevel;
+import stirling.software.officeconvert.pdfa.PdfToPdfA;
 import stirling.software.officeconvert.topdf.OfficeToPdf;
 import stirling.software.officeconvert.topdf.io.PoiXml;
 import stirling.software.officeconvert.topdf.text.TextFormats;
@@ -67,6 +69,7 @@ public final class Main {
         PdfToDocx.Options options;
         PdfToPptx.Options slides;
         PdfToXlsx.Options books;
+        PdfALevel pdfa = null;
         try {
             for (int i = 0; i < args.length; i++) {
                 String a = args[i];
@@ -91,6 +94,7 @@ public final class Main {
                     case "--max-pages" -> office = office.maxPages(count(value(args, ++i, a), a));
                     case "--fonts" -> fontDirs.add(folder(value(args, ++i, a), a));
                     case "--sheets" -> sheets = sheets(value(args, ++i, a));
+                    case "--pdfa" -> pdfa = level(value(args, ++i, a));
                     case "--pictures" -> pictures = pictures(value(args, ++i, a));
                     case "-q", "--quiet" -> quiet = true;
                     case "-h", "--help" -> {
@@ -121,20 +125,28 @@ public final class Main {
                 anyOffice |= officeInput;
                 anyPdf |= !officeInput;
             }
+            if (pdfa != null && (anyOffice || formatGiven && !"pdf".equals(format) || pagesGiven)) {
+                throw new Usage("--pdfa converts whole PDFs to PDF/A; give it PDF input without --pages or --format");
+            }
             if (anyOffice && pagesGiven) {
                 throw new Usage("--pages is for PDF input; Office documents convert whole (--max-pages n limits them)");
             }
             if (anyOffice && formatGiven && !"pdf".equals(format)) {
                 throw new Usage("Office documents convert to PDF only; use --format pdf or leave it out");
             }
-            if (anyPdf && "pdf".equals(format)) {
+            if (anyPdf && "pdf".equals(format) && pdfa == null) {
                 throw new Usage("PDF input converts to an Office format, not pdf");
             }
             options = new PdfToDocx.Options(first, last, tables, dpi, password, pictureFallback, pictures);
             slides = new PdfToPptx.Options(first, last, tables, dpi, password, pictureFallback, pictures);
             books = PdfToXlsx.Options.defaults().withPages(first, last).withTables(tables).withPassword(password)
                     .withSheets(sheets).withTextFallback(pictureFallback);
-            if (output != null && !Files.isDirectory(output) && inputs.size() == 1 && !Files.isDirectory(inputs.get(0))) {
+            if (pdfa != null && output != null && !Files.isDirectory(output) && inputs.size() == 1
+                    && !Files.isDirectory(inputs.get(0)) && !"pdf".equals(extension(output))) {
+                throw new Usage("--pdfa writes a PDF; name the output .pdf");
+            }
+            if (pdfa == null && output != null && !Files.isDirectory(output) && inputs.size() == 1
+                    && !Files.isDirectory(inputs.get(0))) {
                 String ext = known(extension(output));
                 boolean officeInput = isOffice(inputs.get(0));
                 if (officeInput != "pdf".equals(ext)) {
@@ -148,15 +160,17 @@ public final class Main {
             return 2;
         }
         List<Path> pdfs = new ArrayList<>();
-        boolean officeFolder = !formatGiven || "pdf".equals(format);
-        boolean pdfFolder = !formatGiven || !"pdf".equals(format);
+        boolean archive = pdfa != null;
+        boolean officeFolder = !archive && (!formatGiven || "pdf".equals(format));
+        boolean pdfFolder = archive || !formatGiven || !"pdf".equals(format);
         boolean textFolder = formatGiven;
         for (Path in : inputs) {
             if (Files.isDirectory(in)) {
                 try (Stream<Path> s = Files.list(in)) {
                     s.filter(p -> Files.isRegularFile(p) && !lockFile(p) && (officeFolder && isOffice(p)
                             && (textFolder || TextFormats.kind(p) == null)
-                            || pdfFolder && p.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".pdf")))
+                            || pdfFolder && p.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".pdf")
+                            && !(archive && p.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".pdfa.pdf"))))
                             .sorted().forEach(pdfs::add);
                 } catch (IOException e) {
                     System.err.println("office-convert: cannot list " + in + ": " + e.getMessage());
@@ -168,7 +182,10 @@ public final class Main {
         }
         warmUp(pdfs);
         int failures = 0;
-        List<Path> targets = targets(pdfs, output, format, inputs.stream().anyMatch(Files::isDirectory));
+        List<Path> targets = targets(pdfs, output, pdfa != null ? "pdfa.pdf" : format,
+                inputs.stream().anyMatch(Files::isDirectory));
+        PdfToPdfA.Options archival = pdfa == null ? null : PdfToPdfA.Options.defaults().level(pdfa).password(password)
+                .timeout(office.timeout()).fontDirs(fontDirs);
         for (int k = 0; k < pdfs.size(); k++) {
             Path pdf = pdfs.get(k);
             boolean officeInput = isOffice(pdf);
@@ -180,7 +197,10 @@ public final class Main {
                     Files.createDirectories(target.getParent());
                 }
                 OfficeToPdf.Result result = null;
-                if (officeInput) {
+                List<String> notes = List.of();
+                if (archival != null) {
+                    notes = PdfToPdfA.convert(pdf, target, archival).warnings();
+                } else if (officeInput) {
                     result = officeToPdf(pdf, target, office);
                 } else {
                     convert(pdf, target, options, slides, books);
@@ -195,6 +215,9 @@ public final class Main {
                         for (String w : result.warnings()) {
                             System.err.println("warning: " + pdf.getFileName() + ": " + oneLine(w));
                         }
+                    }
+                    for (String w : notes) {
+                        System.err.println("note: " + pdf.getFileName() + ": " + oneLine(w));
                     }
                 }
             } catch (IOException e) {
@@ -423,6 +446,14 @@ public final class Main {
         }
     }
 
+    private static PdfALevel level(String s) throws Usage {
+        try {
+            return PdfALevel.parse(s);
+        } catch (IllegalArgumentException e) {
+            throw new Usage("--pdfa: " + e.getMessage());
+        }
+    }
+
     private static Pictures pictures(String s) throws Usage {
         try {
             return Pictures.valueOf(s.strip().toUpperCase(Locale.ROOT));
@@ -455,6 +486,9 @@ public final class Main {
                         + " [--max-pages n (default 10000, 0 = all)] [--timeout s (default 300, 0 = none)]"
                         + " [--fonts dir]... [-q]"
                         + System.lineSeparator()
+                        + "       office-convert <in.pdf|dir>... --pdfa 1b|2b|2u|3b|3u [-o out.pdf|dir] [--password p]"
+                        + " [--timeout s] [--fonts dir]... [-q]"
+                        + System.lineSeparator()
                         + "Word, PowerPoint and Excel files (.docx .docm .dotx .dotm .pptx .pptm .ppsx .ppsm .potx .potm"
                         + " .xlsx .xlsm .xltx .xltm and 97-2003 .doc .dot .xls .xlt .ppt .pps .pot), RTF (.rtf), OpenDocument"
                         + " files (.odt .ott .fodt .ods .ots .fods .odp .otp .fodp), plain text (.txt .text .log .asc) and comma or"
@@ -464,6 +498,9 @@ public final class Main {
                         + System.lineSeparator()
                         + "The output's extension picks the format: .docx, .odt, .fodt, .xml (flat ODT), .rtf, .doc (RTF content),"
                         + " .txt, .pptx, .odp, .ppt, .xlsx or .ods; --format names it for a directory of outputs."
+                        + System.lineSeparator()
+                        + "--pdfa makes an archival PDF/A copy of each PDF (in.pdfa.pdf unless -o names it): fonts are embedded,"
+                        + " scripts and actions removed, colours given an sRGB output intent; 1b draws transparency as pictures."
                         + System.lineSeparator()
                         + "--pictures lossless keeps every pixel without JPEG compression; compact, the default, is smaller."
                         + System.lineSeparator()
