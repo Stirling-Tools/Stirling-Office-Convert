@@ -173,6 +173,15 @@ final class FontSamples {
                 Samples.text(cs, f, 14, 50, 780, "A range across a byte boundary: \u0141\u00f3d\u017a");
             }
         });
+        doc("f10_unknown_cmap", Set.of("1:6.3.3.3-1", "2:6.2.11.3.3-1"), d -> {
+            PDType0Font f = PDType0Font.load(d, Samples.liberation(), false);
+            StringBuilder hex = new StringBuilder();
+            for (byte b : f.encode("Unknown CMap name")) {
+                hex.append(String.format("%02X", b));
+            }
+            f.getCOSObject().setItem(COSName.ENCODING, COSName.getPDFName("Custom-Made-H"));
+            page(d, "BT /A 14 Tf 50 780 Td <" + hex + "> Tj ET", f);
+        });
         doc("f09_font_types_and_maps", Set.of("2:6.2.11.3.2-1", "2:6.2.11.6-1"), d -> {
             PDFont noSubtype = trueType(d);
             noSubtype.getCOSObject().setItem(COSName.SUBTYPE, COSName.getPDFName("Bogus"));

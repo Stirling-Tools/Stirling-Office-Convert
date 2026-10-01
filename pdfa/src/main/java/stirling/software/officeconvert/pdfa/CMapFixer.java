@@ -91,6 +91,18 @@ final class CMapFixer {
         return max;
     }
 
+    static boolean unknownName(COSDictionary font) {
+        if (!COSName.TYPE0.equals(font.getCOSName(COSName.SUBTYPE))
+                || !(font.getDictionaryObject(COSName.ENCODING) instanceof COSName n)
+                || n.getName().equals("Identity-H") || n.getName().equals("Identity-V")
+                || CMap.class.getResource("/org/apache/fontbox/cmap/" + n.getName()) != null
+                && !n.getName().contains("/") && !n.getName().contains("..")) {
+            return false;
+        }
+        font.setItem(COSName.ENCODING, n.getName().endsWith("-V") ? COSName.IDENTITY_V : COSName.IDENTITY_H);
+        return true;
+    }
+
     static boolean inline(PDDocument doc, COSDictionary font) throws IOException {
         if (!COSName.TYPE0.equals(font.getCOSName(COSName.SUBTYPE))
                 || !(font.getDictionaryObject(COSName.ENCODING) instanceof COSStream s)
