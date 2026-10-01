@@ -15,6 +15,7 @@ import org.apache.pdfbox.cos.COSBase;
 import org.apache.pdfbox.cos.COSDictionary;
 import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.cos.COSString;
+import org.apache.pdfbox.pdmodel.font.PDFont;
 
 
 final class FontUsage {
@@ -27,10 +28,20 @@ final class FontUsage {
 
     private final Map<COSDictionary, Integer> lengths = new IdentityHashMap<>();
 
+    private final Map<COSDictionary, PDFont> unchanged = new IdentityHashMap<>();
+
     FontUsage() {}
 
     Map<COSDictionary, TreeSet<Integer>> codes() {
         return codes;
+    }
+
+    void unchanged(PDFont font) {
+        unchanged.put(font.getCOSObject(), font);
+    }
+
+    PDFont unchanged(COSDictionary font) {
+        return unchanged.get(font);
     }
 
     int bytesPerCode(COSDictionary font) {

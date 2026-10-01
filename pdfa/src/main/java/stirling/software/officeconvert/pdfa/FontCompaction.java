@@ -25,7 +25,6 @@ import org.apache.pdfbox.cos.COSStream;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.font.PDCIDFontType2;
 import org.apache.pdfbox.pdmodel.font.PDFont;
-import org.apache.pdfbox.pdmodel.font.PDFontFactory;
 import org.apache.pdfbox.pdmodel.font.PDTrueTypeFont;
 import org.apache.pdfbox.pdmodel.font.PDType0Font;
 
@@ -109,8 +108,8 @@ final class FontCompaction {
             if (codes == null || codes.isEmpty()) {
                 return;
             }
-            PDFont f = PDFontFactory.createFont(d);
-            if (FontCheck.check(f, codes, level) != FontCheck.Verdict.OK) {
+            PDFont f = usage.unchanged(d);
+            if (f == null) {
                 return;
             }
             loaded.add(f);

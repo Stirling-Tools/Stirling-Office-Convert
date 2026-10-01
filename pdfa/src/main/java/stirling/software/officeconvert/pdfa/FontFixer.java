@@ -54,23 +54,26 @@ final class FontFixer {
         FontFixer f = new FontFixer(doc, level, libraries, report);
         for (Map.Entry<COSDictionary, TreeSet<Integer>> e : usage.codes().entrySet()) {
             PdfFiles.stopIfInterrupted();
-            f.fix(e.getKey(), e.getValue(), usage.bytesPerCode(e.getKey()));
+            PDFont kept = f.fix(e.getKey(), e.getValue(), usage.bytesPerCode(e.getKey()));
+            if (kept != null) {
+                usage.unchanged(kept);
+            }
         }
     }
 
-    private void fix(COSDictionary dict, TreeSet<Integer> codes, int bytesPerCode) throws IOException {
+    private PDFont fix(COSDictionary dict, TreeSet<Integer> codes, int bytesPerCode) throws IOException {
         PDFont font;
         try {
             font = PDFontFactory.createFont(dict);
         } catch (IOException | RuntimeException e) {
             report.warn("A font could not be read and was left as it is: " + e.getMessage());
-            return;
+            return null;
         }
         if (font instanceof PDType3Font t3) {
             if (level.unicode()) {
                 unicode(t3, codes, 1);
             }
-            return;
+            return null;
         }
         FontCheck.Verdict v = FontCheck.check(font, codes, level);
         if (v == FontCheck.Verdict.OK) {
@@ -78,7 +81,7 @@ final class FontFixer {
             if (level.unicode()) {
                 unicode(font, codes, bytesPerCode);
             }
-            return;
+            return font;
         }
         try {
             if (v == FontCheck.Verdict.SUBSTITUTE) {
@@ -101,6 +104,7 @@ final class FontFixer {
             PdfFiles.stopIfInterrupted();
             report.warn("The font " + font.getName() + " could not be embedded: " + e.getMessage());
         }
+        return null;
     }
 
     private void tidy(PDFont font) throws IOException {
