@@ -39,7 +39,8 @@ final class ContentLimits {
         }
         String name = op.getName();
         int maxString = Limits.maxString(level);
-        if (("Tj".equals(name) || "'".equals(name) || "\"".equals(name)) && o.get(o.size() - 2) instanceof COSString s
+        if (("Tj".equals(name) || "'".equals(name) || "\"".equals(name)) && o.size() >= 2
+                && o.get(o.size() - 2) instanceof COSString s
                 && s.getBytes().length > maxString) {
             return showSplit(o, s);
         }

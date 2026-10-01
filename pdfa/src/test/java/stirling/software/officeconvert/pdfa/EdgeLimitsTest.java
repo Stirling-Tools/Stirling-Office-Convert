@@ -102,6 +102,13 @@ class EdgeLimitsTest {
     }
 
     @ParameterizedTest
+    @EnumSource(value = PdfALevel.class, names = {"A1B", "A2B"})
+    void showOperatorsWithoutOperandsAreLeftAlone(PdfALevel level) throws Exception {
+        Path in = pdf("bare", PDRectangle.A4, "BT /F1 12 Tf Tj ' TJ 20 700 Td (ok) Tj ET", false);
+        assertTrue(Converted.text(convert(in, level)).contains("ok"));
+    }
+
+    @ParameterizedTest
     @EnumSource(value = PdfALevel.class, names = {"A2B", "A3B"})
     void hugePagesGetAUserUnit(PdfALevel level) throws Exception {
         Path in = dir.resolve("huge.pdf");
