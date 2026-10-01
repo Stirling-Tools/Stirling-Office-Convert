@@ -64,10 +64,17 @@ final class GlyphRows {
         }
     }
 
+    private static final Comparator<Glyph> BY_BASELINE = (a, b) -> Double.compare(a.baseline, b.baseline);
+
+    private static final Comparator<Glyph> BY_X = (a, b) -> {
+        int c = Double.compare(a.x, b.x);
+        return c != 0 ? c : Integer.compare(a.seq, b.seq);
+    };
+
     private static List<Row> cluster(List<Glyph> ink) {
         Map<Glyph, Float> key = cascadeBaselines(ink);
         List<Glyph> sorted = new ArrayList<>(ink);
-        sorted.sort(key.isEmpty() ? Comparator.comparingDouble((Glyph g) -> g.baseline)
+        sorted.sort(key.isEmpty() ? BY_BASELINE
                 : Comparator.comparingDouble((Glyph g) -> key.getOrDefault(g, g.baseline)));
         List<Row> rows = new ArrayList<>();
         Row row = null;
@@ -86,7 +93,7 @@ final class GlyphRows {
             rows.add(row);
         }
         for (Row r : rows) {
-            r.glyphs.sort(Comparator.comparingDouble((Glyph g) -> g.x).thenComparingInt(g -> g.seq));
+            r.glyphs.sort(BY_X);
         }
         return rows;
     }
@@ -175,8 +182,7 @@ final class GlyphRows {
                         g.vertAlign = script;
                         host.glyphs.add(g);
                     }
-                    host.glyphs.sort(
-                            Comparator.comparingDouble((Glyph g) -> g.x).thenComparingInt(g -> g.seq));
+                    host.glyphs.sort(BY_X);
                     rows.remove(i);
                     changed = true;
                     break;
