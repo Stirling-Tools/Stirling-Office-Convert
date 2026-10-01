@@ -74,14 +74,17 @@ public final class OfficeToPdf {
             String ext = extension(file);
             return switch (ext) {
                 case "docx", "docm", "dotx", "dotm", "doc", "dot", "rtf" -> DOCX;
+                case "txt", "text", "log", "asc" -> DOCX;
                 case "pptx", "pptm", "ppsx", "ppsm", "potx", "potm" -> PPTX;
                 case "xlsx", "xlsm", "xltx", "xltm", "xls", "xlt" -> XLSX;
+                case "csv", "tsv", "tab" -> XLSX;
                 case "ppt", "pps", "pot" -> PPT;
                 case "xlsb" -> throw new IllegalArgumentException(
                         "Excel binary workbooks (.xlsb) are not supported; save the file as .xlsx");
                 default -> throw new IllegalArgumentException("Not an Office document: " + file.getFileName()
                         + "; use .docx, .docm, .dotx, .dotm, .doc, .dot, .rtf, .pptx, .pptm, .ppsx, .ppsm, .potx, .potm,"
-                        + " .xlsx, .xlsm, .xltx, .xltm, .xls, .xlt, .ppt, .pps or .pot");
+                        + " .xlsx, .xlsm, .xltx, .xltm, .xls, .xlt, .ppt, .pps, .pot, .txt, .text, .log, .asc, .csv, .tsv"
+                        + " or .tab");
             };
         }
 
@@ -90,6 +93,7 @@ public final class OfficeToPdf {
             return switch (extension(file)) {
                 case "docx", "docm", "dotx", "dotm", "pptx", "pptm", "ppsx", "ppsm", "potx", "potm", "xlsx", "xlsm",
                         "xltx", "xltm", "doc", "dot", "ppt", "pps", "pot", "xls", "xlt", "xlsb", "rtf" -> true;
+                case "txt", "text", "log", "asc", "csv", "tsv", "tab" -> true;
                 default -> false;
             };
         }
@@ -261,6 +265,10 @@ public final class OfficeToPdf {
         Long word = LegacyWord.estimate(in);
         if (word != null) {
             return word;
+        }
+        Long text = TextInput.estimate(in);
+        if (text != null) {
+            return text;
         }
         try (OfficeZip zip = OfficeZip.open(in)) {
             return Footprint.estimate(zip, detect(zip, format));
@@ -441,6 +449,10 @@ public final class OfficeToPdf {
         Result rtf = richText(source, sink, options, renderer);
         if (rtf != null) {
             return rtf;
+        }
+        Result text = TextInput.render(source, sink, options, renderer);
+        if (text != null) {
+            return text;
         }
         Path name = source.getFileName();
         if (name != null && name.toString().toLowerCase(Locale.ROOT).endsWith(".rtf")) {

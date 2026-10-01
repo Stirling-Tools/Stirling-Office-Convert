@@ -117,7 +117,7 @@ class OfficeToPdfTest {
         assertFails("old.xls", new byte[] {1, 2, 3}, "not a zip");
         assertFails("deck.ppt", new byte[] {1, 2, 3}, "not a zip");
         assertFails("legacy.doc", new byte[] {1, 2, 3}, "not a zip");
-        for (String name : List.of("binary.xlsb", "upload", "notes.txt")) {
+        for (String name : List.of("binary.xlsb", "upload", "notes.md")) {
             Path in = Files.write(dir.resolve(name), new byte[] {1, 2, 3});
             IOException e = assertThrows(IOException.class, () -> OfficeToPdf.convert(in, dir.resolve(name + ".pdf")),
                     name);
