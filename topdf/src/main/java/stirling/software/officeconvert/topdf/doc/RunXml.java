@@ -1,5 +1,7 @@
 package stirling.software.officeconvert.topdf.doc;
 
+import java.util.List;
+
 import org.apache.poi.hwpf.model.FontTable;
 import org.apache.poi.hwpf.usermodel.CharacterProperties;
 
@@ -28,6 +30,10 @@ final class RunXml {
     }
 
     String props(CharacterProperties c) {
+        return props(c, List.of());
+    }
+
+    String props(CharacterProperties c, List<Sprm> direct) {
         StringBuilder b = new StringBuilder(160);
         fonts(b, c);
         flag(b, "b", c.isFBold());
@@ -69,8 +75,18 @@ final class RunXml {
         if (u != null) {
             b.append("<w:u w:val=\"").append(u).append("\"/>");
         }
-        BorderXml.side(b, "bdr", BorderXml.of(c.getBrc()));
-        String shd = BorderXml.shading(c.getShd());
+        BorderXml.Line border = null;
+        for (Sprm s : direct) {
+            if (s.opcode() == 0xCA72) {
+                border = BorderXml.brc(s.data(), s.payload());
+            } else if (s.opcode() == 0x6865) {
+                border = BorderXml.brc80(s.data(), s.at());
+            }
+        }
+        if (border != null && !border.none()) {
+            BorderXml.side(b, "bdr", border);
+        }
+        String shd = ParaXml.shading(direct);
         if (shd != null) {
             b.append(shd);
         }

@@ -34,7 +34,7 @@ final class ParaXml {
             b.append(numbering);
         }
         borders(b, sprms);
-        String shd = BorderXml.shading(p.getShd());
+        String shd = shading(sprms);
         if (shd != null) {
             b.append(shd);
         }
@@ -114,6 +114,22 @@ final class ParaXml {
         if (!inner.isEmpty()) {
             b.append("<w:pBdr>").append(inner).append("</w:pBdr>");
         }
+    }
+
+    static String shading(List<Sprm> sprms) {
+        String out = null;
+        for (Sprm s : sprms) {
+            if ((s.opcode() == 0xC64D || s.opcode() == 0xCA71) && s.payloadLength() >= 10) {
+                int o = s.payload();
+                out = BorderXml.shading(Tap.rgb(Sprm.s32(s.data(), o)), Tap.rgb(Sprm.s32(s.data(), o + 4)),
+                        Sprm.u16(s.data(), o + 8));
+            } else if (s.opcode() == 0x442D || s.opcode() == 0x4866) {
+                int v = s.u16();
+                out = v == 0xFFFF ? null : BorderXml.shading(BorderXml.ico(v & 0x1F), BorderXml.ico((v >> 5) & 0x1F),
+                        (v >> 10) & 0x3F);
+            }
+        }
+        return out;
     }
 
     private static void tabs(StringBuilder b, ParagraphProperties p) {

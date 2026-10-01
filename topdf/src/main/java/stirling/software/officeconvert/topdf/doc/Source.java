@@ -66,7 +66,7 @@ final class Source {
         }
     }
 
-    record Segment(int start, int end, CharacterProperties chp) {}
+    record Segment(int start, int end, CharacterProperties chp, List<Sprm> sprms) {}
 
     List<Segment> segments(int start, int end, int istd) {
         List<Segment> out = new ArrayList<>();
@@ -76,7 +76,7 @@ final class Source {
             CHPX x = i >= 0 && i < chpx.size() ? chpx.get(i) : null;
             if (x == null || x.getStart() > at) {
                 int stop = x == null ? end : Math.min(end, x.getStart());
-                out.add(new Segment(at, stop, styleChp(istd)));
+                out.add(new Segment(at, stop, styleChp(istd), List.of()));
                 at = stop;
                 continue;
             }
@@ -88,7 +88,7 @@ final class Source {
                 } catch (RuntimeException e) {
                     chp = new CharacterProperties();
                 }
-                out.add(new Segment(at, stop, chp));
+                out.add(new Segment(at, stop, chp, Sprm.parse(x.getGrpprl(), 0)));
                 at = stop;
             }
             i++;

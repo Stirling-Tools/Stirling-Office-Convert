@@ -176,4 +176,18 @@ class DocTest {
         String xml = body(doc);
         assertTrue(xml.contains("<w:col w:w=\"5175\" w:space=\"366\"/><w:col w:w=\"4712\"/>"), xml);
     }
+
+    @Test
+    void shadingAndBordersComeFromTheirOwnPropertyRecords() throws IOException {
+        byte[] doc = new WordFixture()
+                .para(List.of(WordFixture.run("boxed", Sprms.op(0xCA72, 8, 0x00, 0x00, 0xFF, 0x00, 8, 1, 0, 0),
+                        Sprms.op(0xCA71, 10, 0, 0, 0, 0xFF, 0xFF, 0xFF, 0x00, 0x00, 0, 0))), 0,
+                        Sprms.op(0xC64D, 10, 0, 0, 0, 0xFF, 0x33, 0x66, 0x99, 0x00, 0, 0))
+                .para("Plain").build();
+        String xml = body(doc);
+        assertTrue(xml.contains("<w:shd w:val=\"clear\" w:color=\"auto\" w:fill=\"336699\"/>"), xml);
+        assertTrue(xml.contains("<w:shd w:val=\"clear\" w:color=\"auto\" w:fill=\"FFFF00\"/>"), xml);
+        assertTrue(xml.contains("<w:bdr w:val=\"single\" w:sz=\"8\" w:space=\"0\" w:color=\"0000FF\"/>"), xml);
+        assertEquals(2, xml.split("<w:shd ").length - 1, xml);
+    }
 }

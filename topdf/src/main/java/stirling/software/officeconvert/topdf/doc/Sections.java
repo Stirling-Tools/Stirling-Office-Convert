@@ -181,7 +181,7 @@ final class Sections implements Story.Breaks {
                 .append("\" w:bottom=\"").append(s.getDyaBottom()).append("\" w:left=\"").append(s.getDxaLeft())
                 .append("\" w:header=\"").append(s.getDyaHdrTop()).append("\" w:footer=\"").append(s.getDyaHdrBottom())
                 .append("\" w:gutter=\"").append(Math.max(0, s.getDzaGutter())).append("\"/>");
-        pageBorders(b, s);
+        pageBorders(b, raw.get(k));
         if (s.getNLnnMod() > 0) {
             b.append("<w:lnNumType w:countBy=\"").append(s.getNLnnMod()).append("\" w:distance=\"")
                     .append(Math.max(0, s.getDxaLnn())).append("\" w:start=\"").append(Math.max(0, s.getLnnMin()))
@@ -211,8 +211,10 @@ final class Sections implements Story.Breaks {
         if (s.getFTitlePage()) {
             b.append("<w:titlePg/>");
         }
-        if (s.getClm() != 0 && s.getDyaLinePitch() > 0) {
-            b.append("<w:docGrid w:type=\"").append(switch (s.getClm()) {
+        Sprm clmSprm = Sprm.find(raw.get(k), 0x5032);
+        int clm = clmSprm == null ? s.getClm() : clmSprm.u16();
+        if (clm != 0 && s.getDyaLinePitch() > 0) {
+            b.append("<w:docGrid w:type=\"").append(switch (clm) {
                 case 1 -> "linesAndChars";
                 case 3 -> "snapToChars";
                 default -> "lines";
@@ -277,9 +279,19 @@ final class Sections implements Story.Breaks {
         }
     }
 
-    private static void pageBorders(StringBuilder b, SectionProperties s) {
-        BorderXml.Line[] lines = {BorderXml.of(s.getBrcTop()), BorderXml.of(s.getBrcLeft()),
-            BorderXml.of(s.getBrcBottom()), BorderXml.of(s.getBrcRight())};
+    private static void pageBorders(StringBuilder b, List<Sprm> sprms) {
+        BorderXml.Line[] lines = new BorderXml.Line[4];
+        int prop = 0;
+        for (Sprm sp : sprms) {
+            int op = sp.opcode();
+            if (op >= 0x702B && op <= 0x702E) {
+                lines[op - 0x702B] = BorderXml.brc80(sp.data(), sp.at());
+            } else if (op >= 0xD234 && op <= 0xD237) {
+                lines[op - 0xD234] = BorderXml.brc(sp.data(), sp.payload());
+            } else if (op == 0x522F) {
+                prop = sp.u16();
+            }
+        }
         boolean any = false;
         for (BorderXml.Line l : lines) {
             any |= l != null && !l.none();
@@ -287,7 +299,6 @@ final class Sections implements Story.Breaks {
         if (!any) {
             return;
         }
-        int prop = s.getPgbProp();
         b.append("<w:pgBorders w:offsetFrom=\"").append((prop >> 5 & 7) == 1 ? "page" : "text").append("\">");
         String[] names = {"top", "left", "bottom", "right"};
         for (int i = 0; i < 4; i++) {

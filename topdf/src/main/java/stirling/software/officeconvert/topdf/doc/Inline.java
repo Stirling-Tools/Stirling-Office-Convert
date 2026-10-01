@@ -28,7 +28,7 @@ final class Inline {
         CharSequence src = c.src.text;
         for (Source.Segment seg : c.src.segments(start, end, istd)) {
             CharacterProperties chp = seg.chp();
-            String rPr = c.src.runs.props(chp);
+            String rPr = c.src.runs.props(chp, seg.sprms());
             boolean special = chp.isFSpec();
             for (int cp = seg.start(); cp < seg.end() && cp < src.length(); cp++) {
                 char ch = src.charAt(cp);
