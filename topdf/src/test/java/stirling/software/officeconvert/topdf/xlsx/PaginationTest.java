@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.nio.file.Path;
+import java.util.List;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -40,5 +41,14 @@ class PaginationTest {
         XlsxTesting.Converted c = XlsxTesting.convert(dir, "whole.xlsx",
                 new RawXlsx().sheet("S", fitted("fitToHeight=\"1\"")).bytes());
         assertEquals(1, c.pages().size());
+    }
+
+    @Test
+    void rowsStopFivePrinterPixelsShortOfTheBottomMargin() throws Exception {
+        double printable = 841.8898 - 2 * 0.75 * 72 - PrintMetrics.ORIGIN;
+        double row = 149 * PrintMetrics.PX;
+        List<Paginator.Span> spans = Paginator.spans(0, 99, i -> row, -1, -1, Paginator.rowRoom(printable, 1), null,
+                Integer.MAX_VALUE);
+        assertEquals(new Paginator.Span(0, 39), spans.get(0));
     }
 }

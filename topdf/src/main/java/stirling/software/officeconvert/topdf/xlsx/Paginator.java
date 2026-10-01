@@ -131,7 +131,7 @@ final class Paginator {
                     break;
                 }
                 if (h > 0 && spans(r.getFirstRow(), r.getLastRow(), grid::rowHeight, first(titleRows, true),
-                        last(titleRows, true), (setup.printableHeight() / s - headHeight()), null, h + 1).size() > h) {
+                        last(titleRows, true), (rowRoom(setup.printableHeight(), s) - headHeight()), null, h + 1).size() > h) {
                     ok = false;
                     break;
                 }
@@ -144,6 +144,10 @@ final class Paginator {
     }
 
     // Excel fits the columns to whole device pixels, keeping the grid's 4 px inset and closing line clear of the edge
+    static double rowRoom(double printable, double scale) {
+        return fitWidth(printable) / scale;
+    }
+
     static double fitWidth(double printable) {
         return (Math.floor(printable / PrintMetrics.PX + 1e-6) - FIT_EDGE_PX) * PrintMetrics.PX;
     }
@@ -157,7 +161,7 @@ final class Paginator {
                 first(titleCols, false), last(titleCols, false), (setup.printableWidth() / scale - headWidth()),
                 manualBreaks(setup.fitWidth()) ? colBreaks : null, Integer.MAX_VALUE);
         List<Span> rowSpans = spans(range.getFirstRow(), range.getLastRow(), grid::rowHeight, first(titleRows, true),
-                last(titleRows, true), (setup.printableHeight() / scale - headHeight()),
+                last(titleRows, true), (rowRoom(setup.printableHeight(), scale) - headHeight()),
                 manualBreaks(setup.fitHeight()) ? rowBreaks : null, Integer.MAX_VALUE);
         boolean rowMajor = setup.overThenDown();
         int[] rowStarts = starts(rowSpans);
