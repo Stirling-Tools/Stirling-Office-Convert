@@ -33,6 +33,8 @@ final class ContentReader {
 
     private int depth;
 
+    private int autonum;
+
     static final int MAX_DEPTH = 40;
 
     ContentReader(DocxPackage pkg, String part) {
@@ -530,6 +532,16 @@ final class ContentReader {
         return new Inline.Link(safe, anchor);
     }
 
+    private static String autonumSeparator(String instr) {
+        List<String> t = tokens(instr);
+        for (int i = 1; i + 1 < t.size(); i++) {
+            if (t.get(i).equalsIgnoreCase("\\s") && !t.get(i + 1).isEmpty()) {
+                return t.get(i + 1).substring(0, 1);
+            }
+        }
+        return ".";
+    }
+
     private static List<String> tokens(String s) {
         List<String> out = new ArrayList<>();
         int i = 0;
@@ -611,8 +623,12 @@ final class ContentReader {
             case "end" -> {
                 if (!fields.isEmpty()) {
                     FieldState f = fields.pop();
+                    boolean result = f.separated;
                     if (!f.separated) {
                         separate(f);
+                    }
+                    if (!result && "AUTONUM".equals(f.name) && !inInstruction() && computedParentAllowsOutput()) {
+                        text(++autonum + autonumSeparator(f.instr.toString()), f.rp, out, fieldLinkInScope(link));
                     }
                     if (f.computed && !inInstruction() && computedParentAllowsOutput()) {
                         out.add(new Inline.Field(f.name, f.rp, f.cached.toString(), fieldLinkInScope(link),

@@ -195,6 +195,21 @@ class DocxRendererTest {
     }
 
     @Test
+    void autonumFieldsWithoutAResultNumberTheirParagraphs() throws IOException {
+        StringBuilder body = new StringBuilder();
+        for (String switches : new String[] {"", "", " \\s :"}) {
+            body.append("<w:p><w:r><w:fldChar w:fldCharType=\"begin\"/></w:r><w:r><w:instrText xml:space=\"preserve\">")
+                    .append(" AUTONUM").append(switches).append(" </w:instrText></w:r><w:r><w:fldChar")
+                    .append(" w:fldCharType=\"end\"/></w:r><w:r><w:t xml:space=\"preserve\"> Item</w:t></w:r></w:p>");
+        }
+        String text = DocxDoc.render(dir, "autonum", new DocxDoc().body(body.toString()).bytes()).text();
+        assertTrue(text.contains("1. Item"), text);
+        assertTrue(text.contains("2. Item"), text);
+        assertTrue(text.contains("3: Item"), text);
+        assertFalse(text.contains("AUTONUM"), text);
+    }
+
+    @Test
     void footnotesAppearOnTheirPage() throws IOException {
         String notes = "<w:footnote w:type=\"separator\" w:id=\"-1\"><w:p><w:r><w:separator/></w:r></w:p></w:footnote>"
                 + "<w:footnote w:id=\"1\"><w:p><w:r><w:rPr><w:vertAlign w:val=\"superscript\"/></w:rPr>"
