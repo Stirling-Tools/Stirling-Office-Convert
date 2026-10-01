@@ -624,6 +624,19 @@ final class Samples {
                 }
             }
         });
+        gen("s20_overprint", d -> {
+            PDPage p = page(d);
+            PDExtendedGraphicsState op = new PDExtendedGraphicsState();
+            op.setNonStrokingOverprintControl(true);
+            op.setStrokingOverprintControl(true);
+            op.setOverprintMode(1);
+            try (PDPageContentStream cs = new PDPageContentStream(d, p)) {
+                cs.setGraphicsStateParameters(op);
+                cs.setNonStrokingColor(0.2f, 0.7f, 0f, 0f);
+                cs.addRect(50, 600, 200, 100);
+                cs.fill();
+            }
+        });
     }
 
     static org.apache.fontbox.ttf.TrueTypeFont liberation() throws IOException {
