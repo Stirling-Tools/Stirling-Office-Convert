@@ -130,12 +130,15 @@ final class TableBuilder {
         n = Math.max(1, n);
         int[] e = new int[n + 1];
         e[0] = p.left;
-        if (!p.cells.isEmpty()) {
-            e[0] = Math.min(p.left, p.cells.get(0).edge - 1);
-        }
         for (int i = 0; i < n; i++) {
-            int edge = i < p.cells.size() ? p.cells.get(i).edge : e[i] + DEFAULT_WIDTH;
-            e[i + 1] = Math.max(e[i] + 1, edge);
+            RowProps.CellDef c = i < p.cells.size() ? p.cells.get(i) : null;
+            int edge = c == null ? e[i] : c.edge;
+            if (edge <= e[i]) {
+                int w = c != null && c.widthType == 3 && c.width > 0 ? c.width
+                        : p.widthType == 3 && p.width > 0 ? p.width / n : DEFAULT_WIDTH;
+                edge = e[i] + w;
+            }
+            e[i + 1] = edge;
         }
         return e;
     }

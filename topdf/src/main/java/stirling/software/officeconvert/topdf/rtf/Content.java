@@ -69,6 +69,13 @@ final class Content {
         }
     }
 
+    void field(Group g, String instr) {
+        if (g.story != null) {
+            para(g).raw("<w:fldSimple w:instr=\"" + instr + "\"><w:r>" + props.rPr(g.chp)
+                    + "<w:t>1</w:t></w:r></w:fldSimple>");
+        }
+    }
+
     boolean word(RtfReader r, Group g, String w, int p, boolean has) throws IOException {
         switch (w) {
             case "par" -> endPara(g, null, g.pap.tableDepth());
@@ -101,12 +108,7 @@ final class Content {
                 sectStarted = true;
             }
             case "chftn" -> footnoteMark(r, g);
-            case "chpgn" -> {
-                if (g.story != null) {
-                    para(g).raw("<w:fldSimple w:instr=\"PAGE\"><w:r>" + props.rPr(g.chp)
-                            + "<w:t>1</w:t></w:r></w:fldSimple>");
-                }
-            }
+            case "chpgn" -> field(g, "PAGE");
             case "ftnalt" -> {
                 Group n = r.noteGroup();
                 if (n != null) {

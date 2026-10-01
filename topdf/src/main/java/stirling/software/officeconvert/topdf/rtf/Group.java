@@ -33,6 +33,7 @@ final class Group {
 
     static final class Field {
         final StringBuilder inst = new StringBuilder();
+        boolean result;
     }
 
     static final class Note {

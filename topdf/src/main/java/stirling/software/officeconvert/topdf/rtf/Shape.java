@@ -26,6 +26,7 @@ final class Shape {
     boolean behind;
     int z;
     boolean inline;
+    LegacyDrawing legacy;
     final Map<String, String> props = new HashMap<>();
     PictureXml.Image picture;
     String text;

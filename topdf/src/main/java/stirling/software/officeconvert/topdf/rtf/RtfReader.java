@@ -20,13 +20,13 @@ final class RtfReader {
             "datastore", "themedata", "colorschememapping", "latentstyles", "userprops", "docvar", "ftnsep",
             "ftnsepc", "ftncn", "aftnsep", "aftnsepc", "aftncn", "pgdsctbl", "comment", "doccomm", "operator",
             "company", "manager", "category", "hlinkbase", "fchars", "lchars", "protusertbl", "password",
-            "passwordhash", "wgrffmtfilter", "do", "panose", "fname", "file", "filetbl", "blipuid", "picprop",
+            "passwordhash", "wgrffmtfilter", "panose", "fname", "file", "filetbl", "blipuid", "picprop",
             "mhtmltag", "htmltag", "mmathPr", "formfield", "datafield", "levelnumbers", "listname", "listpicture",
             "pntxta", "pntxtb", "objdata", "objclass", "objname", "objalias", "objsect", "objitem", "objtopic",
             "oleclsid", "nonshppict", "shprslt", "nextfile", "private", "ebcstart", "ebcend", "fldtype", "ffdeftext",
             "ffformat", "ffhelptext", "ffstattext", "ffentrymcr", "ffexitmcr", "ffname", "ffl", "pgptbl",
             "oldcprops", "oldpprops", "oldtprops", "oldsprops", "factoidname", "svb", "gridtbl", "mvfmf", "mvfml",
-            "mvtof", "mvtol", "dptxbxtext", "keycode", "xform", "linkval", "propname", "staticval", "fontemb",
+            "mvtof", "mvtol", "keycode", "xform", "linkval", "propname", "staticval", "fontemb",
             "fontfile");
 
     private final RtfTokenizer tok;
@@ -50,6 +50,8 @@ final class RtfReader {
     private boolean starred;
 
     private int ucSkip;
+
+    private boolean lastCr;
 
     private byte[] pending = new byte[256];
 
@@ -250,6 +252,11 @@ final class RtfReader {
                     embeds.closeSp(done);
                 }
             }
+            case FIELD -> {
+                if (done.field != parent.field) {
+                    embeds.closeField(done, parent);
+                }
+            }
             case SHP -> {
                 if (done.shape != parent.shape) {
                     embeds.closeShape(done, parent);
@@ -316,7 +323,11 @@ final class RtfReader {
             return;
         }
         switch (g.dest) {
-            case NORMAL -> content.word(this, g, w, p, has);
+            case NORMAL -> {
+                if (g.shape == null || g.shape.legacy == null || !g.shape.legacy.word(g.shape, w, p)) {
+                    content.word(this, g, w, p, has);
+                }
+            }
             case FONTTBL, FALT -> defs.fontWord(g, w, p);
             case COLORTBL -> doc.colors.word(w, p);
             case STYLE -> defs.styleWord(g, w, p, has);
@@ -416,7 +427,8 @@ final class RtfReader {
                 embeds.openResult(g);
             }
             case "shp", "shpgrp" -> {
-                if (!content(g.dest) && g.dest != Dest.SHP) {
+                boolean child = (g.dest == Dest.SHP || g.dest == Dest.SHPINST) && g.shape != null && g.shape.group;
+                if (!content(g.dest) && !child) {
                     skip();
                     return true;
                 }
@@ -431,7 +443,14 @@ final class RtfReader {
             }
             case "sn" -> embeds.openSn(g);
             case "sv" -> embeds.openSv(g);
-            case "shptxt" -> {
+            case "do" -> {
+                if (!content(g.dest)) {
+                    skip();
+                    return true;
+                }
+                embeds.openLegacy(g);
+            }
+            case "shptxt", "dptxbxtext" -> {
                 if (g.shape == null) {
                     skip();
                     return true;
@@ -617,6 +636,16 @@ final class RtfReader {
             chr('\t');
             return;
         }
+        if (hex && (b == '\r' || b == '\n') && g.dest == Dest.NORMAL) {
+            boolean pair = b == '\n' && lastCr;
+            flush();
+            lastCr = b == '\r';
+            if (!pair) {
+                content.item(g, "<w:br/>");
+            }
+            return;
+        }
+        lastCr = false;
         if (b < 0x20 && !hex) {
             return;
         }
@@ -649,6 +678,9 @@ final class RtfReader {
             int font = doc.effectiveFont(g.chp, g.pap);
             symbol = doc.fonts.symbol(font);
             cs = doc.charset(font);
+            if (!symbol && high()) {
+                cs = doubleByte(cs);
+            }
         }
         if (symbol) {
             char[] out = new char[pendingLength];
@@ -659,6 +691,25 @@ final class RtfReader {
             return new String(out);
         }
         return new String(pending, 0, pendingLength, cs);
+    }
+
+    private boolean high() {
+        for (int i = 0; i < pendingLength; i++) {
+            if (pending[i] < 0) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private Charset doubleByte(Charset cs) {
+        if (g.chp.mode == CharProps.MODE_DBCH && g.chp.has(CharProps.EA_FONT)) {
+            Charset ea = doc.charset(g.chp.eaFont);
+            if (CodePages.doubleByte(ea)) {
+                return ea;
+            }
+        }
+        return cs.equals(CodePages.WINDOWS_1252) && CodePages.doubleByte(doc.ansi) ? doc.ansi : cs;
     }
 
     private void deliver(String s) {

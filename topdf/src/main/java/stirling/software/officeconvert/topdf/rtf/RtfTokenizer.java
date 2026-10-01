@@ -121,10 +121,18 @@ final class RtfTokenizer {
             return WORD;
         }
         if (c == '\'') {
-            int h = hex(read());
-            int l = hex(read());
-            if (h < 0 || l < 0) {
+            int hc = read();
+            int h = hex(hc);
+            if (h < 0) {
+                unread(hc);
                 return next();
+            }
+            int lc = read();
+            int l = hex(lc);
+            if (l < 0) {
+                unread(lc);
+                value = h;
+                return HEX;
             }
             value = h << 4 | l;
             return HEX;

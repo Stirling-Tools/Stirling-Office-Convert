@@ -87,6 +87,12 @@ final class CodePages {
         return name == null ? null : forName(name, null);
     }
 
+    static boolean doubleByte(Charset cs) {
+        String n = cs.name();
+        return n.equals("windows-31j") || n.equals("GBK") || n.equals("x-windows-949") || n.equals("x-windows-950")
+                || n.equals("Big5") || n.equals("x-Johab") || n.equals("GB18030") || n.equals("Shift_JIS");
+    }
+
     private static Charset forName(String name, Charset fallback) {
         try {
             return Charset.isSupported(name) ? Charset.forName(name) : fallback;

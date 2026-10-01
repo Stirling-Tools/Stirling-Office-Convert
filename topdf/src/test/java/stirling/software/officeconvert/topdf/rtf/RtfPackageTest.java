@@ -291,6 +291,35 @@ class RtfPackageTest {
     }
 
     @Test
+    void groupedShapesAndWord95DrawingObjects() throws IOException {
+        String b = convert(HEAD + "{\\shpgrp{\\*\\shpinst\\shpleft0\\shptop0\\shpright2000\\shpbottom1000\\shpbxpage"
+                + "\\shpbypage{\\sp{\\sn groupLeft}{\\sv 0}}{\\sp{\\sn groupTop}{\\sv 0}}{\\sp{\\sn groupRight}{\\sv 200}}"
+                + "{\\sp{\\sn groupBottom}{\\sv 100}}{\\shp{\\*\\shpinst{\\sp{\\sn relLeft}{\\sv 100}}{\\sp{\\sn relTop}"
+                + "{\\sv 0}}{\\sp{\\sn relRight}{\\sv 200}}{\\sp{\\sn relBottom}{\\sv 100}}{\\sp{\\sn shapeType}{\\sv 202}}"
+                + "{\\shptxt grouped\\par}}}}}{\\*\\do\\dobxpage\\dobypage\\dptxbx{\\dptxbxtext\\dpx100\\dpy200"
+                + "\\dpxsize1000\\dpysize500\\dplinehollow{legacy}}}\\par}").body();
+        assertTrue(b.contains(">grouped<") && b.contains("<wp:posOffset>635000</wp:posOffset>"), b);
+        assertTrue(b.contains(">legacy<") && b.contains("<wp:extent cx=\"635000\" cy=\"317500\"/>"), b);
+    }
+
+    @Test
+    void lenientInputRecovers() throws IOException {
+        String b = convert(HEAD + "\\trowd\\trwWidth4000\\trftsWidth3\\cellx0\\cellx0\\pard\\intbl CELL\\cell x\\cell\\row"
+                + "\\pard foo\\'0dbar\\'0d\\'0abaz {\\field{\\*\\fldinst PAGE}} x\\u345\\'3?y\\par}").body();
+        assertTrue(b.contains("<w:gridCol w:w=\"2000\"/><w:gridCol w:w=\"2000\"/>"), b);
+        assertEquals(2, b.split("<w:br/>", -1).length - 1, b);
+        assertTrue(b.contains("<w:fldSimple w:instr=\"PAGE\">") && b.contains("x\u0159?y"), b);
+    }
+
+    @Test
+    void doubleByteTextUsesTheEastAsianFontOrDocumentCodePage() throws IOException {
+        String head = "{\\rtf1\\ansi\\ansicpg950{\\fonttbl{\\f0\\fcharset0 Calibri;}{\\f14\\fcharset136 PMingLiU;}}";
+        String b = convert(head + "\\pard\\loch\\f0\\hich\\af0\\dbch\\af14 \\'bc\\'d0\\'c3\\'44 1\\par"
+                + "\\pard\\f0 \\'bc\\'d0\\par}").body();
+        assertTrue(b.contains("\u6a19\u984c 1") && b.contains(">\u6a19<"), b);
+    }
+
+    @Test
     void hyperlinksOnlyForWebAndMail() throws IOException {
         Pkg p = convert(HEAD + "\\pard{\\field{\\*\\fldinst HYPERLINK \"https://example.com/a\"}{\\fldrslt web}}"
                 + "{\\field{\\*\\fldinst HYPERLINK \"file:///etc/passwd\"}{\\fldrslt file}}"

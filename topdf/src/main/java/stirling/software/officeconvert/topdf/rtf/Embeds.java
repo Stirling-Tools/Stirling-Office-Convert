@@ -82,9 +82,24 @@ final class Embeds {
         if (g.field == null || g.story == null) {
             return;
         }
+        g.field.result = true;
         Wrap w = wrap(g.field.inst.toString(), g.story.rels);
         if (w != null) {
             g.wrap = w;
+        }
+    }
+
+    void closeField(Group done, Group parent) {
+        if (done.field == null || done.field.result || parent.story == null || parent.dest != Dest.NORMAL) {
+            return;
+        }
+        List<String> args = arguments(done.field.inst.toString());
+        if (args.isEmpty()) {
+            return;
+        }
+        String kind = args.get(0).toUpperCase(Locale.ROOT);
+        if (kind.equals("PAGE") || kind.equals("NUMPAGES") || kind.equals("SECTIONPAGES")) {
+            reader.content().field(parent, kind);
         }
     }
 
@@ -172,9 +187,19 @@ final class Embeds {
     }
 
     void shapeWord(Group g, String w, int p) {
-        if (g.shape != null) {
+        if (g.shape == null) {
+            return;
+        }
+        if (g.shape.legacy != null) {
+            g.shape.legacy.word(g.shape, w, p);
+        } else {
             g.shape.word(w, p);
         }
+    }
+
+    void openLegacy(Group g) {
+        openShape(g, false);
+        g.shape.legacy = new LegacyDrawing();
     }
 
     void openSp(Group g) {
@@ -207,6 +232,9 @@ final class Embeds {
         if (s == null) {
             return;
         }
+        if (s.legacy != null) {
+            s.legacy.finish(s);
+        }
         if (done.background) {
             int bgr = s.integer("fillColor", 0xFFFFFF);
             if (bgr >>> 24 == 0 && s.flag("fFilled", true)) {
@@ -214,7 +242,8 @@ final class Embeds {
             }
             return;
         }
-        if (parent.dest == Dest.SHP && parent.shape != null && parent.shape.group && parent.shape != s) {
+        if ((parent.dest == Dest.SHP || parent.dest == Dest.SHPINST) && parent.shape != null && parent.shape.group
+                && parent.shape != s) {
             parent.shape.add(s);
             return;
         }
