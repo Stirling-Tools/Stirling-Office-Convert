@@ -11,6 +11,13 @@ public final class LineBuilder {
 
     private static final float SEGMENT_GAP_EM = 0.9f;
 
+    private static final Comparator<Line> BY_BASELINE_THEN_X = (a, b) -> {
+        int c = Double.compare(a.baseline, b.baseline);
+        return c != 0 ? c : Double.compare(a.x, b.x);
+    };
+
+    private static final Comparator<Glyph> BY_X = (a, b) -> Double.compare(a.x, b.x);
+
     private LineBuilder() {}
 
     public static List<Line> build(List<Glyph> glyphs) {
@@ -26,7 +33,7 @@ public final class LineBuilder {
         for (GlyphRows.Row row : GlyphRows.of(ink, spaces)) {
             segments.addAll(segment(row));
         }
-        segments.sort(Comparator.comparingDouble((Line l) -> l.baseline).thenComparingDouble(l -> l.x));
+        segments.sort(BY_BASELINE_THEN_X);
         return segments;
     }
 
@@ -76,7 +83,7 @@ public final class LineBuilder {
     private static List<Word> words(GlyphRows.Row row, float tracking) {
         List<Glyph> glyphs = row.glyphs;
         List<Glyph> spaces = row.spaces;
-        spaces.sort(Comparator.comparingDouble((Glyph g) -> g.x));
+        spaces.sort(BY_X);
         List<Word> words = new ArrayList<>();
         List<Glyph> current = new ArrayList<>();
         int si = 0;
