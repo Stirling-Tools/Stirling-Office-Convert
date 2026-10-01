@@ -229,6 +229,21 @@ class OdtTest {
     }
 
     @Test
+    void theFootnoteAreaNumberTakesTheSizeOfTheNoteParagraph() throws IOException {
+        String styles = OdfFixtures.styles("<style:style style:name=\"Footnote\" style:family=\"paragraph\">"
+                + "<style:text-properties fo:font-size=\"10pt\"/></style:style><style:style"
+                + " style:name=\"Footnote_20_Symbol\" style:family=\"text\"><style:text-properties"
+                + " style:text-position=\"super 58%\"/></style:style>", "", "");
+        Path p = odt("", "<text:p>Main<text:note text:id=\"n1\" text:note-class=\"footnote\"><text:note-citation>1"
+                + "</text:note-citation><text:note-body><text:p text:style-name=\"Footnote\">Note text</text:p>"
+                + "</text:note-body></text:note></text:p>", styles);
+        String notes = OdfFixtures.rewrite(p).get("word/footnotes.xml");
+        String mark = notes.substring(notes.lastIndexOf("<w:r>", notes.indexOf("<w:footnoteRef/>")),
+                notes.indexOf("<w:footnoteRef/>"));
+        assertTrue(mark.contains("<w:sz w:val=\"20\"/>") && mark.contains("superscript"), notes);
+    }
+
+    @Test
     void theFootnoteAreaNumberUsesTheDefaultFootnoteCharacterStyle() throws IOException {
         String styles = OdfFixtures.styles("<style:style style:name=\"Footnote_20_Symbol\" style:family=\"text\">"
                 + "<style:text-properties style:text-position=\"super 58%\"/></style:style>", "", "");
