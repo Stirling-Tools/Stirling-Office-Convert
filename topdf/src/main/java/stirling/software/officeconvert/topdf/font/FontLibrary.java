@@ -293,6 +293,11 @@ public final class FontLibrary {
         return known.get();
     }
 
+    public static boolean drawsScript(String family, int codePoint) {
+        String sample = ScriptWidths.sample(codePoint);
+        return sample != null && ScriptWidths.average(family, sample) > 0;
+    }
+
     public List<FontRun> runs(String text, FontFace primary) {
         Objects.requireNonNull(text, "text");
         Objects.requireNonNull(primary, "primary");

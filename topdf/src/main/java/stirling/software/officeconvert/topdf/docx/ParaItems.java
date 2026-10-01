@@ -9,6 +9,7 @@ import java.util.Locale;
 import stirling.software.officeconvert.topdf.font.BidiRuns;
 import stirling.software.officeconvert.topdf.font.CloudFonts;
 import stirling.software.officeconvert.topdf.font.FontFace;
+import stirling.software.officeconvert.topdf.font.FontLibrary;
 
 final class ParaItems {
 
@@ -372,7 +373,7 @@ final class ParaItems {
             }
             Item it = new Item(Item.Kind.TEXT);
             it.text = piece.substring(i, j);
-            it.look = f == face ? look(rp, f, link, nominal) : fallbackLook(rp, f, face, link, nominal);
+            it.look = f == face ? look(rp, f, link, nominal) : fallbackLook(rp, f, face, link, nominal, cp);
             if (full > nominal) {
                 // Small capitals keep the line height of the full size
                 it.look = it.look.scaledMetrics(full / nominal);
@@ -414,18 +415,22 @@ final class ParaItems {
     }
 
     // A character the stand-in for a missing font lacks still takes that font's line height
-    private Look fallbackLook(RunProps rp, FontFace f, FontFace requested, Inline.Link link, float nominal) {
+    private Look fallbackLook(RunProps rp, FontFace f, FontFace requested, Inline.Link link, float nominal, int cp) {
         CloudFonts.Emulation own = ctx.fonts.emulation(f);
+        boolean ownLine = false;
         if (own == null) {
             CloudFonts.Emulation wanted = ctx.fonts.emulation(requested);
             boolean usable = wanted != null && wanted.vertical() != null && wanted.scale() == 100;
             if (usable && (!Look.eastAsianGlyphs(f) || Fonts.withEastAsianExtra(wanted))) {
                 own = wanted;
+            } else {
+                ownLine = FontLibrary.drawsScript(requested.requestedFamily(), cp);
             }
         }
         Color bg = rp.shadingColor() != null ? rp.shadingColor() : rp.highlightColor();
         Color fallback = bg != null ? (Colors.dark(bg) ? Color.WHITE : Color.BLACK) : fallbackColor();
-        return Look.of(f, rp, nominal, link, fallback, own);
+        Look look = Look.of(f, rp, nominal, link, fallback, own);
+        return ownLine ? look.withLineOf(look(rp, requested, link, nominal)) : look;
     }
 
     // A right or centred list label ends or centres on the number position instead of starting there

@@ -73,6 +73,21 @@ public final class TestFonts {
         }
     }
 
+    public static byte[] withLineMetrics(byte[] ttf, int ascent, int descent) {
+        try (TrueTypeFont font = new TTFParser().parse(new RandomAccessReadBuffer(ttf))) {
+            byte[] out = ttf.clone();
+            ByteBuffer b = ByteBuffer.wrap(out);
+            int hhea = (int) font.getTableMap().get("hhea").getOffset();
+            int os2 = (int) font.getTableMap().get("OS/2").getOffset();
+            b.putShort(hhea + 4, (short) ascent).putShort(hhea + 6, (short) -descent).putShort(hhea + 8, (short) 0);
+            b.putShort(os2 + 68, (short) ascent).putShort(os2 + 70, (short) -descent).putShort(os2 + 72, (short) 0);
+            b.putShort(os2 + 74, (short) ascent).putShort(os2 + 76, (short) descent);
+            return out;
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+    }
+
     private static byte[] cmap(TreeMap<Integer, Integer> map) {
         int segments = map.size() + 1;
         ByteBuffer b = ByteBuffer.allocate(12 + 16 + 8 * segments);

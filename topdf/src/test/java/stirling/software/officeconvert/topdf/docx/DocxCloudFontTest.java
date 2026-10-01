@@ -162,6 +162,25 @@ class DocxCloudFontTest {
         assertEquals(20 * 1.3f * (0.81f + 0.232f), line, 0.2, "the line is as tall as DengXian Light's in Word");
     }
 
+    @Test
+    void arabicFallingBackFromArialKeepsArialsLine() throws Exception {
+        String styles = "<w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii=\"Arial\" w:hAnsi=\"Arial\""
+                + " w:cs=\"Arial\"/><w:sz w:val=\"20\"/><w:szCs w:val=\"20\"/></w:rPr></w:rPrDefault><w:pPrDefault><w:pPr>"
+                + "<w:spacing w:after=\"0\" w:line=\"240\" w:lineRule=\"auto\"/></w:pPr></w:pPrDefault></w:docDefaults>";
+        String body = DocxDoc.p("Ann") + DocxDoc.p("Bob") + "<w:p><w:r><w:t xml:space=\"preserve\">Cat </w:t></w:r>"
+                + "<w:r><w:rPr><w:rtl/></w:rPr><w:t>\u0628</w:t></w:r></w:p>" + DocxDoc.p("Dan");
+        Path linux = Files.createDirectories(dir.resolve("arabic"));
+        Files.write(linux.resolve("Sans.ttf"), TestFonts.renamed("Liberation Sans"));
+        byte[] tall = TestFonts.withGlyphs("Tall Arabic", 'A', 0x0628);
+        Files.write(linux.resolve("Tall.ttf"), TestFonts.withLineMetrics(tall, 3000, 1500));
+        FontLibrary fonts = FontLibrary.of(List.of(linux));
+        assertTrue(!fonts.find("Arial", false, false).covers(0x0628));
+        List<TextPosition> pos = convert(new DocxDoc().styles(styles).body(body).bytes(), fonts);
+        float plain = y(pos, "B") - y(pos, "A");
+        float arabic = y(pos, "D") - y(pos, "B");
+        assertEquals(2 * plain, arabic, 0.2, "Word draws Arabic with Arial itself, on Arial's line");
+    }
+
     private static float y(List<TextPosition> pos, String letter) {
         return pos.stream().filter(p -> p.getUnicode().equals(letter)).findFirst().orElseThrow().getYDirAdj();
     }
