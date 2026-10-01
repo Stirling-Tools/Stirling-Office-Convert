@@ -51,6 +51,7 @@ final class SheetPlan {
         if (area != null) {
             ranges.addAll(PrintRanges.parse(area, Math.max(0, grid.lastRow()), Math.max(0, grid.lastCol())));
         }
+        boolean printArea = !ranges.isEmpty();
         if (ranges.isEmpty() && grid.lastRow() >= 0 && grid.lastCol() >= 0) {
             ranges.add(new CellRangeAddress(0, grid.lastRow(), 0, grid.lastCol()));
         }
@@ -66,6 +67,7 @@ final class SheetPlan {
         if (setup.headings()) {
             p.headings(new Headings(grid, grid.lastRow()));
         }
+        p.wholeArea(printArea);
         Paginator.Result result = p.paginate(ranges, this::content, budget);
         this.scale = result.scale();
         pages.addAll(result.pages());
@@ -122,8 +124,12 @@ final class SheetPlan {
             if (r.markTo >= 0) {
                 sink.add(r.index, r.index, r.markFrom, r.markTo);
             }
-            for (CellEntry e : r.cells(range.getFirstColumn(), range.getLastColumn())) {
-                sink.add(r.index, r.index, e.col(), e.col());
+            int last = range.getLastColumn() == grid.lastCol() ? Columns.MAX - 1 : range.getLastColumn();
+            for (CellEntry e : r.cells(range.getFirstColumn(), last)) {
+                int col = Math.min(e.col(), range.getLastColumn());
+                if (col == e.col() || grid.columnWidth(e.col()) <= 0) {
+                    sink.add(r.index, r.index, col, col);
+                }
             }
         }
         List<CellRangeAddress> merges = new ArrayList<>();

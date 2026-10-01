@@ -86,6 +86,28 @@ class AutofitTest {
     }
 
     @Test
+    void blankCellsInsideATallMergeDoNotGrowItsRows() throws Exception {
+        String sheet = "<sheetFormatPr defaultRowHeight=\"15\"/><sheetData>" + row(1, "", "") + row(2, "", "")
+                + row(3, "", "<c r=\"C3\" s=\"1\"/>") + row(4, "", "") + row(5, "", "") + "</sheetData>"
+                + "<mergeCells count=\"1\"><mergeCell ref=\"B2:C4\"/></mergeCells>";
+        Map<Integer, Float> y = baselines("tallmerge.xlsx", sheet);
+        assertEquals(3 * printed(15), y.get(5) - y.get(2), 0.02, y.toString());
+    }
+
+    @Test
+    void aCustomDefaultHeightHoldsUnlessTheSheetStoresRowHeights() throws Exception {
+        String big = "<c r=\"B2\" s=\"1\" t=\"inlineStr\"><is><t>Big</t></is></c>";
+        String head = "<sheetFormatPr defaultRowHeight=\"15\" customHeight=\"1\"/><sheetData>" + row(1, "", "")
+                + row(2, "", big) + row(3, "", "");
+        Map<Integer, Float> none = baselines("nostored.xlsx", head + row(4, "", "") + "</sheetData>");
+        assertEquals(3 * printed(15), none.get(4) - none.get(1), 0.02, none.toString());
+        Map<Integer, Float> some = baselines("stored.xlsx", head + row(4, " ht=\"15\" customHeight=\"1\"", "")
+                + "</sheetData>");
+        double line = FontMeasure.of(FontLibrary.system(), "Calibri", false, false).screenLinePx(20) * 0.75;
+        assertEquals(printed(line) + 2 * printed(15), some.get(4) - some.get(1), 0.02, some.toString());
+    }
+
+    @Test
     void fontsThatAskForTypoMetricsUseThemOnScreen() {
         FontMeasure aptos = FontMeasure.of(FontLibrary.of(List.of()), "Aptos Narrow", false, false);
         assertEquals(20, aptos.screenLinePx(11));

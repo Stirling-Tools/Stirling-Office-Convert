@@ -26,7 +26,7 @@ final class Grid {
 
         final int index;
 
-        final double source;
+        double source;
 
         final boolean hidden;
 
@@ -148,6 +148,12 @@ final class Grid {
 
     private final boolean defaultHidden;
 
+    private final boolean fixedDefault;
+
+    private boolean storedHeights;
+
+    private final List<RowInfo> fitted = new ArrayList<>();
+
     private final boolean columnTops;
 
     private final boolean rightToLeft;
@@ -191,6 +197,7 @@ final class Grid {
         this.defaultSource = fileDefault > 0 && (customDefault || !near) ? fileDefault : screenDefault;
         this.rowFactor = metrics.rowFactor(screenDefault);
         this.defaultHidden = zero;
+        this.fixedDefault = customDefault;
         this.columnTops = columns.anyStyle(st -> book.styles().at(st).top().visible());
         this.rightToLeft = rightToLeft(ws);
         this.defaultDescent = descentPoints(book.styles().defaultFont());
@@ -212,6 +219,7 @@ final class Grid {
             }
         }, job);
         lastCol = Math.max(lastCol, -1);
+        keepDefaultHeights();
         if (sheetPart != null) {
             overlay(Overlays.read(book, sheetPart, ws, this, job));
         }
@@ -220,6 +228,15 @@ final class Grid {
             job.warn("Sheet " + sheetName + " is damaged; some rows could not be read");
             job.losePart();
         }
+    }
+
+    private void keepDefaultHeights() {
+        if (!storedHeights) {
+            for (RowInfo r : fitted) {
+                r.source = defaultSource;
+            }
+        }
+        fitted.clear();
     }
 
     private static boolean rightToLeft(CTWorksheet ws) {
@@ -289,6 +306,9 @@ final class Grid {
                 }
                 if (fit && cell.style() != lastBlank && blanks.size() < MAX_BLANK_FONTS
                         && !format.font().equals(base)) {
+                    if (inTallMerge(index, col)) {
+                        continue;
+                    }
                     blanks.add(format.font());
                 }
                 lastBlank = cell.style();
@@ -307,6 +327,10 @@ final class Grid {
             height = auto ? defaultSource : Math.min(409.5, row.height());
         } else if (auto) {
             height = Math.min(409.5, autofit(index, entries, blanks, base) + Math.max(0, row.thickEdges()) * SCREEN_PX);
+        } else if (fit && fixedDefault && book.workbook().savedOnMac) {
+            double screenPx = screenLine(book.styles().defaultFont()) / 0.75;
+            height = Math.min(409.5, autofit(index, entries, blanks, base, screenPx)
+                    + Math.max(0, row.thickEdges()) * SCREEN_PX);
         } else if (fit) {
             height = refit(row, autofit(index, entries, blanks, base) + Math.max(0, row.thickEdges()) * SCREEN_PX,
                     entries.isEmpty() && blanks.isEmpty(), wrapsText(entries));
@@ -316,7 +340,9 @@ final class Grid {
         for (CellEntry e : entries) {
             if (e.text() != null || e.format().visible()) {
                 lastRow = Math.max(lastRow, index);
-                lastCol = Math.max(lastCol, e.col());
+                if (columns.width(e.col()) > 0) {
+                    lastCol = Math.max(lastCol, e.col());
+                }
             }
         }
         if (markTo >= 0 && !gone) {
@@ -330,6 +356,10 @@ final class Grid {
             }
         }
         RowInfo info = new RowInfo(packed, index, height, gone || height <= 0, style);
+        storedHeights |= !auto;
+        if (auto && !gone && fixedDefault && !storedHeights && height != defaultSource) {
+            fitted.add(info);
+        }
         info.descent = descent > 0 ? descent : defaultDescent;
         if (!gone) {
             info.markFrom = markFrom;
@@ -479,6 +509,11 @@ final class Grid {
         return stored;
     }
 
+    private boolean inTallMerge(int row, int col) {
+        CellRangeAddress m = mergeCovering(row, col);
+        return m != null && m.getFirstRow() != m.getLastRow();
+    }
+
     private static boolean wrapsText(List<CellEntry> entries) {
         for (CellEntry e : entries) {
             if (e.text() != null && e.format().wraps()) {
@@ -489,7 +524,10 @@ final class Grid {
     }
 
     private double autofit(int row, List<CellEntry> entries, List<FontSpec> blanks, FontSpec base) {
-        double defaultPx = defaultSource / 0.75;
+        return autofit(row, entries, blanks, base, defaultSource / 0.75);
+    }
+
+    private double autofit(int row, List<CellEntry> entries, List<FontSpec> blanks, FontSpec base, double defaultPx) {
         double best = Math.min(546, fontLine(base, defaultPx));
         PrintMetrics m = book.metrics();
         for (FontSpec f : blanks) {
@@ -558,7 +596,7 @@ final class Grid {
             }
             NavigableMap<Integer, CellEntry> cells = row.cells();
             CellEntry e = cells.lastEntry().getValue();
-            while (e != null && !e.hasText()) {
+            while (e != null && (!e.hasText() || columns.width(e.col()) <= 0)) {
                 var lower = cells.lowerEntry(e.col());
                 e = lower == null ? null : lower.getValue();
             }
@@ -584,7 +622,7 @@ final class Grid {
                 span += columnWidth(c);
             }
             Typesetter t = book.typesetter();
-            double need = t.width(e.text().runs(), 1) + 2 * CellLayout.pad(t, e.text(), e.format());
+            double need = t.width(shown(e.text().runs()), 1) + 2 * CellLayout.pad(t, e.text(), e.format());
             double extra = need - span;
             if (h == CellFormat.HAlign.CENTER || h == CellFormat.HAlign.CENTER_CONTINUOUS) {
                 extra /= 2;
@@ -601,6 +639,27 @@ final class Grid {
             limit = Math.max(limit, c);
         }
         lastCol = limit;
+    }
+
+    static final int SHOWN_CHARS = 1024;
+
+    static List<TextRun> shown(List<TextRun> runs) {
+        List<TextRun> out = new ArrayList<>();
+        int left = SHOWN_CHARS;
+        for (TextRun r : runs) {
+            if (left <= 0) {
+                break;
+            }
+            if (r.text().length() <= left) {
+                out.add(r);
+                left -= r.text().length();
+                continue;
+            }
+            int cut = Character.isHighSurrogate(r.text().charAt(left - 1)) ? left - 1 : left;
+            out.add(new TextRun(r.text().substring(0, cut), r.font()));
+            left = 0;
+        }
+        return out;
     }
 
     double textWidth(CellEntry e) {
@@ -652,6 +711,10 @@ final class Grid {
 
     double columnWidth(int col) {
         return Math.min(columnCap, columns.width(col));
+    }
+
+    double screenColumnWidth(int col) {
+        return columns.width(col) > 0 ? book.metrics().screenColumnPixels(columns.chars(col)) * SCREEN_PX : 0;
     }
 
     void capColumns(double cap) {
