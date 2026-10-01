@@ -161,7 +161,7 @@ final class SectProps {
             }
             b.append("</w:pgBorders>");
         }
-        if (pageStart != null && restart || pageFormat != null && !"decimal".equals(pageFormat)) {
+        if (restart || pageFormat != null && !"decimal".equals(pageFormat)) {
             b.append("<w:pgNumType");
             if (pageFormat != null) {
                 b.append(" w:fmt=\"").append(pageFormat).append('"');

@@ -351,8 +351,8 @@ final class Content {
             pendingNote = 0;
         } else {
             id = ++noteIds;
-            custom = true;
-            g.story.para.item(TOKEN + "N" + id + TOKEN, props.rPr(g.chp), g.wrap);
+            custom = g.chp.has(CharProps.VERTICAL) && g.chp.vertical == 1;
+            g.story.para.item(TOKEN + "N" + id + TOKEN, custom ? props.rPr(g.chp) : superscript(g.chp), g.wrap);
         }
         g.note = new Group.Note(id, custom, g.story);
         g.inNote = true;
@@ -366,10 +366,34 @@ final class Content {
         Story s = done.story;
         finishStory(done);
         Group.Note n = done.note;
-        notes.add(new NoteOut(n.id, n.endnote, s.content()));
+        String content = s.content();
+        String ref = n.endnote ? "<w:endnoteRef/>" : "<w:footnoteRef/>";
+        if (!n.custom && !content.contains(ref)) {
+            content = withMark(content, "<w:r><w:rPr><w:vertAlign w:val=\"superscript\"/></w:rPr>" + ref + "</w:r>");
+        }
+        notes.add(new NoteOut(n.id, n.endnote, content));
         String reference = "<w:" + (n.endnote ? "endnoteReference" : "footnoteReference")
                 + (n.custom ? " w:customMarkFollows=\"1\"" : "") + " w:id=\"" + n.id + "\"/>";
         n.parent.para.replace(TOKEN + "N" + n.id + TOKEN, reference);
+    }
+
+    private String superscript(CharProps c) {
+        CharProps s = c.copy();
+        s.vertical = 1;
+        s.mark(CharProps.VERTICAL);
+        return props.rPr(s);
+    }
+
+    private static String withMark(String content, String run) {
+        int p = content.indexOf("<w:p>");
+        if (p < 0) {
+            return "<w:p>" + run + "</w:p>" + content;
+        }
+        int at = p + "<w:p>".length();
+        if (content.startsWith("<w:pPr>", at)) {
+            at = content.indexOf("</w:pPr>", at) + "</w:pPr>".length();
+        }
+        return content.substring(0, at) + run + content.substring(at);
     }
 
     void openHeader(Group g, String w) {

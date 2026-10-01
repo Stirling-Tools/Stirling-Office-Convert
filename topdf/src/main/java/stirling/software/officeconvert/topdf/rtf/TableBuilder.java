@@ -135,12 +135,21 @@ final class TableBuilder {
             int edge = c == null ? e[i] : c.edge;
             if (edge <= e[i]) {
                 int w = c != null && c.widthType == 3 && c.width > 0 ? c.width
-                        : p.widthType == 3 && p.width > 0 ? p.width / n : DEFAULT_WIDTH;
+                        : invalid(p) ? p.widthType == 3 && p.width > 0 ? p.width / n : DEFAULT_WIDTH : 0;
                 edge = e[i] + w;
             }
             e[i + 1] = edge;
         }
         return e;
+    }
+
+    private static boolean invalid(RowProps p) {
+        for (RowProps.CellDef c : p.cells) {
+            if (c.edge > p.left) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private static int index(Integer[] grid, int v) {
@@ -192,6 +201,10 @@ final class TableBuilder {
             }
             int lo = e[i];
             int hi = e[j];
+            if (hi <= lo) {
+                i = j;
+                continue;
+            }
             int span = index(grid, hi) - index(grid, lo);
             b.append("<w:tc><w:tcPr><w:tcW w:w=\"").append(hi - lo).append("\" w:type=\"dxa\"/>");
             if (span > 1) {

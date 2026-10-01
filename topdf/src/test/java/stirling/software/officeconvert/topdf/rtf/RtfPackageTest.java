@@ -309,6 +309,12 @@ class RtfPackageTest {
         assertTrue(b.contains("<w:gridCol w:w=\"2000\"/><w:gridCol w:w=\"2000\"/>"), b);
         assertEquals(2, b.split("<w:br/>", -1).length - 1, b);
         assertTrue(b.contains("<w:fldSimple w:instr=\"PAGE\">") && b.contains("x\u0159?y"), b);
+        String hidden = convert(HEAD + "\\trowd\\cellx1280\\cellx1280\\cellx2560\\pard\\intbl a\\cell b\\cell c\\cell\\row}")
+                .body();
+        assertTrue(hidden.contains(">a<") && hidden.contains(">c<") && !hidden.contains(">b<"), hidden);
+        String notes = convert(HEAD + "\\pard hello{\\footnote note}\\sectd\\pgnrestart\\par}").body();
+        assertTrue(notes.contains("<w:footnoteReference w:id=\"2\"/>") && notes.contains("<w:pgNumType w:start=\"1\"/>"),
+                notes);
     }
 
     @Test
