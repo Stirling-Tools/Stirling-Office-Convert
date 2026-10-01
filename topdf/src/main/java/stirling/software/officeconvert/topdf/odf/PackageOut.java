@@ -80,6 +80,15 @@ final class PackageOut {
         return name;
     }
 
+    private int charts;
+
+    /** Stores a chart part and returns its name. */
+    String chart(String dir, String xml) throws IOException {
+        String name = dir + "chart" + (++charts) + ".xml";
+        xml(name, Xml.CT + "drawingml.chart+xml", xml);
+        return name;
+    }
+
     private void put(String name, byte[] data) throws IOException {
         total += data.length;
         if (total > MAX_TOTAL_BYTES) {

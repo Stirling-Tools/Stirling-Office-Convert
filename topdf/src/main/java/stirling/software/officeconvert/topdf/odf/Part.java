@@ -40,6 +40,10 @@ final class Part {
         return id;
     }
 
+    String chart(PackageOut out, String dir, String xml) throws IOException {
+        return rels.add("chart", relative(out.chart(dir, xml)));
+    }
+
     String link(String url) {
         return links.computeIfAbsent(url, u -> rels.external("hyperlink", u));
     }

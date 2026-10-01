@@ -64,7 +64,17 @@ final class SheetDrawing {
         }
         Box box = Box.of(e);
         String body;
-        if (local.equals("frame")) {
+        String chart = local.equals("frame") && Dom.kid(e, Ns.DRAW, "object") != null
+                ? w.doc.chart(Dom.kid(e, Ns.DRAW, "object")) : null;
+        if (chart != null) {
+            int i = id++;
+            String rid = part.chart(w.out, "xl/charts/", chart);
+            body = "<xdr:graphicFrame macro=\"\"><xdr:nvGraphicFramePr><xdr:cNvPr id=\"" + i + "\" name=\"Chart " + i
+                    + "\"/><xdr:cNvGraphicFramePr/></xdr:nvGraphicFramePr><xdr:xfrm><a:off x=\"0\" y=\"0\"/><a:ext cx=\"0\""
+                    + " cy=\"0\"/></xdr:xfrm><a:graphic><a:graphicData uri=\"" + WordDrawings.CHART_URI + "\"><c:chart"
+                    + " xmlns:c=\"" + WordDrawings.CHART_URI + "\" r:id=\"" + rid + "\"/></a:graphicData></a:graphic>"
+                    + "</xdr:graphicFrame>";
+        } else if (local.equals("frame")) {
             byte[] data = image(e);
             if (data == null) {
                 return null;

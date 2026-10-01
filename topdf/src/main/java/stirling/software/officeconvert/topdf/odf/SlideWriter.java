@@ -325,6 +325,20 @@ final class SlideWriter {
             shapes.append(new SlideTable(w.styles, scope, fields()).xml(table, box, id++));
             return;
         }
+        Element object = Dom.kid(f, Ns.DRAW, "object");
+        String chart = object == null ? null : w.doc.chart(object);
+        if (chart != null) {
+            String rid = part.chart(w.out, "ppt/charts/", chart);
+            int i = id++;
+            shapes.append("<p:graphicFrame><p:nvGraphicFramePr><p:cNvPr id=\"").append(i).append("\" name=\"Chart ")
+                    .append(i).append("\"/><p:cNvGraphicFramePr/><p:nvPr/></p:nvGraphicFramePr><p:xfrm><a:off x=\"")
+                    .append(Length.emu(box.x())).append("\" y=\"").append(Length.emu(box.y())).append("\"/><a:ext cx=\"")
+                    .append(Length.emu(box.w())).append("\" cy=\"").append(Length.emu(box.h()))
+                    .append("\"/></p:xfrm><a:graphic><a:graphicData uri=\"").append(WordDrawings.CHART_URI)
+                    .append("\"><c:chart xmlns:c=\"").append(WordDrawings.CHART_URI).append("\" r:id=\"").append(rid)
+                    .append("\"/></a:graphicData></a:graphic></p:graphicFrame>");
+            return;
+        }
         byte[] data = image(f);
         if (data == null) {
             return;

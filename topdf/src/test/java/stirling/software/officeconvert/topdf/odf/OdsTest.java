@@ -201,4 +201,41 @@ class OdsTest {
         assertTrue(pdfText(p).contains("36.7%"));
         assertTrue(OdfFixtures.rewrite(p).get("xl/styles.xml").contains("formatCode=\"0.0%\""));
     }
+
+    @Test
+    void embeddedChartsAreDrawnFromTheirOwnTable() throws IOException {
+        String chart = "<?xml version=\"1.0\"?><office:document-content " + OdfFixtures.NS
+                + " xmlns:chart=\"urn:oasis:names:tc:opendocument:xmlns:chart:1.0\"><office:automatic-styles>"
+                + "<style:style style:name=\"s1\" style:family=\"chart\"><style:graphic-properties"
+                + " draw:fill-color=\"#ff0000\"/></style:style></office:automatic-styles><office:body><office:chart>"
+                + "<chart:chart chart:class=\"chart:bar\"><chart:title><text:p>Scores</text:p></chart:title>"
+                + "<chart:legend chart:legend-position=\"bottom\"/><chart:plot-area><chart:axis chart:dimension=\"x\""
+                + " chart:name=\"primary-x\"/><chart:axis chart:dimension=\"y\" chart:name=\"primary-y\"><chart:grid"
+                + " chart:class=\"major\"/></chart:axis><chart:series chart:style-name=\"s1\""
+                + " chart:values-cell-range-address=\"Data.B2:Data.B3\"/></chart:plot-area><table:table"
+                + " table:name=\"local-table\"><table:table-header-columns><table:table-column/></table:table-header-columns>"
+                + "<table:table-columns><table:table-column/></table:table-columns><table:table-header-rows><table:table-row>"
+                + "<table:table-cell/><table:table-cell office:value-type=\"string\"><text:p>Score</text:p>"
+                + "</table:table-cell></table:table-row></table:table-header-rows><table:table-rows><table:table-row>"
+                + "<table:table-cell office:value-type=\"string\"><text:p>Andy</text:p></table:table-cell><table:table-cell"
+                + " office:value-type=\"float\" office:value=\"10\"/></table:table-row><table:table-row><table:table-cell"
+                + " office:value-type=\"string\"><text:p>Bruce</text:p></table:table-cell><table:table-cell"
+                + " office:value-type=\"float\" office:value=\"20\"/></table:table-row></table:table-rows></table:table>"
+                + "</chart:chart></office:chart></office:body></office:document-content>";
+        String content = OdfFixtures.content("", "<office:spreadsheet><table:table table:name=\"Data\"><table:shapes>"
+                + "<draw:frame svg:x=\"1cm\" svg:y=\"1cm\" svg:width=\"10cm\" svg:height=\"6cm\"><draw:object"
+                + " xlink:href=\"./Object 1\"/></draw:frame></table:shapes><table:table-row><table:table-cell"
+                + " office:value-type=\"float\" office:value=\"1\"/></table:table-row></table:table></office:spreadsheet>");
+        Map<String, byte[]> parts = new java.util.LinkedHashMap<>();
+        parts.put("content.xml", content.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        parts.put("Object 1/content.xml", chart.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        Path p = OdfFixtures.write(dir, "chart.ods", OdfFixtures.zip(OdfFixtures.SPREADSHEET, parts));
+        Map<String, String> out = OdfFixtures.rewrite(p);
+        String part = out.get("xl/charts/chart1.xml");
+        assertTrue(part != null && part.contains("<c:barChart>") && part.contains("<c:v>20.0</c:v>")
+                && part.contains("FF0000") && part.contains("<c:v>Bruce</c:v>"), String.valueOf(part));
+        assertTrue(out.get("xl/drawings/drawing1.xml").contains("<c:chart"), out.get("xl/drawings/drawing1.xml"));
+        String text = pdfText(p);
+        assertTrue(text.contains("Scores") && text.contains("Bruce"), text);
+    }
 }

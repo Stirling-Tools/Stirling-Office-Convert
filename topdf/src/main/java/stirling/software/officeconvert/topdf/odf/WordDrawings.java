@@ -79,6 +79,16 @@ final class WordDrawings {
         if (box != null) {
             return textBox(f, box, body, group);
         }
+        String chart = chart(f);
+        if (chart != null) {
+            Props g = graphic(f, body, group);
+            Box b = Box.of(f);
+            int id = ++count;
+            String rid = body.part.chart(w.out, "word/charts/", chart);
+            String graphic = "<a:graphic xmlns:a=\"" + Xml.A + "\"><a:graphicData uri=\"" + CHART_URI + "\"><c:chart"
+                    + " xmlns:c=\"" + CHART_URI + "\" r:id=\"" + rid + "\"/></a:graphicData></a:graphic>";
+            return wrap(f, group, g, b, graphic, id);
+        }
         byte[] data = image(f);
         if (data == null) {
             return null;
@@ -152,6 +162,13 @@ final class WordDrawings {
         }
         return "<a:srcRect l=\"" + Math.round(left / iw * 100_000) + "\" t=\"" + Math.round(top / ih * 100_000)
                 + "\" r=\"" + Math.round(right / iw * 100_000) + "\" b=\"" + Math.round(bottom / ih * 100_000) + "\"/>";
+    }
+
+    static final String CHART_URI = "http://schemas.openxmlformats.org/drawingml/2006/chart";
+
+    private String chart(Element frame) {
+        Element object = Dom.kid(frame, Ns.DRAW, "object");
+        return object == null ? null : w.doc.chart(object);
     }
 
     private byte[] image(Element frame) {

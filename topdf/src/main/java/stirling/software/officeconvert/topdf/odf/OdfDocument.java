@@ -298,6 +298,33 @@ public final class OdfDocument implements Closeable {
         }
     }
 
+    /** The DrawingML chart part for an embedded chart object (draw:object), or null when it is not a chart. */
+    String chart(Element object) {
+        Element inline = Dom.kid(object, Ns.OFFICE, "document");
+        if (inline != null) {
+            return OdfChart.part(inline, inline);
+        }
+        String dir = internal(Dom.attr(object, Ns.XLINK, "href"));
+        if (dir == null || zip == null) {
+            return null;
+        }
+        while (dir.endsWith("/")) {
+            dir = dir.substring(0, dir.length() - 1);
+        }
+        try {
+            byte[] content = bytes(dir + "/content.xml", MAX_PICTURE_BYTES);
+            if (content == null) {
+                return null;
+            }
+            byte[] styles = bytes(dir + "/styles.xml", MAX_PICTURE_BYTES);
+            Element c = SecureXml.parse(new ByteArrayInputStream(content)).getDocumentElement();
+            Element st = styles == null ? null : SecureXml.parse(new ByteArrayInputStream(styles)).getDocumentElement();
+            return OdfChart.part(c, st);
+        } catch (IOException | RuntimeException e) {
+            return null;
+        }
+    }
+
     boolean exists(String href) {
         String name = internal(href);
         return name != null && zip != null && entries.containsKey(name);

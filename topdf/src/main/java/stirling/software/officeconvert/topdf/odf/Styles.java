@@ -53,8 +53,10 @@ final class Styles {
     private Element endnotesConfig;
 
     Styles(OdfDocument doc) {
-        Element styles = doc.styles();
-        Element content = doc.content();
+        this(doc.content(), doc.styles());
+    }
+
+    Styles(Element content, Element styles) {
         fontFaces(Dom.kid(styles, Ns.OFFICE, "font-face-decls"));
         fontFaces(Dom.kid(content, Ns.OFFICE, "font-face-decls"));
         Element office = Dom.kid(styles, Ns.OFFICE, "styles");
