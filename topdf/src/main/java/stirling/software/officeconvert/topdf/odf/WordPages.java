@@ -83,6 +83,11 @@ final class WordPages {
         double left = p.pt("fo:margin-left", 56.7);
         double right = p.pt("fo:margin-right", 56.7);
         StringBuilder b = new StringBuilder("<w:sectPr>");
+        String borders = pageBorders(p, top, left, bottom, right);
+        top += inset(p, "top");
+        bottom += inset(p, "bottom");
+        left += inset(p, "left");
+        right += inset(p, "right");
         double headerTop = top;
         double footerBottom = bottom;
         if (m != null) {
@@ -137,12 +142,36 @@ final class WordPages {
             }
             b.append("/>");
         }
+        b.append(borders);
         b.append(cols(columns, width - left - right));
         if (m != null && (shown(Dom.kid(m, Ns.STYLE, "header-first")) || shown(Dom.kid(m, Ns.STYLE, "footer-first"))
                 || Dom.kid(m, Ns.STYLE, "header-first") != null || Dom.kid(m, Ns.STYLE, "footer-first") != null)) {
             b.append("<w:titlePg/>");
         }
         return b.append("</w:sectPr>").toString();
+    }
+
+    private static double inset(Props p, String side) {
+        Border border = Border.parse(p.get("fo:border-" + side), p.get("style:border-line-width-" + side));
+        return border == null ? 0 : border.width() + p.pt("fo:padding-" + side, 0);
+    }
+
+    private static String pageBorders(Props p, double top, double left, double bottom, double right) {
+        StringBuilder b = new StringBuilder();
+        double[] margins = {top, left, bottom, right};
+        String[] sides = {"top", "left", "bottom", "right"};
+        boolean fromPage = true;
+        for (double m : margins) {
+            fromPage &= m <= 31.5;
+        }
+        for (int i = 0; i < 4; i++) {
+            Border border = Border.parse(p.get("fo:border-" + sides[i]), p.get("style:border-line-width-" + sides[i]));
+            if (border != null) {
+                b.append(border.word(sides[i], fromPage ? margins[i] : p.pt("fo:padding-" + sides[i], 0)));
+            }
+        }
+        return b.isEmpty() ? "" : "<w:pgBorders w:offsetFrom=\"" + (fromPage ? "page" : "text") + "\">" + b
+                + "</w:pgBorders>";
     }
 
     private double extent(Element hfProps, Element content, String spacingSide) {

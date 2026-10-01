@@ -346,4 +346,37 @@ class OdtTest {
         String own = document(odt(auto, "<text:p>a</text:p><text:p text:style-name=\"B\">x</text:p>", null));
         assertTrue(own.contains("<w:r><w:br w:type=\"column\"/></w:r><w:r><w:t"), own);
     }
+
+    @Test
+    void wordCompatibilityModeFollowsLibreOfficesFlags() throws IOException {
+        Map<String, byte[]> parts = new LinkedHashMap<>();
+        parts.put("content.xml", OdfFixtures.content("", OdfFixtures.text("<table:table><table:table-column/>"
+                + "<table:table-row><table:table-cell table:style-name=\"C\"><text:p>x</text:p></table:table-cell>"
+                + "</table:table-row></table:table>")).replace("<office:automatic-styles>", "<office:automatic-styles>"
+                + "<style:style style:name=\"C\" style:family=\"table-cell\"><style:table-cell-properties"
+                + " fo:padding-left=\"0.075in\"/></style:style>").getBytes(StandardCharsets.UTF_8));
+        parts.put("settings.xml", ("<office:document-settings xmlns:office=\"urn:oasis:names:tc:opendocument:xmlns:"
+                + "office:1.0\" xmlns:config=\"urn:oasis:names:tc:opendocument:xmlns:config:1.0\"><office:settings>"
+                + "<config:config-item-set config:name=\"ooo:configuration-settings\"><config:config-item"
+                + " config:name=\"TabOverMargin\" config:type=\"boolean\">true</config:config-item>"
+                + "</config:config-item-set></office:settings></office:document-settings>")
+                .getBytes(StandardCharsets.UTF_8));
+        Map<String, String> out = OdfFixtures.rewrite(OdfFixtures.write(dir, "old.odt",
+                OdfFixtures.zip(OdfFixtures.TEXT, parts)));
+        assertTrue(out.get("word/settings.xml").contains("w:val=\"14\""), out.get("word/settings.xml"));
+        assertTrue(out.get("word/document.xml").contains("<w:tblInd w:w=\"108\""), out.get("word/document.xml"));
+    }
+
+    @Test
+    void pageBordersKeepTheirPadding() throws IOException {
+        String styles = OdfFixtures.styles("", "<style:page-layout style:name=\"pm1\"><style:page-layout-properties"
+                + " fo:page-width=\"8.5in\" fo:page-height=\"11in\" fo:margin-top=\"0.5in\" fo:margin-bottom=\"0.5in\""
+                + " fo:margin-left=\"0.5in\" fo:margin-right=\"0.5in\" fo:border=\"1pt solid #000000\""
+                + " fo:padding=\"0.25in\"/></style:page-layout>",
+                "<style:master-page style:name=\"Standard\" style:page-layout-name=\"pm1\"/>");
+        String xml = document(odt("", "<text:p>Body</text:p>", styles));
+        assertTrue(xml.contains("<w:pgBorders w:offsetFrom=\"text\"><w:top w:val=\"single\" w:sz=\"8\" w:space=\"18\""),
+                xml);
+        assertTrue(xml.contains("w:top=\"1100\""), xml);
+    }
 }

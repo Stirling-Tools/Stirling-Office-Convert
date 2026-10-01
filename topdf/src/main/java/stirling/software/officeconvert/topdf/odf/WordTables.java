@@ -76,7 +76,11 @@ final class WordTables {
             }
         }
         if (!align.equals("center") && !align.equals("right")) {
-            b.append("<w:tblInd w:w=\"").append(Length.twips(tp.pt("fo:margin-left", 0))).append("\" w:type=\"dxa\"/>");
+            double ind = tp.pt("fo:margin-left", 0);
+            if (w.compatibilityMode < 15) {
+                ind += firstCellPadding(t, scope);
+            }
+            b.append("<w:tblInd w:w=\"").append(Length.twips(ind)).append("\" w:type=\"dxa\"/>");
         }
         String bg = Colors.fill(tp.get("fo:background-color"));
         if (bg != null) {
@@ -101,6 +105,22 @@ final class WordTables {
             b.append(row(row, body, widths, gridCount, defaultCellStyles, spanLeft, spanWidth, spanCellPr));
         }
         return b.append("</w:tbl>").toString();
+    }
+
+    private double firstCellPadding(Element t, Styles.Scope scope) {
+        List<Row> rows = new ArrayList<>();
+        rows(t, rows, false, 0);
+        if (rows.isEmpty()) {
+            return 0;
+        }
+        for (Element c : Dom.kids(rows.get(0).row())) {
+            if (Dom.is(c, Ns.TABLE, "table-cell") || Dom.is(c, Ns.TABLE, "covered-table-cell")) {
+                Props cp = w.styles.props("table-cell", Dom.attr(c, Ns.TABLE, "style-name"), scope,
+                        "table-cell-properties", true);
+                return cp.pt("fo:padding-left", 0);
+            }
+        }
+        return 0;
     }
 
     private static void relative(List<Double> widths, List<Double> rel, double tableWidth) {

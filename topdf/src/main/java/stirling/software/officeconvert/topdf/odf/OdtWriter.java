@@ -38,6 +38,8 @@ final class OdtWriter {
 
     final boolean autoHyphenation;
 
+    final int compatibilityMode;
+
     final Map<String, WordLists.Chain> listIds = new HashMap<>();
 
     final Map<String, WordLists.Chain> lastChain = new HashMap<>();
@@ -64,6 +66,7 @@ final class OdtWriter {
         this.tables = new WordTables(this);
         this.drawings = new WordDrawings(this);
         this.tabsRelative = config("TabsRelativeToIndent", true);
+        this.compatibilityMode = !config("JustifyLinesWithShrinking", false) && config("TabOverMargin", false) ? 14 : 15;
         Props dt = styles.props("paragraph", null, Styles.Scope.CONTENT, "text-properties", true);
         this.autoHyphenation = "true".equals(dt.get("fo:hyphenate"));
     }
@@ -245,8 +248,9 @@ final class OdtWriter {
             b.append("<w:mirrorMargins/>");
         }
         b.append(notes.settings());
+        int mode = compatibilityMode;
         b.append("<w:compat><w:compatSetting w:name=\"compatibilityMode\" w:uri=\"http://schemas.microsoft.com/office/word\"")
-                .append(" w:val=\"15\"/></w:compat>");
+                .append(" w:val=\"").append(mode).append("\"/></w:compat>");
         return b.append("</w:settings>").toString();
     }
 }
