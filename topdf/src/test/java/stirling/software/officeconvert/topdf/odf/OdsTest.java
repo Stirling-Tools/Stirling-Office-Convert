@@ -175,4 +175,30 @@ class OdsTest {
                 .get("xl/worksheets/sheet1.xml");
         assertTrue(sheet.contains("top=\"0.75\"") && sheet.contains("header=\"0.3\""), sheet);
     }
+
+    @Test
+    void coveredCellsKeepTheirOwnLookOverTheColumns() throws IOException {
+        String auto = NUMBER_STYLES + "<style:style style:name=\"plain\" style:family=\"table-cell\"/>";
+        String table = "<table:table table:name=\"S\"><table:table-column table:number-columns-repeated=\"2\""
+                + " table:default-cell-style-name=\"ce3\"/><table:table-row><table:table-cell table:style-name=\"plain\""
+                + " table:number-columns-spanned=\"2\" office:value-type=\"string\"><text:p>Title</text:p>"
+                + "</table:table-cell><table:covered-table-cell table:style-name=\"plain\"/></table:table-row>"
+                + "<table:table-row><table:table-cell office:value-type=\"float\" office:value=\"1\"/><table:table-cell"
+                + " office:value-type=\"float\" office:value=\"2\"/></table:table-row></table:table>";
+        String sheet = OdfFixtures.rewrite(ods(auto, table, null)).get("xl/worksheets/sheet1.xml");
+        assertTrue(sheet.contains("<c r=\"B1\" s=\"0\"/>"), sheet);
+    }
+
+    @Test
+    void percentagesScaleTheirValue() throws IOException {
+        String auto = "<number:percentage-style style:name=\"N9\"><number:number number:decimal-places=\"1\""
+                + " number:min-integer-digits=\"1\"/><number:text>%</number:text></number:percentage-style>"
+                + "<style:style style:name=\"ce9\" style:family=\"table-cell\" style:data-style-name=\"N9\"/>";
+        String table = "<table:table table:name=\"S\"><table:table-column table:default-cell-style-name=\"ce9\"/>"
+                + "<table:table-row><table:table-cell office:value-type=\"percentage\" office:value=\"0.3673\"/>"
+                + "</table:table-row></table:table>";
+        Path p = ods(auto, table, null);
+        assertTrue(pdfText(p).contains("36.7%"));
+        assertTrue(OdfFixtures.rewrite(p).get("xl/styles.xml").contains("formatCode=\"0.0%\""));
+    }
 }

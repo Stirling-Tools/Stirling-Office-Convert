@@ -326,30 +326,28 @@ final class SheetWriter {
                     frameCells.add(new int[] {col, row});
                 }
             }
-            if (covered) {
-                col += repeat;
-                continue;
-            }
             String style = Dom.attr(c, Ns.TABLE, "style-name");
             String columnDefault = col < columnDefaults.size() ? columnDefaults.get(col) : null;
-            boolean implied = style == null || style.equals(columnDefault);
             if (style == null) {
                 style = rowDefault != null ? rowDefault : columnDefault;
             }
             SheetStyles.Xf xf = w.cellStyles.xf(style);
-            String value = value(c, xf);
-            boolean visible = value != null || xf.visible() && !implied;
-            int cs = Dom.integer(c, Ns.TABLE, "number-columns-spanned", 1);
-            int rs = Dom.integer(c, Ns.TABLE, "number-rows-spanned", 1);
-            if ((cs > 1 || rs > 1) && merges.size() < 100_000) {
-                rowMerges.add(new int[] {col, row, Math.min(MAX_COLS - 1, col + Math.max(1, cs) - 1),
-                    row + Math.max(1, rs) - 1});
-                any = true;
+            SheetStyles.Xf colXf = columnDefault == null ? w.cellStyles.xf(null) : w.cellStyles.xf(columnDefault);
+            String value = covered ? null : value(c, xf);
+            boolean override = xf.index() != colXf.index() && (xf.visible() || colXf.visible());
+            if (!covered) {
+                int cs = Dom.integer(c, Ns.TABLE, "number-columns-spanned", 1);
+                int rs = Dom.integer(c, Ns.TABLE, "number-rows-spanned", 1);
+                if ((cs > 1 || rs > 1) && merges.size() < 100_000) {
+                    rowMerges.add(new int[] {col, row, Math.min(MAX_COLS - 1, col + Math.max(1, cs) - 1),
+                        row + Math.max(1, rs) - 1});
+                    any = true;
+                }
             }
-            if (visible && !(value == null && repeat > FILLER)) {
+            if ((value != null || override) && !(value == null && repeat > FILLER)) {
                 for (int i = 0; i < repeat && cells < MAX_CELLS; i++) {
                     out.append("<c r=\"").append(column(col + i)).append(ROW).append('"');
-                    if (xf.index() != 0) {
+                    if (xf.index() != 0 || colXf.index() != 0) {
                         out.append(" s=\"").append(xf.index()).append('"');
                     }
                     out.append(value == null ? "/>" : value);

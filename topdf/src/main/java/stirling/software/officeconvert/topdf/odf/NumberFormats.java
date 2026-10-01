@@ -89,7 +89,15 @@ final class NumberFormats {
                 case "number" -> b.append(number(k));
                 case "scientific-number" -> b.append(scientific(k));
                 case "fraction" -> b.append(fraction(k));
-                case "text" -> b.append(literal(k.getTextContent()));
+                case "text" -> {
+                    String t = k.getTextContent();
+                    if (kind.equals("percentage-style") && t != null && t.contains("%")) {
+                        int at = t.indexOf('%');
+                        b.append(literal(t.substring(0, at))).append('%').append(literal(t.substring(at + 1)));
+                    } else {
+                        b.append(literal(t));
+                    }
+                }
                 case "text-content" -> b.append('@');
                 case "fill-character" -> {
                     String f = k.getTextContent();
