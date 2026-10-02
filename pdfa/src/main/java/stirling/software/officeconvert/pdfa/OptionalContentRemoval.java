@@ -101,13 +101,17 @@ final class OptionalContentRemoval {
         return off.contains(g) || baseOff && !on.contains(g);
     }
 
-    private boolean hidden(COSBase oc, int depth) {
+    private boolean hidden(COSBase oc, int depth) throws IOException {
         COSDictionary d = ContentGraph.dict(oc);
         if (d == null || depth > 16) {
             return false;
         }
         if (!OCMD.equals(d.getCOSName(COSName.TYPE))) {
             return groupHidden(d);
+        }
+        COSBase expression = d.getDictionaryObject(COSName.getPDFName("VE"));
+        if (expression != null) {
+            return !VisibilityExpression.visible(expression, group -> !groupHidden(group));
         }
         COSBase groups = d.getDictionaryObject(COSName.OCGS);
         List<COSBase> list = new ArrayList<>();

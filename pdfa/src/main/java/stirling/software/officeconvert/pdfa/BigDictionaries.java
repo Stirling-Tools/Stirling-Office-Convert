@@ -110,7 +110,7 @@ final class BigDictionaries {
         return out;
     }
 
-    private static void dests(PDDocument doc, Report report) {
+    private static void dests(PDDocument doc, Report report) throws IOException {
         COSDictionary cat = doc.getDocumentCatalog().getCOSObject();
         COSDictionary dests = ContentGraph.dict(cat.getDictionaryObject(DESTS));
         if (dests == null || dests.size() <= MAX) {
@@ -137,7 +137,22 @@ final class BigDictionaries {
         tree.setItem(COSName.NAMES, pairs);
         names.setItem(DESTS, tree);
         cat.removeItem(DESTS);
+        CosWalk.walk(doc, object -> {
+            if (object instanceof COSDictionary dictionary) {
+                stringDestination(dictionary, COSName.DEST, dests);
+                if (COSName.getPDFName("GoTo").equals(dictionary.getCOSName(COSName.S))) {
+                    stringDestination(dictionary, COSName.D, dests);
+                }
+            }
+        });
+        stringDestination(cat, COSName.OPEN_ACTION, dests);
         report.warn("Moved named destinations into a name tree, as PDF/A-1 limits dictionaries to " + MAX + " entries");
+    }
+
+    private static void stringDestination(COSDictionary owner, COSName key, COSDictionary destinations) {
+        if (owner.getDictionaryObject(key) instanceof COSName name && destinations.containsKey(name)) {
+            owner.setItem(key, new COSString(name.getName().getBytes(StandardCharsets.UTF_8)));
+        }
     }
 
     private static void info(PDDocument doc, Report report) {
