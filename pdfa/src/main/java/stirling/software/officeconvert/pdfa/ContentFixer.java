@@ -36,6 +36,7 @@ final class ContentFixer {
             try {
                 parsed = ContentTokens.salvage(n.streams());
             } catch (IOException e) {
+                Decoded.rethrowFatal(e);
                 PdfFiles.stopIfInterrupted();
                 colours.unknown();
                 continue;

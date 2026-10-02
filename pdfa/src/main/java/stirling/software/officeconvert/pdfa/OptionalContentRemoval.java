@@ -137,6 +137,7 @@ final class OptionalContentRemoval {
         try {
             tokens = ContentTokens.parse(n.streams());
         } catch (IOException e) {
+            Decoded.rethrowFatal(e);
             return;
         }
         COSDictionary res = n.resources();

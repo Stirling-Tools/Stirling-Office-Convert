@@ -48,7 +48,11 @@ final class CosEquality {
             return true;
         }
         if (a instanceof COSStream x && b instanceof COSStream y) {
-            return entries(x, y, depth) && Arrays.equals(StreamFixer.read(x), StreamFixer.read(y));
+            if (!entries(x, y, depth)) {
+                return false;
+            }
+            byte[] left = StreamFixer.read(x);
+            return left != null && Arrays.equals(left, StreamFixer.read(y));
         }
         if (a instanceof COSDictionary x && b instanceof COSDictionary y) {
             return !(a instanceof COSStream) && !(b instanceof COSStream) && entries(x, y, depth);

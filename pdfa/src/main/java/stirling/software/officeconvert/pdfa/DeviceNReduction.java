@@ -152,6 +152,7 @@ final class DeviceNReduction {
         try {
             tokens = ContentTokens.parse(n.streams());
         } catch (IOException e) {
+            Decoded.rethrowFatal(e);
             lost = true;
             return;
         }

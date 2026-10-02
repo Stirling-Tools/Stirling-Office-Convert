@@ -129,12 +129,14 @@ public final class PdfToPdfA {
         Path part = Files.createTempFile(PdfFiles.outputFolder(out), ".pdfa-", ".part");
         try {
             Result result = Deadline.run(options.timeout(), () -> {
-                Admission.Ticket ticket = Admission.jvm().enter(estimate(Files.size(in)));
-                try (PDDocument doc = PdfFiles.open(in, options.password());
-                        OutputStream os = new BufferedOutputStream(Files.newOutputStream(part), 1 << 16)) {
-                    return Conversion.run(doc, os, options);
-                } finally {
-                    ticket.close();
+                try (PDDocument doc = PdfFiles.open(in, options.password())) {
+                    long content = ContentBudget.peakBytes(doc);
+                    Admission.Ticket ticket = Admission.jvm().enter(estimate(Files.size(in), content));
+                    try (OutputStream os = new BufferedOutputStream(Files.newOutputStream(part), 1 << 16)) {
+                        return Conversion.run(doc, os, options);
+                    } finally {
+                        ticket.close();
+                    }
                 }
             });
             PdfFiles.stopIfInterrupted();
@@ -155,8 +157,8 @@ public final class PdfToPdfA {
         return Deadline.run(options.timeout(), () -> Conversion.run(document, out, options));
     }
 
-    static long estimate(long bytes) {
-        return Admission.BASE_BYTES * 8 + Math.min(bytes, 256L << 20) * 3;
+    static long estimate(long bytes, long content) {
+        return Admission.BASE_BYTES * 8 + Math.min(bytes, 256L << 20) * 3 + content;
     }
 
     private static void move(Path part, Path out) throws IOException {

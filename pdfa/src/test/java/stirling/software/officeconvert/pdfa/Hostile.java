@@ -73,6 +73,35 @@ final class Hostile {
         }
     }
 
+    static COSStream repeated(PDDocument d, String line, long times) throws IOException {
+        COSStream c = d.getDocument().createCOSStream();
+        byte[] one = line.getBytes(StandardCharsets.ISO_8859_1);
+        byte[] block = new byte[one.length * 4096];
+        for (int i = 0; i < 4096; i++) {
+            System.arraycopy(one, 0, block, i * one.length, one.length);
+        }
+        try (OutputStream o = c.createOutputStream(COSName.FLATE_DECODE)) {
+            for (long i = 0; i < times / 4096; i++) {
+                o.write(block);
+            }
+        }
+        return c;
+    }
+
+    static void contentBomb(PDDocument d) throws IOException {
+        PDPage p = page(d);
+        p.getCOSObject().setItem(COSName.CONTENTS, repeated(d, "0.5 0.5 m\n", 20_000_000));
+    }
+
+    static void metadataBomb(PDDocument d) throws IOException {
+        PDPage p = page(d);
+        p.getCOSObject().setItem(COSName.CONTENTS, stream(d, "0 0 1 rg 10 10 100 100 re f\n"));
+        COSStream c = repeated(d, " ".repeat(64), 700L << 20 >> 6);
+        c.setItem(COSName.TYPE, COSName.METADATA);
+        c.setItem(COSName.SUBTYPE, COSName.getPDFName("XML"));
+        d.getDocumentCatalog().getCOSObject().setItem(COSName.METADATA, c);
+    }
+
     static COSDictionary dict(COSName type) {
         COSDictionary d = new COSDictionary();
         d.setItem(COSName.TYPE, type);
