@@ -462,16 +462,27 @@ final class SheetWriter {
         }
         try {
             LocalDate day = LocalDate.parse(v.substring(0, 10));
-            double serial = ChronoUnit.DAYS.between(w.epoch(), day);
-            if (v.length() > 10 && v.charAt(10) == 'T') {
-                String clock = ZONE.matcher(v.substring(11)).replaceFirst("");
-                serial += LocalTime.parse(clock.length() > 18 ? clock.substring(0, 18) : clock).toNanoOfDay()
-                        / 86_400e9;
+            boolean clock = v.length() > 10 && v.charAt(10) == 'T';
+            Long days = excelDay(ChronoUnit.DAYS.between(w.epoch(), day), clock);
+            if (days == null) {
+                return null;
+            }
+            double serial = days;
+            if (clock) {
+                String time = ZONE.matcher(v.substring(11)).replaceFirst("");
+                serial += LocalTime.parse(time.length() > 18 ? time.substring(0, 18) : time).toNanoOfDay() / 86_400e9;
             }
             return serial;
         } catch (RuntimeException e) {
             return null;
         }
+    }
+
+    private Long excelDay(long days, boolean clock) {
+        if (w.date1904() || days >= 61 || days == 0 && clock) {
+            return days >= 0 ? days : null;
+        }
+        return days > 1 ? days - 1 : null;
     }
 
     private static Double time(String v) {
