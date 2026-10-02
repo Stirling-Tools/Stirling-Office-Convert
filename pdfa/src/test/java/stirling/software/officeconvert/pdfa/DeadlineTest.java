@@ -11,6 +11,7 @@ import java.io.InputStream;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.Arrays;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.pdmodel.PDDocument;
@@ -44,6 +45,24 @@ class DeadlineTest {
             String before = snapshot(doc);
             Thread.sleep(1500);
             assertEquals(before, snapshot(doc));
+        }
+    }
+
+    @Test
+    void aWorkerThatIgnoresInterruptsIsAbandonedAfterTheGracePeriod() throws Exception {
+        AtomicBoolean release = new AtomicBoolean();
+        long start = System.nanoTime();
+        try {
+            assertThrows(PdfToPdfA.TimedOut.class, () -> Deadline.run(Duration.ofMillis(100), Duration.ofMillis(500),
+                    () -> {
+                        while (!release.get()) {
+                            Thread.onSpinWait();
+                        }
+                        return null;
+                    }));
+            assertTrue(System.nanoTime() - start < 5_000_000_000L);
+        } finally {
+            release.set(true);
         }
     }
 
