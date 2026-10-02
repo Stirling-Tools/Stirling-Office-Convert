@@ -25,7 +25,7 @@ public final class UnsupportedFormats {
             case "wpd", "wp", "wp5", "wp6", "wp7", "wpt" -> wordPerfect();
             case "pub" -> publisher();
             case "vsd", "vdx", "vss", "vst", "vsw", "vsx", "vtx" -> visio();
-            case "wk1", "wk3", "wk4", "wks", "123", "wk!" -> lotus();
+            case "wk!", "wg1", "wg2" -> lotus();
             case "wb1", "wb2", "wb3", "qpw", "wq1", "wq2" -> "Quattro Pro spreadsheets are not supported; save the file"
                     + " as .xlsx";
             case "lwp" -> "Lotus Word Pro documents (.lwp) are not supported; save the file as .docx";
@@ -61,7 +61,8 @@ public final class UnsupportedFormats {
         if (head.length >= 4 && (head[0] & 0xFF) == 0xFF && head[1] == 'W' && head[2] == 'P' && head[3] == 'C') {
             return wordPerfect();
         }
-        if (head.length >= 4 && head[0] == 0 && head[1] == 0 && (head[2] == 2 || head[2] == 0x1A) && head[3] == 0) {
+        if (head.length >= 4 && (head[0] == 0 || (head[0] & 0xFF) == 0xFF) && head[1] == 0
+                && (head[2] == 2 || head[2] == 0x1A) && head[3] == 0) {
             return lotus();
         }
         if (head.length >= 2 && (head[0] & 0xFF) == 0x31 && (head[1] & 0xFF) == 0xBE
@@ -109,7 +110,8 @@ public final class UnsupportedFormats {
     }
 
     private static String works() {
-        return "Microsoft Works documents (.wps) are not supported; save the file as .docx from Works or Word";
+        return "Microsoft Works documents and spreadsheets are not supported; save the file as .docx or .xlsx from"
+                + " Works";
     }
 
     private static String wordPerfect() {
@@ -125,7 +127,8 @@ public final class UnsupportedFormats {
     }
 
     private static String lotus() {
-        return "Lotus 1-2-3 and Microsoft Works spreadsheets are not supported; save the file as .xlsx";
+        return "This Lotus 1-2-3 or Microsoft Works spreadsheet is in a form that is not supported; save the file as"
+                + " .xlsx";
     }
 
     private static String starOffice() {

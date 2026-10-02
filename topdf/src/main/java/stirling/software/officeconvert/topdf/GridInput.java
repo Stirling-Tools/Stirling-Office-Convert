@@ -14,14 +14,14 @@ import stirling.software.officeconvert.topdf.OfficeToPdf.Options;
 import stirling.software.officeconvert.topdf.OfficeToPdf.Result;
 import stirling.software.officeconvert.topdf.grid.Dbf;
 import stirling.software.officeconvert.topdf.grid.Dif;
-import stirling.software.officeconvert.topdf.grid.Grid;
 import stirling.software.officeconvert.topdf.grid.GridPackage;
 import stirling.software.officeconvert.topdf.grid.Sylk;
+import stirling.software.officeconvert.topdf.lotus.Lotus;
 
-/** Simple one-sheet table formats Excel opens (SYLK, DIF, dBASE), read into a grid and drawn as a workbook. */
+/** Simple table formats Excel opens (SYLK, DIF, dBASE, Lotus 1-2-3), read into grids and drawn as a workbook. */
 final class GridInput {
 
-    private enum Kind { SYLK, DIF, DBF }
+    private enum Kind { SYLK, DIF, DBF, LOTUS }
 
     private GridInput() {}
 
@@ -30,6 +30,13 @@ final class GridInput {
         String n = name == null ? "" : name.toString().toLowerCase(Locale.ROOT);
         String ext = n.lastIndexOf('.') < 0 ? "" : n.substring(n.lastIndexOf('.') + 1);
         boolean text = ext.equals("csv") || ext.equals("txt") || ext.equals("tsv") || ext.equals("tab");
+        if (!text && Lotus.is(source)) {
+            return Kind.LOTUS;
+        }
+        if (ext.equals("wk1") || ext.equals("wks") || ext.equals("wk3") || ext.equals("wk4") || ext.equals("123")) {
+            String reason = UnsupportedFormats.byContent(source);
+            throw new IOException(reason != null ? reason : UnsupportedFormats.byExtension("wk!"));
+        }
         if (ext.equals("slk") || ext.equals("sylk") || !text && Sylk.is(source)) {
             return Kind.SYLK;
         }
@@ -45,6 +52,13 @@ final class GridInput {
         return null;
     }
 
+    private static List<GridPackage.Sheet> named(List<GridPackage.Sheet> sheets, String name) {
+        if (sheets.size() == 1 && sheets.get(0).name() == null) {
+            return List.of(new GridPackage.Sheet(name, sheets.get(0).grid()));
+        }
+        return sheets;
+    }
+
     static Long estimate(Path source) throws IOException {
         return kind(source) == null ? null : GridPackage.estimate(Files.size(source)) + 2 * Admission.BASE_BYTES;
     }
@@ -57,28 +71,31 @@ final class GridInput {
         }
         Path xlsx = Files.createTempFile("office-to-pdf-", ".xlsx");
         try {
-            Grid grid;
+            List<GridPackage.Sheet> sheets;
             Admission.Ticket ticket = Admission.jvm().enter(GridPackage.estimate(Files.size(source)));
             try {
-                grid = switch (kind) {
-                    case SYLK -> Sylk.read(source);
-                    case DIF -> Dif.read(source);
-                    case DBF -> Dbf.read(source);
+                String name = TextInput.sheetName(source, options);
+                sheets = switch (kind) {
+                    case SYLK -> List.of(new GridPackage.Sheet(name, Sylk.read(source)));
+                    case DIF -> List.of(new GridPackage.Sheet(name, Dif.read(source)));
+                    case DBF -> List.of(new GridPackage.Sheet(name, Dbf.read(source)));
+                    case LOTUS -> named(Lotus.read(source), name);
                 };
                 try (OutputStream os = new BufferedOutputStream(Files.newOutputStream(xlsx), 1 << 16)) {
-                    GridPackage.write(grid, TextInput.sheetName(source, options), os);
+                    GridPackage.write(sheets, os);
                 }
             } finally {
                 ticket.close();
             }
+            boolean truncated = sheets.stream().anyMatch(s -> s.grid().truncated());
             OfficeToPdf.stopIfInterrupted();
             Result r = OfficeToPdf.render(xlsx, OfficeToPdf.Format.XLSX, sink, options,
                     (s, job) -> renderer.render(source, job), OfficeToPdf.REWRITTEN);
             List<String> warnings = new ArrayList<>(r.warnings());
-            if (grid.truncated()) {
+            if (truncated) {
                 warnings.add("The table is too large; only its first rows were converted");
             }
-            return new Result(r.pages(), r.truncated() || grid.truncated(), warnings, r.pageLimitReached());
+            return new Result(r.pages(), r.truncated() || truncated, warnings, r.pageLimitReached());
         } finally {
             OfficeToPdf.deleteQuietly(xlsx);
         }

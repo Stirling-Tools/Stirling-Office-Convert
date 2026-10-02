@@ -2,8 +2,11 @@ package stirling.software.officeconvert.topdf.grid;
 
 import java.io.IOException;
 import java.io.OutputStream;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeMap;
 
 import stirling.software.officeconvert.memory.Admission;
@@ -23,19 +26,73 @@ public final class GridPackage {
         return v < 0 ? Long.MAX_VALUE : v;
     }
 
+    public record Sheet(String name, Grid grid) {}
+
     public static void write(Grid grid, String sheetName, OutputStream out) throws IOException {
+        write(List.of(new Sheet(sheetName, grid)), out);
+    }
+
+    public static void write(List<Sheet> sheets, OutputStream out) throws IOException {
         Map<String, Integer> xfs = new LinkedHashMap<>();
         Map<String, Integer> formats = new LinkedHashMap<>();
         xfs.put("0|0|0|", 0);
         Parts parts = new Parts(out);
-        try (Parts.Part p = parts.open("xl/worksheets/sheet1.xml")) {
+        StringBuilder book = new StringBuilder();
+        StringBuilder rels = new StringBuilder();
+        StringBuilder types = new StringBuilder();
+        Set<String> names = new HashSet<>();
+        for (int i = 0; i < sheets.size(); i++) {
+            int n = i + 1;
+            sheet(parts, "xl/worksheets/sheet" + n + ".xml", sheets.get(i).grid(), xfs, formats);
+            String name = name(sheets.get(i).name(), n, names);
+            book.append("<sheet name=\"").append(Xml.attr(name)).append("\" sheetId=\"").append(n)
+                    .append("\" r:id=\"rId").append(n).append("\"/>");
+            rels.append("<Relationship Id=\"rId").append(n).append("\" Type=\"").append(Xml.REL)
+                    .append("/worksheet\" Target=\"worksheets/sheet").append(n).append(".xml\"/>");
+            types.append("<Override PartName=\"/xl/worksheets/sheet").append(n).append(".xml\" ContentType=\"")
+                    .append(CT).append("worksheet+xml\"/>");
+        }
+        parts.put("xl/styles.xml", styles(xfs, formats));
+        parts.put("xl/workbook.xml", Xml.HEAD + "<workbook xmlns=\"" + Xml.MAIN + "\" xmlns:r=\"" + Xml.REL
+                + "\"><sheets>" + book + "</sheets></workbook>");
+        parts.put("xl/_rels/workbook.xml.rels", Xml.HEAD + "<Relationships xmlns=\"" + Xml.PKG_REL + "\">" + rels
+                + "<Relationship Id=\"rId" + (sheets.size() + 1) + "\" Type=\"" + Xml.REL
+                + "/styles\" Target=\"styles.xml\"/></Relationships>");
+        parts.put("_rels/.rels", Xml.HEAD + "<Relationships xmlns=\"" + Xml.PKG_REL + "\"><Relationship Id=\"rId1\""
+                + " Type=\"" + Xml.REL + "/officeDocument\" Target=\"xl/workbook.xml\"/></Relationships>");
+        parts.put("[Content_Types].xml", Xml.HEAD + "<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/"
+                + "content-types\"><Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package."
+                + "relationships+xml\"/><Default Extension=\"xml\" ContentType=\"application/xml\"/><Override"
+                + " PartName=\"/xl/workbook.xml\" ContentType=\"" + CT + "sheet.main+xml\"/><Override PartName=\""
+                + "/xl/styles.xml\" ContentType=\"" + CT + "styles+xml\"/>" + types + "</Types>");
+        parts.finish();
+    }
+
+    private static String name(String wanted, int n, Set<String> used) {
+        String name = wanted == null || wanted.isBlank() ? "Sheet" + n : wanted.strip();
+        name = name.replaceAll("[\\[\\]:*?/\\\\]", "_");
+        if (name.length() > 31) {
+            name = name.substring(0, 31);
+        }
+        String base = name;
+        for (int k = 2; !used.add(name.toLowerCase(java.util.Locale.ROOT)); k++) {
+            String suffix = " (" + k + ")";
+            name = (base.length() + suffix.length() > 31 ? base.substring(0, 31 - suffix.length()) : base) + suffix;
+        }
+        return name;
+    }
+
+    private static void sheet(Parts parts, String part, Grid grid, Map<String, Integer> xfs,
+            Map<String, Integer> formats) throws IOException {
+        try (Parts.Part p = parts.open(part)) {
             p.write(Xml.HEAD + "<worksheet xmlns=\"" + Xml.MAIN + "\" xmlns:r=\"" + Xml.REL + "\"><sheetViews><sheetView"
                     + " workbookViewId=\"0\"/></sheetViews><sheetFormatPr" + (grid.defaultWidth > 0 ? " defaultColWidth=\""
                     + grid.defaultWidth + "\"" : "") + " defaultRowHeight=\"15\"/>");
             if (!grid.widths.isEmpty()) {
                 StringBuilder cols = new StringBuilder("<cols>");
                 grid.widths.forEach((c, w) -> cols.append("<col min=\"").append(c + 1).append("\" max=\"").append(c + 1)
-                        .append("\" width=\"").append(w).append("\" customWidth=\"1\"/>"));
+                        .append("\" width=\"").append(w).append("\" customWidth=\"1\"")
+                        .append(w == 0 ? " hidden=\"1\"" : "").append("/>"));
                 p.write(cols.append("</cols>").toString());
             }
             p.write("<sheetData>");
@@ -53,26 +110,6 @@ public final class GridPackage {
             p.write("</sheetData><pageMargins left=\"0.7\" right=\"0.7\" top=\"0.75\" bottom=\"0.75\" header=\"0.3\""
                     + " footer=\"0.3\"/></worksheet>");
         }
-        parts.put("xl/styles.xml", styles(xfs, formats));
-        String name = sheetName == null || sheetName.isBlank() ? "Sheet1" : sheetName.strip();
-        name = name.replaceAll("[\\[\\]:*?/\\\\]", "_");
-        if (name.length() > 31) {
-            name = name.substring(0, 31);
-        }
-        parts.put("xl/workbook.xml", Xml.HEAD + "<workbook xmlns=\"" + Xml.MAIN + "\" xmlns:r=\"" + Xml.REL
-                + "\"><sheets><sheet name=\"" + Xml.attr(name) + "\" sheetId=\"1\" r:id=\"rId1\"/></sheets></workbook>");
-        parts.put("xl/_rels/workbook.xml.rels", Xml.HEAD + "<Relationships xmlns=\"" + Xml.PKG_REL + "\"><Relationship"
-                + " Id=\"rId1\" Type=\"" + Xml.REL + "/worksheet\" Target=\"worksheets/sheet1.xml\"/><Relationship"
-                + " Id=\"rId2\" Type=\"" + Xml.REL + "/styles\" Target=\"styles.xml\"/></Relationships>");
-        parts.put("_rels/.rels", Xml.HEAD + "<Relationships xmlns=\"" + Xml.PKG_REL + "\"><Relationship Id=\"rId1\""
-                + " Type=\"" + Xml.REL + "/officeDocument\" Target=\"xl/workbook.xml\"/></Relationships>");
-        parts.put("[Content_Types].xml", Xml.HEAD + "<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/"
-                + "content-types\"><Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package."
-                + "relationships+xml\"/><Default Extension=\"xml\" ContentType=\"application/xml\"/><Override"
-                + " PartName=\"/xl/workbook.xml\" ContentType=\"" + CT + "sheet.main+xml\"/><Override PartName=\""
-                + "/xl/styles.xml\" ContentType=\"" + CT + "styles+xml\"/><Override PartName=\"/xl/worksheets/"
-                + "sheet1.xml\" ContentType=\"" + CT + "worksheet+xml\"/></Types>");
-        parts.finish();
     }
 
     private static String cell(int row, int col, Grid.Cell c, Map<String, Integer> xfs, Map<String, Integer> formats) {
