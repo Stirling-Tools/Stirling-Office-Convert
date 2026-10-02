@@ -25,6 +25,7 @@ import stirling.software.officeconvert.topdf.OfficeToPdf.Options;
 import stirling.software.officeconvert.topdf.io.OfficeZip;
 import stirling.software.officeconvert.topdf.pdf.PageSize;
 import stirling.software.officeconvert.topdf.testing.Fixtures;
+import stirling.software.officeconvert.topdf.testing.ZipBytes;
 
 class AdmissionTest {
 
@@ -59,6 +60,20 @@ class AdmissionTest {
         Path junk = Fixtures.write(dir, "b.docx", new byte[] {1});
         assertThrows(IOException.class, () -> OfficeToPdf.memoryEstimate(pdf));
         assertThrows(IOException.class, () -> OfficeToPdf.memoryEstimate(junk));
+    }
+
+    private static byte[] packageWithBigContent(String mimetype) {
+        byte[] zip = new ZipBytes().add("mimetype", mimetype).repeat("content.xml", "<?xml version=\"1.0\"?>",
+                new byte[1 << 20], 200, "").bytes();
+        return ZipBytes.declareSize(zip, "content.xml", 1000);
+    }
+
+    @Test
+    void openDocumentEstimatesCountTheMarkupAsItInflatesNotAsItsHeaderSays() throws Exception {
+        Path odt = Fixtures.write(dir, "big.odt", packageWithBigContent("application/vnd.oasis.opendocument.text"));
+        assertTrue(OfficeToPdf.memoryEstimate(odt) > 1000 * MB, OfficeToPdf.memoryEstimate(odt) / MB + " MB");
+        Path sxw = Fixtures.write(dir, "big.sxw", packageWithBigContent("application/vnd.sun.xml.writer"));
+        assertTrue(OfficeToPdf.memoryEstimate(sxw) > 1000 * MB, OfficeToPdf.memoryEstimate(sxw) / MB + " MB");
     }
 
     private static long estimate(Path file, Format format) throws IOException {

@@ -10,6 +10,7 @@ import java.nio.file.Path;
 import java.util.Base64;
 import java.util.Enumeration;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.zip.ZipEntry;
@@ -22,6 +23,7 @@ import javax.xml.stream.XMLStreamReader;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 
+import stirling.software.officeconvert.topdf.io.BoundedZip;
 import stirling.software.officeconvert.topdf.io.OfficeZip;
 import stirling.software.officeconvert.topdf.io.SecureXml;
 import stirling.software.officeconvert.topdf.io.XmlSalvage;
@@ -132,15 +134,7 @@ public final class OdfDocument implements Closeable {
         try {
             long size = Files.size(file);
             if (size > 0 && isZip(file)) {
-                long xml = 0;
-                try (ZipFile z = new ZipFile(file.toFile())) {
-                    for (String name : new String[] {"content.xml", "styles.xml"}) {
-                        ZipEntry e = z.getEntry(name);
-                        if (e != null && e.getSize() > 0) {
-                            xml += e.getSize();
-                        }
-                    }
-                }
+                long xml = BoundedZip.inflatedSize(file, List.of("content.xml", "styles.xml"), MAX_XML_BYTES);
                 return (64L << 20) + Math.min(MAX_XML_BYTES * 2, xml) * 10 + size * 2;
             }
             return (64L << 20) + size * 12;

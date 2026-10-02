@@ -6,6 +6,7 @@ import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Locale;
 import java.util.zip.CRC32;
 import java.util.zip.ZipEntry;
@@ -69,6 +70,11 @@ public final class Ooo1Package {
         } catch (IOException | RuntimeException e) {
             return null;
         }
+    }
+
+    public static long estimate(Path file) throws IOException {
+        long xml = BoundedZip.inflatedSize(file, List.of("content.xml", "styles.xml"), MAX_XML_BYTES);
+        return (64L << 20) + xml * 10 + Files.size(file) * 2;
     }
 
     public static String extension(Kind kind) {
