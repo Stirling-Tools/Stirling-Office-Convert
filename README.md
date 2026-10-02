@@ -87,7 +87,7 @@ environment variables (defaults in the image):
 |---|---|---|
 | `MAX_UPLOAD_MB` | 100 | Largest file accepted |
 | `MAX_PAGES` | 300 | Pages converted per request; longer files get the first 300 and a note |
-| `CONVERT_TIMEOUT_SECONDS` | 180 | A conversion taking longer is stopped and the user told |
+| `CONVERT_TIMEOUT_SECONDS` | 180 | A conversion taking longer is stopped and the user told; 180 outside the image too, and at least 1 |
 | `MAX_CONCURRENT` | half the CPUs, at least 2 | Conversions running at once |
 | `MAX_QUEUED` | 8 | Requests waiting for a free converter; beyond that the user is asked to retry |
 | `QUEUE_WAIT_SECONDS` | 120 | How long a request waits for a free converter |

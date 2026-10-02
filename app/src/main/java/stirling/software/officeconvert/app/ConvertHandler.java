@@ -386,7 +386,7 @@ final class ConvertHandler implements HttpHandler {
             return new Done(pages >= cap ? "The PDF may stop at page " + cap + ": " + capped + "." : null, pages, List.of());
         }
         OfficeToPdf.Options options = OfficeToPdf.Options.defaults().maxPages(cap)
-                .timeout(limits.timeoutSeconds() > 0 ? Duration.ofSeconds(limits.timeoutSeconds()) : Duration.ZERO)
+                .timeout(Duration.ofSeconds(limits.timeoutSeconds()))
                 .displayName(job.name).password(password == null || password.isEmpty() ? null : password);
         try {
             OfficeToPdf.Result r = OfficeToPdf.convert(job.input, out, options);
@@ -452,7 +452,7 @@ final class ConvertHandler implements HttpHandler {
             throw new Refusal(503, "busy", BUSY);
         }
         try {
-            return limits.timeoutSeconds() > 0 ? work.get(limits.timeoutSeconds(), TimeUnit.SECONDS) : work.get();
+            return work.get(limits.timeoutSeconds(), TimeUnit.SECONDS);
         } catch (TimeoutException e) {
             work.cancel(true);
             if (!awaitStop(work) && !office && job.markStuck()) {
