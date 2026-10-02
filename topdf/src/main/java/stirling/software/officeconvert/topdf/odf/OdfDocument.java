@@ -58,6 +58,8 @@ public final class OdfDocument implements Closeable {
 
     private final Element settings;
 
+    final WorkBudget work = new WorkBudget();
+
     private long budget = MAX_TOTAL_BYTES;
 
     private boolean damaged;

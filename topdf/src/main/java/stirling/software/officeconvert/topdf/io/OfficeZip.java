@@ -721,7 +721,7 @@ public final class OfficeZip implements Closeable {
         return (bytes + (1 << 20) - 1) >> 20;
     }
 
-    private static void checkNotInterrupted() throws InterruptedIOException {
+    public static void checkNotInterrupted() throws InterruptedIOException {
         if (Thread.currentThread().isInterrupted()) {
             throw new InterruptedIOException("Conversion interrupted");
         }
