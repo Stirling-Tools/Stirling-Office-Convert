@@ -58,7 +58,8 @@ class TextToPdfTest {
         assertEquals(2, convert("more.log", lines(65)).pages());
         Pdf three = convert("three.text", lines(130));
         assertEquals(3, three.pages());
-        assertTrue(three.text().contains("line 1\n") && three.text().contains("line 130"), three.text());
+        assertTrue(three.text().lines().anyMatch("line 1"::equals)
+                && three.text().lines().anyMatch("line 130"::equals), three.text());
         assertFalse(three.result().truncated());
     }
 
