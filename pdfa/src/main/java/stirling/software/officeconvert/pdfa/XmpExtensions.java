@@ -32,6 +32,12 @@ final class XmpExtensions {
         if (bag == null || !attributes(schemas, false) || !attributes(bag, false)) {
             return Map.of();
         }
+        for (Node child : XmpCarryOver.children(bag)) {
+            if (child instanceof Element element && RESERVED.contains(
+                    XmpCarryOver.value(element, SCHEMA, "namespaceURI"))) {
+                bag.removeChild(child);
+            }
+        }
         Set<String> namespaces = new HashSet<>();
         Set<String> prefixes = new HashSet<>();
         for (Node child : XmpCarryOver.children(bag)) {

@@ -121,7 +121,7 @@ final class XmpCarryOver {
         return XmpExtensions.typed(p, type);
     }
 
-    private static String serialise(List<Element> properties, Map<String, String> attributes,
+    static String serialise(List<Element> properties, Map<String, String> attributes,
             Map<String, String> qualified) {
         Map<String, String> declared = new LinkedHashMap<>();
         declared.put("rdf", RDF);
@@ -206,6 +206,9 @@ final class XmpCarryOver {
     }
 
     static Document parse(byte[] xmp) {
+        if (!XmpBounds.allows(xmp)) {
+            return null;
+        }
         try {
             DocumentBuilderFactory f = DocumentBuilderFactory.newInstance();
             f.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true);

@@ -52,7 +52,7 @@ final class AppearanceBudget {
                     }
                 }
             } else if (value instanceof COSDictionary d) {
-                for (COSName key : new COSName[] {COSName.KIDS, COSName.V, COSName.DV}) {
+                for (COSName key : new COSName[] {COSName.KIDS, COSName.V, COSName.DV, COSName.OPT, COSName.DA}) {
                     COSBase item = d.getDictionaryObject(key);
                     if (item != null) {
                         todo.push(item);

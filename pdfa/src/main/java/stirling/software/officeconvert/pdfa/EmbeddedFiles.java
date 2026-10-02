@@ -81,7 +81,7 @@ final class EmbeddedFiles {
         for (COSDictionary fs : specifications) {
             if (!keep(fs)) {
                 fs.removeItem(COSName.EF);
-                report.warn("Removed an embedded file that " + level.label() + " does not allow");
+                report.warn("Removed an embedded file that could not be retained safely for " + level.label());
             }
         }
         COSDictionary names = ContentGraph.dict(cat.getDictionaryObject(COSName.NAMES));

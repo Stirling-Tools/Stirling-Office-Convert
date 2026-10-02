@@ -1,8 +1,6 @@
 package stirling.software.officeconvert.pdfa;
 
 import java.io.IOException;
-import java.io.OutputStream;
-import java.nio.charset.StandardCharsets;
 import java.util.Collections;
 import java.util.IdentityHashMap;
 import java.util.List;
@@ -16,9 +14,11 @@ import org.apache.pdfbox.cos.COSDictionary;
 import org.apache.pdfbox.cos.COSFloat;
 import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.cos.COSNumber;
-import org.apache.pdfbox.cos.COSStream;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
+import org.apache.pdfbox.pdmodel.PDResources;
+import org.apache.pdfbox.pdmodel.graphics.form.PDFormXObject;
+import org.apache.pdfbox.contentstream.operator.Operator;
 
 final class PageSize {
 
@@ -98,6 +98,9 @@ final class PageSize {
     private static void scale(PDDocument doc, PDPage page, float unit) throws IOException {
         COSDictionary p = page.getCOSObject();
         float s = 1 / unit;
+        org.apache.pdfbox.pdmodel.common.PDRectangle originalBox = page.getMediaBox();
+        List<Object> originalContent = ContentTokens.parse(ContentGraph.contents(p));
+        PDResources originalResources = page.getResources();
         p.setItem(COSName.MEDIA_BOX, page.getMediaBox().getCOSArray());
         p.setItem(COSName.CROP_BOX, page.getCropBox().getCOSArray());
         for (COSName key : BOXES) {
@@ -107,22 +110,45 @@ final class PageSize {
         }
         float old = p.getDictionaryObject(USER_UNIT) instanceof COSNumber n ? n.floatValue() : 1;
         p.setItem(USER_UNIT, new COSFloat(old * unit));
-        COSArray contents = new COSArray();
-        contents.add(stream(doc, String.format(Locale.ROOT, "q %s 0 0 %s 0 0 cm\n", num(s), num(s))));
-        COSBase c = p.getDictionaryObject(COSName.CONTENTS);
-        if (c instanceof COSStream one) {
-            contents.add(one);
-        } else if (c instanceof COSArray many) {
-            for (int i = 0; i < many.size(); i++) {
-                contents.add(many.get(i));
-            }
+        PDFormXObject form = new PDFormXObject(doc);
+        form.setBBox(new org.apache.pdfbox.pdmodel.common.PDRectangle(scaled(originalBox.getCOSArray(), s)));
+        form.setResources(ScaledResources.of(doc, originalResources, s));
+        List<Object> content = new java.util.ArrayList<>();
+        content.add(Operator.getOperator("q"));
+        content.addAll(List.of(new COSFloat(s), org.apache.pdfbox.cos.COSInteger.ZERO,
+                org.apache.pdfbox.cos.COSInteger.ZERO, new COSFloat(s), org.apache.pdfbox.cos.COSInteger.ZERO,
+                org.apache.pdfbox.cos.COSInteger.ZERO, Operator.getOperator("cm")));
+        content.addAll(balanced(originalContent));
+        content.add(Operator.getOperator("Q"));
+        ContentTokens.write(form.getCOSObject(), content);
+        COSDictionary pageResources = new COSDictionary(form.getResources().getCOSObject());
+        COSDictionary objects = ContentGraph.dict(pageResources.getDictionaryObject(COSName.XOBJECT));
+        if (objects != null) {
+            pageResources.setItem(COSName.XOBJECT, new COSDictionary(objects));
         }
-        contents.add(stream(doc, "\nQ\n"));
-        p.setItem(COSName.CONTENTS, contents);
+        PDResources resources = new PDResources(pageResources);
+        COSName name = resources.add(form);
+        page.setResources(resources);
+        ContentTokens.replacePage(p, List.of(Operator.getOperator("q"), name, Operator.getOperator("Do"),
+                Operator.getOperator("Q")));
+        MovedPageTags.run(doc, p, form.getCOSObject());
         COSArray annots = ContentGraph.array(p.getDictionaryObject(COSName.ANNOTS));
         for (int i = 0; annots != null && i < annots.size(); i++) {
             COSDictionary a = ContentGraph.dict(annots.getObject(i));
             if (a != null) {
+                COSDictionary appearance = ContentGraph.dict(a.getDictionaryObject(COSName.AP));
+                COSBase normal = appearance == null ? null : appearance.getDictionaryObject(COSName.N);
+                if (normal instanceof org.apache.pdfbox.cos.COSStream stream && originalResources != null
+                        && !stream.containsKey(COSName.RESOURCES)) {
+                    stream.setItem(COSName.RESOURCES, originalResources);
+                } else if (normal instanceof COSDictionary states && originalResources != null) {
+                    for (COSName state : states.keySet()) {
+                        if (states.getDictionaryObject(state) instanceof org.apache.pdfbox.cos.COSStream stream
+                                && !stream.containsKey(COSName.RESOURCES)) {
+                            stream.setItem(COSName.RESOURCES, originalResources);
+                        }
+                    }
+                }
                 annotation(a, s);
             }
         }
@@ -190,16 +216,25 @@ final class PageSize {
         return r;
     }
 
-    private static COSStream stream(PDDocument doc, String content) throws IOException {
-        COSStream s = doc.getDocument().createCOSStream();
-        try (OutputStream out = s.createOutputStream()) {
-            out.write(content.getBytes(StandardCharsets.US_ASCII));
+    private static List<Object> balanced(List<Object> tokens) {
+        List<Object> out = new java.util.ArrayList<>(tokens.size());
+        int depth = 0;
+        for (Object token : tokens) {
+            if (token instanceof Operator op) {
+                if ("q".equals(op.getName())) {
+                    depth++;
+                } else if ("Q".equals(op.getName())) {
+                    if (depth == 0) {
+                        continue;
+                    }
+                    depth--;
+                }
+            }
+            out.add(token);
         }
-        return s;
-    }
-
-    private static String num(float v) {
-        return new java.math.BigDecimal(v).setScale(8, java.math.RoundingMode.HALF_UP).stripTrailingZeros()
-                .toPlainString();
+        while (depth-- > 0) {
+            out.add(Operator.getOperator("Q"));
+        }
+        return out;
     }
 }

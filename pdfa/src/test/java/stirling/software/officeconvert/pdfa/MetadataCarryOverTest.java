@@ -39,6 +39,29 @@ class MetadataCarryOverTest {
         }
     }
 
+    @Test
+    void customSchemasSurviveAlongsideGeneratedPredefinedPropertyDeclarations() throws Exception {
+        RawPdf pdf = RawPdf.page("", "");
+        String xmp = invoiceXmp().replace("</rdf:RDF>", "<rdf:Description xmlns:pdf='"
+                + XmpProperties.PDF + "' xmlns:xmp='" + XmpProperties.XMP + "'>"
+                + "<pdf:Trapped>False</pdf:Trapped><xmp:Label>blue</xmp:Label><xmp:Rating>4</xmp:Rating>"
+                + "</rdf:Description></rdf:RDF>");
+        pdf.add(RawPdf.stream("/Type/Metadata/Subtype/XML", xmp));
+        pdf.set(1, "<</Type/Catalog/Pages 2 0 R/Metadata 5 0 R>>");
+        Path input = Hostile.write(dir, "combined", pdf);
+        for (int i = 0; i < 2; i++) {
+            Path output = dir.resolve("combined-" + i + ".pdf");
+            PdfToPdfA.convert(input, output, PdfToPdfA.Options.defaults().level(PdfALevel.A1B));
+            VeraPdf.assertCompliant(output, PdfALevel.A1B);
+            try (PDDocument doc = Loader.loadPDF(output.toFile())) {
+                String converted = new String(doc.getDocumentCatalog().getMetadata().toByteArray(), StandardCharsets.UTF_8);
+                assertTrue(converted.contains("INVOICE") && converted.contains("Copyright ACME")
+                        && converted.contains("blue"), converted);
+            }
+            input = output;
+        }
+    }
+
     static String invoiceXmp() {
         StringBuilder props = new StringBuilder();
         for (String name : new String[] {"DocumentFileName", "DocumentType", "Version", "ConformanceLevel"}) {
@@ -49,8 +72,8 @@ class MetadataCarryOverTest {
         }
         return "<?xpacket begin='﻿' id='W5M0MpCehiHzreSzNTczkc9d'?>"
                 + "<x:xmpmeta xmlns:x='adobe:ns:meta/'><rdf:RDF xmlns:rdf='http://www.w3.org/1999/02/22-rdf-syntax-ns#'>"
-                + "<rdf:Description rdf:about='' xmlns:xmpRights='http://ns.adobe.com/xap/1.0/rights/'>"
-                + "<xmpRights:UsageTerms><rdf:Alt><rdf:li xml:lang='x-default'>Copyright ACME</rdf:li></rdf:Alt></xmpRights:UsageTerms>"
+                + "<rdf:Description rdf:about='' xmlns:dc='http://purl.org/dc/elements/1.1/'>"
+                + "<dc:rights><rdf:Alt><rdf:li xml:lang='x-default'>Copyright ACME</rdf:li></rdf:Alt></dc:rights>"
                 + "</rdf:Description>"
                 + "<rdf:Description rdf:about='' xmlns:fx='" + FX + "' fx:ConformanceLevel='EN 16931'>"
                 + "<fx:DocumentType>INVOICE</fx:DocumentType><fx:DocumentFileName>factur-x.xml</fx:DocumentFileName>"

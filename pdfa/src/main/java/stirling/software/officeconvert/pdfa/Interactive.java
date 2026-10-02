@@ -114,17 +114,7 @@ final class Interactive {
             acro.removeItem(COSName.XFA);
             report.warn("Removed the XFA form, which PDF/A does not allow; the AcroForm fields remain");
         }
-        if (acro.getBoolean(COSName.NEED_APPEARANCES, false)) {
-            AppearanceBudget.check(acro);
-            acro.removeItem(COSName.NEED_APPEARANCES);
-            try {
-                new org.apache.pdfbox.pdmodel.interactive.form.PDAcroForm(doc, acro).refreshAppearances();
-            } catch (IOException | RuntimeException e) {
-                report.warn("Some form fields could not be given an appearance: " + e.getMessage());
-            }
-        } else {
-            acro.removeItem(COSName.NEED_APPEARANCES);
-        }
+        FormAppearances.run(doc, acro, report);
         COSArray fields = ContentGraph.array(acro.getDictionaryObject(COSName.FIELDS));
         Set<COSDictionary> seen = Collections.newSetFromMap(new IdentityHashMap<>());
         List<COSDictionary> stack = new ArrayList<>();

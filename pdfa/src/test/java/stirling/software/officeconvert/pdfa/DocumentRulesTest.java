@@ -120,7 +120,7 @@ class DocumentRulesTest {
             assertTrue(xmp.contains("All in one été"));
             assertTrue(xmp.contains("<xmp:CreateDate>2026-01-02T03:04:05"));
             assertEquals("All in one été", d.getDocumentInformation().getTitle());
-            assertNull(d.getDocumentInformation().getTrapped());
+            assertEquals("False", d.getDocumentInformation().getTrapped());
             assertEquals("Stirling", d.getDocumentInformation().getCustomMetadataValue("Company"));
         }
     }
