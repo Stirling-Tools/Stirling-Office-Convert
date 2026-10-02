@@ -262,6 +262,9 @@ final class RtfReader {
             case MATH -> {
                 if (parent.dest != Dest.MATH && done.mathNode != null) {
                     content.math(parent, RtfMath.xml(done.mathNode.root));
+                    if (done.mathNode.root.lost) {
+                        lost("Some of an equation nested too deeply or too long was left out");
+                    }
                 }
             }
             case SHP -> {

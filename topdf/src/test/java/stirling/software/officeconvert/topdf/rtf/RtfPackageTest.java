@@ -632,4 +632,15 @@ class RtfPackageTest {
         }
     }
 
+    @Test
+    void mathNestedPastTheCapIsReportedAsLost() throws IOException {
+        Pkg shallow = convert(HEAD + "\\pard {\\mmath{\\*\\moMath" + "{\\mf{\\mnum ".repeat(10) + "x"
+                + "}}".repeat(10) + "}}\\par}");
+        assertFalse(shallow.outcome().lost(), shallow.outcome().toString());
+        Pkg deep = convert(HEAD + "\\pard {\\mmath{\\*\\moMath" + "{\\mf{\\mnum ".repeat(80) + "x"
+                + "}}".repeat(80) + "}} after\\par}");
+        assertTrue(deep.outcome().lost(), deep.outcome().toString());
+        assertTrue(deep.body().contains("after"), deep.body());
+    }
+
 }
