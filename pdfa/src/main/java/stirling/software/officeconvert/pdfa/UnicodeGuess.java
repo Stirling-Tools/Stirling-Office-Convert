@@ -15,11 +15,13 @@ import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.cos.COSStream;
 import org.apache.pdfbox.pdmodel.font.PDCIDFontType2;
 import org.apache.pdfbox.pdmodel.font.PDFont;
+import org.apache.pdfbox.pdmodel.font.PDSimpleFont;
 import org.apache.pdfbox.pdmodel.font.PDTrueTypeFont;
 import org.apache.pdfbox.pdmodel.font.PDType0Font;
 import org.apache.pdfbox.pdmodel.font.PDType1CFont;
 import org.apache.pdfbox.pdmodel.font.PDType1Font;
 import org.apache.pdfbox.pdmodel.font.PDType3Font;
+import org.apache.pdfbox.pdmodel.font.encoding.DictionaryEncoding;
 import org.apache.pdfbox.pdmodel.font.encoding.GlyphList;
 import org.apache.pdfbox.pdmodel.font.encoding.WinAnsiEncoding;
 
@@ -29,7 +31,8 @@ final class UnicodeGuess {
 
     static String of(PDFont font, int code, int bytesPerCode) {
         String t = of(font, code);
-        if (t != null || bytesPerCode != 1 || code < 0x20 || code > 0xFF) {
+        if (t != null || bytesPerCode != 1 || code < 0x20 || code > 0xFF || font instanceof PDType3Font
+                || named(font, code)) {
             return t;
         }
         String name = WinAnsiEncoding.INSTANCE.getName(code);
@@ -80,6 +83,8 @@ final class UnicodeGuess {
             return glyphName(t1.codeToName(code));
         } else if (font instanceof PDType1CFont c) {
             return glyphName(c.codeToName(code));
+        } else if (font instanceof PDType3Font t3 && t3.getEncoding() != null) {
+            return glyphName(t3.getEncoding().getName(code));
         }
         if (ttf == null || gid <= 0) {
             return null;
@@ -112,6 +117,11 @@ final class UnicodeGuess {
             return glyphName(ttf.getPostScript().getName(gid));
         }
         return null;
+    }
+
+    private static boolean named(PDFont font, int code) {
+        return font instanceof PDSimpleFont simple && simple.getEncoding() instanceof DictionaryEncoding e
+                && e.getDifferences().containsKey(code);
     }
 
     private static String glyphName(String name) {

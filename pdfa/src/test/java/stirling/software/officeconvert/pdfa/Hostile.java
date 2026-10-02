@@ -257,6 +257,16 @@ final class Hostile {
         return r;
     }
 
+    static RawPdf type3Shapes() {
+        RawPdf r = RawPdf.page("/Font<</T3 5 0 R>>", "BT /T3 24 Tf 72 700 Td (ABAB) Tj ET");
+        r.add("<</Type/Font/Subtype/Type3/FontBBox[0 0 1000 1000]/FontMatrix[0.001 0 0 0.001 0 0]"
+                + "/CharProcs<</g0 6 0 R/g1 7 0 R>>/Encoding<</Differences[65/g0/g1]>>/FirstChar 65/LastChar 66"
+                + "/Widths[1000 1000]/Resources<<>>>>");
+        r.add(RawPdf.stream("", "1000 0 0 0 1000 1000 d1 0 0 1000 1000 re f"));
+        r.add(RawPdf.stream("", "1000 0 0 0 1000 1000 d1 0 0 m 1000 0 l 500 1000 l f"));
+        return r;
+    }
+
     static void taggedForm(PDDocument d, String variant) throws IOException {
         PDFont f = helvetica();
         PDPage p = page(d);
