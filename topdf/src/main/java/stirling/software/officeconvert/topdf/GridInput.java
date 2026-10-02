@@ -2,7 +2,10 @@ package stirling.software.officeconvert.topdf;
 
 import java.io.BufferedOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.OutputStream;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -14,6 +17,7 @@ import stirling.software.officeconvert.topdf.OfficeToPdf.Options;
 import stirling.software.officeconvert.topdf.OfficeToPdf.Result;
 import stirling.software.officeconvert.topdf.grid.Dbf;
 import stirling.software.officeconvert.topdf.grid.Dif;
+import stirling.software.officeconvert.topdf.grid.Grid;
 import stirling.software.officeconvert.topdf.grid.GridPackage;
 import stirling.software.officeconvert.topdf.grid.Sylk;
 import stirling.software.officeconvert.topdf.lotus.Lotus;
@@ -59,8 +63,35 @@ final class GridInput {
         return sheets;
     }
 
+    private static final long CELL_BYTES = 128;
+
     static Long estimate(Path source) throws IOException {
-        return kind(source) == null ? null : GridPackage.estimate(Files.size(source)) + 2 * Admission.BASE_BYTES;
+        Kind kind = kind(source);
+        return kind == null ? null : estimate(source, kind) + 2 * Admission.BASE_BYTES;
+    }
+
+    private static long estimate(Path source, Kind kind) throws IOException {
+        long size = Files.size(source);
+        long bytes = GridPackage.estimate(size);
+        return kind == Kind.DBF ? Math.max(bytes, Admission.BASE_BYTES + 2 * size + CELL_BYTES * dbaseCells(source))
+                : bytes;
+    }
+
+    private static long dbaseCells(Path source) throws IOException {
+        byte[] h;
+        try (InputStream in = Files.newInputStream(source)) {
+            h = in.readNBytes(12);
+        }
+        if (h.length < 12) {
+            return 0;
+        }
+        ByteBuffer b = ByteBuffer.wrap(h).order(ByteOrder.LITTLE_ENDIAN);
+        long records = b.getInt(4) & 0xFFFFFFFFL;
+        int header = b.getShort(8) & 0xFFFF;
+        int record = b.getShort(10) & 0xFFFF;
+        long fields = Math.max(0, (header - 33) / 32);
+        long stored = record == 0 ? 0 : Math.max(0, Files.size(source) - header) / record;
+        return Math.min(Grid.MAX_CELLS, Math.min(records, stored) * fields);
     }
 
     static Result render(Path source, OutputStream sink, Options options, OfficeToPdf.Renderer renderer)
@@ -72,7 +103,7 @@ final class GridInput {
         Path xlsx = Files.createTempFile("office-to-pdf-", ".xlsx");
         try {
             List<GridPackage.Sheet> sheets;
-            Admission.Ticket ticket = Admission.jvm().enter(GridPackage.estimate(Files.size(source)));
+            Admission.Ticket ticket = Admission.jvm().enter(estimate(source, kind));
             try {
                 String name = TextInput.sheetName(source, options);
                 sheets = switch (kind) {
