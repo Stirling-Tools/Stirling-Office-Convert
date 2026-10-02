@@ -26,7 +26,7 @@ public final class XlsFile {
         } catch (IOException | RuntimeException e) {
             return false;
         }
-        try (POIFSFileSystem fs = new POIFSFileSystem(source.toFile(), true)) {
+        try (POIFSFileSystem fs = LegacyOffice.open(source)) {
             return XlsPackage.isWorkbook(fs.getRoot());
         } catch (IOException | RuntimeException e) {
             return false;
@@ -34,7 +34,7 @@ public final class XlsFile {
     }
 
     public static XlsPackage.Outcome rewrite(Path source, String password, OutputStream out) throws IOException {
-        try (POIFSFileSystem fs = new POIFSFileSystem(source.toFile(), true);
+        try (POIFSFileSystem fs = LegacyOffice.open(source);
                 POIFSFileSystem plain = decrypt(fs.getRoot(), password)) {
             return XlsPackage.write(plain == null ? fs.getRoot() : plain.getRoot(), out);
         }

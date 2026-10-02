@@ -29,7 +29,7 @@ public final class DocFile {
         } catch (IOException | RuntimeException e) {
             return false;
         }
-        try (POIFSFileSystem fs = new POIFSFileSystem(source.toFile(), true)) {
+        try (POIFSFileSystem fs = LegacyOffice.open(source)) {
             return DocPackage.isDocument(fs.getRoot());
         } catch (IOException | RuntimeException e) {
             return false;
@@ -37,7 +37,7 @@ public final class DocFile {
     }
 
     public static Rewritten rewrite(Path source, String password, OutputStream out) throws IOException {
-        try (POIFSFileSystem fs = new POIFSFileSystem(source.toFile(), true)) {
+        try (POIFSFileSystem fs = LegacyOffice.open(source)) {
             if (!word6(fs)) {
                 return new Rewritten(DocPackage.write(fs.getRoot(), out, password), List.of());
             }
