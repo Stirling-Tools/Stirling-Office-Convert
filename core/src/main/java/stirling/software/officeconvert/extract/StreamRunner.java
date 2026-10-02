@@ -11,7 +11,6 @@ import org.apache.pdfbox.contentstream.PDContentStream;
 import org.apache.pdfbox.contentstream.operator.Operator;
 import org.apache.pdfbox.contentstream.operator.OperatorName;
 import org.apache.pdfbox.cos.COSBase;
-import org.apache.pdfbox.pdfparser.PDFStreamParser;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.PDResources;
 import org.apache.pdfbox.pdmodel.common.COSObjectable;
@@ -196,8 +195,7 @@ final class StreamRunner {
             int[] at = {0};
             tokens = () -> at[0] < recorded.length ? recorded[at[0]++] : null;
         } else {
-            PDFStreamParser exact = new PDFStreamParser(stream);
-            Tokens parser = exact::parseNextToken;
+            Tokens parser = ContentTokens.open(stream);
             if (key != null) {
                 recording = new Recording(parser);
                 tokens = recording;
