@@ -5,7 +5,10 @@ import java.awt.geom.GeneralPath;
 import java.io.Closeable;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 
 import org.apache.fontbox.ttf.CmapLookup;
 import org.apache.fontbox.ttf.CmapSubtable;
@@ -29,6 +32,8 @@ final class GlyphSource implements Closeable {
     private final boolean symbol;
 
     private final List<EmbeddableFont> opened = new ArrayList<>();
+
+    private final Map<String, Optional<EmbeddableFont>> fallbacks = new HashMap<>();
 
     private GlyphSource(FontLibrary library, EmbeddableFont primary, boolean bold, boolean italic, boolean symbol) {
         this.library = library;
@@ -116,11 +121,16 @@ final class GlyphSource implements Closeable {
         if (face == null) {
             return null;
         }
-        EmbeddableFont f = truetype(face);
+        EmbeddableFont f = fallbacks.computeIfAbsent(key(face), k -> {
+            EmbeddableFont t = truetype(face);
+            if (t != null) {
+                opened.add(t);
+            }
+            return Optional.ofNullable(t);
+        }).orElse(null);
         if (f == null) {
             return null;
         }
-        opened.add(f);
         try {
             TrueTypeFont ttf = f.font();
             CmapLookup cmap = ttf.getUnicodeCmapLookup(false);
@@ -136,6 +146,15 @@ final class GlyphSource implements Closeable {
         } catch (IOException | RuntimeException e) {
             return null;
         }
+    }
+
+    int fontsOpen() {
+        return opened.size();
+    }
+
+    private static String key(FontFace face) {
+        String ps = face.postScriptName();
+        return ps != null ? ps : face.family() + "|" + face.subfamily();
     }
 
     @Override
