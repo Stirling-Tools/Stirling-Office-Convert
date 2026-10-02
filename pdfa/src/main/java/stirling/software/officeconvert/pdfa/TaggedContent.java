@@ -41,11 +41,23 @@ final class TaggedContent {
 
     private final Set<Integer> referenced;
 
-    TaggedContent(Set<Integer> referenced) {
-        this.referenced = referenced;
+    private final Map<COSDictionary, Set<Integer>> byOwner;
+
+    private final Map<COSStream, Boolean> formsWithMarks;
+
+    private final int depth;
+
+    TaggedContent(Set<Integer> referenced, Map<COSDictionary, Set<Integer>> byOwner) {
+        this(referenced, byOwner, new IdentityHashMap<>(), 0);
     }
 
-    private final Map<COSStream, Boolean> formsWithMarks = new IdentityHashMap<>();
+    private TaggedContent(Set<Integer> referenced, Map<COSDictionary, Set<Integer>> byOwner,
+            Map<COSStream, Boolean> formsWithMarks, int depth) {
+        this.referenced = referenced;
+        this.byOwner = byOwner;
+        this.formsWithMarks = formsWithMarks;
+        this.depth = depth;
+    }
 
     List<Object> scan(List<Object> tokens, COSDictionary resources) {
         List<Object> out = new ArrayList<>(tokens.size() + 16);
@@ -117,7 +129,7 @@ final class TaggedContent {
                 COSDictionary xo = TransparencyScan.lookup(resources, COSName.XOBJECT, x);
                 if (xo instanceof COSStream s && COSName.IMAGE.equals(s.getCOSName(COSName.SUBTYPE))) {
                     images++;
-                } else if (xo instanceof COSStream s && untaggedForm(s, resources, 0)) {
+                } else if (xo instanceof COSStream s && untaggedForm(s, resources)) {
                     out.add(ARTIFACT);
                     out.add(Operator.getOperator("BMC"));
                     out.addAll(operation);
@@ -133,8 +145,8 @@ final class TaggedContent {
         return changed ? out : null;
     }
 
-    private boolean untaggedForm(COSStream form, COSDictionary parentResources, int depth) {
-        if (form.containsKey(COSName.STRUCT_PARENT) || form.containsKey(COSName.STRUCT_PARENTS)) {
+    private boolean untaggedForm(COSStream form, COSDictionary parentResources) {
+        if (form.containsKey(COSName.STRUCT_PARENT)) {
             return false;
         }
         Boolean known = formsWithMarks.get(form);
@@ -142,20 +154,35 @@ final class TaggedContent {
             return known;
         }
         formsWithMarks.put(form, Boolean.FALSE);
-        COSDictionary res = ContentGraph.dict(form.getDictionaryObject(COSName.RESOURCES));
-        TaggedContent inner = new TaggedContent(null);
-        boolean onlyPaths;
-        try {
-            List<Object> tokens = ContentTokens.parse(List.of(form));
-            if (depth < MAX_FORM_DEPTH) {
-                inner.scan(tokens, res == null ? parentResources : res);
-            }
-            onlyPaths = depth < MAX_FORM_DEPTH && inner.text == 0 && inner.images == 0;
-        } catch (IOException e) {
-            onlyPaths = false;
+        if (depth >= MAX_FORM_DEPTH) {
+            return false;
         }
-        text += onlyPaths ? 0 : inner.text;
-        images += onlyPaths ? 0 : inner.images;
+        boolean structured = form.containsKey(COSName.STRUCT_PARENTS) || byOwner.containsKey(form);
+        COSDictionary res = ContentGraph.dict(form.getDictionaryObject(COSName.RESOURCES));
+        TaggedContent inner = new TaggedContent(structured ? byOwner.getOrDefault(form, Set.of()) : null, byOwner,
+                formsWithMarks, depth + 1);
+        List<Object> rewritten;
+        try {
+            rewritten = inner.scan(ContentTokens.parse(List.of(form)), res == null ? parentResources : res);
+        } catch (IOException e) {
+            return false;
+        }
+        if (structured) {
+            if (rewritten != null) {
+                try {
+                    ContentTokens.write(form, rewritten);
+                } catch (IOException e) {
+                    text += inner.text + 1;
+                    return false;
+                }
+            }
+            text += inner.text;
+            images += inner.images;
+            orphans += inner.orphans;
+            artifacts += inner.artifacts;
+            return false;
+        }
+        boolean onlyPaths = inner.text == 0 && inner.images == 0;
         formsWithMarks.put(form, onlyPaths);
         return onlyPaths;
     }
@@ -187,7 +214,7 @@ final class TaggedContent {
             } else if ("Do".equals(name) && tokens.get(i - 1) instanceof COSName x) {
                 COSDictionary xo = TransparencyScan.lookup(resources, COSName.XOBJECT, x);
                 if (!(xo instanceof COSStream s) || !COSName.FORM.equals(s.getCOSName(COSName.SUBTYPE))
-                        || !untaggedForm(s, resources, 0)) {
+                        || !untaggedForm(s, resources)) {
                     return true;
                 }
             }
