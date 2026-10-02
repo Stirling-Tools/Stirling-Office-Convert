@@ -1,5 +1,6 @@
 package stirling.software.officeconvert.pdfa;
 
+import java.io.InterruptedIOException;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -160,13 +161,13 @@ final class StructTree {
         return out;
     }
 
-    boolean parentTreeMatches() {
+    boolean parentTreeMatches() throws InterruptedIOException {
         COSDictionary pt = ContentGraph.dict(root.getDictionaryObject(COSName.PARENT_TREE));
         if (pt == null) {
             return mcrs.isEmpty() && objrs.isEmpty();
         }
         Map<Integer, COSBase> tree = new HashMap<>();
-        numbers(pt, tree, 0);
+        numbers(pt, tree, new Visits(), 0);
         for (Mcr m : mcrs) {
             if (!(m.owner().getDictionaryObject(COSName.STRUCT_PARENTS) instanceof COSNumber key)
                     || !(tree.get(key.intValue()) instanceof COSArray a) || m.mcid() < 0 || m.mcid() >= a.size()
@@ -183,8 +184,9 @@ final class StructTree {
         return true;
     }
 
-    private static void numbers(COSDictionary node, Map<Integer, COSBase> out, int depth) {
-        if (depth > 64) {
+    private static void numbers(COSDictionary node, Map<Integer, COSBase> out, Visits visits, int depth)
+            throws InterruptedIOException {
+        if (depth > 64 || !visits.first(node)) {
             return;
         }
         COSArray nums = ContentGraph.array(node.getDictionaryObject(COSName.NUMS));
@@ -197,7 +199,7 @@ final class StructTree {
         for (int i = 0; kids != null && i < kids.size(); i++) {
             COSDictionary kid = ContentGraph.dict(kids.getObject(i));
             if (kid != null) {
-                numbers(kid, out, depth + 1);
+                numbers(kid, out, visits, depth + 1);
             }
         }
     }

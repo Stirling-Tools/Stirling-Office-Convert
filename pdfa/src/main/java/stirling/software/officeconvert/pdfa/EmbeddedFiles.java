@@ -67,7 +67,7 @@ final class EmbeddedFiles {
                 names.removeItem(COSName.EMBEDDED_FILES);
                 report.warn("Removed the embedded files, which PDF/A-1 does not allow");
             } else if (tree != null) {
-                prune(tree, 0);
+                prune(tree, new Visits(), 0);
             }
         }
         for (PDPage page : doc.getPages()) {
@@ -116,8 +116,8 @@ final class EmbeddedFiles {
         }
     }
 
-    private void prune(COSDictionary node, int depth) throws IOException {
-        if (depth > 64) {
+    private void prune(COSDictionary node, Visits visits, int depth) throws IOException {
+        if (depth > 64 || !visits.first(node)) {
             return;
         }
         COSArray pairs = ContentGraph.array(node.getDictionaryObject(COSName.NAMES));
@@ -140,7 +140,7 @@ final class EmbeddedFiles {
             for (int i = 0; i < kids.size(); i++) {
                 COSDictionary k = ContentGraph.dict(kids.getObject(i));
                 if (k != null) {
-                    prune(k, depth + 1);
+                    prune(k, visits, depth + 1);
                 }
             }
         }
@@ -160,7 +160,7 @@ final class EmbeddedFiles {
         if (file == null) {
             return level.part() == 1 ? false : ef == null;
         }
-        if (level.part() == 2 && !pdfA(file)) {
+        if (level.part() == 2 && !AttachedPdfA.check(file)) {
             return false;
         }
         String name = fileName(fs);
@@ -206,15 +206,5 @@ final class EmbeddedFiles {
         int dot = name.lastIndexOf('.');
         String ext = dot < 0 ? "" : name.substring(dot + 1).toLowerCase(Locale.ROOT);
         return MIME.getOrDefault(ext, "application/octet-stream");
-    }
-
-    private static boolean pdfA(COSStream file) {
-        try (InputStream in = file.createInputStream()) {
-            byte[] head = in.readNBytes(8 << 20);
-            String s = new String(head, StandardCharsets.ISO_8859_1);
-            return s.startsWith("%PDF-") && s.matches("(?s).*pdfaid:part\\s*(=\\s*[\"']|>\\s*)[12].*");
-        } catch (IOException | RuntimeException e) {
-            return false;
-        }
     }
 }

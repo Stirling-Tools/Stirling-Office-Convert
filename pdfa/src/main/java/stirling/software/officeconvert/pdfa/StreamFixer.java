@@ -46,6 +46,13 @@ final class StreamFixer {
 
     private static final COSName FDECODE_PARMS = COSName.getPDFName("FDecodeParms");
 
+    static final long MAX_METADATA_BYTES = 16L << 20;
+
+    private static final long MAX_REENCODED_BYTES = 1L << 30;
+
+    private static final byte[] EMPTY_XMP = ("<?xpacket begin=\"\uFEFF\" id=\"W5M0MpCehiHzreSzNTczkc9d\"?>"
+            + "<x:xmpmeta xmlns:x=\"adobe:ns:meta/\"/><?xpacket end=\"w\"?>").getBytes(java.nio.charset.StandardCharsets.UTF_8);
+
     private final PDDocument doc;
 
     private final PdfALevel level;
@@ -99,13 +106,15 @@ final class StreamFixer {
             report.warn("Replaced a PostScript XObject, which PDF/A does not allow, with nothing");
         }
         if (COSName.METADATA.equals(s.getCOSName(COSName.TYPE)) && level.part() == 1 && s.getFilters() != null) {
-            byte[] data = read(s);
-            if (data != null) {
-                s.removeItem(COSName.FILTER);
-                s.removeItem(COSName.DECODE_PARMS);
-                try (OutputStream out = s.createOutputStream()) {
-                    out.write(data);
-                }
+            byte[] data = read(s, MAX_METADATA_BYTES);
+            s.removeItem(COSName.FILTER);
+            s.removeItem(COSName.DECODE_PARMS);
+            try (OutputStream out = s.createOutputStream()) {
+                out.write(data != null ? data : EMPTY_XMP);
+            }
+            if (data == null) {
+                report.warn("Emptied XMP metadata that could not be decoded or was larger than "
+                        + (MAX_METADATA_BYTES >> 20) + " MB");
             }
         }
     }
@@ -134,13 +143,30 @@ final class StreamFixer {
     }
 
     private void reencode(COSStream s) throws IOException {
-        byte[] data = read(s);
+        COSStream flate = new COSStream();
+        boolean decoded;
+        try (OutputStream out = flate.createOutputStream(COSName.FLATE_DECODE)) {
+            Decoded.copy(s, out, MAX_REENCODED_BYTES, "A stream");
+            decoded = true;
+        } catch (IOException e) {
+            if (e instanceof java.io.InterruptedIOException) {
+                throw e;
+            }
+            decoded = false;
+        }
         s.removeItem(COSName.FILTER);
         s.removeItem(COSName.DECODE_PARMS);
-        try (OutputStream out = s.createOutputStream(COSName.FLATE_DECODE)) {
-            out.write(data == null ? new byte[0] : data);
+        if (decoded) {
+            try (InputStream in = flate.createRawInputStream(); OutputStream out = s.createRawOutputStream()) {
+                in.transferTo(out);
+            }
+            s.setItem(COSName.FILTER, COSName.FLATE_DECODE);
+        } else {
+            try (OutputStream out = s.createOutputStream()) {
+                out.write(new byte[0]);
+            }
         }
-        report.warn(data == null ? "Emptied streams whose filter PDF/A does not allow and that could not be decoded"
+        report.warn(!decoded ? "Emptied streams whose filter PDF/A does not allow and that could not be decoded"
                 : "Recompressed streams whose filter PDF/A does not allow, such as LZW, with Flate");
     }
 
@@ -205,8 +231,12 @@ final class StreamFixer {
     }
 
     static byte[] read(COSStream s) {
-        try (InputStream in = s.createInputStream()) {
-            return in.readAllBytes();
+        return read(s, Decoded.MAX_STREAM_BYTES);
+    }
+
+    static byte[] read(COSStream s, long limit) {
+        try {
+            return Decoded.bytes(s, limit, "A stream");
         } catch (IOException | RuntimeException e) {
             return null;
         }

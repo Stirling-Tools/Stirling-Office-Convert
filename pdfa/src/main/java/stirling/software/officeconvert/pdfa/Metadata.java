@@ -8,6 +8,7 @@ import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.Calendar;
 import java.util.GregorianCalendar;
+import java.util.List;
 import java.util.Locale;
 import java.util.TimeZone;
 
@@ -53,7 +54,7 @@ final class Metadata {
             info.setDate(COSName.CREATION_DATE, created);
         }
         info.setDate(COSName.MOD_DATE, modified);
-        String xmp = xmp(level, values, created, modified);
+        String xmp = xmp(level, values, created, modified, carried(doc));
         COSStream s = doc.getDocument().createCOSStream();
         s.setItem(COSName.TYPE, COSName.METADATA);
         s.setItem(COSName.SUBTYPE, COSName.getPDFName("XML"));
@@ -61,6 +62,17 @@ final class Metadata {
             out.write(xmp.getBytes(StandardCharsets.UTF_8));
         }
         doc.getDocumentCatalog().getCOSObject().setItem(COSName.METADATA, s);
+    }
+
+    private static List<String> carried(PDDocument doc) {
+        if (!(doc.getDocumentCatalog().getCOSObject().getDictionaryObject(COSName.METADATA) instanceof COSStream old)) {
+            return List.of();
+        }
+        try {
+            return XmpCarryOver.descriptions(Decoded.bytes(old, StreamFixer.MAX_METADATA_BYTES, "XMP metadata"));
+        } catch (IOException e) {
+            return List.of();
+        }
     }
 
     private static Calendar date(COSDictionary info, COSName key) {
@@ -86,7 +98,8 @@ final class Metadata {
         return b.toString().strip();
     }
 
-    private static String xmp(PdfALevel level, String[] v, Calendar created, Calendar modified) {
+    private static String xmp(PdfALevel level, String[] v, Calendar created, Calendar modified,
+            List<String> carried) {
         StringBuilder x = new StringBuilder();
         x.append("<?xpacket begin=\"﻿\" id=\"W5M0MpCehiHzreSzNTczkc9d\"?>\n")
                 .append("<x:xmpmeta xmlns:x=\"adobe:ns:meta/\">\n")
@@ -126,7 +139,11 @@ final class Metadata {
         }
         x.append("<xmp:ModifyDate>").append(iso(modified)).append("</xmp:ModifyDate>\n");
         x.append("<xmp:MetadataDate>").append(iso(modified)).append("</xmp:MetadataDate>\n");
-        x.append("</rdf:Description>\n</rdf:RDF>\n</x:xmpmeta>\n");
+        x.append("</rdf:Description>\n");
+        for (String d : carried) {
+            x.append(d).append('\n');
+        }
+        x.append("</rdf:RDF>\n</x:xmpmeta>\n");
         x.append("<?xpacket end=\"w\"?>");
         return x.toString();
     }

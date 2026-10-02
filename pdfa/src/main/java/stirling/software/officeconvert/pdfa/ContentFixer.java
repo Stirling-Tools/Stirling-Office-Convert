@@ -36,6 +36,7 @@ final class ContentFixer {
             try {
                 parsed = ContentTokens.salvage(n.streams());
             } catch (IOException e) {
+                Decoded.rethrowFatal(e);
                 PdfFiles.stopIfInterrupted();
                 colours.unknown();
                 continue;
@@ -109,7 +110,7 @@ final class ContentFixer {
                 out.addAll(operation);
             }
             List<Object> result = changed ? out : tokens;
-            usage.scan(result, n.resources());
+            usage.scan(result, n.resources(), n.owner());
             if (Nesting.depth(result) > Nesting.MAX_DEPTH) {
                 COSDictionary res = resources(n);
                 if (res != null) {
@@ -118,13 +119,10 @@ final class ContentFixer {
                 }
             }
             if (changed) {
-                COSStream target = n.streams().get(0);
-                ContentTokens.write(target, result);
-                if (n.kind() == ContentGraph.Kind.PAGE && n.streams().size() > 1) {
-                    n.owner().setItem(COSName.CONTENTS, target);
-                }
+                ContentTokens.replace(n, result);
             }
         }
+        usage.resolve();
     }
 
     private static COSDictionary resources(ContentGraph.Node n) {

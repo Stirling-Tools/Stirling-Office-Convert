@@ -74,8 +74,8 @@ final class ObjectMetadata {
     }
 
     private static boolean repair(COSStream s) throws IOException {
-        byte[] data = StreamFixer.read(s);
-        if (data == null || data.length > 16 << 20) {
+        byte[] data = StreamFixer.read(s, StreamFixer.MAX_METADATA_BYTES);
+        if (data == null) {
             return false;
         }
         String text;

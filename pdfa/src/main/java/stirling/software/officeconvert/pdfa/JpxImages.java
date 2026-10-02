@@ -77,9 +77,9 @@ final class JpxImages {
             throw new IOException("A JPEG 2000 image has " + pixels + " pixels, more than " + MAX_PIXELS
                     + " can be converted for " + level.label());
         }
-        BufferedImage decoded = s.getInt(SMASK_IN_DATA, 0) == 0 ? null : decoded(s);
-        BufferedImage alpha = decoded == null ? null : alpha(decoded);
-        BufferedImage opaque = alpha != null && s.getDictionaryObject(COSName.COLORSPACE) == null ? colours(decoded)
+        BufferedImage decoded = decoded(s);
+        BufferedImage alpha = alpha(decoded);
+        BufferedImage opaque = alpha != null ? colours(decoded)
                 : new PDImageXObject(new PDStream(s), null).getOpaqueImage();
         PDImageXObject replacement = encode(opaque);
         PDImageXObject mask = alpha == null ? null : GreyImages.lossless(doc, alpha);

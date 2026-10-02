@@ -12,7 +12,7 @@ final class Deadline {
 
     private static final long STACK_BYTES = 8L << 20;
 
-    private static final long STOP_MILLIS = 5_000;
+    private static final long STOP_MILLIS = 1_000;
 
     @FunctionalInterface
     interface Work<T> {
@@ -48,6 +48,12 @@ final class Deadline {
             if (cause instanceof RuntimeException r) {
                 throw r;
             }
+            if (cause instanceof OutOfMemoryError) {
+                throw new IOException("The PDF needs more memory to convert than is available", cause);
+            }
+            if (cause instanceof StackOverflowError) {
+                throw new IOException("The PDF nests its objects too deeply to convert", cause);
+            }
             if (cause instanceof Error err) {
                 throw err;
             }
@@ -55,12 +61,23 @@ final class Deadline {
         } finally {
             if (!finished) {
                 task.cancel(true);
-                try {
-                    worker.join(STOP_MILLIS);
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                }
+                stop(worker);
             }
+        }
+    }
+
+    private static void stop(Thread worker) {
+        boolean interrupted = false;
+        while (worker.isAlive()) {
+            worker.interrupt();
+            try {
+                worker.join(STOP_MILLIS);
+            } catch (InterruptedException e) {
+                interrupted = true;
+            }
+        }
+        if (interrupted) {
+            Thread.currentThread().interrupt();
         }
     }
 

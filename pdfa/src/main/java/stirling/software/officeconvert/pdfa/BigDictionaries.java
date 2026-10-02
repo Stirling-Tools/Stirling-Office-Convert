@@ -1,6 +1,7 @@
 package stirling.software.officeconvert.pdfa;
 
 import java.io.IOException;
+import java.io.InterruptedIOException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -152,18 +153,18 @@ final class BigDictionaries {
         report.warn("Removed custom document properties past the " + MAX + " entries PDF/A-1 allows");
     }
 
-    private static void pieceInfo(Census census, Report report) {
+    private static void pieceInfo(Census census, Report report) throws InterruptedIOException {
         for (COSDictionary d : census.withPieceInfo) {
-            if (oversized(d.getDictionaryObject(PIECE_INFO), 0)) {
+            if (oversized(d.getDictionaryObject(PIECE_INFO), new Visits(), 0)) {
                 d.removeItem(PIECE_INFO);
                 report.warn("Removed application data larger than PDF/A-1 allows");
             }
         }
     }
 
-    private static boolean oversized(COSBase b, int depth) {
+    private static boolean oversized(COSBase b, Visits visits, int depth) throws InterruptedIOException {
         COSBase v = b instanceof COSObject o ? o.getObject() : b;
-        if (depth > 8) {
+        if (depth > 8 || (v instanceof COSDictionary || v instanceof COSArray) && !visits.first(v)) {
             return false;
         }
         if (v instanceof COSDictionary d) {
@@ -171,7 +172,7 @@ final class BigDictionaries {
                 return true;
             }
             for (COSBase x : d.getValues()) {
-                if (oversized(x, depth + 1)) {
+                if (oversized(x, visits, depth + 1)) {
                     return true;
                 }
             }
@@ -180,7 +181,7 @@ final class BigDictionaries {
                 return true;
             }
             for (int i = 0; i < a.size() && i < 4096; i++) {
-                if (oversized(a.get(i), depth + 1)) {
+                if (oversized(a.get(i), visits, depth + 1)) {
                     return true;
                 }
             }

@@ -1,8 +1,10 @@
 package stirling.software.officeconvert.pdfa;
 
 import java.io.IOException;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Deque;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
@@ -31,7 +33,13 @@ final class ContentGraph {
         APPEARANCE
     }
 
-    record Node(Kind kind, int page, COSDictionary owner, List<COSStream> streams, COSDictionary resources) {}
+    record Node(Kind kind, int page, COSDictionary owner, List<COSStream> streams, COSDictionary resources) {
+
+        @Override
+        public List<COSStream> streams() {
+            return kind == Kind.PAGE ? contents(owner) : streams;
+        }
+    }
 
     private final List<Node> nodes = new ArrayList<>();
 
@@ -104,28 +112,49 @@ final class ContentGraph {
         }
     }
 
+    private record Step(COSStream stream, COSDictionary res, int page, Kind kind) {}
+
     private void form(COSStream s, int page, COSDictionary parentRes, Kind kind) throws IOException {
-        if (nodes.size() >= MAX_NODES || !seenStreams.add(s)) {
-            return;
-        }
-        COSDictionary res = dict(s.getDictionaryObject(COSName.RESOURCES));
-        if (res == null) {
-            res = parentRes;
-        }
-        nodes.add(new Node(kind, page, s, List.of(s), res));
-        walkResources(res, page);
+        walk(new Step(s, parentRes, page, kind));
     }
 
     private void walkResources(COSDictionary res, int page) throws IOException {
+        walk(new Step(null, res, page, null));
+    }
+
+    private void walk(Step first) throws IOException {
+        Deque<Step> todo = new ArrayDeque<>();
+        todo.push(first);
+        while (!todo.isEmpty()) {
+            Step step = todo.pop();
+            if (step.stream() == null) {
+                expand(step.res(), step.page(), todo);
+                continue;
+            }
+            COSStream s = step.stream();
+            if (nodes.size() >= MAX_NODES || !seenStreams.add(s)) {
+                continue;
+            }
+            COSDictionary res = step.kind() == Kind.GLYPH ? step.res() : dict(s.getDictionaryObject(COSName.RESOURCES));
+            if (res == null) {
+                res = step.res();
+            }
+            nodes.add(new Node(step.kind(), step.page(), s, List.of(s), res));
+            todo.push(new Step(null, res, step.page(), null));
+        }
+    }
+
+    private void expand(COSDictionary res, int page, Deque<Step> todo) throws IOException {
         if (res == null || !resources.add(res)) {
             return;
         }
         PdfFiles.stopIfInterrupted();
+        List<Step> children = new ArrayList<>();
         COSDictionary xobjects = dict(res.getDictionaryObject(COSName.XOBJECT));
         if (xobjects != null) {
             for (COSName name : xobjects.keySet()) {
                 if (xobjects.getDictionaryObject(name) instanceof COSStream s && COSName.FORM.equals(s.getCOSName(COSName.SUBTYPE))) {
-                    form(s, page, res, Kind.FORM);
+                    children.add(new Step(s, res, page, Kind.FORM));
                 }
             }
         }
@@ -133,7 +162,7 @@ final class ContentGraph {
         if (patterns != null) {
             for (COSName name : patterns.keySet()) {
                 if (patterns.getDictionaryObject(name) instanceof COSStream s && s.getInt(COSName.PATTERN_TYPE) == 1) {
-                    form(s, page, res, Kind.PATTERN);
+                    children.add(new Step(s, res, page, Kind.PATTERN));
                 }
             }
         }
@@ -143,7 +172,7 @@ final class ContentGraph {
                 COSDictionary gs = dict(gstates.getDictionaryObject(name));
                 COSDictionary smask = gs == null ? null : dict(gs.getDictionaryObject(COSName.SMASK));
                 if (smask != null && smask.getDictionaryObject(COSName.G) instanceof COSStream g) {
-                    form(g, page, res, Kind.FORM);
+                    children.add(new Step(g, res, page, Kind.FORM));
                 }
             }
         }
@@ -161,14 +190,14 @@ final class ContentGraph {
                     continue;
                 }
                 for (COSName glyph : procs.keySet()) {
-                    if (procs.getDictionaryObject(glyph) instanceof COSStream s && nodes.size() < MAX_NODES
-                            && seenStreams.add(s)) {
-                        COSDictionary r = fres == null ? res : fres;
-                        nodes.add(new Node(Kind.GLYPH, page, s, List.of(s), r));
-                        walkResources(r, page);
+                    if (procs.getDictionaryObject(glyph) instanceof COSStream s) {
+                        children.add(new Step(s, fres == null ? res : fres, page, Kind.GLYPH));
                     }
                 }
             }
+        }
+        for (int i = children.size() - 1; i >= 0; i--) {
+            todo.push(children.get(i));
         }
     }
 

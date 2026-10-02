@@ -1,5 +1,6 @@
 package stirling.software.officeconvert.pdfa;
 
+import java.io.InterruptedIOException;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.IdentityHashMap;
@@ -22,7 +23,7 @@ final class OptionalContent {
 
     private OptionalContent() {}
 
-    static void configure(PDDocument doc) {
+    static void configure(PDDocument doc) throws InterruptedIOException {
         COSDictionary oc = ContentGraph.dict(doc.getDocumentCatalog().getCOSObject().getDictionaryObject(COSName.OCPROPERTIES));
         if (oc == null) {
             return;
@@ -46,7 +47,8 @@ final class OptionalContent {
         }
     }
 
-    private static void config(COSDictionary c, COSArray groups, Set<String> names, String fallback) {
+    private static void config(COSDictionary c, COSArray groups, Set<String> names, String fallback)
+            throws InterruptedIOException {
         c.removeItem(AS);
         String name = c.getDictionaryObject(COSName.NAME) instanceof COSString s ? s.getString().strip() : "";
         if (name.isEmpty() || !names.add(name)) {
@@ -61,7 +63,7 @@ final class OptionalContent {
             return;
         }
         Set<COSBase> listed = Collections.newSetFromMap(new IdentityHashMap<>());
-        collect(order, listed, 0);
+        collect(order, listed, new Visits(), 0);
         for (int i = 0; i < groups.size(); i++) {
             COSBase g = groups.getObject(i);
             if (g instanceof COSDictionary && !listed.contains(g)) {
@@ -70,14 +72,15 @@ final class OptionalContent {
         }
     }
 
-    private static void collect(COSArray order, Set<COSBase> listed, int depth) {
-        if (depth > 32) {
+    private static void collect(COSArray order, Set<COSBase> listed, Visits visits, int depth)
+            throws InterruptedIOException {
+        if (depth > 32 || !visits.first(order)) {
             return;
         }
         for (int i = 0; i < order.size(); i++) {
             COSBase b = order.getObject(i);
             if (b instanceof COSArray a) {
-                collect(a, listed, depth + 1);
+                collect(a, listed, visits, depth + 1);
             } else if (b instanceof COSDictionary) {
                 listed.add(b);
             }

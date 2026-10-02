@@ -49,7 +49,7 @@ final class StructureCheck {
         for (PDPage page : doc.getPages()) {
             PdfFiles.stopIfInterrupted();
             pageNumbers.put(page.getCOSObject(), ++index);
-            c.page(page, index, referenced.getOrDefault(page.getCOSObject(), Set.of()));
+            c.page(page, index, referenced.getOrDefault(page.getCOSObject(), Set.of()), referenced);
         }
         List<String> problems = new ArrayList<>();
         if (c.text > 0) {
@@ -96,18 +96,18 @@ final class StructureCheck {
         }
     }
 
-    private void page(PDPage page, int number, Set<Integer> referenced) throws IOException {
+    private void page(PDPage page, int number, Set<Integer> referenced, Map<COSDictionary, Set<Integer>> byOwner)
+            throws IOException {
         COSDictionary p = page.getCOSObject();
         List<COSStream> streams = ContentGraph.contents(p);
         if (streams.isEmpty()) {
             return;
         }
         COSDictionary res = page.getResources() == null ? null : page.getResources().getCOSObject();
-        TaggedContent t = new TaggedContent(referenced);
+        TaggedContent t = new TaggedContent(referenced, byOwner);
         List<Object> rewritten = t.scan(ContentTokens.parse(streams), res);
         if (rewritten != null) {
-            ContentTokens.write(streams.get(0), rewritten);
-            p.setItem(COSName.CONTENTS, streams.get(0));
+            ContentTokens.replacePage(p, rewritten);
         }
         text += t.text;
         images += t.images;

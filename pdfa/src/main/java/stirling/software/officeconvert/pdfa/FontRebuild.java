@@ -24,6 +24,8 @@ import org.apache.pdfbox.pdmodel.font.PDTrueTypeFont;
 import org.apache.pdfbox.pdmodel.font.PDType0Font;
 import org.apache.pdfbox.pdmodel.font.PDVectorFont;
 
+import stirling.software.officeconvert.extract.PdfFiles;
+
 final class FontRebuild {
 
     enum Mode {
@@ -65,6 +67,7 @@ final class FontRebuild {
         TreeMap<Integer, Float> widths = new TreeMap<>();
         int missing = 0;
         for (int code : codes) {
+            PdfFiles.stopIfInterrupted();
             int key = type0 ? cid.codeToCID(code) : code;
             String text = UnicodeGuess.of(font, code, type0 ? bytesPerCode : 1);
             if (!ToUnicodeWriter.valid(text) || ToUnicodeWriter.privateUse(text)) {

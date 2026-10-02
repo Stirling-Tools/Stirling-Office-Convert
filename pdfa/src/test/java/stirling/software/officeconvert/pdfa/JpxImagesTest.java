@@ -231,6 +231,35 @@ class JpxImagesTest {
         }
     }
 
+    @Test
+    void alphaWithoutSMaskInDataStillBecomesASoftMask() throws Exception {
+        for (boolean colour : new boolean[] {true, false}) {
+            Path in = page(jpx(colour ? colourWithAlpha() : grayWithAlpha()), 80, 60, false);
+            for (PdfALevel level : new PdfALevel[] {PdfALevel.A1B, PdfALevel.A2B}) {
+                Path out = dir.resolve("no-smid-" + colour + "-" + level + ".pdf");
+                PdfToPdfA.convert(in, out, PdfToPdfA.Options.defaults().level(level));
+                VeraPdf.assertCompliant(out, level);
+                assertEquals(colour && level == PdfALevel.A2B, hasJpx(out));
+                if (hasJpx(out)) {
+                    continue;
+                }
+                try (PDDocument d = Loader.loadPDF(out.toFile())) {
+                    BufferedImage page = new PDFRenderer(d).renderImage(0);
+                    int[] opaque = colour ? new int[] {30, 100, 225} : new int[] {30, 30, 30};
+                    int[] half = colour ? new int[] {202, 177, 180} : new int[] {202, 202, 202};
+                    assertPixel(page.getRGB(100 + 10 * 4 + 2, 842 - 640 + 5 * 4 + 2), opaque, colour + " " + level);
+                    assertPixel(page.getRGB(100 + 50 * 4 + 2, 842 - 640 + 5 * 4 + 2), half, colour + " " + level);
+                }
+            }
+        }
+    }
+
+    private static void assertPixel(int rgb, int[] want, String what) {
+        for (int i = 0; i < 3; i++) {
+            assertEquals(want[i], rgb >> (16 - 8 * i) & 0xFF, 6, what + " " + Integer.toHexString(rgb));
+        }
+    }
+
     private static byte[] samples(COSStream s) throws Exception {
         try (java.io.InputStream in = s.createInputStream()) {
             return in.readAllBytes();

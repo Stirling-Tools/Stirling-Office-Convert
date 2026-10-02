@@ -59,18 +59,32 @@ final class PageSize {
             if (media == null) {
                 continue;
             }
-            float largest = Math.max(Math.abs(media[2] - media[0]), Math.abs(media[3] - media[1]));
-            if (largest > MAX) {
-                float unit = (float) Math.ceil(largest / MAX * 1000) / 1000;
-                scale(doc, page, unit);
-                scaled.put(p, 1 / unit);
+            float width = Math.abs(media[2] - media[0]);
+            float height = Math.abs(media[3] - media[1]);
+            float largest = Math.max(width, height);
+            float smallest = Math.min(width, height);
+            if (largest <= MAX && smallest >= MIN) {
+                continue;
             }
+            float unit = largest > MAX ? (float) Math.ceil(largest / MAX * 1000) / 1000
+                    : (float) Math.floor(smallest / MIN * 1000) / 1000;
+            if (!(unit > 0) || largest / unit > MAX || smallest / unit < MIN) {
+                throw new IOException(String.format(Locale.ROOT, "Page %d is %.4g by %.4g units, and %s needs every "
+                        + "page side from %d to %d units, which no UserUnit can reach", index(doc, page), width,
+                        height, level.label(), (int) MIN, (int) MAX));
+            }
+            scale(doc, page, unit);
+            scaled.put(p, 1 / unit);
         }
         if (!scaled.isEmpty()) {
             destinations(doc, scaled);
-            report.warn("Gave pages larger than " + (int) MAX + " units a UserUnit, as " + level.label()
-                    + " allows, so they keep their size");
+            report.warn("Gave pages larger than " + (int) MAX + " or smaller than " + (int) MIN + " units a UserUnit, "
+                    + "as " + level.label() + " allows, so they keep their size");
         }
+    }
+
+    private static int index(PDDocument doc, PDPage page) {
+        return doc.getPages().indexOf(page) + 1;
     }
 
     private static void scale(PDDocument doc, PDPage page, float unit) throws IOException {

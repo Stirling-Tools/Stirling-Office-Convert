@@ -18,7 +18,7 @@ final class ExplicitResources {
 
     private ExplicitResources() {}
 
-    static void run(ContentGraph graph) {
+    static void run(ContentGraph graph) throws IOException {
         for (ContentGraph.Node n : graph.nodes()) {
             if (n.resources() == null || n.kind() == ContentGraph.Kind.GLYPH
                     || n.owner().getDictionaryObject(COSName.RESOURCES) != null) {
@@ -46,7 +46,7 @@ final class ExplicitResources {
         }
     }
 
-    private static Set<COSName> used(List<COSStream> streams) {
+    private static Set<COSName> used(List<COSStream> streams) throws IOException {
         Set<COSName> names = new HashSet<>();
         try {
             for (Object t : ContentTokens.parse(streams)) {
@@ -58,6 +58,7 @@ final class ExplicitResources {
                 }
             }
         } catch (IOException e) {
+            Decoded.rethrowFatal(e);
             return null;
         }
         return names;

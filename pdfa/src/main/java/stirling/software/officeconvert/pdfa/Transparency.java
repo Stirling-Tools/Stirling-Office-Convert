@@ -27,8 +27,6 @@ import org.apache.pdfbox.pdmodel.common.PDRectangle;
 import org.apache.pdfbox.pdmodel.graphics.image.JPEGFactory;
 import org.apache.pdfbox.pdmodel.graphics.image.LosslessFactory;
 import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
-import org.apache.pdfbox.rendering.ImageType;
-import org.apache.pdfbox.rendering.PDFRenderer;
 import org.apache.pdfbox.util.Matrix;
 
 import stirling.software.officeconvert.extract.PdfFiles;
@@ -47,7 +45,9 @@ final class Transparency {
 
     private final Set<COSDictionary> flattenedAnnots = Collections.newSetFromMap(new IdentityHashMap<>());
 
-    private PDFRenderer renderer;
+    private FlattenRenderer renderer;
+
+    private final InvisibleText invisible;
 
     private int counter;
 
@@ -55,6 +55,7 @@ final class Transparency {
         this.doc = doc;
         this.dpi = dpi;
         this.report = report;
+        invisible = new InvisibleText(doc);
     }
 
     static void run(PDDocument doc, float dpi, Report report) throws IOException {
@@ -66,7 +67,8 @@ final class Transparency {
                 t.page(page, index);
             } catch (IOException | RuntimeException e) {
                 PdfFiles.stopIfInterrupted();
-                report.warn("Could not flatten the transparency on page " + (index + 1) + ": " + e.getMessage());
+                throw new IOException("The transparency on page " + (index + 1) + " could not be flattened for "
+                        + "PDF/A-1 (" + e.getMessage() + "); use PDF/A-2 or 3, which keep it", e);
             }
             index++;
         }
@@ -115,9 +117,7 @@ final class Transparency {
             }
         }
         List<Object> out = rewrite(tokens, ops, insert, image, region, res, page);
-        COSStream target = streams.isEmpty() ? doc.getDocument().createCOSStream() : streams.get(0);
-        ContentTokens.write(target, out);
-        p.setItem(COSName.CONTENTS, target);
+        ContentTokens.replacePage(p, out);
         for (COSDictionary a : annots) {
             flattenedAnnots.add(a);
         }
@@ -137,8 +137,15 @@ final class Transparency {
             }
             boolean t = a.getDictionaryObject(COSName.CA) instanceof COSNumber n && n.floatValue() < 0.999f;
             COSDictionary ap = ContentGraph.dict(a.getDictionaryObject(COSName.AP));
-            if (!t && ap != null && ap.getDictionaryObject(COSName.N) instanceof COSStream n) {
+            COSBase normal = ap == null ? null : ap.getDictionaryObject(COSName.N);
+            if (!t && normal instanceof COSStream n) {
                 t = scan.xobjectTransparent(n, pageRes, 0);
+            } else if (!t && normal instanceof COSDictionary states) {
+                for (COSName state : states.keySet()) {
+                    if (!t && states.getDictionaryObject(state) instanceof COSStream n) {
+                        t = scan.xobjectTransparent(n, pageRes, 0);
+                    }
+                }
             }
             if (t) {
                 out.add(a);
@@ -150,7 +157,7 @@ final class Transparency {
     private PDImageXObject render(PDPage page, int index, Rectangle2D region, Rectangle2D crop,
             List<COSDictionary> annots) throws IOException {
         if (renderer == null) {
-            renderer = new RgbGroupRenderer(doc);
+            renderer = new FlattenRenderer(doc);
         }
         Set<COSDictionary> include = Collections.newSetFromMap(new IdentityHashMap<>());
         include.addAll(annots);
@@ -164,7 +171,7 @@ final class Transparency {
         page.setRotation(0);
         BufferedImage full;
         try {
-            full = renderer.renderImage(index, (float) scale, ImageType.RGB);
+            full = renderer.render(index, (float) scale);
         } finally {
             page.setRotation(rotation);
         }
@@ -221,7 +228,7 @@ final class Transparency {
     }
 
     private List<Object> rewrite(List<Object> tokens, List<TransparencyScan.Op> ops, int insert, PDImageXObject image,
-            Rectangle2D region, COSDictionary res, PDPage page) {
+            Rectangle2D region, COSDictionary res, PDPage page) throws IOException {
         java.util.Map<Integer, TransparencyScan.Op> byEnd = new java.util.HashMap<>();
         for (TransparencyScan.Op op : ops) {
             byEnd.put(op.end(), op);
@@ -281,6 +288,9 @@ final class Transparency {
                 }
             }
             if (dropped.contains(begin) || dropped.contains(i)) {
+                if ("Do".equals(name)) {
+                    out.addAll(invisibleText(operation, res, page));
+                }
                 continue;
             }
             TransparencyScan.Op op2 = byEnd.get(i);
@@ -300,7 +310,25 @@ final class Transparency {
         return out;
     }
 
-    private List<Object> draw(PDImageXObject image, Rectangle2D region, Matrix ctm, COSDictionary res, PDPage page) {
+    private List<Object> invisibleText(List<Object> operation, COSDictionary res, PDPage page) throws IOException {
+        if (operation.size() != 2 || !(operation.get(0) instanceof COSName xn)
+                || !(TransparencyScan.lookup(res, COSName.XOBJECT, xn) instanceof COSStream form)) {
+            return List.of();
+        }
+        COSStream hidden = invisible.of(form);
+        if (hidden == null) {
+            return List.of();
+        }
+        COSDictionary x = xobjects(res, page);
+        COSName name;
+        do {
+            name = COSName.getPDFName("PdfAText" + counter++);
+        } while (x.containsKey(name));
+        x.setItem(name, hidden);
+        return List.of(name, Operator.getOperator("Do"));
+    }
+
+    private static COSDictionary xobjects(COSDictionary res, PDPage page) {
         COSDictionary resources = res;
         if (resources == null) {
             resources = new COSDictionary();
@@ -311,6 +339,11 @@ final class Transparency {
             x = new COSDictionary();
             resources.setItem(COSName.XOBJECT, x);
         }
+        return x;
+    }
+
+    private List<Object> draw(PDImageXObject image, Rectangle2D region, Matrix ctm, COSDictionary res, PDPage page) {
+        COSDictionary x = xobjects(res, page);
         COSName name;
         do {
             name = COSName.getPDFName("PdfAFlat" + counter++);
@@ -379,7 +412,17 @@ final class Transparency {
             try (OutputStream o = empty.createOutputStream()) {
                 o.write(new byte[0]);
             }
-            ap.setItem(COSName.N, empty);
+            COSDictionary old = ContentGraph.dict(a.getDictionaryObject(COSName.AP));
+            COSDictionary states = old == null ? null : ContentGraph.dict(old.getDictionaryObject(COSName.N));
+            if (states != null && !(states instanceof COSStream)) {
+                COSDictionary blank = new COSDictionary();
+                for (COSName state : states.keySet()) {
+                    blank.setItem(state, empty);
+                }
+                ap.setItem(COSName.N, blank);
+            } else {
+                ap.setItem(COSName.N, empty);
+            }
             a.setItem(COSName.AP, ap);
         }
     }

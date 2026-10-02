@@ -137,9 +137,11 @@ final class OptionalContentRemoval {
         try {
             tokens = ContentTokens.parse(n.streams());
         } catch (IOException e) {
+            Decoded.rethrowFatal(e);
             return;
         }
         COSDictionary res = n.resources();
+        HiddenContent hidden = new HiddenContent(res);
         List<Object> out = new ArrayList<>(tokens.size());
         boolean changed = false;
         int skipDepth = 0;
@@ -173,16 +175,11 @@ final class OptionalContentRemoval {
                 changed = true;
                 continue;
             }
-            if (skipDepth == 0) {
-                out.addAll(operation);
-            }
+            out.addAll(skipDepth == 0 ? operation : hidden.replace(name, operation));
+            hidden.track(name, operation);
         }
         if (changed) {
-            COSStream target = n.streams().get(0);
-            ContentTokens.write(target, out);
-            if (n.kind() == ContentGraph.Kind.PAGE && n.streams().size() > 1) {
-                n.owner().setItem(COSName.CONTENTS, target);
-            }
+            ContentTokens.replace(n, out);
         }
     }
 

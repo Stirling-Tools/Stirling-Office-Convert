@@ -1,6 +1,8 @@
 package stirling.software.officeconvert.pdfa;
 
 import java.util.Arrays;
+import java.util.Collections;
+import java.util.IdentityHashMap;
 import java.util.Map;
 import java.util.Set;
 
@@ -18,13 +20,15 @@ final class CosEquality {
 
     private static final Set<COSName> ENCODING = Set.of(COSName.LENGTH, COSName.FILTER, COSName.DECODE_PARMS);
 
+    private final Map<COSBase, Set<COSBase>> assumed = new IdentityHashMap<>();
+
     private CosEquality() {}
 
     static boolean same(COSBase a, COSBase b) {
-        return same(a, b, 0);
+        return new CosEquality().same(a, b, 0);
     }
 
-    private static boolean same(COSBase a, COSBase b, int depth) {
+    private boolean same(COSBase a, COSBase b, int depth) {
         a = a instanceof COSObject o ? o.getObject() : a;
         b = b instanceof COSObject o ? o.getObject() : b;
         if (a == b) {
@@ -35,6 +39,10 @@ final class CosEquality {
         }
         if (a instanceof COSNumber x && b instanceof COSNumber y) {
             return x.floatValue() == y.floatValue();
+        }
+        if ((a instanceof COSArray || a instanceof COSDictionary)
+                && !assumed.computeIfAbsent(a, k -> Collections.newSetFromMap(new IdentityHashMap<>())).add(b)) {
+            return true;
         }
         if (a instanceof COSArray x && b instanceof COSArray y) {
             if (x.size() != y.size()) {
@@ -48,7 +56,11 @@ final class CosEquality {
             return true;
         }
         if (a instanceof COSStream x && b instanceof COSStream y) {
-            return entries(x, y, depth) && Arrays.equals(StreamFixer.read(x), StreamFixer.read(y));
+            if (!entries(x, y, depth)) {
+                return false;
+            }
+            byte[] left = StreamFixer.read(x);
+            return left != null && Arrays.equals(left, StreamFixer.read(y));
         }
         if (a instanceof COSDictionary x && b instanceof COSDictionary y) {
             return !(a instanceof COSStream) && !(b instanceof COSStream) && entries(x, y, depth);
@@ -56,7 +68,7 @@ final class CosEquality {
         return a.getClass() == b.getClass() && a.equals(b);
     }
 
-    private static boolean entries(COSDictionary x, COSDictionary y, int depth) {
+    private boolean entries(COSDictionary x, COSDictionary y, int depth) {
         int n = 0;
         for (Map.Entry<COSName, COSBase> e : x.entrySet()) {
             if (ENCODING.contains(e.getKey()) && x instanceof COSStream) {
