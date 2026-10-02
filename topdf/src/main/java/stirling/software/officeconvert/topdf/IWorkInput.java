@@ -19,14 +19,18 @@ final class IWorkInput {
     private IWorkInput() {}
 
     static Long estimate(Path source) throws IOException {
-        return IWorkPreview.is(source) ? 4 * Files.size(source) + 2 * Admission.BASE_BYTES : null;
+        return IWorkPreview.is(source) ? footprint(source) + Admission.BASE_BYTES : null;
+    }
+
+    private static long footprint(Path source) throws IOException {
+        return 4 * IWorkPreview.memoryBound(source) + Admission.BASE_BYTES;
     }
 
     static Result render(Path source, OutputStream sink, Options options) throws IOException {
         if (!IWorkPreview.is(source)) {
             return null;
         }
-        try (Admission.Ticket _ = Admission.jvm().enter(4 * Files.size(source) + Admission.BASE_BYTES);
+        try (Admission.Ticket _ = Admission.jvm().enter(footprint(source));
                 PdfOutput output = new PdfOutput(options.fontLibrary(), options.maxScratchBytes())) {
             IWorkPreview.Drawn drawn = IWorkPreview.draw(source, output, options.maxPages());
             OfficeToPdf.stopIfInterrupted();
