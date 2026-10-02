@@ -74,7 +74,7 @@ public final class ClassScan {
 
     private static final String IO = "stirling/software/officeconvert/topdf/io/";
 
-    public static final Set<String> POI_DRAWING_CLASSES = Set.of(IO + "SafeImageRenderer", IO + "Metafiles");
+    public static final Set<String> POI_DRAWING_CLASSES = Set.of(IO + "SafeImageRenderer", IO + "Metafiles", IO + "EmfDrawing");
 
     public static final List<String> POI_DRAWING_TYPES = List.of("org/apache/poi/sl/draw/DrawFactory",
             "org/apache/poi/sl/draw/DrawPictureShape", "org/apache/poi/sl/draw/DrawTexturePaint",
