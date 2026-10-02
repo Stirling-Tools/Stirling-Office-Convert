@@ -706,13 +706,12 @@ final class RtfReader {
         }
         if (pendingLength == pending.length) {
             if (pending.length >= 1 << 16) {
-                int whole = CodePages.wholeLength(pending, pendingLength);
-                byte carry = pending[pendingLength - 1];
+                int length = pendingLength;
+                int whole = Math.max(1, CodePages.wholeLength(pairing(), pending, length));
                 pendingLength = whole;
                 flush();
-                if (whole < pending.length) {
-                    pending[pendingLength++] = carry;
-                }
+                System.arraycopy(pending, whole, pending, 0, length - whole);
+                pendingLength = length - whole;
             } else {
                 pending = Arrays.copyOf(pending, pending.length * 2);
             }
@@ -761,6 +760,24 @@ final class RtfReader {
             }
         }
         return false;
+    }
+
+    private Charset pairing() {
+        if (g.dest == Dest.FONTTBL || g.dest == Dest.FALT) {
+            return defs.fontCharset();
+        }
+        int font = doc.effectiveFont(g.chp, g.pap);
+        if (doc.fonts.symbol(font)) {
+            return null;
+        }
+        Charset cs = doc.charset(font);
+        if (g.chp.mode == CharProps.MODE_DBCH && g.chp.has(CharProps.EA_FONT)) {
+            Charset ea = doc.charset(g.chp.eaFont);
+            if (CodePages.doubleByte(ea)) {
+                return ea;
+            }
+        }
+        return cs.equals(CodePages.WINDOWS_1252) && CodePages.doubleByte(doc.ansi) ? doc.ansi : cs;
     }
 
     private Charset doubleByte(Charset cs) {

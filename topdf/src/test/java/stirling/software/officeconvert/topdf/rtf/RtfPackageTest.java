@@ -612,4 +612,24 @@ class RtfPackageTest {
         assertTrue(b.contains(">R11999C7<") && b.contains("END OF DOCUMENT"), "the whole table and its tail");
     }
 
+    @Test
+    void halfWidthKatakanaBesideDoubleBytePairsDecodesInShiftJis() throws IOException {
+        String b = convert("{\\rtf1\\ansi\\ansicpg932{\\fonttbl{\\f0\\fcharset0 MS Mincho;}}"
+                + "\\f0 A:\\'82\\'a0\\'b1\\'b2\\par B:\\'b0C\\par}").body();
+        assertTrue(b.contains("A:\u3042\uff71\uff72"), b);
+        assertTrue(b.contains("B:\u00b0C"), b);
+    }
+
+    @Test
+    void aLongShiftJisRunIsNotSplitWhereSingleBytesShiftThePairs() throws IOException {
+        String unit = "\\'b1\\'82\\'a0";
+        for (String font : new String[] {"\\f0", "\\loch\\f0\\hich\\af0\\dbch\\af1"}) {
+            String b = convert("{\\rtf1\\ansi\\ansicpg932{\\fonttbl{\\f0\\fcharset0 Calibri;}"
+                    + "{\\f1\\fcharset128 MS Mincho;}}\\pard" + font + " x" + unit.repeat(30_000) + "\\par}").body();
+            assertFalse(b.contains("\uFFFD"), font);
+            assertEquals(30_000, b.chars().filter(c -> c == 0x3042).count(), font);
+            assertEquals(30_000, b.chars().filter(c -> c == 0xff71).count(), font);
+        }
+    }
+
 }
