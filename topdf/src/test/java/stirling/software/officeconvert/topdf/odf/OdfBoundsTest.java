@@ -67,4 +67,29 @@ class OdfBoundsTest {
         Allocation.Measured m = Allocation.measure(() -> outcome[0] = OdfPackage.write(in, new ByteArrayOutputStream()));
         assertBounded(m, outcome);
     }
+
+    private Allocation.Measured spreadsheet(String rows, OdfPackage.Outcome[] outcome) throws IOException {
+        Path in = OdfFixtures.write(dir, "book.ods", OdfFixtures.odf(OdfFixtures.SPREADSHEET, OdfFixtures.content("",
+                "<office:spreadsheet><table:table table:name=\"A\">" + rows + "</table:table></office:spreadsheet>"),
+                null));
+        return Allocation.measure(() -> outcome[0] = OdfPackage.write(in, new ByteArrayOutputStream()));
+    }
+
+    @Test
+    void repeatedSpreadsheetRowsCountEveryCellTheyWrite() throws IOException {
+        String row = "<table:table-row table:number-rows-repeated=\"10000\"><table:table-cell"
+                + " table:number-columns-repeated=\"16384\" office:value-type=\"float\" office:value=\"1\"/>"
+                + "</table:table-row>";
+        OdfPackage.Outcome[] outcome = new OdfPackage.Outcome[1];
+        assertBounded(spreadsheet(row.repeat(3), outcome), outcome);
+    }
+
+    @Test
+    void repeatedSpreadsheetRowsCountEveryMergeTheyAdd() throws IOException {
+        String row = "<table:table-row table:number-rows-repeated=\"10000\"><table:table-cell"
+                + " office:value-type=\"float\" office:value=\"1\"/><table:table-cell table:number-columns-spanned=\"2\"/><table:covered-table-cell/>".repeat(8000)
+                + "</table:table-row>";
+        OdfPackage.Outcome[] outcome = new OdfPackage.Outcome[1];
+        assertBounded(spreadsheet(row, outcome), outcome);
+    }
 }
