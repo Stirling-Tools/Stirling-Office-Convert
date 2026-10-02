@@ -86,7 +86,7 @@ public final class OfficeToPdf {
                         "stw", "pages" -> DOCX;
                 case "txt", "text", "log", "asc" -> TEXT;
                 case "pptx", "pptm", "ppsx", "ppsm", "potx", "potm", "odp", "otp", "fodp", "odg", "otg", "fodg", "sxi",
-                        "sti", "sxd", "std", "key" -> PPTX;
+                        "sti", "sxd", "std", "key", "vsdx", "vsdm", "vssx", "vssm", "vstx", "vstm" -> PPTX;
                 case "xlsx", "xlsm", "xltx", "xltm", "xls", "xlt", "xlsb", "ods", "ots", "fods", "sxc", "stc", "slk",
                         "sylk", "dif", "dbf", "numbers" -> XLSX;
                 case "csv" -> CSV;
@@ -98,7 +98,8 @@ public final class OfficeToPdf {
                             + file.getFileName() + "; use .docx, .docm, .dotx, .dotm, .doc, .dot, .rtf, .pptx, .pptm,"
                             + " .ppsx, .ppsm, .potx, .potm, .xlsx, .xlsm, .xltx, .xltm, .xlsb, .xls, .xlt, .ppt, .pps, .pot,"
                             + " .odt, .ott, .fodt, .odm, .ods, .ots, .fods, .odp, .otp, .fodp, .odg, .otg, .fodg, .sxw, .stw,"
-                            + " .sxc, .stc, .sxi, .sti, .sxd, .std, .xml, .slk, .dif, .dbf, .pages, .numbers, .key, .txt,"
+                            + " .sxc, .stc, .sxi, .sti, .sxd, .std, .vsdx, .vsdm, .vssx, .vssm, .vstx, .vstm, .xml, .slk,"
+                            + " .dif, .dbf, .pages, .numbers, .key, .txt,"
                             + " .text, .log, .asc, .csv, .tsv or .tab");
                 }
             };
@@ -110,7 +111,7 @@ public final class OfficeToPdf {
                 case "docx", "docm", "dotx", "dotm", "pptx", "pptm", "ppsx", "ppsm", "potx", "potm", "xlsx", "xlsm",
                         "xltx", "xltm", "doc", "dot", "ppt", "pps", "pot", "xls", "xlt", "xlsb", "rtf", "odt", "ott", "fodt",
                         "odm", "ods", "ots", "fods", "odp", "otp", "fodp", "odg", "otg", "fodg", "xml", "sxw", "stw", "sxc",
-                        "stc", "sxi", "sti", "sxd", "std" -> true;
+                        "stc", "sxi", "sti", "sxd", "std", "vsdx", "vsdm", "vssx", "vssm", "vstx", "vstm" -> true;
                 case "txt", "text", "log", "asc", "csv", "tsv", "tab" -> true;
                 case "slk", "sylk", "dif", "dbf", "pages", "numbers", "key" -> true;
                 default -> false;
@@ -328,6 +329,10 @@ public final class OfficeToPdf {
         Long iwork = IWorkInput.estimate(in);
         if (iwork != null) {
             return iwork;
+        }
+        Long visio = VisioInput.estimate(in);
+        if (visio != null) {
+            return visio;
         }
         if (XlsbPackage.is(in)) {
             return XlsbPackage.estimate(Files.size(in)) + 2 * Admission.BASE_BYTES;
@@ -560,6 +565,10 @@ public final class OfficeToPdf {
         Result iwork = IWorkInput.render(source, sink, options);
         if (iwork != null) {
             return iwork;
+        }
+        Result visio = VisioInput.render(source, sink, options, renderer);
+        if (visio != null) {
+            return visio;
         }
         Result xlsb = binaryWorkbook(source, sink, options, renderer);
         if (xlsb != null) {

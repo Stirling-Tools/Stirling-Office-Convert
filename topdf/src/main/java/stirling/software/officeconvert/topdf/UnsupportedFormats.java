@@ -24,7 +24,7 @@ public final class UnsupportedFormats {
             case "wps" -> works();
             case "wpd", "wp", "wp5", "wp6", "wp7", "wpt" -> wordPerfect();
             case "pub" -> publisher();
-            case "vsd", "vsdx", "vsdm", "vdx", "vss", "vssx", "vst", "vstx", "vsw" -> visio();
+            case "vsd", "vdx", "vss", "vst", "vsw", "vsx", "vtx" -> visio();
             case "wk1", "wk3", "wk4", "wks", "123", "wk!" -> lotus();
             case "wb1", "wb2", "wb3", "qpw", "wq1", "wq2" -> "Quattro Pro spreadsheets are not supported; save the file"
                     + " as .xlsx";
@@ -121,7 +121,7 @@ public final class UnsupportedFormats {
     }
 
     private static String visio() {
-        return "Visio drawings are not supported; save the drawing as PDF from Visio";
+        return "Visio 2003-2010 drawings (.vsd, .vdx) are not supported; save the drawing as .vsdx or as PDF from Visio";
     }
 
     private static String lotus() {

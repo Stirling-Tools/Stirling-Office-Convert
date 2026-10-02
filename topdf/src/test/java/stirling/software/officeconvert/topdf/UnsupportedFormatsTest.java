@@ -28,7 +28,7 @@ class UnsupportedFormatsTest {
     void knownFormatsAreNamedByExtension() throws IOException {
         assertTrue(refusal("letter.wpd", new byte[] {1, 2, 3}).contains("WordPerfect"));
         assertTrue(refusal("flyer.pub", new byte[] {1, 2, 3}).contains("Publisher"));
-        assertTrue(refusal("plan.vsdx", new byte[] {1, 2, 3}).contains("Visio"));
+        assertTrue(refusal("plan.vsd", new byte[] {1, 2, 3}).contains("Visio"));
         assertTrue(refusal("budget.wk1", new byte[] {1, 2, 3}).contains("Lotus"));
     }
 
