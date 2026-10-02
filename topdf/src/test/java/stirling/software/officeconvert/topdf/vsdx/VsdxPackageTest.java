@@ -133,6 +133,39 @@ class VsdxPackageTest {
     }
 
     @Test
+    void aMasterWithAHugePolylineInstancedManyTimesIsCutToABudget() throws IOException {
+        StringBuilder poly = new StringBuilder("POLYLINE(0,0");
+        for (int i = 0; i < 50_000; i++) {
+            poly.append(',').append(i % 2 == 0 ? "0.1" : "0.9").append(',').append(i / 50_000.0);
+        }
+        poly.append(')');
+        String master = "<Shape ID='5' Type='Shape' LineStyle='0' FillStyle='0' TextStyle='0'><Cell N='Width' V='2'/>"
+                + "<Cell N='Height' V='1'/><Section N='Geometry' IX='0'><Row T='MoveTo' IX='1'><Cell N='X' V='0'/>"
+                + "<Cell N='Y' V='0'/></Row><Row T='PolylineTo' IX='2'><Cell N='X' V='2'/><Cell N='Y' V='1'/>"
+                + "<Cell N='A' V='" + poly + "'/></Row></Section></Shape>";
+        StringBuilder page = new StringBuilder();
+        for (int i = 0; i < 1000; i++) {
+            page.append("<Shape ID='").append(i + 1).append("' Type='Shape' Master='7'><Cell N='PinX' V='4'/>")
+                    .append("<Cell N='PinY' V='2'/></Shape>");
+        }
+        Path in = file("huge.vsdx", drawing(page.toString(), master));
+        long[] bytes = {0};
+        OutputStream counting = new OutputStream() {
+            @Override
+            public void write(int b) {
+                bytes[0]++;
+            }
+
+            @Override
+            public void write(byte[] b, int off, int len) {
+                bytes[0] += len;
+            }
+        };
+        VsdxPackage.Outcome o = VsdxPackage.write(in, counting);
+        assertTrue(o.lost(), o.warnings().toString());
+    }
+
+    @Test
     void drawsMasterGeometryAtTheInstancePosition() throws IOException {
         String slide = pptx(file("a.vsdx", drawing(INSTANCE, MASTER))).get("ppt/slides/slide1.xml");
         assertTrue(slide.contains("<a:off x=\"2743200\" y=\"1371600\"/><a:ext cx=\"1828800\" cy=\"914400\"/>"),

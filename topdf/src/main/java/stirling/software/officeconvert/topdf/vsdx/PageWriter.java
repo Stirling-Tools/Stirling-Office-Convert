@@ -137,6 +137,10 @@ final class PageWriter {
     }
 
     private void draw(Sheet s, Affine m, double w, double h) throws IOException {
+        if (slide.full()) {
+            cut = true;
+            return;
+        }
         if (s.foreignRel != null || s.base != null && s.base.foreignRel != null) {
             picture(s, m, w, h);
         }

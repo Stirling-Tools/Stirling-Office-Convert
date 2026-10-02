@@ -12,9 +12,19 @@ final class Slide {
 
     final Map<String, String> images = new LinkedHashMap<>();
 
+    private final long limit;
+
     private int nextId = 2;
 
     int shapes;
+
+    Slide(long limit) {
+        this.limit = limit;
+    }
+
+    boolean full() {
+        return tree.length() >= limit;
+    }
 
     private String image(String target) {
         return images.computeIfAbsent(target, t -> "rId" + (images.size() + 2));

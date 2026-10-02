@@ -46,6 +46,10 @@ public final class VsdxPackage {
 
     private static final String CUT = "Some shapes nested too deeply or too many were left out";
 
+    private static final long MAX_SLIDE_CHARS = 16L << 20;
+
+    private static final long MAX_DRAWING_CHARS = 64L << 20;
+
     private static final long MIN_SIDE = 914_400L / 4;
 
     private static final long MAX_SIDE = 51_206_400L;
@@ -109,17 +113,23 @@ public final class VsdxPackage {
         StringBuilder presRels = new StringBuilder();
         StringBuilder types = new StringBuilder();
         int n = 0;
+        long written = 0;
         for (Drawing.Page page : printed) {
             if (Thread.currentThread().isInterrupted()) {
                 throw new java.io.InterruptedIOException("Conversion interrupted");
             }
+            if (written >= MAX_DRAWING_CHARS) {
+                warnings.add("Only the first " + n + " pages were converted");
+                break;
+            }
             n++;
-            Slide slide = new Slide();
+            Slide slide = new Slide(Math.min(MAX_SLIDE_CHARS, MAX_DRAWING_CHARS - written));
             PageWriter writer = new PageWriter(drawing, media, slide);
             writer.page(page, transform(drawing, page, cx, cy), 0);
             if (writer.cut && !warnings.contains(CUT)) {
                 warnings.add(CUT);
             }
+            written += slide.tree.length();
             slide(parts, slide, n);
             presRels.append(rel("rId" + (n + 2), "slide", "slides/slide" + n + ".xml"));
             ids.append("<p:sldId id=\"").append(255 + n).append("\" r:id=\"rId").append(n + 2).append("\"/>");
