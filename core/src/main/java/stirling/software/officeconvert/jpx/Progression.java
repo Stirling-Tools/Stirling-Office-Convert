@@ -2,9 +2,8 @@ package stirling.software.officeconvert.jpx;
 
 import java.io.IOException;
 import java.io.InterruptedIOException;
-import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
+import java.util.PriorityQueue;
 
 final class Progression {
 
@@ -18,9 +17,6 @@ final class Progression {
 
     interface Visitor {
         boolean packet(int layer, int resolution, int component, int precinct) throws IOException;
-    }
-
-    private record Entry(int c, int r, int k, long y, long x) {
     }
 
     private final TileComponent[] comps;
@@ -84,12 +80,14 @@ final class Progression {
                 }
                 yield true;
             }
-            default -> positional(poc.order(), le, rs, re, cs, ce);
+            default -> le <= 0 || positional(poc.order(), le, rs, re, cs, ce);
         };
     }
 
     private boolean components(int l, int r, int cs, int ce) throws IOException {
+        step();
         for (int c = cs; c < ce; c++) {
+            step();
             Resolution[] res = comps[c].resolutions;
             if (r >= res.length) {
                 continue;
@@ -105,14 +103,7 @@ final class Progression {
     }
 
     private boolean emit(int l, int r, int c, int k) throws IOException {
-        if ((++steps & 0xFFF) == 0) {
-            if (steps > MAX_STEPS) {
-                throw new JpxException("JPEG 2000 progression is too long");
-            }
-            if (Thread.currentThread().isInterrupted()) {
-                throw new InterruptedIOException("JPEG 2000 decoding interrupted");
-            }
-        }
+        step();
         Resolution res = comps[c].resolutions[r];
         if (res.nextLayer[k] != l) {
             return true;
@@ -121,52 +112,43 @@ final class Progression {
         return visitor.packet(l, r, c, k);
     }
 
+    private void step() throws IOException {
+        if ((++steps & 0xFFF) == 0) {
+            if (steps > MAX_STEPS) {
+                throw new JpxException("JPEG 2000 progression is too long");
+            }
+            if (Thread.currentThread().isInterrupted()) {
+                throw new InterruptedIOException("JPEG 2000 decoding interrupted");
+            }
+        }
+    }
+
     private boolean positional(int order, int le, int rs, int re, int cs, int ce) throws IOException {
-        List<Entry> entries = new ArrayList<>();
+        PriorityQueue<PrecinctCursor> queue = new PriorityQueue<>(PrecinctCursor.order(order));
         for (int c = cs; c < ce; c++) {
             Resolution[] res = comps[c].resolutions;
             int levels = res.length - 1;
             for (int r = rs; r < Math.min(re, res.length); r++) {
-                Resolution rr = res[r];
-                if (rr.precincts() == 0) {
-                    continue;
-                }
-                int shift = levels - r;
-                long dx = (long) siz.dx()[c] << shift;
-                long dy = (long) siz.dy()[c] << shift;
-                for (int j = 0; j < rr.precinctsHigh; j++) {
-                    long y = trigger(j, rr.y0, rr.ppy, dy, tile[1]);
-                    for (int i = 0; i < rr.precinctsWide; i++) {
-                        long x = trigger(i, rr.x0, rr.ppx, dx, tile[0]);
-                        entries.add(new Entry(c, r, j * rr.precinctsWide + i, y, x));
-                    }
+                step();
+                if (res[r].precincts() > 0) {
+                    int shift = levels - r;
+                    queue.add(new PrecinctCursor(c, r, res[r], (long) siz.dx()[c] << shift,
+                            (long) siz.dy()[c] << shift, tile));
                 }
             }
         }
-        Comparator<Entry> cmp = switch (order) {
-            case RPCL -> Comparator.comparingInt(Entry::r).thenComparingLong(Entry::y).thenComparingLong(Entry::x)
-                    .thenComparingInt(Entry::c);
-            case PCRL -> Comparator.comparingLong(Entry::y).thenComparingLong(Entry::x).thenComparingInt(Entry::c)
-                    .thenComparingInt(Entry::r);
-            default -> Comparator.comparingInt(Entry::c).thenComparingLong(Entry::y).thenComparingLong(Entry::x)
-                    .thenComparingInt(Entry::r);
-        };
-        entries.sort(cmp);
-        for (Entry e : entries) {
+        while (!queue.isEmpty()) {
+            step();
+            PrecinctCursor e = queue.poll();
             for (int l = 0; l < le; l++) {
-                if (!emit(l, e.r(), e.c(), e.k())) {
+                if (!emit(l, e.r, e.c, e.precinct())) {
                     return false;
                 }
             }
+            if (e.advance()) {
+                queue.add(e);
+            }
         }
         return true;
-    }
-
-    private static long trigger(int index, int r0, int pp, long scale, long tileOrigin) {
-        long first = (long) (r0 >> pp) << pp;
-        if (index == 0) {
-            return first == r0 ? r0 * scale : tileOrigin;
-        }
-        return (first + ((long) index << pp)) * scale;
     }
 }

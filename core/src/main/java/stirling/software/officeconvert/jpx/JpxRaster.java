@@ -2,6 +2,8 @@ package stirling.software.officeconvert.jpx;
 
 public final class JpxRaster {
 
+    private static final long MAX_SAMPLES = Integer.MAX_VALUE - 8;
+
     private final int[] widths;
 
     private final int[] heights;
@@ -30,7 +32,7 @@ public final class JpxRaster {
 
     private final int height;
 
-    JpxRaster(Siz siz, int reduce, long maxSamples) throws JpxException {
+    JpxRaster(Siz siz, int reduce, long maxSamples, int bands) throws JpxException {
         int n = siz.components();
         widths = new int[n];
         heights = new int[n];
@@ -43,7 +45,6 @@ public final class JpxRaster {
         bytes = new byte[n][];
         shorts = new short[n][];
         long total = 0;
-        boolean uniform = true;
         for (int c = 0; c < n; c++) {
             x0[c] = (int) Siz.ceilShift(Siz.ceilDiv(siz.x0(), dx[c]), reduce);
             y0[c] = (int) Siz.ceilShift(Siz.ceilDiv(siz.y0(), dy[c]), reduce);
@@ -52,10 +53,19 @@ public final class JpxRaster {
             depths[c] = Math.min(16, siz.depth()[c]);
             signed[c] = siz.signed()[c];
             total += (long) widths[c] * heights[c];
-            uniform &= dx[c] == dx[0] && dy[c] == dy[0];
         }
-        if (total > maxSamples) {
-            throw new JpxException("JPEG 2000 image has " + total + " samples, more than " + maxSamples);
+        ImageGrid grid = ImageGrid.of(siz, reduce);
+        imageX0 = grid.x0();
+        imageY0 = grid.y0();
+        width = grid.width();
+        height = grid.height();
+        if (width <= 0 || height <= 0) {
+            throw new JpxException("JPEG 2000 image is empty");
+        }
+        long samples = Math.max(total, (long) width * height * Math.max(1, bands));
+        long limit = Math.min(maxSamples, MAX_SAMPLES);
+        if (samples > limit) {
+            throw new JpxException("JPEG 2000 image has " + samples + " samples, more than " + limit);
         }
         for (int c = 0; c < n; c++) {
             if (depths[c] <= 8) {
@@ -64,23 +74,11 @@ public final class JpxRaster {
                 shorts[c] = new short[widths[c] * heights[c]];
             }
         }
-        if (uniform) {
-            imageX0 = x0[0];
-            imageY0 = y0[0];
-            width = widths[0];
-            height = heights[0];
+        if (siz.uniform()) {
             for (int c = 0; c < n; c++) {
                 dx[c] = 1;
                 dy[c] = 1;
             }
-        } else {
-            imageX0 = (int) Siz.ceilShift(siz.x0(), reduce);
-            imageY0 = (int) Siz.ceilShift(siz.y0(), reduce);
-            width = (int) Siz.ceilShift(siz.width(), reduce) - imageX0;
-            height = (int) Siz.ceilShift(siz.height(), reduce) - imageY0;
-        }
-        if (width <= 0 || height <= 0) {
-            throw new JpxException("JPEG 2000 image is empty");
         }
     }
 

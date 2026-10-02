@@ -18,7 +18,8 @@ public final class JpxDecoder {
         if (boxes.palette != null) {
             reduce = 0;
         }
-        JpxRaster raster = new JpxRaster(cs.siz, reduce, options.maxSamples());
+        JpxRaster raster = new JpxRaster(cs.siz, reduce, options.maxSamples(),
+                ImageComposer.bands(boxes, cs.siz.components()));
         TileDecoder decoder = new TileDecoder(cs, raster, reduce, options.maxSamples());
         Rectangle region = options.region();
         for (int t = 0; t < cs.tiles.length; t++) {
@@ -32,12 +33,8 @@ public final class JpxDecoder {
     public static int[] size(byte[] data) throws IOException {
         Jp2Boxes boxes = Jp2Boxes.read(data);
         Siz siz = Codestream.header(data, boxes.codestreamStart, boxes.codestreamEnd);
-        boolean uniform = uniform(siz);
-        int dx = uniform ? siz.dx()[0] : 1;
-        int dy = uniform ? siz.dy()[0] : 1;
-        long w = Siz.ceilDiv(siz.width(), dx) - Siz.ceilDiv(siz.x0(), dx);
-        long h = Siz.ceilDiv(siz.height(), dy) - Siz.ceilDiv(siz.y0(), dy);
-        return new int[] {(int) w, (int) h, siz.components()};
+        ImageGrid grid = ImageGrid.of(siz, 0);
+        return new int[] {grid.width(), grid.height(), siz.components()};
     }
 
     private static int minimumLevels(Codestream cs) {
@@ -65,7 +62,7 @@ public final class JpxDecoder {
         long[] r = siz.tileRect(t);
         int sx = 1;
         int sy = 1;
-        if (uniform(siz)) {
+        if (siz.uniform()) {
             sx = siz.dx()[0];
             sy = siz.dy()[0];
         }
@@ -74,14 +71,5 @@ public final class JpxDecoder {
         long x1 = x0 + (long) region.width * sx;
         long y1 = y0 + (long) region.height * sy;
         return r[0] < x1 && r[2] > x0 && r[1] < y1 && r[3] > y0;
-    }
-
-    private static boolean uniform(Siz siz) {
-        for (int c = 1; c < siz.components(); c++) {
-            if (siz.dx()[c] != siz.dx()[0] || siz.dy()[c] != siz.dy()[0]) {
-                return false;
-            }
-        }
-        return true;
     }
 }

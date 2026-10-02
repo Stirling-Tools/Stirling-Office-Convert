@@ -56,6 +56,15 @@ record Siz(long width, long height, long x0, long y0, long tileWidth, long tileH
         return depth.length;
     }
 
+    boolean uniform() {
+        for (int c = 1; c < dx.length; c++) {
+            if (dx[c] != dx[0] || dy[c] != dy[0]) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     long tilesX() {
         return ceilDiv(width - tileX0, tileWidth);
     }
