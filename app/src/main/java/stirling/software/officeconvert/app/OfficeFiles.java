@@ -39,7 +39,11 @@ final class OfficeFiles {
             new Kind(OOXML + "spreadsheetml.sheet.main+xml", "xlsx"),
             new Kind("application/vnd.ms-excel.sheet.macroEnabled.main+xml", "xlsm"),
             new Kind(OOXML + "spreadsheetml.template.main+xml", "xltx"),
-            new Kind("application/vnd.ms-excel.template.macroEnabled.main+xml", "xltm"));
+            new Kind("application/vnd.ms-excel.template.macroEnabled.main+xml", "xltm"),
+            new Kind("application/vnd.ms-visio.drawing.main+xml", "vsdx"),
+            new Kind("application/vnd.ms-visio.drawing.macroEnabled.main+xml", "vsdm"),
+            new Kind("application/vnd.ms-visio.stencil.main+xml", "vssx"),
+            new Kind("application/vnd.ms-visio.template.main+xml", "vstx"));
 
     private static final Map<String, String> MAIN_PARTS = Map.of(
             "word/document.xml", "docx", "ppt/presentation.xml", "pptx", "xl/workbook.xml", "xlsx");
@@ -65,9 +69,9 @@ final class OfficeFiles {
             case "docx", "docm", "dotx", "dotm", "doc", "dot", "rtf", "odt", "ott", "fodt", "odm", "sxw", "stw", "xml",
                     "pages" -> "docx";
             case "pptx", "pptm", "ppsx", "ppsm", "potx", "potm", "ppt", "pps", "pot", "odp", "otp", "fodp", "odg", "otg",
-                    "fodg", "sxi", "sti", "sxd", "std", "key" -> "pptx";
+                    "fodg", "sxi", "sti", "sxd", "std", "key", "vsdx", "vsdm", "vssx", "vssm", "vstx", "vstm" -> "pptx";
             case "xlsx", "xlsm", "xltx", "xltm", "xls", "xlt", "xlsb", "ods", "ots", "fods", "sxc", "stc", "slk", "sylk",
-                    "dif", "dbf", "numbers" -> "xlsx";
+                    "dif", "dbf", "numbers", "wk1", "wks", "wk3", "wk4", "123" -> "xlsx";
             case "txt", "text", "log", "asc" -> "docx";
             case "csv", "tsv", "tab" -> "xlsx";
             default -> throw new IllegalArgumentException("Not an Office extension: " + extension);

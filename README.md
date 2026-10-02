@@ -20,10 +20,10 @@ java -jar cli/build/libs/stirling-office-convert-cli.jar report.docx slides.pptx
 CLI options for PDF input: `--pages a-b`, `--no-tables`, `--dpi n` (vector figures), `--password p`,
 `--picture-fallback`, `--pictures compact|lossless` (see Pictures below), `-q`.
 For Word, PowerPoint and Excel input (`.docx .docm .dotx .dotm .pptx .pptm .ppsx .ppsm .potx .potm .xlsx .xlsm
-.xltx .xltm .xlsb`, Word 6.0 to 2003 `.doc .dot`, Excel 5.0 to 2003 `.xls .xlt`, PowerPoint 97-2003 `.ppt .pps .pot`,
-`.rtf`, XML Spreadsheet 2003 and Flat OPC `.xml`, OpenDocument `.odt .ott .fodt .odm .ods .ots .fods .odp .otp .fodp
-.odg .otg .fodg`, OpenOffice.org 1.x `.sxw .stw .sxc .stc .sxi .sti .sxd .std`, SYLK, DIF and dBASE `.slk .dif .dbf`,
-Apple iWork `.pages .numbers .key` (from the preview they hold), plain text `.txt .text .log .asc` and tables
+.xltx .xltm .xlsb`, Word 6.0 to 2003 `.doc .dot`, Excel 2.0 to 2003 `.xls .xlt`, PowerPoint 97-2003 `.ppt .pps .pot`,
+`.rtf`, Word 2003 XML, XML Spreadsheet 2003 and Flat OPC `.xml`, Visio 2013 and later `.vsdx .vsdm .vssx .vstx`,
+OpenDocument `.odt .ott .fodt .odm .ods .ots .fods .odp .otp .fodp .odg .otg .fodg`, OpenOffice.org 1.x `.sxw .stw .sxc
+.stc .sxi .sti .sxd .std`, SYLK, DIF and dBASE `.slk .dif .dbf`, Lotus 1-2-3 `.wk1 .wks .wk3 .wk4 .123`, Apple iWork `.pages .numbers .key` (from the preview they hold), plain text `.txt .text .log .asc` and tables
 `.csv .tsv .tab`), which converts to PDF: `--password p` (a password protected document), `--max-pages n` (default 10000, 0 = all), `--timeout s` (default 300, 0 =
 none), `--fonts dir` (repeatable; an extra folder of fonts), `--font-map Family=Installed` (repeatable; draw a
 family with an installed one, such as `Aptos=Inter`), `--font-width Family=scale` (repeatable; scale a substituted
@@ -351,7 +351,9 @@ opened. A compressed picture that would inflate past 32 MB leaves the drawings o
 is cut short. Excel 5.0/95 workbooks (BIFF5, in an OLE2 file or bare) are read record by record into the same
 SpreadsheetML: cached values, number formats, fonts, fills, borders, column widths, row heights, print areas and
 titles, page setup, headers and footers and page breaks; their charts, pictures and drawing objects are left out with
-a warning. Excel 4.0 and older are refused with a plain reason.
+a warning. Excel 2.x, 3.0 and 4.0 worksheets (BIFF2 to BIFF4, one sheet per file) are first rewritten as BIFF5 (fonts,
+number formats, cell formats, cells, rows and column widths) and read the same way; Excel 4.0 workbooks that bundle
+several sheets in one file, and chart and macro sheets, are refused with a plain reason.
 
 Password protected documents open with `Options.password(...)` (`--password` on the command line): Office Open XML
 packages encrypted with Agile or Standard encryption, and Word, Excel and PowerPoint 97-2003 files encrypted with RC4,
@@ -368,8 +370,24 @@ external links and query definitions are left out.
 XML Spreadsheet 2003 files (the SpreadsheetML many systems export, often named `.xls` or `.xml`) are read as a
 stream into SpreadsheetML: styles with their parents, cached values, dates, rich text, merges, column widths, row
 heights, print areas, page setup, headers and footers. Flat OPC documents (Word, Excel or PowerPoint 2007 and later
-saved as a single `.xml`) are unpacked into their package. SYLK, DIF and dBASE tables are laid out as a one-sheet
-workbook the way Excel opens them.
+saved as a single `.xml`) are unpacked into their package. Word 2003 XML documents (WordprocessingML 2003, often
+named `.xml`, found by their root element) are rewritten as a DOCX package as a stream: fonts, styles, lists, settings,
+sections, headers and footers, footnotes and endnotes, comments, revisions and bookmarks (from their `aml:annotation`
+markup), hyperlinks, VML shapes and text boxes, and the pictures the file holds in `w:binData` (compressed EMF and WMF
+included); OLE data, templates, mail merge sources and pictures linked outside the file are left out. SYLK, DIF and
+dBASE tables are laid out as a one-sheet workbook the way Excel opens them. Lotus 1-2-3 worksheets (Release 2 `.wk1`
+and `.wks`, Release 3 and 4 `.wk3 .wk4`, 1-2-3 97 and Millennium `.123`, found by their content) become one sheet per
+Lotus sheet with their cached values (formulas are never evaluated) and, for Release 2, the Lotus cell formats,
+label alignment, column widths and hidden columns; the separate formatting of later releases is not read.
+
+Visio 2013 and later drawings (`.vsdx .vsdm .vssx .vstx`, found by their content types) are drawn one page per Visio
+page by rewriting each page as a slide for the PPTX renderer: every shape's geometry sections (lines, arcs, elliptical
+arcs, Bezier curves, NURBS, polylines and ellipses) in its group's and page's coordinates, its line and fill (patterns,
+gradients and Visio theme styles and colours resolved from the drawing's theme), arrowheads, text with its character
+and paragraph formatting in its text block, and embedded pictures; masters, master shapes and style sheets are
+inherited cell by cell, background pages are drawn beneath their pages, and shapes on layers that do not print are
+left out. Only cached cell values are used: no ShapeSheet formula is evaluated and no macro is run. Pages larger than
+the first are scaled to fit its size. Visio 2003 to 2010 drawings (`.vsd`, `.vdx`) are refused with a plain reason.
 
 Word 97-2003 documents (`.doc`, `.dot`, found by their content whatever the extension) are read with Apache POI
 HWPF and rewritten as a WordprocessingML package that the DOCX renderer draws: text with its character and paragraph
@@ -408,8 +426,8 @@ renamed elements, property sets split by style family) and converted as such; th
 
 Apple Pages, Numbers and Keynote files are not read in their own format: the PDF preview iWork stores in the file is
 drawn when there is one, else its preview picture of the first page, and a warning says which. Formats that are not
-converted (WordPerfect, Works, Publisher, Visio, Lotus 1-2-3, Quattro Pro, StarOffice 5, Windows Write and others)
-fail with a reason naming the format, found by extension or by content.
+converted (WordPerfect, Works, Publisher, Visio 2003 to 2010, MHTML web archives, Quattro Pro, StarOffice 5, Windows
+Write and others) fail with a reason naming the format, found by extension or by content.
 
 Plain text (`.txt .text .log .asc`) prints the way LibreOffice Writer prints it: A4 with 2 cm margins, Liberation Mono
 10 pt at 64 lines a page, tab stops every 1.25 cm, long lines wrapped, no widow control, and a form feed starts a new

@@ -528,9 +528,11 @@ public final class Main {
                         + System.lineSeparator()
                         + "Word, PowerPoint and Excel files (.docx .docm .dotx .dotm .pptx .pptm .ppsx .ppsm .potx .potm"
                         + " .xlsx .xlsm .xltx .xltm .xlsb, binary .doc .dot .xls .xlt .ppt .pps .pot back to Word 6.0 and"
-                        + " Excel 5.0, and XML Spreadsheet 2003 and Flat OPC .xml), RTF (.rtf), OpenDocument files (.odt"
+                        + " Excel 2.0, and Word 2003 XML, XML Spreadsheet 2003 and Flat OPC .xml), Visio drawings (.vsdx"
+                        + " .vsdm .vssx .vstx), RTF (.rtf), OpenDocument files (.odt"
                         + " .ott .fodt .odm .ods .ots .fods .odp .otp .fodp .odg .otg .fodg), OpenOffice.org 1.x files (.sxw"
-                        + " .stw .sxc .stc .sxi .sti .sxd .std), SYLK, DIF and dBASE tables (.slk .dif .dbf), Apple iWork"
+                        + " .stw .sxc .stc .sxi .sti .sxd .std), SYLK, DIF and dBASE tables (.slk .dif .dbf), Lotus 1-2-3"
+                        + " worksheets (.wk1 .wks .wk3 .wk4 .123), Apple iWork"
                         + " files from their preview (.pages .numbers .key), plain text (.txt .text .log .asc) and comma or"
                         + " tab separated tables (.csv .tsv .tab) convert to PDF; --password opens a protected one. A folder converts its PDFs and Office files;"
                         + " --format pdf takes only its Office and text files. Nothing a document"

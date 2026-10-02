@@ -43,6 +43,16 @@ class OfficeFilesTest {
     }
 
     @Test
+    void recognisesVisioDrawingsAndLotusWorksheets() throws IOException {
+        byte[] docx = Fixtures.docx("Hello", 1);
+        assertEquals("vsdx", OfficeFiles.extension(write(Fixtures.retype(docx, Fixtures.DOCX_MAIN,
+                "application/vnd.ms-visio.drawing.main+xml"))));
+        assertEquals("pptx", OfficeFiles.family("vsdx"));
+        assertEquals("xlsx", OfficeFiles.family("wk1"));
+        assertEquals("wk3", OfficeFiles.extension(write(new byte[] {0, 0, 0x1A, 0, 0, 0x10}), "budget.wk3"));
+    }
+
+    @Test
     void recognisesRtfFromItsHeader() throws IOException {
         assertEquals("rtf", OfficeFiles.extension(write("{\\rtf1\\ansi Hello\\par}".getBytes(
                 StandardCharsets.US_ASCII))));
