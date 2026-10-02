@@ -111,6 +111,10 @@ final class SlideWriter {
                 "http://openoffice.org/2010/draw", "display"))) {
             return;
         }
+        String layer = Dom.attr(e, Ns.DRAW, "layer");
+        if (layer != null && w.unprinted.contains(layer)) {
+            return;
+        }
         String cls = Dom.attr(e, Ns.PRESENTATION, "class");
         if (cls != null) {
             if ("true".equals(Dom.attr(e, Ns.PRESENTATION, "placeholder"))) {

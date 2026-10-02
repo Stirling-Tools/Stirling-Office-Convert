@@ -84,7 +84,7 @@ public final class OfficeToPdf {
             return switch (ext) {
                 case "docx", "docm", "dotx", "dotm", "doc", "dot", "rtf", "odt", "ott", "fodt" -> DOCX;
                 case "txt", "text", "log", "asc" -> TEXT;
-                case "pptx", "pptm", "ppsx", "ppsm", "potx", "potm", "odp", "otp", "fodp" -> PPTX;
+                case "pptx", "pptm", "ppsx", "ppsm", "potx", "potm", "odp", "otp", "fodp", "odg", "otg", "fodg" -> PPTX;
                 case "xlsx", "xlsm", "xltx", "xltm", "xls", "xlt", "xlsb", "ods", "ots", "fods" -> XLSX;
                 case "csv" -> CSV;
                 case "tsv", "tab" -> TSV;
@@ -92,7 +92,7 @@ public final class OfficeToPdf {
                 default -> throw new IllegalArgumentException("Not an Office document: " + file.getFileName()
                         + "; use .docx, .docm, .dotx, .dotm, .doc, .dot, .rtf, .pptx, .pptm, .ppsx, .ppsm, .potx, .potm,"
                         + " .xlsx, .xlsm, .xltx, .xltm, .xlsb, .xls, .xlt, .ppt, .pps, .pot, .odt, .ott, .fodt, .ods, .ots, .fods,"
-                        + " .odp, .otp, .fodp, .txt, .text, .log, .asc, .csv, .tsv or .tab");
+                        + " .odp, .otp, .fodp, .odg, .otg, .fodg, .txt, .text, .log, .asc, .csv, .tsv or .tab");
             };
         }
 
@@ -101,7 +101,7 @@ public final class OfficeToPdf {
             return switch (extension(file)) {
                 case "docx", "docm", "dotx", "dotm", "pptx", "pptm", "ppsx", "ppsm", "potx", "potm", "xlsx", "xlsm",
                         "xltx", "xltm", "doc", "dot", "ppt", "pps", "pot", "xls", "xlt", "xlsb", "rtf", "odt", "ott", "fodt",
-                        "ods", "ots", "fods", "odp", "otp", "fodp" -> true;
+                        "ods", "ots", "fods", "odp", "otp", "fodp", "odg", "otg", "fodg" -> true;
                 case "txt", "text", "log", "asc", "csv", "tsv", "tab" -> true;
                 default -> false;
             };
