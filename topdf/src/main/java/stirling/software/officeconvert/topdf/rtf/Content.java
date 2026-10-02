@@ -9,9 +9,9 @@ final class Content {
 
     record Part(String name, boolean footer, Story story) {}
 
-    record NoteOut(int id, boolean endnote, String xml) {}
+    record NoteOut(int id, boolean endnote, Chunks xml) {}
 
-    static final long STORY_LIMIT = 256L << 20;
+    static final int MAX_TEXTBOX_DEPTH = 8;
 
     private static final String TOKEN = String.valueOf(ParaBuilder.TOKEN);
 
@@ -375,7 +375,7 @@ final class Content {
         }
         g.note = new Group.Note(id, custom, g.story);
         g.inNote = true;
-        g.story = new Story(notesRels, doc.colors, null, STORY_LIMIT);
+        g.story = body.buffered(notesRels);
         g.pap = new ParaProps();
         g.wrap = null;
         g.listText = false;
@@ -385,10 +385,13 @@ final class Content {
         Story s = done.story;
         finishStory(done);
         Group.Note n = done.note;
-        String content = s.content();
+        Chunks content = s.chunks();
         String ref = n.endnote ? "<w:endnoteRef/>" : "<w:footnoteRef/>";
         if (!n.custom && !content.contains(ref)) {
-            content = withMark(content, "<w:r><w:rPr><w:vertAlign w:val=\"superscript\"/></w:rPr>" + ref + "</w:r>");
+            String run = "<w:r><w:rPr><w:vertAlign w:val=\"superscript\"/></w:rPr>" + ref + "</w:r>";
+            if (!content.editFirst("<w:p>", c -> withMark(c, run))) {
+                content.prepend("<w:p>" + run + "</w:p>");
+            }
         }
         notes.add(new NoteOut(n.id, n.endnote, content));
         String reference = "<w:" + (n.endnote ? "endnoteReference" : "footnoteReference")
@@ -405,9 +408,6 @@ final class Content {
 
     private static String withMark(String content, String run) {
         int p = content.indexOf("<w:p>");
-        if (p < 0) {
-            return "<w:p>" + run + "</w:p>" + content;
-        }
         int at = p + "<w:p>".length();
         if (content.startsWith("<w:pPr>", at)) {
             at = content.indexOf("</w:pPr>", at) + "</w:pPr>".length();
@@ -427,7 +427,7 @@ final class Content {
             default -> "default";
         };
         g.header = (footer ? "f" : "h") + type;
-        g.story = new Story(new Rels("rId"), doc.colors, null, STORY_LIMIT);
+        g.story = body.buffered(new Rels("rId"));
         g.pap = new ParaProps();
         g.wrap = null;
         g.listText = false;
@@ -443,14 +443,19 @@ final class Content {
         (footer ? sect.footers : sect.headers).put(type, rid);
     }
 
-    void openTextbox(Group g) {
+    boolean openTextbox(Group g) {
         g.dest = Dest.NORMAL;
+        if (g.textboxes >= MAX_TEXTBOX_DEPTH) {
+            return false;
+        }
+        g.textboxes++;
         g.textbox = true;
         Rels rels = g.story == null ? new Rels("rId") : g.story.rels;
-        g.story = new Story(rels, doc.colors, null, STORY_LIMIT);
+        g.story = body.buffered(rels);
         g.pap = new ParaProps();
         g.wrap = null;
         g.listText = false;
+        return true;
     }
 
     void closeTextbox(Group done) throws IOException {
