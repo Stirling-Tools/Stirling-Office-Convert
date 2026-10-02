@@ -9,18 +9,21 @@ import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 
-import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.io.IOUtils;
 import org.apache.pdfbox.io.RandomAccessRead;
 import org.apache.pdfbox.io.RandomAccessReadBufferedFile;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.encryption.InvalidPasswordException;
 
+import stirling.software.officeconvert.jpx.JpxImageIO;
+import stirling.software.officeconvert.memory.Admission;
+
 public final class PdfFiles {
 
     private PdfFiles() {}
 
     public static PDDocument open(Path pdf, String password) throws IOException {
+        JpxImageIO.install();
         return load(pdf, password);
     }
 
@@ -65,10 +68,12 @@ public final class PdfFiles {
         }
     }
 
+    /** Stops when the thread is interrupted, or when memory is nearly exhausted and this conversion must give way. */
     public static void stopIfInterrupted() throws InterruptedIOException {
         if (Thread.currentThread().isInterrupted()) {
             throw new InterruptedIOException("Conversion interrupted");
         }
+        Admission.checkpoint();
     }
 
     public static IOException interrupted(IOException e) {
@@ -83,8 +88,8 @@ public final class PdfFiles {
     private static PDDocument load(Path pdf, String password) throws IOException {
         RandomAccessRead source = new InterruptibleRead(new RandomAccessReadBufferedFile(pdf.toFile()));
         try {
-            return Loader.loadPDF(source, password == null ? "" : password, null, null,
-                    IOUtils.createTempFileOnlyStreamCache());
+            return new KeyedPdfParser(source, password == null ? "" : password,
+                    IOUtils.createTempFileOnlyStreamCache()).parse();
         } catch (NoClassDefFoundError e) {
             source.close();
             throw new IOException("This PDF is encrypted with a certificate, which needs BouncyCastle (bcpkix) on the classpath", e);

@@ -11,6 +11,8 @@ import stirling.software.officeconvert.extract.Glyph;
 import stirling.software.officeconvert.extract.PageData;
 import stirling.software.officeconvert.layout.Box;
 import stirling.software.officeconvert.layout.DocStats;
+import stirling.software.officeconvert.layout.Line;
+import stirling.software.officeconvert.layout.LogicalOrder;
 import stirling.software.officeconvert.layout.PageLayout;
 import stirling.software.officeconvert.layout.ParaDraft;
 import stirling.software.officeconvert.model.Block;
@@ -34,6 +36,7 @@ public final class PlacedContent {
     private final RunBuilder runs;
     private final TableBuilder tables;
     private final MediaPlacer placer;
+    private final DocStats stats;
 
     public PlacedContent(PDDocument document, DocStats stats, MediaStore store, float figureDpi, boolean dropHyphens) {
         this(document, stats, store, figureDpi, dropHyphens, Pictures.COMPACT);
@@ -42,6 +45,7 @@ public final class PlacedContent {
     public PlacedContent(PDDocument document, DocStats stats, MediaStore store, float figureDpi, boolean dropHyphens,
             Pictures pictures) {
         DocSink sink = new StoreSink(store);
+        this.stats = stats;
         this.runs = new RunBuilder(dropHyphens);
         runs.icons(new IconPictures(sink));
         RunStyle normal = new RunStyle(stats.bodyFont.family(), DocumentBuilder.round(stats.bodySize), false, false,
@@ -53,6 +57,13 @@ public final class PlacedContent {
 
     public Paragraph runs(ParaDraft d, int skipWords, float left, float right) {
         Paragraph p = new Paragraph();
+        int rtl = 0;
+        boolean anyRtl = false;
+        for (Line l : d.lines) {
+            rtl += LogicalOrder.rtlBase(l) ? 1 : 0;
+            anyRtl |= LogicalOrder.hasRtl(l);
+        }
+        p.bidi = d.rtl || rtl * 2 > d.lines.size() || anyRtl && d.align == Paragraph.Align.RIGHT && stats.scripts.rightToLeft();
         runs.fill(p, d.lines, skipWords, left, right, d.size(), d.hardBreaks, d.pageBreaks);
         return p;
     }
@@ -70,7 +81,7 @@ public final class PlacedContent {
     }
 
     public Table table(PageLayout.TableItem item, PageLayout layout) {
-        return tables.build(item, layout, item.x());
+        return tables.build(item, layout, item.x(), item.right());
     }
 
     public void endPage() {

@@ -19,6 +19,8 @@ public final class ImageBudget {
 
     public static final long MAX_DECODED_BYTES = 256L * 1024 * 1024;
 
+    public static final long MAX_JPX_SAMPLES = 1L << 26;
+
     private static final int JPX_HEADER_SCAN = 1 << 20;
 
     private ImageBudget() {}
@@ -26,18 +28,24 @@ public final class ImageBudget {
     private static final Map<COSBase, Boolean> VERDICTS = Collections.synchronizedMap(new WeakHashMap<>());
 
     public static boolean affordable(PDImage image) {
-        if (decodedBytes(image) > MAX_DECODED_BYTES) {
+        boolean jpx = jpx(image);
+        if (!jpx && decodedBytes(image) > MAX_DECODED_BYTES) {
             return false;
         }
+        long limit = jpx ? MAX_JPX_SAMPLES : MAX_DECODED_BYTES;
         if (!(image instanceof PDImageXObject x)) {
-            return codedBytes(image) <= MAX_DECODED_BYTES;
+            return codedBytes(image) <= limit;
         }
         Boolean known = VERDICTS.get(x.getCOSObject());
         if (known == null) {
-            known = codedBytes(image) <= MAX_DECODED_BYTES && inflatesWithin(image);
+            known = codedBytes(image) <= limit && inflatesWithin(image);
             VERDICTS.put(x.getCOSObject(), known);
         }
         return known;
+    }
+
+    private static boolean jpx(PDImage image) {
+        return "jpx".equals(image.getSuffix());
     }
 
     private static boolean inflatesWithin(PDImage image) {
@@ -55,8 +63,9 @@ public final class ImageBudget {
         } catch (Exception e) {
             components = 4;
         }
-        long bits = (long) image.getWidth() * image.getHeight() * Math.max(1, components) * Math.max(1, image.getBitsPerComponent());
-        return bits / 8;
+        long samples = samples(image.getWidth(), image.getHeight(), Math.max(1, components));
+        long precision = Math.max(1, image.getBitsPerComponent());
+        return samples > Long.MAX_VALUE / precision ? Long.MAX_VALUE : samples * precision / 8;
     }
 
     static long codedBytes(PDImage image) {
@@ -108,10 +117,18 @@ public final class ImageBudget {
                 long width = u32(b, i + 8) - u32(b, i + 16);
                 long height = u32(b, i + 12) - u32(b, i + 20);
                 int components = (b[i + 40] & 0xFF) << 8 | b[i + 41] & 0xFF;
-                return width <= 0 || height <= 0 ? Long.MAX_VALUE : width * height * Math.max(1, components);
+                return samples(width, height, components);
             }
         }
         return Long.MAX_VALUE;
+    }
+
+    private static long samples(long width, long height, int components) {
+        if (width <= 0 || height <= 0 || components <= 0 || width > Long.MAX_VALUE / height) {
+            return Long.MAX_VALUE;
+        }
+        long pixels = width * height;
+        return pixels > Long.MAX_VALUE / components ? Long.MAX_VALUE : pixels * components;
     }
 
     private static long u32(byte[] b, int at) {

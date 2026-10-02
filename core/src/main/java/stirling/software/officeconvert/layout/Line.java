@@ -18,6 +18,7 @@ public final class Line {
     public final byte[] gaps;
     public char[] leaders;
     public float drawnSpace = Float.NaN;
+    public boolean narrowed;
     public final float baseline;
     public final float x;
     public final float right;
@@ -38,9 +39,9 @@ public final class Line {
         float hi = -Float.MAX_VALUE;
         float t = Float.MAX_VALUE;
         float b = -Float.MAX_VALUE;
-        Map<Float, Integer> sizes = new HashMap<>();
-        Map<FontInfo, Integer> fonts = new HashMap<>();
-        Map<Integer, Integer> colours = new HashMap<>();
+        Tally<Float> sizes = new Tally<>();
+        Tally<FontInfo> fonts = new Tally<>();
+        Tally<Integer> colours = new Tally<>();
         int boldChars = 0;
         int italicChars = 0;
         int n = 0;
@@ -53,14 +54,14 @@ public final class Line {
                 int len = g.text.length();
                 n += len;
                 if (g.vertAlign == 0) {
-                    sizes.merge(Math.round(g.size * 2f) / 2f, len, Integer::sum);
+                    sizes.add(Math.round(g.size * 2f) / 2f, len);
                     baseSum += g.baseline;
                     baseCount++;
                     t = Math.min(t, g.top());
                     b = Math.max(b, g.bottom());
                 }
-                fonts.merge(g.font, len, Integer::sum);
-                colours.merge(g.rgb, len, Integer::sum);
+                fonts.add(g.font, len);
+                colours.add(g.rgb, len);
                 if (g.bold) {
                     boldChars += len;
                 }
@@ -76,7 +77,7 @@ public final class Line {
                     baseCount++;
                     t = Math.min(t, g.top());
                     b = Math.max(b, g.bottom());
-                    sizes.merge(Math.round(g.size * 2f) / 2f, g.text.length(), Integer::sum);
+                    sizes.add(Math.round(g.size * 2f) / 2f, g.text.length());
                 }
             }
         }
@@ -85,12 +86,49 @@ public final class Line {
         this.top = t;
         this.bottom = b;
         this.baseline = baseSum / Math.max(1, baseCount);
-        this.size = mode(sizes, 10f);
-        this.font = mode(fonts, words.getFirst().first().font);
-        this.rgb = mode(colours, 0);
+        this.size = sizes.mode(10f);
+        this.font = fonts.mode(words.getFirst().first().font);
+        this.rgb = colours.mode(0);
         this.chars = n;
         this.bold = n > 0 && boldChars * 2 > n;
         this.italic = n > 0 && italicChars * 2 > n;
+    }
+
+    // Character counts per key; a line with one key, the usual case, needs no map, and a second key replays into one
+    private static final class Tally<K> {
+
+        private K only;
+
+        private int count;
+
+        private boolean any;
+
+        private Map<K, Integer> counts;
+
+        void add(K key, int n) {
+            if (counts == null) {
+                if (!any) {
+                    only = key;
+                    count = n;
+                    any = true;
+                    return;
+                }
+                if (only == key || only != null && only.equals(key)) {
+                    count += n;
+                    return;
+                }
+                counts = new HashMap<>();
+                counts.put(only, count);
+            }
+            counts.merge(key, n, Integer::sum);
+        }
+
+        K mode(K fallback) {
+            if (counts != null) {
+                return Line.mode(counts, fallback);
+            }
+            return any ? only : fallback;
+        }
     }
 
     static <K> K mode(Map<K, Integer> counts, K fallback) {
@@ -103,6 +141,14 @@ public final class Line {
             }
         }
         return best;
+    }
+
+    public boolean ideographic() {
+        return LineTraits.ideographic(this);
+    }
+
+    public boolean unspaced() {
+        return LineTraits.unspaced(this);
     }
 
     public float width() {
@@ -141,6 +187,7 @@ public final class Line {
         }
         Line l = new Line(sub, g);
         l.drawnSpace = drawnSpace;
+        l.narrowed = narrowed;
         return l;
     }
 

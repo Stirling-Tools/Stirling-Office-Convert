@@ -24,6 +24,8 @@ public final class FontNames {
         alias("Courier New", "courier", "couriernew", "cousine", "liberationmono", "nimbusmono",
                 "nimbusmonol", "nimbusmonops", "freemono", "texgyrecursor");
         alias("Cambria Math", "cambriamath");
+        alias("Calibri", "calibri", "carlito");
+        alias("Cambria", "cambria", "caladea");
         alias("Trebuchet MS", "trebuchetms", "trebuchet");
         alias("Segoe UI", "segoeui");
         alias("Segoe UI Light", "segoeuilight");
@@ -52,7 +54,7 @@ public final class FontNames {
         alias("Meiryo", "meiryo");
         for (String plain :
                 new String[] {
-                    "Calibri", "Cambria", "Candara", "Consolas", "Constantia", "Corbel",
+                    "Candara", "Consolas", "Constantia", "Corbel",
                     "Georgia", "Verdana", "Tahoma", "Garamond", "Impact", "Symbol", "Wingdings",
                     "Webdings", "Aptos", "Gadugi", "Ebrima", "Nirmala UI", "Sylfaen", "Batang",
                     "Gulim", "Dotum", "Gungsuh", "Mangal", "Aharoni", "David", "Miriam",

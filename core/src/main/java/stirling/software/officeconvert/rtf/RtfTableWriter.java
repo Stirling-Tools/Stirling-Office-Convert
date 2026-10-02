@@ -21,6 +21,9 @@ final class RtfTableWriter {
         if (columns == 0) {
             return;
         }
+        if (t.rightToLeft) {
+            t.mirror();
+        }
         int[] edges = new int[columns + 1];
         int indent = t.floating() ? 0 : RtfText.twips(t.indent);
         edges[0] = indent;

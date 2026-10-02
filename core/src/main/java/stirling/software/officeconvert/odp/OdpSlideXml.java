@@ -95,6 +95,9 @@ final class OdpSlideXml {
                 .append(" fo:padding-top=\"").append(Odf.cm(top)).append("\" fo:padding-bottom=\"0cm\" fo:padding-left=\"")
                 .append(Odf.cm(t.insetLeft())).append("\" fo:padding-right=\"").append(Odf.cm(t.insetRight()))
                 .append("\" draw:shadow=\"hidden\"");
+        if (t.vertical()) {
+            g.append(" style:writing-mode=\"tb-rl\"");
+        }
 
         g.append("/>");
         sb.append("<draw:frame draw:style-name=\"").append(styles.style("graphic", "gr", g.toString())).append('"');
@@ -185,6 +188,9 @@ final class OdpSlideXml {
 
     private void table(StringBuilder sb, TableShape shape) {
         Table t = shape.table();
+        if (t.rightToLeft) {
+            t.mirror();
+        }
         sb.append("<draw:frame draw:layer=\"layout\" svg:width=\"").append(Odf.cm(shape.width())).append("\" svg:height=\"")
                 .append(Odf.cm(shape.height())).append("\" svg:x=\"").append(Odf.cm(shape.x())).append("\" svg:y=\"")
                 .append(Odf.cm(shape.y())).append("\"><table:table>");

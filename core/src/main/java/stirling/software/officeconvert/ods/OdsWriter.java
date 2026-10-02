@@ -155,7 +155,7 @@ public final class OdsWriter implements WorkbookSink {
 
     private void cell(Row.Cell c) {
         CellValue v = c.value();
-        sb.append("<table:table-cell table:style-name=\"").append(styles.cell(c.style())).append('"');
+        sb.append("<table:table-cell table:style-name=\"").append(styles.cell(c.style(), v.isText() ? v.text() : null)).append('"');
         if (c.merged()) {
             sb.append(" table:number-columns-spanned=\"").append(c.colSpan()).append("\" table:number-rows-spanned=\"")
                     .append(c.rowSpan()).append('"');
@@ -236,7 +236,7 @@ public final class OdsWriter implements WorkbookSink {
     @Override
     public void endSheet(SheetEnd end) throws IOException {
         rowOut.flush();
-        String table = styles.table(setup.landscape(), setup.a4(), setup.header(), setup.footer());
+        String table = styles.table(setup.landscape(), setup.a4(), setup.header(), setup.footer(), end.rightToLeft());
         StringBuilder head = new StringBuilder(512);
         head.append("<table:table table:name=\"");
         SheetXml.escape(head, setup.name());

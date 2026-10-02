@@ -10,6 +10,7 @@ import java.util.Objects;
 import stirling.software.officeconvert.model.Inline;
 import stirling.software.officeconvert.model.Paragraph;
 import stirling.software.officeconvert.model.RunStyle;
+import stirling.software.officeconvert.model.Scripts;
 import stirling.software.officeconvert.model.StyleSheet;
 import stirling.software.officeconvert.sink.Borders;
 import stirling.software.officeconvert.sink.Links;
@@ -64,6 +65,9 @@ final class RtfBody {
             sb.append("\\s").append(s);
         }
         sb.append(p.bidi ? "\\rtlpar" : "\\ltrpar");
+        if (p.noHangingPunctuation) {
+            sb.append("\\nooverflow");
+        }
         sb.append(switch (p.align) {
             case CENTER -> "\\qc";
             case RIGHT -> "\\qr";
@@ -211,16 +215,23 @@ final class RtfBody {
         }
         RunStyle s = styleOr(style);
         for (String[] seg : directionSegments(text)) {
-            sb.append('{').append(props(s, seg[1] != null)).append(' ');
+            sb.append('{').append(props(s, seg[1] != null, seg[0])).append(' ');
             RtfText.text(sb, seg[0]);
             sb.append('}');
         }
     }
 
     String props(RunStyle s, boolean rtl) {
-        int f = tables.font(s.font() != null ? s.font() : sheet.normal.font());
+        return props(s, rtl, null);
+    }
+
+    private String props(RunStyle s, boolean rtl, String text) {
+        Scripts.Fonts slots = Scripts.fonts(s.font() != null ? s.font() : sheet.normal.font(), text, sheet.scripts);
+        int f = tables.font(slots.latin());
+        int ea = tables.font(slots.eastAsian());
+        int complex = tables.font(slots.complex());
         int hp = RtfText.halfPoints(s.size());
-        StringBuilder cs = new StringBuilder("\\rtlch\\fcs1\\af").append(f).append("\\afs").append(hp);
+        StringBuilder cs = new StringBuilder("\\rtlch\\fcs1\\af").append(complex).append("\\afs").append(hp);
         if (s.bold()) {
             cs.append("\\ab");
         }
@@ -261,7 +272,17 @@ final class RtfBody {
         if (s.scale() != 100) {
             common.append("\\charscalex").append(Math.max(1, Math.min(600, s.scale())));
         }
-        common.append("\\hich\\af").append(f).append("\\dbch\\af").append(f).append("\\loch\\f").append(f);
+        Scripts.Languages lang = Scripts.beyond(Scripts.languages(text, sheet.scripts), sheet.scripts);
+        if (Scripts.lcid(lang.latin()) > 0) {
+            common.append("\\lang").append(Scripts.lcid(lang.latin()));
+        }
+        if (Scripts.lcid(lang.eastAsian()) > 0) {
+            common.append("\\langfe").append(Scripts.lcid(lang.eastAsian()));
+        }
+        if (Scripts.lcid(lang.complex()) > 0) {
+            common.append("\\alang").append(Scripts.lcid(lang.complex()));
+        }
+        common.append("\\hich\\af").append(f).append("\\dbch\\af").append(ea).append("\\loch\\f").append(f);
         return rtl ? ls.toString() + common + cs : cs.toString() + ls + common;
     }
 

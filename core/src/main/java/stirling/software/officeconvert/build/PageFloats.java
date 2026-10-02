@@ -97,13 +97,20 @@ final class PageFloats {
     }
 
     void anchorOn(Paragraph anchor) {
-        anchor.inlines.addAll(0, waitingInStack());
-        clear();
+        anchorAbove(anchor, 0, anchor.sourceTop);
     }
 
     void anchorLeftovers(Paragraph last, int slot) {
         last.inlines.addAll(slot, waitingInStack());
         clear();
+    }
+
+    void anchorAbove(Paragraph p, int slot, float y) {
+        List<Inline.TextBox> later = boxes.stream().filter(b -> b.upright() && !(b.y() < y + 1)).toList();
+        boxes.removeAll(later);
+        p.inlines.addAll(slot, waitingInStack());
+        clear();
+        boxes.addAll(later);
     }
 
     private List<Inline> waitingInStack() {

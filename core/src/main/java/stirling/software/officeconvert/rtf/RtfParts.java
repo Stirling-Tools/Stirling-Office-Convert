@@ -120,6 +120,12 @@ final class RtfParts {
             case "upperLetter" -> 3;
             case "lowerLetter" -> 4;
             case "bullet" -> 23;
+            case "hebrew1" -> 45;
+            case "arabicAlpha" -> 46;
+            case "arabicAbjad" -> 48;
+            case "chineseCounting" -> 39;
+            case "decimalFullWidth" -> 14;
+            case "ganada" -> 24;
             case "none" -> 255;
             default -> 0;
         };

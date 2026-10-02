@@ -29,6 +29,9 @@ final class PptTables {
 
     static void table(HSLFSlide s, TableShape shape, PptText text) {
         Table t = shape.table();
+        if (t.rightToLeft) {
+            t.mirror();
+        }
         int rows = t.rows.size();
         int cols = t.columnWidths.size();
         if (rows == 0 || cols == 0) {

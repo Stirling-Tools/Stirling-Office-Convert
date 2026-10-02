@@ -4,6 +4,7 @@ import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
 
+import stirling.software.officeconvert.model.Scripts;
 import stirling.software.officeconvert.sheet.CellStyle;
 import stirling.software.officeconvert.sheet.CellStyle.Border;
 import stirling.software.officeconvert.sheet.CellStyle.HAlign;
@@ -16,11 +17,13 @@ final class OdsStyles {
 
     static final String FONT = "Calibri";
 
-    private record Page(boolean landscape, boolean a4, String header, String footer) {}
+    private record Page(boolean landscape, boolean a4, String header, String footer, boolean rtl) {}
+
+    private record Key(CellStyle style, String font, boolean rtl) {}
 
     private final Map<String, String> columns = new LinkedHashMap<>();
     private final Map<String, String> rows = new LinkedHashMap<>();
-    private final Map<CellStyle, String> cells = new LinkedHashMap<>();
+    private final Map<Key, String> cells = new LinkedHashMap<>();
     private final Map<NumberFormat, String> numbers = new LinkedHashMap<>();
     private final Map<Page, String> pages = new LinkedHashMap<>();
     private final StringBuilder cellXml = new StringBuilder();
@@ -36,17 +39,22 @@ final class OdsStyles {
         return rows.computeIfAbsent(height, h -> "ro" + (rows.size() + 1));
     }
 
-    String table(boolean landscape, boolean a4, String header, String footer) {
-        return pages.computeIfAbsent(new Page(landscape, a4, blank(header), blank(footer)), p -> "ta" + (pages.size() + 1));
+    String table(boolean landscape, boolean a4, String header, String footer, boolean rtl) {
+        return pages.computeIfAbsent(new Page(landscape, a4, blank(header), blank(footer), rtl), p -> "ta" + (pages.size() + 1));
     }
 
     String cell(CellStyle s) {
-        String known = cells.get(s);
+        return cell(s, null);
+    }
+
+    String cell(CellStyle s, String text) {
+        Key key = new Key(s, Scripts.cellFont(FONT, text, null), text != null && Scripts.rightToLeft(text));
+        String known = cells.get(key);
         if (known != null) {
             return known;
         }
         String name = "ce" + (cells.size() + 1);
-        cells.put(s, name);
+        cells.put(key, name);
         String data = s.format().kind() == NumberFormat.Kind.GENERAL ? null : number(s.format());
         cellXml.append("<style:style style:name=\"").append(name)
                 .append("\" style:family=\"table-cell\" style:parent-style-name=\"Default\"");
@@ -67,13 +75,28 @@ final class OdsStyles {
         cellXml.append(" style:vertical-align=\"")
                 .append(s.vertical() == VAlign.TOP ? "top" : s.vertical() == VAlign.CENTER ? "middle" : "bottom")
                 .append("\"/>");
-        if (s.horizontal() != HAlign.GENERAL) {
-            cellXml.append("<style:paragraph-properties fo:text-align=\"")
-                    .append(s.horizontal() == HAlign.LEFT ? "start" : s.horizontal() == HAlign.CENTER ? "center" : "end")
-                    .append("\"/>");
+        if (s.horizontal() != HAlign.GENERAL || key.rtl()) {
+            cellXml.append("<style:paragraph-properties");
+            if (s.horizontal() != HAlign.GENERAL) {
+                String left = key.rtl() ? "end" : "start";
+                String right = key.rtl() ? "start" : "end";
+                cellXml.append(" fo:text-align=\"")
+                        .append(s.horizontal() == HAlign.LEFT ? left : s.horizontal() == HAlign.CENTER ? "center" : right).append('"');
+            }
+            if (key.rtl()) {
+                cellXml.append(" style:writing-mode=\"rl-tb\"");
+            }
+            cellXml.append("/>");
         }
-        cellXml.append("<style:text-properties style:font-name=\"").append(FONT).append("\" fo:font-size=\"")
-                .append(points(Math.round(s.size() * 2f) / 2f)).append('"');
+        cellXml.append("<style:text-properties");
+        if (key.font().equals(FONT)) {
+            cellXml.append(" style:font-name=\"").append(FONT).append('"');
+        } else {
+            String f = key.font().replace("&", "&amp;").replace("\"", "&quot;").replace("<", "&lt;");
+            cellXml.append(" fo:font-family=\"").append(f).append("\" style:font-family-asian=\"").append(f)
+                    .append("\" style:font-family-complex=\"").append(f).append('"');
+        }
+        cellXml.append(" fo:font-size=\"").append(points(Math.round(s.size() * 2f) / 2f)).append('"');
         if (s.bold()) {
             cellXml.append(" fo:font-weight=\"bold\"");
         }
@@ -194,7 +217,8 @@ final class OdsStyles {
         });
         pages.forEach((page, name) -> sb.append("<style:style style:name=\"").append(name)
                 .append("\" style:family=\"table\" style:master-page-name=\"mp").append(name.substring(2))
-                .append("\"><style:table-properties table:display=\"true\" style:writing-mode=\"lr-tb\"/></style:style>"));
+                .append("\"><style:table-properties table:display=\"true\" style:writing-mode=\"")
+                .append(page.rtl() ? "rl-tb" : "lr-tb").append("\"/></style:style>"));
         sb.append(numberXml).append(cellXml);
         return sb.toString();
     }

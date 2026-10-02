@@ -6,6 +6,7 @@ import java.util.Map;
 import stirling.software.officeconvert.extract.Glyph;
 import stirling.software.officeconvert.layout.DocStats;
 import stirling.software.officeconvert.layout.Line;
+import stirling.software.officeconvert.layout.LogicalOrder;
 import stirling.software.officeconvert.layout.Marker;
 import stirling.software.officeconvert.layout.ParaDraft;
 import stirling.software.officeconvert.layout.Word;
@@ -15,6 +16,7 @@ import stirling.software.officeconvert.model.Paragraph.Align;
 import stirling.software.officeconvert.model.Paragraph.LineRule;
 import stirling.software.officeconvert.model.Paragraph;
 import stirling.software.officeconvert.model.RunStyle;
+import stirling.software.officeconvert.model.ScriptWidths;
 import stirling.software.officeconvert.model.StyleSheet;
 
 final class ParagraphFactory {
@@ -101,12 +103,14 @@ final class ParagraphFactory {
             p.lineRule = LineRule.AT_LEAST;
         }
         int rtlLines = 0;
+        boolean anyRtl = false;
         for (Line l : d.lines) {
-            if (BidiOrder.rtlBase(l)) {
+            if (LogicalOrder.rtlBase(l)) {
                 rtlLines++;
             }
+            anyRtl |= LogicalOrder.hasRtl(l);
         }
-        p.bidi = rtlLines * 2 > d.lines.size();
+        p.bidi = d.rtl || rtlLines * 2 > d.lines.size() || anyRtl && d.align == Align.RIGHT && stats.scripts.rightToLeft();
         boolean markerTab = markers && d.role == ParaDraft.Role.BODY && (d.align == Align.LEFT || d.align == Align.JUSTIFY)
                 && literalMarker(d);
         if (markerTab) {
@@ -116,13 +120,19 @@ final class ParagraphFactory {
         if (flow && p.align == Align.JUSTIFY && !Float.isNaN(d.justifySlack)) {
             p.indentRight += SectionPlanner.RIGHT_SLACK - d.justifySlack;
         }
-        boolean leftSet = p.align == Align.LEFT || p.align == Align.JUSTIFY;
-        if (flow && (d.lines.size() >= 2 || leftSet) && mostlyStandIn(d)) {
+        boolean startSet = p.align == (p.bidi ? Align.RIGHT : Align.LEFT) || p.align == Align.JUSTIFY;
+        float slack = standInSlack(d);
+        if (flow && (d.lines.size() >= 2 || startSet) && slack > 0 && !d.first().unspaced()
+                && !(p.bidi && p.list != null)) {
             float widest = 0;
             for (Line l : d.lines) {
                 widest = Math.max(widest, l.width());
             }
-            p.indentRight -= Math.min(5f, 0.025f * widest);
+            if (p.bidi) {
+                p.indentLeft -= Math.min(5f, slack * widest);
+            } else {
+                p.indentRight -= Math.min(5f, slack * widest);
+            }
         }
 
         if (skip == 1 && p.list == null) {
@@ -139,19 +149,24 @@ final class ParagraphFactory {
         return p;
     }
 
-    private static boolean mostlyStandIn(ParaDraft d) {
+    private static float standInSlack(ParaDraft d) {
         int standIn = 0;
+        int modeled = 0;
         int total = 0;
         for (Line l : d.lines) {
             for (Word w : l.words) {
                 for (Glyph g : w.glyphs) {
                     total++;
                     standIn += g.font.substituted() ? 1 : 0;
+                    modeled += ScriptWidths.clustered(RunBuilder.modeled(g))
+                            || g.font.substituted() && RunBuilder.hebrew(g) ? 1 : 0;
                 }
             }
         }
-        return standIn * 2 > total;
+        return standIn * 2 > total && modeled * 2 <= total ? STAND_IN_SLACK : 0f;
     }
+
+    private static final float STAND_IN_SLACK = 0.025f;
 
     private static boolean hasMixedSizes(ParaDraft d) {
         float min = Float.MAX_VALUE;
@@ -208,12 +223,13 @@ final class ParagraphFactory {
             return;
         }
         Line first = d.first();
-        if (first.words.size() >= 2 && startsWithMarker(first) && !BidiOrder.rtlBase(first)) {
-            Marker m = Marker.parse(first.words.getFirst().text, first.words.getFirst().first().font);
+        if (first.words.size() >= 2 && startsWithMarker(first)) {
+            Marker m = Marker.leading(first);
             if (m != null) {
                 d.role = ParaDraft.Role.LIST;
                 d.marker = m;
-                d.markerTextX = first.words.get(1).x - d.colLeft;
+                Word next = first.words.get(Marker.nextIndex(first));
+                d.markerTextX = Marker.startIndex(first) > 0 ? d.colRight - next.right : next.x - d.colLeft;
                 return;
             }
         }
@@ -249,21 +265,20 @@ final class ParagraphFactory {
     }
 
     private static boolean startsWithMarker(Line line) {
-        Word first = line.words.getFirst();
-        Marker m = Marker.parse(first.text, first.first().font);
+        Marker m = Marker.leading(line);
         if (m == null) {
             return false;
         }
-        float gap = line.words.get(1).x - first.right;
-        if (line.gaps[1] != Line.SPACE) {
+        if (Marker.tabAfter(line)) {
             return true;
         }
+        float gap = Marker.gapAfter(line);
         return m.isBullet() ? gap > 0.15f * line.size : gap > 0.35f * line.size;
     }
 
     private static boolean literalMarker(ParaDraft d) {
         Line first = d.first();
-        return first.words.size() >= 2 && startsWithMarker(first) && !BidiOrder.rtlBase(first);
+        return first.words.size() >= 2 && startsWithMarker(first) && !LogicalOrder.rtlBase(first);
     }
 
     private static void hangFromMarker(Paragraph p, ParaDraft d, float colLeft) {
@@ -282,24 +297,32 @@ final class ParagraphFactory {
     }
 
     private void applyList(Paragraph p, ParaDraft d, float colLeft) {
-        float markerX = d.first().x - colLeft;
+        boolean rtl = Marker.startIndex(d.first()) > 0;
+        float markerX = rtl ? d.colRight - d.first().right : d.first().x - colLeft;
         float textX = d.markerTextX;
-        Glyph mg = d.first().words.getFirst().first();
+        Glyph mg = d.first().words.get(Marker.startIndex(d.first())).first();
         RunStyle markerStyle = RunBuilder.styleOf(mg, d.size());
         ListTracker.Slot slot = lists.place(d.marker, markerX, numbering, markerStyle, textX, markerX);
         if (slot == null) {
             return;
         }
         p.list = new Paragraph.ListRef(slot.numId(), slot.level());
-        p.indentLeft = textX;
-        p.indentFirst = -(textX - markerX);
-        if (d.lines.size() >= 2) {
-            float cont = d.lines.get(1).x - colLeft;
-            if (Math.abs(cont - textX) > 2f) {
-                p.indentLeft = cont;
-                p.indentFirst = markerX - cont;
-            }
+        if (p.align == Align.CENTER && markerX < (d.colRight - colLeft) / 4f) {
+            p.align = rtl ? Align.RIGHT : Align.LEFT;
         }
+        float start = textX;
+        if (d.lines.size() >= 2) {
+            float cont = rtl ? d.colRight - d.lines.get(1).right : d.lines.get(1).x - colLeft;
+            start = Math.abs(cont - textX) > 2f ? cont : textX;
+        }
+        if (rtl) {
+            p.indentRight = start;
+            p.indentLeft = 0;
+            p.align = p.align == Align.LEFT ? Align.RIGHT : p.align;
+        } else {
+            p.indentLeft = start;
+        }
+        p.indentFirst = markerX - start;
     }
 
     Paragraph notePara(ParaDraft d) {

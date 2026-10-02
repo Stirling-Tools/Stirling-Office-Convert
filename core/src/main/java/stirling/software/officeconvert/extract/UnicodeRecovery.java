@@ -58,9 +58,13 @@ final class UnicodeRecovery {
         if (pua && (info.symbolic() || info.substituted())) {
             return unicode;
         }
-        Lookup lookup = lookups.computeIfAbsent(font.getCOSObject(), k -> Lookup.of(font));
+        Lookup lookup = lookups.get(font.getCOSObject());
         if (lookup == null) {
-            return unicode;
+            lookup = Lookup.of(font);
+            if (lookup == null) {
+                return unicode;
+            }
+            lookups.put(font.getCOSObject(), lookup);
         }
         int code = tp.getCharacterCodes()[0];
         if (mark) {
@@ -118,25 +122,32 @@ final class UnicodeRecovery {
         }
 
         String encoded(int code, String unicode) {
-            return drawn.computeIfAbsent(code, c -> {
-                try {
-                    if (font instanceof PDType0Font t0 && cmap != null) {
-                        return composite(t0, c, unicode);
-                    }
-                    if (!(font instanceof PDTrueTypeFont tt) || cmap == null || tt.getEncoding() == null) {
-                        return "";
-                    }
-                    String name = tt.getEncoding().getName(c);
-                    String u = name == null ? null : GlyphList.getAdobeGlyphList().toUnicode(name);
-                    if (u == null || u.codePointCount(0, u.length()) != 1 || presentationForm(u.codePointAt(0))) {
-                        return "";
-                    }
-                    int gid = tt.codeToGID(c);
-                    return gid > 0 && cmap.getGlyphId(u.codePointAt(0)) == gid ? u : "";
-                } catch (IOException | RuntimeException e) {
+            String known = drawn.get(code);
+            if (known == null) {
+                known = encode(code, unicode);
+                drawn.put(code, known);
+            }
+            return known;
+        }
+
+        private String encode(int c, String unicode) {
+            try {
+                if (font instanceof PDType0Font t0 && cmap != null) {
+                    return composite(t0, c, unicode);
+                }
+                if (!(font instanceof PDTrueTypeFont tt) || cmap == null || tt.getEncoding() == null) {
                     return "";
                 }
-            });
+                String name = tt.getEncoding().getName(c);
+                String u = name == null ? null : GlyphList.getAdobeGlyphList().toUnicode(name);
+                if (u == null || u.codePointCount(0, u.length()) != 1 || presentationForm(u.codePointAt(0))) {
+                    return "";
+                }
+                int gid = tt.codeToGID(c);
+                return gid > 0 && cmap.getGlyphId(u.codePointAt(0)) == gid ? u : "";
+            } catch (IOException | RuntimeException e) {
+                return "";
+            }
         }
 
         private String composite(PDType0Font t0, int code, String unicode) throws IOException {
@@ -165,18 +176,25 @@ final class UnicodeRecovery {
         }
 
         boolean blank(int code) {
-            return blanks.computeIfAbsent(code, c -> {
-                try {
-                    int gid = gid(c);
-                    if (gid <= 0 || ttf.getGlyph() == null) {
-                        return false;
-                    }
-                    GlyphData data = ttf.getGlyph().getGlyph(gid);
-                    return data == null || data.getPath().getPathIterator(null).isDone();
-                } catch (IOException | RuntimeException e) {
+            Boolean known = blanks.get(code);
+            if (known == null) {
+                known = isBlank(code);
+                blanks.put(code, known);
+            }
+            return known;
+        }
+
+        private boolean isBlank(int c) {
+            try {
+                int gid = gid(c);
+                if (gid <= 0 || ttf.getGlyph() == null) {
                     return false;
                 }
-            });
+                GlyphData data = ttf.getGlyph().getGlyph(gid);
+                return data == null || data.getPath().getPathIterator(null).isDone();
+            } catch (IOException | RuntimeException e) {
+                return false;
+            }
         }
 
         private int gid(int code) throws IOException {

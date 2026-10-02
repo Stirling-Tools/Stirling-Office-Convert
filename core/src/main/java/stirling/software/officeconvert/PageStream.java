@@ -41,9 +41,7 @@ final class PageStream {
     }
 
     static void stopIfInterrupted() throws InterruptedIOException {
-        if (Thread.currentThread().isInterrupted()) {
-            throw new InterruptedIOException("Conversion interrupted");
-        }
+        PdfFiles.stopIfInterrupted();
     }
 
     static void readPages(PageReader reader, int first, int last, PageReader.PageConsumer consumer,

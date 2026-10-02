@@ -6,6 +6,7 @@ import java.util.Map;
 
 import stirling.software.officeconvert.extract.Glyph;
 import stirling.software.officeconvert.layout.Line;
+import stirling.software.officeconvert.layout.LogicalOrder;
 import stirling.software.officeconvert.layout.ParaDraft;
 import stirling.software.officeconvert.layout.Word;
 
@@ -71,9 +72,14 @@ record CellText(
     }
 
     private static void appendParagraph(StringBuilder sb, ParaDraft p, boolean dropHyphens) {
+        int rtlLines = 0;
+        for (Line line : p.lines) {
+            rtlLines += LogicalOrder.rtlBase(line) ? 1 : 0;
+        }
+        boolean rtl = p.rtl || rtlLines * 2 > p.lines.size();
         for (int i = 0; i < p.lines.size(); i++) {
             Line line = p.lines.get(i);
-            String text = LogicalText.of(line, 0);
+            String text = LogicalText.of(line, 0, rtl);
             String marker = line.words.isEmpty() ? "" : line.words.getFirst().text;
             if (i == 0 && p.marker != null && p.marker.isBullet() && !marker.isEmpty() && text.startsWith(marker)) {
                 text = bullet(marker) + text.substring(marker.length());

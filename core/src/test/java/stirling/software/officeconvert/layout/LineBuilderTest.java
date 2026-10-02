@@ -67,6 +67,55 @@ class LineBuilderTest {
         assertTrue(lines.get(0).text().endsWith("7"));
     }
 
+    @Test
+    void splitsLeaderDotsGluedToTheirWords() {
+        List<Glyph> glyphs = new ArrayList<>();
+        place(glyphs, "Estimate..........8", 72, 100, 10);
+
+        Line line = LineBuilder.join(LineBuilder.build(glyphs));
+
+        assertEquals(List.of("Estimate", "8"), line.words.stream().map(w -> w.text).toList());
+        assertEquals(Line.LEADER, line.gaps[1]);
+        assertEquals('.', line.leaders[1]);
+    }
+
+    @Test
+    void keepsDotsGluedInsideProseAsProse() {
+        for (String prose : List.of("she paused....then went on", "and so.....it ends here", "Wait.....what 12 more")) {
+            List<Glyph> glyphs = new ArrayList<>();
+            place(glyphs, prose, 72, 100, 10);
+
+            Line line = LineBuilder.join(LineBuilder.build(glyphs));
+
+            assertEquals(prose, line.text(), prose);
+            for (byte gap : line.gaps) {
+                assertTrue(gap != Line.LEADER && gap != Line.TAB, prose);
+            }
+        }
+    }
+
+    @Test
+    void splitsGluedLeadersThatRunToAPageNumber() {
+        for (String entry : List.of("Scope....12", "Scope.... 12", "Annex B....iv", "Long fill-in.............. here")) {
+            List<Glyph> glyphs = new ArrayList<>();
+            place(glyphs, entry, 72, 100, 10);
+
+            Line line = LineBuilder.join(LineBuilder.build(glyphs));
+
+            assertEquals(Line.LEADER, line.gaps[line.words.size() - 1], entry);
+        }
+    }
+
+    @Test
+    void keepsTrailingDotsOnTheirWord() {
+        List<Glyph> glyphs = new ArrayList<>();
+        place(glyphs, "Loading....", 72, 100, 10);
+
+        Line line = LineBuilder.join(LineBuilder.build(glyphs));
+
+        assertEquals(List.of("Loading...."), line.words.stream().map(w -> w.text).toList());
+    }
+
     private static void placeTracked(List<Glyph> out, String text, float x, float baseline, float tracking) {
         for (char c : text.toCharArray()) {
             float w = c == ' ' ? SPACE : ADVANCE;

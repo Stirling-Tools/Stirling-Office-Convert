@@ -1,6 +1,7 @@
 package stirling.software.officeconvert.layout;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.IdentityHashMap;
 import java.util.List;
@@ -25,6 +26,10 @@ final class PlacedText {
     }
 
     PageLayout.TextBoxItem box(List<Line> lines, float pageWidth) {
+        return box(lines, pageWidth, false);
+    }
+
+    private PageLayout.TextBoxItem box(List<Line> lines, float pageWidth, boolean tight) {
         float x = Float.MAX_VALUE;
         float top = Float.MAX_VALUE;
         float right = -Float.MAX_VALUE;
@@ -35,10 +40,19 @@ final class PlacedText {
             right = Math.max(right, l.right);
             bottom = Math.max(bottom, l.bottom);
         }
-        float boxRight = Math.min(pageWidth, right + Math.max(24f, 0.3f * (right - x)));
+        float boxRight = Math.min(pageWidth, right + (tight ? 2f : Math.max(24f, 0.3f * (right - x))));
         Box box = new Box(x - 1, top - 1, boxRight, bottom + 2);
-        List<ParaDraft> paras = paragraphs.build(lines, x, boxRight);
+        List<ParaDraft> paras = paragraphs.build(lines, x, boxRight, List.of(), tight ? columnPitch(lines) : 0);
         return new PageLayout.TextBoxItem(box, -1, x, boxRight, paras, 0f, -1, 0f, false, true);
+    }
+
+    private static float columnPitch(List<Line> lines) {
+        float[] steps = new float[Math.max(0, lines.size() - 1)];
+        for (int i = 1; i < lines.size(); i++) {
+            steps[i - 1] = lines.get(i).baseline - lines.get(i - 1).baseline;
+        }
+        Arrays.sort(steps);
+        return steps.length == 0 ? 0 : steps[steps.length / 2];
     }
 
     PageLayout.TextBoxItem framed(List<Line> lines, Box frame) {
@@ -56,8 +70,8 @@ final class PlacedText {
     }
 
     PageLayout.TextBoxItem turned(RotatedText.Block b, float pageWidth, float pageHeight) {
-        PageLayout.TextBoxItem up = box(b.lines(), RotatedText.uprightWidth(b.direction(), pageWidth, pageHeight));
-        return up.turned(b.direction(), RotatedText.onPage(up.box(), b.direction(), pageWidth, pageHeight));
+        PageLayout.TextBoxItem up = box(b.lines(), RotatedText.uprightWidth(b.direction(), pageWidth, pageHeight), b.upright());
+        return up.turned(b.direction(), RotatedText.onPage(up.box(), b.direction(), pageWidth, pageHeight), b.upright());
     }
 
     static List<Line> belowFlow(List<Line> segments, List<Line> furniture, float flowBottom) {

@@ -28,6 +28,7 @@ import javax.imageio.ImageIO;
 
 import stirling.software.officeconvert.Pictures;
 import stirling.software.officeconvert.model.Picture;
+import stirling.software.officeconvert.model.Scripts;
 import stirling.software.officeconvert.sink.SpillFile;
 import stirling.software.officeconvert.sink.ZipParts;
 import stirling.software.officeconvert.slides.Slide;
@@ -63,6 +64,11 @@ public final class OdpWriter implements SlideSink {
         this.zip = new ZipOutputStream(new BufferedOutputStream(new KeepOpen(target), 1 << 16), StandardCharsets.UTF_8);
         ZipParts.stored(zip, "mimetype", MIME.getBytes(StandardCharsets.US_ASCII));
         zip.setLevel(6);
+    }
+
+    @Override
+    public void scripts(Scripts.Profile profile) {
+        styles.scripts = profile;
     }
 
     @Override

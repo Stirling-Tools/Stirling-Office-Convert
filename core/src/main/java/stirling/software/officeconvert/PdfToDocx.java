@@ -20,7 +20,6 @@ import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDDocumentInformation;
-import org.apache.pdfbox.pdmodel.PDPage;
 
 import stirling.software.officeconvert.build.DocSink;
 import stirling.software.officeconvert.build.DocumentBuilder;
@@ -28,7 +27,9 @@ import stirling.software.officeconvert.docx.DocxWriter;
 import stirling.software.officeconvert.extract.PageData;
 import stirling.software.officeconvert.extract.PageReader;
 import stirling.software.officeconvert.extract.PdfFiles;
+import stirling.software.officeconvert.extract.PdfFootprint;
 import stirling.software.officeconvert.extract.StreamGuard;
+import stirling.software.officeconvert.jpx.JpxImageIO;
 import stirling.software.officeconvert.layout.DocStats;
 import stirling.software.officeconvert.layout.FallbackPage;
 import stirling.software.officeconvert.layout.LayoutDump;
@@ -36,6 +37,7 @@ import stirling.software.officeconvert.layout.LineBuilder;
 import stirling.software.officeconvert.layout.OcrText;
 import stirling.software.officeconvert.layout.PageAnalyzer;
 import stirling.software.officeconvert.layout.PageLayout;
+import stirling.software.officeconvert.memory.Admission;
 
 public final class PdfToDocx {
 
@@ -113,6 +115,7 @@ public final class PdfToDocx {
                     OutputStream out = Files.newOutputStream(part)) {
                 convert(doc, out, options, format);
             }
+            PdfFiles.stopIfInterrupted();
             moveIntoPlace(part, target);
         } catch (IOException e) {
             throw PdfFiles.interrupted(e);
@@ -143,11 +146,16 @@ public final class PdfToDocx {
         Objects.requireNonNull(out, "out");
         Objects.requireNonNull(options, "options");
         PdfFiles.checkOpen(doc);
+        JpxImageIO.install();
         PdfFiles.stopIfInterrupted();
+        Admission.Ticket ticket = Admission.jvm().enter(
+                PdfFootprint.estimate(doc, options.firstPage(), options.lastPage(), options.figureDpi()));
         try {
             write(doc, out, options, format);
         } catch (RuntimeException e) {
             throw new IOException("Conversion failed: " + e.getMessage(), e);
+        } finally {
+            ticket.close();
         }
     }
 
@@ -191,8 +199,7 @@ public final class PdfToDocx {
             PageAnalyzer analyzer = new PageAnalyzer(stats, options.tables());
             PageReader.PageConsumer consume = page -> {
                 stopIfInterrupted();
-                PDPage pdPage = doc.getPage(page.index());
-                var toDisplay = PageReader.displayTransform(pdPage.getCropBox(), page.direction());
+                var toDisplay = PageReader.displayTransform(reader.cropBox(page.index()), page.direction());
                 PageLayout layout;
                 try {
                     layout = analyzer.analyze(page);
@@ -210,7 +217,7 @@ public final class PdfToDocx {
             };
             PageReader.PageConsumer unreadable =
                     fallback ? page -> builder.page(FallbackPage.of(page), PageReader.displayTransform(
-                            doc.getPage(page.index()).getCropBox(), 0)) : null;
+                            reader.cropBox(page.index()), 0)) : null;
             if (cacheAll) {
                 for (int i = first; i <= last; i++) {
                     PageData cached = cache.remove(i);
@@ -237,9 +244,7 @@ public final class PdfToDocx {
     }
 
     private static void stopIfInterrupted() throws InterruptedIOException {
-        if (Thread.currentThread().isInterrupted()) {
-            throw new InterruptedIOException("Conversion interrupted");
-        }
+        PdfFiles.stopIfInterrupted();
     }
 
     private static int weight(PageData page) {

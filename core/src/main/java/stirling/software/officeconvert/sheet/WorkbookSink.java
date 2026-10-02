@@ -10,11 +10,15 @@ public interface WorkbookSink extends Closeable {
 
     record NamedRange(String name, int firstRow, int firstCol, int lastRow, int lastCol) {}
 
-    record SheetEnd(List<Float> columnWidths, int frozenRows, List<NamedRange> names) {
+    record SheetEnd(List<Float> columnWidths, int frozenRows, List<NamedRange> names, boolean rightToLeft) {
 
         public SheetEnd {
             columnWidths = List.copyOf(columnWidths);
             names = List.copyOf(names);
+        }
+
+        public SheetEnd(List<Float> columnWidths, int frozenRows, List<NamedRange> names) {
+            this(columnWidths, frozenRows, names, false);
         }
     }
 

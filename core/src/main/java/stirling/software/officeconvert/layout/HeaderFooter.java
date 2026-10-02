@@ -17,13 +17,16 @@ public final class HeaderFooter {
     private static final float MIN_SHARE = 0.4f;
     private static final Pattern DIGITS = Pattern.compile("[0-9]+");
     private static final Pattern ROMAN_ONLY = Pattern.compile("(?i)^[-– ]*[ivxlc]{1,6}[-– ]*$");
+    private static final Pattern FIRST_PAGE_NUMBER =
+            Pattern.compile("(?i)^(page|p\\.|pg\\.?)?\\s*[-\\u2013\\u2014(]?\\s*1\\s*[-\\u2013\\u2014)]?(\\s*(of|/)\\s*1)?$");
+    private static final float NUMBER_GAP_LINES = 2f;
 
     private final Map<String, RunningLine> candidates = new HashMap<>();
     private final Map<String, List<float[]>> anchors = new HashMap<>();
     private final Set<Integer> sampledPages = new HashSet<>();
     private final Map<Integer, List<Seen>> seen = new HashMap<>();
 
-    private record Seen(String signature, float top, float bottom) {}
+    private record Seen(String signature, float top, float bottom, Line line) {}
     private final List<RunningLine> accepted = new ArrayList<>();
     private final Set<String> furniture = new HashSet<>();
     private final Map<Integer, Integer> numberOffsets = new HashMap<>();
@@ -38,11 +41,11 @@ public final class HeaderFooter {
             boolean top = seg.bottom < h * ZONE;
             boolean bottom = seg.top > h * (1 - ZONE);
             if (!top && !bottom || marksText(seg, segments)) {
-                onPage.add(new Seen(null, seg.top, seg.bottom));
+                onPage.add(new Seen(null, seg.top, seg.bottom, seg));
                 continue;
             }
             String sig = signature(seg, top, page.width());
-            onPage.add(new Seen(sig, seg.top, seg.bottom));
+            onPage.add(new Seen(sig, seg.top, seg.bottom, seg));
             RunningLine r = candidates.computeIfAbsent(sig, k -> new RunningLine(k, top, seg.baseline));
             if (r.occurrences.putIfAbsent(page.index(), seg) == null && beyond(seg, top, segments) >= 3) {
                 r.buried++;
@@ -89,6 +92,10 @@ public final class HeaderFooter {
     private void decide(int pageCount) {
         this.pageCount = pageCount;
         int sampled = sampledPages.size();
+        if (sampled == 1 && pageCount == 1) {
+            acceptLonePageNumbers();
+            return;
+        }
         if (sampled < 2) {
             return;
         }
@@ -110,7 +117,9 @@ public final class HeaderFooter {
                 accepted.add(r);
             } else {
                 int seen = sightings.get(unplaced(r.signature)).size();
-                if (seen >= 3 || seen == 2 && (sparse || r.signature.contains("#"))) {
+                boolean figure = buried && r.signature.split("\\|", 4)[3].chars().noneMatch(Character::isLetter)
+                        && r.occurrences.values().stream().map(Line::text).distinct().count() > 1;
+                if (!figure && (seen >= 3 || seen == 2 && (sparse || r.signature.contains("#")))) {
                     furniture.add(r.signature);
                 }
             }
@@ -123,6 +132,33 @@ public final class HeaderFooter {
                     .filter(e -> e.getValue() >= Math.max(3, 0.3f * sampled))
                     .ifPresent(e -> pageNumberOffset = e.getKey());
         }
+    }
+
+    private void acceptLonePageNumbers() {
+        List<Seen> page = seen.getOrDefault(0, List.of());
+        for (RunningLine r : candidates.values()) {
+            Line line = r.occurrences.get(0);
+            if (line == null || r.buried > 0 || !FIRST_PAGE_NUMBER.matcher(line.text().strip()).matches()
+                    || !standsApart(line, r.top, page)) {
+                continue;
+            }
+            r.resolveLonePage();
+            accepted.add(r);
+        }
+    }
+
+    private static boolean standsApart(Line line, boolean top, List<Seen> page) {
+        float gap = Float.MAX_VALUE;
+        for (Seen s : page) {
+            if (s.line() == line) {
+                continue;
+            }
+            if (s.top() < line.bottom && s.bottom() > line.top) {
+                return false;
+            }
+            gap = Math.min(gap, top ? s.top() - line.bottom : line.top - s.bottom());
+        }
+        return gap >= NUMBER_GAP_LINES * line.size;
     }
 
     private void dropInconsistent(boolean top) {

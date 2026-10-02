@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>PDF to Office - Stirling-PDF</title>
-<meta name="description" content="Convert PDFs into editable Word, PowerPoint and Excel files, or their OpenDocument twins, and preview the result.">
+<title>PDF and Office - Stirling-PDF</title>
+<meta name="description" content="Convert PDFs into editable Word, PowerPoint and Excel files, or Office documents into PDFs, and preview the result.">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='5' y='2' width='22' height='28' rx='4' fill='%232f6fed'/%3E%3Cpath d='M10 11h12M10 16h12M10 21h8' stroke='white' stroke-width='2.4' stroke-linecap='round'/%3E%3C/svg%3E">
 <style>
   :root {
@@ -155,7 +155,8 @@
   .phead { display: flex; align-items: center; gap: 8px; padding: 6px 12px; font-size: 13px; color: var(--muted); background: var(--panel); border-bottom: 1px solid var(--line); min-height: 40px; flex-wrap: wrap; }
   .phead b { color: var(--text); }
   .phead .zoom { margin-left: auto; display: flex; gap: 4px; align-items: center; }
-  .vsrc iframe { width: 100%; height: 100%; border: 0; background: var(--stage); }
+  .vsrc iframe, .pdfview { width: 100%; height: 100%; border: 0; background: var(--stage); display: block; }
+  .stage.flush { padding: 0; overflow: hidden; }
   .stage { overflow: auto; background: var(--stage); padding: 20px; min-height: 0; }
   .stage .msg { max-width: 520px; margin: 40px auto; text-align: center; color: var(--muted); }
   .stage .msg b { color: var(--text); display: block; margin-bottom: 6px; }
@@ -231,15 +232,15 @@
 <main>
   <header>
     <svg width="40" height="40" viewBox="0 0 32 32" aria-hidden="true"><rect x="5" y="2" width="22" height="28" rx="4" fill="#2f6fed"/><path d="M10 11h12M10 16h12M10 21h8" stroke="#fff" stroke-width="2.4" stroke-linecap="round"/></svg>
-    <h1>PDF to Office <span class="tag">Preview</span></h1>
+    <h1>PDF to Office and back <span class="tag">Preview</span></h1>
   </header>
-  <p class="lead">Turn PDFs into Word, PowerPoint and Excel files, or their OpenDocument twins, that you can actually edit, then look at the result right beside the PDF.</p>
+  <p class="lead">Turn PDFs into Word, PowerPoint and Excel files, or their OpenDocument twins, that you can actually edit, or turn Word, PowerPoint and Excel files into PDFs. Then look at the result right beside the original.</p>
 
   <section class="panel" aria-labelledby="pick-title">
     <div class="pickhead">
       <div>
-        <h2 id="pick-title">Convert to</h2>
-        <p>Pick one or more formats. Every PDF you add is converted to each of them.</p>
+        <h2 id="pick-title">Convert PDFs to</h2>
+        <p>Pick one or more formats. Every PDF you add is converted to each of them; Word, PowerPoint and Excel files become PDFs.</p>
       </div>
       <div class="links">
         <button type="button" class="quiet small" id="pick-all">Select all</button>
@@ -258,13 +259,13 @@
     </div>
   </section>
 
-  <div id="drop" tabindex="0" role="button" aria-label="Choose or drop PDF files to convert">
+  <div id="drop" tabindex="0" role="button" aria-label="Choose or drop PDF, Word, PowerPoint or Excel files to convert">
     <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="drop-icon"><path d="M12 16V4M7 9l5-5 5 5"/><path d="M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></svg>
-    <strong>Drop PDFs here</strong>
-    <span class="hint" id="picked-hint">Converts to Word</span>
-    <span class="hint" id="limits">PDF files only</span>
+    <strong>Drop PDFs or Office files here</strong>
+    <span class="hint" id="picked-hint">PDFs convert to Word</span>
+    <span class="hint" id="limits">PDF, Word, PowerPoint and Excel files</span>
     <span class="choose button primary" aria-hidden="true">Choose files</span>
-    <input id="pick" type="file" accept="application/pdf,.pdf" multiple hidden>
+    <input id="pick" type="file" accept="application/pdf,.pdf,.docx,.docm,.dotx,.dotm,.pptx,.pptm,.ppsx,.ppsm,.potx,.potm,.xlsx,.xlsm,.xltx,.xltm,.xls,.xlt,.ppt,.pps,.pot,.doc,.dot,.rtf,.odt,.ott,.fodt,.ods,.ots,.fods,.odp,.otp,.fodp,.xlsb,.odg,.otg,.fodg,.odm,.sxw,.stw,.sxc,.stc,.sxi,.sti,.sxd,.std,.xml,.slk,.dif,.dbf,.wk1,.wks,.wk3,.wk4,.123,.vsdx,.vsdm,.vssx,.vstx,.pages,.numbers,.key,.txt,.text,.log,.asc,.csv,.tsv,.tab" multiple hidden>
   </div>
   <p class="privacy">
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
@@ -272,10 +273,10 @@
   </p>
 
   <details>
-    <summary>Options <span>- page range, password, tables, pictures</span></summary>
+    <summary>Options <span>- for PDFs: page range, password, tables, pictures</span></summary>
     <div class="opts">
       <label>Pages (for example 2-5; blank for all)<input id="pages" type="text" inputmode="numeric" placeholder="All pages" autocomplete="off"></label>
-      <label>Password, for protected PDFs<input id="password" type="password" autocomplete="off"></label>
+      <label>Password, for protected files<input id="password" type="password" autocomplete="off"></label>
       <label class="check"><input id="tables" type="checkbox" checked> Detect tables</label>
       <label class="check"><input id="fallback" type="checkbox"> Keep a page that cannot be converted as a picture</label>
       <label class="check"><input id="lossless" type="checkbox"> Keep pictures lossless (larger files)</label>
@@ -289,12 +290,13 @@
       <button id="clear" class="quiet" hidden>Clear list</button>
     </div>
   </div>
-  <ul id="jobs" aria-live="polite"><li class="empty">Converted documents appear here. Open one with View to see it beside its PDF.</li></ul>
+  <ul id="jobs" aria-live="polite"><li class="empty">Converted documents appear here. Open one with View to see it beside its original.</li></ul>
 
   <section class="features" aria-label="What the converter keeps">
     <div class="feature"><h3>Editable text</h3><p>Lines are joined into paragraphs with their fonts, sizes and colours, so text reflows when you edit it.</p></div>
     <div class="feature"><h3>Tables and lists</h3><p>Tables become real tables (or spreadsheet cells) and bullet or numbered lists become real lists.</p></div>
     <div class="feature"><h3>Layout</h3><p>Columns, images, headers and footers, footnotes and links are kept where the PDF had them.</p></div>
+    <div class="feature"><h3>Office to PDF</h3><p>Word, PowerPoint and Excel files become PDFs with their fonts embedded. Nothing a document links to is fetched and no macro runs.</p></div>
   </section>
 
   <footer>Powered by Stirling Office Convert, the Office conversion engine of <a href="https://www.stirlingpdf.com" rel="noopener noreferrer" target="_blank">Stirling-PDF</a>.</footer>
@@ -311,9 +313,10 @@
     </div>
   </div>
   <div class="vbody" id="vbody">
-    <section class="pane vsrc" aria-label="Original PDF">
-      <div class="phead"><b>Original PDF</b></div>
+    <section class="pane vsrc" aria-label="Original file">
+      <div class="phead"><b id="vsrctitle">Original PDF</b><span id="vsrcnote"></span></div>
       <iframe id="vsrc" title="Original PDF"></iframe>
+      <div class="stage" id="vsrcstage" hidden></div>
     </section>
     <section class="pane vout" aria-label="Converted file">
       <div class="phead"><b id="vouttitle">Preview</b><span id="voutnote">Quick look drawn in the browser; open the file for its exact layout.</span>
@@ -341,12 +344,26 @@ const FORMATS = [
   { id: 'odt', name: 'OpenDocument Text', group: 'Documents', color: '#1a73c9' },
   { id: 'rtf', name: 'Rich Text', group: 'Documents', color: '#6b7280' },
   { id: 'txt', name: 'Plain text', group: 'Documents', color: '#4b5563' },
+  { id: 'xml', name: 'Flat ODT XML', group: 'Documents', color: '#0f766e' },
   { id: 'pptx', name: 'PowerPoint', group: 'Slides', color: '#c43e1c' },
   { id: 'odp', name: 'OpenDocument Slides', group: 'Slides', color: '#d35400' },
   { id: 'xlsx', name: 'Excel', group: 'Spreadsheets', color: '#217346' },
   { id: 'ods', name: 'OpenDocument Sheet', group: 'Spreadsheets', color: '#18804b' },
 ];
 const FORMAT = Object.fromEntries(FORMATS.map(f => [f.id, f]));
+FORMAT.pdf = { id: 'pdf', name: 'PDF', group: 'PDF', color: '#d93025' };
+const OFFICE = {
+  docx: ['docx', 'docm', 'dotx', 'dotm'], pptx: ['pptx', 'pptm', 'ppsx', 'ppsm', 'potx', 'potm'], xlsx: ['xlsx', 'xlsm', 'xltx', 'xltm'],
+};
+const FAMILY = Object.fromEntries(Object.entries(OFFICE).flatMap(([family, exts]) => exts.map(e => [e, family])));
+const LEGACY = { xls: 'xlsx', xlt: 'xlsx', ppt: 'pptx', pps: 'pptx', pot: 'pptx', doc: 'docx', dot: 'docx', odt: 'docx', ott: 'docx', fodt: 'docx',
+  ods: 'xlsx', ots: 'xlsx', fods: 'xlsx', odp: 'pptx', otp: 'pptx', fodp: 'pptx', xlsb: 'xlsx', odg: 'pptx', otg: 'pptx', fodg: 'pptx',
+  odm: 'docx', sxw: 'docx', stw: 'docx', sxc: 'xlsx', stc: 'xlsx', sxi: 'pptx', sti: 'pptx', sxd: 'pptx', std: 'pptx', xml: 'docx',
+  slk: 'xlsx', dif: 'xlsx', dbf: 'xlsx', wk1: 'xlsx', wks: 'xlsx', wk3: 'xlsx', wk4: 'xlsx', '123': 'xlsx', vsdx: 'pptx',
+  vsdm: 'pptx', vssx: 'pptx', vstx: 'pptx', pages: 'docx', numbers: 'xlsx', key: 'pptx' };
+const TEXT = { txt: 'docx', text: 'docx', log: 'docx', asc: 'docx', csv: 'xlsx', tsv: 'xlsx', tab: 'xlsx' };
+const extOf = name => (/\.([a-z0-9]+)$/i.exec(name)?.[1] || '').toLowerCase();
+const targets = doc => doc.office ? [FORMAT.pdf] : FORMATS;
 const picked = new Set(stored('formats', ['docx']).filter(id => FORMAT[id]));
 if (!picked.size) picked.add('docx');
 
@@ -365,10 +382,11 @@ function syncEngines() {
   document.querySelectorAll('#engine-pick button').forEach(b => b.setAttribute('aria-checked', String(b.dataset.engine === engineChoice)));
   store('engine', engineChoice);
   const missing = engineChoice === 'ours' ? [] : FORMATS.filter(f => picked.has(f.id) && !loFormats.has(f.id)).map(f => f.name);
+  const toPdf = loFormats.has('pdf') ? ' Word, PowerPoint and Excel files become PDFs with the same engine.' : '';
   $('engine-note').textContent = (engineChoice === 'ours' ? 'Converted by Stirling Office Convert.'
       : engineChoice === 'lo' ? 'Converted by LibreOffice, the way Stirling-PDF runs it today.'
       : 'Converted by both, to see them side by side.')
-      + (missing.length ? ' LibreOffice cannot make ' + list(missing) + ' from a PDF.' : '');
+      + (missing.length ? ' LibreOffice cannot make ' + list(missing) + ' from a PDF.' : '') + toPdf;
 }
 
 const $ = id => document.getElementById(id);
@@ -429,7 +447,7 @@ function syncPicker() {
   store('formats', [...picked]);
   const names = FORMATS.filter(f => picked.has(f.id)).map(f => f.name);
   const by = !compare ? '' : engineChoice === 'both' ? ', with both engines' : ' with ' + ENGINE[engineChoice];
-  $('picked-hint').textContent = names.length ? 'Converts to ' + list(names) + by : 'Pick a format above first';
+  $('picked-hint').textContent = (names.length ? 'PDFs convert to ' + list(names) : 'Pick a format above for PDFs') + by + '; Office files to PDF';
   if (compare) syncEngines();
 }
 
@@ -440,7 +458,7 @@ function list(words) {
 fetch('/limits').then(r => r.ok ? r.json() : null).then(l => {
   if (!l) return;
   limits = l;
-  const parts = ['PDF files'];
+  const parts = ['PDF, Word, PowerPoint and Excel files'];
   if (l.maxUploadMb) parts.push('up to ' + l.maxUploadMb + ' MB each');
   if (l.maxPages) parts.push(l.maxPages + ' pages at a time');
   $('limits').textContent = parts.join(', ');
@@ -470,19 +488,31 @@ allBtn.onclick = () => {
 };
 clearBtn.onclick = () => { [...docs].forEach(remove); };
 
-function add(files) {
+async function sniff(file) {
+  const head = new Uint8Array(await file.slice(0, 1024).arrayBuffer());
+  if (head[0] === 0x50 && head[1] === 0x4b && head[2] === 0x03 && head[3] === 0x04) return 'office';
+  if (head[0] === 0xd0 && head[1] === 0xcf && head[2] === 0x11 && head[3] === 0xe0) return 'legacy';
+  if (new TextDecoder('latin1').decode(head).includes('%PDF-')) return 'pdf';
+  return TEXT[extOf(file.name)] ? 'text' : null;
+}
+
+async function add(files) {
   const list = [...files];
   if (!list.length) return;
   if (!picked.size) { picked.add('docx'); syncPicker(); }
   jobs.querySelector('.empty')?.remove();
   for (const file of list) {
+    const kind = await sniff(file).catch(() => null);
     const doc = { file, options: options(), results: new Map(), li: el('li', 'doc'), error: null, url: null };
+    doc.office = kind === 'office' || kind === 'legacy' || kind === 'text';
+    doc.legacy = kind === 'legacy' || kind === 'text';
+    doc.family = (kind === 'text' ? TEXT : doc.legacy ? LEGACY : FAMILY)[extOf(file.name)] || null;
     docs.push(doc);
     jobs.prepend(doc.li);
-    const isPdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name);
-    if (!isPdf) doc.error = 'That file is not a PDF.';
-    else if (limits.maxUploadMb && file.size > limits.maxUploadMb * 1048576) doc.error = 'The PDF is larger than the ' + limits.maxUploadMb + ' MB this demo accepts.';
-    if (!doc.error) FORMATS.filter(f => picked.has(f.id)).forEach(f => pickedEngines().forEach(e => request(doc, f.id, e, false)));
+    if (!kind) doc.error = 'That file is not a PDF or a Word, PowerPoint or Excel document.';
+    else if (limits.maxUploadMb && file.size > limits.maxUploadMb * 1048576) doc.error = 'The file is larger than the ' + limits.maxUploadMb + ' MB this demo accepts.';
+    const want = doc.office ? [FORMAT.pdf] : FORMATS.filter(f => picked.has(f.id));
+    if (!doc.error) want.forEach(f => pickedEngines().forEach(e => request(doc, f.id, e, false)));
     draw(doc);
   }
   toolbar();
@@ -534,6 +564,7 @@ function convert({ doc, res }) {
     if (!doc.li.isConnected) { resolve(); return; }
     const q = new URLSearchParams(doc.options.query);
     q.set('format', res.fmt);
+    if (doc.office) q.set('name', doc.file.name);
     if (compare) q.set('engine', res.engine === 'lo' ? 'libreoffice' : 'ours');
     res.state = 'uploading';
     draw(doc);
@@ -562,6 +593,9 @@ function convert({ doc, res }) {
         res.blob = xhr.response;
         res.ms = +(xhr.getResponseHeader('X-Convert-Ms') || Math.round(performance.now() - started));
         res.note = xhr.getResponseHeader('X-Note');
+        res.pages = +(xhr.getResponseHeader('X-Pages') || 0);
+        const warned = xhr.getResponseHeader('X-Warnings');
+        res.warnings = warned ? decodeURIComponent(warned.replace(/\+/g, ' ')).split('\n') : [];
       } else {
         res.state = 'failed';
         res.message = (xhr.response ? await xhr.response.text() : '') || 'The server answered ' + xhr.status + '.';
@@ -585,7 +619,7 @@ function tick(doc, res, text) {
 
 function fileName(doc, res) {
   const who = !compare ? '' : res.engine === 'lo' ? ' (LibreOffice)' : ' (Stirling)';
-  return doc.file.name.replace(/\.pdf$/i, '') + who + '.' + res.fmt;
+  return doc.file.name.replace(/\.[a-z0-9]+$/i, '') + who + '.' + res.fmt;
 }
 
 function link(doc, res) {
@@ -609,7 +643,7 @@ function remove(doc) {
   doc.li.remove();
   docs.splice(docs.indexOf(doc), 1);
   for (let i = queue.length - 1; i >= 0; i--) if (queue[i].doc === doc) queue.splice(i, 1);
-  if (!docs.length) jobs.replaceChildren(el('li', 'empty', 'Converted documents appear here. Open one with View to see it beside its PDF.'));
+  if (!docs.length) jobs.replaceChildren(el('li', 'empty', 'Converted documents appear here. Open one with View to see it beside its original.'));
   toolbar();
 }
 
@@ -623,7 +657,7 @@ function draw(doc) {
   const li = doc.li;
   const head = el('div', 'dhead');
   const name = el('div', 'name', doc.file.name);
-  const meta = el('div', 'meta', size(doc.file.size) + (doc.options.pages ? ' · pages ' + doc.options.pages : ''));
+  const meta = el('div', 'meta', size(doc.file.size) + (doc.options.pages && !doc.office ? ' · pages ' + doc.options.pages : ''));
   const act = el('div', 'dact');
   if (!doc.error) {
     const view = el('button', 'small', 'View');
@@ -634,7 +668,9 @@ function draw(doc) {
   x.setAttribute('aria-label', 'Remove ' + doc.file.name);
   x.onclick = () => remove(doc);
   act.append(x);
-  head.append(el('div', 'icon', 'PDF'), name, act, meta);
+  const icon = el('div', 'icon', doc.office ? (extOf(doc.file.name) || 'zip').toUpperCase().slice(0, 4) : 'PDF');
+  if (doc.office) icon.style.background = FORMAT[doc.family]?.color || '#6b7280';
+  head.append(icon, name, act, meta);
   const parts = [head];
   if (doc.error) {
     meta.innerHTML = '';
@@ -642,10 +678,10 @@ function draw(doc) {
   } else {
     const rows = el('div', 'results');
     const ordered = [...doc.results.values()].sort((a, b) =>
-        FORMATS.indexOf(FORMAT[a.fmt]) - FORMATS.indexOf(FORMAT[b.fmt]) || (a.engine === 'lo') - (b.engine === 'lo'));
+        targets(doc).indexOf(FORMAT[a.fmt]) - targets(doc).indexOf(FORMAT[b.fmt]) || (a.engine === 'lo') - (b.engine === 'lo'));
     for (const res of ordered) rows.append(row(doc, res));
     parts.push(rows);
-    const rest = FORMATS.filter(f => pickedEngines().some(e => !doc.results.has(key(f.id, e))));
+    const rest = targets(doc).filter(f => pickedEngines().some(e => !doc.results.has(key(f.id, e))));
     if (rest.length) {
       const more = el('div', 'more');
       more.append(el('span', null, 'Also convert to'));
@@ -674,8 +710,15 @@ function row(doc, res) {
   if (compare) name.append(el('span', 'eng' + (res.engine === 'lo' ? ' lo' : ''), res.engine === 'lo' ? 'LibreOffice' : 'Stirling'));
   r.append(badge(res.fmt), name, act, meta);
   if (res.state === 'done') {
-    meta.append(el('b', null, 'Done'), ' in ' + took(res.ms) + ' · ' + size(res.blob.size));
+    meta.append(el('b', null, 'Done'), ' in ' + took(res.ms) + ' · ' + size(res.blob.size) + pages(res));
     if (res.note) { meta.append(el('br'), el('span', 'note', res.note)); }
+    if (res.warnings?.length) {
+      const n = res.warnings.length;
+      const more = n > 2 ? '; and ' + (n - 2) + ' more' : '';
+      const w = el('span', 'note', n + (n === 1 ? ' warning: ' : ' warnings: ') + res.warnings.slice(0, 2).join('; ') + more);
+      w.title = res.warnings.join('\n');
+      meta.append(el('br'), w);
+    }
     const view = el('button', 'small primary', 'View');
     view.onclick = () => viewer.open(doc, res.fmt, res.engine);
     act.append(view, link(doc, res));
@@ -716,17 +759,21 @@ function unlock(doc) {
   return box;
 }
 
+function pages(res) {
+  return res.pages ? ' · ' + res.pages + (res.pages === 1 ? ' page' : ' pages') : '';
+}
+
 function size(n) {
   return n < 1024 ? n + ' B' : n < 1048576 ? Math.round(n / 1024) + ' KB' : (n / 1048576).toFixed(1) + ' MB';
 }
 
 const viewer = (() => {
-  const root = $('viewer'), tabs = $('vtabs'), frame = $('vsrc'), body = $('vbody'), cmp = $('vcmp');
+  const root = $('viewer'), tabs = $('vtabs'), frame = $('vsrc'), body = $('vbody'), cmp = $('vcmp'), srcStage = $('vsrcstage');
   const split = $('vsplit'), download = $('vdownload'), zoomBar = $('vzoom'), engineBar = $('vengine');
   let doc = null, fmt = null, zoom = 'fit', opener = null;
   let view = ['ours', 'lo', 'both'].includes(stored('view', 'both')) ? stored('view', 'both') : 'both';
   const pane = stage => ({ stage, token: 0, urls: [], fitter: null });
-  const main = pane($('vstage')), side = pane($('vstage2'));
+  const main = pane($('vstage')), side = pane($('vstage2')), src = pane(srcStage);
 
   $('vclose').onclick = close;
   root.addEventListener('keydown', e => { if (e.key === 'Escape') close(); });
@@ -752,22 +799,33 @@ const viewer = (() => {
   const resized = new ResizeObserver(() => { if (!root.hidden && zoom === 'fit') refit(); });
   resized.observe(main.stage);
   resized.observe(side.stage);
+  resized.observe(srcStage);
 
   function refit() {
     for (const p of [main, side]) p.fitter?.(zoom === 'fit' ? null : zoom);
+    src.fitter?.(null);
   }
 
   function open(d, f, e) {
     opener = document.activeElement;
     doc = d;
-    doc.url ||= URL.createObjectURL(new Blob([doc.file], { type: 'application/pdf' }));
-    const page = /^\d+/.exec(doc.options.pages || '');
-    frame.src = doc.url + '#' + (page ? 'page=' + page[0] + '&' : '') + 'view=FitH';
+    frame.hidden = doc.office;
+    srcStage.hidden = !doc.office;
+    $('vsrctitle').textContent = doc.office ? 'Original ' + (FORMAT[doc.family]?.name || 'Office') + ' file' : 'Original PDF';
+    $('vsrcnote').textContent = doc.office ? 'Quick look drawn in the browser' : '';
+    if (doc.office) {
+      frame.src = 'about:blank';
+      source();
+    } else {
+      doc.url ||= URL.createObjectURL(new Blob([doc.file], { type: 'application/pdf' }));
+      const page = /^\d+/.exec(doc.options.pages || '');
+      frame.src = doc.url + '#' + (page ? 'page=' + page[0] + '&' : '') + 'view=FitH';
+    }
     $('vtitle').textContent = doc.file.name;
     root.hidden = false;
     document.body.style.overflow = 'hidden';
     if (e && view !== 'both') view = e;
-    const first = f || [...doc.results.values()].find(r => r.state === 'done')?.fmt || doc.results.values().next().value?.fmt || 'docx';
+    const first = f || [...doc.results.values()].find(r => r.state === 'done')?.fmt || doc.results.values().next().value?.fmt || targets(doc)[0].id;
     show(first);
     $('vclose').focus();
   }
@@ -778,6 +836,7 @@ const viewer = (() => {
     frame.src = 'about:blank';
     clear(main);
     clear(side);
+    clear(src);
     doc = null;
     opener?.focus();
   }
@@ -790,13 +849,22 @@ const viewer = (() => {
     p.stage.replaceChildren();
   }
 
+  async function source() {
+    clear(src);
+    if (doc.legacy || !PREVIEW[doc.family]) {
+      message(src, 'No quick look for this file', 'Its converted PDF is on the right.');
+      return;
+    }
+    await render(src, { fmt: doc.family, blob: doc.file });
+  }
+
   function enginesFor(f) {
     return ['ours', 'lo'].filter(e => doc.results.has(key(f, e)));
   }
 
   function drawTabs() {
     tabs.replaceChildren();
-    for (const f of FORMATS) {
+    for (const f of targets(doc)) {
       const all = enginesFor(f.id).map(e => doc.results.get(key(f.id, e)));
       const done = all.some(r => r.state === 'done');
       const t = el('button', 'vtab small' + (done ? '' : ' pending'));
@@ -853,11 +921,12 @@ const viewer = (() => {
   }
 
   function note(res) {
-    return compare && res.state === 'done' ? took(res.ms) + ' · ' + size(res.blob.size) : null;
+    return (compare || res.fmt === 'pdf') && res.state === 'done' ? took(res.ms) + ' · ' + size(res.blob.size) + pages(res) : null;
   }
 
   function fill(p, res) {
     clear(p);
+    p.stage.classList.toggle('flush', res.fmt === 'pdf' && res.state === 'done');
     if (res.state === 'done') {
       render(p, res);
     } else if (res.state === 'failed') {
@@ -1598,11 +1667,41 @@ async function previewPptx(blob, host, view) {
     const bg = deep(deep(doc, 'bg'), 'solidFill');
     if (bg) slide.style.background = drawColor(bg);
     const ctx = { zip, view, rels: await rels(zip, relsOf(path)), base: path.slice(0, path.lastIndexOf('/') + 1) };
+    ctx.inherit = await pptxInherited(zip, ctx.base, ctx.rels);
     await pptxShapes(deep(doc, 'spTree'), slide, ctx, null);
     sheetwrap(host, slide, 'Slide ' + (i + 1));
   }
   if (ids.length === SLIDES) host.append(el('div', 'shownote', 'The preview stops after ' + SLIDES + ' slides.'));
   return fitPapers(host);
+}
+
+async function pptxInherited(zip, base, slideRels) {
+  const found = { idx: {}, type: {}, title: null, body: null };
+  const pick = (from, re) => Object.values(from).find(t => re.test(t || ''));
+  const layout = join(base, pick(slideRels, /slideLayout\d+\.xml$/));
+  const master = layout && join(layout.slice(0, layout.lastIndexOf('/') + 1), pick(await rels(zip, relsOf(layout)), /slideMaster\d+\.xml$/));
+  for (const path of [master, layout]) {
+    const text = path && await zip.text(path);
+    if (!text) continue;
+    const d = xmlDoc(text);
+    for (const sp of deepAll(d, 'sp')) {
+      const ph = deep(kid(sp, 'nvSpPr'), 'ph'), xfrm = kid(kid(sp, 'spPr'), 'xfrm');
+      if (!ph || !xfrm) continue;
+      found.type[ph.getAttribute('type') || 'body'] = xfrm;
+      if (ph.getAttribute('idx')) found.idx[ph.getAttribute('idx')] = xfrm;
+    }
+    if (path === master) {
+      found.title = deep(deep(d, 'titleStyle'), 'defRPr')?.getAttribute('sz');
+      found.body = deep(deep(d, 'bodyStyle'), 'defRPr')?.getAttribute('sz');
+    }
+  }
+  return found;
+}
+
+function inheritedXfrm(ph, inherit) {
+  const type = ph.getAttribute('type') || 'body';
+  const alias = { ctrTitle: 'title', subTitle: 'body' }[type];
+  return inherit.idx[ph.getAttribute('idx')] || inherit.type[type] || (alias && inherit.type[alias]) || null;
 }
 
 function place(xfrm, group) {
@@ -1632,7 +1731,8 @@ async function pptxShapes(tree, slide, ctx, group) {
       continue;
     }
     const props = kid(c, 'spPr') || kid(c, 'grpSpPr');
-    const xfrm = c.localName === 'graphicFrame' ? kid(c, 'xfrm') : kid(props, 'xfrm');
+    const ph = ctx.inherit && deep(kid(c, 'nvSpPr'), 'ph');
+    const xfrm = (c.localName === 'graphicFrame' ? kid(c, 'xfrm') : kid(props, 'xfrm')) || (ph && inheritedXfrm(ph, ctx.inherit));
     if (!xfrm) continue;
     const box = place(xfrm, group);
     const node = el('div', 'sp');
@@ -1641,6 +1741,8 @@ async function pptxShapes(tree, slide, ctx, group) {
       paint(node, props, box.w, box.h);
       if (c.localName === 'cxnSp') { node.style.border = '0'; node.style.borderTop = (node.style.borderTop || '1px solid #000'); }
       const tx = kid(c, 'txBody');
+      const sz = ph && (/itle$/.test(ph.getAttribute('type') || '') ? ctx.inherit.title : ctx.inherit.body);
+      if (sz) node.style.fontSize = +sz / 100 * PX + 'px';
       if (tx) pptxText(tx, node);
     } else if (c.localName === 'pic') {
       const src = await media(ctx.zip, join(ctx.base, ctx.rels[nsAttr(deep(c, 'blip'), R, 'embed')]), ctx.view);
@@ -2276,6 +2378,16 @@ function rtfShapeText(body, shapes) {
   return body.trim() ? body + '\n' + placed : placed;
 }
 
+function flatOdtText(xml) {
+  const doc = new DOMParser().parseFromString(xml, 'application/xml');
+  const body = doc.getElementsByTagNameNS('urn:oasis:names:tc:opendocument:xmlns:office:1.0', 'body')[0];
+  if (!body) return xml;
+  const ns = 'urn:oasis:names:tc:opendocument:xmlns:text:1.0';
+  return [...body.getElementsByTagNameNS(ns, '*')].filter(n => n.localName === 'p' || n.localName === 'h')
+    .map(n => n.textContent).join('
+');
+}
+
 async function previewText(text, host) {
   const pages = text.split('\f');
   const doc = el('div', 'reading');
@@ -2287,11 +2399,24 @@ async function previewText(text, host) {
   return null;
 }
 
+async function previewPdf(blob, host, view) {
+  const u = URL.createObjectURL(new Blob([blob], { type: 'application/pdf' }));
+  view.urls.push(u);
+  const frame = el('iframe', 'pdfview');
+  frame.title = 'Converted PDF';
+  frame.src = u + '#view=FitH';
+  host.style.height = '100%';
+  host.append(frame);
+  return null;
+}
+
 const PREVIEW = {
+  pdf: previewPdf,
   docx: previewDocx,
   odt: previewOdt,
   rtf: async (blob, host) => previewText(rtfText(new TextDecoder('windows-1252').decode(await blob.arrayBuffer())), host),
   txt: async (blob, host) => previewText(await blob.text(), host),
+  xml: async (blob, host) => previewText(flatOdtText(await blob.text()), host),
   pptx: previewPptx,
   odp: previewOdp,
   xlsx: previewXlsx,

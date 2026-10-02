@@ -16,7 +16,8 @@ public final class OcrText {
         if (page.glyphs().isEmpty()) {
             return !page.hidden().isEmpty();
         }
-        return printing(page.hidden()) > 4 * printing(page.glyphs());
+        int hidden = printing(page.hidden());
+        return hidden > 0 && hidden > 4 * printing(page.glyphs());
     }
 
     public static List<Glyph> pageGlyphs(PageData page) {

@@ -39,6 +39,7 @@ public final class ParaDraft {
     public int numId = -1;
     public boolean continuation;
     public boolean endsHyphenated;
+    public boolean rtl;
 
     public ParaDraft(float colLeft, float colRight) {
         this.colLeft = colLeft;

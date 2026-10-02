@@ -27,8 +27,10 @@ final class OdtTables {
         for (float w : t.columnWidths) {
             total += w;
         }
-        String props = "<style:table-properties style:width=\"" + OdtXml.pt(total) + "\" table:align=\"left\" fo:margin-left=\""
+        String props = "<style:table-properties style:width=\"" + OdtXml.pt(total) + "\" table:align=\""
+                + (t.rightToLeft ? "right\" fo:margin-right=\"" : "left\" fo:margin-left=\"")
                 + OdtXml.pt(t.indent) + "\" fo:margin-top=\"0pt\" fo:margin-bottom=\"0pt\""
+                + (t.rightToLeft ? " style:writing-mode=\"rl-tb\"" : "")
                 + (t.pageBreakBefore ? " fo:break-before=\"page\"" : "") + " table:border-model=\"collapsing\"/>";
         String name = own ? styles.own("table", null, props) : styles.get("table", null, props);
         sb.append("<table:table table:name=\"Table").append(++count).append("\" table:style-name=\"").append(name).append("\">");

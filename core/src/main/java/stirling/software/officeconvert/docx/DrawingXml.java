@@ -115,7 +115,7 @@ final class DrawingXml {
         for (Paragraph p : t.paragraphs()) {
             body.paragraph(sb, p, false);
         }
-        sb.append("</w:txbxContent></wps:txbx><wps:bodyPr rot=\"0\" vert=\"").append(vert(t.direction()))
+        sb.append("</w:txbxContent></wps:txbx><wps:bodyPr rot=\"0\" vert=\"").append(t.upright() ? "eaVert" : vert(t.direction()))
                 .append("\" wrap=\"square\" lIns=\"")
                 .append(Xml.emu(t.insetLeft())).append("\" tIns=\"0\" rIns=\"").append(Xml.emu(t.insetRight()))
                 .append("\" bIns=\"0\" anchor=\"t\" anchorCtr=\"0\"><a:noAutofit/></wps:bodyPr></wps:wsp>")

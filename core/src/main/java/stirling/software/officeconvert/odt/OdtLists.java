@@ -120,13 +120,6 @@ final class OdtLists {
     }
 
     private static String numFormat(String format) {
-        return switch (format) {
-            case "lowerLetter" -> "a";
-            case "upperLetter" -> "A";
-            case "lowerRoman" -> "i";
-            case "upperRoman" -> "I";
-            case "none" -> "";
-            default -> "1";
-        };
+        return Numbering.odfFormat(format);
     }
 }

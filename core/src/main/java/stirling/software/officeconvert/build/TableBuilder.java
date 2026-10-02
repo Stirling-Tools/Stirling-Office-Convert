@@ -25,13 +25,16 @@ final class TableBuilder {
         this.paragraphs = paragraphs;
     }
 
-    Table build(PageLayout.TableItem ti, PageLayout layout, float colLeft) {
+    Table build(PageLayout.TableItem ti, PageLayout layout, float colLeft, float colRight) {
         TableDetection.Found f = ti.table();
         Table t = new Table();
+        float width = 0;
         for (int c = 0; c < f.cols(); c++) {
             t.columnWidths.add(Math.max(4f, f.colEdges()[c + 1] - f.colEdges()[c]));
+            width += t.columnWidths.getLast();
         }
         t.indent = f.left() - colLeft;
+        t.indentEnd = colRight - f.left() - width;
         float pad = ti.pad();
         float sideBorder = f.ruled() ? 0.5f : 0f;
         t.cellMarginLeft = Math.max(0, pad - sideBorder);
@@ -116,7 +119,31 @@ final class TableBuilder {
         widenForText(t, f, ti);
         fitCells(t);
         keepColumnHeaders(t);
+        if (rightToLeft(t)) {
+            t.mirror();
+        }
         return t;
+    }
+
+    private static boolean rightToLeft(Table t) {
+        int rtl = 0;
+        int ltr = 0;
+        for (Table.Row row : t.rows) {
+            for (Table.Cell cell : row.cells) {
+                for (Paragraph p : cell.paragraphs) {
+                    for (Inline in : p.inlines) {
+                        if (in instanceof Inline.Text text) {
+                            for (int i = 0; i < text.text().length(); i++) {
+                                byte d = Character.getDirectionality(text.text().charAt(i));
+                                rtl += d == Character.DIRECTIONALITY_RIGHT_TO_LEFT || d == Character.DIRECTIONALITY_RIGHT_TO_LEFT_ARABIC ? 1 : 0;
+                                ltr += d == Character.DIRECTIONALITY_LEFT_TO_RIGHT ? 1 : 0;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        return rtl > ltr;
     }
 
     private static void keepColumnHeaders(Table t) {

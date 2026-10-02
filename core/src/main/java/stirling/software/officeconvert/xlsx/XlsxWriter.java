@@ -86,8 +86,8 @@ public final class XlsxWriter implements WorkbookSink {
     }
 
     private void cell(Row.Cell c, int r) throws IOException {
-        int style = styles.index(c.style());
         CellValue v = c.value();
+        int style = styles.index(c.style(), v.isText() ? v.text() : null);
         sb.append("<c r=\"").append(CellRefs.cell(r, c.col())).append('"');
         if (style != 0) {
             sb.append(" s=\"").append(style).append('"');
@@ -115,7 +115,7 @@ public final class XlsxWriter implements WorkbookSink {
                 .append("<sheetPr><pageSetUpPr fitToPage=\"1\"/></sheetPr>")
                 .append("<dimension ref=\"")
                 .append(lastRow < 0 ? "A1" : CellRefs.range(0, 0, lastRow, Math.max(0, cols - 1))).append("\"/>");
-        sheetView(head, end.frozenRows(), sheets.isEmpty());
+        sheetView(head, end.frozenRows(), sheets.isEmpty(), end.rightToLeft());
         head.append("<sheetFormatPr defaultRowHeight=\"15\"/>");
         if (!end.columnWidths().isEmpty()) {
             head.append("<cols>");
@@ -158,10 +158,13 @@ public final class XlsxWriter implements WorkbookSink {
         setup = null;
     }
 
-    private static void sheetView(StringBuilder sb, int frozen, boolean first) {
+    private static void sheetView(StringBuilder sb, int frozen, boolean first, boolean rightToLeft) {
         sb.append("<sheetViews><sheetView");
         if (first) {
             sb.append(" tabSelected=\"1\"");
+        }
+        if (rightToLeft) {
+            sb.append(" rightToLeft=\"1\"");
         }
         sb.append(" workbookViewId=\"0\"");
         if (frozen <= 0) {

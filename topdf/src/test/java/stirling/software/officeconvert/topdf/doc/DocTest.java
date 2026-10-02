@@ -1,0 +1,600 @@
+package stirling.software.officeconvert.topdf.doc;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.List;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
+
+import org.apache.pdfbox.Loader;
+import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.text.PDFTextStripper;
+import org.apache.poi.poifs.filesystem.POIFSFileSystem;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+
+import stirling.software.officeconvert.topdf.OfficeToPdf;
+
+class DocTest {
+
+    @TempDir
+    Path dir;
+
+    static String part(byte[] doc, String name) throws IOException {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        try (POIFSFileSystem fs = new POIFSFileSystem(new ByteArrayInputStream(doc))) {
+            DocPackage.write(fs.getRoot(), out);
+        }
+        try (ZipInputStream zip = new ZipInputStream(new ByteArrayInputStream(out.toByteArray()))) {
+            for (ZipEntry e; (e = zip.getNextEntry()) != null;) {
+                if (e.getName().equals(name)) {
+                    return new String(zip.readAllBytes(), StandardCharsets.UTF_8);
+                }
+            }
+        }
+        return null;
+    }
+
+    static String body(byte[] doc) throws IOException {
+        return part(doc, "word/document.xml");
+    }
+
+    String pdfText(byte[] doc, String name) throws IOException {
+        Path in = dir.resolve(name);
+        Files.write(in, doc);
+        Path out = dir.resolve(name + ".pdf");
+        OfficeToPdf.convert(in, out);
+        try (PDDocument pdf = Loader.loadPDF(out.toFile())) {
+            return new PDFTextStripper().getText(pdf);
+        }
+    }
+
+    @Test
+    void convertsTextAndRunFormatting() throws IOException {
+        byte[] doc = new WordFixture()
+                .para(List.of(WordFixture.run("Plain "), WordFixture.run("bold", Sprms.bold(), Sprms.size(28))), 0,
+                        Sprms.jc(1))
+                .para("Second paragraph").build();
+        String xml = body(doc);
+        assertTrue(xml.contains("<w:t xml:space=\"preserve\">Plain </w:t>"), xml);
+        assertTrue(xml.contains("<w:b/>"), xml);
+        assertTrue(xml.contains("<w:sz w:val=\"28\"/>"), xml);
+        assertTrue(xml.contains("<w:jc w:val=\"center\"/>"), xml);
+        String text = pdfText(doc, "basic.doc");
+        assertTrue(text.contains("Plain bold"), text);
+        assertTrue(text.contains("Second paragraph"), text);
+    }
+
+    @Test
+    void anUnknownShadingPatternDoesNotStopTheConversion() throws IOException {
+        byte[] shd = {0, 0, 0, 0, (byte) 0xFF, (byte) 0xEE, (byte) 0xDD, 0, 0, (byte) 0xFF};
+        byte[] doc = new WordFixture().para("Shaded", Sprms.op(0xC64D, 10, shd[0], shd[1], shd[2], shd[3], shd[4],
+                shd[5], shd[6], shd[7], shd[8], shd[9])).build();
+        String xml = body(doc);
+        assertTrue(xml.contains("Shaded"), xml);
+    }
+
+    @Test
+    void aTruncatedParagraphPropertyKeepsTheParagraph() throws IOException {
+        byte[] doc = new WordFixture().para("Kept text", Sprms.jc(2), new byte[] {0x2F, (byte) 0xD6, 20, 1, 2})
+                .build();
+        String xml = body(doc);
+        assertTrue(xml.contains("Kept text"), xml);
+        assertTrue(xml.contains("<w:jc w:val=\"right\"/>"), xml);
+    }
+
+    @Test
+    void tablesKeepTheirCellsAndWidths() throws IOException {
+        int[][] tc = new int[2][20];
+        for (int[] c : tc) {
+            for (int k = 4; k < 20; k += 4) {
+                c[k] = 8;
+                c[k + 1] = 1;
+            }
+        }
+        byte[] doc = new WordFixture().para("Before")
+                .cell("A1").cell("B1").rowEnd(Sprms.u16(0x9602, 108), Sprms.defTable(new int[] {-108, 2000, 5000}, tc))
+                .cell("A2").cell("B2").rowEnd(Sprms.u16(0x9602, 108), Sprms.defTable(new int[] {-108, 2000, 5000}, tc))
+                .para("After").build();
+        String xml = body(doc);
+        assertTrue(xml.contains("<w:gridCol w:w=\"2108\"/><w:gridCol w:w=\"3000\"/>"), xml);
+        assertTrue(xml.contains("<w:tblInd w:w=\"0\" w:type=\"dxa\"/>"), xml);
+        assertTrue(xml.contains("<w:top w:val=\"single\" w:sz=\"8\""), xml);
+        assertTrue(xml.indexOf("A1") < xml.indexOf("B1") && xml.indexOf("B1") < xml.indexOf("A2"), xml);
+        assertTrue(xml.indexOf("<w:tr>") > 0 && xml.split("<w:tc>").length == 5, xml);
+        String text = pdfText(doc, "table.doc");
+        assertTrue(text.contains("A1") && text.contains("B2") && text.contains("After"), text);
+    }
+
+    @Test
+    void pageNumberFieldsCountAndOtherFieldsShowTheirResult() throws IOException {
+        byte[] doc = new WordFixture().para(List.of(WordFixture.run("Page "),
+                WordFixture.run("\u0013", Sprms.special()), WordFixture.run(" PAGE "),
+                WordFixture.run("\u0014", Sprms.special()), WordFixture.run("9"),
+                WordFixture.run("\u0015", Sprms.special()), WordFixture.run(" date "),
+                WordFixture.run("\u0013", Sprms.special()), WordFixture.run(" DATE "),
+                WordFixture.run("\u0014", Sprms.special()), WordFixture.run("1 May 2001"),
+                WordFixture.run("\u0015", Sprms.special())), 0).build();
+        String xml = body(doc);
+        assertTrue(xml.contains("<w:instrText xml:space=\"preserve\"> PAGE </w:instrText>"), xml);
+        assertTrue(xml.contains("1 May 2001") && !xml.contains("DATE"), xml);
+        String text = pdfText(doc, "fields.doc");
+        assertTrue(text.contains("Page 1 date 1 May 2001"), text);
+    }
+
+    @Test
+    void fieldsWithoutAResultShowTheStoredProperties() throws IOException {
+        byte[] doc = new WordFixture().title("Plan B").saved(java.util.Date.from(java.time.Instant.parse(
+                "2021-03-04T13:05:00Z"))).para(List.of(WordFixture.run("By "),
+                WordFixture.run("\u0013", Sprms.special()), WordFixture.run(" AUTHOR \\* Upper "),
+                WordFixture.run("\u0015", Sprms.special()), WordFixture.run(" on "),
+                WordFixture.run("\u0013", Sprms.special()), WordFixture.run(" SAVEDATE \\@ \"d MMMM yyyy\" "),
+                WordFixture.run("\u0015", Sprms.special()), WordFixture.run(": "),
+                WordFixture.run("\u0013", Sprms.special()), WordFixture.run(" TITLE "),
+                WordFixture.run("\u0015", Sprms.special())), 0).build();
+        String text = pdfText(doc, "stored.doc");
+        assertTrue(text.contains("By FIXTURE AUTHOR on 4 March 2021: Plan B"), text);
+    }
+
+    @Test
+    void eqFieldsReachTheEquationLayout() throws IOException {
+        byte[] doc = new WordFixture().para(List.of(WordFixture.run("Half "),
+                WordFixture.run("\u0013", Sprms.special()), WordFixture.run(" EQ \\f(1,2) "),
+                WordFixture.run("\u0015", Sprms.special()), WordFixture.run(" and "),
+                WordFixture.run("\u0013", Sprms.special()), WordFixture.run(" EQ \\r(9) "),
+                WordFixture.run("\u0014", Sprms.special()), WordFixture.run("\u0015", Sprms.special())), 0).build();
+        String xml = body(doc);
+        assertTrue(xml.contains("<w:instrText xml:space=\"preserve\"> EQ \\f(1,2) </w:instrText>")
+                && xml.contains("<w:instrText xml:space=\"preserve\"> EQ \\r(9) </w:instrText>"), xml);
+        String text = pdfText(doc, "eq.doc");
+        assertTrue(text.contains("1") && text.contains("2") && text.contains("9"), text);
+    }
+
+    @Test
+    void onlyWebAndMailLinksBecomeHyperlinks() throws IOException {
+        byte[] doc = new WordFixture().para(List.of(
+                WordFixture.run("\u0013", Sprms.special()), WordFixture.run(" HYPERLINK \"https://example.com/a\" "),
+                WordFixture.run("\u0014", Sprms.special()), WordFixture.run("web"),
+                WordFixture.run("\u0015", Sprms.special()), WordFixture.run(" "),
+                WordFixture.run("\u0013", Sprms.special()), WordFixture.run(" HYPERLINK \"file:///etc/passwd\" "),
+                WordFixture.run("\u0014", Sprms.special()), WordFixture.run("file"),
+                WordFixture.run("\u0015", Sprms.special())), 0).build();
+        String xml = body(doc);
+        assertEquals(1, xml.split("<w:hyperlink ").length - 1, xml);
+        String rels = part(doc, "word/_rels/document.xml.rels");
+        assertTrue(rels.contains("https://example.com/a") && !rels.contains("passwd"), rels);
+    }
+
+    @Test
+    void headersAndFootnotesGetTheirOwnParts() throws IOException {
+        byte[] doc = new WordFixture()
+                .para(List.of(WordFixture.run("Body"), WordFixture.run("\u0002", Sprms.special())), 0)
+                .footnoteRef(4).footnote("The note").header("Running head").build();
+        String xml = body(doc);
+        assertTrue(xml.contains("<w:footnoteReference w:id=\"1\"/>"), xml);
+        assertTrue(xml.contains("<w:headerReference w:type=\"default\""), xml);
+        String notes = part(doc, "word/footnotes.xml");
+        assertTrue(notes.contains("The note") && notes.contains("<w:footnoteRef/>"), notes);
+        String header = part(doc, "word/header1.xml");
+        assertTrue(header.contains("Running head"), header);
+        String text = pdfText(doc, "notes.doc");
+        assertTrue(text.contains("Running head") && text.contains("The note"), text);
+    }
+
+    @Test
+    void sectionsKeepPageSizeAndOrientation() throws IOException {
+        byte[] doc = new WordFixture().para("Wide")
+                .section(Sprms.u16(0xB01F, 15840), Sprms.u16(0xB020, 12240), Sprms.u8(0x301D, 1)).build();
+        String xml = body(doc);
+        assertTrue(xml.contains("<w:pgSz w:w=\"15840\" w:h=\"12240\" w:orient=\"landscape\"/>"), xml);
+    }
+
+    @Test
+    void unequalColumnsKeepTheirWidths() throws IOException {
+        byte[] doc = new WordFixture().para("Columns").section(Sprms.u16(0x500B, 1), Sprms.u8(0x3005, 0),
+                Sprms.op(0xF203, 0, 0x37, 0x14), Sprms.op(0xF204, 0, 0x6E, 0x01), Sprms.op(0xF203, 1, 0x68, 0x12))
+                .build();
+        String xml = body(doc);
+        assertTrue(xml.contains("<w:col w:w=\"5175\" w:space=\"366\"/><w:col w:w=\"4712\"/>"), xml);
+    }
+
+    @Test
+    void shadingAndBordersComeFromTheirOwnPropertyRecords() throws IOException {
+        byte[] doc = new WordFixture()
+                .para(List.of(WordFixture.run("boxed", Sprms.op(0xCA72, 8, 0x00, 0x00, 0xFF, 0x00, 8, 1, 0, 0),
+                        Sprms.op(0xCA71, 10, 0, 0, 0, 0xFF, 0xFF, 0xFF, 0x00, 0x00, 0, 0))), 0,
+                        Sprms.op(0xC64D, 10, 0, 0, 0, 0xFF, 0x33, 0x66, 0x99, 0x00, 0, 0))
+                .para("Plain").build();
+        String xml = body(doc);
+        assertTrue(xml.contains("<w:shd w:val=\"clear\" w:color=\"auto\" w:fill=\"336699\"/>"), xml);
+        assertTrue(xml.contains("<w:shd w:val=\"clear\" w:color=\"auto\" w:fill=\"FFFF00\"/>"), xml);
+        assertTrue(xml.contains("<w:bdr w:val=\"single\" w:sz=\"8\" w:space=\"0\" w:color=\"0000FF\"/>"), xml);
+        String plain = xml.substring(xml.lastIndexOf("<w:p>"));
+        assertTrue(plain.contains("Plain") && !plain.contains("<w:shd "), xml);
+    }
+
+    @Test
+    void rightToLeftAndScaledRunsKeepTheirProperties() throws IOException {
+        byte[] doc = new WordFixture()
+                .para(List.of(WordFixture.run("\u05e9\u05dc\u05d5\u05dd", Sprms.u8(0x085A, 1), Sprms.u8(0x085C, 1),
+                        Sprms.u16(0x4A61, 32)), WordFixture.run("narrow", Sprms.u16(0x4852, 69))), 0,
+                        Sprms.u8(0x2441, 1))
+                .build();
+        String xml = body(doc);
+        assertTrue(xml.contains("<w:rtl/>"), xml);
+        assertTrue(xml.contains("<w:bCs/>"), xml);
+        assertTrue(xml.contains("<w:szCs w:val=\"32\"/>"), xml);
+        assertTrue(xml.contains("<w:w w:val=\"69\"/>"), xml);
+        assertTrue(xml.contains("<w:bidi/>"), xml);
+    }
+
+    @Test
+    void aRowsOwnCellPaddingReachesItsCells() throws IOException {
+        int[] centers = {0, 3000};
+        byte[] doc = new WordFixture()
+                .cell("first").rowEnd(Sprms.defTable(centers, null), Sprms.op(0xD634, 6, 0, 1, 5, 3, 0, 0))
+                .cell("second").rowEnd(Sprms.defTable(centers, null), Sprms.op(0xD634, 6, 0, 1, 5, 3, 113, 0))
+                .para("After").build();
+        String xml = body(doc);
+        String second = xml.substring(xml.lastIndexOf("<w:tr>"));
+        assertTrue(second.contains("<w:tcMar><w:top w:w=\"113\" w:type=\"dxa\"/>"), xml);
+        String first = xml.substring(xml.indexOf("<w:tr>"), xml.lastIndexOf("<w:tr>"));
+        assertTrue(!first.contains("<w:tcMar>"), xml);
+    }
+
+    @Test
+    void shapesUseTheirOwnAnchorAndLayerProperties() throws IOException {
+        byte[] polygon = {4, 0, 4, 0, (byte) 0xF0, (byte) 0xFF, 0, 0, 0, 0, 0, 0, (byte) 0x60, 0x54, (byte) 0x60, 0x54,
+            0, 0, 0, 0, 0, 0};
+        byte[] doc = new WordFixture()
+                .para(List.of(WordFixture.run("Anchor "), WordFixture.run("\u0008", Sprms.special()),
+                        WordFixture.run("\u0008", Sprms.special()), WordFixture.run("\u0008", Sprms.special())), 0)
+                .shape(new ShapeFixture.Shape(1025, 1, new int[] {0, 2123, 3000, 4000},
+                        ShapeFixture.fspaFlags(2, 2, 3, 0, false), java.util.Map.of(0x0181, 0x0000FF, 0x0182, 0x8000,
+                                0x0390, 1, 0x0392, 1, 0x03BF, 0x200020), java.util.Map.of()))
+                .shape(new ShapeFixture.Shape(1026, 1, new int[] {0, 0, 9000, 1000},
+                        ShapeFixture.fspaFlags(2, 2, 2, 0, false), java.util.Map.of(0x01BF, 0x100000, 0x01FF, 0x80000),
+                        java.util.Map.of()))
+                .shape(new ShapeFixture.Shape(1027, 202, new int[] {0, 0, 2000, 1000},
+                        ShapeFixture.fspaFlags(2, 2, 4, 0, false), java.util.Map.of(0x0080, 0x10000),
+                        java.util.Map.of(0x0383, polygon)))
+                .textbox(1027, "Boxed words").build();
+        String xml = body(doc);
+        assertTrue(xml.contains("<wp:positionH relativeFrom=\"page\"><wp:posOffset>0</wp:posOffset>"), xml);
+        assertTrue(xml.contains("<wp:positionV relativeFrom=\"page\"><wp:posOffset>" + 2123 * 635 + "<"), xml);
+        assertTrue(xml.contains("behindDoc=\"1\""), xml);
+        assertTrue(xml.contains("<a:srgbClr val=\"FF0000\"><a:alpha val=\"50000\"/>"), xml);
+        assertEquals(3, xml.split("<wp:anchor ").length - 1, xml);
+        assertTrue(xml.contains("<wp:wrapTight wrapText=\"bothSides\"><wp:wrapPolygon edited=\"0\">"
+                + "<wp:start x=\"0\" y=\"0\"/>"
+                + "<wp:lineTo x=\"0\" y=\"21600\"/><wp:lineTo x=\"21600\" y=\"0\"/>"), xml);
+        assertTrue(xml.contains("<w:txbxContent>") && xml.contains("Boxed words"), xml);
+        String text = pdfText(doc, "shapes.doc");
+        assertTrue(text.contains("Boxed words"), text);
+    }
+
+    @Test
+    void textBoxesInsideTextBoxesKeepTheirText() throws IOException {
+        byte[] doc = new WordFixture()
+                .para(List.of(WordFixture.run("Anchor "), WordFixture.run("\u0008", Sprms.special())), 0)
+                .shape(new ShapeFixture.Shape(1025, 202, new int[] {1440, 1440, 7200, 5760},
+                        ShapeFixture.fspaFlags(1, 1, 3, 0, false), java.util.Map.of(), java.util.Map.of()))
+                .shape(new ShapeFixture.Shape(1026, 202, new int[] {2160, 2880, 5040, 4320},
+                        ShapeFixture.fspaFlags(1, 1, 3, 0, false), java.util.Map.of(), java.util.Map.of()))
+                .textbox(1025, List.of(WordFixture.run("Outer words "), WordFixture.run("\u0008", Sprms.special())))
+                .textbox(1026, "Inner words").build();
+        String xml = body(doc);
+        int outer = xml.indexOf("<w:txbxContent>");
+        int inner = xml.indexOf("<w:txbxContent>", outer + 1);
+        assertTrue(outer > 0 && inner > outer && inner < xml.indexOf("</w:txbxContent>"), xml);
+        assertTrue(xml.indexOf("Outer words") > outer && xml.indexOf("Inner words") > inner, xml);
+        String text = pdfText(doc, "nested.doc");
+        assertTrue(text.contains("Outer words") && text.contains("Inner words"), text);
+    }
+
+    @Test
+    void wordSixNumberingInAWord97FileStillNumbers() throws IOException {
+        int[] anld = new int[84];
+        anld[2] = 1;
+        anld[10] = 1;
+        anld[12] = 0x68;
+        anld[13] = 0x01;
+        anld[20] = '.';
+        byte[] numbered = WordFixture.concat(Sprms.u8(0x240D, 10), Sprms.var(0xC63E, anld));
+        byte[] doc = new WordFixture().para("Apples", numbered).para("Pears", numbered).build();
+        String xml = body(doc);
+        assertTrue(xml.contains("<w:numPr><w:ilvl w:val=\"0\"/><w:numId w:val=\""), xml);
+        String numbering = part(doc, "word/numbering.xml");
+        assertTrue(numbering != null && numbering.contains("<w:lvlText w:val=\"%1.\"/>")
+                && numbering.contains("<w:numFmt w:val=\"decimal\"/>"), numbering);
+        String text = pdfText(doc, "anld.doc");
+        assertTrue(text.contains("1.") && text.contains("2."), text);
+    }
+
+    @Test
+    void aShapeFilledWithAPictureKeepsThePicture() throws IOException {
+        byte[] doc = new WordFixture()
+                .para(List.of(WordFixture.run("Anchor "), WordFixture.run("\u0008", Sprms.special())), 0)
+                .picture(PictureFixture.png(4, 4, java.awt.Color.RED))
+                .shape(new ShapeFixture.Shape(1025, 1, new int[] {0, 0, 2000, 1000},
+                        ShapeFixture.fspaFlags(2, 2, 3, 0, false), java.util.Map.of(0x0180, 3, 0x0186, 1),
+                        java.util.Map.of()))
+                .build();
+        String xml = body(doc);
+        assertTrue(xml.contains("<a:blipFill><a:blip r:embed=") && xml.contains("<a:stretch><a:fillRect/>"), xml);
+        assertTrue(part(doc, "word/media/image1.png") != null);
+    }
+
+    @Test
+    void aTextFreeContinuousSectionRunsIntoTheNext() throws IOException {
+        byte[] cols = WordFixture.concat(Sprms.u16(0x500B, 1), Sprms.u8(0x3009, 0));
+        byte[] doc = new WordFixture().sectionBreak("", cols).para("Body").section(cols).build();
+        String xml = body(doc);
+        assertEquals(1, xml.split("<w:sectPr>").length - 1, xml);
+        byte[] split = new WordFixture().sectionBreak("Words", cols).para("Body").section(cols).build();
+        assertEquals(2, body(split).split("<w:sectPr>").length - 1);
+    }
+
+    @Test
+    void onlyTheTableDirectionPropertyMakesATableRightToLeft() throws IOException {
+        int[] centers = {0, 2000, 4000};
+        byte[] doc = new WordFixture().cell("A").cell("B")
+                .rowEnd(Sprms.defTable(centers, null), Sprms.u8(0x3466, 1)).para("After").build();
+        assertTrue(!body(doc).contains("<w:bidiVisual/>"), body(doc));
+        byte[] rtl = new WordFixture().cell("A").cell("B")
+                .rowEnd(Sprms.defTable(centers, null), Sprms.u16(0x560B, 1)).para("After").build();
+        assertTrue(body(rtl).contains("<w:bidiVisual/>"), body(rtl));
+    }
+
+    @Test
+    void paragraphTabStopsAreKept() throws IOException {
+        byte[] doc = new WordFixture().para("a\tb", Sprms.op(0xC60D, 5, 0, 1, 0xE0, 0x12, 0x02)).build();
+        String xml = body(doc);
+        assertTrue(xml.contains("<w:tab w:val=\"right\" w:pos=\"4832\"/>"), xml);
+    }
+
+    @Test
+    void binaryNumberFormatCodesPastFortyKeepTheirMeaning() throws IOException {
+        String[][] cases = {{"58", "russianLower"}, {"47", "hebrew2"}, {"45", "hebrew1"}, {"41", "koreanDigital"}};
+        for (String[] c : cases) {
+            byte[][] list = Sprms.simpleList(Integer.parseInt(c[0]), "\u0000.", new byte[0], new byte[0]);
+            byte[] doc = new WordFixture().lists(list[0], list[1]).para("Item", Sprms.u16(0x460B, 1),
+                    Sprms.u8(0x260A, 0)).build();
+            String numbering = part(doc, "word/numbering.xml");
+            assertTrue(numbering.contains("<w:numFmt w:val=\"" + c[1] + "\"/>"), c[0] + ": " + numbering);
+        }
+    }
+
+    @Test
+    void listsBecomeNumbering() throws IOException {
+        byte[][] list = Sprms.simpleList(0, "\u0000.",
+                WordFixture.concat(Sprms.u16(0x845E, 720), Sprms.u16(0x8460, -360)),
+                new byte[0]);
+        byte[] doc = new WordFixture().lists(list[0], list[1])
+                .para("First", Sprms.u16(0x460B, 1), Sprms.u8(0x260A, 0))
+                .para("Second", Sprms.u16(0x460B, 1), Sprms.u8(0x260A, 0)).build();
+        String xml = body(doc);
+        assertTrue(xml.contains("<w:numPr><w:ilvl w:val=\"0\"/><w:numId w:val=\"1\"/></w:numPr>"), xml);
+        assertTrue(xml.contains("<w:ind w:left=\"720\" w:right=\"0\" w:hanging=\"360\"/>"), xml);
+        String numbering = part(doc, "word/numbering.xml");
+        assertTrue(numbering.contains("<w:numFmt w:val=\"decimal\"/>")
+                && numbering.contains("<w:lvlText w:val=\"%1.\"/>"),
+                numbering);
+        String text = pdfText(doc, "list.doc");
+        assertTrue(text.contains("1.") && text.contains("2.") && text.contains("Second"), text);
+    }
+
+    @Test
+    void inlinePicturesAreEmbedded() throws IOException {
+        byte[] png = PictureFixture.png(8, 4, java.awt.Color.RED);
+        byte[] data = WordFixture.concat(new byte[16], PictureFixture.picf(png, 1440, 720));
+        byte[] doc = new WordFixture().data(data)
+                .para(List.of(WordFixture.run("Logo "),
+                        WordFixture.run("\u0001", Sprms.special(), Sprms.u32(0x6A03, 16))),
+                        0)
+                .build();
+        String xml = body(doc);
+        assertTrue(xml.contains("<wp:extent cx=\"914400\" cy=\"457200\"/>"), xml);
+        String rels = part(doc, "word/_rels/document.xml.rels");
+        assertTrue(rels.contains("media/image1.png"), rels);
+        Path in = dir.resolve("picture.doc");
+        Files.write(in, doc);
+        Path out = dir.resolve("picture.pdf");
+        OfficeToPdf.convert(in, out);
+        try (PDDocument pdf = Loader.loadPDF(out.toFile())) {
+            assertTrue(pdf.getPage(0).getResources().getXObjectNames().iterator().hasNext());
+        }
+    }
+
+    @Test
+    void encryptedDocumentsAreRefusedPlainly() throws IOException {
+        byte[] locked = new WordFixture().para("Secret").fib(0xC1, 0x0100).build();
+        Path in = Files.write(dir.resolve("locked.doc"), locked);
+        IOException e = org.junit.jupiter.api.Assertions.assertThrows(IOException.class,
+                () -> OfficeToPdf.convert(in, dir.resolve("locked.pdf")));
+        assertTrue(e.getMessage().contains("password"), e.getMessage());
+        byte[] old = new WordFixture().para("Old").fib(0x65, 0x0100).build();
+        Path in95 = Files.write(dir.resolve("old.doc"), old);
+        IOException o = org.junit.jupiter.api.Assertions.assertThrows(IOException.class,
+                () -> OfficeToPdf.convert(in95, dir.resolve("old.pdf")));
+        assertTrue(o.getMessage().contains("password"), o.getMessage());
+    }
+
+    @Test
+    void word2FilesAreRefusedPlainly() throws IOException {
+        byte[] word2 = new byte[512];
+        java.nio.ByteBuffer.wrap(word2).order(java.nio.ByteOrder.LITTLE_ENDIAN).putShort(0, (short) 0xA5DB)
+                .putShort(2, (short) 45).putInt(0x18, 0x100).putInt(0x1C, 0x180);
+        Path in = Files.write(dir.resolve("old2.doc"), word2);
+        IOException e = org.junit.jupiter.api.Assertions.assertThrows(IOException.class,
+                () -> OfficeToPdf.convert(in, dir.resolve("old2.pdf")));
+        assertTrue(e.getMessage().contains("Word 2.0"), e.getMessage());
+    }
+
+    @Test
+    void bookmarksAndInternalLinksAreKept() throws IOException {
+        byte[] doc = new WordFixture().para(List.of(
+                WordFixture.run("\u0013", Sprms.special()), WordFixture.run(" HYPERLINK \\l \"target\" "),
+                WordFixture.run("\u0014", Sprms.special()), WordFixture.run("go"),
+                WordFixture.run("\u0015", Sprms.special())), 0)
+                .para("Destination").bookmark("target", 29, 40).build();
+        String xml = body(doc);
+        assertTrue(xml.contains("<w:hyperlink w:anchor=\"target\">"), xml);
+        assertTrue(xml.contains("<w:bookmarkStart w:id=\"0\" w:name=\"target\"/>"), xml);
+        assertTrue(xml.indexOf("bookmarkStart") < xml.indexOf("Destination"), xml);
+    }
+
+    @Test
+    void paragraphStylesLendTheirProperties() throws IOException {
+        byte[] doc = new WordFixture().style("Body", 0, WordFixture.concat(Sprms.u16(0xA414, 200), Sprms.u32(0x6412,
+                276 | 1 << 16)), Sprms.bold())
+                .para(List.of(WordFixture.run("Styled")), 1).build();
+        String xml = body(doc);
+        assertTrue(xml.contains("<w:spacing w:before=\"0\" w:after=\"200\" w:line=\"276\" w:lineRule=\"auto\"/>"), xml);
+        assertTrue(xml.contains("<w:b/>"), xml);
+    }
+
+    @Test
+    void aPageBreakThatEndsAParagraphStartsANewPage() throws IOException {
+        byte[] doc = new WordFixture().pageBreak("Page one").para("Page two").build();
+        String xml = body(doc);
+        String second = xml.substring(xml.indexOf("<w:p>", xml.indexOf("Page one")));
+        assertTrue(second.contains("<w:pageBreakBefore/>") && second.contains("Page two"), xml);
+        Path in = Files.write(dir.resolve("break.doc"), doc);
+        Path out = dir.resolve("break.pdf");
+        OfficeToPdf.convert(in, out);
+        try (PDDocument pdf = Loader.loadPDF(out.toFile())) {
+            assertEquals(2, pdf.getNumberOfPages());
+        }
+    }
+
+    @Test
+    void groupedShapesKeepTheirMembers() throws IOException {
+        byte[] doc = new WordFixture()
+                .para(List.of(WordFixture.run("Group "), WordFixture.run("\u0008", Sprms.special())), 0)
+                .shape(ShapeFixture.group(1030, new int[] {0, 0, 4000, 2000}, ShapeFixture.fspaFlags(2, 2, 3, 0, false),
+                        new int[] {0, 0, 100, 50},
+                        List.of(new ShapeFixture.Member(1031, new int[] {0, 0, 50, 50}, 0x0000FF),
+                                new ShapeFixture.Member(1032, new int[] {50, 0, 100, 50}, 0x00FF00))))
+                .build();
+        String xml = body(doc);
+        assertTrue(xml.contains("<wpg:wgp>"), xml);
+        assertTrue(xml.contains("<a:chOff x=\"0\" y=\"0\"/><a:chExt cx=\"100\" cy=\"50\"/>"), xml);
+        assertEquals(2, xml.split("<wps:wsp>").length - 1, xml);
+        assertTrue(xml.contains("<a:off x=\"50\" y=\"0\"/><a:ext cx=\"50\" cy=\"50\"/>"), xml);
+        assertTrue(xml.contains("FF0000") && xml.contains("00FF00"), xml);
+    }
+
+    @Test
+    void aSidewaysShapeIsRotatedAboutItsCentre() throws IOException {
+        byte[] doc = new WordFixture()
+                .para(List.of(WordFixture.run("Turn "), WordFixture.run("\u0008", Sprms.special())), 0)
+                .shape(new ShapeFixture.Shape(1025, 1, new int[] {0, 0, 1000, 3000},
+                        ShapeFixture.fspaFlags(2, 2, 3, 0, false), java.util.Map.of(0x0004, 90 << 16),
+                        java.util.Map.of()))
+                .build();
+        String xml = body(doc);
+        assertTrue(xml.contains("<a:xfrm rot=\"5400000\">"), xml);
+        assertTrue(xml.contains("<wp:extent cx=\"1905000\" cy=\"635000\"/>"), xml);
+        assertTrue(xml.contains("<wp:posOffset>-635000</wp:posOffset>"), xml);
+    }
+
+    @Test
+    void trackedDeletionsAreLeftOutLikeTheFinalView() throws IOException {
+        byte[] doc = new WordFixture().para(List.of(WordFixture.run("kept "),
+                WordFixture.run("removed ", Sprms.u8(0x0800, 1)), WordFixture.run("added", Sprms.u8(0x0801, 1))), 0)
+                .build();
+        String xml = body(doc);
+        assertTrue(xml.contains("kept") && xml.contains("added") && !xml.contains("removed"), xml);
+    }
+
+    @Test
+    void wordArtKeepsItsText() throws IOException {
+        byte[] text = "Draft\u0000".getBytes(java.nio.charset.StandardCharsets.UTF_16LE);
+        byte[] doc = new WordFixture()
+                .para(List.of(WordFixture.run("Art "), WordFixture.run("\u0008", Sprms.special())), 0)
+                .shape(new ShapeFixture.Shape(1025, 136, new int[] {0, 0, 4000, 1000},
+                        ShapeFixture.fspaFlags(2, 2, 3, 0, false), java.util.Map.of(0x0181, 0x0000FF, 0x00C3, 40 << 16),
+                        java.util.Map.of(0x00C0, text)))
+                .build();
+        String xml = body(doc);
+        assertTrue(xml.contains("<a:prstTxWarp prst=\"textPlain\">"), xml);
+        assertTrue(xml.contains(">Draft</w:t>") && xml.contains("<w:color w:val=\"FF0000\"/>"), xml);
+        assertTrue(xml.contains("<w:sz w:val=\"80\"/>"), xml);
+    }
+
+    @Test
+    void linesKeepTheirDashesAndArrowheads() throws IOException {
+        byte[] doc = new WordFixture()
+                .para(List.of(WordFixture.run("Line "), WordFixture.run("\u0008", Sprms.special())), 0)
+                .shape(new ShapeFixture.Shape(1025, 20, new int[] {0, 0, 4000, 10},
+                        ShapeFixture.fspaFlags(2, 2, 3, 0, false), java.util.Map.of(0x01CE, 1, 0x01D1, 1),
+                        java.util.Map.of()))
+                .build();
+        String xml = body(doc);
+        assertTrue(xml.contains("<a:prstDash val=\"dash\"/><a:tailEnd type=\"triangle\"/>"), xml);
+    }
+
+    @Test
+    void presetShapesMapToTheirDrawingMlGeometry() {
+        assertEquals("flowChartDecision", Shapes.geometry(110));
+        assertEquals("ellipse", Shapes.geometry(3));
+        assertEquals("rect", Shapes.geometry(999));
+    }
+
+    @Test
+    void theTitleAndAuthorReachThePdf() throws IOException {
+        byte[] doc = new WordFixture().para("Body").title("Quarterly Notes").build();
+        Path in = Files.write(dir.resolve("titled.doc"), doc);
+        Path out = dir.resolve("titled.pdf");
+        OfficeToPdf.convert(in, out);
+        try (PDDocument pdf = Loader.loadPDF(out.toFile())) {
+            assertEquals("Quarterly Notes", pdf.getDocumentInformation().getTitle());
+            assertEquals("Fixture Author", pdf.getDocumentInformation().getAuthor());
+        }
+    }
+
+    @Test
+    void aDiagonalWatermarkKeepsItsBoxAndFadesWithItsOpacity() throws IOException {
+        byte[] text = "DRAFT\u0000".getBytes(java.nio.charset.StandardCharsets.UTF_16LE);
+        byte[] doc = new WordFixture()
+                .para(List.of(WordFixture.run("Mark "), WordFixture.run("\u0008", Sprms.special())), 0)
+                .shape(new ShapeFixture.Shape(1025, 136, new int[] {0, 0, 4000, 1000},
+                        ShapeFixture.fspaFlags(2, 2, 3, 0, false),
+                        java.util.Map.of(0x0004, 315 << 16, 0x0181, 0x808080, 0x0182, 0x8000),
+                        java.util.Map.of(0x00C0, text)))
+                .build();
+        String xml = body(doc);
+        assertTrue(xml.contains("<wp:extent cx=\"2540000\" cy=\"635000\"/>"), xml);
+        assertTrue(xml.contains("<a:xfrm rot=\"18900000\">"), xml);
+        assertTrue(xml.contains("<w:color w:val=\"C0C0C0\"/>"), xml);
+    }
+
+    @Test
+    void drawingsStackInTheirDrawingLayerOrder() throws IOException {
+        byte[] doc = new WordFixture()
+                .para(List.of(WordFixture.run("\u0008", Sprms.special()),
+                        WordFixture.run("\u0008", Sprms.special())), 0)
+                .shape(new ShapeFixture.Shape(1025, 1, new int[] {0, 0, 1000, 1000},
+                        ShapeFixture.fspaFlags(2, 2, 3, 0, false), java.util.Map.of(0x0181, 0x0000FF),
+                        java.util.Map.of()))
+                .shape(new ShapeFixture.Shape(1026, 1, new int[] {0, 0, 1000, 1000},
+                        ShapeFixture.fspaFlags(2, 2, 3, 0, false), java.util.Map.of(0x0181, 0x00FF00),
+                        java.util.Map.of()))
+                .reverseDrawingOrder().build();
+        String xml = body(doc);
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("relativeHeight=\"(\\d+)\"").matcher(xml);
+        assertTrue(m.find());
+        long first = Long.parseLong(m.group(1));
+        assertTrue(m.find());
+        long second = Long.parseLong(m.group(1));
+        assertTrue(first > second, xml);
+    }
+}

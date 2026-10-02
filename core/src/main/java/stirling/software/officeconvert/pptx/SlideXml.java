@@ -3,6 +3,7 @@ package stirling.software.officeconvert.pptx;
 import java.util.Map;
 
 import stirling.software.officeconvert.model.Picture;
+import stirling.software.officeconvert.model.Scripts;
 import stirling.software.officeconvert.slides.Frame;
 import stirling.software.officeconvert.slides.LineShape;
 import stirling.software.officeconvert.slides.PictureShape;
@@ -23,10 +24,10 @@ final class SlideXml {
     private final TableXml tables;
     private int nextId = 2;
 
-    SlideXml(Slide slide, TextXml.Links links, Map<String, Integer> fonts) {
+    SlideXml(Slide slide, TextXml.Links links, Map<String, Integer> fonts, Scripts.Profile scripts) {
         boolean titled = slide.shapes().stream().anyMatch(s -> s instanceof TextShape t && t.title());
         this.rels = new SlideRels(titled ? TITLE_LAYOUT : BLANK_LAYOUT);
-        this.text = new TextXml(rels, links, fonts);
+        this.text = new TextXml(rels, links, fonts, scripts);
         this.tables = new TableXml(text);
     }
 
@@ -86,7 +87,8 @@ final class SlideXml {
             sb.append("<a:noFill/>");
         }
         Ooxml.line(sb, t.lineRgb(), t.lineWidth());
-        sb.append("</p:spPr><p:txBody><a:bodyPr vert=\"horz\" wrap=\"").append(t.wrap() ? "square" : "none")
+        sb.append("</p:spPr><p:txBody><a:bodyPr vert=\"").append(t.vertical() ? "eaVert" : "horz").append("\" wrap=\"")
+                .append(t.wrap() ? "square" : "none")
                 .append("\" lIns=\"").append(Ooxml.emu(t.insetLeft()))
                 .append("\" tIns=\"").append(Ooxml.emu(t.insetTop())).append("\" rIns=\"").append(Ooxml.emu(t.insetRight()))
                 .append("\" bIns=\"0\" rtlCol=\"0\" anchor=\"t\" anchorCtr=\"0\">")

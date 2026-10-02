@@ -33,9 +33,13 @@ public final class PageReader {
 
     private final PDDocument document;
     private final FontResolver fonts = new FontResolver();
+    private final ParsedStreams parsed = new ParsedStreams();
+    private final PageIndex pages;
 
     public PageReader(PDDocument document) {
         this.document = document;
+        this.pages = new PageIndex(document);
+        document.setResourceCache(new KeptResources());
         TextMaps.seed(document);
     }
 
@@ -50,6 +54,7 @@ public final class PageReader {
                 first,
                 last,
                 fonts,
+                withGraphics ? parsed : null,
                 (index, page, raw) -> consumer.accept(build(index, page, raw, withGraphics)));
     }
 
@@ -76,10 +81,13 @@ public final class PageReader {
                 glyphs.add(g);
             }
         }
-        glyphs = dedupe(glyphs);
+        if (direction == 0) {
+            VerticalText.lift(glyphs, rotated);
+        }
+        glyphs = dedupe(Clusters.join(glyphs));
         PageGraphics graphics =
                 withGraphics
-                        ? GraphicsCollector.read(page, toDisplay, width, height)
+                        ? GraphicsCollector.read(page, toDisplay, width, height, parsed)
                         : new PageGraphics(List.of(), List.of(), List.of(), List.of());
         List<PageData.Link> links = withGraphics ? links(page, toDisplay) : List.of();
         return new PageData(
@@ -90,7 +98,7 @@ public final class PageReader {
         float width = 612;
         float height = 792;
         try {
-            PDRectangle crop = document.getPage(index).getCropBox();
+            PDRectangle crop = pages.cropBox(index);
             width = crop.getWidth() * fitScale(crop);
             height = crop.getHeight() * fitScale(crop);
         } catch (RuntimeException e) {
@@ -99,11 +107,15 @@ public final class PageReader {
                 new PageGraphics(List.of(), List.of(), List.of(), List.of()), List.of());
     }
 
+    public PDRectangle cropBox(int index) {
+        return pages.cropBox(index);
+    }
+
     public PageData complete(PageData glyphsOnly) throws IOException {
         PDPage page = document.getPage(glyphsOnly.index());
         AffineTransform toDisplay = displayTransform(page.getCropBox(), glyphsOnly.direction());
         PageGraphics graphics =
-                GraphicsCollector.read(page, toDisplay, glyphsOnly.width(), glyphsOnly.height());
+                GraphicsCollector.read(page, toDisplay, glyphsOnly.width(), glyphsOnly.height(), parsed);
         return new PageData(
                 glyphsOnly.index(),
                 glyphsOnly.width(),
@@ -154,9 +166,10 @@ public final class PageReader {
         return best;
     }
 
-    private static List<Glyph> dedupe(List<Glyph> glyphs) {
-        Map<Long, List<Glyph>> grid = new HashMap<>();
+    private static List<Glyph> dedupe(List<Glyph> glyphs) throws IOException {
+        Cells grid = new Cells(glyphs.size());
         Set<Glyph> dropped = new HashSet<>();
+        long remaining = 10_000_000;
         for (Glyph g : glyphs) {
             if (g.isSpace()) {
                 continue;
@@ -165,15 +178,36 @@ public final class PageReader {
             int gy = (int) Math.floor(g.baseline);
             float reachX = Math.max(0.6f, g.width * 0.25f);
             float reachY = Math.max(0.6f, g.size * 0.1f);
+            long x0 = (int) Math.floor(g.x - reachX);
+            long x1 = (int) Math.floor(g.x + reachX);
+            long y0 = (int) Math.floor(g.baseline - reachY);
+            long y1 = (int) Math.floor(g.baseline + reachY);
+            // Font sizes and text matrices are supplied by the PDF, independent of its page dimensions.
+            if (!Float.isFinite(reachX) || !Float.isFinite(reachY)
+                    || (double) (x1 - x0 + 1) * (y1 - y0 + 1) > 1_000_000) {
+                throw new IOException("Text geometry exceeds the duplicate-detection work limit");
+            }
             Glyph twin = null;
             outer:
-            for (int cx = (int) Math.floor(g.x - reachX); cx <= (int) Math.floor(g.x + reachX); cx++) {
-                for (int cy = (int) Math.floor(g.baseline - reachY); cy <= (int) Math.floor(g.baseline + reachY); cy++) {
-                    List<Glyph> cell = grid.get(key(cx, cy));
+            for (long cx = x0; cx <= x1; cx++) {
+                for (long cy = y0; cy <= y1; cy++) {
+                    if (--remaining < 0) {
+                        throw new IOException("Page exceeds the duplicate-detection work limit");
+                    }
+                    if ((remaining & 1023) == 0) {
+                        PdfFiles.stopIfInterrupted();
+                    }
+                    List<Glyph> cell = grid.get(key((int) cx, (int) cy));
                     if (cell == null) {
                         continue;
                     }
                     for (Glyph o : cell) {
+                        if (--remaining < 0) {
+                            throw new IOException("Page exceeds the duplicate-detection work limit");
+                        }
+                        if ((remaining & 1023) == 0) {
+                            PdfFiles.stopIfInterrupted();
+                        }
                         if (o.text.equals(g.text)
                                 && Math.abs(o.x - g.x) < reachX
                                 && Math.abs(o.baseline - g.baseline) < reachY
@@ -187,14 +221,14 @@ public final class PageReader {
             if (twin != null && twin.rgb != g.rgb) {
                 dropped.add(twin);
                 grid.get(key((int) Math.floor(twin.x), (int) Math.floor(twin.baseline))).remove(twin);
-                grid.computeIfAbsent(key(gx, gy), k -> new ArrayList<>(2)).add(g);
+                grid.add(key(gx, gy), g);
             } else if (twin != null) {
                 if (Math.abs(twin.x - g.x) > 0.05f || Math.abs(twin.baseline - g.baseline) > 0.05f) {
                     twin.bold = true;
                 }
                 dropped.add(g);
             } else {
-                grid.computeIfAbsent(key(gx, gy), k -> new ArrayList<>(2)).add(g);
+                grid.add(key(gx, gy), g);
             }
         }
         if (dropped.isEmpty()) {
@@ -211,6 +245,72 @@ public final class PageReader {
 
     private static long key(int x, int y) {
         return (((long) x << 32) ^ (y & 0xFFFFFFFFL)) * 0x9E3779B97F4A7C15L;
+    }
+
+    // Glyphs by whole-point cell, looked up without boxing: open addressing on the already mixed keys
+    private static final class Cells {
+
+        private long[] keys;
+
+        private List<?>[] lists;
+
+        private int size;
+
+        Cells(int expected) {
+            int capacity = Integer.highestOneBit(Math.max(8, expected) * 2 - 1) << 1;
+            keys = new long[capacity];
+            lists = new List<?>[capacity];
+        }
+
+        @SuppressWarnings("unchecked")
+        List<Glyph> get(long key) {
+            int mask = keys.length - 1;
+            for (int i = slot(key, mask); lists[i] != null; i = (i + 1) & mask) {
+                if (keys[i] == key) {
+                    return (List<Glyph>) lists[i];
+                }
+            }
+            return null;
+        }
+
+        void add(long key, Glyph g) {
+            List<Glyph> cell = get(key);
+            if (cell == null) {
+                if (2 * (size + 1) > keys.length) {
+                    grow();
+                }
+                cell = new ArrayList<>(2);
+                put(key, cell);
+                size++;
+            }
+            cell.add(g);
+        }
+
+        private void put(long key, List<?> list) {
+            int mask = keys.length - 1;
+            int i = slot(key, mask);
+            while (lists[i] != null) {
+                i = (i + 1) & mask;
+            }
+            keys[i] = key;
+            lists[i] = list;
+        }
+
+        private void grow() {
+            long[] oldKeys = keys;
+            List<?>[] oldLists = lists;
+            keys = new long[oldKeys.length * 2];
+            lists = new List<?>[oldKeys.length * 2];
+            for (int i = 0; i < oldKeys.length; i++) {
+                if (oldLists[i] != null) {
+                    put(oldKeys[i], oldLists[i]);
+                }
+            }
+        }
+
+        private static int slot(long key, int mask) {
+            return (int) (key >>> 32 ^ key) & mask;
+        }
     }
 
     private List<PageData.Link> links(PDPage page, AffineTransform toDisplay) {
