@@ -9,6 +9,7 @@ import java.nio.file.Path;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import stirling.software.officeconvert.topdf.testing.TestFonts;
 
 class DocxChartTest {
 
@@ -121,6 +122,7 @@ class DocxChartTest {
 
     @Test
     void axisLabelsUseTheTypefaceTheirAxisSets() throws IOException {
+        TestFonts.assumeInstalled("Liberation Serif", false, "Liberation Serif");
         String catAx = "<c:catAx><c:axId val=\"1\"/><c:delete val=\"0\"/><c:axPos val=\"b\"/><c:txPr><a:bodyPr/>"
                 + "<a:p><a:pPr><a:defRPr sz=\"900\"><a:latin typeface=\"Liberation Serif\"/></a:defRPr></a:pPr>"
                 + "</a:p></c:txPr><c:crossAx val=\"2\"/></c:catAx>";

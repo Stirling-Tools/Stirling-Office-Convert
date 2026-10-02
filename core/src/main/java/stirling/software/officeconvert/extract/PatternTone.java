@@ -52,8 +52,11 @@ final class PatternTone {
             if (tile == null) {
                 return -1;
             }
+            if (images == 1 && !ImageBudget.affordable(tile)) {
+                return -1;
+            }
             if (images == 1 && (long) tile.getWidth() * tile.getHeight() <= MAX_TILE_PIXELS) {
-                return ImageBudget.affordable(tile) ? average(tile.getImage()) : -1;
+                return average(tile.getImage());
             }
             return white(plainTile(tiling));
         } catch (IOException | RuntimeException e) {
@@ -83,9 +86,11 @@ final class PatternTone {
     }
 
     private static int plain(PDImageXObject image) throws IOException {
+        if (!ImageBudget.affordable(image)) {
+            return -1;
+        }
         long pixels = (long) image.getWidth() * image.getHeight();
-        if (pixels <= 0 || pixels > MAX_PLAIN_PIXELS || image.getCOSObject().getLength() > PLAIN_BYTES * pixels + 1024
-                || !ImageBudget.affordable(image)) {
+        if (pixels <= 0 || pixels > MAX_PLAIN_PIXELS || image.getCOSObject().getLength() > PLAIN_BYTES * pixels + 1024) {
             return -1;
         }
         BufferedImage img = image.getImage();

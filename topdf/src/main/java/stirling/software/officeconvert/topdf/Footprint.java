@@ -36,9 +36,9 @@ final class Footprint {
             }
         }
         long markup = switch (format) {
-            case DOCX -> xml * 8 + media / 2;
+            case DOCX, TEXT -> xml * 8 + media / 2;
             case PPTX -> xml * 7 + media * 2;
-            case XLSX -> xml * 5 / 2 + media / 2;
+            case XLSX, CSV, TSV -> xml * 5 / 2 + media / 2;
             case PPT -> xml * 7 + media * 2;
         };
         return saturated(Admission.BASE_BYTES + markup + decode);

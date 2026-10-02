@@ -121,8 +121,13 @@ final class SymbolChars {
             case "wingdings" -> new float[] {1841f / 2048, 432f / 2048};
             case "wingdings 2" -> new float[] {1727f / 2048, 432f / 2048};
             case "wingdings 3" -> new float[] {1900f / 2048, 432f / 2048};
+            case "segoe ui symbol" -> new float[] {2210f / 2048, 514f / 2048};
             default -> null;
         };
+    }
+
+    static boolean symbolFont(String family) {
+        return table(family) != null;
     }
 
     private static String table(String family) {

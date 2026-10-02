@@ -51,6 +51,12 @@ public final class Numerals {
 
     private static final String CJK_DIGITS = "\u3007\u4E00\u4E8C\u4E09\u56DB\u4E94\u516D\u4E03\u516B\u4E5D";
 
+    private static final String LEGAL_SIMPLIFIED = "\u96F6\u58F9\u8D30\u53C1\u8086\u4F0D\u9646\u67D2\u634C\u7396";
+
+    private static final String LEGAL_TRADITIONAL = "\u96F6\u58F9\u8CB3\u53C3\u8086\u4F0D\u9678\u67D2\u634C\u7396";
+
+    private static final String LEGAL_JAPANESE = "\u3007\u58F1\u5F10\u53C2\u56DB\u4F0D\u516D\u4E03\u516B\u4E5D";
+
     private static final String KOREAN_DIGITS = "\uC601\uC77C\uC774\uC0BC\uC0AC\uC624\uC721\uCE60\uD314\uAD6C";
 
     private Numerals() {}
@@ -71,7 +77,10 @@ public final class Numerals {
             case "thaiNumbers" -> digits(n, 0x0E50);
             case "thaiLetters" -> letters(n, THAI);
             case "chineseCounting", "chineseCountingThousand", "japaneseCounting", "taiwaneseCounting",
-                    "taiwaneseCountingThousand", "chineseLegalSimplified", "japaneseLegal" -> counting(n);
+                    "taiwaneseCountingThousand" -> counting(n);
+            case "chineseLegalSimplified" -> legal(n, LEGAL_SIMPLIFIED, "\u4EDF\u4F70\u62FE", true);
+            case "ideographLegalTraditional" -> legal(n, LEGAL_TRADITIONAL, "\u4EDF\u4F70\u62FE", true);
+            case "japaneseLegal" -> legal(n, LEGAL_JAPANESE, "\u9621\u767E\u62FE", false);
             case "ideographDigital", "japaneseDigitalTenThousand", "taiwaneseDigital" -> spelled(n, CJK_DIGITS);
             case "koreanDigital", "koreanDigital2" -> spelled(n, KOREAN_DIGITS);
             case "ideographTraditional" -> cycle(n, STEMS);
@@ -185,6 +194,36 @@ public final class Numerals {
                     break;
                 }
             }
+        }
+        return b.toString();
+    }
+
+    static String legal(int n, String digits, String units, boolean zeros) {
+        if (n <= 0 || n >= 10_000) {
+            return n == 0 ? String.valueOf(digits.charAt(0)) : Integer.toString(n);
+        }
+        int[] scale = {1000, 100, 10};
+        StringBuilder b = new StringBuilder();
+        int x = n;
+        boolean gap = false;
+        for (int i = 0; i < scale.length; i++) {
+            int d = x / scale[i];
+            x %= scale[i];
+            if (d > 0) {
+                if (gap && zeros) {
+                    b.append(digits.charAt(0));
+                }
+                b.append(digits.charAt(d)).append(units.charAt(i));
+                gap = false;
+            } else if (b.length() > 0) {
+                gap = true;
+            }
+        }
+        if (x > 0) {
+            if (gap && zeros) {
+                b.append(digits.charAt(0));
+            }
+            b.append(digits.charAt(x));
         }
         return b.toString();
     }

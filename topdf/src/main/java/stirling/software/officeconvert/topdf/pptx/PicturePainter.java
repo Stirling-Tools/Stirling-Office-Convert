@@ -18,14 +18,18 @@ import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
 import org.apache.poi.ooxml.util.POIXMLUnits;
 import org.apache.poi.xslf.usermodel.XSLFPictureShape;
+import org.apache.poi.xslf.usermodel.XSLFSimpleShape;
 import org.apache.xmlbeans.XmlCursor;
+import org.apache.xmlbeans.XmlException;
 import org.apache.xmlbeans.XmlObject;
+import org.apache.xmlbeans.XmlOptions;
 import org.openxmlformats.schemas.drawingml.x2006.main.CTBlipFillProperties;
 import org.openxmlformats.schemas.drawingml.x2006.main.CTPresetGeometry2D;
 import org.openxmlformats.schemas.drawingml.x2006.main.CTShapeProperties;
 import org.openxmlformats.schemas.drawingml.x2006.main.CTTransform2D;
 import org.openxmlformats.schemas.drawingml.x2006.main.STShapeType;
 import org.openxmlformats.schemas.presentationml.x2006.main.CTPicture;
+import org.openxmlformats.schemas.presentationml.x2006.main.CTShape;
 
 import stirling.software.officeconvert.topdf.io.DecodedPicture;
 import stirling.software.officeconvert.topdf.pdf.Crop;
@@ -48,11 +52,30 @@ final class PicturePainter {
     }
 
     boolean isEmpty(XSLFPictureShape p) {
-        CTPicture pic = (CTPicture) p.getXmlObject();
-        CTBlipFillProperties fill = pic.getBlipFill();
+        CTBlipFillProperties fill = blipFill((CTPicture) p.getXmlObject());
         return fill == null || fill.getBlip() == null || !fill.getBlip().isSetEmbed()
                 || fill.getBlip().getEmbed().isBlank();
     }
+
+    static CTBlipFillProperties blipFill(CTPicture pic) {
+        CTBlipFillProperties own = pic.getBlipFill();
+        if (own != null) {
+            return own;
+        }
+        XmlObject[] found = pic.selectPath("declare namespace mc='" + Fallbacks.MC + "' declare namespace p='"
+                + P_NS + "' ./mc:AlternateContent/mc:Fallback/p:blipFill");
+        if (found.length == 0) {
+            return null;
+        }
+        try {
+            return CTBlipFillProperties.Factory.parse(found[0].getDomNode(),
+                    new XmlOptions().setLoadReplaceDocumentElement(null));
+        } catch (XmlException | RuntimeException e) {
+            return null;
+        }
+    }
+
+    private static final String P_NS = "http://schemas.openxmlformats.org/presentationml/2006/main";
 
     void paint(XSLFPictureShape p, Space space) throws IOException {
         Rectangle2D anchor = p.getAnchor();
@@ -62,7 +85,7 @@ final class PicturePainter {
         CTPicture pic = (CTPicture) p.getXmlObject();
         Frame f = space.place(anchor, p.getRotation(), p.getFlipHorizontal(), p.getFlipVertical())
                 .viewed(Cameras.view(pic.getSpPr()));
-        CTBlipFillProperties fill = pic.getBlipFill();
+        CTBlipFillProperties fill = blipFill(pic);
         Rectangle2D box = f.bounds();
         DecodedPicture picture = BlipFills.picture(deck, fill, space.relsPart(),
                 BlipFills.duotone(fill == null ? null : fill.getBlip(), p.getSheet()), p.getSheet(),
@@ -126,7 +149,7 @@ final class PicturePainter {
         double dy = dist * Math.sin(dir);
         canvas.save();
         try {
-            if (!rectangular(pic.getSpPr())) {
+            if (!rectangular(Geometry.source(p))) {
                 for (Geometry.Outline o : Geometry.outlines(p, box)) {
                     if (o.filled()) {
                         AffineTransform mirror = AffineTransform.getTranslateInstance(dx, 2 * box.getMaxY() + dy);
@@ -181,7 +204,7 @@ final class PicturePainter {
 
     private void draw(XSLFPictureShape p, CTPicture pic, CTBlipFillProperties fill, DecodedPicture picture,
             Rectangle2D box) throws IOException {
-        boolean clip = !rectangular(pic.getSpPr());
+        boolean clip = !rectangular(Geometry.source(p));
         canvas.save();
         try {
             if (clip) {
@@ -297,6 +320,11 @@ final class PicturePainter {
         } catch (IOException | RuntimeException e) {
             return false;
         }
+    }
+
+    private static boolean rectangular(XSLFSimpleShape shape) {
+        return rectangular(shape.getXmlObject() instanceof CTPicture c ? c.getSpPr()
+                : shape.getXmlObject() instanceof CTShape s ? s.getSpPr() : null);
     }
 
     private static boolean rectangular(CTShapeProperties spPr) {

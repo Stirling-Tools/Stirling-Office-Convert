@@ -10,6 +10,7 @@ import java.util.List;
 import org.apache.pdfbox.text.TextPosition;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import stirling.software.officeconvert.topdf.testing.TestFonts;
 
 class PptxAutofitTest {
 
@@ -26,6 +27,7 @@ class PptxAutofitTest {
 
     @Test
     void shrunkFontSizesRoundToWholePointsAndTheDefaultSpacingIsReduced() throws IOException {
+        TestFonts.assumeInstalled("Calibri", false, TestFonts.CALIBRI);
         String ps = "<a:p>" + Decks.run("Alpha", "sz=\"2200\"") + "</a:p><a:p>" + Decks.run("Beta", "sz=\"2200\"")
                 + "</a:p>";
         List<TextPosition> pos = convert("shrink.pptx", "<a:normAutofit fontScale=\"92500\" lnSpcReduction=\"20000\"/>",
@@ -81,6 +83,7 @@ class PptxAutofitTest {
 
     @Test
     void withoutAStoredScaleSizesStayAsWritten() throws IOException {
+        TestFonts.assumeInstalled("Calibri", false, TestFonts.CALIBRI);
         String ps = "<a:p>" + Decks.run("Alpha", "sz=\"1050\"") + "</a:p><a:p>" + Decks.run("Beta", "sz=\"1050\"")
                 + "</a:p>";
         List<TextPosition> pos = convert("plain.pptx", "<a:normAutofit/>", ps);

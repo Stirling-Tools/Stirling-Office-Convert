@@ -6,6 +6,7 @@ dependencies {
     implementation(project(":core"))
     implementation(project(":legacy"))
     implementation(project(":topdf"))
+    implementation(project(":pdfa"))
 
     testImplementation(platform("org.junit:junit-bom:5.13.4"))
     testImplementation("org.junit.jupiter:junit-jupiter")

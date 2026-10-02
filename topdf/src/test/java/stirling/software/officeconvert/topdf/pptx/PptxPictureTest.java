@@ -36,6 +36,53 @@ class PptxPictureTest {
     }
 
     @Test
+    void duotoneBackgroundPicturesAreRecolouredWithAnyColourModel() throws IOException {
+        Fixtures.Zip z = Fixtures.edit(Decks.slideXml(""));
+        z.insertAfter("ppt/slides/slide1.xml", "<p:cSld>", "<p:bg><p:bgPr><a:blipFill><a:blip xmlns:r=\"" + Decks.R + "\" r:embed=\"rIdP\">"
+                + "<a:duotone><a:schemeClr val=\"accent2\"><a:shade val=\"45000\"/></a:schemeClr><a:prstClr "
+                + "val=\"red\"/></a:duotone></a:blip><a:stretch><a:fillRect/></a:stretch></a:blipFill><a:effectLst/>"
+                + "</p:bgPr></p:bg>");
+        z.put("ppt/media/white.png", Fixtures.png(4, 4, Color.WHITE));
+        z.defaultType("png", "image/png");
+        z.relationship("/ppt/slides/slide1.xml", "rIdP", Fixtures.REL + "image", "../media/white.png", false);
+        Decks.Converted c = Decks.convert(dir, "duotonebg.pptx", z.bytes());
+        assertEquals(Color.RED.getRGB(), c.render(0, 72).getRGB(150, 150), c.result().warnings().toString());
+    }
+
+    @Test
+    void theStandInForAnSvgHidesNoBlackBehindItsTransparentPixels() throws IOException {
+        String pic = "<p:pic " + Decks.NS + "><p:nvPicPr><p:cNvPr id=\"7\" name=\"Graphic\"/><p:cNvPicPr/><p:nvPr/>"
+                + "</p:nvPicPr><p:blipFill><a:blip r:embed=\"rIdP\"><a:extLst><a:ext "
+                + "uri=\"{96DAC541-7B7A-43D3-8B79-37D633B846F1}\"><asvg:svgBlip xmlns:asvg=\"http://schemas.microsoft.com/"
+                + "office/drawing/2016/SVG/main\" r:embed=\"rIdS\"/></a:ext></a:extLst></a:blip><a:stretch><a:fillRect/>"
+                + "</a:stretch></p:blipFill><p:spPr><a:xfrm><a:off x=\"1270000\" y=\"1270000\"/><a:ext cx=\"1270000\" "
+                + "cy=\"1270000\"/></a:xfrm><a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom></p:spPr></p:pic>";
+        BufferedImage line = new BufferedImage(8, 8, BufferedImage.TYPE_INT_ARGB);
+        for (int y = 0; y < 8; y++) {
+            line.setRGB(3, y, 0xFFFF0000);
+        }
+        java.io.ByteArrayOutputStream png = new java.io.ByteArrayOutputStream();
+        javax.imageio.ImageIO.write(line, "png", png);
+        Fixtures.Zip z = Fixtures.edit(Decks.slideXml(pic));
+        z.put("ppt/media/line.png", png.toByteArray());
+        z.defaultType("png", "image/png");
+        z.relationship("/ppt/slides/slide1.xml", "rIdP", Fixtures.REL + "image", "../media/line.png", false);
+        Decks.Converted c = Decks.convert(dir, "svgstandin.pptx", z.bytes());
+        try (PDDocument d = c.open()) {
+            var res = d.getPage(0).getResources();
+            BufferedImage back = null;
+            for (var n : res.getXObjectNames()) {
+                if (res.getXObject(n) instanceof org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject x) {
+                    back = x.getOpaqueImage();
+                }
+            }
+            assertTrue(back != null);
+            assertEquals(0xFF0000, back.getRGB(0, 0) & 0xFFFFFF);
+            assertEquals(0xFF0000, back.getRGB(back.getWidth() - 1, back.getHeight() - 1) & 0xFFFFFF);
+        }
+    }
+
+    @Test
     void coloursAreWrittenWithThreeSignificantDigitsLikeOffice() throws IOException {
         String sp = "<p:sp " + Decks.NS + "><p:nvSpPr><p:cNvPr id=\"8\" name=\"Teal\"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr>"
                 + "<p:spPr><a:xfrm><a:off x=\"1270000\" y=\"1270000\"/><a:ext cx=\"1270000\" cy=\"1270000\"/></a:xfrm>"
@@ -46,6 +93,16 @@ class PptxPictureTest {
             String content = new String(d.getPage(0).getContents().readAllBytes(), StandardCharsets.ISO_8859_1);
             assertTrue(content.contains("0 0.502 0.0588 sc"), content);
         }
+    }
+
+    @Test
+    void aHueOffsetIsInSixtiethThousandthsOfADegree() throws IOException {
+        String sp = "<p:sp " + Decks.NS + "><p:nvSpPr><p:cNvPr id=\"8\" name=\"Red\"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr>"
+                + "<p:spPr><a:xfrm><a:off x=\"1270000\" y=\"1270000\"/><a:ext cx=\"1270000\" cy=\"1270000\"/></a:xfrm>"
+                + "<a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom><a:solidFill><a:srgbClr val=\"FF0000\"><a:hueOff "
+                + "val=\"-99754\"/></a:srgbClr></a:solidFill><a:ln><a:noFill/></a:ln></p:spPr></p:sp>";
+        Color c = new Color(Decks.convert(dir, "hue.pptx", Decks.slideXml(sp)).render(0, 72).getRGB(150, 150));
+        assertTrue(c.getRed() > 240 && c.getGreen() < 20 && c.getBlue() < 20, c.toString());
     }
 
     @Test
@@ -116,6 +173,46 @@ class PptxPictureTest {
     }
 
     @Test
+    void aPicturePlaceholderTakesTheShapeOfItsLayoutPlaceholder() throws IOException {
+        String xfrm = "<a:xfrm><a:off x=\"1270000\" y=\"1270000\"/><a:ext cx=\"2540000\" cy=\"2540000\"/></a:xfrm>";
+        String pic = "<p:pic " + Decks.NS + "><p:nvPicPr><p:cNvPr id=\"7\" name=\"Picture\"/><p:cNvPicPr/><p:nvPr>"
+                + "<p:ph type=\"pic\" idx=\"27\"/></p:nvPr></p:nvPicPr><p:blipFill><a:blip r:embed=\"rIdP\"/>"
+                + "<a:stretch/></p:blipFill><p:spPr>" + xfrm + "</p:spPr></p:pic>";
+        Fixtures.Zip z = Fixtures.edit(Decks.slideXml(pic));
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("slideLayouts/(slideLayout[0-9]+[.]xml)")
+                .matcher(z.text("ppt/slides/_rels/slide1.xml.rels"));
+        assertTrue(m.find());
+        z.insertBefore("ppt/slideLayouts/" + m.group(1), "</p:spTree>", "<p:sp " + Decks.NS + "><p:nvSpPr><p:cNvPr "
+                + "id=\"31\" name=\"Picture Placeholder\"/><p:cNvSpPr/><p:nvPr><p:ph type=\"pic\" idx=\"27\"/></p:nvPr>"
+                + "</p:nvSpPr><p:spPr>" + xfrm + "<a:prstGeom prst=\"ellipse\"><a:avLst/></a:prstGeom></p:spPr></p:sp>");
+        z.put("ppt/media/red.png", Fixtures.png(4, 4, Color.RED));
+        z.defaultType("png", "image/png");
+        z.relationship("/ppt/slides/slide1.xml", "rIdP", Fixtures.REL + "image", "../media/red.png", false);
+        BufferedImage img = Decks.convert(dir, "phgeom.pptx", z.bytes()).render(0, 72);
+        assertEquals(Color.RED.getRGB(), img.getRGB(200, 200));
+        assertEquals(Color.WHITE.getRGB(), img.getRGB(104, 104));
+    }
+
+    @Test
+    void anEmptyPlaceholderStillShowsTheFillItTakesFromItsLayout() throws IOException {
+        String xfrm = "<a:xfrm><a:off x=\"1270000\" y=\"1270000\"/><a:ext cx=\"2540000\" cy=\"2540000\"/></a:xfrm>";
+        String sp = "<p:sp " + Decks.NS + "><p:nvSpPr><p:cNvPr id=\"7\" name=\"Media\"/><p:cNvSpPr/><p:nvPr>"
+                + "<p:ph type=\"media\" idx=\"14\"/></p:nvPr></p:nvSpPr><p:spPr/></p:sp>";
+        Fixtures.Zip z = Fixtures.edit(Decks.slideXml(sp));
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("slideLayouts/(slideLayout[0-9]+[.]xml)")
+                .matcher(z.text("ppt/slides/_rels/slide1.xml.rels"));
+        assertTrue(m.find());
+        z.insertBefore("ppt/slideLayouts/" + m.group(1), "</p:spTree>", "<p:sp " + Decks.NS + "><p:nvSpPr><p:cNvPr "
+                + "id=\"31\" name=\"Media Placeholder\"/><p:cNvSpPr/><p:nvPr><p:ph type=\"media\" idx=\"14\"/></p:nvPr>"
+                + "</p:nvSpPr><p:spPr>" + xfrm + "<a:solidFill><a:srgbClr val=\"FF0000\"/></a:solidFill></p:spPr>"
+                + "<p:txBody><a:bodyPr/><a:lstStyle/><a:p><a:r><a:rPr lang=\"en-US\"/><a:t>Click icon to add media</a:t>"
+                + "</a:r></a:p></p:txBody></p:sp>");
+        Decks.Converted c = Decks.convert(dir, "emptyph.pptx", z.bytes());
+        assertEquals(Color.RED.getRGB(), c.render(0, 72).getRGB(200, 200));
+        assertTrue(!c.text().contains("Click icon"), c.text());
+    }
+
+    @Test
     void brightnessAndContrastWashPicturesOut() throws IOException {
         String pic = "<p:pic " + Decks.NS + "><p:nvPicPr><p:cNvPr id=\"7\" name=\"Picture\"/><p:cNvPicPr/><p:nvPr/>"
                 + "</p:nvPicPr><p:blipFill><a:blip r:embed=\"rIdP\"><a:lum bright=\"50000\" contrast=\"-60000\"/>"
@@ -130,6 +227,24 @@ class PptxPictureTest {
         assertEquals(204, c.getRed(), 3);
         assertEquals(255, c.getGreen(), 3);
         assertEquals(204, c.getBlue(), 3);
+    }
+
+    @Test
+    void greyPicturesAreRecolouredLikeTheSameColourPicture() throws IOException {
+        String lum = "<a:lum bright=\"20000\"/>";
+        BufferedImage grey = new BufferedImage(8, 8, BufferedImage.TYPE_BYTE_GRAY);
+        java.awt.Graphics2D g = grey.createGraphics();
+        g.setColor(new Color(30, 30, 30));
+        g.fillRect(0, 0, 8, 8);
+        g.dispose();
+        java.io.ByteArrayOutputStream png = new java.io.ByteArrayOutputStream();
+        javax.imageio.ImageIO.write(grey, "png", png);
+        Color fromGrey = new Color(Decks.convert(dir, "greylum.pptx",
+                framedPicture(lum, png.toByteArray(), "grey.png", "png")).render(0, 72).getRGB(150, 150));
+        Color fromRgb = new Color(Decks.convert(dir, "rgblum.pptx",
+                framedPicture(lum, Fixtures.png(8, 8, new Color(30, 30, 30)), "rgb.png", "png")).render(0, 72)
+                .getRGB(150, 150));
+        assertEquals(fromRgb.getRed(), fromGrey.getRed(), 2, fromGrey + " vs " + fromRgb);
     }
 
     private static byte[] framedPicture(String effects, byte[] picture, String name, String type) {

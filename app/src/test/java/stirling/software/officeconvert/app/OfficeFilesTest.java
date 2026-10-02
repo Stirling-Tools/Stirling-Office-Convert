@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
@@ -41,6 +42,23 @@ class OfficeFilesTest {
         assertTrue(e.getMessage().contains("97-2003"));
     }
 
+    @Test
+    void recognisesVisioDrawingsAndLotusWorksheets() throws IOException {
+        byte[] docx = Fixtures.docx("Hello", 1);
+        assertEquals("vsdx", OfficeFiles.extension(write(Fixtures.retype(docx, Fixtures.DOCX_MAIN,
+                "application/vnd.ms-visio.drawing.main+xml"))));
+        assertEquals("pptx", OfficeFiles.family("vsdx"));
+        assertEquals("xlsx", OfficeFiles.family("wk1"));
+        assertEquals("wk3", OfficeFiles.extension(write(new byte[] {0, 0, 0x1A, 0, 0, 0x10}), "budget.wk3"));
+    }
+
+    @Test
+    void recognisesRtfFromItsHeader() throws IOException {
+        assertEquals("rtf", OfficeFiles.extension(write("{\\rtf1\\ansi Hello\\par}".getBytes(
+                StandardCharsets.US_ASCII))));
+        assertEquals("docx", OfficeFiles.family("rtf"));
+    }
+
     @ParameterizedTest
     @CsvSource({
         "application/vnd.ms-word.document.macroEnabled.main+xml, docm",
@@ -58,10 +76,15 @@ class OfficeFilesTest {
     }
 
     @Test
-    void refusesOpenDocumentAndOtherZips() throws IOException {
-        IOException odf = assertThrows(IOException.class, () -> OfficeFiles.extension(
+    void recognisesOpenDocumentAndRefusesOtherZips() throws IOException {
+        assertEquals("odt", OfficeFiles.extension(
                 write(Fixtures.zip("mimetype", "application/vnd.oasis.opendocument.text", "content.xml", "<x/>"))));
-        assertTrue(odf.getMessage().startsWith("OpenDocument files"));
+        assertEquals("docx", OfficeFiles.family("odt"));
+        assertEquals("odp", OfficeFiles.extension(
+                write(Fixtures.zip("mimetype", "application/vnd.oasis.opendocument.graphics", "content.xml", "<x/>"))));
+        IOException odf = assertThrows(IOException.class, () -> OfficeFiles.extension(
+                write(Fixtures.zip("mimetype", "application/vnd.oasis.opendocument.formula", "content.xml", "<x/>"))));
+        assertTrue(odf.getMessage().startsWith("OpenDocument charts"));
         IOException other = assertThrows(IOException.class,
                 () -> OfficeFiles.extension(write(Fixtures.zip("readme.txt", "hello"))));
         assertTrue(other.getMessage().contains("holds no Word, PowerPoint or Excel"));
@@ -80,7 +103,7 @@ class OfficeFilesTest {
 
     @Test
     void familiesCoverEveryExtension() {
-        for (String ext : new String[] {"docx", "docm", "dotx", "dotm"}) {
+        for (String ext : new String[] {"docx", "docm", "dotx", "dotm", "doc", "dot", "rtf"}) {
             assertEquals("docx", OfficeFiles.family(ext));
         }
         for (String ext : new String[] {"pptx", "pptm", "ppsx", "ppsm", "potx", "potm"}) {
@@ -89,6 +112,7 @@ class OfficeFilesTest {
         for (String ext : new String[] {"xlsx", "xlsm", "xltx", "xltm"}) {
             assertEquals("xlsx", OfficeFiles.family(ext));
         }
-        assertThrows(IllegalArgumentException.class, () -> OfficeFiles.family("doc"));
+        assertEquals("xlsx", OfficeFiles.family("xlsb"));
+        assertThrows(IllegalArgumentException.class, () -> OfficeFiles.family("wpd"));
     }
 }

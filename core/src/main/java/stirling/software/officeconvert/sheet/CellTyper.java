@@ -50,7 +50,7 @@ public final class CellTyper {
                 codes++;
             }
         }
-        Conventions conventions = evidence.conventions().or(fallback);
+        Conventions conventions = evidence.conventions(fallback);
         boolean codeColumn = codes > 0 && codes >= CODE_SHARE * filled;
         List<CellValue> out = new ArrayList<>(texts.size());
         int words = 0;

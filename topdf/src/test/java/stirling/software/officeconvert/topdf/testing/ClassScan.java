@@ -74,7 +74,7 @@ public final class ClassScan {
 
     private static final String IO = "stirling/software/officeconvert/topdf/io/";
 
-    public static final Set<String> POI_DRAWING_CLASSES = Set.of(IO + "SafeImageRenderer", IO + "Metafiles");
+    public static final Set<String> POI_DRAWING_CLASSES = Set.of(IO + "SafeImageRenderer", IO + "Metafiles", IO + "EmfDrawing");
 
     public static final List<String> POI_DRAWING_TYPES = List.of("org/apache/poi/sl/draw/DrawFactory",
             "org/apache/poi/sl/draw/DrawPictureShape", "org/apache/poi/sl/draw/DrawTexturePaint",
@@ -95,8 +95,9 @@ public final class ClassScan {
 
     private static final String TOPDF = "stirling/software/officeconvert/topdf/";
 
-    public static final List<String> FORMAT_PACKAGES = List.of(TOPDF + "docx/", TOPDF + "pptx/", TOPDF + "xlsx/",
-            TOPDF + "xls/", TOPDF + "ppt/");
+    public static final List<String> FORMAT_PACKAGES = Stream.of("docx", "pptx", "xlsx", "xls", "ppt", "doc", "doc6",
+            "rtf", "odf", "ooo1", "wordml", "sml", "flat", "xlsb", "biff5", "lotus", "grid", "vsdx", "iwork", "text")
+            .map(p -> TOPDF + p + "/").toList();
 
     public static final List<String> FORMAT_FILE_TYPES = List.of("java/io/File", "java/io/FileInputStream",
             "java/io/FileOutputStream", "java/io/FileReader", "java/io/FileWriter", "java/io/RandomAccessFile",

@@ -25,23 +25,13 @@ base {
 tasks.test {
     val runtime = configurations.runtimeClasspath
     inputs.files(runtime)
-    systemProperty("topdf.reportDir", layout.buildDirectory.dir("reports").get().asFile.absolutePath)
-    doFirst {
-        systemProperty("topdf.runtimeClasspath", runtime.get().asPath)
-    }
-}
-
-val testJava25 by tasks.registering(Test::class) {
-    description = "Runs the topdf tests on Java 25, the runtime Stirling-PDF ships, with its stricter JAXP limits"
-    group = "verification"
-    val test = sourceSets["test"]
-    testClassesDirs = test.output.classesDirs
-    classpath = test.runtimeClasspath
-    javaLauncher.set(javaToolchains.launcherFor { languageVersion.set(JavaLanguageVersion.of(25)) })
-    val runtime = configurations.runtimeClasspath
-    inputs.files(runtime)
     systemProperty("topdf.expectJava", "25")
-    systemProperty("topdf.reportDir", layout.buildDirectory.dir("reports/java25").get().asFile.absolutePath)
+    systemProperty("topdf.reportDir", layout.buildDirectory.dir("reports").get().asFile.absolutePath)
+    val scanned = listOf("core", "legacy", "pdfa", "cli", "app")
+    dependsOn(scanned.map { ":$it:classes" })
+    val scannedDirs = scanned.map { rootProject.layout.projectDirectory.dir("$it/build/classes/java/main").asFile }
+    inputs.files(scannedDirs).withPropertyName("scannedClasses")
+    systemProperty("topdf.scanClasses", scannedDirs.joinToString(File.pathSeparator) { it.absolutePath })
     doFirst {
         systemProperty("topdf.runtimeClasspath", runtime.get().asPath)
     }
@@ -57,6 +47,6 @@ publishing.publications.named<MavenPublication>("mavenJava") {
     artifactId = "stirling-office-convert-topdf"
     pom {
         name.set("Stirling Office Convert To PDF")
-        description.set("Word, PowerPoint and Excel (DOCX, PPTX, XLSX) to PDF in plain Java on Apache PDFBox and Apache POI")
+        description.set("Office documents to PDF in plain Java on Apache PDFBox and Apache POI: Word (DOCX, DOC, RTF, WordML), PowerPoint (PPTX, PPT), Excel (XLSX, XLSB, XLS), OpenDocument and OpenOffice.org 1.x, Visio, iWork, Lotus 1-2-3, dBASE, SYLK, DIF, CSV, TSV and plain text")
     }
 }

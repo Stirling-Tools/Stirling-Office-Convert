@@ -180,6 +180,9 @@ final class ParaFlow {
         ParaItems pi = new ParaItems(ctx, p, box != null && box.fill() != null ? box.fill() : r.background,
                 r.paginated());
         LineBreaker lb = breaker(pi, pp, r.width());
+        if (r instanceof StackLayout s && s.inCell()) {
+            lb.hangPunctuation(false);
+        }
         float grid = gridPitch(r);
         boolean firstFrame = true;
         boolean reopened = false;
@@ -261,7 +264,8 @@ final class ParaFlow {
                     // The extra space of multiple line spacing may hang into the bottom margin, not over footnotes or
                     // past a balanced column's end
                     float slack = r.hardLimit() ? 0 : lines.get(i).slack;
-                    if (bottom - slack > r.limit() + 0.01f) {
+                    boolean roomless = lines.get(i).height == 0 && breakOnly(lines.get(i));
+                    if (bottom - slack > r.limit() + 0.01f && !roomless) {
                         break;
                     }
                     // Nor may the space after a paragraph's last line run over the footnotes below it
@@ -447,11 +451,16 @@ final class ParaFlow {
 
     static final float SHRINK = 0.25f;
 
+    static final float AUTO_SPACE_SHRINK = 0.35f;
+
     private LineBreaker breaker(ParaItems pi, ParaProps pp, float width) {
         ShapeRules.fit(pi, width - pp.left() - pp.right());
         LineBreaker lb = new LineBreaker(pi, pp, ctx.settings.defaultTabStop, width);
         if (ctx.settings.compatibilityMode >= 15 && LinePainter.justified(pp)) {
             lb.shrink(SHRINK);
+        }
+        if (LinePainter.justified(pp)) {
+            lb.squeezeAutoSpace(AUTO_SPACE_SHRINK);
         }
         if (ctx.settings.autoHyphenation && !Boolean.TRUE.equals(pp.suppressAutoHyphens)) {
             lb.hyphenate(ctx.settings);
@@ -629,6 +638,9 @@ final class ParaFlow {
         }
         ParaItems pi = new ParaItems(ctx, p, null, r.paginated());
         LineBreaker lb = breaker(pi, p.pp, width);
+        if (r instanceof StackLayout s && s.inCell()) {
+            lb.hangPunctuation(false);
+        }
         float total = 0;
         float first = 0;
         float firstTwo = 0;

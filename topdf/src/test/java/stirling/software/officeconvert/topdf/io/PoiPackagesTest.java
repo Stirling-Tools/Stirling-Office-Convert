@@ -20,8 +20,8 @@ import org.apache.poi.openxml4j.opc.OPCPackage;
 import org.apache.poi.openxml4j.opc.PackageAccess;
 import org.apache.poi.xslf.usermodel.XMLSlideShow;
 import org.apache.poi.xslf.usermodel.XSLFGroupShape;
-import org.apache.poi.xslf.usermodel.XSLFNotes;
 import org.apache.poi.xslf.usermodel.XSLFSlide;
+import org.apache.poi.xslf.usermodel.XSLFSlideLayout;
 import org.apache.poi.xslf.usermodel.XSLFTextBox;
 import org.apache.poi.xslf.usermodel.XSLFTextShape;
 import org.apache.poi.xssf.usermodel.XSSFSheet;
@@ -145,14 +145,14 @@ class PoiPackagesTest {
         try (XMLSlideShow ppt = new XMLSlideShow(); OutputStream out = Files.newOutputStream(file)) {
             XSLFSlide slide = ppt.createSlide();
             slide.createTextBox().setText("slide");
-            XSLFNotes notes = ppt.getNotesSlide(slide);
-            XSLFTextBox box = notes.createTextBox();
+            XSLFSlideLayout layout = slide.getSlideLayout();
+            XSLFTextBox box = layout.createTextBox();
             box.setAnchor(new Rectangle2D.Double(10, 10, 600, 400));
             box.clearText();
             for (int i = 0; i < CELLS / 2; i++) {
                 box.addNewTextParagraph().addNewTextRun().setText(ESCAPED + " " + i);
             }
-            XSLFGroupShape group = notes.createGroup();
+            XSLFGroupShape group = layout.createGroup();
             for (int depth = 0; depth < 120; depth++) {
                 group = group.createGroup();
             }
@@ -160,12 +160,34 @@ class PoiPackagesTest {
             ppt.write(out);
         }
         try (OfficeZip zip = OfficeZip.open(file); XMLSlideShow ppt = PoiPackages.slideShow(zip)) {
-            XSLFNotes notes = ppt.getSlides().get(0).getNotes();
-            XSLFTextShape text = notes.getShapes().stream().filter(XSLFTextShape.class::isInstance)
+            XSLFTextShape text = ppt.getSlides().get(0).getSlideLayout().getShapes().stream().filter(XSLFTextShape.class::isInstance)
                     .map(XSLFTextShape.class::cast).max(Comparator.comparingInt(t -> t.getTextParagraphs().size()))
                     .orElseThrow();
             assertEquals(CELLS / 2, text.getTextParagraphs().size());
             assertEquals(ESCAPED + " 29999", text.getTextParagraphs().get(CELLS / 2 - 1).getText());
+        }
+    }
+
+    @Test
+    void leavesOutLayoutsNoSlideUsesAndNotesWhichAreNeverDrawn() throws Exception {
+        Path file = dir.resolve("layouts.pptx");
+        try (XMLSlideShow ppt = new XMLSlideShow(); OutputStream out = Files.newOutputStream(file)) {
+            XSLFSlide slide = ppt.createSlide(ppt.getSlideMasters().get(0).getSlideLayouts()[1]);
+            ppt.getNotesSlide(slide).createTextBox().setText("notes");
+            ppt.write(out);
+        }
+        try (OfficeZip zip = OfficeZip.open(file)) {
+            long layouts = zip.partNames().stream().filter(p -> p.startsWith("/ppt/slideLayouts/")
+                    && p.endsWith(".xml")).count();
+            assertTrue(layouts > 2, zip.partNames().toString());
+            assertTrue(zip.partNames().stream().anyMatch(p -> p.startsWith("/ppt/notesSlides/")));
+            try (XMLSlideShow ppt = PoiPackages.slideShow(zip)) {
+                XSLFSlide slide = ppt.getSlides().get(0);
+                assertEquals(1, ppt.getSlideMasters().get(0).getSlideLayouts().length);
+                assertEquals(slide.getSlideLayout(), ppt.getSlideMasters().get(0).getSlideLayouts()[0]);
+                assertEquals(null, slide.getNotes());
+                assertEquals(null, ppt.getNotesMaster());
+            }
         }
     }
 

@@ -47,6 +47,7 @@ final class ParaProps {
     Boolean mirrorIndents;
     Boolean autoSpaceDE;
     Boolean autoSpaceDN;
+    Boolean overflowPunct;
 
     ParaProps copy() {
         ParaProps p = new ParaProps();
@@ -102,6 +103,7 @@ final class ParaProps {
         mirrorIndents = o.mirrorIndents != null ? o.mirrorIndents : mirrorIndents;
         autoSpaceDE = o.autoSpaceDE != null ? o.autoSpaceDE : autoSpaceDE;
         autoSpaceDN = o.autoSpaceDN != null ? o.autoSpaceDN : autoSpaceDN;
+        overflowPunct = o.overflowPunct != null ? o.overflowPunct : overflowPunct;
     }
 
     static List<TabStop> mergeTabs(List<TabStop> base, List<TabStop> over) {
@@ -147,6 +149,7 @@ final class ParaProps {
                 case "w:mirrorIndents" -> mirrorIndents = Ooxml.on(k);
                 case "w:autoSpaceDE" -> autoSpaceDE = Ooxml.on(k);
                 case "w:autoSpaceDN" -> autoSpaceDN = Ooxml.on(k);
+                case "w:overflowPunct" -> overflowPunct = Ooxml.on(k);
                 case "w:outlineLvl" -> outlineLvl = Ooxml.integer(k.val());
                 case "w:numPr" -> {
                     XEl id = k.child("w:numId");

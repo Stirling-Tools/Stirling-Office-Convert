@@ -7,6 +7,8 @@ final class LineBreaker {
 
     private static final float EPS = 0.01f;
 
+    private static final float LABEL_SNAP = 0.5f;
+
     private static final float SQUEEZE_WORD = 0.34f;
 
     private static final float SQUEEZE_EM = 0.1f;
@@ -35,6 +37,10 @@ final class LineBreaker {
     private final List<TabStop> stops = new ArrayList<>();
 
     private float shrink;
+
+    private float autoShrink;
+
+    private boolean hangs = true;
 
     private Settings hyphenation;
 
@@ -65,6 +71,14 @@ final class LineBreaker {
 
     void shrink(float factor) {
         shrink = factor;
+    }
+
+    void hangPunctuation(boolean on) {
+        hangs = on;
+    }
+
+    void squeezeAutoSpace(float factor) {
+        autoShrink = factor;
     }
 
     void hyphenate(Settings settings) {
@@ -126,6 +140,7 @@ final class LineBreaker {
         boolean content = false;
         boolean words = false;
         float spaceW = 0;
+        float autoW = 0;
         float lastTrail = 0;
         List<Item> items = pi.items;
         while (item < items.size()) {
@@ -157,6 +172,7 @@ final class LineBreaker {
                 }
                 case TAB -> {
                     spaceW = 0;
+                    autoW = 0;
                     lastTrail = 0;
                     if (group != null) {
                         x = close(group, line);
@@ -257,8 +273,12 @@ final class LineBreaker {
             float groupW = group == null ? 0 : group.width;
             float endX = group == null ? x + w - trail : effectiveEnd(group, groupW + w - trail, word);
             float over = endX - right;
+            float wordAuto = autoSpace(word);
+            float hang = over > EPS && hangs ? hanging(word) : 0;
             boolean fits = over <= EPS || shrink > 0 && over - shrink * spaceW <= EPS
-                    && over <= squeezeLimit(word, w - trail);
+                    && over <= squeezeLimit(word, w - trail)
+                    || autoShrink > 0 && over - autoShrink * (autoW + wordAuto) <= EPS
+                    || hang > 0 && over - hang <= EPS;
             // After nothing but tabs, a word wider than a whole line starts there and breaks at the margin
             boolean huge = !fits && content && !words && group == null && tooWide(word, w - trail, x, right);
             List<Line.Slice> hyphenated = !fits && content && group == null && !huge
@@ -322,6 +342,8 @@ final class LineBreaker {
             placeWord(line, word, x, group);
             line.zero.addAll(zeros);
             x += w;
+            autoW += wordAuto;
+            line.hang = over > EPS ? Math.min(over, hang) : 0;
             spaceW = Math.max(0, spaceW + join) + (trail > 0 ? Math.max(0, trail + spaceKern(word)) : 0);
             lastTrail = trail;
             if (group != null) {
@@ -453,6 +475,28 @@ final class LineBreaker {
             break;
         }
         return out;
+    }
+
+    private float hanging(List<Line.Slice> word) {
+        Line.Slice last = word.get(word.size() - 1);
+        if (Boolean.FALSE.equals(pp.overflowPunct) || !LinePainter.justified(pp) || last.item.kind != Item.Kind.TEXT
+                || last.to <= last.from) {
+            return 0;
+        }
+        char c = last.item.text.charAt(last.to - 1);
+        boolean punct = c == '\u3001' || c == '\u3002' || c == '\uFF0C' || c == '\uFF0E' || c == '\uFF61'
+                || c == '\uFF64';
+        return punct ? last.item.width(last.to - 1, last.to) : 0;
+    }
+
+    private static float autoSpace(List<Line.Slice> word) {
+        float sum = 0;
+        for (Line.Slice s : word) {
+            if (s.item.kind == Item.Kind.TEXT && s.to == s.item.text.length()) {
+                sum += s.item.extra;
+            }
+        }
+        return sum;
     }
 
     private static float squeezeLimit(List<Line.Slice> word, float width) {
@@ -764,6 +808,9 @@ final class LineBreaker {
         float hang = pp.left();
         if (firstLine && pp.first() < 0 && hang > x + EPS && (best == null || hang < best.pos())) {
             return new TabStop(hang, TabStop.Kind.LEFT, (char) 0);
+        }
+        if (firstLine && tabItem.label && pp.first() >= 0 && Math.abs(hang - x) <= LABEL_SNAP) {
+            return new TabStop(Math.max(hang, x), TabStop.Kind.LEFT, (char) 0);
         }
         return best;
     }

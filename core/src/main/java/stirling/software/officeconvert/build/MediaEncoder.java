@@ -81,7 +81,7 @@ final class MediaEncoder {
         try {
             PDImage image = draw.image();
             if (!ImageBudget.affordable(image)) {
-                LOG.warn("Image of " + image.getWidth() + "x" + image.getHeight() + " left out: too large to decode");
+                LOG.warn("Image left out: too large to decode");
                 return null;
             }
             if (draw.stencilRgb() >= 0) {

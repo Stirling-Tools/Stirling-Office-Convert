@@ -6,6 +6,7 @@ import java.util.Deque;
 import java.util.List;
 import java.util.Objects;
 
+import stirling.software.officeconvert.topdf.field.EqField;
 import stirling.software.officeconvert.topdf.io.ActiveContent;
 import stirling.software.officeconvert.topdf.io.Relationship;
 
@@ -21,6 +22,8 @@ final class ContentReader {
         boolean computed;
         RunProps rp;
         final StringBuilder cached = new StringBuilder();
+        List<Inline> resultOut;
+        int resultSize;
     }
 
     private final DocxPackage pkg;
@@ -32,6 +35,10 @@ final class ContentReader {
     private final DrawingReader drawings;
 
     private int depth;
+
+    private int autonum;
+
+    private int displayMath = -1;
 
     static final int MAX_DEPTH = 40;
 
@@ -167,7 +174,13 @@ final class ContentReader {
             mark.mergeFrom(markDirect);
         }
         List<Inline> items = new ArrayList<>();
-        inline(p.kids, items, paraRun, null);
+        int outerMath = displayMath;
+        displayMath = MathReader.alone(p.kids) ? 0 : -1;
+        try {
+            inline(p.kids, items, paraRun, null);
+        } finally {
+            displayMath = outerMath;
+        }
         boolean deleted = markPr != null && (markPr.child("w:del") != null || markPr.child("w:moveFrom") != null);
         String label = null;
         RunProps labelProps = null;
@@ -182,7 +195,7 @@ final class ContentReader {
         }
         Para para = new Para(pp, mark, items, styleId, label, labelProps, level);
         para.joinsNext = deleted || mark.hidden();
-        if (pPr != null && pPr.child("w:sectPr") != null) {
+        if (pPr != null && pPr.child("w:sectPr") != null && !deleted) {
             para.section = SectionProps.parse(pPr.child("w:sectPr"));
         }
         return para;
@@ -239,6 +252,13 @@ final class ContentReader {
                     }
                 }
                 case "m:oMathPara", "m:oMath" -> {
+                    if (displayMath >= 0 && k.is("m:oMath")) {
+                        if (MathReader.display(k, out, paraRun, link, drawings.fonts(), r -> runProps(r, paraRun),
+                                displayMath == 0)) {
+                            displayMath++;
+                            continue;
+                        }
+                    }
                     if (!MathReader.read(k, out, paraRun, link, drawings.fonts(), r -> runProps(r, paraRun))) {
                         math(k, out, paraRun, link);
                     }
@@ -466,7 +486,33 @@ final class ContentReader {
             return;
         }
         Inline.Link inner = name.equals("HYPERLINK") ? fieldLink(instr) : null;
+        if (k.child("w:r") == null && !inInstruction() && computedParentAllowsOutput()) {
+            String value = storedValue(instr);
+            if (value != null) {
+                text(value, runProps(null, paraRun), out, link);
+                return;
+            }
+        }
         inline(k.kids, out, paraRun, inner != null ? inner : link);
+    }
+
+    private void equation(FieldState f, List<Inline> out, Inline.Link link) {
+        String omml = EqField.omml(f.instr.toString(), "");
+        if (omml == null) {
+            return;
+        }
+        XEl zone;
+        try {
+            zone = XTree.parse(new java.io.ByteArrayInputStream(omml.getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+        } catch (java.io.IOException e) {
+            return;
+        }
+        RunProps rp = f.rp;
+        MathReader.read(zone, out, rp, link, drawings.fonts(), r -> r == null ? rp : runProps(r, rp));
+    }
+
+    private String storedValue(String instr) {
+        return pkg == null ? null : pkg.fieldValues().text(tokens(instr));
     }
 
     // A page field's format switch picks its number format; applying it is formatting, not execution
@@ -528,6 +574,16 @@ final class ContentReader {
             return null;
         }
         return new Inline.Link(safe, anchor);
+    }
+
+    private static String autonumSeparator(String instr) {
+        List<String> t = tokens(instr);
+        for (int i = 1; i + 1 < t.size(); i++) {
+            if (t.get(i).equalsIgnoreCase("\\s") && !t.get(i + 1).isEmpty()) {
+                return t.get(i + 1).substring(0, 1);
+            }
+        }
+        return ".";
     }
 
     private static List<String> tokens(String s) {
@@ -606,13 +662,27 @@ final class ContentReader {
                 if (!fields.isEmpty()) {
                     FieldState f = fields.peek();
                     separate(f);
+                    f.resultOut = out;
+                    f.resultSize = out.size();
                 }
             }
             case "end" -> {
                 if (!fields.isEmpty()) {
                     FieldState f = fields.pop();
+                    boolean result = f.separated;
                     if (!f.separated) {
                         separate(f);
+                    }
+                    boolean empty = !result || f.resultOut == out && out.size() == f.resultSize;
+                    if (empty && "EQ".equals(f.name) && !inInstruction() && computedParentAllowsOutput()) {
+                        equation(f, out, fieldLinkInScope(link));
+                    } else if (!result && "AUTONUM".equals(f.name) && !inInstruction() && computedParentAllowsOutput()) {
+                        text(++autonum + autonumSeparator(f.instr.toString()), f.rp, out, fieldLinkInScope(link));
+                    } else if (!result && !f.computed && !inInstruction() && computedParentAllowsOutput()) {
+                        String value = storedValue(f.instr.toString());
+                        if (value != null) {
+                            text(value, f.rp, out, fieldLinkInScope(link));
+                        }
                     }
                     if (f.computed && !inInstruction() && computedParentAllowsOutput()) {
                         out.add(new Inline.Field(f.name, f.rp, f.cached.toString(), fieldLinkInScope(link),

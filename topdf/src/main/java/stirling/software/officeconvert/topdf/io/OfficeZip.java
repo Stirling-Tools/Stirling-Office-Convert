@@ -173,7 +173,8 @@ public final class OfficeZip implements Closeable {
         this.names = Collections.unmodifiableList(order);
         if (!exists(CONTENT_TYPES)) {
             if (exists("/mimetype") && exists("/META-INF/manifest.xml")) {
-                throw new IOException("The file is an OpenDocument file (ODT, ODS or ODP), which is not supported");
+                throw new IOException("The file is an OpenDocument file of a kind that is not supported (only text,"
+                        + " spreadsheets and presentations are)");
             }
             throw new LostPart("The file is not an Office document: the zip package has no [Content_Types].xml", null);
         }
@@ -480,12 +481,27 @@ public final class OfficeZip implements Closeable {
         return raced == null ? parsed : raced;
     }
 
+    Relationships peekRelationships(String sourcePart) throws IOException {
+        String source = canonical(sourcePart);
+        Relationships known = relationships.get(source);
+        if (known != null) {
+            return known;
+        }
+        String rels = relsPartFor(source);
+        Relationships parsed = exists(rels) ? parseRelationships(source, rels) : Relationships.NONE;
+        Relationships raced = relationships.putIfAbsent(source, parsed);
+        return raced == null ? parsed : raced;
+    }
+
     public String mainContentType() throws IOException {
         return contentType(mainPart());
     }
 
     public String mainPart() throws IOException {
         Relationship main = packageRelationships().first("officeDocument");
+        if (main == null) {
+            main = packageRelationships().first("http://schemas.microsoft.com/visio/2010/relationships/document");
+        }
         if (main == null || main.part() == null || !exists(main.part())) {
             throw new IOException("The file is not an Office document: " + NO_MAIN);
         }
@@ -705,7 +721,7 @@ public final class OfficeZip implements Closeable {
         return (bytes + (1 << 20) - 1) >> 20;
     }
 
-    private static void checkNotInterrupted() throws InterruptedIOException {
+    public static void checkNotInterrupted() throws InterruptedIOException {
         if (Thread.currentThread().isInterrupted()) {
             throw new InterruptedIOException("Conversion interrupted");
         }

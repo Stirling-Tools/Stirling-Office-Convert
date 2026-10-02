@@ -122,6 +122,22 @@ final class DrawingPainter {
         ops.add(new Op.Group(0, 0, t, null, inner));
     }
 
+    static void fitText(Drawing d, Ctx ctx) {
+        if (!(d.graphic instanceof Drawing.Shape s) || s.text() == null || !s.text().grow() || s.text().vertical()
+                || s.text().noWrap() || s.rotation() != 0 || s.text().blocks().isEmpty() || ctx.depth > 8) {
+            return;
+        }
+        Drawing.TextBox tb = s.text();
+        ctx.depth++;
+        try {
+            float need = StackLayout.layout(tb.blocks(), Math.max(1, d.width - tb.left() - tb.right()), ctx).height()
+                    + tb.top() + tb.bottom();
+            d.height = Math.max(d.height, need);
+        } finally {
+            ctx.depth--;
+        }
+    }
+
     private static void textBox(Drawing.TextBox tb, float x, float y, float w, float h, List<Op> ops, Ctx ctx) {
         if (ctx.depth > 8) {
             return;

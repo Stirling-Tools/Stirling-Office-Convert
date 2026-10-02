@@ -9,6 +9,7 @@ import java.util.Locale;
 import stirling.software.officeconvert.topdf.font.BidiRuns;
 import stirling.software.officeconvert.topdf.font.CloudFonts;
 import stirling.software.officeconvert.topdf.font.FontFace;
+import stirling.software.officeconvert.topdf.font.FontLibrary;
 
 final class ParaItems {
 
@@ -194,6 +195,7 @@ final class ParaItems {
             case Inline.Obj o -> {
                 Drawing d = o.drawing();
                 if (d.inline) {
+                    DrawingPainter.fitText(d, ctx);
                     Item obj = new Item(Item.Kind.OBJECT);
                     obj.text = "\uFFFC";
                     obj.drawing = d;
@@ -324,12 +326,12 @@ final class ParaItems {
         int n = s.length();
         while (i < n) {
             int cp = s.codePointAt(i);
-            Fonts.Slot slot = Fonts.slot(cp, rp);
+            Fonts.Slot slot = slot(cp, rp);
             boolean lower = small && Character.isLowerCase(cp);
             int j = i + Character.charCount(cp);
             while (j < n) {
                 int c2 = s.codePointAt(j);
-                if (Fonts.slot(c2, rp) != slot && !(neutral(c2) && slot != Fonts.Slot.COMPLEX)) {
+                if (slot(c2, rp) != slot && !(neutral(c2) && slot != Fonts.Slot.COMPLEX)) {
                     break;
                 }
                 if (small && Character.isLowerCase(c2) != lower && !neutral(c2)) {
@@ -347,16 +349,35 @@ final class ParaItems {
             }
             FontFace face = face(rp, slot);
             piece = SymbolChars.remap(piece, face, label, c -> covers(faceFor(face, c), c));
-            addCovered(piece, face, rp, nominal, full, link);
+            addCovered(piece, face, rp, nominal, full, link, slot == Fonts.Slot.COMPLEX, gridSpacing(rp, slot));
             i = j;
         }
+    }
+
+    private Fonts.Slot slot(int cp, RunProps rp) {
+        Fonts.Slot slot = Fonts.slot(cp, rp);
+        if (slot == Fonts.Slot.COMPLEX && cp >= 0xF020 && cp <= 0xF0FF
+                && !SymbolChars.symbolFont(ctx.fonts.family(rp, slot))
+                && SymbolChars.symbolFont(ctx.fonts.family(rp, Fonts.Slot.ASCII))) {
+            return Fonts.Slot.ASCII;
+        }
+        return slot;
     }
 
     private static boolean neutral(int cp) {
         return cp == ' ' || cp == 0x00A0;
     }
 
-    private void addCovered(String piece, FontFace face, RunProps rp, float nominal, float full, Inline.Link link) {
+    private float gridSpacing(RunProps rp, Fonts.Slot slot) {
+        float grid = ctx.charGrid();
+        if (grid == 0 || Boolean.FALSE.equals(para.pp.snapToGrid) || Boolean.FALSE.equals(rp.snapToGrid)) {
+            return 0;
+        }
+        return slot == Fonts.Slot.EAST_ASIA ? grid : grid / 2;
+    }
+
+    private void addCovered(String piece, FontFace face, RunProps rp, float nominal, float full, Inline.Link link,
+            boolean ownSpaces, float grid) {
         int i = 0;
         int n = piece.length();
         while (i < n) {
@@ -365,18 +386,19 @@ final class ParaItems {
             int j = i + Character.charCount(cp);
             while (j < n) {
                 int c2 = piece.codePointAt(j);
-                if (!faceFor(face, c2).equals(f) && !(covers(f, c2) && neutral(c2))) {
+                if (!faceFor(face, c2).equals(f) && !(covers(f, c2) && neutral(c2) && !ownSpaces)) {
                     break;
                 }
                 j += Character.charCount(c2);
             }
             Item it = new Item(Item.Kind.TEXT);
             it.text = piece.substring(i, j);
-            it.look = f == face ? look(rp, f, link, nominal) : fallbackLook(rp, f, face, link, nominal);
+            it.look = f == face ? look(rp, f, link, nominal) : fallbackLook(rp, f, face, link, nominal, cp);
             if (full > nominal) {
                 // Small capitals keep the line height of the full size
                 it.look = it.look.scaledMetrics(full / nominal);
             }
+            it.look = it.look.spaced(grid);
             it.link = link;
             it.lang = rp.lang;
             it.shaped = FontFace.needsShaping(it.text) && f.shapeable();
@@ -414,17 +436,22 @@ final class ParaItems {
     }
 
     // A character the stand-in for a missing font lacks still takes that font's line height
-    private Look fallbackLook(RunProps rp, FontFace f, FontFace requested, Inline.Link link, float nominal) {
+    private Look fallbackLook(RunProps rp, FontFace f, FontFace requested, Inline.Link link, float nominal, int cp) {
         CloudFonts.Emulation own = ctx.fonts.emulation(f);
-        if (own == null && !Look.eastAsianGlyphs(f)) {
+        boolean ownLine = false;
+        if (own == null) {
             CloudFonts.Emulation wanted = ctx.fonts.emulation(requested);
-            if (wanted != null && wanted.vertical() != null && wanted.scale() == 100) {
+            boolean usable = wanted != null && wanted.vertical() != null && wanted.scale() == 100;
+            if (usable && (!Look.eastAsianGlyphs(f) || Fonts.withEastAsianExtra(wanted))) {
                 own = wanted;
+            } else {
+                ownLine = FontLibrary.drawsScript(requested.requestedFamily(), cp);
             }
         }
         Color bg = rp.shadingColor() != null ? rp.shadingColor() : rp.highlightColor();
         Color fallback = bg != null ? (Colors.dark(bg) ? Color.WHITE : Color.BLACK) : fallbackColor();
-        return Look.of(f, rp, nominal, link, fallback, own);
+        Look look = Look.of(f, rp, nominal, link, fallback, own);
+        return ownLine ? look.withLineOf(look(rp, requested, link, nominal)) : look;
     }
 
     // A right or centred list label ends or centres on the number position instead of starting there

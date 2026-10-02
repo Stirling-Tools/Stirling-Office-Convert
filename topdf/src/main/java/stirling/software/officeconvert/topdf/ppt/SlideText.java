@@ -7,17 +7,21 @@ import java.awt.Paint;
 import java.awt.font.FontRenderContext;
 import java.awt.font.TextAttribute;
 import java.awt.geom.AffineTransform;
+import java.awt.geom.Rectangle2D;
 import java.io.IOException;
 import java.text.AttributedCharacterIterator;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
+import org.apache.pdfbox.cos.COSStream;
 import org.apache.pdfbox.pdmodel.PDPageContentStream;
 import org.apache.pdfbox.util.Matrix;
+import org.apache.poi.sl.draw.DrawTextParagraph;
 
 import de.rototor.pdfbox.graphics2d.IPdfBoxGraphics2DFontTextDrawer;
 
@@ -32,8 +36,10 @@ import stirling.software.officeconvert.topdf.pdf.TextStyle;
 // POI lays text out with AWT fonts; each run is written with our fonts, fitted to the width AWT gave it
 final class SlideText implements IPdfBoxGraphics2DFontTextDrawer {
 
+    private static final int MAX_LINKS = 2000;
+
     private record Piece(String text, FontFace face, float size, float rise, float advance, Color color,
-            boolean underline, boolean strike) {}
+            boolean underline, boolean strike, SlideLinks.Target link) {}
 
     private final RenderJob job;
 
@@ -41,9 +47,22 @@ final class SlideText implements IPdfBoxGraphics2DFontTextDrawer {
 
     private final Map<String, FontFace> faces = new HashMap<>();
 
+    private Map<String, SlideLinks.Target> targets = Map.of();
+
+    private final Map<COSStream, List<LinkLocator.Pending>> pending = new IdentityHashMap<>();
+
     SlideText(RenderJob job, Map<String, String> families) {
         this.job = job;
         this.families = families;
+    }
+
+    void startSlide(Map<String, SlideLinks.Target> links) {
+        targets = links;
+        pending.clear();
+    }
+
+    Map<COSStream, List<LinkLocator.Pending>> pendingLinks() {
+        return pending;
     }
 
     // Gradient and pattern text stays with POI's outlines
@@ -75,6 +94,8 @@ final class SlideText implements IPdfBoxGraphics2DFontTextDrawer {
             Color color = fg instanceof Color c ? c : env.getPaint() instanceof Color c ? c : Color.BLACK;
             boolean underline = TextAttribute.UNDERLINE_ON.equals(it.getAttribute(TextAttribute.UNDERLINE));
             boolean strike = TextAttribute.STRIKETHROUGH_ON.equals(it.getAttribute(TextAttribute.STRIKETHROUGH));
+            SlideLinks.Target link = it.getAttribute(DrawTextParagraph.HYPERLINK_HREF) instanceof String href
+                    ? targets.get(href) : null;
             StringBuilder b = new StringBuilder(limit - i);
             for (char c = it.current(); it.getIndex() < limit; c = it.next()) {
                 b.append(c);
@@ -91,7 +112,8 @@ final class SlideText implements IPdfBoxGraphics2DFontTextDrawer {
             if (!(size > 0 && size <= 10_000) || !Float.isFinite(advance)) {
                 continue;
             }
-            pieces.add(new Piece(text, face(font), size, (float) t.getTranslateY(), advance, color, underline, strike));
+            pieces.add(new Piece(text, face(font), size, (float) t.getTranslateY(), advance, color, underline, strike,
+                    link));
             total += Math.max(0, advance);
             largest = Math.max(largest, size);
         }
@@ -129,11 +151,31 @@ final class SlideText implements IPdfBoxGraphics2DFontTextDrawer {
                 x += p.advance();
             }
         }
+        links(canvas, pieces, pad, height);
         PDPageContentStream cs = env.getContentStream();
         cs.saveGraphicsState();
         cs.transform(new Matrix(1, 0, 0, -1, 0, height - pad));
         cs.drawForm(canvas.form());
         cs.restoreGraphicsState();
+    }
+
+    private void links(PdfCanvas canvas, List<Piece> pieces, float pad, float height) {
+        float x = 0;
+        List<LinkLocator.Pending> out = null;
+        for (Piece p : pieces) {
+            if (p.link() != null && p.advance() > 0 && pending.size() < MAX_LINKS) {
+                if (out == null) {
+                    out = new ArrayList<>();
+                }
+                float baseline = pad + p.rise();
+                out.add(new LinkLocator.Pending(new Rectangle2D.Float(x, height - baseline - 0.25f * p.size(),
+                        p.advance(), 1.15f * p.size()), p.link()));
+            }
+            x += p.advance();
+        }
+        if (out != null) {
+            pending.put(canvas.form().getCOSObject(), out);
+        }
     }
 
     // Right-to-left runs in visual order, each shaped with the face that covers it

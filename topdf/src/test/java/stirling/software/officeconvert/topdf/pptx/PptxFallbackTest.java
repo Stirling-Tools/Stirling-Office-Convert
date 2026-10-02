@@ -52,6 +52,26 @@ class PptxFallbackTest {
     }
 
     @Test
+    void aPictureWhoseBlipNeedsMacDrawingMlShowsItsFallback() throws IOException {
+        String pic = "<p:pic " + Decks.NS + " xmlns:mc=\"http://schemas.openxmlformats.org/markup-compatibility/2006\">"
+                + "<p:nvPicPr><p:cNvPr id=\"7\" name=\"Picture 7\"/><p:cNvPicPr/><p:nvPr/></p:nvPicPr>"
+                + "<mc:AlternateContent xmlns:ma=\"http://schemas.microsoft.com/office/mac/drawingml/2008/main\">"
+                + "<mc:Choice Requires=\"ma\"><p:blipFill><a:blip r:embed=\"rIdMac\"/><a:stretch><a:fillRect/>"
+                + "</a:stretch></p:blipFill></mc:Choice><mc:Fallback><p:blipFill><a:blip r:embed=\"rIdWin\"/><a:stretch>"
+                + "<a:fillRect/></a:stretch></p:blipFill></mc:Fallback></mc:AlternateContent><p:spPr><a:xfrm><a:off"
+                + " x=\"914400\" y=\"914400\"/><a:ext cx=\"914400\" cy=\"914400\"/></a:xfrm><a:prstGeom prst=\"rect\">"
+                + "<a:avLst/></a:prstGeom></p:spPr></p:pic>";
+        Fixtures.Zip z = Fixtures.edit(Decks.slideXml(pic));
+        z.put("ppt/media/mac1.png", Fixtures.png(4, 4, Color.RED));
+        z.put("ppt/media/win1.png", Fixtures.png(4, 4, Color.BLUE));
+        z.defaultType("png", "image/png");
+        z.relationship("/ppt/slides/slide1.xml", "rIdMac", Fixtures.REL + "image", "../media/mac1.png", false);
+        z.relationship("/ppt/slides/slide1.xml", "rIdWin", Fixtures.REL + "image", "../media/win1.png", false);
+        BufferedImage img = Decks.convert(dir, "macpic.pptx", z.bytes()).render(0, 72);
+        assertEquals(Color.BLUE.getRGB(), img.getRGB(108, 108));
+    }
+
+    @Test
     void pictureBulletsStandOnTheBaselineAndTheTextStartsAtTheMargin() throws IOException {
         String p = "<a:p><a:pPr marL=\"342900\" indent=\"-342900\"><a:buBlip><a:blip r:embed=\"rIdB\"/></a:buBlip>"
                 + "</a:pPr>" + Decks.run("Bulleted", "sz=\"3000\"") + "</a:p>";

@@ -44,6 +44,7 @@ import stirling.software.officeconvert.PdfToXlsx;
 import stirling.software.officeconvert.Pictures;
 import stirling.software.officeconvert.extract.PdfFiles;
 import stirling.software.officeconvert.topdf.OfficeToPdf;
+import stirling.software.officeconvert.topdf.crypt.Passwords;
 
 final class ConvertHandler implements HttpHandler {
 
@@ -63,7 +64,7 @@ final class ConvertHandler implements HttpHandler {
         Done run() throws Exception;
     }
 
-    private enum Input { PDF, OFFICE }
+    private enum Input { PDF, OFFICE, TEXT }
 
     private static final String PDF = "application/pdf";
 
@@ -138,6 +139,7 @@ final class ConvertHandler implements HttpHandler {
         final Path dir;
         final Path upload;
         Path input;
+        String name;
         private final String client;
         private long bytes;
         private boolean converting;
@@ -232,6 +234,7 @@ final class ConvertHandler implements HttpHandler {
                 }
                 Job current = new Job(Files.createTempDirectory("office-convert-app"), client);
                 job = current;
+                current.name = uploadName(q.get("name"));
                 Input input = receive(ex.getRequestBody(), current);
                 if (input == Input.PDF) {
                     String target = format == null ? "docx" : format;
@@ -250,10 +253,12 @@ final class ConvertHandler implements HttpHandler {
                     if (format != null && !"pdf".equals(format)) {
                         throw new Refusal(422, "format", "Word, PowerPoint and Excel documents convert to pdf here.");
                     }
-                    String ext = officeType(current.upload);
+                    String ext = input == Input.TEXT ? OfficeFiles.textExtension(current.name)
+                            : officeType(current.upload, current.name);
                     current.input = Files.move(current.upload, current.dir.resolve("in." + ext));
                     Path out = current.dir.resolve("out.pdf");
-                    Done done = convert(current, office, false, () -> toPdf(current, out, office));
+                    String password = ex.getRequestHeaders().getFirst("X-Pdf-Password");
+                    Done done = convert(current, office, false, () -> toPdf(current, out, office, password));
                     ex.getResponseHeaders().set("X-Engine", office ? "libreoffice" : "ours");
                     ex.getResponseHeaders().set("X-Input", ext);
                     send(ex, out, PDF, "pdf", done, start);
@@ -261,6 +266,15 @@ final class ConvertHandler implements HttpHandler {
             } catch (Refusal r) {
                 outcome = r.code;
                 fail(ex, r.status, r.code, r.getMessage());
+            } catch (IOException e) {
+                outcome = "aborted";
+                throw e;
+            } catch (RuntimeException e) {
+                outcome = "error";
+                System.out.println("Request failed: " + e);
+                if (ex.getResponseCode() == -1) {
+                    fail(ex, 500, "error", "The converter failed on this request.");
+                }
             } finally {
                 long size = job == null ? 0 : job.size();
                 if (job == null) {
@@ -273,7 +287,14 @@ final class ConvertHandler implements HttpHandler {
         }
     }
 
-    private static void log(long start, long size, String outcome) {
+    private static String uploadName(String name) throws Refusal {
+        if (name != null && name.chars().anyMatch(c -> c < 0x20 || c == 0x7f)) {
+            throw new Refusal(400, "name", "The file name could not be read.");
+        }
+        return name;
+    }
+
+        private static void log(long start, long size, String outcome) {
         System.out.printf("%s convert %.1f MB in %d ms: %s%n", LocalTime.now().truncatedTo(ChronoUnit.SECONDS),
                 size / 1048576.0, (System.nanoTime() - start) / 1_000_000, outcome);
     }
@@ -350,9 +371,9 @@ final class ConvertHandler implements HttpHandler {
         }
     }
 
-    private static String officeType(Path upload) throws Refusal {
+    private static String officeType(Path upload, String name) throws Refusal {
         try {
-            return OfficeFiles.extension(upload);
+            return OfficeFiles.extension(upload, name);
         } catch (OfficeFiles.Unsupported e) {
             throw new Refusal(415, "type", e.getMessage());
         } catch (IOException e) {
@@ -372,7 +393,7 @@ final class ConvertHandler implements HttpHandler {
         return new Done(note[0], 0, List.of());
     }
 
-    private Done toPdf(Job job, Path out, boolean office) throws IOException, Refusal {
+    private Done toPdf(Job job, Path out, boolean office, String password) throws IOException, Refusal {
         int cap = limits.maxPages() > 0 ? limits.maxPages() : OfficeToPdf.Options.DEFAULT_MAX_PAGES;
         String capped = "this demo converts up to " + cap + " pages at a time";
         if (office) {
@@ -381,7 +402,8 @@ final class ConvertHandler implements HttpHandler {
             return new Done(pages >= cap ? "The PDF may stop at page " + cap + ": " + capped + "." : null, pages, List.of());
         }
         OfficeToPdf.Options options = OfficeToPdf.Options.defaults().maxPages(cap)
-                .timeout(limits.timeoutSeconds() > 0 ? Duration.ofSeconds(limits.timeoutSeconds()) : Duration.ZERO);
+                .timeout(Duration.ofSeconds(limits.timeoutSeconds()))
+                .displayName(job.name).password(password == null || password.isEmpty() ? null : password);
         try {
             OfficeToPdf.Result r = OfficeToPdf.convert(job.input, out, options);
             String note = r.pageLimitReached() ? "Converted the first " + cap + " pages: " + capped + "."
@@ -389,6 +411,12 @@ final class ConvertHandler implements HttpHandler {
             return new Done(note, r.pages(), r.warnings());
         } catch (InterruptedIOException e) {
             throw e;
+        } catch (OfficeToPdf.TimedOut e) {
+            throw timedOut(false);
+        } catch (Passwords.Refused e) {
+            throw new Refusal(422, "password", Passwords.PROTECTED.equals(e.getMessage())
+                    ? "This document is password protected. Enter its password under Options and try again."
+                    : e.getMessage());
         } catch (IOException e) {
             throw new Refusal(422, "convert", plain(e.getMessage()));
         }
@@ -440,7 +468,7 @@ final class ConvertHandler implements HttpHandler {
             throw new Refusal(503, "busy", BUSY);
         }
         try {
-            return limits.timeoutSeconds() > 0 ? work.get(limits.timeoutSeconds(), TimeUnit.SECONDS) : work.get();
+            return work.get(limits.timeoutSeconds(), TimeUnit.SECONDS);
         } catch (TimeoutException e) {
             work.cancel(true);
             if (!awaitStop(work) && !office && job.markStuck()) {
@@ -585,7 +613,7 @@ final class ConvertHandler implements HttpHandler {
             if (head.length == 0) {
                 throw new Refusal(400, "empty", "The file is empty.");
             }
-            Input input = kind(head);
+            Input input = kind(head, job.name);
             keep(job, head.length);
             out.write(head);
             long total = head.length;
@@ -602,7 +630,7 @@ final class ConvertHandler implements HttpHandler {
         }
     }
 
-    private static Input kind(byte[] head) throws Refusal {
+    private static Input kind(byte[] head, String name) throws Refusal {
         if (starts(head, 0x50, 0x4b, 0x03, 0x04)) {
             return Input.OFFICE;
         }
@@ -611,6 +639,12 @@ final class ConvertHandler implements HttpHandler {
         }
         if (new String(head, StandardCharsets.ISO_8859_1).contains("%PDF-")) {
             return Input.PDF;
+        }
+        if (OfficeFiles.textExtension(name) != null) {
+            return Input.TEXT;
+        }
+        if (name != null && OfficeToPdf.Format.recognises(Path.of("x" + name.substring(Math.max(0, name.lastIndexOf('.')))))) {
+            return Input.OFFICE;
         }
         throw new Refusal(415, "type", OfficeFiles.NOT_OFFICE);
     }

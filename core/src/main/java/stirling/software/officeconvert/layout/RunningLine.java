@@ -81,6 +81,16 @@ public final class RunningLine {
         }
     }
 
+    void resolveLonePage() {
+        int runs = countRuns(sample().text());
+        pageOffsets = new int[runs];
+        totalPages = new boolean[runs];
+        for (int k = 0; k < runs; k++) {
+            pageOffsets[k] = k == 0 ? 1 : Integer.MIN_VALUE;
+            totalPages[k] = k == 1;
+        }
+    }
+
     private static int countRuns(String text) {
         Matcher m = DIGITS.matcher(text);
         int n = 0;

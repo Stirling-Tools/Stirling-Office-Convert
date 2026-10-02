@@ -3,6 +3,11 @@ package stirling.software.officeconvert.topdf.xlsx;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 
+import java.math.BigDecimal;
+import java.math.MathContext;
+import java.math.RoundingMode;
+import java.util.Random;
+
 import org.junit.jupiter.api.Test;
 
 class ExcelFormatTest {
@@ -25,6 +30,49 @@ class ExcelFormatTest {
         int index = FormatCode.numberSectionIndex(format, value);
         String section = FormatCode.sections(format).get(index);
         return show(ExcelFormat.format(value, section, index != 1, false));
+    }
+
+    @Test
+    void wholeNumbersPrintAsTheRoundedDecimalDoes() {
+        Random random = new Random(7);
+        double[] edges = {0, -0.0, 1, -1, 7, 1e14, -1e14, 999_999_999_999_999d, -999_999_999_999_999d, 1e15, 1e16,
+            123_456_789_012_345d, 4_503_599_627_370_496d, Double.MAX_VALUE, Double.POSITIVE_INFINITY, Double.NaN};
+        for (int d = 0; d < 6; d++) {
+            for (double v : edges) {
+                if (Double.isFinite(v)) {
+                    assertEquals(ExcelFormat.round(v, d).toPlainString(), ExcelFormat.plain(v, d), v + " at " + d);
+                }
+            }
+            for (int i = 0; i < 2000; i++) {
+                double v = random.nextLong() % (i < 1000 ? 1_000_000_000_000_000L : 100_000L);
+                assertEquals(ExcelFormat.round(v, d).toPlainString(), ExcelFormat.plain(v, d), v + " at " + d);
+                double x = v + random.nextInt(1000) / 1000.0;
+                assertEquals(ExcelFormat.round(x, d).toPlainString(), ExcelFormat.plain(x, d), x + " at " + d);
+            }
+        }
+    }
+
+    @Test
+    void longDecimalsRoundAsTheirExactBinaryValueDoes() {
+        Random random = new Random(11);
+        MathContext fifteen = new MathContext(15, RoundingMode.HALF_EVEN);
+        for (int i = 0; i < 400_000; i++) {
+            double v = switch (i % 4) {
+                case 0 -> random.nextDouble() * Math.pow(10, random.nextInt(40) - 20);
+                case 1 -> Double.longBitsToDouble(random.nextLong());
+                case 2 -> Double.parseDouble((random.nextBoolean() ? "-" : "") + (random.nextLong() & 0xFFFFFFFFFFFFFL)
+                        % 1_000_000_000_000_000L + "5e" + (random.nextInt(30) - 25));
+                default -> random.nextInt(100_000) / 100.0 * random.nextInt(1000) / 7.0;
+            };
+            if (!Double.isFinite(v)) {
+                continue;
+            }
+            int d = random.nextInt(6);
+            BigDecimal shortest = BigDecimal.valueOf(v);
+            BigDecimal exact = shortest.precision() <= 15 ? shortest : new BigDecimal(v).round(fifteen);
+            assertEquals(exact.setScale(d, RoundingMode.HALF_UP).toPlainString(),
+                    ExcelFormat.round(v, d).toPlainString(), v + " at " + d);
+        }
     }
 
     @Test

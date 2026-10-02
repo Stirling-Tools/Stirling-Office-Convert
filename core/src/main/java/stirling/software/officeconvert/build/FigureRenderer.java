@@ -29,6 +29,7 @@ import org.apache.pdfbox.util.Vector;
 
 import stirling.software.officeconvert.extract.ImageBudget;
 import stirling.software.officeconvert.extract.OperatorBudget;
+import stirling.software.officeconvert.extract.RgbGroup;
 
 final class FigureRenderer extends PDFRenderer {
 
@@ -80,7 +81,7 @@ final class FigureRenderer extends PDFRenderer {
             @Override
             public void showTransparencyGroup(PDTransparencyGroup form) throws IOException {
                 if (budget.form()) {
-                    super.showTransparencyGroup(form);
+                    super.showTransparencyGroup(RgbGroup.of(form));
                 }
             }
 

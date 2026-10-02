@@ -44,6 +44,8 @@ final class Paginator {
 
     private Headings headings;
 
+    private boolean wholeArea;
+
     Paginator(Grid grid, PageSetup setup, CellRangeAddress titleRows, CellRangeAddress titleCols, int[] rowBreaks,
             int[] colBreaks) {
         this.grid = grid;
@@ -68,6 +70,11 @@ final class Paginator {
 
     Paginator headings(Headings h) {
         this.headings = h;
+        return this;
+    }
+
+    Paginator wholeArea(boolean whole) {
+        this.wholeArea = whole;
         return this;
     }
 
@@ -109,7 +116,7 @@ final class Paginator {
                 cut = true;
                 break;
             }
-            cut |= pages(r, scale, !setup.fitToPage(), content, limit - pages.size(), pages);
+            cut |= pages(r, scale, content, limit - pages.size(), pages);
         }
         return new Result(scale, pages, cut);
     }
@@ -131,7 +138,7 @@ final class Paginator {
                     break;
                 }
                 if (h > 0 && spans(r.getFirstRow(), r.getLastRow(), grid::rowHeight, first(titleRows, true),
-                        last(titleRows, true), (setup.printableHeight() / s - headHeight()), null, h + 1).size() > h) {
+                        last(titleRows, true), (rowRoom(setup.printableHeight(), s) - headHeight()), null, h + 1).size() > h) {
                     ok = false;
                     break;
                 }
@@ -144,21 +151,26 @@ final class Paginator {
     }
 
     // Excel fits the columns to whole device pixels, keeping the grid's 4 px inset and closing line clear of the edge
+    static double rowRoom(double printable, double scale) {
+        return fitWidth(printable) / scale;
+    }
+
     static double fitWidth(double printable) {
         return (Math.floor(printable / PrintMetrics.PX + 1e-6) - FIT_EDGE_PX) * PrintMetrics.PX;
     }
 
     static final int FIT_EDGE_PX = 5;
 
-    // Only pages with something on them are printed, so pick them from the content instead of walking every page
-    private boolean pages(CellRangeAddress range, double scale, boolean manualBreaks, Content content, int limit,
-            List<Page> out) throws InterruptedIOException {
+    // Excel prints every page up to the last one with content, so find that page instead of walking every page
+    private boolean pages(CellRangeAddress range, double scale, Content content, int limit, List<Page> out)
+            throws InterruptedIOException {
+        double across = fitWidth(setup.printableWidth()) / scale - headWidth();
         List<Span> colSpans = spans(range.getFirstColumn(), range.getLastColumn(), grid::columnWidth,
-                first(titleCols, false), last(titleCols, false), (setup.printableWidth() / scale - headWidth()),
-                manualBreaks ? colBreaks : null, Integer.MAX_VALUE);
+                first(titleCols, false), last(titleCols, false), across,
+                manualBreaks(setup.fitWidth()) ? colBreaks : null, Integer.MAX_VALUE);
         List<Span> rowSpans = spans(range.getFirstRow(), range.getLastRow(), grid::rowHeight, first(titleRows, true),
-                last(titleRows, true), (setup.printableHeight() / scale - headHeight()),
-                manualBreaks ? rowBreaks : null, Integer.MAX_VALUE);
+                last(titleRows, true), (rowRoom(setup.printableHeight(), scale) - headHeight()),
+                manualBreaks(setup.fitHeight()) ? rowBreaks : null, Integer.MAX_VALUE);
         boolean rowMajor = setup.overThenDown();
         int[] rowStarts = starts(rowSpans);
         int[] colStarts = starts(colSpans);
@@ -166,44 +178,51 @@ final class Paginator {
         TreeSet<Long> picked = new TreeSet<>();
         boolean[] cut = new boolean[1];
         long[] previous = {-1};
-        content.each(range, (r0, r1, c0, c1) -> {
-            int a0 = Math.max(r0, range.getFirstRow());
-            int a1 = Math.min(r1, range.getLastRow());
-            int b0 = Math.max(c0, range.getFirstColumn());
-            int b1 = Math.min(c1, range.getLastColumn());
-            if (a0 > a1 || b0 > b1) {
-                return;
-            }
-            int ri0 = index(rowStarts, a0);
-            int ri1 = index(rowStarts, a1);
-            int ci0 = index(colStarts, b0);
-            int ci1 = index(colStarts, b1);
-            long maj0 = rowMajor ? ri0 : ci0;
-            long maj1 = rowMajor ? ri1 : ci1;
-            long min0 = rowMajor ? ci0 : ri0;
-            long min1 = rowMajor ? ci1 : ri1;
-            if (maj0 == maj1 && min0 == min1 && maj0 * minors + min0 == previous[0]) {
-                return;
-            }
-            previous[0] = maj0 == maj1 && min0 == min1 ? maj0 * minors + min0 : -1;
-            for (long maj = maj0; maj <= maj1; maj++) {
-                checkpoint(maj);
-                for (long min = min0; min <= min1; min++) {
-                    long key = maj * minors + min;
-                    if (picked.size() >= limit && key > picked.last()) {
-                        cut[0] = true;
-                        if (min == min0) {
-                            return;
+        long all = (long) rowSpans.size() * colSpans.size();
+        if (wholeArea && all <= MAX_FILLED_PAGES) {
+            picked.add(Math.min(all, limit) - 1);
+            cut[0] = all > limit;
+        } else {
+            content.each(range, (r0, r1, c0, c1) -> {
+                int a0 = Math.max(r0, range.getFirstRow());
+                int a1 = Math.min(r1, range.getLastRow());
+                int b0 = Math.max(c0, range.getFirstColumn());
+                int b1 = Math.min(c1, range.getLastColumn());
+                if (a0 > a1 || b0 > b1) {
+                    return;
+                }
+                int ri0 = index(rowStarts, a0);
+                int ri1 = index(rowStarts, a1);
+                int ci0 = index(colStarts, b0);
+                int ci1 = index(colStarts, b1);
+                long maj0 = rowMajor ? ri0 : ci0;
+                long maj1 = rowMajor ? ri1 : ci1;
+                long min0 = rowMajor ? ci0 : ri0;
+                long min1 = rowMajor ? ci1 : ri1;
+                if (maj0 == maj1 && min0 == min1 && maj0 * minors + min0 == previous[0]) {
+                    return;
+                }
+                previous[0] = maj0 == maj1 && min0 == min1 ? maj0 * minors + min0 : -1;
+                for (long maj = maj0; maj <= maj1; maj++) {
+                    checkpoint(maj);
+                    for (long min = min0; min <= min1; min++) {
+                        long key = maj * minors + min;
+                        if (picked.size() >= limit && key > picked.last()) {
+                            cut[0] = true;
+                            if (min == min0) {
+                                return;
+                            }
+                            break;
                         }
-                        break;
-                    }
-                    if (picked.add(key) && picked.size() > limit) {
-                        picked.pollLast();
-                        cut[0] = true;
+                        if (picked.add(key) && picked.size() > limit) {
+                            picked.pollLast();
+                            cut[0] = true;
+                        }
                     }
                 }
-            }
-        });
+            });
+        }
+        fillGaps(picked, limit);
         Map<Integer, Band> rowBands = new HashMap<>();
         Map<Integer, Band> colBands = new HashMap<>();
         Band[] titles = new Band[2];
@@ -216,6 +235,23 @@ final class Paginator {
             checkpoint(out.size());
         }
         return cut[0];
+    }
+
+    static final int MAX_FILLED_PAGES = 10_000;
+
+    private static void fillGaps(TreeSet<Long> picked, int limit) throws InterruptedIOException {
+        if (picked.isEmpty() || picked.last() >= MAX_FILLED_PAGES) {
+            return;
+        }
+        long last = picked.last();
+        for (long k = 0; k < last && picked.size() < limit; k++) {
+            checkpoint(k);
+            picked.add(k);
+        }
+    }
+
+    private boolean manualBreaks(int fitPages) {
+        return !setup.fitToPage() || fitPages == 0;
     }
 
     private static int[] starts(List<Span> spans) {

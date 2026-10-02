@@ -126,32 +126,33 @@ final class BorderPainter {
     }
 
     private void diagonals(Band rows, Band cols) throws IOException {
-        for (var re : grid.rows(rows.first, rows.last).entrySet()) {
-            for (CellEntry e : re.getValue().cells(cols.first, cols.last)) {
-                CellFormat f = e.format();
-                if (!f.diagonal().visible() || !(f.diagonalUp() || f.diagonalDown())) {
-                    continue;
-                }
-                double x0 = cols.start(e.col());
-                double x1 = cols.end(e.col());
-                double y0 = rows.start(e.row());
-                double y1 = rows.end(e.row());
-                CellRangeAddress m = grid.mergeAt(e.row(), e.col());
-                if (m != null) {
-                    x1 = cols.end(m.getLastColumn());
-                    y1 = rows.end(m.getLastRow());
-                }
-                if (x1 <= x0 || y1 <= y0) {
-                    continue;
-                }
-                Stroke s = stroke(f.diagonal());
-                if (f.diagonalDown()) {
-                    canvas.line((float) x0, (float) y0, (float) x1, (float) y1, s);
-                }
-                if (f.diagonalUp()) {
-                    canvas.line((float) x0, (float) y1, (float) x1, (float) y0, s);
-                }
-            }
+        for (Grid.RowInfo info : grid.rows(rows.first, rows.last).values()) {
+            info.formats(cols.first, cols.last, (col, f) -> diagonal(info.index, col, f, rows, cols));
+        }
+    }
+
+    private void diagonal(int row, int col, CellFormat f, Band rows, Band cols) throws IOException {
+        if (!f.diagonal().visible() || !(f.diagonalUp() || f.diagonalDown())) {
+            return;
+        }
+        double x0 = cols.start(col);
+        double x1 = cols.end(col);
+        double y0 = rows.start(row);
+        double y1 = rows.end(row);
+        CellRangeAddress m = grid.mergeAt(row, col);
+        if (m != null) {
+            x1 = cols.end(m.getLastColumn());
+            y1 = rows.end(m.getLastRow());
+        }
+        if (x1 <= x0 || y1 <= y0) {
+            return;
+        }
+        Stroke s = stroke(f.diagonal());
+        if (f.diagonalDown()) {
+            canvas.line((float) x0, (float) y0, (float) x1, (float) y1, s);
+        }
+        if (f.diagonalUp()) {
+            canvas.line((float) x0, (float) y1, (float) x1, (float) y0, s);
         }
     }
 

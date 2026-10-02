@@ -64,12 +64,22 @@ public final class FontLibrary {
 
     private final Map<String, FontEntry> names = new HashMap<>();
 
+    private final Map<String, String> substitutions;
+
+    private final Map<String, Float> widthScales;
+
     // Keys come from documents, so these are bounded: a host converting forever must not keep every name it saw
     private final Lru<String, Optional<FontFace>> faces = new Lru<>(MAX_FACES);
 
     private final Lru<Long, Optional<FontFace>> fallbacks = new Lru<>(MAX_FACES);
 
     private FontLibrary(List<FontEntry> entries) {
+        this(entries, Map.of(), Map.of());
+    }
+
+    private FontLibrary(List<FontEntry> entries, Map<String, String> substitutions, Map<String, Float> widthScales) {
+        this.substitutions = Map.copyOf(substitutions);
+        this.widthScales = Map.copyOf(widthScales);
         List<FontEntry> all = new ArrayList<>(entries);
         for (FontEntry e : Bundled.ENTRIES) {
             if (!all.contains(e)) {
@@ -111,6 +121,20 @@ public final class FontLibrary {
         return lib;
     }
 
+    static FontLibrary of(List<FontEntry> entries, Map<String, String> substitutions,
+            Map<String, Float> widthScales) {
+        return new FontLibrary(entries, substitutions, widthScales);
+    }
+
+    List<FontEntry> entries() {
+        return entries;
+    }
+
+    public float widthScale(String family) {
+        Float k = family == null ? null : widthScales.get(normalize(family));
+        return k == null ? 0 : k;
+    }
+
     public static FontLibrary of(List<Path> dirs) {
         List<Path> key = key(dirs);
         return DIRS.computeIfAbsent(key, k -> new FontLibrary(scanDirs(k)));
@@ -148,7 +172,7 @@ public final class FontLibrary {
             return this;
         }
         all.addAll(entries);
-        return new FontLibrary(all);
+        return new FontLibrary(all, substitutions, widthScales);
     }
 
     public static List<Path> systemFontDirs() {
@@ -269,6 +293,10 @@ public final class FontLibrary {
         if (f == null) {
             return null;
         }
+        OfficeFonts.Style widths = like.officeWidths();
+        if (widths != null && widths.advance(codePoint) >= 0 && !f.emulated() && !f.symbolStandIn()) {
+            return officeWidths(f, like, widths);
+        }
         String sample = ScriptWidths.sample(codePoint);
         boolean scalable = sample != null && !f.emulated() && !f.symbolStandIn()
                 && ScriptWidths.average(like.requestedFamily(), sample) > 0;
@@ -291,6 +319,36 @@ public final class FontLibrary {
             known = raced == null ? known : raced;
         }
         return known.get();
+    }
+
+    private FontFace officeWidths(FontFace f, FontFace like, OfficeFonts.Style widths) {
+        String key = "w\u0000" + normalize(like.requestedFamily()) + '\u0000' + like.boldStyle() + like.italicStyle()
+                + '\u0000' + f.program().entry().describe() + (f.syntheticBold() ? 2 : 0) + (f.syntheticItalic() ? 1 : 0);
+        Optional<FontFace> known = faces.get(key);
+        if (known == null) {
+            known = Optional.of(new FontFace(f.program(), f.requestedFamily(), f.syntheticBold(), f.syntheticItalic(),
+                    f.note(), null, widths, 1));
+            Optional<FontFace> raced = faces.putIfAbsent(key, known);
+            known = raced == null ? known : raced;
+        }
+        return known.get();
+    }
+
+    public static boolean officeFont(String family) {
+        return OfficeFonts.style(family, false, false) != null || OfficeFonts.style(english(family), false, false) != null
+                || ScriptWidths.average(family, ScriptWidths.ARABIC) > 0
+                || ScriptWidths.average(family, ScriptWidths.HEBREW) > 0;
+    }
+
+    public static int symbolUnicode(String family, int code) {
+        int c = SymbolFonts.code(code);
+        int[] cps = c < 0 || !SymbolFonts.known(family) ? null : SymbolFonts.table(family)[c];
+        return cps == null || cps.length == 0 ? -1 : cps[0];
+    }
+
+    public static boolean drawsScript(String family, int codePoint) {
+        String sample = ScriptWidths.sample(codePoint);
+        return sample != null && ScriptWidths.average(family, sample) > 0;
     }
 
     public List<FontRun> runs(String text, FontFace primary) {
@@ -325,6 +383,11 @@ public final class FontLibrary {
         return out;
     }
 
+    public static String english(String family) {
+        String e = FontNames.english(family);
+        return e == null ? family : e;
+    }
+
     public static String normalize(String name) {
         String n = Normalizer.normalize(name, Normalizer.Form.NFKC).strip().toLowerCase(Locale.ROOT);
         return plainSpaces(n) ? n : SPACES.matcher(n).replaceAll(" ");
@@ -342,6 +405,10 @@ public final class FontLibrary {
     }
 
     private FontFace resolve(String family, boolean bold, boolean italic) {
+        FontFace mapped = mapped(family, bold, italic);
+        if (mapped != null) {
+            return mapped;
+        }
         FontFace face = exact(family, bold, italic);
         if (face != null) {
             return Weights.emboldenedIfThin(face, family, bold);
@@ -382,8 +449,27 @@ public final class FontLibrary {
         return Weights.emboldened(standIn(last, family, base, b, i, why + "; using " + last.family()), family, bold);
     }
 
+    private FontFace mapped(String family, boolean bold, boolean italic) {
+        String target = substitutions.get(normalize(family));
+        FontFace f = target == null ? null : exact(target, bold, italic);
+        if (f == null) {
+            return null;
+        }
+        return Weights.emboldened(standIn(f, family, family, bold, italic, null), family, bold);
+    }
+
+    private FontFace standIn(FontFace f, String family, String base, boolean bold, boolean italic, String note) {
+        float k = widthScale(family);
+        if (k <= 0) {
+            return officeStandIn(f, family, base, bold, italic, note);
+        }
+        return new FontFace(f.program(), family, f.syntheticBold(), f.syntheticItalic(), note,
+                SymbolFonts.remap(base, f.program()), null, k);
+    }
+
     // A stand-in draws symbol fonts with Unicode look-alikes and keeps a missing Office font's widths and lines
-    private static FontFace standIn(FontFace f, String family, String base, boolean bold, boolean italic, String note) {
+    private static FontFace officeStandIn(FontFace f, String family, String base, boolean bold, boolean italic,
+            String note) {
         SymbolFonts.Remap symbols = SymbolFonts.remap(base, f.program());
         String metrics = OfficeFonts.style(family, bold, italic) != null ? family : base;
         OfficeFonts.Style original = symbols == null ? OfficeFonts.style(metrics, bold, italic) : null;

@@ -332,7 +332,7 @@ final class TableGrid {
             }
             ConventionEvidence evidence = new ConventionEvidence();
             texts.forEach(evidence::add);
-            used[c] = evidence.conventions().or(base);
+            used[c] = evidence.conventions(base);
             List<CellValue> typedColumn = CellTyper.column(texts, base);
             for (int j = 0; j < at.size(); j++) {
                 out[at.get(j)] = typedColumn.get(j);

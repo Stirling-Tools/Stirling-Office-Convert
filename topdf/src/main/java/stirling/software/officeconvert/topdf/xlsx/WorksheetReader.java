@@ -213,11 +213,28 @@ final class WorksheetReader {
             return CTWorksheet.Factory.newInstance();
         }
         try {
-            return WorksheetDocument.Factory.parse(new ByteArrayInputStream(shell),
+            return WorksheetDocument.Factory.parse(new ByteArrayInputStream(transitional(shell)),
                     POIXMLTypeLoader.DEFAULT_XML_OPTIONS).getWorksheet();
         } catch (IOException | XmlException | RuntimeException e) {
             return CTWorksheet.Factory.newInstance();
         }
+    }
+
+    private static final String[][] STRICT = {
+        {"http://purl.oclc.org/ooxml/spreadsheetml/main", "http://schemas.openxmlformats.org/spreadsheetml/2006/main"},
+        {"http://purl.oclc.org/ooxml/officeDocument/relationships",
+            "http://schemas.openxmlformats.org/officeDocument/2006/relationships"},
+        {"http://purl.oclc.org/ooxml/drawingml/main", "http://schemas.openxmlformats.org/drawingml/2006/main"}};
+
+    static byte[] transitional(byte[] xml) {
+        String text = new String(xml, StandardCharsets.ISO_8859_1);
+        if (!text.contains("http://purl.oclc.org/ooxml/")) {
+            return xml;
+        }
+        for (String[] ns : STRICT) {
+            text = text.replace(ns[0], ns[1]);
+        }
+        return text.getBytes(StandardCharsets.ISO_8859_1);
     }
 
     static byte[] withoutData(byte[] xml) {

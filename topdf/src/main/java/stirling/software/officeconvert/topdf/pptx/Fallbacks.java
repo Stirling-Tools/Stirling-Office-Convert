@@ -69,7 +69,8 @@ final class Fallbacks {
                 if ("pic".equals(e.getLocalName())) {
                     CTPicture pic = CTPicture.Factory.parse(e, fragment);
                     CTApplicationNonVisualDrawingProps nv = pic.getNvPicPr() == null ? null : pic.getNvPicPr().getNvPr();
-                    shapes.pictures().paint(pic.getSpPr(), pic.getBlipFill(), space, placeholder(shapes.sheet(), nv));
+                    shapes.pictures().paint(pic.getSpPr(), PicturePainter.blipFill(pic), space,
+                            placeholder(shapes.sheet(), nv));
                 } else if ("sp".equals(e.getLocalName())) {
                     CTShape sp = CTShape.Factory.parse(e, fragment);
                     CTShapeProperties spPr = sp.getSpPr();

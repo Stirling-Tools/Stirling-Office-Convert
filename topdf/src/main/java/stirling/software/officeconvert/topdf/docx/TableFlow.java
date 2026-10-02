@@ -110,6 +110,17 @@ final class TableFlow {
         return k - from;
     }
 
+    private static boolean breaksBefore(RowBox row) {
+        for (CellBox cb : row.cells) {
+            if (cb.continuation || cb.cell == null) {
+                continue;
+            }
+            List<Block> blocks = cb.cell.blocks;
+            return !blocks.isEmpty() && blocks.get(0) instanceof Para p && Boolean.TRUE.equals(p.pp.pageBreakBefore);
+        }
+        return false;
+    }
+
     private static boolean keepsWithNext(RowBox row) {
         boolean any = false;
         for (CellBox cb : row.cells) {
@@ -249,6 +260,16 @@ final class TableFlow {
                     lastStrip = null;
                 }
             }
+            if (r.paginated() && !r.atTop() && (placedAny || i == 0) && i >= l.headerRows() && breaksBefore(row)) {
+                close(lastStrip, lastRow, l, edges);
+                r.newFrame(true, false);
+                opening = edges;
+                for (RowBox h : headers) {
+                    placeRow(h, l, r);
+                    opening = false;
+                }
+                lastStrip = null;
+            }
             boolean fresh = r.atTop();
             while (current != null && guard++ < 10_000) {
                 if (opening) {
@@ -369,7 +390,7 @@ final class TableFlow {
             while (k < cb.content.size() && cb.content.get(k).y + cb.content.get(k).strip.height <= room + 0.01f) {
                 k++;
             }
-            k = widowSafe(cb.content, k);
+            k = cb.rotation != 0 ? cb.content.size() : widowSafe(cb.content, k);
             CellBox next = at(rows.get(index + m), cb.cell.col);
             if (next == null || !next.continuation) {
                 continue;
@@ -378,6 +399,7 @@ final class TableFlow {
             boolean split = k > 0 && k < cb.content.size();
             CellBox carry = copy(cb);
             carry.continuation = false;
+            carry.rotation = 0;
             carry.top = null;
             carry.vAlign = split ? "top" : cb.vAlign;
             carry.rowSpan = span - m;
@@ -484,6 +506,18 @@ final class TableFlow {
         return refs.isEmpty() || r.notesFit(refs, top + row.height);
     }
 
+    private RowBox[] straddling(RowBox row, float avail) {
+        if (row.exact || row.cantSplit || row.header || row.minHeight > avail + 0.01f) {
+            return null;
+        }
+        for (CellBox cb : row.cells) {
+            if (cb.rowSpan > 1 || !cb.notes.isEmpty()) {
+                return null;
+            }
+        }
+        return split(row, avail, true);
+    }
+
     private RowBox[] splitWithNotes(RowBox row, float avail, Region r, boolean keeps) {
         float room = avail;
         for (int tries = 0; tries < 60 && room >= 12; tries++) {
@@ -522,6 +556,16 @@ final class TableFlow {
         for (RowBox row : l.rows()) {
             height += row.height;
         }
+        float[] at = position(f, l, pf, width, height);
+        if (!"text".equals(f.attr("vertAnchor")) && !pf.atTop()
+                && pf.overlapsPlaced(new java.awt.geom.Rectangle2D.Float(at[0], at[1], width, height))) {
+            pf.newFrame(true, false);
+            at = position(f, l, pf, width, height);
+        }
+        place(f, l, pf, at[0], at[1], width);
+    }
+
+    private static float[] position(XEl f, Layout l, PageFlow pf, float width, float height) {
         String horz = f.attr("horzAnchor");
         // Without a vertical anchor Word measures a floating table from the top margin
         String vert = f.attr("vertAnchor", "margin");
@@ -551,6 +595,10 @@ final class TableFlow {
         } else {
             y += Ooxml.twips(f.attr("tblpY"), 0);
         }
+        return new float[] {x, y};
+    }
+
+    private void place(XEl f, Layout l, PageFlow pf, float x, float y, float width) {
         float at = y;
         int fit = 0;
         float fitted = 0;
@@ -559,38 +607,51 @@ final class TableFlow {
             fitted += l.rows().get(fit).height;
             fit++;
         }
-        if (fit < l.rows().size() && fit <= l.headerRows()) {
+        RowBox[] parts = flows && fit > l.headerRows() && fit < l.rows().size()
+                ? straddling(l.rows().get(fit), pf.limit() - at - fitted) : null;
+        if (fit < l.rows().size() && fit <= l.headerRows() && parts == null) {
             fit = 0;
             fitted = 0;
         }
         boolean edges = l.spacing() <= 0 && fit < l.rows().size();
         for (int k = 0; k < fit; k++) {
             RowBox row = l.rows().get(k);
-            pf.placeFixed(render(edges && k == fit - 1 ? edged(row, false, true) : row, l), x, at);
+            pf.placeFixed(render(edges && k == fit - 1 && parts == null ? edged(row, false, true) : row, l), x, at);
             at += row.height;
+        }
+        List<RowBox> rows = l.rows();
+        if (parts != null) {
+            pf.placeFixed(render(edges ? edged(parts[0], false, true) : parts[0], l), x, at);
+            at += parts[0].height;
+            fitted += parts[0].height;
+            rows = new ArrayList<>(rows);
+            parts[1].index = rows.get(fit).index;
+            parts[1].last = rows.get(fit).last;
+            rows.set(fit, parts[1]);
         }
         float lft = Ooxml.twips(f.attr("leftFromText"), 0);
         float rgt = Ooxml.twips(f.attr("rightFromText"), 0);
         float top = Ooxml.twips(f.attr("topFromText"), 0);
         float bot = Ooxml.twips(f.attr("bottomFromText"), 0);
-        if (fit > 0) {
+        if (fit > 0 || parts != null) {
             pf.exclude(new java.awt.geom.Rectangle2D.Float(x - lft, y - top, width + lft + rgt, fitted + top + bot));
         }
         if (fit == l.rows().size()) {
             return;
         }
-        if (fit > 0 || !pf.atTop()) {
+        if (fit > 0 || parts != null || !pf.atTop()) {
             pf.newFrame(true, false);
         } else {
             pf.y = Math.max(pf.y, at);
         }
-        Layout rest = new Layout(x - pf.left(), l.colX(), l.rows(), l.headerRows(), l.spacing(), l.tp());
-        if (fit > 0) {
+        Layout rest = new Layout(x - pf.left(), l.colX(), rows, l.headerRows(), l.spacing(), l.tp());
+        if (fit > 0 || parts != null) {
             for (int k = 0; k < l.headerRows(); k++) {
                 placeRow(l.rows().get(k), rest, pf);
             }
         }
-        flow(rest, pf, fit, fit > 0, edges && fit > 0 && l.headerRows() == 0);
+        boolean placed = fit > 0 || parts != null;
+        flow(rest, pf, fit, placed, edges && placed && l.headerRows() == 0);
         if (!"text".equals(f.attr("vertAnchor"))) {
             // The rows that run on stay floating: text goes on from the top of the table's last page, around them
             float from = pf.frameTop();
@@ -633,6 +694,23 @@ final class TableFlow {
         };
     }
 
+    private float pctBase(TableBlock t, float avail) {
+        if (ctx.settings.compatibilityMode >= 15 || t.rows.isEmpty() || t.rows.get(0).cells.isEmpty()) {
+            return avail;
+        }
+        return avail + hangingMargins(t);
+    }
+
+    private static float hangingMargins(TableBlock t) {
+        TableProps tp = t.tp;
+        List<TableBlock.Cell> cells = t.rows.get(0).cells;
+        CellProps first = cells.get(0).cp;
+        CellProps last = cells.get(cells.size() - 1).cp;
+        float ml = first.marLeft != null ? first.marLeft : tp.marLeft != null ? tp.marLeft : DEFAULT_MARGIN;
+        float mr = last.marRight != null ? last.marRight : tp.marRight != null ? tp.marRight : DEFAULT_MARGIN;
+        return ml + mr;
+    }
+
     private Layout layout(TableBlock t, float avail, int maxRows) {
         TableProps tp = t.tp;
         int ncols = t.grid.length;
@@ -652,7 +730,7 @@ final class TableFlow {
         }
         float target = 0;
         if (tp.width != null && tp.width > 0) {
-            target = "pct".equals(tp.widthType) ? avail * Math.min(tp.width, 1000) / 100f : tp.width;
+            target = "pct".equals(tp.widthType) ? pctBase(t, avail) * Math.min(tp.width, 1000) / 100f : tp.width;
         }
         if (sum <= 0.5f) {
             float total = target > 0 ? target : avail;
@@ -783,11 +861,7 @@ final class TableFlow {
         float limit = avail - (tp.ind == null ? 0 : tp.ind);
         if (ctx.settings.compatibilityMode < 15) {
             // Old layouts hang the cell margins outside the text column
-            CellProps first = t.rows.get(0).cells.get(0).cp;
-            List<TableBlock.Cell> cells = t.rows.get(0).cells;
-            CellProps last = cells.get(cells.size() - 1).cp;
-            limit += first.marLeft != null ? first.marLeft : tp.marLeft != null ? tp.marLeft : DEFAULT_MARGIN;
-            limit += last.marRight != null ? last.marRight : tp.marRight != null ? tp.marRight : DEFAULT_MARGIN;
+            limit += hangingMargins(t);
         }
         return limit;
     }

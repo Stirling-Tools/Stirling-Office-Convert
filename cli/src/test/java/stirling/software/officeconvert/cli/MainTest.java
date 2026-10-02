@@ -1,5 +1,6 @@
 package stirling.software.officeconvert.cli;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -64,7 +65,6 @@ class MainTest {
         Result r = run(a.toString(), b.toString(), c.toString(), d.toString(), "-o", out.toString(), "-q");
         assertEquals(1, r.code());
         assertEquals(4, r.err().lines().filter(l -> l.startsWith("FAIL ")).count(), r.err());
-        assertTrue(r.err().contains("not supported yet"), r.err());
         assertFalse(r.err().contains("Exception"), r.err());
     }
 
@@ -132,11 +132,25 @@ class MainTest {
         Path in = Files.createDirectories(dir.resolve("in"));
         Files.writeString(in.resolve("x.docx"), "x");
         Files.writeString(in.resolve("y.pdf"), "x");
-        Files.writeString(in.resolve("z.txt"), "x");
+        Files.writeString(in.resolve("z.md"), "x");
+        Files.writeString(in.resolve("notes.txt"), "plain text");
         Result r = run(in.toString(), "--format", "pdf", "-o", dir.resolve("out").toString());
         assertEquals(1, r.code());
         assertTrue(r.err().contains("x.docx"), r.err());
-        assertFalse(r.err().contains("y.pdf") || r.err().contains("z.txt"), r.err());
+        assertFalse(r.err().contains("y.pdf") || r.err().contains("z.md"), r.err());
+        assertTrue(Files.isRegularFile(dir.resolve("out").resolve("notes.pdf")), r.out());
+    }
+
+    @Test
+    void aFolderLeavesItsTextFilesAloneUnlessAskedForPdf() throws Exception {
+        Path in = Files.createDirectories(dir.resolve("mixed"));
+        helloPdf(in.resolve("doc.pdf"));
+        Files.writeString(in.resolve("readme.txt"), "notes");
+        Path out = dir.resolve("mixed-out");
+        Result r = run(in.toString(), "-o", out.toString(), "--pages", "1");
+        assertEquals(0, r.code(), r.err());
+        assertTrue(Files.isRegularFile(out.resolve("doc.docx")), r.out());
+        assertFalse(Files.exists(out.resolve("readme.pdf")), r.out());
     }
 
     @Test
@@ -145,7 +159,7 @@ class MainTest {
         assertEquals(0, r.code());
         assertTrue(r.out().contains("in.docx") && r.out().contains("--max-pages"), r.out());
         for (String ext : new String[] {".docm", ".dotm", ".ppsm", ".potx", ".potm", ".xlsm", ".xltx", ".xltm",
-                ".xls", ".xlt", ".ppt", ".pps", ".pot"}) {
+                ".xls", ".xlt", ".ppt", ".pps", ".pot", ".rtf", ".odt", ".fodt", ".ods", ".odp", ".fodp"}) {
             assertTrue(r.out().contains(ext + " ") || r.out().contains(ext + ")"), ext + " missing from " + r.out());
         }
     }
@@ -188,6 +202,27 @@ class MainTest {
     }
 
     @Test
+    void fontOptionsBuildTheFontSetAndReportBadFonts() throws Exception {
+        Path docx = minimalDocx(dir.resolve("fonts.docx"));
+        Path fonts = Files.createDirectories(dir.resolve("user-fonts"));
+        String bundled = "/org/apache/pdfbox/resources/ttf/LiberationSans-Regular.ttf";
+        try (InputStream in = PDDocument.class.getResourceAsStream(bundled)) {
+            Files.write(fonts.resolve("sans.ttf"), in.readAllBytes());
+        }
+        Files.writeString(fonts.resolve("broken.ttf"), "not a font");
+        Result r = run(docx.toString(), "--fonts", fonts.toString(), "--no-system-fonts", "--font-map",
+                "Calibri=Liberation Sans", "--font-width", "Aptos=0.95", "-o", dir.resolve("fonts.pdf").toString());
+        assertEquals(0, r.code(), r.err());
+        assertTrue(r.err().contains("warning: fonts: ") && r.err().contains("broken.ttf"), r.err());
+        assertTrue(Files.size(dir.resolve("fonts.pdf")) > 0);
+        assertUsage(run(docx.toString(), "--font-map", "Aptos"), "--font-map");
+        assertUsage(run(docx.toString(), "--font-map", "=Inter"), "--font-map");
+        assertUsage(run(docx.toString(), "--font-width", "Aptos=9"), "width scale");
+        assertUsage(run(docx.toString(), "--font-width", "Aptos=wide"), "--font-width");
+        assertTrue(run("--help").out().contains("--no-system-fonts"));
+    }
+
+    @Test
     void messagesStayOnOneLine() {
         assertEquals("a b c", Main.oneLine("a\nb\u001bc"));
         assertFalse(Main.oneLine("x\u202Ey\r\nz").chars().anyMatch(c -> c < 32 || c == 0x202E));
@@ -200,6 +235,115 @@ class MainTest {
             p.load(in);
         }
         assertEquals("OFF", p.getProperty("org.apache.logging.log4j.simplelog.level"));
+    }
+
+    @Test
+    void pdfaWritesAnArchivalCopyBesideTheInput() throws Exception {
+        Path pdf = helloPdf(dir.resolve("in.pdf"));
+        Result r = run(pdf.toString(), "--pdfa", "2b");
+        assertEquals(0, r.code(), r.err());
+        Path out = dir.resolve("in.pdfa.pdf");
+        assertTrue(Files.size(out) > 0);
+        try (PDDocument d = org.apache.pdfbox.Loader.loadPDF(out.toFile())) {
+            String xmp = new String(d.getDocumentCatalog().getMetadata().toByteArray(), StandardCharsets.UTF_8);
+            assertTrue(xmp.contains("<pdfaid:part>2</pdfaid:part>"), xmp);
+        }
+        Result again = run(dir.toString(), "--pdfa", "1b", "-o", dir.resolve("archive").toString(), "-q");
+        assertEquals(0, again.code(), again.err());
+        assertTrue(Files.exists(dir.resolve("archive/in.pdfa.pdf")));
+        assertFalse(Files.exists(dir.resolve("archive/in.pdfa.pdfa.pdf")));
+    }
+
+    @Test
+    void pdfaHonoursMaxPages() throws Exception {
+        Path pdf = dir.resolve("three.pdf");
+        try (PDDocument d = new PDDocument()) {
+            for (int i = 0; i < 3; i++) {
+                d.addPage(new org.apache.pdfbox.pdmodel.PDPage());
+            }
+            d.save(pdf.toFile());
+        }
+        Result r = run(pdf.toString(), "--pdfa", "2b", "--max-pages", "2");
+        assertTrue(r.code() != 0, r.err());
+        assertTrue(r.err().contains("more than the limit of 2"), r.err());
+        assertFalse(Files.exists(dir.resolve("three.pdfa.pdf")));
+        assertEquals(0, run(pdf.toString(), "--pdfa", "2b", "--max-pages", "3").code());
+    }
+
+    @Test
+    void pdfaRefusesOfficeInputAndUnknownLevels() throws Exception {
+        Path pdf = helloPdf(dir.resolve("in.pdf"));
+        assertUsage(run(pdf.toString(), "--pdfa", "9"), "1a, 1b, 2a, 2b, 2u, 3a, 3b or 3u");
+        assertUsage(run(pdf.toString(), "--pdfa", "2b", "-o", dir.resolve("x.docx").toString()), "name the output .pdf");
+        Path docx = minimalDocx(dir.resolve("a.docx"));
+        assertUsage(run(docx.toString(), "--pdfa", "2b"), "PDF input");
+    }
+
+    @Test
+    void aFolderNeverOverwritesItsOwnFiles() throws Exception {
+        Path in = Files.createDirectories(dir.resolve("pair"));
+        byte[] word = Files.readAllBytes(minimalDocx(in.resolve("b.docx")));
+        byte[] pdf = Files.readAllBytes(helloPdf(in.resolve("b.pdf")));
+        Result r = run(in.toString(), "-q");
+        assertEquals(0, r.code(), r.err());
+        assertArrayEquals(word, Files.readAllBytes(in.resolve("b.docx")));
+        assertArrayEquals(pdf, Files.readAllBytes(in.resolve("b.pdf")));
+        assertTrue(Files.size(in.resolve("b.docx.pdf")) > 0);
+        assertTrue(Files.readString(in.resolve("b.pdf.docx"), StandardCharsets.ISO_8859_1).startsWith("PK"));
+        Result again = run(in.toString(), "-q");
+        assertEquals(1, again.code(), again.err());
+        assertTrue(again.err().contains("b.docx.pdf is an input of this run"), again.err());
+        assertArrayEquals(word, Files.readAllBytes(in.resolve("b.docx")));
+        assertArrayEquals(pdf, Files.readAllBytes(in.resolve("b.pdf")));
+    }
+
+    @Test
+    void anExistingOutputIsReplacedOnlyWithOverwrite() throws Exception {
+        Path pdf = helloPdf(dir.resolve("in.pdf"));
+        Path txt = Files.writeString(dir.resolve("in.txt"), "keep me");
+        Result refused = run(pdf.toString(), "-o", txt.toString());
+        assertEquals(1, refused.code(), refused.err());
+        assertTrue(refused.err().startsWith("SKIP " + pdf) && refused.err().contains("--overwrite"), refused.err());
+        assertEquals("keep me", Files.readString(txt));
+        Result beside = run(pdf.toString(), "--format", "txt");
+        assertEquals(1, beside.code(), beside.err());
+        assertEquals("keep me", Files.readString(txt));
+        Result replaced = run(pdf.toString(), "-o", txt.toString(), "--overwrite");
+        assertEquals(0, replaced.code(), replaced.err());
+        assertTrue(Files.readString(txt).contains("Hello PDF"));
+        assertTrue(run("--help").out().contains("--overwrite"));
+    }
+
+    @Test
+    void anInputIsNeverTheOutputEvenWithOverwrite() throws Exception {
+        Path pdf = helloPdf(dir.resolve("in.pdf"));
+        byte[] before = Files.readAllBytes(pdf);
+        Result r = run(pdf.toString(), "--pdfa", "2b", "-o", pdf.toString(), "--overwrite");
+        assertEquals(1, r.code(), r.err());
+        assertTrue(r.err().contains("is an input of this run"), r.err());
+        assertArrayEquals(before, Files.readAllBytes(pdf));
+    }
+
+    @Test
+    void aFolderWithNothingToConvertFails() throws Exception {
+        Path in = Files.createDirectories(dir.resolve("notes"));
+        Files.writeString(in.resolve("notes.txt"), "plain text");
+        Result r = run(in.toString());
+        assertEquals(1, r.code(), r.err());
+        assertTrue(r.err().contains("nothing to convert in " + in), r.err());
+    }
+
+    @Test
+    void outputsDodgeInputNamesAndAreNotConvertedAgain() throws Exception {
+        Path word = dir.resolve("b.docx");
+        Path pdf = dir.resolve("b.pdf");
+        assertEquals(java.util.List.of(dir.resolve("b.docx.pdf"), dir.resolve("b.pdf.docx")),
+                Targets.of(java.util.List.of(word, pdf), null, "docx", true));
+        Files.writeString(pdf, "x");
+        Guard guard = new Guard(java.util.List.of(word, pdf), true);
+        guard.wrote(pdf);
+        assertTrue(guard.refusal(pdf, dir.resolve("c.docx")).contains("written by this run"));
+        assertTrue(guard.refusal(word, pdf).contains("is an input"));
     }
 
     private static Path minimalXlsx(Path file) throws IOException {

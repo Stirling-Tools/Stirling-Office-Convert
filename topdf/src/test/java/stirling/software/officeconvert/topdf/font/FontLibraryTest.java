@@ -28,6 +28,19 @@ class FontLibraryTest {
     Path dir;
 
     @Test
+    void shapedFileFontsCanBeMovedAndDeletedAfterLoading() throws Exception {
+        Path fonts = Files.createDirectories(dir.resolve("movable"));
+        Path file = Files.write(fonts.resolve("Movable.ttf"), TestFonts.renamed("Movable"));
+        FontFace face = FontLibrary.of(List.of(fonts)).find("Movable", false, false);
+        assertTrue(face.shapeable());
+        assertNotNull(face.glyphOutline(face.glyph('A')));
+        Path moved = Files.move(file, fonts.resolve("Moved.ttf"));
+        Files.delete(moved);
+        assertFalse(Files.exists(moved));
+        assertNotNull(face.glyphOutline(face.glyph('B')));
+    }
+
+    @Test
     void findsAFaceOnThisMachine() {
         FontLibrary lib = FontLibrary.system();
         assertFalse(lib.isEmpty());

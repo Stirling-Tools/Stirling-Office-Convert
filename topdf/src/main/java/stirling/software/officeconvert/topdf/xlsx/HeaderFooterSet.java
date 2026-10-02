@@ -13,12 +13,16 @@ record HeaderFooterSet(String oddHeader, String oddFooter, String evenHeader, St
         if (hf == null) {
             return NONE;
         }
-        return new HeaderFooterSet(hf.isSetOddHeader() ? hf.getOddHeader() : null,
-                hf.isSetOddFooter() ? hf.getOddFooter() : null, hf.isSetEvenHeader() ? hf.getEvenHeader() : null,
-                hf.isSetEvenFooter() ? hf.getEvenFooter() : null, hf.isSetFirstHeader() ? hf.getFirstHeader() : null,
-                hf.isSetFirstFooter() ? hf.getFirstFooter() : null, hf.isSetDifferentFirst() && hf.getDifferentFirst(),
+        return new HeaderFooterSet(text(hf.isSetOddHeader(), hf.getOddHeader()),
+                text(hf.isSetOddFooter(), hf.getOddFooter()), text(hf.isSetEvenHeader(), hf.getEvenHeader()),
+                text(hf.isSetEvenFooter(), hf.getEvenFooter()), text(hf.isSetFirstHeader(), hf.getFirstHeader()),
+                text(hf.isSetFirstFooter(), hf.getFirstFooter()), hf.isSetDifferentFirst() && hf.getDifferentFirst(),
                 hf.isSetDifferentOddEven() && hf.getDifferentOddEven(), !hf.isSetScaleWithDoc() || hf.getScaleWithDoc(),
                 !hf.isSetAlignWithMargins() || hf.getAlignWithMargins());
+    }
+
+    private static String text(boolean set, String code) {
+        return set ? RichText.unescape(code) : null;
     }
 
     String header(int pageInSheet, int pageNumber) {

@@ -18,7 +18,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-14, windows-latest]
-        java: ['21', '25']
+        java: ['25']
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -27,6 +27,9 @@ jobs:
           distribution: 'temurin'
           java-version: ${{ matrix.java }}
       - uses: gradle/actions/setup-gradle@v4
+      - name: Install Linux test fonts
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y fonts-noto-core fonts-wqy-zenhei fonts-liberation fonts-crosextra-carlito fonts-crosextra-caladea
       - name: Build, test, javadoc
         run: ./gradlew build javadoc --no-daemon --stacktrace
       - name: Publish to a local repository (checks the POM and jars assemble)

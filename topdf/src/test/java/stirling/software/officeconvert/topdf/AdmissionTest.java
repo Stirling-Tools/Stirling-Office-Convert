@@ -25,6 +25,8 @@ import stirling.software.officeconvert.topdf.OfficeToPdf.Options;
 import stirling.software.officeconvert.topdf.io.OfficeZip;
 import stirling.software.officeconvert.topdf.pdf.PageSize;
 import stirling.software.officeconvert.topdf.testing.Fixtures;
+import stirling.software.officeconvert.topdf.testing.Retained;
+import stirling.software.officeconvert.topdf.testing.ZipBytes;
 
 class AdmissionTest {
 
@@ -59,6 +61,59 @@ class AdmissionTest {
         Path junk = Fixtures.write(dir, "b.docx", new byte[] {1});
         assertThrows(IOException.class, () -> OfficeToPdf.memoryEstimate(pdf));
         assertThrows(IOException.class, () -> OfficeToPdf.memoryEstimate(junk));
+    }
+
+    private static byte[] packageWithBigContent(String mimetype) {
+        byte[] zip = new ZipBytes().add("mimetype", mimetype).repeat("content.xml", "<?xml version=\"1.0\"?>",
+                new byte[1 << 20], 200, "").bytes();
+        return ZipBytes.declareSize(zip, "content.xml", 1000);
+    }
+
+    @Test
+    void openDocumentEstimatesCountTheMarkupAsItInflatesNotAsItsHeaderSays() throws Exception {
+        Path odt = Fixtures.write(dir, "big.odt", packageWithBigContent("application/vnd.oasis.opendocument.text"));
+        assertTrue(OfficeToPdf.memoryEstimate(odt) > 1000 * MB, OfficeToPdf.memoryEstimate(odt) / MB + " MB");
+        Path sxw = Fixtures.write(dir, "big.sxw", packageWithBigContent("application/vnd.sun.xml.writer"));
+        assertTrue(OfficeToPdf.memoryEstimate(sxw) > 1000 * MB, OfficeToPdf.memoryEstimate(sxw) / MB + " MB");
+    }
+
+    private static byte[] logicalTable(int fields, int records) {
+        int header = 32 + 32 * fields + 1;
+        int record = 1 + fields;
+        java.nio.ByteBuffer b = java.nio.ByteBuffer.allocate(header + records * record + 1)
+                .order(java.nio.ByteOrder.LITTLE_ENDIAN);
+        b.put((byte) 0x03).put((byte) 124).put((byte) 1).put((byte) 1).putInt(records).putShort((short) header)
+                .putShort((short) record);
+        b.position(32);
+        for (int f = 0; f < fields; f++) {
+            byte[] name = ("F" + f).getBytes(java.nio.charset.StandardCharsets.US_ASCII);
+            int at = b.position();
+            b.put(name).position(at + 11);
+            b.put((byte) 'L').position(at + 16);
+            b.put((byte) 1).position(at + 32);
+        }
+        b.put((byte) 0x0D);
+        for (int r = 0; r < records; r++) {
+            b.put((byte) ' ');
+            for (int f = 0; f < fields; f++) {
+                b.put((byte) (f % 2 == 0 ? 'T' : 'F'));
+            }
+        }
+        return b.put((byte) 0x1A).array();
+    }
+
+    @Test
+    void dbaseEstimatesCountOneByteCells() throws Exception {
+        Path dbf = Fixtures.write(dir, "flags.dbf", logicalTable(32, 40_000));
+        long retained = Retained.bytes(() -> {
+            try {
+                return stirling.software.officeconvert.topdf.grid.Dbf.read(dbf);
+            } catch (IOException e) {
+                throw new java.io.UncheckedIOException(e);
+            }
+        });
+        long estimate = OfficeToPdf.memoryEstimate(dbf);
+        assertTrue(estimate > retained + 2 * Admission.BASE_BYTES, estimate / MB + " MB for " + retained / MB + " MB");
     }
 
     private static long estimate(Path file, Format format) throws IOException {

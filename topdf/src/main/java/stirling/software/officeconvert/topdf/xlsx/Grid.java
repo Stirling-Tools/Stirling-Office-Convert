@@ -10,6 +10,7 @@ import java.util.Map;
 import java.util.NavigableMap;
 import java.util.TreeMap;
 import java.util.function.Consumer;
+import java.util.function.IntPredicate;
 
 import org.apache.poi.ss.util.CellRangeAddress;
 import org.openxmlformats.schemas.spreadsheetml.x2006.main.CTMergeCell;
@@ -26,7 +27,7 @@ final class Grid {
 
         final int index;
 
-        final double source;
+        double source;
 
         final boolean hidden;
 
@@ -47,6 +48,10 @@ final class Grid {
         int spillFrom = -1;
 
         int spillTo = -1;
+
+        int markFrom = -1;
+
+        int markTo = -1;
 
         private int[] textCols;
 
@@ -74,6 +79,10 @@ final class Grid {
             return store.format(this, col);
         }
 
+        void formats(int first, int last, PackedCells.FormatVisitor visit) throws IOException {
+            store.formats(this, first, last, visit);
+        }
+
         boolean hasText(int col) {
             int i = cols == null || col < 0 || col > Character.MAX_VALUE ? -1 : Arrays.binarySearch(cols, (char) col);
             return i >= 0 && store.hasText(this, i);
@@ -81,6 +90,15 @@ final class Grid {
 
         boolean isEmpty() {
             return cols == null;
+        }
+
+        int lastText(IntPredicate shown) {
+            for (int i = count() - 1; i >= 0; i--) {
+                if (store.hasText(this, i) && shown.test(cols[i])) {
+                    return cols[i];
+                }
+            }
+            return -1;
         }
 
         int count() {
@@ -140,7 +158,15 @@ final class Grid {
 
     private final double rowFactor;
 
+    private double columnCap = Double.POSITIVE_INFINITY;
+
     private final boolean defaultHidden;
+
+    private final boolean fixedDefault;
+
+    private boolean storedHeights;
+
+    private final List<RowInfo> fitted = new ArrayList<>();
 
     private final boolean columnTops;
 
@@ -185,6 +211,7 @@ final class Grid {
         this.defaultSource = fileDefault > 0 && (customDefault || !near) ? fileDefault : screenDefault;
         this.rowFactor = metrics.rowFactor(screenDefault);
         this.defaultHidden = zero;
+        this.fixedDefault = customDefault;
         this.columnTops = columns.anyStyle(st -> book.styles().at(st).top().visible());
         this.rightToLeft = rightToLeft(ws);
         this.defaultDescent = descentPoints(book.styles().defaultFont());
@@ -206,6 +233,7 @@ final class Grid {
             }
         }, job);
         lastCol = Math.max(lastCol, -1);
+        keepDefaultHeights();
         if (sheetPart != null) {
             overlay(Overlays.read(book, sheetPart, ws, this, job));
         }
@@ -214,6 +242,15 @@ final class Grid {
             job.warn("Sheet " + sheetName + " is damaged; some rows could not be read");
             job.losePart();
         }
+    }
+
+    private void keepDefaultHeights() {
+        if (!storedHeights) {
+            for (RowInfo r : fitted) {
+                r.source = defaultSource;
+            }
+        }
+        fitted.clear();
     }
 
     private static boolean rightToLeft(CTWorksheet ws) {
@@ -265,6 +302,9 @@ final class Grid {
         boolean auto = !(row.hasHeight() && row.height() >= 0);
         boolean fit = auto || !row.custom();
         int lastBlank = -1;
+        int markFrom = -1;
+        int markTo = -1;
+        FontSpec base = style >= 0 ? book.styles().at(style).font() : book.styles().defaultFont();
         double descent = 0;
         for (RawRow.Cell cell : row.cells()) {
             int col = cell.col();
@@ -274,8 +314,15 @@ final class Grid {
                 text = null;
             }
             if (text == null && !format.visible() && format.hAlign() != CellFormat.HAlign.CENTER_CONTINUOUS) {
+                if (book.styles().ruled(cell.style())) {
+                    markFrom = markFrom < 0 ? col : markFrom;
+                    markTo = col;
+                }
                 if (fit && cell.style() != lastBlank && blanks.size() < MAX_BLANK_FONTS
-                        && !format.font().equals(book.styles().defaultFont())) {
+                        && !format.font().equals(base)) {
+                    if (inTallMerge(index, col)) {
+                        continue;
+                    }
                     blanks.add(format.font());
                 }
                 lastBlank = cell.style();
@@ -293,18 +340,28 @@ final class Grid {
         if (gone) {
             height = auto ? defaultSource : Math.min(409.5, row.height());
         } else if (auto) {
-            height = Math.min(409.5, autofit(index, entries, blanks) + Math.max(0, row.thickEdges()) * SCREEN_PX);
+            height = Math.min(409.5, autofit(index, entries, blanks, base) + Math.max(0, row.thickEdges()) * SCREEN_PX);
+        } else if (fit && fixedDefault && book.workbook().savedOnMac) {
+            double screenPx = screenLine(book.styles().defaultFont()) / 0.75;
+            height = Math.min(409.5, autofit(index, entries, blanks, base, screenPx)
+                    + Math.max(0, row.thickEdges()) * SCREEN_PX);
         } else if (fit) {
-            height = refit(row, autofit(index, entries, blanks) + Math.max(0, row.thickEdges()) * SCREEN_PX,
-                    entries.isEmpty() && blanks.isEmpty());
+            height = refit(row, autofit(index, entries, blanks, base) + Math.max(0, row.thickEdges()) * SCREEN_PX,
+                    entries.isEmpty() && blanks.isEmpty(), wrapsText(entries));
         } else {
             height = Math.min(409.5, row.height());
         }
         for (CellEntry e : entries) {
             if (e.text() != null || e.format().visible()) {
                 lastRow = Math.max(lastRow, index);
-                lastCol = Math.max(lastCol, e.col());
+                if (columns.width(e.col()) > 0) {
+                    lastCol = Math.max(lastCol, e.col());
+                }
             }
+        }
+        if (markTo >= 0 && !gone) {
+            lastRow = Math.max(lastRow, index);
+            lastCol = Math.max(lastCol, markTo);
         }
         if (gone) {
             entries.removeIf(e -> !keptWhenHidden(style, e));
@@ -313,7 +370,15 @@ final class Grid {
             }
         }
         RowInfo info = new RowInfo(packed, index, height, gone || height <= 0, style);
+        storedHeights |= !auto;
+        if (auto && !gone && fixedDefault && !storedHeights && height != defaultSource) {
+            fitted.add(info);
+        }
         info.descent = descent > 0 ? descent : defaultDescent;
+        if (!gone) {
+            info.markFrom = markFrom;
+            info.markTo = markTo;
+        }
         TreeMap<Integer, CellEntry> cells = new TreeMap<>();
         for (CellEntry e : entries) {
             cells.put(e.col(), e);
@@ -427,6 +492,10 @@ final class Grid {
         return new CellText(t.kind(), runs, d.font() != null ? null : t.color(), t.general(), t.number());
     }
 
+    boolean hasDataBars() {
+        return overlays != null && overlays.hasBars();
+    }
+
     Overlays.Bar dataBar(int row, int col) {
         return overlays == null ? null : overlays.bar(row, col);
     }
@@ -446,18 +515,38 @@ final class Grid {
     }
 
     // Excel re-fits a row without customHeight: an empty one drops to the default, and wrapped text grows
-    // a height another program stored (Excel's own stored height is already its fit)
-    private double refit(RawRow row, double fitted, boolean empty) {
+    // a height another program stored (Excel's own stored height is already its fit, but not the Mac's wrapping)
+    private double refit(RawRow row, double fitted, boolean empty, boolean wrapped) {
         double stored = Math.min(409.5, row.height());
+        if (book.workbook().savedOnMac && wrapped) {
+            return Math.min(409.5, fitted);
+        }
         if (empty && row.style() < 0 || !book.workbook().savedByExcel && fitted > stored + defaultSource / 4) {
             return Math.min(409.5, fitted);
         }
         return stored;
     }
 
-    private double autofit(int row, List<CellEntry> entries, List<FontSpec> blanks) {
-        double defaultPx = defaultSource / 0.75;
-        double best = defaultPx;
+    private boolean inTallMerge(int row, int col) {
+        CellRangeAddress m = mergeCovering(row, col);
+        return m != null && m.getFirstRow() != m.getLastRow();
+    }
+
+    private static boolean wrapsText(List<CellEntry> entries) {
+        for (CellEntry e : entries) {
+            if (e.text() != null && e.format().wraps()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private double autofit(int row, List<CellEntry> entries, List<FontSpec> blanks, FontSpec base) {
+        return autofit(row, entries, blanks, base, defaultSource / 0.75);
+    }
+
+    private double autofit(int row, List<CellEntry> entries, List<FontSpec> blanks, FontSpec base, double defaultPx) {
+        double best = Math.min(546, fontLine(base, defaultPx));
         PrintMetrics m = book.metrics();
         for (FontSpec f : blanks) {
             best = Math.max(best, Math.min(546, fontLine(f, defaultPx)));
@@ -523,12 +612,8 @@ final class Grid {
             if (row.hidden || row.isEmpty()) {
                 continue;
             }
-            NavigableMap<Integer, CellEntry> cells = row.cells();
-            CellEntry e = cells.lastEntry().getValue();
-            while (e != null && !e.hasText()) {
-                var lower = cells.lowerEntry(e.col());
-                e = lower == null ? null : lower.getValue();
-            }
+            int shown = row.lastText(c -> columns.width(c) > 0);
+            CellEntry e = shown < 0 ? null : row.cell(shown);
             if (e == null || e.text().kind() != CellText.Kind.TEXT || e.format().wraps() || e.format().shrink()
                     || e.format().rotation() != 0 || mergeTopLeft.containsKey(key(e.row(), e.col()))) {
                 continue;
@@ -540,18 +625,18 @@ final class Grid {
             int first = e.col();
             int last = e.col();
             if (h == CellFormat.HAlign.CENTER_CONTINUOUS) {
-                while (last + 1 < Columns.MAX && cells.containsKey(last + 1)
-                        && cells.get(last + 1).format().hAlign() == CellFormat.HAlign.CENTER_CONTINUOUS
-                        && !cells.get(last + 1).hasText()) {
+                while (last + 1 < Columns.MAX && row.format(last + 1) != null
+                        && row.format(last + 1).hAlign() == CellFormat.HAlign.CENTER_CONTINUOUS
+                        && !row.hasText(last + 1)) {
                     last++;
                 }
             }
             double span = 0;
             for (int c = first; c <= last; c++) {
-                span += columns.width(c);
+                span += columnWidth(c);
             }
             Typesetter t = book.typesetter();
-            double need = t.width(e.text().runs(), 1) + 2 * CellLayout.pad(t, e.text(), e.format());
+            double need = t.width(shown(e.text().runs()), 1) + 2 * CellLayout.pad(t, e.text(), e.format());
             double extra = need - span;
             if (h == CellFormat.HAlign.CENTER || h == CellFormat.HAlign.CENTER_CONTINUOUS) {
                 extra /= 2;
@@ -559,7 +644,7 @@ final class Grid {
             int c = last;
             while (extra > 0 && c + 1 < Columns.MAX && c - last < 256) {
                 c++;
-                extra -= columns.width(c);
+                extra -= columnWidth(c);
             }
             if (c > last) {
                 row.spillFrom = first;
@@ -568,6 +653,27 @@ final class Grid {
             limit = Math.max(limit, c);
         }
         lastCol = limit;
+    }
+
+    static final int SHOWN_CHARS = 1024;
+
+    static List<TextRun> shown(List<TextRun> runs) {
+        List<TextRun> out = new ArrayList<>();
+        int left = SHOWN_CHARS;
+        for (TextRun r : runs) {
+            if (left <= 0) {
+                break;
+            }
+            if (r.text().length() <= left) {
+                out.add(r);
+                left -= r.text().length();
+                continue;
+            }
+            int cut = Character.isHighSurrogate(r.text().charAt(left - 1)) ? left - 1 : left;
+            out.add(new TextRun(r.text().substring(0, cut), r.font()));
+            left = 0;
+        }
+        return out;
     }
 
     double textWidth(CellEntry e) {
@@ -618,7 +724,18 @@ final class Grid {
     }
 
     double columnWidth(int col) {
-        return columns.width(col);
+        return Math.min(columnCap, columns.width(col));
+    }
+
+    double screenColumnWidth(int col) {
+        return columns.width(col) > 0 ? book.metrics().screenColumnPixels(columns.chars(col)) * SCREEN_PX : 0;
+    }
+
+    void capColumns(double cap) {
+        if (cap > 0 && cap < columnCap) {
+            columnCap = cap;
+            extendForOverflow();
+        }
     }
 
     // Painters alternate between a row and the one above it, so the last two rows found are kept

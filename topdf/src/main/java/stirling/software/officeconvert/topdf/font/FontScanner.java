@@ -147,6 +147,9 @@ final class FontScanner {
         if (weight < 1 || weight > 1000) {
             weight = 400;
         }
+        if (weight == 400) {
+            weight = Weights.of(names.family);
+        }
         boolean bold = fsSelection >= 0 ? (fsSelection & 0x20) != 0 : (macStyle & 1) != 0;
         boolean italic = fsSelection >= 0 ? (fsSelection & 0x201) != 0 : (macStyle & 2) != 0;
         if (bold && weight < 600) {

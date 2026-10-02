@@ -74,6 +74,16 @@ class RowHeightTest {
     }
 
     @Test
+    void aRowWithoutAHeightFitsTheFontOfItsRowStyleRatherThanTheDefault() throws Exception {
+        Map<Integer, Float> y = baselines("styled.xlsx", "<sheetData>" + rows(1, 4, " s=\"1\" customFormat=\"1\"")
+                + rows(5, 8, "") + "</sheetData>");
+        assertEquals(8, y.size(), y.toString());
+        double styled = y.get(4) - y.get(3);
+        double plain = y.get(8) - y.get(7);
+        assertTrue(styled < plain - 2, "styled " + styled + " plain " + plain);
+    }
+
+    @Test
     void wrappedTextTallerThanItsRowStartsAtTheTop() throws Exception {
         String sheet = "<cols><col min=\"1\" max=\"1\" width=\"6\" customWidth=\"1\"/></cols><sheetData>"
                 + "<row r=\"1\" ht=\"15\" customHeight=\"1\"><c r=\"A1\" s=\"2\" t=\"inlineStr\"><is><t>Row1 alpha beta"

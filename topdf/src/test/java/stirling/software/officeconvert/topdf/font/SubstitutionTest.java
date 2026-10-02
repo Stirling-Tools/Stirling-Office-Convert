@@ -201,10 +201,53 @@ class SubstitutionTest {
         assertTrue(simSun.indexOf("Noto Serif SC") < simSun.indexOf("Noto Sans SC"));
         assertTrue(simSun.indexOf("Noto Sans SC") < simSun.indexOf("Noto Sans JP"));
         List<String> gulim = Substitutes.generic("굴림");
-        assertTrue(gulim.indexOf("Noto Sans KR") < gulim.indexOf("Noto Sans JP"));
+        assertTrue(gulim.contains("Noto Sans KR"));
+        assertFalse(gulim.contains("Noto Sans JP"), "a Japanese face draws Hangul narrower than a Korean font");
+        List<String> hangul = Substitutes.script(0xAC00);
+        assertTrue(hangul.indexOf("Noto Sans KR") < hangul.indexOf("WenQuanYi Zen Hei"));
+        assertTrue(hangul.indexOf("WenQuanYi Zen Hei") < hangul.indexOf("Noto Sans JP"));
         assertTrue(gulim.indexOf("Liberation Sans") < gulim.indexOf("Liberation Serif"));
         List<String> mingLiU = Substitutes.generic("MingLiU");
+        assertTrue(mingLiU.indexOf("Noto Serif TC") < mingLiU.indexOf("Noto Sans TC"));
         assertTrue(mingLiU.indexOf("Noto Sans TC") < mingLiU.indexOf("Noto Sans SC"));
+        List<String> batang = Substitutes.generic("바탕");
+        assertTrue(batang.indexOf("Noto Serif KR") < batang.indexOf("Noto Sans KR"));
+        assertTrue(batang.indexOf("Noto Sans KR") < batang.indexOf("Liberation Serif"));
+        assertTrue(Substitutes.eastAsian("新細明體") && Substitutes.eastAsian("Gungsuh"));
+    }
+
+    @Test
+    void aStandInForAKoreanFontDrawsEachHangulSyllableAFullEmWide() throws Exception {
+        Path fonts = Files.createDirectories(dir.resolve("korean"));
+        Files.write(fonts.resolve("kr.ttf"), TestFonts.withGlyphs("Noto Sans KR", 'A', 0xAC00, 0x3131));
+        FontLibrary lib = FontLibrary.of(List.of(fonts));
+        FontFace gulim = lib.find("Gulim", false, false);
+        assertEquals("Noto Sans KR", gulim.family());
+        assertEquals(gulim.unitsPerEm(), gulim.advance(0xAC00));
+        assertEquals(gulim.unitsPerEm(), gulim.advance(0x3131));
+        FontFace own = lib.find("Noto Sans KR", false, false);
+        assertFalse(own.substituted());
+        assertEquals(own.advance('A'), own.advance(0xAC00));
+        assertTrue(own.advance(0xAC00) < own.unitsPerEm());
+    }
+
+    @Test
+    void freeMetricClonesOfComicSansAndArialBlackStandInSilentlyAtTheirOwnWeight() throws Exception {
+        FontLibrary lib = library("Comic Relief", "Archivo Black", "Liberation Sans");
+        FontFace comic = lib.find("Comic Sans MS", false, false);
+        assertEquals("Comic Relief", comic.family());
+        assertNull(comic.note());
+        assertTrue(comic.emulated(), "Comic Sans MS keeps its own line metrics");
+        FontFace black = lib.find("Arial Black", false, false);
+        assertEquals("Archivo Black", black.family());
+        assertNull(black.note());
+        assertFalse(black.syntheticBold());
+        assertEquals(0f, black.embolden());
+        assertEquals(900, black.weight());
+        assertTrue(black.emulated(), "Arial Black keeps its own line metrics");
+        FontFace maori = lib.find("Arial Mäori", false, false);
+        assertEquals("Liberation Sans", maori.family());
+        assertNull(maori.note());
     }
 
     @Test
@@ -223,7 +266,31 @@ class SubstitutionTest {
         assertEquals(plain.shape("שלום", true).advance() * hebrew.glyphStretch(), run.advance(), 1);
         assertEquals(hebrew, lib.fallback(0x05D1, times));
         assertEquals(plain, lib.fallback(0x05D0, lib.find("Verdana", false, false)));
-        assertEquals(plain, lib.fallback(0x0416, times));
+        assertTrue(lib.fallback(0x0416, times).sameProgram(plain));
+    }
+
+    @Test
+    void aNarrowArabicFontNarrowsAWideStandInPastSixTenths() throws Exception {
+        Path wide = Files.createDirectories(dir.resolve("wide"));
+        int[] letters = ScriptWidths.ARABIC.codePoints().filter(c -> c != ' ').distinct().toArray();
+        Files.write(wide.resolve("Wide.ttf"), TestFonts.withGlyphs("Wide Arabic", 'W', letters));
+        FontProgram program = FontLibrary.of(List.of(wide)).find("Wide Arabic", false, false).program();
+        float k = ScriptWidths.scale("Arabic Typesetting", program, ScriptWidths.ARABIC, false);
+        assertTrue(k > 0 && k < 0.6f, "" + k);
+    }
+
+    @Test
+    void aFallbackForALetterTheMissingFontHasKeepsThatFontsAdvance() throws Exception {
+        Path fonts = Files.createDirectories(dir.resolve("comic"));
+        Files.write(fonts.resolve("Comic.ttf"), TestFonts.withGlyphs("Comic Neue", 'A'));
+        Files.write(fonts.resolve("Wide.ttf"), TestFonts.withGlyphs("Wide Cyrillic", 'W', 0x0416));
+        FontLibrary lib = FontLibrary.of(List.of(fonts));
+        FontFace comic = lib.find("Comic Sans MS", false, false);
+        assertFalse(comic.covers(0x0416));
+        FontFace f = lib.fallback(0x0416, comic);
+        int office = OfficeFonts.style("Comic Sans MS", false, false).advance(0x0416);
+        assertTrue(office > 0);
+        assertEquals(Math.round(office * f.unitsPerEm() / 1000f), f.advance(0x0416));
     }
 
     // Average advance in ems over a sample whose letters come from one face and spaces from another
@@ -410,14 +477,15 @@ class SubstitutionTest {
                 Map.entry("Segoe UI Light", "Selawik Light"), Map.entry("Century Gothic", "URW Gothic"),
                 Map.entry("Book Antiqua", "P052"), Map.entry("Palatino Linotype", "P052"), Map.entry("Palatino", "P052"),
                 Map.entry("Bookman Old Style", "URW Bookman"), Map.entry("Century Schoolbook", "C059"),
-                Map.entry("Century", "C059"), Map.entry("Garamond", "EB Garamond"), Map.entry("Comic Sans MS", "Comic Neue"),
+                Map.entry("Century", "C059"), Map.entry("Garamond", "EB Garamond"),
                 Map.entry("Consolas", "Inconsolata"), Map.entry("Verdana", "DejaVu Sans"),
                 Map.entry("Trebuchet MS", "Fira Sans"), Map.entry("Lucida Console", "DejaVu Sans Mono"),
                 Map.entry("Lucida Sans", "Open Sans"), Map.entry("Franklin Gothic Book", "Source Sans 3"),
                 Map.entry("Gill Sans MT", "Lato"), Map.entry("Candara", "Source Sans 3"), Map.entry("Corbel", "Carlito"),
                 Map.entry("Constantia", "Source Serif 4"), Map.entry("Monotype Corsiva", "Z003"),
                 Map.entry("Aptos", "Source Sans 3"), Map.entry("Aptos Display", "Source Sans 3"),
-                Map.entry("Aptos Narrow", "Roboto Condensed"), Map.entry("Cascadia Code", "Source Code Pro"));
+                Map.entry("Aptos Narrow", "Roboto Condensed"), Map.entry("Cascadia Code", "Source Code Pro"),
+                Map.entry("Arial Black", "Archivo Black"), Map.entry("Comic Sans MS", "Comic Relief"));
         Set<String> everywhere = Set.of("Liberation Sans", "Liberation Serif", "Liberation Mono",
                 "Liberation Sans Narrow", "DejaVu Sans", "DejaVu Serif", "DejaVu Sans Mono");
         first.forEach((family, free) -> {
@@ -426,6 +494,12 @@ class SubstitutionTest {
             assertTrue(chain.stream().anyMatch(everywhere::contains), family + " has no stand-in every image has");
         });
         assertTrue(Substitutes.table("Tahoma").contains("DejaVu Sans Condensed"));
+        List<String> batang = Substitutes.table("Batang");
+        assertTrue(batang.contains("Noto Serif KR"));
+        assertTrue(batang.indexOf("Noto Serif KR") < batang.indexOf("Noto Sans KR"));
+        List<String> ming = Substitutes.table("新細明體");
+        assertTrue(ming.contains("Noto Serif TC"));
+        assertTrue(ming.indexOf("Noto Serif TC") < ming.indexOf("Noto Sans TC"));
         assertEquals(Substitutes.table("Arial"), Substitutes.table(" ARIAL "));
     }
 

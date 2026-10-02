@@ -9,6 +9,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.io.ByteArrayOutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
 import java.util.List;
 
 import org.apache.pdfbox.Loader;
@@ -37,6 +38,35 @@ class FontProgramPoolTest {
         assertNotSame(first.font(), during.font());
         first.close();
         during.close();
+        try (FontProgram.Opened again = FontProgram.open(entry)) {
+            assertSame(first.font(), again.font());
+        }
+    }
+
+    @Test
+    void aFontFileReplacedInPlaceIsParsedAgain() throws Exception {
+        Path fonts = Files.createDirectories(dir.resolve("replaced"));
+        Path file = fonts.resolve("Swap.ttf");
+        Files.write(file, TestFonts.renamed("Swap Face"));
+        FontEntry before = FontLibrary.of(List.of(fonts)).find("Swap Face", false, false).program().entry();
+        try (FontProgram.Opened opened = FontProgram.open(before)) {
+            assertEquals(0, opened.font().getUnicodeCmapLookup().getGlyphId(0x3042));
+        }
+        Files.write(file, TestFonts.withEastAsianGlyphs("Swap Face"));
+        Files.setLastModifiedTime(file, FileTime.fromMillis(Files.getLastModifiedTime(file).toMillis() + 10_000));
+        FontEntry after = FontLibrary.of(List.of(fonts)).find("Swap Face", false, false).program().entry();
+        try (FontProgram.Opened opened = FontProgram.open(after)) {
+            assertTrue(opened.font().getUnicodeCmapLookup().getGlyphId(0x3042) > 0);
+        }
+    }
+
+    @Test
+    void theBundledFallbackFontIsKeptLikeASystemFont() throws Exception {
+        FontEntry entry = FontLibrary.of(List.of(Files.createDirectories(dir.resolve("empty")))).find("Calibri", false,
+                false).program().entry();
+        assertTrue(FontLibrary.bundled(entry));
+        FontProgram.Opened first = FontProgram.open(entry);
+        first.close();
         try (FontProgram.Opened again = FontProgram.open(entry)) {
             assertSame(first.font(), again.font());
         }

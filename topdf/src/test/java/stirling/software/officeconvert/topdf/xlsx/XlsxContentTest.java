@@ -274,4 +274,15 @@ class XlsxContentTest {
         assertTrue(c.all().contains("HeaderTitle"), c.all());
         assertEquals(1, c.images());
     }
+
+    @Test
+    void escapedCharactersInAHeaderAreDecoded() throws Exception {
+        RawXlsx x = new RawXlsx().sheet("S", "<sheetData><row r=\"1\">" + RawXlsx.inline("A1", "Body")
+                + "</row></sheetData><headerFooter><oddHeader>&amp;COFFICIAL_x000D_</oddHeader><oddFooter>&amp;CA_x005F_xB"
+                + "</oddFooter></headerFooter>");
+        XlsxTesting.Converted c = XlsxTesting.convert(dir, "hfescape.xlsx", x.bytes());
+        assertTrue(c.all().contains("OFFICIAL"), c.all());
+        assertTrue(!c.all().contains("_x000D_"), c.all());
+        assertTrue(c.all().contains("A_xB"), c.all());
+    }
 }

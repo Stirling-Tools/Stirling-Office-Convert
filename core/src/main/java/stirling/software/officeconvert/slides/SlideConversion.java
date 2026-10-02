@@ -28,6 +28,7 @@ import stirling.software.officeconvert.extract.PageReader;
 import stirling.software.officeconvert.extract.PdfFiles;
 import stirling.software.officeconvert.extract.PdfFootprint;
 import stirling.software.officeconvert.extract.StreamGuard;
+import stirling.software.officeconvert.jpx.JpxImageIO;
 import stirling.software.officeconvert.layout.DocStats;
 import stirling.software.officeconvert.layout.FallbackPage;
 import stirling.software.officeconvert.layout.LayoutDump;
@@ -82,6 +83,7 @@ public final class SlideConversion {
         Objects.requireNonNull(out, "out");
         Objects.requireNonNull(options, "options");
         PdfFiles.checkOpen(doc);
+        JpxImageIO.install();
         PdfFiles.stopIfInterrupted();
         Admission.Ticket ticket = Admission.jvm().enter(
                 PdfFootprint.estimate(doc, options.firstPage(), options.lastPage(), options.figureDpi()));

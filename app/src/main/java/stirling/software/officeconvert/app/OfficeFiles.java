@@ -6,12 +6,18 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipException;
 import java.util.zip.ZipFile;
 
+import stirling.software.officeconvert.topdf.OfficeToPdf;
 import stirling.software.officeconvert.topdf.io.LegacyOffice;
+import stirling.software.officeconvert.topdf.rtf.RtfPackage;
+import stirling.software.officeconvert.topdf.odf.OdfDocument;
+import stirling.software.officeconvert.topdf.odf.OdfPackage;
+import stirling.software.officeconvert.topdf.text.TextFormats;
 
 final class OfficeFiles {
 
@@ -33,7 +39,11 @@ final class OfficeFiles {
             new Kind(OOXML + "spreadsheetml.sheet.main+xml", "xlsx"),
             new Kind("application/vnd.ms-excel.sheet.macroEnabled.main+xml", "xlsm"),
             new Kind(OOXML + "spreadsheetml.template.main+xml", "xltx"),
-            new Kind("application/vnd.ms-excel.template.macroEnabled.main+xml", "xltm"));
+            new Kind("application/vnd.ms-excel.template.macroEnabled.main+xml", "xltm"),
+            new Kind("application/vnd.ms-visio.drawing.main+xml", "vsdx"),
+            new Kind("application/vnd.ms-visio.drawing.macroEnabled.main+xml", "vsdm"),
+            new Kind("application/vnd.ms-visio.stencil.main+xml", "vssx"),
+            new Kind("application/vnd.ms-visio.template.main+xml", "vstx"));
 
     private static final Map<String, String> MAIN_PARTS = Map.of(
             "word/document.xml", "docx", "ppt/presentation.xml", "pptx", "xl/workbook.xml", "xlsx");
@@ -42,8 +52,8 @@ final class OfficeFiles {
 
     static final String NOT_OFFICE = "That file is not a PDF or a Word, PowerPoint or Excel document.";
 
-    static final String LEGACY = "Word 97-2003 files (.doc) and password protected Office files are not supported. Save"
-            + " the file as .docx, .pptx or .xlsx without a password.";
+    static final String LEGACY = "Only Word, PowerPoint and Excel files (97-2003, Word 6.0/95 and Excel 5.0/95) convert"
+            + " from the binary formats. Save the file as .docx, .pptx or .xlsx.";
 
     /** A file this demo does not convert at all, as opposed to a damaged one. */
     static final class Unsupported extends IOException {
@@ -56,26 +66,84 @@ final class OfficeFiles {
 
     static String family(String extension) {
         return switch (extension) {
-            case "docx", "docm", "dotx", "dotm" -> "docx";
-            case "pptx", "pptm", "ppsx", "ppsm", "potx", "potm", "ppt", "pps", "pot" -> "pptx";
-            case "xlsx", "xlsm", "xltx", "xltm", "xls", "xlt" -> "xlsx";
+            case "docx", "docm", "dotx", "dotm", "doc", "dot", "rtf", "odt", "ott", "fodt", "odm", "sxw", "stw", "xml",
+                    "pages" -> "docx";
+            case "pptx", "pptm", "ppsx", "ppsm", "potx", "potm", "ppt", "pps", "pot", "odp", "otp", "fodp", "odg", "otg",
+                    "fodg", "sxi", "sti", "sxd", "std", "key", "vsdx", "vsdm", "vssx", "vssm", "vstx", "vstm" -> "pptx";
+            case "xlsx", "xlsm", "xltx", "xltm", "xls", "xlt", "xlsb", "ods", "ots", "fods", "sxc", "stc", "slk", "sylk",
+                    "dif", "dbf", "numbers", "wk1", "wks", "wk3", "wk4", "123" -> "xlsx";
+            case "txt", "text", "log", "asc" -> "docx";
+            case "csv", "tsv", "tab" -> "xlsx";
             default -> throw new IllegalArgumentException("Not an Office extension: " + extension);
         };
     }
 
+    static String textExtension(String name) {
+        if (name == null) {
+            return null;
+        }
+        int dot = name.lastIndexOf('.');
+        String ext = dot < 0 ? "" : name.substring(dot + 1).toLowerCase(Locale.ROOT);
+        return TextFormats.kind(ext) == null ? null : ext;
+    }
+
+    /** The extension the converter should see for an upload: from its content where that settles it, else from the
+     * name it was uploaded with when the converter reads that kind. */
+    static String extension(Path upload, String name) throws IOException {
+        try {
+            String ext = extension(upload);
+            return "encrypted".equals(ext) ? named(name, "docx") : ext;
+        } catch (IOException e) {
+            String n = named(name, null);
+            if (n == null) {
+                throw e;
+            }
+            return n;
+        }
+    }
+
+    private static String named(String name, String fallback) {
+        if (name == null) {
+            return fallback;
+        }
+        int dot = name.lastIndexOf('.');
+        String ext = dot < 0 ? "" : name.substring(dot + 1).toLowerCase(Locale.ROOT);
+        return !ext.isEmpty() && OfficeToPdf.Format.recognises(Path.of("x." + ext)) ? ext : fallback;
+    }
+
     static String extension(Path zip) throws IOException {
+        if (RtfPackage.isRtf(zip)) {
+            return "rtf";
+        }
+        OdfDocument.Kind odf = OdfPackage.sniff(zip);
+        if (odf != null) {
+            return switch (odf) {
+                case TEXT -> "odt";
+                case SPREADSHEET -> "ods";
+                case PRESENTATION -> "odp";
+            };
+        }
         if (ole2(zip)) {
             String kind = LegacyOffice.kind(zip);
-            if ("xls".equals(kind) || "ppt".equals(kind)) {
+            if ("xls".equals(kind) || "ppt".equals(kind) || "doc".equals(kind) || "encrypted".equals(kind)) {
                 return kind;
             }
             throw new Unsupported(LEGACY);
         }
         try (ZipFile file = new ZipFile(zip.toFile())) {
             ZipEntry mimetype = file.getEntry("mimetype");
-            if (mimetype != null && read(file, mimetype).startsWith("application/vnd.oasis.opendocument")) {
-                throw new IOException("OpenDocument files (.odt, .odp, .ods) are not supported. Save the file as .docx,"
-                        + " .pptx or .xlsx.");
+            String mime = mimetype == null ? "" : read(file, mimetype).trim();
+            if (mime.startsWith("application/vnd.oasis.opendocument.graphics")) {
+                return "odg";
+            }
+            if (mime.startsWith("application/vnd.sun.xml.")) {
+                String k = mime.substring("application/vnd.sun.xml.".length());
+                return k.startsWith("calc") ? "sxc" : k.startsWith("impress") ? "sxi" : k.startsWith("draw") ? "sxd"
+                        : "sxw";
+            }
+            if (mime.startsWith("application/vnd.oasis.opendocument")) {
+                throw new IOException("OpenDocument charts, formulas and databases are not supported; text documents,"
+                        + " spreadsheets, presentations and drawings are.");
             }
             ZipEntry types = file.getEntry("[Content_Types].xml");
             String xml = types == null ? "" : read(file, types);

@@ -126,6 +126,8 @@ class ShapingTest {
     void drawsShapedGlyphsThatStillExtract() throws Exception {
         FontFace arabic = covering(0x0644);
         FontFace hindi = covering(0x0915);
+        assumeTrue(hindi.family().equals("Nirmala UI") || hindi.family().startsWith("Noto Sans Devanagari"),
+                "the installed Devanagari font " + hindi.family() + " shapes the i sign another way");
         Path pdf = dir.resolve("shaped.pdf");
         try (PdfOutput out = new PdfOutput(FontLibrary.system())) {
             try (PdfCanvas page = out.newPage(PageSize.A4)) {

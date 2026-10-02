@@ -64,10 +64,17 @@ final class GlyphRows {
         }
     }
 
+    private static final Comparator<Glyph> BY_BASELINE = (a, b) -> Double.compare(a.baseline, b.baseline);
+
+    private static final Comparator<Glyph> BY_X = (a, b) -> {
+        int c = Double.compare(a.x, b.x);
+        return c != 0 ? c : Integer.compare(a.seq, b.seq);
+    };
+
     private static List<Row> cluster(List<Glyph> ink) {
         Map<Glyph, Float> key = cascadeBaselines(ink);
         List<Glyph> sorted = new ArrayList<>(ink);
-        sorted.sort(key.isEmpty() ? Comparator.comparingDouble((Glyph g) -> g.baseline)
+        sorted.sort(key.isEmpty() ? BY_BASELINE
                 : Comparator.comparingDouble((Glyph g) -> key.getOrDefault(g, g.baseline)));
         List<Row> rows = new ArrayList<>();
         Row row = null;
@@ -86,14 +93,14 @@ final class GlyphRows {
             rows.add(row);
         }
         for (Row r : rows) {
-            r.glyphs.sort(Comparator.comparingDouble((Glyph g) -> g.x).thenComparingInt(g -> g.seq));
+            r.glyphs.sort(BY_X);
         }
         return rows;
     }
 
     private static Map<Glyph, Float> cascadeBaselines(List<Glyph> ink) {
         Map<Glyph, Float> out = new IdentityHashMap<>();
-        if (ink.stream().noneMatch(GlyphRows::arabic)) {
+        if (!anyArabic(ink)) {
             return out;
         }
         Map<Integer, TreeMap<Integer, Integer>> bySize = new HashMap<>();
@@ -138,6 +145,15 @@ final class GlyphRows {
         return out;
     }
 
+    private static boolean anyArabic(List<Glyph> glyphs) {
+        for (Glyph g : glyphs) {
+            if (arabic(g)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private static boolean arabic(Glyph g) {
         return !g.text.isEmpty() && g.text.charAt(0) >= 0x0600
                 && Character.UnicodeScript.of(g.text.codePointAt(0)) == Character.UnicodeScript.ARABIC;
@@ -166,8 +182,7 @@ final class GlyphRows {
                         g.vertAlign = script;
                         host.glyphs.add(g);
                     }
-                    host.glyphs.sort(
-                            Comparator.comparingDouble((Glyph g) -> g.x).thenComparingInt(g -> g.seq));
+                    host.glyphs.sort(BY_X);
                     rows.remove(i);
                     changed = true;
                     break;

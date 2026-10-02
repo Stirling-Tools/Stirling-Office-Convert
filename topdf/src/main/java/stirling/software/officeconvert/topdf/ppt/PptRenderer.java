@@ -27,8 +27,10 @@ import org.apache.poi.hslf.usermodel.HSLFShape;
 import org.apache.poi.hslf.usermodel.HSLFSlide;
 import org.apache.poi.hslf.usermodel.HSLFSlideShow;
 import org.apache.poi.hslf.usermodel.HSLFSoundData;
+import org.apache.poi.hslf.usermodel.HSLFTextShape;
 
 import stirling.software.officeconvert.topdf.RenderJob;
+import stirling.software.officeconvert.topdf.crypt.Passwords;
 import stirling.software.officeconvert.topdf.font.FontFace;
 import stirling.software.officeconvert.topdf.io.ActiveContent;
 import stirling.software.officeconvert.topdf.io.LegacyOffice;
@@ -50,23 +52,37 @@ public final class PptRenderer {
 
     public static void render(Path source, RenderJob job) throws IOException {
         Objects.requireNonNull(job, "job");
-        try (HSLFSlideShow ppt = LegacyOffice.slideShow(Objects.requireNonNull(source, "source"))) {
+        String password = job.options().password();
+        try (Passwords.Scope _ = Passwords.legacy(password);
+                HSLFSlideShow ppt = LegacyOffice.slideShow(Objects.requireNonNull(source, "source"), password)) {
             info(job, ppt);
             boundPictures(job, ppt);
-            WordArt.flatten(ppt);
+            Map<HSLFSlide, List<WordArt.Hidden>> wordArt = wordArt(job, ppt);
+            fixUp(ppt);
             SlideText text = new SlideText(job, fonts(job, ppt));
             Dimension size = ppt.getPageSize();
             float w = clamp(size == null ? 0 : size.width, DEFAULT_WIDTH);
             float h = clamp(size == null ? 0 : size.height, DEFAULT_HEIGHT);
             List<HSLFSlide> slides = ppt.getSlides();
+            SlideLinks links = new SlideLinks(slides);
+            SlideFooters footers = new SlideFooters();
             for (HSLFSlide slide : slides) {
                 job.checkpoint();
                 if (slide.isHidden()) {
                     continue;
                 }
+                text.startSlide(textLinks(links, slide));
                 try (PdfCanvas canvas = job.newPage(w, h)) {
-                    for (PDFormXObject form : draw(job, slide, text, w, h)) {
+                    List<PDFormXObject> forms = new ArrayList<>(draw(job, slide, footers, text, w, h));
+                    for (PDFormXObject form : forms) {
                         canvas.form(form, 0, 0, w, h);
+                    }
+                    WordArt.writeHidden(canvas, wordArt.get(slide));
+                    for (SlideLinks.Area a : shapeLinks(links, slide)) {
+                        SlideLinks.place(canvas, a.box(), a.target());
+                    }
+                    for (SlideLinks.Area a : LinkLocator.locate(forms, text.pendingLinks(), w, h)) {
+                        SlideLinks.place(canvas, a.box(), a.target());
                     }
                 }
             }
@@ -76,11 +92,61 @@ public final class PptRenderer {
         }
     }
 
-    // A slide POI cannot draw whole is drawn again shape by shape, leaving out only what fails
-    private static List<PDFormXObject> draw(RenderJob job, HSLFSlide slide, SlideText text, float w, float h)
-            throws IOException {
+    private static Map<HSLFSlide, List<WordArt.Hidden>> wordArt(RenderJob job, HSLFSlideShow ppt) {
         try {
-            return List.of(SafeImageRenderer.drawForm(job.document(), slide, w, h, text));
+            return WordArt.flatten(ppt, job.fonts());
+        } catch (RuntimeException e) {
+            return Map.of();
+        }
+    }
+
+    private static void fixUp(HSLFSlideShow ppt) {
+        try {
+            TitleFooters.apply(ppt);
+            SavedDates.apply(ppt);
+            RtlParagraphs.apply(ppt);
+        } catch (RuntimeException e) {
+            return;
+        } finally {
+            shadows(ppt);
+        }
+    }
+
+    private static void shadows(HSLFSlideShow ppt) {
+        try {
+            ShapeShadows.apply(ppt);
+        } catch (RuntimeException e) {
+            return;
+        }
+    }
+
+    private static Map<String, SlideLinks.Target> textLinks(SlideLinks links, HSLFSlide slide) {
+        try {
+            return links.textTargets(slide);
+        } catch (RuntimeException e) {
+            return Map.of();
+        }
+    }
+
+    private static List<SlideLinks.Area> shapeLinks(SlideLinks links, HSLFSlide slide) {
+        try {
+            return links.shapeAreas(slide);
+        } catch (RuntimeException e) {
+            return List.of();
+        }
+    }
+
+    // A slide POI cannot draw whole is drawn again shape by shape, leaving out only what fails
+    private static List<PDFormXObject> draw(RenderJob job, HSLFSlide slide, SlideFooters footers, SlideText text,
+            float w, float h) throws IOException {
+        List<HSLFTextShape> extra = footerShapes(slide, footers);
+        try {
+            List<PDFormXObject> forms = new ArrayList<>();
+            forms.add(SafeImageRenderer.drawForm(job.document(), slide, w, h, text));
+            if (!extra.isEmpty()) {
+                forms.add(SafeImageRenderer.drawShapes(job.document(), slide, extra, w, h, text));
+            }
+            return forms;
         } catch (InterruptedIOException e) {
             throw e;
         } catch (IOException | RuntimeException | StackOverflowError e) {
@@ -97,6 +163,15 @@ public final class PptRenderer {
             job.losePart();
         }
         return forms;
+    }
+
+    private static List<HSLFTextShape> footerShapes(HSLFSlide slide, SlideFooters footers) {
+        try {
+            footers.writeFooter(slide);
+            return footers.slideNumbers(slide);
+        } catch (RuntimeException e) {
+            return List.of();
+        }
     }
 
     private static void info(RenderJob job, HSLFSlideShow ppt) {
@@ -128,8 +203,8 @@ public final class PptRenderer {
             }
         }
         if (dropped > 0) {
-            job.warn("Left out " + dropped + (dropped == 1 ? " picture" : " pictures") + " in a format that cannot be"
-                    + " drawn (PICT), damaged, or unpacking past " + (PictureDecoder.MAX_METAFILE_BYTES >> 20) + " MB");
+            job.warn("Left out " + dropped + (dropped == 1 ? " picture" : " pictures") + " damaged or unpacking past "
+                    + (PictureDecoder.MAX_METAFILE_BYTES >> 20) + " MB");
         }
     }
 

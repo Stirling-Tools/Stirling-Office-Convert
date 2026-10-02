@@ -40,8 +40,11 @@ final class Numbering {
 
     private final Styles styles;
 
+    private final boolean emptyPart;
+
     Numbering(XEl numbering, Styles styles, Theme theme) {
         this.styles = styles;
+        emptyPart = numbering != null && numbering.child("w:num") == null && numbering.child("w:abstractNum") == null;
         if (numbering == null) {
             return;
         }
@@ -129,12 +132,11 @@ final class Numbering {
         }
         int a = n.abstractId;
         for (int hop = 0; hop < 4 && styleLinks.containsKey(a); hop++) {
-            String style = styleLinks.get(a);
-            ParaProps p = styles.paragraph(style);
-            if (p.numId == null || !nums.containsKey(p.numId)) {
+            Integer linked = styles.listNum(styleLinks.get(a));
+            if (linked == null || !nums.containsKey(linked)) {
                 break;
             }
-            int next = nums.get(p.numId).abstractId;
+            int next = nums.get(linked).abstractId;
             if (next == a) {
                 break;
             }
@@ -148,6 +150,9 @@ final class Numbering {
             return null;
         }
         Num n = nums.get(numId);
+        if (n == null && emptyPart && numId > 0 && nums.size() < MAX_DEFAULT_LISTS) {
+            n = defaultList(numId);
+        }
         if (n == null) {
             return null;
         }
@@ -156,6 +161,21 @@ final class Numbering {
         }
         Level[] levels = abstracts.get(abstractOf(numId));
         return levels == null ? null : levels[ilvl];
+    }
+
+    static final int MAX_DEFAULT_LISTS = 64;
+
+    private Num defaultList(int numId) {
+        Level[] levels = new Level[9];
+        for (int i = 0; i < 9; i++) {
+            levels[i] = new Level();
+            levels[i].text = "%" + (i + 1) + ".";
+        }
+        Num n = new Num();
+        n.abstractId = -2 - numId;
+        abstracts.put(n.abstractId, levels);
+        nums.put(numId, n);
+        return n;
     }
 
     String next(int numId, int ilvl) {

@@ -1,5 +1,6 @@
 package stirling.software.officeconvert.topdf.font;
 
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -13,7 +14,7 @@ public final class CloudMetrics {
 
     private static final int NONE = 36 * 36 - 1;
 
-    private static final Map<Integer, Integer> INDEX = index();
+    private static final short[] INDEX = index();
 
     private static final Map<String, CloudMetrics[]> TABLE = table();
 
@@ -44,8 +45,8 @@ public final class CloudMetrics {
 
     /** The advance in ems, or NaN when the cloud font has no glyph for it. */
     public float advance(int codePoint) {
-        Integer i = INDEX.get(codePoint);
-        return i == null || advances[i] == NONE ? Float.NaN : advances[i] / 1000f;
+        int i = codePoint >= 0 && codePoint < INDEX.length ? INDEX[codePoint] : -1;
+        return i < 0 || advances[i] == NONE ? Float.NaN : advances[i] / 1000f;
     }
 
     private static String range(int from, int to) {
@@ -56,12 +57,17 @@ public final class CloudMetrics {
         return b.toString();
     }
 
-    private static Map<Integer, Integer> index() {
-        Map<Integer, Integer> m = new HashMap<>();
+    private static short[] index() {
+        int top = 0;
         for (int i = 0; i < CHARS.length(); i++) {
-            m.put((int) CHARS.charAt(i), i);
+            top = Math.max(top, CHARS.charAt(i));
         }
-        return m;
+        short[] index = new short[top + 1];
+        Arrays.fill(index, (short) -1);
+        for (int i = 0; i < CHARS.length(); i++) {
+            index[CHARS.charAt(i)] = (short) i;
+        }
+        return index;
     }
 
     private static void put(Map<String, CloudMetrics[]> m, String family, int style, String advances) {
@@ -70,6 +76,12 @@ public final class CloudMetrics {
 
     private static Map<String, CloudMetrics[]> table() {
         Map<String, CloudMetrics[]> m = new HashMap<>();
+        put(m, "Abadi", 0,
+                "8ezz9vzzf2p6zzzzzzzzzzij6d996da5gsgsgsgsgsgsgsgsgsgszzzzzzzzzzzzs7hdgsg7j4ererhdi86d99fxe6lpi8jefnje"
+                + "fxerdwgsh3mlfxfnzzzzzzzzzzzzzzdmfnc6fndw7tfner6o6odm6olperfcfnfn9kc68zerd1jecgcqd1zzzzzzzzzzzzzzzzzz"
+                + "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz"
+                + "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz"
+                + "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz");
         put(m, "Aptos", 0,
                 "5n85aaexeumyhv5u8585cpeu7y9g7y9feueueueueueueueueueu7y7yeueueudxovgdgsj8j2fgekjojn7897fsdwlyjmkcg1kc"
                 + "gufqdbixg9osfdf0ec869f86eucsfcerflelflen8ddgfb6n6ndj78npfbfcflfl9adi8zfjckk1cackc6867i86eu5n7zeueueu"
@@ -154,6 +166,12 @@ public final class CloudMetrics {
                 + "e3ductdhibb0aae38jbidhahe39i9idherfa7fdh9ibfaakpm8n2ctf9f9f9f9f9f9m1hje4e4e4e47g7g7g7ghghti4i4i4i4i4"
                 + "e3i4h5h5h5h5ejfbebdsdsdsdsdsdslddrdwdwdwdw70707070e4eie7e7e7e7e7e3e4eieieieic9enc9pgm7etcqejdcbi84dh"
                 + "dhb9mh7f7f7fdgdgdhbxbrc1lyuf5g5he3dj");
+        put(m, "Arial Nova Cond", 0,
+                "7o6yzzzzzzzzhhzz9999zzzz6y996y6ydwdwdwdwdwdwdwdwdwdw6y6yzzzzdwzzzzfcfhfhh4dycqh5h36uzzzzdxlph4h3f7h3"
+                + "fyfcdwh3fcm3zzfezz99zz99zzzzzzcgdwcidwd37tdwdw5s5ycd5sljdxdwdwdw9ach7ndxccijcgcgapzzzzzzzzzzzzzzzzzz"
+                + "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz"
+                + "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz"
+                + "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz");
         put(m, "Arial Nova Light", 0,
                 "7a997qfgfgo6ij4p9999atfl7q997q7qfgfgfgfgfgfgfgfgfgfg7q7qflflfldwojhyhtjrjgg6f0ksja6md9gwermxjblhgrlh"
                 + "hlgzfgjbgzo6gzgkg9997q99d1dw99eofdegfdeo75faev5j5ndn5jmfeveyfdfd9cd183evd9jjd7d0cm996699fl7a99fgfgfg"
@@ -196,12 +214,30 @@ public final class CloudMetrics {
                 + "fl7jdwfcktcfd7fla6dtfcajfl9z9zfcgbfq8dfc9zcxd7npnpnpefhahahahahahaq9jofyfyfyfy88888888jok4kikikikiki"
                 + "flkijdjdjdjdgdgvfnfdfdfdfdfdfdo2fbfgfgfgfg7i7i7i7ifzg5fzfzfzfzfzflfzg7g7g7g7dtgcdtsyp6gpeegdf9czflfc"
                 + "fccspk8b8b8bejekekg1g1dlnpxo6767flfj");
+        put(m, "Daytona Condensed Light", 0,
+                "73zzzzzzcrzzzzzz7n7nzzzz4k7d4kzzcrcrcrcrcrcrzzzzzzzz6ezzzzzzzzzzk8dee3csf3chbtewfu9bzzd7bjhvfvf4dlf4"
+                + "eactbufgd6h1dbbwc0zzzzzzzzzzzzbyd0akczbu7mczda5zzzbf6ajldacid0zz8pai7td9a5ftafaaakzzanzzzzzzzzzzzzzz"
+                + "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz"
+                + "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz"
+                + "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz");
         put(m, "DM Sans", 0,
                 "7d6w7wmmg2lhkc4dacacdag74ye95favj98efwgcgth0hietgyhi5j67dveldvecs5iggqk0jcfoeul1iv6gdvg6elnjj5lsg3lx"
                 + "ghg2fki8ikqvgqg3ev8jav8jh8hu72f1hgfuhgft99fcfw6n6qe066ovfwgghghga3dwarfwehkydufgckbt6gbte47d6wfugoes"
                 + "gp6gg88ym2cgckicgoe0aw9jgr969672g7ga5f7k5oc1ckhdiqjwecigigigigigigpbk0fofofofo6g6g6g6gjxj5lslslslsls"
                 + "drlui8i8i8i8g3g3igf1f1f1f1f1f1pdfuftftftft66666666hefwggggggggggekgkfwfwfwfwfghgfgv2r7g2dwg3evck998u"
                 + "9lhtni5w5x54aaaa9ieres9yfnv77m7mljlg");
+        put(m, "Gill Sans Nova Light", 0,
+                "7qzzzzi1zzjzgxzz8m8mzzzz4o8t4mzzdwdwdwdwdwdwdwdwdwdw4mzzzzzzzzzzoghweoijzzdfc1zzzz5szzf8d8lbl3m9e1m9"
+                + "ftcag0jdgfsnzzfxzzzzzzzzzzzzzzbldtbfdtcs76bhdk5151bj51ladkeue4e39w9r8fdkbdjyd5bob0zzzzzzzzzzzzzzzzzz"
+                + "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz"
+                + "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz"
+                + "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz");
+        put(m, "Grandview", 0,
+                "7h72zzzzgazzzzzzzzzzzzzz6fzz6fzzf2f2f2f2f2f2zzzzzzzz6bzzzzzzzzzzzzi9i7hgiigvfti8j47qzzi3g7lxjqi7hkij"
+                + "iehddnihglnsg1e9zzzzzzzzzzzzzzesfndufjew9cfjfj71zze58lnsfjfofnzzbvdb9mfbdwkydudyzzzzzzzzzzzzzzzzzzzz"
+                + "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz"
+                + "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz"
+                + "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz");
         put(m, "Grandview Display", 0,
                 "7h7jaihcg1j3i44y9f9fbyeo6bdb6baieseseseseseseseseses6b6bbscrbxc0oqhzhyh7i8gmfjhyiv7ne1hufxlnjghyhbi9"
                 + "i4h4ddi7gbnjfrdzf486ai86dzc486e9ekdzeged89egez736xe47hn9ezelekegbbdv8jexdckyducvd7a07na0ea7h7jduggfz"
@@ -292,6 +328,12 @@ public final class CloudMetrics {
                 + "gn7agjdwekbtd7iobxekdwagioa4a4dwgbge6bdw7ebtd7k5m7n0e1j5j5j5j5j5j5rbjhfpfpfpfp7o7o7o7okokommmmmmmmmm"
                 + "iommknknknkngrhcg9ererererereromeifzfzfzfz73737373gdgdgwgwgwgwgwiogwgagagagaf4fvf4rurlftd8grg5djgndw"
                 + "dwgonc6b6b6baiaiaic8c87ciptz7t7tionz");
+        put(m, "Quire Sans Pro Light", 0,
+                "64zzzzenzzmxgbzz7t7tzzzz5oab5ozzfgfgfgzzfgfgfgfgfgfg5ozzzzzzzzzzimh0g2htzzewzzzzzz6ezzg4dumhzzlqfplq"
+                + "gef1fij8gyq1zzfyzzzzzzzzzzzzzzdbfjcefje68pdpez6464dk64mqezfofjfj9xbz8xeydckvcbd4bszzzzzzzzzzzzzzzzzz"
+                + "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz"
+                + "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz"
+                + "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz");
         put(m, "Raleway", 0,
                 "737084iwh7juij5h7h7g8xbj69bq59gsh0bweheuf6f5grevghga585pe4c6e4d8n9isiij2jvgxgdjwki6wddhvg7odlgkvhakt"
                 + "i5gvgykzivt2hki3hh76fs76eze766f5h5f9hagb96h6g76269eq7kpjg7gjh5h59rdf9bgietmle0f2do776f77e7736zfldvex"
@@ -316,6 +358,18 @@ public final class CloudMetrics {
                 + "ew6zhgd2luccdwfbayludwauexadad96h6dl8e7hadcqdwjwl3miduioioioioioioq2i6fmfmfmfm84848484ihjmj5j5j5j5j5"
                 + "erj4ibibibibh7gxhkevevevevevevnhehf0f0f0f07l7l7l7lfzflfofofofofofufofkfkfkfkdzfqdzqvp3h4eah7gve5a1dq"
                 + "dbhil66h6d6wb7bbb5eyg39zklqp8o8efyhj");
+        put(m, "Sabon Next LT", 0,
+                "6yzzzzcqzzmhnizz9e9ezzzz6y6y6yzzdwdwdwdwdwdwdwdwdwdw6yzzzzzzzzzzlrj3gzjtzzgbzzzzzz9fzzixgipezzlegcle"
+                + "j7e9gsl1j1r7zzh9zzzzzzzzzzzzzzcbfac2facb8sdwfu817ren81o1g2eufaf3ab9u8zfoczkncpczc4zzzzzzzzzzzzzzzzzz"
+                + "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz"
+                + "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz"
+                + "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz");
+        put(m, "Seaford", 0,
+                "6kzzb3zzenm7ij6h9x9xzzzz65ba659venenenenenenenenenenzzzzzzzzzzzzopjshkigkjgnfyk7l187cxzzfopwl1lwglzz"
+                + "iagahpk9iwtfzziuhjzzzzzzzzzzzzdof5d1f5e89jemfk6u6ue96unofkf7f5zzaacaamfke2lodze3cnzzzzzzzzzzzzzzzzzz"
+                + "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz"
+                + "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz"
+                + "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz");
         put(m, "Seaford Display", 0,
                 "53619hecenigi25e9d9d9ren4z9e4z8genenenenenenenenenen5i5ienenenb7n8ixgghtjnfiepjhk478c6hdeko5jol3fnl3"
                 + "gwf2h3j4hbr2hpgvgea38ga3ena9dkcme9c7e9dc8ndde8676ad267m2e8ece9e997at9he8ckk0cfckbeb56yb5en5361cgenen"
@@ -364,12 +418,30 @@ public final class CloudMetrics {
                 + "fs8eebewm4b3glfs9gm4aga3fsa3a37ygijq6u92a3cpgloeoeoecnk1k1k1k1k1k1rmi0gugugugu8s8s8s8sksl0lylylylyly"
                 + "fslyjnjnjnjnidhwibfdfdfdfdfdfdoadwg8g8g8g881818181gpgdgvgvgvgvgvfsgvgdgdgdgdf7gsf7rpq1g6dhidgydwbqb2"
                 + "addwrs6r6r6rcmcmcmdqdqa4rszz9393fsnq");
+        put(m, "Univers", 0,
+                "7qzzzzzzfgzzzzzz9999zzzz7q997q7qfgfgfgfgfgfgfgfgfgfgzzzzzzzzzzdwzzk2ijijk2gzzzzzk27qfgijfgq8lmlmgzzz"
+                + "ijijgzlmzzzzzzijgzzzzzzzzzzzzzfggzdwgzfg99gzgz7qzzdw7qq8gzgzgzgzatdw99gzfgn5fgfgzzzzzzzzzzzzzzzzzzzz"
+                + "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz"
+                + "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz"
+                + "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz");
         put(m, "Univers Condensed", 0,
                 "66996ycccclmij6y7q7qccdw6699667qcccccccccccccccccccc6666dwdwdwccopgzgzfggzdwccgzgz7qdwfgccn5ijgzfggz"
                 + "fgfgdwgzfgopfgdwdw7q7q7qdwdw7qdwdwdwdwdw7qdwdw6666cc66k2dwdwdwdw99cc7qdwcck2ccccat7m6y7mdw6699cccccc"
                 + "cc6ycc7qm88cccdw99b47qb4dw85857qdwc8667q858ccckykykyccgzgzgzgzgzgzn5fgdwdwdwdw7q7q7q7qgzijgzgzgzgzgz"
                 + "dwgzgzgzgzgzdwfgfgdwdwdwdwdwdwlmdwdwdwdwdw66666666dwdwdwdwdwdwdwdwdwdwdwdwdwccdwccn5lmfgccdwdwatcc7q"
                 + "7qdwrs666666cccccccccc99rsop6666ccmx");
+        put(m, "Univers Condensed Light", 0,
+                "66zzzzzzzzzzzzzz6666zzzz667q66zzcccccczzcccccczzcccc66zzzzzzzzzzzzfgdwdwfgccatfgfg66ccdwatlmgzfgccfg"
+                + "dwdwccfgzzn5dwdwcczzzzzzzzzzzzccccatcccc7qcccc66zzat66ijcccccccc7qat7qccatijatatzzzzzzzzzzzzzzzzzzzz"
+                + "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz"
+                + "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz"
+                + "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz");
+        put(m, "Univers Light", 0,
+                "7qzzzzzzzzzzzz7q7q7qzziczz7q7q7qfgfgfgfgfgfgfgfgfgfgzzzzzzzzzzzzzzijijijk2gzfgk2k27qdwgzfgq8k2lmgzlm"
+                + "ijgzfgk2zzrszzgzzzzzzzzzzzzzzzdwfgdwfgfg99fgfg6666dw66opfgfgfgfg99dw99fgdwn5zzdwzzzzzzzzzzzzzzzzfgzz"
+                + "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz"
+                + "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz"
+                + "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz");
         put(m, "Walbaum Display", 0,
                 "6i5j92i1ecsikz788p8patgo718w5zaohd9mfseseaeffbdyf7fb5z71gogogobpm4i4hqjmlliwhul8m3a8cpjbiopul3kmgqli"
                 + "ioephmlrhqtpi7hiie9xao9xe6dwdwe1fldifidy7qejg07978ey78okg4edfgflbnbd9wfudqm1egefcn9i3d9igo6i5jdifzfi"

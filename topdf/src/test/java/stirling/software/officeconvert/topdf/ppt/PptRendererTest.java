@@ -13,6 +13,7 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
@@ -141,8 +142,7 @@ class PptRendererTest {
         for (String name : List.of("a.ppt", "b.PPS", "c.pot")) {
             assertEquals(Format.PPT, Format.of(Path.of(name)), name);
         }
-        IllegalArgumentException e = assertThrows(IllegalArgumentException.class, () -> Format.of(Path.of("x.doc")));
-        assertTrue(e.getMessage().contains("not supported yet"), e.getMessage());
+        assertEquals(Format.DOCX, Format.of(Path.of("x.doc")));
     }
 
     @Test
@@ -272,6 +272,37 @@ class PptRendererTest {
         assertTrue(dark < 0.5 * 140 * 55, "the outline was filled: " + dark);
     }
 
+    private static int topInk(BufferedImage page, int fromX, int toX, int fromY, int toY) {
+        for (int y = fromY; y < toY; y++) {
+            for (int x = fromX; x < toX; x++) {
+                if ((page.getRGB(x, y) & 0xff) < 128) {
+                    return y;
+                }
+            }
+        }
+        return toY;
+    }
+
+    @Test
+    void wordArtArchesFollowTheirCurveAndKeepTheirText() throws IOException {
+        Converted c = convert("arch.ppt", deck(p -> {
+            HSLFAutoShape art = new HSLFAutoShape(ShapeType.TEXT_ARCH_UP_CURVE);
+            art.setAnchor(new Rectangle2D.Double(60, 60, 300, 300));
+            art.setFillColor(Color.BLACK);
+            byte[] data = "ARCHING OVER THE TOP\0".getBytes(StandardCharsets.UTF_16LE);
+            EscherComplexProperty text = new EscherComplexProperty(EscherPropertyTypes.GEOTEXT__UNICODE, false,
+                    data.length);
+            text.setComplexData(data);
+            art.getEscherOptRecord().addEscherProperty(text);
+            p.createSlide().addShape(art);
+        }));
+        assertTrue(c.text().contains("ARCHING OVER THE TOP"), c.text());
+        BufferedImage page = c.render(0);
+        int centre = topInk(page, 200, 220, 40, 380);
+        int left = topInk(page, 60, 90, 40, 380);
+        assertTrue(centre < 110 && left > centre + 60, "centre " + centre + ", left " + left);
+    }
+
     @Test
     void wideSlidesKeepTheirSize() throws IOException {
         Converted c = convert("wide.ppt", deck(p -> {
@@ -323,7 +354,7 @@ class PptRendererTest {
         byte[] ppt = deck(p -> {
             HSLFSlide slide = p.createSlide();
             slide.createPicture(picture(p, bomb, PictureType.EMF)).setAnchor(new Rectangle2D.Double(10, 10, 100, 100));
-            slide.createPicture(picture(p, new byte[2048], PictureType.PICT))
+            slide.createPicture(picture(p, new byte[40 << 20], PictureType.PICT))
                     .setAnchor(new Rectangle2D.Double(200, 10, 100, 100));
             text(slide, "Still here", 60, 300, 400, 60);
         });
@@ -332,6 +363,22 @@ class PptRendererTest {
         assertTrue(c.text().contains("Still here"));
         assertTrue(c.result().warnings().stream().anyMatch(w -> w.contains("Left out 2 pictures")),
                 c.result().warnings().toString());
+    }
+
+    @Test
+    void macPictPicturesAreDrawn() throws IOException {
+        ByteBuffer pict = ByteBuffer.allocate(512 + 60);
+        pict.position(512);
+        pict.putShort((short) 0).putShort((short) 0).putShort((short) 0).putShort((short) 20).putShort((short) 20);
+        pict.putShort((short) 0x0011).putShort((short) 0x02FF).putShort((short) 0x0C00).putShort((short) -1);
+        pict.put(new byte[22]);
+        pict.putShort((short) 0x001A).putShort((short) -1).putShort((short) 0).putShort((short) 0);
+        pict.putShort((short) 0x0031).putShort((short) 0).putShort((short) 0).putShort((short) 20).putShort((short) 20);
+        pict.putShort((short) 0x00FF);
+        byte[] ppt = deck(p -> p.createSlide().createPicture(picture(p, pict.array(), PictureType.PICT))
+                .setAnchor(new Rectangle2D.Double(100, 100, 200, 100)));
+        Converted c = convert("pict.ppt", ppt);
+        assertEquals(Color.RED.getRGB(), c.render(0).getRGB(200, 150), c.result().warnings().toString());
     }
 
     @Test

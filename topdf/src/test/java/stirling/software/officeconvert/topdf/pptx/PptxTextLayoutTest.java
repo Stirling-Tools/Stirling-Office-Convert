@@ -24,6 +24,7 @@ import stirling.software.officeconvert.topdf.font.FontFace;
 import stirling.software.officeconvert.topdf.font.FontLibrary;
 import stirling.software.officeconvert.topdf.font.FontMetrics;
 import stirling.software.officeconvert.topdf.testing.Fixtures;
+import stirling.software.officeconvert.topdf.testing.TestFonts;
 
 class PptxTextLayoutTest {
 
@@ -91,6 +92,7 @@ class PptxTextLayoutTest {
 
     @Test
     void linesBelowSingleSpacingKeepTheSingleDescent() throws IOException {
+        TestFonts.assumeInstalled("Calibri", false, TestFonts.CALIBRI);
         String p90 = "<a:p><a:pPr><a:lnSpc><a:spcPct val=\"90000\"/></a:lnSpc></a:pPr>"
                 + Decks.run("Alpha", "sz=\"4000\"") + "</a:p>";
         String p60 = "<a:p><a:pPr><a:lnSpc><a:spcPct val=\"60000\"/></a:lnSpc></a:pPr>"
@@ -151,6 +153,20 @@ class PptxTextLayoutTest {
             assertEquals(COSName.TRANSPARENCY, group.getCOSName(COSName.S));
             assertEquals(COSName.DEVICERGB, group.getCOSName(COSName.CS));
         }
+    }
+
+    @Test
+    void theFirstParagraphKeepsItsSpaceBeforeWhenTheBodySaysSo() throws IOException {
+        String para = "<a:p><a:pPr><a:spcBef><a:spcPts val=\"2400\"/></a:spcBef></a:pPr>" + Decks.run("Q", "sz=\"1800\"")
+                + "</a:p>";
+        float[] y = new float[2];
+        for (int i = 0; i < 2; i++) {
+            String bodyPr = "<a:bodyPr lIns=\"0\" tIns=\"0\" rIns=\"0\" bIns=\"0\" anchor=\"t\""
+                    + (i == 1 ? " spcFirstLastPara=\"1\"" : "") + "/>";
+            byte[] pptx = Decks.slideXml(Decks.textBox(5, 1270000, 1270000, 3810000, 1270000, bodyPr, para));
+            y[i] = baseline(Decks.convert(dir, "edges" + i + ".pptx", pptx).positions(0), 'Q');
+        }
+        assertEquals(24, y[1] - y[0], 0.5);
     }
 
     private static float x(List<TextPosition> pos, char c) {

@@ -7,18 +7,15 @@ import java.util.List;
 import java.util.Locale;
 
 import org.apache.poi.ooxml.util.POIXMLUnits;
-import org.apache.poi.sl.usermodel.PaintStyle;
 import org.apache.poi.sl.usermodel.TabStop.TabStopType;
 import org.apache.poi.sl.usermodel.TextParagraph.TextAlign;
 import org.apache.poi.sl.usermodel.TextRun.FieldType;
 import org.apache.poi.sl.usermodel.TextRun.TextCap;
 import org.apache.poi.common.usermodel.fonts.FontGroup;
-import org.apache.poi.xslf.model.CharacterPropertyFetcher;
-import org.apache.poi.xslf.model.ParagraphPropertyFetcher;
+import org.apache.poi.util.Units;
 import org.apache.poi.xslf.usermodel.XSLFColor;
 import org.apache.poi.xslf.usermodel.XSLFSheet;
 import org.apache.poi.xslf.usermodel.XSLFTableCell;
-import org.apache.poi.xslf.usermodel.XSLFTabStop;
 import org.apache.poi.xslf.usermodel.XSLFTextParagraph;
 import org.apache.poi.xslf.usermodel.XSLFTextRun;
 import org.apache.poi.xslf.usermodel.XSLFTextShape;
@@ -41,6 +38,7 @@ import org.openxmlformats.schemas.drawingml.x2006.main.CTTextLineBreak;
 import org.openxmlformats.schemas.drawingml.x2006.main.CTTextListStyle;
 import org.openxmlformats.schemas.drawingml.x2006.main.CTTextNormalAutofit;
 import org.openxmlformats.schemas.drawingml.x2006.main.CTTextParagraphProperties;
+import org.openxmlformats.schemas.drawingml.x2006.main.CTTextTabStop;
 import org.openxmlformats.schemas.drawingml.x2006.main.STSchemeColorVal;
 
 import stirling.software.officeconvert.topdf.font.FontFace;
@@ -81,11 +79,15 @@ final class TextStyles {
 
     private final Deck deck;
 
+    private final ResolvedStyles resolved = new ResolvedStyles();
+
     TextStyles(Deck deck) {
         this.deck = deck;
     }
 
     Para paragraph(XSLFTextParagraph p, Scope scope, Numbering numbering) throws IOException {
+        ResolvedStyles.Level level = resolved.of(p);
+        ParaStyle style = level.paragraph();
         List<Piece> pieces = new ArrayList<>();
         for (XSLFTextRun r : p.getTextRuns()) {
             XmlObject x = r.getXmlObject();
@@ -100,35 +102,35 @@ final class TextStyles {
             if (text == null || text.isEmpty()) {
                 continue;
             }
-            pieces.addAll(pieces(r, text.replace('\u000B', '\n').replace('\r', '\n'), scope));
+            pieces.addAll(pieces(r, text.replace('\u000B', '\n').replace('\r', '\n'), scope, level));
         }
         Para.EmptyLine empty = new Para.EmptyLine(() -> probe(p, scope));
-        TextAlign align = p.getTextAlign();
-        float marL = points(p.getLeftMargin(), 0);
-        float marR = points(p.getRightMargin(), 0);
-        float indent = points(p.getIndent(), 0);
-        Double spacing = p.getLineSpacing();
+        TextAlign align = style.textAlign(p);
+        float marL = points(style.leftMargin(p), 0);
+        float marR = points(style.rightMargin(p), 0);
+        float indent = points(style.indent(p), 0);
+        Double spacing = style.lineSpacing(p);
         Para.Spacing line = Para.Spacing.of(spacing, Para.Spacing.SINGLE);
         float reduction = autofit(p.getParentShape(), false);
         if (reduction > 0 && (spacing == null || spacing > 0)) {
             double percent = spacing == null ? 1 : spacing / 100 / (1 - reduction);
             line = new Para.Spacing((float) Math.max(0.1, percent - reduction), -1);
         }
-        Para.Spacing before = Para.Spacing.of(p.getSpaceBefore(), Para.Spacing.NONE);
-        Para.Spacing after = Para.Spacing.of(p.getSpaceAfter(), Para.Spacing.NONE);
-        float defTab = points(p.getDefaultTabSize(), 72);
-        List<Para.Tab> tabs = tabs(p);
-        int level = p.getIndentLevel();
-        boolean rtl = rtl(p);
+        Para.Spacing before = Para.Spacing.of(style.spaceBefore(p), Para.Spacing.NONE);
+        Para.Spacing after = Para.Spacing.of(style.spaceAfter(p), Para.Spacing.NONE);
+        float defTab = points(style.defaultTabSize(p), 72);
+        List<Para.Tab> tabs = tabs(p, style);
+        int indentLevel = p.getIndentLevel();
+        boolean rtl = rtl(p, style);
         Para para = new Para(pieces, empty, align == null ? TextAlign.LEFT : align, marL, marR, indent, line, before,
-                after, defTab > 0 ? defTab : 72, tabs, null, level, rtl);
-        Para.Bullet bullet = Bullets.picture(deck, p, para, numbering);
+                after, defTab > 0 ? defTab : 72, tabs, null, indentLevel, rtl);
+        Para.Bullet bullet = Bullets.picture(deck, p, style, para, numbering);
         if (bullet == null) {
-            bullet = Bullets.of(deck.fonts(), p, para, numbering);
+            bullet = Bullets.of(deck.fonts(), p, style, para, numbering);
         }
         return bullet == null ? para
                 : new Para(pieces, empty, para.align(), marL, marR, indent, line, before, after, para.defTab(), tabs,
-                        bullet, level, rtl);
+                        bullet, indentLevel, rtl);
     }
 
     // The stored shrink: sizes round to whole points; the reduction takes points off any percentage spacing
@@ -148,13 +150,9 @@ final class TextStyles {
         }
     }
 
-    private static boolean rtl(XSLFTextParagraph p) {
+    private static boolean rtl(XSLFTextParagraph p, ParaStyle style) {
         try {
-            Boolean v = new ParagraphPropertyFetcher<Boolean>(p, (props, val) -> {
-                if (props.isSetRtl()) {
-                    val.accept(props.getRtl());
-                }
-            }).fetchProperty(p.getParentShape());
+            Boolean v = style.rtl(p);
             return v != null && v;
         } catch (RuntimeException e) {
             return false;
@@ -165,10 +163,10 @@ final class TextStyles {
         return d == null || !Double.isFinite(d) ? fallback : d.floatValue();
     }
 
-    private static List<Para.Tab> tabs(XSLFTextParagraph p) {
-        List<XSLFTabStop> stops;
+    private static List<Para.Tab> tabs(XSLFTextParagraph p, ParaStyle style) {
+        List<CTTextTabStop> stops;
         try {
-            stops = p.getTabStops();
+            stops = style.tabStops(p);
         } catch (RuntimeException e) {
             stops = null;
         }
@@ -176,12 +174,12 @@ final class TextStyles {
             return List.of();
         }
         List<Para.Tab> out = new ArrayList<>();
-        for (XSLFTabStop t : stops) {
-            double pos = t.getPositionInPoints();
+        for (CTTextTabStop t : stops) {
+            double pos = Units.toPoints(POIXMLUnits.parseLength(t.xgetPos()));
             if (Double.isFinite(pos) && pos >= 0) {
                 TabStopType type;
                 try {
-                    type = t.getType();
+                    type = TabStopType.fromOoxmlId(t.getAlgn().intValue());
                 } catch (RuntimeException e) {
                     type = null;
                 }
@@ -208,7 +206,7 @@ final class TextStyles {
             if (end != null && r.getXmlObject() instanceof CTRegularTextRun run) {
                 run.setRPr((CTTextCharacterProperties) end.copy());
             }
-            List<Piece> list = pieces(r, " ", scope);
+            List<Piece> list = pieces(r, " ", scope, resolved.of(p));
             return list.isEmpty() ? null : list.get(0).withText("");
         } catch (IOException | RuntimeException e) {
             return null;
@@ -223,8 +221,11 @@ final class TextStyles {
         }
     }
 
-    List<Piece> pieces(XSLFTextRun r, String raw, Scope scope) throws IOException {
-        Double sz = r.getParagraph().getParentShape() instanceof XSLFTableCell ? cellSize(r) : r.getFontSize();
+    private List<Piece> pieces(XSLFTextRun r, String raw, Scope scope, ResolvedStyles.Level level) throws IOException {
+        RunStyle style = level.run();
+        boolean plain = RunStyle.plain(r);
+        Double sz = r.getParagraph().getParentShape() instanceof XSLFTableCell ? cellSize(r, level)
+                : style.fontSize(r);
         float fontScale = 1 - autofit(r.getParagraph().getParentShape(), true);
         float size = sz == null || !(sz > 0) ? DEFAULT_SIZE * fontScale : (float) Math.min(4000, Math.max(0.5, sz));
         if (fontScale != 1) {
@@ -232,24 +233,23 @@ final class TextStyles {
         }
         Defaults d = scope.defaults() == null ? Defaults.NONE : scope.defaults();
         CTTextCharacterProperties own = r.getRPr(false);
-        boolean bold = d.bold() != null && !explicit(own, "b") ? d.bold() : r.isBold();
-        boolean italic = d.italic() != null && !explicit(own, "i") ? d.italic() : r.isItalic();
-        boolean underline = r.isUnderlined();
-        boolean strike = r.isStrikethrough();
+        boolean bold = d.bold() != null && !explicit(own, "b") ? d.bold() : plain ? style.bold(r) : r.isBold();
+        boolean italic = d.italic() != null && !explicit(own, "i") ? d.italic() : plain ? style.italic(r) : r.isItalic();
+        boolean underline = style.underlined(r);
+        boolean strike = style.strikethrough(r);
         Color color = null;
         if (d.color() != null && !hasFill(own, r)) {
             color = d.color();
         } else {
-            PaintStyle ps = r.getFontColor();
-            color = Paints.solid(ps);
+            color = plain ? style.solidColor(r) : Paints.solid(r.getFontColor());
         }
         if (color == null) {
             color = Color.BLACK;
         }
-        if (noFill(r)) {
+        if (noFill(r, style)) {
             color = new Color(0, 0, 0, 0);
         }
-        Stroke outline = outline(r);
+        Stroke outline = outline(r, style);
         String link = null;
         CTHyperlink h = own == null ? null : own.getHlinkClick();
         if (h != null) {
@@ -262,13 +262,13 @@ final class TextStyles {
             }
             underline = true;
         }
-        float spc = (float) r.getCharacterSpacing();
-        TextCap cap = r.getTextCap();
-        float rise = rise(r);
-        Color highlight = Paints.solid(r.getHighlightColor());
-        int kern = kern(r);
+        float spc = (float) style.characterSpacing(r);
+        TextCap cap = style.textCap(r);
+        float rise = rise(r, style);
+        Color highlight = Paints.solid(style.highlightColor(r));
+        int kern = kern(r, style);
         boolean cell = r.getParagraph().getParentShape() instanceof XSLFTableCell;
-        String latin = cell ? cellFamily(r, FontGroup.LATIN, d.latin()) : family(r, FontGroup.LATIN);
+        String latin = cell ? cellFamily(r, FontGroup.LATIN, d.latin(), level) : family(r, FontGroup.LATIN, style);
         if (latin == null) {
             latin = d.latin() != null ? d.latin() : themeFont(r);
         }
@@ -277,7 +277,7 @@ final class TextStyles {
             text = text.toUpperCase(Locale.ROOT);
         }
         float drawSize = rise != 0 ? size * 2 / 3f : size;
-        Shadows.Shadow shadow = textShadow(r);
+        Shadows.Shadow shadow = textShadow(r, style);
         if (shadow == null) {
             shadow = d.shadow();
         }
@@ -296,11 +296,12 @@ final class TextStyles {
             }
             String chunk = text.substring(start, i);
             String family = switch (s) {
-                case EAST_ASIAN -> or(cell ? cellFamily(r, FontGroup.EAST_ASIAN, null)
-                        : family(r, FontGroup.EAST_ASIAN), latin);
-                case COMPLEX -> or(cell ? cellFamily(r, FontGroup.COMPLEX_SCRIPT, null)
-                        : family(r, FontGroup.COMPLEX_SCRIPT), latin);
-                case SYMBOL -> or(cell ? cellFamily(r, FontGroup.SYMBOL, null) : family(r, FontGroup.SYMBOL), latin);
+                case EAST_ASIAN -> or(cell ? cellFamily(r, FontGroup.EAST_ASIAN, null, level)
+                        : family(r, FontGroup.EAST_ASIAN, style), latin);
+                case COMPLEX -> or(cell ? cellFamily(r, FontGroup.COMPLEX_SCRIPT, null, level)
+                        : family(r, FontGroup.COMPLEX_SCRIPT, style), latin);
+                case SYMBOL -> or(cell ? cellFamily(r, FontGroup.SYMBOL, null, level)
+                        : family(r, FontGroup.SYMBOL, style), latin);
                 default -> latin;
             };
             Standins.Emulation emulation = deck.standins().emulate(family, bold, italic);
@@ -333,16 +334,9 @@ final class TextStyles {
     }
 
     // Text drawn without a fill shows only its outline, if any
-    private static boolean noFill(XSLFTextRun r) {
+    private static boolean noFill(XSLFTextRun r, RunStyle style) {
         try {
-            Boolean none = new CharacterPropertyFetcher<Boolean>(r, (props, val) -> {
-                if (props.isSetNoFill()) {
-                    val.accept(true);
-                } else if (props.isSetSolidFill() || props.isSetGradFill() || props.isSetPattFill()
-                        || props.isSetBlipFill()) {
-                    val.accept(false);
-                }
-            }).fetchProperty(r.getParagraph().getParentShape());
+            Boolean none = style.noFill(r);
             return none != null && none;
         } catch (RuntimeException e) {
             return false;
@@ -350,13 +344,9 @@ final class TextStyles {
     }
 
     // The glyph outline of WordArt and outlined text; a line without a fill draws nothing
-    static Stroke outline(XSLFTextRun r) {
+    private static Stroke outline(XSLFTextRun r, RunStyle style) {
         try {
-            CTLineProperties ln = new CharacterPropertyFetcher<CTLineProperties>(r, (props, val) -> {
-                if (props.isSetLn()) {
-                    val.accept(props.getLn());
-                }
-            }).fetchProperty(r.getParagraph().getParentShape());
+            CTLineProperties ln = style.outline(r);
             if (ln == null || ln.isSetNoFill()) {
                 return null;
             }
@@ -376,10 +366,10 @@ final class TextStyles {
     }
 
     // Table text skips the presentation's default text style: the master's other style, else 18 pt
-    static Double cellSize(XSLFTextRun r) {
+    private static Double cellSize(XSLFTextRun r, ResolvedStyles.Level level) {
         try {
             List<CTTextCharacterProperties> chain = cellChain(r);
-            CTTextParagraphProperties master = r.getParagraph().getDefaultMasterStyle();
+            CTTextParagraphProperties master = level.chain().masterStyle().get();
             chain.add(master == null ? null : master.getDefRPr());
             for (CTTextCharacterProperties c : chain) {
                 if (c != null && c.isSetSz()) {
@@ -406,7 +396,7 @@ final class TextStyles {
     }
 
     // Table text takes its font from the cell, then the table style, then the master, never the presentation default
-    static String cellFamily(XSLFTextRun r, FontGroup g, String tableFont) {
+    private static String cellFamily(XSLFTextRun r, FontGroup g, String tableFont, ResolvedStyles.Level level) {
         try {
             for (CTTextCharacterProperties c : cellChain(r)) {
                 String f = typeface(c, g, r);
@@ -417,7 +407,7 @@ final class TextStyles {
             if (tableFont != null && !tableFont.isBlank()) {
                 return tableFont;
             }
-            CTTextParagraphProperties master = r.getParagraph().getDefaultMasterStyle();
+            CTTextParagraphProperties master = level.chain().masterStyle().get();
             return master == null ? null : typeface(master.getDefRPr(), g, r);
         } catch (RuntimeException e) {
             return null;
@@ -464,16 +454,10 @@ final class TextStyles {
     }
 
     // A text shadow set on the run or inherited from its paragraph, list or master styles
-    private static Shadows.Shadow textShadow(XSLFTextRun r) {
+    private static Shadows.Shadow textShadow(XSLFTextRun r, RunStyle style) {
         try {
-            CTOuterShadowEffect none = CTOuterShadowEffect.Factory.newInstance();
-            CTOuterShadowEffect ct = new CharacterPropertyFetcher<CTOuterShadowEffect>(r, (props, val) -> {
-                if (props.isSetEffectLst()) {
-                    CTOuterShadowEffect o = props.getEffectLst().getOuterShdw();
-                    val.accept(o == null ? none : o);
-                }
-            }).fetchProperty(r.getParagraph().getParentShape());
-            return ct == null || ct == none ? null : Shadows.of(ct, r.getParagraph().getParentShape().getSheet());
+            CTOuterShadowEffect ct = style.shadow(r);
+            return ct == null ? null : Shadows.of(ct, r.getParagraph().getParentShape().getSheet());
         } catch (RuntimeException e) {
             return null;
         }
@@ -518,9 +502,9 @@ final class TextStyles {
         return new TextStyle(face, size, color, Float.isFinite(spc) ? spc : 0, scale, 0, kerning);
     }
 
-    private static String family(XSLFTextRun r, FontGroup g) {
+    private static String family(XSLFTextRun r, FontGroup g, RunStyle style) {
         try {
-            String f = r.getFontFamily(g);
+            String f = style.fontFamily(r, g);
             return f == null || f.isBlank() ? null : f;
         } catch (RuntimeException e) {
             return null;
@@ -577,26 +561,18 @@ final class TextStyles {
         }
     }
 
-    private static float rise(XSLFTextRun r) {
+    private static float rise(XSLFTextRun r, RunStyle style) {
         try {
-            Integer v = new CharacterPropertyFetcher<Integer>(r, (props, val) -> {
-                if (props.isSetBaseline()) {
-                    val.accept(POIXMLUnits.parsePercent(props.xgetBaseline()));
-                }
-            }).fetchProperty(r.getParagraph().getParentShape());
+            Integer v = style.baseline(r);
             return v == null ? 0 : Math.max(-1, Math.min(1, v / 100_000f));
         } catch (RuntimeException e) {
             return 0;
         }
     }
 
-    private static int kern(XSLFTextRun r) {
+    private static int kern(XSLFTextRun r, RunStyle style) {
         try {
-            Integer v = new CharacterPropertyFetcher<Integer>(r, (props, val) -> {
-                if (props.isSetKern()) {
-                    val.accept(props.getKern());
-                }
-            }).fetchProperty(r.getParagraph().getParentShape());
+            Integer v = style.kern(r);
             return v == null ? 0 : v;
         } catch (RuntimeException e) {
             return 0;

@@ -326,6 +326,92 @@ class DocxTableEdgeTest {
     }
 
     @Test
+    void aFloatingTableRowAtThePageBottomSplitsLikeAnInlineOne() throws IOException {
+        StringBuilder a = new StringBuilder();
+        StringBuilder b = new StringBuilder();
+        for (int i = 0; i < 40; i++) {
+            a.append(DocxDoc.p("A" + i));
+        }
+        for (int i = 0; i < 20; i++) {
+            b.append(DocxDoc.p("B" + i));
+        }
+        String table = "<w:tbl><w:tblPr><w:tblpPr w:leftFromText=\"180\" w:rightFromText=\"180\""
+                + " w:vertAnchor=\"text\" w:horzAnchor=\"margin\" w:tblpY=\"1\"/><w:tblW w:w=\"4000\""
+                + " w:type=\"dxa\"/></w:tblPr><w:tblGrid><w:gridCol w:w=\"4000\"/></w:tblGrid>" + row("", a.toString())
+                + row("", b.toString()) + row("", DocxDoc.p("C")) + "</w:tbl>";
+        DocxDoc.Rendered r = render("floatsplit", DocxDoc.p("Intro") + table + DocxDoc.p("After"));
+        assertEquals(1, r.word("B0").page(), "the second row starts where the first ends");
+        assertEquals(2, r.word("B19").page());
+        assertEquals(2, r.word("C").page());
+    }
+
+    @Test
+    void aRowBesideARotatedMergedCellStillSplitsAtThePageBottom() throws IOException {
+        StringBuilder body = new StringBuilder();
+        for (int i = 0; i < 40; i++) {
+            body.append(DocxDoc.p("Body" + i));
+        }
+        String merged = "<w:tc><w:tcPr><w:tcW w:w=\"700\" w:type=\"dxa\"/><w:vMerge w:val=\"restart\"/>"
+                + "<w:textDirection w:val=\"btLr\"/></w:tcPr>" + DocxDoc.p("Side") + "</w:tc>";
+        String below = "<w:tc><w:tcPr><w:tcW w:w=\"700\" w:type=\"dxa\"/><w:vMerge/></w:tcPr><w:p/></w:tc>";
+        String wide = "<w:tc><w:tcPr><w:tcW w:w=\"3300\" w:type=\"dxa\"/></w:tcPr>";
+        String table = "<w:tbl><w:tblPr><w:tblW w:w=\"4000\" w:type=\"dxa\"/></w:tblPr><w:tblGrid><w:gridCol"
+                + " w:w=\"700\"/><w:gridCol w:w=\"3300\"/></w:tblGrid><w:tr><w:trPr><w:trHeight w:val=\"1134\"/>"
+                + "</w:trPr>" + merged + wide + DocxDoc.p("Head") + "</w:tc></w:tr><w:tr>" + below + wide
+                + body + "</w:tc></w:tr></w:tbl>";
+        DocxDoc.Rendered r = render("rotatedsplit", fillers(30) + table + "<w:p/>");
+        assertEquals(1, r.word("Body0").page(), "the row starts on the first page");
+        assertEquals(2, r.word("Body39").page());
+    }
+
+    @Test
+    void anOldLayoutSpreadsAPercentageWidthOverTheHangingCellMargins() throws IOException {
+        String table = "<w:tbl><w:tblPr><w:tblW w:w=\"5000\" w:type=\"pct\"/><w:tblBorders>" + border("top", "single", 24)
+                + "</w:tblBorders></w:tblPr><w:tblGrid><w:gridCol w:w=\"9360\"/></w:tblGrid><w:tr><w:tc><w:tcPr>"
+                + "<w:tcW w:w=\"5000\" w:type=\"pct\"/></w:tcPr>" + DocxDoc.p("Cell") + "</w:tc></w:tr></w:tbl><w:p/>";
+        float[] widths = new float[2];
+        int i = 0;
+        for (int mode : new int[] {15, 14}) {
+            String settings = "<w:settings " + DocxDoc.NS + "><w:compat><w:compatSetting w:name=\"compatibilityMode\""
+                    + " w:uri=\"http://schemas.microsoft.com/office/word\" w:val=\"" + mode + "\"/></w:compat>"
+                    + "</w:settings>";
+            DocxDoc.Rendered r = DocxDoc.render(dir, "pct" + mode, new DocxDoc().styles(DEFAULTS).body(table)
+                    .part("settings.xml", "settings",
+                            "application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml", settings)
+                    .bytes());
+            List<Stroke> top = heavy(ink(r, 1), 3);
+            widths[i++] = (float) top.stream().mapToDouble(st -> Math.abs(st.x1() - st.x0())).sum();
+        }
+        assertEquals(468, widths[0], 1);
+        assertEquals(468 + 10.8f, widths[1], 1);
+    }
+
+    @Test
+    void aRowWhoseFirstParagraphBreaksThePageStartsTheNextPage() throws IOException {
+        String breaking = "<w:p><w:pPr><w:pageBreakBefore/></w:pPr><w:r><w:t>Second</w:t></w:r></w:p>";
+        String inner = "<w:p><w:r><w:t>Head</w:t></w:r></w:p><w:p><w:pPr><w:pageBreakBefore/></w:pPr><w:r>"
+                + "<w:t>Inside</w:t></w:r></w:p>";
+        DocxDoc.Rendered r = render("rowbreak", table("", row("", DocxDoc.p("First")) + row("", breaking)
+                + row("", inner)) + "<w:p/>");
+        assertEquals(1, r.word("First").page());
+        assertEquals(2, r.word("Second").page());
+        assertEquals(2, r.word("Inside").page(), "a break further down a cell is not a row break");
+    }
+
+    @Test
+    void aPageAnchoredTableOverTextAboveItsAnchorMovesToTheNextPage() throws IOException {
+        String table = "<w:tbl><w:tblPr><w:tblpPr w:leftFromText=\"180\" w:rightFromText=\"180\""
+                + " w:vertAnchor=\"page\" w:horzAnchor=\"margin\" w:tblpY=\"1440\"/><w:tblW w:w=\"9360\""
+                + " w:type=\"dxa\"/></w:tblPr><w:tblGrid><w:gridCol w:w=\"9360\"/></w:tblGrid>"
+                + row("", DocxDoc.p("Cell")) + "</w:tbl>";
+        DocxDoc.Rendered moved = render("floatover", DocxDoc.p("Contents") + table + "<w:p/>");
+        assertEquals(1, moved.word("Contents").page());
+        assertEquals(2, moved.word("Cell").page());
+        DocxDoc.Rendered kept = render("floatempty", "<w:p/><w:p/>" + table + "<w:p/>");
+        assertEquals(1, kept.word("Cell").page(), "empty paragraphs above it do not move it");
+    }
+
+    @Test
     void textAfterAPageAnchoredTableThatRunsOnGoesOnFromTheTopOfItsLastPage() throws IOException {
         StringBuilder rows = new StringBuilder();
         for (int i = 0; i < 70; i++) {

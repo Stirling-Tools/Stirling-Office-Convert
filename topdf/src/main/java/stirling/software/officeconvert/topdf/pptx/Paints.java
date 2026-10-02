@@ -25,9 +25,63 @@ final class Paints {
             return null;
         }
         try {
-            return DrawPaint.applyColorTransform(style);
+            return DrawPaint.applyColorTransform(new HueInDegrees(style));
         } catch (RuntimeException e) {
             return style.getColor();
+        }
+    }
+
+    private record HueInDegrees(ColorStyle style) implements ColorStyle {
+
+        @Override
+        public Color getColor() {
+            return style.getColor();
+        }
+
+        @Override
+        public int getAlpha() {
+            return style.getAlpha();
+        }
+
+        @Override
+        public int getHueOff() {
+            int off = style.getHueOff();
+            return off == -1 ? -1 : Math.round(off / 60f);
+        }
+
+        @Override
+        public int getHueMod() {
+            return style.getHueMod();
+        }
+
+        @Override
+        public int getSatOff() {
+            return style.getSatOff();
+        }
+
+        @Override
+        public int getSatMod() {
+            return style.getSatMod();
+        }
+
+        @Override
+        public int getLumOff() {
+            return style.getLumOff();
+        }
+
+        @Override
+        public int getLumMod() {
+            return style.getLumMod();
+        }
+
+        @Override
+        public int getShade() {
+            return style.getShade();
+        }
+
+        @Override
+        public int getTint() {
+            return style.getTint();
         }
     }
 

@@ -40,8 +40,16 @@ final class Substitutes {
     private static final List<String> TAIWAN = List.of("Microsoft JhengHei", "PMingLiU", "MingLiU", "Noto Sans TC",
             "Noto Sans CJK TC", "AR PL UMing TW", "WenQuanYi Zen Hei");
 
+    private static final List<String> TAIWAN_SERIF = List.of("PMingLiU", "MingLiU", "Noto Serif TC",
+            "Noto Serif CJK TC", "AR PL UMing TW", "Microsoft JhengHei", "Noto Sans TC", "WenQuanYi Zen Hei");
+
     private static final List<String> KOREAN = List.of("Malgun Gothic", "Gulim", "Dotum", "Batang", "Noto Sans KR",
             "Noto Sans CJK KR", "NanumGothic", "UnDotum", "Baekmuk Gulim");
+
+    private static final List<String> KOREAN_SERIF = List.of("Batang", "Gungsuh", "Noto Serif KR", "Noto Serif CJK KR",
+            "NanumMyeongjo", "UnBatang", "Baekmuk Batang", "Malgun Gothic", "Noto Sans KR", "Noto Sans CJK KR");
+
+    private static final List<String> HANGUL_CELLS = List.of("WenQuanYi Zen Hei", "WenQuanYi Micro Hei");
 
     private static final List<String> SYMBOLS = List.of("Segoe UI Symbol", "Cambria Math", "DejaVu Sans",
             "Noto Sans Symbols", "Noto Sans Symbols 2", "Noto Sans Math", "Symbola", "Arial Unicode MS",
@@ -58,7 +66,8 @@ final class Substitutes {
         put(List.of("Caladea", "Cambria", "Source Serif 4", "Gelasio", "Liberation Serif"), "Cambria");
         put(List.of("Liberation Sans", "Arimo", "Arial", "Helvetica", "Nimbus Sans", "TeX Gyre Heros", "Nimbus Sans L",
                 "FreeSans"), "Arial", "Helvetica", "Helvetica Neue", "Arial MT", "Arial Unicode MS", "MS Sans Serif",
-                "Microsoft Sans Serif", "Swiss", "Arial Black", "Liberation Sans", "Nimbus Sans", "Arimo");
+                "Microsoft Sans Serif", "Swiss", "Arial Mäori", "Liberation Sans", "Nimbus Sans", "Arimo");
+        put(List.of("Archivo Black", "Liberation Sans", "Arimo", "Arial", "Helvetica", "Nimbus Sans"), "Arial Black");
         put(List.of("Liberation Serif", "Tinos", "Times New Roman", "Times", "Nimbus Roman", "TeX Gyre Termes",
                 "Nimbus Roman No9 L", "FreeSerif"), "Times New Roman", "Times", "Times Roman", "TimesNewRoman",
                 "MS Serif", "Roman", "Liberation Serif", "Nimbus Roman", "Tinos");
@@ -107,7 +116,7 @@ final class Substitutes {
                 "Bookman Old Style", "Bookman", "ITC Bookman", "URW Bookman");
         put(List.of("Z003", "TeX Gyre Chorus", "URW Chancery L", "Monotype Corsiva", "Liberation Serif"),
                 "Monotype Corsiva", "Zapf Chancery", "ITC Zapf Chancery", "Z003");
-        put(List.of("Comic Neue", "Comic Relief", "Comic Sans MS", "Liberation Sans", "Arial"), "Comic Sans MS",
+        put(List.of("Comic Relief", "Comic Neue", "Comic Sans MS", "Liberation Sans", "Arial"), "Comic Sans MS",
                 "Comic Sans", "Segoe Print", "Ink Free", "Comic Neue");
         put(List.of("Fira Sans", "Source Sans 3", "Selawik", "DejaVu Sans", "Liberation Sans", "Arial"),
                 "Trebuchet MS", "Bahnschrift");
@@ -145,9 +154,10 @@ final class Substitutes {
         put(JAPANESE_SERIF, "MS Mincho", "MS PMincho", "Yu Mincho", "ＭＳ 明朝", "ＭＳ Ｐ明朝", "游明朝");
         put(CHINESE_SANS, "Microsoft YaHei", "Microsoft YaHei UI", "DengXian", "SimHei", "微软雅黑", "等线", "黑体");
         put(CHINESE_SERIF, "SimSun", "NSimSun", "SimSun-ExtB", "FangSong", "KaiTi", "宋体", "新宋体", "仿宋", "楷体");
-        put(TAIWAN, "PMingLiU", "MingLiU", "Microsoft JhengHei", "新細明體", "細明體", "微軟正黑體");
-        put(KOREAN, "Malgun Gothic", "Gulim", "GulimChe", "Dotum", "DotumChe", "Batang", "BatangChe", "Gungsuh",
-                "맑은 고딕", "굴림", "돋움", "바탕", "궁서");
+        put(TAIWAN, "Microsoft JhengHei", "微軟正黑體");
+        put(TAIWAN_SERIF, "PMingLiU", "MingLiU", "MingLiU-ExtB", "PMingLiU-ExtB", "新細明體", "細明體");
+        put(KOREAN, "Malgun Gothic", "Gulim", "GulimChe", "Dotum", "DotumChe", "맑은 고딕", "굴림", "돋움");
+        put(KOREAN_SERIF, "Batang", "BatangChe", "Gungsuh", "GungsuhChe", "바탕", "궁서");
     }
 
     // Measured against the Office fonts' own advances: every Latin glyph within 0.3 % of an em
@@ -181,6 +191,10 @@ final class Substitutes {
                 "New Century Schoolbook");
         clones(List.of("DejaVu Sans Mono", "Bitstream Vera Sans Mono"), "Lucida Console", "Lucida Sans Typewriter");
         clones(List.of("Z003", "URW Chancery L", "TeX Gyre Chorus"), "Zapf Chancery", "ITC Zapf Chancery");
+        clones(List.of("Comic Relief"), "Comic Sans MS");
+        clones(List.of("Archivo Black"), "Arial Black");
+        clones(List.of("Liberation Sans", "Arimo", "Arial"), "Arial Mäori");
+        clones(List.of("Source Sans 3"), "Source Sans Pro");
     }
 
     private Substitutes() {}
@@ -222,7 +236,7 @@ final class Substitutes {
         String f = FontLibrary.normalize(family);
         List<String> chain = TABLE.get(f);
         if (chain == JAPANESE_SANS || chain == JAPANESE_SERIF || chain == CHINESE_SANS || chain == CHINESE_SERIF
-                || chain == TAIWAN || chain == KOREAN) {
+                || chain == TAIWAN || chain == TAIWAN_SERIF || chain == KOREAN || chain == KOREAN_SERIF) {
             return true;
         }
         String english = FontNames.english(family);
@@ -235,10 +249,10 @@ final class Substitutes {
                 "궁서", "kai", "楷", "fang", "仿");
         List<String> chain = new ArrayList<>();
         if (containsAny(f, "batang", "gulim", "dotum", "gungsuh", "malgun", "nanum", "바탕", "굴림", "돋움", "궁서", "고딕")) {
-            chain.addAll(KOREAN);
-            chain.addAll(JAPANESE_SANS);
+            chain.addAll(serif ? KOREAN_SERIF : KOREAN);
+            chain.addAll(serif ? KOREAN : KOREAN_SERIF);
         } else if (containsAny(f, "mingliu", "jhenghei", "dfkai", "明體", "正黑", "標楷")) {
-            chain.addAll(TAIWAN);
+            chain.addAll(serif ? TAIWAN_SERIF : TAIWAN);
             chain.addAll(CHINESE_SANS);
             chain.addAll(JAPANESE_SANS);
         } else if (containsAny(f, "simsun", "simhei", "yahei", "dengxian", "kaiti", "fangsong", "宋", "黑", "楷", "仿",
@@ -313,6 +327,7 @@ final class Substitutes {
             }
             case HANGUL -> {
                 out.addAll(KOREAN);
+                out.addAll(HANGUL_CELLS);
                 out.addAll(JAPANESE_SANS);
             }
             // DejaVu before Noto: Noto Sans Arabic lines are 2.1 em tall against 1.15 for Arial's Arabic

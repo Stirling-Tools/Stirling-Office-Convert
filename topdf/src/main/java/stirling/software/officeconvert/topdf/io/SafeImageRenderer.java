@@ -71,6 +71,15 @@ public final class SafeImageRenderer implements ImageRenderer {
         return Metafiles.sheet(doc, sheet, width, height, text);
     }
 
+    /** Some of a sheet's shapes (or its master's) drawn over that sheet, on a form of the given size. */
+    public static PDFormXObject drawShapes(PDDocument doc, Sheet<?, ?> sheet,
+            List<? extends Shape<?, ?>> shapes, float width, float height, IPdfBoxGraphics2DFontTextDrawer text)
+            throws IOException {
+        Objects.requireNonNull(doc, "doc");
+        Objects.requireNonNull(sheet, "sheet");
+        return Metafiles.shapes(doc, sheet, List.copyOf(shapes), width, height, text);
+    }
+
     /** The same sheet drawn again part by part, background, master and each shape on a form of its own, for when
      * {@link #drawForm} fails: a part that fails is left out and handed to {@code skipped}. */
     public static List<PDFormXObject> drawParts(PDDocument doc, Sheet<?, ?> sheet, float width, float height,
@@ -118,6 +127,12 @@ public final class SafeImageRenderer implements ImageRenderer {
                         2 * PictureDecoder.DECODE_PIXELS);
                 next = k == PictureDecoder.Kind.EMF ? new HemfImageRenderer() : new HwmfImageRenderer();
                 next.loadImage(bytes, contentType);
+            }
+            case PICT -> {
+                if (bytes.length > PictureDecoder.MAX_METAFILE_BYTES) {
+                    throw new IOException("The picture is too large: " + bytes.length + " bytes");
+                }
+                next = new PictRenderer(Pict.read(bytes));
             }
             default -> {
                 kind = k;
@@ -168,7 +183,7 @@ public final class SafeImageRenderer implements ImageRenderer {
     }
 
     private boolean metafile() {
-        return kind == PictureDecoder.Kind.EMF || kind == PictureDecoder.Kind.WMF;
+        return kind == PictureDecoder.Kind.EMF || kind == PictureDecoder.Kind.WMF || kind == PictureDecoder.Kind.PICT;
     }
 
     private BufferedImage metafileImage(Dimension2D dimension) {
@@ -290,6 +305,65 @@ public final class SafeImageRenderer implements ImageRenderer {
         @Override
         public boolean drawImage(Graphics2D graphics, Rectangle2D anchor, Insets clip) {
             return false;
+        }
+    }
+
+    private static final class PictRenderer implements ImageRenderer {
+
+        private final Pict pict;
+
+        PictRenderer(Pict pict) {
+            this.pict = pict;
+        }
+
+        @Override
+        public boolean canRender(String contentType) {
+            return true;
+        }
+
+        @Override
+        public void loadImage(InputStream data, String contentType) throws IOException {
+            throw new IOException("A decoded picture cannot be reloaded");
+        }
+
+        @Override
+        public void loadImage(byte[] data, String contentType) throws IOException {
+            throw new IOException("A decoded picture cannot be reloaded");
+        }
+
+        @Override
+        public Rectangle2D getNativeBounds() {
+            return pict.bounds();
+        }
+
+        @Override
+        public Rectangle2D getBounds() {
+            return pict.bounds();
+        }
+
+        @Override
+        public void setAlpha(double alpha) {}
+
+        @Override
+        public BufferedImage getImage() {
+            return null;
+        }
+
+        @Override
+        public BufferedImage getImage(Dimension2D dimension) {
+            return null;
+        }
+
+        @Override
+        public boolean drawImage(Graphics2D graphics, Rectangle2D anchor) {
+            pict.draw(graphics, anchor);
+            return true;
+        }
+
+        @Override
+        public boolean drawImage(Graphics2D graphics, Rectangle2D anchor, Insets clip) {
+            pict.draw(graphics, anchor);
+            return true;
         }
     }
 }

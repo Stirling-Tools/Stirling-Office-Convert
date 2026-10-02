@@ -110,6 +110,53 @@ class DocxLineRulesTest {
     }
 
     @Test
+    void defaultsWithoutParagraphPropertiesTakeWordsOwnSpacing() throws IOException {
+        String body = DocxDoc.p("First") + DocxDoc.p("Second");
+        String bare = STYLES.substring(0, STYLES.indexOf("<w:pPrDefault>")) + "</w:docDefaults>";
+        DocxDoc.Rendered set = render("pprset", new DocxDoc().styles(STYLES).body(body));
+        DocxDoc.Rendered missing = render("pprmissing", new DocxDoc().styles(bare).body(body));
+        float single = set.word("Second").y() - set.word("First").y();
+        float word = missing.word("Second").y() - missing.word("First").y();
+        assertEquals(single * 1.15f + 10, word, 0.3f);
+    }
+
+    @Test
+    void anEmptyNumberingPartStillNumbersItsListItems() throws IOException {
+        String item = "<w:numPr><w:ilvl w:val=\"0\"/><w:numId w:val=\"1\"/></w:numPr>";
+        String body = para(item, run("Apples")) + para(item, run("Pears"));
+        DocxDoc.Rendered r = render("emptylist", new DocxDoc().styles(STYLES).numbering("").body(body));
+        assertEquals("1.", r.words().get(0).text());
+        assertEquals("2.", r.words().get(2).text());
+        assertEquals(72 + 36, r.word("Pears").x(), 0.5f);
+    }
+
+    @Test
+    void aDeletedParagraphMarkTakesItsSectionBreakWithIt() throws IOException {
+        String del = "<w:del w:id=\"1\" w:author=\"a\" w:date=\"2020-01-01T00:00:00Z\"/>";
+        String body = para("<w:rPr>" + del + "</w:rPr><w:sectPr><w:pgSz w:w=\"12240\" w:h=\"15840\"/></w:sectPr>",
+                "<w:del w:id=\"2\" w:author=\"a\" w:date=\"2020-01-01T00:00:00Z\"><w:r><w:delText>Gone</w:delText>"
+                + "</w:r></w:del>") + DocxDoc.p("Kept");
+        DocxDoc.Rendered r = render("delsect", new DocxDoc().styles(STYLES).body(body));
+        try (var d = r.open()) {
+            assertEquals(1, d.getNumberOfPages());
+        }
+        assertEquals(1, r.word("Kept").page());
+    }
+
+    @Test
+    void aCharacterGridNarrowsEveryCharacter() throws IOException {
+        String body = DocxDoc.p("AAAAAAAAAA End");
+        String grid = DocxDoc.LETTER.replace("</w:sectPr>", "<w:docGrid w:type=\"linesAndChars\" w:linePitch=\"240\""
+                + " w:charSpace=\"-8192\"/></w:sectPr>");
+        float plain = render("nogrid", new DocxDoc().styles(STYLES).body(body)).word("End").x();
+        float narrow = render("chargrid", new DocxDoc().styles(STYLES).body(body).section(grid)).word("End").x();
+        assertEquals(plain - 11, narrow, 0.5f);
+        String lines = grid.replace("linesAndChars", "lines");
+        assertEquals(plain, render("linegrid", new DocxDoc().styles(STYLES).body(body).section(lines)).word("End").x(),
+                0.05f);
+    }
+
+    @Test
     void lineBreaksOutsideARunStillBreakTheLine() throws IOException {
         DocxDoc.Rendered r = plain("barebr", "<w:p>" + run("First") + "<w:br/>" + run("Second") + "</w:p>");
         assertTrue(r.word("Second").y() > r.word("First").y() + 5, "the bare w:br should start a new line");
@@ -247,5 +294,64 @@ class DocxLineRulesTest {
                 "application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml", settings).body(body)
                 .section(second));
         assertEquals(3, r.word("Contents").page());
+    }
+
+    @Test
+    void aJustifiedLineSqueezesTheSpaceBetweenIdeographsAndDigitsToFitOneMoreCharacter() throws IOException {
+        String text = "\u4E00" + "1\u4E00".repeat(60);
+        int left = firstLineLength(text, "left");
+        int justified = firstLineLength(text, "both");
+        assertTrue(justified > left, left + " then " + justified);
+    }
+
+    @Test
+    void anIdeographicCommaHangsPastTheMarginRatherThanWrapWithTheCharacterBeforeIt() throws IOException {
+        String text = "\u4E00".repeat(45) + "\u89C1\uFF0C" + "\u4E00".repeat(10);
+        int hanging = firstLineLength(text, "both");
+        int kept = firstLineLength(text, "both\"/><w:overflowPunct w:val=\"0");
+        assertEquals(47, hanging, "the comma ends the first line");
+        assertEquals(45, kept);
+        assertEquals(47, firstLineLength(text.substring(0, 47), "both"), "on the paragraph's last line too");
+        assertEquals(45, firstLineLength(text, "left"), "only in a justified paragraph");
+        String cell = "<w:tbl><w:tblPr><w:tblW w:w=\"9600\" w:type=\"dxa\"/></w:tblPr><w:tblGrid><w:gridCol"
+                + " w:w=\"9600\"/></w:tblGrid><w:tr><w:tc><w:tcPr><w:tcW w:w=\"9600\" w:type=\"dxa\"/></w:tcPr>"
+                + "<w:p><w:pPr><w:jc w:val=\"both\"/></w:pPr><w:r><w:rPr><w:rFonts w:eastAsia=\"SimSun\"/></w:rPr><w:t>"
+                + text + "</w:t></w:r></w:p></w:tc></w:tr></w:tbl><w:p/>";
+        String out = DocxDoc.render(dir, "hangcell", new DocxDoc().styles(STYLES).body(cell).bytes()).text();
+        assertEquals(45, out.strip().split("\\R")[0].strip().length(), "a table cell lets nothing hang");
+    }
+
+    @Test
+    void textAfterARightAlignedLabelEndingAtTheIndentStartsThere() throws IOException {
+        String numbering = "<w:abstractNum w:abstractNumId=\"0\"><w:lvl w:ilvl=\"0\"><w:start w:val=\"4\"/>"
+                + "<w:numFmt w:val=\"upperRoman\"/><w:lvlText w:val=\"%1.\"/><w:lvlJc w:val=\"right\"/><w:pPr>"
+                + "<w:ind w:left=\"173\" w:hanging=\"173\"/></w:pPr></w:lvl></w:abstractNum><w:num w:numId=\"1\">"
+                + "<w:abstractNumId w:val=\"0\"/></w:num>";
+        String body = "<w:p><w:pPr><w:numPr><w:ilvl w:val=\"0\"/><w:numId w:val=\"1\"/></w:numPr><w:ind w:left=\"288\""
+                + " w:firstLine=\"0\"/></w:pPr><w:r><w:t xml:space=\"preserve\"> Heading</w:t></w:r></w:p>";
+        DocxDoc.Rendered r = DocxDoc.render(dir, "rightlabel", new DocxDoc().styles(STYLES).numbering(numbering)
+                .body(body).bytes());
+        float x = r.word("Heading").x();
+        assertTrue(x > 86.4 && x < 92, "a space after the label, no default tab gap: " + x);
+    }
+
+    @Test
+    void aLeaderTabWithNoRoomToDrawDotsDoesNotSizeTheLine() throws IOException {
+        String words = "Alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu nu xi omicron pi rho sigma"
+                + " tau upsilon phi chi psi omega alpha beta gamma delta epsilon zeta eta theta";
+        String body = "<w:p><w:pPr><w:tabs><w:tab w:val=\"right\" w:leader=\"dot\" w:pos=\"300\"/></w:tabs></w:pPr>"
+                + "<w:r><w:t>9.</w:t></w:r><w:r><w:rPr><w:sz w:val=\"40\"/></w:rPr><w:tab/></w:r><w:r><w:t>" + words
+                + "</w:t></w:r></w:p>";
+        DocxDoc.Rendered r = DocxDoc.render(dir, "leaderroom", new DocxDoc().styles(STYLES).body(body).bytes());
+        float first = r.words().stream().filter(w -> w.text().startsWith("9.")).findFirst().orElseThrow().y();
+        float second = r.words().stream().filter(w -> w.y() > first + 1).findFirst().orElseThrow().y();
+        assertEquals(11.5, second - first, 0.3, "the line keeps the height of its 10 pt text");
+    }
+
+    private int firstLineLength(String text, String jc) throws IOException {
+        String body = "<w:p><w:pPr><w:jc w:val=\"" + jc + "\"/></w:pPr><w:r><w:rPr><w:rFonts w:eastAsia=\"SimSun\"/>"
+                + "<w:lang w:eastAsia=\"zh-CN\"/></w:rPr><w:t>" + text + "</w:t></w:r></w:p>";
+        String out = DocxDoc.render(dir, "line-" + Integer.toHexString(jc.hashCode()), new DocxDoc().styles(STYLES).body(body).bytes()).text();
+        return out.strip().split("\\R")[0].strip().length();
     }
 }

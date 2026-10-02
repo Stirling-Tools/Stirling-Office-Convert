@@ -123,4 +123,19 @@ class DocxBreakRulesTest {
         assertEquals(11.5, first.y() - r.word("Label").y(), 0.2);
         assertEquals(72, first.x(), 0.5);
     }
+
+    @Test
+    void aPageBreakOpeningAParagraphStaysOnAFullPage() throws IOException {
+        StringBuilder b = new StringBuilder();
+        for (int i = 0; i < 53; i++) {
+            b.append(DocxDoc.p("F" + i));
+        }
+        b.append(para("<w:spacing w:line=\"400\" w:lineRule=\"exact\"/>", ""));
+        b.append(para("<w:spacing w:after=\"240\"/>", run("Last")));
+        b.append(para("", PAGE_BREAK + run("Next")));
+        DocxDoc.Rendered r = render("fullbreak", b.toString());
+        assertEquals(1, r.word("Last").page());
+        assertEquals(2, r.word("Next").page(), "no empty page between them");
+        assertEquals(2, r.pages());
+    }
 }

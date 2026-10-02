@@ -34,6 +34,10 @@ final class SheetPlan {
         this.grid = new Grid(book, reader, ref.name(), ref.part(), job);
         CTWorksheet ws = reader.skeleton();
         this.setup = PageSetup.safe(ws);
+        if (!setup.fitToPage()) {
+            double head = setup.headings() ? new Headings(grid, grid.lastRow()).width(1) : 0;
+            grid.capColumns(setup.printableWidth() * 100.0 / setup.scale() - head);
+        }
         this.drawings = Drawings.read(book, ref.part(), ref.name(), grid);
         String hfDrawing = null;
         try {
@@ -47,6 +51,7 @@ final class SheetPlan {
         if (area != null) {
             ranges.addAll(PrintRanges.parse(area, Math.max(0, grid.lastRow()), Math.max(0, grid.lastCol())));
         }
+        boolean printArea = !ranges.isEmpty();
         if (ranges.isEmpty() && grid.lastRow() >= 0 && grid.lastCol() >= 0) {
             ranges.add(new CellRangeAddress(0, grid.lastRow(), 0, grid.lastCol()));
         }
@@ -62,6 +67,7 @@ final class SheetPlan {
         if (setup.headings()) {
             p.headings(new Headings(grid, grid.lastRow()));
         }
+        p.wholeArea(printArea);
         Paginator.Result result = p.paginate(ranges, this::content, budget);
         this.scale = result.scale();
         pages.addAll(result.pages());
@@ -115,9 +121,14 @@ final class SheetPlan {
             if (r.spillTo >= range.getFirstColumn() && r.spillFrom <= range.getLastColumn()) {
                 sink.add(r.index, r.index, r.spillFrom, r.spillTo);
             }
-            for (CellEntry e : r.cells(range.getFirstColumn(), range.getLastColumn())) {
-                if (e.hasText() || e.format().visible()) {
-                    sink.add(r.index, r.index, e.col(), e.col());
+            if (r.markTo >= 0) {
+                sink.add(r.index, r.index, r.markFrom, r.markTo);
+            }
+            int last = range.getLastColumn() == grid.lastCol() ? Columns.MAX - 1 : range.getLastColumn();
+            for (CellEntry e : r.cells(range.getFirstColumn(), last)) {
+                int col = Math.min(e.col(), range.getLastColumn());
+                if (col == e.col() || grid.columnWidth(e.col()) <= 0) {
+                    sink.add(r.index, r.index, col, col);
                 }
             }
         }
@@ -125,9 +136,7 @@ final class SheetPlan {
         grid.mergesIn(range.getFirstRow(), range.getLastRow(), range.getFirstColumn(), range.getLastColumn(),
                 merges::add);
         for (CellRangeAddress m : merges) {
-            if (grid.cell(m.getFirstRow(), m.getFirstColumn()) != null) {
-                sink.add(m.getFirstRow(), m.getLastRow(), m.getFirstColumn(), m.getLastColumn());
-            }
+            sink.add(m.getFirstRow(), m.getLastRow(), m.getFirstColumn(), m.getLastColumn());
         }
     }
 }

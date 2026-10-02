@@ -37,6 +37,8 @@ final class StyleCache {
 
     private final Map<Integer, FontSpec> fonts = new HashMap<>();
 
+    private final Map<Integer, Boolean> ruled = new HashMap<>();
+
     private final CellFormat fallback;
 
     StyleCache(StylesTable styles, ExcelColors colors) {
@@ -86,6 +88,20 @@ final class StyleCache {
         } catch (RuntimeException e) {
             return fallback;
         }
+    }
+
+    boolean ruled(int index) {
+        if (styles == null || index <= 0 || index >= styles.getNumCellStyles()) {
+            return false;
+        }
+        return ruled.computeIfAbsent(index, i -> {
+            try {
+                CTXf xf = styles.getCellXfAt(i);
+                return xf != null && xf.isSetBorderId() && xf.getBorderId() > 0;
+            } catch (RuntimeException e) {
+                return false;
+            }
+        });
     }
 
     FontSpec font(int fontId) {

@@ -300,4 +300,14 @@ class DocxFlowRulesTest {
         assertEquals(1, r.word("L0").page(), "the inner row starts right after the text on page one");
         assertEquals(2, r.word("L69").page());
     }
+
+    @Test
+    void aHiddenRowInTheDefaultTableStyleStillShowsItsRows() throws IOException {
+        String styles = "<w:style w:type=\"table\" w:default=\"1\" w:styleId=\"TableNormal\"><w:name w:val=\"Normal"
+                + " Table\"/><w:trPr><w:hidden/></w:trPr></w:style>";
+        String table = "<w:tbl><w:tblPr><w:tblW w:w=\"0\" w:type=\"auto\"/></w:tblPr><w:tblGrid><w:gridCol"
+                + " w:w=\"4000\"/></w:tblGrid><w:tr><w:tc>" + DocxDoc.p("Cell") + "</w:tc></w:tr></w:tbl>";
+        DocxDoc.Rendered r = render("stylehidden", styles, DocxDoc.p("Before") + table + DocxDoc.p("After"));
+        assertTrue(r.word("Cell").y() > r.word("Before").y());
+    }
 }

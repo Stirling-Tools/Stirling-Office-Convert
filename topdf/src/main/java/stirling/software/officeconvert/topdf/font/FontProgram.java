@@ -11,6 +11,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.lang.ref.SoftReference;
 import java.nio.file.Files;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Iterator;
@@ -19,6 +20,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReferenceArray;
 
@@ -207,7 +209,7 @@ final class FontProgram {
 
     static final long POOL_BYTES = 64L << 20;
 
-    static final long POOL_FILE_BYTES = 8L << 20;
+    static final long POOL_FILE_BYTES = 32L << 20;
 
     private record Idle(SoftReference<Opened> font, long bytes) {}
 
@@ -263,10 +265,25 @@ final class FontProgram {
     }
 
     private static String poolKey(FontEntry entry) {
-        return entry.data() != null || entry.file() == null ? null : entry.file().toAbsolutePath() + "#" + entry.index();
+        if (entry.data() != null && FontLibrary.bundled(entry)) {
+            return "bundled:" + entry.postScriptName() + "#" + entry.index();
+        }
+        if (entry.data() != null || entry.file() == null) {
+            return null;
+        }
+        try {
+            BasicFileAttributes file = Files.readAttributes(entry.file(), BasicFileAttributes.class);
+            return entry.file().toAbsolutePath() + "#" + entry.index() + "#" + file.size() + "#"
+                    + file.lastModifiedTime().to(TimeUnit.NANOSECONDS) + "#" + file.fileKey();
+        } catch (IOException | RuntimeException e) {
+            return null;
+        }
     }
 
     private static byte[] poolable(FontEntry entry) {
+        if (entry.file() == null) {
+            return entry.data();
+        }
         try {
             return Files.size(entry.file()) > POOL_FILE_BYTES ? null : Files.readAllBytes(entry.file());
         } catch (IOException | RuntimeException e) {
@@ -407,10 +424,22 @@ final class FontProgram {
             return null;
         }
         if (entry.file() != null && entry.index() < 0) {
-            return Font.createFont(Font.TRUETYPE_FONT, entry.file().toFile());
+            if (java.io.File.separatorChar != '\\') {
+                return Font.createFont(Font.TRUETYPE_FONT, entry.file().toFile());
+            }
+            try (InputStream in = Files.newInputStream(entry.file())) {
+                return Font.createFont(Font.TRUETYPE_FONT, in);
+            }
         }
         if (entry.file() != null) {
-            Font[] faces = Font.createFonts(entry.file().toFile());
+            Font[] faces;
+            if (java.io.File.separatorChar != '\\') {
+                faces = Font.createFonts(entry.file().toFile());
+            } else {
+                try (InputStream in = Files.newInputStream(entry.file())) {
+                    faces = Font.createFonts(in);
+                }
+            }
             for (Font f : faces) {
                 if (entry.postScriptName() != null && entry.postScriptName().equals(f.getPSName())) {
                     return f;

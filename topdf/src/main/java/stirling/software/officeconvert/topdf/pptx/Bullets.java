@@ -5,7 +5,6 @@ import java.io.IOException;
 import java.util.List;
 
 import org.apache.poi.sl.usermodel.AutoNumberingScheme;
-import org.apache.poi.xslf.model.ParagraphPropertyFetcher;
 import org.apache.poi.xslf.usermodel.XSLFSheet;
 import org.apache.poi.xslf.usermodel.XSLFTextParagraph;
 import org.apache.poi.xslf.usermodel.XSLFTextShape;
@@ -25,20 +24,20 @@ final class Bullets {
 
     private Bullets() {}
 
-    static Para.Bullet of(FontLibrary fonts, XSLFTextParagraph p, Para para, Numbering numbering) {
+    static Para.Bullet of(FontLibrary fonts, XSLFTextParagraph p, ParaStyle style, Para para, Numbering numbering) {
         boolean bulleted;
         try {
-            bulleted = p.isBullet();
+            bulleted = style.isBullet(p);
         } catch (RuntimeException e) {
             bulleted = false;
         }
         if (para.isEmpty()) {
             return null;
         }
-        AutoNumberingScheme scheme = bulleted ? p.getAutoNumberingScheme() : null;
+        AutoNumberingScheme scheme = bulleted ? style.autoNumberingScheme(p) : null;
         String text = null;
         if (scheme != null) {
-            Integer start = p.getAutoNumberingStartAt();
+            Integer start = style.autoNumberingStartAt(p);
             int n = numbering.next(para.level(), scheme, start == null ? 1 : start);
             try {
                 text = Numerals.autoNumber(scheme.name(), n);
@@ -51,7 +50,7 @@ final class Bullets {
         } else {
             numbering.plain(para.level());
             if (bulleted) {
-                text = p.getBulletCharacter();
+                text = style.bulletCharacter(p);
             }
         }
         if (text == null || text.isEmpty()) {
@@ -59,17 +58,17 @@ final class Bullets {
         }
         Piece first = firstVisible(para);
         float size = first.size() / (first.rise() != 0 ? 2 / 3f : 1);
-        Double bs = p.getBulletFontSize();
+        Double bs = style.bulletFontSize(p);
         if (bs != null && Double.isFinite(bs)) {
             size = bs >= 0 ? (float) (size * bs / 100) : (float) -bs;
         }
         size = Math.max(0.5f, size);
-        Color color = Paints.solid(p.getBulletFontColor());
+        Color color = Paints.solid(style.bulletFontColor(p));
         if (color == null) {
             color = first.style().color();
         }
         FontFace face = first.style().face();
-        String family = scheme != null ? null : p.getBulletFont();
+        String family = scheme != null ? null : style.bulletFont(p);
         if (family != null && !family.isBlank()) {
             face = fonts.find(themeFont(p.getParentShape(), family), false, false);
         }
@@ -79,22 +78,15 @@ final class Bullets {
                 0, null, null, null, null, null));
     }
 
-    private static final Object OTHER = new Object();
-
     // A picture bullet is 0.7 of the text size high (times buSzPct) and stands on the baseline
-    static Para.Bullet picture(Deck deck, XSLFTextParagraph p, Para para, Numbering numbering) throws IOException {
+    static Para.Bullet picture(Deck deck, XSLFTextParagraph p, ParaStyle style, Para para, Numbering numbering)
+            throws IOException {
         if (para.isEmpty()) {
             return null;
         }
         Object found;
         try {
-            found = new ParagraphPropertyFetcher<Object>(p, (props, val) -> {
-                if (props.isSetBuBlip()) {
-                    val.accept(props.getBuBlip());
-                } else if (props.isSetBuNone() || props.isSetBuChar() || props.isSetBuAutoNum()) {
-                    val.accept(OTHER);
-                }
-            }).fetchProperty(p.getParentShape());
+            found = style.bulletPicture(p);
         } catch (RuntimeException e) {
             return null;
         }
@@ -109,7 +101,7 @@ final class Bullets {
         numbering.plain(para.level());
         Piece first = firstVisible(para);
         float size = first.size() / (first.rise() != 0 ? 2 / 3f : 1);
-        Double bs = p.getBulletFontSize();
+        Double bs = style.bulletFontSize(p);
         if (bs != null && Double.isFinite(bs)) {
             size = bs >= 0 ? (float) (size * bs / 100) : (float) -bs;
         }

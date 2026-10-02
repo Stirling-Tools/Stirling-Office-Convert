@@ -94,6 +94,43 @@ class PptxSmartArtTest {
     }
 
     @Test
+    void smartArtTextWithoutAColourTakesItFromTheColourDefinition() throws IOException {
+        String text = shape(1, "rect", 0, 0, 5486400, 3657600, "Ink").replace("<a:fontRef idx=\"minor\">"
+                + "<a:schemeClr val=\"lt1\"/></a:fontRef>", "<a:fontRef idx=\"minor\"/>").replace("sz=\"1800\"",
+                "sz=\"9600\"");
+        Fixtures.Zip z = Fixtures.edit(smartArt(text, true, "drawing1.xml"));
+        z.put("ppt/diagrams/data1.xml", z.text("ppt/diagrams/data1.xml").replace("</dgm:ptLst>",
+                "<dgm:pt modelId=\"{00000001-0000-0000-0000-000000000000}\" type=\"pres\"><dgm:prSet "
+                + "presStyleLbl=\"alignAccFollowNode1\" presStyleIdx=\"0\" presStyleCnt=\"1\"/><dgm:spPr/></dgm:pt>"
+                + "</dgm:ptLst>"));
+        z.put("ppt/diagrams/colors1.xml", "<dgm:colorsDef xmlns:dgm=\"" + DGM + "\" xmlns:a=\"" + Decks.A + "\" "
+                + "uniqueId=\"urn:microsoft.com/office/officeart/2005/8/colors/colorful4\"><dgm:styleLbl "
+                + "name=\"alignAccFollowNode1\"><dgm:fillClrLst/><dgm:linClrLst/><dgm:effectClrLst/><dgm:txLinClrLst/>"
+                + "<dgm:txFillClrLst meth=\"repeat\"><a:schemeClr val=\"dk1\"/></dgm:txFillClrLst><dgm:txEffectClrLst/>"
+                + "</dgm:styleLbl></dgm:colorsDef>");
+        String master = "ppt/slideMasters/slideMaster1.xml";
+        z.put(master, z.text(master).replace("bg1=\"lt1\" tx1=\"dk1\"", "bg1=\"dk1\" tx1=\"lt1\""));
+        java.awt.image.BufferedImage page = Decks.convert(dir, "smartartfill.pptx", z.bytes()).render(0, 36);
+        int dark = 0;
+        for (int y = 40; y < 175; y++) {
+            for (int x = 40; x < 248; x++) {
+                int rgb = page.getRGB(x, y);
+                if (((rgb >> 16) & 0xFF) < 80 && ((rgb >> 8) & 0xFF) < 80 && (rgb & 0xFF) < 80) {
+                    dark++;
+                }
+            }
+        }
+        assertTrue(dark > 50, "dark text pixels: " + dark);
+    }
+
+    @Test
+    void smartArtFindsADrawingNumberedApartFromItsData() throws IOException {
+        byte[] pptx = smartArt(shape(1, "ellipse", 0, 0, 2743200, 1371600, "Literacy outcome"), true, "drawing7.xml");
+        Decks.Converted c = Decks.convert(dir, "smartart7.pptx", pptx);
+        assertTrue(c.text().contains("Literacy outcome"), c.text() + " " + c.result().warnings());
+    }
+
+    @Test
     void smartArtDrawsWithALowerCaseContentType() throws IOException {
         byte[] pptx = smartArt(shape(1, "ellipse", 0, 0, 2743200, 1371600, "Literacy outcome"), true, "drawing1.xml");
         Fixtures.Zip z = Fixtures.edit(pptx);

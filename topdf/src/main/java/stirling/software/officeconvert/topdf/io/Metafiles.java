@@ -69,15 +69,19 @@ final class Metafiles {
         if (data.length > PictureDecoder.MAX_METAFILE_BYTES) {
             throw new IOException("The metafile is too large: " + data.length + " bytes");
         }
-        MetafileGuard.check(data, kind == PictureDecoder.Kind.EMF, PictureDecoder.DECODE_PIXELS,
-                2 * PictureDecoder.DECODE_PIXELS);
+        if (kind != PictureDecoder.Kind.PICT) {
+            MetafileGuard.check(data, kind == PictureDecoder.Kind.EMF, PictureDecoder.DECODE_PIXELS,
+                    2 * PictureDecoder.DECODE_PIXELS);
+        }
         Painter painter;
         Rectangle2D bounds;
         try {
-            if (kind == PictureDecoder.Kind.EMF) {
-                HemfPicture emf = new HemfPicture(new ByteArrayInputStream(data));
-                bounds = emf.getBoundsInPoints();
-                painter = emf::draw;
+            if (kind == PictureDecoder.Kind.PICT) {
+                Pict pict = Pict.read(data);
+                bounds = pict.bounds();
+                painter = pict::draw;
+            } else if (kind == PictureDecoder.Kind.EMF) {
+                return emf(doc, new HemfPicture(new ByteArrayInputStream(data)));
             } else {
                 HwmfPicture wmf = new HwmfPicture(new ByteArrayInputStream(data));
                 bounds = wmf.getBoundsInPoints();
@@ -86,6 +90,26 @@ final class Metafiles {
         } catch (RuntimeException e) {
             throw new IOException("The metafile could not be read: " + e.getMessage(), e);
         }
+        return render(doc, kind, painter, bounds);
+    }
+
+    static DecodedPicture emf(PDDocument doc, HemfPicture emf) throws IOException {
+        EmfFrames.Placement place = EmfFrames.of(emf.getHeader());
+        Rectangle2D bounds = place == null ? emf.getBoundsInPoints()
+                : new Rectangle2D.Double(0, 0, place.widthPoints(), place.heightPoints());
+        Painter painter = (g, r) -> {
+            if (place == null) {
+                EmfDrawing.draw(emf, g, r);
+            } else {
+                g.setRenderingHint(Drawable.EMF_FORCE_HEADER_BOUNDS, true);
+                EmfDrawing.draw(emf, g, place.target(r));
+            }
+        };
+        return render(doc, PictureDecoder.Kind.EMF, painter, bounds);
+    }
+
+    private static DecodedPicture render(PDDocument doc, PictureDecoder.Kind kind, Painter painter, Rectangle2D bounds)
+            throws IOException {
         float w = side(bounds.getWidth());
         float h = side(bounds.getHeight());
         stopIfInterrupted();
@@ -183,6 +207,16 @@ final class Metafiles {
     static PDFormXObject sheet(PDDocument doc, Sheet<?, ?> sheet, float w, float h, IPdfBoxGraphics2DFontTextDrawer text)
             throws IOException {
         return sheetPart(doc, sheet, w, h, text, g -> SafeImageRenderer.draw(g, sheet));
+    }
+
+    static PDFormXObject shapes(PDDocument doc, Sheet<?, ?> sheet,
+            List<? extends org.apache.poi.sl.usermodel.Shape<?, ?>> shapes, float w, float h,
+            IPdfBoxGraphics2DFontTextDrawer text) throws IOException {
+        return sheetPart(doc, sheet, w, h, text, g -> {
+            for (org.apache.poi.sl.usermodel.Shape<?, ?> shape : shapes) {
+                SafeImageRenderer.draw(g, shape);
+            }
+        });
     }
 
     // Background, master and each shape on a form of its own, so one that fails loses only itself
