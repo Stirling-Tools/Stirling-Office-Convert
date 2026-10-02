@@ -17,9 +17,12 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 import java.util.zip.ZipOutputStream;
 
+import org.apache.pdfbox.Loader;
+import org.apache.pdfbox.pdmodel.PDDocument;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import stirling.software.officeconvert.topdf.OfficeToPdf;
 import stirling.software.officeconvert.topdf.testing.Allocation;
 
 class VsdxBoundsTest {
@@ -139,7 +142,12 @@ class VsdxBoundsTest {
             shapes.append(SHAPE.replace("ID='1'", "ID='" + (i + 1) + "'"))
                     .append(VsdxPackageTest.RECT_GEOMETRY).append("<Text>S").append(i).append("</Text></Shape>");
         }
-        Converted result = convert(VsdxPackageTest.drawing(shapes.toString(), ""));
+        Map<String, String> input = VsdxPackageTest.drawing(shapes.toString(), "");
+        Converted[] output = new Converted[1];
+        Allocation.Measured measured = Allocation.measure(() -> output[0] = convert(input));
+        assertNull(measured.failure(), String.valueOf(measured.failure()));
+        assertTrue(measured.bytes() < 1024L << 20, "allocated " + measured.megabytes() + " MB");
+        Converted result = output[0];
         assertFalse(result.outcome().lost(), result.outcome().toString());
         String xml = result.parts().get("ppt/slides/slide1.xml");
         int end = 0;
@@ -148,6 +156,32 @@ class VsdxBoundsTest {
             int start = xml.indexOf(text, end);
             assertTrue(start >= 0, "missing shape " + i);
             end = start + text.length();
+        }
+        OfficeToPdf.Result pdf = OfficeToPdf.convert(dir.resolve("bounds.vsdx"), dir.resolve("dense.pdf"));
+        assertEquals(1, pdf.pages());
+        assertFalse(pdf.truncated(), pdf.toString());
+    }
+
+    @Test
+    void bigPagesKeepTheirAspectAndGeometryScale() throws IOException {
+        for (int[] size : new int[][] {{80, 10, 80, 10}, {250, 100, 200, 80}}) {
+            Map<String, String> parts = VsdxPackageTest.drawing(SHAPE + VsdxPackageTest.RECT_GEOMETRY
+                    + "<Text>Large page</Text></Shape>", "");
+            parts.put("visio/pages/pages.xml", parts.get("visio/pages/pages.xml")
+                    .replace("N='PageWidth' V='8'", "N='PageWidth' V='" + size[0] + "'")
+                    .replace("N='PageHeight' V='4'", "N='PageHeight' V='" + size[1] + "'"));
+            Converted result = convert(parts);
+            assertFalse(result.outcome().lost(), result.outcome().toString());
+            long scaleWidth = Math.round(2 * PageWriter.EMU * size[2] / size[0]);
+            long scaleHeight = Math.round(PageWriter.EMU * size[2] / size[0]);
+            assertTrue(result.parts().get("ppt/slides/slide1.xml")
+                    .contains("<a:ext cx=\"" + scaleWidth + "\" cy=\"" + scaleHeight + "\"/>"));
+            Path pdf = dir.resolve("large.pdf");
+            OfficeToPdf.convert(dir.resolve("bounds.vsdx"), pdf);
+            try (PDDocument doc = Loader.loadPDF(pdf.toFile())) {
+                assertEquals(size[2] * 72f, doc.getPage(0).getMediaBox().getWidth(), .1f);
+                assertEquals(size[3] * 72f, doc.getPage(0).getMediaBox().getHeight(), .1f);
+            }
         }
     }
 }
