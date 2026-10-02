@@ -5,24 +5,13 @@ import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.List;
 
+import stirling.software.officeconvert.topdf.xls.StyleNames;
 import stirling.software.officeconvert.topdf.xls.Xml;
 
 /** styles.bin read into the styles.xml the XLSX renderer reads, keeping the fonts for rich text runs. */
 final class Styles {
 
     static final int MAX_ITEMS = 65_536;
-
-    private static final String[] PATTERNS = {"none", "solid", "mediumGray", "darkGray", "lightGray", "darkHorizontal",
-        "darkVertical", "darkDown", "darkUp", "darkGrid", "darkTrellis", "lightHorizontal", "lightVertical",
-        "lightDown", "lightUp", "lightGrid", "lightTrellis", "gray125", "gray0625"};
-
-    private static final String[] BORDERS = {"none", "thin", "medium", "dashed", "dotted", "thick", "double", "hair",
-        "mediumDashed", "dashDot", "mediumDashDot", "dashDotDot", "mediumDashDotDot", "slantDashDot"};
-
-    private static final String[] HORIZONTAL = {"general", "left", "center", "right", "fill", "justify",
-        "centerContinuous", "distributed"};
-
-    private static final String[] VERTICAL = {"top", "center", "bottom", "justify", "distributed"};
 
     private static final int GRADIENT = 40;
 
@@ -125,13 +114,7 @@ final class Styles {
         if ((flags & 0x20) != 0) {
             b.append("<shadow/>");
         }
-        String u = switch (underline) {
-            case 1 -> "single";
-            case 2 -> "double";
-            case 0x21 -> "singleAccounting";
-            case 0x22 -> "doubleAccounting";
-            default -> null;
-        };
+        String u = StyleNames.underline(underline);
         if (u != null) {
             b.append("<u val=\"").append(u).append("\"/>");
         }
@@ -181,7 +164,7 @@ final class Styles {
         }
         Data.Color fg = d.color();
         Data.Color bg = d.color();
-        String type = pattern >= 0 && pattern < PATTERNS.length ? PATTERNS[pattern] : "none";
+        String type = StyleNames.pattern(pattern);
         return "<fill><patternFill patternType=\"" + type + "\">" + fg.element("fgColor") + bg.element("bgColor")
                 + "</patternFill></fill>";
     }
@@ -193,7 +176,7 @@ final class Styles {
         for (int i = 0; i < 5; i++) {
             int style = d.u16();
             Data.Color c = d.color();
-            String s = style >= 0 && style < BORDERS.length ? BORDERS[style] : "none";
+            String s = StyleNames.border(style);
             xml[i] = style == 0 ? "<" + sides[i] + "/>"
                     : "<" + sides[i] + " style=\"" + s + "\">" + c.element("color") + "</" + sides[i] + ">";
         }
@@ -231,11 +214,11 @@ final class Styles {
         boolean shrink = (flags & 0x01000000L) != 0;
         int reading = (int) (flags >> 26 & 0x03);
         StringBuilder a = new StringBuilder();
-        if (horizontal != 0 && horizontal < HORIZONTAL.length) {
-            a.append(" horizontal=\"").append(HORIZONTAL[horizontal]).append('"');
+        if (StyleNames.horizontal(horizontal) != null) {
+            a.append(" horizontal=\"").append(StyleNames.horizontal(horizontal)).append('"');
         }
-        if (vertical != 2 && vertical < VERTICAL.length) {
-            a.append(" vertical=\"").append(VERTICAL[vertical]).append('"');
+        if (StyleNames.vertical(vertical) != null) {
+            a.append(" vertical=\"").append(StyleNames.vertical(vertical)).append('"');
         }
         if (rotation != 0) {
             a.append(" textRotation=\"").append(rotation).append('"');

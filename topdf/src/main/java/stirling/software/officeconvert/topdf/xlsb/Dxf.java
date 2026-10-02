@@ -1,16 +1,10 @@
 package stirling.software.officeconvert.topdf.xlsb;
 
+import stirling.software.officeconvert.topdf.xls.StyleNames;
 import stirling.software.officeconvert.topdf.xls.Xml;
 
 /** A differential format (BrtDXF): the properties a conditional format or table style lays over a cell. */
 final class Dxf {
-
-    private static final String[] PATTERNS = {"none", "solid", "mediumGray", "darkGray", "lightGray",
-        "darkHorizontal", "darkVertical", "darkDown", "darkUp", "darkGrid", "darkTrellis", "lightHorizontal",
-        "lightVertical", "lightDown", "lightUp", "lightGrid", "lightTrellis", "gray125", "gray0625"};
-
-    private static final String[] BORDERS = {"none", "thin", "medium", "dashed", "dotted", "thick", "double", "hair",
-        "mediumDashed", "dashDot", "mediumDashDot", "dashDotDot", "mediumDashDotDot", "slantDashDot"};
 
     private static final int MAX_PROPERTIES = 256;
 
@@ -35,7 +29,7 @@ final class Dxf {
             switch (type) {
                 case 0 -> {
                     int p = d.u8();
-                    pattern = p < PATTERNS.length ? PATTERNS[p] : "none";
+                    pattern = StyleNames.pattern(p);
                 }
                 case 1 -> fg = d.color().element("fgColor");
                 case 2 -> bg = d.color().element("bgColor");
@@ -45,20 +39,15 @@ final class Dxf {
                     int style = d.u16();
                     String name = new String[] {"top", "bottom", "left", "right"}[type - 6];
                     sides[type - 6] = style == 0 ? "<" + name + "/>" : "<" + name + " style=\""
-                            + (style < BORDERS.length ? BORDERS[style] : "thin") + "\">" + c.element("color") + "</"
+                            + StyleNames.border(style) + "\">" + c.element("color") + "</"
                             + name + ">";
                 }
                 case 24 -> fontName = shortString(d);
                 case 25 -> font.append(d.u16() >= 700 ? "<b/>" : "<b val=\"0\"/>");
                 case 26 -> {
                     int u = d.u16();
-                    font.append("<u val=\"").append(switch (u) {
-                        case 1 -> "single";
-                        case 2 -> "double";
-                        case 0x21 -> "singleAccounting";
-                        case 0x22 -> "doubleAccounting";
-                        default -> "none";
-                    }).append("\"/>");
+                    String name = StyleNames.underline(u);
+                    font.append("<u val=\"").append(name == null ? "none" : name).append("\"/>");
                 }
                 case 27 -> {
                     int e = d.u16();

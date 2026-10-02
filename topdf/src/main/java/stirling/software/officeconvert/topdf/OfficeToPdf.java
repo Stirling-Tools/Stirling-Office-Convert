@@ -321,6 +321,10 @@ public final class OfficeToPdf {
         if (RtfPackage.isRtf(in)) {
             return RtfPackage.estimate(Files.size(in)) + 2 * Admission.BASE_BYTES;
         }
+        Long excel95 = LegacyExcel.estimate(in);
+        if (excel95 != null) {
+            return excel95;
+        }
         Long legacy = legacyWorkbookEstimate(in);
         if (legacy != null) {
             return legacy;
@@ -514,6 +518,10 @@ public final class OfficeToPdf {
         Result unlocked = encryptedPackage(source, requested, sink, options, renderer);
         if (unlocked != null) {
             return unlocked;
+        }
+        Result excel95 = LegacyExcel.render(source, sink, options, renderer);
+        if (excel95 != null) {
+            return excel95;
         }
         Result legacy = legacyWorkbook(source, sink, options, renderer);
         if (legacy != null) {

@@ -40,14 +40,29 @@ public final class EncryptedWorkbook {
         try (InputStream in = root.createDocumentInputStream(root.getEntryCaseInsensitive(name))) {
             stream = in.readAllBytes();
         }
+        byte[] plain = decrypt(stream, password);
+        if (plain == null) {
+            return null;
+        }
+        POIFSFileSystem fs = new POIFSFileSystem();
+        Streams.copyExcept(root, fs.getRoot(), name);
+        fs.createDocument(new ByteArrayInputStream(plain), "Workbook");
+        return fs;
+    }
+
+    /** A BIFF5 or BIFF8 workbook stream decrypted, or null when its records are not encrypted. Excel 5.0/95 only
+     * obfuscated with XOR, whose FILEPASS holds the key and hash alone. */
+    public static byte[] decrypt(byte[] stream, String password) throws IOException {
         int at = filePass(stream);
         if (at < 0) {
             return null;
         }
         int length = LittleEndian.getUShort(stream, at + 2);
+        byte[] record = length == 4 ? new byte[] {FILEPASS, 0, 6, 0, 0, 0, stream[at + 4], stream[at + 5],
+            stream[at + 6], stream[at + 7]} : java.util.Arrays.copyOfRange(stream, at, at + 4 + length);
         EncryptionInfo info;
         try {
-            RecordInputStream rin = new RecordInputStream(new ByteArrayInputStream(stream, at, 4 + length));
+            RecordInputStream rin = new RecordInputStream(new ByteArrayInputStream(record));
             rin.nextRecord();
             info = new FilePassRecord(rin).getEncryptionInfo();
             Passwords.unlock(info, password);
@@ -56,11 +71,7 @@ public final class EncryptedWorkbook {
         } catch (RuntimeException e) {
             throw new IOException("The workbook's encryption could not be read: " + EncryptedPackage.reason(e), e);
         }
-        byte[] plain = decrypt(stream, info, at, 4 + length);
-        POIFSFileSystem fs = new POIFSFileSystem();
-        Streams.copyExcept(root, fs.getRoot(), name);
-        fs.createDocument(new ByteArrayInputStream(plain), "Workbook");
-        return fs;
+        return decrypt(stream, info, at, 4 + length);
     }
 
     private static int filePass(byte[] s) {
