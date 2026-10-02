@@ -1,5 +1,6 @@
 package stirling.software.officeconvert.cli;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -276,6 +277,64 @@ class MainTest {
         assertUsage(run(pdf.toString(), "--pdfa", "2b", "-o", dir.resolve("x.docx").toString()), "name the output .pdf");
         Path docx = minimalDocx(dir.resolve("a.docx"));
         assertUsage(run(docx.toString(), "--pdfa", "2b"), "PDF input");
+    }
+
+    @Test
+    void aFolderNeverOverwritesItsOwnFiles() throws Exception {
+        Path in = Files.createDirectories(dir.resolve("pair"));
+        byte[] word = Files.readAllBytes(minimalDocx(in.resolve("b.docx")));
+        byte[] pdf = Files.readAllBytes(helloPdf(in.resolve("b.pdf")));
+        Result r = run(in.toString(), "-q");
+        assertEquals(0, r.code(), r.err());
+        assertArrayEquals(word, Files.readAllBytes(in.resolve("b.docx")));
+        assertArrayEquals(pdf, Files.readAllBytes(in.resolve("b.pdf")));
+        assertTrue(Files.size(in.resolve("b.docx.pdf")) > 0);
+        assertTrue(Files.readString(in.resolve("b.pdf.docx"), StandardCharsets.ISO_8859_1).startsWith("PK"));
+        Result again = run(in.toString(), "-q");
+        assertEquals(1, again.code(), again.err());
+        assertTrue(again.err().contains("b.docx.pdf is an input of this run"), again.err());
+        assertArrayEquals(word, Files.readAllBytes(in.resolve("b.docx")));
+        assertArrayEquals(pdf, Files.readAllBytes(in.resolve("b.pdf")));
+    }
+
+    @Test
+    void anExistingOutputIsReplacedOnlyWithOverwrite() throws Exception {
+        Path pdf = helloPdf(dir.resolve("in.pdf"));
+        Path txt = Files.writeString(dir.resolve("in.txt"), "keep me");
+        Result refused = run(pdf.toString(), "-o", txt.toString());
+        assertEquals(1, refused.code(), refused.err());
+        assertTrue(refused.err().startsWith("SKIP " + pdf) && refused.err().contains("--overwrite"), refused.err());
+        assertEquals("keep me", Files.readString(txt));
+        Result beside = run(pdf.toString(), "--format", "txt");
+        assertEquals(1, beside.code(), beside.err());
+        assertEquals("keep me", Files.readString(txt));
+        Result replaced = run(pdf.toString(), "-o", txt.toString(), "--overwrite");
+        assertEquals(0, replaced.code(), replaced.err());
+        assertTrue(Files.readString(txt).contains("Hello PDF"));
+        assertTrue(run("--help").out().contains("--overwrite"));
+    }
+
+    @Test
+    void anInputIsNeverTheOutputEvenWithOverwrite() throws Exception {
+        Path pdf = helloPdf(dir.resolve("in.pdf"));
+        byte[] before = Files.readAllBytes(pdf);
+        Result r = run(pdf.toString(), "--pdfa", "2b", "-o", pdf.toString(), "--overwrite");
+        assertEquals(1, r.code(), r.err());
+        assertTrue(r.err().contains("is an input of this run"), r.err());
+        assertArrayEquals(before, Files.readAllBytes(pdf));
+    }
+
+    @Test
+    void outputsDodgeInputNamesAndAreNotConvertedAgain() throws Exception {
+        Path word = dir.resolve("b.docx");
+        Path pdf = dir.resolve("b.pdf");
+        assertEquals(java.util.List.of(dir.resolve("b.docx.pdf"), dir.resolve("b.pdf.docx")),
+                Targets.of(java.util.List.of(word, pdf), null, "docx", true));
+        Files.writeString(pdf, "x");
+        Guard guard = new Guard(java.util.List.of(word, pdf), true);
+        guard.wrote(pdf);
+        assertTrue(guard.refusal(pdf, dir.resolve("c.docx")).contains("written by this run"));
+        assertTrue(guard.refusal(word, pdf).contains("is an input"));
     }
 
     private static Path minimalXlsx(Path file) throws IOException {

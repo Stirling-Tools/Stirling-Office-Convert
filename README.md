@@ -18,7 +18,7 @@ java -jar cli/build/libs/stirling-office-convert-cli.jar report.docx slides.pptx
 ```
 
 CLI options for PDF input: `--pages a-b`, `--no-tables`, `--dpi n` (vector figures), `--password p`,
-`--picture-fallback`, `--pictures compact|lossless` (see Pictures below), `-q`.
+`--picture-fallback`, `--pictures compact|lossless` (see Pictures below), `--overwrite`, `-q`.
 For Word, PowerPoint and Excel input (`.docx .docm .dotx .dotm .pptx .pptm .ppsx .ppsm .potx .potm .xlsx .xlsm
 .xltx .xltm .xlsb`, Word 6.0 to 2003 `.doc .dot`, Excel 2.0 to 2003 `.xls .xlt`, PowerPoint 97-2003 `.ppt .pps .pot`,
 `.rtf`, Word 2003 XML, XML Spreadsheet 2003 and Flat OPC `.xml`, Visio 2013 and later `.vsdx .vsdm .vssx .vstx`,
@@ -31,7 +31,12 @@ family's widths, 0.5 to 2), `--no-system-fonts` (only the given fonts and the bu
 reproducible output), `-q`, and `--format pdf` to take only the Office files out
 of a folder. A folder converts both its PDFs and its Office files; its text and CSV files only with `--format pdf`. Inputs that would write the same output name (such
 as `report.docx` and `report.xlsx`) keep their own extension in it (`report.docx.pdf`, `report.xlsx.pdf`), and Office
-owner files (`~$name`) are skipped. Warnings (substituted fonts, skipped active content, pictures that could not be
+owner files (`~$name`) are skipped. An input is never overwritten: an output that would take an input's name keeps that
+input's extension instead (`b.docx` and `b.pdf` in one folder give `b.docx.pdf` and `b.pdf.docx`), and nothing a run
+writes is converted again by it. An output that exists already is left alone and its input skipped (`SKIP <file>:
+<reason>` on stderr) unless `--overwrite` is given. The exit status is 0
+when everything converted, 1 when something failed or was skipped, and 2 for a
+mistake in the arguments. Warnings (substituted fonts, skipped active content, pictures that could not be
 drawn) print to stderr as `warning: <file>: <message>` unless `-q`.
 The output file's extension picks the format: `.docx`, `.odt`, `.fodt`, `.xml` (flat ODT), `.rtf`, `.doc`, `.txt`,
 `.pptx`, `.odp`, `.ppt`, `.xlsx` or `.ods` (see Other formats). For a folder of PDFs, `--format ext` names it; `--sheets
