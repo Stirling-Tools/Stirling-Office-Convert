@@ -18,12 +18,14 @@ final class Slide {
 
     int shapes;
 
+    boolean cut;
+
     Slide(long limit) {
         this.limit = limit;
     }
 
     boolean full() {
-        return tree.length() >= limit;
+        return cut || tree.length() >= limit;
     }
 
     long room() {
@@ -101,6 +103,7 @@ final class Slide {
         if (b.length() > limit) {
             b.setLength(start);
             shapes--;
+            cut = true;
             return false;
         }
         return true;
@@ -136,6 +139,7 @@ final class Slide {
             return;
         }
         String rid = image(target);
+        int start = tree.length();
         int id = nextId++;
         shapes++;
         tree.append("<p:pic><p:nvPicPr><p:cNvPr id=\"").append(id).append("\" name=\"Picture ").append(id)
@@ -143,9 +147,11 @@ final class Slide {
                 .append("\"/><a:stretch><a:fillRect/></a:stretch></p:blipFill><p:spPr>");
         xfrm(tree, box.x(), box.y(), box.w(), box.h(), box.rot(), box.flipH(), box.flipV());
         tree.append("<a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom></p:spPr></p:pic>");
+        finish(start);
     }
 
     void text(Box box, String fill, String body) {
+        int start = tree.length();
         int id = nextId++;
         shapes++;
         tree.append("<p:sp><p:nvSpPr><p:cNvPr id=\"").append(id).append("\" name=\"Text ").append(id)
@@ -153,6 +159,15 @@ final class Slide {
         xfrm(tree, box.x(), box.y(), box.w(), box.h(), box.rot(), false, false);
         tree.append("<a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom>").append(fill == null ? "<a:noFill/>" : fill)
                 .append("</p:spPr>").append(body).append("</p:sp>");
+        finish(start);
+    }
+
+    private void finish(int start) {
+        if (tree.length() > limit) {
+            tree.setLength(start);
+            shapes--;
+            cut = true;
+        }
     }
 
     private static void xfrm(StringBuilder b, long x, long y, long cx, long cy, long rot, boolean flipH,

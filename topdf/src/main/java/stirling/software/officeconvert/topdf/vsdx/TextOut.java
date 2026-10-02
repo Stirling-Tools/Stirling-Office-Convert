@@ -18,6 +18,8 @@ final class TextOut {
 
     private record Para(String pp, List<Run> runs) {}
 
+    private record Parsed(List<Para> paras, boolean whole) {}
+
     private TextOut() {}
 
     static boolean text(Slide slide, Cells cells, Look look, String minorFont, Sheet s, Affine m, double w,
@@ -29,9 +31,10 @@ final class TextOut {
         if (text == null) {
             return true;
         }
-        List<Para> paras = paragraphs(text);
+        Parsed parsed = paragraphs(text);
+        List<Para> paras = parsed.paras();
         if (paras.stream().allMatch(p -> p.runs().stream().allMatch(r -> r.text().isEmpty()))) {
-            return true;
+            return parsed.whole();
         }
         double tw = cells.number(s, "TxtWidth", w);
         double th = cells.number(s, "TxtHeight", h);
@@ -53,8 +56,11 @@ final class TextOut {
             b.append(" vert=\"eaVert\"");
         }
         b.append("><a:noAutofit/></a:bodyPr><a:lstStyle/>");
-        long room = slide.room();
-        boolean whole = paras.size() < MAX_PARAS;
+        long room = slide.room() - 1024;
+        if (room <= b.length()) {
+            return false;
+        }
+        boolean whole = parsed.whole();
         for (Para p : paras) {
             int before = b.length();
             paragraph(b, cells, look, minorFont, s, p, room);
@@ -84,19 +90,19 @@ final class TextOut {
         return color == null ? null : Look.solid(color, cells.number(s, "TextBkgndTrans", 0));
     }
 
-    private static List<Para> paragraphs(Element text) {
+    private static Parsed paragraphs(Element text) {
         List<Para> out = new ArrayList<>();
         String[] state = {"0", "0"};
         List<Run> runs = new ArrayList<>();
         StringBuilder buf = new StringBuilder();
         String[] paraPp = {null};
-        int[] total = {0};
+        int[] total = {0, 0};
         walk(text, state, runs, buf, out, paraPp, total);
         flush(runs, buf, state[0]);
         if (!runs.isEmpty() && !(runs.size() == 1 && runs.get(0).text().isEmpty())) {
             out.add(new Para(paraPp[0] == null ? state[1] : paraPp[0], runs));
         }
-        return out;
+        return new Parsed(out, total[1] == 0);
     }
 
     private static void walk(Element e, String[] state, List<Run> runs, StringBuilder buf, List<Para> out,
@@ -127,7 +133,8 @@ final class TextOut {
 
     private static void chars(String s, String[] state, List<Run> runs, StringBuilder buf, List<Para> out,
             String[] paraPp, int[] total) {
-        for (int i = 0; i < s.length() && total[0] < MAX_CHARS && out.size() < MAX_PARAS; i++, total[0]++) {
+        int i = 0;
+        for (; i < s.length() && total[0] < MAX_CHARS && out.size() < MAX_PARAS; i++, total[0]++) {
             char c = s.charAt(i);
             if (c == '\n' || c == '\r' || c == ' ') {
                 if (c == '\r' && i + 1 < s.length() && s.charAt(i + 1) == '\n') {
@@ -140,6 +147,9 @@ final class TextOut {
             } else {
                 buf.append(c);
             }
+        }
+        if (i < s.length()) {
+            total[1] = 1;
         }
     }
 
@@ -275,6 +285,9 @@ final class TextOut {
         if (font == null || font.isBlank() || font.length() > MAX_FONT_NAME || font.equalsIgnoreCase("Themed")
                 || Cells.parse(font, -1) >= 0) {
             font = minorFont == null ? "Calibri" : minorFont;
+        }
+        if (font.length() > MAX_FONT_NAME) {
+            font = "Calibri";
         }
         b.append("<a:latin typeface=\"").append(PageWriter.esc(font)).append("\"/><a:cs typeface=\"")
                 .append(PageWriter.esc(font)).append("\"/>");

@@ -9,6 +9,14 @@ final class Visits {
     }
 
     boolean take() {
-        return left-- > 0;
+        if (spent()) {
+            return false;
+        }
+        left--;
+        return true;
+    }
+
+    boolean spent() {
+        return left == 0;
     }
 }

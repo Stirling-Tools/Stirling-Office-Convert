@@ -11,6 +11,8 @@ final class Paths {
 
     record Segment(char op, double[] pts) {}
 
+    record Built(List<Path> paths, int points, boolean cut) {}
+
     static final class Path {
         final List<Segment> segments = new ArrayList<>();
 
@@ -41,21 +43,24 @@ final class Paths {
 
     private int points;
 
+    private boolean cut;
+
     private final int room;
 
     private Paths(int room) {
         this.room = room;
     }
 
-    static List<Path> build(Cells.Geometry g, double w, double h, int room) {
+    static Built build(Cells.Geometry g, double w, double h, int room) {
         Paths p = new Paths(room);
         boolean noFill = "1".equals(g.cells().get("NoFill"));
         boolean noLine = "1".equals(g.cells().get("NoLine"));
         if ("1".equals(g.cells().get("NoShow"))) {
-            return List.of();
+            return new Built(List.of(), 0, false);
         }
         for (Sheet.Row r : g.rows()) {
             if (p.points >= room) {
+                p.cut = true;
                 break;
             }
             p.row(r, w, h);
@@ -65,7 +70,7 @@ final class Paths {
             path.noLine = noLine;
         }
         p.out.removeIf(path -> path.segments.size() < 2);
-        return p.out;
+        return new Built(p.out, p.points, p.cut);
     }
 
     private static double v(Map<String, String> c, String n) {
@@ -103,6 +108,10 @@ final class Paths {
     }
 
     void move(double px, double py) {
+        if (points >= room) {
+            cut = true;
+            return;
+        }
         current = new Path();
         out.add(current);
         current.segments.add(new Segment('M', new double[] {px, py}));
@@ -113,6 +122,10 @@ final class Paths {
 
     void line(double px, double py) {
         ensure();
+        if (points >= room) {
+            cut = true;
+            return;
+        }
         current.segments.add(new Segment('L', new double[] {px, py}));
         x = px;
         y = py;
@@ -121,6 +134,10 @@ final class Paths {
 
     void cubic(double x1, double y1, double x2, double y2, double px, double py) {
         ensure();
+        if (points + 3 > room) {
+            cut = true;
+            return;
+        }
         current.segments.add(new Segment('C', new double[] {x1, y1, x2, y2, px, py}));
         x = px;
         y = py;
@@ -299,6 +316,12 @@ final class Paths {
         }
         int end = f.lastIndexOf(')');
         String body = f.substring(head.length(), end < 0 ? f.length() : end);
+        int count = 1;
+        for (int i = 0; i < body.length(); i++) {
+            if (body.charAt(i) == ',' && ++count > 4 * MAX_POINTS) {
+                return null;
+            }
+        }
         String[] parts = body.split(",");
         if (parts.length > 4 * MAX_POINTS) {
             return null;

@@ -66,8 +66,19 @@ final class PageWriter {
             }
         }
         for (Sheet s : page.shapes()) {
+            if (!more()) {
+                break;
+            }
             shape(s, null, toSlide, 0);
         }
+    }
+
+    private boolean more() {
+        if (visits >= MAX_VISITS || budget.spent() || slide.full()) {
+            cut = true;
+            return false;
+        }
+        return true;
     }
 
     private void shape(Sheet s, Drawing.Master master, Affine parent, int depth) throws IOException {
@@ -118,6 +129,9 @@ final class PageWriter {
             inner = new Affine(sx, 0, 0, sy, 0, 0).then(m);
         }
         for (Sheet k : kids) {
+            if (!more()) {
+                break;
+            }
             shape(k, own, inner, depth + 1);
         }
         if (group && mode == 2) {
@@ -154,9 +168,10 @@ final class PageWriter {
                 cut = true;
                 break;
             }
-            List<Paths.Path> built = Paths.build(g, w, h, Paths.MAX_POINTS - points);
-            points += Paths.points(built);
-            paths.addAll(built);
+            Paths.Built built = Paths.build(g, w, h, Paths.MAX_POINTS - points);
+            points += built.points();
+            cut |= built.cut();
+            paths.addAll(built.paths());
         }
         if (!paths.isEmpty()) {
             String rounding = cells.get(s, "Rounding");
@@ -175,6 +190,7 @@ final class PageWriter {
         if (!"1".equals(cells.get(s, "HideText")) && !TextOut.text(slide, cells, look, drawing.minorFont, s, m, w, h)) {
             cut = true;
         }
+        cut |= slide.cut;
     }
 
     private void picture(Sheet s, Affine m, double w, double h) throws IOException {
