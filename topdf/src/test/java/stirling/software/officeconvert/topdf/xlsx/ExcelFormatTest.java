@@ -3,6 +3,9 @@ package stirling.software.officeconvert.topdf.xlsx;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 
+import java.math.BigDecimal;
+import java.math.MathContext;
+import java.math.RoundingMode;
 import java.util.Random;
 
 import org.junit.jupiter.api.Test;
@@ -46,6 +49,29 @@ class ExcelFormatTest {
                 double x = v + random.nextInt(1000) / 1000.0;
                 assertEquals(ExcelFormat.round(x, d).toPlainString(), ExcelFormat.plain(x, d), x + " at " + d);
             }
+        }
+    }
+
+    @Test
+    void longDecimalsRoundAsTheirExactBinaryValueDoes() {
+        Random random = new Random(11);
+        MathContext fifteen = new MathContext(15, RoundingMode.HALF_EVEN);
+        for (int i = 0; i < 400_000; i++) {
+            double v = switch (i % 4) {
+                case 0 -> random.nextDouble() * Math.pow(10, random.nextInt(40) - 20);
+                case 1 -> Double.longBitsToDouble(random.nextLong());
+                case 2 -> Double.parseDouble((random.nextBoolean() ? "-" : "") + (random.nextLong() & 0xFFFFFFFFFFFFFL)
+                        % 1_000_000_000_000_000L + "5e" + (random.nextInt(30) - 25));
+                default -> random.nextInt(100_000) / 100.0 * random.nextInt(1000) / 7.0;
+            };
+            if (!Double.isFinite(v)) {
+                continue;
+            }
+            int d = random.nextInt(6);
+            BigDecimal shortest = BigDecimal.valueOf(v);
+            BigDecimal exact = shortest.precision() <= 15 ? shortest : new BigDecimal(v).round(fifteen);
+            assertEquals(exact.setScale(d, RoundingMode.HALF_UP).toPlainString(),
+                    ExcelFormat.round(v, d).toPlainString(), v + " at " + d);
         }
     }
 

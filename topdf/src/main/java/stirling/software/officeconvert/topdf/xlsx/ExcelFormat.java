@@ -432,11 +432,22 @@ final class ExcelFormat {
         if (shortest.precision() <= 15) {
             return shortest.setScale(decimals, RoundingMode.HALF_UP);
         }
-        BigDecimal bd = new BigDecimal(v);
-        if (bd.signum() != 0) {
-            bd = bd.round(new MathContext(15, RoundingMode.HALF_EVEN));
-        }
+        BigDecimal bd = clearOfHalf(shortest, v) ? shortest.round(FIFTEEN) : new BigDecimal(v).round(FIFTEEN);
         return bd.setScale(decimals, RoundingMode.HALF_UP);
+    }
+
+    private static final MathContext FIFTEEN = new MathContext(15, RoundingMode.HALF_EVEN);
+
+    private static final long[] TENS = {1, 10, 100, 1_000, 10_000};
+
+    private static boolean clearOfHalf(BigDecimal shortest, double v) {
+        int p = shortest.precision();
+        if (p < 16 || p > 18 || !(Math.abs(v) >= Double.MIN_NORMAL)) {
+            return false;
+        }
+        long unit = TENS[p - 15];
+        long tail = Math.abs(shortest.unscaledValue().longValue()) % unit;
+        return Math.abs(2 * tail - unit) > 4 * TENS[p - 16];
     }
 
     // Digits fill the placeholders from the right; the leftmost placeholder takes any extra digits
