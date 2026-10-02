@@ -133,7 +133,7 @@ public final class BoundedZip implements Closeable {
             if (n > 0) {
                 count += n;
                 budget -= n;
-                if (count > cap) {
+                if (count > cap || count == cap && in.read() >= 0) {
                     throw partTooLarge(entry, cap);
                 }
                 if (budget < 0) {
