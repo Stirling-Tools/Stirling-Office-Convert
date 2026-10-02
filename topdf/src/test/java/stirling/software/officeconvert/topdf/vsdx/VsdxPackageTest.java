@@ -166,6 +166,30 @@ class VsdxPackageTest {
     }
 
     @Test
+    void everyPageKeepsItsOwnSizeInThePdf() throws IOException {
+        Map<String, String> parts = drawing(INSTANCE, MASTER);
+        parts.put("visio/pages/pages.xml", "<Pages " + NS + "><Page ID='0' Name='Page-1'><PageSheet><Cell N='PageWidth'"
+                + " V='8'/><Cell N='PageHeight' V='4'/></PageSheet><Rel r:id='rId1'/></Page><Page ID='1' Name='Page-2'>"
+                + "<PageSheet><Cell N='PageWidth' V='11'/><Cell N='PageHeight' V='8.5'/></PageSheet><Rel r:id='rId2'/>"
+                + "</Page></Pages>");
+        parts.put("visio/pages/_rels/pages.xml.rels", rels("rId1", "page", "page1.xml").replace("</Relationships>",
+                rel("rId2", "page", "page2.xml") + "</Relationships>"));
+        parts.put("visio/pages/page2.xml", parts.get("visio/pages/page1.xml"));
+        parts.put("visio/pages/_rels/page2.xml.rels", parts.get("visio/pages/_rels/page1.xml.rels"));
+        Path in = file("two.vsdx", parts);
+        Path pdf = dir.resolve("two.pdf");
+        assertEquals(2, OfficeToPdf.convert(in, pdf).pages());
+        try (PDDocument d = Loader.loadPDF(pdf.toFile())) {
+            assertEquals(576, d.getPage(0).getMediaBox().getWidth(), 0.5);
+            assertEquals(288, d.getPage(0).getMediaBox().getHeight(), 0.5);
+            assertEquals(792, d.getPage(1).getMediaBox().getWidth(), 0.5);
+            assertEquals(612, d.getPage(1).getMediaBox().getHeight(), 0.5);
+        }
+        String slide2 = pptx(in).get("ppt/slides/slide2.xml");
+        assertTrue(slide2.contains("<a:off x=\"2743200\" y=\"5486400\"/>"), slide2);
+    }
+
+    @Test
     void drawsMasterGeometryAtTheInstancePosition() throws IOException {
         String slide = pptx(file("a.vsdx", drawing(INSTANCE, MASTER))).get("ppt/slides/slide1.xml");
         assertTrue(slide.contains("<a:off x=\"2743200\" y=\"1371600\"/><a:ext cx=\"1828800\" cy=\"914400\"/>"),

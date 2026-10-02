@@ -36,7 +36,7 @@ final class Backgrounds {
         if (bg == null) {
             return;
         }
-        Rectangle2D page = new Rectangle2D.Double(0, 0, deck.width(), deck.height());
+        Rectangle2D page = new Rectangle2D.Double(0, 0, canvas.width(), canvas.height());
         try {
             PaintStyle ps = bg.getFillStyle().getPaint();
             if (ps instanceof PaintStyle.TexturePaint) {
@@ -45,7 +45,7 @@ final class Backgrounds {
             }
             Fill f = overWhite(Paints.fill(ps, page, PaintModifier.NORM));
             if (f != null) {
-                canvas.rect(0, 0, deck.width(), deck.height(), f, null);
+                canvas.rect(0, 0, canvas.width(), canvas.height(), f, null);
             }
         } catch (RuntimeException e) {
             deck.job().warn("A slide background could not be drawn: " + e.getMessage());

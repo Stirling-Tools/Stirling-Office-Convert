@@ -16,6 +16,7 @@ import java.util.zip.ZipFile;
 
 import stirling.software.officeconvert.memory.Admission;
 import stirling.software.officeconvert.topdf.io.OfficeZip;
+import stirling.software.officeconvert.topdf.pptx.SlideSizes;
 import stirling.software.officeconvert.topdf.xls.Parts;
 import stirling.software.officeconvert.topdf.xls.Xml;
 
@@ -125,12 +126,15 @@ public final class VsdxPackage {
             n++;
             Slide slide = new Slide(Math.min(MAX_SLIDE_CHARS, MAX_DRAWING_CHARS - written));
             PageWriter writer = new PageWriter(drawing, media, slide);
-            writer.page(page, transform(drawing, page, cx, cy), 0);
+            double[] own = size(drawing, page);
+            long pcx = clamp(own[0] * PageWriter.EMU);
+            long pcy = clamp(own[1] * PageWriter.EMU);
+            writer.page(page, transform(drawing, page, pcx, pcy), 0);
             if (writer.cut && !warnings.contains(CUT)) {
                 warnings.add(CUT);
             }
             written += slide.tree.length();
-            slide(parts, slide, n);
+            slide(parts, slide, n, pcx == cx && pcy == cy ? "" : SlideSizes.ext(pcx, pcy));
             presRels.append(rel("rId" + (n + 2), "slide", "slides/slide" + n + ".xml"));
             ids.append("<p:sldId id=\"").append(255 + n).append("\" r:id=\"rId").append(n + 2).append("\"/>");
             types.append(override("/ppt/slides/slide" + n + ".xml", CT + "presentationml.slide+xml"));
@@ -200,13 +204,13 @@ public final class VsdxPackage {
         return Math.max(MIN_SIDE, Math.min(MAX_SIDE, Math.round(emu)));
     }
 
-    private static void slide(Parts parts, Slide slide, int n) throws IOException {
+    private static void slide(Parts parts, Slide slide, int n, String ext) throws IOException {
         try (Parts.Part p = parts.open("ppt/slides/slide" + n + ".xml")) {
             p.write(Xml.HEAD);
             p.write("<p:sld xmlns:a=\"" + A + "\" xmlns:r=\"" + R + "\" xmlns:p=\"" + P + "\"><p:cSld><p:spTree>"
                     + "<p:nvGrpSpPr><p:cNvPr id=\"1\" name=\"\"/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr/>");
             p.write(slide.tree.toString());
-            p.write("</p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sld>");
+            p.write("</p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr>" + ext + "</p:sld>");
         }
         StringBuilder r = new StringBuilder(rel("rId1", "slideLayout", "../slideLayouts/slideLayout1.xml"));
         for (Map.Entry<String, String> e : slide.images.entrySet()) {

@@ -105,14 +105,6 @@ final class Deck {
         return tableStyles;
     }
 
-    float width() {
-        return width;
-    }
-
-    float height() {
-        return height;
-    }
-
     void render() throws IOException {
         List<XSLFSlide> slides = ppt.getSlides();
         for (int i = 0; i < slides.size(); i++) {
@@ -121,7 +113,8 @@ final class Deck {
             if (slide.isHidden()) {
                 continue;
             }
-            try (PdfCanvas canvas = job.newPage(width, height)) {
+            float[] size = SlideSizes.of(slide, width, height);
+            try (PdfCanvas canvas = job.newPage(size[0], size[1])) {
                 transparencyGroup(canvas.page());
                 new SlidePainter(this, canvas, slide, firstNumber + i).paint();
             }
