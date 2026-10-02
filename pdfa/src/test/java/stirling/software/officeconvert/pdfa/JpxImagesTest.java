@@ -208,6 +208,36 @@ class JpxImagesTest {
     }
 
     @Test
+    void convertedGreyAndAlphaKeepTheirSamples() throws Exception {
+        Path in = page(jpx(grayWithAlpha()), 80, 60, true);
+        Path out = dir.resolve("2b-grey-samples.pdf");
+        PdfToPdfA.convert(in, out, PdfToPdfA.Options.defaults().level(PdfALevel.A2B));
+        try (PDDocument d = Loader.loadPDF(out.toFile())) {
+            COSStream image = null;
+            for (COSObjectKey key : d.getDocument().getXrefTable().keySet()) {
+                if (d.getDocument().getObjectFromPool(key).getObject() instanceof COSStream s
+                        && COSName.IMAGE.equals(s.getCOSName(COSName.SUBTYPE)) && s.getInt(COSName.WIDTH) == 80
+                        && s.getDictionaryObject(COSName.SMASK) instanceof COSStream) {
+                    image = s;
+                }
+            }
+            assertNotNull(image);
+            byte[] grey = samples(image);
+            byte[] alpha = samples((COSStream) image.getDictionaryObject(COSName.SMASK));
+            assertEquals(6, grey[2] & 0xFF, 2);
+            assertEquals(150, grey[50] & 0xFF, 2);
+            assertEquals(255, alpha[10] & 0xFF, 2);
+            assertEquals(128, alpha[50] & 0xFF, 2);
+        }
+    }
+
+    private static byte[] samples(COSStream s) throws Exception {
+        try (java.io.InputStream in = s.createInputStream()) {
+            return in.readAllBytes();
+        }
+    }
+
+    @Test
     void headerRulesFollowPartTwo() {
         assertTrue(header(3, 7, null, new int[] {1, 0, 16}).allowedInPdfA(false));
         assertFalse(header(2, 7, null, new int[] {1, 0, 16}).allowedInPdfA(true));
