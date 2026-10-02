@@ -237,6 +237,7 @@ final class StreamRunner {
     private static final class Recording implements Tokens {
         private final Tokens parser;
         private List<Object> tokens = new ArrayList<>();
+        private long bytes;
         private boolean inline;
 
         Recording(Tokens parser) {
@@ -247,7 +248,8 @@ final class StreamRunner {
         public Object next() throws IOException {
             Object token = parser.next();
             if (tokens != null && token != null) {
-                if (tokens.size() >= ParsedStreams.MAX_TOKENS) {
+                bytes += ParsedStreams.weight(token);
+                if (tokens.size() >= ParsedStreams.MAX_TOKENS || bytes > ParsedStreams.MAX_BYTES) {
                     tokens = null;
                 } else {
                     tokens.add(token);
@@ -259,7 +261,7 @@ final class StreamRunner {
 
         void keep(ParsedStreams parsed, COSBase key, boolean reusable) {
             if (tokens != null && !tokens.isEmpty()) {
-                parsed.put(key, tokens.toArray(), reusable && !inline);
+                parsed.put(key, tokens.toArray(), bytes, reusable && !inline);
             }
         }
     }
