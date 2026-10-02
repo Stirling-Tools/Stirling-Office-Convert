@@ -25,6 +25,8 @@ final class Conv {
 
     Notes notes;
 
+    Map<Integer, String> anchors = Map.of();
+
     boolean lost;
 
     boolean truncated;

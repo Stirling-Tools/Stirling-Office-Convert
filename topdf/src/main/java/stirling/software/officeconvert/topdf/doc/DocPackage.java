@@ -3,6 +3,7 @@ package stirling.software.officeconvert.topdf.doc;
 import java.io.IOException;
 import java.io.InterruptedIOException;
 import java.io.OutputStream;
+import java.util.Map;
 import java.util.List;
 
 import org.apache.poi.EncryptedDocumentException;
@@ -39,9 +40,14 @@ public final class DocPackage {
     }
 
     public static Outcome write(DirectoryNode root, OutputStream out, String password) throws IOException {
+        return write(root, out, password, Map.of());
+    }
+
+    public static Outcome write(DirectoryNode root, OutputStream out, String password, Map<Integer, String> anchors)
+            throws IOException {
         Opened opened = Opened.open(root, password);
         try {
-            return new DocWriter(opened.doc(), out, opened.defused()).write();
+            return new DocWriter(opened.doc(), out, opened.defused(), anchors).write();
         } catch (RuntimeException | StackOverflowError e) {
             if (Thread.currentThread().isInterrupted()) {
                 throw new InterruptedIOException("Conversion interrupted");

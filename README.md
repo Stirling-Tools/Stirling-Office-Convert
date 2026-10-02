@@ -399,8 +399,9 @@ equations; macros, OLE objects (beyond
 their stored preview picture) and links are never opened. A compressed picture that would inflate past 32 MB is left
 out. Word 6.0 and Word 95 documents are first rewritten as Word 97 files (Unicode text in the document's code page,
 Word 97 formatted disk pages, style sheet, fonts, sections, headers and footers, footnotes, fields and pictures) and
-then read the same way; their drawing objects and text boxes are left out with a warning. Word 2.0 and older are
-refused with a plain reason.
+then read the same way; the drawing objects of their main text (lines, rectangles, ellipses, arcs, polylines and
+text boxes with their text) are placed as anchored shapes, while drawing objects in headers and footers are left
+out with a warning. Word 2.0 and older are refused with a plain reason.
 
 RTF documents (`.rtf`, and a `.doc` or `.dot` that is really RTF, found by their `{\rtf` header) are read by a small
 streaming tokenizer and rewritten as a WordprocessingML package that the DOCX renderer draws: fonts and code pages,

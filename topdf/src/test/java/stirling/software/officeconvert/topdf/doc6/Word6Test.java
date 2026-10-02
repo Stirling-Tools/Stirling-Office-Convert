@@ -62,4 +62,43 @@ class Word6Test {
             assertTrue(d.getPage(0).getMediaBox().getWidth() > d.getPage(0).getMediaBox().getHeight());
         }
     }
+
+    @Test
+    void drawingObjectsAndTextBoxesAreAnchoredAtTheirParagraph() throws IOException {
+        java.io.ByteArrayOutputStream docx = new java.io.ByteArrayOutputStream();
+        try (POIFSFileSystem fs = new POIFSFileSystem(new ByteArrayInputStream(new Word6Fixture().drawing().build()))) {
+            Word6Upgrade.Upgraded up = Word6Upgrade.upgrade(fs.getRoot());
+            assertEquals(java.util.Set.of(0), up.anchors().keySet());
+            assertTrue(up.warnings().isEmpty(), up.warnings().toString());
+            try (POIFSFileSystem upgraded = up.fs()) {
+                stirling.software.officeconvert.topdf.doc.DocPackage.write(upgraded.getRoot(), docx, null,
+                        up.anchors());
+            }
+        }
+        String document = null;
+        try (java.util.zip.ZipInputStream z = new java.util.zip.ZipInputStream(
+                new ByteArrayInputStream(docx.toByteArray()))) {
+            for (java.util.zip.ZipEntry e; (e = z.getNextEntry()) != null;) {
+                if (e.getName().equals("word/document.xml")) {
+                    document = new String(z.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+                }
+            }
+        }
+        assertTrue(document.contains("<wp:positionH relativeFrom=\"column\"><wp:posOffset>914400</wp:posOffset>"),
+                document);
+        assertTrue(document.contains("<wp:positionV relativeFrom=\"paragraph\"><wp:posOffset>228600</wp:posOffset>"),
+                document);
+        assertTrue(document.contains("<wps:cNvSpPr txBox=\"1\"/>"), document);
+        assertTrue(document.contains("<w:t xml:space=\"preserve\">Boxed words</w:t>"), document);
+        assertTrue(document.contains("<a:srgbClr val=\"FF0000\"/>"), document);
+        assertTrue(document.contains("<a:ln w=\"25400\"><a:solidFill><a:srgbClr val=\"00FF00\"/></a:solidFill>"
+                + "<a:prstDash val=\"dash\"/>"), document);
+        Path in = Files.write(dir.resolve("drawn.doc"), new Word6Fixture().drawing().build());
+        Path out = dir.resolve("drawn.pdf");
+        OfficeToPdf.convert(in, out);
+        try (PDDocument d = Loader.loadPDF(out.toFile())) {
+            String t = new PDFTextStripper().getText(d);
+            assertTrue(t.contains("Boxed words") && t.contains("Hello Word 6"), t);
+        }
+    }
 }

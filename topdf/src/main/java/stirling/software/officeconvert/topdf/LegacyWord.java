@@ -73,7 +73,7 @@ final class LegacyWord {
                         Word6Upgrade.Upgraded up = Word6Upgrade.upgrade(fs.getRoot());
                         upgradeWarnings = up.warnings();
                         try (POIFSFileSystem upgraded = up.fs()) {
-                            outcome = DocPackage.write(upgraded.getRoot(), os, options.password());
+                            outcome = DocPackage.write(upgraded.getRoot(), os, options.password(), up.anchors());
                         }
                     } else {
                         outcome = DocPackage.write(fs.getRoot(), os, options.password());

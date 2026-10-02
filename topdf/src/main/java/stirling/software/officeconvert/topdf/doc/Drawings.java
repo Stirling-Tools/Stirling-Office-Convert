@@ -118,6 +118,9 @@ final class Drawings {
         if (story.kind != Story.Kind.MAIN && !header && !inBox || pictures >= MAX_PICTURES) {
             return null;
         }
+        if (story.kind == Story.Kind.MAIN && c.anchors.containsKey(cp)) {
+            return c.anchors.get(cp);
+        }
         int rel = header ? cp - story.base : cp;
         OfficeDrawing d;
         FSPA fspa;

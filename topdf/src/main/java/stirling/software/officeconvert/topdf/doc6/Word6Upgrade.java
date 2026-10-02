@@ -8,6 +8,7 @@ import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 import org.apache.poi.poifs.filesystem.DirectoryNode;
 import org.apache.poi.poifs.filesystem.DocumentEntry;
@@ -18,11 +19,12 @@ import stirling.software.officeconvert.topdf.crypt.Passwords;
 
 /** A Word 6.0/95 document rewritten as the Word 97 file the .doc reader takes: Unicode text, Word 97 formatted disk
  * pages, style sheet, font table and section properties, the footnote, endnote, field and header tables carried
- * over. Drawing objects, annotations, bookmarks and macros are left out. The old stream is kept as the Data stream,
- * where pictures are found by their offsets. */
+ * over, and the main text's drawing objects and text boxes are passed on as anchored DrawingML by character position.
+ * Annotations, bookmarks and macros are left out. The old stream is kept as the Data stream, where pictures are
+ * found by their offsets. */
 public final class Word6Upgrade {
 
-    public record Upgraded(POIFSFileSystem fs, List<String> warnings) {}
+    public record Upgraded(POIFSFileSystem fs, List<String> warnings, Map<Integer, String> anchors) {}
 
     private static final int TEXT_FC = 1024;
 
@@ -67,8 +69,9 @@ public final class Word6Upgrade {
         Charset charset = CodePages.of(fib, Tables6.charsets(fib));
         Text6 text = new Text6(fib, charset);
         List<String> warnings = new ArrayList<>();
-        if (fib.ccp[6] > 0 || fib.ccp[7] > 0 || fib.present(38) || fib.present(39)) {
-            warnings.add("Drawing objects and text boxes of the Word 6.0/95 document were left out");
+        Drawings6.Result drawings = Drawings6.read(fib, text);
+        if (drawings.lost() || fib.ccp[7] > 0 || fib.present(39)) {
+            warnings.add("Some drawing objects of the Word 6.0/95 document were left out");
         }
         List<Runs.Run> chp = Runs.read(fib, text, false);
         List<Runs.Run> pap = Runs.read(fib, text, true);
@@ -117,7 +120,7 @@ public final class Word6Upgrade {
                 }
             }
         }
-        return new Upgraded(fs, warnings);
+        return new Upgraded(fs, warnings, drawings.anchors());
     }
 
     private static void put(ByteArrayOutputStream table, int[][] pairs, int index, byte[] data) {
