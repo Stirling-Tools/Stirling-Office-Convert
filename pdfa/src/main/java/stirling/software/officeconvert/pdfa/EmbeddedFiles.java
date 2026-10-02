@@ -15,6 +15,7 @@ import org.apache.pdfbox.cos.COSArray;
 import org.apache.pdfbox.cos.COSBase;
 import org.apache.pdfbox.cos.COSDictionary;
 import org.apache.pdfbox.cos.COSName;
+import org.apache.pdfbox.cos.COSObject;
 import org.apache.pdfbox.cos.COSStream;
 import org.apache.pdfbox.cos.COSString;
 import org.apache.pdfbox.pdmodel.PDDocument;
@@ -48,6 +49,8 @@ final class EmbeddedFiles {
 
     private final Set<COSDictionary> seen = Collections.newSetFromMap(new IdentityHashMap<>());
 
+    private final Map<COSDictionary, Boolean> decisions = new IdentityHashMap<>();
+
     private EmbeddedFiles(PDDocument doc, PdfALevel level, Report report) {
         this.doc = doc;
         this.level = level;
@@ -60,6 +63,27 @@ final class EmbeddedFiles {
 
     private void run() throws IOException {
         COSDictionary cat = doc.getDocumentCatalog().getCOSObject();
+        List<COSDictionary> specifications = new ArrayList<>();
+        List<COSDictionary> associations = new ArrayList<>();
+        CosWalk.walk(doc, b -> {
+            if (b instanceof COSDictionary d) {
+                if (level.part() < 3) {
+                    associations.add(d);
+                }
+                if (d.containsKey(COSName.EF)) {
+                    specifications.add(d);
+                }
+            }
+        });
+        for (COSDictionary owner : associations) {
+            owner.removeItem(AF);
+        }
+        for (COSDictionary fs : specifications) {
+            if (!keep(fs)) {
+                fs.removeItem(COSName.EF);
+                report.warn("Removed an embedded file that " + level.label() + " does not allow");
+            }
+        }
         COSDictionary names = ContentGraph.dict(cat.getDictionaryObject(COSName.NAMES));
         if (names != null && names.getDictionaryObject(COSName.EMBEDDED_FILES) != null) {
             COSDictionary tree = ContentGraph.dict(names.getDictionaryObject(COSName.EMBEDDED_FILES));
@@ -147,6 +171,16 @@ final class EmbeddedFiles {
     }
 
     private boolean keep(COSDictionary fs) throws IOException {
+        Boolean known = decisions.get(fs);
+        if (known != null) {
+            return known;
+        }
+        boolean allowed = specification(fs);
+        decisions.put(fs, allowed);
+        return allowed;
+    }
+
+    private boolean specification(COSDictionary fs) throws IOException {
         COSDictionary ef = ContentGraph.dict(fs.getDictionaryObject(COSName.EF));
         COSStream file = null;
         if (ef != null) {
@@ -160,8 +194,16 @@ final class EmbeddedFiles {
         if (file == null) {
             return level.part() == 1 ? false : ef == null;
         }
-        if (level.part() == 2 && !AttachedPdfA.check(file)) {
+        if (level.part() == 1) {
             return false;
+        }
+        if (level.part() == 2) {
+            for (COSBase value : ef.getValues()) {
+                COSBase embedded = value instanceof COSObject object ? object.getObject() : value;
+                if (!(embedded instanceof COSStream stream) || !AttachedPdfA.check(stream)) {
+                    return false;
+                }
+            }
         }
         String name = fileName(fs);
         if (fs.getDictionaryObject(COSName.F) == null) {
