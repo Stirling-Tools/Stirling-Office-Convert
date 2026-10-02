@@ -225,7 +225,7 @@ final class TableXml {
         out.append("</w:tcPr>");
         int mark = out.length();
         story.blocks(ps, range[0], range[1], level, out);
-        if (out.length() == mark || out.lastIndexOf("</w:tbl>") == out.length() - 8) {
+        if (out.length() == mark || out.indexOf("</w:tbl>", out.length() - 8) == out.length() - 8) {
             out.append("<w:p/>");
         }
         out.append("</w:tc>");
