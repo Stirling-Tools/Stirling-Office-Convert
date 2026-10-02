@@ -95,30 +95,71 @@ final class CodePages {
 
     static boolean pairs(Charset cs, byte[] bytes, int length) {
         String n = cs.name();
-        for (int i = 0; i < length; i++) {
-            int b = bytes[i] & 0xFF;
-            if (b < 0x80) {
-                continue;
-            }
-            if (i + 1 >= length || !lead(n, b) || !trail(n, bytes[i + 1] & 0xFF)) {
-                return false;
-            }
-            i++;
-        }
-        return true;
-    }
-
-    static int wholeLength(byte[] bytes, int length) {
+        boolean paired = false;
         int i = 0;
         while (i < length) {
-            i += (bytes[i] & 0xFF) >= 0x81 ? 2 : 1;
+            int b = bytes[i] & 0xFF;
+            int unit = unit(n, bytes, i, length);
+            if (unit == 0) {
+                return false;
+            }
+            paired |= b >= 0x80 && unit > 1;
+            i += unit;
         }
-        return i > length ? length - 1 : length;
+        return paired;
+    }
+
+    static int wholeLength(Charset cs, byte[] bytes, int length) {
+        if (cs == null || !doubleByte(cs)) {
+            return length;
+        }
+        String n = cs.name();
+        int i = 0;
+        while (i < length) {
+            int b = bytes[i] & 0xFF;
+            int width = b < 0x80 || single(n, b) || !lead(n, b) ? 1 : four(n, bytes, i, length) ? 4 : 2;
+            if (i + width > length) {
+                return i;
+            }
+            i += width;
+        }
+        return length;
+    }
+
+    private static int unit(String cs, byte[] bytes, int i, int length) {
+        int b = bytes[i] & 0xFF;
+        if (b < 0x80 || single(cs, b)) {
+            return 1;
+        }
+        if (!lead(cs, b) || i + 1 >= length) {
+            return 0;
+        }
+        if (four(cs, bytes, i, length)) {
+            return i + 3 < length && lead(cs, bytes[i + 2] & 0xFF) && digit(bytes[i + 3] & 0xFF) ? 4 : 0;
+        }
+        return trail(cs, bytes[i + 1] & 0xFF) ? 2 : 0;
+    }
+
+    private static boolean single(String cs, int b) {
+        return switch (cs) {
+            case "windows-31j", "Shift_JIS" -> b >= 0xA1 && b <= 0xDF;
+            case "GBK", "GB18030" -> b == 0x80;
+            default -> false;
+        };
+    }
+
+    private static boolean four(String cs, byte[] bytes, int i, int length) {
+        return cs.equals("GB18030") && i + 1 < length && digit(bytes[i + 1] & 0xFF);
+    }
+
+    private static boolean digit(int b) {
+        return b >= 0x30 && b <= 0x39;
     }
 
     private static boolean lead(String cs, int b) {
         return switch (cs) {
             case "windows-31j", "Shift_JIS" -> b >= 0x81 && b <= 0x9F || b >= 0xE0 && b <= 0xFC;
+            case "x-Johab" -> b >= 0x84 && b <= 0xD3 || b >= 0xD8 && b <= 0xDE || b >= 0xE0 && b <= 0xF9;
             default -> b >= 0x81 && b <= 0xFE;
         };
     }
@@ -128,7 +169,7 @@ final class CodePages {
             case "windows-31j", "Shift_JIS" -> b >= 0x40 && b <= 0xFC && b != 0x7F;
             case "x-windows-949" -> b >= 0x41 && b <= 0x5A || b >= 0x61 && b <= 0x7A || b >= 0x81 && b <= 0xFE;
             case "x-windows-950", "Big5" -> b >= 0x40 && b <= 0x7E || b >= 0xA1 && b <= 0xFE;
-            case "GB18030" -> b >= 0x30 && b <= 0x39 || b >= 0x40 && b <= 0xFE && b != 0x7F;
+            case "x-Johab" -> b >= 0x31 && b <= 0x7E || b >= 0x81 && b <= 0xFE;
             default -> b >= 0x40 && b <= 0xFE && b != 0x7F;
         };
     }

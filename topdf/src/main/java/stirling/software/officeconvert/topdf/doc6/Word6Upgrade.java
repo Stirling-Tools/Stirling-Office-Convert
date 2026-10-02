@@ -77,8 +77,16 @@ public final class Word6Upgrade {
         if (drawings.lost() || fib.ccp[7] > 0 || fib.present(39)) {
             warnings.add("Some drawing objects of the Word 6.0/95 document were left out");
         }
-        List<Runs.Run> chp = Runs.read(fib, text, false);
-        List<Runs.Run> pap = Runs.read(fib, text, true);
+        if (text.refused) {
+            warnings.add("The Word 6.0/95 document's piece table could not be read; its text may be out of order");
+        }
+        Runs.Read chpRead = Runs.read(fib, text, false);
+        Runs.Read papRead = Runs.read(fib, text, true);
+        if (chpRead.truncated() || papRead.truncated()) {
+            warnings.add("Some formatting of the Word 6.0/95 document was left out: it holds too many formatting runs");
+        }
+        List<Runs.Run> chp = chpRead.runs();
+        List<Runs.Run> pap = papRead.runs();
         ByteArrayOutputStream body = new ByteArrayOutputStream();
         body.writeBytes(new byte[TEXT_FC]);
         byte[] utf16 = new String(text.chars).getBytes(StandardCharsets.UTF_16LE);

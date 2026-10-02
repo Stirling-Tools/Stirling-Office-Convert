@@ -1,6 +1,9 @@
 package stirling.software.officeconvert.topdf.rtf;
 
+import java.io.BufferedWriter;
 import java.io.IOException;
+import java.io.OutputStreamWriter;
+import java.io.Writer;
 import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashSet;
 import java.util.Set;
@@ -34,9 +37,12 @@ final class PackageParts {
         notes(zip, content, body, overrides, true);
         for (Content.Part p : content.parts) {
             String tag = p.footer() ? "ftr" : "hdr";
-            String xml = p.story().content();
-            put(zip, "word/" + p.name(), Xml.HEAD + "<w:" + tag + " " + RtfPackage.NS + ">"
-                    + (xml.isEmpty() ? "<w:p/>" : xml) + "</w:" + tag + ">");
+            Chunks xml = p.story().chunks();
+            Writer w = entry(zip, "word/" + p.name());
+            w.write(Xml.HEAD + "<w:" + tag + " " + RtfPackage.NS + ">");
+            write(w, xml);
+            w.write("</w:" + tag + ">");
+            close(zip, w);
             if (!p.story().rels.empty()) {
                 put(zip, "word/_rels/" + p.name() + ".rels", p.story().rels.xml());
             }
@@ -69,29 +75,49 @@ final class PackageParts {
 
     private static void notes(ZipOutputStream zip, Content content, Rels body, StringBuilder overrides,
             boolean endnotes) throws IOException {
-        StringBuilder b = new StringBuilder();
-        for (Content.NoteOut n : content.notes) {
-            if (n.endnote() == endnotes) {
-                String tag = endnotes ? "endnote" : "footnote";
-                b.append("<w:").append(tag).append(" w:id=\"").append(n.id()).append("\">")
-                        .append(n.xml().isEmpty() ? "<w:p/>" : n.xml()).append("</w:").append(tag).append('>');
-            }
-        }
-        if (b.isEmpty()) {
+        if (content.notes.stream().noneMatch(n -> n.endnote() == endnotes)) {
             return;
         }
         String tag = endnotes ? "endnote" : "footnote";
         String name = tag + "s.xml";
         String sep = "<w:p><w:pPr><w:spacing w:after=\"0\" w:line=\"240\" w:lineRule=\"auto\"/></w:pPr><w:r>";
-        put(zip, "word/" + name, Xml.HEAD + "<w:" + tag + "s " + RtfPackage.NS + "><w:" + tag
+        Writer w = entry(zip, "word/" + name);
+        w.write(Xml.HEAD + "<w:" + tag + "s " + RtfPackage.NS + "><w:" + tag
                 + " w:type=\"separator\" w:id=\"0\">" + sep + "<w:separator/></w:r></w:p></w:" + tag + "><w:" + tag
                 + " w:type=\"continuationSeparator\" w:id=\"1\">" + sep + "<w:continuationSeparator/></w:r></w:p></w:"
-                + tag + ">" + b + "</w:" + tag + "s>");
+                + tag + ">");
+        for (Content.NoteOut n : content.notes) {
+            if (n.endnote() == endnotes) {
+                w.write("<w:" + tag + " w:id=\"" + n.id() + "\">");
+                write(w, n.xml());
+                w.write("</w:" + tag + ">");
+            }
+        }
+        w.write("</w:" + tag + "s>");
+        close(zip, w);
         if (!content.notesRels.empty()) {
             put(zip, "word/_rels/" + name + ".rels", content.notesRels.xml());
         }
         body.add(tag + "s", name, false);
         override(overrides, "/word/" + name, CT + tag + "s+xml");
+    }
+
+    private static void write(Writer w, Chunks xml) throws IOException {
+        if (xml.isEmpty()) {
+            w.write("<w:p/>");
+        } else {
+            xml.writeTo(w);
+        }
+    }
+
+    private static Writer entry(ZipOutputStream zip, String name) throws IOException {
+        zip.putNextEntry(new ZipEntry(name));
+        return new BufferedWriter(new OutputStreamWriter(RtfPackage.keepOpen(zip), StandardCharsets.UTF_8), 1 << 16);
+    }
+
+    private static void close(ZipOutputStream zip, Writer w) throws IOException {
+        w.close();
+        zip.closeEntry();
     }
 
     private static String settings(Doc doc) {

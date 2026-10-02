@@ -9,8 +9,6 @@ final class Story {
 
     static final int MAX_DEPTH = 32;
 
-    private static final long MAX_TABLE_CHARS = 64L << 20;
-
     final Rels rels;
 
     final ParaBuilder para = new ParaBuilder();
@@ -19,15 +17,13 @@ final class Story {
 
     private final Writer writer;
 
-    private final StringBuilder buffer;
+    private final Chunks buffer;
 
     private final List<TableBuilder> tables = new ArrayList<>();
 
     private final ColorTable colors;
 
-    private final long limit;
-
-    private long written;
+    private final Budget budget;
 
     private RowProps lastRow;
 
@@ -35,12 +31,16 @@ final class Story {
 
     private String deferredPlain;
 
-    Story(Rels rels, ColorTable colors, Writer writer, long limit) {
+    Story(Rels rels, ColorTable colors, Writer writer, Budget budget) {
         this.rels = rels;
         this.colors = colors;
         this.writer = writer;
-        this.buffer = writer == null ? new StringBuilder() : null;
-        this.limit = limit;
+        this.buffer = writer == null ? new Chunks() : null;
+        this.budget = budget;
+    }
+
+    Story buffered(Rels with) {
+        return new Story(with, colors, null, budget);
     }
 
     void block(String xml, int depth) throws IOException {
@@ -51,14 +51,12 @@ final class Story {
             return;
         }
         open(d).block(xml);
-        checkTables();
     }
 
     void endCell(int depth) throws IOException {
         int d = Math.max(1, Math.min(MAX_DEPTH, depth));
         closeTables(d);
         open(d).endCell();
-        checkTables();
     }
 
     void endRow(int depth, RowProps props) throws IOException {
@@ -66,18 +64,6 @@ final class Story {
         closeTables(d);
         open(d).endRow(props);
         lastRow = props;
-        checkTables();
-    }
-
-    private void checkTables() throws IOException {
-        long pending = 0;
-        for (TableBuilder t : tables) {
-            pending += t.size();
-        }
-        if (pending > Math.min(MAX_TABLE_CHARS, limit - written)) {
-            closeTables(0);
-            throw new RtfPackage.TooLarge();
-        }
     }
 
     int openTables() {
@@ -119,9 +105,13 @@ final class Story {
         return buffer == null ? "" : buffer.toString();
     }
 
+    Chunks chunks() {
+        return buffer == null ? new Chunks() : buffer;
+    }
+
     private TableBuilder open(int d) {
         while (tables.size() < d) {
-            tables.add(new TableBuilder());
+            tables.add(new TableBuilder(colors, budget));
         }
         return tables.get(d - 1);
     }
@@ -129,11 +119,13 @@ final class Story {
     private void closeTables(int depth) throws IOException {
         while (tables.size() > depth) {
             TableBuilder t = tables.remove(tables.size() - 1);
-            String xml = t.xml(colors, lastRow);
             if (tables.isEmpty()) {
-                out(xml);
+                flushDeferred();
+                t.write(writer != null ? writer : buffer, lastRow);
             } else {
-                tables.get(tables.size() - 1).block(xml);
+                StringBuilder inner = new StringBuilder();
+                t.write(inner, lastRow);
+                tables.get(tables.size() - 1).nested(inner);
             }
         }
     }
@@ -144,10 +136,7 @@ final class Story {
     }
 
     private void write(String xml) throws IOException {
-        written += xml.length();
-        if (written > limit) {
-            throw new RtfPackage.TooLarge();
-        }
+        budget.charge(xml.length());
         if (writer != null) {
             writer.write(xml);
         } else {

@@ -50,6 +50,7 @@ final class RtfMath {
         final int depth;
         String rPr;
         int count;
+        boolean lost;
 
         Node(String name, Node parent) {
             this.name = name;
@@ -73,6 +74,7 @@ final class RtfMath {
 
     static Node open(Node parent, String name) {
         if (parent.root.count >= MAX_NODES || parent.depth >= MAX_DEPTH) {
+            parent.root.lost = true;
             return parent;
         }
         parent.root.count++;
@@ -99,6 +101,7 @@ final class RtfMath {
 
     static void text(Node n, String s, String rPr) {
         if (n.root.text.length() + s.length() > MAX_TEXT) {
+            n.root.lost = true;
             return;
         }
         n.root.text.append(s);
