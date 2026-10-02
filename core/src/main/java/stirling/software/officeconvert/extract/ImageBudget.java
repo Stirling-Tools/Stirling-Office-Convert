@@ -63,8 +63,9 @@ public final class ImageBudget {
         } catch (Exception e) {
             components = 4;
         }
-        long bits = (long) image.getWidth() * image.getHeight() * Math.max(1, components) * Math.max(1, image.getBitsPerComponent());
-        return bits / 8;
+        long samples = samples(image.getWidth(), image.getHeight(), Math.max(1, components));
+        long precision = Math.max(1, image.getBitsPerComponent());
+        return samples > Long.MAX_VALUE / precision ? Long.MAX_VALUE : samples * precision / 8;
     }
 
     static long codedBytes(PDImage image) {
@@ -116,10 +117,18 @@ public final class ImageBudget {
                 long width = u32(b, i + 8) - u32(b, i + 16);
                 long height = u32(b, i + 12) - u32(b, i + 20);
                 int components = (b[i + 40] & 0xFF) << 8 | b[i + 41] & 0xFF;
-                return width <= 0 || height <= 0 ? Long.MAX_VALUE : width * height * Math.max(1, components);
+                return samples(width, height, components);
             }
         }
         return Long.MAX_VALUE;
+    }
+
+    private static long samples(long width, long height, int components) {
+        if (width <= 0 || height <= 0 || components <= 0 || width > Long.MAX_VALUE / height) {
+            return Long.MAX_VALUE;
+        }
+        long pixels = width * height;
+        return pixels > Long.MAX_VALUE / components ? Long.MAX_VALUE : pixels * components;
     }
 
     private static long u32(byte[] b, int at) {
