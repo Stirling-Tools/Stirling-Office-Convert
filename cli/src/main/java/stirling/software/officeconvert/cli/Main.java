@@ -29,6 +29,7 @@ import stirling.software.officeconvert.legacy.PdfToPpt;
 import stirling.software.officeconvert.pdfa.PdfALevel;
 import stirling.software.officeconvert.pdfa.PdfToPdfA;
 import stirling.software.officeconvert.topdf.OfficeToPdf;
+import stirling.software.officeconvert.topdf.UnsupportedFormats;
 import stirling.software.officeconvert.topdf.crypt.Passwords;
 import stirling.software.officeconvert.topdf.font.FontSet;
 import stirling.software.officeconvert.topdf.io.PoiXml;
@@ -136,6 +137,10 @@ public final class Main {
                     continue;
                 }
                 boolean officeInput = isOffice(in);
+                String unsupported = officeInput ? null : UnsupportedFormats.byExtension(extension(in));
+                if (unsupported != null) {
+                    throw new Usage(in.getFileName() + ": " + unsupported);
+                }
                 anyOffice |= officeInput;
                 anyPdf |= !officeInput;
             }
@@ -522,9 +527,12 @@ public final class Main {
                         + " [--timeout s] [--fonts dir]... [--font-map Family=Installed]... [--no-system-fonts] [-q]"
                         + System.lineSeparator()
                         + "Word, PowerPoint and Excel files (.docx .docm .dotx .dotm .pptx .pptm .ppsx .ppsm .potx .potm"
-                        + " .xlsx .xlsm .xltx .xltm and 97-2003 .doc .dot .xls .xlt .ppt .pps .pot), RTF (.rtf), OpenDocument"
-                        + " files (.odt .ott .fodt .ods .ots .fods .odp .otp .fodp), plain text (.txt .text .log .asc) and comma or"
-                        + " tab separated tables (.csv .tsv .tab) convert to PDF. A folder converts its PDFs and Office files;"
+                        + " .xlsx .xlsm .xltx .xltm .xlsb, binary .doc .dot .xls .xlt .ppt .pps .pot back to Word 6.0 and"
+                        + " Excel 5.0, and XML Spreadsheet 2003 and Flat OPC .xml), RTF (.rtf), OpenDocument files (.odt"
+                        + " .ott .fodt .odm .ods .ots .fods .odp .otp .fodp .odg .otg .fodg), OpenOffice.org 1.x files (.sxw"
+                        + " .stw .sxc .stc .sxi .sti .sxd .std), SYLK, DIF and dBASE tables (.slk .dif .dbf), Apple iWork"
+                        + " files from their preview (.pages .numbers .key), plain text (.txt .text .log .asc) and comma or"
+                        + " tab separated tables (.csv .tsv .tab) convert to PDF; --password opens a protected one. A folder converts its PDFs and Office files;"
                         + " --format pdf takes only its Office and text files. Nothing a document"
                         + " links to is fetched and no macro, field or formula is run."
                         + System.lineSeparator()

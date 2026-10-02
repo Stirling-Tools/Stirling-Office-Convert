@@ -20,9 +20,11 @@ java -jar cli/build/libs/stirling-office-convert-cli.jar report.docx slides.pptx
 CLI options for PDF input: `--pages a-b`, `--no-tables`, `--dpi n` (vector figures), `--password p`,
 `--picture-fallback`, `--pictures compact|lossless` (see Pictures below), `-q`.
 For Word, PowerPoint and Excel input (`.docx .docm .dotx .dotm .pptx .pptm .ppsx .ppsm .potx .potm .xlsx .xlsm
-.xltx .xltm`, Word 97-2003 `.doc .dot`, Excel 97-2003 `.xls .xlt`, PowerPoint 97-2003 `.ppt .pps .pot`, `.rtf` and
-OpenDocument `.odt .ott .fodt .ods .ots .fods .odp .otp .fodp`, plain
-text `.txt .text .log .asc` and tables `.csv .tsv .tab`), which converts to PDF: `--max-pages n` (default 10000, 0 = all), `--timeout s` (default 300, 0 =
+.xltx .xltm .xlsb`, Word 6.0 to 2003 `.doc .dot`, Excel 5.0 to 2003 `.xls .xlt`, PowerPoint 97-2003 `.ppt .pps .pot`,
+`.rtf`, XML Spreadsheet 2003 and Flat OPC `.xml`, OpenDocument `.odt .ott .fodt .odm .ods .ots .fods .odp .otp .fodp
+.odg .otg .fodg`, OpenOffice.org 1.x `.sxw .stw .sxc .stc .sxi .sti .sxd .std`, SYLK, DIF and dBASE `.slk .dif .dbf`,
+Apple iWork `.pages .numbers .key` (from the preview they hold), plain text `.txt .text .log .asc` and tables
+`.csv .tsv .tab`), which converts to PDF: `--password p` (a password protected document), `--max-pages n` (default 10000, 0 = all), `--timeout s` (default 300, 0 =
 none), `--fonts dir` (repeatable; an extra folder of fonts), `--font-map Family=Installed` (repeatable; draw a
 family with an installed one, such as `Aptos=Inter`), `--font-width Family=scale` (repeatable; scale a substituted
 family's widths, 0.5 to 2), `--no-system-fonts` (only the given fonts and the bundled Liberation Sans, for
@@ -44,8 +46,8 @@ input, or the `-o` file or folder; it takes `--password`, `--timeout`, `--fonts`
 `app` is a small page for trying the converter by hand, in both directions: drop PDFs on it to get the formats
 you picked (Word, OpenDocument text, RTF, plain text, PowerPoint, OpenDocument presentation, Excel or OpenDocument
 spreadsheet, or flat OpenDocument XML), or drop Word, PowerPoint and Excel files (`.docx .docm .dotx .dotm .pptx
-.pptm .ppsx .ppsm .potx .potm .xlsx .xlsm .xltx .xltm`, 97-2003 `.doc .dot .xls .xlt .ppt .pps .pot`, `.rtf`, and OpenDocument
-`.odt .ods .odp` and their templates and flat forms) to get PDFs. The direction comes from the file itself: a PDF goes to Office, an
+.pptm .ppsx .ppsm .potx .potm .xlsx .xlsm .xltx .xltm .xlsb`, binary `.doc .dot .xls .xlt .ppt .pps .pot`, `.rtf`,
+OpenDocument `.odt .ods .odp .odg` and their templates and flat forms, and the other formats listed above) to get PDFs. The direction comes from the file itself: a PDF goes to Office, an
 Office package goes to PDF, whatever its name. View shows the result beside the original, a PDF in the browser's
 own viewer and an Office file as a quick look drawn in the page. By default it listens on this machine only. It is
 not part of the Maven release.
@@ -60,8 +62,7 @@ Scripts can POST a PDF to `/convert?format=docx|odt|rtf|txt|xml|pptx|odp|xlsx|od
 (`pictures=lossless` for lossless pictures), or an Office file to `/convert` (`format=pdf` or none). An Office answer
 carries `X-Input` (the kind found in the package, such as `docm`), `X-Pages`, and `X-Warnings` (URL-encoded, one
 per line: substituted fonts, skipped macros and other active content). Macros, fields, formulas and links in a
-document are never run or fetched; legacy Word `.doc`, password protected and OpenDocument files are refused
-with a plain message. Excel and PowerPoint 97-2003 files are found by their content and convert as described below.
+document are never run or fetched. A password given under Options also opens a protected Office file. Excel and PowerPoint 97-2003 files are found by their content and convert as described below.
 
 ### Demo image
 
@@ -346,8 +347,29 @@ HSSF and rewritten as a SpreadsheetML package that the XLSX renderer draws: cell
 are never evaluated), styles and the workbook's colour palette, merged cells, row and column sizes, hidden rows and
 columns, print areas and titles, page setup, headers and footers, page breaks, pictures, text boxes and simple
 shapes. Charts in `.xls` files are not drawn yet (a warning says so); macros, OLE objects and links are never
-opened. A compressed picture that would inflate past 32 MB leaves the drawings out, a sheet past 480 MB of cells is
-cut short, and password protected or Excel 5.0/95 workbooks are refused with a plain reason.
+opened. A compressed picture that would inflate past 32 MB leaves the drawings out, and a sheet past 480 MB of cells
+is cut short. Excel 5.0/95 workbooks (BIFF5, in an OLE2 file or bare) are read record by record into the same
+SpreadsheetML: cached values, number formats, fonts, fills, borders, column widths, row heights, print areas and
+titles, page setup, headers and footers and page breaks; their charts, pictures and drawing objects are left out with
+a warning. Excel 4.0 and older are refused with a plain reason.
+
+Password protected documents open with `Options.password(...)` (`--password` on the command line): Office Open XML
+packages encrypted with Agile or Standard encryption, and Word, Excel and PowerPoint 97-2003 files encrypted with RC4,
+CryptoAPI or XOR obfuscation (Excel 5.0/95 XOR included). The file is decrypted in the conversion's own scratch
+space and never written beside the input; a wrong password, or none, fails with a plain reason, and nothing is ever
+guessed. Files Office protects only with its built-in read-only password open without one.
+
+Excel binary workbooks (`.xlsb`, found by their content types whatever the extension) have their binary workbook,
+sheets, styles, shared strings and tables rewritten as SpreadsheetML for the XLSX renderer; their drawings, charts,
+pictures and themes are already XML and are kept. Conditional formats that compare with constants, text, blanks,
+ranks or averages are kept; rules built on formulas are left out with a warning. Pivot table styles, comments, macros,
+external links and query definitions are left out.
+
+XML Spreadsheet 2003 files (the SpreadsheetML many systems export, often named `.xls` or `.xml`) are read as a
+stream into SpreadsheetML: styles with their parents, cached values, dates, rich text, merges, column widths, row
+heights, print areas, page setup, headers and footers. Flat OPC documents (Word, Excel or PowerPoint 2007 and later
+saved as a single `.xml`) are unpacked into their package. SYLK, DIF and dBASE tables are laid out as a one-sheet
+workbook the way Excel opens them.
 
 Word 97-2003 documents (`.doc`, `.dot`, found by their content whatever the extension) are read with Apache POI
 HWPF and rewritten as a WordprocessingML package that the DOCX renderer draws: text with its character and paragraph
@@ -357,7 +379,10 @@ them included, nested up to four deep) and simple shapes, bookmarks, and hyperli
 Fields show their cached results, except page numbers, which are counted, and EQ fields, which are laid out as
 equations; macros, OLE objects (beyond
 their stored preview picture) and links are never opened. A compressed picture that would inflate past 32 MB is left
-out, and password protected or Word 6.0/95 documents are refused with a plain reason.
+out. Word 6.0 and Word 95 documents are first rewritten as Word 97 files (Unicode text in the document's code page,
+Word 97 formatted disk pages, style sheet, fonts, sections, headers and footers, footnotes, fields and pictures) and
+then read the same way; their drawing objects and text boxes are left out with a warning. Word 2.0 and older are
+refused with a plain reason.
 
 RTF documents (`.rtf`, and a `.doc` or `.dot` that is really RTF, found by their `{\rtf` header) are read by a small
 streaming tokenizer and rewritten as a WordprocessingML package that the DOCX renderer draws: fonts and code pages,
@@ -376,7 +401,15 @@ lists, tables, sections and columns, page styles with headers and footers, footn
 cells with their cached values (formulas are never evaluated), number formats, merges, hidden rows and columns,
 print ranges and page setup; master pages, outlines and shrink-to-fit text on slides. Only pictures inside the
 package are drawn: linked files are never fetched, and macros and scripts are never run. Embedded charts are not
-drawn yet. Password protected files are refused with a plain reason.
+drawn yet. Password protected files are refused with a plain reason. OpenDocument drawings (`.odg .otg .fodg`) are
+drawn like presentations, one page per drawing page, leaving out shapes on layers that are not printed.
+OpenOffice.org 1.x documents (`.sxw .stw .sxc .stc .sxi .sti .sxd .std`) are reshaped as OpenDocument (namespaces,
+renamed elements, property sets split by style family) and converted as such; their embedded objects are left out.
+
+Apple Pages, Numbers and Keynote files are not read in their own format: the PDF preview iWork stores in the file is
+drawn when there is one, else its preview picture of the first page, and a warning says which. Formats that are not
+converted (WordPerfect, Works, Publisher, Visio, Lotus 1-2-3, Quattro Pro, StarOffice 5, Windows Write and others)
+fail with a reason naming the format, found by extension or by content.
 
 Plain text (`.txt .text .log .asc`) prints the way LibreOffice Writer prints it: A4 with 2 cm margins, Liberation Mono
 10 pt at 64 lines a page, tab stops every 1.25 cm, long lines wrapped, no widow control, and a form feed starts a new
