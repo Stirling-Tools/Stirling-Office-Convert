@@ -29,6 +29,12 @@ final class OptionalContent {
             return;
         }
         COSArray groups = ContentGraph.array(oc.getDictionaryObject(COSName.OCGS));
+        for (int i = 0; groups != null && i < groups.size(); i++) {
+            COSDictionary group = ContentGraph.dict(groups.getObject(i));
+            if (group != null && !(group.getDictionaryObject(COSName.NAME) instanceof COSString)) {
+                group.setString(COSName.NAME, "Layer " + (i + 1));
+            }
+        }
         Set<String> names = new HashSet<>();
         COSDictionary d = ContentGraph.dict(oc.getDictionaryObject(COSName.D));
         if (d == null) {

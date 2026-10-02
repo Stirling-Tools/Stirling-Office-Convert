@@ -380,6 +380,7 @@ final class Transparency {
                 return;
             }
             if (COSName.EXT_G_STATE.equals(d.getCOSName(COSName.TYPE)) || d.containsKey(COSName.CA_NS)
+                    || d.containsKey(COSName.CA)
                     || (d.containsKey(COSName.SMASK) || d.containsKey(COSName.BM)) && !(d instanceof COSStream)) {
                 d.removeItem(COSName.SMASK);
                 d.removeItem(COSName.CA);

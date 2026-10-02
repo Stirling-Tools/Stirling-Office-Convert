@@ -80,6 +80,15 @@ final class StreamFixer {
         if (b instanceof COSStream s) {
             stream(s);
         }
+        COSDictionary states = ContentGraph.dict(d.getDictionaryObject(COSName.EXT_G_STATE));
+        if (states != null) {
+            for (COSName name : states.keySet()) {
+                COSDictionary state = ContentGraph.dict(states.getDictionaryObject(name));
+                if (state != null) {
+                    extGState(state);
+                }
+            }
+        }
         if (COSName.EXT_G_STATE.equals(d.getCOSName(COSName.TYPE)) || d.containsKey(COSName.TR)
                 || d.containsKey(TR2) || d.containsKey(HT) || d.containsKey(HTP) || d.containsKey(OPM)) {
             extGState(d);

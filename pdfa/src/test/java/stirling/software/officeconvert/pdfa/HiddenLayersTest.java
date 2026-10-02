@@ -22,6 +22,21 @@ class HiddenLayersTest {
     Path dir;
 
     @Test
+    void hiddenQuoteUsesItsNewWordAndCharacterSpacing() throws Exception {
+        RawPdf pdf = RawPdf.page("/Font<</F<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>>>/Properties<</Hidden 5 0 R>>",
+                "BT /F 24 Tf 72 700 Td /OC /Hidden BDC 10 3 (A B) \" EMC (Visible) Tj ET");
+        pdf.add("<</Type/OCG/Name(Hidden)>>");
+        pdf.set(1, "<</Type/Catalog/Pages 2 0 R/OCProperties<</OCGs[5 0 R]/D<</OFF[5 0 R]>>>>>>");
+        Path output = dir.resolve("quote.pdf");
+        PdfToPdfA.convert(Hostile.write(dir, "quote", pdf), output,
+                PdfToPdfA.Options.defaults().level(PdfALevel.A1B));
+        VeraPdf.assertCompliant(output, PdfALevel.A1B);
+        float width = new PDType1Font(Standard14Fonts.FontName.HELVETICA).getStringWidth("A B") / 1000 * 24;
+        assertEquals(72 + width + 3 * 3 + 10, Converted.glyphs(output).getFirst()[0], 0.1f);
+        assertEquals("Visible", Converted.text(output).replace(" ", "").strip());
+    }
+
+    @Test
     void removingAHiddenLayerKeepsWhereTheVisibleContentIsDrawnAndInWhatColour() throws Exception {
         Path in = Hostile.write(dir, "hidden", Hostile.hiddenLayer());
         Path out = dir.resolve("hidden-1b.pdf");

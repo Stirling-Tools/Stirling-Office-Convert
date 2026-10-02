@@ -73,10 +73,11 @@ final class FontFixer {
         try {
             font = PDFontFactory.createFont(dict);
         } catch (IOException | RuntimeException e) {
-            report.warn("A font could not be read and was left as it is: " + e.getMessage());
-            return null;
+            PdfFiles.stopIfInterrupted();
+            throw new IOException("A font could not be read for PDF/A: " + e.getMessage(), e);
         }
         if (font instanceof PDType3Font t3) {
+            Type3Repair.run(doc, t3, codes, level, report);
             if (level.unicode()) {
                 unicode(t3, codes, 1);
             }
@@ -109,7 +110,8 @@ final class FontFixer {
             }
         } catch (IOException | RuntimeException e) {
             PdfFiles.stopIfInterrupted();
-            report.warn("The font " + font.getName() + " could not be embedded: " + e.getMessage());
+            throw new IOException("The font " + font.getName() + " could not be embedded for PDF/A: "
+                    + e.getMessage(), e);
         }
         return null;
     }
