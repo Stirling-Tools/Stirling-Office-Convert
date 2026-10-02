@@ -7,7 +7,9 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.file.Path;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 
@@ -31,7 +33,15 @@ public final class BoundedZip implements Closeable {
 
     public static BoundedZip open(Path file, OfficeZip.Limits limits) throws IOException {
         OfficeZip.checkNotInterrupted();
-        return new BoundedZip(new ZipFile(file.toFile()), limits);
+        ZipFile zip = new ZipFile(file.toFile());
+        try {
+            BoundedZip bounded = new BoundedZip(zip, limits);
+            bounded.checkEntries();
+            return bounded;
+        } catch (IOException | RuntimeException e) {
+            zip.close();
+            throw e;
+        }
     }
 
     public int size() {
@@ -79,20 +89,24 @@ public final class BoundedZip implements Closeable {
     }
 
     public static long inflatedSize(Path file, List<String> names, long max) throws IOException {
-        long total = 0;
-        try (ZipFile z = new ZipFile(file.toFile())) {
+        Map<String, Long> sizes = new HashMap<>();
+        for (String name : names) {
+            sizes.put(normalised(name), 0L);
+        }
+        try (BoundedZip bounded = open(file)) {
+            ZipFile z = bounded.zip;
             byte[] scratch = new byte[1 << 16];
-            for (String name : names) {
-                long largest = 0;
-                for (ZipEntry e : Collections.list(z.entries())) {
-                    if (!e.isDirectory() && normalised(e.getName()).equals(name)) {
-                        largest = Math.max(largest, inflated(z, e, scratch, max));
-                    }
+            var entries = z.entries();
+            while (entries.hasMoreElements()) {
+                OfficeZip.checkNotInterrupted();
+                ZipEntry e = entries.nextElement();
+                String name = normalised(e.getName());
+                if (!e.isDirectory() && sizes.containsKey(name) && sizes.get(name) <= max) {
+                    sizes.put(name, Math.max(sizes.get(name), inflated(z, e, scratch, max)));
                 }
-                total += largest;
             }
         }
-        return total;
+        return sizes.values().stream().mapToLong(Long::longValue).sum();
     }
 
     private static long inflated(ZipFile z, ZipEntry e, byte[] scratch, long max) throws IOException {

@@ -8,6 +8,7 @@ import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
+import java.util.List;
 import java.util.zip.ZipEntry;
 
 import org.junit.jupiter.api.Test;
@@ -24,6 +25,20 @@ class BoundedZipTest {
         byte[] b = new byte[n];
         Arrays.fill(b, (byte) 'x');
         return b;
+    }
+
+    @Test
+    void entryLimitsAreAppliedBeforeListingOrEstimatingParts() throws IOException {
+        Path file = Files.write(dir.resolve("entries.zip"), new ZipBytes().add("one", filled(1))
+                .add("two", filled(1)).bytes());
+        OfficeZip.Limits limits = new OfficeZip.Limits(1, 100, 100, 0, 0);
+        assertThrows(OfficeZip.Oversized.class, () -> BoundedZip.open(file, limits));
+        ZipBytes many = new ZipBytes();
+        for (int i = 0; i <= OfficeZip.Limits.DEFAULT.maxEntries(); i++) {
+            many.add("p" + i, new byte[0]);
+        }
+        Path oversized = Files.write(dir.resolve("many.zip"), many.bytes());
+        assertThrows(OfficeZip.Oversized.class, () -> BoundedZip.inflatedSize(oversized, List.of("content.xml"), 100));
     }
 
     @Test

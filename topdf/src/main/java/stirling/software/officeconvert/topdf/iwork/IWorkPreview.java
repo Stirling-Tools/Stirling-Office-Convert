@@ -174,8 +174,8 @@ public final class IWorkPreview {
             return null;
         }
         try (InputStream in = zip.open(e, limit)) {
-            byte[] b = in.readNBytes((int) limit);
-            return b.length == 0 ? null : b;
+            byte[] b = in.readNBytes((int) limit + 1);
+            return b.length == 0 || b.length > limit ? null : b;
         } catch (InterruptedIOException x) {
             throw x;
         } catch (IOException x) {
