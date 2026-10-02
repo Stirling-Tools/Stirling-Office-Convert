@@ -122,9 +122,11 @@ final class BlankPaint {
     }
 
     private static boolean plainWhite(PDImageXObject x) {
+        if (!ImageBudget.affordable(x)) {
+            return false;
+        }
         long pixels = (long) x.getWidth() * x.getHeight();
-        if (pixels <= 0 || pixels > MAX_PIXELS || x.getCOSObject().getLength() > PLAIN_BYTES * pixels + ALLOWANCE
-                || !ImageBudget.affordable(x)) {
+        if (pixels <= 0 || pixels > MAX_PIXELS || x.getCOSObject().getLength() > PLAIN_BYTES * pixels + ALLOWANCE) {
             return false;
         }
         try {
