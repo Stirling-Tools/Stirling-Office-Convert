@@ -10,24 +10,31 @@ final class TextOut {
 
     private static final int MAX_CHARS = 1 << 20;
 
+    private static final int MAX_PARAS = 1 << 16;
+
+    private static final int MAX_FONT_NAME = 64;
+
     private record Run(String cp, String text) {}
 
     private record Para(String pp, List<Run> runs) {}
 
+    private record Parsed(List<Para> paras, boolean whole) {}
+
     private TextOut() {}
 
-    static void text(Slide slide, Cells cells, Look look, String minorFont, Sheet s, Affine m, double w,
+    static boolean text(Slide slide, Cells cells, Look look, String minorFont, Sheet s, Affine m, double w,
             double h) {
         Element text = null;
         for (Sheet x = s; x != null && text == null; x = x.base) {
             text = x.text;
         }
         if (text == null) {
-            return;
+            return true;
         }
-        List<Para> paras = paragraphs(text);
+        Parsed parsed = paragraphs(text);
+        List<Para> paras = parsed.paras();
         if (paras.stream().allMatch(p -> p.runs().stream().allMatch(r -> r.text().isEmpty()))) {
-            return;
+            return parsed.whole();
         }
         double tw = cells.number(s, "TxtWidth", w);
         double th = cells.number(s, "TxtHeight", h);
@@ -36,7 +43,7 @@ final class TextOut {
                 cells.number(s, "TxtAngle", 0), false, false).then(m);
         Slide.Box box = Slide.Box.of(t, 0, 0, tw, th, false);
         if (box == null) {
-            return;
+            return true;
         }
         StringBuilder b = new StringBuilder("<p:txBody><a:bodyPr wrap=\"square\" lIns=\"")
                 .append(emu(cells.number(s, "LeftMargin", 0))).append("\" tIns=\"")
@@ -49,11 +56,23 @@ final class TextOut {
             b.append(" vert=\"eaVert\"");
         }
         b.append("><a:noAutofit/></a:bodyPr><a:lstStyle/>");
+        long room = slide.room() - 1024;
+        if (room <= b.length()) {
+            return false;
+        }
+        boolean whole = parsed.whole();
         for (Para p : paras) {
-            paragraph(b, cells, look, minorFont, s, p);
+            int before = b.length();
+            paragraph(b, cells, look, minorFont, s, p, room);
+            if (b.length() > room) {
+                b.setLength(before);
+                whole = false;
+                break;
+            }
         }
         b.append("</p:txBody>");
         slide.text(box, background(cells, s), b.toString());
+        return whole;
     }
 
     private static String background(Cells cells, Sheet s) {
@@ -71,19 +90,19 @@ final class TextOut {
         return color == null ? null : Look.solid(color, cells.number(s, "TextBkgndTrans", 0));
     }
 
-    private static List<Para> paragraphs(Element text) {
+    private static Parsed paragraphs(Element text) {
         List<Para> out = new ArrayList<>();
         String[] state = {"0", "0"};
         List<Run> runs = new ArrayList<>();
         StringBuilder buf = new StringBuilder();
         String[] paraPp = {null};
-        int[] total = {0};
+        int[] total = {0, 0};
         walk(text, state, runs, buf, out, paraPp, total);
         flush(runs, buf, state[0]);
         if (!runs.isEmpty() && !(runs.size() == 1 && runs.get(0).text().isEmpty())) {
             out.add(new Para(paraPp[0] == null ? state[1] : paraPp[0], runs));
         }
-        return out;
+        return new Parsed(out, total[1] == 0);
     }
 
     private static void walk(Element e, String[] state, List<Run> runs, StringBuilder buf, List<Para> out,
@@ -114,7 +133,8 @@ final class TextOut {
 
     private static void chars(String s, String[] state, List<Run> runs, StringBuilder buf, List<Para> out,
             String[] paraPp, int[] total) {
-        for (int i = 0; i < s.length() && total[0] < MAX_CHARS; i++, total[0]++) {
+        int i = 0;
+        for (; i < s.length() && total[0] < MAX_CHARS && out.size() < MAX_PARAS; i++, total[0]++) {
             char c = s.charAt(i);
             if (c == '\n' || c == '\r' || c == ' ') {
                 if (c == '\r' && i + 1 < s.length() && s.charAt(i + 1) == '\n') {
@@ -128,6 +148,9 @@ final class TextOut {
                 buf.append(c);
             }
         }
+        if (i < s.length()) {
+            total[1] = 1;
+        }
     }
 
     private static void flush(List<Run> runs, StringBuilder buf, String cp) {
@@ -137,7 +160,8 @@ final class TextOut {
         }
     }
 
-    private static void paragraph(StringBuilder b, Cells cells, Look look, String minorFont, Sheet s, Para p) {
+    private static void paragraph(StringBuilder b, Cells cells, Look look, String minorFont, Sheet s, Para p,
+            long room) {
         b.append("<a:p><a:pPr");
         double align = number(cells, s, "Paragraph", p.pp(), "HorzAlign", 1);
         b.append(" algn=\"").append(align == 0 ? "l" : align == 2 ? "r" : align == 3 ? "just" : align == 4 ? "dist"
@@ -181,18 +205,21 @@ final class TextOut {
         b.append("</a:pPr>");
         String last = "0";
         for (Run r : p.runs()) {
+            if (b.length() > room) {
+                return;
+            }
             last = r.cp();
-            run(b, cells, look, minorFont, s, r);
+            run(b, cells, look, minorFont, s, r, room);
         }
         b.append("<a:endParaRPr");
         props(b, cells, look, minorFont, s, last);
         b.append("</a:endParaRPr></a:p>");
     }
 
-    private static void run(StringBuilder b, Cells cells, Look look, String minorFont, Sheet s, Run r) {
+    private static void run(StringBuilder b, Cells cells, Look look, String minorFont, Sheet s, Run r, long room) {
         String text = r.text();
         int start = 0;
-        for (int i = 0; i <= text.length(); i++) {
+        for (int i = 0; i <= text.length() && b.length() <= room; i++) {
             if (i == text.length() || text.charAt(i) == ' ' || text.charAt(i) == '\u000B') {
                 if (i > start) {
                     b.append("<a:r><a:rPr");
@@ -255,8 +282,12 @@ final class TextOut {
         if (font == null && !"0".equals(cp)) {
             font = cells.rowCell(s, "Character", "0", "Font");
         }
-        if (font == null || font.isBlank() || font.equalsIgnoreCase("Themed") || Cells.parse(font, -1) >= 0) {
+        if (font == null || font.isBlank() || font.length() > MAX_FONT_NAME || font.equalsIgnoreCase("Themed")
+                || Cells.parse(font, -1) >= 0) {
             font = minorFont == null ? "Calibri" : minorFont;
+        }
+        if (font.length() > MAX_FONT_NAME) {
+            font = "Calibri";
         }
         b.append("<a:latin typeface=\"").append(PageWriter.esc(font)).append("\"/><a:cs typeface=\"")
                 .append(PageWriter.esc(font)).append("\"/>");

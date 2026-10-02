@@ -18,19 +18,25 @@ final class Slide {
 
     int shapes;
 
+    boolean cut;
+
     Slide(long limit) {
         this.limit = limit;
     }
 
     boolean full() {
-        return tree.length() >= limit;
+        return cut || tree.length() >= limit;
+    }
+
+    long room() {
+        return limit - tree.length();
     }
 
     private String image(String target) {
         return images.computeIfAbsent(target, t -> "rId" + (images.size() + 2));
     }
 
-    void geometry(List<Paths.Path> paths, Affine m, String fill, String line) {
+    boolean geometry(List<Paths.Path> paths, Affine m, String fill, String line) {
         double minX = Double.MAX_VALUE;
         double minY = Double.MAX_VALUE;
         double maxX = -Double.MAX_VALUE;
@@ -50,13 +56,14 @@ final class Slide {
         }
         if (!(maxX >= minX) || Math.abs(minX) > MAX_COORD || Math.abs(minY) > MAX_COORD
                 || Math.abs(maxX) > MAX_COORD || Math.abs(maxY) > MAX_COORD) {
-            return;
+            return true;
         }
         long ox = Math.round(minX);
         long oy = Math.round(minY);
         long cx = Math.max(1, Math.round(maxX - minX));
         long cy = Math.max(1, Math.round(maxY - minY));
         StringBuilder b = tree;
+        int start = b.length();
         int id = nextId++;
         shapes++;
         b.append("<p:sp><p:nvSpPr><p:cNvPr id=\"").append(id).append("\" name=\"Shape ").append(id)
@@ -93,6 +100,13 @@ final class Slide {
             b.append("</a:path>");
         }
         b.append("</a:pathLst></a:custGeom>").append(fill).append(line).append("</p:spPr></p:sp>");
+        if (b.length() > limit) {
+            b.setLength(start);
+            shapes--;
+            cut = true;
+            return false;
+        }
+        return true;
     }
 
     void polygon(double[][] points, boolean filled, String paint, long width) {
@@ -125,6 +139,7 @@ final class Slide {
             return;
         }
         String rid = image(target);
+        int start = tree.length();
         int id = nextId++;
         shapes++;
         tree.append("<p:pic><p:nvPicPr><p:cNvPr id=\"").append(id).append("\" name=\"Picture ").append(id)
@@ -132,9 +147,11 @@ final class Slide {
                 .append("\"/><a:stretch><a:fillRect/></a:stretch></p:blipFill><p:spPr>");
         xfrm(tree, box.x(), box.y(), box.w(), box.h(), box.rot(), box.flipH(), box.flipV());
         tree.append("<a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom></p:spPr></p:pic>");
+        finish(start);
     }
 
     void text(Box box, String fill, String body) {
+        int start = tree.length();
         int id = nextId++;
         shapes++;
         tree.append("<p:sp><p:nvSpPr><p:cNvPr id=\"").append(id).append("\" name=\"Text ").append(id)
@@ -142,6 +159,15 @@ final class Slide {
         xfrm(tree, box.x(), box.y(), box.w(), box.h(), box.rot(), false, false);
         tree.append("<a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom>").append(fill == null ? "<a:noFill/>" : fill)
                 .append("</p:spPr>").append(body).append("</p:sp>");
+        finish(start);
+    }
+
+    private void finish(int start) {
+        if (tree.length() > limit) {
+            tree.setLength(start);
+            shapes--;
+            cut = true;
+        }
     }
 
     private static void xfrm(StringBuilder b, long x, long y, long cx, long cy, long rot, boolean flipH,

@@ -29,15 +29,18 @@ final class PageWriter {
 
     private final Slide slide;
 
+    private final Visits budget;
+
     private final Set<Integer> hiddenLayers = new HashSet<>();
 
     private Look look;
 
-    PageWriter(Drawing drawing, Media media, Slide slide) {
+    PageWriter(Drawing drawing, Media media, Slide slide, Visits budget) {
         this.drawing = drawing;
         this.media = media;
         this.cells = drawing.cells;
         this.slide = slide;
+        this.budget = budget;
     }
 
     void page(Drawing.Page page, Affine toSlide, int depth) throws IOException {
@@ -63,15 +66,26 @@ final class PageWriter {
             }
         }
         for (Sheet s : page.shapes()) {
+            if (!more()) {
+                break;
+            }
             shape(s, null, toSlide, 0);
         }
+    }
+
+    private boolean more() {
+        if (visits >= MAX_VISITS || budget.spent() || slide.full()) {
+            cut = true;
+            return false;
+        }
+        return true;
     }
 
     private void shape(Sheet s, Drawing.Master master, Affine parent, int depth) throws IOException {
         if (Thread.currentThread().isInterrupted()) {
             throw new InterruptedIOException("Conversion interrupted");
         }
-        if (depth > MAX_DEPTH || ++visits > MAX_VISITS) {
+        if (depth > MAX_DEPTH || ++visits > MAX_VISITS || !budget.take()) {
             cut = true;
             return;
         }
@@ -115,6 +129,9 @@ final class PageWriter {
             inner = new Affine(sx, 0, 0, sy, 0, 0).then(m);
         }
         for (Sheet k : kids) {
+            if (!more()) {
+                break;
+            }
             shape(k, own, inner, depth + 1);
         }
         if (group && mode == 2) {
@@ -145,8 +162,16 @@ final class PageWriter {
             picture(s, m, w, h);
         }
         List<Paths.Path> paths = new java.util.ArrayList<>();
+        int points = 0;
         for (Cells.Geometry g : cells.geometry(s)) {
-            paths.addAll(Paths.build(g, w, h));
+            if (points >= Paths.MAX_POINTS) {
+                cut = true;
+                break;
+            }
+            Paths.Built built = Paths.build(g, w, h, Paths.MAX_POINTS - points);
+            points += built.points();
+            cut |= built.cut();
+            paths.addAll(built.paths());
         }
         if (!paths.isEmpty()) {
             String rounding = cells.get(s, "Rounding");
@@ -156,12 +181,16 @@ final class PageWriter {
                 Rounding.apply(p, radius);
             }
             Look.Stroke stroke = look.line(s);
-            slide.geometry(paths, m, look.fill(s), stroke.xml());
+            if (!slide.geometry(paths, m, look.fill(s), stroke.xml())) {
+                cut = true;
+                return;
+            }
             Arrows.draw(slide, paths, m, stroke);
         }
-        if (!"1".equals(cells.get(s, "HideText"))) {
-            TextOut.text(slide, cells, look, drawing.minorFont, s, m, w, h);
+        if (!"1".equals(cells.get(s, "HideText")) && !TextOut.text(slide, cells, look, drawing.minorFont, s, m, w, h)) {
+            cut = true;
         }
+        cut |= slide.cut;
     }
 
     private void picture(Sheet s, Affine m, double w, double h) throws IOException {
