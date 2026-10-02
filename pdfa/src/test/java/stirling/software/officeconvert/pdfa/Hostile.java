@@ -196,6 +196,18 @@ final class Hostile {
         return r;
     }
 
+    static RawPdf deviceNInForm() {
+        String names = "/S0/S1/S2/S3/S4/S5/S6/S7/S8";
+        String cs = "/ColorSpace<</CS0 [/DeviceN[" + names + "]/DeviceRGB 6 0 R]>>";
+        RawPdf r = RawPdf.page(cs + "/XObject<</Fm0 5 0 R>>",
+                "/CS0 cs 0.2 0 0 0 0 0 0 0 0 scn 100 500 100 100 re f /Fm0 Do");
+        r.add(RawPdf.stream("/Type/XObject/Subtype/Form/BBox[0 0 600 800]/Resources<<" + cs + ">>",
+                "0.8 0 0 0 0 0 0 0 0 scn 300 500 100 100 re f"));
+        r.add(RawPdf.stream("/FunctionType 4/Domain[0 1 0 1 0 1 0 1 0 1 0 1 0 1 0 1 0 1]/Range[0 1 0 1 0 1]",
+                "{pop pop pop pop pop pop pop pop dup dup}"));
+        return r;
+    }
+
     static void taggedForm(PDDocument d, String variant) throws IOException {
         PDFont f = helvetica();
         PDPage p = page(d);

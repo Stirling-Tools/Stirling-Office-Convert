@@ -5,9 +5,11 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import org.apache.pdfbox.contentstream.operator.Operator;
 import org.apache.pdfbox.cos.COSArray;
@@ -23,6 +25,10 @@ import org.apache.pdfbox.pdmodel.PDDocument;
 final class DeviceNReduction {
 
     private record Space(Tint tint, boolean pattern) {}
+
+    private record Entry(Space stroke, Space fill) {}
+
+    private final Map<COSDictionary, Set<Entry>> entries = new IdentityHashMap<>();
 
     private final PDDocument doc;
 
@@ -64,11 +70,13 @@ final class DeviceNReduction {
         DeviceNReduction r = new DeviceNReduction(doc, tints);
         Map<COSDictionary, Map<COSName, Space>> names = r.names(graph);
         CosWalk.walk(doc, r::replace);
-        for (ContentGraph.Node n : graph.nodes()) {
-            Map<COSName, Space> spaces = n.resources() == null ? null : names.get(n.resources());
-            if (spaces != null && !spaces.isEmpty()) {
-                r.content(n, spaces);
+        for (int pass = 0; pass < 3; pass++) {
+            for (ContentGraph.Node n : graph.nodes()) {
+                r.visit(n, names, false);
             }
+        }
+        for (ContentGraph.Node n : graph.nodes()) {
+            r.visit(n, names, true);
         }
         report.warn("Drew DeviceN colours with more colourants than " + level.label()
                 + " allows in their alternate colour space");
@@ -147,18 +155,37 @@ final class DeviceNReduction {
         }
     }
 
-    private void content(ContentGraph.Node n, Map<COSName, Space> spaces) throws IOException {
+    private void visit(ContentGraph.Node n, Map<COSDictionary, Map<COSName, Space>> names, boolean write)
+            throws IOException {
+        Map<COSName, Space> spaces = n.resources() == null ? null : names.get(n.resources());
+        Set<Entry> entered = entries.getOrDefault(n.owner(), Set.of());
+        if ((spaces == null || spaces.isEmpty()) && entered.isEmpty()) {
+            return;
+        }
+        Space[] start = new Space[2];
+        if (entered.size() == 1) {
+            Entry e = entered.iterator().next();
+            start[0] = e.stroke();
+            start[1] = e.fill();
+        } else if (entered.size() > 1 && write) {
+            lost = true;
+        }
+        content(n, spaces == null ? Map.of() : spaces, start, write);
+    }
+
+    private void content(ContentGraph.Node n, Map<COSName, Space> spaces, Space[] entry, boolean write)
+            throws IOException {
         List<Object> tokens;
         try {
             tokens = ContentTokens.parse(n.streams());
         } catch (IOException e) {
             Decoded.rethrowFatal(e);
-            lost = true;
+            lost |= write;
             return;
         }
         List<Object> out = new ArrayList<>(tokens.size());
         Deque<Space[]> stack = new ArrayDeque<>();
-        Space[] current = new Space[2];
+        Space[] current = entry.clone();
         boolean changed = false;
         int start = 0;
         for (int i = 0; i < tokens.size(); i++) {
@@ -171,7 +198,15 @@ final class DeviceNReduction {
             int which = Character.isUpperCase(name.charAt(0)) ? 0 : 1;
             switch (name) {
                 case "q" -> stack.push(current.clone());
-                case "Q" -> current = stack.isEmpty() ? new Space[2] : stack.pop();
+                case "Q" -> current = stack.isEmpty() ? entry.clone() : stack.pop();
+                case "Do" -> {
+                    if (operands.size() == 1 && operands.get(0) instanceof COSName xn
+                            && TransparencyScan.lookup(n.resources(), COSName.XOBJECT, xn) instanceof COSStream form
+                            && COSName.FORM.equals(form.getCOSName(COSName.SUBTYPE))
+                            && (current[0] != null || current[1] != null)) {
+                        entries.computeIfAbsent(form, k -> new HashSet<>()).add(new Entry(current[0], current[1]));
+                    }
+                }
                 case "CS", "cs" -> {
                     current[which] = operands.size() == 1 && operands.get(0) instanceof COSName cs ? spaces.get(cs)
                             : null;
@@ -199,7 +234,7 @@ final class DeviceNReduction {
                     COSDictionary p = op.getImageParameters();
                     COSBase cs = p == null ? null : p.getDictionaryObject(COSName.CS);
                     if (cs instanceof COSName csName && spaces.containsKey(csName)) {
-                        lost = true;
+                        lost |= write;
                     }
                 }
                 default -> {
@@ -208,7 +243,7 @@ final class DeviceNReduction {
             out.addAll(operands);
             out.add(op);
         }
-        if (changed) {
+        if (changed && write) {
             ContentTokens.replace(n, out);
         }
     }
