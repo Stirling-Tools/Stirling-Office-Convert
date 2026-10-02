@@ -19,7 +19,7 @@ class PathsTest {
     void aPositiveBowBulgesToTheRightOfTheChord() {
         Cells.Geometry g = new Cells.Geometry("0", Map.of(), List.of(row("MoveTo", 1.35, 0, null),
                 row("ArcTo", 1.5, 0.15, 0.0439)));
-        List<Paths.Path> paths = Paths.build(g, 1.5, 1);
+        List<Paths.Path> paths = Paths.build(g, 1.5, 1, Paths.MAX_POINTS);
         assertEquals(1, paths.size());
         assertEquals(2, paths.get(0).segments.size());
         assertEquals('C', paths.get(0).segments.get(1).op());

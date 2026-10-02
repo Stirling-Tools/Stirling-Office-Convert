@@ -26,11 +26,15 @@ final class Slide {
         return tree.length() >= limit;
     }
 
+    long room() {
+        return limit - tree.length();
+    }
+
     private String image(String target) {
         return images.computeIfAbsent(target, t -> "rId" + (images.size() + 2));
     }
 
-    void geometry(List<Paths.Path> paths, Affine m, String fill, String line) {
+    boolean geometry(List<Paths.Path> paths, Affine m, String fill, String line) {
         double minX = Double.MAX_VALUE;
         double minY = Double.MAX_VALUE;
         double maxX = -Double.MAX_VALUE;
@@ -50,13 +54,14 @@ final class Slide {
         }
         if (!(maxX >= minX) || Math.abs(minX) > MAX_COORD || Math.abs(minY) > MAX_COORD
                 || Math.abs(maxX) > MAX_COORD || Math.abs(maxY) > MAX_COORD) {
-            return;
+            return true;
         }
         long ox = Math.round(minX);
         long oy = Math.round(minY);
         long cx = Math.max(1, Math.round(maxX - minX));
         long cy = Math.max(1, Math.round(maxY - minY));
         StringBuilder b = tree;
+        int start = b.length();
         int id = nextId++;
         shapes++;
         b.append("<p:sp><p:nvSpPr><p:cNvPr id=\"").append(id).append("\" name=\"Shape ").append(id)
@@ -93,6 +98,12 @@ final class Slide {
             b.append("</a:path>");
         }
         b.append("</a:pathLst></a:custGeom>").append(fill).append(line).append("</p:spPr></p:sp>");
+        if (b.length() > limit) {
+            b.setLength(start);
+            shapes--;
+            return false;
+        }
+        return true;
     }
 
     void polygon(double[][] points, boolean filled, String paint, long width) {
