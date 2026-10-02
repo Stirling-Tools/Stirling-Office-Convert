@@ -1,5 +1,8 @@
 package stirling.software.officeconvert.topdf.grid;
 
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Set;
 import java.util.TreeMap;
 
 /** One sheet of cells read from a simple table format (SYLK, DIF, dBASE), with what little formatting they carry. */
@@ -25,6 +28,8 @@ public final class Grid {
     private int count;
 
     boolean truncated;
+
+    private final Set<String> warnings = new LinkedHashSet<>();
 
     public void put(int row, int col, Cell cell) {
         if (row < 0 || row >= MAX_ROWS || col < 0 || col >= MAX_COLS || cell == null) {
@@ -69,6 +74,14 @@ public final class Grid {
 
     public boolean truncated() {
         return truncated;
+    }
+
+    public void warn(String warning) {
+        warnings.add(warning);
+    }
+
+    public List<String> warnings() {
+        return List.copyOf(warnings);
     }
 
     public boolean isEmpty() {

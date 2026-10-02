@@ -9,8 +9,10 @@ import java.nio.ByteOrder;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 
 import stirling.software.officeconvert.memory.Admission;
 import stirling.software.officeconvert.topdf.OfficeToPdf.Options;
@@ -134,7 +136,11 @@ final class GridInput {
             if (truncated) {
                 warnings.add("The table is too large; only its first rows were converted");
             }
-            return new Result(r.pages(), r.truncated() || truncated, warnings, r.pageLimitReached());
+            Set<String> lost = new LinkedHashSet<>();
+            sheets.forEach(s -> lost.addAll(s.grid().warnings()));
+            warnings.addAll(lost);
+            return new Result(r.pages(), r.truncated() || truncated || !lost.isEmpty(), warnings,
+                    r.pageLimitReached());
         } finally {
             OfficeToPdf.deleteQuietly(xlsx);
         }
