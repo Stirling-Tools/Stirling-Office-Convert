@@ -209,7 +209,7 @@ public final class Main {
         List<Path> targets = targets(pdfs, output, pdfa != null ? "pdfa.pdf" : format,
                 inputs.stream().anyMatch(Files::isDirectory));
         PdfToPdfA.Options archival = pdfa == null ? null : PdfToPdfA.Options.defaults().level(pdfa).password(password)
-                .timeout(office.timeout()).fonts(fonts);
+                .timeout(office.timeout()).maxPages(office.maxPages()).fonts(fonts);
         for (int k = 0; k < pdfs.size(); k++) {
             Path pdf = pdfs.get(k);
             boolean officeInput = isOffice(pdf);

@@ -254,6 +254,22 @@ class MainTest {
     }
 
     @Test
+    void pdfaHonoursMaxPages() throws Exception {
+        Path pdf = dir.resolve("three.pdf");
+        try (PDDocument d = new PDDocument()) {
+            for (int i = 0; i < 3; i++) {
+                d.addPage(new org.apache.pdfbox.pdmodel.PDPage());
+            }
+            d.save(pdf.toFile());
+        }
+        Result r = run(pdf.toString(), "--pdfa", "2b", "--max-pages", "2");
+        assertTrue(r.code() != 0, r.err());
+        assertTrue(r.err().contains("more than the limit of 2"), r.err());
+        assertFalse(Files.exists(dir.resolve("three.pdfa.pdf")));
+        assertEquals(0, run(pdf.toString(), "--pdfa", "2b", "--max-pages", "3").code());
+    }
+
+    @Test
     void pdfaRefusesOfficeInputAndUnknownLevels() throws Exception {
         Path pdf = helloPdf(dir.resolve("in.pdf"));
         assertUsage(run(pdf.toString(), "--pdfa", "9"), "1a, 1b, 2a, 2b, 2u, 3a, 3b or 3u");
