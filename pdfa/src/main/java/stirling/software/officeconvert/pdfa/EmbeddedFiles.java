@@ -160,7 +160,7 @@ final class EmbeddedFiles {
         if (file == null) {
             return level.part() == 1 ? false : ef == null;
         }
-        if (level.part() == 2 && !pdfA(file)) {
+        if (level.part() == 2 && !AttachedPdfA.check(file)) {
             return false;
         }
         String name = fileName(fs);
@@ -206,15 +206,5 @@ final class EmbeddedFiles {
         int dot = name.lastIndexOf('.');
         String ext = dot < 0 ? "" : name.substring(dot + 1).toLowerCase(Locale.ROOT);
         return MIME.getOrDefault(ext, "application/octet-stream");
-    }
-
-    private static boolean pdfA(COSStream file) {
-        try (InputStream in = file.createInputStream()) {
-            byte[] head = in.readNBytes(8 << 20);
-            String s = new String(head, StandardCharsets.ISO_8859_1);
-            return s.startsWith("%PDF-") && s.matches("(?s).*pdfaid:part\\s*(=\\s*[\"']|>\\s*)[12].*");
-        } catch (IOException | RuntimeException e) {
-            return false;
-        }
     }
 }
