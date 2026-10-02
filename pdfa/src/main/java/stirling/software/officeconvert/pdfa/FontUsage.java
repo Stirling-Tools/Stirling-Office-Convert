@@ -2,6 +2,7 @@ package stirling.software.officeconvert.pdfa;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.io.InterruptedIOException;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -21,6 +22,7 @@ import org.apache.pdfbox.cos.COSStream;
 import org.apache.pdfbox.cos.COSString;
 import org.apache.pdfbox.pdmodel.font.PDFont;
 
+import stirling.software.officeconvert.extract.PdfFiles;
 
 final class FontUsage {
 
@@ -141,9 +143,11 @@ final class FontUsage {
         }
     }
 
-    void resolve() {
+    void resolve() throws InterruptedIOException {
+        Map<COSDictionary, Set<COSDictionary>> inherited = inheritedFonts();
         for (Map.Entry<COSDictionary, List<byte[]>> e : inheritedText.entrySet()) {
-            for (COSDictionary font : inherited(e.getKey())) {
+            PdfFiles.stopIfInterrupted();
+            for (COSDictionary font : inherited.getOrDefault(e.getKey(), Set.of())) {
                 for (byte[] b : e.getValue()) {
                     record(font, b);
                 }
@@ -152,19 +156,30 @@ final class FontUsage {
         inheritedText.clear();
     }
 
-    private Set<COSDictionary> inherited(COSDictionary form) {
-        Set<COSDictionary> fonts = identitySet();
-        Set<COSDictionary> seen = identitySet();
-        Deque<COSDictionary> todo = new ArrayDeque<>();
-        todo.push(form);
-        while (!todo.isEmpty()) {
-            COSDictionary f = todo.pop();
-            if (!seen.add(f)) {
-                continue;
+    private Map<COSDictionary, Set<COSDictionary>> inheritedFonts() throws InterruptedIOException {
+        Map<COSDictionary, Set<COSDictionary>> called = new IdentityHashMap<>();
+        for (Map.Entry<COSDictionary, Set<COSDictionary>> e : callers.entrySet()) {
+            for (COSDictionary caller : e.getValue()) {
+                called.computeIfAbsent(caller, k -> identitySet()).add(e.getKey());
             }
-            fonts.addAll(entryFonts.getOrDefault(f, Set.of()));
-            for (COSDictionary caller : callers.getOrDefault(f, Set.of())) {
-                todo.push(caller);
+        }
+        Map<COSDictionary, Set<COSDictionary>> fonts = new IdentityHashMap<>();
+        Deque<COSDictionary> todo = new ArrayDeque<>();
+        for (Map.Entry<COSDictionary, Set<COSDictionary>> e : entryFonts.entrySet()) {
+            fonts.computeIfAbsent(e.getKey(), k -> identitySet()).addAll(e.getValue());
+            todo.push(e.getKey());
+        }
+        int steps = 0;
+        while (!todo.isEmpty()) {
+            if ((++steps & 0xFFF) == 0) {
+                PdfFiles.stopIfInterrupted();
+            }
+            COSDictionary f = todo.pop();
+            Set<COSDictionary> mine = fonts.get(f);
+            for (COSDictionary form : called.getOrDefault(f, Set.of())) {
+                if (fonts.computeIfAbsent(form, k -> identitySet()).addAll(mine)) {
+                    todo.push(form);
+                }
             }
         }
         return fonts;

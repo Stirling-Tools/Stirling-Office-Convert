@@ -66,6 +66,16 @@ final class Hostile {
         return r;
     }
 
+    static RawPdf fontChain(int forms) {
+        RawPdf r = RawPdf.page(RawPdf.helvetica() + "/XObject<</X 5 0 R>>", "BT /F1 12 Tf 72 720 Td ET /X Do");
+        for (int i = 0; i < forms; i++) {
+            String res = i + 1 < forms ? "/Resources<</XObject<</X " + (6 + i) + " 0 R>>>>" : "/Resources<<>>";
+            String body = i + 1 < forms ? "BT (a) Tj ET /X Do" : "BT (b) Tj ET";
+            r.add(RawPdf.stream("/Type/XObject/Subtype/Form/BBox[0 0 600 800]" + res, body));
+        }
+        return r;
+    }
+
     static RawPdf pieceInfoDag() {
         RawPdf r = chain("", 8, "[/A]", "[" + "@ ".repeat(4000) + "]");
         r.set(3, "<</Type/Page/Parent 2 0 R/MediaBox[0 0 595 842]/Contents 4 0 R/PieceInfo<</App<</Private "

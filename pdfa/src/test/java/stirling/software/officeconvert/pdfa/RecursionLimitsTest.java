@@ -65,6 +65,15 @@ class RecursionLimitsTest {
     }
 
     @Test
+    void fontsInheritedDownALongChainOfFormsAreResolvedInLinearTime() throws Exception {
+        Path in = Hostile.write(dir, "fontchain", Hostile.fontChain(8_000));
+        Path out = dir.resolve("fontchain-out.pdf");
+        PdfToPdfA.Result r = PdfToPdfA.convert(in, out,
+                PdfToPdfA.Options.defaults().level(PdfALevel.A2B).timeout(Duration.ofSeconds(15)));
+        assertEquals(1, r.pages());
+    }
+
+    @Test
     void aStructureArrayContainingItselfIsWalkedOnce() {
         RawPdf r = structured("6 0 R");
         r.add("[6 0 R]");
