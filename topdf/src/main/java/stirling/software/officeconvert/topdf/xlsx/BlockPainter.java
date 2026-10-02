@@ -116,28 +116,32 @@ final class BlockPainter {
 
     // Data bars grow from the cell's left edge, a gradient fading to white as Excel draws them
     private void bars(Band rows, Band cols) throws IOException {
+        if (!grid.hasDataBars()) {
+            return;
+        }
         for (Grid.RowInfo info : grid.rows(rows.first, rows.last).values()) {
-            if (info.hidden) {
-                continue;
-            }
-            for (CellEntry e : info.cells(cols.first, cols.last)) {
-                Overlays.Bar bar = grid.dataBar(info.index, e.col());
-                if (bar == null) {
-                    continue;
-                }
-                double x0 = cols.start(e.col()) + 1.5;
-                double w = Math.max(0, (cols.end(e.col()) - cols.start(e.col()) - 3) * bar.fraction());
-                double y0 = rows.start(info.index) + 1.5;
-                double h = rows.end(info.index) - rows.start(info.index) - 3;
-                if (w <= 0 || h <= 0) {
-                    continue;
-                }
-                Color c = bar.color();
-                Fill fill = Fill.of(Gradient.linear((float) x0, 0, (float) (x0 + w), 0, List.of(
-                        new Gradient.Stop(0, c), new Gradient.Stop(1, new Color(255, 255, 255)))));
-                canvas.rect((float) x0, (float) y0, (float) w, (float) h, fill, Stroke.solid(0.5f, c));
+            if (!info.hidden) {
+                info.formats(cols.first, cols.last, (col, format) -> bar(info.index, col, rows, cols));
             }
         }
+    }
+
+    private void bar(int row, int col, Band rows, Band cols) throws IOException {
+        Overlays.Bar bar = grid.dataBar(row, col);
+        if (bar == null) {
+            return;
+        }
+        double x0 = cols.start(col) + 1.5;
+        double w = Math.max(0, (cols.end(col) - cols.start(col) - 3) * bar.fraction());
+        double y0 = rows.start(row) + 1.5;
+        double h = rows.end(row) - rows.start(row) - 3;
+        if (w <= 0 || h <= 0) {
+            return;
+        }
+        Color c = bar.color();
+        Fill fill = Fill.of(Gradient.linear((float) x0, 0, (float) (x0 + w), 0, List.of(
+                new Gradient.Stop(0, c), new Gradient.Stop(1, new Color(255, 255, 255)))));
+        canvas.rect((float) x0, (float) y0, (float) w, (float) h, fill, Stroke.solid(0.5f, c));
     }
 
     private void rect(double x0, double y0, double x1, double y1, Color c) throws IOException {

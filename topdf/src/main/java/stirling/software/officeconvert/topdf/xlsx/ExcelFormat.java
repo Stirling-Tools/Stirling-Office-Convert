@@ -330,8 +330,7 @@ final class ExcelFormat {
                 v = v / Math.pow(10, step);
             }
         }
-        BigDecimal rounded = round(v, decimals);
-        String plain = rounded.toPlainString();
+        String plain = plain(v, decimals);
         int dot = plain.indexOf('.');
         String whole = dot < 0 ? plain : plain.substring(0, dot);
         String frac = dot < 0 ? "" : plain.substring(dot + 1);
@@ -419,17 +418,36 @@ final class ExcelFormat {
         return false;
     }
 
+    static String plain(double v, int decimals) {
+        if (v == Math.rint(v) && Math.abs(v) < 1e15) {
+            String whole = Long.toString((long) v);
+            return decimals == 0 ? whole : whole + "." + "0".repeat(decimals);
+        }
+        return round(v, decimals).toPlainString();
+    }
+
     // A shortest repr of at most 15 digits is what the exact value rounds to at 15 digits, without BigInteger powers
-    private static BigDecimal round(double v, int decimals) {
+    static BigDecimal round(double v, int decimals) {
         BigDecimal shortest = BigDecimal.valueOf(v);
         if (shortest.precision() <= 15) {
             return shortest.setScale(decimals, RoundingMode.HALF_UP);
         }
-        BigDecimal bd = new BigDecimal(v);
-        if (bd.signum() != 0) {
-            bd = bd.round(new MathContext(15, RoundingMode.HALF_EVEN));
-        }
+        BigDecimal bd = clearOfHalf(shortest, v) ? shortest.round(FIFTEEN) : new BigDecimal(v).round(FIFTEEN);
         return bd.setScale(decimals, RoundingMode.HALF_UP);
+    }
+
+    private static final MathContext FIFTEEN = new MathContext(15, RoundingMode.HALF_EVEN);
+
+    private static final long[] TENS = {1, 10, 100, 1_000, 10_000};
+
+    private static boolean clearOfHalf(BigDecimal shortest, double v) {
+        int p = shortest.precision();
+        if (p < 16 || p > 18 || !(Math.abs(v) >= Double.MIN_NORMAL)) {
+            return false;
+        }
+        long unit = TENS[p - 15];
+        long tail = Math.abs(shortest.unscaledValue().longValue()) % unit;
+        return Math.abs(2 * tail - unit) > 4 * TENS[p - 16];
     }
 
     // Digits fill the placeholders from the right; the leftmost placeholder takes any extra digits

@@ -20,7 +20,6 @@ import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDDocumentInformation;
-import org.apache.pdfbox.pdmodel.PDPage;
 
 import stirling.software.officeconvert.build.DocSink;
 import stirling.software.officeconvert.build.DocumentBuilder;
@@ -198,8 +197,7 @@ public final class PdfToDocx {
             PageAnalyzer analyzer = new PageAnalyzer(stats, options.tables());
             PageReader.PageConsumer consume = page -> {
                 stopIfInterrupted();
-                PDPage pdPage = doc.getPage(page.index());
-                var toDisplay = PageReader.displayTransform(pdPage.getCropBox(), page.direction());
+                var toDisplay = PageReader.displayTransform(reader.cropBox(page.index()), page.direction());
                 PageLayout layout;
                 try {
                     layout = analyzer.analyze(page);
@@ -217,7 +215,7 @@ public final class PdfToDocx {
             };
             PageReader.PageConsumer unreadable =
                     fallback ? page -> builder.page(FallbackPage.of(page), PageReader.displayTransform(
-                            doc.getPage(page.index()).getCropBox(), 0)) : null;
+                            reader.cropBox(page.index()), 0)) : null;
             if (cacheAll) {
                 for (int i = first; i <= last; i++) {
                     PageData cached = cache.remove(i);

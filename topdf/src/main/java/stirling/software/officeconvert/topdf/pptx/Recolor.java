@@ -14,7 +14,7 @@ final class Recolor {
         BufferedImage out = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
         int[] row = new int[w];
         for (int y = 0; y < h; y++) {
-            src.getRGB(0, y, w, 1, row, 0, w);
+            PixelRows.read(src, 0, y, w, row);
             for (int x = 0; x < w; x++) {
                 int p = row[x];
                 int a = p >>> 24;
@@ -24,7 +24,7 @@ final class Recolor {
                 int b = mix(dark.getBlue(), light.getBlue(), lum);
                 row[x] = a << 24 | r << 16 | g << 8 | b;
             }
-            out.setRGB(0, y, w, 1, row, 0, w);
+            PixelRows.write(out, y, w, row);
         }
         return out;
     }
@@ -43,12 +43,12 @@ final class Recolor {
         BufferedImage out = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
         int[] row = new int[w];
         for (int y = 0; y < h; y++) {
-            src.getRGB(0, y, w, 1, row, 0, w);
+            PixelRows.read(src, 0, y, w, row);
             for (int x = 0; x < w; x++) {
                 int p = row[x];
                 row[x] = p & 0xFF000000 | map[p >> 16 & 0xFF] << 16 | map[p >> 8 & 0xFF] << 8 | map[p & 0xFF];
             }
-            out.setRGB(0, y, w, 1, row, 0, w);
+            PixelRows.write(out, y, w, row);
         }
         return out;
     }
@@ -64,7 +64,7 @@ final class Recolor {
         int fb = from.getBlue();
         int target = to.getAlpha() << 24 | to.getRGB() & 0xFFFFFF;
         for (int y = 0; y < h; y++) {
-            src.getRGB(0, y, w, 1, row, 0, w);
+            PixelRows.read(src, 0, y, w, row);
             for (int x = 0; x < w; x++) {
                 int p = row[x];
                 if (p >>> 24 != 0 && Math.abs((p >> 16 & 0xFF) - fr) <= tolerance
@@ -72,7 +72,7 @@ final class Recolor {
                     row[x] = target;
                 }
             }
-            out.setRGB(0, y, w, 1, row, 0, w);
+            PixelRows.write(out, y, w, row);
         }
         return out;
     }
@@ -90,14 +90,14 @@ final class Recolor {
         BufferedImage out = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
         int[] row = new int[w];
         for (int y = 0; y < h; y++) {
-            src.getRGB(0, y, w, 1, row, 0, w);
+            PixelRows.read(src, 0, y, w, row);
             float ay = ramp(Math.min(y + 0.5f - y0, y1 - y - 0.5f) / radY);
             for (int x = 0; x < w; x++) {
                 float a = ay * ramp(Math.min(x + 0.5f - x0, x1 - x - 0.5f) / radX);
                 int p = row[x];
                 row[x] = Math.round((p >>> 24) * a) << 24 | p & 0xFFFFFF;
             }
-            out.setRGB(0, y, w, 1, row, 0, w);
+            PixelRows.write(out, y, w, row);
         }
         return out;
     }
@@ -132,11 +132,11 @@ final class Recolor {
         BufferedImage out = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
         int[] row = new int[w];
         for (int y = 0; y < h; y++) {
-            src.getRGB(0, y, w, 1, row, 0, w);
+            PixelRows.read(src, 0, y, w, row);
             for (int x = 0; x < w; x++) {
                 row[x] = f.applyAsInt(row[x]);
             }
-            out.setRGB(0, y, w, 1, row, 0, w);
+            PixelRows.write(out, y, w, row);
         }
         return out;
     }
@@ -163,12 +163,12 @@ final class Recolor {
             float pos = (y + 0.5f) / (y1 - y0);
             float t = Math.max(0, Math.min(1, (pos - stPos) / span));
             float alpha = pos < stPos ? stA : stA + (endA - stA) * t;
-            src.getRGB(x0, y1 - 1 - y, cw, 1, row, 0, cw);
+            PixelRows.read(src, x0, y1 - 1 - y, cw, row);
             for (int x = 0; x < cw; x++) {
                 int a = Math.round((row[x] >>> 24) * Math.max(0, Math.min(1, alpha)));
                 row[x] = a << 24 | row[x] & 0xFFFFFF;
             }
-            out.setRGB(0, y, cw, 1, row, 0, cw);
+            PixelRows.write(out, y, cw, row);
         }
         return out;
     }

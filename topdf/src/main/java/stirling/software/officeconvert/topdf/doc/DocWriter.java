@@ -3,6 +3,7 @@ package stirling.software.officeconvert.topdf.doc;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.util.List;
+import java.util.Map;
 
 import org.apache.poi.hwpf.HWPFDocument;
 import org.apache.poi.hwpf.model.DocumentProperties;
@@ -18,8 +19,9 @@ final class DocWriter {
 
     private final boolean defused;
 
-    DocWriter(HWPFDocument doc, OutputStream out, boolean defused) {
+    DocWriter(HWPFDocument doc, OutputStream out, boolean defused, Map<Integer, String> anchors) {
         this.c = new Conv(new Source(doc), new Zip(out));
+        this.c.anchors = anchors;
         this.defused = defused;
     }
 

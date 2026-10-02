@@ -54,10 +54,17 @@ final class FontFixer {
         FontFixer f = new FontFixer(doc, level, libraries, report);
         for (Map.Entry<COSDictionary, TreeSet<Integer>> e : usage.codes().entrySet()) {
             PdfFiles.stopIfInterrupted();
+            if (CMapFixer.unknownName(e.getKey())) {
+                report.warn("Read a font whose CMap is missing or has an unknown name with the Identity CMap");
+            }
+            if (CMapFixer.inline(doc, e.getKey())) {
+                report.warn("Merged a CMap with the CMap it refers to, as PDF/A-2 needs");
+            }
             PDFont kept = f.fix(e.getKey(), e.getValue(), usage.bytesPerCode(e.getKey()));
             if (kept != null) {
                 usage.unchanged(kept);
             }
+            f.cmap(e.getKey(), e.getValue());
         }
     }
 
@@ -77,7 +84,7 @@ final class FontFixer {
         }
         FontCheck.Verdict v = FontCheck.check(font, codes, level);
         if (v == FontCheck.Verdict.OK) {
-            tidy(font);
+            tidy(font, codes);
             if (level.unicode()) {
                 unicode(font, codes, bytesPerCode);
             }
@@ -107,7 +114,32 @@ final class FontFixer {
         return null;
     }
 
-    private void tidy(PDFont font) throws IOException {
+    private void cmap(COSDictionary dict, TreeSet<Integer> codes) throws IOException {
+        if (!COSName.TYPE0.equals(dict.getCOSName(COSName.SUBTYPE))) {
+            return;
+        }
+        PDType0Font t0;
+        try {
+            t0 = (PDType0Font) PDFontFactory.createFont(dict);
+        } catch (IOException | RuntimeException e) {
+            return;
+        }
+        String note = CMapFixer.run(doc, t0, codes, level);
+        if (note != null) {
+            report.warn(note);
+        }
+        try {
+            PDType0Font fresh = (PDType0Font) PDFontFactory.createFont(dict);
+            if (fresh.getDescendantFont() != null) {
+                systemInfo(fresh, fresh.getDescendantFont());
+            }
+        } catch (IOException | RuntimeException e) {
+            PdfFiles.stopIfInterrupted();
+        }
+    }
+
+    private void tidy(PDFont font, TreeSet<Integer> codes) throws IOException {
+        SimpleFontEntries.complete(font, codes);
         PDFontDescriptor fd = font.getFontDescriptor();
         if (font instanceof PDType0Font t0) {
             PDCIDFont cid = t0.getDescendantFont();
@@ -120,6 +152,10 @@ final class FontFixer {
             return;
         }
         COSDictionary d = fd.getCOSObject();
+        String subtype = FontFileSubtype.fix(doc, d, font instanceof PDType0Font, level);
+        if (subtype != null) {
+            report.warn(subtype);
+        }
         if (level.part() > 1) {
             d.removeItem(COSName.CHAR_SET);
             d.removeItem(COSName.CID_SET);
@@ -134,7 +170,7 @@ final class FontFixer {
 
     private void systemInfo(PDType0Font t0, PDCIDFont cid) {
         COSBase enc = t0.getCOSObject().getDictionaryObject(COSName.ENCODING);
-        if (!(enc instanceof COSName n) || n.getName().startsWith("Identity")) {
+        if (enc instanceof COSName n && n.getName().startsWith("Identity") || enc == null) {
             return;
         }
         CMap cmap = t0.getCMap();
@@ -234,7 +270,8 @@ final class FontFixer {
 
     private void unicode(PDFont font, TreeSet<Integer> codes, int bytesPerCode) throws IOException {
         TreeMap<Integer, String> map = new TreeMap<>();
-        boolean complete = font.getCOSObject().getDictionaryObject(COSName.TO_UNICODE) != null;
+        COSBase declared = font.getCOSObject().getDictionaryObject(COSName.TO_UNICODE);
+        boolean complete = declared != null && ToUnicodeWriter.wellFormed(declared);
         for (int code : codes) {
             String t = UnicodeGuess.of(font, code, bytesPerCode);
             if (complete && !ToUnicodeWriter.valid(UnicodeGuess.declared(font, code))) {

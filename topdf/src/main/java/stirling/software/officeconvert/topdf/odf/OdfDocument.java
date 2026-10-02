@@ -473,7 +473,9 @@ public final class OdfDocument implements Closeable {
             case "application/vnd.oasis.opendocument.spreadsheet",
                     "application/vnd.oasis.opendocument.spreadsheet-template" -> Kind.SPREADSHEET;
             case "application/vnd.oasis.opendocument.presentation",
-                    "application/vnd.oasis.opendocument.presentation-template" -> Kind.PRESENTATION;
+                    "application/vnd.oasis.opendocument.presentation-template",
+                    "application/vnd.oasis.opendocument.graphics",
+                    "application/vnd.oasis.opendocument.graphics-template" -> Kind.PRESENTATION;
             default -> null;
         };
     }

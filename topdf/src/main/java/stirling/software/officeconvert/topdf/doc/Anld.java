@@ -3,7 +3,7 @@ package stirling.software.officeconvert.topdf.doc;
 import java.util.List;
 
 record Anld(int level, String format, String text, int start, int font, boolean bold, boolean italic,
-        int indent) {
+        int indent, boolean previous) {
 
     static final int SIZE = 84;
 
@@ -26,6 +26,7 @@ record Anld(int level, String format, String text, int start, int font, boolean 
         int before = Math.min(32, d[at + 1] & 0xFF);
         int after = Math.max(before, Math.min(32, d[at + 2] & 0xFF));
         int flags = d[at + 4] & 0xFF;
+        boolean previous = (d[at + 3] & 0x04) != 0;
         int start = Math.max(0, Math.min(32767, (short) Sprm.u16(d, at + 10)));
         int indent = Math.max(0, Math.min(31680, (short) Sprm.u16(d, at + 12)));
         StringBuilder chars = new StringBuilder();
@@ -42,6 +43,6 @@ record Anld(int level, String format, String text, int start, int font, boolean 
         }
         String format = bullet ? "bullet" : nfc == 255 ? "none" : nfc < FORMATS.length ? FORMATS[nfc] : "decimal";
         return new Anld(level, format, text, start == 0 ? 1 : start, Sprm.u16(d, at + 6), (flags & 0x08) != 0,
-                (flags & 0x10) != 0, indent);
+                (flags & 0x10) != 0, indent, previous);
     }
 }

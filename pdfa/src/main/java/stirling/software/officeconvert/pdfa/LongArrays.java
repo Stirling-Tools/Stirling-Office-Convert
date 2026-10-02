@@ -1,5 +1,7 @@
 package stirling.software.officeconvert.pdfa;
 
+import java.io.IOException;
+import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.TreeMap;
@@ -11,6 +13,7 @@ import org.apache.pdfbox.cos.COSFloat;
 import org.apache.pdfbox.cos.COSInteger;
 import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.cos.COSNumber;
+import org.apache.pdfbox.cos.COSStream;
 
 final class LongArrays {
 
@@ -18,9 +21,19 @@ final class LongArrays {
 
     private static final int LEAF = 4000;
 
+    private static final COSName INK_LIST = COSName.getPDFName("InkList");
+
     private LongArrays() {}
 
-    static boolean fix(COSDictionary d) {
+    static boolean fix(COSDictionary d) throws IOException {
+        if (d.getDictionaryObject(COSName.CONTENTS) instanceof COSArray c && c.size() > MAX
+                && COSName.PAGE.equals(d.getCOSName(COSName.TYPE))) {
+            return contents(d, c);
+        }
+        if (d.getDictionaryObject(INK_LIST) instanceof COSArray ink && longPath(ink)) {
+            d.setItem(INK_LIST, ink(ink));
+            return true;
+        }
         if (d.getDictionaryObject(COSName.W) instanceof COSArray w && tooLong(w)
                 && (COSName.CID_FONT_TYPE0.equals(d.getCOSName(COSName.SUBTYPE))
                         || COSName.CID_FONT_TYPE2.equals(d.getCOSName(COSName.SUBTYPE)))) {
@@ -38,6 +51,49 @@ final class LongArrays {
             return kids(d);
         }
         return false;
+    }
+
+    private static boolean contents(COSDictionary page, COSArray streams) throws IOException {
+        List<COSStream> parts = new ArrayList<>();
+        for (int i = 0; i < streams.size(); i++) {
+            if (streams.getObject(i) instanceof COSStream s) {
+                parts.add(s);
+            }
+        }
+        COSStream merged = new COSStream();
+        try (OutputStream out = merged.createOutputStream(COSName.FLATE_DECODE)) {
+            out.write(ContentTokens.bytes(parts));
+        }
+        page.setItem(COSName.CONTENTS, merged);
+        return true;
+    }
+
+    private static boolean longPath(COSArray ink) {
+        for (int i = 0; i < ink.size(); i++) {
+            if (ink.getObject(i) instanceof COSArray path && path.size() > MAX) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static COSArray ink(COSArray ink) {
+        COSArray out = new COSArray();
+        int step = MAX - 1 - (MAX - 1) % 2;
+        for (int i = 0; i < ink.size(); i++) {
+            if (!(ink.getObject(i) instanceof COSArray path) || path.size() <= MAX) {
+                out.add(ink.get(i));
+                continue;
+            }
+            for (int start = 0; start + 2 < path.size(); start += step - 2) {
+                COSArray part = new COSArray();
+                for (int k = start; k < Math.min(path.size(), start + step); k++) {
+                    part.add(path.get(k));
+                }
+                out.add(part);
+            }
+        }
+        return out;
     }
 
     private static boolean tooLong(COSArray w) {

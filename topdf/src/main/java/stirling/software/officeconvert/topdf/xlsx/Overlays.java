@@ -99,6 +99,10 @@ final class Overlays {
         return over;
     }
 
+    boolean hasBars() {
+        return !bars.isEmpty();
+    }
+
     Bar bar(int row, int col) {
         return bars.get(key(row, col));
     }

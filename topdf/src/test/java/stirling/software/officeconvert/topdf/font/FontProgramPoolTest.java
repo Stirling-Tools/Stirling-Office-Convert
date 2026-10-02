@@ -43,6 +43,18 @@ class FontProgramPoolTest {
     }
 
     @Test
+    void theBundledFallbackFontIsKeptLikeASystemFont() throws Exception {
+        FontEntry entry = FontLibrary.of(List.of(Files.createDirectories(dir.resolve("empty")))).find("Calibri", false,
+                false).program().entry();
+        assertTrue(FontLibrary.bundled(entry));
+        FontProgram.Opened first = FontProgram.open(entry);
+        first.close();
+        try (FontProgram.Opened again = FontProgram.open(entry)) {
+            assertSame(first.font(), again.font());
+        }
+    }
+
+    @Test
     void fontsFromTheDocumentAreNeverKept() throws Exception {
         FontLibrary lib = FontLibrary.of(List.of(Files.createDirectories(dir.resolve("none"))))
                 .withFonts(List.of(TestFonts.renamed("Doc Face")));

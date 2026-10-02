@@ -12,6 +12,7 @@ import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 
 import org.apache.commons.compress.archivers.zip.ZipArchiveEntry;
 import org.apache.poi.ooxml.POIXMLDocument;
@@ -31,7 +32,9 @@ public final class PoiPackages {
         PoiLimits.apply();
         PoiXml.install();
         try {
-            return OPCPackage.open(new Parts(zip, SlideLinks.repairs(zip)));
+            Map<String, byte[]> repairs = SlideLinks.repairs(zip);
+            Set<String> hidden = repairs.isEmpty() ? UndrawnParts.of(zip) : Set.of();
+            return OPCPackage.open(new Parts(zip, repairs, hidden));
         } catch (InvalidFormatException | RuntimeException e) {
             throw damagedOr(zip, e);
         }
@@ -113,7 +116,7 @@ public final class PoiPackages {
 
         private volatile boolean closed;
 
-        Parts(OfficeZip zip, Map<String, byte[]> repaired) {
+        Parts(OfficeZip zip, Map<String, byte[]> repaired, Set<String> hidden) {
             this.zip = zip;
             this.repaired = repaired;
             for (String part : repaired.keySet()) {
@@ -125,7 +128,7 @@ public final class PoiPackages {
                 }
             }
             for (String part : zip.partNames()) {
-                if (part.startsWith("/[trash]/")) {
+                if (part.startsWith("/[trash]/") || hidden.contains(part.toLowerCase(Locale.ROOT))) {
                     continue;
                 }
                 if (!part.equalsIgnoreCase(OfficeZip.CONTENT_TYPES) && zip.contentType(part) == null) {

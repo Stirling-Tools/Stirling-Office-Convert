@@ -119,10 +119,14 @@ final class TextFrame {
         if (!any && !keepEmpty) {
             return null;
         }
-        Insets in = override != null ? override
+        BodyChain body = BodyChain.of(shape);
+        Insets in = override != null ? override : body != null
+                ? new Insets((float) body.leftInset(), (float) body.topInset(), (float) body.rightInset(),
+                        (float) body.bottomInset())
                 : new Insets((float) shape.getLeftInset(), (float) shape.getTopInset(), (float) shape.getRightInset(),
                         (float) shape.getBottomInset());
-        VerticalAlignment anchor = anchorOverride != null ? anchorOverride : shape.getVerticalAlignment();
+        VerticalAlignment anchor = anchorOverride != null ? anchorOverride
+                : body != null ? body.verticalAlignment() : shape.getVerticalAlignment();
         List<CTTextBodyProperties> chain = bodyChain(shape);
         int columns = (int) Math.max(1, Math.min(16, inherited(chain, "numCol", 1)));
         float gap = inherited(chain, "spcCol", 0) / 12_700f;
@@ -142,8 +146,10 @@ final class TextFrame {
                 default -> TextDirection.HORIZONTAL;
             };
         }
-        TextFrame frame = new TextFrame(deck, paras, in, anchor == null ? VerticalAlignment.TOP : anchor,
-                shape.isHorizontalCentered(), shape.getWordWrap(), dir, rot, columns, gap);
+        boolean centered = body != null ? body.horizontalCentered() : shape.isHorizontalCentered();
+        boolean wrap = body != null ? body.wordWrap() : shape.getWordWrap();
+        TextFrame frame = new TextFrame(deck, paras, in, anchor == null ? VerticalAlignment.TOP : anchor, centered, wrap,
+                dir, rot, columns, gap);
         frame.warp = chain.isEmpty() ? null : warp(chain.get(0));
         frame.spin = chain.isEmpty() ? 0 : Cameras.revolution(chain.get(0));
         String edges = text(chain, "spcFirstLastPara");
