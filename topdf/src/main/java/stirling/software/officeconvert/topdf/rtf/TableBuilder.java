@@ -12,6 +12,8 @@ final class TableBuilder {
 
     private static final int DEFAULT_WIDTH = 1440;
 
+    private static final int CELL_XML = 256;
+
     private record Row(RowProps props, List<String> cells) {}
 
     private final List<Row> rows = new ArrayList<>();
@@ -20,13 +22,21 @@ final class TableBuilder {
 
     private StringBuilder cell = new StringBuilder();
 
+    private long size;
+
+    long size() {
+        return size;
+    }
+
     void block(String xml) {
         cell.append(xml);
+        size += xml.length();
     }
 
     void endCell() {
         cells.add(cell.toString());
         cell = new StringBuilder();
+        size += CELL_XML;
     }
 
     void endRow(RowProps props) {
@@ -35,6 +45,7 @@ final class TableBuilder {
         }
         rows.add(new Row(props, cells));
         cells = new ArrayList<>();
+        size += (long) CELL_XML * props.cells.size() + CELL_XML;
     }
 
     boolean pending() {

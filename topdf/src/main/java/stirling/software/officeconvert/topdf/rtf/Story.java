@@ -9,6 +9,8 @@ final class Story {
 
     static final int MAX_DEPTH = 32;
 
+    private static final long MAX_TABLE_CHARS = 64L << 20;
+
     final Rels rels;
 
     final ParaBuilder para = new ParaBuilder();
@@ -49,12 +51,14 @@ final class Story {
             return;
         }
         open(d).block(xml);
+        checkTables();
     }
 
     void endCell(int depth) throws IOException {
         int d = Math.max(1, Math.min(MAX_DEPTH, depth));
         closeTables(d);
         open(d).endCell();
+        checkTables();
     }
 
     void endRow(int depth, RowProps props) throws IOException {
@@ -62,6 +66,18 @@ final class Story {
         closeTables(d);
         open(d).endRow(props);
         lastRow = props;
+        checkTables();
+    }
+
+    private void checkTables() throws IOException {
+        long pending = 0;
+        for (TableBuilder t : tables) {
+            pending += t.size();
+        }
+        if (pending > Math.min(MAX_TABLE_CHARS, limit - written)) {
+            closeTables(0);
+            throw new RtfPackage.TooLarge();
+        }
     }
 
     int openTables() {

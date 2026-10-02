@@ -516,4 +516,17 @@ class RtfPackageTest {
             assertTrue(b.contains("a") && b.contains(">b<") || b.contains("ab"), inner + ": " + b);
         }
     }
+
+    @Test
+    void aTableRepeatingAWideRowManyTimesStopsAtABudget() throws IOException {
+        StringBuilder rtf = new StringBuilder(HEAD + "\\trowd");
+        for (int i = 1; i <= 512; i++) {
+            rtf.append("\\cellx").append(i * 20);
+        }
+        rtf.append("\\pard\\intbl x\\cell");
+        rtf.append("\\row".repeat(200_000)).append("\\pard after\\par}");
+        Pkg p = convert(rtf.toString());
+        assertTrue(p.outcome().lost(), p.outcome().toString());
+        assertTrue(p.body().contains("<w:tbl>"), "the table's start is kept");
+    }
 }
