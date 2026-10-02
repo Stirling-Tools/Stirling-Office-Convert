@@ -3,7 +3,9 @@ package stirling.software.officeconvert.topdf.xlsb;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 import stirling.software.officeconvert.topdf.xls.Xml;
 
@@ -14,11 +16,15 @@ final class Workbook {
 
     private static final int MAX_SHEETS = 4096;
 
+    private static final int MAX_FORMULA_CHARS = 8192;
+
     final List<SheetRef> sheets = new ArrayList<>();
 
     private boolean date1904;
 
     private final List<Object[]> names = new ArrayList<>();
+
+    private final Set<String> printed = new HashSet<>();
 
     static Workbook read(InputStream in) throws IOException {
         Workbook w = new Workbook();
@@ -97,9 +103,18 @@ final class Workbook {
         if (sheet < 0 || sheet >= sheets.size() || areas.isEmpty()) {
             return;
         }
+        if (!printed.add(sheet + "|" + base)) {
+            return;
+        }
         String quoted = "'" + sheets.get(sheet).name().replace("'", "''") + "'!";
+        if (quoted.length() > MAX_FORMULA_CHARS) {
+            return;
+        }
         StringBuilder v = new StringBuilder();
         for (Formula.Area a : areas) {
+            if (v.length() + quoted.length() + 32 > MAX_FORMULA_CHARS) {
+                break;
+            }
             v.append(v.isEmpty() ? "" : ",").append(quoted);
             boolean allCols = a.col0() == 0 && a.col1() == Refs.MAX_COL;
             boolean allRows = a.row0() == 0 && a.row1() == Refs.MAX_ROW;
