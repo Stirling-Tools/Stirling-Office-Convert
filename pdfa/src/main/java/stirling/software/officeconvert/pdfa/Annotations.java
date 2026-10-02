@@ -55,7 +55,8 @@ final class Annotations {
             }
             COSName sub = a.getCOSName(COSName.SUBTYPE);
             String type = sub == null ? "" : sub.getName();
-            if (!(level.part() == 1 ? ALLOWED_A1 : ALLOWED).contains(type)) {
+            boolean flatten = level.part() == 1 && Set.of("Polygon", "PolyLine", "Caret").contains(type);
+            if (!(level.part() == 1 ? ALLOWED_A1 : ALLOWED).contains(type) && !flatten) {
                 report.warn("Removed " + (type.isEmpty() ? "an annotation without a type" : "a " + type
                         + " annotation") + ", which " + level.label() + " does not allow");
                 continue;
@@ -63,6 +64,11 @@ final class Annotations {
             int flags = a.getInt(COSName.F, 0);
             if ((flags & (HIDDEN | NO_VIEW)) != 0 && !"Popup".equals(type)) {
                 report.warn("Removed a hidden " + type + " annotation, which PDF/A does not allow");
+                continue;
+            }
+            if (flatten) {
+                AnnotationFlatten.run(doc, page, a);
+                report.warn("Drew a " + type + " annotation into the page, as PDF/A-1 does not allow its type");
                 continue;
             }
             flags = (flags | PRINT) & ~(INVISIBLE | HIDDEN | NO_VIEW | TOGGLE_NO_VIEW);
@@ -107,6 +113,10 @@ final class Annotations {
         }
         if (!needs) {
             return;
+        }
+        if ("Widget".equals(type) && COSName.BTN.equals(fieldType(a))) {
+            ButtonAppearances.run(doc, a, report);
+            ap = ContentGraph.dict(a.getDictionaryObject(COSName.AP));
         }
         if (ap == null || ap.getDictionaryObject(COSName.N) == null) {
             try {
