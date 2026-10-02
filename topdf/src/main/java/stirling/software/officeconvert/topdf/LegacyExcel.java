@@ -90,7 +90,7 @@ final class LegacyExcel {
 
     static Long estimate(Path source) throws IOException {
         byte[] stream = stream(source);
-        return stream == null ? null : Biff5Package.estimate(stream.length) + 2 * Admission.BASE_BYTES;
+        return stream == null ? null : Biff5Package.estimate(stream) + 2 * Admission.BASE_BYTES;
     }
 
     static Result render(Path source, OutputStream sink, Options options, OfficeToPdf.Renderer renderer)
@@ -115,7 +115,7 @@ final class LegacyExcel {
         Path xlsx = Files.createTempFile("office-to-pdf-", ".xlsx");
         try {
             Biff5Package.Outcome outcome;
-            Admission.Ticket ticket = Admission.jvm().enter(Biff5Package.estimate(stream.length));
+            Admission.Ticket ticket = Admission.jvm().enter(Biff5Package.estimate(stream));
             try (OutputStream os = new BufferedOutputStream(Files.newOutputStream(xlsx), 1 << 16)) {
                 outcome = Biff5Package.write(stream, os);
             } finally {

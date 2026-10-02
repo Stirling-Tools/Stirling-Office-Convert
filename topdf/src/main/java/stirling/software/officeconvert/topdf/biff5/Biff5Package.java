@@ -1,9 +1,12 @@
 package stirling.software.officeconvert.topdf.biff5;
 
 import java.io.IOException;
+import java.io.InterruptedIOException;
 import java.io.OutputStream;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 import stirling.software.officeconvert.memory.Admission;
 import stirling.software.officeconvert.topdf.crypt.Passwords;
@@ -26,6 +29,8 @@ public final class Biff5Package {
     private static final int BOF = 0x0809;
 
     private static final int MAX_SHEETS = 4096;
+
+    private static final long CELL_BYTES = 192;
 
     private Biff5Package() {}
 
@@ -58,6 +63,11 @@ public final class Biff5Package {
         return v < 0 ? Long.MAX_VALUE : v;
     }
 
+    public static long estimate(byte[] stream) throws InterruptedIOException {
+        return Math.max(estimate(stream.length), Admission.BASE_BYTES + 4L * stream.length
+                + CELL_BYTES * Sheet.cells(new Stream(stream)));
+    }
+
     private record SheetRef(String name, int offset, int state, int type) {}
 
     public static Outcome write(byte[] stream, OutputStream out) throws IOException {
@@ -66,6 +76,7 @@ public final class Biff5Package {
         Styles styles = new Styles(text);
         List<SheetRef> sheets = new ArrayList<>();
         List<Object[]> names = new ArrayList<>();
+        Set<String> printed = new HashSet<>();
         boolean date1904 = false;
         int depth = 0;
         while (s.next()) {
@@ -92,7 +103,7 @@ public final class Biff5Package {
                 }
                 case 0x0018 -> {
                     Object[] n = Names.printName(s);
-                    if (n != null) {
+                    if (n != null && printed.add(n[0] + "|" + n[1])) {
                         names.add(n);
                     }
                 }
@@ -114,10 +125,16 @@ public final class Biff5Package {
         int written = 0;
         int[] position = new int[sheets.size()];
         int skipped = 0;
+        int shared = 0;
+        Set<Integer> offsets = new HashSet<>();
         boolean objects = false;
         for (int i = 0; i < sheets.size(); i++) {
             SheetRef ref = sheets.get(i);
             position[i] = -1;
+            if (!offsets.add(ref.offset())) {
+                shared++;
+                continue;
+            }
             s.seek(ref.offset());
             if (ref.type() != 0 || !s.next() || s.type() != BOF || s.u16(2) != 0x0010) {
                 skipped++;
@@ -157,6 +174,11 @@ public final class Biff5Package {
             lost = true;
             warnings.add("Left out " + skipped + (skipped == 1 ? " chart, macro or module sheet" : " chart, macro or"
                     + " module sheets") + " of the Excel 5.0/95 workbook");
+        }
+        if (shared > 0) {
+            lost = true;
+            warnings.add("Left out " + shared + (shared == 1 ? " sheet that points" : " sheets that point")
+                    + " at another sheet's data in the Excel 5.0/95 workbook");
         }
         if (objects) {
             lost = true;

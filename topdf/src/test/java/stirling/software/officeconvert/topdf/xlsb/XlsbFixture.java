@@ -46,7 +46,15 @@ final class XlsbFixture {
     }
 
     static final class Rec {
-        private final ByteBuffer b = ByteBuffer.allocate(4096).order(ByteOrder.LITTLE_ENDIAN);
+        private final ByteBuffer b;
+
+        Rec() {
+            this(4096);
+        }
+
+        Rec(int capacity) {
+            b = ByteBuffer.allocate(capacity).order(ByteOrder.LITTLE_ENDIAN);
+        }
 
         Rec i8(int v) {
             b.put((byte) v);
@@ -96,6 +104,10 @@ final class XlsbFixture {
     private final List<int[]> printAreas = new ArrayList<>();
 
     private String tableXml;
+
+    private String sheetName = "Data";
+
+    private int areaCopies = 1;
 
     XlsbFixture() {
         sheet.rec(0x81);
@@ -185,6 +197,16 @@ final class XlsbFixture {
         return this;
     }
 
+    XlsbFixture sheetName(String name) {
+        sheetName = name;
+        return this;
+    }
+
+    XlsbFixture areaCopies(int copies) {
+        areaCopies = copies;
+        return this;
+    }
+
     XlsbFixture table(String ref) {
         tableXml = ref;
         return this;
@@ -196,11 +218,17 @@ final class XlsbFixture {
         }
         sheet.rec(0x82);
         Bin book = new Bin().rec(0x83).rec(0x99, new Rec().i32(0).i32(0).str("")).rec(0x8F)
-                .rec(0x9C, new Rec().i32(0).i32(1).str("rId1").str("Data")).rec(0x90);
+                .rec(0x9C, new Rec(64 + 2 * sheetName.length()).i32(0).i32(1).str("rId1").str(sheetName)).rec(0x90);
         for (int[] a : printAreas) {
-            Rec formula = new Rec().i8(0x3B).i16(0).i32(a[0]).i32(a[1]).i16(a[2]).i16(a[3]);
+            Rec formula = new Rec(16 * areaCopies);
+            for (int i = 0; i < areaCopies; i++) {
+                formula.i8(0x3B).i16(0).i32(a[0]).i32(a[1]).i16(a[2]).i16(a[3]);
+                if (i > 0) {
+                    formula.i8(0x10);
+                }
+            }
             byte[] f = formula.bytes();
-            Rec name = new Rec().i32(0x20).i8(0).i32(0).str("Print_Area").i32(f.length);
+            Rec name = new Rec(64 + f.length).i32(0x20).i8(0).i32(0).str("Print_Area").i32(f.length);
             for (byte x : f) {
                 name.i8(x);
             }

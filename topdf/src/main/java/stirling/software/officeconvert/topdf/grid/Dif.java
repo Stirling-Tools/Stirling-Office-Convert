@@ -7,8 +7,9 @@ import java.io.InputStreamReader;
 import java.io.InterruptedIOException;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.nio.file.Path;
+
+import stirling.software.officeconvert.topdf.io.SourceFile;
 
 /** DIF (Data Interchange Format) tables: a header of topics, then the data as tuples (rows) of typed values. */
 public final class Dif {
@@ -19,7 +20,7 @@ public final class Dif {
 
     /** Whether the file starts with DIF's TABLE topic. */
     public static boolean is(Path file) throws IOException {
-        try (InputStream in = Files.newInputStream(file)) {
+        try (InputStream in = SourceFile.open(file)) {
             String head = new String(in.readNBytes(32), StandardCharsets.ISO_8859_1).stripLeading();
             return head.startsWith("TABLE\r\n0,") || head.startsWith("TABLE\n0,");
         }
@@ -27,7 +28,7 @@ public final class Dif {
 
     public static Grid read(Path file) throws IOException {
         Grid grid = new Grid();
-        try (BufferedReader r = new BufferedReader(new InputStreamReader(Files.newInputStream(file),
+        try (BufferedReader r = new BufferedReader(new InputStreamReader(SourceFile.open(file),
                 Charset.forName("windows-1252")), 1 << 16)) {
             String line;
             int n = 0;

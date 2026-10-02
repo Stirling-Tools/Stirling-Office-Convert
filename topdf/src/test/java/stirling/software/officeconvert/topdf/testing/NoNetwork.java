@@ -1,7 +1,9 @@
 package stirling.software.officeconvert.topdf.testing;
 
+import java.awt.Font;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InterruptedIOException;
 import java.net.InetAddress;
 import java.net.Proxy;
 import java.net.ProxySelector;
@@ -11,6 +13,7 @@ import java.net.SocketAddress;
 import java.net.SocketException;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -25,6 +28,10 @@ public final class NoNetwork implements AutoCloseable {
     static final Queue<String> LOOKUPS = new ConcurrentLinkedQueue<>();
 
     static volatile boolean resolverInstalled;
+
+    private static final long LOCAL_HOST_CACHE_NANOS = 5_500_000_000L;
+
+    private static final long FONT_MANAGER_LOADED = loadJdkFontManagerWhoseCacheIsNamedAfterTheLocalHost();
 
     private final ServerSocket server;
 
@@ -57,7 +64,25 @@ public final class NoNetwork implements AutoCloseable {
     }
 
     public static NoNetwork start() throws IOException {
+        outwaitTheLocalHostCache();
         return new NoNetwork();
+    }
+
+    private static long loadJdkFontManagerWhoseCacheIsNamedAfterTheLocalHost() {
+        new Font(Font.DIALOG, Font.PLAIN, 12).getFontName();
+        return System.nanoTime();
+    }
+
+    private static void outwaitTheLocalHostCache() throws IOException {
+        long left = LOCAL_HOST_CACHE_NANOS - (System.nanoTime() - FONT_MANAGER_LOADED);
+        if (left > 0) {
+            try {
+                Thread.sleep(Duration.ofNanos(left));
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new InterruptedIOException("Interrupted while the local host cache expired");
+            }
+        }
     }
 
     public int port() {

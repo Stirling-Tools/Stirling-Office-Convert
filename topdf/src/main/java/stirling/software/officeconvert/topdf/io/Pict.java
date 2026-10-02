@@ -169,6 +169,8 @@ final class Pict {
 
         private double ovH;
 
+        private long pixels = PictureDecoder.DECODE_PIXELS;
+
         private Rectangle2D lastRect = new Rectangle2D.Double();
 
         private Rectangle2D lastRRect = new Rectangle2D.Double();
@@ -471,7 +473,8 @@ final class Pict {
         }
 
         private void bits(PictReader in, int op) {
-            PictBits.Image b = PictBits.read(in, op, fg, bg);
+            PictBits.Image b = PictBits.read(in, op, fg, bg, pixels);
+            pixels -= (long) b.image().getWidth() * b.image().getHeight();
             int sw = b.srcRight() - b.srcLeft();
             int sh = b.srcBottom() - b.srcTop();
             BufferedImage img = b.image();
@@ -541,7 +544,8 @@ final class Pict {
             if (type != 1) {
                 throw new IllegalStateException("pattern type " + type);
             }
-            BufferedImage img = PictBits.pattern(in, fg, bg);
+            BufferedImage img = PictBits.pattern(in, fg, bg, pixels);
+            pixels -= (long) img.getWidth() * img.getHeight();
             long r = 0;
             long gr = 0;
             long b = 0;

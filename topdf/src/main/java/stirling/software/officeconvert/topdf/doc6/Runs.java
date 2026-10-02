@@ -1,11 +1,14 @@
 package stirling.software.officeconvert.topdf.doc6;
 
+import java.io.InterruptedIOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
+
+import stirling.software.officeconvert.topdf.io.OfficeZip;
 
 /** Character and paragraph properties by character position, read from a Word 6 document's formatted disk pages
  * and translated; then laid out again as Word 97 pages over the rewritten text. */
@@ -17,9 +20,11 @@ final class Runs {
 
     private static final int MAX_PAGES = 1 << 16;
 
+    private static final int MAX_RUNS = 1 << 22;
+
     private Runs() {}
 
-    static List<Run> read(Fib6 fib, Text6 text, boolean paragraphs) {
+    static List<Run> read(Fib6 fib, Text6 text, boolean paragraphs) throws InterruptedIOException {
         int pair = paragraphs ? 13 : 12;
         Set<Integer> pages = new LinkedHashSet<>();
         if (fib.present(pair)) {
@@ -38,6 +43,10 @@ final class Runs {
         List<Run> runs = new ArrayList<>();
         byte[] m = fib.main;
         for (int pn : pages) {
+            OfficeZip.checkNotInterrupted();
+            if (runs.size() >= MAX_RUNS) {
+                break;
+            }
             long off = (long) pn * PAGE;
             if (off < 0 || off + PAGE > m.length) {
                 continue;

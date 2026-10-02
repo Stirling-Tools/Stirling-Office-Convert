@@ -54,6 +54,10 @@ public final class Word6Upgrade {
             }
             throw new IOException("The Word 6.0/95 document could not be read: " + (e.getMessage() == null
                     ? e.getClass().getSimpleName() : e.getMessage()), e);
+        } catch (StackOverflowError e) {
+            throw new IOException("The Word 6.0/95 document nests too deeply to read", e);
+        } catch (OutOfMemoryError e) {
+            throw new IOException("The Word 6.0/95 document needs too much memory to read", e);
         }
     }
 

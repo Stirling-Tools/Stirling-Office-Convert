@@ -18,6 +18,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import stirling.software.officeconvert.topdf.OfficeToPdf;
+import stirling.software.officeconvert.topdf.testing.Allocation;
 
 class Word6Test {
 
@@ -100,5 +101,13 @@ class Word6Test {
             String t = new PDFTextStripper().getText(d);
             assertTrue(t.contains("Boxed words") && t.contains("Hello Word 6"), t);
         }
+    }
+
+    @Test
+    void piecesThatAllReadTheSameBytesAreRefusedCheaply() throws IOException {
+        byte[] word6 = new Word6Fixture().repeatedPieces(4000, 40_000).build();
+        Allocation.Measured m = Allocation.measure(() -> upgraded(word6));
+        assertTrue(m.failure() == null || m.failure() instanceof IOException, String.valueOf(m.failure()));
+        assertTrue(m.bytes() < 128L << 20, "allocated " + m.megabytes() + " MB");
     }
 }

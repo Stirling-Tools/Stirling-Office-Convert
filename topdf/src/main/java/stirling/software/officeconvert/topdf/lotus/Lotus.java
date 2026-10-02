@@ -5,7 +5,6 @@ import java.io.InputStream;
 import java.io.InterruptedIOException;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -14,6 +13,7 @@ import java.util.TreeMap;
 
 import stirling.software.officeconvert.topdf.grid.Grid;
 import stirling.software.officeconvert.topdf.grid.GridPackage;
+import stirling.software.officeconvert.topdf.io.SourceFile;
 
 public final class Lotus {
 
@@ -49,7 +49,7 @@ public final class Lotus {
     }
 
     public static boolean is(Path file) {
-        try (InputStream in = Files.newInputStream(file)) {
+        try (InputStream in = SourceFile.open(file)) {
             return is(in.readNBytes(6));
         } catch (IOException e) {
             return false;
@@ -67,10 +67,10 @@ public final class Lotus {
     }
 
     public static List<GridPackage.Sheet> read(Path file) throws IOException {
-        if (Files.size(file) > MAX_BYTES) {
+        if (SourceFile.size(file) > MAX_BYTES) {
             throw new IOException("The Lotus 1-2-3 file is too large");
         }
-        Lotus l = new Lotus(Files.readAllBytes(file));
+        Lotus l = new Lotus(SourceFile.read(file, MAX_BYTES));
         if (!is(l.d)) {
             throw new IOException("The file is not a Lotus 1-2-3 worksheet");
         }

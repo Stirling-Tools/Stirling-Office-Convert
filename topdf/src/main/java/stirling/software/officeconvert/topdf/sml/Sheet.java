@@ -9,6 +9,7 @@ import javax.xml.stream.XMLStreamConstants;
 import javax.xml.stream.XMLStreamException;
 import javax.xml.stream.XMLStreamReader;
 
+import stirling.software.officeconvert.topdf.io.OfficeZip;
 import stirling.software.officeconvert.topdf.xls.Parts;
 import stirling.software.officeconvert.topdf.xls.Xml;
 
@@ -174,6 +175,10 @@ final class Sheet {
     }
 
     private void row(Node n, Parts.Part out) throws IOException {
+        if (out.full()) {
+            truncated = true;
+            return;
+        }
         int index = n.integer("Index", row + 1);
         if (index <= row || index > MAX_ROWS) {
             return;
@@ -212,6 +217,13 @@ final class Sheet {
         int span = Math.max(0, n.integer("Span", 0));
         if (span > 0 && height >= 0) {
             for (int i = 1; i <= span && row < MAX_ROWS; i++) {
+                if ((i & 4095) == 0) {
+                    OfficeZip.checkNotInterrupted();
+                    if (out.full()) {
+                        truncated = true;
+                        return;
+                    }
+                }
                 row++;
                 out.write("<row r=\"" + row + "\" ht=\"" + height + "\" customHeight=\"1\"/>");
             }

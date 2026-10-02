@@ -7,7 +7,7 @@ import java.util.List;
  * the areas a print range or print titles name. */
 final class Formula {
 
-    private static final int MAX_CELLS = 1 << 20;
+    private static final int MAX_AREAS = 1024;
 
     record Area(int row0, int row1, int col0, int col1) {}
 
@@ -84,7 +84,7 @@ final class Formula {
                 int r1 = base == 0x3B || base == 0x25 ? d.i32() : r0;
                 int c0 = d.u16() & 0x3FFF;
                 int c1 = base == 0x3B || base == 0x25 ? d.u16() & 0x3FFF : c0;
-                if (r0 >= 0 && r1 >= r0 && r1 <= Refs.MAX_ROW && c1 >= c0 && c1 <= Refs.MAX_COL && out.size() < MAX_CELLS) {
+                if (r0 >= 0 && r1 >= r0 && r1 <= Refs.MAX_ROW && c1 >= c0 && c1 <= Refs.MAX_COL && out.size() < MAX_AREAS) {
                     out.add(new Area(r0, r1, c0, c1));
                 }
             } else if (ptg == 0x10) {
