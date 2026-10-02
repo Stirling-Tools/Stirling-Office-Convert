@@ -3,6 +3,10 @@ package stirling.software.officeconvert.pdfa;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 import org.apache.pdfbox.cos.COSArray;
 import org.apache.pdfbox.cos.COSBase;
@@ -29,6 +33,8 @@ final class ColourFixer {
 
     private final DeviceColours colours;
 
+    private final List<COSDictionary> shadings = new ArrayList<>();
+
     private ColourFixer(PDDocument doc, PdfALevel level, Report report, DeviceColours colours) {
         this.doc = doc;
         this.level = level;
@@ -44,6 +50,7 @@ final class ColourFixer {
             alongside.visit(b);
         });
         int components = c.outputIntent();
+        c.shadings();
         COSName key = components == 3 && colours.cmyk() ? DEFAULT_CMYK
                 : components == 4 && colours.rgb() ? DEFAULT_RGB : null;
         if (key == null) {
@@ -61,13 +68,35 @@ final class ColourFixer {
             }
         }
         for (ContentGraph.Node n : graph.nodes()) {
-            if (n.resources() == null && n.kind() == ContentGraph.Kind.PAGE) {
+            if (n.owner().getDictionaryObject(COSName.RESOURCES) == null
+                    && (n.kind() == ContentGraph.Kind.PAGE || n.kind() == ContentGraph.Kind.APPEARANCE)) {
                 COSDictionary res = new COSDictionary();
                 COSDictionary cs = new COSDictionary();
                 cs.setItem(key, fallback);
                 res.setItem(COSName.COLORSPACE, cs);
                 n.owner().setItem(COSName.RESOURCES, res);
             }
+        }
+    }
+
+    private void shadings() throws IOException {
+        Map<COSName, COSArray> spaces = new HashMap<>();
+        for (COSDictionary shading : shadings) {
+            if (!(shading.getDictionaryObject(COSName.COLORSPACE) instanceof COSName name)) {
+                continue;
+            }
+            int n = COSName.DEVICECMYK.equals(name) ? 4 : COSName.DEVICERGB.equals(name) ? 3
+                    : COSName.DEVICEGRAY.equals(name) ? 1 : 0;
+            if (n == 0) {
+                continue;
+            }
+            COSArray space = spaces.get(name);
+            if (space == null) {
+                byte[] profile = n == 4 ? IccProfiles.cmyk() : n == 3 ? IccProfiles.srgb() : IccProfiles.gray();
+                space = iccBased(profile, n);
+                spaces.put(name, space);
+            }
+            shading.setItem(COSName.COLORSPACE, space);
         }
     }
 
@@ -141,6 +170,9 @@ final class ColourFixer {
 
     private void visit(COSBase b) throws IOException {
         if (b instanceof COSDictionary d) {
+            if (d.getInt(COSName.SHADING_TYPE, 0) > 0) {
+                shadings.add(d);
+            }
             for (COSBase v : d.getValues()) {
                 colours.value(v);
             }
