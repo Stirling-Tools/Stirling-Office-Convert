@@ -48,11 +48,12 @@ final class LotusText {
                 i += 3;
             } else if (c >= 0x10 && c <= 0x13 && i + 2 < stop) {
                 i += 3;
-            } else if ((group(c) != null || c == 0x0F) && i + 1 < stop) {
-                Charset group = group(c);
-                if (group != null) {
-                    b.append(new String(d, i + 1, 1, group));
-                }
+            } else if (c == 0x0F && i + 1 < stop) {
+                int next = d[i + 1] & 0xFF;
+                b.append(next < 0x80 ? String.valueOf((char) next) : new String(d, i + 1, 1, GROUP_1));
+                i += 2;
+            } else if (group(c) != null && i + 1 < stop) {
+                b.append(new String(d, i + 1, 1, group(c)));
                 i += 2;
             } else {
                 if (c == '\t' || c == '\n') {
