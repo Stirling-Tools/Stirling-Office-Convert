@@ -23,6 +23,8 @@ import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.PDResources;
 import org.apache.pdfbox.pdmodel.common.PDRectangle;
 import org.apache.pdfbox.pdmodel.common.PDStream;
+import org.apache.pdfbox.pdmodel.font.PDType1Font;
+import org.apache.pdfbox.pdmodel.font.Standard14Fonts;
 import org.apache.pdfbox.pdmodel.graphics.form.PDFormXObject;
 import org.apache.pdfbox.pdmodel.graphics.image.LosslessFactory;
 import org.apache.pdfbox.pdmodel.graphics.state.PDExtendedGraphicsState;
@@ -55,6 +57,20 @@ class SoftMaskTest {
     @Test
     void anImageUnderAGreyLuminosityMaskIsDrawnHalfSeeThroughInPowerPoint() throws Exception {
         assertSlides(masked("image.pdf", COSName.DEVICEGRAY, IMAGE));
+    }
+
+    @Test
+    void textOverAMaskedFillStaysTextInWord() throws Exception {
+        Path pdf = masked("text.pdf", COSName.DEVICERGB,
+                FILL + " BT /F1 14 Tf 60 150 Td (Words over the masked panel stay editable) Tj ET");
+        Path docx = dir.resolve("text.docx");
+        PdfToDocx.convert(pdf, docx, PdfToDocx.Options.defaults());
+        try (ZipFile zip = new ZipFile(docx.toFile())) {
+            String body = new String(zip.getInputStream(zip.getEntry("word/document.xml")).readAllBytes(),
+                    StandardCharsets.UTF_8);
+            assertTrue(body.contains("masked panel"), "the words are kept as text");
+        }
+        assertWord(pdf);
     }
 
     private void assertWord(Path pdf) throws IOException {
@@ -122,6 +138,7 @@ class SoftMaskTest {
             PDExtendedGraphicsState state = new PDExtendedGraphicsState();
             state.getCOSObject().setItem(COSName.SMASK, mask);
             resources.put(COSName.getPDFName("GS"), state);
+            resources.put(COSName.getPDFName("F1"), new PDType1Font(Standard14Fonts.FontName.HELVETICA));
             PDStream stream = new PDStream(doc);
             try (OutputStream out = stream.createOutputStream()) {
                 out.write(("1 0 0 rg 0 0 300 300 re f /GS gs " + content).getBytes(StandardCharsets.US_ASCII));

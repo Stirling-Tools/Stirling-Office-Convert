@@ -133,9 +133,8 @@ final class GraphicsCollector extends PDFGraphicsStreamEngine {
         HiddenFills.removeRules(c.rules, c.fills, c.paintOrder, c.seeThrough);
         HiddenFills.remove(c.fills, c.paintOrder, c.seeThrough);
         BlankPaint.remove(c.fills, c.marks, c.images, c.rules, c.paintOrder, width * height);
-        List<PageGraphics.Area> areas = new ArrayList<>(c.pastBudget.areas());
-        areas.addAll(c.masked);
-        return new PageGraphics(c.rules, c.fills, c.images, c.marks, areas, c.paintOrder, c.seeThrough, c.outlines);
+        return new PageGraphics(c.rules, c.fills, c.images, c.marks, c.pastBudget.areas(), c.paintOrder, c.seeThrough,
+                c.outlines, c.masked);
     }
 
     private Point2D.Float display(double x, double y) {
