@@ -126,22 +126,25 @@ public final class Biff5Package {
         int[] position = new int[sheets.size()];
         int skipped = 0;
         int shared = 0;
-        Set<Integer> offsets = new HashSet<>();
         boolean objects = false;
         for (int i = 0; i < sheets.size(); i++) {
             SheetRef ref = sheets.get(i);
             position[i] = -1;
-            if (!offsets.add(ref.offset())) {
-                shared++;
-                continue;
-            }
             s.seek(ref.offset());
             if (ref.type() != 0 || !s.next() || s.type() != BOF || s.u16(2) != 0x0010) {
                 skipped++;
                 continue;
             }
+            if (!s.claim()) {
+                shared++;
+                continue;
+            }
             Sheet sheet = new Sheet(s, text, styles);
             sheet.read();
+            if (sheet.overlaps) {
+                shared++;
+                continue;
+            }
             int n = ++written;
             position[i] = n - 1;
             try (Parts.Part p = parts.open("xl/worksheets/sheet" + n + ".xml")) {

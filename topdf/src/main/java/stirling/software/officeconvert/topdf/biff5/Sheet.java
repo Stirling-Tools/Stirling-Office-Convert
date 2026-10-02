@@ -73,6 +73,8 @@ final class Sheet {
 
     boolean truncated;
 
+    boolean overlaps;
+
     Sheet(Stream s, Text text, Styles styles) {
         this.s = s;
         this.text = text;
@@ -82,6 +84,10 @@ final class Sheet {
     void read() throws IOException {
         int depth = 0;
         while (s.next()) {
+            if (!s.claim()) {
+                overlaps = true;
+                return;
+            }
             int type = s.type();
             if (type == 0x0809) {
                 depth++;
@@ -338,9 +344,23 @@ final class Sheet {
     static long cells(Stream s) throws InterruptedIOException {
         long most = 0;
         long sheet = 0;
+        int depth = 0;
         while (s.next()) {
-            switch (s.type()) {
-                case 0x0809 -> sheet = 0;
+            int type = s.type();
+            if (type == 0x0809) {
+                if (depth++ == 0) {
+                    sheet = 0;
+                }
+                continue;
+            }
+            if (type == 0x000A) {
+                depth = Math.max(0, depth - 1);
+                continue;
+            }
+            if (depth > 1) {
+                continue;
+            }
+            switch (type) {
                 case 0x00BE -> sheet += Math.max(0, (s.size() - 6) / 2);
                 case 0x00BD -> sheet += Math.max(0, (s.size() - 6) / 6);
                 case 0x0201, 0x0203, 0x027E, 0x0204, 0x00D6, 0x0205, 0x0006, 0x0406 -> sheet++;

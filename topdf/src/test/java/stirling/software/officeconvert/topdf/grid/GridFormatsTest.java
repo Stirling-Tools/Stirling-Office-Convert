@@ -119,6 +119,29 @@ class GridFormatsTest {
     }
 
     @Test
+    void characterFieldDecimalsWidenTheLengthOnlyWhenTheRecordAgrees() throws IOException {
+        byte[] r = "first     second    third     ".getBytes(StandardCharsets.US_ASCII);
+        Grid g = Dbf.read(dbf("cdec.dbf", new Object[][] {{"A", 'C', 10, 2}, {"B", 'C', 10, 2}, {"C", 'C', 10, 2}}, r));
+        assertEquals("first", g.get(1, 0).value());
+        assertEquals("second", g.get(1, 1).value());
+        assertEquals("third", g.get(1, 2).value());
+        assertTrue(g.warnings().isEmpty(), g.warnings().toString());
+    }
+
+    @Test
+    void fieldsThatDoNotFitTheRecordAreReportedLost() throws IOException {
+        byte[] r = "first     tail ".getBytes(StandardCharsets.US_ASCII);
+        Path in = dbf("short.dbf", new Object[][] {{"A", 'C', 10, 0}, {"B", 'C', 5, 0}}, r);
+        byte[] b = Files.readAllBytes(in);
+        b[32 + 32 + 16] = 10;
+        Grid g = Dbf.read(Files.write(in, b));
+        assertEquals("first", g.get(1, 0).value());
+        assertFalse(g.warnings().isEmpty());
+        Path pdf = dir.resolve("short.pdf");
+        assertTrue(OfficeToPdf.convert(in, pdf).truncated());
+    }
+
+    @Test
     void earlyNineteenHundredDatesAndFoxProDateTimesAreRead() throws IOException {
         ByteBuffer t = ByteBuffer.allocate(8).order(ByteOrder.LITTLE_ENDIAN);
         t.putInt((int) java.time.LocalDate.of(2004, 3, 5).getLong(java.time.temporal.JulianFields.JULIAN_DAY))

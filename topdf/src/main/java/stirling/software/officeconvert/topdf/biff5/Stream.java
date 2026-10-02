@@ -1,6 +1,7 @@
 package stirling.software.officeconvert.topdf.biff5;
 
 import java.io.InterruptedIOException;
+import java.util.BitSet;
 
 /** The records of a BIFF5 workbook stream: a 16-bit type and size before each one. */
 final class Stream {
@@ -16,6 +17,8 @@ final class Stream {
     private int size;
 
     private long count;
+
+    private final BitSet claimed = new BitSet();
 
     Stream(byte[] b) {
         this.b = b;
@@ -39,6 +42,15 @@ final class Stream {
             return false;
         }
         next = start + size;
+        return true;
+    }
+
+    boolean claim() {
+        int at = start - 4;
+        if (at < 0 || claimed.get(at)) {
+            return false;
+        }
+        claimed.set(at);
         return true;
     }
 

@@ -39,6 +39,8 @@ public final class Lotus {
 
     private int pendingFormat = LotusFormats.DEFAULT;
 
+    private boolean unreadableText;
+
     private Lotus(byte[] d) {
         this.d = d;
         this.wide = u16(4) >= 0x1000;
@@ -81,6 +83,9 @@ public final class Lotus {
         }
         if (out.isEmpty()) {
             out.add(new GridPackage.Sheet(l.wide ? "A" : null, new Grid()));
+        }
+        if (l.unreadableText) {
+            out.get(0).grid().warn("Some double-byte text of the Lotus 1-2-3 file could not be read and was left out");
         }
         return out;
     }
@@ -310,7 +315,10 @@ public final class Lotus {
         while (stop < end && d[stop] != 0) {
             stop++;
         }
-        return wide ? LotusText.lmbcs(d, from, stop) : LotusText.lics(d, from, stop);
+        if (!wide) {
+            return LotusText.lics(d, from, stop);
+        }
+        return LotusText.lmbcs(d, from, stop, () -> unreadableText = true);
     }
 
     private static String column(int n) {
