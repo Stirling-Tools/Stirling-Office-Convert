@@ -1,7 +1,6 @@
 package stirling.software.officeconvert.extract;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.List;
@@ -19,7 +18,7 @@ import org.apache.pdfbox.pdmodel.common.PDRectangle;
 final class PageIndex {
 
     private final PDDocument document;
-    private final Map<COSDictionary, List<COSDictionary>> kids = new IdentityHashMap<>();
+    private final Map<COSDictionary, Kids> kids = new IdentityHashMap<>();
     private COSDictionary root;
 
     PageIndex(PDDocument document) {
@@ -79,31 +78,34 @@ final class PageIndex {
         if (pageNum > encountered + node.getInt(COSName.COUNT, 0)) {
             throw new IndexOutOfBoundsException("1-based index out of bounds: " + pageNum);
         }
-        for (COSDictionary kid : kids(node)) {
-            if (isNode(kid)) {
-                int count = kid.getInt(COSName.COUNT, 0);
+        Kids kids = kids(node);
+        for (int i = 0; i < kids.dicts.length; i++) {
+            if (kids.node[i]) {
+                int count = kids.count[i];
                 if (pageNum <= encountered + count) {
-                    return find(pageNum, kid, encountered, seen);
+                    return find(pageNum, kids.dicts[i], encountered, seen);
                 }
                 encountered += count;
             } else {
                 encountered++;
                 if (pageNum == encountered) {
-                    return find(pageNum, kid, encountered, seen);
+                    return find(pageNum, kids.dicts[i], encountered, seen);
                 }
             }
         }
         throw new IllegalStateException("1-based index not found: " + pageNum);
     }
 
-    private List<COSDictionary> kids(COSDictionary node) {
-        List<COSDictionary> known = kids.get(node);
+    private record Kids(COSDictionary[] dicts, boolean[] node, int[] count) {}
+
+    private Kids kids(COSDictionary node) {
+        Kids known = kids.get(node);
         if (known != null) {
             return known;
         }
         COSArray array = node.getCOSArray(COSName.KIDS);
         if (array == null) {
-            return Collections.emptyList();
+            return new Kids(new COSDictionary[0], new boolean[0], new int[0]);
         }
         List<COSDictionary> out = new ArrayList<>(array.size());
         for (int i = 0; i < array.size(); i++) {
@@ -117,8 +119,16 @@ final class PageIndex {
                 out.add(blank);
             }
         }
-        kids.put(node, out);
-        return out;
+        COSDictionary[] dicts = out.toArray(new COSDictionary[0]);
+        boolean[] nodes = new boolean[dicts.length];
+        int[] counts = new int[dicts.length];
+        for (int i = 0; i < dicts.length; i++) {
+            nodes[i] = isNode(dicts[i]);
+            counts[i] = nodes[i] ? dicts[i].getInt(COSName.COUNT, 0) : 0;
+        }
+        Kids built = new Kids(dicts, nodes, counts);
+        kids.put(node, built);
+        return built;
     }
 
     private static boolean isNode(COSDictionary node) {
