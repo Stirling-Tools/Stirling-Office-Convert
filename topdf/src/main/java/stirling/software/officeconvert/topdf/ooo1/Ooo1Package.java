@@ -6,7 +6,6 @@ import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Enumeration;
 import java.util.Locale;
 import java.util.zip.CRC32;
 import java.util.zip.ZipEntry;
@@ -15,6 +14,8 @@ import java.util.zip.ZipOutputStream;
 
 import org.w3c.dom.Document;
 
+import stirling.software.officeconvert.topdf.io.BoundedZip;
+import stirling.software.officeconvert.topdf.io.OfficeZip;
 import stirling.software.officeconvert.topdf.io.SecureXml;
 
 /** An OpenOffice.org 1.x / StarOffice 6-7 document (.sxw, .sxc, .sxi, .sxd and their templates) rewritten as the
@@ -27,8 +28,6 @@ public final class Ooo1Package {
     private static final long MAX_XML_BYTES = 128L << 20;
 
     private static final long MAX_PICTURE_BYTES = 64L << 20;
-
-    private static final int MAX_ENTRIES = 10_000;
 
     private Ooo1Package() {}
 
@@ -94,10 +93,8 @@ public final class Ooo1Package {
             case PRESENTATION -> "presentation";
             case DRAWING -> "graphics";
         };
-        try (ZipFile zip = new ZipFile(source.toFile()); ZipOutputStream z = new ZipOutputStream(new KeepOpen(out))) {
-            if (zip.size() > MAX_ENTRIES) {
-                throw new IOException("The document is too large: it has more than " + MAX_ENTRIES + " parts");
-            }
+        try (BoundedZip zip = BoundedZip.open(source, OfficeZip.Limits.DEFAULT);
+                ZipOutputStream z = new ZipOutputStream(new KeepOpen(out))) {
             byte[] m = mime.getBytes(StandardCharsets.US_ASCII);
             ZipEntry me = new ZipEntry("mimetype");
             me.setMethod(ZipEntry.STORED);
@@ -109,35 +106,26 @@ public final class Ooo1Package {
             z.write(m);
             z.closeEntry();
             for (String part : new String[] {"content.xml", "styles.xml", "meta.xml"}) {
-                ZipEntry e = zip.getEntry(part);
+                ZipEntry e = zip.entry(part);
                 if (e == null) {
                     continue;
                 }
-                if (e.getSize() > MAX_XML_BYTES) {
-                    throw new IOException("The document is too large: its " + part + " is over "
-                            + (MAX_XML_BYTES >> 20) + " MB");
-                }
-                Document doc;
-                try (InputStream in = zip.getInputStream(e)) {
-                    doc = SecureXml.parse(new java.io.ByteArrayInputStream(withoutDoctype(in.readAllBytes())));
-                }
+                Document doc = SecureXml.parse(new java.io.ByteArrayInputStream(withoutDoctype(zip.read(e,
+                        MAX_XML_BYTES))));
                 Upgrade.apply(doc, part.equals("content.xml") ? body : null);
                 z.putNextEntry(new ZipEntry(part));
                 z.write(XmlOut.write(doc).getBytes(StandardCharsets.UTF_8));
                 z.closeEntry();
             }
-            Enumeration<? extends ZipEntry> all = zip.entries();
-            while (all.hasMoreElements()) {
-                ZipEntry e = all.nextElement();
+            for (ZipEntry e : zip.entries()) {
                 String n = e.getName();
                 boolean media = n.startsWith("Pictures/") || n.startsWith("ObjectReplacements/");
                 if (e.isDirectory() || !media || n.contains("..") || e.getSize() > MAX_PICTURE_BYTES) {
                     continue;
                 }
+                byte[] data = zip.read(e, MAX_PICTURE_BYTES);
                 z.putNextEntry(new ZipEntry(n));
-                try (InputStream in = zip.getInputStream(e)) {
-                    in.transferTo(z);
-                }
+                z.write(data);
                 z.closeEntry();
             }
             z.finish();
