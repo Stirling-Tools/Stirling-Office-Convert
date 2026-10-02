@@ -23,6 +23,8 @@ import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
 import org.apache.pdfbox.rendering.PDFRenderer;
 import org.junit.jupiter.api.Test;
 
+import stirling.software.officeconvert.topdf.testing.Allocation;
+
 class PictTest {
 
     private static final class Pict2 {
@@ -153,6 +155,58 @@ class PictTest {
         try (PDDocument doc = new PDDocument()) {
             assertTrue(PictureDecoder.decode(doc, pict).vector());
             assertThrows(IOException.class, () -> PictureDecoder.decode(doc, Arrays.copyOf(pict, 520)));
+        }
+    }
+
+    @Test
+    void aQuickTimeSizePastTheEndAllocatesNothing() throws Exception {
+        Pict2 p = new Pict2(40, 40);
+        p.w16(0x0031).rect(0, 0, 20, 40);
+        p.w16(0x8200).w32(0x7FFFFF00L).w16(0);
+        p.w32(0x10000).w32(0).w32(0).w32(0).w32(0x10000).w32(0).w32(0).w32(0).w32(0x40000000);
+        p.w32(0).rect(0, 0, 0, 0).w16(0).rect(0, 0, 16, 16).w32(0).w32(0);
+        byte[] pict = p.end();
+        try (PDDocument doc = new PDDocument()) {
+            Allocation.Measured m = Allocation.measure(() -> assertTrue(PictureDecoder.decode(doc, pict).vector()));
+            assertEquals(null, m.failure());
+            assertTrue(m.bytes() < 64L << 20, "allocated " + m.megabytes() + " MB");
+        }
+    }
+
+    private static byte[] packedBitmaps(int count, int rowBytes, int width, int height) {
+        Pict2 p = new Pict2(100, 100);
+        for (int i = 0; i < count; i++) {
+            p.w16(0x009A).w32(0xFF).w16(0x8000 | rowBytes).rect(0, 0, height, width).pixmap(4, 16, 32, 3, 8);
+            p.rect(0, 0, height, width).rect(0, 0, 100, 100).w16(0);
+            for (int y = 0; y < height; y++) {
+                if (rowBytes > 250) {
+                    p.w16(0);
+                } else {
+                    p.bytes(0);
+                }
+            }
+            p.align();
+        }
+        return p.end();
+    }
+
+    @Test
+    void directBitmapRowsMustHoldTheirPixels() throws Exception {
+        byte[] pict = packedBitmaps(10, 200, 5000, 6400);
+        try (PDDocument doc = new PDDocument()) {
+            Allocation.Measured m = Allocation.measure(() -> PictureDecoder.decode(doc, pict));
+            assertTrue(m.failure() == null || m.failure() instanceof IOException, String.valueOf(m.failure()));
+            assertTrue(m.bytes() < 256L << 20, "allocated " + m.megabytes() + " MB");
+        }
+    }
+
+    @Test
+    void oneSmallPictureDecodesABoundedNumberOfPixels() throws Exception {
+        byte[] pict = packedBitmaps(8, 16_000, 4000, 4000);
+        try (PDDocument doc = new PDDocument()) {
+            Allocation.Measured m = Allocation.measure(() -> PictureDecoder.decode(doc, pict));
+            assertTrue(m.failure() == null || m.failure() instanceof IOException, String.valueOf(m.failure()));
+            assertTrue(m.bytes() < 1536L << 20, "allocated " + m.megabytes() + " MB");
         }
     }
 

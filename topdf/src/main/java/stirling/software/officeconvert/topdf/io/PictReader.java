@@ -69,6 +69,7 @@ final class PictReader {
     }
 
     byte[] bytes(int n) {
+        need(n);
         byte[] b = new byte[n];
         read(b, 0, n);
         return b;
