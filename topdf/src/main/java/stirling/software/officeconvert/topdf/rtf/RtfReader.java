@@ -702,7 +702,13 @@ final class RtfReader {
         }
         if (pendingLength == pending.length) {
             if (pending.length >= 1 << 16) {
+                int whole = CodePages.wholeLength(pending, pendingLength);
+                byte carry = pending[pendingLength - 1];
+                pendingLength = whole;
                 flush();
+                if (whole < pending.length) {
+                    pending[pendingLength++] = carry;
+                }
             } else {
                 pending = Arrays.copyOf(pending, pending.length * 2);
             }
@@ -760,7 +766,8 @@ final class RtfReader {
                 return ea;
             }
         }
-        return cs.equals(CodePages.WINDOWS_1252) && CodePages.doubleByte(doc.ansi) ? doc.ansi : cs;
+        return cs.equals(CodePages.WINDOWS_1252) && CodePages.doubleByte(doc.ansi)
+                && CodePages.pairs(doc.ansi, pending, pendingLength) ? doc.ansi : cs;
     }
 
     private void deliver(String s) {

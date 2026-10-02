@@ -467,4 +467,22 @@ class RtfPackageTest {
         Pkg bin = convert(HEAD + "\\pard x{\\bin999999999 }y");
         assertTrue(bin.body().contains(">x<"), bin.body());
     }
+
+    @Test
+    void latinBytesInAWesternFontStayWesternUnderAnEastAsianCodePage() throws IOException {
+        for (int cp : new int[] {932, 936, 949, 950}) {
+            String b = convert("{\\rtf1\\ansi\\ansicpg" + cp + "{\\fonttbl{\\f0\\fcharset0 Calibri;}}"
+                    + "\\pard\\f0 caf\\'e9 25\\'b0C \\'b15 \\'a9\\par}").body();
+            assertTrue(b.contains("caf\u00e9 25\u00b0C \u00b15 \u00a9"), cp + ": " + b);
+        }
+    }
+
+    @Test
+    void aLongDoubleByteRunIsNotSplitBetweenLeadAndTrailBytes() throws IOException {
+        String head = "{\\rtf1\\ansi\\ansicpg950{\\fonttbl{\\f0\\fcharset0 Calibri;}{\\f14\\fcharset136 PMingLiU;}}";
+        String b = convert(head + "\\pard\\loch\\f0\\hich\\af0\\dbch\\af14 x" + "\\'bc\\'d0".repeat(40_000)
+                + "\\par}").body();
+        assertFalse(b.contains("\uFFFD"), "split pair");
+        assertEquals(40_000, b.chars().filter(c -> c == 0x6a19).count());
+    }
 }

@@ -93,6 +93,46 @@ final class CodePages {
                 || n.equals("Big5") || n.equals("x-Johab") || n.equals("GB18030") || n.equals("Shift_JIS");
     }
 
+    static boolean pairs(Charset cs, byte[] bytes, int length) {
+        String n = cs.name();
+        for (int i = 0; i < length; i++) {
+            int b = bytes[i] & 0xFF;
+            if (b < 0x80) {
+                continue;
+            }
+            if (i + 1 >= length || !lead(n, b) || !trail(n, bytes[i + 1] & 0xFF)) {
+                return false;
+            }
+            i++;
+        }
+        return true;
+    }
+
+    static int wholeLength(byte[] bytes, int length) {
+        int i = 0;
+        while (i < length) {
+            i += (bytes[i] & 0xFF) >= 0x81 ? 2 : 1;
+        }
+        return i > length ? length - 1 : length;
+    }
+
+    private static boolean lead(String cs, int b) {
+        return switch (cs) {
+            case "windows-31j", "Shift_JIS" -> b >= 0x81 && b <= 0x9F || b >= 0xE0 && b <= 0xFC;
+            default -> b >= 0x81 && b <= 0xFE;
+        };
+    }
+
+    private static boolean trail(String cs, int b) {
+        return switch (cs) {
+            case "windows-31j", "Shift_JIS" -> b >= 0x40 && b <= 0xFC && b != 0x7F;
+            case "x-windows-949" -> b >= 0x41 && b <= 0x5A || b >= 0x61 && b <= 0x7A || b >= 0x81 && b <= 0xFE;
+            case "x-windows-950", "Big5" -> b >= 0x40 && b <= 0x7E || b >= 0xA1 && b <= 0xFE;
+            case "GB18030" -> b >= 0x30 && b <= 0x39 || b >= 0x40 && b <= 0xFE && b != 0x7F;
+            default -> b >= 0x40 && b <= 0xFE && b != 0x7F;
+        };
+    }
+
     private static Charset forName(String name, Charset fallback) {
         try {
             return Charset.isSupported(name) ? Charset.forName(name) : fallback;
