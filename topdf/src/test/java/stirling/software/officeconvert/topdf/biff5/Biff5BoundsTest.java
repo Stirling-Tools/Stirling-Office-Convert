@@ -210,4 +210,24 @@ class Biff5BoundsTest {
         assertTrue(m.bytes() < 128L << 20, "allocated " + m.megabytes() + " MB");
         assertEquals(1, workbookXml(out.toByteArray()).split("<sheet ").length - 1);
     }
+
+    @Test
+    void embeddedObjectsDoNotResetTheCellEstimate() throws IOException {
+        byte[] plain = workbook(1, "Plain", 0, 0, sheet -> styledBlanks(sheet, 400));
+        byte[] split = workbook(1, "Split", 0, 0, sheet -> {
+            for (int r = 0; r < 400; r++) {
+                Records row = new Records();
+                styledBlanks(row, 1);
+                byte[] cells = row.out.toByteArray();
+                cells[4] = (byte) r;
+                cells[5] = (byte) (r >> 8);
+                sheet.out.writeBytes(cells);
+                sheet.add(0x0809, bof(0x0020));
+                sheet.add(0x000A, new byte[0]);
+            }
+        });
+        long expected = Biff5Package.estimate(plain);
+        long estimate = Biff5Package.estimate(split);
+        assertTrue(estimate >= expected, (estimate >> 20) + " MB, expected " + (expected >> 20) + " MB");
+    }
 }
