@@ -27,7 +27,7 @@ class OdfChartTest {
                 + "<table:table-row>" + cell("South") + number(4) + number(5) + number(6) + "</table:table-row>"
                 + "</table:table-rows></table:table></chart:chart></office:chart></office:body></office:document-content>";
         Element root = SecureXml.parse(new ByteArrayInputStream(xml.getBytes(StandardCharsets.UTF_8))).getDocumentElement();
-        return OdfChart.part(root, root);
+        return OdfChart.part(root, root, new WorkBudget(0));
     }
 
     private static String cell(String text) {

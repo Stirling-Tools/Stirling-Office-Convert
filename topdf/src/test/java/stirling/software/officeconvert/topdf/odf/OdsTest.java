@@ -305,6 +305,28 @@ class OdsTest {
     }
 
     @Test
+    void earlyDatesFollowExcelsLeapYearAndPreEpochDatesKeepTheirText() throws IOException {
+        StringBuilder rows = new StringBuilder();
+        for (String d : new String[] {"1900-01-15", "1900-02-28", "1900-03-01", "1899-12-31", "1850-06-01"}) {
+            rows.append("<table:table-row><table:table-cell office:value-type=\"date\" office:date-value=\"").append(d)
+                    .append("\"><text:p>shown ").append(d).append("</text:p></table:table-cell></table:table-row>");
+        }
+        rows.append("<table:table-row><table:table-cell office:value-type=\"date\""
+                + " office:date-value=\"1899-12-30T12:00:00\"><text:p>noon</text:p></table:table-cell></table:table-row>");
+        Map<String, String> parts = OdfFixtures.rewrite(ods("", "<table:table table:name=\"Data\">" + rows
+                + "</table:table>", null));
+        String sheet = parts.get("xl/worksheets/sheet1.xml");
+        assertTrue(sheet.contains("<c r=\"A1\"><v>15</v>"), sheet);
+        assertTrue(sheet.contains("<c r=\"A2\"><v>59</v>"), sheet);
+        assertTrue(sheet.contains("<c r=\"A3\"><v>61</v>"), sheet);
+        assertTrue(sheet.contains("<c r=\"A4\" t=\"s\">"), sheet);
+        assertTrue(sheet.contains("<c r=\"A5\" t=\"s\">"), sheet);
+        assertTrue(sheet.contains("<c r=\"A6\"><v>0.5</v>"), sheet);
+        String strings = parts.get("xl/sharedStrings.xml");
+        assertTrue(strings.contains("shown 1899-12-31") && strings.contains("shown 1850-06-01"), strings);
+    }
+
+    @Test
     void dateValuesWithAZoneParseAndUnparsableOnesKeepTheirText() throws IOException {
         String table = "<table:table table:name=\"Data\"><table:table-row><table:table-cell"
                 + " office:value-type=\"date\" office:date-value=\"2024-03-05T12:00:00Z\"><text:p>noon</text:p>"

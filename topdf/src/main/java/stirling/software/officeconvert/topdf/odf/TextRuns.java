@@ -77,7 +77,7 @@ final class TextRuns {
             case "a" -> link(k, run);
             case "s" -> {
                 int c = Math.max(1, Math.min(10_000, Dom.integer(k, Ns.TEXT, "c", 1)));
-                text(" ".repeat(w.doc.work.chars(c) ? c : 1), run, false);
+                text(" ".repeat(w.doc.work.charge(c) ? c : 1), run, false);
                 lastSpace = false;
             }
             case "tab" -> {

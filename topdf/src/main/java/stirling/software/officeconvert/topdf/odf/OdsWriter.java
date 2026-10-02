@@ -109,6 +109,10 @@ final class OdsWriter {
             SheetWriter sheet = new SheetWriter(this, t, n, name);
             String part = "xl/worksheets/sheet" + (n + 1) + ".xml";
             sheet.write(part);
+            if (sheet.cut() != null) {
+                warnings.add(sheet.cut());
+                doc.truncated();
+            }
             String rid = rels.add("worksheet", "worksheets/sheet" + (n + 1) + ".xml");
             book.append("<sheet name=\"").append(Xml.esc(name)).append("\" sheetId=\"").append(n + 1).append('"');
             if (sheet.hidden()) {
