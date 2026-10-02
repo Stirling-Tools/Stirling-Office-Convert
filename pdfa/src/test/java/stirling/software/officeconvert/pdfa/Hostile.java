@@ -27,6 +27,42 @@ final class Hostile {
 
     private Hostile() {}
 
+    static Path write(Path dir, String name, RawPdf raw) throws IOException {
+        Path p = dir.resolve(name + ".pdf");
+        java.nio.file.Files.write(p, raw.bytes());
+        return p;
+    }
+
+    static RawPdf chain(String catalogExtra, int levels, String leaf, String link) {
+        RawPdf r = RawPdf.page("", "0 0 1 rg 10 10 100 100 re f");
+        int below = r.add(leaf);
+        for (int i = 0; i < levels; i++) {
+            below = r.add(link.replace("@", below + " 0 R"));
+        }
+        r.set(1, "<</Type/Catalog/Pages 2 0 R" + catalogExtra.replace("@", below + " 0 R") + ">>");
+        return r;
+    }
+
+    static RawPdf optionalContentDag() {
+        RawPdf r = chain("/OCProperties<</OCGs[5 0 R]/D<</Order @>>>>", 40, "<</Type/OCG/Name(Layer)>>",
+                "[@ @]");
+        r.set(5, "<</Type/OCG/Name(Layer)>>");
+        r.set(6, "[5 0 R 5 0 R]");
+        return r;
+    }
+
+    static RawPdf embeddedFileTreeDag() {
+        return chain("/Names<</EmbeddedFiles @>>", 40,
+                "<</Names[(a.txt)<</Type/Filespec/F(a.txt)>>]/Limits[(a.txt)(a.txt)]>>", "<</Kids[@ @]>>");
+    }
+
+    static RawPdf pieceInfoDag() {
+        RawPdf r = chain("", 8, "[/A]", "[" + "@ ".repeat(4000) + "]");
+        r.set(3, "<</Type/Page/Parent 2 0 R/MediaBox[0 0 595 842]/Contents 4 0 R/PieceInfo<</App<</Private "
+                + r.objects.size() + " 0 R>>>>>>");
+        return r;
+    }
+
     static Path write(Path dir, String name, Body body) throws IOException {
         Path p = dir.resolve(name + ".pdf");
         try (PDDocument d = new PDDocument()) {
@@ -115,6 +151,30 @@ final class Hostile {
         parts.add(stream(d, "50 w 1 0 0 RG /GS0 gs\n"));
         parts.add(c);
         p.getCOSObject().setItem(COSName.CONTENTS, parts);
+    }
+
+    static void plainPage(PDDocument d) throws IOException {
+        PDPage p = page(d);
+        p.getCOSObject().setItem(COSName.CONTENTS, stream(d, "0 0 1 rg 10 10 100 100 re f\n"));
+    }
+
+    static void actionDag(PDDocument d) throws IOException {
+        plainPage(d);
+        COSDictionary next = null;
+        for (int i = 0; i < 40; i++) {
+            COSDictionary a = dict(COSName.getPDFName("Action"));
+            a.setItem(COSName.S, COSName.JAVA_SCRIPT);
+            a.setString(COSName.JS, "app.alert(" + i + ")");
+            if (next != null) {
+                COSArray pair = new COSArray();
+                pair.add(next);
+                pair.add(next);
+                a.setItem(COSName.NEXT, pair);
+            }
+            a.setDirect(false);
+            next = a;
+        }
+        d.getDocumentCatalog().getCOSObject().setItem(COSName.OPEN_ACTION, next);
     }
 
     static COSDictionary dict(COSName type) {

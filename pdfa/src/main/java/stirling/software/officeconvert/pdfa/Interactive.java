@@ -48,7 +48,7 @@ final class Interactive {
         }
     }
 
-    private void catalog() {
+    private void catalog() throws IOException {
         PDDocumentCatalog cat = doc.getDocumentCatalog();
         COSDictionary c = cat.getCOSObject();
         if (c.containsKey(COSName.AA)) {
@@ -80,7 +80,7 @@ final class Interactive {
         }
     }
 
-    private void outlines() {
+    private void outlines() throws IOException {
         COSDictionary root = ContentGraph.dict(doc.getDocumentCatalog().getCOSObject().getDictionaryObject(COSName.OUTLINES));
         if (root == null) {
             return;

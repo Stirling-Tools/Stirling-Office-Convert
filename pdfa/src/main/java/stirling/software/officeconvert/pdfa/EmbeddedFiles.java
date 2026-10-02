@@ -67,7 +67,7 @@ final class EmbeddedFiles {
                 names.removeItem(COSName.EMBEDDED_FILES);
                 report.warn("Removed the embedded files, which PDF/A-1 does not allow");
             } else if (tree != null) {
-                prune(tree, 0);
+                prune(tree, new Visits(), 0);
             }
         }
         for (PDPage page : doc.getPages()) {
@@ -116,8 +116,8 @@ final class EmbeddedFiles {
         }
     }
 
-    private void prune(COSDictionary node, int depth) throws IOException {
-        if (depth > 64) {
+    private void prune(COSDictionary node, Visits visits, int depth) throws IOException {
+        if (depth > 64 || !visits.first(node)) {
             return;
         }
         COSArray pairs = ContentGraph.array(node.getDictionaryObject(COSName.NAMES));
@@ -140,7 +140,7 @@ final class EmbeddedFiles {
             for (int i = 0; i < kids.size(); i++) {
                 COSDictionary k = ContentGraph.dict(kids.getObject(i));
                 if (k != null) {
-                    prune(k, depth + 1);
+                    prune(k, visits, depth + 1);
                 }
             }
         }

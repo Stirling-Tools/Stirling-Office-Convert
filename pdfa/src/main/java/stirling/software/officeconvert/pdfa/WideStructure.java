@@ -1,5 +1,6 @@
 package stirling.software.officeconvert.pdfa;
 
+import java.io.InterruptedIOException;
 import java.util.ArrayDeque;
 import java.util.Collections;
 import java.util.Deque;
@@ -22,7 +23,7 @@ final class WideStructure {
 
     private WideStructure() {}
 
-    static void run(PDDocument doc, PdfALevel level, Report report) {
+    static void run(PDDocument doc, PdfALevel level, Report report) throws InterruptedIOException {
         COSDictionary root = ContentGraph.dict(doc.getDocumentCatalog().getCOSObject()
                 .getDictionaryObject(COSName.STRUCT_TREE_ROOT));
         if (level.part() > 1 || root == null) {
