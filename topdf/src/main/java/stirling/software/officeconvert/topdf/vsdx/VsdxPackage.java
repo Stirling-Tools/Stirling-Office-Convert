@@ -4,17 +4,17 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.zip.ZipEntry;
-import java.util.zip.ZipFile;
 
 import stirling.software.officeconvert.memory.Admission;
+import stirling.software.officeconvert.topdf.io.BoundedZip;
 import stirling.software.officeconvert.topdf.io.OfficeZip;
+import stirling.software.officeconvert.topdf.io.SourceFile;
 import stirling.software.officeconvert.topdf.xls.Parts;
 import stirling.software.officeconvert.topdf.xls.Xml;
 
@@ -49,7 +49,7 @@ public final class VsdxPackage {
     private VsdxPackage() {}
 
     public static boolean is(Path file) {
-        try (InputStream in = Files.newInputStream(file)) {
+        try (InputStream in = SourceFile.open(file)) {
             byte[] head = in.readNBytes(2);
             if (head.length < 2 || head[0] != 'P' || head[1] != 'K') {
                 return false;
@@ -57,12 +57,12 @@ public final class VsdxPackage {
         } catch (IOException e) {
             return false;
         }
-        try (ZipFile zip = new ZipFile(file.toFile())) {
-            ZipEntry types = zip.getEntry("[Content_Types].xml");
+        try (BoundedZip zip = BoundedZip.open(file)) {
+            ZipEntry types = zip.entry("[Content_Types].xml");
             if (types == null || types.getSize() > MAX_TYPES_BYTES) {
                 return false;
             }
-            try (InputStream in = zip.getInputStream(types)) {
+            try (InputStream in = zip.open(types, MAX_TYPES_BYTES)) {
                 String xml = new String(in.readNBytes(MAX_TYPES_BYTES), StandardCharsets.UTF_8);
                 return xml.toLowerCase(Locale.ROOT).contains("application/vnd.ms-visio.");
             }

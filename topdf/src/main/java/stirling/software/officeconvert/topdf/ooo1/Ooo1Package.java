@@ -4,20 +4,18 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Locale;
 import java.util.zip.CRC32;
 import java.util.zip.ZipEntry;
-import java.util.zip.ZipFile;
 import java.util.zip.ZipOutputStream;
 
 import org.w3c.dom.Document;
 
 import stirling.software.officeconvert.topdf.io.BoundedZip;
-import stirling.software.officeconvert.topdf.io.OfficeZip;
 import stirling.software.officeconvert.topdf.io.SecureXml;
+import stirling.software.officeconvert.topdf.io.SourceFile;
 
 /** An OpenOffice.org 1.x / StarOffice 6-7 document (.sxw, .sxc, .sxi, .sxd and their templates) rewritten as the
  * OpenDocument package its successor format defines; embedded objects are left out. */
@@ -33,21 +31,21 @@ public final class Ooo1Package {
     private Ooo1Package() {}
 
     public static Kind sniff(Path file) {
-        try (InputStream in = Files.newInputStream(file)) {
-            byte[] head = in.readNBytes(2);
+        try {
+            byte[] head = SourceFile.head(file, 2);
             if (head.length < 2 || head[0] != 'P' || head[1] != 'K') {
                 return null;
             }
         } catch (IOException e) {
             return null;
         }
-        try (ZipFile zip = new ZipFile(file.toFile())) {
-            ZipEntry m = zip.getEntry("mimetype");
+        try (BoundedZip zip = BoundedZip.open(file)) {
+            ZipEntry m = zip.entry("mimetype");
             if (m == null || m.getSize() > 256) {
                 return null;
             }
             String type;
-            try (InputStream in = zip.getInputStream(m)) {
+            try (InputStream in = zip.open(m, 256)) {
                 type = new String(in.readNBytes(256), StandardCharsets.US_ASCII).trim().toLowerCase(Locale.ROOT);
             }
             if (!type.startsWith("application/vnd.sun.xml.")) {
@@ -74,7 +72,7 @@ public final class Ooo1Package {
 
     public static long estimate(Path file) throws IOException {
         long xml = BoundedZip.inflatedSize(file, List.of("content.xml", "styles.xml"), MAX_XML_BYTES);
-        return (64L << 20) + xml * 10 + Files.size(file) * 2;
+        return (64L << 20) + xml * 10 + SourceFile.size(file) * 2;
     }
 
     public static String extension(Kind kind) {
@@ -99,8 +97,8 @@ public final class Ooo1Package {
             case PRESENTATION -> "presentation";
             case DRAWING -> "graphics";
         };
-        try (BoundedZip zip = BoundedZip.open(source, OfficeZip.Limits.DEFAULT);
-                ZipOutputStream z = new ZipOutputStream(new KeepOpen(out))) {
+        try (BoundedZip zip = BoundedZip.open(source); ZipOutputStream z = new ZipOutputStream(new KeepOpen(out))) {
+            zip.checkEntries();
             byte[] m = mime.getBytes(StandardCharsets.US_ASCII);
             ZipEntry me = new ZipEntry("mimetype");
             me.setMethod(ZipEntry.STORED);

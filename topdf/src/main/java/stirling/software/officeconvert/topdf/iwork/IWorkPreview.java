@@ -2,21 +2,21 @@ package stirling.software.officeconvert.topdf.iwork;
 
 import java.io.IOException;
 import java.io.InputStream;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Locale;
 import java.util.zip.ZipEntry;
-import java.util.zip.ZipFile;
 
-import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.multipdf.LayerUtility;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.common.PDRectangle;
 import org.apache.pdfbox.pdmodel.graphics.form.PDFormXObject;
 
+import stirling.software.officeconvert.topdf.io.BoundedZip;
 import stirling.software.officeconvert.topdf.io.DecodedPicture;
+import stirling.software.officeconvert.topdf.io.PdfBytes;
 import stirling.software.officeconvert.topdf.io.PictureDecoder;
+import stirling.software.officeconvert.topdf.io.SourceFile;
 import stirling.software.officeconvert.topdf.pdf.PdfCanvas;
 import stirling.software.officeconvert.topdf.pdf.PdfOutput;
 
@@ -47,7 +47,7 @@ public final class IWorkPreview {
         Path name = file.getFileName();
         String n = name == null ? "" : name.toString().toLowerCase(Locale.ROOT);
         boolean named = n.endsWith(".pages") || n.endsWith(".numbers") || n.endsWith(".key");
-        try (InputStream in = Files.newInputStream(file)) {
+        try (InputStream in = SourceFile.open(file)) {
             byte[] head = in.readNBytes(2);
             if (head.length < 2 || head[0] != 'P' || head[1] != 'K') {
                 return false;
@@ -55,15 +55,15 @@ public final class IWorkPreview {
         } catch (IOException e) {
             return false;
         }
-        try (ZipFile zip = new ZipFile(file.toFile())) {
-            if (zip.getEntry("[Content_Types].xml") != null || zip.getEntry("mimetype") != null) {
+        try (BoundedZip zip = BoundedZip.open(file)) {
+            if (zip.entry("[Content_Types].xml") != null || zip.entry("mimetype") != null) {
                 return false;
             }
             if (named) {
                 return true;
             }
             for (String m : MARKERS) {
-                if (zip.getEntry(m) != null) {
+                if (zip.entry(m) != null) {
                     return true;
                 }
             }
@@ -74,9 +74,9 @@ public final class IWorkPreview {
     }
 
     public static Drawn draw(Path file, PdfOutput out, int maxPages) throws IOException {
-        try (ZipFile zip = new ZipFile(file.toFile())) {
+        try (BoundedZip zip = BoundedZip.open(file)) {
             for (String p : PDFS) {
-                ZipEntry e = zip.getEntry(p);
+                ZipEntry e = zip.entry(p);
                 if (e != null && e.getSize() <= MAX_PREVIEW_BYTES) {
                     byte[] data = read(zip, e);
                     if (data != null) {
@@ -85,7 +85,7 @@ public final class IWorkPreview {
                 }
             }
             for (String p : PICTURES) {
-                ZipEntry e = zip.getEntry(p);
+                ZipEntry e = zip.entry(p);
                 if (e != null && e.getSize() <= MAX_PREVIEW_BYTES) {
                     byte[] data = read(zip, e);
                     if (data != null) {
@@ -99,15 +99,15 @@ public final class IWorkPreview {
                 + " it from Pages, Numbers or Keynote as PDF or as an Office document");
     }
 
-    private static byte[] read(ZipFile zip, ZipEntry e) throws IOException {
-        try (InputStream in = zip.getInputStream(e)) {
+    private static byte[] read(BoundedZip zip, ZipEntry e) throws IOException {
+        try (InputStream in = zip.open(e, MAX_PREVIEW_BYTES)) {
             byte[] b = in.readNBytes((int) Math.min(MAX_PREVIEW_BYTES, Integer.MAX_VALUE - 16));
             return b.length == 0 ? null : b;
         }
     }
 
     private static Drawn pdf(byte[] data, PdfOutput out, int maxPages) throws IOException {
-        try (PDDocument src = Loader.loadPDF(data)) {
+        try (PDDocument src = PdfBytes.load(data)) {
             if (src.isEncrypted()) {
                 throw new IOException("The Apple iWork document's preview is encrypted");
             }

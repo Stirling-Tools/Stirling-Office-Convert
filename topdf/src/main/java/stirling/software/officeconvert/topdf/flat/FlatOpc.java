@@ -5,7 +5,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Base64;
 import java.util.LinkedHashMap;
@@ -21,6 +20,7 @@ import org.w3c.dom.Node;
 
 import stirling.software.officeconvert.topdf.io.OfficeZip;
 import stirling.software.officeconvert.topdf.io.SecureXml;
+import stirling.software.officeconvert.topdf.io.SourceFile;
 
 /** A Flat OPC document (the single-file XML that Word, Excel and PowerPoint 2007 and later save, pkg:package): its
  * parts unpacked into the zip package they describe. */
@@ -39,11 +39,11 @@ public final class FlatOpc {
     }
 
     public static void unpack(Path source, OutputStream out) throws IOException {
-        if (Files.size(source) > MAX_BYTES) {
+        if (SourceFile.size(source) > MAX_BYTES) {
             throw new IOException("The document is too large: a flat XML document over " + (MAX_BYTES >> 20) + " MB");
         }
         Document doc;
-        try (InputStream in = Files.newInputStream(source)) {
+        try (InputStream in = SourceFile.open(source)) {
             doc = SecureXml.parse(in);
         }
         Map<String, Element> parts = new LinkedHashMap<>();

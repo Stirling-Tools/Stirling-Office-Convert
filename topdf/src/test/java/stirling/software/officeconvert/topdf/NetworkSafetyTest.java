@@ -52,6 +52,61 @@ class NetworkSafetyTest {
         assertEquals(List.of(), problems);
     }
 
+    private static final String OC = "stirling/software/officeconvert/";
+
+    private static final List<String> SERVER = List.of("uses sun/net/", "uses com/sun/net/",
+            "uses java/net/InetSocketAddress");
+
+    private static final Map<String, List<String>> MODULE_ALLOWED = Map.ofEntries(
+            Map.entry(OC + "jpx/JpxImageIO", List.of("uses javax/imageio/spi/IIORegistry")),
+            Map.entry(OC + "odp/OdpWriter", List.of("calls javax/imageio/ImageIO.read")),
+            Map.entry(OC + "sink/ImageShaping", List.of("calls javax/imageio/ImageIO.read")),
+            Map.entry(OC + "slides/SlideMedia", List.of("calls javax/imageio/ImageIO.read")),
+            Map.entry(OC + "sink/Links", List.of("uses java/net/URLDecoder")),
+            Map.entry(OC + "pdfa/CMapFixer", List.of("uses java/net/URL")),
+            Map.entry(OC + "app/App", SERVER),
+            Map.entry(OC + "app/ConvertHandler", List.of("uses sun/net/", "uses com/sun/net/",
+                    "uses java/net/InetSocketAddress", "uses java/net/InetAddress", "uses java/net/URLEncoder",
+                    "uses java/net/URLDecoder")),
+            Map.entry(OC + "app/LibreOffice", List.of("uses java/lang/ProcessBuilder", "uses java/lang/ProcessHandle")),
+            Map.entry(OC + "app/Limits", List.of("uses sun/net/")),
+            Map.entry(OC + "app/PageHandler", List.of("uses sun/net/", "uses com/sun/net/")));
+
+    @Test
+    void everyModuleReferencesOnlyAllowedNetworkOrScriptCode() throws Exception {
+        Map<String, List<String>> allowed = MODULE_ALLOWED;
+        String dirs = System.getProperty("topdf.scanClasses", "");
+        List<String> problems = new ArrayList<>();
+        TreeSet<String> used = new TreeSet<>();
+        int modules = 0;
+        for (String d : dirs.split(File.pathSeparator)) {
+            if (d.isBlank()) {
+                continue;
+            }
+            Map<String, byte[]> classes = ClassScan.classes(Path.of(d));
+            assertFalse(classes.isEmpty(), "no classes in " + d);
+            modules++;
+            for (Map.Entry<String, byte[]> e : classes.entrySet()) {
+                String name = e.getKey().replaceFirst("\\.class$", "");
+                String owner = name.replaceFirst("\\$.*", "");
+                List<String> ok = allowed.getOrDefault(owner, List.of());
+                for (String v : ClassScan.ownCodeViolations(ClassScan.read(e.getValue()))) {
+                    if (ok.contains(v)) {
+                        used.add(owner + " " + v);
+                    } else {
+                        problems.add(name + " " + v);
+                    }
+                }
+            }
+        }
+        assertEquals(5, modules, "the build passes topdf.scanClasses for core, legacy, pdfa, cli and app");
+        assertEquals(List.of(), problems);
+        List<String> stale = new ArrayList<>();
+        allowed.forEach((owner, vs) -> vs.stream().filter(v -> !used.contains(owner + " " + v))
+                .forEach(v -> stale.add(owner + " " + v)));
+        assertEquals(List.of(), stale, "allowed references no class makes any more");
+    }
+
     @Test
     void theScannerCatchesForbiddenReferences() throws Exception {
         byte[] self = read(NoNetwork.class);
@@ -106,8 +161,8 @@ class NetworkSafetyTest {
                 "javax/xml/stream/XMLInputFactory", "javax/xml/transform/TransformerFactory",
                 "org/apache/poi/util/XMLHelper", "OPCPackage.open", "XSSFWorkbook.<init>(Ljava/lang/String;");
         String topdf = "stirling/software/officeconvert/topdf/";
-        for (String pkg : new String[] {"docx", "pptx", "xlsx", "ppt"}) {
-            List<String> v = ClassScan.ownCodeViolations(probe.as(topdf + pkg + "/Probe"));
+        for (String pkg : ClassScan.FORMAT_PACKAGES) {
+            List<String> v = ClassScan.ownCodeViolations(probe.as(pkg + "Probe"));
             List<String> missed = new ArrayList<>();
             for (String e : expected) {
                 if (v.stream().noneMatch(s -> s.contains(e))) {

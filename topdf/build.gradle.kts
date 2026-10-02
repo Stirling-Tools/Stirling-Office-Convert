@@ -27,6 +27,11 @@ tasks.test {
     inputs.files(runtime)
     systemProperty("topdf.expectJava", "25")
     systemProperty("topdf.reportDir", layout.buildDirectory.dir("reports").get().asFile.absolutePath)
+    val scanned = listOf("core", "legacy", "pdfa", "cli", "app")
+    dependsOn(scanned.map { ":$it:classes" })
+    val scannedDirs = scanned.map { rootProject.layout.projectDirectory.dir("$it/build/classes/java/main").asFile }
+    inputs.files(scannedDirs).withPropertyName("scannedClasses")
+    systemProperty("topdf.scanClasses", scannedDirs.joinToString(File.pathSeparator) { it.absolutePath })
     doFirst {
         systemProperty("topdf.runtimeClasspath", runtime.get().asPath)
     }

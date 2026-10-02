@@ -3,7 +3,6 @@ package stirling.software.officeconvert.topdf.wordml;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -15,6 +14,7 @@ import javax.xml.stream.XMLStreamReader;
 import stirling.software.officeconvert.memory.Admission;
 import stirling.software.officeconvert.topdf.flat.Sniff;
 import stirling.software.officeconvert.topdf.io.SecureXml;
+import stirling.software.officeconvert.topdf.io.SourceFile;
 import stirling.software.officeconvert.topdf.xls.Parts;
 
 public final class WordMlPackage {
@@ -46,7 +46,7 @@ public final class WordMlPackage {
         Parts zip = new Parts(out);
         Media media = new Media(zip);
         Transform t;
-        try (InputStream in = Files.newInputStream(source)) {
+        try (InputStream in = SourceFile.open(source)) {
             XMLStreamReader r = SecureXml.reader(in);
             try {
                 t = new Transform(r, media);

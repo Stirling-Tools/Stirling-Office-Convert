@@ -5,16 +5,13 @@ import java.io.Closeable;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Base64;
-import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.zip.ZipEntry;
-import java.util.zip.ZipFile;
 
 import javax.xml.stream.XMLStreamConstants;
 import javax.xml.stream.XMLStreamException;
@@ -26,6 +23,7 @@ import org.w3c.dom.Element;
 import stirling.software.officeconvert.topdf.io.BoundedZip;
 import stirling.software.officeconvert.topdf.io.OfficeZip;
 import stirling.software.officeconvert.topdf.io.SecureXml;
+import stirling.software.officeconvert.topdf.io.SourceFile;
 import stirling.software.officeconvert.topdf.io.XmlSalvage;
 
 public final class OdfDocument implements Closeable {
@@ -50,7 +48,7 @@ public final class OdfDocument implements Closeable {
 
     private final Kind kind;
 
-    private final ZipFile zip;
+    private final BoundedZip zip;
 
     private final Map<String, ZipEntry> entries = new HashMap<>();
 
@@ -70,7 +68,7 @@ public final class OdfDocument implements Closeable {
 
     private boolean metaRead;
 
-    private OdfDocument(Kind kind, ZipFile zip, Element content, Element styles, Element settings) {
+    private OdfDocument(Kind kind, BoundedZip zip, Element content, Element styles, Element settings) {
         this.kind = kind;
         this.zip = zip;
         this.content = content;
@@ -132,7 +130,7 @@ public final class OdfDocument implements Closeable {
 
     public static long estimate(Path file) {
         try {
-            long size = Files.size(file);
+            long size = SourceFile.size(file);
             if (size > 0 && isZip(file)) {
                 long xml = BoundedZip.inflatedSize(file, List.of("content.xml", "styles.xml"), MAX_XML_BYTES);
                 return (64L << 20) + Math.min(MAX_XML_BYTES * 2, xml) * 10 + size * 2;
@@ -146,7 +144,7 @@ public final class OdfDocument implements Closeable {
     public static Kind sniff(Path file) {
         try {
             if (isZip(file)) {
-                try (ZipFile z = new ZipFile(file.toFile())) {
+                try (BoundedZip z = BoundedZip.open(file)) {
                     return kindOf(mimetype(z));
                 }
             }
@@ -160,7 +158,7 @@ public final class OdfDocument implements Closeable {
         if (isZip(file)) {
             return openZip(file);
         }
-        if (Files.size(file) > MAX_FLAT_BYTES) {
+        if (SourceFile.size(file) > MAX_FLAT_BYTES) {
             throw new OfficeZip.Oversized("The document is too large: a flat OpenDocument file over "
                     + (MAX_FLAT_BYTES >> 20) + " MB");
         }
@@ -168,7 +166,7 @@ public final class OdfDocument implements Closeable {
         if (kind == null) {
             throw new IOException("The file is not an OpenDocument text, spreadsheet or presentation");
         }
-        byte[] data = Files.readAllBytes(file);
+        byte[] data = SourceFile.read(file, MAX_FLAT_BYTES);
         Document doc;
         boolean damaged = false;
         try {
@@ -194,7 +192,7 @@ public final class OdfDocument implements Closeable {
     }
 
     private static OdfDocument openZip(Path file) throws IOException {
-        ZipFile z = new ZipFile(file.toFile());
+        BoundedZip z = BoundedZip.open(file);
         try {
             if (z.size() > MAX_ENTRIES) {
                 throw new OfficeZip.Oversized("The document is too large: it has more than " + MAX_ENTRIES + " parts");
@@ -204,9 +202,7 @@ public final class OdfDocument implements Closeable {
                 throw new IOException("The file is not an OpenDocument text, spreadsheet or presentation");
             }
             Map<String, ZipEntry> map = new HashMap<>();
-            Enumeration<? extends ZipEntry> all = z.entries();
-            while (all.hasMoreElements()) {
-                ZipEntry e = all.nextElement();
+            for (ZipEntry e : z.entries()) {
                 if (!e.isDirectory()) {
                     map.putIfAbsent(e.getName().replace('\\', '/').replaceFirst("^/+", ""), e);
                 }
@@ -303,7 +299,7 @@ public final class OdfDocument implements Closeable {
             throw new OfficeZip.Oversized("The document is too large: the part /" + name + " is over "
                     + (max >> 20) + " MB");
         }
-        try (InputStream in = zip.getInputStream(e)) {
+        try (InputStream in = zip.open(e, max)) {
             byte[] data = in.readNBytes((int) Math.min(Integer.MAX_VALUE - 16, Math.min(max, budget) + 1));
             if (data.length > max) {
                 throw new OfficeZip.Oversized("The document is too large: the part /" + name + " is over "
@@ -429,25 +425,25 @@ public final class OdfDocument implements Closeable {
     }
 
     private static boolean isZip(Path file) throws IOException {
-        try (InputStream in = Files.newInputStream(file)) {
+        try (InputStream in = SourceFile.open(file)) {
             byte[] head = in.readNBytes(4);
             return head.length == 4 && head[0] == 'P' && head[1] == 'K' && head[2] == 3 && head[3] == 4;
         }
     }
 
-    private static String mimetype(ZipFile z) throws IOException {
-        ZipEntry e = z.getEntry("mimetype");
+    private static String mimetype(BoundedZip z) throws IOException {
+        ZipEntry e = z.entry("mimetype");
         if (e != null && e.getSize() <= 512) {
-            try (InputStream in = z.getInputStream(e)) {
+            try (InputStream in = z.open(e, 512)) {
                 return new String(in.readNBytes(512), StandardCharsets.US_ASCII).trim();
             }
         }
-        ZipEntry m = z.getEntry("META-INF/manifest.xml");
+        ZipEntry m = z.entry("META-INF/manifest.xml");
         if (m == null || m.getSize() > (4L << 20)) {
             return null;
         }
         Document doc;
-        try (InputStream in = z.getInputStream(m)) {
+        try (InputStream in = z.open(m, 4L << 20)) {
             doc = SecureXml.parse(new ByteArrayInputStream(in.readNBytes(4 << 20)));
         }
         for (Element f : Dom.kids(doc.getDocumentElement(), Ns.MANIFEST, "file-entry")) {
@@ -477,7 +473,7 @@ public final class OdfDocument implements Closeable {
     }
 
     private static Kind flatKind(Path file) {
-        try (InputStream in = Files.newInputStream(file)) {
+        try (InputStream in = SourceFile.open(file)) {
             byte[] head = in.readNBytes(1024);
             String h = new String(head, StandardCharsets.UTF_8).replace("﻿", "").stripLeading();
             if (!h.startsWith("<")) {
@@ -486,7 +482,7 @@ public final class OdfDocument implements Closeable {
         } catch (IOException e) {
             return null;
         }
-        try (InputStream in = Files.newInputStream(file)) {
+        try (InputStream in = SourceFile.open(file)) {
             XMLStreamReader r = SecureXml.reader(in);
             try {
                 while (r.hasNext()) {

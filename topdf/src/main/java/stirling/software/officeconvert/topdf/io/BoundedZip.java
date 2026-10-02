@@ -25,15 +25,24 @@ public final class BoundedZip implements Closeable {
         this.budget = limits.maxTotalBytes();
     }
 
+    public static BoundedZip open(Path file) throws IOException {
+        return open(file, OfficeZip.Limits.DEFAULT);
+    }
+
     public static BoundedZip open(Path file, OfficeZip.Limits limits) throws IOException {
         OfficeZip.checkNotInterrupted();
-        ZipFile zip = new ZipFile(file.toFile());
+        return new BoundedZip(new ZipFile(file.toFile()), limits);
+    }
+
+    public int size() {
+        return zip.size();
+    }
+
+    public void checkEntries() throws OfficeZip.Oversized {
         if (zip.size() > limits.maxEntries()) {
-            zip.close();
             throw new OfficeZip.Oversized("The document is too large: it has more than " + limits.maxEntries()
                     + " parts");
         }
-        return new BoundedZip(zip, limits);
     }
 
     public ZipEntry entry(String name) {

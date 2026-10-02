@@ -12,8 +12,9 @@ import java.nio.charset.CharsetDecoder;
 import java.nio.charset.CoderResult;
 import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.nio.file.Path;
+
+import stirling.software.officeconvert.topdf.io.SourceFile;
 
 record TextEncoding(Charset charset, int bom) {
 
@@ -25,14 +26,14 @@ record TextEncoding(Charset charset, int bom) {
 
     static TextEncoding detect(Path file) throws IOException {
         byte[] head;
-        try (InputStream in = Files.newInputStream(file)) {
+        try (InputStream in = SourceFile.open(file)) {
             head = in.readNBytes(4);
         }
         TextEncoding marked = fromBom(head);
         if (marked != null) {
             return marked;
         }
-        try (InputStream in = new BufferedInputStream(Files.newInputStream(file), 1 << 16)) {
+        try (InputStream in = new BufferedInputStream(SourceFile.open(file), 1 << 16)) {
             return strictUtf8(in) ? new TextEncoding(StandardCharsets.UTF_8, 0) : new TextEncoding(WINDOWS_1252, 0);
         }
     }
@@ -84,7 +85,7 @@ record TextEncoding(Charset charset, int bom) {
     }
 
     Reader open(Path file) throws IOException {
-        InputStream in = new BufferedInputStream(Files.newInputStream(file), 1 << 16);
+        InputStream in = new BufferedInputStream(SourceFile.open(file), 1 << 16);
         try {
             in.skipNBytes(bom);
         } catch (IOException e) {
