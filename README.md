@@ -603,8 +603,9 @@ PdfToPdfA.convert(pdDocument, outputStream, options);     // an open document, w
 
 `convert(PDDocument, ...)` converts the document it is given in place: afterwards it holds the PDF/A changes (output
 intent, metadata, fonts, rewritten content), whether the call succeeds or fails, so load a fresh copy if the original
-is still needed. Every call returns only once its work has stopped, a timeout included, so the document is never
-changed after the call returns.
+is still needed. After a timeout the converter waits up to ten seconds for its worker to stop. If third-party
+work ignores interruption, that worker can still use the document after the call returns; do not reuse or close
+that instance. Prefer the file-based overload for documents that need a strict timeout.
 
 - Fonts. Every font a page uses is embedded. A font without a program is drawn from a metric-compatible stand-in
   from the font library (Liberation, URW base 35, Carlito and the rest of the production set; `fonts` takes a

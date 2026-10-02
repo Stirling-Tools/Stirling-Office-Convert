@@ -129,7 +129,7 @@ public final class PdfToPdfA {
         }
         Path part = Files.createTempFile(PdfFiles.outputFolder(out), ".pdfa-", ".part");
         try {
-            Result result = Deadline.run(options.timeout(), () -> {
+            Result result = Deadline.run(options.timeout(), () -> ContentCache.run(() -> {
                 try (PDDocument doc = PdfFiles.open(in, options.password())) {
                     long content = ContentBudget.peakBytes(doc);
                     Admission.Ticket ticket = Admission.jvm().enter(estimate(Files.size(in), content));
@@ -139,7 +139,7 @@ public final class PdfToPdfA {
                         ticket.close();
                     }
                 }
-            });
+            }));
             PdfFiles.stopIfInterrupted();
             move(part, out);
             return result;
@@ -156,7 +156,7 @@ public final class PdfToPdfA {
         Objects.requireNonNull(options, "options");
         PdfFiles.checkOpen(document);
         JpxImageIO.install();
-        return Deadline.run(options.timeout(), () -> Conversion.run(document, out, options));
+        return Deadline.run(options.timeout(), () -> ContentCache.run(() -> Conversion.run(document, out, options)));
     }
 
     static long estimate(long bytes, long content) {
