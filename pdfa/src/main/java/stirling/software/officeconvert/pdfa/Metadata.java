@@ -33,6 +33,9 @@ final class Metadata {
             info = new COSDictionary();
             trailer.setItem(COSName.INFO, info);
         }
+        byte[] original = original(doc);
+        XmpProperties preserved = new XmpProperties(original);
+        XmpInfo.fill(info, preserved);
         String[] values = new String[KEYS.length];
         for (int i = 0; i < KEYS.length; i++) {
             COSName k = COSName.getPDFName(KEYS[i]);
@@ -45,7 +48,7 @@ final class Metadata {
                 values[i] = v;
             }
         }
-        info.removeItem(COSName.TRAPPED);
+
         Calendar now = new GregorianCalendar(TimeZone.getTimeZone("UTC"));
         now.set(Calendar.MILLISECOND, 0);
         Calendar created = date(info, COSName.CREATION_DATE);
@@ -54,7 +57,10 @@ final class Metadata {
             info.setDate(COSName.CREATION_DATE, created);
         }
         info.setDate(COSName.MOD_DATE, modified);
-        String xmp = xmp(level, values, created, modified, carried(doc));
+        List<String> carried = new java.util.ArrayList<>(XmpCarryOver.descriptions(original));
+        carried.addAll(preserved.extras());
+        carried = XmpSupplementSchemas.add(carried, level, info.getNameAsString(COSName.TRAPPED), preserved);
+        String xmp = xmp(level, values, created, modified, carried, preserved, info.getNameAsString(COSName.TRAPPED));
         COSStream s = doc.getDocument().createCOSStream();
         s.setItem(COSName.TYPE, COSName.METADATA);
         s.setItem(COSName.SUBTYPE, COSName.getPDFName("XML"));
@@ -64,14 +70,14 @@ final class Metadata {
         doc.getDocumentCatalog().getCOSObject().setItem(COSName.METADATA, s);
     }
 
-    private static List<String> carried(PDDocument doc) {
+    private static byte[] original(PDDocument doc) {
         if (!(doc.getDocumentCatalog().getCOSObject().getDictionaryObject(COSName.METADATA) instanceof COSStream old)) {
-            return List.of();
+            return new byte[0];
         }
         try {
-            return XmpCarryOver.descriptions(Decoded.bytes(old, StreamFixer.MAX_METADATA_BYTES, "XMP metadata"));
+            return Decoded.bytes(old, StreamFixer.MAX_METADATA_BYTES, "XMP metadata");
         } catch (IOException e) {
-            return List.of();
+            return new byte[0];
         }
     }
 
@@ -99,7 +105,7 @@ final class Metadata {
     }
 
     private static String xmp(PdfALevel level, String[] v, Calendar created, Calendar modified,
-            List<String> carried) {
+            List<String> carried, XmpProperties preserved, String trapped) {
         StringBuilder x = new StringBuilder();
         x.append("<?xpacket begin=\"﻿\" id=\"W5M0MpCehiHzreSzNTczkc9d\"?>\n")
                 .append("<x:xmpmeta xmlns:x=\"adobe:ns:meta/\">\n")
@@ -110,19 +116,14 @@ final class Metadata {
                 .append("</rdf:Description>\n");
         x.append("<rdf:Description rdf:about=\"\" xmlns:dc=\"http://purl.org/dc/elements/1.1/\">\n")
                 .append("<dc:format>application/pdf</dc:format>\n");
-        if (v[0] != null) {
-            x.append("<dc:title><rdf:Alt><rdf:li xml:lang=\"x-default\">").append(esc(v[0]))
-                    .append("</rdf:li></rdf:Alt></dc:title>\n");
-        }
-        if (v[1] != null) {
-            x.append("<dc:creator><rdf:Seq><rdf:li>").append(esc(v[1])).append("</rdf:li></rdf:Seq></dc:creator>\n");
-        }
-        if (v[2] != null) {
-            x.append("<dc:description><rdf:Alt><rdf:li xml:lang=\"x-default\">").append(esc(v[2]))
-                    .append("</rdf:li></rdf:Alt></dc:description>\n");
-        }
         x.append("</rdf:Description>\n");
+        x.append(preserved.array("dc", XmpProperties.DC, "title", "Alt", v[0]));
+        x.append(preserved.array("dc", XmpProperties.DC, "creator", "Seq", v[1]));
+        x.append(preserved.array("dc", XmpProperties.DC, "description", "Alt", v[2]));
         x.append("<rdf:Description rdf:about=\"\" xmlns:pdf=\"http://ns.adobe.com/pdf/1.3/\">\n");
+        if (trapped != null) {
+            x.append("<pdf:Trapped>").append(trapped).append("</pdf:Trapped>\n");
+        }
         if (v[3] != null) {
             x.append("<pdf:Keywords>").append(esc(v[3])).append("</pdf:Keywords>\n");
         }

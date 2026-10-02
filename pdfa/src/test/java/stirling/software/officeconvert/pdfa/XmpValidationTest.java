@@ -30,7 +30,8 @@ class XmpValidationTest {
     @ParameterizedTest
     @ValueSource(strings = {"integer", "nested", "language"})
     void valuesMustMatchTheirDeclaredTypes(String defect) {
-        String xmp = MetadataCarryOverTest.invoiceXmp();
+        String xmp = MetadataCarryOverTest.invoiceXmp().replace("xmlns:dc='http://purl.org/dc/elements/1.1/'",
+                "xmlns:xmpRights='http://ns.adobe.com/xap/1.0/rights/'").replace("dc:rights", "xmpRights:UsageTerms");
         xmp = switch (defect) {
             case "integer" -> xmp.replace("<pdfaProperty:valueType>Text</pdfaProperty:valueType>",
                     "<pdfaProperty:valueType>Integer</pdfaProperty:valueType>");

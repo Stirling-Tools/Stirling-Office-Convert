@@ -657,10 +657,15 @@ that instance. Prefer the file-based overload for documents that need a strict t
   recompressed with Flate; forms that borrow their parent's resources get their own; encryption is removed (give the
   password for a protected file).
 - Embedded files: removed for part 1, kept for part 2 only when they are PDF/A themselves, kept for part 3 with a MIME
-  type, a modification date, an `AFRelationship` and the catalog's `AF` array.
+  type, a modification date, an `AFRelationship` and the catalog's `AF` array. Part 2 attachment checks allow up to
+  16 MiB of PDF bytes, 100,000 parsed values, 64 levels of object nesting and 8 MiB of decoded object and cross-reference
+  streams; files that cannot be verified within these bounds are removed with a warning.
 - Optional content: part 1 has none, so content in hidden layers is deleted and the rest kept; parts 2 and 3 keep the
   layers and fix their configurations.
-- XMP metadata is written from the Info dictionary (the two agree), with `pdfaid:part` and `pdfaid:conformance`; the
+- XMP metadata and Info agree. Valid XMP-only titles, creators, descriptions, creation dates and creator tools fill
+  missing Info entries; valid rights, language alternatives, labels, ratings, Photoshop properties and history remain.
+  Multiple creator names share one matching author string. Extension schemas and carried values are type-checked;
+  converter identification and timestamps are written afresh with `pdfaid:part` and `pdfaid:conformance`. The
   file gets a trailer ID. Parts 2 and 3 are written with object streams and a cross-reference stream; part 1 with a
   classic table. Objects are numbered without gaps and unfiltered streams are compressed. Structure elements are
   written without their optional type and with a lone kid in place of a one-item array.
