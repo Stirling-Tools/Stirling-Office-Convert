@@ -188,6 +188,7 @@ public final class Main {
         int failures = 0;
         for (Path in : inputs) {
             if (Files.isDirectory(in)) {
+                int before = pdfs.size();
                 try (Stream<Path> s = Files.list(in)) {
                     s.filter(p -> Files.isRegularFile(p) && !lockFile(p) && (officeFolder && isOffice(p)
                             && (textFolder || TextFormats.kind(p) == null)
@@ -197,6 +198,10 @@ public final class Main {
                 } catch (IOException e) {
                     System.err.println("office-convert: cannot list " + in + ": " + e.getMessage());
                     return 1;
+                }
+                if (pdfs.size() == before) {
+                    failures++;
+                    System.err.println("office-convert: nothing to convert in " + in);
                 }
             } else {
                 pdfs.add(in);
@@ -522,7 +527,7 @@ public final class Main {
                         + " An input is never overwritten: an output that would take an input's name keeps that input's"
                         + " extension instead (b.docx.pdf), and nothing written in a run is converted again by it."
                         + System.lineSeparator()
-                        + "Exit status: 0 all converted, 1 some failed or were skipped,"
+                        + "Exit status: 0 all converted, 1 some failed or were skipped or a folder held nothing to convert,"
                         + " 2 a mistake in the arguments.");
     }
 }

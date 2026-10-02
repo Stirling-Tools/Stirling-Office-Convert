@@ -325,6 +325,15 @@ class MainTest {
     }
 
     @Test
+    void aFolderWithNothingToConvertFails() throws Exception {
+        Path in = Files.createDirectories(dir.resolve("notes"));
+        Files.writeString(in.resolve("notes.txt"), "plain text");
+        Result r = run(in.toString());
+        assertEquals(1, r.code(), r.err());
+        assertTrue(r.err().contains("nothing to convert in " + in), r.err());
+    }
+
+    @Test
     void outputsDodgeInputNamesAndAreNotConvertedAgain() throws Exception {
         Path word = dir.resolve("b.docx");
         Path pdf = dir.resolve("b.pdf");

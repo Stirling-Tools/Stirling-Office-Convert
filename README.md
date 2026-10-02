@@ -34,8 +34,8 @@ as `report.docx` and `report.xlsx`) keep their own extension in it (`report.docx
 owner files (`~$name`) are skipped. An input is never overwritten: an output that would take an input's name keeps that
 input's extension instead (`b.docx` and `b.pdf` in one folder give `b.docx.pdf` and `b.pdf.docx`), and nothing a run
 writes is converted again by it. An output that exists already is left alone and its input skipped (`SKIP <file>:
-<reason>` on stderr) unless `--overwrite` is given. The exit status is 0
-when everything converted, 1 when something failed or was skipped, and 2 for a
+<reason>` on stderr) unless `--overwrite` is given. A folder with nothing to convert is reported. The exit status is 0
+when everything converted, 1 when something failed or was skipped or a folder held nothing to convert, and 2 for a
 mistake in the arguments. Warnings (substituted fonts, skipped active content, pictures that could not be
 drawn) print to stderr as `warning: <file>: <message>` unless `-q`.
 The output file's extension picks the format: `.docx`, `.odt`, `.fodt`, `.xml` (flat ODT), `.rtf`, `.doc`, `.txt`,
