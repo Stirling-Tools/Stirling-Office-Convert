@@ -3,7 +3,6 @@ package stirling.software.officeconvert.pdfa;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.StringReader;
-import java.io.StringWriter;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -14,11 +13,6 @@ import java.util.Set;
 
 import javax.xml.XMLConstants;
 import javax.xml.parsers.DocumentBuilderFactory;
-import javax.xml.transform.OutputKeys;
-import javax.xml.transform.Transformer;
-import javax.xml.transform.TransformerFactory;
-import javax.xml.transform.dom.DOMSource;
-import javax.xml.transform.stream.StreamResult;
 
 import org.w3c.dom.Attr;
 import org.w3c.dom.Document;
@@ -31,8 +25,6 @@ import org.xml.sax.helpers.DefaultHandler;
 final class XmpCarryOver {
 
     static final String RDF = "http://www.w3.org/1999/02/22-rdf-syntax-ns#";
-
-    private static final String XMLNS = "http://www.w3.org/2000/xmlns/";
 
     private static final String EXTENSION = "http://www.aiim.org/pdfa/ns/extension/";
 
@@ -109,7 +101,7 @@ final class XmpCarryOver {
             if (!kept.isEmpty() || !attributes.isEmpty()) {
                 out.add(serialise(new ArrayList<>(kept.values()), attributes, prefixes));
             }
-        } catch (Exception e) {
+        } catch (RuntimeException e) {
             return List.of();
         }
         return out;
@@ -157,35 +149,50 @@ final class XmpCarryOver {
     }
 
     private static String serialise(List<Element> properties, Map<String, String> attributes,
-            Map<String, String> qualified) throws Exception {
-        Document out = DocumentBuilderFactory.newDefaultNSInstance().newDocumentBuilder().newDocument();
-        Element d = out.createElementNS(RDF, "rdf:Description");
-        d.setAttributeNS(RDF, "rdf:about", "");
-        out.appendChild(d);
+            Map<String, String> qualified) {
         Map<String, String> declared = new LinkedHashMap<>();
         declared.put("rdf", RDF);
+        StringBuilder body = new StringBuilder();
         for (Element p : properties) {
-            Node copy = out.importNode(p, true);
-            d.appendChild(copy);
-            namespaces(copy, declared);
+            namespaces(p, declared);
+            write(p, body);
         }
         for (Map.Entry<String, String> a : attributes.entrySet()) {
             String q = qualified.get(a.getKey());
             String prefix = q.substring(0, q.indexOf(':'));
-            String ns = a.getKey().substring(0, a.getKey().length() - q.length() + prefix.length() + 1);
-            Element e = out.createElementNS(ns, q);
-            e.setTextContent(a.getValue());
-            d.appendChild(e);
-            declared.putIfAbsent(prefix, ns);
+            declared.putIfAbsent(prefix, a.getKey().substring(0, a.getKey().length() - q.length() + prefix.length() + 1));
+            body.append('<').append(q).append('>').append(escape(a.getValue())).append("</").append(q).append('>');
         }
+        StringBuilder out = new StringBuilder("<rdf:Description rdf:about=\"\"");
         for (Map.Entry<String, String> e : declared.entrySet()) {
-            d.setAttributeNS(XMLNS, "xmlns:" + e.getKey(), e.getValue());
+            out.append(" xmlns:").append(e.getKey()).append("=\"").append(escape(e.getValue())).append('"');
         }
-        Transformer t = TransformerFactory.newDefaultInstance().newTransformer();
-        t.setOutputProperty(OutputKeys.OMIT_XML_DECLARATION, "yes");
-        StringWriter w = new StringWriter();
-        t.transform(new DOMSource(d), new StreamResult(w));
-        return w.toString();
+        return out.append('>').append(body).append("</rdf:Description>").toString();
+    }
+
+    private static void write(Node n, StringBuilder out) {
+        if (n.getNodeType() == Node.TEXT_NODE || n.getNodeType() == Node.CDATA_SECTION_NODE) {
+            out.append(escape(n.getNodeValue()));
+            return;
+        }
+        if (n.getNodeType() != Node.ELEMENT_NODE) {
+            return;
+        }
+        out.append('<').append(n.getNodeName());
+        NamedNodeMap attrs = n.getAttributes();
+        for (int i = 0; i < attrs.getLength(); i++) {
+            Node a = attrs.item(i);
+            out.append(' ').append(a.getNodeName()).append("=\"").append(escape(a.getNodeValue())).append('"');
+        }
+        out.append('>');
+        for (Node c = n.getFirstChild(); c != null; c = c.getNextSibling()) {
+            write(c, out);
+        }
+        out.append("</").append(n.getNodeName()).append('>');
+    }
+
+    private static String escape(String s) {
+        return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\"", "&quot;");
     }
 
     private static void namespaces(Node n, Map<String, String> declared) {
