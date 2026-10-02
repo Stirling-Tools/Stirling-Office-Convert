@@ -8,12 +8,14 @@ import java.util.List;
 import org.apache.pdfbox.contentstream.operator.Operator;
 import org.apache.pdfbox.cos.COSBase;
 import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.pdmodel.graphics.form.PDTransparencyGroup;
 import org.apache.pdfbox.rendering.ImageType;
 import org.apache.pdfbox.rendering.PDFRenderer;
 import org.apache.pdfbox.rendering.PageDrawer;
 import org.apache.pdfbox.rendering.PageDrawerParameters;
 
 import stirling.software.officeconvert.extract.PdfFiles;
+import stirling.software.officeconvert.extract.RgbGroup;
 
 final class FlattenRenderer extends PDFRenderer {
 
@@ -50,6 +52,11 @@ final class FlattenRenderer extends PDFRenderer {
         protected void processOperator(Operator operator, List<COSBase> operands) throws IOException {
             PdfFiles.stopIfInterrupted();
             super.processOperator(operator, operands);
+        }
+
+        @Override
+        public void showTransparencyGroup(PDTransparencyGroup form) throws IOException {
+            super.showTransparencyGroup(RgbGroup.of(form));
         }
 
         @Override

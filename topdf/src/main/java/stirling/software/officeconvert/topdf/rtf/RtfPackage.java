@@ -10,7 +10,6 @@ import java.io.OutputStream;
 import java.io.OutputStreamWriter;
 import java.io.Writer;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -21,6 +20,7 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
 import stirling.software.officeconvert.memory.Admission;
+import stirling.software.officeconvert.topdf.io.SourceFile;
 
 public final class RtfPackage {
 
@@ -54,7 +54,7 @@ public final class RtfPackage {
 
     public static boolean isRtf(Path file) throws IOException {
         Objects.requireNonNull(file, "file");
-        try (InputStream in = Files.newInputStream(file)) {
+        try (InputStream in = SourceFile.open(file)) {
             return isRtf(in.readNBytes(64));
         }
     }

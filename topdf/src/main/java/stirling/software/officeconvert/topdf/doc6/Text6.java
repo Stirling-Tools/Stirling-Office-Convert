@@ -2,6 +2,8 @@ package stirling.software.officeconvert.topdf.doc6;
 
 import java.nio.charset.Charset;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Comparator;
 import java.util.List;
 
 /** The text of a Word 6 document by character position: its pieces (one for a document saved in full, a piece
@@ -17,6 +19,8 @@ final class Text6 {
     final char[] chars;
 
     private final int factor;
+
+    private Piece[] sorted;
 
     Text6(Fib6 fib, Charset charset) {
         factor = (fib.flags & 0x1000) != 0 ? 2 : 1;
@@ -79,6 +83,26 @@ final class Text6 {
             pieces.add(new Piece(cp0, cp1, fc));
             last = cp1;
         }
+        if (last > m.length / factor || overlapping()) {
+            pieces.clear();
+        }
+    }
+
+    private boolean overlapping() {
+        Piece[] inOrder = byFc();
+        for (int i = 1; i < inOrder.length; i++) {
+            Piece p = inOrder[i - 1];
+            if ((long) p.fc() + (long) (p.cpEnd() - p.cpStart()) * factor > inOrder[i].fc()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private Piece[] byFc() {
+        Piece[] inOrder = pieces.toArray(Piece[]::new);
+        Arrays.sort(inOrder, Comparator.comparingInt(Piece::fc));
+        return inOrder;
     }
 
     int length() {
@@ -87,8 +111,23 @@ final class Text6 {
 
     /** The character positions an old file range [fcStart, fcEnd) covers, as [cpStart, cpEnd] pairs. */
     List<int[]> cps(int fcStart, int fcEnd) {
+        if (sorted == null) {
+            sorted = byFc();
+        }
         List<int[]> out = new ArrayList<>();
-        for (Piece p : pieces) {
+        int lo = 0;
+        int hi = sorted.length;
+        while (lo < hi) {
+            int mid = (lo + hi) >>> 1;
+            Piece p = sorted[mid];
+            if ((long) p.fc() + (long) (p.cpEnd() - p.cpStart()) * factor <= fcStart) {
+                lo = mid + 1;
+            } else {
+                hi = mid;
+            }
+        }
+        for (int i = lo; i < sorted.length && sorted[i].fc() < fcEnd; i++) {
+            Piece p = sorted[i];
             int pieceEnd = p.fc() + (p.cpEnd() - p.cpStart()) * factor;
             int a = Math.max(fcStart, p.fc());
             int b = Math.min(fcEnd, pieceEnd);

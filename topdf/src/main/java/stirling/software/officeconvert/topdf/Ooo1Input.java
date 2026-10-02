@@ -17,7 +17,7 @@ final class Ooo1Input {
     private Ooo1Input() {}
 
     static Long estimate(Path source) throws IOException {
-        return Ooo1Package.sniff(source) == null ? null : 12 * Files.size(source) + 2 * Admission.BASE_BYTES;
+        return Ooo1Package.sniff(source) == null ? null : Ooo1Package.estimate(source) + 2 * Admission.BASE_BYTES;
     }
 
     static Result render(Path source, OfficeToPdf.Format requested, OutputStream sink, Options options,
@@ -28,7 +28,7 @@ final class Ooo1Input {
         }
         Path odf = Files.createTempFile("office-to-pdf-", "." + Ooo1Package.extension(kind));
         try {
-            Admission.Ticket ticket = Admission.jvm().enter(12 * Files.size(source) + Admission.BASE_BYTES);
+            Admission.Ticket ticket = Admission.jvm().enter(Ooo1Package.estimate(source) + Admission.BASE_BYTES);
             try (OutputStream os = new BufferedOutputStream(Files.newOutputStream(odf), 1 << 16)) {
                 Ooo1Package.write(source, kind, os);
             } finally {

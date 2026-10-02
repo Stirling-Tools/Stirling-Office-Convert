@@ -13,13 +13,13 @@ final class PictBits {
     private record Map(int rb, int top, int left, int width, int height, boolean pixmap, int packType, int pixelSize,
             int cmpCount, int[] palette) {}
 
-    static Image read(PictReader in, int opcode, Color fg, Color bg) {
+    static Image read(PictReader in, int opcode, Color fg, Color bg, long allowance) {
         boolean direct = opcode == 0x9A || opcode == 0x9B;
         boolean region = opcode == 0x91 || opcode == 0x99 || opcode == 0x9B;
         if (direct) {
             in.skip(4);
         }
-        Map map = map(in, direct, !direct);
+        Map map = map(in, direct, !direct, allowance);
         int sTop = in.s16();
         int sLeft = in.s16();
         int sBottom = in.s16();
@@ -39,11 +39,11 @@ final class PictBits {
                 dTop, dRight, dBottom, opaque);
     }
 
-    static BufferedImage pattern(PictReader in, Color fg, Color bg) {
-        return pixels(in, map(in, false, true), fg, bg, true);
+    static BufferedImage pattern(PictReader in, Color fg, Color bg, long allowance) {
+        return pixels(in, map(in, false, true, allowance), fg, bg, true);
     }
 
-    private static Map map(PictReader in, boolean direct, boolean table) {
+    private static Map map(PictReader in, boolean direct, boolean table, long allowance) {
         int rowBytes = in.u16();
         boolean pixmap = direct || (rowBytes & 0x8000) != 0;
         int rb = rowBytes & 0x3FFF;
@@ -70,11 +70,12 @@ final class PictBits {
         int[] palette = pixmap && table ? colorTable(in) : null;
         int width = right - left;
         int height = bottom - top;
-        if (width <= 0 || height <= 0 || (long) width * height > PictureDecoder.DECODE_PIXELS || rb <= 0
-                || rb > Pict.MAX_ROW_BYTES || cmpCount < 1 || cmpCount > 4) {
+        if (width <= 0 || height <= 0 || (long) width * height > Math.min(allowance, PictureDecoder.DECODE_PIXELS)
+                || rb <= 0 || rb > Pict.MAX_ROW_BYTES || cmpCount < 1 || cmpCount > 4) {
             throw new IllegalStateException("bitmap out of range");
         }
-        if (pixelSize != 32 && (long) rb * 8 < (long) width * pixelSize) {
+        int bits = pixelSize == 32 ? 8 * Math.min(3, cmpCount) : pixelSize;
+        if ((long) rb * 8 < (long) width * bits) {
             throw new IllegalStateException("bitmap rows too short");
         }
         return new Map(rb, top, left, width, height, pixmap, packType, pixelSize, cmpCount, palette);

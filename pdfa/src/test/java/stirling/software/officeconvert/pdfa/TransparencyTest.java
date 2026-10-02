@@ -21,6 +21,7 @@ import org.apache.pdfbox.pdmodel.common.PDStream;
 import org.apache.pdfbox.pdmodel.font.PDFont;
 import org.apache.pdfbox.pdmodel.font.PDType1Font;
 import org.apache.pdfbox.pdmodel.font.Standard14Fonts;
+import org.apache.pdfbox.pdmodel.graphics.form.PDFormXObject;
 import org.apache.pdfbox.pdmodel.graphics.state.PDExtendedGraphicsState;
 import org.apache.pdfbox.rendering.PDFRenderer;
 import org.junit.jupiter.api.Test;
@@ -123,6 +124,44 @@ class TransparencyTest {
         try (PDDocument d = Loader.loadPDF(out.toFile())) {
             int rgb = new PDFRenderer(d).renderImage(0).getRGB(100, 100) & 0xFFFFFF;
             assertEquals(0x00FFFF, rgb, Integer.toHexString(rgb));
+        }
+        VeraPdf.assertCompliant(out, PdfALevel.A1B);
+    }
+
+    @Test
+    void aDarkGreyInAnIsolatedGreyGroupKeepsItsToneWhenDrawnAsAPicture() throws Exception {
+        Path in = dir.resolve("greygroup.pdf");
+        try (PDDocument d = new PDDocument()) {
+            PDPage p = new PDPage(new PDRectangle(200, 200));
+            d.addPage(p);
+            COSDictionary group = new COSDictionary();
+            group.setItem(COSName.S, COSName.TRANSPARENCY);
+            group.setItem(COSName.CS, COSName.DEVICEGRAY);
+            group.setBoolean(COSName.I, true);
+            PDFormXObject form = new PDFormXObject(d);
+            form.setBBox(new PDRectangle(200, 200));
+            form.getCOSObject().setItem(COSName.GROUP, group);
+            try (OutputStream o = form.getContentStream().createOutputStream()) {
+                o.write("0.0235 g 50 50 100 100 re f".getBytes(StandardCharsets.US_ASCII));
+            }
+            COSDictionary forms = new COSDictionary();
+            forms.setItem(COSName.getPDFName("F0"), form.getCOSObject());
+            COSDictionary res = new COSDictionary();
+            res.setItem(COSName.XOBJECT, forms);
+            p.getCOSObject().setItem(COSName.RESOURCES, res);
+            PDStream s = new PDStream(d);
+            try (OutputStream o = s.createOutputStream()) {
+                o.write("1 0 0 rg 0 0 200 200 re f /F0 Do".getBytes(StandardCharsets.US_ASCII));
+            }
+            p.setContents(s);
+            d.save(in.toFile());
+        }
+        Path out = dir.resolve("greygroup-1b.pdf");
+        PdfToPdfA.Result r = PdfToPdfA.convert(in, out, PdfToPdfA.Options.defaults().level(PdfALevel.A1B));
+        assertEquals(List.of(1), r.flattenedPages());
+        try (PDDocument d = Loader.loadPDF(out.toFile())) {
+            int rgb = new PDFRenderer(d).renderImage(0).getRGB(100, 100) & 0xFFFFFF;
+            assertEquals(6, rgb & 0xFF, 1, Integer.toHexString(rgb));
         }
         VeraPdf.assertCompliant(out, PdfALevel.A1B);
     }

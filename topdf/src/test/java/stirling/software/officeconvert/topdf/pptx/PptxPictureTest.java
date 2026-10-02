@@ -229,6 +229,24 @@ class PptxPictureTest {
         assertEquals(204, c.getBlue(), 3);
     }
 
+    @Test
+    void greyPicturesAreRecolouredLikeTheSameColourPicture() throws IOException {
+        String lum = "<a:lum bright=\"20000\"/>";
+        BufferedImage grey = new BufferedImage(8, 8, BufferedImage.TYPE_BYTE_GRAY);
+        java.awt.Graphics2D g = grey.createGraphics();
+        g.setColor(new Color(30, 30, 30));
+        g.fillRect(0, 0, 8, 8);
+        g.dispose();
+        java.io.ByteArrayOutputStream png = new java.io.ByteArrayOutputStream();
+        javax.imageio.ImageIO.write(grey, "png", png);
+        Color fromGrey = new Color(Decks.convert(dir, "greylum.pptx",
+                framedPicture(lum, png.toByteArray(), "grey.png", "png")).render(0, 72).getRGB(150, 150));
+        Color fromRgb = new Color(Decks.convert(dir, "rgblum.pptx",
+                framedPicture(lum, Fixtures.png(8, 8, new Color(30, 30, 30)), "rgb.png", "png")).render(0, 72)
+                .getRGB(150, 150));
+        assertEquals(fromRgb.getRed(), fromGrey.getRed(), 2, fromGrey + " vs " + fromRgb);
+    }
+
     private static byte[] framedPicture(String effects, byte[] picture, String name, String type) {
         String pic = "<p:pic " + Decks.NS + "><p:nvPicPr><p:cNvPr id=\"7\" name=\"Picture\"/><p:cNvPicPr/><p:nvPr/>"
                 + "</p:nvPicPr><p:blipFill><a:blip r:embed=\"rIdP\">" + effects + "</a:blip><a:stretch><a:fillRect/>"

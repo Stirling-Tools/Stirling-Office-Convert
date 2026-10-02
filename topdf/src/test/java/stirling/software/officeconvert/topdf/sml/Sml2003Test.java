@@ -22,6 +22,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 import stirling.software.officeconvert.topdf.OfficeToPdf;
 import stirling.software.officeconvert.topdf.font.FontLibrary;
+import stirling.software.officeconvert.topdf.testing.Allocation;
 
 class Sml2003Test {
 
@@ -123,5 +124,21 @@ class Sml2003Test {
         Path in = file("feed.xml", "<?xml version=\"1.0\"?><rss><channel/></rss>");
         IOException e = assertThrows(IOException.class, () -> OfficeToPdf.convert(in, dir.resolve("feed.pdf")));
         assertTrue(e.getMessage().contains("not a Word, Excel"), e.getMessage());
+    }
+
+    @Test
+    void spannedRowsStopWhenThePackageIsFull() throws IOException {
+        String sheet = "<Worksheet ss:Name=\"S\"><Table><Row ss:Height=\"15\" ss:Span=\"1048000\"/></Table></Worksheet>";
+        StringBuilder sheets = new StringBuilder();
+        for (int i = 0; i < 100; i++) {
+            sheets.append(sheet.replace("\"S\"", "\"S" + i + "\""));
+        }
+        Path in = file("spans.xml", workbook("", "", sheets.toString()));
+        Sml2003Package.Outcome[] outcome = new Sml2003Package.Outcome[1];
+        Allocation.Measured m = Allocation.measure(() -> outcome[0] = Sml2003Package.write(in,
+                java.io.OutputStream.nullOutputStream(), FontLibrary.system()));
+        assertEquals(null, m.failure());
+        assertTrue(outcome[0].lost());
+        assertTrue(m.bytes() < 5L << 30, "allocated " + m.megabytes() + " MB");
     }
 }
