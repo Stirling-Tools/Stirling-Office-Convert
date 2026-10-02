@@ -51,13 +51,29 @@ public final class XlsbPackage {
         }
     }
 
+    private static final int MAX_TYPES_BYTES = 1 << 20;
+
     private XlsbPackage() {}
 
     /** Whether the zip package's main part is a binary workbook. */
     public static boolean is(Path file) {
-        try (OfficeZip zip = OfficeZip.open(file)) {
-            String type = zip.mainContentType();
-            return type != null && type.toLowerCase(Locale.ROOT).contains("sheet.binary");
+        try (InputStream in = java.nio.file.Files.newInputStream(file)) {
+            byte[] head = in.readNBytes(2);
+            if (head.length < 2 || head[0] != 'P' || head[1] != 'K') {
+                return false;
+            }
+        } catch (IOException e) {
+            return false;
+        }
+        try (java.util.zip.ZipFile zip = new java.util.zip.ZipFile(file.toFile())) {
+            java.util.zip.ZipEntry types = zip.getEntry("[Content_Types].xml");
+            if (types == null || types.getSize() > MAX_TYPES_BYTES) {
+                return false;
+            }
+            try (InputStream in = zip.getInputStream(types)) {
+                String xml = new String(in.readNBytes(MAX_TYPES_BYTES), java.nio.charset.StandardCharsets.UTF_8);
+                return xml.toLowerCase(Locale.ROOT).contains("sheet.binary.macroenabled.main");
+            }
         } catch (IOException | RuntimeException e) {
             return false;
         }
