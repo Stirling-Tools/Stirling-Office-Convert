@@ -26,8 +26,8 @@ final class SimpleGlyphs {
 
     private SimpleGlyphs() {}
 
-    static boolean collect(PDTrueTypeFont font, TrueTypeFont ttf, Set<Integer> codes, Set<Integer> keep)
-            throws IOException {
+    static boolean collect(PDTrueTypeFont font, TrueTypeFont ttf, Set<Integer> codes, Set<Integer> keep,
+            Map<Integer, Integer> unicode, Map<Integer, Integer> macRoman) throws IOException {
         CmapTable table = ttf.getCmap();
         CmapSubtable[] subs = table == null ? new CmapSubtable[0] : table.getCmaps();
         Encoding enc = font.getEncoding();
@@ -37,12 +37,15 @@ final class SimpleGlyphs {
                 keys.add(base + code);
             }
             String name = enc == null ? null : enc.getName(code);
+            int named = -1;
+            Integer mac = null;
             if (name != null && !".notdef".equals(name)) {
                 String u = GlyphList.getAdobeGlyphList().toUnicode(name);
                 if (u != null && !u.isEmpty()) {
-                    keys.add(u.codePointAt(0));
+                    named = u.codePointAt(0);
+                    keys.add(named);
                 }
-                Integer mac = MAC_ROMAN.get(name);
+                mac = MAC_ROMAN.get(name);
                 if (mac != null) {
                     keys.add(mac);
                 }
@@ -61,6 +64,12 @@ final class SimpleGlyphs {
                 return false;
             }
             keep.addAll(found);
+            if (used > 0 && named >= 0) {
+                unicode.putIfAbsent(named, used);
+            }
+            if (used > 0 && mac != null) {
+                macRoman.putIfAbsent(mac, used);
+            }
         }
         return true;
     }

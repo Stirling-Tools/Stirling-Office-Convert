@@ -29,19 +29,22 @@ final class Conversion {
     private static PdfToPdfA.Result convert(PDDocument doc, OutputStream out, PdfToPdfA.Options options)
             throws IOException {
         PdfALevel level = options.level();
-        int pages = doc.getNumberOfPages();
-        if (options.maxPages() > 0 && pages > options.maxPages()) {
-            throw new IOException("The PDF has " + pages + " pages, more than the limit of " + options.maxPages());
-        }
+        pageLimit(doc.getNumberOfPages(), options);
         Report report = new Report();
         if (doc.isEncrypted()) {
             doc.setAllSecurityToBeRemoved(true);
         }
         doc.getDocument().setEncryptionDictionary(null);
+        PageTreeRepair.run(doc, report);
+        int pages = doc.getNumberOfPages();
+        pageLimit(pages, options);
         if (level.tagged()) {
             Tagging.run(doc, level, report);
         }
+        Census census = Census.of(doc);
+        Signatures.run(doc, census, report);
         Interactive.run(doc, level, report);
+        ObjectMetadata.run(doc, census, level, report);
         EmbeddedFiles.run(doc, level, report);
         if (level.part() == 1) {
             OptionalContentRemoval.run(doc, report);
@@ -54,6 +57,8 @@ final class Conversion {
         ContentGraph graph = ContentGraph.of(doc);
         FontUsage usage = new FontUsage();
         DeviceColours colours = new DeviceColours();
+        DeviceNReduction.run(doc, census, graph, level, report);
+        SpotColours.run(doc, census, level, report);
         ContentFixer.run(graph, level, report, usage, colours);
         FontFixer.run(doc, usage, level, options::fontLibrary, report);
         PdfFiles.stopIfInterrupted();
@@ -71,11 +76,23 @@ final class Conversion {
             StructureCheck.run(doc, level, report);
         }
         graph = ContentGraph.of(doc);
+        BigDictionaries.run(doc, census, graph, level, report);
+        WideStructure.run(doc, level, report);
         ColourFixer.run(doc, graph, level, report, colours, Limits.prepare(doc, level, report));
+        StructureSlimming.run(doc);
         Metadata.run(doc, level);
         PdfFiles.stopIfInterrupted();
         save(doc, out, level);
         return new PdfToPdfA.Result(level, pages, report.warnings(), report.flattenedPages(), report.substitutedFonts());
+    }
+
+    private static void pageLimit(int pages, PdfToPdfA.Options options) throws IOException {
+        if (pages == 0) {
+            throw new IOException("The PDF has no pages");
+        }
+        if (options.maxPages() > 0 && pages > options.maxPages()) {
+            throw new IOException("The PDF has " + pages + " pages, more than the limit of " + options.maxPages());
+        }
     }
 
     private static void save(PDDocument doc, OutputStream out, PdfALevel level) throws IOException {

@@ -525,13 +525,23 @@ PdfToPdfA.convert(pdDocument, outputStream, options);     // an open document, w
   its own glyphs the same way (TrueType glyphs are copied with their hinting; Type 1 and CFF outlines are converted).
   Type 0 fonts keep their CIDs and CMaps behind a new `CIDToGIDMap`. An embedded TrueType font that carries far more
   glyphs than the pages show (Office keeps every glyph slot) is cut down to the glyphs in use, keeping its glyph
-  outlines, hinting, advances and every cmap entry that leads to them. CharSet and CIDSet are written for part 1 and
-  dropped for parts 2 and 3. For the u and a levels every shown code gets a ToUnicode value, a private-use one (u) or
-  U+FFFD (a) when the PDF gives no clue.
+  outlines, hinting, advances and every cmap entry that leads to them, including the entries the encoding's glyph
+  names lead to. Embedded Type 1 and CFF fonts keep only the glyphs in use (and, for Type 1, the subroutines they
+  call) behind the same glyph names and IDs, with accented glyphs built from two others keeping both. A font
+  dictionary missing its type, name or widths gets them from its program, and a font program stream gets the subtype
+  its bytes show. CMaps PDF/A does not accept are embedded (part 1), merged with the CMap they refer to, or rewritten
+  for the codes in use, with CIDs past 65,535 and, for parts 2 and 3, CID 0 (.notdef) moved to free CIDs; an unknown
+  CMap name is read as Identity. CharSet and CIDSet are written for part 1 and dropped for parts 2 and 3. For the u and a levels every shown code gets a ToUnicode value, a private-use one (u) or
+  U+FFFD (a) when the PDF gives no clue; a ToUnicode map with ranges across a byte boundary is written again.
 - Colour. An sRGB output intent with an ICC profile generated in code (version 2, so it serves part 1 too) is added
   unless the PDF already has a usable one. Device CMYK is given a `DefaultCMYK` space with the CC0 CMYK profile that
   PDFBox ships (its own DeviceCMYK profile), so nothing is converted; it is added only when a page uses device CMYK.
-  Invalid or, for part 1, version 4 ICC profiles are replaced.
+  Invalid or, for part 1, version 4 ICC profiles are replaced, and an output intent whose profile is not a printer or
+  monitor profile is replaced. DeviceN spaces with more colourants than the level allows (8 for part 1, 32 for parts 2
+  and 3) are drawn in their alternate space: colour operators are converted through the tint transform, images are
+  converted pixel by pixel and shadings get a sampled function. For parts 2 and 3 every DeviceN spot colourant is
+  described in `Colorants` and Separations that share a name share one definition, or are renamed when they draw
+  differently.
 - JPEG 2000. Part 1 does not allow JPX images, so they are decoded and stored again (JPEG when photographic, lossless
   otherwise, with any alpha as a soft mask); parts 2 and 3 keep them unless they break the part 2 JPX rules (channel
   count, bit depth, colour boxes). Decoding needs a JPEG 2000 ImageIO reader on the classpath, such as
@@ -539,7 +549,11 @@ PdfToPdfA.convert(pdDocument, outputStream, options);     // an open document, w
   open source licence); without one such a file fails with a message saying so.
 - Limits. Content nested deeper than 28 graphics states moves into form XObjects; names over 127 bytes are shortened
   everywhere they are used; long strings and `TJ` arrays in content are split without moving a glyph; numbers are
-  clamped; for part 1 long number trees, name trees, page trees and CID width arrays are split; for parts 2 and 3 a
+  clamped; names that are not UTF-8 are rewritten as UTF-8; images and masks get a bit depth PDF/A allows; for part 1
+  long number trees, name trees, page trees, CID width arrays, content arrays and ink paths are split or merged,
+  structure elements with more children than the limit are grouped under `NonStruct` elements, resource dictionaries
+  past 4,095 entries lose the names no content uses, named destinations move into a name tree and custom document
+  properties past the limit are dropped; for parts 2 and 3 a
   page larger than 14,400 units gets a `UserUnit`, with its content, annotations and destinations scaled to match.
 - Transparency. Parts 2 and 3 keep it. For part 1 each transparent object (soft masks, constant alpha, blend modes,
   transparency groups, translucent annotations) is drawn into a picture of the smallest box covering all of them on
@@ -548,15 +562,19 @@ PdfToPdfA.convert(pdDocument, outputStream, options);     // an open document, w
   text stays in the page as invisible text, so it can still be searched and copied.
 - Removed, with a warning each: JavaScript, launch, sound, movie, reset, import and hide actions and every additional
   action, forbidden annotation types and hidden annotations, XFA, PostScript XObjects, image alternates, transfer
-  functions, halftones and undefined operators. Annotations without an appearance get one; LZW streams are recompressed
-  with Flate; encryption is removed (give the password for a protected file).
+  functions, halftones and undefined operators, form field actions, digital signatures (the rewrite would break them),
+  and, for parts 2 and 3, metadata of pages, images and fonts (only predefined XMP properties are allowed there).
+  Annotations without an appearance get one; LZW streams and inline images with filters PDF/A does not allow are
+  recompressed with Flate; forms that borrow their parent's resources get their own; encryption is removed (give the
+  password for a protected file).
 - Embedded files: removed for part 1, kept for part 2 only when they are PDF/A themselves, kept for part 3 with a MIME
   type, a modification date, an `AFRelationship` and the catalog's `AF` array.
 - Optional content: part 1 has none, so content in hidden layers is deleted and the rest kept; parts 2 and 3 keep the
   layers and fix their configurations.
 - XMP metadata is written from the Info dictionary (the two agree), with `pdfaid:part` and `pdfaid:conformance`; the
   file gets a trailer ID. Parts 2 and 3 are written with object streams and a cross-reference stream; part 1 with a
-  classic table. Objects are numbered without gaps and unfiltered streams are compressed.
+  classic table. Objects are numbered without gaps and unfiltered streams are compressed. Structure elements are
+  written without their optional type and with a lone kid in place of a one-item array.
 
 Level a (1a, 2a, 3a) is for PDFs that are already tagged: the module does not build a structure tree, so an untagged
 file fails with an `IOException` that says to use b or u. For a tagged file it marks the document as tagged, maps
