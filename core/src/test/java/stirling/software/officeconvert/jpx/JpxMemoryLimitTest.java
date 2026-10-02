@@ -44,7 +44,7 @@ class JpxMemoryLimitTest {
 
     @Test
     void sizeMatchesTheComposedImageOfSubsampledComponents() throws IOException {
-        byte[] data = JpxSamples.resource("yuv420.j2k");
+        byte[] data = SyntheticCodestream.samples(16, 12, 3, 8, Progression.LRCP, true, false, false, false, true);
         BufferedImage img = JpxDecoder.decode(data).toBufferedImage();
         assertArrayEquals(new int[] {img.getWidth(), img.getHeight(), 3}, JpxDecoder.size(data));
     }
