@@ -193,6 +193,8 @@ final class TableBuilder {
         b.append("</w:trPr>");
         int n = e.length - 1;
         int i = 0;
+        StringBuilder carry = new StringBuilder();
+        int lastEnd = -1;
         while (i < n) {
             RowProps.CellDef d = i < p.cells.size() ? p.cells.get(i) : new RowProps.CellDef();
             int j = i + 1;
@@ -202,6 +204,9 @@ final class TableBuilder {
             int lo = e[i];
             int hi = e[j];
             if (hi <= lo) {
+                if (i < r.cells().size()) {
+                    carry.append(r.cells().get(i));
+                }
                 i = j;
                 continue;
             }
@@ -242,13 +247,21 @@ final class TableBuilder {
                 b.append("<w:vAlign w:val=\"").append(d.valign).append("\"/>");
             }
             b.append("</w:tcPr>");
-            String content = i < r.cells().size() ? r.cells().get(i) : "";
+            String content = carry + (i < r.cells().size() ? r.cells().get(i) : "");
+            carry.setLength(0);
             b.append(content);
             if (content.isEmpty() || content.endsWith("</w:tbl>")) {
                 b.append("<w:p/>");
             }
+            lastEnd = b.length();
             b.append("</w:tc>");
             i = j;
+        }
+        if (!carry.isEmpty() && lastEnd >= 0) {
+            if (carry.toString().endsWith("</w:tbl>")) {
+                carry.append("<w:p/>");
+            }
+            b.insert(lastEnd, carry);
         }
         b.append("</w:tr>");
     }

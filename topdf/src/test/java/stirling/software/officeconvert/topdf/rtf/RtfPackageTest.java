@@ -408,7 +408,8 @@ class RtfPackageTest {
         assertTrue(b.contains("<w:fldSimple w:instr=\"PAGE\">") && b.contains("x\u0159?y"), b);
         String hidden = convert(HEAD + "\\trowd\\cellx1280\\cellx1280\\cellx2560\\pard\\intbl a\\cell b\\cell c\\cell\\row}")
                 .body();
-        assertTrue(hidden.contains(">a<") && hidden.contains(">c<") && !hidden.contains(">b<"), hidden);
+        assertTrue(hidden.contains(">a<") && hidden.contains(">c<") && hidden.contains(">b<"), hidden);
+        assertEquals(2, hidden.split("<w:tc>", -1).length - 1, hidden);
         String notes = convert(HEAD + "\\pard hello{\\footnote note}\\sectd\\pgnrestart\\par}").body();
         assertTrue(notes.contains("<w:footnoteReference w:id=\"2\"/>") && notes.contains("<w:pgNumType w:start=\"1\"/>"),
                 notes);
@@ -484,5 +485,14 @@ class RtfPackageTest {
                 + "\\par}").body();
         assertFalse(b.contains("\uFFFD"), "split pair");
         assertEquals(40_000, b.chars().filter(c -> c == 0x6a19).count());
+    }
+
+    @Test
+    void cellsWithoutWidthKeepTheirText() throws IOException {
+        String b = convert(HEAD + "\\trowd\\cellx2000\\cellx1000\\cellx3000\\pard\\intbl alpha\\cell beta\\cell"
+                + " gamma\\cell\\row\\trowd\\cellx2000\\pard\\intbl one\\cell two\\cell\\row\\pard after\\par}").body();
+        for (String t : new String[] {"alpha", "beta", "gamma", "one", "two", "after"}) {
+            assertTrue(b.contains(t), t + ": " + b);
+        }
     }
 }
