@@ -56,6 +56,16 @@ final class Hostile {
                 "<</Names[(a.txt)<</Type/Filespec/F(a.txt)>>]/Limits[(a.txt)(a.txt)]>>", "<</Kids[@ @]>>");
     }
 
+    static RawPdf formChain(int forms) {
+        RawPdf r = RawPdf.page("/XObject<</X 5 0 R>>", "0 0 1 rg 10 10 50 50 re f /X Do");
+        for (int i = 0; i < forms; i++) {
+            String res = i + 1 < forms ? "/Resources<</XObject<</X " + (6 + i) + " 0 R>>>>" : "";
+            String body = i + 1 < forms ? "/X Do" : "0 1 0 rg 20 20 10 10 re f";
+            r.add(RawPdf.stream("/Type/XObject/Subtype/Form/BBox[0 0 600 800]" + res, body));
+        }
+        return r;
+    }
+
     static RawPdf pieceInfoDag() {
         RawPdf r = chain("", 8, "[/A]", "[" + "@ ".repeat(4000) + "]");
         r.set(3, "<</Type/Page/Parent 2 0 R/MediaBox[0 0 595 842]/Contents 4 0 R/PieceInfo<</App<</Private "
@@ -175,6 +185,75 @@ final class Hostile {
             next = a;
         }
         d.getDocumentCatalog().getCOSObject().setItem(COSName.OPEN_ACTION, next);
+    }
+
+    static void taggedForm(PDDocument d, String variant) throws IOException {
+        PDFont f = helvetica();
+        PDPage p = page(d);
+        p.setResources(fonts(f));
+        org.apache.pdfbox.pdmodel.graphics.form.PDFormXObject form =
+                new org.apache.pdfbox.pdmodel.graphics.form.PDFormXObject(d);
+        form.setBBox(new PDRectangle(0, 0, 600, 800));
+        PDResources fr = fonts(f);
+        form.setResources(fr);
+        boolean mcidInForm = variant.equals("mcid");
+        String body = switch (variant) {
+            case "mcid" -> "/P <</MCID 0>> BDC BT /F1 18 Tf 72 600 Td (Tagged form text) Tj ET EMC";
+            case "self" -> "0 0 1 rg 10 10 50 50 re f /Fm0 Do";
+            default -> "BT /F1 18 Tf 72 600 Td (Untagged form text) Tj ET";
+        };
+        try (OutputStream o = form.getCOSObject().createOutputStream()) {
+            o.write(body.getBytes(StandardCharsets.ISO_8859_1));
+        }
+        if (variant.equals("structparents")) {
+            form.getCOSObject().setInt(COSName.STRUCT_PARENTS, 1);
+        }
+        if (variant.equals("self")) {
+            fr.put(COSName.getPDFName("Fm0"), form);
+        }
+        p.getResources().put(COSName.getPDFName("Fm0"), form);
+        p.getCOSObject().setItem(COSName.CONTENTS,
+                stream(d, "/P <</MCID 0>> BDC BT /F1 18 Tf 72 700 Td (Tagged) Tj ET EMC /Fm0 Do\n"));
+        p.getCOSObject().setInt(COSName.STRUCT_PARENTS, 0);
+        COSDictionary root = dict(COSName.getPDFName("StructTreeRoot"));
+        COSDictionary doc = element(COSName.getPDFName("Document"), root, null);
+        COSDictionary para = element(COSName.P, doc, p);
+        para.setInt(COSName.K, 0);
+        COSArray kids = new COSArray();
+        kids.add(para);
+        COSArray nums = new COSArray();
+        COSArray onPage = new COSArray();
+        onPage.add(para);
+        nums.add(org.apache.pdfbox.cos.COSInteger.get(0));
+        nums.add(onPage);
+        if (mcidInForm) {
+            COSDictionary inForm = element(COSName.P, doc, p);
+            COSDictionary mcr = dict(COSName.getPDFName("MCR"));
+            mcr.setInt(COSName.MCID, 0);
+            mcr.setItem(COSName.getPDFName("Stm"), form.getCOSObject());
+            inForm.setItem(COSName.K, mcr);
+            kids.add(inForm);
+        }
+        doc.setItem(COSName.K, kids);
+        root.setItem(COSName.K, doc);
+        COSDictionary tree = new COSDictionary();
+        tree.setItem(COSName.NUMS, nums);
+        root.setItem(COSName.PARENT_TREE, tree);
+        d.getDocumentCatalog().getCOSObject().setItem(COSName.STRUCT_TREE_ROOT, root);
+        COSDictionary mark = new COSDictionary();
+        mark.setBoolean(COSName.getPDFName("Marked"), true);
+        d.getDocumentCatalog().getCOSObject().setItem(COSName.MARK_INFO, mark);
+        d.getDocumentCatalog().setLanguage("en-US");
+    }
+
+    private static COSDictionary element(COSName type, COSDictionary parent, PDPage page) {
+        COSDictionary e = dict(COSName.getPDFName("StructElem"));
+        e.setItem(COSName.S, type);
+        e.setItem(COSName.P, parent);
+        if (page != null) {
+            e.setItem(COSName.PG, page.getCOSObject());
+        }
+        return e;
     }
 
     static COSDictionary dict(COSName type) {

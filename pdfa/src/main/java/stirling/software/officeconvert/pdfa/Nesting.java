@@ -1,7 +1,9 @@
 package stirling.software.officeconvert.pdfa;
 
 import java.io.IOException;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Deque;
 import java.util.List;
 
 import org.apache.pdfbox.contentstream.operator.Operator;
@@ -16,6 +18,8 @@ final class Nesting {
     static final int MAX_DEPTH = 28;
 
     static final int MOVE_AT = 20;
+
+    static final int MAX_MOVED_DEPTH = MOVE_AT * 64;
 
     private final COSDictionary resources;
 
@@ -47,6 +51,11 @@ final class Nesting {
 
     static List<Object> flatten(List<Object> tokens, COSDictionary resources, PdfALevel level, Report report)
             throws IOException {
+        int deepest = depth(tokens);
+        if (deepest > MAX_MOVED_DEPTH) {
+            throw new IOException("The content nests graphics states " + deepest + " levels deep, more than the "
+                    + MAX_MOVED_DEPTH + " that can be moved into forms");
+        }
         Nesting n = new Nesting(resources, level);
         List<Object> out = n.rewrite(balanced(tokens));
         if (n.stuck || depth(out) > MAX_DEPTH) {
@@ -77,86 +86,129 @@ final class Nesting {
         return out;
     }
 
-    private List<Object> rewrite(List<Object> tokens) throws IOException {
-        List<Object> out = new ArrayList<>(tokens.size());
-        int depth = 0;
-        int start = 0;
-        for (int i = 0; i < tokens.size(); i++) {
-            if (!(tokens.get(i) instanceof Operator op)) {
-                continue;
-            }
-            String name = op.getName();
-            if ("q".equals(name) && depth == MOVE_AT) {
-                int end = match(tokens, i);
-                if (end > 0) {
-                    List<Object> block = tokens.subList(i + 1, end);
-                    if (depth(block) + MOVE_AT + 1 > MAX_DEPTH) {
-                        if (movable(block)) {
-                            out.addAll(tokens.subList(start, i));
-                            out.add(form(rewrite(new ArrayList<>(block))));
-                            out.add(Operator.getOperator("Do"));
-                            i = end;
-                            start = end + 1;
-                            continue;
-                        }
-                        stuck = true;
-                    }
-                }
-            }
-            if ("q".equals(name)) {
-                depth++;
-            } else if ("Q".equals(name) && depth > 0) {
-                depth--;
-            }
+    private record Block(int end, int inner, boolean movable) {}
+
+    private static final class Open {
+        final int t0;
+        final int m0;
+        final int bad0;
+        int minT;
+        int minM;
+        int inner;
+
+        Open(int t, int m, int bad) {
+            t0 = t;
+            m0 = m;
+            bad0 = bad;
+            minT = t;
+            minM = m;
         }
-        out.addAll(tokens.subList(start, tokens.size()));
-        return out;
     }
 
-    private static int match(List<Object> tokens, int q) {
-        int depth = 0;
-        for (int i = q; i < tokens.size(); i++) {
-            if (tokens.get(i) instanceof Operator op) {
-                if ("q".equals(op.getName())) {
-                    depth++;
-                } else if ("Q".equals(op.getName()) && --depth == 0) {
-                    return i;
-                }
-            }
-        }
-        return -1;
-    }
-
-    private static boolean movable(List<Object> block) {
+    private static List<Block> blocks(List<Object> tokens) {
+        List<Block> out = new ArrayList<>();
+        Deque<Open> open = new ArrayDeque<>();
+        Deque<Integer> slots = new ArrayDeque<>();
         int text = 0;
         int marked = 0;
+        int bad = 0;
         Object previous = null;
-        for (Object t : block) {
+        for (int i = 0; i < tokens.size(); i++) {
+            Object t = tokens.get(i);
             if (t instanceof Operator op) {
                 switch (op.getName()) {
+                    case "q" -> {
+                        slots.push(out.size());
+                        out.add(null);
+                        open.push(new Open(text, marked, bad));
+                    }
+                    case "Q" -> {
+                        if (!open.isEmpty()) {
+                            Open b = open.pop();
+                            boolean movable = text == b.t0 && marked == b.m0 && bad == b.bad0 && b.minT >= b.t0
+                                    && b.minM >= b.m0;
+                            out.set(slots.pop(), new Block(i, b.inner, movable));
+                            Open parent = open.peek();
+                            if (parent != null) {
+                                parent.inner = Math.max(parent.inner, b.inner + 1);
+                                parent.minT = Math.min(parent.minT, b.minT);
+                                parent.minM = Math.min(parent.minM, b.minM);
+                            }
+                        }
+                    }
                     case "BT" -> text++;
                     case "ET" -> text--;
-                    case "BMC", "BDC" -> marked++;
+                    case "BMC" -> marked++;
+                    case "BDC" -> {
+                        marked++;
+                        if (previous instanceof COSDictionary props && props.containsKey(COSName.MCID)) {
+                            bad++;
+                        }
+                    }
                     case "EMC" -> marked--;
                     case "scn", "SCN" -> {
                         if (previous instanceof COSName) {
-                            return false;
+                            bad++;
                         }
                     }
                     default -> {
                     }
                 }
-                if (text < 0 || marked < 0) {
-                    return false;
-                }
-                if ("BDC".equals(op.getName()) && previous instanceof COSDictionary props
-                        && props.containsKey(COSName.MCID)) {
-                    return false;
+                Open top = open.peek();
+                if (top != null) {
+                    top.minT = Math.min(top.minT, text);
+                    top.minM = Math.min(top.minM, marked);
                 }
             }
             previous = t;
         }
-        return text == 0 && marked == 0;
+        return out;
+    }
+
+    private static final class Frame {
+        final List<Object> out = new ArrayList<>();
+        final int end;
+        int depth;
+
+        Frame(int end) {
+            this.end = end;
+        }
+    }
+
+    private List<Object> rewrite(List<Object> tokens) throws IOException {
+        List<Block> blocks = blocks(tokens);
+        Deque<Frame> frames = new ArrayDeque<>();
+        Frame cur = new Frame(-1);
+        int q = 0;
+        for (int i = 0; i < tokens.size(); i++) {
+            Object t = tokens.get(i);
+            if (i == cur.end) {
+                COSName name = form(cur.out);
+                cur = frames.pop();
+                cur.out.add(name);
+                cur.out.add(Operator.getOperator("Do"));
+                continue;
+            }
+            if (t instanceof Operator op) {
+                String name = op.getName();
+                if ("q".equals(name)) {
+                    Block b = blocks.get(q++);
+                    if (cur.depth == MOVE_AT && b != null && b.inner() + MOVE_AT + 1 > MAX_DEPTH) {
+                        if (b.movable()) {
+                            frames.push(cur);
+                            cur = new Frame(b.end());
+                            continue;
+                        }
+                        stuck = true;
+                    }
+                    cur.depth++;
+                } else if ("Q".equals(name) && cur.depth > 0) {
+                    cur.depth--;
+                }
+            }
+            cur.out.add(t);
+        }
+        return cur.out;
     }
 
     private COSName form(List<Object> content) throws IOException {
