@@ -4,6 +4,8 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InterruptedIOException;
+import java.util.ArrayList;
+import java.util.List;
 
 import org.apache.pdfbox.contentstream.PDContentStream;
 import org.apache.pdfbox.contentstream.operator.Operator;
@@ -21,7 +23,7 @@ import org.apache.pdfbox.pdmodel.PDResources;
 import org.apache.pdfbox.pdmodel.common.PDRectangle;
 import org.apache.pdfbox.util.Matrix;
 
-final class ContentTokens {
+public final class ContentTokens {
 
     private static final Object UNUSUAL = new Object();
 
@@ -61,6 +63,19 @@ final class ContentTokens {
         }
         ContentTokens tokens = new ContentTokens(bytes, count);
         return tokens::next;
+    }
+
+    public static List<Object> parse(byte[] bytes) throws IOException {
+        ContentTokens tokens = new ContentTokens(bytes, bytes.length);
+        List<Object> out = new ArrayList<>(100);
+        try {
+            for (Object token; (token = tokens.next()) != null; ) {
+                out.add(token);
+            }
+            return out;
+        } finally {
+            tokens.parser.close();
+        }
     }
 
     Object next() throws IOException {

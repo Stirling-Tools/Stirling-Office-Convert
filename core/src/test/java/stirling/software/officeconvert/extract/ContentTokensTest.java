@@ -74,6 +74,26 @@ class ContentTokensTest {
         }
     }
 
+    @Test
+    void wholeStreamParseMatchesThePdfBoxParser() throws IOException {
+        for (String text : STREAMS) {
+            byte[] bytes = text.getBytes(StandardCharsets.ISO_8859_1);
+            String expected;
+            try {
+                expected = describe(new PDFStreamParser(bytes).parse());
+            } catch (IOException | RuntimeException e) {
+                expected = e.getClass().getSimpleName();
+            }
+            String actual;
+            try {
+                actual = describe(ContentTokens.parse(bytes));
+            } catch (IOException | RuntimeException e) {
+                actual = e.getClass().getSimpleName();
+            }
+            assertEquals(expected, actual, text);
+        }
+    }
+
     private static String collect(StreamRunner.Tokens tokens, List<Object> out) {
         try {
             Object token;

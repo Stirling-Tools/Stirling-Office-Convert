@@ -8,7 +8,6 @@ import java.util.List;
 
 import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.cos.COSStream;
-import org.apache.pdfbox.pdfparser.PDFStreamParser;
 import org.apache.pdfbox.pdfwriter.ContentStreamWriter;
 
 import stirling.software.officeconvert.extract.PdfFiles;
@@ -39,12 +38,7 @@ final class ContentTokens {
     }
 
     static List<Object> parse(List<COSStream> streams) throws IOException {
-        PDFStreamParser parser = new PDFStreamParser(bytes(streams));
-        try {
-            return parser.parse();
-        } finally {
-            parser.close();
-        }
+        return stirling.software.officeconvert.extract.ContentTokens.parse(bytes(streams));
     }
 
     static void write(COSStream stream, List<?> tokens) throws IOException {
