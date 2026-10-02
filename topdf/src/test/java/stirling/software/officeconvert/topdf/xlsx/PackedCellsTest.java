@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.awt.Color;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.TreeMap;
@@ -25,7 +26,7 @@ class PackedCellsTest {
     }
 
     @Test
-    void cellsComeBackExactlyAsTheyWent() {
+    void cellsComeBackExactlyAsTheyWent() throws IOException {
         PackedCells store = new PackedCells();
         CellFormat a = format(null);
         CellFormat b = format(Color.YELLOW);
@@ -58,6 +59,12 @@ class PackedCellsTest {
             assertSame(e.format(), store.format(row, e.col()));
         }
         assertEquals(List.of(in.get(2), in.get(3)), store.cells(row, 2, 300), "a page reads only its own columns");
+        List<CellEntry> formats = new ArrayList<>();
+        store.formats(row, 2, 5000, (col, f) -> formats.add(new CellEntry(7, col, f, null)));
+        assertEquals(List.of(new CellEntry(7, 2, a, null), new CellEntry(7, 300, b, null),
+                new CellEntry(7, 5000, a, null)), formats, "formats are read without the texts");
+        assertEquals(16383, row.lastText(c -> true));
+        assertEquals(300, row.lastText(c -> c < 16383));
         assertEquals(List.of(), store.cells(row, 301, 4999));
         assertEquals(List.of(), store.cells(row, 9, 3));
         assertNull(store.cell(row, 3));
