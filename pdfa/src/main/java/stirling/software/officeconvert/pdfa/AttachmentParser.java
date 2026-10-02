@@ -58,9 +58,23 @@ final class AttachmentParser extends PDFParser {
         }
         COSStream stream = super.parseCOSStream(dictionary);
         if (objectStream || xref) {
-            byte[] bytes = Decoded.bytes(stream, MAX_STRUCTURE_BYTES - structureBytes,
-                    "An attachment's object and cross-reference streams");
+            byte[] bytes;
+            try {
+                bytes = Decoded.bytes(stream, MAX_STRUCTURE_BYTES - structureBytes,
+                        "An attachment's object and cross-reference streams");
+            } catch (IOException e) {
+                exceeded = true;
+                throw e;
+            }
             structureBytes += bytes.length;
+            if (objectStream) {
+                try {
+                    AttachmentSyntax.check(bytes);
+                } catch (IOException e) {
+                    exceeded = true;
+                    throw e;
+                }
+            }
             if (objectStream && ContentTokens.tokens(bytes) > MAX_OBJECTS) {
                 exceeded = true;
                 throw new IOException("An attachment's object stream has too many values");

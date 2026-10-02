@@ -58,6 +58,22 @@ class AttachmentParsingBoundsTest {
     }
 
     @Test
+    void compressedObjectSyntaxIsBoundedWithoutCountingStringOrCommentDelimiters() throws Exception {
+        AttachmentSyntax.check("1 0 ([<<]]]) <5B5B> % [[[\n [1.5]".getBytes(StandardCharsets.US_ASCII));
+        assertThrows(IOException.class, () -> AttachmentSyntax.check(("[".repeat(65) + "0"
+                + "]".repeat(65)).getBytes(StandardCharsets.US_ASCII)));
+        assertThrows(IOException.class, () -> AttachmentSyntax.check("[0".getBytes(StandardCharsets.US_ASCII)));
+    }
+
+    @Test
+    void metadataXmlIsBoundedBeforeBuildingItsDom() {
+        assertFalse(XmpBounds.allows(("<root>" + "<a/>".repeat(100_000) + "</root>")
+                .getBytes(StandardCharsets.UTF_8)));
+        assertFalse(XmpBounds.allows(("<a>".repeat(129) + "</a>".repeat(129)).getBytes(StandardCharsets.UTF_8)));
+        assertTrue(XmpBounds.allows("<root value='a'><a>text</a></root>".getBytes(StandardCharsets.UTF_8)));
+    }
+
+    @Test
     void compressedObjectStreamsHaveAnAggregateDecodedBudget() throws Exception {
         try (RandomAccessReadBuffer source = new RandomAccessReadBuffer(
                 "%PDF-1.7".getBytes(StandardCharsets.US_ASCII))) {
