@@ -162,4 +162,21 @@ class JpxImageReaderTest {
             assertEquals(JpxSamples.value(30, 20, 3), img.getRGB(30, 20) >>> 24);
         }
     }
+
+    @Test
+    void pdfboxReadsOnlyTheColoursWhenSmaskInDataIsNotSet() throws IOException {
+        JpxImageIO.install();
+        try (PDDocument doc = new PDDocument()) {
+            BufferedImage img = pdfImage(doc, JpxSamples.resource("rgba.jp2"), false).getImage();
+            for (int y = 0; y < JpxSamples.HEIGHT; y += 5) {
+                for (int x = 0; x < JpxSamples.WIDTH; x += 5) {
+                    int rgb = img.getRGB(x, y);
+                    assertEquals(0xFF, rgb >>> 24);
+                    assertEquals(JpxSamples.value(x, y, 0), rgb >> 16 & 0xFF, "red at " + x + "," + y);
+                    assertEquals(JpxSamples.value(x, y, 1), rgb >> 8 & 0xFF, "green at " + x + "," + y);
+                    assertEquals(JpxSamples.value(x, y, 2), rgb & 0xFF, "blue at " + x + "," + y);
+                }
+            }
+        }
+    }
 }
