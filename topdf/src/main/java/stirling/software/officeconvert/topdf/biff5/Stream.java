@@ -74,6 +74,9 @@ final class Stream {
 
     byte[] bytes(int at, int n) {
         int len = Math.max(0, Math.min(n, size - at));
+        if (len == 0) {
+            return new byte[0];
+        }
         byte[] out = new byte[len];
         System.arraycopy(b, start + Math.max(0, at), out, 0, len);
         return out;

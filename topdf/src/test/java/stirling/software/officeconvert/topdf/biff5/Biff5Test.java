@@ -191,13 +191,13 @@ class Biff5Test {
     }
 
     @Test
-    void excel4AndOlderAreRefusedPlainly() {
-        byte[] biff4 = le(s(0x0409), s(6), s(0), s(0x0010), s(0));
+    void excel4WorkbooksAreRefusedPlainly() {
+        byte[] biff4 = le(s(0x0409), s(6), s(0), s(0x0100), s(0));
         Path in = dir.resolve("old.xls");
         IOException e = assertThrows(IOException.class, () -> {
             Files.write(in, biff4);
             OfficeToPdf.convert(in, dir.resolve("old.pdf"));
         });
-        assertTrue(e.getMessage().contains("Excel 4.0 or older"), e.getMessage());
+        assertTrue(e.getMessage().contains("Excel 4.0 workbook"), e.getMessage());
     }
 }

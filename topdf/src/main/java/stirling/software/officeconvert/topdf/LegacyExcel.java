@@ -16,12 +16,13 @@ import org.apache.poi.poifs.filesystem.POIFSFileSystem;
 import stirling.software.officeconvert.memory.Admission;
 import stirling.software.officeconvert.topdf.OfficeToPdf.Options;
 import stirling.software.officeconvert.topdf.OfficeToPdf.Result;
+import stirling.software.officeconvert.topdf.biff5.Biff4Upgrade;
 import stirling.software.officeconvert.topdf.biff5.Biff5Package;
 import stirling.software.officeconvert.topdf.crypt.EncryptedWorkbook;
 import stirling.software.officeconvert.topdf.io.LegacyOffice;
 
-/** Excel workbooks older than Excel 97: Excel 5.0/95 (BIFF5, in an OLE2 file or bare) is rewritten as SpreadsheetML;
- * a bare BIFF8 stream is wrapped as the OLE2 file Excel 97 writes; Excel 4.0 and older are refused plainly. */
+/** Excel workbooks older than Excel 97: Excel 5.0/95 (BIFF5, in an OLE2 file or bare) is rewritten as SpreadsheetML,
+ * Excel 2.x to 4.0 worksheets first as BIFF5; a bare BIFF8 stream is wrapped as the OLE2 file Excel 97 writes. */
 final class LegacyExcel {
 
     static final String UNKNOWN = "The file is an Excel binary workbook in a form that is not supported; save it as"
@@ -99,7 +100,7 @@ final class LegacyExcel {
             return null;
         }
         if (Biff5Package.older(stream)) {
-            throw new IOException(OLDER);
+            stream = Biff4Upgrade.upgrade(stream);
         }
         if (!Biff5Package.is(stream)) {
             if (!Biff5Package.globals8(stream)) {
