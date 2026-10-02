@@ -82,7 +82,7 @@ public final class OfficeToPdf {
             Objects.requireNonNull(file, "file");
             String ext = extension(file);
             return switch (ext) {
-                case "docx", "docm", "dotx", "dotm", "doc", "dot", "rtf", "odt", "ott", "fodt" -> DOCX;
+                case "docx", "docm", "dotx", "dotm", "doc", "dot", "rtf", "odt", "ott", "fodt", "xml" -> DOCX;
                 case "txt", "text", "log", "asc" -> TEXT;
                 case "pptx", "pptm", "ppsx", "ppsm", "potx", "potm", "odp", "otp", "fodp", "odg", "otg", "fodg" -> PPTX;
                 case "xlsx", "xlsm", "xltx", "xltm", "xls", "xlt", "xlsb", "ods", "ots", "fods" -> XLSX;
@@ -92,7 +92,7 @@ public final class OfficeToPdf {
                 default -> throw new IllegalArgumentException("Not an Office document: " + file.getFileName()
                         + "; use .docx, .docm, .dotx, .dotm, .doc, .dot, .rtf, .pptx, .pptm, .ppsx, .ppsm, .potx, .potm,"
                         + " .xlsx, .xlsm, .xltx, .xltm, .xlsb, .xls, .xlt, .ppt, .pps, .pot, .odt, .ott, .fodt, .ods, .ots, .fods,"
-                        + " .odp, .otp, .fodp, .odg, .otg, .fodg, .txt, .text, .log, .asc, .csv, .tsv or .tab");
+                        + " .odp, .otp, .fodp, .odg, .otg, .fodg, .xml, .txt, .text, .log, .asc, .csv, .tsv or .tab");
             };
         }
 
@@ -101,7 +101,7 @@ public final class OfficeToPdf {
             return switch (extension(file)) {
                 case "docx", "docm", "dotx", "dotm", "pptx", "pptm", "ppsx", "ppsm", "potx", "potm", "xlsx", "xlsm",
                         "xltx", "xltm", "doc", "dot", "ppt", "pps", "pot", "xls", "xlt", "xlsb", "rtf", "odt", "ott", "fodt",
-                        "ods", "ots", "fods", "odp", "otp", "fodp", "odg", "otg", "fodg" -> true;
+                        "ods", "ots", "fods", "odp", "otp", "fodp", "odg", "otg", "fodg", "xml" -> true;
                 case "txt", "text", "log", "asc", "csv", "tsv", "tab" -> true;
                 default -> false;
             };
@@ -336,6 +336,10 @@ public final class OfficeToPdf {
         if (OdfPackage.sniff(in) != null) {
             return OdfPackage.estimate(in) + 2 * Admission.BASE_BYTES;
         }
+        Long xml = XmlInput.estimate(in);
+        if (xml != null) {
+            return xml;
+        }
         Long text = TextInput.estimate(in);
         if (text != null) {
             return text;
@@ -542,6 +546,10 @@ public final class OfficeToPdf {
         Result odf = openDocument(source, sink, options, renderer);
         if (odf != null) {
             return odf;
+        }
+        Result xml = XmlInput.render(source, requested, sink, options, renderer);
+        if (xml != null) {
+            return xml;
         }
         Result text = TextInput.render(source, requested, sink, options, renderer);
         if (text != null) {
