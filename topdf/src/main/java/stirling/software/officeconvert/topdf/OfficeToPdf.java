@@ -543,6 +543,17 @@ public final class OfficeToPdf {
 
     static final int MAX_DAMAGED_PARTS = 8;
 
+    static boolean container(Path source) throws IOException {
+        byte[] head;
+        try (InputStream in = Files.newInputStream(source)) {
+            head = in.readNBytes(4);
+        }
+        boolean zip = head.length == 4 && head[0] == 'P' && head[1] == 'K' && head[2] == 3 && head[3] == 4;
+        boolean ole2 = head.length == 4 && (head[0] & 0xFF) == 0xD0 && (head[1] & 0xFF) == 0xCF && head[2] == 0x11
+                && (head[3] & 0xFF) == 0xE0;
+        return zip || ole2;
+    }
+
     static Result render(Path source, Format requested, OutputStream sink, Options options, Renderer renderer)
             throws IOException {
         stopIfInterrupted();
@@ -589,7 +600,7 @@ public final class OfficeToPdf {
         if (odf != null) {
             return odf;
         }
-        Result grid = GridInput.render(source, sink, options, renderer);
+        Result grid = GridInput.render(source, requested, sink, options, renderer);
         if (grid != null) {
             return grid;
         }
@@ -602,7 +613,7 @@ public final class OfficeToPdf {
             return text;
         }
         Path name = source.getFileName();
-        if (name != null && name.toString().toLowerCase(Locale.ROOT).endsWith(".rtf")) {
+        if (name != null && name.toString().toLowerCase(Locale.ROOT).endsWith(".rtf") && !container(source)) {
             throw new IOException("The file is not an RTF document: it does not start with {\\rtf");
         }
         String unsupported = UnsupportedFormats.byContent(source);

@@ -430,8 +430,8 @@ class DocTest {
     @Test
     void word2FilesAreRefusedPlainly() throws IOException {
         byte[] word2 = new byte[512];
-        word2[0] = (byte) 0xDB;
-        word2[1] = (byte) 0xA5;
+        java.nio.ByteBuffer.wrap(word2).order(java.nio.ByteOrder.LITTLE_ENDIAN).putShort(0, (short) 0xA5DB)
+                .putShort(2, (short) 45).putInt(0x18, 0x100).putInt(0x1C, 0x180);
         Path in = Files.write(dir.resolve("old2.doc"), word2);
         IOException e = org.junit.jupiter.api.Assertions.assertThrows(IOException.class,
                 () -> OfficeToPdf.convert(in, dir.resolve("old2.pdf")));

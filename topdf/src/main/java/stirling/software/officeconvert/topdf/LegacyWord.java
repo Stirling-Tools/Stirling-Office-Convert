@@ -3,6 +3,8 @@ package stirling.software.officeconvert.topdf;
 import java.io.BufferedOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -125,11 +127,19 @@ final class LegacyWord {
     }
 
     private static boolean ancient(Path source) throws IOException {
+        byte[] head;
         try (InputStream in = Files.newInputStream(source)) {
-            byte[] head = in.readNBytes(2);
-            return head.length == 2 && (head[1] & 0xFF) == 0xA5
-                    && ((head[0] & 0xFF) == 0xDB || (head[0] & 0xFF) == 0x9B);
+            head = in.readNBytes(0x20);
         }
+        if (head.length < 0x20 || (head[1] & 0xFF) != 0xA5
+                || (head[0] & 0xFF) != 0xDB && (head[0] & 0xFF) != 0x9B) {
+            return false;
+        }
+        ByteBuffer fib = ByteBuffer.wrap(head).order(ByteOrder.LITTLE_ENDIAN);
+        int nFib = fib.getShort(2) & 0xFFFF;
+        long fcMin = fib.getInt(0x18) & 0xFFFFFFFFL;
+        long fcMac = fib.getInt(0x1C) & 0xFFFFFFFFL;
+        return nFib >= 1 && nFib < 101 && fcMin >= 0x20 && fcMin <= fcMac && fcMac <= Files.size(source);
     }
 
     private static void close(POIFSFileSystem fs) {

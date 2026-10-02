@@ -17,6 +17,7 @@ import stirling.software.officeconvert.topdf.grid.Dif;
 import stirling.software.officeconvert.topdf.grid.GridPackage;
 import stirling.software.officeconvert.topdf.grid.Sylk;
 import stirling.software.officeconvert.topdf.lotus.Lotus;
+import stirling.software.officeconvert.topdf.text.TextFormats;
 
 /** Simple table formats Excel opens (SYLK, DIF, dBASE, Lotus 1-2-3), read into grids and drawn as a workbook. */
 final class GridInput {
@@ -25,13 +26,20 @@ final class GridInput {
 
     private GridInput() {}
 
-    private static Kind kind(Path source) throws IOException {
+    private static Kind kind(Path source, OfficeToPdf.Format requested) throws IOException {
+        if (requested == OfficeToPdf.Format.TEXT || requested == OfficeToPdf.Format.CSV
+                || requested == OfficeToPdf.Format.TSV) {
+            return null;
+        }
         Path name = source.getFileName();
         String n = name == null ? "" : name.toString().toLowerCase(Locale.ROOT);
         String ext = n.lastIndexOf('.') < 0 ? "" : n.substring(n.lastIndexOf('.') + 1);
-        boolean text = ext.equals("csv") || ext.equals("txt") || ext.equals("tsv") || ext.equals("tab");
+        boolean text = TextFormats.kind(ext) != null;
         if (!text && Lotus.is(source)) {
             return Kind.LOTUS;
+        }
+        if (OfficeToPdf.container(source)) {
+            return null;
         }
         if (ext.equals("wk1") || ext.equals("wks") || ext.equals("wk3") || ext.equals("wk4") || ext.equals("123")) {
             String reason = UnsupportedFormats.byContent(source);
@@ -60,12 +68,12 @@ final class GridInput {
     }
 
     static Long estimate(Path source) throws IOException {
-        return kind(source) == null ? null : GridPackage.estimate(Files.size(source)) + 2 * Admission.BASE_BYTES;
+        return kind(source, null) == null ? null : GridPackage.estimate(Files.size(source)) + 2 * Admission.BASE_BYTES;
     }
 
-    static Result render(Path source, OutputStream sink, Options options, OfficeToPdf.Renderer renderer)
-            throws IOException {
-        Kind kind = kind(source);
+    static Result render(Path source, OfficeToPdf.Format requested, OutputStream sink, Options options,
+            OfficeToPdf.Renderer renderer) throws IOException {
+        Kind kind = kind(source, requested);
         if (kind == null) {
             return null;
         }
