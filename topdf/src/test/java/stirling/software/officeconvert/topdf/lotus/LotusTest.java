@@ -211,4 +211,19 @@ class LotusTest {
             }
         }
     }
+
+    @Test
+    void release2TextIsLicsAndRelease3TextIsLmbcs() throws IOException {
+        byte[] lics = {'\'', (byte) 0x9B, (byte) 0xA6, (byte) 0xE9, (byte) 0xD7, (byte) 0xDD, 0};
+        byte[] wk1 = new Records().rec(0x00, new byte[] {0x06, 0x04}).rec(0x0F, cell(0xFF, 0, 0, lics))
+                .rec(0x01, new byte[0]).bytes();
+        Grid g1 = Lotus.read(Files.write(dir.resolve("t.wk1"), wk1)).get(0).grid();
+        assertEquals("\u2190\u20A7\u00E9\u0152\u0178", g1.get(0, 0).value());
+        byte[] bof = new byte[26];
+        bof[1] = 0x10;
+        byte[] lmbcs = {'\'', (byte) 0x82, 0x14, 0x20, (byte) 0xAC, 0x06, (byte) 0xA5, (byte) 0x9C, 0};
+        byte[] wk3 = new Records().rec(0x00, bof).rec(0x16, wide(0, 0, 0, lmbcs)).rec(0x01, new byte[0]).bytes();
+        Grid g3 = Lotus.read(Files.write(dir.resolve("t.wk3"), wk3)).get(0).grid();
+        assertEquals("\u00E9\u20AC\u0105\u00A3", g3.get(0, 0).value());
+    }
 }

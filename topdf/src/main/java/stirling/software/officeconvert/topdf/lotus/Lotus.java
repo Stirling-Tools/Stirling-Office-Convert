@@ -3,8 +3,6 @@ package stirling.software.officeconvert.topdf.lotus;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InterruptedIOException;
-import java.nio.charset.Charset;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -22,8 +20,6 @@ public final class Lotus {
     private static final int MAX_SHEETS = 256;
 
     private static final double[] SMALL = {5000, 500, 0.05, 0.005, 0.0005, 0.00005, 0.0625, 0.015625};
-
-    private static final Charset LATIN = StandardCharsets.ISO_8859_1;
 
     private final byte[] d;
 
@@ -314,7 +310,7 @@ public final class Lotus {
         while (stop < end && d[stop] != 0) {
             stop++;
         }
-        return new String(d, from, stop - from, LATIN);
+        return wide ? LotusText.lmbcs(d, from, stop) : LotusText.lics(d, from, stop);
     }
 
     private static String column(int n) {
