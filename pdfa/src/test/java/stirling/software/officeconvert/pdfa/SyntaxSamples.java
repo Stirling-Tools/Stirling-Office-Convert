@@ -70,6 +70,8 @@ final class SyntaxSamples {
         });
         raw("r07_inline_image_without_data", Set.of(), () -> RawPdf.page(RawPdf.helvetica(),
                 TEXT + " 1 bogusop q 10 0 0 10 72 500 cm Q BI /W 1 /H 1 /CS /G /BPC 8").bytes());
+        raw("r08_junk_at_the_end", Set.of(), () -> RawPdf.page(RawPdf.helvetica(),
+                TEXT + "\n\u0091\u008e\u0084<").bytes());
     }
 
     private static byte[] lzwGray() {

@@ -32,16 +32,21 @@ final class ContentFixer {
         ExplicitResources.run(graph);
         for (ContentGraph.Node n : graph.nodes()) {
             PdfFiles.stopIfInterrupted();
-            List<Object> tokens;
+            ContentTokens.Salvaged parsed;
             try {
-                tokens = ContentTokens.parse(n.streams());
+                parsed = ContentTokens.salvage(n.streams());
             } catch (IOException e) {
                 PdfFiles.stopIfInterrupted();
                 colours.unknown();
                 continue;
             }
+            List<Object> tokens = parsed.tokens();
             List<Object> out = new ArrayList<>(tokens.size());
-            boolean changed = false;
+            boolean changed = !parsed.complete();
+            if (changed) {
+                colours.unknown();
+                report.warn("Removed a broken token at the end of a content stream");
+            }
             int start = 0;
             for (int i = 0; i < tokens.size(); i++) {
                 if (!(tokens.get(i) instanceof Operator op)) {
