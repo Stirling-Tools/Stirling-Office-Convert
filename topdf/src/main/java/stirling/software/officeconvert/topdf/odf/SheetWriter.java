@@ -3,11 +3,12 @@ package stirling.software.officeconvert.topdf.odf;
 import java.io.IOException;
 import java.time.Duration;
 import java.time.LocalDate;
-import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.regex.Pattern;
 
 import org.w3c.dom.Element;
 import org.w3c.dom.Node;
@@ -27,6 +28,8 @@ final class SheetWriter {
     static final int STYLED_RUN = 100;
 
     private static final String ROW = "\u0001";
+
+    private static final Pattern ZONE = Pattern.compile("(?:Z|[+-]\\d{2}(?::?\\d{2})?)$");
 
     private final OdsWriter w;
 
@@ -410,7 +413,11 @@ final class SheetWriter {
             }
             case "date" -> {
                 Double d = date(Dom.attr(c, Ns.OFFICE, "date-value"));
-                return d == null ? null : "><v>" + format(d) + "</v></c>";
+                if (d == null) {
+                    String t = text(c);
+                    return t.isEmpty() || w.stringsFull() ? null : " t=\"s\"><v>" + w.string(t) + "</v></c>";
+                }
+                return "><v>" + format(d) + "</v></c>";
             }
             case "time" -> {
                 Double d = time(Dom.attr(c, Ns.OFFICE, "time-value"));
@@ -452,10 +459,11 @@ final class SheetWriter {
         }
         try {
             LocalDate day = LocalDate.parse(v.substring(0, 10));
-            double serial = ChronoUnit.DAYS.between(w.nullDate, day);
+            double serial = ChronoUnit.DAYS.between(w.epoch(), day);
             if (v.length() > 10 && v.charAt(10) == 'T') {
-                LocalDateTime t = LocalDateTime.parse(v.length() > 29 ? v.substring(0, 29) : v);
-                serial += t.toLocalTime().toNanoOfDay() / 86_400e9;
+                String clock = ZONE.matcher(v.substring(11)).replaceFirst("");
+                serial += LocalTime.parse(clock.length() > 18 ? clock.substring(0, 18) : clock).toNanoOfDay()
+                        / 86_400e9;
             }
             return serial;
         } catch (RuntimeException e) {

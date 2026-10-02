@@ -293,4 +293,29 @@ class OdsTest {
         String text = pdfText(p);
         assertTrue(text.contains("Scores") && text.contains("Bruce"), text);
     }
+
+    @Test
+    void dateSerialsCountFromTheSpreadsheetEpochWhateverTheNullDate() throws IOException {
+        String table = "<table:calculation-settings><table:null-date table:date-value=\"1900-01-01\"/>"
+                + "</table:calculation-settings><table:table table:name=\"Data\"><table:table-row><table:table-cell"
+                + " office:value-type=\"date\" office:date-value=\"2024-03-05\"><text:p>2024-03-05</text:p>"
+                + "</table:table-cell></table:table-row></table:table>";
+        String sheet = OdfFixtures.rewrite(ods("", table, null)).get("xl/worksheets/sheet1.xml");
+        assertTrue(sheet.contains("<v>45356</v>"), sheet);
+    }
+
+    @Test
+    void dateValuesWithAZoneParseAndUnparsableOnesKeepTheirText() throws IOException {
+        String table = "<table:table table:name=\"Data\"><table:table-row><table:table-cell"
+                + " office:value-type=\"date\" office:date-value=\"2024-03-05T12:00:00Z\"><text:p>noon</text:p>"
+                + "</table:table-cell><table:table-cell office:value-type=\"date\""
+                + " office:date-value=\"2024-03-05T06:00:00+02:00\"><text:p>six</text:p></table:table-cell>"
+                + "<table:table-cell office:value-type=\"date\" office:date-value=\"someday\"><text:p>Someday"
+                + "</text:p></table:table-cell></table:table-row></table:table>";
+        Path p = ods("", table, null);
+        String sheet = OdfFixtures.rewrite(p).get("xl/worksheets/sheet1.xml");
+        assertTrue(sheet.contains("<v>45356.5</v>"), sheet);
+        assertTrue(sheet.contains("<v>45356.25</v>"), sheet);
+        assertTrue(pdfText(p).contains("Someday"));
+    }
 }

@@ -63,6 +63,10 @@ final class OdsWriter {
         return nullDate.equals(LocalDate.of(1904, 1, 1));
     }
 
+    LocalDate epoch() {
+        return date1904() ? LocalDate.of(1904, 1, 1) : LocalDate.of(1899, 12, 30);
+    }
+
     int string(String s) {
         Integer i = strings.get(s);
         if (i != null) {
