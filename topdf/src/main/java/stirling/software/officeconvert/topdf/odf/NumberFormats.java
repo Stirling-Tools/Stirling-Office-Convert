@@ -38,10 +38,14 @@ final class NumberFormats {
         String positive = null;
         String negative = null;
         String zero = null;
+        boolean positiveHasZero = false;
         List<String> custom = new ArrayList<>();
         for (String[] m : maps) {
             switch (m[0]) {
-                case ">0", ">=0" -> positive = m[1];
+                case ">0", ">=0" -> {
+                    positive = m[1];
+                    positiveHasZero = m[0].equals(">=0");
+                }
                 case "<0" -> negative = m[1];
                 case "=0" -> zero = m[1];
                 default -> custom.add("[" + m[0] + "]" + m[1]);
@@ -51,20 +55,14 @@ final class NumberFormats {
             custom.add(main);
             return String.join(";", custom.subList(0, Math.min(3, custom.size())));
         }
-        if (positive != null && negative == null && zero == null) {
-            return positive + ";" + main;
-        }
-        if (positive != null && negative != null) {
-            return positive + ";" + negative + ";" + (zero != null ? zero : main);
-        }
-        if (positive != null) {
-            return positive + ";" + main + ";" + zero;
-        }
-        return main;
+        String pos = positive != null ? positive : main;
+        String neg = negative != null ? negative : main;
+        String zer = zero != null ? zero : positiveHasZero ? positive : main;
+        return zer.equals(pos) ? pos + ";" + neg : pos + ";" + neg + ";" + zer;
     }
 
     private static String condition(String c) {
-        String t = c.replace("value()", "").replace(" ", "");
+        String t = c.replace("value()", "").replace(" ", "").replace("!=", "<>");
         return t.isEmpty() ? ">=0" : t;
     }
 

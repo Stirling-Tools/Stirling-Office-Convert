@@ -318,4 +318,27 @@ class OdsTest {
         assertTrue(sheet.contains("<v>45356.25</v>"), sheet);
         assertTrue(pdfText(p).contains("Someday"));
     }
+
+    @Test
+    void aNegativeOnlyMapKeepsItsSectionAndInequalityIsSpelledForExcel() throws IOException {
+        String auto = "<number:number-style style:name=\"N4N\"><style:text-properties fo:color=\"#ff0000\"/>"
+                + "<number:text>(</number:text><number:number number:decimal-places=\"2\""
+                + " number:min-integer-digits=\"1\"/><number:text>)</number:text></number:number-style>"
+                + "<number:number-style style:name=\"N4\"><number:number number:decimal-places=\"2\""
+                + " number:min-integer-digits=\"1\"/><style:map style:condition=\"value()&lt;0\""
+                + " style:apply-style-name=\"N4N\"/></number:number-style>"
+                + "<number:number-style style:name=\"N5Z\"><number:text>nil</number:text></number:number-style>"
+                + "<number:number-style style:name=\"N5\"><number:text>zero</number:text><style:map"
+                + " style:condition=\"value()!=0\" style:apply-style-name=\"N5Z\"/></number:number-style>"
+                + "<style:style style:name=\"ce1\" style:family=\"table-cell\" style:data-style-name=\"N4\"/>"
+                + "<style:style style:name=\"ce2\" style:family=\"table-cell\" style:data-style-name=\"N5\"/>";
+        Path p = ods(auto, "<table:table table:name=\"S\"><table:table-row><table:table-cell table:style-name=\"ce1\""
+                + " office:value-type=\"float\" office:value=\"-5\"/><table:table-cell table:style-name=\"ce2\""
+                + " office:value-type=\"float\" office:value=\"3\"/></table:table-row></table:table>", null);
+        String styles = OdfFixtures.rewrite(p).get("xl/styles.xml");
+        assertTrue(styles.contains("formatCode=\"0.00;[Red]\\(0.00\\)\"")
+                || styles.contains("formatCode=\"0.00;[Red](0.00)\""), styles);
+        assertTrue(styles.contains("[&lt;&gt;0]"), styles);
+        assertFalse(styles.contains("!="), styles);
+    }
 }
