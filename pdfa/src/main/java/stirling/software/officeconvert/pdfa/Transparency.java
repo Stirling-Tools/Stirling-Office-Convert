@@ -150,7 +150,7 @@ final class Transparency {
     private PDImageXObject render(PDPage page, int index, Rectangle2D region, Rectangle2D crop,
             List<COSDictionary> annots) throws IOException {
         if (renderer == null) {
-            renderer = new PDFRenderer(doc);
+            renderer = new RgbGroupRenderer(doc);
         }
         Set<COSDictionary> include = Collections.newSetFromMap(new IdentityHashMap<>());
         include.addAll(annots);
