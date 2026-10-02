@@ -66,6 +66,18 @@ class XlsbTest {
     }
 
     @Test
+    void rowsOutOfOrderAreAllKept() throws IOException {
+        byte[] xlsb = new XlsbFixture().beginData().row(0).text(0, "r1", 0).row(2).text(0, "r3", 0).row(1)
+                .text(0, "r2", 0).row(3).text(0, "r4", 0).row(4).text(0, "r5", 0).row(4).text(1, "r5b", 0).endData()
+                .build();
+        String t = text(convert("order.xlsb", xlsb));
+        for (String want : new String[] {"r1", "r2", "r3", "r4", "r5", "r5b"}) {
+            assertTrue(t.contains(want), want + " in " + t);
+        }
+        assertTrue(t.indexOf("r2") < t.indexOf("r3"), t);
+    }
+
+    @Test
     void stylesBecomeFontsAndFills() throws IOException {
         byte[] xlsb = new XlsbFixture().col(0, 0, 20).beginData().row(0).text(0, "Styled", 1).endData().build();
         String styles = part(xlsb, "xl/styles.xml");

@@ -367,8 +367,11 @@ final class Sheet {
         int xf = d.i32();
         int height = d.u16();
         int f = d.u16();
+        if (r == row && rowOpen) {
+            return;
+        }
         closeRow();
-        if (r < 0 || r > Refs.MAX_ROW || r <= row) {
+        if (r < 0 || r > Refs.MAX_ROW) {
             row = Integer.MAX_VALUE;
             return;
         }
