@@ -269,7 +269,7 @@ final class RtfReader {
                 }
             }
             case NORMAL -> {
-                if (done.story != parent.story) {
+                if (done.story != parent.story && done.story != null) {
                     if (done.note != null && done.note != parent.note) {
                         content.closeNote(done);
                     } else if (done.header != null) {
@@ -572,6 +572,9 @@ final class RtfReader {
                 g.mathNode = RtfMath.root();
             }
             case "background" -> {
+                if (stack.size() <= 1 || stack.get(stack.size() - 2).story != g.story) {
+                    return true;
+                }
                 g.background = true;
                 g.story = null;
             }

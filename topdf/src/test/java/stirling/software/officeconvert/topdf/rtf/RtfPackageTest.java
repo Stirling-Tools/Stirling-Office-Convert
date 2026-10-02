@@ -507,4 +507,13 @@ class RtfPackageTest {
         String b = convert(HEAD + "\\pard before" + "\\'".repeat(200_000) + " zzz\\par}").body();
         assertTrue(b.contains("before") && b.contains("zzz"), b);
     }
+
+    @Test
+    void aBackgroundInsideAStoryDoesNotFailTheDocument() throws IOException {
+        for (String inner : new String[] {"{\\footnote\\background x}", "{\\footnote {\\background x}}",
+                "{\\header {\\background x}}", "{\\header\\background x}"}) {
+            String b = convert("{\\rtf1\\ansi a" + inner + "b\\par}").body();
+            assertTrue(b.contains("a") && b.contains(">b<") || b.contains("ab"), inner + ": " + b);
+        }
+    }
 }
