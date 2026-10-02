@@ -37,13 +37,20 @@ class JpxPicturesTest {
 
     static Path pdf;
 
+    static Path alphaPdf;
+
     @BeforeAll
-    static void makePdf() throws IOException {
+    static void makePdfs() throws IOException {
+        pdf = makePdf("photo.jp2", "jpx.pdf", 480, 360);
+        alphaPdf = makePdf("rgba.jp2", "rgba.pdf", 61, 47);
+    }
+
+    private static Path makePdf(String resource, String name, int width, int height) throws IOException {
         byte[] jpx;
-        try (InputStream in = JpxPicturesTest.class.getResourceAsStream("/jpx/photo.jp2")) {
+        try (InputStream in = JpxPicturesTest.class.getResourceAsStream("/jpx/" + resource)) {
             jpx = in.readAllBytes();
         }
-        pdf = dir.resolve("jpx.pdf");
+        Path pdf = dir.resolve(name);
         try (PDDocument doc = new PDDocument()) {
             PDPage page = new PDPage(PDRectangle.LETTER);
             doc.addPage(page);
@@ -54,8 +61,8 @@ class JpxPicturesTest {
             img.setItem(COSName.TYPE, COSName.XOBJECT);
             img.setItem(COSName.SUBTYPE, COSName.IMAGE);
             img.setItem(COSName.FILTER, COSName.JPX_DECODE);
-            img.setInt(COSName.WIDTH, 480);
-            img.setInt(COSName.HEIGHT, 360);
+            img.setInt(COSName.WIDTH, width);
+            img.setInt(COSName.HEIGHT, height);
             COSDictionary xobjects = new COSDictionary();
             xobjects.setItem(COSName.getPDFName("Im0"), img);
             COSDictionary resources = new COSDictionary();
@@ -68,29 +75,63 @@ class JpxPicturesTest {
             page.setContents(content);
             doc.save(pdf.toFile());
         }
+        return pdf;
     }
 
     @ParameterizedTest
     @CsvSource({"docx,word/media/", "pptx,ppt/media/", "odt,Pictures/"})
     void jpegTwoThousandPicturesReachTheDocument(String format, String folder) throws IOException {
-        Path out = dir.resolve("jpx." + format);
-        OfficeConvert.convert(pdf, out, OfficeConvert.Settings.defaults());
-        List<BufferedImage> pictures = new ArrayList<>();
-        try (ZipFile zip = new ZipFile(out.toFile())) {
-            for (ZipEntry e : Collections.list(zip.entries())) {
-                if (e.getName().startsWith(folder)) {
-                    BufferedImage img = ImageIO.read(new ByteArrayInputStream(zip.getInputStream(e).readAllBytes()));
-                    if (img != null && img.getWidth() >= 100) {
-                        pictures.add(img);
-                    }
-                }
-            }
-        }
+        List<BufferedImage> pictures = pictures(pdf, "jpx." + format, folder, 100);
         assertEquals(1, pictures.size(), "pictures in " + format);
         BufferedImage p = pictures.get(0);
         int x = p.getWidth() * 360 / 480;
         int y = p.getHeight() * 250 / 360;
         int rgb = p.getRGB(x, y);
         assertTrue((rgb & 0xFF) > 150 && (rgb >> 16 & 0xFF) < 80, "blue box colour " + Integer.toHexString(rgb));
+    }
+
+    @ParameterizedTest
+    @CsvSource({"docx,word/media/", "pptx,ppt/media/", "odt,Pictures/"})
+    void alphaInTheCodestreamDoesNotScrambleThePictureWithoutSmaskInData(String format, String folder)
+            throws IOException {
+        List<BufferedImage> pictures = pictures(alphaPdf, "rgba." + format, folder, 40);
+        assertEquals(1, pictures.size(), "pictures in " + format);
+        BufferedImage p = pictures.get(0);
+        long diff = 0;
+        int count = 0;
+        for (int y = 0; y < 47; y++) {
+            for (int x = 0; x < 61; x++) {
+                if (x >= 18 && x < 42 && y >= 8 && y < 32) {
+                    continue;
+                }
+                int rgb = p.getRGB(x * p.getWidth() / 61, y * p.getHeight() / 47);
+                diff += Math.abs((rgb >> 16 & 0xFF) - sample(x, y, 0)) + Math.abs((rgb >> 8 & 0xFF) - sample(x, y, 1))
+                        + Math.abs((rgb & 0xFF) - sample(x, y, 2));
+                count += 3;
+            }
+        }
+        assertTrue(diff / (double) count < 8, "mean difference " + diff / (double) count + " in " + format);
+    }
+
+    private static int sample(int x, int y, int c) {
+        return x * 5 + y * 3 + c * 40 + ((x * x + y * y * 3 + c * 7) >> 3) & 255;
+    }
+
+    private static List<BufferedImage> pictures(Path source, String name, String folder, int minWidth)
+            throws IOException {
+        Path out = dir.resolve(name);
+        OfficeConvert.convert(source, out, OfficeConvert.Settings.defaults());
+        List<BufferedImage> pictures = new ArrayList<>();
+        try (ZipFile zip = new ZipFile(out.toFile())) {
+            for (ZipEntry e : Collections.list(zip.entries())) {
+                if (e.getName().startsWith(folder)) {
+                    BufferedImage img = ImageIO.read(new ByteArrayInputStream(zip.getInputStream(e).readAllBytes()));
+                    if (img != null && img.getWidth() >= minWidth) {
+                        pictures.add(img);
+                    }
+                }
+            }
+        }
+        return pictures;
     }
 }
