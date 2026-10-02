@@ -59,7 +59,7 @@ public final class EqField {
         if (!isEq(instruction) || instruction.length() > MAX_LENGTH) {
             return null;
         }
-        String body = instruction.stripLeading().substring(2);
+        String body = instruction.stripLeading().substring(2).strip();
         EqField p = new EqField(body, rPr);
         List<Object> nodes = p.sequence(false);
         StringBuilder b = new StringBuilder();

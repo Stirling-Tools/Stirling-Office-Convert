@@ -55,4 +55,12 @@ class EqFieldTest {
         assertNull(EqField.omml("EQUALS", ""));
         assertTrue(eq("EQ <&>\"").contains("&lt;&amp;&gt;"), eq("EQ <&>\""));
     }
+
+    @Test
+    void theSpaceAfterEqIsNotText() {
+        String f = eq(" EQ \\f(1,2) ");
+        assertTrue(f.startsWith("<m:oMath") && f.indexOf("<m:f>") < f.indexOf("<w:t"), f);
+        assertFalse(f.contains("preserve\"> </w:t>"), f);
+        assertTrue(eq("EQ x").contains("preserve\">x</w:t>"), eq("EQ x"));
+    }
 }
