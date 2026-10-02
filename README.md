@@ -260,6 +260,16 @@ What reaches the output is inert: links keep only web, mail and FTP addresses, e
 addresses, subject and body; spreadsheet cells never hold formulas; JPEGs copied as they are lose comments,
 metadata and anything after their end; bidi override characters are dropped from text and document properties.
 
+JPEG 2000 (JPX) pictures are decoded by the library's own plain-Java decoder, `stirling.software.officeconvert.jpx`,
+so they need no native code and no `jai-imageio`. It reads JP2 and JPX files and raw codestreams (Part 1: every
+progression order and progression change, tiles and tile-parts, precincts, all code-block styles, both wavelets,
+both colour transforms, region of interest, packed packet headers, subsampled components, 1 to 16 bit samples)
+with palettes, channel definitions, alpha and enumerated or ICC colour. It registers itself as the `jpeg2000`
+ImageIO reader ahead of any other one installed, so PDFBox uses it for `JPXDecode`; set the system property
+`stirling.officeconvert.jpxReader=imageio` to let another installed reader win. A picture drawn small is decoded at
+a lower resolution level. One image is held to 134 million samples by default (`JpxOptions`), a tile to 2 million
+code-blocks, and an interrupted thread stops decoding. `JpxDecoder` also serves callers directly.
+
 The library depends on `org.apache.pdfbox:pdfbox:3.0.8` and `commons-logging`, and runs on Java 25 or later.
 
 ### Office to PDF
@@ -534,9 +544,8 @@ PdfToPdfA.convert(pdDocument, outputStream, options);     // an open document, w
   Invalid or, for part 1, version 4 ICC profiles are replaced.
 - JPEG 2000. Part 1 does not allow JPX images, so they are decoded and stored again (JPEG when photographic, lossless
   otherwise, with any alpha as a soft mask); parts 2 and 3 keep them unless they break the part 2 JPX rules (channel
-  count, bit depth, colour boxes). Decoding needs a JPEG 2000 ImageIO reader on the classpath, such as
-  `com.github.jai-imageio:jai-imageio-jpeg2000`, which this module does not bundle (its JJ2000 licence is not a plain
-  open source licence); without one such a file fails with a message saying so.
+  count, bit depth, colour boxes). Decoding uses the core library's own JPEG 2000 decoder, so nothing extra is
+  needed.
 - Limits. Content nested deeper than 28 graphics states moves into form XObjects; names over 127 bytes are shortened
   everywhere they are used; long strings and `TJ` arrays in content are split without moving a glyph; numbers are
   clamped; for part 1 long number trees, name trees, page trees and CID width arrays are split; for parts 2 and 3 a

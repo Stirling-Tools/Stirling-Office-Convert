@@ -2,16 +2,11 @@ package stirling.software.officeconvert.pdfa;
 
 import java.awt.image.BufferedImage;
 import java.awt.image.Raster;
-import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.List;
 import java.util.Map;
-
-import javax.imageio.ImageIO;
-import javax.imageio.ImageReader;
-import javax.imageio.stream.ImageInputStream;
 
 import org.apache.pdfbox.cos.COSArray;
 import org.apache.pdfbox.cos.COSBase;
@@ -22,6 +17,8 @@ import org.apache.pdfbox.pdmodel.common.PDStream;
 import org.apache.pdfbox.pdmodel.graphics.image.JPEGFactory;
 import org.apache.pdfbox.pdmodel.graphics.image.LosslessFactory;
 import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
+
+import stirling.software.officeconvert.jpx.JpxDecoder;
 
 final class JpxImages {
 
@@ -54,10 +51,6 @@ final class JpxImages {
         };
     }
 
-    static boolean decoderAvailable() {
-        return ImageIO.getImageReadersByFormatName("JPEG2000").hasNext();
-    }
-
     private static boolean jpx(COSStream s) {
         COSBase f = s.getDictionaryObject(COSName.FILTER);
         if (f instanceof COSArray a) {
@@ -75,11 +68,6 @@ final class JpxImages {
         }
         if (s.getBoolean(COSName.IMAGE_MASK, false)) {
             throw new IOException("The PDF has a JPEG 2000 image mask, which " + level.label() + " does not allow");
-        }
-        if (!decoderAvailable()) {
-            throw new IOException("The PDF has JPEG 2000 images that " + level.label() + " does not allow, and no "
-                    + "JPEG 2000 decoder is installed to convert them (add com.github.jai-imageio:jai-imageio-jpeg2000)"
-                    + (level.part() == 1 ? "; PDF/A-2 and 3 keep them as they are" : ""));
         }
         long pixels = (long) s.getInt(COSName.WIDTH, 0) * s.getInt(COSName.HEIGHT, 0);
         if (pixels > MAX_PIXELS) {
@@ -130,10 +118,8 @@ final class JpxImages {
         if (s.getInt(SMASK_IN_DATA, 0) == 0) {
             return null;
         }
-        ImageReader reader = ImageIO.getImageReadersByFormatName("JPEG2000").next();
-        try (ImageInputStream in = ImageIO.createImageInputStream(new ByteArrayInputStream(encoded(s)))) {
-            reader.setInput(in, true, true);
-            BufferedImage img = reader.read(0);
+        try {
+            BufferedImage img = JpxDecoder.decode(encoded(s)).toBufferedImage();
             Raster a = img.getAlphaRaster();
             if (a == null) {
                 return null;
@@ -143,8 +129,6 @@ final class JpxImages {
             return mask;
         } catch (RuntimeException e) {
             throw new IOException("A JPEG 2000 image could not be read: " + e.getMessage(), e);
-        } finally {
-            reader.dispose();
         }
     }
 
