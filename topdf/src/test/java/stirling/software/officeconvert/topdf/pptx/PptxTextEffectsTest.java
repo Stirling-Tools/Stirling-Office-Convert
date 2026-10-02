@@ -104,7 +104,7 @@ class PptxTextEffectsTest {
 
     private static byte[] wordArt(String warp, String effects) {
         String run = "<a:r><a:rPr lang=\"en-US\" sz=\"2000\"><a:solidFill><a:srgbClr val=\"0000FF\"/></a:solidFill>"
-                + effects + "</a:rPr><a:t>HHHH</a:t></a:r>";
+                + effects + "<a:latin typeface=\"Liberation Sans\"/></a:rPr><a:t>HHHH</a:t></a:r>";
         return Decks.slideXml(Decks.textBox(9, 1270000, 1270000, 5080000, 2540000, "<a:bodyPr wrap=\"none\" lIns=\"0\""
                 + " tIns=\"0\" rIns=\"0\" bIns=\"0\" fromWordArt=\"1\"><a:prstTxWarp prst=\"" + warp + "\"><a:avLst/>"
                 + "</a:prstTxWarp></a:bodyPr>", "<a:p><a:pPr algn=\"ctr\"/>" + run + "</a:p>"));
@@ -139,12 +139,12 @@ class PptxTextEffectsTest {
     @Test
     void archesCirclesAndWavesCarryTheTextAlongTheirPaths() throws IOException {
         Decks.Converted arch = Decks.convert(dir, "arch-up.pptx", wordArt("textArchUp"));
-        int[] top = inkRows(arch.render(0, 72), 295, 305);
+        int[] top = inkRows(arch.render(0, 72), 260, 340);
         assertTrue(top[0] >= 100 && top[0] < 108 && top[1] < 150, top[0] + " " + top[1]);
         assertTrue(arch.text().contains("HHHH"));
-        int[] bottom = inkRows(Decks.convert(dir, "arch-down.pptx", wordArt("textArchDown")).render(0, 72), 295, 305);
+        int[] bottom = inkRows(Decks.convert(dir, "arch-down.pptx", wordArt("textArchDown")).render(0, 72), 260, 340);
         assertTrue(bottom[1] <= 300 && bottom[1] > 292 && bottom[0] > 250, bottom[0] + " " + bottom[1]);
-        int[] circle = inkRows(Decks.convert(dir, "circle.pptx", wordArt("textCircle")).render(0, 72), 295, 305);
+        int[] circle = inkRows(Decks.convert(dir, "circle.pptx", wordArt("textCircle")).render(0, 72), 260, 340);
         assertTrue(circle[0] >= 100 && circle[0] < 108 && circle[1] < 150, circle[0] + " " + circle[1]);
         BufferedImage wave = Decks.convert(dir, "wave.pptx", wordArt("textWave1")).render(0, 72);
         int[] crest = inkRows(wave, 180, 220);

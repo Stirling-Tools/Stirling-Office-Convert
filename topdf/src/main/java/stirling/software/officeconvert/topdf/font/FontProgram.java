@@ -424,10 +424,22 @@ final class FontProgram {
             return null;
         }
         if (entry.file() != null && entry.index() < 0) {
-            return Font.createFont(Font.TRUETYPE_FONT, entry.file().toFile());
+            if (java.io.File.separatorChar != '\\') {
+                return Font.createFont(Font.TRUETYPE_FONT, entry.file().toFile());
+            }
+            try (InputStream in = Files.newInputStream(entry.file())) {
+                return Font.createFont(Font.TRUETYPE_FONT, in);
+            }
         }
         if (entry.file() != null) {
-            Font[] faces = Font.createFonts(entry.file().toFile());
+            Font[] faces;
+            if (java.io.File.separatorChar != '\\') {
+                faces = Font.createFonts(entry.file().toFile());
+            } else {
+                try (InputStream in = Files.newInputStream(entry.file())) {
+                    faces = Font.createFonts(in);
+                }
+            }
             for (Font f : faces) {
                 if (entry.postScriptName() != null && entry.postScriptName().equals(f.getPSName())) {
                     return f;
