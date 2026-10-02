@@ -611,6 +611,16 @@ class RtfPackageTest {
         assertFalse(p.outcome().lost(), p.outcome().toString());
         String b = p.body();
         assertTrue(b.contains(">R11999C7<") && b.contains("END OF DOCUMENT"), "the whole table and its tail");
+        assertTrue(p.outcome().warnings().isEmpty(), p.outcome().toString());
+        int end = 0;
+        for (int r = 0; r < 12_000; r++) {
+            for (int c = 0; c < 8; c++) {
+                String text = ">R" + r + "C" + c + "<";
+                int start = b.indexOf(text, end);
+                assertTrue(start >= 0, "missing cell " + r + "," + c);
+                end = start + text.length();
+            }
+        }
     }
 
     @Test
