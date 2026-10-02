@@ -11,6 +11,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.lang.ref.SoftReference;
 import java.nio.file.Files;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Iterator;
@@ -19,6 +20,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReferenceArray;
 
@@ -266,7 +268,16 @@ final class FontProgram {
         if (entry.data() != null && FontLibrary.bundled(entry)) {
             return "bundled:" + entry.postScriptName() + "#" + entry.index();
         }
-        return entry.data() != null || entry.file() == null ? null : entry.file().toAbsolutePath() + "#" + entry.index();
+        if (entry.data() != null || entry.file() == null) {
+            return null;
+        }
+        try {
+            BasicFileAttributes file = Files.readAttributes(entry.file(), BasicFileAttributes.class);
+            return entry.file().toAbsolutePath() + "#" + entry.index() + "#" + file.size() + "#"
+                    + file.lastModifiedTime().to(TimeUnit.NANOSECONDS) + "#" + file.fileKey();
+        } catch (IOException | RuntimeException e) {
+            return null;
+        }
     }
 
     private static byte[] poolable(FontEntry entry) {

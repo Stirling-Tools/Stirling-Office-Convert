@@ -4,7 +4,9 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InterruptedIOException;
+import java.nio.ByteBuffer;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 import org.apache.pdfbox.contentstream.PDContentStream;
@@ -29,6 +31,10 @@ public final class ContentTokens {
 
     private static final int MAX_NESTING = 100;
 
+    static final int MAX_BUFFERED = 16 << 20;
+
+    private static final int MIN_BUFFERED = 1 << 16;
+
     private final byte[] data;
     private final int length;
     private final RandomAccessReadBuffer source;
@@ -39,30 +45,55 @@ public final class ContentTokens {
     private ContentTokens(byte[] data, int length) throws IOException {
         this.data = data;
         this.length = length;
-        this.source = new RandomAccessReadBuffer(data);
+        this.source = new RandomAccessReadBuffer(ByteBuffer.wrap(data, 0, length));
         this.parser = new PDFStreamParser(new Source(source));
     }
 
     static StreamRunner.Tokens open(PDContentStream stream) throws IOException {
         byte[] bytes;
-        int count;
+        int count = 0;
         try (RandomAccessRead in = stream.getContentsForStreamParsing()) {
-            ByteArrayOutputStream all = new ByteArrayOutputStream();
-            byte[] chunk = new byte[8192];
-            int n;
-            while ((n = in.read(chunk, 0, chunk.length)) > 0) {
-                all.write(chunk, 0, n);
+            bytes = new byte[initialCapacity(in)];
+            while (true) {
+                if (count == bytes.length) {
+                    int b = in.read();
+                    if (b == -1) {
+                        break;
+                    }
+                    if (bytes.length >= MAX_BUFFERED) {
+                        return streamed(stream);
+                    }
+                    bytes = Arrays.copyOf(bytes, Math.min(MAX_BUFFERED, bytes.length * 2));
+                    bytes[count++] = (byte) b;
+                }
+                int n = in.read(bytes, count, bytes.length - count);
+                if (n <= 0) {
+                    break;
+                }
+                count += n;
             }
-            bytes = all.toByteArray();
-            count = bytes.length;
         } catch (InterruptedIOException e) {
             throw e;
         } catch (IOException | RuntimeException e) {
-            PDFStreamParser exact = new PDFStreamParser(stream);
-            return exact::parseNextToken;
+            return streamed(stream);
         }
         ContentTokens tokens = new ContentTokens(bytes, count);
         return tokens::next;
+    }
+
+    private static StreamRunner.Tokens streamed(PDContentStream stream) throws IOException {
+        PDFStreamParser exact = new PDFStreamParser(stream);
+        return exact::parseNextToken;
+    }
+
+    private static int initialCapacity(RandomAccessRead in) {
+        long hint;
+        try {
+            hint = in.length();
+        } catch (IOException | RuntimeException e) {
+            hint = 0;
+        }
+        return (int) Math.max(MIN_BUFFERED, Math.min(MAX_BUFFERED, hint));
     }
 
     public static List<Object> parse(byte[] bytes) throws IOException {

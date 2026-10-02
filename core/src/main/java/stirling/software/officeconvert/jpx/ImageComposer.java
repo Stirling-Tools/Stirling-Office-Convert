@@ -6,9 +6,11 @@ import java.awt.color.ICC_ColorSpace;
 import java.awt.color.ICC_Profile;
 import java.awt.image.BufferedImage;
 import java.awt.image.ComponentColorModel;
+import java.awt.image.ComponentSampleModel;
 import java.awt.image.DataBuffer;
 import java.awt.image.DataBufferByte;
 import java.awt.image.DataBufferUShort;
+import java.awt.image.Raster;
 import java.awt.image.WritableRaster;
 import java.util.ArrayList;
 import java.util.List;
@@ -205,14 +207,13 @@ final class ImageComposer {
             kind = kind == Kind.YCCK ? Kind.SYCC : Kind.RGB;
             colour = colour.subList(0, 3);
         }
-        int bands = colour.size() + (alpha != null ? 1 : 0);
+        int colours = colour.size();
+        int bands = colours + (alpha != null ? 1 : 0);
         int type = target == 8 ? DataBuffer.TYPE_BYTE : DataBuffer.TYPE_USHORT;
         ComponentColorModel cm = new ComponentColorModel(cs, alpha != null, false,
                 alpha != null ? Transparency.TRANSLUCENT : Transparency.OPAQUE, type);
-        WritableRaster wr = cm.createCompatibleWritableRaster(width, height);
+        WritableRaster wr = alpha == null ? cm.createCompatibleWritableRaster(width, height) : alphaApart(type, colours);
         DataBuffer db = wr.getDataBuffer();
-        byte[] bytes = db instanceof DataBufferByte b ? b.getData() : null;
-        short[] shorts = db instanceof DataBufferUShort s ? s.getData() : null;
         int max = (1 << target) - 1;
         int[][] rows = new int[bands][width];
         int[] depths = new int[bands];
@@ -233,8 +234,11 @@ final class ImageComposer {
             for (int b = 0; b < bands; b++) {
                 int d = outDepths[b];
                 int[] row = rows[b];
-                int at = y * width * bands + b;
-                for (int x = 0; x < width; x++, at += bands) {
+                int bank = b < colours ? 0 : 1;
+                byte[] bytes = db instanceof DataBufferByte buffer ? buffer.getData(bank) : null;
+                short[] shorts = db instanceof DataBufferUShort buffer ? buffer.getData(bank) : null;
+                int at = y * width * colours + (b < colours ? b : 0);
+                for (int x = 0; x < width; x++, at += colours) {
                     int v = scale(row[x], d, target, max);
                     if (bytes != null) {
                         bytes[at] = (byte) v;
@@ -245,6 +249,19 @@ final class ImageComposer {
             }
         }
         return new BufferedImage(cm, wr, false, null);
+    }
+
+    private WritableRaster alphaApart(int type, int colours) {
+        int[] banks = new int[colours + 1];
+        int[] offsets = new int[colours + 1];
+        for (int i = 0; i < colours; i++) {
+            offsets[i] = i;
+        }
+        banks[colours] = 1;
+        int size = Math.multiplyExact(Math.multiplyExact(width, height), colours);
+        DataBuffer db = type == DataBuffer.TYPE_BYTE ? new DataBufferByte(size, 2) : new DataBufferUShort(size, 2);
+        ComponentSampleModel sm = new ComponentSampleModel(type, width, height, colours, width * colours, banks, offsets);
+        return Raster.createWritableRaster(sm, db, null);
     }
 
     private int[] convert(int[][] rows, int[] depths) {
