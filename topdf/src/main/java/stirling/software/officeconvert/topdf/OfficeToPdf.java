@@ -82,20 +82,25 @@ public final class OfficeToPdf {
             Objects.requireNonNull(file, "file");
             String ext = extension(file);
             return switch (ext) {
-                case "docx", "docm", "dotx", "dotm", "doc", "dot", "rtf", "odt", "ott", "fodt", "xml" -> DOCX;
+                case "docx", "docm", "dotx", "dotm", "doc", "dot", "rtf", "odt", "ott", "fodt", "odm", "xml", "sxw",
+                        "stw", "pages" -> DOCX;
                 case "txt", "text", "log", "asc" -> TEXT;
-                case "pptx", "pptm", "ppsx", "ppsm", "potx", "potm", "odp", "otp", "fodp", "odg", "otg", "fodg" -> PPTX;
-                case "xlsx", "xlsm", "xltx", "xltm", "xls", "xlt", "xlsb", "ods", "ots", "fods" -> XLSX;
+                case "pptx", "pptm", "ppsx", "ppsm", "potx", "potm", "odp", "otp", "fodp", "odg", "otg", "fodg", "sxi",
+                        "sti", "sxd", "std", "key" -> PPTX;
+                case "xlsx", "xlsm", "xltx", "xltm", "xls", "xlt", "xlsb", "ods", "ots", "fods", "sxc", "stc", "slk",
+                        "sylk", "dif", "dbf", "numbers" -> XLSX;
                 case "csv" -> CSV;
-                case "slk", "sylk", "dif", "dbf", "numbers" -> XLSX;
-                case "pages" -> DOCX;
-                case "key" -> PPTX;
                 case "tsv", "tab" -> TSV;
                 case "ppt", "pps", "pot" -> PPT;
-                default -> throw new IllegalArgumentException("Not an Office document: " + file.getFileName()
-                        + "; use .docx, .docm, .dotx, .dotm, .doc, .dot, .rtf, .pptx, .pptm, .ppsx, .ppsm, .potx, .potm,"
-                        + " .xlsx, .xlsm, .xltx, .xltm, .xlsb, .xls, .xlt, .ppt, .pps, .pot, .odt, .ott, .fodt, .ods, .ots, .fods,"
-                        + " .odp, .otp, .fodp, .odg, .otg, .fodg, .xml, .slk, .dif, .dbf, .pages, .numbers, .key, .txt, .text, .log, .asc, .csv, .tsv or .tab");
+                default -> {
+                    String reason = UnsupportedFormats.byExtension(ext);
+                    throw new IllegalArgumentException(reason != null ? reason : "Not an Office document: "
+                            + file.getFileName() + "; use .docx, .docm, .dotx, .dotm, .doc, .dot, .rtf, .pptx, .pptm,"
+                            + " .ppsx, .ppsm, .potx, .potm, .xlsx, .xlsm, .xltx, .xltm, .xlsb, .xls, .xlt, .ppt, .pps, .pot,"
+                            + " .odt, .ott, .fodt, .odm, .ods, .ots, .fods, .odp, .otp, .fodp, .odg, .otg, .fodg, .sxw, .stw,"
+                            + " .sxc, .stc, .sxi, .sti, .sxd, .std, .xml, .slk, .dif, .dbf, .pages, .numbers, .key, .txt,"
+                            + " .text, .log, .asc, .csv, .tsv or .tab");
+                }
             };
         }
 
@@ -104,7 +109,8 @@ public final class OfficeToPdf {
             return switch (extension(file)) {
                 case "docx", "docm", "dotx", "dotm", "pptx", "pptm", "ppsx", "ppsm", "potx", "potm", "xlsx", "xlsm",
                         "xltx", "xltm", "doc", "dot", "ppt", "pps", "pot", "xls", "xlt", "xlsb", "rtf", "odt", "ott", "fodt",
-                        "ods", "ots", "fods", "odp", "otp", "fodp", "odg", "otg", "fodg", "xml" -> true;
+                        "odm", "ods", "ots", "fods", "odp", "otp", "fodp", "odg", "otg", "fodg", "xml", "sxw", "stw", "sxc",
+                        "stc", "sxi", "sti", "sxd", "std" -> true;
                 case "txt", "text", "log", "asc", "csv", "tsv", "tab" -> true;
                 case "slk", "sylk", "dif", "dbf", "pages", "numbers", "key" -> true;
                 default -> false;
@@ -341,6 +347,10 @@ public final class OfficeToPdf {
         if (word != null) {
             return word;
         }
+        Long ooo1 = Ooo1Input.estimate(in);
+        if (ooo1 != null) {
+            return ooo1;
+        }
         if (OdfPackage.sniff(in) != null) {
             return OdfPackage.estimate(in) + 2 * Admission.BASE_BYTES;
         }
@@ -559,6 +569,10 @@ public final class OfficeToPdf {
         if (rtf != null) {
             return rtf;
         }
+        Result ooo1 = Ooo1Input.render(source, requested, sink, options, renderer);
+        if (ooo1 != null) {
+            return ooo1;
+        }
         Result odf = openDocument(source, sink, options, renderer);
         if (odf != null) {
             return odf;
@@ -578,6 +592,10 @@ public final class OfficeToPdf {
         Path name = source.getFileName();
         if (name != null && name.toString().toLowerCase(Locale.ROOT).endsWith(".rtf")) {
             throw new IOException("The file is not an RTF document: it does not start with {\\rtf");
+        }
+        String unsupported = UnsupportedFormats.byContent(source);
+        if (unsupported != null) {
+            throw new IOException(unsupported);
         }
         return render(source, requested, sink, options, renderer, OfficeZip.Limits.DEFAULT);
     }
