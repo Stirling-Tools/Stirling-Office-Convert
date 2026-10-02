@@ -200,6 +200,50 @@ class OdfBoundsTest {
     }
 
     @Test
+    void threeHonestFiftyThousandRowSheetsConvertInFull() throws IOException {
+        StringBuilder rows = new StringBuilder();
+        for (int row = 0; row < 50_000; row++) {
+            rows.append("<table:table-row><table:table-cell office:value-type=\"float\" office:value=\"")
+                    .append(row).append("\" table:number-columns-repeated=\"30\"/></table:table-row>");
+        }
+        StringBuilder sheets = new StringBuilder("<office:spreadsheet>");
+        for (int sheet = 0; sheet < 3; sheet++) {
+            sheets.append("<table:table table:name=\"S").append(sheet).append("\">").append(rows)
+                    .append("</table:table>");
+        }
+        sheets.append("</office:spreadsheet>");
+        Path input = OdfFixtures.write(dir, "three.ods", OdfFixtures.odf(OdfFixtures.SPREADSHEET,
+                OdfFixtures.content("", sheets.toString()), null));
+        ByteArrayOutputStream output = new ByteArrayOutputStream();
+        OdfPackage.Outcome outcome = OdfPackage.write(input, output);
+        assertFalse(outcome.lost(), outcome.warnings().toString());
+        assertTrue(outcome.warnings().isEmpty(), outcome.warnings().toString());
+        try (var zip = new java.util.zip.ZipInputStream(new java.io.ByteArrayInputStream(output.toByteArray()))) {
+            int checked = 0;
+            for (java.util.zip.ZipEntry entry; (entry = zip.getNextEntry()) != null; ) {
+                if (entry.getName().matches("xl/worksheets/sheet[1-3]\\.xml")) {
+                    String xml = new String(zip.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+                    assertEquals(50_000, occurrences(xml, "<row "));
+                    assertEquals(1_500_000, occurrences(xml, "<c "));
+                    assertTrue(xml.contains("<row r=\"50000\">"));
+                    assertTrue(xml.contains("r=\"AD50000\""));
+                    assertTrue(xml.contains("<v>49999</v>"));
+                    checked++;
+                }
+            }
+            assertEquals(3, checked);
+        }
+    }
+
+    private static int occurrences(String text, String token) {
+        int count = 0;
+        for (int at = text.indexOf(token); at >= 0; at = text.indexOf(token, at + token.length())) {
+            count++;
+        }
+        return count;
+    }
+
+    @Test
     void honestRowsAreCappedPerSheetWithAnAccurateWarning() throws IOException {
         String row = "<table:table-row><table:table-cell office:value-type=\"float\" office:value=\"1\""
                 + " table:number-columns-repeated=\"30\"/></table:table-row>";
