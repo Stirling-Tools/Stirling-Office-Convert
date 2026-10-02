@@ -79,12 +79,9 @@ final class TagTree {
     }
 
     int value(int leaf, int limit, HeaderBits bits) throws JpxException {
-        int t = 1;
-        while (!below(leaf, t, bits)) {
-            if (++t > limit) {
-                throw new JpxException("JPEG 2000 tag tree value out of range");
-            }
+        if (!below(leaf, Math.max(1, limit), bits)) {
+            throw new JpxException("JPEG 2000 tag tree value out of range");
         }
-        return t - 1;
+        return value[leaf];
     }
 }
