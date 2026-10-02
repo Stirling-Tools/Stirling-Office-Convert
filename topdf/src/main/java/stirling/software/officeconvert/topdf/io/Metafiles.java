@@ -81,18 +81,7 @@ final class Metafiles {
                 bounds = pict.bounds();
                 painter = pict::draw;
             } else if (kind == PictureDecoder.Kind.EMF) {
-                HemfPicture emf = new HemfPicture(new ByteArrayInputStream(data));
-                EmfFrames.Placement place = EmfFrames.of(emf.getHeader());
-                if (place == null) {
-                    bounds = emf.getBoundsInPoints();
-                    painter = emf::draw;
-                } else {
-                    bounds = new Rectangle2D.Double(0, 0, place.widthPoints(), place.heightPoints());
-                    painter = (g, r) -> {
-                        g.setRenderingHint(Drawable.EMF_FORCE_HEADER_BOUNDS, true);
-                        emf.draw(g, place.target(r));
-                    };
-                }
+                return emf(doc, new HemfPicture(new ByteArrayInputStream(data)));
             } else {
                 HwmfPicture wmf = new HwmfPicture(new ByteArrayInputStream(data));
                 bounds = wmf.getBoundsInPoints();
@@ -101,6 +90,26 @@ final class Metafiles {
         } catch (RuntimeException e) {
             throw new IOException("The metafile could not be read: " + e.getMessage(), e);
         }
+        return render(doc, kind, painter, bounds);
+    }
+
+    static DecodedPicture emf(PDDocument doc, HemfPicture emf) throws IOException {
+        EmfFrames.Placement place = EmfFrames.of(emf.getHeader());
+        Rectangle2D bounds = place == null ? emf.getBoundsInPoints()
+                : new Rectangle2D.Double(0, 0, place.widthPoints(), place.heightPoints());
+        Painter painter = (g, r) -> {
+            if (place == null) {
+                EmfDrawing.draw(emf, g, r);
+            } else {
+                g.setRenderingHint(Drawable.EMF_FORCE_HEADER_BOUNDS, true);
+                EmfDrawing.draw(emf, g, place.target(r));
+            }
+        };
+        return render(doc, PictureDecoder.Kind.EMF, painter, bounds);
+    }
+
+    private static DecodedPicture render(PDDocument doc, PictureDecoder.Kind kind, Painter painter, Rectangle2D bounds)
+            throws IOException {
         float w = side(bounds.getWidth());
         float h = side(bounds.getHeight());
         stopIfInterrupted();
