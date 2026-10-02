@@ -17,6 +17,8 @@ import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.cos.COSString;
 import org.apache.pdfbox.pdmodel.PDDocument;
 
+import stirling.software.officeconvert.extract.PdfFiles;
+
 final class Tagging {
 
     static final Set<String> STANDARD = Set.of("Document", "Part", "Art", "Sect", "Div", "BlockQuote", "Caption",
@@ -62,12 +64,18 @@ final class Tagging {
         mark.setBoolean(MARKED, true);
         language(cat, report);
         Set<String> types = new HashSet<>();
-        Set<COSDictionary> seen = Collections.newSetFromMap(new IdentityHashMap<>());
+        Set<COSBase> seen = Collections.newSetFromMap(new IdentityHashMap<>());
         Deque<COSBase> stack = new ArrayDeque<>();
         stack.push(root.getDictionaryObject(COSName.K) == null ? new COSArray() : root.getDictionaryObject(COSName.K));
         while (!stack.isEmpty() && seen.size() < MAX_ELEMENTS) {
             COSBase b = stack.pop();
+            if ((seen.size() & 0xFFF) == 0) {
+                PdfFiles.stopIfInterrupted();
+            }
             if (b instanceof COSArray a) {
+                if (!seen.add(a)) {
+                    continue;
+                }
                 for (int i = 0; i < a.size(); i++) {
                     if (a.getObject(i) != null) {
                         stack.push(a.getObject(i));

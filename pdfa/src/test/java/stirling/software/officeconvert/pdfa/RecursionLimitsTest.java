@@ -3,6 +3,7 @@ package stirling.software.officeconvert.pdfa;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
@@ -61,6 +62,51 @@ class RecursionLimitsTest {
         } catch (IOException e) {
             assertFalse(e instanceof PdfToPdfA.TimedOut, e.toString());
         }
+    }
+
+    @Test
+    void fontsInheritedDownALongChainOfFormsAreResolvedInLinearTime() throws Exception {
+        Path in = Hostile.write(dir, "fontchain", Hostile.fontChain(8_000));
+        Path out = dir.resolve("fontchain-out.pdf");
+        PdfToPdfA.Result r = PdfToPdfA.convert(in, out,
+                PdfToPdfA.Options.defaults().level(PdfALevel.A2B).timeout(Duration.ofSeconds(15)));
+        assertEquals(1, r.pages());
+    }
+
+    @Test
+    void aStructureArrayContainingItselfIsWalkedOnce() {
+        RawPdf r = structured("6 0 R");
+        r.add("[6 0 R]");
+        finishesInTime("selfk", r);
+    }
+
+    @Test
+    void structureArraysSharedDownADiamondAreWalkedOnce() {
+        RawPdf r = structured("6 0 R");
+        for (int i = 0; i < 60; i++) {
+            r.add("[" + (7 + i) + " 0 R " + (7 + i) + " 0 R]");
+        }
+        r.add("<</S/P/K[]>>");
+        finishesInTime("diamk", r);
+    }
+
+    private static RawPdf structured(String k) {
+        RawPdf r = RawPdf.page(RawPdf.helvetica(), "BT /F1 12 Tf 72 720 Td (Hello) Tj ET");
+        r.set(1, "<</Type/Catalog/Pages 2 0 R/StructTreeRoot 5 0 R/MarkInfo<</Marked true>>/Lang(en)>>");
+        r.add("<</Type/StructTreeRoot/K " + k + ">>");
+        return r;
+    }
+
+    private void finishesInTime(String name, RawPdf raw) {
+        assertTimeoutPreemptively(Duration.ofSeconds(30), () -> {
+            Path in = Hostile.write(dir, name, raw);
+            try {
+                PdfToPdfA.convert(in, dir.resolve(name + "-out.pdf"),
+                        PdfToPdfA.Options.defaults().level(PdfALevel.A2A).timeout(Duration.ofSeconds(10)));
+            } catch (IOException e) {
+                assertFalse(e instanceof PdfToPdfA.TimedOut, e.toString());
+            }
+        });
     }
 
     private void convert(String name, Hostile.Body body, PdfALevel level) throws Exception {

@@ -36,6 +36,19 @@ class TaggedFormsTest {
     }
 
     @Test
+    void untaggedTextInAFormWithoutStructParentsIsRefusedForLevelA() {
+        RawPdf r = RawPdf.page(RawPdf.helvetica() + "/XObject<</X 6 0 R>>", "/X Do");
+        r.set(1, "<</Type/Catalog/Pages 2 0 R/StructTreeRoot 5 0 R/MarkInfo<</Marked true>>/Lang(en)>>");
+        r.add("<</Type/StructTreeRoot/K[]>>");
+        r.add(RawPdf.stream("/Type/XObject/Subtype/Form/BBox[0 0 300 300]/Resources<<" + RawPdf.helvetica() + ">>",
+                "BT /F1 12 Tf 10 10 Td (Untagged form text) Tj ET"));
+        IOException e = assertThrows(IOException.class, () -> PdfToPdfA.convert(
+                Hostile.write(dir, "formtext", r), dir.resolve("formtext-out.pdf"),
+                PdfToPdfA.Options.defaults().level(PdfALevel.A2A)));
+        assertTrue(e.getMessage().contains("text outside the structure tree"), e.getMessage());
+    }
+
+    @Test
     void formTextTaggedThroughAStreamReferenceStaysTagged() throws Exception {
         Path in = Hostile.write(dir, "mcid", d -> Hostile.taggedForm(d, "mcid"));
         Path out = dir.resolve("mcid-out.pdf");

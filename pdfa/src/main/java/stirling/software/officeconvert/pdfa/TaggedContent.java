@@ -183,6 +183,8 @@ final class TaggedContent {
             return false;
         }
         boolean onlyPaths = inner.text == 0 && inner.images == 0;
+        text += inner.text;
+        images += inner.images;
         formsWithMarks.put(form, onlyPaths);
         return onlyPaths;
     }
