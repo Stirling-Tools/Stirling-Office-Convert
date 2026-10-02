@@ -83,6 +83,7 @@ final class StyleOracle {
     }
 
     private void text(XSLFTextShape shape) {
+        body(shape);
         for (XSLFTextParagraph p : shape.getTextParagraphs()) {
             paragraphs++;
             paragraph(p);
@@ -92,6 +93,21 @@ final class StyleOracle {
             }
             probe(p);
         }
+    }
+
+    private void body(XSLFTextShape shape) {
+        BodyChain b = BodyChain.of(shape);
+        if (b == null) {
+            return;
+        }
+        String at = shape.getSheet().getPackagePart().getPartName().getName() + " " + shape.getShapeName() + " body";
+        same(at, "lIns", shape::getLeftInset, b::leftInset);
+        same(at, "tIns", shape::getTopInset, b::topInset);
+        same(at, "rIns", shape::getRightInset, b::rightInset);
+        same(at, "bIns", shape::getBottomInset, b::bottomInset);
+        same(at, "anchor", shape::getVerticalAlignment, b::verticalAlignment);
+        same(at, "anchorCtr", shape::isHorizontalCentered, b::horizontalCentered);
+        same(at, "wrap", shape::getWordWrap, b::wordWrap);
     }
 
     private void probe(XSLFTextParagraph p) {
