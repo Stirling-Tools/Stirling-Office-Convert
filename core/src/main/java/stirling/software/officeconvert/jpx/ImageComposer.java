@@ -27,6 +27,8 @@ final class ImageComposer {
         }
     }
 
+    private static final int MOST_BANDS = 16;
+
     private final JpxRaster raster;
 
     private final Jp2Boxes boxes;
@@ -48,6 +50,14 @@ final class ImageComposer {
         this.boxes = boxes;
         this.width = raster.width();
         this.height = raster.height();
+    }
+
+    static int bands(Jp2Boxes boxes, int components) {
+        int channels = components;
+        if (boxes.palette != null) {
+            channels = Math.max(components, boxes.mapping == null ? boxes.palette.depth().length : boxes.mapping.length);
+        }
+        return Math.min(MOST_BANDS, channels);
     }
 
     BufferedImage compose() {

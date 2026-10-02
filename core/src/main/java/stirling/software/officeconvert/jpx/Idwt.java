@@ -14,7 +14,7 @@ final class Idwt {
     private Idwt() {}
 
     static void reversible(int[] a, int stride, Resolution[] res, int top) {
-        int[] tmp = new int[maxLength(res, top) * STRIP];
+        int[] tmp = new int[scratch(res, top)];
         for (int r = 1; r <= top; r++) {
             Resolution cur = res[r];
             Resolution low = res[r - 1];
@@ -42,7 +42,7 @@ final class Idwt {
     }
 
     static void irreversible(float[] a, int stride, Resolution[] res, int top) {
-        float[] tmp = new float[maxLength(res, top) * STRIP];
+        float[] tmp = new float[scratch(res, top)];
         for (int r = 1; r <= top; r++) {
             Resolution cur = res[r];
             Resolution low = res[r - 1];
@@ -69,12 +69,14 @@ final class Idwt {
         }
     }
 
-    private static int maxLength(Resolution[] res, int top) {
-        int m = 1;
-        for (int r = 0; r <= top; r++) {
-            m = Math.max(m, Math.max(res[r].width(), res[r].height()));
+    private static int scratch(Resolution[] res, int top) {
+        long m = 1;
+        for (int r = 1; r <= top; r++) {
+            int w = res[r].width();
+            long columns = Math.multiplyExact((long) Math.min(STRIP, w), res[r].height());
+            m = Math.max(m, Math.max(w, columns));
         }
-        return m;
+        return Math.toIntExact(m);
     }
 
     private static void interleave(int[] a, int at, int step, int n, int lows, int parity, int[] out) {
