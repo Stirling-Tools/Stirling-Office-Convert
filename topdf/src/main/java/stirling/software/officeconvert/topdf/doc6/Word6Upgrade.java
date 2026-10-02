@@ -77,6 +77,9 @@ public final class Word6Upgrade {
         if (drawings.lost() || fib.ccp[7] > 0 || fib.present(39)) {
             warnings.add("Some drawing objects of the Word 6.0/95 document were left out");
         }
+        if (text.refused) {
+            warnings.add("The Word 6.0/95 document's piece table could not be read; its text may be out of order");
+        }
         Runs.Read chpRead = Runs.read(fib, text, false);
         Runs.Read papRead = Runs.read(fib, text, true);
         if (chpRead.truncated() || papRead.truncated()) {

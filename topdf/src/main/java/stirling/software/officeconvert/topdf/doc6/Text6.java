@@ -22,11 +22,14 @@ final class Text6 {
 
     private Piece[] sorted;
 
+    final boolean refused;
+
     Text6(Fib6 fib, Charset charset) {
         factor = (fib.flags & 0x1000) != 0 ? 2 : 1;
         if (fib.complex() && fib.present(33)) {
             readClx(fib);
         }
+        refused = fib.complex() && fib.present(33) && pieces.isEmpty();
         if (pieces.isEmpty()) {
             int total = 0;
             for (int c : fib.ccp) {

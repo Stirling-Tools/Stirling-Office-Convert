@@ -112,6 +112,18 @@ class Word6Test {
     }
 
     @Test
+    void aPieceTableThatCannotBeTrustedIsReported() throws IOException {
+        try (POIFSFileSystem fs = new POIFSFileSystem(new ByteArrayInputStream(
+                new Word6Fixture().repeatedPieces(3, 70).build()))) {
+            Word6Upgrade.Upgraded u = Word6Upgrade.upgrade(fs.getRoot());
+            assertTrue(u.warnings().stream().anyMatch(w -> w.contains("piece table")), u.warnings().toString());
+        }
+        try (POIFSFileSystem fs = new POIFSFileSystem(new ByteArrayInputStream(new Word6Fixture().build()))) {
+            assertTrue(Word6Upgrade.upgrade(fs.getRoot()).warnings().isEmpty());
+        }
+    }
+
+    @Test
     void formattingRunsOverManyPiecesAreCappedAsTheyAreAdded() {
         byte[] word6 = new Word6Fixture().spreadPieces(400_000).build();
         Word6Upgrade.Upgraded[] u = new Word6Upgrade.Upgraded[1];
