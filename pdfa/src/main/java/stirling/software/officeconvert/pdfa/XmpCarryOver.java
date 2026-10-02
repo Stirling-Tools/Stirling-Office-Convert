@@ -5,11 +5,9 @@ import java.io.IOException;
 import java.io.StringReader;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 import javax.xml.XMLConstants;
 import javax.xml.parsers.DocumentBuilderFactory;
@@ -28,20 +26,11 @@ final class XmpCarryOver {
 
     private static final String EXTENSION = "http://www.aiim.org/pdfa/ns/extension/";
 
-    private static final String SCHEMA = "http://www.aiim.org/pdfa/ns/schema#";
-
-    private static final String PROPERTY = "http://www.aiim.org/pdfa/ns/property#";
-
-    private static final String DC = "http://purl.org/dc/elements/1.1/";
-
     private static final String RIGHTS = "http://ns.adobe.com/xap/1.0/rights/";
 
     private static final String MM = "http://ns.adobe.com/xap/1.0/mm/";
 
-    private static final Map<String, String> KEPT = Map.ofEntries(Map.entry(DC + "rights", "Alt"),
-            Map.entry(DC + "subject", "Bag"), Map.entry(DC + "language", "Bag"), Map.entry(DC + "publisher", "Bag"),
-            Map.entry(DC + "contributor", "Bag"), Map.entry(DC + "type", "Bag"), Map.entry(DC + "relation", "Bag"),
-            Map.entry(DC + "identifier", ""), Map.entry(DC + "source", ""), Map.entry(DC + "coverage", ""),
+    private static final Map<String, String> KEPT = Map.ofEntries(
             Map.entry(RIGHTS + "Marked", ""), Map.entry(RIGHTS + "WebStatement", ""),
             Map.entry(RIGHTS + "UsageTerms", "Alt"), Map.entry(RIGHTS + "Owner", "Bag"),
             Map.entry(RIGHTS + "Certificate", ""), Map.entry(MM + "DocumentID", ""),
@@ -74,11 +63,11 @@ final class XmpCarryOver {
                 }
             }
         }
-        Set<String> described = schemas == null ? Set.of() : described(schemas);
+        Map<String, String> described = schemas == null ? Map.of() : XmpExtensions.declared(schemas);
         for (Element d : descriptions) {
             for (Node p : children(d)) {
                 String key = p.getNamespaceURI() + p.getLocalName();
-                if (described.contains(key)) {
+                if (described.containsKey(key) && XmpExtensions.typed((Element) p, described.get(key))) {
                     kept.putIfAbsent(key, (Element) p);
                 }
             }
@@ -86,8 +75,12 @@ final class XmpCarryOver {
             for (int i = 0; i < attrs.getLength(); i++) {
                 Attr a = (Attr) attrs.item(i);
                 String key = a.getNamespaceURI() + a.getLocalName();
-                if (a.getNamespaceURI() != null && a.getPrefix() != null && (described.contains(key)
-                        || KEPT.containsKey(key) && KEPT.get(key).isEmpty())) {
+                String type = described.get(key);
+                if (type == null && KEPT.containsKey(key) && KEPT.get(key).isEmpty()) {
+                    type = key.equals(RIGHTS + "Marked") ? "Boolean" : "Text";
+                }
+                if (a.getNamespaceURI() != null && a.getPrefix() != null && type != null
+                        && XmpExtensions.scalar(a.getValue(), type)) {
                     attributes.putIfAbsent(key, a.getValue());
                     prefixes.put(key, a.getPrefix() + ":" + a.getLocalName());
                 }
@@ -107,24 +100,7 @@ final class XmpCarryOver {
         return out;
     }
 
-    private static Set<String> described(Element schemas) {
-        Set<String> out = new HashSet<>();
-        for (Node n : elements(schemas)) {
-            String ns = value(n, SCHEMA, "namespaceURI");
-            if (ns == null) {
-                continue;
-            }
-            for (Node p : elements(n)) {
-                String name = value(p, PROPERTY, "name");
-                if (name != null) {
-                    out.add(ns + name);
-                }
-            }
-        }
-        return out;
-    }
-
-    private static String value(Node n, String ns, String local) {
+    static String value(Node n, String ns, String local) {
         if (!(n instanceof Element e)) {
             return null;
         }
@@ -140,12 +116,9 @@ final class XmpCarryOver {
     }
 
     private static boolean typed(Element p, String container) {
-        List<Node> kids = children(p);
-        if (container.isEmpty()) {
-            return kids.isEmpty() && p.getAttributes().getLength() == 0;
-        }
-        return kids.size() == 1 && RDF.equals(kids.get(0).getNamespaceURI())
-                && container.equals(kids.get(0).getLocalName());
+        String type = container.isEmpty() ? RIGHTS.equals(p.getNamespaceURI()) && "Marked".equals(p.getLocalName())
+                ? "Boolean" : "Text" : container + " Text";
+        return XmpExtensions.typed(p, type);
     }
 
     private static String serialise(List<Element> properties, Map<String, String> attributes,
@@ -211,7 +184,7 @@ final class XmpCarryOver {
         }
     }
 
-    private static List<Node> children(Node n) {
+    static List<Node> children(Node n) {
         List<Node> out = new ArrayList<>();
         for (Node c = n.getFirstChild(); c != null; c = c.getNextSibling()) {
             if (c.getNodeType() == Node.ELEMENT_NODE) {
@@ -232,7 +205,7 @@ final class XmpCarryOver {
         return out;
     }
 
-    private static Document parse(byte[] xmp) {
+    static Document parse(byte[] xmp) {
         try {
             DocumentBuilderFactory f = DocumentBuilderFactory.newInstance();
             f.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true);
