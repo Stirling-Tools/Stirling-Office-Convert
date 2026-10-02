@@ -45,11 +45,10 @@ final class Nurbs {
         own[n - 1] = Cells.parse(c.get("A"), lastKnot);
         ws[n - 1] = Cells.parse(c.get("B"), 1);
         double[] knots = new double[n + degree + 1];
-        for (int i = 0; i < degree; i++) {
-            knots[i] = own[0];
+        System.arraycopy(own, 0, knots, 0, n);
+        for (int i = n; i < knots.length; i++) {
+            knots[i] = lastKnot;
         }
-        System.arraycopy(own, 0, knots, degree, n);
-        knots[n + degree] = lastKnot;
         for (int i = 1; i < knots.length; i++) {
             if (!(knots[i] >= knots[i - 1])) {
                 p.line(px, py);

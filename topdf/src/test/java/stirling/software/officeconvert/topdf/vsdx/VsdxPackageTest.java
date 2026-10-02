@@ -253,4 +253,42 @@ class VsdxPackageTest {
             }
         }
     }
+
+    @Test
+    void roundsCornersByTheRoundingCell() throws IOException {
+        String square = slide(pptx(file("s.vsdx", drawing(INSTANCE, MASTER))));
+        assertFalse(square.contains("cubicBezTo"), square);
+        String round = slide(pptx(file("o.vsdx", drawing(INSTANCE.replace("</Shape>",
+                "<Cell N='Rounding' V='0.25'/></Shape>"), MASTER))));
+        assertEquals(4, round.split("<a:cubicBezTo>", -1).length - 1, round);
+        assertTrue(round.contains("<a:ext cx=\"1828800\" cy=\"914400\"/>"), round);
+    }
+
+    @Test
+    void drawsArrowheadsAtTheEndsOfOpenLines() throws IOException {
+        String line = "<Shape ID='1' Type='Shape' LineStyle='0' FillStyle='0' TextStyle='0'><Cell N='PinX' V='2'/>"
+                + "<Cell N='PinY' V='2'/><Cell N='Width' V='2'/><Cell N='Height' V='0'/><Cell N='BeginX' V='1'/>"
+                + "<Cell N='EndArrow' V='4'/><Cell N='EndArrowSize' V='2'/><Section N='Geometry' IX='0'>"
+                + "<Row T='MoveTo' IX='1'><Cell N='X' V='0'/><Cell N='Y' V='0'/></Row><Row T='LineTo' IX='2'>"
+                + "<Cell N='X' V='2'/><Cell N='Y' V='0'/></Row></Section></Shape>";
+        String slide = slide(pptx(file("a.vsdx", drawing(line, MASTER))));
+        assertEquals(2, slide.split("<p:sp>", -1).length - 1, slide);
+        assertTrue(slide.contains("<a:off x=\"2642616\" y=\"1788566\"/><a:ext cx=\"100584\" cy=\"80467\"/>"),
+                slide);
+    }
+
+    @Test
+    void evaluatesNurbsAsTheirClampedCurve() throws IOException {
+        String corner = "<Shape ID='1' Type='Shape' LineStyle='0' FillStyle='0' TextStyle='0'><Cell N='PinX' V='1'/>"
+                + "<Cell N='PinY' V='1'/><Cell N='Width' V='1'/><Cell N='Height' V='1'/><Section N='Geometry' IX='0'>"
+                + "<Cell N='NoFill' V='1'/><Row T='MoveTo' IX='1'><Cell N='X' V='1'/><Cell N='Y' V='1'/></Row>"
+                + "<Row T='NURBSTo' IX='2'><Cell N='X' V='0'/><Cell N='Y' V='0'/><Cell N='A' V='0'/><Cell N='B' V='1'/>"
+                + "<Cell N='C' V='0'/><Cell N='D' V='1'/><Cell N='E' V='NURBS(1, 3, 0, 0, 0, 1, 0, 1, 0, 1, 0, 1)'/>"
+                + "</Row></Section></Shape>";
+        String slide = slide(pptx(file("n.vsdx", drawing(corner, MASTER))));
+        assertTrue(slide.contains("<a:ext cx=\"914400\" cy=\"914400\"/>"), slide);
+        assertTrue(slide.contains("<a:pt x=\"0\" y=\"914400\"/></a:lnTo></a:path>"), slide);
+        assertTrue(slide.split("<a:lnTo>", -1).length > 32, slide);
+        assertTrue(slide.contains("<a:pt x=\"872204\" y=\"3\"/>"), slide);
+    }
 }

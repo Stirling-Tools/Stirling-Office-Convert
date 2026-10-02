@@ -128,7 +128,12 @@ final class Look {
         return String.format(Locale.ROOT, "%02X%02X%02X", r, g, bl);
     }
 
-    String line(Sheet s) {
+    record Stroke(String xml, String paint, long width, int begin, double beginSize, int end, double endSize) {
+
+        static final Stroke NONE = new Stroke("<a:ln><a:noFill/></a:ln>", null, 0, 0, 0, 0, 0);
+    }
+
+    Stroke line(Sheet s) {
         Theme.Line t = null;
         String patternCell = cells.get(s, "LinePattern");
         String colorCell = cells.get(s, "LineColor");
@@ -146,7 +151,7 @@ final class Look {
             paint = color == null ? null : solid(color, cells.number(s, "LineColorTrans", 0));
         }
         if (pattern == 0 || paint == null) {
-            return "<a:ln><a:noFill/></a:ln>";
+            return Stroke.NONE;
         }
         long w = themed(weightCell) ? t == null ? 9525 : t.width()
                 : Math.round(Cells.parse(weightCell, 0.01) * PageWriter.EMU);
@@ -160,11 +165,11 @@ final class Look {
             b.append("<a:prstDash val=\"").append(dash).append("\"/>");
         }
         b.append(capCell == 0 ? "<a:round/>" : "<a:miter lim=\"800000\"/>");
-        arrow(b, "headEnd", arrowCell(s, "BeginArrow", t == null ? 0 : t.begin()),
-                arrowCell(s, "BeginArrowSize", t == null ? 2 : t.beginSize()));
-        arrow(b, "tailEnd", arrowCell(s, "EndArrow", t == null ? 0 : t.end()),
+        return new Stroke(b.append("</a:ln>").toString(), paint, w,
+                (int) arrowCell(s, "BeginArrow", t == null ? 0 : t.begin()),
+                arrowCell(s, "BeginArrowSize", t == null ? 2 : t.beginSize()),
+                (int) arrowCell(s, "EndArrow", t == null ? 0 : t.end()),
                 arrowCell(s, "EndArrowSize", t == null ? 2 : t.endSize()));
-        return b.append("</a:ln>").toString();
     }
 
     private double arrowCell(Sheet s, String name, int themedValue) {
@@ -225,22 +230,5 @@ final class Look {
             case 8, 15 -> "sysDash";
             default -> p > 1 && p < 24 ? "dash" : null;
         };
-    }
-
-    private static void arrow(StringBuilder b, String tag, double kind, double size) {
-        int k = (int) kind;
-        if (k <= 0) {
-            return;
-        }
-        String type = switch (k) {
-            case 1, 6, 9, 12, 14, 19 -> "arrow";
-            case 7, 8 -> "stealth";
-            case 10, 11, 20, 21, 22 -> "oval";
-            case 18, 23, 24 -> "diamond";
-            default -> "triangle";
-        };
-        String sz = size <= 1 ? "sm" : size <= 2 ? "med" : "lg";
-        b.append("<a:").append(tag).append(" type=\"").append(type).append("\" w=\"").append(sz).append("\" len=\"")
-                .append(sz).append("\"/>");
     }
 }

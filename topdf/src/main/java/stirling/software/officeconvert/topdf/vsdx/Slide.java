@@ -85,6 +85,30 @@ final class Slide {
         b.append("</a:pathLst></a:custGeom>").append(fill).append(line).append("</p:spPr></p:sp>");
     }
 
+    void polygon(double[][] points, boolean filled, String paint, long width) {
+        Paths.Path p = new Paths.Path();
+        for (int i = 0; i < points.length; i++) {
+            p.segments.add(new Paths.Segment(i == 0 ? 'M' : 'L', points[i].clone()));
+        }
+        if (filled) {
+            p.segments.add(new Paths.Segment('L', points[0].clone()));
+            geometry(List.of(p), Affine.IDENTITY, paint, "<a:ln><a:noFill/></a:ln>");
+        } else {
+            p.noFill = true;
+            geometry(List.of(p), Affine.IDENTITY, "<a:noFill/>", "<a:ln w=\"" + width + "\" cap=\"rnd\">" + paint
+                    + "<a:round/></a:ln>");
+        }
+    }
+
+    void circle(double cx, double cy, double r, String paint) {
+        Paths.Path p = new Paths.Path();
+        p.segments.add(new Paths.Segment('M', new double[] {cx + r, cy}));
+        for (double[] b : Paths.arc(cx, cy, r, 0, 2 * Math.PI)) {
+            p.segments.add(new Paths.Segment('C', b));
+        }
+        geometry(List.of(p), Affine.IDENTITY, paint, "<a:ln><a:noFill/></a:ln>");
+    }
+
     void picture(String target, Affine m, double x, double y, double w, double h) {
         Box box = Box.of(m, x, y, w, h, true);
         if (box == null) {

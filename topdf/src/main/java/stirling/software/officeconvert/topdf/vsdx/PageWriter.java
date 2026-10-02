@@ -145,7 +145,15 @@ final class PageWriter {
             paths.addAll(Paths.build(g, w, h));
         }
         if (!paths.isEmpty()) {
-            slide.geometry(paths, m, look.fill(s), look.line(s));
+            String rounding = cells.get(s, "Rounding");
+            double radius = rounding == null || rounding.trim().equalsIgnoreCase("Themed") ? 0
+                    : Cells.parse(rounding, 0);
+            for (Paths.Path p : paths) {
+                Rounding.apply(p, radius);
+            }
+            Look.Stroke stroke = look.line(s);
+            slide.geometry(paths, m, look.fill(s), stroke.xml());
+            Arrows.draw(slide, paths, m, stroke);
         }
         if (!"1".equals(cells.get(s, "HideText"))) {
             TextOut.text(slide, cells, look, drawing.minorFont, s, m, w, h);
