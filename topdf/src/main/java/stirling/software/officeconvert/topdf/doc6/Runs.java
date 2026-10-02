@@ -16,6 +16,8 @@ final class Runs {
 
     record Run(int cpStart, int cpEnd, int istd, byte[] grpprl) {}
 
+    record Read(List<Run> runs, boolean truncated) {}
+
     private static final int PAGE = 512;
 
     private static final int MAX_PAGES = 1 << 16;
@@ -24,7 +26,7 @@ final class Runs {
 
     private Runs() {}
 
-    static List<Run> read(Fib6 fib, Text6 text, boolean paragraphs) throws InterruptedIOException {
+    static Read read(Fib6 fib, Text6 text, boolean paragraphs) throws InterruptedIOException {
         int pair = paragraphs ? 13 : 12;
         Set<Integer> pages = new LinkedHashSet<>();
         if (fib.present(pair)) {
@@ -41,10 +43,12 @@ final class Runs {
             }
         }
         List<Run> runs = new ArrayList<>();
+        int max = (int) Math.min(MAX_RUNS, 2L * text.length() + 1024);
+        boolean truncated = false;
         byte[] m = fib.main;
         for (int pn : pages) {
             OfficeZip.checkNotInterrupted();
-            if (runs.size() >= MAX_RUNS) {
+            if (truncated) {
                 break;
             }
             long off = (long) pn * PAGE;
@@ -77,12 +81,16 @@ final class Runs {
                         }
                     }
                 }
-                for (int[] cp : text.cps(fcA, fcB)) {
+                for (int[] cp : text.cps(fcA, fcB, max - runs.size())) {
                     runs.add(new Run(cp[0], cp[1], istd, g));
+                }
+                if (runs.size() >= max) {
+                    truncated = true;
+                    break;
                 }
             }
         }
-        return cover(runs, text.length());
+        return new Read(cover(runs, text.length()), truncated);
     }
 
     private static List<Run> cover(List<Run> runs, int length) {

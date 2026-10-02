@@ -110,4 +110,18 @@ class Word6Test {
         assertTrue(m.failure() == null || m.failure() instanceof IOException, String.valueOf(m.failure()));
         assertTrue(m.bytes() < 128L << 20, "allocated " + m.megabytes() + " MB");
     }
+
+    @Test
+    void formattingRunsOverManyPiecesAreCappedAsTheyAreAdded() {
+        byte[] word6 = new Word6Fixture().spreadPieces(400_000).build();
+        Word6Upgrade.Upgraded[] u = new Word6Upgrade.Upgraded[1];
+        Allocation.Measured m = Allocation.measure(() -> {
+            try (POIFSFileSystem fs = new POIFSFileSystem(new ByteArrayInputStream(word6))) {
+                u[0] = Word6Upgrade.upgrade(fs.getRoot());
+            }
+        });
+        assertTrue(m.failure() == null, String.valueOf(m.failure()));
+        assertTrue(m.bytes() < 768L << 20, "allocated " + m.megabytes() + " MB");
+        assertTrue(u[0].warnings().stream().anyMatch(w -> w.contains("formatting")), u[0].warnings().toString());
+    }
 }

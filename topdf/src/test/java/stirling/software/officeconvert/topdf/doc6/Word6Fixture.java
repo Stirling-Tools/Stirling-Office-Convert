@@ -30,6 +30,8 @@ final class Word6Fixture {
 
     private int pieceBytes;
 
+    private boolean spread;
+
     Word6Fixture text(String a, String b) {
         first = a;
         second = b;
@@ -50,6 +52,13 @@ final class Word6Fixture {
     Word6Fixture repeatedPieces(int count, int bytes) {
         pieces = count;
         pieceBytes = bytes;
+        return this;
+    }
+
+    Word6Fixture spreadPieces(int count) {
+        pieces = count;
+        pieceBytes = 1;
+        spread = true;
         return this;
     }
 
@@ -158,12 +167,13 @@ final class Word6Fixture {
 
     private byte[] withPieces(byte[] base) {
         int text = base.length;
-        int clx = text + pieceBytes;
+        int textBytes = spread ? pieces : pieceBytes;
+        int clx = text + textBytes;
         int lcb = 4 + 4 * (pieces + 1) + 8 * pieces;
         ByteBuffer b = ByteBuffer.allocate(clx + 5 + lcb).order(ByteOrder.LITTLE_ENDIAN);
         b.put(base);
         b.putShort(0x0A, (short) (b.getShort(0x0A) | 0x0004));
-        for (int i = 0; i < pieceBytes; i++) {
+        for (int i = 0; i < textBytes; i++) {
             b.put(text + i, (byte) (i % 64 == 63 ? '\r' : 'a'));
         }
         b.position(clx);
@@ -172,10 +182,24 @@ final class Word6Fixture {
             b.putInt(i * pieceBytes);
         }
         for (int i = 0; i < pieces; i++) {
-            b.putShort((short) 0).putInt(text).putShort((short) 0);
+            b.putShort((short) 0).putInt(spread ? text + i : text).putShort((short) 0);
         }
         pair(b, 33, clx, 5 + lcb);
+        if (spread) {
+            wideRuns(b, 0x400, 101);
+            wideRuns(b, 0x600, 56);
+        }
         return b.array();
+    }
+
+    private static void wideRuns(ByteBuffer b, int page, int crun) {
+        for (int k = 0; k < 512; k++) {
+            b.put(page + k, (byte) 0);
+        }
+        for (int k = 0; k <= crun; k++) {
+            b.putInt(page + 4 * k, (k & 1) == 0 ? 0 : 0x7FFFFFF0);
+        }
+        b.put(page + 511, (byte) crun);
     }
 
     private static void pair(ByteBuffer b, int i, int fc, int lcb) {

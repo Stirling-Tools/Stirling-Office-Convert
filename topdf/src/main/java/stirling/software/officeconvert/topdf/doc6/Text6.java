@@ -110,7 +110,7 @@ final class Text6 {
     }
 
     /** The character positions an old file range [fcStart, fcEnd) covers, as [cpStart, cpEnd] pairs. */
-    List<int[]> cps(int fcStart, int fcEnd) {
+    List<int[]> cps(int fcStart, int fcEnd, int max) {
         if (sorted == null) {
             sorted = byFc();
         }
@@ -126,7 +126,7 @@ final class Text6 {
                 hi = mid;
             }
         }
-        for (int i = lo; i < sorted.length && sorted[i].fc() < fcEnd; i++) {
+        for (int i = lo; i < sorted.length && sorted[i].fc() < fcEnd && out.size() < max; i++) {
             Piece p = sorted[i];
             int pieceEnd = p.fc() + (p.cpEnd() - p.cpStart()) * factor;
             int a = Math.max(fcStart, p.fc());
