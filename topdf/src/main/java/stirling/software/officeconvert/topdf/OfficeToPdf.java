@@ -36,14 +36,12 @@ import java.util.zip.ZipOutputStream;
 
 import org.apache.poi.hslf.usermodel.HSLFSlideShow;
 import org.apache.poi.hslf.usermodel.HSLFTextBox;
-import org.apache.poi.poifs.filesystem.POIFSFileSystem;
 import org.apache.poi.xslf.usermodel.XMLSlideShow;
 import org.apache.poi.xslf.usermodel.XSLFTextBox;
 
 import stirling.software.officeconvert.jpx.JpxImageIO;
 import stirling.software.officeconvert.memory.Admission;
 import stirling.software.officeconvert.topdf.crypt.EncryptedPackage;
-import stirling.software.officeconvert.topdf.crypt.EncryptedWorkbook;
 import stirling.software.officeconvert.topdf.docx.DocxRenderer;
 import stirling.software.officeconvert.topdf.font.FontLibrary;
 import stirling.software.officeconvert.topdf.font.FontSet;
@@ -62,6 +60,7 @@ import stirling.software.officeconvert.topdf.pdf.TextStyle;
 import stirling.software.officeconvert.topdf.ppt.PptRenderer;
 import stirling.software.officeconvert.topdf.pptx.PptxRenderer;
 import stirling.software.officeconvert.topdf.rtf.RtfPackage;
+import stirling.software.officeconvert.topdf.xls.XlsFile;
 import stirling.software.officeconvert.topdf.xls.XlsPackage;
 import stirling.software.officeconvert.topdf.xlsb.XlsbPackage;
 import stirling.software.officeconvert.topdf.xlsx.XlsxRenderer;
@@ -905,54 +904,28 @@ public final class OfficeToPdf {
         }
     }
 
-    private static POIFSFileSystem legacyFile(Path source) {
-        try {
-            if (!LegacyOffice.ole2(source)) {
-                return null;
-            }
-        } catch (IOException | RuntimeException e) {
-            return null;
-        }
-        POIFSFileSystem fs;
-        try {
-            fs = new POIFSFileSystem(source.toFile(), true);
-        } catch (IOException | RuntimeException e) {
-            return null;
-        }
-        if (XlsPackage.isWorkbook(fs.getRoot())) {
-            return fs;
-        }
-        closeQuietly(fs);
-        return null;
-    }
-
     private static Long legacyWorkbookEstimate(Path source) throws IOException {
-        POIFSFileSystem fs = legacyFile(source);
-        if (fs == null) {
+        if (!XlsFile.is(source)) {
             return null;
         }
-        closeQuietly(fs);
         return XlsPackage.estimate(Files.size(source)) + 2 * Admission.BASE_BYTES;
     }
 
     // An Excel 97-2003 workbook is rewritten as an XLSX package first, whatever its extension, and drawn from that
     private static Result legacyWorkbook(Path source, OutputStream sink, Options options, Renderer renderer)
             throws IOException {
-        POIFSFileSystem fs = legacyFile(source);
-        if (fs == null) {
+        if (!XlsFile.is(source)) {
             return null;
         }
         Path xlsx = null;
         try {
             XlsPackage.Outcome outcome;
-            try (fs; POIFSFileSystem plain = EncryptedWorkbook.decrypt(fs.getRoot(), options.password())) {
-                xlsx = Files.createTempFile("office-to-pdf-", ".xlsx");
-                Admission.Ticket ticket = Admission.jvm().enter(XlsPackage.estimate(Files.size(source)));
-                try (OutputStream os = new BufferedOutputStream(Files.newOutputStream(xlsx), 1 << 16)) {
-                    outcome = XlsPackage.write(plain == null ? fs.getRoot() : plain.getRoot(), os);
-                } finally {
-                    ticket.close();
-                }
+            xlsx = Files.createTempFile("office-to-pdf-", ".xlsx");
+            Admission.Ticket ticket = Admission.jvm().enter(XlsPackage.estimate(Files.size(source)));
+            try (OutputStream os = new BufferedOutputStream(Files.newOutputStream(xlsx), 1 << 16)) {
+                outcome = XlsFile.rewrite(source, options.password(), os);
+            } finally {
+                ticket.close();
             }
             stopIfInterrupted();
             Result r = render(xlsx, Format.XLSX, sink, options, (s, job) -> renderer.render(source, job), REWRITTEN);
@@ -1307,14 +1280,6 @@ public final class OfficeToPdf {
             Files.deleteIfExists(file);
         } catch (IOException | RuntimeException e) {
             file.toFile().deleteOnExit();
-        }
-    }
-
-    private static void closeQuietly(POIFSFileSystem fs) {
-        try {
-            fs.close();
-        } catch (IOException | RuntimeException ignored) {
-            // read-only; nothing to lose
         }
     }
 

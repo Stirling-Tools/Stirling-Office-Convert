@@ -189,6 +189,17 @@ class ConvertHandlerTest {
     }
 
     @Test
+    void aNameWithAControlCharacterIsABadRequest() throws Exception {
+        String url = start(60);
+        for (String name : new String[] {"a.do%00cx", "notes%00.txt", "a%0A.csv"}) {
+            HttpResponse<byte[]> r = post(url + "?name=" + name, "Plain upload text".getBytes());
+            assertEquals(400, r.statusCode(), name);
+            assertEquals("name", header(r, "X-Error"));
+        }
+        assertPdf(post(url + "?name=notes.txt", "Plain upload text".getBytes()), "txt", "Plain upload text");
+    }
+
+    @Test
     void aLongDocumentTimesOut() throws Exception {
         HttpResponse<byte[]> r = post(start(1), Fixtures.longDocx(300_000));
         assertEquals(504, r.statusCode(), () -> r.statusCode() + " " + header(r, "X-Pages"));

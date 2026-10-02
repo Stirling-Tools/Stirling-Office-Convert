@@ -2,13 +2,13 @@ package stirling.software.officeconvert.topdf.io;
 
 import org.apache.poi.openxml4j.util.ZipSecureFile;
 
-public final class PoiLimits {
+final class PoiLimits {
 
     private static volatile boolean applied;
 
     private PoiLimits() {}
 
-    public static void apply() {
+    static void apply() {
         if (applied) {
             return;
         }

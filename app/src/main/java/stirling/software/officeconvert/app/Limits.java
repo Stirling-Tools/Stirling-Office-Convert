@@ -22,8 +22,13 @@ record Limits(
 
     private static final int DOWNLOAD_SECONDS = 300;
 
+    static final int DEFAULT_TIMEOUT_SECONDS = 180;
+
     static Limits fromEnvironment(String[] args) {
-        Map<String, String> env = System.getenv();
+        return from(System.getenv(), args);
+    }
+
+    static Limits from(Map<String, String> env, String[] args) {
         int port = args.length > 0 ? Integer.parseInt(args[0]) : number(env, "PORT", 8177);
         String ipHeader = env.getOrDefault("CLIENT_IP_HEADER", "").strip();
         return new Limits(
@@ -31,7 +36,7 @@ record Limits(
                 port,
                 number(env, "MAX_UPLOAD_MB", 512) * 1024L * 1024L,
                 number(env, "MAX_PAGES", 0),
-                number(env, "CONVERT_TIMEOUT_SECONDS", 0),
+                atLeastOne(env, "CONVERT_TIMEOUT_SECONDS", DEFAULT_TIMEOUT_SECONDS),
                 Math.max(1, number(env, "MAX_CONCURRENT", Math.max(2, Runtime.getRuntime().availableProcessors() / 2))),
                 Math.max(0, number(env, "MAX_QUEUED", 8)),
                 Math.max(1, number(env, "QUEUE_WAIT_SECONDS", 300)),
@@ -57,10 +62,17 @@ record Limits(
         }
     }
 
+    private static int atLeastOne(Map<String, String> env, String key, int fallback) {
+        int v = number(env, key, fallback);
+        if (v < 1) {
+            throw new IllegalArgumentException(key + " must be 1 or more, not " + v);
+        }
+        return v;
+    }
+
     void applyServerSettings() {
         setDefault("sun.net.httpserver.maxReqTime", requestTimeoutSeconds);
-        setDefault("sun.net.httpserver.maxRspTime",
-                timeoutSeconds > 0 ? queueWaitSeconds + timeoutSeconds + DOWNLOAD_SECONDS : -1);
+        setDefault("sun.net.httpserver.maxRspTime", queueWaitSeconds + timeoutSeconds + DOWNLOAD_SECONDS);
         setDefault("jdk.httpserver.maxConnections", maxConnections);
         setDefault("sun.net.httpserver.drainAmount", 0);
     }
