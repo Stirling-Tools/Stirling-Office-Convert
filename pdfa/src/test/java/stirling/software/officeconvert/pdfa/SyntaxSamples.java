@@ -56,6 +56,12 @@ final class SyntaxSamples {
                             + lzw + " EI Q 1 2 3 bogusop";
                     return RawPdf.page(RawPdf.helvetica(), content).bytes();
                 });
+        raw("r05_page_tree", Set.of(), () -> {
+            RawPdf r = RawPdf.page(RawPdf.helvetica(), TEXT);
+            r.set(2, "<</Kids[3 0 R]/Count 7>>");
+            r.set(3, "<</Parent 1 0 R/MediaBox[0 0 595 842]/Resources<<" + RawPdf.helvetica() + ">>/Contents 4 0 R>>");
+            return r.bytes();
+        });
     }
 
     private static byte[] lzwGray() {

@@ -30,15 +30,15 @@ final class Conversion {
     private static PdfToPdfA.Result convert(PDDocument doc, OutputStream out, PdfToPdfA.Options options)
             throws IOException {
         PdfALevel level = options.level();
-        int pages = doc.getNumberOfPages();
-        if (options.maxPages() > 0 && pages > options.maxPages()) {
-            throw new IOException("The PDF has " + pages + " pages, more than the limit of " + options.maxPages());
-        }
+        pageLimit(doc.getNumberOfPages(), options);
         Report report = new Report();
         if (doc.isEncrypted()) {
             doc.setAllSecurityToBeRemoved(true);
         }
         doc.getDocument().setEncryptionDictionary(null);
+        PageTreeRepair.run(doc, report);
+        int pages = doc.getNumberOfPages();
+        pageLimit(pages, options);
         if (level.tagged()) {
             Tagging.run(doc, level, report);
         }
@@ -85,6 +85,15 @@ final class Conversion {
         PdfFiles.stopIfInterrupted();
         save(doc, out, level);
         return new PdfToPdfA.Result(level, pages, report.warnings(), report.flattenedPages(), report.substitutedFonts());
+    }
+
+    private static void pageLimit(int pages, PdfToPdfA.Options options) throws IOException {
+        if (pages == 0) {
+            throw new IOException("The PDF has no pages");
+        }
+        if (options.maxPages() > 0 && pages > options.maxPages()) {
+            throw new IOException("The PDF has " + pages + " pages, more than the limit of " + options.maxPages());
+        }
     }
 
     private static void save(PDDocument doc, OutputStream out, PdfALevel level) throws IOException {

@@ -36,7 +36,7 @@ class RuleSamplesTest {
                 expected.add(parts[1]);
             }
         }
-        Map<String, Integer> before = VeraPdf.failures(in, level);
+        Map<String, Integer> before = expected.isEmpty() ? Map.of() : VeraPdf.failures(in, level);
         Set<String> missing = new TreeSet<>(expected);
         missing.removeAll(before.keySet());
         assertTrue(missing.isEmpty(), "the input does not break " + missing + " for " + level + ": " + before);
