@@ -67,6 +67,28 @@ class LineBuilderTest {
         assertTrue(lines.get(0).text().endsWith("7"));
     }
 
+    @Test
+    void splitsLeaderDotsGluedToTheirWords() {
+        List<Glyph> glyphs = new ArrayList<>();
+        place(glyphs, "Estimate..........8", 72, 100, 10);
+
+        Line line = LineBuilder.join(LineBuilder.build(glyphs));
+
+        assertEquals(List.of("Estimate", "8"), line.words.stream().map(w -> w.text).toList());
+        assertEquals(Line.LEADER, line.gaps[1]);
+        assertEquals('.', line.leaders[1]);
+    }
+
+    @Test
+    void keepsTrailingDotsOnTheirWord() {
+        List<Glyph> glyphs = new ArrayList<>();
+        place(glyphs, "Loading....", 72, 100, 10);
+
+        Line line = LineBuilder.join(LineBuilder.build(glyphs));
+
+        assertEquals(List.of("Loading...."), line.words.stream().map(w -> w.text).toList());
+    }
+
     private static void placeTracked(List<Glyph> out, String text, float x, float baseline, float tracking) {
         for (char c : text.toCharArray()) {
             float w = c == ' ' ? SPACE : ADVANCE;
