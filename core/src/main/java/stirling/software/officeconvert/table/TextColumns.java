@@ -12,6 +12,8 @@ final class TextColumns {
 
     private static final float EDGE_ALIGNMENT = 0.6f;
 
+    private static final float HEADED_GUTTER = 0.75f;
+
     record Span(float left, float right) {
 
         float width() {
@@ -94,7 +96,7 @@ final class TextColumns {
                 boolean coreQualifies =
                         widestEmpty != null
                                 && (widestEmpty.width() >= minGutter
-                                        || alignedBoundary(lines, widestEmpty));
+                                        || alignedBoundary(lines, widestEmpty, minGutter));
                 Span gutter = coreQualifies ? widestEmpty : new Span(gutterStart, x);
                 if (coreQualifies || gutter.width() >= minGutter) {
                     columns.add(new Span(columnStart, gutter.left()));
@@ -108,7 +110,7 @@ final class TextColumns {
         return columns;
     }
 
-    private static boolean alignedBoundary(List<ChunkedLine> lines, Span gap) {
+    private static boolean alignedBoundary(List<ChunkedLine> lines, Span gap, float minGutter) {
         if (gap.width() < 1f) {
             return false;
         }
@@ -130,7 +132,8 @@ final class TextColumns {
                 }
             }
         }
-        return ending >= 3 && starting >= 3 && maxStart - minStart >= 2f;
+        boolean rightAligned = ending >= 3 && maxStart - minStart >= 2f;
+        return rightAligned && (starting >= 3 || starting >= 1 && gap.width() >= HEADED_GUTTER * minGutter);
     }
 
     int count() {
