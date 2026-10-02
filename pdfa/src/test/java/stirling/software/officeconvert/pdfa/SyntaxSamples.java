@@ -62,6 +62,12 @@ final class SyntaxSamples {
             r.set(3, "<</Parent 1 0 R/MediaBox[0 0 595 842]/Resources<<" + RawPdf.helvetica() + ">>/Contents 4 0 R>>");
             return r.bytes();
         });
+        raw("r06_unknown_filter", Set.of("2:6.1.7.2-1"), () -> {
+            RawPdf r = RawPdf.page(RawPdf.helvetica() + "/XObject<</X1 5 0 R>>", TEXT + " q 100 0 0 100 72 500 cm /X1 Do Q");
+            r.add("<</Type/XObject/Subtype/Image/Width 1/Height 1/ColorSpace/DeviceGray/BitsPerComponent 8"
+                    + "/Filter/BogusDecode/Length 3>>stream\nabc\nendstream");
+            return r.bytes();
+        });
     }
 
     private static byte[] lzwGray() {
