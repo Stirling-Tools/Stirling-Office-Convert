@@ -5,13 +5,19 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.awt.Color;
 import java.awt.image.BufferedImage;
+import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.List;
 
 import org.apache.pdfbox.Loader;
+import org.apache.pdfbox.cos.COSDictionary;
+import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.PDPageContentStream;
+import org.apache.pdfbox.pdmodel.common.PDRectangle;
+import org.apache.pdfbox.pdmodel.common.PDStream;
 import org.apache.pdfbox.pdmodel.font.PDFont;
 import org.apache.pdfbox.pdmodel.font.PDType1Font;
 import org.apache.pdfbox.pdmodel.font.Standard14Fonts;
@@ -89,6 +95,35 @@ class TransparencyTest {
         PdfToPdfA.convert(in, out, PdfToPdfA.Options.defaults().level(PdfALevel.A1B));
         assertTrue(similarity(in, out, 0) > 0.98, "similarity " + similarity(in, out, 0));
         assertTrue(Converted.text(out).contains("Drawn once, over the picture"));
+        VeraPdf.assertCompliant(out, PdfALevel.A1B);
+    }
+
+    @Test
+    void aBlendModeWithoutAnExtGStateTypeDoesNotBlendThePictureAgain() throws Exception {
+        Path in = dir.resolve("blend.pdf");
+        try (PDDocument d = new PDDocument()) {
+            PDPage p = new PDPage(new PDRectangle(200, 200));
+            d.addPage(p);
+            COSDictionary blend = new COSDictionary();
+            blend.setItem(COSName.BM, COSName.getPDFName("Difference"));
+            COSDictionary states = new COSDictionary();
+            states.setItem(COSName.getPDFName("G0"), blend);
+            COSDictionary res = new COSDictionary();
+            res.setItem(COSName.EXT_G_STATE, states);
+            p.getCOSObject().setItem(COSName.RESOURCES, res);
+            PDStream s = new PDStream(d);
+            try (OutputStream o = s.createOutputStream()) {
+                o.write("1 0 0 rg 0 0 200 200 re f /G0 gs 1 g 50 50 100 100 re f".getBytes(StandardCharsets.US_ASCII));
+            }
+            p.setContents(s);
+            d.save(in.toFile());
+        }
+        Path out = dir.resolve("blend-1b.pdf");
+        PdfToPdfA.convert(in, out, PdfToPdfA.Options.defaults().level(PdfALevel.A1B));
+        try (PDDocument d = Loader.loadPDF(out.toFile())) {
+            int rgb = new PDFRenderer(d).renderImage(0).getRGB(100, 100) & 0xFFFFFF;
+            assertEquals(0x00FFFF, rgb, Integer.toHexString(rgb));
+        }
         VeraPdf.assertCompliant(out, PdfALevel.A1B);
     }
 

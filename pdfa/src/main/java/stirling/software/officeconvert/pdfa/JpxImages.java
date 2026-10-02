@@ -19,7 +19,6 @@ import org.apache.pdfbox.cos.COSStream;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.common.PDStream;
 import org.apache.pdfbox.pdmodel.graphics.image.JPEGFactory;
-import org.apache.pdfbox.pdmodel.graphics.image.LosslessFactory;
 import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
 
 import stirling.software.officeconvert.jpx.JpxDecoder;
@@ -83,7 +82,7 @@ final class JpxImages {
         BufferedImage opaque = alpha != null && s.getDictionaryObject(COSName.COLORSPACE) == null ? colours(decoded)
                 : new PDImageXObject(new PDStream(s), null).getOpaqueImage();
         PDImageXObject replacement = encode(opaque);
-        PDImageXObject mask = alpha == null ? null : LosslessFactory.createFromImage(doc, alpha);
+        PDImageXObject mask = alpha == null ? null : GreyImages.lossless(doc, alpha);
         COSStream from = replacement.getCOSObject();
         byte[] data;
         try (InputStream in = from.createRawInputStream()) {
@@ -116,7 +115,7 @@ final class JpxImages {
             img = rgb;
         }
         return Transparency.photographic(img) ? JPEGFactory.createFromImage(doc, img, 0.92f)
-                : LosslessFactory.createFromImage(doc, img);
+                : GreyImages.lossless(doc, img);
     }
 
     private static BufferedImage decoded(COSStream s) throws IOException {
