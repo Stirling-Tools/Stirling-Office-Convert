@@ -481,6 +481,18 @@ public final class OfficeZip implements Closeable {
         return raced == null ? parsed : raced;
     }
 
+    Relationships peekRelationships(String sourcePart) throws IOException {
+        String source = canonical(sourcePart);
+        Relationships known = relationships.get(source);
+        if (known != null) {
+            return known;
+        }
+        String rels = relsPartFor(source);
+        Relationships parsed = exists(rels) ? parseRelationships(source, rels) : Relationships.NONE;
+        Relationships raced = relationships.putIfAbsent(source, parsed);
+        return raced == null ? parsed : raced;
+    }
+
     public String mainContentType() throws IOException {
         return contentType(mainPart());
     }
