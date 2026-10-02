@@ -15,6 +15,7 @@ import org.apache.pdfbox.io.RandomAccessReadBufferedFile;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.encryption.InvalidPasswordException;
 
+import stirling.software.officeconvert.jpx.JpxImageIO;
 import stirling.software.officeconvert.memory.Admission;
 
 public final class PdfFiles {
@@ -22,6 +23,7 @@ public final class PdfFiles {
     private PdfFiles() {}
 
     public static PDDocument open(Path pdf, String password) throws IOException {
+        JpxImageIO.install();
         return load(pdf, password);
     }
 
