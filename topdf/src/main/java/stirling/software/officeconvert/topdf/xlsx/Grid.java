@@ -10,6 +10,7 @@ import java.util.Map;
 import java.util.NavigableMap;
 import java.util.TreeMap;
 import java.util.function.Consumer;
+import java.util.function.IntPredicate;
 
 import org.apache.poi.ss.util.CellRangeAddress;
 import org.openxmlformats.schemas.spreadsheetml.x2006.main.CTMergeCell;
@@ -78,6 +79,10 @@ final class Grid {
             return store.format(this, col);
         }
 
+        void formats(int first, int last, PackedCells.FormatVisitor visit) throws IOException {
+            store.formats(this, first, last, visit);
+        }
+
         boolean hasText(int col) {
             int i = cols == null || col < 0 || col > Character.MAX_VALUE ? -1 : Arrays.binarySearch(cols, (char) col);
             return i >= 0 && store.hasText(this, i);
@@ -85,6 +90,15 @@ final class Grid {
 
         boolean isEmpty() {
             return cols == null;
+        }
+
+        int lastText(IntPredicate shown) {
+            for (int i = count() - 1; i >= 0; i--) {
+                if (store.hasText(this, i) && shown.test(cols[i])) {
+                    return cols[i];
+                }
+            }
+            return -1;
         }
 
         int count() {
@@ -478,6 +492,10 @@ final class Grid {
         return new CellText(t.kind(), runs, d.font() != null ? null : t.color(), t.general(), t.number());
     }
 
+    boolean hasDataBars() {
+        return overlays != null && overlays.hasBars();
+    }
+
     Overlays.Bar dataBar(int row, int col) {
         return overlays == null ? null : overlays.bar(row, col);
     }
@@ -594,12 +612,8 @@ final class Grid {
             if (row.hidden || row.isEmpty()) {
                 continue;
             }
-            NavigableMap<Integer, CellEntry> cells = row.cells();
-            CellEntry e = cells.lastEntry().getValue();
-            while (e != null && (!e.hasText() || columns.width(e.col()) <= 0)) {
-                var lower = cells.lowerEntry(e.col());
-                e = lower == null ? null : lower.getValue();
-            }
+            int shown = row.lastText(c -> columns.width(c) > 0);
+            CellEntry e = shown < 0 ? null : row.cell(shown);
             if (e == null || e.text().kind() != CellText.Kind.TEXT || e.format().wraps() || e.format().shrink()
                     || e.format().rotation() != 0 || mergeTopLeft.containsKey(key(e.row(), e.col()))) {
                 continue;
@@ -611,9 +625,9 @@ final class Grid {
             int first = e.col();
             int last = e.col();
             if (h == CellFormat.HAlign.CENTER_CONTINUOUS) {
-                while (last + 1 < Columns.MAX && cells.containsKey(last + 1)
-                        && cells.get(last + 1).format().hAlign() == CellFormat.HAlign.CENTER_CONTINUOUS
-                        && !cells.get(last + 1).hasText()) {
+                while (last + 1 < Columns.MAX && row.format(last + 1) != null
+                        && row.format(last + 1).hAlign() == CellFormat.HAlign.CENTER_CONTINUOUS
+                        && !row.hasText(last + 1)) {
                     last++;
                 }
             }

@@ -1,6 +1,7 @@
 package stirling.software.officeconvert.topdf.xlsx;
 
 import java.awt.Color;
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -124,6 +125,21 @@ final class PackedCells {
             out.add(new CellEntry(row.index, row.cols[i], formats.at(row.formats[i]), readText(row.packed, at)));
         }
         return out;
+    }
+
+    @FunctionalInterface
+    interface FormatVisitor {
+        void visit(int col, CellFormat format) throws IOException;
+    }
+
+    void formats(Grid.RowInfo row, int first, int last, FormatVisitor visit) throws IOException {
+        if (row.cols == null || first > last || last < 0) {
+            return;
+        }
+        int i = Arrays.binarySearch(row.cols, (char) Math.max(0, Math.min(first, Character.MAX_VALUE)));
+        for (i = i < 0 ? -i - 1 : i; i < row.cols.length && row.cols[i] <= last; i++) {
+            visit.visit(row.cols[i], formats.at(row.formats[i]));
+        }
     }
 
     CellFormat format(Grid.RowInfo row, int col) {

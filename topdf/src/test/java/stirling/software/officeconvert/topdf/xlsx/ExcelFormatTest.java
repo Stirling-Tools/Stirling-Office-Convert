@@ -3,6 +3,8 @@ package stirling.software.officeconvert.topdf.xlsx;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 
+import java.util.Random;
+
 import org.junit.jupiter.api.Test;
 
 class ExcelFormatTest {
@@ -25,6 +27,26 @@ class ExcelFormatTest {
         int index = FormatCode.numberSectionIndex(format, value);
         String section = FormatCode.sections(format).get(index);
         return show(ExcelFormat.format(value, section, index != 1, false));
+    }
+
+    @Test
+    void wholeNumbersPrintAsTheRoundedDecimalDoes() {
+        Random random = new Random(7);
+        double[] edges = {0, -0.0, 1, -1, 7, 1e14, -1e14, 999_999_999_999_999d, -999_999_999_999_999d, 1e15, 1e16,
+            123_456_789_012_345d, 4_503_599_627_370_496d, Double.MAX_VALUE, Double.POSITIVE_INFINITY, Double.NaN};
+        for (int d = 0; d < 6; d++) {
+            for (double v : edges) {
+                if (Double.isFinite(v)) {
+                    assertEquals(ExcelFormat.round(v, d).toPlainString(), ExcelFormat.plain(v, d), v + " at " + d);
+                }
+            }
+            for (int i = 0; i < 2000; i++) {
+                double v = random.nextLong() % (i < 1000 ? 1_000_000_000_000_000L : 100_000L);
+                assertEquals(ExcelFormat.round(v, d).toPlainString(), ExcelFormat.plain(v, d), v + " at " + d);
+                double x = v + random.nextInt(1000) / 1000.0;
+                assertEquals(ExcelFormat.round(x, d).toPlainString(), ExcelFormat.plain(x, d), x + " at " + d);
+            }
+        }
     }
 
     @Test

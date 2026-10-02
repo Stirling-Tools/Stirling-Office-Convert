@@ -330,8 +330,7 @@ final class ExcelFormat {
                 v = v / Math.pow(10, step);
             }
         }
-        BigDecimal rounded = round(v, decimals);
-        String plain = rounded.toPlainString();
+        String plain = plain(v, decimals);
         int dot = plain.indexOf('.');
         String whole = dot < 0 ? plain : plain.substring(0, dot);
         String frac = dot < 0 ? "" : plain.substring(dot + 1);
@@ -419,8 +418,16 @@ final class ExcelFormat {
         return false;
     }
 
+    static String plain(double v, int decimals) {
+        if (v == Math.rint(v) && Math.abs(v) < 1e15) {
+            String whole = Long.toString((long) v);
+            return decimals == 0 ? whole : whole + "." + "0".repeat(decimals);
+        }
+        return round(v, decimals).toPlainString();
+    }
+
     // A shortest repr of at most 15 digits is what the exact value rounds to at 15 digits, without BigInteger powers
-    private static BigDecimal round(double v, int decimals) {
+    static BigDecimal round(double v, int decimals) {
         BigDecimal shortest = BigDecimal.valueOf(v);
         if (shortest.precision() <= 15) {
             return shortest.setScale(decimals, RoundingMode.HALF_UP);
