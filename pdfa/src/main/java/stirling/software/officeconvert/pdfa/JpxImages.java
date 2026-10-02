@@ -1,7 +1,11 @@
 package stirling.software.officeconvert.pdfa;
 
 import java.awt.image.BufferedImage;
+import java.awt.image.ColorModel;
+import java.awt.image.ComponentColorModel;
+import java.awt.image.DataBuffer;
 import java.awt.image.Raster;
+import java.awt.image.WritableRaster;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -74,9 +78,10 @@ final class JpxImages {
             throw new IOException("A JPEG 2000 image has " + pixels + " pixels, more than " + MAX_PIXELS
                     + " can be converted for " + level.label());
         }
-        PDImageXObject original = new PDImageXObject(new PDStream(s), null);
-        BufferedImage opaque = original.getOpaqueImage();
-        BufferedImage alpha = alpha(s);
+        BufferedImage decoded = s.getInt(SMASK_IN_DATA, 0) == 0 ? null : decoded(s);
+        BufferedImage alpha = decoded == null ? null : alpha(decoded);
+        BufferedImage opaque = alpha != null && s.getDictionaryObject(COSName.COLORSPACE) == null ? colours(decoded)
+                : new PDImageXObject(new PDStream(s), null).getOpaqueImage();
         PDImageXObject replacement = encode(opaque);
         PDImageXObject mask = alpha == null ? null : LosslessFactory.createFromImage(doc, alpha);
         COSStream from = replacement.getCOSObject();
@@ -114,22 +119,39 @@ final class JpxImages {
                 : LosslessFactory.createFromImage(doc, img);
     }
 
-    private static BufferedImage alpha(COSStream s) throws IOException {
-        if (s.getInt(SMASK_IN_DATA, 0) == 0) {
-            return null;
-        }
+    private static BufferedImage decoded(COSStream s) throws IOException {
         try {
-            BufferedImage img = JpxDecoder.decode(encoded(s)).toBufferedImage();
-            Raster a = img.getAlphaRaster();
-            if (a == null) {
-                return null;
-            }
-            BufferedImage mask = new BufferedImage(img.getWidth(), img.getHeight(), BufferedImage.TYPE_BYTE_GRAY);
-            mask.setData(a.createTranslatedChild(0, 0));
-            return mask;
+            return JpxDecoder.decode(encoded(s)).toBufferedImage();
         } catch (RuntimeException e) {
             throw new IOException("A JPEG 2000 image could not be read: " + e.getMessage(), e);
         }
+    }
+
+    private static BufferedImage alpha(BufferedImage img) {
+        Raster a = img.getAlphaRaster();
+        if (a == null) {
+            return null;
+        }
+        BufferedImage mask = new BufferedImage(img.getWidth(), img.getHeight(), BufferedImage.TYPE_BYTE_GRAY);
+        mask.setData(a.createTranslatedChild(0, 0));
+        return mask;
+    }
+
+    private static BufferedImage colours(BufferedImage img) {
+        ColorModel cm = img.getColorModel();
+        int[] bands = new int[cm.getNumColorComponents()];
+        for (int i = 0; i < bands.length; i++) {
+            bands[i] = i;
+        }
+        WritableRaster r = img.getRaster().createWritableChild(0, 0, img.getWidth(), img.getHeight(), 0, 0, bands);
+        if (bands.length == 1 && r.getTransferType() == DataBuffer.TYPE_BYTE) {
+            BufferedImage grey = new BufferedImage(img.getWidth(), img.getHeight(), BufferedImage.TYPE_BYTE_GRAY);
+            grey.setData(r);
+            return grey;
+        }
+        ColorModel opaque = new ComponentColorModel(cm.getColorSpace(), false, false, ColorModel.OPAQUE,
+                r.getTransferType());
+        return new BufferedImage(opaque, r, false, null);
     }
 
     private static byte[] encoded(COSStream s) throws IOException {

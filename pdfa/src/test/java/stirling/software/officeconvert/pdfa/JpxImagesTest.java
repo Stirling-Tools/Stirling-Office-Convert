@@ -24,10 +24,12 @@ import javax.imageio.stream.ImageOutputStream;
 import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.cos.COSDictionary;
 import org.apache.pdfbox.cos.COSName;
+import org.apache.pdfbox.cos.COSObjectKey;
 import org.apache.pdfbox.cos.COSStream;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.common.PDStream;
+import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
 import org.apache.pdfbox.rendering.PDFRenderer;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -64,6 +66,18 @@ class JpxImagesTest {
         for (int y = 0; y < 60; y++) {
             for (int x = 0; x < 80; x++) {
                 r.setPixel(x, y, new int[] {x * 3, x < 40 ? 255 : 128});
+            }
+        }
+        return new BufferedImage(cm, r, false, null);
+    }
+
+    private static BufferedImage colourWithAlpha() {
+        ComponentColorModel cm = new ComponentColorModel(ColorSpace.getInstance(ColorSpace.CS_sRGB), true, false,
+                Transparency.TRANSLUCENT, DataBuffer.TYPE_BYTE);
+        WritableRaster r = cm.createCompatibleWritableRaster(80, 60);
+        for (int y = 0; y < 60; y++) {
+            for (int x = 0; x < 80; x++) {
+                r.setPixel(x, y, new int[] {x * 3, 100, 255 - x * 3, x < 40 ? 255 : 128});
             }
         }
         return new BufferedImage(cm, r, false, null);
@@ -147,11 +161,24 @@ class JpxImagesTest {
 
     @Test
     void partOneKeepsTheAlphaOfAJpegTwoThousandImage() throws Exception {
-        Path in = page(jpx(grayWithAlpha()), 80, 60, true);
+        Path in = page(jpx(colourWithAlpha()), 80, 60, true);
         Path out = dir.resolve("1b-alpha.pdf");
         PdfToPdfA.convert(in, out, PdfToPdfA.Options.defaults().level(PdfALevel.A1B));
         assertFalse(hasJpx(out));
-        assertTrue(meanDifference(in, out) < 3);
+        try (PDDocument d = Loader.loadPDF(out.toFile())) {
+            BufferedImage converted = null;
+            for (COSObjectKey key : d.getDocument().getXrefTable().keySet()) {
+                if (d.getDocument().getObjectFromPool(key).getObject() instanceof COSStream s
+                        && COSName.IMAGE.equals(s.getCOSName(COSName.SUBTYPE)) && s.getInt(COSName.WIDTH) == 80) {
+                    converted = new PDImageXObject(new PDStream(s), null).getOpaqueImage();
+                }
+            }
+            assertNotNull(converted);
+            int rgb = converted.getRGB(42, 5);
+            assertEquals(126, rgb >> 16 & 0xFF, 3);
+            assertEquals(100, rgb >> 8 & 0xFF, 3);
+            assertEquals(129, rgb & 0xFF, 3);
+        }
         VeraPdf.assertCompliant(out, PdfALevel.A1B);
     }
 
