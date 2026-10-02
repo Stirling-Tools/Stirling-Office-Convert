@@ -68,6 +68,8 @@ final class SyntaxSamples {
                     + "/Filter/BogusDecode/Length 3>>stream\nabc\nendstream");
             return r.bytes();
         });
+        raw("r07_inline_image_without_data", Set.of(), () -> RawPdf.page(RawPdf.helvetica(),
+                TEXT + " 1 bogusop q 10 0 0 10 72 500 cm Q BI /W 1 /H 1 /CS /G /BPC 8").bytes());
     }
 
     private static byte[] lzwGray() {

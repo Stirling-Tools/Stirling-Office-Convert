@@ -33,7 +33,10 @@ final class InlineImages {
 
     static Outcome fix(Operator op) {
         COSDictionary params = op.getImageParameters();
-        if (params == null || op.getImageData() == null) {
+        if (op.getImageData() == null) {
+            return Outcome.UNREADABLE;
+        }
+        if (params == null) {
             return Outcome.UNCHANGED;
         }
         COSName key = params.containsKey(COSName.F) ? COSName.F : COSName.FILTER;
