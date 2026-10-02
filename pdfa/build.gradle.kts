@@ -31,6 +31,6 @@ publishing.publications.named<MavenPublication>("mavenJava") {
     artifactId = "stirling-office-convert-pdfa"
     pom {
         name.set("Stirling Office Convert PDF/A")
-        description.set("PDF to PDF/A (1b, 2b, 2u, 3b, 3u) in plain Java on Apache PDFBox")
+        description.set("PDF to PDF/A (1a, 1b, 2a, 2b, 2u, 3a, 3b, 3u) in plain Java on Apache PDFBox")
     }
 }
