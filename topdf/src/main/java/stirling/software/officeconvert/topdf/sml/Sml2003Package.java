@@ -71,6 +71,7 @@ public final class Sml2003Package {
         Parts parts = new Parts(out);
         List<String> warnings = new ArrayList<>();
         boolean lost = false;
+        SpanBudget spans = new SpanBudget();
         try (InputStream in = SourceFile.open(source)) {
             XMLStreamReader r = SecureXml.reader(in);
             int n = 0;
@@ -80,13 +81,18 @@ public final class Sml2003Package {
                 }
                 if (r.next() == XMLStreamConstants.START_ELEMENT && "Worksheet".equals(r.getLocalName())) {
                     SheetInfo info = sheets.get(n++);
-                    Sheet sheet = new Sheet(styles, date1904[0], digit, info.options, info.breaks);
+                    Sheet sheet = new Sheet(styles, date1904[0], digit, info.options, info.breaks, spans);
                     try (Parts.Part p = parts.open("xl/worksheets/sheet" + n + ".xml")) {
                         sheet.write(r, p);
                     }
                     if (sheet.truncated) {
                         lost = true;
                         warnings.add("Sheet " + info.name + " is too large; only its first rows were converted");
+                    }
+                    if (sheet.heightsDropped) {
+                        lost = true;
+                        warnings.add("Sheet " + info.name + " repeats too many rows; some of their heights were left"
+                                + " out");
                     }
                 }
             }

@@ -39,20 +39,29 @@ final class Sheet {
 
     private final Node breaks;
 
+    private final SpanBudget spans;
+
     private String tableStyle;
 
     private int row;
 
     private boolean dataOpen;
 
+    private int spanCount;
+
+    private double spanHeight;
+
     boolean truncated;
 
-    Sheet(Styles styles, boolean date1904, int digitPx, Node options, Node breaks) {
+    boolean heightsDropped;
+
+    Sheet(Styles styles, boolean date1904, int digitPx, Node options, Node breaks, SpanBudget spans) {
         this.styles = styles;
         this.date1904 = date1904;
         this.digitPx = Math.max(1, digitPx);
         this.options = options;
         this.breaks = breaks;
+        this.spans = spans;
     }
 
     /** Reads the Worksheet the reader is on to its end, writing as it goes. */
@@ -183,6 +192,9 @@ final class Sheet {
         if (index <= row || index > MAX_ROWS) {
             return;
         }
+        if (!spannedRows(out)) {
+            return;
+        }
         row = index;
         String rowStyle = n.attr("StyleID");
         StringBuilder b = new StringBuilder("<row r=\"").append(index).append('"');
@@ -214,25 +226,33 @@ final class Sheet {
             col = Math.min(MAX_COLS, at + across);
         }
         out.write(b.append("</row>").toString());
-        int span = Math.max(0, n.integer("Span", 0));
+        int span = Math.min(Math.max(0, n.integer("Span", 0)), MAX_ROWS - row);
         if (span > 0 && height >= 0) {
-            for (int i = 1; i <= span && row < MAX_ROWS; i++) {
-                if ((i & 4095) == 0) {
-                    OfficeZip.checkNotInterrupted();
-                    if (out.full()) {
-                        truncated = true;
-                        return;
-                    }
-                }
-                row++;
-                out.write("<row r=\"" + row + "\" ht=\"" + height + "\" customHeight=\"1\"/>");
-            }
-        } else {
-            row = Math.min(MAX_ROWS, row + span);
+            spanCount = span;
+            spanHeight = height;
         }
+        row += span;
         if (out.full()) {
             truncated = true;
         }
+    }
+
+    private boolean spannedRows(Parts.Part out) throws IOException {
+        int first = row - spanCount + 1;
+        int granted = spans.take(spanCount);
+        heightsDropped |= granted < spanCount;
+        spanCount = 0;
+        for (int i = 0; i < granted; i++) {
+            if ((i & 4095) == 4095) {
+                OfficeZip.checkNotInterrupted();
+                if (out.full()) {
+                    truncated = true;
+                    return false;
+                }
+            }
+            out.write("<row r=\"" + (first + i) + "\" ht=\"" + spanHeight + "\" customHeight=\"1\"/>");
+        }
+        return true;
     }
 
     private String cell(Node c, String ref, int style) {
