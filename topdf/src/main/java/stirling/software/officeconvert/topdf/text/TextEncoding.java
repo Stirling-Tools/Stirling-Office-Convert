@@ -23,18 +23,44 @@ record TextEncoding(Charset charset, int bom) {
 
     private static final Charset UTF_32LE = Charset.forName("UTF-32LE");
 
+    private static final int SAMPLE = 4096;
+
     static TextEncoding detect(Path file) throws IOException {
         byte[] head;
         try (InputStream in = Files.newInputStream(file)) {
-            head = in.readNBytes(4);
+            head = in.readNBytes(SAMPLE);
         }
         TextEncoding marked = fromBom(head);
         if (marked != null) {
             return marked;
         }
+        Charset wide = utf16(head);
+        if (wide != null) {
+            return new TextEncoding(wide, 0);
+        }
         try (InputStream in = new BufferedInputStream(Files.newInputStream(file), 1 << 16)) {
             return strictUtf8(in) ? new TextEncoding(StandardCharsets.UTF_8, 0) : new TextEncoding(WINDOWS_1252, 0);
         }
+    }
+
+    static Charset utf16(byte[] h) {
+        int pairs = h.length / 2;
+        if (pairs < 2) {
+            return null;
+        }
+        int evenNul = 0;
+        int oddNul = 0;
+        for (int i = 0; i + 1 < h.length; i += 2) {
+            evenNul += h[i] == 0 ? 1 : 0;
+            oddNul += h[i + 1] == 0 ? 1 : 0;
+        }
+        if (oddNul * 10 >= pairs * 3 && evenNul * 20 < pairs) {
+            return StandardCharsets.UTF_16LE;
+        }
+        if (evenNul * 10 >= pairs * 3 && oddNul * 20 < pairs) {
+            return StandardCharsets.UTF_16BE;
+        }
+        return null;
     }
 
     static TextEncoding fromBom(byte[] h) {
