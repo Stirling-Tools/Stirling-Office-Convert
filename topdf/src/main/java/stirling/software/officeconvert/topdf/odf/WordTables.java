@@ -126,12 +126,14 @@ final class WordTables {
         double total = 0;
         for (int i = 0; i < widths.size(); i++) {
             missing |= Double.isNaN(widths.get(i));
-            total += rel.get(i);
+        }
+        for (double r : rel) {
+            total += r;
         }
         if (!missing || !(total > 0) || !(tableWidth > 0)) {
             return;
         }
-        for (int i = 0; i < widths.size(); i++) {
+        for (int i = 0; i < rel.size(); i++) {
             widths.set(i, tableWidth * rel.get(i) / total);
         }
     }

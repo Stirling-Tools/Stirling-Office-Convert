@@ -44,6 +44,25 @@ class OdtTest {
     }
 
     @Test
+    void aTableWithFewerColumnsThanCellsStillConverts() throws IOException {
+        String table = "<table:table><table:table-column table:style-name=\"co1\"/><table:table-row>"
+                + "<table:table-cell><text:p>one</text:p></table:table-cell><table:table-cell><text:p>two</text:p>"
+                + "</table:table-cell></table:table-row></table:table>";
+        String styles = "<style:style style:name=\"co1\" style:family=\"table-column\"><style:table-column-properties"
+                + " style:rel-column-width=\"1000*\"/></style:style>";
+        String doc = document(odt(styles, table, null));
+        assertTrue(doc.contains("one") && doc.contains("two"), doc);
+        assertEquals(2, doc.split("<w:gridCol ", -1).length - 1, doc);
+    }
+
+    @Test
+    void aTableWithoutColumnsStillConverts() throws IOException {
+        String doc = document(odt("", "<table:table><table:table-row><table:table-cell><text:p>hi</text:p>"
+                + "</table:table-cell></table:table-row></table:table>", null));
+        assertTrue(doc.contains("hi"), doc);
+    }
+
+    @Test
     void textDocumentIsFoundByItsMimetypeWhateverItsName() throws IOException {
         Path p = OdfFixtures.write(dir, "letter.bin", OdfFixtures.odf(OdfFixtures.TEXT,
                 OdfFixtures.content("", OdfFixtures.text("<text:p>Hello</text:p>")), null));
