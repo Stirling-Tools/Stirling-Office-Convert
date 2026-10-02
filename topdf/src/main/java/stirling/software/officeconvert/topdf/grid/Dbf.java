@@ -9,6 +9,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
+import java.time.temporal.JulianFields;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -19,6 +20,8 @@ public final class Dbf {
     private record Field(String name, char type, int length, int decimals) {}
 
     private static final int MAX_FIELDS = 2048;
+
+    private static final double DATE_TIME_WIDTH = 16;
 
     private Dbf() {}
 
@@ -60,11 +63,18 @@ public final class Dbf {
                 end++;
             }
             String name = new String(b, at, end, StandardCharsets.ISO_8859_1).trim();
-            fields.add(new Field(name, (char) (b[at + 11] & 0xFF), b[at + 16] & 0xFF, b[at + 17] & 0xFF));
+            char type = (char) (b[at + 11] & 0xFF);
+            int length = b[at + 16] & 0xFF;
+            int decimals = b[at + 17] & 0xFF;
+            fields.add(type == 'C' ? new Field(name, type, length | decimals << 8, 0)
+                    : new Field(name, type, length, decimals));
         }
         Grid grid = new Grid();
         for (int c = 0; c < fields.size(); c++) {
             grid.value(0, c, fields.get(c).name());
+            if (fields.get(c).type() == 'T') {
+                grid.width(c, DATE_TIME_WIDTH);
+            }
         }
         int row = 1;
         for (long i = 0; i < records && row < Grid.MAX_ROWS; i++) {
@@ -122,11 +132,26 @@ public final class Dbf {
                 try {
                     LocalDate date = LocalDate.of(Integer.parseInt(s.substring(0, 4)), Integer.parseInt(s.substring(4, 6)),
                             Integer.parseInt(s.substring(6, 8)));
-                    double serial = ChronoUnit.DAYS.between(LocalDate.of(1899, 12, 30), date);
-                    return serial > 60 ? new Grid.Cell(serial, "m/d/yyyy", false, false, null) : null;
+                    long serial = serial(date);
+                    return serial > 0 ? new Grid.Cell((double) serial, "m/d/yyyy", false, false, null)
+                            : new Grid.Cell(date.toString(), null, false, false, null);
                 } catch (RuntimeException e) {
                     return null;
                 }
+            }
+            case 'T' -> {
+                if (f.length() != 8) {
+                    return null;
+                }
+                long day = i32(b, at);
+                long ms = i32(b, at + 4);
+                if (day <= 0 || ms < 0 || ms >= 86_400_000L) {
+                    return null;
+                }
+                LocalDate date = LocalDate.EPOCH.with(JulianFields.JULIAN_DAY, day);
+                long serial = serial(date);
+                return serial > 0 ? new Grid.Cell(serial + ms / 86_400_000.0, "m/d/yyyy h:mm", false, false, null)
+                        : null;
             }
             case 'L' -> {
                 char c = raw.isEmpty() ? '?' : Character.toUpperCase(raw.charAt(0));
@@ -154,6 +179,11 @@ public final class Dbf {
                 return null;
             }
         }
+    }
+
+    private static long serial(LocalDate date) {
+        long days = ChronoUnit.DAYS.between(LocalDate.of(1899, 12, 30), date);
+        return days > 60 ? days : days - 1;
     }
 
     private static Charset charset(int driver) {

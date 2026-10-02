@@ -182,7 +182,7 @@ public final class Sylk {
     private static Object value(String k) {
         if (k.startsWith("\"")) {
             String s = k.endsWith("\"") && k.length() >= 2 ? k.substring(1, k.length() - 1) : k.substring(1);
-            return s.replace("\"\"", "\"").replaceAll("\u001B[ -~]?[ -~]?", "");
+            return s.replace("\"\"", "\"").replace("\u001B :", "\n").replaceAll("\u001B[ -~]?[ -~]?", "");
         }
         String t = k.trim();
         if (t.equalsIgnoreCase("TRUE") || t.equalsIgnoreCase("FALSE")) {

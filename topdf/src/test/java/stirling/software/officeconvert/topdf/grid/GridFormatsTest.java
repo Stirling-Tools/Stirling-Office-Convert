@@ -1,5 +1,6 @@
 package stirling.software.officeconvert.topdf.grid;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -84,5 +85,58 @@ class GridFormatsTest {
         System.arraycopy(name.getBytes(StandardCharsets.US_ASCII), 0, n, 0, name.length());
         b.put(n).put((byte) type).putInt(0).put((byte) length).put((byte) decimals);
         b.put(new byte[14]);
+    }
+
+    private Path dbf(String name, Object[][] fields, byte[]... records) throws IOException {
+        int recordLength = 1;
+        for (Object[] f : fields) {
+            recordLength += (int) f[2];
+        }
+        int header = 32 + fields.length * 32 + 1;
+        ByteBuffer b = ByteBuffer.allocate(header + records.length * recordLength + 1).order(ByteOrder.LITTLE_ENDIAN);
+        b.put((byte) 0x30).put((byte) 104).put((byte) 3).put((byte) 5).putInt(records.length).putShort((short) header)
+                .putShort((short) recordLength);
+        b.position(32);
+        for (Object[] f : fields) {
+            int length = (int) f[2];
+            boolean wide = (char) f[1] == 'C' && length > 255;
+            field(b, (String) f[0], (char) f[1], wide ? length & 0xFF : length, wide ? length >> 8 : (int) f[3]);
+        }
+        b.put((byte) 0x0D);
+        for (byte[] r : records) {
+            b.put((byte) ' ').put(r);
+        }
+        b.put((byte) 0x1A);
+        return Files.write(dir.resolve(name), java.util.Arrays.copyOf(b.array(), b.position()));
+    }
+
+    @Test
+    void wideCharacterFieldsTakeTheirLengthHighByteFromTheDecimals() throws IOException {
+        byte[] r = (String.format("%-300s", "LONG") + "TAILTEXT").getBytes(StandardCharsets.US_ASCII);
+        Grid g = Dbf.read(dbf("wide.dbf", new Object[][] {{"NOTE", 'C', 300, 0}, {"TAIL", 'C', 8, 0}}, r));
+        assertEquals("LONG", g.get(1, 0).value());
+        assertEquals("TAILTEXT", g.get(1, 1).value());
+    }
+
+    @Test
+    void earlyNineteenHundredDatesAndFoxProDateTimesAreRead() throws IOException {
+        ByteBuffer t = ByteBuffer.allocate(8).order(ByteOrder.LITTLE_ENDIAN);
+        t.putInt((int) java.time.LocalDate.of(2004, 3, 5).getLong(java.time.temporal.JulianFields.JULIAN_DAY))
+                .putInt((13 * 60 + 30) * 60_000);
+        byte[] r = new byte[16];
+        System.arraycopy("19000115".getBytes(StandardCharsets.US_ASCII), 0, r, 0, 8);
+        System.arraycopy(t.array(), 0, r, 8, 8);
+        Grid g = Dbf.read(dbf("dates.dbf", new Object[][] {{"DAY", 'D', 8, 0}, {"STAMP", 'T', 8, 0}}, r));
+        assertEquals(15.0, g.get(1, 0).value());
+        assertEquals(38051 + 13.5 / 24, (double) g.get(1, 1).value(), 1e-9);
+        String text = convert("dates.dbf", Files.readAllBytes(dir.resolve("dates.dbf")));
+        assertTrue(text.contains("1/15/1900") && text.contains("3/5/2004 13:30"), text);
+    }
+
+    @Test
+    void aSylkLineBreakEscapeIsANewLine() throws IOException {
+        Path in = Files.write(dir.resolve("lines.slk"), "ID;PWXL\r\nC;Y1;X1;K\"Line one\u001B :Line two\"\r\nE\r\n"
+                .getBytes(StandardCharsets.US_ASCII));
+        assertEquals("Line one\nLine two", Sylk.read(in).get(0, 0).value());
     }
 }
