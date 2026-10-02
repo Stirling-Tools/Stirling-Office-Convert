@@ -87,12 +87,13 @@ public final class OfficeToPdf {
                 case "pptx", "pptm", "ppsx", "ppsm", "potx", "potm", "odp", "otp", "fodp", "odg", "otg", "fodg" -> PPTX;
                 case "xlsx", "xlsm", "xltx", "xltm", "xls", "xlt", "xlsb", "ods", "ots", "fods" -> XLSX;
                 case "csv" -> CSV;
+                case "slk", "sylk", "dif", "dbf" -> XLSX;
                 case "tsv", "tab" -> TSV;
                 case "ppt", "pps", "pot" -> PPT;
                 default -> throw new IllegalArgumentException("Not an Office document: " + file.getFileName()
                         + "; use .docx, .docm, .dotx, .dotm, .doc, .dot, .rtf, .pptx, .pptm, .ppsx, .ppsm, .potx, .potm,"
                         + " .xlsx, .xlsm, .xltx, .xltm, .xlsb, .xls, .xlt, .ppt, .pps, .pot, .odt, .ott, .fodt, .ods, .ots, .fods,"
-                        + " .odp, .otp, .fodp, .odg, .otg, .fodg, .xml, .txt, .text, .log, .asc, .csv, .tsv or .tab");
+                        + " .odp, .otp, .fodp, .odg, .otg, .fodg, .xml, .slk, .dif, .dbf, .txt, .text, .log, .asc, .csv, .tsv or .tab");
             };
         }
 
@@ -103,6 +104,7 @@ public final class OfficeToPdf {
                         "xltx", "xltm", "doc", "dot", "ppt", "pps", "pot", "xls", "xlt", "xlsb", "rtf", "odt", "ott", "fodt",
                         "ods", "ots", "fods", "odp", "otp", "fodp", "odg", "otg", "fodg", "xml" -> true;
                 case "txt", "text", "log", "asc", "csv", "tsv", "tab" -> true;
+                case "slk", "sylk", "dif", "dbf" -> true;
                 default -> false;
             };
         }
@@ -336,6 +338,10 @@ public final class OfficeToPdf {
         if (OdfPackage.sniff(in) != null) {
             return OdfPackage.estimate(in) + 2 * Admission.BASE_BYTES;
         }
+        Long grid = GridInput.estimate(in);
+        if (grid != null) {
+            return grid;
+        }
         Long xml = XmlInput.estimate(in);
         if (xml != null) {
             return xml;
@@ -546,6 +552,10 @@ public final class OfficeToPdf {
         Result odf = openDocument(source, sink, options, renderer);
         if (odf != null) {
             return odf;
+        }
+        Result grid = GridInput.render(source, sink, options, renderer);
+        if (grid != null) {
+            return grid;
         }
         Result xml = XmlInput.render(source, requested, sink, options, renderer);
         if (xml != null) {
