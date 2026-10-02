@@ -5,6 +5,8 @@ import stirling.software.officeconvert.sheet.Conventions.DecimalMark;
 
 public final class ConventionEvidence {
 
+    private static final int CONTRARY_DECIMALS = 2;
+
     private int point;
     private int comma;
     private int monthFirst;
@@ -44,6 +46,16 @@ public final class ConventionEvidence {
             dates = dollars > poundsEuros ? DateOrder.MDY : DateOrder.DMY;
         }
         return new Conventions(decimals, dates);
+    }
+
+    public Conventions conventions(Conventions fallback) {
+        Conventions own = conventions();
+        DecimalMark known = fallback.decimals();
+        if (known != DecimalMark.UNKNOWN && own.decimals() != DecimalMark.UNKNOWN && own.decimals() != known
+                && Math.max(point, comma) < CONTRARY_DECIMALS) {
+            own = new Conventions(known, own.dates());
+        }
+        return own.or(fallback);
     }
 
     private static String trimPunctuation(String token) {
