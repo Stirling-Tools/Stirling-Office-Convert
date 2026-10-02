@@ -75,7 +75,7 @@ final class TextInput {
                     : CsvPackage.estimate(bytes));
             try (OutputStream os = new BufferedOutputStream(Files.newOutputStream(pkg), 1 << 16)) {
                 outcome = plain ? TextPackage.write(source, os, options.maxPages())
-                        : CsvPackage.write(source, os, kind == TextFormats.Kind.CSV ? ',' : '	', sheetName(source, options),
+                        : CsvPackage.write(source, os, kind == TextFormats.Kind.CSV ? ',' : '	', sheetName(options),
                                 options.maxPages(), options.fontLibrary());
             } finally {
                 ticket.close();
@@ -96,9 +96,8 @@ final class TextInput {
         }
     }
 
-    static String sheetName(Path source, Options options) {
-        Path name = source.getFileName();
-        String n = options.displayName() != null ? options.displayName() : name == null ? "" : name.toString();
+    static String sheetName(Options options) {
+        String n = options.displayName() != null ? options.displayName() : "";
         n = n.substring(Math.max(n.lastIndexOf('/'), n.lastIndexOf('\\')) + 1);
         int dot = n.lastIndexOf('.');
         return dot > 0 ? n.substring(0, dot) : n;

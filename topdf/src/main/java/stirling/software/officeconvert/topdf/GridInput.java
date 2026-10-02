@@ -74,7 +74,7 @@ final class GridInput {
             List<GridPackage.Sheet> sheets;
             Admission.Ticket ticket = Admission.jvm().enter(GridPackage.estimate(Files.size(source)));
             try {
-                String name = TextInput.sheetName(source, options);
+                String name = TextInput.sheetName(options);
                 sheets = switch (kind) {
                     case SYLK -> List.of(new GridPackage.Sheet(name, Sylk.read(source)));
                     case DIF -> List.of(new GridPackage.Sheet(name, Dif.read(source)));

@@ -265,13 +265,25 @@ JPEG 2000 (JPX) pictures are decoded by the library's own plain-Java decoder, `s
 so they need no native code and no `jai-imageio`. It reads JP2 and JPX files and raw codestreams (Part 1: every
 progression order and progression change, tiles and tile-parts, precincts, all code-block styles, both wavelets,
 both colour transforms, region of interest, packed packet headers, subsampled components, 1 to 16 bit samples)
-with palettes, channel definitions, alpha and enumerated or ICC colour. It registers itself as the `jpeg2000`
-ImageIO reader ahead of any other one installed, so PDFBox uses it for `JPXDecode`; set the system property
-`stirling.officeconvert.jpxReader=imageio` to let another installed reader win. A picture drawn small is decoded at
-a lower resolution level. One image is held to 134 million samples by default (`JpxOptions`), a tile to 2 million
-code-blocks, and an interrupted thread stops decoding. `JpxDecoder` also serves callers directly.
+with palettes, channel definitions, alpha and enumerated or ICC colour. A PDF image keeps its alpha channel as a soft
+mask only when its dictionary sets `SMaskInData`; otherwise PDFBox is handed the colour bands alone, as the PDF
+specification says.
 
-The library depends on `org.apache.pdfbox:pdfbox:3.0.8` and `commons-logging`, and runs on Java 25 or later.
+PDFBox finds its JPEG 2000 decoder through ImageIO, so the reader is registered as an ImageIO `jpeg2000` reader, and
+having this library on the classpath makes it the JVM's preferred JPEG 2000 reader: the effect is global, and every
+`ImageIO` and PDFBox caller in the process gets it ahead of any other installed reader (such as `jai-imageio`). It is
+preferred on purpose: it is bounded, interruptible and faster. Every conversion entry point (the `Path` and
+`PDDocument` methods of `OfficeConvert`, the `PdfTo*` classes, `OfficeToPdf` and `PdfToPdfA`) puts it first again, so
+a host that calls `ImageIO.scanForPlugins()` later cannot reorder it for the next conversion. To keep another reader
+first, start the JVM with `-Dstirling.officeconvert.jpxReader=imageio`; the conversions then leave that reader in
+front of this one. A picture drawn small is decoded at a lower resolution level. One image is held to 134 million
+samples by default (`JpxOptions`, which refuses a negative reduction, a sample limit below one or an empty region), a
+tile to 2 million code-blocks, and an interrupted thread stops decoding. PDF to Office leaves out a JPEG 2000 picture
+of more than 67 million samples, judged from its codestream header before anything decodes it. `JpxDecoder` also
+serves callers directly.
+
+The library depends on `org.apache.pdfbox:pdfbox:3.0.8` and `commons-logging`, with `org.apache.pdfbox:jbig2-imageio`
+at runtime for JBIG2 pictures, and runs on Java 25 or later.
 
 ### Office to PDF
 
@@ -499,9 +511,10 @@ with the same `-D` flags: `-Djdk.xml.maxElementDepth=1000 -Djdk.xml.totalEntityS
 XML parser in the process that does not set its own limits, which restores roughly the limits of Java 23 and earlier.
 The call sets only properties the host has not set and returns their names. The command-line tool makes this call.
 
-It depends on `org.apache.pdfbox:pdfbox:3.0.8`, `org.apache.poi:poi-ooxml` and `poi-scratchpad` 5.5.1 (with
-`xmlbeans`, `commons-io`, `commons-codec`, `commons-compress`, `commons-collections4`, `commons-math3`,
-`SparseBitSet`, `curvesapi` and `log4j-api`) and `de.rototor.pdfbox:graphics2d:3.0.5`, all Apache-2.0 apart from
+It depends on the core module, `org.apache.pdfbox:pdfbox:3.0.8`, `org.apache.poi:poi-ooxml` and `poi-scratchpad`
+5.5.1 (with `poi`, `poi-ooxml-lite`, `xmlbeans`, `commons-io`, `commons-codec`, `commons-compress`, `commons-lang3`,
+`commons-collections4`, `commons-math3`, `SparseBitSet`, `curvesapi` and `log4j-api`) and
+`de.rototor.pdfbox:graphics2d:3.0.5`, all Apache-2.0 apart from
 `curvesapi` (BSD-3-Clause). Automatic hyphenation uses the English Hyphen patterns bundled under
 `stirling/software/officeconvert/topdf/docx/hyph/` (BSD-style licence beside them).
 
@@ -655,6 +668,8 @@ anywhere) fails with an `IOException` naming the problem and the pages, rather t
 (10,000 by default) refuses longer documents rather than cutting them, the timeout and thread interrupts stop the work,
 and the output is moved into place only when complete.
 
+It depends on the core and topdf modules (and so on what those depend on) and `org.apache.pdfbox:pdfbox:3.0.8`.
+
 ## How it works
 
 Two passes over the pages:
@@ -708,10 +723,22 @@ java -XX:AOTCache=office-convert.aot -jar stirling-office-convert-cli.jar in.pdf
 
 The cache belongs to the JDK build that made it; the JVM ignores a cache from another JDK and runs as usual.
 
+## Changes
+
+### 0.2.0
+
+- Needs Java 25 or later; 0.1.0 also ran on Java 21.
+- `OfficeToPdf.Format` has three new values, `TEXT`, `CSV` and `TSV`, for plain text and delimited tables. A caller
+  with an exhaustive `switch` over `Format` needs cases for them.
+- A new module, `stirling-office-convert-pdfa`, converts PDF to PDF/A.
+- JPEG 2000 pictures are decoded by the library's own reader, which becomes the JVM's preferred `jpeg2000` ImageIO
+  reader; `-Dstirling.officeconvert.jpxReader=imageio` keeps another one first (see Pictures).
+
 ## Releasing
 
 Published to Maven Central as `com.stirling:stirling-office-convert`, `com.stirling:stirling-office-convert-legacy`
-(the `.ppt` writer) and `com.stirling:stirling-office-convert-topdf` (Office to PDF), signed, the same way as JPDFium:
+(the `.ppt` writer), `com.stirling:stirling-office-convert-topdf` (Office to PDF) and
+`com.stirling:stirling-office-convert-pdfa` (PDF to PDF/A), signed, the same way as JPDFium:
 
 - A `v1.2.3` tag runs `.github/workflows/release.yml`: build, test, then `publishAllToCentralPortal`, which uploads to
   the Central Portal staging API and finalizes the deployment for review at

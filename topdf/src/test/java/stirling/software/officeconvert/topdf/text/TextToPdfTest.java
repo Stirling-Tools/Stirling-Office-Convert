@@ -127,6 +127,15 @@ class TextToPdfTest {
     }
 
     @Test
+    void aStreamWithoutANamePrintsNoTemporaryFileName() throws IOException {
+        for (OfficeToPdf.Format format : new OfficeToPdf.Format[] {OfficeToPdf.Format.CSV, OfficeToPdf.Format.TSV}) {
+            Pdf p = stream(format, "item,amount\tqty\nrent,12.5\t3\n".getBytes(StandardCharsets.UTF_8),
+                    OfficeToPdf.Options.defaults());
+            assertTrue(p.text().contains("12.5") && !p.text().contains("office-to-pdf"), p.text());
+        }
+    }
+
+    @Test
     void aRenamedCsvPrintsTheNameTheCallerGives() throws IOException {
         Path in = Files.write(dir.resolve("upload-7f3a.csv"), "a,b\n".getBytes(StandardCharsets.UTF_8));
         Path out = dir.resolve("named.pdf");
