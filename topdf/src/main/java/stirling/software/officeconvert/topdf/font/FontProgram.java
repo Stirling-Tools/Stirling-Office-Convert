@@ -263,10 +263,16 @@ final class FontProgram {
     }
 
     private static String poolKey(FontEntry entry) {
+        if (entry.data() != null && FontLibrary.bundled(entry)) {
+            return "bundled:" + entry.postScriptName() + "#" + entry.index();
+        }
         return entry.data() != null || entry.file() == null ? null : entry.file().toAbsolutePath() + "#" + entry.index();
     }
 
     private static byte[] poolable(FontEntry entry) {
+        if (entry.file() == null) {
+            return entry.data();
+        }
         try {
             return Files.size(entry.file()) > POOL_FILE_BYTES ? null : Files.readAllBytes(entry.file());
         } catch (IOException | RuntimeException e) {
