@@ -10,6 +10,10 @@ final class Names {
 
     private static final int BUILT_IN = 0x0020;
 
+    private static final int MAX_AREAS = 1024;
+
+    private static final int MAX_FORMULA_CHARS = 8192;
+
     private Names() {}
 
     static Object[] printName(Stream s) {
@@ -34,7 +38,7 @@ final class Names {
         List<int[]> out = new ArrayList<>();
         int end = Math.min(at + size, s.size());
         int p = at;
-        while (p < end) {
+        while (p < end && out.size() < MAX_AREAS) {
             int ptg = s.u8(p++);
             int base = ptg & 0x1F | 0x20;
             if (ptg == 0x10) {
@@ -76,6 +80,9 @@ final class Names {
             String quoted = "'" + sheets.get(sheet).replace("'", "''") + "'!";
             StringBuilder v = new StringBuilder();
             for (int[] a : (List<int[]>) n[2]) {
+                if (v.length() + quoted.length() + 32 > MAX_FORMULA_CHARS) {
+                    break;
+                }
                 v.append(v.isEmpty() ? "" : ",").append(quoted);
                 boolean allCols = a[2] == 0 && a[3] == 255;
                 boolean allRows = a[0] == 0 && a[1] >= 16383;

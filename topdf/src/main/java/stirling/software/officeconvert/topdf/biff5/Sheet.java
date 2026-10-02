@@ -1,6 +1,7 @@
 package stirling.software.officeconvert.topdf.biff5;
 
 import java.io.IOException;
+import java.io.InterruptedIOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.TreeMap;
@@ -332,6 +333,23 @@ final class Sheet {
         String cell = "<c r=\"" + ref + "\"" + (x == 0 ? "" : " s=\"" + x + "\"") + type
                 + (body == null || body.isEmpty() ? "/>" : ">" + body + "</c>");
         cells.computeIfAbsent(r, k -> new TreeMap<>()).put(c, cell);
+    }
+
+    static long cells(Stream s) throws InterruptedIOException {
+        long most = 0;
+        long sheet = 0;
+        while (s.next()) {
+            switch (s.type()) {
+                case 0x0809 -> sheet = 0;
+                case 0x00BE -> sheet += Math.max(0, (s.size() - 6) / 2);
+                case 0x00BD -> sheet += Math.max(0, (s.size() - 6) / 6);
+                case 0x0201, 0x0203, 0x027E, 0x0204, 0x00D6, 0x0205, 0x0006, 0x0406 -> sheet++;
+                default -> {
+                }
+            }
+            most = Math.max(most, Math.min(sheet, MAX_CELLS));
+        }
+        return most;
     }
 
     static String col(int c) {
