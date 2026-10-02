@@ -23,6 +23,7 @@ import javax.imageio.ImageIO;
 import org.junit.jupiter.api.Test;
 
 import stirling.software.officeconvert.topdf.io.PictureDecoder;
+import stirling.software.officeconvert.topdf.testing.Allocation;
 import stirling.software.officeconvert.topdf.testing.Fixtures;
 
 class RtfPackageTest {
@@ -643,4 +644,18 @@ class RtfPackageTest {
         assertTrue(deep.body().contains("after"), deep.body());
     }
 
+    @Test
+    void textBoxesNestedPastTheCapAreFlattenedAndReported() {
+        String open = "{\\shp{\\*\\shpinst\\shpleft0\\shpright1000\\shptop0\\shpbottom1000"
+                + "{\\sp{\\sn shapeType}{\\sv 202}}{\\shptxt t";
+        String rtf = "{\\rtf1\\ansi BEFORE" + open.repeat(300) + "deep" + "}}}".repeat(300) + "AFTER\\par}";
+        Pkg[] p = new Pkg[1];
+        Allocation.Measured m = Allocation.measure(() -> p[0] = convert(rtf));
+        assertNull(m.failure());
+        assertTrue(m.bytes() < 256L << 20, "allocated " + m.megabytes() + " MB");
+        assertTrue(p[0].outcome().lost(), p[0].outcome().toString());
+        String b = p[0].body();
+        assertTrue(b.contains("deep") && b.contains("AFTER"), "the innermost text and the rest are kept");
+        assertTrue(b.split("<w:txbxContent>", -1).length - 1 <= 64, "nesting is capped");
+    }
 }

@@ -508,7 +508,9 @@ final class RtfReader {
                     skip();
                     return true;
                 }
-                content.openTextbox(g);
+                if (!content.openTextbox(g)) {
+                    lost("Text boxes nested too deeply were merged into their outer text box");
+                }
             }
             case "header", "headerl", "headerr", "headerf", "footer", "footerl", "footerr", "footerf" -> {
                 if (g.dest != Dest.NORMAL) {

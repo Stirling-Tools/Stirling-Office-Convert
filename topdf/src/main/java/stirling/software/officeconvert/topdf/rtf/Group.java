@@ -23,6 +23,7 @@ final class Group {
     Note note;
     String header;
     boolean textbox;
+    int textboxes;
     boolean background;
     boolean math;
     RtfMath.Node mathNode;
@@ -69,6 +70,7 @@ final class Group {
         g.field = field;
         g.text = dest == Dest.NORMAL ? null : text;
         g.key = key;
+        g.textboxes = textboxes;
         g.background = background;
         g.math = math;
         g.mathNode = mathNode;

@@ -11,6 +11,8 @@ final class Content {
 
     record NoteOut(int id, boolean endnote, Chunks xml) {}
 
+    static final int MAX_TEXTBOX_DEPTH = 8;
+
     private static final String TOKEN = String.valueOf(ParaBuilder.TOKEN);
 
     private final Doc doc;
@@ -441,14 +443,19 @@ final class Content {
         (footer ? sect.footers : sect.headers).put(type, rid);
     }
 
-    void openTextbox(Group g) {
+    boolean openTextbox(Group g) {
         g.dest = Dest.NORMAL;
+        if (g.textboxes >= MAX_TEXTBOX_DEPTH) {
+            return false;
+        }
+        g.textboxes++;
         g.textbox = true;
         Rels rels = g.story == null ? new Rels("rId") : g.story.rels;
         g.story = body.buffered(rels);
         g.pap = new ParaProps();
         g.wrap = null;
         g.listText = false;
+        return true;
     }
 
     void closeTextbox(Group done) throws IOException {
