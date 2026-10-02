@@ -361,6 +361,18 @@ class DocTest {
     }
 
     @Test
+    void binaryNumberFormatCodesPastFortyKeepTheirMeaning() throws IOException {
+        String[][] cases = {{"58", "russianLower"}, {"47", "hebrew2"}, {"45", "hebrew1"}, {"41", "koreanDigital"}};
+        for (String[] c : cases) {
+            byte[][] list = Sprms.simpleList(Integer.parseInt(c[0]), "\u0000.", new byte[0], new byte[0]);
+            byte[] doc = new WordFixture().lists(list[0], list[1]).para("Item", Sprms.u16(0x460B, 1),
+                    Sprms.u8(0x260A, 0)).build();
+            String numbering = part(doc, "word/numbering.xml");
+            assertTrue(numbering.contains("<w:numFmt w:val=\"" + c[1] + "\"/>"), c[0] + ": " + numbering);
+        }
+    }
+
+    @Test
     void listsBecomeNumbering() throws IOException {
         byte[][] list = Sprms.simpleList(0, "\u0000.",
                 WordFixture.concat(Sprms.u16(0x845E, 720), Sprms.u16(0x8460, -360)),

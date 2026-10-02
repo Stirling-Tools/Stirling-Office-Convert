@@ -16,21 +16,11 @@ import org.apache.poi.hwpf.sprm.ParagraphSprmUncompressor;
 import org.apache.poi.hwpf.usermodel.CharacterProperties;
 import org.apache.poi.hwpf.usermodel.ParagraphProperties;
 
+import stirling.software.officeconvert.topdf.io.NumberFormatCodes;
+
 final class Lists {
 
     static final int MAX_LISTS = 2047;
-
-    private static final String[] FORMATS = {"decimal", "upperRoman", "lowerRoman", "upperLetter", "lowerLetter",
-        "ordinal", "cardinalText", "ordinalText", "hex", "chicago", "ideographDigital", "japaneseCounting", "aiueo",
-        "iroha", "decimalFullWidth", "decimalHalfWidth", "japaneseLegal", "japaneseDigitalTenThousand",
-        "decimalEnclosedCircle", "decimalFullWidth2", "aiueoFullWidth", "irohaFullWidth", "decimalZero", "bullet",
-        "ganada", "chosung", "decimalEnclosedFullstop", "decimalEnclosedParen", "decimalEnclosedCircleChinese",
-        "ideographEnclosedCircle", "ideographTraditional", "ideographZodiac", "ideographZodiacTraditional",
-        "taiwaneseCounting", "ideographLegalTraditional", "taiwaneseCountingThousand", "taiwaneseDigital",
-        "chineseCounting", "chineseLegalSimplified", "chineseCountingThousand", "koreanDigital", "koreanCounting",
-        "koreanLegal", "koreanDigital2", "vietnameseCounting", "russianLower", "russianUpper", "none",
-        "numberInDash", "hebrew1", "hebrew2", "arabicAlpha", "arabicAbjad", "hindiVowels", "hindiConsonants",
-        "hindiNumbers", "hindiCounting", "thaiLetters", "thaiNumbers", "thaiCounting"};
 
     private final Source src;
 
@@ -186,7 +176,7 @@ final class Lists {
             return;
         }
         int nfc = l.getNumberFormat();
-        String fmt = nfc == 255 ? "none" : nfc >= 0 && nfc < FORMATS.length ? FORMATS[nfc] : "decimal";
+        String fmt = NumberFormatCodes.ooxml(nfc);
         b.append("<w:lvl w:ilvl=\"").append(i).append("\"><w:start w:val=\"").append(l.getStartAt())
                 .append("\"/><w:numFmt w:val=\"").append(fmt).append("\"/>");
         if (l.isLegalNumbering()) {

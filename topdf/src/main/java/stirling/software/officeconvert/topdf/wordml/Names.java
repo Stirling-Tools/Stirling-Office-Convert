@@ -3,6 +3,8 @@ package stirling.software.officeconvert.topdf.wordml;
 import java.util.Map;
 import java.util.Set;
 
+import stirling.software.officeconvert.topdf.io.NumberFormatCodes;
+
 final class Names {
 
     static final String W2003 = "http://schemas.microsoft.com/office/word/2003/wordml";
@@ -47,18 +49,6 @@ final class Names {
             "wrap", "hAnchor", "vAnchor", "xAlign", "yAlign", "vertAnchor", "horzAnchor", "tblpXSpec", "tblpYSpec",
             "offsetFrom", "display", "zOrder", "leader", "clear", "fldCharType", "restart", "dropCap");
 
-    static final String[] NUMBER_FORMATS = {"decimal", "upperRoman", "lowerRoman", "upperLetter", "lowerLetter",
-        "ordinal", "cardinalText", "ordinalText", "hex", "chicago", "ideographDigital", "japaneseCounting", "aiueo",
-        "iroha", "decimalFullWidth", "decimalHalfWidth", "japaneseLegal", "japaneseDigitalTenThousand",
-        "decimalEnclosedCircle", "decimalFullWidth2", "aiueoFullWidth", "irohaFullWidth", "decimalZero", "bullet",
-        "ganada", "chosung", "decimalEnclosedFullstop", "decimalEnclosedParen", "decimalEnclosedCircleChinese",
-        "ideographEnclosedCircle", "ideographTraditional", "ideographZodiac", "ideographZodiacTraditional",
-        "taiwaneseCounting", "ideographLegalTraditional", "taiwaneseCountingThousand", "taiwaneseDigital",
-        "chineseCounting", "chineseLegalSimplified", "chineseCountingThousand", "koreanDigital", "koreanCounting",
-        "koreanLegal", "koreanDigital2", "vietnameseCounting", "russianLower", "russianUpper", "none",
-        "numberInDash", "hebrew1", "hebrew2", "arabicAlpha", "arabicAbjad", "hindiVowels", "hindiConsonants",
-        "hindiNumbers", "hindiCounting", "thaiLetters", "thaiNumbers", "thaiCounting"};
-
     private Names() {}
 
     static String element(String local) {
@@ -98,11 +88,7 @@ final class Names {
 
     static String numberFormat(String nfc) {
         try {
-            int n = Integer.parseInt(nfc.trim());
-            if (n == 255) {
-                return "none";
-            }
-            return n >= 0 && n < NUMBER_FORMATS.length ? NUMBER_FORMATS[n] : "decimal";
+            return NumberFormatCodes.ooxml(Integer.parseInt(nfc.trim()));
         } catch (NumberFormatException e) {
             return "decimal";
         }
