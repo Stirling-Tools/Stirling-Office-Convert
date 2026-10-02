@@ -6,7 +6,7 @@ import java.util.Set;
 import java.util.Collections;
 import java.util.IdentityHashMap;
 
-import org.apache.pdfbox.Loader;
+import org.apache.pdfbox.io.RandomAccessReadBuffer;
 import org.apache.pdfbox.cos.COSArray;
 import org.apache.pdfbox.cos.COSBase;
 import org.apache.pdfbox.cos.COSDictionary;
@@ -19,7 +19,7 @@ import org.w3c.dom.NodeList;
 
 final class AttachedPdfA {
 
-    static final long MAX_BYTES = 64L << 20;
+    static final long MAX_BYTES = 16L << 20;
 
     private static final int MAX_DEPTH = 2;
 
@@ -48,14 +48,18 @@ final class AttachedPdfA {
         if (data.length < 5 || !new String(data, 0, 5, StandardCharsets.ISO_8859_1).equals("%PDF-")) {
             return false;
         }
-        try (PDDocument doc = Loader.loadPDF(data)) {
-            if (doc.isEncrypted() || !declaresPdfA(doc)) {
-                return false;
+        try (RandomAccessReadBuffer source = new RandomAccessReadBuffer(data)) {
+            AttachmentParser parser = new AttachmentParser(source);
+            try (PDDocument doc = parser.parse(false)) {
+                if (doc.isEncrypted() || !declaresPdfA(doc)) {
+                    return false;
+                }
+                boolean[] ok = {true};
+                Set<COSStream> checked = Collections.newSetFromMap(new IdentityHashMap<>());
+                CosWalk.walk(doc, b -> ok[0] &= allowed(b, depth, checked));
+                parser.checkBudget();
+                return ok[0];
             }
-            boolean[] ok = {true};
-            Set<COSStream> checked = Collections.newSetFromMap(new IdentityHashMap<>());
-            CosWalk.walk(doc, b -> ok[0] &= allowed(b, depth, checked));
-            return ok[0];
         } catch (IOException | RuntimeException e) {
             return false;
         }
