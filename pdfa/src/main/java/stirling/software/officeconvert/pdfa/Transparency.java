@@ -67,7 +67,8 @@ final class Transparency {
                 t.page(page, index);
             } catch (IOException | RuntimeException e) {
                 PdfFiles.stopIfInterrupted();
-                report.warn("Could not flatten the transparency on page " + (index + 1) + ": " + e.getMessage());
+                throw new IOException("The transparency on page " + (index + 1) + " could not be flattened for "
+                        + "PDF/A-1 (" + e.getMessage() + "); use PDF/A-2 or 3, which keep it", e);
             }
             index++;
         }
@@ -136,8 +137,15 @@ final class Transparency {
             }
             boolean t = a.getDictionaryObject(COSName.CA) instanceof COSNumber n && n.floatValue() < 0.999f;
             COSDictionary ap = ContentGraph.dict(a.getDictionaryObject(COSName.AP));
-            if (!t && ap != null && ap.getDictionaryObject(COSName.N) instanceof COSStream n) {
+            COSBase normal = ap == null ? null : ap.getDictionaryObject(COSName.N);
+            if (!t && normal instanceof COSStream n) {
                 t = scan.xobjectTransparent(n, pageRes, 0);
+            } else if (!t && normal instanceof COSDictionary states) {
+                for (COSName state : states.keySet()) {
+                    if (!t && states.getDictionaryObject(state) instanceof COSStream n) {
+                        t = scan.xobjectTransparent(n, pageRes, 0);
+                    }
+                }
             }
             if (t) {
                 out.add(a);
@@ -404,7 +412,17 @@ final class Transparency {
             try (OutputStream o = empty.createOutputStream()) {
                 o.write(new byte[0]);
             }
-            ap.setItem(COSName.N, empty);
+            COSDictionary old = ContentGraph.dict(a.getDictionaryObject(COSName.AP));
+            COSDictionary states = old == null ? null : ContentGraph.dict(old.getDictionaryObject(COSName.N));
+            if (states != null && !(states instanceof COSStream)) {
+                COSDictionary blank = new COSDictionary();
+                for (COSName state : states.keySet()) {
+                    blank.setItem(state, empty);
+                }
+                ap.setItem(COSName.N, blank);
+            } else {
+                ap.setItem(COSName.N, empty);
+            }
             a.setItem(COSName.AP, ap);
         }
     }

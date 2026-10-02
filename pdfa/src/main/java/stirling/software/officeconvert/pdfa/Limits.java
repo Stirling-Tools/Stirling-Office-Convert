@@ -157,8 +157,10 @@ final class Limits {
             if (b instanceof COSDictionary d && LongArrays.fix(d)) {
                 report.warn("Split arrays longer than PDF/A-1 allows");
             }
-            for (String what : LongArrays.unfixable(b)) {
-                report.warn("The PDF has " + what + ", more than PDF/A-1 allows, which could not be split");
+            List<String> unfixable = LongArrays.unfixable(b);
+            if (!unfixable.isEmpty()) {
+                throw new IOException("The PDF has " + unfixable.get(0) + ", more than PDF/A-1 allows, and it cannot "
+                        + "be split; use PDF/A-2 or 3");
             }
         }
         if (b instanceof COSDictionary d) {

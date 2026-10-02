@@ -226,6 +226,37 @@ final class Hostile {
         return r;
     }
 
+    static RawPdf tinyPage() {
+        RawPdf r = RawPdf.page("", "0 0 1 rg 0 0 1 1 re f");
+        r.set(3, "<</Type/Page/Parent 2 0 R/MediaBox[0 0 2 2]/Resources<<>>/Contents 4 0 R>>");
+        return r;
+    }
+
+    static RawPdf manyAnnotations() {
+        RawPdf r = RawPdf.page("", "0 0 1 rg 10 10 100 100 re f");
+        StringBuilder annots = new StringBuilder();
+        for (int i = 0; i < 9000; i++) {
+            annots.append("<</Type/Annot/Subtype/Link/F 4/Border[0 0 0]/Rect[").append(i % 500).append(' ')
+                    .append(i / 500 * 10).append(' ').append(i % 500 + 1).append(' ').append(i / 500 * 10 + 1)
+                    .append("]>>");
+        }
+        r.set(3, "<</Type/Page/Parent 2 0 R/MediaBox[0 0 595 842]/Resources<<>>/Contents 4 0 R/Annots["
+                + annots + "]>>");
+        return r;
+    }
+
+    static RawPdf translucentCheckbox() {
+        RawPdf r = RawPdf.page("", "0 0 1 rg 10 10 50 50 re f");
+        r.set(3, "<</Type/Page/Parent 2 0 R/MediaBox[0 0 595 842]/Resources<<>>/Contents 4 0 R/Annots[5 0 R]>>");
+        r.add("<</Type/Annot/Subtype/Widget/FT/Btn/T(box)/F 4/Rect[200 500 300 600]/AS/On/V/On"
+                + "/AP<</N<</On 6 0 R/Off 7 0 R>>>>/P 3 0 R>>");
+        r.add(RawPdf.stream("/Type/XObject/Subtype/Form/BBox[0 0 100 100]/Resources<</ExtGState<</G<</ca 0.5>>>>>>",
+                "/G gs 1 0 0 rg 0 0 100 100 re f"));
+        r.add(RawPdf.stream("/Type/XObject/Subtype/Form/BBox[0 0 100 100]", ""));
+        r.set(1, "<</Type/Catalog/Pages 2 0 R/AcroForm<</Fields[5 0 R]>>>>");
+        return r;
+    }
+
     static void taggedForm(PDDocument d, String variant) throws IOException {
         PDFont f = helvetica();
         PDPage p = page(d);
