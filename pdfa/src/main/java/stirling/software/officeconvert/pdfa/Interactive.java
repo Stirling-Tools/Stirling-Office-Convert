@@ -105,7 +105,7 @@ final class Interactive {
         }
     }
 
-    private void form() {
+    private void form() throws IOException {
         COSDictionary acro = ContentGraph.dict(doc.getDocumentCatalog().getCOSObject().getDictionaryObject(COSName.ACRO_FORM));
         if (acro == null) {
             return;
@@ -115,6 +115,7 @@ final class Interactive {
             report.warn("Removed the XFA form, which PDF/A does not allow; the AcroForm fields remain");
         }
         if (acro.getBoolean(COSName.NEED_APPEARANCES, false)) {
+            AppearanceBudget.check(acro);
             acro.removeItem(COSName.NEED_APPEARANCES);
             try {
                 new org.apache.pdfbox.pdmodel.interactive.form.PDAcroForm(doc, acro).refreshAppearances();
