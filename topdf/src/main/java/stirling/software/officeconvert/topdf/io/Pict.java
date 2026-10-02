@@ -509,10 +509,11 @@ final class Pict {
             in.seek(at);
             byte[] payload = in.bytes(end - at);
             int jpeg = jpegStart(payload, 50 + (int) Math.min(matte, payload.length));
-            if (jpeg >= 0 && src.getWidth() > 0 && src.getHeight() > 0) {
+            if (jpeg >= 0 && src.getWidth() > 0 && src.getHeight() > 0 && pixels > 0) {
                 try {
                     byte[] j = Arrays.copyOfRange(payload, jpeg, payload.length);
-                    BufferedImage img = PictureDecoder.readRaster(j, PictureDecoder.DECODE_PIXELS);
+                    BufferedImage img = PictureDecoder.readRaster(j, pixels);
+                    pixels -= (long) img.getWidth() * img.getHeight();
                     double dx = src.getX() * m[0] + m[6];
                     double dy = src.getY() * m[4] + m[7];
                     double dw = src.getWidth() * m[0];
