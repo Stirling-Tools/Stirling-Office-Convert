@@ -20,8 +20,9 @@ public final class JpxDecoder {
         }
         JpxRaster raster = new JpxRaster(cs.siz, reduce, options.maxSamples());
         TileDecoder decoder = new TileDecoder(cs, raster, reduce, options.maxSamples());
+        Rectangle region = options.region();
         for (int t = 0; t < cs.tiles.length; t++) {
-            if (wanted(cs.siz, t, options.region())) {
+            if (wanted(cs.siz, t, region)) {
                 decoder.decode(t);
             }
         }

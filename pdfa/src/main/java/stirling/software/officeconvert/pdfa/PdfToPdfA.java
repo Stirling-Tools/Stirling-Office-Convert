@@ -14,6 +14,7 @@ import java.util.Objects;
 import org.apache.pdfbox.pdmodel.PDDocument;
 
 import stirling.software.officeconvert.extract.PdfFiles;
+import stirling.software.officeconvert.jpx.JpxImageIO;
 import stirling.software.officeconvert.memory.Admission;
 import stirling.software.officeconvert.topdf.font.FontLibrary;
 import stirling.software.officeconvert.topdf.font.FontSet;
@@ -152,6 +153,7 @@ public final class PdfToPdfA {
         Objects.requireNonNull(out, "out");
         Objects.requireNonNull(options, "options");
         PdfFiles.checkOpen(document);
+        JpxImageIO.install();
         return Deadline.run(options.timeout(), () -> Conversion.run(document, out, options));
     }
 

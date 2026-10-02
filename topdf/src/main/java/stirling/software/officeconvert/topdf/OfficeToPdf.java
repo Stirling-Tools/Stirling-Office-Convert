@@ -40,6 +40,7 @@ import org.apache.poi.poifs.filesystem.POIFSFileSystem;
 import org.apache.poi.xslf.usermodel.XMLSlideShow;
 import org.apache.poi.xslf.usermodel.XSLFTextBox;
 
+import stirling.software.officeconvert.jpx.JpxImageIO;
 import stirling.software.officeconvert.memory.Admission;
 import stirling.software.officeconvert.topdf.crypt.EncryptedPackage;
 import stirling.software.officeconvert.topdf.crypt.EncryptedWorkbook;
@@ -261,6 +262,7 @@ public final class OfficeToPdf {
         Objects.requireNonNull(in, "in");
         Objects.requireNonNull(out, "out");
         Objects.requireNonNull(options, "options");
+        JpxImageIO.install();
         Format format;
         try {
             format = Format.of(in);
@@ -281,6 +283,7 @@ public final class OfficeToPdf {
         Objects.requireNonNull(format, "format");
         Objects.requireNonNull(out, "out");
         Objects.requireNonNull(options, "options");
+        JpxImageIO.install();
         long started = System.nanoTime();
         AtomicBoolean abandoned = new AtomicBoolean();
         Path source = Files.createTempFile("office-to-pdf-", "." + format.name().toLowerCase(Locale.ROOT));

@@ -19,6 +19,8 @@ public final class ImageBudget {
 
     public static final long MAX_DECODED_BYTES = 256L * 1024 * 1024;
 
+    public static final long MAX_JPX_SAMPLES = 1L << 26;
+
     private static final int JPX_HEADER_SCAN = 1 << 20;
 
     private ImageBudget() {}
@@ -26,18 +28,24 @@ public final class ImageBudget {
     private static final Map<COSBase, Boolean> VERDICTS = Collections.synchronizedMap(new WeakHashMap<>());
 
     public static boolean affordable(PDImage image) {
-        if (decodedBytes(image) > MAX_DECODED_BYTES) {
+        boolean jpx = jpx(image);
+        if (!jpx && decodedBytes(image) > MAX_DECODED_BYTES) {
             return false;
         }
+        long limit = jpx ? MAX_JPX_SAMPLES : MAX_DECODED_BYTES;
         if (!(image instanceof PDImageXObject x)) {
-            return codedBytes(image) <= MAX_DECODED_BYTES;
+            return codedBytes(image) <= limit;
         }
         Boolean known = VERDICTS.get(x.getCOSObject());
         if (known == null) {
-            known = codedBytes(image) <= MAX_DECODED_BYTES && inflatesWithin(image);
+            known = codedBytes(image) <= limit && inflatesWithin(image);
             VERDICTS.put(x.getCOSObject(), known);
         }
         return known;
+    }
+
+    private static boolean jpx(PDImage image) {
+        return "jpx".equals(image.getSuffix());
     }
 
     private static boolean inflatesWithin(PDImage image) {
