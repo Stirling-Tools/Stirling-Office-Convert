@@ -18,17 +18,24 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import stirling.software.officeconvert.topdf.biff5.Biff5Hostile;
+import stirling.software.officeconvert.topdf.doc.DocHostile;
+import stirling.software.officeconvert.topdf.doc6.Word6Hostile;
 import stirling.software.officeconvert.topdf.testing.ClassScan;
 import stirling.software.officeconvert.topdf.testing.Fixtures;
 import stirling.software.officeconvert.topdf.testing.ForbiddenProbe;
 import stirling.software.officeconvert.topdf.testing.FormatPackageProbe;
+import stirling.software.officeconvert.topdf.testing.HostileFormats;
 import stirling.software.officeconvert.topdf.testing.NoNetwork;
+import stirling.software.officeconvert.topdf.vsdx.VisioHostile;
+import stirling.software.officeconvert.topdf.xlsb.XlsbHostile;
 
 class NetworkSafetyTest {
 
@@ -231,6 +238,13 @@ class NetworkSafetyTest {
             docs.put("doctype.docx", Fixtures.doctypeDocx(net));
             docs.put("hostile.pptx", Fixtures.hostilePptx(net));
             docs.put("hostile.xlsx", Fixtures.hostileXlsx(net));
+            docs.putAll(HostileFormats.all(net));
+            docs.put("hostile.doc", DocHostile.build(net));
+            docs.put("hostile6.doc", Word6Hostile.build(net));
+            docs.put("hostile.xlsb", XlsbHostile.build(net));
+            docs.put("hostile95.xls", Biff5Hostile.build(net));
+            docs.put("hostile.vsdx", VisioHostile.build(net));
+            TreeSet<String> refused = new TreeSet<>();
             for (Map.Entry<String, byte[]> d : docs.entrySet()) {
                 Path in = Fixtures.write(dir, d.getKey(), d.getValue());
                 Path out = dir.resolve(d.getKey() + ".pdf");
@@ -239,9 +253,11 @@ class NetworkSafetyTest {
                     assertTrue(Files.size(out) > 0);
                 } catch (IOException e) {
                     assertFalse(e instanceof OfficeToPdf.TimedOut, d.getKey() + " hung");
+                    refused.add(d.getKey());
                 }
             }
             net.assertNothingConnected();
+            assertEquals(Set.of("doctype.docx", "doctype.fodt", "doctype.odt"), refused, "only DOCTYPEs are refused");
         }
     }
 
