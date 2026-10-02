@@ -18,7 +18,7 @@ public final class HeaderFooter {
     private static final Pattern DIGITS = Pattern.compile("[0-9]+");
     private static final Pattern ROMAN_ONLY = Pattern.compile("(?i)^[-– ]*[ivxlc]{1,6}[-– ]*$");
     private static final Pattern FIRST_PAGE_NUMBER =
-            Pattern.compile("(?i)^(page|p\\.|pg\\.?)?\\s*[-–—(]?\\s*1\\s*[-–—)]?(\\s*(of|/)\\s*1)?$");
+            Pattern.compile("(?i)^(page|p\\.|pg\\.?)?\\s*[-\\u2013\\u2014(]?\\s*1\\s*[-\\u2013\\u2014)]?(\\s*(of|/)\\s*1)?$");
     private static final float NUMBER_GAP_LINES = 2f;
 
     private final Map<String, RunningLine> candidates = new HashMap<>();
