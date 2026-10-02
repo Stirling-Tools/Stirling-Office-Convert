@@ -723,8 +723,17 @@ The cache belongs to the JDK build that made it; the JVM ignores a cache from an
 ### 0.2.0
 
 - Needs Java 25 or later; 0.1.0 also ran on Java 21.
-- `OfficeToPdf.Format` has three new values, `TEXT`, `CSV` and `TSV`, for plain text and delimited tables. A caller
-  with an exhaustive `switch` over `Format` needs cases for them.
+- `OfficeToPdf.Format` has four new values, `PPT`, `TEXT`, `CSV` and `TSV`, for legacy PowerPoint, plain text and
+  delimited tables. A caller with an exhaustive `switch` over `Format` needs cases for them.
+- `Format.of` returns a format for files it used to refuse: `DOCX` for `.doc`, `.dot`, `.rtf`, `.xml` and the
+  OpenDocument, OpenOffice.org 1.x and Pages extensions, `XLSX` for `.xls`, `.xlt`, `.xlsb`, the table formats and
+  Numbers, `PPTX` for the presentation, drawing, Visio and Keynote extensions, and `PPT` for `.ppt`, `.pps` and
+  `.pot`. It still throws `IllegalArgumentException` for anything else.
+- `Format.recognises` accepts every one of those extensions, including any `.xml` file.
+- `OfficeToPdf.Options` has three more components, `fonts`, `displayName` and `password`, so its canonical
+  constructor takes seven arguments. The 0.1.0 constructors `Options(timeout, fontDirs, maxPages)` and
+  `Options(timeout, fontDirs, maxPages, maxScratchBytes)` are kept; a record pattern over `Options` needs the new
+  components.
 - A new module, `stirling-office-convert-pdfa`, converts PDF to PDF/A.
 - JPEG 2000 pictures are decoded by the library's own reader, which becomes the JVM's preferred `jpeg2000` ImageIO
   reader; `-Dstirling.officeconvert.jpxReader=imageio` keeps another one first (see Pictures).
