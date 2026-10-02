@@ -101,10 +101,20 @@ final class MathOmml {
     private String fenced(Element e, int depth) {
         String open = e.hasAttribute("open") ? e.getAttribute("open") : "(";
         String close = e.hasAttribute("close") ? e.getAttribute("close") : ")";
+        String separators = e.hasAttribute("separators") ? e.getAttribute("separators").strip() : ",";
         StringBuilder b = new StringBuilder("<m:d><m:dPr><m:begChr m:val=\"").append(Xml.esc(open))
-                .append("\"/><m:endChr m:val=\"").append(Xml.esc(close)).append("\"/></m:dPr>");
-        for (Element k : Dom.kids(e)) {
-            b.append("<m:e>").append(node(k, depth + 1)).append("</m:e>");
+                .append("\"/>");
+        if (!separators.isEmpty()) {
+            b.append("<m:sepChr m:val=\"").append(Xml.esc(separators.substring(0, separators.offsetByCodePoints(0, 1))))
+                    .append("\"/>");
+        }
+        b.append("<m:endChr m:val=\"").append(Xml.esc(close)).append("\"/></m:dPr>");
+        if (separators.isEmpty()) {
+            b.append("<m:e>").append(children(e, depth)).append("</m:e>");
+        } else {
+            for (Element k : Dom.kids(e)) {
+                b.append("<m:e>").append(node(k, depth + 1)).append("</m:e>");
+            }
         }
         return b.append("</m:d>").toString();
     }
