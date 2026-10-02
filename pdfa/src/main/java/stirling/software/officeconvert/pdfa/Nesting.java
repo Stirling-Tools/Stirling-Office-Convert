@@ -48,10 +48,31 @@ final class Nesting {
     static List<Object> flatten(List<Object> tokens, COSDictionary resources, PdfALevel level, Report report)
             throws IOException {
         Nesting n = new Nesting(resources, level);
-        List<Object> out = n.rewrite(tokens);
+        List<Object> out = n.rewrite(balanced(tokens));
         if (n.stuck || depth(out) > MAX_DEPTH) {
             report.warn("Some content nests graphics states deeper than " + MAX_DEPTH
                     + " levels and could not be moved into a form; it is left as it is");
+        }
+        return out;
+    }
+
+    private static List<Object> balanced(List<Object> tokens) {
+        int depth = 0;
+        for (Object t : tokens) {
+            if (t instanceof Operator op) {
+                if ("q".equals(op.getName())) {
+                    depth++;
+                } else if ("Q".equals(op.getName()) && depth > 0) {
+                    depth--;
+                }
+            }
+        }
+        if (depth == 0) {
+            return tokens;
+        }
+        List<Object> out = new ArrayList<>(tokens);
+        for (int i = 0; i < depth; i++) {
+            out.add(Operator.getOperator("Q"));
         }
         return out;
     }

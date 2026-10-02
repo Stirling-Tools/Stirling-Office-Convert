@@ -43,6 +43,16 @@ class OfficeFilesTest {
     }
 
     @Test
+    void recognisesVisioDrawingsAndLotusWorksheets() throws IOException {
+        byte[] docx = Fixtures.docx("Hello", 1);
+        assertEquals("vsdx", OfficeFiles.extension(write(Fixtures.retype(docx, Fixtures.DOCX_MAIN,
+                "application/vnd.ms-visio.drawing.main+xml"))));
+        assertEquals("pptx", OfficeFiles.family("vsdx"));
+        assertEquals("xlsx", OfficeFiles.family("wk1"));
+        assertEquals("wk3", OfficeFiles.extension(write(new byte[] {0, 0, 0x1A, 0, 0, 0x10}), "budget.wk3"));
+    }
+
+    @Test
     void recognisesRtfFromItsHeader() throws IOException {
         assertEquals("rtf", OfficeFiles.extension(write("{\\rtf1\\ansi Hello\\par}".getBytes(
                 StandardCharsets.US_ASCII))));
@@ -70,9 +80,11 @@ class OfficeFilesTest {
         assertEquals("odt", OfficeFiles.extension(
                 write(Fixtures.zip("mimetype", "application/vnd.oasis.opendocument.text", "content.xml", "<x/>"))));
         assertEquals("docx", OfficeFiles.family("odt"));
-        IOException odf = assertThrows(IOException.class, () -> OfficeFiles.extension(
+        assertEquals("odp", OfficeFiles.extension(
                 write(Fixtures.zip("mimetype", "application/vnd.oasis.opendocument.graphics", "content.xml", "<x/>"))));
-        assertTrue(odf.getMessage().startsWith("OpenDocument drawings"));
+        IOException odf = assertThrows(IOException.class, () -> OfficeFiles.extension(
+                write(Fixtures.zip("mimetype", "application/vnd.oasis.opendocument.formula", "content.xml", "<x/>"))));
+        assertTrue(odf.getMessage().startsWith("OpenDocument charts"));
         IOException other = assertThrows(IOException.class,
                 () -> OfficeFiles.extension(write(Fixtures.zip("readme.txt", "hello"))));
         assertTrue(other.getMessage().contains("holds no Word, PowerPoint or Excel"));
@@ -100,6 +112,7 @@ class OfficeFilesTest {
         for (String ext : new String[] {"xlsx", "xlsm", "xltx", "xltm"}) {
             assertEquals("xlsx", OfficeFiles.family(ext));
         }
-        assertThrows(IllegalArgumentException.class, () -> OfficeFiles.family("xlsb"));
+        assertEquals("xlsx", OfficeFiles.family("xlsb"));
+        assertThrows(IllegalArgumentException.class, () -> OfficeFiles.family("wpd"));
     }
 }

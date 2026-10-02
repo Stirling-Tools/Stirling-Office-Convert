@@ -17,8 +17,8 @@ import stirling.software.officeconvert.extract.PdfFiles;
 final class ContentFixer {
 
     private static final Set<String> OPERATORS = Set.of("b", "B", "b*", "B*", "BDC", "BI", "BMC", "BT", "BX", "c",
-            "cm", "CS", "cs", "d", "d0", "d1", "Do", "DP", "EI", "EMC", "ET", "EX", "f", "F", "f*", "G", "g", "gs", "h",
-            "i", "ID", "j", "J", "K", "k", "l", "m", "M", "MP", "n", "q", "Q", "re", "RG", "rg", "ri", "s", "S", "SC",
+            "cm", "CS", "cs", "d", "d0", "d1", "Do", "DP", "EMC", "ET", "EX", "f", "F", "f*", "G", "g", "gs", "h",
+            "i", "j", "J", "K", "k", "l", "m", "M", "MP", "n", "q", "Q", "re", "RG", "rg", "ri", "s", "S", "SC",
             "sc", "SCN", "scn", "sh", "T*", "Tc", "Td", "TD", "Tf", "Tj", "TJ", "TL", "Tm", "Tr", "Ts", "Tw", "Tz", "v",
             "w", "W", "W*", "y", "'", "\"");
 
@@ -29,18 +29,24 @@ final class ContentFixer {
 
     static void run(ContentGraph graph, PdfALevel level, Report report, FontUsage usage, DeviceColours colours)
             throws IOException {
+        ExplicitResources.run(graph);
         for (ContentGraph.Node n : graph.nodes()) {
             PdfFiles.stopIfInterrupted();
-            List<Object> tokens;
+            ContentTokens.Salvaged parsed;
             try {
-                tokens = ContentTokens.parse(n.streams());
+                parsed = ContentTokens.salvage(n.streams());
             } catch (IOException e) {
                 PdfFiles.stopIfInterrupted();
                 colours.unknown();
                 continue;
             }
+            List<Object> tokens = parsed.tokens();
             List<Object> out = new ArrayList<>(tokens.size());
-            boolean changed = false;
+            boolean changed = !parsed.complete();
+            if (changed) {
+                colours.unknown();
+                report.warn("Removed a broken token at the end of a content stream");
+            }
             int start = 0;
             for (int i = 0; i < tokens.size(); i++) {
                 if (!(tokens.get(i) instanceof Operator op)) {
@@ -80,6 +86,17 @@ final class ContentFixer {
                 }
                 if ("BI".equals(name)) {
                     colours.inlineImage(op.getImageParameters());
+                    InlineImages.Outcome o = InlineImages.fix(op);
+                    if (o == InlineImages.Outcome.UNREADABLE) {
+                        changed = true;
+                        report.warn("Removed inline images without data, or whose filter PDF/A does not allow and "
+                                + "that could not be decoded");
+                        continue;
+                    }
+                    if (o == InlineImages.Outcome.REENCODED) {
+                        changed = true;
+                        report.warn("Decoded inline images whose filter PDF/A does not allow");
+                    }
                 }
                 if ("BI".equals(name) && inlineImage(op.getImageParameters())) {
                     changed = true;

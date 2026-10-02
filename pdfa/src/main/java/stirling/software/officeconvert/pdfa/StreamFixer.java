@@ -23,11 +23,16 @@ final class StreamFixer {
             "Darken", "Lighten", "ColorDodge", "ColorBurn", "HardLight", "SoftLight", "Difference", "Exclusion", "Hue",
             "Saturation", "Color", "Luminosity");
 
+    private static final Set<String> FILTERS = Set.of("ASCIIHexDecode", "ASCII85Decode", "FlateDecode",
+            "RunLengthDecode", "CCITTFaxDecode", "JBIG2Decode", "DCTDecode", "JPXDecode");
+
     private static final COSName TR2 = COSName.getPDFName("TR2");
 
     private static final COSName HT = COSName.getPDFName("HT");
 
     private static final COSName OPM = COSName.getPDFName("OPM");
+
+    private static final COSName HTP = COSName.getPDFName("HTP");
 
     private static final COSName OPI = COSName.getPDFName("OPI");
 
@@ -69,7 +74,7 @@ final class StreamFixer {
             stream(s);
         }
         if (COSName.EXT_G_STATE.equals(d.getCOSName(COSName.TYPE)) || d.containsKey(COSName.TR)
-                || d.containsKey(TR2) || d.containsKey(HT) || d.containsKey(OPM)) {
+                || d.containsKey(TR2) || d.containsKey(HT) || d.containsKey(HTP) || d.containsKey(OPM)) {
             extGState(d);
         }
     }
@@ -117,9 +122,11 @@ final class StreamFixer {
                 }
             }
         }
+        if (f != null && !(f instanceof COSName) && !(f instanceof COSArray a && a.size() == names.size())) {
+            return true;
+        }
         for (COSName n : names) {
-            String v = n.getName();
-            if (v.equals("LZWDecode") || v.equals("LZW") || v.equals("Crypt")) {
+            if (!FILTERS.contains(n.getName())) {
                 return true;
             }
         }
@@ -128,19 +135,20 @@ final class StreamFixer {
 
     private void reencode(COSStream s) throws IOException {
         byte[] data = read(s);
-        if (data == null) {
-            report.warn("A stream with a filter PDF/A does not allow could not be decoded");
-            return;
-        }
         s.removeItem(COSName.FILTER);
         s.removeItem(COSName.DECODE_PARMS);
         try (OutputStream out = s.createOutputStream(COSName.FLATE_DECODE)) {
-            out.write(data);
+            out.write(data == null ? new byte[0] : data);
         }
-        report.warn("Recompressed LZW streams with Flate, as PDF/A needs");
+        report.warn(data == null ? "Emptied streams whose filter PDF/A does not allow and that could not be decoded"
+                : "Recompressed streams whose filter PDF/A does not allow, such as LZW, with Flate");
     }
 
-    private void image(COSStream s) {
+    private void image(COSStream s) throws IOException {
+        String depth = ImageDepth.fix(s, level);
+        if (depth != null) {
+            report.warn(depth);
+        }
         if (s.getBoolean(COSName.INTERPOLATE, false)) {
             s.setBoolean(COSName.INTERPOLATE, false);
         }
@@ -164,6 +172,7 @@ final class StreamFixer {
             gs.removeItem(TR2);
         }
         gs.removeItem(HT);
+        gs.removeItem(HTP);
         if (gs.getInt(OPM, 0) == 1) {
             gs.setInt(OPM, 0);
         }

@@ -125,8 +125,7 @@ class StructureCheckTest {
             int key = d.getPage(0).getCOSObject().getInt(COSName.STRUCT_PARENTS);
             assertEquals(key, nums.getInt(0));
             COSDictionary doc = (COSDictionary) root.getDictionaryObject(COSName.K);
-            assertSame(((COSArray) doc.getDictionaryObject(COSName.K)).getObject(0),
-                    ((COSArray) nums.getObject(1)).getObject(0));
+            assertSame(doc.getDictionaryObject(COSName.K), ((COSArray) nums.getObject(1)).getObject(0));
         }
     }
 

@@ -74,6 +74,10 @@ final class Annotations {
                 a.removeItem(COSName.AA);
                 report.warn("Removed annotation actions, which PDF/A does not allow");
             }
+            if ("Widget".equals(type) && a.containsKey(COSName.A)) {
+                a.removeItem(COSName.A);
+                report.warn("Removed form field actions, which PDF/A does not allow");
+            }
             Actions.filterKey(a, COSName.A, level, report);
             if (a.getDictionaryObject(COSName.CA) instanceof COSBase ca
                     && !(ca instanceof COSInteger || ca instanceof COSFloat)) {

@@ -32,15 +32,22 @@ final class OdpWriter {
 
     final FontLibrary fonts;
 
+    final java.util.Set<String> unprinted;
+
     OdpWriter(OdfDocument doc, PackageOut out, FontLibrary fonts) {
         this.doc = doc;
         this.fonts = fonts;
         this.out = out;
         this.styles = new Styles(doc);
+        this.unprinted = Layers.unprinted(doc);
     }
 
     List<String> write() throws IOException {
-        Element body = Dom.kid(Dom.kid(doc.content(), Ns.OFFICE, "body"), Ns.OFFICE, "presentation");
+        Element outer = Dom.kid(doc.content(), Ns.OFFICE, "body");
+        Element body = Dom.kid(outer, Ns.OFFICE, "presentation");
+        if (body == null) {
+            body = Dom.kid(outer, Ns.OFFICE, "drawing");
+        }
         for (Element d : Dom.kids(body, Ns.PRESENTATION, "footer-decl")) {
             footers.put(Dom.attr(d, Ns.PRESENTATION, "name", ""), d.getTextContent());
         }
