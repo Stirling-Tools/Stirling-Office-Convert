@@ -1,5 +1,6 @@
 package stirling.software.officeconvert.topdf.odf;
 
+import java.io.InterruptedIOException;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -9,19 +10,24 @@ final class SlideTable {
 
     static final int MAX_CELLS = 10_000;
 
+    private static final String EMPTY_CELL = "<a:txBody><a:bodyPr/><a:lstStyle/><a:p/></a:txBody><a:tcPr/>";
+
     private final Styles styles;
 
     private final Styles.Scope scope;
 
     private final DmlText.Fields fields;
 
-    SlideTable(Styles styles, Styles.Scope scope, DmlText.Fields fields) {
+    private final WorkBudget work;
+
+    SlideTable(Styles styles, Styles.Scope scope, DmlText.Fields fields, WorkBudget work) {
         this.styles = styles;
         this.scope = scope;
         this.fields = fields;
+        this.work = work;
     }
 
-    String xml(Element table, Box box, int id) {
+    String xml(Element table, Box box, int id) throws InterruptedIOException {
         List<Double> widths = new ArrayList<>();
         for (Element c : Dom.kids(table, Ns.TABLE, "table-column")) {
             int repeat = Math.max(1, Math.min(64, Dom.integer(c, Ns.TABLE, "number-columns-repeated", 1)));
@@ -120,7 +126,9 @@ final class SlideTable {
                     if (down > 1) {
                         b.append(" rowSpan=\"").append(down).append('"');
                     }
-                    b.append('>').append(cell(c, style)).append("</a:tc>");
+                    String xml = work.cell() ? cell(c, style) : EMPTY_CELL;
+                    work.chars(xml.length());
+                    b.append('>').append(xml).append("</a:tc>");
                 }
             }
             while (col < cols) {

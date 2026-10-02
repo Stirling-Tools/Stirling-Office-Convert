@@ -5,13 +5,15 @@ import java.io.InputStream;
 import java.io.InterruptedIOException;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.time.temporal.JulianFields;
 import java.util.ArrayList;
 import java.util.List;
+
+import stirling.software.officeconvert.topdf.io.OfficeZip;
+import stirling.software.officeconvert.topdf.io.SourceFile;
 
 /** dBASE and FoxPro tables (.dbf): the field names as a heading row, then each record that is not deleted. Memo
  * fields live in a separate file and are left empty. */
@@ -28,7 +30,7 @@ public final class Dbf {
     /** Whether the file has a dBASE header that agrees with its size. */
     public static boolean is(Path file) throws IOException {
         byte[] h;
-        try (InputStream in = Files.newInputStream(file)) {
+        try (InputStream in = SourceFile.open(file)) {
             h = in.readNBytes(32);
         }
         if (h.length < 32) {
@@ -45,13 +47,13 @@ public final class Dbf {
         long records = u32(h, 4);
         int header = u16(h, 8);
         int record = u16(h, 10);
-        long size = Files.size(file);
+        long size = SourceFile.size(file);
         return month <= 12 && day <= 31 && header >= 33 && record >= 1 && header + records * record <= size + 1
                 && header + records * record >= size - 512;
     }
 
     public static Grid read(Path file) throws IOException {
-        byte[] b = Files.readAllBytes(file);
+        byte[] b = SourceFile.read(file, OfficeZip.Limits.DEFAULT.maxEntryBytes());
         long records = u32(b, 4);
         int header = u16(b, 8);
         int record = u16(b, 10);

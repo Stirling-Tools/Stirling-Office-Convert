@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -21,6 +22,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import stirling.software.officeconvert.topdf.OfficeToPdf;
+import stirling.software.officeconvert.topdf.testing.Allocation;
 
 class XlsbTest {
 
@@ -119,6 +121,16 @@ class XlsbTest {
                 "<definedName name=\"_xlnm.Print_Area\" localSheetId=\"0\">'Data'!$A$1:$B$3</definedName>"));
         String t = text(convert("area.xlsb", xlsb));
         assertTrue(t.contains("Inside") && !t.contains("Outside"), t);
+    }
+
+    @Test
+    void aPrintAreaOfManyCopiesOfALongSheetNameStaysSmall() throws IOException {
+        byte[] xlsb = new XlsbFixture().sheetName("S".repeat(30_000)).beginData().row(0).text(0, "Inside", 0)
+                .endData().printArea(0, 2, 0, 1).printArea(0, 1, 0, 1).areaCopies(100_000).build();
+        Path in = Files.write(dir.resolve("names.xlsb"), xlsb);
+        Allocation.Measured m = Allocation.measure(() -> XlsbPackage.write(in, OutputStream.nullOutputStream()));
+        assertTrue(m.failure() == null || m.failure() instanceof IOException, String.valueOf(m.failure()));
+        assertTrue(m.bytes() < 256L << 20, "allocated " + m.megabytes() + " MB");
     }
 
     @Test

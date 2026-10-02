@@ -5,22 +5,22 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InterruptedIOException;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Locale;
 import java.util.zip.GZIPInputStream;
 import java.util.zip.ZipEntry;
-import java.util.zip.ZipFile;
 
-import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.multipdf.LayerUtility;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.common.PDRectangle;
 import org.apache.pdfbox.pdmodel.graphics.form.PDFormXObject;
 
+import stirling.software.officeconvert.topdf.io.BoundedZip;
 import stirling.software.officeconvert.topdf.io.DecodedPicture;
+import stirling.software.officeconvert.topdf.io.PdfBytes;
 import stirling.software.officeconvert.topdf.io.PictureDecoder;
+import stirling.software.officeconvert.topdf.io.SourceFile;
 import stirling.software.officeconvert.topdf.pdf.PdfCanvas;
 import stirling.software.officeconvert.topdf.pdf.PdfOutput;
 
@@ -59,7 +59,7 @@ public final class IWorkPreview {
         Path name = file.getFileName();
         String n = name == null ? "" : name.toString().toLowerCase(Locale.ROOT);
         boolean named = n.endsWith(".pages") || n.endsWith(".numbers") || n.endsWith(".key");
-        try (InputStream in = Files.newInputStream(file)) {
+        try (InputStream in = SourceFile.open(file)) {
             byte[] head = in.readNBytes(2);
             if (head.length < 2 || head[0] != 'P' || head[1] != 'K') {
                 return false;
@@ -67,20 +67,20 @@ public final class IWorkPreview {
         } catch (IOException e) {
             return false;
         }
-        try (ZipFile zip = new ZipFile(file.toFile())) {
-            if (zip.getEntry("[Content_Types].xml") != null || zip.getEntry("mimetype") != null) {
+        try (BoundedZip zip = BoundedZip.open(file)) {
+            if (zip.entry("[Content_Types].xml") != null || zip.entry("mimetype") != null) {
                 return false;
             }
             if (named) {
                 return true;
             }
             for (String m : MARKERS) {
-                if (zip.getEntry(m) != null) {
+                if (zip.entry(m) != null) {
                     return true;
                 }
             }
             for (String m : INDEXES) {
-                ZipEntry e = zip.getEntry(m);
+                ZipEntry e = zip.entry(m);
                 if (e != null && appleIndex(zip, e)) {
                     return true;
                 }
@@ -91,8 +91,8 @@ public final class IWorkPreview {
         }
     }
 
-    private static boolean appleIndex(ZipFile zip, ZipEntry e) throws IOException {
-        try (InputStream raw = zip.getInputStream(e);
+    private static boolean appleIndex(BoundedZip zip, ZipEntry e) throws IOException {
+        try (InputStream raw = zip.open(e, MAX_PREVIEW_BYTES);
                 InputStream in = e.getName().endsWith(".gz") ? new GZIPInputStream(raw) : raw) {
             String head = new String(in.readNBytes(4096), StandardCharsets.ISO_8859_1);
             return head.contains(APPLE_NAMESPACE);
@@ -101,12 +101,12 @@ public final class IWorkPreview {
 
     public static long memoryBound(Path file) throws IOException {
         long most = 0;
-        try (ZipFile zip = new ZipFile(file.toFile())) {
+        try (BoundedZip zip = BoundedZip.open(file)) {
             for (String p : PDFS) {
-                most = Math.max(most, bound(zip.getEntry(p)));
+                most = Math.max(most, bound(zip.entry(p)));
             }
             for (String p : PICTURES) {
-                most = Math.max(most, bound(zip.getEntry(p)));
+                most = Math.max(most, bound(zip.entry(p)));
             }
         }
         return most;
@@ -125,9 +125,9 @@ public final class IWorkPreview {
 
     public static Drawn draw(Path file, PdfOutput out, int maxPages) throws IOException {
         String encrypted = null;
-        try (ZipFile zip = new ZipFile(file.toFile())) {
+        try (BoundedZip zip = BoundedZip.open(file)) {
             for (String p : PDFS) {
-                byte[] data = read(zip, zip.getEntry(p));
+                byte[] data = read(zip, zip.entry(p));
                 PDDocument src = data == null ? null : load(data);
                 if (src == null) {
                     continue;
@@ -141,7 +141,7 @@ public final class IWorkPreview {
                 }
             }
             for (String p : PICTURES) {
-                byte[] data = read(zip, zip.getEntry(p));
+                byte[] data = read(zip, zip.entry(p));
                 if (data != null) {
                     picture(data, out);
                     return new Drawn(1, true, 1);
@@ -157,7 +157,7 @@ public final class IWorkPreview {
 
     private static PDDocument load(byte[] data) throws IOException {
         try {
-            return Loader.loadPDF(data);
+            return PdfBytes.load(data);
         } catch (InterruptedIOException e) {
             throw e;
         } catch (IOException | RuntimeException e) {
@@ -165,7 +165,7 @@ public final class IWorkPreview {
         }
     }
 
-    private static byte[] read(ZipFile zip, ZipEntry e) throws IOException {
+    private static byte[] read(BoundedZip zip, ZipEntry e) throws IOException {
         if (e == null) {
             return null;
         }
@@ -173,9 +173,13 @@ public final class IWorkPreview {
         if (limit <= 0 || e.getSize() > limit) {
             return null;
         }
-        try (InputStream in = zip.getInputStream(e)) {
-            byte[] b = in.readNBytes((int) limit + 1);
-            return b.length == 0 || b.length > limit ? null : b;
+        try (InputStream in = zip.open(e, limit)) {
+            byte[] b = in.readNBytes((int) limit);
+            return b.length == 0 ? null : b;
+        } catch (InterruptedIOException x) {
+            throw x;
+        } catch (IOException x) {
+            return null;
         }
     }
 

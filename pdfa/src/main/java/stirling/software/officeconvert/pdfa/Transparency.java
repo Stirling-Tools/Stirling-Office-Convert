@@ -150,7 +150,7 @@ final class Transparency {
     private PDImageXObject render(PDPage page, int index, Rectangle2D region, Rectangle2D crop,
             List<COSDictionary> annots) throws IOException {
         if (renderer == null) {
-            renderer = new PDFRenderer(doc);
+            renderer = new RgbGroupRenderer(doc);
         }
         Set<COSDictionary> include = Collections.newSetFromMap(new IdentityHashMap<>());
         include.addAll(annots);
@@ -347,7 +347,7 @@ final class Transparency {
                 return;
             }
             if (COSName.EXT_G_STATE.equals(d.getCOSName(COSName.TYPE)) || d.containsKey(COSName.CA_NS)
-                    || d.containsKey(COSName.SMASK) && !(d instanceof COSStream)) {
+                    || (d.containsKey(COSName.SMASK) || d.containsKey(COSName.BM)) && !(d instanceof COSStream)) {
                 d.removeItem(COSName.SMASK);
                 d.removeItem(COSName.CA);
                 d.removeItem(COSName.CA_NS);

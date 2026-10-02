@@ -324,7 +324,7 @@ final class SlideWriter {
         }
         Element table = Dom.kid(f, Ns.TABLE, "table");
         if (table != null) {
-            shapes.append(new SlideTable(w.styles, scope, fields()).xml(table, box, id++));
+            shapes.append(new SlideTable(w.styles, scope, fields(), w.doc.work).xml(table, box, id++));
             return;
         }
         Element object = Dom.kid(f, Ns.DRAW, "object");

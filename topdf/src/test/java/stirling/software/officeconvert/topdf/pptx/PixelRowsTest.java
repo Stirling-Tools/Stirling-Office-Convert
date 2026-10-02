@@ -2,7 +2,12 @@ package stirling.software.officeconvert.topdf.pptx;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 
+import java.awt.Transparency;
+import java.awt.color.ColorSpace;
 import java.awt.image.BufferedImage;
+import java.awt.image.ComponentColorModel;
+import java.awt.image.DataBuffer;
+import java.awt.image.WritableRaster;
 import java.util.Random;
 
 import org.junit.jupiter.api.Test;
@@ -11,7 +16,7 @@ class PixelRowsTest {
 
     private static final int[] TYPES = {BufferedImage.TYPE_INT_ARGB, BufferedImage.TYPE_INT_RGB,
         BufferedImage.TYPE_3BYTE_BGR, BufferedImage.TYPE_4BYTE_ABGR, BufferedImage.TYPE_INT_ARGB_PRE,
-        BufferedImage.TYPE_BYTE_GRAY, BufferedImage.TYPE_USHORT_565_RGB, BufferedImage.TYPE_BYTE_INDEXED};
+        BufferedImage.TYPE_USHORT_565_RGB, BufferedImage.TYPE_BYTE_INDEXED};
 
     @Test
     void rowsReadAsGetRgbReadsThemForEveryImageType() {
@@ -34,6 +39,36 @@ class PixelRowsTest {
                 }
             }
         }
+    }
+
+    @Test
+    void greyRowsKeepTheirStoredSamples() {
+        BufferedImage grey = new BufferedImage(5, 2, BufferedImage.TYPE_BYTE_GRAY);
+        grey.getRaster().setSample(3, 1, 0, 6);
+        assertArrayEquals(new int[] {0xFF000000, 0xFF060606, 0xFF000000}, row(grey, 2, 1, 3));
+    }
+
+    @Test
+    void sixteenBitGreyRowsKeepTheirHighByte() {
+        BufferedImage grey = new BufferedImage(3, 1, BufferedImage.TYPE_USHORT_GRAY);
+        grey.getRaster().setSample(1, 0, 0, 0x06FF);
+        assertArrayEquals(new int[] {0xFF000000, 0xFF060606, 0xFF000000}, row(grey, 0, 0, 3));
+    }
+
+    @Test
+    void greyWithAlphaRowsKeepGreyAndAlpha() {
+        ComponentColorModel cm = new ComponentColorModel(ColorSpace.getInstance(ColorSpace.CS_GRAY), true, false,
+                Transparency.TRANSLUCENT, DataBuffer.TYPE_BYTE);
+        WritableRaster raster = cm.createCompatibleWritableRaster(2, 1);
+        raster.setPixel(1, 0, new int[] {6, 128});
+        BufferedImage grey = new BufferedImage(cm, raster, false, null);
+        assertArrayEquals(new int[] {0, 0x80060606}, row(grey, 0, 0, 2));
+    }
+
+    private static int[] row(BufferedImage src, int x, int y, int w) {
+        int[] row = new int[w];
+        PixelRows.read(src, x, y, w, row);
+        return row;
     }
 
     @Test

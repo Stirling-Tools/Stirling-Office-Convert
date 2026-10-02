@@ -13,8 +13,10 @@ import java.util.Map;
 import java.util.Set;
 
 import stirling.software.officeconvert.memory.Admission;
+import stirling.software.officeconvert.topdf.io.BoundedZip;
 import stirling.software.officeconvert.topdf.io.OfficeZip;
 import stirling.software.officeconvert.topdf.io.Relationship;
+import stirling.software.officeconvert.topdf.io.SourceFile;
 import stirling.software.officeconvert.topdf.xls.Parts;
 import stirling.software.officeconvert.topdf.xls.Xml;
 
@@ -57,7 +59,7 @@ public final class XlsbPackage {
 
     /** Whether the zip package's main part is a binary workbook. */
     public static boolean is(Path file) {
-        try (InputStream in = java.nio.file.Files.newInputStream(file)) {
+        try (InputStream in = SourceFile.open(file)) {
             byte[] head = in.readNBytes(2);
             if (head.length < 2 || head[0] != 'P' || head[1] != 'K') {
                 return false;
@@ -65,12 +67,12 @@ public final class XlsbPackage {
         } catch (IOException e) {
             return false;
         }
-        try (java.util.zip.ZipFile zip = new java.util.zip.ZipFile(file.toFile())) {
-            java.util.zip.ZipEntry types = zip.getEntry("[Content_Types].xml");
+        try (BoundedZip zip = BoundedZip.open(file)) {
+            java.util.zip.ZipEntry types = zip.entry("[Content_Types].xml");
             if (types == null || types.getSize() > MAX_TYPES_BYTES) {
                 return false;
             }
-            try (InputStream in = zip.getInputStream(types)) {
+            try (InputStream in = zip.open(types, MAX_TYPES_BYTES)) {
                 String xml = new String(in.readNBytes(MAX_TYPES_BYTES), java.nio.charset.StandardCharsets.UTF_8);
                 return xml.toLowerCase(Locale.ROOT).contains("sheet.binary.macroenabled.main");
             }

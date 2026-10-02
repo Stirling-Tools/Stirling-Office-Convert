@@ -121,6 +121,9 @@ public final class PageAnalyzer {
                 (FigureFinder.runningShare(b, segments) >= PROSE_OVER_DRAWING ? drawnBehind : drawings).add(b);
             }
         }
+        for (PageGraphics.Area a : gfx.masked()) {
+            drawnBehind.add(new Box(a.x(), a.top(), a.right(), a.bottom()));
+        }
         strong.addAll(drawings);
 
         List<TableDetection.Found> tables = detectTables

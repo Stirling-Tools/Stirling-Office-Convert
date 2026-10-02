@@ -16,10 +16,11 @@ public record PageGraphics(
         List<Area> pastBudget,
         Map<Object, Integer> paintOrder,
         Set<Object> seeThroughPaint,
-        Map<Object, Outline> outlines) {
+        Map<Object, Outline> outlines,
+        List<Area> masked) {
 
     public PageGraphics(List<Rule> rules, List<Fill> fills, List<ImageDraw> images, List<VectorMark> marks) {
-        this(rules, fills, images, marks, List.of(), Map.of(), Set.of(), Map.of());
+        this(rules, fills, images, marks, List.of(), Map.of(), Set.of(), Map.of(), List.of());
     }
 
     public record Area(float x, float top, float right, float bottom) {}

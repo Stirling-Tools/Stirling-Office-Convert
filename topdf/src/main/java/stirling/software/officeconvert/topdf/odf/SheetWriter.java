@@ -21,8 +21,6 @@ final class SheetWriter {
 
     static final int MAX_EMITTED_ROWS = 300_000;
 
-    static final long MAX_CELLS = 4_000_000;
-
     static final int FILLER = 2000;
 
     static final int STYLED_RUN = 100;
@@ -64,8 +62,6 @@ final class SheetWriter {
     private double fillerWidth = Double.NaN;
 
     private int headerColEnd = -1;
-
-    private long cells;
 
     private int emittedRows;
 
@@ -246,7 +242,7 @@ final class SheetWriter {
         };
     }
 
-    private void rows(Element parent, StringBuilder data, int[] row, boolean header, int depth) {
+    private void rows(Element parent, StringBuilder data, int[] row, boolean header, int depth) throws IOException {
         if (depth > 4) {
             return;
         }
@@ -268,7 +264,7 @@ final class SheetWriter {
         }
     }
 
-    private void row(Element r, StringBuilder data, int[] at) {
+    private void row(Element r, StringBuilder data, int[] at) throws IOException {
         int repeat = Math.max(1, Dom.integer(r, Ns.TABLE, "number-rows-repeated", 1));
         int start = at[0];
         if (start >= MAX_ROWS) {
@@ -300,7 +296,8 @@ final class SheetWriter {
         }
         int copies = content ? Math.min(repeat, 10_000) : repeat;
         for (int i = 0; i < copies; i++) {
-            if (emittedRows >= MAX_EMITTED_ROWS || cells > MAX_CELLS) {
+            if (emittedRows >= MAX_EMITTED_ROWS || !w.doc.work.sheetRow()
+                    || i > 0 && !w.doc.work.sheetCells(rowCells)) {
                 return;
             }
             emittedRows++;
@@ -322,6 +319,9 @@ final class SheetWriter {
             }
             data.append("</row>");
             for (int[] m : rowMerges) {
+                if (!w.doc.work.merge()) {
+                    break;
+                }
                 merges.add(new int[] {m[0], n, m[2], Math.min(MAX_ROWS - 1, n + m[3] - m[1])});
             }
             if (hasValue) {
@@ -334,9 +334,12 @@ final class SheetWriter {
 
     private boolean rowWraps;
 
+    private int rowCells;
+
     private boolean rowMultiline;
 
     private boolean cells(Element r, int row, StringBuilder out, List<int[]> rowMerges) {
+        rowCells = 0;
         rowWraps = false;
         rowMultiline = false;
         int col = 0;
@@ -371,20 +374,20 @@ final class SheetWriter {
             if (!covered) {
                 int cs = Dom.integer(c, Ns.TABLE, "number-columns-spanned", 1);
                 int rs = Dom.integer(c, Ns.TABLE, "number-rows-spanned", 1);
-                if ((cs > 1 || rs > 1) && merges.size() < 100_000) {
+                if (cs > 1 || rs > 1) {
                     rowMerges.add(new int[] {col, row, Math.min(MAX_COLS - 1, col + Math.max(1, cs) - 1),
                         row + Math.max(1, rs) - 1});
                     any = true;
                 }
             }
             if ((value != null || override) && !(value == null && repeat > FILLER)) {
-                for (int i = 0; i < repeat && cells < MAX_CELLS; i++) {
+                for (int i = 0; i < repeat && w.doc.work.sheetCells(1); i++) {
                     out.append("<c r=\"").append(column(col + i)).append(ROW).append('"');
                     if (xf.index() != 0) {
                         out.append(" s=\"").append(xf.index()).append('"');
                     }
                     out.append(value == null ? "/>" : value);
-                    cells++;
+                    rowCells++;
                     maxCol = Math.max(maxCol, col + i);
                 }
                 any = true;

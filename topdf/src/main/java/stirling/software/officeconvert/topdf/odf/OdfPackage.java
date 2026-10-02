@@ -46,7 +46,10 @@ public final class OdfPackage {
                 warnings.add("Left out a damaged part: the document's XML is not well-formed, so only its readable"
                         + " start was converted");
             }
-            return new Outcome(warnings, doc.damaged());
+            if (doc.work.spent()) {
+                warnings.add(WorkBudget.WARNING);
+            }
+            return new Outcome(warnings, doc.damaged() || doc.work.spent());
         }
     }
 }

@@ -97,7 +97,7 @@ final class WordTables {
         String[] spanCellPr = new String[gridCount];
         int r = 0;
         for (Row row : rows) {
-            if (r++ >= MAX_ROWS) {
+            if (r++ >= MAX_ROWS || w.doc.work.spent()) {
                 break;
             }
             b.append(row(row, body, widths, gridCount, defaultCellStyles, spanLeft, spanWidth, spanCellPr));
@@ -276,9 +276,16 @@ final class WordTables {
                 spanCellPr[col] = tcPr;
             }
             b.append("</w:tcPr>");
-            TextBody cell = body.nested(body.part, scope);
-            cell.blocks(c, null);
-            b.append(cell.cellXml()).append("</w:tc>");
+            if (w.doc.work.cell()) {
+                TextBody cell = body.nested(body.part, scope);
+                cell.blocks(c, null);
+                String xml = cell.cellXml();
+                w.doc.work.chars(xml.length());
+                b.append(xml);
+            } else {
+                b.append("<w:p/>");
+            }
+            b.append("</w:tc>");
             ci += span;
             col += span;
         }

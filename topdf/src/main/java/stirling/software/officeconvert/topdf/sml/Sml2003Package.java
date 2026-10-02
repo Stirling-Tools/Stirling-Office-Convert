@@ -4,7 +4,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InterruptedIOException;
 import java.io.OutputStream;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -17,6 +16,7 @@ import stirling.software.officeconvert.memory.Admission;
 import stirling.software.officeconvert.topdf.flat.Sniff;
 import stirling.software.officeconvert.topdf.font.FontLibrary;
 import stirling.software.officeconvert.topdf.io.SecureXml;
+import stirling.software.officeconvert.topdf.io.SourceFile;
 import stirling.software.officeconvert.topdf.xls.Parts;
 import stirling.software.officeconvert.topdf.xls.Xml;
 import stirling.software.officeconvert.topdf.xlsx.ColumnUnits;
@@ -71,7 +71,7 @@ public final class Sml2003Package {
         Parts parts = new Parts(out);
         List<String> warnings = new ArrayList<>();
         boolean lost = false;
-        try (InputStream in = Files.newInputStream(source)) {
+        try (InputStream in = SourceFile.open(source)) {
             XMLStreamReader r = SecureXml.reader(in);
             int n = 0;
             while (r.hasNext() && n < sheets.size()) {
@@ -151,7 +151,7 @@ public final class Sml2003Package {
 
     private static void scan(Path source, Styles styles, List<SheetInfo> sheets, List<PrintNames.Name> global,
             boolean[] date1904) throws IOException, XMLStreamException {
-        try (InputStream in = Files.newInputStream(source)) {
+        try (InputStream in = SourceFile.open(source)) {
             XMLStreamReader r = SecureXml.reader(in);
             int depth = 0;
             SheetInfo current = null;

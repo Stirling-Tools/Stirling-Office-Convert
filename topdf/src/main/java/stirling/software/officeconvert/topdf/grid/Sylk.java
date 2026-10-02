@@ -6,11 +6,12 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.InterruptedIOException;
 import java.nio.charset.Charset;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+
+import stirling.software.officeconvert.topdf.io.SourceFile;
 
 /** SYLK (Symbolic Link) spreadsheets: C records for cells (cached values, the E formulas ignored), F records for
  * their formats, bold and italic, and column widths, P records for number formats. */
@@ -24,7 +25,7 @@ public final class Sylk {
 
     /** Whether the file starts with a SYLK ID record. */
     public static boolean is(Path file) throws IOException {
-        try (InputStream in = Files.newInputStream(file)) {
+        try (InputStream in = SourceFile.open(file)) {
             byte[] head = in.readNBytes(4);
             return head.length >= 3 && head[0] == 'I' && head[1] == 'D' && head[2] == ';';
         }
@@ -35,7 +36,7 @@ public final class Sylk {
         List<String> pictures = new ArrayList<>();
         int x = 1;
         int y = 1;
-        try (BufferedReader r = new BufferedReader(new InputStreamReader(Files.newInputStream(file),
+        try (BufferedReader r = new BufferedReader(new InputStreamReader(SourceFile.open(file),
                 Charset.forName("windows-1252")), 1 << 16)) {
             String line;
             int n = 0;
