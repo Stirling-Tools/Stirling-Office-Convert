@@ -8,8 +8,6 @@ import org.w3c.dom.Element;
 
 final class SlideTable {
 
-    static final int MAX_CELLS = 10_000;
-
     private static final String EMPTY_CELL = "<a:txBody><a:bodyPr/><a:lstStyle/><a:p/></a:txBody><a:tcPr/>";
 
     private final Styles styles;
@@ -28,6 +26,9 @@ final class SlideTable {
     }
 
     String xml(Element table, Box box, int id) throws InterruptedIOException {
+        if (work.spent()) {
+            return "";
+        }
         List<Double> widths = new ArrayList<>();
         for (Element c : Dom.kids(table, Ns.TABLE, "table-column")) {
             int repeat = Math.max(1, Math.min(64, Dom.integer(c, Ns.TABLE, "number-columns-repeated", 1)));
@@ -81,63 +82,69 @@ final class SlideTable {
                 .append("<a:graphic><a:graphicData uri=\"http://schemas.openxmlformats.org/drawingml/2006/table\"><a:tbl>")
                 .append("<a:tblPr/>").append(grid);
         int[] vleft = new int[cols];
-        int cells = 0;
+        int emitted = 0;
         for (Element r : rows) {
-            Props rp = styles.props("table-row", Dom.attr(r, Ns.TABLE, "style-name"), scope, "table-row-properties",
-                    false);
-            double h = rp.pt("style:row-height", rp.pt("style:min-row-height", 18));
-            b.append("<a:tr h=\"").append(Length.emu(h)).append("\">");
-            String rowDefault = Dom.attr(r, Ns.TABLE, "default-cell-style-name");
-            int col = 0;
-            for (Element c : Dom.kids(r)) {
-                boolean covered = Dom.is(c, Ns.TABLE, "covered-table-cell");
-                if (!covered && !Dom.is(c, Ns.TABLE, "table-cell")) {
-                    continue;
-                }
-                int repeat = Math.max(1, Math.min(64, Dom.integer(c, Ns.TABLE, "number-columns-repeated", 1)));
-                for (int k = 0; k < repeat && col < cols; k++, col++) {
-                    if (++cells > MAX_CELLS) {
-                        break;
-                    }
-                    String style = Dom.attr(c, Ns.TABLE, "style-name");
-                    if (style == null) {
-                        style = rowDefault;
-                    }
-                    if (covered) {
-                        boolean vertical = vleft[col] > 0;
-                        b.append("<a:tc").append(vertical ? " vMerge=\"1\"" : " hMerge=\"1\"")
-                                .append("><a:txBody><a:bodyPr/><a:lstStyle/><a:p/></a:txBody><a:tcPr/></a:tc>");
-                        if (vleft[col] > 0) {
-                            vleft[col]--;
-                        }
-                        continue;
-                    }
-                    int span = Math.max(1, Dom.integer(c, Ns.TABLE, "number-columns-spanned", 1));
-                    int down = Math.max(1, Dom.integer(c, Ns.TABLE, "number-rows-spanned", 1));
-                    if (down > 1) {
-                        for (int s = col; s < Math.min(cols, col + span); s++) {
-                            vleft[s] = down - 1;
-                        }
-                    }
-                    b.append("<a:tc");
-                    if (span > 1) {
-                        b.append(" gridSpan=\"").append(Math.min(span, cols - col)).append('"');
-                    }
-                    if (down > 1) {
-                        b.append(" rowSpan=\"").append(down).append('"');
-                    }
-                    String xml = work.cell() ? cell(c, style) : EMPTY_CELL;
-                    work.chars(xml.length());
-                    b.append('>').append(xml).append("</a:tc>");
-                }
+            if (work.spent()) {
+                break;
             }
-            while (col < cols) {
-                b.append("<a:tc><a:txBody><a:bodyPr/><a:lstStyle/><a:p/></a:txBody><a:tcPr/></a:tc>");
-                col++;
-            }
-            b.append("</a:tr>");
+            String row = row(r, cols, vleft);
+            work.charge(row.length());
+            b.append(row);
+            emitted++;
+        }
+        if (emitted == 0) {
+            return "";
         }
         return b.append("</a:tbl></a:graphicData></a:graphic></p:graphicFrame>").toString();
+    }
+
+    private String row(Element r, int cols, int[] vleft) {
+        Props rp = styles.props("table-row", Dom.attr(r, Ns.TABLE, "style-name"), scope, "table-row-properties", false);
+        double h = rp.pt("style:row-height", rp.pt("style:min-row-height", 18));
+        StringBuilder b = new StringBuilder("<a:tr h=\"").append(Length.emu(h)).append("\">");
+        String rowDefault = Dom.attr(r, Ns.TABLE, "default-cell-style-name");
+        int col = 0;
+        for (Element c : Dom.kids(r)) {
+            boolean covered = Dom.is(c, Ns.TABLE, "covered-table-cell");
+            if (!covered && !Dom.is(c, Ns.TABLE, "table-cell")) {
+                continue;
+            }
+            int repeat = Math.max(1, Math.min(64, Dom.integer(c, Ns.TABLE, "number-columns-repeated", 1)));
+            for (int k = 0; k < repeat && col < cols; k++, col++) {
+                String style = Dom.attr(c, Ns.TABLE, "style-name");
+                if (style == null) {
+                    style = rowDefault;
+                }
+                if (covered) {
+                    b.append("<a:tc").append(vleft[col] > 0 ? " vMerge=\"1\"" : " hMerge=\"1\"").append('>')
+                            .append(EMPTY_CELL).append("</a:tc>");
+                    if (vleft[col] > 0) {
+                        vleft[col]--;
+                    }
+                    continue;
+                }
+                int span = Math.max(1, Dom.integer(c, Ns.TABLE, "number-columns-spanned", 1));
+                int down = Math.max(1, Dom.integer(c, Ns.TABLE, "number-rows-spanned", 1));
+                if (down > 1) {
+                    for (int s = col; s < Math.min(cols, col + span); s++) {
+                        vleft[s] = down - 1;
+                    }
+                }
+                b.append("<a:tc");
+                if (span > 1) {
+                    b.append(" gridSpan=\"").append(Math.min(span, cols - col)).append('"');
+                }
+                if (down > 1) {
+                    b.append(" rowSpan=\"").append(down).append('"');
+                }
+                b.append('>').append(cell(c, style)).append("</a:tc>");
+            }
+        }
+        while (col < cols) {
+            b.append("<a:tc>").append(EMPTY_CELL).append("</a:tc>");
+            col++;
+        }
+        return b.append("</a:tr>").toString();
     }
 
     private void collect(Element parent, List<Element> rows, int depth) {

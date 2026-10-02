@@ -6,77 +6,46 @@ import stirling.software.officeconvert.topdf.io.OfficeZip;
 
 final class WorkBudget {
 
-    static final long MAX_CELLS = 250_000;
+    static final long FLOOR_BYTES = 8L << 20;
 
-    static final long MAX_CHARS = 32L << 20;
+    static final int SOURCE_FACTOR = 8;
 
-    static final long MAX_SHEET_CELLS = 4_000_000;
+    static final long MAX_BYTES = 192L << 20;
 
-    static final long MAX_SHEET_ROWS = 1_000_000;
-
-    static final int MAX_MERGES = 100_000;
+    static final int HEAP_FACTOR = 6;
 
     static final String WARNING = "Only part of the document was converted: its repeated rows, columns or nested"
             + " tables would make it too large";
 
-    private long cells;
+    private final long limit;
 
-    private long chars;
+    private long bytes;
 
-    private long sheetCells;
-
-    private long sheetRows;
-
-    private int merges;
+    private long charges;
 
     private boolean spent;
 
-    boolean cell() throws InterruptedIOException {
-        if ((cells & 1023) == 0) {
-            OfficeZip.checkNotInterrupted();
-        }
-        if (spent || ++cells > MAX_CELLS) {
-            spent = true;
-            return false;
-        }
-        return true;
+    WorkBudget(long sourceBytes) {
+        this.limit = limit(sourceBytes);
     }
 
-    boolean chars(long n) {
-        chars += n;
-        if (chars > MAX_CHARS) {
+    static long limit(long sourceBytes) {
+        return Math.min(MAX_BYTES, FLOOR_BYTES + SOURCE_FACTOR * Math.max(0, sourceBytes));
+    }
+
+    static long heap(long sourceBytes) {
+        return HEAP_FACTOR * limit(sourceBytes);
+    }
+
+    boolean charge(long n) throws InterruptedIOException {
+        if ((charges++ & 1023) == 0) {
+            OfficeZip.checkNotInterrupted();
+        }
+        bytes += Math.max(0, n);
+        if (bytes > limit) {
             spent = true;
         }
         return !spent;
-    }
-
-    boolean sheetCells(long n) {
-        sheetCells += n;
-        if (sheetCells > MAX_SHEET_CELLS) {
-            spent = true;
-            return false;
-        }
-        return true;
-    }
-
-    boolean sheetRow() throws InterruptedIOException {
-        if ((sheetRows & 1023) == 0) {
-            OfficeZip.checkNotInterrupted();
-        }
-        if (++sheetRows > MAX_SHEET_ROWS) {
-            spent = true;
-            return false;
-        }
-        return true;
-    }
-
-    boolean merge() {
-        if (merges >= MAX_MERGES) {
-            spent = true;
-            return false;
-        }
-        merges++;
-        return true;
     }
 
     boolean spent() {

@@ -58,18 +58,22 @@ public final class OdfDocument implements Closeable {
 
     private final Element settings;
 
-    final WorkBudget work = new WorkBudget();
+    final WorkBudget work;
 
     private long budget = MAX_TOTAL_BYTES;
 
     private boolean damaged;
 
+    private boolean truncated;
+
     private Element meta;
 
     private boolean metaRead;
 
-    private OdfDocument(Kind kind, BoundedZip zip, Element content, Element styles, Element settings) {
+    private OdfDocument(Kind kind, BoundedZip zip, Element content, Element styles, Element settings,
+            long sourceBytes) {
         this.kind = kind;
+        this.work = new WorkBudget(sourceBytes);
         this.zip = zip;
         this.content = content;
         this.styles = styles;
@@ -109,6 +113,14 @@ public final class OdfDocument implements Closeable {
         return damaged;
     }
 
+    void truncated() {
+        truncated = true;
+    }
+
+    boolean lost() {
+        return damaged || truncated || work.spent();
+    }
+
     boolean flat() {
         return zip == null;
     }
@@ -133,9 +145,9 @@ public final class OdfDocument implements Closeable {
             long size = SourceFile.size(file);
             if (size > 0 && isZip(file)) {
                 long xml = BoundedZip.inflatedSize(file, List.of("content.xml", "styles.xml"), MAX_XML_BYTES);
-                return (64L << 20) + Math.min(MAX_XML_BYTES * 2, xml) * 10 + size * 2;
+                return (64L << 20) + Math.min(MAX_XML_BYTES * 2, xml) * 10 + size * 2 + WorkBudget.heap(xml);
             }
-            return (64L << 20) + size * 12;
+            return (64L << 20) + size * 12 + WorkBudget.heap(size);
         } catch (IOException | RuntimeException e) {
             return 256L << 20;
         }
@@ -186,7 +198,7 @@ public final class OdfDocument implements Closeable {
             }
         }
         Element root = doc.getDocumentElement();
-        OdfDocument d = new OdfDocument(kind, null, root, root, Dom.kid(root, Ns.OFFICE, "settings"));
+        OdfDocument d = new OdfDocument(kind, null, root, root, Dom.kid(root, Ns.OFFICE, "settings"), data.length);
         d.damaged = damaged;
         return d;
     }
@@ -204,10 +216,10 @@ public final class OdfDocument implements Closeable {
             Map<String, ZipEntry> map = new HashMap<>();
             for (ZipEntry e : z.entries()) {
                 if (!e.isDirectory()) {
-                    map.putIfAbsent(e.getName().replace('\\', '/').replaceFirst("^/+", ""), e);
+                    map.putIfAbsent(BoundedZip.normalised(e.getName()), e);
                 }
             }
-            OdfDocument probe = new OdfDocument(kind, z, null, null, null);
+            OdfDocument probe = new OdfDocument(kind, z, null, null, null, 0);
             probe.entries.putAll(map);
             if (probe.encrypted()) {
                 throw new IOException(PASSWORD);
@@ -218,7 +230,7 @@ public final class OdfDocument implements Closeable {
             if (styles == null) {
                 styles = content;
             }
-            OdfDocument doc = new OdfDocument(kind, z, content, styles, settings);
+            OdfDocument doc = new OdfDocument(kind, z, content, styles, settings, MAX_TOTAL_BYTES - probe.budget);
             doc.entries.putAll(map);
             doc.budget = probe.budget;
             doc.damaged = probe.damaged;
@@ -326,9 +338,12 @@ public final class OdfDocument implements Closeable {
         }
     }
 
-    String chart(Element object) {
+    String chart(Element object) throws IOException {
+        if (work.spent()) {
+            return null;
+        }
         Element[] parts = objectParts(object);
-        return parts == null ? null : OdfChart.part(parts[0], parts[1]);
+        return parts == null ? null : OdfChart.part(parts[0], parts[1], work);
     }
 
     String math(Element object) {

@@ -74,26 +74,36 @@ public final class BoundedZip implements Closeable {
         }
     }
 
+    public static String normalised(String name) {
+        return name.replace('\\', '/').replaceFirst("^/+", "");
+    }
+
     public static long inflatedSize(Path file, List<String> names, long max) throws IOException {
         long total = 0;
         try (ZipFile z = new ZipFile(file.toFile())) {
             byte[] scratch = new byte[1 << 16];
             for (String name : names) {
-                ZipEntry e = z.getEntry(name);
-                if (e == null) {
-                    continue;
-                }
-                long size = 0;
-                try (InputStream in = z.getInputStream(e)) {
-                    for (int n; size <= max && (n = in.read(scratch)) > 0;) {
-                        OfficeZip.checkNotInterrupted();
-                        size += n;
+                long largest = 0;
+                for (ZipEntry e : Collections.list(z.entries())) {
+                    if (!e.isDirectory() && normalised(e.getName()).equals(name)) {
+                        largest = Math.max(largest, inflated(z, e, scratch, max));
                     }
                 }
-                total += Math.min(size, max + 1);
+                total += largest;
             }
         }
         return total;
+    }
+
+    private static long inflated(ZipFile z, ZipEntry e, byte[] scratch, long max) throws IOException {
+        long size = 0;
+        try (InputStream in = z.getInputStream(e)) {
+            for (int n; size <= max && (n = in.read(scratch)) > 0;) {
+                OfficeZip.checkNotInterrupted();
+                size += n;
+            }
+        }
+        return Math.min(size, max + 1);
     }
 
     @Override

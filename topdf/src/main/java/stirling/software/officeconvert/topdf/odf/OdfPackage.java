@@ -49,7 +49,7 @@ public final class OdfPackage {
             if (doc.work.spent()) {
                 warnings.add(WorkBudget.WARNING);
             }
-            return new Outcome(warnings, doc.damaged() || doc.work.spent());
+            return new Outcome(warnings, doc.lost());
         }
     }
 }

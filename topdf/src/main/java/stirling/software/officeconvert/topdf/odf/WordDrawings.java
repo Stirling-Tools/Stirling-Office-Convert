@@ -184,7 +184,7 @@ final class WordDrawings {
 
     static final String CHART_URI = "http://schemas.openxmlformats.org/drawingml/2006/chart";
 
-    private String chart(Element frame) {
+    private String chart(Element frame) throws IOException {
         Element object = Dom.kid(frame, Ns.DRAW, "object");
         return object == null ? null : w.doc.chart(object);
     }
