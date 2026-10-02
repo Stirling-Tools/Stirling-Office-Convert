@@ -234,7 +234,7 @@ final class ConvertHandler implements HttpHandler {
                 }
                 Job current = new Job(Files.createTempDirectory("office-convert-app"), client);
                 job = current;
-                current.name = q.get("name");
+                current.name = uploadName(q.get("name"));
                 Input input = receive(ex.getRequestBody(), current);
                 if (input == Input.PDF) {
                     String target = format == null ? "docx" : format;
@@ -266,6 +266,15 @@ final class ConvertHandler implements HttpHandler {
             } catch (Refusal r) {
                 outcome = r.code;
                 fail(ex, r.status, r.code, r.getMessage());
+            } catch (IOException e) {
+                outcome = "aborted";
+                throw e;
+            } catch (RuntimeException e) {
+                outcome = "error";
+                System.out.println("Request failed: " + e);
+                if (ex.getResponseCode() == -1) {
+                    fail(ex, 500, "error", "The converter failed on this request.");
+                }
             } finally {
                 long size = job == null ? 0 : job.size();
                 if (job == null) {
@@ -278,7 +287,14 @@ final class ConvertHandler implements HttpHandler {
         }
     }
 
-    private static void log(long start, long size, String outcome) {
+    private static String uploadName(String name) throws Refusal {
+        if (name != null && name.chars().anyMatch(c -> c < 0x20 || c == 0x7f)) {
+            throw new Refusal(400, "name", "The file name could not be read.");
+        }
+        return name;
+    }
+
+        private static void log(long start, long size, String outcome) {
         System.out.printf("%s convert %.1f MB in %d ms: %s%n", LocalTime.now().truncatedTo(ChronoUnit.SECONDS),
                 size / 1048576.0, (System.nanoTime() - start) / 1_000_000, outcome);
     }
