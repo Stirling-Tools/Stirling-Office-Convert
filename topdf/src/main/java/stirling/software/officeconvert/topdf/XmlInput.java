@@ -13,14 +13,13 @@ import stirling.software.officeconvert.memory.Admission;
 import stirling.software.officeconvert.topdf.OfficeToPdf.Options;
 import stirling.software.officeconvert.topdf.OfficeToPdf.Result;
 import stirling.software.officeconvert.topdf.flat.FlatOpc;
-import stirling.software.officeconvert.topdf.flat.Sniff;
 import stirling.software.officeconvert.topdf.sml.Sml2003Package;
+import stirling.software.officeconvert.topdf.wordml.WordMlPackage;
 
-/** Single-file XML Office documents: XML Spreadsheet 2003 is rewritten as SpreadsheetML; a Flat OPC document (Word,
- * Excel or PowerPoint 2007 XML) is unpacked into its package. Flat OpenDocument files are read elsewhere. */
+/** Single-file XML Office documents: XML Spreadsheet 2003 is rewritten as SpreadsheetML and Word 2003 XML as a DOCX
+ * package; a Flat OPC document (Word, Excel or PowerPoint 2007 XML) is unpacked into its package. Flat OpenDocument
+ * files are read elsewhere. */
 final class XmlInput {
-
-    private static final String WORD_2003 = "http://schemas.microsoft.com/office/word/2003/wordml";
 
     static final String UNKNOWN = "The XML file is not a Word, Excel, PowerPoint or OpenDocument document";
 
@@ -32,6 +31,9 @@ final class XmlInput {
         }
         if (FlatOpc.is(source)) {
             return 4 * Files.size(source) + 4 * Admission.BASE_BYTES;
+        }
+        if (WordMlPackage.is(source)) {
+            return WordMlPackage.estimate(Files.size(source)) + 2 * Admission.BASE_BYTES;
         }
         return null;
     }
@@ -56,8 +58,8 @@ final class XmlInput {
                 OfficeToPdf.deleteQuietly(pkg);
             }
         }
-        if (Sniff.root(source, WORD_2003, "wordDocument")) {
-            throw new IOException("Word 2003 XML documents are not supported; save the file as .docx");
+        if (WordMlPackage.is(source)) {
+            return word2003(source, sink, options, renderer);
         }
         Path name = source.getFileName();
         if (name != null && name.toString().toLowerCase(Locale.ROOT).endsWith(".xml")) {
@@ -91,5 +93,36 @@ final class XmlInput {
         } finally {
             OfficeToPdf.deleteQuietly(xlsx);
         }
+    }
+
+    private static Result word2003(Path source, OutputStream sink, Options options, OfficeToPdf.Renderer renderer)
+            throws IOException {
+        Path docx = Files.createTempFile("office-to-pdf-", ".docx");
+        try {
+            WordMlPackage.Outcome outcome;
+            Admission.Ticket ticket = Admission.jvm().enter(WordMlPackage.estimate(Files.size(source)));
+            try (OutputStream os = new BufferedOutputStream(Files.newOutputStream(docx), 1 << 16)) {
+                outcome = WordMlPackage.write(source, os);
+            } finally {
+                ticket.close();
+            }
+            OfficeToPdf.stopIfInterrupted();
+            Result r = OfficeToPdf.render(docx, OfficeToPdf.Format.DOCX, sink, options,
+                    (s, job) -> renderer.render(source, job), OfficeToPdf.REWRITTEN);
+            return merged(r, outcome.warnings(), outcome.lost());
+        } finally {
+            OfficeToPdf.deleteQuietly(docx);
+        }
+    }
+
+    private static Result merged(Result r, List<String> extra, boolean lost) {
+        List<String> warnings = new ArrayList<>(r.warnings());
+        for (String w : extra) {
+            String c = RenderJob.clean(w);
+            if (c != null && !warnings.contains(c)) {
+                warnings.add(c);
+            }
+        }
+        return new Result(r.pages(), r.truncated() || lost, warnings, r.pageLimitReached());
     }
 }

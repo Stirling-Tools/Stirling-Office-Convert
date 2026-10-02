@@ -124,12 +124,4 @@ class Sml2003Test {
         IOException e = assertThrows(IOException.class, () -> OfficeToPdf.convert(in, dir.resolve("feed.pdf")));
         assertTrue(e.getMessage().contains("not a Word, Excel"), e.getMessage());
     }
-
-    @Test
-    void word2003XmlIsRefusedByName() throws IOException {
-        Path in = file("letter.xml", "<?xml version=\"1.0\"?><w:wordDocument"
-                + " xmlns:w=\"http://schemas.microsoft.com/office/word/2003/wordml\"><w:body/></w:wordDocument>");
-        IOException e = assertThrows(IOException.class, () -> OfficeToPdf.convert(in, dir.resolve("letter.pdf")));
-        assertTrue(e.getMessage().contains("Word 2003 XML"), e.getMessage());
-    }
 }
