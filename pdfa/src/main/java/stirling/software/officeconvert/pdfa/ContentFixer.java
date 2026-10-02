@@ -110,7 +110,7 @@ final class ContentFixer {
                 out.addAll(operation);
             }
             List<Object> result = changed ? out : tokens;
-            usage.scan(result, n.resources());
+            usage.scan(result, n.resources(), n.owner());
             if (Nesting.depth(result) > Nesting.MAX_DEPTH) {
                 COSDictionary res = resources(n);
                 if (res != null) {
@@ -122,6 +122,7 @@ final class ContentFixer {
                 ContentTokens.replace(n, result);
             }
         }
+        usage.resolve();
     }
 
     private static COSDictionary resources(ContentGraph.Node n) {

@@ -187,6 +187,15 @@ final class Hostile {
         d.getDocumentCatalog().getCOSObject().setItem(COSName.OPEN_ACTION, next);
     }
 
+    static RawPdf inheritedFont() {
+        RawPdf r = RawPdf.page(RawPdf.helvetica() + "/XObject<</Fm0 5 0 R>>", "BT /F1 24 Tf 72 700 Td (AB) Tj ET /Fm0 Do");
+        r.set(3, "<</Type/Page/Parent 2 0 R/MediaBox[0 0 595 842]/Resources<<" + RawPdf.helvetica()
+                + "/XObject<</Fm0 5 0 R>>>>/Contents 4 0 R>>");
+        r.add(RawPdf.stream("/Type/XObject/Subtype/Form/BBox[0 0 600 800]/Resources<<>>",
+                "BT 72 600 Td (XYZQWK) Tj ET"));
+        return r;
+    }
+
     static void taggedForm(PDDocument d, String variant) throws IOException {
         PDFont f = helvetica();
         PDPage p = page(d);

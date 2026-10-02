@@ -3,10 +3,13 @@ package stirling.software.officeconvert.pdfa;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Deque;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeSet;
 
 import org.apache.pdfbox.contentstream.operator.Operator;
@@ -14,6 +17,7 @@ import org.apache.pdfbox.cos.COSArray;
 import org.apache.pdfbox.cos.COSBase;
 import org.apache.pdfbox.cos.COSDictionary;
 import org.apache.pdfbox.cos.COSName;
+import org.apache.pdfbox.cos.COSStream;
 import org.apache.pdfbox.cos.COSString;
 import org.apache.pdfbox.pdmodel.font.PDFont;
 
@@ -29,6 +33,12 @@ final class FontUsage {
     private final Map<COSDictionary, Integer> lengths = new IdentityHashMap<>();
 
     private final Map<COSDictionary, PDFont> unchanged = new IdentityHashMap<>();
+
+    private final Map<COSDictionary, List<byte[]>> inheritedText = new IdentityHashMap<>();
+
+    private final Map<COSDictionary, Set<COSDictionary>> entryFonts = new IdentityHashMap<>();
+
+    private final Map<COSDictionary, Set<COSDictionary>> callers = new IdentityHashMap<>();
 
     FontUsage() {}
 
@@ -52,7 +62,7 @@ final class FontUsage {
         return codes.getOrDefault(font, new TreeSet<>());
     }
 
-    void scan(List<Object> tokens, COSDictionary resources) {
+    void scan(List<Object> tokens, COSDictionary resources, COSDictionary owner) {
         Deque<COSDictionary> stack = new ArrayDeque<>();
         COSDictionary font = null;
         int start = 0;
@@ -87,16 +97,27 @@ final class FontUsage {
                     }
                 }
                 case "Tj", "'", "\"" -> {
-                    if (font != null && i - start >= 1 && tokens.get(i - 1) instanceof COSString s) {
-                        record(font, s.getBytes());
+                    if (i - start >= 1 && tokens.get(i - 1) instanceof COSString s) {
+                        show(font, owner, s.getBytes());
                     }
                 }
                 case "TJ" -> {
-                    if (font != null && i - start >= 1 && tokens.get(i - 1) instanceof COSArray a) {
+                    if (i - start >= 1 && tokens.get(i - 1) instanceof COSArray a) {
                         for (int k = 0; k < a.size(); k++) {
                             if (a.getObject(k) instanceof COSString s) {
-                                record(font, s.getBytes());
+                                show(font, owner, s.getBytes());
                             }
+                        }
+                    }
+                }
+                case "Do" -> {
+                    if (i - start >= 1 && tokens.get(i - 1) instanceof COSName xn
+                            && TransparencyScan.lookup(resources, COSName.XOBJECT, xn) instanceof COSStream form
+                            && COSName.FORM.equals(form.getCOSName(COSName.SUBTYPE))) {
+                        if (font != null) {
+                            entryFonts.computeIfAbsent(form, k -> identitySet()).add(font);
+                        } else if (owner != null) {
+                            callers.computeIfAbsent(form, k -> identitySet()).add(owner);
                         }
                     }
                 }
@@ -108,6 +129,50 @@ final class FontUsage {
     }
 
     private static final COSDictionary NONE = new COSDictionary();
+
+    private void show(COSDictionary font, COSDictionary owner, byte[] bytes) {
+        if (font != null) {
+            record(font, bytes);
+        } else if (owner != null) {
+            List<byte[]> pending = inheritedText.computeIfAbsent(owner, k -> new ArrayList<>());
+            if (pending.size() < MAX_CODES_PER_FONT) {
+                pending.add(bytes);
+            }
+        }
+    }
+
+    void resolve() {
+        for (Map.Entry<COSDictionary, List<byte[]>> e : inheritedText.entrySet()) {
+            for (COSDictionary font : inherited(e.getKey())) {
+                for (byte[] b : e.getValue()) {
+                    record(font, b);
+                }
+            }
+        }
+        inheritedText.clear();
+    }
+
+    private Set<COSDictionary> inherited(COSDictionary form) {
+        Set<COSDictionary> fonts = identitySet();
+        Set<COSDictionary> seen = identitySet();
+        Deque<COSDictionary> todo = new ArrayDeque<>();
+        todo.push(form);
+        while (!todo.isEmpty()) {
+            COSDictionary f = todo.pop();
+            if (!seen.add(f)) {
+                continue;
+            }
+            fonts.addAll(entryFonts.getOrDefault(f, Set.of()));
+            for (COSDictionary caller : callers.getOrDefault(f, Set.of())) {
+                todo.push(caller);
+            }
+        }
+        return fonts;
+    }
+
+    private static Set<COSDictionary> identitySet() {
+        return Collections.newSetFromMap(new IdentityHashMap<>());
+    }
 
     private void record(COSDictionary font, byte[] bytes) {
         TreeSet<Integer> set = codes.computeIfAbsent(font, k -> new TreeSet<>());
