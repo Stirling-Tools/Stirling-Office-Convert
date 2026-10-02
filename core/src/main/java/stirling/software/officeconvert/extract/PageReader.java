@@ -39,6 +39,7 @@ public final class PageReader {
     public PageReader(PDDocument document) {
         this.document = document;
         this.pages = new PageIndex(document);
+        document.setResourceCache(new KeptResources());
         TextMaps.seed(document);
     }
 
