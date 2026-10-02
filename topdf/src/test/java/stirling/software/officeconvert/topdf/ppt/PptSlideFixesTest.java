@@ -240,6 +240,42 @@ class PptSlideFixesTest {
         }
     }
 
+    @Test
+    void aTodayDateFooterShowsThePresentationsSavedDateNotTheClock() throws IOException {
+        java.time.LocalDate today = java.time.LocalDate.now(java.time.ZoneOffset.UTC);
+        Path pdf = convert("date.ppt", deck(p -> {
+            HSLFSlide slide = p.createSlide();
+            HSLFTextBox box = text(slide, "*", 60, 480, 300, 40);
+            box.setPlaceholder(Placeholder.DATETIME);
+            p.getSlideHeadersFooters().setDateTimeVisible(true);
+            p.getSlideHeadersFooters().setTodayDateVisible(true);
+            p.getSlideHeadersFooters().setUserDateVisible(false);
+            p.createInformationProperties();
+            p.getSummaryInformation().setLastSaveDateTime(java.util.Date.from(java.time.Instant.parse(
+                    "2004-03-05T10:00:00Z")));
+        }));
+        String text = pageText(pdf, 1);
+        assertTrue(text.contains("2004"), text);
+        assertFalse(text.contains(String.valueOf(today.getYear())), text);
+    }
+
+    @Test
+    void aTodayDateFooterWithoutASavedDateIsLeftEmpty() throws IOException {
+        java.time.LocalDate today = java.time.LocalDate.now(java.time.ZoneOffset.UTC);
+        Path pdf = convert("nodate.ppt", deck(p -> {
+            HSLFSlide slide = p.createSlide();
+            text(slide, "Body", 60, 60, 300, 40);
+            HSLFTextBox box = text(slide, "*", 60, 480, 300, 40);
+            box.setPlaceholder(Placeholder.DATETIME);
+            p.getSlideHeadersFooters().setDateTimeVisible(true);
+            p.getSlideHeadersFooters().setTodayDateVisible(true);
+        }));
+        String text = pageText(pdf, 1);
+        assertTrue(text.contains("Body"), text);
+        assertFalse(text.contains(String.valueOf(today.getYear())), text);
+        assertFalse(text.contains(String.valueOf(today.getYear() % 100)), text);
+    }
+
     private static byte[] omitTitlePlaceholders(byte[] ppt) throws IOException {
         try (POIFSFileSystem fs = new POIFSFileSystem(new ByteArrayInputStream(ppt))) {
             byte[] stream;

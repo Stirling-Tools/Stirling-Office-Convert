@@ -19,7 +19,8 @@ final class ContentLimits {
     private ContentLimits() {}
 
     static boolean candidate(Object operand, PdfALevel level) {
-        return operand instanceof COSName n && n.getName().length() > Limits.MAX_NAME_BYTES / 3
+        return operand instanceof COSName n
+                && (n.getName().length() > Limits.MAX_NAME_BYTES / 3 || !NameText.accepted(n.getBytes()))
                 || operand instanceof COSDictionary
                 || operand instanceof COSString s && s.getBytes().length > Limits.maxString(level)
                 || operand instanceof COSArray a && (a.size() > Limits.maxArray(level) || longString(a, level));

@@ -20,9 +20,11 @@ java -jar cli/build/libs/stirling-office-convert-cli.jar report.docx slides.pptx
 CLI options for PDF input: `--pages a-b`, `--no-tables`, `--dpi n` (vector figures), `--password p`,
 `--picture-fallback`, `--pictures compact|lossless` (see Pictures below), `-q`.
 For Word, PowerPoint and Excel input (`.docx .docm .dotx .dotm .pptx .pptm .ppsx .ppsm .potx .potm .xlsx .xlsm
-.xltx .xltm`, Word 97-2003 `.doc .dot`, Excel 97-2003 `.xls .xlt`, PowerPoint 97-2003 `.ppt .pps .pot`, `.rtf` and
-OpenDocument `.odt .ott .fodt .ods .ots .fods .odp .otp .fodp`, plain
-text `.txt .text .log .asc` and tables `.csv .tsv .tab`), which converts to PDF: `--max-pages n` (default 10000, 0 = all), `--timeout s` (default 300, 0 =
+.xltx .xltm .xlsb`, Word 6.0 to 2003 `.doc .dot`, Excel 2.0 to 2003 `.xls .xlt`, PowerPoint 97-2003 `.ppt .pps .pot`,
+`.rtf`, Word 2003 XML, XML Spreadsheet 2003 and Flat OPC `.xml`, Visio 2013 and later `.vsdx .vsdm .vssx .vstx`,
+OpenDocument `.odt .ott .fodt .odm .ods .ots .fods .odp .otp .fodp .odg .otg .fodg`, OpenOffice.org 1.x `.sxw .stw .sxc
+.stc .sxi .sti .sxd .std`, SYLK, DIF and dBASE `.slk .dif .dbf`, Lotus 1-2-3 `.wk1 .wks .wk3 .wk4 .123`, Apple iWork `.pages .numbers .key` (from the preview they hold), plain text `.txt .text .log .asc` and tables
+`.csv .tsv .tab`), which converts to PDF: `--password p` (a password protected document), `--max-pages n` (default 10000, 0 = all), `--timeout s` (default 300, 0 =
 none), `--fonts dir` (repeatable; an extra folder of fonts), `--font-map Family=Installed` (repeatable; draw a
 family with an installed one, such as `Aptos=Inter`), `--font-width Family=scale` (repeatable; scale a substituted
 family's widths, 0.5 to 2), `--no-system-fonts` (only the given fonts and the bundled Liberation Sans, for
@@ -44,8 +46,8 @@ input, or the `-o` file or folder; it takes `--password`, `--timeout`, `--fonts`
 `app` is a small page for trying the converter by hand, in both directions: drop PDFs on it to get the formats
 you picked (Word, OpenDocument text, RTF, plain text, PowerPoint, OpenDocument presentation, Excel or OpenDocument
 spreadsheet, or flat OpenDocument XML), or drop Word, PowerPoint and Excel files (`.docx .docm .dotx .dotm .pptx
-.pptm .ppsx .ppsm .potx .potm .xlsx .xlsm .xltx .xltm`, 97-2003 `.doc .dot .xls .xlt .ppt .pps .pot`, `.rtf`, and OpenDocument
-`.odt .ods .odp` and their templates and flat forms) to get PDFs. The direction comes from the file itself: a PDF goes to Office, an
+.pptm .ppsx .ppsm .potx .potm .xlsx .xlsm .xltx .xltm .xlsb`, binary `.doc .dot .xls .xlt .ppt .pps .pot`, `.rtf`,
+OpenDocument `.odt .ods .odp .odg` and their templates and flat forms, and the other formats listed above) to get PDFs. The direction comes from the file itself: a PDF goes to Office, an
 Office package goes to PDF, whatever its name. View shows the result beside the original, a PDF in the browser's
 own viewer and an Office file as a quick look drawn in the page. By default it listens on this machine only. It is
 not part of the Maven release.
@@ -60,8 +62,7 @@ Scripts can POST a PDF to `/convert?format=docx|odt|rtf|txt|xml|pptx|odp|xlsx|od
 (`pictures=lossless` for lossless pictures), or an Office file to `/convert` (`format=pdf` or none). An Office answer
 carries `X-Input` (the kind found in the package, such as `docm`), `X-Pages`, and `X-Warnings` (URL-encoded, one
 per line: substituted fonts, skipped macros and other active content). Macros, fields, formulas and links in a
-document are never run or fetched; legacy Word `.doc`, password protected and OpenDocument files are refused
-with a plain message. Excel and PowerPoint 97-2003 files are found by their content and convert as described below.
+document are never run or fetched. A password given under Options also opens a protected Office file. Excel and PowerPoint 97-2003 files are found by their content and convert as described below.
 
 ### Demo image
 
@@ -346,8 +347,47 @@ HSSF and rewritten as a SpreadsheetML package that the XLSX renderer draws: cell
 are never evaluated), styles and the workbook's colour palette, merged cells, row and column sizes, hidden rows and
 columns, print areas and titles, page setup, headers and footers, page breaks, pictures, text boxes and simple
 shapes. Charts in `.xls` files are not drawn yet (a warning says so); macros, OLE objects and links are never
-opened. A compressed picture that would inflate past 32 MB leaves the drawings out, a sheet past 480 MB of cells is
-cut short, and password protected or Excel 5.0/95 workbooks are refused with a plain reason.
+opened. A compressed picture that would inflate past 32 MB leaves the drawings out, and a sheet past 480 MB of cells
+is cut short. Excel 5.0/95 workbooks (BIFF5, in an OLE2 file or bare) are read record by record into the same
+SpreadsheetML: cached values, number formats, fonts, fills, borders, column widths, row heights, print areas and
+titles, page setup, headers and footers and page breaks; their charts, pictures and drawing objects are left out with
+a warning. Excel 2.x, 3.0 and 4.0 worksheets (BIFF2 to BIFF4, one sheet per file) are first rewritten as BIFF5 (fonts,
+number formats, cell formats, cells, rows and column widths) and read the same way; Excel 4.0 workbooks that bundle
+several sheets in one file, and chart and macro sheets, are refused with a plain reason.
+
+Password protected documents open with `Options.password(...)` (`--password` on the command line): Office Open XML
+packages encrypted with Agile or Standard encryption, and Word, Excel and PowerPoint 97-2003 files encrypted with RC4,
+CryptoAPI or XOR obfuscation (Excel 5.0/95 XOR included). The file is decrypted in the conversion's own scratch
+space and never written beside the input; a wrong password, or none, fails with a plain reason, and nothing is ever
+guessed. Files Office protects only with its built-in read-only password open without one.
+
+Excel binary workbooks (`.xlsb`, found by their content types whatever the extension) have their binary workbook,
+sheets, styles, shared strings and tables rewritten as SpreadsheetML for the XLSX renderer; their drawings, charts,
+pictures and themes are already XML and are kept. Conditional formats that compare with constants, text, blanks,
+ranks or averages are kept; rules built on formulas are left out with a warning. Pivot table styles, comments, macros,
+external links and query definitions are left out.
+
+XML Spreadsheet 2003 files (the SpreadsheetML many systems export, often named `.xls` or `.xml`) are read as a
+stream into SpreadsheetML: styles with their parents, cached values, dates, rich text, merges, column widths, row
+heights, print areas, page setup, headers and footers. Flat OPC documents (Word, Excel or PowerPoint 2007 and later
+saved as a single `.xml`) are unpacked into their package. Word 2003 XML documents (WordprocessingML 2003, often
+named `.xml`, found by their root element) are rewritten as a DOCX package as a stream: fonts, styles, lists, settings,
+sections, headers and footers, footnotes and endnotes, comments, revisions and bookmarks (from their `aml:annotation`
+markup), hyperlinks, VML shapes and text boxes, and the pictures the file holds in `w:binData` (compressed EMF and WMF
+included); OLE data, templates, mail merge sources and pictures linked outside the file are left out. SYLK, DIF and
+dBASE tables are laid out as a one-sheet workbook the way Excel opens them. Lotus 1-2-3 worksheets (Release 2 `.wk1`
+and `.wks`, Release 3 and 4 `.wk3 .wk4`, 1-2-3 97 and Millennium `.123`, found by their content) become one sheet per
+Lotus sheet with their cached values (formulas are never evaluated) and, for Release 2, the Lotus cell formats,
+label alignment, column widths and hidden columns; the separate formatting of later releases is not read.
+
+Visio 2013 and later drawings (`.vsdx .vsdm .vssx .vstx`, found by their content types) are drawn one page per Visio
+page by rewriting each page as a slide for the PPTX renderer: every shape's geometry sections (lines, arcs, elliptical
+arcs, Bezier curves, NURBS, polylines and ellipses) in its group's and page's coordinates, its line and fill (patterns,
+gradients and Visio theme styles and colours resolved from the drawing's theme), arrowheads, text with its character
+and paragraph formatting in its text block, and embedded pictures; masters, master shapes and style sheets are
+inherited cell by cell, background pages are drawn beneath their pages, and shapes on layers that do not print are
+left out. Only cached cell values are used: no ShapeSheet formula is evaluated and no macro is run. Pages larger than
+the first are scaled to fit its size. Visio 2003 to 2010 drawings (`.vsd`, `.vdx`) are refused with a plain reason.
 
 Word 97-2003 documents (`.doc`, `.dot`, found by their content whatever the extension) are read with Apache POI
 HWPF and rewritten as a WordprocessingML package that the DOCX renderer draws: text with its character and paragraph
@@ -357,7 +397,11 @@ them included, nested up to four deep) and simple shapes, bookmarks, and hyperli
 Fields show their cached results, except page numbers, which are counted, and EQ fields, which are laid out as
 equations; macros, OLE objects (beyond
 their stored preview picture) and links are never opened. A compressed picture that would inflate past 32 MB is left
-out, and password protected or Word 6.0/95 documents are refused with a plain reason.
+out. Word 6.0 and Word 95 documents are first rewritten as Word 97 files (Unicode text in the document's code page,
+Word 97 formatted disk pages, style sheet, fonts, sections, headers and footers, footnotes, fields and pictures) and
+then read the same way; the drawing objects of their main text (lines, rectangles, ellipses, arcs, polylines and
+text boxes with their text) are placed as anchored shapes, while drawing objects in headers and footers are left
+out with a warning. Word 2.0 and older are refused with a plain reason.
 
 RTF documents (`.rtf`, and a `.doc` or `.dot` that is really RTF, found by their `{\rtf` header) are read by a small
 streaming tokenizer and rewritten as a WordprocessingML package that the DOCX renderer draws: fonts and code pages,
@@ -376,7 +420,15 @@ lists, tables, sections and columns, page styles with headers and footers, footn
 cells with their cached values (formulas are never evaluated), number formats, merges, hidden rows and columns,
 print ranges and page setup; master pages, outlines and shrink-to-fit text on slides. Only pictures inside the
 package are drawn: linked files are never fetched, and macros and scripts are never run. Embedded charts are not
-drawn yet. Password protected files are refused with a plain reason.
+drawn yet. Password protected files are refused with a plain reason. OpenDocument drawings (`.odg .otg .fodg`) are
+drawn like presentations, one page per drawing page, leaving out shapes on layers that are not printed.
+OpenOffice.org 1.x documents (`.sxw .stw .sxc .stc .sxi .sti .sxd .std`) are reshaped as OpenDocument (namespaces,
+renamed elements, property sets split by style family) and converted as such; their embedded objects are left out.
+
+Apple Pages, Numbers and Keynote files are not read in their own format: the PDF preview iWork stores in the file is
+drawn when there is one, else its preview picture of the first page, and a warning says which. Formats that are not
+converted (WordPerfect, Works, Publisher, Visio 2003 to 2010, MHTML web archives, Quattro Pro, StarOffice 5, Windows
+Write and others) fail with a reason naming the format, found by extension or by content.
 
 Plain text (`.txt .text .log .asc`) prints the way LibreOffice Writer prints it: A4 with 2 cm margins, Liberation Mono
 10 pt at 64 lines a page, tab stops every 1.25 cm, long lines wrapped, no widow control, and a form feed starts a new
@@ -525,13 +577,23 @@ PdfToPdfA.convert(pdDocument, outputStream, options);     // an open document, w
   its own glyphs the same way (TrueType glyphs are copied with their hinting; Type 1 and CFF outlines are converted).
   Type 0 fonts keep their CIDs and CMaps behind a new `CIDToGIDMap`. An embedded TrueType font that carries far more
   glyphs than the pages show (Office keeps every glyph slot) is cut down to the glyphs in use, keeping its glyph
-  outlines, hinting, advances and every cmap entry that leads to them. CharSet and CIDSet are written for part 1 and
-  dropped for parts 2 and 3. For the u and a levels every shown code gets a ToUnicode value, a private-use one (u) or
-  U+FFFD (a) when the PDF gives no clue.
+  outlines, hinting, advances and every cmap entry that leads to them, including the entries the encoding's glyph
+  names lead to. Embedded Type 1 and CFF fonts keep only the glyphs in use (and, for Type 1, the subroutines they
+  call) behind the same glyph names and IDs, with accented glyphs built from two others keeping both. A font
+  dictionary missing its type, name or widths gets them from its program, and a font program stream gets the subtype
+  its bytes show. CMaps PDF/A does not accept are embedded (part 1), merged with the CMap they refer to, or rewritten
+  for the codes in use, with CIDs past 65,535 and, for parts 2 and 3, CID 0 (.notdef) moved to free CIDs; an unknown
+  CMap name is read as Identity. CharSet and CIDSet are written for part 1 and dropped for parts 2 and 3. For the u and a levels every shown code gets a ToUnicode value, a private-use one (u) or
+  U+FFFD (a) when the PDF gives no clue; a ToUnicode map with ranges across a byte boundary is written again.
 - Colour. An sRGB output intent with an ICC profile generated in code (version 2, so it serves part 1 too) is added
   unless the PDF already has a usable one. Device CMYK is given a `DefaultCMYK` space with the CC0 CMYK profile that
   PDFBox ships (its own DeviceCMYK profile), so nothing is converted; it is added only when a page uses device CMYK.
-  Invalid or, for part 1, version 4 ICC profiles are replaced.
+  Invalid or, for part 1, version 4 ICC profiles are replaced, and an output intent whose profile is not a printer or
+  monitor profile is replaced. DeviceN spaces with more colourants than the level allows (8 for part 1, 32 for parts 2
+  and 3) are drawn in their alternate space: colour operators are converted through the tint transform, images are
+  converted pixel by pixel and shadings get a sampled function. For parts 2 and 3 every DeviceN spot colourant is
+  described in `Colorants` and Separations that share a name share one definition, or are renamed when they draw
+  differently.
 - JPEG 2000. Part 1 does not allow JPX images, so they are decoded and stored again (JPEG when photographic, lossless
   otherwise, with any alpha as a soft mask); parts 2 and 3 keep them unless they break the part 2 JPX rules (channel
   count, bit depth, colour boxes). Decoding needs a JPEG 2000 ImageIO reader on the classpath, such as
@@ -539,7 +601,11 @@ PdfToPdfA.convert(pdDocument, outputStream, options);     // an open document, w
   open source licence); without one such a file fails with a message saying so.
 - Limits. Content nested deeper than 28 graphics states moves into form XObjects; names over 127 bytes are shortened
   everywhere they are used; long strings and `TJ` arrays in content are split without moving a glyph; numbers are
-  clamped; for part 1 long number trees, name trees, page trees and CID width arrays are split; for parts 2 and 3 a
+  clamped; names that are not UTF-8 are rewritten as UTF-8; images and masks get a bit depth PDF/A allows; for part 1
+  long number trees, name trees, page trees, CID width arrays, content arrays and ink paths are split or merged,
+  structure elements with more children than the limit are grouped under `NonStruct` elements, resource dictionaries
+  past 4,095 entries lose the names no content uses, named destinations move into a name tree and custom document
+  properties past the limit are dropped; for parts 2 and 3 a
   page larger than 14,400 units gets a `UserUnit`, with its content, annotations and destinations scaled to match.
 - Transparency. Parts 2 and 3 keep it. For part 1 each transparent object (soft masks, constant alpha, blend modes,
   transparency groups, translucent annotations) is drawn into a picture of the smallest box covering all of them on
@@ -548,15 +614,19 @@ PdfToPdfA.convert(pdDocument, outputStream, options);     // an open document, w
   text stays in the page as invisible text, so it can still be searched and copied.
 - Removed, with a warning each: JavaScript, launch, sound, movie, reset, import and hide actions and every additional
   action, forbidden annotation types and hidden annotations, XFA, PostScript XObjects, image alternates, transfer
-  functions, halftones and undefined operators. Annotations without an appearance get one; LZW streams are recompressed
-  with Flate; encryption is removed (give the password for a protected file).
+  functions, halftones and undefined operators, form field actions, digital signatures (the rewrite would break them),
+  and, for parts 2 and 3, metadata of pages, images and fonts (only predefined XMP properties are allowed there).
+  Annotations without an appearance get one; LZW streams and inline images with filters PDF/A does not allow are
+  recompressed with Flate; forms that borrow their parent's resources get their own; encryption is removed (give the
+  password for a protected file).
 - Embedded files: removed for part 1, kept for part 2 only when they are PDF/A themselves, kept for part 3 with a MIME
   type, a modification date, an `AFRelationship` and the catalog's `AF` array.
 - Optional content: part 1 has none, so content in hidden layers is deleted and the rest kept; parts 2 and 3 keep the
   layers and fix their configurations.
 - XMP metadata is written from the Info dictionary (the two agree), with `pdfaid:part` and `pdfaid:conformance`; the
   file gets a trailer ID. Parts 2 and 3 are written with object streams and a cross-reference stream; part 1 with a
-  classic table. Objects are numbered without gaps and unfiltered streams are compressed.
+  classic table. Objects are numbered without gaps and unfiltered streams are compressed. Structure elements are
+  written without their optional type and with a lone kid in place of a one-item array.
 
 Level a (1a, 2a, 3a) is for PDFs that are already tagged: the module does not build a structure tree, so an untagged
 file fails with an `IOException` that says to use b or u. For a tagged file it marks the document as tagged, maps

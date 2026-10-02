@@ -93,12 +93,20 @@ final class FontCompaction {
         if (COSName.TYPE0.equals(sub)) {
             COSArray kids = ContentGraph.array(font.getDictionaryObject(COSName.DESCENDANT_FONTS));
             descriptorOwner = kids == null || kids.size() != 1 ? null : ContentGraph.dict(kids.getObject(0));
-        } else if (!COSName.TRUE_TYPE.equals(sub)) {
+        } else if (!COSName.TRUE_TYPE.equals(sub) && !COSName.TYPE1.equals(sub)) {
             return null;
         }
         COSDictionary fd = descriptorOwner == null ? null
                 : ContentGraph.dict(descriptorOwner.getDictionaryObject(COSName.FONT_DESC));
-        return fd != null && fd.getDictionaryObject(COSName.FONT_FILE2) instanceof COSStream s ? s : null;
+        if (fd == null) {
+            return null;
+        }
+        for (COSName key : new COSName[] {COSName.FONT_FILE2, COSName.FONT_FILE, COSName.FONT_FILE3}) {
+            if (fd.getDictionaryObject(key) instanceof COSStream s) {
+                return s;
+            }
+        }
+        return null;
     }
 
     private void compact(COSStream program, List<COSDictionary> fonts) throws IOException {
@@ -114,6 +122,11 @@ final class FontCompaction {
             }
             loaded.add(f);
         }
+        COSName key = programKey(loaded.get(0), program);
+        if (!COSName.FONT_FILE2.equals(key)) {
+            outlines(program, loaded, key);
+            return;
+        }
         boolean cid = loaded.get(0) instanceof PDType0Font;
         for (PDFont f : loaded) {
             if (cid != f instanceof PDType0Font || !cid && !(f instanceof PDTrueTypeFont)
@@ -126,6 +139,8 @@ final class FontCompaction {
             return;
         }
         TreeSet<Integer> keep = new TreeSet<>();
+        Map<Integer, Integer> unicode = new TreeMap<>();
+        Map<Integer, Integer> macRoman = new TreeMap<>();
         Map<COSDictionary, TreeMap<Integer, Integer>> cidMaps = new LinkedHashMap<>();
         for (PDFont f : loaded) {
             TreeSet<Integer> codes = usage.codes().get(f.getCOSObject());
@@ -137,7 +152,7 @@ final class FontCompaction {
                     map.put(c.codeToCID(code), gid);
                     keep.add(gid);
                 }
-            } else if (!SimpleGlyphs.collect((PDTrueTypeFont) f, ttf, codes, keep)) {
+            } else if (!SimpleGlyphs.collect((PDTrueTypeFont) f, ttf, codes, keep, unicode, macRoman)) {
                 return;
             }
         }
@@ -152,7 +167,7 @@ final class FontCompaction {
             remap.put(gid, w.addCopy(gid, hmtx == null ? 0 : hmtx.getAdvanceWidth(gid)));
         }
         String name = ttf.getName() == null ? "Font" : ttf.getName();
-        byte[] font = w.build(FontRebuild.cleanName(name), cmap(ttf, remap));
+        byte[] font = w.build(FontRebuild.cleanName(name), cmap(ttf, remap, unicode, macRoman));
         byte[] packed = PdfWriter.deflate(font);
         long before = program.getLength();
         if (packed.length > before * MAX_RATIO || before - packed.length < MIN_SAVING) {
@@ -175,6 +190,40 @@ final class FontCompaction {
         }
     }
 
+    private void outlines(COSStream program, List<PDFont> loaded, COSName key) throws IOException {
+        for (PDFont f : loaded) {
+            if (programKey(f, program) != key) {
+                return;
+            }
+        }
+        COSStream file = COSName.FONT_FILE.equals(key)
+                ? OutlineCompaction.type1(doc, program, loaded, usage.codes())
+                : OutlineCompaction.cff(doc, program, loaded, usage.codes());
+        if (file == null) {
+            return;
+        }
+        String tag = tag(Map.of(usage.codes().get(loaded.get(0).getCOSObject()).hashCode(),
+                String.valueOf(loaded.get(0).getName()).hashCode()));
+        for (PDFont f : loaded) {
+            COSDictionary fd = descriptor(f);
+            fd.setItem(key, file);
+            retag(f, fd, tag);
+        }
+    }
+
+    private static COSName programKey(PDFont f, COSStream program) {
+        COSDictionary fd = descriptor(f);
+        if (fd == null) {
+            return null;
+        }
+        for (COSName key : new COSName[] {COSName.FONT_FILE2, COSName.FONT_FILE, COSName.FONT_FILE3}) {
+            if (fd.getDictionaryObject(key) == program) {
+                return key;
+            }
+        }
+        return null;
+    }
+
     private static boolean vertical(PDFont f) {
         return f instanceof PDType0Font t0 && t0.getCOSObject().getDictionaryObject(COSName.ENCODING) instanceof COSName n
                 && n.getName().endsWith("-V");
@@ -192,7 +241,8 @@ final class FontCompaction {
         return ContentGraph.dict(owner.getDictionaryObject(COSName.FONT_DESC));
     }
 
-    private static byte[] cmap(TrueTypeFont ttf, Map<Integer, Integer> remap) throws IOException {
+    private static byte[] cmap(TrueTypeFont ttf, Map<Integer, Integer> remap, Map<Integer, Integer> unicode,
+            Map<Integer, Integer> macRoman) throws IOException {
         CmapTable table = ttf.getCmap();
         List<Cmaps.Subtable> subs = new ArrayList<>();
         if (table != null) {
@@ -204,6 +254,14 @@ final class FontCompaction {
                         for (int code : codes) {
                             map.put(code, e.getValue());
                         }
+                    }
+                }
+                Map<Integer, Integer> named = s.getPlatformId() == 3 && s.getPlatformEncodingId() == 1 ? unicode
+                        : s.getPlatformId() == 1 && s.getPlatformEncodingId() == 0 ? macRoman : Map.of();
+                for (Map.Entry<Integer, Integer> e : named.entrySet()) {
+                    Integer gid = remap.get(e.getValue());
+                    if (gid != null && gid > 0) {
+                        map.putIfAbsent(e.getKey(), gid);
                     }
                 }
                 subs.add(new Cmaps.Subtable(s.getPlatformId(), s.getPlatformEncodingId(), map));

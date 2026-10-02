@@ -93,7 +93,7 @@ final class Lists {
             return null;
         }
         Anld key = new Anld(a.level() <= 9 ? 1 : a.level(), a.level() <= 9 ? "outline" : a.format(),
-                a.level() <= 9 ? "" : a.text(), a.level() <= 9 ? 0 : a.start(), 0, false, false, 0);
+                a.level() <= 9 ? "" : a.text(), a.level() <= 9 ? 0 : a.start(), 0, false, false, 0, false);
         Integer id = anlds.get(key);
         if (id == null) {
             id = ANLD_IDS + anlds.size();
@@ -211,7 +211,7 @@ final class Lists {
     private static void anldLevel(StringBuilder b, int i, Anld a, String font) {
         b.append("<w:lvl w:ilvl=\"").append(i).append("\"><w:start w:val=\"").append(a.start())
                 .append("\"/><w:numFmt w:val=\"").append(a.format()).append("\"/><w:suff w:val=\"tab\"/><w:lvlText w:val=\"")
-                .append(Xml.esc(a.text().replace("%1", "%" + (i + 1)))).append("\"/><w:lvlJc w:val=\"left\"/>");
+                .append(Xml.esc(previous(a, i) + a.text().replace("%1", "%" + (i + 1)))).append("\"/><w:lvlJc w:val=\"left\"/>");
         if (a.indent() > 0) {
             b.append("<w:pPr><w:ind w:left=\"").append(a.indent()).append("\" w:hanging=\"").append(a.indent())
                     .append("\"/></w:pPr>");
@@ -222,6 +222,14 @@ final class Lists {
             b.append("<w:rFonts w:ascii=\"").append(f).append("\" w:hAnsi=\"").append(f).append("\"/>");
         }
         b.append(a.bold() ? "<w:b/>" : "").append(a.italic() ? "<w:i/>" : "").append("</w:rPr></w:lvl>");
+    }
+
+    private static String previous(Anld a, int level) {
+        StringBuilder b = new StringBuilder();
+        for (int k = 1; a.previous() && k <= level; k++) {
+            b.append('%').append(k).append('.');
+        }
+        return b.toString();
     }
 
     private static String text(ListLevel l) {

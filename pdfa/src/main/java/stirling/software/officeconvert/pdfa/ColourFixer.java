@@ -95,7 +95,8 @@ final class ColourFixer {
                     continue;
                 }
                 IccProfiles.Header h = IccProfiles.header(read(p));
-                if (h != null && valid(h) && ("RGB ".equals(h.colourSpace()) || "CMYK".equals(h.colourSpace()))) {
+                if (h != null && valid(h) && output(h)
+                        && ("RGB ".equals(h.colourSpace()) || "CMYK".equals(h.colourSpace()))) {
                     keep = oi;
                     components = IccProfiles.components(h.colourSpace());
                     p.setInt(COSName.N, components);
@@ -132,6 +133,10 @@ final class ColourFixer {
         }
         String c = h.deviceClass();
         return "mntr".equals(c) || "prtr".equals(c) || "scnr".equals(c) || "spac".equals(c);
+    }
+
+    private static boolean output(IccProfiles.Header h) {
+        return "mntr".equals(h.deviceClass()) || "prtr".equals(h.deviceClass());
     }
 
     private void visit(COSBase b) throws IOException {

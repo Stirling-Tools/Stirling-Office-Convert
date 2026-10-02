@@ -140,11 +140,11 @@ final class Interactive {
             if (!seen.add(f)) {
                 continue;
             }
-            if (f.containsKey(COSName.AA)) {
+            if (f.containsKey(COSName.AA) || f.containsKey(COSName.A)) {
                 f.removeItem(COSName.AA);
+                f.removeItem(COSName.A);
                 report.warn("Removed form field actions, which PDF/A does not allow");
             }
-            Actions.filterKey(f, COSName.A, level, report);
             COSArray kids = ContentGraph.array(f.getDictionaryObject(COSName.KIDS));
             if (kids != null) {
                 for (int i = 0; i < kids.size(); i++) {

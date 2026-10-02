@@ -265,7 +265,7 @@
     <span class="hint" id="picked-hint">PDFs convert to Word</span>
     <span class="hint" id="limits">PDF, Word, PowerPoint and Excel files</span>
     <span class="choose button primary" aria-hidden="true">Choose files</span>
-    <input id="pick" type="file" accept="application/pdf,.pdf,.docx,.docm,.dotx,.dotm,.pptx,.pptm,.ppsx,.ppsm,.potx,.potm,.xlsx,.xlsm,.xltx,.xltm,.xls,.xlt,.ppt,.pps,.pot,.doc,.dot,.rtf,.odt,.ott,.fodt,.ods,.ots,.fods,.odp,.otp,.fodp,.txt,.text,.log,.asc,.csv,.tsv,.tab" multiple hidden>
+    <input id="pick" type="file" accept="application/pdf,.pdf,.docx,.docm,.dotx,.dotm,.pptx,.pptm,.ppsx,.ppsm,.potx,.potm,.xlsx,.xlsm,.xltx,.xltm,.xls,.xlt,.ppt,.pps,.pot,.doc,.dot,.rtf,.odt,.ott,.fodt,.ods,.ots,.fods,.odp,.otp,.fodp,.xlsb,.odg,.otg,.fodg,.odm,.sxw,.stw,.sxc,.stc,.sxi,.sti,.sxd,.std,.xml,.slk,.dif,.dbf,.wk1,.wks,.wk3,.wk4,.123,.vsdx,.vsdm,.vssx,.vstx,.pages,.numbers,.key,.txt,.text,.log,.asc,.csv,.tsv,.tab" multiple hidden>
   </div>
   <p class="privacy">
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
@@ -276,7 +276,7 @@
     <summary>Options <span>- for PDFs: page range, password, tables, pictures</span></summary>
     <div class="opts">
       <label>Pages (for example 2-5; blank for all)<input id="pages" type="text" inputmode="numeric" placeholder="All pages" autocomplete="off"></label>
-      <label>Password, for protected PDFs<input id="password" type="password" autocomplete="off"></label>
+      <label>Password, for protected files<input id="password" type="password" autocomplete="off"></label>
       <label class="check"><input id="tables" type="checkbox" checked> Detect tables</label>
       <label class="check"><input id="fallback" type="checkbox"> Keep a page that cannot be converted as a picture</label>
       <label class="check"><input id="lossless" type="checkbox"> Keep pictures lossless (larger files)</label>
@@ -357,7 +357,10 @@ const OFFICE = {
 };
 const FAMILY = Object.fromEntries(Object.entries(OFFICE).flatMap(([family, exts]) => exts.map(e => [e, family])));
 const LEGACY = { xls: 'xlsx', xlt: 'xlsx', ppt: 'pptx', pps: 'pptx', pot: 'pptx', doc: 'docx', dot: 'docx', odt: 'docx', ott: 'docx', fodt: 'docx',
-  ods: 'xlsx', ots: 'xlsx', fods: 'xlsx', odp: 'pptx', otp: 'pptx', fodp: 'pptx' };
+  ods: 'xlsx', ots: 'xlsx', fods: 'xlsx', odp: 'pptx', otp: 'pptx', fodp: 'pptx', xlsb: 'xlsx', odg: 'pptx', otg: 'pptx', fodg: 'pptx',
+  odm: 'docx', sxw: 'docx', stw: 'docx', sxc: 'xlsx', stc: 'xlsx', sxi: 'pptx', sti: 'pptx', sxd: 'pptx', std: 'pptx', xml: 'docx',
+  slk: 'xlsx', dif: 'xlsx', dbf: 'xlsx', wk1: 'xlsx', wks: 'xlsx', wk3: 'xlsx', wk4: 'xlsx', '123': 'xlsx', vsdx: 'pptx',
+  vsdm: 'pptx', vssx: 'pptx', vstx: 'pptx', pages: 'docx', numbers: 'xlsx', key: 'pptx' };
 const TEXT = { txt: 'docx', text: 'docx', log: 'docx', asc: 'docx', csv: 'xlsx', tsv: 'xlsx', tab: 'xlsx' };
 const extOf = name => (/\.([a-z0-9]+)$/i.exec(name)?.[1] || '').toLowerCase();
 const targets = doc => doc.office ? [FORMAT.pdf] : FORMATS;
@@ -569,7 +572,7 @@ function convert({ doc, res }) {
     res.xhr = xhr;
     xhr.open('POST', '/convert?' + q);
     xhr.responseType = 'blob';
-    if (doc.options.password && !doc.office) xhr.setRequestHeader('X-Pdf-Password', doc.options.password);
+    if (doc.options.password) xhr.setRequestHeader('X-Pdf-Password', doc.options.password);
     const started = performance.now();
     let timer = null;
     xhr.upload.onprogress = e => {

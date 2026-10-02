@@ -499,6 +499,9 @@ public final class OfficeZip implements Closeable {
 
     public String mainPart() throws IOException {
         Relationship main = packageRelationships().first("officeDocument");
+        if (main == null) {
+            main = packageRelationships().first("http://schemas.microsoft.com/visio/2010/relationships/document");
+        }
         if (main == null || main.part() == null || !exists(main.part())) {
             throw new IOException("The file is not an Office document: " + NO_MAIN);
         }

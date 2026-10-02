@@ -6,7 +6,9 @@ import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeMap;
+import java.util.TreeSet;
 
 import org.verapdf.gf.foundry.VeraGreenfieldFoundryProvider;
 import org.verapdf.pdfa.Foundries;
@@ -14,6 +16,8 @@ import org.verapdf.pdfa.PDFAParser;
 import org.verapdf.pdfa.PDFAValidator;
 import org.verapdf.pdfa.flavours.PDFAFlavour;
 import org.verapdf.pdfa.results.ValidationResult;
+import org.verapdf.pdfa.validation.profiles.Profiles;
+import org.verapdf.pdfa.validation.profiles.Rule;
 import org.verapdf.pdfa.validation.profiles.RuleId;
 
 final class VeraPdf {
@@ -36,6 +40,15 @@ final class VeraPdf {
             }
             return out;
         }
+    }
+
+    static Set<String> rules(PdfALevel level) {
+        PDFAFlavour flavour = PDFAFlavour.fromString(level.part() + level.conformance().toLowerCase());
+        Set<String> out = new TreeSet<>();
+        for (Rule r : Profiles.getVeraProfileDirectory().getValidationProfileByFlavour(flavour).getRules()) {
+            out.add(r.getRuleId().getClause() + "-" + r.getRuleId().getTestNumber());
+        }
+        return out;
     }
 
     static void assertCompliant(Path pdf, PdfALevel level) throws Exception {
