@@ -47,13 +47,17 @@ public final class VsdxPackage {
 
     private static final String CUT = "Some shapes nested too deeply or too many were left out";
 
-    private static final long MAX_SLIDE_CHARS = 16L << 20;
+    private static final long MAX_SLIDE_CHARS = 64L << 20;
 
     private static final long MAX_DRAWING_CHARS = 64L << 20;
+
+    private static final long MAX_DRAWING_VISITS = 2_000_000;
 
     private static final long MIN_SIDE = 914_400L / 4;
 
     private static final long MAX_SIDE = 51_206_400L;
+
+    private static final long MAX_PAGE_SIDE = 914_400L * 200;
 
     private VsdxPackage() {}
 
@@ -106,10 +110,11 @@ public final class VsdxPackage {
         if (printed.isEmpty()) {
             throw new IOException("The Visio drawing has no pages to print");
         }
-        double[] first = size(drawing, printed.get(0));
-        long cx = clamp(first[0] * PageWriter.EMU);
-        long cy = clamp(first[1] * PageWriter.EMU);
+        long[] first = emu(size(drawing, printed.get(0)));
+        long cx = Math.min(MAX_SIDE, first[0]);
+        long cy = Math.min(MAX_SIDE, first[1]);
         Media media = new Media(parts);
+        Visits visits = new Visits(MAX_DRAWING_VISITS);
         StringBuilder ids = new StringBuilder();
         StringBuilder presRels = new StringBuilder();
         StringBuilder types = new StringBuilder();
@@ -125,10 +130,10 @@ public final class VsdxPackage {
             }
             n++;
             Slide slide = new Slide(Math.min(MAX_SLIDE_CHARS, MAX_DRAWING_CHARS - written));
-            PageWriter writer = new PageWriter(drawing, media, slide);
-            double[] own = size(drawing, page);
-            long pcx = clamp(own[0] * PageWriter.EMU);
-            long pcy = clamp(own[1] * PageWriter.EMU);
+            PageWriter writer = new PageWriter(drawing, media, slide, visits);
+            long[] own = emu(size(drawing, page));
+            long pcx = own[0];
+            long pcy = own[1];
             writer.page(page, transform(drawing, page, pcx, pcy), 0);
             if (writer.cut && !warnings.contains(CUT)) {
                 warnings.add(CUT);
@@ -197,11 +202,19 @@ public final class VsdxPackage {
         return new Affine(k, 0, 0, -k, offX, offY + h * fit);
     }
 
+    private static long[] emu(double[] inches) {
+        double w = inches[0] * PageWriter.EMU;
+        double h = inches[1] * PageWriter.EMU;
+        double big = Math.max(w, h);
+        double k = big > MAX_PAGE_SIDE && Double.isFinite(big) ? MAX_PAGE_SIDE / big : 1;
+        return new long[] {clamp(w * k), clamp(h * k)};
+    }
+
     private static long clamp(double emu) {
         if (!Double.isFinite(emu)) {
             return 914_400L * 11;
         }
-        return Math.max(MIN_SIDE, Math.min(MAX_SIDE, Math.round(emu)));
+        return Math.max(MIN_SIDE, Math.min(MAX_PAGE_SIDE, Math.round(emu)));
     }
 
     private static void slide(Parts parts, Slide slide, int n, String ext) throws IOException {

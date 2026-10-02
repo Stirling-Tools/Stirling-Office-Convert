@@ -41,17 +41,21 @@ final class Paths {
 
     private int points;
 
-    private Paths() {}
+    private final int room;
 
-    static List<Path> build(Cells.Geometry g, double w, double h) {
-        Paths p = new Paths();
+    private Paths(int room) {
+        this.room = room;
+    }
+
+    static List<Path> build(Cells.Geometry g, double w, double h, int room) {
+        Paths p = new Paths(room);
         boolean noFill = "1".equals(g.cells().get("NoFill"));
         boolean noLine = "1".equals(g.cells().get("NoLine"));
         if ("1".equals(g.cells().get("NoShow"))) {
             return List.of();
         }
         for (Sheet.Row r : g.rows()) {
-            if (p.points > MAX_POINTS) {
+            if (p.points >= room) {
                 break;
             }
             p.row(r, w, h);
@@ -268,11 +272,21 @@ final class Paths {
         if (nums != null && nums.length >= 2) {
             boolean relX = nums[0] == 0;
             boolean relY = nums[1] == 0;
-            for (int i = 2; i + 1 < nums.length && points < MAX_POINTS; i += 2) {
+            for (int i = 2; i + 1 < nums.length && points < room; i += 2) {
                 line(relX ? nums[i] * w : nums[i], relY ? nums[i + 1] * h : nums[i + 1]);
             }
         }
         line(px, py);
+    }
+
+    static int points(List<Path> paths) {
+        int n = 0;
+        for (Path p : paths) {
+            for (Segment s : p.segments) {
+                n += s.pts().length / 2;
+            }
+        }
+        return n;
     }
 
     static double[] numbers(String formula, String head) {

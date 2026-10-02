@@ -29,6 +29,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 import stirling.software.officeconvert.topdf.OfficeToPdf;
 import stirling.software.officeconvert.topdf.testing.Fixtures;
+import stirling.software.officeconvert.topdf.testing.ZipBytes;
 
 class IWorkPreviewTest {
 
@@ -158,6 +159,18 @@ class IWorkPreviewTest {
             assertEquals(1, r.pages());
             assertTrue(r.warnings().toString().contains("first page only"), r.warnings().toString());
         }
+    }
+
+    @Test
+    void aPreviewPdfLongerThanItsDeclaredSizeFallsBackToThePicture() throws IOException {
+        byte[] pdf = preview("One", "Two", "Three");
+        byte[] key = ZipBytes.declareSize(new ZipBytes().add("Index/Document.iwa", new byte[] {1})
+                .add("QuickLook/Preview.pdf", pdf).add("preview.jpg", Fixtures.png(40, 30, Color.BLUE)).bytes(),
+                "QuickLook/Preview.pdf", pdf.length * 7 / 10);
+        Path in = Files.write(dir.resolve("lie.key"), key);
+        OfficeToPdf.Result r = OfficeToPdf.convert(in, dir.resolve("lie.pdf"));
+        assertEquals(1, r.pages());
+        assertTrue(r.warnings().toString().contains("first page only"), r.warnings().toString());
     }
 
     @Test

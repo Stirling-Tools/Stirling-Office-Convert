@@ -147,6 +147,26 @@ class PictTest {
     }
 
     @Test
+    void quickTimeJpegsShareThePicturesPixelBudget() throws Exception {
+        ByteArrayOutputStream jpeg = new ByteArrayOutputStream();
+        ImageIO.write(new BufferedImage(4000, 4000, BufferedImage.TYPE_BYTE_GRAY), "jpeg", jpeg);
+        Pict2 p = new Pict2(40, 40);
+        for (int i = 0; i < 30; i++) {
+            p.w16(0x8200).w32(68 + jpeg.size()).w16(0);
+            p.w32(0x10000).w32(0).w32(0).w32(0).w32(0x10000).w32(0).w32(0).w32(0).w32(0x40000000);
+            p.w32(0).rect(0, 0, 0, 0).w16(0).rect(0, 0, 40, 40).w32(0).w32(0);
+            p.out.writeBytes(jpeg.toByteArray());
+            p.align();
+        }
+        byte[] pict = p.end();
+        try (PDDocument doc = new PDDocument()) {
+            Allocation.Measured m = Allocation.measure(() -> PictureDecoder.decode(doc, pict));
+            assertEquals(null, m.failure());
+            assertTrue(m.bytes() < 160L << 20, "allocated " + m.megabytes() + " MB");
+        }
+    }
+
+    @Test
     void aBrokenPictureDrawsWhatCameBeforeTheDamage() throws Exception {
         Pict2 p = new Pict2(10, 10);
         p.w16(0x0031).rect(0, 0, 10, 10);
