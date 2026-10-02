@@ -127,9 +127,14 @@ final class FontFixer {
         String note = CMapFixer.run(doc, t0, codes, level);
         if (note != null) {
             report.warn(note);
-            if (t0.getDescendantFont() != null) {
-                systemInfo((PDType0Font) PDFontFactory.createFont(dict), t0.getDescendantFont());
+        }
+        try {
+            PDType0Font fresh = (PDType0Font) PDFontFactory.createFont(dict);
+            if (fresh.getDescendantFont() != null) {
+                systemInfo(fresh, fresh.getDescendantFont());
             }
+        } catch (IOException | RuntimeException e) {
+            PdfFiles.stopIfInterrupted();
         }
     }
 

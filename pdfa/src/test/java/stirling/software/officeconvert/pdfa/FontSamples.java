@@ -173,6 +173,18 @@ final class FontSamples {
                 Samples.text(cs, f, 14, 50, 780, "A range across a byte boundary: \u0141\u00f3d\u017a");
             }
         });
+        doc("f11_rebuilt_font_with_a_predefined_cmap", Set.of("2:6.2.11.3.1-1"), d -> {
+            PDType0Font f = PDType0Font.load(d, Samples.liberation(), false);
+            f.getCOSObject().setItem(COSName.ENCODING, COSName.getPDFName("UniJIS-UCS2-H"));
+            COSDictionary cid = (COSDictionary) ((COSArray) f.getCOSObject().getDictionaryObject(COSName.DESCENDANT_FONTS))
+                    .getObject(0);
+            COSArray w = new COSArray();
+            w.add(org.apache.pdfbox.cos.COSInteger.ZERO);
+            w.add(org.apache.pdfbox.cos.COSInteger.get(65535));
+            w.add(org.apache.pdfbox.cos.COSInteger.get(900));
+            cid.setItem(COSName.W, w);
+            page(d, "BT /A 14 Tf 50 780 Td <00410042> Tj ET", f);
+        });
         doc("f10_unknown_cmap", Set.of("1:6.3.3.3-1", "2:6.2.11.3.3-1"), d -> {
             PDType0Font f = PDType0Font.load(d, Samples.liberation(), false);
             StringBuilder hex = new StringBuilder();
