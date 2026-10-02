@@ -38,7 +38,8 @@ public final class UnsupportedFormats {
             case "xlr" -> "Microsoft Works spreadsheets (.xlr) are not supported; save the file as .xlsx";
             case "mpp", "mpt" -> "Microsoft Project files are not supported; save the plan as PDF from Project";
             case "one", "onepkg" -> "OneNote notebooks are not supported; export the pages as PDF from OneNote";
-            case "mht", "mhtml" -> "MHTML web archives are not supported; save the page as HTML or PDF";
+            case "mht", "mhtml" -> "MHTML web archives are not supported; open the file in Word or a browser and save it"
+                    + " as .docx or PDF";
             case "htm", "html", "xhtml" -> "HTML pages are not Office documents; convert them with an HTML to PDF tool";
             case "eml", "msg" -> "E-mail messages are not Office documents; convert them with an e-mail to PDF tool";
             case "odf", "mml" -> "OpenDocument formulas on their own are not supported; place the formula in a"
@@ -70,7 +71,8 @@ public final class UnsupportedFormats {
             return "The file is a Windows Write document, which is not supported; save it as .docx";
         }
         String text = new String(head, StandardCharsets.ISO_8859_1).stripLeading().toLowerCase(Locale.ROOT);
-        if (text.startsWith("mime-version:") && text.contains("multipart/related")) {
+        if ((text.startsWith("mime-version:") || text.startsWith("from:") || text.startsWith("content-type:"))
+                && text.contains("multipart/related")) {
             return byExtension("mht");
         }
         if (text.startsWith("<!doctype html") || text.startsWith("<html")) {
