@@ -16,7 +16,7 @@ final class HiddenPixels {
         int carry = 0;
         boolean carried = false;
         for (int y = 0; y < h; y++) {
-            src.getRGB(0, y, w, 1, row, 0, w);
+            PixelRows.read(src, 0, y, w, row);
             int last = -1;
             for (int x = 0; x < w; x++) {
                 if (row[x] >>> 24 != 0) {
@@ -40,7 +40,7 @@ final class HiddenPixels {
             } else if (carried) {
                 Arrays.fill(row, carry);
             }
-            out.setRGB(0, y, w, 1, row, 0, w);
+            PixelRows.write(out, y, w, row);
         }
         return out;
     }
