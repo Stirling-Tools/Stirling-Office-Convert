@@ -117,7 +117,9 @@ public final class HeaderFooter {
                 accepted.add(r);
             } else {
                 int seen = sightings.get(unplaced(r.signature)).size();
-                if (seen >= 3 || seen == 2 && (sparse || r.signature.contains("#"))) {
+                boolean figure = buried && r.signature.split("\\|", 4)[3].chars().noneMatch(Character::isLetter)
+                        && r.occurrences.values().stream().map(Line::text).distinct().count() > 1;
+                if (!figure && (seen >= 3 || seen == 2 && (sparse || r.signature.contains("#")))) {
                     furniture.add(r.signature);
                 }
             }
