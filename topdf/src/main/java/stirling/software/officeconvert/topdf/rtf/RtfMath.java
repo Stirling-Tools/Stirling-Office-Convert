@@ -13,6 +13,8 @@ final class RtfMath {
 
     static final int MAX_TEXT = 1 << 16;
 
+    private static final int MAX_DEPTH = 100;
+
     private static final Map<String, String> NAMES = new HashMap<>();
 
     private static final Set<String> VALUES = Set.of("type", "degHide", "chr", "limLoc", "subHide", "supHide", "grow",
@@ -45,12 +47,14 @@ final class RtfMath {
         final StringBuilder text = new StringBuilder();
         final List<String> props = new ArrayList<>();
         final Node root;
+        final int depth;
         String rPr;
         int count;
 
-        Node(String name, Node root) {
+        Node(String name, Node parent) {
             this.name = name;
-            this.root = root == null ? this : root;
+            this.root = parent == null ? this : parent.root;
+            this.depth = parent == null ? 0 : parent.depth + 1;
         }
     }
 
@@ -68,11 +72,11 @@ final class RtfMath {
     }
 
     static Node open(Node parent, String name) {
-        if (parent.root.count >= MAX_NODES) {
+        if (parent.root.count >= MAX_NODES || parent.depth >= MAX_DEPTH) {
             return parent;
         }
         parent.root.count++;
-        Node n = new Node(name, parent.root);
+        Node n = new Node(name, parent);
         parent.kids.add(n);
         return n;
     }

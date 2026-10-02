@@ -74,4 +74,11 @@ class RtfToPdfTest {
         IOException e = assertThrows(IOException.class, () -> convert("fake.rtf", "{b{\\fi0 not rtf}"));
         assertTrue(e.getMessage().contains("not an RTF document"), e.getMessage());
     }
+
+    @Test
+    void deeplyNestedMathIsCutInsteadOfFailingTheDocument() throws IOException {
+        String math = "{\\mmath{\\*\\moMath" + "{\\mf{\\mnum ".repeat(900) + "{\\mr x}" + "}}".repeat(900) + "}}";
+        String text = convert("deep.rtf", "{\\rtf1\\ansi\\pard before " + math + " after\\par}");
+        assertTrue(text.contains("before") && text.contains("after"), text);
+    }
 }

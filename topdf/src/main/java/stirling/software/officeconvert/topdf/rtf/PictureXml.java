@@ -150,10 +150,10 @@ final class PictureXml {
         int extY = 0;
         int at = le16(wmf, 2) * 2;
         int records = 0;
-        while (at + 6 <= wmf.length && records++ < 100_000) {
+        while (at >= 0 && at <= wmf.length - 6 && records++ < 100_000) {
             long size = (le32(wmf, at) & 0xFFFFFFFFL) * 2;
             int fn = le16(wmf, at + 4);
-            if (size < 6 || fn == 0) {
+            if (size < 6 || fn == 0 || size > wmf.length - at) {
                 break;
             }
             if (fn == 0x020C && at + 10 <= wmf.length) {
@@ -166,7 +166,7 @@ final class PictureXml {
             if (extX != 0 && extY != 0 && fn != 0x020B && fn != 0x020C && fn != 0x0103) {
                 break;
             }
-            at += (int) Math.min(size, Integer.MAX_VALUE - at);
+            at += (int) size;
         }
         int left = 0;
         int top = 0;

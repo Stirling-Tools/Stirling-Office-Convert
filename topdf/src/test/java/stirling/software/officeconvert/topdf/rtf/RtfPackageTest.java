@@ -529,4 +529,18 @@ class RtfPackageTest {
         assertTrue(p.outcome().lost(), p.outcome().toString());
         assertTrue(p.body().contains("<w:tbl>"), "the table's start is kept");
     }
+
+    @Test
+    void aMetafileRecordClaimingAHugeSizeIsNotFollowed() {
+        byte[] wmf = new byte[40];
+        wmf[2] = 9;
+        wmf[18] = (byte) 0xFF;
+        wmf[19] = (byte) 0xFF;
+        wmf[20] = (byte) 0xFF;
+        wmf[21] = 0x7F;
+        wmf[22] = 1;
+        byte[] out = PictureXml.placeable(wmf, 1440, 1440);
+        assertNotNull(out);
+        assertEquals(22 + wmf.length, out.length);
+    }
 }
