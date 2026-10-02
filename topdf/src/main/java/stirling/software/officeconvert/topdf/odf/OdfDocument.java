@@ -204,7 +204,7 @@ public final class OdfDocument implements Closeable {
             Map<String, ZipEntry> map = new HashMap<>();
             for (ZipEntry e : z.entries()) {
                 if (!e.isDirectory()) {
-                    map.putIfAbsent(e.getName().replace('\\', '/').replaceFirst("^/+", ""), e);
+                    map.putIfAbsent(BoundedZip.normalised(e.getName()), e);
                 }
             }
             OdfDocument probe = new OdfDocument(kind, z, null, null, null);
