@@ -39,7 +39,7 @@ class MetadataCarryOverTest {
         }
     }
 
-    private static String invoiceXmp() {
+    static String invoiceXmp() {
         StringBuilder props = new StringBuilder();
         for (String name : new String[] {"DocumentFileName", "DocumentType", "Version", "ConformanceLevel"}) {
             props.append("<rdf:li rdf:parseType='Resource'><pdfaProperty:name>").append(name)
@@ -49,8 +49,8 @@ class MetadataCarryOverTest {
         }
         return "<?xpacket begin='﻿' id='W5M0MpCehiHzreSzNTczkc9d'?>"
                 + "<x:xmpmeta xmlns:x='adobe:ns:meta/'><rdf:RDF xmlns:rdf='http://www.w3.org/1999/02/22-rdf-syntax-ns#'>"
-                + "<rdf:Description rdf:about='' xmlns:dc='http://purl.org/dc/elements/1.1/'>"
-                + "<dc:rights><rdf:Alt><rdf:li xml:lang='x-default'>Copyright ACME</rdf:li></rdf:Alt></dc:rights>"
+                + "<rdf:Description rdf:about='' xmlns:xmpRights='http://ns.adobe.com/xap/1.0/rights/'>"
+                + "<xmpRights:UsageTerms><rdf:Alt><rdf:li xml:lang='x-default'>Copyright ACME</rdf:li></rdf:Alt></xmpRights:UsageTerms>"
                 + "</rdf:Description>"
                 + "<rdf:Description rdf:about='' xmlns:fx='" + FX + "' fx:ConformanceLevel='EN 16931'>"
                 + "<fx:DocumentType>INVOICE</fx:DocumentType><fx:DocumentFileName>factur-x.xml</fx:DocumentFileName>"

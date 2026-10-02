@@ -24,6 +24,8 @@ import org.apache.pdfbox.cos.COSNumber;
 import org.apache.pdfbox.cos.COSStream;
 import org.apache.pdfbox.cos.COSString;
 
+import stirling.software.officeconvert.extract.PdfFiles;
+
 final class StructTree {
 
     record Mcr(COSDictionary owner, int mcid, COSDictionary element) {}
@@ -65,7 +67,7 @@ final class StructTree {
         this.roles = ContentGraph.dict(root.getDictionaryObject(ROLE_MAP));
     }
 
-    static StructTree read(COSDictionary root) {
+    static StructTree read(COSDictionary root) throws InterruptedIOException {
         StructTree t = new StructTree(root);
         t.walk();
         return t;
@@ -81,8 +83,8 @@ final class StructTree {
         return t;
     }
 
-    private void walk() {
-        Set<COSDictionary> seen = Collections.newSetFromMap(new IdentityHashMap<>());
+    private void walk() throws InterruptedIOException {
+        Set<COSBase> seen = Collections.newSetFromMap(new IdentityHashMap<>());
         Deque<Object[]> stack = new ArrayDeque<>();
         stack.push(new Object[] {root.getDictionaryObject(COSName.K), null, null});
         while (!stack.isEmpty() && seen.size() < MAX_ELEMENTS) {
@@ -90,7 +92,13 @@ final class StructTree {
             COSBase b = (COSBase) top[0];
             COSDictionary parent = (COSDictionary) top[1];
             COSDictionary page = (COSDictionary) top[2];
+            if ((seen.size() & 0xFFF) == 0) {
+                PdfFiles.stopIfInterrupted();
+            }
             if (b instanceof COSArray a) {
+                if (!seen.add(a)) {
+                    continue;
+                }
                 for (int i = a.size() - 1; i >= 0; i--) {
                     stack.push(new Object[] {a.getObject(i), parent, page});
                 }

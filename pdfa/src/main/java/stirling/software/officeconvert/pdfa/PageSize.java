@@ -49,10 +49,18 @@ final class PageSize {
         for (PDPage page : doc.getPages()) {
             COSDictionary p = page.getCOSObject();
             for (COSName box : OPTIONAL) {
-                float[] r = box(p.getDictionaryObject(box));
-                if (r != null && (Math.abs(r[2] - r[0]) < MIN || Math.abs(r[3] - r[1]) < MIN)) {
-                    p.removeItem(box);
-                    report.warn("Removed page boxes smaller than " + (int) MIN + " units");
+                COSBase value = box.equals(COSName.CROP_BOX)
+                        ? org.apache.pdfbox.pdmodel.PDPageTree.getInheritableAttribute(p, box)
+                        : p.getDictionaryObject(box);
+                float[] r = box(value);
+                if (r != null && (Math.abs(r[2] - r[0]) < MIN || Math.abs(r[3] - r[1]) < MIN
+                        || Math.abs(r[2] - r[0]) > MAX || Math.abs(r[3] - r[1]) > MAX)) {
+                    if (box.equals(COSName.CROP_BOX)) {
+                        p.setItem(box, page.getMediaBox().getCOSArray());
+                    } else {
+                        p.removeItem(box);
+                    }
+                    report.warn("Replaced page boxes outside the size range " + level.label() + " allows");
                 }
             }
             float[] media = box(page.getMediaBox().getCOSArray());

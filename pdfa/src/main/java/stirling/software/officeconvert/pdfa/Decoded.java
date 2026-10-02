@@ -36,13 +36,23 @@ final class Decoded {
 
     static byte[] bytes(COSStream s, long limit, String what) throws IOException {
         Capped out = new Capped(limit, what, null);
-        decode(s, out, limit, what);
+        decode(s, out, limit, what, filters(s));
+        return out.toByteArray();
+    }
+
+    static byte[] before(COSStream s, COSName last, long limit, String what) throws IOException {
+        List<COSName> filters = filters(s);
+        if (filters.isEmpty() || !last.equals(filters.get(filters.size() - 1))) {
+            throw new IOException("The final stream filter is not " + last.getName());
+        }
+        Capped out = new Capped(limit, what, null);
+        decode(s, out, limit, what, filters.subList(0, filters.size() - 1));
         return out.toByteArray();
     }
 
     static long copy(COSStream s, OutputStream to, long limit, String what) throws IOException {
         Capped out = new Capped(limit, what, to);
-        decode(s, out, limit, what);
+        decode(s, out, limit, what, filters(s));
         return out.written;
     }
 
@@ -52,8 +62,7 @@ final class Decoded {
         }
     }
 
-    private static void decode(COSStream s, Capped out, long limit, String what) throws IOException {
-        List<COSName> filters = filters(s);
+    private static void decode(COSStream s, Capped out, long limit, String what, List<COSName> filters) throws IOException {
         try (InputStream raw = s.createRawInputStream()) {
             InputStream in = raw;
             for (int i = 0; i < filters.size(); i++) {

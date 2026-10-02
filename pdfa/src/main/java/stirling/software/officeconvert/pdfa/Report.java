@@ -4,7 +4,11 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.IdentityHashMap;
 import java.util.TreeSet;
+
+import org.apache.pdfbox.cos.COSBase;
+import org.apache.pdfbox.cos.COSDictionary;
 
 final class Report {
 
@@ -15,6 +19,12 @@ final class Report {
     private final TreeSet<Integer> flattened = new TreeSet<>();
 
     private final TreeSet<String> substituted = new TreeSet<>();
+
+    private final Map<COSDictionary, COSBase> actions = new IdentityHashMap<>();
+
+    Map<COSDictionary, COSBase> actions() {
+        return actions;
+    }
 
     void warn(String message) {
         if (warnings.size() < MAX_WARNINGS || warnings.containsKey(message)) {

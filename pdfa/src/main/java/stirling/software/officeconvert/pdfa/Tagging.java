@@ -17,6 +17,8 @@ import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.cos.COSString;
 import org.apache.pdfbox.pdmodel.PDDocument;
 
+import stirling.software.officeconvert.extract.PdfFiles;
+
 final class Tagging {
 
     static final Set<String> STANDARD = Set.of("Document", "Part", "Art", "Sect", "Div", "BlockQuote", "Caption",
@@ -61,13 +63,24 @@ final class Tagging {
         }
         mark.setBoolean(MARKED, true);
         language(cat, report);
+        CosWalk.walk(doc, b -> {
+            if (b instanceof COSDictionary dictionary) {
+                language(dictionary, report);
+            }
+        });
         Set<String> types = new HashSet<>();
-        Set<COSDictionary> seen = Collections.newSetFromMap(new IdentityHashMap<>());
+        Set<COSBase> seen = Collections.newSetFromMap(new IdentityHashMap<>());
         Deque<COSBase> stack = new ArrayDeque<>();
         stack.push(root.getDictionaryObject(COSName.K) == null ? new COSArray() : root.getDictionaryObject(COSName.K));
         while (!stack.isEmpty() && seen.size() < MAX_ELEMENTS) {
             COSBase b = stack.pop();
+            if ((seen.size() & 0xFFF) == 0) {
+                PdfFiles.stopIfInterrupted();
+            }
             if (b instanceof COSArray a) {
+                if (!seen.add(a)) {
+                    continue;
+                }
                 for (int i = 0; i < a.size(); i++) {
                     if (a.getObject(i) != null) {
                         stack.push(a.getObject(i));
@@ -76,8 +89,13 @@ final class Tagging {
                 continue;
             }
             COSDictionary e = ContentGraph.dict(b);
-            if (e == null || !seen.add(e) || e.getDictionaryObject(COSName.S) == null) {
+            if (e == null || !seen.add(e)) {
                 continue;
+            }
+            if (!(e.getDictionaryObject(COSName.S) instanceof COSName)
+                    && COSName.STRUCT_ELEM.equals(e.getCOSName(COSName.TYPE))) {
+                e.setName(COSName.S, "NonStruct");
+                report.warn("Gave a structure element without a valid type the NonStruct type");
             }
             if (e.getDictionaryObject(COSName.S) instanceof COSName s) {
                 types.add(s.getName());
@@ -122,7 +140,7 @@ final class Tagging {
         return false;
     }
 
-    private static void language(COSDictionary d, Report report) {
+    static void language(COSDictionary d, Report report) {
         COSBase lang = d.getDictionaryObject(COSName.LANG);
         if (lang == null) {
             return;

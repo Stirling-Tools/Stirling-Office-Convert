@@ -26,9 +26,20 @@ final class ContentTokens {
 
     static byte[] bytes(List<COSStream> streams) throws IOException {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
+        ContentCache cache = ContentCache.current();
         for (COSStream s : streams) {
             try {
-                Decoded.copy(s, out, MAX_CONTENT_BYTES - out.size(), "A content stream");
+                byte[] decoded = cache == null ? null : cache.bytes(s);
+                if (decoded == null) {
+                    decoded = Decoded.bytes(s, MAX_CONTENT_BYTES - out.size(), "A content stream");
+                    if (cache != null) {
+                        cache.bytes(s, decoded);
+                    }
+                }
+                if (decoded.length > MAX_CONTENT_BYTES - out.size()) {
+                    throw new Decoded.TooLarge("A content stream", MAX_CONTENT_BYTES);
+                }
+                out.writeBytes(decoded);
             } catch (IOException e) {
                 Decoded.rethrowFatal(e);
             }
@@ -38,7 +49,15 @@ final class ContentTokens {
     }
 
     static List<Object> parse(List<COSStream> streams) throws IOException {
-        return stirling.software.officeconvert.extract.ContentTokens.parse(checked(bytes(streams)));
+        ContentCache cache = ContentCache.current();
+        List<Object> tokens = cache == null ? null : cache.tokens(streams);
+        if (tokens == null) {
+            tokens = stirling.software.officeconvert.extract.ContentTokens.parse(checked(bytes(streams)));
+            if (cache != null) {
+                cache.tokens(streams, tokens);
+            }
+        }
+        return tokens;
     }
 
     static byte[] checked(byte[] content) throws IOException {
@@ -65,6 +84,11 @@ final class ContentTokens {
     record Salvaged(List<Object> tokens, boolean complete) {}
 
     static Salvaged salvage(List<COSStream> streams) throws IOException {
+        ContentCache cache = ContentCache.current();
+        List<Object> known = cache == null ? null : cache.tokens(streams);
+        if (known != null) {
+            return new Salvaged(known, true);
+        }
         byte[] content = checked(bytes(streams));
         PositionedParser parser = new PositionedParser(content);
         List<Object> tokens = new ArrayList<>();
@@ -74,6 +98,9 @@ final class ContentTokens {
                 if ((tokens.size() & 0xFFFF) == 0) {
                     PdfFiles.stopIfInterrupted();
                 }
+            }
+            if (cache != null) {
+                cache.tokens(streams, tokens);
             }
             return new Salvaged(tokens, true);
         } catch (IOException | RuntimeException e) {
@@ -110,6 +137,10 @@ final class ContentTokens {
     }
 
     static void write(COSStream stream, List<?> tokens) throws IOException {
+        ContentCache cache = ContentCache.current();
+        if (cache != null) {
+            cache.changed(stream);
+        }
         ByteArrayOutputStream buf = new ByteArrayOutputStream();
         new ContentStreamWriter(buf).writeTokens(tokens);
         stream.removeItem(COSName.DECODE_PARMS);

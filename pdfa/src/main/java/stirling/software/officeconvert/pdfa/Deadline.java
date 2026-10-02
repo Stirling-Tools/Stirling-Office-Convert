@@ -14,6 +14,8 @@ final class Deadline {
 
     private static final long STOP_MILLIS = 1_000;
 
+    private static final Duration GRACE = Duration.ofSeconds(10);
+
     @FunctionalInterface
     interface Work<T> {
         T call() throws IOException;
@@ -22,6 +24,10 @@ final class Deadline {
     private Deadline() {}
 
     static <T> T run(Duration timeout, Work<T> work) throws IOException {
+        return run(timeout, GRACE, work);
+    }
+
+    static <T> T run(Duration timeout, Duration grace, Work<T> work) throws IOException {
         if (Thread.currentThread().isInterrupted()) {
             throw new InterruptedIOException("Conversion interrupted");
         }
@@ -61,17 +67,18 @@ final class Deadline {
         } finally {
             if (!finished) {
                 task.cancel(true);
-                stop(worker);
+                stop(worker, grace);
             }
         }
     }
 
-    private static void stop(Thread worker) {
+    private static void stop(Thread worker, Duration grace) {
         boolean interrupted = false;
-        while (worker.isAlive()) {
+        long end = System.nanoTime() + grace.toNanos();
+        while (worker.isAlive() && end - System.nanoTime() > 0) {
             worker.interrupt();
             try {
-                worker.join(STOP_MILLIS);
+                worker.join(Math.max(1, Math.min(STOP_MILLIS, (end - System.nanoTime()) / 1_000_000)));
             } catch (InterruptedException e) {
                 interrupted = true;
             }

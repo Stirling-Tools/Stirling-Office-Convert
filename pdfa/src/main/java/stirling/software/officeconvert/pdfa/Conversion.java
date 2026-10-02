@@ -42,6 +42,7 @@ final class Conversion {
             Tagging.run(doc, level, report);
         }
         Census census = Census.of(doc);
+        FontProgramBounds.run(doc);
         Signatures.run(doc, census, report);
         Interactive.run(doc, level, report);
         ObjectMetadata.run(doc, census, level, report);

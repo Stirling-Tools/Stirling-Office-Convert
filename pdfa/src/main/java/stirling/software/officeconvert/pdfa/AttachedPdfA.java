@@ -3,7 +3,8 @@ package stirling.software.officeconvert.pdfa;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.Set;
-import java.util.regex.Pattern;
+import java.util.Collections;
+import java.util.IdentityHashMap;
 
 import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.cos.COSArray;
@@ -12,6 +13,9 @@ import org.apache.pdfbox.cos.COSDictionary;
 import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.cos.COSStream;
 import org.apache.pdfbox.pdmodel.PDDocument;
+import org.w3c.dom.Document;
+import org.w3c.dom.Element;
+import org.w3c.dom.NodeList;
 
 final class AttachedPdfA {
 
@@ -19,7 +23,7 @@ final class AttachedPdfA {
 
     private static final int MAX_DEPTH = 2;
 
-    private static final Pattern PART = Pattern.compile("pdfaid:part\\s*(=\\s*[\"']|>\\s*)[12]\\b");
+    private static final String IDENTIFICATION = "http://www.aiim.org/pdfa/ns/id/";
 
     private static final Set<String> FORBIDDEN = Set.of("JavaScript", "Launch", "Sound", "Movie", "ResetForm",
             "ImportData", "Hide", "SetOCGState", "Rendition", "Trans", "GoTo3DView");
@@ -49,7 +53,8 @@ final class AttachedPdfA {
                 return false;
             }
             boolean[] ok = {true};
-            CosWalk.walk(doc, b -> ok[0] &= allowed(b, depth));
+            Set<COSStream> checked = Collections.newSetFromMap(new IdentityHashMap<>());
+            CosWalk.walk(doc, b -> ok[0] &= allowed(b, depth, checked));
             return ok[0];
         } catch (IOException | RuntimeException e) {
             return false;
@@ -63,13 +68,43 @@ final class AttachedPdfA {
         }
         try {
             byte[] b = Decoded.bytes(xmp, StreamFixer.MAX_METADATA_BYTES, "XMP metadata");
-            return PART.matcher(new String(b, StandardCharsets.UTF_8)).find();
+            Document xml = XmpCarryOver.parse(b);
+            if (xml == null) {
+                return false;
+            }
+            String part = property(xml, "part");
+            String conformance = property(xml, "conformance");
+            return ("1".equals(part) && Set.of("A", "B").contains(conformance))
+                    || ("2".equals(part) && Set.of("A", "B", "U").contains(conformance));
         } catch (IOException e) {
             return false;
         }
     }
 
-    private static boolean allowed(COSBase b, int depth) {
+    private static String property(Document xml, String name) {
+        String value = "";
+        int count = 0;
+        NodeList elements = xml.getElementsByTagNameNS(IDENTIFICATION, name);
+        for (int i = 0; i < elements.getLength(); i++) {
+            Element element = (Element) elements.item(i);
+            if (element.getElementsByTagName("*").getLength() != 0) {
+                return "";
+            }
+            value = element.getTextContent().strip();
+            count++;
+        }
+        NodeList descriptions = xml.getElementsByTagNameNS(XmpCarryOver.RDF, "Description");
+        for (int i = 0; i < descriptions.getLength(); i++) {
+            Element description = (Element) descriptions.item(i);
+            if (description.hasAttributeNS(IDENTIFICATION, name)) {
+                value = description.getAttributeNS(IDENTIFICATION, name).strip();
+                count++;
+            }
+        }
+        return count == 1 ? value : "";
+    }
+
+    private static boolean allowed(COSBase b, int depth, Set<COSStream> checked) {
         if (!(b instanceof COSDictionary d)) {
             return true;
         }
@@ -84,7 +119,16 @@ final class AttachedPdfA {
                 && !COSName.TYPE3.equals(d.getCOSName(COSName.SUBTYPE)) && !embedded(d)) {
             return false;
         }
-        if (d instanceof COSStream s && EMBEDDED_FILE.equals(s.getCOSName(COSName.TYPE))) {
+        COSDictionary ef = ContentGraph.dict(d.getDictionaryObject(COSName.EF));
+        if (ef != null) {
+            for (COSName key : ef.keySet()) {
+                if (!(ef.getDictionaryObject(key) instanceof COSStream file)
+                        || checked.add(file) && !(depth < MAX_DEPTH && check(file, depth + 1))) {
+                    return false;
+                }
+            }
+        }
+        if (d instanceof COSStream s && EMBEDDED_FILE.equals(s.getCOSName(COSName.TYPE)) && checked.add(s)) {
             return depth < MAX_DEPTH && check(s, depth + 1);
         }
         return true;

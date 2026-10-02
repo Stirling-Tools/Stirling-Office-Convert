@@ -1,7 +1,6 @@
 package stirling.software.officeconvert.pdfa;
 
 import java.io.InterruptedIOException;
-import java.util.IdentityHashMap;
 import java.util.Map;
 import java.util.Set;
 
@@ -98,7 +97,7 @@ final class Actions {
             owner.removeItem(key);
             return;
         }
-        COSBase kept = filter(a, level, report, new IdentityHashMap<>(), 0);
+        COSBase kept = filter(a, level, report, report.actions(), 0);
         if (kept == null) {
             owner.removeItem(key);
         } else {

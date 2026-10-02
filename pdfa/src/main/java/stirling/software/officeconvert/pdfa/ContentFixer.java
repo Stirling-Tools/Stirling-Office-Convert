@@ -4,6 +4,8 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
+import java.util.HashMap;
+import java.util.Map;
 
 import org.apache.pdfbox.contentstream.operator.Operator;
 import org.apache.pdfbox.cos.COSBase;
@@ -27,11 +29,20 @@ final class ContentFixer {
 
     private ContentFixer() {}
 
+    private record Shared(List<COSStream> streams, COSDictionary resources) {}
+
     static void run(ContentGraph graph, PdfALevel level, Report report, FontUsage usage, DeviceColours colours)
             throws IOException {
         ExplicitResources.run(graph);
+        Map<Shared, COSBase> pages = new HashMap<>();
         for (ContentGraph.Node n : graph.nodes()) {
             PdfFiles.stopIfInterrupted();
+            Shared shared = new Shared(n.streams(), n.resources());
+            COSBase known = n.kind() == ContentGraph.Kind.PAGE ? pages.get(shared) : null;
+            if (known != null) {
+                n.owner().setItem(COSName.CONTENTS, known);
+                continue;
+            }
             ContentTokens.Salvaged parsed;
             try {
                 parsed = ContentTokens.salvage(n.streams());
@@ -73,6 +84,13 @@ final class ContentFixer {
                     }
                 }
                 String name = op.getName();
+                if (level.tagged() && ("BDC".equals(name) || "DP".equals(name))) {
+                    for (Object operand : operation) {
+                        if (operand instanceof COSDictionary properties) {
+                            Tagging.language(properties, report);
+                        }
+                    }
+                }
                 colours.operator(name);
                 if (!OPERATORS.contains(name)) {
                     changed = true;
@@ -118,8 +136,9 @@ final class ContentFixer {
                     changed = true;
                 }
             }
-            if (changed) {
-                ContentTokens.replace(n, result);
+            ContentTokens.replace(n, result);
+            if (n.kind() == ContentGraph.Kind.PAGE) {
+                pages.put(shared, n.owner().getItem(COSName.CONTENTS));
             }
         }
         usage.resolve();

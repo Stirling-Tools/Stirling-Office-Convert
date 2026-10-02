@@ -63,8 +63,16 @@ final class JpxImages {
     }
 
     private void fix(COSStream s) throws IOException {
+        byte[] encoded = encoded(s);
+        int[] size = JpxDecoder.size(encoded);
+        long pixels = (long) size[0] * size[1];
+        if (size[0] <= 0 || size[1] <= 0 || pixels > MAX_PIXELS || pixels * size[2] > MAX_PIXELS * 4) {
+            throw new IOException("A JPEG 2000 codestream is too large to convert for " + level.label());
+        }
+        s.setInt(COSName.WIDTH, size[0]);
+        s.setInt(COSName.HEIGHT, size[1]);
         if (level.part() > 1) {
-            JpxHeader h = JpxHeader.parse(encoded(s));
+            JpxHeader h = JpxHeader.parse(encoded);
             if (h != null && h.allowedInPdfA(s.getDictionaryObject(COSName.COLORSPACE) != null)) {
                 return;
             }
@@ -72,12 +80,7 @@ final class JpxImages {
         if (s.getBoolean(COSName.IMAGE_MASK, false)) {
             throw new IOException("The PDF has a JPEG 2000 image mask, which " + level.label() + " does not allow");
         }
-        long pixels = (long) s.getInt(COSName.WIDTH, 0) * s.getInt(COSName.HEIGHT, 0);
-        if (pixels > MAX_PIXELS) {
-            throw new IOException("A JPEG 2000 image has " + pixels + " pixels, more than " + MAX_PIXELS
-                    + " can be converted for " + level.label());
-        }
-        BufferedImage decoded = decoded(s);
+        BufferedImage decoded = decoded(encoded);
         BufferedImage alpha = alpha(decoded);
         BufferedImage opaque = alpha != null ? colours(decoded)
                 : new PDImageXObject(new PDStream(s), null).getOpaqueImage();
@@ -118,9 +121,9 @@ final class JpxImages {
                 : GreyImages.lossless(doc, img);
     }
 
-    private static BufferedImage decoded(COSStream s) throws IOException {
+    private static BufferedImage decoded(byte[] encoded) throws IOException {
         try {
-            return JpxDecoder.decode(encoded(s)).toBufferedImage();
+            return JpxDecoder.decode(encoded).toBufferedImage();
         } catch (RuntimeException e) {
             throw new IOException("A JPEG 2000 image could not be read: " + e.getMessage(), e);
         }
@@ -154,8 +157,6 @@ final class JpxImages {
     }
 
     private static byte[] encoded(COSStream s) throws IOException {
-        try (InputStream in = new PDStream(s).createInputStream(List.of(COSName.JPX_DECODE.getName()))) {
-            return in.readAllBytes();
-        }
+        return Decoded.before(s, COSName.JPX_DECODE, 64L << 20, "A JPEG 2000 codestream");
     }
 }

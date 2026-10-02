@@ -175,8 +175,8 @@ final class OptionalContentRemoval {
                 changed = true;
                 continue;
             }
-            out.addAll(skipDepth == 0 ? operation : hidden.replace(name, operation));
             hidden.track(name, operation);
+            out.addAll(skipDepth == 0 ? operation : hidden.replace(name, operation));
         }
         if (changed) {
             ContentTokens.replace(n, out);
