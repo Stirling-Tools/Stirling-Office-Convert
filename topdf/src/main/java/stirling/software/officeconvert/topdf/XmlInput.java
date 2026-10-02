@@ -13,11 +13,14 @@ import stirling.software.officeconvert.memory.Admission;
 import stirling.software.officeconvert.topdf.OfficeToPdf.Options;
 import stirling.software.officeconvert.topdf.OfficeToPdf.Result;
 import stirling.software.officeconvert.topdf.flat.FlatOpc;
+import stirling.software.officeconvert.topdf.flat.Sniff;
 import stirling.software.officeconvert.topdf.sml.Sml2003Package;
 
 /** Single-file XML Office documents: XML Spreadsheet 2003 is rewritten as SpreadsheetML; a Flat OPC document (Word,
  * Excel or PowerPoint 2007 XML) is unpacked into its package. Flat OpenDocument files are read elsewhere. */
 final class XmlInput {
+
+    private static final String WORD_2003 = "http://schemas.microsoft.com/office/word/2003/wordml";
 
     static final String UNKNOWN = "The XML file is not a Word, Excel, PowerPoint or OpenDocument document";
 
@@ -52,6 +55,9 @@ final class XmlInput {
             } finally {
                 OfficeToPdf.deleteQuietly(pkg);
             }
+        }
+        if (Sniff.root(source, WORD_2003, "wordDocument")) {
+            throw new IOException("Word 2003 XML documents are not supported; save the file as .docx");
         }
         Path name = source.getFileName();
         if (name != null && name.toString().toLowerCase(Locale.ROOT).endsWith(".xml")) {
