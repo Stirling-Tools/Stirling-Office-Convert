@@ -87,13 +87,15 @@ public final class OfficeToPdf {
                 case "pptx", "pptm", "ppsx", "ppsm", "potx", "potm", "odp", "otp", "fodp", "odg", "otg", "fodg" -> PPTX;
                 case "xlsx", "xlsm", "xltx", "xltm", "xls", "xlt", "xlsb", "ods", "ots", "fods" -> XLSX;
                 case "csv" -> CSV;
-                case "slk", "sylk", "dif", "dbf" -> XLSX;
+                case "slk", "sylk", "dif", "dbf", "numbers" -> XLSX;
+                case "pages" -> DOCX;
+                case "key" -> PPTX;
                 case "tsv", "tab" -> TSV;
                 case "ppt", "pps", "pot" -> PPT;
                 default -> throw new IllegalArgumentException("Not an Office document: " + file.getFileName()
                         + "; use .docx, .docm, .dotx, .dotm, .doc, .dot, .rtf, .pptx, .pptm, .ppsx, .ppsm, .potx, .potm,"
                         + " .xlsx, .xlsm, .xltx, .xltm, .xlsb, .xls, .xlt, .ppt, .pps, .pot, .odt, .ott, .fodt, .ods, .ots, .fods,"
-                        + " .odp, .otp, .fodp, .odg, .otg, .fodg, .xml, .slk, .dif, .dbf, .txt, .text, .log, .asc, .csv, .tsv or .tab");
+                        + " .odp, .otp, .fodp, .odg, .otg, .fodg, .xml, .slk, .dif, .dbf, .pages, .numbers, .key, .txt, .text, .log, .asc, .csv, .tsv or .tab");
             };
         }
 
@@ -104,7 +106,7 @@ public final class OfficeToPdf {
                         "xltx", "xltm", "doc", "dot", "ppt", "pps", "pot", "xls", "xlt", "xlsb", "rtf", "odt", "ott", "fodt",
                         "ods", "ots", "fods", "odp", "otp", "fodp", "odg", "otg", "fodg", "xml" -> true;
                 case "txt", "text", "log", "asc", "csv", "tsv", "tab" -> true;
-                case "slk", "sylk", "dif", "dbf" -> true;
+                case "slk", "sylk", "dif", "dbf", "pages", "numbers", "key" -> true;
                 default -> false;
             };
         }
@@ -316,6 +318,10 @@ public final class OfficeToPdf {
         }
         if (EncryptedPackage.is(in)) {
             return Footprint.legacy(Files.size(in)) + 2 * Admission.BASE_BYTES;
+        }
+        Long iwork = IWorkInput.estimate(in);
+        if (iwork != null) {
+            return iwork;
         }
         if (XlsbPackage.is(in)) {
             return XlsbPackage.estimate(Files.size(in)) + 2 * Admission.BASE_BYTES;
@@ -540,6 +546,10 @@ public final class OfficeToPdf {
         Result word = LegacyWord.render(source, sink, options, renderer);
         if (word != null) {
             return word;
+        }
+        Result iwork = IWorkInput.render(source, sink, options);
+        if (iwork != null) {
+            return iwork;
         }
         Result xlsb = binaryWorkbook(source, sink, options, renderer);
         if (xlsb != null) {
