@@ -93,6 +93,11 @@ final class CMapFixer {
     }
 
     static boolean unknownName(COSDictionary font) {
+        boolean type0 = COSName.TYPE0.equals(font.getCOSName(COSName.SUBTYPE));
+        if (type0 && font.getDictionaryObject(COSName.ENCODING) == null) {
+            font.setItem(COSName.ENCODING, COSName.IDENTITY_H);
+            return true;
+        }
         if (!COSName.TYPE0.equals(font.getCOSName(COSName.SUBTYPE))
                 || !(font.getDictionaryObject(COSName.ENCODING) instanceof COSName n)
                 || n.getName().equals("Identity-H") || n.getName().equals("Identity-V")

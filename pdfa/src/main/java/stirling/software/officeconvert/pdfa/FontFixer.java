@@ -55,7 +55,7 @@ final class FontFixer {
         for (Map.Entry<COSDictionary, TreeSet<Integer>> e : usage.codes().entrySet()) {
             PdfFiles.stopIfInterrupted();
             if (CMapFixer.unknownName(e.getKey())) {
-                report.warn("Read a font whose CMap name is unknown with the Identity CMap");
+                report.warn("Read a font whose CMap is missing or has an unknown name with the Identity CMap");
             }
             if (CMapFixer.inline(doc, e.getKey())) {
                 report.warn("Merged a CMap with the CMap it refers to, as PDF/A-2 needs");

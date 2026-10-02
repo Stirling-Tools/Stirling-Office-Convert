@@ -39,6 +39,9 @@ final class FontCheck {
                 if (cid == null || !embedded(cid.getFontDescriptor()) || t0.isDamaged() || isDamaged(cid)) {
                     return Verdict.SUBSTITUTE;
                 }
+                if (!TrueTypeSanity.sane(cid.getFontDescriptor())) {
+                    return Verdict.REBUILD;
+                }
                 COSBase encoding = t0.getCOSObject().getDictionaryObject(COSName.ENCODING);
                 if (cid instanceof PDCIDFontType0 && CMapFixer.maxCid(encoding) > CMapFixer.MAX_CID) {
                     return Verdict.REBUILD;
@@ -51,7 +54,8 @@ final class FontCheck {
             if (!embedded(font.getFontDescriptor()) || font.isDamaged()) {
                 return Verdict.SUBSTITUTE;
             }
-            if (font instanceof PDTrueTypeFont tt && !trueTypeEncodingOk(tt, simple, level)) {
+            if (font instanceof PDTrueTypeFont tt
+                    && (!TrueTypeSanity.sane(tt.getFontDescriptor()) || !trueTypeEncodingOk(tt, simple, level))) {
                 return Verdict.REBUILD;
             }
             return glyphsAndWidths(font, codes) ? Verdict.OK : Verdict.REBUILD;

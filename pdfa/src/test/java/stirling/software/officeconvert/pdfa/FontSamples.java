@@ -185,6 +185,34 @@ final class FontSamples {
             cid.setItem(COSName.W, w);
             page(d, "BT /A 14 Tf 50 780 Td <00410042> Tj ET", f);
         });
+        doc("f12_broken_programs", Set.of(), d -> {
+            PDType0Font noEncoding = PDType0Font.load(d, Samples.liberation(), false);
+            StringBuilder hex = new StringBuilder();
+            for (byte b : noEncoding.encode("No Encoding")) {
+                hex.append(String.format("%02X", b));
+            }
+            noEncoding.getCOSObject().removeItem(COSName.ENCODING);
+            byte[] program;
+            try (java.io.InputStream in = PDDocument.class.getResourceAsStream(
+                    "/org/apache/pdfbox/resources/ttf/LiberationSans-Regular.ttf")) {
+                program = in.readAllBytes();
+            }
+            java.nio.ByteBuffer buf = java.nio.ByteBuffer.wrap(program);
+            for (int i = 0; i < (buf.getShort(4) & 0xFFFF); i++) {
+                if ("post".equals(new String(program, 12 + 16 * i, 4, StandardCharsets.ISO_8859_1))) {
+                    buf.putInt(12 + 16 * i + 12, program.length);
+                }
+            }
+            COSDictionary broken = Samples.trueTypeUnembedded("BrokenPost", Samples.arialWidths());
+            COSStream file = d.getDocument().createCOSStream();
+            try (OutputStream o = file.createOutputStream(COSName.FLATE_DECODE)) {
+                o.write(program);
+            }
+            file.setInt(COSName.LENGTH1, program.length);
+            ((COSDictionary) broken.getDictionaryObject(COSName.FONT_DESC)).setItem(COSName.FONT_FILE2, file);
+            page(d, "BT /A 14 Tf 50 780 Td <" + hex + "> Tj /B 14 Tf 0 -30 Td (Broken post table) Tj ET", noEncoding,
+                    PDFontFactory.createFont(broken));
+        });
         doc("f10_unknown_cmap", Set.of("1:6.3.3.3-1", "2:6.2.11.3.3-1"), d -> {
             PDType0Font f = PDType0Font.load(d, Samples.liberation(), false);
             StringBuilder hex = new StringBuilder();
