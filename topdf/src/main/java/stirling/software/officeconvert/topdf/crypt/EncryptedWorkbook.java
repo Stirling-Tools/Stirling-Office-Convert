@@ -3,7 +3,6 @@ package stirling.software.officeconvert.topdf.crypt;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.io.InputStream;
 import java.io.InterruptedIOException;
 
 import org.apache.poi.EncryptedDocumentException;
@@ -11,13 +10,11 @@ import org.apache.poi.hssf.record.FilePassRecord;
 import org.apache.poi.hssf.record.RecordInputStream;
 import org.apache.poi.hssf.record.crypto.Biff8DecryptingStream;
 import org.apache.poi.poifs.crypt.EncryptionInfo;
-import org.apache.poi.poifs.filesystem.DirectoryNode;
-import org.apache.poi.poifs.filesystem.POIFSFileSystem;
 import org.apache.poi.util.LittleEndian;
 
-/** An Excel 97-2003 workbook whose records are encrypted (RC4, CryptoAPI or XOR, announced by a FILEPASS record):
- * the Workbook stream is decrypted record by record into a new file system, FILEPASS left out and the sheet offsets
- * moved to match. A workbook protected only by Excel's built-in password opens without one. */
+/** An Excel workbook stream whose records are encrypted (RC4, CryptoAPI or XOR, announced by a FILEPASS record),
+ * decrypted record by record with FILEPASS left out and the sheet offsets moved to match. A workbook protected only by
+ * Excel's built-in password opens without one. */
 public final class EncryptedWorkbook {
 
     private static final int BOF = 0x0809;
@@ -29,26 +26,6 @@ public final class EncryptedWorkbook {
     private static final int MAX_LEADING_RECORDS = 64;
 
     private EncryptedWorkbook() {}
-
-    /** The workbook decrypted, or null when its records are not encrypted. */
-    public static POIFSFileSystem decrypt(DirectoryNode root, String password) throws IOException {
-        String name = root.hasEntryCaseInsensitive("Workbook") ? "Workbook" : null;
-        if (name == null) {
-            return null;
-        }
-        byte[] stream;
-        try (InputStream in = root.createDocumentInputStream(root.getEntryCaseInsensitive(name))) {
-            stream = in.readAllBytes();
-        }
-        byte[] plain = decrypt(stream, password);
-        if (plain == null) {
-            return null;
-        }
-        POIFSFileSystem fs = new POIFSFileSystem();
-        Streams.copyExcept(root, fs.getRoot(), name);
-        fs.createDocument(new ByteArrayInputStream(plain), "Workbook");
-        return fs;
-    }
 
     /** A BIFF5 or BIFF8 workbook stream decrypted, or null when its records are not encrypted. Excel 5.0/95 only
      * obfuscated with XOR, whose FILEPASS holds the key and hash alone. */

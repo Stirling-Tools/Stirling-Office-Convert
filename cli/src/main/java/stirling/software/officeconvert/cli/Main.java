@@ -62,6 +62,7 @@ public final class Main {
         float dpi = 150f;
         String password = null;
         boolean quiet = false;
+        boolean overwrite = false;
         String format = "docx";
         boolean formatGiven = false;
         boolean pagesGiven = false;
@@ -111,6 +112,7 @@ public final class Main {
                     case "--pdfa" -> pdfa = level(value(args, ++i, a));
                     case "--pictures" -> pictures = pictures(value(args, ++i, a));
                     case "-q", "--quiet" -> quiet = true;
+                    case "--overwrite" -> overwrite = true;
                     case "-h", "--help" -> {
                         usage();
                         return 0;
@@ -183,8 +185,10 @@ public final class Main {
         boolean officeFolder = !archive && (!formatGiven || "pdf".equals(format));
         boolean pdfFolder = archive || !formatGiven || !"pdf".equals(format);
         boolean textFolder = formatGiven;
+        int failures = 0;
         for (Path in : inputs) {
             if (Files.isDirectory(in)) {
+                int before = pdfs.size();
                 try (Stream<Path> s = Files.list(in)) {
                     s.filter(p -> Files.isRegularFile(p) && !lockFile(p) && (officeFolder && isOffice(p)
                             && (textFolder || TextFormats.kind(p) == null)
@@ -194,6 +198,10 @@ public final class Main {
                 } catch (IOException e) {
                     System.err.println("office-convert: cannot list " + in + ": " + e.getMessage());
                     return 1;
+                }
+                if (pdfs.size() == before) {
+                    failures++;
+                    System.err.println("office-convert: nothing to convert in " + in);
                 }
             } else {
                 pdfs.add(in);
@@ -205,15 +213,21 @@ public final class Main {
             }
         }
         warmUp(pdfs);
-        int failures = 0;
-        List<Path> targets = targets(pdfs, output, pdfa != null ? "pdfa.pdf" : format,
+        List<Path> targets = Targets.of(pdfs, output, pdfa != null ? "pdfa.pdf" : format,
                 inputs.stream().anyMatch(Files::isDirectory));
+        Guard guard = new Guard(pdfs, overwrite);
         PdfToPdfA.Options archival = pdfa == null ? null : PdfToPdfA.Options.defaults().level(pdfa).password(password)
                 .timeout(office.timeout()).maxPages(office.maxPages()).fonts(fonts);
         for (int k = 0; k < pdfs.size(); k++) {
             Path pdf = pdfs.get(k);
             boolean officeInput = isOffice(pdf);
             Path target = targets.get(k);
+            String refusal = guard.refusal(pdf, target);
+            if (refusal != null) {
+                failures++;
+                System.err.println("SKIP " + pdf + ": " + oneLine(refusal));
+                continue;
+            }
             resetPeaks();
             long start = System.nanoTime();
             try {
@@ -229,6 +243,7 @@ public final class Main {
                 } else {
                     convert(pdf, target, options, slides, books);
                 }
+                guard.wrote(target);
                 long ms = (System.nanoTime() - start) / 1_000_000;
                 if (!quiet) {
                     Runtime rt = Runtime.getRuntime();
@@ -291,37 +306,6 @@ public final class Main {
     // Office keeps "~$name" owner files beside open documents; they are never documents themselves
     private static boolean lockFile(Path p) {
         return p.getFileName().toString().startsWith("~$");
-    }
-
-    // Inputs that would share an output name keep their own extension in it instead of overwriting each other
-    static List<Path> targets(List<Path> inputs, Path output, String format, boolean folder) {
-        List<Path> out = new ArrayList<>();
-        java.util.Map<String, Integer> counts = new java.util.HashMap<>();
-        for (Path in : inputs) {
-            Path t = target(in, output, folder || inputs.size() > 1, isOffice(in) ? "pdf" : format);
-            out.add(t);
-            counts.merge(key(t), 1, Integer::sum);
-        }
-        java.util.Set<String> used = new java.util.HashSet<>();
-        for (int i = 0; i < out.size(); i++) {
-            Path t = out.get(i);
-            if (counts.get(key(t)) > 1) {
-                String ext = isOffice(inputs.get(i)) ? "pdf" : format;
-                t = t.resolveSibling(inputs.get(i).getFileName().toString() + "." + ext);
-            }
-            Path unique = t;
-            for (int n = 2; !used.add(key(unique)) && n < 10_000; n++) {
-                String name = t.getFileName().toString();
-                int dot = name.lastIndexOf('.');
-                unique = t.resolveSibling(name.substring(0, dot) + " (" + n + ")" + name.substring(dot));
-            }
-            out.set(i, unique);
-        }
-        return out;
-    }
-
-    private static String key(Path p) {
-        return p.toAbsolutePath().normalize().toString().toLowerCase(Locale.ROOT);
     }
 
     private static String describe(IOException e) {
@@ -498,33 +482,20 @@ public final class Main {
         }
     }
 
-    private static Path target(Path pdf, Path output, boolean many, String format) {
-        String base = pdf.getFileName().toString();
-        String name = ("pdf".equals(format) ? base.replaceFirst("\\.[^.]+$", "") : base.replaceFirst("(?i)\\.pdf$", ""))
-                + "." + format;
-        if (output == null) {
-            return pdf.resolveSibling(name);
-        }
-        if (many || Files.isDirectory(output)) {
-            return output.resolve(name);
-        }
-        return output;
-    }
-
     private static void usage() {
         System.out.println(
                 "Usage: office-convert <in.pdf|dir>... [-o out.docx|dir] [--format ext] [--sheets page|table|single]"
                         + " [--pages a-b] [--no-tables] [--dpi n] [--password p] [--picture-fallback]"
-                        + " [--pictures compact|lossless] [-q]"
+                        + " [--pictures compact|lossless] [--overwrite] [-q]"
                         + System.lineSeparator()
                         + "       office-convert <in.docx|in.pptx|in.xlsx|in.doc|in.rtf|in.xls|in.ppt|in.odt|in.ods|in.odp|in.txt|in.csv|dir>..."
                         + " [-o out.pdf|dir] [--format pdf] [--password p]"
                         + " [--max-pages n (default 10000, 0 = all)] [--timeout s (default 300, 0 = none)]"
                         + " [--fonts dir]... [--font-map Family=Installed]... [--font-width Family=scale]..."
-                        + " [--no-system-fonts] [-q]"
+                        + " [--no-system-fonts] [--overwrite] [-q]"
                         + System.lineSeparator()
                         + "       office-convert <in.pdf|dir>... --pdfa 1a|1b|2a|2b|2u|3a|3b|3u [-o out.pdf|dir] [--password p]"
-                        + " [--timeout s] [--fonts dir]... [--font-map Family=Installed]... [--no-system-fonts] [-q]"
+                        + " [--timeout s] [--fonts dir]... [--font-map Family=Installed]... [--no-system-fonts] [--overwrite] [-q]"
                         + System.lineSeparator()
                         + "Word, PowerPoint and Excel files (.docx .docm .dotx .dotm .pptx .pptm .ppsx .ppsm .potx .potm"
                         + " .xlsx .xlsm .xltx .xltm .xlsb, binary .doc .dot .xls .xlt .ppt .pps .pot back to Word 6.0 and"
@@ -552,6 +523,11 @@ public final class Main {
                         + System.lineSeparator()
                         + "--pictures lossless keeps every pixel without JPEG compression; compact, the default, is smaller."
                         + System.lineSeparator()
-                        + "Exit status: 0 all converted, 1 some failed, 2 a mistake in the arguments.");
+                        + "An output that exists already is left alone and its input skipped unless --overwrite is given."
+                        + " An input is never overwritten: an output that would take an input's name keeps that input's"
+                        + " extension instead (b.docx.pdf), and nothing written in a run is converted again by it."
+                        + System.lineSeparator()
+                        + "Exit status: 0 all converted, 1 some failed or were skipped or a folder held nothing to convert,"
+                        + " 2 a mistake in the arguments.");
     }
 }

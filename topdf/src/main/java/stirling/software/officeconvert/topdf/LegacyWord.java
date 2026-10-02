@@ -11,46 +11,20 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 
-import org.apache.poi.poifs.filesystem.POIFSFileSystem;
-
 import stirling.software.officeconvert.memory.Admission;
 import stirling.software.officeconvert.topdf.OfficeToPdf.Options;
 import stirling.software.officeconvert.topdf.OfficeToPdf.Result;
+import stirling.software.officeconvert.topdf.doc.DocFile;
 import stirling.software.officeconvert.topdf.doc.DocPackage;
-import stirling.software.officeconvert.topdf.doc6.Word6Upgrade;
-import stirling.software.officeconvert.topdf.io.LegacyOffice;
 
 final class LegacyWord {
 
     private LegacyWord() {}
 
-    private static POIFSFileSystem open(Path source) {
-        try {
-            if (!LegacyOffice.ole2(source)) {
-                return null;
-            }
-        } catch (IOException | RuntimeException e) {
-            return null;
-        }
-        POIFSFileSystem fs;
-        try {
-            fs = new POIFSFileSystem(source.toFile(), true);
-        } catch (IOException | RuntimeException e) {
-            return null;
-        }
-        if (DocPackage.isDocument(fs.getRoot())) {
-            return fs;
-        }
-        close(fs);
-        return null;
-    }
-
     static Long estimate(Path source) throws IOException {
-        POIFSFileSystem fs = open(source);
-        if (fs == null) {
+        if (!DocFile.is(source)) {
             return null;
         }
-        close(fs);
         return DocPackage.estimate(Files.size(source)) + 2 * Admission.BASE_BYTES;
     }
 
@@ -59,31 +33,21 @@ final class LegacyWord {
         if (ancient(source)) {
             throw new IOException("The file is a Word 2.0 or older document, which is not supported; save it as .docx");
         }
-        POIFSFileSystem fs = open(source);
-        if (fs == null) {
+        if (!DocFile.is(source)) {
             return null;
         }
         Path docx = null;
         try {
-            DocPackage.Outcome outcome;
-            List<String> upgradeWarnings = List.of();
-            try (fs) {
-                docx = Files.createTempFile("office-to-pdf-", ".docx");
-                Admission.Ticket ticket = Admission.jvm().enter(DocPackage.estimate(Files.size(source)));
-                try (OutputStream os = new BufferedOutputStream(Files.newOutputStream(docx), 1 << 16)) {
-                    if (word6(fs)) {
-                        Word6Upgrade.Upgraded up = Word6Upgrade.upgrade(fs.getRoot());
-                        upgradeWarnings = up.warnings();
-                        try (POIFSFileSystem upgraded = up.fs()) {
-                            outcome = DocPackage.write(upgraded.getRoot(), os, options.password(), up.anchors());
-                        }
-                    } else {
-                        outcome = DocPackage.write(fs.getRoot(), os, options.password());
-                    }
-                } finally {
-                    ticket.close();
-                }
+            DocFile.Rewritten rewritten;
+            docx = Files.createTempFile("office-to-pdf-", ".docx");
+            Admission.Ticket ticket = Admission.jvm().enter(DocPackage.estimate(Files.size(source)));
+            try (OutputStream os = new BufferedOutputStream(Files.newOutputStream(docx), 1 << 16)) {
+                rewritten = DocFile.rewrite(source, options.password(), os);
+            } finally {
+                ticket.close();
             }
+            DocPackage.Outcome outcome = rewritten.outcome();
+            List<String> upgradeWarnings = rewritten.upgradeWarnings();
             OfficeToPdf.stopIfInterrupted();
             Result r = OfficeToPdf.render(docx, OfficeToPdf.Format.DOCX, sink, options,
                     (s, job) -> renderer.render(source, job), OfficeToPdf.REWRITTEN);
@@ -118,14 +82,6 @@ final class LegacyWord {
         }
     }
 
-    private static boolean word6(POIFSFileSystem fs) {
-        try (InputStream in = fs.getRoot().createDocumentInputStream("WordDocument")) {
-            return Word6Upgrade.isWord6(in.readNBytes(4));
-        } catch (IOException | RuntimeException e) {
-            return false;
-        }
-    }
-
     private static boolean ancient(Path source) throws IOException {
         byte[] head;
         try (InputStream in = Files.newInputStream(source)) {
@@ -140,13 +96,5 @@ final class LegacyWord {
         long fcMin = fib.getInt(0x18) & 0xFFFFFFFFL;
         long fcMac = fib.getInt(0x1C) & 0xFFFFFFFFL;
         return nFib >= 1 && nFib < 101 && fcMin >= 0x20 && fcMin <= fcMac && fcMac <= Files.size(source);
-    }
-
-    private static void close(POIFSFileSystem fs) {
-        try {
-            fs.close();
-        } catch (IOException | RuntimeException e) {
-            return;
-        }
     }
 }

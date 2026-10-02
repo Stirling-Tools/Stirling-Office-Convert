@@ -37,6 +37,12 @@ public final class LegacyOffice {
 
     private LegacyOffice() {}
 
+    public static POIFSFileSystem open(Path file) throws IOException {
+        Objects.requireNonNull(file, "file");
+        OfficeZip.checkNotInterrupted();
+        return new POIFSFileSystem(file.toFile(), true);
+    }
+
     public static boolean ole2(Path file) throws IOException {
         Objects.requireNonNull(file, "file");
         try (InputStream in = Files.newInputStream(file)) {
