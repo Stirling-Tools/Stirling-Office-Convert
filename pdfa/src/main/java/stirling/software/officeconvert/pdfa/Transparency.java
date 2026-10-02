@@ -115,9 +115,7 @@ final class Transparency {
             }
         }
         List<Object> out = rewrite(tokens, ops, insert, image, region, res, page);
-        COSStream target = streams.isEmpty() ? doc.getDocument().createCOSStream() : streams.get(0);
-        ContentTokens.write(target, out);
-        p.setItem(COSName.CONTENTS, target);
+        ContentTokens.replacePage(p, out);
         for (COSDictionary a : annots) {
             flattenedAnnots.add(a);
         }

@@ -118,11 +118,7 @@ final class ContentFixer {
                 }
             }
             if (changed) {
-                COSStream target = n.streams().get(0);
-                ContentTokens.write(target, result);
-                if (n.kind() == ContentGraph.Kind.PAGE && n.streams().size() > 1) {
-                    n.owner().setItem(COSName.CONTENTS, target);
-                }
+                ContentTokens.replace(n, result);
             }
         }
     }

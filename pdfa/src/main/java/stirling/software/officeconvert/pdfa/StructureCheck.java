@@ -106,8 +106,7 @@ final class StructureCheck {
         TaggedContent t = new TaggedContent(referenced);
         List<Object> rewritten = t.scan(ContentTokens.parse(streams), res);
         if (rewritten != null) {
-            ContentTokens.write(streams.get(0), rewritten);
-            p.setItem(COSName.CONTENTS, streams.get(0));
+            ContentTokens.replacePage(p, rewritten);
         }
         text += t.text;
         images += t.images;

@@ -208,10 +208,7 @@ final class DeviceNReduction {
             out.add(op);
         }
         if (changed) {
-            ContentTokens.write(n.streams().get(0), out);
-            if (n.kind() == ContentGraph.Kind.PAGE && n.streams().size() > 1) {
-                n.owner().setItem(COSName.CONTENTS, n.streams().get(0));
-            }
+            ContentTokens.replace(n, out);
         }
     }
 

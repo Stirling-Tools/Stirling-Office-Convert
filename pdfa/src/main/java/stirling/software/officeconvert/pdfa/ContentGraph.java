@@ -31,7 +31,13 @@ final class ContentGraph {
         APPEARANCE
     }
 
-    record Node(Kind kind, int page, COSDictionary owner, List<COSStream> streams, COSDictionary resources) {}
+    record Node(Kind kind, int page, COSDictionary owner, List<COSStream> streams, COSDictionary resources) {
+
+        @Override
+        public List<COSStream> streams() {
+            return kind == Kind.PAGE ? contents(owner) : streams;
+        }
+    }
 
     private final List<Node> nodes = new ArrayList<>();
 

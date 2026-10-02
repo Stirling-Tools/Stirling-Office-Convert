@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import org.apache.pdfbox.contentstream.operator.Operator;
+import org.apache.pdfbox.cos.COSDictionary;
 import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.cos.COSStream;
 import org.apache.pdfbox.pdfwriter.ContentStreamWriter;
@@ -70,6 +71,20 @@ final class ContentTokens {
         } finally {
             parser.close();
         }
+    }
+
+    static void replace(ContentGraph.Node n, List<?> tokens) throws IOException {
+        if (n.kind() == ContentGraph.Kind.PAGE) {
+            replacePage(n.owner(), tokens);
+        } else {
+            write(n.streams().get(0), tokens);
+        }
+    }
+
+    static void replacePage(COSDictionary page, List<?> tokens) throws IOException {
+        COSStream s = new COSStream();
+        write(s, tokens);
+        page.setItem(COSName.CONTENTS, s);
     }
 
     static void write(COSStream stream, List<?> tokens) throws IOException {
