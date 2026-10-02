@@ -208,6 +208,15 @@ final class Hostile {
         return r;
     }
 
+    static RawPdf hiddenLayer() {
+        RawPdf r = RawPdf.page(RawPdf.helvetica() + "/Properties<</L1 5 0 R>>",
+                "BT /F1 24 Tf 72 700 Td /OC /L1 BDC (HIDDEN WORDS ) Tj EMC (Visible) Tj ET\n"
+                        + "/OC /L1 BDC 0 0 1 rg 1 0 0 1 200 0 cm 10 10 50 50 re f EMC 72 500 100 100 re f");
+        r.add("<</Type/OCG/Name(Hidden layer)>>");
+        r.set(1, "<</Type/Catalog/Pages 2 0 R/OCProperties<</OCGs[5 0 R]/D<</OFF[5 0 R]>>>>>>");
+        return r;
+    }
+
     static void taggedForm(PDDocument d, String variant) throws IOException {
         PDFont f = helvetica();
         PDPage p = page(d);

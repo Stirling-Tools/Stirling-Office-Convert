@@ -141,6 +141,7 @@ final class OptionalContentRemoval {
             return;
         }
         COSDictionary res = n.resources();
+        HiddenContent hidden = new HiddenContent(res);
         List<Object> out = new ArrayList<>(tokens.size());
         boolean changed = false;
         int skipDepth = 0;
@@ -174,9 +175,8 @@ final class OptionalContentRemoval {
                 changed = true;
                 continue;
             }
-            if (skipDepth == 0) {
-                out.addAll(operation);
-            }
+            out.addAll(skipDepth == 0 ? operation : hidden.replace(name, operation));
+            hidden.track(name, operation);
         }
         if (changed) {
             ContentTokens.replace(n, out);
