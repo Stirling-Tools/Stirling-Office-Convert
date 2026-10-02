@@ -36,19 +36,33 @@ class Ooo1Test {
             + " OfficeDocument 1.0//EN\" \"office.dtd\">";
 
     private static byte[] zip(String mimetype, String content, String styles) throws IOException {
-        Map<String, String> parts = new LinkedHashMap<>();
-        parts.put("mimetype", mimetype);
-        parts.put("content.xml", content);
-        parts.put("styles.xml", styles);
+        return zip(mimetype, content, styles, Map.of());
+    }
+
+    private static byte[] zip(String mimetype, String content, String styles, Map<String, byte[]> extra)
+            throws IOException {
+        Map<String, byte[]> parts = new LinkedHashMap<>();
+        parts.put("mimetype", mimetype.getBytes(StandardCharsets.UTF_8));
+        parts.put("content.xml", content.getBytes(StandardCharsets.UTF_8));
+        parts.put("styles.xml", styles.getBytes(StandardCharsets.UTF_8));
+        parts.putAll(extra);
         ByteArrayOutputStream bytes = new ByteArrayOutputStream();
         try (ZipOutputStream z = new ZipOutputStream(bytes)) {
-            for (Map.Entry<String, String> e : parts.entrySet()) {
+            for (Map.Entry<String, byte[]> e : parts.entrySet()) {
                 z.putNextEntry(new ZipEntry(e.getKey()));
-                z.write(e.getValue().getBytes(StandardCharsets.UTF_8));
+                z.write(e.getValue());
                 z.closeEntry();
             }
         }
         return bytes.toByteArray();
+    }
+
+    private static byte[] png() throws IOException {
+        java.awt.image.BufferedImage img = new java.awt.image.BufferedImage(8, 8,
+                java.awt.image.BufferedImage.TYPE_INT_RGB);
+        ByteArrayOutputStream b = new ByteArrayOutputStream();
+        javax.imageio.ImageIO.write(img, "png", b);
+        return b.toByteArray();
     }
 
     private static String styles() {
@@ -116,6 +130,28 @@ class Ooo1Test {
         OfficeToPdf.convert(in, pdf);
         try (PDDocument d = Loader.loadPDF(pdf.toFile())) {
             assertTrue(new PDFTextStripper().getText(d).contains("42.5"));
+        }
+    }
+
+    @Test
+    void packageRelativePictureReferencesWithAHashAreEmbedded() throws IOException {
+        String content = "<?xml version=\"1.0\"?>" + DOCTYPE + "<office:document-content " + NS
+                + " xmlns:draw=\"http://openoffice.org/2000/drawing\" xmlns:svg=\"http://www.w3.org/2000/svg\""
+                + " xmlns:xlink=\"http://www.w3.org/1999/xlink\" office:class=\"text\"><office:body><text:p>Logo"
+                + "<draw:image draw:name=\"g1\" text:anchor-type=\"as-char\" svg:width=\"3cm\" svg:height=\"3cm\""
+                + " xlink:href=\"#Pictures/a.png\" xlink:type=\"simple\"/></text:p></office:body>"
+                + "</office:document-content>";
+        Path in = Files.write(dir.resolve("pic.sxw"), zip("application/vnd.sun.xml.writer", content, styles(),
+                Map.of("Pictures/a.png", png())));
+        Path out = dir.resolve("pic.pdf");
+        OfficeToPdf.Result r = OfficeToPdf.convert(in, out);
+        assertTrue(r.warnings().stream().noneMatch(w -> w.contains("linked")), r.warnings().toString());
+        try (PDDocument d = Loader.loadPDF(out.toFile())) {
+            int images = 0;
+            for (org.apache.pdfbox.cos.COSName n : d.getPage(0).getResources().getXObjectNames()) {
+                images++;
+            }
+            assertTrue(images > 0, "picture dropped");
         }
     }
 }

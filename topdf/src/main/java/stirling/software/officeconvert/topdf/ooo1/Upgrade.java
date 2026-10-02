@@ -17,6 +17,10 @@ final class Upgrade {
 
     private static final int MAX_DEPTH = 500;
 
+    private static final Set<String> PACKAGE_REFS = Set.of("image", "object", "object-ole", "fill-image");
+
+    private static final String XLINK = "http://www.w3.org/1999/xlink";
+
     private static final Set<String> FRAME_ATTRS = Set.of("style-name", "x", "y", "width", "height", "anchor-type",
         "z-index", "name", "layer", "anchor-page-number", "transform", "class", "text-style-name");
 
@@ -46,6 +50,7 @@ final class Upgrade {
         }
         attributes(e);
         Element renamed = rename(e);
+        packageHref(renamed);
         String fam = family;
         String local = renamed.getLocalName();
         String ns = renamed.getNamespaceURI();
@@ -101,6 +106,16 @@ final class Upgrade {
                 ns = Names.SVG;
             }
             e.setAttributeNS(ns, Names.PREFIXES.getOrDefault(ns, "ns") + ":" + local, a.getValue());
+        }
+    }
+
+    private static void packageHref(Element e) {
+        if (!Names.DRAW.equals(e.getNamespaceURI()) || !PACKAGE_REFS.contains(e.getLocalName())) {
+            return;
+        }
+        String href = e.getAttributeNS(XLINK, "href");
+        if (href.startsWith("#") && href.length() > 1) {
+            e.setAttributeNS(XLINK, "xlink:href", href.substring(1));
         }
     }
 
