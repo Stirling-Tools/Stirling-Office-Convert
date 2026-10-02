@@ -11,6 +11,7 @@ import org.apache.poi.hwpf.HWPFDocument;
 import org.apache.poi.poifs.filesystem.DirectoryNode;
 
 import stirling.software.officeconvert.memory.Admission;
+import stirling.software.officeconvert.topdf.crypt.Passwords;
 
 public final class DocPackage {
 
@@ -34,7 +35,11 @@ public final class DocPackage {
     }
 
     public static Outcome write(DirectoryNode root, OutputStream out) throws IOException {
-        Opened opened = Opened.open(root);
+        return write(root, out, null);
+    }
+
+    public static Outcome write(DirectoryNode root, OutputStream out, String password) throws IOException {
+        Opened opened = Opened.open(root, password);
         try {
             return new DocWriter(opened.doc(), out, opened.defused()).write();
         } catch (RuntimeException | StackOverflowError e) {
@@ -50,10 +55,12 @@ public final class DocPackage {
 
     record Opened(HWPFDocument doc, boolean defused) {
 
-        static Opened open(DirectoryNode root) throws IOException {
+        static Opened open(DirectoryNode root, String password) throws IOException {
             WordFile file;
             try {
-                file = WordFile.read(root);
+                file = WordFile.read(root, password);
+            } catch (Passwords.Refused e) {
+                throw e;
             } catch (IOException | RuntimeException e) {
                 if (Thread.currentThread().isInterrupted()) {
                     throw new InterruptedIOException("Conversion interrupted");
@@ -70,9 +77,6 @@ public final class DocPackage {
             } catch (IOException | RuntimeException | StackOverflowError e) {
                 if (Thread.currentThread().isInterrupted()) {
                     throw new InterruptedIOException("Conversion interrupted");
-                }
-                if (file.encrypted()) {
-                    throw new IOException(PASSWORD, e);
                 }
                 throw new IOException("The Word 97-2003 document could not be read: " + reason(e), e);
             }

@@ -30,6 +30,7 @@ import org.apache.poi.hslf.usermodel.HSLFSoundData;
 import org.apache.poi.hslf.usermodel.HSLFTextShape;
 
 import stirling.software.officeconvert.topdf.RenderJob;
+import stirling.software.officeconvert.topdf.crypt.Passwords;
 import stirling.software.officeconvert.topdf.font.FontFace;
 import stirling.software.officeconvert.topdf.io.ActiveContent;
 import stirling.software.officeconvert.topdf.io.LegacyOffice;
@@ -51,7 +52,9 @@ public final class PptRenderer {
 
     public static void render(Path source, RenderJob job) throws IOException {
         Objects.requireNonNull(job, "job");
-        try (HSLFSlideShow ppt = LegacyOffice.slideShow(Objects.requireNonNull(source, "source"))) {
+        String password = job.options().password();
+        try (Passwords.Scope _ = Passwords.legacy(password);
+                HSLFSlideShow ppt = LegacyOffice.slideShow(Objects.requireNonNull(source, "source"), password)) {
             info(job, ppt);
             boundPictures(job, ppt);
             Map<HSLFSlide, List<WordArt.Hidden>> wordArt = wordArt(job, ppt);
@@ -100,6 +103,7 @@ public final class PptRenderer {
     private static void fixUp(HSLFSlideShow ppt) {
         try {
             TitleFooters.apply(ppt);
+            SavedDates.apply(ppt);
             RtlParagraphs.apply(ppt);
         } catch (RuntimeException e) {
             return;

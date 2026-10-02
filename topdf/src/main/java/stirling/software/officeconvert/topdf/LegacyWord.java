@@ -15,6 +15,7 @@ import stirling.software.officeconvert.memory.Admission;
 import stirling.software.officeconvert.topdf.OfficeToPdf.Options;
 import stirling.software.officeconvert.topdf.OfficeToPdf.Result;
 import stirling.software.officeconvert.topdf.doc.DocPackage;
+import stirling.software.officeconvert.topdf.doc6.Word6Upgrade;
 import stirling.software.officeconvert.topdf.io.LegacyOffice;
 
 final class LegacyWord {
@@ -63,11 +64,20 @@ final class LegacyWord {
         Path docx = null;
         try {
             DocPackage.Outcome outcome;
+            List<String> upgradeWarnings = List.of();
             try (fs) {
                 docx = Files.createTempFile("office-to-pdf-", ".docx");
                 Admission.Ticket ticket = Admission.jvm().enter(DocPackage.estimate(Files.size(source)));
                 try (OutputStream os = new BufferedOutputStream(Files.newOutputStream(docx), 1 << 16)) {
-                    outcome = DocPackage.write(fs.getRoot(), os);
+                    if (word6(fs)) {
+                        Word6Upgrade.Upgraded up = Word6Upgrade.upgrade(fs.getRoot());
+                        upgradeWarnings = up.warnings();
+                        try (POIFSFileSystem upgraded = up.fs()) {
+                            outcome = DocPackage.write(upgraded.getRoot(), os, options.password());
+                        }
+                    } else {
+                        outcome = DocPackage.write(fs.getRoot(), os, options.password());
+                    }
                 } finally {
                     ticket.close();
                 }
@@ -78,6 +88,11 @@ final class LegacyWord {
             List<String> warnings = new ArrayList<>();
             for (String w : r.warnings()) {
                 if (w.startsWith("Only the first ") || w.startsWith("Stopped at the page limit")) {
+                    warnings.add(w);
+                }
+            }
+            for (String w : upgradeWarnings) {
+                if (!warnings.contains(w)) {
                     warnings.add(w);
                 }
             }
@@ -92,11 +107,20 @@ final class LegacyWord {
                     warnings.add(w);
                 }
             }
-            return new Result(r.pages(), r.truncated() || outcome.lost(), warnings, r.pageLimitReached());
+            return new Result(r.pages(), r.truncated() || outcome.lost() || !upgradeWarnings.isEmpty(), warnings,
+                    r.pageLimitReached());
         } finally {
             if (docx != null) {
                 OfficeToPdf.deleteQuietly(docx);
             }
+        }
+    }
+
+    private static boolean word6(POIFSFileSystem fs) {
+        try (InputStream in = fs.getRoot().createDocumentInputStream("WordDocument")) {
+            return Word6Upgrade.isWord6(in.readNBytes(4));
+        } catch (IOException | RuntimeException e) {
+            return false;
         }
     }
 

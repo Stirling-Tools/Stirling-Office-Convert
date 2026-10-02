@@ -11,33 +11,39 @@ import org.apache.poi.poifs.filesystem.DocumentEntry;
 import org.apache.poi.poifs.filesystem.Entry;
 import org.apache.poi.poifs.filesystem.POIFSFileSystem;
 
-record WordFile(DirectoryNode root, boolean defused, boolean encrypted) {
+import stirling.software.officeconvert.topdf.crypt.EncryptedWord;
+
+record WordFile(DirectoryNode root, boolean defused) {
 
     private static final String[] STREAMS = {"WordDocument", "1Table", "0Table", "Data"};
 
-    static WordFile read(DirectoryNode root) throws IOException {
+    static WordFile read(DirectoryNode root, String password) throws IOException {
         Map<String, byte[]> changed = new LinkedHashMap<>();
+        Map<String, byte[]> decrypted = Map.of();
         Blips blips = new Blips();
-        boolean encrypted = false;
         for (String name : STREAMS) {
-            if (!root.hasEntry(name)) {
-                continue;
+            byte[] bytes = decrypted.get(name);
+            if (bytes == null) {
+                if (!root.hasEntry(name)) {
+                    continue;
+                }
+                try (InputStream in = root.createDocumentInputStream(name)) {
+                    bytes = in.readAllBytes();
+                } catch (RuntimeException e) {
+                    continue;
+                }
             }
-            byte[] bytes;
-            try (InputStream in = root.createDocumentInputStream(name)) {
-                bytes = in.readAllBytes();
-            } catch (RuntimeException e) {
-                continue;
+            if (name.equals("WordDocument") && EncryptedWord.encrypted(bytes)) {
+                decrypted = EncryptedWord.decrypt(root, bytes, password);
+                changed.putAll(decrypted);
+                bytes = decrypted.get(name);
             }
-            if (name.equals("WordDocument") && bytes.length > 11) {
-                encrypted = (bytes[11] & 0x01) != 0;
-            }
-            if (blips.defuse(bytes)) {
+            if (blips.defuse(bytes) || decrypted.containsKey(name)) {
                 changed.put(name, bytes);
             }
         }
         if (changed.isEmpty()) {
-            return new WordFile(root, false, encrypted);
+            return new WordFile(root, false);
         }
         POIFSFileSystem fs = new POIFSFileSystem();
         for (Entry e : root) {
@@ -52,6 +58,6 @@ record WordFile(DirectoryNode root, boolean defused, boolean encrypted) {
             }
             fs.createDocument(new ByteArrayInputStream(bytes), e.getName());
         }
-        return new WordFile(fs.getRoot(), true, encrypted);
+        return new WordFile(fs.getRoot(), true);
     }
 }
