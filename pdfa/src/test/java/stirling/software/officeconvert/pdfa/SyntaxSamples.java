@@ -72,6 +72,8 @@ final class SyntaxSamples {
                 TEXT + " 1 bogusop q 10 0 0 10 72 500 cm Q BI /W 1 /H 1 /CS /G /BPC 8").bytes());
         raw("r08_junk_at_the_end", Set.of(), () -> RawPdf.page(RawPdf.helvetica(),
                 TEXT + "\n\u0091\u008e\u0084<").bytes());
+        raw("r09_unclosed_graphics_states", Set.of("1:6.1.12-8", "2:6.1.13-8"), () -> RawPdf.page(
+                RawPdf.helvetica(), TEXT + " " + "q 1 0 0 1 1 1 cm ".repeat(40) + "0 0 10 10 re f").bytes());
     }
 
     private static byte[] lzwGray() {
