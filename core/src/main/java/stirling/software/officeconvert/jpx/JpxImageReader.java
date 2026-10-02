@@ -19,6 +19,10 @@ public final class JpxImageReader extends ImageReader {
 
     static final long MAX_INPUT = Integer.MAX_VALUE - 64;
 
+    private interface Decoding<T> {
+        T run() throws IOException;
+    }
+
     private byte[] data;
 
     private int[] size;
@@ -44,17 +48,20 @@ public final class JpxImageReader extends ImageReader {
 
     @Override
     public int getWidth(int imageIndex) throws IOException {
-        return size(imageIndex)[0];
+        check(imageIndex);
+        return guarded(this::size)[0];
     }
 
     @Override
     public int getHeight(int imageIndex) throws IOException {
-        return size(imageIndex)[1];
+        check(imageIndex);
+        return guarded(this::size)[1];
     }
 
     @Override
     public Iterator<ImageTypeSpecifier> getImageTypes(int imageIndex) throws IOException {
-        return List.of(ImageTypeSpecifier.createFromRenderedImage(decodeFull(imageIndex))).iterator();
+        check(imageIndex);
+        return List.of(guarded(() -> ImageTypeSpecifier.createFromRenderedImage(decodeFull()))).iterator();
     }
 
     @Override
@@ -69,10 +76,12 @@ public final class JpxImageReader extends ImageReader {
 
     @Override
     public BufferedImage read(int imageIndex, ImageReadParam param) throws IOException {
-        int[] dims = size(imageIndex);
-        if (param == null) {
-            return decodeFull(imageIndex);
-        }
+        check(imageIndex);
+        return guarded(() -> param == null ? decodeFull() : read(param));
+    }
+
+    private BufferedImage read(ImageReadParam param) throws IOException {
+        int[] dims = size();
         Rectangle region = new Rectangle(0, 0, dims[0], dims[1]);
         if (param.getSourceRegion() != null) {
             region = region.intersection(param.getSourceRegion());
@@ -89,7 +98,7 @@ public final class JpxImageReader extends ImageReader {
         }
         boolean whole = region.x == 0 && region.y == 0 && region.width == dims[0] && region.height == dims[1];
         if (whole && sx == 1 && sy == 1) {
-            return decodeFull(imageIndex);
+            return decodeFull();
         }
         int reduce = 31 - Integer.numberOfLeadingZeros(Math.min(sx, sy));
         JpxOptions options = JpxOptions.defaults().withReduce(reduce).withRegion(whole ? null : region);
@@ -98,31 +107,43 @@ public final class JpxImageReader extends ImageReader {
         return Subsample.pick(reduced, region, sx, sy, jpx.reduce());
     }
 
-    private int[] size(int imageIndex) throws IOException {
+    private void check(int imageIndex) {
         if (imageIndex != 0) {
             throw new IndexOutOfBoundsException("A JPEG 2000 file holds one image");
         }
+        if (!(getInput() instanceof ImageInputStream)) {
+            throw new IllegalStateException("No JPEG 2000 input set");
+        }
+    }
+
+    private int[] size() throws IOException {
         if (size == null) {
             size = JpxDecoder.size(bytes());
         }
         return size;
     }
 
-    private BufferedImage decodeFull(int imageIndex) throws IOException {
-        size(imageIndex);
+    private BufferedImage decodeFull() throws IOException {
+        size();
         if (full == null) {
             full = JpxDecoder.decode(bytes()).toBufferedImage();
         }
         return full;
     }
 
+    private static <T> T guarded(Decoding<T> decoding) throws IOException {
+        try {
+            return decoding.run();
+        } catch (RuntimeException | OutOfMemoryError e) {
+            throw new IIOException("The JPEG 2000 image could not be decoded", e);
+        }
+    }
+
     private byte[] bytes() throws IOException {
         if (data != null) {
             return data;
         }
-        if (!(getInput() instanceof ImageInputStream in)) {
-            throw new IllegalStateException("No JPEG 2000 input set");
-        }
+        ImageInputStream in = (ImageInputStream) getInput();
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         byte[] buf = new byte[1 << 16];
         int n;
