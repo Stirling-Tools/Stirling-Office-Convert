@@ -117,6 +117,22 @@ class VsdxPackageTest {
     }
 
     @Test
+    void anOfficeDocumentThatEmbedsADrawingIsNotVisio() throws IOException {
+        Map<String, String> docx = new LinkedHashMap<>();
+        docx.put("[Content_Types].xml", "<Types xmlns='http://schemas.openxmlformats.org/package/2006/content-types'>"
+                + "<Default Extension='vsdx' ContentType='application/vnd.ms-visio.drawing'/><Override"
+                + " PartName='/word/document.xml' ContentType='application/vnd.openxmlformats-officedocument."
+                + "wordprocessingml.document.main+xml'/></Types>");
+        docx.put("word/document.xml", "<w:document xmlns:w='http://schemas.openxmlformats.org/wordprocessingml/2006/"
+                + "main'><w:body><w:p/></w:body></w:document>");
+        assertFalse(VsdxPackage.is(file("embeds.docx", docx)));
+        Map<String, String> template = drawing(INSTANCE, MASTER);
+        template.put("[Content_Types].xml", template.get("[Content_Types].xml").replace("drawing.main+xml",
+                "template.main+xml"));
+        assertTrue(VsdxPackage.is(file("a.vstx", template)));
+    }
+
+    @Test
     void drawsMasterGeometryAtTheInstancePosition() throws IOException {
         String slide = pptx(file("a.vsdx", drawing(INSTANCE, MASTER))).get("ppt/slides/slide1.xml");
         assertTrue(slide.contains("<a:off x=\"2743200\" y=\"1371600\"/><a:ext cx=\"1828800\" cy=\"914400\"/>"),

@@ -10,6 +10,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.regex.Pattern;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 
@@ -40,6 +41,9 @@ public final class VsdxPackage {
 
     private static final int MAX_PAGES = 2000;
 
+    private static final Pattern MAIN_PART = Pattern.compile(
+            "contenttype\\s*=\\s*[\"']application/vnd\\.ms-visio\\.[a-z.]*main\\+xml[\"']");
+
     private static final String CUT = "Some shapes nested too deeply or too many were left out";
 
     private static final long MIN_SIDE = 914_400L / 4;
@@ -64,7 +68,7 @@ public final class VsdxPackage {
             }
             try (InputStream in = zip.getInputStream(types)) {
                 String xml = new String(in.readNBytes(MAX_TYPES_BYTES), StandardCharsets.UTF_8);
-                return xml.toLowerCase(Locale.ROOT).contains("application/vnd.ms-visio.");
+                return MAIN_PART.matcher(xml.toLowerCase(Locale.ROOT)).find();
             }
         } catch (IOException | RuntimeException e) {
             return false;
