@@ -15,6 +15,8 @@ import org.apache.fontbox.ttf.HorizontalMetricsTable;
 import org.apache.fontbox.ttf.TTFTable;
 import org.apache.fontbox.ttf.TrueTypeFont;
 
+import stirling.software.officeconvert.extract.PdfFiles;
+
 final class TrueTypeWriter {
 
     private record Glyph(byte[] data, int advance, int lsb) {}
@@ -168,6 +170,7 @@ final class TrueTypeWriter {
         ByteBuffer hmtxOut = ByteBuffer.allocate(glyphs.size() * 4);
         int maxAdvance = 0;
         for (Glyph g : glyphs) {
+            PdfFiles.stopIfInterrupted();
             locaOut.putInt(glyfOut.size());
             glyfOut.write(g.data());
             while (glyfOut.size() % 4 != 0) {

@@ -273,6 +273,7 @@ final class FontFixer {
         COSBase declared = font.getCOSObject().getDictionaryObject(COSName.TO_UNICODE);
         boolean complete = declared != null && ToUnicodeWriter.wellFormed(declared);
         for (int code : codes) {
+            PdfFiles.stopIfInterrupted();
             String t = UnicodeGuess.of(font, code, bytesPerCode);
             if (complete && !ToUnicodeWriter.valid(UnicodeGuess.declared(font, code))) {
                 complete = false;

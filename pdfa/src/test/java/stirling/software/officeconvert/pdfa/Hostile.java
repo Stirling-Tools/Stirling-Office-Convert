@@ -16,6 +16,7 @@ import org.apache.pdfbox.pdmodel.common.PDRectangle;
 import org.apache.pdfbox.pdmodel.font.PDFont;
 import org.apache.pdfbox.pdmodel.font.PDType1Font;
 import org.apache.pdfbox.pdmodel.font.Standard14Fonts;
+import org.apache.pdfbox.pdmodel.graphics.state.PDExtendedGraphicsState;
 
 final class Hostile {
 
@@ -100,6 +101,20 @@ final class Hostile {
         c.setItem(COSName.TYPE, COSName.METADATA);
         c.setItem(COSName.SUBTYPE, COSName.getPDFName("XML"));
         d.getDocumentCatalog().getCOSObject().setItem(COSName.METADATA, c);
+    }
+
+    static void slowFlatten(PDDocument d) throws IOException {
+        PDPage p = page(d);
+        PDExtendedGraphicsState gs = new PDExtendedGraphicsState();
+        gs.setStrokingAlphaConstant(0.5f);
+        PDResources r = new PDResources();
+        r.put(COSName.getPDFName("GS0"), gs);
+        p.setResources(r);
+        COSStream c = repeated(d, "0 0 m 600 800 l 0 800 l 600 0 l 0 0 l S\n", 40_960);
+        COSArray parts = new COSArray();
+        parts.add(stream(d, "50 w 1 0 0 RG /GS0 gs\n"));
+        parts.add(c);
+        p.getCOSObject().setItem(COSName.CONTENTS, parts);
     }
 
     static COSDictionary dict(COSName type) {

@@ -27,8 +27,6 @@ import org.apache.pdfbox.pdmodel.common.PDRectangle;
 import org.apache.pdfbox.pdmodel.graphics.image.JPEGFactory;
 import org.apache.pdfbox.pdmodel.graphics.image.LosslessFactory;
 import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
-import org.apache.pdfbox.rendering.ImageType;
-import org.apache.pdfbox.rendering.PDFRenderer;
 import org.apache.pdfbox.util.Matrix;
 
 import stirling.software.officeconvert.extract.PdfFiles;
@@ -47,7 +45,7 @@ final class Transparency {
 
     private final Set<COSDictionary> flattenedAnnots = Collections.newSetFromMap(new IdentityHashMap<>());
 
-    private PDFRenderer renderer;
+    private FlattenRenderer renderer;
 
     private int counter;
 
@@ -148,7 +146,7 @@ final class Transparency {
     private PDImageXObject render(PDPage page, int index, Rectangle2D region, Rectangle2D crop,
             List<COSDictionary> annots) throws IOException {
         if (renderer == null) {
-            renderer = new PDFRenderer(doc);
+            renderer = new FlattenRenderer(doc);
         }
         Set<COSDictionary> include = Collections.newSetFromMap(new IdentityHashMap<>());
         include.addAll(annots);
@@ -162,7 +160,7 @@ final class Transparency {
         page.setRotation(0);
         BufferedImage full;
         try {
-            full = renderer.renderImage(index, (float) scale, ImageType.RGB);
+            full = renderer.render(index, (float) scale);
         } finally {
             page.setRotation(rotation);
         }
