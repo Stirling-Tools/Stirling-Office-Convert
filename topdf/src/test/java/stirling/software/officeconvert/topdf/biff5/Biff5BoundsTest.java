@@ -175,4 +175,59 @@ class Biff5BoundsTest {
         assertEquals(null, m.failure());
         assertTrue(m.bytes() < 512L << 20, "allocated " + m.megabytes() + " MB");
     }
+
+    private static byte[] fakeBofs(int fakes, int rows) {
+        Records globals = new Records();
+        globals.add(0x0809, bof(0x0005));
+        for (int i = 0; i < 16; i++) {
+            globals.add(0x00E0, xf(i < 15));
+        }
+        globals.add(0x00E0, xf(false));
+        int container = globals.size() + fakes * (4 + boundSheet(0, "S").length) + 4;
+        int data = container + 4;
+        for (int i = 0; i < fakes; i++) {
+            globals.add(0x0085, boundSheet(data + 8 * i, "S"));
+        }
+        globals.add(0x000A, new byte[0]);
+        int landing = data + 8 * fakes;
+        ByteBuffer c = le(8 * fakes);
+        for (int i = 0; i < fakes; i++) {
+            c.putShort((short) 0x0809).putShort((short) (landing - (data + 8 * i + 4))).putShort((short) 0x0500)
+                    .putShort((short) 0x0010);
+        }
+        globals.add(0x1234, bytes(c));
+        styledBlanks(globals, rows);
+        globals.add(0x000A, new byte[0]);
+        return globals.out.toByteArray();
+    }
+
+    @Test
+    void fakeSheetsLandingOnOneSubstreamAreReadOnce() throws IOException {
+        byte[] stream = fakeBofs(400, 40);
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        Allocation.Measured m = Allocation.measure(() -> Biff5Package.write(stream, out));
+        assertEquals(null, m.failure());
+        assertTrue(m.bytes() < 128L << 20, "allocated " + m.megabytes() + " MB");
+        assertEquals(1, workbookXml(out.toByteArray()).split("<sheet ").length - 1);
+    }
+
+    @Test
+    void embeddedObjectsDoNotResetTheCellEstimate() throws IOException {
+        byte[] plain = workbook(1, "Plain", 0, 0, sheet -> styledBlanks(sheet, 400));
+        byte[] split = workbook(1, "Split", 0, 0, sheet -> {
+            for (int r = 0; r < 400; r++) {
+                Records row = new Records();
+                styledBlanks(row, 1);
+                byte[] cells = row.out.toByteArray();
+                cells[4] = (byte) r;
+                cells[5] = (byte) (r >> 8);
+                sheet.out.writeBytes(cells);
+                sheet.add(0x0809, bof(0x0020));
+                sheet.add(0x000A, new byte[0]);
+            }
+        });
+        long expected = Biff5Package.estimate(plain);
+        long estimate = Biff5Package.estimate(split);
+        assertTrue(estimate >= expected, (estimate >> 20) + " MB, expected " + (expected >> 20) + " MB");
+    }
 }

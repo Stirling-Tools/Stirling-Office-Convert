@@ -1,6 +1,7 @@
 package stirling.software.officeconvert.topdf.lotus;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.ByteArrayOutputStream;
@@ -224,6 +225,37 @@ class LotusTest {
         byte[] lmbcs = {'\'', (byte) 0x82, 0x14, 0x20, (byte) 0xAC, 0x06, (byte) 0xA5, (byte) 0x9C, 0x0F, '-', 0};
         byte[] wk3 = new Records().rec(0x00, bof).rec(0x16, wide(0, 0, 0, lmbcs)).rec(0x01, new byte[0]).bytes();
         Grid g3 = Lotus.read(Files.write(dir.resolve("t.wk3"), wk3)).get(0).grid();
-        assertEquals("\u00E9\u20AC\u0105\u00A3-", g3.get(0, 0).value());
+        assertEquals("\u00E9\u20AC\u0105\u00A3\r", g3.get(0, 0).value());
+    }
+
+    private Grid release3(String name, byte[] text) throws IOException {
+        byte[] bof = new byte[26];
+        bof[1] = 0x10;
+        byte[] wk3 = new Records().rec(0x00, bof).rec(0x16, wide(0, 0, 0, text)).rec(0x01, new byte[0]).bytes();
+        return Lotus.read(Files.write(dir.resolve(name), wk3)).get(0).grid();
+    }
+
+    @Test
+    void lmbcsControlGroupDecodesC0AndC1LikeIcu() throws IOException {
+        byte[] text = {'\'', 'a', 0x0F, 0x29, 'b', 0x0F, (byte) 0x85, 'c', 0};
+        Grid g = release3("ctrl.wk3", text);
+        assertEquals("a\tb\u0085c", g.get(0, 0).value());
+        assertTrue(g.warnings().isEmpty());
+    }
+
+    @Test
+    void lmbcsDoubleByteGroupsDecodeThroughTheirCodePage() throws IOException {
+        byte[] text = {'\'', 0x10, (byte) 0x82, (byte) 0xA0, 0x10, 0x10, (byte) 0xB1, 0x13, (byte) 0xC4, (byte) 0xE3, 0};
+        Grid g = release3("dbcs.wk3", text);
+        assertEquals("\u3042\uFF71\u4F60", g.get(0, 0).value());
+        assertTrue(g.warnings().isEmpty());
+    }
+
+    @Test
+    void unreadableDoubleByteTextIsReportedLost() throws IOException {
+        byte[] text = {'\'', 'x', 0x10, (byte) 0x85, (byte) 0x40, 0};
+        Grid g = release3("lost.wk3", text);
+        assertEquals("x", g.get(0, 0).value());
+        assertFalse(g.warnings().isEmpty());
     }
 }

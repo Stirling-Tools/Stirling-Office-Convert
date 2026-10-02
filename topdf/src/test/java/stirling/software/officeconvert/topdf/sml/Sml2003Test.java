@@ -127,8 +127,9 @@ class Sml2003Test {
     }
 
     @Test
-    void spannedRowsStopWhenThePackageIsFull() throws IOException {
-        String sheet = "<Worksheet ss:Name=\"S\"><Table><Row ss:Height=\"15\" ss:Span=\"1048000\"/></Table></Worksheet>";
+    void trailingSpannedRowsAreNotWritten() throws IOException {
+        String sheet = "<Worksheet ss:Name=\"S\"><Table><Row><Cell><Data ss:Type=\"String\">top</Data></Cell></Row>"
+                + "<Row ss:Height=\"15\" ss:Span=\"1048000\"/></Table></Worksheet>";
         StringBuilder sheets = new StringBuilder();
         for (int i = 0; i < 100; i++) {
             sheets.append(sheet.replace("\"S\"", "\"S" + i + "\""));
@@ -138,7 +139,27 @@ class Sml2003Test {
         Allocation.Measured m = Allocation.measure(() -> outcome[0] = Sml2003Package.write(in,
                 java.io.OutputStream.nullOutputStream(), FontLibrary.system()));
         assertEquals(null, m.failure());
+        assertFalse(outcome[0].lost());
+        assertTrue(m.bytes() < 256L << 20, "allocated " + m.megabytes() + " MB");
+        assertFalse(part(in, "xl/worksheets/sheet1.xml").contains("r=\"3\""));
+    }
+
+    @Test
+    void spannedRowsShareOneWorkbookBudget() throws IOException {
+        String sheet = "<Worksheet ss:Name=\"S\"><Table><Row ss:Height=\"15\" ss:Span=\"1048570\"><Cell><Data"
+                + " ss:Type=\"String\">x</Data></Cell></Row><Row><Cell><Data ss:Type=\"String\">end</Data></Cell></Row>"
+                + "</Table></Worksheet>";
+        StringBuilder sheets = new StringBuilder();
+        for (int i = 0; i < 4; i++) {
+            sheets.append(sheet.replace("\"S\"", "\"S" + i + "\""));
+        }
+        Path in = file("budget.xml", workbook("", "", sheets.toString()));
+        Sml2003Package.Outcome[] outcome = new Sml2003Package.Outcome[1];
+        Allocation.Measured m = Allocation.measure(() -> outcome[0] = Sml2003Package.write(in,
+                java.io.OutputStream.nullOutputStream(), FontLibrary.system()));
+        assertEquals(null, m.failure());
         assertTrue(outcome[0].lost());
-        assertTrue(m.bytes() < 5L << 30, "allocated " + m.megabytes() + " MB");
+        assertTrue(outcome[0].warnings().stream().anyMatch(w -> w.contains("heights")), outcome[0].warnings().toString());
+        assertTrue(part(in, "xl/worksheets/sheet4.xml").contains("end"));
     }
 }

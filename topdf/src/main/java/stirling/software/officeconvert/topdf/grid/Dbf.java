@@ -25,6 +25,8 @@ public final class Dbf {
 
     private static final double DATE_TIME_WIDTH = 16;
 
+    private static final String UNREADABLE = "Some fields of the dBASE table do not fit its records and were left out";
+
     private Dbf() {}
 
     /** Whether the file has a dBASE header that agrees with its size. */
@@ -58,19 +60,7 @@ public final class Dbf {
         int header = u16(b, 8);
         int record = u16(b, 10);
         Charset cs = charset(b[29] & 0xFF);
-        List<Field> fields = new ArrayList<>();
-        for (int at = 32; at + 32 <= Math.min(header, b.length) && b[at] != 0x0D && fields.size() < MAX_FIELDS; at += 32) {
-            int end = 0;
-            while (end < 11 && b[at + end] != 0) {
-                end++;
-            }
-            String name = new String(b, at, end, StandardCharsets.ISO_8859_1).trim();
-            char type = (char) (b[at + 11] & 0xFF);
-            int length = b[at + 16] & 0xFF;
-            int decimals = b[at + 17] & 0xFF;
-            fields.add(type == 'C' ? new Field(name, type, length | decimals << 8, 0)
-                    : new Field(name, type, length, decimals));
-        }
+        List<Field> fields = fields(b, header, record);
         Grid grid = new Grid();
         for (int c = 0; c < fields.size(); c++) {
             grid.value(0, c, fields.get(c).name());
@@ -85,6 +75,7 @@ public final class Dbf {
             }
             long start = header + i * record;
             if (start + record > b.length) {
+                grid.warn(UNREADABLE);
                 break;
             }
             if (b[(int) start] == '*') {
@@ -94,6 +85,7 @@ public final class Dbf {
             for (int c = 0; c < fields.size(); c++) {
                 Field f = fields.get(c);
                 if (at + f.length() > start + record) {
+                    grid.warn(UNREADABLE);
                     break;
                 }
                 Grid.Cell cell = cell(f, b, at, cs);
@@ -108,6 +100,29 @@ public final class Dbf {
             grid.truncated = true;
         }
         return grid;
+    }
+
+    private static List<Field> fields(byte[] b, int header, int record) {
+        List<Field> plain = new ArrayList<>();
+        List<Field> clipper = new ArrayList<>();
+        long plainLength = 1;
+        long clipperLength = 1;
+        for (int at = 32; at + 32 <= Math.min(header, b.length) && b[at] != 0x0D && plain.size() < MAX_FIELDS; at += 32) {
+            int end = 0;
+            while (end < 11 && b[at + end] != 0) {
+                end++;
+            }
+            String name = new String(b, at, end, StandardCharsets.ISO_8859_1).trim();
+            char type = (char) (b[at + 11] & 0xFF);
+            int length = b[at + 16] & 0xFF;
+            int decimals = b[at + 17] & 0xFF;
+            plain.add(new Field(name, type, length, type == 'C' ? 0 : decimals));
+            int wide = type == 'C' ? length | decimals << 8 : length;
+            clipper.add(new Field(name, type, wide, type == 'C' ? 0 : decimals));
+            plainLength += length;
+            clipperLength += wide;
+        }
+        return clipperLength == record && plainLength != record ? clipper : plain;
     }
 
     private static Grid.Cell cell(Field f, byte[] b, int at, Charset cs) {

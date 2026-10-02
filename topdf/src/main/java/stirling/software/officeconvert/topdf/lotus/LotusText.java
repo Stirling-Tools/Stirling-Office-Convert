@@ -32,7 +32,7 @@ final class LotusText {
         return b.toString();
     }
 
-    static String lmbcs(byte[] d, int from, int stop) {
+    static String lmbcs(byte[] d, int from, int stop, Runnable lost) {
         StringBuilder b = new StringBuilder(stop - from);
         int i = from;
         while (i < stop) {
@@ -46,11 +46,13 @@ final class LotusText {
             } else if (c == 0x14 && i + 2 < stop) {
                 b.append(new String(d, i + 1, 2, UNICODE));
                 i += 3;
-            } else if (c >= 0x10 && c <= 0x13 && i + 2 < stop) {
-                i += 3;
+            } else if (c >= 0x10 && c <= 0x13) {
+                i = doubleByte(d, i, stop, b, lost);
             } else if (c == 0x0F && i + 1 < stop) {
                 int next = d[i + 1] & 0xFF;
-                b.append(next < 0x80 ? String.valueOf((char) next) : new String(d, i + 1, 1, GROUP_1));
+                if (next >= 0x20) {
+                    b.append((char) (next < 0x80 ? next - 0x20 : next));
+                }
                 i += 2;
             } else if (group(c) != null && i + 1 < stop) {
                 b.append(new String(d, i + 1, 1, group(c)));
@@ -65,6 +67,25 @@ final class LotusText {
         return b.toString();
     }
 
+    private static int doubleByte(byte[] d, int i, int stop, StringBuilder b, Runnable lost) {
+        int c = d[i] & 0xFF;
+        boolean single = i + 2 < stop && (d[i + 1] & 0xFF) == c;
+        int length = single ? 1 : 2;
+        int at = single ? i + 2 : i + 1;
+        if (at + length > stop) {
+            lost.run();
+            return stop;
+        }
+        Charset cs = group(c);
+        String s = cs == null ? "" : new String(d, at, length, cs);
+        if (s.isEmpty() || s.indexOf('\uFFFD') >= 0) {
+            lost.run();
+        } else {
+            b.append(s);
+        }
+        return at + length;
+    }
+
     private static Charset group(int g) {
         String name = switch (g) {
             case 0x01 -> "IBM850";
@@ -75,6 +96,10 @@ final class LotusText {
             case 0x06 -> "IBM852";
             case 0x08 -> "windows-1254";
             case 0x0B -> "x-IBM874";
+            case 0x10 -> "MS932";
+            case 0x11 -> "MS949";
+            case 0x12 -> "MS950";
+            case 0x13 -> "GBK";
             default -> null;
         };
         try {

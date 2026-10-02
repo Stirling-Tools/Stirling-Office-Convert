@@ -2,15 +2,16 @@ package stirling.software.officeconvert.topdf;
 
 import java.io.BufferedOutputStream;
 import java.io.IOException;
-import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 
 import stirling.software.officeconvert.memory.Admission;
 import stirling.software.officeconvert.topdf.OfficeToPdf.Options;
@@ -20,6 +21,7 @@ import stirling.software.officeconvert.topdf.grid.Dif;
 import stirling.software.officeconvert.topdf.grid.Grid;
 import stirling.software.officeconvert.topdf.grid.GridPackage;
 import stirling.software.officeconvert.topdf.grid.Sylk;
+import stirling.software.officeconvert.topdf.io.SourceFile;
 import stirling.software.officeconvert.topdf.lotus.Lotus;
 import stirling.software.officeconvert.topdf.text.TextFormats;
 
@@ -79,17 +81,14 @@ final class GridInput {
     }
 
     private static long estimate(Path source, Kind kind) throws IOException {
-        long size = Files.size(source);
+        long size = SourceFile.size(source);
         long bytes = GridPackage.estimate(size);
         return kind == Kind.DBF ? Math.max(bytes, Admission.BASE_BYTES + 2 * size + CELL_BYTES * dbaseCells(source))
                 : bytes;
     }
 
-    private static long dbaseCells(Path source) throws IOException {
-        byte[] h;
-        try (InputStream in = Files.newInputStream(source)) {
-            h = in.readNBytes(12);
-        }
+    static long dbaseCells(Path source) throws IOException {
+        byte[] h = SourceFile.head(source, 12);
         if (h.length < 12) {
             return 0;
         }
@@ -98,7 +97,7 @@ final class GridInput {
         int header = b.getShort(8) & 0xFFFF;
         int record = b.getShort(10) & 0xFFFF;
         long fields = Math.max(0, (header - 33) / 32);
-        long stored = record == 0 ? 0 : Math.max(0, Files.size(source) - header) / record;
+        long stored = record == 0 ? 0 : Math.max(0, SourceFile.size(source) - header) / record;
         return Math.min(Grid.MAX_CELLS, Math.min(records, stored) * fields);
     }
 
@@ -134,7 +133,11 @@ final class GridInput {
             if (truncated) {
                 warnings.add("The table is too large; only its first rows were converted");
             }
-            return new Result(r.pages(), r.truncated() || truncated, warnings, r.pageLimitReached());
+            Set<String> lost = new LinkedHashSet<>();
+            sheets.forEach(s -> lost.addAll(s.grid().warnings()));
+            warnings.addAll(lost);
+            return new Result(r.pages(), r.truncated() || truncated || !lost.isEmpty(), warnings,
+                    r.pageLimitReached());
         } finally {
             OfficeToPdf.deleteQuietly(xlsx);
         }
