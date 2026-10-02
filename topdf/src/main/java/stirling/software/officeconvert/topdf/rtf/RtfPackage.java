@@ -84,6 +84,10 @@ public final class RtfPackage {
     }
 
     public static Outcome write(InputStream in, OutputStream out) throws IOException {
+        return write(in, out, BODY_LIMIT);
+    }
+
+    static Outcome write(InputStream in, OutputStream out, long budget) throws IOException {
         Objects.requireNonNull(in, "in");
         Objects.requireNonNull(out, "out");
         ZipOutputStream zip = new ZipOutputStream(keepOpen(out));
@@ -95,7 +99,7 @@ public final class RtfPackage {
                 () -> Xml.HEAD + "<w:document " + NS + ">" + (doc.background < 0 ? ""
                         : "<w:background w:color=\"" + Shading.hex(doc.background) + "\"/>") + "<w:body>");
         Rels bodyRels = new Rels("rId");
-        Story body = new Story(bodyRels, doc.colors, w, BODY_LIMIT);
+        Story body = new Story(bodyRels, doc.colors, w, new Budget(budget));
         Content content = new Content(doc, props, body);
         RtfReader reader = new RtfReader(new BufferedInputStream(in, 1 << 16), doc, content);
         reader.read();
@@ -148,7 +152,7 @@ public final class RtfPackage {
         }
     }
 
-    private static OutputStream keepOpen(OutputStream out) {
+    static OutputStream keepOpen(OutputStream out) {
         return new FilterOutputStream(out) {
             @Override
             public void write(byte[] b, int off, int len) throws IOException {

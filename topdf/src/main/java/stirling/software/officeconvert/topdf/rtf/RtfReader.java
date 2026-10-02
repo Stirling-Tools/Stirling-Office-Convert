@@ -124,6 +124,7 @@ final class RtfReader {
         } catch (RtfPackage.TooLarge e) {
             lost("The document is too large; only its beginning was converted");
             stopped = true;
+            content.body.finish();
         }
     }
 

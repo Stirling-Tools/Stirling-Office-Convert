@@ -43,8 +43,16 @@ class RtfPackageTest {
     }
 
     static Pkg convert(byte[] rtf) throws IOException {
+        return convert(rtf, RtfPackage.BODY_LIMIT);
+    }
+
+    static Pkg convert(String rtf, long budget) throws IOException {
+        return convert(rtf.getBytes(StandardCharsets.ISO_8859_1), budget);
+    }
+
+    static Pkg convert(byte[] rtf, long budget) throws IOException {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
-        RtfPackage.Outcome o = RtfPackage.write(new ByteArrayInputStream(rtf), out);
+        RtfPackage.Outcome o = RtfPackage.write(new ByteArrayInputStream(rtf), out, budget);
         Map<String, byte[]> parts = new HashMap<>();
         try (ZipInputStream zip = new ZipInputStream(new ByteArrayInputStream(out.toByteArray()))) {
             for (ZipEntry e; (e = zip.getNextEntry()) != null; ) {
@@ -543,4 +551,65 @@ class RtfPackageTest {
         assertNotNull(out);
         assertEquals(22 + wmf.length, out.length);
     }
+
+    @Test
+    void footnotesHeadersAndTextBoxesShareOneDocumentBudget() throws IOException {
+        String chunk = "\\pard " + "words ".repeat(20_000) + "\\par ";
+        String story = chunk.repeat(4);
+        String fits = HEAD + "\\pard start\\par{\\footnote " + story + "}\\pard end\\par}";
+        Pkg one = convert(fits, 1 << 20);
+        assertFalse(one.outcome().lost(), one.outcome().toString());
+        assertTrue(one.part("word/footnotes.xml").contains("words"));
+        String spread = HEAD + "{\\header " + story + "}\\pard start\\par{\\footnote " + story + "}{\\footnote "
+                + story + "}\\pard{\\shp{\\*\\shpinst\\shpleft0\\shptop0\\shpright1000\\shpbottom1000"
+                + "{\\sp{\\sn shapeType}{\\sv 202}}{\\shptxt " + story + "}}}\\pard end\\par}";
+        Pkg all = convert(spread, 1 << 20);
+        assertTrue(all.outcome().lost(), all.outcome().toString());
+        assertTrue(all.body().contains(">start<"), "the beginning is kept");
+        assertFalse(all.body().contains(">end<"), "the rest is cut");
+    }
+
+    @Test
+    void tableCellsAreChargedAsTheXmlTheyEmitBeforeItIsBuilt() throws IOException {
+        StringBuilder rtf = new StringBuilder(HEAD + "\\pard start\\par\\trowd");
+        for (int i = 1; i <= 512; i++) {
+            rtf.append("\\clbrdrt\\brdrs\\brdrw10\\brdrcf1\\clbrdrl\\brdrs\\brdrw10\\brdrcf1\\clbrdrb\\brdrs")
+                    .append("\\brdrw10\\brdrcf1\\clbrdrr\\brdrs\\brdrw10\\brdrcf1\\clcbpat2\\clpadl100\\clpadfl3")
+                    .append("\\clpadr100\\clpadfr3\\clpadt100\\clpadft3\\clvertalc\\clNoWrap\\cellx").append(i * 20);
+        }
+        rtf.append("\\pard\\intbl x\\cell").append("\\row".repeat(400)).append("\\pard end\\par}");
+        long budget = 4L << 20;
+        Pkg p = convert(rtf.toString(), budget);
+        assertTrue(p.outcome().lost(), p.outcome().toString());
+        String b = p.body();
+        assertTrue(b.contains(">start<") && b.contains("<w:tcBorders>") && !b.contains(">end<"), "table start kept");
+        assertTrue(b.length() < budget + (64 << 10), "emitted " + b.length());
+        Pkg note = convert(rtf.toString().replace("\\pard start\\par", "\\pard start\\par{\\footnote ")
+                .replace("\\pard end\\par}", "}\\pard end\\par}"), budget);
+        assertTrue(note.outcome().lost(), note.outcome().toString());
+        long total = note.parts().values().stream().mapToLong(v -> v.length).sum();
+        assertTrue(total < budget + (128 << 10), "emitted " + total);
+    }
+
+    @Test
+    void aLargeLegitimateTableConvertsWhole() throws IOException {
+        StringBuilder rtf = new StringBuilder("{\\rtf1\\ansi\\deff0{\\fonttbl{\\f0 Arial;}}\\f0\\fs20 ");
+        for (int r = 0; r < 12_000; r++) {
+            rtf.append("\\trowd\\trgaph108\\trleft-108");
+            for (int c = 0; c < 8; c++) {
+                rtf.append("\\clbrdrt\\brdrs\\brdrw10\\clbrdrl\\brdrs\\brdrw10\\clbrdrb\\brdrs\\brdrw10")
+                        .append("\\clbrdrr\\brdrs\\brdrw10\\cellx").append(1200 * (c + 1));
+            }
+            rtf.append("\\pard\\intbl ");
+            for (int c = 0; c < 8; c++) {
+                rtf.append('R').append(r).append('C').append(c).append("\\cell ");
+            }
+            rtf.append("\\row ");
+        }
+        Pkg p = convert(rtf.append("\\pard END OF DOCUMENT\\par}").toString());
+        assertFalse(p.outcome().lost(), p.outcome().toString());
+        String b = p.body();
+        assertTrue(b.contains(">R11999C7<") && b.contains("END OF DOCUMENT"), "the whole table and its tail");
+    }
+
 }
