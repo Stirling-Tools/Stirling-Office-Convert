@@ -1,9 +1,6 @@
 package stirling.software.officeconvert.pdfa;
 
 import java.io.IOException;
-import java.nio.ByteBuffer;
-import java.nio.charset.CharacterCodingException;
-import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
@@ -68,8 +65,8 @@ final class Limits {
     }
 
     static COSName name(COSName n) {
-        if (!utf8(n.getBytes())) {
-            return name(COSName.getPDFName(new String(n.getBytes(), StandardCharsets.ISO_8859_1)));
+        if (!NameText.accepted(n.getBytes())) {
+            return name(COSName.getPDFName(NameText.repair(n.getBytes())));
         }
         if (n.getName().length() <= MAX_NAME_BYTES / 3) {
             return n;
@@ -87,21 +84,6 @@ final class Limits {
             keep--;
         }
         return COSName.getPDFName(s.substring(0, keep) + "_" + Integer.toHexString(s.hashCode()));
-    }
-
-    static boolean utf8(byte[] b) {
-        for (byte x : b) {
-            if (x < 0) {
-                try {
-                    StandardCharsets.UTF_8.newDecoder().onMalformedInput(CodingErrorAction.REPORT)
-                            .onUnmappableCharacter(CodingErrorAction.REPORT).decode(ByteBuffer.wrap(b));
-                    return true;
-                } catch (CharacterCodingException e) {
-                    return false;
-                }
-            }
-        }
-        return true;
     }
 
     static void names(PDDocument doc, Report report) throws IOException {
