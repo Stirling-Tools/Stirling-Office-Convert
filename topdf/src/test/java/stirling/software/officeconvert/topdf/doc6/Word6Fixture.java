@@ -26,6 +26,10 @@ final class Word6Fixture {
 
     private boolean drawing;
 
+    private int pieces;
+
+    private int pieceBytes;
+
     Word6Fixture text(String a, String b) {
         first = a;
         second = b;
@@ -40,6 +44,12 @@ final class Word6Fixture {
 
     Word6Fixture drawing() {
         drawing = true;
+        return this;
+    }
+
+    Word6Fixture repeatedPieces(int count, int bytes) {
+        pieces = count;
+        pieceBytes = bytes;
         return this;
     }
 
@@ -136,13 +146,36 @@ final class Word6Fixture {
             pair(b, 38, doa, 14);
             pair(b, 56, txbx, 12);
         }
+        byte[] stream = pieces > 0 ? withPieces(b.array()) : b.array();
         try (POIFSFileSystem fs = new POIFSFileSystem(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
-            fs.createDocument(new ByteArrayInputStream(b.array()), "WordDocument");
+            fs.createDocument(new ByteArrayInputStream(stream), "WordDocument");
             fs.writeFilesystem(out);
             return out.toByteArray();
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }
+    }
+
+    private byte[] withPieces(byte[] base) {
+        int text = base.length;
+        int clx = text + pieceBytes;
+        int lcb = 4 + 4 * (pieces + 1) + 8 * pieces;
+        ByteBuffer b = ByteBuffer.allocate(clx + 5 + lcb).order(ByteOrder.LITTLE_ENDIAN);
+        b.put(base);
+        b.putShort(0x0A, (short) (b.getShort(0x0A) | 0x0004));
+        for (int i = 0; i < pieceBytes; i++) {
+            b.put(text + i, (byte) (i % 64 == 63 ? '\r' : 'a'));
+        }
+        b.position(clx);
+        b.put((byte) 2).putInt(lcb);
+        for (int i = 0; i <= pieces; i++) {
+            b.putInt(i * pieceBytes);
+        }
+        for (int i = 0; i < pieces; i++) {
+            b.putShort((short) 0).putInt(text).putShort((short) 0);
+        }
+        pair(b, 33, clx, 5 + lcb);
+        return b.array();
     }
 
     private static void pair(ByteBuffer b, int i, int fc, int lcb) {
