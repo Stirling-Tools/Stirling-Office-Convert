@@ -56,7 +56,7 @@ public final class XlsPackage {
     private XlsPackage() {}
 
     /** Whether an OLE2 file holds an Excel workbook stream (BIFF8, or an older "Book" stream that is refused later). */
-    public static boolean isWorkbook(DirectoryNode root) {
+    static boolean isWorkbook(DirectoryNode root) {
         return root.hasEntryCaseInsensitive("Workbook") || root.hasEntryCaseInsensitive("Book");
     }
 
@@ -66,7 +66,7 @@ public final class XlsPackage {
         return v < 0 ? Long.MAX_VALUE : v;
     }
 
-    public static Outcome write(DirectoryNode root, OutputStream out) throws IOException {
+    static Outcome write(DirectoryNode root, OutputStream out) throws IOException {
         try (HSSFWorkbook wb = open(root)) {
             return new XlsPackage.Writer(wb, root, new Parts(out)).write();
         }

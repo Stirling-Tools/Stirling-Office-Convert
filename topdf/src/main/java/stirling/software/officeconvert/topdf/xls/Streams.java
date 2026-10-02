@@ -1,4 +1,4 @@
-package stirling.software.officeconvert.topdf.crypt;
+package stirling.software.officeconvert.topdf.xls;
 
 import java.io.IOException;
 import java.io.InputStream;

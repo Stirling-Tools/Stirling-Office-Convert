@@ -26,7 +26,7 @@ public final class DocPackage {
 
     private DocPackage() {}
 
-    public static boolean isDocument(DirectoryNode root) {
+    static boolean isDocument(DirectoryNode root) {
         return root.hasEntryCaseInsensitive("WordDocument");
     }
 
@@ -35,15 +35,15 @@ public final class DocPackage {
         return v < 0 ? Long.MAX_VALUE : v;
     }
 
-    public static Outcome write(DirectoryNode root, OutputStream out) throws IOException {
+    static Outcome write(DirectoryNode root, OutputStream out) throws IOException {
         return write(root, out, null);
     }
 
-    public static Outcome write(DirectoryNode root, OutputStream out, String password) throws IOException {
+    static Outcome write(DirectoryNode root, OutputStream out, String password) throws IOException {
         return write(root, out, password, Map.of());
     }
 
-    public static Outcome write(DirectoryNode root, OutputStream out, String password, Map<Integer, String> anchors)
+    static Outcome write(DirectoryNode root, OutputStream out, String password, Map<Integer, String> anchors)
             throws IOException {
         Opened opened = Opened.open(root, password);
         try {

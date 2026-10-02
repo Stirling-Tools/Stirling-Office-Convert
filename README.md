@@ -317,6 +317,10 @@ r.truncated();                                 // something is missing: the page
 r.warnings();                                  // substituted fonts, skipped active content, pictures left out
 ```
 
+The API is `OfficeToPdf`, `FontSet` and the types they name. Apache POI and pdfbox-graphics2d are runtime
+dependencies only: the few other public classes that show their types (`Word6Upgrade`, `LegacyOffice`, `PoiPackages`,
+`SafeImageRenderer`) are shared between the converter's own packages and are not for callers.
+
 #### Fonts
 
 A `FontSet` (package `stirling.software.officeconvert.topdf.font`) says which fonts a conversion may use. Build one

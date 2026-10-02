@@ -67,15 +67,17 @@ class Word6Test {
     @Test
     void drawingObjectsAndTextBoxesAreAnchoredAtTheirParagraph() throws IOException {
         java.io.ByteArrayOutputStream docx = new java.io.ByteArrayOutputStream();
-        try (POIFSFileSystem fs = new POIFSFileSystem(new ByteArrayInputStream(new Word6Fixture().drawing().build()))) {
+        byte[] word6 = new Word6Fixture().drawing().build();
+        try (POIFSFileSystem fs = new POIFSFileSystem(new ByteArrayInputStream(word6))) {
             Word6Upgrade.Upgraded up = Word6Upgrade.upgrade(fs.getRoot());
             assertEquals(java.util.Set.of(0), up.anchors().keySet());
             assertTrue(up.warnings().isEmpty(), up.warnings().toString());
-            try (POIFSFileSystem upgraded = up.fs()) {
-                stirling.software.officeconvert.topdf.doc.DocPackage.write(upgraded.getRoot(), docx, null,
-                        up.anchors());
-            }
+            up.fs().close();
         }
+        stirling.software.officeconvert.topdf.doc.DocFile.Rewritten rewritten =
+                stirling.software.officeconvert.topdf.doc.DocFile.rewrite(Files.write(dir.resolve("drawing.doc"), word6),
+                        null, docx);
+        assertTrue(rewritten.upgradeWarnings().isEmpty(), rewritten.upgradeWarnings().toString());
         String document = null;
         try (java.util.zip.ZipInputStream z = new java.util.zip.ZipInputStream(
                 new ByteArrayInputStream(docx.toByteArray()))) {

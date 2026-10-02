@@ -34,7 +34,8 @@ record WordFile(DirectoryNode root, boolean defused) {
                 }
             }
             if (name.equals("WordDocument") && EncryptedWord.encrypted(bytes)) {
-                decrypted = EncryptedWord.decrypt(root, bytes, password);
+                decrypted = EncryptedWord.decrypt(bytes, stream(root, EncryptedWord.table(bytes)), stream(root, "Data"),
+                        password);
                 changed.putAll(decrypted);
                 bytes = decrypted.get(name);
             }
@@ -59,5 +60,14 @@ record WordFile(DirectoryNode root, boolean defused) {
             fs.createDocument(new ByteArrayInputStream(bytes), e.getName());
         }
         return new WordFile(fs.getRoot(), true);
+    }
+
+    private static byte[] stream(DirectoryNode root, String name) throws IOException {
+        if (!root.hasEntryCaseInsensitive(name)) {
+            return null;
+        }
+        try (InputStream in = root.createDocumentInputStream(root.getEntryCaseInsensitive(name))) {
+            return in.readAllBytes();
+        }
     }
 }

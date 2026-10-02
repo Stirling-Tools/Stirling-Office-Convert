@@ -2,7 +2,6 @@ package stirling.software.officeconvert.topdf.crypt;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
-import java.io.InputStream;
 import java.security.GeneralSecurityException;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -12,7 +11,6 @@ import org.apache.poi.poifs.crypt.ChunkedCipherInputStream;
 import org.apache.poi.poifs.crypt.Decryptor;
 import org.apache.poi.poifs.crypt.EncryptionInfo;
 import org.apache.poi.poifs.crypt.EncryptionMode;
-import org.apache.poi.poifs.filesystem.DirectoryNode;
 import org.apache.poi.util.LittleEndian;
 import org.apache.poi.util.LittleEndianByteArrayInputStream;
 
@@ -40,27 +38,27 @@ public final class EncryptedWord {
         return wordDocument.length > FLAGS + 1 && (LittleEndian.getUShort(wordDocument, FLAGS) & ENCRYPTED) != 0;
     }
 
+    public static String table(byte[] wordDocument) {
+        int flags = wordDocument.length > FLAGS + 1 ? LittleEndian.getUShort(wordDocument, FLAGS) : 0;
+        return (flags & WHICH_TABLE) != 0 ? "1Table" : "0Table";
+    }
+
     /** The decrypted streams by name; an IOException with the plain reason when the password is missing or wrong. */
-    public static Map<String, byte[]> decrypt(DirectoryNode root, byte[] wordDocument, String password)
+    public static Map<String, byte[]> decrypt(byte[] wordDocument, byte[] table, byte[] data, String password)
             throws IOException {
         if (wordDocument.length < FIB_BASE_BYTES) {
             throw new Passwords.Refused(Passwords.refusal(password), null);
         }
         int flags = LittleEndian.getUShort(wordDocument, FLAGS);
-        String table = (flags & WHICH_TABLE) != 0 ? "1Table" : "0Table";
         int lKey = LittleEndian.getInt(wordDocument, LKEY);
-        if (!root.hasEntryCaseInsensitive(table) || lKey < 0) {
-            throw new Passwords.Refused(Passwords.refusal(password), null);
-        }
-        byte[] tableBytes = read(root, table);
-        if (lKey > tableBytes.length) {
+        if (table == null || lKey < 0 || lKey > table.length) {
             throw new Passwords.Refused(Passwords.refusal(password), null);
         }
         EncryptionInfo info;
         Decryptor d;
         try {
             EncryptionMode mode = (flags & OBFUSCATED) != 0 ? EncryptionMode.xor : null;
-            info = new EncryptionInfo(new LittleEndianByteArrayInputStream(tableBytes, 0, lKey), mode);
+            info = new EncryptionInfo(new LittleEndianByteArrayInputStream(table, 0, lKey), mode);
             d = Passwords.unlock(info, password);
         } catch (EncryptedDocumentException e) {
             throw new Passwords.Refused(e.getMessage(), e);
@@ -75,17 +73,11 @@ public final class EncryptedWord {
         byte[] main = decrypt(d, wordDocument, FIB_BASE_BYTES);
         LittleEndian.putUShort(main, FLAGS, flags & ~(ENCRYPTED | OBFUSCATED));
         out.put("WordDocument", main);
-        out.put(table, decrypt(d, tableBytes, lKey));
-        if (root.hasEntryCaseInsensitive("Data")) {
-            out.put("Data", decrypt(d, read(root, "Data"), 0));
+        out.put(table(wordDocument), decrypt(d, table, lKey));
+        if (data != null) {
+            out.put("Data", decrypt(d, data, 0));
         }
         return out;
-    }
-
-    private static byte[] read(DirectoryNode root, String name) throws IOException {
-        try (InputStream in = root.createDocumentInputStream(root.getEntryCaseInsensitive(name))) {
-            return in.readAllBytes();
-        }
     }
 
     private static byte[] decrypt(Decryptor d, byte[] data, int plainBytes) throws IOException {
