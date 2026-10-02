@@ -26,7 +26,11 @@ final class RtfTokenizer {
 
     private int len;
 
-    private int pushed = -1;
+    private static final int SKIP = -1;
+
+    private final int[] pushed = new int[2];
+
+    private int pushedCount;
 
     String word;
 
@@ -58,7 +62,10 @@ final class RtfTokenizer {
                     return CLOSE;
                 }
                 case '\\' -> {
-                    return control();
+                    int t = control();
+                    if (t != SKIP) {
+                        return t;
+                    }
                 }
                 case '\r', '\n', 0 -> {
                 }
@@ -94,6 +101,8 @@ final class RtfTokenizer {
                     c = d;
                 } else {
                     unread(d);
+                    unread(c);
+                    c = SKIP;
                 }
             }
             if (c >= '0' && c <= '9') {
@@ -119,7 +128,7 @@ final class RtfTokenizer {
             int h = hex(hc);
             if (h < 0) {
                 unread(hc);
-                return next();
+                return SKIP;
             }
             int lc = read();
             int l = hex(lc);
@@ -143,8 +152,8 @@ final class RtfTokenizer {
 
     void skipBinary(long n) throws IOException {
         long left = n;
-        if (pushed >= 0 && left > 0) {
-            pushed = -1;
+        while (pushedCount > 0 && left > 0) {
+            pushedCount--;
             left--;
         }
         while (left > 0) {
@@ -160,12 +169,12 @@ final class RtfTokenizer {
     long copyBinary(long n, OutputStream out, long max) throws IOException {
         long left = n;
         long copied = 0;
-        if (pushed >= 0 && left > 0) {
+        while (pushedCount > 0 && left > 0) {
+            int c = pushed[--pushedCount];
             if (copied < max) {
-                out.write(pushed);
+                out.write(c);
                 copied++;
             }
-            pushed = -1;
             left--;
         }
         while (left > 0) {
@@ -202,10 +211,8 @@ final class RtfTokenizer {
     }
 
     private int read() throws IOException {
-        if (pushed >= 0) {
-            int c = pushed;
-            pushed = -1;
-            return c;
+        if (pushedCount > 0) {
+            return pushed[--pushedCount];
         }
         if (pos >= len && !fill()) {
             return -1;
@@ -214,8 +221,8 @@ final class RtfTokenizer {
     }
 
     private void unread(int c) {
-        if (c >= 0) {
-            pushed = c;
+        if (c >= 0 && pushedCount < pushed.length) {
+            pushed[pushedCount++] = c;
         }
     }
 

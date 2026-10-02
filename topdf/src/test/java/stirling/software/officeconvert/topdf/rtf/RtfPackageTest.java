@@ -495,4 +495,16 @@ class RtfPackageTest {
             assertTrue(b.contains(t), t + ": " + b);
         }
     }
+
+    @Test
+    void aHyphenAfterAControlWordKeepsTheFollowingLetter() throws IOException {
+        String b = convert(HEAD + "\\pard one\\line-b c\\tab-x\\par-Item\\par}").body();
+        assertTrue(b.contains("-b c") && b.contains("-x") && b.contains("-Item"), b);
+    }
+
+    @Test
+    void aLongChainOfBrokenHexEscapesIsSkipped() throws IOException {
+        String b = convert(HEAD + "\\pard before" + "\\'".repeat(200_000) + " zzz\\par}").body();
+        assertTrue(b.contains("before") && b.contains("zzz"), b);
+    }
 }
