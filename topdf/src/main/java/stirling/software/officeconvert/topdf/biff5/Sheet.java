@@ -73,6 +73,8 @@ final class Sheet {
 
     boolean truncated;
 
+    boolean overlaps;
+
     Sheet(Stream s, Text text, Styles styles) {
         this.s = s;
         this.text = text;
@@ -82,6 +84,10 @@ final class Sheet {
     void read() throws IOException {
         int depth = 0;
         while (s.next()) {
+            if (!s.claim()) {
+                overlaps = true;
+                return;
+            }
             int type = s.type();
             if (type == 0x0809) {
                 depth++;
