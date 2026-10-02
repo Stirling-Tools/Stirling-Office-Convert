@@ -47,12 +47,15 @@ final class Transparency {
 
     private FlattenRenderer renderer;
 
+    private final InvisibleText invisible;
+
     private int counter;
 
     private Transparency(PDDocument doc, float dpi, Report report) {
         this.doc = doc;
         this.dpi = dpi;
         this.report = report;
+        invisible = new InvisibleText(doc);
     }
 
     static void run(PDDocument doc, float dpi, Report report) throws IOException {
@@ -217,7 +220,7 @@ final class Transparency {
     }
 
     private List<Object> rewrite(List<Object> tokens, List<TransparencyScan.Op> ops, int insert, PDImageXObject image,
-            Rectangle2D region, COSDictionary res, PDPage page) {
+            Rectangle2D region, COSDictionary res, PDPage page) throws IOException {
         java.util.Map<Integer, TransparencyScan.Op> byEnd = new java.util.HashMap<>();
         for (TransparencyScan.Op op : ops) {
             byEnd.put(op.end(), op);
@@ -277,6 +280,9 @@ final class Transparency {
                 }
             }
             if (dropped.contains(begin) || dropped.contains(i)) {
+                if ("Do".equals(name)) {
+                    out.addAll(invisibleText(operation, res, page));
+                }
                 continue;
             }
             TransparencyScan.Op op2 = byEnd.get(i);
@@ -296,7 +302,25 @@ final class Transparency {
         return out;
     }
 
-    private List<Object> draw(PDImageXObject image, Rectangle2D region, Matrix ctm, COSDictionary res, PDPage page) {
+    private List<Object> invisibleText(List<Object> operation, COSDictionary res, PDPage page) throws IOException {
+        if (operation.size() != 2 || !(operation.get(0) instanceof COSName xn)
+                || !(TransparencyScan.lookup(res, COSName.XOBJECT, xn) instanceof COSStream form)) {
+            return List.of();
+        }
+        COSStream hidden = invisible.of(form);
+        if (hidden == null) {
+            return List.of();
+        }
+        COSDictionary x = xobjects(res, page);
+        COSName name;
+        do {
+            name = COSName.getPDFName("PdfAText" + counter++);
+        } while (x.containsKey(name));
+        x.setItem(name, hidden);
+        return List.of(name, Operator.getOperator("Do"));
+    }
+
+    private static COSDictionary xobjects(COSDictionary res, PDPage page) {
         COSDictionary resources = res;
         if (resources == null) {
             resources = new COSDictionary();
@@ -307,6 +331,11 @@ final class Transparency {
             x = new COSDictionary();
             resources.setItem(COSName.XOBJECT, x);
         }
+        return x;
+    }
+
+    private List<Object> draw(PDImageXObject image, Rectangle2D region, Matrix ctm, COSDictionary res, PDPage page) {
+        COSDictionary x = xobjects(res, page);
         COSName name;
         do {
             name = COSName.getPDFName("PdfAFlat" + counter++);

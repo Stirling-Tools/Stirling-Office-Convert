@@ -217,6 +217,15 @@ final class Hostile {
         return r;
     }
 
+    static RawPdf transparencyGroup() {
+        RawPdf r = RawPdf.page(RawPdf.helvetica() + "/XObject<</Fm0 5 0 R>>",
+                "BT /F1 18 Tf 72 700 Td (Plain text) Tj ET /Fm0 Do");
+        r.add(RawPdf.stream("/Type/XObject/Subtype/Form/BBox[0 0 600 800]/Group<</S/Transparency>>/Resources<<"
+                + RawPdf.helvetica() + "/ExtGState<</GS0<</Type/ExtGState/ca 0.5>>>>>>",
+                "/GS0 gs 1 0 0 rg 60 580 300 60 re f 0 g BT /F1 18 Tf 72 600 Td (Text inside a group) Tj ET"));
+        return r;
+    }
+
     static void taggedForm(PDDocument d, String variant) throws IOException {
         PDFont f = helvetica();
         PDPage p = page(d);
