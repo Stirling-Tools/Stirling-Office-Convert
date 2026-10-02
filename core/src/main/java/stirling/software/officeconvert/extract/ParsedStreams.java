@@ -8,7 +8,7 @@ import org.apache.pdfbox.cos.COSBase;
 
 final class ParsedStreams {
 
-    static final int MAX_TOKENS = 1_000_000;
+    static final int MAX_TOKENS = 500_000;
 
     private record Parsed(Object[] tokens, boolean reusable) {}
 

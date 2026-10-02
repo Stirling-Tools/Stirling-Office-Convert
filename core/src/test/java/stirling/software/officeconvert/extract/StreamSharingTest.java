@@ -1,18 +1,13 @@
 package stirling.software.officeconvert.extract;
 
-import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 
 import java.awt.Color;
 import java.awt.geom.AffineTransform;
 import java.io.IOException;
-import java.util.List;
 
 import org.apache.pdfbox.contentstream.operator.Operator;
-import org.apache.pdfbox.cos.COSBase;
-import org.apache.pdfbox.cos.COSDictionary;
-import org.apache.pdfbox.cos.COSFloat;
 import org.apache.pdfbox.cos.COSInteger;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
@@ -52,40 +47,22 @@ class StreamSharingTest {
     }
 
     @Test
-    void recorderKeepsOnlyTheOperatorsTheStreamItselfHolds() {
-        ParsedStreams parsed = new ParsedStreams();
-        StreamRecorder recorder = new StreamRecorder(parsed);
-        COSDictionary key = new COSDictionary();
-        List<COSBase> operands = List.of(new COSFloat(2f));
+    void aParsedPageIsKeptOnceForTheNextPass() throws IOException {
+        try (PDDocument document = new PDDocument()) {
+            PDPage page = new PDPage(PDRectangle.LETTER);
+            document.addPage(page);
+            try (PDPageContentStream content = new PDPageContentStream(document, page)) {
+                content.addRect(100, 100, 200, 50);
+                content.fill();
+            }
+            ParsedStreams parsed = new ParsedStreams();
+            GraphicsCollector.read(page, PageReader.displayTransform(page.getCropBox(), 0), 612, 792, parsed);
 
-        recorder.begin(key, true);
-        recorder.operator(op("TL"), operands);
-        recorder.enter();
-        recorder.operator(op("T*"), List.of());
-        recorder.leave();
-        recorder.end(true);
-
-        assertArrayEquals(new Object[] {operands.getFirst(), op("TL")}, parsed.take(key));
-        assertArrayEquals(new Object[] {operands.getFirst(), op("TL")}, parsed.take(key));
-    }
-
-    @Test
-    void abandonedStreamsAreNotKept() {
-        ParsedStreams parsed = new ParsedStreams();
-        StreamRecorder recorder = new StreamRecorder(parsed);
-        COSDictionary broken = new COSDictionary();
-        COSDictionary inline = new COSDictionary();
-
-        recorder.begin(broken, true);
-        recorder.operator(op("q"), List.of());
-        recorder.end(false);
-        recorder.begin(inline, true);
-        recorder.operator(op("BI"), List.of());
-        recorder.end(true);
-
-        assertNull(parsed.take(broken));
-        assertEquals(1, parsed.take(inline).length);
-        assertNull(parsed.take(inline));
+            Object[] kept = parsed.take(page.getCOSObject());
+            assertEquals(6, kept.length);
+            assertEquals(op("f"), kept[5]);
+            assertNull(parsed.take(page.getCOSObject()));
+        }
     }
 
     private static Operator op(String name) {

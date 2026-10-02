@@ -1,7 +1,6 @@
 package stirling.software.officeconvert.extract;
 
 import java.io.IOException;
-import java.io.Writer;
 import java.awt.geom.Rectangle2D;
 import java.text.Normalizer;
 import java.util.ArrayDeque;
@@ -12,6 +11,32 @@ import java.util.List;
 import java.util.Map;
 import java.util.WeakHashMap;
 
+import org.apache.pdfbox.contentstream.PDFStreamEngine;
+import org.apache.pdfbox.contentstream.operator.DrawObject;
+import org.apache.pdfbox.contentstream.operator.markedcontent.BeginMarkedContentSequence;
+import org.apache.pdfbox.contentstream.operator.markedcontent.BeginMarkedContentSequenceWithProperties;
+import org.apache.pdfbox.contentstream.operator.markedcontent.EndMarkedContentSequence;
+import org.apache.pdfbox.contentstream.operator.state.Concatenate;
+import org.apache.pdfbox.contentstream.operator.state.Restore;
+import org.apache.pdfbox.contentstream.operator.state.Save;
+import org.apache.pdfbox.contentstream.operator.state.SetGraphicsStateParameters;
+import org.apache.pdfbox.contentstream.operator.state.SetMatrix;
+import org.apache.pdfbox.contentstream.operator.text.BeginText;
+import org.apache.pdfbox.contentstream.operator.text.EndText;
+import org.apache.pdfbox.contentstream.operator.text.MoveText;
+import org.apache.pdfbox.contentstream.operator.text.MoveTextSetLeading;
+import org.apache.pdfbox.contentstream.operator.text.NextLine;
+import org.apache.pdfbox.contentstream.operator.text.SetCharSpacing;
+import org.apache.pdfbox.contentstream.operator.text.SetFontAndSize;
+import org.apache.pdfbox.contentstream.operator.text.SetTextHorizontalScaling;
+import org.apache.pdfbox.contentstream.operator.text.SetTextLeading;
+import org.apache.pdfbox.contentstream.operator.text.SetTextRenderingMode;
+import org.apache.pdfbox.contentstream.operator.text.SetTextRise;
+import org.apache.pdfbox.contentstream.operator.text.SetWordSpacing;
+import org.apache.pdfbox.contentstream.operator.text.ShowText;
+import org.apache.pdfbox.contentstream.operator.text.ShowTextAdjusted;
+import org.apache.pdfbox.contentstream.operator.text.ShowTextLine;
+import org.apache.pdfbox.contentstream.operator.text.ShowTextLineAndSpace;
 import org.apache.pdfbox.contentstream.operator.Operator;
 import org.apache.pdfbox.contentstream.operator.color.SetNonStrokingColor;
 import org.apache.pdfbox.contentstream.operator.color.SetNonStrokingColorN;
@@ -30,6 +55,7 @@ import org.apache.pdfbox.cos.COSDictionary;
 import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
+import org.apache.pdfbox.pdmodel.PDResources;
 import org.apache.pdfbox.pdmodel.font.PDFont;
 import org.apache.pdfbox.pdmodel.font.PDFontDescriptor;
 import org.apache.pdfbox.pdmodel.font.PDSimpleFont;
@@ -42,12 +68,11 @@ import org.apache.pdfbox.pdmodel.graphics.state.PDGraphicsState;
 import org.apache.pdfbox.pdmodel.graphics.state.RenderingMode;
 import org.apache.pdfbox.pdmodel.interactive.annotation.PDAnnotation;
 import org.apache.pdfbox.pdmodel.interactive.annotation.PDAppearanceStream;
-import org.apache.pdfbox.text.PDFTextStripper;
 import org.apache.pdfbox.text.TextPosition;
 import org.apache.pdfbox.util.Matrix;
 import org.apache.pdfbox.util.Vector;
 
-final class GlyphCollector extends PDFTextStripper {
+final class GlyphCollector extends PDFStreamEngine {
 
     private static final int MAX_PAGE_GLYPHS = 200_000;
 
@@ -101,13 +126,62 @@ final class GlyphCollector extends PDFTextStripper {
     private int nextIndex;
     private PDDocument document;
     private OperatorBudget budget = new OperatorBudget("reading text");
-    private final StreamRecorder recorder;
+    private final StreamRunner runner;
+    private final TextPositions positions = new TextPositions();
+    private int currentPageNo;
+    private int startPage;
+    private int endPage;
 
-    private GlyphCollector(FontResolver fonts, PageSink sink, StreamRecorder recorder) {
+    private GlyphCollector(FontResolver fonts, PageSink sink, ParsedStreams parsed) {
         this.fonts = fonts;
         this.sink = sink;
-        this.recorder = recorder;
         this.recovery = new UnicodeRecovery(fonts);
+        this.runner = new StreamRunner(new StreamRunner.Host() {
+            @Override
+            public PDGraphicsState state() {
+                return getGraphicsState();
+            }
+
+            @Override
+            public Deque<PDGraphicsState> save() {
+                return saveGraphicsStack();
+            }
+
+            @Override
+            public void restore(Deque<PDGraphicsState> stack) {
+                restoreGraphicsStack(stack);
+            }
+
+            @Override
+            public void operator(Operator operator, List<COSBase> operands) throws IOException {
+                processOperator(operator, operands);
+            }
+        }, parsed);
+        addOperator(new BeginText(this));
+        addOperator(new Concatenate(this));
+        addOperator(new DrawObject(this));
+        addOperator(new EndText(this));
+        addOperator(new SetGraphicsStateParameters(this));
+        addOperator(new Save(this));
+        addOperator(new Restore(this));
+        addOperator(new NextLine(this));
+        addOperator(new SetCharSpacing(this));
+        addOperator(new MoveText(this));
+        addOperator(new MoveTextSetLeading(this));
+        addOperator(new SetFontAndSize(this));
+        addOperator(new ShowText(this));
+        addOperator(new ShowTextAdjusted(this));
+        addOperator(new SetTextLeading(this));
+        addOperator(new SetMatrix(this));
+        addOperator(new SetTextRenderingMode(this));
+        addOperator(new SetTextRise(this));
+        addOperator(new SetWordSpacing(this));
+        addOperator(new SetTextHorizontalScaling(this));
+        addOperator(new ShowTextLine(this));
+        addOperator(new ShowTextLineAndSpace(this));
+        addOperator(new BeginMarkedContentSequenceWithProperties(this));
+        addOperator(new BeginMarkedContentSequence(this));
+        addOperator(new EndMarkedContentSequence(this));
         addOperator(new SetStrokingColorSpace(this));
         addOperator(new SetNonStrokingColorSpace(this));
         addOperator(new SetStrokingDeviceCMYKColor(this));
@@ -120,37 +194,27 @@ final class GlyphCollector extends PDFTextStripper {
         addOperator(new SetStrokingColorN(this));
         addOperator(new SetNonStrokingColor(this));
         addOperator(new SetNonStrokingColorN(this));
-        setSortByPosition(false);
-        setShouldSeparateByBeads(false);
-        setSuppressDuplicateOverlappingText(false);
     }
 
     static void read(PDDocument doc, int first, int last, FontResolver fonts, ParsedStreams parsed, PageSink sink)
             throws IOException {
-        GlyphCollector collector = new GlyphCollector(fonts, sink, new StreamRecorder(parsed));
+        GlyphCollector collector = new GlyphCollector(fonts, sink, parsed);
         collector.document = doc;
-        collector.setStartPage(first + 1);
-        collector.setEndPage(last + 1);
+        collector.startPage = first + 1;
+        collector.endPage = last + 1;
         collector.nextIndex = first;
-        collector.writeText(doc, Writer.nullWriter());
+        collector.currentPageNo = 1;
+        for (PDPage page : doc.getPages()) {
+            if (page.hasContents()) {
+                collector.processPage(page);
+            }
+            collector.currentPageNo++;
+        }
         collector.blankPagesBefore(last + 1);
     }
 
     @Override
     protected void processOperator(Operator operator, List<COSBase> operands) throws IOException {
-        recorder.operator(operator, operands);
-        recorder.enter();
-        try {
-            run(operator, operands);
-        } catch (IOException | RuntimeException | Error e) {
-            recorder.abort();
-            throw e;
-        } finally {
-            recorder.leave();
-        }
-    }
-
-    private void run(Operator operator, List<COSBase> operands) throws IOException {
         if (!budget.run(operator)) {
             return;
         }
@@ -164,14 +228,7 @@ final class GlyphCollector extends PDFTextStripper {
     @Override
     public void showForm(PDFormXObject form) throws IOException {
         if (budget.form()) {
-            recorder.begin(form.getCOSObject(), true);
-            boolean done = false;
-            try {
-                super.showForm(form);
-                done = true;
-            } finally {
-                recorder.end(done);
-            }
+            runner.showForm(form);
         }
     }
 
@@ -184,57 +241,60 @@ final class GlyphCollector extends PDFTextStripper {
 
     @Override
     protected void processTransparencyGroup(PDTransparencyGroup group) throws IOException {
-        recorder.begin(group.getCOSObject(), true);
-        boolean done = false;
-        try {
-            super.processTransparencyGroup(group);
-            done = true;
-        } finally {
-            recorder.end(done);
-        }
+        runner.processTransparencyGroup(group);
     }
 
     @Override
     protected void processAnnotation(PDAnnotation annotation, PDAppearanceStream appearance) throws IOException {
-        recorder.begin(appearance.getCOSObject(), true);
-        boolean done = false;
-        try {
-            super.processAnnotation(annotation, appearance);
-            done = true;
-        } finally {
-            recorder.end(done);
-        }
+        runner.processAnnotation(annotation, appearance);
+    }
+
+    @Override
+    public PDResources getResources() {
+        return runner.resources();
+    }
+
+    @Override
+    public PDPage getCurrentPage() {
+        return runner.page();
+    }
+
+    @Override
+    public Matrix getInitialMatrix() {
+        return runner.initialMatrix();
+    }
+
+    @Override
+    public boolean isShouldProcessColorOperators() {
+        return runner.colors();
     }
 
     @Override
     public void processPage(PDPage page) throws IOException {
+        if (currentPageNo < startPage || currentPageNo > endPage) {
+            return;
+        }
         try {
-            super.processPage(page);
+            startPage(page);
+            positions.page(page);
+            runner.processPage(page);
+            Annotations.show(this, page);
+            endPage(page);
+            page.removePageResourceFromCache();
         } catch (IOException e) {
             if (!inPage) {
                 throw e;
             }
             BrokenOperators.brokenStream(e);
             endPage(page);
-        } finally {
-            recorder.close();
         }
     }
 
-    @Override
-    protected void writePage() throws IOException {
-        recorder.end(true);
-        Annotations.show(this, getCurrentPage());
-        super.writePage();
-    }
-
-    @Override
-    protected void startPage(PDPage page) throws IOException {
+    private void startPage(PDPage page) throws IOException {
         budget = new OperatorBudget("reading text");
         inPage = true;
-        pageIndex = getCurrentPageNo() - 1;
+        pageIndex = currentPageNo - 1;
         rotation = page.getRotation();
-        recorder.begin(page.getCOSObject(), false);
         blankPagesBefore(pageIndex);
         current = new ArrayList<>();
         spans.clear();
@@ -278,7 +338,10 @@ final class GlyphCollector extends PDFTextStripper {
 
     @Override
     protected void showGlyph(Matrix trm, PDFont font, int code, Vector displacement) throws IOException {
-        super.showGlyph(trm, font, code, displacement);
+        TextPosition position = positions.of(getGraphicsState(), getTextMatrix(), trm, font, code, displacement);
+        if (position != null) {
+            processTextPosition(position);
+        }
         Span open = outerActual;
         if (open == null || font instanceof PDSimpleFont || font.toUnicode(code) != null
                 || rotation % 360 != 0 || Math.abs(trm.getShearX()) > 0.01f * Math.abs(trm.getScaleX())
@@ -350,8 +413,7 @@ final class GlyphCollector extends PDFTextStripper {
         return true;
     }
 
-    @Override
-    protected void endPage(PDPage page) throws IOException {
+    private void endPage(PDPage page) throws IOException {
         inPage = false;
         List<RawGlyph> glyphs = current;
         glyphs.removeIf(r -> r.glyph().text == HIDDEN);
@@ -367,8 +429,7 @@ final class GlyphCollector extends PDFTextStripper {
         }
     }
 
-    @Override
-    protected void processTextPosition(TextPosition tp) {
+    private void processTextPosition(TextPosition tp) {
         String unicode = clean(recovery.text(tp, tp.getUnicode()));
         if (unicode == null && outerActual != null) {
             unicode = HIDDEN;

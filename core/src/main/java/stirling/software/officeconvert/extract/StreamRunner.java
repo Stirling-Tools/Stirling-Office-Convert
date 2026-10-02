@@ -38,7 +38,7 @@ final class StreamRunner {
         void operator(Operator operator, List<COSBase> operands) throws IOException;
     }
 
-    private interface Tokens {
+    interface Tokens {
         Object next() throws IOException;
     }
 
@@ -188,15 +188,22 @@ final class StreamRunner {
     }
 
     private void processOperators(PDContentStream stream) throws IOException {
-        Object[] recorded = parsed == null ? null
-                : parsed.take(stream instanceof COSObjectable o ? o.getCOSObject() : null);
+        COSBase key = parsed != null && stream instanceof COSObjectable o ? o.getCOSObject() : null;
+        Object[] recorded = parsed == null ? null : parsed.take(key);
         Tokens tokens;
+        Recording recording = null;
         if (recorded != null) {
             int[] at = {0};
             tokens = () -> at[0] < recorded.length ? recorded[at[0]++] : null;
         } else {
-            PDFStreamParser parser = new PDFStreamParser(stream);
-            tokens = parser::parseNextToken;
+            PDFStreamParser exact = new PDFStreamParser(stream);
+            Tokens parser = exact::parseNextToken;
+            if (key != null) {
+                recording = new Recording(parser);
+                tokens = recording;
+            } else {
+                tokens = parser;
+            }
         }
         List<COSBase> arguments = new ArrayList<>();
         Object token = tokens.next();
@@ -221,8 +228,41 @@ final class StreamRunner {
                 }
                 token = tokens.next();
             }
+            if (recording != null) {
+                recording.keep(parsed, key, !(stream instanceof PDPage));
+            }
         } finally {
             colors = parentColors;
+        }
+    }
+
+    private static final class Recording implements Tokens {
+        private final Tokens parser;
+        private List<Object> tokens = new ArrayList<>();
+        private boolean inline;
+
+        Recording(Tokens parser) {
+            this.parser = parser;
+        }
+
+        @Override
+        public Object next() throws IOException {
+            Object token = parser.next();
+            if (tokens != null && token != null) {
+                if (tokens.size() >= ParsedStreams.MAX_TOKENS) {
+                    tokens = null;
+                } else {
+                    tokens.add(token);
+                    inline |= token instanceof Operator op && OperatorName.BEGIN_INLINE_IMAGE.equals(op.getName());
+                }
+            }
+            return token;
+        }
+
+        void keep(ParsedStreams parsed, COSBase key, boolean reusable) {
+            if (tokens != null && !tokens.isEmpty()) {
+                parsed.put(key, tokens.toArray(), reusable && !inline);
+            }
         }
     }
 }
