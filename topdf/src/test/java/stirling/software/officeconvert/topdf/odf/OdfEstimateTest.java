@@ -31,4 +31,10 @@ class OdfEstimateTest {
         assertTrue(Math.abs(plain - slashed) < 1024, plain + " vs " + slashed);
         assertTrue(Math.abs(plain - backslashed) < 1024, plain + " vs " + backslashed);
     }
+
+    @Test
+    void aTinyDocumentReservesTheHeapItsBudgetAllows() throws IOException {
+        long estimate = OdfPackage.estimate(text("tiny.odt", "content.xml", "<text:p>hi</text:p>"));
+        assertTrue(estimate >= (64L << 20) + WorkBudget.heap(0), String.valueOf(estimate));
+    }
 }

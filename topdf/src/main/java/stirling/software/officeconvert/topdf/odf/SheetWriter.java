@@ -19,13 +19,13 @@ final class SheetWriter {
 
     static final int MAX_COLS = 16_384;
 
-    static final int MAX_EMITTED_ROWS = 300_000;
-
     static final int FILLER = 2000;
 
     static final int STYLED_RUN = 100;
 
     private static final String ROW = "\u0001";
+
+    private static final int MERGE_BYTES = 48;
 
     private static final Pattern ZONE = Pattern.compile("(?:Z|[+-]\\d{2}(?::?\\d{2})?)$");
 
@@ -63,8 +63,6 @@ final class SheetWriter {
 
     private int headerColEnd = -1;
 
-    private int emittedRows;
-
     private int valueEnd;
 
     private int valueRow = -1;
@@ -77,15 +75,22 @@ final class SheetWriter {
 
     private boolean hidden;
 
+    private final SheetLimits limits;
+
     SheetWriter(OdsWriter w, Element table, int index, String name) {
         this.w = w;
         this.table = table;
         this.index = index;
         this.name = name;
+        this.limits = new SheetLimits(name);
     }
 
     boolean hidden() {
         return hidden;
+    }
+
+    String cut() {
+        return limits.cut();
     }
 
     void write(String part) throws IOException {
@@ -247,6 +252,9 @@ final class SheetWriter {
             return;
         }
         for (Element k : Dom.kids(parent)) {
+            if (w.doc.work.spent() || limits.cut() != null) {
+                return;
+            }
             if (!Ns.TABLE.equals(k.getNamespaceURI())) {
                 continue;
             }
@@ -296,12 +304,11 @@ final class SheetWriter {
         }
         int copies = content ? Math.min(repeat, 10_000) : repeat;
         for (int i = 0; i < copies; i++) {
-            if (emittedRows >= MAX_EMITTED_ROWS || !w.doc.work.sheetRow()
-                    || i > 0 && !w.doc.work.sheetCells(rowCells)) {
+            if (w.doc.work.spent() || !limits.row() || i > 0 && !limits.cells(rowCells)) {
                 return;
             }
-            emittedRows++;
             int n = start + i;
+            int rowStart = data.length();
             data.append("<row r=\"").append(n + 1).append('"');
             if (!Double.isNaN(height) && (custom || rowHidden || !wraps && (rowMultiline || height <= defaultRowPoints()))) {
                 data.append(" ht=\"").append(Math.round(height * 100) / 100.0).append('"');
@@ -319,10 +326,13 @@ final class SheetWriter {
             }
             data.append("</row>");
             for (int[] m : rowMerges) {
-                if (!w.doc.work.merge()) {
+                if (!limits.merge()) {
                     break;
                 }
                 merges.add(new int[] {m[0], n, m[2], Math.min(MAX_ROWS - 1, n + m[3] - m[1])});
+            }
+            if (i > 0) {
+                w.doc.work.charge(data.length() - rowStart + MERGE_BYTES * rowMerges.size());
             }
             if (hasValue) {
                 valueEnd = data.length();
@@ -338,7 +348,7 @@ final class SheetWriter {
 
     private boolean rowMultiline;
 
-    private boolean cells(Element r, int row, StringBuilder out, List<int[]> rowMerges) {
+    private boolean cells(Element r, int row, StringBuilder out, List<int[]> rowMerges) throws IOException {
         rowCells = 0;
         rowWraps = false;
         rowMultiline = false;
@@ -381,7 +391,9 @@ final class SheetWriter {
                 }
             }
             if ((value != null || override) && !(value == null && repeat > FILLER)) {
-                for (int i = 0; i < repeat && w.doc.work.sheetCells(1); i++) {
+                boolean error = !covered && "error".equals(Dom.attr(c, Ns.CALCEXT, "value-type"));
+                for (int i = 0; i < repeat && !w.doc.work.spent() && limits.cells(1); i++) {
+                    int cellStart = out.length();
                     out.append("<c r=\"").append(column(col + i)).append(ROW).append('"');
                     if (xf.index() != 0) {
                         out.append(" s=\"").append(xf.index()).append('"');
@@ -389,6 +401,9 @@ final class SheetWriter {
                     out.append(value == null ? "/>" : value);
                     rowCells++;
                     maxCol = Math.max(maxCol, col + i);
+                    if (i > 0 || error) {
+                        w.doc.work.charge(out.length() - cellStart);
+                    }
                 }
                 any = true;
             }

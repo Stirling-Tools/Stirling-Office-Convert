@@ -1,5 +1,6 @@
 package stirling.software.officeconvert.topdf.odf;
 
+import java.io.InterruptedIOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -19,19 +20,22 @@ final class OdfChart {
 
     private final Element chart;
 
-    private OdfChart(Styles styles, Element chart) {
+    private final WorkBudget work;
+
+    private OdfChart(Styles styles, Element chart, WorkBudget work) {
         this.styles = styles;
         this.chart = chart;
+        this.work = work;
     }
 
-    static String part(Element content, Element objectStyles) {
+    static String part(Element content, Element objectStyles, WorkBudget work) throws InterruptedIOException {
         Element body = Dom.kid(Dom.kid(content, Ns.OFFICE, "body"), Ns.OFFICE, "chart");
         Element chart = Dom.kid(body, CHART, "chart");
-        if (chart == null) {
+        if (chart == null || work.spent()) {
             return null;
         }
         try {
-            return new OdfChart(new Styles(content, objectStyles == null ? content : objectStyles), chart).xml();
+            return new OdfChart(new Styles(content, objectStyles == null ? content : objectStyles), chart, work).xml();
         } catch (RuntimeException e) {
             return null;
         }
@@ -43,7 +47,7 @@ final class OdfChart {
         return styles.props("chart", Dom.attr(e, CHART, "style-name"), Styles.Scope.CONTENT, kind, false);
     }
 
-    private String xml() {
+    private String xml() throws InterruptedIOException {
         String cls = Dom.attr(chart, CHART, "class", "chart:bar").replace("chart:", "");
         Element plot = Dom.kid(chart, CHART, "plot-area");
         Props pc = props(plot, "chart-properties");
@@ -93,11 +97,13 @@ final class OdfChart {
         for (int i = 0; i < series.size() && i < MAX_SERIES; i++) {
             Element s = series.get(i);
             int col = scatter ? valueColumn + i : i;
-            if (col >= columns.size()) {
+            if (col >= columns.size() || work.spent()) {
                 break;
             }
-            b.append(series(s, i, col < names.size() ? names.get(col) : "Series " + (i + 1), categories,
-                    scatter ? columns.get(0) : null, columns.get(col), tag, pie));
+            String xml = series(s, i, col < names.size() ? names.get(col) : "Series " + (i + 1), categories,
+                    scatter ? columns.get(0) : null, columns.get(col), tag, pie);
+            work.charge(xml.length());
+            b.append(xml);
         }
         if (tag.equals("barChart")) {
             b.append("<c:gapWidth val=\"100\"/>");
@@ -328,7 +334,8 @@ final class OdfChart {
         return b.append("</c:spPr>").toString();
     }
 
-    private void table(List<String> categories, List<String> names, List<List<Double>> columns, boolean byRows) {
+    private void table(List<String> categories, List<String> names, List<List<Double>> columns, boolean byRows)
+            throws InterruptedIOException {
         Element table = null;
         for (Element t : Dom.kids(chart, Ns.TABLE, "table")) {
             table = t;
@@ -353,14 +360,14 @@ final class OdfChart {
         if (headerRow != null) {
             List<Element> cells = cells(headerRow);
             for (int i = labelColumn ? 1 : 0; i < cells.size() && names.size() < MAX_SERIES; i++) {
-                names.add(SheetWriter.text(cells.get(i)));
+                names.add(label(cells.get(i)));
             }
         }
-        for (int r = 0; r < rows.size() && r < MAX_POINTS; r++) {
+        for (int r = 0; r < rows.size() && r < MAX_POINTS && !work.spent(); r++) {
             List<Element> cells = cells(rows.get(r));
             int start = labelColumn ? 1 : 0;
             if (labelColumn && !cells.isEmpty()) {
-                categories.add(SheetWriter.text(cells.get(0)));
+                categories.add(label(cells.get(0)));
             }
             for (int i = start; i < cells.size() && i - start < MAX_SERIES; i++) {
                 while (columns.size() <= i - start) {
@@ -375,24 +382,30 @@ final class OdfChart {
         }
     }
 
-    private static void byRows(Element headerRow, List<Element> rows, boolean labelColumn, List<String> categories,
-            List<String> names, List<List<Double>> columns) {
+    private void byRows(Element headerRow, List<Element> rows, boolean labelColumn, List<String> categories,
+            List<String> names, List<List<Double>> columns) throws InterruptedIOException {
         int start = labelColumn ? 1 : 0;
         if (headerRow != null) {
             List<Element> cells = cells(headerRow);
-            for (int i = start; i < cells.size() && categories.size() < MAX_POINTS; i++) {
-                categories.add(SheetWriter.text(cells.get(i)));
+            for (int i = start; i < cells.size() && categories.size() < MAX_POINTS && !work.spent(); i++) {
+                categories.add(label(cells.get(i)));
             }
         }
         for (int r = 0; r < rows.size() && r < MAX_SERIES; r++) {
             List<Element> cells = cells(rows.get(r));
-            names.add(labelColumn && !cells.isEmpty() ? SheetWriter.text(cells.get(0)) : "Series " + (r + 1));
+            names.add(labelColumn && !cells.isEmpty() ? label(cells.get(0)) : "Series " + (r + 1));
             List<Double> values = new ArrayList<>();
             for (int i = start; i < cells.size() && values.size() < MAX_POINTS; i++) {
                 values.add(value(cells.get(i)));
             }
             columns.add(values);
         }
+    }
+
+    private String label(Element cell) throws InterruptedIOException {
+        String text = SheetWriter.text(cell);
+        work.charge(text.length());
+        return text;
     }
 
     private static List<Element> cells(Element row) {

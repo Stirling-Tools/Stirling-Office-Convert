@@ -21,6 +21,9 @@ final class WordTables {
     private record Row(Element row, boolean header) {}
 
     String table(Element t, TextBody body) throws IOException {
+        if (w.doc.work.spent()) {
+            return null;
+        }
         Styles.Scope scope = body.scope;
         String name = Dom.attr(t, Ns.TABLE, "style-name");
         Props tp = w.styles.props("table", name, scope, "table-properties", false);
@@ -100,7 +103,9 @@ final class WordTables {
             if (r++ >= MAX_ROWS || w.doc.work.spent()) {
                 break;
             }
-            b.append(row(row, body, widths, gridCount, defaultCellStyles, spanLeft, spanWidth, spanCellPr));
+            String xml = row(row, body, widths, gridCount, defaultCellStyles, spanLeft, spanWidth, spanCellPr);
+            w.doc.work.charge(xml.length());
+            b.append(xml);
         }
         return b.append("</w:tbl>").toString();
     }
@@ -278,16 +283,9 @@ final class WordTables {
                 spanCellPr[col] = tcPr;
             }
             b.append("</w:tcPr>");
-            if (w.doc.work.cell()) {
-                TextBody cell = body.nested(body.part, scope);
-                cell.blocks(c, null);
-                String xml = cell.cellXml();
-                w.doc.work.chars(xml.length());
-                b.append(xml);
-            } else {
-                b.append("<w:p/>");
-            }
-            b.append("</w:tc>");
+            TextBody cell = body.nested(body.part, scope);
+            cell.blocks(c, null);
+            b.append(cell.cellXml()).append("</w:tc>");
             ci += span;
             col += span;
         }
