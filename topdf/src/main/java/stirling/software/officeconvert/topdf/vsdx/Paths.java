@@ -144,8 +144,8 @@ final class Paths {
             line(px, py);
             return;
         }
-        double mx = (x + px) / 2 - bow * dy / chord;
-        double my = (y + py) / 2 + bow * dx / chord;
+        double mx = (x + px) / 2 + bow * dy / chord;
+        double my = (y + py) / 2 - bow * dx / chord;
         circleThrough(mx, my, px, py);
     }
 
