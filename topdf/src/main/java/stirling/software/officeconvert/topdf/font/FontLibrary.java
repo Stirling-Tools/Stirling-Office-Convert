@@ -383,6 +383,12 @@ public final class FontLibrary {
         return out;
     }
 
+    public static List<String> standIns(String family) {
+        List<String> chain = new ArrayList<>(Substitutes.table(family));
+        chain.addAll(Substitutes.generic(family));
+        return chain;
+    }
+
     public static String english(String family) {
         String e = FontNames.english(family);
         return e == null ? family : e;

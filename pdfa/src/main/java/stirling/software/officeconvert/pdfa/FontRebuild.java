@@ -162,8 +162,8 @@ final class FontRebuild {
     private void updateSimple(PDFont font, String name, COSDictionary fd, Set<Integer> codes, Map<Integer, Float> widths)
             throws IOException {
         COSDictionary dict = font.getCOSObject();
-        int first = Integer.MAX_VALUE;
-        int last = Integer.MIN_VALUE;
+        int first = codes.isEmpty() ? 32 : Integer.MAX_VALUE;
+        int last = codes.isEmpty() ? 32 : Integer.MIN_VALUE;
         for (int c : codes) {
             first = Math.min(first, c);
             last = Math.max(last, c);

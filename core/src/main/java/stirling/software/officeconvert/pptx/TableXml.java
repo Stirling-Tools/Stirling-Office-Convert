@@ -1,6 +1,8 @@
 package stirling.software.officeconvert.pptx;
 
+import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.Map;
 
 import stirling.software.officeconvert.model.Inline;
 import stirling.software.officeconvert.model.Paragraph;
@@ -13,6 +15,8 @@ final class TableXml {
 
     private static final float WORD_BASELINE = 0.8f;
 
+    private static final float EMPTY_LINE = 1.3f;
+
     private final TextXml text;
 
     TableXml(TextXml text) {
@@ -20,7 +24,8 @@ final class TableXml {
     }
 
     void table(StringBuilder sb, TableShape shape, int id) {
-        Table t = shape.table();
+        Map<Table.Cell, Float> offsets = new IdentityHashMap<>();
+        Table t = RowPieces.split(shape.table(), shape.y(), offsets);
         sb.append("<p:graphicFrame><p:nvGraphicFramePr><p:cNvPr id=\"").append(id).append("\" name=\"Table ").append(id - 1)
                 .append("\"/><p:cNvGraphicFramePr><a:graphicFrameLocks noGrp=\"1\"/></p:cNvGraphicFramePr><p:nvPr/>")
                 .append("</p:nvGraphicFramePr><p:xfrm><a:off x=\"").append(Ooxml.offset(shape.x())).append("\" y=\"")
@@ -45,17 +50,17 @@ final class TableXml {
                 int span = Math.max(1, Math.min(cell.gridSpan, cols - col));
                 boolean continued = cell.vMerge == 2;
                 int rowSpan = cell.vMerge == 1 ? rowSpan(t, r, col) : 1;
-                cell(sb, t, cell, span, rowSpan, continued, h);
+                cell(sb, t, cell, span, rowSpan, continued, h, spanned(t, r, rowSpan), offsets.get(cell));
                 for (int k = 1; k < span; k++) {
                     sb.append("<a:tc hMerge=\"1\"").append(continued ? " vMerge=\"1\"" : "").append('>');
-                    emptyCell(sb);
+                    emptyCell(sb, h);
                     sb.append("</a:tc>");
                 }
                 col += span;
             }
             for (; col < cols; col++) {
                 sb.append("<a:tc>");
-                emptyCell(sb);
+                emptyCell(sb, h);
                 sb.append("</a:tc>");
             }
             sb.append("</a:tr>");
@@ -63,7 +68,8 @@ final class TableXml {
         sb.append("</a:tbl></a:graphicData></a:graphic></p:graphicFrame>");
     }
 
-    private void cell(StringBuilder sb, Table t, Table.Cell cell, int span, int rowSpan, boolean continued, float rowHeight) {
+    private void cell(StringBuilder sb, Table t, Table.Cell cell, int span, int rowSpan, boolean continued, float rowHeight,
+            float room, Float offset) {
         sb.append("<a:tc");
         if (span > 1) {
             sb.append(" gridSpan=\"").append(span).append('"');
@@ -77,12 +83,13 @@ final class TableXml {
         sb.append("><a:txBody><a:bodyPr/><a:lstStyle/>");
         List<Paragraph> paras = continued ? List.of() : cell.paragraphs;
         if (paras.isEmpty()) {
-            sb.append("<a:p><a:endParaRPr dirty=\"0\"/></a:p>");
+            emptyParagraph(sb, room);
         }
         for (int i = 0; i < paras.size(); i++) {
             text.cellParagraph(sb, paras.get(i), i == 0);
         }
-        float top = paras.isEmpty() ? 0 : topInset(cell, rowSpan > 1 ? Float.MAX_VALUE : rowHeight);
+        float lead = offset != null ? offset : paras.isEmpty() ? 0 : cell.top.width() + paras.getFirst().spaceBefore;
+        float top = paras.isEmpty() ? 0 : topInset(cell, rowSpan > 1 ? Float.MAX_VALUE : rowHeight, lead);
         float left = t.cellMarginLeft + (cell.left.visible() ? 0.5f : 0);
         float right = t.cellMarginRight + (cell.right.visible() ? 0.5f : 0);
         sb.append("</a:txBody><a:tcPr marL=\"").append(Ooxml.emu(left)).append("\" marR=\"").append(Ooxml.emu(right))
@@ -104,18 +111,33 @@ final class TableXml {
         sb.append("</a:tcPr></a:tc>");
     }
 
-    private static void emptyCell(StringBuilder sb) {
-        sb.append("<a:txBody><a:bodyPr/><a:lstStyle/><a:p><a:endParaRPr dirty=\"0\"/></a:p></a:txBody><a:tcPr/>");
+    private static void emptyCell(StringBuilder sb, float room) {
+        sb.append("<a:txBody><a:bodyPr/><a:lstStyle/>");
+        emptyParagraph(sb, room);
+        sb.append("</a:txBody><a:tcPr marT=\"0\" marB=\"0\"/>");
     }
 
-    private static float topInset(Table.Cell cell, float rowHeight) {
+    private static void emptyParagraph(StringBuilder sb, float room) {
+        sb.append("<a:p><a:endParaRPr sz=\"").append(Ooxml.fontSize(Math.clamp(room / EMPTY_LINE, 1f, 18f)))
+                .append("\" dirty=\"0\"/></a:p>");
+    }
+
+    private static float spanned(Table t, int row, int rows) {
+        float h = 0;
+        for (int r = row; r < Math.min(t.rows.size(), row + rows); r++) {
+            h += rowHeight(t, r);
+        }
+        return h;
+    }
+
+    private static float topInset(Table.Cell cell, float rowHeight, float lead) {
         if (cell.vAlign != Table.VAlign.TOP) {
             return 0;
         }
         Paragraph first = cell.paragraphs.getFirst();
         float lineHeight = first.lineHeight > 0 ? first.lineHeight : 12f;
         float size = first.markStyle != null ? first.markStyle.size() : lineHeight / 1.2f;
-        float inset = cell.top.width() + first.spaceBefore + WORD_BASELINE * lineHeight
+        float inset = lead + WORD_BASELINE * lineHeight
                 - LineBoxes.baseline(lineHeight, size, fontOf(first));
         float content = 0;
         for (int i = 0; i < cell.paragraphs.size(); i++) {
@@ -145,7 +167,7 @@ final class TableXml {
         sb.append("</").append(tag).append('>');
     }
 
-    private static int rowSpan(Table t, int row, int col) {
+    static int rowSpan(Table t, int row, int col) {
         int span = 1;
         for (int r = row + 1; r < t.rows.size(); r++) {
             Table.Cell below = cellAt(t.rows.get(r), col);
@@ -157,7 +179,7 @@ final class TableXml {
         return span;
     }
 
-    private static Table.Cell cellAt(Table.Row row, int col) {
+    static Table.Cell cellAt(Table.Row row, int col) {
         int c = 0;
         for (Table.Cell cell : row.cells) {
             if (c == col) {

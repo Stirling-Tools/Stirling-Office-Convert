@@ -64,6 +64,9 @@ final class Story {
             }
             ParagraphProperties props = c.src.pap(x);
             int level = props.getFInTable() || props.getItap() > 0 ? Math.max(1, props.getItap()) : 0;
+            if (level == 1 && props.getItap() <= 0 && Sprm.find(Sprm.parse(x.getGrpprl(), 2), 0x664A) != null) {
+                level = 0;
+            }
             char last = e - 1 < text.length() ? text.charAt(e - 1) : '\r';
             boolean rowEnd = level > 0 && (props.getFTtp() || props.getFTtpEmbedded());
             boolean cellEnd = level > 0 && (last == '\u0007' || level > 1 && props.getFInnerTableCell());

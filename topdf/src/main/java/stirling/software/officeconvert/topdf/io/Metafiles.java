@@ -194,6 +194,7 @@ final class Metafiles {
         Checked g = new Checked(doc, w, h);
         try {
             SafeImageRenderer.install(g);
+            g.setRenderingHint(Drawable.FONT_HANDLER, MetafileFonts.INSTANCE);
             painter.paint(g, new Rectangle2D.Double(0, 0, w, h));
         } finally {
             g.dispose();
@@ -298,6 +299,7 @@ final class Metafiles {
             g.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
             g.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
             SafeImageRenderer.install(g);
+            g.setRenderingHint(Drawable.FONT_HANDLER, MetafileFonts.INSTANCE);
             painter.paint(g, new Rectangle2D.Double(0, 0, pw, ph));
         } finally {
             g.dispose();

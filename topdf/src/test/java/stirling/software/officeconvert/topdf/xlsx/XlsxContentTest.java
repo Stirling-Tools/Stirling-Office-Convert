@@ -257,6 +257,33 @@ class XlsxContentTest {
     }
 
     @Test
+    void aConditionalNumberFormatRewritesTheMatchedValues() throws Exception {
+        String styles = "<fonts count=\"1\"><font><sz val=\"11\"/><name val=\"Arial\"/></font></fonts><fills count=\"2\">"
+                + "<fill><patternFill patternType=\"none\"/></fill><fill><patternFill patternType=\"gray125\"/></fill>"
+                + "</fills><borders count=\"1\"><border/></borders><cellXfs count=\"1\"><xf numFmtId=\"0\" fontId=\"0\""
+                + " fillId=\"0\" borderId=\"0\"/></cellXfs><dxfs count=\"1\"><dxf><font><b/></font><numFmt"
+                + " numFmtId=\"176\" formatCode=\"&quot;Top &quot;0.0\"/></dxf></dxfs>";
+        String cf = "<conditionalFormatting sqref=\"A1:A4\"><cfRule type=\"top10\" dxfId=\"0\" priority=\"1\""
+                + " rank=\"1\"/></conditionalFormatting>";
+        StringBuilder data = new StringBuilder("<sheetData>");
+        for (int i = 1; i <= 4; i++) {
+            data.append("<row r=\"").append(i).append("\">").append(RawXlsx.number("A" + i, 0, Integer.toString(i * 7)))
+                    .append("</row>");
+        }
+        data.append("</sheetData>");
+        Path in = stirling.software.officeconvert.topdf.testing.Fixtures.write(dir, "cfnum.xlsx",
+                new RawXlsx().styles(styles).sheet("S", data + cf).bytes());
+        Path out = dir.resolve("cfnum.pdf");
+        stirling.software.officeconvert.topdf.OfficeToPdf.convert(in, out);
+        String text;
+        try (org.apache.pdfbox.pdmodel.PDDocument d = org.apache.pdfbox.Loader.loadPDF(out.toFile())) {
+            text = new org.apache.pdfbox.text.PDFTextStripper().getText(d);
+        }
+        assertTrue(text.contains("Top 28.0"), text);
+        assertTrue(text.contains("21") && !text.contains("Top 21"), text);
+    }
+
+    @Test
     void headerPicturesArePrinted() throws Exception {
         String vml = "<xml xmlns:v=\"urn:schemas-microsoft-com:vml\" xmlns:o=\"urn:schemas-microsoft-com:office:office\">"
                 + "<v:shape id=\"LH\" o:spid=\"_x0000_s1025\" type=\"#_x0000_t75\" style=\"position:absolute;"

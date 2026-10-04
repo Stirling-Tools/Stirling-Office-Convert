@@ -28,14 +28,14 @@ final class SimpleFontEntries {
             String name = fd != null && fd.getFontName() != null ? fd.getFontName() : font.getName();
             d.setName(COSName.BASE_FONT, FontRebuild.cleanName(name));
         }
-        if (!(font instanceof PDSimpleFont) || font instanceof PDType3Font || codes.isEmpty()
+        if (!(font instanceof PDSimpleFont) || font instanceof PDType3Font
                 || d.getDictionaryObject(COSName.WIDTHS) instanceof COSArray && d.containsKey(COSName.FIRST_CHAR)
                         && d.containsKey(COSName.LAST_CHAR)) {
             return;
         }
         TreeSet<Integer> sorted = new TreeSet<>(codes);
-        int first = Math.max(0, sorted.first());
-        int last = Math.min(255, sorted.last());
+        int first = sorted.isEmpty() ? 32 : Math.max(0, sorted.first());
+        int last = sorted.isEmpty() ? 32 : Math.min(255, sorted.last());
         COSArray w = new COSArray();
         for (int c = first; c <= last; c++) {
             float v = font.getWidth(c);

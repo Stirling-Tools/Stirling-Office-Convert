@@ -44,7 +44,7 @@ final class Source {
         this.runs = new RunXml(doc.getFontTable());
         this.text = doc.getText();
         this.chpx = doc.getCharacterTable().getTextRuns();
-        this.papx = doc.getParagraphTable().getParagraphs();
+        this.papx = ParagraphMarks.resolve(doc, doc.getParagraphTable().getParagraphs());
         ListTables lt;
         try {
             lt = doc.getListTables();

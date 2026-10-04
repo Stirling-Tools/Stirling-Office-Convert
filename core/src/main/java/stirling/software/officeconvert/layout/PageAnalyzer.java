@@ -126,6 +126,10 @@ public final class PageAnalyzer {
         }
         strong.addAll(drawings);
 
+        ImageDraw scanned = ocr ? fullPageImage(page, gfx.images()) : null;
+        if (scanned != null) {
+            rules.addAll(ScanRules.find(scanned));
+        }
         List<TableDetection.Found> tables = detectTables
                 ? tableFinder.find(page, frame.textLeft(), frame.textRight(), segments, rules, fills, strong)
                 : new ArrayList<>();

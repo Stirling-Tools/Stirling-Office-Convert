@@ -163,14 +163,10 @@ final class SlideLinks {
 
     private void link(String source, Relationships rels, String type, String target, String what) {
         Set<String> ids = new HashSet<>();
-        StringBuilder xml = new StringBuilder("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
-                + "<Relationships xmlns=\"" + PACKAGE_RELS + "\">");
         for (Relationship r : rels.all()) {
             ids.add(r.id());
-            xml.append("<Relationship Id=\"").append(escape(r.id())).append("\" Type=\"").append(escape(r.type()))
-                    .append("\" Target=\"").append(escape(r.target())).append('"')
-                    .append(r.external() ? " TargetMode=\"External\"/>" : "/>");
         }
+        StringBuilder xml = relationships(rels.all());
         String id = "rIdRepaired";
         for (int n = 2; ids.contains(id); n++) {
             id = "rIdRepaired" + n;
@@ -181,6 +177,17 @@ final class SlideLinks {
         if (what != null) {
             zip.note("The part " + source + " had lost its " + what + "; it was drawn with " + target);
         }
+    }
+
+    static StringBuilder relationships(List<Relationship> rels) {
+        StringBuilder xml = new StringBuilder("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
+                + "<Relationships xmlns=\"" + PACKAGE_RELS + "\">");
+        for (Relationship r : rels) {
+            xml.append("<Relationship Id=\"").append(escape(r.id())).append("\" Type=\"").append(escape(r.type()))
+                    .append("\" Target=\"").append(escape(r.target())).append('"')
+                    .append(r.external() ? " TargetMode=\"External\"/>" : "/>");
+        }
+        return xml;
     }
 
     private static String escape(String s) {

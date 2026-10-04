@@ -29,6 +29,10 @@ import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
 import org.apache.pdfbox.rendering.PDFRenderer;
 import org.apache.pdfbox.text.PDFTextStripper;
 import org.apache.poi.common.usermodel.HyperlinkType;
+import org.apache.poi.ddf.EscherPropertyTypes;
+import org.apache.poi.hssf.record.DefaultColWidthRecord;
+import org.apache.poi.hssf.record.RecordBase;
+import org.apache.poi.hssf.record.UnknownRecord;
 import org.apache.poi.hssf.record.crypto.Biff8EncryptionKey;
 import org.apache.poi.hssf.usermodel.HSSFCell;
 import org.apache.poi.hssf.usermodel.HSSFCellStyle;
@@ -38,7 +42,11 @@ import org.apache.poi.hssf.usermodel.HSSFHyperlink;
 import org.apache.poi.hssf.usermodel.HSSFPatriarch;
 import org.apache.poi.hssf.usermodel.HSSFRichTextString;
 import org.apache.poi.hssf.usermodel.HSSFRow;
+import org.apache.poi.hssf.usermodel.HSSFChildAnchor;
+import org.apache.poi.hssf.usermodel.HSSFShape;
+import org.apache.poi.hssf.usermodel.HSSFShapeGroup;
 import org.apache.poi.hssf.usermodel.HSSFSheet;
+import org.apache.poi.hssf.usermodel.HSSFSimpleShape;
 import org.apache.poi.hssf.usermodel.HSSFTextbox;
 import org.apache.poi.hssf.usermodel.HSSFWorkbook;
 import org.apache.poi.hssf.util.HSSFColor;
@@ -375,6 +383,85 @@ class XlsTest {
         assertTrue(OfficeToPdf.memoryEstimate(Fixtures.write(dir, "size.xls", data)) > data.length);
         byte[] xlsx = Fixtures.xlsx(new String[][] {{"Real xlsx"}});
         assertTrue(convert("misnamed.xls", xlsx).all().contains("Real xlsx"));
+    }
+
+    @Test
+    void aLineWithoutTextOrDashingIsDrawnSolid() throws Exception {
+        byte[] data = xls(wb -> {
+            HSSFSheet s = wb.createSheet("Lines");
+            s.createRow(0).createCell(0).setCellValue("Lined");
+            HSSFSimpleShape line = s.createDrawingPatriarch()
+                    .createSimpleShape(new HSSFClientAnchor(0, 0, 0, 0, (short) 1, 2, (short) 6, 2));
+            line.setShapeType(HSSFSimpleShape.OBJECT_TYPE_LINE);
+            line.setLineStyleColor(255, 0, 0);
+            line.setLineWidth(HSSFShape.LINEWIDTH_ONE_PT * 4);
+            line.getOptRecord().removeEscherProperty(EscherPropertyTypes.LINESTYLE__LINEDASHING);
+        });
+        Path in = Fixtures.write(dir, "line.xls", data);
+        Path out = dir.resolve("line.pdf");
+        OfficeToPdf.Result result = OfficeToPdf.convert(in, out, OfficeToPdf.Options.defaults());
+        assertFalse(String.join(" ", result.warnings()).contains("could not be drawn"), result.warnings().toString());
+        assertTrue(hasColour(out, Color.RED));
+    }
+
+    @Test
+    void aSidewaysShapeInAGroupKeepsTheBoxItsAnchorShows() throws Exception {
+        byte[] data = xls(wb -> {
+            HSSFSheet s = wb.createSheet("Group");
+            s.createRow(0).createCell(0).setCellValue("Grouped");
+            HSSFShapeGroup g = s.createDrawingPatriarch()
+                    .createGroup(new HSSFClientAnchor(0, 0, 0, 0, (short) 1, 2, (short) 9, 12));
+            g.setCoordinates(0, 0, 1000, 1000);
+            HSSFSimpleShape line = g.createShape(new HSSFChildAnchor(0, 500, 1000, 500));
+            line.setShapeType(HSSFSimpleShape.OBJECT_TYPE_LINE);
+            line.setLineStyleColor(255, 0, 0);
+            line.setLineWidth(HSSFShape.LINEWIDTH_ONE_PT * 4);
+            line.setRotationDegree((short) -90);
+        });
+        Path in = Fixtures.write(dir, "group.xls", data);
+        Path out = dir.resolve("group.pdf");
+        OfficeToPdf.convert(in, out, OfficeToPdf.Options.defaults());
+        try (PDDocument doc = Loader.loadPDF(out.toFile())) {
+            BufferedImage img = new PDFRenderer(doc).renderImage(0, 1f);
+            int left = Integer.MAX_VALUE;
+            int right = -1;
+            int top = Integer.MAX_VALUE;
+            int bottom = -1;
+            for (int y = 0; y < img.getHeight(); y++) {
+                for (int x = 0; x < img.getWidth(); x++) {
+                    if ((img.getRGB(x, y) & 0xFFFFFF) == 0xFF0000) {
+                        left = Math.min(left, x);
+                        right = Math.max(right, x);
+                        top = Math.min(top, y);
+                        bottom = Math.max(bottom, y);
+                    }
+                }
+            }
+            assertTrue(right - left > 4 * (bottom - top), left + "," + top + " " + right + "," + bottom);
+        }
+    }
+
+    @Test
+    void theStandardWidthRecordSetsTheDefaultColumnWidth() throws Exception {
+        Consumer<HSSFWorkbook> sheet = wb -> {
+            HSSFRow r = wb.createSheet("Wide").createRow(0);
+            r.createCell(0).setCellValue("Aye");
+            r.createCell(5).setCellValue("Eff");
+        };
+        assertEquals(1, convert("plain.xls", xls(sheet)).pages().size());
+        byte[] wide = xls(wb -> {
+            sheet.accept(wb);
+            List<RecordBase> records = wb.getSheetAt(0).getSheet().getRecords();
+            for (int i = 0; i < records.size(); i++) {
+                if (records.get(i) instanceof DefaultColWidthRecord) {
+                    records.add(i + 1, new UnknownRecord(UnknownRecord.STANDARDWIDTH_0099, new byte[] {0, 20}));
+                    break;
+                }
+            }
+        });
+        Converted out = convert("wide.xls", wide);
+        assertEquals(2, out.pages().size());
+        assertTrue(out.pages().get(1).contains("Eff"), out.all());
     }
 
     @Test

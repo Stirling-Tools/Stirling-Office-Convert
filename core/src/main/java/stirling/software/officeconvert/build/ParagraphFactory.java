@@ -116,7 +116,8 @@ final class ParagraphFactory {
         if (markerTab) {
             hangFromMarker(p, d, colLeft);
         }
-        runs.fill(p, d.lines, skip, colLeft, colRight, hostSize, d.hardBreaks, d.pageBreaks, markerTab);
+        float justify = flow && d.align == Align.JUSTIFY ? d.justifySlack : Float.NaN;
+        runs.fill(p, d.lines, skip, colLeft, colRight, hostSize, d.hardBreaks, d.pageBreaks, markerTab, justify);
         if (flow && p.align == Align.JUSTIFY && !Float.isNaN(d.justifySlack)) {
             p.indentRight += SectionPlanner.RIGHT_SLACK - d.justifySlack;
         }
@@ -137,7 +138,7 @@ final class ParagraphFactory {
 
         if (skip == 1 && p.list == null) {
             p.inlines.clear();
-            runs.fill(p, d.lines, 0, colLeft, colRight, hostSize, d.hardBreaks, d.pageBreaks);
+            runs.fill(p, d.lines, 0, colLeft, colRight, hostSize, d.hardBreaks, d.pageBreaks, false, justify);
         }
         p.markStyle = lastStyle(p);
         p.sourceLines = d.lines.size();

@@ -214,15 +214,28 @@ final class DrawingPart {
         b.append('>');
         HSSFAnchor a = s.getAnchor();
         if (parent != null && a instanceof HSSFChildAnchor c) {
-            int x = Math.min(c.getDx1(), c.getDx2());
-            int y = Math.min(c.getDy1(), c.getDy2());
-            b.append("<a:off x=\"").append(x).append("\" y=\"").append(y).append("\"/><a:ext cx=\"")
-                    .append(Math.abs((long) c.getDx2() - c.getDx1())).append("\" cy=\"")
-                    .append(Math.abs((long) c.getDy2() - c.getDy1())).append("\"/>");
+            long w = Math.abs((long) c.getDx2() - c.getDx1());
+            long h = Math.abs((long) c.getDy2() - c.getDy1());
+            long x = Math.min(c.getDx1(), c.getDx2());
+            long y = Math.min(c.getDy1(), c.getDy2());
+            if (s.getOptRecord() != null && sideways(s.getRotationDegree())) {
+                x += (w - h) / 2;
+                y += (h - w) / 2;
+                long t = w;
+                w = h;
+                h = t;
+            }
+            b.append("<a:off x=\"").append(x).append("\" y=\"").append(y).append("\"/><a:ext cx=\"").append(w)
+                    .append("\" cy=\"").append(h).append("\"/>");
         } else {
             b.append("<a:off x=\"0\" y=\"0\"/><a:ext cx=\"0\" cy=\"0\"/>");
         }
         return b.append("</a:xfrm>").toString();
+    }
+
+    private static boolean sideways(int degrees) {
+        int d = Math.floorMod(degrees, 180);
+        return d >= 45 && d < 135;
     }
 
     // An OLE object is drawn from its stored preview picture only; the object itself is never opened
@@ -259,7 +272,7 @@ final class DrawingPart {
             return null;
         }
         String prst = preset(type);
-        HSSFRichTextString text = s.getString();
+        HSSFRichTextString text = text(s);
         boolean hasText = text != null && !text.getString().isEmpty();
         if (prst == null) {
             if (!hasText) {
@@ -275,10 +288,11 @@ final class DrawingPart {
         if (line || !flag(opt, 0x1BF, 0x10, 0x100000, true)) {
             sp.append("<a:noFill/>");
         } else {
-            sp.append("<a:solidFill><a:srgbClr val=\"").append(rgb(s.getFillColor(), "FFFFFF"))
-                    .append("\"/></a:solidFill>");
+            String fill = fill(s, opt);
+            sp.append(fill == null ? "<a:noFill/>" : "<a:solidFill><a:srgbClr val=\"" + fill + "\"/></a:solidFill>");
         }
-        if (!flag(opt, 0x1FF, 0x8, 0x80000, true) || s.getLineStyle() == HSSFShape.LINESTYLE_NONE) {
+        boolean dashed = !line || opt != null && opt.lookup(0x1CE) != null;
+        if (!flag(opt, 0x1FF, 0x8, 0x80000, true) || dashed && s.getLineStyle() == HSSFShape.LINESTYLE_NONE) {
             sp.append("<a:ln><a:noFill/></a:ln>");
         } else {
             sp.append("<a:ln w=\"").append(Math.max(0, s.getLineWidth())).append("\"><a:solidFill><a:srgbClr val=\"")
@@ -292,6 +306,34 @@ final class DrawingPart {
         }
         return "<xdr:sp><xdr:nvSpPr><xdr:cNvPr id=\"" + id++ + "\" name=\"Shape\"/><xdr:cNvSpPr/></xdr:nvSpPr>" + sp
                 + (hasText ? body(s, text) : "") + "</xdr:sp>";
+    }
+
+    private String fill(HSSFSimpleShape s, EscherOptRecord opt) {
+        String fore = rgb(s.getFillColor(), "FFFFFF");
+        int kind = opt != null && opt.lookup(0x180) instanceof EscherSimpleProperty p ? p.getPropertyValue() : 0;
+        if (kind == 2 || kind == 3) {
+            return null;
+        }
+        if (kind != 1) {
+            return fore;
+        }
+        String back = opt.lookup(0x183) instanceof EscherSimpleProperty p ? rgb(p.getPropertyValue(), "FFFFFF")
+                : "FFFFFF";
+        int a = Integer.parseInt(fore, 16);
+        int b = Integer.parseInt(back, 16);
+        int mixed = 0;
+        for (int shift = 0; shift < 24; shift += 8) {
+            mixed |= ((a >> shift & 0xFF) + (b >> shift & 0xFF)) / 2 << shift;
+        }
+        return String.format("%06X", mixed);
+    }
+
+    private static HSSFRichTextString text(HSSFSimpleShape s) {
+        try {
+            return s.getString();
+        } catch (RuntimeException e) {
+            return null;
+        }
     }
 
     private static String preset(int type) {

@@ -73,6 +73,7 @@ public final class PageReader {
         List<Glyph> rotated = new ArrayList<>();
         for (RawGlyph r : raw) {
             Glyph g = k == 1 ? r.glyph() : r.glyph().scaled(k);
+            g.invisible = r.invisible();
             if (r.direction() != direction) {
                 rotated.add(relocate(g, r, toDisplay, crop));
             } else if (r.invisible()) {
@@ -140,6 +141,7 @@ public final class PageReader {
                         g.seq, g.spaceWidth, g.bold, g.italic);
         moved.vertAlign = r.direction();
         moved.hscale = g.hscale;
+        moved.invisible = g.invisible;
         return moved;
     }
 

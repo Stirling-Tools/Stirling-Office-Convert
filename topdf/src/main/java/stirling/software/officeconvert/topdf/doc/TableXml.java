@@ -59,8 +59,8 @@ final class TableXml {
             out.append("<w:gridCol w:w=\"").append(cols.get(i) - cols.get(i - 1)).append("\"/>");
         }
         out.append("</w:tblGrid>");
-        for (Row r : rows) {
-            row(ps, r, cols, level, pad, out);
+        for (int k = 0; k < rows.size(); k++) {
+            row(ps, rows.get(k), cols, level, pad, k == 0, k == rows.size() - 1, out);
         }
         out.append("</w:tbl>");
     }
@@ -126,8 +126,8 @@ final class TableXml {
         return m;
     }
 
-    private void row(List<Story.Par> ps, Row r, List<Integer> cols, int level, int[] table, StringBuilder out)
-            throws IOException {
+    private void row(List<Story.Par> ps, Row r, List<Integer> cols, int level, int[] table, boolean top,
+            boolean bottom, StringBuilder out) throws IOException {
         int[] rowPad = margins(r.tap);
         Tap t = r.tap;
         int before = cols.indexOf(r.edges[0]);
@@ -166,11 +166,26 @@ final class TableXml {
             int right = r.edges[Math.min(end, n)];
             int span = cols.indexOf(right) - cols.indexOf(left);
             int[] pad = tc != null && tc.padding != null ? merge(rowPad, tc.padding) : rowPad;
-            cell(ps, r.cells.get(i), tc, right - left, span, Arrays.equals(pad, table) ? null : pad, level,
+            BorderXml.Line[] lines = borders(t, tc, i == 0, end >= n, top, bottom);
+            cell(ps, r.cells.get(i), tc, lines, right - left, span, Arrays.equals(pad, table) ? null : pad, level,
                     out);
             i = end;
         }
         out.append("</w:tr>");
+    }
+
+    private static BorderXml.Line[] borders(Tap t, Tap.Cell tc, boolean first, boolean last, boolean top,
+            boolean bottom) {
+        BorderXml.Line[] lines = new BorderXml.Line[4];
+        BorderXml.Line[] table = t.tableBorders;
+        int[] fallback = {top ? 0 : 4, first ? 1 : 5, bottom ? 2 : 4, last ? 3 : 5};
+        for (int k = 0; k < 4; k++) {
+            lines[k] = tc != null ? tc.borders[k] : null;
+            if (lines[k] == null && table != null) {
+                lines[k] = table[fallback[k]];
+            }
+        }
+        return lines;
     }
 
     private static int[] merge(int[] row, int[] cell) {
@@ -183,8 +198,8 @@ final class TableXml {
         return m;
     }
 
-    private void cell(List<Story.Par> ps, int[] range, Tap.Cell tc, int width, int span, int[] pad, int level,
-            StringBuilder out) throws IOException {
+    private void cell(List<Story.Par> ps, int[] range, Tap.Cell tc, BorderXml.Line[] lines, int width, int span,
+            int[] pad, int level, StringBuilder out) throws IOException {
         out.append("<w:tc><w:tcPr><w:tcW w:w=\"").append(width).append("\" w:type=\"dxa\"/>");
         if (span > 1) {
             out.append("<w:gridSpan w:val=\"").append(span).append("\"/>");
@@ -192,17 +207,17 @@ final class TableXml {
         if (tc != null && tc.vertMerge) {
             out.append(tc.vertRestart ? "<w:vMerge w:val=\"restart\"/>" : "<w:vMerge/>");
         }
-        if (tc != null) {
-            out.append("<w:tcBorders>");
-            for (int k = 0; k < 4; k++) {
-                BorderXml.Line l = tc.borders[k];
-                if (l == null || l.none()) {
-                    out.append("<w:").append(SIDES[k]).append(" w:val=\"nil\"/>");
-                } else {
-                    BorderXml.side(out, SIDES[k], l);
-                }
+        out.append("<w:tcBorders>");
+        for (int k = 0; k < 4; k++) {
+            BorderXml.Line l = lines[k];
+            if (l == null || l.none()) {
+                out.append("<w:").append(SIDES[k]).append(" w:val=\"nil\"/>");
+            } else {
+                BorderXml.side(out, SIDES[k], l);
             }
-            out.append("</w:tcBorders>");
+        }
+        out.append("</w:tcBorders>");
+        if (tc != null) {
             if (tc.shading != null) {
                 out.append(tc.shading);
             }

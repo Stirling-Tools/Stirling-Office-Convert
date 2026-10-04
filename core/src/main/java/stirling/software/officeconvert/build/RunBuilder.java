@@ -121,6 +121,8 @@ final class RunBuilder {
 
     private Map<String, WidthFix> spacing = Map.of();
 
+    private float squeeze;
+
     private record WidthFix(float spacing, int scale) {}
 
     private static final float SCALE_BELOW = 0.88f;
@@ -452,10 +454,14 @@ final class RunBuilder {
     private RunStyle styled(Glyph g, float hostSize) {
         RunStyle s = styleOf(g, hostSize);
         WidthFix fix = spacing.get(lookKey(g));
-        if (fix != null && (fix.spacing() != 0f || fix.scale() != 100) && g.vertAlign == 0 && !unmeasured(g)) {
+        if (fix == null && squeeze > 0) {
+            fix = new WidthFix(0f, 100);
+        }
+        if (fix != null && (fix.spacing() != 0f || fix.scale() != 100 || squeeze > 0) && g.vertAlign == 0
+                && !unmeasured(g)) {
             int scale = Math.round(s.scale() * fix.scale() / 100f);
             return new RunStyle(s.font(), s.size(), s.bold(), s.italic(), s.underline(), s.strike(), s.rgb(),
-                    s.highlight(), s.vertAlign(), s.symbol(), fix.spacing(), scale, s.smallCaps());
+                    s.highlight(), s.vertAlign(), s.symbol(), fix.spacing() - squeeze, scale, s.smallCaps());
         }
         return s;
     }
@@ -471,8 +477,14 @@ final class RunBuilder {
 
     void fill(Paragraph p, List<Line> lines, int skipWords, float colLeft, float colRight, float hostSize,
             BitSet hardBreaks, BitSet pageBreaks, boolean markerTab) {
+        fill(p, lines, skipWords, colLeft, colRight, hostSize, hardBreaks, pageBreaks, markerTab, Float.NaN);
+    }
+
+    void fill(Paragraph p, List<Line> lines, int skipWords, float colLeft, float colRight, float hostSize,
+            BitSet hardBreaks, BitSet pageBreaks, boolean markerTab, float justifySlack) {
         Sink sink = new Sink(p.inlines);
         spacing = widthFixes(lines);
+        squeeze = Float.isNaN(justifySlack) ? 0f : (float) Math.ceil(squeezeFor(lines, justifySlack) * 20f) / 20f;
         p.noHangingPunctuation = keepsPunctuationIn(lines);
         for (int li = 0; li < lines.size(); li++) {
             Line line = lines.get(li);
@@ -554,6 +566,58 @@ final class RunBuilder {
             }
         }
         sink.flush();
+        squeeze = 0f;
+    }
+
+    private static final float SQUEEZE_MARGIN = 0.5f;
+
+    private static final float SQUEEZE_FROM = 1f;
+
+    private static final float SPACE_SHRINK = 0.8f;
+
+    private static final float MAX_SQUEEZE = 0.4f;
+
+    private float squeezeFor(List<Line> lines, float slack) {
+        float edge = -Float.MAX_VALUE;
+        for (int i = 0; i + 1 < lines.size(); i++) {
+            edge = Math.max(edge, lines.get(i).right);
+        }
+        float most = 0;
+        for (int i = 0; i + 1 < lines.size(); i++) {
+            Line l = lines.get(i);
+            float drawn = 0;
+            int chars = 0;
+            for (int wi = 0; wi < l.words.size(); wi++) {
+                if (wi > 0) {
+                    if (l.gaps[wi] != Line.SPACE) {
+                        return 0;
+                    }
+                    Glyph before = l.words.get(wi - 1).last();
+                    float space = SubstituteMetrics.width(" ", before.font.family(), before.bold, before.italic,
+                            wordSize(before)) * scaleOf(before) / 100f;
+                    int n = l.sentenceSpace(wi) ? 2 : 1;
+                    drawn += n * SPACE_SHRINK * (Float.isNaN(space) ? before.spaceWidth : space);
+                    chars += n;
+                }
+                for (Glyph g : l.words.get(wi).glyphs) {
+                    float exact = g.vertAlign != 0 || unmeasured(g) || modeled(g) != null ? Float.NaN
+                            : substituteWidth(g) * scaleOf(g) / 100f * wordSize(g) / g.size;
+                    WidthFix fix = spacing.get(lookKey(g));
+                    if (Float.isNaN(exact)) {
+                        exact = g.width;
+                    } else if (fix != null) {
+                        exact = exact * fix.scale() / 100f + fix.spacing() * g.text.length();
+                    }
+                    drawn += exact;
+                    chars += g.text.length();
+                }
+            }
+            float over = drawn - (edge - l.x) - slack;
+            if (chars > 0 && over > SQUEEZE_FROM) {
+                most = Math.max(most, (over + SQUEEZE_MARGIN) / chars);
+            }
+        }
+        return Math.min(most, MAX_SQUEEZE);
     }
 
     void icons(IconPictures icons) {

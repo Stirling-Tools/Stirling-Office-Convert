@@ -34,6 +34,9 @@ public final class PoiPackages {
         try {
             Map<String, byte[]> repairs = SlideLinks.repairs(zip);
             Set<String> hidden = repairs.isEmpty() ? UndrawnParts.of(zip) : Set.of();
+            if (!hidden.isEmpty()) {
+                repairs = UndrawnParts.unlinked(zip, hidden);
+            }
             return OPCPackage.open(new Parts(zip, repairs, hidden));
         } catch (InvalidFormatException | RuntimeException e) {
             throw damagedOr(zip, e);

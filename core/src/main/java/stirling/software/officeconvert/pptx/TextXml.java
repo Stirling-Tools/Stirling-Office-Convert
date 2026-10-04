@@ -26,6 +26,7 @@ final class TextXml {
     private final Links links;
     private final Map<String, Integer> fonts;
     private final Scripts.Profile scripts;
+    private boolean invisible;
 
     interface Links {
         int slideOf(int page);
@@ -38,7 +39,16 @@ final class TextXml {
         this.scripts = scripts;
     }
 
-    void paragraph(StringBuilder sb, TextPara p) {
+    void paragraph(StringBuilder sb, TextPara p, boolean unseen) {
+        invisible = unseen;
+        try {
+            paragraph(sb, p);
+        } finally {
+            invisible = false;
+        }
+    }
+
+    private void paragraph(StringBuilder sb, TextPara p) {
         Paragraph c = p.content();
         sb.append("<a:p><a:pPr");
         margins(sb, c.bidi ? p.marginRight() : p.marginLeft(), p.indent(), c.bidi ? p.marginLeft() : p.marginRight());
@@ -301,8 +311,8 @@ final class TextXml {
             sb.append(" baseline=\"").append(s.vertAlign() > 0 ? 30000 : -25000).append('"');
         }
         sb.append(" dirty=\"0\">");
-        Ooxml.solidFill(sb, Math.max(0, s.rgb()));
-        if (s.highlight() >= 0) {
+        Ooxml.solidFill(sb, Math.max(0, s.rgb()), invisible ? 0f : 1f);
+        if (s.highlight() >= 0 && !invisible) {
             sb.append("<a:highlight><a:srgbClr val=\"").append(Ooxml.hex(s.highlight())).append("\"/></a:highlight>");
         }
         if (s.font() != null) {

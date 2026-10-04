@@ -166,7 +166,8 @@ final class Tap {
             c.vertRestart = (rgf & 0x40) != 0;
             c.vertAlign = (rgf >> 7) & 3;
             for (int k = 0; k < 4; k++) {
-                c.borders[k] = BorderXml.brc80(d, o + 4 + k * 4);
+                int b = o + 4 + k * 4;
+                c.borders[k] = Sprm.s32(d, b) == 0 ? null : BorderXml.brc80(d, b);
             }
         }
     }

@@ -157,6 +157,22 @@ class DocxLineRulesTest {
     }
 
     @Test
+    void aLineGridSnapsEachLineToWholePitchesUnlessTheParagraphOptsOut() throws IOException {
+        String big = "<w:rPr><w:sz w:val=\"48\"/></w:rPr>";
+        String body = DocxDoc.p("One") + DocxDoc.p("Two") + "<w:p><w:r>" + big + "<w:t>Big</w:t></w:r></w:p>"
+                + DocxDoc.p("Three") + para("<w:snapToGrid w:val=\"0\"/>", run("Free")) + DocxDoc.p("Four");
+        String lines = DocxDoc.LETTER.replace("</w:sectPr>", "<w:docGrid w:type=\"lines\" w:linePitch=\"360\"/>"
+                + "</w:sectPr>");
+        DocxDoc.Rendered g = render("pitch", new DocxDoc().styles(STYLES).body(body).section(lines));
+        assertEquals(18, g.word("Two").y() - g.word("One").y(), 0.05f, "a 10 pt line takes one 18 pt pitch");
+        assertEquals(18 + 36, g.word("Three").y() - g.word("Two").y(), 0.05f, "a 24 pt line takes two pitches");
+        assertEquals(18 + 11.5f, g.word("Four").y() - g.word("Three").y(), 0.1f, "snapToGrid off keeps 11.5 pt");
+        DocxDoc.Rendered d = render("nopitch", new DocxDoc().styles(STYLES).body(body)
+                .section(lines.replace("w:type=\"lines\" ", "")));
+        assertEquals(11.5f, d.word("Two").y() - d.word("One").y(), 0.05f, "the default grid type snaps nothing");
+    }
+
+    @Test
     void lineBreaksOutsideARunStillBreakTheLine() throws IOException {
         DocxDoc.Rendered r = plain("barebr", "<w:p>" + run("First") + "<w:br/>" + run("Second") + "</w:p>");
         assertTrue(r.word("Second").y() > r.word("First").y() + 5, "the bare w:br should start a new line");

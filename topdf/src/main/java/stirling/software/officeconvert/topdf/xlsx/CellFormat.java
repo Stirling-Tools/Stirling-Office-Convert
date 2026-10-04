@@ -45,4 +45,9 @@ record CellFormat(FontSpec font, Color fill, BorderLine left, BorderLine right, 
         return wrap || hAlign == HAlign.JUSTIFY || hAlign == HAlign.DISTRIBUTED || vAlign == VAlign.JUSTIFY
                 || vAlign == VAlign.DISTRIBUTED;
     }
+
+    CellFormat withFormat(String code) {
+        return new CellFormat(font, fill, left, right, top, bottom, diagonal, diagonalUp, diagonalDown, hAlign, vAlign,
+                wrap, shrink, indent, rotation, 164, code, readingOrder);
+    }
 }

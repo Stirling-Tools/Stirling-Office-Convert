@@ -64,6 +64,9 @@ final class FloatLayout {
         } else {
             x = x0 + d.hOffset;
         }
+        if (cell != null) {
+            x = Math.max(0, Math.min(x, f.pageW() - w));
+        }
         float y0;
         float y1;
         switch (vRel) {

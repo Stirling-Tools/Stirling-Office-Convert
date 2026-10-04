@@ -38,14 +38,15 @@ import stirling.software.officeconvert.topdf.io.Relationship;
 final class Overlays {
 
     record Delta(Color fill, Color font, boolean bold, boolean italic, BorderLine top, BorderLine bottom,
-            BorderLine left, BorderLine right) {
+            BorderLine left, BorderLine right, String format) {
 
-        static final Delta EMPTY = new Delta(null, null, false, false, null, null, null, null);
+        static final Delta EMPTY = new Delta(null, null, false, false, null, null, null, null, null);
 
         Delta then(Delta o) {
             return new Delta(o.fill != null ? o.fill : fill, o.font != null ? o.font : font, bold || o.bold,
                     italic || o.italic, o.top != null ? o.top : top, o.bottom != null ? o.bottom : bottom,
-                    o.left != null ? o.left : left, o.right != null ? o.right : right);
+                    o.left != null ? o.left : left, o.right != null ? o.right : right,
+                    o.format != null ? o.format : format);
         }
     }
 
@@ -245,7 +246,7 @@ final class Overlays {
                     right = c == c1 ? line(b.getBorderRight(), b.getRightBorderColorColor())
                             : line(b.getBorderVertical(), b.getVerticalBorderColorColor());
                 }
-                Delta d = new Delta(fill, font, bold, italic, top, bottom, left, right);
+                Delta d = new Delta(fill, font, bold, italic, top, bottom, left, right, null);
                 cells.merge(key(r, c), d, Delta::then);
             }
         }
@@ -518,7 +519,10 @@ final class Overlays {
         CTDxf dxf = styles.getDxfAt((int) rule.getDxfId());
         Map<Long, Delta> one = new HashMap<>();
         region(one, new XSSFDxfStyleProvider(dxf, 1, styles.getIndexedColors()), 0, 0, 0, 0);
-        return one.getOrDefault(0L, Delta.EMPTY);
+        Delta d = one.getOrDefault(0L, Delta.EMPTY);
+        String format = dxf.isSetNumFmt() ? dxf.getNumFmt().getFormatCode() : null;
+        return format == null || format.isEmpty() ? d : d.then(new Delta(null, null, false, false, null, null, null,
+                null, format));
     }
 
     private double[] scale(CTCfvo[] cfvo, List<Value> values) {
@@ -592,7 +596,7 @@ final class Overlays {
                     }
                 }
             }
-            over.merge(key(v.row, v.col), new Delta(c, null, false, false, null, null, null, null), Delta::then);
+            over.merge(key(v.row, v.col), new Delta(c, null, false, false, null, null, null, null, null), Delta::then);
         }
     }
 

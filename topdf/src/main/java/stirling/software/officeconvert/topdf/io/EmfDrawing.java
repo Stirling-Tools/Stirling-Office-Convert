@@ -3,13 +3,19 @@ package stirling.software.officeconvert.topdf.io;
 import java.awt.Graphics2D;
 import java.awt.Shape;
 import java.awt.geom.AffineTransform;
+import java.awt.geom.Dimension2D;
+import java.awt.geom.Point2D;
 import java.awt.geom.Rectangle2D;
+import java.util.Arrays;
 import java.util.Comparator;
+import java.util.List;
 import java.util.stream.Stream;
 
 import org.apache.poi.hemf.draw.HemfGraphics;
 import org.apache.poi.hemf.record.emf.HemfRecord;
 import org.apache.poi.hemf.usermodel.HemfPicture;
+import org.apache.poi.hwmf.record.HwmfFont;
+import org.apache.poi.hwmf.record.HwmfText;
 import org.apache.poi.sl.draw.Drawable;
 
 final class EmfDrawing {
@@ -24,7 +30,7 @@ final class EmfDrawing {
             g.translate(target.getCenterX(), target.getCenterY());
             g.scale(target.getWidth() / bounds.getWidth(), target.getHeight() / bounds.getHeight());
             g.translate(-bounds.getCenterX(), -bounds.getCenterY());
-            HemfGraphics context = new HemfGraphics(g, bounds);
+            HemfGraphics context = new Spaced(g, bounds);
             for (HemfRecord record : picture.getRecords()) {
                 if (Thread.currentThread().isInterrupted()) {
                     throw new IllegalStateException("Conversion interrupted");
@@ -84,6 +90,58 @@ final class EmfDrawing {
             double w = Math.rint(width);
             double h = Math.rint(height);
             return w <= 0 || h <= 0 || x == -1 && y == -1 || w == 1 && h == 1;
+        }
+    }
+
+    private static final class Spaced extends HemfGraphics {
+
+        Spaced(Graphics2D g, Rectangle2D bounds) {
+            super(g, bounds);
+        }
+
+        @Override
+        public void drawString(byte[] text, int length, Point2D reference, Dimension2D scale, Rectangle2D clip,
+                HwmfText.WmfExtTextOutOptions opts, List<Integer> dx, boolean isUnicode) {
+            int n = text == null ? 0 : Math.min(length, text.length / 2);
+            if (!placeable(text, n, reference, opts, dx, isUnicode)) {
+                super.drawString(text, length, reference, scale, clip, opts, dx, isUnicode);
+                return;
+            }
+            double offset = 0;
+            int start = 0;
+            for (int i = 0; i < n; i++) {
+                if (i + 1 < n && (unit(text, i) != ' ' || unit(text, i + 1) == ' ')) {
+                    continue;
+                }
+                Point2D at = new Point2D.Double(reference.getX() + offset, reference.getY());
+                super.drawString(Arrays.copyOfRange(text, 2 * start, 2 * (i + 1)), i + 1 - start, at, scale, clip,
+                        opts, dx.subList(start, i + 1), true);
+                for (int k = start; k <= i; k++) {
+                    offset += dx.get(k);
+                }
+                start = i + 1;
+            }
+        }
+
+        private boolean placeable(byte[] text, int n, Point2D reference, HwmfText.WmfExtTextOutOptions opts,
+                List<Integer> dx, boolean isUnicode) {
+            HwmfFont font = getProperties().getFont();
+            if (!isUnicode || n < 2 || dx == null || dx.size() < n || reference.distance(0, 0) == 0 || font == null
+                    || font.getEscapement() != 0 || opts != null && (opts.isYDisplaced() || opts.isOpaque())
+                    || getProperties().getTextAlignLatin() != HwmfText.HwmfTextAlignment.LEFT
+                    || graphicsCtx.getTransform().getScaleX() < 0) {
+                return false;
+            }
+            for (int i = 0; i < n; i++) {
+                if (Character.isSurrogate(unit(text, i))) {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        private static char unit(byte[] text, int i) {
+            return (char) (text[2 * i] & 0xFF | (text[2 * i + 1] & 0xFF) << 8);
         }
     }
 }

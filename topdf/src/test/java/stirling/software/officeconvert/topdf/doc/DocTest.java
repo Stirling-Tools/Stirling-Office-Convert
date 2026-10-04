@@ -597,4 +597,55 @@ class DocTest {
         long second = Long.parseLong(m.group(1));
         assertTrue(first > second, xml);
     }
+
+    @Test
+    void cellsWithoutTheirOwnBordersTakeTheTableBorders() throws IOException {
+        int[][] tc = new int[2][20];
+        for (int k = 4; k < 8; k++) {
+            tc[1][k] = 0xFF;
+        }
+        byte[] table = Sprms.op(0xD605, 24, 4, 1, 0, 0, 4, 1, 0, 0, 4, 1, 0, 0, 4, 1, 0, 0, 4, 1, 0, 0, 4, 1, 0, 0);
+        byte[] doc = new WordFixture()
+                .cell("A1").cell("B1").rowEnd(Sprms.defTable(new int[] {0, 2000, 4000}, tc), table)
+                .para("After").build();
+        String xml = body(doc);
+        String first = xml.substring(xml.indexOf("<w:tc>"), xml.indexOf("A1"));
+        String second = xml.substring(xml.indexOf("A1"), xml.indexOf("B1"));
+        assertTrue(first.contains("<w:top w:val=\"single\" w:sz=\"4\"")
+                && first.contains("<w:right w:val=\"single\" w:sz=\"4\""), xml);
+        assertTrue(second.contains("<w:top w:val=\"nil\"/>")
+                && second.contains("<w:left w:val=\"single\" w:sz=\"4\""), xml);
+    }
+
+    @Test
+    void freeformShapesKeepTheirOutline() throws IOException {
+        byte[] vertices = {3, 0, 3, 0, (byte) 0xF0, (byte) 0xFF, 0, 0, 0, 0, 100, 0, 0, 0, 50, 0, 100, 0};
+        byte[] segments = {4, 0, 4, 0, 2, 0, 0, 0x40, 2, 0, 1, 0x60, 0, (byte) 0x80};
+        byte[] doc = new WordFixture()
+                .para(List.of(WordFixture.run("Shape "), WordFixture.run("\u0008", Sprms.special())), 0)
+                .shape(new ShapeFixture.Shape(1025, 0, new int[] {0, 0, 2000, 2000},
+                        ShapeFixture.fspaFlags(2, 2, 3, 0, false), java.util.Map.of(0x0142, 100, 0x0143, 100),
+                        java.util.Map.of(0x0145, vertices, 0x0146, segments)))
+                .build();
+        String xml = body(doc);
+        assertTrue(xml.contains("<a:custGeom>") && !xml.contains("<a:prstGeom prst=\"rect\">"), xml);
+        assertTrue(xml.contains("<a:path w=\"100\" h=\"100\"><a:moveTo><a:pt x=\"0\" y=\"0\"/></a:moveTo>"
+                + "<a:lnTo><a:pt x=\"100\" y=\"0\"/></a:lnTo><a:lnTo><a:pt x=\"50\" y=\"100\"/></a:lnTo>"
+                + "<a:close/></a:path>"), xml);
+    }
+
+    @Test
+    void aParagraphTakesItsPropertiesFromTheRunHoldingItsMark() throws IOException {
+        byte[] doc = new WordFixture().para("First").staleRun(2, Sprms.u8(0x2407, 1)).para("Second").build();
+        String xml = body(doc);
+        assertTrue(xml.contains("First") && !xml.contains("<w:pageBreakBefore/>"), xml);
+    }
+
+    @Test
+    void aParagraphWhoseTableDepthDropsToNoneIsNotATable() throws IOException {
+        byte[] doc = new WordFixture()
+                .para("Boxed", Sprms.inTable(), Sprms.u32(0x6649, 1), Sprms.u32(0x664A, -1)).build();
+        String xml = body(doc);
+        assertTrue(xml.contains("Boxed") && !xml.contains("<w:tbl>"), xml);
+    }
 }
