@@ -71,16 +71,22 @@ record PageFit(float scale, float dx, float dy) {
                     m.curved(), m.diagonal(), m.filled(), m.shading(), m.rgb(), m.stroked(), m.strokeRgb(),
                     m.lineWidth() * scale, m.round(), m.boxy(), m.sparse()), order, seeThrough));
         }
-        List<PageGraphics.Area> areas = new ArrayList<>();
-        for (PageGraphics.Area a : g.pastBudget()) {
-            areas.add(new PageGraphics.Area(x(a.x()), y(a.top()), x(a.right()), y(a.bottom())));
-        }
+        List<PageGraphics.Area> areas = areas(g.pastBudget());
         List<PageData.Link> links = new ArrayList<>();
         for (PageData.Link l : p.links()) {
             links.add(new PageData.Link(x(l.x()), y(l.top()), x(l.right()), y(l.bottom()), l.uri(), l.targetPage()));
         }
         return new PageData(p.index(), width, height, p.direction(), glyphs(p.glyphs()), glyphs(p.hidden()),
-                glyphs(p.rotated()), new PageGraphics(rules, fills, images, marks, areas, order, seeThrough, Map.of()), links);
+                glyphs(p.rotated()), new PageGraphics(rules, fills, images, marks, areas, order, seeThrough, Map.of(), areas(g.masked())),
+                links);
+    }
+
+    private List<PageGraphics.Area> areas(List<PageGraphics.Area> from) {
+        List<PageGraphics.Area> out = new ArrayList<>();
+        for (PageGraphics.Area a : from) {
+            out.add(new PageGraphics.Area(x(a.x()), y(a.top()), x(a.right()), y(a.bottom())));
+        }
+        return out;
     }
 
     private static <T> T carry(PageGraphics g, Object from, T to, Map<Object, Integer> order, Set<Object> seeThrough) {

@@ -15,6 +15,8 @@ import java.util.concurrent.TimeoutException;
 import org.apache.pdfbox.pdmodel.PDDocument;
 
 import stirling.software.officeconvert.extract.PdfFiles;
+import stirling.software.officeconvert.extract.PdfFootprint;
+import stirling.software.officeconvert.memory.Admission;
 
 public final class OfficeConvert {
 
@@ -22,6 +24,7 @@ public final class OfficeConvert {
         DOCX,
         ODT,
         FODT,
+        XML,
         RTF,
         TXT,
         PPTX,
@@ -35,6 +38,7 @@ public final class OfficeConvert {
                 case "docx" -> DOCX;
                 case "odt" -> ODT;
                 case "fodt" -> FODT;
+                case "xml" -> XML;
                 case "rtf", "doc" -> RTF;
                 case "txt" -> TXT;
                 case "pptx" -> PPTX;
@@ -42,7 +46,7 @@ public final class OfficeConvert {
                 case "xlsx" -> XLSX;
                 case "ods" -> ODS;
                 default -> throw new IllegalArgumentException("No output format for " + file.getFileName()
-                        + ": use .docx, .odt, .fodt, .rtf, .doc, .txt, .pptx, .odp, .xlsx or .ods");
+                        + ": use .docx, .odt, .fodt, .xml, .rtf, .doc, .txt, .pptx, .odp, .xlsx or .ods");
             };
         }
     }
@@ -158,7 +162,7 @@ public final class OfficeConvert {
             switch (format) {
                 case DOCX -> PdfToDocx.convert(pdf, out, settings.document());
                 case ODT -> PdfToOdt.convert(pdf, out, settings.document());
-                case FODT -> PdfToOdt.convertFlat(pdf, out, settings.document());
+                case FODT, XML -> PdfToOdt.convertFlat(pdf, out, settings.document());
                 case RTF -> PdfToRtf.convert(pdf, out, settings.document());
                 case TXT -> PdfToText.convert(pdf, out, settings.document());
                 case PPTX -> PdfToPptx.convert(pdf, out, settings.slides());
@@ -178,7 +182,7 @@ public final class OfficeConvert {
             switch (format) {
                 case DOCX -> PdfToDocx.convert(pdf, out, settings.document());
                 case ODT -> PdfToOdt.convert(pdf, out, settings.document());
-                case FODT -> PdfToOdt.convertFlat(pdf, out, settings.document());
+                case FODT, XML -> PdfToOdt.convertFlat(pdf, out, settings.document());
                 case RTF -> PdfToRtf.convert(pdf, out, settings.document());
                 case TXT -> PdfToText.convert(pdf, out, settings.document());
                 case PPTX -> PdfToPptx.convert(pdf, out, settings.slides());
@@ -206,6 +210,16 @@ public final class OfficeConvert {
         });
     }
 
+    /** The heap a conversion of this loaded PDF is likely to need, as the converter admits it: a host may queue or refuse
+     * work with it. Conversions wait for this much of the shared budget ({@link Admission#BUDGET_PROPERTY}). */
+    public static long memoryEstimate(PDDocument pdf, Format format, Settings settings) {
+        Objects.requireNonNull(pdf, "pdf");
+        Objects.requireNonNull(format, "format");
+        Objects.requireNonNull(settings, "settings");
+        float dpi = format == Format.XLSX || format == Format.ODS ? 72f : settings.figureDpi();
+        return PdfFootprint.estimate(pdf, settings.firstPage(), settings.lastPage(), dpi);
+    }
+
     @FunctionalInterface
     private interface Work<T> {
         T call() throws IOException;
@@ -213,18 +227,25 @@ public final class OfficeConvert {
 
     private static <T> T run(Duration timeout, Work<T> work) throws IOException {
         if (timeout.isZero()) {
-            return work.call();
+            return guarded(work);
         }
-        FutureTask<T> task = new FutureTask<>(work::call);
+        long nanos;
+        try {
+            nanos = timeout.toNanos();
+        } catch (ArithmeticException e) {
+            nanos = Long.MAX_VALUE;
+        }
+        FutureTask<T> task = new FutureTask<>(() -> guarded(work));
         Thread worker = Thread.ofPlatform().name("office-convert").daemon().start(task);
         try {
-            return task.get(timeout.toNanos(), TimeUnit.NANOSECONDS);
+            return task.get(nanos, TimeUnit.NANOSECONDS);
         } catch (TimeoutException e) {
             task.cancel(true);
             join(worker);
             throw new TimedOut(timeout);
         } catch (InterruptedException e) {
             task.cancel(true);
+            join(worker);
             Thread.currentThread().interrupt();
             throw new InterruptedIOException("Interrupted while converting");
         } catch (ExecutionException e) {
@@ -240,6 +261,35 @@ public final class OfficeConvert {
             }
             throw new IOException(cause);
         }
+    }
+
+    // A conversion stopped for memory, or out of it, fails with one plain reason and leaves the JVM running
+    private static <T> T guarded(Work<T> work) throws IOException {
+        try {
+            return work.call();
+        } catch (IOException e) {
+            if (stoppedForMemory(e)) {
+                throw new IOException(Admission.NEEDS_MEMORY, e);
+            }
+            throw e;
+        } catch (RuntimeException e) {
+            if (stoppedForMemory(e)) {
+                throw new IOException(Admission.NEEDS_MEMORY, e);
+            }
+            throw e;
+        } catch (OutOfMemoryError e) {
+            throw new IOException(Admission.NEEDS_MEMORY, e);
+        }
+    }
+
+    private static boolean stoppedForMemory(Throwable e) {
+        int depth = 0;
+        for (Throwable t = e; t != null && depth++ < 16; t = t.getCause()) {
+            if (t instanceof Admission.Stopped || t instanceof OutOfMemoryError) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static void join(Thread worker) {

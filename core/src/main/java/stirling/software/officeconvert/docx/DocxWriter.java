@@ -77,6 +77,7 @@ public final class DocxWriter implements DocSink, Closeable {
     @Override
     public void begin(StyleSheet styles, HeaderFooterSet running) {
         this.body = new BodyXml(ctx, styles);
+        ctx.scripts = styles.scripts;
         this.running = running;
         ctx.fonts.add(styles.normal.font());
         if (running != null) {

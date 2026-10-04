@@ -4,6 +4,7 @@ import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
 
+import stirling.software.officeconvert.model.Scripts;
 import stirling.software.officeconvert.sheet.CellStyle;
 import stirling.software.officeconvert.sheet.CellStyle.Border;
 import stirling.software.officeconvert.sheet.CellStyle.HAlign;
@@ -14,11 +15,11 @@ final class XlsxStyles {
 
     static final String FONT = "Calibri";
 
-    private record FontKey(float size, boolean bold, boolean italic, boolean underline, boolean strike, int rgb) {}
+    private record FontKey(String name, float size, boolean bold, boolean italic, boolean underline, boolean strike, int rgb) {}
 
     private record BorderKey(Border left, Border right, Border top, Border bottom) {}
 
-    private record XfKey(int numFmt, int font, int fill, int border, HAlign h, VAlign v, boolean wrap) {}
+    private record XfKey(int numFmt, int font, int fill, int border, HAlign h, VAlign v, boolean wrap, boolean rtl) {}
 
     private static final Map<String, Integer> BUILT_IN = Map.of(
             "General", 0, "0", 1, "0.00", 2, "#,##0", 3, "#,##0.00", 4, "0%", 9, "0.00%", 10);
@@ -34,17 +35,22 @@ final class XlsxStyles {
     }
 
     int index(CellStyle s) {
+        return index(s, null);
+    }
+
+    int index(CellStyle s, String text) {
         float size = Math.round(s.size() * 2f) / 2f;
+        String name = Scripts.cellFont(FONT, text, null);
         int font = fonts.computeIfAbsent(
-                new FontKey(size, s.bold(), s.italic(), s.underline(), s.strike(), s.rgb()), k -> fonts.size());
+                new FontKey(name, size, s.bold(), s.italic(), s.underline(), s.strike(), s.rgb()), k -> fonts.size());
         int fill = s.fill() < 0 ? 0 : fills.computeIfAbsent(s.fill() & 0xFFFFFF, k -> fills.size() + 2);
         BorderKey edges = new BorderKey(weight(s.left()), weight(s.right()), weight(s.top()), weight(s.bottom()));
         int border = borders.computeIfAbsent(edges, k -> borders.size());
         String code = s.format().excelCode();
         Integer builtIn = BUILT_IN.get(code);
         int numFmt = builtIn != null ? builtIn : numFmts.computeIfAbsent(code, k -> 164 + numFmts.size());
-        return xfs.computeIfAbsent(new XfKey(numFmt, font, fill, border, s.horizontal(), s.vertical(), s.wrap()),
-                k -> xfs.size());
+        return xfs.computeIfAbsent(new XfKey(numFmt, font, fill, border, s.horizontal(), s.vertical(), s.wrap(),
+                text != null && Scripts.rightToLeft(text)), k -> xfs.size());
     }
 
     String xml() {
@@ -79,7 +85,9 @@ final class XlsxStyles {
             if (f.rgb() >= 0) {
                 sb.append("<color rgb=\"").append(argb(f.rgb())).append("\"/>");
             }
-            sb.append("<name val=\"").append(FONT).append("\"/><family val=\"2\"/></font>");
+            sb.append("<name val=\"");
+            SheetXml.escape(sb, f.name());
+            sb.append("\"/><family val=\"2\"/></font>");
         }
         sb.append("</fonts>");
         sb.append("<fills count=\"").append(fills.size() + 2).append("\">")
@@ -117,7 +125,7 @@ final class XlsxStyles {
             if (x.border() != 0) {
                 sb.append(" applyBorder=\"1\"");
             }
-            boolean aligned = x.h() != HAlign.GENERAL || x.v() != VAlign.BOTTOM || x.wrap();
+            boolean aligned = x.h() != HAlign.GENERAL || x.v() != VAlign.BOTTOM || x.wrap() || x.rtl();
             if (!aligned) {
                 sb.append("/>");
                 continue;
@@ -131,6 +139,9 @@ final class XlsxStyles {
             }
             if (x.wrap()) {
                 sb.append(" wrapText=\"1\"");
+            }
+            if (x.rtl()) {
+                sb.append(" readingOrder=\"2\"");
             }
             sb.append("/></xf>");
         }

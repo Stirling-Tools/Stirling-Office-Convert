@@ -124,6 +124,15 @@ class CellTyperTest {
     }
 
     @Test
+    void oneStrayTokenDoesNotOverturnTheDocumentsDecimalMark() {
+        List<CellValue> v = CellTyper.column(List.of("38,954", "3,643", "2422,356", "51,020"), POINT);
+        assertEquals(38954, v.get(0).number(), 1e-9);
+        assertEquals(51020, v.get(3).number(), 1e-9);
+        List<CellValue> eu = CellTyper.column(List.of("38,954", "3,5", "12,25"), POINT);
+        assertEquals(38.954, eu.get(0).number(), 1e-9, "two comma decimals outweigh the document");
+    }
+
+    @Test
     void aColumnOfCodesOrWordsKeepsBareNumbersAsText() {
         List<CellValue> zips = CellTyper.column(List.of("02134", "90210", "01002", "10001"), ANY);
         assertTrue(zips.stream().allMatch(CellValue::isText), "zip codes sort as one kind");

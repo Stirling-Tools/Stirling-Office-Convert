@@ -2,14 +2,112 @@ package stirling.software.officeconvert.layout;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.regex.Pattern;
+
+import stirling.software.officeconvert.extract.Glyph;
 
 final class Leaders {
 
     static final float TAB_GAP_EM = 1.4f;
 
+    private static final int LONG_RUN = 10;
+
+    private static final Pattern REFERENCE = Pattern.compile(
+            "(?:[A-Z][-.\u2013]?)?\\d{1,5}(?:[-.\u2013]\\d{1,5})*|(?i:[ivxlcdm]{1,8})");
+
     private Leaders() {}
 
     static Line classifyLeaders(Line line) {
+        Line split = splitGlued(line);
+        if (split != line) {
+            Line classified = classify(split);
+            if (classified != split) {
+                return classified;
+            }
+        }
+        return classify(line);
+    }
+
+    private static Line splitGlued(Line line) {
+        List<Word> out = new ArrayList<>();
+        List<Byte> gaps = new ArrayList<>();
+        boolean changed = false;
+        for (int i = 0; i < line.words.size(); i++) {
+            Word next = i + 1 < line.words.size() ? line.words.get(i + 1) : null;
+            boolean lastWords = i + 2 >= line.words.size();
+            List<Word> parts = splitWord(line.words.get(i), next, lastWords);
+            changed |= parts.size() > 1;
+            for (int k = 0; k < parts.size(); k++) {
+                out.add(parts.get(k));
+                gaps.add(k == 0 ? line.gaps[i] : Line.SPACE);
+            }
+        }
+        if (!changed) {
+            return line;
+        }
+        byte[] g = new byte[gaps.size()];
+        for (int i = 0; i < g.length; i++) {
+            g[i] = gaps.get(i);
+        }
+        Line result = new Line(out, g);
+        result.drawnSpace = line.drawnSpace;
+        return result;
+    }
+
+    private static List<Word> splitWord(Word w, Word next, boolean lastWords) {
+        List<Glyph> glyphs = w.glyphs;
+        int start = -1;
+        int end = -1;
+        int chars = 0;
+        for (int i = 0; i < glyphs.size(); i++) {
+            if (!isLeader(glyphs.get(i).text)) {
+                continue;
+            }
+            int j = i;
+            int n = 0;
+            while (j < glyphs.size() && isLeader(glyphs.get(j).text)) {
+                n += glyphs.get(j).text.length();
+                j++;
+            }
+            if (n >= 4) {
+                start = i;
+                end = j;
+                chars = n;
+                break;
+            }
+            i = j;
+        }
+        if (chars == 0 || start == 0 && end == glyphs.size()
+                || chars < LONG_RUN && !runsToReference(glyphs, end, next, lastWords)) {
+            return List.of(w);
+        }
+        List<Word> parts = new ArrayList<>(3);
+        if (start > 0) {
+            parts.add(new Word(glyphs.subList(0, start)));
+        }
+        parts.add(new Word(glyphs.subList(start, end)));
+        if (end < glyphs.size()) {
+            parts.add(new Word(glyphs.subList(end, glyphs.size())));
+        }
+        return parts;
+    }
+
+    private static boolean runsToReference(List<Glyph> glyphs, int end, Word next, boolean lastWords) {
+        if (end < glyphs.size()) {
+            StringBuilder rest = new StringBuilder();
+            for (Glyph g : glyphs.subList(end, glyphs.size())) {
+                rest.append(g.text);
+            }
+            return next == null && reference(rest.toString());
+        }
+        return next != null && lastWords && reference(next.text);
+    }
+
+    private static boolean reference(String text) {
+        return text.length() <= 12 && REFERENCE.matcher(text).matches();
+    }
+
+    private static Line classify(Line line) {
         List<Word> words = line.words;
         boolean any = false;
         for (int i = 0; i < words.size(); i++) {

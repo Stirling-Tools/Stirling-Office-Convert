@@ -22,8 +22,10 @@ jobs:
       - uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
-          java-version: '21'
+          java-version: '25'
       - uses: gradle/actions/setup-gradle@v4
+      - name: Install Linux test fonts
+        run: sudo apt-get update && sudo apt-get install -y fonts-noto-core fonts-wqy-zenhei fonts-liberation fonts-crosextra-carlito fonts-crosextra-caladea
       - name: Build and test
         run: ./gradlew build --no-daemon --stacktrace
       - name: Publish snapshot
@@ -33,4 +35,4 @@ jobs:
           CENTRAL_PORTAL_PASSWORD: ${{ secrets.CENTRAL_PORTAL_PASSWORD }}
           GPG_SIGNING_KEY: ${{ secrets.GPG_SIGNING_KEY }}
           GPG_SIGNING_PASSWORD: ${{ secrets.GPG_SIGNING_PASSWORD }}
-        run: ./gradlew :core:publishAllPublicationsToCentralPortalRepository :legacy:publishAllPublicationsToCentralPortalRepository --no-daemon --stacktrace
+        run: ./gradlew :core:publishAllPublicationsToCentralPortalRepository :legacy:publishAllPublicationsToCentralPortalRepository :topdf:publishAllPublicationsToCentralPortalRepository :pdfa:publishAllPublicationsToCentralPortalRepository --no-daemon --stacktrace

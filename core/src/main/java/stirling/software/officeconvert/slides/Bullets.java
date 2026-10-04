@@ -17,16 +17,16 @@ final class Bullets {
 
     static Bullet of(ParaDraft d) {
         Line first = d.first();
-        if (first.words.size() < 2 || rightToLeft(first)) {
+        if (first.words.size() < 2 || rightToLeft(first) && Marker.startIndex(first) == 0) {
             return null;
         }
-        Word word = first.words.getFirst();
-        Marker m = Marker.parse(word.text, word.first().font);
+        Word word = first.words.get(Marker.startIndex(first));
+        Marker m = Marker.leading(first);
         if (m == null || !m.isBullet() && !numberable(m)) {
             return null;
         }
-        float gap = first.words.get(1).x - word.right;
-        boolean tab = first.gaps[1] != Line.SPACE;
+        float gap = Marker.gapAfter(first);
+        boolean tab = Marker.tabAfter(first);
         if (!tab && gap <= (m.isBullet() ? 0.15f : 0.35f) * first.size) {
             return null;
         }
@@ -67,11 +67,18 @@ final class Bullets {
         return d.first().words.get(1).x;
     }
 
+    static float textEnd(ParaDraft d) {
+        Line first = d.first();
+        return first.words.get(Marker.nextIndex(first)).right;
+    }
+
     private static boolean numberable(Marker m) {
         String p = m.prefix();
         String s = m.suffix();
-        boolean dotOrParen = p.isEmpty() && (s.equals(".") || s.equals(")")) || p.equals("(") && s.equals(")");
-        return dotOrParen && m.value() > 0 && m.value() < 10000;
+        boolean eastAsian = m.kind() == Marker.Kind.CHINESE || m.kind() == Marker.Kind.FULL_WIDTH;
+        boolean dotOrParen = p.isEmpty() && (s.equals(".") || s.equals(")") || eastAsian && s.equals("\uFF0E"))
+                || p.equals("(") && s.equals(")");
+        return dotOrParen && m.kind() != Marker.Kind.GANADA && m.value() > 0 && m.value() < 10000;
     }
 
     private static boolean rightToLeft(Line l) {

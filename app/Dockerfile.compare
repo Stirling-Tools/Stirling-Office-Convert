@@ -1,7 +1,246 @@
+FROM eclipse-temurin:25-jre-noble@sha256:b4c93a50fc67612798db73d68ca3b0ee4ebdd51736e59cca370e689b9797037e AS office-fonts
+
+# Free stand-ins for Office fonts (OFL, Apache, GPL or AGPL with font exception, GUST), all with TrueType outlines
+RUN set -eux; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends ca-certificates python3-fonttools fonts-urw-base35 fonts-texgyre; \
+    rm -rf /var/lib/apt/lists/*
+
+COPY <<'EOF' /build/fonts.sha256
+4daecea457258c9ebeb8bc99ed3fd24353618bfad3ea4b93fa0b5d0468fc04e4  Gelasio[wght].ttf  https://raw.githubusercontent.com/google/fonts/24ecb0bbdc3a52d6fddef160b769c61463f455d9/ofl/gelasio/Gelasio%5Bwght%5D.ttf
+52559e845a4d33514e5f93bb9ae7dbeae1894a53f2c565a15f18af40cd337c09  Gelasio-Italic[wght].ttf  https://raw.githubusercontent.com/google/fonts/24ecb0bbdc3a52d6fddef160b769c61463f455d9/ofl/gelasio/Gelasio-Italic%5Bwght%5D.ttf
+b393cb01867c919b44381512120dc3e4c954c7b47e2035c405f3a324799a4d29  gelasio-OFL.txt  https://raw.githubusercontent.com/google/fonts/24ecb0bbdc3a52d6fddef160b769c61463f455d9/ofl/gelasio/OFL.txt
+a0ee5a37c8b27c4db0700137d928598b1e23b0089e1546a8961909176b779360  ComicNeue-Regular.ttf  https://raw.githubusercontent.com/google/fonts/24ecb0bbdc3a52d6fddef160b769c61463f455d9/ofl/comicneue/ComicNeue-Regular.ttf
+e06bfd1552f5c9464c5665733ffd69239b0593885dbb9e059688a5900f78cf98  ComicNeue-Italic.ttf  https://raw.githubusercontent.com/google/fonts/24ecb0bbdc3a52d6fddef160b769c61463f455d9/ofl/comicneue/ComicNeue-Italic.ttf
+3e7e5fccfd7e0788f317b43312151c1bd5cf058c9697a8d83eac3939050bd61e  ComicNeue-Bold.ttf  https://raw.githubusercontent.com/google/fonts/24ecb0bbdc3a52d6fddef160b769c61463f455d9/ofl/comicneue/ComicNeue-Bold.ttf
+5c312c2a2fa64eee82f3b87fcfab8f3b12a5e59b043124401d322eb323cfbf16  ComicNeue-BoldItalic.ttf  https://raw.githubusercontent.com/google/fonts/24ecb0bbdc3a52d6fddef160b769c61463f455d9/ofl/comicneue/ComicNeue-BoldItalic.ttf
+efb91c06dccc264f07f800c0691d40c94e8cfce6183daade0709268bec178f76  ComicNeue-Light.ttf  https://raw.githubusercontent.com/google/fonts/24ecb0bbdc3a52d6fddef160b769c61463f455d9/ofl/comicneue/ComicNeue-Light.ttf
+a6d36baee09c7025916ddb517835458d15ef890291507197a54875ccc096b927  ComicNeue-LightItalic.ttf  https://raw.githubusercontent.com/google/fonts/24ecb0bbdc3a52d6fddef160b769c61463f455d9/ofl/comicneue/ComicNeue-LightItalic.ttf
+7c38a22e5878e60fe423360553e63dd7be23d29f1f60336034935dbfc96e8320  comicneue-OFL.txt  https://raw.githubusercontent.com/google/fonts/24ecb0bbdc3a52d6fddef160b769c61463f455d9/ofl/comicneue/OFL.txt
+ef9512f92f6d579e5dc75af59a5a4b1b8b47d2eda89e00b954d44520e5369027  EBGaramond[wght].ttf  https://raw.githubusercontent.com/google/fonts/24ecb0bbdc3a52d6fddef160b769c61463f455d9/ofl/ebgaramond/EBGaramond%5Bwght%5D.ttf
+bba2c4499c93c9612b90b9825d32b07da52fce2fe57562a1eb6b833553f93c4e  EBGaramond-Italic[wght].ttf  https://raw.githubusercontent.com/google/fonts/24ecb0bbdc3a52d6fddef160b769c61463f455d9/ofl/ebgaramond/EBGaramond-Italic%5Bwght%5D.ttf
+0985066662eb755ed3683ae5482a81a9195b49ce3f7e165cc2388b3dbece7dd7  ebgaramond-OFL.txt  https://raw.githubusercontent.com/google/fonts/24ecb0bbdc3a52d6fddef160b769c61463f455d9/ofl/ebgaramond/OFL.txt
+29160a80ff49ddcab2c97711247e08b1fab27a484a329ce8b813d820dc559031  Inter[opsz,wght].ttf  https://raw.githubusercontent.com/google/fonts/24ecb0bbdc3a52d6fddef160b769c61463f455d9/ofl/inter/Inter%5Bopsz,wght%5D.ttf
+acd98e64795781b2058f07b18475e0ecee2a0fe2b42a49e2f9e37d0d6bf66ce6  Inter-Italic[opsz,wght].ttf  https://raw.githubusercontent.com/google/fonts/24ecb0bbdc3a52d6fddef160b769c61463f455d9/ofl/inter/Inter-Italic%5Bopsz,wght%5D.ttf
+5b9321a4298cfeb6b34354164a1c3afc3db114569984c502b9b35d988fd58c57  inter-OFL.txt  https://raw.githubusercontent.com/google/fonts/24ecb0bbdc3a52d6fddef160b769c61463f455d9/ofl/inter/OFL.txt
+042fe2cc0b933e328410d7acbd0aa6a1873dca5aef81875f4bc214b08825c7b9  SourceSans3[wght].ttf  https://raw.githubusercontent.com/google/fonts/24ecb0bbdc3a52d6fddef160b769c61463f455d9/ofl/sourcesans3/SourceSans3%5Bwght%5D.ttf
+39e3ab05ccd7cb94907c31005bb5bec1d5432f0b096a2b782976e217a540eb6c  SourceSans3-Italic[wght].ttf  https://raw.githubusercontent.com/google/fonts/24ecb0bbdc3a52d6fddef160b769c61463f455d9/ofl/sourcesans3/SourceSans3-Italic%5Bwght%5D.ttf
+09746787287a289323b0ec3cff4d1a4a801331b82b7207c1e186f5d26619a392  sourcesans3-OFL.txt  https://raw.githubusercontent.com/google/fonts/24ecb0bbdc3a52d6fddef160b769c61463f455d9/ofl/sourcesans3/OFL.txt
+97b2d4da6e3cb494b5a1e66ae176914d852ccabef49e0c02c0df25f3e39aca0b  SourceSerif4[opsz,wght].ttf  https://raw.githubusercontent.com/google/fonts/24ecb0bbdc3a52d6fddef160b769c61463f455d9/ofl/sourceserif4/SourceSerif4%5Bopsz,wght%5D.ttf
+15fbc7e4679489a501998c3669272637a6646388ef7e4bd77eebb5bf967a1f42  SourceSerif4-Italic[opsz,wght].ttf  https://raw.githubusercontent.com/google/fonts/24ecb0bbdc3a52d6fddef160b769c61463f455d9/ofl/sourceserif4/SourceSerif4-Italic%5Bopsz,wght%5D.ttf
+5f94c3fd3a23131a417ab5a0c8452de57e70c3cfb9f604d88241f7065ebf9fd9  sourceserif4-OFL.txt  https://raw.githubusercontent.com/google/fonts/24ecb0bbdc3a52d6fddef160b769c61463f455d9/ofl/sourceserif4/OFL.txt
+b400fc584e10aff25d0e775ce181b4fc1c5ea1b5dc37b81aeb2084375b945790  SourceCodePro[wght].ttf  https://raw.githubusercontent.com/google/fonts/24ecb0bbdc3a52d6fddef160b769c61463f455d9/ofl/sourcecodepro/SourceCodePro%5Bwght%5D.ttf
+6db77d25aa7b30eff449305b5c998e475694c74d398421127ea5a60f536413cd  SourceCodePro-Italic[wght].ttf  https://raw.githubusercontent.com/google/fonts/24ecb0bbdc3a52d6fddef160b769c61463f455d9/ofl/sourcecodepro/SourceCodePro-Italic%5Bwght%5D.ttf
+cb30d3086a8b3ce0b9e3690bf48d6620402b61160bc658076f95180ccd9e9dae  sourcecodepro-OFL.txt  https://raw.githubusercontent.com/google/fonts/24ecb0bbdc3a52d6fddef160b769c61463f455d9/ofl/sourcecodepro/OFL.txt
+c29556a2719bf613ef3d5e070e40d903a8965d9c081beca1375dc1e6e0f93c23  FiraSans-Regular.ttf  https://raw.githubusercontent.com/google/fonts/24ecb0bbdc3a52d6fddef160b769c61463f455d9/ofl/firasans/FiraSans-Regular.ttf
+a4204f9a8029c1c55daa5385ac95936f74abea3e232770f1fb2862a19d1dfa13  FiraSans-Italic.ttf  https://raw.githubusercontent.com/google/fonts/24ecb0bbdc3a52d6fddef160b769c61463f455d9/ofl/firasans/FiraSans-Italic.ttf
+a4d8e149ecdd4874a0726eb0af894488b3b31c423d6b0017c8f415ed1b795b45  FiraSans-Bold.ttf  https://raw.githubusercontent.com/google/fonts/24ecb0bbdc3a52d6fddef160b769c61463f455d9/ofl/firasans/FiraSans-Bold.ttf
+1b96c16db9819bcaa9d588068bb397bb6e977c4874965d3d50d789a1943757eb  FiraSans-BoldItalic.ttf  https://raw.githubusercontent.com/google/fonts/24ecb0bbdc3a52d6fddef160b769c61463f455d9/ofl/firasans/FiraSans-BoldItalic.ttf
+8f24842e9174beda18a556c2ae7d54f5dc444340c19a3a9ef77e23bca366adbd  firasans-OFL.txt  https://raw.githubusercontent.com/google/fonts/24ecb0bbdc3a52d6fddef160b769c61463f455d9/ofl/firasans/OFL.txt
+2e00b0cf3106a3d792f35711b7722740b76c02ee7300ea8c60f940584b7a8ac9  FiraMono-Regular.ttf  https://raw.githubusercontent.com/google/fonts/24ecb0bbdc3a52d6fddef160b769c61463f455d9/ofl/firamono/FiraMono-Regular.ttf
+61f0ca3ae72a83deb807040f314e1b8b4e40b08213df243db9fd430095cab305  FiraMono-Bold.ttf  https://raw.githubusercontent.com/google/fonts/24ecb0bbdc3a52d6fddef160b769c61463f455d9/ofl/firamono/FiraMono-Bold.ttf
+d1829ff3455bbf3b9d13dfb0a57758a863107c9108aab48558f26f37f1094180  firamono-OFL.txt  https://raw.githubusercontent.com/google/fonts/24ecb0bbdc3a52d6fddef160b769c61463f455d9/ofl/firamono/OFL.txt
+23ded25b447074d00659392bf9b1123d89df55cb07b0ad9bfef3366d199b5fcb  Inconsolata[wdth,wght].ttf  https://raw.githubusercontent.com/google/fonts/24ecb0bbdc3a52d6fddef160b769c61463f455d9/ofl/inconsolata/Inconsolata%5Bwdth,wght%5D.ttf
+29bd0cfd0fb2a45f9b057c834a057724bae1f63b525a8ac83d3e7525706d9f80  inconsolata-OFL.txt  https://raw.githubusercontent.com/google/fonts/24ecb0bbdc3a52d6fddef160b769c61463f455d9/ofl/inconsolata/OFL.txt
+de6c18832938afc99caf132b39d6a30a19bac7f2e812e28db2535b4608d27551  NotoEmoji[wght].ttf  https://raw.githubusercontent.com/google/fonts/24ecb0bbdc3a52d6fddef160b769c61463f455d9/ofl/notoemoji/NotoEmoji%5Bwght%5D.ttf
+500bb1ccf43df7bbb522112f9133a52b16e1c35e809632f5d8609b179152de5b  notoemoji-OFL.txt  https://raw.githubusercontent.com/google/fonts/24ecb0bbdc3a52d6fddef160b769c61463f455d9/ofl/notoemoji/OFL.txt
+77b7c2506d4efb22e09c8ccf10159f4956eab3ef7c007fef95de136bcf45300c  selawik-OFL.txt  https://raw.githubusercontent.com/microsoft/Selawik/89362e84731d1f5777fa078fd4d5ebbd339e4378/LICENSE.txt
+3f62c51e05e3b5a1e6241cf92a371f0be2ea1183aa87b30718bbd40832a8d423  Selawik_Release.zip  https://github.com/microsoft/Selawik/releases/download/1.01/Selawik_Release.zip
+64948564a34858912b746abc7aa239233c0083115c9386c2079ae92764040b22  liberation-narrow-fonts-ttf-1.07.5.tar.gz  https://github.com/liberationfonts/liberation-sans-narrow/releases/download/1.07.5/liberation-narrow-fonts-ttf-1.07.5.tar.gz
+d7598e12c5dbef095ff8272cfc55da0250bd07fbdecbac8a530b9b277872a134  Roboto[wdth,wght].ttf  https://raw.githubusercontent.com/google/fonts/24ecb0bbdc3a52d6fddef160b769c61463f455d9/ofl/roboto/Roboto%5Bwdth,wght%5D.ttf
+9725a847af6b460ffca162ae66d20dad48b01876137947180b42d7dcd7887182  Roboto-Italic[wdth,wght].ttf  https://raw.githubusercontent.com/google/fonts/24ecb0bbdc3a52d6fddef160b769c61463f455d9/ofl/roboto/Roboto-Italic%5Bwdth,wght%5D.ttf
+061402327a96aadb0bfb694a960ed289ecd38d383e396243831ab81feb109c41  roboto-OFL.txt  https://raw.githubusercontent.com/google/fonts/24ecb0bbdc3a52d6fddef160b769c61463f455d9/ofl/roboto/OFL.txt
+dace262afcee68a5276f200d8026c57221735c0118ab5fda8c2c0d3dc409a8d0  RobotoCondensed[wght].ttf  https://raw.githubusercontent.com/google/fonts/24ecb0bbdc3a52d6fddef160b769c61463f455d9/ofl/robotocondensed/RobotoCondensed%5Bwght%5D.ttf
+78f643b1923008b00dfc9b371a2ecd4d80a017722925f1a3fac9940be56d1b7d  RobotoCondensed-Italic[wght].ttf  https://raw.githubusercontent.com/google/fonts/24ecb0bbdc3a52d6fddef160b769c61463f455d9/ofl/robotocondensed/RobotoCondensed-Italic%5Bwght%5D.ttf
+0e4cc6ece88573545be2ed25835363662a6182ba4a4c1b5c8feda52add30e8a6  robotocondensed-OFL.txt  https://raw.githubusercontent.com/google/fonts/24ecb0bbdc3a52d6fddef160b769c61463f455d9/ofl/robotocondensed/OFL.txt
+EOF
+
+COPY <<'EOF' /build/office-fonts.py
+import hashlib
+import io
+import shutil
+import sys
+import tarfile
+import urllib.request
+import zipfile
+from concurrent.futures import ProcessPoolExecutor
+from pathlib import Path
+
+from fontTools.pens.cu2quPen import Cu2QuPen
+from fontTools.pens.ttGlyphPen import TTGlyphPen
+from fontTools.ttLib import TTFont, newTable
+from fontTools.varLib import instancer
+
+URW = Path("/usr/share/fonts/opentype/urw-base35")
+GYRE = Path("/usr/share/texmf/fonts/opentype/public/tex-gyre")
+GYRE_FAMILIES = ("adventor", "bonum", "cursor", "heros", "pagella", "schola", "termes")
+STYLES = {"Regular": (400, False), "Bold": (700, False), "Italic": (400, True), "BoldItalic": (700, True)}
+VARIABLE = {
+    "gelasio": ("Gelasio", "Gelasio[wght].ttf", "Gelasio-Italic[wght].ttf"),
+    "ebgaramond": ("EBGaramond", "EBGaramond[wght].ttf", "EBGaramond-Italic[wght].ttf"),
+    "inter": ("Inter", "Inter[opsz,wght].ttf", "Inter-Italic[opsz,wght].ttf"),
+    "sourcesans3": ("SourceSans3", "SourceSans3[wght].ttf", "SourceSans3-Italic[wght].ttf"),
+    "sourceserif4": ("SourceSerif4", "SourceSerif4[opsz,wght].ttf", "SourceSerif4-Italic[opsz,wght].ttf"),
+    "sourcecodepro": ("SourceCodePro", "SourceCodePro[wght].ttf", "SourceCodePro-Italic[wght].ttf"),
+    "inconsolata": ("Inconsolata", "Inconsolata[wdth,wght].ttf", None),
+    "notoemoji": ("NotoEmoji", "NotoEmoji[wght].ttf", None),
+    "roboto": ("Roboto", "Roboto[wdth,wght].ttf", "Roboto-Italic[wdth,wght].ttf"),
+    "robotocondensed": ("RobotoCondensed", "RobotoCondensed[wght].ttf", "RobotoCondensed-Italic[wght].ttf"),
+}
+STATIC = {"comicneue": "ComicNeue-", "firasans": "FiraSans-", "firamono": "FiraMono-"}
+ALIASES = {
+    "Selawik": ("Segoe UI", "Segoe UI Light", "Segoe UI Semilight", "Segoe UI Semibold", "Segoe UI Black"),
+    "Source Sans 3": ("Aptos", "Aptos Display", "Aptos Light", "Franklin Gothic", "Franklin Gothic Book",
+                      "Franklin Gothic Medium", "Franklin Gothic Demi", "Franklin Gothic Heavy", "Candara"),
+    "Roboto Condensed": ("Aptos Narrow", "Franklin Gothic Medium Cond", "Franklin Gothic Demi Cond", "Impact"),
+    "Caladea": ("Aptos Serif",),
+    "Source Code Pro": ("Aptos Mono", "Cascadia Code", "Cascadia Mono"),
+    "Carlito": ("Calibri Light", "Corbel"),
+    "Gelasio": ("Georgia",),
+    "URW Gothic": ("Century Gothic",),
+    "P052": ("Book Antiqua", "Palatino Linotype", "Palatino"),
+    "URW Bookman": ("Bookman Old Style", "Bookman"),
+    "C059": ("Century Schoolbook", "Century"),
+    "Z003": ("Monotype Corsiva",),
+    "EB Garamond": ("Garamond", "Baskerville Old Face", "Perpetua", "Goudy Old Style", "Californian FB", "Calisto MT"),
+    "Comic Neue": ("Comic Sans MS",),
+    "Inconsolata": ("Consolas",),
+    "DejaVu Sans Mono": ("Lucida Console", "Lucida Sans Typewriter"),
+    "DejaVu Sans": ("Verdana",),
+    "DejaVu Sans Condensed": ("Tahoma",),
+    "Fira Sans": ("Trebuchet MS",),
+    "Lato": ("Gill Sans MT", "Gill Sans"),
+    "Source Serif 4": ("Constantia", "Sitka Text", "Lucida Bright"),
+    "Open Sans": ("Lucida Sans", "Lucida Sans Unicode", "Lucida Grande"),
+}
+
+
+def fontconfig(path):
+    rules = "".join(f'  <alias binding="same">\n    <family>{family}</family>\n'
+                    f'    <accept><family>{free}</family></accept>\n  </alias>\n'
+                    for free, families in ALIASES.items() for family in families)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text('<?xml version="1.0"?>\n<!DOCTYPE fontconfig SYSTEM "fonts.dtd">\n<fontconfig>\n'
+                    + rules + "</fontconfig>\n", encoding="utf-8")
+
+
+def fetch(manifest):
+    files = {}
+    for line in Path(manifest).read_text().splitlines():
+        if line.strip():
+            sha, name, url = line.split()
+            data = urllib.request.urlopen(url, timeout=300).read()
+            if hashlib.sha256(data).hexdigest() != sha:
+                sys.exit(f"{name}: sha256 mismatch")
+            files[name] = data
+    return files
+
+
+def quadratic(job):
+    src, dst = job
+    font = TTFont(src)
+    order = font.getGlyphOrder()
+    outlines = font.getGlyphSet()
+    glyf = newTable("glyf")
+    glyf.glyphOrder = order
+    glyf.glyphs = {}
+    for name in order:
+        pen = TTGlyphPen(outlines)
+        outlines[name].draw(Cu2QuPen(pen, 1.0, reverse_direction=True))
+        glyf.glyphs[name] = pen.glyph()
+    font["loca"] = newTable("loca")
+    font["glyf"] = glyf
+    del font["CFF "]
+    if "VORG" in font:
+        del font["VORG"]
+    glyf.compile(font)
+    hmtx = font["hmtx"]
+    for name, glyph in glyf.glyphs.items():
+        if hasattr(glyph, "xMin"):
+            hmtx[name] = (hmtx[name][0], glyph.xMin)
+    maxp = newTable("maxp")
+    maxp.tableVersion = 0x00010000
+    for field in ("maxZones", "maxTwilightPoints", "maxStorage", "maxFunctionDefs", "maxInstructionDefs",
+                  "maxStackElements", "maxSizeOfInstructions"):
+        setattr(maxp, field, 1 if field == "maxZones" else 0)
+    maxp.maxComponentElements = max(len(getattr(g, "components", [])) for g in glyf.glyphs.values())
+    font["maxp"] = maxp
+    post = font["post"]
+    post.formatType = 2.0
+    post.extraNames = []
+    post.mapping = {}
+    post.glyphOrder = order
+    font.sfntVersion = "\000\001\000\000"
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    font.save(dst)
+    return dst
+
+
+def instance(data, dst, weight):
+    font = TTFont(io.BytesIO(data))
+    axes = {a.axisTag: a.defaultValue for a in font["fvar"].axes}
+    if "wght" in axes:
+        axes["wght"] = weight
+    static = instancer.instantiateVariableFont(font, axes, updateFontNames=True)
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    static.save(dst)
+
+
+def main():
+    files = fetch(sys.argv[1])
+    out = Path(sys.argv[2])
+    fontconfig(Path(sys.argv[3]))
+    jobs = [(p, out / "urw-base35" / (p.stem + ".ttf")) for p in sorted(URW.glob("*.otf"))]
+    jobs += [(p, out / "tex-gyre" / (p.stem + ".ttf")) for p in sorted(GYRE.glob("texgyre*.otf"))
+             if p.stem.split("-")[0][len("texgyre"):] in GYRE_FAMILIES]
+    with ProcessPoolExecutor() as pool:
+        list(pool.map(quadratic, jobs))
+    shutil.copy("/usr/share/doc/fonts-urw-base35/copyright", out / "urw-base35" / "COPYING")
+    shutil.copy("/usr/share/doc/fonts-texgyre/copyright", out / "tex-gyre" / "COPYING")
+    for folder, (prefix, roman, italic) in VARIABLE.items():
+        for style, (weight, slanted) in STYLES.items():
+            source = italic if slanted else roman
+            if source and (folder != "notoemoji" or style == "Regular"):
+                instance(files[source], out / folder / f"{prefix}-{style}.ttf", weight)
+    for folder, prefix in STATIC.items():
+        for name, data in files.items():
+            if name.startswith(prefix) and name.endswith(".ttf"):
+                (out / folder).mkdir(parents=True, exist_ok=True)
+                (out / folder / name).write_bytes(data)
+    for name, data in files.items():
+        if name.endswith("-OFL.txt"):
+            (out / name[:-len("-OFL.txt")]).mkdir(parents=True, exist_ok=True)
+            (out / name[:-len("-OFL.txt")] / "OFL.txt").write_bytes(data)
+    with zipfile.ZipFile(io.BytesIO(files["Selawik_Release.zip"])) as z:
+        for name in z.namelist():
+            if name.endswith(".ttf"):
+                (out / "selawik" / Path(name).name).write_bytes(z.read(name))
+    with tarfile.open(fileobj=io.BytesIO(files["liberation-narrow-fonts-ttf-1.07.5.tar.gz"])) as t:
+        for member in t.getmembers():
+            name = Path(member.name).name
+            if member.isfile() and (name.endswith(".ttf") or name in ("License.txt", "COPYING")):
+                (out / "liberation-narrow").mkdir(parents=True, exist_ok=True)
+                (out / "liberation-narrow" / name).write_bytes(t.extractfile(member).read())
+    for path in sorted(out.rglob("*.ttf")):
+        font = TTFont(path, lazy=True)
+        if "glyf" not in font or "CFF " in font:
+            sys.exit(f"{path}: no TrueType outlines")
+        names = font["name"]
+        family = names.getDebugName(16) or names.getDebugName(1)
+        style = names.getDebugName(17) or names.getDebugName(2)
+        print(f"{path.relative_to(out)}\t{family}\t{style}\t{font['OS/2'].usWeightClass}\t{path.stat().st_size}")
+
+
+if __name__ == "__main__":
+    main()
+EOF
+
+RUN python3 /build/office-fonts.py /build/fonts.sha256 /out /conf/31-office-compat.conf
+
 FROM eclipse-temurin:25-jre-noble@sha256:b4c93a50fc67612798db73d68ca3b0ee4ebdd51736e59cca370e689b9797037e
 
-LABEL org.opencontainers.image.title="stirling-office-convert-compare" \
-      org.opencontainers.image.description="Stirling Office Convert and LibreOffice side by side: PDF to Word, OpenDocument, RTF, text and PowerPoint" \
+LABEL org.opencontainers.image.title="stirling-office-convert-tester" \
+      org.opencontainers.image.description="Stirling Office Convert and LibreOffice side by side, both ways: PDF to Word, OpenDocument, RTF, text, PowerPoint and Excel, and Word, PowerPoint and Excel to PDF" \
       org.opencontainers.image.vendor="Stirling-PDF" \
       org.opencontainers.image.url="https://www.stirlingpdf.com"
 
@@ -22,11 +261,12 @@ RUN set -eux; \
     add-apt-repository -y ppa:libreoffice/ppa; \
     apt-get update; \
     apt-get install -y --no-install-recommends \
-      libreoffice-writer-nogui libreoffice-impress-nogui libreoffice-draw-nogui \
+      libreoffice-writer-nogui libreoffice-calc-nogui libreoffice-impress-nogui libreoffice-draw-nogui \
       fonts-dejavu fonts-liberation fonts-liberation2 \
       fonts-crosextra-caladea fonts-crosextra-carlito \
-      fonts-noto-core fonts-noto-mono fonts-noto-color-emoji \
-      fontconfig \
+      fonts-noto-core fonts-noto-mono fonts-noto-color-emoji fonts-wqy-zenhei \
+      fonts-open-sans fonts-lato fonts-freefont-ttf \
+      fontconfig curl socat \
       libcairo2 libpango-1.0-0 libpangoft2-1.0-0 libgdk-pixbuf-2.0-0 \
       libfreetype6 libfontconfig1 libx11-6 libxt6 libxext6 libxrender1 \
       libxtst6 libxi6 libxinerama1 libxkbcommon0 libsm6 libice6 \
@@ -39,6 +279,10 @@ RUN set -eux; \
            /usr/share/doc/* /usr/share/man/* /usr/share/info/*; \
     fc-cache -f; \
     soffice --version
+
+COPY --from=office-fonts /out /usr/share/fonts/truetype/office-compat
+COPY --from=office-fonts /conf/31-office-compat.conf /etc/fonts/conf.d/31-office-compat.conf
+RUN fc-cache -f
 
 RUN soffice --headless --norestore --terminate_after_init -env:UserInstallation=file:///opt/lo-template && \
     test -d /opt/lo-template/user && chmod -R a+rX /opt/lo-template && rm -rf /tmp/* /tmp/.[!.]*

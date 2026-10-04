@@ -46,12 +46,13 @@ final class MediaPlacer {
         if (tb.turn() != null) {
             Box on = tb.turn().onPage();
             return new Inline.TextBox(on.x(), on.top(), on.width(), on.height(), tb.fillRgb(), 0, 0, tb.gap(), paras,
-                    tb.lineRgb(), tb.lineWidth(), tb.rounded(), tb.overlay(), tb.turn().direction(), tb.groundRgb());
+                    tb.lineRgb(), tb.lineWidth(), tb.rounded(), tb.overlay(), tb.turn().direction(), tb.groundRgb(),
+                    tb.turn().upright());
         }
         Box b = tb.box();
         return new Inline.TextBox(b.x(), b.top(), b.width(), b.height(), tb.fillRgb(),
                 tb.textLeft() - b.x(), Math.max(0, b.right() - tb.textRight()), tb.gap(), paras,
-                tb.lineRgb(), tb.lineWidth(), tb.rounded(), tb.overlay(), 0, tb.groundRgb());
+                tb.lineRgb(), tb.lineWidth(), tb.rounded(), tb.overlay(), 0, tb.groundRgb(), false);
     }
 
     void endPage() {

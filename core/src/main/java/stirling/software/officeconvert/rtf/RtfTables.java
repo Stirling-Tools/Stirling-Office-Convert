@@ -35,12 +35,22 @@ final class RtfTables {
             boolean symbol = FontNames.isSymbolFamily(f);
             boolean mono = FontNames.looksMono(f);
             String family = symbol ? "\\ftech" : mono ? "\\fmodern" : FontNames.looksSerif(f) ? "\\froman" : "\\fswiss";
-            sb.append("{\\f").append(i).append(family).append("\\fcharset").append(symbol ? 2 : 0).append("\\fprq")
+            sb.append("{\\f").append(i).append(family).append("\\fcharset").append(symbol ? 2 : charset(f)).append("\\fprq")
                     .append(mono ? 1 : 2).append(' ');
             RtfText.text(sb, f);
             sb.append(";}");
         }
         sb.append('}');
+    }
+
+    private static int charset(String font) {
+        return switch (font) {
+            case "MS Mincho", "MS PMincho", "MS Gothic", "MS PGothic", "MS UI Gothic", "Yu Gothic", "Yu Mincho", "Meiryo" -> 128;
+            case "SimSun", "NSimSun", "SimHei", "Microsoft YaHei", "DengXian", "KaiTi", "FangSong" -> 134;
+            case "MingLiU", "PMingLiU", "Microsoft JhengHei", "DFKai-SB" -> 136;
+            case "Malgun Gothic", "Batang", "BatangChe", "Gulim", "GulimChe", "Dotum", "DotumChe", "Gungsuh" -> 129;
+            default -> 0;
+        };
     }
 
     void colourTable(StringBuilder sb) {

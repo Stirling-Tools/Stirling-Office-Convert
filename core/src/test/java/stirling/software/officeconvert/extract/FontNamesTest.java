@@ -24,6 +24,8 @@ class FontNamesTest {
         assertEquals("Segoe UI", FontNames.family(null, "SegoeUI-Bold"));
         assertEquals("Segoe UI Semibold", FontNames.family(null, "SegoeUI-Semibold"));
         assertEquals("Times New Roman", FontNames.family(null, "NimbusRomNo9L-Medi"));
+        assertEquals("Calibri", FontNames.family(null, "BAAAAA+Carlito-Regular"));
+        assertEquals("Cambria", FontNames.family(null, "Caladea-Bold"));
     }
 
     @Test

@@ -2,8 +2,10 @@ package stirling.software.officeconvert.docx;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 
 import stirling.software.officeconvert.model.RunStyle;
+import stirling.software.officeconvert.model.Scripts;
 
 final class RunXml {
 
@@ -23,13 +25,7 @@ final class RunXml {
         if (hasRtlChars(text)) {
             for (String[] seg : directionSegments(text)) {
                 sb.append("<w:r>");
-                if (seg[1] != null) {
-                    StringBuilder r = new StringBuilder();
-                    runProps(r, style, base);
-                    sb.append("<w:rPr>").append(r).append("<w:rtl/></w:rPr>");
-                } else {
-                    rPr(sb, style, base);
-                }
+                rPr(sb, style, base, seg[0], seg[1] != null);
                 sb.append("<w:t xml:space=\"preserve\">");
                 Xml.runText(sb, seg[0]);
                 sb.append("</w:t></w:r>");
@@ -37,7 +33,7 @@ final class RunXml {
             return;
         }
         sb.append("<w:r>");
-        rPr(sb, style, base);
+        rPr(sb, style, base, text, false);
         sb.append("<w:t xml:space=\"preserve\">");
         Xml.runText(sb, text);
         sb.append("</w:t></w:r>");
@@ -102,22 +98,66 @@ final class RunXml {
     }
 
     void rPr(StringBuilder sb, RunStyle style, RunStyle base) {
+        rPr(sb, style, base, null, false);
+    }
+
+    private void rPr(StringBuilder sb, RunStyle style, RunStyle base, String text, boolean rtl) {
         if (style == null) {
             return;
         }
         StringBuilder r = new StringBuilder();
-        runProps(r, style, base);
+        runProps(r, style, base, text);
+        if (rtl) {
+            r.append("<w:rtl/>");
+        }
+        language(r, text);
         if (!r.isEmpty()) {
             sb.append("<w:rPr>").append(r).append("</w:rPr>");
         }
     }
 
+    private void language(StringBuilder sb, String text) {
+        Scripts.Languages lang = Scripts.languages(text, ctx.scripts);
+        String latin = lang.latin() != null && !lang.latin().equals(StylesPart.latinLanguage(ctx.scripts)) ? lang.latin() : null;
+        String eastAsian = lang.eastAsian() != null && !lang.eastAsian().equals(StylesPart.eastAsianLanguage(ctx.scripts))
+                ? lang.eastAsian() : null;
+        String complex = lang.complex() != null && !lang.complex().equals(StylesPart.complexLanguage(ctx.scripts))
+                ? lang.complex() : null;
+        if (latin == null && eastAsian == null && complex == null) {
+            return;
+        }
+        sb.append("<w:lang");
+        if (latin != null) {
+            sb.append(" w:val=\"").append(latin).append('"');
+        }
+        if (eastAsian != null) {
+            sb.append(" w:eastAsia=\"").append(eastAsian).append('"');
+        }
+        if (complex != null) {
+            sb.append(" w:bidi=\"").append(complex).append('"');
+        }
+        sb.append("/>");
+    }
+
     void runProps(StringBuilder sb, RunStyle s, RunStyle base) {
-        if (s.font() != null && !s.font().equals(base.font())) {
-            ctx.fonts.add(s.font());
-            String f = Xml.esc(s.font());
-            sb.append("<w:rFonts w:ascii=\"").append(f).append("\" w:hAnsi=\"").append(f)
-                    .append("\" w:eastAsia=\"").append(f).append("\" w:cs=\"").append(f).append("\"/>");
+        runProps(sb, s, base, null);
+    }
+
+    private void runProps(StringBuilder sb, RunStyle s, RunStyle base, String text) {
+        String family = s.font() != null ? s.font() : base.font();
+        Scripts.Fonts f = Scripts.fonts(family, text, ctx.scripts);
+        boolean own = s.font() != null && !s.font().equals(base.font());
+        if (own || !Objects.equals(f.latin(), family) || !Objects.equals(f.eastAsian(), family)
+                || !Objects.equals(f.complex(), family) || f.eastAsianHint()) {
+            for (String name : new String[] {f.latin(), f.eastAsian(), f.complex()}) {
+                if (name != null) {
+                    ctx.fonts.add(name);
+                }
+            }
+            String latin = Xml.esc(f.latin());
+            sb.append("<w:rFonts w:ascii=\"").append(latin).append("\" w:hAnsi=\"").append(latin)
+                    .append("\" w:eastAsia=\"").append(Xml.esc(f.eastAsian())).append("\" w:cs=\"").append(Xml.esc(f.complex()))
+                    .append(f.eastAsianHint() ? "\" w:hint=\"eastAsia\"/>" : "\"/>");
         }
         if (s.bold() != base.bold()) {
             sb.append(s.bold() ? "<w:b/><w:bCs/>" : "<w:b w:val=\"0\"/><w:bCs w:val=\"0\"/>");

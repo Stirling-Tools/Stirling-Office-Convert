@@ -51,8 +51,26 @@ public final class Table implements Block {
     public float floatX = Float.NaN;
     public float floatY = Float.NaN;
     public float floatRoom;
+    public boolean rightToLeft;
+    public float indentEnd;
 
     public boolean floating() {
         return !Float.isNaN(floatY);
+    }
+
+    public void mirror() {
+        java.util.Collections.reverse(columnWidths);
+        for (Row row : rows) {
+            java.util.Collections.reverse(row.cells);
+            for (Cell c : row.cells) {
+                Border left = c.left;
+                c.left = c.right;
+                c.right = left;
+            }
+        }
+        float start = indent;
+        indent = indentEnd;
+        indentEnd = start;
+        rightToLeft = !rightToLeft;
     }
 }

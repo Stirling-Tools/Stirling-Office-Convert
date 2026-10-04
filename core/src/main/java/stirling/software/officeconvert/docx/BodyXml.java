@@ -78,6 +78,9 @@ final class BodyXml {
             }
             sb.append("</w:tabs>");
         }
+        if (p.noHangingPunctuation) {
+            sb.append("<w:overflowPunct w:val=\"0\"/>");
+        }
         if (p.bidi) {
             sb.append("<w:bidi/>");
         }
@@ -209,6 +212,9 @@ final class BodyXml {
                     .append("\" w:topFromText=\"0\" w:bottomFromText=\"0\"")
                     .append(" w:vertAnchor=\"page\" w:horzAnchor=\"page\" w:tblpX=\"").append(Xml.twips(t.floatX))
                     .append("\" w:tblpY=\"").append(Xml.twips(t.floatY)).append("\"/><w:tblOverlap w:val=\"overlap\"/>");
+        }
+        if (t.rightToLeft) {
+            sb.append("<w:bidiVisual/>");
         }
         sb.append("<w:tblW w:w=\"").append(Xml.twips(total)).append("\" w:type=\"dxa\"/>")
                 .append("<w:tblInd w:w=\"").append(Xml.twips(t.floating() ? 0 : t.indent)).append("\" w:type=\"dxa\"/>")

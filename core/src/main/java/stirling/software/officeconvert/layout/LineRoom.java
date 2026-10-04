@@ -49,6 +49,10 @@ final class LineRoom {
         return limits.get(l).left();
     }
 
+    float right(Line l) {
+        return limits.get(l).right();
+    }
+
     float wrap(Line l) {
         Limits lim = limits.get(l);
         return lim.narrowed() ? Math.min(lim.right(), measure) : measure;

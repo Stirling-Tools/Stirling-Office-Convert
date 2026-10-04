@@ -9,6 +9,7 @@ import java.awt.geom.Rectangle2D;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Deque;
 import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.List;
@@ -31,6 +32,8 @@ import org.apache.pdfbox.pdmodel.graphics.form.PDTransparencyGroup;
 import org.apache.pdfbox.pdmodel.graphics.image.PDImage;
 import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
 import org.apache.pdfbox.pdmodel.graphics.state.PDGraphicsState;
+import org.apache.pdfbox.pdmodel.interactive.annotation.PDAnnotation;
+import org.apache.pdfbox.pdmodel.interactive.annotation.PDAppearanceStream;
 import org.apache.pdfbox.util.Matrix;
 import org.apache.pdfbox.util.Vector;
 
@@ -84,9 +87,33 @@ final class GraphicsCollector extends PDFGraphicsStreamEngine {
     private final List<Fill> fills = new ArrayList<>();
     private final List<ImageDraw> images = new ArrayList<>();
     private final List<VectorMark> marks = new ArrayList<>();
+    private final List<PageGraphics.Area> masked = new ArrayList<>();
 
-    private GraphicsCollector(PDPage page, AffineTransform toDisplay, float w, float h) {
+    private final StreamRunner runner;
+
+    private GraphicsCollector(PDPage page, AffineTransform toDisplay, float w, float h, ParsedStreams parsed) {
         super(page);
+        this.runner = new StreamRunner(new StreamRunner.Host() {
+            @Override
+            public PDGraphicsState state() {
+                return getGraphicsState();
+            }
+
+            @Override
+            public Deque<PDGraphicsState> save() {
+                return saveGraphicsStack();
+            }
+
+            @Override
+            public void restore(Deque<PDGraphicsState> stack) {
+                restoreGraphicsStack(stack);
+            }
+
+            @Override
+            public void operator(Operator operator, List<COSBase> operands) throws IOException {
+                processOperator(operator, operands);
+            }
+        }, parsed);
         this.toDisplay = toDisplay;
         this.displayScale = (float) Math.sqrt(Math.abs(toDisplay.getDeterminant()));
         this.pageWidth = w;
@@ -94,9 +121,9 @@ final class GraphicsCollector extends PDFGraphicsStreamEngine {
         this.pastBudget = new PastBudget(w, h);
     }
 
-    static PageGraphics read(PDPage page, AffineTransform toDisplay, float width, float height)
+    static PageGraphics read(PDPage page, AffineTransform toDisplay, float width, float height, ParsedStreams parsed)
             throws IOException {
-        GraphicsCollector c = new GraphicsCollector(page, toDisplay, width, height);
+        GraphicsCollector c = new GraphicsCollector(page, toDisplay, width, height, parsed);
         try {
             c.processPage(page);
             Annotations.show(c, page);
@@ -107,7 +134,7 @@ final class GraphicsCollector extends PDFGraphicsStreamEngine {
         HiddenFills.remove(c.fills, c.paintOrder, c.seeThrough);
         BlankPaint.remove(c.fills, c.marks, c.images, c.rules, c.paintOrder, width * height);
         return new PageGraphics(c.rules, c.fills, c.images, c.marks, c.pastBudget.areas(), c.paintOrder, c.seeThrough,
-                c.outlines);
+                c.outlines, c.masked);
     }
 
     private Point2D.Float display(double x, double y) {
@@ -149,10 +176,45 @@ final class GraphicsCollector extends PDFGraphicsStreamEngine {
     }
 
     @Override
+    public void processPage(PDPage page) throws IOException {
+        runner.processPage(page);
+    }
+
+    @Override
     public void showForm(PDFormXObject form) throws IOException {
         if (budget.form()) {
-            super.showForm(form);
+            runner.showForm(form);
         }
+    }
+
+    @Override
+    protected void processTransparencyGroup(PDTransparencyGroup group) throws IOException {
+        runner.processTransparencyGroup(group);
+    }
+
+    @Override
+    protected void processAnnotation(PDAnnotation annotation, PDAppearanceStream appearance) throws IOException {
+        runner.processAnnotation(annotation, appearance);
+    }
+
+    @Override
+    public PDResources getResources() {
+        return runner.resources();
+    }
+
+    @Override
+    public PDPage getCurrentPage() {
+        return runner.page();
+    }
+
+    @Override
+    public Matrix getInitialMatrix() {
+        return runner.initialMatrix();
+    }
+
+    @Override
+    public boolean isShouldProcessColorOperators() {
+        return runner.colors();
     }
 
     @Override
@@ -173,6 +235,10 @@ final class GraphicsCollector extends PDFGraphicsStreamEngine {
     protected void showType3Glyph(
             Matrix textRenderingMatrix, PDType3Font font, int code, Vector displacement) {
     }
+
+    // Glyphs draw nothing here, so their codes are not decoded at all
+    @Override
+    protected void showText(byte[] string) {}
 
     @Override
     protected void processType3Stream(PDType3CharProc charProc, Matrix textRenderingMatrix) {}
@@ -363,7 +429,8 @@ final class GraphicsCollector extends PDFGraphicsStreamEngine {
         boolean skewed =
                 Math.min(Math.abs(upX), Math.abs(upY)) > upLen * 0.02
                         || Math.min(Math.abs(rightX), Math.abs(rightY)) > rightLen * 0.02
-                        || gs.getSoftMask() == null && maskedGroups == 0 && shapedClip(at);
+                        || gs.getSoftMask() != null
+                        || maskedGroups == 0 && shapedClip(at);
 
         int stencil = -1;
         if (pdImage.isStencil()) {
@@ -459,6 +526,10 @@ final class GraphicsCollector extends PDFGraphicsStreamEngine {
         if (!fill && !stroke) {
             return;
         }
+        if (gs.getSoftMask() != null) {
+            masked(stroke);
+            return;
+        }
         if (pointBudget <= 0) {
             pastBudget(fill, stroke);
             return;
@@ -510,10 +581,25 @@ final class GraphicsCollector extends PDFGraphicsStreamEngine {
         if (onlyRectangles || !stroke && toRgb(getGraphicsState().getNonStrokingColor(), 0xFFFFFF) == 0xFFFFFF) {
             return;
         }
+        float[] box = paintedBox(stroke);
+        float w = box[2] - box[0];
+        float h = box[3] - box[1];
+        if (w < 0 || h < 0 || Math.min(w, h) < 1.5f && Math.max(w, h) > 24f || w > pageWidth * 0.9f && h > pageHeight * 0.9f) {
+            return;
+        }
+        pastBudget.add(box[0], box[1], box[2], box[3], unkeptPoints + subpaths.stream().mapToInt(List::size).sum());
+    }
+
+    private void masked(boolean stroke) {
+        float[] box = paintedBox(stroke);
+        if (box[2] - box[0] >= 1 && box[3] - box[1] >= 1) {
+            masked.add(new PageGraphics.Area(box[0], box[1], box[2], box[3]));
+        }
+    }
+
+    private float[] paintedBox(boolean stroke) {
         float[] b = {Float.MAX_VALUE, Float.MAX_VALUE, -Float.MAX_VALUE, -Float.MAX_VALUE};
-        int points = unkeptPoints;
         for (List<Point2D.Float> sp : subpaths) {
-            points += sp.size();
             for (Point2D.Float p : sp) {
                 if (p != CURVE) {
                     widen(b, p);
@@ -528,16 +614,8 @@ final class GraphicsCollector extends PDFGraphicsStreamEngine {
         }
         float pad = stroke ? lineWidth() / 2f : 0;
         float[] clip = clipBox();
-        float x = Math.max(b[0] - pad, clip[0]);
-        float top = Math.max(b[1] - pad, clip[1]);
-        float right = Math.min(b[2] + pad, clip[2]);
-        float bottom = Math.min(b[3] + pad, clip[3]);
-        float w = right - x;
-        float h = bottom - top;
-        if (w < 0 || h < 0 || Math.min(w, h) < 1.5f && Math.max(w, h) > 24f || w > pageWidth * 0.9f && h > pageHeight * 0.9f) {
-            return;
-        }
-        pastBudget.add(x, top, right, bottom, points);
+        return new float[] {Math.max(b[0] - pad, clip[0]), Math.max(b[1] - pad, clip[1]), Math.min(b[2] + pad, clip[2]),
+            Math.min(b[3] + pad, clip[3])};
     }
 
     private static boolean axisAligned(Point2D p0, Point2D p1, Point2D p2, Point2D p3) {

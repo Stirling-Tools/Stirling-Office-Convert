@@ -104,6 +104,7 @@ final class OdtBody {
         r.lineHeight = p.lineHeight;
         r.lineRule = p.lineRule;
         r.bidi = p.bidi;
+        r.noHangingPunctuation = p.noHangingPunctuation;
         r.shading = p.shading;
         r.borderBottom = p.borderBottom;
         r.borderBottomRgb = p.borderBottomRgb;
@@ -145,6 +146,9 @@ final class OdtBody {
         }
         if (p.bidi) {
             a.append(" style:writing-mode=\"rl-tb\"");
+        }
+        if (p.noHangingPunctuation) {
+            a.append(" style:punctuation-wrap=\"simple\"");
         }
         if (p.pageBreakBefore) {
             a.append(" fo:break-before=\"page\"");
@@ -243,7 +247,7 @@ final class OdtBody {
                 openLink = link;
             }
             switch (in) {
-                case Inline.Text t -> span(sb, t.style(), base, () -> text.append(sb, t.text()));
+                case Inline.Text t -> span(sb, t.style(), base, t.text(), () -> text.append(sb, t.text()));
                 case Inline.Tab tab -> span(sb, tab.style(), base, () -> text.tab(sb));
                 case Inline.Break br -> text.lineBreak(sb);
                 case Inline.ColumnBreak cb -> { }
@@ -273,7 +277,11 @@ final class OdtBody {
     }
 
     private void span(StringBuilder sb, RunStyle style, RunStyle base, Content content) throws IOException {
-        String props = style == null ? "" : OdtProps.text(style, base, styles.fonts);
+        span(sb, style, base, null, content);
+    }
+
+    private void span(StringBuilder sb, RunStyle style, RunStyle base, String text, Content content) throws IOException {
+        String props = style == null ? "" : OdtProps.text(style, base, styles.fonts, text, sheet.scripts);
         if (props.isEmpty()) {
             content.write();
             return;

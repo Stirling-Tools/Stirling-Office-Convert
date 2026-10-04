@@ -206,9 +206,9 @@ public record PageLayout(
                     rgb);
         }
 
-        public TextBoxItem turned(int direction, Box onPage) {
+        public TextBoxItem turned(int direction, Box onPage, boolean upright) {
             return new TextBoxItem(box, fillRgb, textLeft, textRight, paras, gap, lineRgb, lineWidth, rounded, overlay,
-                    new Turn(direction, onPage), groundRgb);
+                    new Turn(direction, onPage, upright), groundRgb);
         }
 
         public float top() {
@@ -228,7 +228,7 @@ public record PageLayout(
         }
     }
 
-    public record Turn(int direction, Box onPage) {}
+    public record Turn(int direction, Box onPage, boolean upright) {}
 
     public record Column(float left, float right, List<Item> items) {}
 

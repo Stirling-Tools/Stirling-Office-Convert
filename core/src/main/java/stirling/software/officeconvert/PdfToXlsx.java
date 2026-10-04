@@ -19,7 +19,9 @@ import org.apache.pdfbox.pdmodel.PDDocumentInformation;
 import stirling.software.officeconvert.extract.PageData;
 import stirling.software.officeconvert.extract.PageReader;
 import stirling.software.officeconvert.extract.PdfFiles;
+import stirling.software.officeconvert.extract.PdfFootprint;
 import stirling.software.officeconvert.extract.StreamGuard;
+import stirling.software.officeconvert.jpx.JpxImageIO;
 import stirling.software.officeconvert.layout.DocStats;
 import stirling.software.officeconvert.layout.Line;
 import stirling.software.officeconvert.layout.LineBuilder;
@@ -27,8 +29,10 @@ import stirling.software.officeconvert.layout.OcrText;
 import stirling.software.officeconvert.layout.PageAnalyzer;
 import stirling.software.officeconvert.layout.PageLayout;
 import stirling.software.officeconvert.layout.Word;
+import stirling.software.officeconvert.memory.Admission;
 import stirling.software.officeconvert.ods.OdsWriter;
 import stirling.software.officeconvert.sheet.ConventionEvidence;
+import stirling.software.officeconvert.sheet.MirroredSheets;
 import stirling.software.officeconvert.sheet.SheetBuilder;
 import stirling.software.officeconvert.sheet.WorkbookSink;
 import stirling.software.officeconvert.xlsx.XlsxWriter;
@@ -135,6 +139,7 @@ public final class PdfToXlsx {
                     OutputStream stream = Files.newOutputStream(part)) {
                 convert(doc, stream, opts);
             }
+            PdfFiles.stopIfInterrupted();
             PageStream.moveIntoPlace(part, out);
         } catch (IOException e) {
             throw PdfFiles.interrupted(e);
@@ -148,11 +153,16 @@ public final class PdfToXlsx {
         Objects.requireNonNull(out, "out");
         Objects.requireNonNull(options, "options");
         PdfFiles.checkOpen(doc);
+        JpxImageIO.install();
         PdfFiles.stopIfInterrupted();
+        Admission.Ticket ticket = Admission.jvm().enter(
+                PdfFootprint.estimate(doc, options.firstPage(), options.lastPage(), 72f));
         try {
             write(doc, out, options);
         } catch (RuntimeException e) {
             throw new IOException("Conversion failed: " + e.getMessage(), e);
+        } finally {
+            ticket.close();
         }
     }
 
@@ -198,7 +208,7 @@ public final class PdfToXlsx {
         SheetBuilder.Settings settings = new SheetBuilder.Settings(split(options.sheets()), options.splitLargeTables(),
                 options.typedValues(), PageStream.autoHyphenated(doc) || stats.autoHyphenated());
         try (WorkbookSink sink = options.format() == Format.ODS ? new OdsWriter(out) : new XlsxWriter(out)) {
-            SheetBuilder builder = new SheetBuilder(sink, stats, evidence.conventions(), settings, total);
+            SheetBuilder builder = new SheetBuilder(new MirroredSheets(sink, stats.scripts.rightToLeft()), stats, evidence.conventions(), settings, total);
             PageAnalyzer analyzer = new PageAnalyzer(stats, options.tables());
             PageReader.PageConsumer consume = page -> {
                 PageStream.stopIfInterrupted();

@@ -14,9 +14,9 @@ final class TableCells {
         Table t = shape.table();
         List<Box> out = new ArrayList<>();
         float[] x = new float[t.columnWidths.size() + 1];
-        x[0] = shape.x();
+        x[0] = t.rightToLeft ? shape.x() + shape.width() : shape.x();
         for (int c = 0; c < t.columnWidths.size(); c++) {
-            x[c + 1] = x[c] + t.columnWidths.get(c);
+            x[c + 1] = x[c] + (t.rightToLeft ? -t.columnWidths.get(c) : t.columnWidths.get(c));
         }
         float top = shape.y();
         for (Table.Row row : t.rows) {
@@ -27,7 +27,7 @@ final class TableCells {
                     break;
                 }
                 if (cell.shading >= 0) {
-                    out.add(new Box(x[col], top, x[col + span], top + row.height));
+                    out.add(new Box(Math.min(x[col], x[col + span]), top, Math.max(x[col], x[col + span]), top + row.height));
                 }
                 col += span;
             }

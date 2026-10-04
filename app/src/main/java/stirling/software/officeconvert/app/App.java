@@ -8,6 +8,9 @@ import java.util.logging.Logger;
 
 import com.sun.net.httpserver.HttpServer;
 
+import stirling.software.officeconvert.topdf.OfficeToPdf;
+import stirling.software.officeconvert.topdf.io.PoiXml;
+
 public final class App {
 
     private static final Logger[] QUIET = {Logger.getLogger("org.apache.pdfbox"), Logger.getLogger("org.apache.fontbox")};
@@ -20,6 +23,8 @@ public final class App {
         }
         Limits limits = Limits.fromEnvironment(args);
         limits.applyServerSettings();
+        PoiXml.raiseProcessLimits();
+        Thread.ofPlatform().daemon().name("office-warm-up").start(() -> OfficeToPdf.warmUp(OfficeToPdf.Format.values()));
         LibreOffice libreOffice = LibreOffice.find(limits.libreOffice(), limits.libreOfficeTemplate(),
                 limits.libreOfficeConcurrent());
         ConvertHandler convert = new ConvertHandler(limits, libreOffice);

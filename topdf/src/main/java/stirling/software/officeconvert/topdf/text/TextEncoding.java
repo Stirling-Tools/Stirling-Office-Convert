@@ -1,0 +1,125 @@
+package stirling.software.officeconvert.topdf.text;
+
+import java.io.BufferedInputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.io.Reader;
+import java.nio.ByteBuffer;
+import java.nio.CharBuffer;
+import java.nio.charset.Charset;
+import java.nio.charset.CharsetDecoder;
+import java.nio.charset.CoderResult;
+import java.nio.charset.CodingErrorAction;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
+
+import stirling.software.officeconvert.topdf.io.SourceFile;
+
+record TextEncoding(Charset charset, int bom) {
+
+    static final Charset WINDOWS_1252 = Charset.forName("windows-1252");
+
+    private static final Charset UTF_32BE = Charset.forName("UTF-32BE");
+
+    private static final Charset UTF_32LE = Charset.forName("UTF-32LE");
+
+    private static final int SAMPLE = 4096;
+
+    static TextEncoding detect(Path file) throws IOException {
+        byte[] head;
+        try (InputStream in = SourceFile.open(file)) {
+            head = in.readNBytes(SAMPLE);
+        }
+        TextEncoding marked = fromBom(head);
+        if (marked != null) {
+            return marked;
+        }
+        Charset wide = utf16(head);
+        if (wide != null) {
+            return new TextEncoding(wide, 0);
+        }
+        try (InputStream in = new BufferedInputStream(SourceFile.open(file), 1 << 16)) {
+            return strictUtf8(in) ? new TextEncoding(StandardCharsets.UTF_8, 0) : new TextEncoding(WINDOWS_1252, 0);
+        }
+    }
+
+    static Charset utf16(byte[] h) {
+        int pairs = h.length / 2;
+        if (pairs < 2) {
+            return null;
+        }
+        int evenNul = 0;
+        int oddNul = 0;
+        for (int i = 0; i + 1 < h.length; i += 2) {
+            evenNul += h[i] == 0 ? 1 : 0;
+            oddNul += h[i + 1] == 0 ? 1 : 0;
+        }
+        if (oddNul * 10 >= pairs * 3 && evenNul * 20 < pairs) {
+            return StandardCharsets.UTF_16LE;
+        }
+        if (evenNul * 10 >= pairs * 3 && oddNul * 20 < pairs) {
+            return StandardCharsets.UTF_16BE;
+        }
+        return null;
+    }
+
+    static TextEncoding fromBom(byte[] h) {
+        int n = h.length;
+        if (n >= 4 && h[0] == 0 && h[1] == 0 && (h[2] & 0xFF) == 0xFE && (h[3] & 0xFF) == 0xFF) {
+            return new TextEncoding(UTF_32BE, 4);
+        }
+        if (n >= 4 && (h[0] & 0xFF) == 0xFF && (h[1] & 0xFF) == 0xFE && h[2] == 0 && h[3] == 0) {
+            return new TextEncoding(UTF_32LE, 4);
+        }
+        if (n >= 3 && (h[0] & 0xFF) == 0xEF && (h[1] & 0xFF) == 0xBB && (h[2] & 0xFF) == 0xBF) {
+            return new TextEncoding(StandardCharsets.UTF_8, 3);
+        }
+        if (n >= 2 && (h[0] & 0xFF) == 0xFE && (h[1] & 0xFF) == 0xFF) {
+            return new TextEncoding(StandardCharsets.UTF_16BE, 2);
+        }
+        if (n >= 2 && (h[0] & 0xFF) == 0xFF && (h[1] & 0xFF) == 0xFE) {
+            return new TextEncoding(StandardCharsets.UTF_16LE, 2);
+        }
+        return null;
+    }
+
+    static boolean strictUtf8(InputStream in) throws IOException {
+        CharsetDecoder d = StandardCharsets.UTF_8.newDecoder().onMalformedInput(CodingErrorAction.REPORT)
+                .onUnmappableCharacter(CodingErrorAction.REPORT);
+        ByteBuffer bytes = ByteBuffer.allocate(1 << 16);
+        CharBuffer chars = CharBuffer.allocate(1 << 16);
+        boolean end = false;
+        while (true) {
+            int r = end ? -1 : in.read(bytes.array(), bytes.position(), bytes.remaining());
+            if (r < 0) {
+                end = true;
+            } else {
+                bytes.position(bytes.position() + r);
+            }
+            bytes.flip();
+            CoderResult result = d.decode(bytes, chars, end);
+            if (result.isError()) {
+                return false;
+            }
+            chars.clear();
+            bytes.compact();
+            if (end) {
+                return !d.flush(chars).isError() && bytes.position() == 0;
+            }
+        }
+    }
+
+    Reader open(Path file) throws IOException {
+        InputStream in = new BufferedInputStream(SourceFile.open(file), 1 << 16);
+        try {
+            in.skipNBytes(bom);
+        } catch (IOException e) {
+            in.close();
+            throw e;
+        }
+        CharsetDecoder d = charset.newDecoder().onMalformedInput(CodingErrorAction.REPLACE)
+                .onUnmappableCharacter(CodingErrorAction.REPLACE);
+        return new InputStreamReader(in, d);
+    }
+}

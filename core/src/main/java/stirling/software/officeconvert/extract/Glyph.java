@@ -25,6 +25,8 @@ public final class Glyph {
 
     public float hscale = 1f;
 
+    public boolean upright;
+
     public IconShape icon;
 
     public Glyph(

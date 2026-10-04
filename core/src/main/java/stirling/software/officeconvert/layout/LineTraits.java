@@ -11,21 +11,50 @@ final class LineTraits {
     private LineTraits() {}
 
     static boolean rtl(Line l) {
-        int r = 0;
-        int n = 0;
+        return LogicalOrder.rtlBase(l);
+    }
+
+    static boolean ideographic(Line l) {
+        int ideographs = 0;
+        int letters = 0;
         for (Word w : l.words) {
-            for (Glyph g : w.glyphs) {
-                for (int i = 0; i < g.text.length(); i++) {
-                    byte d = Character.getDirectionality(g.text.charAt(i));
-                    if (d == Character.DIRECTIONALITY_RIGHT_TO_LEFT || d == Character.DIRECTIONALITY_RIGHT_TO_LEFT_ARABIC) {
-                        r++;
-                    } else if (d == Character.DIRECTIONALITY_LEFT_TO_RIGHT) {
-                        n++;
+            for (int i = 0; i < w.text.length(); ) {
+                int cp = w.text.codePointAt(i);
+                i += Character.charCount(cp);
+                if (Character.isLetter(cp)) {
+                    letters++;
+                    if (cp < 0x1100) {
+                        continue;
                     }
+                    Character.UnicodeScript s = Character.UnicodeScript.of(cp);
+                    ideographs += s == Character.UnicodeScript.HAN || s == Character.UnicodeScript.HIRAGANA
+                            || s == Character.UnicodeScript.KATAKANA ? 1 : 0;
                 }
             }
         }
-        return r > n;
+        return letters >= 10 && ideographs * 2 > letters;
+    }
+
+    static boolean unspaced(Line l) {
+        int unspaced = 0;
+        int letters = 0;
+        for (Word w : l.words) {
+            for (int i = 0; i < w.text.length(); ) {
+                int cp = w.text.codePointAt(i);
+                i += Character.charCount(cp);
+                if (!Character.isLetter(cp)) {
+                    continue;
+                }
+                letters++;
+                Character.UnicodeScript s = Character.UnicodeScript.of(cp);
+                if (s == Character.UnicodeScript.HAN || s == Character.UnicodeScript.HIRAGANA || s == Character.UnicodeScript.KATAKANA
+                        || s == Character.UnicodeScript.THAI || s == Character.UnicodeScript.LAO || s == Character.UnicodeScript.KHMER
+                        || s == Character.UnicodeScript.MYANMAR || s == Character.UnicodeScript.TIBETAN) {
+                    unspaced++;
+                }
+            }
+        }
+        return letters >= 10 && unspaced * 2 > letters;
     }
 
     static boolean isFillLine(Line l) {
@@ -77,37 +106,31 @@ final class LineTraits {
     }
 
     private static Marker leadingMarker(Line line) {
-        if (line.words.size() < 2) {
-            return null;
-        }
-        Word first = line.words.getFirst();
-        return Marker.parse(first.text, first.first().font);
+        return Marker.leading(line);
     }
 
     static boolean startsListItem(Line line) {
-        if (line.words.size() < 2) {
-            return false;
-        }
-        Word first = line.words.getFirst();
-        Marker m = Marker.parse(first.text, first.first().font);
+        Marker m = Marker.leading(line);
         if (m == null) {
             return false;
         }
-        float gap = line.words.get(1).x - first.right;
+        float gap = Marker.gapAfter(line);
         float size = line.size;
+        boolean tab = Marker.tabAfter(line);
         if (m.isBullet()) {
-            return gap > 0.15f * size || line.gaps[1] != Line.SPACE;
+            return gap > 0.15f * size || tab;
         }
-        return line.gaps[1] != Line.SPACE || gap > 0.35f * size && gap > 1.3f * medianWordGap(line);
+        return tab || gap > 0.35f * size && gap > 1.3f * medianWordGap(line);
     }
 
     private static float medianWordGap(Line line) {
         if (line.words.size() < 5) {
             return 0f;
         }
+        int from = Marker.startIndex(line) == 0 ? 2 : 1;
         float[] gaps = new float[line.words.size() - 2];
-        for (int i = 2; i < line.words.size(); i++) {
-            gaps[i - 2] = line.words.get(i).x - line.words.get(i - 1).right;
+        for (int i = from; i < from + gaps.length; i++) {
+            gaps[i - from] = line.words.get(i).x - line.words.get(i - 1).right;
         }
         Arrays.sort(gaps);
         return gaps[gaps.length / 2];

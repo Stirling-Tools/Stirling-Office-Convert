@@ -15,9 +15,10 @@ final class VectorBullets {
 
     static List<Glyph> synthesize(List<Glyph> glyphs, List<VectorMark> marks, List<Fill> fills, Set<Object> used) {
         List<Glyph> out = new ArrayList<>();
-        GlyphIndex index = new GlyphIndex(glyphs);
+        GlyphIndex index = null;
         for (VectorMark m : marks) {
-            if (m.filled() || m.curved()) {
+            if ((m.filled() || m.curved()) && sized(m.x(), m.top(), m.right(), m.bottom())) {
+                index = index == null ? new GlyphIndex(glyphs) : index;
                 Glyph g = bulletFor(m.x(), m.top(), m.right(), m.bottom(), m.curved() ? "•" : "▪", m.rgb(), index);
                 if (g != null) {
                     out.add(g);
@@ -26,6 +27,10 @@ final class VectorBullets {
             }
         }
         for (Fill f : fills) {
+            if (!sized(f.x(), f.top(), f.right(), f.bottom())) {
+                continue;
+            }
+            index = index == null ? new GlyphIndex(glyphs) : index;
             Glyph g = bulletFor(f.x(), f.top(), f.right(), f.bottom(), "▪", f.rgb(), index);
             if (g != null) {
                 out.add(g);
@@ -35,12 +40,14 @@ final class VectorBullets {
         return out;
     }
 
-    private static Glyph bulletFor(float x, float top, float right, float bottom, String symbol, int rgb, GlyphIndex index) {
+    private static boolean sized(float x, float top, float right, float bottom) {
         float w = right - x;
         float h = bottom - top;
-        if (w < 1.5f || h < 1.5f || w > 9f || h > 9f || w / h > 1.6f || h / w > 1.6f) {
-            return null;
-        }
+        return !(w < 1.5f || h < 1.5f || w > 9f || h > 9f || w / h > 1.6f || h / w > 1.6f);
+    }
+
+    private static Glyph bulletFor(float x, float top, float right, float bottom, String symbol, int rgb, GlyphIndex index) {
+        float w = right - x;
         Glyph next = index.textAfter(right, (top + bottom) / 2f);
         if (next == null || w > next.size * 0.8f || index.between(x, next)) {
             return null;

@@ -5,6 +5,8 @@ import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Set;
 
+import stirling.software.officeconvert.model.Scripts;
+
 final class OdpStyles {
 
     private final Map<String, String> names = new HashMap<>();
@@ -34,6 +36,8 @@ final class OdpStyles {
         }
         return name;
     }
+
+    Scripts.Profile scripts = new Scripts.Profile();
 
     String font(String family) {
         fonts.add(family);

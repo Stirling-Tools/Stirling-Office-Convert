@@ -76,6 +76,7 @@ public final class DocumentBuilder {
         RunStyle normal =
                 new RunStyle(stats.bodyFont.family(), round(stats.bodySize), false, false, false, false, 0, -1, 0, false);
         this.styles = new StyleSheet(normal);
+        styles.scripts = stats.scripts;
         this.paragraphs = new ParagraphFactory(stats, runs, styles, numbering);
         this.tables = new TableBuilder(paragraphs);
         this.placer = new MediaPlacer(document, figureDpi, pictures, sink, paragraphs);
@@ -279,25 +280,32 @@ public final class DocumentBuilder {
         float offset = sourceTop - slot.ref();
         float spaceBefore = Math.max(0, offset);
         boolean pageBreak = slot.pageBreak();
-        Table table = item instanceof PageLayout.TableItem ti ? tables.build(ti, layout, col.left()) : null;
+        Table table = item instanceof PageLayout.TableItem ti ? tables.build(ti, layout, col.left(), col.right()) : null;
         if (table != null && besideWrap(item, col)) {
+            if (table.rightToLeft) {
+                table.mirror();
+            }
             table.floatX = col.left() + table.indent;
             table.floatY = item.top();
             table.floatRoom = Math.max(0, col.right() - item.right()) + 2f;
         }
         if (table != null && pageBreak && pending instanceof Table prev && !prev.floating() && !table.floating()
                 && TableContinuation.continues(prev, table)) {
-            TableContinuation.join(prev, table, pageBookmark);
-            pageBookmark = null;
-            return item.bottom();
+            if (TableContinuation.join(prev, table, pageBookmark)) {
+                pageBookmark = null;
+                return item.bottom();
+            }
+            offset += TableContinuation.dropLeftover(table);
+            spaceBefore = Math.max(0, offset);
         }
         if (slot.top()) {
-            pageBreak = topSpacer(offset, pageBreak);
+            boolean opens = table != null && pageBreak && offset <= 1f && !table.floating() && opener(table) != null;
+            pageBreak = opens || topSpacer(offset, pageBreak);
             spaceBefore = 0;
         }
         float bottom;
         if (table != null) {
-            emitTable(table, spaceBefore, pageBreak);
+            emitTable(table, spaceBefore, pageBreak, item.bottom());
             bottom = item.bottom();
         } else if (item instanceof PageLayout.ParaItem pi) {
             ParaDraft d = pi.para();
@@ -415,7 +423,9 @@ public final class DocumentBuilder {
             if (pending instanceof Paragraph p) {
                 floats.anchorLeftovers(p, p == joined ? p.inlines.size() : 0);
             } else {
-                emit(paragraphs.spacer(1));
+                Paragraph carrier = paragraphs.spacer(1);
+                emit(carrier);
+                floats.anchorLeftovers(carrier, 0);
             }
         }
     }
@@ -632,7 +642,7 @@ public final class DocumentBuilder {
     private void emitItem(PageLayout.Item item, PageLayout layout, AffineTransform toDisplay, float colLeft, float colRight,
             float spaceBefore, boolean pageBreak) throws IOException {
         if (item instanceof PageLayout.TableItem ti) {
-            emitTable(tables.build(ti, layout, colLeft), spaceBefore, pageBreak);
+            emitTable(tables.build(ti, layout, colLeft, colRight), spaceBefore, pageBreak, item.bottom());
         } else if (item instanceof PageLayout.PictureRow row) {
             emitPictureRow(row, layout, toDisplay, colLeft, colRight, spaceBefore, pageBreak);
         } else {
@@ -640,8 +650,16 @@ public final class DocumentBuilder {
         }
     }
 
-    private void emitTable(Table t, float spaceBefore, boolean pageBreak) throws IOException {
-        if (pageBreak) {
+    private void emitTable(Table t, float spaceBefore, boolean pageBreak, float bottom) throws IOException {
+        Paragraph opener = pageBreak && !t.floating() && spaceBefore <= 1 ? opener(t) : null;
+        if (opener != null) {
+            opener.pageBreakBefore = true;
+            t.pageBreakBefore = true;
+            if (pageBookmark != null && opener.bookmark == null) {
+                opener.bookmark = pageBookmark;
+                pageBookmark = null;
+            }
+        } else if (pageBreak) {
             Paragraph sp = paragraphs.spacer(1);
             sp.pageBreakBefore = true;
             emit(sp);
@@ -661,9 +679,17 @@ public final class DocumentBuilder {
         }
         boolean joinedHere = pending == joined && pendingPage == pageCount - 1;
         if (floats.waiting() && pending instanceof Paragraph prev && (pendingPage == pageCount || joinedHere)) {
-            floats.anchorLeftovers(prev, joinedHere ? prev.inlines.size() : 0);
+            floats.anchorAbove(prev, joinedHere ? prev.inlines.size() : 0, bottom);
         }
         emit(t);
+    }
+
+    private static Paragraph opener(Table t) {
+        if (t.rows.isEmpty() || t.rows.getFirst().cells.isEmpty()) {
+            return null;
+        }
+        List<Paragraph> ps = t.rows.getFirst().cells.getFirst().paragraphs;
+        return ps.isEmpty() ? null : ps.getFirst();
     }
 
     private void emitPictureRow(PageLayout.PictureRow row, PageLayout layout, AffineTransform toDisplay, float colLeft,

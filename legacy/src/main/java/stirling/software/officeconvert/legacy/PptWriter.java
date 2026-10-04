@@ -22,6 +22,7 @@ import org.apache.poi.sl.usermodel.PictureData.PictureType;
 import org.apache.poi.sl.usermodel.ShapeType;
 
 import stirling.software.officeconvert.model.Picture;
+import stirling.software.officeconvert.model.Scripts;
 import stirling.software.officeconvert.slides.Frame;
 import stirling.software.officeconvert.slides.LineShape;
 import stirling.software.officeconvert.slides.PictureShape;
@@ -33,6 +34,8 @@ import stirling.software.officeconvert.slides.TableShape;
 import stirling.software.officeconvert.slides.TextShape;
 
 public final class PptWriter implements SlideSink {
+
+    private Scripts.Profile scripts = new Scripts.Profile();
 
     private static final int SOLID_FILL = 0;
 
@@ -46,6 +49,11 @@ public final class PptWriter implements SlideSink {
 
     public PptWriter(OutputStream out) {
         this.out = out;
+    }
+
+    @Override
+    public void scripts(Scripts.Profile profile) {
+        this.scripts = profile;
     }
 
     @Override
@@ -89,7 +97,7 @@ public final class PptWriter implements SlideSink {
             fill.setFillType(SOLID_FILL);
             fill.setForegroundColor(new Color(slide.background()));
         }
-        PptText text = new PptText(this::slideOf);
+        PptText text = new PptText(this::slideOf, scripts);
         for (SlideShape shape : slide.shapes()) {
             switch (shape) {
                 case TextShape t -> text.shape(s, t);

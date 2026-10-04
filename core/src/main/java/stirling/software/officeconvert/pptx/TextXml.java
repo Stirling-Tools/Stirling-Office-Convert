@@ -8,6 +8,8 @@ import stirling.software.officeconvert.model.Inline;
 import stirling.software.officeconvert.model.Paragraph.Align;
 import stirling.software.officeconvert.model.Paragraph;
 import stirling.software.officeconvert.model.RunStyle;
+import stirling.software.officeconvert.model.ScriptWidths;
+import stirling.software.officeconvert.model.Scripts;
 import stirling.software.officeconvert.slides.Bullet;
 import stirling.software.officeconvert.slides.LineBoxes;
 import stirling.software.officeconvert.slides.TextPara;
@@ -23,24 +25,29 @@ final class TextXml {
     private final SlideRels rels;
     private final Links links;
     private final Map<String, Integer> fonts;
+    private final Scripts.Profile scripts;
 
     interface Links {
         int slideOf(int page);
     }
 
-    TextXml(SlideRels rels, Links links, Map<String, Integer> fonts) {
+    TextXml(SlideRels rels, Links links, Map<String, Integer> fonts, Scripts.Profile scripts) {
         this.rels = rels;
         this.links = links;
         this.fonts = fonts;
+        this.scripts = scripts;
     }
 
     void paragraph(StringBuilder sb, TextPara p) {
         Paragraph c = p.content();
         sb.append("<a:p><a:pPr");
-        margins(sb, p.marginLeft(), p.indent(), p.marginRight());
+        margins(sb, c.bidi ? p.marginRight() : p.marginLeft(), p.indent(), c.bidi ? p.marginLeft() : p.marginRight());
         sb.append(" algn=\"").append(align(p.align())).append('"');
         if (c.bidi) {
             sb.append(" rtl=\"1\"");
+        }
+        if (c.noHangingPunctuation) {
+            sb.append(" hangingPunct=\"0\"");
         }
         sb.append('>');
         lineSpacing(sb, p.lineHeight(), p.size());
@@ -56,10 +63,14 @@ final class TextXml {
 
     void cellParagraph(StringBuilder sb, Paragraph p, boolean first) {
         sb.append("<a:p><a:pPr");
-        margins(sb, Math.max(0, p.indentLeft), p.indentFirst, Math.max(0, p.indentRight));
+        margins(sb, Math.max(0, p.bidi ? p.indentRight : p.indentLeft), p.indentFirst,
+                Math.max(0, p.bidi ? p.indentLeft : p.indentRight));
         sb.append(" algn=\"").append(align(p.align)).append('"');
         if (p.bidi) {
             sb.append(" rtl=\"1\"");
+        }
+        if (p.noHangingPunctuation) {
+            sb.append(" hangingPunct=\"0\"");
         }
         sb.append('>');
         if (p.lineRule == Paragraph.LineRule.EXACT && p.lineHeight > 0) {
@@ -154,6 +165,16 @@ final class TextXml {
     }
 
     static String scheme(Marker m) {
+        String world = switch (m.kind()) {
+            case HEBREW -> "hebrew2Minus";
+            case ARABIC_ABJAD, ARABIC_ALPHA -> "arabic1Minus";
+            case CHINESE -> "ea1ChsPeriod";
+            case FULL_WIDTH -> "arabicDbPeriod";
+            default -> null;
+        };
+        if (world != null) {
+            return world;
+        }
         String base = switch (m.kind()) {
             case LOWER_LETTER -> "alphaLc";
             case UPPER_LETTER -> "alphaUc";
@@ -216,7 +237,7 @@ final class TextXml {
             return;
         }
         sb.append("<a:r>");
-        rPr(sb, "a:rPr", style, link, anchorPage);
+        rPr(sb, "a:rPr", style, link, anchorPage, text);
         sb.append("<a:t>");
         Ooxml.text(sb, text);
         sb.append("</a:t></a:r>");
@@ -252,7 +273,16 @@ final class TextXml {
     }
 
     void rPr(StringBuilder sb, String tag, RunStyle s, String link, int anchorPage) {
-        sb.append('<').append(tag).append(" sz=\"").append(Ooxml.fontSize(s.size())).append('"');
+        rPr(sb, tag, s, link, anchorPage, null);
+    }
+
+    private void rPr(StringBuilder sb, String tag, RunStyle s, String link, int anchorPage, String text) {
+        sb.append('<').append(tag);
+        String lang = Scripts.languages(text, scripts).primary();
+        if (lang != null) {
+            sb.append(" lang=\"").append(lang).append('"');
+        }
+        sb.append(" sz=\"").append(Ooxml.fontSize(s.size())).append('"');
         sb.append(" b=\"").append(s.bold() ? 1 : 0).append("\" i=\"").append(s.italic() ? 1 : 0).append('"');
         if (s.underline()) {
             sb.append(" u=\"sng\"");
@@ -263,7 +293,7 @@ final class TextXml {
         if (s.smallCaps()) {
             sb.append(" cap=\"small\"");
         }
-        int spc = spacing(s);
+        int spc = spacing(s, text);
         if (spc != 0) {
             sb.append(" spc=\"").append(spc).append('"');
         }
@@ -277,9 +307,10 @@ final class TextXml {
         }
         if (s.font() != null) {
             String f = Ooxml.esc(s.font());
+            Scripts.Fonts slots = Scripts.fonts(s.font(), text, scripts);
             String sym = s.symbol() ? " pitchFamily=\"2\" charset=\"2\"" : "";
-            sb.append("<a:latin typeface=\"").append(f).append('"').append(sym).append("/><a:ea typeface=\"").append(f)
-                    .append("\"/><a:cs typeface=\"").append(f).append("\"/>");
+            sb.append("<a:latin typeface=\"").append(Ooxml.esc(slots.latin())).append('"').append(sym).append("/><a:ea typeface=\"")
+                    .append(Ooxml.esc(slots.eastAsian())).append("\"/><a:cs typeface=\"").append(Ooxml.esc(slots.complex())).append("\"/>");
             if (s.symbol()) {
                 sb.append("<a:sym typeface=\"").append(f).append("\" pitchFamily=\"2\" charset=\"2\"/>");
             }
@@ -295,16 +326,34 @@ final class TextXml {
                         .append("\" action=\"ppaction://hlinksldjump\">").append(LINK_COLOUR).append("</a:hlinkClick>");
             }
         }
+        if (text != null && rightToLeft(text)) {
+            sb.append("<a:rtl/>");
+        }
         sb.append("</").append(tag).append('>');
     }
 
-    static int spacing(RunStyle s) {
+    static int spacing(RunStyle s, String text) {
         float spc = s.spacing();
         if (s.scale() != 100) {
-            spc += (s.scale() / 100f - 1f) * 0.5f * s.size();
+            float unit = text == null ? Float.NaN : ScriptWidths.perUnit(text, s.bold());
+            spc += (s.scale() / 100f - 1f) * (Float.isNaN(unit) ? 0.5f : unit) * s.size();
         }
         spc = Math.clamp(spc, -0.1f * s.size(), 0.5f * s.size());
         return Math.clamp(Math.round(spc * 100f), -400000, 400000);
+    }
+
+    private static boolean rightToLeft(String s) {
+        int rtl = 0;
+        int ltr = 0;
+        for (int i = 0; i < s.length(); i++) {
+            byte d = Character.getDirectionality(s.charAt(i));
+            if (d == Character.DIRECTIONALITY_RIGHT_TO_LEFT || d == Character.DIRECTIONALITY_RIGHT_TO_LEFT_ARABIC) {
+                rtl++;
+            } else if (d == Character.DIRECTIONALITY_LEFT_TO_RIGHT) {
+                ltr++;
+            }
+        }
+        return rtl > ltr;
     }
 
     private static boolean isPrivateUse(String s) {

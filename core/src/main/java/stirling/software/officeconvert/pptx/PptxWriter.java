@@ -13,6 +13,7 @@ import java.util.zip.ZipOutputStream;
 
 import stirling.software.officeconvert.model.Inline;
 import stirling.software.officeconvert.model.Picture;
+import stirling.software.officeconvert.model.Scripts;
 import stirling.software.officeconvert.sink.ZipParts;
 import stirling.software.officeconvert.slides.Slide;
 import stirling.software.officeconvert.slides.SlideShape;
@@ -26,6 +27,7 @@ public final class PptxWriter implements SlideSink {
     private final Map<Object, Picture.MediaRef> mediaByKey = new HashMap<>();
     private final Map<String, Integer> fonts = new HashMap<>();
     private final Map<String, Integer> titleFonts = new HashMap<>();
+    private Scripts.Profile scripts = new Scripts.Profile();
     private long width;
     private long height;
     private int firstPage;
@@ -36,6 +38,11 @@ public final class PptxWriter implements SlideSink {
     public PptxWriter(OutputStream target) {
         this.zip = new ZipOutputStream(new BufferedOutputStream(new KeepOpen(target), 1 << 16), StandardCharsets.UTF_8);
         this.zip.setLevel(6);
+    }
+
+    @Override
+    public void scripts(Scripts.Profile profile) {
+        this.scripts = profile;
     }
 
     @Override
@@ -68,7 +75,7 @@ public final class PptxWriter implements SlideSink {
     @Override
     public void slide(Slide slide) throws IOException {
         slides++;
-        SlideXml xml = new SlideXml(slide, this::slideOf, fonts);
+        SlideXml xml = new SlideXml(slide, this::slideOf, fonts, scripts);
         String body = xml.xml(slide);
         entry("ppt/slides/slide" + slides + ".xml", body);
         entry("ppt/slides/_rels/slide" + slides + ".xml.rels", xml.rels().xml());

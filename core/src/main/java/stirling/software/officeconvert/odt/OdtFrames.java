@@ -65,7 +65,7 @@ final class OdtFrames {
     }
 
     void textBox(StringBuilder sb, Inline.TextBox t) throws IOException {
-        int direction = Math.floorMod(t.direction(), 360);
+        int direction = t.upright() ? 0 : Math.floorMod(t.direction(), 360);
         StringBuilder g = new StringBuilder("<style:graphic-properties ");
         g.append(t.overlay() ? "style:wrap=\"run-through\" style:run-through=\"foreground\""
                 : "style:wrap=\"parallel\" style:number-wrapped-paragraphs=\"no-limit\" style:wrap-contour=\"false\"");
@@ -82,7 +82,8 @@ final class OdtFrames {
         fill(g, t.fillRgb());
         boolean line = t.lineRgb() >= 0 && t.lineWidth() > 0;
         g.append(" fo:border=\"").append(line ? OdtXml.pt(t.lineWidth()) + " solid " + OdtXml.colour(t.lineRgb()) : "none")
-                .append("\" draw:textarea-vertical-align=\"top\" style:shadow=\"none\"/>");
+                .append("\" draw:textarea-vertical-align=\"top\" style:shadow=\"none\"")
+                .append(t.upright() ? " style:writing-mode=\"tb-rl\"/>" : "/>");
         String style = styles.get("graphic", "Frame", g.toString());
         boolean quarter = direction == 90 || direction == 270;
         float w = Math.max(1, quarter ? t.height() : t.width());
