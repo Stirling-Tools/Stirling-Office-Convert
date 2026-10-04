@@ -684,7 +684,10 @@ public final class DocumentBuilder {
 
     private void emitFromLastPage(Paragraph p) throws IOException {
         PageFloats held = floats.setAside();
+        int band = bandAt;
+        bandAt = -1;
         emit(p);
+        bandAt = band;
         pendingPage = pageCount - 1;
         floats.restore(held);
     }

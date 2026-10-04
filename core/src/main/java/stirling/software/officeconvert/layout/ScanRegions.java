@@ -109,25 +109,29 @@ final class ScanRegions {
                 out.add(p.clone());
             }
         }
-        boolean merged = true;
         if (out.size() >= MAX_PARTS) {
             return List.of();
         }
+        boolean merged = true;
         while (merged) {
             merged = false;
-            for (int i = 0; i < out.size() && !merged; i++) {
-                for (int j = i + 1; j < out.size(); j++) {
-                    int[] a = out.get(i);
-                    int[] b = out.get(j);
-                    if (b[0] <= a[2] + gap && a[0] <= b[2] + gap && b[1] <= a[3] + gap && a[1] <= b[3] + gap) {
-                        a[0] = Math.min(a[0], b[0]);
-                        a[1] = Math.min(a[1], b[1]);
-                        a[2] = Math.max(a[2], b[2]);
-                        a[3] = Math.max(a[3], b[3]);
-                        a[4] += b[4];
-                        out.remove(j);
-                        merged = true;
-                        break;
+            for (int i = 0; i < out.size(); i++) {
+                int[] a = out.get(i);
+                boolean grew = true;
+                while (grew) {
+                    grew = false;
+                    for (int j = out.size() - 1; j > i; j--) {
+                        int[] b = out.get(j);
+                        if (b[0] <= a[2] + gap && a[0] <= b[2] + gap && b[1] <= a[3] + gap && a[1] <= b[3] + gap) {
+                            a[0] = Math.min(a[0], b[0]);
+                            a[1] = Math.min(a[1], b[1]);
+                            a[2] = Math.max(a[2], b[2]);
+                            a[3] = Math.max(a[3], b[3]);
+                            a[4] += b[4];
+                            out.remove(j);
+                            grew = true;
+                            merged = true;
+                        }
                     }
                 }
             }

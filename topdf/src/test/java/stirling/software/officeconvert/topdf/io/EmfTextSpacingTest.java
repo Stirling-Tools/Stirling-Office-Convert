@@ -2,6 +2,7 @@ package stirling.software.officeconvert.topdf.io;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import java.awt.Font;
 import java.awt.image.BufferedImage;
@@ -20,6 +21,8 @@ import org.apache.pdfbox.rendering.PDFRenderer;
 import org.apache.poi.common.usermodel.fonts.FontInfo;
 import org.junit.jupiter.api.Test;
 
+import stirling.software.officeconvert.topdf.font.FontLibrary;
+
 class EmfTextSpacingTest {
 
     private static final int WIDTH = 2000;
@@ -36,10 +39,12 @@ class EmfTextSpacingTest {
 
     @Test
     void aMissingFamilyIsDrawnWithAnInstalledStandIn() {
-        FontInfo missing = () -> "No Such Family Anywhere";
-        String mapped = MetafileFonts.INSTANCE.getMappedFont(null, missing).getTypeface();
-        boolean anyInstalled = installed("Arial") || installed("Liberation Sans") || installed("DejaVu Sans");
-        assertEquals(anyInstalled, installed(mapped), mapped);
+        String name = "No Such Family Anywhere";
+        String expected = FontLibrary.standIns(name).stream().filter(EmfTextSpacingTest::installed).findFirst()
+                .orElse(null);
+        assumeTrue(expected != null, "no stand-in font installed");
+        FontInfo missing = () -> name;
+        assertEquals(expected, MetafileFonts.INSTANCE.getMappedFont(null, missing).getTypeface());
         FontInfo symbol = () -> "Symbol";
         assertEquals("Symbol", MetafileFonts.INSTANCE.getMappedFont(null, symbol).getTypeface());
     }
