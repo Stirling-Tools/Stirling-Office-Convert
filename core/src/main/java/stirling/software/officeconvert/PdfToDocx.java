@@ -196,7 +196,7 @@ public final class PdfToDocx {
             boolean hyphenated = autoHyphenated(doc) || stats.autoHyphenated();
             DocumentBuilder builder =
                     new DocumentBuilder(doc, stats, writer, options.figureDpi(), hyphenated, options.pictures());
-            PageAnalyzer analyzer = new PageAnalyzer(stats, options.tables());
+            PageAnalyzer analyzer = new PageAnalyzer(stats, options.tables(), true, true);
             PageReader.PageConsumer consume = page -> {
                 stopIfInterrupted();
                 var toDisplay = PageReader.displayTransform(reader.cropBox(page.index()), page.direction());

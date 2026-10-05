@@ -296,7 +296,8 @@ final class RunBuilder {
             for (int wi = 0; wi < l.words.size(); wi++) {
                 Word w = l.words.get(wi);
                 Glyph last = w.last();
-                boolean spaced = wi + 1 < l.words.size() && l.gaps[wi + 1] == Line.SPACE;
+                boolean spaced = wi + 1 < l.words.size() && l.gaps[wi + 1] == Line.SPACE && !dotted(w.text)
+                        && !dotted(l.words.get(wi + 1).text);
                 arabicWidths(sums, w);
                 scriptWidths(sums, w);
                 Character.UnicodeScript script = modeled(last);
@@ -438,7 +439,7 @@ final class RunBuilder {
         for (Line l : lines) {
             List<Float> gaps = new ArrayList<>();
             for (int wi = 1; wi < l.words.size(); wi++) {
-                if (l.gaps[wi] == Line.SPACE) {
+                if (l.gaps[wi] == Line.SPACE && !dotted(l.words.get(wi).text) && !dotted(l.words.get(wi - 1).text)) {
                     gaps.add(l.words.get(wi).x - l.words.get(wi - 1).right);
                 }
             }
@@ -656,6 +657,10 @@ final class RunBuilder {
         }
         p.tabs.add(new TabStop(Math.max(0, pos), kind, leader));
         p.tabs.sort((a, b) -> Float.compare(a.pos(), b.pos()));
+    }
+
+    private static boolean dotted(String text) {
+        return !text.isEmpty() && text.chars().allMatch(c -> c == '.');
     }
 
     static boolean isFillRun(String text) {

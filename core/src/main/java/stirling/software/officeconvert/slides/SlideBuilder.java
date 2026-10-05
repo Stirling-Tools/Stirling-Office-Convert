@@ -303,7 +303,7 @@ final class SlideBuilder {
                         ? new LineShape(b.x(), b.centreY(), b.right(), b.centreY(), d.rgb(), t)
                         : new LineShape(b.centreX(), b.top(), b.centreX(), b.bottom(), d.rgb(), t);
                 int order = stack.paint.drew(b, 2f, Kind.STROKE, Kind.FILL);
-                stack.add(line, order >= 0 ? order : stack.paint.outlineWith(b, 3f), false);
+                stack.add(line, order >= 0 ? order : ruleOrder(b, horizontal, stack.paint), false);
             } else {
                 PaintOrder.Mark m = stack.paint.drewMark(b, 2f, Kind.FILL, Kind.SHADING);
                 if (m == null) {
@@ -329,6 +329,24 @@ final class SlideBuilder {
             }
         }
     }
+
+    private static int ruleOrder(Box b, boolean horizontal, PaintOrder paint) {
+        int order = paint.outlineWith(b, 3f);
+        if (order >= 0) {
+            return order;
+        }
+        order = paint.lastInside(b, Kind.STROKE, Kind.FILL);
+        float along = horizontal ? b.width() : b.height();
+        for (int i = 0; i <= RULE_SAMPLES; i++) {
+            float at = (horizontal ? b.x() : b.top()) + along * i / RULE_SAMPLES;
+            Box piece = horizontal ? new Box(at - 0.5f, b.top(), at + 0.5f, b.bottom())
+                    : new Box(b.x(), at - 0.5f, b.right(), at + 0.5f);
+            order = Math.max(order, paint.outlineWith(piece, 1.5f));
+        }
+        return order;
+    }
+
+    private static final int RULE_SAMPLES = 8;
 
     private static void showUncovered(Stack stack) {
         for (int i = 0; i < stack.placed.size(); i++) {

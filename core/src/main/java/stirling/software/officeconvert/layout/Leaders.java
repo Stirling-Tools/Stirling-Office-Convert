@@ -1,6 +1,7 @@
 package stirling.software.officeconvert.layout;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.regex.Pattern;
 
@@ -161,6 +162,31 @@ final class Leaders {
         }
         Line result = new Line(out, g);
         result.leaders = lcs;
+        result.drawnSpace = line.drawnSpace;
+        return result;
+    }
+
+    static Line trailing(Line line) {
+        List<Word> words = line.words;
+        int start = words.size();
+        while (start > 0 && isLeader(words.get(start - 1).text)) {
+            start--;
+        }
+        int run = words.size() - start;
+        if (start == 0 || run == 0 || run < 2 && words.getLast().text.length() < 4) {
+            return line;
+        }
+        List<Word> out = new ArrayList<>(words.subList(0, start));
+        out.add(words.getLast());
+        byte[] gaps = Arrays.copyOf(line.gaps, out.size());
+        gaps[out.size() - 1] = Line.LEADER;
+        char[] leaders = new char[out.size()];
+        if (line.leaders != null) {
+            System.arraycopy(line.leaders, 0, leaders, 0, Math.min(line.leaders.length, start));
+        }
+        leaders[out.size() - 1] = words.getLast().text.charAt(0);
+        Line result = new Line(out, gaps);
+        result.leaders = leaders;
         result.drawnSpace = line.drawnSpace;
         return result;
     }

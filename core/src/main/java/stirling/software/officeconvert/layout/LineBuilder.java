@@ -135,10 +135,17 @@ public final class LineBuilder {
         if (glyphs.size() < 8) {
             return 0f;
         }
-        float[] gaps = new float[glyphs.size() - 1];
+        float[] all = new float[glyphs.size() - 1];
+        int n = 0;
         for (int i = 1; i < glyphs.size(); i++) {
-            gaps[i - 1] = glyphs.get(i).x - glyphs.get(i - 1).right();
+            if (!Leaders.isLeader(glyphs.get(i).text) || !Leaders.isLeader(glyphs.get(i - 1).text)) {
+                all[n++] = glyphs.get(i).x - glyphs.get(i - 1).right();
+            }
         }
+        if (n < 7) {
+            return 0f;
+        }
+        float[] gaps = Arrays.copyOf(all, n);
         float median = select(gaps, gaps.length / 2);
         return median > 0.05f * glyphs.getFirst().size ? median : 0f;
     }

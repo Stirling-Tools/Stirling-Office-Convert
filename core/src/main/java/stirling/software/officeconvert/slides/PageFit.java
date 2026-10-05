@@ -78,7 +78,7 @@ record PageFit(float scale, float dx, float dy) {
         }
         return new PageData(p.index(), width, height, p.direction(), glyphs(p.glyphs()), glyphs(p.hidden()),
                 glyphs(p.rotated()), new PageGraphics(rules, fills, images, marks, areas, order, seeThrough, Map.of(), areas(g.masked())),
-                links);
+                links, p.widgets());
     }
 
     private List<PageGraphics.Area> areas(List<PageGraphics.Area> from) {

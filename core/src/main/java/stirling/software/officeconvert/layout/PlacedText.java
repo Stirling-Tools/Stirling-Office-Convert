@@ -55,6 +55,37 @@ final class PlacedText {
         return steps.length == 0 ? 0 : steps[steps.length / 2];
     }
 
+    PageLayout.TextBoxItem form(List<Line> lines, float room, float pageWidth) {
+        float x = Float.MAX_VALUE;
+        float top = Float.MAX_VALUE;
+        float right = -Float.MAX_VALUE;
+        float bottom = -Float.MAX_VALUE;
+        for (Line l : lines) {
+            x = Math.min(x, l.x);
+            top = Math.min(top, l.top);
+            right = Math.max(right, l.right);
+            bottom = Math.max(bottom, l.bottom);
+        }
+        float width = right - x;
+        boolean prose = lines.size() >= PROSE_LINES && width >= PROSE_WIDTH;
+        float textRight = prose
+                ? Math.min(Math.max(room, right), right + Math.max(3f, 0.03f * width))
+                : Math.max(room, right + Math.max(6f, 0.5f * width));
+        textRight = Math.max(right, Math.min(pageWidth, textRight));
+        Box box = new Box(x - 1, top - 1, textRight, bottom + 2);
+        List<ParaDraft> paras = paragraphs.build(lines, x, textRight, List.of(), columnPitch(lines));
+        if (!prose) {
+            for (ParaDraft p : paras) {
+                p.hardBreaks.set(1, p.lines.size());
+            }
+        }
+        return new PageLayout.TextBoxItem(box, -1, x, textRight, paras, 0f, -1, 0f, false, true);
+    }
+
+    private static final int PROSE_LINES = 3;
+
+    private static final float PROSE_WIDTH = 200f;
+
     PageLayout.TextBoxItem framed(List<Line> lines, Box frame) {
         float top = Float.MAX_VALUE;
         float bottom = -Float.MAX_VALUE;
