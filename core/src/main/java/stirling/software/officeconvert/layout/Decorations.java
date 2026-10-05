@@ -137,7 +137,7 @@ final class Decorations {
         List<Integer> hosts = new ArrayList<>();
         for (VectorMark m : marks) {
             if (used.contains(m) || m.shading() || m.round() || !m.stroked() && !m.filled()
-                    || !m.stroked() && isWhite(m.rgb())) {
+                    || !m.stroked() && (isWhite(m.rgb()) || !pale(m.rgb()))) {
                 continue;
             }
             int at = -1;
@@ -204,6 +204,12 @@ final class Decorations {
     }
 
     private static final int LIGHT = 0xD0;
+
+    private static boolean pale(int rgb) {
+        return 0.299f * ((rgb >> 16) & 0xFF) + 0.587f * ((rgb >> 8) & 0xFF) + 0.114f * (rgb & 0xFF) >= PALE;
+    }
+
+    private static final float PALE = 140f;
 
     private static boolean code(Line host, VectorMark m) {
         boolean any = false;
