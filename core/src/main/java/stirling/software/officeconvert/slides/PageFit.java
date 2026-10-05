@@ -77,7 +77,7 @@ record PageFit(float scale, float dx, float dy) {
             links.add(new PageData.Link(x(l.x()), y(l.top()), x(l.right()), y(l.bottom()), l.uri(), l.targetPage()));
         }
         return new PageData(p.index(), width, height, p.direction(), glyphs(p.glyphs()), glyphs(p.hidden()),
-                glyphs(p.rotated()), new PageGraphics(rules, fills, images, marks, areas, order, seeThrough, Map.of(), areas(g.masked())),
+                glyphs(p.rotated()), new PageGraphics(rules, fills, images, marks, areas, order, seeThrough, Map.of(), areas(g.masked()), Map.of()),
                 links, p.widgets());
     }
 

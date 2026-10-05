@@ -41,11 +41,11 @@ final class ShapeAnchors {
         }
         ParaDraft[] under = new ParaDraft[shapes.size()];
         for (int i = 0; i < art.length; i++) {
-            under[i] = art[i] || decorations.get(i).rgb() < 0 ? null : firstOn(layout, shapes.get(i), paragraphs, bodySize);
+            under[i] = art[i] || unpainted(decorations.get(i)) ? null : firstOn(layout, shapes.get(i), paragraphs, bodySize);
         }
         for (int j = 0; j < art.length; j++) {
             for (int i = 0; i < art.length && under[j] == null && !art[j]; i++) {
-                if (under[i] != null && decorations.get(i).rgb() >= 0 && same(shapes.get(i), shapes.get(j))) {
+                if (under[i] != null && !unpainted(decorations.get(i)) && same(shapes.get(i), shapes.get(j))) {
                     under[j] = under[i];
                 }
             }
@@ -62,6 +62,10 @@ final class ShapeAnchors {
     }
 
     private static final float OUTLINE = 3f;
+
+    private static boolean unpainted(PageLayout.Decoration d) {
+        return d.rgb() < 0 && d.lineRgb() < 0;
+    }
 
     private static boolean same(Box a, Box b) {
         return Math.abs(a.x() - b.x()) <= OUTLINE && Math.abs(a.top() - b.top()) <= OUTLINE

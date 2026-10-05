@@ -19,7 +19,14 @@ final class VectorBullets {
         for (VectorMark m : marks) {
             if ((m.filled() || m.curved()) && sized(m.x(), m.top(), m.right(), m.bottom())) {
                 index = index == null ? new GlyphIndex(glyphs) : index;
+                boolean after = index.textBefore(m.x(), (m.top() + m.bottom()) / 2f);
+                if (after && !m.round() && !m.boxy()) {
+                    continue;
+                }
                 Glyph g = bulletFor(m.x(), m.top(), m.right(), m.bottom(), m.curved() ? "•" : "▪", m.rgb(), index);
+                if (g != null && after && m.bottom() >= g.baseline - 0.06f * g.size) {
+                    continue;
+                }
                 if (g != null) {
                     out.add(g);
                     used.add(m);
@@ -107,6 +114,25 @@ final class VectorBullets {
                 best = better(best, i, right, cy);
             }
             return best < 0 ? null : glyphs.get(best);
+        }
+
+        boolean textBefore(float x, float cy) {
+            float reach = maxSize * 0.45f + 1;
+            for (int k = lowerBound(mids, cy - reach); k < mids.length && mids[k] <= cy + reach; k++) {
+                if (touches(glyphs.get(byMid[k]), x, cy)) {
+                    return true;
+                }
+            }
+            for (int i : odd) {
+                if (touches(glyphs.get(i), x, cy)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        private static boolean touches(Glyph g, float x, float cy) {
+            return Math.abs(mid(g) - cy) <= g.size * 0.45f && g.right() <= x + 0.5f && x - g.right() <= g.size * 0.5f;
         }
 
         private int better(int best, int i, float right, float cy) {

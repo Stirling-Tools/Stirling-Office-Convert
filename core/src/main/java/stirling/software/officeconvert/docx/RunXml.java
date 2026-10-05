@@ -187,6 +187,9 @@ final class RunXml {
         if (s.underline()) {
             sb.append("<w:u w:val=\"single\"/>");
         }
+        if (s.border() >= 0) {
+            sb.append("<w:bdr w:val=\"single\" w:sz=\"4\" w:space=\"1\" w:color=\"").append(Xml.hex(s.border())).append("\"/>");
+        }
         if (s.highlight() >= 0) {
             sb.append("<w:shd w:val=\"clear\" w:color=\"auto\" w:fill=\"").append(Xml.hex(s.highlight())).append("\"/>");
         }

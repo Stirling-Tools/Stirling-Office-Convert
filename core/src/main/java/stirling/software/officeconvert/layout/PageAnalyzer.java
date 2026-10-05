@@ -58,7 +58,8 @@ public final class PageAnalyzer {
             return FallbackPage.of(page);
         }
         Set<Object> usedMarks = Collections.newSetFromMap(new IdentityHashMap<>());
-        List<Glyph> bullets = VectorBullets.synthesize(glyphs, gfx.marks(), gfx.fills(), usedMarks);
+        List<Glyph> bullets = new ArrayList<>(VectorBullets.synthesize(glyphs, gfx.marks(), gfx.fills(), usedMarks));
+        bullets.addAll(OutlinedWords.synthesize(glyphs, gfx, usedMarks, page.width() * page.height()));
         if (!bullets.isEmpty()) {
             glyphs = new ArrayList<>(glyphs);
             glyphs.addAll(bullets);
@@ -76,6 +77,8 @@ public final class PageAnalyzer {
         fills.removeIf(usedMarks::contains);
         Decorations.underlines(segments, rules);
         Decorations.highlights(segments, fills);
+        Decorations.pills(segments, gfx.marks(), usedMarks);
+        Decorations.pills(furnitureLines, gfx.marks(), usedMarks);
         Set<Object> textPaint = Collections.newSetFromMap(new IdentityHashMap<>());
         textPaint.addAll(gfx.rules());
         textPaint.addAll(gfx.fills());

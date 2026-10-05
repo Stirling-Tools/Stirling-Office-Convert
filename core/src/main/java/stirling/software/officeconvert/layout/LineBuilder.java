@@ -138,6 +138,9 @@ public final class LineBuilder {
         float[] all = new float[glyphs.size() - 1];
         int n = 0;
         for (int i = 1; i < glyphs.size(); i++) {
+            if (glyphs.get(i).icon != null || glyphs.get(i - 1).icon != null) {
+                continue;
+            }
             if (!Leaders.isLeader(glyphs.get(i).text) || !Leaders.isLeader(glyphs.get(i - 1).text)) {
                 all[n++] = glyphs.get(i).x - glyphs.get(i - 1).right();
             }

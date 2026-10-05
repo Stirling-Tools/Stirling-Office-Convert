@@ -65,8 +65,9 @@ public final class FontResolver {
         }
         boolean ocrFont = lowerPs.startsWith("glyphless");
         boolean mono = !ocrFont && (FontNames.looksMono(family) || fd != null && fd.isFixedPitch());
-        boolean serif = !mono && (FontNames.looksSerif(family) || fd != null && fd.isSerif());
         boolean symbolic = FontNames.isSymbolFamily(family);
+        mono |= !ocrFont && !symbolic && (unnamed || placeholder(lowerPs)) && GlyphShapes.fixedPitch(font);
+        boolean serif = !mono && (FontNames.looksSerif(family) || fd != null && fd.isSerif());
         boolean substituted = FontNames.isTexFont(ps) && !"Cambria Math".equals(family);
         if (!symbolic && (unnamed || !FontNames.isOfficeFont(family))) {
             Boolean shapes = mono || italic || ocrFont || FontNames.isTexFont(ps) ? null : GlyphShapes.serifs(font);
@@ -80,6 +81,10 @@ public final class FontResolver {
         boolean exact = !substituted && !symbolic && font.isEmbedded() && FontNames.isOfficeFont(family);
         return new FontInfo(family, bold, italic, serif, mono, symbolic, ps, substituted, FontNames.isSmallCaps(ps),
                 FontNames.isIconFont(ps), exact);
+    }
+
+    private static boolean placeholder(String ps) {
+        return ps.replace("cairofont", "").replace("font", "").replaceAll("[^a-z]", "").length() < 3;
     }
 
     private static boolean texSymbols(String ps, String family) {

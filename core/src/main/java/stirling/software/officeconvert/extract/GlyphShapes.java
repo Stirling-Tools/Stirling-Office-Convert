@@ -122,6 +122,31 @@ final class GlyphShapes {
         }
     }
 
+    static boolean fixedPitch(PDFont font) {
+        float narrow = widthOf(font, "i", "l");
+        float wide = widthOf(font, "m", "w");
+        return narrow > 0 && wide > 0 && Math.abs(wide - narrow) <= 0.02f * wide;
+    }
+
+    private static float widthOf(PDFont font, String... letters) {
+        if (font instanceof PDType3Font) {
+            return 0;
+        }
+        for (String letter : letters) {
+            Integer code = codeFor(font, letter);
+            try {
+                boolean drawn = code != null && font instanceof PDVectorFont v && font.isEmbedded() && v.hasGlyph(code);
+                float w = drawn ? font.getWidth(code) : 0;
+                if (w > 0) {
+                    return w;
+                }
+            } catch (IOException | RuntimeException e) {
+                return 0;
+            }
+        }
+        return 0;
+    }
+
     static float spaceEm(PDFont font) {
         Integer code = font instanceof PDType3Font ? null : codeFor(font, " ");
         if (code == null) {
