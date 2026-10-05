@@ -68,6 +68,11 @@ public final class DocumentBuilder {
     private float footerHeight;
     private float firstFooterHeight;
     private float noteHeight;
+    private boolean flowing;
+    private Section reservedFor;
+    private float reservedBottom;
+    private float flowLow;
+    private float footHigh;
 
     private record Spaced(Paragraph p, int band, int column) {}
 
@@ -143,6 +148,11 @@ public final class DocumentBuilder {
         placeVeils(layout);
         float bodyBottom = stats.frame(page.width(), page.height()).bodyBottom();
         boolean pageFlows = layout.bands().stream().anyMatch(DocumentBuilder::flows);
+        float flowBottom = flowBottom(layout);
+        int misses = paragraphs.misses();
+        flowing = flowsOn(layout, bodyBottom);
+        paragraphs.fitting(flowing);
+        float footTop = flowing && textOnly(layout) ? footTop(layout, flowBottom) : Float.MAX_VALUE;
         for (PageLayout.Band band : layout.bands()) {
             if (band.columns().stream().allMatch(c -> c.items().isEmpty())) {
                 continue;
@@ -174,6 +184,7 @@ public final class DocumentBuilder {
                 }
                 bandAt = bandColumns.size() - 1;
                 columnAt = ci;
+                paragraphs.innerColumn(ci + 1 < band.columns().size());
                 float columnBottom = column(layout, band, ci, flowOn, base, at, toDisplay);
                 fit(columnBottom);
                 bandBottom = Math.max(bandBottom, columnBottom);
@@ -181,13 +192,100 @@ public final class DocumentBuilder {
             at.refBottom = bandBottom;
         }
         bandAt = -1;
+        if (section != null) {
+            reserveFoot(flowBottom, paragraphs.misses() == misses ? footTop : Float.MAX_VALUE);
+        }
         if (section == null) {
             section = base.copy();
             section.pageNumberStart = running.pageNumberStart();
         }
+        paragraphs.fitting(false);
+        flowing = false;
         finishPage(strayNoteLines, at);
         placer.endPage();
     }
+
+    private static float flowBottom(PageLayout layout) {
+        float bottom = -Float.MAX_VALUE;
+        for (PageLayout.Band band : layout.bands()) {
+            if (flows(band) && !footBand(layout, band)) {
+                for (PageLayout.Column c : band.columns()) {
+                    for (PageLayout.Item item : c.items()) {
+                        bottom = ColumnFlow.inFlow(item) ? Math.max(bottom, item.bottom()) : bottom;
+                    }
+                }
+            }
+        }
+        return bottom;
+    }
+
+    private boolean flowsOn(PageLayout layout, float bodyBottom) {
+        if (layout.bands().stream().filter(b -> flows(b) && !footBand(layout, b)).count() != 1) {
+            return false;
+        }
+        for (PageLayout.Band band : layout.bands()) {
+            for (int ci = 1; ci < band.columns().size(); ci++) {
+                if (flows(band) && !footBand(layout, band) && flow.flowsOn(layout, band, ci, bodyBottom)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private static boolean textOnly(PageLayout layout) {
+        for (PageLayout.Band band : layout.bands()) {
+            for (PageLayout.Column c : band.columns()) {
+                for (PageLayout.Item item : c.items()) {
+                    if (ColumnFlow.inFlow(item) && !(item instanceof PageLayout.ParaItem)) {
+                        return false;
+                    }
+                }
+            }
+        }
+        return true;
+    }
+
+    private static float footTop(PageLayout layout, float flowBottom) {
+        float top = Float.MAX_VALUE;
+        for (PageLayout.Band band : layout.bands()) {
+            if (footBand(layout, band)) {
+                for (PageLayout.Column c : band.columns()) {
+                    for (PageLayout.Item item : c.items()) {
+                        top = Math.min(top, item.top());
+                    }
+                }
+            }
+        }
+        for (PageLayout.TextBoxItem tb : layout.furniture()) {
+            if (tb.top() > flowBottom && tb.top() >= FOOT_ZONE * layout.page().height()) {
+                top = Math.min(top, tb.top());
+            }
+        }
+        return top;
+    }
+
+    private void reserveFoot(float flowBottom, float footTop) {
+        if (reservedFor != section) {
+            reservedFor = section;
+            reservedBottom = section.marginBottom;
+            flowLow = -Float.MAX_VALUE;
+            footHigh = Float.MAX_VALUE;
+        }
+        flowLow = Math.max(flowLow, flowBottom);
+        footHigh = Math.min(footHigh, footTop);
+        if (footHigh == Float.MAX_VALUE) {
+            return;
+        }
+        float body = Math.max(flowLow + FOOT_CLEAR, footHigh - FOOT_GAP);
+        if (body > section.marginTop + 72) {
+            section.marginBottom = Math.max(reservedBottom, section.pageHeight - body);
+        }
+    }
+
+    private static final float FOOT_CLEAR = 2f;
+
+    private static final float FOOT_GAP = 1f;
 
     private void openSection(PageLayout.Band band, Section base, boolean sizeChanged, Cursor at) throws IOException {
         List<float[]> cols = SectionPlanner.columnsOf(band, base);

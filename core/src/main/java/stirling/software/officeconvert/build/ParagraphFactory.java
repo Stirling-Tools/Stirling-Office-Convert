@@ -26,6 +26,9 @@ final class ParagraphFactory {
     private final StyleSheet styles;
     private final Numbering numbering;
     private final ListTracker lists = new ListTracker();
+    private int misses;
+    private boolean fitting;
+    private boolean innerColumn;
 
     ParagraphFactory(DocStats stats, RunBuilder runs, StyleSheet styles, Numbering numbering) {
         this.stats = stats;
@@ -116,13 +119,19 @@ final class ParagraphFactory {
         if (markerTab) {
             hangFromMarker(p, d, colLeft);
         }
-        float justify = flow && d.align == Align.JUSTIFY ? d.justifySlack : Float.NaN;
-        runs.fill(p, d.lines, skip, colLeft, colRight, hostSize, d.hardBreaks, d.pageBreaks, markerTab, justify);
-        if (flow && p.align == Align.JUSTIFY && !Float.isNaN(d.justifySlack)) {
+        RunBuilder.Fit fit = fitTarget(d, p, flow, skip, markerTab, colRight);
+        runs.fill(p, d.lines, skip, colLeft, colRight, hostSize, d.hardBreaks, d.pageBreaks, markerTab, fit);
+        boolean fitted = !Float.isNaN(runs.fitted());
+        if (fitted) {
+            p.indentRight += SectionPlanner.RIGHT_SLACK - runs.fitted();
+        } else if (flow && p.align == Align.JUSTIFY && !Float.isNaN(d.justifySlack)) {
             p.indentRight += SectionPlanner.RIGHT_SLACK - d.justifySlack;
         }
+        if (fitting && flow && !(fitted && runs.exactFit())) {
+            misses++;
+        }
         boolean startSet = p.align == (p.bidi ? Align.RIGHT : Align.LEFT) || p.align == Align.JUSTIFY;
-        float slack = standInSlack(d);
+        float slack = fitted ? 0f : standInSlack(d);
         if (flow && (d.lines.size() >= 2 || startSet) && slack > 0 && !d.first().unspaced()
                 && !(p.bidi && p.list != null)) {
             float widest = 0;
@@ -138,7 +147,7 @@ final class ParagraphFactory {
 
         if (skip == 1 && p.list == null) {
             p.inlines.clear();
-            runs.fill(p, d.lines, 0, colLeft, colRight, hostSize, d.hardBreaks, d.pageBreaks, false, justify);
+            runs.fill(p, d.lines, 0, colLeft, colRight, hostSize, d.hardBreaks, d.pageBreaks, false, fit);
         }
         p.markStyle = lastStyle(p);
         p.sourceLines = d.lines.size();
@@ -148,6 +157,34 @@ final class ParagraphFactory {
         }
         p.textWidth = widest;
         return p;
+    }
+
+    void innerColumn(boolean inner) {
+        innerColumn = inner;
+    }
+
+    void fitting(boolean on) {
+        fitting = on;
+    }
+
+    int misses() {
+        return misses;
+    }
+
+    private RunBuilder.Fit fitTarget(ParaDraft d, Paragraph p, boolean flow, int skip, boolean markerTab,
+            float colRight) {
+        if (!flow) {
+            return null;
+        }
+        float edge = p.bidi || markerTab || !fitting ? Float.NaN
+                : colRight - d.right - (innerColumn ? SectionPlanner.RIGHT_SLACK : 0);
+        if (d.align == Align.JUSTIFY && !Float.isNaN(d.justifySlack)) {
+            return new RunBuilder.Fit(edge, d.justifySlack, true);
+        }
+        if (Float.isNaN(edge) || d.align != Align.LEFT || skip > 0) {
+            return null;
+        }
+        return new RunBuilder.Fit(edge, SectionPlanner.RIGHT_SLACK, false);
     }
 
     private static float standInSlack(ParaDraft d) {
