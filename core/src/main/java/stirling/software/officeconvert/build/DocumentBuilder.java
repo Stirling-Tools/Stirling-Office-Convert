@@ -83,7 +83,7 @@ public final class DocumentBuilder {
         this.document = document;
         this.stats = stats;
         this.sink = sink;
-        this.runs = new RunBuilder(dropHyphens);
+        this.runs = new RunBuilder(dropHyphens, stats);
         runs.icons(new IconPictures(sink));
         RunStyle normal =
                 new RunStyle(stats.bodyFont.family(), round(stats.bodySize), false, false, false, false, 0, -1, 0, false);

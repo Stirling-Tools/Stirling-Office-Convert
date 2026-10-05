@@ -99,6 +99,7 @@ final class ParagraphMeasure {
         boolean firstFull = room.wrap(first) - first.right <= EDGE + 1f;
         boolean justified = flushRight && (lines.size() >= 3 || firstFull && LineTraits.looksStretched(first));
         if (justified) {
+            maxRight = Protrusion.edge(lines, maxRight);
             p.justifySlack = fitSlack(lines, maxRight);
         }
         p.align = justified ? Align.JUSTIFY : Align.LEFT;
@@ -316,6 +317,19 @@ final class ParagraphMeasure {
         return w.glyphs.get(w.glyphs.size() - 2).right();
     }
 
+    private static boolean spaced(List<Line> lines) {
+        for (int i = 0; i + 1 < lines.size(); i++) {
+            for (int wi = 1; wi < lines.get(i).words.size(); wi++) {
+                if (lines.get(i).gaps[wi] != Line.SPACE) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    private static final float SPACED_SLACK = 1.5f;
+
     private static float fitSlack(List<Line> lines, float edge) {
         float low = -Float.MAX_VALUE;
         float high = Float.MAX_VALUE;
@@ -343,7 +357,7 @@ final class ParagraphMeasure {
             high = low + 3f;
         }
         if (low > 1.5f) {
-            return Math.min(low + 0.2f, 3f);
+            return Math.min(low + 0.2f, spaced(lines) ? SPACED_SLACK : 3f);
         }
         return high <= low ? Math.max(0, low) : Math.clamp((low + high) / 2f, 0f, 1.5f);
     }

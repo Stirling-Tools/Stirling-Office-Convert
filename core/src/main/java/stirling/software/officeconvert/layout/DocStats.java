@@ -3,8 +3,11 @@ package stirling.software.officeconvert.layout;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeMap;
 
 import stirling.software.officeconvert.extract.FontInfo;
@@ -33,6 +36,57 @@ public final class DocStats {
         return hyphenatedLines >= 3 && hyphenatedLines > wrappedLines * 0.02f;
     }
 
+    private final Set<String> compounds = new HashSet<>();
+    private final Set<String> words = new HashSet<>();
+
+    public boolean keepsHyphen(CharSequence before, String next) {
+        int end = before.length() - 1;
+        int start = end;
+        while (start > 0 && wordChar(before.charAt(start - 1))) {
+            start--;
+        }
+        String head = before.subSequence(start, end).toString();
+        int stop = 0;
+        while (stop < next.length() && wordChar(next.charAt(stop))) {
+            stop++;
+        }
+        String tail = next.substring(0, stop);
+        if (head.indexOf('-') >= 0 || tail.indexOf('-') > 0 && tail.indexOf('-') < tail.length() - 1) {
+            return true;
+        }
+        String h = head.toLowerCase(Locale.ROOT);
+        String t = tail.toLowerCase(Locale.ROOT);
+        return compounds.contains(h + "-" + t) || h.length() >= PART && t.length() >= PART && words.contains(h)
+                && words.contains(t) && !words.contains(h + t);
+    }
+
+    private void addWord(String text, boolean inside) {
+        int a = 0;
+        int b = text.length();
+        while (a < b && !Character.isLetterOrDigit(text.charAt(a))) {
+            a++;
+        }
+        while (b > a && !Character.isLetterOrDigit(text.charAt(b - 1))) {
+            b--;
+        }
+        String w = text.substring(a, b).toLowerCase(Locale.ROOT);
+        if (w.indexOf('-') > 0) {
+            if (compounds.size() < MAX_WORDS) {
+                compounds.add(w);
+            }
+        } else if (inside && !w.isEmpty() && words.size() < MAX_WORDS) {
+            words.add(w);
+        }
+    }
+
+    private static boolean wordChar(char c) {
+        return Character.isLetterOrDigit(c) || c == '-';
+    }
+
+    private static final int MAX_WORDS = 200_000;
+
+    private static final int PART = 4;
+
     public float bodySize = 11f;
     public FontInfo bodyFont = FontInfo.DEFAULT;
     public boolean bodyBold;
@@ -50,8 +104,10 @@ public final class DocStats {
     public void add(PageData page, List<Line> segments) {
         headerFooter.addPage(page, segments);
         for (Line l : segments) {
-            for (Word w : l.words) {
+            for (int wi = 0; wi < l.words.size(); wi++) {
+                Word w = l.words.get(wi);
                 scripts.add(w.text);
+                addWord(w.text, wi > 0 && wi + 1 < l.words.size());
                 for (stirling.software.officeconvert.extract.Glyph g : w.glyphs) {
                     int[] u = fontUse.computeIfAbsent(g.font.postScriptName(), k -> new int[2]);
                     u[0]++;

@@ -46,7 +46,7 @@ public final class PlacedContent {
             Pictures pictures) {
         DocSink sink = new StoreSink(store);
         this.stats = stats;
-        this.runs = new RunBuilder(dropHyphens);
+        this.runs = new RunBuilder(dropHyphens, stats);
         runs.icons(new IconPictures(sink));
         RunStyle normal = new RunStyle(stats.bodyFont.family(), DocumentBuilder.round(stats.bodySize), false, false,
                 false, false, 0, -1, 0, false);

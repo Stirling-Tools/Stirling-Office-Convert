@@ -57,7 +57,7 @@ public final class FontResolver {
         boolean italic = FontNames.styleIsItalic(style) || texItalic(lowerPs);
         if (fd != null) {
             bold |= fd.isForceBold() || fd.getFontWeight() >= 600;
-            italic |= fd.isItalic() || Math.abs(fd.getItalicAngle()) > 4;
+            italic |= !texSymbols(ps, family) && (fd.isItalic() || Math.abs(fd.getItalicAngle()) > 4);
         }
         String lowerFamily = family.toLowerCase(Locale.ROOT);
         if (lowerFamily.contains("black") || lowerFamily.contains("bold")) {
@@ -80,6 +80,10 @@ public final class FontResolver {
         boolean exact = !substituted && !symbolic && font.isEmbedded() && FontNames.isOfficeFont(family);
         return new FontInfo(family, bold, italic, serif, mono, symbolic, ps, substituted, FontNames.isSmallCaps(ps),
                 FontNames.isIconFont(ps), exact);
+    }
+
+    private static boolean texSymbols(String ps, String family) {
+        return FontNames.isTexFont(ps) && "Cambria Math".equals(family);
     }
 
     private static boolean texBold(String ps) {
