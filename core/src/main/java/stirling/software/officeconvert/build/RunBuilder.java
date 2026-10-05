@@ -60,12 +60,22 @@ final class RunBuilder {
         final StringBuilder text = new StringBuilder();
         RunStyle style;
         String link;
+        boolean spaced;
 
         Sink(List<Inline> out) {
             this.out = out;
         }
 
         void append(String s, RunStyle st, String lk) {
+            if (spaced) {
+                spaced = false;
+                if (!st.equals(style) || !Objects.equals(link, lk)) {
+                    flush();
+                    style = st;
+                    link = lk;
+                }
+                text.append(' ');
+            }
             if (style != null && (!style.equals(st) || !Objects.equals(link, lk))) {
                 flush();
             }
@@ -75,7 +85,9 @@ final class RunBuilder {
         }
 
         void space() {
-            if (style != null) {
+            if (style != null && style.border() >= 0) {
+                spaced = true;
+            } else if (style != null) {
                 text.append(' ');
             }
         }
@@ -95,6 +107,12 @@ final class RunBuilder {
                 out.add(new Inline.Text(text.toString(), style, href, anchor));
             }
             text.setLength(0);
+            if (spaced) {
+                spaced = false;
+                style = style.withBorder(-1);
+                text.append(' ');
+                flush();
+            }
         }
 
         void add(Inline inline) {
@@ -480,7 +498,7 @@ final class RunBuilder {
                 && !unmeasured(g)) {
             int scale = Math.round(s.scale() * fix.scale() / 100f);
             return new RunStyle(s.font(), s.size(), s.bold(), s.italic(), s.underline(), s.strike(), s.rgb(),
-                    s.highlight(), s.vertAlign(), s.symbol(), fix.spacing() - squeeze, scale, s.smallCaps());
+                    s.highlight(), s.vertAlign(), s.symbol(), fix.spacing() - squeeze, scale, s.smallCaps(), s.border());
         }
         return s;
     }
@@ -584,6 +602,8 @@ final class RunBuilder {
                         Picture pic = icons.picture(g, advance);
                         if (pic != null) {
                             sink.add(new Inline.Image(pic));
+                            sink.style = styled(g, hostSize);
+                            sink.link = g.link;
                             continue;
                         }
                     }
@@ -966,7 +986,8 @@ final class RunBuilder {
                 symbol,
                 0f,
                 scaleOf(g),
-                g.font.smallCaps());
+                g.font.smallCaps(),
+                g.boxRgb);
     }
 
     static int scaleOf(Glyph g) {

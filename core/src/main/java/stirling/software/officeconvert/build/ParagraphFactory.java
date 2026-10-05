@@ -225,7 +225,7 @@ final class ParagraphFactory {
     static RunStyle lastStyle(Paragraph p) {
         for (int i = p.inlines.size() - 1; i >= 0; i--) {
             if (p.inlines.get(i) instanceof Inline.Text t) {
-                return t.style().withVertAlign(0);
+                return t.style().withVertAlign(0).withBorder(-1);
             }
         }
         return null;

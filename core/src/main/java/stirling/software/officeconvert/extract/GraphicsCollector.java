@@ -68,6 +68,7 @@ final class GraphicsCollector extends PDFGraphicsStreamEngine {
     private int painted;
     private final Set<Object> seeThrough = Collections.newSetFromMap(new IdentityHashMap<>());
     private final Map<Object, PageGraphics.Outline> outlines = new IdentityHashMap<>();
+    private final Map<Object, Shape> lettering = new IdentityHashMap<>();
     private boolean evenOdd;
     private final Map<PDResources, Map<COSName, Integer>> tones = new IdentityHashMap<>();
 
@@ -82,6 +83,9 @@ final class GraphicsCollector extends PDFGraphicsStreamEngine {
     private static final int PANEL_SEGMENTS = 400;
     private static final int MAX_PANELS = 300;
     private int panels;
+    private static final float LETTERING_HEIGHT = 48f;
+    private static final int MAX_LETTERING = 600;
+    private static final int LETTERING_SEGMENTS = 40;
 
     private final List<Rule> rules = new ArrayList<>();
     private final List<Fill> fills = new ArrayList<>();
@@ -134,7 +138,7 @@ final class GraphicsCollector extends PDFGraphicsStreamEngine {
         HiddenFills.remove(c.fills, c.paintOrder, c.seeThrough);
         BlankPaint.remove(c.fills, c.marks, c.images, c.rules, c.paintOrder, width * height);
         return new PageGraphics(c.rules, c.fills, c.images, c.marks, c.pastBudget.areas(), c.paintOrder, c.seeThrough,
-                c.outlines, c.masked);
+                c.outlines, c.masked, c.lettering);
     }
 
     private Point2D.Float display(double x, double y) {
@@ -574,6 +578,9 @@ final class GraphicsCollector extends PDFGraphicsStreamEngine {
         } else if (shapes.mark() != null && fill && panel(shapes.mark()) && panels++ < MAX_PANELS) {
             outlines.put(shapes.mark(), new PageGraphics.Outline(outline(), shapes.mark().rgb(), 1f));
         }
+        if (shapes.mark() != null && fill && !stroke && !pattern && lettering(shapes.mark()) && lettering.size() < MAX_LETTERING) {
+            lettering.put(shapes.mark(), outline());
+        }
         painted++;
     }
 
@@ -628,6 +635,11 @@ final class GraphicsCollector extends PDFGraphicsStreamEngine {
         b[1] = Math.min(b[1], p.y);
         b[2] = Math.max(b[2], p.x);
         b[3] = Math.max(b[3], p.y);
+    }
+
+    private static boolean lettering(VectorMark m) {
+        return m.curved() && !m.shading() && (!m.boxy() || m.round() || m.segments() > LETTERING_SEGMENTS)
+                && m.height() >= 2f && m.height() <= LETTERING_HEIGHT;
     }
 
     private static boolean panel(VectorMark m) {

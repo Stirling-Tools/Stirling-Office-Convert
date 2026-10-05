@@ -346,7 +346,13 @@ final class PathShapes {
         return true;
     }
 
-    private static float ringWidth(List<List<Point2D.Float>> subpaths, boolean evenOdd) {
+    private static float ringWidth(List<List<Point2D.Float>> all, boolean evenOdd) {
+        List<List<Point2D.Float>> drawn = all.stream().filter(sp -> sp.size() >= 2).toList();
+        float width = ringOf(drawn, evenOdd);
+        return drawn.size() == all.size() || width <= RULE_MAX_THICKNESS ? width : Float.NaN;
+    }
+
+    private static float ringOf(List<List<Point2D.Float>> subpaths, boolean evenOdd) {
         if (subpaths.size() < 2) {
             return Float.NaN;
         }

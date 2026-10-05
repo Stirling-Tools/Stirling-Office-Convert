@@ -17,10 +17,11 @@ public record PageGraphics(
         Map<Object, Integer> paintOrder,
         Set<Object> seeThroughPaint,
         Map<Object, Outline> outlines,
-        List<Area> masked) {
+        List<Area> masked,
+        Map<Object, Shape> lettering) {
 
     public PageGraphics(List<Rule> rules, List<Fill> fills, List<ImageDraw> images, List<VectorMark> marks) {
-        this(rules, fills, images, marks, List.of(), Map.of(), Set.of(), Map.of(), List.of());
+        this(rules, fills, images, marks, List.of(), Map.of(), Set.of(), Map.of(), List.of(), Map.of());
     }
 
     public record Area(float x, float top, float right, float bottom) {}
@@ -29,6 +30,10 @@ public record PageGraphics(
 
     public Outline outline(Object painted) {
         return painted == null ? null : outlines.get(painted);
+    }
+
+    public Shape lettering(Object painted) {
+        return painted == null ? null : lettering.get(painted);
     }
 
     public boolean seeThrough(Object painted) {

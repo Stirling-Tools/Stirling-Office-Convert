@@ -3,6 +3,7 @@ package stirling.software.officeconvert.layout;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Set;
 import java.util.function.ToIntFunction;
 
 import stirling.software.officeconvert.extract.Glyph;
@@ -129,6 +130,175 @@ final class Decorations {
                 it.remove();
             }
         }
+    }
+
+    static void pills(List<Line> segments, List<VectorMark> marks, Set<Object> used) {
+        List<VectorMark> boxes = new ArrayList<>();
+        List<Integer> hosts = new ArrayList<>();
+        for (VectorMark m : marks) {
+            if (used.contains(m) || m.shading() || m.round() || !m.stroked() && !m.filled()
+                    || !m.stroked() && isWhite(m.rgb())) {
+                continue;
+            }
+            int at = -1;
+            for (int i = 0; i < segments.size(); i++) {
+                Line seg = segments.get(i);
+                if (seg.baseline >= m.top() && seg.baseline - seg.size <= m.bottom() && seg.x < m.right() && seg.right > m.x()) {
+                    if (at >= 0 || !holdsPill(m, seg)) {
+                        at = -1;
+                        break;
+                    }
+                    at = i;
+                }
+            }
+            if (at >= 0) {
+                boxes.add(m);
+                hosts.add(at);
+            }
+        }
+        for (int k = 0; k < boxes.size(); k++) {
+            VectorMark m = boxes.get(k);
+            int at = hosts.get(k);
+            Line host = segments.get(at);
+            List<Glyph> row = row(segments, host);
+            if (!besideProse(row, m, boxes, host.size) && !(code(host, m) && (m.stroked() || light(m.rgb())))) {
+                continue;
+            }
+            int border = m.stroked() ? m.strokeRgb() : -1;
+            int fill = m.filled() && !isWhite(m.rgb()) ? m.rgb() : -1;
+            for (Word w : host.words) {
+                for (Glyph g : w.glyphs) {
+                    if (inside(g, m)) {
+                        g.boxRgb = border;
+                        if (fill >= 0) {
+                            g.highlightRgb = fill;
+                        }
+                    }
+                }
+            }
+            if (m.stroked()) {
+                segments.set(at, closeUp(host, m));
+            }
+            used.add(m);
+        }
+    }
+
+    private static boolean inside(Glyph g, VectorMark m) {
+        return g.centreX() >= m.x() && g.centreX() <= m.right();
+    }
+
+    private static List<Glyph> row(List<Line> segments, Line host) {
+        List<Glyph> out = new ArrayList<>();
+        for (Line seg : segments) {
+            if (Math.abs(seg.baseline - host.baseline) <= 0.3f * host.size) {
+                for (Word w : seg.words) {
+                    out.addAll(w.glyphs);
+                }
+            }
+        }
+        return out;
+    }
+
+    private static boolean light(int rgb) {
+        return ((rgb >> 16) & 0xFF) >= LIGHT && ((rgb >> 8) & 0xFF) >= LIGHT && (rgb & 0xFF) >= LIGHT;
+    }
+
+    private static final int LIGHT = 0xD0;
+
+    private static boolean code(Line host, VectorMark m) {
+        boolean any = false;
+        for (Word w : host.words) {
+            for (Glyph g : w.glyphs) {
+                if (!g.isSpace() && inside(g, m)) {
+                    if (!g.font.mono()) {
+                        return false;
+                    }
+                    any = true;
+                }
+            }
+        }
+        return any;
+    }
+
+    private static boolean besideProse(List<Glyph> row, VectorMark m, List<VectorMark> boxes, float size) {
+        Glyph before = null;
+        Glyph after = null;
+        for (Glyph g : row) {
+            if (g.isSpace() || inside(g, m)) {
+                continue;
+            }
+            if (g.right() <= m.x() + 0.5f && (before == null || g.right() > before.right())) {
+                before = g;
+            }
+            if (g.x >= m.right() - 0.5f && (after == null || g.x < after.x)) {
+                after = g;
+            }
+        }
+        float reach = 2f * size;
+        return before != null && m.x() - before.right() <= reach && free(before, boxes)
+                || after != null && after.x - m.right() <= reach && free(after, boxes);
+    }
+
+    private static boolean free(Glyph g, List<VectorMark> boxes) {
+        return boxes.stream().noneMatch(b -> inside(g, b) && g.baseline >= b.top() && g.baseline <= b.bottom());
+    }
+
+    private static Line closeUp(Line host, VectorMark m) {
+        List<Word> words = new ArrayList<>();
+        boolean joined = false;
+        for (Word w : host.words) {
+            Word prev = words.isEmpty() ? null : words.getLast();
+            if (prev != null && touches(prev.last(), w.first(), m, host.size)) {
+                List<Glyph> glyphs = new ArrayList<>(prev.glyphs);
+                glyphs.addAll(w.glyphs);
+                words.set(words.size() - 1, new Word(glyphs));
+                joined = true;
+            } else {
+                words.add(w);
+            }
+        }
+        if (!joined) {
+            return host;
+        }
+        Line out = new Line(words, new byte[words.size()]);
+        out.drawnSpace = host.drawnSpace;
+        return out;
+    }
+
+    private static boolean touches(Glyph before, Glyph after, VectorMark m, float size) {
+        boolean in = inside(before, m);
+        boolean next = inside(after, m);
+        if (in == next) {
+            return false;
+        }
+        float gap = in ? after.x - m.right() : m.x() - before.right();
+        float pad = in ? m.right() - before.right() : after.x - m.x();
+        return gap < PILL_TOUCH * size && pad > PILL_TOUCH * size;
+    }
+
+    private static final float PILL_TOUCH = 0.12f;
+
+    private static boolean holdsPill(VectorMark m, Line seg) {
+        float size = seg.size;
+        float h = m.height();
+        if (h < size * 0.9f || h > size * 2.2f || m.top() > seg.baseline - 0.6f * size || m.bottom() < seg.baseline) {
+            return false;
+        }
+        float left = Float.MAX_VALUE;
+        float right = -Float.MAX_VALUE;
+        for (Word w : seg.words) {
+            for (Glyph g : w.glyphs) {
+                if (g.isSpace() || !inside(g, m)) {
+                    continue;
+                }
+                if (g.x < m.x() - 0.5f || g.right() > m.right() + 0.5f || g.icon != null) {
+                    return false;
+                }
+                left = Math.min(left, g.x);
+                right = Math.max(right, g.right());
+            }
+        }
+        return right > left && m.width() <= right - left + 1.5f * size;
     }
 
     private static final float MAX_DOT = 24f;

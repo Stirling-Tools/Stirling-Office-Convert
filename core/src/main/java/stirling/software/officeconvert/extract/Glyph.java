@@ -19,6 +19,7 @@ public final class Glyph {
     public boolean underline;
     public boolean strike;
     public int highlightRgb = -1;
+    public int boxRgb = -1;
     public String link;
     public int footnote = -1;
     public int vertAlign;
@@ -66,6 +67,7 @@ public final class Glyph {
         g.underline = underline;
         g.strike = strike;
         g.highlightRgb = highlightRgb;
+        g.boxRgb = boxRgb;
         g.link = link;
         g.footnote = footnote;
         g.vertAlign = vertAlign;
