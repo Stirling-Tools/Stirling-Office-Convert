@@ -69,7 +69,7 @@ final class SlantedText {
         List<Glyph> rest = new ArrayList<>(page.glyphs());
         rest.removeIf(taken::contains);
         return new Split(new PageData(page.index(), page.width(), page.height(), page.direction(), rest, page.hidden(),
-                page.rotated(), page.graphics(), page.links()), groups);
+                page.rotated(), page.graphics(), page.links(), page.widgets()), groups);
     }
 
     List<TextFrames.Framed> frames(List<Group> groups, List<Box> shown) throws IOException {

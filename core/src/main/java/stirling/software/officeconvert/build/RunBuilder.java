@@ -1,6 +1,7 @@
 package stirling.software.officeconvert.build;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.BitSet;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -11,9 +12,11 @@ import java.util.Set;
 
 import stirling.software.officeconvert.extract.Glyph;
 import stirling.software.officeconvert.layout.BreakUnits;
+import stirling.software.officeconvert.layout.DocStats;
 import stirling.software.officeconvert.layout.Line;
 import stirling.software.officeconvert.layout.LogicalOrder;
 import stirling.software.officeconvert.layout.Marker;
+import stirling.software.officeconvert.layout.Protrusion;
 import stirling.software.officeconvert.layout.Word;
 import stirling.software.officeconvert.model.Inline;
 import stirling.software.officeconvert.model.Paragraph.TabStop;
@@ -33,8 +36,19 @@ final class RunBuilder {
 
     private final Map<Integer, NoteMeta> notes = new HashMap<>();
 
+    private final DocStats stats;
+
     RunBuilder(boolean dropHyphens) {
+        this(dropHyphens, null);
+    }
+
+    RunBuilder(boolean dropHyphens, DocStats stats) {
         this.dropHyphens = dropHyphens;
+        this.stats = stats;
+    }
+
+    private boolean compound(CharSequence before, String next) {
+        return stats != null && stats.keepsHyphen(before, next);
     }
 
     void registerNote(int id, String marker, boolean custom) {
@@ -120,6 +134,12 @@ final class RunBuilder {
     private final Set<Integer> emittedNotes = new HashSet<>();
 
     private Map<String, WidthFix> spacing = Map.of();
+
+    private float squeeze;
+
+    private float fitted = Float.NaN;
+
+    private boolean exactFit;
 
     private record WidthFix(float spacing, int scale) {}
 
@@ -294,7 +314,8 @@ final class RunBuilder {
             for (int wi = 0; wi < l.words.size(); wi++) {
                 Word w = l.words.get(wi);
                 Glyph last = w.last();
-                boolean spaced = wi + 1 < l.words.size() && l.gaps[wi + 1] == Line.SPACE;
+                boolean spaced = wi + 1 < l.words.size() && l.gaps[wi + 1] == Line.SPACE && !dotted(w.text)
+                        && !dotted(l.words.get(wi + 1).text);
                 arabicWidths(sums, w);
                 scriptWidths(sums, w);
                 Character.UnicodeScript script = modeled(last);
@@ -436,7 +457,7 @@ final class RunBuilder {
         for (Line l : lines) {
             List<Float> gaps = new ArrayList<>();
             for (int wi = 1; wi < l.words.size(); wi++) {
-                if (l.gaps[wi] == Line.SPACE) {
+                if (l.gaps[wi] == Line.SPACE && !dotted(l.words.get(wi).text) && !dotted(l.words.get(wi - 1).text)) {
                     gaps.add(l.words.get(wi).x - l.words.get(wi - 1).right);
                 }
             }
@@ -452,10 +473,14 @@ final class RunBuilder {
     private RunStyle styled(Glyph g, float hostSize) {
         RunStyle s = styleOf(g, hostSize);
         WidthFix fix = spacing.get(lookKey(g));
-        if (fix != null && (fix.spacing() != 0f || fix.scale() != 100) && g.vertAlign == 0 && !unmeasured(g)) {
+        if (fix == null && squeeze != 0) {
+            fix = new WidthFix(0f, 100);
+        }
+        if (fix != null && (fix.spacing() != 0f || fix.scale() != 100 || squeeze != 0) && g.vertAlign == 0
+                && !unmeasured(g)) {
             int scale = Math.round(s.scale() * fix.scale() / 100f);
             return new RunStyle(s.font(), s.size(), s.bold(), s.italic(), s.underline(), s.strike(), s.rgb(),
-                    s.highlight(), s.vertAlign(), s.symbol(), fix.spacing(), scale, s.smallCaps());
+                    s.highlight(), s.vertAlign(), s.symbol(), fix.spacing() - squeeze, scale, s.smallCaps());
         }
         return s;
     }
@@ -471,18 +496,31 @@ final class RunBuilder {
 
     void fill(Paragraph p, List<Line> lines, int skipWords, float colLeft, float colRight, float hostSize,
             BitSet hardBreaks, BitSet pageBreaks, boolean markerTab) {
+        fill(p, lines, skipWords, colLeft, colRight, hostSize, hardBreaks, pageBreaks, markerTab, null);
+    }
+
+    void fill(Paragraph p, List<Line> lines, int skipWords, float colLeft, float colRight, float hostSize,
+            BitSet hardBreaks, BitSet pageBreaks, boolean markerTab, Fit target) {
         Sink sink = new Sink(p.inlines);
         spacing = widthFixes(lines);
+        float[] squeezes = new float[lines.size()];
+        exactFit = false;
+        fitted = target == null ? Float.NaN : fit(lines, target, hardBreaks, squeezes);
+        if (Float.isNaN(fitted) && target != null && target.justified()) {
+            squeezes = squeezesFor(lines, target.preferred());
+        }
         p.noHangingPunctuation = keepsPunctuationIn(lines);
         for (int li = 0; li < lines.size(); li++) {
             Line line = lines.get(li);
             int start = li == 0 ? skipWords : 0;
+            squeeze = squeezes[li];
             if (li > 0 && hardBreaks.get(li)) {
                 sink.add(new Inline.Break());
             } else if (li > 0 && sink.style != null) {
                 Glyph first = line.words.getFirst().first();
                 boolean softHyphen = sink.lastChar() == '­';
-                if (sink.endsWithHyphen() && (dropHyphens || softHyphen) && Character.isLowerCase(first.text.charAt(0))) {
+                if (sink.endsWithHyphen() && (softHyphen || dropHyphens && !compound(sink.text, line.words.getFirst().text))
+                        && Character.isLowerCase(first.text.charAt(0))) {
                     sink.dropLastChar();
                     sink.softHyphen();
                 } else if (!sink.endsWithHyphen() && (!(unspaced(sink.lastCodePoint()) && unspaced(first.text.codePointAt(0)))
@@ -554,7 +592,300 @@ final class RunBuilder {
             }
         }
         sink.flush();
+        squeeze = 0f;
     }
+
+    private static final float SQUEEZE_MARGIN = 0.5f;
+
+    private static final float SQUEEZE_FROM = 0f;
+
+    private static final float SPACE_SHRINK = 0.8f;
+
+    private static final float FIT_SHRINK = 0.9f;
+
+    private static final float MAX_SQUEEZE = 0.4f;
+
+    private static final float MAX_EXPAND = 0.3f;
+
+    private float[] squeezesFor(List<Line> lines, float slack) {
+        float edge = -Float.MAX_VALUE;
+        for (int i = 0; i + 1 < lines.size(); i++) {
+            edge = Math.max(edge, lines.get(i).right);
+        }
+        edge = Protrusion.edge(lines, edge);
+        float[] out = new float[lines.size()];
+        for (int i = 0; i + 1 < lines.size(); i++) {
+            Line l = lines.get(i);
+            float drawn = 0;
+            float spaces = 0;
+            int chars = 0;
+            for (int wi = 0; wi < l.words.size(); wi++) {
+                if (wi > 0) {
+                    if (l.gaps[wi] != Line.SPACE) {
+                        return new float[lines.size()];
+                    }
+                    int n = l.sentenceSpace(wi) ? 2 : 1;
+                    spaces += n * spaceAfter(l.words.get(wi - 1).last());
+                    chars += n;
+                }
+                for (Glyph g : l.words.get(wi).glyphs) {
+                    drawn += drawnWidth(g);
+                    chars += g.text.length();
+                }
+            }
+            if (chars == 0) {
+                continue;
+            }
+            Word after = lines.get(i + 1).words.getFirst();
+            boolean glued = l.words.getLast().text.endsWith("-") && Character.isDigit(after.text.charAt(0));
+            if (glued) {
+                for (Glyph g : after.glyphs) {
+                    drawn += drawnWidth(g);
+                }
+                chars += after.text.length();
+            }
+            float avail = edge - l.x + slack;
+            float full = drawn + spaces - avail;
+            float least = drawn + FIT_SHRINK * spaces - avail;
+            drawn += SPACE_SHRINK * spaces;
+            float next = glued ? Float.NaN : nextUnit(l, lines.get(i + 1));
+            int nextChars = chars + nextChars(l, lines.get(i + 1));
+            float most = Float.isNaN(next) ? Float.MAX_VALUE : (drawn + next - avail - SQUEEZE_MARGIN) / nextChars;
+            if (full > SQUEEZE_FROM) {
+                float k = Math.max(Math.min((full + SQUEEZE_MARGIN) / chars, most), (least + SQUEEZE_MARGIN) / chars);
+                out[i] = (float) Math.ceil(Math.clamp(k, 0f, MAX_SQUEEZE) * 20f) / 20f;
+                continue;
+            }
+            if (Float.isNaN(next)) {
+                continue;
+            }
+            float spare = avail + SQUEEZE_MARGIN - drawn - next;
+            if (spare >= 0) {
+                float e = (float) Math.ceil(spare / nextChars * 20f + 0.01f) / 20f;
+                if (e <= MAX_EXPAND && drawn + spaces * (1 - SPACE_SHRINK) + e * chars <= avail - SQUEEZE_MARGIN) {
+                    out[i] = -e;
+                }
+            }
+        }
+        return out;
+    }
+
+    private float nextUnit(Line l, Line next) {
+        String last = l.words.getLast().text;
+        Word w = next.words.getFirst();
+        boolean joined = last.endsWith("-");
+        if (joined && dropHyphens && !compound(last, w.text) || !Character.isLetterOrDigit(w.text.charAt(0))) {
+            return Float.NaN;
+        }
+        float width = joined ? 0 : SPACE_SHRINK * spaceAfter(l.words.getLast().last());
+        for (Glyph g : w.glyphs) {
+            width += drawnWidth(g);
+            if (g.text.equals("-") && g != w.last()) {
+                break;
+            }
+        }
+        return width;
+    }
+
+    private static int nextChars(Line l, Line next) {
+        Word w = next.words.getFirst();
+        int n = l.words.getLast().text.endsWith("-") ? 0 : 1;
+        for (Glyph g : w.glyphs) {
+            n += g.text.length();
+            if (g.text.equals("-") && g != w.last()) {
+                break;
+            }
+        }
+        return n;
+    }
+
+    private float spaceAfter(Glyph before) {
+        float space = SubstituteMetrics.width(" ", before.font.family(), before.bold, before.italic, wordSize(before))
+                * scaleOf(before) / 100f;
+        return Float.isNaN(space) ? before.spaceWidth : space;
+    }
+
+    private float drawnWidth(Glyph g) {
+        float exact = g.vertAlign != 0 || unmeasured(g) || modeled(g) != null ? Float.NaN
+                : substituteWidth(g) * scaleOf(g) / 100f * wordSize(g) / g.size;
+        WidthFix fix = spacing.get(lookKey(g));
+        if (Float.isNaN(exact)) {
+            return g.width;
+        }
+        return fix != null ? exact * fix.scale() / 100f + fix.spacing() * g.text.length() : exact;
+    }
+
+    record Fit(float edge, float preferred, boolean justified) {}
+
+    private float fit(List<Line> lines, Fit target, BitSet hardBreaks, float[] squeezes) {
+        if (Float.isNaN(target.edge())) {
+            return Float.NaN;
+        }
+        for (Line l : lines) {
+            for (int wi = 1; wi < l.words.size(); wi++) {
+                if (l.gaps[wi] != Line.SPACE) {
+                    return Float.NaN;
+                }
+            }
+        }
+        exactFit = exact(lines);
+        if (!exactFit) {
+            return Float.NaN;
+        }
+        float centre = target.preferred();
+        float best = Float.NaN;
+        float bestSqueeze = 0;
+        int bestScore = -1;
+        for (int step = 0; step <= FIT_STEPS; step++) {
+            float t = step / 20f;
+            List<float[]> spans = spans(lines, target, hardBreaks, t);
+            for (int ci = -1; ci < 2 * spans.size(); ci++) {
+                float c = ci < 0 ? centre : spans.get(ci / 2)[ci % 2];
+                int score = score(spans, c);
+                if (c <= centre + MAX_WIDEN && c >= centre - MAX_NARROW && score > bestScore) {
+                    best = c;
+                    bestSqueeze = t;
+                    bestScore = score;
+                }
+            }
+        }
+        Arrays.fill(squeezes, bestSqueeze);
+        return best;
+    }
+
+    private static int score(List<float[]> spans, float slack) {
+        int score = 0;
+        for (int i = 0; i < spans.size(); i++) {
+            float[] span = spans.get(i);
+            if (span[0] > slack) {
+                return -1;
+            }
+            score += slack <= span[1] ? spans.size() - i : 0;
+        }
+        return score;
+    }
+
+    private boolean exact(List<Line> lines) {
+        for (Line l : lines) {
+            for (Word w : l.words) {
+                for (Glyph g : w.glyphs) {
+                    WidthFix fix = spacing.get(lookKey(g));
+                    if (g.vertAlign != 0 || unmeasured(g) || modeled(g) != null || Float.isNaN(substituteWidth(g))
+                            || fix != null && (fix.scale() != 100 || Math.abs(fix.spacing()) > EXACT_SPACING)) {
+                        return false;
+                    }
+                }
+            }
+        }
+        return true;
+    }
+
+    private List<float[]> spans(List<Line> lines, Fit target, BitSet hardBreaks, float t) {
+        List<float[]> spans = new ArrayList<>();
+        for (int i = 0; i < lines.size(); i++) {
+            Line l = lines.get(i);
+            float room = target.edge() - l.x;
+            Word lastWord = l.words.getLast();
+            Glyph last = lastWord.last();
+            Word next = i + 1 < lines.size() && !hardBreaks.get(i + 1) ? lines.get(i + 1).words.getFirst() : null;
+            float natural = natural(l, t) - room;
+            boolean soft = next != null && HYPHENS.contains(last.text)
+                    && (dropHyphens || last.text.equals("\u00AD")) && Character.isLowerCase(next.first().text.charAt(0));
+            int spaces = spaces(l);
+            float over = Float.MAX_VALUE;
+            if (next != null && (soft || !HYPHENS.contains(last.text))) {
+                float unit = unitWidth(next, t);
+                float stem = wordWidth(lastWord, t, last);
+                float joined = soft ? natural - wordWidth(lastWord, t, null) + stem + unit : natural + fitSpace(last, t) + unit;
+                over = joined - allowance(target, soft ? spaces : spaces + 1, last, soft ? stem + unit : unit);
+            }
+            spans.add(new float[] {natural + FIT_MARGIN, over - FIT_MARGIN});
+        }
+        return spans;
+    }
+
+    private float allowance(Fit target, int spaces, Glyph space, float word) {
+        if (!target.justified()) {
+            return 0f;
+        }
+        return Math.min(SPACE_GIVE * spaces * fitSpace(space, 0f), WORD_GIVE * word + WORD_GIVE_FLOOR);
+    }
+
+    private static int spaces(Line l) {
+        int n = 0;
+        for (int wi = 1; wi < l.words.size(); wi++) {
+            n += l.sentenceSpace(wi) ? 2 : 1;
+        }
+        return n;
+    }
+
+    private float natural(Line l, float t) {
+        float drawn = 0;
+        for (int wi = 0; wi < l.words.size(); wi++) {
+            if (wi > 0) {
+                drawn += (l.sentenceSpace(wi) ? 2 : 1) * fitSpace(l.words.get(wi - 1).last(), t);
+            }
+            drawn += wordWidth(l.words.get(wi), t, null);
+        }
+        return drawn;
+    }
+
+    private float wordWidth(Word w, float t, Glyph until) {
+        float drawn = 0;
+        for (Glyph g : w.glyphs) {
+            if (g == until) {
+                break;
+            }
+            drawn += drawnWidth(g) - t * g.text.length();
+        }
+        return drawn;
+    }
+
+    private float unitWidth(Word w, float t) {
+        float drawn = 0;
+        for (int gi = 0; gi < w.glyphs.size(); gi++) {
+            Glyph g = w.glyphs.get(gi);
+            drawn += drawnWidth(g) - t * g.text.length();
+            if (g.text.equals("-") && gi > 0 && gi + 1 < w.glyphs.size()
+                    && Character.isLetterOrDigit(w.glyphs.get(gi - 1).text.codePointAt(0))
+                    && Character.isLetterOrDigit(w.glyphs.get(gi + 1).text.codePointAt(0))) {
+                break;
+            }
+        }
+        return drawn;
+    }
+
+    private float fitSpace(Glyph before, float t) {
+        WidthFix fix = spacing.get(lookKey(before));
+        float space = spaceAfter(before);
+        return (fix == null ? space : space * fix.scale() / 100f + fix.spacing()) - t;
+    }
+
+    float fitted() {
+        return fitted;
+    }
+
+    boolean exactFit() {
+        return exactFit;
+    }
+
+    private static final Set<String> HYPHENS = Set.of("-", "\u00AD", "\u2010");
+
+    private static final float FIT_MARGIN = 0.3f;
+
+    private static final float SPACE_GIVE = 0.25f;
+
+    private static final float WORD_GIVE = 0.33f;
+
+    private static final float WORD_GIVE_FLOOR = 1.1f;
+
+    private static final int FIT_STEPS = 4;
+
+    private static final float MAX_WIDEN = 5f;
+
+    private static final float MAX_NARROW = 4f;
+
+    private static final float EXACT_SPACING = 0.1f;
 
     void icons(IconPictures icons) {
         this.icons = icons;
@@ -592,6 +923,10 @@ final class RunBuilder {
         }
         p.tabs.add(new TabStop(Math.max(0, pos), kind, leader));
         p.tabs.sort((a, b) -> Float.compare(a.pos(), b.pos()));
+    }
+
+    private static boolean dotted(String text) {
+        return !text.isEmpty() && text.chars().allMatch(c -> c == '.');
     }
 
     static boolean isFillRun(String text) {

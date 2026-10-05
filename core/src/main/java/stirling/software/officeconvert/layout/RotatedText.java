@@ -71,6 +71,7 @@ final class RotatedText {
         Glyph up = new Glyph(g.text, x, g.width, baseline, g.size, g.ascent, g.descent, g.font, g.rgb, g.seq,
                 g.spaceWidth, g.bold, g.italic);
         up.hscale = g.hscale;
+        up.invisible = g.invisible;
         return up;
     }
 

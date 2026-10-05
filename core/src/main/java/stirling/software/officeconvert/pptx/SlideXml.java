@@ -94,7 +94,7 @@ final class SlideXml {
                 .append("\" bIns=\"0\" rtlCol=\"0\" anchor=\"t\" anchorCtr=\"0\">")
                 .append(t.title() ? "<a:noAutofit/>" : "<a:spAutoFit/>").append("</a:bodyPr><a:lstStyle/>");
         for (TextPara p : t.paras()) {
-            text.paragraph(sb, p);
+            text.paragraph(sb, p, t.invisible());
         }
         sb.append("</p:txBody></p:sp>");
     }

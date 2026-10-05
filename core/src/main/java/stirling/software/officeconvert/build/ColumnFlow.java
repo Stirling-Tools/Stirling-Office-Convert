@@ -15,8 +15,9 @@ final class ColumnFlow {
 
     boolean flowsOn(PageLayout layout, PageLayout.Band band, int ci, float bodyBottom) {
         float line = stats.pitchFor(stats.bodySize);
+        PageLayout.Column prev = band.columns().get(ci - 1);
         return columnFull(band, ci - 1) && lastBand(layout, band) && !startsLow(band, ci)
-                && columnBottom(band.columns().get(ci - 1)) >= bodyBottom - 4 * line;
+                && columnBottom(prev) >= bodyBottom - 4 * line && columnBottom(prev) - firstTop(prev) >= 4 * line;
     }
 
     static boolean inFlow(PageLayout.Item it) {

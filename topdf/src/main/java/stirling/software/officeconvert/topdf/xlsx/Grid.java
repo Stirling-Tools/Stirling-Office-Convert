@@ -222,8 +222,6 @@ final class Grid {
                 continue;
             }
             mergeTopLeft.putIfAbsent(key(m.getFirstRow(), m.getFirstColumn()), m);
-            lastRow = Math.max(lastRow, m.getLastRow());
-            lastCol = Math.max(lastCol, m.getLastColumn());
         }
         reader.rows(row -> {
             try {
@@ -237,6 +235,7 @@ final class Grid {
         if (sheetPart != null) {
             overlay(Overlays.read(book, sheetPart, ws, this, job));
         }
+        extendForMerges();
         extendForOverflow();
         if (damagedRows > 0 || reader.damaged()) {
             job.warn("Sheet " + sheetName + " is damaged; some rows could not be read");
@@ -352,7 +351,7 @@ final class Grid {
             height = Math.min(409.5, row.height());
         }
         for (CellEntry e : entries) {
-            if (e.text() != null || e.format().visible()) {
+            if (e.text() != null || inked(e.format())) {
                 lastRow = Math.max(lastRow, index);
                 if (columns.width(e.col()) > 0) {
                     lastCol = Math.max(lastCol, e.col());
@@ -407,6 +406,19 @@ final class Grid {
         return cs >= 0 ? book.styles().at(cs) : null;
     }
 
+    static boolean inked(CellFormat f) {
+        return f.fill() != null && !white(f.fill()) || inked(f.left()) || inked(f.right()) || inked(f.top())
+                || inked(f.bottom()) || inked(f.diagonal()) && (f.diagonalUp() || f.diagonalDown());
+    }
+
+    private static boolean inked(BorderLine b) {
+        return b.visible() && !white(b.color());
+    }
+
+    private static boolean white(Color c) {
+        return (c.getRGB() & 0xFFFFFF) == 0xFFFFFF;
+    }
+
     static boolean sameEdge(BorderLine a, BorderLine b) {
         return !a.visible() && !b.visible() || a.equals(b);
     }
@@ -439,8 +451,13 @@ final class Grid {
             CellEntry old = cell(row, col);
             if (old != null) {
                 Overlays.Delta d = e.getValue();
-                put(row, col, new CellEntry(row, col, restyle(old.format(), d, true, false),
-                        recolor(old.text(), d, false)));
+                CellFormat f = restyle(old.format(), d, true, false);
+                CellText text = old.text();
+                if (d.format() != null && text != null && text.numeric()) {
+                    f = f.withFormat(d.format());
+                    text = book.formatter().number(text.number(), f);
+                }
+                put(row, col, new CellEntry(row, col, f, recolor(text, d, false)));
             }
         }
     }
@@ -452,7 +469,7 @@ final class Grid {
             return n;
         });
         info.put(e);
-        if (e.hasText() || e.format().visible()) {
+        if (e.hasText() || inked(e.format())) {
             lastRow = Math.max(lastRow, row);
             lastCol = Math.max(lastCol, col);
         }
@@ -572,7 +589,7 @@ final class Grid {
                 double avail = colPx - SCREEN_PAD - indent - overhang(e.text().runs());
                 Typesetter t = book.typesetter();
                 lines = Math.max(1, CellLayout.wrap(e.text().runs(), avail,
-                        (str, font) -> t.screenWidth(str, font, FontMeasure.ppem(font.size(), 96))).size());
+                        (str, font) -> Math.rint(t.screenWidth(str, font, FontMeasure.ppem(font.size(), 96)))).size());
             }
             best = Math.max(best, Math.min(546, line * lines));
         }
@@ -604,6 +621,16 @@ final class Grid {
             line = Math.max(line, fontLine(r.font(), defaultPx));
         }
         return line;
+    }
+
+    private void extendForMerges() {
+        for (CellRangeAddress m : mergeTopLeft.values()) {
+            CellEntry e = cell(m.getFirstRow(), m.getFirstColumn());
+            if (e != null && (e.hasText() || inked(e.format()))) {
+                lastRow = Math.max(lastRow, m.getLastRow());
+                lastCol = Math.max(lastCol, m.getLastColumn());
+            }
+        }
     }
 
     private void extendForOverflow() {

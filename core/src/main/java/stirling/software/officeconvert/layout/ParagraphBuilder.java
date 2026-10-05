@@ -53,6 +53,9 @@ public final class ParagraphBuilder {
             para.lines.add(line);
         }
         for (ParaDraft p : out) {
+            if (block(p)) {
+                p.hardBreaks.clear();
+            }
             measure.measure(room, p);
         }
         ParagraphMeasure.alignRtlStarts(room, out);
@@ -151,5 +154,24 @@ public final class ParagraphBuilder {
         }
         float width = room.colRight - room.colLeft;
         return prev.width() + spaceWidth(prev) + cur.words.getFirst().width() < width - 2 * EDGE;
+    }
+
+    private static boolean block(ParaDraft p) {
+        List<Line> lines = p.lines;
+        if (p.hardBreaks.isEmpty() || lines.size() < 3) {
+            return false;
+        }
+        for (int i = 1; i < lines.size(); i++) {
+            Line a = lines.get(i - 1);
+            Line b = lines.get(i);
+            if (i + 1 < lines.size() ? !sameBlock(a, b) : Math.abs(a.x - b.x) > EDGE) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static boolean sameBlock(Line a, Line b) {
+        return Math.abs(a.x - b.x) <= EDGE && Math.abs(a.right - b.right) <= EDGE;
     }
 }

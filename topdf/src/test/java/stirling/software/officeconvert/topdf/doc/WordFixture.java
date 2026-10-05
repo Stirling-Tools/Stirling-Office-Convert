@@ -37,6 +37,8 @@ final class WordFixture {
 
     private final List<Integer> breaks = new ArrayList<>();
 
+    private final java.util.Map<Integer, Object[]> stale = new java.util.HashMap<>();
+
     private byte[] lists;
 
     private byte[] listOverrides;
@@ -79,6 +81,11 @@ final class WordFixture {
 
     WordFixture para(List<Run> runs, int istd, byte[]... papx) {
         main.add(new Para(runs, concat(papx), istd, '\r'));
+        return this;
+    }
+
+    WordFixture staleRun(int chars, byte[]... papx) {
+        stale.put(main.size() - 1, new Object[] {chars, concat(papx)});
         return this;
     }
 
@@ -476,15 +483,29 @@ final class WordFixture {
 
     private byte[] papFkp(int fcText, List<Para> paras, List<Integer> ends) {
         ByteBuffer b = ByteBuffer.allocate(512).order(ByteOrder.LITTLE_ENDIAN);
-        int n = paras.size();
+        List<Integer> bounds = new ArrayList<>();
+        List<byte[]> grpprls = new ArrayList<>();
+        int start = 0;
+        for (int i = 0; i < paras.size(); i++) {
+            Para p = paras.get(i);
+            byte[] istd = {(byte) p.istd(), (byte) (p.istd() >> 8)};
+            Object[] early = stale.get(i);
+            if (early != null) {
+                bounds.add(start + (Integer) early[0]);
+                grpprls.add(concat(istd, (byte[]) early[1]));
+            }
+            bounds.add(ends.get(i));
+            grpprls.add(concat(istd, p.papx()));
+            start = ends.get(i);
+        }
+        int n = grpprls.size();
         b.putInt(0, fcText);
         for (int i = 0; i < n; i++) {
-            b.putInt((i + 1) * 4, fcText + ends.get(i) * 2);
+            b.putInt((i + 1) * 4, fcText + bounds.get(i) * 2);
         }
         int free = 511;
         for (int i = 0; i < n; i++) {
-            Para p = paras.get(i);
-            byte[] g = concat(new byte[] {(byte) p.istd(), (byte) (p.istd() >> 8)}, p.papx());
+            byte[] g = grpprls.get(i);
             int len = g.length;
             byte[] papx;
             if ((len & 1) == 1) {

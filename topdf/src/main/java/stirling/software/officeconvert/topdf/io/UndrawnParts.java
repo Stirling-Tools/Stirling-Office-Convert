@@ -3,10 +3,14 @@ package stirling.software.officeconvert.topdf.io;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InterruptedIOException;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.Deque;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
@@ -34,6 +38,38 @@ final class UndrawnParts {
             throw e;
         } catch (IOException | RuntimeException e) {
             return Set.of();
+        }
+    }
+
+    static Map<String, byte[]> unlinked(OfficeZip zip, Set<String> hidden) throws InterruptedIOException {
+        Map<String, byte[]> out = new HashMap<>();
+        for (String part : zip.partNames()) {
+            String p = lower(part);
+            if (hidden.contains(p) || p.endsWith(".rels")) {
+                continue;
+            }
+            List<Relationship> kept = new ArrayList<>();
+            List<Relationship> all = relationships(zip, part);
+            for (Relationship r : all) {
+                if (r.external() || r.part() == null || !hidden.contains(lower(r.part()))) {
+                    kept.add(r);
+                }
+            }
+            if (kept.size() < all.size()) {
+                out.put(lower(OfficeZip.relsPartFor(part)), SlideLinks.relationships(kept).append("</Relationships>")
+                        .toString().getBytes(StandardCharsets.UTF_8));
+            }
+        }
+        return out;
+    }
+
+    private static List<Relationship> relationships(OfficeZip zip, String part) throws InterruptedIOException {
+        try {
+            return zip.peekRelationships(part).all();
+        } catch (InterruptedIOException e) {
+            throw e;
+        } catch (IOException | RuntimeException e) {
+            return List.of();
         }
     }
 

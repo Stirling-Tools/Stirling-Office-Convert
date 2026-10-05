@@ -50,10 +50,42 @@ class BlankPagesTest {
     }
 
     @Test
-    void aBlankMergedRangeIsPrinted() throws IOException {
-        String sheet = "<sheetData><row r=\"1\">" + RawXlsx.inline("A1", "First") + "</row></sheetData>"
-                + "<mergeCells count=\"1\"><mergeCell ref=\"A24:B25\"/></mergeCells>" + BREAKS;
-        assertEquals(3, XlsxTesting.convert(dir, "merge.xlsx", new RawXlsx().styles(STYLES).sheet("S", sheet).bytes())
+    void aBlankMergedRangeDoesNotExtendThePrint() throws IOException {
+        StringBuilder rows = new StringBuilder("<row r=\"1\">" + RawXlsx.inline("A1", "First") + "</row>");
+        StringBuilder merges = new StringBuilder();
+        for (int r = 2; r <= 3000; r++) {
+            rows.append("<row r=\"").append(r).append("\"><c r=\"A").append(r).append("\" s=\"1\"/><c r=\"B")
+                    .append(r).append("\" s=\"1\"/></row>");
+            merges.append("<mergeCell ref=\"A").append(r).append(":B").append(r).append("\"/>");
+        }
+        String sheet = "<sheetData>" + rows + "</sheetData><mergeCells count=\"2999\">" + merges + "</mergeCells>";
+        assertEquals(1, XlsxTesting.convert(dir, "merge.xlsx", new RawXlsx().styles(STYLES).sheet("S", sheet).bytes())
+                .pages().size());
+    }
+
+    @Test
+    void whiteFillsAndWhiteBordersDoNotExtendThePrint() throws IOException {
+        String styles = "<fonts count=\"1\"><font><sz val=\"11\"/><name val=\"Calibri\"/></font></fonts><fills"
+                + " count=\"3\"><fill><patternFill patternType=\"none\"/></fill><fill><patternFill patternType=\"gray125\"/>"
+                + "</fill><fill><patternFill patternType=\"solid\"><fgColor rgb=\"FFFFFFFF\"/></patternFill></fill></fills>"
+                + "<borders count=\"2\"><border/><border><left style=\"thin\"><color rgb=\"FFFFFFFF\"/></left><right/><top/>"
+                + "<bottom/><diagonal/></border></borders><cellStyleXfs count=\"1\"><xf/></cellStyleXfs><cellXfs count=\"3\">"
+                + "<xf/><xf fillId=\"2\" applyFill=\"1\"/><xf borderId=\"1\" applyBorder=\"1\"/></cellXfs>";
+        StringBuilder rows = new StringBuilder("<row r=\"1\">" + RawXlsx.inline("A1", "First") + "</row>");
+        for (int r = 2; r <= 400; r++) {
+            rows.append("<row r=\"").append(r).append("\"><c r=\"A").append(r).append("\" s=\"1\"/><c r=\"Z")
+                    .append(r).append("\" s=\"2\"/></row>");
+        }
+        assertEquals(1, XlsxTesting.convert(dir, "white.xlsx", new RawXlsx().styles(styles)
+                .sheet("S", "<sheetData>" + rows + "</sheetData>").bytes()).pages().size());
+    }
+
+    @Test
+    void aMergedRangeWithAValuePrintsDownToItsLastRow() throws IOException {
+        String sheet = "<sheetData><row r=\"1\">" + RawXlsx.inline("A1", "First") + "</row><row r=\"20\">"
+                + RawXlsx.inline("A20", "Merged") + "</row></sheetData><mergeCells count=\"1\"><mergeCell"
+                + " ref=\"A20:B25\"/></mergeCells>" + BREAKS;
+        assertEquals(3, XlsxTesting.convert(dir, "valued.xlsx", new RawXlsx().styles(STYLES).sheet("S", sheet).bytes())
                 .pages().size());
     }
 

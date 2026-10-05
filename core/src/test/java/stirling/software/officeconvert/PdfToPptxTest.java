@@ -26,6 +26,7 @@ import org.apache.pdfbox.pdmodel.PDPageContentStream;
 import org.apache.pdfbox.pdmodel.common.PDRectangle;
 import org.apache.pdfbox.pdmodel.graphics.image.LosslessFactory;
 import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
+import org.apache.pdfbox.pdmodel.graphics.state.RenderingMode;
 import org.apache.pdfbox.util.Matrix;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -218,5 +219,74 @@ class PdfToPptxTest {
         PdfToPptx.convert(twice, out, PdfToPptx.Options.defaults());
         long media = SlideFixtures.parts(Files.readAllBytes(out)).keySet().stream().filter(n -> n.startsWith("ppt/media/")).count();
         assertEquals(1, media);
+    }
+
+    @Test
+    void aDarkPageOverWhitePaperKeepsItsBackground() throws Exception {
+        Path dark = dir.resolve("dark.pdf");
+        try (PDDocument doc = new PDDocument()) {
+            PDPage page = new PDPage(SlideFixtures.WIDE);
+            doc.addPage(page);
+            try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
+                cs.setNonStrokingColor(1f, 1f, 1f);
+                cs.addRect(0, 0.5f, 960, 539.5f);
+                cs.fill();
+                cs.setNonStrokingColor(0f, 0f, 0f);
+                cs.addRect(0, 0, 960, 540);
+                cs.fill();
+                cs.setNonStrokingColor(1f, 1f, 1f);
+                cs.beginText();
+                cs.setFont(SlideFixtures.SANS, 40);
+                cs.newLineAtOffset(60, 440);
+                cs.showText("White on black");
+                cs.endText();
+            }
+            doc.save(dark.toFile());
+        }
+        Path out = dir.resolve("dark.pptx");
+        PdfToPptx.convert(dark, out, PdfToPptx.Options.defaults());
+        String slide = SlideFixtures.text(SlideFixtures.parts(Files.readAllBytes(out)), "ppt/slides/slide1.xml");
+        assertTrue(slide.contains("<p:bg><p:bgPr><a:solidFill><a:srgbClr val=\"000000\"/>"), "the black page is the background");
+        assertFalse(slide.contains("<p:pic>"), "the white paper under it is not drawn over the background");
+        assertTrue(slide.contains("<a:t>White on black</a:t>"));
+    }
+
+    @Test
+    void ocrTextOverAScanStaysSearchableButInvisible() throws Exception {
+        assertTrue(ocrSlide(true).matches("(?s).*<a:srgbClr val=\"[0-9A-F]{6}\"><a:alpha val=\"0\"/></a:srgbClr>(?:(?!</a:r>).)*"
+                + "<a:t>Scanned report text</a:t>.*"), "the scan shows the words, the text layer only carries them");
+        String bare = ocrSlide(false);
+        assertTrue(bare.contains("<a:t>Scanned report text</a:t>"));
+        assertFalse(bare.contains("<a:alpha val=\"0\"/>"), "with no picture under it the text is the only copy, so it shows");
+    }
+
+    private static String ocrSlide(boolean scan) throws Exception {
+        Path file = dir.resolve(scan ? "scan.pdf" : "ocr-only.pdf");
+        try (PDDocument doc = new PDDocument()) {
+            PDPage page = new PDPage(SlideFixtures.WIDE);
+            doc.addPage(page);
+            try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
+                if (scan) {
+                    BufferedImage img = new BufferedImage(480, 270, BufferedImage.TYPE_INT_RGB);
+                    Graphics2D g = img.createGraphics();
+                    g.setColor(new Color(250, 248, 240));
+                    g.fillRect(0, 0, 480, 270);
+                    g.setColor(Color.DARK_GRAY);
+                    g.fillRect(30, 45, 260, 14);
+                    g.dispose();
+                    cs.drawImage(LosslessFactory.createFromImage(doc, img), 0, 0, 960, 540);
+                }
+                cs.beginText();
+                cs.setRenderingMode(RenderingMode.NEITHER);
+                cs.setFont(SlideFixtures.SANS, 24);
+                cs.newLineAtOffset(60, 430);
+                cs.showText("Scanned report text");
+                cs.endText();
+            }
+            doc.save(file.toFile());
+        }
+        Path out = dir.resolve(scan ? "scan.pptx" : "ocr-only.pptx");
+        PdfToPptx.convert(file, out, PdfToPptx.Options.defaults());
+        return SlideFixtures.text(SlideFixtures.parts(Files.readAllBytes(out)), "ppt/slides/slide1.xml");
     }
 }

@@ -5,18 +5,31 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.List;
 
 import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.cos.COSArray;
 import org.apache.pdfbox.cos.COSDictionary;
+import org.apache.pdfbox.cos.COSInteger;
 import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
+import org.apache.pdfbox.pdmodel.PDPageContentStream;
+import org.apache.pdfbox.pdmodel.PDResources;
+import org.apache.pdfbox.pdmodel.common.PDRectangle;
 import org.apache.pdfbox.pdmodel.font.PDCIDFontType2;
 import org.apache.pdfbox.pdmodel.font.PDFont;
+import org.apache.pdfbox.pdmodel.font.PDFontFactory;
 import org.apache.pdfbox.pdmodel.font.PDType0Font;
+import org.apache.pdfbox.pdmodel.font.PDType1Font;
+import org.apache.pdfbox.pdmodel.font.Standard14Fonts;
+import org.apache.pdfbox.pdmodel.graphics.form.PDFormXObject;
+import org.apache.pdfbox.pdmodel.interactive.annotation.PDAnnotationWidget;
+import org.apache.pdfbox.pdmodel.interactive.annotation.PDAppearanceDictionary;
+import org.apache.pdfbox.pdmodel.interactive.annotation.PDAppearanceStream;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -118,6 +131,56 @@ class FontEmbeddingTest {
             assertNotNull(t3.getDictionaryObject(COSName.TO_UNICODE));
         }
         VeraPdf.assertCompliant(out, PdfALevel.A3U);
+    }
+
+    @Test
+    void aFontThatShowsOnlyEmptyStringsGetsAWidthsArray() throws Exception {
+        Path in = dir.resolve("empty-field.pdf");
+        try (PDDocument d = new PDDocument()) {
+            PDPage page = new PDPage();
+            d.addPage(page);
+            COSArray widths = new COSArray();
+            for (int c = 0; c < 256; c++) {
+                widths.add(COSInteger.get(500));
+            }
+            COSDictionary font = new COSDictionary();
+            font.setItem(COSName.TYPE, COSName.FONT);
+            font.setItem(COSName.SUBTYPE, COSName.TYPE1);
+            font.setName(COSName.BASE_FONT, "HelveticaLTStd-Bold");
+            font.setItem(COSName.ENCODING, COSName.WIN_ANSI_ENCODING);
+            font.setInt(COSName.FIRST_CHAR, 0);
+            font.setInt(COSName.LAST_CHAR, 255);
+            font.setItem(COSName.WIDTHS, widths);
+            PDResources res = new PDResources();
+            res.put(COSName.getPDFName("F1"), PDFontFactory.createFont(font));
+            PDFormXObject ap = new PDFormXObject(d);
+            ap.setBBox(new PDRectangle(88, 11));
+            ap.setResources(res);
+            try (OutputStream o = ap.getContentStream().createOutputStream()) {
+                o.write("/Tx BMC BT /F1 8 Tf 44 2.6 Td () Tj ET EMC".getBytes(StandardCharsets.US_ASCII));
+            }
+            PDAnnotationWidget widget = new PDAnnotationWidget();
+            widget.setRectangle(new PDRectangle(228, 732, 88, 11));
+            widget.setPrinted(true);
+            PDAppearanceDictionary appearance = new PDAppearanceDictionary();
+            appearance.setNormalAppearance(new PDAppearanceStream(ap.getCOSObject()));
+            widget.setAppearance(appearance);
+            page.getAnnotations().add(widget);
+            try (PDPageContentStream c = new PDPageContentStream(d, page)) {
+                c.beginText();
+                c.setFont(new PDType1Font(Standard14Fonts.FontName.HELVETICA), 12);
+                c.newLineAtOffset(72, 700);
+                c.showText("Form");
+                c.endText();
+            }
+            d.save(in.toFile());
+        }
+        for (PdfALevel level : new PdfALevel[] {PdfALevel.A1B, PdfALevel.A2B}) {
+            Path out = dir.resolve("empty-field-" + level + ".pdf");
+            PdfToPdfA.convert(in, out, PdfToPdfA.Options.defaults().level(level));
+            assertEquals("Form", Converted.text(out).strip());
+            VeraPdf.assertCompliant(out, level);
+        }
     }
 
     private static void assertEmbedded(Path pdf) throws Exception {

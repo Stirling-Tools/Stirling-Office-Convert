@@ -142,7 +142,7 @@ final class SlideBuilder {
             }
             whiteCards(layout, stack);
             if (stack.backgroundOrder >= 0) {
-                stack.represented.add(stack.backgroundOrder);
+                hiddenByBackground(stack);
             }
             for (Art.Piece piece : art.pieces(stack.paint, stack.represented, page.index(), toDisplay, width, height)) {
                 stack.add(piece.picture(), piece.order(), false);
@@ -150,6 +150,7 @@ final class SlideBuilder {
             for (SlideShape icon : icons) {
                 stack.add(icon, stack.paint.textOver(box(frameOf(icon))), true);
             }
+            showUncovered(stack);
             List<SlideShape> shapes = new ArrayList<>(stack.ordered());
             Titles.mark(shapes, height);
             return new Slide(page.index(), stack.background, shapes);
@@ -302,7 +303,7 @@ final class SlideBuilder {
                         ? new LineShape(b.x(), b.centreY(), b.right(), b.centreY(), d.rgb(), t)
                         : new LineShape(b.centreX(), b.top(), b.centreX(), b.bottom(), d.rgb(), t);
                 int order = stack.paint.drew(b, 2f, Kind.STROKE, Kind.FILL);
-                stack.add(line, order >= 0 ? order : stack.paint.outlineWith(b, 3f), false);
+                stack.add(line, order >= 0 ? order : ruleOrder(b, horizontal, stack.paint), false);
             } else {
                 PaintOrder.Mark m = stack.paint.drewMark(b, 2f, Kind.FILL, Kind.SHADING);
                 if (m == null) {
@@ -325,6 +326,60 @@ final class SlideBuilder {
                 if (d.lineRgb() >= 0) {
                     stack.paint.drewAll(b, 2f, stack.represented);
                 }
+            }
+        }
+    }
+
+    private static int ruleOrder(Box b, boolean horizontal, PaintOrder paint) {
+        int order = paint.outlineWith(b, 3f);
+        if (order >= 0) {
+            return order;
+        }
+        order = paint.lastInside(b, Kind.STROKE, Kind.FILL);
+        float along = horizontal ? b.width() : b.height();
+        for (int i = 0; i <= RULE_SAMPLES; i++) {
+            float at = (horizontal ? b.x() : b.top()) + along * i / RULE_SAMPLES;
+            Box piece = horizontal ? new Box(at - 0.5f, b.top(), at + 0.5f, b.bottom())
+                    : new Box(b.x(), at - 0.5f, b.right(), at + 0.5f);
+            order = Math.max(order, paint.outlineWith(piece, 1.5f));
+        }
+        return order;
+    }
+
+    private static final int RULE_SAMPLES = 8;
+
+    private static void showUncovered(Stack stack) {
+        for (int i = 0; i < stack.placed.size(); i++) {
+            Stack.Placed p = stack.placed.get(i);
+            if (p.shape() instanceof TextShape t && t.invisible() && !onPicture(onPage(t.frame()), stack)) {
+                stack.placed.set(i, new Stack.Placed(t.visible(), p.z(), p.seq()));
+            }
+        }
+    }
+
+    private static boolean onPicture(Frame text, Stack stack) {
+        for (Stack.Placed p : stack.placed) {
+            if (p.shape() instanceof PictureShape pic && overlap(text, onPage(pic.frame())) >= 0.9f * text.area()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static void hiddenByBackground(Stack stack) {
+        stack.represented.add(stack.backgroundOrder);
+        PaintOrder.Mark fill = null;
+        for (PaintOrder.Mark m : stack.paint.marks()) {
+            if (m.order() == stack.backgroundOrder) {
+                fill = m;
+            }
+        }
+        if (fill == null || fill.alpha() < 1f) {
+            return;
+        }
+        for (PaintOrder.Mark m : stack.paint.marks()) {
+            if (m.order() < stack.backgroundOrder && m.kind() != Kind.TEXT) {
+                stack.represented.add(m.order());
             }
         }
     }

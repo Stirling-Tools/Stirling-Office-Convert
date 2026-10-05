@@ -18,6 +18,10 @@ import java.util.List;
 import org.apache.poi.ooxml.POIXMLTypeLoader;
 import org.apache.poi.openxml4j.opc.OPCPackage;
 import org.apache.poi.openxml4j.opc.PackageAccess;
+import org.apache.poi.openxml4j.opc.PackagePart;
+import org.apache.poi.openxml4j.opc.PackageRelationship;
+import org.apache.poi.openxml4j.opc.PackagingURIHelper;
+import org.apache.poi.openxml4j.opc.TargetMode;
 import org.apache.poi.xslf.usermodel.XMLSlideShow;
 import org.apache.poi.xslf.usermodel.XSLFGroupShape;
 import org.apache.poi.xslf.usermodel.XSLFSlide;
@@ -187,6 +191,17 @@ class PoiPackagesTest {
                 assertEquals(slide.getSlideLayout(), ppt.getSlideMasters().get(0).getSlideLayouts()[0]);
                 assertEquals(null, slide.getNotes());
                 assertEquals(null, ppt.getNotesMaster());
+                for (PackagePart part : ppt.getPackage().getParts()) {
+                    if (part.isRelationshipPart()) {
+                        continue;
+                    }
+                    for (PackageRelationship r : part.getRelationships()) {
+                        if (r.getTargetMode() == TargetMode.INTERNAL) {
+                            assertTrue(ppt.getPackage().containPart(PackagingURIHelper.createPartName(
+                                    r.getTargetURI())), part.getPartName() + " -> " + r.getTargetURI());
+                        }
+                    }
+                }
             }
         }
     }

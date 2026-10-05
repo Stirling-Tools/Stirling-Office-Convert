@@ -27,6 +27,8 @@ public final class Glyph {
 
     public boolean upright;
 
+    public boolean invisible;
+
     public IconShape icon;
 
     public Glyph(
@@ -68,6 +70,7 @@ public final class Glyph {
         g.footnote = footnote;
         g.vertAlign = vertAlign;
         g.hscale = hscale;
+        g.invisible = invisible;
         g.icon = icon == null ? null : new IconShape(icon.scaled(k), icon.rgb(), icon.key() + "|" + k);
         return g;
     }

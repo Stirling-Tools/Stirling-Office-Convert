@@ -458,4 +458,38 @@ class DocxTableEdgeTest {
         Color corner = new Color(DocxPaginationTest.page(r, 0).getRGB(5, 5));
         assertEquals(new Color(0xE2, 0xEF, 0xD9), corner);
     }
+
+    @Test
+    void anObjectLaidOutInACellIsKeptOnThePage() throws IOException {
+        long size = 72 * 12700L;
+        String picture = "<w:p><w:r><w:drawing><wp:anchor distT=\"0\" distB=\"0\" distL=\"0\" distR=\"0\""
+                + " simplePos=\"0\" relativeHeight=\"2\" behindDoc=\"0\" locked=\"0\" layoutInCell=\"1\""
+                + " allowOverlap=\"1\"><wp:simplePos x=\"0\" y=\"0\"/><wp:positionH relativeFrom=\"column\">"
+                + "<wp:posOffset>" + 500 * 12700 + "</wp:posOffset></wp:positionH><wp:positionV"
+                + " relativeFrom=\"paragraph\"><wp:posOffset>0</wp:posOffset></wp:positionV><wp:extent cx=\"" + size
+                + "\" cy=\"" + size + "\"/><wp:wrapNone/><wp:docPr id=\"2\" name=\"a\"/><a:graphic><a:graphicData"
+                + " uri=\"http://schemas.openxmlformats.org/drawingml/2006/picture\"><pic:pic><pic:nvPicPr><pic:cNvPr"
+                + " id=\"1\" name=\"p\"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed=\"rIdImg\"/>"
+                + "<a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x=\"0\" y=\"0\"/>"
+                + "<a:ext cx=\"" + size + "\" cy=\"" + size + "\"/></a:xfrm><a:prstGeom prst=\"rect\"/></pic:spPr>"
+                + "</pic:pic></a:graphicData></a:graphic></wp:anchor></w:drawing></w:r></w:p>";
+        DocxDoc.Rendered r = DocxDoc.render(dir, "cellpage", new DocxDoc().styles(DEFAULTS)
+                .media("g.png", Fixtures.png(4, 4, Color.GREEN), "rIdImg")
+                .body(table("", row("", picture)) + DocxDoc.p("After")).bytes());
+        List<Picture> pictures = ink(r, 1).pictures;
+        assertEquals(1, pictures.size());
+        assertEquals(612 - 72, pictures.get(0).x(), 1, "pushed back inside the page's right edge");
+    }
+
+    @Test
+    void aSectionWithoutAMarginKeepsItsBodyClearOfAHeaderItDefines() throws IOException {
+        String header = "<w:p><w:pPr><w:spacing w:before=\"0\" w:after=\"160\"/></w:pPr></w:p>";
+        String section = "<w:sectPr><w:headerReference w:type=\"even\" r:id=\"rIdheader1xml\"/><w:pgSz"
+                + " w:w=\"12240\" w:h=\"15840\"/><w:pgMar w:top=\"0\" w:right=\"1440\" w:bottom=\"1440\""
+                + " w:left=\"1440\" w:header=\"0\" w:footer=\"0\" w:gutter=\"0\"/></w:sectPr>";
+        DocxDoc doc = new DocxDoc().styles(DEFAULTS).body(DocxDoc.p("Body")).section(section)
+                .header("header1.xml", header);
+        DocxDoc.Rendered r = DocxDoc.render(dir, "unusedheader", doc.bytes());
+        assertTrue(r.word("Body").y() > 25, "below the header's height, not on the page edge: " + r.word("Body"));
+    }
 }

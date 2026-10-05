@@ -12,6 +12,7 @@ import org.apache.poi.hssf.record.DefaultRowHeightRecord;
 import org.apache.poi.hssf.record.HeaderFooterBase;
 import org.apache.poi.hssf.record.RecordBase;
 import org.apache.poi.hssf.record.RowRecord;
+import org.apache.poi.hssf.record.UnknownRecord;
 import org.apache.poi.hssf.record.WSBoolRecord;
 import org.apache.poi.hssf.record.aggregates.ColumnInfoRecordsAggregate;
 import org.apache.poi.hssf.record.aggregates.PageSettingsBlock;
@@ -43,6 +44,8 @@ final class SheetPart {
 
     private boolean defaultHidden;
 
+    private int standardWidth;
+
     SheetPart(HSSFSheet sheet) {
         this.sheet = sheet;
         defaultRowPt = sheet.getDefaultRowHeightInPoints();
@@ -53,6 +56,9 @@ final class SheetPart {
                         columns.put(ci.getFirstColumn(), ci);
                     }
                 });
+            } else if (r instanceof UnknownRecord u && u.getSid() == UnknownRecord.STANDARDWIDTH_0099) {
+                byte[] b = u.serialize();
+                standardWidth = b.length >= 6 ? b[4] & 0xFF | (b[5] & 0xFF) << 8 : 0;
             } else if (r instanceof DefaultRowHeightRecord d) {
                 defaultCustom = (d.getOptionFlags() & 1) != 0;
                 defaultHidden = (d.getOptionFlags() & 2) != 0;
@@ -81,6 +87,9 @@ final class SheetPart {
             }
             chars = e.getValue().getColumnWidth() / 256.0;
             return Math.floor((chars * 256 + Math.floor(128.0 / MAX_DIGIT_PX)) / 256 * MAX_DIGIT_PX);
+        }
+        if (standardWidth > 0) {
+            return Math.floor((standardWidth + Math.floor(128.0 / MAX_DIGIT_PX)) / 256 * MAX_DIGIT_PX);
         }
         return sheet.getDefaultColumnWidth() * MAX_DIGIT_PX + 5;
     }
@@ -129,6 +138,7 @@ final class SheetPart {
                 .append(flag(sheet::isRightToLeft) ? " rightToLeft=\"1\"" : "")
                 .append(flag(sheet::isDisplayGridlines) ? "" : " showGridLines=\"0\"").append("/></sheetViews>");
         p.append("<sheetFormatPr baseColWidth=\"").append(Math.max(0, sheet.getDefaultColumnWidth()))
+                .append(standardWidth > 0 ? "\" defaultColWidth=\"" + number(standardWidth / 256.0) : "")
                 .append("\" defaultRowHeight=\"").append(number(defaultRowPt)).append("\"")
                 .append(defaultCustom ? " customHeight=\"1\"" : "").append(defaultHidden ? " zeroHeight=\"1\"" : "")
                 .append("/>");

@@ -78,7 +78,12 @@ final class Shapes {
         StringBuilder b = new StringBuilder("<wps:wsp><wps:cNvSpPr").append(text != null ? " txBox=\"1\"" : "")
                 .append("/><wps:spPr>");
         xfrm(b, rec, rotation(sp), x, y, cx, cy);
-        b.append("<a:prstGeom prst=\"").append(geom).append("\"><a:avLst/></a:prstGeom>");
+        String custom = rec.getShapeType() == 0 ? Freeform.geometry(sp) : null;
+        if (custom != null) {
+            b.append(custom);
+        } else {
+            b.append("<a:prstGeom prst=\"").append(geom).append("\"><a:avLst/></a:prstGeom>");
+        }
         long opacity = prop(sp, 0x0182, 0x10000);
         String picture = filled && !line ? pictureFill(c, story, sp) : null;
         if (picture != null) {

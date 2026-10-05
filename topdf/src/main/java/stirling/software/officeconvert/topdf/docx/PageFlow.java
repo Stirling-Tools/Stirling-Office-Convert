@@ -364,6 +364,12 @@ final class PageFlow extends Region {
         if (header != null && !s.topFixed) {
             p.bodyTop = Math.max(p.bodyTop, s.header + header.height());
         }
+        if (header == null && !s.topFixed && s.top == 0) {
+            StackLayout.Result unused = unusedHeader(p);
+            if (unused != null) {
+                p.bodyTop = Math.max(p.bodyTop, s.header + unused.height());
+            }
+        }
         if (footer != null && !s.bottomFixed) {
             p.bodyBottom = Math.min(p.bodyBottom, s.pageH - s.footer - footer.height());
         }
@@ -437,15 +443,27 @@ final class PageFlow extends Region {
 
     private boolean numbered;
 
+    // With no top margin, a section with only an even page header keeps its odd pages clear of it, like LibreOffice
+    private StackLayout.Result unusedHeader(PageBox p) {
+        if (p.sect.titlePg || ctx.settings.evenAndOddHeaders || p.sect.headers.containsKey("default")) {
+            return null;
+        }
+        return headerLayout(p, true, "even");
+    }
+
     private StackLayout.Result headerLayout(PageBox p, boolean header) {
-        SectionProps s = p.sect;
-        Map<String, String> refs = header ? s.headers : s.footers;
         String type = "default";
-        if (p.firstOfSection && s.titlePg) {
+        if (p.firstOfSection && p.sect.titlePg) {
             type = "first";
         } else if (ctx.settings.evenAndOddHeaders && p.number % 2 == 0) {
             type = "even";
         }
+        return headerLayout(p, header, type);
+    }
+
+    private StackLayout.Result headerLayout(PageBox p, boolean header, String type) {
+        SectionProps s = p.sect;
+        Map<String, String> refs = header ? s.headers : s.footers;
         String rel = refs.get(type);
         if (rel == null) {
             return null;

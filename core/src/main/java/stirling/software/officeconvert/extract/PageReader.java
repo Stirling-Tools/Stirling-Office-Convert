@@ -19,6 +19,7 @@ import org.apache.pdfbox.pdmodel.interactive.action.PDActionGoTo;
 import org.apache.pdfbox.pdmodel.interactive.action.PDActionURI;
 import org.apache.pdfbox.pdmodel.interactive.annotation.PDAnnotation;
 import org.apache.pdfbox.pdmodel.interactive.annotation.PDAnnotationLink;
+import org.apache.pdfbox.pdmodel.interactive.annotation.PDAnnotationWidget;
 import org.apache.pdfbox.pdmodel.interactive.documentnavigation.destination.PDDestination;
 import org.apache.pdfbox.pdmodel.interactive.documentnavigation.destination.PDNamedDestination;
 import org.apache.pdfbox.pdmodel.interactive.documentnavigation.destination.PDPageDestination;
@@ -73,6 +74,7 @@ public final class PageReader {
         List<Glyph> rotated = new ArrayList<>();
         for (RawGlyph r : raw) {
             Glyph g = k == 1 ? r.glyph() : r.glyph().scaled(k);
+            g.invisible = r.invisible();
             if (r.direction() != direction) {
                 rotated.add(relocate(g, r, toDisplay, crop));
             } else if (r.invisible()) {
@@ -91,7 +93,7 @@ public final class PageReader {
                         : new PageGraphics(List.of(), List.of(), List.of(), List.of());
         List<PageData.Link> links = withGraphics ? links(page, toDisplay) : List.of();
         return new PageData(
-                index, width, height, direction, glyphs, hidden, rotated, graphics, links);
+                index, width, height, direction, glyphs, hidden, rotated, graphics, links, withGraphics ? widgets(page) : 0);
     }
 
     public PageData unreadable(int index) {
@@ -125,7 +127,8 @@ public final class PageReader {
                 glyphsOnly.hidden(),
                 glyphsOnly.rotated(),
                 graphics,
-                links(page, toDisplay));
+                links(page, toDisplay),
+                widgets(page));
     }
 
     private static Glyph relocate(Glyph g, RawGlyph r, AffineTransform toDisplay, PDRectangle crop) {
@@ -140,6 +143,7 @@ public final class PageReader {
                         g.seq, g.spaceWidth, g.bold, g.italic);
         moved.vertAlign = r.direction();
         moved.hscale = g.hscale;
+        moved.invisible = g.invisible;
         return moved;
     }
 
@@ -311,6 +315,20 @@ public final class PageReader {
         private static int slot(long key, int mask) {
             return (int) (key >>> 32 ^ key) & mask;
         }
+    }
+
+    private static int widgets(PDPage page) {
+        int n = 0;
+        try {
+            for (PDAnnotation a : page.getAnnotations()) {
+                if (a instanceof PDAnnotationWidget && !a.isHidden() && !a.isNoView()) {
+                    n++;
+                }
+            }
+        } catch (IOException | RuntimeException e) {
+            return 0;
+        }
+        return n;
     }
 
     private List<PageData.Link> links(PDPage page, AffineTransform toDisplay) {

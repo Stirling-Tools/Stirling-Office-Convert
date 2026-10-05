@@ -2,6 +2,7 @@ package stirling.software.officeconvert.build;
 
 import java.awt.geom.AffineTransform;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.IdentityHashMap;
 import java.util.List;
@@ -58,6 +59,22 @@ public final class DocumentBuilder {
     private Paragraph joined;
     private final Map<ParaDraft, PageLayout> homePage = new IdentityHashMap<>();
     private final Map<Paragraph, Object> shadedOn = new IdentityHashMap<>();
+    private final List<Block> held = new ArrayList<>();
+    private final List<Spaced> spaced = new ArrayList<>();
+    private final List<Integer> bandColumns = new ArrayList<>();
+    private int bandAt = -1;
+    private int columnAt;
+    private float pageShift;
+    private float footerHeight;
+    private float firstFooterHeight;
+    private float noteHeight;
+    private boolean flowing;
+    private Section reservedFor;
+    private float reservedBottom;
+    private float flowLow;
+    private float footHigh;
+
+    private record Spaced(Paragraph p, int band, int column) {}
 
     private record Carry(ParaDraft draft, float colLeft, float colRight, float spaceBefore, boolean pageBreak, float ref,
             boolean notes) {}
@@ -71,7 +88,7 @@ public final class DocumentBuilder {
         this.document = document;
         this.stats = stats;
         this.sink = sink;
-        this.runs = new RunBuilder(dropHyphens);
+        this.runs = new RunBuilder(dropHyphens, stats);
         runs.icons(new IconPictures(sink));
         RunStyle normal =
                 new RunStyle(stats.bodyFont.family(), round(stats.bodySize), false, false, false, false, 0, -1, 0, false);
@@ -101,8 +118,12 @@ public final class DocumentBuilder {
         PageData page = layout.page();
         pageLayout = layout;
         if (pageCount == 0) {
-            sink.begin(styles, running.runningContent(page.width(), page.height()));
+            DocSink.HeaderFooterSet set = running.runningContent(page.width(), page.height());
+            sink.begin(styles, set);
+            footerHeight = Math.max(height(set.footer()), height(set.evenFooter()));
+            firstFooterHeight = set.titlePage() ? SectionPlanner.runningLineHeight(stats.bodySize) : footerHeight;
         }
+        release();
         if (carry != null && !carriedOn(layout)) {
             Carry c = carry;
             carry = null;
@@ -116,13 +137,33 @@ public final class DocumentBuilder {
         at.refBottom = base.marginTop;
         boolean sizeChanged = section != null && !section.samePage(base);
         List<ParaDraft> strayNoteLines = notes.startPage(layout);
+        noteHeight = layout.notes().isEmpty() ? 0 : stats.bodySize;
+        for (PageLayout.Note note : layout.notes()) {
+            for (ParaDraft d : note.paras()) {
+                noteHeight += paragraphs.lineHeight(d) * d.lines.size();
+            }
+        }
         floats.queue(layout, paragraphs, placer, stats.bodySize);
         placeBackgrounds(layout, toDisplay);
         placeVeils(layout);
         float bodyBottom = stats.frame(page.width(), page.height()).bodyBottom();
         boolean pageFlows = layout.bands().stream().anyMatch(DocumentBuilder::flows);
+        float flowBottom = flowBottom(layout);
+        int misses = paragraphs.misses();
+        flowing = flowsOn(layout, bodyBottom);
+        paragraphs.fitting(flowing);
+        float footTop = flowing && textOnly(layout) ? footTop(layout, flowBottom) : Float.MAX_VALUE;
         for (PageLayout.Band band : layout.bands()) {
             if (band.columns().stream().allMatch(c -> c.items().isEmpty())) {
+                continue;
+            }
+            bandAt = -1;
+            if (footBand(layout, band)) {
+                for (PageLayout.Column c : band.columns()) {
+                    for (PageLayout.Item item : c.items()) {
+                        floats.add(placer.textBox(placed((PageLayout.ParaItem) item, c)));
+                    }
+                }
                 continue;
             }
             if (pageFlows && !flows(band)) {
@@ -135,22 +176,116 @@ public final class DocumentBuilder {
             }
             openSection(band, base, sizeChanged, at);
             float bandBottom = at.refBottom;
+            bandColumns.add(band.columns().size());
             for (int ci = 0; ci < band.columns().size(); ci++) {
                 boolean flowOn = ci > 0 && flow.flowsOn(layout, band, ci, bodyBottom);
                 if (ci > 0 && !flowOn) {
                     columnBreak();
                 }
-                bandBottom = Math.max(bandBottom, column(layout, band, ci, flowOn, base, at, toDisplay));
+                bandAt = bandColumns.size() - 1;
+                columnAt = ci;
+                paragraphs.innerColumn(ci + 1 < band.columns().size());
+                float columnBottom = column(layout, band, ci, flowOn, base, at, toDisplay);
+                fit(columnBottom);
+                bandBottom = Math.max(bandBottom, columnBottom);
             }
             at.refBottom = bandBottom;
+        }
+        bandAt = -1;
+        if (section != null) {
+            reserveFoot(flowBottom, paragraphs.misses() == misses ? footTop : Float.MAX_VALUE);
         }
         if (section == null) {
             section = base.copy();
             section.pageNumberStart = running.pageNumberStart();
         }
+        paragraphs.fitting(false);
+        flowing = false;
         finishPage(strayNoteLines, at);
         placer.endPage();
     }
+
+    private static float flowBottom(PageLayout layout) {
+        float bottom = -Float.MAX_VALUE;
+        for (PageLayout.Band band : layout.bands()) {
+            if (flows(band) && !footBand(layout, band)) {
+                for (PageLayout.Column c : band.columns()) {
+                    for (PageLayout.Item item : c.items()) {
+                        bottom = ColumnFlow.inFlow(item) ? Math.max(bottom, item.bottom()) : bottom;
+                    }
+                }
+            }
+        }
+        return bottom;
+    }
+
+    private boolean flowsOn(PageLayout layout, float bodyBottom) {
+        if (layout.bands().stream().filter(b -> flows(b) && !footBand(layout, b)).count() != 1) {
+            return false;
+        }
+        for (PageLayout.Band band : layout.bands()) {
+            for (int ci = 1; ci < band.columns().size(); ci++) {
+                if (flows(band) && !footBand(layout, band) && flow.flowsOn(layout, band, ci, bodyBottom)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private static boolean textOnly(PageLayout layout) {
+        for (PageLayout.Band band : layout.bands()) {
+            for (PageLayout.Column c : band.columns()) {
+                for (PageLayout.Item item : c.items()) {
+                    if (ColumnFlow.inFlow(item) && !(item instanceof PageLayout.ParaItem)) {
+                        return false;
+                    }
+                }
+            }
+        }
+        return true;
+    }
+
+    private static float footTop(PageLayout layout, float flowBottom) {
+        float top = Float.MAX_VALUE;
+        for (PageLayout.Band band : layout.bands()) {
+            if (footBand(layout, band)) {
+                for (PageLayout.Column c : band.columns()) {
+                    for (PageLayout.Item item : c.items()) {
+                        top = Math.min(top, item.top());
+                    }
+                }
+            }
+        }
+        for (PageLayout.TextBoxItem tb : layout.furniture()) {
+            if (tb.top() > flowBottom && tb.top() >= FOOT_ZONE * layout.page().height()) {
+                top = Math.min(top, tb.top());
+            }
+        }
+        return top;
+    }
+
+    private void reserveFoot(float flowBottom, float footTop) {
+        if (reservedFor != section) {
+            reservedFor = section;
+            reservedBottom = section.marginBottom;
+            flowLow = -Float.MAX_VALUE;
+            footHigh = Float.MAX_VALUE;
+        }
+        flowLow = Math.max(flowLow, flowBottom);
+        footHigh = Math.min(footHigh, footTop);
+        if (footHigh == Float.MAX_VALUE) {
+            return;
+        }
+        float body = Math.max(flowLow + FOOT_CLEAR, footHigh - FOOT_GAP);
+        if (body > section.marginTop + 72) {
+            section.marginBottom = Math.max(reservedBottom, section.pageHeight - body);
+        }
+    }
+
+    private static final float FOOT_CLEAR = 2f;
+
+    private static final float FOOT_GAP = 1f;
 
     private void openSection(PageLayout.Band band, Section base, boolean sizeChanged, Cursor at) throws IOException {
         List<float[]> cols = SectionPlanner.columnsOf(band, base);
@@ -232,6 +367,41 @@ public final class DocumentBuilder {
         return false;
     }
 
+    private static boolean footBand(PageLayout layout, PageLayout.Band band) {
+        List<PageLayout.Band> bands = layout.bands();
+        if (band.columns().size() < 2 || band.top() < FOOT_ZONE * layout.page().height()) {
+            return false;
+        }
+        for (int i = bands.indexOf(band) + 1; i < bands.size(); i++) {
+            if (flows(bands.get(i))) {
+                return false;
+            }
+        }
+        for (PageLayout.Column c : band.columns()) {
+            int lines = 0;
+            for (PageLayout.Item it : c.items()) {
+                if (!(it instanceof PageLayout.ParaItem pi)) {
+                    return false;
+                }
+                lines += pi.para().lines.size();
+            }
+            if (lines > FOOT_LINES) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static PageLayout.TextBoxItem placed(PageLayout.ParaItem pi, PageLayout.Column c) {
+        ParaDraft d = pi.para();
+        Box box = new Box(c.left() - 1, pi.top() - 1, c.right() + 1, pi.bottom() + 2);
+        return new PageLayout.TextBoxItem(box, -1, d.colLeft, d.colRight, List.of(d), 0f, -1, 0f, false, true);
+    }
+
+    private static final float FOOT_ZONE = 0.85f;
+
+    private static final int FOOT_LINES = 3;
+
     private static boolean flows(PageLayout.Band band) {
         return band.columns().stream().anyMatch(c -> c.items().stream().anyMatch(ColumnFlow::inFlow));
     }
@@ -251,6 +421,21 @@ public final class DocumentBuilder {
         }
         return true;
     }
+
+    private static float growth(Paragraph p) {
+        if (p.lineRule != LineRule.AT_LEAST) {
+            return 0;
+        }
+        float most = 0;
+        for (Inline in : p.inlines) {
+            if (in instanceof Inline.Text t && t.style().vertAlign() == 0) {
+                most = Math.max(most, t.style().size());
+            }
+        }
+        return Math.max(0, GROWN_LINE * most - p.lineHeight);
+    }
+
+    private static final float GROWN_LINE = 1.15f;
 
     private static boolean besideWrap(PageLayout.Item item, PageLayout.Column col) {
         for (PageLayout.Item it : col.items()) {
@@ -316,7 +501,9 @@ public final class DocumentBuilder {
                         !layout.notes().isEmpty());
             } else {
                 List<Inline.Shape> under = shapesUnder(d, bottom, nextInFlow(col, item));
-                emit(flowParagraph(d, col.left(), col.right(), spaceBefore, pageBreak));
+                Paragraph p = flowParagraph(d, col.left(), col.right(), spaceBefore, pageBreak);
+                emit(p);
+                bottom += growth(p);
                 if (!under.isEmpty()) {
                     bottom = underRow(under, bottom);
                 }
@@ -462,11 +649,87 @@ public final class DocumentBuilder {
             pageBookmark = null;
         }
         if (pending != null) {
-            sink.block(pending);
+            held.add(pending);
         }
         pending = b;
         pendingPage = pageCount;
+        if (bandAt >= 0 && b instanceof Paragraph p) {
+            spaced.add(new Spaced(p, bandAt, columnAt));
+        }
     }
+
+    private void release() throws IOException {
+        for (Block b : held) {
+            sink.block(b);
+        }
+        held.clear();
+        spaced.clear();
+        bandColumns.clear();
+        pageShift = 0;
+    }
+
+    private static float height(List<Paragraph> ps) {
+        float h = 0;
+        for (Paragraph p : ps) {
+            h += p.spaceBefore + p.spaceAfter + Math.max(p.lineHeight, 1f) * Math.max(1, p.sourceLines);
+        }
+        return h;
+    }
+
+    private void fit(float bottom) {
+        if (section == null || bottom == Float.MAX_VALUE) {
+            return;
+        }
+        float footer = pageCount == 1 ? firstFooterHeight : footerHeight;
+        float limit = section.pageHeight - Math.max(section.marginBottom, footer > 0 ? section.footerDistance + footer : 0);
+        float excess = bottom + noteHeight - pageShift + FIT_SAFETY * stats.pitchFor(stats.bodySize) - limit;
+        if (excess <= 0) {
+            return;
+        }
+        float room = 0;
+        for (Spaced s : spaced) {
+            room += eligible(s) ? reducible(s.p()) : 0;
+        }
+        if (room <= 0) {
+            return;
+        }
+        float share = Math.min(1f, excess / room);
+        for (Spaced s : spaced) {
+            if (eligible(s)) {
+                float took = shrink(s.p(), share);
+                if (s.band() != bandAt) {
+                    pageShift += took;
+                }
+            }
+        }
+    }
+
+    private boolean eligible(Spaced s) {
+        return s.band() == bandAt && s.column() == columnAt || s.band() < bandAt && bandColumns.get(s.band()) == 1;
+    }
+
+    private static boolean spacer(Paragraph p) {
+        return p.inlines.isEmpty() && p.lineRule == LineRule.EXACT && p.lineHeight > 1 && p.endsSection == null;
+    }
+
+    private static float reducible(Paragraph p) {
+        return FIT_SHRINK * (p.spaceBefore + p.spaceAfter + (spacer(p) ? p.lineHeight - 1 : 0));
+    }
+
+    private static float shrink(Paragraph p, float share) {
+        float took = share * reducible(p);
+        float cut = share * FIT_SHRINK;
+        if (spacer(p)) {
+            p.lineHeight -= cut * (p.lineHeight - 1);
+        }
+        p.spaceBefore -= cut * p.spaceBefore;
+        p.spaceAfter -= cut * p.spaceAfter;
+        return took;
+    }
+
+    private static final float FIT_SAFETY = 1f;
+
+    private static final float FIT_SHRINK = 0.75f;
 
     private void closeSection() throws IOException {
         if (pending instanceof Paragraph p && p.endsSection == null) {
@@ -498,6 +761,7 @@ public final class DocumentBuilder {
         if (pending == null || pending instanceof Table) {
             emit(hairline(1));
         }
+        release();
         if (pending != null) {
             sink.block(pending);
             pending = null;
@@ -518,7 +782,10 @@ public final class DocumentBuilder {
 
     private void emitFromLastPage(Paragraph p) throws IOException {
         PageFloats held = floats.setAside();
+        int band = bandAt;
+        bandAt = -1;
         emit(p);
+        bandAt = band;
         pendingPage = pageCount - 1;
         floats.restore(held);
     }

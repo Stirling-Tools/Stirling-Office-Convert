@@ -38,14 +38,14 @@ final class TextFrames {
     }
 
     private record Draft(ParaDraft d, Bullet bullet, Align align, float left, float right, float firstX, float restX,
-            float size, float lineHeight, String font, int order, boolean hidden) {
+            float size, float lineHeight, String font, int order, boolean hidden, boolean ocr) {
 
         Draft aligned(Align a) {
-            return new Draft(d, bullet, a, left, right, firstX, restX, size, lineHeight, font, order, hidden);
+            return new Draft(d, bullet, a, left, right, firstX, restX, size, lineHeight, font, order, hidden, ocr);
         }
 
         Draft withLineHeight(float h) {
-            return new Draft(d, bullet, align, left, right, firstX, restX, size, h, font, order, hidden);
+            return new Draft(d, bullet, align, left, right, firstX, restX, size, h, font, order, hidden, ocr);
         }
 
         float firstBaseline() {
@@ -147,7 +147,7 @@ final class TextFrames {
             }
         }
         TextShape shape = new TextShape(frame, paras, insetLeft, insetTop, insetRight, fill, line, tb.lineWidth(), radius,
-                wraps(drafts), false, vertical);
+                wraps(drafts), false, vertical, drafts.stream().allMatch(Draft::ocr));
         int order = tb.turn() == null ? order(drafts) : paint.textOver(SlideBuilder.box(frame));
         return new Framed(shape, order, drawn);
     }
@@ -182,7 +182,7 @@ final class TextFrames {
 
     private boolean startsBlock(List<Draft> group, Draft next) {
         Draft prev = group.getLast();
-        if (prev.hidden != next.hidden) {
+        if (prev.hidden != next.hidden || prev.ocr != next.ocr) {
             return true;
         }
         float gap = next.boxTop() - prev.boxBottom();
@@ -232,7 +232,21 @@ final class TextFrames {
             }
             hidden = order >= 0 && paint.covered(new Box(left, d.top(), right, d.bottom()), order);
         }
-        return new Draft(d, bullet, align, left, right, firstX, restX, size, lineHeight, fontOf(first), order, hidden);
+        return new Draft(d, bullet, align, left, right, firstX, restX, size, lineHeight, fontOf(first), order, hidden,
+                unseen(d));
+    }
+
+    private static boolean unseen(ParaDraft d) {
+        for (Line l : d.lines) {
+            for (Word w : l.words) {
+                for (Glyph g : w.glyphs) {
+                    if (!g.isSpace() && !g.invisible) {
+                        return false;
+                    }
+                }
+            }
+        }
+        return true;
     }
 
     private static float firstLineSize(Line l) {
@@ -278,7 +292,7 @@ final class TextFrames {
         List<TextPara> paras = paras(group, boxLeft, boxRight, top, icons, true);
         float bottom = group.getLast().boxBottom();
         return new TextShape(new Frame(boxLeft, top, boxRight - boxLeft, Math.max(1f, bottom - top)), paras, 0, 0, 0,
-                -1, -1, 0, 0, wraps(group), false);
+                -1, -1, 0, 0, wraps(group), false, false, group.getFirst().ocr);
     }
 
     private List<TextPara> paras(List<Draft> group, float boxLeft, float boxRight, float top, List<SlideShape> icons,

@@ -29,12 +29,20 @@ public final class PageAnalyzer {
     private final TextBoxFinder textBoxFinder;
     private final TableFinder tableFinder;
     private final boolean detectTables;
+    private final boolean forms;
+    private final boolean tabLeaders;
     private int noteCounter;
 
     private record Notes(List<PageLayout.Note> notes, List<ParaDraft> continuation) {}
 
     public PageAnalyzer(DocStats stats, boolean detectTables) {
+        this(stats, detectTables, false, false);
+    }
+
+    public PageAnalyzer(DocStats stats, boolean detectTables, boolean forms, boolean tabLeaders) {
         this.stats = stats;
+        this.forms = forms;
+        this.tabLeaders = tabLeaders;
         this.paragraphs = new ParagraphBuilder(stats);
         this.placed = new PlacedText(paragraphs);
         this.textBoxFinder = new TextBoxFinder(paragraphs);
@@ -73,6 +81,9 @@ public final class PageAnalyzer {
         textPaint.addAll(gfx.fills());
         rules.forEach(textPaint::remove);
         fills.forEach(textPaint::remove);
+        if (forms && FormPage.looksLikeForm(page, segments, rules)) {
+            return formPage(page, ocr, concat(segments, furnitureLines), rules, fills, textPaint);
+        }
 
         boolean tinted = tinted(page, gfx);
         Veils.Split veiled = Veils.split(gfx.marks(), gfx);
@@ -126,6 +137,10 @@ public final class PageAnalyzer {
         }
         strong.addAll(drawings);
 
+        ImageDraw scanned = ocr ? fullPageImage(page, gfx.images()) : null;
+        if (scanned != null) {
+            rules.addAll(ScanRules.find(scanned));
+        }
         List<TableDetection.Found> tables = detectTables
                 ? tableFinder.find(page, frame.textLeft(), frame.textRight(), segments, rules, fills, strong)
                 : new ArrayList<>();
@@ -210,6 +225,37 @@ public final class PageAnalyzer {
         groundTextBoxes(bands, furniture, decorations, gfx);
         return new PageLayout(page, bands, ocr, decorations, notes.notes(), notes.continuation(), furniture,
                 veiled.veils(), textPaint);
+    }
+
+    private PageLayout formPage(PageData page, boolean ocr, List<Line> lines, List<Rule> rules, List<Fill> fills,
+            Set<Object> textPaint) {
+        PageGraphics gfx = page.graphics();
+        List<PageLayout.TextBoxItem> boxes = new ArrayList<>();
+        List<Line> pieces = FormPage.pieces(lines, rules, fills, tabLeaders);
+        for (List<Line> block : FormPage.blocks(pieces, rules)) {
+            boxes.add(placed.form(block, FormPage.room(block, pieces, rules, page.width()), page.width()));
+        }
+        for (RotatedText.Block b : RotatedText.blocks(page.rotated(), page.width(), page.height())) {
+            boxes.add(placed.turned(b, page.width(), page.height()));
+        }
+        List<PageLayout.Item> pictures = new ArrayList<>();
+        for (ImageDraw img : gfx.images()) {
+            if (img.clipRight() - img.clipX() >= 3 && img.clipBottom() - img.clipTop() >= 3) {
+                pictures.add(new PageLayout.FloatItem(new PageLayout.ImageItem(img, true), 0f, true));
+            }
+        }
+        for (PageGraphics.VectorMark m : gfx.marks()) {
+            Box b = new Box(Math.max(0, m.x()), Math.max(0, m.top()), Math.min(page.width(), m.right()),
+                    Math.min(page.height(), m.bottom()));
+            if (b.width() > 0.5f && b.height() > 0.5f) {
+                pictures.add(new PageLayout.FloatItem(new PageLayout.FigureItem(b.grow(STROKE_MARGIN), true), 0f, true));
+            }
+        }
+        List<PageLayout.Band> bands = pictures.isEmpty()
+                ? List.of()
+                : List.of(new PageLayout.Band(0, page.height(), List.of(new PageLayout.Column(0, page.width(), pictures))));
+        return new PageLayout(page, bands, ocr, FormPage.shapes(rules, fills, gfx), List.of(), List.of(), boxes, List.of(),
+                textPaint);
     }
 
     private static List<FigureLabels.Label> labels(List<Line> segments, List<RotatedText.Block> turned, List<Box> tables) {
