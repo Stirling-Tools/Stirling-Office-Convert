@@ -35,4 +35,11 @@ jobs:
           CENTRAL_PORTAL_PASSWORD: ${{ secrets.CENTRAL_PORTAL_PASSWORD }}
           GPG_SIGNING_KEY: ${{ secrets.GPG_SIGNING_KEY }}
           GPG_SIGNING_PASSWORD: ${{ secrets.GPG_SIGNING_PASSWORD }}
-        run: ./gradlew :core:publishAllPublicationsToCentralPortalRepository :legacy:publishAllPublicationsToCentralPortalRepository :topdf:publishAllPublicationsToCentralPortalRepository :pdfa:publishAllPublicationsToCentralPortalRepository --no-daemon --stacktrace
+        run: |
+          # Off main, publish <branch>-SNAPSHOT so branches don't overwrite main's.
+          VERSION=$(sed -n 's/^officeconvert.version=//p' gradle.properties)
+          if [ "$GITHUB_REF_NAME" != main ]; then
+            VERSION="$(echo "$GITHUB_REF_NAME" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-|-$//g')-SNAPSHOT"
+          fi
+          echo "Publishing $VERSION"
+          ./gradlew "-Pofficeconvert.version=$VERSION" :core:publishAllPublicationsToCentralPortalRepository :legacy:publishAllPublicationsToCentralPortalRepository :topdf:publishAllPublicationsToCentralPortalRepository :pdfa:publishAllPublicationsToCentralPortalRepository --no-daemon --stacktrace
