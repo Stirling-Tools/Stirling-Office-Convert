@@ -3,7 +3,6 @@ package stirling.software.officeconvert.extract;
 import java.util.Locale;
 import java.util.Map;
 import java.util.WeakHashMap;
-import java.util.regex.Pattern;
 
 import org.apache.fontbox.ttf.NamingTable;
 import org.apache.fontbox.ttf.TrueTypeFont;
@@ -76,7 +75,7 @@ public final class FontResolver {
                 shapes = shapes != null ? (namelessSerif = shapes) : namelessSerif;
             }
             serif = shapes != null ? shapes : serif;
-            boolean narrow = !mono && !serif && (NARROW.matcher(lowerPs).find() || GlyphShapes.condensed(font, bold));
+            boolean narrow = !mono && !serif && GlyphShapes.condensed(font, bold);
             family = mono ? "Courier New" : serif ? "Times New Roman" : narrow ? "Arial Narrow" : "Arial";
             substituted = true;
         }
@@ -84,8 +83,6 @@ public final class FontResolver {
         return new FontInfo(family, bold, italic, serif, mono, symbolic, ps, substituted, FontNames.isSmallCaps(ps),
                 FontNames.isIconFont(ps), exact);
     }
-
-    private static final Pattern NARROW = Pattern.compile("cond|narrow|compress");
 
     private static boolean placeholder(String ps) {
         return ps.replace("cairofont", "").replace("font", "").replaceAll("[^a-z]", "").length() < 3;
