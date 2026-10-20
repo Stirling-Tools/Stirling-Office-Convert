@@ -526,7 +526,8 @@ final class GlyphCollector extends PDFStreamEngine {
     private static boolean textLike(String unicode) {
         int cp = unicode.codePointAt(0);
         return switch (Character.getType(cp)) {
-            case Character.DECIMAL_DIGIT_NUMBER, Character.MATH_SYMBOL, Character.CURRENCY_SYMBOL,
+            case Character.MATH_SYMBOL -> cp <= 0x7F;
+            case Character.DECIMAL_DIGIT_NUMBER, Character.CURRENCY_SYMBOL,
                     Character.CONNECTOR_PUNCTUATION, Character.DASH_PUNCTUATION, Character.START_PUNCTUATION,
                     Character.END_PUNCTUATION, Character.OTHER_PUNCTUATION, Character.INITIAL_QUOTE_PUNCTUATION,
                     Character.FINAL_QUOTE_PUNCTUATION -> true;
