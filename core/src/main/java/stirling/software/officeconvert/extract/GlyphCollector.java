@@ -485,7 +485,8 @@ final class GlyphCollector extends PDFStreamEngine {
                         italic);
         g.hscale = horizontalScale(tp);
         int[] codes = tp.getCharacterCodes();
-        if (font.icons() && codes != null && codes.length == 1) {
+        boolean dingbat = font.symbolic() && pdFont.isEmbedded() && size >= DINGBAT_SIZE;
+        if ((font.icons() || dingbat) && codes != null && codes.length == 1) {
             g.icon = IconShape.of(pdFont, codes[0], size, rgb);
         }
         Matrix tm = tp.getTextMatrix();
@@ -500,6 +501,8 @@ final class GlyphCollector extends PDFStreamEngine {
                         tm.getTranslateX(),
                         tm.getTranslateY()));
     }
+
+    private static final float DINGBAT_SIZE = 24f;
 
     private static boolean joiners(String s) {
         for (int i = 0; i < s.length(); i++) {
