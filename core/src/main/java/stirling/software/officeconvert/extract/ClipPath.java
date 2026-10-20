@@ -56,7 +56,7 @@ final class ClipPath {
     }
 
     void end(PDGraphicsState state) {
-        if (pendingRule >= 0) {
+        if (pendingRule >= 0 && segments > 0) {
             GeneralPath clip = segments > MAX_SEGMENTS ? new GeneralPath(path.getBounds2D()) : path;
             clip.setWindingRule(pendingRule == Path2D.WIND_EVEN_ODD ? Path2D.WIND_EVEN_ODD : Path2D.WIND_NON_ZERO);
             state.intersectClippingPath(clip);
