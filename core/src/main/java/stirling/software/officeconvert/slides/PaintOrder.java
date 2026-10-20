@@ -21,6 +21,7 @@ import org.apache.pdfbox.pdmodel.font.PDFont;
 import org.apache.pdfbox.pdmodel.font.PDType3CharProc;
 import org.apache.pdfbox.pdmodel.font.PDType3Font;
 import org.apache.pdfbox.pdmodel.graphics.blend.BlendMode;
+import org.apache.pdfbox.pdmodel.graphics.color.PDPattern;
 import org.apache.pdfbox.pdmodel.graphics.form.PDFormXObject;
 import org.apache.pdfbox.pdmodel.graphics.form.PDTransparencyGroup;
 import org.apache.pdfbox.pdmodel.graphics.image.PDImage;
@@ -40,7 +41,7 @@ final class PaintOrder extends PDFGraphicsStreamEngine {
         IMAGE,
         SHADING,
         TEXT,
-        MASKED_TEXT
+        EFFECT_TEXT
     }
 
     enum Outline {
@@ -163,7 +164,7 @@ final class PaintOrder extends PDFGraphicsStreamEngine {
         return best;
     }
 
-    boolean maskedGlyph(Box glyph) {
+    boolean effectGlyph(Box glyph) {
         float cx = glyph.centreX();
         float cy = glyph.centreY();
         boolean masked = false;
@@ -174,7 +175,7 @@ final class PaintOrder extends PDFGraphicsStreamEngine {
             if (m.kind() == Kind.TEXT) {
                 return false;
             }
-            masked |= m.kind() == Kind.MASKED_TEXT;
+            masked |= m.kind() == Kind.EFFECT_TEXT;
         }
         return masked;
     }
@@ -203,7 +204,7 @@ final class PaintOrder extends PDFGraphicsStreamEngine {
         Box grown = box.grow(1f);
         for (Mark m : marks) {
             Box b = m.box();
-            if (m.kind() != Kind.MASKED_TEXT && grown.contains(b.centreX(), b.centreY())
+            if (m.kind() != Kind.EFFECT_TEXT && grown.contains(b.centreX(), b.centreY())
                     && b.width() <= grown.width() + 1 && b.height() <= grown.height() + 1) {
                 out.add(m.order());
             }
@@ -575,7 +576,8 @@ final class PaintOrder extends PDFGraphicsStreamEngine {
         double w = Math.max(0.1, displacement.getX());
         slant(trm, w);
         boolean display = Math.hypot(trm.getShearX(), trm.getScaleY()) >= DISPLAY_SIZE;
-        Kind kind = masked() && display ? Kind.MASKED_TEXT : Kind.TEXT;
+        boolean effect = masked() || getGraphicsState().getNonStrokingColor().getColorSpace() instanceof PDPattern;
+        Kind kind = effect && display ? Kind.EFFECT_TEXT : Kind.TEXT;
         mark(kind, trm.createTransformedShape(new Rectangle2D.Double(0, -0.2, w, 1.0)).getBounds2D());
     }
 
