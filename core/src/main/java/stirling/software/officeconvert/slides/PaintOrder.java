@@ -524,7 +524,9 @@ final class PaintOrder extends PDFGraphicsStreamEngine {
     @Override
     public void strokePath() {
         Rectangle2D b = path.getBounds2D();
-        double w = getGraphicsState().getLineWidth() / 2.0;
+        Matrix ctm = getGraphicsState().getCurrentTransformationMatrix();
+        double scale = Math.sqrt(Math.abs(ctm.getScaleX() * ctm.getScaleY() - ctm.getShearX() * ctm.getShearY()));
+        double w = Math.max(getGraphicsState().getLineWidth() * scale, 1.0) / 2.0;
         mark(Kind.STROKE, new Rectangle2D.Double(b.getX() - w, b.getY() - w, b.getWidth() + 2 * w, b.getHeight() + 2 * w));
         path.reset();
     }
