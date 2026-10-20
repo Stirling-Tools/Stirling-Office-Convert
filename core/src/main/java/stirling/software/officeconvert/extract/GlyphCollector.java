@@ -131,6 +131,7 @@ final class GlyphCollector extends PDFStreamEngine {
     private final StreamRunner runner;
     private final TextPositions positions = new TextPositions();
     private final ClipPath clipPath = new ClipPath();
+    private final ClipArea clipArea = new ClipArea();
     private int currentPageNo;
     private int startPage;
     private int endPage;
@@ -364,17 +365,14 @@ final class GlyphCollector extends PDFStreamEngine {
     }
 
     private boolean clippedAway(Matrix trm, Vector displacement) {
-        List<Path2D> clips = getGraphicsState().getCurrentClippingPaths();
-        if (clips.isEmpty()) {
+        PDGraphicsState gs = getGraphicsState();
+        List<Path2D> clips = gs.getCurrentClippingPaths();
+        RenderingMode mode = gs.getTextState().getRenderingMode();
+        if (clips.isEmpty() || mode == RenderingMode.NEITHER || mode == RenderingMode.NEITHER_CLIP) {
             return false;
         }
         Point2D.Float centre = trm.transformPoint(displacement.getX() / 2f, GLYPH_MIDDLE);
-        for (Path2D clip : clips) {
-            if (!clip.contains(centre.x, centre.y)) {
-                return true;
-            }
-        }
-        return false;
+        return !clipArea.of(clips).contains(centre.x, centre.y);
     }
 
     private static final float GLYPH_MIDDLE = 0.3f;
