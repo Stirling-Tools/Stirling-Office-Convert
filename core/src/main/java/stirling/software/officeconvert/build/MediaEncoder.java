@@ -6,6 +6,7 @@ import java.awt.Graphics2D;
 import java.awt.RenderingHints;
 import java.awt.geom.AffineTransform;
 import java.awt.geom.Area;
+import java.awt.geom.NoninvertibleTransformException;
 import java.awt.geom.Rectangle2D;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
@@ -55,6 +56,8 @@ final class MediaEncoder {
 
     private static final long MAX_DECODE_PIXELS = 2L * MAX_SIDE * MAX_SIDE;
 
+    private static final int SEPARATE_BACKDROPS = 8;
+
     private static final Log LOG = LogFactory.getLog(MediaEncoder.class);
 
     private final PDDocument document;
@@ -65,6 +68,9 @@ final class MediaEncoder {
     private FigureRenderer paperRenderer;
     private int lastFigurePage = -1;
     private BufferedImage pageRender;
+    private int textFreePage = -1;
+    private int textFreeFigures;
+    private BufferedImage textFreeRender;
 
     MediaEncoder(PDDocument document, float figureDpi, Pictures pictures) {
         this.document = document;
@@ -75,6 +81,8 @@ final class MediaEncoder {
     void endPage() {
         pageRender = null;
         lastFigurePage = -1;
+        textFreeRender = null;
+        textFreePage = -1;
     }
 
     Encoded image(ImageDraw draw) {
@@ -168,18 +176,11 @@ final class MediaEncoder {
     Encoded figure(PDPage page, int pageIndex, AffineTransform toDisplay, Box box, boolean withText) {
         try {
             if (!withText) {
-                return png(render(textFree(), page, pageIndex, toDisplay, box, scaleFor(box)));
+                return textFreeFigure(page, pageIndex, toDisplay, box);
             }
             if (pageIndex == lastFigurePage) {
                 if (pageRender == null) {
-                    PDRectangle crop = page.getCropBox();
-                    boolean quarter = Math.floorMod(page.getRotation(), 180) != 0;
-                    float k = (float) Math.sqrt(Math.abs(toDisplay.getDeterminant()));
-                    Box whole = new Box(0, 0, (quarter ? crop.getHeight() : crop.getWidth()) * k,
-                            (quarter ? crop.getWidth() : crop.getHeight()) * k);
-                    if (pixels(whole, figureDpi / 72f) <= MAX_PIXELS) {
-                        pageRender = render(renderer(), page, pageIndex, toDisplay, whole, figureDpi / 72f);
-                    }
+                    pageRender = wholePage(renderer(), page, pageIndex, toDisplay);
                 }
                 BufferedImage cropped = cropFrom(pageRender, box, figureDpi / 72f);
                 if (cropped != null) {
@@ -194,6 +195,37 @@ final class MediaEncoder {
             LOG.warn("Figure left out: the page region could not be rendered", e);
             return null;
         }
+    }
+
+    private Encoded textFreeFigure(PDPage page, int pageIndex, AffineTransform toDisplay, Box box)
+            throws IOException, NoninvertibleTransformException {
+        if (pageIndex != textFreePage) {
+            textFreePage = pageIndex;
+            textFreeFigures = 0;
+            textFreeRender = null;
+        }
+        if (++textFreeFigures > SEPARATE_BACKDROPS) {
+            if (textFreeRender == null) {
+                textFreeRender = wholePage(textFree(), page, pageIndex, toDisplay);
+            }
+            BufferedImage cropped = cropFrom(textFreeRender, box, figureDpi / 72f);
+            if (cropped != null) {
+                return png(cropped);
+            }
+        }
+        return png(render(textFree(), page, pageIndex, toDisplay, box, scaleFor(box)));
+    }
+
+    private BufferedImage wholePage(PDFRenderer with, PDPage page, int pageIndex, AffineTransform toDisplay)
+            throws IOException, NoninvertibleTransformException {
+        PDRectangle crop = page.getCropBox();
+        boolean quarter = Math.floorMod(page.getRotation(), 180) != 0;
+        float k = (float) Math.sqrt(Math.abs(toDisplay.getDeterminant()));
+        Box whole = new Box(0, 0, (quarter ? crop.getHeight() : crop.getWidth()) * k,
+                (quarter ? crop.getWidth() : crop.getHeight()) * k);
+        return pixels(whole, figureDpi / 72f) <= MAX_PIXELS
+                ? render(with, page, pageIndex, toDisplay, whole, figureDpi / 72f)
+                : null;
     }
 
     Encoded paper(PDPage page, int pageIndex, AffineTransform toDisplay, Box box) {
