@@ -65,7 +65,7 @@ public final class PageAnalyzer {
             return FallbackPage.of(page);
         }
         Set<Object> usedMarks = Collections.newSetFromMap(new IdentityHashMap<>());
-        boolean poster = forms && !boxColumns && poster(page) && !ruledTable(page, glyphs);
+        boolean poster = forms && !boxColumns && poster(page) && ruledTables(page, glyphs).isEmpty();
         List<Glyph> bullets = new ArrayList<>();
         if (!poster) {
             bullets.addAll(VectorBullets.synthesize(glyphs, gfx.marks(), gfx.fills(), usedMarks));
@@ -95,8 +95,10 @@ public final class PageAnalyzer {
         textPaint.addAll(gfx.fills());
         rules.forEach(textPaint::remove);
         fills.forEach(textPaint::remove);
-        boolean panelGrid = !boxColumns && !poster
-                && ColumnFinder.boxedPanelPairs(segments, rules, stats.bodySize) >= MIN_PANEL_PAIRS;
+        List<float[]> panels = boxColumns || poster
+                ? List.of()
+                : ColumnFinder.boxedPanelSpans(segments, rules, stats.bodySize);
+        boolean panelGrid = panels.size() >= MIN_PANEL_PAIRS && !tableBesidePanels(page, glyphs, panels);
         if (forms && (poster || panelGrid || FormPage.looksLikeForm(page, segments, rules))) {
             return formPage(page, ocr, concat(segments, furnitureLines), rules, fills, textPaint, panelGrid, poster);
         }
@@ -444,14 +446,28 @@ public final class PageAnalyzer {
 
     private static final float BACKGROUND_SHARE = 0.5f;
 
-    private boolean ruledTable(PageData page, List<Glyph> glyphs) {
+    private boolean tableBesidePanels(PageData page, List<Glyph> glyphs, List<float[]> panels) {
+        for (Box t : ruledTables(page, glyphs)) {
+            boolean inside = false;
+            for (float[] p : panels) {
+                inside |= t.top() < p[1] && t.bottom() > p[0];
+            }
+            if (!inside) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private List<Box> ruledTables(PageData page, List<Glyph> glyphs) {
         if (!detectTables) {
-            return false;
+            return List.of();
         }
         PageFrame frame = stats.frame(page.width(), page.height());
         List<Line> lines = new ArrayList<>(LineBuilder.build(glyphs));
         return tableFinder.find(page, frame.textLeft(), frame.textRight(), lines, new ArrayList<>(page.graphics().rules()),
-                new ArrayList<>(page.graphics().fills()), new ArrayList<>()).stream().anyMatch(TableDetection.Found::ruled);
+                new ArrayList<>(page.graphics().fills()), new ArrayList<>()).stream()
+                .filter(TableDetection.Found::ruled).map(TableFinder::boxOf).toList();
     }
 
     private static boolean poster(PageData page) {
