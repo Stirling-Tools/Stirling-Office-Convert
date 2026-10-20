@@ -72,8 +72,7 @@ public final class PageAnalyzer {
             glyphs.addAll(bullets);
         }
         markLinks(glyphs, page.links());
-        List<Line> built = LineBuilder.build(glyphs);
-        List<Line> segments = new ArrayList<>(boxColumns ? LineGroups.splitAtRules(built, gfx.rules()) : built);
+        List<Line> segments = new ArrayList<>(LineBuilder.build(glyphs));
         segments.removeIf(s -> stats.headerFooter.match(page, s) != null);
         List<Line> furnitureLines = new ArrayList<>(stats.headerFooter.furniture(page, segments));
         float flowBottom = stats.frame(page.width(), page.height()).flowBottom(page.height());

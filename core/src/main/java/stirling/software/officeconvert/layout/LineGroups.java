@@ -6,7 +6,6 @@ import java.util.Comparator;
 import java.util.List;
 
 import stirling.software.officeconvert.extract.Glyph;
-import stirling.software.officeconvert.extract.PageGraphics.Rule;
 
 final class LineGroups {
 
@@ -88,39 +87,6 @@ final class LineGroups {
     private static final float ALIGNED_GAP_EM = 1.0f;
 
     private static final float ALIGN_TOLERANCE = 1f;
-
-    static List<Line> splitAtRules(List<Line> lines, List<Rule> rules) {
-        List<Rule> walls = new ArrayList<>();
-        for (Rule r : rules) {
-            if (!r.horizontal()) {
-                walls.add(r);
-            }
-        }
-        if (walls.isEmpty()) {
-            return lines;
-        }
-        List<Line> out = new ArrayList<>(lines.size());
-        for (Line l : lines) {
-            int from = 0;
-            for (int i = 1; i < l.words.size(); i++) {
-                if (walled(l.words.get(i - 1).right, l.words.get(i).x, l.top, l.bottom, walls)) {
-                    out.add(fromWords(l.words.subList(from, i)));
-                    from = i;
-                }
-            }
-            out.add(from == 0 ? l : fromWords(l.words.subList(from, l.words.size())));
-        }
-        return out;
-    }
-
-    private static boolean walled(float left, float right, float top, float bottom, List<Rule> walls) {
-        for (Rule r : walls) {
-            if (r.pos() > left && r.pos() < right && r.start() <= top && r.end() >= bottom) {
-                return true;
-            }
-        }
-        return false;
-    }
 
     static Line fromWords(List<Word> words) {
         List<Word> sorted = new ArrayList<>(words);
