@@ -92,8 +92,10 @@ public final class PageAnalyzer {
         textPaint.addAll(gfx.fills());
         rules.forEach(textPaint::remove);
         fills.forEach(textPaint::remove);
-        if (forms && FormPage.looksLikeForm(page, segments, rules)) {
-            return formPage(page, ocr, concat(segments, furnitureLines), rules, fills, textPaint);
+        boolean panelGrid =
+                !boxColumns && ColumnFinder.boxedPanelPairs(segments, rules, stats.bodySize) >= MIN_PANEL_PAIRS;
+        if (forms && (panelGrid || FormPage.looksLikeForm(page, segments, rules))) {
+            return formPage(page, ocr, concat(segments, furnitureLines), rules, fills, textPaint, panelGrid);
         }
 
         boolean tinted = tinted(page, gfx);
@@ -242,7 +244,7 @@ public final class PageAnalyzer {
     }
 
     private PageLayout formPage(PageData page, boolean ocr, List<Line> lines, List<Rule> rules, List<Fill> fills,
-            Set<Object> textPaint) {
+            Set<Object> textPaint, boolean panelGrid) {
         PageGraphics gfx = page.graphics();
         List<PageLayout.TextBoxItem> boxes = new ArrayList<>();
         List<Line> pieces = FormPage.pieces(lines, rules, fills, tabLeaders);
@@ -258,12 +260,21 @@ public final class PageAnalyzer {
                 pictures.add(new PageLayout.FloatItem(new PageLayout.ImageItem(img, true), 0f, true));
             }
         }
+        List<Box> drawn = new ArrayList<>();
         for (PageGraphics.VectorMark m : gfx.marks()) {
             Box b = new Box(Math.max(0, m.x()), Math.max(0, m.top()), Math.min(page.width(), m.right()),
                     Math.min(page.height(), m.bottom()));
             if (b.width() > 0.5f && b.height() > 0.5f) {
-                pictures.add(new PageLayout.FloatItem(new PageLayout.FigureItem(b.grow(STROKE_MARGIN), true), 0f, true));
+                drawn.add(b.grow(STROKE_MARGIN));
             }
+        }
+        if (panelGrid) {
+            for (PageGraphics.Area a : gfx.masked()) {
+                drawn.add(new Box(a.x(), a.top(), a.right(), a.bottom()));
+            }
+        }
+        for (Box b : panelGrid ? FigureFinder.cluster(drawn, 1f) : drawn) {
+            pictures.add(new PageLayout.FloatItem(new PageLayout.FigureItem(b, true), 0f, true));
         }
         List<PageLayout.Band> bands = pictures.isEmpty()
                 ? List.of()
@@ -417,6 +428,8 @@ public final class PageAnalyzer {
         }
         return new Notes(notes, continuation);
     }
+
+    private static final int MIN_PANEL_PAIRS = 2;
 
     private static boolean whitespaceOnly(TableDetection.Found t) {
         if (t.ruled()) {

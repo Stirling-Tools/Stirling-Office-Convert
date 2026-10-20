@@ -74,6 +74,14 @@ public final class ColumnFinder {
         return bands(gutters, textLeft, textRight, pageHeight);
     }
 
+    static int boxedPanelPairs(List<Line> lines, List<Rule> rules, float bodySize) {
+        List<Item> items = new ArrayList<>(lines.size());
+        for (Line l : lines) {
+            items.add(new Item(l.x, l.top, l.right, l.bottom, l.baseline, true, l.chars));
+        }
+        return facingEdges(items, rules, bodySize).size();
+    }
+
     private static List<Gutter> facingEdges(List<Item> items, List<Rule> rules, float bodySize) {
         List<Rule> edges = new ArrayList<>();
         for (Rule r : rules) {
