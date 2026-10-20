@@ -17,7 +17,8 @@ final class VectorBullets {
         List<Glyph> out = new ArrayList<>();
         GlyphIndex index = null;
         for (VectorMark m : marks) {
-            if ((m.filled() || m.curved()) && sized(m.x(), m.top(), m.right(), m.bottom())) {
+            if ((m.filled() || m.curved()) && sized(m.x(), m.top(), m.right(), m.bottom())
+                    && !trailing(m.x(), m.top(), m.bottom(), marks, fills)) {
                 index = index == null ? new GlyphIndex(glyphs) : index;
                 boolean after = index.textBefore(m.x(), (m.top() + m.bottom()) / 2f);
                 if (after && !m.round() && !m.boxy()) {
@@ -34,7 +35,7 @@ final class VectorBullets {
             }
         }
         for (Fill f : fills) {
-            if (!sized(f.x(), f.top(), f.right(), f.bottom())) {
+            if (!sized(f.x(), f.top(), f.right(), f.bottom()) || trailing(f.x(), f.top(), f.bottom(), marks, fills)) {
                 continue;
             }
             index = index == null ? new GlyphIndex(glyphs) : index;
@@ -46,6 +47,31 @@ final class VectorBullets {
         }
         return out;
     }
+
+    private static boolean trailing(float x, float top, float bottom, List<VectorMark> marks, List<Fill> fills) {
+        float h = bottom - top;
+        for (VectorMark o : marks) {
+            if (leftNeighbour(x, top, bottom, h, o.x(), o.top(), o.right(), o.bottom())) {
+                return true;
+            }
+        }
+        for (Fill o : fills) {
+            if (leftNeighbour(x, top, bottom, h, o.x(), o.top(), o.right(), o.bottom())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean leftNeighbour(float x, float top, float bottom, float h, float ox, float otop, float oright,
+            float obottom) {
+        float shared = Math.min(bottom, obottom) - Math.max(top, otop);
+        float oh = obottom - otop;
+        return oright <= x + 0.5f && x - oright <= LETTER_GAP * h && shared >= 0.5f * h && oh <= 2.5f * h
+                && oright - ox >= 0.3f * h;
+    }
+
+    private static final float LETTER_GAP = 0.5f;
 
     private static boolean sized(float x, float top, float right, float bottom) {
         float w = right - x;
