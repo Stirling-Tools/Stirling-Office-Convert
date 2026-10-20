@@ -530,7 +530,7 @@ final class GraphicsCollector extends PDFGraphicsStreamEngine {
         if (!fill && !stroke) {
             return;
         }
-        if (gs.getSoftMask() != null || maskedGroups > 0) {
+        if (gs.getSoftMask() != null || maskedGroups > 0 && fill) {
             masked(stroke);
             return;
         }

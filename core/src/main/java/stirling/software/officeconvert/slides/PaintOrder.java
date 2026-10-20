@@ -58,6 +58,8 @@ final class PaintOrder extends PDFGraphicsStreamEngine {
 
     private static final double MIN_SLANT = 1.0;
 
+    private static final double DISPLAY_SIZE = 18.0;
+
     private final AffineTransform toDisplay;
     private final float width;
     private final float height;
@@ -572,7 +574,8 @@ final class PaintOrder extends PDFGraphicsStreamEngine {
         AffineTransform trm = textRenderingMatrix.createAffineTransform();
         double w = Math.max(0.1, displacement.getX());
         slant(trm, w);
-        Kind kind = masked() ? Kind.MASKED_TEXT : Kind.TEXT;
+        boolean display = Math.hypot(trm.getShearX(), trm.getScaleY()) >= DISPLAY_SIZE;
+        Kind kind = masked() && display ? Kind.MASKED_TEXT : Kind.TEXT;
         mark(kind, trm.createTransformedShape(new Rectangle2D.Double(0, -0.2, w, 1.0)).getBounds2D());
     }
 
