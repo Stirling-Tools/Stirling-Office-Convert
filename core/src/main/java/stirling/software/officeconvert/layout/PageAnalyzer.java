@@ -162,7 +162,7 @@ public final class PageAnalyzer {
             addKeyValueTables(tables, segments, frame);
         }
         if (boxColumns) {
-            tables.removeIf(PageAnalyzer::whitespaceOnly);
+            tables.removeIf(PageAnalyzer::framedText);
         }
         List<Box> tableBoxes = tables.stream().map(TableFinder::boxOf).toList();
         List<Rule> freeRules = new ArrayList<>(rules.stream()
@@ -431,19 +431,28 @@ public final class PageAnalyzer {
 
     private static final int MIN_PANEL_PAIRS = 2;
 
-    private static boolean whitespaceOnly(TableDetection.Found t) {
+    private static boolean framedText(TableDetection.Found t) {
         if (t.ruled()) {
             return false;
         }
         Integer background = t.cells().isEmpty() ? null : t.cells().getFirst().fill();
+        boolean top = false;
+        boolean bottom = false;
+        boolean left = false;
+        boolean right = false;
         for (TableDetection.FoundCell c : t.cells()) {
             boolean innerRight = c.borderRight() && c.col() + c.colSpan() < t.cols();
             boolean innerBottom = c.borderBottom() && c.row() + c.rowSpan() < t.rows();
             if (!Objects.equals(c.fill(), background) || innerRight || innerBottom) {
                 return false;
             }
+            top |= c.borderTop() && c.row() == 0;
+            bottom |= c.borderBottom();
+            left |= c.borderLeft() && c.col() == 0;
+            right |= c.borderRight();
         }
-        return true;
+        int sides = (top ? 1 : 0) + (bottom ? 1 : 0) + (left ? 1 : 0) + (right ? 1 : 0);
+        return sides > 0 && sides < 4;
     }
 
     private static <T> List<T> concat(List<T> a, List<T> b) {
