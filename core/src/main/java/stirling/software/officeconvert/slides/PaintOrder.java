@@ -64,6 +64,7 @@ final class PaintOrder extends PDFGraphicsStreamEngine {
     private final float width;
     private final float height;
     private final List<Mark> marks = new ArrayList<>();
+    private final List<int[]> groups = new ArrayList<>();
     private final List<Slant> slants = new ArrayList<>();
     private final GeneralPath path = new GeneralPath();
     private Point2D current = new Point2D.Float();
@@ -265,16 +266,29 @@ final class PaintOrder extends PDFGraphicsStreamEngine {
 
     @Override
     public void showForm(PDFormXObject form) throws IOException {
-        if (budget.form()) {
-            super.showForm(form);
+        int span = enterGroup();
+        try {
+            if (budget.form()) {
+                super.showForm(form);
+            }
+        } finally {
+            exitGroup(span);
         }
     }
 
     @Override
     public void showTransparencyGroup(PDTransparencyGroup form) throws IOException {
-        if (!budget.form()) {
-            return;
+        int span = enterGroup();
+        try {
+            if (budget.form()) {
+                transparencyGroup(form);
+            }
+        } finally {
+            exitGroup(span);
         }
+    }
+
+    private void transparencyGroup(PDTransparencyGroup form) throws IOException {
         boolean masked = getGraphicsState().getSoftMask() != null;
         boolean blended = masked || blending();
         maskedGroups += masked ? 1 : 0;
@@ -285,6 +299,21 @@ final class PaintOrder extends PDFGraphicsStreamEngine {
             maskedGroups -= masked ? 1 : 0;
             blendedGroups -= blended ? 1 : 0;
         }
+    }
+
+    private int enterGroup() {
+        groups.add(new int[] {order, order, groups.size() + 1});
+        return groups.size() - 1;
+    }
+
+    private void exitGroup(int span) {
+        int[] g = groups.get(span);
+        g[1] = order;
+        g[2] = groups.size();
+    }
+
+    List<int[]> groups() {
+        return groups;
     }
 
     private boolean masked() {

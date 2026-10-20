@@ -37,15 +37,17 @@ import stirling.software.officeconvert.layout.Box;
 final class ArtRenderer extends PDFRenderer {
 
     private IntPredicate keep = order -> false;
+    private List<int[]> groups = List.of();
 
     ArtRenderer(PDDocument document) {
         super(document);
         setSubsamplingAllowed(true);
     }
 
-    BufferedImage render(PDPage page, int pageIndex, AffineTransform toDisplay, Box box, float scale, IntPredicate keep)
-            throws IOException {
+    BufferedImage render(PDPage page, int pageIndex, AffineTransform toDisplay, Box box, float scale, IntPredicate keep,
+            List<int[]> groups) throws IOException {
         this.keep = keep;
+        this.groups = groups;
         int w = Math.max(1, Math.round(box.width() * scale));
         int h = Math.max(1, Math.round(box.height() * scale));
         BufferedImage img = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
@@ -103,6 +105,7 @@ final class ArtRenderer extends PDFRenderer {
     private final class Drawer extends PageDrawer {
 
         private int order;
+        private int group;
         private int nested;
         private final OperatorBudget budget = new OperatorBudget("drawing slide art");
 
@@ -119,15 +122,41 @@ final class ArtRenderer extends PDFRenderer {
 
         @Override
         public void showForm(PDFormXObject form) throws IOException {
-            if (budget.form()) {
-                super.showForm(form);
+            int[] span = enterGroup();
+            try {
+                if (budget.form()) {
+                    super.showForm(form);
+                }
+            } finally {
+                exitGroup(span);
             }
         }
 
         @Override
         public void showTransparencyGroup(PDTransparencyGroup form) throws IOException {
-            if (budget.form()) {
-                super.showTransparencyGroup(RgbGroup.of(form));
+            int[] span = enterGroup();
+            try {
+                if (budget.form()) {
+                    super.showTransparencyGroup(RgbGroup.of(form));
+                }
+            } finally {
+                exitGroup(span);
+            }
+        }
+
+        private int[] enterGroup() {
+            if (nested > 0 || group >= groups.size()) {
+                return null;
+            }
+            int[] span = groups.get(group++);
+            order = span[0];
+            return span;
+        }
+
+        private void exitGroup(int[] span) {
+            if (span != null) {
+                order = span[1];
+                group = span[2];
             }
         }
 
