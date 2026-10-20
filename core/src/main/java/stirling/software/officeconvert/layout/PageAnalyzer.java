@@ -729,7 +729,7 @@ public final class PageAnalyzer {
     private PageLayout.Column column(
             float[] c, List<Line> colLines, List<PageLayout.Item> colBlocks, boolean pinPictures, float marginEdge,
             Box sheet) {
-        List<Line> lines = LineGroups.joinRows(colLines);
+        List<Line> lines = LineGroups.alignedTabs(LineGroups.joinRows(colLines));
         List<PageLayout.Item> colItems = new ArrayList<>();
         List<ParagraphBuilder.Obstacle> obstacles = new ArrayList<>();
         PictureArranger.arrange(colBlocks, lines, colItems, obstacles, pinPictures, marginEdge, sheet, c);
