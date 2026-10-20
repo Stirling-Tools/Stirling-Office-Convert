@@ -17,6 +17,7 @@ import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.common.PDRectangle;
 import org.apache.pdfbox.pdmodel.font.PDFont;
+import org.apache.pdfbox.pdmodel.font.PDType3Font;
 import org.apache.pdfbox.pdmodel.graphics.form.PDFormXObject;
 import org.apache.pdfbox.pdmodel.graphics.form.PDTransparencyGroup;
 import org.apache.pdfbox.pdmodel.graphics.image.PDImage;
@@ -127,6 +128,19 @@ final class ArtRenderer extends PDFRenderer {
         public void showTransparencyGroup(PDTransparencyGroup form) throws IOException {
             if (budget.form()) {
                 super.showTransparencyGroup(RgbGroup.of(form));
+            }
+        }
+
+        @Override
+        protected void processSoftMask(PDTransparencyGroup group) throws IOException {
+            paint(() -> super.processSoftMask(group));
+        }
+
+        @Override
+        protected void showType3Glyph(Matrix textRenderingMatrix, PDType3Font font, int code, Vector displacement)
+                throws IOException {
+            if (nested > 0) {
+                super.showType3Glyph(textRenderingMatrix, font, code, displacement);
             }
         }
 
