@@ -91,10 +91,11 @@ public final class PageAnalyzer {
         textPaint.addAll(gfx.fills());
         rules.forEach(textPaint::remove);
         fills.forEach(textPaint::remove);
-        boolean panelGrid =
-                !boxColumns && ColumnFinder.boxedPanelPairs(segments, rules, stats.bodySize) >= MIN_PANEL_PAIRS;
-        if (forms && (panelGrid || FormPage.looksLikeForm(page, segments, rules))) {
-            return formPage(page, ocr, concat(segments, furnitureLines), rules, fills, textPaint, panelGrid);
+        boolean poster = !boxColumns && poster(page);
+        boolean panelGrid = !boxColumns && !poster
+                && ColumnFinder.boxedPanelPairs(segments, rules, stats.bodySize) >= MIN_PANEL_PAIRS;
+        if (forms && (poster || panelGrid || FormPage.looksLikeForm(page, segments, rules))) {
+            return formPage(page, ocr, concat(segments, furnitureLines), rules, fills, textPaint, panelGrid, poster);
         }
 
         boolean tinted = tinted(page, gfx);
@@ -243,7 +244,7 @@ public final class PageAnalyzer {
     }
 
     private PageLayout formPage(PageData page, boolean ocr, List<Line> lines, List<Rule> rules, List<Fill> fills,
-            Set<Object> textPaint, boolean panelGrid) {
+            Set<Object> textPaint, boolean panelGrid, boolean poster) {
         PageGraphics gfx = page.graphics();
         List<PageLayout.TextBoxItem> boxes = new ArrayList<>();
         List<Line> pieces = FormPage.pieces(lines, rules, fills, tabLeaders);
@@ -254,13 +255,17 @@ public final class PageAnalyzer {
             boxes.add(placed.turned(b, page.width(), page.height()));
         }
         List<PageLayout.Item> pictures = new ArrayList<>();
-        for (ImageDraw img : gfx.images()) {
+        if (poster) {
+            pictures.add(new PageLayout.FloatItem(
+                    new PageLayout.FigureItem(new Box(0, 0, page.width(), page.height()), true), 0f, true));
+        }
+        for (ImageDraw img : poster ? List.<ImageDraw>of() : gfx.images()) {
             if (img.clipRight() - img.clipX() >= 3 && img.clipBottom() - img.clipTop() >= 3) {
                 pictures.add(new PageLayout.FloatItem(new PageLayout.ImageItem(img, true), 0f, true));
             }
         }
         List<Box> drawn = new ArrayList<>();
-        for (PageGraphics.VectorMark m : gfx.marks()) {
+        for (PageGraphics.VectorMark m : poster ? List.<PageGraphics.VectorMark>of() : gfx.marks()) {
             Box b = new Box(Math.max(0, m.x()), Math.max(0, m.top()), Math.min(page.width(), m.right()),
                     Math.min(page.height(), m.bottom()));
             if (b.width() > 0.5f && b.height() > 0.5f) {
@@ -429,6 +434,39 @@ public final class PageAnalyzer {
     }
 
     private static final int MIN_PANEL_PAIRS = 2;
+
+    private static final int POSTER_GRID = 24;
+
+    private static final float POSTER_COVER = 0.6f;
+
+    private static final float BACKGROUND_SHARE = 0.5f;
+
+    private static boolean poster(PageData page) {
+        float w = page.width();
+        float h = page.height();
+        List<Box> drawn = new ArrayList<>();
+        for (ImageDraw img : page.graphics().images()) {
+            drawn.add(new Box(img.clipX(), img.clipTop(), img.clipRight(), img.clipBottom()));
+        }
+        for (PageGraphics.VectorMark m : page.graphics().marks()) {
+            drawn.add(new Box(m.x(), m.top(), m.right(), m.bottom()));
+        }
+        drawn.removeIf(b -> b.area() >= BACKGROUND_SHARE * w * h);
+        int covered = 0;
+        for (int i = 0; i < POSTER_GRID; i++) {
+            for (int j = 0; j < POSTER_GRID; j++) {
+                float cx = (i + 0.5f) * w / POSTER_GRID;
+                float cy = (j + 0.5f) * h / POSTER_GRID;
+                for (Box b : drawn) {
+                    if (b.contains(cx, cy)) {
+                        covered++;
+                        break;
+                    }
+                }
+            }
+        }
+        return covered >= POSTER_COVER * POSTER_GRID * POSTER_GRID;
+    }
 
     private static boolean framedText(TableDetection.Found t) {
         if (t.ruled()) {
