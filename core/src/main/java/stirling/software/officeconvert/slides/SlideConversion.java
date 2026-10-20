@@ -23,12 +23,14 @@ import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDDocumentInformation;
 
 import stirling.software.officeconvert.PdfToPptx;
+import stirling.software.officeconvert.extract.Glyph;
 import stirling.software.officeconvert.extract.PageData;
 import stirling.software.officeconvert.extract.PageReader;
 import stirling.software.officeconvert.extract.PdfFiles;
 import stirling.software.officeconvert.extract.PdfFootprint;
 import stirling.software.officeconvert.extract.StreamGuard;
 import stirling.software.officeconvert.jpx.JpxImageIO;
+import stirling.software.officeconvert.layout.Box;
 import stirling.software.officeconvert.layout.DocStats;
 import stirling.software.officeconvert.layout.FallbackPage;
 import stirling.software.officeconvert.layout.LayoutDump;
@@ -179,7 +181,7 @@ public final class SlideConversion {
         AffineTransform toDisplay = fit.toSlide(PageReader.displayTransform(
                 doc.getPage(page.index()).getCropBox(), page.direction()));
         PaintOrder paint = PaintOrder.read(doc.getPage(page.index()), toDisplay, page.width(), page.height());
-        SlantedText.Split slanted = SlantedText.split(page, paint);
+        SlantedText.Split slanted = SlantedText.split(unmasked(page, paint), paint);
         PageLayout layout;
         try {
             layout = analyzer.analyze(slanted.page());
@@ -194,6 +196,20 @@ public final class SlideConversion {
         } catch (RuntimeException | StackOverflowError e) {
             return builder.build(pictureOf(page, e, fallback), toDisplay, paint, List.of());
         }
+    }
+
+    private static PageData unmasked(PageData page, PaintOrder paint) {
+        List<Glyph> kept = new ArrayList<>(page.glyphs().size());
+        for (Glyph g : page.glyphs()) {
+            if (g.isSpace() || !paint.maskedGlyph(new Box(g.x, g.top(), g.right(), g.bottom()))) {
+                kept.add(g);
+            }
+        }
+        if (kept.size() == page.glyphs().size()) {
+            return page;
+        }
+        return new PageData(page.index(), page.width(), page.height(), page.direction(), kept, page.hidden(),
+                page.rotated(), page.graphics(), page.links(), page.widgets());
     }
 
     private static Slide pictureSlide(PageData read, PDDocument doc, SlideBuilder builder, float[] size) throws IOException {

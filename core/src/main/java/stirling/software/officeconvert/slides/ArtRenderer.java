@@ -210,8 +210,8 @@ final class ArtRenderer extends PDFRenderer {
                 return;
             }
             RenderingMode mode = getGraphicsState().getTextState().getRenderingMode();
-            if (mode != RenderingMode.NEITHER && mode != RenderingMode.NEITHER_CLIP) {
-                order++;
+            if (mode != RenderingMode.NEITHER && mode != RenderingMode.NEITHER_CLIP && keep.test(order++)) {
+                paint(() -> super.showGlyph(textRenderingMatrix, font, code, displacement));
             }
         }
 
