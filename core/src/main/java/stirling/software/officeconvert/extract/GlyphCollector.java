@@ -523,7 +523,7 @@ final class GlyphCollector extends PDFStreamEngine {
                         tm.getTranslateY()));
     }
 
-    private static final float DINGBAT_SIZE = 24f;
+    private static final float DINGBAT_SIZE = 36f;
 
     private static boolean joiners(String s) {
         for (int i = 0; i < s.length(); i++) {
