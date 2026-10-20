@@ -101,7 +101,8 @@ public final class ColumnFinder {
                 }
                 float top = Math.max(a.start(), b.start());
                 float bottom = Math.min(a.end(), b.end());
-                if (gap < MIN_EDGE_GAP || bottom - top < SHARED_EDGE * Math.max(a.length(), b.length())) {
+                if (gap < MIN_EDGE_GAP || bottom - top < SHARED_EDGE * Math.max(a.length(), b.length())
+                        || gridColumn(rules, a.pos(), b.pos(), top, bottom)) {
                     continue;
                 }
                 if (textBeside(items, a.pos(), b.pos(), top, bottom)) {
@@ -111,6 +112,19 @@ public final class ColumnFinder {
         }
         return out;
     }
+
+    private static boolean gridColumn(List<Rule> rules, float left, float right, float top, float bottom) {
+        int crossing = 0;
+        for (Rule r : rules) {
+            if (r.horizontal() && r.start() <= left + 1 && r.end() >= right - 1 && r.pos() > top + 1
+                    && r.pos() < bottom - 1 && ++crossing >= GRID_ROWS) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static final int GRID_ROWS = 2;
 
     private static boolean textBeside(List<Item> items, float left, float right, float top, float bottom) {
         boolean before = false;

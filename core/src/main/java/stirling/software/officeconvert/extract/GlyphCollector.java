@@ -131,6 +131,7 @@ final class GlyphCollector extends PDFStreamEngine {
     private final StreamRunner runner;
     private final TextPositions positions = new TextPositions();
     private final ClipPath clipPath = new ClipPath();
+    private final ClipArea clipArea = new ClipArea();
     private int currentPageNo;
     private int startPage;
     private int endPage;
@@ -364,17 +365,14 @@ final class GlyphCollector extends PDFStreamEngine {
     }
 
     private boolean clippedAway(Matrix trm, Vector displacement) {
-        List<Path2D> clips = getGraphicsState().getCurrentClippingPaths();
-        if (clips.isEmpty()) {
+        PDGraphicsState gs = getGraphicsState();
+        List<Path2D> clips = gs.getCurrentClippingPaths();
+        RenderingMode mode = gs.getTextState().getRenderingMode();
+        if (clips.isEmpty() || mode == RenderingMode.NEITHER || mode == RenderingMode.NEITHER_CLIP) {
             return false;
         }
         Point2D.Float centre = trm.transformPoint(displacement.getX() / 2f, GLYPH_MIDDLE);
-        for (Path2D clip : clips) {
-            if (!clip.contains(centre.x, centre.y)) {
-                return true;
-            }
-        }
-        return false;
+        return !clipArea.of(clips).contains(centre.x, centre.y);
     }
 
     private static final float GLYPH_MIDDLE = 0.3f;
@@ -506,7 +504,7 @@ final class GlyphCollector extends PDFStreamEngine {
                         italic);
         g.hscale = horizontalScale(tp);
         int[] codes = tp.getCharacterCodes();
-        boolean dingbat = font.symbolic() && pdFont.isEmbedded() && size >= DINGBAT_SIZE;
+        boolean dingbat = font.symbolic() && pdFont.isEmbedded() && size >= DINGBAT_SIZE && !textLike(unicode);
         if ((font.icons() || dingbat) && codes != null && codes.length == 1) {
             g.icon = IconShape.of(pdFont, codes[0], size, rgb);
         }
@@ -524,6 +522,17 @@ final class GlyphCollector extends PDFStreamEngine {
     }
 
     private static final float DINGBAT_SIZE = 36f;
+
+    private static boolean textLike(String unicode) {
+        int cp = unicode.codePointAt(0);
+        return switch (Character.getType(cp)) {
+            case Character.DECIMAL_DIGIT_NUMBER, Character.MATH_SYMBOL, Character.CURRENCY_SYMBOL,
+                    Character.CONNECTOR_PUNCTUATION, Character.DASH_PUNCTUATION, Character.START_PUNCTUATION,
+                    Character.END_PUNCTUATION, Character.OTHER_PUNCTUATION, Character.INITIAL_QUOTE_PUNCTUATION,
+                    Character.FINAL_QUOTE_PUNCTUATION -> true;
+            default -> Character.isLetter(cp) && cp > 0x7F;
+        };
+    }
 
     private static boolean joiners(String s) {
         for (int i = 0; i < s.length(); i++) {

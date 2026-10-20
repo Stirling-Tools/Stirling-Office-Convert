@@ -34,6 +34,8 @@ final class Art {
 
     private static final int MAX_PIECES = 120;
 
+    private static final int MAX_BLANK_PIECES = 16;
+
     private static final float JOIN_GAP = 2f;
 
     private static final long MAX_PIXELS = 3_000_000L;
@@ -65,7 +67,7 @@ final class Art {
                 continue;
             }
             Box b = m.box();
-            if (run != null && !between.isEmpty() && !run.joins(b, between)) {
+            if (run != null && !run.joins(b, between)) {
                 runs.add(run);
                 run = null;
             }
@@ -87,10 +89,14 @@ final class Art {
         }
         kept.sort(Comparator.comparingDouble(r -> -r.box.area()));
         List<Piece> out = new ArrayList<>();
+        int blanks = 0;
         for (Run r : kept.subList(0, Math.min(MAX_PIECES, kept.size()))) {
             Piece p = piece(paint, r.marks, r.box, pageIndex, toDisplay, width, height);
             if (p != null) {
                 out.add(p);
+                blanks = 0;
+            } else if (++blanks >= MAX_BLANK_PIECES) {
+                break;
             }
         }
         return out;
@@ -100,6 +106,7 @@ final class Art {
         final List<Mark> marks = new ArrayList<>();
         Box box;
         private Box reach;
+        private final List<Mark> skipped = new ArrayList<>();
 
         void add(Mark m) {
             marks.add(m);
@@ -107,11 +114,12 @@ final class Art {
         }
 
         boolean joins(Box next, List<Mark> between) {
-            if (!reach.near(next, JOIN_GAP)) {
+            if (!between.isEmpty() && !reach.near(next, JOIN_GAP)) {
                 return false;
             }
+            skipped.addAll(between);
             Box joined = reach.union(next);
-            for (Mark m : between) {
+            for (Mark m : skipped) {
                 if (m.box().overlapArea(joined) > 0) {
                     return false;
                 }
@@ -157,7 +165,7 @@ final class Art {
         }
         try {
             BufferedImage img = renderer.render(document.getPage(pageIndex), pageIndex, toDisplay, box, scale,
-                    orders::contains);
+                    orders::contains, paint.groups());
             if (blank(img)) {
                 return null;
             }
