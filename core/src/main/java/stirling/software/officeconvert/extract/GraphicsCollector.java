@@ -530,7 +530,8 @@ final class GraphicsCollector extends PDFGraphicsStreamEngine {
         if (!fill && !stroke) {
             return;
         }
-        if (gs.getSoftMask() != null || maskedGroups > 0 && fill) {
+        boolean inMaskedGroup = maskedGroups > 0 && fill;
+        if (gs.getSoftMask() != null || inMaskedGroup && (pointBudget <= 0 || subpaths.isEmpty())) {
             masked(stroke);
             return;
         }
@@ -554,6 +555,10 @@ final class GraphicsCollector extends PDFGraphicsStreamEngine {
         int strokeRgb = onPaper(toRgb(gs.getStrokingColor(), 0), gs.getAlphaConstant());
         PathShapes.Paint paint = new PathShapes.Paint(fill, stroke, pattern, fillRgb, strokeRgb, lineWidth(), evenOdd);
         PathShapes.Shapes shapes = PathShapes.classify(subpaths, pathCurved, paint, clipBox());
+        if (inMaskedGroup && (shapes.mark() != null || !shapes.fills().isEmpty())) {
+            masked(stroke);
+            return;
+        }
         rules.addAll(shapes.rules());
         fills.addAll(shapes.fills());
         if (shapes.mark() != null) {
