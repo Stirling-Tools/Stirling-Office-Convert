@@ -7,6 +7,7 @@ import java.util.IdentityHashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 
 import stirling.software.officeconvert.extract.Glyph;
@@ -31,6 +32,7 @@ public final class PageAnalyzer {
     private final boolean detectTables;
     private final boolean forms;
     private final boolean tabLeaders;
+    private final boolean boxColumns;
     private int noteCounter;
 
     private record Notes(List<PageLayout.Note> notes, List<ParaDraft> continuation) {}
@@ -40,7 +42,12 @@ public final class PageAnalyzer {
     }
 
     public PageAnalyzer(DocStats stats, boolean detectTables, boolean forms, boolean tabLeaders) {
+        this(stats, detectTables, forms, tabLeaders, false);
+    }
+
+    public PageAnalyzer(DocStats stats, boolean detectTables, boolean forms, boolean tabLeaders, boolean boxColumns) {
         this.stats = stats;
+        this.boxColumns = boxColumns;
         this.forms = forms;
         this.tabLeaders = tabLeaders;
         this.paragraphs = new ParagraphBuilder(stats);
@@ -65,7 +72,8 @@ public final class PageAnalyzer {
             glyphs.addAll(bullets);
         }
         markLinks(glyphs, page.links());
-        List<Line> segments = new ArrayList<>(LineBuilder.build(glyphs));
+        List<Line> built = LineBuilder.build(glyphs);
+        List<Line> segments = new ArrayList<>(boxColumns ? LineGroups.splitAtRules(built, gfx.rules()) : built);
         segments.removeIf(s -> stats.headerFooter.match(page, s) != null);
         List<Line> furnitureLines = new ArrayList<>(stats.headerFooter.furniture(page, segments));
         float flowBottom = stats.frame(page.width(), page.height()).flowBottom(page.height());
@@ -150,6 +158,9 @@ public final class PageAnalyzer {
         tables.removeIf(t -> TableShaper.looksLikeList(t, TableShaper.assign(t, TableFinder.wordsInside(segments, t))));
         if (detectTables) {
             addKeyValueTables(tables, segments, frame);
+        }
+        if (boxColumns) {
+            tables.removeIf(PageAnalyzer::whitespaceOnly);
         }
         List<Box> tableBoxes = tables.stream().map(TableFinder::boxOf).toList();
         List<Rule> freeRules = new ArrayList<>(rules.stream()
@@ -407,6 +418,21 @@ public final class PageAnalyzer {
         return new Notes(notes, continuation);
     }
 
+    private static boolean whitespaceOnly(TableDetection.Found t) {
+        if (t.ruled()) {
+            return false;
+        }
+        Integer background = t.cells().isEmpty() ? null : t.cells().getFirst().fill();
+        for (TableDetection.FoundCell c : t.cells()) {
+            boolean innerRight = c.borderRight() && c.col() + c.colSpan() < t.cols();
+            boolean innerBottom = c.borderBottom() && c.row() + c.rowSpan() < t.rows();
+            if (!Objects.equals(c.fill(), background) || innerRight || innerBottom) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     private static <T> List<T> concat(List<T> a, List<T> b) {
         List<T> out = new ArrayList<>(a);
         out.addAll(b);
@@ -427,7 +453,9 @@ public final class PageAnalyzer {
                 items.add(new ColumnFinder.Item(b.x(), b.top(), b.right(), b.bottom(), b.bottom(), false, 0, picture));
             }
         }
-        List<ColumnFinder.Band> found = ColumnFinder.find(items, frame.textLeft(), frame.textRight(), page.height(), stats.bodySize);
+        List<Rule> edges = boxColumns ? page.graphics().rules() : List.of();
+        List<ColumnFinder.Band> found =
+                ColumnFinder.find(items, edges, frame.textLeft(), frame.textRight(), page.height(), stats.bodySize);
         boolean pinPictures = ocr || PictureArranger.pictureDominated(blocks, page);
         List<PageLayout.Band> bands = new ArrayList<>();
         for (ColumnFinder.Band band : found) {

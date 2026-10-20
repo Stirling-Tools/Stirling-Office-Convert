@@ -151,7 +151,7 @@ public final class SlideConversion {
             boolean hyphenated = autoHyphenated(doc) || stats.autoHyphenated();
             SlideBuilder builder = new SlideBuilder(doc, stats, sink, options.figureDpi(), options.pictures(), hyphenated,
                     slide[0], slide[1]);
-            PageAnalyzer analyzer = new PageAnalyzer(stats, options.tables(), true, false);
+            PageAnalyzer analyzer = new PageAnalyzer(stats, options.tables(), true, false, true);
             PageReader.PageConsumer consume = page -> {
                 stopIfInterrupted();
                 sink.slide(slide(page, doc, analyzer, builder, slide, fallback));
