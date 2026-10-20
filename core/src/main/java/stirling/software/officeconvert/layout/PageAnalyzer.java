@@ -65,8 +65,12 @@ public final class PageAnalyzer {
             return FallbackPage.of(page);
         }
         Set<Object> usedMarks = Collections.newSetFromMap(new IdentityHashMap<>());
-        List<Glyph> bullets = new ArrayList<>(VectorBullets.synthesize(glyphs, gfx.marks(), gfx.fills(), usedMarks));
-        bullets.addAll(OutlinedWords.synthesize(glyphs, gfx, usedMarks, page.width() * page.height()));
+        boolean poster = forms && !boxColumns && poster(page) && !ruledTable(page, glyphs);
+        List<Glyph> bullets = new ArrayList<>();
+        if (!poster) {
+            bullets.addAll(VectorBullets.synthesize(glyphs, gfx.marks(), gfx.fills(), usedMarks));
+            bullets.addAll(OutlinedWords.synthesize(glyphs, gfx, usedMarks, page.width() * page.height()));
+        }
         if (!bullets.isEmpty()) {
             glyphs = new ArrayList<>(glyphs);
             glyphs.addAll(bullets);
@@ -91,7 +95,6 @@ public final class PageAnalyzer {
         textPaint.addAll(gfx.fills());
         rules.forEach(textPaint::remove);
         fills.forEach(textPaint::remove);
-        boolean poster = !boxColumns && poster(page);
         boolean panelGrid = !boxColumns && !poster
                 && ColumnFinder.boxedPanelPairs(segments, rules, stats.bodySize) >= MIN_PANEL_PAIRS;
         if (forms && (poster || panelGrid || FormPage.looksLikeForm(page, segments, rules))) {
@@ -283,8 +286,8 @@ public final class PageAnalyzer {
         List<PageLayout.Band> bands = pictures.isEmpty()
                 ? List.of()
                 : List.of(new PageLayout.Band(0, page.height(), List.of(new PageLayout.Column(0, page.width(), pictures))));
-        return new PageLayout(page, bands, ocr, FormPage.shapes(rules, fills, gfx), List.of(), List.of(), boxes, List.of(),
-                textPaint);
+        return new PageLayout(page, bands, ocr, poster ? List.of() : FormPage.shapes(rules, fills, gfx), List.of(),
+                List.of(), boxes, List.of(), textPaint);
     }
 
     private static List<FigureLabels.Label> labels(List<Line> segments, List<RotatedText.Block> turned, List<Box> tables) {
@@ -440,6 +443,16 @@ public final class PageAnalyzer {
     private static final float POSTER_COVER = 0.6f;
 
     private static final float BACKGROUND_SHARE = 0.5f;
+
+    private boolean ruledTable(PageData page, List<Glyph> glyphs) {
+        if (!detectTables) {
+            return false;
+        }
+        PageFrame frame = stats.frame(page.width(), page.height());
+        List<Line> lines = new ArrayList<>(LineBuilder.build(glyphs));
+        return tableFinder.find(page, frame.textLeft(), frame.textRight(), lines, new ArrayList<>(page.graphics().rules()),
+                new ArrayList<>(page.graphics().fills()), new ArrayList<>()).stream().anyMatch(TableDetection.Found::ruled);
+    }
 
     private static boolean poster(PageData page) {
         float w = page.width();
