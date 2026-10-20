@@ -1,6 +1,8 @@
 package stirling.software.officeconvert.extract;
 
 import java.io.IOException;
+import java.awt.geom.Path2D;
+import java.awt.geom.Point2D;
 import java.awt.geom.Rectangle2D;
 import java.text.Normalizer;
 import java.util.ArrayDeque;
@@ -128,6 +130,7 @@ final class GlyphCollector extends PDFStreamEngine {
     private OperatorBudget budget = new OperatorBudget("reading text");
     private final StreamRunner runner;
     private final TextPositions positions = new TextPositions();
+    private final ClipPath clipPath = new ClipPath();
     private int currentPageNo;
     private int startPage;
     private int endPage;
@@ -194,6 +197,7 @@ final class GlyphCollector extends PDFStreamEngine {
         addOperator(new SetStrokingColorN(this));
         addOperator(new SetNonStrokingColor(this));
         addOperator(new SetNonStrokingColorN(this));
+        ClipOperators.all(this, clipPath).forEach(this::addOperator);
     }
 
     static void read(PDDocument doc, int first, int last, FontResolver fonts, ParsedStreams parsed, PageSink sink)
@@ -338,7 +342,8 @@ final class GlyphCollector extends PDFStreamEngine {
 
     @Override
     protected void showGlyph(Matrix trm, PDFont font, int code, Vector displacement) throws IOException {
-        TextPosition position = positions.of(getGraphicsState(), getTextMatrix(), trm, font, code, displacement);
+        TextPosition position = clippedAway(trm, displacement) ? null
+                : positions.of(getGraphicsState(), getTextMatrix(), trm, font, code, displacement);
         if (position != null) {
             processTextPosition(position);
         }
@@ -357,6 +362,22 @@ final class GlyphCollector extends PDFStreamEngine {
             open.hiddenBaseline = getCurrentPage().getCropBox().getUpperRightY() - trm.getTranslateY();
         }
     }
+
+    private boolean clippedAway(Matrix trm, Vector displacement) {
+        List<Path2D> clips = getGraphicsState().getCurrentClippingPaths();
+        if (clips.isEmpty()) {
+            return false;
+        }
+        Point2D.Float centre = trm.transformPoint(displacement.getX() / 2f, GLYPH_MIDDLE);
+        for (Path2D clip : clips) {
+            if (!clip.contains(centre.x, centre.y)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static final float GLYPH_MIDDLE = 0.3f;
 
     private void actualText(Span s) {
         if (s.start < 0 || s.start >= current.size()) {
