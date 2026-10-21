@@ -60,8 +60,8 @@ final class ClipPath {
             GeneralPath clip = segments > MAX_SEGMENTS ? new GeneralPath(path.getBounds2D()) : path;
             clip.setWindingRule(pendingRule == Path2D.WIND_EVEN_ODD ? Path2D.WIND_EVEN_ODD : Path2D.WIND_NON_ZERO);
             state.intersectClippingPath(clip);
-            pendingRule = -1;
         }
+        pendingRule = -1;
         path = new GeneralPath();
         segments = 0;
     }

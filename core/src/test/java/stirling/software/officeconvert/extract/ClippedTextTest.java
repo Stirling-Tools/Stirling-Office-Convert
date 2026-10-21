@@ -46,7 +46,7 @@ class ClippedTextTest {
             resources.put(COSName.getPDFName("F1"), new PDType1Font(Standard14Fonts.FontName.HELVETICA));
             page.setResources(resources);
             document.addPage(page);
-            String content = "BT /F1 18 Tf 72 600 Td (Before) Tj ET\nW n\nBT /F1 18 Tf 72 400 Td (After) Tj ET\n";
+            String content = "BT /F1 18 Tf 72 600 Td (Before) Tj ET\nW n\n0.9 g 72 500 20 20 re f 0 g\nBT /F1 18 Tf 72 400 Td (After) Tj ET\n";
             PDStream stream = new PDStream(document);
             try (OutputStream out = stream.createOutputStream()) {
                 out.write(content.getBytes(StandardCharsets.US_ASCII));
