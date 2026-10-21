@@ -555,7 +555,7 @@ final class GraphicsCollector extends PDFGraphicsStreamEngine {
         int strokeRgb = onPaper(toRgb(gs.getStrokingColor(), 0), gs.getAlphaConstant());
         PathShapes.Paint paint = new PathShapes.Paint(fill, stroke, pattern, fillRgb, strokeRgb, lineWidth(), evenOdd);
         PathShapes.Shapes shapes = PathShapes.classify(subpaths, pathCurved, paint, clipBox());
-        if (inMaskedGroup && (shapes.mark() != null || !shapes.fills().isEmpty())) {
+        if (inMaskedGroup && (shapes.mark() != null || !shapes.fills().isEmpty() || shapes.rules().isEmpty())) {
             masked(stroke);
             return;
         }
