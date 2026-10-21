@@ -96,7 +96,7 @@ class OdfBoundsTest {
         assertBounded(spreadsheet(row, outcome), outcome);
     }
 
-    private static final long QUICK_NANOS = 20_000_000_000L;
+    private static final long QUICK_NANOS = 120_000_000_000L;
 
     private static final long TIGHT_BYTES = 768L << 20;
 

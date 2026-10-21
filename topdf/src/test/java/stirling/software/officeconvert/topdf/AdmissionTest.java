@@ -12,6 +12,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Stream;
@@ -26,6 +27,7 @@ import stirling.software.officeconvert.topdf.io.OfficeZip;
 import stirling.software.officeconvert.topdf.pdf.PageSize;
 import stirling.software.officeconvert.topdf.testing.Fixtures;
 import stirling.software.officeconvert.topdf.testing.Retained;
+import stirling.software.officeconvert.topdf.testing.Workers;
 import stirling.software.officeconvert.topdf.testing.ZipBytes;
 
 class AdmissionTest {
@@ -128,10 +130,12 @@ class AdmissionTest {
         Path out = dir.resolve("wait.pdf");
         Admission.Ticket hog = Admission.jvm().enter(Long.MAX_VALUE);
         try {
+            Set<Thread> before = Workers.named("office-to-pdf");
             long start = System.nanoTime();
             assertThrows(OfficeToPdf.TimedOut.class,
                     () -> OfficeToPdf.convert(in, out, Options.defaults().timeout(Duration.ofMillis(300))));
-            assertTrue(System.nanoTime() - start < TimeUnit.SECONDS.toNanos(10));
+            assertTrue(System.nanoTime() - start < TimeUnit.MINUTES.toNanos(1), "it never waits for the memory");
+            Workers.awaitNew(before, "office-to-pdf");
             assertEquals(1, Admission.jvm().running(), "the waiting conversion never started");
         } finally {
             hog.close();

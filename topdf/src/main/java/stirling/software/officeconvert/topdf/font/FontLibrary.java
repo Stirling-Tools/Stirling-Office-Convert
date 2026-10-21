@@ -383,6 +383,12 @@ public final class FontLibrary {
         return out;
     }
 
+    /** Families drawn in place of a well-known one that is not installed (Liberation Sans for Arial); empty for
+     * a family the converter knows nothing about. */
+    public static List<String> lookAlikes(String family) {
+        return List.copyOf(Substitutes.table(family));
+    }
+
     public static List<String> standIns(String family) {
         List<String> chain = new ArrayList<>(Substitutes.table(family));
         chain.addAll(Substitutes.generic(family));
