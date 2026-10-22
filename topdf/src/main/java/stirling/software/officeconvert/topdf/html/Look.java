@@ -24,6 +24,7 @@ final class Look {
     boolean smallCaps;
     float spacing;
     Paragraph.Align align = Paragraph.Align.LEFT;
+    boolean alignFixed;
     float lineMultiple;
     float linePoints;
     float textIndent;
@@ -38,6 +39,7 @@ final class Look {
     float keywordPx = 16;
     // the family is the bare generic monospace, which browsers set at 13px where the keyword says 16
     boolean monoOnly;
+    float opacity = 1;
 
     Look copy() {
         Look l = new Look();
@@ -53,6 +55,7 @@ final class Look {
         l.smallCaps = smallCaps;
         l.spacing = spacing;
         l.align = align;
+        l.alignFixed = alignFixed;
         l.lineMultiple = lineMultiple;
         l.linePoints = linePoints;
         l.textIndent = textIndent;
@@ -65,6 +68,7 @@ final class Look {
         l.vars = vars;
         l.keywordPx = keywordPx;
         l.monoOnly = monoOnly;
+        l.opacity = opacity;
         return l;
     }
 
@@ -72,6 +76,7 @@ final class Look {
     Look child(Map<String, String> d, float width, boolean inline) {
         Look l = copy();
         l.vars = Vars.scope(vars, d);
+        l.opacity = opacity * Css.opacity(d.get("opacity"));
         if (!inline) {
             // A background is painted by the box that sets it, so a block inside an inline does not inherit it
             l.vertAlign = 0;
@@ -127,6 +132,9 @@ final class Look {
         }
         if ((v = d.get("text-align")) != null) {
             l.align = align(v, align);
+            String keyword = v.strip().toLowerCase(Locale.ROOT);
+            l.alignFixed = keyword.contains("left") || keyword.contains("right")
+                    || !keyword.equals("start") && !keyword.equals("end") && l.align == align && alignFixed;
             l.centerBlocks = v.strip().equalsIgnoreCase("-webkit-center");
         }
         if ((v = d.get("line-height")) != null) {
@@ -272,6 +280,17 @@ final class Look {
             case "cursive" -> "Comic Sans MS";
             case "fantasy" -> "Impact";
             default -> null;
+        };
+    }
+
+    Paragraph.Align visualAlign() {
+        if (!rightToLeft || alignFixed) {
+            return align;
+        }
+        return switch (align) {
+            case LEFT -> Paragraph.Align.RIGHT;
+            case RIGHT -> Paragraph.Align.LEFT;
+            default -> align;
         };
     }
 

@@ -38,6 +38,7 @@ public final class JsonModel {
 
     private final DocSink sink;
     private final List<String> warnings;
+    private int nesting;
     private final Map<String, Picture.MediaRef> media = new HashMap<>();
     private final Map<Integer, Integer> listIds = new HashMap<>();
     private StyleSheet styles;
@@ -260,6 +261,7 @@ public final class JsonModel {
         }
         p.pageBreakBefore = in.flag("pageBreakBefore");
         p.keepNext = in.flag("keepNext");
+        p.keepLines = in.flag("keepLines");
         p.bidi = in.flag("rightToLeft");
         p.noHangingPunctuation = in.flag("noHangingPunctuation");
         p.shading = in.color("shading", -1);
@@ -348,6 +350,15 @@ public final class JsonModel {
     }
 
     private Table table(JsonIn in) throws IOException {
+        nesting++;
+        try {
+            return readTable(in);
+        } finally {
+            nesting--;
+        }
+    }
+
+    private Table readTable(JsonIn in) throws IOException {
         Table t = new Table();
         for (Object w : in.list("columns")) {
             if (t.columnWidths.size() >= MAX_COLUMNS) {
@@ -418,7 +429,22 @@ public final class JsonModel {
         c.right = border(in.obj("right"));
         c.shading = in.color("shading", -1);
         c.vAlign = in.choice("verticalAlign", Table.VAlign.class, Table.VAlign.TOP);
-        c.paragraphs.addAll(paragraphs(in.list("paragraphs")));
+        if (!in.has("blocks")) {
+            c.paragraphs.addAll(paragraphs(in.list("paragraphs")));
+            return c;
+        }
+        for (Object o : in.list("blocks")) {
+            Block b = block(new JsonIn(o, "a block in a table cell"));
+            if (b instanceof Table nested && nesting >= Table.MAX_NESTING) {
+                String flat = "Tables nested more than " + Table.MAX_NESTING + " deep were written as their text";
+                if (!warnings.contains(flat)) {
+                    warnings.add(flat);
+                }
+                c.paragraphs.addAll(nested.flatParagraphs());
+            } else if (b != null) {
+                c.add(b);
+            }
+        }
         return c;
     }
 

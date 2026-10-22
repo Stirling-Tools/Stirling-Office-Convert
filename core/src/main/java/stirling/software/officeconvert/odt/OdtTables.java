@@ -1,8 +1,7 @@
 package stirling.software.officeconvert.odt;
 
 import java.io.IOException;
-import java.util.List;
-
+import stirling.software.officeconvert.model.Block;
 import stirling.software.officeconvert.model.Paragraph;
 import stirling.software.officeconvert.model.Table;
 import stirling.software.officeconvert.sink.Borders;
@@ -84,12 +83,14 @@ final class OdtTables {
                 sb.append(" table:number-rows-spanned=\"").append(down).append('"');
             }
             sb.append(" office:value-type=\"string\">");
-            List<Paragraph> paras = cell.paragraphs;
-            if (paras.isEmpty()) {
+            if (cell.empty()) {
                 sb.append("<text:p text:style-name=\"").append(emptyStyle()).append("\"/>");
             }
-            for (Paragraph p : paras) {
-                body.paragraph(sb, p, OdtBody.Place.NESTED, false);
+            for (Block b : cell.blocks()) {
+                switch (b) {
+                    case Paragraph p -> body.paragraph(sb, p, OdtBody.Place.NESTED, false);
+                    case Table nested -> table(sb, nested, false);
+                }
             }
             sb.append("</table:table-cell>");
             for (int k = 1; k < span; k++) {

@@ -540,7 +540,9 @@ HTML (`.html .htm .xhtml`, or any file whose content starts `<!DOCTYPE html` or 
 saved as `.doc`) is laid out without a browser and drawn by the DOCX renderer: headings, paragraphs, lists, tables
 (with `colspan`, `rowspan`, borders, shading and widths), pre-formatted text, links, pictures, inline SVG and
 `data:image/svg+xml` (shapes, paths, transforms and same-page `<use>`), floats beside text, page breaks, and `@page`
-size and margins, named pages included. Style comes from `<style>` sheets, `style` attributes and the old
+size and margins, named pages included, with the default page's `@top-left|center|right` and
+`@bottom-left|center|right` margin boxes as running headers and footers (`content` strings, `counter(page)` and
+`counter(pages)`). Style comes from `<style>` sheets, `style` attributes and the old
 presentational attributes over a browser's defaults, with the cascade as Chrome applies it when printing: media
 queries are answered for print at the page's text width, `!important`, custom properties (`var()`), `calc()`,
 `min()`, `max()`, `clamp()`, `rem`, `hsl()` and alpha colours. Flex rows and grids become columns side by side
@@ -592,6 +594,7 @@ PdfToMarkdown.convert(pdf, Path.of("out.md"), options);    // GitHub Flavored Ma
 PdfToMarkdown.convertPackage(pdDocument, zipStream, options); // document.md plus images/ in a ZIP
 String text = PdfToText.text(pdDocument, options);
 PdfToHtml.convert(pdf, Path.of("out.html"), options);      // one HTML5 file, pictures as data: URIs
+PdfToHtml.convertFixed(pdf, Path.of("page.html"), FixedHtml.Options.defaults()); // each page as it looks
 PdfToJson.convert(pdf, Path.of("out.json"), options);      // the document model as JSON
 PdfToEpub.convert(pdf, Path.of("out.epub"), options);      // a reflowing EPUB 3 book
 PdfToAzw3.convert(pdf, Path.of("out.azw3"), options);      // the same book for Kindle (KF8)
@@ -621,6 +624,17 @@ PdfToAzw3.convert(pdf, Path.of("out.azw3"), options);      // the same book for 
 - AZW3 is the EPUB's book as a Kindle KF8 file: the same chapters, pictures, style sheet, footnotes and links
   (`kindle:pos`), PalmDOC-compressed text, the table of contents as an NCX index, and the title, author and
   language (`und`) in its metadata. It has no cover picture and no DRM.
+- Fixed-layout HTML keeps every page as it looks instead of reflowing it, like `pdftohtml -c`: one self-contained
+  file with a box per page at the page's size. `Text.LIVE` (the default) draws the page's graphics and pictures without
+  its text as a picture (left out when the page has nothing else) and places the text over it as real SVG text at its
+  exact baseline and width (so it lines up even in a substitute font), in the
+  PDF font's family with a generic fallback, colour, weight and slant; invisible (OCR) text stays a transparent layer, and glyphs with no Unicode
+  stay in the picture. `Text.PICTURE`
+  draws everything into the page picture and adds the text as a transparent layer to select and search, so it looks
+  exactly like the PDF at the cost of size. Pages are drawn at 150 dpi (36 to 300); web links stay clickable.
+  `Options.fonts(FontSource)` lets the caller turn the PDF's own fonts into web fonts for `Text.LIVE` (for example
+  `WebFonts::toTrueType` from the `pdfa` module), so live text is drawn in the document's real faces; each font is
+  asked for once, and fonts over 4 MB or past 32 MB in total, or that fail, fall back to the family name.
 - JSON is the document model itself, the format [described here](json-format.md): everything the DOCX carries, as
   data a program can read, change and convert back to PDF (or, through it, to anything else).
 

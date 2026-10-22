@@ -8,12 +8,12 @@ import stirling.software.officeconvert.topdf.pdf.Stroke;
 
 record Chart(Text title, List<Group> groups, List<String> categories, Legend legend, Axis values, Axis categoryAxis,
         Color fill, Stroke border, String font, float textSize, Color textColor, Layout plotLayout, Color plotFill,
-        Stroke plotBorder, boolean date1904, Axis secondary) {
+        Stroke plotBorder, boolean date1904, Axis secondary, boolean tightScale) {
 
     Chart(Text title, List<Group> groups, List<String> categories, Legend legend, Axis values, Axis categoryAxis,
             Color fill, Stroke border, String font, float textSize, Color textColor) {
         this(title, groups, categories, legend, values, categoryAxis, fill, border, font, textSize, textColor, null,
-                null, null, false, null);
+                null, null, false, null, false);
     }
 
     enum Kind {
@@ -22,7 +22,8 @@ record Chart(Text title, List<Group> groups, List<String> categories, Legend leg
         AREA,
         PIE,
         DOUGHNUT,
-        SCATTER
+        SCATTER,
+        RADAR
     }
 
     record Text(String text, float size, boolean bold, Color color) {}
@@ -94,10 +95,14 @@ record Chart(Text title, List<Group> groups, List<String> categories, Legend leg
         }
     }
 
-    record Legend(String position, float size, Layout layout, String font) {
+    record Legend(String position, float size, Layout layout, String font, Color fill, Stroke border) {
 
         Legend(String position, float size) {
-            this(position, size, null, null);
+            this(position, size, null, null, null, null);
+        }
+
+        boolean boxed() {
+            return fill != null || border != null;
         }
     }
 

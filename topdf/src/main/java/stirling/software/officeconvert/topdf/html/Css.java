@@ -26,6 +26,9 @@ final class Css {
 
     static final int MAX_NESTING = 16;
 
+    private static final Pattern MARGIN_BOX = Pattern.compile(
+            "@((?:top|bottom)-(?:left|center|right))\\s*\\{([^{}]*)\\}", Pattern.CASE_INSENSITIVE);
+
     // The size of the root element's font, which rem lengths count in; set while one document converts
     private static final ThreadLocal<Float> ROOT_SIZE = ThreadLocal.withInitial(() -> 12f);
 
@@ -73,7 +76,13 @@ final class Css {
                     // @page, or a named page: "@page wide"; page selectors like :first are left to the default page
                     String name = head.substring(5).strip();
                     if (name.isEmpty() || name.matches("[A-Za-z_][A-Za-z0-9_-]{0,63}")) {
-                        into.add(new Rule(name.isEmpty() ? "@page" : "@page " + name, declarations(inner)));
+                        Matcher box = MARGIN_BOX.matcher(inner);
+                        while (name.isEmpty() && box.find()) {
+                            into.add(new Rule("@margin " + box.group(1).toLowerCase(Locale.ROOT),
+                                    declarations(box.group(2))));
+                        }
+                        String own = MARGIN_BOX.matcher(inner).replaceAll("");
+                        into.add(new Rule(name.isEmpty() ? "@page" : "@page " + name, declarations(own)));
                     }
                 }
                 continue;
@@ -94,9 +103,18 @@ final class Css {
         List<String> out = new ArrayList<>();
         int depth = 0;
         int from = 0;
+        char quote = 0;
         for (int i = 0; i < s.length(); i++) {
             char c = s.charAt(i);
-            if (c == '(' || c == '[') {
+            if (quote != 0) {
+                if (c == '\\') {
+                    i++;
+                } else if (c == quote || c == '\n') {
+                    quote = 0;
+                }
+            } else if (c == '"' || c == '\'') {
+                quote = c;
+            } else if (c == '(' || c == '[') {
                 depth++;
             } else if ((c == ')' || c == ']') && depth > 0) {
                 depth--;
@@ -224,6 +242,7 @@ final class Css {
                 }
             }
             case "background", "background-image" -> {
+                out.put("background-gradient", "none");
                 for (String token : tokens(value)) {
                     String t = token.toLowerCase(Locale.ROOT);
                     if (t.contains("gradient(")) {
@@ -232,6 +251,7 @@ final class Css {
                         if (first != null && !out.containsKey("background-color")) {
                             out.put("background-color", first);
                         }
+                        out.put("background-gradient", token);
                     } else if (name.equals("background") && (color(token) != null || t.equals("transparent")
                             || t.equals("none"))) {
                         out.put("background-color", token);
@@ -426,6 +446,45 @@ final class Css {
             return hsl(s);
         }
         return NamedColors.get(s);
+    }
+
+    static float opacity(String v) {
+        if (v == null) {
+            return 1;
+        }
+        String s = v.strip();
+        try {
+            float f = s.endsWith("%") ? Float.parseFloat(s.substring(0, s.length() - 1)) / 100 : Float.parseFloat(s);
+            return Float.isFinite(f) ? Math.max(0, Math.min(1, f)) : 1;
+        } catch (NumberFormatException e) {
+            return 1;
+        }
+    }
+
+    static String hex(int rgb) {
+        return String.format(Locale.ROOT, "#%06x", rgb & 0xFFFFFF);
+    }
+
+    static void fade(Map<String, String> d, float alpha) {
+        if (alpha >= 0.99f) {
+            return;
+        }
+        for (Map.Entry<String, String> e : d.entrySet()) {
+            String key = e.getKey();
+            if (key.equals("color") || key.endsWith("-color") || key.startsWith("border-") && !key.endsWith("-width")
+                    && !key.endsWith("-style") && !key.endsWith("-radius") || key.equals("column-rule")) {
+                e.setValue(faded(e.getValue(), alpha));
+            }
+        }
+    }
+
+    static String faded(String value, float alpha) {
+        List<String> out = new ArrayList<>();
+        for (String token : tokens(value)) {
+            Integer c = color(token);
+            out.add(c == null || c < 0 ? token : hex(withAlpha(c, alpha)));
+        }
+        return String.join(" ", out);
     }
 
     private static Integer hex(String h) {

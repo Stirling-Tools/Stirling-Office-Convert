@@ -122,6 +122,24 @@ class DocxListsAndLabelsTest {
     }
 
     @Test
+    void aKeepWithNextChainLongerThanAPageStaysWhereItStarts() throws IOException {
+        StringBuilder body = new StringBuilder();
+        for (int i = 0; i < 38; i++) {
+            body.append(para("", "Filler" + i));
+        }
+        body.append(para("<w:keepNext/>", "Contents"));
+        for (int i = 0; i < 70; i++) {
+            body.append(para("<w:keepNext/>", "Entry" + i));
+        }
+        body.append(para("", "After"));
+        DocxDoc.Rendered r = DocxDoc.render(dir, "chain", new DocxDoc().styles(DEFAULTS).body(body.toString())
+                .bytes());
+        assertEquals(1, r.word("Contents").page());
+        assertEquals(1, r.word("Entry0").page());
+        assertEquals(r.word("Entry69").page(), r.word("After").page());
+    }
+
+    @Test
     void aLabelTextSharedByEveryPointIsDrawnWithinABudget() throws IOException {
         StringBuilder points = new StringBuilder();
         for (int i = 0; i < 4_000; i++) {

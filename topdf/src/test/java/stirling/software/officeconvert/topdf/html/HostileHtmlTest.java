@@ -144,6 +144,27 @@ class HostileHtmlTest {
     }
 
     @Test
+    void gradientBackgroundsArePaintedWithinABudget() throws IOException {
+        StringBuilder same = new StringBuilder("<style>div{height:600px;background:linear-gradient(90deg,#f00,#00f)}"
+                + "</style>");
+        StringBuilder distinct = new StringBuilder("<style>div{height:600px}</style>");
+        for (int i = 0; i < 3_000; i++) {
+            same.append("<div>x</div>");
+            distinct.append("<div style=\"background:linear-gradient(90deg,#f00,#").append(String.format("%06x", i))
+                    .append(")\">x</div>");
+        }
+        same.append("<p>same end</p>");
+        distinct.append("<p>distinct end</p>");
+        assertTrue(convert("same.html", same.toString()).contains("same end"));
+        assertTrue(Files.size(dir.resolve("same.html.pdf")) < 2_000_000, "one gradient repeated is painted once");
+        Path in = Files.writeString(dir.resolve("distinct.html"), distinct.toString(), StandardCharsets.UTF_8);
+        OfficeToPdf.Result r = OfficeToPdf.convert(in, dir.resolve("distinct.pdf"),
+                OfficeToPdf.Options.defaults().timeout(Duration.ZERO));
+        assertTrue(Files.size(dir.resolve("distinct.pdf")) < 20_000_000, "painting stops at the budget");
+        assertTrue(r.warnings().stream().anyMatch(w -> w.contains("gradient")), r.warnings().toString());
+    }
+
+    @Test
     void oddCssValuesAreIgnored() throws IOException {
         String html = "<p style=\"line-height:1.2.3;font-weight:99999999999\">one</p><p style=\"line-height:.\">two</p>"
                 + "<div style=\"display:flex;gap:\"><span>a</span><span>b</span></div>"

@@ -4,6 +4,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
+import stirling.software.officeconvert.model.Block;
+import stirling.software.officeconvert.model.FormField;
 import stirling.software.officeconvert.model.Inline;
 import stirling.software.officeconvert.model.Paragraph;
 import stirling.software.officeconvert.model.RunStyle;
@@ -15,6 +17,9 @@ import stirling.software.officeconvert.sink.Links;
 final class BodyXml {
 
     private static final int MAX_TABS = 64;
+
+    private static final String EMPTY_CELL_PARAGRAPH = "<w:p><w:pPr><w:spacing w:before=\"0\" w:after=\"0\" w:line=\"20\""
+            + " w:lineRule=\"exact\"/><w:rPr><w:sz w:val=\"2\"/><w:szCs w:val=\"2\"/></w:rPr></w:pPr></w:p>";
 
     private final PartContext ctx;
     private final StyleSheet styles;
@@ -30,6 +35,14 @@ final class BodyXml {
     }
 
     void paragraph(StringBuilder sb, Paragraph p, boolean body) {
+        paragraph(sb, p, body, null);
+    }
+
+    void formParagraph(StringBuilder sb, Paragraph p, FormField field) {
+        paragraph(sb, p, false, field);
+    }
+
+    private void paragraph(StringBuilder sb, Paragraph p, boolean body, FormField field) {
         StyleSheet.Style style = styles.get(p.style);
         RunStyle base = style.run();
         sb.append("<w:p><w:pPr>");
@@ -39,7 +52,10 @@ final class BodyXml {
         if (p.keepNext) {
             sb.append("<w:keepNext/>");
         } else if (style.keepNext()) {
-            sb.append("<w:keepNext w:val=\"0\"/><w:keepLines w:val=\"0\"/>");
+            sb.append(p.keepLines ? "<w:keepNext w:val=\"0\"/>" : "<w:keepNext w:val=\"0\"/><w:keepLines w:val=\"0\"/>");
+        }
+        if (p.keepLines) {
+            sb.append("<w:keepLines/>");
         }
         if (p.pageBreakBefore) {
             sb.append("<w:pageBreakBefore/>");
@@ -131,12 +147,53 @@ final class BodyXml {
             sb.append("<w:bookmarkStart w:id=\"").append(id).append("\" w:name=\"").append(Xml.esc(p.bookmark))
                     .append("\"/><w:bookmarkEnd w:id=\"").append(id).append("\"/>");
         }
-        inlines(sb, p.inlines, base);
+        if (field == null) {
+            inlines(sb, p.inlines, base);
+        } else {
+            sb.append("<w:sdt>");
+            sdtPr(sb, field, p.markStyle == null ? base : p.markStyle);
+            sb.append("<w:sdtContent>");
+            inlines(sb, p.inlines, base);
+            sb.append("</w:sdtContent></w:sdt>");
+        }
         sb.append("</w:p>");
     }
 
     private static int clampTwips(float pt) {
         return Math.max(0, Math.min(31680, Xml.twips(pt)));
+    }
+
+    private void sdtPr(StringBuilder sb, FormField f, RunStyle look) {
+        sb.append("<w:sdtPr><w:rPr><w:color w:val=\"").append(Xml.hex(look.rgb())).append("\"/><w:sz w:val=\"")
+                .append(Xml.halfPoints(look.size())).append("\"/></w:rPr>");
+        if (!f.label().isEmpty()) {
+            sb.append("<w:alias w:val=\"").append(Xml.esc(f.label())).append("\"/>");
+        }
+        sb.append("<w:tag w:val=\"").append(Xml.esc(f.tag())).append("\"/><w:id w:val=\"").append(ctx.docPr())
+                .append("\"/>");
+        if (f.readOnly()) {
+            sb.append("<w:lock w:val=\"contentLocked\"/>");
+        }
+        if (f.placeholderShown()) {
+            sb.append("<w:showingPlcHdr/>");
+        }
+        switch (f.kind()) {
+            case TEXT, PASSWORD -> sb.append("<w:text/>");
+            case MULTILINE -> sb.append("<w:text w:multiLine=\"1\"/>");
+            case COMBO, LIST -> {
+                sb.append("<w:dropDownList>");
+                for (FormField.Choice c : f.choices()) {
+                    sb.append("<w:listItem w:displayText=\"").append(Xml.esc(c.label())).append("\" w:value=\"")
+                            .append(Xml.esc(c.value())).append("\"/>");
+                }
+                sb.append("</w:dropDownList>");
+            }
+            case CHECKBOX, RADIO -> sb.append("<w14:checkbox xmlns:w14=\"http://schemas.microsoft.com/office/word/2010/wordml\">")
+                    .append("<w14:checked w14:val=\"").append(f.checked() ? 1 : 0).append("\"/><w14:checkedState w14:val=\"")
+                    .append(f.kind() == FormField.Kind.RADIO ? "25CF" : "2713")
+                    .append("\"/><w14:uncheckedState w14:val=\"0020\"/></w14:checkbox>");
+        }
+        sb.append("</w:sdtPr>");
     }
 
     private void inlines(StringBuilder sb, List<Inline> inlines, RunStyle base) {
@@ -194,6 +251,7 @@ final class BodyXml {
                     sb.append("</w:r>");
                 }
                 case Inline.TextBox box -> drawings.textBox(sb, box);
+                case Inline.FormControl f -> drawings.formControl(sb, f);
             }
         }
         if (openLink != null) {
@@ -202,6 +260,10 @@ final class BodyXml {
     }
 
     void table(StringBuilder sb, Table t) {
+        table(sb, t, 1);
+    }
+
+    private void table(StringBuilder sb, Table t, int level) {
         float total = 0;
         for (float w : t.columnWidths) {
             total += w;
@@ -267,18 +329,33 @@ final class BodyXml {
                     sb.append("<w:vAlign w:val=\"").append(cell.vAlign == Table.VAlign.CENTER ? "center" : "bottom").append("\"/>");
                 }
                 sb.append("</w:tcPr>");
-                if (cell.paragraphs.isEmpty() || cell.vMerge == 2) {
-                    sb.append("<w:p><w:pPr><w:spacing w:before=\"0\" w:after=\"0\" w:line=\"20\" w:lineRule=\"exact\"/><w:rPr><w:sz w:val=\"2\"/><w:szCs w:val=\"2\"/></w:rPr></w:pPr></w:p>");
-                } else {
+                if (cell.empty() || cell.vMerge == 2) {
+                    sb.append(EMPTY_CELL_PARAGRAPH);
+                } else if (cell.tables.isEmpty()) {
                     for (Paragraph p : cell.paragraphs) {
                         paragraph(sb, p, false);
                     }
+                } else {
+                    cellBlocks(sb, cell.blocks(), level);
                 }
                 sb.append("</w:tc>");
             }
             sb.append("</w:tr>");
         }
         sb.append("</w:tbl>");
+    }
+
+    private void cellBlocks(StringBuilder sb, List<Block> blocks, int level) {
+        for (Block b : blocks) {
+            switch (b) {
+                case Paragraph p -> paragraph(sb, p, false);
+                case Table nested when level < Table.MAX_NESTING -> table(sb, nested, level + 1);
+                case Table nested -> nested.flatParagraphs().forEach(p -> paragraph(sb, p, false));
+            }
+        }
+        if (blocks.getLast() instanceof Table) {
+            sb.append(EMPTY_CELL_PARAGRAPH);
+        }
     }
 
     private static void border(StringBuilder sb, String side, Table.Border b) {
@@ -316,7 +393,8 @@ final class BodyXml {
         }
         if (s.columns.size() > 1) {
             sb.append("<w:cols w:num=\"").append(s.columns.size()).append("\" w:space=\"")
-                    .append(Xml.twips(s.columns.getFirst()[1])).append("\" w:equalWidth=\"0\">");
+                    .append(Xml.twips(s.columns.getFirst()[1])).append(s.columnRule ? "\" w:sep=\"1" : "")
+                    .append("\" w:equalWidth=\"0\">");
             for (float[] c : s.columns) {
                 sb.append("<w:col w:w=\"").append(Xml.twips(c[0])).append("\" w:space=\"").append(Xml.twips(c[1])).append("\"/>");
             }
