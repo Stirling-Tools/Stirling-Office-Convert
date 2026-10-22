@@ -64,7 +64,37 @@ class BlankPagesTest {
     }
 
     @Test
-    void whiteFillsAndWhiteBordersDoNotExtendThePrint() throws IOException {
+    void whiteBordersDoNotExtendThePrint() throws IOException {
+        assertEquals(1, whiteCells("whiteborder.xlsx", "Z", 2));
+    }
+
+    @Test
+    void whiteFillsExtendThePrintLikeAnyOtherFill() throws IOException {
+        assertTrue(whiteCells("whitefill.xlsx", "A", 1) > 1);
+    }
+
+    @Test
+    void formattedBlankColumnsOfAPrintedRowArePrintedUnlessTheSheetFitsThePage() throws IOException {
+        String styles = "<fonts count=\"2\"><font><sz val=\"11\"/><name val=\"Calibri\"/></font><font><sz val=\"11\"/>"
+                + "<color rgb=\"FF000000\"/><name val=\"Calibri\"/></font></fonts><fills count=\"2\"><fill><patternFill"
+                + " patternType=\"none\"/></fill><fill><patternFill patternType=\"gray125\"/></fill></fills><borders"
+                + " count=\"1\"><border/></borders><cellStyleXfs count=\"1\"><xf/></cellStyleXfs><cellXfs count=\"2\"><xf/>"
+                + "<xf fontId=\"1\" applyFont=\"1\"/></cellXfs>";
+        StringBuilder row = new StringBuilder("<row r=\"1\">" + RawXlsx.inline("A1", "First"));
+        for (int c = 1; c < 30; c++) {
+            row.append("<c r=\"").append(org.apache.poi.ss.util.CellReference.convertNumToColString(c)).append("1\" s=\"1\"/>");
+        }
+        String data = "<sheetData>" + row + "</row><row r=\"80\">" + RawXlsx.inline("A80", "Last") + "</row></sheetData>";
+        String order = "<pageSetup pageOrder=\"overThenDown\"";
+        int styled = XlsxTesting.convert(dir, "styled.xlsx", new RawXlsx().styles(styles)
+                .sheet("S", data + order + "/>").bytes()).pages().size();
+        assertTrue(styled >= 4, "pages " + styled);
+        String fit = "<sheetPr><pageSetUpPr fitToPage=\"1\"/></sheetPr>" + data + order + " fitToHeight=\"0\"/>";
+        assertEquals(2, XlsxTesting.convert(dir, "fitted.xlsx", new RawXlsx().styles(styles).sheet("S", fit).bytes())
+                .pages().size());
+    }
+
+    private int whiteCells(String name, String col, int style) throws IOException {
         String styles = "<fonts count=\"1\"><font><sz val=\"11\"/><name val=\"Calibri\"/></font></fonts><fills"
                 + " count=\"3\"><fill><patternFill patternType=\"none\"/></fill><fill><patternFill patternType=\"gray125\"/>"
                 + "</fill><fill><patternFill patternType=\"solid\"><fgColor rgb=\"FFFFFFFF\"/></patternFill></fill></fills>"
@@ -73,11 +103,11 @@ class BlankPagesTest {
                 + "<xf/><xf fillId=\"2\" applyFill=\"1\"/><xf borderId=\"1\" applyBorder=\"1\"/></cellXfs>";
         StringBuilder rows = new StringBuilder("<row r=\"1\">" + RawXlsx.inline("A1", "First") + "</row>");
         for (int r = 2; r <= 400; r++) {
-            rows.append("<row r=\"").append(r).append("\"><c r=\"A").append(r).append("\" s=\"1\"/><c r=\"Z")
-                    .append(r).append("\" s=\"2\"/></row>");
+            rows.append("<row r=\"").append(r).append("\"><c r=\"").append(col).append(r).append("\" s=\"")
+                    .append(style).append("\"/></row>");
         }
-        assertEquals(1, XlsxTesting.convert(dir, "white.xlsx", new RawXlsx().styles(styles)
-                .sheet("S", "<sheetData>" + rows + "</sheetData>").bytes()).pages().size());
+        return XlsxTesting.convert(dir, name, new RawXlsx().styles(styles)
+                .sheet("S", "<sheetData>" + rows + "</sheetData>").bytes()).pages().size();
     }
 
     @Test

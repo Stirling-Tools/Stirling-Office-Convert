@@ -1,6 +1,7 @@
 package stirling.software.officeconvert.topdf.html;
 
 import java.io.IOException;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -12,7 +13,9 @@ import java.util.TreeMap;
 import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
 
+import stirling.software.officeconvert.model.Block;
 import stirling.software.officeconvert.model.Paragraph;
+import stirling.software.officeconvert.model.Picture;
 import stirling.software.officeconvert.model.Table;
 
 /** An HTML table as a grid: spans become merged cells, column widths come from the widths given or the text. */
@@ -32,7 +35,12 @@ final class HtmlTables {
         this.ctx = ctx;
     }
 
-    private record Slot(Element element, Table.Cell cell, Map<String, String> declared, Look look) {}
+    private record Slot(Element element, Table.Cell cell, Map<String, String> declared, Look look, float[] pad) {
+
+        float across() {
+            return pad[1] + pad[3];
+        }
+    }
 
     Table table(Element table, Map<String, String> d, Look look, Flow.Frame frame, boolean inCentre, int depth)
             throws IOException {
@@ -45,6 +53,7 @@ final class HtmlTables {
         }
         int rowCount = Math.min(rows.size(), MAX_ROWS);
         float frameBorder = frameBorder(table);
+        Float cellpadding = cellpadding(table, look);
         List<TreeMap<Integer, Slot>> grid = new ArrayList<>();
         List<Set<Integer>> taken = new ArrayList<>();
         for (int r = 0; r < rowCount; r++) {
@@ -64,7 +73,7 @@ final class HtmlTables {
             Look rowLook = look.child(rowDecl, frame.width(), false);
             Table.Row row = new Table.Row();
             // A browser breaks a tall row across pages rather than cutting it off
-            row.splits = true;
+            row.splits = !Flow.avoidsBreaks(rowDecl);
             row.height = Math.max(0, Flow.length(rowDecl.get("height"), rowLook.size, 0));
             row.header = "thead".equals(tr.parent() == null ? "" : tr.parent().normalName());
             boolean allHeads = true;
@@ -99,14 +108,15 @@ final class HtmlTables {
                 rowspan = rowspan == 0 ? rowCount - r : Math.min(rowspan, rowCount - r);
                 Table.Cell cell = cell(cellDecl, colspan, frameBorder);
                 cell.vMerge = rowspan > 1 ? 1 : 0;
-                grid.get(r).put(col, new Slot(td, cell, cellDecl, cellLook));
+                float[] pad = pads(cellDecl, cellLook, cellpadding);
+                grid.get(r).put(col, new Slot(td, cell, cellDecl, cellLook, pad));
                 for (int below = r + 1; below < r + rowspan; below++) {
                     for (int c = col; c < col + colspan; c++) {
                         taken.get(below).add(c);
                     }
                     Table.Cell cont = cell(cellDecl, colspan, frameBorder);
                     cont.vMerge = 2;
-                    grid.get(below).put(col, new Slot(null, cont, cellDecl, cellLook));
+                    grid.get(below).put(col, new Slot(null, cont, cellDecl, cellLook, pad));
                 }
                 col += colspan;
                 columns = Math.max(columns, col);
@@ -141,7 +151,7 @@ final class HtmlTables {
                     for (int c = col; c < col + s.cell().gridSpan; c++) {
                         room += t.columnWidths.get(c);
                     }
-                    contents(s, room - t.cellMarginLeft - t.cellMarginRight, depth + 2);
+                    contents(s, t, room, depth + 2);
                 }
                 row.cells.add(s.cell());
                 col += s.cell().gridSpan;
@@ -161,9 +171,36 @@ final class HtmlTables {
                 || "collapse".equalsIgnoreCase(d.getOrDefault("visibility", "").strip()) || Hidden.visually(d, look.size);
     }
 
-    private void contents(Slot s, float room, int depth) throws IOException {
-        Flow flow = new Flow(ctx, b -> s.cell().paragraphs.add((Paragraph) b), true);
-        flow.children(s.element(), s.look(), new Flow.Frame(0, 0, Math.max(MIN_COLUMN, room), -1), depth);
+    private void contents(Slot s, Table t, float room, int depth) throws IOException {
+        float extraLeft = Math.max(0, s.pad()[3] - t.cellMarginLeft);
+        float extraRight = Math.max(0, s.pad()[1] - t.cellMarginRight);
+        float inner = room - t.cellMarginLeft - t.cellMarginRight;
+        if (inner - extraLeft - extraRight < MIN_COLUMN) {
+            extraLeft = 0;
+            extraRight = 0;
+        }
+        Flow flow = new Flow(ctx, s.cell()::add, true);
+        flow.children(s.element(), s.look(), new Flow.Frame(0, 0, Math.max(MIN_COLUMN, inner - extraLeft - extraRight), -1),
+                depth);
+        if (s.cell().empty()) {
+            return;
+        }
+        List<Block> blocks = s.cell().blocks();
+        for (Block b : blocks) {
+            switch (b) {
+                case Paragraph p -> {
+                    p.indentLeft += extraLeft;
+                    p.indentRight += extraRight;
+                }
+                case Table nested -> nested.indent += nested.rightToLeft ? extraRight : extraLeft;
+            }
+        }
+        if (blocks.getFirst() instanceof Paragraph first) {
+            first.spaceBefore += s.pad()[0];
+        }
+        if (blocks.getLast() instanceof Paragraph last) {
+            last.spaceAfter += s.pad()[2];
+        }
     }
 
     private static int span(String v, int fallback) {
@@ -272,9 +309,9 @@ final class HtmlTables {
             Float w = width(ctx.declared(cols.get(c), look).get("width"), look, given == null ? room : given);
             fixed[c] = w == null ? 0 : w;
         }
-        float padding = padding(table, d, look, grid);
-        t.cellMarginLeft = padding;
-        t.cellMarginRight = padding;
+        float[] margins = margins(grid);
+        t.cellMarginLeft = margins[0];
+        t.cellMarginRight = margins[1];
         for (TreeMap<Integer, Slot> row : grid) {
             for (Map.Entry<Integer, Slot> e : row.entrySet()) {
                 Slot s = e.getValue();
@@ -283,22 +320,30 @@ final class HtmlTables {
                 }
                 int c = e.getKey();
                 Float w = width(s.declared().get("width"), s.look(), given == null ? room : given);
+                float across = s.across();
                 if (w != null && fixed[c] == 0) {
-                    fixed[c] = w + 2 * padding;
+                    fixed[c] = w + across;
                 }
                 String text = s.element().text();
-                float em = s.look().size * 0.5f;
-                natural[c] = Math.max(natural[c], Math.min(room, text.length() * em + 2 * padding + 2));
-                int longest = 0;
+                float size = s.look().size;
+                natural[c] = Math.max(natural[c], Math.min(room, Glyphs.estimate(text, size) + across + 2));
+                float longest = 0;
                 for (String word : text.split("\\s+")) {
-                    longest = Math.max(longest, word.length());
+                    longest = Math.max(longest, Glyphs.word(word, size, s.look().bold));
                 }
-                least[c] = Math.max(least[c], Math.min(room / 2, longest * em + 2 * padding));
+                least[c] = Math.max(least[c], Math.min(room / 2, longest + across));
+                least[c] = Math.max(least[c], Math.min(room, leastInside(s.element(), size * 0.5f, 1) + across));
                 boolean nowrap = s.look().whiteSpace.equals("nowrap") || s.look().whiteSpace.equals("pre");
-                unwrapped[c] = Math.max(unwrapped[c], (nowrap ? text.length() : longest) * em + 2 * padding);
+                unwrapped[c] = Math.max(unwrapped[c], (nowrap ? Glyphs.estimate(text, size) : longest) + across);
+                float[] pictures = pictures(s, room);
+                if (pictures[0] > 0) {
+                    natural[c] = Math.max(natural[c], Math.min(room, pictures[1] + across));
+                    least[c] = Math.max(least[c], Math.min(room, pictures[0] + across));
+                    unwrapped[c] = Math.max(unwrapped[c], pictures[0] + across);
+                }
             }
         }
-        spanned(grid, natural, padding, room);
+        spanned(grid, natural, room);
         float need = 0;
         for (int c = 0; c < columns; c++) {
             need += Math.max(Math.max(fixed[c], unwrapped[c]), MIN_COLUMN);
@@ -341,8 +386,69 @@ final class HtmlTables {
         return sum;
     }
 
+    private static float leastInside(Element cell, float em, int level) {
+        if (level >= Table.MAX_NESTING) {
+            return 0;
+        }
+        float most = 0;
+        ArrayDeque<Element> open = new ArrayDeque<>(cell.children());
+        while (!open.isEmpty()) {
+            Element e = open.pop();
+            if (e.normalName().equals("table")) {
+                most = Math.max(most, leastTable(e, em, level + 1));
+            } else {
+                e.children().reversed().forEach(open::push);
+            }
+        }
+        return most;
+    }
+
+    static float least(Element table, Look look) {
+        return leastTable(table, look.size * 0.5f, 1);
+    }
+
+    private static float leastTable(Element table, float em, int level) {
+        float[] columns = new float[MAX_COLUMNS];
+        int used = 0;
+        Elements rows = table.select(ROWS);
+        for (int r = 0; r < Math.min(rows.size(), MAX_ROWS); r++) {
+            int col = 0;
+            for (Element td : rows.get(r).select("> td, > th")) {
+                int span = Math.max(1, span(td.attr("colspan"), 1));
+                if (col + span > MAX_COLUMNS) {
+                    break;
+                }
+                if (span == 1) {
+                    int longest = 0;
+                    for (String word : td.text().split("\\s+")) {
+                        longest = Math.max(longest, word.length());
+                    }
+                    columns[col] = Math.max(columns[col], Math.max(longest * em, leastInside(td, em, level)));
+                }
+                col += span;
+                used = Math.max(used, col);
+            }
+        }
+        float pad = 2 * frameBorder(table) + 2 * cellPadding(table);
+        float sum = 0;
+        for (int c = 0; c < used; c++) {
+            sum += Math.max(MIN_COLUMN, columns[c] + pad);
+        }
+        return sum;
+    }
+
+    private static float cellPadding(Element table) {
+        String v = table.attr("cellpadding").strip();
+        try {
+            float px = v.isEmpty() ? -1 : Float.parseFloat(v);
+            return px >= 0 ? Math.min(36, px * 0.75f) : 1.5f;
+        } catch (NumberFormatException e) {
+            return 1.5f;
+        }
+    }
+
     // A cell across columns widens them evenly when its text needs more than they have
-    private static void spanned(List<TreeMap<Integer, Slot>> grid, float[] natural, float padding, float room) {
+    private static void spanned(List<TreeMap<Integer, Slot>> grid, float[] natural, float room) {
         for (TreeMap<Integer, Slot> row : grid) {
             for (Map.Entry<Integer, Slot> e : row.entrySet()) {
                 Slot s = e.getValue();
@@ -352,7 +458,7 @@ final class HtmlTables {
                 }
                 int from = e.getKey();
                 int to = Math.min(natural.length, from + span);
-                float need = Math.min(room, s.element().text().length() * s.look().size * 0.5f + 2 * padding + 2);
+                float need = Math.min(room, Glyphs.estimate(s.element().text(), s.look().size) + s.across() + 2);
                 float have = 0;
                 for (int c = from; c < to; c++) {
                     have += Math.max(natural[c], MIN_COLUMN);
@@ -387,24 +493,77 @@ final class HtmlTables {
         }
     }
 
-    private float padding(Element table, Map<String, String> d, Look look, List<TreeMap<Integer, Slot>> grid) {
+    private static Float cellpadding(Element table, Look look) {
         String cellpadding = table.attr("cellpadding").strip();
-        if (!cellpadding.isEmpty()) {
-            Float pt = Css.length(cellpadding.matches("[0-9.]+") ? cellpadding + "px" : cellpadding, look.size, 0);
-            if (pt != null) {
-                return Math.max(0, Math.min(36, pt));
-            }
+        if (cellpadding.isEmpty()) {
+            return null;
         }
+        Float pt = Css.length(cellpadding.matches("[0-9.]+") ? cellpadding + "px" : cellpadding, look.size, 0);
+        return pt == null ? null : Math.max(0, Math.min(36, pt));
+    }
+
+    private static float[] pads(Map<String, String> d, Look look, Float cellpadding) {
+        String[] sides = {"top", "right", "bottom", "left"};
+        float[] pad = new float[4];
+        for (int i = 0; i < 4; i++) {
+            String v = d.get("padding-" + sides[i]);
+            Float pt = v == null || v.contains("%") ? null : Css.length(v, look.size, 0);
+            if (pt == null) {
+                pt = cellpadding != null ? cellpadding : i % 2 == 1 ? 1.5f : 0f;
+            }
+            pad[i] = Math.max(0, Math.min(36, pt));
+        }
+        return pad;
+    }
+
+    private static float[] margins(List<TreeMap<Integer, Slot>> grid) {
+        float left = Float.MAX_VALUE;
+        float right = Float.MAX_VALUE;
         for (TreeMap<Integer, Slot> row : grid) {
             for (Slot s : row.values()) {
                 if (s.element() != null) {
-                    String p = s.declared().get("padding-left");
-                    Float pt = p == null ? null : Css.length(p, s.look().size, 0);
-                    return pt == null ? 1.5f : Math.max(0, Math.min(36, pt));
+                    left = Math.min(left, s.pad()[3]);
+                    right = Math.min(right, s.pad()[1]);
                 }
             }
         }
-        return 1.5f;
+        return left == Float.MAX_VALUE ? new float[] {1.5f, 1.5f} : new float[] {left, right};
+    }
+
+    private float[] pictures(Slot s, float room) {
+        float widest = 0;
+        float all = 0;
+        for (Element img : s.element().select("img, svg")) {
+            Float w = pictureWidth(img, s.look(), room);
+            if (w != null) {
+                widest = Math.max(widest, w);
+                all += w;
+            }
+        }
+        return new float[] {Math.min(room, widest), Math.min(room, all)};
+    }
+
+    private Float pictureWidth(Element img, Look look, float room) {
+        Map<String, String> d = ctx.declared(img, look);
+        String v = d.get("width");
+        if (v != null && !v.contains("%") && !v.equalsIgnoreCase("auto")) {
+            Float pt = Css.length(v, look.size, room);
+            return pt == null || pt <= 0 ? null : pt;
+        }
+        if (v != null || !img.normalName().equals("img")) {
+            return null;
+        }
+        String src = img.attr("src").strip();
+        if (!src.regionMatches(true, 0, "data:image/", 0, 11) || src.regionMatches(true, 0, "data:image/svg", 0, 14)
+                || src.length() >= 1 << 20) {
+            return null;
+        }
+        try {
+            Picture pic = ctx.images().picture(img, d, look, room, ctx.pageRoom());
+            return pic == null ? null : pic.width;
+        } catch (IOException e) {
+            return null;
+        }
     }
 
     private static Float width(String v, Look look, float room) {
@@ -424,6 +583,12 @@ final class HtmlTables {
             left = Math.max(0, (frame.width() - width) / 2);
         }
         t.indent = frame.left() + left;
+        if (look.rightToLeft) {
+            t.rightToLeft = true;
+            float right = centred || inCentre || "center".equalsIgnoreCase(table.attr("align")) ? left
+                    : Flow.length(d.get("margin-right"), look.size, frame.width());
+            t.indent = frame.right() + right;
+        }
     }
 
     /** True for a table that only stacks things: one cell a row and no borders drawn. */

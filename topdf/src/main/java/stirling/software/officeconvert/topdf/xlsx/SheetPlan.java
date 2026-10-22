@@ -35,6 +35,7 @@ final class SheetPlan {
         CTWorksheet ws = reader.skeleton();
         this.setup = PageSetup.safe(ws);
         if (!setup.fitToPage()) {
+            grid.includeFormattedBlanks();
             double head = setup.headings() ? new Headings(grid, grid.lastRow()).width(1) : 0;
             grid.capColumns(setup.printableWidth() * 100.0 / setup.scale() - head);
         }

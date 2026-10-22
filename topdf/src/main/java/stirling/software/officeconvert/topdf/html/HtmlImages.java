@@ -3,6 +3,7 @@ package stirling.software.officeconvert.topdf.html;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.Base64;
 import java.util.HashMap;
 import java.util.List;
@@ -33,11 +34,14 @@ final class HtmlImages {
     private static final long MAX_SVG_PIXELS = 300_000_000L;
     private static final int MAX_SVG_CHARS = 2 << 20;
     private static final long SVG_WORK = 600_000_000L;
+    private static final long MAX_GRADIENT_PIXELS = 300_000_000L;
 
     private final DocSink sink;
     private final List<String> warnings;
     private final Map<String, Picture.MediaRef> seen = new HashMap<>();
     private final Map<String, Svg.Painted> painted = new HashMap<>();
+    private final Map<String, Picture.MediaRef> gradients = new HashMap<>();
+    private long gradientPixels;
     private long dataChars;
     private int added;
     private int svgs;
@@ -85,6 +89,43 @@ final class HtmlImages {
 
     /** An inline svg element painted at the size its CSS or attributes give it. */
     Picture inlineSvg(Element svg, Map<String, String> d, Look look, float maxWidth, float maxHeight) throws IOException {
+        return painted(svg, ids(svg.ownerDocument()), svgBox(svg, d, look, maxWidth, maxHeight), look, null);
+    }
+
+    record Labelled(Picture picture, List<Svg.Label> labels) {}
+
+    Labelled labelledSvg(Element svg, Map<String, String> d, Look look, float maxWidth, float maxHeight)
+            throws IOException {
+        List<Svg.Label> labels = new ArrayList<>();
+        Picture p = painted(svg, ids(svg.ownerDocument()), svgBox(svg, d, look, maxWidth, maxHeight), look, null, labels);
+        return p == null ? null : new Labelled(p, labels);
+    }
+
+    Picture gradient(Gradient g, float width, float height) throws IOException {
+        if (!(width >= 1) || !(height >= 1)) {
+            return null;
+        }
+        String key = g.key(width, height);
+        Picture.MediaRef ref = gradients.get(key);
+        if (ref == null) {
+            long pixels = Gradient.pixelCount(width, height);
+            if (gradientPixels + pixels > MAX_GRADIENT_PIXELS) {
+                warn("Only the first gradient backgrounds of a very large page were painted; the rest show their first"
+                        + " colour");
+                return null;
+            }
+            Gradient.Painted p = g.paint(width, height);
+            if (p == null) {
+                return null;
+            }
+            gradientPixels += pixels;
+            ref = sink.media(p.jpeg(), "jpeg", p.pixelWidth(), p.pixelHeight(), "gradient:" + (++added));
+            gradients.put(key, ref);
+        }
+        return new Picture(ref, width, height);
+    }
+
+    private static float[] svgBox(Element svg, Map<String, String> d, Look look, float maxWidth, float maxHeight) {
         float[] natural = Svg.size(svg);
         if (percent(d.get("width")) || percent(d.get("height"))) {
             // a percentage is of a box this flow does not have; the drawing's own size is the better guess
@@ -92,8 +133,7 @@ final class HtmlImages {
             d.remove("width");
             d.remove("height");
         }
-        float[] box = box(d, look, natural[0] * 0.75f, natural[1] * 0.75f, maxWidth, maxHeight);
-        return painted(svg, ids(svg.ownerDocument()), box, look, null);
+        return box(d, look, natural[0] * 0.75f, natural[1] * 0.75f, maxWidth, maxHeight);
     }
 
     private Picture svgImage(String src, Element img, Map<String, String> d, Look look, float maxWidth, float maxHeight)
@@ -363,6 +403,11 @@ final class HtmlImages {
     }
 
     private Picture painted(Element svg, Map<String, Element> ids, float[] box, Look look, String key) throws IOException {
+        return painted(svg, ids, box, look, key, null);
+    }
+
+    private Picture painted(Element svg, Map<String, Element> ids, float[] box, Look look, String key,
+            List<Svg.Label> labels) throws IOException {
         if (svgs >= MAX_SVGS || svgPixels > MAX_SVG_PIXELS) {
             warn("Only the first SVG pictures of a very large page were drawn");
             return null;
@@ -371,11 +416,14 @@ final class HtmlImages {
         Svg.Painted p = cacheKey == null ? null : painted.get(cacheKey);
         if (p == null) {
             svgs++;
-            p = Svg.paint(svg, ids, box[0], box[1], look.color, svgWork);
+            p = Svg.paint(svg, ids, box[0], box[1], look.color, svgWork, labels != null);
             if (p == null) {
                 return null;
             }
             svgPixels += (long) p.pixelWidth() * p.pixelHeight();
+            if (labels != null) {
+                labels.addAll(p.labels());
+            }
             if (cacheKey != null) {
                 painted.put(cacheKey, p);
             }

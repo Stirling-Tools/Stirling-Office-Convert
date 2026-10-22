@@ -4,6 +4,8 @@ import java.awt.Color;
 import java.util.ArrayList;
 import java.util.List;
 
+import stirling.software.officeconvert.model.FormField;
+
 import stirling.software.officeconvert.topdf.io.ActiveContent;
 import stirling.software.officeconvert.topdf.io.Relationship;
 import stirling.software.officeconvert.topdf.pdf.Crop;
@@ -661,7 +663,30 @@ final class DrawingReader {
             noWrap = "none".equals(body.attr("wrap"));
             vert = body.attr("vert");
         }
-        return new Drawing.TextBox(blocks, l, t, r, b, anchor, grow, noWrap, vert, !grow);
+        return new Drawing.TextBox(blocks, l, t, r, b, anchor, grow, noWrap, vert, !grow,
+                form(wsp.path("wps:txbx", "w:txbxContent")));
+    }
+
+    private static Drawing.Form form(XEl content) {
+        if (content == null || content.kids.size() != 1 || !content.kids.get(0).is("w:p")) {
+            return null;
+        }
+        List<XEl> controls = content.kids.get(0).children("w:sdt");
+        if (controls == null || controls.size() != 1) {
+            return null;
+        }
+        XEl props = controls.get(0).child("w:sdtPr");
+        XEl tag = props == null ? null : props.child("w:tag");
+        FormField field = tag == null ? null : FormField.fromTag(tag.val());
+        if (field == null) {
+            return null;
+        }
+        XEl rPr = props.child("w:rPr");
+        XEl sz = rPr == null ? null : rPr.child("w:sz");
+        XEl color = rPr == null ? null : rPr.child("w:color");
+        Float size = sz == null ? null : Ooxml.halfPoints(sz.val());
+        Color c = color == null ? null : Colors.hex(color.val());
+        return new Drawing.Form(field, size == null ? 0 : size, c == null ? Color.BLACK : c);
     }
 
     private Drawing.Graphic group(XEl g, float w, float h) {

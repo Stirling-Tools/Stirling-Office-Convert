@@ -65,6 +65,11 @@ public sealed interface Inline {
         }
     }
 
+    record FormControl(FormField field, Paragraph shown, float width, float height, float insetLeft, float insetTop,
+            float insetRight, float insetBottom, int fillRgb, int lineRgb, float lineWidth, float radius,
+            boolean ellipse, float lower)
+            implements Inline {}
+
     record Shape(float x, float y, float width, float height, int rgb, int lineRgb, float lineWidth, boolean rounded,
             boolean ellipse, boolean fromParagraph, int z)
             implements Inline {

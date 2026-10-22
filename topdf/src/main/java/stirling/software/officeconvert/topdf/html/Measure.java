@@ -2,10 +2,12 @@ package stirling.software.officeconvert.topdf.html;
 
 import java.util.List;
 
+import stirling.software.officeconvert.model.Block;
 import stirling.software.officeconvert.model.Inline;
 import stirling.software.officeconvert.model.Paragraph;
 import stirling.software.officeconvert.model.Picture;
 import stirling.software.officeconvert.model.RunStyle;
+import stirling.software.officeconvert.model.Table;
 
 final class Measure {
 
@@ -75,10 +77,26 @@ final class Measure {
         return widest;
     }
 
-    static float height(List<Paragraph> paragraphs, float width) {
+    static float height(List<? extends Block> blocks, float width) {
         float total = 0;
-        for (Paragraph p : paragraphs) {
-            total += p.spaceBefore + height(p, Math.max(12, width - p.indentLeft - p.indentRight));
+        for (Block b : blocks) {
+            total += switch (b) {
+                case Paragraph p -> p.spaceBefore + height(p, Math.max(12, width - p.indentLeft - p.indentRight));
+                case Table t -> height(t, width);
+            };
+        }
+        return total;
+    }
+
+    private static float height(Table t, float width) {
+        float total = 0;
+        for (Table.Row row : t.rows) {
+            float tallest = row.height;
+            for (int c = 0; c < row.cells.size(); c++) {
+                float w = c < t.columnWidths.size() ? t.columnWidths.get(c) : width;
+                tallest = Math.max(tallest, height(row.cells.get(c).blocks(), w));
+            }
+            total += tallest;
         }
         return total;
     }

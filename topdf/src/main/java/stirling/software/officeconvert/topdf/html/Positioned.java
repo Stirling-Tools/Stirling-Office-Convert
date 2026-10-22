@@ -176,7 +176,7 @@ final class Positioned {
             ctx.place(n.element());
         }
         List<Paragraph> paragraphs = new ArrayList<>();
-        Flow inner = new Flow(ctx, b -> paragraphs.add((Paragraph) b), true);
+        Flow inner = new Flow(ctx, b -> paragraphs.add((Paragraph) b), true, true);
         inner.children(e, look, new Flow.Frame(0, 0, room, -1), depth);
         float contentW = cssW != null || inFlow || left != null && right != null ? room
                 : Math.max(Math.min(room, Measure.unwrapped(paragraphs) * 1.05f + 2),
@@ -309,6 +309,17 @@ final class Positioned {
             }
         }
         return new Hung(top, bottom);
+    }
+
+    static List<Inline> boxesShifted(List<Inline> drawings, float dx) {
+        List<Inline> out = new ArrayList<>(drawings.size());
+        for (Inline in : drawings) {
+            out.add(in instanceof Inline.TextBox b && b.fromParagraph() ? new Inline.TextBox(b.x() + dx, b.y(),
+                    b.width(), b.height(), b.fillRgb(), b.insetLeft(), b.insetRight(), b.wrapGap(), b.paragraphs(),
+                    b.lineRgb(), b.lineWidth(), b.rounded(), b.overlay(), b.direction(), b.groundRgb(), b.upright(),
+                    b.rotation(), true, b.grow()) : in);
+        }
+        return out;
     }
 
     static List<Inline> moved(List<Inline> drawings, float dx, float dy, boolean fromParagraph) {

@@ -40,7 +40,7 @@ final class RtfTableWriter {
                     break;
                 }
                 col += Math.max(1, Math.min(cell.gridSpan, columns - col));
-                List<Paragraph> paras = cell.paragraphs;
+                List<Paragraph> paras = cell.flatParagraphs();
                 if (paras.isEmpty() || cell.vMerge == 2) {
                     sb.append("\\pard\\plain \\intbl\\ltrpar\\ql\\sl-20\\slmult0{\\fs2 }\\fs2\\cell\n");
                     continue;

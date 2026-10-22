@@ -54,6 +54,7 @@ import org.apache.pdfbox.pdmodel.interactive.annotation.PDAnnotationLink;
 import org.apache.pdfbox.pdmodel.interactive.annotation.PDAppearanceStream;
 import org.apache.pdfbox.util.Matrix;
 
+import stirling.software.officeconvert.model.FormField;
 import stirling.software.officeconvert.topdf.font.FontFace;
 import stirling.software.officeconvert.topdf.font.FontRun;
 import stirling.software.officeconvert.topdf.font.GlyphRun;
@@ -106,8 +107,11 @@ public final class PdfCanvas implements Closeable {
 
     private boolean hiddenText;
 
+    private final String marked;
+
     PdfCanvas(PdfOutput output, PDPage page, int index) throws IOException {
         this.output = output;
+        this.marked = null;
         this.page = page;
         this.form = null;
         this.index = index;
@@ -120,7 +124,12 @@ public final class PdfCanvas implements Closeable {
 
     // A canvas whose drawing becomes a form XObject: the same coordinates as a page, links and destinations left out
     PdfCanvas(PdfOutput output, float width, float height, float margin) throws IOException {
+        this(output, width, height, margin, null);
+    }
+
+    PdfCanvas(PdfOutput output, float width, float height, float margin, String marked) throws IOException {
         this.output = output;
+        this.marked = marked;
         this.page = null;
         this.form = new PDAppearanceStream(output.document());
         this.index = -1;
@@ -130,6 +139,9 @@ public final class PdfCanvas implements Closeable {
         form.setResources(new PDResources());
         this.cs = new PDPageContentStream(output.document(), form,
                 form.getContentStream().createOutputStream(COSName.FLATE_DECODE));
+        if (marked != null) {
+            cs.beginMarkedContent(COSName.getPDFName(marked));
+        }
         cs.saveGraphicsState();
         cs.transform(new Matrix(1, 0, 0, -1, 0, height));
     }
@@ -878,6 +890,16 @@ public final class PdfCanvas implements Closeable {
         return true;
     }
 
+    public void field(float x, float y, float w, float h, FormField field, float size, Color color,
+            PDFormXObject look) {
+        Objects.requireNonNull(field, "field");
+        open();
+        if (w > 0 && h > 0 && page != null) {
+            output.field(new AcroForms.Widget(page, pdfRect(x, y, w, h), field, Math.max(0, size),
+                    color == null ? Color.BLACK : color, look));
+        }
+    }
+
     public void linkTo(float x, float y, float w, float h, String destination) {
         Objects.requireNonNull(destination, "destination");
         open();
@@ -930,6 +952,9 @@ public final class PdfCanvas implements Closeable {
                 cs.restoreGraphicsState();
             }
             cs.restoreGraphicsState();
+            if (marked != null) {
+                cs.endMarkedContent();
+            }
         } finally {
             cs.close();
             output.closed(this);

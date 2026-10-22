@@ -3,6 +3,8 @@ package stirling.software.officeconvert.topdf.docx;
 import java.awt.Color;
 import java.util.List;
 
+import stirling.software.officeconvert.model.FormField;
+
 import stirling.software.officeconvert.topdf.pdf.Crop;
 import stirling.software.officeconvert.topdf.pdf.Gradient;
 import stirling.software.officeconvert.topdf.pdf.Stroke;
@@ -37,11 +39,16 @@ final class Drawing {
 
     // clip: Word shows only the lines that fit in a box that neither grows nor shrinks its text
     record TextBox(List<Block> blocks, float left, float top, float right, float bottom, String anchor, boolean grow,
-            boolean noWrap, String vert, boolean clip) {
+            boolean noWrap, String vert, boolean clip, Form form) {
 
         TextBox(List<Block> blocks, float left, float top, float right, float bottom, String anchor, boolean grow,
                 boolean noWrap, String vert) {
-            this(blocks, left, top, right, bottom, anchor, grow, noWrap, vert, false);
+            this(blocks, left, top, right, bottom, anchor, grow, noWrap, vert, false, null);
+        }
+
+        TextBox(List<Block> blocks, float left, float top, float right, float bottom, String anchor, boolean grow,
+                boolean noWrap, String vert, boolean clip) {
+            this(blocks, left, top, right, bottom, anchor, grow, noWrap, vert, clip, null);
         }
 
         boolean vertical() {
@@ -52,6 +59,8 @@ final class Drawing {
             return vertical() && !vert.equals("vert270") && !vert.equals("wordArtVertRtl");
         }
     }
+
+    record Form(FormField field, float size, Color color) {}
 
     record Child(Graphic graphic, float x, float y, float w, float h) {}
 

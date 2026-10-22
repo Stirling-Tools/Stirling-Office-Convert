@@ -247,6 +247,7 @@ final class Css {
                 }
             }
             case "background", "background-image" -> {
+                out.put("background-gradient", "none");
                 for (String token : tokens(value)) {
                     String t = token.toLowerCase(Locale.ROOT);
                     if (t.contains("gradient(")) {
@@ -255,6 +256,7 @@ final class Css {
                         if (first != null && !out.containsKey("background-color")) {
                             out.put("background-color", first);
                         }
+                        out.put("background-gradient", token);
                     } else if (name.equals("background") && (color(token) != null || t.equals("transparent")
                             || t.equals("none"))) {
                         out.put("background-color", token);
@@ -513,6 +515,45 @@ final class Css {
             return hsl(s);
         }
         return NamedColors.get(s);
+    }
+
+    static float opacity(String v) {
+        if (v == null) {
+            return 1;
+        }
+        String s = v.strip();
+        try {
+            float f = s.endsWith("%") ? Float.parseFloat(s.substring(0, s.length() - 1)) / 100 : Float.parseFloat(s);
+            return Float.isFinite(f) ? Math.max(0, Math.min(1, f)) : 1;
+        } catch (NumberFormatException e) {
+            return 1;
+        }
+    }
+
+    static String hex(int rgb) {
+        return String.format(Locale.ROOT, "#%06x", rgb & 0xFFFFFF);
+    }
+
+    static void fade(Map<String, String> d, float alpha) {
+        if (alpha >= 0.99f) {
+            return;
+        }
+        for (Map.Entry<String, String> e : d.entrySet()) {
+            String key = e.getKey();
+            if (key.equals("color") || key.endsWith("-color") || key.startsWith("border-") && !key.endsWith("-width")
+                    && !key.endsWith("-style") && !key.endsWith("-radius") || key.equals("column-rule")) {
+                e.setValue(faded(e.getValue(), alpha));
+            }
+        }
+    }
+
+    static String faded(String value, float alpha) {
+        List<String> out = new ArrayList<>();
+        for (String token : tokens(value)) {
+            Integer c = color(token);
+            out.add(c == null || c < 0 ? token : hex(withAlpha(c, alpha)));
+        }
+        return String.join(" ", out);
     }
 
     private static Integer hex(String h) {

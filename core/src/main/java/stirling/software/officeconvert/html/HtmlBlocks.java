@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
+import stirling.software.officeconvert.model.Block;
 import stirling.software.officeconvert.model.Inline;
 import stirling.software.officeconvert.model.Paragraph;
 import stirling.software.officeconvert.model.Picture;
@@ -30,6 +31,7 @@ final class HtmlBlocks {
     private final MediaStore media;
     private final Map<String, String> dataUris = new HashMap<>();
     private StyleSheet styles;
+    private int section = -1;
 
     HtmlBlocks(MediaStore media) {
         this.media = media;
@@ -43,6 +45,16 @@ final class HtmlBlocks {
         return "s-" + id.replaceAll("[^A-Za-z0-9_-]", "");
     }
 
+    void paragraph(StringBuilder sb, Paragraph p, int section) throws IOException {
+        int was = this.section;
+        this.section = section;
+        try {
+            paragraph(sb, p);
+        } finally {
+            this.section = was;
+        }
+    }
+
     void paragraph(StringBuilder sb, Paragraph p) throws IOException {
         List<Inline> before = new ArrayList<>();
         List<Inline> after = new ArrayList<>();
@@ -51,6 +63,11 @@ final class HtmlBlocks {
                 (below(in, p) ? after : before).add(in);
             }
         }
+        boolean atPageTop = before.stream().noneMatch(HtmlBlocks::takesRoom);
+        List<Inline.Shape> shapes = section < 0 ? List.of()
+                : shapes(p).stream().filter(sh -> atPageTop || !fromPageTop(p, sh)).toList();
+        int drawingSection = section;
+        section = -1;
         floats(sb, before);
         String tag = tag(p.style);
         sb.append('<').append(tag);
@@ -65,22 +82,69 @@ final class HtmlBlocks {
         if (p.bidi) {
             sb.append(" dir=\"rtl\"");
         }
-        String css = paragraphCss(p);
+        boolean gaps = justified(p);
+        Paragraph.TabStop rightTab = rightTab(p);
+        String css = paragraphCss(p) + (columnBreak(p) ? "break-after:column;" : "")
+                + (shapes.isEmpty() ? "" : "position:relative;")
+                + (rightTab != null ? "display:flex;align-items:baseline;" : "");
         if (!css.isEmpty()) {
             sb.append(" style=\"").append(css).append('"');
         }
         sb.append('>');
+        if (!shapes.isEmpty()) {
+            List<Inline.Shape> placed = shapes.stream().filter(sh -> !fromPageTop(p, sh)).toList();
+            List<Inline.Shape> paged = shapes.stream().filter(sh -> fromPageTop(p, sh)).toList();
+            if (!placed.isEmpty()) {
+                drawing(sb, p, placed, drawingSection, false);
+            }
+            if (!paged.isEmpty()) {
+                drawing(sb, p, paged, drawingSection, true);
+            }
+        }
         if (p.list != null) {
             sb.append("<span class=\"marker\">").append(MARK).append('L').append(p.list.numId()).append(':')
                     .append(p.list.level()).append(MARK).append("</span>");
         }
         int start = sb.length();
-        runs(sb, p, base(p));
+        int tab = runs(sb, p, base(p), gaps);
+        if (rightTab != null) {
+            leader(sb, start, tab, rightTab.leader());
+        }
         if (sb.length() == start && p.list == null) {
             sb.append("<br>");
         }
         sb.append("</").append(tag).append(">\n");
         floats(sb, after);
+    }
+
+    private static Paragraph.TabStop rightTab(Paragraph p) {
+        if (p.tabs.isEmpty() || p.bidi || p.inlines.stream().noneMatch(in -> in instanceof Inline.Tab)) {
+            return null;
+        }
+        Paragraph.TabStop last = null;
+        for (Paragraph.TabStop t : p.tabs) {
+            if (last == null || t.pos() > last.pos()) {
+                last = t;
+            }
+        }
+        return last.kind() == Paragraph.TabStop.Kind.RIGHT ? last : null;
+    }
+
+    private static void leader(StringBuilder sb, int start, int tab, char leader) {
+        if (tab < start) {
+            return;
+        }
+        String head = sb.substring(start, tab);
+        String tail = sb.substring(tab + 1);
+        String line = switch (leader) {
+            case '.' -> "border-bottom:1pt dotted;";
+            case '-' -> "border-bottom:1pt dashed;";
+            case '_' -> "border-bottom:0.75pt solid;";
+            default -> "";
+        };
+        sb.setLength(start);
+        sb.append("<span>").append(head).append("</span><span style=\"flex:1;min-width:6pt;margin:0 2pt;")
+                .append(line).append("\"></span><span>").append(tail).append("</span>");
     }
 
     private RunStyle base(Paragraph p) {
@@ -127,7 +191,8 @@ final class HtmlBlocks {
         }
     }
 
-    private void runs(StringBuilder sb, Paragraph p, RunStyle base) throws IOException {
+    private int runs(StringBuilder sb, Paragraph p, RunStyle base, boolean gaps) throws IOException {
+        int lastTab = -1;
         List<Inline> list = p.inlines;
         for (int i = 0; i < list.size(); i++) {
             Inline in = list.get(i);
@@ -142,7 +207,10 @@ final class HtmlBlocks {
                     }
                     run(sb, text.toString(), t.style(), base, Links.target(t));
                 }
-                case Inline.Tab tab -> sb.append('\t');
+                case Inline.Tab tab -> {
+                    lastTab = gaps ? -1 : sb.length();
+                    sb.append(gaps ? ' ' : '\t');
+                }
                 case Inline.Break br -> sb.append("<br>");
                 case Inline.PageBreak br -> sb.append("<br class=\"page-break\">");
                 case Inline.Image im -> {
@@ -157,6 +225,114 @@ final class HtmlBlocks {
                 default -> { }
             }
         }
+        return lastTab;
+    }
+
+    private static List<Inline.Shape> shapes(Paragraph p) {
+        List<Inline.Shape> out = new ArrayList<>();
+        boolean pageTop = p.bookmark != null && p.bookmark.startsWith(Links.PAGE_PREFIX);
+        for (Inline in : p.inlines) {
+            if (in instanceof Inline.Shape s && s.width() > 0 && s.height() > 0
+                    && (s.rgb() >= 0 || s.lineRgb() >= 0 && s.lineWidth() > 0)
+                    && (s.fromParagraph() || !Float.isNaN(p.sourceTop) || pageTop)) {
+                out.add(s);
+            }
+        }
+        return out;
+    }
+
+    private static boolean takesRoom(Inline in) {
+        if (in instanceof Inline.Image im) {
+            return im.picture().wrap != Picture.Wrap.SQUARE && !im.picture().backdrop;
+        }
+        return in instanceof Inline.TextBox box && hasText(box.paragraphs());
+    }
+
+    private static boolean fromPageTop(Paragraph p, Inline.Shape s) {
+        return !s.fromParagraph() && Float.isNaN(p.sourceTop);
+    }
+
+    static boolean columnBreak(Paragraph p) {
+        for (Inline in : p.inlines) {
+            if (in instanceof Inline.ColumnBreak) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    static boolean justified(Paragraph p) {
+        if (p.align != Paragraph.Align.JUSTIFY) {
+            return false;
+        }
+        for (Paragraph.TabStop t : p.tabs) {
+            if (t.leader() != 0 && t.leader() != ' ') {
+                return false;
+            }
+        }
+        for (Inline in : p.inlines) {
+            if (in instanceof Inline.Tab) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static void drawing(StringBuilder sb, Paragraph p, List<Inline.Shape> shapes, int section, boolean paged) {
+        float left = Float.MAX_VALUE;
+        float top = Float.MAX_VALUE;
+        float right = -Float.MAX_VALUE;
+        float bottom = -Float.MAX_VALUE;
+        for (Inline.Shape s : shapes) {
+            float pad = s.lineRgb() >= 0 ? s.lineWidth() / 2 : 0;
+            float y = paged ? s.y() : top(p, s);
+            left = Math.min(left, s.x() - pad);
+            top = Math.min(top, y - pad);
+            right = Math.max(right, s.x() + s.width() + pad);
+            bottom = Math.max(bottom, y + s.height() + pad);
+        }
+        float w = right - left;
+        float h = bottom - top;
+        sb.append("<svg class=\"drawing\" aria-hidden=\"true\" viewBox=\"0 0 ").append(num(w)).append(' ').append(num(h))
+                .append("\" style=\"left:").append(MARK).append('X').append(section).append(':').append(left).append(':')
+                .append(p.indentLeft).append(MARK).append(";top:");
+        if (paged) {
+            sb.append(MARK).append('Y').append(section).append(':').append(top - Math.max(0, p.spaceBefore)).append(MARK);
+        } else {
+            sb.append(HtmlText.pt(top));
+        }
+        sb.append(";width:")
+                .append(HtmlText.pt(w)).append(";height:").append(HtmlText.pt(h)).append("\">");
+        for (Inline.Shape s : shapes) {
+            float x = s.x() - left;
+            float y = (paged ? s.y() : top(p, s)) - top;
+            if (s.ellipse()) {
+                sb.append("<ellipse cx=\"").append(num(x + s.width() / 2)).append("\" cy=\"").append(num(y + s.height() / 2))
+                        .append("\" rx=\"").append(num(s.width() / 2)).append("\" ry=\"").append(num(s.height() / 2)).append('"');
+            } else {
+                sb.append("<rect x=\"").append(num(x)).append("\" y=\"").append(num(y)).append("\" width=\"")
+                        .append(num(s.width())).append("\" height=\"").append(num(s.height())).append('"');
+                if (s.rounded()) {
+                    sb.append(" rx=\"").append(num(Math.min(6, Math.min(s.width(), s.height()) / 2))).append('"');
+                }
+            }
+            sb.append(" fill=\"").append(s.rgb() >= 0 ? HtmlText.hex(s.rgb()) : "none").append('"');
+            if (s.lineRgb() >= 0 && s.lineWidth() > 0) {
+                sb.append(" stroke=\"").append(HtmlText.hex(s.lineRgb())).append("\" stroke-width=\"").append(num(s.lineWidth()))
+                        .append('"');
+            }
+            sb.append("/>");
+        }
+        sb.append("</svg>");
+    }
+
+    private static float top(Paragraph p, Inline.Shape s) {
+        return s.fromParagraph() ? s.y() - Math.max(0, p.spaceBefore) : s.y() - p.sourceTop;
+    }
+
+    private static String num(float v) {
+        String pt = HtmlText.pt(v);
+        return pt.substring(0, pt.length() - 2);
     }
 
     private static String escaped(String s) {
@@ -226,10 +402,12 @@ final class HtmlBlocks {
                 boolean right = im.picture().x + im.picture().width / 2 > HALF_PAGE;
                 sb.append(right ? "<div class=\"float-right\">" : "<div class=\"float-left\">");
                 image(sb, im.picture(), false);
+                words(sb, im.picture());
                 sb.append("</div>\n");
             } else if (in instanceof Inline.Image im && !im.picture().backdrop) {
                 sb.append("<p class=\"figure\">");
                 image(sb, im.picture(), false);
+                words(sb, im.picture());
                 sb.append("</p>\n");
             } else if (in instanceof Inline.TextBox box && hasText(box.paragraphs())) {
                 sb.append("<div class=\"box\"");
@@ -254,6 +432,19 @@ final class HtmlBlocks {
                 sb.append("</div>\n");
             }
         }
+    }
+
+    private static void words(StringBuilder sb, Picture pic) {
+        String text = pic.description == null ? "" : pic.description.strip();
+        if (text.isEmpty()) {
+            return;
+        }
+        int lines = (int) text.lines().count();
+        float size = Math.max(4, Math.min(14, pic.height / Math.max(1, lines) / 1.15f));
+        sb.append("<span class=\"picture-text\" aria-hidden=\"true\" style=\"width:").append(HtmlText.pt(pic.width))
+                .append(";height:").append(HtmlText.pt(pic.height)).append(";font-size:").append(HtmlText.pt(size)).append("\">");
+        HtmlText.escape(sb, text);
+        sb.append("</span>");
     }
 
     private static boolean hasText(List<Paragraph> paragraphs) {
@@ -346,8 +537,11 @@ final class HtmlBlocks {
         }
         sb.append("padding:0 ").append(HtmlText.pt(t.cellMarginRight)).append(" 0 ").append(HtmlText.pt(t.cellMarginLeft))
                 .append("\">");
-        for (Paragraph p : cell.paragraphs) {
-            paragraph(sb, p);
+        for (Block b : cell.blocks()) {
+            switch (b) {
+                case Paragraph p -> paragraph(sb, p);
+                case Table nested -> table(sb, nested);
+            }
         }
         sb.append("</").append(tag).append('>');
     }

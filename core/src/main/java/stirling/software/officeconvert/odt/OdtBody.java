@@ -260,6 +260,7 @@ final class OdtBody {
                 case Inline.Image img -> frames.picture(sb, img.picture());
                 case Inline.Shape shape -> frames.shape(sb, shape);
                 case Inline.TextBox box -> frames.textBox(sb, box);
+                case Inline.FormControl f -> inlines(sb, f.shown().inlines, base);
                 case Inline.FootnoteRef ref -> {
                     note(sb, ref);
                     text.content();

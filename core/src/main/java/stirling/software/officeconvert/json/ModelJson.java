@@ -44,7 +44,7 @@ final class ModelJson {
             JsonOut l = new JsonOut(o.key("list"));
             l.always("id", p.list.numId()).always("level", p.list.level()).end();
         }
-        o.flag("pageBreakBefore", p.pageBreakBefore).flag("keepNext", p.keepNext).flag("rightToLeft", p.bidi)
+        o.flag("pageBreakBefore", p.pageBreakBefore).flag("keepNext", p.keepNext).flag("keepLines", p.keepLines).flag("rightToLeft", p.bidi)
                 .flag("noHangingPunctuation", p.noHangingPunctuation)
                 .color("shading", p.shading).num("borderBottom", p.borderBottom);
         if (p.borderBottom > 0) {
@@ -127,6 +127,19 @@ final class ModelJson {
                         .flag("upright", b.upright());
                 paragraphs(o.key("paragraphs"), b.paragraphs());
                 o.end();
+            }
+            case Inline.FormControl f -> {
+                StringBuilder text = new StringBuilder();
+                RunStyle style = null;
+                for (Inline k : f.shown().inlines) {
+                    if (k instanceof Inline.Text t) {
+                        text.append(t.text());
+                        style = style == null ? t.style() : style;
+                    } else if (k instanceof Inline.Break) {
+                        text.append('\n');
+                    }
+                }
+                inline(sb, new Inline.Text(text.toString(), style, null, -1));
             }
             case Inline.Shape s -> new JsonOut(sb).str("type", "shape").always("x", s.x()).always("y", s.y())
                     .always("width", s.width()).always("height", s.height()).color("fill", s.rgb())
@@ -219,7 +232,16 @@ final class ModelJson {
         if (c.vAlign != Table.VAlign.TOP) {
             o.str("verticalAlign", lower(c.vAlign));
         }
-        paragraphs(o.key("paragraphs"), c.paragraphs);
+        if (c.tables.isEmpty()) {
+            paragraphs(o.key("paragraphs"), c.paragraphs);
+        } else {
+            StringBuilder blocks = o.key("blocks").append('[');
+            List<Block> all = c.blocks();
+            for (int i = 0; i < all.size(); i++) {
+                block(i > 0 ? blocks.append(',') : blocks, all.get(i));
+            }
+            blocks.append(']');
+        }
         o.end();
     }
 
