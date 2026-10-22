@@ -45,6 +45,8 @@ final class Flow {
 
     static final int MAX_DEPTH = 200;
 
+    private static final int MOST_KEPT = 24;
+
     // Tabs past this many in a row are past the edge of any page, and each costs the layout memory
     private static final int MAX_TABS_IN_A_ROW = 32;
 
@@ -78,7 +80,8 @@ final class Flow {
     private int rowItemStart = -1;
     private int rowNested;
     private int avoiding;
-    private Block held;
+    private final List<Block> held = new ArrayList<>();
+    private boolean outrun;
     private Element sized;
     private float besideLeft;
     private float besideRight;
@@ -402,9 +405,8 @@ final class Flow {
             pendingBreak = true;
         }
         avoiding -= avoid ? 1 : 0;
-        if (avoiding == 0 && held != null) {
-            out.add(held);
-            held = null;
+        if (avoiding == 0) {
+            keepTogether();
         }
     }
 
@@ -414,20 +416,30 @@ final class Flow {
     }
 
     private void emit(Block b) throws IOException {
-        if (avoiding == 0 && held == null) {
+        if (avoiding == 0 || outrun) {
             out.add(b);
             return;
         }
-        if (held instanceof Paragraph p) {
-            p.keepNext = true;
+        held.add(b);
+        if (held.size() > MOST_KEPT) {
+            for (Block h : held) {
+                out.add(h);
+            }
+            held.clear();
+            outrun = true;
         }
-        if (held != null) {
-            out.add(held);
+    }
+
+    private void keepTogether() throws IOException {
+        for (int i = 0; i < held.size(); i++) {
+            if (held.get(i) instanceof Paragraph p) {
+                p.keepLines = true;
+                p.keepNext |= i < held.size() - 1;
+            }
+            out.add(held.get(i));
         }
-        if (b instanceof Paragraph p) {
-            p.keepLines = true;
-        }
-        held = b;
+        held.clear();
+        outrun = false;
     }
 
     // These shade their own lines, or carry list and heading structure a box would lose

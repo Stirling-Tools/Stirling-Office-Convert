@@ -156,6 +156,17 @@ class HtmlLayoutTest {
     }
 
     @Test
+    void aBlockThatAvoidsBreaksButOutrunsAPageTakesNoMorePagesThanWithout() throws IOException {
+        StringBuilder paras = new StringBuilder();
+        for (int i = 0; i < 300; i++) {
+            paras.append("<p>Paragraph ").append(i).append("</p>");
+        }
+        int plain = lay("<html><body><div>" + paras + "</div></body></html>").pages();
+        int avoiding = lay("<html><body><div style='break-inside:avoid'>" + paras + "</div></body></html>").pages();
+        assertEquals(plain, avoiding);
+    }
+
+    @Test
     void aBulletListInsideANumberedOneKeepsItsBullets() throws IOException {
         Laid l = lay("<html><body><ol><li>Prepare<ol><li>Merge</li><li>Changelog</li></ol></li>"
                 + "<li>Build<ul><li>Linux</li><li>macOS</li></ul></li></ol></body></html>");
