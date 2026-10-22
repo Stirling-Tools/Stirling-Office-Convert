@@ -33,11 +33,11 @@ final class HtmlContext {
     // the most items of any row of columns in an element or inside it, 0 when none
     private final Map<Element, Integer> rows = new IdentityHashMap<>();
 
-    HtmlContext(Cascade cascade, StyleSheet styles, DocSink sink, List<String> warnings, Section page) {
+    HtmlContext(Cascade cascade, StyleSheet styles, DocSink sink, List<String> warnings, Section page, Linked linked) {
         this.cascade = cascade;
         this.styles = styles;
         this.warnings = warnings;
-        this.images = new HtmlImages(sink, warnings);
+        this.images = new HtmlImages(sink, warnings, linked);
         this.tables = new HtmlTables(this);
         this.page = page;
         this.pageRoom = page.pageHeight - page.marginTop - page.marginBottom;
@@ -173,6 +173,10 @@ final class HtmlContext {
         if (!warnings.contains(w)) {
             warnings.add(w);
         }
+    }
+
+    boolean nothingWritten() {
+        return blocks == 0;
     }
 
     void count() {

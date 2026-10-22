@@ -122,7 +122,7 @@ final class Css {
         return -1;
     }
 
-    private static String stripComments(String s) {
+    static String stripComments(String s) {
         StringBuilder sb = new StringBuilder(s.length());
         int i = 0;
         while (i < s.length()) {

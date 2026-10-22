@@ -93,7 +93,7 @@ public final class OfficeToPdf {
                         "sylk", "dif", "dbf", "numbers", "wk1", "wks", "wk3", "wk4", "123" -> XLSX;
                 case "csv" -> CSV;
                 case "tsv", "tab" -> TSV;
-                case "html", "htm", "xhtml" -> HTML;
+                case "html", "htm", "xhtml", "zip", "epub" -> HTML;
                 case "json" -> JSON;
                 case "ppt", "pps", "pot" -> PPT;
                 default -> {
@@ -104,7 +104,7 @@ public final class OfficeToPdf {
                             + " .odt, .ott, .fodt, .odm, .ods, .ots, .fods, .odp, .otp, .fodp, .odg, .otg, .fodg, .sxw, .stw,"
                             + " .sxc, .stc, .sxi, .sti, .sxd, .std, .vsdx, .vsdm, .vssx, .vssm, .vstx, .vstm, .xml, .slk,"
                             + " .dif, .dbf, .wk1, .wks, .wk3, .wk4, .123, .pages, .numbers, .key, .txt,"
-                            + " .text, .log, .asc, .csv, .tsv, .tab, .html, .htm, .xhtml or .json");
+                            + " .text, .log, .asc, .csv, .tsv, .tab, .html, .htm, .xhtml, .zip of HTML, .epub or .json");
                 }
             };
         }
@@ -133,7 +133,7 @@ public final class OfficeToPdf {
     /** {@code password} opens a password protected document; it is never written anywhere, nor printed by
      * {@link #toString()}. */
     public record Options(Duration timeout, List<Path> fontDirs, int maxPages, long maxScratchBytes, FontSet fonts,
-            String displayName, String password) {
+            String displayName, String password, HtmlAssets htmlAssets) {
 
         public static final int DEFAULT_MAX_PAGES = 10_000;
 
@@ -160,6 +160,12 @@ public final class OfficeToPdf {
             if (password != null && password.length() > MAX_PASSWORD_CHARS) {
                 throw new IllegalArgumentException("The password is longer than " + MAX_PASSWORD_CHARS + " characters");
             }
+            htmlAssets = htmlAssets == null ? HtmlAssets.NONE : htmlAssets;
+        }
+
+        public Options(Duration timeout, List<Path> fontDirs, int maxPages, long maxScratchBytes, FontSet fonts,
+                String displayName, String password) {
+            this(timeout, fontDirs, maxPages, maxScratchBytes, fonts, displayName, password, HtmlAssets.NONE);
         }
 
         public Options(Duration timeout, List<Path> fontDirs, int maxPages, long maxScratchBytes, FontSet fonts,
@@ -180,31 +186,35 @@ public final class OfficeToPdf {
         }
 
         public Options timeout(Duration limit) {
-            return new Options(limit, fontDirs, maxPages, maxScratchBytes, fonts, displayName, password);
+            return new Options(limit, fontDirs, maxPages, maxScratchBytes, fonts, displayName, password, htmlAssets);
         }
 
         public Options fontDirs(List<Path> dirs) {
-            return new Options(timeout, dirs, maxPages, maxScratchBytes, fonts, displayName, password);
+            return new Options(timeout, dirs, maxPages, maxScratchBytes, fonts, displayName, password, htmlAssets);
         }
 
         public Options fonts(FontSet set) {
-            return new Options(timeout, fontDirs, maxPages, maxScratchBytes, set, displayName, password);
+            return new Options(timeout, fontDirs, maxPages, maxScratchBytes, set, displayName, password, htmlAssets);
         }
 
         public Options maxPages(int pages) {
-            return new Options(timeout, fontDirs, pages, maxScratchBytes, fonts, displayName, password);
+            return new Options(timeout, fontDirs, pages, maxScratchBytes, fonts, displayName, password, htmlAssets);
         }
 
         public Options maxScratchBytes(long bytes) {
-            return new Options(timeout, fontDirs, maxPages, bytes, fonts, displayName, password);
+            return new Options(timeout, fontDirs, maxPages, bytes, fonts, displayName, password, htmlAssets);
         }
 
         public Options displayName(String name) {
-            return new Options(timeout, fontDirs, maxPages, maxScratchBytes, fonts, name, password);
+            return new Options(timeout, fontDirs, maxPages, maxScratchBytes, fonts, name, password, htmlAssets);
         }
 
         public Options password(String secret) {
-            return new Options(timeout, fontDirs, maxPages, maxScratchBytes, fonts, displayName, secret);
+            return new Options(timeout, fontDirs, maxPages, maxScratchBytes, fonts, displayName, secret, htmlAssets);
+        }
+
+        public Options htmlAssets(HtmlAssets assets) {
+            return new Options(timeout, fontDirs, maxPages, maxScratchBytes, fonts, displayName, password, assets);
         }
 
         public FontLibrary fontLibrary() {
@@ -215,7 +225,8 @@ public final class OfficeToPdf {
         public String toString() {
             return "Options[timeout=" + timeout + ", fontDirs=" + fontDirs + ", maxPages=" + maxPages
                     + ", maxScratchBytes=" + maxScratchBytes + ", fonts=" + fonts + ", displayName=" + displayName
-                    + ", password=" + (password == null ? "none" : "given") + "]";
+                    + ", password=" + (password == null ? "none" : "given") + ", htmlAssets="
+                    + (htmlAssets == HtmlAssets.NONE ? "none" : "given") + "]";
         }
     }
 

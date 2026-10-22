@@ -19,6 +19,7 @@ import org.apache.pdfbox.pdmodel.encryption.InvalidPasswordException;
 
 import stirling.software.officeconvert.PdfToDocx;
 import stirling.software.officeconvert.PdfToHtml;
+import stirling.software.officeconvert.PdfToEpub;
 import stirling.software.officeconvert.PdfToJson;
 import stirling.software.officeconvert.PdfToOdp;
 import stirling.software.officeconvert.PdfToOdt;
@@ -39,7 +40,7 @@ import stirling.software.officeconvert.topdf.text.TextFormats;
 
 public final class Main {
 
-    private static final Set<String> FORMATS = Set.of("docx", "odt", "fodt", "xml", "rtf", "doc", "txt", "html", "json", "pptx",
+    private static final Set<String> FORMATS = Set.of("docx", "odt", "fodt", "xml", "rtf", "doc", "txt", "html", "json", "epub", "pptx",
             "odp", "ppt", "xlsx", "ods", "pdf");
 
     private Main() {}
@@ -140,7 +141,7 @@ public final class Main {
                     anyPdf |= formatGiven && !"pdf".equals(format);
                     continue;
                 }
-                boolean officeInput = isOffice(in);
+                boolean officeInput = officeOrPage(in);
                 String unsupported = officeInput ? null : UnsupportedFormats.byExtension(extension(in));
                 if (unsupported != null) {
                     throw new Usage(in.getFileName() + ": " + unsupported);
@@ -171,7 +172,7 @@ public final class Main {
             if (pdfa == null && output != null && !Files.isDirectory(output) && inputs.size() == 1
                     && !Files.isDirectory(inputs.get(0))) {
                 String ext = known(extension(output));
-                boolean officeInput = isOffice(inputs.get(0));
+                boolean officeInput = officeOrPage(inputs.get(0));
                 if (officeInput != "pdf".equals(ext)) {
                     throw new Usage(officeInput ? "an Office document converts to PDF; name the output .pdf"
                             : "PDF input converts to an Office format; the output cannot be .pdf");
@@ -222,7 +223,7 @@ public final class Main {
                 .timeout(office.timeout()).maxPages(office.maxPages()).fonts(fonts);
         for (int k = 0; k < pdfs.size(); k++) {
             Path pdf = pdfs.get(k);
-            boolean officeInput = isOffice(pdf);
+            boolean officeInput = officeOrPage(pdf);
             Path target = targets.get(k);
             String refusal = guard.refusal(pdf, target);
             if (refusal != null) {
@@ -333,6 +334,7 @@ public final class Main {
             case "txt" -> PdfToText.convert(pdf, target, options);
             case "html" -> PdfToHtml.convert(pdf, target, options);
             case "json" -> PdfToJson.convert(pdf, target, options);
+            case "epub" -> PdfToEpub.convert(pdf, target, options);
             case "pptx" -> PdfToPptx.convert(pdf, target, slides);
             case "odp" -> PdfToOdp.convert(pdf, target, slides);
             case "ppt" -> PdfToPpt.convert(pdf, target, slides);
@@ -387,6 +389,11 @@ public final class Main {
         return format == OfficeToPdf.Format.HTML || format == OfficeToPdf.Format.JSON;
     }
 
+    private static boolean officeOrPage(Path file) {
+        String name = file.getFileName() == null ? "" : file.getFileName().toString().toLowerCase(Locale.ROOT);
+        return isOffice(file) || name.endsWith(".zip") || name.endsWith(".epub");
+    }
+
     private static float seconds(String s, String option) throws Usage {
         float v = number(s, option);
         if (!(v >= 0 && v <= 86_400)) {
@@ -416,7 +423,7 @@ public final class Main {
     private static String known(String format) throws Usage {
         if (!FORMATS.contains(format)) {
             throw new Usage("unknown output format '" + format
-                    + "': use docx, odt, fodt, xml, rtf, doc, txt, html, json, pptx, odp, ppt, xlsx or ods (pdf for Office input)");
+                    + "': use docx, odt, fodt, xml, rtf, doc, txt, html, json, epub, pptx, odp, ppt, xlsx or ods (pdf for Office input)");
         }
         return format;
     }
