@@ -55,6 +55,16 @@ class HostileHtmlTest {
     }
 
     @Test
+    @Timeout(value = 60, unit = TimeUnit.SECONDS, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
+    void attributeWordSelectorsMatchWordsAndAreNotRegexes() throws IOException {
+        String html = "<style>div[title~=" + "(.*a)".repeat(16) + "x]{color:red} p[class~=btn]{display:none}"
+                + " p[class~=\"note\"]{display:none}</style><div title=\"" + "a".repeat(40) + "\">still here</div>"
+                + "<p class=\"btn-primary\">kept</p><p class=\"big note\">hidden</p>";
+        String text = convert("words.html", html);
+        assertTrue(text.contains("still here") && text.contains("kept") && !text.contains("hidden"), text);
+    }
+
+    @Test
     @Timeout(value = 60, unit = TimeUnit.SECONDS)
     void longRowsInsidePanelsAreMeasuredOnce() throws IOException {
         String item = "<div>" + "ab ".repeat(300) + "</div>";
