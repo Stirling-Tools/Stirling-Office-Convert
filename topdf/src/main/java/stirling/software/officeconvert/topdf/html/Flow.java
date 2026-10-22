@@ -77,6 +77,8 @@ final class Flow {
     private Inline pendingGap;
     private int rowItemStart = -1;
     private int rowNested;
+    private int avoiding;
+    private Block held;
     private final List<Inline> pendingFloats = new ArrayList<>();
     private String floatOf = "none";
     private boolean sectionStarted;
@@ -239,6 +241,8 @@ final class Flow {
             box(e, d, look, frame, depth, fill, top, bottom);
             return;
         }
+        boolean avoid = !inCell && avoidsBreaks(d);
+        avoiding += avoid ? 1 : 0;
         pendingSpace = Math.max(pendingSpace, top + padding(d.get("padding-top"), em, frame.width()));
         if (isPageBreak(d.get("break-before"))) {
             pendingBreak = true;
@@ -306,6 +310,33 @@ final class Flow {
         if (isPageBreak(d.get("break-after"))) {
             pendingBreak = true;
         }
+        avoiding -= avoid ? 1 : 0;
+        if (avoiding == 0 && held != null) {
+            out.add(held);
+            held = null;
+        }
+    }
+
+    static boolean avoidsBreaks(Map<String, String> d) {
+        String v = d.getOrDefault("break-inside", d.getOrDefault("page-break-inside", "")).strip();
+        return v.toLowerCase(Locale.ROOT).startsWith("avoid");
+    }
+
+    private void emit(Block b) throws IOException {
+        if (avoiding == 0 && held == null) {
+            out.add(b);
+            return;
+        }
+        if (held instanceof Paragraph p) {
+            p.keepNext = true;
+        }
+        if (held != null) {
+            out.add(held);
+        }
+        if (b instanceof Paragraph p) {
+            p.keepLines = true;
+        }
+        held = b;
     }
 
     // These shade their own lines, or carry list and heading structure a box would lose
@@ -391,7 +422,7 @@ final class Flow {
         t.cellMarginLeft = padLeft;
         t.cellMarginRight = padRight;
         Table.Row row = new Table.Row();
-        row.splits = true;
+        row.splits = !avoidsBreaks(d);
         row.cells.add(cell);
         t.rows.add(row);
         pendingSpace = Math.max(pendingSpace, top);
@@ -402,7 +433,7 @@ final class Flow {
         pendingBreak = false;
         sectionStarted = false;
         ctx.count();
-        out.add(t);
+        emit(t);
         pendingSpace = bottom;
     }
 
@@ -421,7 +452,7 @@ final class Flow {
         mark.lineRule = Paragraph.LineRule.EXACT;
         mark.lineHeight = 1;
         mark.endsSection = ending != null ? ending : ctx.defaultSection();
-        out.add(mark);
+        emit(mark);
         ctx.pageName(next);
         // the new section starts a page already, so a forced break right after it is the same break
         sectionStarted = true;
@@ -595,7 +626,7 @@ final class Flow {
         if (plan.areas() != null) {
             for (List<int[]> cells : plan.areas()) {
                 Table.Row row = new Table.Row();
-                row.splits = true;
+                row.splits = avoiding == 0;
                 for (int[] a : cells) {
                     Element item = a[0] < 0 ? null : items.get(a[0]);
                     Table.Cell cell = cell(item, look, frame, widths[0] * a[1], plan.gap(), depth);
@@ -608,7 +639,7 @@ final class Flow {
         }
         for (int start = 0; plan.areas() == null && start < items.size(); start += columns) {
             Table.Row row = new Table.Row();
-            row.splits = true;
+            row.splits = avoiding == 0;
             for (int c = 0; c < columns; c++) {
                 Element item = start + c < items.size() ? items.get(start + c) : null;
                 row.cells.add(cell(item, look, frame, widths[c], plan.gap(), depth));
@@ -628,7 +659,7 @@ final class Flow {
                     for (Paragraph p : cell.paragraphs) {
                         p.indentLeft += frame.left();
                         ctx.count();
-                        out.add(p);
+                        emit(p);
                     }
                 }
             }
@@ -641,7 +672,7 @@ final class Flow {
         t.pageBreakBefore = pendingBreak;
         pendingBreak = false;
         ctx.count();
-        out.add(t);
+        emit(t);
     }
 
     private static void gapColumns(Table t, float gap) {
@@ -957,7 +988,7 @@ final class Flow {
         lastParagraph = p;
         lastSpace = true;
         ctx.count();
-        out.add(p);
+        emit(p);
     }
 
     // A box that scrolls or clips keeps what is too wide inside it, so the page does not grow
@@ -1242,7 +1273,7 @@ final class Flow {
         p.inlines.add(new Inline.Text("\u00a0", look.run().withSize(1), null, -1));
         pendingSpace = length(d.get("margin-bottom"), em, frame.width());
         ctx.count();
-        out.add(p);
+        emit(p);
     }
 
     private void table(Element e, Map<String, String> d, Look look, Frame frame, boolean centred, int depth)
@@ -1281,7 +1312,7 @@ final class Flow {
         }
         pendingSpace = Math.max(0, length(d.get("margin-bottom"), em, frame.width()));
         ctx.count();
-        out.add(t);
+        emit(t);
     }
 
     // A table inside a cell: each of its rows becomes a line, its cells side by side with their own formatting
@@ -1310,7 +1341,7 @@ final class Flow {
         p.lineRule = Paragraph.LineRule.EXACT;
         p.lineHeight = Math.max(1, Math.min(space, 400));
         p.inlines.add(new Inline.Text("\u00a0", blockLook.run().withSize(1), null, -1));
-        out.add(p);
+        emit(p);
     }
 
 }

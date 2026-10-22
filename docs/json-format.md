@@ -59,7 +59,7 @@ written straight from the PDF.
 | `spaceBefore`, `spaceAfter` | 0 | Space around the paragraph |
 | `lineHeight`, `lineRule` | single | `lineRule` is `exact` or `atLeast` with `lineHeight` |
 | `list` | none | `{ "id", "level" }`: an item of a list in `lists`, level 0 to 8 |
-| `pageBreakBefore`, `keepNext`, `rightToLeft`, `noHangingPunctuation` | false | |
+| `pageBreakBefore`, `keepNext`, `keepLines`, `rightToLeft`, `noHangingPunctuation` | false | |
 | `shading` | none | Background colour |
 | `borderBottom`, `borderBottomColor` | none | A rule under the paragraph |
 | `bookmark` | none | A bookmark name |

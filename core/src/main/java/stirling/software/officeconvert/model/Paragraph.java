@@ -44,6 +44,7 @@ public final class Paragraph implements Block {
     public ListRef list;
     public boolean pageBreakBefore;
     public boolean keepNext;
+    public boolean keepLines;
     public boolean bidi;
     public boolean noHangingPunctuation;
     public int shading = -1;

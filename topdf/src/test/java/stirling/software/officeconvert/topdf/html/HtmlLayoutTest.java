@@ -133,4 +133,22 @@ class HtmlLayoutTest {
         }
         assertEquals(List.of(true, false, true), runs);
     }
+
+    @Test
+    void blocksThatAvoidBreaksMoveWholeToTheNextPage() throws IOException {
+        String words = "Clause text that is long enough to fill several lines of the box on the page. ".repeat(9);
+        for (String box : new String[] {"border:1px solid #999;padding:8px", "margin:0"}) {
+            StringBuilder html = new StringBuilder("<html><head><style>.box{" + box
+                    + ";margin-bottom:12px;page-break-inside:avoid}</style></head><body>");
+            for (int i = 0; i < 9; i++) {
+                html.append("<div class=box><p>Start").append(i).append(' ').append(words).append("</p><p>")
+                        .append(words).append("End").append(i).append("</p></div>");
+            }
+            Laid l = lay(html.append("</body></html>").toString());
+            assertTrue(l.pages() > 2, box + ": " + l.pages());
+            for (int i = 0; i < 9; i++) {
+                assertEquals(l.word("Start" + i).page(), l.word("End" + i).page(), box + ": box " + i);
+            }
+        }
+    }
 }

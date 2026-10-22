@@ -64,7 +64,7 @@ final class HtmlTables {
             Look rowLook = look.child(rowDecl, frame.width(), false);
             Table.Row row = new Table.Row();
             // A browser breaks a tall row across pages rather than cutting it off
-            row.splits = true;
+            row.splits = !Flow.avoidsBreaks(rowDecl);
             row.height = Math.max(0, Flow.length(rowDecl.get("height"), rowLook.size, 0));
             row.header = "thead".equals(tr.parent() == null ? "" : tr.parent().normalName());
             boolean allHeads = true;
