@@ -88,6 +88,33 @@ class XlsChartTest {
         assertTrue(chart.contains("<c:v>10.0</c:v>") && chart.contains("<c:v>30.0</c:v>"), chart);
     }
 
+    @Test
+    void aSeriesNamedByACellTakesTheCellText() throws Exception {
+        byte[] data = XlsTest.xls(wb -> {
+            HSSFSheet sheet = wb.createSheet("Data");
+            sheet.createRow(0).createCell(0).setCellValue("Revenue");
+            for (int i = 1; i < 4; i++) {
+                sheet.createRow(i).createCell(0).setCellValue(i);
+            }
+            int extern = wb.getInternalWorkbook().checkExternSheet(0);
+            ChartFixtures.chartSheet(wb, "Chart1", ChartFixtures.linkedChart(BAR, null, 3,
+                    new Area3DPtg(new AreaReference("A2:A4", SpreadsheetVersion.EXCEL97), extern),
+                    new Area3DPtg(new AreaReference("A1:A1", SpreadsheetVersion.EXCEL97), extern)));
+        });
+        String chart = chartXml(data);
+        assertTrue(chart.contains("<c:tx><c:v>Revenue</c:v></c:tx>"), chart);
+    }
+
+    @Test
+    void clusteredHorizontalBarsListTheLastSeriesFirst() throws Exception {
+        byte[] data = XlsTest.xls(wb -> ChartFixtures.chartSheet(wb, "Chart1", ChartFixtures.chart(null, BAR,
+                new byte[] {0, 0, (byte) 150, 0, 1, 0}, new String[] {"First", "Second"},
+                new String[] {"x", "y"}, new double[][] {{1, 2}, {3, 4}})));
+        String chart = chartXml(data);
+        assertTrue(chart.contains("<c:barDir val=\"bar\"/>"), chart);
+        assertTrue(chart.indexOf("<c:v>Second</c:v>") < chart.indexOf("<c:v>First</c:v>"), chart);
+    }
+
     private static String chartXml(byte[] xls) throws IOException {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         try (POIFSFileSystem fs = new POIFSFileSystem(new ByteArrayInputStream(xls))) {

@@ -35,6 +35,10 @@ final class ChartFixtures {
     }
 
     static List<RecordBase> linkedChart(int type, String name, int points, Ptg values) {
+        return linkedChart(type, name, points, values, null);
+    }
+
+    static List<RecordBase> linkedChart(int type, String name, int points, Ptg values, Ptg nameCell) {
         List<RecordBase> r = new ArrayList<>();
         r.add(new ChartRecord());
         r.add(new BeginRecord());
@@ -48,7 +52,16 @@ final class ChartFixtures {
         link.setReferenceType((byte) 2);
         link.setFormulaOfLink(new Ptg[] {values});
         r.add(link);
-        r.add(text(name));
+        if (nameCell != null) {
+            LinkedDataRecord title = new LinkedDataRecord();
+            title.setLinkType((byte) 0);
+            title.setReferenceType((byte) 2);
+            title.setFormulaOfLink(new Ptg[] {nameCell});
+            r.add(title);
+        }
+        if (name != null) {
+            r.add(text(name));
+        }
         r.add(new EndRecord());
         r.add(new UnknownRecord(0x1041, new byte[18]));
         r.add(new BeginRecord());

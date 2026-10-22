@@ -232,7 +232,9 @@ final class ChartRecords {
         }
         SeriesBuilder s = series.get(series.size() - 1);
         Ptg[] ref = r.getReferenceType() == 2 ? r.getFormulaOfLink() : null;
-        if (r.getLinkType() == 1) {
+        if (r.getLinkType() == 0) {
+            s.nameRef = ref;
+        } else if (r.getLinkType() == 1) {
             s.format = r.getIndexNumberFmtRecord();
             s.valueRef = ref;
         } else if (r.getLinkType() == 2) {
@@ -242,6 +244,19 @@ final class ChartRecords {
     }
 
     private void fromCells(SeriesBuilder s) {
+        if (s.name == null && s.nameRef != null) {
+            List<String> parts = new ArrayList<>();
+            for (Object v : fonts.cells(s.nameRef)) {
+                if (v instanceof String t && !t.isBlank()) {
+                    parts.add(t);
+                } else if (v instanceof Double d) {
+                    parts.add(fonts.number(d, -1, 0));
+                }
+            }
+            if (!parts.isEmpty()) {
+                s.name = String.join(" ", parts);
+            }
+        }
         if (s.values.isEmpty() && s.valueRef != null) {
             List<Object> cells = fonts.cells(s.valueRef);
             for (int i = 0; i < cells.size() && i < MAX_POINTS; i++) {
@@ -292,6 +307,7 @@ final class ChartRecords {
             s.iss = dataSeries;
         } else if (axisType >= 0 && top == AXIS && axisLine == 1 && axis() != null) {
             axis().gridlines = rgb != null;
+            axis().gridColor = rgb;
         } else if (frame == 1 && top == FRAME) {
             areaLine = rgb;
         }
@@ -608,6 +624,8 @@ final class ChartRecords {
 
         boolean gridlines;
 
+        Integer gridColor;
+
         boolean reversed;
 
         boolean log;
@@ -621,7 +639,8 @@ final class ChartRecords {
         BiffChart.Text title;
 
         BiffChart.Axis build(String numberFormat) {
-            return new BiffChart.Axis(min, max, major, gridlines, title, numberFormat, reversed, log, !labels);
+            return new BiffChart.Axis(min, max, major, gridlines, gridColor, title, numberFormat, reversed, log,
+                    !labels);
         }
     }
 
@@ -649,6 +668,8 @@ final class ChartRecords {
         Ptg[] valueRef;
 
         Ptg[] categoryRef;
+
+        Ptg[] nameRef;
 
         int iss = -1;
 

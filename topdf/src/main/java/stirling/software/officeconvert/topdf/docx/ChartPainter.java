@@ -3,6 +3,7 @@ package stirling.software.officeconvert.topdf.docx;
 import java.awt.Color;
 import java.awt.geom.AffineTransform;
 import java.awt.geom.Arc2D;
+import java.awt.geom.Area;
 import java.awt.geom.Ellipse2D;
 import java.awt.geom.Path2D;
 import java.awt.geom.Rectangle2D;
@@ -392,7 +393,24 @@ final class ChartPainter {
         if (g.series().isEmpty()) {
             return;
         }
-        Chart.Series s = g.series().get(0);
+        float d = Math.min(right - left, bottom - top);
+        float cy = (top + bottom) / 2;
+        float r = d / 2;
+        if (g.kind() != Chart.Kind.DOUGHNUT) {
+            slices(g, g.series().get(0), cx, cy, 0, r);
+            return;
+        }
+        float hole = r * Math.max(10, Math.min(90, g.holeSize())) / 100f;
+        int rings = g.series().size();
+        float width = (r - hole) / rings;
+        for (int k = 0; k < rings; k++) {
+            int ring = g.reversedOrder() ? rings - 1 - k : k;
+            float inner = hole + ring * width;
+            slices(g, g.series().get(k), cx, cy, inner, inner + width);
+        }
+    }
+
+    private void slices(Chart.Group g, Chart.Series s, float cx, float cy, float inner, float r) {
         double total = 0;
         for (double v : s.values()) {
             if (!Double.isNaN(v) && v > 0) {
@@ -402,9 +420,7 @@ final class ChartPainter {
         if (total <= 0) {
             return;
         }
-        float d = Math.min(right - left, bottom - top);
-        float cy = (top + bottom) / 2;
-        float r = d / 2;
+        float d = r * 2;
         double angle = 90 - g.firstSliceAngle();
         Stroke edge = s.outline() != null ? s.outline() : Stroke.solid(1.5f, Color.WHITE);
         TextStyle ls = style(chart.textSize(), false, chart.textColor());
@@ -414,23 +430,21 @@ final class ChartPainter {
             if (Double.isNaN(v) || v <= 0) {
                 continue;
             }
-            double extent = -360 * v / total;
+            double extent = (g.reversedOrder() ? 360 : -360) * v / total;
             Arc2D.Double arc = new Arc2D.Double(cx - r, cy - r, d, d, angle, extent, Arc2D.PIE);
             java.awt.Shape shape = arc;
-            if (g.kind() == Chart.Kind.DOUGHNUT) {
-                Path2D.Double ring = new Path2D.Double(Path2D.WIND_EVEN_ODD);
-                ring.append(arc, false);
-                float hole = r * Math.max(10, Math.min(90, g.holeSize())) / 100f;
-                ring.append(new Ellipse2D.Double(cx - hole, cy - hole, hole * 2, hole * 2), false);
+            if (inner > 0) {
+                Area ring = new Area(arc);
+                ring.subtract(new Area(new Ellipse2D.Double(cx - inner, cy - inner, inner * 2, inner * 2)));
                 shape = ring;
             }
             Color c = pointColor(g, s, i);
             ops.add(new Op.Path(shape, c == null ? null : Fill.solid(c), edge));
             if (labels.any()) {
                 double mid = Math.toRadians(angle + extent / 2);
-                boolean outside = "outEnd".equals(labels.position()) || "bestFit".equals(labels.position())
-                        && v / total < 0.05;
-                float k = outside ? 1.12f : 0.65f;
+                boolean outside = inner <= 0 && ("outEnd".equals(labels.position()) || "bestFit".equals(
+                        labels.position()) && v / total < 0.05);
+                float k = outside ? 1.12f : inner > 0 ? (inner / r + 1) / 2 : 0.65f;
                 float lx = (float) (cx + Math.cos(mid) * r * k);
                 float ly = (float) (cy - Math.sin(mid) * r * k);
                 String text = label(labels, s, v, v / total, i, "; ");
@@ -995,7 +1009,11 @@ final class ChartPainter {
         boolean stacked = g.grouping().equals("stacked") || g.grouping().equals("percentStacked");
         double[] acc = new double[p.count()];
         TextStyle ls = style(chart.textSize(), false, chart.textColor());
-        for (Chart.Series s : g.series()) {
+        List<Chart.Series> order = g.series();
+        if (g.reversedOrder() && !stacked) {
+            order = order.reversed();
+        }
+        for (Chart.Series s : order) {
             int count = Math.min(p.count(), s.values().length);
             List<float[]> pts = new ArrayList<>();
             List<List<float[]>> runs = new ArrayList<>();
