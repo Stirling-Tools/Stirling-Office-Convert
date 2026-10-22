@@ -70,6 +70,27 @@ class HtmlWriterTest {
     }
 
     @Test
+    void rightTabStopsKeepTheirLeaderAndAlignment() throws IOException {
+        Paragraph toc = new Paragraph();
+        toc.inlines.add(new Inline.Text("1. Background", TEXT, null, -1));
+        toc.inlines.add(new Inline.Tab(TEXT));
+        toc.inlines.add(new Inline.Text("2", TEXT, null, -1));
+        toc.tabs.add(new Paragraph.TabStop(450, Paragraph.TabStop.Kind.RIGHT, '.'));
+        Paragraph left = new Paragraph();
+        left.inlines.add(new Inline.Text("Name", TEXT, null, -1));
+        left.inlines.add(new Inline.Tab(TEXT));
+        left.inlines.add(new Inline.Text("Value", TEXT, null, -1));
+        left.tabs.add(new Paragraph.TabStop(100, Paragraph.TabStop.Kind.LEFT, (char) 0));
+        String out = html(page(1), new Numbering(), w -> {
+            block(w, toc);
+            block(w, left);
+        });
+        assertTrue(out.contains("display:flex;align-items:baseline;\"><span>1. Background</span><span style=\"flex:1;"
+                + "min-width:6pt;margin:0 2pt;border-bottom:1pt dotted;\"></span><span>2</span></p>"), out);
+        assertTrue(out.contains(">Name\tValue</p>"), out);
+    }
+
+    @Test
     void vectorShapesBecomeAnSvgBehindTheText() throws IOException {
         Paragraph p = para("Sales by quarter");
         p.inlines.add(0, new Inline.Shape(80, 160, 30, 90, 0x1F77B4));

@@ -82,8 +82,10 @@ final class HtmlBlocks {
             sb.append(" dir=\"rtl\"");
         }
         boolean gaps = justified(p);
+        Paragraph.TabStop rightTab = rightTab(p);
         String css = paragraphCss(p) + (columnBreak(p) ? "break-after:column;" : "")
-                + (shapes.isEmpty() ? "" : "position:relative;");
+                + (shapes.isEmpty() ? "" : "position:relative;")
+                + (rightTab != null ? "display:flex;align-items:baseline;" : "");
         if (!css.isEmpty()) {
             sb.append(" style=\"").append(css).append('"');
         }
@@ -104,11 +106,45 @@ final class HtmlBlocks {
         }
         int start = sb.length();
         runs(sb, p, base(p), gaps);
+        if (rightTab != null) {
+            leader(sb, start, rightTab.leader());
+        }
         if (sb.length() == start && p.list == null) {
             sb.append("<br>");
         }
         sb.append("</").append(tag).append(">\n");
         floats(sb, after);
+    }
+
+    private static Paragraph.TabStop rightTab(Paragraph p) {
+        if (p.tabs.isEmpty() || p.bidi || p.inlines.stream().noneMatch(in -> in instanceof Inline.Tab)) {
+            return null;
+        }
+        Paragraph.TabStop last = null;
+        for (Paragraph.TabStop t : p.tabs) {
+            if (last == null || t.pos() > last.pos()) {
+                last = t;
+            }
+        }
+        return last.kind() == Paragraph.TabStop.Kind.RIGHT ? last : null;
+    }
+
+    private static void leader(StringBuilder sb, int start, char leader) {
+        int tab = sb.lastIndexOf("\t");
+        if (tab < start) {
+            return;
+        }
+        String head = sb.substring(start, tab);
+        String tail = sb.substring(tab + 1);
+        String line = switch (leader) {
+            case '.' -> "border-bottom:1pt dotted;";
+            case '-' -> "border-bottom:1pt dashed;";
+            case '_' -> "border-bottom:0.75pt solid;";
+            default -> "";
+        };
+        sb.setLength(start);
+        sb.append("<span>").append(head).append("</span><span style=\"flex:1;min-width:6pt;margin:0 2pt;")
+                .append(line).append("\"></span><span>").append(tail).append("</span>");
     }
 
     private RunStyle base(Paragraph p) {
