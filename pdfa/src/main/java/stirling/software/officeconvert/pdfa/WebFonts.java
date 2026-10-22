@@ -12,12 +12,22 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.TreeMap;
+import java.util.function.IntFunction;
 
 import org.apache.fontbox.cff.CFFCIDFont;
 import org.apache.fontbox.cff.CFFFont;
 import org.apache.fontbox.cff.CFFParser;
 import org.apache.fontbox.cff.CFFType1Font;
 import org.apache.fontbox.cff.Type2CharString;
+import org.apache.fontbox.ttf.CmapSubtable;
+import org.apache.fontbox.ttf.CmapTable;
+import org.apache.fontbox.ttf.HorizontalHeaderTable;
+import org.apache.fontbox.ttf.HorizontalMetricsTable;
+import org.apache.fontbox.ttf.OTFParser;
+import org.apache.fontbox.ttf.PostScriptTable;
+import org.apache.fontbox.ttf.TTFParser;
+import org.apache.fontbox.ttf.TTFTable;
+import org.apache.fontbox.ttf.TrueTypeFont;
 import org.apache.fontbox.type1.Type1Font;
 import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.io.RandomAccessReadBuffer;
@@ -26,6 +36,7 @@ import org.apache.pdfbox.pdmodel.font.PDCIDFont;
 import org.apache.pdfbox.pdmodel.font.PDFont;
 import org.apache.pdfbox.pdmodel.font.PDFontDescriptor;
 import org.apache.pdfbox.pdmodel.font.PDSimpleFont;
+import org.apache.pdfbox.pdmodel.font.PDTrueTypeFont;
 import org.apache.pdfbox.pdmodel.font.PDType0Font;
 import org.apache.pdfbox.pdmodel.font.encoding.Encoding;
 import org.apache.pdfbox.pdmodel.font.encoding.GlyphList;
@@ -36,7 +47,8 @@ public final class WebFonts {
 
     public enum FontKind {
         TYPE1,
-        CFF
+        CFF,
+        TRUETYPE
     }
 
     private static final int UNITS_PER_EM = 1000;
@@ -47,7 +59,113 @@ public final class WebFonts {
 
     public static byte[] toTrueType(byte[] fontProgram, FontKind kind, Map<Integer, Integer> unicodeByGlyph)
             throws IOException {
+        if (kind == FontKind.TRUETYPE) {
+            return fromSfnt(fontProgram, null, null);
+        }
         return convert(Program.read(fontProgram, kind, -1, -1), unicodeByGlyph);
+    }
+
+    private static byte[] fromSfnt(byte[] data, PDFont font, Map<Integer, Integer> unicodeByGlyph) throws IOException {
+        if (data == null || data.length < 12) {
+            throw new IOException("The font program is empty");
+        }
+        TrueTypeFont ttf;
+        try {
+            boolean otto = data[0] == 'O' && data[1] == 'T' && data[2] == 'T' && data[3] == 'O';
+            ttf = (otto ? new OTFParser(true) : new TTFParser(true)).parse(new RandomAccessReadBuffer(data));
+        } catch (IOException | RuntimeException e) {
+            throw new IOException("The TrueType program cannot be read: " + e.getMessage(), e);
+        }
+        try (ttf) {
+            TTFTable cff = ttf.getTableMap().get("CFF ");
+            if (ttf.getTableMap().get("glyf") == null && cff != null) {
+                Program program = Program.read(ttf.getTableBytes(cff), FontKind.CFF, -1, -1);
+                return convert(program, font == null ? unicodeByGlyph : unicodeByGlyph(font, program.count(),
+                        code -> font instanceof PDTrueTypeFont tt && !tt.isDamaged() ? tt.codeToGID(code)
+                                : program.gid(name(font, code))));
+            }
+            Map<Integer, Integer> mapping = unicodeByGlyph;
+            if (font != null && font.isDamaged()) {
+                throw new IOException("PDFBox could not read the embedded font program");
+            }
+            if (font != null) {
+                mapping = unicodeByGlyph(font, ttf.getNumberOfGlyphs(),
+                        code -> font instanceof PDTrueTypeFont tt ? tt.codeToGID(code) : 0);
+            }
+            String name = ttf.getName() != null ? ttf.getName() : font != null ? font.getName() : null;
+            return convertTrueType(ttf, name, mapping);
+        } catch (RuntimeException e) {
+            throw new IOException("The TrueType program cannot be converted: " + e.getMessage(), e);
+        }
+    }
+
+    private static String name(PDFont font, int code) {
+        Encoding enc = font instanceof PDSimpleFont s ? s.getEncoding() : null;
+        return enc == null ? null : enc.getName(code);
+    }
+
+    private static byte[] convertTrueType(TrueTypeFont ttf, String name, Map<Integer, Integer> unicodeByGlyph)
+            throws IOException {
+        int count = ttf.getNumberOfGlyphs();
+        if (count < 1) {
+            throw new IOException("The TrueType program has no glyphs");
+        }
+        TrueTypeWriter w = new TrueTypeWriter(ttf);
+        HorizontalMetricsTable hmtx = ttf.getHorizontalMetrics();
+        for (int gid = 1; gid < count; gid++) {
+            PdfFiles.stopIfInterrupted();
+            w.addCopy(gid, hmtx == null ? 0 : hmtx.getAdvanceWidth(gid));
+        }
+        w.keepComponentIds();
+        PostScriptTable post = ttf.getPostScript();
+        TreeMap<Integer, Integer> cmap = cmap(count, gid -> post == null ? null : post.getName(gid), unicodeByGlyph,
+                ownUnicode(ttf, count));
+        Map<String, byte[]> tables = new HashMap<>();
+        TTFTable os2 = ttf.getTableMap().get("OS/2");
+        if (os2 == null || !saneOs2(ttf.getTableBytes(os2))) {
+            int upem = w.unitsPerEm();
+            TrueTypeWriter.Metrics m = w.metrics();
+            HorizontalHeaderTable hhea = ttf.getHorizontalHeader();
+            int ascent = hhea != null && hhea.getAscender() > 0 ? hhea.getAscender() : Math.max(m.yMax(), upem * 4 / 5);
+            int descent = hhea != null && hhea.getDescender() < 0 ? hhea.getDescender()
+                    : Math.min(m.yMin(), -upem / 5);
+            int style = ttf.getHeader() == null ? 0 : ttf.getHeader().getMacStyle() & 3;
+            tables.put("OS/2", os2(m, ascent, descent, cmap, style, upem));
+        }
+        return w.build(FontRebuild.cleanName(name), cmapTable(cmap), tables);
+    }
+
+    private static boolean saneOs2(byte[] t) {
+        if (t.length < 78) {
+            return false;
+        }
+        int version = ByteBuffer.wrap(t).getShort(0) & 0xFFFF;
+        int needed = version == 0 ? 78 : version == 1 ? 86 : version <= 4 ? 96 : version == 5 ? 100 : Integer.MAX_VALUE;
+        return t.length >= needed;
+    }
+
+    private static Map<Integer, Integer> ownUnicode(TrueTypeFont ttf, int count) throws IOException {
+        Map<Integer, Integer> out = new HashMap<>();
+        CmapTable table = ttf.getCmap();
+        if (table == null) {
+            return out;
+        }
+        for (CmapSubtable s : table.getCmaps()) {
+            boolean unicode = s.getPlatformId() == 0 || s.getPlatformId() == 3 && (s.getPlatformEncodingId() == 1
+                    || s.getPlatformEncodingId() == 10);
+            if (!unicode) {
+                continue;
+            }
+            for (int gid = 1; gid < count; gid++) {
+                List<Integer> codes = s.getCharCodes(gid);
+                if (codes != null) {
+                    for (int cp : codes) {
+                        out.putIfAbsent(cp, gid);
+                    }
+                }
+            }
+        }
+        return out;
     }
 
     public static byte[] toTrueType(PDFont font) throws IOException {
@@ -55,11 +173,20 @@ public final class WebFonts {
         if (fd == null) {
             throw new IOException("The font has no descriptor");
         }
+        if (font instanceof PDType0Font && font.isDamaged()) {
+            throw new IOException("PDFBox could not read the embedded font program");
+        }
         Program program;
+        if (fd.getFontFile2() != null) {
+            return fromSfnt(bytes(fd.getFontFile2()), font, null);
+        }
         if (fd.getFontFile3() != null) {
             String subtype = fd.getFontFile3().getCOSObject().getNameAsString(COSName.SUBTYPE);
+            if ("OpenType".equals(subtype)) {
+                return fromSfnt(bytes(fd.getFontFile3()), font, null);
+            }
             if (subtype != null && !"Type1C".equals(subtype) && !"CIDFontType0C".equals(subtype)) {
-                throw new IOException("FontFile3 /" + subtype + " is not a bare CFF program");
+                throw new IOException("FontFile3 /" + subtype + " is not a supported font program");
             }
             program = Program.read(bytes(fd.getFontFile3()), FontKind.CFF, -1, -1);
         } else if (fd.getFontFile() != null) {
@@ -67,9 +194,10 @@ public final class WebFonts {
             program = Program.read(bytes(s), FontKind.TYPE1, s.getCOSObject().getInt(COSName.LENGTH1),
                     s.getCOSObject().getInt(COSName.LENGTH2));
         } else {
-            throw new IOException("The font has no embedded Type 1 or CFF program");
+            throw new IOException("The font has no embedded font program");
         }
-        return convert(program, unicodeByGlyph(font, program));
+        Program p = program;
+        return convert(p, unicodeByGlyph(font, p.count(), code -> p.gid(name(font, code))));
     }
 
     private static byte[] bytes(PDStream s) throws IOException {
@@ -78,7 +206,8 @@ public final class WebFonts {
         }
     }
 
-    private static Map<Integer, Integer> unicodeByGlyph(PDFont font, Program program) throws IOException {
+    private static Map<Integer, Integer> unicodeByGlyph(PDFont font, int count, CodeToGlyph simpleGlyph)
+            throws IOException {
         Map<Integer, Integer> out = new HashMap<>();
         if (font instanceof PDType0Font t0) {
             PDCIDFont cid = t0.getDescendantFont();
@@ -89,23 +218,25 @@ public final class WebFonts {
                 Integer cp = single(t0.toUnicode(code));
                 if (cp != null) {
                     int gid = cid.codeToGID(code);
-                    if (gid > 0 && gid < program.count()) {
+                    if (gid > 0 && gid < count) {
                         out.putIfAbsent(gid, cp);
                     }
                 }
             }
         } else if (font instanceof PDSimpleFont simple) {
-            Encoding enc = simple.getEncoding();
             for (int code = 0; code < 256; code++) {
                 Integer cp = single(simple.toUnicode(code));
-                String name = enc == null ? null : enc.getName(code);
-                int gid = name == null ? 0 : program.gid(name);
-                if (cp != null && gid > 0) {
+                int gid = cp == null ? 0 : simpleGlyph.gid(code);
+                if (gid > 0 && gid < count) {
                     out.putIfAbsent(gid, cp);
                 }
             }
         }
         return out;
+    }
+
+    private interface CodeToGlyph {
+        int gid(int code) throws IOException;
     }
 
     private static Integer single(String s) {
@@ -120,40 +251,50 @@ public final class WebFonts {
             PdfFiles.stopIfInterrupted();
             w.addOutline(program.path(gid, toEm), program.advance(gid, toEm));
         }
-        TreeMap<Integer, Integer> cmap = cmap(program, unicodeByGlyph);
-        TreeMap<Integer, Integer> bmp = new TreeMap<>(cmap.headMap(0xFFFF));
-        List<Cmaps.Subtable> subtables = new ArrayList<>();
-        subtables.add(new Cmaps.Subtable(3, 1, bmp));
-        if (!cmap.isEmpty() && cmap.lastKey() > 0xFFFF) {
-            subtables.add(new Cmaps.Subtable(3, 10, cmap));
-        }
+        TreeMap<Integer, Integer> cmap = cmap(program.count(), program::name, unicodeByGlyph, Map.of());
         TrueTypeWriter.Metrics m = w.metrics();
         int ascent = Math.max(m.yMax(), 800);
         int descent = Math.min(m.yMin(), -200);
         Map<String, byte[]> tables = new HashMap<>();
         tables.put("head", head(m, program.style()));
         tables.put("hhea", hhea(m, ascent, descent, w.size()));
-        tables.put("OS/2", os2(m, ascent, descent, cmap, program.style()));
+        tables.put("OS/2", os2(m, ascent, descent, cmap, program.style(), UNITS_PER_EM));
         tables.put("post", post(program.italicAngle()));
-        return w.build(FontRebuild.cleanName(program.name()), Cmaps.table(subtables), tables);
+        return w.build(FontRebuild.cleanName(program.name()), cmapTable(cmap), tables);
     }
 
-    private static TreeMap<Integer, Integer> cmap(Program program, Map<Integer, Integer> unicodeByGlyph) {
+    private static byte[] cmapTable(TreeMap<Integer, Integer> cmap) {
+        List<Cmaps.Subtable> subtables = new ArrayList<>();
+        subtables.add(new Cmaps.Subtable(3, 1, new TreeMap<>(cmap.headMap(0xFFFF))));
+        if (!cmap.isEmpty() && cmap.lastKey() > 0xFFFF) {
+            subtables.add(new Cmaps.Subtable(3, 10, cmap));
+        }
+        return Cmaps.table(subtables);
+    }
+
+    private static TreeMap<Integer, Integer> cmap(int count, IntFunction<String> nameOf,
+            Map<Integer, Integer> unicodeByGlyph, Map<Integer, Integer> ownByCodePoint) {
         TreeMap<Integer, Integer> cmap = new TreeMap<>();
         if (unicodeByGlyph != null) {
             for (Map.Entry<Integer, Integer> e : new TreeMap<>(unicodeByGlyph).entrySet()) {
                 int gid = e.getKey();
-                if (gid > 0 && gid < program.count() && e.getValue() != null && mappable(e.getValue())) {
+                if (gid > 0 && gid < count && e.getValue() != null && mappable(e.getValue())) {
                     cmap.putIfAbsent(e.getValue(), gid);
                 }
             }
         }
-        for (int gid = 1; gid < program.count(); gid++) {
-            String name = program.name(gid);
-            String u = name == null || name.startsWith("cid") ? null : GlyphList.getAdobeGlyphList().toUnicode(name);
+        for (int gid = 1; gid < count; gid++) {
+            String name = nameOf.apply(gid);
+            String u = name == null || name.startsWith("cid") || ".notdef".equals(name) ? null
+                    : GlyphList.getAdobeGlyphList().toUnicode(name);
             Integer cp = single(u);
             if (cp != null && mappable(cp)) {
                 cmap.putIfAbsent(cp, gid);
+            }
+        }
+        for (Map.Entry<Integer, Integer> e : new TreeMap<>(ownByCodePoint).entrySet()) {
+            if (e.getValue() > 0 && e.getValue() < count && mappable(e.getKey())) {
+                cmap.putIfAbsent(e.getKey(), e.getValue());
             }
         }
         return cmap;
@@ -196,7 +337,7 @@ public final class WebFonts {
     }
 
     private static byte[] os2(TrueTypeWriter.Metrics m, int ascent, int descent, TreeMap<Integer, Integer> cmap,
-            int style) {
+            int style, int upem) {
         boolean bold = (style & 1) != 0;
         boolean italic = (style & 2) != 0;
         ByteBuffer b = ByteBuffer.allocate(96);
@@ -204,14 +345,14 @@ public final class WebFonts {
         b.putShort(2, (short) m.averageAdvance());
         b.putShort(4, (short) (bold ? 700 : 400));
         b.putShort(6, (short) 5);
-        b.putShort(10, (short) 650);
-        b.putShort(12, (short) 600);
-        b.putShort(16, (short) 75);
-        b.putShort(18, (short) 650);
-        b.putShort(20, (short) 600);
-        b.putShort(24, (short) 350);
-        b.putShort(26, (short) 50);
-        b.putShort(28, (short) 300);
+        b.putShort(10, (short) (650 * upem / 1000));
+        b.putShort(12, (short) (600 * upem / 1000));
+        b.putShort(16, (short) (75 * upem / 1000));
+        b.putShort(18, (short) (650 * upem / 1000));
+        b.putShort(20, (short) (600 * upem / 1000));
+        b.putShort(24, (short) (350 * upem / 1000));
+        b.putShort(26, (short) (50 * upem / 1000));
+        b.putShort(28, (short) (300 * upem / 1000));
         b.put(58, "SPDF".getBytes(StandardCharsets.US_ASCII));
         b.putShort(62, (short) ((bold ? 0x20 : 0) | (italic ? 0x01 : 0) | (bold || italic ? 0 : 0x40)));
         b.putShort(64, (short) (cmap.isEmpty() ? 0x20 : Math.min(0xFFFF, cmap.firstKey())));
@@ -221,8 +362,8 @@ public final class WebFonts {
         b.putShort(74, (short) Math.max(0, m.yMax()));
         b.putShort(76, (short) Math.max(0, -m.yMin()));
         b.putInt(78, 1);
-        b.putShort(86, (short) 500);
-        b.putShort(88, (short) 700);
+        b.putShort(86, (short) (500 * upem / 1000));
+        b.putShort(88, (short) (700 * upem / 1000));
         b.putShort(92, (short) 32);
         return b.array();
     }
@@ -345,7 +486,7 @@ public final class WebFonts {
 
         @Override
         int gid(String name) {
-            if (font instanceof CFFCIDFont) {
+            if (name == null || font instanceof CFFCIDFont) {
                 return 0;
             }
             int sid = font.getCharset().getSID(name);
@@ -491,7 +632,7 @@ public final class WebFonts {
 
         @Override
         int gid(String name) {
-            Integer g = gids.get(name);
+            Integer g = name == null ? null : gids.get(name);
             return g == null ? 0 : g;
         }
 

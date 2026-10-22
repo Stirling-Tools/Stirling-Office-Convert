@@ -755,14 +755,17 @@ It depends on the core and topdf modules (and so on what those depend on) and `o
 ### Web fonts from PDF font programs
 
 `WebFonts.toTrueType` turns a font program embedded in a PDF into a TrueType font a browser loads with `@font-face`
-or `FontFace`. `toTrueType(PDFont)` reads the font's FontFile (Type 1) or FontFile3 (`Type1C`, `CIDFontType0C`) and
-builds the cmap from the font's ToUnicode and encoding. `toTrueType(byte[], FontKind, Map<Integer, Integer>)` takes the
-program bytes (`TYPE1` as PFB or as the raw FontFile stream, `CFF` for bare and CID-keyed CFF) and a glyph id to code
-point map, where glyph ids are CFF glyph ids, and for Type 1 `.notdef` followed by the CharStrings in file order.
-Glyph names that the Adobe Glyph List resolves fill in code points the map leaves out. The font keeps every glyph at
-its original glyph id with its exact advance width, scaled to 1000 units per em through the FontMatrix, and has
-`glyf`, `loca`, `hmtx`, `hhea`, `head`, `maxp`, `OS/2`, `post`, `name` and a `cmap` with format 4 and, for code points
-beyond the BMP, format 12. A program that cannot be read fails with an `IOException`.
+or `FontFace`. `toTrueType(PDFont)` reads the font's FontFile (Type 1), FontFile2 (TrueType, simple or CIDFontType2)
+or FontFile3 (`Type1C`, `CIDFontType0C`, `OpenType`) and builds the cmap from the font's ToUnicode, encoding and
+CIDToGIDMap. `toTrueType(byte[], FontKind, Map<Integer, Integer>)` takes the program bytes (`TYPE1` as PFB or as the
+raw FontFile stream, `CFF` for bare and CID-keyed CFF, `TRUETYPE` for TrueType or OpenType) and a glyph id to code
+point map, where glyph ids are the font's own, and for Type 1 `.notdef` followed by the CharStrings in file order.
+Glyph names that the Adobe Glyph List resolves, and for TrueType the font's own Unicode cmap, fill in code points the
+map leaves out. Every glyph keeps its glyph id and its advance width. Type 1 and CFF outlines are converted to
+TrueType at 1000 units per em through the FontMatrix; TrueType glyphs, hinting (`fpgm`, `prep`, `cvt `) and metrics
+are kept as they are, and a missing or truncated `OS/2` is replaced. The font has `glyf`, `loca`, `hmtx`, `hhea`,
+`head`, `maxp`, `OS/2`, `post`, `name` and a fresh `cmap` with format 4 and, for code points beyond the BMP, format 12.
+A program that cannot be read fails with an `IOException`.
 
 ## How it works
 
@@ -834,7 +837,7 @@ The cache belongs to the JDK build that made it; the JVM ignores a cache from an
   `Options(timeout, fontDirs, maxPages, maxScratchBytes)` are kept; a record pattern over `Options` needs the new
   components.
 - A new module, `stirling-office-convert-pdfa`, converts PDF to PDF/A.
-- `WebFonts` in the pdfa module converts Type 1 and CFF font programs from PDFs to TrueType web fonts.
+- `WebFonts` in the pdfa module converts Type 1, CFF and TrueType font programs from PDFs to TrueType web fonts.
 - JPEG 2000 pictures are decoded by the library's own reader, which becomes the JVM's preferred `jpeg2000` ImageIO
   reader; `-Dstirling.officeconvert.jpxReader=imageio` keeps another one first (see Pictures).
 
