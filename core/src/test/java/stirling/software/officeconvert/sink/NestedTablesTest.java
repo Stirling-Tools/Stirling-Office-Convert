@@ -231,6 +231,13 @@ class NestedTablesTest {
         assertFalse(json.contains("\"blocks\""), json);
         Matcher m = Pattern.compile("\"cells\":\\[\\{(.*?)\"paragraphs\"").matcher(json);
         assertTrue(m.find(), json);
+        List<String> warnings = new ArrayList<>();
+        List<Block> read = new ArrayList<>();
+        JsonModel.replay(Json.parse(json), new Collect(read), warnings);
+        Table.Cell cell = ((Table) read.getFirst()).rows.getFirst().cells.getFirst();
+        assertTrue(cell.tables.isEmpty());
+        assertEquals(List.of("Plain"), cell.paragraphs.stream().map(NestedTablesTest::text).toList());
+        assertEquals(List.of(), warnings);
     }
 
     private static String json(Table t) throws IOException {
