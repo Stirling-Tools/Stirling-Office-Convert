@@ -310,8 +310,22 @@ final class ChartReader {
         float overlap = number(g.child("c:overlap"), stacked ? 100 : 0);
         float hole = number(g.child("c:holeSize"), 50);
         float first = number(g.child("c:firstSliceAng"), 0);
-        return new Chart.Group(kind, horizontal, grouping, series, gap, overlap, hole, first, vary,
+        Chart.Group group = new Chart.Group(kind, horizontal, grouping, series, gap, overlap, hole, first, vary,
                 labels(g.child("c:dLbls")));
+        return reversedOrder(g) ? group.inReversedOrder() : group;
+    }
+
+    private static boolean reversedOrder(XEl g) {
+        XEl ext = g.child("c:extLst");
+        if (ext == null) {
+            return false;
+        }
+        for (XEl e : ext.children("c:ext")) {
+            if (Charts.REVERSED_ORDER.equals(e.attr("uri"))) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private Chart.Series series(XEl s, Chart.Kind kind, int colorIndex, List<String> categories,

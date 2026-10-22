@@ -25,6 +25,6 @@ record BiffChart(Text title, List<Group> groups, Legend legend, Axis[] values, A
 
     record Legend(String position, double[] box) {}
 
-    record Axis(Double min, Double max, Double major, boolean gridlines, Text title, String format, boolean reversed,
+    record Axis(Double min, Double max, Double major, boolean gridlines, Integer gridColor, Text title, String format, boolean reversed,
             boolean log, boolean deleted) {}
 }

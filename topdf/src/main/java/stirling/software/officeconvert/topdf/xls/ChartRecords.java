@@ -25,6 +25,8 @@ final class ChartRecords {
 
     static final int MAX_POINTS = 4000;
 
+    static final int MAX_NAME_CHARS = 4096;
+
     static final int MAX_TEXT_CHARS = 4096;
 
     private static final int CHART = 0x1002, SERIES = 0x1003, DATA_FORMAT = 0x1006, LINE_FORMAT = 0x1007,
@@ -234,7 +236,9 @@ final class ChartRecords {
         }
         SeriesBuilder s = series.get(series.size() - 1);
         Ptg[] ref = r.getReferenceType() == 2 ? r.getFormulaOfLink() : null;
-        if (r.getLinkType() == 1) {
+        if (r.getLinkType() == 0) {
+            s.nameRef = ref;
+        } else if (r.getLinkType() == 1) {
             s.format = r.getIndexNumberFmtRecord();
             s.valueRef = ref;
         } else if (r.getLinkType() == 2) {
@@ -244,6 +248,30 @@ final class ChartRecords {
     }
 
     private void fromCells(SeriesBuilder s) {
+        if (s.name == null && s.nameRef != null) {
+            StringBuilder name = new StringBuilder();
+            for (Object v : fonts.cells(s.nameRef)) {
+                String part = v instanceof String t && !t.isBlank() ? t
+                        : v instanceof Double d ? fonts.number(d, -1, 0) : null;
+                if (part == null) {
+                    continue;
+                }
+                if (!name.isEmpty()) {
+                    name.append(' ');
+                }
+                name.append(part, 0, Math.min(part.length(), MAX_NAME_CHARS + 1 - name.length()));
+                if (name.length() > MAX_NAME_CHARS) {
+                    break;
+                }
+            }
+            if (!name.isEmpty()) {
+                int end = Math.min(name.length(), MAX_NAME_CHARS);
+                if (end < name.length() && Character.isHighSurrogate(name.charAt(end - 1))) {
+                    end--;
+                }
+                s.name = name.substring(0, end);
+            }
+        }
         if (s.values.isEmpty() && s.valueRef != null) {
             List<Object> cells = fonts.cells(s.valueRef);
             for (int i = 0; i < cells.size() && i < MAX_POINTS; i++) {
@@ -294,6 +322,7 @@ final class ChartRecords {
             s.iss = dataSeries;
         } else if (axisType >= 0 && top == AXIS && axisLine == 1 && axis() != null) {
             axis().gridlines = rgb != null;
+            axis().gridColor = rgb;
         } else if (frame == 1 && top == FRAME) {
             areaLine = rgb;
         }
@@ -618,6 +647,8 @@ final class ChartRecords {
 
         boolean gridlines;
 
+        Integer gridColor;
+
         boolean reversed;
 
         boolean log;
@@ -631,7 +662,8 @@ final class ChartRecords {
         BiffChart.Text title;
 
         BiffChart.Axis build(String numberFormat) {
-            return new BiffChart.Axis(min, max, major, gridlines, title, numberFormat, reversed, log, !labels);
+            return new BiffChart.Axis(min, max, major, gridlines, gridColor, title, numberFormat, reversed, log,
+                    !labels);
         }
     }
 
@@ -659,6 +691,8 @@ final class ChartRecords {
         Ptg[] valueRef;
 
         Ptg[] categoryRef;
+
+        Ptg[] nameRef;
 
         int iss = -1;
 

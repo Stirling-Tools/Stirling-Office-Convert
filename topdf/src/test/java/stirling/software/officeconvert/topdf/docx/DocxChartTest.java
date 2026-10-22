@@ -309,4 +309,84 @@ class DocxChartTest {
             assertTrue(differ <= x.getWidth() * x.getHeight() / 10_000, differ + " pixels differ; only rounding may");
         }
     }
+
+    private static String doughnut(String ext) {
+        StringBuilder sers = new StringBuilder();
+        String[] colors = {"FF0000", "0000FF"};
+        for (int k = 0; k < 2; k++) {
+            sers.append("<c:ser><c:idx val=\"").append(k).append("\"/><c:order val=\"").append(k).append("\"/>");
+            for (int i = 0; i < 2; i++) {
+                sers.append("<c:dPt><c:idx val=\"").append(i).append("\"/><c:spPr><a:solidFill><a:srgbClr val=\"")
+                        .append(colors[k]).append("\"/></a:solidFill></c:spPr></c:dPt>");
+            }
+            sers.append("<c:cat>").append(cache("str", null, "A", "B")).append("</c:cat><c:val>")
+                    .append(cache("num", "General", 1, 1)).append("</c:val></c:ser>");
+        }
+        return "<c:chartSpace " + C + "><c:chart><c:autoTitleDeleted val=\"1\"/><c:plotArea><c:layout/>"
+                + "<c:doughnutChart><c:varyColors val=\"1\"/>" + sers + "<c:firstSliceAng val=\"0\"/>"
+                + "<c:holeSize val=\"50\"/>" + ext + "</c:doughnutChart></c:plotArea></c:chart><c:spPr><a:noFill/>"
+                + "<a:ln><a:noFill/></a:ln></c:spPr></c:chartSpace>";
+    }
+
+    private int[] ringColours(String name, String chart) throws IOException {
+        DocxDoc.Rendered r = render(name, chart);
+        try (org.apache.pdfbox.pdmodel.PDDocument d = r.open()) {
+            java.awt.image.BufferedImage page = new org.apache.pdfbox.rendering.PDFRenderer(d).renderImage(0, 2);
+            int left = Integer.MAX_VALUE;
+            int right = -1;
+            int top = Integer.MAX_VALUE;
+            int bottom = -1;
+            for (int y = 0; y < page.getHeight(); y++) {
+                for (int x = 0; x < page.getWidth(); x++) {
+                    if ((page.getRGB(x, y) & 0xFFFFFF) != 0xFFFFFF) {
+                        left = Math.min(left, x);
+                        right = Math.max(right, x);
+                        top = Math.min(top, y);
+                        bottom = Math.max(bottom, y);
+                    }
+                }
+            }
+            int cx = (left + right) / 2;
+            int cy = (top + bottom) / 2;
+            int radius = (right - left) / 2;
+            return new int[] {page.getRGB(cx + radius / 4, cy) & 0xFFFFFF,
+                page.getRGB(cx + radius * 62 / 100, cy) & 0xFFFFFF, page.getRGB(cx + radius * 88 / 100, cy) & 0xFFFFFF};
+        }
+    }
+
+    @Test
+    void eachDoughnutSeriesIsItsOwnRingAroundAnEmptyHole() throws IOException {
+        int[] c = ringColours("rings", doughnut(""));
+        assertEquals(0xFFFFFF, c[0], "hole");
+        assertEquals(0xFF0000, c[1], "inner ring is the first series");
+        assertEquals(0x0000FF, c[2], "outer ring is the second series");
+    }
+
+    @Test
+    void aReversedDoughnutPutsTheFirstSeriesOutside() throws IOException {
+        int[] c = ringColours("reversed", doughnut("<c:extLst><c:ext uri=\"" + Charts.REVERSED_ORDER
+                + "\"/></c:extLst>"));
+        assertEquals(0xFFFFFF, c[0], "hole");
+        assertEquals(0x0000FF, c[1]);
+        assertEquals(0xFF0000, c[2]);
+    }
+
+    @Test
+    void aDoughnutOfManyDenseRingsStaysWithinABudget() throws IOException {
+        StringBuilder sers = new StringBuilder();
+        for (int k = 0; k < 256; k++) {
+            sers.append("<c:ser><c:idx val=\"").append(k).append("\"/><c:order val=\"").append(k)
+                    .append("\"/><c:val><c:numRef><c:numCache><c:ptCount val=\"4096\"/>");
+            for (int i = 0; i < 4096; i++) {
+                sers.append("<c:pt idx=\"").append(i).append("\"><c:v>1</c:v></c:pt>");
+            }
+            sers.append("</c:numCache></c:numRef></c:val></c:ser>");
+        }
+        String chart = "<c:chartSpace " + C + "><c:chart><c:autoTitleDeleted val=\"1\"/><c:plotArea><c:layout/>"
+                + "<c:doughnutChart><c:varyColors val=\"1\"/>" + sers + "<c:holeSize val=\"50\"/></c:doughnutChart>"
+                + "</c:plotArea></c:chart></c:chartSpace>";
+        DocxDoc.Rendered r = render("denseDoughnut", chart);
+        long bytes = java.nio.file.Files.size(r.pdf());
+        assertTrue(bytes < 3_000_000, bytes + " bytes");
+    }
 }

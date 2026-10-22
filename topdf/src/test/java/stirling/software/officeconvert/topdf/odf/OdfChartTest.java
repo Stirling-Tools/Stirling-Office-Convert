@@ -10,6 +10,7 @@ import java.nio.charset.StandardCharsets;
 import org.junit.jupiter.api.Test;
 import org.w3c.dom.Element;
 
+import stirling.software.officeconvert.topdf.docx.Charts;
 import stirling.software.officeconvert.topdf.io.SecureXml;
 
 class OdfChartTest {
@@ -56,6 +57,59 @@ class OdfChartTest {
         String part = chart("chart:series-source=\"columns\"");
         assertTrue(part.contains("<c:v>1984</c:v>") && part.contains("<c:v>North</c:v>")
                 && part.indexOf("<c:v>1984</c:v>") < part.indexOf("<c:v>1.0</c:v>"), part);
+    }
+
+    private static String styled(String cls, String plotProps) throws IOException {
+        String xml = "<?xml version=\"1.0\"?><office:document-content " + OdfFixtures.NS
+                + " xmlns:chart=\"urn:oasis:names:tc:opendocument:xmlns:chart:1.0\"><office:automatic-styles>"
+                + "<style:style style:name=\"p1\" style:family=\"chart\"><style:chart-properties " + plotProps + "/>"
+                + "</style:style><style:style style:name=\"w\" style:family=\"chart\"><style:graphic-properties"
+                + " draw:fill=\"solid\" draw:fill-color=\"#d9d9d9\"/></style:style><style:style style:name=\"g\""
+                + " style:family=\"chart\"><style:graphic-properties svg:stroke-color=\"#b3b3b3\"/></style:style>"
+                + "</office:automatic-styles><office:body><office:chart><chart:chart svg:width=\"10cm\""
+                + " svg:height=\"5cm\" chart:class=\"chart:" + cls + "\"><chart:plot-area chart:style-name=\"p1\">"
+                + "<chart:coordinate-region svg:x=\"1cm\" svg:y=\"0.5cm\" svg:width=\"8cm\" svg:height=\"4cm\"/>"
+                + "<chart:axis chart:dimension=\"x\" chart:name=\"primary-x\"/><chart:axis chart:dimension=\"y\""
+                + " chart:name=\"primary-y\"><chart:grid chart:style-name=\"g\" chart:class=\"major\"/></chart:axis>"
+                + "<chart:series/><chart:series/><chart:wall chart:style-name=\"w\"/></chart:plot-area>"
+                + "<table:table table:name=\"local-table\"><table:table-header-columns><table:table-column/>"
+                + "</table:table-header-columns><table:table-header-rows><table:table-row><table:table-cell/>"
+                + cell("North") + cell("South") + "</table:table-row></table:table-header-rows><table:table-rows>"
+                + "<table:table-row>" + cell("Q1") + number(1) + number(2) + "</table:table-row>"
+                + "<table:table-row>" + cell("Q2") + number(3) + number(4) + "</table:table-row>"
+                + "</table:table-rows></table:table></chart:chart></office:chart></office:body></office:document-content>";
+        Element root = SecureXml.parse(new ByteArrayInputStream(xml.getBytes(StandardCharsets.UTF_8))).getDocumentElement();
+        return OdfChart.part(root, root, new WorkBudget(0));
+    }
+
+    @Test
+    void theWallGridAndPlotRectangleCarryOver() throws IOException {
+        String part = styled("bar", "chart:vertical=\"false\"");
+        assertTrue(part.contains("<c:x val=\"0.1\"/><c:y val=\"0.1\"/><c:w val=\"0.8\"/><c:h val=\"0.8\"/>"), part);
+        assertTrue(part.contains("<c:majorGridlines><c:spPr><a:ln w=\"9525\"><a:solidFill><a:srgbClr val=\"B3B3B3\"/>"),
+                part);
+        assertTrue(part.contains("<a:srgbClr val=\"D9D9D9\"/></a:solidFill><a:ln><a:noFill/></a:ln></c:spPr></c:plotArea>"),
+                part);
+        assertTrue(part.indexOf("<c:v>North</c:v>") < part.indexOf("<c:v>South</c:v>"), part);
+        assertFalse(part.contains(Charts.REVERSED_ORDER), part);
+    }
+
+    @Test
+    void clusteredHorizontalBarsListTheLastSeriesFirst() throws IOException {
+        String part = styled("bar", "chart:vertical=\"true\"");
+        assertTrue(part.indexOf("<c:v>South</c:v>") < part.indexOf("<c:v>North</c:v>"), part);
+        String stacked = styled("bar", "chart:vertical=\"true\" chart:stacked=\"true\"");
+        assertTrue(stacked.indexOf("<c:v>North</c:v>") < stacked.indexOf("<c:v>South</c:v>"), stacked);
+    }
+
+    @Test
+    void piesAndOverlappingAreasDrawInLibreOfficeOrder() throws IOException {
+        assertTrue(styled("circle", "").contains(Charts.REVERSED_ORDER));
+        assertTrue(styled("area", "").contains(Charts.REVERSED_ORDER));
+        assertFalse(styled("area", "chart:stacked=\"true\"").contains(Charts.REVERSED_ORDER));
+        String ring = styled("ring", "");
+        assertTrue(ring.contains(Charts.REVERSED_ORDER) && ring.contains("<c:holeSize val=\"33\"/>"), ring);
+        assertFalse(ring.contains("D9D9D9"), ring);
     }
 
     @Test

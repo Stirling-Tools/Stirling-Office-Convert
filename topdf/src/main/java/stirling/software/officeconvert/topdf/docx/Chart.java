@@ -74,17 +74,23 @@ record Chart(Text title, List<Group> groups, List<String> categories, Legend leg
     }
 
     record Group(Kind kind, boolean horizontal, String grouping, List<Series> series, float gapWidth, float overlap,
-            float holeSize, float firstSliceAngle, boolean varyColors, Labels labels, boolean secondary) {
+            float holeSize, float firstSliceAngle, boolean varyColors, Labels labels, boolean secondary,
+            boolean reversedOrder) {
 
         Group(Kind kind, boolean horizontal, String grouping, List<Series> series, float gapWidth, float overlap,
                 float holeSize, float firstSliceAngle, boolean varyColors, Labels labels) {
             this(kind, horizontal, grouping, series, gapWidth, overlap, holeSize, firstSliceAngle, varyColors, labels,
-                    false);
+                    false, false);
         }
 
         Group onSecondary() {
             return new Group(kind, horizontal, grouping, series, gapWidth, overlap, holeSize, firstSliceAngle,
-                    varyColors, labels, true);
+                    varyColors, labels, true, reversedOrder);
+        }
+
+        Group inReversedOrder() {
+            return new Group(kind, horizontal, grouping, series, gapWidth, overlap, holeSize, firstSliceAngle,
+                    varyColors, labels, secondary, true);
         }
     }
 

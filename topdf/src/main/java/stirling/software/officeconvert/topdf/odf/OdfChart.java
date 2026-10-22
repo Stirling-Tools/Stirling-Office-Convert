@@ -7,6 +7,8 @@ import java.util.Locale;
 
 import org.w3c.dom.Element;
 
+import stirling.software.officeconvert.topdf.docx.Charts;
+
 final class OdfChart {
 
     static final int MAX_POINTS = 4000;
@@ -68,7 +70,8 @@ final class OdfChart {
         } else {
             b.append("<c:autoTitleDeleted val=\"1\"/>");
         }
-        b.append("<c:plotArea><c:layout/>");
+        b.append("<c:plotArea>").append(layout(Dom.kid(Dom.kid(chart, CHART, "plot-area"), CHART,
+                "coordinate-region")));
         boolean pie = cls.equals("circle") || cls.equals("ring");
         boolean scatter = cls.equals("scatter") || cls.equals("bubble");
         String group = "true".equals(pc.get("chart:percentage")) ? "percentStacked"
@@ -96,6 +99,7 @@ final class OdfChart {
         }
         b.append("<c:varyColors val=\"").append(pie ? 1 : 0).append("\"/>");
         int valueColumn = scatter ? 1 : 0;
+        List<String> written = new ArrayList<>();
         for (int i = 0; i < series.size() && i < MAX_SERIES; i++) {
             Element s = series.get(i);
             int col = scatter ? valueColumn + i : i;
@@ -105,7 +109,12 @@ final class OdfChart {
             String xml = series(s, i, col < names.size() ? names.get(col) : "Series " + (i + 1), categories,
                     scatter ? columns.get(0) : null, columns.get(col), tag, pie);
             work.charge(xml.length());
-            b.append(xml);
+            written.add(xml);
+        }
+        boolean bottomUp = tag.equals("barChart") && "true".equals(pc.get("chart:vertical"))
+                && group.equals("standard");
+        for (int i = 0; i < written.size(); i++) {
+            b.append(written.get(bottomUp ? written.size() - 1 - i : i));
         }
         if (tag.equals("barChart")) {
             b.append("<c:gapWidth val=\"100\"/>");
@@ -114,18 +123,23 @@ final class OdfChart {
             }
         }
         if (tag.equals("doughnutChart")) {
-            b.append("<c:firstSliceAng val=\"0\"/><c:holeSize val=\"50\"/>");
+            b.append("<c:firstSliceAng val=\"0\"/><c:holeSize val=\"")
+                    .append(Math.max(10, 100 / (Math.max(1, written.size()) + 1))).append("\"/>");
         } else if (tag.equals("pieChart")) {
             b.append("<c:firstSliceAng val=\"0\"/>");
         }
         if (!pie) {
             b.append("<c:axId val=\"500000001\"/><c:axId val=\"500000002\"/>");
         }
+        if (pie || tag.equals("areaChart") && group.equals("standard")) {
+            b.append("<c:extLst><c:ext uri=\"").append(Charts.REVERSED_ORDER).append("\"/></c:extLst>");
+        }
         b.append("</c:").append(tag).append('>');
         if (!pie) {
             b.append(axes(plot, scatter, "true".equals(pc.get("chart:vertical"))));
         }
-        b.append(fill(props(plot, "graphic-properties"), false));
+        Element wall = pie || tag.equals("radarChart") ? null : Dom.kid(plot, CHART, "wall");
+        b.append(fill(props(wall != null ? wall : plot, "graphic-properties"), false));
         b.append("</c:plotArea>");
         Element legend = Dom.kid(chart, CHART, "legend");
         if (legend != null) {
@@ -265,7 +279,9 @@ final class OdfChart {
                 .append("\"/>");
         for (Element grid : Dom.kids(a, CHART, "grid")) {
             String cls = Dom.attr(grid, CHART, "class", "major");
-            b.append(cls.equals("minor") ? "<c:minorGridlines/>" : "<c:majorGridlines/>");
+            String tagName = cls.equals("minor") ? "c:minorGridlines" : "c:majorGridlines";
+            b.append('<').append(tagName).append('>').append(stroke(props(grid, "graphic-properties")))
+                    .append("</").append(tagName).append('>');
         }
         Element title = Dom.kid(a, CHART, "title");
         if (title != null) {
@@ -273,6 +289,7 @@ final class OdfChart {
         }
         b.append("<c:numFmt formatCode=\"General\" sourceLinked=\"1\"/><c:majorTickMark val=\"out\"/>")
                 .append("<c:minorTickMark val=\"none\"/><c:tickLblPos val=\"nextTo\"/>")
+                .append(a == null ? "" : stroke(props(a, "graphic-properties")))
                 .append(a == null ? "" : textProps(props(a, "text-properties"))).append("<c:crossAx val=\"")
                 .append(cross).append("\"/><c:crosses val=\"autoZero\"/>");
         if (tag.equals("valAx")) {
@@ -281,6 +298,42 @@ final class OdfChart {
             b.append("<c:auto val=\"1\"/><c:lblAlgn val=\"ctr\"/><c:lblOffset val=\"100\"/>");
         }
         return b.append("</c:").append(tag).append('>').toString();
+    }
+
+    private String layout(Element region) {
+        if (region == null) {
+            return "<c:layout/>";
+        }
+        double width = Length.pt(Dom.attr(chart, Ns.SVG, "width"), 0);
+        double height = Length.pt(Dom.attr(chart, Ns.SVG, "height"), 0);
+        double x = Length.pt(Dom.attr(region, Ns.SVG, "x"), -1);
+        double y = Length.pt(Dom.attr(region, Ns.SVG, "y"), -1);
+        double w = Length.pt(Dom.attr(region, Ns.SVG, "width"), 0);
+        double h = Length.pt(Dom.attr(region, Ns.SVG, "height"), 0);
+        if (width <= 0 || height <= 0 || x < 0 || y < 0 || w <= 0 || h <= 0 || x + w > width * 1.01
+                || y + h > height * 1.01) {
+            return "<c:layout/>";
+        }
+        return "<c:layout><c:manualLayout><c:layoutTarget val=\"inner\"/><c:xMode val=\"edge\"/>"
+                + "<c:yMode val=\"edge\"/><c:x val=\"" + fraction(x, width) + "\"/><c:y val=\"" + fraction(y, height)
+                + "\"/><c:w val=\"" + fraction(w, width) + "\"/><c:h val=\"" + fraction(h, height)
+                + "\"/></c:manualLayout></c:layout>";
+    }
+
+    private static double fraction(double part, double whole) {
+        return Math.round(part / whole * 10000) / 10000.0;
+    }
+
+    private static String stroke(Props g) {
+        if ("none".equals(g.get("draw:stroke"))) {
+            return "<c:spPr><a:ln><a:noFill/></a:ln></c:spPr>";
+        }
+        String color = Colors.fill(g.get("svg:stroke-color"));
+        if (color == null) {
+            return "";
+        }
+        return "<c:spPr><a:ln w=\"" + Length.emu(Math.max(0.75, g.pt("svg:stroke-width", 0.75)))
+                + "\"><a:solidFill><a:srgbClr val=\"" + color + "\"/></a:solidFill></a:ln></c:spPr>";
     }
 
     private static String number(String v) {
