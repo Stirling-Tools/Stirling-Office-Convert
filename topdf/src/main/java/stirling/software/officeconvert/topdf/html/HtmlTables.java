@@ -64,7 +64,7 @@ final class HtmlTables {
             Look rowLook = look.child(rowDecl, frame.width(), false);
             Table.Row row = new Table.Row();
             // A browser breaks a tall row across pages rather than cutting it off
-            row.splits = true;
+            row.splits = !Flow.avoidsBreaks(rowDecl);
             row.height = Math.max(0, Flow.length(rowDecl.get("height"), rowLook.size, 0));
             row.header = "thead".equals(tr.parent() == null ? "" : tr.parent().normalName());
             boolean allHeads = true;
@@ -419,6 +419,11 @@ final class HtmlTables {
             left = Math.max(0, (frame.width() - width) / 2);
         }
         t.indent = frame.left() + left;
+        if (look.rightToLeft) {
+            t.rightToLeft = true;
+            float right = Flow.length(d.get("margin-right"), look.size, frame.width());
+            t.indent = centred || inCentre || "center".equalsIgnoreCase(table.attr("align")) ? left : frame.right() + right;
+        }
     }
 
     /** True for a table that only stacks things: one cell a row and no borders drawn. */

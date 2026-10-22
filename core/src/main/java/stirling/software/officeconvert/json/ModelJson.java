@@ -44,7 +44,7 @@ final class ModelJson {
             JsonOut l = new JsonOut(o.key("list"));
             l.always("id", p.list.numId()).always("level", p.list.level()).end();
         }
-        o.flag("pageBreakBefore", p.pageBreakBefore).flag("keepNext", p.keepNext).flag("rightToLeft", p.bidi)
+        o.flag("pageBreakBefore", p.pageBreakBefore).flag("keepNext", p.keepNext).flag("keepLines", p.keepLines).flag("rightToLeft", p.bidi)
                 .flag("noHangingPunctuation", p.noHangingPunctuation)
                 .color("shading", p.shading).num("borderBottom", p.borderBottom);
         if (p.borderBottom > 0) {
