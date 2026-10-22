@@ -13,6 +13,7 @@ import java.time.Duration;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
+import org.apache.poi.hssf.usermodel.HSSFRow;
 import org.apache.poi.hssf.usermodel.HSSFSheet;
 import org.apache.poi.poifs.filesystem.POIFSFileSystem;
 import org.apache.poi.ss.SpreadsheetVersion;
@@ -86,6 +87,36 @@ class XlsChartTest {
         });
         String chart = chartXml(data);
         assertTrue(chart.contains("<c:v>10.0</c:v>") && chart.contains("<c:v>30.0</c:v>"), chart);
+    }
+
+    @Test
+    void longCategoryTextFromCellsIsCappedPerCategory() throws Exception {
+        String longText = "c".repeat(32_767);
+        byte[] data = XlsTest.xls(wb -> {
+            HSSFSheet sheet = wb.createSheet("Data");
+            for (int i = 0; i < 20; i++) {
+                HSSFRow row = sheet.createRow(i);
+                row.createCell(0).setCellValue(longText);
+                row.createCell(1).setCellValue(i);
+            }
+            int extern = wb.getInternalWorkbook().checkExternSheet(0);
+            ChartFixtures.chartSheet(wb, "Chart1", ChartFixtures.linkedChart(BAR, "Linked", 20,
+                    new Area3DPtg(new AreaReference("B1:B20", SpreadsheetVersion.EXCEL97), extern),
+                    new Area3DPtg(new AreaReference("A1:A20", SpreadsheetVersion.EXCEL97), extern)));
+        });
+        String chart = chartXml(data);
+        assertTrue(chart.contains("<c:v>" + "c".repeat(ChartRecords.MAX_TEXT_CHARS) + "</c:v>"), "category kept");
+        assertFalse(chart.contains("c".repeat(ChartRecords.MAX_TEXT_CHARS + 1)), "category capped");
+        assertTrue(chart.length() < 20 * (ChartRecords.MAX_TEXT_CHARS + 100) + 10_000, "chart xml " + chart.length());
+    }
+
+    @Test
+    void longCachedCategoryTextIsCappedPerCategory() throws Exception {
+        String chart = chartXml(XlsTest.xls(wb -> ChartFixtures.chartSheet(wb, "Chart1", ChartFixtures.chart(null,
+                BAR, new byte[6], new String[] {"A"}, new String[] {"z".repeat(6000), "y"},
+                new double[][] {{1, 2}}))));
+        assertTrue(chart.contains("<c:v>" + "z".repeat(ChartRecords.MAX_TEXT_CHARS) + "</c:v>"), "category kept");
+        assertFalse(chart.contains("z".repeat(ChartRecords.MAX_TEXT_CHARS + 1)), "category capped");
     }
 
     private static String chartXml(byte[] xls) throws IOException {

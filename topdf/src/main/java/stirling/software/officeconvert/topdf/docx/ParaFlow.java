@@ -506,6 +506,13 @@ final class ParaFlow {
         List<Op> lineOps = new ArrayList<>();
         List<Inline.NoteRef> notes = new ArrayList<>();
         LinePainter.paint(line, lineOps, ctx, notes);
+        Para.Heading heading = pi.para.heading;
+        if (firstLine && heading != null) {
+            String title = pi.para.headingTitle();
+            if (!title.isEmpty()) {
+                lineOps.add(new Op.Outline(title, heading.level(), heading.order(), 0));
+            }
+        }
         if (pi.para.pp.tabs != null) {
             for (TabStop t : pi.para.pp.tabs) {
                 if (t.kind() == TabStop.Kind.BAR) {

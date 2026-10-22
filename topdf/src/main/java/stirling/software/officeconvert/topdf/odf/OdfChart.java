@@ -13,6 +13,8 @@ final class OdfChart {
 
     static final int MAX_SERIES = 64;
 
+    static final int MAX_TEXT_CHARS = 4096;
+
     private static final String[] PALETTE = {"004586", "FF420E", "FFD320", "579D1C", "7E0021", "83CAFF", "314004",
         "AECF00", "4B1F6F", "FF950E", "C5000B", "0084D1"};
 
@@ -405,7 +407,15 @@ final class OdfChart {
     private String label(Element cell) throws InterruptedIOException {
         String text = SheetWriter.text(cell);
         work.charge(text.length());
-        return text;
+        return capped(text);
+    }
+
+    private static String capped(String text) {
+        if (text.length() <= MAX_TEXT_CHARS) {
+            return text;
+        }
+        int end = Character.isHighSurrogate(text.charAt(MAX_TEXT_CHARS - 1)) ? MAX_TEXT_CHARS - 1 : MAX_TEXT_CHARS;
+        return text.substring(0, end);
     }
 
     private static List<Element> cells(Element row) {

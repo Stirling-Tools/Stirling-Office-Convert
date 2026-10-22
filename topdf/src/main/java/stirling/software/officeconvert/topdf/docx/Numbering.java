@@ -36,6 +36,8 @@ final class Numbering {
 
     private final Map<Integer, boolean[]> started = new HashMap<>();
 
+    private final Map<Integer, Integer[]> pendingStarts = new HashMap<>();
+
     private final Set<Integer> numsUsed = new HashSet<>();
 
     private final Styles styles;
@@ -186,17 +188,18 @@ final class Numbering {
         int a = abstractOf(numId);
         int[] c = counters.computeIfAbsent(a, k -> new int[9]);
         boolean[] s = started.computeIfAbsent(a, k -> new boolean[9]);
+        Integer[] pending = pendingStarts.computeIfAbsent(a, k -> new Integer[9]);
         Num num = nums.get(numId);
         if (numsUsed.add(numId)) {
             for (int i = 0; i < 9; i++) {
                 if (num.startOverride[i] != null) {
-                    c[i] = num.startOverride[i] - 1;
-                    s[i] = true;
+                    pending[i] = num.startOverride[i];
+                    s[i] = false;
                 }
             }
         }
         if (!s[ilvl]) {
-            c[ilvl] = lvl.start;
+            c[ilvl] = startOf(lvl, pending, ilvl);
             s[ilvl] = true;
         } else {
             c[ilvl]++;
@@ -205,7 +208,7 @@ final class Numbering {
         for (int k = 0; k < ilvl; k++) {
             Level parent = level(numId, k);
             if (!s[k] && parent != null) {
-                c[k] = parent.start;
+                c[k] = startOf(parent, pending, k);
                 s[k] = true;
             }
         }
@@ -217,6 +220,12 @@ final class Numbering {
             }
         }
         return label(numId, ilvl, lvl, c, s);
+    }
+
+    private static int startOf(Level lvl, Integer[] pending, int ilvl) {
+        Integer p = pending[ilvl];
+        pending[ilvl] = null;
+        return p != null ? p : lvl.start;
     }
 
     private String label(int numId, int ilvl, Level lvl, int[] c, boolean[] s) {

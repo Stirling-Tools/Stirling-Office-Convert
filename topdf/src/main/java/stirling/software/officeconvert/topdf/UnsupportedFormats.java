@@ -44,7 +44,6 @@ public final class UnsupportedFormats {
             case "one", "onepkg" -> "OneNote notebooks are not supported; export the pages as PDF from OneNote";
             case "mht", "mhtml" -> "MHTML web archives are not supported; open the file in Word or a browser and save it"
                     + " as .docx or PDF";
-            case "htm", "html", "xhtml" -> "HTML pages are not Office documents; convert them with an HTML to PDF tool";
             case "eml", "msg" -> "E-mail messages are not Office documents; convert them with an e-mail to PDF tool";
             case "odf", "mml" -> "OpenDocument formulas on their own are not supported; place the formula in a"
                     + " document";
@@ -78,9 +77,6 @@ public final class UnsupportedFormats {
         if ((text.startsWith("mime-version:") || text.startsWith("from:") || text.startsWith("content-type:"))
                 && text.contains("multipart/related")) {
             return byExtension("mht");
-        }
-        if (text.startsWith("<!doctype html") || text.startsWith("<html")) {
-            return "The file is an HTML page, not an Office document; convert it with an HTML to PDF tool";
         }
         try {
             if (!LegacyOffice.ole2(file)) {

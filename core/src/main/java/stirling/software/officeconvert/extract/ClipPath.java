@@ -2,6 +2,7 @@ package stirling.software.officeconvert.extract;
 
 import java.awt.geom.GeneralPath;
 import java.awt.geom.Path2D;
+import java.awt.geom.Point2D;
 
 import org.apache.pdfbox.pdmodel.graphics.state.PDGraphicsState;
 
@@ -36,6 +37,16 @@ final class ClipPath {
         segments++;
     }
 
+    void curveFromCurrent(float x2, float y2, float x3, float y3) {
+        Point2D current = path.getCurrentPoint();
+        if (current == null) {
+            path.moveTo(x3, y3);
+        } else {
+            path.curveTo((float) current.getX(), (float) current.getY(), x2, y2, x3, y3);
+        }
+        segments++;
+    }
+
     void rectangle(float x0, float y0, float x1, float y1, float x2, float y2, float x3, float y3) {
         path.moveTo(x0, y0);
         path.lineTo(x1, y1);
@@ -56,12 +67,12 @@ final class ClipPath {
     }
 
     void end(PDGraphicsState state) {
-        if (pendingRule >= 0) {
+        if (pendingRule >= 0 && segments > 0) {
             GeneralPath clip = segments > MAX_SEGMENTS ? new GeneralPath(path.getBounds2D()) : path;
             clip.setWindingRule(pendingRule == Path2D.WIND_EVEN_ODD ? Path2D.WIND_EVEN_ODD : Path2D.WIND_NON_ZERO);
             state.intersectClippingPath(clip);
-            pendingRule = -1;
         }
+        pendingRule = -1;
         path = new GeneralPath();
         segments = 0;
     }
