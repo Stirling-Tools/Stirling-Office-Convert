@@ -81,6 +81,30 @@ class MarginBoxesTest {
     }
 
     @Test
+    void laterRulesAndImportantCascadeIntoTheSameBox() throws IOException {
+        String html = "<html><head><style>@page { margin: 72pt; @top-left { content: \"Left head\" } "
+                + "@top-right { content: \"Kept\" !important } } "
+                + "@page { @top-left { font-size: 8pt } @top-right { content: \"Lost\" } }"
+                + "</style></head><body>" + body(2) + "</body></html>";
+        try (PDDocument doc = convert(html)) {
+            String text = new PDFTextStripper().getText(doc);
+            assertTrue(text.contains("Left head"), text);
+            assertTrue(text.contains("Kept"), text);
+            assertFalse(text.contains("Lost"), text);
+            assertEquals(8f, position(doc, "Left head")[2], 0.5f);
+        }
+    }
+
+    @Test
+    void semicolonInsideContentStringStaysInTheHeader() throws IOException {
+        String html = "<html><head><style>@page { @top-center { content: \"Draft; internal\"; color: gray } }"
+                + "</style></head><body>" + body(2) + "</body></html>";
+        try (PDDocument doc = convert(html)) {
+            assertTrue(new PDFTextStripper().getText(doc).contains("Draft; internal"));
+        }
+    }
+
+    @Test
     void pageWithoutBoxesHasNoHeaderOrFooter() throws IOException {
         try (PDDocument doc = convert("<html><body>" + body(2) + "</body></html>")) {
             String text = new PDFTextStripper().getText(doc).strip();

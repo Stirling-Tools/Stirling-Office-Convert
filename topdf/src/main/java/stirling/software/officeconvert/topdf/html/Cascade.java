@@ -42,6 +42,7 @@ final class Cascade {
     private final Map<Element, List<Hit>> hits = new IdentityHashMap<>();
     private final Map<String, String> page = new HashMap<>();
     private final Map<String, Map<String, String>> margins = new HashMap<>();
+    private final Map<String, Map<String, String>> importantMargins = new HashMap<>();
     private final Map<String, Map<String, String>> named = new HashMap<>();
     private long work;
     private final Set<String> sheets = new HashSet<>();
@@ -77,7 +78,9 @@ final class Cascade {
         for (Css.Rule rule : rules) {
             order++;
             if (rule.selector().startsWith("@margin ")) {
-                margins.put(rule.selector().substring(8), rule.declarations());
+                String box = rule.selector().substring(8);
+                put(margins.computeIfAbsent(box, k -> new HashMap<>()), rule.declarations(), false);
+                put(importantMargins.computeIfAbsent(box, k -> new HashMap<>()), rule.declarations(), true);
                 continue;
             }
             if ("@page".equals(rule.selector())) {
@@ -105,6 +108,7 @@ final class Cascade {
             }
             index(selector, new Compiled(evaluator, new Hit(specificity(selector), order, rule.declarations())));
         }
+        importantMargins.forEach((box, d) -> margins.get(box).putAll(d));
     }
 
     private static boolean stylesheet(Element link) {

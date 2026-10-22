@@ -103,9 +103,18 @@ final class Css {
         List<String> out = new ArrayList<>();
         int depth = 0;
         int from = 0;
+        char quote = 0;
         for (int i = 0; i < s.length(); i++) {
             char c = s.charAt(i);
-            if (c == '(' || c == '[') {
+            if (quote != 0) {
+                if (c == '\\') {
+                    i++;
+                } else if (c == quote || c == '\n') {
+                    quote = 0;
+                }
+            } else if (c == '"' || c == '\'') {
+                quote = c;
+            } else if (c == '(' || c == '[') {
                 depth++;
             } else if ((c == ')' || c == ']') && depth > 0) {
                 depth--;
