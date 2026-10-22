@@ -38,7 +38,7 @@ final class HtmlInput {
     }
 
     static boolean packaged(Path source, Format requested) throws IOException {
-        if (requested != Format.HTML && !zipNamed(source)) {
+        if (requested != Format.HTML && requested != Format.EPUB && !zipNamed(source)) {
             return false;
         }
         return zip(head(source));
@@ -100,7 +100,7 @@ final class HtmlInput {
             }
         }
         if (packaged(source, requested)) {
-            return renderPackage(source, sink, options, renderer);
+            return renderPackage(source, requested, sink, options, renderer);
         }
         if (!is(source, requested)) {
             return null;
@@ -108,10 +108,14 @@ final class HtmlInput {
         return render(source, sink, options, renderer, options.htmlAssets());
     }
 
-    private static Result renderPackage(Path source, OutputStream sink, Options options, OfficeToPdf.Renderer renderer)
-            throws IOException {
+    private static Result renderPackage(Path source, Format requested, OutputStream sink, Options options,
+            OfficeToPdf.Renderer renderer) throws IOException {
         try (HtmlPackage pkg = HtmlPackage.open(source)) {
-            if (EpubBook.is(pkg)) {
+            boolean book = EpubBook.is(pkg);
+            if (requested == Format.EPUB && !book) {
+                throw new IOException("The file is not an EPUB book: it has no META-INF/container.xml");
+            }
+            if (book && (requested == Format.EPUB || options.allowPackages())) {
                 return renderBook(pkg, sink, options, renderer);
             }
             String fb2 = pkg.page() == null && (options.allowPackages() || compressedFictionBook(source))

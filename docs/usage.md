@@ -30,7 +30,7 @@ OpenDocument `.odt .ott .fodt .odm .ods .ots .fods .odp .otp .fodp .odg .otg .fo
 none), `--fonts dir` (repeatable; an extra folder of fonts), `--font-map Family=Installed` (repeatable; draw a
 family with an installed one, such as `Aptos=Inter`), `--font-width Family=scale` (repeatable; scale a substituted
 family's widths, 0.5 to 2), `--no-system-fonts` (only the given fonts and the bundled Liberation Sans, for
-reproducible output), `--allow-packages` (convert a `.zip` of an HTML page), `--allow-local-files` (let an HTML page
+reproducible output), `--allow-packages` (convert a `.zip` of an HTML page, or an EPUB book not named `.epub`), `--allow-local-files` (let an HTML page
 draw the pictures and style sheets in its own folder, never outside it), `-q`, and `--format pdf` to take only the Office files out
 of a folder. A folder converts both its PDFs and its Office files; its text and CSV files only with `--format pdf`. Inputs that would write the same output name (such
 as `report.docx` and `report.xlsx`) keep their own extension in it (`report.docx.pdf`, `report.xlsx.pdf`), and Office
@@ -552,7 +552,9 @@ At most 4,000 linked files and 192 MB are read per page, 64 MB each.
 EPUB (`.epub`, EPUB 2 and 3) is read in its reading order (the package document's spine) into one HTML page: each
 document starts a new page, its own `<style>` rules apply only to it, links between documents become links inside
 the PDF, and the cover picture (an SVG-wrapped cover page included) comes first. Pictures and style sheets come from
-the book. A style sheet that only some documents link applies only to those. DRM-protected books cannot be read.
+the book. A style sheet that only some documents link applies only to those. A book converts by default when it is
+named `.epub` or streamed as `Format.EPUB`; a book inside any other `.zip`, or streamed as `Format.HTML`, is a package
+and needs `allowPackages`. DRM-protected books cannot be read.
 
 Kindle and Mobipocket books (`.mobi .azw .prc`, `.pdb` PalmDOC text, and KF8 `.azw3`) are read without DRM only:
 uncompressed, PalmDOC and HUFF/CDIC text; a KF8 book (or the KF8 half of a combined `.mobi`) is rebuilt from its

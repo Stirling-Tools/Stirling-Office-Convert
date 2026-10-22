@@ -78,6 +78,7 @@ public final class OfficeToPdf {
         CSV,
         TSV,
         HTML,
+        EPUB,
         JSON;
 
         public static Format of(Path file) {
@@ -93,7 +94,8 @@ public final class OfficeToPdf {
                         "sylk", "dif", "dbf", "numbers", "wk1", "wks", "wk3", "wk4", "123" -> XLSX;
                 case "csv" -> CSV;
                 case "tsv", "tab" -> TSV;
-                case "html", "htm", "xhtml", "zip", "epub", "mobi", "azw3", "azw", "prc", "pdb", "fb2", "fbz" -> HTML;
+                case "html", "htm", "xhtml", "zip", "mobi", "azw3", "azw", "prc", "pdb", "fb2", "fbz" -> HTML;
+                case "epub" -> EPUB;
                 case "json" -> JSON;
                 case "ppt", "pps", "pot" -> PPT;
                 default -> {
@@ -537,6 +539,19 @@ public final class OfficeToPdf {
                 return out.toByteArray();
             }
         }
+        if (format == Format.EPUB) {
+            Map<String, String> book = new LinkedHashMap<>();
+            book.put("mimetype", "application/epub+zip");
+            book.put("META-INF/container.xml", "<container version=\"1.0\" xmlns=\"urn:oasis:names:tc:opendocument:xmlns"
+                    + ":container\"><rootfiles><rootfile full-path=\"content.opf\" media-type=\"application/oebps-"
+                    + "package+xml\"/></rootfiles></container>");
+            book.put("content.opf", "<package xmlns=\"http://www.idpf.org/2007/opf\" version=\"3.0\"><manifest><item"
+                    + " id=\"c\" href=\"warm.xhtml\" media-type=\"application/xhtml+xml\"/></manifest><spine><itemref"
+                    + " idref=\"c\"/></spine></package>");
+            book.put("warm.xhtml", "<html xmlns=\"http://www.w3.org/1999/xhtml\"><head><title>Warm up</title></head>"
+                    + "<body><h1>Warm up</h1><p>Warm <b>up</b></p></body></html>");
+            return zipped(book);
+        }
         boolean word = format == Format.DOCX;
         String main = word ? "word/document.xml" : "xl/workbook.xml";
         Map<String, String> parts = new LinkedHashMap<>();
@@ -569,6 +584,10 @@ public final class OfficeToPdf {
             parts.put("xl/worksheets/sheet1.xml", "<worksheet " + ns + "><sheetData><row r=\"1\"><c r=\"A1\""
                     + " t=\"inlineStr\"><is><t>Warm up</t></is></c><c r=\"B1\"><v>1.5</v></c></row></sheetData></worksheet>");
         }
+        return zipped(parts);
+    }
+
+    private static byte[] zipped(Map<String, String> parts) throws IOException {
         ByteArrayOutputStream bytes = new ByteArrayOutputStream();
         try (ZipOutputStream zip = new ZipOutputStream(bytes)) {
             for (Map.Entry<String, String> e : parts.entrySet()) {
