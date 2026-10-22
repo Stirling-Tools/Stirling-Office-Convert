@@ -4,7 +4,9 @@ import java.awt.Color;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.TreeMap;
 
 import stirling.software.officeconvert.topdf.io.Relationship;
@@ -22,6 +24,8 @@ final class ChartReader {
     private static final int MAX_POINTS = 4096;
 
     private static final int MAX_SERIES = 256;
+
+    static final int MAX_TEXT_CHARS = 4096;
 
     private final Theme theme;
 
@@ -249,7 +253,7 @@ final class ChartReader {
         } else {
             XEl ref = t.path("c:tx", "c:strRef");
             if (ref != null) {
-                text = String.join(" ", strings(ref.child("c:strCache")));
+                text = capped(String.join(" ", strings(ref.child("c:strCache"))));
             }
         }
         if ((text == null || text.isBlank()) && groups == null) {
@@ -331,9 +335,9 @@ final class ChartReader {
         if (tx != null) {
             XEl ref = tx.child("c:strRef");
             if (ref != null) {
-                name = String.join(" ", strings(ref.child("c:strCache")));
+                name = capped(String.join(" ", strings(ref.child("c:strCache"))));
             } else if (tx.child("c:v") != null) {
-                name = tx.child("c:v").text();
+                name = capped(tx.child("c:v").text());
             }
         }
         XEl spPr = s.child("c:spPr");
@@ -446,7 +450,7 @@ final class ChartReader {
             String format = cache == null || cache.child("c:formatCode") == null ? "General"
                     : cache.child("c:formatCode").text();
             for (double d : points(cache)) {
-                out.add(Double.isNaN(d) ? "" : ChartPainter.format(d, format, date1904));
+                out.add(Double.isNaN(d) ? "" : capped(ChartPainter.format(d, format, date1904)));
             }
             return out;
         }
@@ -472,7 +476,7 @@ final class ChartReader {
             int i = Ooxml.integer(pt.attr("idx"), -1);
             XEl v = pt.child("c:v");
             if (i >= 0 && i < MAX_POINTS && v != null) {
-                map.put(i, v.text());
+                map.put(i, capped(v.text()));
                 count = Math.max(count, i + 1);
             }
         }
@@ -481,6 +485,14 @@ final class ChartReader {
             out.add(map.getOrDefault(i, ""));
         }
         return out;
+    }
+
+    private static String capped(String text) {
+        if (text.length() <= MAX_TEXT_CHARS) {
+            return text;
+        }
+        int end = Character.isHighSurrogate(text.charAt(MAX_TEXT_CHARS - 1)) ? MAX_TEXT_CHARS - 1 : MAX_TEXT_CHARS;
+        return text.substring(0, end);
     }
 
     private static double[] numbers(XEl holder) {
@@ -584,18 +596,108 @@ final class ChartReader {
     }
 
     private Chart.Labels labels(XEl d) {
-        if (d == null || d.child("c:delete") != null && Ooxml.flag(d.child("c:delete").val(), true)) {
-            return new Chart.Labels(false, false, false);
+        Chart.Labels none = new Chart.Labels(false, false, false);
+        if (d == null || deleted(d)) {
+            return none;
         }
-        String pos = d.child("c:dLblPos") == null ? null : d.child("c:dLblPos").val();
-        String fmt = d.child("c:numFmt") == null ? null : d.child("c:numFmt").attr("formatCode");
-        return new Chart.Labels(on(d, "c:showVal"), on(d, "c:showPercent"), on(d, "c:showCatName"),
-                on(d, "c:showSerName"), pos, fmt);
+        Chart.Labels group = label(d, none);
+        Map<Integer, Chart.Labels> points = new HashMap<>();
+        for (XEl p : d.children("c:dLbl")) {
+            Integer idx = p.child("c:idx") == null ? null : Ooxml.integer(p.child("c:idx").val());
+            if (idx != null && idx >= 0 && points.size() < MAX_POINT_LABELS) {
+                points.put(idx, deleted(p) ? none : label(p, group));
+            }
+        }
+        return points.isEmpty() ? group : new Chart.Labels(group.value(), group.percent(), group.category(),
+                group.series(), group.position(), group.format(), group.separator(), group.look(), null, 0, 0,
+                Map.copyOf(points));
+    }
+
+    static final int MAX_POINT_LABELS = 4096;
+
+    static final int MAX_LABEL_CHARS = 1024;
+
+    static String clipped(String text) {
+        if (text.length() <= MAX_LABEL_CHARS) {
+            return text;
+        }
+        int end = Character.isHighSurrogate(text.charAt(MAX_LABEL_CHARS - 1)) ? MAX_LABEL_CHARS - 1 : MAX_LABEL_CHARS;
+        return text.substring(0, end);
+    }
+
+    private static boolean deleted(XEl d) {
+        return d.child("c:delete") != null && Ooxml.flag(d.child("c:delete").val(), true);
+    }
+
+    private Chart.Labels label(XEl d, Chart.Labels parent) {
+        String pos = d.child("c:dLblPos") == null ? parent.position() : d.child("c:dLblPos").val();
+        String fmt = d.child("c:numFmt") == null ? parent.format() : d.child("c:numFmt").attr("formatCode");
+        String sep = d.child("c:separator") == null ? parent.separator() : clipped(d.child("c:separator").text());
+        Chart.Look look = look(d.child("c:txPr"), parent.look());
+        String text = null;
+        XEl rich = d.path("c:tx", "c:rich");
+        if (rich != null && rich.descendants("a:fld").isEmpty()) {
+            StringBuilder sb = new StringBuilder();
+            for (XEl p : rich.children("a:p")) {
+                if (sb.length() > 0) {
+                    sb.append('\n');
+                }
+                for (XEl r : p.children("a:r")) {
+                    XEl tt = r.child("a:t");
+                    if (tt != null) {
+                        sb.append(tt.text());
+                    }
+                }
+            }
+            text = clipped(sb.toString());
+            look = look(rich, look);
+        } else if (d.path("c:tx", "c:strRef") != null) {
+            text = clipped(String.join(" ", strings(d.path("c:tx", "c:strRef").child("c:strCache"))));
+        }
+        float dx = 0;
+        float dy = 0;
+        XEl manual = d.path("c:layout", "c:manualLayout");
+        if (manual != null) {
+            Double x = decimal(manual.child("c:x"));
+            Double y = decimal(manual.child("c:y"));
+            dx = x == null || !Double.isFinite(x) ? 0 : (float) Math.max(-1, Math.min(1, x));
+            dy = y == null || !Double.isFinite(y) ? 0 : (float) Math.max(-1, Math.min(1, y));
+        }
+        return new Chart.Labels(on(d, "c:showVal", parent.value()), on(d, "c:showPercent", parent.percent()),
+                on(d, "c:showCatName", parent.category()), on(d, "c:showSerName", parent.series()), pos, fmt, sep,
+                look, text, dx, dy, Map.of());
+    }
+
+    private Chart.Look look(XEl txBody, Chart.Look parent) {
+        if (txBody == null) {
+            return parent;
+        }
+        Float size = parent.size();
+        Boolean bold = parent.bold();
+        Color color = parent.color();
+        XEl p = txBody.child("a:p");
+        if (p != null) {
+            for (XEl rpr : new XEl[] {p.path("a:pPr", "a:defRPr"), p.path("a:r", "a:rPr")}) {
+                if (rpr == null) {
+                    continue;
+                }
+                float sz = sz(rpr, -1);
+                size = sz > 0 ? Float.valueOf(sz) : size;
+                bold = rpr.attr("b") != null ? Boolean.valueOf(Ooxml.flag(rpr.attr("b"), false)) : bold;
+                Color c = Colors.drawing(rpr.child("a:solidFill"), theme, null);
+                color = c == null ? color : c;
+            }
+        }
+        return new Chart.Look(size, bold, color);
     }
 
     private static boolean on(XEl d, String name) {
+        return on(d, name, false);
+    }
+
+    private static boolean on(XEl d, String name, boolean fallback) {
         XEl e = d.child(name);
-        return e != null && Ooxml.flag(e.val(), true);
+        return e == null ? fallback : Ooxml.flag(e.val(), true);
     }
 
     private static Double decimal(XEl e) {

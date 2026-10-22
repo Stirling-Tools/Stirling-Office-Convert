@@ -456,6 +456,12 @@ final class TextBody {
         if (jc != null) {
             ppr.append("<w:jc w:val=\"").append(jc).append("\"/>");
         }
+        if (heading) {
+            int outline = Dom.integer(p, Ns.TEXT, "outline-level", styleOutline(name));
+            if (outline >= 1 && outline <= 9) {
+                ppr.append("<w:outlineLvl w:val=\"").append(outline - 1).append("\"/>");
+            }
+        }
         Props mark = span(tp, Dom.attr(p, Ns.LOEXT, "marker-style-name"));
         String markRpr = WordRun.rPr(mark, w.styles);
         if (!markRpr.isEmpty()) {
@@ -504,6 +510,15 @@ final class TextBody {
             add(new Block(null, t, false));
         }
         return true;
+    }
+
+    private int styleOutline(String styleName) {
+        String level = w.styles.inherited("paragraph", styleName, scope, Ns.STYLE, "default-outline-level");
+        try {
+            return level == null ? 1 : Integer.parseInt(level.trim());
+        } catch (NumberFormatException e) {
+            return 1;
+        }
     }
 
     private boolean ownIndent(String styleName) {

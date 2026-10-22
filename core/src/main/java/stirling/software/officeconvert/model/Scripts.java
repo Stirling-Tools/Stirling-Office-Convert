@@ -226,6 +226,21 @@ public final class Scripts {
         private int han;
         private int simplified;
         private int traditional;
+        private Answers fixed;
+
+        /** What a profile concluded, to carry it without the text it counted. */
+        public record Answers(String latin, String eastAsian, String complex, Character.UnicodeScript latinScript,
+                Character.UnicodeScript complexScript, boolean rightToLeft) {}
+
+        public Answers answers() {
+            return new Answers(latin(), eastAsian(), complex(), latinScript(), complexScript(), rightToLeft());
+        }
+
+        public static Profile of(Answers answers) {
+            Profile p = new Profile();
+            p.fixed = answers;
+            return p;
+        }
 
         public void add(CharSequence text) {
             StringBuilder word = new StringBuilder();
@@ -294,6 +309,9 @@ public final class Scripts {
         }
 
         public boolean rightToLeft() {
+            if (fixed != null) {
+                return fixed.rightToLeft();
+            }
             int rtl = 0;
             int all = 0;
             for (Map.Entry<Character.UnicodeScript, Integer> e : letters.entrySet()) {
@@ -308,6 +326,9 @@ public final class Scripts {
         }
 
         public String eastAsian() {
+            if (fixed != null) {
+                return fixed.eastAsian();
+            }
             if (kana == 0 && hangul == 0 && han == 0) {
                 return null;
             }
@@ -324,20 +345,32 @@ public final class Scripts {
         }
 
         public String complex() {
+            if (fixed != null) {
+                return fixed.complex();
+            }
             Character.UnicodeScript s = complexScript();
             return s == null ? null : language(s);
         }
 
         public String latin() {
+            if (fixed != null) {
+                return fixed.latin();
+            }
             Character.UnicodeScript s = latinScript();
             return s == null ? null : language(s);
         }
 
         Character.UnicodeScript complexScript() {
+            if (fixed != null) {
+                return fixed.complexScript();
+            }
             return top(letters, COMPLEX_LANGUAGES.keySet());
         }
 
         Character.UnicodeScript latinScript() {
+            if (fixed != null) {
+                return fixed.latinScript();
+            }
             return top(letters, OTHER_LANGUAGES.keySet());
         }
 
