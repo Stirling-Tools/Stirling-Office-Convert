@@ -94,6 +94,8 @@ public final class FixedHtml {
 
     static final long MAX_PAGE_PIXELS = 40_000_000L;
 
+    static final int MAX_PAGE_SIDE = 32_000;
+
     static final int MAX_FONT_BYTES = 4 << 20;
 
     static final long MAX_FONTS_BYTES = 32L << 20;
@@ -115,6 +117,10 @@ public final class FixedHtml {
             if (families.containsKey(key)) {
                 return families.get(key);
             }
+            if (bytes >= MAX_FONTS_BYTES) {
+                families.put(key, null);
+                return null;
+            }
             String family = null;
             try {
                 byte[] ttf = source.webFont(font);
@@ -133,7 +139,7 @@ public final class FixedHtml {
         }
     }
 
-    private record Span(String text, float x, float y, float size, float width, int dir, int rgb, String font,
+    private record Span(String text, float x, float y, float size, float width, float angle, int rgb, String font,
             boolean bold, boolean italic, PDFont pdFont) {}
 
     private FixedHtml() {}
@@ -205,17 +211,13 @@ public final class FixedHtml {
         boolean turned = rotation == 90 || rotation == 270;
         float width = turned ? box.getHeight() : box.getWidth();
         float height = turned ? box.getWidth() : box.getHeight();
-        float scale = options.dpi() / 72f;
-        double pixels = (double) width * scale * height * scale;
-        if (pixels > MAX_PAGE_PIXELS) {
-            scale *= (float) Math.sqrt(MAX_PAGE_PIXELS / pixels);
-        }
+        float scale = pictureScale(width, height, options.dpi());
         boolean live = options.text() == Text.LIVE;
         StringBuilder text = new StringBuilder(4096);
         StringBuilder faces = new StringBuilder();
         text.append("<svg viewBox=\"0 0 ").append(num(width)).append(' ').append(num(height))
                 .append("\" preserveAspectRatio=\"none\">\n");
-        for (Span s : spans(doc, index)) {
+        for (Span s : spans(doc, index, rotation)) {
             span(text, s, live, live && s.rgb() >= 0 ? fonts.family(s.pdFont(), faces) : null);
         }
         text.append("</svg>\n");
@@ -232,7 +234,7 @@ public final class FixedHtml {
         sb.append("<section class=\"").append(live ? "pg" : "pg picture").append("\" id=\"page-").append(index + 1)
                 .append("\" style=\"page:").append(size).append(";width:").append(HtmlText.pt(width)).append(";height:")
                 .append(HtmlText.pt(height)).append("\">\n");
-        long estimate = (long) (width * scale) * (long) (height * scale) * 4L * 3L;
+        long estimate = pixels(width, height, scale) * 4L * 3L;
         Admission.Ticket ticket = Admission.jvm().enter(estimate);
         try {
             BufferedImage image = renderer.renderImage(index, scale, ImageType.RGB);
@@ -253,6 +255,24 @@ public final class FixedHtml {
         sb.append(text).append("</section>\n");
         w.write(sb.toString());
         w.flush();
+    }
+
+    static float pictureScale(float width, float height, float dpi) {
+        double w = Math.max(0, width);
+        double h = Math.max(0, height);
+        double scale = dpi / 72.0;
+        if (w * scale * h * scale > MAX_PAGE_PIXELS) {
+            scale = Math.sqrt(MAX_PAGE_PIXELS / (w * h));
+        }
+        double side = Math.max(w, h);
+        if (side * scale > MAX_PAGE_SIDE) {
+            scale = MAX_PAGE_SIDE / side;
+        }
+        return (float) scale;
+    }
+
+    private static long pixels(double width, double height, double scale) {
+        return (long) Math.max(1, Math.floor(width * scale)) * (long) Math.max(1, Math.floor(height * scale));
     }
 
     private record Picture(String type, byte[] bytes) {}
@@ -308,7 +328,7 @@ public final class FixedHtml {
 
     private record Look(int rgb, boolean invisible) {}
 
-    private static List<Span> spans(PDDocument doc, int index) throws IOException {
+    private static List<Span> spans(PDDocument doc, int index, int rotation) throws IOException {
         List<Span> spans = new ArrayList<>();
         Map<TextPosition, Look> looks = new IdentityHashMap<>();
         PDFTextStripper stripper = new PDFTextStripper() {
@@ -327,7 +347,8 @@ public final class FixedHtml {
                 boolean invisible = false;
                 try {
                     var state = getGraphicsState();
-                    invisible = state.getTextState().getRenderingMode() == RenderingMode.NEITHER;
+                    invisible = state.getTextState().getRenderingMode() == RenderingMode.NEITHER
+                            || unmapped(text.getFont(), text.getCharacterCodes());
                     var color = state.getNonStrokingColor();
                     rgb = color == null ? 0 : color.toRGB();
                 } catch (IOException | RuntimeException ignored) {
@@ -340,6 +361,25 @@ public final class FixedHtml {
             @Override
             protected void writeString(String text, List<TextPosition> positions) {
                 if (positions.isEmpty() || text.isBlank() || spans.size() >= 200_000) {
+                    return;
+                }
+                int start = 0;
+                for (int i = 1; i <= positions.size(); i++) {
+                    if (i == positions.size() || hidden(positions.get(i)) != hidden(positions.get(start))) {
+                        List<TextPosition> run = positions.subList(start, i);
+                        add(start == 0 && i == positions.size() ? text : joined(run), run);
+                        start = i;
+                    }
+                }
+            }
+
+            private boolean hidden(TextPosition position) {
+                Look look = looks.get(position);
+                return look != null && look.invisible();
+            }
+
+            private void add(String text, List<TextPosition> positions) {
+                if (text.isBlank()) {
                     return;
                 }
                 TextPosition first = positions.get(0);
@@ -359,7 +399,7 @@ public final class FixedHtml {
                 boolean italic = lower.contains("italic") || lower.contains("oblique")
                         || first.getFont() != null && first.getFont().getFontDescriptor() != null
                                 && first.getFont().getFontDescriptor().isItalic();
-                spans.add(new Span(text, first.getXDirAdj(), first.getYDirAdj(), size, width, (int) first.getDir(),
+                spans.add(new Span(text, first.getX(), first.getY(), size, width, angle(first, rotation),
                         look.invisible() ? -1 : look.rgb(), font, bold, italic, first.getFont()));
             }
         };
@@ -368,6 +408,34 @@ public final class FixedHtml {
         stripper.setEndPage(index + 1);
         stripper.getText(doc);
         return spans;
+    }
+
+    private static String joined(List<TextPosition> positions) {
+        StringBuilder sb = new StringBuilder();
+        for (TextPosition position : positions) {
+            sb.append(position.getUnicode());
+        }
+        return sb.toString();
+    }
+
+    private static boolean unmapped(PDFont font, int[] codes) throws IOException {
+        if (font == null || codes == null || codes.length == 0) {
+            return false;
+        }
+        for (int code : codes) {
+            if (font.toUnicode(code) != null) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static float angle(TextPosition text, int rotation) {
+        Matrix m = text.getTextMatrix();
+        double degrees = rotation - Math.toDegrees(Math.atan2(m.getShearY(), m.getScaleX()));
+        degrees = ((degrees % 360) + 540) % 360 - 180;
+        float rounded = Math.round(degrees * 100) / 100f;
+        return Math.abs(rounded) < 0.01f ? 0 : rounded;
     }
 
     private static String fontName(PDFont font) {
@@ -399,8 +467,8 @@ public final class FixedHtml {
         if (s.width() > 0.5f) {
             sb.append(" textLength=\"").append(num(s.width())).append("\" lengthAdjust=\"spacingAndGlyphs\"");
         }
-        if (s.dir() != 0) {
-            sb.append(" transform=\"rotate(").append(s.dir()).append(' ').append(num(s.x())).append(' ')
+        if (s.angle() != 0) {
+            sb.append(" transform=\"rotate(").append(num(s.angle())).append(' ').append(num(s.x())).append(' ')
                     .append(num(s.y())).append(")\"");
         }
         sb.append(" style=\"");
@@ -500,7 +568,7 @@ public final class FixedHtml {
                 @Override
                 protected void showFontGlyph(Matrix matrix, PDFont font, int code, Vector displacement)
                         throws IOException {
-                    if (getGraphicsState().getTextState().getRenderingMode().isClip()) {
+                    if (getGraphicsState().getTextState().getRenderingMode().isClip() || font.toUnicode(code) == null) {
                         super.showFontGlyph(matrix, font, code, displacement);
                     }
                 }
@@ -508,7 +576,7 @@ public final class FixedHtml {
                 @Override
                 protected void showType3Glyph(Matrix matrix, PDType3Font font, int code, Vector displacement)
                         throws IOException {
-                    if (getGraphicsState().getTextState().getRenderingMode().isClip()) {
+                    if (getGraphicsState().getTextState().getRenderingMode().isClip() || font.toUnicode(code) == null) {
                         super.showType3Glyph(matrix, font, code, displacement);
                     }
                 }

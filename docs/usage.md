@@ -579,7 +579,8 @@ PdfToJson.convert(pdf, Path.of("out.json"), options);      // the document model
   file with a box per page at the page's size. `Text.LIVE` (the default) draws the page's graphics and pictures without
   its text as a picture (left out when the page has nothing else) and places the text over it as real SVG text at its
   exact baseline and width (so it lines up even in a substitute font), in the
-  PDF font's family with a generic fallback, colour, weight and slant; invisible (OCR) text stays a transparent layer. `Text.PICTURE`
+  PDF font's family with a generic fallback, colour, weight and slant; invisible (OCR) text stays a transparent layer, and glyphs with no Unicode
+  stay in the picture. `Text.PICTURE`
   draws everything into the page picture and adds the text as a transparent layer to select and search, so it looks
   exactly like the PDF at the cost of size. Pages are drawn at 150 dpi (36 to 300); web links stay clickable.
   `Options.fonts(FontSource)` lets the caller turn the PDF's own fonts into web fonts for `Text.LIVE` (for example

@@ -4,22 +4,37 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Base64;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import javax.imageio.ImageIO;
+import javax.imageio.ImageReader;
+import javax.imageio.stream.ImageInputStream;
+
+import org.apache.pdfbox.Loader;
+import org.apache.pdfbox.cos.COSArray;
+import org.apache.pdfbox.cos.COSDictionary;
+import org.apache.pdfbox.cos.COSInteger;
+import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.PDPageContentStream;
+import org.apache.pdfbox.pdmodel.PDResources;
+import org.apache.pdfbox.pdmodel.common.PDStream;
 import org.apache.pdfbox.pdmodel.common.PDRectangle;
+import org.apache.pdfbox.pdmodel.font.PDType0Font;
 import org.apache.pdfbox.pdmodel.font.PDType1Font;
 import org.apache.pdfbox.pdmodel.font.Standard14Fonts;
 import org.apache.pdfbox.pdmodel.interactive.action.PDActionJavaScript;
 import org.apache.pdfbox.pdmodel.interactive.action.PDActionURI;
 import org.apache.pdfbox.pdmodel.interactive.annotation.PDAnnotationLink;
+import org.apache.pdfbox.util.Matrix;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -173,6 +188,136 @@ class PdfToFixedHtmlTest {
             throw new IOException("unsupported");
         }));
         assertTrue(Files.readString(failing, StandardCharsets.UTF_8).contains(">Page 1 heading"));
+    }
+
+    @Test
+    void thinPagesStayWithinThePixelBudget() throws IOException {
+        Path pdf = dir.resolve("thin.pdf");
+        try (PDDocument doc = new PDDocument()) {
+            for (PDRectangle box : new PDRectangle[] {new PDRectangle(25_000_000f, 0.01f),
+                    new PDRectangle(0.01f, 25_000_000f)}) {
+                PDPage page = new PDPage(box);
+                doc.addPage(page);
+                try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
+                    cs.addRect(0, 0, box.getWidth(), box.getHeight());
+                    cs.fill();
+                }
+            }
+            doc.save(pdf.toFile());
+        }
+        Path out = dir.resolve("thin.html");
+        PdfToHtml.convertFixed(pdf, out, FixedHtml.Options.defaults().text(FixedHtml.Text.PICTURE));
+        Matcher m = Pattern.compile("base64,([^\"]+)\"").matcher(Files.readString(out, StandardCharsets.UTF_8));
+        int pictures = 0;
+        while (m.find()) {
+            pictures++;
+            try (ImageInputStream in = ImageIO.createImageInputStream(
+                    new ByteArrayInputStream(Base64.getDecoder().decode(m.group(1))))) {
+                ImageReader reader = ImageIO.getImageReaders(in).next();
+                reader.setInput(in);
+                long pixels = (long) reader.getWidth(0) * reader.getHeight(0);
+                reader.dispose();
+                assertTrue(pixels <= 40_000_000L, Long.toString(pixels));
+            }
+        }
+        assertEquals(2, pictures);
+    }
+
+    @Test
+    void rotatedPagesAndTextSitWhereThePageShowsThem() throws IOException {
+        Path pdf = dir.resolve("rotated.pdf");
+        try (PDDocument doc = new PDDocument()) {
+            for (int rotation : new int[] {0, 90}) {
+                PDPage page = new PDPage(PDRectangle.A4);
+                page.setCropBox(new PDRectangle(50, 40, 500, 700));
+                page.setRotation(rotation);
+                doc.addPage(page);
+                try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
+                    cs.beginText();
+                    cs.setFont(new PDType1Font(Standard14Fonts.FontName.HELVETICA), 20);
+                    cs.setTextMatrix(Matrix.getRotateInstance(Math.PI / 2, 100, 300));
+                    cs.showText("Up");
+                    cs.setTextMatrix(Matrix.getTranslateInstance(150, 500));
+                    cs.showText("Flat");
+                    cs.endText();
+                }
+            }
+            doc.save(pdf.toFile());
+        }
+        Path out = dir.resolve("rotated.html");
+        PdfToHtml.convertFixed(pdf, out, FixedHtml.Options.defaults());
+        String rotated = Files.readString(out, StandardCharsets.UTF_8);
+        String upright = rotated.substring(0, rotated.indexOf("id=\"page-2\""));
+        String turned = rotated.substring(rotated.indexOf("id=\"page-2\""));
+        assertTrue(upright.contains("<text x=\"100\" y=\"240\""), upright);
+        assertTrue(upright.contains("<text x=\"50\" y=\"440\"") && upright.contains("rotate(-90 50 440)"), upright);
+        assertTrue(turned.contains("<text x=\"460\" y=\"100\"") && turned.contains("rotate(90 460 100)"), turned);
+        assertTrue(turned.contains("<text x=\"260\" y=\"50\""), turned);
+    }
+
+    @Test
+    void glyphsWithoutUnicodeStayInThePicture() throws IOException {
+        Path pdf = dir.resolve("cid.pdf");
+        try (PDDocument doc = new PDDocument();
+                var ttf = PDDocument.class.getResourceAsStream("/org/apache/pdfbox/resources/ttf/LiberationSans-Regular.ttf")) {
+            PDPage page = new PDPage(PDRectangle.A4);
+            doc.addPage(page);
+            PDType0Font font = PDType0Font.load(doc, ttf);
+            try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
+                cs.beginText();
+                cs.setFont(font, 20);
+                cs.newLineAtOffset(100, 700);
+                cs.showText("Glyphs without unicode");
+                cs.setFont(new PDType1Font(Standard14Fonts.FontName.HELVETICA), 20);
+                cs.showText("Mapped");
+                cs.endText();
+            }
+            doc.save(pdf.toFile());
+        }
+        Path stripped = dir.resolve("cid-stripped.pdf");
+        try (PDDocument doc = Loader.loadPDF(pdf.toFile())) {
+            for (COSName name : doc.getPage(0).getResources().getFontNames()) {
+                doc.getPage(0).getResources().getFont(name).getCOSObject().removeItem(COSName.TO_UNICODE);
+            }
+            doc.save(stripped.toFile());
+        }
+        Path out = dir.resolve("cid.html");
+        PdfToHtml.convertFixed(stripped, out, FixedHtml.Options.defaults());
+        String cid = Files.readString(out, StandardCharsets.UTF_8);
+        assertTrue(cid.contains("<img alt=\"\" src=\"data:image/"));
+        assertTrue(cid.contains("font-family:'Helvetica',sans-serif\">Mapped</text>"), cid.substring(cid.indexOf("<svg")));
+    }
+
+    @Test
+    void unmappedGlyphsInAWordSplitFromTheLiveText() throws IOException {
+        Path pdf = dir.resolve("mixed.pdf");
+        try (PDDocument doc = new PDDocument()) {
+            PDPage page = new PDPage(PDRectangle.A4);
+            doc.addPage(page);
+            COSDictionary encoding = new COSDictionary();
+            COSArray differences = new COSArray();
+            differences.add(COSInteger.get(65));
+            differences.add(COSName.getPDFName("gxx1"));
+            encoding.setItem(COSName.DIFFERENCES, differences);
+            COSDictionary font = new COSDictionary();
+            font.setItem(COSName.TYPE, COSName.FONT);
+            font.setItem(COSName.SUBTYPE, COSName.TYPE1);
+            font.setName(COSName.BASE_FONT, "Helvetica");
+            font.setItem(COSName.ENCODING, encoding);
+            COSDictionary fonts = new COSDictionary();
+            fonts.setItem(COSName.getPDFName("F1"), font);
+            PDResources resources = new PDResources();
+            resources.getCOSObject().setItem(COSName.FONT, fonts);
+            page.setResources(resources);
+            page.setContents(new PDStream(doc, new ByteArrayInputStream(
+                    "BT /F1 20 Tf 100 700 Td (ABC) Tj ET".getBytes(StandardCharsets.US_ASCII))));
+            doc.save(pdf.toFile());
+        }
+        Path out = dir.resolve("mixed.html");
+        PdfToHtml.convertFixed(pdf, out, FixedHtml.Options.defaults());
+        String mixed = Files.readString(out, StandardCharsets.UTF_8);
+        assertTrue(mixed.contains("fill:transparent;font-family:'Courier New',monospace\">A</text>"), mixed);
+        assertTrue(mixed.contains("font-family:'Helvetica',sans-serif\">BC</text>"), mixed);
     }
 
     private static int count(String needle) {
