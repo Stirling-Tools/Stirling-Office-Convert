@@ -22,7 +22,7 @@ final class EmfDrawing {
 
     private EmfDrawing() {}
 
-    static void draw(HemfPicture picture, Graphics2D g, Rectangle2D target) {
+    static void draw(HemfPicture picture, Graphics2D g, Rectangle2D target, boolean emfOnly) {
         Shape clip = g.getClip();
         AffineTransform transform = g.getTransform();
         try {
@@ -31,6 +31,9 @@ final class EmfDrawing {
             g.scale(target.getWidth() / bounds.getWidth(), target.getHeight() / bounds.getHeight());
             g.translate(-bounds.getCenterX(), -bounds.getCenterY());
             HemfGraphics context = new Spaced(g, bounds);
+            if (emfOnly) {
+                context.setRenderState(HemfGraphics.EmfRenderState.EMF_ONLY);
+            }
             for (HemfRecord record : picture.getRecords()) {
                 if (Thread.currentThread().isInterrupted()) {
                     throw new IllegalStateException("Conversion interrupted");

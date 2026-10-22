@@ -1,0 +1,203 @@
+package stirling.software.officeconvert.topdf.html;
+
+import java.util.ArrayDeque;
+import java.util.IdentityHashMap;
+import java.util.List;
+import java.util.Map;
+
+import org.jsoup.nodes.Element;
+
+import stirling.software.officeconvert.build.DocSink;
+import stirling.software.officeconvert.json.JsonModel;
+import stirling.software.officeconvert.model.Numbering;
+import stirling.software.officeconvert.model.RunStyle;
+import stirling.software.officeconvert.model.Section;
+import stirling.software.officeconvert.model.StyleSheet;
+
+/** What every part of one HTML conversion shares. */
+final class HtmlContext {
+
+    private final Cascade cascade;
+    private final Numbering numbering = new Numbering();
+    private final StyleSheet styles;
+    private final List<String> warnings;
+    private final HtmlImages images;
+    private final HtmlTables tables;
+    private final float pageRoom;
+    private final Section page;
+    private int blocks;
+    // how far right of the text area's left edge any content wanted to reach, in points
+    private float wanted;
+    private int scrollers;
+    private String pageName = "";
+    // the most items of any row of columns in an element or inside it, 0 when none
+    private final Map<Element, Integer> rows = new IdentityHashMap<>();
+
+    HtmlContext(Cascade cascade, StyleSheet styles, DocSink sink, List<String> warnings, Section page) {
+        this.cascade = cascade;
+        this.styles = styles;
+        this.warnings = warnings;
+        this.images = new HtmlImages(sink, warnings);
+        this.tables = new HtmlTables(this);
+        this.page = page;
+        this.pageRoom = page.pageHeight - page.marginTop - page.marginBottom;
+    }
+
+    Cascade cascade() {
+        return cascade;
+    }
+
+    /** What {@code e} declares, with the custom properties it inherits from {@code parent} filled in. */
+    Map<String, String> declared(Element e, Look parent) {
+        Map<String, String> d = cascade.declared(e);
+        Vars.resolve(d, Vars.scope(parent.vars, d));
+        Css.expandShorthands(d);
+        return d;
+    }
+
+    /** Whether a child of {@code e}, or anything inside one, lays out as a row of columns; each element is
+     * judged once per document. */
+    boolean holdsRow(Element e, Look look, float room) {
+        for (Element c : e.children()) {
+            if (widestRow(c, look, room) > 0) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // Children first, without recursion, so a deep page cannot overflow the stack
+    int widestRow(Element root, Look look, float room) {
+        Integer known = rows.get(root);
+        if (known != null) {
+            return known;
+        }
+        // each element's own look, so custom properties set on the way down reach its items
+        Map<Element, Look> looks = new IdentityHashMap<>();
+        Map<Element, Map<String, String>> styles = new IdentityHashMap<>();
+        ArrayDeque<Element> stack = new ArrayDeque<>();
+        stack.push(root);
+        Map<String, String> rootStyle = declared(root, look);
+        styles.put(root, rootStyle);
+        looks.put(root, look.child(rootStyle, room, false));
+        while (!stack.isEmpty()) {
+            Element e = stack.peek();
+            if (rows.containsKey(e)) {
+                stack.pop();
+                continue;
+            }
+            Map<String, String> d = styles.get(e);
+            String display = d.getOrDefault("display", "").strip().toLowerCase(java.util.Locale.ROOT);
+            if (display.equals("none")) {
+                rows.put(e, 0);
+                stack.pop();
+                continue;
+            }
+            boolean pending = false;
+            for (Element c : e.children()) {
+                if (!rows.containsKey(c) && !styles.containsKey(c)) {
+                    Map<String, String> cd = declared(c, looks.get(e));
+                    styles.put(c, cd);
+                    looks.put(c, looks.get(e).child(cd, room, false));
+                    stack.push(c);
+                    pending = true;
+                }
+            }
+            if (pending) {
+                continue;
+            }
+            stack.pop();
+            int row = 0;
+            for (Element c : e.children()) {
+                row = Math.max(row, rows.getOrDefault(c, 0));
+            }
+            if (display.endsWith("flex") || display.endsWith("grid")) {
+                Layout.Plan p = Layout.of(e, d, looks.get(e), room, this);
+                row = p != null && !p.inline() ? Math.max(row, p.items().size()) : row;
+            }
+            rows.put(e, row);
+        }
+        return rows.get(root);
+    }
+
+    /** Content that cannot wrap, like a preformatted line or a fixed width, wants to reach {@code pt} from the
+     * left edge of the text area. */
+    void wants(float pt) {
+        if (scrollers == 0) {
+            wanted = Math.max(wanted, Math.min(pt, 1e6f));
+        }
+    }
+
+    /** Entering ({@code 1}) or leaving ({@code -1}) a box that scrolls or clips what is too wide for it. */
+    void scrolling(int step) {
+        scrollers = Math.max(0, scrollers + step);
+    }
+
+    float wanted() {
+        return wanted;
+    }
+
+    Numbering numbering() {
+        return numbering;
+    }
+
+    HtmlImages images() {
+        return images;
+    }
+
+    HtmlTables tables() {
+        return tables;
+    }
+
+    float pageRoom() {
+        return pageRoom;
+    }
+
+    String heading(String id, RunStyle look) {
+        return styles.use(id, look).id();
+    }
+
+    void warn(String w) {
+        if (!warnings.contains(w)) {
+            warnings.add(w);
+        }
+    }
+
+    void count() {
+        if (++blocks == JsonModel.MAX_BLOCKS) {
+            warn("Only the start of the document was converted: it has more than " + JsonModel.MAX_BLOCKS + " blocks");
+        }
+    }
+
+    /** The section a page name lays out on; null for an unknown name. */
+    Section section(String name) {
+        Map<String, String> d = cascade.page(name);
+        return d == null ? null : HtmlDocument.page(d);
+    }
+
+    Section defaultSection() {
+        return page;
+    }
+
+    /** The section the document ends on, for the package's last section. */
+    Section lastSection() {
+        Section named = section(pageName);
+        return named != null ? named : page;
+    }
+
+    String pageName() {
+        return pageName;
+    }
+
+    void pageName(String name) {
+        pageName = name;
+    }
+
+    boolean stopped() {
+        return blocks >= JsonModel.MAX_BLOCKS || Thread.currentThread().isInterrupted();
+    }
+
+    boolean truncated() {
+        return blocks >= JsonModel.MAX_BLOCKS;
+    }
+}

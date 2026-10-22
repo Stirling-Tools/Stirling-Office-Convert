@@ -12,6 +12,8 @@ dependencies {
     implementation("org.apache.poi:poi-ooxml:$poiVersion")
     implementation("org.apache.poi:poi-scratchpad:$poiVersion")
     implementation("de.rototor.pdfbox:graphics2d:3.0.5")
+    implementation("org.jsoup:jsoup:1.22.2")
+    implementation("com.twelvemonkeys.imageio:imageio-webp:3.15.2")
 
     testImplementation(platform("org.junit:junit-bom:5.13.4"))
     testImplementation("org.junit.jupiter:junit-jupiter")
@@ -47,6 +49,6 @@ publishing.publications.named<MavenPublication>("mavenJava") {
     artifactId = "stirling-office-convert-topdf"
     pom {
         name.set("Stirling Office Convert To PDF")
-        description.set("Office documents to PDF in plain Java on Apache PDFBox and Apache POI: Word (DOCX, DOC, RTF, WordML), PowerPoint (PPTX, PPT), Excel (XLSX, XLSB, XLS), OpenDocument and OpenOffice.org 1.x, Visio, iWork, Lotus 1-2-3, dBASE, SYLK, DIF, CSV, TSV and plain text")
+        description.set("Office documents to PDF in plain Java on Apache PDFBox and Apache POI: Word (DOCX, DOC, RTF, WordML), PowerPoint (PPTX, PPT), Excel (XLSX, XLSB, XLS), OpenDocument and OpenOffice.org 1.x, Visio, iWork, Lotus 1-2-3, dBASE, SYLK, DIF, CSV, TSV, HTML, Stirling Office Convert JSON and plain text")
     }
 }

@@ -109,7 +109,9 @@ final class DiagramDrawings {
         out.add(sp);
         if (hasText(s)) {
             CTShape tx = CTShape.Factory.newInstance();
-            tx.addNewSpPr();
+            tx.addNewSpPr().addNewNoFill();
+            tx.getSpPr().addNewLn().addNewNoFill();
+            tx.getSpPr().addNewEffectLst();
             tx.setTxBody(s.getTxBody());
             tx.setStyle(sp.getStyle());
             tx.setNvSpPr((CTShapeNonVisual) nv.copy());

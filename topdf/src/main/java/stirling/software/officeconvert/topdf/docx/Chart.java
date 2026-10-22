@@ -2,6 +2,7 @@ package stirling.software.officeconvert.topdf.docx;
 
 import java.awt.Color;
 import java.util.List;
+import java.util.Map;
 
 import stirling.software.officeconvert.topdf.pdf.Stroke;
 
@@ -43,29 +44,53 @@ record Chart(Text title, List<Group> groups, List<String> categories, Legend leg
     // An outer shadow: offset in points, blur radius in points and a colour carrying its alpha
     record Shadow(float dx, float dy, float blur, Color color) {}
 
-    record Labels(boolean value, boolean percent, boolean category, boolean series, String position, String format) {
+    record Look(Float size, Boolean bold, Color color) {
+
+        static final Look NONE = new Look(null, null, null);
+    }
+
+    record Labels(boolean value, boolean percent, boolean category, boolean series, String position, String format,
+            String separator, Look look, String text, float dx, float dy, Map<Integer, Labels> points) {
+
+        Labels(boolean value, boolean percent, boolean category, boolean series, String position, String format) {
+            this(value, percent, category, series, position, format, null, Look.NONE, null, 0, 0, Map.of());
+        }
 
         Labels(boolean value, boolean percent, boolean category) {
             this(value, percent, category, false, null, null);
         }
 
         boolean any() {
-            return value || percent || category || series;
+            return value || percent || category || series || points.values().stream().anyMatch(Labels::shown);
+        }
+
+        boolean shown() {
+            return text != null ? !text.isEmpty() : value || percent || category || series;
+        }
+
+        Labels at(int point) {
+            return points.getOrDefault(point, this);
         }
     }
 
     record Group(Kind kind, boolean horizontal, String grouping, List<Series> series, float gapWidth, float overlap,
-            float holeSize, float firstSliceAngle, boolean varyColors, Labels labels, boolean secondary) {
+            float holeSize, float firstSliceAngle, boolean varyColors, Labels labels, boolean secondary,
+            boolean reversedOrder) {
 
         Group(Kind kind, boolean horizontal, String grouping, List<Series> series, float gapWidth, float overlap,
                 float holeSize, float firstSliceAngle, boolean varyColors, Labels labels) {
             this(kind, horizontal, grouping, series, gapWidth, overlap, holeSize, firstSliceAngle, varyColors, labels,
-                    false);
+                    false, false);
         }
 
         Group onSecondary() {
             return new Group(kind, horizontal, grouping, series, gapWidth, overlap, holeSize, firstSliceAngle,
-                    varyColors, labels, true);
+                    varyColors, labels, true, reversedOrder);
+        }
+
+        Group inReversedOrder() {
+            return new Group(kind, horizontal, grouping, series, gapWidth, overlap, holeSize, firstSliceAngle,
+                    varyColors, labels, secondary, true);
         }
     }
 
