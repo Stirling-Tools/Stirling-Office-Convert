@@ -19,6 +19,7 @@ import org.apache.fontbox.cff.CFFFont;
 import org.apache.fontbox.cff.CFFParser;
 import org.apache.fontbox.cff.CFFType1Font;
 import org.apache.fontbox.cff.Type2CharString;
+import org.apache.fontbox.encoding.StandardEncoding;
 import org.apache.fontbox.ttf.CmapSubtable;
 import org.apache.fontbox.ttf.CmapTable;
 import org.apache.fontbox.ttf.HorizontalHeaderTable;
@@ -54,6 +55,8 @@ public final class WebFonts {
     private static final int UNITS_PER_EM = 1000;
 
     private static final int MAX_CODE = 0xFFFF;
+
+    private static final long MIN_GLYPH_BYTES = 16L << 20;
 
     private WebFonts() {}
 
@@ -112,9 +115,11 @@ public final class WebFonts {
         }
         TrueTypeWriter w = new TrueTypeWriter(ttf);
         HorizontalMetricsTable hmtx = ttf.getHorizontalMetrics();
+        long budget = glyphBudget(ttf.getTableMap().get("glyf").getLength());
         for (int gid = 1; gid < count; gid++) {
             PdfFiles.stopIfInterrupted();
             w.addCopy(gid, hmtx == null ? 0 : hmtx.getAdvanceWidth(gid));
+            checkGlyphBytes(w, budget);
         }
         w.keepComponentIds();
         PostScriptTable post = ttf.getPostScript();
@@ -244,12 +249,23 @@ public final class WebFonts {
     }
 
     private static byte[] convert(Program program, Map<Integer, Integer> unicodeByGlyph) throws IOException {
+        try {
+            return outlines(program, unicodeByGlyph);
+        } catch (RuntimeException e) {
+            throw new IOException("The font program cannot be converted: " + e.getMessage(), e);
+        }
+    }
+
+    private static byte[] outlines(Program program, Map<Integer, Integer> unicodeByGlyph) throws IOException {
+        program.checkExpansion();
         TrueTypeWriter w = new TrueTypeWriter(UNITS_PER_EM);
         AffineTransform toEm = program.toEm();
         w.replaceNotdef(program.path(0, toEm), program.advance(0, toEm));
+        long budget = glyphBudget(program.sourceBytes);
         for (int gid = 1; gid < program.count(); gid++) {
             PdfFiles.stopIfInterrupted();
             w.addOutline(program.path(gid, toEm), program.advance(gid, toEm));
+            checkGlyphBytes(w, budget);
         }
         TreeMap<Integer, Integer> cmap = cmap(program.count(), program::name, unicodeByGlyph, Map.of());
         TrueTypeWriter.Metrics m = w.metrics();
@@ -261,6 +277,16 @@ public final class WebFonts {
         tables.put("OS/2", os2(m, ascent, descent, cmap, program.style(), UNITS_PER_EM));
         tables.put("post", post(program.italicAngle()));
         return w.build(FontRebuild.cleanName(program.name()), cmapTable(cmap), tables);
+    }
+
+    private static long glyphBudget(long sourceBytes) {
+        return Math.max(MIN_GLYPH_BYTES, 8 * sourceBytes);
+    }
+
+    private static void checkGlyphBytes(TrueTypeWriter w, long budget) throws IOException {
+        if (w.glyphBytes() > budget) {
+            throw new IOException("The converted glyphs need more than " + budget + " bytes");
+        }
     }
 
     private static byte[] cmapTable(TreeMap<Integer, Integer> cmap) {
@@ -379,6 +405,8 @@ public final class WebFonts {
 
     private abstract static class Program {
 
+        private int sourceBytes;
+
         abstract int count();
 
         abstract String name();
@@ -391,6 +419,8 @@ public final class WebFonts {
 
         abstract double rawWidth(int gid) throws IOException;
 
+        abstract CharStringExpansion.Result expansion(int gid) throws IOException;
+
         abstract List<Number> matrix();
 
         abstract String weight();
@@ -401,6 +431,15 @@ public final class WebFonts {
             String weight = weight() == null ? "" : weight().toLowerCase(Locale.ROOT);
             boolean bold = weight.contains("bold") || weight.contains("black") || weight.contains("heavy");
             return (bold ? 1 : 0) | (italicAngle() != 0 ? 2 : 0);
+        }
+
+        void checkExpansion() throws IOException {
+            CharStringExpansion.Result[] glyphs = new CharStringExpansion.Result[count()];
+            for (int gid = 0; gid < glyphs.length; gid++) {
+                PdfFiles.stopIfInterrupted();
+                glyphs[gid] = expansion(gid);
+            }
+            CharStringExpansion.check(glyphs, code -> gid(StandardEncoding.INSTANCE.getName(code)));
         }
 
         AffineTransform toEm() {
@@ -444,7 +483,9 @@ public final class WebFonts {
                 throw new IOException("The font program is empty");
             }
             try {
-                return kind == FontKind.CFF ? new Cff(data) : new Type1(data, length1, length2);
+                Program program = kind == FontKind.CFF ? new Cff(data) : new Type1(data, length1, length2);
+                program.sourceBytes = data.length;
+                return program;
             } catch (RuntimeException e) {
                 throw new IOException("The font program cannot be read: " + e.getMessage(), e);
             }
@@ -523,6 +564,15 @@ public final class WebFonts {
                 return fd >= 0 && fd < dicts.size() ? dicts.get(fd) : null;
             }
             return font instanceof CFFType1Font t1 ? t1.getPrivateDict() : null;
+        }
+
+        @Override
+        CharStringExpansion.Result expansion(int gid) throws IOException {
+            List<byte[]> global = font.getGlobalSubrIndex();
+            Map<String, Object> priv = privateDict(gid);
+            return CharStringExpansion.type2(font.getCharStringBytes().get(gid),
+                    global == null ? null : global.toArray(new byte[0][]),
+                    priv != null && priv.get("Subrs") instanceof byte[][] local ? local : null);
         }
 
         private static double number(Object o) {
@@ -645,6 +695,11 @@ public final class WebFonts {
         double rawWidth(int gid) throws IOException {
             Double w = Type1Width.of(font.getCharStringsDict().get(names.get(gid)));
             return w != null ? w : font.getWidth(names.get(gid));
+        }
+
+        @Override
+        CharStringExpansion.Result expansion(int gid) throws IOException {
+            return CharStringExpansion.type1(font.getCharStringsDict().get(names.get(gid)), font.getSubrsArray());
         }
 
         @Override

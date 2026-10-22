@@ -699,7 +699,9 @@ map leaves out. Every glyph keeps its glyph id and its advance width. Type 1 and
 TrueType at 1000 units per em through the FontMatrix; TrueType glyphs, hinting (`fpgm`, `prep`, `cvt `) and metrics
 are kept as they are, and a missing or truncated `OS/2` is replaced. The font has `glyf`, `loca`, `hmtx`, `hhea`,
 `head`, `maxp`, `OS/2`, `post`, `name` and a fresh `cmap` with format 4 and, for code points beyond the BMP, format 12.
-A program that cannot be read fails with an `IOException`.
+A program that cannot be read fails with an `IOException`, and so does one whose charstrings expand past 131,072
+tokens for a glyph, 64 nested subroutine calls or 2^27 tokens for the font, or whose converted glyphs need more than
+eight times the program's size (at least 16 MB).
 
 ## How it works
 

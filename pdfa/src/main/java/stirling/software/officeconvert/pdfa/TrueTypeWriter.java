@@ -41,6 +41,8 @@ final class TrueTypeWriter {
 
     private int maxContours;
 
+    private long glyphBytes;
+
     TrueTypeWriter(TrueTypeFont source) throws IOException {
         this.source = source;
         this.unitsPerEm = source.getUnitsPerEm();
@@ -69,6 +71,10 @@ final class TrueTypeWriter {
 
     int size() {
         return glyphs.size();
+    }
+
+    long glyphBytes() {
+        return glyphBytes;
     }
 
     boolean hasGlyph(int sourceGid) {
@@ -105,6 +111,7 @@ final class TrueTypeWriter {
 
     private Glyph outline(GeneralPath path, int advance) {
         byte[] data = Outline.encode(path);
+        glyphBytes += data.length;
         if (data.length < 10) {
             return new Glyph(data, advance, 0);
         }
@@ -167,6 +174,7 @@ final class TrueTypeWriter {
             return new Glyph(new byte[0], advance, 0);
         }
         byte[] data = java.util.Arrays.copyOfRange(glyf, (int) start, (int) end);
+        glyphBytes += data.length;
         int lsb = hmtx == null ? 0 : hmtx.getLeftSideBearing(gid);
         if (data.length >= 10 && ByteBuffer.wrap(data).getShort(0) < 0) {
             pending.add(glyphs.size());
