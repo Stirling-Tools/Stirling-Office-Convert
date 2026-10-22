@@ -133,7 +133,13 @@ public final class HtmlDocument {
         Map<String, String> bodyStyle = resolved(cascade, body, root);
         Look bodyLook = root.child(bodyStyle, width, false);
         StyleSheet styles = new StyleSheet(bodyLook.run());
-        writer.begin(styles, new DocSink.HeaderFooterSet(List.of(), List.of(), List.of(), List.of(), false));
+        DocSink.HeaderFooterSet running = new DocSink.HeaderFooterSet(List.of(), List.of(), List.of(), List.of(), false);
+        if (MarginBoxes.any(cascade.margins())) {
+            running = MarginBoxes.running(cascade.margins(), root, width);
+            page.headerDistance = Math.max(6, page.marginTop / 2 - 6);
+            page.footerDistance = Math.max(6, page.marginBottom / 2 - 6);
+        }
+        writer.begin(styles, running);
         HtmlContext ctx = new HtmlContext(cascade, styles, writer, warnings, page, linked);
         least(ctx, htmlStyle, root);
         least(ctx, bodyStyle, bodyLook);
