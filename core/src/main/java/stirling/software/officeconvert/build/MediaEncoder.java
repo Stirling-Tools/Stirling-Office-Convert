@@ -218,7 +218,7 @@ final class MediaEncoder {
             }
         }
         BufferedImage img = render(textFree(), page, pageIndex, toDisplay, box, scaleFor(box));
-        return wholePage(page, toDisplay, box) ? smaller(img) : png(img);
+        return coversPage(page, toDisplay, box) ? smaller(img) : png(img);
     }
 
     private Encoded smaller(BufferedImage img) throws IOException {
@@ -230,7 +230,7 @@ final class MediaEncoder {
         return jpeg.bytes().length < PHOTO_SAVING * png.bytes().length ? jpeg : png;
     }
 
-    private static boolean wholePage(PDPage page, AffineTransform toDisplay, Box box) {
+    private static boolean coversPage(PDPage page, AffineTransform toDisplay, Box box) {
         PDRectangle crop = page.getCropBox();
         double area = crop.getWidth() * crop.getHeight() * Math.abs(toDisplay.getDeterminant());
         return box.width() * box.height() >= WHOLE_PAGE * area;
