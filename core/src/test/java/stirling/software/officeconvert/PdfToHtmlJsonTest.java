@@ -149,9 +149,14 @@ class PdfToHtmlJsonTest {
     private static Map<String, String> replayed(String json) throws IOException {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         try (DocxWriter writer = new DocxWriter(out)) {
-            JsonModel.replay(Json.parse(json), writer, new ArrayList<>());
+            JsonModel.replay(Json.parse(marked(json)), writer, new ArrayList<>());
         }
         return parts(out.toByteArray());
+    }
+
+    private static String marked(String json) {
+        return json.contains("\"format\":\"" + JsonWriter.FORMAT + "\"") ? json
+                : "{\"format\":\"" + JsonWriter.FORMAT + "\"," + json.substring(1);
     }
 
     @Test
@@ -176,7 +181,7 @@ class PdfToHtmlJsonTest {
                 + "\"body\":[{\"list\":{\"id\":1},\"content\":[{\"text\":\"x\"}]}]}";
         ByteArrayOutputStream json = new ByteArrayOutputStream();
         try (JsonWriter writer = new JsonWriter(json, null)) {
-            JsonModel.replay(Json.parse(in), writer, new ArrayList<>());
+            JsonModel.replay(Json.parse(marked(in)), writer, new ArrayList<>());
         }
         assertEquals(replayed(in).get("word/numbering.xml"),
                 replayed(json.toString(StandardCharsets.UTF_8)).get("word/numbering.xml"));
