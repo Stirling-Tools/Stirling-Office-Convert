@@ -732,6 +732,13 @@ final class Flow {
         } else if (padBottom >= 1) {
             inner.spacer(padBottom, new Frame(0, 0, width, -1));
         }
+        if (!cell.paragraphs.isEmpty() && tall != null && tall >= 1) {
+            boolean borderBox = "border-box".equalsIgnoreCase(d.getOrDefault("box-sizing", "").strip());
+            float high = tall + (borderBox ? 0 : Math.max(0, padding(d.get("padding-top"), em, frame.width())) + padBottom);
+            if (gradient(cell, d.get("background-gradient"), width, high, padLeft)) {
+                row.height = Math.min(high, ctx.pageRoom());
+            }
+        }
         t.columnWidths.add(width);
         t.indent = frame.left() + marginLeft;
         if (look.rightToLeft) {
@@ -753,6 +760,21 @@ final class Flow {
         ctx.count();
         emit(t);
         pendingSpace = bottom;
+    }
+
+    private boolean gradient(Table.Cell cell, String css, float width, float height, float padLeft) throws IOException {
+        Gradient g = Gradient.parse(css);
+        Picture pic = g == null ? null : ctx.images().gradient(g, width, height);
+        if (pic == null) {
+            return false;
+        }
+        pic.wrap = Picture.Wrap.NONE;
+        pic.behind = true;
+        pic.x = -padLeft;
+        pic.y = 0;
+        cell.paragraphs.getFirst().inlines.addFirst(new Inline.Image(pic));
+        cell.shading = -1;
+        return true;
     }
 
     private static Paragraph bar(float height, Look look) {

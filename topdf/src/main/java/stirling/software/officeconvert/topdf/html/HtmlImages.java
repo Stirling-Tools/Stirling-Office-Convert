@@ -78,6 +78,15 @@ final class HtmlImages {
         return p == null ? null : new Labelled(p, labels);
     }
 
+    Picture gradient(Gradient g, float width, float height) throws IOException {
+        Gradient.Painted p = g.paint(width, height);
+        if (p == null) {
+            return null;
+        }
+        Picture.MediaRef ref = sink.media(p.jpeg(), "jpeg", p.pixelWidth(), p.pixelHeight(), "gradient:" + (++added));
+        return new Picture(ref, width, height);
+    }
+
     private static float[] svgBox(Element svg, Map<String, String> d, Look look, float maxWidth, float maxHeight) {
         float[] natural = Svg.size(svg);
         if (percent(d.get("width")) || percent(d.get("height"))) {

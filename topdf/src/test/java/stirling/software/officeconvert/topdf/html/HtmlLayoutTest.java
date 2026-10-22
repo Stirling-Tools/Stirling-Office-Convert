@@ -268,6 +268,33 @@ class HtmlLayoutTest {
         assertEquals((140 - 90) / 2f * 0.75f, l.word("Q4").top() - revenue.top(), 1.5f);
     }
 
+    @Test
+    void aGradientBackgroundRunsFromItsFirstColourToItsLast() throws IOException {
+        Laid l = lay("""
+                <html><body style="margin:0"><div style="height:100px;padding:10px;color:#fff;
+                background:linear-gradient(to right,#ff0000,#0000ff)"><p>Banner</p></div></body></html>""");
+        Word banner = l.word("Banner");
+        int y = Math.round(banner.top() + 20);
+        int left = l.first().getRGB(Math.round(banner.left()) - 4, y);
+        int right = l.first().getRGB(Math.round(l.pageWidth() - banner.left()) - 4, y);
+        assertTrue((left >> 16 & 0xFF) > 200 && (left & 0xFF) < 60, Integer.toHexString(left));
+        assertTrue((right & 0xFF) > 200 && (right >> 16 & 0xFF) < 60, Integer.toHexString(right));
+        int below = l.first().getRGB(Math.round(banner.left()), Math.round(banner.top() - 12 + 90));
+        assertTrue((below >> 16 & 0xFF) > 150, "the box is as tall as its height: " + Integer.toHexString(below));
+    }
+
+    @Test
+    void opacityFadesABoxAndItsTextTowardsThePaper() throws IOException {
+        Laid l = lay("""
+                <html><body style="margin:0"><div style="opacity:.5;background:#0000ff;padding:10px">
+                <p>Faded</p></div></body></html>""");
+        Word faded = l.word("Faded");
+        int rgb = l.first().getRGB(Math.round(faded.left()) - 4, Math.round(faded.top()) - 4) & 0xFFFFFF;
+        assertEquals(0x80, rgb >> 16 & 0xFF, 2, Integer.toHexString(rgb));
+        assertEquals(0x80, rgb >> 8 & 0xFF, 2, Integer.toHexString(rgb));
+        assertEquals(0xFF, rgb & 0xFF, 2, Integer.toHexString(rgb));
+    }
+
     private static Word containing(Laid l, String text) {
         return l.words().stream().filter(w -> w.text().contains(text)).findFirst().orElseThrow();
     }
