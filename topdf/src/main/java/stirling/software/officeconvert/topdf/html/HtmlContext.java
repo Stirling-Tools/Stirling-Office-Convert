@@ -36,6 +36,39 @@ final class HtmlContext {
     private final Map<Element, Integer> rows = new IdentityHashMap<>();
     private Map<String, Element> labels;
 
+    private static final int MAX_VISITS = 400_000;
+
+    private int visits;
+    private final java.util.Set<Element> placed = java.util.Collections.newSetFromMap(new IdentityHashMap<>());
+
+    boolean visit() {
+        return ++visits <= MAX_VISITS;
+    }
+
+    void place(Element e) {
+        placed.add(e);
+    }
+
+    boolean placed(Element e) {
+        return placed.contains(e);
+    }
+
+    private static final int MAX_NESTED_BOXES = 8;
+
+    private int boxes;
+
+    boolean positions() {
+        return boxes < MAX_NESTED_BOXES && cascade.positions();
+    }
+
+    void enterBox() {
+        boxes++;
+    }
+
+    void leaveBox() {
+        boxes--;
+    }
+
     HtmlContext(Cascade cascade, StyleSheet styles, DocSink sink, List<String> warnings, Section page, Linked linked) {
         this.cascade = cascade;
         this.styles = styles;

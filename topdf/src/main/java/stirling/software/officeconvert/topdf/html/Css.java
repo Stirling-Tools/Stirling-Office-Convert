@@ -9,8 +9,9 @@ import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-/** Just enough CSS: rules from a style sheet, declarations, lengths and colours. Nothing is fetched: url(), @import
- * and @font-face are dropped. */
+/** Just enough CSS: rules from a style sheet, declarations, lengths and colours. Nothing is fetched here: a
+ * background's url() is kept as {@code background-url} for the caller to resolve, and @import and @font-face are
+ * dropped. */
 final class Css {
 
     static final int MAX_RULES = 200_000;
@@ -183,8 +184,12 @@ final class Css {
                 if (!name.equals("background") && !name.equals("background-image")) {
                     continue;
                 }
+                String url = firstUrl(value);
                 value = withoutPictures(value);
                 out.put(important ? IMPORTANT_MARK + "background-image" : "background-image", "picture");
+                out.put(important ? IMPORTANT_MARK + "background-url" : "background-url", url == null ? "none" : url);
+            } else if (name.equals("background") || name.equals("background-image")) {
+                out.put(important ? IMPORTANT_MARK + "background-url" : "background-url", "none");
             }
             if (SHORTHANDS.contains(name) && lower.contains("var(")) {
                 // its parts are only known once var() is filled in, so it is split up after that
@@ -257,6 +262,9 @@ final class Css {
                         out.put("background-color", token);
                     }
                 }
+                if (name.equals("background")) {
+                    backgroundLayout(out, value);
+                }
             }
             case "font" -> font(out, value);
             case "list-style" -> {
@@ -269,6 +277,67 @@ final class Css {
             case "page-break-after" -> out.put("break-after", "always".equalsIgnoreCase(value) ? "page" : value);
             default -> out.put(name, value);
         }
+    }
+
+    private static final Set<String> REPEATS = Set.of("repeat", "no-repeat", "repeat-x", "repeat-y", "space", "round");
+
+    private static final Set<String> PLACES = Set.of("left", "right", "top", "bottom", "center");
+
+    private static void backgroundLayout(Map<String, String> out, String value) {
+        List<String> place = new ArrayList<>();
+        List<String> size = new ArrayList<>();
+        List<String> repeat = new ArrayList<>();
+        boolean afterSlash = false;
+        for (String token : tokens(value.replace("/", " / "))) {
+            String t = token.toLowerCase(Locale.ROOT);
+            if (t.equals("/")) {
+                afterSlash = true;
+            } else if (REPEATS.contains(t)) {
+                repeat.add(t);
+            } else if (afterSlash && (t.equals("cover") || t.equals("contain") || t.equals("auto")
+                    || length(t, 12, 100) != null)) {
+                size.add(t);
+            } else if (!afterSlash && (PLACES.contains(t) || color(t) == null && length(t, 12, 100) != null)) {
+                place.add(t);
+            }
+        }
+        if (!place.isEmpty()) {
+            out.put("background-position", String.join(" ", place));
+        }
+        if (!size.isEmpty()) {
+            out.put("background-size", String.join(" ", size));
+        }
+        if (!repeat.isEmpty()) {
+            out.put("background-repeat", String.join(" ", repeat));
+        }
+    }
+
+    static String firstUrl(String value) {
+        String lower = value.toLowerCase(Locale.ROOT);
+        int at = lower.indexOf("url(");
+        if (at < 0 || lower.lastIndexOf("image-set(", at) >= 0) {
+            return null;
+        }
+        int depth = 0;
+        int end = -1;
+        for (int j = at + 3; j < value.length(); j++) {
+            char c = value.charAt(j);
+            if (c == '(') {
+                depth++;
+            } else if (c == ')' && --depth == 0) {
+                end = j;
+                break;
+            }
+        }
+        if (end < 0) {
+            return null;
+        }
+        String inside = value.substring(at + 4, end).strip();
+        if (inside.length() >= 2 && (inside.charAt(0) == '"' || inside.charAt(0) == '\'')
+                && inside.charAt(inside.length() - 1) == inside.charAt(0)) {
+            inside = inside.substring(1, inside.length() - 1);
+        }
+        return inside.isBlank() ? null : inside.strip();
     }
 
     private static String withoutPictures(String value) {

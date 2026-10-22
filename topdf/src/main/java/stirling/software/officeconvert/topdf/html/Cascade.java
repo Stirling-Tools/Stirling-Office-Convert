@@ -77,6 +77,7 @@ final class Cascade {
         int order = 0;
         for (Css.Rule rule : rules) {
             order++;
+            positions |= positioning(rule.declarations());
             if (rule.selector().startsWith("@margin ")) {
                 String box = rule.selector().substring(8);
                 put(margins.computeIfAbsent(box, k -> new HashMap<>()), rule.declarations(), false);
@@ -110,6 +111,29 @@ final class Cascade {
         }
         importantMargins.forEach((box, d) -> margins.get(box).putAll(d));
     }
+
+    private boolean positions;
+
+    private static boolean positioning(Map<String, String> d) {
+        for (Map.Entry<String, String> e : d.entrySet()) {
+            String k = e.getKey().startsWith(Css.IMPORTANT_MARK) ? e.getKey().substring(1) : e.getKey();
+            if (k.equals("position") || k.equals("transform") || k.startsWith("--")
+                    && e.getValue().toLowerCase(Locale.ROOT).matches(".*\\b(absolute|fixed)\\b.*")) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    boolean positions() {
+        if (!positionsChecked) {
+            positionsChecked = true;
+            positions |= !doc.select("[style*=position], [style*=transform], [style*=POSITION]").isEmpty();
+        }
+        return positions;
+    }
+
+    private boolean positionsChecked;
 
     private static boolean stylesheet(Element link) {
         boolean sheet = false;

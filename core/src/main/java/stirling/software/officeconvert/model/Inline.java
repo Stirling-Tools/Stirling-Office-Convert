@@ -39,27 +39,29 @@ public sealed interface Inline {
             int direction,
             int groundRgb,
             boolean upright,
-            boolean fromParagraph)
+            float rotation,
+            boolean fromParagraph,
+            boolean grow)
             implements Inline {
 
         public TextBox(float x, float y, float width, float height, int fillRgb, float insetLeft, float insetRight,
                 float wrapGap, List<Paragraph> paragraphs, int lineRgb, float lineWidth, boolean rounded, boolean overlay,
                 int direction, int groundRgb, boolean upright) {
             this(x, y, width, height, fillRgb, insetLeft, insetRight, wrapGap, paragraphs, lineRgb, lineWidth, rounded,
-                    overlay, direction, groundRgb, upright, false);
+                    overlay, direction, groundRgb, upright, 0, false, false);
         }
 
         public TextBox(float x, float y, float width, float height, int fillRgb, float insetLeft, float insetRight,
                 float wrapGap, List<Paragraph> paragraphs, int lineRgb, float lineWidth, boolean rounded, boolean overlay) {
             this(x, y, width, height, fillRgb, insetLeft, insetRight, wrapGap, paragraphs, lineRgb, lineWidth, rounded,
-                    overlay, 0, -1, false, false);
+                    overlay, 0, -1, false);
         }
 
         public TextBox(float x, float y, float width, float height, int fillRgb, float insetLeft, float insetRight,
                 float wrapGap, List<Paragraph> paragraphs, int lineRgb, float lineWidth, boolean rounded, boolean overlay,
                 int direction) {
             this(x, y, width, height, fillRgb, insetLeft, insetRight, wrapGap, paragraphs, lineRgb, lineWidth, rounded,
-                    overlay, direction, -1, false, false);
+                    overlay, direction, -1, false);
         }
     }
 

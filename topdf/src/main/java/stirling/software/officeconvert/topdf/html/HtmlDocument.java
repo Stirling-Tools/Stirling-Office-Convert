@@ -18,6 +18,8 @@ import org.jsoup.nodes.Element;
 import stirling.software.officeconvert.build.DocSink;
 import stirling.software.officeconvert.docx.DocxWriter;
 import stirling.software.officeconvert.json.JsonModel;
+import stirling.software.officeconvert.model.Inline;
+import stirling.software.officeconvert.model.Paragraph;
 import stirling.software.officeconvert.model.Section;
 import stirling.software.officeconvert.model.StyleSheet;
 import stirling.software.officeconvert.memory.Admission;
@@ -143,15 +145,24 @@ public final class HtmlDocument {
             page.headerDistance = Math.max(6, page.marginTop / 2 - 6);
             page.footerDistance = Math.max(6, page.marginBottom / 2 - 6);
         }
-        writer.begin(styles, running);
         HtmlContext ctx = new HtmlContext(cascade, styles, writer, warnings, page, linked);
+        List<Inline> fixedLayer = new ArrayList<>(Backgrounds.paint(Backgrounds.url(htmlStyle) != null ? htmlStyle
+                : bodyStyle, bodyLook, ctx.images(), 0, 0, page.pageWidth, page.pageHeight, false));
+        if (ctx.positions()) {
+            fixedLayer.addAll(Flow.fixedLayer(ctx, body, bodyLook, page));
+        }
+        if (!fixedLayer.isEmpty()) {
+            running = withFixed(running, fixedLayer, bodyLook);
+            page.headerDistance = Math.min(page.headerDistance, Math.max(0, page.marginTop - 1.5f));
+        }
+        writer.begin(styles, running);
         least(ctx, htmlStyle, root);
         least(ctx, bodyStyle, bodyLook);
         if (fixed(htmlStyle) || fixed(bodyStyle)) {
             // a page locked in place, as behind an open dialog, does not grow wider than the window
             ctx.scrolling(1);
         }
-        new Flow(ctx, writer::block, false).children(body, bodyLook, new Flow.Frame(0, 0, width, -1));
+        new Flow(ctx, writer::block, false).root(body, bodyLook, new Flow.Frame(0, 0, width, -1));
         String author = null;
         Element meta = doc.selectFirst("meta[name=author]");
         if (meta != null) {
@@ -166,6 +177,18 @@ public final class HtmlDocument {
         // a second layout on larger paper is printed at the zoom it was laid out for
         float printAt = zoom < 1 ? (ownPaper ? 1f : zoom) : fit;
         return new Laid(new Converted(warnings, ctx.truncated()), printAt);
+    }
+
+    private static DocSink.HeaderFooterSet withFixed(DocSink.HeaderFooterSet running, List<Inline> drawings,
+            Look look) {
+        List<Paragraph> header = new ArrayList<>(running.header());
+        if (header.isEmpty()) {
+            header.add(Flow.anchorParagraph(drawings, 0, look.run()));
+        } else {
+            header.get(0).inlines.addAll(0, drawings);
+        }
+        return new DocSink.HeaderFooterSet(header, running.footer(), running.evenHeader(), running.evenFooter(),
+                running.titlePage());
     }
 
     // A page that sets html or body at least so wide is laid out that wide, past the paper if need be

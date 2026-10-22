@@ -63,6 +63,7 @@ final class Flow {
 
     private final HtmlContext ctx;
     private final Out out;
+    private final boolean paragraphsOnly;
     private final boolean inCell;
     private final Deque<ListLevel> lists = new ArrayDeque<>();
     private Paragraph para;
@@ -97,9 +98,55 @@ final class Flow {
     private float clipLeft = Float.MAX_VALUE;
 
     Flow(HtmlContext ctx, Out out, boolean inCell) {
+        this(ctx, out, inCell, false);
+    }
+
+    Flow(HtmlContext ctx, Out out, boolean inCell, boolean paragraphsOnly) {
         this.ctx = ctx;
         this.out = out;
         this.inCell = inCell;
+        this.paragraphsOnly = paragraphsOnly;
+    }
+
+    void root(Element body, Look look, Frame frame) throws IOException {
+        blockLook = look;
+        blockFrame = frame;
+        if (ctx.positions()) {
+            List<Positioned.Item> items = Positioned.absolutes(ctx, body, look, frame.width());
+            for (Positioned.Item item : items) {
+                ctx.place(item.element());
+            }
+            Section s = ctx.defaultSection();
+            Positioned.Hung hung = Positioned.hang(ctx, items, s.marginLeft, s.marginTop,
+                    s.pageWidth - s.marginLeft - s.marginRight, ctx.pageRoom(), 0);
+            if (!hung.top().isEmpty()) {
+                anchor(Positioned.moved(hung.top(), 0, 0, false), frame);
+            }
+        }
+        children(body, look, frame);
+    }
+
+    private static final int MAX_FIXED = 64;
+
+    private static final int MAX_FIXED_TEXT = 8_000;
+
+    static List<Inline> fixedLayer(HtmlContext ctx, Element body, Look look, Section page) throws IOException {
+        List<Positioned.Item> items = new ArrayList<>();
+        int text = 0;
+        for (Positioned.Item item : Positioned.fixed(ctx, body, look, page.pageWidth - page.marginLeft
+                - page.marginRight)) {
+            text += Layout.text(item.element(), MAX_FIXED_TEXT + 1).length();
+            if (items.size() >= MAX_FIXED || text > MAX_FIXED_TEXT) {
+                ctx.warn("Only the first boxes fixed to the page are repeated on every page; the rest are drawn once,"
+                        + " where they stand");
+                break;
+            }
+            items.add(item);
+            ctx.place(item.element());
+        }
+        Positioned.Hung hung = Positioned.hang(ctx, items, page.marginLeft, page.marginTop,
+                page.pageWidth - page.marginLeft - page.marginRight, ctx.pageRoom(), 0);
+        return Positioned.moved(hung.top(), 0, 0, false);
     }
 
     void children(Element parent, Look look, Frame frame) throws IOException {
@@ -246,6 +293,14 @@ final class Flow {
         if (look.hidden || Hidden.visually(d, look.size)) {
             return;
         }
+        if (Positioned.outOfFlow(d) && !tag.equals("body") && !tag.equals("html")
+                && (ctx.positions() || ctx.placed(e))) {
+            if (!ctx.placed(e)) {
+                ctx.place(e);
+                staticBox(e, d, look, frame, depth);
+            }
+            return;
+        }
         if (tag.equals("details") && !e.hasAttr("open")) {
             Element summary = e.selectFirst("> summary");
             if (summary != null) {
@@ -274,7 +329,7 @@ final class Flow {
             case "br" -> inline(new Inline.Break(), look);
             case "img" -> image(e, d, look, frame);
             case "svg" -> {
-                if (onOwnLine(e, d, look)) {
+                if (onOwnLine(e, d, look) && Transform.of(d.get("transform"), look.size, 0, 0).shiftOnly()) {
                     HtmlImages.Labelled drawn = ctx.images().labelledSvg(e, d, look, frame.width(), pictureRoom());
                     if (drawn != null) {
                         labelled(drawn, d, look, frame);
@@ -282,6 +337,7 @@ final class Flow {
                 } else {
                     Picture pic = ctx.images().inlineSvg(e, d, look, frame.width(), pictureRoom());
                     if (pic != null) {
+                        turn(pic, d, look);
                         place(pic, d, look, frame);
                     }
                 }
@@ -402,6 +458,36 @@ final class Flow {
         flush();
         page(d.get("page"), frame);
         float em = look.size;
+        Transform turn = forceInline > 0 ? Transform.NONE : Transform.of(d.get("transform"), em, frame.width(), 0);
+        if (!turn.shiftOnly() && ctx.positions()) {
+            lifted(e, d, look, frame, depth);
+            return;
+        }
+        float[] shift = relativeShift(d, look, frame, turn);
+        float lowered = 0;
+        if (shift[0] != 0 || shift[1] != 0) {
+            frame = new Frame(frame.left() + shift[0], frame.right() - shift[0], frame.width(), frame.shading());
+            float before = pendingSpace;
+            pendingSpace = Math.max(0, pendingSpace + shift[1]);
+            lowered = pendingSpace - before;
+        }
+        List<Positioned.Item> absolutes = Positioned.contains(d) && ctx.positions() && !tag.equals("body")
+                && !tag.equals("html") ? Positioned.absolutes(ctx, e, look, frame.width()) : List.of();
+        for (Positioned.Item item : absolutes) {
+            ctx.place(item.element());
+        }
+        try {
+            contained(e, tag, d, look, frame, depth, absolutes);
+        } finally {
+            if (lowered != 0) {
+                pendingSpace = Math.max(0, pendingSpace - lowered);
+            }
+        }
+    }
+
+    private void contained(Element e, String tag, Map<String, String> d, Look look, Frame frame, int depth,
+            List<Positioned.Item> absolutes) throws IOException {
+        float em = look.size;
         float top = length(d.get("margin-top"), em, frame.width());
         float bottom = length(d.get("margin-bottom"), em, frame.width());
         if ((tag.equals("ul") || tag.equals("ol")) && !lists.isEmpty()) {
@@ -432,12 +518,34 @@ final class Flow {
             // a cell cannot hold a table of columns, but a row of short items still fits on one line
             plan = null;
         }
-        if (plan == null && boxed(e, tag, d, fill) && !ctx.holdsRow(e, look, inner.width())) {
-            box(e, d, look, frame, depth, fill, top, bottom);
+        boolean tall = !absolutes.isEmpty() && height(d, look) > 0 && e.selectFirst("table") == null;
+        if (plan == null && (tall || boxed(e, tag, d, fill)) && !ctx.holdsRow(e, look, inner.width())) {
+            box(e, d, look, frame, depth, fill, top, bottom, absolutes);
             return;
         }
         boolean avoid = !inCell && avoidsBreaks(d);
         avoiding += avoid ? 1 : 0;
+        Positioned.Hung hung = null;
+        if (!absolutes.isEmpty()) {
+            float marginLeft = length(d.get("margin-left"), em, frame.width());
+            float marginRight = length(d.get("margin-right"), em, frame.width());
+            float cbWidth = Math.max(12, frame.width() - marginLeft - marginRight - border(d, "left") - border(d, "right"));
+            Float own = Css.length(d.getOrDefault("width", "auto"), em, frame.width());
+            if (own != null && own > 0) {
+                boolean borderBox = "border-box".equalsIgnoreCase(d.getOrDefault("box-sizing", "").strip());
+                float pads = padding(d.get("padding-left"), em, frame.width())
+                        + padding(d.get("padding-right"), em, frame.width());
+                cbWidth = Math.min(cbWidth, borderBox ? own - border(d, "left") - border(d, "right") : own + pads);
+            }
+            float h = height(d, look);
+            float cbHeight = h > 0 ? h + padding(d.get("padding-top"), em, frame.width())
+                    + padding(d.get("padding-bottom"), em, frame.width()) : Float.NaN;
+            float x0 = originX() + frame.left() + marginLeft + border(d, "left");
+            hung = Positioned.hang(ctx, absolutes, x0, ANCHOR + pendingSpace + Math.max(0, top - pendingMargin) + border(d, "top"), cbWidth, cbHeight, depth);
+            if (!hung.top().isEmpty()) {
+                anchor(hung.top(), frame);
+            }
+        }
         margin(top);
         pad(padding(d.get("padding-top"), em, frame.width()));
         if (isPageBreak(d.get("break-before"))) {
@@ -484,6 +592,11 @@ final class Flow {
         }
         floatOf = outerFloat;
         flush();
+        if (hung != null && !hung.bottom().isEmpty()) {
+            float padBottom = padding(d.get("padding-bottom"), em, frame.width());
+            float below = padBottom + (padBottom > 0 || border(d, "bottom") > 0 ? pendingSpace : 0);
+            anchor(Positioned.moved(hung.bottom(), 0, below, true), frame);
+        }
         if (clip >= 0) {
             clipLeft = outerClip == Float.MAX_VALUE ? outerClip : outerClip - (inside - clipLeft);
         }
@@ -682,12 +795,13 @@ final class Flow {
     private static final int BOX_TEXT = 4_000;
 
     // The background a block paints: its colour, or for a picture we never load under light text, a dark stand-in
-    private static int fill(Map<String, String> d, Look look) {
+    private int fill(Map<String, String> d, Look look) {
         Integer c = Css.color(d.get("background-color"));
         if (c != null && c >= 0) {
             return c;
         }
-        if ("picture".equals(d.get("background-image")) && light(look.color)) {
+        if ("picture".equals(d.get("background-image")) && light(look.color)
+                && !(Backgrounds.url(d) != null && Backgrounds.drawable(d, ctx.images()))) {
             return 0x2B2B2B;
         }
         return -1;
@@ -709,7 +823,8 @@ final class Flow {
         for (String side : new String[] {"top", "bottom", "left", "right"}) {
             edges += border(d, side) > 0 ? 1 : 0;
         }
-        boolean painted = fill >= 0 && fill != 0xFFFFFF && fill != blockFrame.shading();
+        boolean painted = fill >= 0 && fill != 0xFFFFFF && fill != blockFrame.shading()
+                || Backgrounds.url(d) != null && Backgrounds.drawable(d, ctx.images());
         boolean bar = border(d, "left") > 0 || border(d, "right") > 0;
         return (painted || edges >= 3 || bar) && Layout.text(e, BOX_TEXT).length() < BOX_TEXT;
     }
@@ -778,7 +893,7 @@ final class Flow {
     }
 
     private void box(Element e, Map<String, String> d, Look look, Frame frame, int depth, int fill, float top,
-            float bottom) throws IOException {
+            float bottom, List<Positioned.Item> absolutes) throws IOException {
         float em = look.size;
         float marginLeft = Math.max(0, length(d.get("margin-left"), em, frame.width()));
         float marginRight = Math.max(0, length(d.get("margin-right"), em, frame.width()));
@@ -798,16 +913,34 @@ final class Flow {
         inner.pad(Math.max(0, padding(d.get("padding-top"), em, frame.width())));
         inner.children(e, look, new Frame(0, 0, Math.max(24, width - padLeft - padRight), -1), depth);
         float padBottom = Math.max(0, padding(d.get("padding-bottom"), em, frame.width()));
+        float padTop = Math.max(0, padding(d.get("padding-top"), em, frame.width()));
         Float tall = boxLength(d.get("height"), look, 0);
+        float fixed = height(d, look);
+        boolean sized = fixed > 0 && !"border-box".equalsIgnoreCase(d.getOrDefault("box-sizing", "").strip());
+        float boxHeight = fixed <= 0 ? -1 : sized ? fixed + padTop + padBottom + cell.top.width() + cell.bottom.width()
+                : fixed;
+        float innerWidth = Math.max(24, width - padLeft - padRight);
+        float drawnHeight = boxHeight > 0 ? boxHeight
+                : Measure.height(cell.blocks(), innerWidth) + padBottom + cell.top.width() + cell.bottom.width();
+        List<Inline> behind = Backgrounds.url(d) == null ? List.of()
+                : Backgrounds.paint(d, look, ctx.images(), -padLeft, 0, width, drawnHeight, true);
+        Positioned.Hung hung = Positioned.hang(ctx, absolutes, -padLeft, 0, width, boxHeight > 0 ? boxHeight : Float.NaN,
+                depth);
+        boolean hangs = !behind.isEmpty() || !hung.top().isEmpty() || !hung.bottom().isEmpty();
         boolean drawn = cell.shading >= 0 || cell.top.visible() || cell.bottom.visible();
-        if (cell.empty() && (tall == null || tall < 1 || !drawn)) {
+        if (cell.empty() && !hangs && (tall == null || tall < 1 || !drawn)) {
             margin(top + bottom);
             return;
         }
+        if (!behind.isEmpty() && (covers(d) || boxHeight > 0) && cell.shading >= 0) {
+            behind = new ArrayList<>(behind);
+            behind.add(0, new Inline.Shape(-padLeft, 0, width, drawnHeight, cell.shading, -1, 0, false, false, true, 0));
+            cell.shading = -1;
+        }
         Table t = new Table();
         Table.Row row = new Table.Row();
-        if (cell.empty()) {
-            float h = tall + Math.max(0, padding(d.get("padding-top"), em, frame.width())) + padBottom;
+        if (cell.empty() && !hangs) {
+            float h = tall + padTop + padBottom;
             cell.paragraphs.add(bar(h, look));
             Element only = e.children().size() == 1 ? e.child(0) : null;
             Map<String, String> od = only == null ? Map.of() : ctx.declared(only, look);
@@ -830,8 +963,21 @@ final class Flow {
                     width -= done;
                 }
             }
-        } else if (padBottom >= 1) {
-            inner.spacer(padBottom, new Frame(0, 0, width, -1));
+        } else {
+            if (!hung.bottom().isEmpty()) {
+                cell.paragraphs.add(anchorParagraph(Positioned.moved(hung.bottom(), 0, padBottom, true), 0));
+            }
+            if (!hung.top().isEmpty() || !behind.isEmpty()) {
+                if (cell.empty() || !(cell.blocks().getFirst() instanceof Paragraph)) {
+                    cell.tables.replaceAll(n -> new Table.Nested(n.before() + 1, n.table()));
+                    cell.paragraphs.addFirst(anchorParagraph(List.of(), 0));
+                }
+                cell.paragraphs.getFirst().inlines.addAll(0, hung.top());
+                cell.paragraphs.getFirst().inlines.addAll(0, behind);
+            }
+            if (padBottom >= 1) {
+                inner.spacer(padBottom, new Frame(0, 0, width, -1));
+            }
         }
         if (!cell.empty() && tall != null && tall >= 1) {
             boolean borderBox = "border-box".equalsIgnoreCase(d.getOrDefault("box-sizing", "").strip());
@@ -851,6 +997,9 @@ final class Flow {
         t.cellMarginRight = padRight;
         row.splits = !avoidsBreaks(d);
         row.cells.add(cell);
+        if (boxHeight > 0 && row.height <= 0) {
+            row.height = Math.min(boxHeight, ctx.pageRoom());
+        }
         t.rows.add(row);
         margin(top);
         if (pendingSpace > 0) {
@@ -1684,7 +1833,18 @@ final class Flow {
             }
             return;
         }
+        turn(pic, d, look);
         place(pic, d, look, frame);
+    }
+
+    private static void turn(Picture pic, Map<String, String> d, Look look) {
+        Transform t = Transform.of(d.get("transform"), look.size, pic.width, pic.height);
+        if (t.shiftOnly()) {
+            return;
+        }
+        pic.width *= t.scaleX();
+        pic.height *= t.scaleY();
+        pic.rotation = Math.round(t.rotation());
     }
 
     // A row in a cell cannot break, so a picture there leaves room for its caption on the same page
@@ -1830,7 +1990,7 @@ final class Flow {
         line.lineHeight = size * LABEL_LINE;
         line.inlines.add(new Inline.Text(label.text(), style, null, -1));
         return new Inline.TextBox(left + x, label.baseline() - size * LABEL_ASCENT, width, line.lineHeight, -1, 0, 0, 0,
-                List.of(line), -1, 0, false, true, 0, -1, false, true);
+                List.of(line), -1, 0, false, true, 0, -1, false, 0, true, false);
     }
 
     private static final float LABEL_LINE = 1.2f;
@@ -1858,7 +2018,7 @@ final class Flow {
     private void table(Element e, Map<String, String> d, Look look, Frame frame, boolean centred, int depth)
             throws IOException {
         flush();
-        if (inCell && (e.parents().stream().filter(p -> p.normalName().equals("table")).count() >= Table.MAX_NESTING
+        if (inCell && (paragraphsOnly || e.parents().stream().filter(p -> p.normalName().equals("table")).count() >= Table.MAX_NESTING
                 || HtmlTables.least(e, look) > frame.width())) {
             nestedTable(e, look, frame, depth);
             return;
@@ -1913,6 +2073,119 @@ final class Flow {
             pendingGap = null;
             flush();
         }
+    }
+
+    private static final float ANCHOR = 1;
+
+    private void staticBox(Element e, Map<String, String> d, Look look, Frame frame, int depth) throws IOException {
+        Positioned.Placed p = Positioned.lay(ctx, new Positioned.Item(e, d, look), frame.width(), Float.NaN, false,
+                depth);
+        if (p.drawings().isEmpty()) {
+            return;
+        }
+        float x0 = originX() + frame.left();
+        float lift = p.fromBottom() ? p.height() : 0;
+        if (para != null) {
+            para.inlines.addAll(columned(Positioned.moved(p.drawings(), x0, lift, true)));
+        } else {
+            anchor(Positioned.moved(p.drawings(), x0, ANCHOR + pendingSpace + lift, true), frame);
+        }
+    }
+
+    private void lifted(Element e, Map<String, String> d, Look look, Frame frame, int depth) throws IOException {
+        float em = look.size;
+        float top = length(d.get("margin-top"), em, frame.width());
+        float bottom = length(d.get("margin-bottom"), em, frame.width());
+        Positioned.Placed p = Positioned.lay(ctx, new Positioned.Item(e, d, look), frame.width(), Float.NaN, true,
+                depth);
+        Transform t = Transform.of(d.get("transform"), em, p.width(), p.height());
+        float roomHeight = p.height() / Math.max(0.05f, t.scaleY());
+        margin(top);
+        Paragraph hold = anchorParagraph(columned(Positioned.moved(p.drawings(), originX() + frame.left(), pendingSpace,
+                true)), frame.left());
+        hold.lineHeight = Math.max(1, Math.min(roomHeight, ctx.pageRoom()));
+        hold.spaceBefore = Math.min(pendingSpace, 400);
+        hold.keepNext = false;
+        hold.pageBreakBefore = pendingBreak && !inCell && !sectionStarted;
+        pendingBreak = false;
+        sectionStarted = false;
+        space(0);
+        ctx.count();
+        emit(hold);
+        space(bottom);
+    }
+
+    private void anchor(List<Inline> drawings, Frame frame) throws IOException {
+        Paragraph p = anchorParagraph(columned(drawings), frame.left());
+        p.pageBreakBefore = pendingBreak && !inCell && !sectionStarted;
+        pendingBreak = false;
+        sectionStarted = false;
+        ctx.count();
+        emit(p);
+    }
+
+    private Paragraph anchorParagraph(List<Inline> drawings, float indent) {
+        return anchorParagraph(drawings, indent, blockLook.run());
+    }
+
+    static Paragraph anchorParagraph(List<Inline> drawings, float indent, RunStyle style) {
+        Paragraph p = new Paragraph();
+        p.indentLeft = indent;
+        p.lineRule = Paragraph.LineRule.EXACT;
+        p.lineHeight = ANCHOR;
+        p.keepNext = true;
+        p.inlines.addAll(drawings);
+        p.inlines.add(new Inline.Text("\u00a0", style.withSize(1), null, -1));
+        return p;
+    }
+
+    private List<Inline> columned(List<Inline> drawings) {
+        float origin = originX();
+        return origin == 0 ? drawings : Positioned.boxesShifted(drawings, -origin);
+    }
+
+    private float originX() {
+        if (inCell) {
+            return 0;
+        }
+        Section s = ctx.section(ctx.pageName());
+        return (s != null ? s : ctx.defaultSection()).marginLeft;
+    }
+
+    private static float[] relativeShift(Map<String, String> d, Look look, Frame frame, Transform turn) {
+        float dx = turn.dx();
+        float dy = turn.dy();
+        if (Positioned.position(d).equals("relative")) {
+            Float left = shiftBy(d.get("left"), look, frame.width());
+            Float right = shiftBy(d.get("right"), look, frame.width());
+            Float top = shiftBy(d.get("top"), look, 0);
+            Float bottom = shiftBy(d.get("bottom"), look, 0);
+            dx += left != null ? left : right != null ? -right : 0;
+            dy += top != null ? top : bottom != null ? -bottom : 0;
+        }
+        return new float[] {Math.max(-frame.left(), Math.min(dx, frame.width() / 2)), Math.max(-400, Math.min(dy, 400))};
+    }
+
+    private static Float shiftBy(String v, Look look, float base) {
+        if (v == null || v.strip().equalsIgnoreCase("auto") || base <= 0 && v.contains("%")) {
+            return null;
+        }
+        return Css.length(v, look.size, base);
+    }
+
+    private static float height(Map<String, String> d, Look look) {
+        String h = d.get("height");
+        if (h == null || h.contains("%") || h.strip().equalsIgnoreCase("auto")) {
+            return 0;
+        }
+        Float pt = Css.length(h, look.size, 0);
+        return pt == null || pt <= 1 ? 0 : Math.min(pt, 14_400);
+    }
+
+    private static boolean covers(Map<String, String> d) {
+        String size = d.getOrDefault("background-size", "auto").strip().toLowerCase(Locale.ROOT);
+        boolean[] repeat = Backgrounds.repeat(d.get("background-repeat"));
+        return size.equals("cover") || size.equals("100% 100%") || repeat[0] && repeat[1];
     }
 
     private void spacer(float space, Frame frame) throws IOException {
