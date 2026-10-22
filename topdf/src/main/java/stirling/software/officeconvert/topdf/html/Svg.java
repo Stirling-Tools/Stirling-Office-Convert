@@ -11,6 +11,7 @@ import java.awt.geom.AffineTransform;
 import java.awt.geom.Ellipse2D;
 import java.awt.geom.Line2D;
 import java.awt.geom.Path2D;
+import java.awt.geom.Point2D;
 import java.awt.geom.Rectangle2D;
 import java.awt.geom.RoundRectangle2D;
 import java.awt.image.BufferedImage;
@@ -41,7 +42,12 @@ final class Svg {
     static final long MAX_WORK = 60_000_000L;
 
     /** A painted picture and the size it is shown at, in points. */
-    record Painted(byte[] png, int pixelWidth, int pixelHeight, float width, float height) {}
+    record Painted(byte[] png, int pixelWidth, int pixelHeight, float width, float height, List<Label> labels) {}
+
+    record Label(String text, float x, float baseline, float size, int rgb, boolean bold, String family, String anchor,
+            float width) {}
+
+    static final int MAX_LABELS = 400;
 
     private final Map<String, Element> ids;
     private int elements;
@@ -51,6 +57,8 @@ final class Svg {
     private double canvas;
     private float viewportW;
     private float viewportH;
+    private List<Label> labels;
+    private float pointsPerPixel;
 
     private Svg(Map<String, Element> ids) {
         this.ids = ids;
@@ -63,6 +71,11 @@ final class Svg {
 
     /** Paints with {@code budget[0]} work left for the whole document, and takes what it uses from it. */
     static Painted paint(Element svg, Map<String, Element> ids, float width, float height, int textColor, long[] budget) {
+        return paint(svg, ids, width, height, textColor, budget, false);
+    }
+
+    static Painted paint(Element svg, Map<String, Element> ids, float width, float height, int textColor, long[] budget,
+            boolean labelled) {
         if (!(width > 0) || !(height > 0)) {
             return null;
         }
@@ -75,12 +88,15 @@ final class Svg {
         int h = Math.max(1, Math.round(height * scale));
         BufferedImage img = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
         Graphics2D g = img.createGraphics();
+        List<Label> labels = labelled ? new ArrayList<>() : null;
         try {
             g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
             g.setRenderingHint(RenderingHints.KEY_STROKE_CONTROL, RenderingHints.VALUE_STROKE_PURE);
             g.setTransform(viewBox(svg, w, h));
             Svg painter = new Svg(ids);
             painter.budget = budget;
+            painter.labels = labels;
+            painter.pointsPerPixel = width / w;
             painter.canvas = (double) w * h;
             float[] vb = numbers(svg.attr("viewbox"));
             float[] size = size(svg);
@@ -98,7 +114,7 @@ final class Svg {
         try {
             ByteArrayOutputStream out = new ByteArrayOutputStream();
             ImageIO.write(img, "png", out);
-            return new Painted(out.toByteArray(), w, h, width, height);
+            return new Painted(out.toByteArray(), w, h, width, height, labels == null ? List.of() : labels);
         } catch (IOException e) {
             return null;
         }
@@ -156,8 +172,10 @@ final class Svg {
     private record Style(Color fill, Color stroke, float strokeWidth, float opacity, boolean evenOdd, int color,
             float fontSize, String fontFamily, boolean bold, String anchor) {
 
+        static final String INHERITED_FAMILY = "SansSerif";
+
         static Style initial(int color) {
-            return new Style(Color.BLACK, null, 1, 1, false, color, 16, "SansSerif", false, "start");
+            return new Style(Color.BLACK, null, 1, 1, false, color, 16, INHERITED_FAMILY, false, "start");
         }
     }
 
@@ -259,9 +277,46 @@ final class Svg {
         } else if (style.anchor().equals("end")) {
             x -= width;
         }
+        y += shift(e.attr("dy"), style.fontSize());
+        drawn++;
+        if (label(g, text, x + width * anchorShare(style.anchor()), y, style, width)) {
+            return;
+        }
         g.setColor(style.fill());
         g.drawString(text, x, y);
-        drawn++;
+    }
+
+    private static float anchorShare(String anchor) {
+        return switch (anchor) {
+            case "middle" -> 0.5f;
+            case "end" -> 1f;
+            default -> 0f;
+        };
+    }
+
+    private static float shift(String dy, float fontSize) {
+        String v = dy.strip().toLowerCase(Locale.ROOT);
+        if (v.endsWith("em")) {
+            return number(v.substring(0, v.length() - 2), 0) * fontSize;
+        }
+        return v.isEmpty() || v.indexOf(' ') >= 0 || v.indexOf(',') >= 0 ? 0 : number(v, 0);
+    }
+
+    private boolean label(Graphics2D g, String text, float x, float y, Style style, float width) {
+        AffineTransform t = g.getTransform();
+        if (labels == null || labels.size() >= MAX_LABELS || Math.abs(t.getShearX()) > 1e-6
+                || Math.abs(t.getShearY()) > 1e-6 || t.getScaleX() <= 0 || t.getScaleY() <= 0
+                || Math.abs(t.getScaleX() / t.getScaleY() - 1) > 0.02 || style.fill().getAlpha() < 128
+                || g.getComposite() instanceof AlphaComposite a && a.getAlpha() < 0.5f) {
+            return false;
+        }
+        Point2D at = t.transform(new Point2D.Float(x, y), null);
+        float scale = (float) t.getScaleY() * pointsPerPixel;
+        String family = style.fontFamily().equals(Style.INHERITED_FAMILY) ? null : style.fontFamily();
+        labels.add(new Label(text, (float) at.getX() * pointsPerPixel, (float) at.getY() * pointsPerPixel,
+                style.fontSize() * scale, style.fill().getRGB() & 0xFFFFFF, style.bold(), family, style.anchor(),
+                width * (float) t.getScaleX() * pointsPerPixel));
+        return true;
     }
 
     private static float first(String v) {

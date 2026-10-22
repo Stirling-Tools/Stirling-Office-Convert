@@ -31,6 +31,7 @@ final class HtmlContext {
     private float wanted;
     private int scrollers;
     private String pageName = "";
+    private boolean continuing;
     // the most items of any row of columns in an element or inside it, 0 when none
     private final Map<Element, Integer> rows = new IdentityHashMap<>();
     private Map<String, Element> labels;
@@ -71,6 +72,11 @@ final class HtmlContext {
         Map<String, String> d = cascade.declared(e);
         Vars.resolve(d, Vars.scope(parent.vars, d));
         Css.expandShorthands(d);
+        float own = Css.opacity(d.get("opacity"));
+        if (own < 1) {
+            d.putIfAbsent("color", Css.hex(parent.color));
+        }
+        Css.fade(d, parent.opacity * own);
         String direction = d.get("direction");
         boolean rtl = direction == null ? parent.rightToLeft : "rtl".equalsIgnoreCase(direction.strip());
         for (String box : new String[] {"margin", "padding"}) {
@@ -212,8 +218,22 @@ final class HtmlContext {
 
     /** The section the document ends on, for the package's last section. */
     Section lastSection() {
+        return ending(currentSection());
+    }
+
+    Section currentSection() {
         Section named = section(pageName);
         return named != null ? named : page;
+    }
+
+    Section ending(Section s) {
+        Section c = s.copy();
+        c.continuous = continuing;
+        return c;
+    }
+
+    void continuing(boolean onSamePage) {
+        continuing = onSamePage;
     }
 
     String pageName() {

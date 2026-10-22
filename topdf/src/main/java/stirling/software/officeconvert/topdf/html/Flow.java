@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -69,6 +70,7 @@ final class Flow {
     private Frame blockFrame;
     private String headingStyle;
     private float pendingSpace;
+    private float pendingMargin;
     private boolean pendingBreak;
     private Paragraph.ListRef pendingMarker;
     private boolean lastSpace = true;
@@ -85,6 +87,9 @@ final class Flow {
     private final List<Inline> pendingFloats = new ArrayList<>();
     private String floatOf = "none";
     private boolean sectionStarted;
+    private Paragraph rightOf;
+    private final List<Inline> right = new ArrayList<>();
+    private RunStyle rightStyle;
     // the height left in a box that clips its overflow, as a browser shows only what fits
     private float clipLeft = Float.MAX_VALUE;
 
@@ -198,7 +203,7 @@ final class Flow {
         t.rows.add(row);
         if (pendingSpace > 0) {
             spacer(pendingSpace, frame);
-            pendingSpace = 0;
+            space(0);
         }
         t.pageBreakBefore = pendingBreak && !sectionStarted;
         pendingBreak = false;
@@ -223,8 +228,9 @@ final class Flow {
             return;
         }
         Map<String, String> d = ctx.declared(e, parentLook);
-        if (tag.equals("table") && parentLook.centerBlocks && !d.containsKey("text-align")) {
-            // <center> places a table in the middle but its text starts at the left, as Chrome does
+        if (tag.equals("table") && parentLook.centerBlocks && !d.containsKey("text-align") && e.ownerDocument() != null
+                && e.ownerDocument().quirksMode() == org.jsoup.nodes.Document.QuirksMode.quirks) {
+            // <center> places a table in the middle but, in quirks mode, its text starts at the left, as Chrome does
             d.put("text-align", "start");
         }
         String display = d.getOrDefault("display", BLOCKS.contains(tag) ? "block" : "inline").strip().toLowerCase(Locale.ROOT);
@@ -251,13 +257,30 @@ final class Flow {
             breakInRow(look);
         }
         rowNested += nests ? 1 : 0;
+        if (display.equals("inline-block") && padded(e, d, look)) {
+            String own = e.normalName().equals("a") ? Links.safeUrl(e.attr("href").strip()) : null;
+            inline(Controls.button(e, d, look, frame.width(), e.text().strip(), own != null ? own : link), look);
+            lastSpace = false;
+            rowNested -= nests ? 1 : 0;
+            if (stacks) {
+                breakInRow(look);
+            }
+            return;
+        }
         switch (tag) {
             case "br" -> inline(new Inline.Break(), look);
             case "img" -> image(e, d, look, frame);
             case "svg" -> {
-                Picture pic = ctx.images().inlineSvg(e, d, look, frame.width(), pictureRoom());
-                if (pic != null) {
-                    place(pic, d, look, frame);
+                if (onOwnLine(e, d, look)) {
+                    HtmlImages.Labelled drawn = ctx.images().labelledSvg(e, d, look, frame.width(), pictureRoom());
+                    if (drawn != null) {
+                        labelled(drawn, d, look, frame);
+                    }
+                } else {
+                    Picture pic = ctx.images().inlineSvg(e, d, look, frame.width(), pictureRoom());
+                    if (pic != null) {
+                        place(pic, d, look, frame);
+                    }
                 }
             }
             case "hr" -> rule(d, look, frame);
@@ -270,7 +293,10 @@ final class Flow {
                 text("\u201d", look);
             }
             default -> {
-                if (inline) {
+                if (inline && forceInline == 0 && rowItemStart < 0 && !display.equals("contents")
+                        && d.getOrDefault("float", "none").strip().equalsIgnoreCase("right")) {
+                    floatRight(e, look, frame, depth);
+                } else if (inline) {
                     walkChildren(e, look, frame, depth);
                 } else {
                     // overflow on html or body belongs to the window, which prints whole; fixed boxes never widen it
@@ -289,6 +315,27 @@ final class Flow {
         if (stacks) {
             breakInRow(look);
         }
+    }
+
+    private static final int BUTTON_TEXT = 80;
+
+    private static boolean padded(Element e, Map<String, String> d, Look look) {
+        Integer fill = Css.color(d.get("background-color"));
+        if (fill == null || fill < 0 || fill == 0xFFFFFF || Layout.text(e, BUTTON_TEXT + 1).strip().isEmpty()
+                || Layout.text(e, BUTTON_TEXT + 1).length() > BUTTON_TEXT) {
+            return false;
+        }
+        for (Element c : e.getAllElements()) {
+            if (c != e && !Set.of("b", "strong", "i", "em", "span", "small", "u", "font").contains(c.normalName())) {
+                return false;
+            }
+        }
+        for (String side : new String[] {"top", "right", "bottom", "left"}) {
+            if (length(d.get("padding-" + side), look.size, 0) > 0) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private void control(Element e, Look parentLook, Frame frame) throws IOException {
@@ -311,6 +358,29 @@ final class Flow {
         if (alone) {
             flush();
         }
+    }
+
+    private void floatRight(Element e, Look look, Frame frame, int depth) throws IOException {
+        if (para == null) {
+            start();
+        }
+        Paragraph p = para;
+        int from = p.inlines.size();
+        boolean spaced = lastSpace;
+        walkChildren(e, look, frame, depth);
+        if (para != p || p.inlines.size() == from || p.inlines.subList(from, p.inlines.size()).stream()
+                .anyMatch(i -> i instanceof Inline.Break)) {
+            return;
+        }
+        List<Inline> moved = new ArrayList<>(p.inlines.subList(from, p.inlines.size()));
+        p.inlines.subList(from, p.inlines.size()).clear();
+        if (rightOf != p) {
+            rightOf = p;
+            right.clear();
+        }
+        right.addAll(moved);
+        rightStyle = look.run();
+        lastSpace = spaced;
     }
 
     private void anchor(Element e, Look look, Frame frame, int depth) throws IOException {
@@ -345,6 +415,9 @@ final class Flow {
         left += narrow[0];
         right += narrow[1];
         int fill = fill(d, look);
+        if (columns(e, d, look, frame, depth, left, right, top, bottom, fill)) {
+            return;
+        }
         measureFixed(e, d, look, frame, left, right);
         Frame inner = frame.inner(left, right, fill);
         Layout.Plan plan = forceInline > 0 ? null : Layout.of(e, d, look, inner.width(), ctx, inCell);
@@ -362,7 +435,8 @@ final class Flow {
         }
         boolean avoid = !inCell && avoidsBreaks(d);
         avoiding += avoid ? 1 : 0;
-        pendingSpace = Math.max(pendingSpace, top + padding(d.get("padding-top"), em, frame.width()));
+        margin(top);
+        pad(padding(d.get("padding-top"), em, frame.width()));
         if (isPageBreak(d.get("break-before"))) {
             pendingBreak = true;
         }
@@ -425,7 +499,8 @@ final class Flow {
         blockLook = outerLook;
         blockFrame = outerFrame;
         headingStyle = outerHeading;
-        pendingSpace = Math.max(pendingSpace, bottom + padding(d.get("padding-bottom"), em, frame.width()));
+        pad(padding(d.get("padding-bottom"), em, frame.width()));
+        margin(bottom);
         if (isPageBreak(d.get("break-after"))) {
             pendingBreak = true;
         }
@@ -434,6 +509,134 @@ final class Flow {
             out.add(held);
             held = null;
         }
+    }
+
+    private boolean columns(Element e, Map<String, String> d, Look look, Frame frame, int depth, float left,
+            float right, float top, float bottom, int fill) throws IOException {
+        if (inCell || forceInline > 0 || rowItemStart >= 0 || avoiding > 0 || held != null
+                || clipLeft != Float.MAX_VALUE || look.rightToLeft) {
+            return false;
+        }
+        float width = frame.width() - left - right;
+        float gap = columnGap(d, look);
+        int n = columnCount(d, look, width, gap);
+        float each = n < 2 ? 0 : (width - gap * (n - 1)) / n;
+        if (n < 2 || each < 36) {
+            return false;
+        }
+        float em = look.size;
+        Section base = ctx.currentSection();
+        margin(top);
+        float before = pendingSpace;
+        boolean newPage = pendingBreak && !sectionStarted;
+        if (before > 0 || newPage) {
+            Paragraph space = sectionMark(frame);
+            space.lineHeight = Math.max(1, Math.min(before, 400));
+            space.inlines.add(new Inline.Text("\u00a0", look.run().withSize(1), null, -1));
+            space.pageBreakBefore = newPage;
+            emit(space);
+        }
+        Paragraph opening = sectionMark(frame);
+        opening.endsSection = ctx.ending(base);
+        space(0);
+        pad(padding(d.get("padding-top"), em, frame.width()));
+        pendingBreak = false;
+        sectionStarted = false;
+        ctx.count();
+        emit(opening);
+        ctx.continuing(true);
+        Section set = base.copy();
+        set.marginLeft += frame.left() + left;
+        set.marginRight += frame.right() + right;
+        for (int i = 0; i < n; i++) {
+            set.columns.add(new float[] {each, i + 1 < n ? gap : 0});
+        }
+        set.columnRule = columnRule(d) > 0;
+        Look outerLook = blockLook;
+        Frame outerFrame = blockFrame;
+        Frame inner = new Frame(0, 0, each, fill >= 0 && fill != 0xFFFFFF ? fill : -1);
+        blockLook = look;
+        blockFrame = inner;
+        walkChildren(e, look, inner, depth);
+        flush();
+        Paragraph closing = sectionMark(inner);
+        closing.endsSection = ctx.ending(set);
+        ctx.count();
+        emit(closing);
+        blockLook = outerLook;
+        blockFrame = outerFrame;
+        space(0);
+        pad(padding(d.get("padding-bottom"), em, frame.width()));
+        margin(bottom);
+        return true;
+    }
+
+    private Paragraph sectionMark(Frame frame) {
+        Paragraph mark = new Paragraph();
+        mark.indentLeft = frame.left();
+        mark.lineRule = Paragraph.LineRule.EXACT;
+        mark.lineHeight = 1;
+        return mark;
+    }
+
+    private static float columnGap(Map<String, String> d, Look look) {
+        String v = d.getOrDefault("column-gap", "normal").strip();
+        Float pt = v.equalsIgnoreCase("normal") ? null : Css.length(v, look.size, 0);
+        return pt == null ? look.size : Math.max(0, Math.min(pt, 144));
+    }
+
+    static int columnCount(Map<String, String> d, Look look, float width, float gap) {
+        Integer count = null;
+        Float least = null;
+        for (String token : Css.tokens(d.getOrDefault("columns", ""))) {
+            if (token.matches("[0-9]{1,3}")) {
+                count = Integer.parseInt(token);
+            } else if (!token.equalsIgnoreCase("auto")) {
+                least = Css.length(token, look.size, 0);
+            }
+        }
+        String c = d.getOrDefault("column-count", "").strip();
+        if (c.matches("[0-9]{1,3}")) {
+            count = Integer.parseInt(c);
+        }
+        String w = d.getOrDefault("column-width", "").strip();
+        if (!w.isEmpty() && !w.equalsIgnoreCase("auto")) {
+            least = Css.length(w, look.size, 0);
+        }
+        int n = count == null ? Integer.MAX_VALUE : count;
+        if (least != null && least > 0) {
+            n = Math.min(n, Math.max(1, (int) ((width + gap) / (least + gap))));
+        }
+        return n == Integer.MAX_VALUE ? 1 : Math.max(1, Math.min(n, 12));
+    }
+
+    private static float columnRule(Map<String, String> d) {
+        Map<String, String> rule = new HashMap<>();
+        for (String part : new String[] {"", "-style", "-width"}) {
+            String v = d.get("column-rule" + part);
+            if (v != null) {
+                rule.put("border-rule" + part, v);
+            }
+        }
+        return border(rule, "rule");
+    }
+
+    private void margin(float m) {
+        float collapsed = Math.max(pendingMargin, m);
+        pendingSpace += collapsed - pendingMargin;
+        pendingMargin = collapsed;
+    }
+
+    private void pad(float p) {
+        if (p > 0) {
+            pendingSpace += p;
+            pendingMargin = 0;
+        }
+    }
+
+    private void space(float s) {
+        pendingSpace = s;
+        pendingMargin = s;
     }
 
     static boolean avoidsBreaks(Map<String, String> d) {
@@ -493,7 +696,8 @@ final class Flow {
             edges += border(d, side) > 0 ? 1 : 0;
         }
         boolean painted = fill >= 0 && fill != 0xFFFFFF && fill != blockFrame.shading();
-        return (painted || edges >= 3) && Layout.text(e, BOX_TEXT).length() < BOX_TEXT;
+        boolean bar = border(d, "left") > 0 || border(d, "right") > 0;
+        return (painted || edges >= 3 || bar) && Layout.text(e, BOX_TEXT).length() < BOX_TEXT;
     }
 
     private float[] narrowed(Element e, Map<String, String> d, Look look, float room) {
@@ -577,13 +781,13 @@ final class Flow {
         cell.left = HtmlTables.border(d, "left", 0);
         cell.right = HtmlTables.border(d, "right", 0);
         Flow inner = new Flow(ctx, cell::add, true);
-        inner.pendingSpace = Math.max(0, padding(d.get("padding-top"), em, frame.width()));
+        inner.pad(Math.max(0, padding(d.get("padding-top"), em, frame.width())));
         inner.children(e, look, new Frame(0, 0, Math.max(24, width - padLeft - padRight), -1), depth);
         float padBottom = Math.max(0, padding(d.get("padding-bottom"), em, frame.width()));
         Float tall = boxLength(d.get("height"), look, 0);
         boolean drawn = cell.shading >= 0 || cell.top.visible() || cell.bottom.visible();
         if (cell.empty() && (tall == null || tall < 1 || !drawn)) {
-            pendingSpace = Math.max(pendingSpace, top + bottom);
+            margin(top + bottom);
             return;
         }
         Table t = new Table();
@@ -615,6 +819,13 @@ final class Flow {
         } else if (padBottom >= 1) {
             inner.spacer(padBottom, new Frame(0, 0, width, -1));
         }
+        if (!cell.paragraphs.isEmpty() && tall != null && tall >= 1) {
+            boolean borderBox = "border-box".equalsIgnoreCase(d.getOrDefault("box-sizing", "").strip());
+            float high = tall + (borderBox ? 0 : Math.max(0, padding(d.get("padding-top"), em, frame.width())) + padBottom);
+            if (gradient(cell, d.get("background-gradient"), width, high, padLeft)) {
+                row.height = Math.min(high, ctx.pageRoom());
+            }
+        }
         t.columnWidths.add(width);
         t.indent = frame.left() + marginLeft;
         if (look.rightToLeft) {
@@ -626,7 +837,7 @@ final class Flow {
         row.splits = !avoidsBreaks(d);
         row.cells.add(cell);
         t.rows.add(row);
-        pendingSpace = Math.max(pendingSpace, top);
+        margin(top);
         if (pendingSpace > 0) {
             spacer(pendingSpace, frame);
         }
@@ -635,7 +846,22 @@ final class Flow {
         sectionStarted = false;
         ctx.count();
         emit(t);
-        pendingSpace = bottom;
+        space(bottom);
+    }
+
+    private boolean gradient(Table.Cell cell, String css, float width, float height, float padLeft) throws IOException {
+        Gradient g = Gradient.parse(css);
+        Picture pic = g == null ? null : ctx.images().gradient(g, width, height);
+        if (pic == null) {
+            return false;
+        }
+        pic.wrap = Picture.Wrap.NONE;
+        pic.behind = true;
+        pic.x = -padLeft;
+        pic.y = 0;
+        cell.paragraphs.getFirst().inlines.addFirst(new Inline.Image(pic));
+        cell.shading = -1;
+        return true;
     }
 
     private static Paragraph bar(float height, Look look) {
@@ -660,8 +886,9 @@ final class Flow {
         mark.indentLeft = frame.left();
         mark.lineRule = Paragraph.LineRule.EXACT;
         mark.lineHeight = 1;
-        mark.endsSection = ending != null ? ending : ctx.defaultSection();
+        mark.endsSection = ctx.ending(ending != null ? ending : ctx.defaultSection());
         emit(mark);
+        ctx.continuing(false);
         ctx.pageName(next);
         // the new section starts a page already, so a forced break right after it is the same break
         sectionStarted = true;
@@ -888,7 +1115,7 @@ final class Flow {
         }
         if (pendingSpace > 0) {
             spacer(pendingSpace, frame);
-            pendingSpace = 0;
+            space(0);
         }
         t.pageBreakBefore = pendingBreak;
         pendingBreak = false;
@@ -1166,7 +1393,7 @@ final class Flow {
         p.indentRight = f.right();
         p.indentFirst = l.textIndent;
         p.spaceBefore = Math.min(pendingSpace, 400);
-        pendingSpace = 0;
+        space(0);
         p.pageBreakBefore = pendingBreak && !inCell && !sectionStarted;
         pendingBreak = false;
         sectionStarted = false;
@@ -1200,6 +1427,16 @@ final class Flow {
         }
         Paragraph p = para;
         para = null;
+        if (rightOf == p) {
+            trimEnd(p.inlines);
+            trimStart(right);
+            p.inlines.add(new Inline.Tab(rightStyle));
+            p.inlines.addAll(right);
+            p.tabs.add(new Paragraph.TabStop(blockFrame.left() + blockFrame.width(), Paragraph.TabStop.Kind.RIGHT,
+                    (char) 0));
+            rightOf = null;
+            right.clear();
+        }
         boolean blankLine = !p.inlines.isEmpty();
         trimEnd(p.inlines);
         if (p.inlines.isEmpty() && blankLine) {
@@ -1380,6 +1617,15 @@ final class Flow {
         }
     }
 
+    private static void trimStart(List<Inline> inlines) {
+        while (!inlines.isEmpty() && inlines.getFirst() instanceof Inline.Text t && t.text().isBlank()) {
+            inlines.removeFirst();
+        }
+        if (!inlines.isEmpty() && inlines.getFirst() instanceof Inline.Text t && t.text().startsWith(" ")) {
+            inlines.set(0, new Inline.Text(t.text().stripLeading(), t.style(), t.link(), t.anchorPage()));
+        }
+    }
+
     private static void trimEnd(List<Inline> inlines) {
         while (!inlines.isEmpty()) {
             Inline last = inlines.getLast();
@@ -1487,10 +1733,89 @@ final class Flow {
         }
     }
 
+    private boolean onOwnLine(Element svg, Map<String, String> d, Look look) {
+        if (forceInline > 0 || look.rightToLeft || !d.getOrDefault("float", floatOf).strip().equalsIgnoreCase("none")
+                || para != null && !blank(para.inlines)) {
+            return false;
+        }
+        for (Node n = svg.nextSibling(); n != null; n = n.nextSibling()) {
+            if (n instanceof TextNode t && !t.isBlank()) {
+                return false;
+            }
+            if (!(n instanceof Element next) || SKIPPED.contains(next.normalName())
+                    && !Controls.TAGS.contains(next.normalName())) {
+                continue;
+            }
+            String shown = ctx.declared(next, look).getOrDefault("display",
+                    BLOCKS.contains(next.normalName()) ? "block" : "inline").strip().toLowerCase(Locale.ROOT);
+            if (!shown.equals("none")) {
+                return !shown.startsWith("inline") && !shown.equals("contents");
+            }
+        }
+        return true;
+    }
+
+    private void labelled(HtmlImages.Labelled drawn, Map<String, String> d, Look look, Frame frame) throws IOException {
+        Picture pic = drawn.picture();
+        if (drawn.labels().isEmpty()) {
+            place(pic, d, look, frame);
+            return;
+        }
+        flush();
+        if (pendingSpace > 0) {
+            spacer(pendingSpace, blockFrame);
+            space(0);
+        }
+        start();
+        Paragraph p = para;
+        p.lineRule = Paragraph.LineRule.AUTO;
+        p.lineHeight = 0;
+        float share = switch (p.align) {
+            case CENTER -> 0.5f;
+            case RIGHT -> 1f;
+            default -> 0f;
+        };
+        float left = p.indentLeft + Math.max(0, blockFrame.width() - pic.width) * share;
+        p.inlines.add(new Inline.Image(pic));
+        for (Svg.Label label : drawn.labels()) {
+            p.inlines.add(textBox(label, left, look));
+        }
+        lastSpace = false;
+        flush();
+    }
+
+    private static Inline.TextBox textBox(Svg.Label label, float left, Look look) {
+        RunStyle base = look.run();
+        String family = label.family() == null ? null : Look.family(label.family());
+        float size = Math.max(1, Math.min(label.size(), 400));
+        RunStyle style = new RunStyle(family == null ? base.font() : family, size, label.bold(), false, false, false,
+                label.rgb(), -1, 0, false);
+        float width = label.width() * 1.3f + size;
+        float x = label.x() - width * switch (label.anchor()) {
+            case "middle" -> 0.5f;
+            case "end" -> 1f;
+            default -> 0f;
+        };
+        Paragraph line = new Paragraph();
+        line.align = switch (label.anchor()) {
+            case "middle" -> Paragraph.Align.CENTER;
+            case "end" -> Paragraph.Align.RIGHT;
+            default -> Paragraph.Align.LEFT;
+        };
+        line.lineRule = Paragraph.LineRule.EXACT;
+        line.lineHeight = size * LABEL_LINE;
+        line.inlines.add(new Inline.Text(label.text(), style, null, -1));
+        return new Inline.TextBox(left + x, label.baseline() - size * LABEL_ASCENT, width, line.lineHeight, -1, 0, 0, 0,
+                List.of(line), -1, 0, false, true, 0, -1, false, true);
+    }
+
+    private static final float LABEL_LINE = 1.2f;
+    private static final float LABEL_ASCENT = 0.9f;
+
     private void rule(Map<String, String> d, Look look, Frame frame) throws IOException {
         flush();
         float em = look.size;
-        pendingSpace = Math.max(pendingSpace, length(d.get("margin-top"), em, frame.width()));
+        margin(length(d.get("margin-top"), em, frame.width()));
         Paragraph p = new Paragraph();
         p.indentLeft = frame.left();
         p.indentRight = frame.right();
@@ -1501,7 +1826,7 @@ final class Flow {
         Integer c = Css.color(d.getOrDefault("border-top-color", d.getOrDefault("color", d.get("background-color"))));
         p.borderBottomRgb = c == null || c < 0 ? 0xA0A0A0 : c;
         p.inlines.add(new Inline.Text("\u00a0", look.run().withSize(1), null, -1));
-        pendingSpace = length(d.get("margin-bottom"), em, frame.width());
+        space(length(d.get("margin-bottom"), em, frame.width()));
         ctx.count();
         emit(p);
     }
@@ -1526,7 +1851,7 @@ final class Flow {
             return;
         }
         float em = look.size;
-        pendingSpace = Math.max(pendingSpace, length(d.get("margin-top"), em, frame.width()));
+        margin(length(d.get("margin-top"), em, frame.width()));
         if (isPageBreak(d.get("break-before"))) {
             pendingBreak = true;
         }
@@ -1540,7 +1865,7 @@ final class Flow {
         if (pendingSpace > 0) {
             spacer(pendingSpace, frame);
         }
-        pendingSpace = Math.max(0, length(d.get("margin-bottom"), em, frame.width()));
+        space(Math.max(0, length(d.get("margin-bottom"), em, frame.width())));
         ctx.count();
         emit(t);
     }

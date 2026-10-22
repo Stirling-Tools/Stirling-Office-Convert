@@ -39,6 +39,7 @@ final class Look {
     float keywordPx = 16;
     // the family is the bare generic monospace, which browsers set at 13px where the keyword says 16
     boolean monoOnly;
+    float opacity = 1;
 
     Look copy() {
         Look l = new Look();
@@ -67,6 +68,7 @@ final class Look {
         l.vars = vars;
         l.keywordPx = keywordPx;
         l.monoOnly = monoOnly;
+        l.opacity = opacity;
         return l;
     }
 
@@ -74,6 +76,7 @@ final class Look {
     Look child(Map<String, String> d, float width, boolean inline) {
         Look l = copy();
         l.vars = Vars.scope(vars, d);
+        l.opacity = opacity * Css.opacity(d.get("opacity"));
         if (!inline) {
             // A background is painted by the box that sets it, so a block inside an inline does not inherit it
             l.vertAlign = 0;
