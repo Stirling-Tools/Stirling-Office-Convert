@@ -430,4 +430,23 @@ class DocxChartTest {
         long bytes = java.nio.file.Files.size(r.pdf());
         assertTrue(bytes < 5_000_000, bytes + " bytes");
     }
+
+    @Test
+    void aDoughnutOfManyDenseRingsStaysWithinABudget() throws IOException {
+        StringBuilder sers = new StringBuilder();
+        for (int k = 0; k < 256; k++) {
+            sers.append("<c:ser><c:idx val=\"").append(k).append("\"/><c:order val=\"").append(k)
+                    .append("\"/><c:val><c:numRef><c:numCache><c:ptCount val=\"4096\"/>");
+            for (int i = 0; i < 4096; i++) {
+                sers.append("<c:pt idx=\"").append(i).append("\"><c:v>1</c:v></c:pt>");
+            }
+            sers.append("</c:numCache></c:numRef></c:val></c:ser>");
+        }
+        String chart = "<c:chartSpace " + C + "><c:chart><c:autoTitleDeleted val=\"1\"/><c:plotArea><c:layout/>"
+                + "<c:doughnutChart><c:varyColors val=\"1\"/>" + sers + "<c:holeSize val=\"50\"/></c:doughnutChart>"
+                + "</c:plotArea></c:chart></c:chartSpace>";
+        DocxDoc.Rendered r = render("denseDoughnut", chart);
+        long bytes = java.nio.file.Files.size(r.pdf());
+        assertTrue(bytes < 3_000_000, bytes + " bytes");
+    }
 }

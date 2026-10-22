@@ -3,7 +3,6 @@ package stirling.software.officeconvert.topdf.docx;
 import java.awt.Color;
 import java.awt.geom.AffineTransform;
 import java.awt.geom.Arc2D;
-import java.awt.geom.Area;
 import java.awt.geom.Ellipse2D;
 import java.awt.geom.Path2D;
 import java.awt.geom.Rectangle2D;
@@ -57,6 +56,8 @@ final class ChartPainter {
     private static final int MAX_TIGHT_STEPS = 10;
 
     private static final int MAX_WEB_POINTS = 50_000;
+
+    private static final int MAX_DOUGHNUT_SLICES = 16_384;
 
     private final Chart chart;
 
@@ -572,24 +573,27 @@ final class ChartPainter {
         float cy = (top + bottom) / 2;
         float r = d / 2;
         if (g.kind() != Chart.Kind.DOUGHNUT) {
-            slices(g, g.series().get(0), cx, cy, 0, r);
+            slices(g, g.series().get(0), cx, cy, 0, r, Integer.MAX_VALUE);
             return;
         }
         float hole = r * Math.max(10, Math.min(90, g.holeSize())) / 100f;
         int rings = g.series().size();
         float width = (r - hole) / rings;
+        int perRing = Math.max(1, MAX_DOUGHNUT_SLICES / rings);
         for (int k = 0; k < rings; k++) {
             int ring = g.reversedOrder() ? rings - 1 - k : k;
             float inner = hole + ring * width;
-            slices(g, g.series().get(k), cx, cy, inner, inner + width);
+            slices(g, g.series().get(k), cx, cy, inner, inner + width, perRing);
         }
     }
 
-    private void slices(Chart.Group g, Chart.Series s, float cx, float cy, float inner, float r) {
+    private void slices(Chart.Group g, Chart.Series s, float cx, float cy, float inner, float r, int limit) {
         double total = 0;
+        int positive = 0;
         for (double v : s.values()) {
             if (!Double.isNaN(v) && v > 0) {
                 total += v;
+                positive++;
             }
         }
         if (total <= 0) {
@@ -600,29 +604,44 @@ final class ChartPainter {
         Stroke edge = s.outline() != null ? s.outline() : Stroke.solid(1.5f, Color.WHITE);
         TextStyle ls = style(chart.textSize(), false, chart.textColor());
         Chart.Labels labels = s.labels() != null ? s.labels() : g.labels();
+        int every = (int) Math.ceil((double) positive / limit);
+        int seen = 0;
+        int first = -1;
+        double v = 0;
         for (int i = 0; i < s.values().length; i++) {
-            double v = s.values()[i];
-            if (Double.isNaN(v) || v <= 0) {
+            double value = s.values()[i];
+            if (Double.isNaN(value) || value <= 0) {
+                continue;
+            }
+            if (seen % every == 0) {
+                first = i;
+                v = 0;
+            }
+            v += value;
+            seen++;
+            if (seen % every != 0 && seen != positive) {
                 continue;
             }
             double extent = (g.reversedOrder() ? 360 : -360) * v / total;
-            Arc2D.Double arc = new Arc2D.Double(cx - r, cy - r, d, d, angle, extent, Arc2D.PIE);
-            java.awt.Shape shape = arc;
+            java.awt.Shape shape = new Arc2D.Double(cx - r, cy - r, d, d, angle, extent, Arc2D.PIE);
             if (inner > 0) {
-                Area ring = new Area(arc);
-                ring.subtract(new Area(new Ellipse2D.Double(cx - inner, cy - inner, inner * 2, inner * 2)));
+                Path2D.Double ring = new Path2D.Double();
+                ring.append(new Arc2D.Double(cx - r, cy - r, d, d, angle, extent, Arc2D.OPEN), false);
+                ring.append(new Arc2D.Double(cx - inner, cy - inner, inner * 2, inner * 2, angle + extent, -extent,
+                        Arc2D.OPEN), true);
+                ring.closePath();
                 shape = ring;
             }
-            Color c = pointColor(g, s, i);
+            Color c = pointColor(g, s, first);
             ops.add(new Op.Path(shape, c == null ? null : Fill.solid(c), edge));
-            if (labels.any()) {
+            if (labels.any() && every == 1) {
                 double mid = Math.toRadians(angle + extent / 2);
                 boolean outside = inner <= 0 && ("outEnd".equals(labels.position()) || "bestFit".equals(
                         labels.position()) && v / total < 0.05);
                 float k = outside ? 1.12f : inner > 0 ? (inner / r + 1) / 2 : 0.65f;
                 float lx = (float) (cx + Math.cos(mid) * r * k);
                 float ly = (float) (cy - Math.sin(mid) * r * k);
-                String text = label(labels, s, v, v / total, i, "; ");
+                String text = label(labels, s, v, v / total, first, "; ");
                 if (outside) {
                     float tw = width(ls, text);
                     float tx = Math.cos(mid) >= 0 ? lx : lx - tw;
