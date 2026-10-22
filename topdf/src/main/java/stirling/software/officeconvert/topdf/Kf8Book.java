@@ -4,6 +4,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
@@ -120,25 +121,31 @@ final class Kf8Book {
         if (offset < 12 || count < 1 || count > MAX_FLOWS || offset + 8L * count > fdst.length) {
             throw new IOException(DAMAGED);
         }
+        long previous = 0;
         for (int i = 0; i < count; i++) {
             long start = PalmDatabase.u32(fdst, offset + 8 * i);
             long end = PalmDatabase.u32(fdst, offset + 8 * i + 4);
-            if (start > end || end > text.length) {
+            if (start < previous || start > end || end > text.length) {
                 throw new IOException(DAMAGED);
             }
+            previous = end;
             flows.add(Arrays.copyOfRange(text, (int) start, (int) end));
         }
         return flows;
     }
 
+    static final long MAX_ASSEMBLY_BYTES = 1L << 30;
+
     private static void assemble(List<MobiIndex.Entry> skeletons, List<Fragment> fragments, byte[] flow,
             List<byte[]> parts, List<Long> starts) throws IOException {
         int next = 0;
+        long previous = 0;
+        long copied = 0;
         for (MobiIndex.Entry skeleton : skeletons) {
             long count = skeleton.value(1, 0);
             long start = skeleton.value(6, 0);
             long length = skeleton.value(6, 1);
-            if (start + length > flow.length || next + count > fragments.size()) {
+            if (start < previous || length < 0 || start + length > flow.length || next + count > fragments.size()) {
                 throw new IOException(DAMAGED);
             }
             ByteArrayOutputStream joined = new ByteArrayOutputStream();
@@ -148,7 +155,14 @@ final class Kf8Book {
                 OfficeToPdf.stopIfInterrupted();
                 Fragment f = fragments.get(next++);
                 long at = f.insert() - start;
-                if (at < 0 || at > part.length || cursor + f.length() > flow.length) {
+                if (at < 0 || at > part.length || f.length() < 0 || cursor + f.length() > flow.length) {
+                    throw new IOException(DAMAGED);
+                }
+                if (f.length() == 0) {
+                    continue;
+                }
+                copied += part.length + f.length();
+                if (copied > MAX_ASSEMBLY_BYTES) {
                     throw new IOException(DAMAGED);
                 }
                 joined.reset();
@@ -163,6 +177,7 @@ final class Kf8Book {
             }
             parts.add(part);
             starts.add(start);
+            previous = cursor;
         }
     }
 
@@ -170,7 +185,7 @@ final class Kf8Book {
             Map<Integer, PartAnchors> anchors) {
         Matcher m = POS.matcher(html);
         StringBuilder out = new StringBuilder(html.length());
-        while (m.find()) {
+        while (m.find() && !Thread.currentThread().isInterrupted()) {
             m.appendReplacement(out, Matcher.quoteReplacement(target(base32(m.group(1)), base32(m.group(2)),
                     fragments, parts, starts, anchors)));
         }
@@ -216,7 +231,9 @@ final class Kf8Book {
             return "#";
         }
         long pos = fragments.get((int) fid).insert() + offset;
-        for (int i = parts.size() - 1; i >= 0; i--) {
+        int found = Collections.binarySearch(starts, pos);
+        int i = found >= 0 ? found : -found - 2;
+        if (i >= 0) {
             long start = starts.get(i);
             if (pos >= start && pos < start + parts.get(i).length) {
                 String id = anchors.computeIfAbsent(i, n -> PartAnchors.of(parts.get(n))).idBefore((int) (pos - start));

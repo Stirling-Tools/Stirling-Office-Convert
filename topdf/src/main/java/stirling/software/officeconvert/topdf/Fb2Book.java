@@ -219,6 +219,7 @@ final class Fb2Book {
     }
 
     private void block(Element e, int depth) throws IOException {
+        checkSize();
         switch (local(e)) {
             case "p" -> paragraph(e, "p", null);
             case "empty-line" -> html.append("<p>&nbsp;</p>");
@@ -295,6 +296,13 @@ final class Fb2Book {
         html.append('>');
         inline(e);
         html.append("</").append(tag).append('>');
+    }
+
+    private void checkSize() throws IOException {
+        OfficeToPdf.stopIfInterrupted();
+        if (html.length() > EpubBook.MAX_BOOK_CHARS) {
+            throw new IOException("The FictionBook text is larger than " + (EpubBook.MAX_BOOK_CHARS >> 20) + " MB");
+        }
     }
 
     private void inline(Element parent) {
