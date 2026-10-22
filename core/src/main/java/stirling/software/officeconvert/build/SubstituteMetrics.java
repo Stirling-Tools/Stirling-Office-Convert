@@ -18,9 +18,16 @@ final class SubstituteMetrics {
 
     private static final Map<String, Short> EXTRA = load();
 
+    private static final String NARROW = "Arial Narrow";
+
+    private static final float NARROW_SCALE = 0.82f;
+
     private SubstituteMetrics() {}
 
     static float width(String text, String family, boolean bold, boolean italic, float size) {
+        if (NARROW.equals(family)) {
+            return width(text, "Arial", bold, italic, size) * NARROW_SCALE;
+        }
         Standard14Fonts.FontName name = fontFor(family, bold, italic);
         if (name == null) {
             return Float.NaN;

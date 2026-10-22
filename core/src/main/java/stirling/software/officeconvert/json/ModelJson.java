@@ -246,7 +246,7 @@ final class ModelJson {
         JsonOut o = new JsonOut(sb).always("width", s.pageWidth).always("height", s.pageHeight)
                 .always("marginTop", s.marginTop).always("marginBottom", s.marginBottom)
                 .always("marginLeft", s.marginLeft).always("marginRight", s.marginRight)
-                .num("headerDistance", s.headerDistance).num("footerDistance", s.footerDistance)
+                .always("headerDistance", s.headerDistance).always("footerDistance", s.footerDistance)
                 .flag("continuous", s.continuous).flag("titlePage", s.titlePage).integer("pageNumberStart", s.pageNumberStart, 1);
         if (!s.columns.isEmpty()) {
             StringBuilder cols = o.key("columns").append('[');

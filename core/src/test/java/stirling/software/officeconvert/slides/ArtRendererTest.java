@@ -3,6 +3,7 @@ package stirling.software.officeconvert.slides;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import java.awt.geom.AffineTransform;
+import java.util.List;
 
 import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.pdmodel.PDDocument;
@@ -17,7 +18,7 @@ class ArtRendererTest {
     void aDarkGreyInAnIsolatedGreyGroupKeepsItsTone() throws Exception {
         try (PDDocument doc = GreyGroupPages.darkGreyInAnIsolatedGroup(COSName.DEVICEGRAY)) {
             AffineTransform toDisplay = new AffineTransform(1, 0, 0, -1, 0, 200);
-            int rgb = new ArtRenderer(doc).render(doc.getPage(0), 0, toDisplay, new Box(0, 0, 200, 200), 1f, o -> true)
+            int rgb = new ArtRenderer(doc).render(doc.getPage(0), 0, toDisplay, new Box(0, 0, 200, 200), 1f, o -> true, List.of())
                     .getRGB(100, 100);
             assertEquals(GreyGroupPages.GREY, rgb & 0xFF, 1, Integer.toHexString(rgb));
         }
