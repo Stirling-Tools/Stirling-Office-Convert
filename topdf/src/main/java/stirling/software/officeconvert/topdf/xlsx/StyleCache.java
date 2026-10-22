@@ -104,6 +104,31 @@ final class StyleCache {
         });
     }
 
+    boolean sameRecord(int a, int b) {
+        if (a == b) {
+            return true;
+        }
+        if (styles == null) {
+            return true;
+        }
+        try {
+            CTXf x = styles.getCellXfAt(Math.max(0, a));
+            CTXf y = styles.getCellXfAt(Math.max(0, b));
+            if (x == null || y == null) {
+                return x == y;
+            }
+            return x.getNumFmtId() == y.getNumFmtId() && x.getFontId() == y.getFontId()
+                    && x.getFillId() == y.getFillId() && x.getBorderId() == y.getBorderId()
+                    && alignment(x).equals(alignment(y));
+        } catch (RuntimeException e) {
+            return true;
+        }
+    }
+
+    private static String alignment(CTXf xf) {
+        return xf.isSetAlignment() ? xf.getAlignment().xmlText() : "";
+    }
+
     FontSpec font(int fontId) {
         return fonts.computeIfAbsent(fontId, id -> {
             if (styles == null || id < 0 || id >= styles.getFonts().size()) {
