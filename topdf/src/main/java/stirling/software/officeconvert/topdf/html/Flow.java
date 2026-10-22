@@ -780,19 +780,19 @@ final class Flow {
         cell.bottom = HtmlTables.border(d, "bottom", 0);
         cell.left = HtmlTables.border(d, "left", 0);
         cell.right = HtmlTables.border(d, "right", 0);
-        Flow inner = new Flow(ctx, b -> cell.paragraphs.add((Paragraph) b), true);
+        Flow inner = new Flow(ctx, cell::add, true);
         inner.pad(Math.max(0, padding(d.get("padding-top"), em, frame.width())));
         inner.children(e, look, new Frame(0, 0, Math.max(24, width - padLeft - padRight), -1), depth);
         float padBottom = Math.max(0, padding(d.get("padding-bottom"), em, frame.width()));
         Float tall = boxLength(d.get("height"), look, 0);
         boolean drawn = cell.shading >= 0 || cell.top.visible() || cell.bottom.visible();
-        if (cell.paragraphs.isEmpty() && (tall == null || tall < 1 || !drawn)) {
+        if (cell.empty() && (tall == null || tall < 1 || !drawn)) {
             margin(top + bottom);
             return;
         }
         Table t = new Table();
         Table.Row row = new Table.Row();
-        if (cell.paragraphs.isEmpty()) {
+        if (cell.empty()) {
             float h = tall + Math.max(0, padding(d.get("padding-top"), em, frame.width())) + padBottom;
             cell.paragraphs.add(bar(h, look));
             Element only = e.children().size() == 1 ? e.child(0) : null;
@@ -1049,7 +1049,7 @@ final class Flow {
             cell.bottom = HtmlTables.border(d, "bottom", 0);
             cell.left = HtmlTables.border(d, "left", 0);
             cell.right = HtmlTables.border(d, "right", 0);
-            Flow inner = new Flow(ctx, b -> cell.paragraphs.add((Paragraph) b), true);
+            Flow inner = new Flow(ctx, cell::add, true);
             inner.clipLeft = clipLeft;
             inner.sized = item;
             inner.besideLeft = besideLeft;
@@ -1102,13 +1102,16 @@ final class Flow {
             }
         }
         if (t.columnWidths.size() < 2) {
-            // what is left is one column: its paragraphs flow as if there had been no row
+            // what is left is one column: its blocks flow as if there had been no row
             for (Table.Row row : t.rows) {
                 for (Table.Cell cell : row.cells) {
-                    for (Paragraph p : cell.paragraphs) {
-                        p.indentLeft += frame.left();
+                    for (Block b : cell.blocks()) {
+                        switch (b) {
+                            case Paragraph p -> p.indentLeft += frame.left();
+                            case Table nested -> nested.indent += frame.left();
+                        }
                         ctx.count();
-                        emit(p);
+                        emit(b);
                     }
                 }
             }
@@ -1161,7 +1164,7 @@ final class Flow {
         for (int c = t.columnWidths.size() - 1; c >= 0; c--) {
             boolean empty = true;
             for (Table.Row row : t.rows) {
-                empty &= row.cells.get(c).paragraphs.isEmpty();
+                empty &= row.cells.get(c).empty();
             }
             if (empty) {
                 t.columnWidths.remove(c);
@@ -1835,7 +1838,7 @@ final class Flow {
     private void table(Element e, Map<String, String> d, Look look, Frame frame, boolean centred, int depth)
             throws IOException {
         flush();
-        if (inCell) {
+        if (inCell && e.parents().stream().filter(p -> p.normalName().equals("table")).count() >= Table.MAX_NESTING) {
             nestedTable(e, look, frame, depth);
             return;
         }
@@ -1860,7 +1863,7 @@ final class Flow {
         if (t == null) {
             return;
         }
-        t.pageBreakBefore = pendingBreak && !sectionStarted;
+        t.pageBreakBefore = pendingBreak && !sectionStarted && !inCell;
         pendingBreak = false;
         sectionStarted = false;
         if (pendingSpace > 0) {
@@ -1871,7 +1874,7 @@ final class Flow {
         emit(t);
     }
 
-    // A table inside a cell: each of its rows becomes a line, its cells side by side with their own formatting
+    // A table nested past the limit: each row becomes a line, its cells side by side with their own formatting
     private void nestedTable(Element table, Look look, Frame frame, int depth) throws IOException {
         for (Element tr : table.select(HtmlTables.ROWS)) {
             boolean first = true;

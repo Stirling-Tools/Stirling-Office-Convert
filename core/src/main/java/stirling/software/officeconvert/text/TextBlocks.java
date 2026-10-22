@@ -97,7 +97,7 @@ final class TextBlocks {
                 }
                 if (cell.vMerge != 2) {
                     List<String> parts = new ArrayList<>();
-                    for (Paragraph p : cell.paragraphs) {
+                    for (Paragraph p : cell.flatParagraphs()) {
                         String s = text(p, refs).replace('\n', ' ').replace('\t', ' ').strip();
                         if (!s.isEmpty()) {
                             parts.add(s);

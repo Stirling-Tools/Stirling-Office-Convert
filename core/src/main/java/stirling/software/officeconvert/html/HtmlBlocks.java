@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
+import stirling.software.officeconvert.model.Block;
 import stirling.software.officeconvert.model.Inline;
 import stirling.software.officeconvert.model.Paragraph;
 import stirling.software.officeconvert.model.Picture;
@@ -532,8 +533,11 @@ final class HtmlBlocks {
         }
         sb.append("padding:0 ").append(HtmlText.pt(t.cellMarginRight)).append(" 0 ").append(HtmlText.pt(t.cellMarginLeft))
                 .append("\">");
-        for (Paragraph p : cell.paragraphs) {
-            paragraph(sb, p);
+        for (Block b : cell.blocks()) {
+            switch (b) {
+                case Paragraph p -> paragraph(sb, p);
+                case Table nested -> table(sb, nested);
+            }
         }
         sb.append("</").append(tag).append('>');
     }
