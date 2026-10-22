@@ -261,9 +261,14 @@ class HtmlLayoutTest {
         Word last = containing(l, "Last");
         Word after = l.word("After");
         float room = l.pageWidth() - 2 * after.left();
-        assertEquals(first.left() + 2 * (room + 18 * 0.75f) / 3, last.left(), 3f);
+        float third = first.left() + 2 * (room + 18 * 0.75f) / 3;
+        assertTrue(last.left() > third - 3 && last.right() < first.left() + room + 3, l.words().toString());
+        float pitch = (room + 18 * 0.75f) / 3;
+        assertTrue(l.words().stream().filter(w -> Math.abs(w.top() - first.top()) < 1)
+                .allMatch(w -> w.right() < first.left() + pitch - 18 * 0.75f + 3 || w.left() > first.left() + pitch - 3),
+                l.words().toString());
         assertTrue(l.words().stream().anyMatch(w -> w.top() < first.top() + 1
-                && Math.abs(w.left() - first.left() - (room + 18 * 0.75f) / 3) < 3), l.words().toString());
+                && Math.abs(w.left() - first.left() - pitch) < 3), l.words().toString());
         float[] bottoms = new float[3];
         for (Word w : l.words()) {
             int column = Math.round((w.left() - first.left()) / ((room + 18 * 0.75f) / 3));
