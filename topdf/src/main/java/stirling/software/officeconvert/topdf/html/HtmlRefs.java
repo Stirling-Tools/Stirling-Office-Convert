@@ -25,11 +25,15 @@ public final class HtmlRefs {
             return null;
         }
         if (SCHEME.matcher(ref).matches()) {
-            return ref.regionMatches(true, 0, "javascript:", 0, 11) ? null : ref;
+            return web(base) && web(ref) ? ref : null;
         }
         if (base != null && SCHEME.matcher(base).matches()) {
+            if (!web(base)) {
+                return null;
+            }
             try {
-                return URI.create(base).resolve(ref.replace(" ", "%20")).toString();
+                String resolved = URI.create(base).resolve(ref.replace(" ", "%20")).toString();
+                return web(resolved) ? resolved : null;
             } catch (IllegalArgumentException e) {
                 return null;
             }
@@ -71,6 +75,10 @@ public final class HtmlRefs {
         }
         String joined = String.join("/", steps);
         return HtmlAssets.packagePath(joined) ? joined : null;
+    }
+
+    private static boolean web(String s) {
+        return s != null && (s.regionMatches(true, 0, "http://", 0, 7) || s.regionMatches(true, 0, "https://", 0, 8));
     }
 
     public static String extension(String reference) {

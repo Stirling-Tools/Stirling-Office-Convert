@@ -207,6 +207,19 @@ class HtmlAssetsTest {
     }
 
     @Test
+    void selfImportingSheetsAreReadOnce() throws IOException {
+        Map<String, byte[]> entries = new LinkedHashMap<>();
+        entries.put("index.html", utf8("<html><head><link rel='stylesheet' href='a.css'></head><body><p>Loop</p>"
+                + "</body></html>"));
+        entries.put("a.css", utf8("@import \"a.css\";".repeat(8) + "@import 'b.css'; p { color: red }"));
+        entries.put("b.css", utf8("@import 'a.css'; @import 'b.css';"));
+        long start = System.nanoTime();
+        Pdf pdf = convert(zip("loop.zip", entries), options());
+        assertTrue(pdf.text().contains("Loop"));
+        assertTrue((System.nanoTime() - start) / 1_000_000 < 20_000);
+    }
+
+    @Test
     void referencesResolveInsideThePackage() {
         assertEquals("img/a.png", HtmlRefs.resolve("site/index.html", "../img/a.png"));
         assertEquals("site/img/a.png", HtmlRefs.resolve("site/index.html", "img/a.png?v=2#top"));
@@ -217,7 +230,10 @@ class HtmlAssetsTest {
         assertNull(HtmlRefs.resolve("index.html", "#top"));
         assertNull(HtmlRefs.resolve("index.html", "data:image/png;base64,AAAA"));
         assertNull(HtmlRefs.resolve("index.html", "JavaScript:alert(1)"));
-        assertEquals("http://h/x.png", HtmlRefs.resolve("index.html", "http://h/x.png"));
+        assertNull(HtmlRefs.resolve("index.html", "http://h/x.png"));
+        assertEquals("https://h/x.png", HtmlRefs.resolve("https://e.test/a.html", "https://h/x.png"));
+        assertNull(HtmlRefs.resolve("https://e.test/a.html", "file:///etc/passwd"));
+        assertNull(HtmlRefs.resolve("file:///srv/page.html", "img.png"));
         assertEquals("https://e.test/a/c.css", HtmlRefs.resolve("https://e.test/a/b.html", "c.css"));
         assertFalse(HtmlAssets.packagePath("http://h/x.png"));
         assertFalse(HtmlAssets.packagePath("C:/x.png"));
