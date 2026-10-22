@@ -65,8 +65,12 @@ public final class PageAnalyzer {
             return FallbackPage.of(page);
         }
         Set<Object> usedMarks = Collections.newSetFromMap(new IdentityHashMap<>());
-        List<Glyph> bullets = new ArrayList<>(VectorBullets.synthesize(glyphs, gfx.marks(), gfx.fills(), usedMarks));
-        bullets.addAll(OutlinedWords.synthesize(glyphs, gfx, usedMarks, page.width() * page.height()));
+        boolean poster = forms && !boxColumns && poster(page) && ruledTables(page, glyphs).isEmpty();
+        List<Glyph> bullets = new ArrayList<>();
+        if (!poster) {
+            bullets.addAll(VectorBullets.synthesize(glyphs, gfx.marks(), gfx.fills(), usedMarks));
+            bullets.addAll(OutlinedWords.synthesize(glyphs, gfx, usedMarks, page.width() * page.height()));
+        }
         if (!bullets.isEmpty()) {
             glyphs = new ArrayList<>(glyphs);
             glyphs.addAll(bullets);
@@ -91,10 +95,12 @@ public final class PageAnalyzer {
         textPaint.addAll(gfx.fills());
         rules.forEach(textPaint::remove);
         fills.forEach(textPaint::remove);
-        List<float[]> panels = boxColumns ? List.of() : ColumnFinder.boxedPanelSpans(segments, rules, stats.bodySize);
+        List<float[]> panels = boxColumns || poster
+                ? List.of()
+                : ColumnFinder.boxedPanelSpans(segments, rules, stats.bodySize);
         boolean panelGrid = panels.size() >= MIN_PANEL_PAIRS && !tableBesidePanels(page, glyphs, panels);
-        if (forms && (panelGrid || FormPage.looksLikeForm(page, segments, rules))) {
-            return formPage(page, ocr, concat(segments, furnitureLines), rules, fills, textPaint, panelGrid);
+        if (forms && (poster || panelGrid || FormPage.looksLikeForm(page, segments, rules))) {
+            return formPage(page, ocr, concat(segments, furnitureLines), rules, fills, textPaint, panelGrid, poster);
         }
 
         boolean tinted = tinted(page, gfx);
@@ -243,7 +249,7 @@ public final class PageAnalyzer {
     }
 
     private PageLayout formPage(PageData page, boolean ocr, List<Line> lines, List<Rule> rules, List<Fill> fills,
-            Set<Object> textPaint, boolean panelGrid) {
+            Set<Object> textPaint, boolean panelGrid, boolean poster) {
         PageGraphics gfx = page.graphics();
         List<PageLayout.TextBoxItem> boxes = new ArrayList<>();
         List<Line> pieces = FormPage.pieces(lines, rules, fills, tabLeaders);
@@ -254,13 +260,17 @@ public final class PageAnalyzer {
             boxes.add(placed.turned(b, page.width(), page.height()));
         }
         List<PageLayout.Item> pictures = new ArrayList<>();
-        for (ImageDraw img : gfx.images()) {
+        if (poster) {
+            pictures.add(new PageLayout.FloatItem(
+                    new PageLayout.FigureItem(new Box(0, 0, page.width(), page.height()), true), 0f, true));
+        }
+        for (ImageDraw img : poster ? List.<ImageDraw>of() : gfx.images()) {
             if (img.clipRight() - img.clipX() >= 3 && img.clipBottom() - img.clipTop() >= 3) {
                 pictures.add(new PageLayout.FloatItem(new PageLayout.ImageItem(img, true), 0f, true));
             }
         }
         List<Box> drawn = new ArrayList<>();
-        for (PageGraphics.VectorMark m : gfx.marks()) {
+        for (PageGraphics.VectorMark m : poster ? List.<PageGraphics.VectorMark>of() : gfx.marks()) {
             Box b = new Box(Math.max(0, m.x()), Math.max(0, m.top()), Math.min(page.width(), m.right()),
                     Math.min(page.height(), m.bottom()));
             if (b.width() > 0.5f && b.height() > 0.5f) {
@@ -278,8 +288,8 @@ public final class PageAnalyzer {
         List<PageLayout.Band> bands = pictures.isEmpty()
                 ? List.of()
                 : List.of(new PageLayout.Band(0, page.height(), List.of(new PageLayout.Column(0, page.width(), pictures))));
-        return new PageLayout(page, bands, ocr, FormPage.shapes(rules, fills, gfx), List.of(), List.of(), boxes, List.of(),
-                textPaint);
+        return new PageLayout(page, bands, ocr, poster ? List.of() : FormPage.shapes(rules, fills, gfx), List.of(),
+                List.of(), boxes, List.of(), textPaint);
     }
 
     private static List<FigureLabels.Label> labels(List<Line> segments, List<RotatedText.Block> turned, List<Box> tables) {
@@ -430,6 +440,12 @@ public final class PageAnalyzer {
 
     private static final int MIN_PANEL_PAIRS = 2;
 
+    private static final int POSTER_GRID = 24;
+
+    private static final float POSTER_COVER = 0.6f;
+
+    private static final float BACKGROUND_SHARE = 0.5f;
+
     private boolean tableBesidePanels(PageData page, List<Glyph> glyphs, List<float[]> panels) {
         for (Box t : ruledTables(page, glyphs)) {
             boolean inside = false;
@@ -452,6 +468,70 @@ public final class PageAnalyzer {
         return tableFinder.find(page, frame.textLeft(), frame.textRight(), lines, new ArrayList<>(page.graphics().rules()),
                 new ArrayList<>(page.graphics().fills()), new ArrayList<>()).stream()
                 .filter(TableDetection.Found::ruled).map(TableFinder::boxOf).toList();
+    }
+
+    static boolean poster(PageData page) {
+        float w = page.width();
+        float h = page.height();
+        float[] xs = new float[POSTER_GRID];
+        float[] ys = new float[POSTER_GRID];
+        for (int i = 0; i < POSTER_GRID; i++) {
+            xs[i] = (i + 0.5f) * w / POSTER_GRID;
+            ys[i] = (i + 0.5f) * h / POSTER_GRID;
+        }
+        int[][] corners = new int[POSTER_GRID + 1][POSTER_GRID + 1];
+        float background = BACKGROUND_SHARE * w * h;
+        for (ImageDraw img : page.graphics().images()) {
+            cover(corners, xs, ys, background, new Box(img.clipX(), img.clipTop(), img.clipRight(), img.clipBottom()));
+        }
+        for (PageGraphics.VectorMark m : page.graphics().marks()) {
+            cover(corners, xs, ys, background, new Box(m.x(), m.top(), m.right(), m.bottom()));
+        }
+        int covered = 0;
+        for (int i = 0; i < POSTER_GRID; i++) {
+            for (int j = 0; j < POSTER_GRID; j++) {
+                if (i > 0) {
+                    corners[i][j] += corners[i - 1][j];
+                }
+                if (j > 0) {
+                    corners[i][j] += corners[i][j - 1];
+                }
+                if (i > 0 && j > 0) {
+                    corners[i][j] -= corners[i - 1][j - 1];
+                }
+                if (corners[i][j] > 0) {
+                    covered++;
+                }
+            }
+        }
+        return covered >= POSTER_COVER * POSTER_GRID * POSTER_GRID;
+    }
+
+    private static void cover(int[][] corners, float[] xs, float[] ys, float background, Box b) {
+        if (b.area() >= background) {
+            return;
+        }
+        int[] across = within(xs, b.x(), b.right());
+        int[] down = within(ys, b.top(), b.bottom());
+        if (across == null || down == null) {
+            return;
+        }
+        corners[across[0]][down[0]]++;
+        corners[across[1]][down[0]]--;
+        corners[across[0]][down[1]]--;
+        corners[across[1]][down[1]]++;
+    }
+
+    private static int[] within(float[] centres, float lo, float hi) {
+        int first = -1;
+        int last = -1;
+        for (int i = 0; i < centres.length; i++) {
+            if (centres[i] >= lo && centres[i] <= hi) {
+                first = first < 0 ? i : first;
+                last = i;
+            }
+        }
+        return first < 0 ? null : new int[] {first, last + 1};
     }
 
     private static boolean framedText(TableDetection.Found t) {

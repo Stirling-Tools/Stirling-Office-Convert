@@ -201,7 +201,7 @@ public final class SlideConversion {
     private static PageData unmasked(PageData page, PaintOrder paint) {
         List<Glyph> kept = new ArrayList<>(page.glyphs().size());
         for (Glyph g : page.glyphs()) {
-            if (g.isSpace() || !paint.maskedGlyph(new Box(g.x, g.top(), g.right(), g.bottom()))) {
+            if (g.isSpace() || !paint.effectGlyph(new Box(g.x, g.top(), g.right(), g.bottom()))) {
                 kept.add(g);
             }
         }
