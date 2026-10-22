@@ -402,6 +402,10 @@ final class Flow {
         if (next.equals(ctx.pageName()) || ctx.section(next) == null) {
             return;
         }
+        if (ctx.nothingWritten()) {
+            ctx.pageName(next);
+            return;
+        }
         Section ending = ctx.section(ctx.pageName());
         Paragraph mark = new Paragraph();
         mark.indentLeft = frame.left();

@@ -208,17 +208,17 @@ class HtmlAssetsTest {
 
     @Test
     void referencesResolveInsideThePackage() {
-        assertEquals("img/a.png", Linked.resolve("site/index.html", "../img/a.png"));
-        assertEquals("site/img/a.png", Linked.resolve("site/index.html", "img/a.png?v=2#top"));
-        assertEquals("img/a b.png", Linked.resolve("index.html", "img/a%20b.png"));
-        assertEquals("img/a.png", Linked.resolve("site/index.html", "/img/a.png"));
-        assertNull(Linked.resolve("index.html", "../a.png"));
-        assertNull(Linked.resolve("index.html", "%2e%2e/a.png"));
-        assertNull(Linked.resolve("index.html", "#top"));
-        assertNull(Linked.resolve("index.html", "data:image/png;base64,AAAA"));
-        assertNull(Linked.resolve("index.html", "JavaScript:alert(1)"));
-        assertEquals("http://h/x.png", Linked.resolve("index.html", "http://h/x.png"));
-        assertEquals("https://e.test/a/c.css", Linked.resolve("https://e.test/a/b.html", "c.css"));
+        assertEquals("img/a.png", HtmlRefs.resolve("site/index.html", "../img/a.png"));
+        assertEquals("site/img/a.png", HtmlRefs.resolve("site/index.html", "img/a.png?v=2#top"));
+        assertEquals("img/a b.png", HtmlRefs.resolve("index.html", "img/a%20b.png"));
+        assertEquals("img/a.png", HtmlRefs.resolve("site/index.html", "/img/a.png"));
+        assertNull(HtmlRefs.resolve("index.html", "../a.png"));
+        assertNull(HtmlRefs.resolve("index.html", "%2e%2e/a.png"));
+        assertNull(HtmlRefs.resolve("index.html", "#top"));
+        assertNull(HtmlRefs.resolve("index.html", "data:image/png;base64,AAAA"));
+        assertNull(HtmlRefs.resolve("index.html", "JavaScript:alert(1)"));
+        assertEquals("http://h/x.png", HtmlRefs.resolve("index.html", "http://h/x.png"));
+        assertEquals("https://e.test/a/c.css", HtmlRefs.resolve("https://e.test/a/b.html", "c.css"));
         assertFalse(HtmlAssets.packagePath("http://h/x.png"));
         assertFalse(HtmlAssets.packagePath("C:/x.png"));
         assertFalse(HtmlAssets.packagePath("a/../b"));

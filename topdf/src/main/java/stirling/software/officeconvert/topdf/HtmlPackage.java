@@ -17,7 +17,7 @@ import stirling.software.officeconvert.topdf.io.BoundedZip;
 final class HtmlPackage implements HtmlAssets, Closeable {
 
     private final BoundedZip zip;
-    private final String page;
+    private String page;
     private final Map<String, ZipEntry> byName = new HashMap<>();
     private final Map<String, ZipEntry> byFolded = new HashMap<>();
 
@@ -37,16 +37,23 @@ final class HtmlPackage implements HtmlAssets, Closeable {
         BoundedZip zip = BoundedZip.open(source);
         try {
             List<? extends ZipEntry> entries = zip.entries();
-            String page = page(entries);
-            if (page == null) {
-                zip.close();
-                return null;
-            }
-            return new HtmlPackage(zip, page, entries);
-        } catch (IOException | RuntimeException e) {
+            return new HtmlPackage(zip, page(entries), entries);
+        } catch (RuntimeException e) {
             zip.close();
             throw e;
         }
+    }
+
+    String page() {
+        return page;
+    }
+
+    void page(String virtualPage) {
+        page = virtualPage;
+    }
+
+    List<String> names() {
+        return List.copyOf(byName.keySet());
     }
 
     static String page(List<? extends ZipEntry> entries) {
@@ -98,6 +105,9 @@ final class HtmlPackage implements HtmlAssets, Closeable {
     }
 
     void extractPage(Path target) throws IOException {
+        if (page == null || !byName.containsKey(page)) {
+            throw new IOException("The ZIP file holds no HTML page");
+        }
         ZipEntry e = byName.get(page);
         try (OutputStream out = Files.newOutputStream(target)) {
             zip.copy(e, out, HtmlInput.MAX_BYTES);
@@ -105,7 +115,11 @@ final class HtmlPackage implements HtmlAssets, Closeable {
     }
 
     long pageSize() {
-        long size = byName.get(page).getSize();
+        ZipEntry e = page == null ? null : byName.get(page);
+        if (e == null) {
+            return 0;
+        }
+        long size = e.getSize();
         return size < 0 ? HtmlInput.MAX_BYTES : size;
     }
 

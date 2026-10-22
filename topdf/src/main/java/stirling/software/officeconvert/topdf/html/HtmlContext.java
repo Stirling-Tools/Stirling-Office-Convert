@@ -163,6 +163,10 @@ final class HtmlContext {
         }
     }
 
+    boolean nothingWritten() {
+        return blocks == 0;
+    }
+
     void count() {
         if (++blocks == JsonModel.MAX_BLOCKS) {
             warn("Only the start of the document was converted: it has more than " + JsonModel.MAX_BLOCKS + " blocks");

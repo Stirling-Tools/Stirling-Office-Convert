@@ -57,7 +57,8 @@ final class HtmlInput {
 
     private static boolean zipNamed(Path source) {
         Path name = source.getFileName();
-        return name != null && name.toString().toLowerCase(Locale.ROOT).endsWith(".zip");
+        String n = name == null ? "" : name.toString().toLowerCase(Locale.ROOT);
+        return n.endsWith(".zip") || n.endsWith(".epub");
     }
 
     static boolean named(Path source) {
@@ -87,7 +88,10 @@ final class HtmlInput {
     private static Result renderPackage(Path source, OutputStream sink, Options options, OfficeToPdf.Renderer renderer)
             throws IOException {
         try (HtmlPackage pkg = HtmlPackage.open(source)) {
-            if (pkg == null) {
+            if (EpubBook.is(pkg)) {
+                return renderBook(pkg, sink, options, renderer);
+            }
+            if (pkg.page() == null) {
                 throw new IOException("The ZIP file holds no HTML page");
             }
             if (pkg.pageSize() > MAX_BYTES) {
@@ -100,6 +104,19 @@ final class HtmlInput {
             } finally {
                 OfficeToPdf.deleteQuietly(page);
             }
+        }
+    }
+
+    private static Result renderBook(HtmlPackage pkg, OutputStream sink, Options options,
+            OfficeToPdf.Renderer renderer) throws IOException {
+        EpubBook.Book book = EpubBook.read(pkg);
+        pkg.page("book.html");
+        Path page = Files.createTempFile("office-to-pdf-", ".html");
+        try {
+            Files.writeString(page, book.html(), StandardCharsets.UTF_8);
+            return render(page, sink, options, renderer, pkg);
+        } finally {
+            OfficeToPdf.deleteQuietly(page);
         }
     }
 

@@ -106,7 +106,7 @@ final class HtmlImages {
 
     private Picture linkedImage(String src, Element img, Map<String, String> d, Look look, float maxWidth,
             float maxHeight) throws IOException {
-        String reference = Linked.resolve(linked.base(), src);
+        String reference = HtmlRefs.resolve(linked.base(), src);
         byte[] bytes = reference == null ? null : linked.read(reference);
         if (bytes == null) {
             warn(linked.exhausted() ? "Left out pictures past the limit of linked files" : NOT_IN_PACKAGE);
@@ -145,7 +145,7 @@ final class HtmlImages {
     }
 
     private static boolean svgFile(String reference, byte[] bytes) {
-        if (Linked.extension(reference).equals("svg")) {
+        if (HtmlRefs.extension(reference).equals("svg")) {
             return true;
         }
         String head = new String(bytes, 0, Math.min(bytes.length, 256), StandardCharsets.ISO_8859_1).stripLeading();
@@ -248,6 +248,10 @@ final class HtmlImages {
 
     // The size a picture is shown at, in points, from its CSS and its natural size
     private static float[] box(Map<String, String> d, Look look, float natW, float natH, float maxWidth, float maxHeight) {
+        float ratio = aspectRatio(d.get("aspect-ratio"));
+        if (ratio > 0) {
+            natH = natW / ratio;
+        }
         Float w = size(d.get("width"), look, maxWidth);
         // A percentage height needs a container of known height, which flowing content never has
         Float h = percent(d.get("height")) ? null : size(d.get("height"), look, maxHeight);
@@ -270,6 +274,22 @@ final class HtmlImages {
         float tall = Math.min(maxHeight, maxH == null ? Float.MAX_VALUE : maxH);
         float scale = Math.min(1f, Math.min(room / Math.max(0.1f, w), tall / Math.max(0.1f, h)));
         return new float[] {Math.max(0.5f, w * scale), Math.max(0.5f, h * scale)};
+    }
+
+    static float aspectRatio(String v) {
+        if (v == null) {
+            return 0;
+        }
+        String s = v.strip().toLowerCase(Locale.ROOT).replace("auto", "").strip();
+        String[] parts = s.split("/");
+        try {
+            float w = Float.parseFloat(parts[0].strip());
+            float h = parts.length > 1 ? Float.parseFloat(parts[1].strip()) : 1f;
+            float r = w / h;
+            return parts.length <= 2 && r > 0.001f && r < 1000f ? r : 0;
+        } catch (NumberFormatException e) {
+            return 0;
+        }
     }
 
     private static boolean percent(String v) {

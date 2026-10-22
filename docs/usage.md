@@ -26,7 +26,7 @@ For Word, PowerPoint and Excel input (`.docx .docm .dotx .dotm .pptx .pptm .ppsx
 `.rtf`, Word 2003 XML, XML Spreadsheet 2003 and Flat OPC `.xml`, Visio 2013 and later `.vsdx .vsdm .vssx .vstx`,
 OpenDocument `.odt .ott .fodt .odm .ods .ots .fods .odp .otp .fodp .odg .otg .fodg`, OpenOffice.org 1.x `.sxw .stw .sxc
 .stc .sxi .sti .sxd .std`, SYLK, DIF and dBASE `.slk .dif .dbf`, Lotus 1-2-3 `.wk1 .wks .wk3 .wk4 .123`, Apple iWork `.pages .numbers .key` (from the preview they hold), plain text `.txt .text .log .asc`, tables
-`.csv .tsv .tab`, HTML `.html .htm .xhtml` and this library's JSON `.json`), which converts to PDF: `--password p` (a password protected document), `--max-pages n` (default 10000, 0 = all), `--timeout s` (default 300, 0 =
+`.csv .tsv .tab`, HTML `.html .htm .xhtml` or a `.zip` of a page, EPUB `.epub` and this library's JSON `.json`), which converts to PDF: `--password p` (a password protected document), `--max-pages n` (default 10000, 0 = all), `--timeout s` (default 300, 0 =
 none), `--fonts dir` (repeatable; an extra folder of fonts), `--font-map Family=Installed` (repeatable; draw a
 family with an installed one, such as `Aptos=Inter`), `--font-width Family=scale` (repeatable; scale a substituted
 family's widths, 0.5 to 2), `--no-system-fonts` (only the given fonts and the bundled Liberation Sans, for
@@ -544,7 +544,12 @@ shallowest `.html`) draws the pictures, linked style sheets and `@import`s it ho
 never outside the archive. A library caller can supply them another way with `Options.htmlAssets(HtmlAssets)`:
 `HtmlAssets.folder(root, page)` reads files inside one folder (no `..`, absolute paths or links leading out of it), and
 a caller's own implementation receives each reference resolved against its `base()`, such as a URL it fetches itself.
-At most 4,000 linked files and 192 MB are read per page, 64 MB each. HTML files are limited to 64 MB, and parsing, the cascade, SVG
+At most 4,000 linked files and 192 MB are read per page, 64 MB each.
+
+EPUB (`.epub`, EPUB 2 and 3) is read in its reading order (the package document's spine) into one HTML page: each
+document starts a new page, its own `<style>` rules apply only to it, links between documents become links inside
+the PDF, and the cover picture (an SVG-wrapped cover page included) comes first. Pictures and style sheets come from
+the book. DRM-protected books cannot be read. HTML files are limited to 64 MB, and parsing, the cascade, SVG
 painting and nesting each work within fixed budgets so a hostile page cannot hang or exhaust the converter.
 
 JSON (`.json`) is the document model that PDF to JSON writes ([format](json-format.md)), hand written or edited;
