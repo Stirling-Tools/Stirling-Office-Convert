@@ -111,7 +111,7 @@ class PdfToMarkdownTest {
 
     @Test
     void markdownCharactersInTextAreEscaped() {
-        assertTrue(markdown.contains("Revenue grew 5\\*3 in \\[every\\] region\\_wide & margins held &lt;steady>."),
+        assertTrue(markdown.contains("Revenue grew 5\\*3 in \\[every\\] region\\_wide &amp; margins held &lt;steady>."),
                 markdown);
     }
 

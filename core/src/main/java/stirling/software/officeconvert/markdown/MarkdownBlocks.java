@@ -236,8 +236,10 @@ final class MarkdownBlocks {
         String body;
         boolean code = s != null && s.font() != null && MONO.matcher(s.font()).matches();
         if (code) {
-            String fence = core.contains("`") ? "``" : "`";
-            body = fence + (core.startsWith("`") ? " " : "") + core + (core.endsWith("`") ? " " : "") + fence;
+            String fence = "`".repeat(longestRun(core, '`') + 1);
+            String inner = inTable ? core.replace("|", "\\|") : core;
+            boolean pad = core.startsWith("`") || core.endsWith("`");
+            body = fence + (pad ? " " : "") + inner + (pad ? " " : "") + fence;
         } else {
             body = escape(core, inTable);
             if (s != null) {
@@ -270,12 +272,23 @@ final class MarkdownBlocks {
             switch (c) {
                 case '\\', '*', '_', '`', '[', ']' -> sb.append('\\').append(c);
                 case '<' -> sb.append("&lt;");
+                case '&' -> sb.append("&amp;");
                 case '|' -> sb.append(inTable ? "\\|" : "|");
                 case '~' -> sb.append(i + 1 < s.length() && s.charAt(i + 1) == '~' ? "\\~" : "~");
                 default -> sb.append(c);
             }
         }
         return sb.toString();
+    }
+
+    private static int longestRun(String s, char c) {
+        int best = 0;
+        int run = 0;
+        for (int i = 0; i < s.length(); i++) {
+            run = s.charAt(i) == c ? run + 1 : 0;
+            best = Math.max(best, run);
+        }
+        return best;
     }
 
     private static String startSafe(String text) {
