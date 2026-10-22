@@ -42,6 +42,8 @@ mistake in the arguments. Warnings (substituted fonts, skipped active content, p
 drawn) print to stderr as `warning: <file>: <message>` unless `-q`.
 The output file's extension picks the format: `.docx`, `.odt`, `.fodt`, `.xml` (flat ODT), `.rtf`, `.doc`, `.txt`,
 `.html`, `.json`, `.epub`, `.pptx`, `.odp`, `.ppt`, `.xlsx` or `.ods` (see Other formats). For a folder of PDFs, `--format ext` names it; `--sheets
+The output file's extension picks the format: `.docx`, `.odt`, `.fodt`, `.xml` (flat ODT), `.rtf`, `.doc`, `.txt`, `.md`,
+`.pptx`, `.odp`, `.ppt`, `.xlsx` or `.ods` (see Other formats). For a folder of PDFs, `--format ext` names it; `--sheets
 page|table|single` sets a spreadsheet's layout. Each file prints its time and the heap in use when it finished.
 `--pdfa 1a|1b|2a|2b|2u|3a|3b|3u` makes an archival PDF/A copy of each PDF instead (see PDF to PDF/A): `in.pdfa.pdf` beside the
 input, or the `-o` file or folder; it takes `--password`, `--timeout`, `--fonts`, `--font-map` and
@@ -187,6 +189,7 @@ implementation 'com.stirling:stirling-office-convert:<version>'             // G
 Then one class does it all, `stirling.software.officeconvert.OfficeConvert`. The output file's extension picks the
 format: `.docx`, `.odt`, `.fodt`, `.xml` (flat ODT, what LibreOffice writes for PDF to XML), `.rtf`, `.doc` (RTF
 content), `.txt`, `.html`, `.json`, `.epub`, `.pptx`, `.odp`, `.xlsx` or `.ods`.
+content), `.txt`, `.md`, `.pptx`, `.odp`, `.xlsx` or `.ods`.
 
 ```java
 import java.nio.file.Path;
@@ -562,7 +565,7 @@ the conversion with its name, and pictures that cannot be read are left out with
 
 ## Other formats
 
-The same document model also goes out as OpenDocument, RTF, plain text, HTML and JSON, each through its own writer
+The same document model also goes out as OpenDocument, RTF, plain text, Markdown, HTML and JSON, each through its own writer
 (`odt`, `rtf`, `text`, `html` and `json` packages), with the options, streaming and failure contract of `PdfToDocx`:
 
 ```java
@@ -571,6 +574,8 @@ PdfToOdt.convertFlat(pdf, Path.of("out.fodt"), options);   // flat XML OpenDocum
 PdfToRtf.convert(pdf, Path.of("out.rtf"), options);        // Rich Text Format
 PdfToRtf.convert(pdf, Path.of("out.doc"), options);        // the same RTF under a Word 97-2003 name
 PdfToText.convert(pdf, Path.of("out.txt"), options);       // UTF-8 text in reading order
+PdfToMarkdown.convert(pdf, Path.of("out.md"), options);    // GitHub Flavored Markdown, pictures as data: URIs
+PdfToMarkdown.convertPackage(pdDocument, zipStream, options); // document.md plus images/ in a ZIP
 String text = PdfToText.text(pdDocument, options);
 PdfToHtml.convert(pdf, Path.of("out.html"), options);      // one HTML5 file, pictures as data: URIs
 PdfToHtml.convertFixed(pdf, Path.of("page.html"), FixedHtml.Options.defaults()); // each page as it looks
@@ -583,6 +588,11 @@ PdfToEpub.convert(pdf, Path.of("out.epub"), options);      // a reflowing EPUB 3
   headers and footers with page fields, footnotes, links and bookmarks. Word and LibreOffice both open them.
 - RTF likewise, as Word writes it; `.doc` is that RTF, which Word and LibreOffice open by its content without a prompt.
   Word lays RTF out in its 2007 compatibility mode, so it is a little further from the source than the DOCX.
+- Markdown (GitHub Flavored) has headings, paragraphs with bold, italic, strikethrough, code spans for monospaced runs
+  and links, nested bulleted and numbered lists (other labels such as `a)` or `IV.` stay in the text), pipe tables
+  (merged cells become empty cells; the first row is the header), footnotes as `[^n]` with their text at the end, and
+  pictures. Running headers, footers and page numbers are left out. Characters Markdown would read as syntax are
+  escaped.
 - Text reads columns one after the other, tables row by row with tabs between cells, running headers and footers once,
   footnotes after the page that refers to them, list items with their numbers; pictures are left out and never decoded.
 - HTML is one self-contained, flowing page: headings as `h1`-`h6`, paragraphs with their indents, spacing and
@@ -769,7 +779,7 @@ Two passes over the pages:
 | `table` | Ruled and unruled table detection (grid from rules, whitespace alignment) |
 | `build` | Turns page layouts into Word model objects; list numbering, RTL ordering, page and column placement |
 | `docx` | Streaming OOXML writer: document, styles, numbering, footnotes, headers/footers, media |
-| `odt`, `rtf`, `text`, `html`, `json` | The same document model as OpenDocument Text, RTF, plain text, HTML and JSON |
+| `odt`, `rtf`, `text`, `html`, `json` | The same document model as OpenDocument Text, RTF, plain text, Markdown, HTML and JSON |
 | `slides`, `pptx`, `odp` | Pages to slides: placed text boxes, pictures, shapes and tables in paint order, and their writers |
 | `sheet` | Spreadsheet model and layout: pages to rows, table grids, cell typing (numbers, dates, identifiers) |
 | `xlsx`, `ods` | Streaming spreadsheet writers: each sheet buffered (spilling to disk), shared strings and styles |
