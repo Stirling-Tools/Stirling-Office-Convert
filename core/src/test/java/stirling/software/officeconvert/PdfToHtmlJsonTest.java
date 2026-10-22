@@ -189,7 +189,7 @@ class PdfToHtmlJsonTest {
                 + "\"body\":[{\"content\":[{\"text\":\"x\"}]}]}";
         ByteArrayOutputStream json = new ByteArrayOutputStream();
         try (JsonWriter writer = new JsonWriter(json, null)) {
-            JsonModel.replay(Json.parse(in), writer, new ArrayList<>());
+            JsonModel.replay(Json.parse(marked(in)), writer, new ArrayList<>());
         }
         String doc = replayed(json.toString(StandardCharsets.UTF_8)).get("word/document.xml");
         assertEquals(0, twips(doc, "w:header"), doc);
