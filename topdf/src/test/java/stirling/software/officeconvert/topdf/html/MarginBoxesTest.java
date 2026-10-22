@@ -98,6 +98,8 @@ class MarginBoxesTest {
         assertEquals(" of ", ((Inline.Text) in.get(2)).text());
         assertTrue(assertInstanceOf(Inline.PageNumber.class, in.get(3)).total());
         assertTrue(MarginBoxes.content("none", null).isEmpty());
+        assertEquals("Report \u2014 Draft", ((Inline.Text) MarginBoxes.content("\"Report \\2014  Draft\"", null).get(0)).text());
+        assertEquals("a b\u00a0c", ((Inline.Text) MarginBoxes.content("'a\\A b\\a0 c'", null).get(0)).text());
     }
 
     private static float[] position(PDDocument doc, String needle) throws IOException {

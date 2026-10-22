@@ -95,16 +95,21 @@ final class MarginBoxes {
                 while (j < v.length() && v.charAt(j) != c) {
                     char k = v.charAt(j);
                     if (k == '\\' && j + 1 < v.length()) {
-                        char e = v.charAt(j + 1);
-                        if (e == 'A' || e == 'a') {
-                            text.append(' ');
-                            j += 2;
-                            if (j < v.length() && v.charAt(j) == ' ') {
-                                j++;
-                            }
+                        int h = j + 1;
+                        while (h < v.length() && h - j <= 6 && Character.digit(v.charAt(h), 16) >= 0) {
+                            h++;
+                        }
+                        if (h > j + 1) {
+                            int cp = Integer.parseInt(v.substring(j + 1, h), 16);
+                            text.appendCodePoint(cp == 0xA || cp == 0 || cp > 0x10FFFF
+                                    || cp >= 0xD800 && cp <= 0xDFFF ? ' ' : cp);
+                            j = h < v.length() && Character.isWhitespace(v.charAt(h)) ? h + 1 : h;
                             continue;
                         }
-                        text.append(e);
+                        char e = v.charAt(j + 1);
+                        if (e != '\n') {
+                            text.append(e);
+                        }
                         j += 2;
                         continue;
                     }
