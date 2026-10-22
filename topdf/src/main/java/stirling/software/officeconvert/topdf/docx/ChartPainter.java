@@ -246,9 +246,17 @@ final class ChartPainter {
         boolean showValues = va == null || va.labelsShown();
         boolean showCats = ca == null || ca.labelsShown();
         float cw = 0;
+        int rows = 1;
+        List<List<String>> labels = new ArrayList<>();
+        float room = Math.max(cs.size() * 4, (right - left) * 0.2f);
         if (showCats) {
             for (int i = 0; i < n; i++) {
-                cw = Math.max(cw, width(cs, category(i)));
+                List<String> l = wrap(category(i), cs, room);
+                labels.add(l);
+                rows = Math.max(rows, l.size());
+                for (String t : l) {
+                    cw = Math.max(cw, width(cs, t));
+                }
             }
         }
         float cx;
@@ -262,7 +270,7 @@ final class ChartPainter {
             cx = (left + right) / 2;
             cy = (top + bottom) / 2;
             float padX = showCats ? cw + spokeGap(cs) : 0;
-            float padY = showCats ? lineHeight(cs) + spokeGap(cs) : 0;
+            float padY = showCats ? rows * lineHeight(cs) + spokeGap(cs) : 0;
             r = Math.min((right - left) / 2 - padX, (bottom - top) / 2 - padY);
         }
         if (r < 4) {
@@ -354,15 +362,19 @@ final class ChartPainter {
             }
         }
         if (showCats) {
+            float lh = lineHeight(cs);
             for (int i = 0; i < n; i++) {
-                String t = category(i);
+                List<String> l = labels.get(i);
                 float px = cx + ux[i] * (r + spokeGap(cs));
                 float py = cy + uy[i] * (r + spokeGap(cs));
-                float tw = width(cs, t);
-                float tx = ux[i] > 0.1f ? px : ux[i] < -0.1f ? px - tw : px - tw / 2;
-                float baseline = uy[i] < -0.1f ? py - descent(cs)
-                        : uy[i] > 0.1f ? py + ascent(cs) : py + (ascent(cs) - descent(cs)) / 2;
-                ops.add(new Op.Text(tx, baseline, t, cs));
+                float block = l.size() * lh;
+                float blockTop = uy[i] < -0.1f ? py - block : uy[i] > 0.1f ? py : py - block / 2;
+                for (int k = 0; k < l.size(); k++) {
+                    String t = l.get(k);
+                    float tw = width(cs, t);
+                    float tx = ux[i] > 0.1f ? px : ux[i] < -0.1f ? px - tw : px - tw / 2;
+                    ops.add(new Op.Text(tx, blockTop + k * lh + ascent(cs), t, cs));
+                }
             }
         }
     }
