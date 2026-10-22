@@ -11,6 +11,7 @@ import java.awt.Graphics2D;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -93,6 +94,32 @@ class HtmlAssetsTest {
         return OfficeToPdf.Options.defaults().timeout(Duration.ofMinutes(2));
     }
 
+    private static OfficeToPdf.Options packages() {
+        return options().allowPackages(true);
+    }
+
+    @Test
+    void zipPagesAreRefusedUnlessPackagesAreAllowed() throws IOException {
+        Map<String, byte[]> entries = new LinkedHashMap<>();
+        entries.put("index.html", utf8("<p>Packaged page</p><img src='logo.png'>"));
+        entries.put("logo.png", png(20, 20, Color.BLUE));
+        Path z = zip("page.zip", entries);
+        assertFalse(OfficeToPdf.Options.defaults().allowPackages());
+        IOException e = assertThrows(IOException.class, () -> convert(z, options()));
+        assertTrue(e.getMessage().contains("allowPackages") && e.getMessage().contains("--allow-packages"),
+                e.getMessage());
+        assertFalse(Files.exists(dir.resolve("page.zip.pdf")));
+        IOException streamed = assertThrows(IOException.class, () -> {
+            try (InputStream in = Files.newInputStream(z)) {
+                OfficeToPdf.convert(in, OfficeToPdf.Format.HTML, new ByteArrayOutputStream(), options());
+            }
+        });
+        assertTrue(streamed.getMessage().contains("--allow-packages"), streamed.getMessage());
+        Pdf pdf = convert(z, packages());
+        assertTrue(pdf.text().contains("Packaged page"), pdf.text());
+        assertEquals(1, pdf.images());
+    }
+
     @Test
     void zipPageDrawsItsPicturesAndStyleSheets() throws IOException {
         Map<String, byte[]> entries = new LinkedHashMap<>();
@@ -107,7 +134,7 @@ class HtmlAssetsTest {
         entries.put("site/css/print-only.css", utf8("h1 { display: none }"));
         entries.put("site/img/logo.png", png(120, 60, Color.BLUE));
         entries.put("shared/chart.svg", utf8(SVG));
-        Pdf pdf = convert(zip("report.zip", entries), options());
+        Pdf pdf = convert(zip("report.zip", entries), packages());
         assertTrue(pdf.text().contains("Quarterly report"), pdf.text());
         assertFalse(pdf.text().contains("Hidden by the linked sheet"), pdf.text());
         assertFalse(pdf.text().contains("Hidden by the imported sheet"), pdf.text());
@@ -127,7 +154,7 @@ class HtmlAssetsTest {
                 + "<img src='../outside.png'><img src='%2e%2e/outside.png'><img src='file://" + dir.resolve("outside.png")
                 + "'><img src='" + dir.resolve("outside.png") + "'><img src='http://127.0.0.1:9/x.png'>"
                 + "<img src='..\\outside.png'></body></html>"));
-        Pdf pdf = convert(zip("escape.zip", entries), options());
+        Pdf pdf = convert(zip("escape.zip", entries), packages());
         assertTrue(pdf.text().contains("Title stays"), pdf.text());
         assertEquals(0, pdf.images());
     }
@@ -139,7 +166,7 @@ class HtmlAssetsTest {
         entries.put("deep/inner/index.html", utf8("<p>deep page</p>"));
         entries.put("about.html", utf8("<p>about page</p>"));
         entries.put("index.htm", utf8("<p>front page</p>"));
-        Pdf pdf = convert(zip("site.zip", entries), options());
+        Pdf pdf = convert(zip("site.zip", entries), packages());
         assertTrue(pdf.text().contains("front page"), pdf.text());
         assertFalse(pdf.text().contains("about page"), pdf.text());
     }
@@ -149,7 +176,7 @@ class HtmlAssetsTest {
         Map<String, byte[]> entries = new LinkedHashMap<>();
         entries.put("notes.txt", utf8("plain"));
         Path z = zip("nothing.zip", entries);
-        IOException e = assertThrows(IOException.class, () -> convert(z, options()));
+        IOException e = assertThrows(IOException.class, () -> convert(z, packages()));
         assertTrue(e.getMessage().contains("no HTML page"), e.getMessage());
     }
 
@@ -214,7 +241,7 @@ class HtmlAssetsTest {
         entries.put("a.css", utf8("@import \"a.css\";".repeat(8) + "@import 'b.css'; p { color: red }"));
         entries.put("b.css", utf8("@import 'a.css'; @import 'b.css';"));
         long start = System.nanoTime();
-        Pdf pdf = convert(zip("loop.zip", entries), options());
+        Pdf pdf = convert(zip("loop.zip", entries), packages());
         assertTrue(pdf.text().contains("Loop"));
         assertTrue((System.nanoTime() - start) / 1_000_000 < 20_000);
     }
