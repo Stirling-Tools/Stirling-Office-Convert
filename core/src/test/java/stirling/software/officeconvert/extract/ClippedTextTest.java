@@ -56,6 +56,25 @@ class ClippedTextTest {
         }
     }
 
+    @Test
+    void curveFromTheCurrentPointShapesTheClip() throws IOException {
+        try (PDDocument document = new PDDocument()) {
+            PDPage page = new PDPage();
+            PDResources resources = new PDResources();
+            resources.put(COSName.getPDFName("F1"), new PDType1Font(Standard14Fonts.FontName.HELVETICA));
+            page.setResources(resources);
+            document.addPage(page);
+            String content = "100 100 m 100 500 500 500 v 500 100 l h W n\n"
+                    + "BT /F1 10 Tf 126 337 Td (Q) Tj ET\nBT /F1 10 Tf 300 200 Td (Shown) Tj ET\n";
+            PDStream stream = new PDStream(document);
+            try (OutputStream out = stream.createOutputStream()) {
+                out.write(content.getBytes(StandardCharsets.US_ASCII));
+            }
+            page.setContents(stream);
+            assertEquals("Shown", read(document));
+        }
+    }
+
     private static String text(boolean clipped, boolean invisible) throws IOException {
         try (PDDocument document = new PDDocument()) {
             PDPage page = new PDPage();

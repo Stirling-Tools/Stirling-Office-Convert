@@ -23,7 +23,7 @@ final class ClipOperators {
         out.add(new Step(engine, "m", clip, (c, p) -> c.moveTo(p[0], p[1]), 2));
         out.add(new Step(engine, "l", clip, (c, p) -> c.lineTo(p[0], p[1]), 2));
         out.add(new Step(engine, "c", clip, (c, p) -> c.curveTo(p[0], p[1], p[2], p[3], p[4], p[5]), 6));
-        out.add(new Step(engine, "v", clip, (c, p) -> c.curveTo(p[0], p[1], p[0], p[1], p[2], p[3]), 4));
+        out.add(new Step(engine, "v", clip, (c, p) -> c.curveFromCurrent(p[0], p[1], p[2], p[3]), 4));
         out.add(new Step(engine, "y", clip, (c, p) -> c.curveTo(p[0], p[1], p[2], p[3], p[2], p[3]), 4));
         out.add(new Rectangle(engine, clip));
         out.add(new Step(engine, "h", clip, (c, p) -> c.close(), 0));

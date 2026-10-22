@@ -65,7 +65,7 @@ final class LineGroups {
             gaps[i - 1] = l.words.get(i).x - l.words.get(i - 1).right;
         }
         Arrays.sort(gaps);
-        return gaps[gaps.length / 2];
+        return gaps[(gaps.length - 1) / 2];
     }
 
     private static final float STANDOUT = 2f;

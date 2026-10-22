@@ -56,6 +56,8 @@ public final class ColumnFinder {
 
     private static final float SHARED_EDGE = 0.8f;
 
+    private static final int MAX_EDGES = 100;
+
     private ColumnFinder() {}
 
     public static List<Band> find(
@@ -88,10 +90,16 @@ public final class ColumnFinder {
 
     private static List<Gutter> facingEdges(List<Item> items, List<Rule> rules, float bodySize) {
         List<Rule> edges = new ArrayList<>();
+        List<Rule> rows = new ArrayList<>();
         for (Rule r : rules) {
-            if (!r.horizontal() && r.length() >= MIN_EDGE_LINES * bodySize) {
+            if (r.horizontal()) {
+                rows.add(r);
+            } else if (r.length() >= MIN_EDGE_LINES * bodySize) {
                 edges.add(r);
             }
+        }
+        if (edges.size() > MAX_EDGES) {
+            return List.of();
         }
         edges.sort(Comparator.comparingDouble(Rule::pos));
         List<Gutter> out = new ArrayList<>();
@@ -106,7 +114,7 @@ public final class ColumnFinder {
                 float top = Math.max(a.start(), b.start());
                 float bottom = Math.min(a.end(), b.end());
                 if (gap < MIN_EDGE_GAP || bottom - top < SHARED_EDGE * Math.max(a.length(), b.length())
-                        || gridColumn(rules, a.pos(), b.pos(), top, bottom)) {
+                        || gridColumn(rows, a.pos(), b.pos(), top, bottom)) {
                     continue;
                 }
                 if (textBeside(items, a.pos(), b.pos(), top, bottom)) {
@@ -117,10 +125,10 @@ public final class ColumnFinder {
         return out;
     }
 
-    private static boolean gridColumn(List<Rule> rules, float left, float right, float top, float bottom) {
+    private static boolean gridColumn(List<Rule> rows, float left, float right, float top, float bottom) {
         int crossing = 0;
-        for (Rule r : rules) {
-            if (r.horizontal() && r.start() <= left + 1 && r.end() >= right - 1 && r.pos() >= top - ROW_EDGE
+        for (Rule r : rows) {
+            if (r.start() <= left + 1 && r.end() >= right - 1 && r.pos() >= top - ROW_EDGE
                     && r.pos() <= bottom + ROW_EDGE && ++crossing >= GRID_ROWS) {
                 return true;
             }

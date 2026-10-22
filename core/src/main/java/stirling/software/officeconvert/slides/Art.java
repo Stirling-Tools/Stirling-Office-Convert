@@ -21,6 +21,7 @@ import org.apache.commons.logging.LogFactory;
 import org.apache.pdfbox.pdmodel.PDDocument;
 
 import stirling.software.officeconvert.build.PlacedContent;
+import stirling.software.officeconvert.extract.OperatorBudget;
 import stirling.software.officeconvert.layout.Box;
 import stirling.software.officeconvert.model.Picture;
 import stirling.software.officeconvert.slides.PaintOrder.Kind;
@@ -37,6 +38,8 @@ final class Art {
     private static final int MAX_BLANK_PIECES = 16;
 
     private static final float JOIN_GAP = 2f;
+
+    private static final long MAX_PAGE_OPERATORS = 4 * OperatorBudget.MAX_OPERATORS;
 
     private static final long MAX_PIXELS = 3_000_000L;
 
@@ -55,6 +58,10 @@ final class Art {
     }
 
     record Piece(PictureShape picture, int order) {}
+
+    long operators() {
+        return renderer.operators();
+    }
 
     List<Piece> pieces(PaintOrder paint, Set<Integer> represented, int pageIndex, AffineTransform toDisplay,
             float width, float height) {
@@ -90,7 +97,11 @@ final class Art {
         kept.sort(Comparator.comparingDouble(r -> -r.box.area()));
         List<Piece> out = new ArrayList<>();
         int blanks = 0;
+        long start = renderer.operators();
         for (Run r : kept.subList(0, Math.min(MAX_PIECES, kept.size()))) {
+            if (renderer.operators() - start > MAX_PAGE_OPERATORS) {
+                break;
+            }
             Piece p = piece(paint, r.marks, r.box, pageIndex, toDisplay, width, height);
             if (p != null) {
                 out.add(p);
