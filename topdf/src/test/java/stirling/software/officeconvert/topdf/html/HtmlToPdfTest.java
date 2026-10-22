@@ -78,6 +78,27 @@ class HtmlToPdfTest {
     }
 
     @Test
+    void nestedOpacityFadesInheritedTextByTheProductOfTheOpacities() throws IOException {
+        Path in = Files.writeString(dir.resolve("fade.html"), "<div style=\"opacity:.5\"><p>Half</p>"
+                + "<div style=\"opacity:.5\"><p>Quarter</p></div></div>", StandardCharsets.UTF_8);
+        java.io.ByteArrayOutputStream docx = new java.io.ByteArrayOutputStream();
+        HtmlDocument.write(in, docx);
+        String document = "";
+        try (java.util.zip.ZipInputStream z = new java.util.zip.ZipInputStream(
+                new java.io.ByteArrayInputStream(docx.toByteArray()))) {
+            for (java.util.zip.ZipEntry e; (e = z.getNextEntry()) != null; ) {
+                if (e.getName().equals("word/document.xml")) {
+                    document = new String(z.readAllBytes(), StandardCharsets.UTF_8);
+                }
+            }
+        }
+        String quarter = document.substring(0, document.indexOf(">Quarter<"));
+        quarter = quarter.substring(quarter.lastIndexOf("<w:r>"));
+        int at = quarter.indexOf("<w:color w:val=\"") + 16;
+        assertEquals(0xBF, Integer.parseInt(quarter.substring(at, at + 2), 16), 1, quarter);
+    }
+
+    @Test
     void anEnormousGridFractionKeepsColumnsReadable() throws IOException {
         Path in = Files.writeString(dir.resolve("fr.html"), "<div style=\"display:grid;grid-template-columns:1e39fr"
                 + " 1fr\"><div>alpha beta gamma</div><div>delta epsilon</div></div>", StandardCharsets.UTF_8);

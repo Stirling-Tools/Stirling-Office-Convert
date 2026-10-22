@@ -460,7 +460,7 @@ final class Css {
         }
     }
 
-    private static String faded(String value, float alpha) {
+    static String faded(String value, float alpha) {
         List<String> out = new ArrayList<>();
         for (String token : tokens(value)) {
             Integer c = color(token);
