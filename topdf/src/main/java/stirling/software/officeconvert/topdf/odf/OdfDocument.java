@@ -20,8 +20,10 @@ import javax.xml.stream.XMLStreamReader;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 
+import stirling.software.officeconvert.topdf.crypt.Passwords;
 import stirling.software.officeconvert.topdf.io.BoundedZip;
 import stirling.software.officeconvert.topdf.io.OfficeZip;
+import stirling.software.officeconvert.topdf.io.ScratchFile;
 import stirling.software.officeconvert.topdf.io.SecureXml;
 import stirling.software.officeconvert.topdf.io.SourceFile;
 import stirling.software.officeconvert.topdf.io.XmlSalvage;
@@ -33,8 +35,6 @@ public final class OdfDocument implements Closeable {
         SPREADSHEET,
         PRESENTATION
     }
-
-    public static final String PASSWORD = "The document is password protected; remove the password and try again";
 
     static final int MAX_ENTRIES = 10_000;
 
@@ -69,6 +69,10 @@ public final class OdfDocument implements Closeable {
     private Element meta;
 
     private boolean metaRead;
+
+    private OdfEncryption crypt;
+
+    private Path scratch;
 
     private OdfDocument(Kind kind, BoundedZip zip, Element content, Element styles, Element settings,
             long sourceBytes) {
@@ -145,7 +149,10 @@ public final class OdfDocument implements Closeable {
             long size = SourceFile.size(file);
             if (size > 0 && isZip(file)) {
                 long xml = BoundedZip.inflatedSize(file, List.of("content.xml", "styles.xml"), MAX_XML_BYTES);
-                return (64L << 20) + Math.min(MAX_XML_BYTES * 2, xml) * 10 + size * 2 + WorkBudget.heap(xml);
+                OdfEncryption.Cost sealed = sealedCost(file);
+                xml = Math.max(xml, Math.min(MAX_XML_BYTES * 2, sealed.plainBytes()));
+                return (64L << 20) + Math.min(MAX_XML_BYTES * 2, xml) * 10 + size * 2 + WorkBudget.heap(xml)
+                        + sealed.argon2Bytes();
             }
             return (64L << 20) + size * 12 + WorkBudget.heap(size);
         } catch (IOException | RuntimeException e) {
@@ -167,8 +174,12 @@ public final class OdfDocument implements Closeable {
     }
 
     static OdfDocument open(Path file) throws IOException {
+        return open(file, null);
+    }
+
+    static OdfDocument open(Path file, String password) throws IOException {
         if (isZip(file)) {
-            return openZip(file);
+            return openZip(file, password, false);
         }
         if (SourceFile.size(file) > MAX_FLAT_BYTES) {
             throw new OfficeZip.Oversized("The document is too large: a flat OpenDocument file over "
@@ -203,7 +214,7 @@ public final class OdfDocument implements Closeable {
         return d;
     }
 
-    private static OdfDocument openZip(Path file) throws IOException {
+    private static OdfDocument openZip(Path file, String password, boolean unwrapped) throws IOException {
         BoundedZip z = BoundedZip.open(file);
         try {
             if (z.size() > MAX_ENTRIES) {
@@ -221,8 +232,14 @@ public final class OdfDocument implements Closeable {
             }
             OdfDocument probe = new OdfDocument(kind, z, null, null, null, 0);
             probe.entries.putAll(map);
-            if (probe.encrypted()) {
-                throw new IOException(PASSWORD);
+            probe.crypt = OdfEncryption.read(probe.bytes("META-INF/manifest.xml", 16L << 20), password);
+            if (probe.crypt != null && unwrapped) {
+                throw new IOException("The document is encrypted more than once, which no office suite does");
+            }
+            if (probe.crypt != null && probe.crypt.wholePackage()) {
+                OdfDocument inner = unwrap(probe, map.get(OdfEncryption.WHOLE_PACKAGE), password);
+                z.close();
+                return inner;
             }
             Element content = probe.xml("content.xml", true);
             Element styles = probe.xml("styles.xml", false);
@@ -232,6 +249,7 @@ public final class OdfDocument implements Closeable {
             }
             OdfDocument doc = new OdfDocument(kind, z, content, styles, settings, MAX_TOTAL_BYTES - probe.budget);
             doc.entries.putAll(map);
+            doc.crypt = probe.crypt;
             doc.budget = probe.budget;
             doc.damaged = probe.damaged;
             return doc;
@@ -241,20 +259,48 @@ public final class OdfDocument implements Closeable {
         }
     }
 
-    private boolean encrypted() throws IOException {
-        byte[] manifest = bytes("META-INF/manifest.xml", 16L << 20);
-        if (manifest == null) {
-            return false;
+    private static OdfDocument unwrap(OdfDocument outer, ZipEntry sealed, String password) throws IOException {
+        if (sealed == null) {
+            throw new IOException("The document is damaged: it has no " + OdfEncryption.WHOLE_PACKAGE);
         }
-        String m = new String(manifest, StandardCharsets.UTF_8);
-        return m.contains("encryption-data");
+        byte[] encrypted;
+        try (InputStream in = outer.zip.open(sealed, sealedCap(MAX_TOTAL_BYTES))) {
+            encrypted = in.readAllBytes();
+        }
+        Path inner = ScratchFile.write(".odf", out -> outer.crypt.unwrap(encrypted, out, MAX_TOTAL_BYTES));
+        try {
+            OdfDocument doc = openZip(inner, password, true);
+            doc.scratch = inner;
+            return doc;
+        } catch (IOException | RuntimeException e) {
+            ScratchFile.delete(inner);
+            throw e;
+        }
+    }
+
+    private static OdfEncryption.Cost sealedCost(Path file) throws IOException {
+        try (BoundedZip z = BoundedZip.open(file)) {
+            ZipEntry m = z.entry("META-INF/manifest.xml");
+            if (m == null || m.getSize() > (4L << 20)) {
+                return new OdfEncryption.Cost(0, 0);
+            }
+            byte[] manifest;
+            try (InputStream in = z.open(m, 4L << 20)) {
+                manifest = in.readNBytes(4 << 20);
+            }
+            return OdfEncryption.declared(manifest, List.of("content.xml", "styles.xml", OdfEncryption.WHOLE_PACKAGE));
+        }
+    }
+
+    private static long sealedCap(long max) {
+        return max + (max >> 8) + 4096;
     }
 
     private Element xml(String name, boolean required) throws IOException {
         byte[] data;
         try {
             data = bytes(name, MAX_XML_BYTES);
-        } catch (OfficeZip.Oversized e) {
+        } catch (OfficeZip.Oversized | Passwords.Refused e) {
             throw e;
         } catch (IOException e) {
             if (required) {
@@ -307,11 +353,12 @@ public final class OdfDocument implements Closeable {
         if (e == null) {
             return null;
         }
-        if (e.getSize() > max) {
+        boolean sealed = crypt != null && crypt.sealed(name);
+        if ((sealed ? crypt.size(name) : e.getSize()) > max) {
             throw new OfficeZip.Oversized("The document is too large: the part /" + name + " is over "
                     + (max >> 20) + " MB");
         }
-        try (InputStream in = zip.open(e, max)) {
+        try (InputStream in = sealed ? decrypted(name, e, max) : zip.open(e, max)) {
             byte[] data = in.readNBytes((int) Math.min(Integer.MAX_VALUE - 16, Math.min(max, budget) + 1));
             if (data.length > max) {
                 throw new OfficeZip.Oversized("The document is too large: the part /" + name + " is over "
@@ -324,6 +371,14 @@ public final class OdfDocument implements Closeable {
             budget -= data.length;
             return data;
         }
+    }
+
+    private InputStream decrypted(String name, ZipEntry e, long max) throws IOException {
+        byte[] encrypted;
+        try (InputStream raw = zip.open(e, sealedCap(max))) {
+            encrypted = raw.readAllBytes();
+        }
+        return crypt.open(name, encrypted);
     }
 
     byte[] picture(String href) {
@@ -519,8 +574,14 @@ public final class OdfDocument implements Closeable {
 
     @Override
     public void close() throws IOException {
-        if (zip != null) {
-            zip.close();
+        try {
+            if (zip != null) {
+                zip.close();
+            }
+        } finally {
+            if (scratch != null) {
+                ScratchFile.delete(scratch);
+            }
         }
     }
 }
