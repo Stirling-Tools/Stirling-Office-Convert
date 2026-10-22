@@ -140,7 +140,7 @@ public final class Main {
                     anyPdf |= formatGiven && !"pdf".equals(format);
                     continue;
                 }
-                boolean officeInput = isOffice(in);
+                boolean officeInput = officeOrPage(in);
                 String unsupported = officeInput ? null : UnsupportedFormats.byExtension(extension(in));
                 if (unsupported != null) {
                     throw new Usage(in.getFileName() + ": " + unsupported);
@@ -171,7 +171,7 @@ public final class Main {
             if (pdfa == null && output != null && !Files.isDirectory(output) && inputs.size() == 1
                     && !Files.isDirectory(inputs.get(0))) {
                 String ext = known(extension(output));
-                boolean officeInput = isOffice(inputs.get(0));
+                boolean officeInput = officeOrPage(inputs.get(0));
                 if (officeInput != "pdf".equals(ext)) {
                     throw new Usage(officeInput ? "an Office document converts to PDF; name the output .pdf"
                             : "PDF input converts to an Office format; the output cannot be .pdf");
@@ -222,7 +222,7 @@ public final class Main {
                 .timeout(office.timeout()).maxPages(office.maxPages()).fonts(fonts);
         for (int k = 0; k < pdfs.size(); k++) {
             Path pdf = pdfs.get(k);
-            boolean officeInput = isOffice(pdf);
+            boolean officeInput = officeOrPage(pdf);
             Path target = targets.get(k);
             String refusal = guard.refusal(pdf, target);
             if (refusal != null) {
@@ -377,6 +377,11 @@ public final class Main {
 
     private static boolean isOffice(Path file) {
         return file.getFileName() != null && OfficeToPdf.Format.recognises(file);
+    }
+
+    private static boolean officeOrPage(Path file) {
+        return isOffice(file) || file.getFileName() != null
+                && file.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".zip");
     }
 
     private static float seconds(String s, String option) throws Usage {

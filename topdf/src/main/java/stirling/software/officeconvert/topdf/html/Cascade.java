@@ -47,11 +47,24 @@ final class Cascade {
 
     /** {@code viewportPx} is the width media queries see, the page's text width in CSS pixels. */
     Cascade(Document doc, float viewportPx) {
+        this(doc, viewportPx, new Linked(null));
+    }
+
+    Cascade(Document doc, float viewportPx, Linked linked) {
         this.doc = doc;
         List<Css.Rule> rules = new ArrayList<>();
-        for (Element style : doc.select("style")) {
-            if (Media.matches(style.attr("media"), viewportPx)) {
-                Css.rules(style.data(), rules, viewportPx);
+        for (Element sheet : doc.select("style, link")) {
+            if (!Media.matches(sheet.attr("media"), viewportPx)) {
+                continue;
+            }
+            if (sheet.normalName().equals("style")) {
+                Css.rules(imported(sheet.data(), linked.base(), linked, viewportPx, 0), rules, viewportPx);
+            } else if (stylesheet(sheet) && !linked.none()) {
+                String ref = Linked.resolve(linked.base(), sheet.attr("href"));
+                String text = ref == null ? null : linked.text(ref);
+                if (text != null) {
+                    Css.rules(imported(text, ref, linked, viewportPx, 0), rules, viewportPx);
+                }
             }
         }
         int order = 0;
@@ -82,6 +95,64 @@ final class Cascade {
             }
             index(selector, new Compiled(evaluator, new Hit(specificity(selector), order, rule.declarations())));
         }
+    }
+
+    private static boolean stylesheet(Element link) {
+        boolean sheet = false;
+        for (String r : link.attr("rel").toLowerCase(Locale.ROOT).split("\\s+")) {
+            if (r.equals("alternate")) {
+                return false;
+            }
+            sheet |= r.equals("stylesheet");
+        }
+        return sheet;
+    }
+
+    private static final int MAX_IMPORT_DEPTH = 8;
+
+    private static final Pattern IMPORT = Pattern.compile(
+            "^@import\\s*(?:url\\(\\s*(?:\"([^\"]*)\"|'([^']*)'|([^)\\s]*))\\s*\\)|\"([^\"]*)\"|'([^']*)')([^;]*);",
+            Pattern.CASE_INSENSITIVE);
+
+    private static final Pattern CHARSET = Pattern.compile("^@charset\\s*\"[^\"]*\"\\s*;", Pattern.CASE_INSENSITIVE);
+
+    private static String imported(String sheet, String base, Linked linked, float viewportPx, int depth) {
+        if (linked.none() || !sheet.toLowerCase(Locale.ROOT).contains("@import")) {
+            return sheet;
+        }
+        String s = Css.stripComments(sheet);
+        StringBuilder out = new StringBuilder(s.length());
+        int i = 0;
+        while (true) {
+            while (i < s.length() && Character.isWhitespace(s.charAt(i))) {
+                i++;
+            }
+            String rest = s.substring(i);
+            Matcher cs = CHARSET.matcher(rest);
+            if (cs.find()) {
+                i += cs.end();
+                continue;
+            }
+            Matcher m = IMPORT.matcher(rest);
+            if (!m.find()) {
+                break;
+            }
+            i += m.end();
+            String target = null;
+            for (int g = 1; g <= 5 && target == null; g++) {
+                target = m.group(g);
+            }
+            String media = m.group(6).strip();
+            if (depth >= MAX_IMPORT_DEPTH || !Media.matches(media, viewportPx)) {
+                continue;
+            }
+            String ref = Linked.resolve(base, target);
+            String text = ref == null ? null : linked.text(ref);
+            if (text != null) {
+                out.append(imported(text, ref, linked, viewportPx, depth + 1)).append('\n');
+            }
+        }
+        return out.append(s, i, s.length()).toString();
     }
 
     // Filed under what the selector's last compound step needs: its id, else a class, else its tag

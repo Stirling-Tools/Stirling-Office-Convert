@@ -13,7 +13,8 @@ The converter needs no native libraries or external processes. It also converts 
 
 PDF-to-Office documents contain real paragraphs, headings, lists, tables, footnotes, headers and footers.
 Office-to-PDF reads saved content without running macros, scripts or formulas or fetching linked resources.
-HTML converts without a browser: scripts never run and only pictures inside the file (`data:` URIs) are drawn.
+HTML converts without a browser: scripts never run and nothing is fetched; pictures and style sheets come from the
+file itself (`data:` URIs), a `.zip` of the page, or a caller-supplied `HtmlAssets`.
 iWork files use their embedded PDF or picture preview. PDF/A level a requires an already tagged PDF;
 the converter does not create a structure tree for an untagged document.
 
