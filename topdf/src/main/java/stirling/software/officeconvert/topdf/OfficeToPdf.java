@@ -93,7 +93,7 @@ public final class OfficeToPdf {
                         "sylk", "dif", "dbf", "numbers", "wk1", "wks", "wk3", "wk4", "123" -> XLSX;
                 case "csv" -> CSV;
                 case "tsv", "tab" -> TSV;
-                case "html", "htm", "xhtml", "zip", "epub" -> HTML;
+                case "html", "htm", "xhtml", "zip", "epub", "mobi", "azw3", "azw", "prc", "pdb", "fb2", "fbz" -> HTML;
                 case "json" -> JSON;
                 case "ppt", "pps", "pot" -> PPT;
                 default -> {
@@ -104,7 +104,7 @@ public final class OfficeToPdf {
                             + " .odt, .ott, .fodt, .odm, .ods, .ots, .fods, .odp, .otp, .fodp, .odg, .otg, .fodg, .sxw, .stw,"
                             + " .sxc, .stc, .sxi, .sti, .sxd, .std, .vsdx, .vsdm, .vssx, .vssm, .vstx, .vstm, .xml, .slk,"
                             + " .dif, .dbf, .wk1, .wks, .wk3, .wk4, .123, .pages, .numbers, .key, .txt,"
-                            + " .text, .log, .asc, .csv, .tsv, .tab, .html, .htm, .xhtml, .zip of HTML, .epub or .json");
+                            + " .text, .log, .asc, .csv, .tsv, .tab, .html, .htm, .xhtml, .zip of HTML, .epub, .mobi, .azw3, .azw, .prc, .pdb, .fb2, .fbz or .json");
                 }
             };
         }
@@ -117,6 +117,7 @@ public final class OfficeToPdf {
                         "odm", "ods", "ots", "fods", "odp", "otp", "fodp", "odg", "otg", "fodg", "xml", "sxw", "stw", "sxc",
                         "stc", "sxi", "sti", "sxd", "std", "vsdx", "vsdm", "vssx", "vssm", "vstx", "vstm" -> true;
                 case "txt", "text", "log", "asc", "csv", "tsv", "tab", "html", "htm", "xhtml", "json" -> true;
+                case "mobi", "azw3", "azw", "prc", "fb2", "fbz" -> true;
                 case "slk", "sylk", "dif", "dbf", "pages", "numbers", "key", "wk1", "wks", "wk3", "wk4", "123" -> true;
                 default -> false;
             };
