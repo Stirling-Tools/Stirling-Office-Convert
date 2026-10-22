@@ -83,6 +83,12 @@ final class TrueTypeWriter {
         return glyphs.size() - 1;
     }
 
+    void keepComponentIds() {
+        for (int i = 0; i < glyphs.size(); i++) {
+            components.putIfAbsent(i, i);
+        }
+    }
+
     int addEmpty(int advance) {
         glyphs.add(new Glyph(new byte[0], advance, 0));
         return glyphs.size() - 1;
