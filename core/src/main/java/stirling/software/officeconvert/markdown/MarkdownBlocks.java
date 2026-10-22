@@ -31,8 +31,11 @@ final class MarkdownBlocks {
 
     private static final String BULLET = String.valueOf((char) 0x2022);
 
+    private static final int CODE_CHARS = 1 << 20;
+
     private final Pictures pictures;
     private final List<String> codeLines = new ArrayList<>();
+    private int codeLength;
     private boolean codeBlocks = true;
     private float codeIndent = Float.NaN;
     private float codeChar = 6f;
@@ -54,7 +57,7 @@ final class MarkdownBlocks {
 
     void paragraph(StringBuilder sb, Paragraph p) throws IOException {
         if (codeBlocks && codeLine(p)) {
-            code(p);
+            code(sb, p);
             return;
         }
         flush(sb);
@@ -66,14 +69,15 @@ final class MarkdownBlocks {
             }
         }
         floats(sb, before);
+        flush(sb);
         int heading = heading(p.style);
         String indent = p.list == null ? "" : "    ".repeat(Math.max(0, Math.min(8, p.list.level())));
         String text = inline(p, heading > 0 ? " " : "  \n" + indent + (p.list == null ? "" : "  "), false, heading > 0);
         if (!text.isBlank()) {
             if (heading > 0) {
-                block(sb, "#".repeat(heading) + " " + text.strip(), false);
+                block(sb, "#".repeat(heading) + " " + keepClosingHash(text.strip()), false);
             } else if (p.list != null) {
-                block(sb, indent + MARK + "L" + p.list.numId() + ":" + p.list.level() + MARK + " " + text.strip(), true);
+                block(sb, indent + MARK + "L" + p.list.numId() + ":" + p.list.level() + MARK + " " + startSafe(text.strip()), true);
             } else {
                 block(sb, startSafe(text.strip()), false);
             }
@@ -183,7 +187,7 @@ final class MarkdownBlocks {
             return null;
         }
         String alt = pic.description == null ? "" : pic.description.replaceAll("\\s+", " ").strip();
-        return "![" + escape(alt, true) + "](" + uri + ")";
+        return "![" + escape(alt) + "](" + uri + ")";
     }
 
     private void block(StringBuilder sb, String text, boolean list) {
@@ -205,7 +209,7 @@ final class MarkdownBlocks {
                 case Inline.Text t -> {
                     StringBuilder text = new StringBuilder(clean(t.text()));
                     while (i + 1 < list.size() && list.get(i + 1) instanceof Inline.Text n
-                            && Objects.equals(n.style(), t.style()) && Objects.equals(n.link(), t.link())
+                            && sameMarkup(n.style(), t.style()) && Objects.equals(n.link(), t.link())
                             && n.anchorPage() == t.anchorPage()) {
                         text.append(clean(n.text()));
                         i++;
@@ -256,7 +260,7 @@ final class MarkdownBlocks {
             boolean pad = core.startsWith("`") || core.endsWith("`");
             body = fence + (pad ? " " : "") + inner + (pad ? " " : "") + fence;
         } else {
-            body = escape(core, inTable);
+            body = escape(core);
             if (s != null) {
                 if (s.strike()) {
                     body = "~~" + body + "~~";
@@ -280,15 +284,26 @@ final class MarkdownBlocks {
         sb.append(lead > 0 ? " " : "").append(body).append(trail < text.length() ? " " : "");
     }
 
-    static String escape(String s, boolean inTable) {
+    private static boolean sameMarkup(RunStyle a, RunStyle b) {
+        if (Objects.equals(a, b)) {
+            return true;
+        }
+        return a != null && b != null && a.bold() == b.bold() && a.italic() == b.italic() && a.strike() == b.strike()
+                && Integer.signum(a.vertAlign()) == Integer.signum(b.vertAlign()) && mono(a) == mono(b);
+    }
+
+    private static boolean mono(RunStyle s) {
+        return s.font() != null && MONO.matcher(s.font()).matches();
+    }
+
+    static String escape(String s) {
         StringBuilder sb = new StringBuilder(s.length() + 8);
         for (int i = 0; i < s.length(); i++) {
             char c = s.charAt(i);
             switch (c) {
-                case '\\', '*', '_', '`', '[', ']' -> sb.append('\\').append(c);
+                case '\\', '*', '_', '`', '[', ']', '|' -> sb.append('\\').append(c);
                 case '<' -> sb.append("&lt;");
                 case '&' -> sb.append("&amp;");
-                case '|' -> sb.append(inTable ? "\\|" : "|");
                 case '~' -> sb.append(i + 1 < s.length() && s.charAt(i + 1) == '~' ? "\\~" : "~");
                 default -> sb.append(c);
             }
@@ -304,6 +319,10 @@ final class MarkdownBlocks {
             best = Math.max(best, run);
         }
         return best;
+    }
+
+    private static String keepClosingHash(String title) {
+        return title.endsWith("#") ? title.substring(0, title.length() - 1) + "\\#" : title;
     }
 
     private static String startSafe(String text) {
@@ -357,7 +376,7 @@ final class MarkdownBlocks {
         return any;
     }
 
-    private void code(Paragraph p) {
+    private void code(StringBuilder sb, Paragraph p) {
         StringBuilder line = new StringBuilder();
         float size = 10f;
         for (Inline in : p.inlines) {
@@ -376,7 +395,12 @@ final class MarkdownBlocks {
         }
         int spaces = Math.max(0, Math.min(40, Math.round((p.indentLeft - codeIndent) / codeChar)));
         for (String l : line.toString().split("\n", -1)) {
-            codeLines.add(" ".repeat(spaces) + l.stripTrailing());
+            String indented = " ".repeat(spaces) + l.stripTrailing();
+            codeLines.add(indented);
+            codeLength += indented.length() + 1;
+        }
+        if (codeLength > CODE_CHARS) {
+            flush(sb);
         }
     }
 
@@ -388,6 +412,7 @@ final class MarkdownBlocks {
         String fence = "`".repeat(Math.max(3, longestRun(body, '`') + 1));
         block(sb, fence + "\n" + body + "\n" + fence, false);
         codeLines.clear();
+        codeLength = 0;
         codeIndent = Float.NaN;
     }
 
@@ -430,7 +455,7 @@ final class MarkdownBlocks {
             if (label.matches("\\d{1,9}")) {
                 return label + ".";
             }
-            return "- " + escape(label, false);
+            return "- " + escape(label);
         } catch (RuntimeException e) {
             return "-";
         }
