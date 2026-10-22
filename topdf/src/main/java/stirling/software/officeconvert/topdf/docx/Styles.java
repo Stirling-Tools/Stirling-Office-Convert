@@ -27,6 +27,8 @@ final class Styles {
 
     private final Map<String, ParaProps> paraCache = new HashMap<>();
 
+    private final Map<String, ParaProps[]> numberingSplitCache = new HashMap<>();
+
     private final Map<String, RunProps> paraRunCache = new HashMap<>();
 
     private final Map<String, RunProps> charCache = new HashMap<>();
@@ -126,6 +128,31 @@ final class Styles {
                 p.mergeFrom(ParaProps.parse(d.el.child("w:pPr"), theme));
             }
             return p;
+        });
+    }
+
+    ParaProps[] paragraphAroundNumbering(String id) {
+        String key = id == null || !defs.containsKey(id) ? defaultParagraph : id;
+        if (key == null) {
+            return new ParaProps[] {new ParaProps(), new ParaProps()};
+        }
+        return numberingSplitCache.computeIfAbsent(key, k -> {
+            List<Def> defs = chain(k, "paragraph");
+            List<ParaProps> own = new ArrayList<>();
+            int holder = 0;
+            for (int i = 0; i < defs.size(); i++) {
+                ParaProps p = ParaProps.parse(defs.get(i).el.child("w:pPr"), theme);
+                own.add(p);
+                if (p.numId != null) {
+                    holder = i;
+                }
+            }
+            ParaProps above = new ParaProps();
+            ParaProps below = new ParaProps();
+            for (int i = 0; i < own.size(); i++) {
+                (i < holder ? above : below).mergeFrom(own.get(i));
+            }
+            return new ParaProps[] {above, below};
         });
     }
 
