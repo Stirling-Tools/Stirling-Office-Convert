@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
 import java.nio.file.Path;
+import java.util.List;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -193,6 +194,31 @@ class DocxChartTest {
                 + "</c:barChart><c:catAx><c:axId val=\"1\"/><c:axPos val=\"b\"/><c:crossAx val=\"2\"/></c:catAx>"
                 + "<c:valAx><c:axId val=\"2\"/><c:axPos val=\"l\"/><c:majorGridlines/><c:crossAx val=\"1\"/>"
                 + "</c:valAx></c:plotArea><c:legend><c:legendPos val=\"r\"/></c:legend></c:chart></c:chartSpace>";
+    }
+
+    @Test
+    void longCategoryAndSeriesTextIsCappedWithoutSplittingASurrogatePair() throws IOException {
+        String text = "c".repeat(ChartReader.MAX_TEXT_CHARS - 1) + "\uD83D\uDE00" + "c".repeat(30_000);
+        String chart = plainChart(new Object[] {text, text, "B"}, new Object[] {1, 2, 3}).replace(
+                cache("str", null, "Risk"), cache("str", null, text));
+        XEl root = XTree.parse(new java.io.ByteArrayInputStream(chart.getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+        Chart read = ChartReader.read(root, Theme.DEFAULT);
+        String capped = "c".repeat(ChartReader.MAX_TEXT_CHARS - 1);
+        assertEquals(List.of(capped, capped, "B"), read.categories());
+        assertEquals(capped, read.groups().get(0).series().get(0).name());
+    }
+
+    @Test
+    void longMultiLevelCategoryTextIsCapped() throws IOException {
+        String text = "m".repeat(32_767);
+        String multi = "<c:multiLvlStrRef><c:f>S!$A$1:$B$2</c:f><c:multiLvlStrCache><c:ptCount val=\"2\"/><c:lvl>"
+                + "<c:pt idx=\"0\"><c:v>" + text + "</c:v></c:pt><c:pt idx=\"1\"><c:v>B</c:v></c:pt></c:lvl>"
+                + "</c:multiLvlStrCache></c:multiLvlStrRef>";
+        String chart = plainChart(new Object[] {"x", "y"}, new Object[] {1, 2}).replace(
+                cache("str", null, new Object[] {"x", "y"}), multi);
+        XEl root = XTree.parse(new java.io.ByteArrayInputStream(chart.getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+        Chart read = ChartReader.read(root, Theme.DEFAULT);
+        assertEquals(List.of("m".repeat(ChartReader.MAX_TEXT_CHARS), "B"), read.categories());
     }
 
     @Test
