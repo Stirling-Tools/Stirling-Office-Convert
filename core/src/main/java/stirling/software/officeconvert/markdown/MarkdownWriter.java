@@ -96,21 +96,18 @@ public final class MarkdownWriter implements DocSink, Closeable {
         if (ref == null) {
             return null;
         }
+        if (layout == Layout.SINGLE_FILE) {
+            return "data:" + ref.contentType() + ";base64," + Base64.getEncoder().encodeToString(media.bytes(ref));
+        }
         String known = files.get(ref.name());
         if (known != null) {
             return known;
         }
-        byte[] bytes = media.bytes(ref);
-        String uri;
-        if (layout == Layout.PACKAGE) {
-            String ext = ref.contentType().equals("image/jpeg") ? "jpg" : ref.contentType().substring(6);
-            uri = "images/picture" + (files.size() + 1) + "." + ext;
-            ZipParts.picture(zip(), uri, bytes);
-        } else {
-            uri = "data:" + ref.contentType() + ";base64," + Base64.getEncoder().encodeToString(bytes);
-        }
-        files.put(ref.name(), uri);
-        return uri;
+        String ext = ref.contentType().equals("image/jpeg") ? "jpg" : ref.contentType().substring(6);
+        String path = "images/picture" + (files.size() + 1) + "." + ext;
+        ZipParts.picture(zip(), path, media.bytes(ref));
+        files.put(ref.name(), path);
+        return path;
     }
 
     private ZipOutputStream zip() {
