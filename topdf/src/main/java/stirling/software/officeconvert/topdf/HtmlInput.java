@@ -21,6 +21,9 @@ final class HtmlInput {
 
     static final long MAX_BYTES = 64L << 20;
 
+    static final String PACKAGES_REFUSED = "The ZIP file is a package of separate files, which converts only when"
+            + " packages are allowed (Options.allowPackages, --allow-packages)";
+
     private HtmlInput() {}
 
     static boolean is(Path source, Format requested) throws IOException {
@@ -35,7 +38,7 @@ final class HtmlInput {
     }
 
     static boolean packaged(Path source, Format requested) throws IOException {
-        if (requested != Format.HTML && !zipNamed(source)) {
+        if (requested != Format.HTML && requested != Format.EPUB && !zipNamed(source)) {
             return false;
         }
         return zip(head(source));
@@ -97,7 +100,7 @@ final class HtmlInput {
             }
         }
         if (packaged(source, requested)) {
-            return renderPackage(source, sink, options, renderer);
+            return renderPackage(source, requested, sink, options, renderer);
         }
         if (!is(source, requested)) {
             return null;
@@ -105,13 +108,18 @@ final class HtmlInput {
         return render(source, sink, options, renderer, options.htmlAssets());
     }
 
-    private static Result renderPackage(Path source, OutputStream sink, Options options, OfficeToPdf.Renderer renderer)
-            throws IOException {
+    private static Result renderPackage(Path source, Format requested, OutputStream sink, Options options,
+            OfficeToPdf.Renderer renderer) throws IOException {
         try (HtmlPackage pkg = HtmlPackage.open(source)) {
-            if (EpubBook.is(pkg)) {
+            boolean book = EpubBook.is(pkg);
+            if (requested == Format.EPUB && !book) {
+                throw new IOException("The file is not an EPUB book: it has no META-INF/container.xml");
+            }
+            if (book && (requested == Format.EPUB || options.allowPackages())) {
                 return renderBook(pkg, sink, options, renderer);
             }
-            String fb2 = pkg.page() == null ? fictionBook(pkg) : null;
+            String fb2 = pkg.page() == null && (options.allowPackages() || compressedFictionBook(source))
+                    ? fictionBook(pkg) : null;
             if (fb2 != null) {
                 byte[] xml = pkg.read(fb2);
                 if (xml == null) {
@@ -119,6 +127,9 @@ final class HtmlInput {
                             + (HtmlAssets.MAX_ASSET_BYTES >> 20) + " MB");
                 }
                 return renderBook(Fb2Book.read(xml), sink, options, renderer);
+            }
+            if (!options.allowPackages()) {
+                throw new IOException(PACKAGES_REFUSED);
             }
             if (pkg.page() == null) {
                 throw new IOException("The ZIP file holds no HTML page");
@@ -167,6 +178,12 @@ final class HtmlInput {
         }
     }
 
+    private static boolean compressedFictionBook(Path source) {
+        Path name = source.getFileName();
+        String n = name == null ? "" : name.toString().toLowerCase(Locale.ROOT);
+        return n.endsWith(".fbz") || n.endsWith(".fb2.zip");
+    }
+
     private static String fictionBook(HtmlPackage pkg) {
         String found = null;
         for (String name : pkg.names()) {
@@ -187,12 +204,13 @@ final class HtmlInput {
         if (bytes > MAX_BYTES) {
             throw new IOException("The HTML file is larger than " + (MAX_BYTES >> 20) + " MB");
         }
+        HtmlAssets once = HtmlDocument.readOnce(assets);
         Path pkg = Files.createTempFile("office-to-pdf-", ".docx");
         try {
-            HtmlDocument.Laid laid = lay(source, pkg, options, bytes, 1f, assets);
+            HtmlDocument.Laid laid = lay(source, pkg, options, bytes, 1f, once);
             if (laid.fit() < 0.99f) {
                 // content wider than the page: laid out again on larger paper, then shrunk to fit as browsers print
-                laid = lay(source, pkg, options, bytes, laid.fit(), assets);
+                laid = lay(source, pkg, options, bytes, laid.fit(), once);
             }
             OfficeToPdf.stopIfInterrupted();
             if (laid.fit() >= 0.99f) {

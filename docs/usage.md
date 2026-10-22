@@ -26,11 +26,12 @@ For Word, PowerPoint and Excel input (`.docx .docm .dotx .dotm .pptx .pptm .ppsx
 `.rtf`, Word 2003 XML, XML Spreadsheet 2003 and Flat OPC `.xml`, Visio 2013 and later `.vsdx .vsdm .vssx .vstx`,
 OpenDocument `.odt .ott .fodt .odm .ods .ots .fods .odp .otp .fodp .odg .otg .fodg`, OpenOffice.org 1.x `.sxw .stw .sxc
 .stc .sxi .sti .sxd .std`, SYLK, DIF and dBASE `.slk .dif .dbf`, Lotus 1-2-3 `.wk1 .wks .wk3 .wk4 .123`, Apple iWork `.pages .numbers .key` (from the preview they hold), plain text `.txt .text .log .asc`, tables
-`.csv .tsv .tab`, HTML `.html .htm .xhtml` or a `.zip` of a page, eBooks `.epub .mobi .azw3 .azw .prc .pdb .fb2 .fbz` and this library's JSON `.json`), which converts to PDF: `--password p` (a password protected document), `--max-pages n` (default 10000, 0 = all), `--timeout s` (default 300, 0 =
+`.csv .tsv .tab`, HTML `.html .htm .xhtml` or a `.zip` of a page (with `--allow-packages`), eBooks `.epub .mobi .azw3 .azw .prc .pdb .fb2 .fbz` and this library's JSON `.json`), which converts to PDF: `--password p` (a password protected document), `--max-pages n` (default 10000, 0 = all), `--timeout s` (default 300, 0 =
 none), `--fonts dir` (repeatable; an extra folder of fonts), `--font-map Family=Installed` (repeatable; draw a
 family with an installed one, such as `Aptos=Inter`), `--font-width Family=scale` (repeatable; scale a substituted
 family's widths, 0.5 to 2), `--no-system-fonts` (only the given fonts and the bundled Liberation Sans, for
-reproducible output), `-q`, and `--format pdf` to take only the Office files out
+reproducible output), `--allow-packages` (convert a `.zip` of an HTML page, or an EPUB book not named `.epub`), `--allow-local-files` (let an HTML page
+draw the pictures and style sheets in its own folder, never outside it), `-q`, and `--format pdf` to take only the Office files out
 of a folder. A folder converts both its PDFs and its Office files; its text and CSV files only with `--format pdf`. Inputs that would write the same output name (such
 as `report.docx` and `report.xlsx`) keep their own extension in it (`report.docx.pdf`, `report.xlsx.pdf`), and Office
 owner files (`~$name`) are skipped. An input is never overwritten: an output that would take an input's name keeps that
@@ -539,25 +540,30 @@ queries are answered for print at the page's text width, `!important`, custom pr
 (short items share a line); absolute positions and visually hidden text (screen-reader-only, off-page, closed
 `<details>`) are left out. Nothing is fetched and no script runs: linked style sheets, `@import`, `@font-face`,
 `url()` and pictures on the web or on disk are left out with a warning, and only pictures inside the file are drawn
-(PNG, JPEG, GIF, BMP and SVG; WebP and AVIF are not). A `.zip` holding a page (the shallowest `index.html`, else the
+(PNG, JPEG, GIF, BMP and SVG; WebP and AVIF are not). A `.zip` of a page is refused unless
+`Options.allowPackages(true)` (`--allow-packages`) is given; then the page it holds (the shallowest `index.html`, else the
 shallowest `.html`) draws the pictures, linked style sheets and `@import`s it holds, resolved relative to the page and
 never outside the archive. A library caller can supply them another way with `Options.htmlAssets(HtmlAssets)`:
-`HtmlAssets.folder(root, page)` reads files inside one folder (no `..`, absolute paths or links leading out of it), and
+`HtmlAssets.folder(root, page)` reads files inside one folder (no `..`, absolute paths or links leading out of it; what
+`--allow-local-files` uses, rooted at the page's folder), and
 a caller's own implementation receives each reference resolved against its `base()`, such as a URL it fetches itself.
 At most 4,000 linked files and 192 MB are read per page, 64 MB each.
 
 EPUB (`.epub`, EPUB 2 and 3) is read in its reading order (the package document's spine) into one HTML page: each
 document starts a new page, its own `<style>` rules apply only to it, links between documents become links inside
 the PDF, and the cover picture (an SVG-wrapped cover page included) comes first. Pictures and style sheets come from
-the book. A style sheet that only some documents link applies only to those. DRM-protected books cannot be read.
+the book. A style sheet that only some documents link applies only to those. A book converts by default when it is
+named `.epub` or streamed as `Format.EPUB`; a book inside any other `.zip`, or streamed as `Format.HTML`, is a package
+and needs `allowPackages`. DRM-protected books cannot be read.
 
 Kindle and Mobipocket books (`.mobi .azw .prc`, `.pdb` PalmDOC text, and KF8 `.azw3`) are read without DRM only:
 uncompressed, PalmDOC and HUFF/CDIC text; a KF8 book (or the KF8 half of a combined `.mobi`) is rebuilt from its
 skeleton and fragment tables with its style sheet flows, `kindle:embed` pictures and `kindle:pos` links; an older
 Mobipocket book keeps its `filepos` links, page breaks and pictures. The title, author and cover come from the EXTH
-metadata. FictionBook 2 (`.fb2`, or a `.fbz`/`.fb2.zip` holding one) is read with sections as chapters, its titles,
+metadata. FictionBook 2 (`.fb2`, or a `.fbz`/`.fb2.zip` holding one; any other `.zip` holding one only with
+`--allow-packages`) is read with sections as chapters, its titles,
 epigraphs, poems, citations, tables, embedded pictures, cover and notes; a DOCTYPE is refused. eBooks are limited to
-256 MB (Kindle) and 128 MB (FictionBook) with 64 MB of text. HTML files are limited to 64 MB, and parsing, the cascade, SVG
+256 MB (Kindle) and 128 MB (FictionBook) with 64 MB of text. An eBook only ever draws what the book file holds. HTML files are limited to 64 MB, and parsing, the cascade, SVG
 painting and nesting each work within fixed budgets so a hostile page cannot hang or exhaust the converter.
 
 JSON (`.json`) is the document model that PDF to JSON writes ([format](json-format.md)), hand written or edited;

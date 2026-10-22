@@ -259,8 +259,8 @@ final class Cascade {
     // and could be made to backtrack, and state ones (:hover) never match a printed page
     private static String usable(String selector) {
         // nothing on a printed page is hovered, focused or visited, so :not() of those always holds
-        String s = NOT_STATE.matcher(selector.replace(":link", "")).replaceAll("");
-        if (s.contains("::")) {
+        String s = wordAttributes(NOT_STATE.matcher(selector.replace(":link", "")).replaceAll(""));
+        if (s == null || s.contains("::")) {
             return null;
         }
         // :has of one child compound costs a pass over the children, so layouts chosen by child count still match
@@ -276,6 +276,27 @@ final class Cascade {
     // a colon escaped in a class name (.md\\:flex) or quoted in an attribute value is not a pseudo-class
     private static final Pattern NOT_STATE = Pattern.compile(
             ":not[(][ ]*:(hover|focus|focus-visible|focus-within|active|visited|target|checked)[ ]*[)]");
+
+    private static String wordAttributes(String selector) {
+        Matcher m = WORD_ATTRIBUTE.matcher(selector);
+        StringBuilder out = new StringBuilder();
+        while (m.find()) {
+            String value = m.group(2).strip();
+            if (value.length() >= 2 && (value.charAt(0) == '"' || value.charAt(0) == '\'')
+                    && value.charAt(value.length() - 1) == value.charAt(0)) {
+                value = value.substring(1, value.length() - 1);
+            }
+            if (!WORD.matcher(value).matches()) {
+                return null;
+            }
+            m.appendReplacement(out, Matcher.quoteReplacement("[" + m.group(1).strip() + "~=(^|\\s)" + value + "(\\s|$)]"));
+        }
+        m.appendTail(out);
+        return out.toString();
+    }
+
+    private static final Pattern WORD_ATTRIBUTE = Pattern.compile("\\[([^\\[\\]~|^$*=]+)~=([^\\[\\]]*)\\]");
+    private static final Pattern WORD = Pattern.compile("[-_A-Za-z0-9]+");
 
     private static final Pattern PSEUDO = Pattern.compile("(?<!\\\\):([a-zA-Z-]+)");
     private static final String QUOTED = "\"[^\"]*\"|'[^']*'";

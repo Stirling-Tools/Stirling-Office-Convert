@@ -32,6 +32,7 @@ import stirling.software.officeconvert.Pictures;
 import stirling.software.officeconvert.legacy.PdfToPpt;
 import stirling.software.officeconvert.pdfa.PdfALevel;
 import stirling.software.officeconvert.pdfa.PdfToPdfA;
+import stirling.software.officeconvert.topdf.HtmlAssets;
 import stirling.software.officeconvert.topdf.OfficeToPdf;
 import stirling.software.officeconvert.topdf.UnsupportedFormats;
 import stirling.software.officeconvert.topdf.crypt.Passwords;
@@ -67,6 +68,7 @@ public final class Main {
         String password = null;
         boolean quiet = false;
         boolean overwrite = false;
+        boolean localFiles = false;
         String format = "docx";
         boolean formatGiven = false;
         boolean pagesGiven = false;
@@ -117,6 +119,8 @@ public final class Main {
                     case "--pictures" -> pictures = pictures(value(args, ++i, a));
                     case "-q", "--quiet" -> quiet = true;
                     case "--overwrite" -> overwrite = true;
+                    case "--allow-packages" -> office = office.allowPackages(true);
+                    case "--allow-local-files" -> localFiles = true;
                     case "-h", "--help" -> {
                         usage();
                         return 0;
@@ -243,7 +247,8 @@ public final class Main {
                 if (archival != null) {
                     notes = PdfToPdfA.convert(pdf, target, archival).warnings();
                 } else if (officeInput) {
-                    result = officeToPdf(pdf, target, office);
+                    result = officeToPdf(pdf, target, localFiles && page(pdf) ? office.htmlAssets(
+                            HtmlAssets.folder(pdf.toAbsolutePath().getParent(), pdf.getFileName().toString())) : office);
                 } else {
                     convert(pdf, target, options, slides, books);
                 }
@@ -383,7 +388,12 @@ public final class Main {
         return file.getFileName() != null && OfficeToPdf.Format.recognises(file);
     }
 
-    private static boolean officeOrPage(Path file) {
+    private static boolean page(Path file) {
+        String name = file.getFileName() == null ? "" : file.getFileName().toString().toLowerCase(Locale.ROOT);
+        return name.endsWith(".html") || name.endsWith(".htm") || name.endsWith(".xhtml");
+    }
+
+    static boolean officeOrPage(Path file) {
         String name = file.getFileName() == null ? "" : file.getFileName().toString().toLowerCase(Locale.ROOT);
         return isOffice(file) || name.endsWith(".zip") || name.endsWith(".epub") || name.endsWith(".pdb");
     }
@@ -505,7 +515,7 @@ public final class Main {
                         + " [-o out.pdf|dir] [--format pdf] [--password p]"
                         + " [--max-pages n (default 10000, 0 = all)] [--timeout s (default 300, 0 = none)]"
                         + " [--fonts dir]... [--font-map Family=Installed]... [--font-width Family=scale]..."
-                        + " [--no-system-fonts] [--overwrite] [-q]"
+                        + " [--no-system-fonts] [--allow-packages] [--allow-local-files] [--overwrite] [-q]"
                         + System.lineSeparator()
                         + "       office-convert <in.pdf|dir>... --pdfa 1a|1b|2a|2b|2u|3a|3b|3u [-o out.pdf|dir] [--password p]"
                         + " [--timeout s] [--fonts dir]... [--font-map Family=Installed]... [--no-system-fonts] [--overwrite] [-q]"
@@ -520,7 +530,10 @@ public final class Main {
                         + " files from their preview (.pages .numbers .key), plain text (.txt .text .log .asc) and comma or"
                         + " tab separated tables (.csv .tsv .tab), HTML (.html .htm .xhtml) and the JSON this tool writes (.json) convert to PDF; --password opens a protected one. A folder converts its PDFs and Office files;"
                         + " --format pdf takes only its Office and text files. Nothing a document"
-                        + " links to is fetched and no macro, field or formula is run."
+                        + " links to is fetched and no macro, field or formula is run. A .zip of an HTML page converts only"
+                        + " with --allow-packages; --allow-local-files lets an HTML page draw the pictures and style sheets"
+                        + " in its own folder (never outside it). eBooks use only what they hold; an EPUB inside another .zip, or"
+                        + " a FictionBook inside a .zip not named .fbz or .fb2.zip, needs --allow-packages."
                         + System.lineSeparator()
                         + "The output's extension picks the format: .docx, .odt, .fodt, .xml (flat ODT), .rtf, .doc (RTF content),"
                         + " .txt, .html (one file, pictures inline), .json (the document model), .pptx, .odp, .ppt, .xlsx or .ods; --format names it for a directory of outputs."

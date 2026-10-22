@@ -133,6 +133,34 @@ class EpubToPdfTest {
     }
 
     @Test
+    void booksInsideOtherZipsNeedPackagesAllowed() throws IOException {
+        OfficeToPdf.Options defaults = OfficeToPdf.Options.defaults().timeout(Duration.ofMinutes(2));
+        Path zipped = epub("book.zip", book());
+        IOException named = assertThrows(IOException.class,
+                () -> OfficeToPdf.convert(zipped, dir.resolve("zipped.pdf"), defaults));
+        assertTrue(named.getMessage().contains("--allow-packages"), named.getMessage());
+        assertFalse(Files.exists(dir.resolve("zipped.pdf")));
+        IOException streamed = assertThrows(IOException.class, () -> {
+            try (var in = Files.newInputStream(zipped)) {
+                OfficeToPdf.convert(in, OfficeToPdf.Format.HTML, new ByteArrayOutputStream(), defaults);
+            }
+        });
+        assertTrue(streamed.getMessage().contains("--allow-packages"), streamed.getMessage());
+        ByteArrayOutputStream declared = new ByteArrayOutputStream();
+        try (var in = Files.newInputStream(zipped)) {
+            OfficeToPdf.convert(in, OfficeToPdf.Format.EPUB, declared, defaults);
+        }
+        try (PDDocument doc = Loader.loadPDF(declared.toByteArray())) {
+            assertTrue(new PDFTextStripper().getText(doc).contains("Chapter Two"));
+        }
+        assertEquals(OfficeToPdf.Format.EPUB, OfficeToPdf.Format.of(dir.resolve("book.epub")));
+        OfficeToPdf.convert(zipped, dir.resolve("allowed.pdf"), defaults.allowPackages(true));
+        try (PDDocument doc = Loader.loadPDF(dir.resolve("allowed.pdf").toFile())) {
+            assertTrue(new PDFTextStripper().getText(doc).contains("Chapter Two"));
+        }
+    }
+
+    @Test
     void chapterStylesStayInTheirChapter() throws IOException {
         Map<String, byte[]> e = book();
         e.put("OEBPS/text/one.xhtml", utf8(chapter("<style>body { text-align: right } p { color: red }</style>",
@@ -170,6 +198,14 @@ class EpubToPdfTest {
         assertEquals("a{background:url(\"/OEBPS/images/a.png\")} b{src:url(data:x)} c{x:url(\"/OEBPS/f.otf\")}",
                 EpubBook.packageUrls("a{background:url('../images/a.png')} b{src:url(data:x)} c{x:url(../f.otf)}",
                         "OEBPS/styles/s.css"));
+    }
+
+    @Test
+    void unclosedSheetUrlsStayLinear() {
+        String css = "a{b:url(x" + " ".repeat(400_000) + "}" + "url(".repeat(100_000) + "c{d:url( 'e(1).png' )}";
+        String out = org.junit.jupiter.api.Assertions.assertTimeoutPreemptively(Duration.ofSeconds(10),
+                () -> EpubBook.packageUrls(css, "OEBPS/s.css"));
+        assertTrue(out.endsWith("c{d:url(\"/OEBPS/e(1).png\")}"), out.substring(out.length() - 40));
     }
 
     @Test

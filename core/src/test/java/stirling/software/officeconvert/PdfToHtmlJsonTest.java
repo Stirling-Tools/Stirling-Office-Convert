@@ -146,6 +146,42 @@ class PdfToHtmlJsonTest {
         return out;
     }
 
+    private static Map<String, String> replayed(String json) throws IOException {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        try (DocxWriter writer = new DocxWriter(out)) {
+            JsonModel.replay(Json.parse(json), writer, new ArrayList<>());
+        }
+        return parts(out.toByteArray());
+    }
+
+    @Test
+    void jsonValuesCannotWriteWordMarkup() {
+        String body = ",\"body\":[{\"list\":{\"id\":1},\"content\":[{\"text\":\"x\"}]}]}";
+        assertThrows(IOException.class, () -> replayed("{\"lists\":[{\"id\":1,\"levels\":[{\"format\":"
+                + "\"decimal\\\"/><w:injected/><x a=\\\"\"}]}]" + body));
+        assertThrows(IOException.class, () -> replayed("{\"styles\":{\"languages\":{\"latin\":"
+                + "\"en\\\"/><w:injected/><x a=\\\"\"}}" + body));
+    }
+
+    @Test
+    void aNormalStyleWithoutAFontKeepsTheDefaultFont() throws IOException {
+        String styles = replayed("{\"styles\":{\"normal\":{\"font\":null}},\"body\":[{\"content\":[{\"text\":\"x\"}]}]}")
+                .get("word/styles.xml");
+        assertTrue(styles.contains("w:ascii=\"Calibri\""), styles);
+    }
+
+    @Test
+    void listLevelsWithoutAnIndentKeepItThroughJson() throws IOException {
+        String in = "{\"lists\":[{\"id\":1,\"levels\":[{\"indentLeft\":0,\"hanging\":0}]}],"
+                + "\"body\":[{\"list\":{\"id\":1},\"content\":[{\"text\":\"x\"}]}]}";
+        ByteArrayOutputStream json = new ByteArrayOutputStream();
+        try (JsonWriter writer = new JsonWriter(json, null)) {
+            JsonModel.replay(Json.parse(in), writer, new ArrayList<>());
+        }
+        assertEquals(replayed(in).get("word/numbering.xml"),
+                replayed(json.toString(StandardCharsets.UTF_8)).get("word/numbering.xml"));
+    }
+
     @Test
     void theJsonReaderHasLimits() {
         assertThrows(IOException.class, () -> Json.parse("[".repeat(Json.MAX_DEPTH + 2)));

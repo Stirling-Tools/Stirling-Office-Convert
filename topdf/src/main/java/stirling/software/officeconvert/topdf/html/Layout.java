@@ -406,7 +406,8 @@ final class Layout {
 
     private static float number(String s) {
         try {
-            return Math.max(0, Float.parseFloat(s.strip()));
+            float v = Float.parseFloat(s.strip());
+            return Float.isNaN(v) ? 1 : Math.max(0, Math.min(1e6f, v));
         } catch (NumberFormatException e) {
             return 1;
         }

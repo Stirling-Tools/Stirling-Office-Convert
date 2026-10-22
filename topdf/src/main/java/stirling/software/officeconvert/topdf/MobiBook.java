@@ -31,8 +31,9 @@ final class MobiBook {
     private static final Pattern OTHER_RECINDEX = Pattern.compile("\\b(?:hi|lo)recindex\\s*=\\s*['\"]?\\d*['\"]?",
             Pattern.CASE_INSENSITIVE);
 
-    private static final Pattern GUIDE = Pattern.compile("<guide\\b.*?</guide\\s*>",
-            Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
+    private static final Pattern GUIDE_START = Pattern.compile("<guide\\b", Pattern.CASE_INSENSITIVE);
+
+    private static final Pattern GUIDE_END = Pattern.compile("</guide\\s*>", Pattern.CASE_INSENSITIVE);
 
     private static final Pattern PAGE_BREAK = Pattern.compile("<mbp:pagebreak\\b[^<>]*>", Pattern.CASE_INSENSITIVE);
 
@@ -171,13 +172,25 @@ final class MobiBook {
         }
         anchored.append(raw, from, raw.length());
         String s = new String(anchored.toString().getBytes(StandardCharsets.ISO_8859_1), charset);
-        s = GUIDE.matcher(s).replaceAll("");
+        s = withoutGuides(s);
         s = PAGE_BREAK.matcher(s).replaceAll("<div style=\"page-break-before:always\"></div>");
         s = MBP.matcher(s).replaceAll("");
         s = LINK.matcher(s).replaceAll("$1href=\"#filepos$2\"");
         s = OTHER_RECINDEX.matcher(s).replaceAll("");
         s = RECINDEX.matcher(s).replaceAll("src=\"images/$1\"");
         return BASE_STYLE + paragraphSizes(s);
+    }
+
+    private static String withoutGuides(String s) {
+        Matcher start = GUIDE_START.matcher(s);
+        Matcher end = GUIDE_END.matcher(s);
+        StringBuilder out = new StringBuilder(s.length());
+        int from = 0;
+        while (start.find(from) && end.find(start.end())) {
+            out.append(s, from, start.start());
+            from = end.end();
+        }
+        return out.append(s, from, s.length()).toString();
     }
 
     private static String paragraphSizes(String s) {

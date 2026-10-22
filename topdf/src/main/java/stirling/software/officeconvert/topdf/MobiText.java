@@ -29,6 +29,9 @@ final class MobiText {
             }
             byte[] record = pdb.record(base + i);
             int end = Math.max(0, record.length - trailing(record, h.extraFlags()));
+            if (end > MAX_RECORD_TEXT) {
+                throw new IOException(DAMAGED);
+            }
             byte[] plain = switch (h.compression()) {
                 case MobiHeader.NONE -> Arrays.copyOf(record, end);
                 case MobiHeader.PALMDOC -> palmDoc(record, end);

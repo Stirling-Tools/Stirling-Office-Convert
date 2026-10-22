@@ -238,13 +238,14 @@ final class EpubBook {
         return t.isEmpty() ? null : t;
     }
 
-    private static final Pattern CSS_URL = Pattern.compile("url\\(\\s*(['\"]?)([^'\")]+)\\1\\s*\\)");
+    private static final Pattern CSS_URL = Pattern.compile(
+            "url\\(\\s*+(?:(['\"])([^'\"]*+)\\1|([^'\"()]++))\\s*+\\)");
 
     static String packageUrls(String css, String sheet) {
         Matcher m = CSS_URL.matcher(css);
         StringBuilder out = new StringBuilder(css.length());
         while (m.find()) {
-            String ref = m.group(2).strip();
+            String ref = (m.group(2) != null ? m.group(2) : m.group(3)).strip();
             String replacement = m.group(0);
             if (!ref.regionMatches(true, 0, "data:", 0, 5) && !ref.matches("(?i)^[a-z][a-z0-9+.-]*:.*")) {
                 String path = resolve(sheet, ref);
