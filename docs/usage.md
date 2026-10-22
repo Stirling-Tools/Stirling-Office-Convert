@@ -539,7 +539,7 @@ queries are answered for print at the page's text width, `!important`, custom pr
 (short items share a line); absolute positions and visually hidden text (screen-reader-only, off-page, closed
 `<details>`) are left out. Nothing is fetched and no script runs: linked style sheets, `@import`, `@font-face`,
 `url()` and pictures on the web or on disk are left out with a warning, and only pictures inside the file are drawn
-(PNG, JPEG, GIF, BMP and SVG; WebP and AVIF are not). HTML files are limited to 64 MB, and parsing, the cascade, SVG
+(PNG, JPEG, GIF, BMP, WebP and SVG; AVIF is not). HTML files are limited to 64 MB, and parsing, the cascade, SVG
 painting and nesting each work within fixed budgets so a hostile page cannot hang or exhaust the converter.
 
 JSON (`.json`) is the document model that PDF to JSON writes ([format](json-format.md)), hand written or edited;
