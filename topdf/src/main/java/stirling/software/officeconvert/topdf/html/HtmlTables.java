@@ -426,8 +426,9 @@ final class HtmlTables {
         t.indent = frame.left() + left;
         if (look.rightToLeft) {
             t.rightToLeft = true;
-            float right = Flow.length(d.get("margin-right"), look.size, frame.width());
-            t.indent = centred || inCentre || "center".equalsIgnoreCase(table.attr("align")) ? left : frame.right() + right;
+            float right = centred || inCentre || "center".equalsIgnoreCase(table.attr("align")) ? left
+                    : Flow.length(d.get("margin-right"), look.size, frame.width());
+            t.indent = frame.right() + right;
         }
     }
 

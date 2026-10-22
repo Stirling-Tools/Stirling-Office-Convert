@@ -167,6 +167,19 @@ class HtmlLayoutTest {
     }
 
     @Test
+    void aCentredRightToLeftTableSitsInTheMiddleOfItsInsetBlock() throws IOException {
+        for (String dir : new String[] {"ltr", "rtl"}) {
+            String side = dir.equals("rtl") ? "right" : "left";
+            Laid l = lay("<html dir=" + dir + "><body><div style='margin-" + side + ":200px'><table border=1 "
+                    + "style='margin:0 auto'><tr><td>Mid</td></tr></table></div></body></html>");
+            Word mid = l.word("Mid");
+            float centre = (mid.left() + mid.right()) / 2;
+            float expected = dir.equals("rtl") ? (l.pageWidth() - 150) / 2 : (l.pageWidth() + 150) / 2;
+            assertEquals(expected, centre, 4f, dir);
+        }
+    }
+
+    @Test
     void aBulletListInsideANumberedOneKeepsItsBullets() throws IOException {
         Laid l = lay("<html><body><ol><li>Prepare<ol><li>Merge</li><li>Changelog</li></ol></li>"
                 + "<li>Build<ul><li>Linux</li><li>macOS</li></ul></li></ol></body></html>");
