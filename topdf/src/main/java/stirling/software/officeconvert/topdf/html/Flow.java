@@ -81,6 +81,7 @@ final class Flow {
     private int rowItemStart = -1;
     private int rowNested;
     private int avoiding;
+    private boolean inColumns;
     private final List<Block> held = new ArrayList<>();
     private boolean outrun;
     private Element sized;
@@ -514,7 +515,7 @@ final class Flow {
 
     private boolean columns(Element e, Map<String, String> d, Look look, Frame frame, int depth, float left,
             float right, float top, float bottom, int fill) throws IOException {
-        if (inCell || forceInline > 0 || rowItemStart >= 0 || avoiding > 0 || held != null
+        if (inColumns || inCell || forceInline > 0 || rowItemStart >= 0 || avoiding > 0 || !held.isEmpty()
                 || clipLeft != Float.MAX_VALUE || look.rightToLeft) {
             return false;
         }
@@ -558,8 +559,10 @@ final class Flow {
         Frame inner = new Frame(0, 0, each, fill >= 0 && fill != 0xFFFFFF ? fill : -1);
         blockLook = look;
         blockFrame = inner;
+        inColumns = true;
         walkChildren(e, look, inner, depth);
         flush();
+        inColumns = false;
         Paragraph closing = sectionMark(inner);
         closing.endsSection = ctx.ending(set);
         ctx.count();
@@ -832,9 +835,10 @@ final class Flow {
         }
         if (!cell.paragraphs.isEmpty() && tall != null && tall >= 1) {
             boolean borderBox = "border-box".equalsIgnoreCase(d.getOrDefault("box-sizing", "").strip());
-            float high = tall + (borderBox ? 0 : Math.max(0, padding(d.get("padding-top"), em, frame.width())) + padBottom);
+            float high = Math.min(ctx.pageRoom(),
+                    tall + (borderBox ? 0 : Math.max(0, padding(d.get("padding-top"), em, frame.width())) + padBottom));
             if (gradient(cell, d.get("background-gradient"), width, high, padLeft)) {
-                row.height = Math.min(high, ctx.pageRoom());
+                row.height = high;
             }
         }
         t.columnWidths.add(width);

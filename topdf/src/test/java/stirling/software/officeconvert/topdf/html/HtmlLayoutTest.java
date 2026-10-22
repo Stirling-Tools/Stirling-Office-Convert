@@ -262,6 +262,8 @@ class HtmlLayoutTest {
         Word after = l.word("After");
         float room = l.pageWidth() - 2 * after.left();
         assertEquals(first.left() + 2 * (room + 18 * 0.75f) / 3, last.left(), 3f);
+        assertTrue(l.words().stream().anyMatch(w -> w.top() < first.top() + 1
+                && Math.abs(w.left() - first.left() - (room + 18 * 0.75f) / 3) < 3), l.words().toString());
         float[] bottoms = new float[3];
         for (Word w : l.words()) {
             int column = Math.round((w.left() - first.left()) / ((room + 18 * 0.75f) / 3));
@@ -272,6 +274,19 @@ class HtmlLayoutTest {
         assertEquals(bottoms[0], bottoms[1], 20f);
         assertEquals(bottoms[0], bottoms[2], 20f);
         assertTrue(after.top() > bottoms[0] && after.top() < bottoms[0] + 50, l.words().toString());
+    }
+
+    @Test
+    void columnsInsideColumnsKeepTheOuterColumns() throws IOException {
+        String words = "Alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu. ".repeat(12);
+        Laid l = lay("<html><body><p>Top</p><div style=\"column-count:2\"><p>Outera " + words + "</p>"
+                + "<div style=\"column-count:3\"><p>Inner " + words + "</p></div><p>Outerb " + words + "</p></div>"
+                + "<p>Bottom</p></body></html>");
+        assertEquals(1, l.pages());
+        Word top = l.word("Top");
+        assertEquals(top.left(), containing(l, "Outera").left(), 1f);
+        assertTrue(containing(l, "Outerb").left() > l.pageWidth() / 2, l.words().toString());
+        assertTrue(containing(l, "Bottom").top() > containing(l, "Outerb").top(), l.words().toString());
     }
 
     @Test
@@ -305,6 +320,19 @@ class HtmlLayoutTest {
         assertTrue((right & 0xFF) > 200 && (right >> 16 & 0xFF) < 60, Integer.toHexString(right));
         int below = l.first().getRGB(Math.round(banner.left()), Math.round(banner.top() - 12 + 90));
         assertTrue((below >> 16 & 0xFF) > 150, "the box is as tall as its height: " + Integer.toHexString(below));
+    }
+
+    @Test
+    void aGradientTallerThanThePageStaysInsideThePageMargins() throws IOException {
+        Laid l = lay("""
+                <html><body style="margin:0"><div style="height:3000px;padding:10px;
+                background:linear-gradient(#ff0000,#0000ff)"><p>Tall</p></div></body></html>""");
+        Word tall = l.word("Tall");
+        int x = Math.round(tall.left()) + 2;
+        int margin = l.first().getRGB(x, l.first().getHeight() - 8) & 0xFFFFFF;
+        assertEquals(0xFFFFFF, margin, Integer.toHexString(margin));
+        int lastLine = l.first().getRGB(x, Math.round(l.first().getHeight() - tall.top() - 4)) & 0xFFFFFF;
+        assertTrue((lastLine & 0xFF) > 200 && (lastLine >> 16 & 0xFF) < 60, Integer.toHexString(lastLine));
     }
 
     @Test
