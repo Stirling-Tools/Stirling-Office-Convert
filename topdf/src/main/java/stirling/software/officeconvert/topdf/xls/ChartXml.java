@@ -82,8 +82,12 @@ final class ChartXml {
             }
         }
         b.append("<c:varyColors val=\"").append(g.vary() ? 1 : 0).append("\"/>");
+        List<BiffChart.Series> order = g.series();
+        if (g.kind() == BiffChart.Kind.BAR && g.horizontal() && !g.stacked() && !g.percent()) {
+            order = order.reversed();
+        }
         int index = 0;
-        for (BiffChart.Series s : g.series()) {
+        for (BiffChart.Series s : order) {
             series(b, g.kind(), s, index++);
         }
         switch (g.kind()) {
@@ -200,7 +204,8 @@ final class ChartXml {
         b.append("</c:scaling><c:delete val=\"").append(deleted ? 1 : 0).append("\"/><c:axPos val=\"").append(pos)
                 .append("\"/>");
         if (a != null && a.gridlines()) {
-            b.append("<c:majorGridlines><c:spPr><a:ln w=\"3175\"><a:solidFill><a:srgbClr val=\"000000\"/>")
+            b.append("<c:majorGridlines><c:spPr><a:ln w=\"3175\"><a:solidFill><a:srgbClr val=\"")
+                    .append(a.gridColor() == null ? "000000" : hex(a.gridColor())).append("\"/>")
                     .append("</a:solidFill></a:ln></c:spPr></c:majorGridlines>");
         }
         if (a != null && a.title() != null) {

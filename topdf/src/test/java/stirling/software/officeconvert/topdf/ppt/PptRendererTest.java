@@ -53,6 +53,7 @@ import stirling.software.officeconvert.topdf.testing.Emf;
 import stirling.software.officeconvert.topdf.testing.Fixtures;
 import stirling.software.officeconvert.topdf.testing.HostileImagePlugin;
 import stirling.software.officeconvert.topdf.testing.NoNetwork;
+import stirling.software.officeconvert.topdf.testing.Outlines;
 
 class PptRendererTest {
 
@@ -143,6 +144,22 @@ class PptRendererTest {
             assertEquals(Format.PPT, Format.of(Path.of(name)), name);
         }
         assertEquals(Format.DOCX, Format.of(Path.of("x.doc")));
+    }
+
+    @Test
+    void slidesAreBookmarkedByTheirTitles() throws IOException {
+        byte[] ppt = deck(p -> {
+            p.createSlide().addTitle().setText("Opening");
+            text(p.createSlide(), "No title here", 50, 50, 400, 50);
+            p.createSlide().addTitle().setText("Opening");
+            HSLFSlide hidden = p.createSlide();
+            hidden.addTitle().setText("Backup");
+            hidden.setHidden(true);
+            p.createSlide().addTitle().setText("Close");
+        });
+        Converted c = convert("titles.ppt", ppt);
+        assertEquals(List.of("1 p1 Opening", "1 p2 Slide 2", "1 p3 Opening (2)", "1 p4 Close"),
+                Outlines.titles(c.pdf()));
     }
 
     @Test

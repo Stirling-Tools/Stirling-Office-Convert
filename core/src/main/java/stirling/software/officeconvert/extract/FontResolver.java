@@ -75,7 +75,8 @@ public final class FontResolver {
                 shapes = shapes != null ? (namelessSerif = shapes) : namelessSerif;
             }
             serif = shapes != null ? shapes : serif;
-            family = mono ? "Courier New" : serif ? "Times New Roman" : "Arial";
+            boolean narrow = !mono && !serif && GlyphShapes.condensed(font, bold);
+            family = mono ? "Courier New" : serif ? "Times New Roman" : narrow ? "Arial Narrow" : "Arial";
             substituted = true;
         }
         boolean exact = !substituted && !symbolic && font.isEmbedded() && FontNames.isOfficeFont(family);

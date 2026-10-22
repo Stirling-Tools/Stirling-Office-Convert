@@ -15,6 +15,8 @@ import stirling.software.officeconvert.topdf.pdf.PdfCanvas;
 /** Draws a DrawingML chart part from its cached values (never its workbook); shared by every format. */
 public final class Charts {
 
+    public static final String REVERSED_ORDER = "urn:stirling:chart:reversed-order";
+
     private Charts() {}
 
     /**
