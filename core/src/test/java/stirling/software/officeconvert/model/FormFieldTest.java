@@ -23,6 +23,12 @@ class FormFieldTest {
     }
 
     @Test
+    void aTagKeepsAtMostTheChoiceLimit() {
+        String tag = "pdf-form-field?kind=combo" + "&choice=a,b,0".repeat(FormField.MAX_CHOICES + 500);
+        assertEquals(FormField.MAX_CHOICES, FormField.fromTag(tag).choices().size());
+    }
+
+    @Test
     void anyOtherTagIsNotAField() {
         assertNull(FormField.fromTag(null));
         assertNull(FormField.fromTag("CustomerName"));
