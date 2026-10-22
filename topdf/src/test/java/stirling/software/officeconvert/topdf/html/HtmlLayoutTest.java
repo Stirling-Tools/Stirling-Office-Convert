@@ -295,6 +295,19 @@ class HtmlLayoutTest {
         assertEquals(0xFF, rgb & 0xFF, 2, Integer.toHexString(rgb));
     }
 
+    @Test
+    void aRightFloatedSpanInAHeadingSitsAtTheRightEdgeOfItsLine() throws IOException {
+        Laid l = lay("""
+                <html><head><style>h3 span{float:right;font-weight:normal}</style></head><body style="margin:0">
+                <h3>Engineer <span>2021</span></h3><h3><span>2019</span>Analyst</h3><p>Body</p></body></html>""");
+        float right = l.pageWidth() - l.word("Body").left();
+        assertEquals(l.word("Engineer").top(), l.word("2021").top(), 1f);
+        assertEquals(right, l.word("2021").right(), 3f);
+        assertEquals(l.word("Analyst").top(), l.word("2019").top(), 1f);
+        assertEquals(right, l.word("2019").right(), 3f);
+        assertEquals(l.word("Body").left(), l.word("Analyst").left(), 1f);
+    }
+
     private static Word containing(Laid l, String text) {
         return l.words().stream().filter(w -> w.text().contains(text)).findFirst().orElseThrow();
     }

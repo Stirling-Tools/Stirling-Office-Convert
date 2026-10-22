@@ -86,6 +86,9 @@ final class Flow {
     private final List<Inline> pendingFloats = new ArrayList<>();
     private String floatOf = "none";
     private boolean sectionStarted;
+    private Paragraph rightOf;
+    private final List<Inline> right = new ArrayList<>();
+    private RunStyle rightStyle;
     // the height left in a box that clips its overflow, as a browser shows only what fits
     private float clipLeft = Float.MAX_VALUE;
 
@@ -278,7 +281,10 @@ final class Flow {
                 text("\u201d", look);
             }
             default -> {
-                if (inline) {
+                if (inline && forceInline == 0 && rowItemStart < 0 && !display.equals("contents")
+                        && d.getOrDefault("float", "none").strip().equalsIgnoreCase("right")) {
+                    floatRight(e, look, frame, depth);
+                } else if (inline) {
                     walkChildren(e, look, frame, depth);
                 } else {
                     // overflow on html or body belongs to the window, which prints whole; fixed boxes never widen it
@@ -319,6 +325,29 @@ final class Flow {
         if (alone) {
             flush();
         }
+    }
+
+    private void floatRight(Element e, Look look, Frame frame, int depth) throws IOException {
+        if (para == null) {
+            start();
+        }
+        Paragraph p = para;
+        int from = p.inlines.size();
+        boolean spaced = lastSpace;
+        walkChildren(e, look, frame, depth);
+        if (para != p || p.inlines.size() == from || p.inlines.subList(from, p.inlines.size()).stream()
+                .anyMatch(i -> i instanceof Inline.Break)) {
+            return;
+        }
+        List<Inline> moved = new ArrayList<>(p.inlines.subList(from, p.inlines.size()));
+        p.inlines.subList(from, p.inlines.size()).clear();
+        if (rightOf != p) {
+            rightOf = p;
+            right.clear();
+        }
+        right.addAll(moved);
+        rightStyle = look.run();
+        lastSpace = spaced;
     }
 
     private void anchor(Element e, Look look, Frame frame, int depth) throws IOException {
@@ -1337,6 +1366,16 @@ final class Flow {
         }
         Paragraph p = para;
         para = null;
+        if (rightOf == p) {
+            trimEnd(p.inlines);
+            trimStart(right);
+            p.inlines.add(new Inline.Tab(rightStyle));
+            p.inlines.addAll(right);
+            p.tabs.add(new Paragraph.TabStop(blockFrame.left() + blockFrame.width(), Paragraph.TabStop.Kind.RIGHT,
+                    (char) 0));
+            rightOf = null;
+            right.clear();
+        }
         boolean blankLine = !p.inlines.isEmpty();
         trimEnd(p.inlines);
         if (p.inlines.isEmpty() && blankLine) {
@@ -1514,6 +1553,15 @@ final class Flow {
             p.inlines.set(i, new Inline.Text(kept + "\u2026", t.style(), t.link(), t.anchorPage()));
             p.inlines.subList(i + 1, p.inlines.size()).clear();
             return;
+        }
+    }
+
+    private static void trimStart(List<Inline> inlines) {
+        while (!inlines.isEmpty() && inlines.getFirst() instanceof Inline.Text t && t.text().isBlank()) {
+            inlines.removeFirst();
+        }
+        if (!inlines.isEmpty() && inlines.getFirst() instanceof Inline.Text t && t.text().startsWith(" ")) {
+            inlines.set(0, new Inline.Text(t.text().stripLeading(), t.style(), t.link(), t.anchorPage()));
         }
     }
 
