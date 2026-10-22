@@ -106,6 +106,25 @@ class XlsChartTest {
     }
 
     @Test
+    void aSeriesNamedByAWholeColumnKeepsAShortName() throws Exception {
+        String text = "n".repeat(2_000);
+        byte[] data = XlsTest.xls(wb -> {
+            HSSFSheet sheet = wb.createSheet("Data");
+            for (int i = 0; i < 4_096; i++) {
+                sheet.createRow(i).createCell(0).setCellValue(text);
+                sheet.getRow(i).createCell(1).setCellValue(i);
+            }
+            int extern = wb.getInternalWorkbook().checkExternSheet(0);
+            ChartFixtures.chartSheet(wb, "Chart1", ChartFixtures.linkedChart(BAR, null, 3,
+                    new Area3DPtg(new AreaReference("B1:B3", SpreadsheetVersion.EXCEL97), extern),
+                    new Area3DPtg(new AreaReference("A1:A4096", SpreadsheetVersion.EXCEL97), extern)));
+        });
+        String chart = chartXml(data);
+        assertTrue(chart.length() < 100_000, chart.length() + " characters of chart");
+        assertTrue(chart.contains("<c:tx><c:v>" + text + " n"), "the name starts with the cells' text");
+    }
+
+    @Test
     void clusteredHorizontalBarsListTheLastSeriesFirst() throws Exception {
         byte[] data = XlsTest.xls(wb -> ChartFixtures.chartSheet(wb, "Chart1", ChartFixtures.chart(null, BAR,
                 new byte[] {0, 0, (byte) 150, 0, 1, 0}, new String[] {"First", "Second"},

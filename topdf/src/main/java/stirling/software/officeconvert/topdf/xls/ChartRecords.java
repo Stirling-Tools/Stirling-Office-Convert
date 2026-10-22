@@ -25,6 +25,8 @@ final class ChartRecords {
 
     static final int MAX_POINTS = 4000;
 
+    static final int MAX_NAME_CHARS = 4096;
+
     private static final int CHART = 0x1002, SERIES = 0x1003, DATA_FORMAT = 0x1006, LINE_FORMAT = 0x1007,
             MARKER_FORMAT = 0x1009, AREA_FORMAT = 0x100A, SERIES_TEXT = 0x100D, CHART_FORMAT = 0x1014,
             LEGEND = 0x1015, BAR = 0x1017, LINE = 0x1018, PIE = 0x1019, AREA = 0x101A, SCATTER = 0x101B,
@@ -245,16 +247,27 @@ final class ChartRecords {
 
     private void fromCells(SeriesBuilder s) {
         if (s.name == null && s.nameRef != null) {
-            List<String> parts = new ArrayList<>();
+            StringBuilder name = new StringBuilder();
             for (Object v : fonts.cells(s.nameRef)) {
-                if (v instanceof String t && !t.isBlank()) {
-                    parts.add(t);
-                } else if (v instanceof Double d) {
-                    parts.add(fonts.number(d, -1, 0));
+                String part = v instanceof String t && !t.isBlank() ? t
+                        : v instanceof Double d ? fonts.number(d, -1, 0) : null;
+                if (part == null) {
+                    continue;
+                }
+                if (!name.isEmpty()) {
+                    name.append(' ');
+                }
+                name.append(part, 0, Math.min(part.length(), MAX_NAME_CHARS + 1 - name.length()));
+                if (name.length() > MAX_NAME_CHARS) {
+                    break;
                 }
             }
-            if (!parts.isEmpty()) {
-                s.name = String.join(" ", parts);
+            if (!name.isEmpty()) {
+                int end = Math.min(name.length(), MAX_NAME_CHARS);
+                if (end < name.length() && Character.isHighSurrogate(name.charAt(end - 1))) {
+                    end--;
+                }
+                s.name = name.substring(0, end);
             }
         }
         if (s.values.isEmpty() && s.valueRef != null) {
