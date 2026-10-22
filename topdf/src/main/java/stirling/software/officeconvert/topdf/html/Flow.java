@@ -833,11 +833,11 @@ final class Flow {
         } else if (padBottom >= 1) {
             inner.spacer(padBottom, new Frame(0, 0, width, -1));
         }
-        if (!cell.paragraphs.isEmpty() && tall != null && tall >= 1) {
+        if (!cell.empty() && tall != null && tall >= 1) {
             boolean borderBox = "border-box".equalsIgnoreCase(d.getOrDefault("box-sizing", "").strip());
             float high = Math.min(ctx.pageRoom(),
                     tall + (borderBox ? 0 : Math.max(0, padding(d.get("padding-top"), em, frame.width())) + padBottom));
-            if (gradient(cell, d.get("background-gradient"), width, high, padLeft)) {
+            if (gradient(cell, d.get("background-gradient"), width, high, padLeft, look)) {
                 row.height = high;
             }
         }
@@ -864,7 +864,8 @@ final class Flow {
         space(bottom);
     }
 
-    private boolean gradient(Table.Cell cell, String css, float width, float height, float padLeft) throws IOException {
+    private boolean gradient(Table.Cell cell, String css, float width, float height, float padLeft, Look look)
+            throws IOException {
         Gradient g = Gradient.parse(css);
         Picture pic = g == null ? null : ctx.images().gradient(g, width, height);
         if (pic == null) {
@@ -874,6 +875,10 @@ final class Flow {
         pic.behind = true;
         pic.x = -padLeft;
         pic.y = 0;
+        if (!(cell.blocks().getFirst() instanceof Paragraph)) {
+            cell.tables.replaceAll(n -> new Table.Nested(n.before() + 1, n.table()));
+            cell.paragraphs.addFirst(bar(1, look));
+        }
         cell.paragraphs.getFirst().inlines.addFirst(new Inline.Image(pic));
         cell.shading = -1;
         return true;
@@ -1849,7 +1854,8 @@ final class Flow {
     private void table(Element e, Map<String, String> d, Look look, Frame frame, boolean centred, int depth)
             throws IOException {
         flush();
-        if (inCell && e.parents().stream().filter(p -> p.normalName().equals("table")).count() >= Table.MAX_NESTING) {
+        if (inCell && (e.parents().stream().filter(p -> p.normalName().equals("table")).count() >= Table.MAX_NESTING
+                || HtmlTables.least(e, look) > frame.width())) {
             nestedTable(e, look, frame, depth);
             return;
         }

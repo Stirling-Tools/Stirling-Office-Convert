@@ -268,6 +268,49 @@ class HtmlLayoutTest {
         assertTrue((rgb & 0xFF) > 0x90 && (rgb >> 16 & 0xFF) < 0x60, Integer.toHexString(rgb));
     }
 
+    private Laid nestedBesideColumns(int levels) throws IOException {
+        String inner = "core";
+        for (int i = 0; i < levels; i++) {
+            inner = "<table border=1><tr><td>Lv" + i + " " + inner + "</td><td>Left" + i + " word</td><td>Right" + i
+                    + " word</td></tr></table>";
+        }
+        Laid l = lay("<html><body>" + inner + "</body></html>");
+        for (int i = 0; i < levels; i++) {
+            l.word("Lv" + i);
+            l.word("Left" + i);
+            l.word("Right" + i);
+        }
+        l.word("core");
+        return l;
+    }
+
+    @Test
+    void aCellHoldingANestedTableIsWideEnoughForItsColumns() throws IOException {
+        Laid l = nestedBesideColumns(5);
+        for (int i = 0; i < 5; i++) {
+            assertTrue(l.word("Right" + i).left() > l.word("Left" + i).right(), l.words().toString());
+            assertTrue(l.word("Lv" + i).right() <= l.word("Left" + i).left(), l.words().toString());
+        }
+    }
+
+    @Test
+    void nestedTablesTooWideForTheirCellBecomeLinesInsteadOfBreakingWords() throws IOException {
+        Laid l = nestedBesideColumns(9);
+        assertTrue(l.word("Right8").left() > l.word("Left8").right(), l.words().toString());
+        assertTrue(l.word("Left8").left() > l.word("Lv0").right(), l.words().toString());
+        assertEquals(1, l.pages());
+    }
+
+    @Test
+    void aSizedGradientBoxHoldingOnlyATableKeepsItsHeightAndGradient() throws IOException {
+        Laid l = lay("""
+                <html><body><div style="background:linear-gradient(to bottom,#ff0000,#0000ff);height:200px">
+                <table border="1"><tr><td>Inside</td></tr></table></div><p>Below</p></body></html>""");
+        assertTrue(l.word("Below").top() > l.word("Inside").top() + 140, l.words().toString());
+        int rgb = l.first().getRGB(300, Math.round(l.word("Inside").top()) + 60);
+        assertTrue((rgb & 0xFF) > 0x40 && (rgb >> 16 & 0xFF) > 0x40 && (rgb >> 8 & 0xFF) < 0x40, Integer.toHexString(rgb));
+    }
+
     @Test
     void tablesNestedPastTheLimitStillShowAllTheirText() throws IOException {
         StringBuilder html = new StringBuilder("<html><body>");
@@ -279,9 +322,9 @@ class HtmlLayoutTest {
         html.append("</td></tr></table>".repeat(levels)).append("</body></html>");
         Laid l = lay(html.toString());
         for (int i = 1; i <= levels; i++) {
-            assertTrue(l.text().contains("L" + i), "L" + i + " missing from " + l.text());
+            l.word("L" + i);
         }
-        assertTrue(l.text().contains("core"), l.text());
+        l.word("core");
         assertEquals(1, l.pages());
     }
 

@@ -1,6 +1,7 @@
 package stirling.software.officeconvert.topdf.html;
 
 import java.io.IOException;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -293,6 +294,7 @@ final class HtmlTables {
                     longest = Math.max(longest, word.length());
                 }
                 least[c] = Math.max(least[c], Math.min(room / 2, longest * em + 2 * padding));
+                least[c] = Math.max(least[c], Math.min(room, leastInside(s.element(), em, 1) + 2 * padding));
                 boolean nowrap = s.look().whiteSpace.equals("nowrap") || s.look().whiteSpace.equals("pre");
                 unwrapped[c] = Math.max(unwrapped[c], (nowrap ? text.length() : longest) * em + 2 * padding);
             }
@@ -338,6 +340,67 @@ final class HtmlTables {
         }
         floorAtLongestWord(t, least);
         return sum;
+    }
+
+    private static float leastInside(Element cell, float em, int level) {
+        if (level >= Table.MAX_NESTING) {
+            return 0;
+        }
+        float most = 0;
+        ArrayDeque<Element> open = new ArrayDeque<>(cell.children());
+        while (!open.isEmpty()) {
+            Element e = open.pop();
+            if (e.normalName().equals("table")) {
+                most = Math.max(most, leastTable(e, em, level + 1));
+            } else {
+                e.children().reversed().forEach(open::push);
+            }
+        }
+        return most;
+    }
+
+    static float least(Element table, Look look) {
+        return leastTable(table, look.size * 0.5f, 1);
+    }
+
+    private static float leastTable(Element table, float em, int level) {
+        float[] columns = new float[MAX_COLUMNS];
+        int used = 0;
+        Elements rows = table.select(ROWS);
+        for (int r = 0; r < Math.min(rows.size(), MAX_ROWS); r++) {
+            int col = 0;
+            for (Element td : rows.get(r).select("> td, > th")) {
+                int span = Math.max(1, span(td.attr("colspan"), 1));
+                if (col + span > MAX_COLUMNS) {
+                    break;
+                }
+                if (span == 1) {
+                    int longest = 0;
+                    for (String word : td.text().split("\\s+")) {
+                        longest = Math.max(longest, word.length());
+                    }
+                    columns[col] = Math.max(columns[col], Math.max(longest * em, leastInside(td, em, level)));
+                }
+                col += span;
+                used = Math.max(used, col);
+            }
+        }
+        float pad = 2 * frameBorder(table) + 2 * cellPadding(table);
+        float sum = 0;
+        for (int c = 0; c < used; c++) {
+            sum += Math.max(MIN_COLUMN, columns[c] + pad);
+        }
+        return sum;
+    }
+
+    private static float cellPadding(Element table) {
+        String v = table.attr("cellpadding").strip();
+        try {
+            float px = v.isEmpty() ? -1 : Float.parseFloat(v);
+            return px >= 0 ? Math.min(36, px * 0.75f) : 1.5f;
+        } catch (NumberFormatException e) {
+            return 1.5f;
+        }
     }
 
     // A cell across columns widens them evenly when its text needs more than they have
