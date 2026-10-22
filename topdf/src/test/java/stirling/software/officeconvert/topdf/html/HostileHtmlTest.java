@@ -104,6 +104,26 @@ class HostileHtmlTest {
     }
 
     @Test
+    void aBmpWrappingAPngOrJpegIsRefused() throws IOException {
+        java.io.ByteArrayOutputStream png = new java.io.ByteArrayOutputStream();
+        javax.imageio.ImageIO.write(new java.awt.image.BufferedImage(400, 300, java.awt.image.BufferedImage.TYPE_INT_RGB),
+                "png", png);
+        for (int compression : new int[] {4, 5}) {
+            assertNull(MediaBytes.of(bmp(1, 1, compression, png.toByteArray())), "compression " + compression);
+        }
+        MediaBytes plain = MediaBytes.of(bmp(2, 2, 0, new byte[16]));
+        assertEquals(2, plain == null ? 0 : plain.pixelWidth());
+    }
+
+    private static byte[] bmp(int width, int height, int compression, byte[] pixels) {
+        java.nio.ByteBuffer b = java.nio.ByteBuffer.allocate(54 + pixels.length).order(java.nio.ByteOrder.LITTLE_ENDIAN);
+        b.put((byte) 'B').put((byte) 'M').putInt(54 + pixels.length).putInt(0).putInt(54);
+        b.putInt(40).putInt(width).putInt(height).putShort((short) 1).putShort((short) (compression == 0 ? 24 : 0))
+                .putInt(compression).putInt(pixels.length).putInt(2835).putInt(2835).putInt(0).putInt(0);
+        return b.put(pixels).array();
+    }
+
+    @Test
     void svgWorkIsBudgeted() throws IOException {
         String path = "<path id=\"p\" d=\"M0 0" + " L1 1 L0 1".repeat(20_000) + "\"/>";
         String html = "<svg viewBox=\"0 0 10 10\" width=\"200\" height=\"200\"><defs>" + path + "</defs>"
@@ -128,7 +148,7 @@ class HostileHtmlTest {
     @Test
     void aJsonTableKeepsAtMostAWordTableOfColumns() throws IOException {
         String cells = "{\"span\":63},".repeat(5_000) + "{\"span\":63}";
-        Path in = Files.writeString(dir.resolve("wide.json"), "{\"body\":[{\"type\":\"table\",\"columns\":["
+        Path in = Files.writeString(dir.resolve("wide.json"), "{\"format\":\"stirling-office-convert\",\"body\":[{\"type\":\"table\",\"columns\":["
                 + "1,".repeat(5_000) + "1],\"rows\":[{\"cells\":[" + cells + "]}]}]}", StandardCharsets.UTF_8);
         OfficeToPdf.Result r = OfficeToPdf.convert(in, dir.resolve("wide.pdf"), OfficeToPdf.Options.defaults());
         assertTrue(r.warnings().stream().anyMatch(w -> w.contains("63 columns")), r.warnings().toString());

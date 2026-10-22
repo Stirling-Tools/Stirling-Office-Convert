@@ -377,7 +377,7 @@ public final class OfficeToPdf {
         if (json != null) {
             return json;
         }
-        Long html = HtmlInput.estimate(in);
+        Long html = HtmlInput.estimate(in, format);
         if (html != null) {
             return html;
         }

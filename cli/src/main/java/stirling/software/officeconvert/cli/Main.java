@@ -193,7 +193,7 @@ public final class Main {
                 int before = pdfs.size();
                 try (Stream<Path> s = Files.list(in)) {
                     s.filter(p -> Files.isRegularFile(p) && !lockFile(p) && (officeFolder && isOffice(p)
-                            && (textFolder || TextFormats.kind(p) == null)
+                            && (textFolder || !plainSource(p))
                             || pdfFolder && p.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".pdf")
                             && !(archive && p.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".pdfa.pdf"))))
                             .sorted().forEach(pdfs::add);
@@ -377,6 +377,14 @@ public final class Main {
 
     private static boolean isOffice(Path file) {
         return file.getFileName() != null && OfficeToPdf.Format.recognises(file);
+    }
+
+    private static boolean plainSource(Path file) {
+        if (TextFormats.kind(file) != null) {
+            return true;
+        }
+        OfficeToPdf.Format format = OfficeToPdf.Format.of(file);
+        return format == OfficeToPdf.Format.HTML || format == OfficeToPdf.Format.JSON;
     }
 
     private static float seconds(String s, String option) throws Usage {
