@@ -151,14 +151,19 @@ final class ContentReader {
         if (numId != null && numId > 0) {
             level = pkg.numbering.level(numId, ilvl == null ? 0 : ilvl);
         }
-        // Numbering set by the style ranks below the style's own indents; numbering set on the paragraph ranks above
+        // Numbering set by a style ranks above that style's ancestors and below the style itself; numbering set on the
+        // paragraph ranks above every style
         boolean styleNumbering = direct.numId == null && direct.ilvl == null;
         if (level != null && styleNumbering) {
+            ParaProps[] split = styles.paragraphAroundNumbering(styleId);
+            pp.mergeFrom(split[0]);
             pp.mergeFrom(level.pPr);
-        }
-        pp.mergeFrom(styled);
-        if (level != null && !styleNumbering) {
-            pp.mergeFrom(level.pPr);
+            pp.mergeFrom(split[1]);
+        } else {
+            pp.mergeFrom(styled);
+            if (level != null) {
+                pp.mergeFrom(level.pPr);
+            }
         }
         pp.mergeFrom(direct);
         pp.styleId = styleId;
@@ -901,6 +906,7 @@ final class ContentReader {
         int rowCount = rows.size();
         int rowBand = tp.rowBand == null || tp.rowBand < 1 ? 1 : tp.rowBand;
         int colBand = tp.colBand == null || tp.colBand < 1 ? 1 : tp.colBand;
+        int headingRows = Math.max(1, headingRows(rows, style));
         for (int ri = 0; ri < rowCount; ri++) {
             XEl tr = rows.get(ri);
             RowProps rp = new RowProps();
@@ -920,7 +926,7 @@ final class ContentReader {
                 CellProps directCell = CellProps.parse(tc.child("w:tcPr"), pkg.theme);
                 int span = directCell.gridSpan == null ? 1 : directCell.gridSpan;
                 List<String> conds = conditions(tp, ri, rowCount, col, span, gridArr.length, ci, cellCount,
-                        rp, rowBand, colBand);
+                        rp, rowBand, colBand, headingRows);
                 TableStyle.Part merged = new TableStyle.Part();
                 merged.mergeFrom(style.base);
                 for (String c : TableStyle.ORDER) {
@@ -978,9 +984,9 @@ final class ContentReader {
     }
 
     private static List<String> conditions(TableProps tp, int ri, int rows, int col, int span, int gridCols, int ci,
-            int cells, RowProps rp, int rowBand, int colBand) {
+            int cells, RowProps rp, int rowBand, int colBand, int headingRows) {
         List<String> out = new ArrayList<>();
-        boolean firstRow = Boolean.TRUE.equals(tp.firstRow) && ri == 0;
+        boolean firstRow = Boolean.TRUE.equals(tp.firstRow) && ri < headingRows;
         boolean lastRow = Boolean.TRUE.equals(tp.lastRow) && ri == rows - 1;
         boolean firstCol = Boolean.TRUE.equals(tp.firstCol) && ci == 0;
         boolean lastCol = Boolean.TRUE.equals(tp.lastCol) && ci == cells - 1;
@@ -992,7 +998,7 @@ final class ContentReader {
             }
         }
         if (!Boolean.TRUE.equals(tp.noHBand)) {
-            int r = ri - (Boolean.TRUE.equals(tp.firstRow) ? 1 : 0);
+            int r = ri - (Boolean.TRUE.equals(tp.firstRow) ? headingRows : 0);
             if (!firstRow && !lastRow && r >= 0) {
                 out.add((r / rowBand) % 2 == 0 ? "band1Horz" : "band2Horz");
             }
@@ -1022,6 +1028,20 @@ final class ContentReader {
             out.add("seCell");
         }
         return out;
+    }
+
+    private static int headingRows(List<XEl> rows, TableStyle style) {
+        int n = 0;
+        for (XEl tr : rows) {
+            RowProps rp = new RowProps();
+            rp.mergeFrom(style.base.trPr);
+            rp.apply(tr.child("w:trPr"));
+            if (!Boolean.TRUE.equals(rp.header)) {
+                break;
+            }
+            n++;
+        }
+        return n;
     }
 
     private static void collectRows(XEl e, List<XEl> out) {
