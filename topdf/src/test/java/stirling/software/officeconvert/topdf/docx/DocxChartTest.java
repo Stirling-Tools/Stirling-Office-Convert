@@ -416,4 +416,18 @@ class DocxChartTest {
         String tight = tallChartText("tight", "<c:extLst><c:ext uri=\"" + Charts.TIGHT_SCALE + "\"/></c:extLst>");
         assertTrue(tight.contains("25") && !tight.contains("23"), tight);
     }
+
+    @Test
+    void aDenseRadarWebKeepsItsGridWithinABudget() throws IOException {
+        String chart = "<c:chartSpace " + C + "><c:chart><c:autoTitleDeleted val=\"1\"/><c:plotArea><c:layout/>"
+                + "<c:radarChart><c:radarStyle val=\"marker\"/><c:ser><c:idx val=\"0\"/><c:order val=\"0\"/>"
+                + "<c:val><c:numRef><c:numCache><c:ptCount val=\"4000\"/><c:pt idx=\"0\"><c:v>1</c:v></c:pt>"
+                + "</c:numCache></c:numRef></c:val></c:ser><c:axId val=\"1\"/><c:axId val=\"2\"/></c:radarChart>"
+                + "<c:catAx><c:axId val=\"1\"/><c:crossAx val=\"2\"/></c:catAx><c:valAx><c:axId val=\"2\"/>"
+                + "<c:scaling><c:max val=\"1000\"/><c:min val=\"0\"/></c:scaling><c:majorGridlines/>"
+                + "<c:crossAx val=\"1\"/><c:majorUnit val=\"1\"/></c:valAx></c:plotArea></c:chart></c:chartSpace>";
+        DocxDoc.Rendered r = render("denseRadar", chart);
+        long bytes = java.nio.file.Files.size(r.pdf());
+        assertTrue(bytes < 5_000_000, bytes + " bytes");
+    }
 }

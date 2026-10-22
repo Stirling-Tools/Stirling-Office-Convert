@@ -56,6 +56,8 @@ final class ChartPainter {
 
     private static final int MAX_TIGHT_STEPS = 10;
 
+    private static final int MAX_WEB_POINTS = 50_000;
+
     private final Chart chart;
 
     private final Fonts fonts;
@@ -290,7 +292,11 @@ final class ChartPainter {
         float gridWidth = va == null ? 0.75f : va.gridWidth();
         int steps = sc.steps();
         if (grid && gridColor != null) {
+            int every = (int) Math.max(1, Math.ceil((double) steps * n / MAX_WEB_POINTS));
             for (int k = 1; k <= steps; k++) {
+                if (k % every != 0 && k != steps) {
+                    continue;
+                }
                 float rr = r * sc.fraction(k);
                 Path2D.Float ring = new Path2D.Float();
                 for (int i = 0; i < n; i++) {
