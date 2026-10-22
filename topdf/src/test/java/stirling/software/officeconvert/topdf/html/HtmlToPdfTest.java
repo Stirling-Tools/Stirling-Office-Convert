@@ -71,6 +71,31 @@ class HtmlToPdfTest {
     }
 
     @Test
+    void aCellSpanningIntoARowSpanAboveStillConverts() throws IOException {
+        Pdf p = convert("overlap.html", "<table><tr><td>a1</td><td rowspan=2>b1</td><td>c1</td></tr>"
+                + "<tr><td colspan=2>d2</td><td>e2</td></tr></table>");
+        assertTrue(p.text().contains("d2") && p.text().contains("e2"), p.text());
+    }
+
+    @Test
+    void anEnormousGridFractionKeepsColumnsReadable() throws IOException {
+        Path in = Files.writeString(dir.resolve("fr.html"), "<div style=\"display:grid;grid-template-columns:1e39fr"
+                + " 1fr\"><div>alpha beta gamma</div><div>delta epsilon</div></div>", StandardCharsets.UTF_8);
+        java.io.ByteArrayOutputStream docx = new java.io.ByteArrayOutputStream();
+        HtmlDocument.write(in, docx);
+        String document = "";
+        try (java.util.zip.ZipInputStream z = new java.util.zip.ZipInputStream(
+                new java.io.ByteArrayInputStream(docx.toByteArray()))) {
+            for (java.util.zip.ZipEntry e; (e = z.getNextEntry()) != null; ) {
+                if (e.getName().equals("word/document.xml")) {
+                    document = new String(z.readAllBytes(), StandardCharsets.UTF_8);
+                }
+            }
+        }
+        assertFalse(document.contains("<w:gridCol w:w=\"0\"/>"), document);
+    }
+
+    @Test
     void headingsParagraphsListsAndTablesAreLaidOut() throws IOException {
         Pdf p = convert("page.html", """
                 <!DOCTYPE html><html><head><title>Report</title>
