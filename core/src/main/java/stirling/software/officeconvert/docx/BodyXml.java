@@ -39,7 +39,10 @@ final class BodyXml {
         if (p.keepNext) {
             sb.append("<w:keepNext/>");
         } else if (style.keepNext()) {
-            sb.append("<w:keepNext w:val=\"0\"/><w:keepLines w:val=\"0\"/>");
+            sb.append(p.keepLines ? "<w:keepNext w:val=\"0\"/>" : "<w:keepNext w:val=\"0\"/><w:keepLines w:val=\"0\"/>");
+        }
+        if (p.keepLines) {
+            sb.append("<w:keepLines/>");
         }
         if (p.pageBreakBefore) {
             sb.append("<w:pageBreakBefore/>");

@@ -52,6 +52,18 @@ final class HtmlContext {
         Map<String, String> d = cascade.declared(e);
         Vars.resolve(d, Vars.scope(parent.vars, d));
         Css.expandShorthands(d);
+        String direction = d.get("direction");
+        boolean rtl = direction == null ? parent.rightToLeft : "rtl".equalsIgnoreCase(direction.strip());
+        for (String box : new String[] {"margin", "padding"}) {
+            String start = d.remove(box + "-inline-start");
+            String end = d.remove(box + "-inline-end");
+            if (start != null) {
+                d.putIfAbsent(box + (rtl ? "-right" : "-left"), start);
+            }
+            if (end != null) {
+                d.putIfAbsent(box + (rtl ? "-left" : "-right"), end);
+            }
+        }
         return d;
     }
 

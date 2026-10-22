@@ -16,6 +16,8 @@ import org.jsoup.nodes.Element;
 import org.jsoup.nodes.Node;
 import org.jsoup.nodes.TextNode;
 
+import stirling.software.officeconvert.model.Paragraph;
+
 /** Side-by-side layouts (flex rows and grids) as a page can hold them: short items as one line, the rest as
  * the columns of a borderless table. */
 final class Layout {
@@ -37,6 +39,10 @@ final class Layout {
     private Layout() {}
 
     static Plan of(Element e, Map<String, String> d, Look look, float room, HtmlContext ctx) {
+        return of(e, d, look, room, ctx, false);
+    }
+
+    static Plan of(Element e, Map<String, String> d, Look look, float room, HtmlContext ctx, boolean inCell) {
         String display = d.getOrDefault("display", "").strip().toLowerCase(Locale.ROOT);
         boolean flex = display.equals("flex") || display.equals("inline-flex");
         boolean grid = display.equals("grid") || display.equals("inline-grid");
@@ -54,7 +60,7 @@ final class Layout {
             return null;
         }
         float gap = gap(d, look);
-        if (flex && allShort(items)) {
+        if (flex && allShort(items) && (inCell || !framed(items, look, ctx) || !placed(items, look, ctx))) {
             return new Plan(items, true, items.size(), null, gap);
         }
         int columns = grid ? gridColumns(d.get("grid-template-columns"), look, room) : items.size();
@@ -264,6 +270,34 @@ final class Layout {
         return !position.equals("absolute") && !position.equals("fixed") && !Hidden.visually(cd, look.size);
     }
 
+    static boolean framed(List<Element> items, Look look, HtmlContext ctx) {
+        for (Element c : items) {
+            if (framed(ctx.declared(c, look))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    static boolean framed(Map<String, String> cd) {
+        int edges = 0;
+        for (String side : new String[] {"top", "bottom", "left", "right"}) {
+            edges += Flow.border(cd, side) > 0 ? 1 : 0;
+        }
+        Integer fill = Css.color(cd.get("background-color"));
+        return edges >= 3 || fill != null && fill >= 0 && fill != 0xFFFFFF;
+    }
+
+    private static boolean placed(List<Element> items, Look look, HtmlContext ctx) {
+        for (Element c : items) {
+            Map<String, String> cd = ctx.declared(c, look);
+            if (grows(cd) || size(cd.getOrDefault("flex-basis", cd.get("width")), look, 1000) != null) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private static boolean allShort(List<Element> items) {
         for (Element c : items) {
             if (text(c, SHORT_ITEM + 1).length() > SHORT_ITEM || !c.select(BLOCKS).isEmpty()) {
@@ -397,6 +431,160 @@ final class Layout {
             w[c] = Math.max(24, w[c] * room / Math.max(1, sum));
         }
         return w;
+    }
+
+    static List<Paragraph.TabStop> stops(Plan plan, Map<String, String> d, Look look, float room, HtmlContext ctx) {
+        List<Element> items = plan.items();
+        int n = items.size();
+        float[] width = new float[n];
+        float[] grow = new float[n];
+        boolean[] sized = new boolean[n];
+        Paragraph.Align[] align = new Paragraph.Align[n];
+        String justify = d.getOrDefault("justify-content", "normal").strip().toLowerCase(Locale.ROOT);
+        boolean moved = !Set.of("normal", "flex-start", "start", "left", "stretch").contains(justify);
+        float total = plan.gap() * (n - 1);
+        for (int i = 0; i < n; i++) {
+            Map<String, String> cd = ctx.declared(items.get(i), look);
+            Look il = look.child(cd, room, false);
+            String[] flex = flex(cd);
+            grow[i] = number(flex[0]);
+            Float basis = size(flex[1], look, room);
+            if (basis == null) {
+                basis = size(cd.get("width"), look, room);
+            }
+            float content = widestLine(items.get(i), il, ctx) * il.size * 0.5f
+                    + side(cd, il, "left") + side(cd, il, "right");
+            sized[i] = basis != null;
+            width[i] = basis == null ? content : Math.max(basis, flex[1].equals("0") ? 0 : content * 0.5f);
+            align[i] = il.align;
+            moved |= grow[i] > 0 || basis != null;
+            total += width[i];
+        }
+        float free = room - total;
+        if (!moved || free < 0) {
+            return null;
+        }
+        float grows = 0;
+        for (float g : grow) {
+            grows += g;
+        }
+        float lead = 0;
+        float between = plan.gap();
+        if (grows > 0) {
+            for (int i = 0; i < n; i++) {
+                width[i] += free * grow[i] / grows;
+            }
+        } else {
+            switch (justify) {
+                case "flex-end", "end", "right" -> lead = free;
+                case "center" -> lead = free / 2;
+                case "space-between" -> between += free / (n - 1);
+                case "space-around" -> {
+                    lead = free / n / 2;
+                    between += free / n;
+                }
+                case "space-evenly" -> {
+                    lead = free / (n + 1);
+                    between += free / (n + 1);
+                }
+                default -> { }
+            }
+        }
+        List<Paragraph.TabStop> stops = new ArrayList<>();
+        float x = lead;
+        for (int i = 0; i < n; i++) {
+            float end = x + width[i];
+            Paragraph.TabStop.Kind kind;
+            if (sized[i] || grow[i] > 0) {
+                kind = switch (align[i]) {
+                    case RIGHT -> Paragraph.TabStop.Kind.RIGHT;
+                    case CENTER -> Paragraph.TabStop.Kind.CENTER;
+                    default -> Paragraph.TabStop.Kind.LEFT;
+                };
+            } else if (i == n - 1 && room - end < 1 || justify.equals("flex-end") || justify.equals("end")) {
+                kind = Paragraph.TabStop.Kind.RIGHT;
+            } else if (i > 0 || x >= 1) {
+                kind = Paragraph.TabStop.Kind.CENTER;
+            } else {
+                kind = Paragraph.TabStop.Kind.LEFT;
+            }
+            float pos = switch (kind) {
+                case RIGHT -> end;
+                case CENTER -> x + width[i] / 2;
+                default -> x;
+            };
+            stops.add(kind == Paragraph.TabStop.Kind.LEFT && pos < 1 ? null : new Paragraph.TabStop(pos, kind, (char) 0));
+            x = end + between;
+        }
+        return stops;
+    }
+
+    private static String[] flex(Map<String, String> cd) {
+        String grow = cd.getOrDefault("flex-grow", "0").strip();
+        String basis = cd.getOrDefault("flex-basis", "auto").strip();
+        String flex = cd.getOrDefault("flex", "").strip().toLowerCase(Locale.ROOT);
+        if (flex.equals("auto")) {
+            return new String[] {"1", "auto"};
+        }
+        if (flex.equals("none") || flex.equals("initial")) {
+            return new String[] {"0", "auto"};
+        }
+        List<String> parts = Css.tokens(flex);
+        if (!parts.isEmpty()) {
+            boolean number = parts.get(0).matches("[0-9.]+");
+            grow = number ? parts.get(0) : "1";
+            basis = number ? "0" : parts.get(0);
+            if (parts.size() > 1 && !parts.get(parts.size() - 1).matches("[0-9.]+")) {
+                basis = parts.get(parts.size() - 1);
+            }
+        }
+        return new String[] {grow, basis};
+    }
+
+    static boolean stacks(Element e, String tag, Map<String, String> d, Look parentLook, HtmlContext ctx) {
+        Element parent = e.parent();
+        if (parent != null) {
+            Map<String, String> pd = ctx.declared(parent, parentLook);
+            String shown = pd.getOrDefault("display", "").strip().toLowerCase(Locale.ROOT);
+            if (shown.endsWith("flex") || shown.endsWith("grid")) {
+                return shown.endsWith("flex")
+                        && pd.getOrDefault("flex-direction", "row").strip().toLowerCase(Locale.ROOT).startsWith("column");
+            }
+        }
+        String own = d.getOrDefault("display", Flow.BLOCKS.contains(tag) ? "block" : "inline").strip()
+                .toLowerCase(Locale.ROOT);
+        return !own.startsWith("inline") && !own.equals("contents") && !own.equals("none");
+    }
+
+    private static int widestLine(Element item, Look look, HtmlContext ctx) {
+        int widest = 0;
+        int line = 0;
+        java.util.ArrayDeque<Node> stack = new java.util.ArrayDeque<>();
+        for (int i = item.childNodeSize() - 1; i >= 0; i--) {
+            stack.push(item.childNode(i));
+        }
+        int seen = 0;
+        while (!stack.isEmpty() && seen++ < 2_000) {
+            Node n = stack.pop();
+            if (n instanceof TextNode t) {
+                line += t.text().strip().length() + (t.text().isBlank() ? 0 : 1);
+            } else if (n instanceof Element c) {
+                String tag = c.normalName();
+                if (tag.equals("br") || stacks(c, tag, ctx.declared(c, look), look, ctx)) {
+                    widest = Math.max(widest, line);
+                    line = 0;
+                }
+                for (int i = c.childNodeSize() - 1; i >= 0; i--) {
+                    stack.push(c.childNode(i));
+                }
+            }
+        }
+        return Math.max(widest, line);
+    }
+
+    private static float side(Map<String, String> cd, Look look, String side) {
+        return Math.max(0, Flow.length(cd.get("margin-" + side), look.size, 0))
+                + Math.max(0, Flow.length(cd.get("padding-" + side), look.size, 0));
     }
 
     private static boolean grows(Map<String, String> cd) {

@@ -42,14 +42,14 @@ final class Presentation {
             case "p", "dl" -> vertical(out, "1em");
             case "ul", "ol" -> {
                 vertical(out, "1em");
-                out.put("padding-left", "40px");
+                out.put("padding-inline-start", "40px");
             }
             case "blockquote", "figure" -> {
                 vertical(out, "1em");
                 out.put("margin-left", "40px");
                 out.put("margin-right", "40px");
             }
-            case "dd" -> out.put("margin-left", "40px");
+            case "dd" -> out.put("margin-inline-start", "40px");
             case "pre", "listing", "xmp", "plaintext" -> {
                 vertical(out, "1em");
                 out.put("font-family", "monospace");
@@ -92,6 +92,10 @@ final class Presentation {
             // align on a block centres the tables and blocks inside it too, as <center> does
             boolean block = !"td".equals(e.normalName()) && !"th".equals(e.normalName());
             out.put("text-align", block && "center".equals(align) ? "-webkit-center" : align);
+        }
+        String dir = e.attr("dir").strip().toLowerCase(Locale.ROOT);
+        if (dir.equals("rtl") || dir.equals("ltr")) {
+            out.put("direction", dir);
         }
         String valign = e.attr("valign").toLowerCase(Locale.ROOT);
         if (!valign.isEmpty()) {
