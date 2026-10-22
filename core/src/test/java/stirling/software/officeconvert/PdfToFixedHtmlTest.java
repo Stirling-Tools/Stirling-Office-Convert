@@ -112,6 +112,32 @@ class PdfToFixedHtmlTest {
     }
 
     @Test
+    void invisibleOcrTextStaysSearchable() throws IOException {
+        Path pdf = dir.resolve("scan.pdf");
+        try (PDDocument doc = new PDDocument()) {
+            PDPage page = new PDPage(PDRectangle.A4);
+            doc.addPage(page);
+            try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
+                cs.setNonStrokingColor(0.5f, 0.5f, 0.5f);
+                cs.addRect(50, 50, 400, 600);
+                cs.fill();
+                cs.beginText();
+                cs.setRenderingMode(org.apache.pdfbox.pdmodel.graphics.state.RenderingMode.NEITHER);
+                cs.setFont(new PDType1Font(Standard14Fonts.FontName.HELVETICA), 12);
+                cs.newLineAtOffset(72, 500);
+                cs.showText("Recognised scan words");
+                cs.endText();
+            }
+            doc.save(pdf.toFile());
+        }
+        Path out = dir.resolve("scan.html");
+        PdfToHtml.convertFixed(pdf, out, FixedHtml.Options.defaults());
+        String scan = Files.readString(out, StandardCharsets.UTF_8);
+        assertTrue(scan.contains("color:transparent;font-family:'Courier New',monospace"), scan.substring(scan.length() - 600));
+        assertTrue(scan.contains(">Recognised scan words</span>"));
+    }
+
+    @Test
     void familiesKeepTheNameAndAGenericFallback() {
         assertEquals("'Times New Roman',serif", FixedHtml.family("TimesNewRomanPSMT"));
         assertEquals("'Courier New',monospace", FixedHtml.family("CourierNewPS-BoldMT"));

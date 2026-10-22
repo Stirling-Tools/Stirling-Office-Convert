@@ -12,9 +12,11 @@ import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 
 import javax.imageio.IIOImage;
 import javax.imageio.ImageIO;
@@ -47,6 +49,7 @@ import org.apache.pdfbox.text.TextPosition;
 import org.apache.pdfbox.util.Matrix;
 import org.apache.pdfbox.util.Vector;
 
+import stirling.software.officeconvert.memory.Admission;
 import stirling.software.officeconvert.sink.Links;
 
 public final class FixedHtml {
@@ -147,11 +150,12 @@ public final class FixedHtml {
         PDFRenderer renderer = options.text() == Text.LIVE ? new WithoutText(doc) : new PDFRenderer(doc);
         renderer.setSubsamplingAllowed(true);
         Fonts fonts = new Fonts(options.text() == Text.LIVE ? options.fonts() : null);
+        Set<String> sizes = new HashSet<>();
         for (int i = first - 1; i < last; i++) {
             if (Thread.currentThread().isInterrupted()) {
                 throw new IOException("The conversion was stopped");
             }
-            page(doc, renderer, i, options, w, out, fonts);
+            page(doc, renderer, i, options, w, out, fonts, sizes);
         }
         w.write("</body>\n</html>\n");
         w.flush();
@@ -196,7 +200,7 @@ public final class FixedHtml {
     }
 
     private static void page(PDDocument doc, PDFRenderer renderer, int index, Options options, Writer w,
-            OutputStream out, Fonts fonts) throws IOException {
+            OutputStream out, Fonts fonts, Set<String> sizes) throws IOException {
         PDPage page = doc.getPage(index);
         PDRectangle box = page.getCropBox();
         int rotation = ((page.getRotation() % 360) + 360) % 360;
@@ -216,21 +220,34 @@ public final class FixedHtml {
         }
         links(text, page, box, rotation, width, height);
         StringBuilder sb = new StringBuilder(512);
+        String size = "s" + Math.round(width * 10) + "x" + Math.round(height * 10);
+        if (sizes.add(size)) {
+            faces.append("@page ").append(size).append("{margin:0;size:").append(HtmlText.pt(width)).append(' ')
+                    .append(HtmlText.pt(height)).append("}\n");
+        }
         if (!faces.isEmpty()) {
             sb.append("<style>\n").append(faces).append("</style>\n");
         }
         sb.append("<section class=\"").append(live ? "pg" : "pg picture").append("\" id=\"page-").append(index + 1)
-                .append("\" style=\"width:").append(HtmlText.pt(width)).append(";height:").append(HtmlText.pt(height))
-                .append("\">\n");
-        BufferedImage image = renderer.renderImage(index, scale, ImageType.RGB);
-        if (!live || !blank(image)) {
-            Picture picture = picture(image);
-            sb.append("<img alt=\"\" src=\"data:").append(picture.type()).append(";base64,");
-            w.write(sb.toString());
-            w.flush();
-            out.write(Base64.getEncoder().encode(picture.bytes()));
-            sb.setLength(0);
-            sb.append("\">\n");
+                .append("\" style=\"page:").append(size).append(";width:").append(HtmlText.pt(width)).append(";height:")
+                .append(HtmlText.pt(height)).append("\">\n");
+        long estimate = (long) (width * scale) * (long) (height * scale) * 4L * 3L;
+        Admission.Ticket ticket = Admission.jvm().enter(estimate);
+        try {
+            BufferedImage image = renderer.renderImage(index, scale, ImageType.RGB);
+            if (!live || !blank(image)) {
+                Picture picture = picture(image);
+                sb.append("<img alt=\"\" src=\"data:").append(picture.type()).append(";base64,");
+                w.write(sb.toString());
+                w.flush();
+                try (OutputStream encoded = Base64.getEncoder().wrap(new KeepOpen(out))) {
+                    encoded.write(picture.bytes());
+                }
+                sb.setLength(0);
+                sb.append("\">\n");
+            }
+        } finally {
+            ticket.close();
         }
         sb.append(text).append("</section>\n");
         w.write(sb.toString());
@@ -371,20 +388,20 @@ public final class FixedHtml {
     }
 
     private static void span(StringBuilder sb, Span s, boolean live, String embedded) {
-        if (live && s.rgb() < 0) {
-            return;
-        }
+        boolean hidden = !live || s.rgb() < 0;
         String text = s.text().replace("\u0000", "");
         int chars = text.codePointCount(0, text.length());
         if (chars == 0) {
             return;
         }
         float natural = chars * MONO_ADVANCE * s.size();
-        float stretch = !live && s.width() > 0 && natural > 0 ? s.width() / natural : 1f;
+        float stretch = hidden && s.width() > 0 && natural > 0 ? s.width() / natural : 1f;
         float ascent = s.size() * 0.8f;
         sb.append("<span style=\"left:").append(HtmlText.pt(s.x())).append(";top:")
                 .append(HtmlText.pt(s.y() - ascent)).append(";font-size:").append(HtmlText.pt(s.size()));
-        if (live) {
+        if (live && hidden) {
+            sb.append(";color:transparent;font-family:'Courier New',monospace");
+        } else if (live) {
             sb.append(";font-family:").append(embedded != null ? "'" + embedded + "'," : "")
                     .append(family(s.font()).replace("\"", ""));
             if ((s.rgb() & 0xFFFFFF) != 0) {
