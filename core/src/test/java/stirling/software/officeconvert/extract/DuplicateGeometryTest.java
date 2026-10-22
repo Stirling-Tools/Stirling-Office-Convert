@@ -35,6 +35,8 @@ class DuplicateGeometryTest {
         }
     }
 
+    private static final float HALF_A = 0.667f / 2;
+
     private static PDDocument sample(float size) throws IOException {
         PDDocument document = new PDDocument();
         PDPage page = new PDPage();
@@ -43,7 +45,7 @@ class DuplicateGeometryTest {
             for (int i = 0; i < 2; i++) {
                 content.beginText();
                 content.setFont(new PDType1Font(Standard14Fonts.FontName.HELVETICA), size);
-                content.newLineAtOffset(72, 700);
+                content.newLineAtOffset(306 - size * HALF_A, 396 - size * 0.3f);
                 content.showText("A");
                 content.endText();
             }

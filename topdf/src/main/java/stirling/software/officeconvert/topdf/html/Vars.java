@@ -11,19 +11,29 @@ final class Vars {
     private static final int MAX_DEPTH = 8;
     private static final int MAX_CHARS = 2_000;
     private static final int MAX_SUBSTITUTIONS = 2_000;
-    /** The custom properties an element sees: its own over its parent's, without copying the parent's. */
-    record Scope(Scope parent, Map<String, String> own) {
+    static final long MAX_STEPS = 50_000_000L;
 
-        static final Scope EMPTY = new Scope(null, Map.of());
+    /** The custom properties an element sees: its own over its parent's, without copying the parent's. Every scope
+     * grown from one {@link #root()} draws on one budget of {@link #MAX_STEPS} ancestor steps, so a deep page that
+     * looks up many names cannot multiply the walk; once it is spent, every var() is invalid. */
+    record Scope(Scope parent, Map<String, String> own, long[] steps) {
+
+        static Scope root() {
+            return new Scope(null, Map.of(), new long[] {MAX_STEPS});
+        }
 
         String get(String name) {
-            for (Scope s = this; s != null; s = s.parent) {
+            for (Scope s = this; s != null && --steps[0] >= 0; s = s.parent) {
                 String v = s.own.get(name);
                 if (v != null) {
                     return v;
                 }
             }
             return null;
+        }
+
+        boolean spent() {
+            return steps[0] < 0;
         }
     }
 
@@ -39,7 +49,7 @@ final class Vars {
                 own.put(e.getKey(), e.getValue());
             }
         }
-        return own == null ? parent : new Scope(parent, own);
+        return own == null ? parent : new Scope(parent, own, parent.steps);
     }
 
     /** Replaces var() in every declared value, in place. */
@@ -81,6 +91,9 @@ final class Vars {
             int comma = topLevelComma(inner);
             String name = (comma < 0 ? inner : inner.substring(0, comma)).strip();
             String replacement = vars.get(name);
+            if (vars.spent()) {
+                return null;
+            }
             if (replacement == null && comma >= 0) {
                 replacement = inner.substring(comma + 1).strip();
             }

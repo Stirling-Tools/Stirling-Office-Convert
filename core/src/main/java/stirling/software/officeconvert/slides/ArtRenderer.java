@@ -17,6 +17,7 @@ import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.common.PDRectangle;
 import org.apache.pdfbox.pdmodel.font.PDFont;
+import org.apache.pdfbox.pdmodel.font.PDType3Font;
 import org.apache.pdfbox.pdmodel.graphics.form.PDFormXObject;
 import org.apache.pdfbox.pdmodel.graphics.form.PDTransparencyGroup;
 import org.apache.pdfbox.pdmodel.graphics.image.PDImage;
@@ -36,15 +37,18 @@ import stirling.software.officeconvert.layout.Box;
 final class ArtRenderer extends PDFRenderer {
 
     private IntPredicate keep = order -> false;
+    private List<int[]> groups = List.of();
+    private long operators;
 
     ArtRenderer(PDDocument document) {
         super(document);
         setSubsamplingAllowed(true);
     }
 
-    BufferedImage render(PDPage page, int pageIndex, AffineTransform toDisplay, Box box, float scale, IntPredicate keep)
-            throws IOException {
+    BufferedImage render(PDPage page, int pageIndex, AffineTransform toDisplay, Box box, float scale, IntPredicate keep,
+            List<int[]> groups) throws IOException {
         this.keep = keep;
+        this.groups = groups;
         int w = Math.max(1, Math.round(box.width() * scale));
         int h = Math.max(1, Math.round(box.height() * scale));
         BufferedImage img = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
@@ -67,6 +71,10 @@ final class ArtRenderer extends PDFRenderer {
             g.dispose();
         }
         return img;
+    }
+
+    long operators() {
+        return operators;
     }
 
     private static AffineTransform deviceTransform(PDPage page) {
@@ -102,6 +110,7 @@ final class ArtRenderer extends PDFRenderer {
     private final class Drawer extends PageDrawer {
 
         private int order;
+        private int group;
         private int nested;
         private final OperatorBudget budget = new OperatorBudget("drawing slide art");
 
@@ -111,6 +120,7 @@ final class ArtRenderer extends PDFRenderer {
 
         @Override
         protected void processOperator(Operator operator, List<COSBase> operands) throws IOException {
+            operators++;
             if (budget.run(operator)) {
                 super.processOperator(operator, operands);
             }
@@ -118,15 +128,54 @@ final class ArtRenderer extends PDFRenderer {
 
         @Override
         public void showForm(PDFormXObject form) throws IOException {
-            if (budget.form()) {
-                super.showForm(form);
+            int[] span = enterGroup();
+            try {
+                if (budget.form()) {
+                    super.showForm(form);
+                }
+            } finally {
+                exitGroup(span);
             }
         }
 
         @Override
         public void showTransparencyGroup(PDTransparencyGroup form) throws IOException {
-            if (budget.form()) {
-                super.showTransparencyGroup(RgbGroup.of(form));
+            int[] span = enterGroup();
+            try {
+                if (budget.form()) {
+                    super.showTransparencyGroup(RgbGroup.of(form));
+                }
+            } finally {
+                exitGroup(span);
+            }
+        }
+
+        private int[] enterGroup() {
+            if (nested > 0 || group >= groups.size()) {
+                return null;
+            }
+            int[] span = groups.get(group++);
+            order = span[0];
+            return span;
+        }
+
+        private void exitGroup(int[] span) {
+            if (span != null) {
+                order = span[1];
+                group = span[2];
+            }
+        }
+
+        @Override
+        protected void processSoftMask(PDTransparencyGroup group) throws IOException {
+            paint(() -> super.processSoftMask(group));
+        }
+
+        @Override
+        protected void showType3Glyph(Matrix textRenderingMatrix, PDType3Font font, int code, Vector displacement)
+                throws IOException {
+            if (nested > 0) {
+                super.showType3Glyph(textRenderingMatrix, font, code, displacement);
             }
         }
 
@@ -196,8 +245,8 @@ final class ArtRenderer extends PDFRenderer {
                 return;
             }
             RenderingMode mode = getGraphicsState().getTextState().getRenderingMode();
-            if (mode != RenderingMode.NEITHER && mode != RenderingMode.NEITHER_CLIP) {
-                order++;
+            if (mode != RenderingMode.NEITHER && mode != RenderingMode.NEITHER_CLIP && keep.test(order++)) {
+                paint(() -> super.showGlyph(textRenderingMatrix, font, code, displacement));
             }
         }
 

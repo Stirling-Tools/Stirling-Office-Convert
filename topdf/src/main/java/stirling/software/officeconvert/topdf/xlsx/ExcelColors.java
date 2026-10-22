@@ -71,7 +71,7 @@ final class ExcelColors {
             return automatic;
         }
         if (index == SYSTEM_BACKGROUND) {
-            return automatic;
+            return Color.WHITE;
         }
         byte[] v = indexed.getRGB(index);
         if (v == null) {

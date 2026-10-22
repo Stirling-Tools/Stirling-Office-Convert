@@ -26,6 +26,7 @@ import stirling.software.officeconvert.PdfToOdp;
 import stirling.software.officeconvert.PdfToOdt;
 import stirling.software.officeconvert.PdfToPptx;
 import stirling.software.officeconvert.PdfToRtf;
+import stirling.software.officeconvert.PdfToMarkdown;
 import stirling.software.officeconvert.PdfToText;
 import stirling.software.officeconvert.PdfToXlsx;
 import stirling.software.officeconvert.Pictures;
@@ -42,7 +43,7 @@ import stirling.software.officeconvert.topdf.text.TextFormats;
 
 public final class Main {
 
-    private static final Set<String> FORMATS = Set.of("docx", "odt", "fodt", "xml", "rtf", "doc", "txt", "html", "json", "epub", "azw3", "pptx",
+    private static final Set<String> FORMATS = Set.of("docx", "odt", "fodt", "xml", "rtf", "doc", "txt", "html", "json", "md", "epub", "azw3", "pptx",
             "odp", "ppt", "xlsx", "ods", "pdf");
 
     private Main() {}
@@ -199,7 +200,7 @@ public final class Main {
                 int before = pdfs.size();
                 try (Stream<Path> s = Files.list(in)) {
                     s.filter(p -> Files.isRegularFile(p) && !lockFile(p) && (officeFolder && isOffice(p)
-                            && (textFolder || TextFormats.kind(p) == null)
+                            && (textFolder || !plainSource(p))
                             || pdfFolder && p.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".pdf")
                             && !(archive && p.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".pdfa.pdf"))))
                             .sorted().forEach(pdfs::add);
@@ -340,6 +341,7 @@ public final class Main {
             case "txt" -> PdfToText.convert(pdf, target, options);
             case "html" -> PdfToHtml.convert(pdf, target, options);
             case "json" -> PdfToJson.convert(pdf, target, options);
+            case "md" -> PdfToMarkdown.convert(pdf, target, options);
             case "epub" -> PdfToEpub.convert(pdf, target, options);
             case "azw3" -> PdfToAzw3.convert(pdf, target, options);
             case "pptx" -> PdfToPptx.convert(pdf, target, slides);
@@ -398,6 +400,14 @@ public final class Main {
         return isOffice(file) || name.endsWith(".zip") || name.endsWith(".epub") || name.endsWith(".pdb");
     }
 
+    private static boolean plainSource(Path file) {
+        if (TextFormats.kind(file) != null) {
+            return true;
+        }
+        OfficeToPdf.Format format = OfficeToPdf.Format.of(file);
+        return format == OfficeToPdf.Format.HTML || format == OfficeToPdf.Format.JSON;
+    }
+
     private static float seconds(String s, String option) throws Usage {
         float v = number(s, option);
         if (!(v >= 0 && v <= 86_400)) {
@@ -427,7 +437,7 @@ public final class Main {
     private static String known(String format) throws Usage {
         if (!FORMATS.contains(format)) {
             throw new Usage("unknown output format '" + format
-                    + "': use docx, odt, fodt, xml, rtf, doc, txt, html, json, epub, azw3, pptx, odp, ppt, xlsx or ods (pdf for Office input)");
+                    + "': use docx, odt, fodt, xml, rtf, doc, txt, html, json, md, epub, azw3, pptx, odp, ppt, xlsx or ods (pdf for Office input)");
         }
         return format;
     }
@@ -527,7 +537,8 @@ public final class Main {
                         + " .ott .fodt .odm .ods .ots .fods .odp .otp .fodp .odg .otg .fodg), OpenOffice.org 1.x files (.sxw"
                         + " .stw .sxc .stc .sxi .sti .sxd .std), SYLK, DIF and dBASE tables (.slk .dif .dbf), Lotus 1-2-3"
                         + " worksheets (.wk1 .wks .wk3 .wk4 .123), Apple iWork"
-                        + " files from their preview (.pages .numbers .key), plain text (.txt .text .log .asc) and comma or"
+                        + " files, Publisher publications and Visio 2003-2010 drawings from their preview (.pages .numbers"
+                        + " .key .pub .vsd .vss .vst .vsw), plain text (.txt .text .log .asc) and comma or"
                         + " tab separated tables (.csv .tsv .tab), HTML (.html .htm .xhtml) and the JSON this tool writes (.json) convert to PDF; --password opens a protected one. A folder converts its PDFs and Office files;"
                         + " --format pdf takes only its Office and text files. Nothing a document"
                         + " links to is fetched and no macro, field or formula is run. A .zip of an HTML page converts only"
@@ -536,7 +547,7 @@ public final class Main {
                         + " a FictionBook inside a .zip not named .fbz or .fb2.zip, needs --allow-packages."
                         + System.lineSeparator()
                         + "The output's extension picks the format: .docx, .odt, .fodt, .xml (flat ODT), .rtf, .doc (RTF content),"
-                        + " .txt, .html (one file, pictures inline), .json (the document model), .epub, .azw3, .pptx, .odp, .ppt, .xlsx or .ods; --format names it for a directory of outputs."
+                        + " .txt, .html (one file, pictures inline), .json (the document model), .md, .epub, .azw3, .pptx, .odp, .ppt, .xlsx or .ods; --format names it for a directory of outputs."
                         + System.lineSeparator()
                         + "--pdfa makes an archival PDF/A copy of each PDF (in.pdfa.pdf unless -o names it): fonts are embedded,"
                         + " scripts and actions removed, colours given an sRGB output intent; 1a and 1b draw transparency as pictures;"

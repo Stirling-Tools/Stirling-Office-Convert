@@ -33,7 +33,7 @@ final class Look {
     String listStyle;
     boolean hidden;
     boolean centerBlocks;
-    Vars.Scope vars = Vars.Scope.EMPTY;
+    Vars.Scope vars = Vars.Scope.root();
     // the keyword size in px the font size still follows (medium = 16), or 0 once a length sets it
     float keywordPx = 16;
     // the family is the bare generic monospace, which browsers set at 13px where the keyword says 16

@@ -29,6 +29,7 @@ public final class OfficeConvert {
         TXT,
         HTML,
         JSON,
+        MARKDOWN,
         EPUB,
         AZW3,
         PPTX,
@@ -47,6 +48,7 @@ public final class OfficeConvert {
                 case "txt" -> TXT;
                 case "html", "htm" -> HTML;
                 case "json" -> JSON;
+                case "md", "markdown" -> MARKDOWN;
                 case "epub" -> EPUB;
                 case "azw3" -> AZW3;
                 case "pptx" -> PPTX;
@@ -54,7 +56,7 @@ public final class OfficeConvert {
                 case "xlsx" -> XLSX;
                 case "ods" -> ODS;
                 default -> throw new IllegalArgumentException("No output format for " + file.getFileName()
-                        + ": use .docx, .odt, .fodt, .xml, .rtf, .doc, .txt, .html, .htm, .json, .epub, .azw3, .pptx, .odp, .xlsx or .ods");
+                        + ": use .docx, .odt, .fodt, .xml, .rtf, .doc, .txt, .html, .htm, .json, .md, .epub, .azw3, .pptx, .odp, .xlsx or .ods");
             };
         }
     }
@@ -175,6 +177,7 @@ public final class OfficeConvert {
                 case TXT -> PdfToText.convert(pdf, out, settings.document());
                 case HTML -> PdfToHtml.convert(pdf, out, settings.document());
                 case JSON -> PdfToJson.convert(pdf, out, settings.document());
+                case MARKDOWN -> PdfToMarkdown.convert(pdf, out, settings.document());
                 case EPUB -> PdfToEpub.convert(pdf, out, settings.document());
                 case AZW3 -> PdfToAzw3.convert(pdf, out, settings.document());
                 case PPTX -> PdfToPptx.convert(pdf, out, settings.slides());
@@ -199,6 +202,7 @@ public final class OfficeConvert {
                 case TXT -> PdfToText.convert(pdf, out, settings.document());
                 case HTML -> PdfToHtml.convert(pdf, out, settings.document());
                 case JSON -> PdfToJson.convert(pdf, out, settings.document());
+                case MARKDOWN -> PdfToMarkdown.convert(pdf, out, settings.document());
                 case EPUB -> PdfToEpub.convert(pdf, out, settings.document());
                 case AZW3 -> PdfToAzw3.convert(pdf, out, settings.document());
                 case PPTX -> PdfToPptx.convert(pdf, out, settings.slides());
