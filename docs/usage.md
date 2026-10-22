@@ -559,6 +559,7 @@ PdfToRtf.convert(pdf, Path.of("out.doc"), options);        // the same RTF under
 PdfToText.convert(pdf, Path.of("out.txt"), options);       // UTF-8 text in reading order
 String text = PdfToText.text(pdDocument, options);
 PdfToHtml.convert(pdf, Path.of("out.html"), options);      // one HTML5 file, pictures as data: URIs
+PdfToHtml.convertFixed(pdf, Path.of("page.html"), FixedHtml.Options.defaults()); // each page as it looks
 PdfToJson.convert(pdf, Path.of("out.json"), options);      // the document model as JSON
 ```
 
@@ -574,6 +575,12 @@ PdfToJson.convert(pdf, Path.of("out.json"), options);      // the document model
   with merged cells, borders and shading, pictures as `data:` URIs, links, footnotes at the end, and the page size and
   margins as `@page` for printing. Floating pictures and text boxes join the flow next to their paragraph; columns
   flow as one. There are no scripts and no external references.
+- Fixed-layout HTML keeps every page as it looks instead of reflowing it, like `pdftohtml -c`: one self-contained
+  file with a box per page at the page's size. `Text.LIVE` (the default) draws the page's graphics and pictures without
+  its text as a picture (left out when the page has nothing else) and places the text over it as real text, in the
+  PDF font's family with a generic fallback, colour, weight and slant; invisible (OCR) text is left out. `Text.PICTURE`
+  draws everything into the page picture and adds the text as a transparent layer to select and search, so it looks
+  exactly like the PDF at the cost of size. Pages are drawn at 150 dpi (36 to 300); web links stay clickable.
 - JSON is the document model itself, the format [described here](json-format.md): everything the DOCX carries, as
   data a program can read, change and convert back to PDF (or, through it, to anything else).
 

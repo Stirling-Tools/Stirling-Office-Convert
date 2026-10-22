@@ -1,0 +1,461 @@
+package stirling.software.officeconvert.html;
+
+import java.awt.image.BufferedImage;
+import java.io.ByteArrayOutputStream;
+import java.io.FilterOutputStream;
+import java.io.IOException;
+import java.io.OutputStream;
+import java.io.OutputStreamWriter;
+import java.io.Writer;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.Base64;
+import java.util.List;
+import java.util.IdentityHashMap;
+import java.util.Locale;
+import java.util.Map;
+
+import javax.imageio.IIOImage;
+import javax.imageio.ImageIO;
+import javax.imageio.ImageWriteParam;
+import javax.imageio.ImageWriter;
+import javax.imageio.stream.ImageOutputStream;
+
+import org.apache.pdfbox.contentstream.operator.color.SetNonStrokingColor;
+import org.apache.pdfbox.contentstream.operator.color.SetNonStrokingColorN;
+import org.apache.pdfbox.contentstream.operator.color.SetNonStrokingColorSpace;
+import org.apache.pdfbox.contentstream.operator.color.SetNonStrokingDeviceCMYKColor;
+import org.apache.pdfbox.contentstream.operator.color.SetNonStrokingDeviceGrayColor;
+import org.apache.pdfbox.contentstream.operator.color.SetNonStrokingDeviceRGBColor;
+import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.pdmodel.PDPage;
+import org.apache.pdfbox.pdmodel.common.PDRectangle;
+import org.apache.pdfbox.pdmodel.font.PDFont;
+import org.apache.pdfbox.pdmodel.font.PDType3Font;
+import org.apache.pdfbox.pdmodel.graphics.state.RenderingMode;
+import org.apache.pdfbox.pdmodel.interactive.action.PDAction;
+import org.apache.pdfbox.pdmodel.interactive.action.PDActionURI;
+import org.apache.pdfbox.pdmodel.interactive.annotation.PDAnnotation;
+import org.apache.pdfbox.pdmodel.interactive.annotation.PDAnnotationLink;
+import org.apache.pdfbox.rendering.ImageType;
+import org.apache.pdfbox.rendering.PDFRenderer;
+import org.apache.pdfbox.rendering.PageDrawer;
+import org.apache.pdfbox.rendering.PageDrawerParameters;
+import org.apache.pdfbox.text.PDFTextStripper;
+import org.apache.pdfbox.text.TextPosition;
+import org.apache.pdfbox.util.Matrix;
+import org.apache.pdfbox.util.Vector;
+
+import stirling.software.officeconvert.sink.Links;
+
+public final class FixedHtml {
+
+    public enum Text {
+        LIVE,
+        PICTURE
+    }
+
+    public record Options(int firstPage, int lastPage, float dpi, String title, Text text) {
+
+        public static final float DEFAULT_DPI = 150f;
+
+        public Options {
+            if (!(dpi >= 36 && dpi <= 300)) {
+                throw new IllegalArgumentException("dpi must be 36 to 300, was " + dpi);
+            }
+            text = text == null ? Text.LIVE : text;
+        }
+
+        public static Options defaults() {
+            return new Options(1, Integer.MAX_VALUE, DEFAULT_DPI, null, Text.LIVE);
+        }
+
+        public Options text(Text mode) {
+            return new Options(firstPage, lastPage, dpi, title, mode);
+        }
+
+        public Options pages(int first, int last) {
+            return new Options(first, last, dpi, title, text);
+        }
+    }
+
+    static final long MAX_PAGE_PIXELS = 40_000_000L;
+
+    private static final float MONO_ADVANCE = 0.6f;
+
+    private record Span(String text, float x, float y, float size, float width, int dir, int rgb, String font,
+            boolean bold, boolean italic) {}
+
+    private FixedHtml() {}
+
+    public static void write(PDDocument doc, OutputStream target, Options options) throws IOException {
+        int pages = doc.getNumberOfPages();
+        int first = Math.max(1, options.firstPage());
+        int last = Math.min(pages, options.lastPage());
+        OutputStream out = new KeepOpen(target);
+        Writer w = new OutputStreamWriter(out, StandardCharsets.UTF_8);
+        w.write(head(doc, options));
+        PDFRenderer renderer = options.text() == Text.LIVE ? new WithoutText(doc) : new PDFRenderer(doc);
+        renderer.setSubsamplingAllowed(true);
+        for (int i = first - 1; i < last; i++) {
+            if (Thread.currentThread().isInterrupted()) {
+                throw new IOException("The conversion was stopped");
+            }
+            page(doc, renderer, i, options, w, out);
+        }
+        w.write("</body>\n</html>\n");
+        w.flush();
+    }
+
+    private static String head(PDDocument doc, Options options) {
+        String title = options.title();
+        if (title == null || title.isBlank()) {
+            title = doc.getDocumentInformation() == null ? null : doc.getDocumentInformation().getTitle();
+        }
+        StringBuilder sb = new StringBuilder(1024);
+        sb.append("<!DOCTYPE html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n")
+                .append("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n")
+                .append("<meta name=\"generator\" content=\"Stirling Office Convert\">\n<title>");
+        HtmlText.escape(sb, title == null || title.isBlank() ? "Document" : title.strip());
+        sb.append("</title>\n<style>\n")
+                .append("@page{margin:0").append(firstSize(doc, options)).append("}\n")
+                .append("html{background:#e8e8e8}body{margin:0;padding:12pt 0}\n")
+                .append(".pg{position:relative;margin:0 auto 12pt;background:#fff;overflow:hidden;")
+                .append("box-shadow:0 1px 4px rgba(0,0,0,.25);break-after:page}\n")
+                .append(".pg>img{position:absolute;left:0;top:0;width:100%;height:100%;user-select:none}\n")
+                .append(".pg>span{position:absolute;white-space:pre;line-height:1;transform-origin:0 0}\n")
+                .append(".pg.picture>span{color:transparent;font-family:\"Courier New\",monospace}\n")
+                .append(".pg>a{position:absolute;display:block}\n")
+                .append("::selection{background:rgba(0,95,255,.3)}\n")
+                .append("@media print{html{background:none}body{padding:0}.pg{margin:0;box-shadow:none}}\n")
+                .append("</style>\n</head>\n<body>\n");
+        return sb.toString();
+    }
+
+    private static String firstSize(PDDocument doc, Options options) {
+        int index = Math.max(1, options.firstPage()) - 1;
+        if (index >= doc.getNumberOfPages()) {
+            return "";
+        }
+        PDPage page = doc.getPage(index);
+        PDRectangle box = page.getCropBox();
+        int rotation = ((page.getRotation() % 360) + 360) % 360;
+        boolean turned = rotation == 90 || rotation == 270;
+        return ";size:" + HtmlText.pt(turned ? box.getHeight() : box.getWidth()) + " "
+                + HtmlText.pt(turned ? box.getWidth() : box.getHeight());
+    }
+
+    private static void page(PDDocument doc, PDFRenderer renderer, int index, Options options, Writer w,
+            OutputStream out) throws IOException {
+        PDPage page = doc.getPage(index);
+        PDRectangle box = page.getCropBox();
+        int rotation = ((page.getRotation() % 360) + 360) % 360;
+        boolean turned = rotation == 90 || rotation == 270;
+        float width = turned ? box.getHeight() : box.getWidth();
+        float height = turned ? box.getWidth() : box.getHeight();
+        float scale = options.dpi() / 72f;
+        double pixels = (double) width * scale * height * scale;
+        if (pixels > MAX_PAGE_PIXELS) {
+            scale *= (float) Math.sqrt(MAX_PAGE_PIXELS / pixels);
+        }
+        StringBuilder sb = new StringBuilder(4096);
+        boolean live = options.text() == Text.LIVE;
+        sb.append("<section class=\"").append(live ? "pg" : "pg picture").append("\" id=\"page-").append(index + 1).append("\" style=\"width:")
+                .append(HtmlText.pt(width)).append(";height:").append(HtmlText.pt(height)).append("\">\n");
+        BufferedImage image = renderer.renderImage(index, scale, ImageType.RGB);
+        if (!live || !blank(image)) {
+            Picture picture = picture(image);
+            sb.append("<img alt=\"\" src=\"data:").append(picture.type()).append(";base64,");
+            w.write(sb.toString());
+            w.flush();
+            out.write(Base64.getEncoder().encode(picture.bytes()));
+            sb.setLength(0);
+            sb.append("\">\n");
+        }
+        for (Span s : spans(doc, index)) {
+            span(sb, s, live);
+        }
+        links(sb, page, box, rotation, width, height);
+        sb.append("</section>\n");
+        w.write(sb.toString());
+        w.flush();
+    }
+
+    private record Picture(String type, byte[] bytes) {}
+
+    private static Picture picture(BufferedImage image) throws IOException {
+        ByteArrayOutputStream png = new ByteArrayOutputStream();
+        ImageIO.write(image, "png", png);
+        byte[] best = png.toByteArray();
+        String type = "image/png";
+        if (best.length > 200_000) {
+            byte[] jpeg = jpeg(image);
+            if (jpeg != null && jpeg.length < best.length * 0.6) {
+                best = jpeg;
+                type = "image/jpeg";
+            }
+        }
+        return new Picture(type, best);
+    }
+
+    private static byte[] jpeg(BufferedImage image) throws IOException {
+        var writers = ImageIO.getImageWritersByFormatName("jpeg");
+        if (!writers.hasNext()) {
+            return null;
+        }
+        ImageWriter writer = writers.next();
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+        try (ImageOutputStream ios = ImageIO.createImageOutputStream(bytes)) {
+            writer.setOutput(ios);
+            ImageWriteParam param = writer.getDefaultWriteParam();
+            param.setCompressionMode(ImageWriteParam.MODE_EXPLICIT);
+            param.setCompressionQuality(0.85f);
+            writer.write(null, new IIOImage(image, null, null), param);
+        } finally {
+            writer.dispose();
+        }
+        return bytes.toByteArray();
+    }
+
+    private static boolean blank(BufferedImage image) {
+        int w = image.getWidth();
+        int h = image.getHeight();
+        int[] row = new int[w];
+        for (int y = 0; y < h; y++) {
+            image.getRGB(0, y, w, 1, row, 0, w);
+            for (int p : row) {
+                if ((p & 0xFFFFFF) != 0xFFFFFF) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    private record Look(int rgb, boolean invisible) {}
+
+    private static List<Span> spans(PDDocument doc, int index) throws IOException {
+        List<Span> spans = new ArrayList<>();
+        Map<TextPosition, Look> looks = new IdentityHashMap<>();
+        PDFTextStripper stripper = new PDFTextStripper() {
+            {
+                addOperator(new SetNonStrokingColorSpace(this));
+                addOperator(new SetNonStrokingColor(this));
+                addOperator(new SetNonStrokingColorN(this));
+                addOperator(new SetNonStrokingDeviceGrayColor(this));
+                addOperator(new SetNonStrokingDeviceRGBColor(this));
+                addOperator(new SetNonStrokingDeviceCMYKColor(this));
+            }
+
+            @Override
+            protected void processTextPosition(TextPosition text) {
+                int rgb = 0;
+                boolean invisible = false;
+                try {
+                    var state = getGraphicsState();
+                    invisible = state.getTextState().getRenderingMode() == RenderingMode.NEITHER;
+                    var color = state.getNonStrokingColor();
+                    rgb = color == null ? 0 : color.toRGB();
+                } catch (IOException | RuntimeException ignored) {
+                    rgb = 0;
+                }
+                looks.put(text, new Look(rgb, invisible));
+                super.processTextPosition(text);
+            }
+
+            @Override
+            protected void writeString(String text, List<TextPosition> positions) {
+                if (positions.isEmpty() || text.isBlank() || spans.size() >= 200_000) {
+                    return;
+                }
+                TextPosition first = positions.get(0);
+                TextPosition end = positions.get(positions.size() - 1);
+                float size = Math.max(1f, first.getHeightDir() / 0.7f);
+                float fontSize = first.getFontSizeInPt();
+                if (fontSize >= 1 && fontSize < size * 3) {
+                    size = fontSize;
+                }
+                float width = end.getXDirAdj() + end.getWidthDirAdj() - first.getXDirAdj();
+                Look look = looks.getOrDefault(first, new Look(0, false));
+                String font = first.getFont() == null ? "" : fontName(first.getFont());
+                String lower = font.toLowerCase(Locale.ROOT);
+                boolean bold = lower.contains("bold") || lower.contains("black") || lower.contains("heavy")
+                        || first.getFont() != null && first.getFont().getFontDescriptor() != null
+                                && first.getFont().getFontDescriptor().isForceBold();
+                boolean italic = lower.contains("italic") || lower.contains("oblique")
+                        || first.getFont() != null && first.getFont().getFontDescriptor() != null
+                                && first.getFont().getFontDescriptor().isItalic();
+                spans.add(new Span(text, first.getXDirAdj(), first.getYDirAdj(), size, width, (int) first.getDir(),
+                        look.invisible() ? -1 : look.rgb(), font, bold, italic));
+            }
+        };
+        stripper.setSortByPosition(true);
+        stripper.setStartPage(index + 1);
+        stripper.setEndPage(index + 1);
+        stripper.getText(doc);
+        return spans;
+    }
+
+    private static String fontName(PDFont font) {
+        String name = font.getName() == null ? "" : font.getName();
+        int plus = name.indexOf('+');
+        return plus == 6 ? name.substring(7) : name;
+    }
+
+    public static String family(String font) {
+        String base = font.replaceAll("[,-].*$", "").replaceAll("(?i)(MT|PS|PSMT)$", "")
+                .replaceAll("([a-z])([A-Z])", "$1 $2").replaceAll("[^A-Za-z0-9 ]", "").strip();
+        String lower = font.toLowerCase(Locale.ROOT);
+        String generic = lower.contains("courier") || lower.contains("mono") || lower.contains("consol")
+                ? "monospace"
+                : lower.contains("times") || lower.contains("serif") && !lower.contains("sans")
+                        || lower.contains("georgia") || lower.contains("garamond") || lower.contains("cambria")
+                        || lower.contains("minion") || lower.contains("roman") ? "serif" : "sans-serif";
+        return base.isEmpty() ? generic : "'" + base + "'," + generic;
+    }
+
+    private static void span(StringBuilder sb, Span s, boolean live) {
+        if (live && s.rgb() < 0) {
+            return;
+        }
+        String text = s.text().replace("\u0000", "");
+        int chars = text.codePointCount(0, text.length());
+        if (chars == 0) {
+            return;
+        }
+        float natural = chars * MONO_ADVANCE * s.size();
+        float stretch = !live && s.width() > 0 && natural > 0 ? s.width() / natural : 1f;
+        float ascent = s.size() * 0.8f;
+        sb.append("<span style=\"left:").append(HtmlText.pt(s.x())).append(";top:")
+                .append(HtmlText.pt(s.y() - ascent)).append(";font-size:").append(HtmlText.pt(s.size()));
+        if (live) {
+            sb.append(";font-family:").append(family(s.font()).replace("\"", ""));
+            if ((s.rgb() & 0xFFFFFF) != 0) {
+                sb.append(";color:").append(HtmlText.hex(s.rgb() & 0xFFFFFF));
+            }
+            if (s.bold()) {
+                sb.append(";font-weight:bold");
+            }
+            if (s.italic()) {
+                sb.append(";font-style:italic");
+            }
+        }
+        StringBuilder transform = new StringBuilder();
+        if (s.dir() != 0) {
+            transform.append("rotate(").append(s.dir()).append("deg) ");
+        }
+        if (Math.abs(stretch - 1f) > 0.01f && stretch > 0.05f && stretch < 20f) {
+            transform.append("scaleX(").append(String.format(Locale.ROOT, "%.3f", stretch)).append(')');
+        }
+        if (!transform.isEmpty()) {
+            sb.append(";transform:").append(transform.toString().strip());
+        }
+        sb.append("\">");
+        HtmlText.escape(sb, text);
+        sb.append("</span>\n");
+    }
+
+    private static void links(StringBuilder sb, PDPage page, PDRectangle box, int rotation, float width, float height)
+            throws IOException {
+        for (PDAnnotation a : page.getAnnotations()) {
+            if (!(a instanceof PDAnnotationLink link)) {
+                continue;
+            }
+            PDAction action = link.getAction();
+            String url = action instanceof PDActionURI uri && uri.getURI() != null ? Links.safeUrl(uri.getURI()) : null;
+            PDRectangle r = link.getRectangle();
+            if (url == null || r == null) {
+                continue;
+            }
+            float x0 = r.getLowerLeftX() - box.getLowerLeftX();
+            float y0 = r.getLowerLeftY() - box.getLowerLeftY();
+            float x1 = r.getUpperRightX() - box.getLowerLeftX();
+            float y1 = r.getUpperRightY() - box.getLowerLeftY();
+            float bw = box.getWidth();
+            float bh = box.getHeight();
+            float left;
+            float top;
+            float w;
+            float h;
+            switch (rotation) {
+                case 90 -> {
+                    left = y0;
+                    top = x0;
+                    w = y1 - y0;
+                    h = x1 - x0;
+                }
+                case 180 -> {
+                    left = bw - x1;
+                    top = y0;
+                    w = x1 - x0;
+                    h = y1 - y0;
+                }
+                case 270 -> {
+                    left = bh - y1;
+                    top = bw - x1;
+                    w = y1 - y0;
+                    h = x1 - x0;
+                }
+                default -> {
+                    left = x0;
+                    top = bh - y1;
+                    w = x1 - x0;
+                    h = y1 - y0;
+                }
+            }
+            if (w <= 0 || h <= 0 || left > width || top > height) {
+                continue;
+            }
+            sb.append("<a href=\"");
+            HtmlText.escape(sb, url);
+            sb.append("\" style=\"left:").append(HtmlText.pt(left)).append(";top:").append(HtmlText.pt(top))
+                    .append(";width:").append(HtmlText.pt(w)).append(";height:").append(HtmlText.pt(h))
+                    .append("\"></a>\n");
+        }
+    }
+
+    private static final class WithoutText extends PDFRenderer {
+
+        WithoutText(PDDocument doc) {
+            super(doc);
+        }
+
+        @Override
+        protected PageDrawer createPageDrawer(PageDrawerParameters parameters) throws IOException {
+            return new PageDrawer(parameters) {
+                @Override
+                protected void showFontGlyph(Matrix matrix, PDFont font, int code, Vector displacement)
+                        throws IOException {
+                    if (getGraphicsState().getTextState().getRenderingMode().isClip()) {
+                        super.showFontGlyph(matrix, font, code, displacement);
+                    }
+                }
+
+                @Override
+                protected void showType3Glyph(Matrix matrix, PDType3Font font, int code, Vector displacement)
+                        throws IOException {
+                    if (getGraphicsState().getTextState().getRenderingMode().isClip()) {
+                        super.showType3Glyph(matrix, font, code, displacement);
+                    }
+                }
+            };
+        }
+    }
+
+    private static final class KeepOpen extends FilterOutputStream {
+
+        KeepOpen(OutputStream target) {
+            super(target);
+        }
+
+        @Override
+        public void write(byte[] b, int off, int len) throws IOException {
+            out.write(b, off, len);
+        }
+
+        @Override
+        public void close() throws IOException {
+            out.flush();
+        }
+    }
+}
