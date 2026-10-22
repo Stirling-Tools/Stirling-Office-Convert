@@ -47,6 +47,13 @@ final class HtmlImages {
 
     private final Linked linked;
 
+    private record LinkedSvg(Element svg, Map<String, Element> ids, float[] natural) {}
+
+    static final long MAX_LINKED_SVG_CHARS = 4L * MAX_SVG_CHARS;
+
+    private final Map<String, LinkedSvg> linkedSvgs = new HashMap<>();
+    private long linkedSvgChars;
+
     HtmlImages(DocSink sink, List<String> warnings, Linked linked) {
         this.sink = sink;
         this.warnings = warnings;
@@ -113,18 +120,13 @@ final class HtmlImages {
             return null;
         }
         if (svgFile(reference, bytes)) {
-            if (bytes.length > MAX_SVG_CHARS) {
+            LinkedSvg linkedSvg = linkedSvg(reference, bytes);
+            if (linkedSvg == null) {
                 return null;
             }
-            Element svg = Jsoup.parse(new String(bytes, StandardCharsets.UTF_8), "", Parser.xmlParser()).selectFirst("svg");
-            if (svg == null) {
-                return null;
-            }
-            float[] natural = Svg.size(svg);
+            float[] natural = linkedSvg.natural();
             float[] box = box(d, look, natural[0] * 0.75f, natural[1] * 0.75f, maxWidth, maxHeight);
-            Map<String, Element> ids = new HashMap<>();
-            collectIds(svg, ids);
-            Picture p = painted(svg, ids, box, look, "linked:" + reference);
+            Picture p = painted(linkedSvg.svg(), linkedSvg.ids(), box, look, "linked:" + reference);
             if (p != null) {
                 p.description = img.attr("alt");
             }
@@ -142,6 +144,29 @@ final class HtmlImages {
         Picture p = new Picture(ref, box[0], box[1]);
         p.description = img.attr("alt");
         return p;
+    }
+
+    private LinkedSvg linkedSvg(String reference, byte[] bytes) {
+        if (linkedSvgs.containsKey(reference)) {
+            return linkedSvgs.get(reference);
+        }
+        if (bytes.length > MAX_SVG_CHARS) {
+            return null;
+        }
+        if (linkedSvgChars + bytes.length > MAX_LINKED_SVG_CHARS) {
+            warn("Left out pictures past the limit of linked files");
+            return null;
+        }
+        linkedSvgChars += bytes.length;
+        Element svg = Jsoup.parse(new String(bytes, StandardCharsets.UTF_8), "", Parser.xmlParser()).selectFirst("svg");
+        LinkedSvg parsed = null;
+        if (svg != null) {
+            Map<String, Element> ids = new HashMap<>();
+            collectIds(svg, ids);
+            parsed = new LinkedSvg(svg, ids, Svg.size(svg));
+        }
+        linkedSvgs.put(reference, parsed);
+        return parsed;
     }
 
     private static boolean svgFile(String reference, byte[] bytes) {
