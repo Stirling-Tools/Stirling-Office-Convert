@@ -220,9 +220,128 @@ class HtmlLayoutTest {
         Word side = l.word("Contact");
         Word main = l.word("Heading");
         float room = l.pageWidth() - 2 * l.word("Footer").left();
-        assertEquals(side.top(), main.top(), 1f);
+        assertEquals(main.top() + 10 * 0.75f, side.top(), 1f, "the sidebar's padding sits above its first margin");
         assertEquals(l.word("Footer").left() + room * 0.32f, main.left(), 3f);
         assertTrue(l.word("Phone").right() < main.left());
         assertTrue(l.word("Footer").top() > l.word("Body").top());
+    }
+
+    @Test
+    void columnCountFlowsTextIntoBalancedColumnsAndContinuesBelowThem() throws IOException {
+        String words = "Alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu nu xi. ".repeat(14);
+        Laid l = lay("<html><head><style>.cols{column-count:3;column-gap:18px;column-rule:1px solid #bbb}</style>"
+                + "</head><body><p>Before</p><div class=cols><p>First " + words + "</p><p>" + words + " Last</p></div>"
+                + "<p>After</p></body></html>");
+        assertEquals(1, l.pages());
+        Word first = containing(l, "First");
+        Word last = containing(l, "Last");
+        Word after = l.word("After");
+        float room = l.pageWidth() - 2 * after.left();
+        assertEquals(first.left() + 2 * (room + 18 * 0.75f) / 3, last.left(), 3f);
+        float[] bottoms = new float[3];
+        for (Word w : l.words()) {
+            int column = Math.round((w.left() - first.left()) / ((room + 18 * 0.75f) / 3));
+            if (w != after && column >= 0 && column < 3) {
+                bottoms[column] = Math.max(bottoms[column], w.top());
+            }
+        }
+        assertEquals(bottoms[0], bottoms[1], 20f);
+        assertEquals(bottoms[0], bottoms[2], 20f);
+        assertTrue(after.top() > bottoms[0] && after.top() < bottoms[0] + 50, l.words().toString());
+    }
+
+    @Test
+    void svgTextIsSetAsTextWhereTheDrawingPutsIt() throws IOException {
+        Laid l = lay("""
+                <html><body style="margin:0;font-family:Arial"><p>Chart</p>
+                <svg width="300" height="80" viewBox="0 0 600 160"><rect width="600" height="160" fill="#eef"/>
+                <text x="20" y="90" font-size="40">Revenue</text><text x="580" y="140" text-anchor="end">Q4</text>
+                <text x="300" y="40" transform="rotate(30 300 40)">Tilted</text></svg>
+                </body></html>""");
+        assertTrue(l.text().contains("Revenue"), l.text());
+        assertTrue(l.text().contains("Q4"), l.text());
+        assertFalse(l.text().contains("Tilted"), l.text());
+        Word chart = l.word("Chart");
+        Word revenue = l.word("Revenue");
+        assertEquals(chart.left() + 10 * 0.75f, revenue.left(), 1.5f);
+        assertEquals(chart.left() + 290 * 0.75f, l.word("Q4").right(), 2f);
+        assertEquals((140 - 90) / 2f * 0.75f, l.word("Q4").top() - revenue.top(), 1.5f);
+    }
+
+    @Test
+    void aGradientBackgroundRunsFromItsFirstColourToItsLast() throws IOException {
+        Laid l = lay("""
+                <html><body style="margin:0"><div style="height:100px;padding:10px;color:#fff;
+                background:linear-gradient(to right,#ff0000,#0000ff)"><p>Banner</p></div></body></html>""");
+        Word banner = l.word("Banner");
+        int y = Math.round(banner.top() + 20);
+        int left = l.first().getRGB(Math.round(banner.left()) - 4, y);
+        int right = l.first().getRGB(Math.round(l.pageWidth() - banner.left()) - 4, y);
+        assertTrue((left >> 16 & 0xFF) > 200 && (left & 0xFF) < 60, Integer.toHexString(left));
+        assertTrue((right & 0xFF) > 200 && (right >> 16 & 0xFF) < 60, Integer.toHexString(right));
+        int below = l.first().getRGB(Math.round(banner.left()), Math.round(banner.top() - 12 + 90));
+        assertTrue((below >> 16 & 0xFF) > 150, "the box is as tall as its height: " + Integer.toHexString(below));
+    }
+
+    @Test
+    void opacityFadesABoxAndItsTextTowardsThePaper() throws IOException {
+        Laid l = lay("""
+                <html><body style="margin:0"><div style="opacity:.5;background:#0000ff;padding:10px">
+                <p>Faded</p></div></body></html>""");
+        Word faded = l.word("Faded");
+        int rgb = l.first().getRGB(Math.round(faded.left()) - 4, Math.round(faded.top()) - 4) & 0xFFFFFF;
+        assertEquals(0x80, rgb >> 16 & 0xFF, 2, Integer.toHexString(rgb));
+        assertEquals(0x80, rgb >> 8 & 0xFF, 2, Integer.toHexString(rgb));
+        assertEquals(0xFF, rgb & 0xFF, 2, Integer.toHexString(rgb));
+    }
+
+    @Test
+    void aRightFloatedSpanInAHeadingSitsAtTheRightEdgeOfItsLine() throws IOException {
+        Laid l = lay("""
+                <html><head><style>h3 span{float:right;font-weight:normal}</style></head><body style="margin:0">
+                <h3>Engineer <span>2021</span></h3><h3><span>2019</span>Analyst</h3><p>Body</p></body></html>""");
+        float right = l.pageWidth() - l.word("Body").left();
+        assertEquals(l.word("Engineer").top(), l.word("2021").top(), 1f);
+        assertEquals(right, l.word("2021").right(), 3f);
+        assertEquals(l.word("Analyst").top(), l.word("2019").top(), 1f);
+        assertEquals(right, l.word("2019").right(), 3f);
+        assertEquals(l.word("Body").left(), l.word("Analyst").left(), 1f);
+    }
+
+    @Test
+    void paddingAddsToTheSpaceBetweenBlocksWhereMarginsCollapse() throws IOException {
+        Laid l = lay("""
+                <html><head><style>body{margin:0}ul{list-style:none;padding:0}li{padding:10px 0}
+                p{margin:20px 0}</style></head><body>
+                <ul><li>One</li><li>Two</li></ul><p>Three</p><p>Four</p></body></html>""");
+        float plain = l.word("Four").top() - l.word("Three").top();
+        float padded = l.word("Two").top() - l.word("One").top();
+        assertEquals(plain, padded, 1.5f, l.words().toString());
+    }
+
+    @Test
+    void emailMarkupCentresQuotesWithABarAndDrawsButtonsAsBoxes() throws IOException {
+        Laid l = lay("""
+                <!doctype html><html><head><style>body{margin:0}
+                .btn{display:inline-block;background:#1a73e8;color:#fff;padding:10px 18px;text-decoration:none}
+                </style></head><body><center><table width="100%"><tr><td>Centred</td></tr></table></center>
+                <blockquote style="margin:0;border-left:3px solid #ff0000;padding-left:8px">Quoted</blockquote>
+                <p><a class="btn" href="https://example.com/go">Open</a></p></body></html>""");
+        Word centred = l.word("Centred");
+        assertEquals(l.pageWidth() / 2, (centred.left() + centred.right()) / 2, 3f);
+        Word quoted = l.word("Quoted");
+        boolean bar = false;
+        for (int x = 0; x < Math.round(quoted.left()); x++) {
+            int rgb = l.first().getRGB(x, Math.round(quoted.top()) - 4);
+            bar |= (rgb >> 16 & 0xFF) > 200 && (rgb & 0xFF) < 60;
+        }
+        assertTrue(bar, "a left border is drawn beside the quote");
+        Word open = l.word("Open");
+        int fill = l.first().getRGB(Math.round(open.left()) - 6, Math.round(open.top()) - 4) & 0xFFFFFF;
+        assertEquals(0x1A73E8, fill, Integer.toHexString(fill));
+    }
+
+    private static Word containing(Laid l, String text) {
+        return l.words().stream().filter(w -> w.text().contains(text)).findFirst().orElseThrow();
     }
 }

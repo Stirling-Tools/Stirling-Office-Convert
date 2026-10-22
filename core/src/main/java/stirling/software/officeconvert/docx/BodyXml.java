@@ -370,7 +370,8 @@ final class BodyXml {
         }
         if (s.columns.size() > 1) {
             sb.append("<w:cols w:num=\"").append(s.columns.size()).append("\" w:space=\"")
-                    .append(Xml.twips(s.columns.getFirst()[1])).append("\" w:equalWidth=\"0\">");
+                    .append(Xml.twips(s.columns.getFirst()[1])).append(s.columnRule ? "\" w:sep=\"1" : "")
+                    .append("\" w:equalWidth=\"0\">");
             for (float[] c : s.columns) {
                 sb.append("<w:col w:w=\"").append(Xml.twips(c[0])).append("\" w:space=\"").append(Xml.twips(c[1])).append("\"/>");
             }
