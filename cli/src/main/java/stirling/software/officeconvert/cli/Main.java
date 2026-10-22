@@ -512,7 +512,7 @@ public final class Main {
                         + " links to is fetched and no macro, field or formula is run."
                         + System.lineSeparator()
                         + "The output's extension picks the format: .docx, .odt, .fodt, .xml (flat ODT), .rtf, .doc (RTF content),"
-                        + " .txt, .pptx, .odp, .ppt, .xlsx or .ods; --format names it for a directory of outputs."
+                        + " .txt, .md, .pptx, .odp, .ppt, .xlsx or .ods; --format names it for a directory of outputs."
                         + System.lineSeparator()
                         + "--pdfa makes an archival PDF/A copy of each PDF (in.pdfa.pdf unless -o names it): fonts are embedded,"
                         + " scripts and actions removed, colours given an sRGB output intent; 1a and 1b draw transparency as pictures;"
