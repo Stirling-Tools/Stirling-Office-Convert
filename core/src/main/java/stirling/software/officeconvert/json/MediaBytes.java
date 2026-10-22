@@ -33,7 +33,7 @@ public record MediaBytes(byte[] bytes, String ext, int pixelWidth, int pixelHeig
             size = gifFrame(b);
         } else if (b[0] == 'B' && b[1] == 'M') {
             kind = "bmp";
-            size = new int[] {le32(b, 18), Math.abs(le32(b, 22))};
+            size = wrapsJpegOrPng(b) ? null : new int[] {le32(b, 18), Math.abs(le32(b, 22))};
         } else {
             return null;
         }
@@ -84,6 +84,17 @@ public record MediaBytes(byte[] bytes, String ext, int pixelWidth, int pixelHeig
             i++;
         }
         return null;
+    }
+
+    private static boolean wrapsJpegOrPng(byte[] b) {
+        if (le32(b, 14) < 40) {
+            return false;
+        }
+        if (b.length < 34) {
+            return true;
+        }
+        int compression = le32(b, 30);
+        return compression == 4 || compression == 5;
     }
 
     private static int[] jpegSize(byte[] b) {
