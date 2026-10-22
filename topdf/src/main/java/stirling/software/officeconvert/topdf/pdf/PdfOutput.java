@@ -61,6 +61,8 @@ public final class PdfOutput implements Closeable {
 
     private final Map<Long, PDExtendedGraphicsState> alphas = new HashMap<>();
 
+    private final AcroForms forms = new AcroForms();
+
     private DocumentInfo info = DocumentInfo.EMPTY;
 
     private boolean finished;
@@ -118,6 +120,14 @@ public final class PdfOutput implements Closeable {
             throw new IllegalArgumentException("A form needs a positive size, was " + width + "x" + height);
         }
         return new PdfCanvas(this, width, height, margin);
+    }
+
+    public PdfCanvas newFieldLook(float width, float height) throws IOException {
+        checkWritable();
+        if (!(width > 0 && height > 0)) {
+            throw new IllegalArgumentException("A field needs a positive size, was " + width + "x" + height);
+        }
+        return new PdfCanvas(this, width, height, 0, "Tx");
     }
 
     public int pageCount() {
@@ -180,6 +190,7 @@ public final class PdfOutput implements Closeable {
             link.setPrinted(true);
             PdfCanvas.addAnnotation(l.page(), link);
         }
+        forms.write(document);
         writeOutline();
         writeInfo();
         finished = true;
@@ -227,6 +238,11 @@ public final class PdfOutput implements Closeable {
 
     void link(PDPage page, PDRectangle rect, String destination) {
         links.add(new Link(page, rect, null, destination));
+    }
+
+    void field(AcroForms.Widget widget) {
+        checkWritable();
+        forms.add(widget);
     }
 
     PDExtendedGraphicsState alpha(float fill, float stroke) {
