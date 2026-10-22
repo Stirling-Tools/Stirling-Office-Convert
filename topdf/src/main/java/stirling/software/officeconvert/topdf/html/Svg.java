@@ -38,7 +38,7 @@ final class Svg {
     static final int MAX_USE_DEPTH = 8;
     static final long MAX_PIXELS = 4_000_000L;
 
-    // Work is path characters read plus pixels covered, so neither reused paths nor huge fills run away
+    // Work is path, point and text characters read plus pixels covered, so neither reused shapes nor big fills run away
     static final long MAX_WORK = 60_000_000L;
 
     /** A painted picture and the size it is shown at, in points. */
@@ -225,6 +225,8 @@ final class Svg {
                 default -> {
                     if (tag.equals("path")) {
                         charge(e.attr("d").length());
+                    } else if (tag.equals("polygon") || tag.equals("polyline")) {
+                        charge(e.attr("points").length());
                     }
                     draw(g, shape(tag, e), style);
                 }
@@ -263,7 +265,8 @@ final class Svg {
 
     private void text(Graphics2D g, Element e, Style style) {
         String text = e.text().strip();
-        if (text.isEmpty() || style.fill() == null) {
+        charge(text.length());
+        if (text.isEmpty() || style.fill() == null || spent()) {
             return;
         }
         Font font = new Font(Look.family(style.fontFamily()) == null ? "SansSerif" : Look.family(style.fontFamily()),
