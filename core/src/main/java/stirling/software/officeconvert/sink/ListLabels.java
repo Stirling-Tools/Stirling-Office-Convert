@@ -46,6 +46,11 @@ public final class ListLabels {
         return sb.toString();
     }
 
+    public int value(int numId, int level) {
+        int[] count = counters.get(numId);
+        return count == null || level < 0 || level > 8 || count[level] == UNSTARTED ? 0 : count[level];
+    }
+
     private static int[] unstarted() {
         int[] c = new int[9];
         java.util.Arrays.fill(c, UNSTARTED);
