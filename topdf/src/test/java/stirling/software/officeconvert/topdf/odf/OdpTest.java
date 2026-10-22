@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Map;
 
 import org.apache.pdfbox.Loader;
@@ -15,6 +16,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import stirling.software.officeconvert.topdf.OfficeToPdf;
+import stirling.software.officeconvert.topdf.testing.Outlines;
 
 class OdpTest {
 
@@ -53,6 +55,16 @@ class OdpTest {
         try (PDDocument doc = Loader.loadPDF(pdf.toFile())) {
             return new PDFTextStripper().getText(doc);
         }
+    }
+
+    @Test
+    void slidesAreBookmarkedByTheirPageNames() throws IOException {
+        String pages = "<draw:page draw:name=\"Budget &amp; plan\" draw:master-page-name=\"Default\"/>"
+                + "<draw:page draw:name=\"page2\" draw:master-page-name=\"Default\"/>"
+                + "<draw:page draw:master-page-name=\"Default\"/>";
+        Path pdf = dir.resolve("names.pdf");
+        OfficeToPdf.convert(odp("", pages), pdf);
+        assertEquals(List.of("1 p1 Budget & plan", "1 p2 Slide 2", "1 p3 Slide 3"), Outlines.titles(pdf));
     }
 
     @Test

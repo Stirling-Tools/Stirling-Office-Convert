@@ -149,9 +149,14 @@ class PdfToHtmlJsonTest {
     private static Map<String, String> replayed(String json) throws IOException {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         try (DocxWriter writer = new DocxWriter(out)) {
-            JsonModel.replay(Json.parse(json), writer, new ArrayList<>());
+            JsonModel.replay(Json.parse(marked(json)), writer, new ArrayList<>());
         }
         return parts(out.toByteArray());
+    }
+
+    private static String marked(String json) {
+        return json.contains("\"format\":\"" + JsonWriter.FORMAT + "\"") ? json
+                : "{\"format\":\"" + JsonWriter.FORMAT + "\"," + json.substring(1);
     }
 
     @Test
@@ -161,6 +166,40 @@ class PdfToHtmlJsonTest {
                 + "\"decimal\\\"/><w:injected/><x a=\\\"\"}]}]" + body));
         assertThrows(IOException.class, () -> replayed("{\"styles\":{\"languages\":{\"latin\":"
                 + "\"en\\\"/><w:injected/><x a=\\\"\"}}" + body));
+    }
+
+    @Test
+    void defaultMarginsStillLeaveRoomOnAShortPage() throws IOException {
+        String doc = replayed("{\"page\":{\"height\":100},\"body\":[{\"content\":[{\"text\":\"x\"}]}]}")
+                .get("word/document.xml");
+        assertTrue(twips(doc, "w:top") + twips(doc, "w:bottom") <= 2000 - 360, doc);
+    }
+
+    @Test
+    void aPageWithoutHeaderDistancesKeepsTheDefaultOnes() throws IOException {
+        String doc = replayed("{\"page\":{\"width\":612,\"height\":792},\"body\":[{\"content\":[{\"text\":\"x\"}]}]}")
+                .get("word/document.xml");
+        assertEquals(720, twips(doc, "w:header"), doc);
+        assertEquals(720, twips(doc, "w:footer"), doc);
+    }
+
+    @Test
+    void headerDistancesOfZeroSurviveTheRoundTrip() throws IOException {
+        String in = "{\"page\":{\"width\":612,\"height\":792,\"headerDistance\":0,\"footerDistance\":0},"
+                + "\"body\":[{\"content\":[{\"text\":\"x\"}]}]}";
+        ByteArrayOutputStream json = new ByteArrayOutputStream();
+        try (JsonWriter writer = new JsonWriter(json, null)) {
+            JsonModel.replay(Json.parse(marked(in)), writer, new ArrayList<>());
+        }
+        String doc = replayed(json.toString(StandardCharsets.UTF_8)).get("word/document.xml");
+        assertEquals(0, twips(doc, "w:header"), doc);
+    }
+
+    private static int twips(String documentXml, String attribute) {
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("<w:pgMar [^>]*" + attribute + "=\"(-?\\d+)\"")
+                .matcher(documentXml);
+        assertTrue(m.find(), attribute + " in " + documentXml);
+        return Integer.parseInt(m.group(1));
     }
 
     @Test
@@ -176,7 +215,7 @@ class PdfToHtmlJsonTest {
                 + "\"body\":[{\"list\":{\"id\":1},\"content\":[{\"text\":\"x\"}]}]}";
         ByteArrayOutputStream json = new ByteArrayOutputStream();
         try (JsonWriter writer = new JsonWriter(json, null)) {
-            JsonModel.replay(Json.parse(in), writer, new ArrayList<>());
+            JsonModel.replay(Json.parse(marked(in)), writer, new ArrayList<>());
         }
         assertEquals(replayed(in).get("word/numbering.xml"),
                 replayed(json.toString(StandardCharsets.UTF_8)).get("word/numbering.xml"));

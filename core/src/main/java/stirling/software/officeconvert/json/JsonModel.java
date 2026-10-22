@@ -57,7 +57,11 @@ public final class JsonModel {
 
     private void read(JsonIn doc) throws IOException {
         root = doc.raw();
-        String format = doc.str("format", JsonWriter.FORMAT);
+        String format = doc.str("format", null);
+        if (format == null) {
+            throw new IOException("Not a Stirling Office Convert JSON document: it has no \"format\": \""
+                    + JsonWriter.FORMAT + "\" field");
+        }
         if (!JsonWriter.FORMAT.equals(format)) {
             throw new IOException("Not a Stirling Office Convert JSON document: format is \"" + format + "\"");
         }
@@ -431,12 +435,14 @@ public final class JsonModel {
         s.pageWidth = in.num("width", s.pageWidth, 36, JsonIn.MAX_LENGTH);
         s.pageHeight = in.num("height", s.pageHeight, 36, JsonIn.MAX_LENGTH);
         // Each pair of margins leaves at least a little room for text
-        s.marginTop = in.num("marginTop", s.marginTop, 0, s.pageHeight - 18);
-        s.marginBottom = in.num("marginBottom", s.marginBottom, 0, s.pageHeight - 18 - s.marginTop);
-        s.marginLeft = in.num("marginLeft", s.marginLeft, 0, s.pageWidth - 18);
-        s.marginRight = in.num("marginRight", s.marginRight, 0, s.pageWidth - 18 - s.marginLeft);
-        s.headerDistance = in.num("headerDistance", 0, 0, s.pageHeight);
-        s.footerDistance = in.num("footerDistance", 0, 0, s.pageHeight);
+        s.marginTop = Math.min(in.num("marginTop", s.marginTop, 0, s.pageHeight - 18), s.pageHeight - 18);
+        s.marginBottom = Math.min(in.num("marginBottom", s.marginBottom, 0, s.pageHeight - 18 - s.marginTop),
+                s.pageHeight - 18 - s.marginTop);
+        s.marginLeft = Math.min(in.num("marginLeft", s.marginLeft, 0, s.pageWidth - 18), s.pageWidth - 18);
+        s.marginRight = Math.min(in.num("marginRight", s.marginRight, 0, s.pageWidth - 18 - s.marginLeft),
+                s.pageWidth - 18 - s.marginLeft);
+        s.headerDistance = in.num("headerDistance", Math.min(s.headerDistance, s.pageHeight), 0, s.pageHeight);
+        s.footerDistance = in.num("footerDistance", Math.min(s.footerDistance, s.pageHeight), 0, s.pageHeight);
         s.continuous = in.flag("continuous");
         s.titlePage = in.flag("titlePage");
         s.pageNumberStart = in.integer("pageNumberStart", 1, 0, 32_767);

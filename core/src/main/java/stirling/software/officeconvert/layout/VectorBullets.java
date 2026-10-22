@@ -16,8 +16,10 @@ final class VectorBullets {
     static List<Glyph> synthesize(List<Glyph> glyphs, List<VectorMark> marks, List<Fill> fills, Set<Object> used) {
         List<Glyph> out = new ArrayList<>();
         GlyphIndex index = null;
+        Neighbours neighbours = new Neighbours(marks, fills);
         for (VectorMark m : marks) {
-            if ((m.filled() || m.curved()) && sized(m.x(), m.top(), m.right(), m.bottom())) {
+            if ((m.filled() || m.curved()) && sized(m.x(), m.top(), m.right(), m.bottom())
+                    && !neighbours.trailing(m.x(), m.top(), m.bottom())) {
                 index = index == null ? new GlyphIndex(glyphs) : index;
                 boolean after = index.textBefore(m.x(), (m.top() + m.bottom()) / 2f);
                 if (after && !m.round() && !m.boxy()) {
@@ -34,7 +36,7 @@ final class VectorBullets {
             }
         }
         for (Fill f : fills) {
-            if (!sized(f.x(), f.top(), f.right(), f.bottom())) {
+            if (!sized(f.x(), f.top(), f.right(), f.bottom()) || neighbours.trailing(f.x(), f.top(), f.bottom())) {
                 continue;
             }
             index = index == null ? new GlyphIndex(glyphs) : index;
@@ -45,6 +47,55 @@ final class VectorBullets {
             }
         }
         return out;
+    }
+
+    private static boolean leftNeighbour(float x, float top, float bottom, float h, float ox, float otop, float oright,
+            float obottom) {
+        float shared = Math.min(bottom, obottom) - Math.max(top, otop);
+        float oh = obottom - otop;
+        return oright <= x + 0.5f && x - oright <= LETTER_GAP * h && shared >= 0.5f * h && oh <= 2.5f * h
+                && oright - ox >= 0.3f * h;
+    }
+
+    private static final float LETTER_GAP = 0.5f;
+
+    private static final class Neighbours {
+
+        private static final int MAX_COMPARISONS = 2_000_000;
+
+        private final float[][] boxes;
+        private final float[] rights;
+        private int comparisons;
+
+        Neighbours(List<VectorMark> marks, List<Fill> fills) {
+            List<float[]> all = new ArrayList<>(marks.size() + fills.size());
+            for (VectorMark o : marks) {
+                all.add(new float[] {o.x(), o.top(), o.right(), o.bottom()});
+            }
+            for (Fill o : fills) {
+                all.add(new float[] {o.x(), o.top(), o.right(), o.bottom()});
+            }
+            all.sort(Comparator.comparingDouble(b -> b[2]));
+            boxes = all.toArray(new float[0][]);
+            rights = new float[boxes.length];
+            for (int i = 0; i < boxes.length; i++) {
+                rights[i] = boxes[i][2];
+            }
+        }
+
+        boolean trailing(float x, float top, float bottom) {
+            float h = bottom - top;
+            for (int i = GlyphIndex.lowerBound(rights, x - LETTER_GAP * h - 0.01f); i < rights.length && rights[i] <= x + 0.5f; i++) {
+                if (++comparisons > MAX_COMPARISONS) {
+                    return false;
+                }
+                float[] o = boxes[i];
+                if (leftNeighbour(x, top, bottom, h, o[0], o[1], o[2], o[3])) {
+                    return true;
+                }
+            }
+            return false;
+        }
     }
 
     private static boolean sized(float x, float top, float right, float bottom) {

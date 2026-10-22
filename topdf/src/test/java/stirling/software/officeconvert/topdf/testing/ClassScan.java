@@ -96,7 +96,7 @@ public final class ClassScan {
     private static final String TOPDF = "stirling/software/officeconvert/topdf/";
 
     public static final List<String> FORMAT_PACKAGES = Stream.of("docx", "pptx", "xlsx", "xls", "ppt", "doc", "doc6",
-            "rtf", "odf", "ooo1", "wordml", "sml", "flat", "xlsb", "biff5", "lotus", "grid", "vsdx", "iwork", "text")
+            "rtf", "odf", "ooo1", "wordml", "sml", "flat", "xlsb", "biff5", "lotus", "grid", "vsdx", "iwork", "thumbnail", "text")
             .map(p -> TOPDF + p + "/").toList();
 
     public static final List<String> FORMAT_FILE_TYPES = List.of("java/io/File", "java/io/FileInputStream",
