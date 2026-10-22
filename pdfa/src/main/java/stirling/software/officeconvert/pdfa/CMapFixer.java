@@ -35,8 +35,6 @@ final class CMapFixer {
 
     private static final COSName USE_CMAP = COSName.getPDFName("UseCMap");
 
-    private static final Pattern CODESPACE = Pattern.compile("begincodespacerange(.*?)endcodespacerange",
-            Pattern.DOTALL);
 
     private static final Pattern HEX = Pattern.compile("<([0-9A-Fa-f]+)>\\s*<([0-9A-Fa-f]+)>");
 
@@ -153,9 +151,8 @@ final class CMapFixer {
                         {"begincidchar", "endcidchar"}, {"beginnotdefrange", "endnotdefrange"},
                         {"beginnotdefchar", "endnotdefchar"}};
         for (String[] kind : kinds) {
-            Matcher m = Pattern.compile("\\d+\\s+" + kind[0] + ".*?" + kind[1], Pattern.DOTALL).matcher(up);
-            while (m.find()) {
-                blocks.append(m.group()).append('\n');
+            for (String counted : countedBlocks(up, kind[0], kind[1])) {
+                blocks.append(counted).append('\n');
             }
         }
         int at = text.indexOf("begincmap") + "begincmap".length();
@@ -413,9 +410,8 @@ final class CMapFixer {
         if (text == null) {
             return out;
         }
-        Matcher block = CODESPACE.matcher(text);
-        while (block.find()) {
-            Matcher m = HEX.matcher(block.group(1));
+        for (String block : blocks(text, "begincodespacerange", "endcodespacerange")) {
+            Matcher m = HEX.matcher(block);
             while (m.find()) {
                 if (m.group(1).length() == m.group(2).length() && m.group(1).length() <= 8) {
                     out.add(new int[] {(int) Long.parseLong(m.group(1), 16), (int) Long.parseLong(m.group(2), 16),
@@ -465,6 +461,36 @@ final class CMapFixer {
     private static String text(COSStream s) {
         byte[] b = StreamFixer.read(s);
         return b == null ? "" : new String(b, StandardCharsets.ISO_8859_1);
+    }
+
+    static List<String> countedBlocks(String text, String begin, String end) {
+        List<String> out = new ArrayList<>();
+        int at = 0;
+        while ((at = text.indexOf(begin, at)) >= 0) {
+            int stop = text.indexOf(end, at + begin.length());
+            if (stop < 0) {
+                break;
+            }
+            int start = at;
+            while (start > 0 && space(text.charAt(start - 1))) {
+                start--;
+            }
+            int digits = start;
+            while (digits > 0 && Character.isDigit(text.charAt(digits - 1)) && text.charAt(digits - 1) < 128) {
+                digits--;
+            }
+            if (start < at && digits < start) {
+                out.add(text.substring(digits, stop + end.length()));
+                at = stop + end.length();
+            } else {
+                at += begin.length();
+            }
+        }
+        return out;
+    }
+
+    private static boolean space(char c) {
+        return c == ' ' || c == '\t' || c == '\n' || c == '\u000B' || c == '\f' || c == '\r';
     }
 
     private static List<String> blocks(String text, String begin, String end) {
