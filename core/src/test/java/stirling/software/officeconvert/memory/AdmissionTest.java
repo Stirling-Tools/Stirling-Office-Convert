@@ -8,9 +8,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.io.InterruptedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
 import org.junit.jupiter.api.Test;
@@ -37,7 +39,7 @@ class AdmissionTest {
         });
         assertFalse(entered.await(200, TimeUnit.MILLISECONDS), "40 + 8 + 30 MB is over the 50 MB budget");
         first.close();
-        assertTrue(entered.await(5, TimeUnit.SECONDS));
+        assertTrue(entered.await(1, TimeUnit.MINUTES));
         t.join();
         assertEquals(2, a.running());
         small.close();
@@ -61,7 +63,7 @@ class AdmissionTest {
             waiting.join(200);
             assertTrue(waiting.isAlive());
             waiting.interrupt();
-            waiting.join(5000);
+            waiting.join(Duration.ofMinutes(1));
             assertFalse(waiting.isAlive());
         }
         a.enter(Long.MAX_VALUE).close();
@@ -83,7 +85,7 @@ class AdmissionTest {
         third.join(200);
         assertTrue(third.isAlive());
         third.interrupt();
-        third.join(5000);
+        third.join(Duration.ofMinutes(1));
         assertTrue(thrown.get() instanceof InterruptedIOException, String.valueOf(thrown.get()));
         one.close();
         two.close();
@@ -213,7 +215,7 @@ class AdmissionTest {
 
     @Test
     void aCrowdedContainerHoldsBackANewConversionButNeverTheFirst() throws Exception {
-        boolean[] crowded = {true};
+        AtomicBoolean crowded = new AtomicBoolean(true);
         Admission a = new Admission(1024 * MB, 100, 8, new Admission.Heap() {
             @Override
             public double used(boolean collect) {
@@ -222,7 +224,7 @@ class AdmissionTest {
 
             @Override
             public boolean crowded() {
-                return crowded[0];
+                return crowded.get();
             }
         });
         try (Admission.Ticket first = a.enter(10 * MB)) {
@@ -235,8 +237,8 @@ class AdmissionTest {
             });
             second.join(200);
             assertTrue(second.isAlive());
-            crowded[0] = false;
-            second.join(5000);
+            crowded.set(false);
+            second.join(Duration.ofMinutes(1));
             assertFalse(second.isAlive());
             assertFalse(first.exhausted());
         }

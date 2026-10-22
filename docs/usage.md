@@ -25,8 +25,8 @@ For Word, PowerPoint and Excel input (`.docx .docm .dotx .dotm .pptx .pptm .ppsx
 .xltx .xltm .xlsb`, Word 6.0 to 2003 `.doc .dot`, Excel 2.0 to 2003 `.xls .xlt`, PowerPoint 97-2003 `.ppt .pps .pot`,
 `.rtf`, Word 2003 XML, XML Spreadsheet 2003 and Flat OPC `.xml`, Visio 2013 and later `.vsdx .vsdm .vssx .vstx`,
 OpenDocument `.odt .ott .fodt .odm .ods .ots .fods .odp .otp .fodp .odg .otg .fodg`, OpenOffice.org 1.x `.sxw .stw .sxc
-.stc .sxi .sti .sxd .std`, SYLK, DIF and dBASE `.slk .dif .dbf`, Lotus 1-2-3 `.wk1 .wks .wk3 .wk4 .123`, Apple iWork `.pages .numbers .key` (from the preview they hold), plain text `.txt .text .log .asc` and tables
-`.csv .tsv .tab`), which converts to PDF: `--password p` (a password protected document), `--max-pages n` (default 10000, 0 = all), `--timeout s` (default 300, 0 =
+.stc .sxi .sti .sxd .std`, SYLK, DIF and dBASE `.slk .dif .dbf`, Lotus 1-2-3 `.wk1 .wks .wk3 .wk4 .123`, Apple iWork `.pages .numbers .key` (from the preview they hold), plain text `.txt .text .log .asc`, tables
+`.csv .tsv .tab`, HTML `.html .htm .xhtml` and this library's JSON `.json`), which converts to PDF: `--password p` (a password protected document), `--max-pages n` (default 10000, 0 = all), `--timeout s` (default 300, 0 =
 none), `--fonts dir` (repeatable; an extra folder of fonts), `--font-map Family=Installed` (repeatable; draw a
 family with an installed one, such as `Aptos=Inter`), `--font-width Family=scale` (repeatable; scale a substituted
 family's widths, 0.5 to 2), `--no-system-fonts` (only the given fonts and the bundled Liberation Sans, for
@@ -41,7 +41,7 @@ when everything converted, 1 when something failed or was skipped or a folder he
 mistake in the arguments. Warnings (substituted fonts, skipped active content, pictures that could not be
 drawn) print to stderr as `warning: <file>: <message>` unless `-q`.
 The output file's extension picks the format: `.docx`, `.odt`, `.fodt`, `.xml` (flat ODT), `.rtf`, `.doc`, `.txt`, `.md`,
-`.pptx`, `.odp`, `.ppt`, `.xlsx` or `.ods` (see Other formats). For a folder of PDFs, `--format ext` names it; `--sheets
+`.html`, `.json`, `.pptx`, `.odp`, `.ppt`, `.xlsx` or `.ods` (see Other formats). For a folder of PDFs, `--format ext` names it; `--sheets
 page|table|single` sets a spreadsheet's layout. Each file prints its time and the heap in use when it finished.
 `--pdfa 1a|1b|2a|2b|2u|3a|3b|3u` makes an archival PDF/A copy of each PDF instead (see PDF to PDF/A): `in.pdfa.pdf` beside the
 input, or the `-o` file or folder; it takes `--password`, `--timeout`, `--fonts`, `--font-map` and
@@ -186,7 +186,7 @@ implementation 'com.stirling:stirling-office-convert:<version>'             // G
 
 Then one class does it all, `stirling.software.officeconvert.OfficeConvert`. The output file's extension picks the
 format: `.docx`, `.odt`, `.fodt`, `.xml` (flat ODT, what LibreOffice writes for PDF to XML), `.rtf`, `.doc` (RTF
-content), `.txt`, `.md`, `.pptx`, `.odp`, `.xlsx` or `.ods`.
+content), `.txt`, `.md`, `.html`, `.json`, `.pptx`, `.odp`, `.xlsx` or `.ods`.
 
 ```java
 import java.nio.file.Path;
@@ -232,7 +232,7 @@ try {
 ```
 
 Conversions of different documents run safely in parallel; a `PDDocument` must not be converted on two threads at
-once. The per-format classes (`PdfToDocx`, `PdfToOdt`, `PdfToRtf`, `PdfToText`, `PdfToPptx`, `PdfToOdp`, `PdfToXlsx`)
+once. The per-format classes (`PdfToDocx`, `PdfToOdt`, `PdfToRtf`, `PdfToText`, `PdfToHtml`, `PdfToJson`, `PdfToPptx`, `PdfToOdp`, `PdfToXlsx`)
 stay available for options the facade leaves out, such as untyped spreadsheet cells; see Other formats. PowerPoint
 97-2003 (`.ppt`) comes from `com.stirling:stirling-office-convert-legacy` (`PdfToPpt`), which adds Apache POI.
 
@@ -390,7 +390,9 @@ several sheets in one file, and chart and macro sheets, are refused with a plain
 
 Password protected documents open with `Options.password(...)` (`--password` on the command line): Office Open XML
 packages encrypted with Agile or Standard encryption, and Word, Excel and PowerPoint 97-2003 files encrypted with RC4,
-CryptoAPI or XOR obfuscation (Excel 5.0/95 XOR included). The file is decrypted in the conversion's own scratch
+CryptoAPI or XOR obfuscation (Excel 5.0/95 XOR included), and OpenDocument packages encrypted per entry with
+AES-256-CBC (ODF 1.2 and later) or Blowfish CFB (OpenOffice.org and ODF 1.0/1.1), or as a whole with AES-256-GCM and
+Argon2id (LibreOffice's ODF 1.4 extended default). The file is decrypted in the conversion's own scratch
 space and never written beside the input; a wrong password, or none, fails with a plain reason, and nothing is ever
 guessed. Files Office protects only with its built-in read-only password open without one.
 
@@ -452,7 +454,7 @@ lists, tables, sections and columns, page styles with headers and footers, footn
 cells with their cached values (formulas are never evaluated), number formats, merges, hidden rows and columns,
 print ranges and page setup; master pages, outlines and shrink-to-fit text on slides. Only pictures inside the
 package are drawn: linked files are never fetched, and macros and scripts are never run. Embedded charts are not
-drawn yet. Password protected files are refused with a plain reason. OpenDocument drawings (`.odg .otg .fodg`) are
+drawn yet. Password protected packages open with their password, as described above. OpenDocument drawings (`.odg .otg .fodg`) are
 drawn like presentations, one page per drawing page, leaving out shapes on layers that are not printed.
 OpenOffice.org 1.x documents (`.sxw .stw .sxc .stc .sxi .sti .sxd .std`) are reshaped as OpenDocument (namespaces,
 renamed elements, property sets split by style family) and converted as such; their embedded objects are left out.
@@ -525,13 +527,31 @@ It depends on the core module, `org.apache.pdfbox:pdfbox:3.0.8`, `org.apache.poi
 5.5.1 (with `poi`, `poi-ooxml-lite`, `xmlbeans`, `commons-io`, `commons-codec`, `commons-compress`, `commons-lang3`,
 `commons-collections4`, `commons-math3`, `SparseBitSet`, `curvesapi` and `log4j-api`) and
 `de.rototor.pdfbox:graphics2d:3.0.5`, all Apache-2.0 apart from
-`curvesapi` (BSD-3-Clause). Automatic hyphenation uses the English Hyphen patterns bundled under
+`curvesapi` (BSD-3-Clause), and `org.jsoup:jsoup:1.22.2` (MIT) for HTML. Automatic hyphenation uses the English Hyphen patterns bundled under
 `stirling/software/officeconvert/topdf/docx/hyph/` (BSD-style licence beside them).
+
+HTML (`.html .htm .xhtml`, or any file whose content starts `<!DOCTYPE html` or `<html`, such as a Word "web page"
+saved as `.doc`) is laid out without a browser and drawn by the DOCX renderer: headings, paragraphs, lists, tables
+(with `colspan`, `rowspan`, borders, shading and widths), pre-formatted text, links, pictures, inline SVG and
+`data:image/svg+xml` (shapes, paths, transforms and same-page `<use>`), floats beside text, page breaks, and `@page`
+size and margins, named pages included. Style comes from `<style>` sheets, `style` attributes and the old
+presentational attributes over a browser's defaults, with the cascade as Chrome applies it when printing: media
+queries are answered for print at the page's text width, `!important`, custom properties (`var()`), `calc()`,
+`min()`, `max()`, `clamp()`, `rem`, `hsl()` and alpha colours. Flex rows and grids become columns side by side
+(short items share a line); absolute positions and visually hidden text (screen-reader-only, off-page, closed
+`<details>`) are left out. Nothing is fetched and no script runs: linked style sheets, `@import`, `@font-face`,
+`url()` and pictures on the web or on disk are left out with a warning, and only pictures inside the file are drawn
+(PNG, JPEG, GIF, BMP, WebP and SVG; AVIF is not). HTML files are limited to 64 MB, and parsing, the cascade, SVG
+painting and nesting each work within fixed budgets so a hostile page cannot hang or exhaust the converter.
+
+JSON (`.json`) is the document model that PDF to JSON writes ([format](json-format.md)), hand written or edited;
+it is replayed into a WordprocessingML package and drawn. Unknown fields are ignored, a value of the wrong type fails
+the conversion with its name, and pictures that cannot be read are left out with a warning.
 
 ## Other formats
 
-The same document model also goes out as OpenDocument, RTF, plain text and Markdown, each through its own writer
-(`odt`, `rtf` and `text` packages), with the options, streaming and failure contract of `PdfToDocx`:
+The same document model also goes out as OpenDocument, RTF, plain text, Markdown, HTML and JSON, each through its own writer
+(`odt`, `rtf`, `text`, `markdown`, `html` and `json` packages), with the options, streaming and failure contract of `PdfToDocx`:
 
 ```java
 PdfToOdt.convert(pdf, Path.of("out.odt"), options);        // OpenDocument Text
@@ -542,6 +562,8 @@ PdfToText.convert(pdf, Path.of("out.txt"), options);       // UTF-8 text in read
 PdfToMarkdown.convert(pdf, Path.of("out.md"), options);    // GitHub Flavored Markdown, pictures as data: URIs
 PdfToMarkdown.convertPackage(pdDocument, zipStream, options); // document.md plus images/ in a ZIP
 String text = PdfToText.text(pdDocument, options);
+PdfToHtml.convert(pdf, Path.of("out.html"), options);      // one HTML5 file, pictures as data: URIs
+PdfToJson.convert(pdf, Path.of("out.json"), options);      // the document model as JSON
 ```
 
 - ODT and flat ODT carry what the DOCX carries: styles, lists, tables with merged cells, pictures (cropped and turned
@@ -556,6 +578,13 @@ String text = PdfToText.text(pdDocument, options);
   escaped.
 - Text reads columns one after the other, tables row by row with tabs between cells, running headers and footers once,
   footnotes after the page that refers to them, list items with their numbers; pictures are left out and never decoded.
+- HTML is one self-contained, flowing page: headings as `h1`-`h6`, paragraphs with their indents, spacing and
+  alignment, runs with their font, size, colour and emphasis, numbered and bulleted items with their numbers, tables
+  with merged cells, borders and shading, pictures as `data:` URIs, links, footnotes at the end, and the page size and
+  margins as `@page` for printing. Floating pictures and text boxes join the flow next to their paragraph; columns
+  flow as one. There are no scripts and no external references.
+- JSON is the document model itself, the format [described here](json-format.md): everything the DOCX carries, as
+  data a program can read, change and convert back to PDF (or, through it, to anything else).
 
 
 ### Slides (PPTX, ODP and PPT)
@@ -693,6 +722,23 @@ and the output is moved into place only when complete.
 
 It depends on the core and topdf modules (and so on what those depend on) and `org.apache.pdfbox:pdfbox:3.0.8`.
 
+### Web fonts from PDF font programs
+
+`WebFonts.toTrueType` turns a font program embedded in a PDF into a TrueType font a browser loads with `@font-face`
+or `FontFace`. `toTrueType(PDFont)` reads the font's FontFile (Type 1), FontFile2 (TrueType, simple or CIDFontType2)
+or FontFile3 (`Type1C`, `CIDFontType0C`, `OpenType`) and builds the cmap from the font's ToUnicode, encoding and
+CIDToGIDMap. `toTrueType(byte[], FontKind, Map<Integer, Integer>)` takes the program bytes (`TYPE1` as PFB or as the
+raw FontFile stream, `CFF` for bare and CID-keyed CFF, `TRUETYPE` for TrueType or OpenType) and a glyph id to code
+point map, where glyph ids are the font's own, and for Type 1 `.notdef` followed by the CharStrings in file order.
+Glyph names that the Adobe Glyph List resolves, and for TrueType the font's own Unicode cmap, fill in code points the
+map leaves out. Every glyph keeps its glyph id and its advance width. Type 1 and CFF outlines are converted to
+TrueType at 1000 units per em through the FontMatrix; TrueType glyphs, hinting (`fpgm`, `prep`, `cvt `) and metrics
+are kept as they are, and a missing or truncated `OS/2` is replaced. The font has `glyf`, `loca`, `hmtx`, `hhea`,
+`head`, `maxp`, `OS/2`, `post`, `name` and a fresh `cmap` with format 4 and, for code points beyond the BMP, format 12.
+A program that cannot be read fails with an `IOException`, and so does one whose charstrings expand past 131,072
+tokens for a glyph, 64 nested subroutine calls or 2^27 tokens for the font, or whose converted glyphs need more than
+eight times the program's size (at least 16 MB).
+
 ## How it works
 
 Two passes over the pages:
@@ -708,7 +754,7 @@ Two passes over the pages:
 | `table` | Ruled and unruled table detection (grid from rules, whitespace alignment) |
 | `build` | Turns page layouts into Word model objects; list numbering, RTL ordering, page and column placement |
 | `docx` | Streaming OOXML writer: document, styles, numbering, footnotes, headers/footers, media |
-| `odt`, `rtf`, `text`, `markdown` | The same document model as OpenDocument Text, RTF, plain text and Markdown |
+| `odt`, `rtf`, `text`, `markdown`, `html`, `json` | The same document model as OpenDocument Text, RTF, plain text, Markdown, HTML and JSON |
 | `slides`, `pptx`, `odp` | Pages to slides: placed text boxes, pictures, shapes and tables in paint order, and their writers |
 | `sheet` | Spreadsheet model and layout: pages to rows, table grids, cell typing (numbers, dates, identifiers) |
 | `xlsx`, `ods` | Streaming spreadsheet writers: each sheet buffered (spilling to disk), shared strings and styles |
@@ -763,6 +809,7 @@ The cache belongs to the JDK build that made it; the JVM ignores a cache from an
   `Options(timeout, fontDirs, maxPages, maxScratchBytes)` are kept; a record pattern over `Options` needs the new
   components.
 - A new module, `stirling-office-convert-pdfa`, converts PDF to PDF/A.
+- `WebFonts` in the pdfa module converts Type 1, CFF and TrueType font programs from PDFs to TrueType web fonts.
 - JPEG 2000 pictures are decoded by the library's own reader, which becomes the JVM's preferred `jpeg2000` ImageIO
   reader; `-Dstirling.officeconvert.jpxReader=imageio` keeps another one first (see Pictures).
 

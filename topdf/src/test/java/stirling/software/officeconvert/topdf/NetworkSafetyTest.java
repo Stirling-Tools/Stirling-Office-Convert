@@ -68,6 +68,7 @@ class NetworkSafetyTest {
             Map.entry(OC + "jpx/JpxImageIO", List.of("uses javax/imageio/spi/IIORegistry")),
             Map.entry(OC + "odp/OdpWriter", List.of("calls javax/imageio/ImageIO.read")),
             Map.entry(OC + "sink/ImageShaping", List.of("calls javax/imageio/ImageIO.read")),
+            Map.entry(OC + "json/MediaBytes", List.of("calls javax/imageio/ImageIO.read")),
             Map.entry(OC + "slides/SlideMedia", List.of("calls javax/imageio/ImageIO.read")),
             Map.entry(OC + "sink/Links", List.of("uses java/net/URLDecoder")),
             Map.entry(OC + "pdfa/CMapFixer", List.of("uses java/net/URL")),
@@ -244,6 +245,8 @@ class NetworkSafetyTest {
             docs.put("hostile.xlsb", XlsbHostile.build(net));
             docs.put("hostile95.xls", Biff5Hostile.build(net));
             docs.put("hostile.vsdx", VisioHostile.build(net));
+            docs.put("hostile.html", hostileHtml(net));
+            docs.put("hostile.json", hostileJson(net));
             TreeSet<String> refused = new TreeSet<>();
             for (Map.Entry<String, byte[]> d : docs.entrySet()) {
                 Path in = Fixtures.write(dir, d.getKey(), d.getValue());
@@ -292,5 +295,26 @@ class NetworkSafetyTest {
         try (InputStream in = type.getResourceAsStream(type.getSimpleName() + ".class")) {
             return in.readAllBytes();
         }
+    }
+
+    static byte[] hostileHtml(NoNetwork net) {
+        String u = net.url("/html");
+        return ("<!DOCTYPE html><html><head><base href=\"" + u + "/\"><meta http-equiv=\"refresh\" content=\"0;url=" + u
+                + "\"><link rel=\"stylesheet\" href=\"" + u + "/a.css\"><style>@import url(" + u + "/b.css);"
+                + "@font-face{font-family:X;src:url(" + net.canaryUrl("/font") + ")}body{background:url(" + u
+                + "/bg.png)}</style><script src=\"" + u + "/s.js\"></script><script>fetch('" + u + "')</script></head>"
+                + "<body><p>Hostile page</p><img src=\"" + u + "/i.png\"><img src=\"" + net.fileUrl("/x.png")
+                + "\"><img src=\"" + net.uncPath("x.png") + "\"><img srcset=\"" + u + "/s.png 2x\"><iframe src=\"" + u
+                + "\"></iframe><object data=\"" + u + "\"></object><embed src=\"" + u + "\"><video poster=\"" + u
+                + "\"></video><svg><image href=\"" + u + "/svg.png\"/></svg><a href=\"" + u + "\">link</a>"
+                + "<div style=\"background-image:url(" + u + "/div.png)\">styled</div></body></html>")
+                .getBytes(StandardCharsets.UTF_8);
+    }
+
+    static byte[] hostileJson(NoNetwork net) {
+        return ("{\"format\":\"stirling-office-convert\",\"version\":1,\"body\":[{\"type\":\"paragraph\","
+                + "\"content\":[{\"type\":\"text\",\"text\":\"link\",\"link\":\"" + net.url("/json")
+                + "\"},{\"type\":\"image\",\"media\":\"" + net.url("/m.png") + "\"}]}],\"media\":[]}")
+                .getBytes(StandardCharsets.UTF_8);
     }
 }

@@ -18,6 +18,8 @@ import java.util.stream.Stream;
 import org.apache.pdfbox.pdmodel.encryption.InvalidPasswordException;
 
 import stirling.software.officeconvert.PdfToDocx;
+import stirling.software.officeconvert.PdfToHtml;
+import stirling.software.officeconvert.PdfToJson;
 import stirling.software.officeconvert.PdfToOdp;
 import stirling.software.officeconvert.PdfToOdt;
 import stirling.software.officeconvert.PdfToPptx;
@@ -38,7 +40,7 @@ import stirling.software.officeconvert.topdf.text.TextFormats;
 
 public final class Main {
 
-    private static final Set<String> FORMATS = Set.of("docx", "odt", "fodt", "xml", "rtf", "doc", "txt", "md", "pptx",
+    private static final Set<String> FORMATS = Set.of("docx", "odt", "fodt", "xml", "rtf", "doc", "txt", "md", "html", "json", "pptx",
             "odp", "ppt", "xlsx", "ods", "pdf");
 
     private Main() {}
@@ -192,7 +194,7 @@ public final class Main {
                 int before = pdfs.size();
                 try (Stream<Path> s = Files.list(in)) {
                     s.filter(p -> Files.isRegularFile(p) && !lockFile(p) && (officeFolder && isOffice(p)
-                            && (textFolder || TextFormats.kind(p) == null)
+                            && (textFolder || !plainSource(p))
                             || pdfFolder && p.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".pdf")
                             && !(archive && p.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".pdfa.pdf"))))
                             .sorted().forEach(pdfs::add);
@@ -331,6 +333,8 @@ public final class Main {
             case "rtf", "doc" -> PdfToRtf.convert(pdf, target, options);
             case "txt" -> PdfToText.convert(pdf, target, options);
             case "md" -> PdfToMarkdown.convert(pdf, target, options);
+            case "html" -> PdfToHtml.convert(pdf, target, options);
+            case "json" -> PdfToJson.convert(pdf, target, options);
             case "pptx" -> PdfToPptx.convert(pdf, target, slides);
             case "odp" -> PdfToOdp.convert(pdf, target, slides);
             case "ppt" -> PdfToPpt.convert(pdf, target, slides);
@@ -377,6 +381,14 @@ public final class Main {
         return file.getFileName() != null && OfficeToPdf.Format.recognises(file);
     }
 
+    private static boolean plainSource(Path file) {
+        if (TextFormats.kind(file) != null) {
+            return true;
+        }
+        OfficeToPdf.Format format = OfficeToPdf.Format.of(file);
+        return format == OfficeToPdf.Format.HTML || format == OfficeToPdf.Format.JSON;
+    }
+
     private static float seconds(String s, String option) throws Usage {
         float v = number(s, option);
         if (!(v >= 0 && v <= 86_400)) {
@@ -406,7 +418,7 @@ public final class Main {
     private static String known(String format) throws Usage {
         if (!FORMATS.contains(format)) {
             throw new Usage("unknown output format '" + format
-                    + "': use docx, odt, fodt, xml, rtf, doc, txt, md, pptx, odp, ppt, xlsx or ods (pdf for Office input)");
+                    + "': use docx, odt, fodt, xml, rtf, doc, txt, md, html, json, pptx, odp, ppt, xlsx or ods (pdf for Office input)");
         }
         return format;
     }
@@ -490,7 +502,7 @@ public final class Main {
                         + " [--pages a-b] [--no-tables] [--dpi n] [--password p] [--picture-fallback]"
                         + " [--pictures compact|lossless] [--overwrite] [-q]"
                         + System.lineSeparator()
-                        + "       office-convert <in.docx|in.pptx|in.xlsx|in.doc|in.rtf|in.xls|in.ppt|in.odt|in.ods|in.odp|in.txt|in.csv|dir>..."
+                        + "       office-convert <in.docx|in.pptx|in.xlsx|in.doc|in.rtf|in.xls|in.ppt|in.odt|in.ods|in.odp|in.txt|in.csv|in.html|in.json|dir>..."
                         + " [-o out.pdf|dir] [--format pdf] [--password p]"
                         + " [--max-pages n (default 10000, 0 = all)] [--timeout s (default 300, 0 = none)]"
                         + " [--fonts dir]... [--font-map Family=Installed]... [--font-width Family=scale]..."
@@ -507,12 +519,12 @@ public final class Main {
                         + " .stw .sxc .stc .sxi .sti .sxd .std), SYLK, DIF and dBASE tables (.slk .dif .dbf), Lotus 1-2-3"
                         + " worksheets (.wk1 .wks .wk3 .wk4 .123), Apple iWork"
                         + " files from their preview (.pages .numbers .key), plain text (.txt .text .log .asc) and comma or"
-                        + " tab separated tables (.csv .tsv .tab) convert to PDF; --password opens a protected one. A folder converts its PDFs and Office files;"
+                        + " tab separated tables (.csv .tsv .tab), HTML (.html .htm .xhtml) and the JSON this tool writes (.json) convert to PDF; --password opens a protected one. A folder converts its PDFs and Office files;"
                         + " --format pdf takes only its Office and text files. Nothing a document"
                         + " links to is fetched and no macro, field or formula is run."
                         + System.lineSeparator()
                         + "The output's extension picks the format: .docx, .odt, .fodt, .xml (flat ODT), .rtf, .doc (RTF content),"
-                        + " .txt, .md, .pptx, .odp, .ppt, .xlsx or .ods; --format names it for a directory of outputs."
+                        + " .txt, .md, .html (one file, pictures inline), .json (the document model), .pptx, .odp, .ppt, .xlsx or .ods; --format names it for a directory of outputs."
                         + System.lineSeparator()
                         + "--pdfa makes an archival PDF/A copy of each PDF (in.pdfa.pdf unless -o names it): fonts are embedded,"
                         + " scripts and actions removed, colours given an sRGB output intent; 1a and 1b draw transparency as pictures;"

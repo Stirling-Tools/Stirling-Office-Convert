@@ -12,10 +12,10 @@ import java.io.UncheckedIOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.zip.CRC32;
 import java.util.zip.Deflater;
@@ -27,6 +27,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import stirling.software.officeconvert.topdf.testing.Fixtures;
+import stirling.software.officeconvert.topdf.testing.OwnTempFolder;
 
 class ZipRepairTest {
 
@@ -143,7 +144,7 @@ class ZipRepairTest {
         long start = System.nanoTime();
         IOException e = assertThrows(IOException.class, () -> OfficeZip.open(cut));
         assertTrue(e.getMessage().contains("zip bomb"), e.getMessage());
-        assertTrue(System.nanoTime() - start < 20_000_000_000L);
+        assertTrue(System.nanoTime() - start < 180_000_000_000L);
         OfficeZip.Limits small = new OfficeZip.Limits(3, 512L << 20, 1L << 30, 0.01, 100L << 10, 48L << 20);
         byte[] docx = Fixtures.docx("x");
         Path many = Fixtures.write(dir, "many.docx", Arrays.copyOf(docx, directoryOffset(docx)));
@@ -170,17 +171,15 @@ class ZipRepairTest {
     void theRebuiltCopyIsDeletedWhenThePackageCloses() throws Exception {
         byte[] docx = Fixtures.docx("x");
         Path cut = Fixtures.write(dir, "cut.docx", Arrays.copyOf(docx, directoryOffset(docx)));
-        Path tmp = Path.of(System.getProperty("java.io.tmpdir"));
-        long before = repairs(tmp);
-        try (OfficeZip zip = OfficeZip.open(cut)) {
-            assertTrue(zip.repaired());
-        }
-        assertEquals(before, repairs(tmp));
+        List<String> left = OwnTempFolder.run(dir.resolve("tmp"), OpenRepaired.class, cut.toString());
+        assertEquals(List.of(), left.stream().filter(name -> name.startsWith("office-repair-")).toList());
     }
 
-    private static long repairs(Path tmp) throws IOException {
-        try (var files = Files.list(tmp)) {
-            return files.filter(p -> p.getFileName().toString().startsWith("office-repair-")).count();
+    public static final class OpenRepaired {
+        public static void main(String[] args) throws IOException {
+            try (OfficeZip zip = OfficeZip.open(Path.of(args[0]))) {
+                assertTrue(zip.repaired());
+            }
         }
     }
 

@@ -31,7 +31,11 @@ public final class OdfPackage {
     }
 
     public static Outcome write(Path source, OutputStream out, FontLibrary fonts) throws IOException {
-        try (OdfDocument doc = OdfDocument.open(source)) {
+        return write(source, out, fonts, null);
+    }
+
+    public static Outcome write(Path source, OutputStream out, FontLibrary fonts, String password) throws IOException {
+        try (OdfDocument doc = OdfDocument.open(source, password)) {
             PackageOut pkg = new PackageOut(out);
             List<String> warnings = new ArrayList<>();
             if (doc.hasMacros()) {
