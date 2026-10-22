@@ -247,6 +247,31 @@ class HtmlAssetsTest {
     }
 
     @Test
+    void pagesLaidOutTwiceReadEachAssetOnce() throws IOException {
+        byte[] logo = png(20, 20, Color.GRAY);
+        List<String> asked = new ArrayList<>();
+        HtmlAssets web = new HtmlAssets() {
+            @Override
+            public String base() {
+                return "https://example.test/page.html";
+            }
+
+            @Override
+            public byte[] read(String reference) {
+                asked.add(reference);
+                return reference.endsWith(".css") ? utf8("p { color: red }") : logo;
+            }
+        };
+        Path page = Files.write(dir.resolve("wide.html"), utf8("<html><head><link rel='stylesheet' href='s.css'>"
+                + "</head><body><pre>" + "wide ".repeat(60) + "</pre><img src='a.png'><img src='b.png' width='800'>"
+                + "</body></html>"));
+        Pdf pdf = convert(page, options().htmlAssets(web));
+        assertEquals(2, pdf.images());
+        assertEquals(List.of("https://example.test/a.png", "https://example.test/b.png", "https://example.test/s.css"),
+                asked.stream().sorted().toList());
+    }
+
+    @Test
     void referencesResolveInsideThePackage() {
         assertEquals("img/a.png", HtmlRefs.resolve("site/index.html", "../img/a.png"));
         assertEquals("site/img/a.png", HtmlRefs.resolve("site/index.html", "img/a.png?v=2#top"));
