@@ -31,6 +31,7 @@ import org.apache.pdfbox.text.TextPosition;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import stirling.software.officeconvert.topdf.HtmlAssets;
 import stirling.software.officeconvert.topdf.OfficeToPdf;
 
 class PositionedTest {
@@ -52,9 +53,12 @@ class PositionedTest {
     }
 
     private Pdf convert(Path in) throws IOException {
+        return convert(in, OfficeToPdf.Options.defaults());
+    }
+
+    private Pdf convert(Path in, OfficeToPdf.Options options) throws IOException {
         Path out = dir.resolve(in.getFileName() + ".pdf");
-        OfficeToPdf.Result r = OfficeToPdf.convert(in, out, OfficeToPdf.Options.defaults()
-                .timeout(Duration.ofMinutes(2)));
+        OfficeToPdf.Result r = OfficeToPdf.convert(in, out, options.timeout(Duration.ofMinutes(2)));
         try (PDDocument doc = Loader.loadPDF(out.toFile())) {
             List<Word> words = new ArrayList<>();
             PDFTextStripper stripper = new PDFTextStripper() {
@@ -247,15 +251,19 @@ class PositionedTest {
                 out.closeEntry();
             }
         }
-        Pdf zipped = convert(z);
+        Pdf zipped = convert(z, OfficeToPdf.Options.defaults().allowPackages(true));
         float y = zipped.first("Boxed").y() + 40;
         assertTrue(near(at(zipped.pages().get(0), 300, y), new Color(20, 160, 60)), "drawn from the package");
         Files.createDirectories(dir.resolve("art"));
         Files.write(dir.resolve("art/green.png"), green);
         Pdf loose = html("loose.html", page);
         assertFalse(near(at(loose.pages().get(0), 300, loose.first("Boxed").y() + 40), new Color(20, 160, 60)),
-                "a loose page reads nothing beside it");
+                "a loose page reads nothing beside it by default");
         assertTrue(loose.warnings().contains(HtmlImages.NOT_FETCHED), loose.warnings().toString());
+        Pdf allowed = convert(dir.resolve("loose.html"),
+                OfficeToPdf.Options.defaults().htmlAssets(HtmlAssets.folder(dir, "loose.html")));
+        assertTrue(near(at(allowed.pages().get(0), 300, allowed.first("Boxed").y() + 40), new Color(20, 160, 60)),
+                "drawn from beside the page once its folder is allowed");
     }
 
     @Test
