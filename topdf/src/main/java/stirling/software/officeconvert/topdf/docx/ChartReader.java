@@ -593,7 +593,7 @@ final class ChartReader {
 
     static final int MAX_LABEL_CHARS = 1024;
 
-    private static String clipped(String text) {
+    static String clipped(String text) {
         if (text.length() <= MAX_LABEL_CHARS) {
             return text;
         }
@@ -608,7 +608,7 @@ final class ChartReader {
     private Chart.Labels label(XEl d, Chart.Labels parent) {
         String pos = d.child("c:dLblPos") == null ? parent.position() : d.child("c:dLblPos").val();
         String fmt = d.child("c:numFmt") == null ? parent.format() : d.child("c:numFmt").attr("formatCode");
-        String sep = d.child("c:separator") == null ? parent.separator() : d.child("c:separator").text();
+        String sep = d.child("c:separator") == null ? parent.separator() : clipped(d.child("c:separator").text());
         Chart.Look look = look(d.child("c:txPr"), parent.look());
         String text = null;
         XEl rich = d.path("c:tx", "c:rich");

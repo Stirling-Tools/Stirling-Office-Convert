@@ -499,7 +499,7 @@ final class ChartPainter {
         if (labels.percent()) {
             parts.add(Math.round(share * 100) + "%");
         }
-        return String.join(separator, parts);
+        return ChartReader.clipped(String.join(separator, parts));
     }
 
     private record Scale(double min, double max, double unit) {
