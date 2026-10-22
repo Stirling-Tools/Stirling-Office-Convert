@@ -209,6 +209,12 @@ final class Flow {
 
     private void element(Element e, Look parentLook, Frame frame, int depth) throws IOException {
         String tag = e.normalName();
+        if (Controls.TAGS.contains(tag)) {
+            if (!e.hasAttr("hidden") && Controls.drawn(e)) {
+                control(e, parentLook, frame);
+            }
+            return;
+        }
         if (SKIPPED.contains(tag) || e.hasAttr("hidden")) {
             return;
         }
@@ -282,6 +288,28 @@ final class Flow {
         rowNested -= nests ? 1 : 0;
         if (stacks) {
             breakInRow(look);
+        }
+    }
+
+    private void control(Element e, Look parentLook, Frame frame) throws IOException {
+        Map<String, String> d = Controls.withDefaults(e, ctx.declared(e, parentLook));
+        String display = d.getOrDefault("display", "inline-block").strip().toLowerCase(Locale.ROOT);
+        if (display.equals("none")) {
+            return;
+        }
+        Look look = parentLook.child(d, frame.width(), true);
+        if (look.hidden || Hidden.visually(d, look.size)) {
+            return;
+        }
+        Inline.FormControl control = Controls.control(e, d, look, frame.width(), Controls.label(e, ctx.labelFor(e)));
+        boolean alone = forceInline == 0 && display.equals("block");
+        if (alone) {
+            flush();
+        }
+        inline(control, look);
+        lastSpace = false;
+        if (alone) {
+            flush();
         }
     }
 
@@ -1310,6 +1338,8 @@ final class Flow {
                 chars += t.text().length();
             } else if (i instanceof Inline.Image img) {
                 tallest = Math.max(tallest, img.picture().height);
+            } else if (i instanceof Inline.FormControl f) {
+                tallest = Math.max(tallest, f.height());
             } else if (i instanceof Inline.Break) {
                 lines += Math.max(1, (float) Math.ceil(chars * size * 0.5f / width));
                 chars = 0;

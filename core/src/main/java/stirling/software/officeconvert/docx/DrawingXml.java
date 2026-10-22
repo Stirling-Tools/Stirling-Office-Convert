@@ -1,5 +1,6 @@
 package stirling.software.officeconvert.docx;
 
+import stirling.software.officeconvert.model.FormField;
 import stirling.software.officeconvert.model.Inline;
 import stirling.software.officeconvert.model.Paragraph;
 import stirling.software.officeconvert.model.Picture;
@@ -120,6 +121,48 @@ final class DrawingXml {
                 .append(Xml.emu(t.insetLeft())).append("\" tIns=\"0\" rIns=\"").append(Xml.emu(t.insetRight()))
                 .append("\" bIns=\"0\" anchor=\"t\" anchorCtr=\"0\"><a:noAutofit/></wps:bodyPr></wps:wsp>")
                 .append("</a:graphicData></a:graphic></wp:anchor></w:drawing></mc:Choice></mc:AlternateContent></w:r>");
+    }
+
+    void formControl(StringBuilder sb, Inline.FormControl f) {
+        int id = ctx.docPr();
+        long cx = Xml.emu(f.width());
+        long cy = Xml.emu(f.height());
+        int shift = -Math.round(f.lower() * 2);
+        sb.append(shift != 0 ? "<w:r><w:rPr><w:position w:val=\"" + shift + "\"/></w:rPr>" : "<w:r>")
+                .append("<mc:AlternateContent><mc:Choice Requires=\"wps\"><w:drawing>")
+                .append("<wp:inline distT=\"0\" distB=\"0\" distL=\"0\" distR=\"0\">")
+                .append("<wp:extent cx=\"").append(cx).append("\" cy=\"").append(cy).append("\"/>")
+                .append("<wp:effectExtent l=\"0\" t=\"0\" r=\"0\" b=\"0\"/>")
+                .append("<wp:docPr id=\"").append(id).append("\" name=\"Form control ").append(id).append("\"/><wp:cNvGraphicFramePr/>")
+                .append("<a:graphic><a:graphicData uri=\"http://schemas.microsoft.com/office/word/2010/wordprocessingShape\">")
+                .append("<wps:wsp><wps:cNvSpPr txBox=\"1\"/><wps:spPr><a:xfrm><a:off x=\"0\" y=\"0\"/><a:ext cx=\"").append(cx)
+                .append("\" cy=\"").append(cy).append("\"/></a:xfrm><a:prstGeom prst=\"")
+                .append(f.ellipse() ? "ellipse" : f.radius() > 0 ? "roundRect" : "rect").append("\">")
+                .append(f.ellipse() || f.radius() <= 0 ? "<a:avLst/>" : corner(f.radius(), f.width(), f.height()))
+                .append("</a:prstGeom>");
+        if (f.fillRgb() >= 0) {
+            sb.append("<a:solidFill><a:srgbClr val=\"").append(Xml.hex(f.fillRgb())).append("\"/></a:solidFill>");
+        } else {
+            sb.append("<a:noFill/>");
+        }
+        outline(sb, f.lineRgb(), f.lineWidth());
+        sb.append("</wps:spPr><wps:txbx><w:txbxContent>");
+        body.formParagraph(sb, f.shown(), f.field());
+        boolean oneLine = f.field() != null && f.field().kind() != FormField.Kind.MULTILINE
+                && f.field().kind() != FormField.Kind.LIST && f.shown().align == Paragraph.Align.LEFT;
+        boolean top = f.field() != null
+                && (f.field().kind() == FormField.Kind.MULTILINE || f.field().kind() == FormField.Kind.LIST);
+        sb.append("</w:txbxContent></wps:txbx><wps:bodyPr rot=\"0\" vert=\"horz\" wrap=\"").append(oneLine ? "none" : "square")
+                .append("\" lIns=\"").append(Xml.emu(f.insetLeft())).append("\" tIns=\"").append(Xml.emu(f.insetTop()))
+                .append("\" rIns=\"").append(Xml.emu(f.insetRight())).append("\" bIns=\"").append(Xml.emu(f.insetBottom()))
+                .append("\" anchor=\"").append(top ? "t" : "ctr")
+                .append("\" anchorCtr=\"0\"><a:noAutofit/></wps:bodyPr></wps:wsp>")
+                .append("</a:graphicData></a:graphic></wp:inline></w:drawing></mc:Choice></mc:AlternateContent></w:r>");
+    }
+
+    private static String corner(float radius, float width, float height) {
+        long adj = Math.min(50000, Math.round(radius / Math.max(1f, Math.min(width, height)) * 100000));
+        return "<a:avLst><a:gd name=\"adj\" fmla=\"val " + adj + "\"/></a:avLst>";
     }
 
     private static String vert(int direction) {

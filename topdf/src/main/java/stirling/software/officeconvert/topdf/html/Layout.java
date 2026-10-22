@@ -300,7 +300,7 @@ final class Layout {
 
     private static boolean allShort(List<Element> items) {
         for (Element c : items) {
-            if (text(c, SHORT_ITEM + 1).length() > SHORT_ITEM || !c.select(BLOCKS).isEmpty()) {
+            if (text(c, SHORT_ITEM + 1).length() > SHORT_ITEM || !c.select(BLOCKS).isEmpty() || Controls.holdsBox(c)) {
                 return false;
             }
         }

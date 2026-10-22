@@ -128,6 +128,19 @@ final class ModelJson {
                 paragraphs(o.key("paragraphs"), b.paragraphs());
                 o.end();
             }
+            case Inline.FormControl f -> {
+                StringBuilder text = new StringBuilder();
+                RunStyle style = null;
+                for (Inline k : f.shown().inlines) {
+                    if (k instanceof Inline.Text t) {
+                        text.append(t.text());
+                        style = style == null ? t.style() : style;
+                    } else if (k instanceof Inline.Break) {
+                        text.append('\n');
+                    }
+                }
+                inline(sb, new Inline.Text(text.toString(), style, null, -1));
+            }
             case Inline.Shape s -> new JsonOut(sb).str("type", "shape").always("x", s.x()).always("y", s.y())
                     .always("width", s.width()).always("height", s.height()).color("fill", s.rgb())
                     .color("line", s.lineRgb()).num("lineWidth", s.lineWidth()).flag("rounded", s.rounded())
