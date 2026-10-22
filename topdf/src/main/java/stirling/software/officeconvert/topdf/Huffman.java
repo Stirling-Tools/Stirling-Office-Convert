@@ -69,6 +69,12 @@ final class Huffman {
         }
     }
 
+    static final long MAX_PHRASES = 1L << 20;
+
+    static final long MAX_PHRASE_BYTES = 16L << 20;
+
+    private long phraseBytes;
+
     private void cdic(byte[] r) throws IOException {
         if (!magic(r, "CDIC", 0x10)) {
             throw new IOException(DAMAGED);
@@ -78,6 +84,9 @@ final class Huffman {
         if (bits > 16) {
             throw new IOException(DAMAGED);
         }
+        if (total > MAX_PHRASES) {
+            throw new IOException(DAMAGED);
+        }
         long n = Math.min(1L << bits, total - phrases.size());
         for (int i = 0; i < n; i++) {
             int off = PalmDatabase.u16(r, 16 + 2 * i);
@@ -85,6 +94,10 @@ final class Huffman {
             int start = 18 + off;
             int size = length & 0x7FFF;
             if (start + size > r.length) {
+                throw new IOException(DAMAGED);
+            }
+            phraseBytes += size;
+            if (phraseBytes > MAX_PHRASE_BYTES) {
                 throw new IOException(DAMAGED);
             }
             phrases.add(Arrays.copyOfRange(r, start, start + size));

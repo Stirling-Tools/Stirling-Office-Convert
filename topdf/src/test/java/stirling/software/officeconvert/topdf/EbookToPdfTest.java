@@ -273,6 +273,10 @@ class EbookToPdfTest {
         {0, 0, 0, 1}};
 
     private static byte[] kf8(boolean joint) throws IOException {
+        return kf8(joint, false);
+    }
+
+    private static byte[] kf8(boolean joint, boolean overlapping) throws IOException {
         String skel0 = "<?xml version=\"1.0\"?><html xmlns=\"http://www.w3.org/1999/xhtml\"><head>"
                 + "<link rel=\"stylesheet\" type=\"text/css\" href=\"kindle:flow:0001?mime=text/css\"/></head>"
                 + "<body aid=\"0\"></body></html>";
@@ -316,7 +320,7 @@ class EbookToPdfTest {
         MobiWriter.u32(fdst, 2);
         MobiWriter.u32(fdst, 0);
         MobiWriter.u32(fdst, flow0.length());
-        MobiWriter.u32(fdst, flow0.length());
+        MobiWriter.u32(fdst, overlapping ? 0 : flow0.length());
         MobiWriter.u32(fdst, text.length);
         int fdstAt = w.add(fdst.toByteArray());
         int skelAt = w.add(MobiWriter.indx(SKEL_TAGS, List.of(), true, 1));
@@ -347,6 +351,26 @@ class EbookToPdfTest {
         assertEquals(List.of(1, 0), c.images());
         String html = MobiBook.read(in).book().html();
         assertTrue(html.contains("href=\"#epub-c0-one\""), html);
+    }
+
+    @Test
+    void overlappingKf8FlowsAreRefused() throws IOException {
+        Path in = write("overlap.azw3", kf8(false, true));
+        assertThrows(IOException.class, () -> OfficeToPdf.convert(in, dir.resolve("overlap.pdf")));
+    }
+
+    @Test
+    void filePositionsInTaglessTextStayLinear() {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 1; i <= 150_000; i++) {
+            sb.append("filepos=").append(i * 20).append(' ');
+        }
+        sb.append("x".repeat(4_000_000));
+        byte[] text = sb.toString().getBytes(StandardCharsets.ISO_8859_1);
+        long start = System.nanoTime();
+        String html = MobiBook.html(text, StandardCharsets.ISO_8859_1);
+        assertTrue((System.nanoTime() - start) / 1_000_000 < 5_000);
+        assertEquals(MobiBook.MAX_TARGETS, html.split("<a id=\"filepos", -1).length - 1);
     }
 
     @Test

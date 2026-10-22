@@ -128,11 +128,13 @@ final class MobiBook {
         return k.version() >= 8 ? boundary : -1;
     }
 
+    static final int MAX_TARGETS = 100_000;
+
     static String html(byte[] text, Charset charset) {
         String raw = new String(text, StandardCharsets.ISO_8859_1);
         TreeSet<Long> positions = new TreeSet<>();
         Matcher m = FILEPOS.matcher(raw);
-        while (m.find()) {
+        while (m.find() && positions.size() < MAX_TARGETS) {
             long p = Long.parseLong(m.group(1));
             if (p > 0 && p < raw.length()) {
                 positions.add(p);
@@ -140,16 +142,29 @@ final class MobiBook {
         }
         StringBuilder anchored = new StringBuilder(raw.length() + positions.size() * 32);
         int from = 0;
+        int scanned = 0;
+        boolean inTag = false;
         for (long target : positions) {
+            if (Thread.currentThread().isInterrupted()) {
+                break;
+            }
             int at = (int) target;
             if (at < from) {
                 continue;
             }
-            int open = raw.lastIndexOf('<', at - 1);
-            int close = raw.lastIndexOf('>', at - 1);
-            if (open > close) {
+            for (; scanned < at; scanned++) {
+                char c = raw.charAt(scanned);
+                if (c == '<') {
+                    inTag = true;
+                } else if (c == '>') {
+                    inTag = false;
+                }
+            }
+            if (inTag) {
                 int end = raw.indexOf('>', at);
                 at = end < 0 ? raw.length() : end + 1;
+                scanned = at;
+                inTag = false;
             }
             anchored.append(raw, from, at).append("<a id=\"filepos").append(target).append("\"></a>");
             from = at;
