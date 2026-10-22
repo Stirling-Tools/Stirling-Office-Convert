@@ -248,8 +248,14 @@ final class Kf8Writer {
         }
         byte[] text0 = flow0.toByteArray();
         Map<String, Place> places = places(fragments);
-        resolveLinks(text0, fragments, places, firstFragment);
-        Kf8Index ncx = ncx(fragments, places, firstFragment, text0.length);
+        Map<String, Integer> chapterStarts = new HashMap<>();
+        for (int f = 0; f < chapters.size(); f++) {
+            if (firstFragment.get(f) < fragments.size()) {
+                chapterStarts.putIfAbsent(chapters.get(f).path(), firstFragment.get(f));
+            }
+        }
+        resolveLinks(text0, fragments, places, chapterStarts);
+        Kf8Index ncx = ncx(fragments, places, chapterStarts, text0.length);
         ByteArrayOutputStream text = new ByteArrayOutputStream();
         text.writeBytes(text0);
         List<long[]> flowTable = new ArrayList<>();
@@ -363,29 +369,25 @@ final class Kf8Writer {
         return out;
     }
 
-    private Place locate(Target t, Map<String, Place> places, List<Integer> firstFragment, int fragmentCount) {
+    private static Place locate(Target t, Map<String, Place> places, Map<String, Integer> chapterStarts) {
         if (t.id() != null) {
             Place p = places.get(t.path() + "#" + t.id());
             if (p != null) {
                 return p;
             }
         }
-        for (int f = 0; f < chapters.size(); f++) {
-            if (chapters.get(f).path().equals(t.path()) && firstFragment.get(f) < fragmentCount) {
-                return new Place(firstFragment.get(f), 0);
-            }
-        }
-        return new Place(0, 0);
+        Integer start = chapterStarts.get(t.path());
+        return new Place(start == null ? 0 : start, 0);
     }
 
     private void resolveLinks(byte[] text, List<Fragment> fragments, Map<String, Place> places,
-            List<Integer> firstFragment) {
+            Map<String, Integer> chapterStarts) {
         byte[] marker = POS.getBytes(StandardCharsets.US_ASCII);
         int k = 0;
         for (Fragment fr : fragments) {
             byte[] b = fr.bytes();
             for (int at = indexOf(b, marker, 0); at >= 0 && k < links.size(); at = indexOf(b, marker, at + 1)) {
-                Place p = locate(links.get(k++), places, firstFragment, fragments.size());
+                Place p = locate(links.get(k++), places, chapterStarts);
                 byte[] value = ("kindle:pos:fid:" + base32(p.fragment(), 4) + ":off:" + base32(p.offset(), 10))
                         .getBytes(StandardCharsets.US_ASCII);
                 System.arraycopy(value, 0, b, at, value.length);
@@ -394,7 +396,7 @@ final class Kf8Writer {
         }
     }
 
-    private Kf8Index ncx(List<Fragment> fragments, Map<String, Place> places, List<Integer> firstFragment,
+    private Kf8Index ncx(List<Fragment> fragments, Map<String, Place> places, Map<String, Integer> chapterStarts,
             long length) {
         Kf8Index index = new Kf8Index(List.of(
                 List.of(new Kf8Index.Tag(1, 1, 1), new Kf8Index.Tag(2, 1, 2), new Kf8Index.Tag(3, 1, 4),
@@ -407,7 +409,7 @@ final class Kf8Writer {
         }
         List<Place> at = new ArrayList<>();
         for (TocEntry e : toc) {
-            at.add(locate(e.target(), places, firstFragment, fragments.size()));
+            at.add(locate(e.target(), places, chapterStarts));
         }
         for (int i = 0; i < toc.size(); i++) {
             Place p = at.get(i);

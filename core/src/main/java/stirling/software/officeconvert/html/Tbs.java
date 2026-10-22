@@ -15,22 +15,26 @@ final class Tbs {
     private Tbs() {}
 
     static List<byte[]> sequences(List<long[]> entries, long textLength, int recordSize) {
-        List<List<Local>> perRecord = new ArrayList<>();
-        for (long recordStart = 0; recordStart < textLength; recordStart += recordSize) {
-            long length = Math.min(recordSize, textLength - recordStart);
-            long next = recordStart + length;
-            List<Local> local = new ArrayList<>();
-            for (int i = 0; i < entries.size(); i++) {
-                long start = entries.get(i)[0];
-                long end = start + entries.get(i)[1];
-                if (start >= next || end <= recordStart) {
-                    continue;
-                }
+        int recordCount = (int) ((textLength + recordSize - 1) / recordSize);
+        List<List<Local>> perRecord = new ArrayList<>(recordCount);
+        for (int r = 0; r < recordCount; r++) {
+            perRecord.add(new ArrayList<>());
+        }
+        for (int i = 0; i < entries.size(); i++) {
+            long start = entries.get(i)[0];
+            long end = start + entries.get(i)[1];
+            if (start >= textLength) {
+                continue;
+            }
+            long first = Math.max(0, Math.floorDiv(start, recordSize));
+            long last = Math.min(recordCount, Math.floorDiv(end + recordSize - 1, recordSize));
+            for (long r = first; r < last; r++) {
+                long recordStart = r * recordSize;
+                long length = Math.min(recordSize, textLength - recordStart);
                 long offset = start - recordStart;
                 long endOffset = offset + entries.get(i)[1];
-                local.add(new Local(i, offset, endOffset, offset < 0 && endOffset > length));
+                perRecord.get((int) r).add(new Local(i, offset, endOffset, offset < 0 && endOffset > length));
             }
-            perRecord.add(local);
         }
         List<byte[]> out = new ArrayList<>();
         boolean negative = false;
