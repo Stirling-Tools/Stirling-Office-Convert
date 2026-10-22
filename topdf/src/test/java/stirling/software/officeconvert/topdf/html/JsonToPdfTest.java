@@ -1,6 +1,7 @@
 package stirling.software.officeconvert.topdf.html;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -55,11 +56,21 @@ class JsonToPdfTest {
 
     @Test
     void anEmptyTableIsLeftOutWithAWarning() throws IOException {
-        Path in = Files.writeString(dir.resolve("empty.json"), "{\"body\":[{\"type\":\"table\",\"rows\":[{\"cells\":[]}]},"
+        Path in = Files.writeString(dir.resolve("empty.json"), "{\"format\":\"stirling-office-convert\",\"body\":[{\"type\":\"table\",\"rows\":[{\"cells\":[]}]},"
                 + "{\"content\":[{\"text\":\"after\"}]}]}", StandardCharsets.UTF_8);
         OfficeToPdf.Result r = OfficeToPdf.convert(in, dir.resolve("empty.pdf"),
                 OfficeToPdf.Options.defaults().timeout(Duration.ofMinutes(2)));
         assertTrue(r.warnings().stream().anyMatch(w -> w.contains("table")), r.warnings().toString());
+    }
+
+    @Test
+    void jsonWithoutTheFormatMarkerIsRefused() throws IOException {
+        Path in = Files.writeString(dir.resolve("config.json"), "{\"name\":\"config\"}", StandardCharsets.UTF_8);
+        Path out = dir.resolve("config.pdf");
+        IOException e = assertThrows(IOException.class, () -> OfficeToPdf.convert(in, out,
+                OfficeToPdf.Options.defaults().timeout(Duration.ofMinutes(2))));
+        assertTrue(e.getMessage().contains("\"format\""), e.getMessage());
+        assertFalse(Files.exists(out));
     }
 
     @Test

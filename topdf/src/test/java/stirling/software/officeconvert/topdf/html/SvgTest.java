@@ -67,6 +67,23 @@ class SvgTest {
     }
 
     @Test
+    void reusedPointsAndTextCostTheirLength() {
+        String points = "0,0 1,1 0,1 ".repeat(4_000);
+        String text = "W".repeat(48_000);
+        for (String shape : new String[] {"<polygon id=\"s\" points=\"" + points + "\"/>",
+                "<polyline id=\"s\" points=\"" + points + "\" stroke=\"black\"/>",
+                "<text id=\"s\" y=\"5\">" + text + "</text>"}) {
+            Document doc = Jsoup.parse("<svg viewBox=\"0 0 10 10\"><defs>" + shape + "</defs>"
+                    + "<use href=\"#s\"/>".repeat(100) + "</svg>");
+            Map<String, Element> ids = new HashMap<>();
+            doc.select("[id]").forEach(e -> ids.putIfAbsent(e.id(), e));
+            long[] budget = {Long.MAX_VALUE};
+            Svg.paint(doc.selectFirst("svg"), ids, 20, 20, 0, budget);
+            assertTrue(Long.MAX_VALUE - budget[0] >= 100L * 48_000, shape.substring(0, 12));
+        }
+    }
+
+    @Test
     void nothingDrawnIsNoPicture() {
         assertNull(paint("<svg width=\"10\" height=\"10\"><defs><rect width=\"5\" height=\"5\"/></defs></svg>", 10, 10));
         assertNull(paint("<svg><image href=\"https://example.invalid/x.png\" width=\"10\" height=\"10\"/>"

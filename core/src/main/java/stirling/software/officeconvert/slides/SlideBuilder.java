@@ -227,7 +227,7 @@ final class SlideBuilder {
             }
         }
         if (!missed.isEmpty() && order >= 0) {
-            Art.Piece piece = art.together(missed, layout.page().index(), toDisplay, width, height);
+            Art.Piece piece = art.together(stack.paint, missed, layout.page().index(), toDisplay, width, height);
             for (PaintOrder.Mark m : missed) {
                 stack.represented.add(m.order());
             }
