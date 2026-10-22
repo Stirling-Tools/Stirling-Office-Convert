@@ -53,7 +53,7 @@ final class Flow {
             "map", "area", "input", "select", "option", "datalist", "param", "source", "track", "noembed", "noframes",
             "dialog", "colgroup", "col");
 
-    private static final Set<String> BLOCKS = Set.of("address", "article", "aside", "blockquote", "body", "center",
+    static final Set<String> BLOCKS = Set.of("address", "article", "aside", "blockquote", "body", "center",
             "dd", "details", "div", "dl", "dt", "fieldset", "figcaption", "figure", "footer", "form", "h1", "h2", "h3",
             "h4", "h5", "h6", "header", "hgroup", "hr", "html", "legend", "li", "main", "menu", "nav", "ol", "p", "pre",
             "section", "summary", "ul", "listing", "xmp", "plaintext", "caption", "table", "tr", "td", "th", "tbody",
@@ -75,6 +75,8 @@ final class Flow {
     private String link;
     private int forceInline;
     private Inline pendingGap;
+    private int rowItemStart = -1;
+    private int rowNested;
     private final List<Inline> pendingFloats = new ArrayList<>();
     private String floatOf = "none";
     private boolean sectionStarted;
@@ -148,6 +150,13 @@ final class Flow {
             }
             return;
         }
+        boolean stacks = rowItemStart >= 0 && Layout.stacks(e, tag, d, parentLook, ctx);
+        boolean nests = rowItemStart >= 0 && (display.endsWith("flex") || display.endsWith("grid"))
+                && !d.getOrDefault("flex-direction", "row").strip().toLowerCase(Locale.ROOT).startsWith("column");
+        if (stacks) {
+            breakInRow(look);
+        }
+        rowNested += nests ? 1 : 0;
         switch (tag) {
             case "br" -> inline(new Inline.Break(), look);
             case "img" -> image(e, d, look, frame);
@@ -181,6 +190,10 @@ final class Flow {
                     }
                 }
             }
+        }
+        rowNested -= nests ? 1 : 0;
+        if (stacks) {
+            breakInRow(look);
         }
     }
 
@@ -265,7 +278,7 @@ final class Flow {
         if (plan == null) {
             walkChildren(e, look, inner, depth);
         } else if (plan.inline()) {
-            inlineRow(plan, look, inner, depth);
+            inlineRow(plan, d, look, inner, depth);
         } else {
             row(plan, look, inner, depth);
         }
@@ -414,7 +427,13 @@ final class Flow {
         sectionStarted = true;
     }
 
-    private void inlineRow(Layout.Plan plan, Look look, Frame frame, int depth) throws IOException {
+    private void inlineRow(Layout.Plan plan, Map<String, String> d, Look look, Frame frame, int depth)
+            throws IOException {
+        List<Paragraph.TabStop> stops = look.rightToLeft ? null : Layout.stops(plan, d, look, frame.width(), ctx);
+        if (stops != null) {
+            tabbedRow(plan, stops, look, frame, depth);
+            return;
+        }
         for (int i = 0; i < plan.items().size(); i++) {
             float space = i == 0 ? 0 : plan.gap() + sideSpace(plan.items().get(i - 1), look, "right")
                     + sideSpace(plan.items().get(i), look, "left");
@@ -429,6 +448,112 @@ final class Flow {
             lastSpace = false;
         }
         pendingGap = null;
+    }
+
+    private void tabbedRow(Layout.Plan plan, List<Paragraph.TabStop> stops, Look look, Frame frame, int depth)
+            throws IOException {
+        if (para == null) {
+            start();
+        }
+        Paragraph row = para;
+        row.align = Paragraph.Align.LEFT;
+        int n = plan.items().size();
+        int[] from = new int[n + 1];
+        int outer = rowItemStart;
+        try {
+            for (int i = 0; i < n; i++) {
+                from[i] = para.inlines.size();
+                rowItemStart = from[i];
+                pendingGap = null;
+                lastSpace = true;
+                forceInline++;
+                try {
+                    element(plan.items().get(i), look, frame, depth + 1);
+                } finally {
+                    forceInline--;
+                }
+                if (para != row) {
+                    return;
+                }
+            }
+        } finally {
+            rowItemStart = outer;
+        }
+        from[n] = row.inlines.size();
+        List<List<List<Inline>>> items = new ArrayList<>();
+        int lines = 0;
+        for (int i = 0; i < n; i++) {
+            List<List<Inline>> item = lines(row.inlines.subList(from[i], from[i + 1]));
+            items.add(item);
+            lines = Math.max(lines, item.size());
+        }
+        List<Inline> rebuilt = new ArrayList<>(row.inlines.subList(0, from[0]));
+        for (int line = 0; line < lines; line++) {
+            if (line > 0) {
+                rebuilt.add(new Inline.Break());
+            }
+            for (int i = 0; i < n; i++) {
+                if (stops.get(i) != null) {
+                    rebuilt.add(new Inline.Tab(look.run()));
+                }
+                if (line < items.get(i).size()) {
+                    rebuilt.addAll(items.get(i).get(line));
+                }
+            }
+        }
+        row.inlines.clear();
+        row.inlines.addAll(rebuilt);
+        for (Paragraph.TabStop s : stops) {
+            if (s != null) {
+                row.tabs.add(new Paragraph.TabStop(s.pos() + frame.left(), s.kind(), s.leader()));
+            }
+        }
+        lastSpace = false;
+    }
+
+    private static List<List<Inline>> lines(List<Inline> inlines) {
+        List<List<Inline>> lines = new ArrayList<>();
+        List<Inline> line = new ArrayList<>();
+        for (Inline in : inlines) {
+            if (in instanceof Inline.Break) {
+                lines.add(line);
+                line = new ArrayList<>();
+            } else {
+                line.add(in);
+            }
+        }
+        lines.add(line);
+        while (!lines.isEmpty() && blank(lines.getLast())) {
+            lines.removeLast();
+        }
+        while (!lines.isEmpty() && blank(lines.getFirst())) {
+            lines.removeFirst();
+        }
+        for (List<Inline> l : lines) {
+            trimEnd(l);
+        }
+        return lines;
+    }
+
+    private static boolean blank(List<Inline> line) {
+        for (Inline in : line) {
+            if (!(in instanceof Inline.Text t) || !t.text().isBlank()) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private void breakInRow(Look look) {
+        if (para == null || para.inlines.size() <= rowItemStart || para.inlines.getLast() instanceof Inline.Break) {
+            return;
+        }
+        if (rowNested == 0) {
+            para.inlines.add(new Inline.Break());
+        } else if (!lastSpace) {
+            para.inlines.add(new Inline.Text(" ", look.run(), link, -1));
+        }
+        lastSpace = true;
     }
 
     private float sideSpace(Element item, Look look, String side) {
