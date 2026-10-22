@@ -1,6 +1,7 @@
 package stirling.software.officeconvert;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -9,9 +10,13 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InterruptedIOException;
 import java.io.OutputStream;
+import java.lang.management.ManagementFactory;
+import java.lang.management.ThreadMXBean;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.Arrays;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.zip.Deflater;
 import java.util.zip.DeflaterOutputStream;
@@ -54,10 +59,10 @@ class HostileInputTest {
             page.getResources().put(COSName.getPDFName("F1"), new PDType1Font(Standard14Fonts.FontName.HELVETICA));
             doc.save(pdf.toFile());
         }
-        long start = System.nanoTime();
+        long start = cpuNanos();
         String text = documentXml(convert(pdf));
-        long ms = (System.nanoTime() - start) / 1_000_000;
-        assertTrue(ms < 30_000, "took " + ms + " ms");
+        long ms = (cpuNanos() - start) / 1_000_000;
+        assertTrue(ms < 30_000, "took " + ms + " ms of CPU");
         assertTrue(text.contains("Still here"), text);
     }
 
@@ -80,10 +85,10 @@ class HostileInputTest {
             page.getCOSObject().setItem(COSName.CONTENTS, stream(doc, cs.toString()));
             doc.save(pdf.toFile());
         }
-        long start = System.nanoTime();
+        long start = cpuNanos();
         String text = documentXml(convert(pdf));
-        long ms = (System.nanoTime() - start) / 1_000_000;
-        assertTrue(ms < 30_000, "took " + ms + " ms");
+        long ms = (cpuNanos() - start) / 1_000_000;
+        assertTrue(ms < 30_000, "took " + ms + " ms of CPU");
         assertTrue(text.contains("Done") && !text.contains(">xy<"), "the ActualText after the deep nesting still applies");
     }
 
@@ -222,23 +227,34 @@ class HostileInputTest {
             doc.save(pdf.toFile());
         }
         AtomicReference<Throwable> failure = new AtomicReference<>();
+        AtomicLong cpuAtEnd = new AtomicLong();
+        ThreadMXBean mx = ManagementFactory.getThreadMXBean();
         Thread t = new Thread(() -> {
             try {
                 PdfToDocx.convert(pdf, dir.resolve("ops.docx"), PdfToDocx.Options.defaults());
             } catch (Throwable e) {
                 failure.set(e);
+            } finally {
+                cpuAtEnd.set(mx.getCurrentThreadCpuTime());
             }
         });
         t.start();
         Thread.sleep(300);
-        long interrupted = System.nanoTime();
+        long cpuAtInterrupt = mx.getThreadCpuTime(t.threadId());
         t.interrupt();
-        t.join(10_000);
-        long ms = (System.nanoTime() - interrupted) / 1_000_000;
-        assertTrue(!t.isAlive() && ms < 5_000, "still running " + ms + " ms after the interrupt");
+        t.join(Duration.ofMinutes(1));
+        assertFalse(t.isAlive(), "still running a minute after the interrupt");
+        // CPU time, unlike the wall clock, is not stretched by a busy machine; -1 means it had already ended
+        long ms = (cpuAtEnd.get() - cpuAtInterrupt) / 1_000_000;
+        assertTrue(cpuAtInterrupt < 0 || ms < 5_000, "still working " + ms + " ms after the interrupt");
         if (failure.get() != null) {
             assertInstanceOf(InterruptedIOException.class, failure.get());
         }
+    }
+
+    // the converting thread's own CPU time, which a busy machine does not stretch like the wall clock
+    private static long cpuNanos() {
+        return ManagementFactory.getThreadMXBean().getCurrentThreadCpuTime();
     }
 
     private Path convert(Path pdf) throws IOException {

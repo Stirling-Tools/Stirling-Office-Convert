@@ -5,14 +5,15 @@ The converter needs no native libraries or external processes. It also converts 
 
 | Conversion | Formats |
 |---|---|
-| PDF to documents | DOCX, ODT, flat ODT (`.fodt` / `.xml`), RTF (`.rtf` / `.doc`), plain text |
+| PDF to documents | DOCX, ODT, flat ODT (`.fodt` / `.xml`), RTF (`.rtf` / `.doc`), plain text, HTML, JSON |
 | PDF to presentations | PPTX, ODP, PPT (via the `legacy` module) |
 | PDF to spreadsheets | XLSX, ODS |
-| Office to PDF | DOCX, PPTX, XLSX, legacy DOC/XLS/PPT, XLSB, RTF, OpenDocument, Office XML, Visio, text and table formats |
+| Office to PDF | DOCX, PPTX, XLSX, legacy DOC/XLS/PPT, XLSB, RTF, OpenDocument, Office XML, Visio, text and table formats, HTML, JSON |
 | PDF to PDF/A | 1a, 1b, 2a, 2b, 2u, 3a, 3b, 3u |
 
 PDF-to-Office documents contain real paragraphs, headings, lists, tables, footnotes, headers and footers.
 Office-to-PDF reads saved content without running macros, scripts or formulas or fetching linked resources.
+HTML converts without a browser: scripts never run and only pictures inside the file (`data:` URIs) are drawn.
 iWork files use their embedded PDF or picture preview. PDF/A level a requires an already tagged PDF;
 the converter does not create a structure tree for an untagged document.
 

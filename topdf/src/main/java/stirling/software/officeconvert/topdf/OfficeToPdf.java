@@ -76,7 +76,9 @@ public final class OfficeToPdf {
         PPT,
         TEXT,
         CSV,
-        TSV;
+        TSV,
+        HTML,
+        JSON;
 
         public static Format of(Path file) {
             Objects.requireNonNull(file, "file");
@@ -91,6 +93,8 @@ public final class OfficeToPdf {
                         "sylk", "dif", "dbf", "numbers", "wk1", "wks", "wk3", "wk4", "123" -> XLSX;
                 case "csv" -> CSV;
                 case "tsv", "tab" -> TSV;
+                case "html", "htm", "xhtml" -> HTML;
+                case "json" -> JSON;
                 case "ppt", "pps", "pot" -> PPT;
                 default -> {
                     String reason = UnsupportedFormats.byExtension(ext);
@@ -100,7 +104,7 @@ public final class OfficeToPdf {
                             + " .odt, .ott, .fodt, .odm, .ods, .ots, .fods, .odp, .otp, .fodp, .odg, .otg, .fodg, .sxw, .stw,"
                             + " .sxc, .stc, .sxi, .sti, .sxd, .std, .vsdx, .vsdm, .vssx, .vssm, .vstx, .vstm, .xml, .slk,"
                             + " .dif, .dbf, .wk1, .wks, .wk3, .wk4, .123, .pages, .numbers, .key, .txt,"
-                            + " .text, .log, .asc, .csv, .tsv or .tab");
+                            + " .text, .log, .asc, .csv, .tsv, .tab, .html, .htm, .xhtml or .json");
                 }
             };
         }
@@ -112,7 +116,7 @@ public final class OfficeToPdf {
                         "xltx", "xltm", "doc", "dot", "ppt", "pps", "pot", "xls", "xlt", "xlsb", "rtf", "odt", "ott", "fodt",
                         "odm", "ods", "ots", "fods", "odp", "otp", "fodp", "odg", "otg", "fodg", "xml", "sxw", "stw", "sxc",
                         "stc", "sxi", "sti", "sxd", "std", "vsdx", "vsdm", "vssx", "vssm", "vstx", "vstm" -> true;
-                case "txt", "text", "log", "asc", "csv", "tsv", "tab" -> true;
+                case "txt", "text", "log", "asc", "csv", "tsv", "tab", "html", "htm", "xhtml", "json" -> true;
                 case "slk", "sylk", "dif", "dbf", "pages", "numbers", "key", "wk1", "wks", "wk3", "wk4", "123" -> true;
                 default -> false;
             };
@@ -369,6 +373,14 @@ public final class OfficeToPdf {
         if (xml != null) {
             return xml;
         }
+        Long json = JsonInput.estimate(in);
+        if (json != null) {
+            return json;
+        }
+        Long html = HtmlInput.estimate(in, format);
+        if (html != null) {
+            return html;
+        }
         Long text = TextInput.estimate(in);
         if (text != null) {
             return text;
@@ -463,6 +475,15 @@ public final class OfficeToPdf {
     private static final String RELS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/";
 
     static byte[] sample(Format format) throws IOException {
+        if (format == Format.HTML) {
+            return ("<!DOCTYPE html><html><body><h1>Warm up</h1><p>Warm <b>up</b></p><ul><li>Warm up</li></ul>"
+                    + "<table border=\"1\"><tr><th>Warm</th><td>up</td></tr></table></body></html>")
+                    .getBytes(StandardCharsets.UTF_8);
+        }
+        if (format == Format.JSON) {
+            return ("{\"format\":\"stirling-office-convert\",\"version\":1,\"body\":[{\"type\":\"paragraph\","
+                    + "\"content\":[{\"type\":\"text\",\"text\":\"Warm up\"}]}]}").getBytes(StandardCharsets.UTF_8);
+        }
         if (format == Format.TEXT || format == Format.CSV || format == Format.TSV) {
             String sep = format == Format.TSV ? "\t" : ",";
             return (format == Format.TEXT ? "Warm up\n" : "Warm up" + sep + "1.5\n")
@@ -535,7 +556,7 @@ public final class OfficeToPdf {
             case PPTX -> PptxRenderer.render(source, job);
             case XLSX -> XlsxRenderer.render(source, job);
             case PPT -> PptRenderer.render(source, job);
-            case TEXT -> DocxRenderer.render(source, job);
+            case TEXT, HTML, JSON -> DocxRenderer.render(source, job);
             case CSV, TSV -> XlsxRenderer.render(source, job);
         }
     }
@@ -606,6 +627,14 @@ public final class OfficeToPdf {
         Result xml = XmlInput.render(source, requested, sink, options, renderer);
         if (xml != null) {
             return xml;
+        }
+        Result json = JsonInput.render(source, requested, sink, options, renderer);
+        if (json != null) {
+            return json;
+        }
+        Result html = HtmlInput.render(source, requested, sink, options, renderer);
+        if (html != null) {
+            return html;
         }
         Result text = TextInput.render(source, requested, sink, options, renderer);
         if (text != null) {

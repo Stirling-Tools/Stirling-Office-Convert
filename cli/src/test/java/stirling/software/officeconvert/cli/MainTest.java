@@ -154,6 +154,33 @@ class MainTest {
     }
 
     @Test
+    void aFolderLeavesItsHtmlAndJsonFilesAloneUnlessAskedForPdf() throws Exception {
+        Path in = Files.createDirectories(dir.resolve("web"));
+        helloPdf(in.resolve("doc.pdf"));
+        Files.writeString(in.resolve("page.html"), "<p>hello</p>");
+        Files.writeString(in.resolve("old.htm"), "<p>hello</p>");
+        Files.writeString(in.resolve("note.xhtml"), "<p>hello</p>");
+        Files.writeString(in.resolve("config.json"), "{\"name\":\"config\"}");
+        Path out = dir.resolve("web-out");
+        Result r = run(in.toString(), "-o", out.toString(), "--pages", "1");
+        assertEquals(0, r.code(), r.err());
+        assertTrue(Files.isRegularFile(out.resolve("doc.docx")), r.out());
+        assertEquals(1, r.out().lines().filter(l -> l.startsWith("OK ")).count(), r.out());
+        Result pdfs = run(in.toString(), "--format", "pdf", "-o", dir.resolve("web-pdf").toString(), "-q");
+        assertTrue(Files.isRegularFile(dir.resolve("web-pdf").resolve("page.pdf")), pdfs.err());
+        assertTrue(Files.isRegularFile(dir.resolve("web-pdf").resolve("old.pdf")), pdfs.err());
+        assertTrue(Files.isRegularFile(dir.resolve("web-pdf").resolve("note.pdf")), pdfs.err());
+    }
+
+    @Test
+    void anExplicitHtmlFileStillConverts() throws Exception {
+        Path html = Files.writeString(dir.resolve("one.html"), "<h1>Hello</h1>");
+        Result r = run(html.toString(), "-q");
+        assertEquals(0, r.code(), r.err());
+        assertTrue(Files.size(dir.resolve("one.pdf")) > 0);
+    }
+
+    @Test
     void helpMentionsOfficeInput() {
         Result r = run("--help");
         assertEquals(0, r.code());
