@@ -75,7 +75,7 @@ public final class PageAnalyzer {
             glyphs = new ArrayList<>(glyphs);
             glyphs.addAll(bullets);
         }
-        markLinks(glyphs, page.links());
+        LinkMarker.mark(glyphs, page.links());
         List<Line> segments = new ArrayList<>(LineBuilder.build(glyphs));
         segments.removeIf(s -> stats.headerFooter.match(page, s) != null);
         List<Line> furnitureLines = new ArrayList<>(stats.headerFooter.furniture(page, segments));
@@ -806,21 +806,5 @@ public final class PageAnalyzer {
         }
         colItems.sort(Comparator.comparingDouble(PageLayout.Item::top));
         return new PageLayout.Column(c[0], c[1], colItems);
-    }
-
-    private static void markLinks(List<Glyph> glyphs, List<PageData.Link> links) {
-        if (links.isEmpty()) {
-            return;
-        }
-        for (Glyph g : glyphs) {
-            float cx = g.centreX();
-            float cy = g.baseline - g.size * 0.3f;
-            for (PageData.Link l : links) {
-                if (cx >= l.x() - 0.5f && cx <= l.right() + 0.5f && cy >= l.top() - 1 && cy <= l.bottom() + 1) {
-                    g.link = l.uri() != null ? l.uri() : "#page" + l.targetPage();
-                    break;
-                }
-            }
-        }
     }
 }

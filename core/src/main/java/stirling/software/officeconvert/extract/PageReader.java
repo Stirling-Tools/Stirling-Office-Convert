@@ -10,6 +10,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
 import org.apache.pdfbox.cos.COSDictionary;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
@@ -27,6 +29,8 @@ import org.apache.pdfbox.pdmodel.interactive.documentnavigation.destination.PDPa
 import stirling.software.officeconvert.extract.GlyphCollector.RawGlyph;
 
 public final class PageReader {
+
+    private static final Log LOG = LogFactory.getLog(PageReader.class);
 
     public interface PageConsumer {
         void accept(PageData page) throws IOException;
@@ -47,6 +51,8 @@ public final class PageReader {
     private Map<COSDictionary, Integer> pageIndex;
 
     public static final float MAX_PAGE_SIDE = 1584f;
+
+    static final int MAX_LINKS = 5_000;
 
     public void read(int first, int last, boolean withGraphics, PageConsumer consumer)
             throws IOException {
@@ -91,7 +97,7 @@ public final class PageReader {
                 withGraphics
                         ? GraphicsCollector.read(page, toDisplay, width, height, parsed)
                         : new PageGraphics(List.of(), List.of(), List.of(), List.of());
-        List<PageData.Link> links = withGraphics ? links(page, toDisplay) : List.of();
+        List<PageData.Link> links = withGraphics ? links(page, toDisplay, width, height) : List.of();
         return new PageData(
                 index, width, height, direction, glyphs, hidden, rotated, graphics, links, withGraphics ? widgets(page) : 0);
     }
@@ -127,7 +133,7 @@ public final class PageReader {
                 glyphsOnly.hidden(),
                 glyphsOnly.rotated(),
                 graphics,
-                links(page, toDisplay),
+                links(page, toDisplay, glyphsOnly.width(), glyphsOnly.height()),
                 widgets(page));
     }
 
@@ -331,7 +337,8 @@ public final class PageReader {
         return n;
     }
 
-    private List<PageData.Link> links(PDPage page, AffineTransform toDisplay) {
+    private List<PageData.Link> links(PDPage page, AffineTransform toDisplay, float width, float height)
+            throws IOException {
         List<PageData.Link> out = new ArrayList<>();
         List<PDAnnotation> annotations;
         try {
@@ -339,7 +346,11 @@ public final class PageReader {
         } catch (IOException e) {
             return out;
         }
+        int seen = 0;
         for (PDAnnotation a : annotations) {
+            if (++seen % 4096 == 0) {
+                PdfFiles.stopIfInterrupted();
+            }
             if (!(a instanceof PDAnnotationLink link) || link.getRectangle() == null) {
                 continue;
             }
@@ -375,7 +386,21 @@ public final class PageReader {
                             uri,
                             target));
         }
-        return out;
+        return out.size() <= MAX_LINKS ? out : onPage(out, width, height);
+    }
+
+    private static List<PageData.Link> onPage(List<PageData.Link> links, float width, float height) {
+        List<PageData.Link> kept = new ArrayList<>(MAX_LINKS);
+        for (PageData.Link l : links) {
+            if (l.right() >= -1 && l.x() <= width + 1 && l.bottom() >= -1 && l.top() <= height + 1) {
+                kept.add(l);
+                if (kept.size() == MAX_LINKS) {
+                    break;
+                }
+            }
+        }
+        LOG.warn("A page has " + links.size() + " links; kept the first " + kept.size() + " that lie on it");
+        return kept;
     }
 
     private int pageOf(PDDestination dest) throws IOException {
