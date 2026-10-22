@@ -201,6 +201,14 @@ class EpubToPdfTest {
     }
 
     @Test
+    void unclosedSheetUrlsStayLinear() {
+        String css = "a{b:url(x" + " ".repeat(400_000) + "}" + "url(".repeat(100_000) + "c{d:url( 'e(1).png' )}";
+        String out = org.junit.jupiter.api.Assertions.assertTimeoutPreemptively(Duration.ofSeconds(10),
+                () -> EpubBook.packageUrls(css, "OEBPS/s.css"));
+        assertTrue(out.endsWith("c{d:url(\"/OEBPS/e(1).png\")}"), out.substring(out.length() - 40));
+    }
+
+    @Test
     void bookWithoutAReadingOrderIsRefused() throws IOException {
         Map<String, byte[]> e = book();
         e.put("OEBPS/content.opf", utf8("<package xmlns=\"http://www.idpf.org/2007/opf\"><manifest/><spine/></package>"));
