@@ -58,7 +58,7 @@ final class HtmlInput {
     private static boolean zipNamed(Path source) {
         Path name = source.getFileName();
         String n = name == null ? "" : name.toString().toLowerCase(Locale.ROOT);
-        return n.endsWith(".zip") || n.endsWith(".epub");
+        return n.endsWith(".zip") || n.endsWith(".epub") || n.endsWith(".fbz");
     }
 
     static boolean named(Path source) {
@@ -68,6 +68,12 @@ final class HtmlInput {
     }
 
     static Long estimate(Path source) throws IOException {
+        if (MobiBook.is(source)) {
+            return HtmlDocument.estimate(MAX_BYTES) + 3 * Files.size(source) + 2 * Admission.BASE_BYTES;
+        }
+        if (Fb2Book.is(source)) {
+            return HtmlDocument.estimate(Files.size(source)) + 4 * Files.size(source) + 2 * Admission.BASE_BYTES;
+        }
         if (packaged(source, null)) {
             return HtmlDocument.estimate(MAX_BYTES) + 2 * Admission.BASE_BYTES;
         }
@@ -76,6 +82,20 @@ final class HtmlInput {
 
     static Result render(Path source, Format requested, OutputStream sink, Options options,
             OfficeToPdf.Renderer renderer) throws IOException {
+        if (requested == null || requested == Format.HTML) {
+            if (MobiBook.is(source)) {
+                return renderBook(read(source, 3, MobiBook::read), sink, options, renderer);
+            }
+            if (Fb2Book.is(source)) {
+                return renderBook(read(source, 4, Fb2Book::read), sink, options, renderer);
+            }
+            if (Fb2Book.named(source)) {
+                throw new IOException("The file is not a FictionBook (FB2) book");
+            }
+            if (MobiBook.named(source)) {
+                throw new IOException("The file is not a Kindle or Mobipocket book: it has no BOOKMOBI header");
+            }
+        }
         if (packaged(source, requested)) {
             return renderPackage(source, sink, options, renderer);
         }
@@ -90,6 +110,15 @@ final class HtmlInput {
         try (HtmlPackage pkg = HtmlPackage.open(source)) {
             if (EpubBook.is(pkg)) {
                 return renderBook(pkg, sink, options, renderer);
+            }
+            String fb2 = pkg.page() == null ? fictionBook(pkg) : null;
+            if (fb2 != null) {
+                byte[] xml = pkg.read(fb2);
+                if (xml == null) {
+                    throw new IOException("The FictionBook in the ZIP file is larger than "
+                            + (HtmlAssets.MAX_ASSET_BYTES >> 20) + " MB");
+                }
+                return renderBook(Fb2Book.read(xml), sink, options, renderer);
             }
             if (pkg.page() == null) {
                 throw new IOException("The ZIP file holds no HTML page");
@@ -110,14 +139,46 @@ final class HtmlInput {
     private static Result renderBook(HtmlPackage pkg, OutputStream sink, Options options,
             OfficeToPdf.Renderer renderer) throws IOException {
         EpubBook.Book book = EpubBook.read(pkg);
-        pkg.page("book.html");
+        pkg.page(Ebook.PAGE);
+        return renderBook(new Ebook(book, pkg), sink, options, renderer);
+    }
+
+    private static Result renderBook(Ebook ebook, OutputStream sink, Options options, OfficeToPdf.Renderer renderer)
+            throws IOException {
         Path page = Files.createTempFile("office-to-pdf-", ".html");
         try {
-            Files.writeString(page, book.html(), StandardCharsets.UTF_8);
-            return render(page, sink, options, renderer, pkg);
+            Files.writeString(page, ebook.book().html(), StandardCharsets.UTF_8);
+            return render(page, sink, options, renderer, ebook.assets());
         } finally {
             OfficeToPdf.deleteQuietly(page);
         }
+    }
+
+    private interface BookReader {
+        Ebook read(Path source) throws IOException;
+    }
+
+    private static Ebook read(Path source, int factor, BookReader reader) throws IOException {
+        Admission.Ticket ticket = Admission.jvm().enter(factor * Files.size(source) + Admission.BASE_BYTES);
+        try {
+            return reader.read(source);
+        } finally {
+            ticket.close();
+        }
+    }
+
+    private static String fictionBook(HtmlPackage pkg) {
+        String found = null;
+        for (String name : pkg.names()) {
+            String lower = name.toLowerCase(Locale.ROOT);
+            if (lower.endsWith(".fb2") && !lower.startsWith("__macosx/") && HtmlAssets.packagePath(name)) {
+                if (found != null) {
+                    return null;
+                }
+                found = name;
+            }
+        }
+        return found;
     }
 
     private static Result render(Path source, OutputStream sink, Options options, OfficeToPdf.Renderer renderer,

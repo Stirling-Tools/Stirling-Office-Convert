@@ -148,6 +148,31 @@ class EpubToPdfTest {
     }
 
     @Test
+    void sheetLinkedByOneChapterStaysInThatChapter() throws IOException {
+        Map<String, byte[]> e = book();
+        String shared = "<link rel=\"stylesheet\" href=\"../styles/book.css\"/>";
+        e.put("OEBPS/text/one.xhtml", utf8(chapter(shared, "<p class=\"hide\">Shown in chapter one</p>")));
+        e.put("OEBPS/text/two.xhtml", utf8(chapter(shared + "<link rel=\"stylesheet\" href=\"../styles/two.css\"/>",
+                "<p class=\"hide\">Hidden in chapter two</p><p>Rest of two</p>")));
+        e.put("OEBPS/styles/two.css", utf8(".hide { display: none }"));
+        Path in = epub("scoped.epub", e);
+        Path out = dir.resolve("scoped.pdf");
+        OfficeToPdf.convert(in, out, OfficeToPdf.Options.defaults().timeout(Duration.ofMinutes(2)));
+        try (PDDocument doc = Loader.loadPDF(out.toFile())) {
+            String text = new PDFTextStripper().getText(doc);
+            assertTrue(text.contains("Shown in chapter one") && text.contains("Rest of two"), text);
+            assertFalse(text.contains("Hidden in chapter two"), text);
+        }
+    }
+
+    @Test
+    void inlinedSheetUrlsStayRelativeToTheSheet() {
+        assertEquals("a{background:url(\"/OEBPS/images/a.png\")} b{src:url(data:x)} c{x:url(\"/OEBPS/f.otf\")}",
+                EpubBook.packageUrls("a{background:url('../images/a.png')} b{src:url(data:x)} c{x:url(../f.otf)}",
+                        "OEBPS/styles/s.css"));
+    }
+
+    @Test
     void bookWithoutAReadingOrderIsRefused() throws IOException {
         Map<String, byte[]> e = book();
         e.put("OEBPS/content.opf", utf8("<package xmlns=\"http://www.idpf.org/2007/opf\"><manifest/><spine/></package>"));

@@ -383,7 +383,7 @@ public final class Main {
 
     private static boolean officeOrPage(Path file) {
         String name = file.getFileName() == null ? "" : file.getFileName().toString().toLowerCase(Locale.ROOT);
-        return isOffice(file) || name.endsWith(".zip") || name.endsWith(".epub");
+        return isOffice(file) || name.endsWith(".zip") || name.endsWith(".epub") || name.endsWith(".pdb");
     }
 
     private static float seconds(String s, String option) throws Usage {
