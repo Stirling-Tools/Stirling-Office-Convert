@@ -70,17 +70,17 @@ final class HtmlInput {
         return n.endsWith(".html") || n.endsWith(".htm") || n.endsWith(".xhtml");
     }
 
-    static Long estimate(Path source) throws IOException {
+    static Long estimate(Path source, Format requested) throws IOException {
         if (MobiBook.is(source)) {
             return HtmlDocument.estimate(MAX_BYTES) + 3 * Files.size(source) + 2 * Admission.BASE_BYTES;
         }
         if (Fb2Book.is(source)) {
             return HtmlDocument.estimate(Files.size(source)) + 4 * Files.size(source) + 2 * Admission.BASE_BYTES;
         }
-        if (packaged(source, null)) {
+        if (packaged(source, requested)) {
             return HtmlDocument.estimate(MAX_BYTES) + 2 * Admission.BASE_BYTES;
         }
-        return is(source, null) ? HtmlDocument.estimate(Files.size(source)) + 2 * Admission.BASE_BYTES : null;
+        return is(source, requested) ? HtmlDocument.estimate(Files.size(source)) + 2 * Admission.BASE_BYTES : null;
     }
 
     static Result render(Path source, Format requested, OutputStream sink, Options options,

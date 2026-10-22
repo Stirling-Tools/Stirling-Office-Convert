@@ -36,9 +36,13 @@ final class Deadline {
         Thread worker = Thread.ofPlatform().name("pdf-to-pdfa").daemon().stackSize(STACK_BYTES).unstarted(task);
         boolean finished = false;
         try {
+            long started = System.nanoTime();
             worker.start();
             T result = limit == 0 ? task.get() : task.get(limit, TimeUnit.NANOSECONDS);
             finished = true;
+            if (limit != 0 && System.nanoTime() - started > limit) {
+                throw new PdfToPdfA.TimedOut(timeout);
+            }
             return result;
         } catch (TimeoutException e) {
             throw new PdfToPdfA.TimedOut(timeout);

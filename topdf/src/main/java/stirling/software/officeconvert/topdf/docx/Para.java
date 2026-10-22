@@ -4,6 +4,8 @@ import java.util.List;
 
 final class Para implements Block {
 
+    record Heading(int level, int order) {}
+
     final ParaProps pp;
 
     final RunProps mark;
@@ -21,6 +23,8 @@ final class Para implements Block {
     SectionProps section;
 
     boolean joinsNext;
+
+    Heading heading;
 
     // The paragraphs before and after this one in document order, across table cells
     Para docPrev;
@@ -58,5 +62,25 @@ final class Para implements Block {
             }
         }
         return label == null || label.isEmpty();
+    }
+
+    String headingTitle() {
+        StringBuilder b = new StringBuilder();
+        for (Inline i : items) {
+            switch (i) {
+                case Inline.Text t when !t.rp().hidden() -> b.append(t.text());
+                case Inline.Field f when !f.rp().hidden() && f.cached() != null -> b.append(f.cached());
+                case Inline.Tab t -> b.append(' ');
+                case Inline.PTab t -> b.append(' ');
+                case Inline.Break br -> b.append(' ');
+                default -> {
+                }
+            }
+        }
+        String text = b.toString().replaceAll("\\s+", " ").strip();
+        if (text.isEmpty() || label == null || level == null || level.picture || "bullet".equals(level.fmt)) {
+            return text;
+        }
+        return (label + " " + text).strip();
     }
 }

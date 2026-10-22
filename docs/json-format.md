@@ -6,7 +6,7 @@ the JSON to PDF (`OfficeToPdf`, or an input named `.json`) lays it out again, so
 structure, change it and turn it back into a PDF.
 
 Lengths are in points (1/72 inch), colours are `"#RRGGBB"`, and page numbers count from 1. A field that is missing
-takes its default (shown below), so hand-written JSON only needs what it changes. Unknown fields are ignored.
+takes its default (shown below), so hand-written JSON only needs `format` and what it changes. Unknown fields are ignored.
 Numbers are written exactly, so a document written by PDF to JSON and read back lays out the same as the DOCX
 written straight from the PDF.
 
@@ -31,7 +31,7 @@ written straight from the PDF.
 
 | Field | Default | Meaning |
 |---|---|---|
-| `format` | `stirling-office-convert` | Anything else is refused |
+| `format` | required | Must be `stirling-office-convert`; a document without it, or with anything else, is refused |
 | `version` | `1` | A newer version than the converter reads is refused |
 | `page` | A4, 72 pt margins | The last section's page (see Section) |
 | `styles.normal` | Calibri 11 | The body text's look (see Run style) |

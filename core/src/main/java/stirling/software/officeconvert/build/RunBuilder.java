@@ -272,7 +272,8 @@ final class RunBuilder {
     }
 
     static boolean arabicStandIn(Glyph g) {
-        if (!g.font.substituted() || !"Arial".equals(g.font.family()) || g.font.mono()) {
+        String family = g.font.family();
+        if (!g.font.substituted() || !"Arial".equals(family) && !"Arial Narrow".equals(family) || g.font.mono()) {
             return false;
         }
         String ps = g.font.postScriptName();

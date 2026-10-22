@@ -4,11 +4,14 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
+import org.apache.poi.poifs.filesystem.POIFSFileSystem;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -50,6 +53,23 @@ class OfficeFilesTest {
         assertEquals("pptx", OfficeFiles.family("vsdx"));
         assertEquals("xlsx", OfficeFiles.family("wk1"));
         assertEquals("wk3", OfficeFiles.extension(write(new byte[] {0, 0, 0x1A, 0, 0, 0x10}), "budget.wk3"));
+    }
+
+    @Test
+    void recognisesLegacyVisioDrawingsAndPublicationsFromTheirContent() throws IOException {
+        assertEquals("vsd", OfficeFiles.extension(write(ole("VisioDocument"))));
+        assertEquals("pub", OfficeFiles.extension(write(ole("Quill"))));
+        assertEquals("pptx", OfficeFiles.family("vsd"));
+        assertEquals("pptx", OfficeFiles.family("pub"));
+    }
+
+    private static byte[] ole(String stream) throws IOException {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        try (POIFSFileSystem fs = new POIFSFileSystem()) {
+            fs.createDocument(new ByteArrayInputStream(new byte[64]), stream);
+            fs.writeFilesystem(out);
+        }
+        return out.toByteArray();
     }
 
     @Test

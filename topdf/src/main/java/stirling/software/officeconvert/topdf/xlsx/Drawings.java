@@ -274,7 +274,8 @@ final class Drawings {
 
         private void picture(Element pic, Anchor from, Anchor to, double ax, double ay, double aw, double ah,
                 Rect child) {
-            Element blip = Dml.path(pic, "blipFill", "blip");
+            Element owner = Dml.child(pic, "blipFill") != null ? pic : Dml.child(pic, "spPr");
+            Element blip = Dml.path(owner, "blipFill", "blip");
             String id = blip == null ? null : Dml.attrNs(blip, "embed");
             if (id == null) {
                 return;
@@ -285,7 +286,7 @@ final class Drawings {
             }
             Element xfrm = Dml.path(pic, "spPr", "xfrm");
             double rot = Dml.number(xfrm, "rot", 0) / 60000.0;
-            out.add(new Item(from, to, ax, ay, aw, ah, child, r.part(), Dml.path(pic, "blipFill", "srcRect"), null,
+            out.add(new Item(from, to, ax, ay, aw, ah, child, r.part(), Dml.path(owner, "blipFill", "srcRect"), null,
                     null, null, 0, null, null, null, rot, Dml.flag(xfrm, "flipH"), Dml.flag(xfrm, "flipV"), false, null,
                     null, null, null, null, null, false));
         }
@@ -310,7 +311,11 @@ final class Drawings {
                 }
             }
             Color fill = null;
-            if (Dml.child(spPr, "noFill") == null) {
+            if (Dml.child(spPr, "blipFill") != null) {
+                if (custom == null && "rect".equals(prst) && !connector) {
+                    picture(sp, from, to, ax, ay, aw, ah, child);
+                }
+            } else if (Dml.child(spPr, "noFill") == null) {
                 Element solid = Dml.child(spPr, "solidFill");
                 if (solid != null) {
                     fill = Dml.color(solid, colors, null);
