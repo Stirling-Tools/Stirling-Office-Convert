@@ -32,11 +32,14 @@ final class HtmlImages {
     private static final long MAX_SVG_PIXELS = 300_000_000L;
     private static final int MAX_SVG_CHARS = 2 << 20;
     private static final long SVG_WORK = 600_000_000L;
+    private static final long MAX_GRADIENT_PIXELS = 300_000_000L;
 
     private final DocSink sink;
     private final List<String> warnings;
     private final Map<String, Picture.MediaRef> seen = new HashMap<>();
     private final Map<String, Svg.Painted> painted = new HashMap<>();
+    private final Map<String, Picture.MediaRef> gradients = new HashMap<>();
+    private long gradientPixels;
     private long dataChars;
     private int added;
     private int svgs;
@@ -79,11 +82,26 @@ final class HtmlImages {
     }
 
     Picture gradient(Gradient g, float width, float height) throws IOException {
-        Gradient.Painted p = g.paint(width, height);
-        if (p == null) {
+        if (!(width >= 1) || !(height >= 1)) {
             return null;
         }
-        Picture.MediaRef ref = sink.media(p.jpeg(), "jpeg", p.pixelWidth(), p.pixelHeight(), "gradient:" + (++added));
+        String key = g.key(width, height);
+        Picture.MediaRef ref = gradients.get(key);
+        if (ref == null) {
+            long pixels = Gradient.pixelCount(width, height);
+            if (gradientPixels + pixels > MAX_GRADIENT_PIXELS) {
+                warn("Only the first gradient backgrounds of a very large page were painted; the rest show their first"
+                        + " colour");
+                return null;
+            }
+            Gradient.Painted p = g.paint(width, height);
+            if (p == null) {
+                return null;
+            }
+            gradientPixels += pixels;
+            ref = sink.media(p.jpeg(), "jpeg", p.pixelWidth(), p.pixelHeight(), "gradient:" + (++added));
+            gradients.put(key, ref);
+        }
         return new Picture(ref, width, height);
     }
 
