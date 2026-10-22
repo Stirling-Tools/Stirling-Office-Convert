@@ -1,6 +1,7 @@
 package stirling.software.officeconvert.topdf.html;
 
 import java.util.ArrayDeque;
+import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
@@ -32,6 +33,7 @@ final class HtmlContext {
     private String pageName = "";
     // the most items of any row of columns in an element or inside it, 0 when none
     private final Map<Element, Integer> rows = new IdentityHashMap<>();
+    private Map<String, Element> labels;
 
     HtmlContext(Cascade cascade, StyleSheet styles, DocSink sink, List<String> warnings, Section page) {
         this.cascade = cascade;
@@ -45,6 +47,23 @@ final class HtmlContext {
 
     Cascade cascade() {
         return cascade;
+    }
+
+    Element labelFor(Element control) {
+        if (labels == null) {
+            labels = new HashMap<>();
+            Element body = control.ownerDocument() == null ? null : control.ownerDocument().body();
+            if (body != null) {
+                for (Element l : body.getElementsByTag("label")) {
+                    String id = l.attr("for");
+                    if (!id.isEmpty()) {
+                        labels.putIfAbsent(id, l);
+                    }
+                }
+            }
+        }
+        String id = control.id();
+        return id.isEmpty() ? null : labels.get(id);
     }
 
     /** What {@code e} declares, with the custom properties it inherits from {@code parent} filled in. */

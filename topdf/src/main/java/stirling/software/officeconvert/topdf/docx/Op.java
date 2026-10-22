@@ -1,8 +1,10 @@
 package stirling.software.officeconvert.topdf.docx;
 
+import java.awt.Color;
 import java.awt.geom.AffineTransform;
 import java.util.List;
 
+import stirling.software.officeconvert.model.FormField;
 import stirling.software.officeconvert.topdf.font.GlyphRun;
 import stirling.software.officeconvert.topdf.io.DecodedPicture;
 import stirling.software.officeconvert.topdf.pdf.Crop;
@@ -26,6 +28,9 @@ sealed interface Op {
             boolean flipV, float alpha) implements Op {}
 
     record Link(float x, float y, float w, float h, String url, String anchor) implements Op {}
+
+    record Field(float x, float y, float w, float h, FormField field, float size, Color color, List<Op> look)
+            implements Op {}
 
     record Dest(String name, float x, float y) implements Op {}
 
