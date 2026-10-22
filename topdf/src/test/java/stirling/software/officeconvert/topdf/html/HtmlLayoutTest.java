@@ -225,4 +225,39 @@ class HtmlLayoutTest {
         assertTrue(l.word("Phone").right() < main.left());
         assertTrue(l.word("Footer").top() > l.word("Body").top());
     }
+
+    @Test
+    void aTableInsideACellKeepsItsColumnsAndBackgrounds() throws IOException {
+        Laid l = lay("""
+                <html><body><table width="100%" border="1"><tr><td width="30%">Outer</td><td>
+                <table width="100%" border="1"><tr><td bgcolor="#2050c0">Alpha</td><td>Beta</td></tr>
+                <tr><td>Gamma</td><td>Delta</td></tr></table></td></tr></table></body></html>""");
+        Word alpha = l.word("Alpha");
+        Word beta = l.word("Beta");
+        Word gamma = l.word("Gamma");
+        assertEquals(alpha.top(), beta.top(), 1f);
+        assertTrue(beta.left() > alpha.right() + 40, l.words().toString());
+        assertEquals(alpha.left(), gamma.left(), 1f);
+        assertTrue(gamma.top() > alpha.top() + 5, l.words().toString());
+        assertTrue(alpha.left() > l.word("Outer").right() + 40, l.words().toString());
+        int rgb = l.first().getRGB(Math.round(alpha.right()) + 4, Math.round(alpha.top()) - 4);
+        assertTrue((rgb & 0xFF) > 0x90 && (rgb >> 16 & 0xFF) < 0x60, Integer.toHexString(rgb));
+    }
+
+    @Test
+    void tablesNestedPastTheLimitStillShowAllTheirText() throws IOException {
+        StringBuilder html = new StringBuilder("<html><body>");
+        int levels = 14;
+        for (int i = 1; i <= levels; i++) {
+            html.append("<table border=1 width=\"100%\"><tr><td>L").append(i).append("</td><td>");
+        }
+        html.append("core");
+        html.append("</td></tr></table>".repeat(levels)).append("</body></html>");
+        Laid l = lay(html.toString());
+        for (int i = 1; i <= levels; i++) {
+            assertTrue(l.text().contains("L" + i), "L" + i + " missing from " + l.text());
+        }
+        assertTrue(l.text().contains("core"), l.text());
+        assertEquals(1, l.pages());
+    }
 }

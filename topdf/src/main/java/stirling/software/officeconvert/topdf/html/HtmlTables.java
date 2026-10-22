@@ -12,7 +12,6 @@ import java.util.TreeMap;
 import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
 
-import stirling.software.officeconvert.model.Paragraph;
 import stirling.software.officeconvert.model.Table;
 
 /** An HTML table as a grid: spans become merged cells, column widths come from the widths given or the text. */
@@ -157,7 +156,7 @@ final class HtmlTables {
     }
 
     private void contents(Slot s, float room, int depth) throws IOException {
-        Flow flow = new Flow(ctx, b -> s.cell().paragraphs.add((Paragraph) b), true);
+        Flow flow = new Flow(ctx, s.cell()::add, true);
         flow.children(s.element(), s.look(), new Flow.Frame(0, 0, Math.max(MIN_COLUMN, room), -1), depth);
     }
 

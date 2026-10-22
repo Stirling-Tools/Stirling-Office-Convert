@@ -4,6 +4,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
+import stirling.software.officeconvert.model.Block;
 import stirling.software.officeconvert.model.FormField;
 import stirling.software.officeconvert.model.Inline;
 import stirling.software.officeconvert.model.Paragraph;
@@ -16,6 +17,9 @@ import stirling.software.officeconvert.sink.Links;
 final class BodyXml {
 
     private static final int MAX_TABS = 64;
+
+    private static final String EMPTY_CELL_PARAGRAPH = "<w:p><w:pPr><w:spacing w:before=\"0\" w:after=\"0\" w:line=\"20\""
+            + " w:lineRule=\"exact\"/><w:rPr><w:sz w:val=\"2\"/><w:szCs w:val=\"2\"/></w:rPr></w:pPr></w:p>";
 
     private final PartContext ctx;
     private final StyleSheet styles;
@@ -256,6 +260,10 @@ final class BodyXml {
     }
 
     void table(StringBuilder sb, Table t) {
+        table(sb, t, 1);
+    }
+
+    private void table(StringBuilder sb, Table t, int level) {
         float total = 0;
         for (float w : t.columnWidths) {
             total += w;
@@ -321,18 +329,33 @@ final class BodyXml {
                     sb.append("<w:vAlign w:val=\"").append(cell.vAlign == Table.VAlign.CENTER ? "center" : "bottom").append("\"/>");
                 }
                 sb.append("</w:tcPr>");
-                if (cell.paragraphs.isEmpty() || cell.vMerge == 2) {
-                    sb.append("<w:p><w:pPr><w:spacing w:before=\"0\" w:after=\"0\" w:line=\"20\" w:lineRule=\"exact\"/><w:rPr><w:sz w:val=\"2\"/><w:szCs w:val=\"2\"/></w:rPr></w:pPr></w:p>");
-                } else {
+                if (cell.empty() || cell.vMerge == 2) {
+                    sb.append(EMPTY_CELL_PARAGRAPH);
+                } else if (cell.tables.isEmpty()) {
                     for (Paragraph p : cell.paragraphs) {
                         paragraph(sb, p, false);
                     }
+                } else {
+                    cellBlocks(sb, cell.blocks(), level);
                 }
                 sb.append("</w:tc>");
             }
             sb.append("</w:tr>");
         }
         sb.append("</w:tbl>");
+    }
+
+    private void cellBlocks(StringBuilder sb, List<Block> blocks, int level) {
+        for (Block b : blocks) {
+            switch (b) {
+                case Paragraph p -> paragraph(sb, p, false);
+                case Table nested when level < Table.MAX_NESTING -> table(sb, nested, level + 1);
+                case Table nested -> nested.flatParagraphs().forEach(p -> paragraph(sb, p, false));
+            }
+        }
+        if (blocks.getLast() instanceof Table) {
+            sb.append(EMPTY_CELL_PARAGRAPH);
+        }
     }
 
     private static void border(StringBuilder sb, String side, Table.Border b) {
