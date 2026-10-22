@@ -8,6 +8,7 @@ import java.io.OutputStream;
 import java.io.OutputStreamWriter;
 import java.io.Writer;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -23,6 +24,7 @@ import stirling.software.officeconvert.model.Picture;
 import stirling.software.officeconvert.model.Section;
 import stirling.software.officeconvert.model.StyleSheet;
 import stirling.software.officeconvert.model.Table;
+import stirling.software.officeconvert.sink.Links;
 import stirling.software.officeconvert.sink.ListLabels;
 import stirling.software.officeconvert.sink.MediaStore;
 import stirling.software.officeconvert.sink.SpillBuffer;
@@ -39,6 +41,11 @@ public final class HtmlWriter implements DocSink, Closeable {
     private final Map<Integer, List<Paragraph>> notes = new TreeMap<>();
     private HeaderFooterSet running;
     private final List<Section> sections = new ArrayList<>();
+    private final ArrayDeque<Paragraph.ListRef> lists = new ArrayDeque<>();
+    private Numbering numbering = new Numbering();
+    private String pendingLabel;
+    private String pendingKey;
+    private Paragraph gapLine;
 
     public HtmlWriter(OutputStream target, Pictures pictures) {
         this.out = new KeepOpen(target);
@@ -65,20 +72,118 @@ public final class HtmlWriter implements DocSink, Closeable {
 
     @Override
     public void block(Block block) throws IOException {
+        if (gapLine != null) {
+            Paragraph held = gapLine;
+            gapLine = null;
+            if (block instanceof Paragraph p && continues(held, p)) {
+                join(held, p);
+            } else {
+                write(held);
+            }
+        }
+        if (block instanceof Paragraph p && p.endsSection == null && HtmlBlocks.justified(p)
+                && !HtmlBlocks.columnBreak(p)) {
+            gapLine = p;
+            return;
+        }
+        write(block);
+    }
+
+    private static boolean pageStart(Block block) {
+        String mark = null;
+        if (block instanceof Paragraph p) {
+            mark = p.bookmark;
+        } else if (block instanceof Table t && !t.rows.isEmpty() && !t.rows.get(0).cells.isEmpty()
+                && !t.rows.get(0).cells.get(0).paragraphs.isEmpty()) {
+            mark = t.rows.get(0).cells.get(0).paragraphs.get(0).bookmark;
+        }
+        return mark != null && mark.startsWith(Links.PAGE_PREFIX);
+    }
+
+    private static boolean continues(Paragraph held, Paragraph p) {
+        return p.align == Paragraph.Align.JUSTIFY && p.list == null && held.list == null && !p.pageBreakBefore
+                && p.spaceBefore < 3 && held.style.equals(p.style) && p.bookmark == null;
+    }
+
+    private static void join(Paragraph held, Paragraph p) {
+        List<Inline> lead = new ArrayList<>(held.inlines);
+        Inline.Text last = null;
+        for (Inline in : lead) {
+            if (in instanceof Inline.Text t) {
+                last = t;
+            }
+        }
+        if (last != null && !last.text().isEmpty() && !Character.isWhitespace(last.text().charAt(last.text().length() - 1))
+                && !last.text().endsWith("-")) {
+            lead.add(new Inline.Text(" ", last.style(), null, -1));
+        }
+        p.inlines.addAll(0, lead);
+        p.spaceBefore = held.spaceBefore;
+        p.bookmark = held.bookmark;
+        p.pageBreakBefore = held.pageBreakBefore;
+        p.sourceTop = held.sourceTop;
+        p.indentLeft = held.indentLeft;
+        p.indentFirst = held.indentFirst;
+    }
+
+    private void write(Block block) throws IOException {
+        if (block instanceof Table t) {
+            Paragraph prose = Prose.of(t);
+            if (prose != null) {
+                block = prose;
+            }
+        }
         StringBuilder sb = new StringBuilder(512);
         if (body.isEmpty()) {
             sb.append("<div class=\"s1\">\n");
+        } else if (pageStart(block)) {
+            closeLists(sb);
+            sb.append(HtmlBlocks.MARK).append('P').append(sections.size()).append(HtmlBlocks.MARK);
         }
         if (block instanceof Paragraph p) {
-            blocks.paragraph(sb, p);
+            list(sb, p.list);
+            blocks.paragraph(sb, p, sections.size());
             if (p.endsSection != null) {
+                closeLists(sb);
                 sections.add(p.endsSection);
                 sb.append("</div>\n<div class=\"s").append(sections.size() + 1).append("\">\n");
             }
         } else {
+            closeLists(sb);
             blocks.table(sb, (Table) block);
         }
         body.append(sb);
+    }
+
+    private void list(StringBuilder sb, Paragraph.ListRef ref) {
+        if (ref == null) {
+            closeLists(sb);
+            return;
+        }
+        while (!lists.isEmpty() && (lists.peek().level() > ref.level()
+                || lists.peek().level() == ref.level() && lists.peek().numId() != ref.numId())) {
+            closeList(sb);
+        }
+        if (!lists.isEmpty() && lists.peek().level() == ref.level()) {
+            sb.append("</li>\n");
+        } else {
+            sb.append(HtmlBlocks.MARK).append('O').append(ref.numId()).append(':').append(ref.level()).append(HtmlBlocks.MARK)
+                    .append('\n');
+            lists.push(ref);
+        }
+        sb.append(HtmlBlocks.MARK).append('I').append(ref.numId()).append(':').append(ref.level()).append(HtmlBlocks.MARK);
+    }
+
+    private void closeLists(StringBuilder sb) {
+        while (!lists.isEmpty()) {
+            closeList(sb);
+        }
+    }
+
+    private void closeList(StringBuilder sb) {
+        Paragraph.ListRef ref = lists.pop();
+        sb.append("</li>").append(HtmlBlocks.MARK).append('C').append(ref.numId()).append(':').append(ref.level())
+                .append(HtmlBlocks.MARK).append('\n');
     }
 
     @Override
@@ -90,6 +195,13 @@ public final class HtmlWriter implements DocSink, Closeable {
     public void finish(Section last, HeaderFooterSet runningSet, Numbering numbering, StyleSheet styles, String title,
             String author) throws IOException {
         blocks.styles(styles);
+        if (gapLine != null) {
+            write(gapLine);
+            gapLine = null;
+        }
+        StringBuilder closing = new StringBuilder();
+        closeLists(closing);
+        body.append(closing);
         StringBuilder tail = new StringBuilder(body.isEmpty() ? "" : "</div>\n");
         sections.add(last == null ? defaultPage() : last);
         if (!notes.isEmpty()) {
@@ -115,8 +227,9 @@ public final class HtmlWriter implements DocSink, Closeable {
             running(top, "header", hf.header());
         }
         w.write(top.toString().replaceAll("\0[^\0]*\0", ""));
-        ListLabels labels = new ListLabels(numbering == null ? new Numbering() : numbering);
-        body.copyTo(w, key -> label(labels, key));
+        this.numbering = numbering == null ? new Numbering() : numbering;
+        ListLabels labels = new ListLabels(this.numbering);
+        body.copyTo(w, key -> resolve(labels, key));
         w.write("</main>\n</body>\n</html>\n");
         w.flush();
     }
@@ -168,6 +281,14 @@ public final class HtmlWriter implements DocSink, Closeable {
             }
         }
         sb.append("@page{size:").append(shapes.get(0)).append("}\n");
+        for (int i = 0; i < sections.size(); i++) {
+            List<float[]> columns = sections.get(i).columns;
+            if (columns.size() > 1) {
+                float[] first = columns.get(0);
+                sb.append(".s").append(i + 1).append("{column-count:").append(columns.size()).append(";column-gap:")
+                        .append(HtmlText.pt(first.length > 1 ? first[1] : 12)).append("}\n");
+            }
+        }
         if (shapes.size() == 1) {
             return;
         }
@@ -217,6 +338,12 @@ public final class HtmlWriter implements DocSink, Closeable {
                 .append(".running{color:#555}\n")
                 .append(".footnotes{margin-top:18pt;border-top:0.5pt solid #999;padding-top:6pt;font-size:0.85em}\n")
                 .append(".page-break{break-after:page}\n")
+                .append("main{position:relative;z-index:0}\n")
+                .append(".drawing{position:absolute;z-index:-1;overflow:visible;pointer-events:none}\n")
+                .append("ul.list,ol.list{list-style:none;margin:0;padding:0}\n")
+                .append(".float-left,.float-right,.figure{position:relative}\n")
+                .append(".picture-text{position:absolute;left:0;top:0;overflow:hidden;color:transparent;line-height:1.15;")
+                .append("white-space:pre-wrap}\n")
                 .append("@media print{html{background:none}main{max-width:none;padding:0}}\n");
         for (StyleSheet.Style s : styles.all()) {
             if (!"Normal".equals(s.id())) {
@@ -227,20 +354,84 @@ public final class HtmlWriter implements DocSink, Closeable {
         return sb.toString();
     }
 
-    private static String label(ListLabels labels, String key) {
-        if (!key.startsWith("L")) {
-            return "";
-        }
-        int colon = key.indexOf(':');
+    private String resolve(ListLabels labels, String key) {
         try {
-            String label = labels.next(Integer.parseInt(key.substring(1, colon)), Integer.parseInt(key.substring(colon + 1)));
-            boolean symbol = !label.isEmpty() && label.chars().allMatch(c -> c >= 0xE000 && c <= 0xF8FF);
-            StringBuilder sb = new StringBuilder();
-            HtmlText.escape(sb, symbol ? BULLET : label);
-            return sb.append(' ').toString();
+            return switch (key.isEmpty() ? ' ' : key.charAt(0)) {
+                case 'L' -> label(labels, key);
+                case 'I' -> item(labels, key);
+                case 'O' -> ordered(key) ? "<ol class=\"list\">" : "<ul class=\"list\">";
+                case 'C' -> ordered(key) ? "</ol>" : "</ul>";
+                case 'X' -> left(key);
+                case 'P' -> pageSplit(key);
+                case 'Y' -> belowMargin(key);
+                default -> "";
+            };
         } catch (RuntimeException e) {
             return "";
         }
+    }
+
+    private static int[] ref(String key) {
+        int colon = key.indexOf(':');
+        return new int[] {Integer.parseInt(key.substring(1, colon)), Integer.parseInt(key.substring(colon + 1))};
+    }
+
+    private boolean ordered(String key) {
+        int[] r = ref(key);
+        if (r[0] < 1 || r[0] > numbering.instances.size() || r[1] < 0 || r[1] > 8) {
+            return false;
+        }
+        Numbering.Level def = numbering.instances.get(r[0] - 1).definition.levels[r[1]];
+        return def != null && !"bullet".equals(def.format()) && !"none".equals(def.format());
+    }
+
+    private String item(ListLabels labels, String key) {
+        int[] r = ref(key);
+        pendingLabel = labels.next(r[0], r[1]);
+        pendingKey = key.substring(1);
+        return ordered(key) ? "<li value=\"" + labels.value(r[0], r[1]) + "\">" : "<li>";
+    }
+
+    private String belowMargin(String key) {
+        int colon = key.indexOf(':');
+        Section s = sections.get(Math.min(sections.size() - 1, Integer.parseInt(key.substring(1, colon))));
+        return HtmlText.pt(Float.parseFloat(key.substring(colon + 1)) - s.marginTop);
+    }
+
+    private String pageSplit(String key) {
+        int at = Integer.parseInt(key.substring(1));
+        if (at >= sections.size() || sections.get(at).columns.size() < 2) {
+            return "";
+        }
+        return "</div>\n<div class=\"s" + (at + 1) + "\">\n";
+    }
+
+    private String left(String key) {
+        String[] parts = key.substring(1).split(":");
+        Section s = sections.get(Math.min(sections.size() - 1, Integer.parseInt(parts[0])));
+        float x = Float.parseFloat(parts[1]);
+        float column = s.marginLeft;
+        float at = s.marginLeft;
+        for (float[] c : s.columns) {
+            if (at <= x + 1) {
+                column = at;
+            }
+            at += c[0] + (c.length > 1 ? c[1] : 0);
+        }
+        return HtmlText.pt(x - column - Float.parseFloat(parts[2]));
+    }
+
+    private String label(ListLabels labels, String key) {
+        int[] r = ref(key);
+        boolean pending = pendingLabel != null && key.substring(1).equals(pendingKey);
+        String label = pending ? pendingLabel : labels.next(r[0], r[1]);
+        if (pending) {
+            pendingLabel = null;
+        }
+        boolean symbol = !label.isEmpty() && label.chars().allMatch(c -> c >= 0xE000 && c <= 0xF8FF);
+        StringBuilder sb = new StringBuilder();
+        HtmlText.escape(sb, symbol ? BULLET : label);
+        return sb.append(' ').toString();
     }
 
     @Override
