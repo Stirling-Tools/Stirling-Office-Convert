@@ -2,12 +2,16 @@ package stirling.software.officeconvert.html;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.regex.Pattern;
 
 import stirling.software.officeconvert.model.Inline;
 import stirling.software.officeconvert.model.Paragraph;
 import stirling.software.officeconvert.model.Table;
 
 final class Prose {
+
+    private static final Pattern SENTENCE = Pattern.compile("[.!?]\\s+\\p{Lu}");
+    private static final Pattern ENDED = Pattern.compile("[.!?]$");
 
     private Prose() {}
 
@@ -59,8 +63,13 @@ final class Prose {
                 continued++;
             }
         }
-        if (continued * 2 < rows.size() - 1) {
+        if (continued * 2 < rows.size() - 1 || !SENTENCE.matcher(String.join(" ", rows)).find()) {
             return null;
+        }
+        for (int i = 0; i + 1 < rows.size(); i++) {
+            if (ENDED.matcher(rows.get(i)).find() && Character.isLowerCase(rows.get(i + 1).codePointAt(0))) {
+                return null;
+            }
         }
         Paragraph out = new Paragraph();
         out.style = first.style;
@@ -82,6 +91,8 @@ final class Prose {
                         if (in instanceof Inline.Text tx && !tx.text().isBlank()) {
                             out.inlines.add(tx);
                             last = tx;
+                        } else if (in instanceof Inline.Text tx && last != null) {
+                            out.inlines.add(tx);
                         } else if (in instanceof Inline.Tab && last != null) {
                             out.inlines.add(new Inline.Text(" ", last.style(), null, -1));
                         }

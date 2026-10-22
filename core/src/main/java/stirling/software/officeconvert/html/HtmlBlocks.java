@@ -105,9 +105,9 @@ final class HtmlBlocks {
                     .append(p.list.level()).append(MARK).append("</span>");
         }
         int start = sb.length();
-        runs(sb, p, base(p), gaps);
+        int tab = runs(sb, p, base(p), gaps);
         if (rightTab != null) {
-            leader(sb, start, rightTab.leader());
+            leader(sb, start, tab, rightTab.leader());
         }
         if (sb.length() == start && p.list == null) {
             sb.append("<br>");
@@ -129,8 +129,7 @@ final class HtmlBlocks {
         return last.kind() == Paragraph.TabStop.Kind.RIGHT ? last : null;
     }
 
-    private static void leader(StringBuilder sb, int start, char leader) {
-        int tab = sb.lastIndexOf("\t");
+    private static void leader(StringBuilder sb, int start, int tab, char leader) {
         if (tab < start) {
             return;
         }
@@ -191,7 +190,8 @@ final class HtmlBlocks {
         }
     }
 
-    private void runs(StringBuilder sb, Paragraph p, RunStyle base, boolean gaps) throws IOException {
+    private int runs(StringBuilder sb, Paragraph p, RunStyle base, boolean gaps) throws IOException {
+        int lastTab = -1;
         List<Inline> list = p.inlines;
         for (int i = 0; i < list.size(); i++) {
             Inline in = list.get(i);
@@ -206,7 +206,10 @@ final class HtmlBlocks {
                     }
                     run(sb, text.toString(), t.style(), base, Links.target(t));
                 }
-                case Inline.Tab tab -> sb.append(gaps ? ' ' : '\t');
+                case Inline.Tab tab -> {
+                    lastTab = gaps ? -1 : sb.length();
+                    sb.append(gaps ? ' ' : '\t');
+                }
                 case Inline.Break br -> sb.append("<br>");
                 case Inline.PageBreak br -> sb.append("<br class=\"page-break\">");
                 case Inline.Image im -> {
@@ -221,6 +224,7 @@ final class HtmlBlocks {
                 default -> { }
             }
         }
+        return lastTab;
     }
 
     private static List<Inline.Shape> shapes(Paragraph p) {

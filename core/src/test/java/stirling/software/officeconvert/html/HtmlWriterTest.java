@@ -228,28 +228,75 @@ class HtmlWriterTest {
 
     @Test
     void justifiedProseSplitIntoABorderlessTableIsOneParagraph() throws IOException {
-        Table t = new Table();
-        t.columnWidths.addAll(List.of(100f, 100f));
-        String[][] rows = {{"alongside the", "digital forecast"}, {"laboratories and", "the budget"}, {"budget for", "each strategy"}};
-        for (String[] r : rows) {
-            Table.Row row = new Table.Row();
-            for (String c : r) {
-                Table.Cell cell = new Table.Cell();
-                cell.paragraphs.add(para(c));
-                row.cells.add(cell);
+        String[][] rows = {{"alongside the", "digital forecast"}, {"laboratories and", "the budget"}, {"budget for", "each strategy. The"}};
+        String html = html(page(2), null, w -> block(w, table(rows)));
+        assertFalse(html.contains("<table"), html);
+        assertTrue(html.contains("alongside the digital forecast laboratories and the budget budget for each strategy. The"),
+                html);
+    }
+
+    @Test
+    void proseKeepsTheSpacesBetweenDifferentlyStyledWords() throws IOException {
+        RunStyle bold = new RunStyle("Arial", 11, true, false, false, false, 0, -1, 0, false);
+        Table t = table(new String[][] {{"alongside the", "digital forecast"}, {"laboratories and", "the budget"},
+                {"budget for", "each strategy. The"}});
+        for (Table.Row row : t.rows) {
+            for (Table.Cell cell : row.cells) {
+                Paragraph p = cell.paragraphs.get(0);
+                String text = ((Inline.Text) p.inlines.get(0)).text();
+                int space = text.indexOf(' ');
+                p.inlines.clear();
+                p.inlines.add(new Inline.Text(text.substring(0, space), bold, null, -1));
+                p.inlines.add(new Inline.Text(" ", TEXT, null, -1));
+                p.inlines.add(new Inline.Text(text.substring(space + 1), TEXT, null, -1));
             }
-            t.rows.add(row);
         }
         String html = html(page(2), null, w -> block(w, t));
         assertFalse(html.contains("<table"), html);
-        assertTrue(html.contains("alongside the digital forecast laboratories and the budget budget for each strategy"), html);
+        assertTrue(html.contains("<b>alongside</b> the <b>digital</b> forecast"), html);
+    }
+
+    @Test
+    void lowercaseTermsAndDefinitionsStayATable() throws IOException {
+        Table plain = table(new String[][] {{"apple", "a red fruit that grows on trees"},
+                {"banana", "a long yellow fruit from the tropics"}, {"cherry", "a small stone fruit eaten in summer"}});
+        Table sentences = table(new String[][] {{"apple", "a red fruit. It grows on trees."},
+                {"banana", "a long yellow fruit. It comes from the tropics."}, {"cherry", "a small stone fruit."}});
+        assertTrue(html(page(1), null, w -> block(w, plain)).contains("<table"));
+        assertTrue(html(page(1), null, w -> block(w, sentences)).contains("<table"));
     }
 
     @Test
     void realBorderlessTablesStay() throws IOException {
+        Table t = table(new String[][] {{"Website redesign", "4,800.00"}, {"Hosting for twelve months", "540.00"},
+                {"Support retainer", "1,200.00"}});
+        assertTrue(html(page(1), null, w -> block(w, t)).contains("<table"));
+    }
+
+    @Test
+    void aLeaderSplitsAtTheTabNotInsideAPictureAfterIt() throws IOException {
+        String html = html(page(1), new Numbering(), w -> {
+            try {
+                Picture pic = new Picture(w.media(png(), "png", 1, 1, "k"), 10, 10);
+                pic.description = "Q1\tQ2";
+                Paragraph toc = new Paragraph();
+                toc.inlines.add(new Inline.Text("Chart", TEXT, null, -1));
+                toc.inlines.add(new Inline.Tab(TEXT));
+                toc.inlines.add(new Inline.Image(pic));
+                toc.inlines.add(new Inline.Text("7", TEXT, null, -1));
+                toc.tabs.add(new Paragraph.TabStop(450, Paragraph.TabStop.Kind.RIGHT, '.'));
+                w.block(toc);
+            } catch (IOException e) {
+                throw new IllegalStateException(e);
+            }
+        });
+        assertTrue(html.contains("<span>Chart</span><span style=\"flex:1;"), html);
+        assertTrue(html.contains("alt=\"Q1\tQ2\" style=\"width:10pt;height:10pt\">7</span></p>"), html);
+    }
+
+    static Table table(String[][] rows) {
         Table t = new Table();
         t.columnWidths.addAll(List.of(100f, 100f));
-        String[][] rows = {{"Website redesign", "4,800.00"}, {"Hosting for twelve months", "540.00"}, {"Support retainer", "1,200.00"}};
         for (String[] r : rows) {
             Table.Row row = new Table.Row();
             for (String c : r) {
@@ -259,7 +306,7 @@ class HtmlWriterTest {
             }
             t.rows.add(row);
         }
-        assertTrue(html(page(1), null, w -> block(w, t)).contains("<table"));
+        return t;
     }
 
     static byte[] png() throws IOException {
