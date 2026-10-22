@@ -19,6 +19,7 @@ import org.apache.pdfbox.pdmodel.encryption.InvalidPasswordException;
 
 import stirling.software.officeconvert.PdfToDocx;
 import stirling.software.officeconvert.PdfToHtml;
+import stirling.software.officeconvert.PdfToAzw3;
 import stirling.software.officeconvert.PdfToEpub;
 import stirling.software.officeconvert.PdfToJson;
 import stirling.software.officeconvert.PdfToOdp;
@@ -41,7 +42,7 @@ import stirling.software.officeconvert.topdf.text.TextFormats;
 
 public final class Main {
 
-    private static final Set<String> FORMATS = Set.of("docx", "odt", "fodt", "xml", "rtf", "doc", "txt", "md", "html", "json", "epub", "pptx",
+    private static final Set<String> FORMATS = Set.of("docx", "odt", "fodt", "xml", "rtf", "doc", "txt", "md", "html", "json", "epub", "azw3", "pptx",
             "odp", "ppt", "xlsx", "ods", "pdf");
 
     private Main() {}
@@ -337,6 +338,7 @@ public final class Main {
             case "json" -> PdfToJson.convert(pdf, target, options);
             case "epub" -> PdfToEpub.convert(pdf, target, options);
             case "md" -> PdfToMarkdown.convert(pdf, target, options);
+            case "azw3" -> PdfToAzw3.convert(pdf, target, options);
             case "pptx" -> PdfToPptx.convert(pdf, target, slides);
             case "odp" -> PdfToOdp.convert(pdf, target, slides);
             case "ppt" -> PdfToPpt.convert(pdf, target, slides);
@@ -425,7 +427,7 @@ public final class Main {
     private static String known(String format) throws Usage {
         if (!FORMATS.contains(format)) {
             throw new Usage("unknown output format '" + format
-                    + "': use docx, odt, fodt, xml, rtf, doc, txt, md, html, json, epub, pptx, odp, ppt, xlsx or ods (pdf for Office input)");
+                    + "': use docx, odt, fodt, xml, rtf, doc, txt, md, html, json, epub, azw3, pptx, odp, ppt, xlsx or ods (pdf for Office input)");
         }
         return format;
     }

@@ -31,6 +31,7 @@ public final class OfficeConvert {
         JSON,
         EPUB,
         MARKDOWN,
+        AZW3,
         PPTX,
         ODP,
         XLSX,
@@ -49,12 +50,13 @@ public final class OfficeConvert {
                 case "json" -> JSON;
                 case "epub" -> EPUB;
                 case "md", "markdown" -> MARKDOWN;
+                case "azw3" -> AZW3;
                 case "pptx" -> PPTX;
                 case "odp" -> ODP;
                 case "xlsx" -> XLSX;
                 case "ods" -> ODS;
                 default -> throw new IllegalArgumentException("No output format for " + file.getFileName()
-                        + ": use .docx, .odt, .fodt, .xml, .rtf, .doc, .txt, .md, .html, .htm, .json, .epub, .pptx, .odp, .xlsx or .ods");
+                        + ": use .docx, .odt, .fodt, .xml, .rtf, .doc, .txt, .md, .html, .htm, .json, .epub, .azw3, .pptx, .odp, .xlsx or .ods");
             };
         }
     }
@@ -177,6 +179,7 @@ public final class OfficeConvert {
                 case JSON -> PdfToJson.convert(pdf, out, settings.document());
                 case EPUB -> PdfToEpub.convert(pdf, out, settings.document());
                 case MARKDOWN -> PdfToMarkdown.convert(pdf, out, settings.document());
+                case AZW3 -> PdfToAzw3.convert(pdf, out, settings.document());
                 case PPTX -> PdfToPptx.convert(pdf, out, settings.slides());
                 case ODP -> PdfToOdp.convert(pdf, out, settings.slides());
                 case XLSX, ODS -> PdfToXlsx.convert(pdf, out, settings.workbook(format));
@@ -201,6 +204,7 @@ public final class OfficeConvert {
                 case JSON -> PdfToJson.convert(pdf, out, settings.document());
                 case EPUB -> PdfToEpub.convert(pdf, out, settings.document());
                 case MARKDOWN -> PdfToMarkdown.convert(pdf, out, settings.document());
+                case AZW3 -> PdfToAzw3.convert(pdf, out, settings.document());
                 case PPTX -> PdfToPptx.convert(pdf, out, settings.slides());
                 case ODP -> PdfToOdp.convert(pdf, out, settings.slides());
                 case XLSX, ODS -> PdfToXlsx.convert(pdf, out, settings.workbook(format));

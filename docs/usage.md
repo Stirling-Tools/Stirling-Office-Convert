@@ -41,9 +41,7 @@ when everything converted, 1 when something failed or was skipped or a folder he
 mistake in the arguments. Warnings (substituted fonts, skipped active content, pictures that could not be
 drawn) print to stderr as `warning: <file>: <message>` unless `-q`.
 The output file's extension picks the format: `.docx`, `.odt`, `.fodt`, `.xml` (flat ODT), `.rtf`, `.doc`, `.txt`,
-`.html`, `.json`, `.epub`, `.pptx`, `.odp`, `.ppt`, `.xlsx` or `.ods` (see Other formats). For a folder of PDFs, `--format ext` names it; `--sheets
-The output file's extension picks the format: `.docx`, `.odt`, `.fodt`, `.xml` (flat ODT), `.rtf`, `.doc`, `.txt`, `.md`,
-`.pptx`, `.odp`, `.ppt`, `.xlsx` or `.ods` (see Other formats). For a folder of PDFs, `--format ext` names it; `--sheets
+`.html`, `.json`, `.epub`, `.azw3`, `.pptx`, `.odp`, `.ppt`, `.xlsx` or `.ods` (see Other formats). For a folder of PDFs, `--format ext` names it; `--sheets
 page|table|single` sets a spreadsheet's layout. Each file prints its time and the heap in use when it finished.
 `--pdfa 1a|1b|2a|2b|2u|3a|3b|3u` makes an archival PDF/A copy of each PDF instead (see PDF to PDF/A): `in.pdfa.pdf` beside the
 input, or the `-o` file or folder; it takes `--password`, `--timeout`, `--fonts`, `--font-map` and
@@ -188,8 +186,7 @@ implementation 'com.stirling:stirling-office-convert:<version>'             // G
 
 Then one class does it all, `stirling.software.officeconvert.OfficeConvert`. The output file's extension picks the
 format: `.docx`, `.odt`, `.fodt`, `.xml` (flat ODT, what LibreOffice writes for PDF to XML), `.rtf`, `.doc` (RTF
-content), `.txt`, `.html`, `.json`, `.epub`, `.pptx`, `.odp`, `.xlsx` or `.ods`.
-content), `.txt`, `.md`, `.pptx`, `.odp`, `.xlsx` or `.ods`.
+content), `.txt`, `.html`, `.json`, `.epub`, `.azw3`, `.pptx`, `.odp`, `.xlsx` or `.ods`.
 
 ```java
 import java.nio.file.Path;
@@ -589,6 +586,7 @@ PdfToHtml.convert(pdf, Path.of("out.html"), options);      // one HTML5 file, pi
 PdfToHtml.convertFixed(pdf, Path.of("page.html"), FixedHtml.Options.defaults()); // each page as it looks
 PdfToJson.convert(pdf, Path.of("out.json"), options);      // the document model as JSON
 PdfToEpub.convert(pdf, Path.of("out.epub"), options);      // a reflowing EPUB 3 book
+PdfToAzw3.convert(pdf, Path.of("out.azw3"), options);      // the same book for Kindle (KF8)
 ```
 
 - ODT and flat ODT carry what the DOCX carries: styles, lists, tables with merged cells, pictures (cropped and turned
@@ -622,6 +620,9 @@ PdfToEpub.convert(pdf, Path.of("out.epub"), options);      // a reflowing EPUB 3
   heading or every 150,000 characters, pictures as files, footnotes in a notes chapter, links kept across chapters,
   and a table of contents from the headings. Running headers and footers are left out, as a reflowing book has no
   pages; the title comes from the PDF's metadata, else its first heading.
+- AZW3 is the EPUB's book as a Kindle KF8 file: the same chapters, pictures, style sheet, footnotes and links
+  (`kindle:pos`), PalmDOC-compressed text, the table of contents as an NCX index, and the title, author and
+  language (`und`) in its metadata. It has no cover picture and no DRM.
 - JSON is the document model itself, the format [described here](json-format.md): everything the DOCX carries, as
   data a program can read, change and convert back to PDF (or, through it, to anything else).
 
