@@ -6,8 +6,11 @@ import java.util.List;
 import org.apache.pdfbox.cos.COSDictionary;
 import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.pdmodel.PDPage;
+import org.apache.poi.sl.usermodel.Placeholder;
 import org.apache.poi.xslf.usermodel.XMLSlideShow;
+import org.apache.poi.xslf.usermodel.XSLFShape;
 import org.apache.poi.xslf.usermodel.XSLFSlide;
+import org.apache.poi.xslf.usermodel.XSLFTextShape;
 import org.openxmlformats.schemas.presentationml.x2006.main.CTPresentation;
 import org.openxmlformats.schemas.presentationml.x2006.main.CTSlideSize;
 
@@ -15,6 +18,7 @@ import stirling.software.officeconvert.topdf.RenderJob;
 import stirling.software.officeconvert.topdf.font.CloudFonts;
 import stirling.software.officeconvert.topdf.font.FontLibrary;
 import stirling.software.officeconvert.topdf.pdf.PdfCanvas;
+import stirling.software.officeconvert.topdf.pdf.SlideNames;
 import stirling.software.officeconvert.topdf.pdf.Units;
 
 final class Deck {
@@ -107,17 +111,34 @@ final class Deck {
 
     void render() throws IOException {
         List<XSLFSlide> slides = ppt.getSlides();
+        SlideNames names = new SlideNames();
         for (int i = 0; i < slides.size(); i++) {
             job.checkpoint();
             XSLFSlide slide = slides.get(i);
+            String name = names.name(title(slide), i + 1);
             if (slide.isHidden()) {
                 continue;
             }
             float[] size = SlideSizes.of(slide, width, height);
             try (PdfCanvas canvas = job.newPage(size[0], size[1])) {
+                job.output().outline(name, 1, canvas.pageIndex(), 0);
                 transparencyGroup(canvas.page());
                 new SlidePainter(this, canvas, slide, firstNumber + i).paint();
             }
         }
+    }
+
+    private static String title(XSLFSlide slide) {
+        try {
+            for (XSLFShape shape : slide.getShapes()) {
+                if (shape instanceof XSLFTextShape t
+                        && (t.getPlaceholder() == Placeholder.TITLE || t.getPlaceholder() == Placeholder.CENTERED_TITLE)) {
+                    return t.getText();
+                }
+            }
+        } catch (RuntimeException e) {
+            return null;
+        }
+        return null;
     }
 }
