@@ -89,16 +89,62 @@ final class TrueTypeWriter {
     }
 
     int addOutline(GeneralPath path, int advance) {
-        byte[] data = Outline.encode(path);
-        if (data.length >= 10) {
-            ByteBuffer b = ByteBuffer.wrap(data);
-            maxContours = Math.max(maxContours, b.getShort(0));
-            maxPoints = Math.max(maxPoints, Outline.points(data));
-            glyphs.add(new Glyph(data, advance, b.getShort(2)));
-        } else {
-            glyphs.add(new Glyph(data, advance, 0));
-        }
+        glyphs.add(outline(path, advance));
         return glyphs.size() - 1;
+    }
+
+    void replaceNotdef(GeneralPath path, int advance) {
+        glyphs.set(0, outline(path, advance));
+    }
+
+    private Glyph outline(GeneralPath path, int advance) {
+        byte[] data = Outline.encode(path);
+        if (data.length < 10) {
+            return new Glyph(data, advance, 0);
+        }
+        ByteBuffer b = ByteBuffer.wrap(data);
+        maxContours = Math.max(maxContours, b.getShort(0));
+        maxPoints = Math.max(maxPoints, Outline.points(data));
+        return new Glyph(data, advance, b.getShort(2));
+    }
+
+    record Metrics(int xMin, int yMin, int xMax, int yMax, int maxAdvance, int minLsb, int minRsb, int maxExtent,
+            int averageAdvance) {}
+
+    Metrics metrics() {
+        int xMin = 0;
+        int yMin = 0;
+        int xMax = 0;
+        int yMax = 0;
+        int maxAdvance = 0;
+        int minLsb = 0;
+        int minRsb = 0;
+        int maxExtent = 0;
+        long advances = 0;
+        boolean any = false;
+        for (Glyph g : glyphs) {
+            int adv = Math.max(0, Math.min(65_535, g.advance()));
+            maxAdvance = Math.max(maxAdvance, adv);
+            advances += adv;
+            if (g.data().length < 10) {
+                continue;
+            }
+            ByteBuffer b = ByteBuffer.wrap(g.data());
+            int gxMin = b.getShort(2);
+            int gyMin = b.getShort(4);
+            int gxMax = b.getShort(6);
+            int gyMax = b.getShort(8);
+            xMin = any ? Math.min(xMin, gxMin) : gxMin;
+            yMin = any ? Math.min(yMin, gyMin) : gyMin;
+            xMax = any ? Math.max(xMax, gxMax) : gxMax;
+            yMax = any ? Math.max(yMax, gyMax) : gyMax;
+            minLsb = any ? Math.min(minLsb, g.lsb()) : g.lsb();
+            minRsb = any ? Math.min(minRsb, adv - gxMax) : adv - gxMax;
+            maxExtent = Math.max(maxExtent, g.lsb() + (gxMax - gxMin));
+            any = true;
+        }
+        return new Metrics(xMin, yMin, xMax, yMax, maxAdvance, minLsb, minRsb, maxExtent,
+                (int) (advances / glyphs.size()));
     }
 
     private int advanceOf(int gid) {
@@ -160,6 +206,10 @@ final class TrueTypeWriter {
     }
 
     byte[] build(String postScriptName, byte[] cmapTable) throws IOException {
+        return build(postScriptName, cmapTable, Map.of());
+    }
+
+    byte[] build(String postScriptName, byte[] cmapTable, Map<String, byte[]> overrides) throws IOException {
         resolveComponents();
         if (glyphs.size() > 65_535) {
             throw new IOException("The font needs more than 65535 glyphs");
@@ -199,6 +249,7 @@ final class TrueTypeWriter {
                 }
             }
         }
+        tables.putAll(overrides);
         return Sfnt.write(tables);
     }
 
