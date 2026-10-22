@@ -134,7 +134,7 @@ public final class OfficeToPdf {
     /** {@code password} opens a password protected document; it is never written anywhere, nor printed by
      * {@link #toString()}. */
     public record Options(Duration timeout, List<Path> fontDirs, int maxPages, long maxScratchBytes, FontSet fonts,
-            String displayName, String password, HtmlAssets htmlAssets) {
+            String displayName, String password, HtmlAssets htmlAssets, boolean allowPackages) {
 
         public static final int DEFAULT_MAX_PAGES = 10_000;
 
@@ -165,6 +165,11 @@ public final class OfficeToPdf {
         }
 
         public Options(Duration timeout, List<Path> fontDirs, int maxPages, long maxScratchBytes, FontSet fonts,
+                String displayName, String password, HtmlAssets htmlAssets) {
+            this(timeout, fontDirs, maxPages, maxScratchBytes, fonts, displayName, password, htmlAssets, false);
+        }
+
+        public Options(Duration timeout, List<Path> fontDirs, int maxPages, long maxScratchBytes, FontSet fonts,
                 String displayName, String password) {
             this(timeout, fontDirs, maxPages, maxScratchBytes, fonts, displayName, password, HtmlAssets.NONE);
         }
@@ -187,35 +192,48 @@ public final class OfficeToPdf {
         }
 
         public Options timeout(Duration limit) {
-            return new Options(limit, fontDirs, maxPages, maxScratchBytes, fonts, displayName, password, htmlAssets);
+            return new Options(limit, fontDirs, maxPages, maxScratchBytes, fonts, displayName, password, htmlAssets,
+                    allowPackages);
         }
 
         public Options fontDirs(List<Path> dirs) {
-            return new Options(timeout, dirs, maxPages, maxScratchBytes, fonts, displayName, password, htmlAssets);
+            return new Options(timeout, dirs, maxPages, maxScratchBytes, fonts, displayName, password, htmlAssets,
+                    allowPackages);
         }
 
         public Options fonts(FontSet set) {
-            return new Options(timeout, fontDirs, maxPages, maxScratchBytes, set, displayName, password, htmlAssets);
+            return new Options(timeout, fontDirs, maxPages, maxScratchBytes, set, displayName, password, htmlAssets,
+                    allowPackages);
         }
 
         public Options maxPages(int pages) {
-            return new Options(timeout, fontDirs, pages, maxScratchBytes, fonts, displayName, password, htmlAssets);
+            return new Options(timeout, fontDirs, pages, maxScratchBytes, fonts, displayName, password, htmlAssets,
+                    allowPackages);
         }
 
         public Options maxScratchBytes(long bytes) {
-            return new Options(timeout, fontDirs, maxPages, bytes, fonts, displayName, password, htmlAssets);
+            return new Options(timeout, fontDirs, maxPages, bytes, fonts, displayName, password, htmlAssets,
+                    allowPackages);
         }
 
         public Options displayName(String name) {
-            return new Options(timeout, fontDirs, maxPages, maxScratchBytes, fonts, name, password, htmlAssets);
+            return new Options(timeout, fontDirs, maxPages, maxScratchBytes, fonts, name, password, htmlAssets,
+                    allowPackages);
         }
 
         public Options password(String secret) {
-            return new Options(timeout, fontDirs, maxPages, maxScratchBytes, fonts, displayName, secret, htmlAssets);
+            return new Options(timeout, fontDirs, maxPages, maxScratchBytes, fonts, displayName, secret, htmlAssets,
+                    allowPackages);
         }
 
         public Options htmlAssets(HtmlAssets assets) {
-            return new Options(timeout, fontDirs, maxPages, maxScratchBytes, fonts, displayName, password, assets);
+            return new Options(timeout, fontDirs, maxPages, maxScratchBytes, fonts, displayName, password, assets,
+                    allowPackages);
+        }
+
+        public Options allowPackages(boolean allow) {
+            return new Options(timeout, fontDirs, maxPages, maxScratchBytes, fonts, displayName, password, htmlAssets,
+                    allow);
         }
 
         public FontLibrary fontLibrary() {
@@ -227,7 +245,7 @@ public final class OfficeToPdf {
             return "Options[timeout=" + timeout + ", fontDirs=" + fontDirs + ", maxPages=" + maxPages
                     + ", maxScratchBytes=" + maxScratchBytes + ", fonts=" + fonts + ", displayName=" + displayName
                     + ", password=" + (password == null ? "none" : "given") + ", htmlAssets="
-                    + (htmlAssets == HtmlAssets.NONE ? "none" : "given") + "]";
+                    + (htmlAssets == HtmlAssets.NONE ? "none" : "given") + ", allowPackages=" + allowPackages + "]";
         }
     }
 
