@@ -371,6 +371,103 @@ class DocxChartTest {
         assertEquals(0xFF0000, c[2]);
     }
 
+    private static String radar(String style, String legend) {
+        return "<c:chartSpace " + C + "><c:chart><c:autoTitleDeleted val=\"1\"/><c:plotArea><c:layout/>"
+                + "<c:radarChart><c:radarStyle val=\"" + style + "\"/><c:ser><c:idx val=\"0\"/><c:order val=\"0\"/>"
+                + "<c:spPr><a:solidFill><a:srgbClr val=\"FF0000\"/></a:solidFill><a:ln><a:solidFill><a:srgbClr"
+                + " val=\"FF0000\"/></a:solidFill></a:ln></c:spPr><c:cat>" + cache("str", null, "N", "E", "S", "W")
+                + "</c:cat><c:val>" + cache("num", "General", 4, 4, 4, 4) + "</c:val></c:ser><c:axId val=\"1\"/>"
+                + "<c:axId val=\"2\"/></c:radarChart><c:catAx><c:axId val=\"1\"/><c:delete val=\"0\"/>"
+                + "<c:axPos val=\"b\"/><c:crossAx val=\"2\"/></c:catAx><c:valAx><c:axId val=\"2\"/>"
+                + "<c:delete val=\"0\"/><c:axPos val=\"l\"/><c:crossAx val=\"1\"/></c:valAx></c:plotArea>"
+                + (legend == null ? "" : "<c:legend><c:legendPos val=\"r\"/>" + legend + "</c:legend>")
+                + "</c:chart><c:spPr><a:noFill/>"
+                + "<a:ln><a:noFill/></a:ln></c:spPr></c:chartSpace>";
+    }
+
+    private int[] box(String name, String chart, int rgb) throws IOException {
+        DocxDoc.Rendered r = render(name, chart);
+        try (org.apache.pdfbox.pdmodel.PDDocument d = r.open()) {
+            java.awt.image.BufferedImage page = new org.apache.pdfbox.rendering.PDFRenderer(d).renderImage(0, 2);
+            int[] b = {Integer.MAX_VALUE, Integer.MAX_VALUE, -1, -1};
+            for (int y = 0; y < page.getHeight(); y++) {
+                for (int x = 0; x < page.getWidth(); x++) {
+                    if ((page.getRGB(x, y) & 0xFFFFFF) == rgb) {
+                        b[0] = Math.min(b[0], x);
+                        b[1] = Math.min(b[1], y);
+                        b[2] = Math.max(b[2], x);
+                        b[3] = Math.max(b[3], y);
+                    }
+                }
+            }
+            return b;
+        }
+    }
+
+    @Test
+    void aFilledRadarIsAPolygonAroundTheCentreOfTheWeb() throws IOException {
+        int[] b = box("radar", radar("filled", null), 0xFF0000);
+        int w = b[2] - b[0];
+        int h = b[3] - b[1];
+        assertTrue(w > 40 && Math.abs(w - h) <= w / 10, w + " x " + h);
+        String text = render("radarText", radar("marker", "")).text();
+        for (String c : new String[] {"N", "E", "S", "W"}) {
+            assertTrue(text.contains(c), text);
+        }
+    }
+
+    @Test
+    void aLegendIsBoxedOnlyWhenItsShapeAsksForIt() throws IOException {
+        String green = "<c:spPr><a:solidFill><a:srgbClr val=\"00FF00\"/></a:solidFill></c:spPr>";
+        assertTrue(box("boxed", radar("marker", green), 0x00FF00)[2] > 0);
+        assertEquals(-1, box("plain", radar("marker", ""), 0x00FF00)[2]);
+    }
+
+    private String tallChartText(String name, String ext) throws IOException {
+        String catAx = "<c:catAx><c:axId val=\"1\"/><c:delete val=\"0\"/><c:axPos val=\"b\"/><c:crossAx val=\"2\"/>"
+                + "</c:catAx>";
+        String valAx = "<c:valAx><c:axId val=\"2\"/><c:delete val=\"0\"/><c:axPos val=\"l\"/><c:crossAx val=\"1\"/>"
+                + "</c:valAx>";
+        String chart = lineChart(cache("str", null, "a", "b"), new Object[] {3, 21}, catAx, valAx)
+                .replace("</c:chartSpace>", ext + "</c:chartSpace>");
+        String run = DocxDoc.chartRun("rIdChart").replace("cy=\"3048000\"", "cy=\"7000000\"");
+        DocxDoc doc = new DocxDoc().chart("chart1.xml", "rIdChart", chart).body("<w:p>" + run + "</w:p>");
+        return DocxDoc.render(dir, name, doc.bytes()).text();
+    }
+
+    @Test
+    void aSeriesOfOneRepeatedValueStandsOnAZeroAxis() throws IOException {
+        String catAx = "<c:catAx><c:axId val=\"1\"/><c:delete val=\"0\"/><c:axPos val=\"b\"/><c:crossAx val=\"2\"/>"
+                + "</c:catAx>";
+        String valAx = "<c:valAx><c:axId val=\"2\"/><c:delete val=\"0\"/><c:axPos val=\"l\"/><c:crossAx val=\"1\"/>"
+                + "</c:valAx>";
+        String text = render("flat", lineChart(cache("str", null, "a", "b"), new Object[] {4, 4}, catAx, valAx))
+                .text();
+        assertTrue(text.contains("0"), text);
+    }
+
+    @Test
+    void aTightScaleStopsAtTenStepsWithNoHeadroom() throws IOException {
+        String excel = tallChartText("excel", "");
+        assertTrue(excel.contains("23") && !excel.contains("25"), excel);
+        String tight = tallChartText("tight", "<c:extLst><c:ext uri=\"" + Charts.TIGHT_SCALE + "\"/></c:extLst>");
+        assertTrue(tight.contains("25") && !tight.contains("23"), tight);
+    }
+
+    @Test
+    void aDenseRadarWebKeepsItsGridWithinABudget() throws IOException {
+        String chart = "<c:chartSpace " + C + "><c:chart><c:autoTitleDeleted val=\"1\"/><c:plotArea><c:layout/>"
+                + "<c:radarChart><c:radarStyle val=\"marker\"/><c:ser><c:idx val=\"0\"/><c:order val=\"0\"/>"
+                + "<c:val><c:numRef><c:numCache><c:ptCount val=\"4000\"/><c:pt idx=\"0\"><c:v>1</c:v></c:pt>"
+                + "</c:numCache></c:numRef></c:val></c:ser><c:axId val=\"1\"/><c:axId val=\"2\"/></c:radarChart>"
+                + "<c:catAx><c:axId val=\"1\"/><c:crossAx val=\"2\"/></c:catAx><c:valAx><c:axId val=\"2\"/>"
+                + "<c:scaling><c:max val=\"1000\"/><c:min val=\"0\"/></c:scaling><c:majorGridlines/>"
+                + "<c:crossAx val=\"1\"/><c:majorUnit val=\"1\"/></c:valAx></c:plotArea></c:chart></c:chartSpace>";
+        DocxDoc.Rendered r = render("denseRadar", chart);
+        long bytes = java.nio.file.Files.size(r.pdf());
+        assertTrue(bytes < 5_000_000, bytes + " bytes");
+    }
+
     @Test
     void aDoughnutOfManyDenseRingsStaysWithinABudget() throws IOException {
         StringBuilder sers = new StringBuilder();

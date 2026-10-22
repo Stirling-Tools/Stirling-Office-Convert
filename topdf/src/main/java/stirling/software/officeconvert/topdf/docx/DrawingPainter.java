@@ -164,6 +164,13 @@ final class DrawingPainter {
         } else if ("b".equals(tb.anchor())) {
             top = y + h - tb.bottom() - r.height();
         }
+        if (tb.form() != null) {
+            float fy = y + tb.top();
+            List<Op> look = List.of(new Op.Group(0, top - fy, null, null, r.ops()));
+            ops.add(new Op.Field(x + tb.left(), fy, Math.max(1, w - tb.left() - tb.right()), Math.max(1, avail), tb.form().field(), tb.form().size(),
+                    tb.form().color(), look));
+            return;
+        }
         int textAt = ops.size();
         ops.add(new Op.Group(x + tb.left(), top, null, null, r.ops()));
         nested(r, x + tb.left(), top, inner, Math.max(1, avail), ops, textAt, ctx);

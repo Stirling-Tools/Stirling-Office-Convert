@@ -15,6 +15,7 @@ public final class Section {
     public float footerDistance;
     public boolean continuous;
     public final List<float[]> columns = new ArrayList<>();
+    public boolean columnRule;
     public boolean titlePage;
     public int pageNumberStart = 1;
 
@@ -30,6 +31,7 @@ public final class Section {
         s.footerDistance = footerDistance;
         s.continuous = continuous;
         s.columns.addAll(columns);
+        s.columnRule = columnRule;
         s.titlePage = titlePage;
         s.pageNumberStart = pageNumberStart;
         return s;

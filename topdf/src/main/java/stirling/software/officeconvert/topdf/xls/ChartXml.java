@@ -34,7 +34,9 @@ final class ChartXml {
                 axes(b, chart, g, horizontal, scatter);
             }
         }
-        b.append("<c:spPr>").append(fill(chart.plotFill())).append("</c:spPr></c:plotArea>");
+        boolean polar = chart.groups().stream()
+                .anyMatch(g -> g.kind() == BiffChart.Kind.RADAR || g.kind() == BiffChart.Kind.FILLED_RADAR);
+        b.append("<c:spPr>").append(fill(polar ? null : chart.plotFill())).append("</c:spPr></c:plotArea>");
         if (chart.legend() != null) {
             legend(b, chart.legend());
         }
@@ -67,7 +69,7 @@ final class ChartXml {
             case AREA -> "areaChart";
             case PIE -> g.donut() > 0 ? "doughnutChart" : "pieChart";
             case SCATTER -> "scatterChart";
-            case RADAR -> "radarChart";
+            case RADAR, FILLED_RADAR -> "radarChart";
         };
         b.append("<c:").append(tag).append('>');
         switch (g.kind()) {
@@ -78,6 +80,7 @@ final class ChartXml {
                     .append("\"/>");
             case SCATTER -> b.append("<c:scatterStyle val=\"lineMarker\"/>");
             case RADAR -> b.append("<c:radarStyle val=\"marker\"/>");
+            case FILLED_RADAR -> b.append("<c:radarStyle val=\"filled\"/>");
             default -> {
             }
         }
@@ -234,9 +237,10 @@ final class ChartXml {
                     .append(clamp(box[2])).append("\"/><c:h val=\"").append(clamp(box[3]))
                     .append("\"/></c:manualLayout></c:layout>");
         }
-        b.append("<c:overlay val=\"0\"/><c:spPr><a:solidFill><a:srgbClr val=\"FFFFFF\"/></a:solidFill>")
-                .append("<a:ln w=\"9525\"><a:solidFill><a:srgbClr val=\"000000\"/></a:solidFill></a:ln></c:spPr>")
-                .append("</c:legend>");
+        int[] fill = l.fill() == null ? new int[] {0xFFFFFF} : l.fill();
+        int[] line = l.line() == null ? new int[] {0} : l.line();
+        b.append("<c:overlay val=\"0\"/><c:spPr>").append(fill(fill.length == 0 ? null : fill[0]))
+                .append(line(line.length == 0 ? null : line[0], 0.75f)).append("</c:spPr></c:legend>");
     }
 
     private static double clamp(double v) {

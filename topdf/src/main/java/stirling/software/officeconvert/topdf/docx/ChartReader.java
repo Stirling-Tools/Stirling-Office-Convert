@@ -147,13 +147,17 @@ final class ChartReader {
         if (lg != null) {
             XEl pos = lg.child("c:legendPos");
             legend = new Chart.Legend(pos == null ? "r" : pos.attr("val", "r"), size(lg.child("c:txPr"), textSize),
-                    layout(lg.child("c:layout")), ownFont(lg.child("c:txPr")));
+                    layout(lg.child("c:layout")), ownFont(lg.child("c:txPr")),
+                    lg.child("c:spPr") == null || lg.child("c:spPr").child("a:noFill") != null ? null
+                            : fill(lg.child("c:spPr")),
+                    lg.child("c:spPr") == null ? null : line(lg.child("c:spPr")));
         }
         XEl spPr = space.child("c:spPr");
         Color fill = spPr == null ? defaultFill : fill(spPr);
         Stroke border = spPr == null ? defaultBorder() : line(spPr);
         return new Chart(title, groups, categories, legend, values, cats, fill, border, font, textSize,
-                color(space.child("c:txPr"), Color.BLACK), plotLayout, plotFill, plotBorder, date1904, secondary);
+                color(space.child("c:txPr"), Color.BLACK), plotLayout, plotFill, plotBorder, date1904, secondary,
+                marked(space, Charts.TIGHT_SCALE));
     }
 
     private Chart.Axis secondary;
@@ -276,7 +280,8 @@ final class ChartReader {
     private Chart.Group group(XEl g, List<String> categories) {
         Chart.Kind kind = switch (g.name) {
             case "c:barChart", "c:bar3DChart" -> Chart.Kind.BAR;
-            case "c:lineChart", "c:line3DChart", "c:stockChart", "c:radarChart" -> Chart.Kind.LINE;
+            case "c:lineChart", "c:line3DChart", "c:stockChart" -> Chart.Kind.LINE;
+            case "c:radarChart" -> Chart.Kind.RADAR;
             case "c:areaChart", "c:area3DChart" -> Chart.Kind.AREA;
             case "c:pieChart", "c:pie3DChart", "c:ofPieChart" -> Chart.Kind.PIE;
             case "c:doughnutChart" -> Chart.Kind.DOUGHNUT;
@@ -288,21 +293,26 @@ final class ChartReader {
         }
         boolean horizontal = kind == Chart.Kind.BAR && g.child("c:barDir") != null
                 && "bar".equals(g.child("c:barDir").val());
-        String grouping = g.child("c:grouping") == null ? "clustered" : g.child("c:grouping").attr("val", "clustered");
+        String grouping = kind == Chart.Kind.RADAR
+                ? g.child("c:radarStyle") == null ? "standard" : g.child("c:radarStyle").attr("val", "standard")
+                : g.child("c:grouping") == null ? "clustered" : g.child("c:grouping").attr("val", "clustered");
         boolean vary = g.child("c:varyColors") != null && Ooxml.flag(g.child("c:varyColors").val(), true);
         List<Chart.Series> series = new ArrayList<>();
         int index = 0;
         boolean autoMarkers = g.is("c:lineChart") && g.child("c:marker") != null
                 && Ooxml.flag(g.child("c:marker").val(), true)
                 || g.is("c:scatterChart") && g.child("c:scatterStyle") != null
-                && String.valueOf(g.child("c:scatterStyle").val()).contains("arker");
+                && String.valueOf(g.child("c:scatterStyle").val()).contains("arker")
+                || kind == Chart.Kind.RADAR && grouping.equals("marker");
+        Chart.Kind seriesKind = kind != Chart.Kind.RADAR ? kind
+                : grouping.equals("filled") ? Chart.Kind.AREA : Chart.Kind.LINE;
         for (XEl s : g.children("c:ser")) {
             if (series.size() >= MAX_SERIES) {
                 break;
             }
             XEl idx = s.child("c:idx");
             int colorIndex = idx == null ? index : Ooxml.integer(idx.val(), index);
-            series.add(series(s, kind, colorIndex, categories, autoMarkers));
+            series.add(series(s, seriesKind, colorIndex, categories, autoMarkers));
             index++;
         }
         float gap = number(g.child("c:gapWidth"), 150);
@@ -316,12 +326,16 @@ final class ChartReader {
     }
 
     private static boolean reversedOrder(XEl g) {
+        return marked(g, Charts.REVERSED_ORDER);
+    }
+
+    private static boolean marked(XEl g, String uri) {
         XEl ext = g.child("c:extLst");
         if (ext == null) {
             return false;
         }
         for (XEl e : ext.children("c:ext")) {
-            if (Charts.REVERSED_ORDER.equals(e.attr("uri"))) {
+            if (uri.equals(e.attr("uri"))) {
                 return true;
             }
         }

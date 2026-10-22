@@ -1,6 +1,7 @@
 package stirling.software.officeconvert.topdf.html;
 
 import java.util.ArrayDeque;
+import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
@@ -30,8 +31,10 @@ final class HtmlContext {
     private float wanted;
     private int scrollers;
     private String pageName = "";
+    private boolean continuing;
     // the most items of any row of columns in an element or inside it, 0 when none
     private final Map<Element, Integer> rows = new IdentityHashMap<>();
+    private Map<String, Element> labels;
 
     HtmlContext(Cascade cascade, StyleSheet styles, DocSink sink, List<String> warnings, Section page, Linked linked) {
         this.cascade = cascade;
@@ -47,11 +50,46 @@ final class HtmlContext {
         return cascade;
     }
 
+    Element labelFor(Element control) {
+        if (labels == null) {
+            labels = new HashMap<>();
+            Element body = control.ownerDocument() == null ? null : control.ownerDocument().body();
+            if (body != null) {
+                for (Element l : body.getElementsByTag("label")) {
+                    String id = l.attr("for");
+                    if (!id.isEmpty()) {
+                        labels.putIfAbsent(id, l);
+                    }
+                }
+            }
+        }
+        String id = control.id();
+        return id.isEmpty() ? null : labels.get(id);
+    }
+
     /** What {@code e} declares, with the custom properties it inherits from {@code parent} filled in. */
     Map<String, String> declared(Element e, Look parent) {
         Map<String, String> d = cascade.declared(e);
         Vars.resolve(d, Vars.scope(parent.vars, d));
         Css.expandShorthands(d);
+        float own = Css.opacity(d.get("opacity"));
+        boolean inheritsColor = !d.containsKey("color");
+        Css.fade(d, parent.opacity * own);
+        if (own < 1 && inheritsColor) {
+            d.put("color", Css.faded(Css.hex(parent.color), own));
+        }
+        String direction = d.get("direction");
+        boolean rtl = direction == null ? parent.rightToLeft : "rtl".equalsIgnoreCase(direction.strip());
+        for (String box : new String[] {"margin", "padding"}) {
+            String start = d.remove(box + "-inline-start");
+            String end = d.remove(box + "-inline-end");
+            if (start != null) {
+                d.putIfAbsent(box + (rtl ? "-right" : "-left"), start);
+            }
+            if (end != null) {
+                d.putIfAbsent(box + (rtl ? "-left" : "-right"), end);
+            }
+        }
         return d;
     }
 
@@ -185,8 +223,22 @@ final class HtmlContext {
 
     /** The section the document ends on, for the package's last section. */
     Section lastSection() {
+        return ending(currentSection());
+    }
+
+    Section currentSection() {
         Section named = section(pageName);
         return named != null ? named : page;
+    }
+
+    Section ending(Section s) {
+        Section c = s.copy();
+        c.continuous = continuing;
+        return c;
+    }
+
+    void continuing(boolean onSamePage) {
+        continuing = onSamePage;
     }
 
     String pageName() {
