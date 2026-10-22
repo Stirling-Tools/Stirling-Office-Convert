@@ -808,8 +808,15 @@ final class Flow {
         String type = listType(e, tag, look);
         boolean bullets = !type.matches("decimal|decimal-leading-zero|lower-alpha|lower-latin|upper-alpha|upper-latin"
                 + "|lower-roman|upper-roman|1|a|A|i|I");
+        Numbering.Level wanted = level(type, level);
+        Numbering.Level defined = inst.definition.levels[level];
+        if (defined != null && (!defined.format().equals(wanted.format()) || !defined.text().equals(wanted.text()))) {
+            Numbering.Instance own = ctx.numbering().create();
+            System.arraycopy(inst.definition.levels, 0, own.definition.levels, 0, level);
+            inst = own;
+        }
         if (inst.definition.levels[level] == null) {
-            inst.definition.levels[level] = level(type, level);
+            inst.definition.levels[level] = wanted;
             if (tag.equals("ol") && e.hasAttr("start")) {
                 try {
                     inst.starts[level] = Math.max(0, Math.min(32_767, Integer.parseInt(e.attr("start").strip())));

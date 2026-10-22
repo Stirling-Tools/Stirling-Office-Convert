@@ -151,4 +151,13 @@ class HtmlLayoutTest {
             }
         }
     }
+
+    @Test
+    void aBulletListInsideANumberedOneKeepsItsBullets() throws IOException {
+        Laid l = lay("<html><body><ol><li>Prepare<ol><li>Merge</li><li>Changelog</li></ol></li>"
+                + "<li>Build<ul><li>Linux</li><li>macOS</li></ul></li></ol></body></html>");
+        String t = l.text();
+        assertTrue(t.contains("1. Merge") && t.contains("2. Changelog") && t.contains("2. Build"), t);
+        assertTrue(t.contains("\u25e6 Linux") && t.contains("\u25e6 macOS"), t);
+    }
 }
