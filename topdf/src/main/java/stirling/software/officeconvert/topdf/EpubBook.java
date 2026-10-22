@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -25,6 +26,8 @@ final class EpubBook {
     static final int MAX_CHAPTERS = 5_000;
 
     static final long MAX_BOOK_CHARS = 48L << 20;
+
+    static final long MAX_SCOPED_SHEET_CHARS = 8L << 20;
 
     private static final Set<String> VOID = Set.of("area", "base", "br", "col", "embed", "hr", "img", "input", "link",
             "meta", "source", "track", "wbr", "param", "keygen");
@@ -79,26 +82,39 @@ final class EpubBook {
         String title = text(opf, "dc|title, title");
         String author = text(opf, "dc|creator, creator");
         String cover = cover(opf, manifest, opfPath);
+        return assemble(pkg, chapters, title, author, cover);
+    }
 
+    static Book assemble(HtmlAssets files, List<String> chapters, String title, String author, String cover)
+            throws IOException {
         Map<String, Integer> chapterOf = new HashMap<>();
         for (int i = 0; i < chapters.size(); i++) {
             chapterOf.put(chapters.get(i), i);
         }
-        Set<String> sheets = new LinkedHashSet<>();
+        Map<String, List<Integer>> linkedBy = new LinkedHashMap<>();
+        int linking = 0;
         StringBuilder styles = new StringBuilder();
         StringBuilder body = new StringBuilder();
         boolean coverShown = false;
         for (int i = 0; i < chapters.size(); i++) {
+            OfficeToPdf.stopIfInterrupted();
             String path = chapters.get(i);
-            byte[] bytes = pkg.read(path);
+            byte[] bytes = files.read(path);
             if (bytes == null) {
                 continue;
             }
             Document doc = Jsoup.parse(xhtmlAsHtml(new String(bytes, StandardCharsets.UTF_8)), "");
-            for (Element link : doc.select("link[rel~=(?i)stylesheet][href]")) {
+            List<Element> links = doc.select("link[rel~=(?i)stylesheet][href]");
+            if (!links.isEmpty()) {
+                linking++;
+            }
+            for (Element link : links) {
                 String sheet = resolve(path, link.attr("href"));
                 if (sheet != null) {
-                    sheets.add(sheet);
+                    List<Integer> by = linkedBy.computeIfAbsent(sheet, k -> new ArrayList<>());
+                    if (!by.contains(i)) {
+                        by.add(i);
+                    }
                 }
             }
             for (Element style : doc.select("style")) {
@@ -137,6 +153,21 @@ final class EpubBook {
                 break;
             }
             body.append('>').append(chapterHtml).append("</section>\n");
+        }
+        Set<String> sheets = new LinkedHashSet<>();
+        long inlined = 0;
+        for (Map.Entry<String, List<Integer>> e : linkedBy.entrySet()) {
+            byte[] css = e.getValue().size() < linking ? files.read(e.getKey()) : null;
+            long cost = css == null ? 0 : (long) css.length * e.getValue().size();
+            if (css == null || inlined + cost > MAX_SCOPED_SHEET_CHARS) {
+                sheets.add(e.getKey());
+                continue;
+            }
+            inlined += cost;
+            String text = packageUrls(new String(css, StandardCharsets.UTF_8), e.getKey());
+            for (int chapter : e.getValue()) {
+                styles.append(scoped(text, chapter, 0)).append('\n');
+            }
         }
         StringBuilder html = new StringBuilder("<!DOCTYPE html><html><head><meta charset=\"utf-8\">");
         if (title != null) {
@@ -205,6 +236,25 @@ final class EpubBook {
         }
         String t = e.text().strip();
         return t.isEmpty() ? null : t;
+    }
+
+    private static final Pattern CSS_URL = Pattern.compile(
+            "url\\(\\s*+(?:(['\"])([^'\"]*+)\\1|([^'\"()]++))\\s*+\\)");
+
+    static String packageUrls(String css, String sheet) {
+        Matcher m = CSS_URL.matcher(css);
+        StringBuilder out = new StringBuilder(css.length());
+        while (m.find()) {
+            String ref = (m.group(2) != null ? m.group(2) : m.group(3)).strip();
+            String replacement = m.group(0);
+            if (!ref.regionMatches(true, 0, "data:", 0, 5) && !ref.matches("(?i)^[a-z][a-z0-9+.-]*:.*")) {
+                String path = resolve(sheet, ref);
+                replacement = path == null ? "none" : "url(\"/" + path.replace("\"", "%22") + "\")";
+            }
+            m.appendReplacement(out, Matcher.quoteReplacement(replacement));
+        }
+        m.appendTail(out);
+        return out.toString();
     }
 
     static String xhtmlAsHtml(String xhtml) {
