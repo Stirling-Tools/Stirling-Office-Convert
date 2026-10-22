@@ -1,12 +1,15 @@
 package stirling.software.officeconvert.topdf.docx;
 
 import java.awt.Color;
+import java.awt.geom.Point2D;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import org.apache.pdfbox.pdmodel.graphics.form.PDFormXObject;
 
@@ -31,6 +34,14 @@ final class Painter {
 
     private Color background;
 
+    private record Mark(int order, String title, int level, int page, float y) {}
+
+    private final List<Mark> marks = new ArrayList<>();
+
+    private final Set<Integer> marked = new HashSet<>();
+
+    private boolean body;
+
     Painter(RenderJob job) {
         this.job = job;
     }
@@ -45,12 +56,26 @@ final class Painter {
         for (PageBox p : pages) {
             countCharts(p);
         }
-        for (int i = 0; i < pages.size(); i++) {
-            job.checkpoint();
-            PageBox p = pages.set(i, null);
-            try (PdfCanvas c = job.newPage(p.w, p.h)) {
-                page(c, p);
+        try {
+            for (int i = 0; i < pages.size(); i++) {
+                job.checkpoint();
+                PageBox p = pages.set(i, null);
+                try (PdfCanvas c = job.newPage(p.w, p.h)) {
+                    page(c, p);
+                }
             }
+        } finally {
+            marks.sort(Comparator.comparingInt(Mark::order));
+            for (Mark m : marks) {
+                job.output().outline(m.title(), m.level(), m.page(), m.y());
+            }
+        }
+    }
+
+    private void outline(PdfCanvas c, Op.Outline o) {
+        if (body && marked.add(o.order())) {
+            Point2D at = c.transform().transform(new Point2D.Float(0, o.y()), null);
+            marks.add(new Mark(o.order(), o.title(), o.level(), c.pageIndex(), (float) at.getY()));
         }
     }
 
@@ -66,6 +91,7 @@ final class Painter {
         layer(c, headerFloats, false);
         List<PageBox.FloatBox> floats = new ArrayList<>(p.floats);
         floats.sort(Comparator.comparingLong(PageBox.FloatBox::z));
+        body = true;
         layer(c, floats, true);
         for (Placed pl : p.placed) {
             if (pl.strip.ops.isEmpty()) {
@@ -73,9 +99,12 @@ final class Painter {
             }
             group(c, pl.x, pl.y, pl.strip.ops);
         }
+        body = false;
         ops(c, p.noteOps);
         ops(c, p.decor);
+        body = true;
         layer(c, floats, false);
+        body = false;
         borders(c, p);
     }
 
@@ -259,6 +288,7 @@ final class Painter {
             }
             case Op.Dest d -> c.destination("bm:" + d.name(), d.x(), d.y());
             case Op.Field f -> field(c, f);
+            case Op.Outline o -> outline(c, o);
             case Op.Chart ch -> chart(c, ch);
             case Op.Group g -> {
                 if (g.transform() == null && g.clip() == null) {

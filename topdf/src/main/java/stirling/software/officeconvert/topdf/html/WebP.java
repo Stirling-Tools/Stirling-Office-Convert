@@ -29,7 +29,8 @@ final class WebP {
     /** Null when the picture cannot be read or is larger than {@link #MAX_PIXELS}. */
     static MediaBytes redraw(byte[] b) {
         int[] size = size(b);
-        if (size == null || size[0] <= 0 || size[1] <= 0 || (long) size[0] * size[1] > MAX_PIXELS) {
+        if (size == null || size[0] <= 0 || size[1] <= 0 || (long) size[0] * size[1] > MAX_PIXELS
+                || !fits(b, size)) {
             return null;
         }
         ImageReader reader = new WebPImageReaderSpi().createReaderInstance(null);
@@ -74,6 +75,63 @@ final class WebP {
                     ((b[28] & 0xFF) | (b[29] & 0xFF) << 8) & 0x3FFF};
             default -> null;
         };
+    }
+
+    static boolean fits(byte[] b, int[] canvas) {
+        return chunksFit(b, 12, b.length, canvas[0], canvas[1], false);
+    }
+
+    private static boolean chunksFit(byte[] b, int from, int to, int width, int height, boolean inFrame) {
+        long i = from;
+        while (i + 8 <= to) {
+            int at = (int) i;
+            String id = new String(b, at, 4, java.nio.charset.StandardCharsets.US_ASCII);
+            long length = le32(b, at + 4) & 0xFFFFFFFFL;
+            int body = at + 8;
+            int end = (int) Math.min(to, body + length);
+            switch (id) {
+                case "VP8 ", "VP8L" -> {
+                    int[] own = bitstreamSize(b, id, body, end);
+                    if (own == null || own[0] > width || own[1] > height) {
+                        return false;
+                    }
+                }
+                case "ANMF" -> {
+                    if (inFrame || end - body < 16) {
+                        return false;
+                    }
+                    int frameWidth = u24(b, body + 6) + 1;
+                    int frameHeight = u24(b, body + 9) + 1;
+                    if (2L * u24(b, body) + frameWidth > width || 2L * u24(b, body + 3) + frameHeight > height
+                            || !chunksFit(b, body + 16, end, frameWidth, frameHeight, true)) {
+                        return false;
+                    }
+                }
+                default -> {
+                }
+            }
+            i = body + length + (length & 1);
+        }
+        return true;
+    }
+
+    private static int[] bitstreamSize(byte[] b, String id, int body, int end) {
+        if (id.equals("VP8L")) {
+            if (end - body < 5) {
+                return null;
+            }
+            int bits = le32(b, body + 1);
+            return new int[] {(bits & 0x3FFF) + 1, (bits >>> 14 & 0x3FFF) + 1};
+        }
+        if (end - body < 10) {
+            return null;
+        }
+        return new int[] {((b[body + 6] & 0xFF) | (b[body + 7] & 0xFF) << 8) & 0x3FFF,
+                ((b[body + 8] & 0xFF) | (b[body + 9] & 0xFF) << 8) & 0x3FFF};
+    }
+
+    private static int le32(byte[] b, int at) {
+        return (b[at] & 0xFF) | (b[at + 1] & 0xFF) << 8 | (b[at + 2] & 0xFF) << 16 | (b[at + 3] & 0xFF) << 24;
     }
 
     private static int u24(byte[] b, int at) {

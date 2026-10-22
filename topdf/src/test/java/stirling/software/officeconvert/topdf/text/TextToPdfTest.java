@@ -154,6 +154,17 @@ class TextToPdfTest {
     }
 
     @Test
+    void textThatLooksLikeHtmlIsEstimatedAsTheTextItConvertsAs() throws IOException {
+        byte[] page = ("<!DOCTYPE html><html><body>" + "<p>row</p>\n".repeat(20_000) + "</body></html>")
+                .getBytes(StandardCharsets.US_ASCII);
+        long text = TextPackage.estimate(page.length) + 2 * stirling.software.officeconvert.memory.Admission.BASE_BYTES;
+        long csv = CsvPackage.estimate(page.length) + 2 * stirling.software.officeconvert.memory.Admission.BASE_BYTES;
+        assertEquals(text, OfficeToPdf.memoryEstimate(Files.write(dir.resolve("page.txt"), page)));
+        assertEquals(csv, OfficeToPdf.memoryEstimate(Files.write(dir.resolve("page.csv"), page)));
+        assertTrue(OfficeToPdf.memoryEstimate(Files.write(dir.resolve("page.html"), page)) > text);
+    }
+
+    @Test
     void textNamesAreRecognisedAndEstimated() throws IOException {
         for (String n : new String[] {"a.txt", "a.TEXT", "a.log", "a.asc"}) {
             assertEquals(OfficeToPdf.Format.TEXT, OfficeToPdf.Format.of(Path.of(n)), n);

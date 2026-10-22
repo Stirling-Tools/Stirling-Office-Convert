@@ -124,6 +124,17 @@ class PptxSmartArtTest {
     }
 
     @Test
+    void smartArtTextPaintsNoFillOrOutlineOfItsOwn() throws IOException {
+        byte[] pptx = smartArt(shape(1, "ellipse", 0, 0, 2743200, 1371600, "Round"), true, "drawing1.xml");
+        java.awt.image.BufferedImage page = Decks.convert(dir, "smartartround.pptx", pptx).render(0, 36);
+        int rgb = page.getRGB(40, 40);
+        assertTrue(((rgb >> 16) & 0xFF) > 200 && ((rgb >> 8) & 0xFF) > 200 && (rgb & 0xFF) > 200,
+                "outside the ellipse: " + Integer.toHexString(rgb));
+        int inside = page.getRGB(60, 63);
+        assertTrue(((inside >> 16) & 0xFF) > 200 && ((inside >> 8) & 0xFF) < 80, Integer.toHexString(inside));
+    }
+
+    @Test
     void smartArtFindsADrawingNumberedApartFromItsData() throws IOException {
         byte[] pptx = smartArt(shape(1, "ellipse", 0, 0, 2743200, 1371600, "Literacy outcome"), true, "drawing7.xml");
         Decks.Converted c = Decks.convert(dir, "smartart7.pptx", pptx);

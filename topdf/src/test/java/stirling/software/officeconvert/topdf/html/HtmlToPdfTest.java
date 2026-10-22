@@ -99,6 +99,37 @@ class HtmlToPdfTest {
     }
 
     @Test
+    void aZeroColspanCountsAsOneColumn() throws IOException {
+        Pdf p = convert("colspan0.html", "<table><tr><td colspan=0>first</td><td>second</td></tr></table>");
+        assertTrue(p.text().contains("first") && p.text().contains("second"), p.text());
+        Pdf only = convert("colspan0only.html", "<table><tr><td colspan=0>alone</td></tr></table>");
+        assertTrue(only.text().contains("alone"), only.text());
+    }
+
+    @Test
+    void aCellSpanningIntoTwoRowSpansAboveStopsAtTheNearerOne() throws IOException {
+        Path in = Files.writeString(dir.resolve("two.html"), "<table><tr><td>a1</td><td rowspan=2>b1</td><td>c1</td>"
+                + "<td rowspan=2>d1</td><td>e1</td></tr><tr><td colspan=4>x2</td><td>y2</td><td>z2</td></tr></table>",
+                StandardCharsets.UTF_8);
+        java.io.ByteArrayOutputStream docx = new java.io.ByteArrayOutputStream();
+        HtmlDocument.write(in, docx);
+        String document = "";
+        try (java.util.zip.ZipInputStream z = new java.util.zip.ZipInputStream(
+                new java.io.ByteArrayInputStream(docx.toByteArray()))) {
+            for (java.util.zip.ZipEntry e; (e = z.getNextEntry()) != null; ) {
+                if (e.getName().equals("word/document.xml")) {
+                    document = new String(z.readAllBytes(), StandardCharsets.UTF_8);
+                }
+            }
+        }
+        String second = document.substring(document.indexOf("<w:tr>", document.indexOf("<w:tr>") + 1));
+        assertFalse(second.contains("w:gridSpan"), second);
+        assertEquals(5, second.split("<w:tc>", -1).length - 1, second);
+        Pdf p = convert("two.html", Files.readString(in));
+        assertTrue(p.text().contains("x2") && p.text().contains("y2") && p.text().contains("z2"), p.text());
+    }
+
+    @Test
     void anEnormousGridFractionKeepsColumnsReadable() throws IOException {
         Path in = Files.writeString(dir.resolve("fr.html"), "<div style=\"display:grid;grid-template-columns:1e39fr"
                 + " 1fr\"><div>alpha beta gamma</div><div>delta epsilon</div></div>", StandardCharsets.UTF_8);
