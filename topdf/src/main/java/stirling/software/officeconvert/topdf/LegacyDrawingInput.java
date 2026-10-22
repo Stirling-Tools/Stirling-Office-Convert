@@ -27,12 +27,17 @@ final class LegacyDrawingInput {
     static Long estimate(Path source) throws IOException {
         OleThumbnail.Kind kind = OleThumbnail.kind(source);
         if (kind == null) {
-            if (named(source) && !VsdxPackage.is(source)) {
-                throw new IOException(UnsupportedFormats.byExtension(extension(source)));
-            }
+            refuseNamed(source);
             return null;
         }
         return footprint(source);
+    }
+
+    private static void refuseNamed(Path source) throws IOException {
+        if (named(source) && !VsdxPackage.is(source)) {
+            String reason = UnsupportedFormats.byContent(source);
+            throw new IOException(reason != null ? reason : UnsupportedFormats.byExtension(extension(source)));
+        }
     }
 
     private static long footprint(Path source) throws IOException {
@@ -42,10 +47,7 @@ final class LegacyDrawingInput {
     static Result render(Path source, OutputStream sink, Options options) throws IOException {
         OleThumbnail.Kind kind = OleThumbnail.kind(source);
         if (kind == null) {
-            if (named(source) && !VsdxPackage.is(source)) {
-                String reason = UnsupportedFormats.byContent(source);
-                throw new IOException(reason != null ? reason : UnsupportedFormats.byExtension(extension(source)));
-            }
+            refuseNamed(source);
             return null;
         }
         try (Admission.Ticket _ = Admission.jvm().enter(footprint(source));

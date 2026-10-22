@@ -33,8 +33,7 @@ public final class OleThumbnail {
     }
 
     public enum Outcome {
-        VECTOR,
-        RASTER,
+        DRAWN,
         NO_PREVIEW,
         TOO_SMALL
     }
@@ -161,7 +160,7 @@ public final class OleThumbnail {
         try (PdfCanvas c = out.newPage(page[0], page[1])) {
             c.image(picture, 0, 0, page[0], page[1]);
         }
-        return side >= 0 || !picture.vector() ? Outcome.RASTER : Outcome.VECTOR;
+        return Outcome.DRAWN;
     }
 
     record Preview(byte[] data, float widthPoints, float heightPoints) {}

@@ -133,7 +133,11 @@ class OleThumbnailTest {
         assertTrue(e.getMessage().contains("thumbnail too small"), e.getMessage());
         Path junk = Files.write(dir.resolve("junk.vsd"), new byte[] {1, 2, 3});
         e = assertThrows(IOException.class, () -> OfficeToPdf.memoryEstimate(junk));
-        assertTrue(e.getMessage().contains("Visio"), e.getMessage());
+        assertTrue(e.getMessage().contains("Visio") && !e.getMessage().contains("not supported"), e.getMessage());
+        Path wordPerfect = Files.write(dir.resolve("letter.pub"), new byte[] {(byte) 0xFF, 'W', 'P', 'C', 16, 0, 0, 0,
+            1, 10});
+        e = assertThrows(IOException.class, () -> OfficeToPdf.memoryEstimate(wordPerfect));
+        assertTrue(e.getMessage().contains("WordPerfect"), e.getMessage());
     }
 
     @Test
