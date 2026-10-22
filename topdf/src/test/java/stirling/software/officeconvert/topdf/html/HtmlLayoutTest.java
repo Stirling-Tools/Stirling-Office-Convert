@@ -208,4 +208,21 @@ class HtmlLayoutTest {
         assertEquals(225 * 0.64f, green, 3f);
         assertEquals(225 * 0.36f, grey, 3f);
     }
+
+    @Test
+    void aFloatedSidebarSitsBesideTheColumnAfterIt() throws IOException {
+        Laid l = lay("""
+                <html><head><style>
+                body{margin:0} .side{float:left;width:30%;padding:10px;box-sizing:border-box;background:#203040;color:#fff}
+                .main{margin-left:32%}
+                </style></head><body><div class=side><p>Contact</p><p>Phone</p></div>
+                <div class=main><p>Heading</p><p>Body</p></div><p>Footer</p></body></html>""");
+        Word side = l.word("Contact");
+        Word main = l.word("Heading");
+        float room = l.pageWidth() - 2 * l.word("Footer").left();
+        assertEquals(side.top(), main.top(), 1f);
+        assertEquals(l.word("Footer").left() + room * 0.32f, main.left(), 3f);
+        assertTrue(l.word("Phone").right() < main.left());
+        assertTrue(l.word("Footer").top() > l.word("Body").top());
+    }
 }

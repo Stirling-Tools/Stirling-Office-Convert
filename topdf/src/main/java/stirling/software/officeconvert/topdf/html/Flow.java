@@ -79,6 +79,9 @@ final class Flow {
     private int rowNested;
     private int avoiding;
     private Block held;
+    private Element sized;
+    private float besideLeft;
+    private float besideRight;
     private final List<Inline> pendingFloats = new ArrayList<>();
     private String floatOf = "none";
     private boolean sectionStarted;
@@ -109,16 +112,99 @@ final class Flow {
     }
 
     private void walkChildren(Element parent, Look look, Frame frame, int depth) throws IOException {
+        Element skip = null;
         for (Node child : parent.childNodes()) {
             if (ctx.stopped()) {
                 return;
             }
+            if (child == skip) {
+                continue;
+            }
             if (child instanceof TextNode t) {
                 text(t.getWholeText(), look);
             } else if (child instanceof Element e) {
-                element(e, look, frame, depth + 1);
+                Element beside = besideFloat(e, look, frame);
+                if (beside != null) {
+                    floatRow(e, beside, look, frame, depth + 1);
+                    skip = beside;
+                } else {
+                    element(e, look, frame, depth + 1);
+                }
             }
         }
+    }
+
+    private Element besideFloat(Element e, Look look, Frame frame) {
+        if (inCell || forceInline > 0 || look.rightToLeft) {
+            return null;
+        }
+        Map<String, String> d = ctx.declared(e, look);
+        String side = d.getOrDefault("float", "none").strip().toLowerCase(Locale.ROOT);
+        String shown = d.getOrDefault("display", BLOCKS.contains(e.normalName()) ? "block" : "inline").strip();
+        if (!side.equals("left") && !side.equals("right") || !shown.equals("block") || e.ownText().isBlank()
+                && e.children().size() == 1 && Set.of("img", "svg").contains(e.child(0).normalName())) {
+            return null;
+        }
+        float width = floatWidth(e, d, look, frame.width());
+        if (width < frame.width() * 0.1f || width > frame.width() * 0.7f) {
+            return null;
+        }
+        Node n = e.nextSibling();
+        while (n instanceof TextNode t && t.isBlank()) {
+            n = n.nextSibling();
+        }
+        if (!(n instanceof Element next) || SKIPPED.contains(next.normalName()) || !BLOCKS.contains(next.normalName())) {
+            return null;
+        }
+        Map<String, String> nd = ctx.declared(next, look);
+        boolean flows = nd.getOrDefault("float", "none").strip().equalsIgnoreCase("none")
+                && nd.getOrDefault("display", "block").strip().equalsIgnoreCase("block")
+                && !nd.getOrDefault("position", "").strip().matches("(?i)absolute|fixed");
+        return flows ? next : null;
+    }
+
+    private float floatWidth(Element e, Map<String, String> d, Look look, float room) {
+        Float w = boxLength(d.get("width"), look, room);
+        if (w == null) {
+            return 0;
+        }
+        if (!"border-box".equalsIgnoreCase(d.getOrDefault("box-sizing", "").strip())) {
+            w += Math.max(0, length(d.get("padding-left"), look.size, room))
+                    + Math.max(0, length(d.get("padding-right"), look.size, room)) + border(d, "left") + border(d, "right");
+        }
+        return w;
+    }
+
+    private void floatRow(Element side, Element beside, Look look, Frame frame, int depth) throws IOException {
+        flush();
+        Map<String, String> d = ctx.declared(side, look);
+        boolean left = d.get("float").strip().equalsIgnoreCase("left");
+        float width = floatWidth(side, d, look, frame.width());
+        float rest = frame.width() - width;
+        Table.Cell floated = cell(side, look, frame, width, 0, depth, 0, 0);
+        Table.Cell flowing = cell(beside, look, frame, rest, 0, depth, left ? width : 0, left ? 0 : width);
+        Table t = new Table();
+        t.indent = frame.left();
+        t.cellMarginLeft = 0;
+        t.cellMarginRight = 0;
+        t.columnWidths.add(left ? width : rest);
+        t.columnWidths.add(left ? rest : width);
+        Table.Row row = new Table.Row();
+        row.splits = true;
+        row.cells.add(left ? floated : flowing);
+        row.cells.add(left ? flowing : floated);
+        Float tall = boxLength(d.get("min-height"), look, 0);
+        row.height = tall == null ? 0 : Math.min(tall, ctx.pageRoom());
+        t.rows.add(row);
+        if (pendingSpace > 0) {
+            spacer(pendingSpace, frame);
+            pendingSpace = 0;
+        }
+        t.pageBreakBefore = pendingBreak && !sectionStarted;
+        pendingBreak = false;
+        sectionStarted = false;
+        ctx.count();
+        emit(t);
     }
 
     private void element(Element e, Look parentLook, Frame frame, int depth) throws IOException {
@@ -221,10 +307,12 @@ final class Flow {
             top = 0;
             bottom = 0;
         }
-        float left = Math.max(0, length(d.get("margin-left"), em, frame.width()) + length(d.get("padding-left"), em,
-                frame.width()) + border(d, "left"));
-        float right = Math.max(0, length(d.get("margin-right"), em, frame.width()) + length(d.get("padding-right"), em,
-                frame.width()) + border(d, "right"));
+        float besideL = e == sized ? besideLeft : 0;
+        float besideR = e == sized ? besideRight : 0;
+        float left = Math.max(0, Math.max(0, length(d.get("margin-left"), em, frame.width() + besideL) - besideL)
+                + length(d.get("padding-left"), em, frame.width()) + border(d, "left"));
+        float right = Math.max(0, Math.max(0, length(d.get("margin-right"), em, frame.width() + besideR) - besideR)
+                + length(d.get("padding-right"), em, frame.width()) + border(d, "right"));
         float[] narrow = narrowed(e, d, look, frame.width());
         left += narrow[0];
         right += narrow[1];
@@ -382,6 +470,9 @@ final class Flow {
 
     private float[] narrowed(Element e, Map<String, String> d, Look look, float room) {
         float[] none = {0, 0};
+        if (e == sized) {
+            return none;
+        }
         Element parent = e.parent();
         if (parent == null || e.normalName().equals("body") || e.normalName().equals("html")) {
             return none;
@@ -684,6 +775,11 @@ final class Flow {
     }
 
     private Table.Cell cell(Element item, Look look, Frame frame, float width, float gap, int depth) throws IOException {
+        return cell(item, look, frame, width, gap, depth, 0, 0);
+    }
+
+    private Table.Cell cell(Element item, Look look, Frame frame, float width, float gap, int depth, float besideLeft,
+            float besideRight) throws IOException {
         Table.Cell cell = new Table.Cell();
         if (item != null) {
             Map<String, String> d = ctx.declared(item, look);
@@ -696,6 +792,9 @@ final class Flow {
             cell.right = HtmlTables.border(d, "right", 0);
             Flow inner = new Flow(ctx, b -> cell.paragraphs.add((Paragraph) b), true);
             inner.clipLeft = clipLeft;
+            inner.sized = item;
+            inner.besideLeft = besideLeft;
+            inner.besideRight = besideRight;
             inner.single(item, look, new Frame(0, 0, Math.max(24, width - gap), -1), depth + 1);
         }
         return cell;
