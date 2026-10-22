@@ -5,7 +5,7 @@ The converter needs no native libraries or external processes. It also converts 
 
 | Conversion | Formats |
 |---|---|
-| PDF to documents | DOCX, ODT, flat ODT (`.fodt` / `.xml`), RTF (`.rtf` / `.doc`), plain text, HTML, JSON |
+| PDF to documents | DOCX, ODT, flat ODT (`.fodt` / `.xml`), RTF (`.rtf` / `.doc`), plain text, HTML, JSON, EPUB |
 | PDF to presentations | PPTX, ODP, PPT (via the `legacy` module) |
 | PDF to spreadsheets | XLSX, ODS |
 | Office to PDF | DOCX, PPTX, XLSX, legacy DOC/XLS/PPT, XLSB, RTF, OpenDocument, Office XML, Visio, text and table formats, HTML, EPUB, JSON |
