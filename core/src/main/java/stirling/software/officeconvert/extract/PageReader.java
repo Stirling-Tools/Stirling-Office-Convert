@@ -50,6 +50,8 @@ public final class PageReader {
 
     private Map<COSDictionary, Integer> pageIndex;
 
+    private NamedDestinations namedDestinations;
+
     public static final float MAX_PAGE_SIDE = 1584f;
 
     static final int MAX_LINKS = 5_000;
@@ -405,7 +407,10 @@ public final class PageReader {
 
     private int pageOf(PDDestination dest) throws IOException {
         if (dest instanceof PDNamedDestination named) {
-            dest = document.getDocumentCatalog().findNamedDestinationPage(named);
+            if (namedDestinations == null) {
+                namedDestinations = new NamedDestinations(document);
+            }
+            dest = namedDestinations.find(named.getNamedDestination());
         }
         if (dest instanceof PDPageDestination pd) {
             PDPage target = pd.getPage();
