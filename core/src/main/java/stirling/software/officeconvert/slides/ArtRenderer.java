@@ -38,6 +38,7 @@ final class ArtRenderer extends PDFRenderer {
 
     private IntPredicate keep = order -> false;
     private List<int[]> groups = List.of();
+    private long operators;
 
     ArtRenderer(PDDocument document) {
         super(document);
@@ -70,6 +71,10 @@ final class ArtRenderer extends PDFRenderer {
             g.dispose();
         }
         return img;
+    }
+
+    long operators() {
+        return operators;
     }
 
     private static AffineTransform deviceTransform(PDPage page) {
@@ -115,6 +120,7 @@ final class ArtRenderer extends PDFRenderer {
 
         @Override
         protected void processOperator(Operator operator, List<COSBase> operands) throws IOException {
+            operators++;
             if (budget.run(operator)) {
                 super.processOperator(operator, operands);
             }
