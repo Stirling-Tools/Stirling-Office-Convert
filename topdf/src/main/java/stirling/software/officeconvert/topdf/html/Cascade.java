@@ -40,6 +40,7 @@ final class Cascade {
     private final List<Compiled> anyElement = new ArrayList<>();
     private final Map<Element, List<Hit>> hits = new IdentityHashMap<>();
     private final Map<String, String> page = new HashMap<>();
+    private final Map<String, Map<String, String>> margins = new HashMap<>();
     private final Map<String, Map<String, String>> named = new HashMap<>();
     private long work;
 
@@ -70,6 +71,10 @@ final class Cascade {
         int order = 0;
         for (Css.Rule rule : rules) {
             order++;
+            if (rule.selector().startsWith("@margin ")) {
+                margins.put(rule.selector().substring(8), rule.declarations());
+                continue;
+            }
             if ("@page".equals(rule.selector())) {
                 put(page, rule.declarations(), false);
                 put(page, rule.declarations(), true);
@@ -327,6 +332,10 @@ final class Cascade {
 
     Map<String, String> page() {
         return page;
+    }
+
+    Map<String, Map<String, String>> margins() {
+        return margins;
     }
 
     /** Whether the page asks for its own paper (a size, or named pages), in which case it is printed as it asks. */

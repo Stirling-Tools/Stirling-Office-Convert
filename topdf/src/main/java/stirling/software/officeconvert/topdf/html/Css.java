@@ -26,6 +26,9 @@ final class Css {
 
     static final int MAX_NESTING = 16;
 
+    private static final Pattern MARGIN_BOX = Pattern.compile(
+            "@((?:top|bottom)-(?:left|center|right))\\s*\\{([^{}]*)\\}", Pattern.CASE_INSENSITIVE);
+
     // The size of the root element's font, which rem lengths count in; set while one document converts
     private static final ThreadLocal<Float> ROOT_SIZE = ThreadLocal.withInitial(() -> 12f);
 
@@ -73,7 +76,13 @@ final class Css {
                     // @page, or a named page: "@page wide"; page selectors like :first are left to the default page
                     String name = head.substring(5).strip();
                     if (name.isEmpty() || name.matches("[A-Za-z_][A-Za-z0-9_-]{0,63}")) {
-                        into.add(new Rule(name.isEmpty() ? "@page" : "@page " + name, declarations(inner)));
+                        Matcher box = MARGIN_BOX.matcher(inner);
+                        while (name.isEmpty() && box.find()) {
+                            into.add(new Rule("@margin " + box.group(1).toLowerCase(Locale.ROOT),
+                                    declarations(box.group(2))));
+                        }
+                        String own = MARGIN_BOX.matcher(inner).replaceAll("");
+                        into.add(new Rule(name.isEmpty() ? "@page" : "@page " + name, declarations(own)));
                     }
                 }
                 continue;
