@@ -75,6 +75,8 @@ final class Huffman {
 
     private long phraseBytes;
 
+    private long expandedBytes;
+
     private void cdic(byte[] r) throws IOException {
         if (!magic(r, "CDIC", 0x10)) {
             throw new IOException(DAMAGED);
@@ -157,6 +159,10 @@ final class Huffman {
                 }
                 phrases.set(index, null);
                 phrase = unpack(phrase, phrase.length, depth + 1);
+                expandedBytes += phrase.length;
+                if (expandedBytes > MobiText.MAX_TEXT_BYTES) {
+                    throw new IOException(DAMAGED);
+                }
                 phrases.set(index, phrase);
                 plain.set(index, true);
             }

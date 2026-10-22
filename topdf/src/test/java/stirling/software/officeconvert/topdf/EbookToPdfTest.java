@@ -267,6 +267,86 @@ class EbookToPdfTest {
                 () -> assertThrows(IOException.class, () -> OfficeToPdf.convert(in, dir.resolve("loop.pdf"))));
     }
 
+    private static byte[] cdic(List<byte[]> phrases, List<Boolean> plain) {
+        ByteArrayOutputStream body = new ByteArrayOutputStream();
+        int[] offsets = new int[phrases.size()];
+        int base = 2 * phrases.size();
+        for (int i = 0; i < phrases.size(); i++) {
+            offsets[i] = base + body.size();
+            MobiWriter.u16(body, (plain.get(i) ? 0x8000 : 0) | phrases.get(i).length);
+            body.writeBytes(phrases.get(i));
+        }
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        out.writeBytes(utf8("CDIC"));
+        MobiWriter.u32(out, 0x10);
+        MobiWriter.u32(out, phrases.size());
+        MobiWriter.u32(out, 8);
+        for (int o : offsets) {
+            MobiWriter.u16(out, o);
+        }
+        out.writeBytes(body.toByteArray());
+        return out.toByteArray();
+    }
+
+    private static byte[] huffText(List<byte[]> textRecords, List<byte[]> phrases, List<Boolean> plain) {
+        MobiWriter w = MobiWriter.create();
+        long length = 0;
+        for (byte[] r : textRecords) {
+            w.add(r);
+            length += r.length;
+        }
+        int huff = w.add(huffRecord());
+        w.add(cdic(phrases, plain));
+        w.records.set(0, MobiWriter.header(MobiHeader.HUFF_CDIC, 0, textRecords.size(), 0, 6, -1, huff, 2, 0, -1, 0,
+                -1, -1, null));
+        return w.build("BOOKMOBI");
+    }
+
+    private static byte[] readText(byte[] book) throws IOException {
+        PalmDatabase pdb = new PalmDatabase(book);
+        return MobiText.read(pdb, 0, MobiHeader.parse(pdb.record(0), true));
+    }
+
+    @Test
+    void oversizedCompressedTextRecordIsRefused() {
+        byte[] record = new byte[2 << 20];
+        java.util.Arrays.fill(record, (byte) 255);
+        byte[] book = huffText(List.of(record), List.of(new byte[0]), List.of(true));
+        assertThrows(IOException.class, () -> readText(book));
+    }
+
+    @Test
+    void expandedHuffPhrasesStayWithinTheTextBudget() {
+        List<byte[]> phrases = new ArrayList<>();
+        List<Boolean> plain = new ArrayList<>();
+        List<byte[]> records = new ArrayList<>();
+        for (int chain = 0; chain < 3; chain++) {
+            int first = phrases.size();
+            phrases.add("x".repeat(1 << 14).getBytes(StandardCharsets.ISO_8859_1));
+            plain.add(true);
+            byte[] wide = new byte[64];
+            java.util.Arrays.fill(wide, (byte) (255 - first));
+            phrases.add(wide);
+            plain.add(false);
+            for (int level = 2; level <= 32; level++) {
+                phrases.add(new byte[] {(byte) (255 - (phrases.size() - 1))});
+                plain.add(false);
+            }
+            records.add(new byte[] {(byte) (255 - (phrases.size() - 1))});
+        }
+        byte[] book = huffText(records, phrases, plain);
+        assertThrows(IOException.class, () -> readText(book));
+    }
+
+    @Test
+    void unclosedGuidesStayLinear() {
+        byte[] text = ("<html><body><p>Text</p>" + "<guide>".repeat(200_000) + "</body></html>")
+                .getBytes(StandardCharsets.ISO_8859_1);
+        String html = assertTimeoutPreemptively(Duration.ofSeconds(10),
+                () -> MobiBook.html(text, StandardCharsets.ISO_8859_1));
+        assertTrue(html.contains("<p>Text</p>"), html.substring(0, 200));
+    }
+
     private static final int[][] SKEL_TAGS = {{1, 1, 0x03, 0}, {6, 2, 0x0C, 0}, {0, 0, 0, 1}};
 
     private static final int[][] FRAG_TAGS = {{2, 1, 0x01, 0}, {3, 1, 0x02, 0}, {4, 1, 0x04, 0}, {6, 2, 0x08, 0},
@@ -277,12 +357,16 @@ class EbookToPdfTest {
     }
 
     private static byte[] kf8(boolean joint, boolean overlapping) throws IOException {
+        return kf8(joint, overlapping, "");
+    }
+
+    private static byte[] kf8(boolean joint, boolean overlapping, String padding) throws IOException {
         String skel0 = "<?xml version=\"1.0\"?><html xmlns=\"http://www.w3.org/1999/xhtml\"><head>"
                 + "<link rel=\"stylesheet\" type=\"text/css\" href=\"kindle:flow:0001?mime=text/css\"/></head>"
                 + "<body aid=\"0\"></body></html>";
         String frag0 = "<h1 id=\"one\" aid=\"1\">Chapter One</h1><p aid=\"2\">Opening line of KF8 text.</p>"
                 + "<p class=\"secret\">Hidden by the flow style sheet</p>"
-                + "<p><img src=\"kindle:embed:0002?mime=image/png\"/></p>";
+                + "<p><img src=\"kindle:embed:0002?mime=image/png\"/></p>" + padding;
         String skel1 = "<?xml version=\"1.0\"?><html xmlns=\"http://www.w3.org/1999/xhtml\"><head></head>"
                 + "<body aid=\"3\"></body></html>";
         String frag1 = "<h1 aid=\"4\">Chapter Two</h1><p aid=\"5\"><a href=\"kindle:pos:fid:0000:off:0000000003\">"
@@ -351,6 +435,13 @@ class EbookToPdfTest {
         assertEquals(List.of(1, 0), c.images());
         String html = MobiBook.read(in).book().html();
         assertTrue(html.contains("href=\"#epub-c0-one\""), html);
+    }
+
+    @Test
+    void kf8LinkIntoAPartFullOfOpenBracketsStaysLinear() throws IOException {
+        Path in = write("brackets.azw3", kf8(false, false, "<".repeat(200_000)));
+        String html = assertTimeoutPreemptively(Duration.ofSeconds(20), () -> MobiBook.read(in).book().html());
+        assertTrue(html.contains("Chapter Two"));
     }
 
     @Test
@@ -467,6 +558,26 @@ class EbookToPdfTest {
         try (PDDocument doc = Loader.loadPDF(dir.resolve("library.pdf").toFile())) {
             assertTrue(new PDFTextStripper().getText(doc).contains("The footnote text"));
         }
+    }
+
+    @Test
+    void anEpubNamedFbzNeedsAllowPackages() throws IOException {
+        Path in = dir.resolve("book.fbz");
+        try (OutputStream os = Files.newOutputStream(in); ZipOutputStream zip = new ZipOutputStream(os)) {
+            zip.putNextEntry(new ZipEntry("META-INF/container.xml"));
+            zip.write(utf8("<container xmlns=\"urn:oasis:names:tc:opendocument:xmlns:container\"><rootfiles>"
+                    + "<rootfile full-path=\"c.opf\"/></rootfiles></container>"));
+            zip.closeEntry();
+            zip.putNextEntry(new ZipEntry("c.opf"));
+            zip.write(utf8("<package xmlns=\"http://www.idpf.org/2007/opf\"><manifest><item id=\"a\" href=\"a.xhtml\""
+                    + " media-type=\"application/xhtml+xml\"/></manifest><spine><itemref idref=\"a\"/></spine></package>"));
+            zip.closeEntry();
+            zip.putNextEntry(new ZipEntry("a.xhtml"));
+            zip.write(utf8("<html><body><p>Inside the EPUB</p></body></html>"));
+            zip.closeEntry();
+        }
+        IOException e = assertThrows(IOException.class, () -> OfficeToPdf.convert(in, dir.resolve("fbz.pdf"), OPTIONS));
+        assertTrue(e.getMessage().contains("--allow-packages"), e.getMessage());
     }
 
     @Test

@@ -263,7 +263,7 @@ final class Fb2Book {
         html.append("</").append(tag).append('>');
     }
 
-    private void table(Element table) {
+    private void table(Element table) throws IOException {
         html.append("<table border=\"1\" style=\"border-collapse:collapse;margin:0.5em 0\"");
         id(table);
         html.append('>');
@@ -287,7 +287,7 @@ final class Fb2Book {
         html.append("</table>");
     }
 
-    private void paragraph(Element e, String tag, String style) {
+    private void paragraph(Element e, String tag, String style) throws IOException {
         html.append('<').append(tag);
         id(e);
         if (style != null) {
@@ -305,17 +305,33 @@ final class Fb2Book {
         }
     }
 
-    private void inline(Element parent) {
+    private void inline(Element parent) throws IOException {
         for (Node n = parent.getFirstChild(); n != null; n = n.getNextSibling()) {
             if (n.getNodeType() == Node.TEXT_NODE || n.getNodeType() == Node.CDATA_SECTION_NODE) {
-                html.append(MobiBook.escape(n.getNodeValue()));
+                escaped(n.getNodeValue());
             } else if (n instanceof Element e) {
                 inlineElement(e);
             }
         }
     }
 
-    private void inlineElement(Element e) {
+    private void escaped(String text) throws IOException {
+        for (int i = 0; i < text.length(); i++) {
+            char c = text.charAt(i);
+            switch (c) {
+                case '&' -> html.append("&amp;");
+                case '<' -> html.append("&lt;");
+                case '>' -> html.append("&gt;");
+                case '"' -> html.append("&quot;");
+                default -> html.append(c);
+            }
+            if (html.length() > EpubBook.MAX_BOOK_CHARS) {
+                checkSize();
+            }
+        }
+    }
+
+    private void inlineElement(Element e) throws IOException {
         String tag = switch (local(e)) {
             case "emphasis" -> "em";
             case "strong" -> "strong";

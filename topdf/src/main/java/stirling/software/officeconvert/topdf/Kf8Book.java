@@ -28,11 +28,11 @@ final class Kf8Book {
 
     private static final Pattern HAS_ID = Pattern.compile("\\s(?:id|ID)\\s*=");
 
-    private static final Pattern ID = Pattern.compile("<[^>]+\\s(?:id|ID)\\s*=\\s*['\"]([^'\"]+)['\"]");
+    private static final Pattern ID = Pattern.compile("<[^<>]+\\s(?:id|ID)\\s*=\\s*['\"]([^'\"]+)['\"]");
 
-    private static final Pattern NAME = Pattern.compile("<[^>]+\\s(?:name|NAME)\\s*=\\s*['\"]([^'\"]+)['\"]");
+    private static final Pattern NAME = Pattern.compile("<[^<>]+\\s(?:name|NAME)\\s*=\\s*['\"]([^'\"]+)['\"]");
 
-    private static final Pattern AID_TARGET = Pattern.compile("<[^>]+\\s(?:aid|AID)\\s*=\\s*['\"]([^'\"]+)['\"]");
+    private static final Pattern AID_TARGET = Pattern.compile("<[^<>]+\\s(?:aid|AID)\\s*=\\s*['\"]([^'\"]+)['\"]");
 
     private record Fragment(long insert, long length) {}
 
