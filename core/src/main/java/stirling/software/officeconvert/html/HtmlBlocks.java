@@ -55,9 +55,6 @@ final class HtmlBlocks {
     }
 
     void paragraph(StringBuilder sb, Paragraph p) throws IOException {
-        List<Inline.Shape> shapes = section < 0 ? List.of() : shapes(p);
-        int drawingSection = section;
-        section = -1;
         List<Inline> before = new ArrayList<>();
         List<Inline> after = new ArrayList<>();
         for (Inline in : p.inlines) {
@@ -65,6 +62,11 @@ final class HtmlBlocks {
                 (below(in, p) ? after : before).add(in);
             }
         }
+        boolean atPageTop = before.stream().noneMatch(HtmlBlocks::takesRoom);
+        List<Inline.Shape> shapes = section < 0 ? List.of()
+                : shapes(p).stream().filter(sh -> atPageTop || !fromPageTop(p, sh)).toList();
+        int drawingSection = section;
+        section = -1;
         floats(sb, before);
         String tag = tag(p.style);
         sb.append('<').append(tag);
@@ -87,7 +89,14 @@ final class HtmlBlocks {
         }
         sb.append('>');
         if (!shapes.isEmpty()) {
-            drawing(sb, p, shapes, drawingSection);
+            List<Inline.Shape> placed = shapes.stream().filter(sh -> !fromPageTop(p, sh)).toList();
+            List<Inline.Shape> paged = shapes.stream().filter(sh -> fromPageTop(p, sh)).toList();
+            if (!placed.isEmpty()) {
+                drawing(sb, p, placed, drawingSection, false);
+            }
+            if (!paged.isEmpty()) {
+                drawing(sb, p, paged, drawingSection, true);
+            }
         }
         if (p.list != null) {
             sb.append("<span class=\"marker\">").append(MARK).append('L').append(p.list.numId()).append(':')
@@ -180,15 +189,26 @@ final class HtmlBlocks {
 
     private static List<Inline.Shape> shapes(Paragraph p) {
         List<Inline.Shape> out = new ArrayList<>();
-        if (Float.isNaN(p.sourceTop)) {
-            return out;
-        }
+        boolean pageTop = p.bookmark != null && p.bookmark.startsWith(Links.PAGE_PREFIX);
         for (Inline in : p.inlines) {
-            if (in instanceof Inline.Shape s && s.width() > 0 && s.height() > 0 && (s.rgb() >= 0 || s.lineRgb() >= 0 && s.lineWidth() > 0)) {
+            if (in instanceof Inline.Shape s && s.width() > 0 && s.height() > 0
+                    && (s.rgb() >= 0 || s.lineRgb() >= 0 && s.lineWidth() > 0)
+                    && (s.fromParagraph() || !Float.isNaN(p.sourceTop) || pageTop)) {
                 out.add(s);
             }
         }
         return out;
+    }
+
+    private static boolean takesRoom(Inline in) {
+        if (in instanceof Inline.Image im) {
+            return im.picture().wrap != Picture.Wrap.SQUARE && !im.picture().backdrop;
+        }
+        return in instanceof Inline.TextBox box && hasText(box.paragraphs());
+    }
+
+    private static boolean fromPageTop(Paragraph p, Inline.Shape s) {
+        return !s.fromParagraph() && Float.isNaN(p.sourceTop);
     }
 
     static boolean columnBreak(Paragraph p) {
@@ -217,14 +237,14 @@ final class HtmlBlocks {
         return false;
     }
 
-    private static void drawing(StringBuilder sb, Paragraph p, List<Inline.Shape> shapes, int section) {
+    private static void drawing(StringBuilder sb, Paragraph p, List<Inline.Shape> shapes, int section, boolean paged) {
         float left = Float.MAX_VALUE;
         float top = Float.MAX_VALUE;
         float right = -Float.MAX_VALUE;
         float bottom = -Float.MAX_VALUE;
         for (Inline.Shape s : shapes) {
             float pad = s.lineRgb() >= 0 ? s.lineWidth() / 2 : 0;
-            float y = top(p, s);
+            float y = paged ? s.y() : top(p, s);
             left = Math.min(left, s.x() - pad);
             top = Math.min(top, y - pad);
             right = Math.max(right, s.x() + s.width() + pad);
@@ -234,11 +254,17 @@ final class HtmlBlocks {
         float h = bottom - top;
         sb.append("<svg class=\"drawing\" aria-hidden=\"true\" viewBox=\"0 0 ").append(num(w)).append(' ').append(num(h))
                 .append("\" style=\"left:").append(MARK).append('X').append(section).append(':').append(left).append(':')
-                .append(p.indentLeft).append(MARK).append(";top:").append(HtmlText.pt(top)).append(";width:")
+                .append(p.indentLeft).append(MARK).append(";top:");
+        if (paged) {
+            sb.append(MARK).append('Y').append(section).append(':').append(top - Math.max(0, p.spaceBefore)).append(MARK);
+        } else {
+            sb.append(HtmlText.pt(top));
+        }
+        sb.append(";width:")
                 .append(HtmlText.pt(w)).append(";height:").append(HtmlText.pt(h)).append("\">");
         for (Inline.Shape s : shapes) {
             float x = s.x() - left;
-            float y = top(p, s) - top;
+            float y = (paged ? s.y() : top(p, s)) - top;
             if (s.ellipse()) {
                 sb.append("<ellipse cx=\"").append(num(x + s.width() / 2)).append("\" cy=\"").append(num(y + s.height() / 2))
                         .append("\" rx=\"").append(num(s.width() / 2)).append("\" ry=\"").append(num(s.height() / 2)).append('"');

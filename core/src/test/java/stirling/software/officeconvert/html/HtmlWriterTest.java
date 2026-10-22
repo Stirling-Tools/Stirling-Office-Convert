@@ -88,6 +88,23 @@ class HtmlWriterTest {
     }
 
     @Test
+    void shapesOnATextlessPageStartAreMeasuredFromTheTopMargin() throws IOException {
+        Paragraph p = new Paragraph();
+        p.bookmark = "_Pg1";
+        p.spaceBefore = 10;
+        p.inlines.add(new Inline.Shape(77, 359, 229, 13, 0x1F4E79));
+        String html = html(page(1), null, w -> block(w, p));
+        assertTrue(html.contains("style=\"left:17pt;top:277pt;"), html);
+    }
+
+    @Test
+    void shapesWithNoPlaceToMeasureFromAreLeftOut() throws IOException {
+        Paragraph p = new Paragraph();
+        p.inlines.add(new Inline.Shape(77, 359, 229, 13, 0x1F4E79));
+        assertFalse(html(page(1), null, w -> block(w, p)).contains("<svg"));
+    }
+
+    @Test
     void columnSectionsUseCssColumnsPerPage() throws IOException {
         Paragraph first = para("Left column text");
         first.bookmark = "_Pg1";

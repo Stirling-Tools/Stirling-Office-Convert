@@ -363,6 +363,7 @@ public final class HtmlWriter implements DocSink, Closeable {
                 case 'C' -> ordered(key) ? "</ol>" : "</ul>";
                 case 'X' -> left(key);
                 case 'P' -> pageSplit(key);
+                case 'Y' -> belowMargin(key);
                 default -> "";
             };
         } catch (RuntimeException e) {
@@ -389,6 +390,12 @@ public final class HtmlWriter implements DocSink, Closeable {
         pendingLabel = labels.next(r[0], r[1]);
         pendingKey = key.substring(1);
         return ordered(key) ? "<li value=\"" + labels.value(r[0], r[1]) + "\">" : "<li>";
+    }
+
+    private String belowMargin(String key) {
+        int colon = key.indexOf(':');
+        Section s = sections.get(Math.min(sections.size() - 1, Integer.parseInt(key.substring(1, colon))));
+        return HtmlText.pt(Float.parseFloat(key.substring(colon + 1)) - s.marginTop);
     }
 
     private String pageSplit(String key) {
