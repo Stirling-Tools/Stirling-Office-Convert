@@ -49,8 +49,8 @@ public final class NoteHold {
         if (b instanceof Table t) {
             for (Table.Row row : t.rows) {
                 for (Table.Cell cell : row.cells) {
-                    for (Paragraph p : cell.paragraphs) {
-                        if (refersToMissing(p, missing)) {
+                    for (Block inner : cell.blocks()) {
+                        if (refersToMissing(inner, missing)) {
                             return true;
                         }
                     }

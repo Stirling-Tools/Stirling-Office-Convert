@@ -232,7 +232,16 @@ final class ModelJson {
         if (c.vAlign != Table.VAlign.TOP) {
             o.str("verticalAlign", lower(c.vAlign));
         }
-        paragraphs(o.key("paragraphs"), c.paragraphs);
+        if (c.tables.isEmpty()) {
+            paragraphs(o.key("paragraphs"), c.paragraphs);
+        } else {
+            StringBuilder blocks = o.key("blocks").append('[');
+            List<Block> all = c.blocks();
+            for (int i = 0; i < all.size(); i++) {
+                block(i > 0 ? blocks.append(',') : blocks, all.get(i));
+            }
+            blocks.append(']');
+        }
         o.end();
     }
 

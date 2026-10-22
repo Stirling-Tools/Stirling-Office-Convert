@@ -26,7 +26,7 @@ final class Prose {
             StringBuilder text = new StringBuilder();
             for (Table.Cell c : row.cells) {
                 if (c.shading >= 0 || c.top.visible() || c.bottom.visible() || c.left.visible() || c.right.visible()
-                        || c.paragraphs.size() > 1 || c.vMerge != 0) {
+                        || c.paragraphs.size() > 1 || !c.tables.isEmpty() || c.vMerge != 0) {
                     return null;
                 }
                 for (Paragraph p : c.paragraphs) {

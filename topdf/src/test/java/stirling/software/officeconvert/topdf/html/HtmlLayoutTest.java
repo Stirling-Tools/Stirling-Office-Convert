@@ -251,6 +251,84 @@ class HtmlLayoutTest {
     }
 
     @Test
+    void aTableInsideACellKeepsItsColumnsAndBackgrounds() throws IOException {
+        Laid l = lay("""
+                <html><body><table width="100%" border="1"><tr><td width="30%">Outer</td><td>
+                <table width="100%" border="1"><tr><td bgcolor="#2050c0">Alpha</td><td>Beta</td></tr>
+                <tr><td>Gamma</td><td>Delta</td></tr></table></td></tr></table></body></html>""");
+        Word alpha = l.word("Alpha");
+        Word beta = l.word("Beta");
+        Word gamma = l.word("Gamma");
+        assertEquals(alpha.top(), beta.top(), 1f);
+        assertTrue(beta.left() > alpha.right() + 40, l.words().toString());
+        assertEquals(alpha.left(), gamma.left(), 1f);
+        assertTrue(gamma.top() > alpha.top() + 5, l.words().toString());
+        assertTrue(alpha.left() > l.word("Outer").right() + 40, l.words().toString());
+        int rgb = l.first().getRGB(Math.round(alpha.right()) + 4, Math.round(alpha.top()) - 4);
+        assertTrue((rgb & 0xFF) > 0x90 && (rgb >> 16 & 0xFF) < 0x60, Integer.toHexString(rgb));
+    }
+
+    private Laid nestedBesideColumns(int levels) throws IOException {
+        String inner = "core";
+        for (int i = 0; i < levels; i++) {
+            inner = "<table border=1><tr><td>Lv" + i + " " + inner + "</td><td>Left" + i + " word</td><td>Right" + i
+                    + " word</td></tr></table>";
+        }
+        Laid l = lay("<html><body>" + inner + "</body></html>");
+        for (int i = 0; i < levels; i++) {
+            l.word("Lv" + i);
+            l.word("Left" + i);
+            l.word("Right" + i);
+        }
+        l.word("core");
+        return l;
+    }
+
+    @Test
+    void aCellHoldingANestedTableIsWideEnoughForItsColumns() throws IOException {
+        Laid l = nestedBesideColumns(5);
+        for (int i = 0; i < 5; i++) {
+            assertTrue(l.word("Right" + i).left() > l.word("Left" + i).right(), l.words().toString());
+            assertTrue(l.word("Lv" + i).right() <= l.word("Left" + i).left(), l.words().toString());
+        }
+    }
+
+    @Test
+    void nestedTablesTooWideForTheirCellBecomeLinesInsteadOfBreakingWords() throws IOException {
+        Laid l = nestedBesideColumns(9);
+        assertTrue(l.word("Right8").left() > l.word("Left8").right(), l.words().toString());
+        assertTrue(l.word("Left8").left() > l.word("Lv0").right(), l.words().toString());
+        assertEquals(1, l.pages());
+    }
+
+    @Test
+    void aSizedGradientBoxHoldingOnlyATableKeepsItsHeightAndGradient() throws IOException {
+        Laid l = lay("""
+                <html><body><div style="background:linear-gradient(to bottom,#ff0000,#0000ff);height:200px">
+                <table border="1"><tr><td>Inside</td></tr></table></div><p>Below</p></body></html>""");
+        assertTrue(l.word("Below").top() > l.word("Inside").top() + 140, l.words().toString());
+        int rgb = l.first().getRGB(300, Math.round(l.word("Inside").top()) + 60);
+        assertTrue((rgb & 0xFF) > 0x40 && (rgb >> 16 & 0xFF) > 0x40 && (rgb >> 8 & 0xFF) < 0x40, Integer.toHexString(rgb));
+    }
+
+    @Test
+    void tablesNestedPastTheLimitStillShowAllTheirText() throws IOException {
+        StringBuilder html = new StringBuilder("<html><body>");
+        int levels = 14;
+        for (int i = 1; i <= levels; i++) {
+            html.append("<table border=1 width=\"100%\"><tr><td>L").append(i).append("</td><td>");
+        }
+        html.append("core");
+        html.append("</td></tr></table>".repeat(levels)).append("</body></html>");
+        Laid l = lay(html.toString());
+        for (int i = 1; i <= levels; i++) {
+            l.word("L" + i);
+        }
+        l.word("core");
+        assertEquals(1, l.pages());
+    }
+
+    @Test
     void columnCountFlowsTextIntoBalancedColumnsAndContinuesBelowThem() throws IOException {
         String words = "Alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu nu xi. ".repeat(14);
         Laid l = lay("<html><head><style>.cols{column-count:3;column-gap:18px;column-rule:1px solid #bbb}</style>"

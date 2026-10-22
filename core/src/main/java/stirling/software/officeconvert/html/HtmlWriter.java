@@ -94,8 +94,8 @@ public final class HtmlWriter implements DocSink, Closeable {
         if (block instanceof Paragraph p) {
             mark = p.bookmark;
         } else if (block instanceof Table t && !t.rows.isEmpty() && !t.rows.get(0).cells.isEmpty()
-                && !t.rows.get(0).cells.get(0).paragraphs.isEmpty()) {
-            mark = t.rows.get(0).cells.get(0).paragraphs.get(0).bookmark;
+                && !t.rows.get(0).cells.get(0).flatParagraphs().isEmpty()) {
+            mark = t.rows.get(0).cells.get(0).flatParagraphs().getFirst().bookmark;
         }
         return mark != null && mark.startsWith(Links.PAGE_PREFIX);
     }
