@@ -70,6 +70,7 @@ final class Flow {
     private Frame blockFrame;
     private String headingStyle;
     private float pendingSpace;
+    private float pendingMargin;
     private boolean pendingBreak;
     private Paragraph.ListRef pendingMarker;
     private boolean lastSpace = true;
@@ -202,7 +203,7 @@ final class Flow {
         t.rows.add(row);
         if (pendingSpace > 0) {
             spacer(pendingSpace, frame);
-            pendingSpace = 0;
+            space(0);
         }
         t.pageBreakBefore = pendingBreak && !sectionStarted;
         pendingBreak = false;
@@ -402,7 +403,8 @@ final class Flow {
         }
         boolean avoid = !inCell && avoidsBreaks(d);
         avoiding += avoid ? 1 : 0;
-        pendingSpace = Math.max(pendingSpace, top + padding(d.get("padding-top"), em, frame.width()));
+        margin(top);
+        pad(padding(d.get("padding-top"), em, frame.width()));
         if (isPageBreak(d.get("break-before"))) {
             pendingBreak = true;
         }
@@ -465,7 +467,8 @@ final class Flow {
         blockLook = outerLook;
         blockFrame = outerFrame;
         headingStyle = outerHeading;
-        pendingSpace = Math.max(pendingSpace, bottom + padding(d.get("padding-bottom"), em, frame.width()));
+        pad(padding(d.get("padding-bottom"), em, frame.width()));
+        margin(bottom);
         if (isPageBreak(d.get("break-after"))) {
             pendingBreak = true;
         }
@@ -491,7 +494,8 @@ final class Flow {
         }
         float em = look.size;
         Section base = ctx.currentSection();
-        float before = Math.max(pendingSpace, top);
+        margin(top);
+        float before = pendingSpace;
         boolean newPage = pendingBreak && !sectionStarted;
         if (before > 0 || newPage) {
             Paragraph space = sectionMark(frame);
@@ -502,7 +506,8 @@ final class Flow {
         }
         Paragraph opening = sectionMark(frame);
         opening.endsSection = ctx.ending(base);
-        pendingSpace = padding(d.get("padding-top"), em, frame.width());
+        space(0);
+        pad(padding(d.get("padding-top"), em, frame.width()));
         pendingBreak = false;
         sectionStarted = false;
         ctx.count();
@@ -528,7 +533,9 @@ final class Flow {
         emit(closing);
         blockLook = outerLook;
         blockFrame = outerFrame;
-        pendingSpace = bottom + padding(d.get("padding-bottom"), em, frame.width());
+        space(0);
+        pad(padding(d.get("padding-bottom"), em, frame.width()));
+        margin(bottom);
         return true;
     }
 
@@ -580,6 +587,24 @@ final class Flow {
             }
         }
         return border(rule, "rule");
+    }
+
+    private void margin(float m) {
+        float collapsed = Math.max(pendingMargin, m);
+        pendingSpace += collapsed - pendingMargin;
+        pendingMargin = collapsed;
+    }
+
+    private void pad(float p) {
+        if (p > 0) {
+            pendingSpace += p;
+            pendingMargin = 0;
+        }
+    }
+
+    private void space(float s) {
+        pendingSpace = s;
+        pendingMargin = s;
     }
 
     static boolean avoidsBreaks(Map<String, String> d) {
@@ -723,13 +748,13 @@ final class Flow {
         cell.left = HtmlTables.border(d, "left", 0);
         cell.right = HtmlTables.border(d, "right", 0);
         Flow inner = new Flow(ctx, b -> cell.paragraphs.add((Paragraph) b), true);
-        inner.pendingSpace = Math.max(0, padding(d.get("padding-top"), em, frame.width()));
+        inner.pad(Math.max(0, padding(d.get("padding-top"), em, frame.width())));
         inner.children(e, look, new Frame(0, 0, Math.max(24, width - padLeft - padRight), -1), depth);
         float padBottom = Math.max(0, padding(d.get("padding-bottom"), em, frame.width()));
         Float tall = boxLength(d.get("height"), look, 0);
         boolean drawn = cell.shading >= 0 || cell.top.visible() || cell.bottom.visible();
         if (cell.paragraphs.isEmpty() && (tall == null || tall < 1 || !drawn)) {
-            pendingSpace = Math.max(pendingSpace, top + bottom);
+            margin(top + bottom);
             return;
         }
         Table t = new Table();
@@ -779,7 +804,7 @@ final class Flow {
         row.splits = !avoidsBreaks(d);
         row.cells.add(cell);
         t.rows.add(row);
-        pendingSpace = Math.max(pendingSpace, top);
+        margin(top);
         if (pendingSpace > 0) {
             spacer(pendingSpace, frame);
         }
@@ -788,7 +813,7 @@ final class Flow {
         sectionStarted = false;
         ctx.count();
         emit(t);
-        pendingSpace = bottom;
+        space(bottom);
     }
 
     private boolean gradient(Table.Cell cell, String css, float width, float height, float padLeft) throws IOException {
@@ -1054,7 +1079,7 @@ final class Flow {
         }
         if (pendingSpace > 0) {
             spacer(pendingSpace, frame);
-            pendingSpace = 0;
+            space(0);
         }
         t.pageBreakBefore = pendingBreak;
         pendingBreak = false;
@@ -1332,7 +1357,7 @@ final class Flow {
         p.indentRight = f.right();
         p.indentFirst = l.textIndent;
         p.spaceBefore = Math.min(pendingSpace, 400);
-        pendingSpace = 0;
+        space(0);
         p.pageBreakBefore = pendingBreak && !inCell && !sectionStarted;
         pendingBreak = false;
         sectionStarted = false;
@@ -1703,7 +1728,7 @@ final class Flow {
         flush();
         if (pendingSpace > 0) {
             spacer(pendingSpace, blockFrame);
-            pendingSpace = 0;
+            space(0);
         }
         start();
         Paragraph p = para;
@@ -1754,7 +1779,7 @@ final class Flow {
     private void rule(Map<String, String> d, Look look, Frame frame) throws IOException {
         flush();
         float em = look.size;
-        pendingSpace = Math.max(pendingSpace, length(d.get("margin-top"), em, frame.width()));
+        margin(length(d.get("margin-top"), em, frame.width()));
         Paragraph p = new Paragraph();
         p.indentLeft = frame.left();
         p.indentRight = frame.right();
@@ -1765,7 +1790,7 @@ final class Flow {
         Integer c = Css.color(d.getOrDefault("border-top-color", d.getOrDefault("color", d.get("background-color"))));
         p.borderBottomRgb = c == null || c < 0 ? 0xA0A0A0 : c;
         p.inlines.add(new Inline.Text("\u00a0", look.run().withSize(1), null, -1));
-        pendingSpace = length(d.get("margin-bottom"), em, frame.width());
+        space(length(d.get("margin-bottom"), em, frame.width()));
         ctx.count();
         emit(p);
     }
@@ -1790,7 +1815,7 @@ final class Flow {
             return;
         }
         float em = look.size;
-        pendingSpace = Math.max(pendingSpace, length(d.get("margin-top"), em, frame.width()));
+        margin(length(d.get("margin-top"), em, frame.width()));
         if (isPageBreak(d.get("break-before"))) {
             pendingBreak = true;
         }
@@ -1804,7 +1829,7 @@ final class Flow {
         if (pendingSpace > 0) {
             spacer(pendingSpace, frame);
         }
-        pendingSpace = Math.max(0, length(d.get("margin-bottom"), em, frame.width()));
+        space(Math.max(0, length(d.get("margin-bottom"), em, frame.width())));
         ctx.count();
         emit(t);
     }

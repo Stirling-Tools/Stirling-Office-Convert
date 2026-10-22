@@ -220,7 +220,7 @@ class HtmlLayoutTest {
         Word side = l.word("Contact");
         Word main = l.word("Heading");
         float room = l.pageWidth() - 2 * l.word("Footer").left();
-        assertEquals(side.top(), main.top(), 1f);
+        assertEquals(main.top() + 10 * 0.75f, side.top(), 1f, "the sidebar's padding sits above its first margin");
         assertEquals(l.word("Footer").left() + room * 0.32f, main.left(), 3f);
         assertTrue(l.word("Phone").right() < main.left());
         assertTrue(l.word("Footer").top() > l.word("Body").top());
@@ -306,6 +306,17 @@ class HtmlLayoutTest {
         assertEquals(l.word("Analyst").top(), l.word("2019").top(), 1f);
         assertEquals(right, l.word("2019").right(), 3f);
         assertEquals(l.word("Body").left(), l.word("Analyst").left(), 1f);
+    }
+
+    @Test
+    void paddingAddsToTheSpaceBetweenBlocksWhereMarginsCollapse() throws IOException {
+        Laid l = lay("""
+                <html><head><style>body{margin:0}ul{list-style:none;padding:0}li{padding:10px 0}
+                p{margin:20px 0}</style></head><body>
+                <ul><li>One</li><li>Two</li></ul><p>Three</p><p>Four</p></body></html>""");
+        float plain = l.word("Four").top() - l.word("Three").top();
+        float padded = l.word("Two").top() - l.word("One").top();
+        assertEquals(plain, padded, 1.5f, l.words().toString());
     }
 
     private static Word containing(Laid l, String text) {
