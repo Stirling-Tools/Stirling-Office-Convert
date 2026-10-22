@@ -345,8 +345,11 @@ public final class EpubWriter implements DocSink, Closeable {
     }
 
     private static String text(String html) {
-        String t = MARKUP.matcher(html).replaceAll("").replace("&nbsp;", " ").replaceAll("\\s+", " ").strip();
-        return t.length() > 200 ? t.substring(0, 200).strip() : t;
+        String t = unescaped(MARKUP.matcher(html).replaceAll("")).replaceAll("\\s+", " ").strip();
+        if (t.codePointCount(0, t.length()) > 200) {
+            t = t.substring(0, t.offsetByCodePoints(0, 200)).strip();
+        }
+        return escaped(t);
     }
 
     private static String xhtmlHead(String title, String css) {

@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -42,6 +43,10 @@ final class Cascade {
     private final Map<String, String> page = new HashMap<>();
     private final Map<String, Map<String, String>> named = new HashMap<>();
     private long work;
+    private final Set<String> sheets = new HashSet<>();
+    private long sheetChars;
+
+    private static final long MAX_SHEET_CHARS = 8L << 20;
 
     private static final int MAX_NAMED_PAGES = 64;
 
@@ -61,7 +66,7 @@ final class Cascade {
                 Css.rules(imported(sheet.data(), linked.base(), linked, viewportPx, 0), rules, viewportPx);
             } else if (stylesheet(sheet) && !linked.none()) {
                 String ref = HtmlRefs.resolve(linked.base(), sheet.attr("href"));
-                String text = ref == null ? null : linked.text(ref);
+                String text = sheet(ref, linked);
                 if (text != null) {
                     Css.rules(imported(text, ref, linked, viewportPx, 0), rules, viewportPx);
                 }
@@ -111,33 +116,34 @@ final class Cascade {
     private static final int MAX_IMPORT_DEPTH = 8;
 
     private static final Pattern IMPORT = Pattern.compile(
-            "^@import\\s*(?:url\\(\\s*(?:\"([^\"]*)\"|'([^']*)'|([^)\\s]*))\\s*\\)|\"([^\"]*)\"|'([^']*)')([^;]*);",
+            "@import\\s*(?:url\\(\\s*(?:\"([^\"]*)\"|'([^']*)'|([^)\\s]*))\\s*\\)|\"([^\"]*)\"|'([^']*)')([^;]*);",
             Pattern.CASE_INSENSITIVE);
 
-    private static final Pattern CHARSET = Pattern.compile("^@charset\\s*\"[^\"]*\"\\s*;", Pattern.CASE_INSENSITIVE);
+    private static final Pattern CHARSET = Pattern.compile("@charset\\s*\"[^\"]*\"\\s*;", Pattern.CASE_INSENSITIVE);
 
-    private static String imported(String sheet, String base, Linked linked, float viewportPx, int depth) {
+    private String imported(String sheet, String base, Linked linked, float viewportPx, int depth) {
         if (linked.none() || !sheet.toLowerCase(Locale.ROOT).contains("@import")) {
             return sheet;
         }
         String s = Css.stripComments(sheet);
         StringBuilder out = new StringBuilder(s.length());
         int i = 0;
+        Matcher cs = CHARSET.matcher(s);
+        Matcher m = IMPORT.matcher(s);
         while (true) {
             while (i < s.length() && Character.isWhitespace(s.charAt(i))) {
                 i++;
             }
-            String rest = s.substring(i);
-            Matcher cs = CHARSET.matcher(rest);
-            if (cs.find()) {
-                i += cs.end();
+            cs.region(i, s.length());
+            if (cs.lookingAt()) {
+                i = cs.end();
                 continue;
             }
-            Matcher m = IMPORT.matcher(rest);
-            if (!m.find()) {
+            m.region(i, s.length());
+            if (!m.lookingAt()) {
                 break;
             }
-            i += m.end();
+            i = m.end();
             String target = null;
             for (int g = 1; g <= 5 && target == null; g++) {
                 target = m.group(g);
@@ -146,13 +152,24 @@ final class Cascade {
             if (depth >= MAX_IMPORT_DEPTH || !Media.matches(media, viewportPx)) {
                 continue;
             }
-            String ref = HtmlRefs.resolve(base, target);
-            String text = ref == null ? null : linked.text(ref);
+            String text = sheet(HtmlRefs.resolve(base, target), linked);
             if (text != null) {
-                out.append(imported(text, ref, linked, viewportPx, depth + 1)).append('\n');
+                out.append(imported(text, HtmlRefs.resolve(base, target), linked, viewportPx, depth + 1)).append('\n');
             }
         }
         return out.append(s, i, s.length()).toString();
+    }
+
+    private String sheet(String ref, Linked linked) {
+        if (ref == null || !sheets.add(ref) || sheetChars >= MAX_SHEET_CHARS) {
+            return null;
+        }
+        String text = linked.text(ref);
+        if (text == null) {
+            return null;
+        }
+        sheetChars += text.length();
+        return sheetChars > MAX_SHEET_CHARS ? null : text;
     }
 
     // Filed under what the selector's last compound step needs: its id, else a class, else its tag
