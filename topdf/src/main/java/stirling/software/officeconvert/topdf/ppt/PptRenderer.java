@@ -38,6 +38,7 @@ import stirling.software.officeconvert.topdf.io.PictureDecoder;
 import stirling.software.officeconvert.topdf.io.SafeImageRenderer;
 import stirling.software.officeconvert.topdf.pdf.DocumentInfo;
 import stirling.software.officeconvert.topdf.pdf.PdfCanvas;
+import stirling.software.officeconvert.topdf.pdf.SlideNames;
 
 /** PowerPoint 97-2003 (.ppt, .pps, .pot): POI draws each slide through its common drawing interfaces. */
 public final class PptRenderer {
@@ -66,13 +67,17 @@ public final class PptRenderer {
             List<HSLFSlide> slides = ppt.getSlides();
             SlideLinks links = new SlideLinks(slides);
             SlideFooters footers = new SlideFooters();
-            for (HSLFSlide slide : slides) {
+            SlideNames names = new SlideNames();
+            for (int i = 0; i < slides.size(); i++) {
                 job.checkpoint();
+                HSLFSlide slide = slides.get(i);
+                String name = names.name(title(slide), i + 1);
                 if (slide.isHidden()) {
                     continue;
                 }
                 text.startSlide(textLinks(links, slide));
                 try (PdfCanvas canvas = job.newPage(w, h)) {
+                    job.output().outline(name, 1, canvas.pageIndex(), 0);
                     List<PDFormXObject> forms = new ArrayList<>(draw(job, slide, footers, text, w, h));
                     for (PDFormXObject form : forms) {
                         canvas.form(form, 0, 0, w, h);
@@ -89,6 +94,14 @@ public final class PptRenderer {
             for (String line : ActiveContent.describe(activeContent(ppt))) {
                 job.warn(line);
             }
+        }
+    }
+
+    private static String title(HSLFSlide slide) {
+        try {
+            return slide.getTitle();
+        } catch (RuntimeException e) {
+            return null;
         }
     }
 

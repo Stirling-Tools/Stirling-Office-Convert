@@ -67,7 +67,12 @@ final class SlideWriter {
         boolean hidden = "hidden".equals(pageProps.get("presentation:visibility"));
         StringBuilder x = new StringBuilder(Xml.HEAD).append("<p:sld xmlns:a=\"").append(Xml.A).append("\" xmlns:r=\"")
                 .append(Xml.R).append("\" xmlns:p=\"").append(Xml.P).append('"').append(hidden ? " show=\"0\"" : "")
-                .append("><p:cSld>");
+                .append("><p:cSld");
+        String name = Dom.attr(page, Ns.DRAW, "name", "");
+        if (!name.isBlank() && !name.matches("page[0-9]+")) {
+            x.append(" name=\"").append(Xml.esc(name)).append('"');
+        }
+        x.append('>');
         if (bg != null) {
             x.append("<p:bg><p:bgPr>").append(bg).append("<a:effectLst/></p:bgPr></p:bg>");
         }

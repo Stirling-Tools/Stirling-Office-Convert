@@ -1,6 +1,8 @@
 package stirling.software.officeconvert.extract;
 
 import java.io.IOException;
+import java.awt.geom.Path2D;
+import java.awt.geom.Point2D;
 import java.awt.geom.Rectangle2D;
 import java.text.Normalizer;
 import java.util.ArrayDeque;
@@ -128,6 +130,8 @@ final class GlyphCollector extends PDFStreamEngine {
     private OperatorBudget budget = new OperatorBudget("reading text");
     private final StreamRunner runner;
     private final TextPositions positions = new TextPositions();
+    private final ClipPath clipPath = new ClipPath();
+    private final ClipArea clipArea = new ClipArea();
     private int currentPageNo;
     private int startPage;
     private int endPage;
@@ -194,6 +198,7 @@ final class GlyphCollector extends PDFStreamEngine {
         addOperator(new SetStrokingColorN(this));
         addOperator(new SetNonStrokingColor(this));
         addOperator(new SetNonStrokingColorN(this));
+        ClipOperators.all(this, clipPath).forEach(this::addOperator);
     }
 
     static void read(PDDocument doc, int first, int last, FontResolver fonts, ParsedStreams parsed, PageSink sink)
@@ -338,7 +343,8 @@ final class GlyphCollector extends PDFStreamEngine {
 
     @Override
     protected void showGlyph(Matrix trm, PDFont font, int code, Vector displacement) throws IOException {
-        TextPosition position = positions.of(getGraphicsState(), getTextMatrix(), trm, font, code, displacement);
+        TextPosition position = clippedAway(trm, displacement) ? null
+                : positions.of(getGraphicsState(), getTextMatrix(), trm, font, code, displacement);
         if (position != null) {
             processTextPosition(position);
         }
@@ -357,6 +363,19 @@ final class GlyphCollector extends PDFStreamEngine {
             open.hiddenBaseline = getCurrentPage().getCropBox().getUpperRightY() - trm.getTranslateY();
         }
     }
+
+    private boolean clippedAway(Matrix trm, Vector displacement) {
+        PDGraphicsState gs = getGraphicsState();
+        List<Path2D> clips = gs.getCurrentClippingPaths();
+        RenderingMode mode = gs.getTextState().getRenderingMode();
+        if (clips.isEmpty() || mode == RenderingMode.NEITHER || mode == RenderingMode.NEITHER_CLIP) {
+            return false;
+        }
+        Point2D.Float centre = trm.transformPoint(displacement.getX() / 2f, GLYPH_MIDDLE);
+        return !clipArea.of(clips).contains(centre.x, centre.y);
+    }
+
+    private static final float GLYPH_MIDDLE = 0.3f;
 
     private void actualText(Span s) {
         if (s.start < 0 || s.start >= current.size()) {
@@ -485,7 +504,8 @@ final class GlyphCollector extends PDFStreamEngine {
                         italic);
         g.hscale = horizontalScale(tp);
         int[] codes = tp.getCharacterCodes();
-        if (font.icons() && codes != null && codes.length == 1) {
+        boolean dingbat = font.symbolic() && pdFont.isEmbedded() && size >= DINGBAT_SIZE && !textLike(unicode);
+        if ((font.icons() || dingbat) && codes != null && codes.length == 1) {
             g.icon = IconShape.of(pdFont, codes[0], size, rgb);
         }
         Matrix tm = tp.getTextMatrix();
@@ -499,6 +519,20 @@ final class GlyphCollector extends PDFStreamEngine {
                         invisible,
                         tm.getTranslateX(),
                         tm.getTranslateY()));
+    }
+
+    private static final float DINGBAT_SIZE = 36f;
+
+    private static boolean textLike(String unicode) {
+        int cp = unicode.codePointAt(0);
+        return switch (Character.getType(cp)) {
+            case Character.MATH_SYMBOL -> cp <= 0x7F;
+            case Character.DECIMAL_DIGIT_NUMBER, Character.CURRENCY_SYMBOL,
+                    Character.CONNECTOR_PUNCTUATION, Character.DASH_PUNCTUATION, Character.START_PUNCTUATION,
+                    Character.END_PUNCTUATION, Character.OTHER_PUNCTUATION, Character.INITIAL_QUOTE_PUNCTUATION,
+                    Character.FINAL_QUOTE_PUNCTUATION -> true;
+            default -> Character.isLetter(cp) && cp > 0x7F;
+        };
     }
 
     private static boolean joiners(String s) {

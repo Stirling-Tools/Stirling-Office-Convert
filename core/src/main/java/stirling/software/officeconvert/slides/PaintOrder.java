@@ -20,6 +20,7 @@ import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.font.PDFont;
 import org.apache.pdfbox.pdmodel.font.PDType3CharProc;
 import org.apache.pdfbox.pdmodel.font.PDType3Font;
+import org.apache.pdfbox.pdmodel.graphics.blend.BlendMode;
 import org.apache.pdfbox.pdmodel.graphics.form.PDFormXObject;
 import org.apache.pdfbox.pdmodel.graphics.form.PDTransparencyGroup;
 import org.apache.pdfbox.pdmodel.graphics.image.PDImage;
@@ -38,7 +39,8 @@ final class PaintOrder extends PDFGraphicsStreamEngine {
         STROKE,
         IMAGE,
         SHADING,
-        TEXT
+        TEXT,
+        MASKED_TEXT
     }
 
     enum Outline {
@@ -47,7 +49,8 @@ final class PaintOrder extends PDFGraphicsStreamEngine {
         OTHER
     }
 
-    record Mark(Kind kind, Box box, int order, float alpha, boolean opaque, Outline outline, float radius) {}
+    record Mark(Kind kind, Box box, int order, float alpha, boolean opaque, Outline outline, float radius, int from,
+            boolean blended) {}
 
     record Slant(float x, float y, float angle, float advance, int order) {}
 
@@ -55,16 +58,21 @@ final class PaintOrder extends PDFGraphicsStreamEngine {
 
     private static final double MIN_SLANT = 1.0;
 
+    private static final double DISPLAY_SIZE = 18.0;
+
     private final AffineTransform toDisplay;
     private final float width;
     private final float height;
     private final List<Mark> marks = new ArrayList<>();
+    private final List<int[]> groups = new ArrayList<>();
     private final List<Slant> slants = new ArrayList<>();
     private final GeneralPath path = new GeneralPath();
     private Point2D current = new Point2D.Float();
     private int order;
     private final OperatorBudget budget = new OperatorBudget("ordering paint");
     private float radius;
+    private int maskedGroups;
+    private int blendedGroups;
 
     private PaintOrder(PDPage page, AffineTransform toDisplay, float width, float height) {
         super(page);
@@ -156,6 +164,22 @@ final class PaintOrder extends PDFGraphicsStreamEngine {
         return best;
     }
 
+    boolean maskedGlyph(Box glyph) {
+        float cx = glyph.centreX();
+        float cy = glyph.centreY();
+        boolean masked = false;
+        for (Mark m : marks) {
+            if (!m.box().grow(1f).contains(cx, cy)) {
+                continue;
+            }
+            if (m.kind() == Kind.TEXT) {
+                return false;
+            }
+            masked |= m.kind() == Kind.MASKED_TEXT;
+        }
+        return masked;
+    }
+
     void drewAll(Box box, float tolerance, Collection<Integer> out) {
         for (Mark m : marks) {
             if ((m.kind() == Kind.FILL || m.kind() == Kind.STROKE) && near(m.box(), box, tolerance)) {
@@ -180,8 +204,8 @@ final class PaintOrder extends PDFGraphicsStreamEngine {
         Box grown = box.grow(1f);
         for (Mark m : marks) {
             Box b = m.box();
-            if (grown.contains(b.centreX(), b.centreY()) && b.width() <= grown.width() + 1
-                    && b.height() <= grown.height() + 1) {
+            if (m.kind() != Kind.MASKED_TEXT && grown.contains(b.centreX(), b.centreY())
+                    && b.width() <= grown.width() + 1 && b.height() <= grown.height() + 1) {
                 out.add(m.order());
             }
         }
@@ -242,23 +266,70 @@ final class PaintOrder extends PDFGraphicsStreamEngine {
 
     @Override
     public void showForm(PDFormXObject form) throws IOException {
-        if (budget.form()) {
-            super.showForm(form);
+        int span = enterGroup();
+        try {
+            if (budget.form()) {
+                super.showForm(form);
+            }
+        } finally {
+            exitGroup(span);
         }
     }
 
     @Override
     public void showTransparencyGroup(PDTransparencyGroup form) throws IOException {
-        if (budget.form()) {
-            super.showTransparencyGroup(form);
+        int span = enterGroup();
+        try {
+            if (budget.form()) {
+                transparencyGroup(form);
+            }
+        } finally {
+            exitGroup(span);
         }
+    }
+
+    private void transparencyGroup(PDTransparencyGroup form) throws IOException {
+        boolean masked = getGraphicsState().getSoftMask() != null;
+        boolean blended = masked || blending();
+        maskedGroups += masked ? 1 : 0;
+        blendedGroups += blended ? 1 : 0;
+        try {
+            super.showTransparencyGroup(form);
+        } finally {
+            maskedGroups -= masked ? 1 : 0;
+            blendedGroups -= blended ? 1 : 0;
+        }
+    }
+
+    private int enterGroup() {
+        groups.add(new int[] {order, order, groups.size() + 1});
+        return groups.size() - 1;
+    }
+
+    private void exitGroup(int span) {
+        int[] g = groups.get(span);
+        g[1] = order;
+        g[2] = groups.size();
+    }
+
+    List<int[]> groups() {
+        return groups;
+    }
+
+    private boolean masked() {
+        return maskedGroups > 0 || getGraphicsState().getSoftMask() != null;
+    }
+
+    private boolean blending() {
+        BlendMode blend = getGraphicsState().getBlendMode();
+        return blend != null && blend != BlendMode.NORMAL && blend != BlendMode.COMPATIBLE;
     }
 
     private void mark(Kind kind, Rectangle2D device) {
         float alpha = kind == Kind.STROKE ? (float) getGraphicsState().getAlphaConstant()
                 : (float) getGraphicsState().getNonStrokeAlphaConstant();
         boolean path = kind == Kind.FILL || kind == Kind.STROKE;
-        mark(kind, device, alpha, alpha >= 0.99f && getGraphicsState().getSoftMask() == null,
+        mark(kind, device, alpha, alpha >= 0.99f && !masked(),
                 path ? outline(this.path) : Outline.OTHER, path ? radius : 0);
     }
 
@@ -389,14 +460,17 @@ final class PaintOrder extends PDFGraphicsStreamEngine {
             order++;
             return;
         }
+        boolean blended = blendedGroups > 0 || masked() || blending();
         if (kind == Kind.TEXT && !marks.isEmpty()) {
             Mark last = marks.getLast();
             if (last.kind() == Kind.TEXT && last.order() == order - 1 && sameLine(last.box(), b)) {
-                marks.set(marks.size() - 1, new Mark(Kind.TEXT, last.box().union(b), order++, alpha, opaque, outline, radius));
+                marks.set(marks.size() - 1, new Mark(Kind.TEXT, last.box().union(b), order++, alpha, opaque, outline,
+                        radius, last.from(), last.blended() || blended));
                 return;
             }
         }
-        marks.add(new Mark(kind, b, order++, alpha, opaque, outline, radius));
+        marks.add(new Mark(kind, b, order, alpha, opaque, outline, radius, order, blended));
+        order++;
     }
 
     private static boolean sameLine(Box a, Box b) {
@@ -481,7 +555,9 @@ final class PaintOrder extends PDFGraphicsStreamEngine {
     @Override
     public void strokePath() {
         Rectangle2D b = path.getBounds2D();
-        double w = getGraphicsState().getLineWidth() / 2.0;
+        Matrix ctm = getGraphicsState().getCurrentTransformationMatrix();
+        double scale = Math.sqrt(Math.abs(ctm.getScaleX() * ctm.getScaleY() - ctm.getShearX() * ctm.getShearY()));
+        double w = Math.max(getGraphicsState().getLineWidth() * scale, 1.0) / 2.0;
         mark(Kind.STROKE, new Rectangle2D.Double(b.getX() - w, b.getY() - w, b.getWidth() + 2 * w, b.getHeight() + 2 * w));
         path.reset();
     }
@@ -527,7 +603,9 @@ final class PaintOrder extends PDFGraphicsStreamEngine {
         AffineTransform trm = textRenderingMatrix.createAffineTransform();
         double w = Math.max(0.1, displacement.getX());
         slant(trm, w);
-        mark(Kind.TEXT, trm.createTransformedShape(new Rectangle2D.Double(0, -0.2, w, 1.0)).getBounds2D());
+        boolean display = Math.hypot(trm.getShearX(), trm.getScaleY()) >= DISPLAY_SIZE;
+        Kind kind = masked() && display ? Kind.MASKED_TEXT : Kind.TEXT;
+        mark(kind, trm.createTransformedShape(new Rectangle2D.Double(0, -0.2, w, 1.0)).getBounds2D());
     }
 
     private void slant(AffineTransform trm, double advance) {

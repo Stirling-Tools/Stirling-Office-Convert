@@ -14,6 +14,8 @@ import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InterruptedIOException;
 import java.io.UncheckedIOException;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.text.AttributedCharacterIterator;
 import java.util.ArrayList;
 import java.util.IdentityHashMap;
@@ -56,6 +58,14 @@ final class Metafiles {
 
     private static final float RASTER_DPI = 150f;
 
+    private static final int EMR_COMMENT = 70;
+
+    private static final int EMF_PLUS = 0x2B464D45;
+
+    private static final int EMF_PLUS_HEADER = 0x4001;
+
+    private static final int DUAL_MODE = 1;
+
     private static final long RASTER_PIXELS = 8_000_000;
 
     private Metafiles() {}
@@ -93,16 +103,43 @@ final class Metafiles {
         return render(doc, kind, painter, bounds);
     }
 
+    static DecodedPicture emfPage(PDDocument doc, byte[] data) throws IOException {
+        if (data.length > PictureDecoder.MAX_METAFILE_BYTES) {
+            throw new IOException("The metafile is too large: " + data.length + " bytes");
+        }
+        MetafileGuard.check(data, true, PictureDecoder.DECODE_PIXELS, 2 * PictureDecoder.DECODE_PIXELS);
+        try {
+            HemfPicture emf = new HemfPicture(new ByteArrayInputStream(data));
+            return emf(doc, emf, EmfFrames.page(emf.getHeader()), dualMode(data));
+        } catch (RuntimeException e) {
+            throw new IOException("The metafile could not be read: " + e.getMessage(), e);
+        }
+    }
+
     static DecodedPicture emf(PDDocument doc, HemfPicture emf) throws IOException {
-        EmfFrames.Placement place = EmfFrames.of(emf.getHeader());
+        return emf(doc, emf, EmfFrames.of(emf.getHeader()), false);
+    }
+
+    static boolean dualMode(byte[] emf) {
+        if (emf.length < 8) {
+            return false;
+        }
+        ByteBuffer b = ByteBuffer.wrap(emf).order(ByteOrder.LITTLE_ENDIAN);
+        int at = b.getInt(4);
+        return at > 0 && at <= emf.length - 20 && b.getInt(at) == EMR_COMMENT && b.getInt(at + 12) == EMF_PLUS
+                && (b.getShort(at + 16) & 0xFFFF) == EMF_PLUS_HEADER && (b.getShort(at + 18) & DUAL_MODE) != 0;
+    }
+
+    private static DecodedPicture emf(PDDocument doc, HemfPicture emf, EmfFrames.Placement place, boolean emfOnly)
+            throws IOException {
         Rectangle2D bounds = place == null ? emf.getBoundsInPoints()
                 : new Rectangle2D.Double(0, 0, place.widthPoints(), place.heightPoints());
         Painter painter = (g, r) -> {
             if (place == null) {
-                EmfDrawing.draw(emf, g, r);
+                EmfDrawing.draw(emf, g, r, emfOnly);
             } else {
                 g.setRenderingHint(Drawable.EMF_FORCE_HEADER_BOUNDS, true);
-                EmfDrawing.draw(emf, g, place.target(r));
+                EmfDrawing.draw(emf, g, place.target(r), emfOnly);
             }
         };
         return render(doc, PictureDecoder.Kind.EMF, painter, bounds);
