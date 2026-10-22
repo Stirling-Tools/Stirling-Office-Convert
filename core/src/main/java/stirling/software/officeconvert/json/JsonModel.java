@@ -57,7 +57,11 @@ public final class JsonModel {
 
     private void read(JsonIn doc) throws IOException {
         root = doc.raw();
-        String format = doc.str("format", JsonWriter.FORMAT);
+        String format = doc.str("format", null);
+        if (format == null) {
+            throw new IOException("Not a Stirling Office Convert JSON document: it has no \"format\": \""
+                    + JsonWriter.FORMAT + "\" field");
+        }
         if (!JsonWriter.FORMAT.equals(format)) {
             throw new IOException("Not a Stirling Office Convert JSON document: format is \"" + format + "\"");
         }

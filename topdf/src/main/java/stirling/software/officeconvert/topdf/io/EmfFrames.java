@@ -23,6 +23,14 @@ final class EmfFrames {
     private EmfFrames() {}
 
     static Placement of(HemfHeader h) {
+        return of(h, true);
+    }
+
+    static Placement page(HemfHeader h) {
+        return of(h, false);
+    }
+
+    private static Placement of(HemfHeader h, boolean fitted) {
         try {
             Rectangle2D bounds = h.getBoundsRectangle();
             Rectangle2D frame = h.getFrameRectangle();
@@ -38,9 +46,9 @@ final class EmfFrames {
             double py = dev.getHeight() / mm.getHeight() / 100;
             Rectangle2D f = new Rectangle2D.Double(frame.getX() * px, frame.getY() * py, frame.getWidth() * px,
                     frame.getHeight() * py);
-            if (!f.contains(bounds.getCenterX(), bounds.getCenterY())
+            if (fitted && (!f.contains(bounds.getCenterX(), bounds.getCenterY())
                     || Math.abs(bounds.getWidth() / f.getWidth() - 1) > MAX_SIZE_DRIFT
-                    || Math.abs(bounds.getHeight() / f.getHeight() - 1) > MAX_SIZE_DRIFT) {
+                    || Math.abs(bounds.getHeight() / f.getHeight() - 1) > MAX_SIZE_DRIFT)) {
                 return null;
             }
             return new Placement(bounds, f, frame.getWidth() / 100 * 72 / 25.4, frame.getHeight() / 100 * 72 / 25.4);

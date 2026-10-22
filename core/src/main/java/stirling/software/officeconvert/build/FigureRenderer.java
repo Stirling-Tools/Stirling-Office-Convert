@@ -62,6 +62,7 @@ final class FigureRenderer extends PDFRenderer {
         Rectangle2D target = span;
         return new PageDrawer(parameters) {
             private boolean painting;
+            private int masks;
             private final OperatorBudget budget = new OperatorBudget("rendering a figure");
 
             @Override
@@ -82,6 +83,16 @@ final class FigureRenderer extends PDFRenderer {
             public void showTransparencyGroup(PDTransparencyGroup form) throws IOException {
                 if (budget.form()) {
                     super.showTransparencyGroup(RgbGroup.of(form));
+                }
+            }
+
+            @Override
+            protected void processSoftMask(PDTransparencyGroup group) throws IOException {
+                masks++;
+                try {
+                    super.processSoftMask(group);
+                } finally {
+                    masks--;
                 }
             }
 
@@ -186,7 +197,7 @@ final class FigureRenderer extends PDFRenderer {
                     throws IOException {
                 PDTextState state = getGraphicsState().getTextState();
                 RenderingMode mode = state.getRenderingMode();
-                if (text) {
+                if (text || masks > 0) {
                     super.showFontGlyph(textRenderingMatrix, font, code, displacement);
                 } else if (mode.isClip()) {
                     state.setRenderingMode(RenderingMode.NEITHER_CLIP);
@@ -201,7 +212,7 @@ final class FigureRenderer extends PDFRenderer {
             @Override
             protected void showType3Glyph(Matrix textRenderingMatrix, PDType3Font font, int code, Vector displacement)
                     throws IOException {
-                if (text) {
+                if (text || masks > 0) {
                     super.showType3Glyph(textRenderingMatrix, font, code, displacement);
                 }
             }

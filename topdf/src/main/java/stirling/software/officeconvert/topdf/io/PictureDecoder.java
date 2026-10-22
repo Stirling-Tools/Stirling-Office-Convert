@@ -115,6 +115,13 @@ public final class PictureDecoder {
         }
     }
 
+    public static DecodedPicture decodePage(PDDocument doc, byte[] data) throws IOException {
+        Objects.requireNonNull(doc, "doc");
+        Objects.requireNonNull(data, "data");
+        stopIfInterrupted();
+        return sniff(data) == Kind.EMF ? Metafiles.emfPage(doc, data) : decode(doc, data);
+    }
+
     public static DecodedPicture fromImage(PDDocument doc, BufferedImage image) throws IOException {
         Objects.requireNonNull(doc, "doc");
         Objects.requireNonNull(image, "image");

@@ -50,6 +50,12 @@ class RunBuilderScriptCheckTest {
         assertEquals(false, RunBuilder.unmeasured(glyph("xé́", EXACT)));
     }
 
+    @Test
+    void condensedStandInStillTakesArabicWidths() {
+        FontInfo narrow = new FontInfo("Arial Narrow", false, false, false, false, false, "Font1", true);
+        assertEquals(true, RunBuilder.arabicStandIn(glyph("ب", narrow)));
+    }
+
     private static Glyph glyph(String text, FontInfo font) {
         return new Glyph(text, 0, 5, 10, 10, 8, 2, font, 0, 0, 2.5f, false, false);
     }
