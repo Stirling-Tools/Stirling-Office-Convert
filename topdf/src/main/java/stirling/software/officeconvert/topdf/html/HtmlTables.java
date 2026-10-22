@@ -89,6 +89,11 @@ final class HtmlTables {
                 }
                 Look cellLook = rowLook.child(cellDecl, frame.width(), false);
                 int colspan = Math.min(span(td.attr("colspan"), 1), MAX_COLUMNS - col);
+                for (int c = col + 1; c < col + colspan; c++) {
+                    if (taken.get(r).contains(c)) {
+                        colspan = c - col;
+                    }
+                }
                 int rowspan = span(td.attr("rowspan"), 1);
                 rowspan = rowspan == 0 ? rowCount - r : Math.min(rowspan, rowCount - r);
                 Table.Cell cell = cell(cellDecl, colspan, frameBorder);
@@ -420,8 +425,9 @@ final class HtmlTables {
         t.indent = frame.left() + left;
         if (look.rightToLeft) {
             t.rightToLeft = true;
-            float right = Flow.length(d.get("margin-right"), look.size, frame.width());
-            t.indent = centred || inCentre || "center".equalsIgnoreCase(table.attr("align")) ? left : frame.right() + right;
+            float right = centred || inCentre || "center".equalsIgnoreCase(table.attr("align")) ? left
+                    : Flow.length(d.get("margin-right"), look.size, frame.width());
+            t.indent = frame.right() + right;
         }
     }
 

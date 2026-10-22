@@ -114,20 +114,20 @@ public final class PdfOutput implements Closeable {
 
     /** A canvas of the given size whose drawing becomes a form XObject, to draw once and place many times; the
      * margin around it is kept too, so nothing drawn a little outside the size is cut off. */
-    public PdfCanvas newFieldLook(float width, float height) throws IOException {
-        checkWritable();
-        if (!(width > 0 && height > 0)) {
-            throw new IllegalArgumentException("A field needs a positive size, was " + width + "x" + height);
-        }
-        return new PdfCanvas(this, width, height, 0, "Tx");
-    }
-
     public PdfCanvas newForm(float width, float height, float margin) throws IOException {
         checkWritable();
         if (!(width > 0 && height > 0 && margin >= 0)) {
             throw new IllegalArgumentException("A form needs a positive size, was " + width + "x" + height);
         }
         return new PdfCanvas(this, width, height, margin);
+    }
+
+    public PdfCanvas newFieldLook(float width, float height) throws IOException {
+        checkWritable();
+        if (!(width > 0 && height > 0)) {
+            throw new IllegalArgumentException("A field needs a positive size, was " + width + "x" + height);
+        }
+        return new PdfCanvas(this, width, height, 0, "Tx");
     }
 
     public int pageCount() {

@@ -29,13 +29,15 @@ final class Gradient {
 
     record Painted(byte[] jpeg, int pixelWidth, int pixelHeight) {}
 
+    private final String source;
     private final boolean radial;
     private final double angle;
     private final String corner;
     private final float[] fractions;
     private final Color[] colors;
 
-    private Gradient(boolean radial, double angle, String corner, float[] fractions, Color[] colors) {
+    private Gradient(String source, boolean radial, double angle, String corner, float[] fractions, Color[] colors) {
+        this.source = source;
         this.radial = radial;
         this.angle = angle;
         this.corner = corner;
@@ -87,7 +89,7 @@ final class Gradient {
         if (stops.size() < 2) {
             return null;
         }
-        return new Gradient(radial, angle, corner, fractions(at), stops.toArray(new Color[0]));
+        return new Gradient(s, radial, angle, corner, fractions(at), stops.toArray(new Color[0]));
     }
 
     private static Integer startsAsColor(String arg) {
@@ -181,17 +183,32 @@ final class Gradient {
         return f;
     }
 
-    Painted paint(float widthPt, float heightPt) {
-        if (!(widthPt >= 1) || !(heightPt >= 1)) {
-            return null;
-        }
+    String key(float widthPt, float heightPt) {
+        int[] px = pixels(widthPt, heightPt);
+        return source + "@" + px[0] + "x" + px[1];
+    }
+
+    static long pixelCount(float widthPt, float heightPt) {
+        int[] px = pixels(widthPt, heightPt);
+        return (long) px[0] * px[1];
+    }
+
+    private static int[] pixels(float widthPt, float heightPt) {
         float scale = PIXELS_PER_POINT;
         long px = (long) Math.ceil(widthPt * scale) * (long) Math.ceil(heightPt * scale);
         if (px > MAX_PIXELS) {
             scale *= (float) Math.sqrt((double) MAX_PIXELS / px);
         }
-        int w = Math.max(1, Math.round(widthPt * scale));
-        int h = Math.max(1, Math.round(heightPt * scale));
+        return new int[] {Math.max(1, Math.round(widthPt * scale)), Math.max(1, Math.round(heightPt * scale))};
+    }
+
+    Painted paint(float widthPt, float heightPt) {
+        if (!(widthPt >= 1) || !(heightPt >= 1)) {
+            return null;
+        }
+        int[] px = pixels(widthPt, heightPt);
+        int w = px[0];
+        int h = px[1];
         BufferedImage img = new BufferedImage(w, h, BufferedImage.TYPE_INT_RGB);
         Graphics2D g = img.createGraphics();
         try {

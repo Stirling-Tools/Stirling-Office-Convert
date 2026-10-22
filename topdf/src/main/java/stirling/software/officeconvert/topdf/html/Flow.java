@@ -23,6 +23,7 @@ import stirling.software.officeconvert.model.RunStyle;
 import stirling.software.officeconvert.model.Section;
 import stirling.software.officeconvert.model.Table;
 import stirling.software.officeconvert.sink.Links;
+import stirling.software.officeconvert.topdf.docx.BlockFlow;
 
 /** Lays nested HTML blocks out as the flat run of paragraphs and tables a page holds: margins collapse into the space
  * before the next paragraph, and padding and nesting add up to its indents. */
@@ -80,7 +81,9 @@ final class Flow {
     private int rowItemStart = -1;
     private int rowNested;
     private int avoiding;
-    private Block held;
+    private boolean inColumns;
+    private final List<Block> held = new ArrayList<>();
+    private boolean outrun;
     private Element sized;
     private float besideLeft;
     private float besideRight;
@@ -505,15 +508,14 @@ final class Flow {
             pendingBreak = true;
         }
         avoiding -= avoid ? 1 : 0;
-        if (avoiding == 0 && held != null) {
-            out.add(held);
-            held = null;
+        if (avoiding == 0) {
+            keepTogether();
         }
     }
 
     private boolean columns(Element e, Map<String, String> d, Look look, Frame frame, int depth, float left,
             float right, float top, float bottom, int fill) throws IOException {
-        if (inCell || forceInline > 0 || rowItemStart >= 0 || avoiding > 0 || held != null
+        if (inColumns || inCell || forceInline > 0 || rowItemStart >= 0 || avoiding > 0 || !held.isEmpty()
                 || clipLeft != Float.MAX_VALUE || look.rightToLeft) {
             return false;
         }
@@ -557,8 +559,10 @@ final class Flow {
         Frame inner = new Frame(0, 0, each, fill >= 0 && fill != 0xFFFFFF ? fill : -1);
         blockLook = look;
         blockFrame = inner;
+        inColumns = true;
         walkChildren(e, look, inner, depth);
         flush();
+        inColumns = false;
         Paragraph closing = sectionMark(inner);
         closing.endsSection = ctx.ending(set);
         ctx.count();
@@ -645,20 +649,30 @@ final class Flow {
     }
 
     private void emit(Block b) throws IOException {
-        if (avoiding == 0 && held == null) {
+        if (avoiding == 0 || outrun) {
             out.add(b);
             return;
         }
-        if (held instanceof Paragraph p) {
-            p.keepNext = true;
+        held.add(b);
+        if (held.size() > BlockFlow.CHAIN_LIMIT) {
+            for (Block h : held) {
+                out.add(h);
+            }
+            held.clear();
+            outrun = true;
         }
-        if (held != null) {
-            out.add(held);
+    }
+
+    private void keepTogether() throws IOException {
+        for (int i = 0; i < held.size(); i++) {
+            if (held.get(i) instanceof Paragraph p) {
+                p.keepLines = true;
+                p.keepNext |= i < held.size() - 1;
+            }
+            out.add(held.get(i));
         }
-        if (b instanceof Paragraph p) {
-            p.keepLines = true;
-        }
-        held = b;
+        held.clear();
+        outrun = false;
     }
 
     // These shade their own lines, or carry list and heading structure a box would lose
@@ -821,9 +835,10 @@ final class Flow {
         }
         if (!cell.paragraphs.isEmpty() && tall != null && tall >= 1) {
             boolean borderBox = "border-box".equalsIgnoreCase(d.getOrDefault("box-sizing", "").strip());
-            float high = tall + (borderBox ? 0 : Math.max(0, padding(d.get("padding-top"), em, frame.width())) + padBottom);
+            float high = Math.min(ctx.pageRoom(),
+                    tall + (borderBox ? 0 : Math.max(0, padding(d.get("padding-top"), em, frame.width())) + padBottom));
             if (gradient(cell, d.get("background-gradient"), width, high, padLeft)) {
-                row.height = Math.min(high, ctx.pageRoom());
+                row.height = high;
             }
         }
         t.columnWidths.add(width);

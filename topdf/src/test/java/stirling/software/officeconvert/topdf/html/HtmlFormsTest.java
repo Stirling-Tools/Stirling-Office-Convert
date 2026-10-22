@@ -170,6 +170,58 @@ class HtmlFormsTest {
     }
 
     @Test
+    void aRadioGroupCheckedTwiceShowsOnlyTheLastChecked() throws IOException {
+        Path pdf = convert(page("<input type=radio name=r value=a checked><input type=radio name=r value=b checked>"));
+        try (PDDocument doc = Loader.loadPDF(pdf.toFile())) {
+            PDRadioButton r = (PDRadioButton) doc.getDocumentCatalog().getAcroForm().getField("r");
+            assertEquals("b", r.getValue());
+            assertEquals(List.of("Off", "b"),
+                    r.getWidgets().stream().map(w -> w.getAppearanceState().getName()).toList());
+        }
+    }
+
+    @Test
+    void aPasswordIsNotStoredInTheFile() throws IOException {
+        String html = page("<input type=password name=pw value=hunter2> <input type=password name=empty placeholder=Pin>");
+        Path pdf = convert(html);
+        try (PDDocument doc = Loader.loadPDF(pdf.toFile())) {
+            PDAcroForm form = doc.getDocumentCatalog().getAcroForm();
+            assertEquals("", form.getField("pw").getValueAsString());
+            assertFalse(appearanceText(form.getField("pw")).contains("hunter2"));
+            assertTrue(appearanceText(form.getField("empty")).contains("Pin"));
+        }
+        ByteArrayOutputStream docx = new ByteArrayOutputStream();
+        HtmlDocument.write(Files.writeString(dir.resolve("pw.html"), html, StandardCharsets.UTF_8), docx);
+        assertFalse(new String(docx.toByteArray(), StandardCharsets.ISO_8859_1).contains("hunter2"));
+        assertFalse(part(docx.toByteArray(), "word/document.xml").contains("hunter2"));
+    }
+
+    @Test
+    void aLongListOfOptionsInAnyScriptStaysAField() throws IOException {
+        StringBuilder options = new StringBuilder();
+        for (int i = 0; i < 1500; i++) {
+            options.append("<option>").append("\u6f22\u5b57\u30c6\u30b9\u30c8".repeat(6)).append(i).append("</option>");
+        }
+        Path pdf = convert(page("<select name=s>" + options + "</select>"));
+        try (PDDocument doc = Loader.loadPDF(pdf.toFile())) {
+            PDAcroForm form = doc.getDocumentCatalog().getAcroForm();
+            assertNotNull(form);
+            assertEquals(1500, ((PDComboBox) form.getField("s")).getOptions().size());
+        }
+    }
+
+    @Test
+    void aDeeplyDottedNameStillConverts() throws IOException {
+        Path pdf = convert(page("<input name='" + "a.".repeat(20_000) + "b' value=x>"));
+        try (PDDocument doc = Loader.loadPDF(pdf.toFile())) {
+            PDAcroForm form = doc.getDocumentCatalog().getAcroForm();
+            long fields = java.util.stream.StreamSupport.stream(form.getFieldTree().spliterator(), false).count();
+            assertTrue(fields <= 64, fields + " fields");
+            assertEquals(1, doc.getPage(0).getAnnotations().size());
+        }
+    }
+
+    @Test
     void aPageWithoutControlsHasNoForm() throws IOException {
         Path pdf = convert(page("<p>Just text, <b>bold</b> and a <a href='https://example.com'>link</a>.</p>"));
         try (PDDocument doc = Loader.loadPDF(pdf.toFile())) {

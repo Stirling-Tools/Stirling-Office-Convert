@@ -73,10 +73,11 @@ final class HtmlContext {
         Vars.resolve(d, Vars.scope(parent.vars, d));
         Css.expandShorthands(d);
         float own = Css.opacity(d.get("opacity"));
-        if (own < 1) {
-            d.putIfAbsent("color", Css.hex(parent.color));
-        }
+        boolean inheritsColor = !d.containsKey("color");
         Css.fade(d, parent.opacity * own);
+        if (own < 1 && inheritsColor) {
+            d.put("color", Css.faded(Css.hex(parent.color), own));
+        }
         String direction = d.get("direction");
         boolean rtl = direction == null ? parent.rightToLeft : "rtl".equalsIgnoreCase(direction.strip());
         for (String box : new String[] {"margin", "padding"}) {

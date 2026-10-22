@@ -28,6 +28,8 @@ public final class JsonModel {
     static final int MAX_COLUMNS = 63;
 
     private static final Pattern STYLE_ID = Pattern.compile("[A-Za-z][A-Za-z0-9]{0,39}");
+    private static final Pattern LANGUAGE_TAG = Pattern.compile("[A-Za-z]{1,8}(-[A-Za-z0-9]{1,8}){0,8}");
+    private static final Pattern NUMBER_FORMAT = Pattern.compile("[A-Za-z][A-Za-z0-9]{0,39}");
 
     // A list marker without a font of its own takes the paragraph's
     private static final RunStyle NO_FONT = new RunStyle(null, 11, false, false, false, false, 0, -1, 0, false);
@@ -92,6 +94,9 @@ public final class JsonModel {
     private void styles(JsonIn in) throws IOException {
         if (in != null && in.has("normal")) {
             normal = run(in.obj("normal"), DEFAULT_RUN);
+            if (normal.font() == null) {
+                normal = normal.withFont(DEFAULT_RUN.font());
+            }
         }
         styles = new StyleSheet(normal);
         styles.scripts = languages(in == null ? null : in.obj("languages"));
@@ -115,9 +120,26 @@ public final class JsonModel {
             countText(root, counted, 0);
             return counted;
         }
-        return Scripts.Profile.of(new Scripts.Profile.Answers(in.str("latin", null), in.str("eastAsian", null),
-                in.str("complex", null), script(in.str("latinScript", null)), script(in.str("complexScript", null)),
+        return Scripts.Profile.of(new Scripts.Profile.Answers(language(in, "latin"), language(in, "eastAsian"),
+                language(in, "complex"), script(in.str("latinScript", null)), script(in.str("complexScript", null)),
                 in.flag("rightToLeft")));
+    }
+
+    private static String language(JsonIn in, String key) throws IOException {
+        String tag = in.str(key, null);
+        if (tag != null && !LANGUAGE_TAG.matcher(tag).matches()) {
+            throw new IOException("\"" + key + "\" is a language tag such as en-US, was \"" + tag + "\"");
+        }
+        return tag;
+    }
+
+    private static String numberFormat(JsonIn in) throws IOException {
+        String format = in.str("format", "decimal");
+        if (!NUMBER_FORMAT.matcher(format).matches()) {
+            throw new IOException("\"format\" of a list level is a Word number format such as decimal, was \""
+                    + format + "\"");
+        }
+        return format;
     }
 
     private static Character.UnicodeScript script(String name) throws IOException {
@@ -182,7 +204,7 @@ public final class JsonModel {
                     continue;
                 }
                 JsonIn lv = new JsonIn(levels.get(i), "a list level");
-                inst.definition.levels[i] = new Numbering.Level(lv.str("format", "decimal"), lv.str("text", "%" + (i + 1) + "."),
+                inst.definition.levels[i] = new Numbering.Level(numberFormat(lv), lv.str("text", "%" + (i + 1) + "."),
                         lv.has("markerStyle") ? run(lv.obj("markerStyle"), NO_FONT) : null,
                         lv.num("indentLeft", 36f * (i + 1), 0, JsonIn.MAX_LENGTH), lv.num("hanging", 18f, 0, JsonIn.MAX_LENGTH));
                 inst.starts[i] = lv.integer("start", 1, 0, 32_767);

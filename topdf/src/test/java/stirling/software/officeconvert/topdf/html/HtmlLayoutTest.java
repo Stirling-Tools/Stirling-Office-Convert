@@ -156,6 +156,30 @@ class HtmlLayoutTest {
     }
 
     @Test
+    void aBlockThatAvoidsBreaksButOutrunsAPageTakesNoMorePagesThanWithout() throws IOException {
+        StringBuilder paras = new StringBuilder();
+        for (int i = 0; i < 300; i++) {
+            paras.append("<p>Paragraph ").append(i).append("</p>");
+        }
+        int plain = lay("<html><body><div>" + paras + "</div></body></html>").pages();
+        int avoiding = lay("<html><body><div style='break-inside:avoid'>" + paras + "</div></body></html>").pages();
+        assertEquals(plain, avoiding);
+    }
+
+    @Test
+    void aCentredRightToLeftTableSitsInTheMiddleOfItsInsetBlock() throws IOException {
+        for (String dir : new String[] {"ltr", "rtl"}) {
+            String side = dir.equals("rtl") ? "right" : "left";
+            Laid l = lay("<html dir=" + dir + "><body><div style='margin-" + side + ":200px'><table border=1 "
+                    + "style='margin:0 auto'><tr><td>Mid</td></tr></table></div></body></html>");
+            Word mid = l.word("Mid");
+            float centre = (mid.left() + mid.right()) / 2;
+            float expected = dir.equals("rtl") ? (l.pageWidth() - 150) / 2 : (l.pageWidth() + 150) / 2;
+            assertEquals(expected, centre, 4f, dir);
+        }
+    }
+
+    @Test
     void aBulletListInsideANumberedOneKeepsItsBullets() throws IOException {
         Laid l = lay("<html><body><ol><li>Prepare<ol><li>Merge</li><li>Changelog</li></ol></li>"
                 + "<li>Build<ul><li>Linux</li><li>macOS</li></ul></li></ol></body></html>");
@@ -272,7 +296,14 @@ class HtmlLayoutTest {
         Word last = containing(l, "Last");
         Word after = l.word("After");
         float room = l.pageWidth() - 2 * after.left();
-        assertEquals(first.left() + 2 * (room + 18 * 0.75f) / 3, last.left(), 3f);
+        float third = first.left() + 2 * (room + 18 * 0.75f) / 3;
+        assertTrue(last.left() > third - 3 && last.right() < first.left() + room + 3, l.words().toString());
+        float pitch = (room + 18 * 0.75f) / 3;
+        assertTrue(l.words().stream().filter(w -> Math.abs(w.top() - first.top()) < 1)
+                .allMatch(w -> w.right() < first.left() + pitch - 18 * 0.75f + 3 || w.left() > first.left() + pitch - 3),
+                l.words().toString());
+        assertTrue(l.words().stream().anyMatch(w -> w.top() < first.top() + 1
+                && Math.abs(w.left() - first.left() - pitch) < 3), l.words().toString());
         float[] bottoms = new float[3];
         for (Word w : l.words()) {
             int column = Math.round((w.left() - first.left()) / ((room + 18 * 0.75f) / 3));
@@ -283,6 +314,19 @@ class HtmlLayoutTest {
         assertEquals(bottoms[0], bottoms[1], 20f);
         assertEquals(bottoms[0], bottoms[2], 20f);
         assertTrue(after.top() > bottoms[0] && after.top() < bottoms[0] + 50, l.words().toString());
+    }
+
+    @Test
+    void columnsInsideColumnsKeepTheOuterColumns() throws IOException {
+        String words = "Alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu. ".repeat(12);
+        Laid l = lay("<html><body><p>Top</p><div style=\"column-count:2\"><p>Outera " + words + "</p>"
+                + "<div style=\"column-count:3\"><p>Inner " + words + "</p></div><p>Outerb " + words + "</p></div>"
+                + "<p>Bottom</p></body></html>");
+        assertEquals(1, l.pages());
+        Word top = l.word("Top");
+        assertEquals(top.left(), containing(l, "Outera").left(), 1f);
+        assertTrue(containing(l, "Outerb").left() > l.pageWidth() / 2, l.words().toString());
+        assertTrue(containing(l, "Bottom").top() > containing(l, "Outerb").top(), l.words().toString());
     }
 
     @Test
@@ -316,6 +360,19 @@ class HtmlLayoutTest {
         assertTrue((right & 0xFF) > 200 && (right >> 16 & 0xFF) < 60, Integer.toHexString(right));
         int below = l.first().getRGB(Math.round(banner.left()), Math.round(banner.top() - 12 + 90));
         assertTrue((below >> 16 & 0xFF) > 150, "the box is as tall as its height: " + Integer.toHexString(below));
+    }
+
+    @Test
+    void aGradientTallerThanThePageStaysInsideThePageMargins() throws IOException {
+        Laid l = lay("""
+                <html><body style="margin:0"><div style="height:3000px;padding:10px;
+                background:linear-gradient(#ff0000,#0000ff)"><p>Tall</p></div></body></html>""");
+        Word tall = l.word("Tall");
+        int x = Math.round(tall.left()) + 2;
+        int margin = l.first().getRGB(x, l.first().getHeight() - 8) & 0xFFFFFF;
+        assertEquals(0xFFFFFF, margin, Integer.toHexString(margin));
+        int lastLine = l.first().getRGB(x, Math.round(l.first().getHeight() - tall.top() - 4)) & 0xFFFFFF;
+        assertTrue((lastLine & 0xFF) > 200 && (lastLine >> 16 & 0xFF) < 60, Integer.toHexString(lastLine));
     }
 
     @Test

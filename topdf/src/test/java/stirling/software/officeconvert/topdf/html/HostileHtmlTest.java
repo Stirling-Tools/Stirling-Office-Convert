@@ -55,6 +55,16 @@ class HostileHtmlTest {
     }
 
     @Test
+    @Timeout(value = 60, unit = TimeUnit.SECONDS, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
+    void attributeWordSelectorsMatchWordsAndAreNotRegexes() throws IOException {
+        String html = "<style>div[title~=" + "(.*a)".repeat(16) + "x]{color:red} p[class~=btn]{display:none}"
+                + " p[class~=\"note\"]{display:none}</style><div title=\"" + "a".repeat(40) + "\">still here</div>"
+                + "<p class=\"btn-primary\">kept</p><p class=\"big note\">hidden</p>";
+        String text = convert("words.html", html);
+        assertTrue(text.contains("still here") && text.contains("kept") && !text.contains("hidden"), text);
+    }
+
+    @Test
     @Timeout(value = 60, unit = TimeUnit.SECONDS)
     void longRowsInsidePanelsAreMeasuredOnce() throws IOException {
         String item = "<div>" + "ab ".repeat(300) + "</div>";
@@ -111,6 +121,27 @@ class HostileHtmlTest {
         assertTrue(convert("svguse.html", html).contains("after"));
         String points = "<svg viewBox=\"0 0 10 10\"><polygon points=\"" + "1,1 ".repeat(1_500_000) + "\"/></svg><p>poly</p>";
         assertTrue(convert("points.html", points).contains("poly"));
+    }
+
+    @Test
+    void gradientBackgroundsArePaintedWithinABudget() throws IOException {
+        StringBuilder same = new StringBuilder("<style>div{height:600px;background:linear-gradient(90deg,#f00,#00f)}"
+                + "</style>");
+        StringBuilder distinct = new StringBuilder("<style>div{height:600px}</style>");
+        for (int i = 0; i < 3_000; i++) {
+            same.append("<div>x</div>");
+            distinct.append("<div style=\"background:linear-gradient(90deg,#f00,#").append(String.format("%06x", i))
+                    .append(")\">x</div>");
+        }
+        same.append("<p>same end</p>");
+        distinct.append("<p>distinct end</p>");
+        assertTrue(convert("same.html", same.toString()).contains("same end"));
+        assertTrue(Files.size(dir.resolve("same.html.pdf")) < 2_000_000, "one gradient repeated is painted once");
+        Path in = Files.writeString(dir.resolve("distinct.html"), distinct.toString(), StandardCharsets.UTF_8);
+        OfficeToPdf.Result r = OfficeToPdf.convert(in, dir.resolve("distinct.pdf"),
+                OfficeToPdf.Options.defaults().timeout(Duration.ZERO));
+        assertTrue(Files.size(dir.resolve("distinct.pdf")) < 20_000_000, "painting stops at the budget");
+        assertTrue(r.warnings().stream().anyMatch(w -> w.contains("gradient")), r.warnings().toString());
     }
 
     @Test

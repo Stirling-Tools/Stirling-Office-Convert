@@ -317,7 +317,7 @@ final class ModelJson {
                     continue;
                 }
                 JsonOut lo = new JsonOut(levels).str("format", lv.format()).str("text", lv.text())
-                        .num("indentLeft", lv.indentLeft()).num("hanging", lv.hanging()).integer("start", inst.starts[l], 1);
+                        .num("indentLeft", lv.indentLeft(), 36f * (l + 1)).num("hanging", lv.hanging(), 18f).integer("start", inst.starts[l], 1);
                 if (lv.markerStyle() != null) {
                     run(lo.key("markerStyle"), lv.markerStyle());
                 }
