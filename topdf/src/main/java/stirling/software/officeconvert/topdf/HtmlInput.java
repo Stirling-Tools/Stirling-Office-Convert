@@ -21,6 +21,9 @@ final class HtmlInput {
 
     static final long MAX_BYTES = 64L << 20;
 
+    static final String PACKAGES_REFUSED = "The ZIP file is a package of separate files, which converts only when"
+            + " packages are allowed (Options.allowPackages, --allow-packages)";
+
     private HtmlInput() {}
 
     static boolean is(Path source, Format requested) throws IOException {
@@ -90,6 +93,9 @@ final class HtmlInput {
         try (HtmlPackage pkg = HtmlPackage.open(source)) {
             if (EpubBook.is(pkg)) {
                 return renderBook(pkg, sink, options, renderer);
+            }
+            if (!options.allowPackages()) {
+                throw new IOException(PACKAGES_REFUSED);
             }
             if (pkg.page() == null) {
                 throw new IOException("The ZIP file holds no HTML page");
