@@ -247,6 +247,48 @@ class HtmlAssetsTest {
     }
 
     @Test
+    void pagesLaidOutTwiceReadEachAssetOnce() throws IOException {
+        byte[] logo = png(20, 20, Color.GRAY);
+        List<String> asked = new ArrayList<>();
+        HtmlAssets web = new HtmlAssets() {
+            @Override
+            public String base() {
+                return "https://example.test/page.html";
+            }
+
+            @Override
+            public byte[] read(String reference) {
+                asked.add(reference);
+                return reference.endsWith(".css") ? utf8("p { color: red }") : logo;
+            }
+        };
+        Path page = Files.write(dir.resolve("wide.html"), utf8("<html><head><link rel='stylesheet' href='s.css'>"
+                + "</head><body><pre>" + "wide ".repeat(60) + "</pre><img src='a.png'><img src='b.png' width='800'>"
+                + "</body></html>"));
+        Pdf pdf = convert(page, options().htmlAssets(web));
+        assertEquals(2, pdf.images());
+        assertEquals(List.of("https://example.test/a.png", "https://example.test/b.png", "https://example.test/s.css"),
+                asked.stream().sorted().toList());
+    }
+
+    @Test
+    void oneLinkedSvgDrawnManyTimesIsParsedOnce() throws IOException {
+        StringBuilder svg = new StringBuilder("<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10'>");
+        while (svg.length() < (2 << 20) - 200) {
+            svg.append("<g><desc>padding padding padding padding padding</desc></g>");
+        }
+        svg.append("<rect width='10' height='10' fill='#2a6'/></svg>");
+        Map<String, byte[]> entries = new LinkedHashMap<>();
+        entries.put("index.html", utf8("<p>Icons</p>" + "<img src='icon.svg'>".repeat(1_000)));
+        entries.put("icon.svg", utf8(svg.toString()));
+        long start = System.nanoTime();
+        Pdf pdf = convert(zip("icons.zip", entries), packages());
+        long millis = (System.nanoTime() - start) / 1_000_000;
+        assertTrue(pdf.text().contains("Icons"));
+        assertTrue(millis < 8_000, millis + " ms");
+    }
+
+    @Test
     void referencesResolveInsideThePackage() {
         assertEquals("img/a.png", HtmlRefs.resolve("site/index.html", "../img/a.png"));
         assertEquals("site/img/a.png", HtmlRefs.resolve("site/index.html", "img/a.png?v=2#top"));

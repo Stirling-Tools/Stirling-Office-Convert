@@ -90,6 +90,11 @@ final class HtmlTables {
                 }
                 Look cellLook = rowLook.child(cellDecl, frame.width(), false);
                 int colspan = Math.min(span(td.attr("colspan"), 1), MAX_COLUMNS - col);
+                for (int c = col + 1; c < col + colspan; c++) {
+                    if (taken.get(r).contains(c)) {
+                        colspan = c - col;
+                    }
+                }
                 int rowspan = span(td.attr("rowspan"), 1);
                 rowspan = rowspan == 0 ? rowCount - r : Math.min(rowspan, rowCount - r);
                 Table.Cell cell = cell(cellDecl, colspan, frameBorder);

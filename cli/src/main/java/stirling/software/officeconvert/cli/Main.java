@@ -530,7 +530,8 @@ public final class Main {
                         + " --format pdf takes only its Office and text files. Nothing a document"
                         + " links to is fetched and no macro, field or formula is run. A .zip of an HTML page converts only"
                         + " with --allow-packages; --allow-local-files lets an HTML page draw the pictures and style sheets"
-                        + " in its own folder (never outside it). EPUB books always use only what they hold."
+                        + " in its own folder (never outside it). An .epub book uses only what it holds; one inside another .zip needs"
+                        + " --allow-packages."
                         + System.lineSeparator()
                         + "The output's extension picks the format: .docx, .odt, .fodt, .xml (flat ODT), .rtf, .doc (RTF content),"
                         + " .txt, .html (one file, pictures inline), .json (the document model), .pptx, .odp, .ppt, .xlsx or .ods; --format names it for a directory of outputs."
