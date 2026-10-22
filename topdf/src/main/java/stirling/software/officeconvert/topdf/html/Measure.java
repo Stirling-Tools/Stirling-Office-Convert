@@ -59,6 +59,22 @@ final class Measure {
         return widest;
     }
 
+    static float longestWord(List<Paragraph> paragraphs) {
+        float widest = 0;
+        for (Paragraph p : paragraphs) {
+            for (Inline in : p.inlines) {
+                if (in instanceof Inline.Text t) {
+                    for (String word : t.text().split("[ \u00a0\t\n]+")) {
+                        widest = Math.max(widest, width(word, t.style()));
+                    }
+                } else if (in instanceof Inline.Image img && img.picture().wrap == Picture.Wrap.INLINE) {
+                    widest = Math.max(widest, img.picture().width);
+                }
+            }
+        }
+        return widest;
+    }
+
     static float height(List<Paragraph> paragraphs, float width) {
         float total = 0;
         for (Paragraph p : paragraphs) {

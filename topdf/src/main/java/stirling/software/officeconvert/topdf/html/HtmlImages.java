@@ -165,9 +165,7 @@ final class HtmlImages {
         } catch (IOException | RuntimeException e) {
             s = null;
         }
-        if (url.length() < (1 << 20)) {
-            sources.put(url, s);
-        }
+        sources.put(url, s);
         return s;
     }
 
@@ -263,8 +261,25 @@ final class HtmlImages {
 
     private static final long MAX_TILE_PIXELS = 4_000_000L;
 
-    Picture.MediaRef png(byte[] png, int pixelWidth, int pixelHeight) throws IOException {
-        return sink.media(png, "png", pixelWidth, pixelHeight, "bgtile:" + (++added));
+    private static final long MAX_TILED_PIXELS = 64_000_000L;
+
+    private long tiledPixels;
+
+    Picture.MediaRef tile(String key) {
+        return sink.media(key);
+    }
+
+    boolean chargeTile(long pixels) {
+        tiledPixels += pixels;
+        if (tiledPixels > MAX_TILED_PIXELS) {
+            warn("Left out repeating background pictures past the first 64 million pixels of them");
+            return false;
+        }
+        return true;
+    }
+
+    Picture.MediaRef png(byte[] png, int pixelWidth, int pixelHeight, String key) throws IOException {
+        return sink.media(png, "png", pixelWidth, pixelHeight, key);
     }
 
     private LinkedSvg linkedSvg(String reference, byte[] bytes) {

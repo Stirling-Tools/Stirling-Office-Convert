@@ -50,8 +50,20 @@ final class HtmlContext {
         return placed.contains(e);
     }
 
+    private static final int MAX_NESTED_BOXES = 8;
+
+    private int boxes;
+
     boolean positions() {
-        return cascade.positions();
+        return boxes < MAX_NESTED_BOXES && cascade.positions();
+    }
+
+    void enterBox() {
+        boxes++;
+    }
+
+    void leaveBox() {
+        boxes--;
     }
 
     HtmlContext(Cascade cascade, StyleSheet styles, DocSink sink, List<String> warnings, Section page, Linked linked) {

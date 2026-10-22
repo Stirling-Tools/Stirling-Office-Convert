@@ -15,16 +15,23 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.IdentityHashMap;
 import java.util.Base64;
 import java.util.List;
 import java.util.Map;
+import java.util.Random;
+import java.util.Set;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
 import javax.imageio.ImageIO;
 
 import org.apache.pdfbox.Loader;
+import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.pdmodel.PDPage;
+import org.apache.pdfbox.pdmodel.graphics.PDXObject;
 import org.apache.pdfbox.rendering.PDFRenderer;
 import org.apache.pdfbox.text.PDFTextStripper;
 import org.apache.pdfbox.text.TextPosition;
@@ -293,5 +300,136 @@ class PositionedTest {
         assertEquals("120px auto", d.get("background-size"));
         assertEquals("#f8fafc", d.get("background-color"));
         assertEquals("none", Css.declarations("background:#fff").get("background-url"));
+    }
+
+    @Test
+    void aTransformTooLargeToMeasureIsLeftOut() throws IOException {
+        assertTrue(Transform.of("matrix(1e200,1e200,1e200,1e200,0,0)", 12, 100, 40).none());
+        Pdf p = html("huge.html", "<html><body><div style=\"transform:matrix(1e200,1e200,1e200,1e200,0,0)\">Kept</div>"
+                + "<p>After</p></body></html>");
+        assertNotNull(p.first("Kept"), p.words().toString());
+    }
+
+    @Test
+    void deeplyNestedPositionedBoxesKeepTheRestOfThePage() throws IOException {
+        for (String style : new String[] {"position:absolute;top:14pt;left:0", "transform:rotate(1deg)"}) {
+            StringBuilder nested = new StringBuilder();
+            for (int i = 0; i < 120; i++) {
+                nested.append("<div style=\"").append(style).append("\">").append(String.format("L%03d ", i));
+            }
+            Pdf p = html("deep.html", "<html><body><p>Start</p>" + nested + "</div>".repeat(120)
+                    + "<p>End</p></body></html>");
+            assertNotNull(p.first("Start"), style + " " + p.warnings());
+            assertNotNull(p.first("End"), style + " " + p.warnings());
+            long levels = p.words().stream().filter(w -> w.text().matches("L\\d{3}")).count();
+            assertTrue(levels >= 16, style + " " + levels);
+        }
+    }
+
+    @Test
+    void aRelativeShiftUpLeavesTheNextBlockWhereItWas() throws IOException {
+        Pdf moved = html("up.html", "<html><body><div>Above</div><div style=\"position:relative;top:-10pt\">Shifted</div>"
+                + "<div>Below</div></body></html>");
+        Pdf still = html("level.html", "<html><body><div>Above</div><div>Shifted</div><div>Below</div></body></html>");
+        assertEquals(still.first("Below").y(), moved.first("Below").y(), 2);
+    }
+
+    @Test
+    void aBackgroundColourShowsThroughATransparentPicture() throws IOException {
+        BufferedImage img = new BufferedImage(20, 20, BufferedImage.TYPE_INT_ARGB);
+        for (int y = 0; y < 20; y++) {
+            for (int x = 0; x < 10; x++) {
+                img.setRGB(x, y, 0xFFFAC800);
+            }
+        }
+        ByteArrayOutputStream png = new ByteArrayOutputStream();
+        ImageIO.write(img, "png", png);
+        Pdf p = html("see.html", "<html><head><style>@page{size:A4;margin:72pt}"
+                + ".box{height:100pt;background:#003366 url(" + dataUri(png.toByteArray()) + ");color:white}"
+                + "</style></head><body><div class=box>Navy</div></body></html>");
+        BufferedImage page = p.pages().get(0);
+        float y = p.first("Navy").y() + 50;
+        int navy = 0;
+        int yellow = 0;
+        for (float x = 80; x < 500; x += 3.75f) {
+            Color c = at(page, x, y);
+            navy += near(c, new Color(0, 51, 102)) ? 1 : 0;
+            yellow += near(c, new Color(250, 200, 0)) ? 1 : 0;
+        }
+        assertTrue(navy > 30 && yellow > 30, navy + " navy, " + yellow + " yellow");
+    }
+
+    @Test
+    void aLargeBackgroundSharedByBoxesIsDecodedOnce() throws IOException {
+        BufferedImage img = new BufferedImage(1600, 1600, BufferedImage.TYPE_INT_RGB);
+        Random random = new Random(7);
+        for (int y = 0; y < 1600; y++) {
+            for (int x = 0; x < 1600; x++) {
+                img.setRGB(x, y, random.nextInt(0x1000000));
+            }
+        }
+        ByteArrayOutputStream png = new ByteArrayOutputStream();
+        ImageIO.write(img, "png", png);
+        Pdf p = html("shared.html", "<html><head><style>.box{height:80pt;background:url(" + dataUri(png.toByteArray())
+                + ") no-repeat}</style></head><body>" + "<div class=box>Box</div>".repeat(8) + "</body></html>");
+        assertTrue(png.size() > 6 << 20, "size " + png.size());
+        assertTrue(p.warnings().stream().noneMatch(w -> w.contains("96 MB")), p.warnings().toString());
+    }
+
+    @Test
+    void onlyTheFirstFixedBoxesRepeatOnEveryPage() throws IOException {
+        StringBuilder boxes = new StringBuilder();
+        for (int i = 0; i < 100; i++) {
+            boxes.append("<div style=\"position:fixed;top:").append(i % 10 * 14).append("pt;left:").append(i / 10 * 45)
+                    .append("pt\">").append(String.format("F%03d", i)).append("</div>");
+        }
+        StringBuilder body = new StringBuilder();
+        for (int i = 0; i < 30; i++) {
+            body.append(para(60));
+        }
+        Pdf p = html("many-fixed.html", "<html><body>" + boxes + body + "</body></html>");
+        assertTrue(p.pages().size() >= 3, "pages: " + p.pages().size());
+        assertEquals(p.pages().size(), p.all("F000").size());
+        assertEquals(p.pages().size(), p.all("F063").size());
+        assertEquals(1, p.all("F064").size());
+        assertEquals(1, p.all("F099").size());
+        assertTrue(p.warnings().stream().anyMatch(w -> w.contains("repeated on every page")), p.warnings().toString());
+    }
+
+    @Test
+    void boxesWithTheSameRepeatingBackgroundShareOnePicture() throws IOException {
+        BufferedImage img = new BufferedImage(40, 40, BufferedImage.TYPE_INT_RGB);
+        Random random = new Random(3);
+        for (int y = 0; y < 40; y++) {
+            for (int x = 0; x < 40; x++) {
+                img.setRGB(x, y, random.nextInt(0x1000000));
+            }
+        }
+        ByteArrayOutputStream png = new ByteArrayOutputStream();
+        ImageIO.write(img, "png", png);
+        Path in = Files.writeString(dir.resolve("cards.html"), "<html><head><style>.card{height:300pt;background:url("
+                + dataUri(png.toByteArray()) + ");background-size:20pt 20pt}</style></head><body>"
+                + "<div class=card>Card</div>".repeat(40) + "</body></html>");
+        Path out = dir.resolve("cards.pdf");
+        OfficeToPdf.Result r = OfficeToPdf.convert(in, out, OfficeToPdf.Options.defaults());
+        Set<Object> pictures = Collections.newSetFromMap(new IdentityHashMap<>());
+        try (PDDocument doc = Loader.loadPDF(out.toFile())) {
+            for (PDPage page : doc.getPages()) {
+                for (COSName name : page.getResources().getXObjectNames()) {
+                    PDXObject x = page.getResources().getXObject(name);
+                    pictures.add(x.getCOSObject());
+                }
+            }
+            assertTrue(doc.getNumberOfPages() >= 10, "pages " + doc.getNumberOfPages());
+        }
+        assertEquals(1, pictures.size(), r.warnings().toString());
+    }
+
+    @Test
+    void anAbsoluteBoxInANarrowBlockKeepsItsWordsWhole() throws IOException {
+        Pdf p = html("narrow.html", "<html><body><div style=\"position:relative;width:40px\">"
+                + "<div style=\"position:absolute;top:0;left:0\">Overflowing caption</div></div></body></html>");
+        assertNotNull(p.first("Overflowing"), p.words().toString());
+        assertNotNull(p.first("caption"), p.words().toString());
     }
 }

@@ -70,6 +70,9 @@ record Transform(float rotation, float scaleX, float scaleY, float dx, float dy)
         if (sy < 0) {
             sy = -sy;
         }
+        if (!Double.isFinite(sy)) {
+            return NONE;
+        }
         return new Transform(round(rot), clamp((float) sx), clamp((float) sy), shift(e), shift(f));
     }
 

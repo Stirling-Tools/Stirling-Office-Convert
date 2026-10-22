@@ -96,6 +96,12 @@ final class Backgrounds {
 
     private static Picture tiled(HtmlImages.Source src, Look look, HtmlImages images, float[] at, float[] tile,
             float width, float height, boolean[] repeat) throws IOException {
+        String key = "bgtile:" + src.key() + "|" + tile[0] + "x" + tile[1] + "|" + at[0] + "," + at[1] + "|" + width
+                + "x" + height + "|" + repeat[0] + repeat[1] + "|" + look.color;
+        Picture.MediaRef known = images.tile(key);
+        if (known != null) {
+            return new Picture(known, width, height);
+        }
         BufferedImage pixels = images.pixels(src, tile[0], tile[1], look);
         if (pixels == null) {
             return null;
@@ -111,7 +117,7 @@ final class Backgrounds {
         float startY = repeat[1] ? at[1] - (float) Math.ceil(at[1] / tile[1]) * tile[1] : at[1];
         int across = repeat[0] ? (int) Math.ceil((width - startX) / tile[0]) : 1;
         int down = repeat[1] ? (int) Math.ceil((height - startY) / tile[1]) : 1;
-        if ((long) across * down > MAX_TILES) {
+        if ((long) across * down > MAX_TILES || !images.chargeTile((long) cw * ch)) {
             return null;
         }
         BufferedImage canvas = new BufferedImage(cw, ch, BufferedImage.TYPE_INT_ARGB);
@@ -134,7 +140,7 @@ final class Backgrounds {
         if (!ImageIO.write(canvas, "png", png)) {
             return null;
         }
-        return new Picture(images.png(png.toByteArray(), cw, ch), width, height);
+        return new Picture(images.png(png.toByteArray(), cw, ch, key), width, height);
     }
 
     static float[] size(String v, Look look, HtmlImages.Source src, float width, float height) {

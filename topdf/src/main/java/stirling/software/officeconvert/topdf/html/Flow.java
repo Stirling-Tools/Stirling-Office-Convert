@@ -105,10 +105,22 @@ final class Flow {
         children(body, look, frame);
     }
 
+    private static final int MAX_FIXED = 64;
+
+    private static final int MAX_FIXED_TEXT = 8_000;
+
     static List<Inline> fixedLayer(HtmlContext ctx, Element body, Look look, Section page) throws IOException {
-        List<Positioned.Item> items = Positioned.fixed(ctx, body, look, page.pageWidth - page.marginLeft
-                - page.marginRight);
-        for (Positioned.Item item : items) {
+        List<Positioned.Item> items = new ArrayList<>();
+        int text = 0;
+        for (Positioned.Item item : Positioned.fixed(ctx, body, look, page.pageWidth - page.marginLeft
+                - page.marginRight)) {
+            text += Layout.text(item.element(), MAX_FIXED_TEXT + 1).length();
+            if (items.size() >= MAX_FIXED || text > MAX_FIXED_TEXT) {
+                ctx.warn("Only the first boxes fixed to the page are repeated on every page; the rest are drawn once,"
+                        + " where they stand");
+                break;
+            }
+            items.add(item);
             ctx.place(item.element());
         }
         Positioned.Hung hung = Positioned.hang(ctx, items, page.marginLeft, page.marginTop,
@@ -170,7 +182,8 @@ final class Flow {
         if (look.hidden || Hidden.visually(d, look.size)) {
             return;
         }
-        if (Positioned.outOfFlow(d) && !tag.equals("body") && !tag.equals("html") && ctx.positions()) {
+        if (Positioned.outOfFlow(d) && !tag.equals("body") && !tag.equals("html")
+                && (ctx.positions() || ctx.placed(e))) {
             if (!ctx.placed(e)) {
                 ctx.place(e);
                 staticBox(e, d, look, frame, depth);
@@ -238,14 +251,17 @@ final class Flow {
         page(d.get("page"), frame);
         float em = look.size;
         Transform turn = forceInline > 0 ? Transform.NONE : Transform.of(d.get("transform"), em, frame.width(), 0);
-        if (!turn.shiftOnly()) {
+        if (!turn.shiftOnly() && ctx.positions()) {
             lifted(e, d, look, frame, depth);
             return;
         }
         float[] shift = relativeShift(d, look, frame, turn);
+        float lowered = 0;
         if (shift[0] != 0 || shift[1] != 0) {
             frame = new Frame(frame.left() + shift[0], frame.right() - shift[0], frame.width(), frame.shading());
+            float before = pendingSpace;
             pendingSpace = Math.max(0, pendingSpace + shift[1]);
+            lowered = pendingSpace - before;
         }
         List<Positioned.Item> absolutes = Positioned.contains(d) && ctx.positions() && !tag.equals("body")
                 && !tag.equals("html") ? Positioned.absolutes(ctx, e, look, frame.width()) : List.of();
@@ -255,8 +271,8 @@ final class Flow {
         try {
             contained(e, tag, d, look, frame, depth, absolutes);
         } finally {
-            if (shift[1] != 0) {
-                pendingSpace = Math.max(0, pendingSpace - shift[1]);
+            if (lowered != 0) {
+                pendingSpace = Math.max(0, pendingSpace - lowered);
             }
         }
     }
@@ -475,11 +491,8 @@ final class Flow {
             return;
         }
         if (!behind.isEmpty() && (covers(d) || boxHeight > 0) && cell.shading >= 0) {
-            if (!covers(d)) {
-                behind = new ArrayList<>(behind);
-                behind.add(0, new Inline.Shape(-padLeft, 0, width, boxHeight, cell.shading, -1, 0, false, false, true,
-                        0));
-            }
+            behind = new ArrayList<>(behind);
+            behind.add(0, new Inline.Shape(-padLeft, 0, width, drawnHeight, cell.shading, -1, 0, false, false, true, 0));
             cell.shading = -1;
         }
         if (!hung.bottom().isEmpty()) {

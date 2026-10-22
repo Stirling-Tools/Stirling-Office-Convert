@@ -111,6 +111,16 @@ final class Positioned {
 
     static Placed lay(HtmlContext ctx, Item item, float cbWidth, float cbHeight, boolean inFlow, int depth)
             throws IOException {
+        ctx.enterBox();
+        try {
+            return box(ctx, item, cbWidth, cbHeight, inFlow, depth);
+        } finally {
+            ctx.leaveBox();
+        }
+    }
+
+    private static Placed box(HtmlContext ctx, Item item, float cbWidth, float cbHeight, boolean inFlow, int depth)
+            throws IOException {
         ctx.count();
         Element e = item.element();
         Map<String, String> d = item.declared();
@@ -169,7 +179,8 @@ final class Positioned {
         Flow inner = new Flow(ctx, b -> paragraphs.add((Paragraph) b), true);
         inner.children(e, look, new Flow.Frame(0, 0, room, -1), depth);
         float contentW = cssW != null || inFlow || left != null && right != null ? room
-                : Math.min(room, Measure.unwrapped(paragraphs) * 1.05f + 2);
+                : Math.max(Math.min(room, Measure.unwrapped(paragraphs) * 1.05f + 2),
+                        Math.min(Measure.longestWord(paragraphs) * 1.05f + 2, 14_400));
         float contentH;
         if (cssH != null) {
             contentH = cssH;
