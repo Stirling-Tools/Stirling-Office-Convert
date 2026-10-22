@@ -25,6 +25,8 @@ final class ChartRecords {
 
     static final int MAX_POINTS = 4000;
 
+    static final int MAX_TEXT_CHARS = 4096;
+
     private static final int CHART = 0x1002, SERIES = 0x1003, DATA_FORMAT = 0x1006, LINE_FORMAT = 0x1007,
             MARKER_FORMAT = 0x1009, AREA_FORMAT = 0x100A, SERIES_TEXT = 0x100D, CHART_FORMAT = 0x1014,
             LEGEND = 0x1015, BAR = 0x1017, LINE = 0x1018, PIE = 0x1019, AREA = 0x101A, SCATTER = 0x101B,
@@ -256,9 +258,9 @@ final class ChartRecords {
                 Object v = cells.get(i);
                 if (v instanceof Double d) {
                     s.xs.put(i, d);
-                    s.categories.put(i, fonts.number(d, -1, s.categoryFormat));
+                    s.categories.put(i, capped(fonts.number(d, -1, s.categoryFormat)));
                 } else if (v instanceof String t) {
-                    s.categories.put(i, t);
+                    s.categories.put(i, capped(t));
                 }
             }
         }
@@ -458,10 +460,18 @@ final class ChartRecords {
             }
         } else if (value instanceof NumberRecord n) {
             s.xs.put(row, n.getValue());
-            s.categories.put(row, fonts.number(n.getValue(), n.getXFIndex(), s.categoryFormat));
+            s.categories.put(row, capped(fonts.number(n.getValue(), n.getXFIndex(), s.categoryFormat)));
         } else {
-            s.categories.put(row, (String) value);
+            s.categories.put(row, capped((String) value));
         }
+    }
+
+    private static String capped(String text) {
+        if (text.length() <= MAX_TEXT_CHARS) {
+            return text;
+        }
+        int end = Character.isHighSurrogate(text.charAt(MAX_TEXT_CHARS - 1)) ? MAX_TEXT_CHARS - 1 : MAX_TEXT_CHARS;
+        return text.substring(0, end);
     }
 
     BiffChart build(List<Integer> autoFills, List<Integer> autoLines) {
