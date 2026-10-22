@@ -7,7 +7,7 @@ import java.util.Map;
 
 import stirling.software.officeconvert.topdf.HtmlAssets;
 
-final class Linked {
+final class Linked implements HtmlAssets {
 
     static final long MAX_TOTAL_BYTES = 192L << 20;
 
@@ -27,7 +27,8 @@ final class Linked {
         return assets == HtmlAssets.NONE;
     }
 
-    String base() {
+    @Override
+    public String base() {
         String b = assets.base();
         return b == null ? "" : b;
     }
@@ -36,7 +37,8 @@ final class Linked {
         return exhausted;
     }
 
-    byte[] read(String reference) {
+    @Override
+    public byte[] read(String reference) {
         if (reference == null || none()) {
             return null;
         }

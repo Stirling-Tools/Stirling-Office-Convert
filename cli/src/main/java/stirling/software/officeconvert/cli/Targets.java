@@ -10,8 +10,6 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
-import stirling.software.officeconvert.topdf.OfficeToPdf;
-
 final class Targets {
 
     private Targets() {}
@@ -53,7 +51,7 @@ final class Targets {
     }
 
     private static String extension(Path in, String format) {
-        return in.getFileName() != null && OfficeToPdf.Format.recognises(in) ? "pdf" : format;
+        return in.getFileName() != null && Main.officeOrPage(in) ? "pdf" : format;
     }
 
     private static Path target(Path in, Path output, boolean many, String format) {

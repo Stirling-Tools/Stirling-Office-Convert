@@ -21,6 +21,9 @@ final class HtmlInput {
 
     static final long MAX_BYTES = 64L << 20;
 
+    static final String PACKAGES_REFUSED = "The ZIP file is a package of separate files, which converts only when"
+            + " packages are allowed (Options.allowPackages, --allow-packages)";
+
     private HtmlInput() {}
 
     static boolean is(Path source, Format requested) throws IOException {
@@ -91,6 +94,9 @@ final class HtmlInput {
             if (EpubBook.is(pkg)) {
                 return renderBook(pkg, sink, options, renderer);
             }
+            if (!options.allowPackages()) {
+                throw new IOException(PACKAGES_REFUSED);
+            }
             if (pkg.page() == null) {
                 throw new IOException("The ZIP file holds no HTML page");
             }
@@ -126,12 +132,13 @@ final class HtmlInput {
         if (bytes > MAX_BYTES) {
             throw new IOException("The HTML file is larger than " + (MAX_BYTES >> 20) + " MB");
         }
+        HtmlAssets once = HtmlDocument.readOnce(assets);
         Path pkg = Files.createTempFile("office-to-pdf-", ".docx");
         try {
-            HtmlDocument.Laid laid = lay(source, pkg, options, bytes, 1f, assets);
+            HtmlDocument.Laid laid = lay(source, pkg, options, bytes, 1f, once);
             if (laid.fit() < 0.99f) {
                 // content wider than the page: laid out again on larger paper, then shrunk to fit as browsers print
-                laid = lay(source, pkg, options, bytes, laid.fit(), assets);
+                laid = lay(source, pkg, options, bytes, laid.fit(), once);
             }
             OfficeToPdf.stopIfInterrupted();
             if (laid.fit() >= 0.99f) {

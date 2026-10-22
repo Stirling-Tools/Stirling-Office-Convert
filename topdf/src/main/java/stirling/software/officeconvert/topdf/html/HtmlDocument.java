@@ -57,6 +57,10 @@ public final class HtmlDocument {
         return lay(source, out, fonts, zoom, HtmlAssets.NONE);
     }
 
+    public static HtmlAssets readOnce(HtmlAssets assets) {
+        return assets instanceof Linked linked ? linked : new Linked(assets);
+    }
+
     public static Laid lay(Path source, OutputStream out, FontLibrary fonts, float zoom, HtmlAssets assets)
             throws IOException {
         try (DocxWriter writer = new DocxWriter(out)) {
@@ -84,7 +88,7 @@ public final class HtmlDocument {
                 Map<String, Boolean> known = new HashMap<>();
                 Look.drawable(f -> known.computeIfAbsent(f, k -> installed(fonts, k)));
             }
-            return convert(source, sink, Math.max(LEAST_FIT, Math.min(1f, zoom)), new Linked(assets));
+            return convert(source, sink, Math.max(LEAST_FIT, Math.min(1f, zoom)), (Linked) readOnce(assets));
         } finally {
             Css.clearRootSize();
             Look.clearDrawable();
