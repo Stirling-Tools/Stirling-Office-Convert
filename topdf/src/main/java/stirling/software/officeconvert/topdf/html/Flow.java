@@ -22,6 +22,7 @@ import stirling.software.officeconvert.model.RunStyle;
 import stirling.software.officeconvert.model.Section;
 import stirling.software.officeconvert.model.Table;
 import stirling.software.officeconvert.sink.Links;
+import stirling.software.officeconvert.topdf.docx.BlockFlow;
 
 /** Lays nested HTML blocks out as the flat run of paragraphs and tables a page holds: margins collapse into the space
  * before the next paragraph, and padding and nesting add up to its indents. */
@@ -44,8 +45,6 @@ final class Flow {
     private record ListLevel(Numbering.Instance list, int level, boolean bullets) {}
 
     static final int MAX_DEPTH = 200;
-
-    private static final int MOST_KEPT = 24;
 
     // Tabs past this many in a row are past the edge of any page, and each costs the layout memory
     private static final int MAX_TABS_IN_A_ROW = 32;
@@ -449,7 +448,7 @@ final class Flow {
             return;
         }
         held.add(b);
-        if (held.size() > MOST_KEPT) {
+        if (held.size() > BlockFlow.CHAIN_LIMIT) {
             for (Block h : held) {
                 out.add(h);
             }
