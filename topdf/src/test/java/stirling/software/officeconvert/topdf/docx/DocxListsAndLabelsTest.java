@@ -16,6 +16,7 @@ import org.apache.pdfbox.text.TextPosition;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import stirling.software.officeconvert.topdf.testing.Allocation;
 import stirling.software.officeconvert.topdf.testing.TestFonts;
 
 class DocxListsAndLabelsTest {
@@ -136,6 +137,50 @@ class DocxListsAndLabelsTest {
         assertEquals(1, r.word("Contents").page());
         assertEquals(1, r.word("Entry0").page());
         assertEquals(r.word("Entry69").page(), r.word("After").page());
+    }
+
+    @Test
+    void aLabelTextSharedByEveryPointIsDrawnWithinABudget() throws IOException {
+        StringBuilder points = new StringBuilder();
+        for (int i = 0; i < 4_000; i++) {
+            points.append("<c:pt idx=\"").append(i).append("\"><c:v>").append(i % 7 + 1).append("</c:v></c:pt>");
+        }
+        String chart = "<c:chartSpace xmlns:c=\"http://schemas.openxmlformats.org/drawingml/2006/chart\""
+                + " xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><c:chart><c:autoTitleDeleted"
+                + " val=\"1\"/><c:plotArea><c:layout/><c:barChart><c:barDir val=\"col\"/><c:grouping val=\"clustered\"/>"
+                + "<c:ser><c:idx val=\"0\"/><c:order val=\"0\"/><c:dLbls><c:tx><c:rich><a:bodyPr/>"
+                + "<a:p><a:r><a:t>Tall</a:t></a:r></a:p>" + "<a:p><a:r><a:t>x</a:t></a:r></a:p>".repeat(4_000)
+                + "</c:rich></c:tx><c:showVal val=\"1\"/></c:dLbls><c:val><c:numRef><c:numCache><c:ptCount"
+                + " val=\"4000\"/>" + points + "</c:numCache></c:numRef></c:val></c:ser><c:axId val=\"1\"/>"
+                + "<c:axId val=\"2\"/></c:barChart><c:catAx><c:axId val=\"1\"/><c:crossAx val=\"2\"/></c:catAx>"
+                + "<c:valAx><c:axId val=\"2\"/><c:crossAx val=\"1\"/></c:valAx></c:plotArea></c:chart></c:chartSpace>";
+        DocxDoc doc = new DocxDoc().chart("chart1.xml", "rIdChart", chart)
+                .body("<w:p>" + DocxDoc.chartRun("rIdChart") + "</w:p><w:p><w:r><w:t>After</w:t></w:r></w:p>");
+        Allocation.Measured m = Allocation.measure(() -> DocxDoc.render(dir, "labels", doc.bytes()));
+        assertEquals(null, m.failure());
+        assertTrue(m.megabytes() < 1_500, m.megabytes() + " MB allocated");
+    }
+
+    @Test
+    void aLongSeparatorSharedByEveryPointIsDrawnWithinABudget() throws IOException {
+        StringBuilder points = new StringBuilder();
+        for (int i = 0; i < 4_000; i++) {
+            points.append("<c:pt idx=\"").append(i).append("\"><c:v>").append(i % 7 + 1).append("</c:v></c:pt>");
+        }
+        String chart = "<c:chartSpace xmlns:c=\"http://schemas.openxmlformats.org/drawingml/2006/chart\""
+                + " xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><c:chart><c:autoTitleDeleted"
+                + " val=\"1\"/><c:plotArea><c:layout/><c:barChart><c:barDir val=\"col\"/><c:grouping val=\"clustered\"/>"
+                + "<c:ser><c:idx val=\"0\"/><c:order val=\"0\"/><c:tx><c:v>Name</c:v></c:tx><c:dLbls><c:separator>"
+                + "x".repeat(1_000_000) + "</c:separator><c:showVal val=\"1\"/><c:showSerName val=\"1\"/></c:dLbls>"
+                + "<c:val><c:numRef><c:numCache><c:ptCount val=\"4000\"/>" + points + "</c:numCache></c:numRef></c:val>"
+                + "</c:ser><c:axId val=\"1\"/><c:axId val=\"2\"/></c:barChart><c:catAx><c:axId val=\"1\"/><c:crossAx"
+                + " val=\"2\"/></c:catAx><c:valAx><c:axId val=\"2\"/><c:crossAx val=\"1\"/></c:valAx></c:plotArea>"
+                + "</c:chart></c:chartSpace>";
+        DocxDoc doc = new DocxDoc().chart("chart1.xml", "rIdChart", chart)
+                .body("<w:p>" + DocxDoc.chartRun("rIdChart") + "</w:p><w:p><w:r><w:t>After</w:t></w:r></w:p>");
+        Allocation.Measured m = Allocation.measure(() -> DocxDoc.render(dir, "separator", doc.bytes()));
+        assertEquals(null, m.failure());
+        assertTrue(m.megabytes() < 1_500, m.megabytes() + " MB allocated");
     }
 
     private static Map<String, String> fonts(DocxDoc.Rendered r) throws IOException {

@@ -61,6 +61,10 @@ final class ChartPainter {
 
     private final List<Op> ops;
 
+    static final int MAX_LABEL_LINES = 100_000;
+
+    private int labelLinesLeft = MAX_LABEL_LINES;
+
     private float chartW;
 
     private float chartH;
@@ -388,6 +392,10 @@ final class ChartPainter {
         float lh = lineHeight(s);
         float at = baseline - (lines.length - 1) * lh / 2;
         for (String line : lines) {
+            if (labelLinesLeft <= 0) {
+                return;
+            }
+            labelLinesLeft--;
             float lw = width(s, line);
             float tx = align == 0 ? x - lw / 2 : align < 0 ? x : x - lw;
             ops.add(new Op.Text(tx, at, line, s));
@@ -491,7 +499,7 @@ final class ChartPainter {
         if (labels.percent()) {
             parts.add(Math.round(share * 100) + "%");
         }
-        return String.join(separator, parts);
+        return ChartReader.clipped(String.join(separator, parts));
     }
 
     private record Scale(double min, double max, double unit) {
