@@ -381,7 +381,7 @@ public final class Main {
         return file.getFileName() != null && OfficeToPdf.Format.recognises(file);
     }
 
-    private static boolean officeOrPage(Path file) {
+    static boolean officeOrPage(Path file) {
         String name = file.getFileName() == null ? "" : file.getFileName().toString().toLowerCase(Locale.ROOT);
         return isOffice(file) || name.endsWith(".zip") || name.endsWith(".epub");
     }
