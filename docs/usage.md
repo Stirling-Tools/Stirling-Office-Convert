@@ -558,9 +558,10 @@ Kindle and Mobipocket books (`.mobi .azw .prc`, `.pdb` PalmDOC text, and KF8 `.a
 uncompressed, PalmDOC and HUFF/CDIC text; a KF8 book (or the KF8 half of a combined `.mobi`) is rebuilt from its
 skeleton and fragment tables with its style sheet flows, `kindle:embed` pictures and `kindle:pos` links; an older
 Mobipocket book keeps its `filepos` links, page breaks and pictures. The title, author and cover come from the EXTH
-metadata. FictionBook 2 (`.fb2`, or a `.fbz`/`.fb2.zip` holding one) is read with sections as chapters, its titles,
+metadata. FictionBook 2 (`.fb2`, or a `.fbz`/`.fb2.zip` holding one; any other `.zip` holding one only with
+`--allow-packages`) is read with sections as chapters, its titles,
 epigraphs, poems, citations, tables, embedded pictures, cover and notes; a DOCTYPE is refused. eBooks are limited to
-256 MB (Kindle) and 128 MB (FictionBook) with 64 MB of text. HTML files are limited to 64 MB, and parsing, the cascade, SVG
+256 MB (Kindle) and 128 MB (FictionBook) with 64 MB of text. An eBook only ever draws what the book file holds. HTML files are limited to 64 MB, and parsing, the cascade, SVG
 painting and nesting each work within fixed budgets so a hostile page cannot hang or exhaust the converter.
 
 JSON (`.json`) is the document model that PDF to JSON writes ([format](json-format.md)), hand written or edited;

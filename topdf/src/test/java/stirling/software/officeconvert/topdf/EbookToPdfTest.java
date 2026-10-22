@@ -435,15 +435,38 @@ class EbookToPdfTest {
         assertTrue(html.contains("href=\"#epub-c0-n1\"") && html.contains("id=\"epub-c0-n1\""), html);
     }
 
-    @Test
-    void zippedFictionBookReads() throws IOException {
-        Path in = dir.resolve("book.fb2.zip");
+    private Path zippedFictionBook(String name) throws IOException {
+        Path in = dir.resolve(name);
         try (OutputStream os = Files.newOutputStream(in); ZipOutputStream zip = new ZipOutputStream(os)) {
             zip.putNextEntry(new ZipEntry("book.fb2"));
             zip.write(utf8(fb2("")));
             zip.closeEntry();
         }
-        assertTrue(convert(in).text().contains("The footnote text"));
+        return in;
+    }
+
+    @Test
+    void zippedFictionBookReads() throws IOException {
+        assertTrue(convert(zippedFictionBook("book.fb2.zip")).text().contains("The footnote text"));
+        assertTrue(convert(zippedFictionBook("book.fbz")).text().contains("The footnote text"));
+    }
+
+    @Test
+    void aFictionBookInAnyOtherZipIsAPackage() throws IOException {
+        Path in = zippedFictionBook("library.zip");
+        IOException e = assertThrows(IOException.class,
+                () -> OfficeToPdf.convert(in, dir.resolve("library.pdf"), OPTIONS));
+        assertTrue(e.getMessage().contains("--allow-packages"), e.getMessage());
+        IOException streamed = assertThrows(IOException.class, () -> {
+            try (var bytes = Files.newInputStream(in)) {
+                OfficeToPdf.convert(bytes, Format.HTML, new ByteArrayOutputStream(), OPTIONS);
+            }
+        });
+        assertTrue(streamed.getMessage().contains("--allow-packages"), streamed.getMessage());
+        OfficeToPdf.convert(in, dir.resolve("library.pdf"), OPTIONS.allowPackages(true));
+        try (PDDocument doc = Loader.loadPDF(dir.resolve("library.pdf").toFile())) {
+            assertTrue(new PDFTextStripper().getText(doc).contains("The footnote text"));
+        }
     }
 
     @Test

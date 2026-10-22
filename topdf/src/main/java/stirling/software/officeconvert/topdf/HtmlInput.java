@@ -114,7 +114,8 @@ final class HtmlInput {
             if (EpubBook.is(pkg)) {
                 return renderBook(pkg, sink, options, renderer);
             }
-            String fb2 = pkg.page() == null ? fictionBook(pkg) : null;
+            String fb2 = pkg.page() == null && (options.allowPackages() || compressedFictionBook(source))
+                    ? fictionBook(pkg) : null;
             if (fb2 != null) {
                 byte[] xml = pkg.read(fb2);
                 if (xml == null) {
@@ -171,6 +172,12 @@ final class HtmlInput {
         } finally {
             ticket.close();
         }
+    }
+
+    private static boolean compressedFictionBook(Path source) {
+        Path name = source.getFileName();
+        String n = name == null ? "" : name.toString().toLowerCase(Locale.ROOT);
+        return n.endsWith(".fbz") || n.endsWith(".fb2.zip");
     }
 
     private static String fictionBook(HtmlPackage pkg) {
