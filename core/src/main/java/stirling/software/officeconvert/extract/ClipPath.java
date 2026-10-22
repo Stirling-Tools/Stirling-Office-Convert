@@ -2,6 +2,7 @@ package stirling.software.officeconvert.extract;
 
 import java.awt.geom.GeneralPath;
 import java.awt.geom.Path2D;
+import java.awt.geom.Point2D;
 
 import org.apache.pdfbox.pdmodel.graphics.state.PDGraphicsState;
 
@@ -32,6 +33,16 @@ final class ClipPath {
             path.moveTo(x3, y3);
         } else {
             path.curveTo(x1, y1, x2, y2, x3, y3);
+        }
+        segments++;
+    }
+
+    void curveFromCurrent(float x2, float y2, float x3, float y3) {
+        Point2D current = path.getCurrentPoint();
+        if (current == null) {
+            path.moveTo(x3, y3);
+        } else {
+            path.curveTo((float) current.getX(), (float) current.getY(), x2, y2, x3, y3);
         }
         segments++;
     }
