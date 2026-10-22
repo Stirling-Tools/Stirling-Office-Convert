@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -345,6 +346,9 @@ final class Flow {
         left += narrow[0];
         right += narrow[1];
         int fill = fill(d, look);
+        if (columns(e, d, look, frame, depth, left, right, top, bottom, fill)) {
+            return;
+        }
         measureFixed(e, d, look, frame, left, right);
         Frame inner = frame.inner(left, right, fill);
         Layout.Plan plan = forceInline > 0 ? null : Layout.of(e, d, look, inner.width(), ctx, inCell);
@@ -434,6 +438,112 @@ final class Flow {
             out.add(held);
             held = null;
         }
+    }
+
+    private boolean columns(Element e, Map<String, String> d, Look look, Frame frame, int depth, float left,
+            float right, float top, float bottom, int fill) throws IOException {
+        if (inCell || forceInline > 0 || rowItemStart >= 0 || avoiding > 0 || held != null
+                || clipLeft != Float.MAX_VALUE || look.rightToLeft) {
+            return false;
+        }
+        float width = frame.width() - left - right;
+        float gap = columnGap(d, look);
+        int n = columnCount(d, look, width, gap);
+        float each = n < 2 ? 0 : (width - gap * (n - 1)) / n;
+        if (n < 2 || each < 36) {
+            return false;
+        }
+        float em = look.size;
+        Section base = ctx.currentSection();
+        float before = Math.max(pendingSpace, top);
+        boolean newPage = pendingBreak && !sectionStarted;
+        if (before > 0 || newPage) {
+            Paragraph space = sectionMark(frame);
+            space.lineHeight = Math.max(1, Math.min(before, 400));
+            space.inlines.add(new Inline.Text("\u00a0", look.run().withSize(1), null, -1));
+            space.pageBreakBefore = newPage;
+            emit(space);
+        }
+        Paragraph opening = sectionMark(frame);
+        opening.endsSection = ctx.ending(base);
+        pendingSpace = padding(d.get("padding-top"), em, frame.width());
+        pendingBreak = false;
+        sectionStarted = false;
+        ctx.count();
+        emit(opening);
+        ctx.continuing(true);
+        Section set = base.copy();
+        set.marginLeft += frame.left() + left;
+        set.marginRight += frame.right() + right;
+        for (int i = 0; i < n; i++) {
+            set.columns.add(new float[] {each, i + 1 < n ? gap : 0});
+        }
+        set.columnRule = columnRule(d) > 0;
+        Look outerLook = blockLook;
+        Frame outerFrame = blockFrame;
+        Frame inner = new Frame(0, 0, each, fill >= 0 && fill != 0xFFFFFF ? fill : -1);
+        blockLook = look;
+        blockFrame = inner;
+        walkChildren(e, look, inner, depth);
+        flush();
+        Paragraph closing = sectionMark(inner);
+        closing.endsSection = ctx.ending(set);
+        ctx.count();
+        emit(closing);
+        blockLook = outerLook;
+        blockFrame = outerFrame;
+        pendingSpace = bottom + padding(d.get("padding-bottom"), em, frame.width());
+        return true;
+    }
+
+    private Paragraph sectionMark(Frame frame) {
+        Paragraph mark = new Paragraph();
+        mark.indentLeft = frame.left();
+        mark.lineRule = Paragraph.LineRule.EXACT;
+        mark.lineHeight = 1;
+        return mark;
+    }
+
+    private static float columnGap(Map<String, String> d, Look look) {
+        String v = d.getOrDefault("column-gap", "normal").strip();
+        Float pt = v.equalsIgnoreCase("normal") ? null : Css.length(v, look.size, 0);
+        return pt == null ? look.size : Math.max(0, Math.min(pt, 144));
+    }
+
+    static int columnCount(Map<String, String> d, Look look, float width, float gap) {
+        Integer count = null;
+        Float least = null;
+        for (String token : Css.tokens(d.getOrDefault("columns", ""))) {
+            if (token.matches("[0-9]{1,3}")) {
+                count = Integer.parseInt(token);
+            } else if (!token.equalsIgnoreCase("auto")) {
+                least = Css.length(token, look.size, 0);
+            }
+        }
+        String c = d.getOrDefault("column-count", "").strip();
+        if (c.matches("[0-9]{1,3}")) {
+            count = Integer.parseInt(c);
+        }
+        String w = d.getOrDefault("column-width", "").strip();
+        if (!w.isEmpty() && !w.equalsIgnoreCase("auto")) {
+            least = Css.length(w, look.size, 0);
+        }
+        int n = count == null ? Integer.MAX_VALUE : count;
+        if (least != null && least > 0) {
+            n = Math.min(n, Math.max(1, (int) ((width + gap) / (least + gap))));
+        }
+        return n == Integer.MAX_VALUE ? 1 : Math.max(1, Math.min(n, 12));
+    }
+
+    private static float columnRule(Map<String, String> d) {
+        Map<String, String> rule = new HashMap<>();
+        for (String part : new String[] {"", "-style", "-width"}) {
+            String v = d.get("column-rule" + part);
+            if (v != null) {
+                rule.put("border-rule" + part, v);
+            }
+        }
+        return border(rule, "rule");
     }
 
     static boolean avoidsBreaks(Map<String, String> d) {
@@ -660,8 +770,9 @@ final class Flow {
         mark.indentLeft = frame.left();
         mark.lineRule = Paragraph.LineRule.EXACT;
         mark.lineHeight = 1;
-        mark.endsSection = ending != null ? ending : ctx.defaultSection();
+        mark.endsSection = ctx.ending(ending != null ? ending : ctx.defaultSection());
         emit(mark);
+        ctx.continuing(false);
         ctx.pageName(next);
         // the new section starts a page already, so a forced break right after it is the same break
         sectionStarted = true;

@@ -225,4 +225,32 @@ class HtmlLayoutTest {
         assertTrue(l.word("Phone").right() < main.left());
         assertTrue(l.word("Footer").top() > l.word("Body").top());
     }
+
+    @Test
+    void columnCountFlowsTextIntoBalancedColumnsAndContinuesBelowThem() throws IOException {
+        String words = "Alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu nu xi. ".repeat(14);
+        Laid l = lay("<html><head><style>.cols{column-count:3;column-gap:18px;column-rule:1px solid #bbb}</style>"
+                + "</head><body><p>Before</p><div class=cols><p>First " + words + "</p><p>" + words + " Last</p></div>"
+                + "<p>After</p></body></html>");
+        assertEquals(1, l.pages());
+        Word first = containing(l, "First");
+        Word last = containing(l, "Last");
+        Word after = l.word("After");
+        float room = l.pageWidth() - 2 * after.left();
+        assertEquals(first.left() + 2 * (room + 18 * 0.75f) / 3, last.left(), 3f);
+        float[] bottoms = new float[3];
+        for (Word w : l.words()) {
+            int column = Math.round((w.left() - first.left()) / ((room + 18 * 0.75f) / 3));
+            if (w != after && column >= 0 && column < 3) {
+                bottoms[column] = Math.max(bottoms[column], w.top());
+            }
+        }
+        assertEquals(bottoms[0], bottoms[1], 20f);
+        assertEquals(bottoms[0], bottoms[2], 20f);
+        assertTrue(after.top() > bottoms[0] && after.top() < bottoms[0] + 50, l.words().toString());
+    }
+
+    private static Word containing(Laid l, String text) {
+        return l.words().stream().filter(w -> w.text().contains(text)).findFirst().orElseThrow();
+    }
 }
