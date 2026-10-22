@@ -86,6 +86,7 @@ final class ContentReader {
                 Para joined = new Para(lead.pp, next.mark, items, lead.styleId, lead.label, lead.labelProps,
                         lead.level);
                 joined.section = next.section;
+                joined.heading = lead.heading;
                 joined.joinsNext = next.joinsNext;
                 b = joined;
                 pending = null;
@@ -195,6 +196,9 @@ final class ContentReader {
         }
         Para para = new Para(pp, mark, items, styleId, label, labelProps, level);
         para.joinsNext = deleted || mark.hidden();
+        if (pkg != null) {
+            para.heading = pkg.heading(part, pp.outlineLvl);
+        }
         if (pPr != null && pPr.child("w:sectPr") != null && !deleted) {
             para.section = SectionProps.parse(pPr.child("w:sectPr"));
         }
