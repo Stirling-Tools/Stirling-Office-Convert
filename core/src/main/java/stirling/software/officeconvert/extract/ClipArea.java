@@ -8,8 +8,11 @@ import java.util.List;
 
 final class ClipArea {
 
+    private static final int MAX_SHAPE_SEGMENTS = 5_000;
+
     private List<Path2D> source;
     private int size;
+    private int shapeSegments;
     private Rectangle2D box;
     private final List<Path2D> shapes = new ArrayList<>();
 
@@ -17,16 +20,20 @@ final class ClipArea {
         if (clips != source || clips.size() < size) {
             source = clips;
             size = 0;
+            shapeSegments = 0;
             box = null;
             shapes.clear();
         }
         for (; size < clips.size(); size++) {
             Path2D clip = clips.get(size);
             Rectangle2D r = rectangle(clip);
-            if (r == null) {
+            int segments = r == null ? segments(clip) : 0;
+            if (r == null && shapeSegments + segments <= MAX_SHAPE_SEGMENTS) {
                 shapes.add(clip);
+                shapeSegments += segments;
             } else {
-                box = box == null ? r : box.createIntersection(r);
+                Rectangle2D bounds = r == null ? clip.getBounds2D() : r;
+                box = box == null ? bounds : box.createIntersection(bounds);
             }
         }
         return this;
@@ -77,6 +84,16 @@ final class ClipArea {
             }
         }
         return same(corners.get(0), corners.get(2)) || same(corners.get(1), corners.get(3)) ? null : bounds;
+    }
+
+    private static int segments(Path2D path) {
+        int n = 0;
+        double[] c = new double[6];
+        for (PathIterator it = path.getPathIterator(null); !it.isDone(); it.next()) {
+            it.currentSegment(c);
+            n++;
+        }
+        return n;
     }
 
     private static boolean corner(Rectangle2D bounds, double[] c) {
