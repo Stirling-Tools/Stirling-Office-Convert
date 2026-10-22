@@ -470,31 +470,68 @@ public final class PageAnalyzer {
                 .filter(TableDetection.Found::ruled).map(TableFinder::boxOf).toList();
     }
 
-    private static boolean poster(PageData page) {
+    static boolean poster(PageData page) {
         float w = page.width();
         float h = page.height();
-        List<Box> drawn = new ArrayList<>();
+        float[] xs = new float[POSTER_GRID];
+        float[] ys = new float[POSTER_GRID];
+        for (int i = 0; i < POSTER_GRID; i++) {
+            xs[i] = (i + 0.5f) * w / POSTER_GRID;
+            ys[i] = (i + 0.5f) * h / POSTER_GRID;
+        }
+        int[][] corners = new int[POSTER_GRID + 1][POSTER_GRID + 1];
+        float background = BACKGROUND_SHARE * w * h;
         for (ImageDraw img : page.graphics().images()) {
-            drawn.add(new Box(img.clipX(), img.clipTop(), img.clipRight(), img.clipBottom()));
+            cover(corners, xs, ys, background, new Box(img.clipX(), img.clipTop(), img.clipRight(), img.clipBottom()));
         }
         for (PageGraphics.VectorMark m : page.graphics().marks()) {
-            drawn.add(new Box(m.x(), m.top(), m.right(), m.bottom()));
+            cover(corners, xs, ys, background, new Box(m.x(), m.top(), m.right(), m.bottom()));
         }
-        drawn.removeIf(b -> b.area() >= BACKGROUND_SHARE * w * h);
         int covered = 0;
         for (int i = 0; i < POSTER_GRID; i++) {
             for (int j = 0; j < POSTER_GRID; j++) {
-                float cx = (i + 0.5f) * w / POSTER_GRID;
-                float cy = (j + 0.5f) * h / POSTER_GRID;
-                for (Box b : drawn) {
-                    if (b.contains(cx, cy)) {
-                        covered++;
-                        break;
-                    }
+                if (i > 0) {
+                    corners[i][j] += corners[i - 1][j];
+                }
+                if (j > 0) {
+                    corners[i][j] += corners[i][j - 1];
+                }
+                if (i > 0 && j > 0) {
+                    corners[i][j] -= corners[i - 1][j - 1];
+                }
+                if (corners[i][j] > 0) {
+                    covered++;
                 }
             }
         }
         return covered >= POSTER_COVER * POSTER_GRID * POSTER_GRID;
+    }
+
+    private static void cover(int[][] corners, float[] xs, float[] ys, float background, Box b) {
+        if (b.area() >= background) {
+            return;
+        }
+        int[] across = within(xs, b.x(), b.right());
+        int[] down = within(ys, b.top(), b.bottom());
+        if (across == null || down == null) {
+            return;
+        }
+        corners[across[0]][down[0]]++;
+        corners[across[1]][down[0]]--;
+        corners[across[0]][down[1]]--;
+        corners[across[1]][down[1]]++;
+    }
+
+    private static int[] within(float[] centres, float lo, float hi) {
+        int first = -1;
+        int last = -1;
+        for (int i = 0; i < centres.length; i++) {
+            if (centres[i] >= lo && centres[i] <= hi) {
+                first = first < 0 ? i : first;
+                last = i;
+            }
+        }
+        return first < 0 ? null : new int[] {first, last + 1};
     }
 
     private static boolean framedText(TableDetection.Found t) {
