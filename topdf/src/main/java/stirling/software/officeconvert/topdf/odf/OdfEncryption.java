@@ -5,6 +5,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InterruptedIOException;
 import java.io.OutputStream;
+import java.nio.ByteBuffer;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.security.GeneralSecurityException;
@@ -14,9 +15,11 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Base64;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.zip.Inflater;
 import java.util.zip.InflaterInputStream;
 
@@ -49,6 +52,11 @@ final class OdfEncryption {
 
     static final int MAX_ARGON2_LANES = 64;
 
+    static final long MAX_TOTAL_ARGON2 = (long) MAX_ARGON2_PASSES * MAX_ARGON2_KIB;
+
+    private static final String TOO_MUCH_STRETCHING = "The document's encryption asks for more key stretching than"
+            + " allowed, so it was not opened";
+
     private static final String UNSUPPORTED = "The document uses an encryption that is not supported";
 
     private static final Charset WINDOWS_1252 = Charset.forName("windows-1252");
@@ -57,7 +65,16 @@ final class OdfEncryption {
 
     private record Sealed(String cipher, byte[] iv, String startKey, String derivation, byte[] salt, int iterations,
             int keyBytes, int argonPasses, int argonKiB, int argonLanes, String checksumDigest, byte[] checksum,
-            long size) {}
+            long size) {
+
+        Derivation derivation(int candidate) {
+            return new Derivation(startKey, candidate, this.derivation, ByteBuffer.wrap(salt), iterations, keyBytes,
+                    argonPasses, argonKiB, argonLanes);
+        }
+    }
+
+    private record Derivation(String startKey, int candidate, String kind, ByteBuffer salt, int iterations,
+            int keyBytes, int argonPasses, int argonKiB, int argonLanes) {}
 
     private final Map<String, Sealed> sealed;
 
@@ -66,6 +83,10 @@ final class OdfEncryption {
     private long iterationsLeft = MAX_TOTAL_ITERATIONS;
 
     private int preferred;
+
+    private final Map<String, List<byte[]>> startKeys = new HashMap<>();
+
+    private final Map<Derivation, byte[]> keys = new HashMap<>();
 
     private OdfEncryption(Map<String, Sealed> sealed, String password) {
         this.sealed = sealed;
@@ -94,7 +115,28 @@ final class OdfEncryption {
         for (Map.Entry<String, Element> e : entries.entrySet()) {
             sealed.put(e.getKey(), sealed(e.getValue(), Dom.kid(e.getValue(), Ns.MANIFEST, "encryption-data")));
         }
-        return new OdfEncryption(sealed, password);
+        OdfEncryption crypt = new OdfEncryption(sealed, password);
+        crypt.checkArgon2();
+        return crypt;
+    }
+
+    private void checkArgon2() throws IOException {
+        Set<Derivation> distinct = new HashSet<>();
+        long work = 0;
+        for (Sealed s : sealed.values()) {
+            if (!s.derivation().equals("argon2id")) {
+                continue;
+            }
+            int candidates = startKeys(s.startKey()).size();
+            for (int k = 0; k < candidates; k++) {
+                if (distinct.add(s.derivation(k))) {
+                    work += (long) s.argonPasses() * s.argonKiB();
+                    if (work > MAX_TOTAL_ARGON2) {
+                        throw new IOException(TOO_MUCH_STRETCHING);
+                    }
+                }
+            }
+        }
     }
 
     static Cost declared(byte[] manifest, List<String> paths) {
@@ -165,10 +207,10 @@ final class OdfEncryption {
     }
 
     private byte[] decrypt(Sealed s, byte[] encrypted) throws IOException {
-        List<byte[]> keys = startKeys(s.startKey());
-        for (int i = 0; i < keys.size(); i++) {
-            int k = (i + preferred) % keys.size();
-            byte[] plain = decrypt(s, encrypted, keys.get(k));
+        List<byte[]> starts = startKeys(s.startKey());
+        for (int i = 0; i < starts.size(); i++) {
+            int k = (i + preferred) % starts.size();
+            byte[] plain = decrypt(s, encrypted, key(s, k, starts.get(k)));
             if (plain != null) {
                 preferred = k;
                 return plain;
@@ -177,31 +219,49 @@ final class OdfEncryption {
         throw new Passwords.Refused(Passwords.WRONG, null);
     }
 
+    private byte[] key(Sealed s, int candidate, byte[] start) throws IOException {
+        Derivation id = s.derivation(candidate);
+        byte[] key = keys.get(id);
+        if (key == null) {
+            key = s.derivation().equals("argon2id")
+                    ? Argon2id.hash(start, s.salt(), s.argonPasses(), s.argonKiB(), s.argonLanes(), s.keyBytes())
+                    : pbkdf2(start, s.salt(), s.iterations(), s.keyBytes());
+            keys.put(id, key);
+        }
+        return key;
+    }
+
     private List<byte[]> startKeys(String digest) throws IOException {
+        List<byte[]> cached = startKeys.get(digest);
+        if (cached == null) {
+            cached = derivedStartKeys(digest);
+            startKeys.put(digest, cached);
+        }
+        return cached;
+    }
+
+    private List<byte[]> derivedStartKeys(String digest) throws IOException {
         byte[] utf8 = password.getBytes(StandardCharsets.UTF_8);
-        List<byte[]> keys = new ArrayList<>();
+        List<byte[]> candidates = new ArrayList<>();
         try {
-            keys.add(MessageDigest.getInstance(digest).digest(utf8));
+            candidates.add(MessageDigest.getInstance(digest).digest(utf8));
             if (digest.equals("SHA-1")) {
                 byte[] openOffice = OpenOfficeSha1.digest(utf8);
                 if (openOffice != null) {
-                    keys.add(openOffice);
+                    candidates.add(openOffice);
                 }
                 byte[] legacy = password.getBytes(WINDOWS_1252);
                 if (!Arrays.equals(legacy, utf8)) {
-                    keys.add(MessageDigest.getInstance(digest).digest(legacy));
+                    candidates.add(MessageDigest.getInstance(digest).digest(legacy));
                 }
             }
         } catch (GeneralSecurityException e) {
             throw new IOException(UNSUPPORTED, e);
         }
-        return keys;
+        return candidates;
     }
 
-    private byte[] decrypt(Sealed s, byte[] encrypted, byte[] start) throws IOException {
-        byte[] key = s.derivation().equals("argon2id")
-                ? Argon2id.hash(start, s.salt(), s.argonPasses(), s.argonKiB(), s.argonLanes(), s.keyBytes())
-                : pbkdf2(start, s.salt(), s.iterations(), s.keyBytes());
+    private static byte[] decrypt(Sealed s, byte[] encrypted, byte[] key) throws IOException {
         byte[] plain;
         try {
             plain = switch (s.cipher()) {
@@ -263,8 +323,7 @@ final class OdfEncryption {
 
     private byte[] pbkdf2(byte[] secret, byte[] salt, int iterations, int length) throws IOException {
         if (iterations > iterationsLeft) {
-            throw new IOException("The document's encryption asks for more key stretching than allowed, so it was"
-                    + " not opened");
+            throw new IOException(TOO_MUCH_STRETCHING);
         }
         iterationsLeft -= iterations;
         try {
@@ -324,8 +383,7 @@ final class OdfEncryption {
         if (!argon && (iterations < 1 || iterations > MAX_ITERATIONS)
                 || argon && (passes < 1 || passes > MAX_ARGON2_PASSES || lanes < 1 || lanes > MAX_ARGON2_LANES
                         || memory < 8 * lanes || memory > MAX_ARGON2_KIB)) {
-            throw new IOException("The document's encryption asks for more key stretching than allowed, so it was"
-                    + " not opened");
+            throw new IOException(TOO_MUCH_STRETCHING);
         }
         String checksumType = lower(Dom.attr(data, Ns.MANIFEST, "checksum-type"));
         String checksumDigest = checksumType.endsWith("sha256-1k") || checksumType.equals("sha256/1k") ? "SHA-256"

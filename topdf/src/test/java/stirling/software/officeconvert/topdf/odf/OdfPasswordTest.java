@@ -340,6 +340,68 @@ class OdfPasswordTest {
     }
 
     @Test
+    void aPictureReadManyTimesStretchesItsKeyOnce() throws Exception {
+        int iterations = 5_000_000;
+        byte[] salt = random(16);
+        byte[] key = pbkdf2(MessageDigest.getInstance("SHA-256").digest(PASSWORD.getBytes(StandardCharsets.UTF_8)),
+                salt, iterations, 16);
+        Map<String, byte[]> parts = new LinkedHashMap<>();
+        parts.put("content.xml", OdfFixtures.content("", OdfFixtures.text("<text:p>logo</text:p>"))
+                .getBytes(StandardCharsets.UTF_8));
+        parts.put("Pictures/logo.png", new byte[] {7, 8, 9});
+        StringBuilder manifest = new StringBuilder("<manifest:manifest xmlns:manifest=\"" + MANIFEST_NS + "\">"
+                + "<manifest:file-entry manifest:full-path=\"/\" manifest:media-type=\"" + OdfFixtures.TEXT + "\"/>");
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+        try (ZipOutputStream zip = new ZipOutputStream(bytes)) {
+            stored(zip, "mimetype", OdfFixtures.TEXT.getBytes(StandardCharsets.US_ASCII));
+            for (Map.Entry<String, byte[]> p : parts.entrySet()) {
+                byte[] iv = random(16);
+                byte[] deflated = deflate(p.getValue());
+                Cipher c = Cipher.getInstance("AES/CBC/PKCS5Padding");
+                c.init(Cipher.ENCRYPT_MODE, new SecretKeySpec(key, "AES"), new IvParameterSpec(iv));
+                stored(zip, p.getKey(), c.doFinal(deflated));
+                manifest.append(entry(p.getKey(), p.getValue().length, "<manifest:encryption-data"
+                        + " manifest:checksum-type=\"urn:oasis:names:tc:opendocument:xmlns:manifest:1.0#sha256-1k\""
+                        + " manifest:checksum=\"" + b64(checksum("SHA-256", deflated)) + "\"><manifest:algorithm"
+                        + " manifest:algorithm-name=\"http://www.w3.org/2001/04/xmlenc#aes128-cbc\""
+                        + " manifest:initialisation-vector=\"" + b64(iv) + "\"/><manifest:start-key-generation"
+                        + " manifest:start-key-generation-name=\"http://www.w3.org/2000/09/xmldsig#sha256\"/>"
+                        + "<manifest:key-derivation manifest:key-derivation-name=\"PBKDF2\" manifest:iteration-count=\""
+                        + iterations + "\" manifest:salt=\"" + b64(salt) + "\" manifest:key-size=\"16\"/>"
+                        + "</manifest:encryption-data>"));
+            }
+            zip.putNextEntry(new ZipEntry("META-INF/manifest.xml"));
+            zip.write((manifest + "</manifest:manifest>").getBytes(StandardCharsets.UTF_8));
+            zip.closeEntry();
+        }
+        Path sealed = OdfFixtures.write(dir, "logo.odt", bytes.toByteArray());
+        try (OdfDocument doc = OdfDocument.open(sealed, PASSWORD)) {
+            for (int slide = 0; slide < 25; slide++) {
+                assertArrayEquals(new byte[] {7, 8, 9}, doc.picture("Pictures/logo.png"), "slide " + slide);
+            }
+        }
+    }
+
+    @Test
+    void argon2WorkIsCappedAcrossTheWholeDocument() {
+        String heavy = "<manifest:encryption-data><manifest:algorithm manifest:algorithm-name=\"http://www.w3.org/"
+                + "2009/xmlenc11#aes256-gcm\" manifest:initialisation-vector=\"" + b64(random(12)) + "\"/>"
+                + "<manifest:start-key-generation manifest:start-key-generation-name=\"http://www.w3.org/2001/04/"
+                + "xmlenc#sha256\"/><manifest:key-derivation manifest:key-derivation-name=\"urn:org:"
+                + "documentfoundation:names:experimental:office:manifest:argon2id\" loext:argon2-iterations=\""
+                + OdfEncryption.MAX_ARGON2_PASSES + "\" loext:argon2-memory=\"" + OdfEncryption.MAX_ARGON2_KIB
+                + "\" loext:argon2-lanes=\"4\" manifest:salt=\"%s\" manifest:key-size=\"32\"/>"
+                + "</manifest:encryption-data>";
+        String manifest = "<manifest:manifest xmlns:manifest=\"" + MANIFEST_NS + "\" xmlns:loext=\"urn:org:"
+                + "documentfoundation:names:experimental:office:xmlns:loext:1.0\">"
+                + entry("content.xml", 1, heavy.formatted(b64(random(16))))
+                + entry("styles.xml", 1, heavy.formatted(b64(random(16)))) + "</manifest:manifest>";
+        IOException e = assertThrows(IOException.class,
+                () -> OdfEncryption.read(manifest.getBytes(StandardCharsets.UTF_8), PASSWORD));
+        assertTrue(e.getMessage().contains("more key stretching"), e.getMessage());
+    }
+
+    @Test
     void anUnencryptedDocumentIgnoresAGivenPassword() throws Exception {
         Path open = OdfFixtures.write(dir, "plain.odt", textPackage("Open to all"));
         assertTrue(new String(rewrite(open, null).get("word/document.xml"), StandardCharsets.UTF_8)
