@@ -6,7 +6,7 @@ import java.util.List;
 
 public final class BlockFlow {
 
-    public static final int CHAIN_LIMIT = 24;
+    public static final int CHAIN_LIMIT = 512;
 
     private final Ctx ctx;
 
@@ -41,7 +41,7 @@ public final class BlockFlow {
             } else if (b instanceof Para p) {
                 boolean sectionMark = p.sectionMark();
                 if (r.paginated() && Boolean.TRUE.equals(p.pp.keepNext) && !r.atTop() && !ParaFlow.hidden(p)
-                        && !sectionMark) {
+                        && !sectionMark && !continuesChain(blocks, i)) {
                     keepTogether(blocks, i, r);
                 }
                 paras.place(p, r, next);
@@ -93,6 +93,11 @@ public final class BlockFlow {
         if (r.y + chain > r.limit() && (chain <= r.frameHeight() || headed)) {
             r.newFrame(false, false);
         }
+    }
+
+    private static boolean continuesChain(List<Block> blocks, int i) {
+        return i > 0 && blocks.get(i - 1) instanceof Para prev && Boolean.TRUE.equals(prev.pp.keepNext)
+                && !ParaFlow.hidden(prev) && !prev.sectionMark() && hardBreak(prev) == NO_BREAK;
     }
 
     private static final int NO_BREAK = 0;

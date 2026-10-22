@@ -178,6 +178,12 @@ final class Grid {
 
     private int lastCol = -1;
 
+    private int styledCol = -1;
+
+    private int filledRow = -1;
+
+    private int filledCol = -1;
+
     Grid(Book book, WorksheetReader reader, String sheetName, RenderJob job) throws IOException {
         this(book, reader, sheetName, null, job);
     }
@@ -303,6 +309,7 @@ final class Grid {
         int lastBlank = -1;
         int markFrom = -1;
         int markTo = -1;
+        int styledTo = -1;
         FontSpec base = style >= 0 ? book.styles().at(style).font() : book.styles().defaultFont();
         double descent = 0;
         for (RawRow.Cell cell : row.cells()) {
@@ -313,6 +320,10 @@ final class Grid {
                 text = null;
             }
             if (text == null && !format.visible() && format.hAlign() != CellFormat.HAlign.CENTER_CONTINUOUS) {
+                if (cell.style() > 0 && col > styledTo && columns.width(col) > 0 && !book.styles()
+                        .sameRecord(cell.style(), columns.style(col) >= 0 ? columns.style(col) : Math.max(0, style))) {
+                    styledTo = col;
+                }
                 if (book.styles().ruled(cell.style())) {
                     markFrom = markFrom < 0 ? col : markFrom;
                     markTo = col;
@@ -350,13 +361,22 @@ final class Grid {
         } else {
             height = Math.min(409.5, row.height());
         }
+        boolean printed = false;
         for (CellEntry e : entries) {
+            if (e.text() == null && e.format().fill() != null && !gone && columns.width(e.col()) > 0) {
+                filledRow = Math.max(filledRow, index);
+                filledCol = Math.max(filledCol, e.col());
+            }
             if (e.text() != null || inked(e.format())) {
+                printed = true;
                 lastRow = Math.max(lastRow, index);
                 if (columns.width(e.col()) > 0) {
                     lastCol = Math.max(lastCol, e.col());
                 }
             }
+        }
+        if (printed && !gone) {
+            styledCol = Math.max(styledCol, styledTo);
         }
         if (markTo >= 0 && !gone) {
             lastRow = Math.max(lastRow, index);
@@ -756,6 +776,18 @@ final class Grid {
 
     double screenColumnWidth(int col) {
         return columns.width(col) > 0 ? book.metrics().screenColumnPixels(columns.chars(col)) * SCREEN_PX : 0;
+    }
+
+    void includeFormattedBlanks() {
+        if (lastRow < 0) {
+            return;
+        }
+        int col = Math.max(styledCol, filledCol);
+        lastRow = Math.max(lastRow, filledRow);
+        if (col > lastCol) {
+            lastCol = col;
+            extendForOverflow();
+        }
     }
 
     void capColumns(double cap) {
