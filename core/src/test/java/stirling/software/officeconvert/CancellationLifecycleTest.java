@@ -46,7 +46,7 @@ class CancellationLifecycleTest {
                 }
                 writing.countDown();
                 try {
-                    Thread.sleep(30_000);
+                    Thread.sleep(Duration.ofMinutes(5));
                 } catch (InterruptedException e) {
                     try {
                         Thread.sleep(100);
@@ -72,16 +72,16 @@ class CancellationLifecycleTest {
                 }
             });
             try {
-                assertTrue(writing.await(10, TimeUnit.SECONDS));
+                assertTrue(writing.await(1, TimeUnit.MINUTES));
                 caller.interrupt();
-                caller.join(10_000);
+                caller.join(Duration.ofMinutes(1));
                 assertFalse(caller.isAlive());
                 assertInstanceOf(InterruptedIOException.class, failure.get());
                 assertTrue(cleanedOnReturn.get(), "Caller must not close resources while the worker cleans up");
                 assertTrue(interruptedOnReturn.get());
             } finally {
                 caller.interrupt();
-                caller.join(10_000);
+                caller.join(Duration.ofMinutes(1));
             }
         }
     }

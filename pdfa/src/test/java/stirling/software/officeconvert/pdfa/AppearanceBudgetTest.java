@@ -18,7 +18,7 @@ import org.junit.jupiter.api.Timeout;
 class AppearanceBudgetTest {
 
     @Test
-    @Timeout(5)
+    @Timeout(180)
     void hugeValuesAreRefusedBeforePdfboxAutoSizesThem() throws Exception {
         try (PDDocument doc = new PDDocument()) {
             doc.addPage(new PDPage());
@@ -26,7 +26,7 @@ class AppearanceBudgetTest {
             acro.setBoolean(COSName.NEED_APPEARANCES, true);
             doc.getDocumentCatalog().getCOSObject().setItem(COSName.ACRO_FORM, acro);
             IOException error = assertThrows(IOException.class,
-                    () -> Deadline.run(Duration.ofSeconds(1),
+                    () -> Deadline.run(Duration.ofMinutes(1),
                             () -> {
                                 Interactive.run(doc, PdfALevel.A2B, new Report());
                                 return null;

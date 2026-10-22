@@ -12,6 +12,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.Set;
 import java.util.stream.Stream;
 
 import org.apache.pdfbox.Loader;
@@ -71,7 +72,7 @@ class OfficeConvertTest {
     }
 
     @Test
-    void timeoutStopsTheConversionAndLeavesNothing() throws IOException {
+    void timeoutStopsTheConversionAndLeavesNothing() throws Exception {
         Path pdf = dir.resolve("slow.pdf");
         try (PDDocument doc = new PDDocument()) {
             PDPage page = new PDPage();
@@ -85,7 +86,9 @@ class OfficeConvertTest {
         }
         Path out = dir.resolve("slow.docx");
         OfficeConvert.Settings settings = OfficeConvert.Settings.defaults().timeout(Duration.ofMillis(100));
+        Set<Thread> before = Workers.named("office-convert");
         assertThrows(OfficeConvert.TimedOut.class, () -> OfficeConvert.convert(pdf, out, settings));
+        Workers.awaitNew(before, "office-convert");
         assertFalse(Files.exists(out));
         try (Stream<Path> left = Files.list(dir)) {
             assertTrue(left.noneMatch(p -> p.getFileName().toString().endsWith(".part")), "a partial file was left");
