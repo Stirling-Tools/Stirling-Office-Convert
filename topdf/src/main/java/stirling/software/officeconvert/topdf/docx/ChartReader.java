@@ -591,6 +591,16 @@ final class ChartReader {
 
     static final int MAX_POINT_LABELS = 4096;
 
+    static final int MAX_LABEL_CHARS = 1024;
+
+    private static String clipped(String text) {
+        if (text.length() <= MAX_LABEL_CHARS) {
+            return text;
+        }
+        int end = Character.isHighSurrogate(text.charAt(MAX_LABEL_CHARS - 1)) ? MAX_LABEL_CHARS - 1 : MAX_LABEL_CHARS;
+        return text.substring(0, end);
+    }
+
     private static boolean deleted(XEl d) {
         return d.child("c:delete") != null && Ooxml.flag(d.child("c:delete").val(), true);
     }
@@ -615,10 +625,10 @@ final class ChartReader {
                     }
                 }
             }
-            text = sb.toString();
+            text = clipped(sb.toString());
             look = look(rich, look);
         } else if (d.path("c:tx", "c:strRef") != null) {
-            text = String.join(" ", strings(d.path("c:tx", "c:strRef").child("c:strCache")));
+            text = clipped(String.join(" ", strings(d.path("c:tx", "c:strRef").child("c:strCache"))));
         }
         float dx = 0;
         float dy = 0;
