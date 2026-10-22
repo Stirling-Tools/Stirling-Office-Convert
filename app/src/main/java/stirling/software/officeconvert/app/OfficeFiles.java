@@ -67,9 +67,10 @@ final class OfficeFiles {
     static String family(String extension) {
         return switch (extension) {
             case "docx", "docm", "dotx", "dotm", "doc", "dot", "rtf", "odt", "ott", "fodt", "odm", "sxw", "stw", "xml",
-                    "pages" -> "docx";
+                    "pages", "pub" -> "docx";
             case "pptx", "pptm", "ppsx", "ppsm", "potx", "potm", "ppt", "pps", "pot", "odp", "otp", "fodp", "odg", "otg",
-                    "fodg", "sxi", "sti", "sxd", "std", "key", "vsdx", "vsdm", "vssx", "vssm", "vstx", "vstm" -> "pptx";
+                    "fodg", "sxi", "sti", "sxd", "std", "key", "vsdx", "vsdm", "vssx", "vssm", "vstx", "vstm", "vsd", "vss",
+                    "vst", "vsw" -> "pptx";
             case "xlsx", "xlsm", "xltx", "xltm", "xls", "xlt", "xlsb", "ods", "ots", "fods", "sxc", "stc", "slk", "sylk",
                     "dif", "dbf", "numbers", "wk1", "wks", "wk3", "wk4", "123" -> "xlsx";
             case "txt", "text", "log", "asc" -> "docx";

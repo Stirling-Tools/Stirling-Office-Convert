@@ -13,7 +13,7 @@ The converter needs no native libraries or external processes. It also converts 
 
 PDF-to-Office documents contain real paragraphs, headings, lists, tables, footnotes, headers and footers.
 Office-to-PDF reads saved content without running macros, scripts or formulas or fetching linked resources.
-iWork files use their embedded PDF or picture preview. PDF/A level a requires an already tagged PDF;
+iWork files use their embedded PDF or picture preview, and Visio 2003-2010 drawings their first page's preview. PDF/A level a requires an already tagged PDF;
 the converter does not create a structure tree for an untagged document.
 
 See the [usage guide](docs/usage.md) for the complete format list, limitations, API options, fonts,
