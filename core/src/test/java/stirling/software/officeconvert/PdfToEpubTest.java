@@ -158,6 +158,32 @@ class PdfToEpubTest {
     }
 
     @Test
+    void longHeadingsAreCutWithoutBreakingEntities() throws Exception {
+        Path pdf = dir.resolve("long.pdf");
+        try (PDDocument doc = new PDDocument()) {
+            PDPage page = new PDPage(PDRectangle.LETTER);
+            doc.addPage(page);
+            try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
+                text(cs, BOLD, 9, 72, 700, "A".repeat(197) + " & B < C");
+                text(cs, REGULAR, 6, 72, 660, "Body text under the long heading.");
+            }
+            doc.save(pdf.toFile());
+        }
+        Path epub = dir.resolve("long.epub");
+        OfficeConvert.convert(pdf, epub);
+        DocumentBuilderFactory f = DocumentBuilderFactory.newInstance();
+        f.setNamespaceAware(true);
+        try (ZipInputStream zip = new ZipInputStream(new ByteArrayInputStream(Files.readAllBytes(epub)))) {
+            for (ZipEntry e; (e = zip.getNextEntry()) != null; ) {
+                byte[] part = zip.readAllBytes();
+                if (e.getName().matches(".*\\.(xhtml|opf|ncx|xml)")) {
+                    f.newDocumentBuilder().parse(new ByteArrayInputStream(part));
+                }
+            }
+        }
+    }
+
+    @Test
     void picturesAreFilesInTheManifest() {
         List<String> images = parts.keySet().stream().filter(n -> n.startsWith("OEBPS/images/")).toList();
         assertEquals(1, images.size(), parts.keySet().toString());
