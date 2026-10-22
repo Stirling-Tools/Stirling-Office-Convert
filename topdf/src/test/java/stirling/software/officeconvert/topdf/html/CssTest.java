@@ -172,7 +172,7 @@ class CssTest {
 
     @Test
     void customPropertiesInheritAndFallBack() {
-        Vars.Scope root = Vars.scope(Vars.Scope.EMPTY, Map.of("--brand", "#336699", "--gap", "var(--unit)",
+        Vars.Scope root = Vars.scope(Vars.Scope.root(), Map.of("--brand", "#336699", "--gap", "var(--unit)",
                 "--unit", "8px"));
         Map<String, String> d = new HashMap<>(Map.of("color", "var(--brand)", "margin-top", "var(--gap)",
                 "padding", "var(--missing, 4px)", "display", "var(--nothing)"));
@@ -192,10 +192,33 @@ class CssTest {
             own.put("--b" + i, "var(--b" + (i + 1) + ") var(--b" + (i + 1) + ")");
         }
         own.put("--b12", bomb.toString());
-        Vars.Scope s = Vars.scope(Vars.Scope.EMPTY, own);
+        Vars.Scope s = Vars.scope(Vars.Scope.root(), own);
         Map<String, String> d = new HashMap<>(Map.of("color", "var(--a)", "font-family", "var(--b0)"));
         Vars.resolve(d, s);
         assertFalse(d.containsKey("color"));
         assertFalse(d.containsKey("font-family"));
+    }
+
+    @Test
+    void oneDocumentHasOneBudgetOfScopeSteps() {
+        Vars.Scope root = Vars.scope(Vars.Scope.root(), Map.of("--a", "1px"));
+        Vars.Scope deep = root;
+        for (int i = 0; i < 1_000; i++) {
+            deep = Vars.scope(deep, Map.of("--level" + i, "x"));
+        }
+        long resolved = 0;
+        while (resolved <= Vars.MAX_STEPS) {
+            Map<String, String> d = new HashMap<>(Map.of("margin", "var(--a)"));
+            Vars.resolve(d, deep);
+            if (!d.containsKey("margin")) {
+                break;
+            }
+            resolved++;
+        }
+        assertTrue(resolved > 0 && resolved <= Vars.MAX_STEPS / 1_000, resolved + " lookups");
+        Vars.Scope fresh = Vars.scope(Vars.Scope.root(), Map.of("--a", "1px"));
+        Map<String, String> d = new HashMap<>(Map.of("margin", "var(--a)"));
+        Vars.resolve(d, fresh);
+        assertEquals("1px", d.get("margin"));
     }
 }

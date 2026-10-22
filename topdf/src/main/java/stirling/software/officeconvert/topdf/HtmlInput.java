@@ -45,8 +45,8 @@ final class HtmlInput {
         return n.endsWith(".html") || n.endsWith(".htm") || n.endsWith(".xhtml");
     }
 
-    static Long estimate(Path source) throws IOException {
-        return is(source, null) ? HtmlDocument.estimate(Files.size(source)) + 2 * Admission.BASE_BYTES : null;
+    static Long estimate(Path source, Format requested) throws IOException {
+        return is(source, requested) ? HtmlDocument.estimate(Files.size(source)) + 2 * Admission.BASE_BYTES : null;
     }
 
     static Result render(Path source, Format requested, OutputStream sink, Options options,
