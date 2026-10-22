@@ -35,7 +35,6 @@ final class CMapFixer {
 
     private static final COSName USE_CMAP = COSName.getPDFName("UseCMap");
 
-
     private static final Pattern HEX = Pattern.compile("<([0-9A-Fa-f]+)>\\s*<([0-9A-Fa-f]+)>");
 
     private static final Pattern CID_RANGE = Pattern.compile(
@@ -467,10 +466,6 @@ final class CMapFixer {
         List<String> out = new ArrayList<>();
         int at = 0;
         while ((at = text.indexOf(begin, at)) >= 0) {
-            int stop = text.indexOf(end, at + begin.length());
-            if (stop < 0) {
-                break;
-            }
             int start = at;
             while (start > 0 && space(text.charAt(start - 1))) {
                 start--;
@@ -479,12 +474,16 @@ final class CMapFixer {
             while (digits > 0 && Character.isDigit(text.charAt(digits - 1)) && text.charAt(digits - 1) < 128) {
                 digits--;
             }
-            if (start < at && digits < start) {
-                out.add(text.substring(digits, stop + end.length()));
-                at = stop + end.length();
-            } else {
+            if (start == at || digits == start) {
                 at += begin.length();
+                continue;
             }
+            int stop = text.indexOf(end, at + begin.length());
+            if (stop < 0) {
+                break;
+            }
+            out.add(text.substring(digits, stop + end.length()));
+            at = stop + end.length();
         }
         return out;
     }

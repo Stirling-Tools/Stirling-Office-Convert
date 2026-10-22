@@ -55,4 +55,12 @@ class CMapBlockScanTest {
         assertTrue(CMapFixer.countedBlocks(text, "begincodespacerange", "endcodespacerange").isEmpty());
         assertTrue((System.nanoTime() - start) / 1_000_000 < 2_000, "took too long");
     }
+
+    @Test
+    void uncountedBlocksBeforeOneCloseStayLinear() {
+        String text = "begincidrange ".repeat(200_000) + "endcidrange";
+        long start = System.nanoTime();
+        assertTrue(CMapFixer.countedBlocks(text, "begincidrange", "endcidrange").isEmpty());
+        assertTrue((System.nanoTime() - start) / 1_000_000 < 2_000, "took too long");
+    }
 }
