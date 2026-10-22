@@ -226,7 +226,7 @@ final class Flow {
         int fill = fill(d, look);
         measureFixed(e, d, look, frame, left, right);
         Frame inner = frame.inner(left, right, fill);
-        Layout.Plan plan = forceInline > 0 ? null : Layout.of(e, d, look, inner.width(), ctx);
+        Layout.Plan plan = forceInline > 0 ? null : Layout.of(e, d, look, inner.width(), ctx, inCell);
         if (plan != null && !plan.inline() && widerInside(plan, look, inner.width())) {
             // a cell cannot hold a row, so a longer one inside, like a carousel, keeps its columns instead
             plan = null;
@@ -565,9 +565,14 @@ final class Flow {
     private Table.Cell cell(Element item, Look look, Frame frame, float width, float gap, int depth) throws IOException {
         Table.Cell cell = new Table.Cell();
         if (item != null) {
-            Integer fill = Css.color(ctx.declared(item, look).get("background-color"));
+            Map<String, String> d = ctx.declared(item, look);
+            Integer fill = Css.color(d.get("background-color"));
             // an item with no background of its own shows the row's
             cell.shading = fill == null || fill < 0 ? frame.shading() : fill;
+            cell.top = HtmlTables.border(d, "top", 0);
+            cell.bottom = HtmlTables.border(d, "bottom", 0);
+            cell.left = HtmlTables.border(d, "left", 0);
+            cell.right = HtmlTables.border(d, "right", 0);
             Flow inner = new Flow(ctx, b -> cell.paragraphs.add((Paragraph) b), true);
             inner.clipLeft = clipLeft;
             inner.single(item, look, new Frame(0, 0, Math.max(24, width - gap), -1), depth + 1);
@@ -612,6 +617,9 @@ final class Flow {
         }
         if (plan.areas() == null) {
             dropEmptyColumns(t);
+            if (plan.gap() >= 1 && Layout.framed(items, look, ctx)) {
+                gapColumns(t, plan.gap());
+            }
         }
         if (t.columnWidths.size() < 2) {
             // what is left is one column: its paragraphs flow as if there had been no row
@@ -634,6 +642,34 @@ final class Flow {
         pendingBreak = false;
         ctx.count();
         out.add(t);
+    }
+
+    private static void gapColumns(Table t, float gap) {
+        int n = t.columnWidths.size();
+        if (n < 2) {
+            return;
+        }
+        float give = gap * (n - 1) / n;
+        for (int c = n - 1; c >= 0; c--) {
+            t.columnWidths.set(c, Math.max(24, t.columnWidths.get(c) - give));
+            if (c > 0) {
+                t.columnWidths.add(c, gap);
+                for (Table.Row row : t.rows) {
+                    row.cells.add(c, new Table.Cell());
+                }
+            }
+        }
+        for (int r = t.rows.size() - 1; r > 0; r--) {
+            Table.Row spacer = new Table.Row();
+            spacer.height = gap;
+            spacer.exactHeight = true;
+            for (int c = 0; c < t.columnWidths.size(); c++) {
+                spacer.cells.add(new Table.Cell());
+            }
+            t.rows.add(r, spacer);
+        }
+        t.cellMarginLeft = 0;
+        t.cellMarginRight = 0;
     }
 
     // Items that drew nothing (a picture that could not be read, an empty wrapper) leave no column behind

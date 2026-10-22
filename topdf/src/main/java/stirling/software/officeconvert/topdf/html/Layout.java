@@ -39,6 +39,10 @@ final class Layout {
     private Layout() {}
 
     static Plan of(Element e, Map<String, String> d, Look look, float room, HtmlContext ctx) {
+        return of(e, d, look, room, ctx, false);
+    }
+
+    static Plan of(Element e, Map<String, String> d, Look look, float room, HtmlContext ctx, boolean inCell) {
         String display = d.getOrDefault("display", "").strip().toLowerCase(Locale.ROOT);
         boolean flex = display.equals("flex") || display.equals("inline-flex");
         boolean grid = display.equals("grid") || display.equals("inline-grid");
@@ -56,7 +60,7 @@ final class Layout {
             return null;
         }
         float gap = gap(d, look);
-        if (flex && allShort(items)) {
+        if (flex && allShort(items) && (inCell || !framed(items, look, ctx) || !placed(items, look, ctx))) {
             return new Plan(items, true, items.size(), null, gap);
         }
         int columns = grid ? gridColumns(d.get("grid-template-columns"), look, room) : items.size();
@@ -264,6 +268,34 @@ final class Layout {
         }
         String position = cd.getOrDefault("position", "").strip().toLowerCase(Locale.ROOT);
         return !position.equals("absolute") && !position.equals("fixed") && !Hidden.visually(cd, look.size);
+    }
+
+    static boolean framed(List<Element> items, Look look, HtmlContext ctx) {
+        for (Element c : items) {
+            if (framed(ctx.declared(c, look))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    static boolean framed(Map<String, String> cd) {
+        int edges = 0;
+        for (String side : new String[] {"top", "bottom", "left", "right"}) {
+            edges += Flow.border(cd, side) > 0 ? 1 : 0;
+        }
+        Integer fill = Css.color(cd.get("background-color"));
+        return edges >= 3 || fill != null && fill >= 0 && fill != 0xFFFFFF;
+    }
+
+    private static boolean placed(List<Element> items, Look look, HtmlContext ctx) {
+        for (Element c : items) {
+            Map<String, String> cd = ctx.declared(c, look);
+            if (grows(cd) || size(cd.getOrDefault("flex-basis", cd.get("width")), look, 1000) != null) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static boolean allShort(List<Element> items) {
