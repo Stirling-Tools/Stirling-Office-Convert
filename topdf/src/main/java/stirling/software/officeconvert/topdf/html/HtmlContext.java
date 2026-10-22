@@ -36,11 +36,11 @@ final class HtmlContext {
     private final Map<Element, Integer> rows = new IdentityHashMap<>();
     private Map<String, Element> labels;
 
-    HtmlContext(Cascade cascade, StyleSheet styles, DocSink sink, List<String> warnings, Section page) {
+    HtmlContext(Cascade cascade, StyleSheet styles, DocSink sink, List<String> warnings, Section page, Linked linked) {
         this.cascade = cascade;
         this.styles = styles;
         this.warnings = warnings;
-        this.images = new HtmlImages(sink, warnings);
+        this.images = new HtmlImages(sink, warnings, linked);
         this.tables = new HtmlTables(this);
         this.page = page;
         this.pageRoom = page.pageHeight - page.marginTop - page.marginBottom;
@@ -199,6 +199,10 @@ final class HtmlContext {
         if (!warnings.contains(w)) {
             warnings.add(w);
         }
+    }
+
+    boolean nothingWritten() {
+        return blocks == 0;
     }
 
     void count() {

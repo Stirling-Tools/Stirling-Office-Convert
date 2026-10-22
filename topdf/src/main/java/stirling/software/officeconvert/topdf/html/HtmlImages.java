@@ -47,15 +47,33 @@ final class HtmlImages {
     private final long[] svgWork = {SVG_WORK};
     private Map<String, Element> documentIds;
 
-    HtmlImages(DocSink sink, List<String> warnings) {
+    static final String NOT_IN_PACKAGE = "Left out pictures that could not be found beside the HTML file";
+
+    private final Linked linked;
+
+    private record LinkedSvg(Element svg, Map<String, Element> ids, float[] natural) {}
+
+    static final long MAX_LINKED_SVG_CHARS = 4L * MAX_SVG_CHARS;
+
+    private final Map<String, LinkedSvg> linkedSvgs = new HashMap<>();
+    private long linkedSvgChars;
+
+    HtmlImages(DocSink sink, List<String> warnings, Linked linked) {
         this.sink = sink;
         this.warnings = warnings;
+        this.linked = linked;
     }
 
     Picture picture(Element img, Map<String, String> d, Look look, float maxWidth, float maxHeight) throws IOException {
         String src = img.attr("src").strip();
+        if (src.isEmpty()) {
+            src = firstCandidate(img.attr("srcset"));
+        }
         if (src.regionMatches(true, 0, "data:image/svg", 0, 14)) {
             return svgImage(src, img, d, look, maxWidth, maxHeight);
+        }
+        if (!src.isEmpty() && !src.regionMatches(true, 0, "data:", 0, 5) && !linked.none()) {
+            return linkedImage(src, img, d, look, maxWidth, maxHeight);
         }
         Picture.MediaRef ref = media(src);
         if (ref == null) {
@@ -131,6 +149,84 @@ final class HtmlImages {
             p.description = img.attr("alt");
         }
         return p;
+    }
+
+    private Picture linkedImage(String src, Element img, Map<String, String> d, Look look, float maxWidth,
+            float maxHeight) throws IOException {
+        String reference = HtmlRefs.resolve(linked.base(), src);
+        byte[] bytes = reference == null ? null : linked.read(reference);
+        if (bytes == null) {
+            warn(linked.exhausted() ? "Left out pictures past the limit of linked files" : NOT_IN_PACKAGE);
+            return null;
+        }
+        if (svgFile(reference, bytes)) {
+            LinkedSvg linkedSvg = linkedSvg(reference, bytes);
+            if (linkedSvg == null) {
+                return null;
+            }
+            float[] natural = linkedSvg.natural();
+            float[] box = box(d, look, natural[0] * 0.75f, natural[1] * 0.75f, maxWidth, maxHeight);
+            Picture p = painted(linkedSvg.svg(), linkedSvg.ids(), box, look, "linked:" + reference);
+            if (p != null) {
+                p.description = img.attr("alt");
+            }
+            return p;
+        }
+        Picture.MediaRef ref = seen.get(reference);
+        if (ref == null) {
+            ref = decoded(bytes, "linked:" + reference);
+            if (ref == null) {
+                return null;
+            }
+            seen.put(reference, ref);
+        }
+        float[] box = box(d, look, ref.pixelWidth() * 0.75f, ref.pixelHeight() * 0.75f, maxWidth, maxHeight);
+        Picture p = new Picture(ref, box[0], box[1]);
+        p.description = img.attr("alt");
+        return p;
+    }
+
+    private LinkedSvg linkedSvg(String reference, byte[] bytes) {
+        if (linkedSvgs.containsKey(reference)) {
+            return linkedSvgs.get(reference);
+        }
+        if (bytes.length > MAX_SVG_CHARS) {
+            return null;
+        }
+        if (linkedSvgChars + bytes.length > MAX_LINKED_SVG_CHARS) {
+            warn("Left out pictures past the limit of linked files");
+            return null;
+        }
+        linkedSvgChars += bytes.length;
+        Element svg = Jsoup.parse(new String(bytes, StandardCharsets.UTF_8), "", Parser.xmlParser()).selectFirst("svg");
+        LinkedSvg parsed = null;
+        if (svg != null) {
+            Map<String, Element> ids = new HashMap<>();
+            collectIds(svg, ids);
+            parsed = new LinkedSvg(svg, ids, Svg.size(svg));
+        }
+        linkedSvgs.put(reference, parsed);
+        return parsed;
+    }
+
+    private static boolean svgFile(String reference, byte[] bytes) {
+        if (HtmlRefs.extension(reference).equals("svg")) {
+            return true;
+        }
+        String head = new String(bytes, 0, Math.min(bytes.length, 256), StandardCharsets.ISO_8859_1).stripLeading();
+        return head.startsWith("<svg") || head.startsWith("<?xml") && head.contains("<svg");
+    }
+
+    static String firstCandidate(String srcset) {
+        String s = srcset.strip();
+        if (s.isEmpty()) {
+            return "";
+        }
+        int end = 0;
+        while (end < s.length() && !Character.isWhitespace(s.charAt(end)) && s.charAt(end) != ',') {
+            end++;
+        }
+        return s.substring(0, end);
     }
 
     private static Element parseSvg(String src) {
@@ -225,6 +321,10 @@ final class HtmlImages {
 
     // The size a picture is shown at, in points, from its CSS and its natural size
     private static float[] box(Map<String, String> d, Look look, float natW, float natH, float maxWidth, float maxHeight) {
+        float ratio = aspectRatio(d.get("aspect-ratio"));
+        if (ratio > 0) {
+            natH = natW / ratio;
+        }
         Float w = size(d.get("width"), look, maxWidth);
         // A percentage height needs a container of known height, which flowing content never has
         Float h = percent(d.get("height")) ? null : size(d.get("height"), look, maxHeight);
@@ -247,6 +347,22 @@ final class HtmlImages {
         float tall = Math.min(maxHeight, maxH == null ? Float.MAX_VALUE : maxH);
         float scale = Math.min(1f, Math.min(room / Math.max(0.1f, w), tall / Math.max(0.1f, h)));
         return new float[] {Math.max(0.5f, w * scale), Math.max(0.5f, h * scale)};
+    }
+
+    static float aspectRatio(String v) {
+        if (v == null) {
+            return 0;
+        }
+        String s = v.strip().toLowerCase(Locale.ROOT).replace("auto", "").strip();
+        String[] parts = s.split("/");
+        try {
+            float w = Float.parseFloat(parts[0].strip());
+            float h = parts.length > 1 ? Float.parseFloat(parts[1].strip()) : 1f;
+            float r = w / h;
+            return parts.length <= 2 && r > 0.001f && r < 1000f ? r : 0;
+        } catch (NumberFormatException e) {
+            return 0;
+        }
     }
 
     private static boolean percent(String v) {
@@ -294,16 +410,23 @@ final class HtmlImages {
             warn("Left out a picture whose data is not valid base64");
             return null;
         }
+        Picture.MediaRef ref = decoded(bytes, "html:" + (++added));
+        if (ref == null) {
+            return null;
+        }
+        if (src.length() < (1 << 20)) {
+            seen.put(src, ref);
+        }
+        return ref;
+    }
+
+    private Picture.MediaRef decoded(byte[] bytes, Object key) throws IOException {
         MediaBytes pic = WebP.is(bytes) ? WebP.redraw(bytes) : MediaBytes.of(bytes);
         if (pic == null) {
             warn("Left out a picture that could not be read (AVIF is not drawn), or was too large to draw");
             return null;
         }
-        Picture.MediaRef ref = sink.media(pic.bytes(), pic.ext(), pic.pixelWidth(), pic.pixelHeight(), "html:" + (++added));
-        if (src.length() < (1 << 20)) {
-            seen.put(src, ref);
-        }
-        return ref;
+        return sink.media(pic.bytes(), pic.ext(), pic.pixelWidth(), pic.pixelHeight(), key);
     }
 
     private void warn(String w) {

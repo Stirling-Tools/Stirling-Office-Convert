@@ -78,6 +78,7 @@ public final class OfficeToPdf {
         CSV,
         TSV,
         HTML,
+        EPUB,
         JSON;
 
         public static Format of(Path file) {
@@ -93,7 +94,8 @@ public final class OfficeToPdf {
                         "sylk", "dif", "dbf", "numbers", "wk1", "wks", "wk3", "wk4", "123" -> XLSX;
                 case "csv" -> CSV;
                 case "tsv", "tab" -> TSV;
-                case "html", "htm", "xhtml" -> HTML;
+                case "html", "htm", "xhtml", "zip" -> HTML;
+                case "epub" -> EPUB;
                 case "json" -> JSON;
                 case "ppt", "pps", "pot" -> PPT;
                 default -> {
@@ -105,7 +107,7 @@ public final class OfficeToPdf {
                             + " .sxc, .stc, .sxi, .sti, .sxd, .std, .vsdx, .vsdm, .vssx, .vssm, .vstx, .vstm, .xml, .slk,"
                             + " .dif, .dbf, .wk1, .wks, .wk3, .wk4, .123, .pages, .numbers, .key, .pub, .vsd, .vss, .vst, .vsw,"
                             + " .txt,"
-                            + " .text, .log, .asc, .csv, .tsv, .tab, .html, .htm, .xhtml or .json");
+                            + " .text, .log, .asc, .csv, .tsv, .tab, .html, .htm, .xhtml, .zip of HTML, .epub or .json");
                 }
             };
         }
@@ -135,7 +137,7 @@ public final class OfficeToPdf {
     /** {@code password} opens a password protected document; it is never written anywhere, nor printed by
      * {@link #toString()}. */
     public record Options(Duration timeout, List<Path> fontDirs, int maxPages, long maxScratchBytes, FontSet fonts,
-            String displayName, String password) {
+            String displayName, String password, HtmlAssets htmlAssets, boolean allowPackages) {
 
         public static final int DEFAULT_MAX_PAGES = 10_000;
 
@@ -162,6 +164,17 @@ public final class OfficeToPdf {
             if (password != null && password.length() > MAX_PASSWORD_CHARS) {
                 throw new IllegalArgumentException("The password is longer than " + MAX_PASSWORD_CHARS + " characters");
             }
+            htmlAssets = htmlAssets == null ? HtmlAssets.NONE : htmlAssets;
+        }
+
+        public Options(Duration timeout, List<Path> fontDirs, int maxPages, long maxScratchBytes, FontSet fonts,
+                String displayName, String password, HtmlAssets htmlAssets) {
+            this(timeout, fontDirs, maxPages, maxScratchBytes, fonts, displayName, password, htmlAssets, false);
+        }
+
+        public Options(Duration timeout, List<Path> fontDirs, int maxPages, long maxScratchBytes, FontSet fonts,
+                String displayName, String password) {
+            this(timeout, fontDirs, maxPages, maxScratchBytes, fonts, displayName, password, HtmlAssets.NONE);
         }
 
         public Options(Duration timeout, List<Path> fontDirs, int maxPages, long maxScratchBytes, FontSet fonts,
@@ -182,31 +195,48 @@ public final class OfficeToPdf {
         }
 
         public Options timeout(Duration limit) {
-            return new Options(limit, fontDirs, maxPages, maxScratchBytes, fonts, displayName, password);
+            return new Options(limit, fontDirs, maxPages, maxScratchBytes, fonts, displayName, password, htmlAssets,
+                    allowPackages);
         }
 
         public Options fontDirs(List<Path> dirs) {
-            return new Options(timeout, dirs, maxPages, maxScratchBytes, fonts, displayName, password);
+            return new Options(timeout, dirs, maxPages, maxScratchBytes, fonts, displayName, password, htmlAssets,
+                    allowPackages);
         }
 
         public Options fonts(FontSet set) {
-            return new Options(timeout, fontDirs, maxPages, maxScratchBytes, set, displayName, password);
+            return new Options(timeout, fontDirs, maxPages, maxScratchBytes, set, displayName, password, htmlAssets,
+                    allowPackages);
         }
 
         public Options maxPages(int pages) {
-            return new Options(timeout, fontDirs, pages, maxScratchBytes, fonts, displayName, password);
+            return new Options(timeout, fontDirs, pages, maxScratchBytes, fonts, displayName, password, htmlAssets,
+                    allowPackages);
         }
 
         public Options maxScratchBytes(long bytes) {
-            return new Options(timeout, fontDirs, maxPages, bytes, fonts, displayName, password);
+            return new Options(timeout, fontDirs, maxPages, bytes, fonts, displayName, password, htmlAssets,
+                    allowPackages);
         }
 
         public Options displayName(String name) {
-            return new Options(timeout, fontDirs, maxPages, maxScratchBytes, fonts, name, password);
+            return new Options(timeout, fontDirs, maxPages, maxScratchBytes, fonts, name, password, htmlAssets,
+                    allowPackages);
         }
 
         public Options password(String secret) {
-            return new Options(timeout, fontDirs, maxPages, maxScratchBytes, fonts, displayName, secret);
+            return new Options(timeout, fontDirs, maxPages, maxScratchBytes, fonts, displayName, secret, htmlAssets,
+                    allowPackages);
+        }
+
+        public Options htmlAssets(HtmlAssets assets) {
+            return new Options(timeout, fontDirs, maxPages, maxScratchBytes, fonts, displayName, password, assets,
+                    allowPackages);
+        }
+
+        public Options allowPackages(boolean allow) {
+            return new Options(timeout, fontDirs, maxPages, maxScratchBytes, fonts, displayName, password, htmlAssets,
+                    allow);
         }
 
         public FontLibrary fontLibrary() {
@@ -217,7 +247,8 @@ public final class OfficeToPdf {
         public String toString() {
             return "Options[timeout=" + timeout + ", fontDirs=" + fontDirs + ", maxPages=" + maxPages
                     + ", maxScratchBytes=" + maxScratchBytes + ", fonts=" + fonts + ", displayName=" + displayName
-                    + ", password=" + (password == null ? "none" : "given") + "]";
+                    + ", password=" + (password == null ? "none" : "given") + ", htmlAssets="
+                    + (htmlAssets == HtmlAssets.NONE ? "none" : "given") + ", allowPackages=" + allowPackages + "]";
         }
     }
 
@@ -513,6 +544,19 @@ public final class OfficeToPdf {
                 return out.toByteArray();
             }
         }
+        if (format == Format.EPUB) {
+            Map<String, String> book = new LinkedHashMap<>();
+            book.put("mimetype", "application/epub+zip");
+            book.put("META-INF/container.xml", "<container version=\"1.0\" xmlns=\"urn:oasis:names:tc:opendocument:xmlns"
+                    + ":container\"><rootfiles><rootfile full-path=\"content.opf\" media-type=\"application/oebps-"
+                    + "package+xml\"/></rootfiles></container>");
+            book.put("content.opf", "<package xmlns=\"http://www.idpf.org/2007/opf\" version=\"3.0\"><manifest><item"
+                    + " id=\"c\" href=\"warm.xhtml\" media-type=\"application/xhtml+xml\"/></manifest><spine><itemref"
+                    + " idref=\"c\"/></spine></package>");
+            book.put("warm.xhtml", "<html xmlns=\"http://www.w3.org/1999/xhtml\"><head><title>Warm up</title></head>"
+                    + "<body><h1>Warm up</h1><p>Warm <b>up</b></p></body></html>");
+            return zipped(book);
+        }
         boolean word = format == Format.DOCX;
         String main = word ? "word/document.xml" : "xl/workbook.xml";
         Map<String, String> parts = new LinkedHashMap<>();
@@ -545,6 +589,10 @@ public final class OfficeToPdf {
             parts.put("xl/worksheets/sheet1.xml", "<worksheet " + ns + "><sheetData><row r=\"1\"><c r=\"A1\""
                     + " t=\"inlineStr\"><is><t>Warm up</t></is></c><c r=\"B1\"><v>1.5</v></c></row></sheetData></worksheet>");
         }
+        return zipped(parts);
+    }
+
+    private static byte[] zipped(Map<String, String> parts) throws IOException {
         ByteArrayOutputStream bytes = new ByteArrayOutputStream();
         try (ZipOutputStream zip = new ZipOutputStream(bytes)) {
             for (Map.Entry<String, String> e : parts.entrySet()) {

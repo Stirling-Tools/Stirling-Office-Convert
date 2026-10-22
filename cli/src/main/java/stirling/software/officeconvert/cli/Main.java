@@ -19,6 +19,7 @@ import org.apache.pdfbox.pdmodel.encryption.InvalidPasswordException;
 
 import stirling.software.officeconvert.PdfToDocx;
 import stirling.software.officeconvert.PdfToHtml;
+import stirling.software.officeconvert.PdfToEpub;
 import stirling.software.officeconvert.PdfToJson;
 import stirling.software.officeconvert.PdfToOdp;
 import stirling.software.officeconvert.PdfToOdt;
@@ -31,6 +32,7 @@ import stirling.software.officeconvert.Pictures;
 import stirling.software.officeconvert.legacy.PdfToPpt;
 import stirling.software.officeconvert.pdfa.PdfALevel;
 import stirling.software.officeconvert.pdfa.PdfToPdfA;
+import stirling.software.officeconvert.topdf.HtmlAssets;
 import stirling.software.officeconvert.topdf.OfficeToPdf;
 import stirling.software.officeconvert.topdf.UnsupportedFormats;
 import stirling.software.officeconvert.topdf.crypt.Passwords;
@@ -40,7 +42,7 @@ import stirling.software.officeconvert.topdf.text.TextFormats;
 
 public final class Main {
 
-    private static final Set<String> FORMATS = Set.of("docx", "odt", "fodt", "xml", "rtf", "doc", "txt", "html", "json", "md", "pptx",
+    private static final Set<String> FORMATS = Set.of("docx", "odt", "fodt", "xml", "rtf", "doc", "txt", "html", "json", "md", "epub", "pptx",
             "odp", "ppt", "xlsx", "ods", "pdf");
 
     private Main() {}
@@ -66,6 +68,7 @@ public final class Main {
         String password = null;
         boolean quiet = false;
         boolean overwrite = false;
+        boolean localFiles = false;
         String format = "docx";
         boolean formatGiven = false;
         boolean pagesGiven = false;
@@ -116,6 +119,8 @@ public final class Main {
                     case "--pictures" -> pictures = pictures(value(args, ++i, a));
                     case "-q", "--quiet" -> quiet = true;
                     case "--overwrite" -> overwrite = true;
+                    case "--allow-packages" -> office = office.allowPackages(true);
+                    case "--allow-local-files" -> localFiles = true;
                     case "-h", "--help" -> {
                         usage();
                         return 0;
@@ -141,7 +146,7 @@ public final class Main {
                     anyPdf |= formatGiven && !"pdf".equals(format);
                     continue;
                 }
-                boolean officeInput = isOffice(in);
+                boolean officeInput = officeOrPage(in);
                 String unsupported = officeInput ? null : UnsupportedFormats.byExtension(extension(in));
                 if (unsupported != null) {
                     throw new Usage(in.getFileName() + ": " + unsupported);
@@ -172,7 +177,7 @@ public final class Main {
             if (pdfa == null && output != null && !Files.isDirectory(output) && inputs.size() == 1
                     && !Files.isDirectory(inputs.get(0))) {
                 String ext = known(extension(output));
-                boolean officeInput = isOffice(inputs.get(0));
+                boolean officeInput = officeOrPage(inputs.get(0));
                 if (officeInput != "pdf".equals(ext)) {
                     throw new Usage(officeInput ? "an Office document converts to PDF; name the output .pdf"
                             : "PDF input converts to an Office format; the output cannot be .pdf");
@@ -223,7 +228,7 @@ public final class Main {
                 .timeout(office.timeout()).maxPages(office.maxPages()).fonts(fonts);
         for (int k = 0; k < pdfs.size(); k++) {
             Path pdf = pdfs.get(k);
-            boolean officeInput = isOffice(pdf);
+            boolean officeInput = officeOrPage(pdf);
             Path target = targets.get(k);
             String refusal = guard.refusal(pdf, target);
             if (refusal != null) {
@@ -242,7 +247,8 @@ public final class Main {
                 if (archival != null) {
                     notes = PdfToPdfA.convert(pdf, target, archival).warnings();
                 } else if (officeInput) {
-                    result = officeToPdf(pdf, target, office);
+                    result = officeToPdf(pdf, target, localFiles && page(pdf) ? office.htmlAssets(
+                            HtmlAssets.folder(pdf.toAbsolutePath().getParent(), pdf.getFileName().toString())) : office);
                 } else {
                     convert(pdf, target, options, slides, books);
                 }
@@ -335,6 +341,7 @@ public final class Main {
             case "html" -> PdfToHtml.convert(pdf, target, options);
             case "json" -> PdfToJson.convert(pdf, target, options);
             case "md" -> PdfToMarkdown.convert(pdf, target, options);
+            case "epub" -> PdfToEpub.convert(pdf, target, options);
             case "pptx" -> PdfToPptx.convert(pdf, target, slides);
             case "odp" -> PdfToOdp.convert(pdf, target, slides);
             case "ppt" -> PdfToPpt.convert(pdf, target, slides);
@@ -381,6 +388,16 @@ public final class Main {
         return file.getFileName() != null && OfficeToPdf.Format.recognises(file);
     }
 
+    private static boolean page(Path file) {
+        String name = file.getFileName() == null ? "" : file.getFileName().toString().toLowerCase(Locale.ROOT);
+        return name.endsWith(".html") || name.endsWith(".htm") || name.endsWith(".xhtml");
+    }
+
+    static boolean officeOrPage(Path file) {
+        String name = file.getFileName() == null ? "" : file.getFileName().toString().toLowerCase(Locale.ROOT);
+        return isOffice(file) || name.endsWith(".zip") || name.endsWith(".epub");
+    }
+
     private static boolean plainSource(Path file) {
         if (TextFormats.kind(file) != null) {
             return true;
@@ -418,7 +435,7 @@ public final class Main {
     private static String known(String format) throws Usage {
         if (!FORMATS.contains(format)) {
             throw new Usage("unknown output format '" + format
-                    + "': use docx, odt, fodt, xml, rtf, doc, txt, html, json, md, pptx, odp, ppt, xlsx or ods (pdf for Office input)");
+                    + "': use docx, odt, fodt, xml, rtf, doc, txt, html, json, md, epub, pptx, odp, ppt, xlsx or ods (pdf for Office input)");
         }
         return format;
     }
@@ -506,7 +523,7 @@ public final class Main {
                         + " [-o out.pdf|dir] [--format pdf] [--password p]"
                         + " [--max-pages n (default 10000, 0 = all)] [--timeout s (default 300, 0 = none)]"
                         + " [--fonts dir]... [--font-map Family=Installed]... [--font-width Family=scale]..."
-                        + " [--no-system-fonts] [--overwrite] [-q]"
+                        + " [--no-system-fonts] [--allow-packages] [--allow-local-files] [--overwrite] [-q]"
                         + System.lineSeparator()
                         + "       office-convert <in.pdf|dir>... --pdfa 1a|1b|2a|2b|2u|3a|3b|3u [-o out.pdf|dir] [--password p]"
                         + " [--timeout s] [--fonts dir]... [--font-map Family=Installed]... [--no-system-fonts] [--overwrite] [-q]"
@@ -522,7 +539,10 @@ public final class Main {
                         + " .key .pub .vsd .vss .vst .vsw), plain text (.txt .text .log .asc) and comma or"
                         + " tab separated tables (.csv .tsv .tab), HTML (.html .htm .xhtml) and the JSON this tool writes (.json) convert to PDF; --password opens a protected one. A folder converts its PDFs and Office files;"
                         + " --format pdf takes only its Office and text files. Nothing a document"
-                        + " links to is fetched and no macro, field or formula is run."
+                        + " links to is fetched and no macro, field or formula is run. A .zip of an HTML page converts only"
+                        + " with --allow-packages; --allow-local-files lets an HTML page draw the pictures and style sheets"
+                        + " in its own folder (never outside it). An .epub book uses only what it holds; one inside another .zip needs"
+                        + " --allow-packages."
                         + System.lineSeparator()
                         + "The output's extension picks the format: .docx, .odt, .fodt, .xml (flat ODT), .rtf, .doc (RTF content),"
                         + " .txt, .html (one file, pictures inline), .json (the document model), .md, .pptx, .odp, .ppt, .xlsx or .ods; --format names it for a directory of outputs."

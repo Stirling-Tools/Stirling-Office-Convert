@@ -21,6 +21,7 @@ import stirling.software.officeconvert.json.JsonModel;
 import stirling.software.officeconvert.model.Section;
 import stirling.software.officeconvert.model.StyleSheet;
 import stirling.software.officeconvert.memory.Admission;
+import stirling.software.officeconvert.topdf.HtmlAssets;
 import stirling.software.officeconvert.topdf.font.FontLibrary;
 import stirling.software.officeconvert.topdf.text.Converted;
 
@@ -47,14 +48,23 @@ public final class HtmlDocument {
 
     /** {@code fonts} decides which family of each CSS font stack is used; null takes the first named. */
     public static Converted write(Path source, OutputStream out, FontLibrary fonts) throws IOException {
-        return lay(source, out, fonts, 1f).converted();
+        return lay(source, out, fonts, 1f, HtmlAssets.NONE).converted();
     }
 
     /** Lays the page out on paper enlarged by {@code 1 / zoom}, as a browser lays out content too wide for the page
      * before shrinking it to fit; the result says which zoom the content asked for. */
     public static Laid lay(Path source, OutputStream out, FontLibrary fonts, float zoom) throws IOException {
+        return lay(source, out, fonts, zoom, HtmlAssets.NONE);
+    }
+
+    public static HtmlAssets readOnce(HtmlAssets assets) {
+        return assets instanceof Linked linked ? linked : new Linked(assets);
+    }
+
+    public static Laid lay(Path source, OutputStream out, FontLibrary fonts, float zoom, HtmlAssets assets)
+            throws IOException {
         try (DocxWriter writer = new DocxWriter(out)) {
-            return lay(source, writer, fonts, zoom);
+            return lay(source, writer, fonts, zoom, assets);
         }
     }
 
@@ -64,16 +74,21 @@ public final class HtmlDocument {
     }
 
     public static Converted write(Path source, DocSink sink, FontLibrary fonts) throws IOException {
-        return lay(source, sink, fonts, 1f).converted();
+        return lay(source, sink, fonts, 1f, HtmlAssets.NONE).converted();
     }
 
-    private static Laid lay(Path source, DocSink sink, FontLibrary fonts, float zoom) throws IOException {
+    public static Converted write(Path source, DocSink sink, FontLibrary fonts, HtmlAssets assets) throws IOException {
+        return lay(source, sink, fonts, 1f, assets).converted();
+    }
+
+    private static Laid lay(Path source, DocSink sink, FontLibrary fonts, float zoom, HtmlAssets assets)
+            throws IOException {
         try {
             if (fonts != null) {
                 Map<String, Boolean> known = new HashMap<>();
                 Look.drawable(f -> known.computeIfAbsent(f, k -> installed(fonts, k)));
             }
-            return convert(source, sink, Math.max(LEAST_FIT, Math.min(1f, zoom)));
+            return convert(source, sink, Math.max(LEAST_FIT, Math.min(1f, zoom)), (Linked) readOnce(assets));
         } finally {
             Css.clearRootSize();
             Look.clearDrawable();
@@ -97,14 +112,14 @@ public final class HtmlDocument {
         return (page.pageWidth - page.marginLeft - page.marginRight) / 0.75f;
     }
 
-    private static Laid convert(Path source, DocSink writer, float zoom) throws IOException {
+    private static Laid convert(Path source, DocSink writer, float zoom, Linked linked) throws IOException {
         // One bulk read: the parser's small reads are slow on network and container file systems
         byte[] bytes = Files.readAllBytes(source);
         Document doc = Jsoup.parse(new ByteArrayInputStream(bytes), null, "");
         List<String> warnings = new ArrayList<>();
-        Section page = page(new Cascade(doc, viewportPx(JsonModel.defaultPage())).page());
+        Section page = page(new Cascade(doc, viewportPx(JsonModel.defaultPage()), linked).page());
         // media queries see the printed page, however wide the layout grows
-        Cascade cascade = new Cascade(doc, viewportPx(page));
+        Cascade cascade = new Cascade(doc, viewportPx(page), linked);
         boolean ownPaper = cascade.declaresPages();
         float printed = page.pageWidth - page.marginLeft - page.marginRight;
         if (zoom < 1 && !ownPaper) {
@@ -123,7 +138,7 @@ public final class HtmlDocument {
         Look bodyLook = root.child(bodyStyle, width, false);
         StyleSheet styles = new StyleSheet(bodyLook.run());
         writer.begin(styles, new DocSink.HeaderFooterSet(List.of(), List.of(), List.of(), List.of(), false));
-        HtmlContext ctx = new HtmlContext(cascade, styles, writer, warnings, page);
+        HtmlContext ctx = new HtmlContext(cascade, styles, writer, warnings, page, linked);
         least(ctx, htmlStyle, root);
         least(ctx, bodyStyle, bodyLook);
         if (fixed(htmlStyle) || fixed(bodyStyle)) {

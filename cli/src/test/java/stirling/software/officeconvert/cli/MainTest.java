@@ -361,6 +361,64 @@ class MainTest {
     }
 
     @Test
+    void zipPagesConvertOnlyWithAllowPackages() throws Exception {
+        Path zip = dir.resolve("site.zip");
+        try (OutputStream os = Files.newOutputStream(zip); ZipOutputStream z = new ZipOutputStream(os)) {
+            entry(z, "index.html", "<p>Zipped page</p><img src='dot.png'>");
+            z.putNextEntry(new ZipEntry("dot.png"));
+            z.write(png());
+            z.closeEntry();
+        }
+        Path pdf = dir.resolve("site.pdf");
+        Result refused = run(zip.toString());
+        assertEquals(1, refused.code(), refused.err());
+        assertTrue(refused.err().contains("--allow-packages"), refused.err());
+        assertFalse(Files.exists(pdf));
+        Result allowed = run(zip.toString(), "--allow-packages", "-q");
+        assertEquals(0, allowed.code(), allowed.err());
+        assertEquals(1, images(pdf));
+    }
+
+    @Test
+    void pagesReadFilesBesideThemOnlyWithAllowLocalFiles() throws Exception {
+        Path site = Files.createDirectories(dir.resolve("site"));
+        Files.write(site.resolve("dot.png"), png());
+        Files.write(dir.resolve("outside.png"), png());
+        Path page = Files.writeString(site.resolve("page.html"), "<p>Local page</p><img src='dot.png'>"
+                + "<img src='../outside.png'><img src='" + dir.resolve("outside.png").toUri() + "'>");
+        Path pdf = site.resolve("page.pdf");
+        Result plain = run(page.toString(), "-q");
+        assertEquals(0, plain.code(), plain.err());
+        assertEquals(0, images(pdf));
+        Result local = run(page.toString(), "--allow-local-files", "--overwrite", "-q");
+        assertEquals(0, local.code(), local.err());
+        assertEquals(1, images(pdf));
+    }
+
+    private static byte[] png() throws IOException {
+        java.awt.image.BufferedImage img = new java.awt.image.BufferedImage(8, 8,
+                java.awt.image.BufferedImage.TYPE_INT_RGB);
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        javax.imageio.ImageIO.write(img, "png", out);
+        return out.toByteArray();
+    }
+
+    private static int images(Path pdf) throws IOException {
+        int images = 0;
+        try (PDDocument d = org.apache.pdfbox.Loader.loadPDF(pdf.toFile())) {
+            for (PDPage page : d.getPages()) {
+                for (var n : page.getResources().getXObjectNames()) {
+                    if (page.getResources().getXObject(n)
+                            instanceof org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject) {
+                        images++;
+                    }
+                }
+            }
+        }
+        return images;
+    }
+
+    @Test
     void outputsDodgeInputNamesAndAreNotConvertedAgain() throws Exception {
         Path word = dir.resolve("b.docx");
         Path pdf = dir.resolve("b.pdf");

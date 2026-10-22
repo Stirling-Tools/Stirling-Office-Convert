@@ -26,11 +26,12 @@ For Word, PowerPoint and Excel input (`.docx .docm .dotx .dotm .pptx .pptm .ppsx
 `.rtf`, Word 2003 XML, XML Spreadsheet 2003 and Flat OPC `.xml`, Visio 2013 and later `.vsdx .vsdm .vssx .vstx`,
 OpenDocument `.odt .ott .fodt .odm .ods .ots .fods .odp .otp .fodp .odg .otg .fodg`, OpenOffice.org 1.x `.sxw .stw .sxc
 .stc .sxi .sti .sxd .std`, SYLK, DIF and dBASE `.slk .dif .dbf`, Lotus 1-2-3 `.wk1 .wks .wk3 .wk4 .123`, Apple iWork `.pages .numbers .key`, Publisher `.pub` and Visio 2003-2010 `.vsd .vss .vst .vsw` (from the preview they hold), plain text `.txt .text .log .asc`, tables
-`.csv .tsv .tab`, HTML `.html .htm .xhtml` and this library's JSON `.json`), which converts to PDF: `--password p` (a password protected document), `--max-pages n` (default 10000, 0 = all), `--timeout s` (default 300, 0 =
+`.csv .tsv .tab`, HTML `.html .htm .xhtml` or a `.zip` of a page (with `--allow-packages`), EPUB `.epub` and this library's JSON `.json`), which converts to PDF: `--password p` (a password protected document), `--max-pages n` (default 10000, 0 = all), `--timeout s` (default 300, 0 =
 none), `--fonts dir` (repeatable; an extra folder of fonts), `--font-map Family=Installed` (repeatable; draw a
 family with an installed one, such as `Aptos=Inter`), `--font-width Family=scale` (repeatable; scale a substituted
 family's widths, 0.5 to 2), `--no-system-fonts` (only the given fonts and the bundled Liberation Sans, for
-reproducible output), `-q`, and `--format pdf` to take only the Office files out
+reproducible output), `--allow-packages` (convert a `.zip` of an HTML page, or an EPUB book not named `.epub`), `--allow-local-files` (let an HTML page
+draw the pictures and style sheets in its own folder, never outside it), `-q`, and `--format pdf` to take only the Office files out
 of a folder. A folder converts both its PDFs and its Office files; its text and CSV files only with `--format pdf`. Inputs that would write the same output name (such
 as `report.docx` and `report.xlsx`) keep their own extension in it (`report.docx.pdf`, `report.xlsx.pdf`), and Office
 owner files (`~$name`) are skipped. An input is never overwritten: an output that would take an input's name keeps that
@@ -41,7 +42,7 @@ when everything converted, 1 when something failed or was skipped or a folder he
 mistake in the arguments. Warnings (substituted fonts, skipped active content, pictures that could not be
 drawn) print to stderr as `warning: <file>: <message>` unless `-q`.
 The output file's extension picks the format: `.docx`, `.odt`, `.fodt`, `.xml` (flat ODT), `.rtf`, `.doc`, `.txt`,
-`.html`, `.json`, `.md`, `.pptx`, `.odp`, `.ppt`, `.xlsx` or `.ods` (see Other formats). For a folder of PDFs, `--format ext` names it; `--sheets
+`.html`, `.json`, `.md`, `.epub`, `.pptx`, `.odp`, `.ppt`, `.xlsx` or `.ods` (see Other formats). For a folder of PDFs, `--format ext` names it; `--sheets
 page|table|single` sets a spreadsheet's layout. Each file prints its time and the heap in use when it finished.
 `--pdfa 1a|1b|2a|2b|2u|3a|3b|3u` makes an archival PDF/A copy of each PDF instead (see PDF to PDF/A): `in.pdfa.pdf` beside the
 input, or the `-o` file or folder; it takes `--password`, `--timeout`, `--fonts`, `--font-map` and
@@ -186,7 +187,7 @@ implementation 'com.stirling:stirling-office-convert:<version>'             // G
 
 Then one class does it all, `stirling.software.officeconvert.OfficeConvert`. The output file's extension picks the
 format: `.docx`, `.odt`, `.fodt`, `.xml` (flat ODT, what LibreOffice writes for PDF to XML), `.rtf`, `.doc` (RTF
-content), `.txt`, `.html`, `.json`, `.md`, `.pptx`, `.odp`, `.xlsx` or `.ods`.
+content), `.txt`, `.html`, `.json`, `.md`, `.epub`, `.pptx`, `.odp`, `.xlsx` or `.ods`.
 
 ```java
 import java.nio.file.Path;
@@ -546,7 +547,20 @@ queries are answered for print at the page's text width, `!important`, custom pr
 (short items share a line); absolute positions and visually hidden text (screen-reader-only, off-page, closed
 `<details>`) are left out. Nothing is fetched and no script runs: linked style sheets, `@import`, `@font-face`,
 `url()` and pictures on the web or on disk are left out with a warning, and only pictures inside the file are drawn
-(PNG, JPEG, GIF, BMP, WebP and SVG; AVIF is not). HTML files are limited to 64 MB, and parsing, the cascade, SVG
+(PNG, JPEG, GIF, BMP, WebP and SVG; AVIF is not). A `.zip` of a page is refused unless
+`Options.allowPackages(true)` (`--allow-packages`) is given; then the page it holds (the shallowest `index.html`, else the
+shallowest `.html`) draws the pictures, linked style sheets and `@import`s it holds, resolved relative to the page and
+never outside the archive. A library caller can supply them another way with `Options.htmlAssets(HtmlAssets)`:
+`HtmlAssets.folder(root, page)` reads files inside one folder (no `..`, absolute paths or links leading out of it; what
+`--allow-local-files` uses, rooted at the page's folder), and
+a caller's own implementation receives each reference resolved against its `base()`, such as a URL it fetches itself.
+At most 4,000 linked files and 192 MB are read per page, 64 MB each.
+
+EPUB (`.epub`, EPUB 2 and 3) is read in its reading order (the package document's spine) into one HTML page: each
+document starts a new page, its own `<style>` rules apply only to it, links between documents become links inside
+the PDF, and the cover picture (an SVG-wrapped cover page included) comes first. Pictures and style sheets come from
+the book. A book converts by default when it is named `.epub` or streamed as `Format.EPUB`; a book inside any other
+`.zip`, or streamed as `Format.HTML`, is a package and needs `allowPackages`. DRM-protected books cannot be read. HTML files are limited to 64 MB, and parsing, the cascade, SVG
 painting and nesting each work within fixed budgets so a hostile page cannot hang or exhaust the converter.
 
 JSON (`.json`) is the document model that PDF to JSON writes ([format](json-format.md)), hand written or edited;
@@ -570,6 +584,7 @@ String text = PdfToText.text(pdDocument, options);
 PdfToHtml.convert(pdf, Path.of("out.html"), options);      // one HTML5 file, pictures as data: URIs
 PdfToHtml.convertFixed(pdf, Path.of("page.html"), FixedHtml.Options.defaults()); // each page as it looks
 PdfToJson.convert(pdf, Path.of("out.json"), options);      // the document model as JSON
+PdfToEpub.convert(pdf, Path.of("out.epub"), options);      // a reflowing EPUB 3 book
 ```
 
 - ODT and flat ODT carry what the DOCX carries: styles, lists, tables with merged cells, pictures (cropped and turned
@@ -589,6 +604,10 @@ PdfToJson.convert(pdf, Path.of("out.json"), options);      // the document model
   with merged cells, borders and shading, pictures as `data:` URIs, links, footnotes at the end, and the page size and
   margins as `@page` for printing. Floating pictures and text boxes join the flow next to their paragraph; columns
   flow as one. There are no scripts and no external references.
+- EPUB is an EPUB 3 book (with an EPUB 2 table of contents for older readers): a new chapter at each top-level
+  heading or every 150,000 characters, pictures as files, footnotes in a notes chapter, links kept across chapters,
+  and a table of contents from the headings. Running headers and footers are left out, as a reflowing book has no
+  pages; the title comes from the PDF's metadata, else its first heading.
 - Fixed-layout HTML keeps every page as it looks instead of reflowing it, like `pdftohtml -c`: one self-contained
   file with a box per page at the page's size. `Text.LIVE` (the default) draws the page's graphics and pictures without
   its text as a picture (left out when the page has nothing else) and places the text over it as real SVG text at its
