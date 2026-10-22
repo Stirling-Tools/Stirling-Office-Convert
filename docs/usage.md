@@ -390,7 +390,9 @@ several sheets in one file, and chart and macro sheets, are refused with a plain
 
 Password protected documents open with `Options.password(...)` (`--password` on the command line): Office Open XML
 packages encrypted with Agile or Standard encryption, and Word, Excel and PowerPoint 97-2003 files encrypted with RC4,
-CryptoAPI or XOR obfuscation (Excel 5.0/95 XOR included). The file is decrypted in the conversion's own scratch
+CryptoAPI or XOR obfuscation (Excel 5.0/95 XOR included), and OpenDocument packages encrypted per entry with
+AES-256-CBC (ODF 1.2 and later) or Blowfish CFB (OpenOffice.org and ODF 1.0/1.1), or as a whole with AES-256-GCM and
+Argon2id (LibreOffice's ODF 1.4 extended default). The file is decrypted in the conversion's own scratch
 space and never written beside the input; a wrong password, or none, fails with a plain reason, and nothing is ever
 guessed. Files Office protects only with its built-in read-only password open without one.
 
@@ -452,7 +454,7 @@ lists, tables, sections and columns, page styles with headers and footers, footn
 cells with their cached values (formulas are never evaluated), number formats, merges, hidden rows and columns,
 print ranges and page setup; master pages, outlines and shrink-to-fit text on slides. Only pictures inside the
 package are drawn: linked files are never fetched, and macros and scripts are never run. Embedded charts are not
-drawn yet. Password protected files are refused with a plain reason. OpenDocument drawings (`.odg .otg .fodg`) are
+drawn yet. Password protected packages open with their password, as described above. OpenDocument drawings (`.odg .otg .fodg`) are
 drawn like presentations, one page per drawing page, leaving out shapes on layers that are not printed.
 OpenOffice.org 1.x documents (`.sxw .stw .sxc .stc .sxi .sti .sxd .std`) are reshaped as OpenDocument (namespaces,
 renamed elements, property sets split by style family) and converted as such; their embedded objects are left out.
