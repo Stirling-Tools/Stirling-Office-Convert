@@ -238,4 +238,15 @@ class WebFontsTrueTypeTest {
             assertWebFont(ttf, lib);
         }
     }
+
+    @Test
+    void bareTrueTypeBytesTakeTheExplicitMapping() throws Exception {
+        try (TrueTypeFont lib = Samples.liberation()) {
+            int a = gid(lib, 'A');
+            byte[] ttf = WebFonts.toTrueType(stripped(lib, null), WebFonts.FontKind.TRUETYPE, Map.of(a, 0x1F600));
+            try (TrueTypeFont t = parse(ttf)) {
+                assertEquals(a, t.getUnicodeCmapLookup().getGlyphId(0x1F600));
+            }
+        }
+    }
 }

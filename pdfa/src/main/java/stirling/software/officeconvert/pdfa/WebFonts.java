@@ -63,7 +63,7 @@ public final class WebFonts {
     public static byte[] toTrueType(byte[] fontProgram, FontKind kind, Map<Integer, Integer> unicodeByGlyph)
             throws IOException {
         if (kind == FontKind.TRUETYPE) {
-            return fromSfnt(fontProgram, null, null);
+            return fromSfnt(fontProgram, null, unicodeByGlyph);
         }
         return convert(Program.read(fontProgram, kind, -1, -1), unicodeByGlyph);
     }
