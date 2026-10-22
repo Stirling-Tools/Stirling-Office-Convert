@@ -29,6 +29,8 @@ sealed interface Op {
 
     record Dest(String name, float x, float y) implements Op {}
 
+    record Outline(String title, int level, int order, float y) implements Op {}
+
     record Group(float dx, float dy, AffineTransform transform, float[] clip, List<Op> ops) implements Op {}
 
     // A chart's drawing, laid out at the origin once per size and shared by every place that shows it
