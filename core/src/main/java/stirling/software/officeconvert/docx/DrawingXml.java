@@ -36,7 +36,7 @@ final class DrawingXml {
                     .append("<wp:positionH relativeFrom=\"page\"><wp:posOffset>").append(Xml.emuOffset(x))
                     .append("</wp:posOffset></wp:positionH>")
                     .append("<wp:positionV relativeFrom=\"").append(pic.fromParagraph ? "paragraph" : "page")
-                    .append("\"><wp:posOffset>").append(Xml.emuOffsetDown(y))
+                    .append("\"><wp:posOffset>").append(pic.fromParagraph ? Xml.emuOffset(y) : Xml.emuOffsetDown(y))
                     .append("</wp:posOffset></wp:positionV>");
         } else {
             sb.append("<wp:inline distT=\"0\" distB=\"0\" distL=\"0\" distR=\"0\">");
@@ -89,13 +89,15 @@ final class DrawingXml {
                 .append("\" behindDoc=\"0\" locked=\"0\" layoutInCell=\"1\" allowOverlap=\"1\">")
                 .append("<wp:simplePos x=\"0\" y=\"0\"/>")
                 .append("<wp:positionH relativeFrom=\"page\"><wp:posOffset>").append(Xml.emuOffset(t.x())).append("</wp:posOffset></wp:positionH>")
-                .append("<wp:positionV relativeFrom=\"page\"><wp:posOffset>").append(Xml.emuOffsetDown(t.y())).append("</wp:posOffset></wp:positionV>")
+                .append("<wp:positionV relativeFrom=\"").append(t.fromParagraph() ? "paragraph" : "page")
+                .append("\"><wp:posOffset>").append(t.fromParagraph() ? Xml.emuOffset(t.y()) : Xml.emuOffsetDown(t.y()))
+                .append("</wp:posOffset></wp:positionV>")
                 .append("<wp:extent cx=\"").append(cx).append("\" cy=\"").append(cy).append("\"/>")
                 .append("<wp:effectExtent l=\"0\" t=\"0\" r=\"0\" b=\"0\"/>")
                 .append(t.overlay() ? "<wp:wrapNone/>" : "<wp:wrapSquare wrapText=\"bothSides\"/>")
                 .append("<wp:docPr id=\"").append(id).append("\" name=\"Text Box ").append(id).append("\"/><wp:cNvGraphicFramePr/>")
                 .append("<a:graphic><a:graphicData uri=\"http://schemas.microsoft.com/office/word/2010/wordprocessingShape\">")
-                .append("<wps:wsp><wps:cNvSpPr txBox=\"1\"/><wps:spPr><a:xfrm").append(t.direction() == 180 ? " rot=\"10800000\"" : "")
+                .append("<wps:wsp><wps:cNvSpPr txBox=\"1\"/><wps:spPr><a:xfrm").append(rotation(t))
                 .append("><a:off x=\"0\" y=\"0\"/><a:ext cx=\"").append(cx)
                 .append("\" cy=\"").append(cy).append("\"/></a:xfrm><a:prstGeom prst=\"").append(t.rounded() ? "roundRect" : "rect")
                 .append("\">").append(adjust(t.rounded(), t.width(), t.height())).append("</a:prstGeom>");
@@ -118,8 +120,17 @@ final class DrawingXml {
         sb.append("</w:txbxContent></wps:txbx><wps:bodyPr rot=\"0\" vert=\"").append(t.upright() ? "eaVert" : vert(t.direction()))
                 .append("\" wrap=\"square\" lIns=\"")
                 .append(Xml.emu(t.insetLeft())).append("\" tIns=\"0\" rIns=\"").append(Xml.emu(t.insetRight()))
-                .append("\" bIns=\"0\" anchor=\"t\" anchorCtr=\"0\"><a:noAutofit/></wps:bodyPr></wps:wsp>")
+                .append("\" bIns=\"0\" anchor=\"t\" anchorCtr=\"0\">").append(t.grow() ? "<a:spAutoFit/>" : "<a:noAutofit/>")
+                .append("</wps:bodyPr></wps:wsp>")
                 .append("</a:graphicData></a:graphic></wp:anchor></w:drawing></mc:Choice></mc:AlternateContent></w:r>");
+    }
+
+    private static String rotation(Inline.TextBox t) {
+        if (t.direction() == 180) {
+            return " rot=\"10800000\"";
+        }
+        long rot = Math.round(t.rotation() * 60000.0);
+        return rot == 0 ? "" : " rot=\"" + Math.floorMod(rot, 21600000L) + "\"";
     }
 
     private static String vert(int direction) {

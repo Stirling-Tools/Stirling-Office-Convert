@@ -33,6 +33,27 @@ final class HtmlContext {
     // the most items of any row of columns in an element or inside it, 0 when none
     private final Map<Element, Integer> rows = new IdentityHashMap<>();
 
+    private static final int MAX_VISITS = 400_000;
+
+    private int visits;
+    private final java.util.Set<Element> placed = java.util.Collections.newSetFromMap(new IdentityHashMap<>());
+
+    boolean visit() {
+        return ++visits <= MAX_VISITS;
+    }
+
+    void place(Element e) {
+        placed.add(e);
+    }
+
+    boolean placed(Element e) {
+        return placed.contains(e);
+    }
+
+    boolean positions() {
+        return cascade.positions();
+    }
+
     HtmlContext(Cascade cascade, StyleSheet styles, DocSink sink, List<String> warnings, Section page, Linked linked) {
         this.cascade = cascade;
         this.styles = styles;

@@ -1,5 +1,6 @@
 package stirling.software.officeconvert.topdf.html;
 
+import java.awt.image.BufferedImage;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
@@ -16,6 +17,7 @@ import org.jsoup.parser.Parser;
 import stirling.software.officeconvert.build.DocSink;
 import stirling.software.officeconvert.json.MediaBytes;
 import stirling.software.officeconvert.model.Picture;
+import stirling.software.officeconvert.topdf.io.PictureDecoder;
 
 /** Pictures given inline: data: URIs and SVG drawn in the page. Nothing else is loaded: a picture on the web or on
  * disk is left out. */
@@ -142,6 +144,128 @@ final class HtmlImages {
         Picture p = new Picture(ref, box[0], box[1]);
         p.description = img.attr("alt");
         return p;
+    }
+
+    record Source(MediaBytes raster, Element svg, Map<String, Element> ids, float width, float height, String key) {}
+
+    private final Map<String, Source> sources = new HashMap<>();
+
+    Source source(String url) {
+        if (url == null || url.isBlank() || url.equalsIgnoreCase("none")) {
+            return null;
+        }
+        if (sources.containsKey(url)) {
+            return sources.get(url);
+        }
+        Source s = null;
+        try {
+            s = load(url.strip());
+        } catch (IOException | RuntimeException e) {
+            s = null;
+        }
+        if (url.length() < (1 << 20)) {
+            sources.put(url, s);
+        }
+        return s;
+    }
+
+    private Source load(String url) throws IOException {
+        if (url.regionMatches(true, 0, "data:image/svg", 0, 14)) {
+            Element svg = parseSvg(url);
+            return svg == null ? null : svgSource(svg, "bgsvg:" + (++added));
+        }
+        byte[] bytes;
+        String key;
+        if (url.regionMatches(true, 0, "data:", 0, 5)) {
+            int comma = url.indexOf(',');
+            if (comma < 0 || !url.substring(5, comma).toLowerCase(Locale.ROOT).endsWith(";base64")) {
+                return null;
+            }
+            dataChars += url.length() - comma;
+            if (dataChars > MAX_DATA_CHARS) {
+                warn("Left out pictures past the first 96 MB of picture data");
+                return null;
+            }
+            bytes = Base64.getMimeDecoder().decode(url.substring(comma + 1));
+            key = "bg:" + (++added);
+        } else {
+            if (linked.none()) {
+                warn(NOT_FETCHED);
+                return null;
+            }
+            String reference = HtmlRefs.resolve(linked.base(), url);
+            bytes = reference == null ? null : linked.read(reference);
+            if (bytes == null) {
+                warn(linked.exhausted() ? "Left out pictures past the limit of linked files" : NOT_IN_PACKAGE);
+                return null;
+            }
+            key = "linked:" + reference;
+            if (svgFile(reference, bytes)) {
+                if (bytes.length > MAX_SVG_CHARS) {
+                    return null;
+                }
+                Element svg = Jsoup.parse(new String(bytes, StandardCharsets.UTF_8), "", Parser.xmlParser())
+                        .selectFirst("svg");
+                return svg == null ? null : svgSource(svg, key);
+            }
+        }
+        MediaBytes pic = WebP.is(bytes) ? WebP.redraw(bytes) : MediaBytes.of(bytes);
+        if (pic == null) {
+            warn("Left out a picture that could not be read (AVIF is not drawn), or was too large to draw");
+            return null;
+        }
+        return new Source(pic, null, null, pic.pixelWidth() * 0.75f, pic.pixelHeight() * 0.75f, key);
+    }
+
+    private static Source svgSource(Element svg, String key) {
+        Map<String, Element> ids = new HashMap<>();
+        collectIds(svg, ids);
+        float[] natural = Svg.size(svg);
+        return new Source(null, svg, ids, natural[0] * 0.75f, natural[1] * 0.75f, key);
+    }
+
+    Picture picture(Source s, float width, float height, Look look) throws IOException {
+        if (s.svg() != null) {
+            return painted(s.svg(), s.ids(), new float[] {width, height}, look, s.key());
+        }
+        Picture.MediaRef ref = sink.media(s.key());
+        if (ref == null) {
+            MediaBytes m = s.raster();
+            ref = sink.media(m.bytes(), m.ext(), m.pixelWidth(), m.pixelHeight(), s.key());
+        }
+        return new Picture(ref, width, height);
+    }
+
+    BufferedImage pixels(Source s, float width, float height, Look look) {
+        try {
+            byte[] png;
+            if (s.svg() != null) {
+                if (svgs >= MAX_SVGS || svgPixels > MAX_SVG_PIXELS) {
+                    return null;
+                }
+                svgs++;
+                Svg.Painted p = Svg.paint(s.svg(), s.ids(), width, height, look.color, svgWork);
+                if (p == null) {
+                    return null;
+                }
+                svgPixels += (long) p.pixelWidth() * p.pixelHeight();
+                png = p.png();
+            } else {
+                if ((long) s.raster().pixelWidth() * s.raster().pixelHeight() > MAX_TILE_PIXELS) {
+                    return null;
+                }
+                png = s.raster().bytes();
+            }
+            return PictureDecoder.readRaster(png, MAX_TILE_PIXELS);
+        } catch (IOException | RuntimeException e) {
+            return null;
+        }
+    }
+
+    private static final long MAX_TILE_PIXELS = 4_000_000L;
+
+    Picture.MediaRef png(byte[] png, int pixelWidth, int pixelHeight) throws IOException {
+        return sink.media(png, "png", pixelWidth, pixelHeight, "bgtile:" + (++added));
     }
 
     private static boolean svgFile(String reference, byte[] bytes) {
