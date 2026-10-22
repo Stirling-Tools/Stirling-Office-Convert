@@ -136,9 +136,9 @@ final class Deck {
                     return t.getText();
                 }
             }
+            return slide.getXmlObject().getCSld().getName();
         } catch (RuntimeException e) {
             return null;
         }
-        return null;
     }
 }
