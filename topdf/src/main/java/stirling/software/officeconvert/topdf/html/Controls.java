@@ -33,7 +33,7 @@ final class Controls {
 
     private static final int MAX_VALUE_CHARS = 100_000;
 
-    private static final int MAX_CHOICES = 2_000;
+    private static final int MAX_CHOICE_CHARS = 200_000;
 
     private static final float MAX_SIDE = 1_440f;
 
@@ -179,7 +179,7 @@ final class Controls {
         if (kind.equals("button")) {
             return null;
         }
-        String name = e.attr("name").strip();
+        String name = cap(e.attr("name").strip());
         boolean disabled = e.hasAttr("disabled");
         boolean required = e.hasAttr("required");
         String t = type(e);
@@ -193,14 +193,14 @@ final class Controls {
                         selectedValue(choices), choices, false, false, disabled, required, 0);
             }
             default -> {
-                String value = kind.equals("textarea") ? textareaText(e) : e.attr("value").replaceAll("[\r\n]", "");
-                value = cap(value);
+                String value = typed(e, kind);
                 String hint = e.attr("placeholder").strip();
                 FormField.Kind k = kind.equals("textarea") ? FormField.Kind.MULTILINE
                         : t.equals("password") ? FormField.Kind.PASSWORD : FormField.Kind.TEXT;
                 int max = digits(e.attr("maxlength")) && e.attr("maxlength").strip().length() < 9
                         ? Integer.parseInt(e.attr("maxlength").strip()) : 0;
-                yield new FormField(k, name, label, value, null, false, value.isEmpty() && !hint.isEmpty(),
+                yield new FormField(k, name, label, k == FormField.Kind.PASSWORD ? "" : value, null, false,
+                        value.isEmpty() && !hint.isEmpty(),
                         disabled || e.hasAttr("readonly"), required, max);
             }
         };
@@ -219,12 +219,14 @@ final class Controls {
         if (chosen < 0 && !multiple) {
             chosen = 0;
         }
-        for (int i = 0; i < options.size() && out.size() < MAX_CHOICES; i++) {
+        int budget = MAX_CHOICE_CHARS;
+        for (int i = 0; i < options.size() && out.size() < FormField.MAX_CHOICES && budget > 0; i++) {
             Element o = options.get(i);
-            String label = o.hasAttr("label") ? o.attr("label") : o.text();
-            String value = o.hasAttr("value") ? o.attr("value") : o.text();
+            String label = cap(o.hasAttr("label") ? o.attr("label") : o.text());
+            String value = cap(o.hasAttr("value") ? o.attr("value") : o.text());
+            budget -= label.length() + value.length();
             boolean on = multiple ? o.hasAttr("selected") : i == chosen;
-            out.add(new FormField.Choice(cap(value), cap(label), on));
+            out.add(new FormField.Choice(value, label, on));
         }
         return out;
     }
@@ -255,7 +257,11 @@ final class Controls {
         return switch (field.kind()) {
             case CHECKBOX -> field.checked() ? "✓" : "";
             case RADIO -> field.checked() ? "●" : "";
-            case PASSWORD -> "•".repeat(field.value().codePointCount(0, field.value().length()));
+            case PASSWORD -> {
+                String typed = typed(e, kind);
+                yield field.placeholderShown() ? e.attr("placeholder").strip()
+                        : "•".repeat(typed.codePointCount(0, typed.length()));
+            }
             case COMBO -> {
                 for (FormField.Choice c : field.choices()) {
                     if (c.selected()) {
@@ -296,6 +302,10 @@ final class Controls {
     private static RunStyle withColor(RunStyle s, int rgb) {
         return new RunStyle(s.font(), s.size(), s.bold(), s.italic(), s.underline(), s.strike(), rgb, s.highlight(),
                 s.vertAlign(), s.symbol(), s.spacing(), s.scale(), s.smallCaps());
+    }
+
+    private static String typed(Element e, String kind) {
+        return cap(kind.equals("textarea") ? textareaText(e) : e.attr("value").replaceAll("[\r\n]", ""));
     }
 
     private static String textareaText(Element e) {

@@ -23,7 +23,9 @@ public record FormField(Kind kind, String name, String label, String value, List
 
     private static final String TAG = "pdf-form-field?";
 
-    private static final int MAX_TAG_CHARS = 1 << 20;
+    public static final int MAX_CHOICES = 2_000;
+
+    private static final int MAX_TAG_CHARS = 1 << 23;
 
     public FormField {
         name = name == null ? "" : name;
@@ -40,7 +42,8 @@ public record FormField(Kind kind, String name, String label, String value, List
         param(sb, "label", label);
         param(sb, "value", value);
         for (Choice c : choices) {
-            param(sb, "choice", enc(c.value()) + "," + enc(c.label()) + "," + (c.selected() ? "1" : "0"));
+            sb.append("&choice=").append(enc(c.value())).append(',').append(enc(c.label())).append(',')
+                    .append(c.selected() ? '1' : '0');
         }
         flag(sb, "checked", checked);
         flag(sb, "placeholder", placeholderShown);
@@ -70,18 +73,20 @@ public record FormField(Kind kind, String name, String label, String value, List
             for (String part : tag.substring(TAG.length()).split("&")) {
                 int eq = part.indexOf('=');
                 String key = eq < 0 ? part : part.substring(0, eq);
-                String v = eq < 0 ? "" : dec(part.substring(eq + 1));
+                String raw = eq < 0 ? "" : part.substring(eq + 1);
+                if (key.equals("choice")) {
+                    String[] c = raw.split(",", -1);
+                    if (c.length == 3 && choices.size() < MAX_CHOICES) {
+                        choices.add(new Choice(dec(c[0]), dec(c[1]), c[2].equals("1")));
+                    }
+                    continue;
+                }
+                String v = dec(raw);
                 switch (key) {
                     case "kind" -> kind = Kind.valueOf(v.toUpperCase(Locale.ROOT));
                     case "name" -> name = v;
                     case "label" -> label = v;
                     case "value" -> value = v;
-                    case "choice" -> {
-                        String[] c = v.split(",", -1);
-                        if (c.length == 3) {
-                            choices.add(new Choice(dec(c[0]), dec(c[1]), c[2].equals("1")));
-                        }
-                    }
                     case "checked" -> checked = v.equals("1");
                     case "placeholder" -> placeholder = v.equals("1");
                     case "readonly" -> readOnly = v.equals("1");

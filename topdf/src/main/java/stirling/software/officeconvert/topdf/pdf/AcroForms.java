@@ -23,6 +23,7 @@ import org.apache.pdfbox.pdmodel.common.PDRectangle;
 import org.apache.pdfbox.pdmodel.font.PDType1Font;
 import org.apache.pdfbox.pdmodel.font.Standard14Fonts;
 import org.apache.pdfbox.pdmodel.graphics.form.PDFormXObject;
+import org.apache.pdfbox.pdmodel.interactive.annotation.PDAnnotation;
 import org.apache.pdfbox.pdmodel.interactive.annotation.PDAnnotationWidget;
 import org.apache.pdfbox.pdmodel.interactive.annotation.PDAppearanceDictionary;
 import org.apache.pdfbox.pdmodel.interactive.annotation.PDAppearanceStream;
@@ -53,6 +54,8 @@ final class AcroForms {
     private static final int COMBO = 1 << 17;
     private static final int MULTI_SELECT = 1 << 21;
 
+    private static final int MAX_NESTING = 32;
+
     private final List<Widget> widgets = new ArrayList<>();
 
     void add(Widget w) {
@@ -75,6 +78,8 @@ final class AcroForms {
         Names names = new Names(form);
         Map<String, PDRadioButton> groups = new HashMap<>();
         Map<PDRadioButton, List<PDAnnotationWidget>> kids = new LinkedHashMap<>();
+        Map<PDRadioButton, PDAnnotationWidget> checked = new HashMap<>();
+        Map<PDPage, List<PDAnnotation>> onPage = new LinkedHashMap<>();
         int unnamed = 0;
         for (Widget w : widgets) {
             FormField f = w.field();
@@ -96,9 +101,13 @@ final class AcroForms {
                 widget.setAppearanceState(f.checked() ? on : COSName.Off.getName());
                 if (f.checked()) {
                     group.getCOSObject().setName(COSName.V, on);
+                    PDAnnotationWidget before = checked.put(group, widget);
+                    if (before != null) {
+                        before.setAppearanceState(COSName.Off.getName());
+                    }
                 }
                 kids.get(group).add(widget);
-                PdfCanvas.addAnnotation(w.page(), widget);
+                onPage.computeIfAbsent(w.page(), k -> new ArrayList<>()).add(widget);
                 continue;
             }
             PDTerminalField field = field(form, w);
@@ -115,10 +124,15 @@ final class AcroForms {
                 ap.setNormalAppearance(new PDAppearanceStream(w.look().getCOSObject()));
                 widget.setAppearance(ap);
             }
-            PdfCanvas.addAnnotation(w.page(), widget);
+            onPage.computeIfAbsent(w.page(), k -> new ArrayList<>()).add(widget);
         }
         for (Map.Entry<PDRadioButton, List<PDAnnotationWidget>> e : kids.entrySet()) {
             e.getKey().setWidgets(e.getValue());
+        }
+        for (Map.Entry<PDPage, List<PDAnnotation>> e : onPage.entrySet()) {
+            List<PDAnnotation> annotations = new ArrayList<>(e.getKey().getAnnotations());
+            annotations.addAll(e.getValue());
+            e.getKey().setAnnotations(annotations);
         }
         form.setFields(names.top);
         document.getDocumentCatalog().setAcroForm(form);
@@ -277,7 +291,7 @@ final class AcroForms {
 
         void place(PDField field, String name, FormField f) {
             String[] parts = name.split("\\.", -1);
-            boolean nested = parts.length > 1 && !hasEmpty(parts);
+            boolean nested = parts.length > 1 && parts.length <= MAX_NESTING && !hasEmpty(parts);
             String path = "";
             for (int i = 0; nested && i < parts.length - 1; i++) {
                 path = path.isEmpty() ? parts[i] : path + "." + parts[i];
@@ -325,9 +339,12 @@ final class AcroForms {
                 return;
             }
             field.getCOSObject().setItem(COSName.PARENT, parent);
-            List<PDField> children = new ArrayList<>(parent.getChildren());
-            children.add(field);
-            parent.setChildren(children);
+            COSArray kids = parent.getCOSObject().getCOSArray(COSName.KIDS);
+            if (kids == null) {
+                kids = new COSArray();
+                parent.getCOSObject().setItem(COSName.KIDS, kids);
+            }
+            kids.add(field);
         }
 
         private static boolean hasEmpty(String[] parts) {
