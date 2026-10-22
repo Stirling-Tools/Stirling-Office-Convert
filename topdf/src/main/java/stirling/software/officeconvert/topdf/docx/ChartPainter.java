@@ -1464,10 +1464,10 @@ final class ChartPainter {
 
     // Excel leaves zero out when the values sit in a band narrower than a sixth of their size
     private static double[] zeroRule(double dataLo, double dataHi, double lo, double hi) {
-        if (dataLo > 0 && (dataHi - dataLo) < dataHi / 6) {
+        if (dataLo > 0 && dataHi > dataLo && (dataHi - dataLo) < dataHi / 6) {
             return new double[] {dataLo - (dataHi - dataLo) / 2, dataHi};
         }
-        if (dataHi < 0 && (dataHi - dataLo) < -dataLo / 6) {
+        if (dataHi < 0 && dataHi > dataLo && (dataHi - dataLo) < -dataLo / 6) {
             return new double[] {dataLo, dataHi + (dataHi - dataLo) / 2};
         }
         return new double[] {lo, hi};

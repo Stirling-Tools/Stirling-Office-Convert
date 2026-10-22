@@ -410,6 +410,17 @@ class DocxChartTest {
     }
 
     @Test
+    void aSeriesOfOneRepeatedValueStandsOnAZeroAxis() throws IOException {
+        String catAx = "<c:catAx><c:axId val=\"1\"/><c:delete val=\"0\"/><c:axPos val=\"b\"/><c:crossAx val=\"2\"/>"
+                + "</c:catAx>";
+        String valAx = "<c:valAx><c:axId val=\"2\"/><c:delete val=\"0\"/><c:axPos val=\"l\"/><c:crossAx val=\"1\"/>"
+                + "</c:valAx>";
+        String text = render("flat", lineChart(cache("str", null, "a", "b"), new Object[] {4, 4}, catAx, valAx))
+                .text();
+        assertTrue(text.contains("0"), text);
+    }
+
+    @Test
     void aTightScaleStopsAtTenStepsWithNoHeadroom() throws IOException {
         String excel = tallChartText("excel", "");
         assertTrue(excel.contains("23") && !excel.contains("25"), excel);
