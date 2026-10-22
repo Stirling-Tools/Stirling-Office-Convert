@@ -78,6 +78,14 @@ class HtmlToPdfTest {
     }
 
     @Test
+    void aZeroColspanCountsAsOneColumn() throws IOException {
+        Pdf p = convert("colspan0.html", "<table><tr><td colspan=0>first</td><td>second</td></tr></table>");
+        assertTrue(p.text().contains("first") && p.text().contains("second"), p.text());
+        Pdf only = convert("colspan0only.html", "<table><tr><td colspan=0>alone</td></tr></table>");
+        assertTrue(only.text().contains("alone"), only.text());
+    }
+
+    @Test
     void anEnormousGridFractionKeepsColumnsReadable() throws IOException {
         Path in = Files.writeString(dir.resolve("fr.html"), "<div style=\"display:grid;grid-template-columns:1e39fr"
                 + " 1fr\"><div>alpha beta gamma</div><div>delta epsilon</div></div>", StandardCharsets.UTF_8);
