@@ -17,10 +17,10 @@ import java.util.stream.Stream;
 
 import org.apache.pdfbox.pdmodel.encryption.InvalidPasswordException;
 
-import stirling.software.officeconvert.PdfToDocx;
-import stirling.software.officeconvert.PdfToHtml;
 import stirling.software.officeconvert.PdfToAzw3;
+import stirling.software.officeconvert.PdfToDocx;
 import stirling.software.officeconvert.PdfToEpub;
+import stirling.software.officeconvert.PdfToHtml;
 import stirling.software.officeconvert.PdfToJson;
 import stirling.software.officeconvert.PdfToOdp;
 import stirling.software.officeconvert.PdfToOdt;
@@ -536,7 +536,7 @@ public final class Main {
                         + " a FictionBook inside a .zip not named .fbz or .fb2.zip, needs --allow-packages."
                         + System.lineSeparator()
                         + "The output's extension picks the format: .docx, .odt, .fodt, .xml (flat ODT), .rtf, .doc (RTF content),"
-                        + " .txt, .html (one file, pictures inline), .json (the document model), .pptx, .odp, .ppt, .xlsx or .ods; --format names it for a directory of outputs."
+                        + " .txt, .html (one file, pictures inline), .json (the document model), .epub, .azw3, .pptx, .odp, .ppt, .xlsx or .ods; --format names it for a directory of outputs."
                         + System.lineSeparator()
                         + "--pdfa makes an archival PDF/A copy of each PDF (in.pdfa.pdf unless -o names it): fonts are embedded,"
                         + " scripts and actions removed, colours given an sRGB output intent; 1a and 1b draw transparency as pictures;"
