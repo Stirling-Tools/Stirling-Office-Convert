@@ -225,6 +225,9 @@ final class Flow {
                 frame.width()) + border(d, "left"));
         float right = Math.max(0, length(d.get("margin-right"), em, frame.width()) + length(d.get("padding-right"), em,
                 frame.width()) + border(d, "right"));
+        float[] narrow = narrowed(e, d, look, frame.width());
+        left += narrow[0];
+        right += narrow[1];
         int fill = fill(d, look);
         measureFixed(e, d, look, frame, left, right);
         Frame inner = frame.inner(left, right, fill);
@@ -377,6 +380,52 @@ final class Flow {
         return (painted || edges >= 3) && Layout.text(e, BOX_TEXT).length() < BOX_TEXT;
     }
 
+    private float[] narrowed(Element e, Map<String, String> d, Look look, float room) {
+        float[] none = {0, 0};
+        Element parent = e.parent();
+        if (parent == null || e.normalName().equals("body") || e.normalName().equals("html")) {
+            return none;
+        }
+        String around = ctx.declared(parent, look).getOrDefault("display", "").strip().toLowerCase(Locale.ROOT);
+        if (around.endsWith("flex") || around.endsWith("grid")) {
+            return none;
+        }
+        Float width = boxLength(d.get("width"), look, room);
+        Float max = boxLength(d.get("max-width"), look, room);
+        if (width == null && max == null) {
+            return none;
+        }
+        float em = look.size;
+        float outer = width == null ? max : max == null ? width : Math.min(width, max);
+        if (!"border-box".equalsIgnoreCase(d.getOrDefault("box-sizing", "").strip())) {
+            outer += Math.max(0, length(d.get("padding-left"), em, room)) + Math.max(0, length(d.get("padding-right"),
+                    em, room)) + border(d, "left") + border(d, "right");
+        }
+        float extra = room - Math.max(0, length(d.get("margin-left"), em, room))
+                - Math.max(0, length(d.get("margin-right"), em, room)) - outer;
+        if (extra < 1) {
+            return none;
+        }
+        boolean autoLeft = "auto".equalsIgnoreCase(d.getOrDefault("margin-left", "").strip());
+        boolean autoRight = "auto".equalsIgnoreCase(d.getOrDefault("margin-right", "").strip());
+        if (autoLeft && autoRight) {
+            return new float[] {extra / 2, extra / 2};
+        }
+        return autoLeft || look.rightToLeft && !autoRight ? new float[] {extra, 0} : new float[] {0, extra};
+    }
+
+    private static Float boxLength(String v, Look look, float room) {
+        if (v == null) {
+            return null;
+        }
+        String t = v.strip().toLowerCase(Locale.ROOT);
+        if (t.isEmpty() || t.equals("auto") || t.equals("none") || t.contains("content") || t.startsWith("calc")) {
+            return null;
+        }
+        Float pt = Css.length(t, look.size, room);
+        return pt == null || pt <= 0 ? null : pt;
+    }
+
     // Percentage padding above or below makes an aspect-ratio box for absolute content, which flows here instead
     private static float padding(String v, float em, float width) {
         return v == null || v.contains("%") ? 0 : length(v, em, width);
@@ -398,6 +447,9 @@ final class Flow {
         float marginRight = Math.max(0, length(d.get("margin-right"), em, frame.width()));
         float padLeft = Math.max(0, length(d.get("padding-left"), em, frame.width()));
         float padRight = Math.max(0, length(d.get("padding-right"), em, frame.width()));
+        float[] narrow = narrowed(e, d, look, frame.width());
+        marginLeft += narrow[0];
+        marginRight += narrow[1];
         float width = Math.max(36, frame.width() - marginLeft - marginRight);
         Table.Cell cell = new Table.Cell();
         cell.shading = fill >= 0 && fill != 0xFFFFFF ? fill : -1;

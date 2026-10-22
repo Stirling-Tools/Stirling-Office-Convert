@@ -176,4 +176,16 @@ class HtmlLayoutTest {
             assertTrue(l.word("\u2022").left() > l.word("Item").right(), page + l.words());
         }
     }
+
+    @Test
+    void blocksNarrowerThanThePageSitWhereTheirAutoMarginsPutThem() throws IOException {
+        Laid l = lay("""
+                <html><head><style>
+                .mid{max-width:200px;margin:0 auto;border:1px solid #000} .end{width:120px;margin-left:auto}
+                </style></head><body><p>Edge</p><div class=mid>Middle</div><div class=end>Last</div></body></html>""");
+        float margin = l.word("Edge").left();
+        float room = l.pageWidth() - 2 * margin;
+        assertEquals(margin + (room - 150) / 2, l.word("Middle").left(), 3f);
+        assertEquals(margin + room - 90, l.word("Last").left(), 3f);
+    }
 }
