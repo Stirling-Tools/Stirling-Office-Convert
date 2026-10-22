@@ -11,6 +11,7 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.GeneralSecurityException;
 import java.security.MessageDigest;
@@ -399,6 +400,20 @@ class OdfPasswordTest {
         IOException e = assertThrows(IOException.class,
                 () -> OdfEncryption.read(manifest.getBytes(StandardCharsets.UTF_8), PASSWORD));
         assertTrue(e.getMessage().contains("more key stretching"), e.getMessage());
+    }
+
+    @Test
+    void theDecryptedPackageIsDeletedWhenTheOuterZipFailsToClose() throws Exception {
+        Path sealed = OdfFixtures.write(dir, "whole.odt", encrypt(textPackage("Board minutes"), Scheme.WHOLE_PACKAGE,
+                PASSWORD));
+        OdfDocument doc = OdfDocument.open(sealed, PASSWORD);
+        Path plaintext = doc.scratch;
+        assertTrue(Files.exists(plaintext));
+        IOException e = assertThrows(IOException.class, () -> OdfDocument.adopt(doc, () -> {
+            throw new IOException("close failed");
+        }));
+        assertEquals("close failed", e.getMessage());
+        assertFalse(Files.exists(plaintext));
     }
 
     @Test

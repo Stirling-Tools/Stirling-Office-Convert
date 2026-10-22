@@ -72,7 +72,7 @@ public final class OdfDocument implements Closeable {
 
     private OdfEncryption crypt;
 
-    private Path scratch;
+    Path scratch;
 
     private OdfDocument(Kind kind, BoundedZip zip, Element content, Element styles, Element settings,
             long sourceBytes) {
@@ -237,9 +237,7 @@ public final class OdfDocument implements Closeable {
                 throw new IOException("The document is encrypted more than once, which no office suite does");
             }
             if (probe.crypt != null && probe.crypt.wholePackage()) {
-                OdfDocument inner = unwrap(probe, map.get(OdfEncryption.WHOLE_PACKAGE), password);
-                z.close();
-                return inner;
+                return adopt(unwrap(probe, map.get(OdfEncryption.WHOLE_PACKAGE), password), z);
             }
             Element content = probe.xml("content.xml", true);
             Element styles = probe.xml("styles.xml", false);
@@ -257,6 +255,20 @@ public final class OdfDocument implements Closeable {
             z.close();
             throw e;
         }
+    }
+
+    static OdfDocument adopt(OdfDocument inner, Closeable outer) throws IOException {
+        try {
+            outer.close();
+        } catch (IOException | RuntimeException e) {
+            try {
+                inner.close();
+            } catch (IOException | RuntimeException suppressed) {
+                e.addSuppressed(suppressed);
+            }
+            throw e;
+        }
+        return inner;
     }
 
     private static OdfDocument unwrap(OdfDocument outer, ZipEntry sealed, String password) throws IOException {
