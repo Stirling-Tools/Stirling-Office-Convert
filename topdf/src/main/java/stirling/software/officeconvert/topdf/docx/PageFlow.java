@@ -1025,7 +1025,7 @@ final class PageFlow extends Region {
 
     private static boolean inked(Strip s) {
         for (Op op : s.ops) {
-            if (op instanceof Op.Text t ? !t.text().isBlank() : !(op instanceof Op.Dest || op instanceof Op.Link)) {
+            if (op instanceof Op.Text t ? !t.text().isBlank() : !(op instanceof Op.Dest || op instanceof Op.Link || op instanceof Op.Outline)) {
                 return true;
             }
         }

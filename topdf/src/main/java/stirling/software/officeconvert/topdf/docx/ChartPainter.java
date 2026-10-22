@@ -53,6 +53,8 @@ final class ChartPainter {
 
     private static final float SIN45 = (float) Math.sqrt(0.5);
 
+    private static final int MAX_DOUGHNUT_SLICES = 16_384;
+
     private final Chart chart;
 
     private final Fonts fonts;
@@ -60,6 +62,14 @@ final class ChartPainter {
     private final Theme theme;
 
     private final List<Op> ops;
+
+    static final int MAX_LABEL_LINES = 100_000;
+
+    private int labelLinesLeft = MAX_LABEL_LINES;
+
+    private float chartW;
+
+    private float chartH;
 
     private ChartPainter(Chart chart, Fonts fonts, Theme theme, List<Op> ops) {
         this.chart = chart;
@@ -127,6 +137,8 @@ final class ChartPainter {
     }
 
     private void paint(float x, float y, float w, float h) {
+        chartW = w;
+        chartH = h;
         if (chart.fill() != null || chart.border() != null) {
             ops.add(new Op.Rect(x, y, w, h, chart.fill() == null ? null : Fill.solid(chart.fill()), chart.border()));
         }
@@ -371,6 +383,28 @@ final class ChartPainter {
         }
     }
 
+    private TextStyle labelStyle(Chart.Labels l) {
+        Chart.Look k = l.look();
+        return style(k.size() != null ? k.size() : chart.textSize(), k.bold() != null && k.bold(),
+                k.color() != null ? k.color() : chart.textColor());
+    }
+
+    private void labelLines(String text, float x, float baseline, TextStyle s, int align) {
+        String[] lines = text.split("\n", -1);
+        float lh = lineHeight(s);
+        float at = baseline - (lines.length - 1) * lh / 2;
+        for (String line : lines) {
+            if (labelLinesLeft <= 0) {
+                return;
+            }
+            labelLinesLeft--;
+            float lw = width(s, line);
+            float tx = align == 0 ? x - lw / 2 : align < 0 ? x : x - lw;
+            ops.add(new Op.Text(tx, at, line, s));
+            at += lh;
+        }
+    }
+
     private void center(String text, float cx, float baseline, TextStyle s) {
         ops.add(new Op.Text(cx - width(s, text) / 2, baseline, text, s));
     }
@@ -392,54 +426,84 @@ final class ChartPainter {
         if (g.series().isEmpty()) {
             return;
         }
-        Chart.Series s = g.series().get(0);
+        float d = Math.min(right - left, bottom - top);
+        float cy = (top + bottom) / 2;
+        float r = d / 2;
+        if (g.kind() != Chart.Kind.DOUGHNUT) {
+            slices(g, g.series().get(0), cx, cy, 0, r, Integer.MAX_VALUE);
+            return;
+        }
+        float hole = r * Math.max(10, Math.min(90, g.holeSize())) / 100f;
+        int rings = g.series().size();
+        float width = (r - hole) / rings;
+        int perRing = Math.max(1, MAX_DOUGHNUT_SLICES / rings);
+        for (int k = 0; k < rings; k++) {
+            int ring = g.reversedOrder() ? rings - 1 - k : k;
+            float inner = hole + ring * width;
+            slices(g, g.series().get(k), cx, cy, inner, inner + width, perRing);
+        }
+    }
+
+    private void slices(Chart.Group g, Chart.Series s, float cx, float cy, float inner, float r, int limit) {
         double total = 0;
+        int positive = 0;
         for (double v : s.values()) {
             if (!Double.isNaN(v) && v > 0) {
                 total += v;
+                positive++;
             }
         }
         if (total <= 0) {
             return;
         }
-        float d = Math.min(right - left, bottom - top);
-        float cy = (top + bottom) / 2;
-        float r = d / 2;
+        float d = r * 2;
         double angle = 90 - g.firstSliceAngle();
         Stroke edge = s.outline() != null ? s.outline() : Stroke.solid(1.5f, Color.WHITE);
-        TextStyle ls = style(chart.textSize(), false, chart.textColor());
         Chart.Labels labels = s.labels() != null ? s.labels() : g.labels();
+        int every = (int) Math.ceil((double) positive / limit);
+        int seen = 0;
+        int first = -1;
+        double v = 0;
         for (int i = 0; i < s.values().length; i++) {
-            double v = s.values()[i];
-            if (Double.isNaN(v) || v <= 0) {
+            double value = s.values()[i];
+            if (Double.isNaN(value) || value <= 0) {
                 continue;
             }
-            double extent = -360 * v / total;
-            Arc2D.Double arc = new Arc2D.Double(cx - r, cy - r, d, d, angle, extent, Arc2D.PIE);
-            java.awt.Shape shape = arc;
-            if (g.kind() == Chart.Kind.DOUGHNUT) {
-                Path2D.Double ring = new Path2D.Double(Path2D.WIND_EVEN_ODD);
-                ring.append(arc, false);
-                float hole = r * Math.max(10, Math.min(90, g.holeSize())) / 100f;
-                ring.append(new Ellipse2D.Double(cx - hole, cy - hole, hole * 2, hole * 2), false);
+            if (seen % every == 0) {
+                first = i;
+                v = 0;
+            }
+            v += value;
+            seen++;
+            if (seen % every != 0 && seen != positive) {
+                continue;
+            }
+            double extent = (g.reversedOrder() ? 360 : -360) * v / total;
+            java.awt.Shape shape = new Arc2D.Double(cx - r, cy - r, d, d, angle, extent, Arc2D.PIE);
+            if (inner > 0) {
+                Path2D.Double ring = new Path2D.Double();
+                ring.append(new Arc2D.Double(cx - r, cy - r, d, d, angle, extent, Arc2D.OPEN), false);
+                ring.append(new Arc2D.Double(cx - inner, cy - inner, inner * 2, inner * 2, angle + extent, -extent,
+                        Arc2D.OPEN), true);
+                ring.closePath();
                 shape = ring;
             }
-            Color c = pointColor(g, s, i);
+            Color c = pointColor(g, s, first);
             ops.add(new Op.Path(shape, c == null ? null : Fill.solid(c), edge));
-            if (labels.any()) {
+            Chart.Labels pl = labels.at(first);
+            if (pl.shown() && every == 1) {
+                TextStyle ls = labelStyle(pl);
                 double mid = Math.toRadians(angle + extent / 2);
-                boolean outside = "outEnd".equals(labels.position()) || "bestFit".equals(labels.position())
-                        && v / total < 0.05;
-                float k = outside ? 1.12f : 0.65f;
-                float lx = (float) (cx + Math.cos(mid) * r * k);
-                float ly = (float) (cy - Math.sin(mid) * r * k);
-                String text = label(labels, s, v, v / total, i, "; ");
+                boolean outside = inner <= 0 && ("outEnd".equals(pl.position()) || "bestFit".equals(pl.position())
+                        && v / total < 0.05);
+                float k = outside ? 1.12f : inner > 0 ? (inner / r + 1) / 2 : 0.65f;
+                float lx = (float) (cx + Math.cos(mid) * r * k) + pl.dx() * chartW;
+                float ly = (float) (cy - Math.sin(mid) * r * k) + pl.dy() * chartH;
+                String text = label(pl, s, v, v / total, first, "; ");
                 if (outside) {
-                    float tw = width(ls, text);
-                    float tx = Math.cos(mid) >= 0 ? lx : lx - tw;
-                    ops.add(new Op.Text(tx, ly + ascent(ls) / 3, text, ls));
+                    labelLines(text, lx, ly + ascent(ls) / 3, ls, Math.cos(mid) >= 0 ? -1 : 1);
                 } else {
-                    center(text, lx, ly + ascent(ls) / 3, ls);
+                    labelLines(text, lx, ly + ascent(ls) / 3, ls, 0);
                 }
             }
             angle += extent;
@@ -447,6 +511,12 @@ final class ChartPainter {
     }
 
     private String label(Chart.Labels labels, Chart.Series s, double v, double share, int i, String separator) {
+        if (labels.text() != null) {
+            return labels.text();
+        }
+        if (labels.separator() != null) {
+            separator = labels.separator();
+        }
         List<String> parts = new ArrayList<>();
         if (labels.series() && s.name() != null) {
             parts.add(s.name());
@@ -462,7 +532,7 @@ final class ChartPainter {
         if (labels.percent()) {
             parts.add(Math.round(share * 100) + "%");
         }
-        return String.join(separator, parts);
+        return ChartReader.clipped(String.join(separator, parts));
     }
 
     private record Scale(double min, double max, double unit) {
@@ -937,7 +1007,6 @@ final class ChartPainter {
                 }
             }
         }
-        TextStyle ls = style(chart.textSize(), false, chart.textColor());
         for (int k = 0; k < ns; k++) {
             Chart.Series s = g.series().get(k);
             Chart.Labels labels = s.labels() != null ? s.labels() : g.labels();
@@ -973,18 +1042,25 @@ final class ChartPainter {
                 } else {
                     ops.add(new Op.Rect(start, Math.min(a, b), bw, Math.abs(b - a), fill, s.outline()));
                 }
-                if (labels.any()) {
-                    String t = label(labels, s, s.values()[i], 0, i, ", ");
-                    boolean inside = stacked || "ctr".equals(labels.position()) || "inEnd".equals(labels.position())
-                            || "inBase".equals(labels.position());
-                    float tw = width(ls, t);
+                Chart.Labels pl = labels.at(i);
+                if (pl.shown()) {
+                    TextStyle ls = labelStyle(pl);
+                    String t = label(pl, s, s.values()[i], 0, i, ", ");
+                    boolean inside = stacked || "ctr".equals(pl.position()) || "inEnd".equals(pl.position())
+                            || "inBase".equals(pl.position());
+                    float ox = pl.dx() * chartW;
+                    float oy = pl.dy() * chartH;
+                    float lines = (t.split("\n", -1).length - 1) * lineHeight(ls);
                     if (p.horizontal()) {
-                        float tx = inside ? (a + b) / 2 - tw / 2 : Math.max(a, b) + 3;
-                        ops.add(new Op.Text(tx, start + bw / 2 + (ascent(ls) - descent(ls)) / 2, t, ls));
+                        float tx = inside ? (a + b) / 2 : Math.max(a, b) + 3;
+                        labelLines(t, tx + ox, start + bw / 2 + (ascent(ls) - descent(ls)) / 2 + oy, ls,
+                                inside ? 0 : -1);
                     } else if (inside) {
-                        center(t, start + bw / 2, (a + b) / 2 + (ascent(ls) - descent(ls)) / 2, ls);
+                        labelLines(t, start + bw / 2 + ox, (a + b) / 2 + (ascent(ls) - descent(ls)) / 2 + oy, ls,
+                                0);
                     } else {
-                        center(t, start + bw / 2, Math.min(a, b) - 3 - descent(ls), ls);
+                        labelLines(t, start + bw / 2 + ox, Math.min(a, b) - 3 - descent(ls) - lines / 2 + oy, ls,
+                                0);
                     }
                 }
             }
@@ -994,8 +1070,11 @@ final class ChartPainter {
     private void lines(Chart.Group g, Plot p, boolean area) {
         boolean stacked = g.grouping().equals("stacked") || g.grouping().equals("percentStacked");
         double[] acc = new double[p.count()];
-        TextStyle ls = style(chart.textSize(), false, chart.textColor());
-        for (Chart.Series s : g.series()) {
+        List<Chart.Series> order = g.series();
+        if (g.reversedOrder() && !stacked) {
+            order = order.reversed();
+        }
+        for (Chart.Series s : order) {
             int count = Math.min(p.count(), s.values().length);
             List<float[]> pts = new ArrayList<>();
             List<List<float[]>> runs = new ArrayList<>();
@@ -1076,17 +1155,24 @@ final class ChartPainter {
             if (labels.any()) {
                 for (int k = 0; k < pts.size(); k++) {
                     int i = index.get(k);
-                    String t = label(labels, s, s.values()[i], 0, i, ", ");
+                    Chart.Labels pl = labels.at(i);
+                    if (!pl.shown()) {
+                        continue;
+                    }
+                    TextStyle ls = labelStyle(pl);
+                    String t = label(pl, s, s.values()[i], 0, i, ", ");
                     float[] pt = pts.get(k);
-                    float tw = width(ls, t);
+                    float x = pt[0] + pl.dx() * chartW;
+                    float y = pt[1] + pl.dy() * chartH;
                     float mid = (ascent(ls) - descent(ls)) / 2;
-                    String pos = labels.position() == null ? "r" : labels.position();
+                    float lines = (t.split("\n", -1).length - 1) * lineHeight(ls);
+                    String pos = pl.position() == null ? "r" : pl.position();
                     switch (pos) {
-                        case "t" -> center(t, pt[0], pt[1] - 4 - descent(ls), ls);
-                        case "b" -> center(t, pt[0], pt[1] + 4 + ascent(ls), ls);
-                        case "ctr" -> center(t, pt[0], pt[1] + mid, ls);
-                        case "l" -> ops.add(new Op.Text(pt[0] - 4 - tw, pt[1] + mid, t, ls));
-                        default -> ops.add(new Op.Text(pt[0] + 4, pt[1] + mid, t, ls));
+                        case "t" -> labelLines(t, x, y - 4 - descent(ls) - lines / 2, ls, 0);
+                        case "b" -> labelLines(t, x, y + 4 + ascent(ls) + lines / 2, ls, 0);
+                        case "ctr" -> labelLines(t, x, y + mid, ls, 0);
+                        case "l" -> labelLines(t, x - 4, y + mid, ls, 1);
+                        default -> labelLines(t, x + 4, y + mid, ls, -1);
                     }
                 }
             }

@@ -7,6 +7,8 @@ import java.util.List;
 import java.util.Set;
 import java.util.TreeSet;
 
+import stirling.software.officeconvert.extract.PageGraphics.Rule;
+
 public final class ColumnFinder {
 
     public record Band(float top, float bottom, List<float[]> columns) {
@@ -46,12 +48,112 @@ public final class ColumnFinder {
 
     private static final int LIST_ROWS = 8;
 
+    private static final float MIN_EDGE_LINES = 4f;
+
+    private static final float MIN_EDGE_GAP = 2f;
+
+    private static final float MAX_EDGE_GAP = 6f;
+
+    private static final float SHARED_EDGE = 0.8f;
+
+    private static final int MAX_EDGES = 100;
+
     private ColumnFinder() {}
 
     public static List<Band> find(
             List<Item> items, float textLeft, float textRight, float pageHeight, float bodySize) {
+        return find(items, List.of(), textLeft, textRight, pageHeight, bodySize);
+    }
+
+    public static List<Band> find(List<Item> items, List<Rule> rules, float textLeft, float textRight, float pageHeight,
+            float bodySize) {
         List<Gutter> gutters = gutters(items, textLeft, textRight, bodySize);
+        for (Gutter g : facingEdges(items, rules, bodySize)) {
+            gutters.removeIf(o -> Math.min(o.right(), g.right()) > Math.max(o.left(), g.left())
+                    && Math.min(o.bottom(), g.bottom()) > Math.max(o.top(), g.top()));
+            gutters.add(g);
+        }
         return bands(gutters, textLeft, textRight, pageHeight);
+    }
+
+    static List<float[]> boxedPanelSpans(List<Line> lines, List<Rule> rules, float bodySize) {
+        List<Item> items = new ArrayList<>(lines.size());
+        for (Line l : lines) {
+            items.add(new Item(l.x, l.top, l.right, l.bottom, l.baseline, true, l.chars));
+        }
+        List<float[]> spans = new ArrayList<>();
+        for (Gutter g : facingEdges(items, rules, bodySize)) {
+            spans.add(new float[] {g.top(), g.bottom()});
+        }
+        return spans;
+    }
+
+    private static List<Gutter> facingEdges(List<Item> items, List<Rule> rules, float bodySize) {
+        List<Rule> edges = new ArrayList<>();
+        List<Rule> rows = new ArrayList<>();
+        for (Rule r : rules) {
+            if (r.horizontal()) {
+                rows.add(r);
+            } else if (r.length() >= MIN_EDGE_LINES * bodySize) {
+                edges.add(r);
+            }
+        }
+        if (edges.size() > MAX_EDGES) {
+            return List.of();
+        }
+        edges.sort(Comparator.comparingDouble(Rule::pos));
+        List<Gutter> out = new ArrayList<>();
+        for (int i = 0; i < edges.size(); i++) {
+            Rule a = edges.get(i);
+            for (int j = i + 1; j < edges.size(); j++) {
+                Rule b = edges.get(j);
+                float gap = b.pos() - a.pos();
+                if (gap > MAX_EDGE_GAP * bodySize) {
+                    break;
+                }
+                float top = Math.max(a.start(), b.start());
+                float bottom = Math.min(a.end(), b.end());
+                if (gap < MIN_EDGE_GAP || bottom - top < SHARED_EDGE * Math.max(a.length(), b.length())
+                        || gridColumn(rows, a.pos(), b.pos(), top, bottom)) {
+                    continue;
+                }
+                if (textBeside(items, a.pos(), b.pos(), top, bottom)) {
+                    out.add(new Gutter(a.pos(), b.pos(), top, bottom));
+                }
+            }
+        }
+        return out;
+    }
+
+    private static boolean gridColumn(List<Rule> rows, float left, float right, float top, float bottom) {
+        int crossing = 0;
+        for (Rule r : rows) {
+            if (r.start() <= left + 1 && r.end() >= right - 1 && r.pos() >= top - ROW_EDGE
+                    && r.pos() <= bottom + ROW_EDGE && ++crossing >= GRID_ROWS) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static final int GRID_ROWS = 2;
+
+    private static final float ROW_EDGE = 3f;
+
+    private static boolean textBeside(List<Item> items, float left, float right, float top, float bottom) {
+        boolean before = false;
+        boolean after = false;
+        for (Item it : items) {
+            if (it.bottom() <= top || it.top() >= bottom) {
+                continue;
+            }
+            if (it.x() < right && it.right() > left) {
+                return false;
+            }
+            before |= it.text() && it.right() <= left;
+            after |= it.text() && it.x() >= right;
+        }
+        return before && after;
     }
 
     private static List<Gutter> gutters(

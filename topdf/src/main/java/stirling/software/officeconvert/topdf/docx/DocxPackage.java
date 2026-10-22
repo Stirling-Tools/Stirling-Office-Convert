@@ -49,12 +49,21 @@ final class DocxPackage {
 
     private int missingParts;
 
+    private int headings;
+
     private FieldValues fieldValues;
 
     DocxPackage(OfficeZip zip, RenderJob job) throws IOException {
         this.zip = zip;
         this.job = job;
         this.main = zip.mainPart();
+    }
+
+    Para.Heading heading(String part, Integer outlineLvl) {
+        if (outlineLvl == null || outlineLvl < 0 || outlineLvl > 8 || !main.equals(part)) {
+            return null;
+        }
+        return new Para.Heading(outlineLvl + 1, headings++);
     }
 
     FieldValues fieldValues() {

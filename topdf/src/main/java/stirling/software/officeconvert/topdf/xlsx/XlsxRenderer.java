@@ -61,9 +61,11 @@ public final class XlsxRenderer {
         PageSize first = null;
         for (int k = 0; k < plans.size(); k++) {
             Object entry = plans.set(k, null);
+            int start = job.pageCount();
             if (entry instanceof ChartSheet chart) {
                 number++;
                 chart.print(job, workbook.themePart);
+                bookmark(job, chart.name(), start);
                 continue;
             }
             SheetPlan plan = (SheetPlan) entry;
@@ -78,9 +80,16 @@ public final class XlsxRenderer {
                 painter.paint(plan, plan.pages.get(i), i,
                         new HeaderFooterText.Context(number, total, plan.name, file, date, time));
             }
+            bookmark(job, plan.name, start);
         }
         if (job.pageCount() == 0) {
             job.newPage(first == null ? PageSetup.DEFAULT_PAPER : first).close();
+        }
+    }
+
+    private static void bookmark(RenderJob job, String sheet, int page) {
+        if (sheet != null && page < job.pageCount()) {
+            job.output().outline(sheet, 1, page, 0);
         }
     }
 
