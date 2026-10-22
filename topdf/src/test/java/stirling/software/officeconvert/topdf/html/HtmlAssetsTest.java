@@ -272,6 +272,23 @@ class HtmlAssetsTest {
     }
 
     @Test
+    void oneLinkedSvgDrawnManyTimesIsParsedOnce() throws IOException {
+        StringBuilder svg = new StringBuilder("<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10'>");
+        while (svg.length() < (2 << 20) - 200) {
+            svg.append("<g><desc>padding padding padding padding padding</desc></g>");
+        }
+        svg.append("<rect width='10' height='10' fill='#2a6'/></svg>");
+        Map<String, byte[]> entries = new LinkedHashMap<>();
+        entries.put("index.html", utf8("<p>Icons</p>" + "<img src='icon.svg'>".repeat(1_000)));
+        entries.put("icon.svg", utf8(svg.toString()));
+        long start = System.nanoTime();
+        Pdf pdf = convert(zip("icons.zip", entries), packages());
+        long millis = (System.nanoTime() - start) / 1_000_000;
+        assertTrue(pdf.text().contains("Icons"));
+        assertTrue(millis < 8_000, millis + " ms");
+    }
+
+    @Test
     void referencesResolveInsideThePackage() {
         assertEquals("img/a.png", HtmlRefs.resolve("site/index.html", "../img/a.png"));
         assertEquals("site/img/a.png", HtmlRefs.resolve("site/index.html", "img/a.png?v=2#top"));
