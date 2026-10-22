@@ -48,10 +48,13 @@ class HtmlLayoutTest {
                 protected void writeString(String text, List<TextPosition> positions) throws IOException {
                     List<TextPosition> run = new ArrayList<>();
                     for (TextPosition p : positions) {
-                        if (p.getUnicode().isBlank()) {
+                        boolean apart = !run.isEmpty() && Math.abs(run.getLast().getXDirAdj()
+                                + run.getLast().getWidthDirAdj() - p.getXDirAdj()) > 2;
+                        if (p.getUnicode().isBlank() || apart) {
                             add(run);
                             run.clear();
-                        } else {
+                        }
+                        if (!p.getUnicode().isBlank()) {
                             run.add(p);
                         }
                     }
@@ -159,5 +162,18 @@ class HtmlLayoutTest {
         String t = l.text();
         assertTrue(t.contains("1. Merge") && t.contains("2. Changelog") && t.contains("2. Build"), t);
         assertTrue(t.contains("\u25e6 Linux") && t.contains("\u25e6 macOS"), t);
+    }
+
+    @Test
+    void rightToLeftPagesStartAtTheRight() throws IOException {
+        for (String page : new String[] {"<html dir=rtl><body>", "<html><body style='direction:rtl'>"}) {
+            Laid l = lay(page + "<p>Opening</p><table border=1><tr><td>First</td><td>Second</td></tr></table>"
+                    + "<ul><li>Item</li></ul><p style='text-align:left'>Leftward</p></body></html>");
+            float margin = l.word("Leftward").left();
+            assertEquals(l.pageWidth() - margin, l.word("Opening").right(), 4f, page);
+            assertTrue(l.word("First").left() > l.word("Second").right(), page + l.words());
+            assertTrue(l.word("Item").right() > l.pageWidth() / 2, page + l.words());
+            assertTrue(l.word("\u2022").left() > l.word("Item").right(), page + l.words());
+        }
     }
 }

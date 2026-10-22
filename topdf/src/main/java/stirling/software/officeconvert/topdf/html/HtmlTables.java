@@ -419,6 +419,11 @@ final class HtmlTables {
             left = Math.max(0, (frame.width() - width) / 2);
         }
         t.indent = frame.left() + left;
+        if (look.rightToLeft) {
+            t.rightToLeft = true;
+            float right = Flow.length(d.get("margin-right"), look.size, frame.width());
+            t.indent = centred || inCentre || "center".equalsIgnoreCase(table.attr("align")) ? left : frame.right() + right;
+        }
     }
 
     /** True for a table that only stacks things: one cell a row and no borders drawn. */

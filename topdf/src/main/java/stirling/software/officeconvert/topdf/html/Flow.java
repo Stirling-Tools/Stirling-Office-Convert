@@ -419,6 +419,10 @@ final class Flow {
         Table t = new Table();
         t.columnWidths.add(width);
         t.indent = frame.left() + marginLeft;
+        if (look.rightToLeft) {
+            t.rightToLeft = true;
+            t.indent = frame.right() + marginRight;
+        }
         t.cellMarginLeft = padLeft;
         t.cellMarginRight = padRight;
         Table.Row row = new Table.Row();
@@ -618,7 +622,8 @@ final class Flow {
         for (float w : widths) {
             t.columnWidths.add(w);
         }
-        t.indent = frame.left();
+        t.indent = look.rightToLeft ? frame.right() : frame.left();
+        t.rightToLeft = look.rightToLeft;
         t.cellMarginLeft = plan.gap() / 2;
         t.cellMarginRight = plan.gap() / 2;
         List<Element> items = plan.items();
@@ -940,7 +945,7 @@ final class Flow {
         Look l = blockLook;
         Frame f = blockFrame;
         Paragraph p = new Paragraph();
-        p.align = l.align;
+        p.align = l.visualAlign();
         p.indentLeft = f.left();
         p.indentRight = f.right();
         p.indentFirst = l.textIndent;

@@ -24,6 +24,7 @@ final class Look {
     boolean smallCaps;
     float spacing;
     Paragraph.Align align = Paragraph.Align.LEFT;
+    boolean alignFixed;
     float lineMultiple;
     float linePoints;
     float textIndent;
@@ -53,6 +54,7 @@ final class Look {
         l.smallCaps = smallCaps;
         l.spacing = spacing;
         l.align = align;
+        l.alignFixed = alignFixed;
         l.lineMultiple = lineMultiple;
         l.linePoints = linePoints;
         l.textIndent = textIndent;
@@ -127,6 +129,9 @@ final class Look {
         }
         if ((v = d.get("text-align")) != null) {
             l.align = align(v, align);
+            String keyword = v.strip().toLowerCase(Locale.ROOT);
+            l.alignFixed = keyword.contains("left") || keyword.contains("right")
+                    || !keyword.equals("start") && !keyword.equals("end") && l.align == align && alignFixed;
             l.centerBlocks = v.strip().equalsIgnoreCase("-webkit-center");
         }
         if ((v = d.get("line-height")) != null) {
@@ -272,6 +277,17 @@ final class Look {
             case "cursive" -> "Comic Sans MS";
             case "fantasy" -> "Impact";
             default -> null;
+        };
+    }
+
+    Paragraph.Align visualAlign() {
+        if (!rightToLeft || alignFixed) {
+            return align;
+        }
+        return switch (align) {
+            case LEFT -> Paragraph.Align.RIGHT;
+            case RIGHT -> Paragraph.Align.LEFT;
+            default -> align;
         };
     }
 
