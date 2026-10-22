@@ -5,6 +5,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -64,13 +65,14 @@ final class EpubBook {
             manifest.putIfAbsent(item.attr("id"), item);
         }
         List<String> chapters = new ArrayList<>();
+        Set<String> folded = new HashSet<>();
         for (Element ref : opf.select("spine > itemref, opf|spine > opf|itemref")) {
             Element item = manifest.get(ref.attr("idref"));
             if (item == null || chapters.size() >= MAX_CHAPTERS) {
                 continue;
             }
             String path = resolve(opfPath, item.attr("href"));
-            if (path != null && !chapters.contains(path)) {
+            if (path != null && folded.add(path.toLowerCase(Locale.ROOT))) {
                 chapters.add(path);
             }
         }
@@ -116,7 +118,10 @@ final class EpubBook {
                 }
             }
             for (Element style : doc.select("style")) {
-                styles.append(scoped(style.data(), "#epub-c" + i, 0)).append('\n');
+                if (styles.length() + body.length() + style.data().length() > MAX_BOOK_CHARS) {
+                    break;
+                }
+                styles.append(scoped(style.data(), i, 0)).append('\n');
             }
             Element b = doc.body();
             unwrapSvgPictures(b);
@@ -143,10 +148,11 @@ final class EpubBook {
             if (!style.isBlank()) {
                 body.append(" style=\"").append(escape(style)).append('"');
             }
-            body.append('>').append(b.html()).append("</section>\n");
-            if (body.length() > MAX_BOOK_CHARS) {
+            String chapterHtml = b.html();
+            if (styles.length() + body.length() + chapterHtml.length() > MAX_BOOK_CHARS) {
                 break;
             }
+            body.append('>').append(chapterHtml).append("</section>\n");
         }
         Set<String> sheets = new LinkedHashSet<>();
         long inlined = 0;
@@ -160,7 +166,7 @@ final class EpubBook {
             inlined += cost;
             String text = packageUrls(new String(css, StandardCharsets.UTF_8), e.getKey());
             for (int chapter : e.getValue()) {
-                styles.append(scoped(text, "#epub-c" + chapter, 0)).append('\n');
+                styles.append(scoped(text, chapter, 0)).append('\n');
             }
         }
         StringBuilder html = new StringBuilder("<!DOCTYPE html><html><head><meta charset=\"utf-8\">");
@@ -319,9 +325,10 @@ final class EpubBook {
         }
     }
 
-    static String scoped(String css, String scope, int depth) {
+    static String scoped(String css, int chapter, int depth) {
+        String scope = "#epub-c" + chapter;
         StringBuilder out = new StringBuilder(css.length() + 64);
-        String s = css.replaceAll("(?s)/\\*.*?\\*/", "");
+        String s = withoutComments(css);
         int i = 0;
         while (i < s.length()) {
             int open = s.indexOf('{', i);
@@ -349,7 +356,7 @@ final class EpubBook {
             String at = head.toLowerCase(Locale.ROOT);
             if (at.startsWith("@media") || at.startsWith("@supports")) {
                 if (depth < 8) {
-                    out.append(head).append('{').append(scoped(inner, scope, depth + 1)).append("}\n");
+                    out.append(head).append('{').append(scoped(inner, chapter, depth + 1)).append("}\n");
                 }
             } else if (at.startsWith("@font-face")) {
                 out.append(head).append('{').append(inner).append("}\n");
@@ -358,7 +365,7 @@ final class EpubBook {
                 for (String sel : head.split(",")) {
                     String t = sel.strip();
                     if (!t.isEmpty()) {
-                        parts.add(scopedSelector(t, scope));
+                        parts.add(scopedSelector(t, chapter));
                     }
                 }
                 out.append(String.join(", ", parts)).append('{').append(inner).append("}\n");
@@ -369,12 +376,32 @@ final class EpubBook {
 
     private static final Pattern ROOT_STEP = Pattern.compile("^(?:html\\s*>?\\s*)?body(?![A-Za-z0-9_-])|^html(?![A-Za-z0-9_-])");
 
-    static String scopedSelector(String selector, String scope) {
+    private static final Pattern ID_STEP = Pattern.compile("#([A-Za-z_][A-Za-z0-9_-]*)");
+
+    static String scopedSelector(String selector, int chapter) {
+        String scope = "#epub-c" + chapter;
         Matcher m = ROOT_STEP.matcher(selector);
-        if (m.find()) {
-            return scope + selector.substring(m.end());
+        String rest = m.find() ? selector.substring(m.end()) : " " + selector;
+        return scope + ID_STEP.matcher(rest).replaceAll("#epub-c" + chapter + "-$1");
+    }
+
+    static String withoutComments(String css) {
+        StringBuilder out = new StringBuilder(css.length());
+        int i = 0;
+        while (i < css.length()) {
+            int open = css.indexOf("/*", i);
+            if (open < 0) {
+                out.append(css, i, css.length());
+                break;
+            }
+            out.append(css, i, open);
+            int close = css.indexOf("*/", open + 2);
+            if (close < 0) {
+                break;
+            }
+            i = close + 2;
         }
-        return scope + " " + selector;
+        return out.toString();
     }
 
     private static void rewrite(Element body, String chapterPath, int chapter, Map<String, Integer> chapterOf) {

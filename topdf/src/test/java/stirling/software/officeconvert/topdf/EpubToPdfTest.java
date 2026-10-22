@@ -189,10 +189,37 @@ class EpubToPdfTest {
 
     @Test
     void chapterSelectorsAreScoped() {
-        assertEquals("#c1{color:red}\n", EpubBook.scoped("body{color:red}", "#c1", 0));
-        assertEquals("#c1 p, #c1.x{a:b}\n", EpubBook.scoped("p, body.x{a:b}", "#c1", 0));
-        assertEquals("@media print{#c1 h1{a:b}\n}\n", EpubBook.scoped("@media print{h1{a:b}}", "#c1", 0));
-        assertEquals("", EpubBook.scoped("@page{margin:0}", "#c1", 0));
+        assertEquals("#epub-c1{color:red}\n", EpubBook.scoped("body{color:red}", 1, 0));
+        assertEquals("#epub-c1 p, #epub-c1.x{a:b}\n", EpubBook.scoped("p, body.x{a:b}", 1, 0));
+        assertEquals("@media print{#epub-c1 h1{a:b}\n}\n", EpubBook.scoped("@media print{h1{a:b}}", 1, 0));
+        assertEquals("", EpubBook.scoped("@page{margin:0}", 1, 0));
+        assertEquals("#epub-c2 #epub-c2-intro p{a:b}\n", EpubBook.scoped("#intro p{a:b}", 2, 0));
+        assertEquals("#epub-c1 p{a:b}\n", EpubBook.scoped("/* note */p{a:b}/* open", 1, 0));
+    }
+
+    @Test
+    void unclosedCommentsStayLinear() {
+        String css = "/*a".repeat(400_000) + "p{color:red}";
+        long start = System.nanoTime();
+        EpubBook.scoped(css, 1, 0);
+        assertTrue((System.nanoTime() - start) / 1_000_000 < 2_000);
+    }
+
+    @Test
+    void chaptersNamedTwiceByCaseAreReadOnce() throws IOException {
+        Map<String, byte[]> e = book();
+        String opf = new String(e.get("OEBPS/content.opf"), StandardCharsets.UTF_8)
+                .replace("<itemref idref=\"c2\"/>", "<itemref idref=\"c2\"/><itemref idref=\"c2b\"/>")
+                .replace("</manifest>", "<item id=\"c2b\" href=\"text/TWO.xhtml\" media-type=\"application/xhtml+xml\"/>"
+                        + "</manifest>");
+        e.put("OEBPS/content.opf", utf8(opf));
+        Path in = epub("twice.epub", e);
+        Path out = dir.resolve("twice.pdf");
+        OfficeToPdf.convert(in, out, OfficeToPdf.Options.defaults().timeout(Duration.ofMinutes(2)));
+        try (PDDocument doc = Loader.loadPDF(out.toFile())) {
+            String text = new PDFTextStripper().getText(doc);
+            assertEquals(text.indexOf("Chapter Two"), text.lastIndexOf("Chapter Two"), text);
+        }
     }
 
     private static int images(PDPage page) throws IOException {
