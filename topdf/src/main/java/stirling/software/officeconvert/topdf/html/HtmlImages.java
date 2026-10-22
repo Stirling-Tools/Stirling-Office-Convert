@@ -2,6 +2,7 @@ package stirling.software.officeconvert.topdf.html;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.Base64;
 import java.util.HashMap;
 import java.util.List;
@@ -65,6 +66,19 @@ final class HtmlImages {
 
     /** An inline svg element painted at the size its CSS or attributes give it. */
     Picture inlineSvg(Element svg, Map<String, String> d, Look look, float maxWidth, float maxHeight) throws IOException {
+        return painted(svg, ids(svg.ownerDocument()), svgBox(svg, d, look, maxWidth, maxHeight), look, null);
+    }
+
+    record Labelled(Picture picture, List<Svg.Label> labels) {}
+
+    Labelled labelledSvg(Element svg, Map<String, String> d, Look look, float maxWidth, float maxHeight)
+            throws IOException {
+        List<Svg.Label> labels = new ArrayList<>();
+        Picture p = painted(svg, ids(svg.ownerDocument()), svgBox(svg, d, look, maxWidth, maxHeight), look, null, labels);
+        return p == null ? null : new Labelled(p, labels);
+    }
+
+    private static float[] svgBox(Element svg, Map<String, String> d, Look look, float maxWidth, float maxHeight) {
         float[] natural = Svg.size(svg);
         if (percent(d.get("width")) || percent(d.get("height"))) {
             // a percentage is of a box this flow does not have; the drawing's own size is the better guess
@@ -72,8 +86,7 @@ final class HtmlImages {
             d.remove("width");
             d.remove("height");
         }
-        float[] box = box(d, look, natural[0] * 0.75f, natural[1] * 0.75f, maxWidth, maxHeight);
-        return painted(svg, ids(svg.ownerDocument()), box, look, null);
+        return box(d, look, natural[0] * 0.75f, natural[1] * 0.75f, maxWidth, maxHeight);
     }
 
     private Picture svgImage(String src, Element img, Map<String, String> d, Look look, float maxWidth, float maxHeight)
@@ -131,6 +144,11 @@ final class HtmlImages {
     }
 
     private Picture painted(Element svg, Map<String, Element> ids, float[] box, Look look, String key) throws IOException {
+        return painted(svg, ids, box, look, key, null);
+    }
+
+    private Picture painted(Element svg, Map<String, Element> ids, float[] box, Look look, String key,
+            List<Svg.Label> labels) throws IOException {
         if (svgs >= MAX_SVGS || svgPixels > MAX_SVG_PIXELS) {
             warn("Only the first SVG pictures of a very large page were drawn");
             return null;
@@ -139,11 +157,14 @@ final class HtmlImages {
         Svg.Painted p = cacheKey == null ? null : painted.get(cacheKey);
         if (p == null) {
             svgs++;
-            p = Svg.paint(svg, ids, box[0], box[1], look.color, svgWork);
+            p = Svg.paint(svg, ids, box[0], box[1], look.color, svgWork, labels != null);
             if (p == null) {
                 return null;
             }
             svgPixels += (long) p.pixelWidth() * p.pixelHeight();
+            if (labels != null) {
+                labels.addAll(p.labels());
+            }
             if (cacheKey != null) {
                 painted.put(cacheKey, p);
             }

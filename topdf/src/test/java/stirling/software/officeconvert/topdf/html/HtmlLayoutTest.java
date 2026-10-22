@@ -250,6 +250,24 @@ class HtmlLayoutTest {
         assertTrue(after.top() > bottoms[0] && after.top() < bottoms[0] + 50, l.words().toString());
     }
 
+    @Test
+    void svgTextIsSetAsTextWhereTheDrawingPutsIt() throws IOException {
+        Laid l = lay("""
+                <html><body style="margin:0;font-family:Arial"><p>Chart</p>
+                <svg width="300" height="80" viewBox="0 0 600 160"><rect width="600" height="160" fill="#eef"/>
+                <text x="20" y="90" font-size="40">Revenue</text><text x="580" y="140" text-anchor="end">Q4</text>
+                <text x="300" y="40" transform="rotate(30 300 40)">Tilted</text></svg>
+                </body></html>""");
+        assertTrue(l.text().contains("Revenue"), l.text());
+        assertTrue(l.text().contains("Q4"), l.text());
+        assertFalse(l.text().contains("Tilted"), l.text());
+        Word chart = l.word("Chart");
+        Word revenue = l.word("Revenue");
+        assertEquals(chart.left() + 10 * 0.75f, revenue.left(), 1.5f);
+        assertEquals(chart.left() + 290 * 0.75f, l.word("Q4").right(), 2f);
+        assertEquals((140 - 90) / 2f * 0.75f, l.word("Q4").top() - revenue.top(), 1.5f);
+    }
+
     private static Word containing(Laid l, String text) {
         return l.words().stream().filter(w -> w.text().contains(text)).findFirst().orElseThrow();
     }

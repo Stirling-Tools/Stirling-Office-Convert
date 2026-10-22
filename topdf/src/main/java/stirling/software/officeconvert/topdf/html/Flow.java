@@ -256,9 +256,16 @@ final class Flow {
             case "br" -> inline(new Inline.Break(), look);
             case "img" -> image(e, d, look, frame);
             case "svg" -> {
-                Picture pic = ctx.images().inlineSvg(e, d, look, frame.width(), pictureRoom());
-                if (pic != null) {
-                    place(pic, d, look, frame);
+                if (onOwnLine(e, d, look)) {
+                    HtmlImages.Labelled drawn = ctx.images().labelledSvg(e, d, look, frame.width(), pictureRoom());
+                    if (drawn != null) {
+                        labelled(drawn, d, look, frame);
+                    }
+                } else {
+                    Picture pic = ctx.images().inlineSvg(e, d, look, frame.width(), pictureRoom());
+                    if (pic != null) {
+                        place(pic, d, look, frame);
+                    }
                 }
             }
             case "hr" -> rule(d, look, frame);
@@ -1594,6 +1601,85 @@ final class Flow {
             flush();
         }
     }
+
+    private boolean onOwnLine(Element svg, Map<String, String> d, Look look) {
+        if (forceInline > 0 || look.rightToLeft || !d.getOrDefault("float", floatOf).strip().equalsIgnoreCase("none")
+                || para != null && !blank(para.inlines)) {
+            return false;
+        }
+        for (Node n = svg.nextSibling(); n != null; n = n.nextSibling()) {
+            if (n instanceof TextNode t && !t.isBlank()) {
+                return false;
+            }
+            if (!(n instanceof Element next) || SKIPPED.contains(next.normalName())
+                    && !Controls.TAGS.contains(next.normalName())) {
+                continue;
+            }
+            String shown = ctx.declared(next, look).getOrDefault("display",
+                    BLOCKS.contains(next.normalName()) ? "block" : "inline").strip().toLowerCase(Locale.ROOT);
+            if (!shown.equals("none")) {
+                return !shown.startsWith("inline") && !shown.equals("contents");
+            }
+        }
+        return true;
+    }
+
+    private void labelled(HtmlImages.Labelled drawn, Map<String, String> d, Look look, Frame frame) throws IOException {
+        Picture pic = drawn.picture();
+        if (drawn.labels().isEmpty()) {
+            place(pic, d, look, frame);
+            return;
+        }
+        flush();
+        if (pendingSpace > 0) {
+            spacer(pendingSpace, blockFrame);
+            pendingSpace = 0;
+        }
+        start();
+        Paragraph p = para;
+        p.lineRule = Paragraph.LineRule.AUTO;
+        p.lineHeight = 0;
+        float share = switch (p.align) {
+            case CENTER -> 0.5f;
+            case RIGHT -> 1f;
+            default -> 0f;
+        };
+        float left = p.indentLeft + Math.max(0, blockFrame.width() - pic.width) * share;
+        p.inlines.add(new Inline.Image(pic));
+        for (Svg.Label label : drawn.labels()) {
+            p.inlines.add(textBox(label, left, look));
+        }
+        lastSpace = false;
+        flush();
+    }
+
+    private static Inline.TextBox textBox(Svg.Label label, float left, Look look) {
+        RunStyle base = look.run();
+        String family = label.family() == null ? null : Look.family(label.family());
+        float size = Math.max(1, Math.min(label.size(), 400));
+        RunStyle style = new RunStyle(family == null ? base.font() : family, size, label.bold(), false, false, false,
+                label.rgb(), -1, 0, false);
+        float width = label.width() * 1.3f + size;
+        float x = label.x() - width * switch (label.anchor()) {
+            case "middle" -> 0.5f;
+            case "end" -> 1f;
+            default -> 0f;
+        };
+        Paragraph line = new Paragraph();
+        line.align = switch (label.anchor()) {
+            case "middle" -> Paragraph.Align.CENTER;
+            case "end" -> Paragraph.Align.RIGHT;
+            default -> Paragraph.Align.LEFT;
+        };
+        line.lineRule = Paragraph.LineRule.EXACT;
+        line.lineHeight = size * LABEL_LINE;
+        line.inlines.add(new Inline.Text(label.text(), style, null, -1));
+        return new Inline.TextBox(left + x, label.baseline() - size * LABEL_ASCENT, width, line.lineHeight, -1, 0, 0, 0,
+                List.of(line), -1, 0, false, true, 0, -1, false, true);
+    }
+
+    private static final float LABEL_LINE = 1.2f;
+    private static final float LABEL_ASCENT = 0.9f;
 
     private void rule(Map<String, String> d, Look look, Frame frame) throws IOException {
         flush();
