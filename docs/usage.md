@@ -25,7 +25,7 @@ For Word, PowerPoint and Excel input (`.docx .docm .dotx .dotm .pptx .pptm .ppsx
 .xltx .xltm .xlsb`, Word 6.0 to 2003 `.doc .dot`, Excel 2.0 to 2003 `.xls .xlt`, PowerPoint 97-2003 `.ppt .pps .pot`,
 `.rtf`, Word 2003 XML, XML Spreadsheet 2003 and Flat OPC `.xml`, Visio 2013 and later `.vsdx .vsdm .vssx .vstx`,
 OpenDocument `.odt .ott .fodt .odm .ods .ots .fods .odp .otp .fodp .odg .otg .fodg`, OpenOffice.org 1.x `.sxw .stw .sxc
-.stc .sxi .sti .sxd .std`, SYLK, DIF and dBASE `.slk .dif .dbf`, Lotus 1-2-3 `.wk1 .wks .wk3 .wk4 .123`, Apple iWork `.pages .numbers .key` (from the preview they hold), plain text `.txt .text .log .asc`, tables
+.stc .sxi .sti .sxd .std`, SYLK, DIF and dBASE `.slk .dif .dbf`, Lotus 1-2-3 `.wk1 .wks .wk3 .wk4 .123`, Apple iWork `.pages .numbers .key`, Publisher `.pub` and Visio 2003-2010 `.vsd .vss .vst .vsw` (from the preview they hold), plain text `.txt .text .log .asc`, tables
 `.csv .tsv .tab`, HTML `.html .htm .xhtml` and this library's JSON `.json`), which converts to PDF: `--password p` (a password protected document), `--max-pages n` (default 10000, 0 = all), `--timeout s` (default 300, 0 =
 none), `--fonts dir` (repeatable; an extra folder of fonts), `--font-map Family=Installed` (repeatable; draw a
 family with an installed one, such as `Aptos=Inter`), `--font-width Family=scale` (repeatable; scale a substituted
@@ -40,8 +40,8 @@ writes is converted again by it. An output that exists already is left alone and
 when everything converted, 1 when something failed or was skipped or a folder held nothing to convert, and 2 for a
 mistake in the arguments. Warnings (substituted fonts, skipped active content, pictures that could not be
 drawn) print to stderr as `warning: <file>: <message>` unless `-q`.
-The output file's extension picks the format: `.docx`, `.odt`, `.fodt`, `.xml` (flat ODT), `.rtf`, `.doc`, `.txt`, `.md`,
-`.html`, `.json`, `.pptx`, `.odp`, `.ppt`, `.xlsx` or `.ods` (see Other formats). For a folder of PDFs, `--format ext` names it; `--sheets
+The output file's extension picks the format: `.docx`, `.odt`, `.fodt`, `.xml` (flat ODT), `.rtf`, `.doc`, `.txt`,
+`.html`, `.json`, `.md`, `.pptx`, `.odp`, `.ppt`, `.xlsx` or `.ods` (see Other formats). For a folder of PDFs, `--format ext` names it; `--sheets
 page|table|single` sets a spreadsheet's layout. Each file prints its time and the heap in use when it finished.
 `--pdfa 1a|1b|2a|2b|2u|3a|3b|3u` makes an archival PDF/A copy of each PDF instead (see PDF to PDF/A): `in.pdfa.pdf` beside the
 input, or the `-o` file or folder; it takes `--password`, `--timeout`, `--fonts`, `--font-map` and
@@ -186,7 +186,7 @@ implementation 'com.stirling:stirling-office-convert:<version>'             // G
 
 Then one class does it all, `stirling.software.officeconvert.OfficeConvert`. The output file's extension picks the
 format: `.docx`, `.odt`, `.fodt`, `.xml` (flat ODT, what LibreOffice writes for PDF to XML), `.rtf`, `.doc` (RTF
-content), `.txt`, `.md`, `.html`, `.json`, `.pptx`, `.odp`, `.xlsx` or `.ods`.
+content), `.txt`, `.html`, `.json`, `.md`, `.pptx`, `.odp`, `.xlsx` or `.ods`.
 
 ```java
 import java.nio.file.Path;
@@ -421,7 +421,7 @@ arcs, Bezier curves, NURBS, polylines and ellipses) in its group's and page's co
 gradients and Visio theme styles and colours resolved from the drawing's theme), arrowheads, text with its character
 and paragraph formatting in its text block, and embedded pictures; masters, master shapes and style sheets are
 inherited cell by cell, background pages are drawn beneath their pages, and shapes on layers that do not print are
-left out. Only cached cell values are used: no ShapeSheet formula is evaluated and no macro is run. Each Visio page keeps its own PDF page size; oversized pages are scaled to the PDF limits. Visio 2003 to 2010 drawings (`.vsd`, `.vdx`) are refused with a plain reason.
+left out. Only cached cell values are used: no ShapeSheet formula is evaluated and no macro is run. Each Visio page keeps its own PDF page size; oversized pages are scaled to the PDF limits. Visio 2003 to 2010 drawings (`.vsd .vss .vst .vsw`) are drawn from the preview picture of the first page they keep in their summary information, as described below; `.vdx` is refused with a plain reason.
 
 Word 97-2003 documents (`.doc`, `.dot`, found by their content whatever the extension) are read with Apache POI
 HWPF and rewritten as a WordprocessingML package that the DOCX renderer draws: text with its character and paragraph
@@ -460,9 +460,14 @@ OpenOffice.org 1.x documents (`.sxw .stw .sxc .stc .sxi .sti .sxd .std`) are res
 renamed elements, property sets split by style family) and converted as such; their embedded objects are left out.
 
 Apple Pages, Numbers and Keynote files are not read in their own format: the PDF preview iWork stores in the file is
-drawn when there is one, else its preview picture of the first page, and a warning says which. Formats that are not
-converted (WordPerfect, Works, Publisher, Visio 2003 to 2010, MHTML web archives, Quattro Pro, StarOffice 5, Windows
-Write and others) fail with a reason naming the format, found by extension or by content.
+drawn when there is one, else its preview picture of the first page, and a warning says which. Microsoft Publisher
+publications (`.pub`) and Visio 2003 to 2010 drawings (`.vsd .vss .vst .vsw`, found by their content whatever the
+extension) are not read in their own format either: the preview picture of the first page kept in the file's summary
+information (an EMF or WMF metafile, drawn as vectors, or a bitmap) becomes a single page, sized to the preview or to
+the paper its shape matches, with a warning. A file without a preview, with a blank one, or with only a bitmap thumbnail
+under 600 pixels on its longer side (what Publisher keeps) is refused with a plain reason. Formats that are not
+converted (WordPerfect, Works, MHTML web archives, Quattro Pro, StarOffice 5, Windows Write and others) fail with a
+reason naming the format, found by extension or by content.
 
 Plain text (`.txt .text .log .asc`) prints the way LibreOffice Writer prints it: A4 with 2 cm margins, Liberation Mono
 10 pt at 64 lines a page, tab stops every 1.25 cm, long lines wrapped, no widow control, and a form feed starts a new
@@ -550,8 +555,8 @@ the conversion with its name, and pictures that cannot be read are left out with
 
 ## Other formats
 
-The same document model also goes out as OpenDocument, RTF, plain text, Markdown, HTML and JSON, each through its own writer
-(`odt`, `rtf`, `text`, `markdown`, `html` and `json` packages), with the options, streaming and failure contract of `PdfToDocx`:
+The same document model also goes out as OpenDocument, RTF, plain text, HTML, JSON and Markdown, each through its own writer
+(`odt`, `rtf`, `text`, `html`, `json` and `markdown` packages), with the options, streaming and failure contract of `PdfToDocx`:
 
 ```java
 PdfToOdt.convert(pdf, Path.of("out.odt"), options);        // OpenDocument Text
@@ -754,7 +759,7 @@ Two passes over the pages:
 | `table` | Ruled and unruled table detection (grid from rules, whitespace alignment) |
 | `build` | Turns page layouts into Word model objects; list numbering, RTL ordering, page and column placement |
 | `docx` | Streaming OOXML writer: document, styles, numbering, footnotes, headers/footers, media |
-| `odt`, `rtf`, `text`, `markdown`, `html`, `json` | The same document model as OpenDocument Text, RTF, plain text, Markdown, HTML and JSON |
+| `odt`, `rtf`, `text`, `html`, `json`, `markdown` | The same document model as OpenDocument Text, RTF, plain text, HTML, JSON and Markdown |
 | `slides`, `pptx`, `odp` | Pages to slides: placed text boxes, pictures, shapes and tables in paint order, and their writers |
 | `sheet` | Spreadsheet model and layout: pages to rows, table grids, cell typing (numbers, dates, identifiers) |
 | `xlsx`, `ods` | Streaming spreadsheet writers: each sheet buffered (spilling to disk), shared strings and styles |

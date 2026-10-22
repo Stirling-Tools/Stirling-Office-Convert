@@ -85,10 +85,10 @@ public final class OfficeToPdf {
             String ext = extension(file);
             return switch (ext) {
                 case "docx", "docm", "dotx", "dotm", "doc", "dot", "rtf", "odt", "ott", "fodt", "odm", "xml", "sxw",
-                        "stw", "pages" -> DOCX;
+                        "stw", "pages", "pub" -> DOCX;
                 case "txt", "text", "log", "asc" -> TEXT;
                 case "pptx", "pptm", "ppsx", "ppsm", "potx", "potm", "odp", "otp", "fodp", "odg", "otg", "fodg", "sxi",
-                        "sti", "sxd", "std", "key", "vsdx", "vsdm", "vssx", "vssm", "vstx", "vstm" -> PPTX;
+                        "sti", "sxd", "std", "key", "vsdx", "vsdm", "vssx", "vssm", "vstx", "vstm", "vsd", "vss", "vst", "vsw" -> PPTX;
                 case "xlsx", "xlsm", "xltx", "xltm", "xls", "xlt", "xlsb", "ods", "ots", "fods", "sxc", "stc", "slk",
                         "sylk", "dif", "dbf", "numbers", "wk1", "wks", "wk3", "wk4", "123" -> XLSX;
                 case "csv" -> CSV;
@@ -103,7 +103,8 @@ public final class OfficeToPdf {
                             + " .ppsx, .ppsm, .potx, .potm, .xlsx, .xlsm, .xltx, .xltm, .xlsb, .xls, .xlt, .ppt, .pps, .pot,"
                             + " .odt, .ott, .fodt, .odm, .ods, .ots, .fods, .odp, .otp, .fodp, .odg, .otg, .fodg, .sxw, .stw,"
                             + " .sxc, .stc, .sxi, .sti, .sxd, .std, .vsdx, .vsdm, .vssx, .vssm, .vstx, .vstm, .xml, .slk,"
-                            + " .dif, .dbf, .wk1, .wks, .wk3, .wk4, .123, .pages, .numbers, .key, .txt,"
+                            + " .dif, .dbf, .wk1, .wks, .wk3, .wk4, .123, .pages, .numbers, .key, .pub, .vsd, .vss, .vst, .vsw,"
+                            + " .txt,"
                             + " .text, .log, .asc, .csv, .tsv, .tab, .html, .htm, .xhtml or .json");
                 }
             };
@@ -118,6 +119,7 @@ public final class OfficeToPdf {
                         "stc", "sxi", "sti", "sxd", "std", "vsdx", "vsdm", "vssx", "vssm", "vstx", "vstm" -> true;
                 case "txt", "text", "log", "asc", "csv", "tsv", "tab", "html", "htm", "xhtml", "json" -> true;
                 case "slk", "sylk", "dif", "dbf", "pages", "numbers", "key", "wk1", "wks", "wk3", "wk4", "123" -> true;
+                case "pub", "vsd", "vss", "vst", "vsw" -> true;
                 default -> false;
             };
         }
@@ -331,6 +333,10 @@ public final class OfficeToPdf {
         }
         if (EncryptedPackage.is(in)) {
             return Footprint.legacy(Files.size(in)) + 2 * Admission.BASE_BYTES;
+        }
+        Long drawing = LegacyDrawingInput.estimate(in);
+        if (drawing != null) {
+            return drawing;
         }
         Long iwork = IWorkInput.estimate(in);
         if (iwork != null) {
@@ -583,6 +589,10 @@ public final class OfficeToPdf {
         Result unlocked = encryptedPackage(source, requested, sink, options, renderer);
         if (unlocked != null) {
             return unlocked;
+        }
+        Result drawing = LegacyDrawingInput.render(source, sink, options);
+        if (drawing != null) {
+            return drawing;
         }
         Result excel95 = LegacyExcel.render(source, sink, options, renderer);
         if (excel95 != null) {
