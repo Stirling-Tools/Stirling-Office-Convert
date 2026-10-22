@@ -374,7 +374,8 @@ class SubstitutionTest {
         assertEquals(300 * light, thin.embolden(), 1e-6, "a Thin stem is thinner than a Regular by more");
         FontFace thinBold = lib.find("Noto Sans SC", true, false);
         assertTrue(thinBold.syntheticBold());
-        assertEquals(300 * light, thinBold.embolden(), 1e-6);
+        assertEquals(Weights.MAX_THIN_STROKE - 300 * unit, thinBold.embolden(), 1e-6,
+                "a dense character of a Thin face keeps its strokes apart in bold");
         FontFace black = lib.find("Arial Black", false, false);
         assertEquals("Liberation Sans", black.family());
         assertTrue(black.syntheticBold());

@@ -9,10 +9,12 @@ final class Weights {
     // Synthetic bold strokes 0.035 em for the 300 weight units from regular to bold
     static final float STROKE_PER_UNIT = 0.035f / 300;
 
-    // Stems grow faster below regular: a CJK Thin stem is 0.049 em thinner than its Regular
-    static final float LIGHT_STROKE_PER_UNIT = 0.049f / 300;
+    // Noto Sans SC Thin drawn with a 0.037 em outline carries as much ink as its Regular
+    static final float LIGHT_STROKE_PER_UNIT = 0.037f / 300;
 
     private static final float MAX_STROKE = 0.07f;
+
+    static final float MAX_THIN_STROKE = 0.065f;
 
     private static final Map<String, Integer> WORDS = Map.ofEntries(Map.entry("thin", 100),
             Map.entry("hairline", 100), Map.entry("extralight", 200), Map.entry("ultralight", 200),
@@ -73,8 +75,10 @@ final class Weights {
     }
 
     private static float stroke(int wanted, FontFace f) {
-        float extra = stem(wanted) - stem(weight(f.weight())) - (f.syntheticBold() ? 300 * STROKE_PER_UNIT : 0);
-        return extra < 150 * STROKE_PER_UNIT ? 0 : Math.min(MAX_STROKE, extra);
+        float synthetic = f.syntheticBold() ? 300 * STROKE_PER_UNIT : 0;
+        float extra = stem(wanted) - stem(weight(f.weight())) - synthetic;
+        float most = weight(f.weight()) < 300 ? MAX_THIN_STROKE - synthetic : MAX_STROKE;
+        return extra < 150 * STROKE_PER_UNIT ? 0 : Math.min(most, extra);
     }
 
     // How much thicker than regular a stem of this weight is, in ems

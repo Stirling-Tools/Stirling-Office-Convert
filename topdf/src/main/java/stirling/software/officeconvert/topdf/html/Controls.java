@@ -92,7 +92,15 @@ final class Controls {
     }
 
     static Inline.FormControl control(Element e, Map<String, String> d, Look look, float room, String label) {
-        String kind = kind(e);
+        return control(e, kind(e), d, look, room, label, null, null);
+    }
+
+    static Inline.FormControl button(Element e, Map<String, String> d, Look look, float room, String text, String link) {
+        return control(e, "button", d, look, room, null, text, link);
+    }
+
+    private static Inline.FormControl control(Element e, String kind, Map<String, String> d, Look look, float room,
+            String label, String own, String link) {
         float em = look.size;
         boolean check = kind.equals("checkbox") || kind.equals("radio");
         float pad = 0.2f * em;
@@ -100,7 +108,10 @@ final class Controls {
         float padRight = side(d, "padding-right", em, room, pad);
         float padTop = side(d, "padding-top", em, room, pad);
         float padBottom = side(d, "padding-bottom", em, room, pad);
-        Table.Border[] borders = {edge(d, "top"), edge(d, "right"), edge(d, "bottom"), edge(d, "left")};
+        Table.Border[] borders = own != null
+                ? new Table.Border[] {HtmlTables.border(d, "top", 0), HtmlTables.border(d, "right", 0),
+                        HtmlTables.border(d, "bottom", 0), HtmlTables.border(d, "left", 0)}
+                : new Table.Border[] {edge(d, "top"), edge(d, "right"), edge(d, "bottom"), edge(d, "left")};
         boolean bottomOnly = !borders[0].visible() && !borders[1].visible() && borders[2].visible()
                 && !borders[3].visible();
         Table.Border line = bottomOnly ? Table.Border.NONE : strongest(borders);
@@ -115,12 +126,15 @@ final class Controls {
             shown.borderBottomRgb = borders[2].rgb();
         }
         FormField field = field(e, kind, label);
-        String text = shownText(e, kind, field);
+        String text = own != null ? own : shownText(e, kind, field);
         boolean placeholder = field != null && field.placeholderShown();
         if (field != null && field.kind() == FormField.Kind.LIST) {
             listLines(shown, field, style);
         } else {
             lines(shown, text, placeholder ? withColor(style, PLACEHOLDER_GREY) : style);
+        }
+        if (link != null) {
+            shown.inlines.replaceAll(i -> i instanceof Inline.Text t ? new Inline.Text(t.text(), t.style(), link, -1) : i);
         }
         Float width = cssLength(d.get("width"), em, room);
         Float height = cssLength(d.get("height"), em, 0);
@@ -133,7 +147,8 @@ final class Controls {
         } else if (check) {
             contentW = 0.7f * em;
         } else if (kind.equals("button")) {
-            contentW = Math.min(room - outsideX, textWidth(text, em) + 0.1f * em);
+            float measured = own != null ? Math.max(textWidth(text, em), drawnWidth(text, look)) : textWidth(text, em);
+            contentW = Math.min(room - outsideX, measured + 0.1f * em);
         } else if (kind.equals("textarea") && digits(e.attr("cols"))) {
             contentW = Integer.parseInt(e.attr("cols").strip()) * 0.55f * em;
         } else if (kind.equals("text") && digits(e.attr("size"))) {
@@ -401,6 +416,17 @@ final class Controls {
             widest = Math.max(widest, line.codePointCount(0, line.length()) * 0.55f * em);
         }
         return widest;
+    }
+
+    private static float drawnWidth(String text, Look look) {
+        java.awt.Font f = new java.awt.Font(look.font, look.bold ? java.awt.Font.BOLD : java.awt.Font.PLAIN, 1)
+                .deriveFont(look.size);
+        java.awt.font.FontRenderContext frc = new java.awt.font.FontRenderContext(null, true, true);
+        float widest = 0;
+        for (String line : text.split("\n")) {
+            widest = Math.max(widest, (float) f.getStringBounds(line, frc).getWidth());
+        }
+        return widest * 1.05f;
     }
 
     private static boolean digits(String v) {
