@@ -568,6 +568,7 @@ PdfToMarkdown.convert(pdf, Path.of("out.md"), options);    // GitHub Flavored Ma
 PdfToMarkdown.convertPackage(pdDocument, zipStream, options); // document.md plus images/ in a ZIP
 String text = PdfToText.text(pdDocument, options);
 PdfToHtml.convert(pdf, Path.of("out.html"), options);      // one HTML5 file, pictures as data: URIs
+PdfToHtml.convertFixed(pdf, Path.of("page.html"), FixedHtml.Options.defaults()); // each page as it looks
 PdfToJson.convert(pdf, Path.of("out.json"), options);      // the document model as JSON
 ```
 
@@ -588,6 +589,17 @@ PdfToJson.convert(pdf, Path.of("out.json"), options);      // the document model
   with merged cells, borders and shading, pictures as `data:` URIs, links, footnotes at the end, and the page size and
   margins as `@page` for printing. Floating pictures and text boxes join the flow next to their paragraph; columns
   flow as one. There are no scripts and no external references.
+- Fixed-layout HTML keeps every page as it looks instead of reflowing it, like `pdftohtml -c`: one self-contained
+  file with a box per page at the page's size. `Text.LIVE` (the default) draws the page's graphics and pictures without
+  its text as a picture (left out when the page has nothing else) and places the text over it as real SVG text at its
+  exact baseline and width (so it lines up even in a substitute font), in the
+  PDF font's family with a generic fallback, colour, weight and slant; invisible (OCR) text stays a transparent layer, and glyphs with no Unicode
+  stay in the picture. `Text.PICTURE`
+  draws everything into the page picture and adds the text as a transparent layer to select and search, so it looks
+  exactly like the PDF at the cost of size. Pages are drawn at 150 dpi (36 to 300); web links stay clickable.
+  `Options.fonts(FontSource)` lets the caller turn the PDF's own fonts into web fonts for `Text.LIVE` (for example
+  `WebFonts::toTrueType` from the `pdfa` module), so live text is drawn in the document's real faces; each font is
+  asked for once, and fonts over 4 MB or past 32 MB in total, or that fail, fall back to the family name.
 - JSON is the document model itself, the format [described here](json-format.md): everything the DOCX carries, as
   data a program can read, change and convert back to PDF (or, through it, to anything else).
 

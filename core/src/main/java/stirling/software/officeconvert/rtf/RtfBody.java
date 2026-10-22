@@ -182,6 +182,7 @@ final class RtfBody {
                 case Inline.Image img -> shapes.picture(sb, img.picture());
                 case Inline.Shape shape -> shapes.shape(sb, shape);
                 case Inline.TextBox box -> shapes.textBox(sb, box);
+                case Inline.FormControl f -> inlines(sb, f.shown().inlines);
                 case Inline.FootnoteRef ref -> note(sb, ref);
                 case Inline.FootnoteMark mark -> {
                     RunStyle ms = styleOr(mark.style()).withVertAlign(1);

@@ -260,6 +260,7 @@ public final class JsonModel {
         }
         p.pageBreakBefore = in.flag("pageBreakBefore");
         p.keepNext = in.flag("keepNext");
+        p.keepLines = in.flag("keepLines");
         p.bidi = in.flag("rightToLeft");
         p.noHangingPunctuation = in.flag("noHangingPunctuation");
         p.shading = in.color("shading", -1);

@@ -13,6 +13,7 @@ import java.util.Set;
 
 import org.apache.pdfbox.pdmodel.graphics.form.PDFormXObject;
 
+import stirling.software.officeconvert.model.FormField;
 import stirling.software.officeconvert.topdf.RenderJob;
 import stirling.software.officeconvert.topdf.font.BidiRuns;
 import stirling.software.officeconvert.topdf.font.FontFace;
@@ -163,6 +164,22 @@ final class Painter {
         }
     }
 
+    private void field(PdfCanvas c, Op.Field f) throws IOException {
+        if (c.page() == null) {
+            group(c, f.x(), f.y(), f.look());
+            return;
+        }
+        FormField.Kind kind = f.field().kind();
+        PDFormXObject look = null;
+        if (kind != FormField.Kind.CHECKBOX && kind != FormField.Kind.RADIO) {
+            try (PdfCanvas a = c.output().newFieldLook(f.w(), f.h())) {
+                ops(a, f.look());
+                look = a.form();
+            }
+        }
+        c.field(f.x(), f.y(), f.w(), f.h(), f.field(), f.size(), f.color(), look);
+    }
+
     private void group(PdfCanvas c, float dx, float dy, List<Op> ops) throws IOException {
         if (dx == 0 && dy == 0) {
             ops(c, ops);
@@ -270,6 +287,7 @@ final class Painter {
                 }
             }
             case Op.Dest d -> c.destination("bm:" + d.name(), d.x(), d.y());
+            case Op.Field f -> field(c, f);
             case Op.Outline o -> outline(c, o);
             case Op.Chart ch -> chart(c, ch);
             case Op.Group g -> {

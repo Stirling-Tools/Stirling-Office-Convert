@@ -4,9 +4,9 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.util.List;
 
-final class BlockFlow {
+public final class BlockFlow {
 
-    private static final int CHAIN_LIMIT = 512;
+    public static final int CHAIN_LIMIT = 512;
 
     private final Ctx ctx;
 
