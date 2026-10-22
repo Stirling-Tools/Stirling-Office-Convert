@@ -228,8 +228,9 @@ final class Flow {
             return;
         }
         Map<String, String> d = ctx.declared(e, parentLook);
-        if (tag.equals("table") && parentLook.centerBlocks && !d.containsKey("text-align")) {
-            // <center> places a table in the middle but its text starts at the left, as Chrome does
+        if (tag.equals("table") && parentLook.centerBlocks && !d.containsKey("text-align") && e.ownerDocument() != null
+                && e.ownerDocument().quirksMode() == org.jsoup.nodes.Document.QuirksMode.quirks) {
+            // <center> places a table in the middle but, in quirks mode, its text starts at the left, as Chrome does
             d.put("text-align", "start");
         }
         String display = d.getOrDefault("display", BLOCKS.contains(tag) ? "block" : "inline").strip().toLowerCase(Locale.ROOT);
@@ -256,6 +257,16 @@ final class Flow {
             breakInRow(look);
         }
         rowNested += nests ? 1 : 0;
+        if (display.equals("inline-block") && padded(e, d, look)) {
+            String own = e.normalName().equals("a") ? Links.safeUrl(e.attr("href").strip()) : null;
+            inline(Controls.button(e, d, look, frame.width(), e.text().strip(), own != null ? own : link), look);
+            lastSpace = false;
+            rowNested -= nests ? 1 : 0;
+            if (stacks) {
+                breakInRow(look);
+            }
+            return;
+        }
         switch (tag) {
             case "br" -> inline(new Inline.Break(), look);
             case "img" -> image(e, d, look, frame);
@@ -304,6 +315,27 @@ final class Flow {
         if (stacks) {
             breakInRow(look);
         }
+    }
+
+    private static final int BUTTON_TEXT = 80;
+
+    private static boolean padded(Element e, Map<String, String> d, Look look) {
+        Integer fill = Css.color(d.get("background-color"));
+        if (fill == null || fill < 0 || fill == 0xFFFFFF || Layout.text(e, BUTTON_TEXT + 1).strip().isEmpty()
+                || Layout.text(e, BUTTON_TEXT + 1).length() > BUTTON_TEXT) {
+            return false;
+        }
+        for (Element c : e.getAllElements()) {
+            if (c != e && !Set.of("b", "strong", "i", "em", "span", "small", "u", "font").contains(c.normalName())) {
+                return false;
+            }
+        }
+        for (String side : new String[] {"top", "right", "bottom", "left"}) {
+            if (length(d.get("padding-" + side), look.size, 0) > 0) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private void control(Element e, Look parentLook, Frame frame) throws IOException {
@@ -664,7 +696,8 @@ final class Flow {
             edges += border(d, side) > 0 ? 1 : 0;
         }
         boolean painted = fill >= 0 && fill != 0xFFFFFF && fill != blockFrame.shading();
-        return (painted || edges >= 3) && Layout.text(e, BOX_TEXT).length() < BOX_TEXT;
+        boolean bar = border(d, "left") > 0 || border(d, "right") > 0;
+        return (painted || edges >= 3 || bar) && Layout.text(e, BOX_TEXT).length() < BOX_TEXT;
     }
 
     private float[] narrowed(Element e, Map<String, String> d, Look look, float room) {

@@ -319,6 +319,28 @@ class HtmlLayoutTest {
         assertEquals(plain, padded, 1.5f, l.words().toString());
     }
 
+    @Test
+    void emailMarkupCentresQuotesWithABarAndDrawsButtonsAsBoxes() throws IOException {
+        Laid l = lay("""
+                <!doctype html><html><head><style>body{margin:0}
+                .btn{display:inline-block;background:#1a73e8;color:#fff;padding:10px 18px;text-decoration:none}
+                </style></head><body><center><table width="100%"><tr><td>Centred</td></tr></table></center>
+                <blockquote style="margin:0;border-left:3px solid #ff0000;padding-left:8px">Quoted</blockquote>
+                <p><a class="btn" href="https://example.com/go">Open</a></p></body></html>""");
+        Word centred = l.word("Centred");
+        assertEquals(l.pageWidth() / 2, (centred.left() + centred.right()) / 2, 3f);
+        Word quoted = l.word("Quoted");
+        boolean bar = false;
+        for (int x = 0; x < Math.round(quoted.left()); x++) {
+            int rgb = l.first().getRGB(x, Math.round(quoted.top()) - 4);
+            bar |= (rgb >> 16 & 0xFF) > 200 && (rgb & 0xFF) < 60;
+        }
+        assertTrue(bar, "a left border is drawn beside the quote");
+        Word open = l.word("Open");
+        int fill = l.first().getRGB(Math.round(open.left()) - 6, Math.round(open.top()) - 4) & 0xFFFFFF;
+        assertEquals(0x1A73E8, fill, Integer.toHexString(fill));
+    }
+
     private static Word containing(Laid l, String text) {
         return l.words().stream().filter(w -> w.text().contains(text)).findFirst().orElseThrow();
     }
