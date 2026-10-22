@@ -70,6 +70,9 @@ public final class MarkdownWriter implements DocSink, Closeable {
 
     @Override
     public void begin(StyleSheet styles, HeaderFooterSet running) {
+        if (styles != null && styles.normal != null) {
+            blocks.bodyFont(styles.normal.font());
+        }
     }
 
     @Override
@@ -121,6 +124,7 @@ public final class MarkdownWriter implements DocSink, Closeable {
     public void finish(Section last, HeaderFooterSet running, Numbering numbering, StyleSheet styles, String title,
             String author) throws IOException {
         StringBuilder sb = new StringBuilder();
+        blocks.flush(sb);
         List<Integer> referenced = new ArrayList<>(new LinkedHashSet<>(blocks.footnotes()));
         for (Integer id : notes.keySet()) {
             if (!referenced.contains(id)) {
