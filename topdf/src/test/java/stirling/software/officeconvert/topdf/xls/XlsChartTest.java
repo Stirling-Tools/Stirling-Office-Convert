@@ -136,6 +136,18 @@ class XlsChartTest {
     }
 
     @Test
+    void radarChartsStayRadarsAndAFilledOneIsFilled() throws Exception {
+        for (int type : new int[] {0x103E, 0x1040}) {
+            byte[] data = XlsTest.xls(wb -> ChartFixtures.chartSheet(wb, "Chart1", ChartFixtures.chart(null, type,
+                    new byte[2], new String[] {"Speed"}, new String[] {"a", "b", "c"}, new double[][] {{1, 2, 3}})));
+            String chart = chartXml(data);
+            assertTrue(chart.contains("<c:radarChart><c:radarStyle val=\"" + (type == 0x1040 ? "filled" : "marker")),
+                    chart);
+            assertTrue(chart.contains("<c:spPr><a:noFill/></c:spPr></c:plotArea>"), chart);
+        }
+    }
+
+    @Test
     void longCategoryTextFromCellsIsCappedPerCategory() throws Exception {
         String longText = "c".repeat(32_767);
         byte[] data = XlsTest.xls(wb -> {

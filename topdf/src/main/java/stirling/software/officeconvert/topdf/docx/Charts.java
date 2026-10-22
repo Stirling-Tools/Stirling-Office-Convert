@@ -17,6 +17,8 @@ public final class Charts {
 
     public static final String REVERSED_ORDER = "urn:stirling:chart:reversed-order";
 
+    public static final String TIGHT_SCALE = "urn:stirling:chart:tight-scale";
+
     private Charts() {}
 
     /**

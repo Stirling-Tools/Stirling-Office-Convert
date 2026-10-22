@@ -12,7 +12,8 @@ record BiffChart(Text title, List<Group> groups, Legend legend, Axis[] values, A
         AREA,
         PIE,
         SCATTER,
-        RADAR
+        RADAR,
+        FILLED_RADAR
     }
 
     record Text(String text, float size, boolean bold) {}
@@ -23,7 +24,7 @@ record BiffChart(Text title, List<Group> groups, Legend legend, Axis[] values, A
     record Series(String name, List<String> categories, double[] values, double[] xs, Integer fill, Integer line,
             float lineWidth, String marker, Integer markerFill, Map<Integer, Integer> points, boolean smooth) {}
 
-    record Legend(String position, double[] box) {}
+    record Legend(String position, double[] box, int[] fill, int[] line) {}
 
     record Axis(Double min, Double max, Double major, boolean gridlines, Integer gridColor, Text title, String format, boolean reversed,
             boolean log, boolean deleted) {}
