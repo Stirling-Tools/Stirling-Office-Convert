@@ -58,6 +58,10 @@ final class MediaEncoder {
 
     private static final int SEPARATE_BACKDROPS = 8;
 
+    private static final double PHOTO_SAVING = 0.7;
+
+    private static final double WHOLE_PAGE = 0.9;
+
     private static final Log LOG = LogFactory.getLog(MediaEncoder.class);
 
     private final PDDocument document;
@@ -213,7 +217,23 @@ final class MediaEncoder {
                 return png(cropped);
             }
         }
-        return png(render(textFree(), page, pageIndex, toDisplay, box, scaleFor(box)));
+        BufferedImage img = render(textFree(), page, pageIndex, toDisplay, box, scaleFor(box));
+        return coversPage(page, toDisplay, box) ? smaller(img) : png(img);
+    }
+
+    private Encoded smaller(BufferedImage img) throws IOException {
+        Encoded png = png(img);
+        if (lossless) {
+            return png;
+        }
+        Encoded jpeg = jpeg(img, 0.9f);
+        return jpeg.bytes().length < PHOTO_SAVING * png.bytes().length ? jpeg : png;
+    }
+
+    private static boolean coversPage(PDPage page, AffineTransform toDisplay, Box box) {
+        PDRectangle crop = page.getCropBox();
+        double area = crop.getWidth() * crop.getHeight() * Math.abs(toDisplay.getDeterminant());
+        return box.width() * box.height() >= WHOLE_PAGE * area;
     }
 
     private BufferedImage wholePage(PDFRenderer with, PDPage page, int pageIndex, AffineTransform toDisplay)
