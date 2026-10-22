@@ -41,6 +41,8 @@ final class Cascade {
     private final List<Compiled> anyElement = new ArrayList<>();
     private final Map<Element, List<Hit>> hits = new IdentityHashMap<>();
     private final Map<String, String> page = new HashMap<>();
+    private final Map<String, Map<String, String>> margins = new HashMap<>();
+    private final Map<String, Map<String, String>> importantMargins = new HashMap<>();
     private final Map<String, Map<String, String>> named = new HashMap<>();
     private long work;
     private final Set<String> sheets = new HashSet<>();
@@ -75,6 +77,12 @@ final class Cascade {
         int order = 0;
         for (Css.Rule rule : rules) {
             order++;
+            if (rule.selector().startsWith("@margin ")) {
+                String box = rule.selector().substring(8);
+                put(margins.computeIfAbsent(box, k -> new HashMap<>()), rule.declarations(), false);
+                put(importantMargins.computeIfAbsent(box, k -> new HashMap<>()), rule.declarations(), true);
+                continue;
+            }
             if ("@page".equals(rule.selector())) {
                 put(page, rule.declarations(), false);
                 put(page, rule.declarations(), true);
@@ -100,6 +108,7 @@ final class Cascade {
             }
             index(selector, new Compiled(evaluator, new Hit(specificity(selector), order, rule.declarations())));
         }
+        importantMargins.forEach((box, d) -> margins.get(box).putAll(d));
     }
 
     private static boolean stylesheet(Element link) {
@@ -365,6 +374,10 @@ final class Cascade {
 
     Map<String, String> page() {
         return page;
+    }
+
+    Map<String, Map<String, String>> margins() {
+        return margins;
     }
 
     /** Whether the page asks for its own paper (a size, or named pages), in which case it is printed as it asks. */
