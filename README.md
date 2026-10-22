@@ -16,6 +16,7 @@ Office-to-PDF reads saved content without running macros, scripts or formulas or
 HTML converts without a browser: scripts never run and nothing is fetched; pictures and style sheets come from the
 file itself (`data:` URIs), a `.zip` of the page, or a caller-supplied `HtmlAssets`.
 iWork files use their embedded PDF or picture preview. PDF/A level a requires an already tagged PDF;
+iWork files use their embedded PDF or picture preview, and Visio 2003-2010 drawings their first page's preview. PDF/A level a requires an already tagged PDF;
 the converter does not create a structure tree for an untagged document.
 
 See the [usage guide](docs/usage.md) for the complete format list, limitations, API options, fonts,
