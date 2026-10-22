@@ -27,6 +27,7 @@ public final class OfficeConvert {
         XML,
         RTF,
         TXT,
+        MARKDOWN,
         PPTX,
         ODP,
         XLSX,
@@ -41,12 +42,13 @@ public final class OfficeConvert {
                 case "xml" -> XML;
                 case "rtf", "doc" -> RTF;
                 case "txt" -> TXT;
+                case "md", "markdown" -> MARKDOWN;
                 case "pptx" -> PPTX;
                 case "odp" -> ODP;
                 case "xlsx" -> XLSX;
                 case "ods" -> ODS;
                 default -> throw new IllegalArgumentException("No output format for " + file.getFileName()
-                        + ": use .docx, .odt, .fodt, .xml, .rtf, .doc, .txt, .pptx, .odp, .xlsx or .ods");
+                        + ": use .docx, .odt, .fodt, .xml, .rtf, .doc, .txt, .md, .pptx, .odp, .xlsx or .ods");
             };
         }
     }
@@ -165,6 +167,7 @@ public final class OfficeConvert {
                 case FODT, XML -> PdfToOdt.convertFlat(pdf, out, settings.document());
                 case RTF -> PdfToRtf.convert(pdf, out, settings.document());
                 case TXT -> PdfToText.convert(pdf, out, settings.document());
+                case MARKDOWN -> PdfToMarkdown.convert(pdf, out, settings.document());
                 case PPTX -> PdfToPptx.convert(pdf, out, settings.slides());
                 case ODP -> PdfToOdp.convert(pdf, out, settings.slides());
                 case XLSX, ODS -> PdfToXlsx.convert(pdf, out, settings.workbook(format));
@@ -185,6 +188,7 @@ public final class OfficeConvert {
                 case FODT, XML -> PdfToOdt.convertFlat(pdf, out, settings.document());
                 case RTF -> PdfToRtf.convert(pdf, out, settings.document());
                 case TXT -> PdfToText.convert(pdf, out, settings.document());
+                case MARKDOWN -> PdfToMarkdown.convert(pdf, out, settings.document());
                 case PPTX -> PdfToPptx.convert(pdf, out, settings.slides());
                 case ODP -> PdfToOdp.convert(pdf, out, settings.slides());
                 case XLSX, ODS -> PdfToXlsx.convert(pdf, out, settings.workbook(format));
