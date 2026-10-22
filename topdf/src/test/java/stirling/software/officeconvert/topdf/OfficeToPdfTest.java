@@ -17,6 +17,8 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
@@ -33,6 +35,8 @@ import stirling.software.officeconvert.topdf.pdf.PageSize;
 import stirling.software.officeconvert.topdf.pdf.PdfOutput;
 import stirling.software.officeconvert.topdf.pdf.TextStyle;
 import stirling.software.officeconvert.topdf.testing.Fixtures;
+import stirling.software.officeconvert.topdf.testing.OwnTempFolder;
+import stirling.software.officeconvert.topdf.testing.Workers;
 
 class OfficeToPdfTest {
 
@@ -185,7 +189,8 @@ class OfficeToPdfTest {
             caller.interrupt();
         });
         try {
-            assertThrows(InterruptedIOException.class, () -> OfficeToPdf.run(Duration.ZERO, OfficeToPdfTest::sleepLong));
+            assertThrows(InterruptedIOException.class,
+                    () -> OfficeToPdf.run(Duration.ZERO, OfficeToPdfTest::blockUntilInterrupted));
             assertTrue(Thread.currentThread().isInterrupted());
         } finally {
             Thread.interrupted();
@@ -196,7 +201,7 @@ class OfficeToPdfTest {
     @Test
     void timesOut() {
         IOException e = assertThrows(IOException.class, () -> OfficeToPdf.run(Duration.ofMillis(100),
-                OfficeToPdfTest::sleepLong));
+                OfficeToPdfTest::blockUntilInterrupted));
         assertInstanceOf(OfficeToPdf.TimedOut.class, e);
         assertFalse(Thread.currentThread().isInterrupted());
     }
@@ -224,29 +229,62 @@ class OfficeToPdfTest {
 
     @Test
     void aWorkerThatIgnoresTheInterruptStillRemovesItsPartFile() throws Exception {
-        Path target = dir.resolve("slow.pdf");
-        AtomicReference<Thread> worker = new AtomicReference<>();
-        IOException e = assertThrows(IOException.class, () -> OfficeToPdf.writeAtomically(target,
-                Duration.ofMillis(100), 10, os -> {
-                    worker.set(Thread.currentThread());
-                    os.write("%PDF-".getBytes(StandardCharsets.US_ASCII));
-                    os.flush();
-                    long end = System.nanoTime() + 700_000_000L;
-                    while (System.nanoTime() < end) {
-                        Thread.interrupted();
-                        Thread.onSpinWait();
-                    }
-                    os.write("1.7".getBytes(StandardCharsets.US_ASCII));
-                }));
-        assertInstanceOf(OfficeToPdf.TimedOut.class, e);
-        long deadline = System.nanoTime() + 5_000_000_000L;
-        while (worker.get() == null && System.nanoTime() < deadline) {
-            Thread.sleep(5);
+        // a loaded machine may not start the worker within a short timeout, so longer ones are tried
+        for (long millis = 100; !abandonsAStubbornWorker(dir.resolve("slow" + millis + ".pdf"), millis); millis *= 2) {
+            assertTrue(millis < 25_600, "the worker never started, even within " + millis + " ms");
         }
-        worker.get().join(10_000);
-        assertFalse(worker.get().isAlive());
+    }
+
+    private boolean abandonsAStubbornWorker(Path target, long millis) throws Exception {
+        Set<Thread> before = Workers.named("office-to-pdf");
+        CountDownLatch release = new CountDownLatch(1);
+        AtomicReference<Thread> worker = new AtomicReference<>();
+        AtomicBoolean interrupted = new AtomicBoolean();
+        Thread started;
+        try {
+            IOException e = assertThrows(IOException.class, () -> OfficeToPdf.writeAtomically(target,
+                    Duration.ofMillis(millis), 10, os -> {
+                        worker.set(Thread.currentThread());
+                        ignoreInterrupt(interrupted);
+                        os.write("%PDF-".getBytes(StandardCharsets.US_ASCII));
+                        os.flush();
+                        awaitIgnoringInterrupts(release, interrupted);
+                        os.write("1.7".getBytes(StandardCharsets.US_ASCII));
+                    }));
+            assertInstanceOf(OfficeToPdf.TimedOut.class, e);
+            started = worker.get();
+            if (started != null) {
+                assertTrue(started.isAlive(), "the caller returns while the worker still runs");
+            }
+        } finally {
+            release.countDown();
+        }
+        Workers.awaitNew(before, "office-to-pdf");
         assertFalse(Files.exists(target));
         assertNoPartFiles();
+        if (started == null) {
+            return false;
+        }
+        assertTrue(interrupted.get(), "the worker was interrupted and went on");
+        return true;
+    }
+
+    private static void ignoreInterrupt(AtomicBoolean interrupted) {
+        if (Thread.interrupted()) {
+            interrupted.set(true);
+        }
+    }
+
+    private static void awaitIgnoringInterrupts(CountDownLatch latch, AtomicBoolean interrupted) {
+        while (true) {
+            try {
+                latch.await();
+                ignoreInterrupt(interrupted);
+                return;
+            } catch (InterruptedException e) {
+                interrupted.set(true);
+            }
+        }
     }
 
     @Test
@@ -403,16 +441,14 @@ class OfficeToPdfTest {
                 assertTrue(new org.apache.pdfbox.text.PDFTextStripper().getText(pdf).contains("Warm up"), f.name());
             }
         }
-        Path tmp = Path.of(System.getProperty("java.io.tmpdir"));
-        long before = warmUps(tmp);
-        OfficeToPdf.warmUp(Format.values());
-        OfficeToPdf.warmUp();
-        assertEquals(before, warmUps(tmp));
+        List<String> left = OwnTempFolder.run(dir.resolve("tmp"), WarmUpEverything.class);
+        assertEquals(List.of(), left.stream().filter(name -> name.startsWith("office-warm-up-")).toList());
     }
 
-    private static long warmUps(Path tmp) throws IOException {
-        try (Stream<Path> files = Files.list(tmp)) {
-            return files.filter(p -> p.getFileName().toString().startsWith("office-warm-up-")).count();
+    public static final class WarmUpEverything {
+        public static void main(String[] args) {
+            OfficeToPdf.warmUp(Format.values());
+            OfficeToPdf.warmUp();
         }
     }
 
@@ -436,9 +472,9 @@ class OfficeToPdfTest {
         assertEquals(0, sink.size());
     }
 
-    private static Void sleepLong() throws IOException {
+    private static Void blockUntilInterrupted() throws IOException {
         try {
-            Thread.sleep(30_000);
+            new CountDownLatch(1).await();
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new InterruptedIOException("stopped");

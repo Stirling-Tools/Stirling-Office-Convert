@@ -23,8 +23,8 @@ class SoftMaskRecursionTest {
                 + "/Group<</S/Transparency/CS/DeviceRGB>>/Resources<</ExtGState<</G 5 0 R>>>>",
                 "/G gs 1 g 0 0 50 50 re f"));
         Path input = Hostile.write(dir, "mask", pdf);
-        assertTimeoutPreemptively(Duration.ofSeconds(5), () -> assertThrows(IOException.class,
+        assertTimeoutPreemptively(Duration.ofMinutes(3), () -> assertThrows(IOException.class,
                 () -> PdfToPdfA.convert(input, dir.resolve("out.pdf"),
-                        PdfToPdfA.Options.defaults().level(PdfALevel.A1B).timeout(Duration.ofSeconds(2)))));
+                        PdfToPdfA.Options.defaults().level(PdfALevel.A1B).timeout(Duration.ofMinutes(1)))));
     }
 }

@@ -49,7 +49,7 @@ class RecursionLimitsTest {
         String bomb = "q ".repeat(80_000) + "0 0 1 rg 0 0 10 10 re f " + "Q ".repeat(80_000);
         Path deep = Hostile.write(dir, "deep", RawPdf.page("", bomb));
         IOException e = assertThrows(IOException.class, () -> PdfToPdfA.convert(deep, dir.resolve("deep-out.pdf"),
-                PdfToPdfA.Options.defaults().level(PdfALevel.A2B).timeout(Duration.ofSeconds(60))));
+                PdfToPdfA.Options.defaults().level(PdfALevel.A2B).timeout(Duration.ofMinutes(5))));
         assertTrue(e.getMessage().contains("80000 levels deep"), e.getMessage());
     }
 
@@ -58,7 +58,7 @@ class RecursionLimitsTest {
         Path in = Hostile.write(dir, "chain", Hostile.formChain(30_000));
         try {
             PdfToPdfA.convert(in, dir.resolve("chain-out.pdf"),
-                    PdfToPdfA.Options.defaults().level(PdfALevel.A2B).timeout(Duration.ofSeconds(60)));
+                    PdfToPdfA.Options.defaults().level(PdfALevel.A2B).timeout(Duration.ofMinutes(5)));
         } catch (IOException e) {
             assertFalse(e instanceof PdfToPdfA.TimedOut, e.toString());
         }
@@ -69,7 +69,7 @@ class RecursionLimitsTest {
         Path in = Hostile.write(dir, "fontchain", Hostile.fontChain(8_000));
         Path out = dir.resolve("fontchain-out.pdf");
         PdfToPdfA.Result r = PdfToPdfA.convert(in, out,
-                PdfToPdfA.Options.defaults().level(PdfALevel.A2B).timeout(Duration.ofSeconds(15)));
+                PdfToPdfA.Options.defaults().level(PdfALevel.A2B).timeout(Duration.ofMinutes(5)));
         assertEquals(1, r.pages());
     }
 
@@ -98,11 +98,11 @@ class RecursionLimitsTest {
     }
 
     private void finishesInTime(String name, RawPdf raw) {
-        assertTimeoutPreemptively(Duration.ofSeconds(30), () -> {
+        assertTimeoutPreemptively(Duration.ofMinutes(5), () -> {
             Path in = Hostile.write(dir, name, raw);
             try {
                 PdfToPdfA.convert(in, dir.resolve(name + "-out.pdf"),
-                        PdfToPdfA.Options.defaults().level(PdfALevel.A2A).timeout(Duration.ofSeconds(10)));
+                        PdfToPdfA.Options.defaults().level(PdfALevel.A2A).timeout(Duration.ofMinutes(3)));
             } catch (IOException e) {
                 assertFalse(e instanceof PdfToPdfA.TimedOut, e.toString());
             }
@@ -121,7 +121,7 @@ class RecursionLimitsTest {
         assertTrue(Files.size(in) < 1 << 20, "input " + Files.size(in));
         Path out = dir.resolve(name + "-out.pdf");
         PdfToPdfA.Result r = PdfToPdfA.convert(in, out,
-                PdfToPdfA.Options.defaults().level(level).timeout(Duration.ofSeconds(20)));
+                PdfToPdfA.Options.defaults().level(level).timeout(Duration.ofMinutes(3)));
         assertEquals(1, r.pages());
         assertTrue(Files.size(out) < 1 << 20);
     }

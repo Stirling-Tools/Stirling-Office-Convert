@@ -53,6 +53,8 @@ final class ChartPainter {
 
     private static final float SIN45 = (float) Math.sqrt(0.5);
 
+    private static final int MAX_DOUGHNUT_SLICES = 16_384;
+
     private final Chart chart;
 
     private final Fonts fonts;
@@ -424,49 +426,80 @@ final class ChartPainter {
         if (g.series().isEmpty()) {
             return;
         }
-        Chart.Series s = g.series().get(0);
+        float d = Math.min(right - left, bottom - top);
+        float cy = (top + bottom) / 2;
+        float r = d / 2;
+        if (g.kind() != Chart.Kind.DOUGHNUT) {
+            slices(g, g.series().get(0), cx, cy, 0, r, Integer.MAX_VALUE);
+            return;
+        }
+        float hole = r * Math.max(10, Math.min(90, g.holeSize())) / 100f;
+        int rings = g.series().size();
+        float width = (r - hole) / rings;
+        int perRing = Math.max(1, MAX_DOUGHNUT_SLICES / rings);
+        for (int k = 0; k < rings; k++) {
+            int ring = g.reversedOrder() ? rings - 1 - k : k;
+            float inner = hole + ring * width;
+            slices(g, g.series().get(k), cx, cy, inner, inner + width, perRing);
+        }
+    }
+
+    private void slices(Chart.Group g, Chart.Series s, float cx, float cy, float inner, float r, int limit) {
         double total = 0;
+        int positive = 0;
         for (double v : s.values()) {
             if (!Double.isNaN(v) && v > 0) {
                 total += v;
+                positive++;
             }
         }
         if (total <= 0) {
             return;
         }
-        float d = Math.min(right - left, bottom - top);
-        float cy = (top + bottom) / 2;
-        float r = d / 2;
+        float d = r * 2;
         double angle = 90 - g.firstSliceAngle();
         Stroke edge = s.outline() != null ? s.outline() : Stroke.solid(1.5f, Color.WHITE);
         Chart.Labels labels = s.labels() != null ? s.labels() : g.labels();
+        int every = (int) Math.ceil((double) positive / limit);
+        int seen = 0;
+        int first = -1;
+        double v = 0;
         for (int i = 0; i < s.values().length; i++) {
-            double v = s.values()[i];
-            if (Double.isNaN(v) || v <= 0) {
+            double value = s.values()[i];
+            if (Double.isNaN(value) || value <= 0) {
                 continue;
             }
-            double extent = -360 * v / total;
-            Arc2D.Double arc = new Arc2D.Double(cx - r, cy - r, d, d, angle, extent, Arc2D.PIE);
-            java.awt.Shape shape = arc;
-            if (g.kind() == Chart.Kind.DOUGHNUT) {
-                Path2D.Double ring = new Path2D.Double(Path2D.WIND_EVEN_ODD);
-                ring.append(arc, false);
-                float hole = r * Math.max(10, Math.min(90, g.holeSize())) / 100f;
-                ring.append(new Ellipse2D.Double(cx - hole, cy - hole, hole * 2, hole * 2), false);
+            if (seen % every == 0) {
+                first = i;
+                v = 0;
+            }
+            v += value;
+            seen++;
+            if (seen % every != 0 && seen != positive) {
+                continue;
+            }
+            double extent = (g.reversedOrder() ? 360 : -360) * v / total;
+            java.awt.Shape shape = new Arc2D.Double(cx - r, cy - r, d, d, angle, extent, Arc2D.PIE);
+            if (inner > 0) {
+                Path2D.Double ring = new Path2D.Double();
+                ring.append(new Arc2D.Double(cx - r, cy - r, d, d, angle, extent, Arc2D.OPEN), false);
+                ring.append(new Arc2D.Double(cx - inner, cy - inner, inner * 2, inner * 2, angle + extent, -extent,
+                        Arc2D.OPEN), true);
+                ring.closePath();
                 shape = ring;
             }
-            Color c = pointColor(g, s, i);
+            Color c = pointColor(g, s, first);
             ops.add(new Op.Path(shape, c == null ? null : Fill.solid(c), edge));
-            Chart.Labels pl = labels.at(i);
-            if (pl.shown()) {
+            Chart.Labels pl = labels.at(first);
+            if (pl.shown() && every == 1) {
                 TextStyle ls = labelStyle(pl);
                 double mid = Math.toRadians(angle + extent / 2);
-                boolean outside = "outEnd".equals(pl.position()) || "bestFit".equals(pl.position())
-                        && v / total < 0.05;
-                float k = outside ? 1.12f : 0.65f;
+                boolean outside = inner <= 0 && ("outEnd".equals(pl.position()) || "bestFit".equals(pl.position())
+                        && v / total < 0.05);
+                float k = outside ? 1.12f : inner > 0 ? (inner / r + 1) / 2 : 0.65f;
                 float lx = (float) (cx + Math.cos(mid) * r * k) + pl.dx() * chartW;
                 float ly = (float) (cy - Math.sin(mid) * r * k) + pl.dy() * chartH;
-                String text = label(pl, s, v, v / total, i, "; ");
+                String text = label(pl, s, v, v / total, first, "; ");
                 if (outside) {
                     labelLines(text, lx, ly + ascent(ls) / 3, ls, Math.cos(mid) >= 0 ? -1 : 1);
                 } else {
@@ -1037,7 +1070,11 @@ final class ChartPainter {
     private void lines(Chart.Group g, Plot p, boolean area) {
         boolean stacked = g.grouping().equals("stacked") || g.grouping().equals("percentStacked");
         double[] acc = new double[p.count()];
-        for (Chart.Series s : g.series()) {
+        List<Chart.Series> order = g.series();
+        if (g.reversedOrder() && !stacked) {
+            order = order.reversed();
+        }
+        for (Chart.Series s : order) {
             int count = Math.min(p.count(), s.values().length);
             List<float[]> pts = new ArrayList<>();
             List<List<float[]>> runs = new ArrayList<>();

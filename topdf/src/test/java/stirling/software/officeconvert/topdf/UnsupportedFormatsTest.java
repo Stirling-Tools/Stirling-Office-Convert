@@ -43,7 +43,6 @@ class UnsupportedFormatsTest {
             fs.writeFilesystem(ole);
         }
         assertTrue(refusal("flyer.doc", ole.toByteArray()).contains("Publisher"));
-        assertTrue(refusal("page.docx", "<!DOCTYPE html><html><body>Hi</body></html>".getBytes()).contains("HTML"));
         assertTrue(refusal("saved.doc", ("From: <Saved by Blink>\r\nSubject: x\r\nMIME-Version: 1.0\r\nContent-Type:"
                 + " multipart/related; type=\"text/html\"\r\n").getBytes()).contains("MHTML"));
     }

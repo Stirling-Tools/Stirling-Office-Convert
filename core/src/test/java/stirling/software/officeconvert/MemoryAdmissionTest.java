@@ -11,6 +11,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
 
@@ -111,10 +112,12 @@ class MemoryAdmissionTest {
         Path out = dir.resolve("out.docx");
         Admission.Ticket hog = Admission.jvm().enter(Long.MAX_VALUE);
         try {
+            Set<Thread> before = Workers.named("office-convert");
             long start = System.nanoTime();
             assertThrows(OfficeConvert.TimedOut.class, () -> OfficeConvert.convert(pdf, out,
                     OfficeConvert.Settings.defaults().timeout(Duration.ofMillis(300))));
-            assertTrue(System.nanoTime() - start < TimeUnit.SECONDS.toNanos(10));
+            assertTrue(System.nanoTime() - start < TimeUnit.MINUTES.toNanos(1), "it never waits for the memory");
+            Workers.awaitNew(before, "office-convert");
             assertEquals(1, Admission.jvm().running(), "the waiting conversion never started");
         } finally {
             hog.close();

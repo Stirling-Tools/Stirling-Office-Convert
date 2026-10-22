@@ -25,6 +25,8 @@ final class ChartReader {
 
     private static final int MAX_SERIES = 256;
 
+    static final int MAX_TEXT_CHARS = 4096;
+
     private final Theme theme;
 
     private final Color defaultFill;
@@ -251,7 +253,7 @@ final class ChartReader {
         } else {
             XEl ref = t.path("c:tx", "c:strRef");
             if (ref != null) {
-                text = String.join(" ", strings(ref.child("c:strCache")));
+                text = capped(String.join(" ", strings(ref.child("c:strCache"))));
             }
         }
         if ((text == null || text.isBlank()) && groups == null) {
@@ -308,8 +310,22 @@ final class ChartReader {
         float overlap = number(g.child("c:overlap"), stacked ? 100 : 0);
         float hole = number(g.child("c:holeSize"), 50);
         float first = number(g.child("c:firstSliceAng"), 0);
-        return new Chart.Group(kind, horizontal, grouping, series, gap, overlap, hole, first, vary,
+        Chart.Group group = new Chart.Group(kind, horizontal, grouping, series, gap, overlap, hole, first, vary,
                 labels(g.child("c:dLbls")));
+        return reversedOrder(g) ? group.inReversedOrder() : group;
+    }
+
+    private static boolean reversedOrder(XEl g) {
+        XEl ext = g.child("c:extLst");
+        if (ext == null) {
+            return false;
+        }
+        for (XEl e : ext.children("c:ext")) {
+            if (Charts.REVERSED_ORDER.equals(e.attr("uri"))) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private Chart.Series series(XEl s, Chart.Kind kind, int colorIndex, List<String> categories,
@@ -319,9 +335,9 @@ final class ChartReader {
         if (tx != null) {
             XEl ref = tx.child("c:strRef");
             if (ref != null) {
-                name = String.join(" ", strings(ref.child("c:strCache")));
+                name = capped(String.join(" ", strings(ref.child("c:strCache"))));
             } else if (tx.child("c:v") != null) {
-                name = tx.child("c:v").text();
+                name = capped(tx.child("c:v").text());
             }
         }
         XEl spPr = s.child("c:spPr");
@@ -434,7 +450,7 @@ final class ChartReader {
             String format = cache == null || cache.child("c:formatCode") == null ? "General"
                     : cache.child("c:formatCode").text();
             for (double d : points(cache)) {
-                out.add(Double.isNaN(d) ? "" : ChartPainter.format(d, format, date1904));
+                out.add(Double.isNaN(d) ? "" : capped(ChartPainter.format(d, format, date1904)));
             }
             return out;
         }
@@ -460,7 +476,7 @@ final class ChartReader {
             int i = Ooxml.integer(pt.attr("idx"), -1);
             XEl v = pt.child("c:v");
             if (i >= 0 && i < MAX_POINTS && v != null) {
-                map.put(i, v.text());
+                map.put(i, capped(v.text()));
                 count = Math.max(count, i + 1);
             }
         }
@@ -469,6 +485,14 @@ final class ChartReader {
             out.add(map.getOrDefault(i, ""));
         }
         return out;
+    }
+
+    private static String capped(String text) {
+        if (text.length() <= MAX_TEXT_CHARS) {
+            return text;
+        }
+        int end = Character.isHighSurrogate(text.charAt(MAX_TEXT_CHARS - 1)) ? MAX_TEXT_CHARS - 1 : MAX_TEXT_CHARS;
+        return text.substring(0, end);
     }
 
     private static double[] numbers(XEl holder) {
