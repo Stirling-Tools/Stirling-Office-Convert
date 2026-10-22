@@ -133,6 +133,34 @@ class EpubToPdfTest {
     }
 
     @Test
+    void booksInsideOtherZipsNeedPackagesAllowed() throws IOException {
+        OfficeToPdf.Options defaults = OfficeToPdf.Options.defaults().timeout(Duration.ofMinutes(2));
+        Path zipped = epub("book.zip", book());
+        IOException named = assertThrows(IOException.class,
+                () -> OfficeToPdf.convert(zipped, dir.resolve("zipped.pdf"), defaults));
+        assertTrue(named.getMessage().contains("--allow-packages"), named.getMessage());
+        assertFalse(Files.exists(dir.resolve("zipped.pdf")));
+        IOException streamed = assertThrows(IOException.class, () -> {
+            try (var in = Files.newInputStream(zipped)) {
+                OfficeToPdf.convert(in, OfficeToPdf.Format.HTML, new ByteArrayOutputStream(), defaults);
+            }
+        });
+        assertTrue(streamed.getMessage().contains("--allow-packages"), streamed.getMessage());
+        ByteArrayOutputStream declared = new ByteArrayOutputStream();
+        try (var in = Files.newInputStream(zipped)) {
+            OfficeToPdf.convert(in, OfficeToPdf.Format.EPUB, declared, defaults);
+        }
+        try (PDDocument doc = Loader.loadPDF(declared.toByteArray())) {
+            assertTrue(new PDFTextStripper().getText(doc).contains("Chapter Two"));
+        }
+        assertEquals(OfficeToPdf.Format.EPUB, OfficeToPdf.Format.of(dir.resolve("book.epub")));
+        OfficeToPdf.convert(zipped, dir.resolve("allowed.pdf"), defaults.allowPackages(true));
+        try (PDDocument doc = Loader.loadPDF(dir.resolve("allowed.pdf").toFile())) {
+            assertTrue(new PDFTextStripper().getText(doc).contains("Chapter Two"));
+        }
+    }
+
+    @Test
     void chapterStylesStayInTheirChapter() throws IOException {
         Map<String, byte[]> e = book();
         e.put("OEBPS/text/one.xhtml", utf8(chapter("<style>body { text-align: right } p { color: red }</style>",
