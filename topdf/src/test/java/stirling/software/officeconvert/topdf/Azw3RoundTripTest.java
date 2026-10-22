@@ -47,7 +47,11 @@ class Azw3RoundTripTest {
     }
 
     private Path book(int bodyParagraphs) throws IOException {
-        Path out = dir.resolve("book" + bodyParagraphs + ".azw3");
+        return book(bodyParagraphs, "Opening words with a note");
+    }
+
+    private Path book(int bodyParagraphs, String opening) throws IOException {
+        Path out = dir.resolve("book" + bodyParagraphs + opening.length() + ".azw3");
         BufferedImage img = new BufferedImage(8, 6, BufferedImage.TYPE_INT_RGB);
         ByteArrayOutputStream png = new ByteArrayOutputStream();
         ImageIO.write(img, "png", png);
@@ -57,7 +61,7 @@ class Azw3RoundTripTest {
             w.begin(styles, null);
             Picture.MediaRef ref = w.media(png.toByteArray(), "png", 8, 6, "pic");
             w.block(heading("First Chapter"));
-            Paragraph cited = paragraph("Opening words with a note");
+            Paragraph cited = paragraph(opening);
             cited.inlines.add(new Inline.FootnoteRef(1, "1", false, BODY));
             cited.inlines.add(new Inline.Image(new Picture(ref, 40, 30)));
             w.block(cited);
@@ -97,6 +101,17 @@ class Azw3RoundTripTest {
             byte[] picture = book.assets().read(img.group(1));
             assertTrue(picture != null && picture[1] == 'P', img.group(1));
         }
+    }
+
+    @Test
+    void linkPlaceholderTextInTheBookDoesNotMoveLinks() throws IOException {
+        String literal = "kindle:pos:fid:####:off:##########";
+        String html = MobiBook.read(book(0, "Opening " + literal + " words")).book().html();
+        assertTrue(html.contains("Opening " + literal + " words"), html);
+        Matcher link = Pattern.compile("href=\"#(epub-c\\d+-[^\"]+)\"").matcher(html);
+        assertTrue(link.find(), html);
+        int target = html.indexOf("id=\"" + link.group(1) + "\"");
+        assertTrue(target >= 0 && html.substring(target).contains("The footnote explains it."), link.group(1));
     }
 
     @Test

@@ -26,7 +26,7 @@ final class Kf8Writer {
 
     static final int MAX_RECORDS = 65_000;
 
-    private static final String POS = "kindle:pos:fid:####:off:##########";
+    private static final String POS = "kindle:pos:fid:&&&&:off:&&&&&&&&&&";
 
     private static final Pattern ITEM = Pattern.compile("<item id=\"([^\"]+)\" href=\"([^\"]+)\" media-type=\"([^\"]+)\"");
 
