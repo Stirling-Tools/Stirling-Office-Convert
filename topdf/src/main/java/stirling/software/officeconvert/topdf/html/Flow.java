@@ -461,14 +461,41 @@ final class Flow {
         inner.pendingSpace = Math.max(0, padding(d.get("padding-top"), em, frame.width()));
         inner.children(e, look, new Frame(0, 0, Math.max(24, width - padLeft - padRight), -1), depth);
         float padBottom = Math.max(0, padding(d.get("padding-bottom"), em, frame.width()));
-        if (cell.paragraphs.isEmpty()) {
+        Float tall = boxLength(d.get("height"), look, 0);
+        boolean drawn = cell.shading >= 0 || cell.top.visible() || cell.bottom.visible();
+        if (cell.paragraphs.isEmpty() && (tall == null || tall < 1 || !drawn)) {
             pendingSpace = Math.max(pendingSpace, top + bottom);
             return;
         }
-        if (padBottom >= 1) {
+        Table t = new Table();
+        Table.Row row = new Table.Row();
+        if (cell.paragraphs.isEmpty()) {
+            float h = tall + Math.max(0, padding(d.get("padding-top"), em, frame.width())) + padBottom;
+            cell.paragraphs.add(bar(h, look));
+            Element only = e.children().size() == 1 ? e.child(0) : null;
+            Map<String, String> od = only == null ? Map.of() : ctx.declared(only, look);
+            Integer color = Css.color(od.get("background-color"));
+            String share = od.getOrDefault("width", "").strip();
+            if (color != null && color >= 0 && padLeft + padRight < 1 && share.matches("[0-9]{1,3}([.][0-9]{1,4})?%")) {
+                float done = Math.min(1, Float.parseFloat(share.substring(0, share.length() - 1)) / 100f) * width;
+                if (width - done < 1) {
+                    cell.shading = color;
+                } else if (done >= 1) {
+                    Table.Cell part = new Table.Cell();
+                    part.shading = color;
+                    part.top = cell.top;
+                    part.bottom = cell.bottom;
+                    part.left = cell.left;
+                    cell.left = Table.Border.NONE;
+                    part.paragraphs.add(bar(h, look));
+                    row.cells.add(part);
+                    t.columnWidths.add(done);
+                    width -= done;
+                }
+            }
+        } else if (padBottom >= 1) {
             inner.spacer(padBottom, new Frame(0, 0, width, -1));
         }
-        Table t = new Table();
         t.columnWidths.add(width);
         t.indent = frame.left() + marginLeft;
         if (look.rightToLeft) {
@@ -477,7 +504,6 @@ final class Flow {
         }
         t.cellMarginLeft = padLeft;
         t.cellMarginRight = padRight;
-        Table.Row row = new Table.Row();
         row.splits = !avoidsBreaks(d);
         row.cells.add(cell);
         t.rows.add(row);
@@ -491,6 +517,14 @@ final class Flow {
         ctx.count();
         emit(t);
         pendingSpace = bottom;
+    }
+
+    private static Paragraph bar(float height, Look look) {
+        Paragraph p = new Paragraph();
+        p.lineRule = Paragraph.LineRule.EXACT;
+        p.lineHeight = Math.max(1, Math.min(height, 400));
+        p.inlines.add(new Inline.Text("\u00a0", look.run().withSize(1), null, -1));
+        return p;
     }
 
     // A block on a page of another name starts a new section on that page's size and margins

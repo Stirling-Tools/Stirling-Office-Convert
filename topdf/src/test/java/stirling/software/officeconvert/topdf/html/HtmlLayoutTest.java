@@ -188,4 +188,24 @@ class HtmlLayoutTest {
         assertEquals(margin + (room - 150) / 2, l.word("Middle").left(), 3f);
         assertEquals(margin + room - 90, l.word("Last").left(), 3f);
     }
+
+    @Test
+    void anEmptyBoxWithAHeightDrawsItsBackgroundAsAMeter() throws IOException {
+        Laid l = lay("""
+                <html><head><style>
+                .track{height:14px;background:#c0c0c0;width:300px}.fill{height:100%;width:64%;background:#00a000}
+                </style></head><body><div class=track><div class=fill></div></div><p>Below</p></body></html>""");
+        BufferedImage page = l.first();
+        int green = 0;
+        int grey = 0;
+        for (int y = 0; y < page.getHeight() && green == 0; y++) {
+            for (int x = 0; x < page.getWidth(); x++) {
+                int rgb = page.getRGB(x, y) & 0xFFFFFF;
+                green += rgb == 0x00A000 ? 1 : 0;
+                grey += rgb == 0xC0C0C0 ? 1 : 0;
+            }
+        }
+        assertEquals(225 * 0.64f, green, 3f);
+        assertEquals(225 * 0.36f, grey, 3f);
+    }
 }
