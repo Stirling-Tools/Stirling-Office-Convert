@@ -321,6 +321,11 @@ final class PaintOrder extends PDFGraphicsStreamEngine {
         return maskedGroups > 0 || getGraphicsState().getSoftMask() != null;
     }
 
+    private boolean patterned(RenderingMode mode) {
+        return mode.isFill() && getGraphicsState().getNonStrokingColor().getColorSpace() instanceof PDPattern
+                || mode.isStroke() && getGraphicsState().getStrokingColor().getColorSpace() instanceof PDPattern;
+    }
+
     private boolean blending() {
         BlendMode blend = getGraphicsState().getBlendMode();
         return blend != null && blend != BlendMode.NORMAL && blend != BlendMode.COMPATIBLE;
@@ -605,7 +610,7 @@ final class PaintOrder extends PDFGraphicsStreamEngine {
         double w = Math.max(0.1, displacement.getX());
         slant(trm, w);
         boolean display = Math.hypot(trm.getShearX(), trm.getScaleY()) >= DISPLAY_SIZE;
-        boolean effect = masked() || getGraphicsState().getNonStrokingColor().getColorSpace() instanceof PDPattern;
+        boolean effect = masked() || patterned(mode);
         Kind kind = effect && display ? Kind.EFFECT_TEXT : Kind.TEXT;
         mark(kind, trm.createTransformedShape(new Rectangle2D.Double(0, -0.2, w, 1.0)).getBounds2D());
     }
