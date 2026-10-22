@@ -7,6 +7,7 @@ import java.util.IdentityHashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 
 import stirling.software.officeconvert.extract.Glyph;
@@ -31,6 +32,7 @@ public final class PageAnalyzer {
     private final boolean detectTables;
     private final boolean forms;
     private final boolean tabLeaders;
+    private final boolean boxColumns;
     private int noteCounter;
 
     private record Notes(List<PageLayout.Note> notes, List<ParaDraft> continuation) {}
@@ -40,7 +42,12 @@ public final class PageAnalyzer {
     }
 
     public PageAnalyzer(DocStats stats, boolean detectTables, boolean forms, boolean tabLeaders) {
+        this(stats, detectTables, forms, tabLeaders, false);
+    }
+
+    public PageAnalyzer(DocStats stats, boolean detectTables, boolean forms, boolean tabLeaders, boolean boxColumns) {
         this.stats = stats;
+        this.boxColumns = boxColumns;
         this.forms = forms;
         this.tabLeaders = tabLeaders;
         this.paragraphs = new ParagraphBuilder(stats);
@@ -84,8 +91,10 @@ public final class PageAnalyzer {
         textPaint.addAll(gfx.fills());
         rules.forEach(textPaint::remove);
         fills.forEach(textPaint::remove);
-        if (forms && FormPage.looksLikeForm(page, segments, rules)) {
-            return formPage(page, ocr, concat(segments, furnitureLines), rules, fills, textPaint);
+        List<float[]> panels = boxColumns ? List.of() : ColumnFinder.boxedPanelSpans(segments, rules, stats.bodySize);
+        boolean panelGrid = panels.size() >= MIN_PANEL_PAIRS && !tableBesidePanels(page, glyphs, panels);
+        if (forms && (panelGrid || FormPage.looksLikeForm(page, segments, rules))) {
+            return formPage(page, ocr, concat(segments, furnitureLines), rules, fills, textPaint, panelGrid);
         }
 
         boolean tinted = tinted(page, gfx);
@@ -150,6 +159,9 @@ public final class PageAnalyzer {
         tables.removeIf(t -> TableShaper.looksLikeList(t, TableShaper.assign(t, TableFinder.wordsInside(segments, t))));
         if (detectTables) {
             addKeyValueTables(tables, segments, frame);
+        }
+        if (boxColumns) {
+            tables.removeIf(PageAnalyzer::framedText);
         }
         List<Box> tableBoxes = tables.stream().map(TableFinder::boxOf).toList();
         List<Rule> freeRules = new ArrayList<>(rules.stream()
@@ -231,7 +243,7 @@ public final class PageAnalyzer {
     }
 
     private PageLayout formPage(PageData page, boolean ocr, List<Line> lines, List<Rule> rules, List<Fill> fills,
-            Set<Object> textPaint) {
+            Set<Object> textPaint, boolean panelGrid) {
         PageGraphics gfx = page.graphics();
         List<PageLayout.TextBoxItem> boxes = new ArrayList<>();
         List<Line> pieces = FormPage.pieces(lines, rules, fills, tabLeaders);
@@ -247,12 +259,21 @@ public final class PageAnalyzer {
                 pictures.add(new PageLayout.FloatItem(new PageLayout.ImageItem(img, true), 0f, true));
             }
         }
+        List<Box> drawn = new ArrayList<>();
         for (PageGraphics.VectorMark m : gfx.marks()) {
             Box b = new Box(Math.max(0, m.x()), Math.max(0, m.top()), Math.min(page.width(), m.right()),
                     Math.min(page.height(), m.bottom()));
             if (b.width() > 0.5f && b.height() > 0.5f) {
-                pictures.add(new PageLayout.FloatItem(new PageLayout.FigureItem(b.grow(STROKE_MARGIN), true), 0f, true));
+                drawn.add(b.grow(STROKE_MARGIN));
             }
+        }
+        if (panelGrid) {
+            for (PageGraphics.Area a : gfx.masked()) {
+                drawn.add(new Box(a.x(), a.top(), a.right(), a.bottom()));
+            }
+        }
+        for (Box b : panelGrid ? FigureFinder.cluster(drawn, 1f) : drawn) {
+            pictures.add(new PageLayout.FloatItem(new PageLayout.FigureItem(b, true), 0f, true));
         }
         List<PageLayout.Band> bands = pictures.isEmpty()
                 ? List.of()
@@ -407,6 +428,56 @@ public final class PageAnalyzer {
         return new Notes(notes, continuation);
     }
 
+    private static final int MIN_PANEL_PAIRS = 2;
+
+    private boolean tableBesidePanels(PageData page, List<Glyph> glyphs, List<float[]> panels) {
+        for (Box t : ruledTables(page, glyphs)) {
+            boolean inside = false;
+            for (float[] p : panels) {
+                inside |= t.top() < p[1] && t.bottom() > p[0];
+            }
+            if (!inside) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private List<Box> ruledTables(PageData page, List<Glyph> glyphs) {
+        if (!detectTables) {
+            return List.of();
+        }
+        PageFrame frame = stats.frame(page.width(), page.height());
+        List<Line> lines = new ArrayList<>(LineBuilder.build(glyphs));
+        return tableFinder.find(page, frame.textLeft(), frame.textRight(), lines, new ArrayList<>(page.graphics().rules()),
+                new ArrayList<>(page.graphics().fills()), new ArrayList<>()).stream()
+                .filter(TableDetection.Found::ruled).map(TableFinder::boxOf).toList();
+    }
+
+    private static boolean framedText(TableDetection.Found t) {
+        if (t.ruled()) {
+            return false;
+        }
+        Integer background = t.cells().isEmpty() ? null : t.cells().getFirst().fill();
+        boolean top = false;
+        boolean bottom = false;
+        boolean left = false;
+        boolean right = false;
+        for (TableDetection.FoundCell c : t.cells()) {
+            boolean innerRight = c.borderRight() && c.col() + c.colSpan() < t.cols();
+            boolean innerBottom = c.borderBottom() && c.row() + c.rowSpan() < t.rows();
+            if (!Objects.equals(c.fill(), background) || innerRight || innerBottom) {
+                return false;
+            }
+            top |= c.borderTop() && c.row() == 0;
+            bottom |= c.borderBottom();
+            left |= c.borderLeft() && c.col() == 0;
+            right |= c.borderRight();
+        }
+        int sides = (top ? 1 : 0) + (bottom ? 1 : 0) + (left ? 1 : 0) + (right ? 1 : 0);
+        return sides > 0 && sides < 4;
+    }
+
     private static <T> List<T> concat(List<T> a, List<T> b) {
         List<T> out = new ArrayList<>(a);
         out.addAll(b);
@@ -427,7 +498,9 @@ public final class PageAnalyzer {
                 items.add(new ColumnFinder.Item(b.x(), b.top(), b.right(), b.bottom(), b.bottom(), false, 0, picture));
             }
         }
-        List<ColumnFinder.Band> found = ColumnFinder.find(items, frame.textLeft(), frame.textRight(), page.height(), stats.bodySize);
+        List<Rule> edges = boxColumns ? page.graphics().rules() : List.of();
+        List<ColumnFinder.Band> found =
+                ColumnFinder.find(items, edges, frame.textLeft(), frame.textRight(), page.height(), stats.bodySize);
         boolean pinPictures = ocr || PictureArranger.pictureDominated(blocks, page);
         List<PageLayout.Band> bands = new ArrayList<>();
         for (ColumnFinder.Band band : found) {
@@ -679,7 +752,7 @@ public final class PageAnalyzer {
     private PageLayout.Column column(
             float[] c, List<Line> colLines, List<PageLayout.Item> colBlocks, boolean pinPictures, float marginEdge,
             Box sheet) {
-        List<Line> lines = LineGroups.joinRows(colLines);
+        List<Line> lines = LineGroups.alignedTabs(LineGroups.joinRows(colLines));
         List<PageLayout.Item> colItems = new ArrayList<>();
         List<ParagraphBuilder.Obstacle> obstacles = new ArrayList<>();
         PictureArranger.arrange(colBlocks, lines, colItems, obstacles, pinPictures, marginEdge, sheet, c);

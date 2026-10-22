@@ -128,6 +128,29 @@ final class GlyphShapes {
         return narrow > 0 && wide > 0 && Math.abs(wide - narrow) <= 0.02f * wide;
     }
 
+    static boolean condensed(PDFont font, boolean bold) {
+        float total = 0;
+        float arial = 0;
+        int found = 0;
+        for (int i = 0; i < LOWERCASE.length(); i++) {
+            float w = widthOf(font, LOWERCASE.substring(i, i + 1));
+            if (w > 0) {
+                total += w;
+                arial += bold ? ARIAL_BOLD[i] : ARIAL[i];
+                found++;
+            }
+        }
+        return found >= 3 && total < CONDENSED * arial;
+    }
+
+    private static final String LOWERCASE = "abcdehinoprstuv";
+
+    private static final float[] ARIAL = {556, 556, 500, 556, 556, 556, 222, 556, 556, 556, 333, 500, 278, 556, 500};
+
+    private static final float[] ARIAL_BOLD = {556, 611, 556, 611, 556, 611, 278, 611, 611, 611, 389, 556, 333, 611, 556};
+
+    private static final float CONDENSED = 0.85f;
+
     private static float widthOf(PDFont font, String... letters) {
         if (font instanceof PDType3Font) {
             return 0;
