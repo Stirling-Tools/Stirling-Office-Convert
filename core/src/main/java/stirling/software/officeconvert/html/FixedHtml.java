@@ -11,6 +11,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
+import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.Locale;
 import java.util.Map;
@@ -55,7 +56,12 @@ public final class FixedHtml {
         PICTURE
     }
 
-    public record Options(int firstPage, int lastPage, float dpi, String title, Text text) {
+    @FunctionalInterface
+    public interface FontSource {
+        byte[] webFont(PDFont font) throws IOException;
+    }
+
+    public record Options(int firstPage, int lastPage, float dpi, String title, Text text, FontSource fonts) {
 
         public static final float DEFAULT_DPI = 150f;
 
@@ -67,24 +73,67 @@ public final class FixedHtml {
         }
 
         public static Options defaults() {
-            return new Options(1, Integer.MAX_VALUE, DEFAULT_DPI, null, Text.LIVE);
+            return new Options(1, Integer.MAX_VALUE, DEFAULT_DPI, null, Text.LIVE, null);
         }
 
         public Options text(Text mode) {
-            return new Options(firstPage, lastPage, dpi, title, mode);
+            return new Options(firstPage, lastPage, dpi, title, mode, fonts);
         }
 
         public Options pages(int first, int last) {
-            return new Options(first, last, dpi, title, text);
+            return new Options(first, last, dpi, title, text, fonts);
+        }
+
+        public Options fonts(FontSource source) {
+            return new Options(firstPage, lastPage, dpi, title, text, source);
         }
     }
 
     static final long MAX_PAGE_PIXELS = 40_000_000L;
 
+    static final int MAX_FONT_BYTES = 4 << 20;
+
+    static final long MAX_FONTS_BYTES = 32L << 20;
+
+    private static final class Fonts {
+        final FontSource source;
+        final Map<Object, String> families = new HashMap<>();
+        long bytes;
+
+        Fonts(FontSource source) {
+            this.source = source;
+        }
+
+        String family(PDFont font, StringBuilder faces) {
+            if (source == null || font == null) {
+                return null;
+            }
+            Object key = font.getCOSObject();
+            if (families.containsKey(key)) {
+                return families.get(key);
+            }
+            String family = null;
+            try {
+                byte[] ttf = source.webFont(font);
+                if (ttf != null && ttf.length > 0 && ttf.length <= MAX_FONT_BYTES && bytes + ttf.length <= MAX_FONTS_BYTES) {
+                    bytes += ttf.length;
+                    family = "pdf-f" + (families.size() + 1);
+                    faces.append("@font-face{font-family:'").append(family)
+                            .append("';src:url(data:font/ttf;base64,")
+                            .append(Base64.getEncoder().encodeToString(ttf)).append(") format('truetype')}\n");
+                }
+            } catch (IOException | RuntimeException e) {
+                family = null;
+            }
+            families.put(key, family);
+            return family;
+        }
+    }
+
     private static final float MONO_ADVANCE = 0.6f;
 
     private record Span(String text, float x, float y, float size, float width, int dir, int rgb, String font,
-            boolean bold, boolean italic) {}
+            boolean bold, boolean italic, PDFont pdFont) {}
 
     private FixedHtml() {}
 
@@ -97,11 +146,12 @@ public final class FixedHtml {
         w.write(head(doc, options));
         PDFRenderer renderer = options.text() == Text.LIVE ? new WithoutText(doc) : new PDFRenderer(doc);
         renderer.setSubsamplingAllowed(true);
+        Fonts fonts = new Fonts(options.text() == Text.LIVE ? options.fonts() : null);
         for (int i = first - 1; i < last; i++) {
             if (Thread.currentThread().isInterrupted()) {
                 throw new IOException("The conversion was stopped");
             }
-            page(doc, renderer, i, options, w, out);
+            page(doc, renderer, i, options, w, out, fonts);
         }
         w.write("</body>\n</html>\n");
         w.flush();
@@ -146,7 +196,7 @@ public final class FixedHtml {
     }
 
     private static void page(PDDocument doc, PDFRenderer renderer, int index, Options options, Writer w,
-            OutputStream out) throws IOException {
+            OutputStream out, Fonts fonts) throws IOException {
         PDPage page = doc.getPage(index);
         PDRectangle box = page.getCropBox();
         int rotation = ((page.getRotation() % 360) + 360) % 360;
@@ -158,10 +208,20 @@ public final class FixedHtml {
         if (pixels > MAX_PAGE_PIXELS) {
             scale *= (float) Math.sqrt(MAX_PAGE_PIXELS / pixels);
         }
-        StringBuilder sb = new StringBuilder(4096);
         boolean live = options.text() == Text.LIVE;
-        sb.append("<section class=\"").append(live ? "pg" : "pg picture").append("\" id=\"page-").append(index + 1).append("\" style=\"width:")
-                .append(HtmlText.pt(width)).append(";height:").append(HtmlText.pt(height)).append("\">\n");
+        StringBuilder text = new StringBuilder(4096);
+        StringBuilder faces = new StringBuilder();
+        for (Span s : spans(doc, index)) {
+            span(text, s, live, live && s.rgb() >= 0 ? fonts.family(s.pdFont(), faces) : null);
+        }
+        links(text, page, box, rotation, width, height);
+        StringBuilder sb = new StringBuilder(512);
+        if (!faces.isEmpty()) {
+            sb.append("<style>\n").append(faces).append("</style>\n");
+        }
+        sb.append("<section class=\"").append(live ? "pg" : "pg picture").append("\" id=\"page-").append(index + 1)
+                .append("\" style=\"width:").append(HtmlText.pt(width)).append(";height:").append(HtmlText.pt(height))
+                .append("\">\n");
         BufferedImage image = renderer.renderImage(index, scale, ImageType.RGB);
         if (!live || !blank(image)) {
             Picture picture = picture(image);
@@ -172,11 +232,7 @@ public final class FixedHtml {
             sb.setLength(0);
             sb.append("\">\n");
         }
-        for (Span s : spans(doc, index)) {
-            span(sb, s, live);
-        }
-        links(sb, page, box, rotation, width, height);
-        sb.append("</section>\n");
+        sb.append(text).append("</section>\n");
         w.write(sb.toString());
         w.flush();
     }
@@ -286,7 +342,7 @@ public final class FixedHtml {
                         || first.getFont() != null && first.getFont().getFontDescriptor() != null
                                 && first.getFont().getFontDescriptor().isItalic();
                 spans.add(new Span(text, first.getXDirAdj(), first.getYDirAdj(), size, width, (int) first.getDir(),
-                        look.invisible() ? -1 : look.rgb(), font, bold, italic));
+                        look.invisible() ? -1 : look.rgb(), font, bold, italic, first.getFont()));
             }
         };
         stripper.setSortByPosition(true);
@@ -314,7 +370,7 @@ public final class FixedHtml {
         return base.isEmpty() ? generic : "'" + base + "'," + generic;
     }
 
-    private static void span(StringBuilder sb, Span s, boolean live) {
+    private static void span(StringBuilder sb, Span s, boolean live, String embedded) {
         if (live && s.rgb() < 0) {
             return;
         }
@@ -329,14 +385,15 @@ public final class FixedHtml {
         sb.append("<span style=\"left:").append(HtmlText.pt(s.x())).append(";top:")
                 .append(HtmlText.pt(s.y() - ascent)).append(";font-size:").append(HtmlText.pt(s.size()));
         if (live) {
-            sb.append(";font-family:").append(family(s.font()).replace("\"", ""));
+            sb.append(";font-family:").append(embedded != null ? "'" + embedded + "'," : "")
+                    .append(family(s.font()).replace("\"", ""));
             if ((s.rgb() & 0xFFFFFF) != 0) {
                 sb.append(";color:").append(HtmlText.hex(s.rgb() & 0xFFFFFF));
             }
-            if (s.bold()) {
+            if (s.bold() && embedded == null) {
                 sb.append(";font-weight:bold");
             }
-            if (s.italic()) {
+            if (s.italic() && embedded == null) {
                 sb.append(";font-style:italic");
             }
         }

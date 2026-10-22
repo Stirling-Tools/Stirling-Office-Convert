@@ -118,6 +118,36 @@ class PdfToFixedHtmlTest {
         assertEquals("'Calibri',sans-serif", FixedHtml.family("Calibri-Light"));
     }
 
+    @Test
+    void suppliedFontsAreEmbeddedOncePerFont() throws IOException {
+        byte[] ttf;
+        try (var in = PDDocument.class.getResourceAsStream("/org/apache/pdfbox/resources/ttf/LiberationSans-Regular.ttf")) {
+            ttf = in.readAllBytes();
+        }
+        int[] calls = {0};
+        Path out = dir.resolve("fonts.html");
+        PdfToHtml.convertFixed(dir.resolve("two.pdf"), out, FixedHtml.Options.defaults().fonts(font -> {
+            calls[0]++;
+            return ttf;
+        }));
+        String withFonts = Files.readString(out, StandardCharsets.UTF_8);
+        assertEquals(1, calls[0]);
+        assertEquals(1, count(withFonts, "@font-face{font-family:'pdf-f1'"));
+        assertTrue(withFonts.contains("font-family:'pdf-f1','Helvetica',sans-serif"));
+        assertTrue(withFonts.indexOf("@font-face") < withFonts.indexOf("<section"));
+
+        Path big = dir.resolve("big.html");
+        PdfToHtml.convertFixed(dir.resolve("two.pdf"), big, FixedHtml.Options.defaults()
+                .fonts(font -> new byte[5 << 20]));
+        assertFalse(Files.readString(big, StandardCharsets.UTF_8).contains("@font-face"));
+
+        Path failing = dir.resolve("failing.html");
+        PdfToHtml.convertFixed(dir.resolve("two.pdf"), failing, FixedHtml.Options.defaults().fonts(font -> {
+            throw new IOException("unsupported");
+        }));
+        assertTrue(Files.readString(failing, StandardCharsets.UTF_8).contains(">Page 1 heading"));
+    }
+
     private static int count(String needle) {
         return count(html, needle);
     }

@@ -581,6 +581,9 @@ PdfToJson.convert(pdf, Path.of("out.json"), options);      // the document model
   PDF font's family with a generic fallback, colour, weight and slant; invisible (OCR) text is left out. `Text.PICTURE`
   draws everything into the page picture and adds the text as a transparent layer to select and search, so it looks
   exactly like the PDF at the cost of size. Pages are drawn at 150 dpi (36 to 300); web links stay clickable.
+  `Options.fonts(FontSource)` lets the caller turn the PDF's own fonts into web fonts for `Text.LIVE` (for example
+  `WebFonts::toTrueType` from the `pdfa` module), so live text is drawn in the document's real faces; each font is
+  asked for once, and fonts over 4 MB or past 32 MB in total, or that fail, fall back to the family name.
 - JSON is the document model itself, the format [described here](json-format.md): everything the DOCX carries, as
   data a program can read, change and convert back to PDF (or, through it, to anything else).
 
