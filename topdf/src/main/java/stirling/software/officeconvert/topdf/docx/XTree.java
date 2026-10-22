@@ -27,7 +27,7 @@ final class XTree {
 
     private static final Set<String> TEXT_ELEMENTS = Set.of("w:t", "w:instrText", "w:delText", "w:delInstrText",
             "wp:posOffset", "wp:align", "m:t", "a:t", "wp14:pctWidth", "wp14:pctHeight", "wp14:pctPosHOffset",
-            "wp14:pctPosVOffset", "c:v", "c:formatCode");
+            "wp14:pctPosVOffset", "c:v", "c:formatCode", "c:separator");
 
     static {
         prefix("w", "http://schemas.openxmlformats.org/wordprocessingml/2006/main",

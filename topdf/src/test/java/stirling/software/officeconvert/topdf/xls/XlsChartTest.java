@@ -13,6 +13,7 @@ import java.time.Duration;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
+import org.apache.poi.hssf.usermodel.HSSFRow;
 import org.apache.poi.hssf.usermodel.HSSFSheet;
 import org.apache.poi.poifs.filesystem.POIFSFileSystem;
 import org.apache.poi.ss.SpreadsheetVersion;
@@ -99,7 +100,7 @@ class XlsChartTest {
             int extern = wb.getInternalWorkbook().checkExternSheet(0);
             ChartFixtures.chartSheet(wb, "Chart1", ChartFixtures.linkedChart(BAR, null, 3,
                     new Area3DPtg(new AreaReference("A2:A4", SpreadsheetVersion.EXCEL97), extern),
-                    new Area3DPtg(new AreaReference("A1:A1", SpreadsheetVersion.EXCEL97), extern)));
+                    null, new Area3DPtg(new AreaReference("A1:A1", SpreadsheetVersion.EXCEL97), extern)));
         });
         String chart = chartXml(data);
         assertTrue(chart.contains("<c:tx><c:v>Revenue</c:v></c:tx>"), chart);
@@ -117,7 +118,7 @@ class XlsChartTest {
             int extern = wb.getInternalWorkbook().checkExternSheet(0);
             ChartFixtures.chartSheet(wb, "Chart1", ChartFixtures.linkedChart(BAR, null, 3,
                     new Area3DPtg(new AreaReference("B1:B3", SpreadsheetVersion.EXCEL97), extern),
-                    new Area3DPtg(new AreaReference("A1:A4096", SpreadsheetVersion.EXCEL97), extern)));
+                    null, new Area3DPtg(new AreaReference("A1:A4096", SpreadsheetVersion.EXCEL97), extern)));
         });
         String chart = chartXml(data);
         assertTrue(chart.length() < 100_000, chart.length() + " characters of chart");
@@ -144,6 +145,36 @@ class XlsChartTest {
                     chart);
             assertTrue(chart.contains("<c:spPr><a:noFill/></c:spPr></c:plotArea>"), chart);
         }
+    }
+
+    @Test
+    void longCategoryTextFromCellsIsCappedPerCategory() throws Exception {
+        String longText = "c".repeat(32_767);
+        byte[] data = XlsTest.xls(wb -> {
+            HSSFSheet sheet = wb.createSheet("Data");
+            for (int i = 0; i < 20; i++) {
+                HSSFRow row = sheet.createRow(i);
+                row.createCell(0).setCellValue(longText);
+                row.createCell(1).setCellValue(i);
+            }
+            int extern = wb.getInternalWorkbook().checkExternSheet(0);
+            ChartFixtures.chartSheet(wb, "Chart1", ChartFixtures.linkedChart(BAR, "Linked", 20,
+                    new Area3DPtg(new AreaReference("B1:B20", SpreadsheetVersion.EXCEL97), extern),
+                    new Area3DPtg(new AreaReference("A1:A20", SpreadsheetVersion.EXCEL97), extern), null));
+        });
+        String chart = chartXml(data);
+        assertTrue(chart.contains("<c:v>" + "c".repeat(ChartRecords.MAX_TEXT_CHARS) + "</c:v>"), "category kept");
+        assertFalse(chart.contains("c".repeat(ChartRecords.MAX_TEXT_CHARS + 1)), "category capped");
+        assertTrue(chart.length() < 20 * (ChartRecords.MAX_TEXT_CHARS + 100) + 10_000, "chart xml " + chart.length());
+    }
+
+    @Test
+    void longCachedCategoryTextIsCappedPerCategory() throws Exception {
+        String chart = chartXml(XlsTest.xls(wb -> ChartFixtures.chartSheet(wb, "Chart1", ChartFixtures.chart(null,
+                BAR, new byte[6], new String[] {"A"}, new String[] {"z".repeat(6000), "y"},
+                new double[][] {{1, 2}}))));
+        assertTrue(chart.contains("<c:v>" + "z".repeat(ChartRecords.MAX_TEXT_CHARS) + "</c:v>"), "category kept");
+        assertFalse(chart.contains("z".repeat(ChartRecords.MAX_TEXT_CHARS + 1)), "category capped");
     }
 
     private static String chartXml(byte[] xls) throws IOException {

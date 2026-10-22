@@ -21,6 +21,7 @@ import org.apache.commons.logging.LogFactory;
 import org.apache.pdfbox.pdmodel.PDDocument;
 
 import stirling.software.officeconvert.build.PlacedContent;
+import stirling.software.officeconvert.extract.OperatorBudget;
 import stirling.software.officeconvert.layout.Box;
 import stirling.software.officeconvert.model.Picture;
 import stirling.software.officeconvert.slides.PaintOrder.Kind;
@@ -30,9 +31,15 @@ final class Art {
 
     private static final Log LOG = LogFactory.getLog(Art.class);
 
-    private static final float MIN_SHARE = 0.01f;
+    private static final float MIN_AREA = 1f;
 
-    private static final int MAX_RUNS = 4;
+    private static final int MAX_PIECES = 120;
+
+    private static final int MAX_BLANK_PIECES = 16;
+
+    private static final float JOIN_GAP = 2f;
+
+    private static final long MAX_PAGE_OPERATORS = 4 * OperatorBudget.MAX_OPERATORS;
 
     private static final long MAX_PIXELS = 3_000_000L;
 
@@ -52,44 +59,84 @@ final class Art {
 
     record Piece(PictureShape picture, int order) {}
 
+    long operators() {
+        return renderer.operators();
+    }
+
     List<Piece> pieces(PaintOrder paint, Set<Integer> represented, int pageIndex, AffineTransform toDisplay,
             float width, float height) {
-        List<List<Mark>> runs = new ArrayList<>();
-        List<Mark> run = new ArrayList<>();
+        List<Run> runs = new ArrayList<>();
+        Run run = null;
+        List<Mark> between = new ArrayList<>();
         for (Mark m : paint.marks()) {
-            if (m.kind() != Kind.TEXT && !represented.contains(m.order())) {
-                run.add(m);
-            } else if (!run.isEmpty()) {
-                runs.add(run);
-                run = new ArrayList<>();
+            if (m.kind() == Kind.TEXT || represented.contains(m.order())) {
+                between.add(m);
+                continue;
             }
+            Box b = m.box();
+            if (run != null && !run.joins(b, between)) {
+                runs.add(run);
+                run = null;
+            }
+            if (run == null) {
+                run = new Run();
+            }
+            run.add(m);
+            between.clear();
         }
-        if (!run.isEmpty()) {
+        if (run != null) {
             runs.add(run);
         }
-        List<Box> boxes = new ArrayList<>();
-        List<List<Mark>> kept = new ArrayList<>();
-        for (List<Mark> r : runs) {
-            Box b = bounds(r, width, height);
-            boolean strong = r.stream().anyMatch(m -> m.kind() == Kind.SHADING || m.kind() == Kind.IMAGE);
-            if (b != null && (b.area() >= MIN_SHARE * width * height || strong && b.area() >= 16)) {
+        List<Run> kept = new ArrayList<>();
+        for (Run r : runs) {
+            r.box = bounds(r.marks, width, height);
+            if (r.box != null && r.box.area() >= MIN_AREA) {
                 kept.add(r);
-                boxes.add(b);
             }
         }
-        List<Integer> index = new ArrayList<>();
-        for (int i = 0; i < kept.size(); i++) {
-            index.add(i);
-        }
-        index.sort(Comparator.comparingDouble(i -> -boxes.get(i).area()));
+        kept.sort(Comparator.comparingDouble(r -> -r.box.area()));
         List<Piece> out = new ArrayList<>();
-        for (int i : index.subList(0, Math.min(MAX_RUNS, index.size()))) {
-            Piece p = piece(kept.get(i), boxes.get(i), pageIndex, toDisplay, width, height);
+        int blanks = 0;
+        long start = renderer.operators();
+        for (Run r : kept.subList(0, Math.min(MAX_PIECES, kept.size()))) {
+            if (renderer.operators() - start > MAX_PAGE_OPERATORS) {
+                break;
+            }
+            Piece p = piece(paint, r.marks, r.box, pageIndex, toDisplay, width, height);
             if (p != null) {
                 out.add(p);
+                blanks = 0;
+            } else if (++blanks >= MAX_BLANK_PIECES) {
+                break;
             }
         }
         return out;
+    }
+
+    private static final class Run {
+        final List<Mark> marks = new ArrayList<>();
+        Box box;
+        private Box reach;
+        private final List<Mark> skipped = new ArrayList<>();
+
+        void add(Mark m) {
+            marks.add(m);
+            reach = reach == null ? m.box() : reach.union(m.box());
+        }
+
+        boolean joins(Box next, List<Mark> between) {
+            if (!between.isEmpty() && !reach.near(next, JOIN_GAP)) {
+                return false;
+            }
+            skipped.addAll(between);
+            Box joined = reach.union(next);
+            for (Mark m : skipped) {
+                if (m.box().overlapArea(joined) > 0) {
+                    return false;
+                }
+            }
+            return true;
+        }
     }
 
     private static Box bounds(List<Mark> run, float width, float height) {
@@ -104,15 +151,24 @@ final class Art {
         return clipped.width() > 0.5f && clipped.height() > 0.5f ? clipped : null;
     }
 
-    Piece together(List<Mark> marks, int pageIndex, AffineTransform toDisplay, float width, float height) {
+    Piece together(PaintOrder paint, List<Mark> marks, int pageIndex, AffineTransform toDisplay, float width,
+            float height) {
         Box b = bounds(marks, width, height);
-        return b == null ? null : piece(marks, b, pageIndex, toDisplay, width, height);
+        return b == null ? null : piece(paint, marks, b, pageIndex, toDisplay, width, height);
     }
 
-    private Piece piece(List<Mark> run, Box box, int pageIndex, AffineTransform toDisplay, float width, float height) {
+    private Piece piece(PaintOrder paint, List<Mark> run, Box box, int pageIndex, AffineTransform toDisplay,
+            float width, float height) {
         Set<Integer> orders = new HashSet<>();
+        int first = Integer.MAX_VALUE;
+        boolean blended = false;
         for (Mark m : run) {
             orders.add(m.order());
+            first = Math.min(first, m.order());
+            blended |= m.blended();
+        }
+        if (blended) {
+            backdrop(paint, box, first, orders);
         }
         float scale = dpi / 72f;
         if ((double) box.width() * box.height() * scale * scale > MAX_PIXELS) {
@@ -120,7 +176,7 @@ final class Art {
         }
         try {
             BufferedImage img = renderer.render(document.getPage(pageIndex), pageIndex, toDisplay, box, scale,
-                    orders::contains);
+                    orders::contains, paint.groups());
             if (blank(img)) {
                 return null;
             }
@@ -138,6 +194,16 @@ final class Art {
         } catch (IOException | RuntimeException e) {
             LOG.warn("Page art left out: it could not be rendered", e);
             return null;
+        }
+    }
+
+    private static void backdrop(PaintOrder paint, Box box, int before, Set<Integer> orders) {
+        for (Mark m : paint.marks()) {
+            if (m.order() < before && m.box().overlapArea(box) > 0) {
+                for (int o = m.from(); o <= m.order(); o++) {
+                    orders.add(o);
+                }
+            }
         }
     }
 

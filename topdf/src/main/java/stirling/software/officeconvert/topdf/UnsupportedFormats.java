@@ -23,8 +23,12 @@ public final class UnsupportedFormats {
         return switch (extension.toLowerCase(Locale.ROOT)) {
             case "wps" -> works();
             case "wpd", "wp", "wp5", "wp6", "wp7", "wpt" -> wordPerfect();
-            case "pub" -> publisher();
-            case "vsd", "vdx", "vss", "vst", "vsw", "vsx", "vtx" -> visio();
+            case "pub" -> "The file is not a Microsoft Publisher publication that can be read; save the publication as PDF"
+                    + " from Publisher";
+            case "vsd", "vss", "vst", "vsw" -> "The file is not a Visio 2003-2010 drawing that can be read; save the"
+                    + " drawing as .vsdx or as PDF from Visio";
+            case "vdx", "vsx", "vtx" -> "Visio XML drawings (.vdx, .vsx, .vtx) are not supported; save the drawing as"
+                    + " .vsdx or as PDF from Visio";
             case "wk!", "wg1", "wg2" -> lotus();
             case "wb1", "wb2", "wb3", "qpw", "wq1", "wq2" -> "Quattro Pro spreadsheets are not supported; save the file"
                     + " as .xlsx";
@@ -40,7 +44,6 @@ public final class UnsupportedFormats {
             case "one", "onepkg" -> "OneNote notebooks are not supported; export the pages as PDF from OneNote";
             case "mht", "mhtml" -> "MHTML web archives are not supported; open the file in Word or a browser and save it"
                     + " as .docx or PDF";
-            case "htm", "html", "xhtml" -> "HTML pages are not Office documents; convert them with an HTML to PDF tool";
             case "eml", "msg" -> "E-mail messages are not Office documents; convert them with an e-mail to PDF tool";
             case "odf", "mml" -> "OpenDocument formulas on their own are not supported; place the formula in a"
                     + " document";
@@ -75,9 +78,6 @@ public final class UnsupportedFormats {
                 && text.contains("multipart/related")) {
             return byExtension("mht");
         }
-        if (text.startsWith("<!doctype html") || text.startsWith("<html")) {
-            return "The file is an HTML page, not an Office document; convert it with an HTML to PDF tool";
-        }
         try {
             if (!LegacyOffice.ole2(file)) {
                 return null;
@@ -87,12 +87,6 @@ public final class UnsupportedFormats {
         }
         try (POIFSFileSystem fs = new POIFSFileSystem(file.toFile(), true)) {
             DirectoryNode root = fs.getRoot();
-            if (root.hasEntryCaseInsensitive("Quill")) {
-                return publisher();
-            }
-            if (root.hasEntryCaseInsensitive("VisioDocument")) {
-                return visio();
-            }
             if (root.hasEntryCaseInsensitive("MatOST") || root.hasEntryCaseInsensitive("CONTENTS")
                     && root.hasEntryCaseInsensitive("SPELLING")) {
                 return works();
@@ -120,13 +114,6 @@ public final class UnsupportedFormats {
         return "WordPerfect documents are not supported; save the file as .docx";
     }
 
-    private static String publisher() {
-        return "Microsoft Publisher files (.pub) are not supported; save the publication as PDF from Publisher";
-    }
-
-    private static String visio() {
-        return "Visio 2003-2010 drawings (.vsd, .vdx) are not supported; save the drawing as .vsdx or as PDF from Visio";
-    }
 
     private static String lotus() {
         return "This Lotus 1-2-3 or Microsoft Works spreadsheet is in a form that is not supported; save the file as"

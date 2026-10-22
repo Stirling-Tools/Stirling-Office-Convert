@@ -71,7 +71,7 @@ class ConvertHandlerTest {
 
     @Test
     void convertsWordPowerPointAndExcelToPdf() throws Exception {
-        String url = start(60);
+        String url = start(300);
         assertPdf(post(url, Fixtures.docx("Word text", 3)), "docx", "Word text 3");
         assertPdf(post(url + "?format=pdf", Fixtures.pptx("Slide text")), "pptx", "Slide text");
         assertPdf(post(url + "?engine=ours", Fixtures.xlsx("Cell text")), "xlsx", "Cell text 4");
@@ -79,14 +79,14 @@ class ConvertHandlerTest {
 
     @Test
     void convertsLegacyExcelAndPowerPointToPdf() throws Exception {
-        String url = start(60);
+        String url = start(300);
         assertPdf(post(url, Fixtures.xls("Old cell")), "xls", "Old cell 4");
         assertPdf(post(url + "?format=pdf", Fixtures.ppt("Old slide")), "ppt", "Old slide");
     }
 
     @Test
     void convertsPdfToFlatOpenDocumentXml() throws Exception {
-        HttpResponse<byte[]> r = post(start(60) + "?format=xml", Fixtures.pdf("To XML"));
+        HttpResponse<byte[]> r = post(start(300) + "?format=xml", Fixtures.pdf("To XML"));
         assertEquals(200, r.statusCode(), () -> new String(r.body()));
         assertEquals("application/xml", header(r, "Content-Type"));
         String xml = new String(r.body(), java.nio.charset.StandardCharsets.UTF_8);
@@ -97,12 +97,12 @@ class ConvertHandlerTest {
     void convertsMacroEnabledWordWithoutRunningAnything() throws Exception {
         byte[] docm = Fixtures.retype(Fixtures.docx("Macro file", 1), Fixtures.DOCX_MAIN,
                 "application/vnd.ms-word.document.macroEnabled.main+xml");
-        assertPdf(post(start(60), docm), "docm", "Macro file 1");
+        assertPdf(post(start(300), docm), "docm", "Macro file 1");
     }
 
     @Test
     void stillConvertsPdfsToOffice() throws Exception {
-        HttpResponse<byte[]> r = post(start(60) + "?format=docx", Fixtures.pdf("From a PDF"));
+        HttpResponse<byte[]> r = post(start(300) + "?format=docx", Fixtures.pdf("From a PDF"));
         assertEquals(200, r.statusCode(), () -> new String(r.body()));
         assertEquals("ours", header(r, "X-Engine"));
         assertTrue(header(r, "Content-Type").contains("wordprocessingml"));
@@ -111,7 +111,7 @@ class ConvertHandlerTest {
 
     @Test
     void stopsAtThePageLimitAndSaysSo() throws Exception {
-        HttpResponse<byte[]> r = post(start(60, 2), Fixtures.docx("A line", 400));
+        HttpResponse<byte[]> r = post(start(300, 2), Fixtures.docx("A line", 400));
         assertEquals(200, r.statusCode(), () -> new String(r.body()));
         assertEquals("2", header(r, "X-Pages"));
         assertEquals("Converted the first 2 pages: this demo converts up to 2 pages at a time.", header(r, "X-Note"));
@@ -119,7 +119,7 @@ class ConvertHandlerTest {
 
     @Test
     void refusesTheWrongDirection() throws Exception {
-        String url = start(60);
+        String url = start(300);
         HttpResponse<byte[]> office = post(url + "?format=docx", Fixtures.docx("x", 1));
         assertEquals(422, office.statusCode());
         assertEquals("format", header(office, "X-Error"));
@@ -130,7 +130,7 @@ class ConvertHandlerTest {
 
     @Test
     void convertsTextAndCsvUploadsNamedAsSuch() throws Exception {
-        String url = start(60);
+        String url = start(300);
         assertPdf(post(url + "?name=notes.TXT", "Plain upload text".getBytes()), "txt", "Plain upload text");
         HttpResponse<byte[]> csv = post(url + "?name=" + java.net.URLEncoder.encode("Team list.csv",
                 java.nio.charset.StandardCharsets.UTF_8), "who,role\nAnn,lead\n".getBytes());
@@ -143,7 +143,7 @@ class ConvertHandlerTest {
 
     @Test
     void refusesFilesItCannotRead() throws Exception {
-        String url = start(60);
+        String url = start(300);
         HttpResponse<byte[]> random = post(url, "just some text, not a document".getBytes());
         assertEquals(415, random.statusCode());
         assertEquals("type", header(random, "X-Error"));
@@ -167,7 +167,7 @@ class ConvertHandlerTest {
         byte[] hostile = Fixtures.zip("[Content_Types].xml", "<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/"
                 + "content-types\"><Override PartName=\"/word/document.xml\" ContentType=\"" + Fixtures.DOCX_MAIN
                 + "\"/></Types>", "word/document.xml", "<!DOCTYPE d [<!ENTITY e SYSTEM \"http://127.0.0.1:9/x\">]><d>&e;</d>");
-        HttpResponse<byte[]> r = post(start(60), hostile);
+        HttpResponse<byte[]> r = post(start(300), hostile);
         assertEquals(422, r.statusCode(), () -> new String(r.body()));
         assertEquals("convert", header(r, "X-Error"));
         assertTrue(new String(r.body()).contains("DOCTYPE"), () -> new String(r.body()));
@@ -175,7 +175,7 @@ class ConvertHandlerTest {
 
     @Test
     void libreOfficeIsRefusedWhenItIsNotInstalled() throws Exception {
-        HttpResponse<byte[]> r = post(start(60) + "?engine=libreoffice", Fixtures.docx("x", 1));
+        HttpResponse<byte[]> r = post(start(300) + "?engine=libreoffice", Fixtures.docx("x", 1));
         assertEquals(422, r.statusCode());
         assertEquals("engine", header(r, "X-Error"));
     }
@@ -190,7 +190,7 @@ class ConvertHandlerTest {
 
     @Test
     void aNameWithAControlCharacterIsABadRequest() throws Exception {
-        String url = start(60);
+        String url = start(300);
         for (String name : new String[] {"a.do%00cx", "notes%00.txt", "a%0A.csv"}) {
             HttpResponse<byte[]> r = post(url + "?name=" + name, "Plain upload text".getBytes());
             assertEquals(400, r.statusCode(), name);

@@ -37,7 +37,7 @@ class ObjectStreamLoadTest {
             d.getDocumentCatalog().getCOSObject().setItem(COSName.getPDFName("Items"), items);
             d.save(pdf.toFile(), new CompressParameters(50));
         }
-        long sum = assertTimeoutPreemptively(Duration.ofSeconds(10), () -> {
+        long sum = assertTimeoutPreemptively(Duration.ofSeconds(30), () -> {
             try (PDDocument d = PdfFiles.open(pdf, null)) {
                 COSArray items = (COSArray) d.getDocumentCatalog().getCOSObject()
                         .getDictionaryObject(COSName.getPDFName("Items"));

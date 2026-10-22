@@ -36,7 +36,7 @@ final class Footprint {
             }
         }
         long markup = switch (format) {
-            case DOCX, TEXT -> xml * 8 + media / 2;
+            case DOCX, TEXT, HTML, JSON -> xml * 8 + media / 2;
             case PPTX -> xml * 7 + media * 2;
             case XLSX, CSV, TSV -> xml * 5 / 2 + media / 2;
             case PPT -> xml * 7 + media * 2;
