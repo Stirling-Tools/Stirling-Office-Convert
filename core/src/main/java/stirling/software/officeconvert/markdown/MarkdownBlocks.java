@@ -32,6 +32,10 @@ final class MarkdownBlocks {
     private static final String BULLET = String.valueOf((char) 0x2022);
 
     private final Pictures pictures;
+    private final List<String> codeLines = new ArrayList<>();
+    private boolean codeBlocks = true;
+    private float codeIndent = Float.NaN;
+    private float codeChar = 6f;
     private final List<Integer> footnotes = new ArrayList<>();
     private boolean lastList;
     private boolean first = true;
@@ -40,11 +44,20 @@ final class MarkdownBlocks {
         this.pictures = pictures;
     }
 
+    void bodyFont(String font) {
+        codeBlocks = font == null || !MONO.matcher(font).matches();
+    }
+
     List<Integer> footnotes() {
         return footnotes;
     }
 
     void paragraph(StringBuilder sb, Paragraph p) throws IOException {
+        if (codeBlocks && codeLine(p)) {
+            code(p);
+            return;
+        }
+        flush(sb);
         List<Inline> before = new ArrayList<>();
         List<Inline> after = new ArrayList<>();
         for (Inline in : p.inlines) {
@@ -69,6 +82,7 @@ final class MarkdownBlocks {
     }
 
     void table(StringBuilder sb, Table t) throws IOException {
+        flush(sb);
         int columns = 0;
         for (Table.Row row : t.rows) {
             int n = 0;
@@ -132,6 +146,7 @@ final class MarkdownBlocks {
     }
 
     void note(StringBuilder sb, int id, List<Paragraph> paragraphs) throws IOException {
+        flush(sb);
         List<String> parts = new ArrayList<>();
         for (Paragraph p : paragraphs) {
             String s = inline(p, " ", false, false).strip();
@@ -319,6 +334,61 @@ final class MarkdownBlocks {
             }
         }
         return sb.toString();
+    }
+
+    private static boolean codeLine(Paragraph p) {
+        if (heading(p.style) > 0 || p.list != null) {
+            return false;
+        }
+        boolean any = false;
+        for (Inline in : p.inlines) {
+            if (in instanceof Inline.Text t) {
+                if (t.text().isBlank()) {
+                    continue;
+                }
+                if (t.style() == null || t.style().font() == null || !MONO.matcher(t.style().font()).matches()) {
+                    return false;
+                }
+                any = true;
+            } else if (in instanceof Inline.Image || in instanceof Inline.TextBox || in instanceof Inline.FootnoteRef) {
+                return false;
+            }
+        }
+        return any;
+    }
+
+    private void code(Paragraph p) {
+        StringBuilder line = new StringBuilder();
+        float size = 10f;
+        for (Inline in : p.inlines) {
+            if (in instanceof Inline.Text t) {
+                line.append(clean(t.text()));
+                size = t.style().size() > 0 ? t.style().size() : size;
+            } else if (in instanceof Inline.Tab) {
+                line.append("    ");
+            } else if (in instanceof Inline.Break) {
+                line.append('\n');
+            }
+        }
+        if (codeLines.isEmpty()) {
+            codeIndent = p.indentLeft;
+            codeChar = Math.max(1f, size * 0.6f);
+        }
+        int spaces = Math.max(0, Math.min(40, Math.round((p.indentLeft - codeIndent) / codeChar)));
+        for (String l : line.toString().split("\n", -1)) {
+            codeLines.add(" ".repeat(spaces) + l.stripTrailing());
+        }
+    }
+
+    void flush(StringBuilder sb) {
+        if (codeLines.isEmpty()) {
+            return;
+        }
+        String body = String.join("\n", codeLines);
+        String fence = "`".repeat(Math.max(3, longestRun(body, '`') + 1));
+        block(sb, fence + "\n" + body + "\n" + fence, false);
+        codeLines.clear();
+        codeIndent = Float.NaN;
     }
 
     static int heading(String style) {
