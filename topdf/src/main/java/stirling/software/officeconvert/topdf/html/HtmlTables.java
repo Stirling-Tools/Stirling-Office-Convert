@@ -89,7 +89,7 @@ final class HtmlTables {
                     cellDecl.put("vertical-align", rowDecl.get("vertical-align"));
                 }
                 Look cellLook = rowLook.child(cellDecl, frame.width(), false);
-                int colspan = Math.min(span(td.attr("colspan"), 1), MAX_COLUMNS - col);
+                int colspan = Math.min(Math.max(1, span(td.attr("colspan"), 1)), MAX_COLUMNS - col);
                 for (int c = col + 1; c < col + colspan; c++) {
                     if (taken.get(r).contains(c)) {
                         colspan = c - col;
