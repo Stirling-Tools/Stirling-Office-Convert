@@ -133,8 +133,6 @@ public final class FixedHtml {
         }
     }
 
-    private static final float MONO_ADVANCE = 0.6f;
-
     private record Span(String text, float x, float y, float size, float width, int dir, int rgb, String font,
             boolean bold, boolean italic, PDFont pdFont) {}
 
@@ -177,8 +175,8 @@ public final class FixedHtml {
                 .append(".pg{position:relative;margin:0 auto 12pt;background:#fff;overflow:hidden;")
                 .append("box-shadow:0 1px 4px rgba(0,0,0,.25);break-after:page}\n")
                 .append(".pg>img{position:absolute;left:0;top:0;width:100%;height:100%;user-select:none}\n")
-                .append(".pg>span{position:absolute;white-space:pre;line-height:1;transform-origin:0 0}\n")
-                .append(".pg.picture>span{color:transparent;font-family:\"Courier New\",monospace}\n")
+                .append(".pg>svg{position:absolute;left:0;top:0;width:100%;height:100%;overflow:visible}\n")
+                .append(".pg>svg text{white-space:pre}\n")
                 .append(".pg>a{position:absolute;display:block}\n")
                 .append("::selection{background:rgba(0,95,255,.3)}\n")
                 .append("@media print{html{background:none}body{padding:0}.pg{margin:0;box-shadow:none}}\n")
@@ -215,9 +213,12 @@ public final class FixedHtml {
         boolean live = options.text() == Text.LIVE;
         StringBuilder text = new StringBuilder(4096);
         StringBuilder faces = new StringBuilder();
+        text.append("<svg viewBox=\"0 0 ").append(num(width)).append(' ').append(num(height))
+                .append("\" preserveAspectRatio=\"none\">\n");
         for (Span s : spans(doc, index)) {
             span(text, s, live, live && s.rgb() >= 0 ? fonts.family(s.pdFont(), faces) : null);
         }
+        text.append("</svg>\n");
         links(text, page, box, rotation, width, height);
         StringBuilder sb = new StringBuilder(512);
         String size = "s" + Math.round(width * 10) + "x" + Math.round(height * 10);
@@ -390,22 +391,26 @@ public final class FixedHtml {
     private static void span(StringBuilder sb, Span s, boolean live, String embedded) {
         boolean hidden = !live || s.rgb() < 0;
         String text = s.text().replace("\u0000", "");
-        int chars = text.codePointCount(0, text.length());
-        if (chars == 0) {
+        if (text.isEmpty()) {
             return;
         }
-        float natural = chars * MONO_ADVANCE * s.size();
-        float stretch = hidden && s.width() > 0 && natural > 0 ? s.width() / natural : 1f;
-        float ascent = s.size() * 0.8f;
-        sb.append("<span style=\"left:").append(HtmlText.pt(s.x())).append(";top:")
-                .append(HtmlText.pt(s.y() - ascent)).append(";font-size:").append(HtmlText.pt(s.size()));
-        if (live && hidden) {
-            sb.append(";color:transparent;font-family:'Courier New',monospace");
-        } else if (live) {
-            sb.append(";font-family:").append(embedded != null ? "'" + embedded + "'," : "")
+        sb.append("<text x=\"").append(num(s.x())).append("\" y=\"").append(num(s.y())).append("\" font-size=\"")
+                .append(num(s.size())).append('"');
+        if (s.width() > 0.5f) {
+            sb.append(" textLength=\"").append(num(s.width())).append("\" lengthAdjust=\"spacingAndGlyphs\"");
+        }
+        if (s.dir() != 0) {
+            sb.append(" transform=\"rotate(").append(s.dir()).append(' ').append(num(s.x())).append(' ')
+                    .append(num(s.y())).append(")\"");
+        }
+        sb.append(" style=\"");
+        if (hidden) {
+            sb.append("fill:transparent;font-family:'Courier New',monospace");
+        } else {
+            sb.append("font-family:").append(embedded != null ? "'" + embedded + "'," : "")
                     .append(family(s.font()).replace("\"", ""));
             if ((s.rgb() & 0xFFFFFF) != 0) {
-                sb.append(";color:").append(HtmlText.hex(s.rgb() & 0xFFFFFF));
+                sb.append(";fill:").append(HtmlText.hex(s.rgb() & 0xFFFFFF));
             }
             if (s.bold() && embedded == null) {
                 sb.append(";font-weight:bold");
@@ -414,19 +419,14 @@ public final class FixedHtml {
                 sb.append(";font-style:italic");
             }
         }
-        StringBuilder transform = new StringBuilder();
-        if (s.dir() != 0) {
-            transform.append("rotate(").append(s.dir()).append("deg) ");
-        }
-        if (Math.abs(stretch - 1f) > 0.01f && stretch > 0.05f && stretch < 20f) {
-            transform.append("scaleX(").append(String.format(Locale.ROOT, "%.3f", stretch)).append(')');
-        }
-        if (!transform.isEmpty()) {
-            sb.append(";transform:").append(transform.toString().strip());
-        }
         sb.append("\">");
         HtmlText.escape(sb, text);
-        sb.append("</span>\n");
+        sb.append("</text>\n");
+    }
+
+    private static String num(float v) {
+        String t = String.format(Locale.ROOT, "%.2f", v);
+        return t.contains(".") ? t.replaceAll("0+$", "").replaceAll("\\.$", "") : t;
     }
 
     private static void links(StringBuilder sb, PDPage page, PDRectangle box, int rotation, float width, float height)

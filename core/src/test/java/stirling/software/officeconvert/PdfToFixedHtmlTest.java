@@ -85,12 +85,13 @@ class PdfToFixedHtmlTest {
 
     @Test
     void textLayerIsEscapedAndPositioned() {
-        assertTrue(html.contains(">Page 1 heading &lt;&amp;&gt;</span>"));
-        assertTrue(html.contains(">Page 2 heading &lt;&amp;&gt;</span>"));
-        Matcher m = Pattern.compile("<span style=\"left:72pt;top:([0-9.]+)pt").matcher(html);
-        assertTrue(m.find());
-        float top = Float.parseFloat(m.group(1));
-        assertTrue(top > 70 && top < 100, "top " + top);
+        assertTrue(html.contains(">Page 1 heading &lt;&amp;&gt;</text>"));
+        assertTrue(html.contains(">Page 2 heading &lt;&amp;&gt;</text>"));
+        Matcher m = Pattern.compile("<text x=\"72\" y=\"([0-9.]+)\" font-size=\"18\" textLength=\"([0-9.]+)\"").matcher(html);
+        assertTrue(m.find(), html.substring(html.indexOf("<svg"), html.indexOf("<svg") + 400));
+        float baseline = Float.parseFloat(m.group(1));
+        assertEquals(100f, baseline, 0.5f);
+        assertTrue(Float.parseFloat(m.group(2)) > 150);
     }
 
     @Test
@@ -105,8 +106,8 @@ class PdfToFixedHtmlTest {
     void liveTextIsRealTextOverGraphicsOnly() {
         assertEquals(2, count(live, "<section class=\"pg\""));
         assertTrue(live.contains("font-family:'Helvetica',sans-serif"), live.substring(0, 3000));
-        assertTrue(live.contains(">Page 1 heading &lt;&amp;&gt;</span>"));
-        assertFalse(live.contains("scaleX"));
+        assertTrue(live.contains(">Page 1 heading &lt;&amp;&gt;</text>"));
+        assertTrue(live.contains("lengthAdjust=\"spacingAndGlyphs\""));
         assertTrue(live.length() < html.length(), live.length() + " vs " + html.length());
         assertTrue(count(live, "<img alt=\"\"") >= 1);
     }
@@ -133,8 +134,8 @@ class PdfToFixedHtmlTest {
         Path out = dir.resolve("scan.html");
         PdfToHtml.convertFixed(pdf, out, FixedHtml.Options.defaults());
         String scan = Files.readString(out, StandardCharsets.UTF_8);
-        assertTrue(scan.contains("color:transparent;font-family:'Courier New',monospace"), scan.substring(scan.length() - 600));
-        assertTrue(scan.contains(">Recognised scan words</span>"));
+        assertTrue(scan.contains("fill:transparent;font-family:'Courier New',monospace"), scan.substring(scan.length() - 600));
+        assertTrue(scan.contains(">Recognised scan words</text>"));
     }
 
     @Test

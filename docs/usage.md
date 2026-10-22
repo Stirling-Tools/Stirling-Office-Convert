@@ -602,7 +602,8 @@ PdfToEpub.convert(pdf, Path.of("out.epub"), options);      // a reflowing EPUB 3
   flow as one. There are no scripts and no external references.
 - Fixed-layout HTML keeps every page as it looks instead of reflowing it, like `pdftohtml -c`: one self-contained
   file with a box per page at the page's size. `Text.LIVE` (the default) draws the page's graphics and pictures without
-  its text as a picture (left out when the page has nothing else) and places the text over it as real text, in the
+  its text as a picture (left out when the page has nothing else) and places the text over it as real SVG text at its
+  exact baseline and width (so it lines up even in a substitute font), in the
   PDF font's family with a generic fallback, colour, weight and slant; invisible (OCR) text stays a transparent layer. `Text.PICTURE`
   draws everything into the page picture and adds the text as a transparent layer to select and search, so it looks
   exactly like the PDF at the cost of size. Pages are drawn at 150 dpi (36 to 300); web links stay clickable.
