@@ -18,6 +18,7 @@ import stirling.software.officeconvert.topdf.rtf.RtfPackage;
 import stirling.software.officeconvert.topdf.odf.OdfDocument;
 import stirling.software.officeconvert.topdf.odf.OdfPackage;
 import stirling.software.officeconvert.topdf.text.TextFormats;
+import stirling.software.officeconvert.topdf.thumbnail.OleThumbnail;
 
 final class OfficeFiles {
 
@@ -67,10 +68,10 @@ final class OfficeFiles {
     static String family(String extension) {
         return switch (extension) {
             case "docx", "docm", "dotx", "dotm", "doc", "dot", "rtf", "odt", "ott", "fodt", "odm", "sxw", "stw", "xml",
-                    "pages", "pub" -> "docx";
+                    "pages" -> "docx";
             case "pptx", "pptm", "ppsx", "ppsm", "potx", "potm", "ppt", "pps", "pot", "odp", "otp", "fodp", "odg", "otg",
                     "fodg", "sxi", "sti", "sxd", "std", "key", "vsdx", "vsdm", "vssx", "vssm", "vstx", "vstm", "vsd", "vss",
-                    "vst", "vsw" -> "pptx";
+                    "vst", "vsw", "pub" -> "pptx";
             case "xlsx", "xlsm", "xltx", "xltm", "xls", "xlt", "xlsb", "ods", "ots", "fods", "sxc", "stc", "slk", "sylk",
                     "dif", "dbf", "numbers", "wk1", "wks", "wk3", "wk4", "123" -> "xlsx";
             case "txt", "text", "log", "asc" -> "docx";
@@ -128,6 +129,10 @@ final class OfficeFiles {
             String kind = LegacyOffice.kind(zip);
             if ("xls".equals(kind) || "ppt".equals(kind) || "doc".equals(kind) || "encrypted".equals(kind)) {
                 return kind;
+            }
+            OleThumbnail.Kind drawing = OleThumbnail.kind(zip);
+            if (drawing != null) {
+                return drawing == OleThumbnail.Kind.PUBLISHER ? "pub" : "vsd";
             }
             throw new Unsupported(LEGACY);
         }
