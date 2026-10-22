@@ -128,7 +128,7 @@ class HostileHtmlTest {
     @Test
     void aJsonTableKeepsAtMostAWordTableOfColumns() throws IOException {
         String cells = "{\"span\":63},".repeat(5_000) + "{\"span\":63}";
-        Path in = Files.writeString(dir.resolve("wide.json"), "{\"body\":[{\"type\":\"table\",\"columns\":["
+        Path in = Files.writeString(dir.resolve("wide.json"), "{\"format\":\"stirling-office-convert\",\"body\":[{\"type\":\"table\",\"columns\":["
                 + "1,".repeat(5_000) + "1],\"rows\":[{\"cells\":[" + cells + "]}]}]}", StandardCharsets.UTF_8);
         OfficeToPdf.Result r = OfficeToPdf.convert(in, dir.resolve("wide.pdf"), OfficeToPdf.Options.defaults());
         assertTrue(r.warnings().stream().anyMatch(w -> w.contains("63 columns")), r.warnings().toString());
