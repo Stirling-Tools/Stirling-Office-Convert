@@ -12,9 +12,11 @@ import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 
 import javax.imageio.IIOImage;
 import javax.imageio.ImageIO;
@@ -148,11 +150,12 @@ public final class FixedHtml {
         PDFRenderer renderer = options.text() == Text.LIVE ? new WithoutText(doc) : new PDFRenderer(doc);
         renderer.setSubsamplingAllowed(true);
         Fonts fonts = new Fonts(options.text() == Text.LIVE ? options.fonts() : null);
+        Set<String> sizes = new HashSet<>();
         for (int i = first - 1; i < last; i++) {
             if (Thread.currentThread().isInterrupted()) {
                 throw new IOException("The conversion was stopped");
             }
-            page(doc, renderer, i, options, w, out, fonts);
+            page(doc, renderer, i, options, w, out, fonts, sizes);
         }
         w.write("</body>\n</html>\n");
         w.flush();
@@ -197,7 +200,7 @@ public final class FixedHtml {
     }
 
     private static void page(PDDocument doc, PDFRenderer renderer, int index, Options options, Writer w,
-            OutputStream out, Fonts fonts) throws IOException {
+            OutputStream out, Fonts fonts, Set<String> sizes) throws IOException {
         PDPage page = doc.getPage(index);
         PDRectangle box = page.getCropBox();
         int rotation = ((page.getRotation() % 360) + 360) % 360;
@@ -217,12 +220,17 @@ public final class FixedHtml {
         }
         links(text, page, box, rotation, width, height);
         StringBuilder sb = new StringBuilder(512);
+        String size = "s" + Math.round(width * 10) + "x" + Math.round(height * 10);
+        if (sizes.add(size)) {
+            faces.append("@page ").append(size).append("{margin:0;size:").append(HtmlText.pt(width)).append(' ')
+                    .append(HtmlText.pt(height)).append("}\n");
+        }
         if (!faces.isEmpty()) {
             sb.append("<style>\n").append(faces).append("</style>\n");
         }
         sb.append("<section class=\"").append(live ? "pg" : "pg picture").append("\" id=\"page-").append(index + 1)
-                .append("\" style=\"width:").append(HtmlText.pt(width)).append(";height:").append(HtmlText.pt(height))
-                .append("\">\n");
+                .append("\" style=\"page:").append(size).append(";width:").append(HtmlText.pt(width)).append(";height:")
+                .append(HtmlText.pt(height)).append("\">\n");
         long estimate = (long) (width * scale) * (long) (height * scale) * 4L * 3L;
         Admission.Ticket ticket = Admission.jvm().enter(estimate);
         try {
