@@ -56,14 +56,21 @@ class OdfChartTest {
     }
 
     private static String styled(String cls, String plotProps) throws IOException {
+        return styled(cls, plotProps, "");
+    }
+
+    private static String styled(String cls, String plotProps, String legend) throws IOException {
         String xml = "<?xml version=\"1.0\"?><office:document-content " + OdfFixtures.NS
                 + " xmlns:chart=\"urn:oasis:names:tc:opendocument:xmlns:chart:1.0\"><office:automatic-styles>"
                 + "<style:style style:name=\"p1\" style:family=\"chart\"><style:chart-properties " + plotProps + "/>"
                 + "</style:style><style:style style:name=\"w\" style:family=\"chart\"><style:graphic-properties"
                 + " draw:fill=\"solid\" draw:fill-color=\"#d9d9d9\"/></style:style><style:style style:name=\"g\""
                 + " style:family=\"chart\"><style:graphic-properties svg:stroke-color=\"#b3b3b3\"/></style:style>"
+                + "<style:style style:name=\"lg\" style:family=\"chart\"><style:graphic-properties draw:fill=\"solid\""
+                + " draw:fill-color=\"#d9d9d9\"/></style:style>"
                 + "</office:automatic-styles><office:body><office:chart><chart:chart svg:width=\"10cm\""
-                + " svg:height=\"5cm\" chart:class=\"chart:" + cls + "\"><chart:plot-area chart:style-name=\"p1\">"
+                + " svg:height=\"5cm\" chart:class=\"chart:" + cls + "\">" + legend
+                + "<chart:plot-area chart:style-name=\"p1\">"
                 + "<chart:coordinate-region svg:x=\"1cm\" svg:y=\"0.5cm\" svg:width=\"8cm\" svg:height=\"4cm\"/>"
                 + "<chart:axis chart:dimension=\"x\" chart:name=\"primary-x\"/><chart:axis chart:dimension=\"y\""
                 + " chart:name=\"primary-y\"><chart:grid chart:style-name=\"g\" chart:class=\"major\"/></chart:axis>"
@@ -106,5 +113,26 @@ class OdfChartTest {
         String ring = styled("ring", "");
         assertTrue(ring.contains(Charts.REVERSED_ORDER) && ring.contains("<c:holeSize val=\"33\"/>"), ring);
         assertFalse(ring.contains("D9D9D9"), ring);
+    }
+
+    @Test
+    void aNetChartRunsCounterClockwiseOnLibreOfficesCoarseScale() throws IOException {
+        String part = styled("radar", "");
+        assertTrue(part.contains("<c:radarStyle val=\"marker\"/>"), part);
+        assertTrue(part.contains("<c:catAx><c:axId val=\"500000001\"/><c:scaling><c:orientation val=\"maxMin\"/>"),
+                part);
+        assertTrue(part.contains("<c:max val=\"4.0\"/><c:min val=\"0.0\"/>") && part.contains(
+                "<c:majorUnit val=\"2.0\"/>"), part);
+        assertTrue(styled("filled-radar", "").contains("<c:radarStyle val=\"filled\"/>"));
+        assertFalse(styled("bar", "").contains("<c:majorUnit"));
+        assertTrue(styled("bar", "").contains(Charts.TIGHT_SCALE));
+    }
+
+    @Test
+    void theLegendKeepsItsFillAndLibreOfficesDefaultFrame() throws IOException {
+        String part = styled("bar", "", "<chart:legend chart:legend-position=\"end\" chart:style-name=\"lg\"/>");
+        assertTrue(part.contains("<c:legend><c:legendPos val=\"r\"/><c:overlay val=\"0\"/><c:spPr><a:solidFill>"
+                + "<a:srgbClr val=\"D9D9D9\"/></a:solidFill><a:ln w=\"6350\"><a:solidFill><a:srgbClr val=\"000000\"/>"),
+                part);
     }
 }

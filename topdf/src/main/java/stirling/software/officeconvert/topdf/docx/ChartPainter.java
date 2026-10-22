@@ -54,6 +54,8 @@ final class ChartPainter {
 
     private static final float SIN45 = (float) Math.sqrt(0.5);
 
+    private static final int MAX_TIGHT_STEPS = 10;
+
     private final Chart chart;
 
     private final Fonts fonts;
@@ -219,8 +221,149 @@ final class ChartPainter {
             } else {
                 pie(chart.groups().get(0), (left + right) / 2, left, top, right, bottom);
             }
+        } else if (chart.groups().get(0).kind() == Chart.Kind.RADAR) {
+            radar(left, top, right, bottom, inner);
         } else {
             axes(left, top, right, bottom, inner);
+        }
+    }
+
+    private static float spokeGap(TextStyle cs) {
+        return cs.size() * 1.2f;
+    }
+
+    private void radar(float left, float top, float right, float bottom, Rectangle2D.Float inner) {
+        int n = categoryCount();
+        if (n < 1) {
+            return;
+        }
+        Chart.Axis va = chart.values();
+        Chart.Axis ca = chart.categoryAxis();
+        TextStyle vs = style(va == null ? chart.textSize() : va.size(), false, chart.textColor(),
+                va == null ? null : va.font());
+        TextStyle cs = style(ca == null ? chart.textSize() : ca.size(), false, chart.textColor(),
+                ca == null ? null : ca.font());
+        boolean showValues = va == null || va.labelsShown();
+        boolean showCats = ca == null || ca.labelsShown();
+        float cw = 0;
+        if (showCats) {
+            for (int i = 0; i < n; i++) {
+                cw = Math.max(cw, width(cs, category(i)));
+            }
+        }
+        float cx;
+        float cy;
+        float r;
+        if (inner != null) {
+            cx = (float) inner.getCenterX();
+            cy = (float) inner.getCenterY();
+            r = Math.min(inner.width, inner.height) / 2;
+        } else {
+            cx = (left + right) / 2;
+            cy = (top + bottom) / 2;
+            float padX = showCats ? cw + spokeGap(cs) : 0;
+            float padY = showCats ? lineHeight(cs) + spokeGap(cs) : 0;
+            r = Math.min((right - left) / 2 - padX, (bottom - top) / 2 - padY);
+        }
+        if (r < 4) {
+            return;
+        }
+        Scale sc = scale(va, r, gridGap(vs));
+        boolean reversed = ca != null && ca.reversed();
+        float[] ux = new float[n];
+        float[] uy = new float[n];
+        for (int i = 0; i < n; i++) {
+            double a = -Math.PI / 2 + (reversed ? -1 : 1) * i * 2 * Math.PI / n;
+            ux[i] = (float) Math.cos(a);
+            uy[i] = (float) Math.sin(a);
+        }
+        Color gridColor = va == null ? ChartReader.AUTO_LINE : va.gridColor();
+        boolean grid = va == null || va.gridlines();
+        float gridWidth = va == null ? 0.75f : va.gridWidth();
+        int steps = sc.steps();
+        if (grid && gridColor != null) {
+            for (int k = 1; k <= steps; k++) {
+                float rr = r * sc.fraction(k);
+                Path2D.Float ring = new Path2D.Float();
+                for (int i = 0; i < n; i++) {
+                    if (i == 0) {
+                        ring.moveTo(cx + ux[i] * rr, cy + uy[i] * rr);
+                    } else {
+                        ring.lineTo(cx + ux[i] * rr, cy + uy[i] * rr);
+                    }
+                }
+                ring.closePath();
+                ops.add(new Op.Path(ring, null, Stroke.solid(gridWidth, gridColor)));
+            }
+        }
+        Color spoke = ca == null ? ChartReader.AUTO_LINE
+                : ca.gridlines() && ca.gridColor() != null ? ca.gridColor() : ca.deleted() ? null : ca.lineColor();
+        if (spoke != null) {
+            for (int i = 0; i < n; i++) {
+                ops.add(new Op.Line(cx, cy, cx + ux[i] * r, cy + uy[i] * r, Stroke.solid(0.75f, spoke)));
+            }
+        }
+        Color valueLine = va == null || va.deleted() ? null : va.lineColor();
+        if (valueLine != null) {
+            ops.add(new Op.Line(cx, cy, cx, cy - r, Stroke.solid(0.75f, valueLine)));
+        }
+        double span = sc.max() - sc.min();
+        for (Chart.Group g : chart.groups()) {
+            if (g.kind() != Chart.Kind.RADAR) {
+                continue;
+            }
+            boolean filled = g.grouping().equals("filled");
+            for (Chart.Series s : g.reversedOrder() ? g.series().reversed() : g.series()) {
+                List<float[]> pts = new ArrayList<>();
+                for (int i = 0; i < Math.min(n, s.values().length); i++) {
+                    double v = s.values()[i];
+                    if (Double.isNaN(v)) {
+                        continue;
+                    }
+                    float f = span > 0 ? (float) Math.max(0, Math.min(1, (v - sc.min()) / span)) : 0;
+                    pts.add(new float[] {cx + ux[i] * r * f, cy + uy[i] * r * f});
+                }
+                if (pts.isEmpty()) {
+                    continue;
+                }
+                Path2D.Float path = new Path2D.Float();
+                path.moveTo(pts.get(0)[0], pts.get(0)[1]);
+                for (int k = 1; k < pts.size(); k++) {
+                    path.lineTo(pts.get(k)[0], pts.get(k)[1]);
+                }
+                path.closePath();
+                if (filled) {
+                    ops.add(new Op.Path(path, s.fill() == null ? null : Fill.solid(s.fill()), s.line()));
+                } else if (s.line() != null) {
+                    ops.add(new Op.Path(path, null, s.line().cap(Stroke.Cap.ROUND).join(Stroke.Join.ROUND)));
+                }
+                if (s.markers() && !filled) {
+                    Chart.Marker m = s.marker() != null ? s.marker()
+                            : new Chart.Marker("circle", 5, s.fill(), s.fill());
+                    for (float[] pt : pts) {
+                        marker(m, pt[0], pt[1]);
+                    }
+                }
+            }
+        }
+        if (showValues) {
+            List<String> ticks = ticks(sc, va == null ? "General" : va.format());
+            for (int k = 0; k <= steps; k++) {
+                float gy = cy - r * sc.fraction(k);
+                ops.add(new Op.Text(cx + KEY_GAP, gy + (ascent(vs) - descent(vs)) / 2, ticks.get(k), vs));
+            }
+        }
+        if (showCats) {
+            for (int i = 0; i < n; i++) {
+                String t = category(i);
+                float px = cx + ux[i] * (r + spokeGap(cs));
+                float py = cy + uy[i] * (r + spokeGap(cs));
+                float tw = width(cs, t);
+                float tx = ux[i] > 0.1f ? px : ux[i] < -0.1f ? px - tw : px - tw / 2;
+                float baseline = uy[i] < -0.1f ? py - descent(cs)
+                        : uy[i] > 0.1f ? py + ascent(cs) : py + (ascent(cs) - descent(cs)) / 2;
+                ops.add(new Op.Text(tx, baseline, t, cs));
+            }
         }
     }
 
@@ -254,7 +397,8 @@ final class ChartPainter {
             for (int i = 0; i < g.series().size(); i++) {
                 Chart.Series s = g.series().get(i);
                 String name = s.name() == null ? "Series" + (i + 1) : s.name();
-                boolean line = g.kind() == Chart.Kind.LINE || g.kind() == Chart.Kind.SCATTER;
+                boolean line = g.kind() == Chart.Kind.LINE || g.kind() == Chart.Kind.SCATTER
+                        || g.kind() == Chart.Kind.RADAR && !g.grouping().equals("filled");
                 out.add(new Entry(name, line && s.line() == null ? null : s.fill(), line, line ? s.marker() : null,
                         s.line() == null ? 2.25f : Math.min(6, s.line().width())));
             }
@@ -270,6 +414,7 @@ final class ChartPainter {
                     + (i + 1 < entries.size() ? ENTRY_GAP : 0);
         }
         float at = center - total / 2;
+        legendBox(at, baseline - ascent(ls), total, lineHeight(ls), ls);
         for (Entry e : entries) {
             key(e, at, baseline - ls.size() * 0.28f, key);
             at += keyWidth(e, key) + KEY_GAP;
@@ -327,6 +472,7 @@ final class ChartPainter {
         float total = lines * lh + (entries.size() - 1) * 2;
         float y = middle - total / 2 + ascent(ls);
         float x0 = atRight ? edge - widest : edge;
+        legendBox(x0, middle - total / 2, widest, total, ls);
         for (int i = 0; i < entries.size(); i++) {
             List<String> l = texts.get(i);
             key(entries.get(i), x0, y - ls.size() * 0.28f, key);
@@ -336,6 +482,17 @@ final class ChartPainter {
             }
         }
         return widest;
+    }
+
+    private void legendBox(float x, float y, float w, float h, TextStyle ls) {
+        Chart.Legend legend = chart.legend();
+        if (legend == null || !legend.boxed()) {
+            return;
+        }
+        float padX = ls.size() * 0.3f;
+        float padY = ls.size() * 0.15f;
+        ops.add(new Op.Rect(x - padX, y - padY, w + 2 * padX, h + 2 * padY,
+                legend.fill() == null ? null : Fill.solid(legend.fill()), legend.border()));
     }
 
     // Office wraps chart text at spaces and after the hyphen of a hyphenated word, never before a digit
@@ -545,7 +702,7 @@ final class ChartPainter {
                 }
             }
             if (xr != null && plotW > 4) {
-                xs = scaleAcross(ca, plotW, cs, ca == null ? "General" : ca.format(), xr);
+                xs = scaleAcross(ca, plotW, cs, ca == null ? "General" : ca.format(), xr, true);
                 cl = new Labels(0, 1, List.of(), showCats ? lineHeight(cs) : 0);
             } else if (showCats && n > 0 && plotW > 4) {
                 cl = categoryLabels(n, midCat ? plotW / Math.max(1, n - 1) : plotW / n, cs, ca,
@@ -1143,6 +1300,7 @@ final class ChartPainter {
             case "square" -> shape = new Rectangle2D.Float(cx - r, cy - r, 2 * r, 2 * r);
             case "diamond" -> shape = polygon(cx, cy - r, cx + r, cy, cx, cy + r, cx - r, cy);
             case "triangle" -> shape = polygon(cx, cy - r, cx + r, cy + r, cx - r, cy + r);
+            case "arrowDown" -> shape = polygon(cx - r, cy - r, cx + r, cy - r, cx, cy + r);
             case "dash" -> shape = new Rectangle2D.Float(cx - r, cy - r / 4, 2 * r, r / 2);
             case "dot" -> shape = new Rectangle2D.Float(cx - r / 2, cy - r / 4, r, r / 2);
             case "x", "star", "plus" -> {
@@ -1300,15 +1458,27 @@ final class ChartPainter {
         if (hi - lo <= 0) {
             return new double[] {Math.min(0, lo), Math.max(hi, lo + 1)};
         }
+        if (chart.tightScale()) {
+            return new double[] {lo, hi};
+        }
         return zeroRule(lo, hi, Math.min(0, lo), Math.max(0, hi));
     }
 
-    private Scale fit(Chart.Axis va, double unit, double[] r) {
+    private Scale fit(Chart.Axis va, double unit, double[] r, boolean clearOfData) {
         double range = r[1] - r[0];
-        double top = r[1] > 0 ? r[1] + 0.05 * range : r[1];
-        double bottom = r[0] < 0 ? r[0] - 0.05 * range : r[0];
+        double room = chart.tightScale() ? 0 : 0.05 * range;
+        double top = r[1] > 0 ? r[1] + room : r[1];
+        double bottom = r[0] < 0 ? r[0] - room : r[0];
         double max = va != null && va.max() != null ? va.max() : Math.ceil(top / unit - 1e-9) * unit;
         double min = va != null && va.min() != null ? va.min() : Math.floor(bottom / unit + 1e-9) * unit;
+        if (chart.tightScale() && clearOfData) {
+            if ((va == null || va.max() == null) && r[1] > 0 && max - r[1] < unit * 1e-6) {
+                max += unit;
+            }
+            if ((va == null || va.min() == null) && r[0] < 0 && r[0] - min < unit * 1e-6) {
+                min -= unit;
+            }
+        }
         if (max <= min) {
             max = min + unit;
         }
@@ -1342,9 +1512,9 @@ final class ChartPainter {
     private Scale scale(Chart.Axis va, float length, float spacing, double[] r) {
         Scale last = null;
         for (double unit : units(va, r)) {
-            Scale sc = fit(va, unit, r);
+            Scale sc = fit(va, unit, r, false);
             last = sc;
-            if ((sc.max() - sc.min()) / unit > 1000) {
+            if ((sc.max() - sc.min()) / unit > (chart.tightScale() ? MAX_TIGHT_STEPS : 1000)) {
                 continue;
             }
             if (length / ((sc.max() - sc.min()) / unit) >= spacing) {
@@ -1356,15 +1526,16 @@ final class ChartPainter {
 
     // Across the page the labels must fit side by side with room to spare
     private Scale scaleAcross(Chart.Axis va, float length, TextStyle vs, String format) {
-        return scaleAcross(va, length, vs, format, range(false));
+        return scaleAcross(va, length, vs, format, range(false), false);
     }
 
-    private Scale scaleAcross(Chart.Axis va, float length, TextStyle vs, String format, double[] r) {
+    private Scale scaleAcross(Chart.Axis va, float length, TextStyle vs, String format, double[] r,
+            boolean clearOfData) {
         Scale last = null;
         for (double unit : units(va, r)) {
-            Scale sc = fit(va, unit, r);
+            Scale sc = fit(va, unit, r, clearOfData);
             last = sc;
-            if ((sc.max() - sc.min()) / unit > 1000) {
+            if ((sc.max() - sc.min()) / unit > (chart.tightScale() ? MAX_TIGHT_STEPS : 1000)) {
                 continue;
             }
             float need = Math.max(widest(ticks(sc, format), vs) * 1.5f, lineHeight(vs) * 2.5f);

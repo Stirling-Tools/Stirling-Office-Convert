@@ -129,12 +129,13 @@ final class OdfChart {
         if (!pie) {
             b.append("<c:axId val=\"500000001\"/><c:axId val=\"500000002\"/>");
         }
-        if (pie || tag.equals("areaChart") && group.equals("standard")) {
+        if (pie || tag.equals("areaChart") && group.equals("standard") || cls.equals("filled-radar")) {
             b.append("<c:extLst><c:ext uri=\"").append(Charts.REVERSED_ORDER).append("\"/></c:extLst>");
         }
         b.append("</c:").append(tag).append('>');
         if (!pie) {
-            b.append(axes(plot, scatter, "true".equals(pc.get("chart:vertical"))));
+            b.append(axes(plot, scatter, "true".equals(pc.get("chart:vertical")),
+                    tag.equals("radarChart") ? polarScale(columns) : null));
         }
         Element wall = pie || tag.equals("radarChart") ? null : Dom.kid(plot, CHART, "wall");
         b.append(fill(props(wall != null ? wall : plot, "graphic-properties"), false));
@@ -148,10 +149,11 @@ final class OdfChart {
                 default -> "r";
             };
             b.append("<c:legend><c:legendPos val=\"").append(pos).append("\"/><c:overlay val=\"0\"/>")
+                    .append(legendBox(props(legend, "graphic-properties")))
                     .append(textProps(props(legend, "text-properties"))).append("</c:legend>");
         }
         b.append("<c:plotVisOnly val=\"1\"/></c:chart>").append(fill(props(chart, "graphic-properties"), true))
-                .append("</c:chartSpace>");
+                .append("<c:extLst><c:ext uri=\"").append(Charts.TIGHT_SCALE).append("\"/></c:extLst></c:chartSpace>");
         return b.toString();
     }
 
@@ -162,7 +164,8 @@ final class OdfChart {
                 .append("<c:v>").append(Xml.esc(name)).append("</c:v></c:pt></c:strCache></c:strRef></c:tx>");
         Props g = props(s, "graphic-properties");
         String color = PALETTE[index % PALETTE.length];
-        boolean line = tag.equals("lineChart") || tag.equals("scatterChart") || tag.equals("radarChart");
+        boolean line = tag.equals("lineChart") || tag.equals("scatterChart")
+                || tag.equals("radarChart") && !Dom.attr(chart, CHART, "class", "").endsWith("filled-radar");
         if (!pie) {
             String fill = Colors.fill(g.get("draw:fill-color"));
             String stroke = Colors.fill(g.get("svg:stroke-color"));
@@ -183,7 +186,16 @@ final class OdfChart {
             if (line) {
                 Props cp = props(s, "chart-properties");
                 String symbol = cp.get("chart:symbol-type", "none");
-                b.append(symbol.equals("none") ? "<c:marker><c:symbol val=\"none\"/></c:marker>" : "");
+                String named = symbol.equals("none") ? "none"
+                        : symbol.equals("named-symbol") ? symbol(cp.get("chart:symbol-name", "")) : null;
+                if (named != null) {
+                    b.append("<c:marker><c:symbol val=\"").append(named).append("\"/>");
+                    if (!named.equals("none") && cp.has("chart:symbol-width")) {
+                        b.append("<c:size val=\"").append(Math.round(Math.max(2, Math.min(72, cp.pt("chart:symbol-width", 5)))))
+                                .append("\"/>");
+                    }
+                    b.append("</c:marker>");
+                }
             }
         } else {
             int n = 0;
@@ -223,6 +235,16 @@ final class OdfChart {
         return b.append("</c:ser>").toString();
     }
 
+    private static String symbol(String name) {
+        return switch (name) {
+            case "square", "diamond", "circle", "star", "x", "plus" -> name;
+            case "arrow-down" -> "arrowDown";
+            case "arrow-up", "arrow-left", "arrow-right" -> "triangle";
+            case "horizontal-bar" -> "dash";
+            default -> null;
+        };
+    }
+
     private static String numbers(List<Double> values) {
         StringBuilder b = new StringBuilder("<c:numLit><c:formatCode>General</c:formatCode><c:ptCount val=\"")
                 .append(Math.min(MAX_POINTS, values.size())).append("\"/>");
@@ -235,7 +257,55 @@ final class OdfChart {
         return b.append("</c:numLit>").toString();
     }
 
-    private String axes(Element plot, boolean scatter, boolean horizontal) {
+    private static String legendBox(Props g) {
+        StringBuilder b = new StringBuilder("<c:spPr>");
+        String color = Colors.fill(g.get("draw:fill-color"));
+        if (!"none".equals(g.get("draw:fill")) && g.has("draw:fill") && color != null) {
+            b.append("<a:solidFill><a:srgbClr val=\"").append(color).append("\"/></a:solidFill>");
+        } else {
+            b.append("<a:noFill/>");
+        }
+        if ("none".equals(g.get("draw:stroke"))) {
+            b.append("<a:ln><a:noFill/></a:ln>");
+        } else {
+            String stroke = Colors.fill(g.get("svg:stroke-color"));
+            b.append("<a:ln w=\"").append(Length.emu(Math.max(0.5, g.pt("svg:stroke-width", 0.5))))
+                    .append("\"><a:solidFill><a:srgbClr val=\"").append(stroke == null ? "000000" : stroke)
+                    .append("\"/></a:solidFill></a:ln>");
+        }
+        return b.append("</c:spPr>").toString();
+    }
+
+    static double[] polarScale(List<List<Double>> columns) {
+        double lo = 0;
+        double hi = 0;
+        for (List<Double> c : columns) {
+            for (Double v : c) {
+                if (v != null) {
+                    lo = Math.min(lo, v);
+                    hi = Math.max(hi, v);
+                }
+            }
+        }
+        if (hi - lo <= 0) {
+            return null;
+        }
+        double magnitude = Math.pow(10, Math.floor(Math.log10(hi - lo)) - 1);
+        for (int k = 0; k < 8; k++) {
+            for (double m : new double[] {1, 2, 5}) {
+                double unit = m * magnitude;
+                double min = Math.floor(lo / unit + 1e-9) * unit;
+                double max = Math.ceil(hi / unit - 1e-9) * unit;
+                if ((max - min) / unit <= 2 + 1e-9) {
+                    return new double[] {min, max, unit};
+                }
+            }
+            magnitude *= 10;
+        }
+        return null;
+    }
+
+    private String axes(Element plot, boolean scatter, boolean horizontal, double[] polar) {
         Element x = null;
         Element y = null;
         for (Element a : Dom.kids(plot, CHART, "axis")) {
@@ -251,26 +321,36 @@ final class OdfChart {
         String valPos = horizontal ? "b" : "l";
         StringBuilder b = new StringBuilder();
         if (scatter) {
-            b.append(axis("valAx", 500000001, 500000002, x, catPos, true));
+            b.append(axis("valAx", 500000001, 500000002, x, catPos, true, null));
         } else {
-            b.append(axis("catAx", 500000001, 500000002, x, catPos, false));
+            b.append(axis("catAx", 500000001, 500000002, x, catPos, false, polar));
         }
-        b.append(axis("valAx", 500000002, 500000001, y, valPos, true));
+        b.append(axis("valAx", 500000002, 500000001, y, valPos, true, polar));
         return b.toString();
     }
 
-    private String axis(String tag, long id, long cross, Element a, String pos, boolean value) {
+    private String axis(String tag, long id, long cross, Element a, String pos, boolean value, double[] polar) {
         Props cp = a == null ? new Props() : props(a, "chart-properties");
         boolean shown = a != null && !"false".equals(cp.get("chart:display-label"));
+        boolean reverse = "true".equals(cp.get("chart:reverse-direction"));
+        boolean counterClockwise = polar != null && !value;
         StringBuilder b = new StringBuilder("<c:").append(tag).append("><c:axId val=\"").append(id)
                 .append("\"/><c:scaling><c:orientation val=\"")
-                .append("true".equals(cp.get("chart:reverse-direction")) ? "maxMin" : "minMax").append("\"/>");
+                .append(reverse != counterClockwise ? "maxMin" : "minMax").append("\"/>");
+        String unit = null;
         if (value) {
-            if (cp.has("chart:maximum") && !"true".equals(cp.get("chart:auto-maximum"))) {
+            boolean ownMax = cp.has("chart:maximum") && !"true".equals(cp.get("chart:auto-maximum"));
+            boolean ownMin = cp.has("chart:minimum") && !"true".equals(cp.get("chart:auto-minimum"));
+            if (ownMax) {
                 b.append("<c:max val=\"").append(number(cp.get("chart:maximum"))).append("\"/>");
             }
-            if (cp.has("chart:minimum") && !"true".equals(cp.get("chart:auto-minimum"))) {
+            if (ownMin) {
                 b.append("<c:min val=\"").append(number(cp.get("chart:minimum"))).append("\"/>");
+            }
+            if (polar != null && !ownMax && !ownMin && !cp.has("chart:interval-major")) {
+                b.append("<c:max val=\"").append(polar[1]).append("\"/><c:min val=\"").append(polar[0])
+                        .append("\"/>");
+                unit = "<c:majorUnit val=\"" + polar[2] + "\"/>";
             }
         }
         b.append("</c:scaling><c:delete val=\"").append(shown ? 0 : 1).append("\"/><c:axPos val=\"").append(pos)
@@ -291,7 +371,7 @@ final class OdfChart {
                 .append(a == null ? "" : textProps(props(a, "text-properties"))).append("<c:crossAx val=\"")
                 .append(cross).append("\"/><c:crosses val=\"autoZero\"/>");
         if (tag.equals("valAx")) {
-            b.append("<c:crossBetween val=\"between\"/>");
+            b.append("<c:crossBetween val=\"between\"/>").append(unit == null ? "" : unit);
         } else {
             b.append("<c:auto val=\"1\"/><c:lblAlgn val=\"ctr\"/><c:lblOffset val=\"100\"/>");
         }

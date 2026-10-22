@@ -88,6 +88,10 @@ final class ChartRecords {
 
     private Integer areaLine;
 
+    private int[] legendFill;
+
+    private int[] legendLine;
+
     private BiffChart.Text base;
 
     ChartRecords(Lookup fonts) {
@@ -210,7 +214,7 @@ final class ChartRecords {
             }
             case PLOT_AREA -> plotNext = true;
             case FRAME -> {
-                frame = plotNext ? 2 : top == CHART ? 1 : 3;
+                frame = plotNext ? 2 : top == CHART ? 1 : top == LEGEND ? 4 : 3;
                 plotNext = false;
             }
             case SERIES_INDEX -> cache = u16(d, 0);
@@ -310,6 +314,8 @@ final class ChartRecords {
             axis().gridColor = rgb;
         } else if (frame == 1 && top == FRAME) {
             areaLine = rgb;
+        } else if (frame == 4 && top == FRAME && !auto) {
+            legendLine = rgb == null ? new int[0] : new int[] {rgb};
         }
     }
 
@@ -333,6 +339,8 @@ final class ChartRecords {
             plotFill = rgb;
         } else if (top == FRAME && frame == 1) {
             areaFill = rgb;
+        } else if (top == FRAME && frame == 4 && !auto) {
+            legendFill = rgb == null ? new int[0] : new int[] {rgb};
         }
     }
 
@@ -389,7 +397,7 @@ final class ChartRecords {
                 g.donut = sid == PIE ? u16(d, 2) : 0;
             }
             case SCATTER -> g.kind = BiffChart.Kind.SCATTER;
-            default -> g.kind = sid == RADAR_AREA ? BiffChart.Kind.AREA : BiffChart.Kind.RADAR;
+            default -> g.kind = sid == RADAR_AREA ? BiffChart.Kind.FILLED_RADAR : BiffChart.Kind.RADAR;
         }
     }
 
@@ -548,7 +556,7 @@ final class ChartRecords {
             box = new double[] {legend.getXAxisUpperLeft() / 4000.0, legend.getYAxisUpperLeft() / 4000.0,
                 legend.getXSize() / 4000.0, legend.getYSize() / 4000.0};
         }
-        return new BiffChart.Legend(pos, box);
+        return new BiffChart.Legend(pos, box, legendFill, legendLine);
     }
 
     private static byte[] data(Record r, int sid) {
