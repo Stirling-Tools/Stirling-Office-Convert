@@ -13,6 +13,9 @@ import org.apache.poi.hssf.record.aggregates.ConditionalFormattingTable;
 import org.apache.poi.hssf.record.cf.BorderFormatting;
 import org.apache.poi.hssf.record.cf.FontFormatting;
 import org.apache.poi.hssf.record.cf.PatternFormatting;
+import org.apache.poi.hssf.usermodel.HSSFColorScaleFormatting;
+import org.apache.poi.hssf.usermodel.HSSFConditionalFormattingRule;
+import org.apache.poi.hssf.usermodel.HSSFDataBarFormatting;
 import org.apache.poi.hssf.usermodel.HSSFFormulaEvaluator;
 import org.apache.poi.hssf.usermodel.HSSFSheet;
 import org.apache.poi.ss.formula.ConditionalFormattingEvaluator;
@@ -26,6 +29,9 @@ import org.apache.poi.ss.formula.ptg.StringPtg;
 import org.apache.poi.ss.formula.ptg.UnaryMinusPtg;
 import org.apache.poi.ss.formula.ptg.UnaryPlusPtg;
 import org.apache.poi.ss.usermodel.Cell;
+import org.apache.poi.ss.usermodel.ConditionType;
+import org.apache.poi.ss.usermodel.ConditionalFormattingThreshold;
+import org.apache.poi.ss.usermodel.ExtendedColor;
 import org.apache.poi.ss.util.CellRangeAddress;
 
 final class CondFormats {
@@ -75,6 +81,9 @@ final class CondFormats {
             for (int k = 0; k < cf.getNumberOfRules() && rules < MAX_RULES; k++) {
                 String rule = rule(cf.getRule(k));
                 if (rule == null) {
+                    rule = scale(sheet, i, k);
+                }
+                if (rule == null) {
                     String evaluated = evaluated(sheet, i, k, cf.getRule(k));
                     if (evaluated == null) {
                         skipped++;
@@ -94,6 +103,77 @@ final class CondFormats {
             }
         }
         return b.append(extra).toString();
+    }
+
+    private String scale(HSSFSheet sheet, int format, int index) {
+        HSSFConditionalFormattingRule rule;
+        try {
+            rule = sheet.getSheetConditionalFormatting().getConditionalFormattingAt(format).getRule(index);
+        } catch (RuntimeException e) {
+            return null;
+        }
+        if (rule.getConditionType() == ConditionType.COLOR_SCALE && rule.getColorScaleFormatting() != null) {
+            HSSFColorScaleFormatting c = rule.getColorScaleFormatting();
+            ConditionalFormattingThreshold[] at = c.getThresholds();
+            ExtendedColor[] colors = c.getColors();
+            if (at == null || colors == null || at.length < 2 || at.length != colors.length || at.length > 3) {
+                return null;
+            }
+            StringBuilder b = new StringBuilder("<cfRule type=\"colorScale\" priority=\"").append(++priority)
+                    .append("\"><colorScale>");
+            for (ConditionalFormattingThreshold t : at) {
+                b.append(cfvo(t));
+            }
+            for (ExtendedColor color : colors) {
+                b.append(color(color));
+            }
+            return b.append("</colorScale></cfRule>").toString();
+        }
+        if (rule.getConditionType() == ConditionType.DATA_BAR && rule.getDataBarFormatting() != null) {
+            HSSFDataBarFormatting d = rule.getDataBarFormatting();
+            return "<cfRule type=\"dataBar\" priority=\"" + ++priority + "\"><dataBar minLength=\""
+                    + Math.max(0, Math.min(100, d.getWidthMin())) + "\" maxLength=\""
+                    + Math.max(0, Math.min(100, d.getWidthMax() == 0 ? 90 : d.getWidthMax())) + "\">"
+                    + cfvo(d.getMinThreshold()) + cfvo(d.getMaxThreshold()) + color(d.getColor())
+                    + "</dataBar></cfRule>";
+        }
+        return null;
+    }
+
+    private static String cfvo(ConditionalFormattingThreshold t) {
+        if (t == null) {
+            return "<cfvo type=\"min\"/>";
+        }
+        String type = switch (t.getRangeType()) {
+            case NUMBER -> "num";
+            case MAX -> "max";
+            case PERCENT -> "percent";
+            case PERCENTILE -> "percentile";
+            case FORMULA -> "formula";
+            default -> "min";
+        };
+        Double v = t.getValue();
+        return "<cfvo type=\"" + type + "\"" + (v != null && Double.isFinite(v) ? " val=\"" + SheetPart.number(v)
+                + "\"" : "") + "/>";
+    }
+
+    private static String color(ExtendedColor c) {
+        if (c == null) {
+            return "<color rgb=\"FF638EC6\"/>";
+        }
+        String tint = c.getTint() == 0 ? "" : " tint=\"" + c.getTint() + "\"";
+        if (c.isThemed()) {
+            return "<color theme=\"" + c.getTheme() + "\"" + tint + "/>";
+        }
+        byte[] rgb = c.getRGB();
+        if (c.isRGB() && rgb != null && rgb.length >= 3) {
+            return String.format("<color rgb=\"FF%02X%02X%02X\"%s/>", rgb[0] & 0xFF, rgb[1] & 0xFF, rgb[2] & 0xFF,
+                    tint);
+        }
+        if (c.isIndexed() && c.getIndex() >= 0 && c.getIndex() < 64) {
+            return "<color indexed=\"" + c.getIndex() + "\"" + tint + "/>";
+        }
+        return "<color rgb=\"FF638EC6\"/>";
     }
 
     private String evaluated(HSSFSheet sheet, int format, int index, CFRuleBase r) {

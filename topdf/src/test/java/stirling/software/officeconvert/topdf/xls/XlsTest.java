@@ -58,7 +58,10 @@ import org.apache.poi.hssf.util.HSSFColor;
 import org.apache.poi.poifs.filesystem.DirectoryEntry;
 import org.apache.poi.poifs.filesystem.POIFSFileSystem;
 import org.apache.poi.ss.usermodel.BorderStyle;
+import org.apache.poi.ss.usermodel.ColorScaleFormatting;
 import org.apache.poi.ss.usermodel.ComparisonOperator;
+import org.apache.poi.ss.usermodel.ConditionalFormattingThreshold;
+import org.apache.poi.ss.usermodel.ExtendedColor;
 import org.apache.poi.ss.usermodel.FillPatternType;
 import org.apache.poi.ss.usermodel.PrintSetup;
 import org.apache.poi.ss.usermodel.Workbook;
@@ -608,6 +611,30 @@ class XlsTest {
         OfficeToPdf.Result result = OfficeToPdf.convert(in, out, OfficeToPdf.Options.defaults());
         assertFalse(String.join(" ", result.warnings()).contains("could not be drawn"), result.warnings().toString());
         assertTrue(hasColour(out, Color.RED));
+    }
+
+    @Test
+    void colourScalesAreDrawn() throws Exception {
+        byte[] data = xls(wb -> {
+            HSSFSheet s = wb.createSheet("Scales");
+            for (int i = 0; i < 6; i++) {
+                s.createRow(i).createCell(0).setCellValue(i);
+            }
+            HSSFSheetConditionalFormatting cf = s.getSheetConditionalFormatting();
+            HSSFConditionalFormattingRule scale = cf.createConditionalFormattingColorScaleRule();
+            ColorScaleFormatting cs = scale.getColorScaleFormatting();
+            cs.setNumControlPoints(2);
+            cs.getThresholds()[0].setRangeType(ConditionalFormattingThreshold.RangeType.MIN);
+            cs.getThresholds()[1].setRangeType(ConditionalFormattingThreshold.RangeType.MAX);
+            ((ExtendedColor) cs.getColors()[0]).setRGB(new byte[] {(byte) 255, 0, 0});
+            ((ExtendedColor) cs.getColors()[1]).setRGB(new byte[] {0, 0, (byte) 255});
+            cf.addConditionalFormatting(new CellRangeAddress[] {CellRangeAddress.valueOf("A1:A6")}, scale);
+        });
+        Path in = Fixtures.write(dir, "scales.xls", data);
+        Path out = dir.resolve("scales.pdf");
+        OfficeToPdf.convert(in, out, OfficeToPdf.Options.defaults());
+        assertTrue(hasColour(out, Color.RED), "the lowest value takes the first colour");
+        assertTrue(hasColour(out, Color.BLUE), "the highest value takes the last colour");
     }
 
     @Test
