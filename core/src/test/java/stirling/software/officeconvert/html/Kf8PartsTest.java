@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.nio.charset.StandardCharsets;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.Random;
 
@@ -62,16 +63,36 @@ class Kf8PartsTest {
 
     @Test
     void trailingSequencesFollowTheTableOfContents() {
-        List<long[]> toc = List.of(new long[] {310, 196}, new long[] {506, 2853}, new long[] {3359, 1750},
-                new long[] {5109, 4000});
+        List<Tbs.Node> toc = List.of(node(0, 310, 196, 0, null), node(1, 506, 2853, 0, null),
+                node(2, 3359, 1750, 0, null), node(3, 5109, 4000, 0, null));
         List<byte[]> tbs = Tbs.sequences(toc, 10_000, 4096);
-        assertEquals(3, tbs.size());
-        assertArrayEquals(new byte[] {(byte) 0x86, (byte) 0x88, 3}, tbs.get(0));
-        assertArrayEquals(new byte[] {(byte) 0x96, (byte) 0x88, 2}, tbs.get(1));
-        assertArrayEquals(new byte[] {(byte) 0x9A, (byte) 0x88}, tbs.get(2));
+        assertEquals(List.of("868803", "968802", "9a88"), hex(tbs));
         assertArrayEquals(new byte[] {(byte) 0x81}, Tbs.trailingEntry(new byte[0]));
         byte[] entry = Tbs.trailingEntry(new byte[] {1, 2, 3});
         assertEquals((byte) 0x84, entry[entry.length - 1]);
+    }
+
+    @Test
+    void trailingSequencesMatchCalibreForNestedEntries() {
+        List<Tbs.Node> twoLevels = List.of(node(0, 100, 8900, 0, null), node(1, 9000, 6000, 0, null),
+                node(2, 15000, 5000, 0, null), node(3, 500, 4500, 1, 0), node(4, 5000, 4000, 1, 0),
+                node(5, 9500, 5500, 1, 1), node(6, 12000, 3000, 2, 5));
+        assertEquals(List.of("8288b0", "838880b402", "8288c0b8c090", "8a88c090c8", "9288"),
+                hex(Tbs.sequences(twoLevels, 20_000, 4096)));
+        List<Tbs.Node> deep = List.of(node(0, 0, 30000, 0, null), node(1, 40000, 1000, 0, null),
+                node(2, 100, 2000, 1, 0), node(3, 2100, 27900, 1, 0), node(4, 3000, 9000, 2, 3),
+                node(5, 12000, 18000, 2, 3), node(6, 12500, 100, 3, 5), node(7, 12600, 17400, 3, 5));
+        assertEquals(List.of("8288a40290", "8288b09180", "8288b1809402", "8288b0a1809402", "8288b0a0a180",
+                "8288b0a0a180", "8288b0a0a180", "8288b0a0a0", "", "8a88", "8a88"),
+                hex(Tbs.sequences(deep, 41_000, 4096)));
+    }
+
+    private static Tbs.Node node(int index, long start, long length, int depth, Integer parent) {
+        return new Tbs.Node(index, start, length, depth, parent);
+    }
+
+    private static List<String> hex(List<byte[]> sequences) {
+        return sequences.stream().map(HexFormat.of()::formatHex).toList();
     }
 
     @Test

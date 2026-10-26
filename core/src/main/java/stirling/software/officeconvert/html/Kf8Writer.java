@@ -7,10 +7,13 @@ import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.TreeMap;
+import java.util.TreeSet;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.zip.ZipEntry;
@@ -33,7 +36,7 @@ final class Kf8Writer {
     private static final Pattern ITEMREF = Pattern.compile("<itemref idref=\"([^\"]+)\"");
 
     private static final Pattern NAV_POINT = Pattern.compile(
-            "<navLabel><text>(.*?)</text></navLabel><content src=\"([^\"]*)\"", Pattern.DOTALL);
+            "<navPoint\\b|</navPoint>|<navLabel><text>(.*?)</text></navLabel><content src=\"([^\"]*)\"", Pattern.DOTALL);
 
     private static final Pattern TITLE = Pattern.compile("<dc:title>(.*?)</dc:title>", Pattern.DOTALL);
 
@@ -53,7 +56,7 @@ final class Kf8Writer {
 
     private record Target(String path, String id) {}
 
-    private record TocEntry(String title, Target target) {}
+    private record TocEntry(String title, Target target, int depth, int parent) {}
 
     private final List<Chapter> chapters = new ArrayList<>();
     private final List<TocEntry> toc = new ArrayList<>();
@@ -63,7 +66,7 @@ final class Kf8Writer {
     private final Map<String, Integer> svgFlows = new HashMap<>();
     private final List<Target> links = new ArrayList<>();
     private String currentChapter = "";
-    private final List<long[]> tocSpans = new ArrayList<>();
+    private final List<Tbs.Node> tocSpans = new ArrayList<>();
     private String title = "Document";
     private String author;
     private int aid;
@@ -106,8 +109,22 @@ final class Kf8Writer {
         ZipEntry ncx = zip.getEntry("OEBPS/toc.ncx");
         if (ncx != null) {
             Matcher m = NAV_POINT.matcher(text(zip, "OEBPS/toc.ncx"));
+            List<Integer> open = new ArrayList<>();
             while (m.find()) {
-                toc.add(new TocEntry(unescape(m.group(1)).strip(), target("", m.group(2))));
+                if (m.group().startsWith("<navPoint")) {
+                    open.add(open.isEmpty() ? -1 : open.get(open.size() - 1));
+                } else if (m.group().startsWith("</navPoint")) {
+                    if (!open.isEmpty()) {
+                        open.remove(open.size() - 1);
+                    }
+                } else {
+                    int depth = Math.max(0, open.size() - 1);
+                    int parent = open.size() < 2 ? -1 : open.get(open.size() - 2);
+                    toc.add(new TocEntry(unescape(m.group(1)).strip(), target("", m.group(2)), depth, parent));
+                    if (!open.isEmpty()) {
+                        open.set(open.size() - 1, toc.size() - 1);
+                    }
+                }
             }
         }
         for (int i = 0; i < chapters.size(); i++) {
@@ -407,22 +424,63 @@ final class Kf8Writer {
         if (fragments.isEmpty()) {
             return index;
         }
-        List<Place> at = new ArrayList<>();
-        for (TocEntry e : toc) {
-            at.add(locate(e.target(), places, chapterStarts));
+        int n = toc.size();
+        Place[] at = new Place[n];
+        long[] offset = new long[n];
+        for (int i = 0; i < n; i++) {
+            at[i] = locate(toc.get(i).target(), places, chapterStarts);
+            offset[i] = fragments.get(at[i].fragment()).insert() + at[i].offset();
         }
-        for (int i = 0; i < toc.size(); i++) {
-            Place p = at.get(i);
-            long pos = fragments.get(p.fragment()).layout() + p.offset();
-            long next = i + 1 < toc.size()
-                    ? fragments.get(at.get(i + 1).fragment()).layout() + at.get(i + 1).offset() : length;
-            tocSpans.add(new long[] {pos, Math.max(0, next - pos)});
-            index.add(String.format("%02x", i), Map.of(
-                    1, new long[] {pos},
-                    2, new long[] {Math.max(0, next - pos)},
-                    3, new long[] {index.text(toc.get(i).title())},
-                    4, new long[] {0},
-                    6, new long[] {p.fragment(), p.offset()}));
+        List<Integer> order = new ArrayList<>();
+        for (int i = 0; i < n; i++) {
+            order.add(i);
+        }
+        order.sort(Comparator.<Integer>comparingInt(i -> toc.get(i).depth()).thenComparingLong(i -> offset[i]));
+        int[] position = new int[n];
+        for (int k = 0; k < n; k++) {
+            position[order.get(k)] = k;
+        }
+        List<List<Integer>> children = new ArrayList<>();
+        for (int i = 0; i < n; i++) {
+            children.add(new ArrayList<>());
+        }
+        for (int i = 0; i < n; i++) {
+            if (toc.get(i).parent() >= 0) {
+                children.get(toc.get(i).parent()).add(i);
+            }
+        }
+        TreeMap<Integer, TreeSet<Long>> starts = new TreeMap<>();
+        for (int i = 0; i < n; i++) {
+            starts.computeIfAbsent(toc.get(i).depth(), d -> new TreeSet<>()).add(offset[i]);
+        }
+        String key = "%0" + Math.max(2, Integer.toHexString(Math.max(0, n - 1)).length()) + "X";
+        for (int k = 0; k < n; k++) {
+            int i = order.get(k);
+            TocEntry e = toc.get(i);
+            long next = length;
+            for (TreeSet<Long> level : starts.headMap(e.depth(), true).values()) {
+                Long higher = level.higher(offset[i]);
+                if (higher != null) {
+                    next = Math.min(next, higher);
+                }
+            }
+            long span = Math.max(0, next - offset[i]);
+            Integer parent = e.parent() < 0 ? null : position[e.parent()];
+            tocSpans.add(new Tbs.Node(k, offset[i], span, e.depth(), parent));
+            Map<Integer, long[]> tags = new HashMap<>();
+            tags.put(1, new long[] {offset[i]});
+            tags.put(2, new long[] {span});
+            tags.put(3, new long[] {index.text(e.title())});
+            tags.put(4, new long[] {e.depth()});
+            if (parent != null) {
+                tags.put(21, new long[] {parent});
+            }
+            if (!children.get(i).isEmpty()) {
+                tags.put(22, new long[] {position[children.get(i).get(0)]});
+                tags.put(23, new long[] {position[children.get(i).get(children.get(i).size() - 1)]});
+            }
+            tags.put(6, new long[] {at[i].fragment(), at[i].offset()});
+            index.add(String.format(key, k), tags);
         }
         return index;
     }

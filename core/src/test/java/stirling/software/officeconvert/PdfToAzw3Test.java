@@ -12,6 +12,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -33,6 +34,8 @@ class PdfToAzw3Test {
     private static final PDType1Font BOLD = new PDType1Font(Standard14Fonts.FontName.HELVETICA_BOLD);
 
     private static final String[] CHAPTERS = {"Getting Started", "Daily Use", "Troubleshooting"};
+
+    private static final String SECTION = "Weekly Checks";
 
     @TempDir static Path dir;
     static byte[] book;
@@ -60,6 +63,8 @@ class PdfToAzw3Test {
                     }
                     if (c == 1) {
                         cs.drawImage(picture, 72, 300, 180, 120);
+                        text(cs, BOLD, 16, 72, 260, SECTION);
+                        text(cs, REGULAR, 12, 72, 236, "The section body follows its heading.");
                     }
                 }
             }
@@ -205,6 +210,71 @@ class PdfToAzw3Test {
         assertTrue(text.contains("kindle:embed:0001?mime=image/"));
         assertTrue(text.contains(" aid=\""));
         assertTrue(!text.contains("../images/") && !text.contains("epub:type"));
+    }
+
+    private record NcxEntry(String title, long offset, long depth, long parent, long firstChild) {}
+
+    private static List<NcxEntry> ncx() {
+        byte[] r0 = records.get(0);
+        int head = (int) u32(r0, 244);
+        byte[] header = records.get(head);
+        int cncx = (int) u32(header, 52);
+        int dataRecords = (int) u32(header, 24);
+        byte[] strings = records.get(head + 1 + dataRecords);
+        List<NcxEntry> out = new ArrayList<>();
+        for (int d = 0; d < dataRecords; d++) {
+            byte[] r = records.get(head + 1 + d);
+            int idxt = (int) u32(r, 20);
+            int count = (int) u32(r, 24);
+            for (int e = 0; e < count; e++) {
+                int p = u16(r, idxt + 4 + 2 * e);
+                p += 1 + (r[p] & 0xFF);
+                int control = r[p] & 0xFF;
+                p += 2;
+                long[] values = new long[9];
+                int[] tags = {1, 2, 3, 4, 21, 22, 23, 6};
+                int[] counts = {1, 1, 1, 1, 1, 1, 1, 2};
+                Arrays.fill(values, -1);
+                for (int t = 0; t < tags.length; t++) {
+                    if ((control & (1 << t)) == 0) {
+                        continue;
+                    }
+                    for (int k = 0; k < counts[t]; k++) {
+                        long v = 0;
+                        int b;
+                        do {
+                            b = r[p++] & 0xFF;
+                            v = v << 7 | (b & 0x7F);
+                        } while ((b & 0x80) == 0);
+                        if (k == 0) {
+                            values[t] = v;
+                        }
+                    }
+                }
+                int at = (int) values[2];
+                int len = strings[at] & 0x7F;
+                String title = new String(strings, at + 1, len, StandardCharsets.UTF_8);
+                out.add(new NcxEntry(title, values[0], values[3], values[4], values[5]));
+            }
+        }
+        assertTrue(cncx >= 1);
+        return out;
+    }
+
+    @Test
+    void tableOfContentsNestsSectionsUnderTheirChapter() {
+        List<NcxEntry> entries = ncx();
+        NcxEntry section = entries.stream().filter(e -> e.title().equals(SECTION)).findFirst().orElseThrow();
+        assertEquals(1, section.depth());
+        NcxEntry chapter = entries.get((int) section.parent());
+        assertEquals(CHAPTERS[1], chapter.title());
+        assertEquals(0, chapter.depth());
+        assertEquals(entries.indexOf(section), chapter.firstChild());
+        for (int i = 1; i < entries.size(); i++) {
+            NcxEntry a = entries.get(i - 1);
+            NcxEntry b = entries.get(i);
+            assertTrue(a.depth() < b.depth() || a.depth() == b.depth() && a.offset() <= b.offset());
+        }
     }
 
     @Test

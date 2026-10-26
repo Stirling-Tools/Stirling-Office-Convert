@@ -64,7 +64,7 @@ public final class EpubWriter implements DocSink, Closeable {
 
     private record Chapter(String file, String title) {}
 
-    private record Entry(int level, String title, String file, String id) {}
+    private record Entry(int level, String title, String file, String id, boolean titled) {}
 
     private record Media(String file, String type) {}
 
@@ -144,7 +144,7 @@ public final class EpubWriter implements DocSink, Closeable {
                     anchor = "h" + (++headings);
                     html = html.substring(0, h.end() - 1) + " id=\"" + anchor + "\"" + html.substring(h.end() - 1);
                 }
-                toc.add(new Entry(level, title, file, anchor));
+                toc.add(new Entry(level, title, file, anchor, h.group(2).contains("class=\"s-Title\"")));
                 if (chapterChars == 0 && chapters.get(chapters.size() - 1).title() == null) {
                     chapters.set(chapters.size() - 1, new Chapter(file, title));
                 }
@@ -420,17 +420,21 @@ public final class EpubWriter implements DocSink, Closeable {
     }
 
     private List<Entry> entries(String notesFile) {
-        List<Entry> entries = new ArrayList<>(toc);
+        boolean titledChapters = toc.stream().filter(Entry::titled).count() > 1;
+        List<Entry> entries = new ArrayList<>();
+        for (Entry e : toc) {
+            entries.add(titledChapters && !e.titled() ? new Entry(e.level() + 1, e.title(), e.file(), e.id(), false) : e);
+        }
         if (entries.isEmpty()) {
             for (int i = 0; i < chapters.size(); i++) {
                 Chapter c = chapters.get(i);
-                entries.add(new Entry(1, c.title() != null ? c.title() : "Part " + (i + 1), c.file(), null));
+                entries.add(new Entry(1, c.title() != null ? c.title() : "Part " + (i + 1), c.file(), null, false));
             }
         } else if (!toc.get(0).file().equals(chapters.get(0).file()) || chapterStartsLater()) {
-            entries.add(0, new Entry(entries.get(0).level(), "Start", chapters.get(0).file(), null));
+            entries.add(0, new Entry(entries.get(0).level(), "Start", chapters.get(0).file(), null, false));
         }
         if (notesFile != null) {
-            entries.add(new Entry(entries.stream().mapToInt(Entry::level).min().orElse(1), "Notes", notesFile, null));
+            entries.add(new Entry(entries.stream().mapToInt(Entry::level).min().orElse(1), "Notes", notesFile, null, false));
         }
         return entries;
     }
@@ -440,22 +444,38 @@ public final class EpubWriter implements DocSink, Closeable {
     }
 
     private String ncx(String bookTitle, String uid, String notesFile) {
-        StringBuilder sb = new StringBuilder(2048);
+        List<Entry> entries = entries(notesFile);
+        int base = entries.stream().mapToInt(Entry::level).min().orElse(1);
+        StringBuilder points = new StringBuilder(2048);
+        int depth = 0;
+        int deepest = 1;
+        int order = 0;
+        for (Entry e : entries) {
+            int level = Math.min(e.level() - base + 1, depth + 1);
+            while (depth >= level) {
+                points.append("</navPoint>\n");
+                depth--;
+            }
+            order++;
+            depth++;
+            deepest = Math.max(deepest, depth);
+            points.append("<navPoint id=\"np").append(order).append("\" playOrder=\"").append(order)
+                    .append("\"><navLabel><text>").append(e.title()).append("</text></navLabel><content src=\"")
+                    .append(e.file()).append(e.id() == null ? "" : "#" + e.id()).append("\"/>");
+            points.append('\n');
+        }
+        while (depth-- > 0) {
+            points.append("</navPoint>\n");
+        }
+        StringBuilder sb = new StringBuilder(points.length() + 512);
         sb.append("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n")
                 .append("<ncx xmlns=\"http://www.daisy.org/z3986/2005/ncx/\" version=\"2005-1\">\n<head>\n")
                 .append("<meta name=\"dtb:uid\" content=\"").append(uid).append("\"/>\n")
-                .append("<meta name=\"dtb:depth\" content=\"1\"/>\n")
+                .append("<meta name=\"dtb:depth\" content=\"").append(deepest).append("\"/>\n")
                 .append("<meta name=\"dtb:totalPageCount\" content=\"0\"/>\n")
                 .append("<meta name=\"dtb:maxPageNumber\" content=\"0\"/>\n</head>\n<docTitle><text>")
-                .append(escaped(bookTitle)).append("</text></docTitle>\n<navMap>\n");
-        int order = 0;
-        for (Entry e : entries(notesFile)) {
-            order++;
-            sb.append("<navPoint id=\"np").append(order).append("\" playOrder=\"").append(order)
-                    .append("\"><navLabel><text>").append(e.title()).append("</text></navLabel><content src=\"")
-                    .append(e.file()).append(e.id() == null ? "" : "#" + e.id()).append("\"/></navPoint>\n");
-        }
-        sb.append("</navMap>\n</ncx>\n");
+                .append(escaped(bookTitle)).append("</text></docTitle>\n<navMap>\n").append(points)
+                .append("</navMap>\n</ncx>\n");
         return sb.toString();
     }
 
