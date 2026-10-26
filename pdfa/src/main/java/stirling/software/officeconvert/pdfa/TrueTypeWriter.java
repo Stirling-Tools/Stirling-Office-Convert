@@ -202,6 +202,54 @@ final class TrueTypeWriter {
         return new Glyph(glyf, (int) start, length, advance, lsb);
     }
 
+    private void breakComponentCycles() {
+        byte[] state = new byte[glyphs.size()];
+        for (int gid = 0; gid < glyphs.size(); gid++) {
+            if (state[gid] == 0) {
+                visit(gid, state, 0);
+            }
+        }
+    }
+
+    private void visit(int gid, byte[] state, int depth) {
+        state[gid] = 1;
+        for (int child : components(glyphs.get(gid))) {
+            if (child >= glyphs.size()) {
+                continue;
+            }
+            if (state[child] == 1 || depth > 64) {
+                glyphs.set(gid, new Glyph(new byte[0], glyphs.get(gid).advance(), 0));
+                break;
+            }
+            if (state[child] == 0) {
+                visit(child, state, depth + 1);
+            }
+        }
+        state[gid] = 2;
+    }
+
+    private static List<Integer> components(Glyph g) {
+        List<Integer> out = new ArrayList<>();
+        if (g.length() < 10) {
+            return out;
+        }
+        ByteBuffer b = g.view();
+        if (b.getShort(0) >= 0) {
+            return out;
+        }
+        int at = 10;
+        while (at + 4 <= g.length()) {
+            int flags = b.getShort(at) & 0xFFFF;
+            out.add(b.getShort(at + 2) & 0xFFFF);
+            at += 4 + ((flags & 0x0001) != 0 ? 4 : 2) + ((flags & 0x0008) != 0 ? 2
+                    : (flags & 0x0040) != 0 ? 4 : (flags & 0x0080) != 0 ? 8 : 0);
+            if ((flags & 0x0020) == 0) {
+                break;
+            }
+        }
+        return out;
+    }
+
     private void resolveComponents() {
         for (int p = 0; p < pending.size(); p++) {
             int index = pending.get(p);
@@ -245,6 +293,7 @@ final class TrueTypeWriter {
 
     byte[] build(String postScriptName, byte[] cmapTable, Map<String, byte[]> overrides) throws IOException {
         resolveComponents();
+        breakComponentCycles();
         if (glyphs.size() > 65_535) {
             throw new IOException("The font needs more than 65535 glyphs");
         }

@@ -181,4 +181,45 @@ class WebFontsBrokenTest {
             }
         }
     }
+
+    @Test
+    void compositeGlyphsThatReferToThemselvesAreBrokenOff() throws Exception {
+        java.util.TreeMap<String, byte[]> t = new java.util.TreeMap<>();
+        ByteBuffer head = ByteBuffer.allocate(54);
+        head.putInt(0, 0x00010000).putInt(12, 0x5F0F3CF5).putShort(18, (short) 1000).putShort(50, (short) 1);
+        t.put("head", head.array());
+        ByteBuffer hhea = ByteBuffer.allocate(36);
+        hhea.putInt(0, 0x00010000).putShort(34, (short) 3);
+        t.put("hhea", hhea.array());
+        ByteBuffer maxp = ByteBuffer.allocate(32);
+        maxp.putInt(0, 0x00010000).putShort(4, (short) 3);
+        t.put("maxp", maxp.array());
+        t.put("hmtx", ByteBuffer.allocate(12).putShort((short) 500).putShort((short) 0).putShort((short) 600)
+                .putShort((short) 0).putShort((short) 700).putShort((short) 0).array());
+        ByteBuffer self = ByteBuffer.allocate(16);
+        self.putShort((short) -1).putShort((short) 0).putShort((short) 0).putShort((short) 100).putShort((short) 100);
+        self.putShort((short) 0x0002).putShort((short) 1).put((byte) 0).put((byte) 0);
+        ByteBuffer loop = ByteBuffer.allocate(16);
+        loop.putShort((short) -1).putShort((short) 0).putShort((short) 0).putShort((short) 100).putShort((short) 100);
+        loop.putShort((short) 0x0002).putShort((short) 1).put((byte) 0).put((byte) 0);
+        t.put("glyf", FontPrograms.concat(self.array(), loop.array()));
+        t.put("loca", ByteBuffer.allocate(16).putInt(0).putInt(0).putInt(16).putInt(32).array());
+        t.put("cmap", Cmaps.table(List.of(new Cmaps.Subtable(3, 1, new TreeMap<>(Map.of(0x41, 1, 0x42, 2))))));
+        t.put("post", ByteBuffer.allocate(32).putInt(0x00030000).array());
+        byte[] out = WebFonts.toTrueType(Sfnt.write(t), WebFonts.FontKind.TRUETYPE, null);
+        try (org.apache.fontbox.ttf.TrueTypeFont f = new org.apache.fontbox.ttf.TTFParser()
+                .parse(new org.apache.pdfbox.io.RandomAccessReadBuffer(out))) {
+            byte[] glyf = f.getTableBytes(f.getTableMap().get("glyf"));
+            long[] loca = f.getIndexToLocation().getOffsets();
+            for (int gid = 0; gid < f.getNumberOfGlyphs(); gid++) {
+                if (loca[gid + 1] > loca[gid] && ByteBuffer.wrap(glyf).getShort((int) loca[gid]) < 0) {
+                    int child = ByteBuffer.wrap(glyf).getShort((int) loca[gid] + 12) & 0xFFFF;
+                    org.junit.jupiter.api.Assertions.assertNotEquals(gid, child);
+                    org.junit.jupiter.api.Assertions.assertTrue(loca[child + 1] == loca[child]
+                            || ByteBuffer.wrap(glyf).getShort((int) loca[child]) >= 0, "gid " + gid);
+                }
+            }
+            org.junit.jupiter.api.Assertions.assertEquals(600, f.getAdvanceWidth(1));
+        }
+    }
 }
