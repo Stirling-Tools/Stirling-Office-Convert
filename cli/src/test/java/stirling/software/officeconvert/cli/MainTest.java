@@ -10,9 +10,12 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.PrintStream;
+import java.net.InetAddress;
+import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
@@ -22,6 +25,8 @@ import org.apache.pdfbox.pdmodel.PDPageContentStream;
 import org.apache.pdfbox.pdmodel.font.PDType0Font;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+
+import com.sun.net.httpserver.HttpServer;
 
 class MainTest {
 
@@ -43,6 +48,39 @@ class MainTest {
         } finally {
             System.setOut(oldOut);
             System.setErr(oldErr);
+        }
+    }
+
+    @Test
+    void aUrlIsFetchedOnlyWithNetworkAccessAndNeverFromALocalAddressByDefault() throws Exception {
+        HttpServer server = HttpServer.create(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 0);
+        AtomicInteger hits = new AtomicInteger();
+        server.createContext("/", ex -> {
+            hits.incrementAndGet();
+            byte[] body = "<html><body><p>Served page</p></body></html>".getBytes(StandardCharsets.UTF_8);
+            ex.getResponseHeaders().add("Content-Type", "text/html; charset=utf-8");
+            ex.sendResponseHeaders(200, body.length);
+            try (OutputStream os = ex.getResponseBody()) {
+                os.write(body);
+            }
+        });
+        server.start();
+        try {
+            String url = "http://127.0.0.1:" + server.getAddress().getPort() + "/index.html";
+            Path pdf = dir.resolve("site.pdf");
+            Result off = run(url, "-o", pdf.toString());
+            assertEquals(2, off.code(), off.err());
+            assertTrue(off.err().contains("--allow-network"), off.err());
+            Result refused = run(url, "-o", pdf.toString(), "--allow-network");
+            assertEquals(1, refused.code(), refused.err());
+            assertEquals(0, hits.get());
+            assertFalse(Files.exists(pdf));
+            Result fetched = run(url, "-o", pdf.toString(), "--allow-network", "--allow-private-addresses", "-q");
+            assertEquals(0, fetched.code(), fetched.err());
+            assertEquals(1, hits.get());
+            assertTrue(Files.size(pdf) > 0);
+        } finally {
+            server.stop(0);
         }
     }
 

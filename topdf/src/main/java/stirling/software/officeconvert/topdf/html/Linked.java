@@ -18,6 +18,7 @@ final class Linked implements HtmlAssets {
     private long total;
     private int reads;
     private boolean exhausted;
+    private String rebased;
 
     Linked(HtmlAssets assets) {
         this.assets = assets == null ? HtmlAssets.NONE : assets;
@@ -29,8 +30,18 @@ final class Linked implements HtmlAssets {
 
     @Override
     public String base() {
+        if (rebased != null) {
+            return rebased;
+        }
         String b = assets.base();
         return b == null ? "" : b;
+    }
+
+    void rebase(String href) {
+        String b = assets.base();
+        String web = b != null && (b.regionMatches(true, 0, "http://", 0, 7) || b.regionMatches(true, 0, "https://", 0, 8))
+                ? HtmlRefs.resolve(b, href) : null;
+        rebased = web;
     }
 
     boolean exhausted() {

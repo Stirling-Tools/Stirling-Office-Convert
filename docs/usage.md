@@ -31,7 +31,8 @@ none), `--fonts dir` (repeatable; an extra folder of fonts), `--font-map Family=
 family with an installed one, such as `Aptos=Inter`), `--font-width Family=scale` (repeatable; scale a substituted
 family's widths, 0.5 to 2), `--no-system-fonts` (only the given fonts and the bundled Liberation Sans, for
 reproducible output), `--allow-packages` (convert a `.zip` of an HTML page, or an EPUB book not named `.epub`), `--allow-local-files` (let an HTML page
-draw the pictures and style sheets in its own folder, never outside it), `-q`, and `--format pdf` to take only the Office files out
+draw the pictures and style sheets in its own folder, never outside it), `--allow-network`, `--follow-redirects`,
+`--allow-cookies` and `--allow-private-addresses` (for a URL; see URL to PDF below), `-q`, and `--format pdf` to take only the Office files out
 of a folder. A folder converts both its PDFs and its Office files; its text and CSV files only with `--format pdf`. Inputs that would write the same output name (such
 as `report.docx` and `report.xlsx`) keep their own extension in it (`report.docx.pdf`, `report.xlsx.pdf`), and Office
 owner files (`~$name`) are skipped. An input is never overwritten: an output that would take an input's name keeps that
@@ -557,6 +558,20 @@ never outside the archive. A library caller can supply them another way with `Op
 `--allow-local-files` uses, rooted at the page's folder), and
 a caller's own implementation receives each reference resolved against its `base()`, such as a URL it fetches itself.
 At most 4,000 linked files and 192 MB are read per page, 64 MB each.
+
+URL to PDF is off unless asked for: `OfficeToPdf.convertUrl(url, out, options, access)` (on the command line, an
+`http://` or `https://` argument with `-o out.pdf`) fetches the page and the pictures, style sheets and fonts it links
+only when `WebAssets.Access.network(true)` (`--allow-network`) is given. Every other switch is off by default too:
+`redirects(true)` (`--follow-redirects`) follows up to 5 redirect hops, each checked like the first; `cookies(true)`
+(`--allow-cookies`) keeps cookies a host sets during the conversion and sends them back to that host only;
+`privateAddresses(true)` (`--allow-private-addresses`) lets loopback, private, shared and unique-local addresses
+through for intranet pages. Only `http` and `https` are fetched, never a URL with a user name or password. The host is
+resolved once per request, the request is refused when any resolved address is loopback, private, link-local (cloud
+metadata such as `169.254.169.254`), multicast or reserved, in its IPv4, IPv6, IPv4-mapped, NAT64, 6to4 or Teredo
+form, and the connection goes to the very address that was checked, so a second DNS answer cannot redirect it.
+Link-local, metadata, multicast and reserved addresses stay refused with `privateAddresses`. Fetching stops after
+60 s, 64 MB or 300 requests together (`timeout`, `maxBytes`, `maxRequests`); a `<base href>` on the page moves where
+its links resolve. A charset named by the server is kept by converting the page to UTF-8.
 
 EPUB (`.epub`, EPUB 2 and 3) is read in its reading order (the package document's spine) into one HTML page: each
 document starts a new page, its own `<style>` rules apply only to it, links between documents become links inside

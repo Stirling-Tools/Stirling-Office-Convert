@@ -315,6 +315,20 @@ public final class OfficeToPdf {
         return result.get();
     }
 
+    public static Result convertUrl(String url, Path out, Options options, WebAssets.Access access) throws IOException {
+        Objects.requireNonNull(out, "out");
+        Objects.requireNonNull(options, "options");
+        WebAssets web = WebAssets.fetch(url, access);
+        Path page = Files.createTempFile("office-to-pdf-", ".html");
+        try {
+            Files.write(page, web.page());
+            Options fetched = options.htmlAssets(web);
+            return convert(page, out, fetched.displayName() == null ? fetched.displayName(web.url()) : fetched);
+        } finally {
+            deleteQuietly(page);
+        }
+    }
+
     public static Result convert(InputStream in, Format format, OutputStream out, Options options) throws IOException {
         Objects.requireNonNull(in, "in");
         Objects.requireNonNull(format, "format");

@@ -122,6 +122,8 @@ public final class HtmlDocument {
         // One bulk read: the parser's small reads are slow on network and container file systems
         byte[] bytes = Files.readAllBytes(source);
         Document doc = Jsoup.parse(new ByteArrayInputStream(bytes), null, "");
+        Element baseTag = doc.selectFirst("base[href]");
+        linked.rebase(baseTag == null ? null : baseTag.attr("href"));
         Section page = page(new Cascade(doc, viewportPx(JsonModel.defaultPage()), linked).page());
         // media queries see the printed page, however wide the layout grows
         Cascade cascade = new Cascade(doc, viewportPx(page), linked);
