@@ -569,7 +569,7 @@ the book. A style sheet that only some documents link applies only to those. A b
 named `.epub` or streamed as `Format.EPUB`; a book inside any other `.zip`, or streamed as `Format.HTML`, is a package
 and needs `allowPackages`. DRM-protected books cannot be read.
 
-Kindle and Mobipocket books (`.mobi .azw .prc`, `.pdb` PalmDOC text, and KF8 `.azw3`) are read without DRM only:
+Kindle and Mobipocket books (`.mobi .azw .prc`, `.pdb` PalmDOC or zTXT text (eReader `.pdb` is refused), and KF8 `.azw3`) are read without DRM only:
 uncompressed, PalmDOC and HUFF/CDIC text; a KF8 book (or the KF8 half of a combined `.mobi`) is rebuilt from its
 skeleton and fragment tables with its style sheet flows, `kindle:embed` pictures and `kindle:pos` links; an older
 Mobipocket book keeps its `filepos` links, page breaks and pictures. The title, author and cover come from the EXTH
