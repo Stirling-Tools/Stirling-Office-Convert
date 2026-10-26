@@ -48,6 +48,12 @@ final class Type3Outlines extends PDFGraphicsStreamEngine {
 
     private int nesting;
 
+    private int pendingClip = -1;
+
+    private Area clip;
+
+    private final java.util.ArrayDeque<java.util.Optional<Area>> clips = new java.util.ArrayDeque<>();
+
     private Type3Outlines() {
         super(new PDPage());
     }
@@ -69,9 +75,51 @@ final class Type3Outlines extends PDFGraphicsStreamEngine {
     }
 
     private void paint(Shape s) {
-        if (shapes.size() < MAX_SHAPES && !s.getBounds2D().isEmpty()) {
-            shapes.add(s);
+        if (shapes.size() >= MAX_SHAPES || s.getBounds2D().isEmpty()) {
+            return;
         }
+        Area clip = clip();
+        if (clip == null) {
+            shapes.add(s);
+            return;
+        }
+        Area a = new Area(s);
+        a.intersect(clip);
+        if (!a.isEmpty()) {
+            shapes.add(a);
+        }
+    }
+
+    private Area clip() {
+        return clip;
+    }
+
+    @Override
+    public void saveGraphicsState() {
+        super.saveGraphicsState();
+        clips.push(java.util.Optional.ofNullable(clip == null ? null : new Area(clip)));
+    }
+
+    @Override
+    public void restoreGraphicsState() {
+        super.restoreGraphicsState();
+        if (!clips.isEmpty()) {
+            clip = clips.pop().orElse(null);
+        }
+    }
+
+    private void endOfPath() {
+        if (pendingClip >= 0) {
+            GeneralPath p = new GeneralPath(current);
+            p.setWindingRule(pendingClip);
+            if (clip == null) {
+                clip = new Area(p);
+            } else {
+                clip.intersect(new Area(p));
+            }
+            pendingClip = -1;
+        }
+        current.reset();
     }
 
     private void fill(int windingRule) {
@@ -193,6 +241,7 @@ final class Type3Outlines extends PDFGraphicsStreamEngine {
 
     @Override
     public void clip(int windingRule) {
+        pendingClip = windingRule;
     }
 
     @Override
@@ -232,29 +281,33 @@ final class Type3Outlines extends PDFGraphicsStreamEngine {
 
     @Override
     public void endPath() {
-        current.reset();
+        endOfPath();
     }
 
     @Override
     public void strokePath() {
         stroke();
-        current.reset();
+        endOfPath();
     }
 
     @Override
     public void fillPath(int windingRule) {
         fill(windingRule);
-        current.reset();
+        endOfPath();
     }
 
     @Override
     public void fillAndStrokePath(int windingRule) {
         fill(windingRule);
         stroke();
-        current.reset();
+        endOfPath();
     }
 
     @Override
     public void shadingFill(COSName shadingName) {
+        Area clip = clip();
+        if (clip != null) {
+            paint(clip);
+        }
     }
 }

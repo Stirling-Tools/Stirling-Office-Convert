@@ -112,6 +112,35 @@ class WebFontsType3Test {
     }
 
     @Test
+    void clipsShadingsAndPatternsPaintWhatTheyCover() throws Exception {
+        RawPdf pdf = RawPdf.page("/Font<</T3 9 0 R>>", "BT /T3 50 Tf 20 100 Td (efg) Tj ET");
+        pdf.add(RawPdf.stream("", "500 0 d0 q 0 0 200 300 re W n 0 0 500 500 re f Q 400 400 50 50 re f"));
+        pdf.add(RawPdf.stream("", "500 0 d0 q 100 100 300 200 re W n /Sh0 sh Q /Sh0 sh"));
+        pdf.add(RawPdf.stream("", "500 0 d0 /Pattern cs /P0 scn 0 0 300 300 re f"));
+        pdf.add(RawPdf.stream("/PatternType 1/PaintType 1/TilingType 1/BBox[0 0 10 10]/XStep 10/YStep 10/Resources<<>>",
+                "0 0 5 5 re f"));
+        pdf.add("<</Type/Font/Subtype/Type3/FontBBox[0 0 0 0]/FontMatrix[0.001 0 0 0.001 0 0]"
+                + "/CharProcs<</e 5 0 R/f 6 0 R/g 7 0 R>>/Resources<</Pattern<</P0 8 0 R>>/Shading<</Sh0"
+                + "<</ShadingType 2/ColorSpace/DeviceGray/Coords[0 0 500 0]/Function<</FunctionType 2/Domain[0 1]"
+                + "/C0[0]/C1[1]/N 1>>>>>>>>/Encoding<</Type/Encoding/Differences[101/e/f/g]>>"
+                + "/FirstChar 101/LastChar 103/Widths[500 500 500]>>");
+        try (TrueTypeFont ttf = convert(pdf)) {
+            Rectangle2D clipped = path(ttf, 'e').getBounds2D();
+            assertEquals(0, clipped.getMinX(), 1);
+            assertEquals(450, clipped.getMaxX(), 1);
+            assertTrue(path(ttf, 'e').contains(100, 100));
+            assertFalse(path(ttf, 'e').contains(300, 100));
+            Rectangle2D shaded = path(ttf, 'f').getBounds2D();
+            assertEquals(100, shaded.getMinX(), 1);
+            assertEquals(400, shaded.getMaxX(), 1);
+            assertEquals(300, shaded.getMaxY(), 1);
+            Rectangle2D patterned = path(ttf, 'g').getBounds2D();
+            assertEquals(300, patterned.getMaxX(), 1);
+            assertEquals(300, patterned.getMaxY(), 1);
+        }
+    }
+
+    @Test
     void sharedProceduresWithOneAdvanceShareAGlyph() throws Exception {
         RawPdf pdf = RawPdf.page("/Font<</T3<</Type/Font/Subtype/Type3/FontBBox[0 0 0 0]"
                 + "/FontMatrix[0.001 0 0 0.001 0 0]/CharProcs<</a 5 0 R>>"
