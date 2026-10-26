@@ -73,8 +73,6 @@ final class ChartRecords {
 
     private int dataTable = -1;
 
-    private double[] plot;
-
     private int chartLine = -1;
 
     private int dropBars;
@@ -202,15 +200,6 @@ final class ChartRecords {
             }
             case AXIS_PARENT -> {
                 axisGroup = Math.min(1, u16(d, 0));
-                if (axisGroup == 0 && plot == null && d.length >= 18) {
-                    double x = u32(d, 2) / 4000.0;
-                    double y = u32(d, 6) / 4000.0;
-                    double w = u32(d, 10) / 4000.0;
-                    double h = u32(d, 14) / 4000.0;
-                    if (x >= 0 && y >= 0 && w > 0.1 && h > 0.1 && x + w <= 1.01 && y + h <= 1.01) {
-                        plot = new double[] {x, y, w, h};
-                    }
-                }
             }
             case DATA_TABLE -> dataTable = u16(d, 0);
             case CHART_FORMAT -> {
@@ -712,7 +701,7 @@ final class ChartRecords {
         }
         float size = base == null ? 10 : base.size();
         return new BiffChart(title, out, legend(), values, cats, plotFill, areaFill, areaLine, size,
-                base == null ? null : base.text(), dataTable, plot);
+                base == null ? null : base.text(), dataTable);
     }
 
     private static BiffChart.ErrorBar errorBar(SeriesBuilder s) {

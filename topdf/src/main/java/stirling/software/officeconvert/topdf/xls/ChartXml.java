@@ -19,15 +19,7 @@ final class ChartXml {
             b.append("<c:title>").append(rich(chart.title())).append("<c:overlay val=\"0\"/></c:title>");
         }
         b.append("<c:autoTitleDeleted val=\"1\"/><c:plotArea>");
-        double[] plot = chart.plot();
-        if (plot == null) {
-            b.append("<c:layout/>");
-        } else {
-            b.append("<c:layout><c:manualLayout><c:layoutTarget val=\"outer\"/><c:xMode val=\"edge\"/>")
-                    .append("<c:yMode val=\"edge\"/><c:x val=\"").append(clamp(plot[0])).append("\"/><c:y val=\"")
-                    .append(clamp(plot[1])).append("\"/><c:w val=\"").append(clamp(plot[2])).append("\"/><c:h val=\"")
-                    .append(clamp(plot[3])).append("\"/></c:manualLayout></c:layout>");
-        }
+        b.append("<c:layout/>");
         boolean[] used = new boolean[2];
         boolean scatter = false;
         for (BiffChart.Group g : chart.groups()) {

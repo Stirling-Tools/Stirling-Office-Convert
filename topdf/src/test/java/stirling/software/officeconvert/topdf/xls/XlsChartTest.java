@@ -310,24 +310,13 @@ class XlsChartTest {
     }
 
     @Test
-    void aDataTablePrintsTheValuesUnderThePlotAndThePlotKeepsItsPlace() throws Exception {
+    void aDataTablePrintsTheValuesUnderThePlot() throws Exception {
         List<RecordBase> records = ChartFixtures.chart(null, BAR, new byte[6], new String[] {"Sales"},
                 new String[] {"North", "South"}, new double[][] {{1234, 5678}});
-        int parent = index(records, 0x1041);
-        byte[] axes = new byte[18];
-        axes[2] = (byte) 200;
-        axes[6] = (byte) 100;
-        axes[10] = (byte) 0xD8;
-        axes[11] = 0x0E;
-        axes[14] = (byte) 0xB8;
-        axes[15] = 0x0B;
-        records.set(parent, new UnknownRecord(0x1041, axes));
-        records.add(parent, new UnknownRecord(0x1063, new byte[] {0x0F, 0}));
+        records.add(index(records, 0x1041), new UnknownRecord(0x1063, new byte[] {0x0F, 0}));
         byte[] data = XlsTest.xls(wb -> ChartFixtures.chartSheet(wb, "Chart1", records));
         String chart = chartXml(data);
         assertTrue(chart.contains("<c:dTable><c:showHorzBorder val=\"1\"/>"), chart);
-        assertTrue(chart.contains("<c:x val=\"0.05\"/><c:y val=\"0.025\"/><c:w val=\"0.95\"/><c:h val=\"0.75\"/>"),
-                chart);
         Path in = Fixtures.write(dir, "table.xls", data);
         Path pdf = dir.resolve("table.pdf");
         XlsTest.Converted out = XlsTest.read(OfficeToPdf.convert(in, pdf, OfficeToPdf.Options.defaults()), pdf);
