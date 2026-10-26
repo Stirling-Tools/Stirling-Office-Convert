@@ -202,8 +202,8 @@ class PdfToEpubTest {
     void firstPageIsTheCoverPicture() throws IOException {
         byte[] cover = parts.get("OEBPS/images/cover.jpg");
         BufferedImage image = ImageIO.read(new ByteArrayInputStream(cover));
-        assertEquals(BookCover.LONG_SIDE, image.getHeight(), 1);
-        assertEquals(Math.round(BookCover.LONG_SIDE * 612f / 792f), image.getWidth(), 1);
+        assertEquals(PdfBook.COVER_SIDE, image.getHeight(), 1);
+        assertEquals(Math.round(PdfBook.COVER_SIDE * 612f / 792f), image.getWidth(), 1);
         String opf = part("OEBPS/content.opf");
         assertTrue(opf.contains("href=\"images/cover.jpg\" media-type=\"image/jpeg\" properties=\"cover-image\""), opf);
         assertTrue(opf.contains("<meta name=\"cover\" content=\"cover\"/>"), opf);

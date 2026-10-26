@@ -14,10 +14,10 @@ public final class PdfToAzw3 {
 
     public static void convert(Path pdf, Path azw3, PdfToDocx.Options options) throws IOException {
         PdfToDocx.convertWithDocument(pdf, azw3, options,
-                doc -> out -> new Azw3Writer(out, options.pictures(), BookCover.of(doc, options)));
+                doc -> out -> new Azw3Writer(out, options.pictures(), PdfBook.of(doc, options)));
     }
 
     public static void convert(PDDocument doc, OutputStream out, PdfToDocx.Options options) throws IOException {
-        PdfToDocx.convert(doc, out, options, o -> new Azw3Writer(o, options.pictures(), BookCover.of(doc, options)));
+        PdfToDocx.convert(doc, out, options, o -> new Azw3Writer(o, options.pictures(), PdfBook.of(doc, options)));
     }
 }

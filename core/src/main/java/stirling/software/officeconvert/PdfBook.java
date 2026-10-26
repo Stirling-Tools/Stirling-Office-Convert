@@ -19,17 +19,28 @@ import org.apache.pdfbox.rendering.ImageType;
 import org.apache.pdfbox.rendering.PDFRenderer;
 
 import stirling.software.officeconvert.extract.PdfFiles;
+import stirling.software.officeconvert.html.EpubWriter;
 import stirling.software.officeconvert.memory.Admission;
 
-final class BookCover {
+final class PdfBook {
 
-    private static final Log LOG = LogFactory.getLog(BookCover.class);
+    private static final Log LOG = LogFactory.getLog(PdfBook.class);
 
-    static final int LONG_SIDE = 800;
+    static final int COVER_SIDE = 800;
 
-    private BookCover() {}
+    private PdfBook() {}
 
-    static byte[] of(PDDocument doc, PdfToDocx.Options options) {
+    static EpubWriter.Book of(PDDocument doc, PdfToDocx.Options options) {
+        String language = null;
+        try {
+            language = doc.getDocumentCatalog().getLanguage();
+        } catch (RuntimeException e) {
+            LOG.debug("No language for the book", e);
+        }
+        return new EpubWriter.Book(cover(doc, options), language);
+    }
+
+    static byte[] cover(PDDocument doc, PdfToDocx.Options options) {
         try {
             int page = PdfFiles.pageRange(doc.getNumberOfPages(), options.firstPage(), options.lastPage())[0];
             return render(doc, page);
@@ -49,7 +60,7 @@ final class BookCover {
         if (!(width >= 1 && height >= 1)) {
             return null;
         }
-        float scale = LONG_SIDE / Math.max(width, height);
+        float scale = COVER_SIDE / Math.max(width, height);
         long pixels = (long) Math.ceil(width * scale) * (long) Math.ceil(height * scale);
         Admission.Ticket ticket = Admission.jvm().enter(pixels * 4L * 3L);
         try {

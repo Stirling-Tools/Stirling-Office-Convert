@@ -20,6 +20,7 @@ import java.util.HexFormat;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeMap;
 import java.util.UUID;
 import java.util.regex.Matcher;
@@ -30,6 +31,7 @@ import java.util.zip.ZipOutputStream;
 import stirling.software.officeconvert.Pictures;
 import stirling.software.officeconvert.build.DocSink;
 import stirling.software.officeconvert.model.Block;
+import stirling.software.officeconvert.model.Inline;
 import stirling.software.officeconvert.model.Numbering;
 import stirling.software.officeconvert.model.Paragraph;
 import stirling.software.officeconvert.model.Picture;
@@ -48,6 +50,9 @@ public final class EpubWriter implements DocSink, Closeable {
     private static final String BULLET = "\u2022";
 
     private static final String COVER = "images/cover.jpg";
+
+    private static final Set<String> RTL_LANGUAGES = Set.of("ar", "arc", "ckb", "dv", "fa", "he", "iw", "ks", "ku",
+            "ps", "sd", "syr", "ug", "ur", "yi");
 
     private static final Pattern DATA_PICTURE = Pattern.compile(
             "src=\"data:(image/[a-z0-9.+-]+);base64,([A-Za-z0-9+/=]+)\"");
@@ -83,18 +88,35 @@ public final class EpubWriter implements DocSink, Closeable {
     private int chapterChars;
     private int headings;
     private final byte[] cover;
+    private String language;
+    private int paragraphs;
+    private int rightToLeft;
+    private int hebrew;
+    private int arabic;
     private StyleSheet styles;
     private boolean started;
 
-    public EpubWriter(OutputStream target, Pictures pictures) {
-        this(target, pictures, null);
+    public record Book(byte[] cover, String language) {
+
+        public static final Book NONE = new Book(null, null);
+
+        private static final Pattern TAG = Pattern.compile("[A-Za-z]{2,8}(-[A-Za-z0-9]{1,8}){0,7}");
+
+        public Book {
+            language = language == null || !TAG.matcher(language.strip()).matches() ? "und" : language.strip();
+        }
     }
 
-    public EpubWriter(OutputStream target, Pictures pictures, byte[] cover) {
+    public EpubWriter(OutputStream target, Pictures pictures) {
+        this(target, pictures, Book.NONE);
+    }
+
+    public EpubWriter(OutputStream target, Pictures pictures, Book book) {
         this.zip = new ZipOutputStream(new KeepOpen(target), StandardCharsets.UTF_8);
         this.media = new MediaStore(pictures);
         this.blocks = new HtmlBlocks(media);
-        this.cover = cover;
+        this.cover = book.cover();
+        this.language = book.language();
     }
 
     @Override
@@ -127,6 +149,15 @@ public final class EpubWriter implements DocSink, Closeable {
         StringBuilder sb = new StringBuilder(512);
         if (block instanceof Paragraph p) {
             blocks.paragraph(sb, p);
+            if (!p.inlines.isEmpty()) {
+                paragraphs++;
+                rightToLeft += p.bidi ? 1 : 0;
+                for (Inline in : p.inlines) {
+                    if (p.bidi && in instanceof Inline.Text t) {
+                        t.text().codePoints().forEach(this::script);
+                    }
+                }
+            }
         } else {
             blocks.table(sb, (Table) block);
         }
@@ -168,6 +199,24 @@ public final class EpubWriter implements DocSink, Closeable {
         chapterChars += html.length();
     }
 
+    private void script(int c) {
+        Character.UnicodeScript script = Character.UnicodeScript.of(c);
+        if (script == Character.UnicodeScript.HEBREW) {
+            hebrew++;
+        } else if (script == Character.UnicodeScript.ARABIC) {
+            arabic++;
+        }
+    }
+
+    private boolean rightToLeft() {
+        return rightToLeft * 2 > paragraphs;
+    }
+
+    private static boolean rightToLeftLanguage(String tag) {
+        String primary = tag.toLowerCase(Locale.ROOT).split("-")[0];
+        return RTL_LANGUAGES.contains(primary);
+    }
+
     @Override
     public void footnote(int id, List<Paragraph> paragraphs) {
         notes.put(id, paragraphs);
@@ -180,6 +229,9 @@ public final class EpubWriter implements DocSink, Closeable {
         if (finalStyles != null) {
             styles = finalStyles;
             blocks.styles(finalStyles);
+        }
+        if (rightToLeft() && !rightToLeftLanguage(language) && hebrew + arabic > 0) {
+            language = hebrew > arabic ? "he" : "ar";
         }
         String bookTitle = title != null && !title.isBlank() ? title.strip()
                 : toc.isEmpty() ? "Document" : unescaped(toc.get(0).title());
@@ -363,10 +415,14 @@ public final class EpubWriter implements DocSink, Closeable {
         return escaped(t);
     }
 
-    private static String xhtmlHead(String title, String css) {
+    private String xhtmlHead(String title, String css) {
         StringBuilder sb = new StringBuilder(512);
         sb.append("<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<!DOCTYPE html>\n")
-                .append("<html xmlns=\"http://www.w3.org/1999/xhtml\" xmlns:epub=\"http://www.idpf.org/2007/ops\">\n")
+                .append("<html xmlns=\"http://www.w3.org/1999/xhtml\" xmlns:epub=\"http://www.idpf.org/2007/ops\"");
+        if (!"und".equals(language)) {
+            sb.append(" lang=\"").append(language).append("\" xml:lang=\"").append(language).append('"');
+        }
+        sb.append(">\n")
                 .append("<head>\n<meta charset=\"utf-8\"/>\n<title>");
         sb.append(title);
         sb.append("</title>\n<link rel=\"stylesheet\" type=\"text/css\" href=\"").append(css).append("\"/>\n")
@@ -499,7 +555,7 @@ public final class EpubWriter implements DocSink, Closeable {
                 .append("<metadata xmlns:dc=\"http://purl.org/dc/elements/1.1/\">\n")
                 .append("<dc:identifier id=\"uid\">").append(uid).append("</dc:identifier>\n")
                 .append("<dc:title>").append(escaped(bookTitle)).append("</dc:title>\n")
-                .append("<dc:language>und</dc:language>\n");
+                .append("<dc:language>").append(language).append("</dc:language>\n");
         if (author != null && !author.isBlank()) {
             sb.append("<dc:creator>").append(escaped(author.strip())).append("</dc:creator>\n");
         }
@@ -529,7 +585,8 @@ public final class EpubWriter implements DocSink, Closeable {
             sb.append("<item id=\"img").append(i + 1).append("\" href=\"").append(m.file()).append("\" media-type=\"")
                     .append(m.type()).append("\"/>\n");
         }
-        sb.append("</manifest>\n<spine toc=\"ncx\">\n");
+        sb.append("</manifest>\n<spine toc=\"ncx\"")
+                .append(rightToLeft() ? " page-progression-direction=\"rtl\">\n" : ">\n");
         for (int i = 0; i < chapters.size(); i++) {
             sb.append("<itemref idref=\"ch").append(i + 1).append("\"/>\n");
         }

@@ -24,10 +24,10 @@ public final class Azw3Writer implements DocSink, Closeable {
     private final EpubWriter book;
 
     public Azw3Writer(OutputStream target, Pictures pictures) throws IOException {
-        this(target, pictures, null);
+        this(target, pictures, EpubWriter.Book.NONE);
     }
 
-    public Azw3Writer(OutputStream target, Pictures pictures, byte[] cover) throws IOException {
+    public Azw3Writer(OutputStream target, Pictures pictures, EpubWriter.Book book) throws IOException {
         this.target = target;
         this.epub = Files.createTempFile("office-convert-", ".epub");
         try {
@@ -36,7 +36,7 @@ public final class Azw3Writer implements DocSink, Closeable {
             Files.deleteIfExists(epub);
             throw e;
         }
-        this.book = new EpubWriter(epubOut, pictures, cover);
+        this.book = new EpubWriter(epubOut, pictures, book);
     }
 
     @Override

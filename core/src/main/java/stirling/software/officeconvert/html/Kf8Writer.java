@@ -45,6 +45,8 @@ final class Kf8Writer {
 
     private static final Pattern TITLE = Pattern.compile("<dc:title>(.*?)</dc:title>", Pattern.DOTALL);
 
+    private static final Pattern LANGUAGE = Pattern.compile("<dc:language>([A-Za-z0-9-]{1,64})</dc:language>");
+
     private static final Pattern CREATOR = Pattern.compile("<dc:creator>(.*?)</dc:creator>", Pattern.DOTALL);
 
     private static final Pattern START_TAG = Pattern.compile("<([A-Za-z][A-Za-z0-9:-]*)(\\s[^<>]*?)?(/?)>");
@@ -76,6 +78,8 @@ final class Kf8Writer {
     private Target start;
     private long startOffset = -1;
     private int cover = -1;
+    private String language = "und";
+    private boolean rightToLeft;
     private String author;
     private int aid;
 
@@ -95,6 +99,11 @@ final class Kf8Writer {
         if (t.find()) {
             title = unescape(t.group(1)).strip();
         }
+        Matcher lang = LANGUAGE.matcher(opf);
+        if (lang.find()) {
+            language = lang.group(1);
+        }
+        rightToLeft = opf.contains("page-progression-direction=\"rtl\"");
         Matcher c = CREATOR.matcher(opf);
         if (c.find()) {
             author = unescape(c.group(1)).strip();
@@ -647,7 +656,10 @@ final class Kf8Writer {
             count += exth(body, 201, u32(cover));
             count += exth(body, 203, u32(0));
         }
-        count += exth(body, 524, "und".getBytes(StandardCharsets.US_ASCII));
+        count += exth(body, 524, language.getBytes(StandardCharsets.US_ASCII));
+        if (rightToLeft) {
+            count += exth(body, 527, "rtl".getBytes(StandardCharsets.US_ASCII));
+        }
         count += exth(body, 501, "EBOK".getBytes(StandardCharsets.US_ASCII));
         count += exth(body, 125, new byte[] {0, 0, (byte) (resourceBytes.size() >>> 8), (byte) resourceBytes.size()});
         count += exth(body, 131, new byte[4]);
