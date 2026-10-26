@@ -64,7 +64,9 @@ final class PdfBook {
         long pixels = (long) Math.ceil(width * scale) * (long) Math.ceil(height * scale);
         Admission.Ticket ticket = Admission.jvm().enter(pixels * 4L * 3L);
         try {
-            BufferedImage image = new PDFRenderer(doc).renderImage(index, scale, ImageType.RGB);
+            PDFRenderer renderer = new PDFRenderer(doc);
+            renderer.setSubsamplingAllowed(true);
+            BufferedImage image = renderer.renderImage(index, scale, ImageType.RGB);
             return blank(image) ? null : jpeg(image);
         } finally {
             ticket.close();
