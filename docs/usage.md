@@ -555,7 +555,8 @@ linked files only through the same opt-ins as pictures: TrueType, and WOFF 1 hol
 PostScript-outline (CFF) fonts fall back to an installed font with a warning. A face is used under its CSS family
 name, weight and style. `::before` and `::after` content is drawn: strings, `attr()`, quotes, `leader()` (a dotted, solid or
 spaced leader to the right edge) and `target-counter(attr(href), page)`, which converts the page twice to learn the
-page of each target; `counter()` and `string-set` are not drawn. A `.zip` of a page is refused unless
+page of each target; `counter()` and `counters()` with `counter-reset` and `counter-increment` (one document-wide
+scope per name). `string-set` is not drawn. A `.zip` of a page is refused unless
 `Options.allowPackages(true)` (`--allow-packages`) is given; then the page it holds (the shallowest `index.html`, else the
 shallowest `.html`) draws the pictures, linked style sheets and `@import`s it holds, resolved relative to the page and
 never outside the archive. A library caller can supply them another way with `Options.htmlAssets(HtmlAssets)`:

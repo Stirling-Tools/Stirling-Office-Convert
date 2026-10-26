@@ -64,6 +64,20 @@ class GeneratedTest {
     }
 
     @Test
+    void countersNumberHeadings() throws IOException {
+        Pdf pdf = convert("counters", "<html><head><style>body{counter-reset:chap}h1{counter-increment:chap;"
+                + "counter-reset:sec}h2{counter-increment:sec}h1::before{content:counter(chap, upper-roman) '. '}"
+                + "h2::before{content:counter(chap) '.' counter(sec, lower-alpha) ' '}</style></head><body>"
+                + "<h1>Intro</h1><h2>Scope</h2><h2>Terms</h2><h1>Usage</h1><h2>Setup</h2></body></html>");
+        String text = pdf.text();
+        assertTrue(text.contains("I. Intro"), text);
+        assertTrue(text.contains("1.a Scope"), text);
+        assertTrue(text.contains("1.b Terms"), text);
+        assertTrue(text.contains("II. Usage"), text);
+        assertTrue(text.contains("2.a Setup"), text);
+    }
+
+    @Test
     void generatedBoxesDoNotChangeWhichChildIsFirstOrLast() throws IOException {
         Pdf pdf = convert("structural", "<html><head><style>ul::before{content:'Start'}ul::after{content:'End'}"
                 + "li:first-child::before{content:'[first] '}li:last-child::before{content:'[last] '}</style></head>"
