@@ -285,7 +285,9 @@ final class Layout {
             edges += Flow.border(cd, side) > 0 ? 1 : 0;
         }
         Integer fill = Css.color(cd.get("background-color"));
-        return edges >= 3 || fill != null && fill >= 0 && fill != 0xFFFFFF;
+        String shadow = cd.getOrDefault("box-shadow", "none").strip().toLowerCase(Locale.ROOT);
+        return edges >= 3 || fill != null && fill >= 0 && fill != 0xFFFFFF
+                || !shadow.isEmpty() && !shadow.equals("none") && !shadow.startsWith("inset");
     }
 
     private static boolean placed(List<Element> items, Look look, HtmlContext ctx) {
