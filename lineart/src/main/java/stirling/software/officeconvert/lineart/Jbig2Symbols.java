@@ -14,6 +14,8 @@ final class Jbig2Symbols {
 
     private static final int MAX_RUNS = 1 << 21;
 
+    private static final int MIN_COVERAGE_DIVISOR = 8;
+
     private record Shape(int w, int h, byte[] bits) {
 
         @Override
@@ -176,6 +178,18 @@ final class Jbig2Symbols {
             }
         }
         uses = null;
+        long ink = 0;
+        long covered = 0;
+        for (int r = 0; r < runs; r++) {
+            int length = runEnd[r] - runStart[r] + 1;
+            ink += length;
+            if (placed[component[r]]) {
+                covered += length;
+            }
+        }
+        if (covered * MIN_COVERAGE_DIVISOR < ink) {
+            return null;
+        }
         byte[] residual = bitmap.packed().clone();
         int stride = bitmap.stride();
         for (int r = 0; r < runs; r++) {
