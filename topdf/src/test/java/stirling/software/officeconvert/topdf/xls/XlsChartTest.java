@@ -134,6 +134,16 @@ class XlsChartTest {
     }
 
     @Test
+    void errorBarAndTrendlineSeriesAreNotDrawnAsSeries() throws Exception {
+        List<RecordBase> records = ChartFixtures.chart(null, LINE, new byte[2], new String[] {"Score", "Error"},
+                new String[] {"x", "y"}, new double[][] {{50, 60}, {2, 3}});
+        records.add(8, new UnknownRecord(0x104A, new byte[] {1, 0}));
+        String chart = chartXml(XlsTest.xls(wb -> ChartFixtures.chartSheet(wb, "Chart1", records)));
+        assertTrue(chart.contains("<c:v>Score</c:v>"), chart);
+        assertFalse(chart.contains("<c:v>Error</c:v>") || chart.contains("<c:v>3.0</c:v>"), chart);
+    }
+
+    @Test
     void aSeriesNamedByACellTakesTheCellText() throws Exception {
         byte[] data = XlsTest.xls(wb -> {
             HSSFSheet sheet = wb.createSheet("Data");

@@ -36,7 +36,7 @@ final class ChartRecords {
             ATTACHED_LABEL = 0x100C, DEFAULT_TEXT = 0x1024, TEXT = 0x1025, FONTX = 0x1026, OBJECT_LINK = 0x1027, FRAME = 0x1032,
             BEGIN = 0x1033, END = 0x1034, PLOT_AREA = 0x1035, RADAR = 0x103E, RADAR_AREA = 0x1040,
             AXIS_PARENT = 0x1041, SERIES_GROUP = 0x1045, IFMT = 0x104E, SERFMT = 0x105D, BOP_POP = 0x1061,
-            SERIES_INDEX = 0x1065;
+            SERIES_INDEX = 0x1065, SERIES_PARENT = 0x104A;
 
     interface Lookup {
         BiffChart.Text font(int index, String text);
@@ -150,6 +150,11 @@ final class ChartRecords {
             case SERIES_GROUP -> {
                 if (top == SERIES && !series.isEmpty()) {
                     series.get(series.size() - 1).group = u16(d, 0);
+                }
+            }
+            case SERIES_PARENT -> {
+                if (top == SERIES && !series.isEmpty()) {
+                    current().auxiliary = true;
                 }
             }
             case DATA_FORMAT -> {
@@ -564,6 +569,9 @@ final class ChartRecords {
         Map<Integer, List<BiffChart.Series>> bySeries = new HashMap<>();
         for (int i = 0; i < series.size(); i++) {
             SeriesBuilder s = series.get(i);
+            if (s.auxiliary) {
+                continue;
+            }
             fromCells(s);
             GroupBuilder g = groups.get(s.group);
             boolean lines = g != null && (g.kind == BiffChart.Kind.LINE || g.kind == BiffChart.Kind.SCATTER
@@ -762,6 +770,8 @@ final class ChartRecords {
         boolean categoryCustom;
 
         boolean valueCustom;
+
+        boolean auxiliary;
 
         Ptg[] valueRef;
 
