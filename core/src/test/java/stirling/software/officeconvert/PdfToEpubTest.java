@@ -214,4 +214,44 @@ class PdfToEpubTest {
     void landmarksStartAtTheFirstChapter() {
         assertTrue(part("OEBPS/nav.xhtml").contains("<a epub:type=\"bodymatter\" href=\"text/ch1.xhtml\">"));
     }
+
+    private static Map<String, String> convertWith(EbookOptions book) throws IOException {
+        Path epub = dir.resolve(book.device() + "-" + book.chapters() + ".epub");
+        OfficeConvert.convert(dir.resolve("manual.pdf"), epub, OfficeConvert.Settings.defaults().ebook(book));
+        Map<String, String> out = new LinkedHashMap<>();
+        try (ZipInputStream zip = new ZipInputStream(new ByteArrayInputStream(Files.readAllBytes(epub)))) {
+            for (ZipEntry e; (e = zip.getNextEntry()) != null; ) {
+                out.put(e.getName(), new String(zip.readAllBytes(), StandardCharsets.UTF_8));
+            }
+        }
+        return out;
+    }
+
+    @Test
+    void withoutChapterDetectionTheBookSplitsOnlyForLength() throws IOException {
+        Map<String, String> book = convertWith(EbookOptions.defaults().chapters(false));
+        assertEquals(List.of("OEBPS/text/ch1.xhtml"),
+                book.keySet().stream().filter(n -> n.startsWith("OEBPS/text/")).toList());
+        String nav = book.get("OEBPS/nav.xhtml");
+        for (String chapter : CHAPTERS) {
+            assertTrue(nav.contains(chapter), nav);
+            assertTrue(book.get("OEBPS/text/ch1.xhtml").contains(chapter));
+        }
+    }
+
+    @Test
+    void kindleBooksSizeTextRelativeToTheReadersFont() throws IOException {
+        Map<String, String> kindle = convertWith(EbookOptions.defaults().device(EbookOptions.Device.KINDLE));
+        String css = kindle.get("OEBPS/styles/book.css");
+        assertTrue(css.contains("serif;font-size:1em;"), css);
+        assertTrue(css.contains(".s-Heading1{font-family:'Arial', sans-serif;font-size:2em;"), css);
+        for (Map.Entry<String, String> part : kindle.entrySet()) {
+            if (part.getKey().endsWith(".xhtml") || part.getKey().endsWith(".css")) {
+                assertFalse(Pattern.compile("(font-size|line-height):[0-9.]+pt").matcher(part.getValue()).find(),
+                        part.getKey());
+            }
+        }
+        String tablet = part("OEBPS/styles/book.css");
+        assertTrue(tablet.contains(".s-Heading1{font-family:'Arial', sans-serif;font-size:24pt;"), tablet);
+    }
 }

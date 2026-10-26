@@ -14,6 +14,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.zip.ZipEntry;
+import java.util.zip.ZipFile;
 import java.util.zip.ZipOutputStream;
 
 import org.apache.pdfbox.pdmodel.PDDocument;
@@ -103,6 +104,20 @@ class MainTest {
         Result r = run(pdf.toString(), "-o", txt.toString(), "--pages", "1");
         assertEquals(0, r.code(), r.err());
         assertTrue(Files.readString(txt).contains("Hello PDF"));
+    }
+
+    @Test
+    void ebookOptionsShapeTheBook() throws Exception {
+        Path pdf = helloPdf(dir.resolve("book.pdf"));
+        Path epub = dir.resolve("book.epub");
+        Result r = run(pdf.toString(), "-o", epub.toString(), "--device", "kindle", "--no-chapters", "-q");
+        assertEquals(0, r.code(), r.err());
+        try (ZipFile zip = new ZipFile(epub.toFile())) {
+            String css = new String(zip.getInputStream(zip.getEntry("OEBPS/styles/book.css")).readAllBytes(),
+                    StandardCharsets.UTF_8);
+            assertTrue(css.contains("font-size:1em"), css);
+        }
+        assertUsage(run(pdf.toString(), "-o", dir.resolve("book2.epub").toString(), "--device", "nook"), "--device");
     }
 
     @Test

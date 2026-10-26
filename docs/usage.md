@@ -20,7 +20,8 @@ java -jar cli/build/libs/stirling-office-convert-cli.jar report.docx slides.pptx
 ```
 
 CLI options for PDF input: `--pages a-b`, `--no-tables`, `--dpi n` (vector figures), `--password p`,
-`--picture-fallback`, `--pictures compact|lossless` (see Pictures below), `--overwrite`, `-q`.
+`--picture-fallback`, `--pictures compact|lossless` (see Pictures below), `--no-chapters` and `--device tablet|kindle`
+(EPUB and AZW3, see Other formats), `--overwrite`, `-q`.
 For Word, PowerPoint and Excel input (`.docx .docm .dotx .dotm .pptx .pptm .ppsx .ppsm .potx .potm .xlsx .xlsm
 .xltx .xltm .xlsb`, Word 6.0 to 2003 `.doc .dot`, Excel 2.0 to 2003 `.xls .xlt`, PowerPoint 97-2003 `.ppt .pps .pot`,
 `.rtf`, Word 2003 XML, XML Spreadsheet 2003 and Flat OPC `.xml`, Visio 2013 and later `.vsdx .vsdm .vssx .vstx`,
@@ -194,6 +195,7 @@ import java.nio.file.Path;
 import java.time.Duration;
 import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.pdmodel.PDDocument;
+import stirling.software.officeconvert.EbookOptions;
 import stirling.software.officeconvert.OfficeConvert;
 import stirling.software.officeconvert.OfficeConvert.Settings;
 import stirling.software.officeconvert.PdfToXlsx;
@@ -210,6 +212,7 @@ OfficeConvert.convert(Path.of("in.pdf"), Path.of("out.pptx"), Settings.defaults(
         .figureDpi(200)               // resolution of drawings turned into pictures
         .sheets(PdfToXlsx.Sheets.TABLE)   // spreadsheets: a sheet per table instead of per page
         .pictures(Pictures.LOSSLESS)  // every pixel, no JPEG compression (see Pictures)
+        .ebook(EbookOptions.defaults().device(EbookOptions.Device.KINDLE))  // EPUB and AZW3 shaping
         .timeout(Duration.ofMinutes(2)));  // interrupt and fail with OfficeConvert.TimedOut past this
 
 String text = OfficeConvert.text(Path.of("in.pdf"));                      // text in reading order
@@ -618,12 +621,20 @@ PdfToAzw3.convert(pdf, Path.of("out.azw3"), options);      // the same book for 
   margins as `@page` for printing. Floating pictures and text boxes join the flow next to their paragraph; columns
   flow as one. There are no scripts and no external references.
 - EPUB is an EPUB 3 book (with an EPUB 2 table of contents for older readers): a new chapter at each top-level
-  heading or every 150,000 characters, pictures as files, footnotes in a notes chapter, links kept across chapters,
-  and a table of contents from the headings. Running headers and footers are left out, as a reflowing book has no
-  pages; the title comes from the PDF's metadata, else its first heading.
+  heading (unless `EbookOptions.chapters(false)`, `--no-chapters`) or every 150,000 characters, pictures as files,
+  footnotes in a notes chapter, links kept across chapters, a table of contents nested by heading level, a landmarks
+  guide to the start of the text and the first page as its cover picture. Running headers and footers are left out,
+  as a reflowing book has no pages; the title comes from the PDF's metadata, else its first heading. The language is
+  the PDF's own (`und` when it names none), and a book that is mostly right-to-left text reads right to left (its
+  pages turn that way, and a PDF that claims a left-to-right language gets Hebrew or Arabic from its script).
 - AZW3 is the EPUB's book as a Kindle KF8 file: the same chapters, pictures, style sheet, footnotes and links
-  (`kindle:pos`), PalmDOC-compressed text, the table of contents as an NCX index, and the title, author and
-  language (`und`) in its metadata. It has no cover picture and no DRM.
+  (`kindle:pos`), PalmDOC-compressed text, the nested table of contents as an NCX index, a start reading location
+  (guide and EXTH 116), the cover picture (EXTH 201), and the title, author, language and page direction in its
+  metadata. It has no DRM.
+- `EbookOptions.device(Device.KINDLE)` (`--device kindle`) shapes either book as Calibre's `kindle` output profile
+  does: text sizes relative to the body text and line spacing relative to the text, so the reader's own font size
+  setting scales everything; `TABLET`, the default, keeps the PDF's sizes, as Calibre's `tablet` profile does. Give
+  them with `Settings.ebook(...)` or `PdfToEpub.convert(pdf, out, options, ebookOptions)`.
 - Fixed-layout HTML keeps every page as it looks instead of reflowing it, like `pdftohtml -c`: one self-contained
   file with a box per page at the page's size. `Text.LIVE` (the default) draws the page's graphics and pictures without
   its text as a picture (left out when the page has nothing else) and places the text over it as real SVG text at its

@@ -20,6 +20,7 @@ import java.util.HexFormat;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.UUID;
@@ -28,6 +29,7 @@ import java.util.regex.Pattern;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
+import stirling.software.officeconvert.EbookOptions;
 import stirling.software.officeconvert.Pictures;
 import stirling.software.officeconvert.build.DocSink;
 import stirling.software.officeconvert.model.Block;
@@ -88,6 +90,7 @@ public final class EpubWriter implements DocSink, Closeable {
     private int chapterChars;
     private int headings;
     private final byte[] cover;
+    private final EbookOptions options;
     private String language;
     private int paragraphs;
     private int rightToLeft;
@@ -96,14 +99,15 @@ public final class EpubWriter implements DocSink, Closeable {
     private StyleSheet styles;
     private boolean started;
 
-    public record Book(byte[] cover, String language) {
+    public record Book(byte[] cover, String language, EbookOptions options) {
 
-        public static final Book NONE = new Book(null, null);
+        public static final Book NONE = new Book(null, null, EbookOptions.defaults());
 
         private static final Pattern TAG = Pattern.compile("[A-Za-z]{2,8}(-[A-Za-z0-9]{1,8}){0,7}");
 
         public Book {
             language = language == null || !TAG.matcher(language.strip()).matches() ? "und" : language.strip();
+            Objects.requireNonNull(options, "options");
         }
     }
 
@@ -117,6 +121,8 @@ public final class EpubWriter implements DocSink, Closeable {
         this.blocks = new HtmlBlocks(media);
         this.cover = book.cover();
         this.language = book.language();
+        this.options = book.options();
+        blocks.relativeSizes(options.device() == EbookOptions.Device.KINDLE);
     }
 
     @Override
@@ -166,7 +172,7 @@ public final class EpubWriter implements DocSink, Closeable {
         int level = h.find() ? Integer.parseInt(h.group(1)) : 0;
         if (chapters.isEmpty()) {
             chapters.add(new Chapter(chapterFile(1), null));
-        } else if (level == 1 && chapterChars > 0 || chapterChars > CHAPTER_CHARS) {
+        } else if (options.chapters() && level == 1 && chapterChars > 0 || chapterChars > CHAPTER_CHARS) {
             body.placeholder("C");
             chapters.add(new Chapter(chapterFile(chapters.size() + 1), null));
             chapterChars = 0;
@@ -432,7 +438,8 @@ public final class EpubWriter implements DocSink, Closeable {
 
     private String css() {
         StringBuilder sb = new StringBuilder(2048);
-        sb.append("body{").append(HtmlText.css(styles.normal)).append(";line-height:1.2}\n")
+        float base = options.device() == EbookOptions.Device.KINDLE ? styles.normal.size() : 0;
+        sb.append("body{").append(HtmlText.css(styles.normal, base)).append(";line-height:1.2}\n")
                 .append("p,h1,h2,h3,h4,h5,h6{margin:0;white-space:pre-wrap;tab-size:4;overflow-wrap:break-word}\n")
                 .append("h1,h2,h3,h4,h5,h6{font-size:inherit;font-weight:inherit}\n")
                 .append("table{border-collapse:collapse;max-width:100%}\n")
@@ -445,7 +452,8 @@ public final class EpubWriter implements DocSink, Closeable {
                 .append(".page-break{page-break-after:always}\n");
         for (StyleSheet.Style s : styles.all()) {
             if (!"Normal".equals(s.id())) {
-                sb.append('.').append(HtmlBlocks.styleClass(s.id())).append('{').append(HtmlText.css(s.run())).append("}\n");
+                sb.append('.').append(HtmlBlocks.styleClass(s.id())).append('{').append(HtmlText.css(s.run(), base))
+                        .append("}\n");
             }
         }
         return sb.toString();

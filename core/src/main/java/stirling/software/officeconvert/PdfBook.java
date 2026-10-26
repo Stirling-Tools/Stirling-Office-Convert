@@ -30,14 +30,14 @@ final class PdfBook {
 
     private PdfBook() {}
 
-    static EpubWriter.Book of(PDDocument doc, PdfToDocx.Options options) {
+    static EpubWriter.Book of(PDDocument doc, PdfToDocx.Options options, EbookOptions book) {
         String language = null;
         try {
             language = doc.getDocumentCatalog().getLanguage();
         } catch (RuntimeException e) {
             LOG.debug("No language for the book", e);
         }
-        return new EpubWriter.Book(cover(doc, options), language);
+        return new EpubWriter.Book(cover(doc, options), language, book);
     }
 
     static byte[] cover(PDDocument doc, PdfToDocx.Options options) {
