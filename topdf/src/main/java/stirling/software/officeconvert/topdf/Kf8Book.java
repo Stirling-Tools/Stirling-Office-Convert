@@ -4,13 +4,15 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.zip.DataFormatException;
+import java.util.zip.Inflater;
 
 final class Kf8Book {
 
@@ -89,6 +91,9 @@ final class Kf8Book {
                 }
             }
             int record = MobiBook.picture(reference, resources);
+            if (record >= 0 && pdb.startsWith(record, "FONT")) {
+                return font(pdb.record(record));
+            }
             return record >= 0 && pdb.picture(record) ? pdb.record(record) : null;
         });
         int coverOffset = k.number(MobiHeader.EXTH_COVER) >= 0 ? k.number(MobiHeader.EXTH_COVER)
@@ -99,6 +104,52 @@ final class Kf8Book {
         String author = k.text(MobiHeader.EXTH_AUTHOR) != null ? k.text(MobiHeader.EXTH_AUTHOR)
                 : first.text(MobiHeader.EXTH_AUTHOR);
         return new Ebook(EpubBook.assemble(assets, chapters, title, author, cover), assets);
+    }
+
+    static final int MAX_FONT_BYTES = 32 << 20;
+
+    static byte[] font(byte[] record) throws IOException {
+        if (record.length < 24) {
+            return null;
+        }
+        long size = PalmDatabase.u32(record, 4);
+        long flags = PalmDatabase.u32(record, 8);
+        long start = PalmDatabase.u32(record, 12);
+        long keyLength = PalmDatabase.u32(record, 16);
+        long keyStart = PalmDatabase.u32(record, 20);
+        if (size > MAX_FONT_BYTES || start < 24 || start > record.length) {
+            return null;
+        }
+        byte[] data = Arrays.copyOfRange(record, (int) start, record.length);
+        if ((flags & 0b10) != 0) {
+            if (keyLength < 1 || keyStart + keyLength > record.length) {
+                return null;
+            }
+            for (int i = 0, n = Math.min(1040, data.length); i < n; i++) {
+                data[i] ^= record[(int) (keyStart + i % keyLength)];
+            }
+        }
+        if ((flags & 0b1) != 0) {
+            Inflater inflater = new Inflater();
+            try {
+                inflater.setInput(data);
+                byte[] out = new byte[(int) size];
+                int n = 0;
+                while (n < out.length && !inflater.finished()) {
+                    int read = inflater.inflate(out, n, out.length - n);
+                    if (read == 0 && (inflater.needsInput() || inflater.needsDictionary())) {
+                        break;
+                    }
+                    n += read;
+                }
+                return n == out.length && inflater.finished() ? out : null;
+            } catch (DataFormatException e) {
+                return null;
+            } finally {
+                inflater.end();
+            }
+        }
+        return data.length == size ? data : null;
     }
 
     private static int resources(PalmDatabase pdb, int base, MobiHeader k, MobiHeader first) {
