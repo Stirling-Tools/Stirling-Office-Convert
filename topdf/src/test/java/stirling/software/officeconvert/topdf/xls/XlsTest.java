@@ -374,6 +374,21 @@ class XlsTest {
     }
 
     @Test
+    void anExcel97WorkbookInAStreamNamedBookStillConverts() throws Exception {
+        byte[] data = xls(wb -> wb.createSheet("Named").createRow(0).createCell(0).setCellValue("Book stream text"));
+        byte[] stream;
+        try (POIFSFileSystem fs = new POIFSFileSystem(new ByteArrayInputStream(data))) {
+            stream = fs.createDocumentInputStream("Workbook").readAllBytes();
+        }
+        ByteArrayOutputStream renamed = new ByteArrayOutputStream();
+        try (POIFSFileSystem fs = new POIFSFileSystem()) {
+            fs.createDocument(new ByteArrayInputStream(stream), "Book");
+            fs.writeFilesystem(renamed);
+        }
+        assertTrue(convert("book.xls", renamed.toByteArray()).all().contains("Book stream text"));
+    }
+
+    @Test
     void theContentDecidesNotTheExtension() throws Exception {
         byte[] data = xls(wb -> wb.createSheet("One").createRow(0).createCell(0).setCellValue("From a stream"));
         ByteArrayOutputStream pdf = new ByteArrayOutputStream();
