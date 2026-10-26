@@ -57,5 +57,13 @@ image recompression, and `--linearize` has no equivalent.
   encryption: an encrypted PDF is written with the same key, permissions and security handler. A signed PDF is
   rewritten with a warning that its signatures no longer validate.
 
+Objects are read one at a time and kept only as a compact serialized record, so memory grows with the size of the
+objects' syntax, not with PDFBox's object model: a PDF with a million objects fits in a few hundred megabytes of heap.
+Stream data goes through a scratch file; a stream too large to decode in memory is recompressed row by row on its way
+there. Stream encodings are searched on up to four threads.
+
+`FAST` uses zlib only and is about as quick as qpdf; `DEFAULT` adds the optimal-parse deflater and JPEG table
+re-coding; `MAX` searches harder for about one or two percent more.
+
 Work is bounded like the rest of the library: a timeout (5 minutes by default), a decoded size cap per stream, a cap
 on objects, and the shared memory admission.
