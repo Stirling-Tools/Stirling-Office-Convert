@@ -387,8 +387,9 @@ public final class WebFonts {
         }
         List<Cmaps.Subtable> subtables = new ArrayList<>();
         subtables.add(new Cmaps.Subtable(3, 0, symbol));
-        subtables.add(new Cmaps.Subtable(3, 1, new TreeMap<>(unicode.headMap(0xFFFF))));
-        if (!unicode.isEmpty() && unicode.lastKey() > 0xFFFF) {
+        TreeMap<Integer, Integer> bmp = new TreeMap<>(unicode.headMap(0xFFFF));
+        subtables.add(new Cmaps.Subtable(3, 1, bmp));
+        if (!unicode.isEmpty() && unicode.lastKey() > 0xFFFF || !Cmaps.fitsFormat4(bmp)) {
             subtables.add(new Cmaps.Subtable(3, 10, unicode));
         }
         TrueTypeWriter.Metrics m = w.metrics();
@@ -507,8 +508,9 @@ public final class WebFonts {
 
     private static byte[] cmapTable(TreeMap<Integer, Integer> cmap) {
         List<Cmaps.Subtable> subtables = new ArrayList<>();
-        subtables.add(new Cmaps.Subtable(3, 1, new TreeMap<>(cmap.headMap(0xFFFF))));
-        if (!cmap.isEmpty() && cmap.lastKey() > 0xFFFF) {
+        TreeMap<Integer, Integer> bmp = new TreeMap<>(cmap.headMap(0xFFFF));
+        subtables.add(new Cmaps.Subtable(3, 1, bmp));
+        if (!cmap.isEmpty() && cmap.lastKey() > 0xFFFF || !Cmaps.fitsFormat4(bmp)) {
             subtables.add(new Cmaps.Subtable(3, 10, cmap));
         }
         return Cmaps.table(subtables);

@@ -261,4 +261,47 @@ class WebFontsBrokenTest {
             assertTrue(t.getNumberOfGlyphs() >= 1);
         }
     }
+
+    @Test
+    void truncatedGlyphsOddCvtLongMaxpAndHugeCmapsStillGiveAValidFont() throws Exception {
+        byte[] f = font();
+        int glyf = table(f, "glyf")[1];
+        int second = ByteBuffer.wrap(f).getInt(table(f, "loca")[1] + 8);
+        ByteBuffer.wrap(f).putShort(glyf + second + 10, (short) 0x7000);
+        org.junit.jupiter.api.Assertions.assertFalse(TrueTypeWriter.wellFormed(ByteBuffer.wrap(f, glyf + second,
+                ByteBuffer.wrap(f).getInt(table(f, "loca")[1] + 12) - second).slice()));
+        byte[] out = WebFonts.toTrueType(f, WebFonts.FontKind.TRUETYPE, null);
+        try (org.apache.fontbox.ttf.TrueTypeFont t = new org.apache.fontbox.ttf.TTFParser()
+                .parse(new org.apache.pdfbox.io.RandomAccessReadBuffer(out))) {
+            org.junit.jupiter.api.Assertions.assertEquals(0, t.getGlyph().getGlyph(2).getPath().getBounds2D().getWidth());
+            org.junit.jupiter.api.Assertions.assertEquals(400, t.getGlyph().getGlyph(3).getPath().getBounds2D().getWidth(),
+                    1);
+        }
+        TreeMap<Integer, Integer> wide = new TreeMap<>();
+        for (int cp = 0x20; cp < 0xD800; cp += 2) {
+            wide.put(cp, 1 + cp % 3);
+        }
+        org.junit.jupiter.api.Assertions.assertFalse(Cmaps.fitsFormat4(wide));
+        byte[] table = Cmaps.table(List.of(new Cmaps.Subtable(3, 1, wide), new Cmaps.Subtable(3, 10, wide)));
+        try (org.apache.fontbox.ttf.TrueTypeFont t = new org.apache.fontbox.ttf.TTFParser()
+                .parse(new org.apache.pdfbox.io.RandomAccessReadBuffer(WebFonts.toTrueType(
+                        withCmap(table), WebFonts.FontKind.TRUETYPE, null)))) {
+            org.apache.fontbox.ttf.CmapLookup lookup = t.getUnicodeCmapLookup();
+            org.junit.jupiter.api.Assertions.assertEquals(1 + 0xD7FE % 3, lookup.getGlyphId(0xD7FE));
+        }
+    }
+
+    private static byte[] withCmap(byte[] cmap) throws IOException {
+        byte[] f = font();
+        java.util.TreeMap<String, byte[]> tables = new java.util.TreeMap<>();
+        ByteBuffer b = ByteBuffer.wrap(f);
+        for (int i = 0; i < b.getShort(4); i++) {
+            String tag = new String(f, 12 + 16 * i, 4, StandardCharsets.US_ASCII);
+            int off = b.getInt(12 + 16 * i + 8);
+            int len = b.getInt(12 + 16 * i + 12);
+            tables.put(tag, java.util.Arrays.copyOfRange(f, off, off + len));
+        }
+        tables.put("cmap", cmap);
+        return Sfnt.write(tables);
+    }
 }

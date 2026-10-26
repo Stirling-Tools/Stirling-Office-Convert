@@ -213,6 +213,9 @@ final class TrueTypeWriter {
         }
         int length = (int) (end - start);
         int at = glyfStart + (int) start;
+        if (!wellFormed(ByteBuffer.wrap(glyf, at, length).slice())) {
+            return new Glyph(new byte[0], advance, 0);
+        }
         glyphBytes += length;
         int lsb = hmtx == null ? 0 : hmtx.getLeftSideBearing(gid);
         if (length >= 10 && ByteBuffer.wrap(glyf).getShort(at) < 0) {
@@ -362,12 +365,65 @@ final class TrueTypeWriter {
             for (String tag : hinting ? List.of("cvt ", "fpgm", "prep", "gasp", "OS/2") : List.of("gasp", "OS/2")) {
                 TTFTable t = source.getTableMap().get(tag);
                 if (t != null) {
-                    tables.put(tag, source.getTableBytes(t));
+                    byte[] bytes = source.getTableBytes(t);
+                    tables.put(tag, "cvt ".equals(tag) && bytes.length % 2 != 0
+                            ? java.util.Arrays.copyOf(bytes, bytes.length - 1) : bytes);
                 }
             }
         }
         tables.putAll(overrides);
         return Sfnt.write(tables);
+    }
+
+    static boolean wellFormed(ByteBuffer b) {
+        int length = b.capacity();
+        if (length < 10) {
+            return length == 0;
+        }
+        int contours = b.getShort(0);
+        if (contours < 0) {
+            int at = 10;
+            while (true) {
+                if (at + 4 > length) {
+                    return false;
+                }
+                int flags = b.getShort(at) & 0xFFFF;
+                at += 4 + ((flags & 0x0001) != 0 ? 4 : 2) + ((flags & 0x0008) != 0 ? 2
+                        : (flags & 0x0040) != 0 ? 4 : (flags & 0x0080) != 0 ? 8 : 0);
+                if (at > length) {
+                    return false;
+                }
+                if ((flags & 0x0020) == 0) {
+                    return true;
+                }
+            }
+        }
+        int at = 10 + 2 * contours;
+        if (at + 2 > length) {
+            return false;
+        }
+        int points = contours == 0 ? 0 : (b.getShort(at - 2) & 0xFFFF) + 1;
+        at += 2 + (b.getShort(at) & 0xFFFF);
+        int xBytes = 0;
+        int yBytes = 0;
+        for (int p = 0; p < points;) {
+            if (at >= length) {
+                return false;
+            }
+            int flag = b.get(at++) & 0xFF;
+            int repeat = 1;
+            if ((flag & 0x08) != 0) {
+                if (at >= length) {
+                    return false;
+                }
+                repeat += b.get(at++) & 0xFF;
+            }
+            int n = Math.min(repeat, points - p);
+            xBytes += n * ((flag & 0x02) != 0 ? 1 : (flag & 0x10) != 0 ? 0 : 2);
+            yBytes += n * ((flag & 0x04) != 0 ? 1 : (flag & 0x20) != 0 ? 0 : 2);
+            p += repeat;
+        }
+        return at + xBytes + yBytes <= length;
     }
 
     static byte[] unhinted(byte[] data) {
@@ -456,15 +512,26 @@ final class TrueTypeWriter {
 
     private byte[] maxp() throws IOException {
         if (source != null && source.getTableMap().get("maxp") != null) {
-            byte[] m = source.getTableBytes(source.getTableMap().get("maxp")).clone();
-            ByteBuffer.wrap(m).putShort(4, (short) glyphs.size());
-            return m;
+            byte[] m = source.getTableBytes(source.getTableMap().get("maxp"));
+            if (m.length >= 32 && ByteBuffer.wrap(m).getInt(0) == 0x00010000) {
+                m = java.util.Arrays.copyOf(m, 32);
+                ByteBuffer.wrap(m).putShort(4, (short) glyphs.size());
+                return m;
+            }
+        }
+        int points = maxPoints;
+        int contours = maxContours;
+        for (Glyph g : glyphs) {
+            if (g.length() >= 12 && g.view().getShort(0) > 0) {
+                contours = Math.max(contours, g.view().getShort(0));
+                points = Math.max(points, Outline.points(g.data()));
+            }
         }
         ByteBuffer b = ByteBuffer.allocate(32);
         b.putInt(0, 0x00010000);
         b.putShort(4, (short) glyphs.size());
-        b.putShort(6, (short) Math.max(1, maxPoints));
-        b.putShort(8, (short) Math.max(1, maxContours));
+        b.putShort(6, (short) Math.max(1, points));
+        b.putShort(8, (short) Math.max(1, contours));
         b.putShort(14, (short) 2);
         return b.array();
     }
