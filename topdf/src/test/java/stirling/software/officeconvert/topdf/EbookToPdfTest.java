@@ -13,13 +13,16 @@ import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Base64;
 import java.util.List;
+import java.util.zip.Deflater;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
@@ -150,6 +153,45 @@ class EbookToPdfTest {
         String id = html.substring(anchor + 4, html.indexOf('"', anchor + 4));
         assertTrue(html.contains("href=\"#" + id + "\""), html);
         assertTrue(html.contains("text-indent:20pt"), html);
+    }
+
+    @Test
+    void zTxtBooksReadAsText() throws IOException {
+        StringBuilder text = new StringBuilder();
+        for (int i = 0; i < 400; i++) {
+            text.append("Line ").append(i).append(" of the zTXT story with caf\u00e9.\n");
+        }
+        byte[] raw = text.toString().getBytes(Charset.forName("windows-1252"));
+        Deflater d = new Deflater();
+        d.setInput(raw);
+        d.finish();
+        ByteArrayOutputStream z = new ByteArrayOutputStream();
+        byte[] buf = new byte[4096];
+        while (!d.finished()) {
+            z.write(buf, 0, d.deflate(buf));
+        }
+        d.end();
+        byte[] all = z.toByteArray();
+        MobiWriter w = MobiWriter.create();
+        ByteArrayOutputStream head = new ByteArrayOutputStream();
+        int parts = (all.length + 999) / 1000;
+        head.writeBytes(new byte[] {1, 0x44, (byte) (parts >> 8), (byte) parts});
+        head.writeBytes(new byte[16]);
+        w.records.set(0, head.toByteArray());
+        for (int i = 0; i < all.length; i += 1000) {
+            w.add(Arrays.copyOfRange(all, i, Math.min(all.length, i + 1000)));
+        }
+        Converted c = convert(write("story.pdb", w.build("zTXTGPlm")));
+        assertTrue(c.text().contains("Line 0 of the zTXT story with caf\u00e9.") && c.text().contains("Line 399"), c.text());
+    }
+
+    @Test
+    void eReaderBooksAreRefusedByName() throws IOException {
+        MobiWriter w = MobiWriter.create();
+        w.records.set(0, new byte[16]);
+        Path in = write("reader.pdb", w.build("PNRdPPrs"));
+        IOException e = assertThrows(IOException.class, () -> OfficeToPdf.convert(in, dir.resolve("reader.pdf")));
+        assertTrue(e.getMessage().contains("eReader"), e.getMessage());
     }
 
     @Test

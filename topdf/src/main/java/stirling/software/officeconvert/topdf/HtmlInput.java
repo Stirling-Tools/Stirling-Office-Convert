@@ -96,7 +96,7 @@ final class HtmlInput {
                 throw new IOException("The file is not a FictionBook (FB2) book");
             }
             if (MobiBook.named(source)) {
-                throw new IOException("The file is not a Kindle or Mobipocket book: it has no BOOKMOBI header");
+                throw new IOException(MobiBook.unsupported(head(source)));
             }
         }
         if (packaged(source, requested)) {

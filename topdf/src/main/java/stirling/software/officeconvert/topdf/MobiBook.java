@@ -1,8 +1,12 @@
 package stirling.software.officeconvert.topdf;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.ByteBuffer;
+import java.nio.charset.CharacterCodingException;
 import java.nio.charset.Charset;
+import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -11,6 +15,8 @@ import java.util.Locale;
 import java.util.TreeSet;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.zip.DataFormatException;
+import java.util.zip.Inflater;
 
 final class MobiBook {
 
@@ -66,7 +72,16 @@ final class MobiBook {
 
     static boolean is(byte[] head) {
         String type = PalmDatabase.type(head);
-        return type.equals("BOOKMOBI") || type.equals("TEXtREAd");
+        return type.equals("BOOKMOBI") || type.equals("TEXtREAd") || type.equals(ZTXT);
+    }
+
+    static final String ZTXT = "zTXTGPlm";
+
+    static String unsupported(byte[] head) {
+        return switch (PalmDatabase.type(head)) {
+            case "PNRdPPrs", "PDctPPrs" -> "eReader (PNRd) books are not supported; convert it to EPUB or MOBI first";
+            default -> "The file is not a Kindle or Mobipocket book: it has no BOOKMOBI header";
+        };
     }
 
     static Ebook read(Path source) throws IOException {
@@ -74,6 +89,9 @@ final class MobiBook {
             throw new IOException("The eBook is larger than " + (MAX_FILE_BYTES >> 20) + " MB");
         }
         PalmDatabase pdb = new PalmDatabase(Files.readAllBytes(source));
+        if (pdb.type().equals(ZTXT)) {
+            return zTxt(pdb, source);
+        }
         boolean mobi = pdb.type().equals("BOOKMOBI");
         MobiHeader h = MobiHeader.parse(pdb.record(0), mobi);
         if (mobi && h.encryption() != 0) {
@@ -114,6 +132,57 @@ final class MobiBook {
             return n < 1 ? -1 : first + n - 1;
         } catch (NumberFormatException e) {
             return -1;
+        }
+    }
+
+    private static Ebook zTxt(PalmDatabase pdb, Path source) throws IOException {
+        byte[] head = pdb.record(0);
+        if (head.length < 10) {
+            throw new IOException(MobiText.DAMAGED);
+        }
+        int records = PalmDatabase.u16(head, 2);
+        ByteArrayOutputStream text = new ByteArrayOutputStream();
+        Inflater inflater = new Inflater();
+        try {
+            byte[] buf = new byte[1 << 16];
+            for (int i = 1; i <= records && pdb.has(i); i++) {
+                OfficeToPdf.stopIfInterrupted();
+                inflater.setInput(pdb.record(i));
+                while (!inflater.needsInput() && !inflater.finished()) {
+                    int n = inflater.inflate(buf);
+                    if (n == 0 && inflater.needsDictionary()) {
+                        throw new IOException(MobiText.DAMAGED);
+                    }
+                    if (text.size() + (long) n > MobiText.MAX_TEXT_BYTES) {
+                        throw new IOException("The eBook's text is larger than " + (MobiText.MAX_TEXT_BYTES >> 20) + " MB");
+                    }
+                    text.write(buf, 0, n);
+                }
+            }
+        } catch (DataFormatException e) {
+            throw new IOException(MobiText.DAMAGED, e);
+        } finally {
+            inflater.end();
+        }
+        byte[] bytes = text.toByteArray();
+        Charset charset = utf8(bytes) ? StandardCharsets.UTF_8 : Charset.forName("windows-1252");
+        byte[] html = plainText(bytes, charset).getBytes(StandardCharsets.UTF_8);
+        HtmlAssets assets = Ebook.assets(reference -> reference.equals(Ebook.PAGE) ? html : null);
+        String title = pdb.name();
+        if (title.isBlank()) {
+            Path name = source.getFileName();
+            title = name == null ? null : name.toString();
+        }
+        return new Ebook(EpubBook.assemble(assets, List.of(Ebook.PAGE), title, null, null), assets);
+    }
+
+    private static boolean utf8(byte[] bytes) {
+        try {
+            StandardCharsets.UTF_8.newDecoder().onMalformedInput(CodingErrorAction.REPORT)
+                    .onUnmappableCharacter(CodingErrorAction.REPORT).decode(ByteBuffer.wrap(bytes));
+            return true;
+        } catch (CharacterCodingException e) {
+            return false;
         }
     }
 
