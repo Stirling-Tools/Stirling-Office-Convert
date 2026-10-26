@@ -789,7 +789,21 @@ are kept as they are, and a missing or truncated `OS/2` is replaced. The font ha
 `head`, `maxp`, `OS/2`, `post`, `name` and a fresh `cmap` with format 4 and, for code points beyond the BMP, format 12.
 A program that cannot be read fails with an `IOException`, and so does one whose charstrings expand past 131,072
 tokens for a glyph, 64 nested subroutine calls or 2^27 tokens for the font, or whose converted glyphs need more than
-eight times the program's size (at least 16 MB).
+eight times the program's size (at least 16 MB). The program's bytes decide how it is read, so a CFF program filed
+as FontFile or a Type 1 program filed as FontFile3 still converts.
+
+A Type 3 font (`PDType3Font`) is converted by running each glyph procedure: fills (nonzero and even-odd), strokes,
+image masks and pictures (ink pixels) become outlines at 1000 units per em through the FontMatrix, with the advance
+from `Widths`. Clipping, shading and colour are ignored. The cmap maps Unicode from ToUnicode or glyph names, and
+`0xF000` plus the character code in a (3,0) subtable, so the same font serves a browser and a PDF that shows the
+original codes.
+
+### Embedding missing fonts
+
+`FontEmbedder.embedMissing(PDDocument)` (or with a `FontSet`) embeds every font a page shows, or its resources list,
+that has no font program. Each one becomes a TrueType subset drawn from the closest installed font, with every
+glyph's advance set to the PDF's own width, so no text moves. Embedded fonts, Type 3 fonts, the content and the
+structure tree are left as they are. The result lists each substitution and each font that could not be embedded.
 
 ## How it works
 
@@ -861,7 +875,8 @@ The cache belongs to the JDK build that made it; the JVM ignores a cache from an
   `Options(timeout, fontDirs, maxPages, maxScratchBytes)` are kept; a record pattern over `Options` needs the new
   components.
 - A new module, `stirling-office-convert-pdfa`, converts PDF to PDF/A.
-- `WebFonts` in the pdfa module converts Type 1, CFF and TrueType font programs from PDFs to TrueType web fonts.
+- `WebFonts` in the pdfa module converts Type 1, CFF, TrueType and Type 3 fonts from PDFs to TrueType web fonts.
+- `FontEmbedder` in the pdfa module embeds a PDF's missing fonts without converting it to PDF/A.
 - JPEG 2000 pictures are decoded by the library's own reader, which becomes the JVM's preferred `jpeg2000` ImageIO
   reader; `-Dstirling.officeconvert.jpxReader=imageio` keeps another one first (see Pictures).
 
