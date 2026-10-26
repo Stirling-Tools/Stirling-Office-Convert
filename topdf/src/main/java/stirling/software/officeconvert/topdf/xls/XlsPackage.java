@@ -213,12 +213,23 @@ public final class XlsPackage {
             }
             book.append("</workbook>");
             parts.put("xl/workbook.xml", book.toString());
-            parts.put("xl/styles.xml", StylesPart.write(wb, conditional.styles()));
+            XfExt ext = extended();
+            parts.put("xl/styles.xml", StylesPart.write(wb, conditional.styles(), ext));
+            String theme = ext == null ? null : ext.theme();
+            if (theme != null) {
+                parts.put("xl/theme/theme1.xml", theme);
+                types.append("<Override PartName=\"/xl/theme/theme1.xml\" ContentType=\"").append(CT)
+                        .append("theme+xml\"/>");
+            }
             strings.write(parts);
             int n = sheets;
             rels.append("<Relationship Id=\"rId").append(n + 1).append("\" Type=\"").append(Xml.REL)
                     .append("/styles\" Target=\"styles.xml\"/><Relationship Id=\"rId").append(n + 2)
                     .append("\" Type=\"").append(Xml.REL).append("/sharedStrings\" Target=\"sharedStrings.xml\"/>");
+            if (theme != null) {
+                rels.append("<Relationship Id=\"rId").append(n + 3).append("\" Type=\"").append(Xml.REL)
+                        .append("/theme\" Target=\"theme/theme1.xml\"/>");
+            }
             parts.put("xl/_rels/workbook.xml.rels", Xml.HEAD + "<Relationships xmlns=\"" + Xml.PKG_REL + "\">" + rels
                     + "</Relationships>");
             parts.put("docProps/core.xml", core());
@@ -229,6 +240,14 @@ public final class XlsPackage {
             parts.put("[Content_Types].xml", contentTypes(types));
             parts.finish();
             return new Outcome(finalWarnings(), lost);
+        }
+
+        private XfExt extended() {
+            try {
+                return XfExt.read(wb);
+            } catch (RuntimeException e) {
+                return null;
+            }
         }
 
         private String conditional(HSSFSheet sheet) {

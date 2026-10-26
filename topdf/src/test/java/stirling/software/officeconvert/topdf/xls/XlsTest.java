@@ -638,6 +638,35 @@ class XlsTest {
     }
 
     @Test
+    void themeColoursOfExcel2007CellFormatsAreUsed() throws Exception {
+        byte[] data = xls(wb -> {
+            HSSFSheet s = wb.createSheet("Themed");
+            HSSFCellStyle st = wb.createCellStyle();
+            st.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+            st.setFillForegroundColor(HSSFColor.HSSFColorPredefined.BLUE.getIndex());
+            HSSFCell c = s.createRow(1).createCell(1);
+            c.setCellValue("Accent");
+            c.setCellStyle(st);
+            byte[] ext = new byte[40];
+            ext[0] = 0x7D;
+            ext[1] = 0x08;
+            ext[14] = (byte) st.getIndex();
+            ext[18] = 1;
+            ext[20] = 4;
+            ext[22] = 20;
+            ext[24] = 3;
+            ext[28] = 4;
+            List<org.apache.poi.hssf.record.Record> records = wb.getInternalWorkbook().getRecords();
+            records.add(records.size() - 1, new UnknownRecord(0x087D, ext));
+        });
+        Path in = Fixtures.write(dir, "themed.xls", data);
+        Path out = dir.resolve("themed.pdf");
+        OfficeToPdf.convert(in, out, OfficeToPdf.Options.defaults());
+        assertTrue(hasColour(out, new Color(0x4F81BD)), "accent 1 of the Office 2007 theme");
+        assertFalse(hasColour(out, Color.BLUE), "not the palette approximation");
+    }
+
+    @Test
     void anAutoShapeKeepsItsOutlineAndCentresItsText() throws Exception {
         byte[] data = xls(wb -> {
             HSSFSheet s = wb.createSheet("Shapes");
