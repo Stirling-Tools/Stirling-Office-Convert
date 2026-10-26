@@ -111,12 +111,17 @@ final class FontFixer {
 
     static String substitute(PDDocument doc, PDFont font, Set<Integer> codes, PdfALevel level, FontLibrary library,
             int bytesPerCode) throws IOException {
+        return substitute(doc, font, codes, level, library, bytesPerCode, true);
+    }
+
+    static String substitute(PDDocument doc, PDFont font, Set<Integer> codes, PdfALevel level, FontLibrary library,
+            int bytesPerCode, boolean hinting) throws IOException {
         PDFontDescriptor fd = font.getFontDescriptor();
         BaseFontName name = BaseFontName.parse(font instanceof PDType0Font t0 && t0.getDescendantFont() != null
                 ? t0.getDescendantFont().getBaseFont() : font.getName(), fd == null ? 0 : fd.getFlags(),
                 fd == null ? 0 : fd.getFontWeight());
         try (GlyphSource source = GlyphSource.open(library, name)) {
-            return FontRebuild.rebuild(doc, font, codes, FontRebuild.Mode.SUBSTITUTE, source, level, bytesPerCode);
+            return FontRebuild.substitute(doc, font, codes, source, level, bytesPerCode, hinting);
         }
     }
 

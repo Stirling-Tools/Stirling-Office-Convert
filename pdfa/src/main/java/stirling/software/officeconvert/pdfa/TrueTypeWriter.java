@@ -43,6 +43,8 @@ final class TrueTypeWriter {
 
     private long glyphBytes;
 
+    private boolean hinting = true;
+
     TrueTypeWriter(TrueTypeFont source) throws IOException {
         this.source = source;
         this.unitsPerEm = source.getUnitsPerEm();
@@ -63,6 +65,10 @@ final class TrueTypeWriter {
         this.loca = null;
         this.hmtx = null;
         glyphs.add(new Glyph(new byte[0], unitsPerEm / 2, 0));
+    }
+
+    void dropHinting() {
+        hinting = false;
     }
 
     int unitsPerEm() {
@@ -236,7 +242,7 @@ final class TrueTypeWriter {
         for (Glyph g : glyphs) {
             PdfFiles.stopIfInterrupted();
             locaOut.putInt(glyfOut.size());
-            glyfOut.write(g.data());
+            glyfOut.write(hinting ? g.data() : unhinted(g.data()));
             while (glyfOut.size() % 4 != 0) {
                 glyfOut.write(0);
             }
@@ -256,7 +262,7 @@ final class TrueTypeWriter {
         tables.put("name", name(postScriptName));
         tables.put("cmap", cmapTable);
         if (source != null) {
-            for (String tag : List.of("cvt ", "fpgm", "prep", "gasp", "OS/2")) {
+            for (String tag : hinting ? List.of("cvt ", "fpgm", "prep", "gasp", "OS/2") : List.of("gasp", "OS/2")) {
                 TTFTable t = source.getTableMap().get(tag);
                 if (t != null) {
                     tables.put(tag, source.getTableBytes(t));
@@ -265,6 +271,49 @@ final class TrueTypeWriter {
         }
         tables.putAll(overrides);
         return Sfnt.write(tables);
+    }
+
+    static byte[] unhinted(byte[] data) {
+        if (data.length < 10) {
+            return data;
+        }
+        ByteBuffer b = ByteBuffer.wrap(data);
+        int contours = b.getShort(0);
+        if (contours >= 0) {
+            int at = 10 + 2 * contours;
+            if (at + 2 > data.length) {
+                return data;
+            }
+            int length = b.getShort(at) & 0xFFFF;
+            if (length == 0 || at + 2 + length > data.length) {
+                return data;
+            }
+            ByteArrayOutputStream out = new ByteArrayOutputStream(data.length - length);
+            out.write(data, 0, at);
+            out.write(0);
+            out.write(0);
+            out.write(data, at + 2 + length, data.length - at - 2 - length);
+            return out.toByteArray();
+        }
+        int at = 10;
+        while (at + 4 <= data.length) {
+            int flags = b.getShort(at) & 0xFFFF;
+            int next = at + 4 + ((flags & 0x0001) != 0 ? 4 : 2) + ((flags & 0x0008) != 0 ? 2
+                    : (flags & 0x0040) != 0 ? 4 : (flags & 0x0080) != 0 ? 8 : 0);
+            if (next > data.length) {
+                return data;
+            }
+            if ((flags & 0x0020) == 0) {
+                if ((flags & 0x0100) == 0) {
+                    return data;
+                }
+                byte[] out = java.util.Arrays.copyOf(data, next);
+                ByteBuffer.wrap(out).putShort(at, (short) (flags & ~0x0100));
+                return out;
+            }
+            at = next;
+        }
+        return data;
     }
 
     private byte[] head() throws IOException {
