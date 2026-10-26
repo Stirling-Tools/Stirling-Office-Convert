@@ -168,7 +168,17 @@ public final class PdfOptimizer {
         Objects.requireNonNull(out, "out");
         Objects.requireNonNull(options, "options");
         PdfFiles.checkOpen(document);
-        return Deadline.run(options.timeout(), () -> Rewrite.run(document, out, options, -1));
+        Path saved = Files.createTempFile("pdf-optimize-", ".pdf");
+        try {
+            document.save(saved.toFile());
+            return Deadline.run(options.timeout(), () -> {
+                try (PDDocument doc = PdfFiles.open(saved, options.password())) {
+                    return Rewrite.run(doc, out, options, -1);
+                }
+            });
+        } finally {
+            Files.deleteIfExists(saved);
+        }
     }
 
     static long estimate(long bytes) {

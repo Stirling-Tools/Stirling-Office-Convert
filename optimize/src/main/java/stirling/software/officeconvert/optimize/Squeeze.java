@@ -26,6 +26,10 @@ final class Squeeze {
 
     private static final int MAX_PAIRS = 8;
 
+    private static final int DENSE = 32;
+
+    private static final int[] NEXT = new int[MAX_MATCH + 2];
+
     private static final int[] LENGTH_BASE = {3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 15, 17, 19, 23, 27, 31, 35, 43, 51, 59,
             67, 83, 99, 115, 131, 163, 195, 227, 258};
 
@@ -54,6 +58,13 @@ final class Squeeze {
             }
         }
         LENGTH_SYMBOL[258] = 28;
+        for (int l = 0; l <= MAX_MATCH; l++) {
+            int n = l + 1;
+            while (n <= MAX_MATCH && LENGTH_SYMBOL[n] == LENGTH_SYMBOL[l] && n < MAX_MATCH) {
+                n++;
+            }
+            NEXT[l] = n;
+        }
         for (int d = 1; d <= 512; d++) {
             DIST_SYMBOL_SMALL[d - 1] = distSymbolSlow(d);
         }
@@ -78,35 +89,85 @@ final class Squeeze {
 
     private int sameBase;
 
-    private Squeeze(byte[] data, Settings settings) {
+    private Squeeze(byte[] data, Settings settings, int capacity) {
         this.data = data;
         this.settings = settings;
-        this.out = new BitWriter(Math.max(64, data.length / 3));
+        this.out = new BitWriter(capacity);
         Arrays.fill(head, -1);
     }
 
     static byte[] zlib(byte[] data, Settings settings) throws InterruptedIOException {
-        Squeeze s = new Squeeze(data, settings);
-        s.out.writeByte(0x78);
-        s.out.writeByte(0xDA);
+        int blocks = Math.max(1, (data.length + MASTER_BLOCK - 1) / MASTER_BLOCK);
+        byte[][] parts = new byte[blocks][];
+        if (blocks > 1 && java.util.concurrent.ForkJoinTask.inForkJoinPool()) {
+            java.util.List<java.util.concurrent.RecursiveAction> tasks = new java.util.ArrayList<>();
+            for (int k = 0; k < blocks; k++) {
+                int part = k;
+                tasks.add(new java.util.concurrent.RecursiveAction() {
+                    @Override
+                    protected void compute() {
+                        try {
+                            parts[part] = part(data, settings, part, blocks);
+                        } catch (InterruptedIOException e) {
+                            throw new java.io.UncheckedIOException(e);
+                        }
+                    }
+                });
+            }
+            try {
+                java.util.concurrent.ForkJoinTask.invokeAll(tasks);
+            } catch (java.io.UncheckedIOException e) {
+                throw (InterruptedIOException) e.getCause();
+            }
+        } else {
+            for (int k = 0; k < blocks; k++) {
+                parts[k] = part(data, settings, k, blocks);
+            }
+        }
+        Adler32 adler = new Adler32();
+        adler.update(data);
+        long a = adler.getValue();
+        int total = 6;
+        for (byte[] p : parts) {
+            total += p.length;
+        }
+        byte[] result = new byte[total];
+        result[0] = 0x78;
+        result[1] = (byte) 0xDA;
+        int at = 2;
+        for (byte[] p : parts) {
+            System.arraycopy(p, 0, result, at, p.length);
+            at += p.length;
+        }
+        result[at] = (byte) (a >>> 24);
+        result[at + 1] = (byte) (a >>> 16);
+        result[at + 2] = (byte) (a >>> 8);
+        result[at + 3] = (byte) a;
+        return result;
+    }
+
+    private static byte[] part(byte[] data, Settings settings, int k, int blocks) throws InterruptedIOException {
+        int start = k * MASTER_BLOCK;
+        int end = Math.min(data.length, start + MASTER_BLOCK);
+        Squeeze s = new Squeeze(data, settings, Math.max(64, (end - start) / 3));
         if (data.length == 0) {
             s.out.bits(1, 1);
             s.out.bits(1, 2);
             s.out.bits(0, 7);
         } else {
-            for (int start = 0; start < data.length; start += MASTER_BLOCK) {
-                int end = Math.min(data.length, start + MASTER_BLOCK);
-                s.master(start, end, end == data.length);
+            s.inserted = Math.max(0, start - WINDOW);
+            s.master(start, end, k == blocks - 1);
+            if (k < blocks - 1) {
+                s.out.bits(0, 1);
+                s.out.bits(0, 2);
+                s.out.align();
+                s.out.writeByte(0);
+                s.out.writeByte(0);
+                s.out.writeByte(0xFF);
+                s.out.writeByte(0xFF);
             }
         }
         s.out.align();
-        Adler32 adler = new Adler32();
-        adler.update(data);
-        long a = adler.getValue();
-        s.out.writeByte((int) (a >>> 24));
-        s.out.writeByte((int) (a >>> 16));
-        s.out.writeByte((int) (a >>> 8));
-        s.out.writeByte((int) a);
         return s.out.toByteArray();
     }
 
@@ -127,12 +188,25 @@ final class Squeeze {
             insert(inserted++);
         }
         Matches m = new Matches(end - start);
+        int runEnd = start;
         for (int i = start; i < end; i++) {
             if (((i - start) & 0xFFFF) == 0) {
                 PdfFiles.stopIfInterrupted();
             }
             m.begin(i - start);
             int limit = Math.min(MAX_MATCH, data.length - i);
+            if (i > 0 && data[i] == data[i - 1]) {
+                runEnd = Math.max(runEnd, i);
+                while (runEnd < data.length && runEnd - i < MAX_MATCH && data[runEnd] == data[i]) {
+                    runEnd++;
+                }
+                if (runEnd - i >= limit && limit >= MIN_MATCH) {
+                    m.add(limit, 1);
+                    insert(i);
+                    inserted = i + 1;
+                    continue;
+                }
+            }
             if (limit >= MIN_MATCH) {
                 int best = MIN_MATCH - 1;
                 int p = head[hash(i)];
@@ -273,7 +347,7 @@ final class Squeeze {
                 int d = m.pairs[p + 1];
                 int ds = distSymbol(d);
                 double dc = here + costs.dist[ds] + DIST_EXTRA[ds];
-                for (int l = previous + 1; l <= upTo; l++) {
+                for (int l = previous + 1; l <= upTo; l = l < DENSE || l == upTo ? l + 1 : Math.min(upTo, NEXT[l])) {
                     double c = dc + lengthCost[l];
                     if (c < cost[k + l]) {
                         cost[k + l] = c;

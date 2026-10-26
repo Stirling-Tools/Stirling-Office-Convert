@@ -5,8 +5,10 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
-import java.util.Collections;
-import java.util.IdentityHashMap;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -17,11 +19,37 @@ import org.apache.pdfbox.cos.COSArray;
 import org.apache.pdfbox.cos.COSBase;
 import org.apache.pdfbox.cos.COSDictionary;
 import org.apache.pdfbox.cos.COSName;
+import org.apache.pdfbox.cos.COSObject;
 import org.apache.pdfbox.cos.COSStream;
 
 final class Roles {
 
-    record Context(COSStream stream, COSDictionary resources) {}
+    record Loc(int holder, Object[] path) {
+
+        Loc child(Object step) {
+            Object[] p = Arrays.copyOf(path, path.length + 1);
+            p[path.length] = step;
+            return new Loc(holder, p);
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            return o instanceof Loc l && l.holder == holder && Arrays.equals(l.path, path);
+        }
+
+        @Override
+        public int hashCode() {
+            return holder * 31 + Arrays.hashCode(path);
+        }
+    }
+
+    record Context(int stream, Loc resources) {}
+
+    private record Page(Loc kids, Loc contents, Loc resources, boolean leaf) {}
+
+    private record Type3(Loc charProcs, Loc resources) {}
+
+    private static final Object[] HERE = new Object[0];
 
     private static final COSName PATTERN_TYPE = COSName.getPDFName("PatternType");
 
@@ -46,154 +74,179 @@ final class Roles {
 
     private static final Pattern PDFA_PART = Pattern.compile("pdfaid:part(?:\\s*=\\s*[\"']\\s*|\\s*>\\s*)(\\d)");
 
-    final Map<COSStream, Recoder.Kind> kinds = new IdentityHashMap<>();
+    private final Index index;
+
+    private final Map<Integer, Page> pages = new HashMap<>();
+
+    private final Map<Integer, Loc> streamResources = new HashMap<>();
+
+    private final Set<Integer> forms = new HashSet<>();
+
+    private final List<Type3> type3 = new ArrayList<>();
+
+    private final List<Loc> appearances = new ArrayList<>();
+
+    final Set<Integer> indirect = new HashSet<>();
+
+    final List<Loc> resourceDicts = new ArrayList<>();
 
     final List<Context> contexts = new ArrayList<>();
 
-    final Set<COSDictionary> resources = Collections.newSetFromMap(new IdentityHashMap<>());
-
-    final Set<COSDictionary> pinned = Collections.newSetFromMap(new IdentityHashMap<>());
-
-    final Set<COSBase> indirect = Collections.newSetFromMap(new IdentityHashMap<>());
+    final Set<Integer> content = new HashSet<>();
 
     boolean signed;
 
-    private Roles() {}
-
-    static Roles of(Graph g, COSDictionary catalog) {
-        Roles r = new Roles();
-        r.pages(catalog);
-        ArrayDeque<COSBase> direct = new ArrayDeque<>();
-        ArrayDeque<Integer> depths = new ArrayDeque<>();
-        for (COSBase node : g.nodes()) {
-            if (node instanceof COSStream s) {
-                r.stream(s);
-            }
-            direct.push(node);
-            depths.push(0);
-            while (!direct.isEmpty()) {
-                COSBase b = direct.pop();
-                int depth = depths.pop();
-                if (b instanceof COSDictionary d) {
-                    r.dictionary(d);
-                }
-                Iterable<COSBase> children = b instanceof COSDictionary d ? d.getValues()
-                        : b instanceof COSArray a ? a : List.of();
-                for (COSBase c : children) {
-                    if (depth < Graph.MAX_DEPTH && (c instanceof COSDictionary || c instanceof COSArray)
-                            && !(c instanceof COSStream) && g.id(c) < 0) {
-                        direct.push(c);
-                        depths.push(depth + 1);
-                    }
-                }
-            }
-        }
-        if (catalog.getDictionaryObject(COSName.ACRO_FORM) instanceof COSDictionary form
-                && form.getDictionaryObject(COSName.DR) instanceof COSDictionary dr) {
-            r.pinned.add(dr);
-        }
-        return r;
+    Roles(Index index) {
+        this.index = index;
     }
 
-    private void pages(COSDictionary catalog) {
-        if (!(catalog.getDictionaryObject(COSName.PAGES) instanceof COSDictionary top)) {
+    void collect(int id, COSBase object) {
+        if (object instanceof COSArray) {
+            index.flag(id, Index.VALUE_LIKE);
+            index.group(id, "~array");
+        }
+        if (!(object instanceof COSDictionary top)) {
+            walk(id, object);
             return;
         }
-        Set<COSDictionary> seen = Collections.newSetFromMap(new IdentityHashMap<>());
-        ArrayDeque<COSDictionary> nodes = new ArrayDeque<>();
-        ArrayDeque<COSDictionary> inherited = new ArrayDeque<>();
-        COSDictionary none = new COSDictionary();
-        nodes.push(top);
-        inherited.push(none);
-        while (!nodes.isEmpty()) {
-            COSDictionary node = nodes.pop();
-            COSDictionary parentResources = inherited.pop();
-            if (!seen.add(node)) {
-                continue;
+        if (valueLike(top)) {
+            index.flag(id, Index.VALUE_LIKE);
+        }
+        COSName type = top.getCOSName(COSName.TYPE);
+        COSName subtype = top.getCOSName(COSName.SUBTYPE);
+        index.group(id, (type == null ? "~" : type.getName()) + "/" + (subtype == null ? "" : subtype.getName()));
+        if (top instanceof COSStream s) {
+            if (COSName.METADATA.equals(type)) {
+                index.flag(id, Index.METADATA);
+            } else if (COSName.IMAGE.equals(subtype)) {
+                index.flag(id, Index.IMAGE);
+            } else if (COSName.FORM.equals(subtype) || s.getItem(PATTERN_TYPE) instanceof org.apache.pdfbox.cos.COSInteger
+                    pt && pt.intValue() == 1) {
+                forms.add(id);
             }
-            COSDictionary res = node.getDictionaryObject(COSName.RESOURCES) instanceof COSDictionary own ? own
-                    : parentResources;
-            if (node.getDictionaryObject(COSName.KIDS) instanceof COSArray kids
-                    && !COSName.PAGE.equals(node.getCOSName(COSName.TYPE))) {
-                for (int i = kids.size() - 1; i >= 0; i--) {
-                    if (kids.getObject(i) instanceof COSDictionary kid) {
-                        nodes.push(kid);
-                        inherited.push(res);
+            Loc res = ref(new Loc(id, HERE), s, COSName.RESOURCES);
+            if (res != null) {
+                streamResources.put(id, res);
+            }
+        } else if (COSName.PAGE.equals(type) || COSName.PAGES.equals(type) || top.containsKey(COSName.KIDS)
+                && !top.containsKey(COSName.NAMES) && !top.containsKey(COSName.NUMS)) {
+            Loc here = new Loc(id, HERE);
+            pages.put(id, new Page(ref(here, top, COSName.KIDS), ref(here, top, COSName.CONTENTS),
+                    ref(here, top, COSName.RESOURCES), COSName.PAGE.equals(type)
+                            || !top.containsKey(COSName.KIDS)));
+        }
+        walk(id, object);
+    }
+
+    private Loc ref(Loc at, COSDictionary d, COSName key) {
+        COSBase v = d.getItem(key);
+        if (v instanceof COSObject o && o.getKey() != null) {
+            return new Loc(index.id(o.getKey()), HERE);
+        }
+        return v == null || v instanceof org.apache.pdfbox.cos.COSNull ? null : at.child(key);
+    }
+
+    private void walk(int id, COSBase object) {
+        ArrayDeque<Object[]> stack = new ArrayDeque<>();
+        stack.push(new Object[] {object, new Loc(id, HERE), 0});
+        while (!stack.isEmpty()) {
+            Object[] f = stack.pop();
+            COSBase b = (COSBase) f[0];
+            Loc at = (Loc) f[1];
+            int depth = (Integer) f[2];
+            if (b instanceof COSDictionary d) {
+                dictionary(at, d);
+                if (depth < 64) {
+                    for (Map.Entry<COSName, COSBase> e : d.entrySet()) {
+                        if (e.getValue() instanceof COSDictionary || e.getValue() instanceof COSArray) {
+                            stack.push(new Object[] {e.getValue(), at.child(e.getKey()), depth + 1});
+                        }
                     }
                 }
-                continue;
-            }
-            COSDictionary pageResources = res == none ? null : res;
-            COSBase contents = node.getDictionaryObject(COSName.CONTENTS);
-            if (contents instanceof COSStream s) {
-                content(s, pageResources);
-            } else if (contents instanceof COSArray a) {
+            } else if (b instanceof COSArray a && depth < 64) {
                 for (int i = 0; i < a.size(); i++) {
-                    if (a.getObject(i) instanceof COSStream s) {
-                        content(s, pageResources);
+                    COSBase v = a.get(i);
+                    if (v instanceof COSDictionary || v instanceof COSArray) {
+                        stack.push(new Object[] {v, at.child(i), depth + 1});
                     }
                 }
             }
         }
     }
 
-    private void content(COSStream s, COSDictionary res) {
-        kinds.put(s, Recoder.Kind.CONTENT);
-        contexts.add(new Context(s, res));
-    }
-
-    private void stream(COSStream s) {
-        COSName subtype = s.getCOSName(COSName.SUBTYPE);
-        if (COSName.METADATA.equals(s.getCOSName(COSName.TYPE))) {
-            kinds.put(s, Recoder.Kind.KEEP);
-        } else if (COSName.FORM.equals(subtype) || s.containsKey(PATTERN_TYPE) && s.getInt(PATTERN_TYPE) == 1) {
-            content(s, s.getDictionaryObject(COSName.RESOURCES) instanceof COSDictionary d ? d : null);
-        } else if (COSName.IMAGE.equals(subtype)) {
-            kinds.putIfAbsent(s, Recoder.Kind.IMAGE);
-        }
-    }
-
-    private void dictionary(COSDictionary d) {
-        if (d.getDictionaryObject(COSName.FONT_DESC) instanceof COSDictionary descriptor) {
-            indirect.add(descriptor);
-        }
-        if (d.getDictionaryObject(COSName.KIDS) instanceof COSArray kids) {
+    private void dictionary(Loc at, COSDictionary d) {
+        if (d.getItem(COSName.KIDS) instanceof COSArray kids) {
             for (int i = 0; i < kids.size(); i++) {
-                COSBase kid = kids.getObject(i);
-                if (kid != null) {
-                    indirect.add(kid);
+                if (kids.get(i) instanceof COSObject o && o.getKey() != null) {
+                    indirect.add(index.id(o.getKey()));
                 }
             }
         }
-        if (d.getDictionaryObject(COSName.RESOURCES) instanceof COSDictionary res) {
-            resources.add(res);
+        if (d.getItem(COSName.FONT_DESC) instanceof COSObject o && o.getKey() != null) {
+            indirect.add(index.id(o.getKey()));
+        }
+        Loc res = ref(at, d, COSName.RESOURCES);
+        if (res != null) {
+            resourceDicts.add(res);
         }
         if (COSName.SIG.equals(d.getCOSName(COSName.TYPE)) || d.containsKey(BYTE_RANGE)
                 && d.containsKey(COSName.CONTENTS)) {
             signed = true;
         }
-        if (TYPE3.equals(d.getCOSName(COSName.SUBTYPE))
-                && d.getDictionaryObject(CHAR_PROCS) instanceof COSDictionary procs) {
-            COSDictionary res = d.getDictionaryObject(COSName.RESOURCES) instanceof COSDictionary r ? r : null;
-            for (COSBase v : procs.getValues()) {
-                if (Graph.resolve(v) instanceof COSStream s) {
-                    content(s, res);
+        if (TYPE3.equals(d.getCOSName(COSName.SUBTYPE)) && d.containsKey(CHAR_PROCS)) {
+            type3.add(new Type3(ref(at, d, CHAR_PROCS), res));
+        }
+        Loc ap = ref(at, d, COSName.AP);
+        if (ap != null) {
+            if (ap.path.length == 0) {
+                indirect.add(ap.holder);
+            }
+            appearances.add(ap);
+        }
+    }
+
+    void resolve(Resolver r, int root) throws IOException {
+        Loc pagesLoc = new Loc(root, new Object[] {COSName.PAGES});
+        Resolver.Found top = r.find(pagesLoc);
+        if (top != null && top.loc().path.length == 0) {
+            walkPages(r, top.loc().holder);
+        }
+        for (int f : forms) {
+            context(f, streamResources.get(f));
+        }
+        for (Type3 t : type3) {
+            Resolver.Found procs = t.charProcs == null ? null : r.find(t.charProcs);
+            if (procs != null && procs.value() instanceof COSDictionary d) {
+                for (COSBase v : d.getValues()) {
+                    if (v instanceof COSObject o && o.getKey() != null) {
+                        context(index.id(o.getKey()), t.resources);
+                    }
                 }
             }
         }
-        if (d.getDictionaryObject(COSName.AP) instanceof COSDictionary ap) {
-            indirect.add(ap);
+        for (Loc ap : appearances) {
+            Resolver.Found found = r.find(ap);
+            if (found == null || !(found.value() instanceof COSDictionary d)) {
+                continue;
+            }
             for (COSName key : List.of(COSName.N, COSName.R, COSName.D)) {
-                COSBase v = ap.getDictionaryObject(key);
-                if (v instanceof COSDictionary states && !(v instanceof COSStream)) {
-                    indirect.add(states);
+                COSBase v = d.getItem(key);
+                if (v instanceof COSObject o && o.getKey() != null) {
+                    int id = index.id(o.getKey());
+                    if (index.kind(id) == Index.STREAM) {
+                        appearance(id);
+                        continue;
+                    }
+                    indirect.add(id);
+                    v = r.load(id);
                 }
-                if (v instanceof COSStream s) {
-                    appearance(s);
-                } else if (v instanceof COSDictionary states) {
+                if (v instanceof COSDictionary states && !(v instanceof COSStream)) {
                     for (COSBase state : states.getValues()) {
-                        if (Graph.resolve(state) instanceof COSStream s) {
-                            appearance(s);
+                        if (state instanceof COSObject so && so.getKey() != null) {
+                            int sid = index.id(so.getKey());
+                            if (index.kind(sid) == Index.STREAM) {
+                                appearance(sid);
+                            }
                         }
                     }
                 }
@@ -201,9 +254,61 @@ final class Roles {
         }
     }
 
-    private void appearance(COSStream s) {
-        if (kinds.get(s) != Recoder.Kind.CONTENT) {
-            content(s, s.getDictionaryObject(COSName.RESOURCES) instanceof COSDictionary d ? d : null);
+    private void appearance(int stream) {
+        if (!content.contains(stream)) {
+            context(stream, streamResources.get(stream));
+        }
+    }
+
+    private void context(int stream, Loc resources) {
+        if (index.kind(stream) != Index.STREAM) {
+            return;
+        }
+        content.add(stream);
+        contexts.add(new Context(stream, resources));
+    }
+
+    private void walkPages(Resolver r, int top) throws IOException {
+        Set<Integer> seen = new HashSet<>();
+        ArrayDeque<Integer> nodes = new ArrayDeque<>();
+        ArrayDeque<Loc> inherited = new ArrayDeque<>();
+        Loc none = new Loc(-1, HERE);
+        nodes.push(top);
+        inherited.push(none);
+        while (!nodes.isEmpty()) {
+            int node = nodes.pop();
+            Loc parent = inherited.pop();
+            Page p = pages.get(node);
+            if (p == null || !seen.add(node)) {
+                continue;
+            }
+            Loc res = p.resources != null ? p.resources : parent;
+            if (!p.leaf) {
+                Resolver.Found kids = p.kids == null ? null : r.find(p.kids);
+                if (kids != null && kids.value() instanceof COSArray a) {
+                    for (int i = a.size() - 1; i >= 0; i--) {
+                        if (a.get(i) instanceof COSObject o && o.getKey() != null) {
+                            nodes.push(index.id(o.getKey()));
+                            inherited.push(res);
+                        }
+                    }
+                }
+                continue;
+            }
+            Loc pageRes = res == none ? null : res;
+            Resolver.Found contents = p.contents == null ? null : r.find(p.contents);
+            if (contents == null) {
+                continue;
+            }
+            if (contents.loc().path.length == 0 && index.kind(contents.loc().holder) == Index.STREAM) {
+                context(contents.loc().holder, pageRes);
+            } else if (contents.value() instanceof COSArray a) {
+                for (int i = 0; i < a.size(); i++) {
+                    if (a.get(i) instanceof COSObject o && o.getKey() != null) {
+                        context(index.id(o.getKey()), pageRes);
+                    }
+                }
+            }
         }
     }
 

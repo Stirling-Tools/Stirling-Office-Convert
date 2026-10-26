@@ -67,6 +67,10 @@ final class Bytes extends OutputStream {
         size = 0;
     }
 
+    void size(int n) {
+        size = n;
+    }
+
     byte[] toByteArray() {
         return Arrays.copyOf(data, size);
     }

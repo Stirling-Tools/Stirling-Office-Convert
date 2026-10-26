@@ -39,46 +39,64 @@ final class Content {
 
     static byte[] minify(byte[] in) {
         try {
-            int count = 0;
-            ContentLexer counter = new ContentLexer(in);
-            while (counter.next()) {
-                if (counter.operator("BI") || counter.operator("ID") || counter.operator("EI")) {
-                    return null;
-                }
-                count++;
-            }
-            if (counter.commentAtEnd()) {
-                return null;
-            }
             boolean leading = in.length > 0 && Lexical.whitespace(in[0] & 0xFF);
             boolean trailing = in.length > 0 && Lexical.whitespace(in[in.length - 1] & 0xFF);
-            if (count == 0) {
-                return leading || trailing ? new byte[] {'\n'} : in;
-            }
             ContentLexer lex = new ContentLexer(in);
             Bytes out = new Bytes(in.length);
             if (leading) {
                 out.write('\n');
             }
             boolean regularEnd = false;
-            for (int t = 0; t < count; t++) {
-                lex.next();
-                boolean edge = t == 0 && !leading || t == count - 1 && !trailing;
-                byte[] form = edge ? raw(lex) : shortest(lex);
-                if (regularEnd && Lexical.regular(form[0] & 0xFF)) {
+            boolean first = true;
+            int lastStart = -1;
+            int lastRawStart = -1;
+            int lastRawEnd = -1;
+            boolean lastOperator = false;
+            while (lex.next()) {
+                ContentLexer.Kind kind = lex.kind();
+                if (kind == ContentLexer.Kind.OPERATOR && (lex.operator("BI") || lex.operator("ID")
+                        || lex.operator("EI"))) {
+                    return null;
+                }
+                byte[] input = lex.input();
+                int s0 = lex.start();
+                int s1 = lex.end();
+                boolean raw = first && !leading || kind != ContentLexer.Kind.NUMBER && kind != ContentLexer.Kind.STRING;
+                boolean startsRegular = raw ? Lexical.regular(input[s0] & 0xFF) : kind == ContentLexer.Kind.NUMBER;
+                if (regularEnd && startsRegular) {
                     out.write(' ');
                 }
-                out.write(form);
-                regularEnd = Lexical.regular(form[form.length - 1] & 0xFF);
-                boolean operator = lex.kind() == ContentLexer.Kind.OPERATOR;
-                if (t == count - 1) {
-                    if (trailing) {
-                        out.write('\n');
-                    }
-                } else if (operator) {
+                lastStart = out.size();
+                if (raw) {
+                    out.write(input, s0, s1 - s0);
+                    regularEnd = Lexical.regular(input[s1 - 1] & 0xFF);
+                } else if (kind == ContentLexer.Kind.NUMBER) {
+                    Lexical.writeNumber(input, s0, s1, out);
+                    regularEnd = true;
+                } else {
+                    Lexical.string(lex.stringBytes(), out);
+                    regularEnd = false;
+                }
+                lastRawStart = s0;
+                lastRawEnd = s1;
+                lastOperator = kind == ContentLexer.Kind.OPERATOR;
+                if (lastOperator) {
                     out.write('\n');
                     regularEnd = false;
                 }
+                first = false;
+            }
+            if (lex.commentAtEnd()) {
+                return null;
+            }
+            if (lastStart < 0) {
+                return leading || trailing ? new byte[] {'\n'} : in;
+            }
+            if (!trailing) {
+                out.size(lastStart);
+                out.write(in, lastRawStart, lastRawEnd - lastRawStart);
+            } else if (!lastOperator) {
+                out.write('\n');
             }
             return out.toByteArray();
         } catch (ContentLexer.Malformed e) {

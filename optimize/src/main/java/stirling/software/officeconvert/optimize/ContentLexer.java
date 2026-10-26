@@ -97,14 +97,17 @@ final class ContentLexer {
         }
         int c = in[start] & 0xFF;
         if (c >= '0' && c <= '9' || c == '+' || c == '-' || c == '.') {
-            if (Lexical.plainNumber(text()) == null) {
+            if (!Lexical.isPlainNumber(in, start, pos)) {
                 throw new Malformed("a malformed number");
             }
             kind = Kind.NUMBER;
             return;
         }
-        String w = text();
-        kind = w.equals("true") || w.equals("false") || w.equals("null") ? Kind.KEYWORD : Kind.OPERATOR;
+        end = pos;
+        kind = Kind.OPERATOR;
+        if (operator("true") || operator("false") || operator("null")) {
+            kind = Kind.KEYWORD;
+        }
     }
 
     private void literal() throws Malformed {

@@ -8,9 +8,12 @@ import java.security.NoSuchAlgorithmException;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -22,6 +25,8 @@ import org.apache.pdfbox.cos.COSDictionary;
 import org.apache.pdfbox.cos.COSDocument;
 import org.apache.pdfbox.cos.COSInteger;
 import org.apache.pdfbox.cos.COSName;
+import org.apache.pdfbox.cos.COSObject;
+import org.apache.pdfbox.cos.COSObjectKey;
 import org.apache.pdfbox.cos.COSStream;
 import org.apache.pdfbox.pdmodel.PDDocument;
 
@@ -37,15 +42,23 @@ final class Rewrite {
 
     static final int INLINE_JOB_BYTES = 8 << 20;
 
-    private final Graph graph;
+    private static final byte[] NULL = {'n', 'u', 'l', 'l'};
+
+    private final Index index;
+
+    private final Source source;
 
     private final PdfOptimizer.Options options;
 
     private final Spill spill;
 
-    private int[] spilled;
+    private final Recorder recorder;
 
-    private List<Map<COSName, COSBase>> replaces;
+    private Encryption encryption;
+
+    private Map<Integer, List<Cleanup.Removal>> removals = Map.of();
+
+    private int[] spilled;
 
     private byte[][] digests;
 
@@ -61,12 +74,13 @@ final class Rewrite {
 
     private int recoded;
 
-    private Encryption encryption;
-
-    private Rewrite(Graph graph, PdfOptimizer.Options options, Spill spill) {
-        this.graph = graph;
+    private Rewrite(Index index, Source source, PdfOptimizer.Options options, Spill spill, boolean encrypted) {
+        this.index = index;
+        this.source = source;
         this.options = options;
         this.spill = spill;
+        this.recorder = new Recorder(index, encrypted, options.keepPrivateData() ? Set.of()
+                : Set.of(Cleanup.PIECE_INFO));
     }
 
     static PdfOptimizer.Result run(PDDocument doc, OutputStream os, PdfOptimizer.Options options, long inputBytes)
@@ -74,47 +88,59 @@ final class Rewrite {
         Encryption encryption = Encryption.of(doc, options.password());
         COSDocument cos = doc.getDocument();
         COSDictionary trailer = cos.getTrailer();
-        if (!(Graph.resolve(trailer.getItem(COSName.ROOT)) instanceof COSDictionary root)) {
+        if (!(trailer.getItem(COSName.ROOT) instanceof COSObject rootRef) || rootRef.getKey() == null) {
             throw new IOException("The PDF has no document catalog");
         }
-        COSDictionary info = Graph.resolve(trailer.getItem(COSName.INFO)) instanceof COSDictionary i && i != root ? i
-                : null;
-        List<COSBase> roots = info == null ? List.of(root) : List.of(root, info);
+        Source source = new Source(cos);
+        Index index = new Index();
+        Roles roles = new Roles(index);
         List<String> warnings = new ArrayList<>();
-        Graph g = Graph.walk(roots);
-        if (!options.keepPrivateData()) {
-            Cleanup.dropPrivateData(g);
-        }
-        Cleanup.dropUnusedResources(Roles.of(g, root));
-        g = Graph.walk(roots);
-        Roles roles = Roles.of(g, root);
-        if (encryption != null) {
-            for (COSBase node : g.nodes()) {
-                if (node instanceof COSStream s && Encryption.usesCryptFilter(s)) {
-                    throw new IOException(
-                            "The PDF names crypt filters on its streams, which this optimizer does not write");
+        try (Spill spill = new Spill()) {
+            Rewrite r = new Rewrite(index, source, options, spill, encryption != null);
+            r.encryption = encryption;
+            int root = index.id(rootRef.getKey());
+            int info = trailer.getItem(COSName.INFO) instanceof COSObject infoRef && infoRef.getKey() != null
+                    ? index.id(infoRef.getKey()) : -1;
+            List<COSObjectKey> order = source.keys();
+            r.index(order, roles);
+            source.release();
+            if (index.kind(root) != Index.DICT) {
+                throw new IOException("The PDF has no document catalog");
+            }
+            if (info >= 0 && index.kind(info) != Index.DICT) {
+                info = -1;
+            }
+            Resolver resolver = new Resolver(source, index);
+            roles.resolve(resolver, root);
+            if (encryption != null) {
+                for (int s : roles.content) {
+                    COSBase b = source.load(index.key(s));
+                    if (b instanceof COSStream st && Encryption.usesCryptFilter(st)) {
+                        throw new IOException(
+                                "The PDF names crypt filters on its streams, which this optimizer does not write");
+                    }
                 }
             }
-        }
-        if (roles.signed) {
-            warnings.add("The PDF is signed; rewriting it invalidates its signatures");
-        }
-        boolean objectStreams = Roles.pdfaPart(root) != 1;
-        float version = Math.max(cos.getVersion(), objectStreams ? 1.5f : 1.0f);
-        COSBase id = Graph.resolve(trailer.getItem(COSName.ID));
-        try (Spill spill = new Spill()) {
-            Rewrite r = new Rewrite(g, options, spill);
-            r.encryption = encryption;
-            r.plan(roles);
-            r.merge(g.id(root), info == null ? -1 : g.id(info));
-            int rootNode = r.rep[g.id(root)];
-            int infoNode = info == null ? -1 : r.rep[g.id(info)];
+            Resolver.Found dr = resolver.find(new Roles.Loc(root, new Object[] {COSName.ACRO_FORM, COSName.DR}));
+            r.removals = Cleanup.unusedResources(roles, resolver, source, index, dr == null ? null : dr.loc());
+            r.prune();
+            if (roles.signed) {
+                warnings.add("The PDF is signed; rewriting it invalidates its signatures");
+            }
+            COSBase catalog = source.load(index.key(root));
+            boolean objectStreams = !(catalog instanceof COSDictionary c) || Roles.pdfaPart(c) != 1;
+            float version = Math.max(cos.getVersion(), objectStreams ? 1.5f : 1.0f);
+            COSBase id = trailer.getItem(COSName.ID) instanceof COSObject o ? o.getObject() : trailer.getItem(COSName.ID);
+            r.plan(order, roles, new int[] {root, info});
+            r.merge(root, info);
+            int rootNode = r.rep[root];
+            int infoNode = info < 0 ? -1 : r.rep[info];
             r.liveness(rootNode, infoNode, roles.indirect);
             CountingOutput out = new CountingOutput(os);
             int objects = r.write(out, version, objectStreams, rootNode, infoNode, id instanceof COSArray a ? a : null);
             int merged = 0;
-            for (int i = 0; i < g.size(); i++) {
-                if (r.rep[i] != i && r.live[r.rep[i]]) {
+            for (int i = 0; i < index.size(); i++) {
+                if (r.rep[i] != i && r.live[r.rep[i]] && container(index.kind(i))) {
                     merged++;
                 }
             }
@@ -122,46 +148,102 @@ final class Rewrite {
         }
     }
 
-    private record Pending(int node, Future<Recoder.Plan> plan) {}
+    private static boolean container(byte kind) {
+        return kind == Index.DICT || kind == Index.ARRAY || kind == Index.STREAM;
+    }
 
-    private void plan(Roles roles) throws IOException {
-        int n = graph.size();
+    private void index(List<COSObjectKey> order, Roles roles) throws IOException {
+        source.load(order, (key, object) -> {
+            int id = index.id(key);
+            recorder.record(id, object, null);
+            roles.collect(id, object);
+        });
+    }
+
+    private void prune() throws IOException {
+        for (Map.Entry<Integer, List<Cleanup.Removal>> e : removals.entrySet()) {
+            int id = e.getKey();
+            if (index.kind(id) == Index.STREAM) {
+                continue;
+            }
+            COSBase fresh = source.load(index.key(id));
+            Cleanup.apply(fresh, e.getValue());
+            recorder.record(id, fresh, null);
+        }
+    }
+
+    private record Pending(int node, COSStream stream, Future<Recoder.Plan> plan) {}
+
+    private boolean[] reachable(int[] roots) {
+        boolean[] seen = new boolean[index.size()];
+        ArrayDeque<Integer> queue = new ArrayDeque<>();
+        for (int r : roots) {
+            if (r >= 0 && !seen[r]) {
+                seen[r] = true;
+                queue.add(r);
+            }
+        }
+        while (!queue.isEmpty()) {
+            int n = queue.poll();
+            for (int e : index.edges(n)) {
+                if (!seen[e]) {
+                    seen[e] = true;
+                    queue.add(e);
+                }
+            }
+        }
+        return seen;
+    }
+
+    private void plan(List<COSObjectKey> order, Roles roles, int[] roots) throws IOException {
+        int n = index.size();
         spilled = new int[n];
-        replaces = new ArrayList<>(n);
         digests = new byte[n][];
+        java.util.Arrays.fill(spilled, -1);
         MessageDigest sha = sha256();
         int threads = Math.max(1, Math.min(Runtime.getRuntime().availableProcessors(), MAX_THREADS));
-        ExecutorService pool = threads > 1 ? Executors.newFixedThreadPool(threads,
-                Thread.ofPlatform().name("pdf-optimize-recode-", 0).daemon().factory()) : null;
+        ExecutorService pool = new java.util.concurrent.ForkJoinPool(threads);
         ArrayDeque<Pending> window = new ArrayDeque<>();
-        try {
-            for (int i = 0; i < n; i++) {
-                spilled[i] = -1;
-                replaces.add(null);
+        boolean[] reached = reachable(roots);
+        List<COSObjectKey> streams = new ArrayList<>();
+        for (COSObjectKey key : order) {
+            int id = index.find(key);
+            if (id >= 0 && reached[id] && index.kind(id) == Index.STREAM) {
+                streams.add(key);
             }
-            for (int i = 0; i < n; i++) {
-                if (!(graph.node(i) instanceof COSStream s)) {
+        }
+        try {
+            for (COSObjectKey key : streams) {
+                PdfFiles.stopIfInterrupted();
+                int i = index.find(key);
+                if (!(source.load(key) instanceof COSStream s)) {
+                    index.kind(i, Index.MISSING);
                     continue;
                 }
-                PdfFiles.stopIfInterrupted();
-                Recoder.Kind kind = roles.kinds.getOrDefault(s, Recoder.Kind.OTHER);
+                List<Cleanup.Removal> drop = removals.get(i);
+                if (drop != null) {
+                    Cleanup.apply(s, drop);
+                }
+                Recoder.Kind kind = index.has(i, Index.METADATA) ? Recoder.Kind.KEEP
+                        : roles.content.contains(i) ? Recoder.Kind.CONTENT
+                        : index.has(i, Index.IMAGE) ? Recoder.Kind.IMAGE : Recoder.Kind.OTHER;
                 Recoder.Job job = Recoder.prepare(s, kind, kind == Recoder.Kind.IMAGE ? Roles.layout(s) : null);
                 if (job == null) {
                     try (InputStream in = s.createRawInputStream()) {
                         spilled[i] = spill.put(in, sha);
                     }
                     digests[i] = sha.digest();
-                    replaces.set(i, Map.of(COSName.LENGTH, COSInteger.get(spill.length(spilled[i]))));
+                    recorder.record(i, s, Map.of(COSName.LENGTH, COSInteger.get(spill.length(spilled[i]))));
                     continue;
                 }
-                if (pool == null || job.raw().length > INLINE_JOB_BYTES) {
+                if (job.raw().length > INLINE_JOB_BYTES) {
                     while (!window.isEmpty()) {
                         finish(window.poll(), sha);
                     }
-                    record(i, Recoder.plan(job, options.effort()), sha);
+                    finish(new Pending(i, s, pool.submit(() -> Recoder.plan(job, options.effort()))), sha);
                     continue;
                 }
-                window.add(new Pending(i, pool.submit(() -> Recoder.plan(job, options.effort()))));
+                window.add(new Pending(i, s, pool.submit(() -> Recoder.plan(job, options.effort()))));
                 while (window.size() > threads * 2) {
                     finish(window.poll(), sha);
                 }
@@ -170,15 +252,13 @@ final class Rewrite {
                 finish(window.poll(), sha);
             }
         } finally {
-            if (pool != null) {
-                pool.shutdownNow();
-            }
+            pool.shutdownNow();
         }
     }
 
     private void finish(Pending p, MessageDigest sha) throws IOException {
         try {
-            record(p.node(), p.plan().get(), sha);
+            store(p.node(), p.stream(), p.plan().get(), sha);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new java.io.InterruptedIOException("Interrupted while optimizing");
@@ -197,55 +277,59 @@ final class Rewrite {
         }
     }
 
-    private void record(int i, Recoder.Plan p, MessageDigest sha) throws IOException {
+    private void store(int i, COSStream s, Recoder.Plan p, MessageDigest sha) throws IOException {
         spilled[i] = spill.put(p.data());
         digests[i] = sha.digest(p.data());
-        replaces.set(i, p.replace());
+        recorder.record(i, s, p.replace());
         if (p.recoded()) {
             recoded++;
         }
     }
 
     private void merge(int root, int info) throws IOException {
-        int n = graph.size();
+        int n = index.size();
         byte[][] signatures = new byte[n][];
         edges = new int[n][];
         boolean[] mergeable = new boolean[n];
-        List<Integer> found = new ArrayList<>();
-        Syntax syntax = new Syntax(graph, (id, s) -> {
-            found.add(id);
-            s.word("@");
-        });
         MessageDigest sha = sha256();
-        Bytes b = new Bytes(1 << 12);
         for (int i = 0; i < n; i++) {
-            if ((i & 1023) == 0) {
+            if ((i & 4095) == 0) {
                 PdfFiles.stopIfInterrupted();
             }
-            b.reset();
-            syntax.into(b);
-            COSBase node = graph.node(i);
-            if (node instanceof COSStream s) {
-                syntax.dictionary(s, replaces.get(i));
-                b.write(digests[i]);
-            } else {
-                syntax.node(i);
+            byte kind = index.kind(i);
+            edges[i] = container(kind) ? index.edges(i) : new int[0];
+            byte[] body = index.bytes(i);
+            sha.update(kind);
+            if (body != null) {
+                sha.update(body);
             }
-            sha.update(b.array(), 0, b.size());
+            for (int k = 0; k < index.holeCount(i); k++) {
+                int at = index.holeAt(i, k);
+                sha.update((byte) (at >>> 24));
+                sha.update((byte) (at >>> 16));
+                sha.update((byte) (at >>> 8));
+                sha.update((byte) at);
+                sha.update((byte) (index.holeRef(i, k) < 0 ? 1 : 0));
+            }
+            byte[][] strings = index.strings(i);
+            if (strings != null) {
+                for (byte[] s : strings) {
+                    sha.update(s);
+                    sha.update((byte) 0);
+                }
+            }
+            if (digests != null && digests[i] != null) {
+                sha.update(digests[i]);
+            }
             signatures[i] = java.util.Arrays.copyOf(sha.digest(), 16);
-            int[] e = new int[found.size()];
-            for (int k = 0; k < e.length; k++) {
-                e[k] = found.get(k);
-            }
-            found.clear();
-            edges[i] = e;
-            mergeable[i] = i != root && i != info && Roles.valueLike(node);
+            mergeable[i] = i != root && i != info && (index.has(i, Index.VALUE_LIKE) || kind == Index.STREAM
+                    || kind == Index.SCALAR || kind == Index.MISSING || kind == Index.UNSEEN);
         }
         rep = Merge.representatives(signatures, edges, mergeable);
     }
 
-    private void liveness(int root, int info, java.util.Set<COSBase> indirect) {
-        int n = graph.size();
+    private void liveness(int root, int info, Set<Integer> indirect) {
+        int n = index.size();
         live = new boolean[n];
         int[] refs = new int[n];
         ArrayDeque<Integer> queue = new ArrayDeque<>();
@@ -268,16 +352,16 @@ final class Rewrite {
         }
         inline = new boolean[n];
         for (int i = 0; i < n; i++) {
-            COSBase node = graph.node(i);
-            inline[i] = live[i] && refs[i] == 1 && i != root && i != info && !(node instanceof COSStream)
-                    && Roles.valueLike(node) && !indirect.contains(node);
+            byte kind = index.kind(i);
+            inline[i] = live[i] && refs[i] == 1 && i != root && i != info && (kind == Index.DICT || kind == Index.ARRAY)
+                    && index.has(i, Index.VALUE_LIKE) && !indirect.contains(i);
         }
         boolean[] onPath = new boolean[n];
         boolean changed = true;
         while (changed) {
             changed = false;
             for (int i = 0; i < n; i++) {
-                if (live[i] && !inline[i]) {
+                if (live[i] && !inline[i] && container(index.kind(i))) {
                     changed |= demote(i, onPath);
                 }
             }
@@ -312,22 +396,79 @@ final class Rewrite {
         return changed;
     }
 
+    private void emit(int node, Bytes out, int number, int depth) throws IOException {
+        byte[] body = index.bytes(node);
+        if (body == null) {
+            out.write(NULL);
+            return;
+        }
+        int holes = index.holeCount(node);
+        byte[][] strings = index.strings(node);
+        int pos = 0;
+        int string = 0;
+        for (int k = 0; k < holes; k++) {
+            int at = index.holeAt(node, k);
+            out.write(body, pos, at - pos);
+            pos = at;
+            int start = out.size();
+            int ref = index.holeRef(node, k);
+            if (ref < 0) {
+                byte[] raw = strings[string++];
+                Lexical.string(encryption != null && number > 0 ? encryption.string(raw, number) : raw, out);
+            } else {
+                substitute(ref, out, number, depth);
+            }
+            space(out, start, body, pos);
+        }
+        out.write(body, pos, body.length - pos);
+    }
+
+    private void substitute(int target, Bytes out, int number, int depth) throws IOException {
+        int t = rep[target];
+        byte kind = index.kind(t);
+        boolean regularBefore = out.size() > 0 && Lexical.regular(out.at(out.size() - 1) & 0xFF);
+        if (kind == Index.SCALAR || inline[t] && depth < MAX_INLINE_DEPTH * 2) {
+            byte[] body = index.bytes(t);
+            if (regularBefore && body != null && body.length > 0 && Lexical.regular(body[0] & 0xFF)) {
+                out.write(' ');
+            }
+            emit(t, out, number, depth + 1);
+            return;
+        }
+        if (regularBefore) {
+            out.write(' ');
+        }
+        if (container(kind) && numbers[t] > 0) {
+            out.ascii(numbers[t] + " 0 R");
+        } else {
+            out.write(NULL);
+        }
+    }
+
+    private static void space(Bytes out, int start, byte[] body, int pos) {
+        if (out.size() > start && pos < body.length && Lexical.regular(out.at(out.size() - 1) & 0xFF)
+                && Lexical.regular(body[pos] & 0xFF)) {
+            out.write(' ');
+        }
+    }
+
     private int write(CountingOutput out, float version, boolean objectStreams, int root, int info, COSArray id)
             throws IOException {
-        int n = graph.size();
+        int n = index.size();
         List<Integer> packed = new ArrayList<>();
         List<Integer> plain = new ArrayList<>();
         for (int i = 0; i < n; i++) {
-            if (!live[i] || inline[i]) {
+            if (!live[i] || inline[i] || !container(index.kind(i))) {
                 continue;
             }
-            if (graph.node(i) instanceof COSStream || !objectStreams) {
+            if (index.kind(i) == Index.STREAM || !objectStreams) {
                 plain.add(i);
             } else {
                 packed.add(i);
             }
         }
-        packed.sort(Comparator.comparing((Integer i) -> group(graph.node(i))).thenComparing(i -> i));
+        packed.sort(Comparator.comparing((Integer i) -> index.group(i) == null ? "" : index.group(i))
+                .thenComparingInt(i -> i));
         numbers = new int[n];
         int next = 1;
         for (int i : packed) {
@@ -347,14 +488,6 @@ final class Rewrite {
         int[] indexIn = new int[size];
         out.ascii(versionHeader(version));
         out.write(new byte[] {'%', (byte) 0xE2, (byte) 0xE3, (byte) 0xCF, (byte) 0xD3, '\n'});
-        Syntax syntax = new Syntax(graph, (node, s) -> {
-            int t = rep[node];
-            if (inline[t]) {
-                s.node(t);
-            } else {
-                s.reference(numbers[t]);
-            }
-        });
         Bytes b = new Bytes(1 << 16);
         int written = 0;
         for (int i : plain) {
@@ -365,82 +498,105 @@ final class Rewrite {
             offsets[number] = out.position();
             b.reset();
             b.ascii(number + " 0 obj\n");
-            syntax.into(b).strings(encryption == null ? null : text -> encryption.string(text, number));
-            if (graph.node(i) instanceof COSStream s) {
+            emit(i, b, number, 0);
+            if (index.kind(i) == Index.STREAM) {
                 if (encryption == null) {
-                    syntax.dictionary(s, replaces.get(i));
                     b.ascii("stream\n");
                     b.writeTo(out);
                     spill.copy(spilled[i], out);
                 } else {
                     Bytes clear = new Bytes(spill.length(spilled[i]));
                     spill.copy(spilled[i], clear);
-                    byte[] data = encryption.stream(clear.toByteArray(), number, s);
-                    Map<COSName, COSBase> replace = new java.util.LinkedHashMap<>(replaces.get(i));
-                    replace.put(COSName.LENGTH, COSInteger.get(data.length));
-                    syntax.dictionary(s, replace);
+                    COSBase s = source.load(index.key(i));
+                    byte[] data = encryption.stream(clear.toByteArray(), number,
+                            s instanceof COSStream cs ? cs : new COSStream());
+                    byte[] dict = b.toByteArray();
+                    b.reset();
+                    b.write(lengthReplaced(dict, spill.length(spilled[i]), data.length));
                     b.ascii("stream\n");
                     b.writeTo(out);
                     out.write(data);
                 }
                 out.ascii("\nendstream\nendobj\n");
             } else {
-                syntax.node(i);
                 b.ascii("\nendobj\n");
                 b.writeTo(out);
             }
-            syntax.strings(null);
         }
-        Bytes body = new Bytes(1 << 16);
-        StringBuilder index = new StringBuilder();
-        for (int c = 0; c < containers; c++) {
-            PdfFiles.stopIfInterrupted();
-            body.reset();
-            index.setLength(0);
-            int from = c * OBJECTS_PER_STREAM;
-            int to = Math.min(packed.size(), from + OBJECTS_PER_STREAM);
-            syntax.into(body);
-            for (int k = from; k < to; k++) {
-                int node = packed.get(k);
-                if (k > from) {
-                    index.append(' ');
+        ExecutorService pool = containers > 1 && Runtime.getRuntime().availableProcessors() > 1
+                ? Executors.newFixedThreadPool(Math.min(MAX_THREADS, Runtime.getRuntime().availableProcessors()),
+                        Thread.ofPlatform().name("pdf-optimize-pack-", 0).daemon().factory()) : null;
+        try {
+            ArrayDeque<Future<byte[]>> queue = new ArrayDeque<>();
+            ArrayDeque<int[]> meta = new ArrayDeque<>();
+            for (int c = 0; c <= containers; c++) {
+                if (c < containers) {
+                    PdfFiles.stopIfInterrupted();
+                    Bytes body = new Bytes(1 << 16);
+                    StringBuilder idx = new StringBuilder();
+                    int from = c * OBJECTS_PER_STREAM;
+                    int to = Math.min(packed.size(), from + OBJECTS_PER_STREAM);
+                    for (int k = from; k < to; k++) {
+                        int node = packed.get(k);
+                        if (k > from) {
+                            idx.append(' ');
+                            if (body.size() > 0 && Lexical.regular(body.at(body.size() - 1) & 0xFF)) {
+                                body.write(' ');
+                            }
+                        }
+                        idx.append(numbers[node]).append(' ').append(body.size());
+                        containerOf[numbers[node]] = firstContainer + c;
+                        indexIn[numbers[node]] = k - from;
+                        emit(node, body, 0, 0);
+                    }
+                    idx.append('\n');
+                    Bytes raw = new Bytes(idx.length() + body.size());
+                    raw.ascii(idx.toString());
+                    body.writeTo(raw);
+                    byte[] data = raw.toByteArray();
+                    int number = firstContainer + c;
+                    java.util.concurrent.Callable<byte[]> job = () -> {
+                        byte[] z = Deflate.best(data, options.effort());
+                        return encryption != null ? encryption.encrypt(z, number) : z;
+                    };
+                    queue.add(pool != null ? pool.submit(job) : java.util.concurrent.CompletableFuture
+                            .completedFuture(job.call()));
+                    meta.add(new int[] {number, to - from, idx.length()});
                 }
-                index.append(numbers[node]).append(' ').append(body.size());
-                containerOf[numbers[node]] = firstContainer + c;
-                indexIn[numbers[node]] = k - from;
-                syntax.into(body);
-                syntax.node(node);
+                while (!queue.isEmpty() && (c == containers || queue.size() > 2 * MAX_THREADS)) {
+                    byte[] data = get(queue.poll());
+                    int[] m = meta.poll();
+                    offsets[m[0]] = out.position();
+                    out.ascii(m[0] + " 0 obj\n<</Type/ObjStm/N " + m[1] + "/First " + m[2]
+                            + "/Filter/FlateDecode/Length " + data.length + ">>stream\n");
+                    out.write(data);
+                    out.ascii("\nendstream\nendobj\n");
+                }
             }
-            index.append('\n');
-            Bytes raw = new Bytes(index.length() + body.size());
-            raw.ascii(index.toString());
-            body.writeTo(raw);
-            int number = firstContainer + c;
-            byte[] data = Deflate.best(raw.toByteArray(), options.effort());
-            if (encryption != null) {
-                data = encryption.encrypt(data, number);
+        } catch (IOException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new IOException(e);
+        } finally {
+            if (pool != null) {
+                pool.shutdownNow();
             }
-            offsets[number] = out.position();
-            out.ascii(number + " 0 obj\n<</Type/ObjStm/N " + (to - from) + "/First " + index.length()
-                    + "/Filter/FlateDecode/Length " + data.length + ">>stream\n");
-            out.write(data);
-            out.ascii("\nendstream\nendobj\n");
-        }
-        Bytes trailerId = new Bytes(96);
-        if (id != null) {
-            new Syntax(graph, (node, s) -> s.word("null")).into(trailerId).array(id);
         }
         if (encryption != null) {
             offsets[encryptNumber] = out.position();
             Bytes e = new Bytes(512);
             e.ascii(encryptNumber + " 0 obj\n");
-            new Syntax(graph, (node, s) -> s.word("null")).copyUnknown().into(e)
-                    .dictionary(encryption.dictionary, null);
+            new Syntax((ref, s) -> s.value(ref.getObject())).into(e).dictionary(encryption.dictionary, null);
             e.ascii("\nendobj\n");
             e.writeTo(out);
         }
-        String head = "/Size " + size + "/Root " + numbers[root] + " 0 R" + (info >= 0 ? "/Info " + numbers[info]
-                + " 0 R" : "") + (encryption != null ? "/Encrypt " + encryptNumber + " 0 R" : "");
+        Bytes trailerId = new Bytes(96);
+        if (id != null) {
+            new Syntax((ref, s) -> s.word("null")).into(trailerId).value(id);
+        }
+        String head = "/Size " + size + "/Root " + numbers[root] + " 0 R" + (info >= 0 && numbers[info] > 0
+                ? "/Info " + numbers[info] + " 0 R" : "") + (encryption != null ? "/Encrypt " + encryptNumber + " 0 R"
+                : "");
         if (objectStreams) {
             xrefStream(out, size, xrefNumber, offsets, containerOf, indexIn, head, trailerId);
         } else {
@@ -450,14 +606,32 @@ final class Rewrite {
         return size - 1;
     }
 
-    private static String group(COSBase node) {
-        if (node instanceof COSArray) {
-            return "~array";
+    private static byte[] get(Future<byte[]> f) throws IOException {
+        try {
+            return f.get();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new java.io.InterruptedIOException("Interrupted while optimizing");
+        } catch (ExecutionException e) {
+            if (e.getCause() instanceof IOException io) {
+                throw io;
+            }
+            if (e.getCause() instanceof RuntimeException r) {
+                throw r;
+            }
+            throw new IOException(e.getCause());
         }
-        COSDictionary d = (COSDictionary) node;
-        COSName type = d.getCOSName(COSName.TYPE);
-        COSName subtype = d.getCOSName(COSName.SUBTYPE);
-        return (type == null ? "~" : type.getName()) + "/" + (subtype == null ? "" : subtype.getName());
+    }
+
+    private static byte[] lengthReplaced(byte[] dict, int oldLength, int newLength) {
+        String s = new String(dict, java.nio.charset.StandardCharsets.ISO_8859_1);
+        String from = "/Length " + oldLength;
+        int at = s.lastIndexOf(from);
+        if (at < 0) {
+            return dict;
+        }
+        return (s.substring(0, at) + "/Length " + newLength + s.substring(at + from.length()))
+                .getBytes(java.nio.charset.StandardCharsets.ISO_8859_1);
     }
 
     private void xrefStream(CountingOutput out, int size, int self, long[] offsets, int[] containerOf,
@@ -484,11 +658,9 @@ final class Rewrite {
             put(rows, p + 1, w2, inStream ? containerOf[k] : offsets[k]);
             put(rows, p + 1 + w2, w3, inStream ? indexIn[k] : 0);
         }
-        byte[] plainData = Deflate.best(rows, options.effort());
-        byte[] predicted = Deflate.best(Predictors.encodePng(rows, new Predictors.Layout(1, 8, row), Predictors.UP),
-                options.effort());
-        boolean usePredictor = predicted.length + 30 < plainData.length;
-        byte[] data = usePredictor ? predicted : plainData;
+        byte[] data = Deflate.best(Predictors.encodePng(rows, new Predictors.Layout(1, 8, row), Predictors.UP),
+                options.effort() == PdfOptimizer.Effort.MAX ? PdfOptimizer.Effort.MAX : PdfOptimizer.Effort.FAST);
+        boolean usePredictor = true;
         out.ascii(self + " 0 obj\n<</Type/XRef" + head + "/W[1 " + w2 + " " + w3 + "]");
         if (id.size() > 0) {
             out.ascii("/ID");

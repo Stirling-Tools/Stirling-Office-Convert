@@ -32,6 +32,63 @@ final class Lexical {
         }
     }
 
+    static boolean isPlainNumber(byte[] b, int start, int end) {
+        int i = start;
+        if (i < end && (b[i] == '+' || b[i] == '-')) {
+            i++;
+        }
+        int digits = 0;
+        while (i < end && b[i] >= '0' && b[i] <= '9') {
+            i++;
+            digits++;
+        }
+        if (i < end && b[i] == '.') {
+            i++;
+            while (i < end && b[i] >= '0' && b[i] <= '9') {
+                i++;
+                digits++;
+            }
+        }
+        return i == end && digits > 0;
+    }
+
+    static void writeNumber(byte[] b, int start, int end, Bytes out) {
+        int i = start;
+        boolean negative = false;
+        if (b[i] == '+' || b[i] == '-') {
+            negative = b[i] == '-';
+            i++;
+        }
+        int intStart = i;
+        while (i < end && b[i] != '.') {
+            i++;
+        }
+        int intEnd = i;
+        int fracStart = i < end ? i + 1 : end;
+        int fracEnd = end;
+        boolean hadPoint = i < end;
+        while (intStart < intEnd && b[intStart] == '0') {
+            intStart++;
+        }
+        while (fracEnd > fracStart && b[fracEnd - 1] == '0') {
+            fracEnd--;
+        }
+        if (intStart == intEnd && fracStart == fracEnd) {
+            out.write('0');
+            return;
+        }
+        if (negative) {
+            out.write('-');
+        }
+        out.write(b, intStart, intEnd - intStart);
+        if (fracStart < fracEnd) {
+            out.write('.');
+            out.write(b, fracStart, fracEnd - fracStart);
+        } else if (hadPoint && intEnd - intStart > 9) {
+            out.write('.');
+        }
+    }
+
     static String plainNumber(String s) {
         int n = s.length();
         int i = 0;

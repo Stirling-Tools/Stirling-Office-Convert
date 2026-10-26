@@ -35,6 +35,10 @@ final class Recoder {
 
     private Recoder() {}
 
+    static COSBase resolve(COSBase b) {
+        return b instanceof org.apache.pdfbox.cos.COSObject o ? o.getObject() : b;
+    }
+
     record Job(byte[] raw, Kind kind, List<COSName> filters, List<COSBase> parms, boolean chained,
             Predictors.Layout image, int rows) {}
 
@@ -53,9 +57,9 @@ final class Recoder {
         List<COSBase> parms = new ArrayList<>();
         boolean chained = !s.containsKey(COSName.F) && chain(s, filters, parms);
         for (COSBase p : parms) {
-            if (Graph.resolve(p) instanceof COSDictionary d) {
+            if (resolve(p) instanceof COSDictionary d) {
                 for (COSBase v : d.getValues()) {
-                    Graph.resolve(v);
+                    resolve(v);
                 }
             }
         }
@@ -84,7 +88,7 @@ final class Recoder {
         int peeled = 0;
         try {
             while (peeled < filters.size() && Filters.generalized(filters.get(peeled))) {
-                COSBase p = Graph.resolve(parms.get(peeled));
+                COSBase p = resolve(parms.get(peeled));
                 data = Filters.decode(filters.get(peeled), p instanceof COSDictionary d ? d : null, data,
                         MAX_DECODED_BYTES);
                 peeled++;
@@ -112,7 +116,7 @@ final class Recoder {
         byte[] flateInput = data;
         List<COSName> flateFilters = with(COSName.FLATE_DECODE, rest);
         List<COSBase> flateParms = with(null, restParms);
-        byte[] quick = Deflate.quick(data);
+        byte[] quick = Deflate.baseline(data, effort);
         long quickCost = quick.length + overhead(flateFilters, flateParms);
         if (rest.isEmpty() && image != null && (long) image.rowBytes() * job.rows == data.length
                 && data.length > 0 && image.rowBytes() > 0) {
@@ -126,7 +130,7 @@ final class Recoder {
             List<COSName> flate = List.of(COSName.FLATE_DECODE);
             for (int f : trials) {
                 byte[] predicted = Predictors.encodePng(data, image, f);
-                byte[] z = Deflate.quick(predicted);
+                byte[] z = Deflate.baseline(predicted, effort);
                 long cost = z.length + overhead(flate, predictor);
                 if (cost < quickCost) {
                     quickCost = cost;
@@ -170,7 +174,7 @@ final class Recoder {
                 if (!Filters.generalized(filters.get(i))) {
                     return null;
                 }
-                COSBase p = Graph.resolve(parms.get(i));
+                COSBase p = resolve(parms.get(i));
                 data = Filters.decode(filters.get(i), p instanceof COSDictionary d ? d : null, data, MAX_DECODED_BYTES);
             }
         } catch (Filters.Undecodable e) {
@@ -223,8 +227,8 @@ final class Recoder {
     }
 
     static boolean chain(COSStream s, List<COSName> filters, List<COSBase> parms) {
-        COSBase f = Graph.resolve(s.getItem(COSName.FILTER));
-        COSBase p = Graph.resolve(s.getItem(COSName.DECODE_PARMS));
+        COSBase f = resolve(s.getItem(COSName.FILTER));
+        COSBase p = resolve(s.getItem(COSName.DECODE_PARMS));
         if (f == null) {
             return p == null;
         }
@@ -241,12 +245,12 @@ final class Recoder {
         }
         COSArray pa = (COSArray) p;
         for (int i = 0; i < a.size(); i++) {
-            if (!(Graph.resolve(a.get(i)) instanceof COSName n)) {
+            if (!(resolve(a.get(i)) instanceof COSName n)) {
                 return false;
             }
             filters.add(n);
             COSBase item = pa != null && i < pa.size() ? pa.get(i) : null;
-            COSBase resolved = Graph.resolve(item);
+            COSBase resolved = resolve(item);
             if (resolved != null && !(resolved instanceof COSDictionary)
                     && !(resolved instanceof org.apache.pdfbox.cos.COSNull)) {
                 return false;

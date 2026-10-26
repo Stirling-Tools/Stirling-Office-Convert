@@ -1,7 +1,6 @@
 package stirling.software.officeconvert.optimize;
 
 import java.io.IOException;
-import java.util.IdentityHashMap;
 import java.util.Map;
 
 import org.apache.pdfbox.cos.COSArray;
@@ -13,32 +12,37 @@ import org.apache.pdfbox.cos.COSInteger;
 import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.cos.COSNull;
 import org.apache.pdfbox.cos.COSObject;
-import org.apache.pdfbox.cos.COSStream;
 import org.apache.pdfbox.cos.COSString;
 
 final class Syntax {
 
     interface References {
-        void reference(int node, Syntax syntax) throws IOException;
+        void reference(COSObject ref, Syntax syntax) throws IOException;
     }
 
-    private static final Map<COSName, byte[]> NAMES = new IdentityHashMap<>();
+    interface Strings {
+        void string(byte[] raw, Syntax syntax);
+    }
 
-    private final Graph graph;
+    private static final Map<COSName, byte[]> NAMES = new java.util.concurrent.ConcurrentHashMap<>();
 
     private final References references;
 
+    private Strings strings;
+
     private Bytes out;
-
-    private java.util.function.UnaryOperator<byte[]> strings;
-
-    private boolean copyUnknown;
 
     private boolean regularEnd;
 
-    Syntax(Graph graph, References references) {
-        this.graph = graph;
+    private final java.util.Set<COSName> skip;
+
+    Syntax(References references) {
+        this(references, java.util.Set.of());
+    }
+
+    Syntax(References references, java.util.Set<COSName> skipAtTop) {
         this.references = references;
+        this.skip = skipAtTop;
     }
 
     Syntax into(Bytes target) {
@@ -51,45 +55,30 @@ final class Syntax {
         return out;
     }
 
-    Syntax strings(java.util.function.UnaryOperator<byte[]> encrypt) {
-        strings = encrypt;
+    Syntax strings(Strings hook) {
+        strings = hook;
         return this;
     }
 
-    Syntax copyUnknown() {
-        copyUnknown = true;
-        return this;
+    void hole() {
+        regularEnd = false;
     }
 
-    void node(int id) throws IOException {
-        COSBase b = graph.node(id);
-        if (b instanceof COSArray a) {
-            array(a);
+    void top(COSBase b, Map<COSName, COSBase> replace) throws IOException {
+        if (b instanceof COSDictionary d) {
+            dictionary(d, replace, skip);
         } else {
-            dictionary((COSDictionary) b, null);
+            value(b);
         }
     }
 
     void value(COSBase v) throws IOException {
         if (v instanceof COSObject o) {
-            COSBase t = o.getObject();
-            int id = graph.id(t);
-            if (id >= 0) {
-                references.reference(id, this);
-            } else if (copyUnknown && t instanceof COSDictionary d && !(t instanceof COSStream)) {
-                dictionary(d, null);
-            } else if (copyUnknown && t instanceof COSArray a) {
-                array(a);
-            } else if (t instanceof COSDictionary || t instanceof COSArray) {
-                word("null");
+            if (o.getKey() != null) {
+                references.reference(o, this);
             } else {
-                value(t);
+                value(o.getObject());
             }
-            return;
-        }
-        int id = v instanceof COSDictionary || v instanceof COSArray ? graph.id(v) : -1;
-        if (id >= 0) {
-            references.reference(id, this);
         } else if (v instanceof COSDictionary d) {
             dictionary(d, null);
         } else if (v instanceof COSArray a) {
@@ -101,7 +90,11 @@ final class Syntax {
         } else if (v instanceof COSFloat f) {
             word(number(f));
         } else if (v instanceof COSString s) {
-            Lexical.string(strings == null ? s.getBytes() : strings.apply(s.getBytes()), out);
+            if (strings != null) {
+                strings.string(s.getBytes(), this);
+            } else {
+                Lexical.string(s.getBytes(), out);
+            }
             regularEnd = false;
         } else if (v instanceof COSBoolean b) {
             word(b.getValue() ? "true" : "false");
@@ -111,8 +104,16 @@ final class Syntax {
     }
 
     void dictionary(COSDictionary d, Map<COSName, COSBase> replace) throws IOException {
+        dictionary(d, replace, java.util.Set.of());
+    }
+
+    private void dictionary(COSDictionary d, Map<COSName, COSBase> replace, java.util.Set<COSName> without)
+            throws IOException {
         open("<<");
         for (Map.Entry<COSName, COSBase> e : d.entrySet()) {
+            if (without.contains(e.getKey())) {
+                continue;
+            }
             COSBase v = e.getValue();
             if (replace != null && replace.containsKey(e.getKey())) {
                 v = replace.get(e.getKey());
@@ -168,9 +169,7 @@ final class Syntax {
 
     void name(COSName n) {
         byte[] b;
-        synchronized (NAMES) {
-            b = NAMES.get(n);
-        }
+        b = NAMES.get(n);
         if (b == null) {
             Bytes tmp = new Bytes(n.getName().length() + 4);
             try {
@@ -179,10 +178,8 @@ final class Syntax {
                 throw new IllegalStateException(e);
             }
             b = tmp.toByteArray();
-            synchronized (NAMES) {
-                if (NAMES.size() < 100_000) {
-                    NAMES.put(n, b);
-                }
+            if (NAMES.size() < 100_000) {
+                NAMES.put(n, b);
             }
         }
         out.write(b);
@@ -190,8 +187,7 @@ final class Syntax {
     }
 
     static boolean absent(COSBase v) {
-        return v == null || v instanceof COSNull || v instanceof COSObject o && (o.getObject() == null
-                || o.getObject() instanceof COSNull);
+        return v == null || v instanceof COSNull;
     }
 
     static String number(COSFloat f) {
@@ -212,7 +208,4 @@ final class Syntax {
         return n.indexOf('.') < 0 && n.replace("-", "").length() > 9 ? n + "." : n;
     }
 
-    static boolean isStream(COSBase b) {
-        return b instanceof COSStream;
-    }
 }
