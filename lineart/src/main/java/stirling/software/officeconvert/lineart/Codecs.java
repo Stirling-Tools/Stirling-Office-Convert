@@ -41,7 +41,10 @@ final class Codecs {
     }
 
     static Encoded jbig2(Bitmap bitmap) {
-        return new Encoded(LineArt.Codec.JBIG2, Jbig2Generic.encode(bitmap), COSName.JBIG2_DECODE, null, 0);
+        byte[] generic = Jbig2Generic.encode(bitmap);
+        byte[] symbols = Jbig2Symbols.encode(bitmap);
+        byte[] data = symbols != null && symbols.length < generic.length ? symbols : generic;
+        return new Encoded(LineArt.Codec.JBIG2, data, COSName.JBIG2_DECODE, null, 0);
     }
 
     static Encoded g4(Bitmap bitmap) throws IOException {

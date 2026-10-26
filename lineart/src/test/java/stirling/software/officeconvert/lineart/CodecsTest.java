@@ -40,6 +40,45 @@ class CodecsTest {
     }
 
     @Test
+    void repeatedShapesUseASymbolDictionaryAndStayExact() throws IOException {
+        BufferedImage page = glyphs(900, 700, 11);
+        Bitmap bitmap = LineArt.binarize(page, LineArt.Options.defaults().method(LineArt.Method.FIXED));
+        byte[] symbols = Jbig2Symbols.encode(bitmap);
+        byte[] generic = Jbig2Generic.encode(bitmap);
+        assertTrue(symbols != null && symbols.length < generic.length * 3 / 4, symbols.length + " against " + generic.length);
+        assertRoundTrip(page, LineArt.Codec.JBIG2);
+        assertRoundTrip(glyphs(37, 29, 2), LineArt.Codec.JBIG2);
+        assertRoundTrip(glyphs(3000, 40, 5), LineArt.Codec.JBIG2);
+    }
+
+    static BufferedImage glyphs(int w, int h, long seed) {
+        BufferedImage image = solid(w, h, Color.WHITE);
+        Random random = new Random(seed);
+        int[][] shapes = new int[12][];
+        for (int i = 0; i < shapes.length; i++) {
+            shapes[i] = new int[] {3 + random.nextInt(14), 4 + random.nextInt(18), random.nextInt()};
+        }
+        for (int y = 2; y + 24 < h; y += 26) {
+            for (int x = 1; x + 20 < w; ) {
+                int[] s = shapes[random.nextInt(shapes.length)];
+                for (int dy = 0; dy < s[1]; dy++) {
+                    for (int dx = 0; dx < s[0]; dx++) {
+                        boolean edge = dx == 0 || dy == 0 || dx == s[0] - 1 || dy == s[1] - 1;
+                        if (edge || ((s[2] >>> ((dx * 7 + dy * 3) & 31)) & 1) == 1) {
+                            image.setRGB(x + dx, y + 20 - s[1] + dy, 0);
+                        }
+                    }
+                }
+                x += s[0] + 1 + random.nextInt(4);
+            }
+            if (random.nextInt(3) == 0) {
+                image.setRGB(random.nextInt(w), y + 22, 0);
+            }
+        }
+        return image;
+    }
+
+    @Test
     void smallestPicksTheShortestStream() throws IOException {
         Bitmap bitmap = LineArt.binarize(noise(64, 64, 1), LineArt.Options.defaults().method(LineArt.Method.FIXED));
         int smallest = Codecs.encode(bitmap, LineArt.Codec.SMALLEST).data().length;
