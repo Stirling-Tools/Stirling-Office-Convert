@@ -10,6 +10,10 @@ final class SfntRepair {
     private SfntRepair() {}
 
     static byte[] repair(byte[] data) {
+        return repair(data, false);
+    }
+
+    static byte[] repair(byte[] data, boolean dropCmap) {
         if (data == null || data.length < 12) {
             return null;
         }
@@ -37,8 +41,9 @@ final class SfntRepair {
         int declared = maxp != null && maxp.length >= 6 ? ByteBuffer.wrap(maxp).getShort(4) & 0xFFFF : -1;
         byte[] head = tables.get("head");
         boolean longOffsets;
-        if (head != null && head.length >= 54) {
-            longOffsets = ByteBuffer.wrap(head).getShort(50) != 0;
+        int format = head != null && head.length >= 54 ? ByteBuffer.wrap(head).getShort(50) : -1;
+        if (format == 0 || format == 1) {
+            longOffsets = format == 1;
         } else {
             longOffsets = declared > 0 ? loca.length >= 4 * (declared + 1) : plausibleLong(loca, glyf.length);
         }
@@ -52,6 +57,10 @@ final class SfntRepair {
         }
         if (head == null || head.length < 54) {
             tables.put("head", head(longOffsets));
+        } else if (format != 0 && format != 1) {
+            byte[] h = head.clone();
+            ByteBuffer.wrap(h).putShort(50, (short) (longOffsets ? 1 : 0));
+            tables.put("head", h);
         }
         int upem = ByteBuffer.wrap(tables.get("head")).getShort(18) & 0xFFFF;
         if (maxp == null || maxp.length < 32 || declared != glyphs) {
@@ -95,7 +104,7 @@ final class SfntRepair {
         }
         tables.put("hhea", hhea);
         tables.put("hmtx", hmtx);
-        if (!cmapReadable(tables.get("cmap"))) {
+        if (dropCmap || !cmapReadable(tables.get("cmap"))) {
             tables.remove("cmap");
         }
         return Sfnt.write(tables);

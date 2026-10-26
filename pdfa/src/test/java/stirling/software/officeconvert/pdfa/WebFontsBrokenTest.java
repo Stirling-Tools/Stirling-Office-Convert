@@ -137,4 +137,48 @@ class WebFontsBrokenTest {
             }
         }
     }
+
+    private static byte[] decrypt(byte[] data, int key) {
+        int r = key;
+        byte[] out = new byte[data.length];
+        for (int i = 0; i < data.length; i++) {
+            int c = data[i] & 0xFF;
+            out[i] = (byte) (c ^ (r >> 8));
+            r = ((c + r) * 52845 + 22719) & 0xFFFF;
+        }
+        return java.util.Arrays.copyOfRange(out, 4, out.length);
+    }
+
+    @Test
+    void type1ProgramsWhosePrivateDictionaryFontboxRejectsStillConvert() throws Exception {
+        FontPrograms.Type1 t1 = FontPrograms.type1("Damaged", 3);
+        byte[] data = t1.data();
+        byte[] clear = java.util.Arrays.copyOfRange(data, 0, t1.length1());
+        String plain = new String(decrypt(java.util.Arrays.copyOfRange(data, t1.length1(), t1.length1() + t1.length2()),
+                55665), StandardCharsets.ISO_8859_1);
+        String damaged = plain.replace("/BlueValues [] def", "/BlueValues [] def\n/Junk ) ] } def\n");
+        org.junit.jupiter.api.Assertions.assertNotEquals(plain, damaged);
+        byte[] encrypted = FontPrograms.eexec(damaged.getBytes(StandardCharsets.ISO_8859_1));
+        byte[] tail = java.util.Arrays.copyOfRange(data, t1.length1() + t1.length2(), data.length);
+        byte[] broken = FontPrograms.concat(clear, encrypted, tail);
+        org.junit.jupiter.api.Assertions.assertThrows(Exception.class,
+                () -> org.apache.fontbox.type1.Type1Font.createWithSegments(clear, encrypted));
+        byte[] expected = WebFonts.toTrueType(data, WebFonts.FontKind.TYPE1, null);
+        byte[] actual = WebFonts.toTrueType(broken, WebFonts.FontKind.TYPE1, null);
+        try (org.apache.fontbox.ttf.TrueTypeFont e = new org.apache.fontbox.ttf.TTFParser()
+                .parse(new org.apache.pdfbox.io.RandomAccessReadBuffer(expected));
+                org.apache.fontbox.ttf.TrueTypeFont a = new org.apache.fontbox.ttf.TTFParser()
+                        .parse(new org.apache.pdfbox.io.RandomAccessReadBuffer(actual))) {
+            org.junit.jupiter.api.Assertions.assertEquals(e.getNumberOfGlyphs(), a.getNumberOfGlyphs());
+            for (int gid = 0; gid < e.getNumberOfGlyphs(); gid++) {
+                org.junit.jupiter.api.Assertions.assertEquals(e.getAdvanceWidth(gid), a.getAdvanceWidth(gid), "gid " + gid);
+                org.junit.jupiter.api.Assertions.assertEquals(e.getGlyph().getGlyph(gid).getPath().getBounds2D(),
+                        a.getGlyph().getGlyph(gid).getPath().getBounds2D(), "gid " + gid);
+            }
+            for (char c : "AQg".toCharArray()) {
+                org.junit.jupiter.api.Assertions.assertEquals(e.getUnicodeCmapLookup().getGlyphId(c),
+                        a.getUnicodeCmapLookup().getGlyphId(c));
+            }
+        }
+    }
 }
