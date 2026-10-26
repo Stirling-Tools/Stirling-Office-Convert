@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -20,7 +21,7 @@ import org.junit.jupiter.api.Test;
 class SyntaxTest {
 
     @Test
-    void numbersTakeTheirShortestSpelling() {
+    void numbersTakeTheirShortestSpelling() throws IOException {
         assertEquals("1", Lexical.number("1.000"));
         assertEquals(".5", Lexical.number("0.50"));
         assertEquals("-.25", Lexical.number("-0.250"));
@@ -31,6 +32,8 @@ class SyntaxTest {
         assertEquals("340282350000000000000000000000000000000.", Lexical.number("3.4028235E38"));
         assertEquals("12345678901.", Lexical.number("12345678901.000"));
         assertEquals("12345678901", Lexical.number("12345678901"));
+        assertTrue(Syntax.number(new org.apache.pdfbox.cos.COSFloat("9999999999999999999999999999999999999999.0"))
+                .endsWith("."));
         assertNull(Lexical.plainNumber("1.2.3"));
         assertNull(Lexical.plainNumber("-"));
     }

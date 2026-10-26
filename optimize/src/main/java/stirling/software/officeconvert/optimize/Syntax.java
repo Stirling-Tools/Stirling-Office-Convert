@@ -203,8 +203,13 @@ final class Syntax {
         }
         String s = new String(tmp.toByteArray(), java.nio.charset.StandardCharsets.ISO_8859_1);
         String n = Lexical.number(s);
-        return n != null ? n : Lexical.number(Float.toString(f.floatValue())) != null
-                ? Lexical.number(Float.toString(f.floatValue())) : "0";
+        if (n == null) {
+            n = Lexical.number(Float.toString(f.floatValue()));
+        }
+        if (n == null) {
+            return "0";
+        }
+        return n.indexOf('.') < 0 && n.replace("-", "").length() > 9 ? n + "." : n;
     }
 
     static boolean isStream(COSBase b) {
