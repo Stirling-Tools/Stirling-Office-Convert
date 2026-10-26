@@ -32,6 +32,7 @@ import org.apache.poi.ss.usermodel.Cell;
 import org.apache.poi.ss.usermodel.ConditionType;
 import org.apache.poi.ss.usermodel.ConditionalFormattingThreshold;
 import org.apache.poi.ss.usermodel.ExtendedColor;
+import org.apache.poi.ss.usermodel.IconMultiStateFormatting;
 import org.apache.poi.ss.util.CellRangeAddress;
 
 final class CondFormats {
@@ -136,6 +137,20 @@ final class CondFormats {
                     + Math.max(0, Math.min(100, d.getWidthMax() == 0 ? 90 : d.getWidthMax())) + "\">"
                     + cfvo(d.getMinThreshold()) + cfvo(d.getMaxThreshold()) + color(d.getColor())
                     + "</dataBar></cfRule>";
+        }
+        if (rule.getConditionType() == ConditionType.ICON_SET && rule.getMultiStateFormatting() != null) {
+            IconMultiStateFormatting m = rule.getMultiStateFormatting();
+            ConditionalFormattingThreshold[] at = m.getThresholds();
+            if (m.getIconSet() == null || at == null || at.length != m.getIconSet().num) {
+                return null;
+            }
+            StringBuilder b = new StringBuilder("<cfRule type=\"iconSet\" priority=\"").append(++priority)
+                    .append("\"><iconSet iconSet=\"").append(m.getIconSet().name).append('"')
+                    .append(m.isReversed() ? " reverse=\"1\"" : "").append('>');
+            for (ConditionalFormattingThreshold t : at) {
+                b.append(cfvo(t));
+            }
+            return b.append("</iconSet></cfRule>").toString();
         }
         return null;
     }

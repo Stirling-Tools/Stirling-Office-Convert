@@ -329,4 +329,53 @@ class XlsVariantsTest {
         XlsTest.Converted out = convert("cut.xls", withStream(cut));
         assertTrue(out.all().contains("Line 1"), out.all());
     }
+
+    private static void iconsAndScales(org.apache.poi.ss.usermodel.Workbook wb) {
+        org.apache.poi.ss.usermodel.Sheet s = wb.createSheet("Icons");
+        for (int i = 0; i < 9; i++) {
+            s.createRow(i).createCell(0).setCellValue(i);
+        }
+        org.apache.poi.ss.usermodel.SheetConditionalFormatting cf = s.getSheetConditionalFormatting();
+        org.apache.poi.ss.usermodel.ConditionalFormattingRule rule = cf.createConditionalFormattingRule(
+                org.apache.poi.ss.usermodel.IconMultiStateFormatting.IconSet.GYR_3_TRAFFIC_LIGHTS);
+        org.apache.poi.ss.usermodel.ConditionalFormattingThreshold[] t = rule.getMultiStateFormatting()
+                .getThresholds();
+        t[0].setRangeType(org.apache.poi.ss.usermodel.ConditionalFormattingThreshold.RangeType.PERCENT);
+        t[0].setValue(0d);
+        t[1].setRangeType(org.apache.poi.ss.usermodel.ConditionalFormattingThreshold.RangeType.PERCENT);
+        t[1].setValue(33d);
+        t[2].setRangeType(org.apache.poi.ss.usermodel.ConditionalFormattingThreshold.RangeType.PERCENT);
+        t[2].setValue(67d);
+        cf.addConditionalFormatting(new CellRangeAddress[] {CellRangeAddress.valueOf("A1:A9")}, rule);
+    }
+
+    @Test
+    void iconSetsDrawTheSameInLegacyAndCurrentWorkbooks() throws Exception {
+        byte[] legacy = xls(XlsVariantsTest::iconsAndScales);
+        ByteArrayOutputStream modern = new ByteArrayOutputStream();
+        try (org.apache.poi.xssf.usermodel.XSSFWorkbook wb = new org.apache.poi.xssf.usermodel.XSSFWorkbook()) {
+            iconsAndScales(wb);
+            wb.write(modern);
+        }
+        for (Object[] c : new Object[][] {{"icons.xls", legacy}, {"icons.xlsx", modern.toByteArray()}}) {
+            Path in = Fixtures.write(dir, (String) c[0], (byte[]) c[1]);
+            Path out = dir.resolve(c[0] + ".pdf");
+            OfficeToPdf.convert(in, out, OfficeToPdf.Options.defaults());
+            assertTrue(colour(out, 0x63BE7B) && colour(out, 0xF8696B) && colour(out, 0xFFD966), c[0] + " draws icons");
+        }
+    }
+
+    private static boolean colour(Path pdf, int rgb) throws IOException {
+        try (org.apache.pdfbox.pdmodel.PDDocument doc = org.apache.pdfbox.Loader.loadPDF(pdf.toFile())) {
+            java.awt.image.BufferedImage img = new org.apache.pdfbox.rendering.PDFRenderer(doc).renderImage(0, 3f);
+            for (int y = 0; y < img.getHeight(); y++) {
+                for (int x = 0; x < img.getWidth(); x++) {
+                    if ((img.getRGB(x, y) & 0xFFFFFF) == rgb) {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+    }
 }
