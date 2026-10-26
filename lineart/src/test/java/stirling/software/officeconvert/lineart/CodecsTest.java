@@ -30,6 +30,30 @@ class CodecsTest {
         assertRoundTrip(stripes(150, 90), codec);
     }
 
+    @ParameterizedTest
+    @EnumSource(value = LineArt.Codec.class, names = {"JBIG2", "CCITT_G4", "FLATE"})
+    void longRunsOfEveryLengthSurvive(LineArt.Codec codec) throws IOException {
+        int[] runs = {1, 2, 3, 63, 64, 65, 127, 128, 1727, 1728, 1729, 1791, 1792, 1856, 2559, 2560, 2561, 5000, 5121};
+        int w = 0;
+        for (int r : runs) {
+            w += r;
+        }
+        BufferedImage image = solid(w, runs.length * 2, Color.WHITE);
+        for (int y = 0; y < runs.length * 2; y++) {
+            int x = 0;
+            for (int i = 0; i < runs.length; i++) {
+                int run = runs[(i + y) % runs.length];
+                if ((i + y) % 2 == 0) {
+                    for (int k = 0; k < run; k++) {
+                        image.setRGB(x + k, y, 0);
+                    }
+                }
+                x += run;
+            }
+        }
+        assertRoundTrip(image, codec);
+    }
+
     @Test
     void jbig2BeatsGroup4OnLineArt() throws IOException {
         Bitmap bitmap = LineArt.binarize(Pictures.drawing(1200, 900, Color.BLACK, Color.WHITE, 3),

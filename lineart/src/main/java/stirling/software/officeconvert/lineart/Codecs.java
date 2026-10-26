@@ -2,18 +2,10 @@ package stirling.software.officeconvert.lineart;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.io.InputStream;
 import java.util.zip.Deflater;
 
-import org.apache.pdfbox.cos.COSBase;
-import org.apache.pdfbox.cos.COSBoolean;
 import org.apache.pdfbox.cos.COSDictionary;
 import org.apache.pdfbox.cos.COSName;
-import org.apache.pdfbox.cos.COSNumber;
-import org.apache.pdfbox.cos.COSStream;
-import org.apache.pdfbox.pdmodel.PDDocument;
-import org.apache.pdfbox.pdmodel.graphics.image.CCITTFactory;
-import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
 
 final class Codecs {
 
@@ -47,28 +39,12 @@ final class Codecs {
         return new Encoded(LineArt.Codec.JBIG2, data, COSName.JBIG2_DECODE, null, 0);
     }
 
-    static Encoded g4(Bitmap bitmap) throws IOException {
-        try (PDDocument scratch = new PDDocument()) {
-            PDImageXObject image = CCITTFactory.createFromImage(scratch, bitmap.toImage());
-            COSStream stream = image.getCOSObject();
-            byte[] data;
-            try (InputStream in = stream.createRawInputStream()) {
-                data = in.readAllBytes();
-            }
-            COSDictionary parameters = new COSDictionary();
-            COSBase given = stream.getDictionaryObject(COSName.DECODE_PARMS);
-            if (given instanceof COSDictionary d) {
-                for (COSName key : d.keySet()) {
-                    COSBase v = d.getDictionaryObject(key);
-                    if (v instanceof COSBoolean || v instanceof COSNumber) {
-                        parameters.setItem(key, v);
-                    }
-                }
-            }
-            boolean blackIs1 = parameters.getBoolean(COSName.BLACK_IS_1, false);
-            return new Encoded(LineArt.Codec.CCITT_G4, data, COSName.CCITTFAX_DECODE, parameters,
-                    blackIs1 ? 1 : 0);
-        }
+    static Encoded g4(Bitmap bitmap) {
+        COSDictionary parameters = new COSDictionary();
+        parameters.setInt(COSName.K, -1);
+        parameters.setInt(COSName.COLUMNS, bitmap.width());
+        parameters.setInt(COSName.ROWS, bitmap.height());
+        return new Encoded(LineArt.Codec.CCITT_G4, Group4.encode(bitmap), COSName.CCITTFAX_DECODE, parameters, 0);
     }
 
     static Encoded flate(Bitmap bitmap) {

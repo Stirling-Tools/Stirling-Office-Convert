@@ -3,7 +3,9 @@ package stirling.software.officeconvert.lineart;
 import java.awt.color.ColorSpace;
 import java.awt.image.BufferedImage;
 import java.awt.image.DataBuffer;
+import java.awt.image.DataBufferInt;
 import java.awt.image.Raster;
+import java.awt.image.SinglePixelPackedSampleModel;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.util.Arrays;
@@ -11,6 +13,12 @@ import java.util.Arrays;
 final class Binarizer {
 
     private static final double QUANTUM = 65535.0;
+
+    private static final double[] RED = weights(0.212656);
+
+    private static final double[] GREEN = weights(0.715158);
+
+    private static final double[] BLUE = weights(0.072186);
 
     interface Rows {
         void process(float[] buffer, int first, int from, int to);
@@ -142,16 +150,35 @@ final class Binarizer {
             }
             return grey;
         }
-        int[] row = new int[w];
+        boolean packed = (image.getType() == BufferedImage.TYPE_INT_RGB || image.getType() == BufferedImage.TYPE_INT_ARGB)
+                && raster.getDataBuffer() instanceof DataBufferInt
+                && raster.getSampleModel() instanceof SinglePixelPackedSampleModel;
+        int[] data = packed ? ((DataBufferInt) raster.getDataBuffer()).getData() : null;
+        int scan = packed ? ((SinglePixelPackedSampleModel) raster.getSampleModel()).getScanlineStride() : 0;
+        int dx = -raster.getSampleModelTranslateX();
+        int dy = -raster.getSampleModelTranslateY();
+        int[] row = packed ? null : new int[w];
         for (int y = 0; y < h; y++) {
-            image.getRGB(0, y, w, 1, row, 0, w);
+            int offset = 0;
+            if (packed) {
+                offset = (y + dy) * scan + dx + raster.getDataBuffer().getOffset();
+            } else {
+                image.getRGB(0, y, w, 1, row, 0, w);
+            }
             for (int x = 0; x < w; x++) {
-                int p = row[x];
-                grey[y * w + x] = (float) (0.212656 * (((p >>> 16) & 0xFF) * 257) + 0.715158 * (((p >>> 8) & 0xFF) * 257)
-                        + 0.072186 * ((p & 0xFF) * 257));
+                int p = packed ? data[offset + x] : row[x];
+                grey[y * w + x] = (float) (RED[(p >>> 16) & 0xFF] + GREEN[(p >>> 8) & 0xFF] + BLUE[p & 0xFF]);
             }
         }
         return grey;
+    }
+
+    private static double[] weights(double weight) {
+        double[] table = new double[256];
+        for (int i = 0; i < 256; i++) {
+            table[i] = weight * (i * 257);
+        }
+        return table;
     }
 
     private static void edges(Source source, int rows, int level, double threshold, Bitmap out) throws IOException {
@@ -249,11 +276,13 @@ final class Binarizer {
 
     private static double[] across(float[] buffer, int row, int w, int r, double[] reuse) {
         double[] sums = reuse != null && reuse.length == w ? reuse : new double[w];
-        for (int x = 0; x < w; x++) {
-            double s = 0;
-            for (int dx = -r; dx <= r; dx++) {
-                s += buffer[row + Math.clamp(x + dx, 0, w - 1)];
-            }
+        double s = 0;
+        for (int dx = -r; dx <= r; dx++) {
+            s += buffer[row + Math.clamp(dx, 0, w - 1)];
+        }
+        sums[0] = s;
+        for (int x = 1; x < w; x++) {
+            s += (double) buffer[row + Math.min(x + r, w - 1)] - buffer[row + Math.max(x - r - 1, 0)];
             sums[x] = s;
         }
         return sums;
