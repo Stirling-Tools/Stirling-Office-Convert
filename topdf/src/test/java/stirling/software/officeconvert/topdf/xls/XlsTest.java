@@ -15,6 +15,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Calendar;
 import java.util.List;
 import java.util.function.Consumer;
@@ -526,6 +527,62 @@ class XlsTest {
         OfficeToPdf.Result result = OfficeToPdf.convert(in, out, OfficeToPdf.Options.defaults());
         assertFalse(String.join(" ", result.warnings()).contains("PICT"), result.warnings().toString());
         assertTrue(hasColour(out, Color.RED), "the PICT rectangle is painted");
+    }
+
+    @Test
+    void checkBoxesAndOptionButtonsPrintWithTheirLabels() throws Exception {
+        byte[] data = xls(wb -> {
+            HSSFSheet s = wb.createSheet("Form");
+            s.createRow(0).createCell(0).setCellValue("Form");
+            HSSFPatriarch p = s.createDrawingPatriarch();
+            String[] labels = {"Tick me", "Pick me"};
+            for (int i = 0; i < labels.length; i++) {
+                HSSFSimpleShape box = p.createSimpleShape(new HSSFClientAnchor(0, 0, 0, 0, (short) 1, 2 + 3 * i,
+                        (short) 5, 3 + 3 * i));
+                box.setShapeType(HSSFSimpleShape.OBJECT_TYPE_RECTANGLE);
+                box.setString(new HSSFRichTextString(labels[i]));
+            }
+        });
+        byte[] stream;
+        try (POIFSFileSystem fs = new POIFSFileSystem(new ByteArrayInputStream(data))) {
+            stream = fs.createDocumentInputStream("Workbook").readAllBytes();
+        }
+        ByteArrayOutputStream patched = new ByteArrayOutputStream();
+        int objects = 0;
+        int at = 0;
+        while (at + 4 <= stream.length) {
+            int sid = stream[at] & 0xFF | (stream[at + 1] & 0xFF) << 8;
+            int len = stream[at + 2] & 0xFF | (stream[at + 3] & 0xFF) << 8;
+            byte[] body = Arrays.copyOfRange(stream, at + 4, at + 4 + len);
+            if (sid == 0xEC) {
+                for (int k = 0; k + 3 < body.length; k++) {
+                    if (body[k] == 0x12 && body[k + 1] == 0 && body[k + 2] == 0x0A && body[k + 3] == (byte) 0xF0) {
+                        body[k] = (byte) 0x92;
+                        body[k + 1] = 0x0C;
+                    }
+                }
+            }
+            if (sid == 0x5D) {
+                body[4] = (byte) (objects++ == 0 ? 0x0B : 0x0C);
+                byte[] cbls = {0x0A, 0, 0x0C, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+                byte[] grown = new byte[body.length + cbls.length];
+                System.arraycopy(body, 0, grown, 0, body.length - 4);
+                System.arraycopy(cbls, 0, grown, body.length - 4, cbls.length);
+                body = grown;
+            }
+            patched.write(new byte[] {(byte) sid, (byte) (sid >> 8), (byte) body.length, (byte) (body.length >> 8)},
+                    0, 4);
+            patched.write(body, 0, body.length);
+            at += 4 + len;
+        }
+        ByteArrayOutputStream file = new ByteArrayOutputStream();
+        try (POIFSFileSystem fs = new POIFSFileSystem()) {
+            fs.createDocument(new ByteArrayInputStream(patched.toByteArray()), "Workbook");
+            fs.writeFilesystem(file);
+        }
+        assertEquals(2, objects);
+        String text = convert("form.xls", file.toByteArray()).all();
+        assertTrue(text.contains("Tick me") && text.contains("Pick me"), text);
     }
 
     @Test
