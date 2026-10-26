@@ -29,10 +29,16 @@ public final class PhotoSplitter {
 
     public static final long MAX_PIXELS = 100_000_000L;
 
+    public enum Method {
+        STRAIGHTEN,
+        SCRIPT
+    }
+
     public record Options(int angleThreshold, int tolerance, int minArea, int minContourArea, int borderSize, float dpi,
-            boolean overwrite) {
+            boolean overwrite, Method method) {
 
         public Options {
+            Objects.requireNonNull(method, "method");
             if (borderSize < 0) {
                 throw new IllegalArgumentException("borderSize must be 0 or more, was " + borderSize);
             }
@@ -42,35 +48,39 @@ public final class PhotoSplitter {
         }
 
         public static Options defaults() {
-            return new Options(10, 30, 10000, 500, 0, 300f, false);
+            return new Options(10, 30, 10000, 500, 0, 300f, false, Method.STRAIGHTEN);
         }
 
         public Options angleThreshold(int degrees) {
-            return new Options(degrees, tolerance, minArea, minContourArea, borderSize, dpi, overwrite);
+            return new Options(degrees, tolerance, minArea, minContourArea, borderSize, dpi, overwrite, method);
         }
 
         public Options tolerance(int levels) {
-            return new Options(angleThreshold, levels, minArea, minContourArea, borderSize, dpi, overwrite);
+            return new Options(angleThreshold, levels, minArea, minContourArea, borderSize, dpi, overwrite, method);
         }
 
         public Options minArea(int pixels) {
-            return new Options(angleThreshold, tolerance, pixels, minContourArea, borderSize, dpi, overwrite);
+            return new Options(angleThreshold, tolerance, pixels, minContourArea, borderSize, dpi, overwrite, method);
         }
 
         public Options minContourArea(int pixels) {
-            return new Options(angleThreshold, tolerance, minArea, pixels, borderSize, dpi, overwrite);
+            return new Options(angleThreshold, tolerance, minArea, pixels, borderSize, dpi, overwrite, method);
         }
 
         public Options borderSize(int pixels) {
-            return new Options(angleThreshold, tolerance, minArea, minContourArea, pixels, dpi, overwrite);
+            return new Options(angleThreshold, tolerance, minArea, minContourArea, pixels, dpi, overwrite, method);
         }
 
         public Options dpi(float pdfRenderDpi) {
-            return new Options(angleThreshold, tolerance, minArea, minContourArea, borderSize, pdfRenderDpi, overwrite);
+            return new Options(angleThreshold, tolerance, minArea, minContourArea, borderSize, pdfRenderDpi, overwrite, method);
         }
 
         public Options overwrite(boolean replaceExisting) {
-            return new Options(angleThreshold, tolerance, minArea, minContourArea, borderSize, dpi, replaceExisting);
+            return new Options(angleThreshold, tolerance, minArea, minContourArea, borderSize, dpi, replaceExisting, method);
+        }
+
+        public Options method(Method how) {
+            return new Options(angleThreshold, tolerance, minArea, minContourArea, borderSize, dpi, overwrite, how);
         }
     }
 
@@ -96,7 +106,8 @@ public final class PhotoSplitter {
             throw new IllegalArgumentException("scan has " + (long) scan.getWidth() * scan.getHeight()
                     + " pixels; the limit is " + MAX_PIXELS);
         }
-        return ScriptMethod.split(ScanImage.of(scan), options);
+        ScanImage image = ScanImage.of(scan);
+        return options.method() == Method.SCRIPT ? ScriptMethod.split(image, options) : StraightenMethod.split(image, options);
     }
 
     public static List<Path> split(Path input, Path outputDirectory, Options options) throws IOException {

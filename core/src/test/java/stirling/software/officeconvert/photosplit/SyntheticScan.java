@@ -93,6 +93,11 @@ final class SyntheticScan {
         return this;
     }
 
+    SyntheticScan photo(BufferedImage content, double cx, double cy, double angle) {
+        photos.add(new Placed(content, cx, cy, angle));
+        return this;
+    }
+
     Scene render() {
         BufferedImage scan = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB);
         int[] px = ((DataBufferInt) scan.getRaster().getDataBuffer()).getData();
