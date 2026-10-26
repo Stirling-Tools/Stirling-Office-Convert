@@ -15,9 +15,13 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Objects;
 
+import javax.imageio.IIOImage;
 import javax.imageio.ImageIO;
 import javax.imageio.ImageReader;
+import javax.imageio.ImageWriteParam;
+import javax.imageio.ImageWriter;
 import javax.imageio.stream.ImageInputStream;
+import javax.imageio.stream.ImageOutputStream;
 
 import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.pdmodel.PDDocument;
@@ -28,6 +32,8 @@ import org.apache.pdfbox.rendering.PDFRenderer;
 public final class PhotoSplitter {
 
     public static final long MAX_PIXELS = 100_000_000L;
+
+    private static final float PNG_QUALITY = 0.85f;
 
     public enum Method {
         STRAIGHTEN,
@@ -156,11 +162,28 @@ public final class PhotoSplitter {
             Path target = targets.get(i);
             try (OutputStream out = overwrite ? Files.newOutputStream(target)
                     : Files.newOutputStream(target, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE)) {
-                if (!ImageIO.write(photos.get(i).image(), "png", out)) {
-                    throw new IOException("no PNG writer available");
-                }
+                png(photos.get(i).image(), out);
             }
             written.add(target);
+        }
+    }
+
+    private static void png(BufferedImage image, OutputStream out) throws IOException {
+        Iterator<ImageWriter> writers = ImageIO.getImageWritersByFormatName("png");
+        if (!writers.hasNext()) {
+            throw new IOException("no PNG writer available");
+        }
+        ImageWriter writer = writers.next();
+        try (ImageOutputStream stream = ImageIO.createImageOutputStream(out)) {
+            writer.setOutput(stream);
+            ImageWriteParam param = writer.getDefaultWriteParam();
+            if (param.canWriteCompressed()) {
+                param.setCompressionMode(ImageWriteParam.MODE_EXPLICIT);
+                param.setCompressionQuality(PNG_QUALITY);
+            }
+            writer.write(null, new IIOImage(image, null, null), param);
+        } finally {
+            writer.dispose();
         }
     }
 

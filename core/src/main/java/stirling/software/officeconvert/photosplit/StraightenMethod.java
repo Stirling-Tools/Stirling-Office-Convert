@@ -26,9 +26,10 @@ final class StraightenMethod {
         int strong = bed.threshold(options.tolerance());
         byte[] photo = new byte[w * h];
         byte[] mask = bed.foreground(smooth, w, h, strong, photo);
-        smooth = Filters.boxBlur(scan.rgb, w, h, WIDE_RADIUS);
-        byte[] faint = bed.foreground(smooth, w, h, bed.faintThreshold(strong, SMOOTH_RADIUS, WIDE_RADIUS));
         smooth = null;
+        int[] wide = Filters.boxBlur(scan.rgb, w, h, WIDE_RADIUS);
+        byte[] faint = bed.foreground(wide, w, h, bed.faintThreshold(strong, SMOOTH_RADIUS, WIDE_RADIUS));
+        wide = null;
         Filters.grow(mask, faint, w, h);
         faint = null;
         Morphology.dilate(mask, w, h, CLOSE_RADIUS);
@@ -43,7 +44,10 @@ final class StraightenMethod {
                 if (rect.area() < options.minArea() || part.count < options.minContourArea() || strip(part, rect, w, h)) {
                     continue;
                 }
-                found.add(EdgeFit.refine(scan, rect));
+                RotatedRect fitted = EdgeFit.refine(scan, rect);
+                if (fitted.area() >= options.minArea()) {
+                    found.add(fitted);
+                }
             }
         }
         List<PhotoSplitter.Photo> photos = new ArrayList<>();

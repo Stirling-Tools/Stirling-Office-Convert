@@ -7,6 +7,7 @@ import java.awt.image.ComponentColorModel;
 import java.awt.image.DataBuffer;
 import java.awt.image.DataBufferInt;
 import java.awt.image.Raster;
+import java.awt.image.SinglePixelPackedSampleModel;
 import java.util.Arrays;
 
 final class ScanImage {
@@ -24,6 +25,13 @@ final class ScanImage {
     static ScanImage of(BufferedImage image) {
         int w = image.getWidth();
         int h = image.getHeight();
+        if (image.getType() == BufferedImage.TYPE_INT_RGB && image.getRaster().getSampleModel() instanceof SinglePixelPackedSampleModel sm
+                && sm.getScanlineStride() == w && image.getRaster().getSampleModelTranslateX() == 0
+                && image.getRaster().getSampleModelTranslateY() == 0
+                && image.getRaster().getDataBuffer() instanceof DataBufferInt data && data.getNumBanks() == 1
+                && data.getOffset() == 0 && data.getData().length == w * h) {
+            return new ScanImage(w, h, data.getData());
+        }
         int[] out = new int[Math.multiplyExact(w, h)];
         ColorModel cm = image.getColorModel();
         Raster raster = image.getRaster();
