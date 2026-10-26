@@ -7,9 +7,12 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
+import java.util.function.Predicate;
 
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
@@ -39,7 +42,7 @@ public final class HtmlDocument {
     }
 
     /** A page laid out, and the scale it should be printed at: below 1 when content was wider than the page. */
-    public record Laid(Converted converted, float fit) {}
+    public record Laid(Converted converted, float fit, List<byte[]> fonts) {}
 
     // Chrome shrinks a page whose content is too wide by at most a third, and clips what is wider still
     static final float LEAST_FIT = 2f / 3f;
@@ -129,6 +132,13 @@ public final class HtmlDocument {
         Cascade cascade = new Cascade(doc, viewportPx(page), linked);
         float[] inset = inset(page, cascade, doc);
         List<String> warnings = new ArrayList<>();
+        WebFonts.Loaded web = WebFonts.load(cascade.faces(), linked, warnings);
+        if (!web.families().isEmpty()) {
+            Predicate<String> installed = Look.drawable();
+            Set<String> loaded = new HashSet<>();
+            web.families().forEach(f -> loaded.add(f.toLowerCase(Locale.ROOT)));
+            Look.drawable(f -> loaded.contains(f.toLowerCase(Locale.ROOT)) || installed.test(f));
+        }
         boolean ownPaper = cascade.declaresPages();
         float printed = page.pageWidth - page.marginLeft - page.marginRight;
         if (zoom < 1 && !ownPaper) {
@@ -186,7 +196,7 @@ public final class HtmlDocument {
         }
         // a second layout on larger paper is printed at the zoom it was laid out for
         float printAt = zoom < 1 ? (ownPaper ? 1f : zoom) : fit;
-        return new Laid(new Converted(warnings, ctx.truncated()), printAt);
+        return new Laid(new Converted(warnings, ctx.truncated()), printAt, web.fonts());
     }
 
     private static DocSink.HeaderFooterSet withFixed(DocSink.HeaderFooterSet running, List<Inline> drawings,

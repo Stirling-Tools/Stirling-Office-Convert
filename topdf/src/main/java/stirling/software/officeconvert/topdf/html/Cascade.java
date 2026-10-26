@@ -46,6 +46,7 @@ final class Cascade {
     private final Map<String, Map<String, String>> named = new HashMap<>();
     private long work;
     private final Set<String> sheets = new HashSet<>();
+    private final List<WebFonts.Face> faces = new ArrayList<>();
     private long sheetChars;
 
     private static final long MAX_SHEET_CHARS = 8L << 20;
@@ -64,13 +65,21 @@ final class Cascade {
             if (!Media.matches(sheet.attr("media"), viewportPx)) {
                 continue;
             }
+            int before = rules.size();
+            String base = linked.base();
             if (sheet.normalName().equals("style")) {
                 Css.rules(imported(sheet.data(), linked.base(), linked, viewportPx, 0), rules, viewportPx);
             } else if (stylesheet(sheet) && !linked.none()) {
                 String ref = HtmlRefs.resolve(linked.base(), sheet.attr("href"));
                 String text = sheet(ref, linked);
                 if (text != null) {
+                    base = ref;
                     Css.rules(imported(text, ref, linked, viewportPx, 0), rules, viewportPx);
+                }
+            }
+            for (int k = before; k < rules.size(); k++) {
+                if (rules.get(k).selector().equals("@font-face") && faces.size() < WebFonts.MAX_FACES) {
+                    faces.add(new WebFonts.Face(rules.get(k).declarations(), base));
                 }
             }
         }
@@ -82,6 +91,9 @@ final class Cascade {
                 String box = rule.selector().substring(8);
                 put(margins.computeIfAbsent(box, k -> new HashMap<>()), rule.declarations(), false);
                 put(importantMargins.computeIfAbsent(box, k -> new HashMap<>()), rule.declarations(), true);
+                continue;
+            }
+            if ("@font-face".equals(rule.selector())) {
                 continue;
             }
             if ("@page".equals(rule.selector())) {
@@ -398,6 +410,10 @@ final class Cascade {
 
     Map<String, String> page() {
         return page;
+    }
+
+    List<WebFonts.Face> faces() {
+        return faces;
     }
 
     Map<String, Map<String, String>> margins() {

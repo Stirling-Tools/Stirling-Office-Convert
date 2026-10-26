@@ -7,12 +7,14 @@ import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Locale;
 
 import stirling.software.officeconvert.memory.Admission;
 import stirling.software.officeconvert.topdf.OfficeToPdf.Format;
 import stirling.software.officeconvert.topdf.OfficeToPdf.Options;
 import stirling.software.officeconvert.topdf.OfficeToPdf.Result;
+import stirling.software.officeconvert.topdf.font.FontSet;
 import stirling.software.officeconvert.topdf.html.HtmlDocument;
 import stirling.software.officeconvert.topdf.text.Converted;
 
@@ -213,6 +215,7 @@ final class HtmlInput {
                 laid = lay(source, pkg, options, bytes, laid.fit(), once);
             }
             OfficeToPdf.stopIfInterrupted();
+            options = withFonts(options, laid.fonts());
             if (laid.fit() >= 0.99f) {
                 return Rewritten.render(pkg, source, laid.converted(), sink, options, renderer);
             }
@@ -230,6 +233,21 @@ final class HtmlInput {
         } finally {
             OfficeToPdf.deleteQuietly(pkg);
         }
+    }
+
+    private static Options withFonts(Options options, List<byte[]> fonts) {
+        if (fonts.isEmpty()) {
+            return options;
+        }
+        FontSet.Builder set = options.fonts().toBuilder();
+        try {
+            for (byte[] font : fonts) {
+                set.font(font);
+            }
+        } catch (IllegalArgumentException e) {
+            return options;
+        }
+        return options.fonts(set.build());
     }
 
     private static HtmlDocument.Laid lay(Path source, Path pkg, Options options, long bytes, float zoom,

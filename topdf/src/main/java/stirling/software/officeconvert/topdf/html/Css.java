@@ -10,8 +10,8 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /** Just enough CSS: rules from a style sheet, declarations, lengths and colours. Nothing is fetched here: a
- * background's url() is kept as {@code background-url} for the caller to resolve, and @import and @font-face are
- * dropped. */
+ * background's url() is kept as {@code background-url} for the caller to resolve, an @font-face rule keeps its
+ * declarations as written, and @import is dropped. */
 final class Css {
 
     static final int MAX_RULES = 200_000;
@@ -73,6 +73,8 @@ final class Css {
                 } else if (at.startsWith("@supports") || at.startsWith("@layer") || at.startsWith("@container")
                         || at.startsWith("@scope") || at.startsWith("@document")) {
                     rules(inner, into, viewportPx, depth + 1);
+                } else if (at.equals("@font-face")) {
+                    into.add(new Rule("@font-face", rawDeclarations(inner)));
                 } else if (at.startsWith("@page")) {
                     // @page, or a named page: "@page wide"; page selectors like :first are left to the default page
                     String name = head.substring(5).strip();
@@ -155,6 +157,17 @@ final class Css {
             i = end < 0 ? s.length() : end + 2;
         }
         return sb.toString();
+    }
+
+    static Map<String, String> rawDeclarations(String block) {
+        Map<String, String> out = new LinkedHashMap<>();
+        for (String d : splitTopLevel(stripComments(block), ';')) {
+            int colon = d.indexOf(':');
+            if (colon > 0) {
+                out.put(d.substring(0, colon).strip().toLowerCase(Locale.ROOT), d.substring(colon + 1).strip());
+            }
+        }
+        return out;
     }
 
     static Map<String, String> declarations(String block) {

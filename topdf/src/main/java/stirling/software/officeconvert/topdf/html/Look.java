@@ -246,6 +246,10 @@ final class Look {
     // Which families can be drawn while one document converts; a browser skips web fonts it never loaded
     private static final ThreadLocal<Predicate<String>> DRAWABLE = ThreadLocal.withInitial(() -> f -> true);
 
+    static Predicate<String> drawable() {
+        return DRAWABLE.get();
+    }
+
     static void drawable(Predicate<String> test) {
         DRAWABLE.set(test);
     }

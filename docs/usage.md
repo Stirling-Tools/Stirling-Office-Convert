@@ -548,9 +548,12 @@ presentational attributes over a browser's defaults, with the cascade as Chrome 
 queries are answered for print at the page's text width, `!important`, custom properties (`var()`), `calc()`,
 `min()`, `max()`, `clamp()`, `rem`, `hsl()` and alpha colours. Flex rows and grids become columns side by side
 (short items share a line); absolute positions and visually hidden text (screen-reader-only, off-page, closed
-`<details>`) are left out. Nothing is fetched and no script runs: linked style sheets, `@import`, `@font-face`,
+`<details>`) are left out. Nothing is fetched and no script runs: linked style sheets, `@import`,
 `url()` and pictures on the web or on disk are left out with a warning, and only pictures inside the file are drawn
-(PNG, JPEG, GIF, BMP, WebP and SVG; AVIF is not). A `.zip` of a page is refused unless
+(PNG, JPEG, GIF, BMP, WebP and SVG; AVIF is not). Web fonts (`@font-face`) are drawn from `data:` URIs, and from
+linked files only through the same opt-ins as pictures: TrueType, and WOFF 1 holding TrueType; WOFF 2 and
+PostScript-outline (CFF) fonts fall back to an installed font with a warning. A face is used under its CSS family
+name, weight and style. A `.zip` of a page is refused unless
 `Options.allowPackages(true)` (`--allow-packages`) is given; then the page it holds (the shallowest `index.html`, else the
 shallowest `.html`) draws the pictures, linked style sheets and `@import`s it holds, resolved relative to the page and
 never outside the archive. A library caller can supply them another way with `Options.htmlAssets(HtmlAssets)`:
