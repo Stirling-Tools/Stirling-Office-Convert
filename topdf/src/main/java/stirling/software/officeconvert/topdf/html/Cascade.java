@@ -462,7 +462,7 @@ final class Cascade {
         Map<String, String> out = new HashMap<>();
         Presentation.apply(e, out);
         List<Hit> list = hits(e);
-        Map<String, String> inline = e.hasAttr("style") ? Css.declarations(e.attr("style")) : Map.of();
+        Map<String, String> inline = e.hasAttr("style") ? inline(e.attr("style")) : Map.of();
         // Normal rules, then the style attribute, then !important rules, then an !important style attribute
         if (list != null) {
             for (Hit h : list) {
@@ -477,6 +477,22 @@ final class Cascade {
         }
         put(out, inline, true);
         return out;
+    }
+
+    private static final int MAX_STYLES = 20_000;
+
+    private final Map<String, Map<String, String>> styles = new HashMap<>();
+
+    private Map<String, String> inline(String style) {
+        Map<String, String> known = styles.get(style);
+        if (known != null) {
+            return known;
+        }
+        Map<String, String> parsed = Collections.unmodifiableMap(Css.declarations(style));
+        if (styles.size() < MAX_STYLES) {
+            styles.put(style, parsed);
+        }
+        return parsed;
     }
 
     private static void put(Map<String, String> out, Map<String, String> declared, boolean important) {
