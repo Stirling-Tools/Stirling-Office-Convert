@@ -19,12 +19,14 @@ final class Rewritten {
 
     static Result render(Path pkg, Path source, Converted outcome, OutputStream sink, Options options,
             OfficeToPdf.Renderer renderer) throws IOException {
-        return render(pkg, source, outcome, sink, options, renderer, job -> { });
+        return render(pkg, source, outcome, sink, options, renderer, job -> { }, job -> { });
     }
 
     static Result render(Path pkg, Path source, Converted outcome, OutputStream sink, Options options,
-            OfficeToPdf.Renderer renderer, Consumer<RenderJob> rendered) throws IOException {
+            OfficeToPdf.Renderer renderer, Consumer<RenderJob> before, Consumer<RenderJob> rendered)
+            throws IOException {
         Result r = OfficeToPdf.render(pkg, Format.DOCX, sink, options, (s, job) -> {
+            before.accept(job);
             renderer.render(source, job);
             rendered.accept(job);
         }, OfficeToPdf.REWRITTEN);

@@ -69,14 +69,31 @@ class MarginBoxesTest {
     }
 
     @Test
-    void namedOrSelectedPagesDoNotLeakBoxes() throws IOException {
+    void namedPagesDoNotLeakBoxesAndFirstPageBoxesStayOnTheFirstPage() throws IOException {
         String html = "<html><head><style>@page :first { @top-center { content: \"First only\" } } "
-                + "@page wide { @top-center { content: \"Wide only\" } }</style></head><body>" + body(3)
+                + "@page wide { @top-center { content: \"Wide only\" } }</style></head><body>" + body(150)
                 + "</body></html>";
         try (PDDocument doc = convert(html)) {
-            String text = new PDFTextStripper().getText(doc);
-            assertFalse(text.contains("First only"), text);
-            assertFalse(text.contains("Wide only"), text);
+            assertTrue(doc.getNumberOfPages() >= 2);
+            assertTrue(page(doc, 1).contains("First only"), page(doc, 1));
+            assertFalse(page(doc, 2).contains("First only"), page(doc, 2));
+            assertFalse(new PDFTextStripper().getText(doc).contains("Wide only"));
+        }
+    }
+
+    @Test
+    void leftAndRightPagesGetTheirOwnBoxes() throws IOException {
+        String html = "<html><head><style>@page { margin: 72pt; @bottom-center { content: counter(page) } } "
+                + "@page :left { @top-left { content: \"Even side\" } } @page :right { @top-right { content: "
+                + "\"Odd side\" } }</style></head><body>" + body(260) + "</body></html>";
+        try (PDDocument doc = convert(html)) {
+            assertTrue(doc.getNumberOfPages() >= 3);
+            for (int i = 1; i <= 3; i++) {
+                String text = page(doc, i);
+                assertEquals(i % 2 == 1, text.contains("Odd side"), text);
+                assertEquals(i % 2 == 0, text.contains("Even side"), text);
+                assertTrue(text.contains(Integer.toString(i)), text);
+            }
         }
     }
 
@@ -96,6 +113,32 @@ class MarginBoxesTest {
                 assertEquals(i > 1, text.contains("Running head"), text);
                 assertEquals(i > 1, text.contains("Page " + i), text);
             }
+        }
+    }
+
+    private static String page(PDDocument doc, int i) throws IOException {
+        PDFTextStripper s = new PDFTextStripper();
+        s.setStartPage(i);
+        s.setEndPage(i);
+        return s.getText(doc);
+    }
+
+    @Test
+    void runningStringsFollowTheChapterOnEachPage() throws IOException {
+        String html = "<html><head><style>@page { margin: 72pt; @top-left { content: \"Head: \" string(chapter) } "
+                + "@top-right { content: \"Last: \" string(chapter, last) } } h2 { string-set: chapter content(); "
+                + "page-break-before: always } .short { string-set: chapter \"Gamma \" attr(data-n) }</style></head>"
+                + "<body><p>Intro</p><h2>Alpha</h2>" + body(3) + "<h2>Beta</h2>" + body(120)
+                + "<h2 class=short data-n=3>ignored text</h2>" + body(2) + "</body></html>";
+        try (PDDocument doc = convert(html)) {
+            int pages = doc.getNumberOfPages();
+            assertTrue(pages >= 5, "pages " + pages);
+            assertFalse(page(doc, 1).contains("Alpha"), page(doc, 1));
+            assertTrue(page(doc, 2).contains("Head: Alpha"), page(doc, 2));
+            assertTrue(page(doc, 3).contains("Head: Beta"), page(doc, 3));
+            assertTrue(page(doc, 4).contains("Head: Beta"), page(doc, 4));
+            assertTrue(page(doc, pages).contains("Head: Gamma 3"), page(doc, pages));
+            assertTrue(page(doc, pages).contains("Last: Gamma 3"), page(doc, pages));
         }
     }
 

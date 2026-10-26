@@ -1,8 +1,12 @@
 package stirling.software.officeconvert.topdf.html;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.Deque;
 import java.util.HashMap;
+import java.util.IdentityHashMap;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -38,70 +42,45 @@ final class Generated {
 
     private Generated() {}
 
-    static Set<String> apply(Document doc, Cascade cascade, Map<String, Integer> pages) {
+    record Result(Set<String> targets, Map<Element, String> marks, Map<String, String[]> strings) {
+        static final Result NONE = new Result(Set.of(), Map.of(), Map.of());
+    }
+
+    static Result apply(Document doc, Cascade cascade, Map<String, Integer> pages) {
         List<Rule> rules = cascade.pseudoRules();
-        Set<String> targets = new LinkedHashSet<>();
-        if (rules.isEmpty() || doc.body() == null) {
-            return targets;
+        boolean strings = cascade.setsStrings();
+        if (rules.isEmpty() && !strings || doc.body() == null) {
+            return Result.NONE;
         }
         List<Rule> sorted = new ArrayList<>(rules);
         sorted.sort(Comparator.comparingInt(Rule::specificity).thenComparingInt(Rule::order));
-        long work = 0;
-        int boxes = 0;
-        List<Pending> pending = new ArrayList<>();
         boolean counting = sorted.stream().anyMatch(r -> counts(r.declarations()));
-        Map<String, Integer> counters = new HashMap<>();
-        for (Element e : doc.body().getAllElements()) {
-            work += sorted.size();
-            if (work > MAX_WORK || boxes >= MAX_BOXES) {
-                break;
-            }
-            if (counting) {
-                count(cascade.declared(e), counters);
-            }
-            if (EMPTY.contains(e.normalName()) || e.hasAttr("data-oc-generated")) {
-                continue;
-            }
-            Map<String, String> before = null;
-            Map<String, String> after = null;
-            for (Rule r : sorted) {
-                boolean hit;
-                try {
-                    hit = r.evaluator().matches(doc, e);
-                } catch (RuntimeException ex) {
-                    hit = false;
-                }
-                if (!hit) {
-                    continue;
-                }
-                if (r.which().equals("before")) {
-                    before = merged(before, r.declarations());
-                } else {
-                    after = merged(after, r.declarations());
-                }
-            }
-            for (Map<String, String> d : before == null ? List.<Map<String, String>>of() : List.of(before)) {
-                Element span = build(d, true, e, pages, targets, counters);
-                if (span != null) {
-                    pending.add(new Pending(e, span, d, true));
-                    boxes++;
-                }
-            }
-            for (Map<String, String> d : after == null ? List.<Map<String, String>>of() : List.of(after)) {
-                Element span = build(d, false, e, pages, targets, counters);
-                if (span != null) {
-                    pending.add(new Pending(e, span, d, false));
-                    boxes++;
-                }
+        Walk walk = new Walk(doc, cascade, sorted, pages, counting, strings);
+        Deque<Element> stack = new ArrayDeque<>();
+        Deque<Integer> next = new ArrayDeque<>();
+        stack.push(doc.body());
+        next.push(0);
+        walk.enter(doc.body());
+        while (!stack.isEmpty() && !walk.exhausted()) {
+            Element top = stack.peek();
+            int i = next.pop();
+            if (i < top.childrenSize()) {
+                next.push(i + 1);
+                Element child = top.child(i);
+                walk.enter(child);
+                stack.push(child);
+                next.push(0);
+            } else {
+                walk.exit(stack.pop());
             }
         }
-        if (pending.isEmpty()) {
-            return targets;
+        if (walk.pending.isEmpty() && walk.marks.isEmpty()) {
+            return new Result(walk.targets, Map.of(), Map.of());
         }
         for (Element e : doc.getAllElements()) {
             cascade.match(e);
         }
-        for (Pending p : pending) {
+        for (Pending p : walk.pending) {
             Map<String, String> own = new HashMap<>(p.declarations());
             own.remove("content");
             own.remove(Css.IMPORTANT_MARK + "content");
@@ -112,7 +91,173 @@ final class Generated {
                 p.element().appendChild(p.span());
             }
         }
-        return targets;
+        return new Result(walk.targets, walk.marks, walk.stringValues);
+    }
+
+    private static final class Walk {
+        final Document doc;
+        final Cascade cascade;
+        final List<Rule> rules;
+        final Map<String, Integer> pages;
+        final boolean counting;
+        final boolean strings;
+        final Counters counters = new Counters();
+        final Set<String> targets = new LinkedHashSet<>();
+        final List<Pending> pending = new ArrayList<>();
+        final Map<Element, String> marks = new IdentityHashMap<>();
+        final Map<String, String[]> stringValues = new LinkedHashMap<>();
+        final Map<Element, Map<String, String>> afters = new IdentityHashMap<>();
+        final Map<Element, Map<String, String>> declared = new IdentityHashMap<>();
+        long work;
+        int boxes;
+
+        Walk(Document doc, Cascade cascade, List<Rule> rules, Map<String, Integer> pages, boolean counting,
+                boolean strings) {
+            this.doc = doc;
+            this.cascade = cascade;
+            this.rules = rules;
+            this.pages = pages;
+            this.counting = counting;
+            this.strings = strings;
+        }
+
+        boolean exhausted() {
+            return work > MAX_WORK || boxes >= MAX_BOXES;
+        }
+
+        void enter(Element e) {
+            work += rules.size() + 1;
+            Element scope = e.parent() == null ? e : e.parent();
+            if (counting || strings) {
+                Map<String, String> d = cascade.declared(e);
+                if (counting) {
+                    counters.reset(d.get("counter-reset"), scope);
+                    counters.increment(d.get("counter-increment"), scope);
+                }
+                if (strings && d.containsKey("string-set")) {
+                    declared.put(e, d);
+                }
+            }
+            if (rules.isEmpty() || EMPTY.contains(e.normalName()) || e.hasAttr("data-oc-generated")) {
+                return;
+            }
+            Map<String, String> before = null;
+            Map<String, String> after = null;
+            for (Rule r : rules) {
+                boolean hit;
+                try {
+                    hit = r.evaluator().matches(doc, e);
+                } catch (RuntimeException ex) {
+                    hit = false;
+                }
+                if (hit) {
+                    if (r.which().equals("before")) {
+                        before = merged(before, r.declarations());
+                    } else {
+                        after = merged(after, r.declarations());
+                    }
+                }
+            }
+            if (before != null) {
+                Element span = build(before, true, e, pages, targets, counters);
+                if (span != null) {
+                    pending.add(new Pending(e, span, before, true));
+                    boxes++;
+                }
+            }
+            if (after != null) {
+                afters.put(e, after);
+            }
+        }
+
+        void exit(Element e) {
+            Map<String, String> after = afters.remove(e);
+            Element afterSpan = null;
+            if (after != null) {
+                afterSpan = build(after, false, e, pages, targets, counters);
+                if (afterSpan != null) {
+                    pending.add(new Pending(e, afterSpan, after, false));
+                    boxes++;
+                }
+            }
+            Map<String, String> d = declared.remove(e);
+            if (d != null) {
+                stringSet(e, d.get("string-set"), afterSpan);
+            }
+            counters.close(e);
+        }
+
+        void stringSet(Element e, String value, Element afterSpan) {
+            if (value == null || value.strip().equalsIgnoreCase("none")) {
+                return;
+            }
+            for (String part : Css.splitTopLevel(value, ',')) {
+                String p = part.strip();
+                int space = p.indexOf(' ');
+                if (space <= 0 || stringValues.size() >= MAX_BOXES) {
+                    continue;
+                }
+                String name = p.substring(0, space);
+                String text = stringValue(e, p.substring(space + 1), afterSpan);
+                String mark = marks.computeIfAbsent(e, k -> "oc-mark-" + marks.size());
+                String key = mark + "#" + name;
+                stringValues.put(key, new String[] {mark, name, text});
+            }
+        }
+
+        String stringValue(Element e, String spec, Element afterSpan) {
+            StringBuilder out = new StringBuilder();
+            String v = spec.strip();
+            int i = 0;
+            while (i < v.length() && out.length() < MAX_TEXT) {
+                char c = v.charAt(i);
+                if (Character.isWhitespace(c)) {
+                    i++;
+                } else if (c == '"' || c == '\'') {
+                    int end = stringEnd(v, i);
+                    out.append(unescape(v.substring(i + 1, Math.max(i + 1, end - 1))));
+                    i = end;
+                } else {
+                    int start = i;
+                    while (i < v.length() && (Character.isLetterOrDigit(v.charAt(i)) || v.charAt(i) == '-')) {
+                        i++;
+                    }
+                    if (i == start) {
+                        i++;
+                        continue;
+                    }
+                    String name = v.substring(start, i).toLowerCase(Locale.ROOT);
+                    String args = "";
+                    if (i < v.length() && v.charAt(i) == '(') {
+                        int close = close(v, i);
+                        args = v.substring(i + 1, Math.max(i + 1, close - 1)).strip().toLowerCase(Locale.ROOT);
+                        i = close;
+                    }
+                    String own = e.text();
+                    switch (name) {
+                        case "content" -> {
+                            if (args.equals("after")) {
+                                out.append(afterSpan == null ? "" : afterSpan.text());
+                            } else if (args.equals("before")) {
+                                for (Pending p : pending) {
+                                    if (p.element() == e && p.first()) {
+                                        out.append(p.span().text());
+                                    }
+                                }
+                            } else if (args.equals("first-letter")) {
+                                out.append(own.isEmpty() ? "" : own.substring(0, own.offsetByCodePoints(0, 1)));
+                            } else {
+                                out.append(own);
+                            }
+                        }
+                        case "attr" -> out.append(e.attr(args));
+                        case "counter" -> out.append(counters.value(args.split(",")[0].strip()));
+                        default -> { }
+                    }
+                }
+            }
+            return out.length() > MAX_TEXT ? out.substring(0, MAX_TEXT) : out.toString();
+        }
     }
 
     private static Map<String, String> merged(Map<String, String> into, Map<String, String> declarations) {
@@ -134,40 +279,14 @@ final class Generated {
         return c.toLowerCase(Locale.ROOT).contains("counter");
     }
 
-    private static void count(Map<String, String> d, Map<String, Integer> counters) {
-        change(d.get("counter-reset"), counters, true);
-        change(d.get("counter-increment"), counters, false);
-    }
-
-    private static void change(String value, Map<String, Integer> counters, boolean reset) {
-        if (value == null) {
-            return;
-        }
-        String[] tokens = value.strip().split("\\s+");
-        for (int i = 0; i < tokens.length; i++) {
-            String name = tokens[i];
-            if (name.isEmpty() || name.equalsIgnoreCase("none") || !Character.isLetter(name.charAt(0))
-                    && name.charAt(0) != '-' && name.charAt(0) != '_') {
-                continue;
-            }
-            int n = reset ? 0 : 1;
-            if (i + 1 < tokens.length && tokens[i + 1].matches("-?\\d{1,9}")) {
-                n = Integer.parseInt(tokens[++i]);
-            }
-            if (counters.size() < 1_000 || counters.containsKey(name)) {
-                counters.put(name, reset ? n : counters.getOrDefault(name, 0) + n);
-            }
-        }
-    }
-
     private static Element build(Map<String, String> d, boolean first, Element e, Map<String, Integer> pages,
-            Set<String> targets, Map<String, Integer> counters) {
+            Set<String> targets, Counters counters) {
         String increment = d.containsKey(Css.IMPORTANT_MARK + "counter-increment")
                 ? d.get(Css.IMPORTANT_MARK + "counter-increment") : d.get("counter-increment");
         String reset = d.containsKey(Css.IMPORTANT_MARK + "counter-reset")
                 ? d.get(Css.IMPORTANT_MARK + "counter-reset") : d.get("counter-reset");
-        change(reset, counters, true);
-        change(increment, counters, false);
+        counters.reset(reset, e);
+        counters.increment(increment, e);
         String content = d.containsKey(Css.IMPORTANT_MARK + "content") ? d.get(Css.IMPORTANT_MARK + "content")
                 : d.get("content");
         String display = d.getOrDefault("display", "").strip().toLowerCase(Locale.ROOT);
@@ -179,7 +298,7 @@ final class Generated {
     }
 
     static boolean content(Element span, String value, Element owner, Map<String, Integer> pages, Set<String> targets,
-            Map<String, Integer> counters) {
+            Counters counters) {
         String v = value.strip();
         String lower = v.toLowerCase(Locale.ROOT);
         if (lower.equals("none") || lower.equals("normal")) {
@@ -228,7 +347,15 @@ final class Generated {
                         if (!parts.isEmpty()) {
                             String style = parts.size() > (name.equals("counter") ? 1 : 2)
                                     ? parts.get(name.equals("counter") ? 1 : 2).strip() : "decimal";
-                            text.append(formatted(counters.getOrDefault(parts.get(0).strip(), 0), style));
+                            String counter = parts.get(0).strip();
+                            if (name.equals("counter")) {
+                                text.append(formatted(counters.value(counter), style));
+                            } else {
+                                String separator = parts.size() > 1 ? unquoted(parts.get(1).strip()) : ".";
+                                List<String> each = new ArrayList<>();
+                                counters.values(counter).forEach(n -> each.add(formatted(n, style)));
+                                text.append(String.join(separator, each));
+                            }
                         }
                     }
                     case "target-counter" -> {
@@ -307,6 +434,11 @@ final class Generated {
             sb.append((char) ('A' + (v - 1) % 26));
         }
         return sb.reverse().toString();
+    }
+
+    private static String unquoted(String s) {
+        return s.length() >= 2 && (s.charAt(0) == '"' || s.charAt(0) == '\'') && s.charAt(s.length() - 1) == s.charAt(0)
+                ? unescape(s.substring(1, s.length() - 1)) : s;
     }
 
     private static String roman(int n) {

@@ -44,7 +44,8 @@ public final class HtmlDocument {
     }
 
     /** A page laid out, and the scale it should be printed at: below 1 when content was wider than the page. */
-    public record Laid(Converted converted, float fit, List<byte[]> fonts, Set<String> targets) {}
+    public record Laid(Converted converted, float fit, List<byte[]> fonts, Map<String, String> targets,
+            Map<String, String[]> runningStrings) {}
 
     // Chrome shrinks a page whose content is too wide by at most a third, and clips what is wider still
     static final float LEAST_FIT = 2f / 3f;
@@ -163,7 +164,7 @@ public final class HtmlDocument {
         Section page = page(new Cascade(doc, viewportPx(JsonModel.defaultPage()), linked).page());
         // media queries see the printed page, however wide the layout grows
         Cascade cascade = new Cascade(doc, viewportPx(page), linked);
-        Set<String> targets = Generated.apply(doc, cascade, targetPages);
+        Generated.Result generated = Generated.apply(doc, cascade, targetPages);
         float[] inset = inset(page, cascade, doc);
         List<String> warnings = new ArrayList<>();
         WebFonts.Loaded web = WebFonts.load(cascade.faces(), linked, warnings);
@@ -193,19 +194,26 @@ public final class HtmlDocument {
         Look bodyLook = root.child(bodyStyle, width, false);
         StyleSheet styles = new StyleSheet(bodyLook.run());
         DocSink.HeaderFooterSet running = new DocSink.HeaderFooterSet(List.of(), List.of(), List.of(), List.of(), false);
-        if (MarginBoxes.any(cascade.margins())) {
-            running = MarginBoxes.running(cascade.margins(), root, width);
-            if (cascade.styledFirstPage() && !MarginBoxes.any(cascade.firstMargins())) {
-                running = new DocSink.HeaderFooterSet(running.header(), running.footer(), running.evenHeader(),
-                        running.evenFooter(), true);
-                page.titlePage = true;
-            }
+        boolean sided = cascade.styledPages("left") || cascade.styledPages("right");
+        boolean first = cascade.styledPages("first");
+        Map<String, Map<String, String>> odd = cascade.margins("right");
+        Map<String, Map<String, String>> even = cascade.margins("left");
+        Map<String, Map<String, String>> opening = cascade.margins("right", "first");
+        if (MarginBoxes.any(odd) || sided && MarginBoxes.any(even) || first && MarginBoxes.any(opening)) {
+            DocSink.HeaderFooterSet right = MarginBoxes.running(odd, root, width);
+            DocSink.HeaderFooterSet left = sided ? MarginBoxes.running(even, root, width) : null;
+            DocSink.HeaderFooterSet title = first ? MarginBoxes.running(opening, root, width) : null;
+            running = new DocSink.HeaderFooterSet(right.header(), right.footer(),
+                    left == null ? List.of() : orBlank(left.header(), sided), left == null ? List.of()
+                    : orBlank(left.footer(), sided), first, title == null ? List.of() : title.header(),
+                    title == null ? List.of() : title.footer());
+            page.titlePage = first;
             page.headerDistance = Math.max(6, page.marginTop / 2 - 6);
             page.footerDistance = Math.max(6, page.marginBottom / 2 - 6);
         }
         HtmlContext ctx = new HtmlContext(cascade, styles, writer, warnings, page, linked);
         ctx.inset(inset[0], inset[1]);
-        ctx.targets(targets);
+        ctx.generated(generated);
         List<Inline> fixedLayer = new ArrayList<>(Backgrounds.paint(Backgrounds.url(htmlStyle) != null ? htmlStyle
                 : bodyStyle, bodyLook, ctx.images(), 0, 0, page.pageWidth, page.pageHeight, false));
         if (ctx.positions()) {
@@ -236,7 +244,8 @@ public final class HtmlDocument {
         }
         // a second layout on larger paper is printed at the zoom it was laid out for
         float printAt = zoom < 1 ? (ownPaper ? 1f : zoom) : fit;
-        return new Laid(new Converted(warnings, ctx.truncated()), printAt, web.fonts(), Set.copyOf(targets));
+        return new Laid(new Converted(warnings, ctx.truncated()), printAt, web.fonts(), ctx.targetBookmarks(),
+                ctx.runningStrings());
     }
 
     private static DocSink.HeaderFooterSet withFixed(DocSink.HeaderFooterSet running, List<Inline> drawings,
@@ -248,7 +257,11 @@ public final class HtmlDocument {
             header.get(0).inlines.addAll(0, drawings);
         }
         return new DocSink.HeaderFooterSet(header, running.footer(), running.evenHeader(), running.evenFooter(),
-                running.titlePage());
+                running.titlePage(), running.firstHeader(), running.firstFooter());
+    }
+
+    private static List<Paragraph> orBlank(List<Paragraph> part, boolean sided) {
+        return part.isEmpty() && sided ? List.of(new Paragraph()) : part;
     }
 
     // A page that sets html or body at least so wide is laid out that wide, past the paper if need be

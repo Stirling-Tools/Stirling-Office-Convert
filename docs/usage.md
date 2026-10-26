@@ -543,7 +543,9 @@ saved as `.doc`) is laid out without a browser and drawn by the DOCX renderer: h
 `data:image/svg+xml` (shapes, paths, transforms and same-page `<use>`), floats beside text, page breaks, and `@page`
 size and margins, named pages included, with the default page's `@top-left|center|right` and
 `@bottom-left|center|right` margin boxes as running headers and footers (`content` strings, `counter(page)` and
-`counter(pages)`; `@page :first` boxes set to `content: none` leave the first page bare). Style comes from `<style>` sheets, `style` attributes and the old
+`counter(pages)`; `@page :first`, `:left` and `:right` margin boxes apply to the first, even and odd pages, and
+`string-set` with `string(name[, first|start|last|first-except])` prints running strings such as the current
+chapter). Style comes from `<style>` sheets, `style` attributes and the old
 presentational attributes over a browser's defaults, with the cascade as Chrome applies it when printing: media
 queries are answered for print at the page's text width, `!important`, custom properties (`var()`), `calc()`,
 `min()`, `max()`, `clamp()`, `rem`, `hsl()` and alpha colours. Flex rows and grids become columns side by side
@@ -558,8 +560,8 @@ linked files only through the same opt-ins as pictures: TrueType, and WOFF 1 hol
 PostScript-outline (CFF) fonts fall back to an installed font with a warning. A face is used under its CSS family
 name, weight and style. `::before` and `::after` content is drawn: strings, `attr()`, quotes, `leader()` (a dotted, solid or
 spaced leader to the right edge) and `target-counter(attr(href), page)`, which converts the page twice to learn the
-page of each target; `counter()` and `counters()` with `counter-reset` and `counter-increment` (one document-wide
-scope per name). `string-set` is not drawn. A `.zip` of a page is refused unless
+page of each target; `counter()` and `counters()` with `counter-reset` and `counter-increment`, scoped to the
+element, its descendants and its following siblings as CSS defines. A `.zip` of a page is refused unless
 `Options.allowPackages(true)` (`--allow-packages`) is given; then the page it holds (the shallowest `index.html`, else the
 shallowest `.html`) draws the pictures, linked style sheets and `@import`s it holds, resolved relative to the page and
 never outside the archive. A library caller can supply them another way with `Options.htmlAssets(HtmlAssets)`:

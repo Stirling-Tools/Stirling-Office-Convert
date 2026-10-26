@@ -269,9 +269,13 @@ final class Flow {
 
     private void element(Element e, Look parentLook, Frame frame, int depth) throws IOException {
         String tag = e.normalName();
-        String bookmark = ctx.bookmarkFor(e.id());
-        if (bookmark != null && pendingBookmark == null) {
-            pendingBookmark = bookmark;
+        String bookmark = ctx.bookmarkFor(e);
+        if (bookmark != null) {
+            if (pendingBookmark == null) {
+                pendingBookmark = bookmark;
+            } else {
+                ctx.alias(bookmark, pendingBookmark);
+            }
         }
         if (tag.equals(Generated.LEADER)) {
             leader(e, parentLook);

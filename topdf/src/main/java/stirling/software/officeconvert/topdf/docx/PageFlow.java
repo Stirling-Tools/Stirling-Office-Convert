@@ -433,6 +433,12 @@ final class PageFlow extends Region {
                 numbered = true;
                 return sectionPages;
             }
+
+            @Override
+            public String running(String name) {
+                numbered = true;
+                return running.getOrDefault(p, Map.of()).get(name);
+            }
         };
     }
 
@@ -490,7 +496,56 @@ final class PageFlow extends Region {
         }
     }
 
+    private final Map<PageBox, Map<String, String>> running = new java.util.IdentityHashMap<>();
+
+    private void runningStrings() {
+        Map<String, String[]> marks = ctx.job.runningStrings();
+        Map<String, String> carried = new HashMap<>();
+        for (PageBox p : pages) {
+            Map<String, String> first = new HashMap<>();
+            Map<String, String> start = new HashMap<>(carried);
+            if (!marks.isEmpty()) {
+                for (Placed pl : p.placed) {
+                    dests(pl.strip.ops, name -> {
+                        String[] mark = marks.get(name);
+                        for (int i = 0; mark != null && i + 1 < mark.length; i += 2) {
+                            first.putIfAbsent(mark[i], mark[i + 1]);
+                            carried.put(mark[i], mark[i + 1]);
+                        }
+                    });
+                }
+            }
+            Map<String, String> values = new HashMap<>();
+            for (String name : union(start.keySet(), carried.keySet())) {
+                String f = first.containsKey(name) ? first.get(name) : start.getOrDefault(name, "");
+                values.put(name + "/first", f);
+                values.put(name, f);
+                values.put(name + "/start", start.getOrDefault(name, first.getOrDefault(name, "")));
+                values.put(name + "/last", carried.getOrDefault(name, ""));
+                values.put(name + "/first-except", first.containsKey(name) ? "" : start.getOrDefault(name, ""));
+            }
+            running.put(p, values);
+        }
+    }
+
+    private static java.util.Set<String> union(java.util.Set<String> a, java.util.Set<String> b) {
+        java.util.Set<String> out = new java.util.TreeSet<>(a);
+        out.addAll(b);
+        return out;
+    }
+
+    private static void dests(List<Op> ops, java.util.function.Consumer<String> found) {
+        for (Op op : ops) {
+            if (op instanceof Op.Dest d) {
+                found.accept(d.name());
+            } else if (op instanceof Op.Group g) {
+                dests(g.ops(), found);
+            }
+        }
+    }
+
     private void finishHeaders() {
+        runningStrings();
         int total = pages.size();
         Map<Integer, Integer> perSection = sectionCounts(pages);
         for (PageBox p : pages) {

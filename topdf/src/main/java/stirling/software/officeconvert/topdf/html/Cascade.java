@@ -43,7 +43,9 @@ final class Cascade {
     private final Map<String, String> page = new HashMap<>();
     private final Map<String, Map<String, String>> margins = new HashMap<>();
     private final Map<String, Map<String, String>> importantMargins = new HashMap<>();
-    private final Map<String, Map<String, String>> firstMargins = new HashMap<>();
+    private final Map<String, Map<String, Map<String, String>>> sidedMargins = new HashMap<>();
+
+    private static final Pattern SIDED_MARGIN = Pattern.compile("@margin-(first|left|right) (\\S+)");
     private final Map<String, Map<String, String>> named = new HashMap<>();
     private long work;
     private final Set<String> sheets = new HashSet<>();
@@ -93,9 +95,12 @@ final class Cascade {
         for (Css.Rule rule : rules) {
             order++;
             positions |= positioning(rule.declarations());
-            if (rule.selector().startsWith("@margin-first ")) {
-                Map<String, String> box = firstMargins.computeIfAbsent(rule.selector().substring(14),
-                        k -> new HashMap<>());
+            strings |= rule.declarations().containsKey("string-set")
+                    || rule.declarations().containsKey(Css.IMPORTANT_MARK + "string-set");
+            Matcher sided = SIDED_MARGIN.matcher(rule.selector());
+            if (sided.matches()) {
+                Map<String, String> box = sidedMargins.computeIfAbsent(sided.group(1), k -> new HashMap<>())
+                        .computeIfAbsent(sided.group(2), k -> new HashMap<>());
                 put(box, rule.declarations(), false);
                 put(box, rule.declarations(), true);
                 continue;
@@ -152,6 +157,12 @@ final class Cascade {
     }
 
     private boolean positions;
+
+    private boolean strings;
+
+    boolean setsStrings() {
+        return strings;
+    }
 
     private static boolean positioning(Map<String, String> d) {
         for (Map.Entry<String, String> e : d.entrySet()) {
@@ -492,15 +503,18 @@ final class Cascade {
         return margins;
     }
 
-    Map<String, Map<String, String>> firstMargins() {
+    Map<String, Map<String, String>> margins(String... sides) {
         Map<String, Map<String, String>> out = new HashMap<>();
         margins.forEach((box, d) -> out.put(box, new HashMap<>(d)));
-        firstMargins.forEach((box, d) -> out.computeIfAbsent(box, k -> new HashMap<>()).putAll(d));
+        for (String side : sides) {
+            sidedMargins.getOrDefault(side, Map.of())
+                    .forEach((box, d) -> out.computeIfAbsent(box, k -> new HashMap<>()).putAll(d));
+        }
         return out;
     }
 
-    boolean styledFirstPage() {
-        return !firstMargins.isEmpty();
+    boolean styledPages(String side) {
+        return sidedMargins.containsKey(side);
     }
 
     /** Whether the page asks for its own paper (a size, or named pages), in which case it is printed as it asks. */

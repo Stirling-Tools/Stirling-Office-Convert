@@ -78,6 +78,19 @@ class GeneratedTest {
     }
 
     @Test
+    void nestedCountersAreScopedToTheirLists() throws IOException {
+        Pdf pdf = convert("scoped", "<html><head><style>ol{counter-reset:item;list-style:none}li{counter-increment:item}"
+                + "li::before{content:counters(item, '.') ') '}</style></head><body><ol><li>Apple</li><li>Banana<ol>"
+                + "<li>Bread</li><li>Butter<ol><li>Salted</li></ol></li></ol></li><li>Cherry</li></ol>"
+                + "<ol><li>Again</li></ol></body></html>");
+        String text = pdf.text();
+        for (String want : new String[] {"1) Apple", "2) Banana", "2.1) Bread", "2.2) Butter", "2.2.1) Salted",
+                "3) Cherry", "1) Again"}) {
+            assertTrue(text.contains(want), want + " in " + text);
+        }
+    }
+
+    @Test
     void generatedBoxesDoNotChangeWhichChildIsFirstOrLast() throws IOException {
         Pdf pdf = convert("structural", "<html><head><style>ul::before{content:'Start'}ul::after{content:'End'}"
                 + "li:first-child::before{content:'[first] '}li:last-child::before{content:'[last] '}</style></head>"

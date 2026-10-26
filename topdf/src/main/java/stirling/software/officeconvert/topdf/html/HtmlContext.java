@@ -35,7 +35,8 @@ final class HtmlContext {
     private boolean continuing;
     private float insetLeft;
     private float insetRight;
-    private Set<String> targets = Set.of();
+    private Generated.Result generated = Generated.Result.NONE;
+    private final Map<String, String> aliases = new HashMap<>();
     // the most items of any row of columns in an element or inside it, 0 when none
     private final Map<Element, Integer> rows = new IdentityHashMap<>();
     private Map<String, Element> labels;
@@ -307,11 +308,46 @@ final class HtmlContext {
         return insetRight;
     }
 
-    void targets(Set<String> ids) {
-        targets = ids;
+    void generated(Generated.Result result) {
+        generated = result;
     }
 
-    String bookmarkFor(String id) {
-        return id != null && !id.isEmpty() && targets.contains(id) ? Generated.BOOKMARK_PREFIX + id : null;
+    String bookmarkFor(Element e) {
+        String mark = generated.marks().get(e);
+        if (mark != null) {
+            return mark;
+        }
+        String id = e.id();
+        return !id.isEmpty() && generated.targets().contains(id) ? Generated.BOOKMARK_PREFIX + id : null;
+    }
+
+    void alias(String bookmark, String written) {
+        if (aliases.size() < 100_000) {
+            aliases.put(bookmark, written);
+        }
+    }
+
+    String written(String bookmark) {
+        return aliases.getOrDefault(bookmark, bookmark);
+    }
+
+    Map<String, String[]> runningStrings() {
+        Map<String, List<String>> pairs = new java.util.LinkedHashMap<>();
+        for (String[] v : generated.strings().values()) {
+            List<String> list = pairs.computeIfAbsent(written(v[0]), k -> new java.util.ArrayList<>());
+            list.add(v[1]);
+            list.add(v[2]);
+        }
+        Map<String, String[]> out = new java.util.LinkedHashMap<>();
+        pairs.forEach((k, v) -> out.put(k, v.toArray(String[]::new)));
+        return out;
+    }
+
+    Map<String, String> targetBookmarks() {
+        Map<String, String> out = new HashMap<>();
+        for (String id : generated.targets()) {
+            out.put(id, written(Generated.BOOKMARK_PREFIX + id));
+        }
+        return out;
     }
 }

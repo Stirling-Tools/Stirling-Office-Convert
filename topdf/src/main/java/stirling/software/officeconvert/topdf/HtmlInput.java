@@ -11,7 +11,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Set;
+import java.util.function.Consumer;
 
 import stirling.software.officeconvert.memory.Admission;
 import stirling.software.officeconvert.topdf.OfficeToPdf.Format;
@@ -223,10 +223,11 @@ final class HtmlInput {
             options = withFonts(options, laid.fonts());
             if (!laid.targets().isEmpty()) {
                 Map<String, Integer> pages = new HashMap<>();
-                Set<String> targets = laid.targets();
+                Map<String, String> targets = laid.targets();
+                Map<String, String[]> strings = laid.runningStrings();
                 Rewritten.render(pkg, source, laid.converted(), OutputStream.nullOutputStream(), options, renderer,
-                        job -> targets.forEach(id -> {
-                            int page = job.output().destinationPage("bm:" + HtmlDocument.targetBookmark(id));
+                        job -> job.runningStrings(strings), job -> targets.forEach((id, bookmark) -> {
+                            int page = job.output().destinationPage("bm:" + bookmark);
                             if (page >= 0) {
                                 pages.put(id, page + 1);
                             }
@@ -235,13 +236,15 @@ final class HtmlInput {
                 laid = lay(source, pkg, options, bytes, zoom, once, pages);
             }
             if (laid.fit() >= 0.99f) {
-                return Rewritten.render(pkg, source, laid.converted(), sink, options, renderer);
+                return Rewritten.render(pkg, source, laid.converted(), sink, options, renderer, strings(laid),
+                        job -> { });
             }
             Path wide = Files.createTempFile("office-to-pdf-", ".pdf");
             try {
                 Result r;
                 try (OutputStream os = new BufferedOutputStream(Files.newOutputStream(wide), 1 << 16)) {
-                    r = Rewritten.render(pkg, source, laid.converted(), os, options, renderer);
+                    r = Rewritten.render(pkg, source, laid.converted(), os, options, renderer, strings(laid),
+                            job -> { });
                 }
                 PageScale.shrink(wide, laid.fit(), sink);
                 return r;
@@ -251,6 +254,11 @@ final class HtmlInput {
         } finally {
             OfficeToPdf.deleteQuietly(pkg);
         }
+    }
+
+    private static Consumer<RenderJob> strings(HtmlDocument.Laid laid) {
+        Map<String, String[]> strings = laid.runningStrings();
+        return job -> job.runningStrings(strings);
     }
 
     private static Options withFonts(Options options, List<byte[]> fonts) {
