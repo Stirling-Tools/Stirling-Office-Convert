@@ -102,6 +102,10 @@ public final class HtmlDocument {
         if (fonts.exact(family, false, false) != null) {
             return true;
         }
+        String mapped = fonts.substitute(family);
+        if (mapped != null && fonts.exact(mapped, false, false) != null) {
+            return true;
+        }
         for (String standIn : FontLibrary.lookAlikes(family)) {
             if (fonts.exact(standIn, false, false) != null) {
                 return true;

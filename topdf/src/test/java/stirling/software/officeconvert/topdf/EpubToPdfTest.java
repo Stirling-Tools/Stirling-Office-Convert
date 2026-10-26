@@ -218,6 +218,90 @@ class EpubToPdfTest {
         }
     }
 
+    private Map<String, byte[]> single(byte[] chapter, String uid, Map<String, byte[]> extra, String manifest) {
+        Map<String, byte[]> e = new LinkedHashMap<>();
+        e.put("META-INF/container.xml", utf8("<?xml version=\"1.0\"?><container version=\"1.0\" "
+                + "xmlns=\"urn:oasis:names:tc:opendocument:xmlns:container\"><rootfiles>"
+                + "<rootfile full-path=\"OEBPS/content.opf\" media-type=\"application/oebps-package+xml\"/>"
+                + "</rootfiles></container>"));
+        e.put("OEBPS/content.opf", utf8("<?xml version=\"1.0\"?><package xmlns=\"http://www.idpf.org/2007/opf\" "
+                + "version=\"3.0\" unique-identifier=\"uid\"><metadata xmlns:dc=\"http://purl.org/dc/elements/1.1/\">"
+                + "<dc:identifier id=\"uid\">" + uid + "</dc:identifier><dc:title>T</dc:title></metadata><manifest>"
+                + "<item id=\"c\" href=\"c.xhtml\" media-type=\"application/xhtml+xml\"/>" + manifest
+                + "</manifest><spine><itemref idref=\"c\"/></spine></package>"));
+        e.put("OEBPS/c.xhtml", chapter);
+        e.putAll(extra);
+        return e;
+    }
+
+    private String converted(String name, Map<String, byte[]> book) throws IOException {
+        Path out = dir.resolve(name + ".pdf");
+        OfficeToPdf.convert(epub(name + ".epub", book), out, OfficeToPdf.Options.defaults().timeout(Duration.ofMinutes(2)));
+        try (PDDocument doc = Loader.loadPDF(out.toFile())) {
+            StringBuilder fonts = new StringBuilder();
+            for (COSName n : doc.getPage(0).getResources().getFontNames()) {
+                fonts.append(doc.getPage(0).getResources().getFont(n).getName()).append(' ');
+            }
+            return new PDFTextStripper().getText(doc) + "\nFONTS " + fonts;
+        }
+    }
+
+    @Test
+    void chaptersReadInTheEncodingTheyDeclare() throws IOException {
+        String latin = converted("latin1", single(("<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?><html "
+                + "xmlns=\"http://www.w3.org/1999/xhtml\"><body><p>caf\u00e9 na\u00efve \u00fcber</p></body></html>")
+                .getBytes(StandardCharsets.ISO_8859_1), "x", Map.of(), ""));
+        assertTrue(latin.contains("caf\u00e9 na\u00efve \u00fcber"), latin);
+        String windows = converted("cp1252", single(("<?xml version=\"1.0\" encoding=\"windows-1252\"?><html "
+                + "xmlns=\"http://www.w3.org/1999/xhtml\"><body><p>price \u20ac5 \u201cquoted\u201d</p></body></html>")
+                .getBytes(java.nio.charset.Charset.forName("windows-1252")), "x", Map.of(), ""));
+        assertTrue(windows.contains("price \u20ac5 \u201cquoted\u201d"), windows);
+        ByteArrayOutputStream utf16 = new ByteArrayOutputStream();
+        utf16.write(0xFF);
+        utf16.write(0xFE);
+        utf16.writeBytes(("<?xml version=\"1.0\" encoding=\"UTF-16\"?><html xmlns=\"http://www.w3.org/1999/xhtml\">"
+                + "<body><p>\u00e9l\u00e8ve wide</p></body></html>").getBytes(StandardCharsets.UTF_16LE));
+        String wide = converted("utf16", single(utf16.toByteArray(), "x", Map.of(), ""));
+        assertTrue(wide.contains("\u00e9l\u00e8ve wide"), wide);
+    }
+
+    @Test
+    void obfuscatedFontsAreReadBack() throws IOException {
+        byte[] font;
+        try (var in = PDDocument.class.getResourceAsStream("/org/apache/pdfbox/resources/ttf/LiberationSans-Regular.ttf")) {
+            font = in.readAllBytes();
+        }
+        String uid = "urn:uuid:0f1e2d3c-4b5a-6978-8796-a5b4c3d2e1f0";
+        byte[] chapter = utf8("<?xml version=\"1.0\"?><html xmlns=\"http://www.w3.org/1999/xhtml\"><head><style>"
+                + "@font-face{font-family:'ZedObf';src:url(f.ttf)} p{font-family:'ZedObf',serif}</style></head>"
+                + "<body><p>Obfuscated quick brown fox</p></body></html>");
+        byte[][] keys = {sha1(uid), java.util.HexFormat.of().parseHex("0f1e2d3c4b5a69788796a5b4c3d2e1f0")};
+        String[] methods = {"http://www.idpf.org/2008/embedding", "http://ns.adobe.com/pdf/enc#RC"};
+        for (int k = 0; k < 2; k++) {
+            byte[] hidden = font.clone();
+            for (int i = 0; i < (k == 0 ? 1040 : 1024); i++) {
+                hidden[i] ^= keys[k][i % keys[k].length];
+            }
+            String encryption = "<?xml version=\"1.0\"?><encryption xmlns=\"urn:oasis:names:tc:opendocument:xmlns:container\" "
+                    + "xmlns:enc=\"http://www.w3.org/2001/04/xmlenc#\"><enc:EncryptedData><enc:EncryptionMethod Algorithm=\""
+                    + methods[k] + "\"/><enc:CipherData><enc:CipherReference URI=\"OEBPS/f.ttf\"/></enc:CipherData>"
+                    + "</enc:EncryptedData></encryption>";
+            String text = converted("font" + k, single(chapter, uid, Map.of("OEBPS/f.ttf", hidden,
+                    "META-INF/encryption.xml", utf8(encryption)),
+                    "<item id=\"f\" href=\"f.ttf\" media-type=\"application/vnd.ms-opentype\"/>"));
+            assertTrue(text.contains("Obfuscated quick brown fox"), text);
+            assertTrue(text.substring(text.indexOf("FONTS")).contains("LiberationSans"), text);
+        }
+    }
+
+    private static byte[] sha1(String s) {
+        try {
+            return java.security.MessageDigest.getInstance("SHA-1").digest(utf8(s));
+        } catch (java.security.NoSuchAlgorithmException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
     private static String pageText(PDDocument doc, int page) throws IOException {
         PDFTextStripper stripper = new PDFTextStripper();
         stripper.setStartPage(page);

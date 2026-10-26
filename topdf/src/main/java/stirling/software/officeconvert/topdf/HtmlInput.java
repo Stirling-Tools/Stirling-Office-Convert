@@ -151,7 +151,7 @@ final class HtmlInput {
             OfficeToPdf.Renderer renderer) throws IOException {
         EpubBook.Book book = EpubBook.read(pkg);
         pkg.page(Ebook.PAGE);
-        return renderBook(new Ebook(book, pkg), sink, options, renderer);
+        return renderBook(new Ebook(book, EpubBook.fonts(pkg)), sink, options, renderer);
     }
 
     private static Result renderBook(Ebook ebook, OutputStream sink, Options options, OfficeToPdf.Renderer renderer)
@@ -159,7 +159,8 @@ final class HtmlInput {
         Path page = Files.createTempFile("office-to-pdf-", ".html");
         try {
             Files.writeString(page, ebook.book().html(), StandardCharsets.UTF_8);
-            return render(page, sink, options, renderer, ebook.assets());
+            return render(page, sink, BookFonts.with(options, ebook.book().fonts(), ebook.assets()), renderer,
+                    ebook.assets());
         } finally {
             OfficeToPdf.deleteQuietly(page);
         }
