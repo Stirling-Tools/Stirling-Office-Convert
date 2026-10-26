@@ -415,7 +415,9 @@ public final class EpubWriter implements DocSink, Closeable {
             }
             sb.append("</ol>\n");
         }
-        sb.append("</nav>\n</body>\n</html>\n");
+        sb.append("</nav>\n<nav epub:type=\"landmarks\" id=\"landmarks\" hidden=\"hidden\">\n<h2>Guide</h2>\n<ol>\n")
+                .append("<li><a epub:type=\"bodymatter\" href=\"").append(chapters.get(0).file())
+                .append("\">Start</a></li>\n</ol>\n</nav>\n</body>\n</html>\n");
         return sb.toString();
     }
 

@@ -38,6 +38,8 @@ final class Kf8Writer {
     private static final Pattern NAV_POINT = Pattern.compile(
             "<navPoint\\b|</navPoint>|<navLabel><text>(.*?)</text></navLabel><content src=\"([^\"]*)\"", Pattern.DOTALL);
 
+    private static final Pattern BODY_MATTER = Pattern.compile("epub:type=\"bodymatter\" href=\"([^\"]*)\"");
+
     private static final Pattern TITLE = Pattern.compile("<dc:title>(.*?)</dc:title>", Pattern.DOTALL);
 
     private static final Pattern CREATOR = Pattern.compile("<dc:creator>(.*?)</dc:creator>", Pattern.DOTALL);
@@ -68,6 +70,8 @@ final class Kf8Writer {
     private String currentChapter = "";
     private final List<Tbs.Node> tocSpans = new ArrayList<>();
     private String title = "Document";
+    private Target start;
+    private long startOffset = -1;
     private String author;
     private int aid;
 
@@ -126,6 +130,13 @@ final class Kf8Writer {
                     }
                 }
             }
+        }
+        byte[] nav = read(zip, "OEBPS/nav.xhtml");
+        Matcher body = BODY_MATTER.matcher(nav == null ? "" : new String(nav, StandardCharsets.UTF_8));
+        if (body.find()) {
+            start = target("nav.xhtml", body.group(1));
+        } else if (!chapters.isEmpty()) {
+            start = new Target(chapters.get(0).path(), null);
         }
         for (int i = 0; i < chapters.size(); i++) {
             Chapter ch = chapters.get(i);
@@ -273,6 +284,7 @@ final class Kf8Writer {
         }
         resolveLinks(text0, fragments, places, chapterStarts);
         Kf8Index ncx = ncx(fragments, places, chapterStarts, text0.length);
+        Kf8Index guide = guide(fragments, places, chapterStarts);
         ByteArrayOutputStream text = new ByteArrayOutputStream();
         text.writeBytes(text0);
         List<long[]> flowTable = new ArrayList<>();
@@ -305,6 +317,11 @@ final class Kf8Writer {
             ncxIndex = records.size();
             records.addAll(ncx.records());
         }
+        int guideIndex = -1;
+        if (!guide.isEmpty()) {
+            guideIndex = records.size();
+            records.addAll(guide.records());
+        }
         int firstResource = records.size();
         records.addAll(resourceBytes);
         int fdst = records.size();
@@ -318,7 +335,7 @@ final class Kf8Writer {
             throw new IOException("The book is too large for the AZW3 format");
         }
         records.set(0, recordZero(all.length, textRecords, firstNonBook, firstResource, fdst, flowTable.size(), fcis,
-                flis, ncxIndex, chunkIndex, skeletonIndex));
+                flis, ncxIndex, chunkIndex, skeletonIndex, guideIndex));
         pdb(records, out);
     }
 
@@ -485,6 +502,23 @@ final class Kf8Writer {
         return index;
     }
 
+    private Kf8Index guide(List<Fragment> fragments, Map<String, Place> places, Map<String, Integer> chapterStarts) {
+        Kf8Index index = new Kf8Index(List.of(List.of(new Kf8Index.Tag(1, 1, 1), new Kf8Index.Tag(6, 2, 2))));
+        if (fragments.isEmpty() || start == null) {
+            return index;
+        }
+        Place p = locate(start, places, chapterStarts);
+        startOffset = fragments.get(p.fragment()).insert() + p.offset();
+        index.add("text", Map.of(1, new long[] {index.text("Start")}, 6, new long[] {p.fragment(), p.offset()}));
+        return index;
+    }
+
+    private static byte[] u32(long v) {
+        byte[] b = new byte[4];
+        put32(b, 0, v);
+        return b;
+    }
+
     private byte[] textRecord(byte[] all, int from) {
         int to = Math.min(all.length, from + RECORD);
         byte[] compressed = PalmDoc.compress(all, from, to);
@@ -528,7 +562,7 @@ final class Kf8Writer {
     }
 
     private byte[] recordZero(long textLength, int textRecords, int firstNonBook, int firstResource, int fdst,
-            int fdstCount, int fcis, int flis, int ncx, int chunks, int skeletons) {
+            int fdstCount, int fcis, int flis, int ncx, int chunks, int skeletons, int guide) {
         byte[] h = new byte[16 + 264];
         put16(h, 0, 2);
         put32(h, 4, textLength);
@@ -566,7 +600,7 @@ final class Kf8Writer {
         put32(h, 248, chunks);
         put32(h, 252, skeletons);
         put32(h, 256, 0xFFFFFFFFL);
-        put32(h, 260, 0xFFFFFFFFL);
+        put32(h, 260, guide < 0 ? 0xFFFFFFFFL : guide);
         byte[] exth = exth();
         byte[] name = title.getBytes(StandardCharsets.UTF_8);
         put32(h, 84, h.length + exth.length);
@@ -590,6 +624,9 @@ final class Kf8Writer {
             count += exth(body, 100, author.getBytes(StandardCharsets.UTF_8));
         }
         count += exth(body, 503, title.getBytes(StandardCharsets.UTF_8));
+        if (startOffset >= 0) {
+            count += exth(body, 116, u32(startOffset));
+        }
         count += exth(body, 524, "und".getBytes(StandardCharsets.US_ASCII));
         count += exth(body, 501, "EBOK".getBytes(StandardCharsets.US_ASCII));
         count += exth(body, 125, new byte[] {0, 0, (byte) (resourceBytes.size() >>> 8), (byte) resourceBytes.size()});

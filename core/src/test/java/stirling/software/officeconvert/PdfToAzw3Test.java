@@ -104,16 +104,24 @@ class PdfToAzw3Test {
     }
 
     private static Map<Integer, String> exth() {
+        Map<Integer, String> out = new HashMap<>();
+        exthBytes().forEach((type, value) -> out.put(type, new String(value, StandardCharsets.UTF_8)));
+        return out;
+    }
+
+    private static Map<Integer, byte[]> exthBytes() {
         byte[] r0 = records.get(0);
         int at = 16 + (int) u32(r0, 20);
         assertEquals("EXTH", new String(r0, at, 4, StandardCharsets.US_ASCII));
-        Map<Integer, String> out = new HashMap<>();
+        Map<Integer, byte[]> out = new HashMap<>();
         long count = u32(r0, at + 8);
         int p = at + 12;
         for (int i = 0; i < count; i++) {
             int type = (int) u32(r0, p);
             int size = (int) u32(r0, p + 4);
-            out.put(type, new String(r0, p + 8, size - 8, StandardCharsets.UTF_8));
+            byte[] value = new byte[size - 8];
+            System.arraycopy(r0, p + 8, value, 0, value.length);
+            out.put(type, value);
             p += size;
         }
         return out;
@@ -187,7 +195,7 @@ class PdfToAzw3Test {
         assertEquals("FDST", new String(records.get((int) u32(r0, 192)), 0, 4, StandardCharsets.US_ASCII));
         assertEquals("FLIS", new String(records.get((int) u32(r0, 208)), 0, 4, StandardCharsets.US_ASCII));
         assertEquals("FCIS", new String(records.get((int) u32(r0, 200)), 0, 4, StandardCharsets.US_ASCII));
-        for (int at : new int[] {0xF4, 0xF8, 0xFC}) {
+        for (int at : new int[] {0xF4, 0xF8, 0xFC, 0x104}) {
             assertEquals("INDX", new String(records.get((int) u32(r0, at)), 0, 4, StandardCharsets.US_ASCII));
         }
         byte[] eof = records.get(records.size() - 1);
@@ -275,6 +283,17 @@ class PdfToAzw3Test {
             NcxEntry b = entries.get(i);
             assertTrue(a.depth() < b.depth() || a.depth() == b.depth() && a.offset() <= b.offset());
         }
+    }
+
+    @Test
+    void startReadingPointsAtTheFirstChapter() {
+        byte[] guide = records.get((int) u32(records.get(0), 0x104) + 1);
+        int idxt = (int) u32(guide, 20);
+        int entry = u16(guide, idxt + 4);
+        assertEquals("text", new String(guide, entry + 1, guide[entry], StandardCharsets.US_ASCII));
+        long start = u32(exthBytes().get(116), 0);
+        NcxEntry first = ncx().stream().filter(e -> e.title().equals(CHAPTERS[0])).findFirst().orElseThrow();
+        assertTrue(start > 0 && start <= first.offset(), start + " vs " + first.offset());
     }
 
     @Test
