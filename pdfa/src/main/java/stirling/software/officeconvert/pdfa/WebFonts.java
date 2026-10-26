@@ -116,6 +116,8 @@ public final class WebFonts {
         }
     }
 
+    private record Repair(boolean dropCmap, java.util.Set<String> keep) {}
+
     private record Parsed(TrueTypeFont font, boolean repaired, byte[] bytes) {}
 
     private static Parsed open(byte[] data) throws IOException {
@@ -134,8 +136,12 @@ public final class WebFonts {
             font.close();
             throw new IOException("The TrueType program has no glyphs");
         } catch (IOException | RuntimeException e) {
-            for (boolean dropCmap : new boolean[] {false, true}) {
-                byte[] fixed = SfntRepair.repair(data, dropCmap);
+            java.util.Set<String> withCmap = new java.util.HashSet<>(SfntRepair.CORE);
+            withCmap.add("cmap");
+            List<Repair> attempts = List.of(new Repair(false, null), new Repair(true, null), new Repair(false, withCmap),
+                    new Repair(true, SfntRepair.CORE));
+            for (Repair attempt : attempts) {
+                byte[] fixed = SfntRepair.repair(data, attempt.dropCmap(), attempt.keep());
                 if (fixed != null) {
                     try {
                         TrueTypeFont font = parseSfnt(fixed);

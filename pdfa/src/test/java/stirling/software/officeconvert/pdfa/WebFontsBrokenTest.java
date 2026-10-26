@@ -82,6 +82,16 @@ class WebFontsBrokenTest {
                 table(f, "glyf")[1] + ByteBuffer.wrap(f).getInt(table(f, "loca")[1] + 4), (short) 0x7FFF))});
         cases.add(new Object[] {"table length past end", broken(f -> ByteBuffer.wrap(f).putInt(table(f, "glyf")[0] + 12,
                 0x7FFFFFFF))});
+        cases.add(new Object[] {"name table garbage", broken(f -> {
+            int[] name = table(f, "name");
+            ByteBuffer.wrap(f).putShort(name[1] + 2, (short) 0x7FFF);
+        })});
+        cases.add(new Object[] {"every table one byte early", broken(f -> {
+            int n = ByteBuffer.wrap(f).getShort(4);
+            for (int i = 0; i < n; i++) {
+                ByteBuffer.wrap(f).putInt(12 + 16 * i + 8, ByteBuffer.wrap(f).getInt(12 + 16 * i + 8) - 1);
+            }
+        })});
         cases.add(new Object[] {"truncated file", java.util.Arrays.copyOf(font(), 100)});
         cases.add(new Object[] {"zero glyph CFF", FontPrograms.concat(new byte[] {1, 0, 4, 1}, FontPrograms.index(
                 new byte[][] {"Z".getBytes(StandardCharsets.US_ASCII)}), FontPrograms.index(new byte[][] {
@@ -237,5 +247,18 @@ class WebFontsBrokenTest {
                 .parse(new org.apache.pdfbox.io.RandomAccessReadBuffer(badReal)));
         org.junit.jupiter.api.Assertions.assertArrayEquals(expected, WebFonts.toTrueType(badReal, WebFonts.FontKind.CFF,
                 Map.of()));
+    }
+
+    @Test
+    void aProgramWhoseOnlyGlyphIsAnEmptyNotdefConverts() throws Exception {
+        byte[] f = font();
+        ByteBuffer.wrap(f).putShort(table(f, "maxp")[1] + 4, (short) 1);
+        int[] loca = table(f, "loca");
+        ByteBuffer.wrap(f).putInt(loca[1] + 4, 0);
+        byte[] out = WebFonts.toTrueType(f, WebFonts.FontKind.TRUETYPE, null);
+        try (org.apache.fontbox.ttf.TrueTypeFont t = new org.apache.fontbox.ttf.TTFParser()
+                .parse(new org.apache.pdfbox.io.RandomAccessReadBuffer(out))) {
+            assertTrue(t.getNumberOfGlyphs() >= 1);
+        }
     }
 }

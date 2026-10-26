@@ -9,27 +9,34 @@ final class SfntRepair {
 
     private SfntRepair() {}
 
+    static final java.util.Set<String> CORE = java.util.Set.of("head", "hhea", "hmtx", "maxp", "loca", "glyf", "cvt ",
+            "fpgm", "prep", "gasp");
+
     static byte[] repair(byte[] data) {
-        return repair(data, false);
+        return repair(data, false, null);
     }
 
-    static byte[] repair(byte[] data, boolean dropCmap) {
+    static byte[] repair(byte[] data, boolean dropCmap, java.util.Set<String> keep) {
         if (data == null || data.length < 12) {
             return null;
         }
         ByteBuffer in = ByteBuffer.wrap(data);
         int count = Math.min(in.getShort(4) & 0xFFFF, (data.length - 12) / 16);
         int directoryEnd = 12 + 16 * count;
+        int shift = shift(data, in, count);
         TreeMap<String, byte[]> tables = new TreeMap<>();
         for (int i = 0; i < count; i++) {
             int at = 12 + 16 * i;
             String tag = new String(data, at, 4, StandardCharsets.ISO_8859_1);
-            long offset = in.getInt(at + 8) & 0xFFFFFFFFL;
+            long offset = (in.getInt(at + 8) & 0xFFFFFFFFL) + shift;
             long length = in.getInt(at + 12) & 0xFFFFFFFFL;
             if (offset < directoryEnd || offset >= data.length) {
                 continue;
             }
             length = Math.min(length, data.length - offset);
+            if (keep != null && !keep.contains(tag)) {
+                continue;
+            }
             tables.putIfAbsent(tag, Arrays.copyOfRange(data, (int) offset, (int) (offset + length)));
         }
         byte[] glyf = tables.get("glyf");
@@ -54,6 +61,14 @@ final class SfntRepair {
         }
         if (glyphs < 1) {
             return null;
+        }
+        if (glyphs == 1) {
+            int step = longOffsets ? 4 : 2;
+            byte[] longer = Arrays.copyOf(loca, 3 * step);
+            System.arraycopy(loca, step, longer, 2 * step, step);
+            tables.put("loca", longer);
+            glyphs = 2;
+            declared = -1;
         }
         if (head == null || head.length < 54) {
             tables.put("head", head(longOffsets));
@@ -108,6 +123,23 @@ final class SfntRepair {
             tables.remove("cmap");
         }
         return Sfnt.write(tables);
+    }
+
+    private static int shift(byte[] data, ByteBuffer in, int count) {
+        for (int i = 0; i < count; i++) {
+            int at = 12 + 16 * i;
+            if (!"head".equals(new String(data, at, 4, StandardCharsets.ISO_8859_1))) {
+                continue;
+            }
+            long offset = in.getInt(at + 8) & 0xFFFFFFFFL;
+            for (int delta : new int[] {0, 1, -1, 2, -2, 3, -3}) {
+                long magic = offset + delta + 12;
+                if (magic >= 0 && magic + 4 <= data.length && in.getInt((int) magic) == 0x5F0F3CF5) {
+                    return delta;
+                }
+            }
+        }
+        return 0;
     }
 
     private static boolean plausibleLong(byte[] loca, int glyfLength) {
