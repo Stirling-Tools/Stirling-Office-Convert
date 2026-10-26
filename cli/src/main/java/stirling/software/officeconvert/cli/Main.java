@@ -31,6 +31,7 @@ import stirling.software.officeconvert.PdfToText;
 import stirling.software.officeconvert.PdfToXlsx;
 import stirling.software.officeconvert.Pictures;
 import stirling.software.officeconvert.legacy.PdfToPpt;
+import stirling.software.officeconvert.optimize.PdfOptimizer;
 import stirling.software.officeconvert.pdfa.PdfALevel;
 import stirling.software.officeconvert.pdfa.PdfToPdfA;
 import stirling.software.officeconvert.topdf.HtmlAssets;
@@ -82,6 +83,9 @@ public final class Main {
         PdfToPptx.Options slides;
         PdfToXlsx.Options books;
         PdfALevel pdfa = null;
+        boolean optimize = false;
+        PdfOptimizer.Effort effort = null;
+        boolean keepPrivateData = false;
         FontSet fonts;
         try {
             for (int i = 0; i < args.length; i++) {
@@ -117,6 +121,9 @@ public final class Main {
                     case "--no-system-fonts" -> fontSet.systemFonts(false);
                     case "--sheets" -> sheets = sheets(value(args, ++i, a));
                     case "--pdfa" -> pdfa = level(value(args, ++i, a));
+                    case "--optimize" -> optimize = true;
+                    case "--effort" -> effort = effort(value(args, ++i, a));
+                    case "--keep-private-data" -> keepPrivateData = true;
                     case "--pictures" -> pictures = pictures(value(args, ++i, a));
                     case "-q", "--quiet" -> quiet = true;
                     case "--overwrite" -> overwrite = true;
@@ -155,6 +162,15 @@ public final class Main {
                 anyOffice |= officeInput;
                 anyPdf |= !officeInput;
             }
+            if ((effort != null || keepPrivateData) && !optimize) {
+                throw new Usage("--effort and --keep-private-data go with --optimize");
+            }
+            if (optimize && pdfa != null) {
+                throw new Usage("--optimize and --pdfa are separate passes; give one of them");
+            }
+            if (optimize && (anyOffice || formatGiven && !"pdf".equals(format) || pagesGiven)) {
+                throw new Usage("--optimize rewrites whole PDFs; give it PDF input without --pages or --format");
+            }
             if (pdfa != null && (anyOffice || formatGiven && !"pdf".equals(format) || pagesGiven)) {
                 throw new Usage("--pdfa converts whole PDFs to PDF/A; give it PDF input without --pages or --format");
             }
@@ -164,18 +180,18 @@ public final class Main {
             if (anyOffice && formatGiven && !"pdf".equals(format)) {
                 throw new Usage("Office documents convert to PDF only; use --format pdf or leave it out");
             }
-            if (anyPdf && "pdf".equals(format) && pdfa == null) {
+            if (anyPdf && "pdf".equals(format) && pdfa == null && !optimize) {
                 throw new Usage("PDF input converts to an Office format, not pdf");
             }
             options = new PdfToDocx.Options(first, last, tables, dpi, password, pictureFallback, pictures);
             slides = new PdfToPptx.Options(first, last, tables, dpi, password, pictureFallback, pictures);
             books = PdfToXlsx.Options.defaults().withPages(first, last).withTables(tables).withPassword(password)
                     .withSheets(sheets).withTextFallback(pictureFallback);
-            if (pdfa != null && output != null && !Files.isDirectory(output) && inputs.size() == 1
+            if ((pdfa != null || optimize) && output != null && !Files.isDirectory(output) && inputs.size() == 1
                     && !Files.isDirectory(inputs.get(0)) && !"pdf".equals(extension(output))) {
-                throw new Usage("--pdfa writes a PDF; name the output .pdf");
+                throw new Usage((optimize ? "--optimize" : "--pdfa") + " writes a PDF; name the output .pdf");
             }
-            if (pdfa == null && output != null && !Files.isDirectory(output) && inputs.size() == 1
+            if (pdfa == null && !optimize && output != null && !Files.isDirectory(output) && inputs.size() == 1
                     && !Files.isDirectory(inputs.get(0))) {
                 String ext = known(extension(output));
                 boolean officeInput = officeOrPage(inputs.get(0));
@@ -190,7 +206,8 @@ public final class Main {
             return 2;
         }
         List<Path> pdfs = new ArrayList<>();
-        boolean archive = pdfa != null;
+        boolean archive = pdfa != null || optimize;
+        String rewritten = optimize ? "optimized.pdf" : "pdfa.pdf";
         boolean officeFolder = !archive && (!formatGiven || "pdf".equals(format));
         boolean pdfFolder = archive || !formatGiven || !"pdf".equals(format);
         boolean textFolder = formatGiven;
@@ -202,7 +219,7 @@ public final class Main {
                     s.filter(p -> Files.isRegularFile(p) && !lockFile(p) && (officeFolder && isOffice(p)
                             && (textFolder || !plainSource(p))
                             || pdfFolder && p.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".pdf")
-                            && !(archive && p.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".pdfa.pdf"))))
+                            && !(archive && p.getFileName().toString().toLowerCase(Locale.ROOT).endsWith("." + rewritten))))
                             .sorted().forEach(pdfs::add);
                 } catch (IOException e) {
                     System.err.println("office-convert: cannot list " + in + ": " + e.getMessage());
@@ -222,11 +239,14 @@ public final class Main {
             }
         }
         warmUp(pdfs);
-        List<Path> targets = Targets.of(pdfs, output, pdfa != null ? "pdfa.pdf" : format,
+        List<Path> targets = Targets.of(pdfs, output, archive ? rewritten : format,
                 inputs.stream().anyMatch(Files::isDirectory));
         Guard guard = new Guard(pdfs, overwrite);
         PdfToPdfA.Options archival = pdfa == null ? null : PdfToPdfA.Options.defaults().level(pdfa).password(password)
                 .timeout(office.timeout()).maxPages(office.maxPages()).fonts(fonts);
+        PdfOptimizer.Options shrink = !optimize ? null : PdfOptimizer.Options.defaults().password(password)
+                .timeout(office.timeout()).effort(effort == null ? PdfOptimizer.Effort.DEFAULT : effort)
+                .keepPrivateData(keepPrivateData);
         for (int k = 0; k < pdfs.size(); k++) {
             Path pdf = pdfs.get(k);
             boolean officeInput = officeOrPage(pdf);
@@ -245,7 +265,14 @@ public final class Main {
                 }
                 OfficeToPdf.Result result = null;
                 List<String> notes = List.of();
-                if (archival != null) {
+                if (shrink != null) {
+                    PdfOptimizer.Result r = PdfOptimizer.optimize(pdf, target, shrink);
+                    List<String> lines = new ArrayList<>(r.warnings());
+                    lines.add(r.rewritten() ? String.format(Locale.ROOT, "%d -> %d bytes (%.1f%% smaller)",
+                            r.inputBytes(), r.outputBytes(), 100.0 - 100.0 * r.outputBytes() / Math.max(1,
+                                    r.inputBytes())) : "already as small as the rewrite; copied unchanged");
+                    notes = lines;
+                } else if (archival != null) {
                     notes = PdfToPdfA.convert(pdf, target, archival).warnings();
                 } else if (officeInput) {
                     result = officeToPdf(pdf, target, localFiles && page(pdf) ? office.htmlAssets(
@@ -507,6 +534,14 @@ public final class Main {
         }
     }
 
+    private static PdfOptimizer.Effort effort(String s) throws Usage {
+        try {
+            return PdfOptimizer.Effort.valueOf(s.strip().toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException e) {
+            throw new Usage("--effort is fast, default or max, not '" + s + "'");
+        }
+    }
+
     private static Pictures pictures(String s) throws Usage {
         try {
             return Pictures.valueOf(s.strip().toUpperCase(Locale.ROOT));
@@ -530,6 +565,9 @@ public final class Main {
                         + "       office-convert <in.pdf|dir>... --pdfa 1a|1b|2a|2b|2u|3a|3b|3u [-o out.pdf|dir] [--password p]"
                         + " [--timeout s] [--fonts dir]... [--font-map Family=Installed]... [--no-system-fonts] [--overwrite] [-q]"
                         + System.lineSeparator()
+                        + "       office-convert <in.pdf|dir>... --optimize [--effort fast|default|max] [--keep-private-data]"
+                        + " [-o out.pdf|dir] [--password p] [--timeout s] [--overwrite] [-q]"
+                        + System.lineSeparator()
                         + "Word, PowerPoint and Excel files (.docx .docm .dotx .dotm .pptx .pptm .ppsx .ppsm .potx .potm"
                         + " .xlsx .xlsm .xltx .xltm .xlsb, binary .doc .dot .xls .xlt .ppt .pps .pot back to Word 6.0 and"
                         + " Excel 2.0, and Word 2003 XML, XML Spreadsheet 2003 and Flat OPC .xml), Visio drawings (.vsdx"
@@ -552,6 +590,12 @@ public final class Main {
                         + "--pdfa makes an archival PDF/A copy of each PDF (in.pdfa.pdf unless -o names it): fonts are embedded,"
                         + " scripts and actions removed, colours given an sRGB output intent; 1a and 1b draw transparency as pictures;"
                         + " the a levels need a tagged PDF."
+                        + System.lineSeparator()
+                        + "--optimize rewrites each PDF smaller without changing how any page draws (in.optimized.pdf unless"
+                        + " -o names it), and repairs a damaged one on the way: unused objects and resources are dropped,"
+                        + " duplicates merged, streams recompressed and objects packed into object streams; editing"
+                        + " applications' private data goes too unless --keep-private-data. An output that would not be"
+                        + " smaller is a copy of the input. Encrypted PDFs are refused."
                         + System.lineSeparator()
                         + "--fonts adds a folder of .ttf, .ttc, .otf or .otc fonts (searched to a depth of 8, links not"
                         + " followed); --font-map draws a family with an installed one (Aptos=Inter); --font-width scales"
