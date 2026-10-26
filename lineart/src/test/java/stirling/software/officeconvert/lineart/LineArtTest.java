@@ -358,6 +358,27 @@ class LineArtTest {
     }
 
     @Test
+    void anEncryptedFileIsWrittenWithoutItsEncryption() throws IOException {
+        Path in = dir.resolve("locked.pdf");
+        try (PDDocument doc = Pictures.onePage(Pictures.scan(120, 90, 4))) {
+            org.apache.pdfbox.pdmodel.encryption.StandardProtectionPolicy policy =
+                    new org.apache.pdfbox.pdmodel.encryption.StandardProtectionPolicy("owner", "user",
+                            new org.apache.pdfbox.pdmodel.encryption.AccessPermission());
+            policy.setEncryptionKeyLength(128);
+            doc.protect(policy);
+            doc.save(in.toFile());
+        }
+        Path out = dir.resolve("open.pdf");
+        LineArt.Result result = LineArt.convert(in, out, LineArt.Options.defaults().password("user"));
+        assertEquals(1, result.converted());
+        assertTrue(result.warnings().getLast().contains("encryption was removed"), result.warnings().toString());
+        try (PDDocument doc = Loader.loadPDF(out.toFile())) {
+            assertFalse(doc.isEncrypted());
+            assertEquals(1, Pictures.firstImage(doc).getBitsPerComponent());
+        }
+    }
+
+    @Test
     void optionsRejectNonsense() {
         LineArt.Options o = LineArt.Options.defaults();
         assertThrows(IllegalArgumentException.class, () -> o.threshold(101));

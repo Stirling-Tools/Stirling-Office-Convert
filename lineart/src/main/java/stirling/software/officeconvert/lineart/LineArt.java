@@ -171,6 +171,13 @@ public final class LineArt {
             Result result;
             try (PDDocument doc = PdfFiles.open(in, options.password())) {
                 result = convert(doc, options);
+                if (doc.isEncrypted()) {
+                    doc.setAllSecurityToBeRemoved(true);
+                    List<String> warnings = new ArrayList<>(result.warnings());
+                    warnings.add("The PDF's encryption was removed: it cannot be rewritten with the same keys");
+                    result = new Result(result.images(), result.converted(), result.bytesBefore(), result.bytesAfter(),
+                            result.codecs(), warnings);
+                }
                 try (OutputStream os = new BufferedOutputStream(Files.newOutputStream(part), 1 << 16)) {
                     doc.save(os);
                 }
