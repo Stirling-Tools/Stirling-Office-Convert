@@ -91,18 +91,41 @@ public final class WebFonts {
                                 : program.gid(name(font, code))));
             }
             Map<Integer, Integer> mapping = unicodeByGlyph;
-            if (font != null && font.isDamaged()) {
+            if (font instanceof PDTrueTypeFont && font.isDamaged()) {
                 throw new IOException("PDFBox could not read the embedded font program");
             }
             if (font != null) {
                 mapping = unicodeByGlyph(font, ttf.getNumberOfGlyphs(),
-                        code -> font instanceof PDTrueTypeFont tt ? tt.codeToGID(code) : 0);
+                        code -> font instanceof PDTrueTypeFont tt ? tt.codeToGID(code) : nameToGid(ttf, name(font, code)));
             }
             String name = ttf.getName() != null ? ttf.getName() : font != null ? font.getName() : null;
             return convertTrueType(ttf, name, mapping);
         } catch (RuntimeException e) {
             throw new IOException("The TrueType program cannot be converted: " + e.getMessage(), e);
         }
+    }
+
+    private static int nameToGid(TrueTypeFont ttf, String name) throws IOException {
+        return name == null || ".notdef".equals(name) ? 0 : ttf.nameToGID(name);
+    }
+
+    private static FontKind sniff(byte[] data) {
+        if (data == null || data.length < 4) {
+            return null;
+        }
+        int tag = ByteBuffer.wrap(data).getInt(0);
+        if (tag == 0x00010000 || tag == 0x74727565 || tag == 0x4F54544F) {
+            return FontKind.TRUETYPE;
+        }
+        if ((data[0] & 0xFF) == 0x80 && data[1] == 1 || data[0] == '%' && data[1] == '!') {
+            return FontKind.TYPE1;
+        }
+        int header = data[2] & 0xFF;
+        int offSize = data[3] & 0xFF;
+        if (data[0] == 1 && data[1] == 0 && header >= 4 && header < data.length && offSize >= 1 && offSize <= 4) {
+            return FontKind.CFF;
+        }
+        return null;
     }
 
     private static String name(PDFont font, int code) {
@@ -187,27 +210,38 @@ public final class WebFonts {
         if (font instanceof PDType0Font && font.isDamaged()) {
             throw new IOException("PDFBox could not read the embedded font program");
         }
-        Program program;
+        PDStream stream;
+        FontKind declared;
         if (fd.getFontFile2() != null) {
-            return fromSfnt(bytes(fd.getFontFile2()), font, null);
-        }
-        if (fd.getFontFile3() != null) {
-            String subtype = fd.getFontFile3().getCOSObject().getNameAsString(COSName.SUBTYPE);
-            if ("OpenType".equals(subtype)) {
-                return fromSfnt(bytes(fd.getFontFile3()), font, null);
-            }
-            if (subtype != null && !"Type1C".equals(subtype) && !"CIDFontType0C".equals(subtype)) {
-                throw new IOException("FontFile3 /" + subtype + " is not a supported font program");
-            }
-            program = Program.read(bytes(fd.getFontFile3()), FontKind.CFF, -1, -1);
+            stream = fd.getFontFile2();
+            declared = FontKind.TRUETYPE;
+        } else if (fd.getFontFile3() != null) {
+            stream = fd.getFontFile3();
+            String subtype = stream.getCOSObject().getNameAsString(COSName.SUBTYPE);
+            declared = "OpenType".equals(subtype) ? FontKind.TRUETYPE
+                    : subtype == null || "Type1C".equals(subtype) || "CIDFontType0C".equals(subtype) ? FontKind.CFF
+                            : null;
         } else if (fd.getFontFile() != null) {
-            PDStream s = fd.getFontFile();
-            program = Program.read(bytes(s), FontKind.TYPE1, s.getCOSObject().getInt(COSName.LENGTH1),
-                    s.getCOSObject().getInt(COSName.LENGTH2));
+            stream = fd.getFontFile();
+            declared = FontKind.TYPE1;
         } else {
             throw new IOException("The font has no embedded font program");
         }
-        Program p = program;
+        byte[] data = bytes(stream);
+        FontKind kind = sniff(data);
+        if (kind == null) {
+            kind = declared;
+        }
+        if (kind == null) {
+            throw new IOException("FontFile3 /" + stream.getCOSObject().getNameAsString(COSName.SUBTYPE)
+                    + " is not a supported font program");
+        }
+        if (kind == FontKind.TRUETYPE) {
+            return fromSfnt(data, font, null);
+        }
+        boolean lengths = kind == FontKind.TYPE1 && declared == FontKind.TYPE1;
+        Program p = Program.read(data, kind, lengths ? stream.getCOSObject().getInt(COSName.LENGTH1) : -1,
+                lengths ? stream.getCOSObject().getInt(COSName.LENGTH2) : -1);
         return convert(p, unicodeByGlyph(font, p.count(), code -> p.gid(name(font, code))));
     }
 
