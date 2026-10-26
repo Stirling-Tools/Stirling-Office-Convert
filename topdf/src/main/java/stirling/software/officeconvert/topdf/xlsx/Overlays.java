@@ -50,12 +50,7 @@ final class Overlays {
         }
     }
 
-    record Bar(double fraction, Color color, String iconSet, int icon) {
-
-        Bar(double fraction, Color color) {
-            this(fraction, color, null, 0);
-        }
-    }
+    record Bar(double fraction, Color color, String iconSet, int icon, boolean valueHidden) {}
 
     private static final int MAX_CELLS = 500_000;
 
@@ -107,6 +102,10 @@ final class Overlays {
 
     boolean hasBars() {
         return !bars.isEmpty();
+    }
+
+    Map<Long, Bar> bars() {
+        return bars;
     }
 
     Bar bar(int row, int col) {
@@ -633,6 +632,7 @@ final class Overlays {
             return;
         }
         boolean reverse = rule.getIconSet().isSetReverse() && rule.getIconSet().getReverse();
+        boolean hidden = rule.getIconSet().isSetShowValue() && !rule.getIconSet().getShowValue();
         for (Value v : values) {
             if (!v.numeric()) {
                 continue;
@@ -644,7 +644,7 @@ final class Overlays {
                     icon = i;
                 }
             }
-            bars.put(key(v.row, v.col), new Bar(0, null, set, reverse ? count - 1 - icon : icon));
+            bars.put(key(v.row, v.col), new Bar(0, null, set, reverse ? count - 1 - icon : icon, hidden));
         }
     }
 
@@ -663,13 +663,14 @@ final class Overlays {
         Color color = book.colors().resolve(rule.getDataBar().getColor(), new Color(0x638EC6));
         double min = rule.getDataBar().isSetMinLength() ? rule.getDataBar().getMinLength() / 100.0 : 0.1;
         double max = rule.getDataBar().isSetMaxLength() ? rule.getDataBar().getMaxLength() / 100.0 : 0.9;
+        boolean hidden = rule.getDataBar().isSetShowValue() && !rule.getDataBar().getShowValue();
         for (Value v : values) {
             if (!v.numeric()) {
                 continue;
             }
             double t = at[1] == at[0] ? 1 : (v.number() - at[0]) / (at[1] - at[0]);
             t = Math.max(0, Math.min(1, t));
-            bars.put(key(v.row, v.col), new Bar(min + (max - min) * t, color));
+            bars.put(key(v.row, v.col), new Bar(min + (max - min) * t, color, null, 0, hidden));
         }
     }
 }

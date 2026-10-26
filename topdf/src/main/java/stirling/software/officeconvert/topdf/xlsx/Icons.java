@@ -32,6 +32,8 @@ final class Icons {
         if (set.contains("Arrows")) {
             Color c = set.contains("Gray") ? GREY : traffic(level, count);
             arrow(canvas, fx, fy, s, direction(level, count), c);
+        } else if (set.contains("Symbols")) {
+            symbol(canvas, fx, fy, s, level, count, !set.contains("Symbols2"));
         } else if (set.contains("Rating")) {
             rating(canvas, fx, fy, s, level, count);
         } else if (set.contains("Quarters")) {
@@ -85,6 +87,36 @@ final class Icons {
         p.lineTo(cx - px * len * 0.8f, cy - py * len * 0.8f);
         p.closePath();
         canvas.draw(p, Fill.solid(c), null);
+    }
+
+    private static void symbol(PdfCanvas canvas, float x, float y, float s, int level, int count, boolean circled)
+            throws IOException {
+        Color c = traffic(level, count);
+        Color mark = c;
+        if (circled) {
+            canvas.ellipse(x, y, s, s, Fill.solid(c), null);
+            mark = Color.WHITE;
+        }
+        float inset = circled ? s * 0.28f : s * 0.12f;
+        float l = x + inset;
+        float r = x + s - inset;
+        float t = y + inset;
+        float b = y + s - inset;
+        Stroke pen = Stroke.solid(Math.max(0.8f, s * (circled ? 0.14f : 0.2f)), mark);
+        if (level == count - 1) {
+            Path2D.Float p = new Path2D.Float();
+            p.moveTo(l, y + s * 0.55f);
+            p.lineTo(x + s * 0.42f, b);
+            p.lineTo(r, t);
+            canvas.draw(p, null, pen);
+        } else if (level == 0) {
+            canvas.line(l, t, r, b, pen);
+            canvas.line(l, b, r, t, pen);
+        } else {
+            float cx = x + s / 2;
+            canvas.line(cx, t, cx, y + s * 0.62f, pen);
+            canvas.line(cx, b - s * 0.06f, cx, b, pen);
+        }
     }
 
     private static void rating(PdfCanvas canvas, float x, float y, float s, int level, int count) throws IOException {
