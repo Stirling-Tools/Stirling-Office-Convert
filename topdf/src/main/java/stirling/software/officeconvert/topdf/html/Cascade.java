@@ -241,7 +241,33 @@ final class Cascade {
             return null;
         }
         sheetChars += text.length();
-        return sheetChars > MAX_SHEET_CHARS ? null : text;
+        return sheetChars > MAX_SHEET_CHARS ? null : rebased(text, ref);
+    }
+
+    private static final Pattern URL = Pattern.compile("url\\(\\s*([\"']?)([^\"')]*)\\1\\s*\\)",
+            Pattern.CASE_INSENSITIVE);
+
+    private static final Pattern SCHEME = Pattern.compile("^[a-zA-Z][a-zA-Z0-9+.-]*:.*", Pattern.DOTALL);
+
+    static String rebased(String sheet, String ref) {
+        if (sheet.indexOf('(') < 0) {
+            return sheet;
+        }
+        Matcher m = URL.matcher(sheet);
+        StringBuilder out = new StringBuilder(sheet.length());
+        while (m.find()) {
+            String v = m.group(2).strip();
+            String replacement = m.group();
+            if (!v.isEmpty() && !v.startsWith("#") && !SCHEME.matcher(v).matches()) {
+                String resolved = HtmlRefs.resolve(ref, v);
+                if (resolved != null && resolved.indexOf('"') < 0 && resolved.indexOf('\\') < 0) {
+                    replacement = "url(\"" + (SCHEME.matcher(resolved).matches() ? resolved : "/" + resolved) + "\")";
+                }
+            }
+            m.appendReplacement(out, Matcher.quoteReplacement(replacement));
+        }
+        m.appendTail(out);
+        return out.toString();
     }
 
     // Filed under what the selector's last compound step needs: its id, else a class, else its tag

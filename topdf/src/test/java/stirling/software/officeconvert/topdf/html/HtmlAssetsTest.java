@@ -99,6 +99,24 @@ class HtmlAssetsTest {
     }
 
     @Test
+    void urlsInALinkedStyleSheetResolveAgainstTheSheet() throws IOException {
+        Map<String, byte[]> entries = new LinkedHashMap<>();
+        entries.put("docs/index.html", utf8("<html><head><link rel='stylesheet' href='../assets/css/site.css'></head>"
+                + "<body><div class='hero'>Hero text</div></body></html>"));
+        entries.put("assets/css/site.css", utf8(".hero{height:80px;background:url(../img/hero.png)}"));
+        entries.put("assets/img/hero.png", png(60, 30, Color.ORANGE));
+        Pdf pdf = convert(zip("sheet.zip", entries), packages());
+        assertEquals(1, pdf.images(), pdf.result().warnings().toString());
+        assertEquals("/assets/img/a.png", "/" + HtmlRefs.resolve("assets/css/site.css", "../img/a.png"));
+        assertTrue(Cascade.rebased("a{background:url(../img/a.png)}", "assets/css/site.css")
+                .contains("url(\"/assets/img/a.png\")"));
+        assertTrue(Cascade.rebased("a{background:url('x.png')}", "https://h.test/css/s.css")
+                .contains("url(\"https://h.test/css/x.png\")"));
+        assertTrue(Cascade.rebased("a{background:url(data:image/png;base64,AA)}", "css/s.css")
+                .contains("url(data:image/png;base64,AA)"));
+    }
+
+    @Test
     void zipPagesAreRefusedUnlessPackagesAreAllowed() throws IOException {
         Map<String, byte[]> entries = new LinkedHashMap<>();
         entries.put("index.html", utf8("<p>Packaged page</p><img src='logo.png'>"));
