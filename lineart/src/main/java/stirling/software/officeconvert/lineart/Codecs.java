@@ -22,14 +22,14 @@ final class Codecs {
         };
     }
 
-    private static Encoded smallest(Bitmap bitmap) throws IOException {
+    private static Encoded smallest(Bitmap bitmap) {
         Encoded best = jbig2(bitmap);
-        for (Encoded e : new Encoded[] {g4(bitmap), flate(bitmap)}) {
-            if (e.data().length < best.data().length) {
-                best = e;
-            }
+        Encoded g4 = g4(bitmap, best.data().length);
+        if (g4 != null) {
+            best = g4;
         }
-        return best;
+        Encoded flate = flate(bitmap, best.data().length);
+        return flate != null ? flate : best;
     }
 
     static Encoded jbig2(Bitmap bitmap) {
@@ -40,67 +40,98 @@ final class Codecs {
     }
 
     static Encoded g4(Bitmap bitmap) {
+        return g4(bitmap, Integer.MAX_VALUE);
+    }
+
+    private static Encoded g4(Bitmap bitmap, int shorterThan) {
+        byte[] data = Group4.encode(bitmap, shorterThan);
+        if (data == null) {
+            return null;
+        }
         COSDictionary parameters = new COSDictionary();
         parameters.setInt(COSName.K, -1);
         parameters.setInt(COSName.COLUMNS, bitmap.width());
         parameters.setInt(COSName.ROWS, bitmap.height());
-        return new Encoded(LineArt.Codec.CCITT_G4, Group4.encode(bitmap), COSName.CCITTFAX_DECODE, parameters, 0);
+        return new Encoded(LineArt.Codec.CCITT_G4, data, COSName.CCITTFAX_DECODE, parameters, 0);
     }
 
     static Encoded flate(Bitmap bitmap) {
+        return flate(bitmap, Integer.MAX_VALUE);
+    }
+
+    private static Encoded flate(Bitmap bitmap, int shorterThan) {
         byte[] raw = bitmap.packed();
         int stride = bitmap.stride();
         int h = bitmap.height();
-        byte[] plain = new byte[raw.length];
-        for (int i = 0; i < raw.length; i++) {
-            plain[i] = (byte) ~raw[i];
-        }
-        clearPadding(plain, bitmap.width(), stride, h);
-        byte[] direct = deflate(plain);
-        byte[] predicted = new byte[(stride + 1) * h];
-        for (int y = 0; y < h; y++) {
-            predicted[y * (stride + 1)] = 2;
-            for (int i = 0; i < stride; i++) {
-                int above = y == 0 ? 0 : plain[(y - 1) * stride + i];
-                predicted[y * (stride + 1) + 1 + i] = (byte) (plain[y * stride + i] - above);
-            }
-        }
-        byte[] up = deflate(predicted);
-        if (up.length < direct.length) {
-            COSDictionary parameters = new COSDictionary();
-            parameters.setInt(COSName.PREDICTOR, 15);
-            parameters.setInt(COSName.COLORS, 1);
-            parameters.setInt(COSName.BITS_PER_COMPONENT, 1);
-            parameters.setInt(COSName.COLUMNS, bitmap.width());
-            return new Encoded(LineArt.Codec.FLATE, up, COSName.FLATE_DECODE, parameters, 0);
-        }
-        return new Encoded(LineArt.Codec.FLATE, direct, COSName.FLATE_DECODE, null, 0);
-    }
-
-    private static void clearPadding(byte[] rows, int width, int stride, int h) {
-        int tail = width & 7;
-        if (tail == 0) {
-            return;
-        }
-        int keep = 0xFF00 >>> tail & 0xFF;
-        for (int y = 0; y < h; y++) {
-            rows[y * stride + stride - 1] &= (byte) keep;
-        }
-    }
-
-    private static byte[] deflate(byte[] data) {
-        Deflater deflater = new Deflater(Deflater.BEST_COMPRESSION);
+        int tail = bitmap.width() & 7;
+        byte keep = (byte) (tail == 0 ? 0xFF : 0xFF00 >>> tail & 0xFF);
+        Deflater direct = new Deflater(Deflater.BEST_COMPRESSION);
+        Deflater up = new Deflater(Deflater.BEST_COMPRESSION);
         try {
-            deflater.setInput(data);
-            deflater.finish();
-            ByteArrayOutputStream out = new ByteArrayOutputStream(Math.max(64, data.length / 4));
+            ByteArrayOutputStream directOut = new ByteArrayOutputStream(1 << 12);
+            ByteArrayOutputStream upOut = new ByteArrayOutputStream(1 << 12);
             byte[] buffer = new byte[1 << 16];
-            while (!deflater.finished()) {
-                out.write(buffer, 0, deflater.deflate(buffer));
+            int rows = Math.max(1, (1 << 16) / (stride + 1));
+            byte[] plain = new byte[rows * stride];
+            byte[] predicted = new byte[rows * (stride + 1)];
+            byte[] previous = new byte[stride];
+            boolean directAlive = true;
+            boolean upAlive = true;
+            for (int y0 = 0; y0 < h && (directAlive || upAlive); y0 += rows) {
+                int n = Math.min(rows, h - y0);
+                for (int r = 0; r < n; r++) {
+                    int src = (y0 + r) * stride;
+                    int p = r * stride;
+                    int q = r * (stride + 1);
+                    predicted[q] = 2;
+                    for (int i = 0; i < stride; i++) {
+                        byte v = (byte) ~raw[src + i];
+                        if (i == stride - 1) {
+                            v &= keep;
+                        }
+                        plain[p + i] = v;
+                        predicted[q + 1 + i] = (byte) (v - previous[i]);
+                        previous[i] = v;
+                    }
+                }
+                boolean last = y0 + n >= h;
+                if (directAlive) {
+                    directAlive = feed(direct, plain, n * stride, last, buffer, directOut, shorterThan);
+                }
+                if (upAlive) {
+                    upAlive = feed(up, predicted, n * (stride + 1), last, buffer, upOut, shorterThan);
+                }
             }
-            return out.toByteArray();
+            if (!directAlive && !upAlive) {
+                return null;
+            }
+            if (upAlive && (!directAlive || upOut.size() < directOut.size())) {
+                COSDictionary parameters = new COSDictionary();
+                parameters.setInt(COSName.PREDICTOR, 15);
+                parameters.setInt(COSName.COLORS, 1);
+                parameters.setInt(COSName.BITS_PER_COMPONENT, 1);
+                parameters.setInt(COSName.COLUMNS, bitmap.width());
+                return new Encoded(LineArt.Codec.FLATE, upOut.toByteArray(), COSName.FLATE_DECODE, parameters, 0);
+            }
+            return new Encoded(LineArt.Codec.FLATE, directOut.toByteArray(), COSName.FLATE_DECODE, null, 0);
         } finally {
-            deflater.end();
+            direct.end();
+            up.end();
         }
+    }
+
+    private static boolean feed(Deflater deflater, byte[] data, int length, boolean last, byte[] buffer,
+            ByteArrayOutputStream out, int shorterThan) {
+        deflater.setInput(data, 0, length);
+        if (last) {
+            deflater.finish();
+        }
+        while (last ? !deflater.finished() : !deflater.needsInput()) {
+            out.write(buffer, 0, deflater.deflate(buffer));
+            if (out.size() >= shorterThan) {
+                return false;
+            }
+        }
+        return true;
     }
 }

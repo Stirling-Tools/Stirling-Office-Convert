@@ -12,7 +12,7 @@ final class Jbig2Symbols {
 
     private static final int MAX_SIDE = 255;
 
-    private static final int MAX_RUNS = 20_000_000;
+    private static final int MAX_RUNS = 1 << 21;
 
     private record Shape(int w, int h, byte[] bits) {
 

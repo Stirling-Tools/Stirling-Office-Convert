@@ -64,6 +64,10 @@ final class Group4 {
     }
 
     static byte[] encode(Bitmap bitmap) {
+        return encode(bitmap, Integer.MAX_VALUE);
+    }
+
+    static byte[] encode(Bitmap bitmap, int shorterThan) {
         int w = bitmap.width();
         int h = bitmap.height();
         int stride = bitmap.stride();
@@ -74,13 +78,17 @@ final class Group4 {
         for (int y = 0; y < h; y++) {
             System.arraycopy(bits, y * stride, coding, 0, stride);
             g.row(coding, reference, w);
+            if (g.out.size() >= shorterThan) {
+                return null;
+            }
             byte[] t = reference;
             reference = coding;
             coding = t;
         }
         g.put(1, 12);
         g.put(1, 12);
-        return g.finish();
+        byte[] data = g.finish();
+        return data.length < shorterThan ? data : null;
     }
 
     private void row(byte[] coding, byte[] reference, int w) {

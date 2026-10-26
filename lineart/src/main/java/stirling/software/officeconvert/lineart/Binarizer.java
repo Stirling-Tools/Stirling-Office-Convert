@@ -24,6 +24,14 @@ final class Binarizer {
         void process(float[] buffer, int first, int from, int to);
     }
 
+    interface GreyBand {
+        void accept(int y, float[] grey, int rows) throws IOException;
+    }
+
+    interface Greys {
+        void each(GreyBand band) throws IOException;
+    }
+
     private Binarizer() {}
 
     static Bitmap binarize(BufferedImage image, LineArt.Options options) {
@@ -38,11 +46,12 @@ final class Binarizer {
         int w = source.width;
         int h = source.height;
         int rows = Source.bandRows(w, h, bandPixels);
+        Greys greys = greys(source, rows);
         Bitmap out = Bitmap.blank(w, h);
         switch (options.method()) {
             case FIXED -> {
                 double level = options.threshold() / 100 * QUANTUM;
-                scan(source, rows, 0, (buffer, first, from, to) -> {
+                scan(greys, w, h, 0, (buffer, first, from, to) -> {
                     for (int y = from; y < to; y++) {
                         int base = (y - first) * w;
                         for (int x = 0; x < w; x++) {
@@ -55,13 +64,13 @@ final class Binarizer {
             }
             case OTSU -> {
                 long[] histogram = new long[256];
-                scan(source, rows, 0, (buffer, first, from, to) -> {
+                scan(greys, w, h, 0, (buffer, first, from, to) -> {
                     for (int i = (from - first) * w; i < (to - first) * w; i++) {
                         histogram[eight(buffer[i])]++;
                     }
                 });
                 int level = otsuLevel(histogram);
-                scan(source, rows, 0, (buffer, first, from, to) -> {
+                scan(greys, w, h, 0, (buffer, first, from, to) -> {
                     for (int y = from; y < to; y++) {
                         int base = (y - first) * w;
                         for (int x = 0; x < w; x++) {
@@ -74,10 +83,10 @@ final class Binarizer {
             }
             case SAUVOLA -> {
                 int window = window(options.window(), w, h);
-                scan(source, rows, window / 2,
+                scan(greys, w, h, window / 2,
                         (buffer, first, from, to) -> sauvola(buffer, first, w, h, from, to, window, options.k(), out));
             }
-            case EDGES -> edges(source, rows, options.edgeLevel(), options.threshold(), out);
+            case EDGES -> edges(greys, w, h, options.edgeLevel(), options.threshold(), out);
         }
         return options.inkColour() ? out.withInk(meanInk(source, rows, out)) : out;
     }
@@ -89,14 +98,19 @@ final class Binarizer {
         return Math.clamp(Math.min(w, h) / 48, 15, 127) | 1;
     }
 
-    static void scan(Source source, int rows, int radius, Rows sink) throws IOException {
-        int w = source.width;
-        int h = source.height;
+    static Greys greys(Source source, int rows) throws IOException {
+        if (rows < source.height) {
+            return band -> source.bands(rows, false, (y, image) -> band.accept(y, grey(image), image.getHeight()));
+        }
+        float[][] whole = new float[1][];
+        source.bands(rows, false, (y, image) -> whole[0] = grey(image));
+        return band -> band.accept(0, whole[0], source.height);
+    }
+
+    static void scan(Greys greys, int w, int h, int radius, Rows sink) throws IOException {
         int[] state = new int[3];
         float[][] holder = {new float[0]};
-        source.bands(rows, false, (y, image) -> {
-            float[] grey = grey(image);
-            int n = image.getHeight();
+        greys.each((y, grey, n) -> {
             int first = state[0];
             int count = state[1];
             float[] buffer = holder[0];
@@ -118,7 +132,7 @@ final class Binarizer {
                 done = to;
             }
             int keep = Math.max(first, done - radius);
-            if (keep > first) {
+            if (keep > first && done < h) {
                 int drop = keep - first;
                 float[] kept = new float[Math.max((count - drop) * w, 0) + n * w];
                 System.arraycopy(buffer, drop * w, kept, 0, (count - drop) * w);
@@ -181,15 +195,13 @@ final class Binarizer {
         return table;
     }
 
-    private static void edges(Source source, int rows, int level, double threshold, Bitmap out) throws IOException {
-        int w = source.width;
-        int h = source.height;
+    private static void edges(Greys greys, int w, int h, int level, double threshold, Bitmap out) throws IOException {
         double[] histogram = new double[65536];
         float[] line = new float[w];
         double[][] ring = new double[2 * level + 1][];
         int[] ringRow = new int[2 * level + 1];
         Arrays.fill(ringRow, -1);
-        scan(source, rows, level, (buffer, first, from, to) -> {
+        scan(greys, w, h, level, (buffer, first, from, to) -> {
             for (int y = from; y < to; y++) {
                 negatedEdges(buffer, first, w, h, y, level, ring, ringRow, line);
                 for (float f : line) {
@@ -221,7 +233,7 @@ final class Binarizer {
         int b = black;
         int wh = white;
         Arrays.fill(ringRow, -1);
-        scan(source, rows, level, (buffer, first, from, to) -> {
+        scan(greys, w, h, level, (buffer, first, from, to) -> {
             for (int y = from; y < to; y++) {
                 negatedEdges(buffer, first, w, h, y, level, ring, ringRow, line);
                 for (int x = 0; x < w; x++) {
