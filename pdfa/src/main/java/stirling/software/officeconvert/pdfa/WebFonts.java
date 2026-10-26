@@ -82,6 +82,14 @@ public final class WebFonts {
         boolean repaired = parsed.repaired();
         try (ttf) {
             TTFTable cff = ttf.getTableMap().get("CFF ");
+            TTFTable cff2 = ttf.getTableMap().get("CFF2");
+            if (ttf.getTableMap().get("glyf") == null && cff == null && cff2 != null) {
+                Program program = new Cff2Program(new Cff2(ttf.getTableBytes(cff2)), ttf, ownUnicode(ttf,
+                        ttf.getNumberOfGlyphs()));
+                return convert(program, font == null ? unicodeByGlyph : unicodeByGlyph(font, program.count(),
+                        code -> font instanceof PDTrueTypeFont tt && !tt.isDamaged() ? tt.codeToGID(code)
+                                : nameToGid(ttf, name(font, code))));
+            }
             if (ttf.getTableMap().get("glyf") == null && cff != null) {
                 Program program = Program.read(ttf.getTableBytes(cff), FontKind.CFF, -1, -1);
                 return convert(program, font == null ? unicodeByGlyph : unicodeByGlyph(font, program.count(),
@@ -429,7 +437,7 @@ public final class WebFonts {
             w.addOutline(program.path(gid, toEm), program.advance(gid, toEm));
             checkGlyphBytes(w, budget);
         }
-        TreeMap<Integer, Integer> cmap = cmap(program.count(), program::name, unicodeByGlyph, Map.of());
+        TreeMap<Integer, Integer> cmap = cmap(program.count(), program::name, unicodeByGlyph, program.own());
         TrueTypeWriter.Metrics m = w.metrics();
         int ascent = Math.max(m.yMax(), 800);
         int descent = Math.min(m.yMin(), -200);
@@ -589,6 +597,10 @@ public final class WebFonts {
 
         abstract float italicAngle();
 
+        Map<Integer, Integer> own() {
+            return Map.of();
+        }
+
         int style() {
             String weight = weight() == null ? "" : weight().toLowerCase(Locale.ROOT);
             boolean bold = weight.contains("bold") || weight.contains("black") || weight.contains("heavy");
@@ -716,7 +728,17 @@ public final class WebFonts {
 
         @Override
         GeneralPath rawPath(int gid) throws IOException {
-            return charString(gid).getPath();
+            return Type2Outline.path(font.getCharStringBytes().get(gid), globalSubrs, localSubrs(gid), null, 0,
+                    code -> {
+                        int accent = gid(StandardEncoding.INSTANCE.getName(code));
+                        return accent <= 0 ? null : Type2Outline.path(font.getCharStringBytes().get(accent),
+                                globalSubrs, localSubrs(accent), null, 0, null);
+                    });
+        }
+
+        private byte[][] localSubrs(int gid) {
+            Map<String, Object> priv = privateDict(gid);
+            return priv != null && priv.get("Subrs") instanceof byte[][] l ? l : null;
         }
 
         @Override
@@ -765,6 +787,98 @@ public final class WebFonts {
         float italicAngle() {
             Object a = font.getTopDict().get("ItalicAngle");
             return a instanceof Number n ? n.floatValue() : 0;
+        }
+    }
+
+    private static final class Cff2Program extends Program {
+
+        private final Cff2 cff2;
+
+        private final int count;
+
+        private final String name;
+
+        private final PostScriptTable post;
+
+        private final HorizontalMetricsTable hmtx;
+
+        private final int unitsPerEm;
+
+        private final Map<Integer, Integer> own;
+
+        private final Map<String, Integer> gids = new HashMap<>();
+
+        Cff2Program(Cff2 cff2, TrueTypeFont ttf, Map<Integer, Integer> own) throws IOException {
+            this.cff2 = cff2;
+            this.count = Math.min(cff2.count(), Math.max(1, ttf.getNumberOfGlyphs()));
+            this.name = ttf.getName();
+            this.post = ttf.getPostScript();
+            this.hmtx = ttf.getHorizontalMetrics();
+            this.unitsPerEm = ttf.getUnitsPerEm() > 0 ? ttf.getUnitsPerEm() : 1000;
+            this.own = own;
+            for (int gid = 0; post != null && gid < count; gid++) {
+                String n = post.getName(gid);
+                if (n != null) {
+                    gids.putIfAbsent(n, gid);
+                }
+            }
+        }
+
+        @Override
+        int count() {
+            return count;
+        }
+
+        @Override
+        String name() {
+            return name;
+        }
+
+        @Override
+        String name(int gid) {
+            return post == null ? null : post.getName(gid);
+        }
+
+        @Override
+        int gid(String glyph) {
+            Integer g = glyph == null ? null : gids.get(glyph);
+            return g == null ? 0 : g;
+        }
+
+        @Override
+        GeneralPath rawPath(int gid) throws IOException {
+            return cff2.path(gid);
+        }
+
+        @Override
+        double rawWidth(int gid) {
+            return hmtx == null ? 0 : hmtx.getAdvanceWidth(gid);
+        }
+
+        @Override
+        CharStringExpansion.Result expansion(int gid) throws IOException {
+            return CharStringExpansion.type2(cff2.charString(gid), cff2.globalSubrs(), cff2.localSubrs(gid));
+        }
+
+        @Override
+        List<Number> matrix() {
+            double k = 1.0 / unitsPerEm;
+            return List.of(k, 0, 0, k, 0, 0);
+        }
+
+        @Override
+        String weight() {
+            return null;
+        }
+
+        @Override
+        float italicAngle() {
+            return post == null ? 0 : post.getItalicAngle();
+        }
+
+        @Override
+        Map<Integer, Integer> own() {
+            return own;
         }
     }
 
