@@ -2,10 +2,13 @@ package stirling.software.officeconvert.pdfa;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.TreeSet;
 
 import org.apache.pdfbox.cos.COSBase;
@@ -51,6 +54,7 @@ public final class FontEmbedder {
     private static Result run(PDDocument doc, FontSet fonts) throws IOException {
         FontUsage usage = new FontUsage();
         ContentGraph graph = ContentGraph.of(doc);
+        Set<ContentGraph.Node> unreadable = new HashSet<>();
         for (ContentGraph.Node n : graph.nodes()) {
             PdfFiles.stopIfInterrupted();
             List<Object> tokens;
@@ -58,6 +62,7 @@ public final class FontEmbedder {
                 tokens = ContentTokens.salvage(n.streams()).tokens();
             } catch (IOException e) {
                 Decoded.rethrowFatal(e);
+                unreadable.add(n);
                 continue;
             }
             usage.scan(tokens, n.resources(), n.owner());
@@ -71,22 +76,30 @@ public final class FontEmbedder {
                 continue;
             }
             for (COSBase v : dict.getValues()) {
-                if (ContentGraph.dict(v) instanceof COSDictionary font && !targets.containsKey(font)) {
-                    targets.put(font, unusedCodes(font));
+                if (ContentGraph.dict(v) instanceof COSDictionary font) {
+                    TreeSet<Integer> codes = targets.computeIfAbsent(font, k -> new TreeSet<>());
+                    if (unreadable.contains(n)) {
+                        codes.addAll(allCodes(font));
+                    }
                 }
             }
         }
         List<String> embedded = new ArrayList<>();
         List<String> failed = new ArrayList<>();
         FontLibrary library = null;
-        for (Map.Entry<COSDictionary, TreeSet<Integer>> e : targets.entrySet()) {
+        for (List<COSDictionary> group : groups(targets)) {
             PdfFiles.stopIfInterrupted();
+            COSDictionary leader = group.get(0);
+            TreeSet<Integer> codes = new TreeSet<>();
+            for (COSDictionary d : group) {
+                codes.addAll(targets.get(d));
+            }
             PDFont font;
             try {
-                font = PDFontFactory.createFont(e.getKey());
+                font = PDFontFactory.createFont(leader);
             } catch (IOException | RuntimeException x) {
                 PdfFiles.stopIfInterrupted();
-                failed.add(name(e.getKey()) + ": " + x.getMessage());
+                failed.add(name(leader) + ": " + x.getMessage());
                 continue;
             }
             if (font instanceof PDType3Font || FontCheck.embedded(font instanceof PDType0Font t0
@@ -98,17 +111,45 @@ public final class FontEmbedder {
                 library = fonts.library();
             }
             try {
-                embedded.add(FontFixer.substitute(doc, font, e.getValue(), PdfALevel.A2B, library,
-                        usage.bytesPerCode(e.getKey())));
+                embedded.add(FontFixer.substitute(doc, font, codes, PdfALevel.A2B, library,
+                        usage.bytesPerCode(leader), false));
             } catch (IOException | RuntimeException x) {
                 PdfFiles.stopIfInterrupted();
                 failed.add(FontRebuild.cleanName(font.getName()) + ": " + x.getMessage());
+                continue;
+            }
+            for (COSDictionary d : group.subList(1, group.size())) {
+                d.clear();
+                d.addAll(leader);
             }
         }
         return new Result(embedded, failed);
     }
 
-    private static TreeSet<Integer> unusedCodes(COSDictionary font) {
+    private static List<List<COSDictionary>> groups(Map<COSDictionary, TreeSet<Integer>> targets) {
+        Map<String, List<List<COSDictionary>>> byName = new HashMap<>();
+        List<List<COSDictionary>> out = new ArrayList<>();
+        for (COSDictionary font : targets.keySet()) {
+            String key = font.getNameAsString(COSName.SUBTYPE) + "/" + font.getNameAsString(COSName.BASE_FONT);
+            List<List<COSDictionary>> candidates = byName.computeIfAbsent(key, k -> new ArrayList<>());
+            List<COSDictionary> match = null;
+            for (List<COSDictionary> g : candidates) {
+                if (CosEquality.same(g.get(0), font)) {
+                    match = g;
+                    break;
+                }
+            }
+            if (match == null) {
+                match = new ArrayList<>();
+                candidates.add(match);
+                out.add(match);
+            }
+            match.add(font);
+        }
+        return out;
+    }
+
+    private static TreeSet<Integer> allCodes(COSDictionary font) {
         TreeSet<Integer> codes = new TreeSet<>();
         if (COSName.TYPE0.equals(font.getCOSName(COSName.SUBTYPE))) {
             return codes;

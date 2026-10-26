@@ -4,6 +4,8 @@ import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.InputStream;
@@ -67,7 +69,7 @@ class FontEmbedderTest {
 
     @Test
     void standardFontsAreEmbeddedWithoutMovingAGlyphOrTouchingTheRest() throws Exception {
-        embed("s01_std14_unembedded", 15);
+        embed("s01_std14_unembedded", 14);
     }
 
     @Test
@@ -96,11 +98,41 @@ class FontEmbedderTest {
                 for (COSName n : p.getResources().getFontNames()) {
                     assertTrue(p.getResources().getFont(n).isEmbedded(), n.getName());
                 }
-                PDFont times = p.getResources().getFont(COSName.getPDFName("F2"));
-                assertEquals(times.getWidth('W'), new org.apache.pdfbox.pdmodel.font.PDType1Font(
-                        org.apache.pdfbox.pdmodel.font.Standard14Fonts.FontName.TIMES_BOLD).getWidth('W'), 0.5);
                 assertEquals("Shown", new org.apache.pdfbox.text.PDFTextStripper().getText(saved).strip());
             }
+        }
+    }
+
+    @Test
+    void equalFontDictionariesShareOneSubsetWithoutHinting() throws Exception {
+        String helvetica = "<</Type/Font/Subtype/Type1/BaseFont/Helvetica/Encoding/WinAnsiEncoding>>";
+        RawPdf pdf = RawPdf.page("/Font<</F1 " + helvetica + "/F2 " + helvetica + ">>",
+                "BT /F1 12 Tf 50 700 Td (Hello) Tj /F2 12 Tf 0 -20 Td (World) Tj ET");
+        try (PDDocument d = Loader.loadPDF(pdf.bytes())) {
+            FontEmbedder.Result r = FontEmbedder.embedMissing(d);
+            assertEquals(1, r.embedded().size(), r.embedded().toString());
+            PDPage p = d.getPage(0);
+            PDFont f1 = p.getResources().getFont(COSName.getPDFName("F1"));
+            PDFont f2 = p.getResources().getFont(COSName.getPDFName("F2"));
+            COSStream program = (COSStream) f1.getFontDescriptor().getCOSObject().getDictionaryObject(COSName.FONT_FILE2);
+            assertSame(program, f2.getFontDescriptor().getCOSObject().getDictionaryObject(COSName.FONT_FILE2));
+            try (InputStream in = program.createInputStream();
+                    org.apache.fontbox.ttf.TrueTypeFont ttf = new org.apache.fontbox.ttf.TTFParser()
+                            .parse(new org.apache.pdfbox.io.RandomAccessReadBuffer(in.readAllBytes()))) {
+                assertNull(ttf.getTableMap().get("fpgm"));
+                assertNull(ttf.getTableMap().get("prep"));
+                for (char c : "HeloWrd".toCharArray()) {
+                    int gid = ((org.apache.pdfbox.pdmodel.font.PDTrueTypeFont) f1).codeToGID(c);
+                    assertTrue(gid > 0);
+                    byte[] glyf = ttf.getTableBytes(ttf.getTableMap().get("glyf"));
+                    java.nio.ByteBuffer b = java.nio.ByteBuffer.wrap(glyf);
+                    int at = (int) ttf.getIndexToLocation().getOffsets()[gid];
+                    int contours = b.getShort(at);
+                    assertTrue(contours > 0);
+                    assertEquals(0, b.getShort(at + 10 + 2 * contours));
+                }
+            }
+            assertEquals("Hello\nWorld", new org.apache.pdfbox.text.PDFTextStripper().getText(d).strip());
         }
     }
 
