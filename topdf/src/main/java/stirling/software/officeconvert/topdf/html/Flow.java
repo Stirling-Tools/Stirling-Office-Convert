@@ -361,7 +361,11 @@ final class Flow {
             }
             case "hr" -> rule(d, look, frame);
             case "table" -> table(e, d, look, frame, parentLook.centerBlocks, depth);
-            case "a" -> anchor(e, look, frame, depth);
+            case "a" -> {
+                gap(edge(d, "left", look, frame), look);
+                anchor(e, look, frame, depth);
+                gap(edge(d, "right", look, frame), look);
+            }
             case "wbr" -> { }
             case "q" -> {
                 text("\u201c", look);
@@ -373,7 +377,13 @@ final class Flow {
                         && d.getOrDefault("float", "none").strip().equalsIgnoreCase("right")) {
                     floatRight(e, look, frame, depth);
                 } else if (inline) {
-                    walkChildren(e, look, frame, depth);
+                    gap(edge(d, "left", look, frame), look);
+                    if (forceInline > 0 && display.endsWith("flex")) {
+                        flexInline(e, look, frame, depth, Layout.gap(d, look));
+                    } else {
+                        walkChildren(e, look, frame, depth);
+                    }
+                    gap(edge(d, "right", look, frame), look);
                 } else {
                     // overflow on html or body belongs to the window, which prints whole; fixed boxes never widen it
                     boolean scrolls = !tag.equals("body") && !tag.equals("html") && scrolls(d)
@@ -394,6 +404,39 @@ final class Flow {
     }
 
     private static final int BUTTON_TEXT = 80;
+
+    private static final float MAX_INLINE_GAP = 144;
+
+    private float edge(Map<String, String> d, String side, Look look, Frame frame) {
+        return Math.max(0, length(d.get("margin-" + side), look.size, frame.width()))
+                + Math.max(0, length(d.get("padding-" + side), look.size, frame.width()));
+    }
+
+    private void gap(float pt, Look look) throws IOException {
+        if (pt < 0.5f) {
+            return;
+        }
+        RunStyle s = look.run();
+        float space = s.size() * 0.25f;
+        RunStyle g = new RunStyle(s.font(), s.size(), false, false, false, false, s.rgb(), -1, 0, false,
+                Math.max(0, Math.min(MAX_INLINE_GAP, pt) - space), s.scale(), false, -1);
+        inline(new Inline.Text("\u00a0", g, null, -1), look);
+    }
+
+    private void flexInline(Element e, Look look, Frame frame, int depth, float between) throws IOException {
+        boolean first = true;
+        for (Node n : e.childNodes()) {
+            if (n instanceof Element c) {
+                if (!first) {
+                    gap(between, look);
+                }
+                first = false;
+                element(c, look, frame, depth + 1);
+            } else if (n instanceof TextNode t && !t.isBlank()) {
+                text(t.getWholeText(), look);
+            }
+        }
+    }
 
     private static boolean padded(Element e, Map<String, String> d, Look look) {
         Integer fill = Css.color(d.get("background-color"));
@@ -1251,6 +1294,10 @@ final class Flow {
         Table.Cell cell = new Table.Cell();
         if (item != null) {
             Map<String, String> d = ctx.declared(item, look);
+            Map<String, String> box = framedChild(item, d, look);
+            if (box != null) {
+                d = box;
+            }
             Integer fill = Css.color(d.get("background-color"));
             // an item with no background of its own shows the row's
             cell.shading = fill == null || fill < 0 ? frame.shading() : fill;
@@ -1258,6 +1305,14 @@ final class Flow {
             cell.bottom = HtmlTables.border(d, "bottom", 0);
             cell.left = HtmlTables.border(d, "left", 0);
             cell.right = HtmlTables.border(d, "right", 0);
+            if (shadowed(d) && cell.top.width() <= 0 && cell.bottom.width() <= 0 && cell.left.width() <= 0
+                    && cell.right.width() <= 0) {
+                Table.Border edge = new Table.Border(0.5f, SHADOW_EDGE);
+                cell.top = edge;
+                cell.bottom = edge;
+                cell.left = edge;
+                cell.right = edge;
+            }
             Flow inner = new Flow(ctx, cell::add, true);
             inner.clipLeft = clipLeft;
             inner.sized = item;
@@ -1266,6 +1321,36 @@ final class Flow {
             inner.single(item, look, new Frame(0, 0, Math.max(24, width - gap), -1), depth + 1);
         }
         return cell;
+    }
+
+    private static final int SHADOW_EDGE = 0xD9D9D9;
+
+    private static boolean shadowed(Map<String, String> d) {
+        String s = d.getOrDefault("box-shadow", "none").strip().toLowerCase(Locale.ROOT);
+        return !s.isEmpty() && !s.equals("none") && !s.startsWith("inset");
+    }
+
+    // A grid or flex item that only wraps one card lends the card's frame to its column, as Bootstrap's .col > .card
+    private Map<String, String> framedChild(Element item, Map<String, String> d, Look look) {
+        if (Layout.framed(d) || shadowed(d) || item.childrenSize() != 1 || !item.ownText().isBlank()) {
+            return null;
+        }
+        Element only = item.child(0);
+        Map<String, String> cd = ctx.declared(only, look);
+        String display = cd.getOrDefault("display", BLOCKS.contains(only.normalName()) ? "block" : "inline")
+                .strip().toLowerCase(Locale.ROOT);
+        if (!display.equals("block") || !(Layout.framed(cd) || shadowed(cd) || hasEdges(cd))) {
+            return null;
+        }
+        return cd;
+    }
+
+    private static boolean hasEdges(Map<String, String> d) {
+        int edges = 0;
+        for (String side : new String[] {"top", "bottom", "left", "right"}) {
+            edges += border(d, side) > 0 ? 1 : 0;
+        }
+        return edges >= 2;
     }
 
     private void row(Layout.Plan plan, Look look, Frame frame, int depth) throws IOException {

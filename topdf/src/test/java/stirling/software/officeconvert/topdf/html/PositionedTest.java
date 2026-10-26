@@ -131,6 +131,36 @@ class PositionedTest {
                 && Math.abs(c.getBlue() - want.getBlue()) < 40;
     }
 
+    private static int verticalLines(BufferedImage page, int minLength) {
+        int lines = 0;
+        for (int x = 0; x < page.getWidth(); x++) {
+            int run = 0;
+            int best = 0;
+            for (int y = 0; y < page.getHeight(); y++) {
+                Color c = new Color(page.getRGB(x, y));
+                run = c.getRed() < 120 && c.getGreen() < 120 && c.getBlue() < 120 ? run + 1 : 0;
+                best = Math.max(best, run);
+            }
+            lines += best >= minLength ? 1 : 0;
+        }
+        return lines;
+    }
+
+    @Test
+    void aCardInsideAColumnFramesItsColumnAndInlineMarginsSpaceLinks() throws IOException {
+        String card = "<div class=col><div class=card><b>Plan</b><p>" + "words ".repeat(20) + "</p></div></div>";
+        Pdf pdf = html("cards.html", "<html><head><style>.row{display:flex}.col{flex:1;padding:0 6px}"
+                + ".card{border:2px solid #000;padding:8px}nav a{margin-left:24px}</style></head><body>"
+                + "<nav><a href=#a>Home</a><a href=#b>Pricing</a></nav><div class=row>" + card + card + card
+                + "</div></body></html>");
+        assertTrue(verticalLines(pdf.pages().get(0), 40) >= 4, "card frames");
+        Word home = pdf.first("Home");
+        Word pricing = pdf.first("Pricing");
+        assertNotNull(home, pdf.words().toString());
+        assertNotNull(pricing, pdf.words().toString());
+        assertTrue(pricing.x() - home.x() > 40, home + " " + pricing);
+    }
+
     @Test
     void anUnstyledPageHasWeasyPrintsPageMarginsAndTheBodysSideMargins() throws IOException {
         Pdf plain = html("plain.html", "<html><body><p>Leftmost</p></body></html>");

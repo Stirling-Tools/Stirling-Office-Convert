@@ -307,7 +307,7 @@ final class Layout {
         return true;
     }
 
-    private static float gap(Map<String, String> d, Look look) {
+    static float gap(Map<String, String> d, Look look) {
         String g = d.getOrDefault("column-gap", d.get("gap"));
         if (g == null) {
             return 0;
