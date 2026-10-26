@@ -20,6 +20,10 @@ record TextEncoding(Charset charset, int bom) {
 
     static final Charset WINDOWS_1252 = Charset.forName("windows-1252");
 
+    static final Charset WINDOWS_1251 = Charset.forName("windows-1251");
+
+    static final Charset KOI8_R = Charset.forName("KOI8-R");
+
     private static final Charset UTF_32BE = Charset.forName("UTF-32BE");
 
     private static final Charset UTF_32LE = Charset.forName("UTF-32LE");
@@ -40,8 +44,37 @@ record TextEncoding(Charset charset, int bom) {
             return new TextEncoding(wide, 0);
         }
         try (InputStream in = new BufferedInputStream(SourceFile.open(file), 1 << 16)) {
-            return strictUtf8(in) ? new TextEncoding(StandardCharsets.UTF_8, 0) : new TextEncoding(WINDOWS_1252, 0);
+            return strictUtf8(in) ? new TextEncoding(StandardCharsets.UTF_8, 0) : new TextEncoding(singleByte(head), 0);
         }
+    }
+
+    static Charset singleByte(byte[] h) {
+        int high = 0;
+        int inRuns = 0;
+        int upperHalf = 0;
+        int lowerHalf = 0;
+        int run = 0;
+        for (int i = 0; i <= h.length; i++) {
+            int b = i < h.length ? h[i] & 0xFF : 0;
+            if (b >= 0xC0) {
+                run++;
+                high++;
+                if (b >= 0xE0) {
+                    upperHalf++;
+                } else {
+                    lowerHalf++;
+                }
+            } else {
+                if (run >= 3) {
+                    inRuns += run;
+                }
+                run = 0;
+            }
+        }
+        if (high < 8 || inRuns * 2 < high) {
+            return WINDOWS_1252;
+        }
+        return upperHalf >= lowerHalf ? WINDOWS_1251 : KOI8_R;
     }
 
     static Charset utf16(byte[] h) {
