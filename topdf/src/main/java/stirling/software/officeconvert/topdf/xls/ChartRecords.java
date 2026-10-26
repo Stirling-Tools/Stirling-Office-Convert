@@ -279,24 +279,19 @@ final class ChartRecords {
                 s.name = name.substring(0, end);
             }
         }
-        if (s.values.isEmpty() && s.valueRef != null) {
-            List<Object> cells = fonts.cells(s.valueRef);
-            for (int i = 0; i < cells.size() && i < MAX_POINTS; i++) {
-                if (cells.get(i) instanceof Double d && Double.isFinite(d)) {
+        List<Object> values = s.valueRef == null ? List.of() : fonts.cells(s.valueRef);
+        if (!values.isEmpty()) {
+            s.values.clear();
+            for (int i = 0; i < values.size() && i < MAX_POINTS; i++) {
+                if (values.get(i) instanceof Double d && Double.isFinite(d)) {
                     s.values.put(i, d);
                 }
             }
         }
-        if (!s.categoryCustom && !s.categories.isEmpty() && s.categoryRef != null) {
-            List<String> labels = fonts.labels(s.categoryRef);
-            for (int i = 0; i < labels.size(); i++) {
-                if (labels.get(i) != null && s.xs.containsKey(i)) {
-                    s.categories.put(i, capped(labels.get(i)));
-                }
-            }
-        }
-        if (s.categories.isEmpty() && s.categoryRef != null) {
-            List<Object> cells = fonts.cells(s.categoryRef);
+        List<Object> cells = s.categoryRef == null ? List.of() : fonts.cells(s.categoryRef);
+        if (!cells.isEmpty()) {
+            s.categories.clear();
+            s.xs.clear();
             List<String> labels = s.categoryCustom ? List.of() : fonts.labels(s.categoryRef);
             for (int i = 0; i < cells.size() && i < MAX_POINTS; i++) {
                 Object v = cells.get(i);

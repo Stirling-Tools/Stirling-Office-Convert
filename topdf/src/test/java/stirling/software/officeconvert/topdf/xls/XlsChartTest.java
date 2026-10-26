@@ -10,9 +10,13 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.List;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
+import org.apache.poi.hssf.record.NumberRecord;
+import org.apache.poi.hssf.record.RecordBase;
+import org.apache.poi.hssf.record.UnknownRecord;
 import org.apache.poi.hssf.usermodel.HSSFCellStyle;
 import org.apache.poi.hssf.usermodel.HSSFRow;
 import org.apache.poi.hssf.usermodel.HSSFSheet;
@@ -88,6 +92,30 @@ class XlsChartTest {
         });
         String chart = chartXml(data);
         assertTrue(chart.contains("<c:v>10.0</c:v>") && chart.contains("<c:v>30.0</c:v>"), chart);
+    }
+
+    @Test
+    void theCellsAChartLinksToOutrankItsCachedValues() throws Exception {
+        byte[] data = XlsTest.xls(wb -> {
+            HSSFSheet sheet = wb.createSheet("Data");
+            for (int i = 0; i < 3; i++) {
+                sheet.createRow(i).createCell(0).setCellValue(10 * (i + 1));
+            }
+            int extern = wb.getInternalWorkbook().checkExternSheet(0);
+            List<RecordBase> chart = ChartFixtures.linkedChart(BAR, "Linked", 3,
+                    new Area3DPtg(new AreaReference("A1:A3", SpreadsheetVersion.EXCEL97), extern));
+            chart.add(new UnknownRecord(0x1065, new byte[] {1, 0}));
+            for (int i = 0; i < 3; i++) {
+                NumberRecord stale = new NumberRecord();
+                stale.setRow(i);
+                stale.setValue(0);
+                chart.add(stale);
+            }
+            ChartFixtures.chartSheet(wb, "Chart1", chart);
+        });
+        String chart = chartXml(data);
+        assertTrue(chart.contains("<c:v>10.0</c:v>") && chart.contains("<c:v>30.0</c:v>"), chart);
+        assertFalse(chart.contains("<c:v>0.0</c:v>"), chart);
     }
 
     @Test
