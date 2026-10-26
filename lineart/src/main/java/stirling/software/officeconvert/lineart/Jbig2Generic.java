@@ -71,37 +71,38 @@ final class Jbig2Generic {
     }
 
     static void generic(MqEncoder coder, MqEncoder.Contexts gb, byte[] bits, int stride, int w, int h, boolean typical) {
-        int[] above2 = new int[w + 8];
-        int[] above1 = new int[w + 8];
-        int[] current = new int[w + 8];
         boolean previousTypical = false;
         for (int y = 0; y < h; y++) {
             int row = y * stride;
-            int[] t = above2;
-            above2 = above1;
-            above1 = current;
-            current = t;
             if (typical) {
                 boolean same = y == 0 ? emptyRow(bits, row, stride) : sameRow(bits, row, row - stride, stride);
                 coder.encode(gb, TYPICAL_CONTEXT, same != previousTypical ? 1 : 0);
                 previousTypical = same;
                 if (same) {
-                    System.arraycopy(above1, 0, current, 0, current.length);
                     continue;
                 }
             }
+            int above = y >= 1 ? row - stride : -1;
+            int above2 = y >= 2 ? row - 2 * stride : -1;
+            int line1 = pixel(bits, above, 0, w) << 3 | pixel(bits, above, 1, w) << 2 | pixel(bits, above, 2, w) << 1
+                    | pixel(bits, above, 3, w);
+            int line2 = pixel(bits, above2, 0, w) << 2 | pixel(bits, above2, 1, w) << 1 | pixel(bits, above2, 2, w);
+            int line0 = 0;
             for (int x = 0; x < w; x++) {
-                current[x + 4] = (bits[row + (x >>> 3)] >>> (7 - (x & 7))) & 1;
-            }
-            for (int x = 0; x < w; x++) {
-                int p = x + 4;
-                int context = current[p - 1] | current[p - 2] << 1 | current[p - 3] << 2 | current[p - 4] << 3
-                        | above1[p + 3] << 4 | above1[p + 2] << 5 | above1[p + 1] << 6 | above1[p] << 7
-                        | above1[p - 1] << 8 | above1[p - 2] << 9 | above1[p - 3] << 10 | above2[p + 2] << 11
-                        | above2[p + 1] << 12 | above2[p] << 13 | above2[p - 1] << 14 | above2[p - 2] << 15;
-                coder.encode(gb, context, current[p]);
+                int bit = (bits[row + (x >>> 3)] >>> (7 - (x & 7))) & 1;
+                coder.encode(gb, line0 | line1 << 4 | line2 << 11, bit);
+                line0 = (line0 << 1 | bit) & 0xF;
+                line1 = (line1 << 1 | pixel(bits, above, x + 4, w)) & 0x7F;
+                line2 = (line2 << 1 | pixel(bits, above2, x + 3, w)) & 0x1F;
             }
         }
+    }
+
+    private static int pixel(byte[] bits, int row, int x, int w) {
+        if (row < 0 || x >= w) {
+            return 0;
+        }
+        return (bits[row + (x >>> 3)] >>> (7 - (x & 7))) & 1;
     }
 
     private static boolean emptyRow(byte[] bits, int row, int stride) {
