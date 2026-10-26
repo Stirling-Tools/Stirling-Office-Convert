@@ -683,9 +683,9 @@ final class ChartRecords {
 
         TextBuilder(boolean base, byte[] d) {
             this.base = base;
-            int flags = u16(d, 26);
+            int flags = u16(d, 24);
             this.deleted = (flags & 0x40) != 0;
-            this.position = u16(d, 30) & 0xF;
+            this.position = u16(d, 28) & 0xF;
             this.color = d.length >= 8 && (flags & 1) == 0 ? rgb(d, 4) : null;
         }
     }

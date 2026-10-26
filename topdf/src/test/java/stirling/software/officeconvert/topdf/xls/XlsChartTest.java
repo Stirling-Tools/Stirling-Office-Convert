@@ -134,6 +134,21 @@ class XlsChartTest {
     }
 
     @Test
+    void aDataLabelTextSetsWhereTheLabelsSit() throws Exception {
+        List<RecordBase> records = ChartFixtures.chart(null, LINE, new byte[2], new String[] {"Score"},
+                new String[] {"x", "y"}, new double[][] {{50, 60}});
+        records.addAll(5, List.of(new UnknownRecord(0x1006, new byte[] {(byte) 0xFF, (byte) 0xFF, 0, 0, 0, 0, 0, 0}),
+                new BeginRecord(), new UnknownRecord(0x100C, new byte[] {1, 0}), new EndRecord()));
+        byte[] text = new byte[32];
+        text[28] = 5;
+        records.addAll(10, List.of(new UnknownRecord(0x1025, text), new BeginRecord(),
+                new UnknownRecord(0x1027, new byte[] {4, 0, 0, 0, (byte) 0xFF, (byte) 0xFF}), new EndRecord()));
+        String chart = chartXml(XlsTest.xls(wb -> ChartFixtures.chartSheet(wb, "Chart1", records)));
+        assertTrue(chart.contains("<c:dLblPos val=\"t\"/><c:showLegendKey val=\"0\"/><c:showVal val=\"1\"/>"),
+                chart);
+    }
+
+    @Test
     void errorBarAndTrendlineSeriesAreNotDrawnAsSeries() throws Exception {
         List<RecordBase> records = ChartFixtures.chart(null, LINE, new byte[2], new String[] {"Score", "Error"},
                 new String[] {"x", "y"}, new double[][] {{50, 60}, {2, 3}});
