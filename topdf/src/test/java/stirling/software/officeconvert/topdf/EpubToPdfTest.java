@@ -266,6 +266,27 @@ class EpubToPdfTest {
     }
 
     @Test
+    void htmlzBooksConvertWithTheirPictures() throws IOException {
+        Path in = dir.resolve("book.htmlz");
+        try (OutputStream os = Files.newOutputStream(in); ZipOutputStream zip = new ZipOutputStream(os)) {
+            zip.putNextEntry(new ZipEntry("index.html"));
+            zip.write(utf8("<html><head><link rel=\"stylesheet\" href=\"style.css\"></head><body><h1>Htmlz Book</h1>"
+                    + "<p class=\"x\">Zipped page text</p><img src=\"images/p.png\" alt=\"\"></body></html>"));
+            zip.putNextEntry(new ZipEntry("style.css"));
+            zip.write(utf8(".x{font-weight:bold}"));
+            zip.putNextEntry(new ZipEntry("images/p.png"));
+            zip.write(png(Color.GREEN));
+        }
+        Path out = dir.resolve("htmlz.pdf");
+        OfficeToPdf.convert(in, out, OfficeToPdf.Options.defaults().timeout(Duration.ofMinutes(2)));
+        try (PDDocument doc = Loader.loadPDF(out.toFile())) {
+            String text = new PDFTextStripper().getText(doc);
+            assertTrue(text.contains("Htmlz Book") && text.contains("Zipped page text"), text);
+            assertEquals(1, images(doc.getPage(0)));
+        }
+    }
+
+    @Test
     void obfuscatedFontsAreReadBack() throws IOException {
         byte[] font;
         try (var in = PDDocument.class.getResourceAsStream("/org/apache/pdfbox/resources/ttf/LiberationSans-Regular.ttf")) {

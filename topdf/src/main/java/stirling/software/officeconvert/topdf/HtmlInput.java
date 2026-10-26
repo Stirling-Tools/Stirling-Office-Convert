@@ -61,7 +61,7 @@ final class HtmlInput {
     private static boolean zipNamed(Path source) {
         Path name = source.getFileName();
         String n = name == null ? "" : name.toString().toLowerCase(Locale.ROOT);
-        return n.endsWith(".zip") || n.endsWith(".epub") || n.endsWith(".fbz");
+        return n.endsWith(".zip") || n.endsWith(".epub") || n.endsWith(".fbz") || n.endsWith(".htmlz");
     }
 
     static boolean named(Path source) {
@@ -128,7 +128,7 @@ final class HtmlInput {
                 }
                 return renderBook(Fb2Book.read(xml), sink, options, renderer);
             }
-            if (!options.allowPackages()) {
+            if (!options.allowPackages() && !htmlBook(source)) {
                 throw new IOException(PACKAGES_REFUSED);
             }
             if (pkg.page() == null) {
@@ -188,6 +188,11 @@ final class HtmlInput {
         } finally {
             ticket.close();
         }
+    }
+
+    private static boolean htmlBook(Path source) {
+        Path name = source.getFileName();
+        return name != null && name.toString().toLowerCase(Locale.ROOT).endsWith(".htmlz");
     }
 
     private static boolean compressedFictionBook(Path source) {
