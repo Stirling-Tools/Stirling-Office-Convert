@@ -405,6 +405,55 @@ class XlsTest {
     }
 
     @Test
+    void anAutoShapeKeepsItsOutlineAndCentresItsText() throws Exception {
+        byte[] data = xls(wb -> {
+            HSSFSheet s = wb.createSheet("Shapes");
+            s.createRow(0).createCell(0).setCellValue("Shaped");
+            HSSFSimpleShape box = s.createDrawingPatriarch()
+                    .createSimpleShape(new HSSFClientAnchor(0, 0, 0, 0, (short) 1, 2, (short) 7, 12));
+            box.setShapeType(HSSFSimpleShape.OBJECT_TYPE_RECTANGLE);
+            box.setLineStyleColor(255, 0, 0);
+            box.setLineWidth(HSSFShape.LINEWIDTH_ONE_PT * 2);
+            box.setNoFill(true);
+            box.getOptRecord().removeEscherProperty(EscherPropertyTypes.LINESTYLE__LINEDASHING);
+            box.setString(new HSSFRichTextString("Mid"));
+        });
+        Path in = Fixtures.write(dir, "shape.xls", data);
+        Path out = dir.resolve("shape.pdf");
+        OfficeToPdf.convert(in, out, OfficeToPdf.Options.defaults());
+        try (PDDocument doc = Loader.loadPDF(out.toFile())) {
+            BufferedImage img = new PDFRenderer(doc).renderImage(0, 1f);
+            int[] red = bounds(img, rgb -> rgb == 0xFF0000);
+            assertTrue(red[2] > red[0], "the outline is drawn");
+            int[] text = bounds(img, rgb -> (rgb >> 16 & 0xFF) < 80 && (rgb >> 8 & 0xFF) < 80 && (rgb & 0xFF) < 80
+                    && rgb != 0xFF0000, red);
+            double boxMid = (red[0] + red[2]) / 2.0;
+            double textMid = (text[0] + text[2]) / 2.0;
+            assertTrue(Math.abs(boxMid - textMid) < 6, boxMid + " vs " + textMid);
+            assertTrue(Math.abs((red[1] + red[3]) / 2.0 - (text[1] + text[3]) / 2.0) < 6, "centred vertically");
+        }
+    }
+
+    private static int[] bounds(BufferedImage img, java.util.function.IntPredicate match) {
+        return bounds(img, match, new int[] {0, 0, img.getWidth() - 1, img.getHeight() - 1});
+    }
+
+    private static int[] bounds(BufferedImage img, java.util.function.IntPredicate match, int[] within) {
+        int[] b = {Integer.MAX_VALUE, Integer.MAX_VALUE, -1, -1};
+        for (int y = within[1] + 3; y <= within[3] - 3; y++) {
+            for (int x = within[0] + 3; x <= within[2] - 3; x++) {
+                if (match.test(img.getRGB(x, y) & 0xFFFFFF)) {
+                    b[0] = Math.min(b[0], x);
+                    b[1] = Math.min(b[1], y);
+                    b[2] = Math.max(b[2], x);
+                    b[3] = Math.max(b[3], y);
+                }
+            }
+        }
+        return b;
+    }
+
+    @Test
     void aSidewaysShapeInAGroupKeepsTheBoxItsAnchorShows() throws Exception {
         byte[] data = xls(wb -> {
             HSSFSheet s = wb.createSheet("Group");

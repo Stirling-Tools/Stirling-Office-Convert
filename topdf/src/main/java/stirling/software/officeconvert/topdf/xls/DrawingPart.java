@@ -1,12 +1,18 @@
 package stirling.software.officeconvert.topdf.xls;
 
 import java.util.ArrayList;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 
+import org.apache.poi.ddf.EscherContainerRecord;
 import org.apache.poi.ddf.EscherOptRecord;
 import org.apache.poi.ddf.EscherProperty;
+import org.apache.poi.ddf.EscherRecord;
 import org.apache.poi.ddf.EscherSimpleProperty;
+import org.apache.poi.ddf.EscherTextboxRecord;
+import org.apache.poi.hssf.record.EscherAggregate;
+import org.apache.poi.hssf.record.TextObjectRecord;
 import org.apache.poi.hssf.usermodel.HSSFAnchor;
 import org.apache.poi.hssf.usermodel.HSSFChildAnchor;
 import org.apache.poi.hssf.usermodel.HSSFClientAnchor;
@@ -20,8 +26,8 @@ import org.apache.poi.hssf.usermodel.HSSFPictureData;
 import org.apache.poi.hssf.usermodel.HSSFRichTextString;
 import org.apache.poi.hssf.usermodel.HSSFShape;
 import org.apache.poi.hssf.usermodel.HSSFShapeGroup;
+import org.apache.poi.hssf.usermodel.HSSFSheet;
 import org.apache.poi.hssf.usermodel.HSSFSimpleShape;
-import org.apache.poi.hssf.usermodel.HSSFTextbox;
 import org.apache.poi.hssf.usermodel.HSSFWorkbook;
 import org.apache.poi.ss.usermodel.Font;
 
@@ -50,6 +56,8 @@ final class DrawingPart {
 
     private final HSSFPalette palette;
 
+    private final Map<EscherOptRecord, TextObjectRecord> texts = new IdentityHashMap<>();
+
     private int id = 1;
 
     int skipped;
@@ -69,7 +77,19 @@ final class DrawingPart {
         String add(int index, HSSFPictureData data);
     }
 
-    boolean read(HSSFPatriarch patriarch, Media store) {
+    boolean read(HSSFSheet sheet, Media store) {
+        try {
+            EscherAggregate drawing = sheet.getDrawingEscherAggregate();
+            if (drawing != null) {
+                index(drawing.getEscherRecords(), drawing.getShapeToObjMapping(), 0);
+            }
+        } catch (RuntimeException e) {
+            texts.clear();
+        }
+        HSSFPatriarch patriarch = sheet.getDrawingPatriarch();
+        if (patriarch == null) {
+            return false;
+        }
         for (HSSFShape s : patriarch.getChildren()) {
             if (shapes >= MAX_SHAPES) {
                 break;
@@ -84,6 +104,26 @@ final class DrawingPart {
             }
         }
         return xml.length() > 0;
+    }
+
+    private void index(List<EscherRecord> records, Map<EscherRecord, ?> objects, int depth) {
+        if (depth > 64) {
+            return;
+        }
+        EscherOptRecord opt = null;
+        EscherTextboxRecord box = null;
+        for (EscherRecord r : records) {
+            if (r instanceof EscherContainerRecord c) {
+                index(c.getChildRecords(), objects, depth + 1);
+            } else if (r instanceof EscherOptRecord o) {
+                opt = o;
+            } else if (r instanceof EscherTextboxRecord t) {
+                box = t;
+            }
+        }
+        if (opt != null && box != null && objects.get(box) instanceof TextObjectRecord t) {
+            texts.put(opt, t);
+        }
     }
 
     void chart(int[] a, String rel) {
@@ -291,8 +331,7 @@ final class DrawingPart {
             String fill = fill(s, opt);
             sp.append(fill == null ? "<a:noFill/>" : "<a:solidFill><a:srgbClr val=\"" + fill + "\"/></a:solidFill>");
         }
-        boolean dashed = !line || opt != null && opt.lookup(0x1CE) != null;
-        if (!flag(opt, 0x1FF, 0x8, 0x80000, true) || dashed && s.getLineStyle() == HSSFShape.LINESTYLE_NONE) {
+        if (!flag(opt, 0x1FF, 0x8, 0x80000, true)) {
             sp.append("<a:ln><a:noFill/></a:ln>");
         } else {
             sp.append("<a:ln w=\"").append(Math.max(0, s.getLineWidth())).append("\"><a:solidFill><a:srgbClr val=\"")
@@ -357,24 +396,28 @@ final class DrawingPart {
     }
 
     private String body(HSSFSimpleShape s, HSSFRichTextString text) {
-        StringBuilder b = new StringBuilder("<xdr:txBody><a:bodyPr wrap=\"square\"");
-        String align = null;
-        if (s instanceof HSSFTextbox t) {
-            b.append(" lIns=\"").append(Math.max(0, t.getMarginLeft())).append("\" tIns=\"")
-                    .append(Math.max(0, t.getMarginTop())).append("\" rIns=\"").append(Math.max(0, t.getMarginRight()))
-                    .append("\" bIns=\"").append(Math.max(0, t.getMarginBottom())).append('"');
-            b.append(switch (t.getVerticalAlignment()) {
-                case 2 -> " anchor=\"ctr\"";
-                case 3 -> " anchor=\"b\"";
-                default -> " anchor=\"t\"";
-            });
-            align = switch (t.getHorizontalAlignment()) {
-                case 2 -> "ctr";
-                case 3 -> "r";
-                case 4, 7 -> "just";
-                default -> null;
-            };
-        }
+        EscherOptRecord opt = s.getOptRecord();
+        StringBuilder b = new StringBuilder("<xdr:txBody><a:bodyPr wrap=\"square\" lIns=\"")
+                .append(inset(opt, 0x81, 91440)).append("\" tIns=\"").append(inset(opt, 0x82, 45720))
+                .append("\" rIns=\"").append(inset(opt, 0x83, 91440)).append("\" bIns=\"")
+                .append(inset(opt, 0x84, 45720)).append('"');
+        TextObjectRecord txo = opt == null ? null : texts.get(opt);
+        int vertical = txo != null ? txo.getVerticalTextAlignment() : switch (property(opt, 0x87, 0)) {
+            case 1, 4 -> 2;
+            case 2, 5 -> 3;
+            default -> 1;
+        };
+        b.append(switch (vertical) {
+            case 2 -> " anchor=\"ctr\"";
+            case 3 -> " anchor=\"b\"";
+            default -> " anchor=\"t\"";
+        });
+        String align = switch (txo == null ? 1 : txo.getHorizontalTextAlignment()) {
+            case 2 -> "ctr";
+            case 3 -> "r";
+            case 4, 7 -> "just";
+            default -> null;
+        };
         b.append("/><a:lstStyle/>");
         String all = text.getString();
         int runs = text.numFormattingRuns();
@@ -406,6 +449,15 @@ final class DrawingPart {
             start = i + 1;
         }
         return b.append(p).append("</xdr:txBody>").toString();
+    }
+
+    private static int property(EscherOptRecord opt, int prop, int fallback) {
+        return opt != null && opt.lookup(prop) instanceof EscherSimpleProperty p ? p.getPropertyValue() : fallback;
+    }
+
+    private static int inset(EscherOptRecord opt, int prop, int fallback) {
+        int v = property(opt, prop, fallback);
+        return v < 0 || v > 20_000_000 ? fallback : v;
     }
 
     private static int fontAt(HSSFRichTextString text, int runs, int at) {

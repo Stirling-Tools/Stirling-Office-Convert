@@ -21,7 +21,6 @@ import org.apache.poi.hssf.record.DrawingRecord;
 import org.apache.poi.hssf.record.Record;
 import org.apache.poi.hssf.record.RecordBase;
 import org.apache.poi.hssf.record.SupBookRecord;
-import org.apache.poi.hssf.usermodel.HSSFPatriarch;
 import org.apache.poi.hssf.usermodel.HSSFPictureData;
 import org.apache.poi.hssf.usermodel.HSSFSheet;
 import org.apache.poi.hssf.usermodel.HSSFWorkbook;
@@ -337,8 +336,7 @@ public final class XlsPackage {
             List<ChartStream.Embedded> embedded = chartStream.embedded.getOrDefault(number - 1, List.of());
             List<String> chartTargets = new ArrayList<>();
             try {
-                HSSFPatriarch patriarch = sheet.getDrawingPatriarch();
-                boolean shapes = patriarch != null && d.read(patriarch, this::picture);
+                boolean shapes = d.read(sheet, this::picture);
                 for (ChartStream.Embedded e : embedded) {
                     int[] a = e.anchor();
                     if (a[0] == a[4] && a[1] == a[5] || a[2] == a[6] && a[3] == a[7]) {
