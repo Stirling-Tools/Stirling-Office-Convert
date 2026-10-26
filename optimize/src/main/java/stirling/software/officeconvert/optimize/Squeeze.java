@@ -214,9 +214,9 @@ final class Squeeze {
                 int pairs = 0;
                 while (p >= 0 && i - p <= WINDOW && hits++ < settings.chain) {
                     if (p < i && data[p + best] == data[i + best]) {
-                        int l = 0;
-                        while (l < limit && data[p + l] == data[i + l]) {
-                            l++;
+                        int l = Arrays.mismatch(data, p, p + limit, data, i, i + limit);
+                        if (l < 0) {
+                            l = limit;
                         }
                         if (l > best) {
                             best = l;
