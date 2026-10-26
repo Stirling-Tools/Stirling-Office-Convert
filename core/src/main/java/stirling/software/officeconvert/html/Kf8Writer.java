@@ -68,7 +68,7 @@ final class Kf8Writer {
     private final List<Chapter> chapters = new ArrayList<>();
     private final List<TocEntry> toc = new ArrayList<>();
     private final Map<String, Integer> resources = new HashMap<>();
-    private final List<byte[]> resourceBytes = new ArrayList<>();
+    private final List<ZipEntry> resourceEntries = new ArrayList<>();
     private final List<byte[]> flows = new ArrayList<>();
     private final Map<String, Integer> svgFlows = new HashMap<>();
     private final List<Target> links = new ArrayList<>();
@@ -89,8 +89,8 @@ final class Kf8Writer {
         Kf8Writer w = new Kf8Writer();
         try (ZipFile zip = new ZipFile(epub.toFile(), StandardCharsets.UTF_8)) {
             w.read(zip);
+            w.write(zip, out);
         }
-        w.write(out);
     }
 
     private void read(ZipFile zip) throws IOException {
@@ -159,11 +159,11 @@ final class Kf8Writer {
         if (coverItem.find()) {
             String path = resolve("", unescape(coverItem.group(1)));
             Integer known = resources.get(path);
-            byte[] bytes = known == null ? read(zip, "OEBPS/" + path) : null;
+            ZipEntry bytes = known == null ? resource(zip, "OEBPS/" + path) : null;
             if (bytes != null) {
-                resourceBytes.add(bytes);
-                resources.put(path, resourceBytes.size());
-                known = resourceBytes.size();
+                resourceEntries.add(bytes);
+                resources.put(path, resourceEntries.size());
+                known = resourceEntries.size();
             }
             cover = known == null ? -1 : known - 1;
         }
@@ -244,12 +244,12 @@ final class Kf8Writer {
         } else {
             Integer index = resources.get(path);
             if (index == null) {
-                byte[] bytes = read(zip, "OEBPS/" + path);
+                ZipEntry bytes = resource(zip, "OEBPS/" + path);
                 if (bytes == null) {
                     return attrs;
                 }
-                resourceBytes.add(bytes);
-                index = resourceBytes.size();
+                resourceEntries.add(bytes);
+                index = resourceEntries.size();
                 resources.put(path, index);
             }
             String mime = lower.endsWith(".png") ? "image/png" : lower.endsWith(".gif") ? "image/gif" : "image/jpeg";
@@ -258,7 +258,12 @@ final class Kf8Writer {
         return attrs.substring(0, s.start()) + "src=\"" + replacement + "\"" + attrs.substring(s.end());
     }
 
-    private void write(OutputStream out) throws IOException {
+    private static ZipEntry resource(ZipFile zip, String name) {
+        ZipEntry e = zip.getEntry(name);
+        return e == null || e.getSize() < 0 || e.getSize() > Integer.MAX_VALUE - 16 ? null : e;
+    }
+
+    private void write(ZipFile zip, OutputStream out) throws IOException {
         ByteArrayOutputStream flow0 = new ByteArrayOutputStream();
         List<Fragment> fragments = new ArrayList<>();
         Kf8Index skeletons = new Kf8Index(List.of(List.of(new Kf8Index.Tag(1, 1, 3), new Kf8Index.Tag(6, 2, 12))));
@@ -348,7 +353,9 @@ final class Kf8Writer {
             records.addAll(guide.records());
         }
         int firstResource = records.size();
-        records.addAll(resourceBytes);
+        for (int i = 0; i < resourceEntries.size(); i++) {
+            records.add(null);
+        }
         int fdst = records.size();
         records.add(fdst(flowTable));
         int flis = records.size();
@@ -361,7 +368,7 @@ final class Kf8Writer {
         }
         records.set(0, recordZero(all.length, textRecords, firstNonBook, firstResource, fdst, flowTable.size(), fcis,
                 flis, ncxIndex, chunkIndex, skeletonIndex, guideIndex));
-        pdb(records, out);
+        pdb(records, zip, firstResource, out);
     }
 
     private List<String> split(String body) {
@@ -661,7 +668,7 @@ final class Kf8Writer {
             count += exth(body, 527, "rtl".getBytes(StandardCharsets.US_ASCII));
         }
         count += exth(body, 501, "EBOK".getBytes(StandardCharsets.US_ASCII));
-        count += exth(body, 125, new byte[] {0, 0, (byte) (resourceBytes.size() >>> 8), (byte) resourceBytes.size()});
+        count += exth(body, 125, new byte[] {0, 0, (byte) (resourceEntries.size() >>> 8), (byte) resourceEntries.size()});
         count += exth(body, 131, new byte[4]);
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         out.writeBytes("EXTH".getBytes(StandardCharsets.US_ASCII));
@@ -681,7 +688,7 @@ final class Kf8Writer {
         return 1;
     }
 
-    private void pdb(List<byte[]> records, OutputStream out) throws IOException {
+    private void pdb(List<byte[]> records, ZipFile zip, int firstResource, OutputStream out) throws IOException {
         ByteArrayOutputStream h = new ByteArrayOutputStream();
         byte[] name = new byte[32];
         byte[] ascii = title.replaceAll("[^A-Za-z0-9]+", "_").getBytes(StandardCharsets.US_ASCII);
@@ -704,12 +711,22 @@ final class Kf8Writer {
         for (int i = 0; i < records.size(); i++) {
             Kf8Index.u32(h, offset);
             Kf8Index.u32(h, 2L * i);
-            offset += records.get(i).length;
+            offset += records.get(i) != null ? records.get(i).length : resourceEntries.get(i - firstResource).getSize();
         }
         h.writeBytes(new byte[2]);
         out.write(h.toByteArray());
-        for (byte[] r : records) {
-            out.write(r);
+        for (int i = 0; i < records.size(); i++) {
+            if (records.get(i) != null) {
+                out.write(records.get(i));
+                continue;
+            }
+            PdfFiles.stopIfInterrupted();
+            ZipEntry e = resourceEntries.get(i - firstResource);
+            try (InputStream in = zip.getInputStream(e)) {
+                if (in.transferTo(out) != e.getSize()) {
+                    throw new IOException("A picture of the book changed size while it was written");
+                }
+            }
         }
     }
 
