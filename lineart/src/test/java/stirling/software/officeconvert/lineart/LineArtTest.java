@@ -363,7 +363,7 @@ class LineArtTest {
         assertThrows(IllegalArgumentException.class, () -> o.threshold(101));
         assertThrows(IllegalArgumentException.class, () -> o.edgeLevel(4));
         assertThrows(IllegalArgumentException.class, () -> o.window(2));
-        assertThrows(IllegalArgumentException.class, () -> o.sensitivity(-0.1));
+        assertThrows(IllegalArgumentException.class, () -> o.k(-0.1));
         assertThrows(IllegalArgumentException.class, () -> o.maxPixels(0));
         assertEquals(LineArt.Method.EDGES, LineArt.Options.imageMagickEdges(3).method());
         assertEquals(50, LineArt.Options.imageMagickEdges(3).threshold());

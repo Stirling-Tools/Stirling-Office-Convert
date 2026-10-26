@@ -19,7 +19,7 @@ final class Binarizer {
             case EDGES -> edges(grey, w, h, options.edgeLevel(), options.threshold());
             case FIXED -> fixed(grey, w, h, options.threshold());
             case OTSU -> otsu(grey, w, h);
-            case SAUVOLA -> sauvola(grey, w, h, window(options.window(), w, h), options.sensitivity());
+            case SAUVOLA -> sauvola(grey, w, h, window(options.window(), w, h), options.k());
         };
         return options.inkColour() ? bitmap.withInk(meanInk(image, bitmap)) : bitmap;
     }
@@ -100,7 +100,7 @@ final class Binarizer {
                     int j = bin(f);
                     s = j < black ? 0 : j > white ? QUANTUM : (float) Math.clamp(QUANTUM * gamma * (j - black), 0, QUANTUM);
                 }
-                if (s <= level) {
+                if (s < level) {
                     bits[y * stride + (x >>> 3)] |= (byte) (0x80 >>> (x & 7));
                 }
             }

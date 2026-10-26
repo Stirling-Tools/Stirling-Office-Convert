@@ -52,7 +52,7 @@ public final class LineArt {
         FLATE
     }
 
-    public record Options(Method method, double threshold, int edgeLevel, int window, double sensitivity, Codec codec,
+    public record Options(Method method, double threshold, int edgeLevel, int window, double k, Codec codec,
             boolean inkColour, long maxPixels, String password) {
 
         public Options {
@@ -67,8 +67,8 @@ public final class LineArt {
             if (window != 0 && (window < 3 || window > 1001)) {
                 throw new IllegalArgumentException("window must be 0 (automatic) or from 3 to 1001 pixels, was " + window);
             }
-            if (!(sensitivity >= 0 && sensitivity <= 1)) {
-                throw new IllegalArgumentException("sensitivity must be from 0 to 1, was " + sensitivity);
+            if (!(k >= 0 && k <= 1)) {
+                throw new IllegalArgumentException("k must be from 0 to 1, was " + k);
             }
             if (maxPixels < 1) {
                 throw new IllegalArgumentException("maxPixels must be 1 or more, was " + maxPixels);
@@ -76,7 +76,7 @@ public final class LineArt {
         }
 
         public static Options defaults() {
-            return new Options(Method.SAUVOLA, 50, 1, 0, 0.2, Codec.SMALLEST, false, DEFAULT_MAX_PIXELS, null);
+            return new Options(Method.SAUVOLA, 50, 1, 0, 0.5, Codec.SMALLEST, false, DEFAULT_MAX_PIXELS, null);
         }
 
         public static Options imageMagickEdges(int edgeLevel) {
@@ -84,45 +84,45 @@ public final class LineArt {
         }
 
         public Options method(Method to) {
-            return new Options(to, threshold, edgeLevel, window, sensitivity, codec, inkColour, maxPixels, password);
+            return new Options(to, threshold, edgeLevel, window, k, codec, inkColour, maxPixels, password);
         }
 
         public Options threshold(double percent) {
-            return new Options(method, percent, edgeLevel, window, sensitivity, codec, inkColour, maxPixels, password);
+            return new Options(method, percent, edgeLevel, window, k, codec, inkColour, maxPixels, password);
         }
 
         public Options edgeLevel(int level) {
-            return new Options(method, threshold, level, window, sensitivity, codec, inkColour, maxPixels, password);
+            return new Options(method, threshold, level, window, k, codec, inkColour, maxPixels, password);
         }
 
         public Options window(int pixels) {
-            return new Options(method, threshold, edgeLevel, pixels, sensitivity, codec, inkColour, maxPixels, password);
+            return new Options(method, threshold, edgeLevel, pixels, k, codec, inkColour, maxPixels, password);
         }
 
-        public Options sensitivity(double k) {
+        public Options k(double k) {
             return new Options(method, threshold, edgeLevel, window, k, codec, inkColour, maxPixels, password);
         }
 
         public Options codec(Codec to) {
-            return new Options(method, threshold, edgeLevel, window, sensitivity, to, inkColour, maxPixels, password);
+            return new Options(method, threshold, edgeLevel, window, k, to, inkColour, maxPixels, password);
         }
 
         public Options inkColour(boolean keep) {
-            return new Options(method, threshold, edgeLevel, window, sensitivity, codec, keep, maxPixels, password);
+            return new Options(method, threshold, edgeLevel, window, k, codec, keep, maxPixels, password);
         }
 
         public Options maxPixels(long limit) {
-            return new Options(method, threshold, edgeLevel, window, sensitivity, codec, inkColour, limit, password);
+            return new Options(method, threshold, edgeLevel, window, k, codec, inkColour, limit, password);
         }
 
         public Options password(String secret) {
-            return new Options(method, threshold, edgeLevel, window, sensitivity, codec, inkColour, maxPixels, secret);
+            return new Options(method, threshold, edgeLevel, window, k, codec, inkColour, maxPixels, secret);
         }
 
         @Override
         public String toString() {
             return "Options[method=" + method + ", threshold=" + threshold + ", edgeLevel=" + edgeLevel + ", window="
-                    + window + ", sensitivity=" + sensitivity + ", codec=" + codec + ", inkColour=" + inkColour
+                    + window + ", k=" + k + ", codec=" + codec + ", inkColour=" + inkColour
                     + ", maxPixels=" + maxPixels + ", password=" + (password == null ? "none" : "given") + "]";
         }
     }
