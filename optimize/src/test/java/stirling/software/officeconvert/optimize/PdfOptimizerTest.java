@@ -144,6 +144,22 @@ class PdfOptimizerTest {
     }
 
     @Test
+    void appearanceDictionariesStayIndirect() throws Exception {
+        RawPdf r = RawPdf.page("", "0 0 1 rg 10 10 50 50 re f");
+        r.set(3, "<</Type/Page/Parent 2 0 R/MediaBox[0 0 200 200]/Contents 4 0 R/Annots[5 0 R]>>");
+        r.add("<</Type/Annot/Subtype/Widget/FT/Tx/T(t)/Rect[10 10 60 30]/AP 6 0 R>>");
+        r.add("<</N<</On 7 0 R>>>>");
+        r.add(RawPdf.stream("/Type/XObject/Subtype/Form/BBox[0 0 50 20]", "0 0 50 20 re S"));
+        Path in = r.write(dir, "appearance");
+        Path out = dir.resolve("out.pdf");
+        PdfOptimizer.optimize(in, out, REWRITE);
+        try (PDDocument d = Loader.loadPDF(out.toFile())) {
+            COSDictionary widget = d.getPage(0).getAnnotations().get(0).getCOSObject();
+            assertTrue(widget.getItem(COSName.AP) instanceof org.apache.pdfbox.cos.COSObject);
+        }
+    }
+
+    @Test
     void unusedResourcesAreDroppedButDefaultColourSpacesStay() throws Exception {
         Path in = RawPdf.page("/Font<<" + RawPdf.helvetica("F1") + RawPdf.helvetica("F2")
                 + ">>/ColorSpace<</DefaultRGB/DeviceRGB/CS9/DeviceGray>>",

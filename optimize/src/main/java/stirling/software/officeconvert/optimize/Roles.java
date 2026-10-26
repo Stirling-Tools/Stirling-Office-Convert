@@ -182,8 +182,12 @@ final class Roles {
             }
         }
         if (d.getDictionaryObject(COSName.AP) instanceof COSDictionary ap) {
+            indirect.add(ap);
             for (COSName key : List.of(COSName.N, COSName.R, COSName.D)) {
                 COSBase v = ap.getDictionaryObject(key);
+                if (v instanceof COSDictionary states && !(v instanceof COSStream)) {
+                    indirect.add(states);
+                }
                 if (v instanceof COSStream s) {
                     appearance(s);
                 } else if (v instanceof COSDictionary states) {
