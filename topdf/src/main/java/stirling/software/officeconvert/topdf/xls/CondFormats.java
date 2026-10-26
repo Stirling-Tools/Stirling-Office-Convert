@@ -134,7 +134,8 @@ final class CondFormats {
             HSSFDataBarFormatting d = rule.getDataBarFormatting();
             return "<cfRule type=\"dataBar\" priority=\"" + ++priority + "\"><dataBar minLength=\""
                     + Math.max(0, Math.min(100, d.getWidthMin())) + "\" maxLength=\""
-                    + Math.max(0, Math.min(100, d.getWidthMax() == 0 ? 90 : d.getWidthMax())) + "\">"
+                    + Math.max(0, Math.min(100, d.getWidthMax() == 0 ? 90 : d.getWidthMax())) + "\""
+                    + (d.isIconOnly() ? " showValue=\"0\"" : "") + ">"
                     + cfvo(d.getMinThreshold()) + cfvo(d.getMaxThreshold()) + color(d.getColor())
                     + "</dataBar></cfRule>";
         }
@@ -146,7 +147,8 @@ final class CondFormats {
             }
             StringBuilder b = new StringBuilder("<cfRule type=\"iconSet\" priority=\"").append(++priority)
                     .append("\"><iconSet iconSet=\"").append(m.getIconSet().name).append('"')
-                    .append(m.isReversed() ? " reverse=\"1\"" : "").append('>');
+                    .append(m.isReversed() ? " reverse=\"1\"" : "").append(m.isIconOnly() ? " showValue=\"0\"" : "")
+                    .append('>');
             for (ConditionalFormattingThreshold t : at) {
                 b.append(cfvo(t));
             }

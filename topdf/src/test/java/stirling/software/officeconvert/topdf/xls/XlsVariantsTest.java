@@ -365,6 +365,46 @@ class XlsVariantsTest {
         }
     }
 
+    private static void symbolsOnly(org.apache.poi.ss.usermodel.Workbook wb) {
+        org.apache.poi.ss.usermodel.Sheet s = wb.createSheet("Ticks");
+        for (int i = 0; i < 3; i++) {
+            s.createRow(i).createCell(0).setCellValue(i * 1234567 + 7654321);
+        }
+        org.apache.poi.ss.usermodel.SheetConditionalFormatting cf = s.getSheetConditionalFormatting();
+        org.apache.poi.ss.usermodel.ConditionalFormattingRule rule = cf.createConditionalFormattingRule(
+                org.apache.poi.ss.usermodel.IconMultiStateFormatting.IconSet.GYR_3_SYMBOLS);
+        org.apache.poi.ss.usermodel.IconMultiStateFormatting m = rule.getMultiStateFormatting();
+        m.setIconOnly(true);
+        double[] at = {0, 33, 67};
+        for (int i = 0; i < 3; i++) {
+            m.getThresholds()[i].setRangeType(
+                    org.apache.poi.ss.usermodel.ConditionalFormattingThreshold.RangeType.PERCENT);
+            m.getThresholds()[i].setValue(at[i]);
+        }
+        cf.addConditionalFormatting(new CellRangeAddress[] {CellRangeAddress.valueOf("A1:A3")}, rule);
+    }
+
+    @Test
+    void iconOnlySymbolsHideTheValueInLegacyAndCurrentWorkbooks() throws Exception {
+        byte[] legacy = xls(XlsVariantsTest::symbolsOnly);
+        ByteArrayOutputStream modern = new ByteArrayOutputStream();
+        try (org.apache.poi.xssf.usermodel.XSSFWorkbook wb = new org.apache.poi.xssf.usermodel.XSSFWorkbook()) {
+            symbolsOnly(wb);
+            wb.write(modern);
+        }
+        for (Object[] c : new Object[][] {{"ticks.xls", legacy}, {"ticks.xlsx", modern.toByteArray()}}) {
+            Path in = Fixtures.write(dir, (String) c[0], (byte[]) c[1]);
+            Path out = dir.resolve(c[0] + ".pdf");
+            OfficeToPdf.convert(in, out, OfficeToPdf.Options.defaults());
+            String text;
+            try (org.apache.pdfbox.pdmodel.PDDocument doc = org.apache.pdfbox.Loader.loadPDF(out.toFile())) {
+                text = new org.apache.pdfbox.text.PDFTextStripper().getText(doc);
+            }
+            assertFalse(text.contains("7654321"), c[0] + " hides the values: " + text);
+            assertTrue(colour(out, 0x63BE7B) && colour(out, 0xF8696B), c[0] + " draws the symbols");
+        }
+    }
+
     private static boolean colour(Path pdf, int rgb) throws IOException {
         try (org.apache.pdfbox.pdmodel.PDDocument doc = org.apache.pdfbox.Loader.loadPDF(pdf.toFile())) {
             java.awt.image.BufferedImage img = new org.apache.pdfbox.rendering.PDFRenderer(doc).renderImage(0, 3f);
