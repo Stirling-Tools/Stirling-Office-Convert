@@ -47,6 +47,7 @@ public final class Paragraph implements Block {
     public boolean keepLines;
     public boolean bidi;
     public boolean noHangingPunctuation;
+    public boolean hyphenate;
     public int shading = -1;
     public float borderBottom;
     public int borderBottomRgb;

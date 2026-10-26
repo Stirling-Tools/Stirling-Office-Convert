@@ -94,6 +94,9 @@ final class BodyXml {
             }
             sb.append("</w:tabs>");
         }
+        if (styles.hyphenation && !p.hyphenate) {
+            sb.append("<w:suppressAutoHyphens/>");
+        }
         if (p.noHangingPunctuation) {
             sb.append("<w:overflowPunct w:val=\"0\"/>");
         }

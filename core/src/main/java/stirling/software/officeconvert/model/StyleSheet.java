@@ -10,6 +10,7 @@ public final class StyleSheet {
     private final Map<String, Style> styles = new LinkedHashMap<>();
     public final RunStyle normal;
     public Scripts.Profile scripts = new Scripts.Profile();
+    public boolean hyphenation;
 
     public StyleSheet(RunStyle normal) {
         this.normal = normal;

@@ -95,6 +95,9 @@ final class Cascade {
         for (Css.Rule rule : rules) {
             order++;
             positions |= positioning(rule.declarations());
+            for (Map.Entry<String, String> d : rule.declarations().entrySet()) {
+                hyphenates |= d.getKey().endsWith("hyphens") && d.getValue().strip().equalsIgnoreCase("auto");
+            }
             strings |= rule.declarations().containsKey("string-set")
                     || rule.declarations().containsKey(Css.IMPORTANT_MARK + "string-set");
             Matcher sided = SIDED_MARGIN.matcher(rule.selector());
@@ -159,6 +162,12 @@ final class Cascade {
     private boolean positions;
 
     private boolean strings;
+
+    private boolean hyphenates;
+
+    boolean hyphenates() {
+        return hyphenates || !doc.select("[style*=hyphens]").isEmpty();
+    }
 
     boolean setsStrings() {
         return strings;

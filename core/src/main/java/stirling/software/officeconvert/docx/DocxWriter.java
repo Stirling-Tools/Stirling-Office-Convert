@@ -168,7 +168,7 @@ public final class DocxWriter implements DocSink, Closeable {
             subPart("word/footnotes.xml", "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<w:footnotes " + NS + ">" + sep + footnotes + "</w:footnotes>");
         }
         entry("word/styles.xml", StylesPart.xml(styleSheet));
-        entry("word/settings.xml", PackageParts.settings(hf, hasFootnotes()));
+        entry("word/settings.xml", PackageParts.settings(hf, hasFootnotes(), styleSheet.hyphenation));
         entry("word/fontTable.xml", PackageParts.fontTable(ctx.fonts));
         for (Object[] m : mediaFiles) {
             ZipParts.picture(zip, "word/media/" + m[0], m[1] instanceof byte[] b ? b : spill.read((SpillFile.Block) m[1]));

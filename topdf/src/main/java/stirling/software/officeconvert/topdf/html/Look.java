@@ -41,6 +41,8 @@ final class Look {
     // the family is the bare generic monospace, which browsers set at 13px where the keyword says 16
     boolean monoOnly;
     float opacity = 1;
+    boolean hyphens;
+    String lang = "";
 
     Look copy() {
         Look l = new Look();
@@ -58,6 +60,8 @@ final class Look {
         l.align = align;
         l.alignFixed = alignFixed;
         l.lineMultiple = lineMultiple;
+        l.hyphens = hyphens;
+        l.lang = lang;
         l.linePoints = linePoints;
         l.textIndent = textIndent;
         l.whiteSpace = whiteSpace;
@@ -84,6 +88,13 @@ final class Look {
             l.highlight = -1;
         }
         String v;
+        if ((v = d.get("hyphens")) != null || (v = d.get("-webkit-hyphens")) != null) {
+            String h = v.strip().toLowerCase(Locale.ROOT);
+            l.hyphens = h.equals("auto") || !h.equals("manual") && !h.equals("none") && hyphens;
+        }
+        if ((v = d.get(Presentation.LANG)) != null) {
+            l.lang = v.strip().toLowerCase(Locale.ROOT);
+        }
         if ((v = d.get("font-family")) != null) {
             String f = family(v);
             if (f != null) {
@@ -260,6 +271,10 @@ final class Look {
     }
 
     /** The first family of a CSS font stack that can be drawn, as a browser picks it. */
+    boolean hyphenates() {
+        return hyphens && (lang.equals("en") || lang.startsWith("en-") || lang.startsWith("en_"));
+    }
+
     static String family(String list) {
         for (String raw : list.split(",")) {
             String f = raw.strip().replaceAll("^[\"']|[\"']$", "").strip();

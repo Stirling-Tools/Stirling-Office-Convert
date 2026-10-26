@@ -91,6 +91,22 @@ class GeneratedTest {
     }
 
     @Test
+    void englishTextWithHyphensAutoIsHyphenated() throws IOException {
+        String words = "International organisations communicate responsibilities internationally, "
+                .repeat(12);
+        String css = "<style>p{width:150pt;hyphens:auto}</style>";
+        String hyphenated = convert("hy", "<html lang=en><head>" + css + "</head><body><p>" + words
+                + "</p></body></html>").text();
+        String other = convert("hy-de", "<html lang=de><head>" + css + "</head><body><p>" + words
+                + "</p></body></html>").text();
+        String manual = convert("hy-off", "<html lang=en><body><p style=\"width:150pt\">" + words
+                + "</p></body></html>").text();
+        assertTrue(hyphenated.matches("(?s).*[a-z]-\\R.*"), hyphenated);
+        assertFalse(other.matches("(?s).*[a-z]-\\R.*"), other);
+        assertFalse(manual.matches("(?s).*[a-z]-\\R.*"), manual);
+    }
+
+    @Test
     void generatedBoxesDoNotChangeWhichChildIsFirstOrLast() throws IOException {
         Pdf pdf = convert("structural", "<html><head><style>ul::before{content:'Start'}ul::after{content:'End'}"
                 + "li:first-child::before{content:'[first] '}li:last-child::before{content:'[last] '}</style></head>"

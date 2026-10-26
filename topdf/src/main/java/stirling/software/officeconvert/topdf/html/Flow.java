@@ -1610,6 +1610,7 @@ final class Flow {
         pendingBreak = false;
         sectionStarted = false;
         p.bidi = l.rightToLeft;
+        p.hyphenate = l.hyphenates();
         p.shading = f.shading();
         if (l.linePoints > 0) {
             p.lineRule = Paragraph.LineRule.AT_LEAST;
