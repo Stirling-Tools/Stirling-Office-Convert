@@ -14,6 +14,8 @@ final class RawPdf {
 
     String header = "%PDF-1.4\n%âãÏÓ\n";
 
+    int root = 1;
+
     String trailerExtra = "/ID[<0123456789ABCDEF0123456789ABCDEF><0123456789ABCDEF0123456789ABCDEF>]";
 
     int add(String body) {
@@ -71,8 +73,8 @@ final class RawPdf {
         for (int i = 1; i <= objects.size(); i++) {
             b.append(String.format("%010d 00000 n\r\n", offsets[i]));
         }
-        b.append("trailer\n<</Size ").append(objects.size() + 1).append("/Root 1 0 R").append(trailerExtra)
-                .append(">>\nstartxref\n").append(xref).append("\n%%EOF\n");
+        b.append("trailer\n<</Size ").append(objects.size() + 1).append("/Root ").append(root).append(" 0 R")
+                .append(trailerExtra).append(">>\nstartxref\n").append(xref).append("\n%%EOF\n");
         write(out, b.toString());
         return out.toByteArray();
     }

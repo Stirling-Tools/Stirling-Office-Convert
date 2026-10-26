@@ -162,6 +162,23 @@ class PdfOptimizerTest {
     }
 
     @Test
+    void resourcesAType3GlyphBorrowsStay() throws Exception {
+        RawPdf r = RawPdf.page("/XObject<</Im 5 0 R>>/Font<</T3<</Type/Font/Subtype/Type3/FontBBox[0 0 1000 1000]"
+                + "/FontMatrix[.001 0 0 .001 0 0]/CharProcs<</a 6 0 R>>/Encoding<</Differences[97/a]>>/FirstChar 97"
+                + "/LastChar 97/Widths[1000]>>>>", "BT /T3 50 Tf 20 20 Td (a) Tj ET");
+        r.add(RawPdf.stream("/Type/XObject/Subtype/Image/Width 2/Height 2/ColorSpace/DeviceGray/BitsPerComponent 8",
+                "\u0000\u00ff\u00ff\u0000"));
+        r.add(RawPdf.stream("", "1000 0 0 0 1000 1000 d1 q 1000 0 0 1000 0 0 cm /Im Do Q"));
+        Path in = r.write(dir, "type3");
+        Path out = dir.resolve("out.pdf");
+        PdfOptimizer.optimize(in, out, REWRITE);
+        try (PDDocument d = Loader.loadPDF(out.toFile())) {
+            assertTrue(d.getPage(0).getResources().getCOSObject().getCOSDictionary(COSName.XOBJECT).containsKey("Im"));
+        }
+        Pages.assertSameRendering(in, out);
+    }
+
+    @Test
     void resourcesStayWhenTheContentHoldsAnInlineImage() throws Exception {
         Path in = RawPdf.page("/Font<<" + RawPdf.helvetica("F1") + RawPdf.helvetica("F2") + ">>",
                 "q 10 0 0 10 50 50 cm BI /W 2 /H 2 /CS /G /BPC 8 ID \u0000ÿÿ\u0000 EI Q").write(dir,
@@ -177,7 +194,8 @@ class PdfOptimizerTest {
     @Test
     void privateDataGoesUnlessKept() throws Exception {
         RawPdf r = RawPdf.page("", "0 0 1 rg 10 10 50 50 re f");
-        r.set(3, "<</Type/Page/Parent 2 0 R/MediaBox[0 0 200 200]/Contents 4 0 R/PieceInfo<</Illustrator<</Private 5 0 R>>>>>>");
+        r.set(3, "<</Type/Page/Parent 2 0 R/MediaBox[0 0 200 200]/Contents 4 0 R"
+                + "/PieceInfo<</Illustrator<</Private 5 0 R>>>>>>");
         r.add(RawPdf.stream("", "x".repeat(5000)));
         Path in = r.write(dir, "piece");
         Path out = dir.resolve("out.pdf");
@@ -208,6 +226,30 @@ class PdfOptimizerTest {
         try (PDDocument d = Loader.loadPDF(out.toFile())) {
             assertEquals(1, d.getNumberOfPages());
         }
+    }
+
+    @Test
+    void aTruncatedFileKeepsThePagesItStillHolds() throws Exception {
+        RawPdf r = new RawPdf();
+        r.add("<</Type/Page/Parent 7 0 R/MediaBox[0 0 200 200]/Contents 2 0 R>>");
+        r.add(RawPdf.stream("", "0 0 1 rg 10 10 50 50 re f"));
+        r.add("<</Type/Page/Parent 7 0 R/MediaBox[0 0 200 200]/Contents 4 0 R>>");
+        r.add(RawPdf.stream("", "1 0 0 rg 20 20 80 80 re f"));
+        r.add("<</Producer(test)>>");
+        r.add("<</Type/Catalog/Pages 7 0 R>>");
+        r.add("<</Type/Pages/Kids[1 0 R 3 0 R]/Count 2>>");
+        r.root = 6;
+        byte[] whole = r.bytes();
+        String s = new String(whole, StandardCharsets.ISO_8859_1);
+        Path in = dir.resolve("cut.pdf");
+        Files.write(in, java.util.Arrays.copyOf(whole, s.indexOf("6 0 obj")));
+        Path out = dir.resolve("out.pdf");
+        PdfOptimizer.Result result = PdfOptimizer.optimize(in, out, PdfOptimizer.Options.defaults());
+        assertTrue(result.rewritten());
+        assertTrue(result.warnings().stream().anyMatch(w -> w.contains("rebuilt from the 2 pages")));
+        Path complete = dir.resolve("complete.pdf");
+        Files.write(complete, whole);
+        Pages.assertSameRendering(complete, out);
     }
 
     @Test
@@ -252,8 +294,8 @@ class PdfOptimizerTest {
         Path out = dir.resolve("out.pdf");
         PdfOptimizer.optimize(in, out, REWRITE);
         try (PDDocument d = Loader.loadPDF(out.toFile())) {
-            COSDictionary loop = (COSDictionary) d.getDocumentCatalog().getCOSObject().getCOSArray(COSName.getPDFName("Loop"))
-                    .getObject(0);
+            COSDictionary loop = (COSDictionary) d.getDocumentCatalog().getCOSObject()
+                    .getCOSArray(COSName.getPDFName("Loop")).getObject(0);
             assertNotNull(loop);
         }
     }
@@ -332,7 +374,8 @@ class PdfOptimizerTest {
 
     @Test
     void pdfA1KeepsAClassicCrossReferenceTable() throws Exception {
-        String xmp = "<x:xmpmeta xmlns:x=\"adobe:ns:meta/\"><rdf:RDF xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\">"
+        String xmp = "<x:xmpmeta xmlns:x=\"adobe:ns:meta/\">"
+                + "<rdf:RDF xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\">"
                 + "<rdf:Description rdf:about=\"\" xmlns:pdfaid=\"http://www.aiim.org/pdfa/ns/id/\">"
                 + "<pdfaid:part>1</pdfaid:part><pdfaid:conformance>B</pdfaid:conformance></rdf:Description></rdf:RDF>"
                 + "</x:xmpmeta>";

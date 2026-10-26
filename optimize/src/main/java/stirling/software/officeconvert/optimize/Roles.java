@@ -63,12 +63,29 @@ final class Roles {
     static Roles of(Graph g, COSDictionary catalog) {
         Roles r = new Roles();
         r.pages(catalog);
+        ArrayDeque<COSBase> direct = new ArrayDeque<>();
+        ArrayDeque<Integer> depths = new ArrayDeque<>();
         for (COSBase node : g.nodes()) {
             if (node instanceof COSStream s) {
                 r.stream(s);
             }
-            if (node instanceof COSDictionary d) {
-                r.dictionary(d);
+            direct.push(node);
+            depths.push(0);
+            while (!direct.isEmpty()) {
+                COSBase b = direct.pop();
+                int depth = depths.pop();
+                if (b instanceof COSDictionary d) {
+                    r.dictionary(d);
+                }
+                Iterable<COSBase> children = b instanceof COSDictionary d ? d.getValues()
+                        : b instanceof COSArray a ? a : List.of();
+                for (COSBase c : children) {
+                    if (depth < Graph.MAX_DEPTH && (c instanceof COSDictionary || c instanceof COSArray)
+                            && !(c instanceof COSStream) && g.id(c) < 0) {
+                        direct.push(c);
+                        depths.push(depth + 1);
+                    }
+                }
             }
         }
         if (catalog.getDictionaryObject(COSName.ACRO_FORM) instanceof COSDictionary form
@@ -137,6 +154,9 @@ final class Roles {
     }
 
     private void dictionary(COSDictionary d) {
+        if (d.getDictionaryObject(COSName.FONT_DESC) instanceof COSDictionary descriptor) {
+            indirect.add(descriptor);
+        }
         if (d.getDictionaryObject(COSName.KIDS) instanceof COSArray kids) {
             for (int i = 0; i < kids.size(); i++) {
                 COSBase kid = kids.getObject(i);
@@ -152,7 +172,8 @@ final class Roles {
                 && d.containsKey(COSName.CONTENTS)) {
             signed = true;
         }
-        if (TYPE3.equals(d.getCOSName(COSName.SUBTYPE)) && d.getDictionaryObject(CHAR_PROCS) instanceof COSDictionary procs) {
+        if (TYPE3.equals(d.getCOSName(COSName.SUBTYPE))
+                && d.getDictionaryObject(CHAR_PROCS) instanceof COSDictionary procs) {
             COSDictionary res = d.getDictionaryObject(COSName.RESOURCES) instanceof COSDictionary r ? r : null;
             for (COSBase v : procs.getValues()) {
                 if (Graph.resolve(v) instanceof COSStream s) {

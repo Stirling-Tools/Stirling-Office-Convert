@@ -16,7 +16,8 @@ import org.apache.pdfbox.cos.COSStream;
 
 final class Recoder {
 
-    static final long MAX_DECODED_BYTES = Math.max(16L << 20, Math.min(256L << 20, Runtime.getRuntime().maxMemory() / 16));
+    static final long MAX_DECODED_BYTES = Math.max(16L << 20,
+            Math.min(256L << 20, Runtime.getRuntime().maxMemory() / 16));
 
     static final long MAX_RAW_BYTES = MAX_DECODED_BYTES;
 

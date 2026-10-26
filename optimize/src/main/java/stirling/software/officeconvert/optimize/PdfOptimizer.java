@@ -2,6 +2,7 @@ package stirling.software.officeconvert.optimize;
 
 import java.io.BufferedOutputStream;
 import java.io.IOException;
+import java.io.InterruptedIOException;
 import java.io.OutputStream;
 import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
@@ -12,6 +13,7 @@ import java.util.List;
 import java.util.Objects;
 
 import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.pdmodel.encryption.InvalidPasswordException;
 
 import stirling.software.officeconvert.extract.PdfFiles;
 import stirling.software.officeconvert.memory.Admission;
@@ -97,16 +99,55 @@ public final class PdfOptimizer {
         }
         Path part = Files.createTempFile(PdfFiles.outputFolder(out), ".optimize-", ".part");
         try {
+            java.util.concurrent.atomic.AtomicBoolean salvage = new java.util.concurrent.atomic.AtomicBoolean();
             Result result = Deadline.run(options.timeout(), () -> {
-                try (PDDocument doc = PdfFiles.open(in, options.password())) {
+                PDDocument doc;
+                Path rebuilt = null;
+                Salvage.Rebuilt salvaged = null;
+                try {
+                    doc = PdfFiles.open(in, options.password());
+                } catch (InvalidPasswordException | InterruptedIOException e) {
+                    throw e;
+                } catch (IOException e) {
+                    rebuilt = Files.createTempFile(PdfFiles.outputFolder(out), ".salvage-", ".part");
+                    salvaged = Salvage.rebuild(in, rebuilt);
+                    salvage.set(salvaged != null);
+                    if (salvaged == null) {
+                        Files.deleteIfExists(rebuilt);
+                        throw e;
+                    }
+                    try {
+                        doc = PdfFiles.open(rebuilt, options.password());
+                    } catch (IOException again) {
+                        Files.deleteIfExists(rebuilt);
+                        throw e;
+                    }
+                }
+                try (PDDocument open = doc) {
                     Admission.Ticket ticket = Admission.jvm().enter(estimate(size));
                     try (OutputStream os = new BufferedOutputStream(Files.newOutputStream(part), 1 << 16)) {
-                        return Rewrite.run(doc, os, options, size);
+                        Result r = Rewrite.run(open, os, options, size);
+                        if (salvaged == null) {
+                            return r;
+                        }
+                        List<String> warnings = new java.util.ArrayList<>(r.warnings());
+                        warnings.add("The PDF was damaged past its own repair data; its page tree was rebuilt from the "
+                                + salvaged.pages() + " pages found in the file");
+                        return new Result(r.inputBytes(), r.outputBytes(), true, r.objects(), r.mergedObjects(),
+                                r.recodedStreams(), warnings);
                     } finally {
                         ticket.close();
                     }
+                } finally {
+                    if (rebuilt != null) {
+                        Files.deleteIfExists(rebuilt);
+                    }
                 }
             });
+            if (salvage.get()) {
+                move(part, out);
+                return result;
+            }
             PdfFiles.stopIfInterrupted();
             if (!options.alwaysRewrite() && result.outputBytes() >= size) {
                 Files.copy(in, part, StandardCopyOption.REPLACE_EXISTING);

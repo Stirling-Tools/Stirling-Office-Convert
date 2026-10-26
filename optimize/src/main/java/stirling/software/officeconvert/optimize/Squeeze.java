@@ -24,6 +24,8 @@ final class Squeeze {
 
     private static final int MIN_SPLIT = 512;
 
+    private static final int MAX_PAIRS = 8;
+
     private static final int[] LENGTH_BASE = {3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 15, 17, 19, 23, 27, 31, 35, 43, 51, 59,
             67, 83, 99, 115, 131, 163, 195, 227, 258};
 
@@ -135,6 +137,7 @@ final class Squeeze {
                 int best = MIN_MATCH - 1;
                 int p = head[hash(i)];
                 int hits = 0;
+                int pairs = 0;
                 while (p >= 0 && i - p <= WINDOW && hits++ < settings.chain) {
                     if (p < i && data[p + best] == data[i + best]) {
                         int l = 0;
@@ -144,7 +147,7 @@ final class Squeeze {
                         if (l > best) {
                             best = l;
                             m.add(l, i - p);
-                            if (l >= settings.nice || l == limit) {
+                            if (l >= settings.nice || l == limit || ++pairs == MAX_PAIRS) {
                                 break;
                             }
                         }

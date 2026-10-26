@@ -28,7 +28,8 @@ class SqueezeTest {
             mixed[i] = (byte) (i % 7000 < 3500 ? i / 13 : r.nextInt(4));
         }
         byte[][] samples = {new byte[0], new byte[] {42}, new byte[100_000], noise,
-                text.toString().getBytes(StandardCharsets.ISO_8859_1), mixed, "abcabcabcabcabcabcabcabc".getBytes(StandardCharsets.ISO_8859_1)};
+                text.toString().getBytes(StandardCharsets.ISO_8859_1), mixed,
+                "abcabcabcabcabcabcabcabc".getBytes(StandardCharsets.ISO_8859_1)};
         for (byte[] s : samples) {
             byte[] z = Squeeze.zlib(s, THOROUGH);
             assertArrayEquals(s, Filters.inflate(z, Long.MAX_VALUE), "length " + s.length);

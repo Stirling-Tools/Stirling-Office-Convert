@@ -14,7 +14,8 @@ final class Merge {
 
     private Merge() {}
 
-    static int[] representatives(byte[][] signatures, int[][] edges, boolean[] mergeable) throws InterruptedIOException {
+    static int[] representatives(byte[][] signatures, int[][] edges, boolean[] mergeable)
+            throws InterruptedIOException {
         int n = signatures.length;
         int[] rep = new int[n];
         int[] cls = new int[n];

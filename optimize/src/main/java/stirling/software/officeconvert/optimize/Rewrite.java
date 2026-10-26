@@ -91,7 +91,8 @@ final class Rewrite {
         if (encryption != null) {
             for (COSBase node : g.nodes()) {
                 if (node instanceof COSStream s && Encryption.usesCryptFilter(s)) {
-                    throw new IOException("The PDF names crypt filters on its streams, which this optimizer does not write");
+                    throw new IOException(
+                            "The PDF names crypt filters on its streams, which this optimizer does not write");
                 }
             }
         }
@@ -431,7 +432,8 @@ final class Rewrite {
             offsets[encryptNumber] = out.position();
             Bytes e = new Bytes(512);
             e.ascii(encryptNumber + " 0 obj\n");
-            new Syntax(graph, (node, s) -> s.word("null")).copyUnknown().into(e).dictionary(encryption.dictionary, null);
+            new Syntax(graph, (node, s) -> s.word("null")).copyUnknown().into(e)
+                    .dictionary(encryption.dictionary, null);
             e.ascii("\nendobj\n");
             e.writeTo(out);
         }
