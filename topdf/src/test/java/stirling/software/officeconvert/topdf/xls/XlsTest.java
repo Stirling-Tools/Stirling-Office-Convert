@@ -586,6 +586,28 @@ class XlsTest {
     }
 
     @Test
+    void bracesArrowsAndFlowChartShapesAreDrawn() throws Exception {
+        byte[] data = xls(wb -> {
+            HSSFSheet s = wb.createSheet("Shapes");
+            s.createRow(0).createCell(0).setCellValue("Shaped");
+            HSSFPatriarch p = s.createDrawingPatriarch();
+            int[] types = {87, 66, 110};
+            for (int i = 0; i < types.length; i++) {
+                HSSFSimpleShape shape = p.createSimpleShape(new HSSFClientAnchor(0, 0, 0, 0, (short) (1 + 3 * i), 2,
+                        (short) (3 + 3 * i), 8));
+                shape.setShapeType(types[i]);
+                shape.setLineStyleColor(255, 0, 0);
+                shape.setNoFill(true);
+            }
+        });
+        Path in = Fixtures.write(dir, "presets.xls", data);
+        Path out = dir.resolve("presets.pdf");
+        OfficeToPdf.Result result = OfficeToPdf.convert(in, out, OfficeToPdf.Options.defaults());
+        assertFalse(String.join(" ", result.warnings()).contains("could not be drawn"), result.warnings().toString());
+        assertTrue(hasColour(out, Color.RED));
+    }
+
+    @Test
     void anAutoShapeKeepsItsOutlineAndCentresItsText() throws Exception {
         byte[] data = xls(wb -> {
             HSSFSheet s = wb.createSheet("Shapes");

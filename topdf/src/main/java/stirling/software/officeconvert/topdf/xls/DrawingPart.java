@@ -2,6 +2,7 @@ package stirling.software.officeconvert.topdf.xls;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
@@ -410,24 +411,44 @@ final class DrawingPart {
         }
     }
 
+    private static final Map<Integer, String> PRESETS = presets();
+
+    private static Map<Integer, String> presets() {
+        Map<Integer, String> m = new HashMap<>();
+        String[] names = {"1 rect", "202 rect", "2 roundRect", "3 ellipse", "4 diamond", "5 triangle", "6 rtTriangle",
+            "7 parallelogram", "8 trapezoid", "9 hexagon", "10 octagon", "11 plus", "12 star5", "13 rightArrow",
+            "14 rightArrow", "15 homePlate", "16 cube", "19 arc", "20 line", "32 line", "21 plaque", "22 can",
+            "23 donut", "53 ribbon2", "54 ribbon", "55 chevron", "56 pentagon", "57 noSmoking", "58 star8",
+            "59 star16", "60 star32", "61 wedgeRectCallout", "62 wedgeRoundRectCallout", "63 wedgeEllipseCallout",
+            "64 wave", "65 foldedCorner", "66 leftArrow", "67 downArrow", "68 upArrow", "69 leftRightArrow",
+            "70 upDownArrow", "71 irregularSeal1", "72 irregularSeal2", "73 lightningBolt", "74 heart",
+            "76 quadArrow", "77 leftArrowCallout", "78 rightArrowCallout", "79 upArrowCallout",
+            "80 downArrowCallout", "81 leftRightArrowCallout", "82 upDownArrowCallout", "83 quadArrowCallout",
+            "84 bevel", "85 leftBracket", "86 rightBracket", "87 leftBrace", "88 rightBrace", "89 leftUpArrow",
+            "90 bentUpArrow", "91 bentArrow", "92 star24", "93 stripedRightArrow", "94 notchedRightArrow",
+            "95 blockArc", "96 smileyFace", "97 verticalScroll", "98 horizontalScroll", "99 circularArrow",
+            "101 uturnArrow", "102 curvedRightArrow", "103 curvedLeftArrow", "104 curvedUpArrow",
+            "105 curvedDownArrow", "106 cloudCallout", "107 ellipseRibbon", "108 ellipseRibbon2",
+            "109 flowChartProcess", "110 flowChartDecision", "111 flowChartInputOutput",
+            "112 flowChartPredefinedProcess", "113 flowChartInternalStorage", "114 flowChartDocument",
+            "115 flowChartMultidocument", "116 flowChartTerminator", "117 flowChartPreparation",
+            "118 flowChartManualInput", "119 flowChartManualOperation", "120 flowChartConnector",
+            "121 flowChartPunchedCard", "122 flowChartPunchedTape", "123 flowChartSummingJunction",
+            "124 flowChartOr", "125 flowChartCollate", "126 flowChartSort", "127 flowChartExtract",
+            "128 flowChartMerge", "129 flowChartOfflineStorage", "130 flowChartOnlineStorage",
+            "131 flowChartMagneticTape", "132 flowChartMagneticDisk", "133 flowChartMagneticDrum",
+            "134 flowChartDisplay", "135 flowChartDelay", "176 flowChartAlternateProcess",
+            "177 flowChartOffpageConnector", "182 leftRightUpArrow", "183 sun", "184 moon", "185 bracketPair",
+            "186 bracePair", "187 star4", "188 doubleWave"};
+        for (String n : names) {
+            int space = n.indexOf(' ');
+            m.put(Integer.parseInt(n.substring(0, space)), n.substring(space + 1));
+        }
+        return Map.copyOf(m);
+    }
+
     private static String preset(int type) {
-        return switch (type) {
-            case 1, 202 -> "rect";
-            case 2 -> "roundRect";
-            case 3 -> "ellipse";
-            case 4 -> "diamond";
-            case 5 -> "triangle";
-            case 6 -> "rtTriangle";
-            case 7 -> "parallelogram";
-            case 9 -> "hexagon";
-            case 10 -> "octagon";
-            case 11 -> "plus";
-            case 13 -> "rightArrow";
-            case 20, 32 -> "line";
-            case 22 -> "can";
-            case 23 -> "donut";
-            default -> null;
-        };
+        return PRESETS.get(type);
     }
 
     private String body(HSSFSimpleShape s, HSSFRichTextString text) {
