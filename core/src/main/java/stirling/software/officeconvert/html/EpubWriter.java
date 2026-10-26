@@ -83,6 +83,7 @@ public final class EpubWriter implements DocSink, Closeable {
     private final SpillBuffer body = new SpillBuffer();
     private final Map<Integer, List<Paragraph>> notes = new TreeMap<>();
     private final Map<String, Media> pictures = new HashMap<>();
+    private final Map<String, String> byRef = new HashMap<>();
     private final List<Media> pictureFiles = new ArrayList<>();
     private final List<Chapter> chapters = new ArrayList<>();
     private final List<Entry> toc = new ArrayList<>();
@@ -123,6 +124,7 @@ public final class EpubWriter implements DocSink, Closeable {
         this.language = book.language();
         this.options = book.options();
         blocks.relativeSizes(options.device() == EbookOptions.Device.KINDLE);
+        blocks.pictureFiles(this::pictureFile);
     }
 
     @Override
@@ -371,6 +373,18 @@ public final class EpubWriter implements DocSink, Closeable {
                 "<" + v.group(1) + (v.group(2) == null ? "" : v.group(2)) + "/>"));
     }
 
+    private String pictureFile(Picture.MediaRef ref) throws IOException {
+        String file = byRef.get(ref.name());
+        if (file == null) {
+            file = picture(ref.contentType(), media.bytes(ref));
+            if (file == null) {
+                return "";
+            }
+            byRef.put(ref.name(), file);
+        }
+        return "../" + file;
+    }
+
     private String picture(String type, String base64) throws IOException {
         byte[] bytes;
         try {
@@ -378,6 +392,10 @@ public final class EpubWriter implements DocSink, Closeable {
         } catch (IllegalArgumentException e) {
             return null;
         }
+        return picture(type, bytes);
+    }
+
+    private String picture(String type, byte[] bytes) throws IOException {
         String hash = sha1(bytes);
         Media known = pictures.get(hash);
         if (known != null) {

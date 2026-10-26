@@ -33,6 +33,11 @@ final class HtmlBlocks {
     private StyleSheet styles;
     private int section = -1;
     private boolean relative;
+    private PictureFiles files;
+
+    interface PictureFiles {
+        String source(Picture.MediaRef ref) throws IOException;
+    }
 
     HtmlBlocks(MediaStore media) {
         this.media = media;
@@ -40,6 +45,10 @@ final class HtmlBlocks {
 
     void styles(StyleSheet styles) {
         this.styles = styles;
+    }
+
+    void pictureFiles(PictureFiles files) {
+        this.files = files;
     }
 
     void relativeSizes(boolean on) {
@@ -469,7 +478,7 @@ final class HtmlBlocks {
 
     private void image(StringBuilder sb, Picture pic, boolean inline) throws IOException {
         Picture.MediaRef ref = media.shaped(pic);
-        String uri = dataUris.get(ref.name());
+        String uri = files != null ? files.source(ref) : dataUris.get(ref.name());
         if (uri == null) {
             uri = "data:" + ref.contentType() + ";base64," + Base64.getEncoder().encodeToString(media.bytes(ref));
             if (uri.length() <= CACHED_URI_CHARS) {
