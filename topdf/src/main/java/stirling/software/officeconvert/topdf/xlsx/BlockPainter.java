@@ -131,6 +131,14 @@ final class BlockPainter {
         if (bar == null) {
             return;
         }
+        if (bar.iconSet() != null) {
+            double size = Math.min(10, rows.end(row) - rows.start(row) - 2);
+            if (size > 2) {
+                Icons.draw(canvas, bar.iconSet(), bar.icon(), cols.start(col) + 2,
+                        (rows.start(row) + rows.end(row) - size) / 2, size);
+            }
+            return;
+        }
         double x0 = cols.start(col) + 1.5;
         double w = Math.max(0, (cols.end(col) - cols.start(col) - 3) * bar.fraction());
         double y0 = rows.start(row) + 1.5;

@@ -50,7 +50,12 @@ final class Overlays {
         }
     }
 
-    record Bar(double fraction, Color color) {}
+    record Bar(double fraction, Color color, String iconSet, int icon) {
+
+        Bar(double fraction, Color color) {
+            this(fraction, color, null, 0);
+        }
+    }
 
     private static final int MAX_CELLS = 500_000;
 
@@ -349,6 +354,7 @@ final class Overlays {
         switch (type) {
             case "colorScale" -> colorScale(rule, values);
             case "dataBar" -> dataBar(rule, values);
+            case "iconSet" -> iconSet(rule, values);
             default -> {
                 Delta d = dxf(rule);
                 if (d == null) {
@@ -610,6 +616,36 @@ final class Overlays {
         return new Color((int) Math.round(a.getRed() + (b.getRed() - a.getRed()) * t),
                 (int) Math.round(a.getGreen() + (b.getGreen() - a.getGreen()) * t),
                 (int) Math.round(a.getBlue() + (b.getBlue() - a.getBlue()) * t));
+    }
+
+    private void iconSet(CTCfRule rule, List<Value> values) {
+        if (!rule.isSetIconSet()) {
+            return;
+        }
+        String set = rule.getIconSet().isSetIconSet() ? rule.getIconSet().getIconSet().toString() : "3TrafficLights1";
+        CTCfvo[] cfvo = rule.getIconSet().getCfvoArray();
+        int count = Character.isDigit(set.charAt(0)) ? set.charAt(0) - '0' : 3;
+        if (cfvo.length != count) {
+            return;
+        }
+        double[] at = scale(cfvo, values);
+        if (at == null) {
+            return;
+        }
+        boolean reverse = rule.getIconSet().isSetReverse() && rule.getIconSet().getReverse();
+        for (Value v : values) {
+            if (!v.numeric()) {
+                continue;
+            }
+            int icon = 0;
+            for (int i = 1; i < at.length; i++) {
+                boolean gte = !cfvo[i].isSetGte() || cfvo[i].getGte();
+                if (gte ? v.number() >= at[i] : v.number() > at[i]) {
+                    icon = i;
+                }
+            }
+            bars.put(key(v.row, v.col), new Bar(0, null, set, reverse ? count - 1 - icon : icon));
+        }
     }
 
     private void dataBar(CTCfRule rule, List<Value> values) {
