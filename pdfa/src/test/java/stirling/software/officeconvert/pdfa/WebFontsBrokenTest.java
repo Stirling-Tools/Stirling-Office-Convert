@@ -1,0 +1,140 @@
+package stirling.software.officeconvert.pdfa;
+
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
+
+import java.awt.geom.GeneralPath;
+import java.awt.geom.Rectangle2D;
+import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
+import java.util.function.Consumer;
+
+import org.junit.jupiter.api.Test;
+
+class WebFontsBrokenTest {
+
+    private static byte[] font() throws IOException {
+        TrueTypeWriter w = new TrueTypeWriter(1000);
+        for (int i = 0; i < 3; i++) {
+            GeneralPath p = new GeneralPath();
+            p.append(new Rectangle2D.Double(100, 0, 300 + 50 * i, 700), false);
+            w.addOutline(p, 600 + i);
+        }
+        TreeMap<Integer, Integer> cmap = new TreeMap<>(Map.of(0x41, 1, 0x42, 2, 0x43, 3));
+        return w.build("Broken", Cmaps.table(List.of(new Cmaps.Subtable(3, 1, cmap))));
+    }
+
+    private static int[] table(byte[] f, String tag) {
+        ByteBuffer b = ByteBuffer.wrap(f);
+        int n = b.getShort(4) & 0xFFFF;
+        for (int i = 0; i < n; i++) {
+            int at = 12 + 16 * i;
+            if (new String(f, at, 4, StandardCharsets.US_ASCII).equals(tag)) {
+                return new int[] {at, b.getInt(at + 8), b.getInt(at + 12)};
+            }
+        }
+        throw new IllegalArgumentException(tag);
+    }
+
+    private static byte[] broken(Consumer<byte[]> damage) throws IOException {
+        byte[] f = font();
+        damage.accept(f);
+        return f;
+    }
+
+    private static void assertTolerated(String label, byte[] program) {
+        for (WebFonts.FontKind kind : WebFonts.FontKind.values()) {
+            try {
+                byte[] out = WebFonts.toTrueType(program, kind, null);
+                assertTrue(TrueTypeSanity.sane(out), label + " " + kind + " gave an insane font");
+            } catch (IOException expected) {
+            } catch (RuntimeException | StackOverflowError e) {
+                fail(label + " " + kind + " threw " + e);
+            }
+        }
+    }
+
+    @Test
+    void damagedTablesConvertOrFailCleanly() throws Exception {
+        List<Object[]> cases = new ArrayList<>();
+        cases.add(new Object[] {"loca truncated", broken(f -> ByteBuffer.wrap(f).putInt(table(f, "loca")[0] + 12, 4))});
+        cases.add(new Object[] {"loca past glyf", broken(f -> ByteBuffer.wrap(f).putInt(table(f, "loca")[1] + 8,
+                0x7FFF0000))});
+        cases.add(new Object[] {"hmtx short", broken(f -> ByteBuffer.wrap(f).putShort(table(f, "hhea")[1] + 34,
+                (short) 1))});
+        cases.add(new Object[] {"hmtx count huge", broken(f -> ByteBuffer.wrap(f).putShort(table(f, "hhea")[1] + 34,
+                (short) -1))});
+        cases.add(new Object[] {"no hhea", broken(f -> f[table(f, "hhea")[0]] = 'x')});
+        cases.add(new Object[] {"no head", broken(f -> f[table(f, "head")[0]] = 'x')});
+        cases.add(new Object[] {"no maxp", broken(f -> f[table(f, "maxp")[0]] = 'x')});
+        cases.add(new Object[] {"no glyf", broken(f -> f[table(f, "glyf")[0]] = 'x')});
+        cases.add(new Object[] {"no cmap", broken(f -> f[table(f, "cmap")[0]] = 'x')});
+        cases.add(new Object[] {"cmap offset past end", broken(f -> ByteBuffer.wrap(f).putInt(table(f, "cmap")[1] + 8,
+                0x7FFFFFF0))});
+        cases.add(new Object[] {"zero glyphs", broken(f -> ByteBuffer.wrap(f).putShort(table(f, "maxp")[1] + 4,
+                (short) 0))});
+        cases.add(new Object[] {"glyph contour count huge", broken(f -> ByteBuffer.wrap(f).putShort(
+                table(f, "glyf")[1] + ByteBuffer.wrap(f).getInt(table(f, "loca")[1] + 4), (short) 0x7FFF))});
+        cases.add(new Object[] {"table length past end", broken(f -> ByteBuffer.wrap(f).putInt(table(f, "glyf")[0] + 12,
+                0x7FFFFFFF))});
+        cases.add(new Object[] {"truncated file", java.util.Arrays.copyOf(font(), 100)});
+        cases.add(new Object[] {"zero glyph CFF", FontPrograms.concat(new byte[] {1, 0, 4, 1}, FontPrograms.index(
+                new byte[][] {"Z".getBytes(StandardCharsets.US_ASCII)}), FontPrograms.index(new byte[][] {
+                        FontPrograms.concat(FontPrograms.int5(0), new byte[] {17})}), FontPrograms.index(new byte[0][]),
+                FontPrograms.index(new byte[0][]))});
+        cases.add(new Object[] {"empty Type 1", ("%!PS-AdobeFont-1.0: Z\n/FontName /Z def\n/CharStrings 0 dict "
+                + "currentfile eexec\n").getBytes(StandardCharsets.US_ASCII)});
+        java.util.Set<String> unrecoverable = java.util.Set.of("no glyf", "truncated file", "zero glyph CFF",
+                "empty Type 1");
+        for (Object[] c : cases) {
+            String label = (String) c[0];
+            assertTolerated(label, (byte[]) c[1]);
+            if (unrecoverable.contains(label) || label.startsWith("glyph contour") || label.equals("loca past glyf")) {
+                continue;
+            }
+            byte[] out = WebFonts.toTrueType((byte[]) c[1], WebFonts.FontKind.TRUETYPE, null);
+            try (org.apache.fontbox.ttf.TrueTypeFont t = new org.apache.fontbox.ttf.TTFParser()
+                    .parse(new org.apache.pdfbox.io.RandomAccessReadBuffer(out))) {
+                int gid = label.contains("cmap") ? 2 : t.getUnicodeCmapLookup().getGlyphId('B');
+                org.junit.jupiter.api.Assertions.assertEquals(2, gid, label);
+                org.junit.jupiter.api.Assertions.assertEquals(350, t.getGlyph().getGlyph(gid).getPath().getBounds2D()
+                        .getWidth(), 1, label);
+            }
+        }
+    }
+
+    @Test
+    void aDamagedProgramInASimpleFontStillMapsItsCodes() throws Exception {
+        byte[] program = broken(f -> f[table(f, "hhea")[0]] = 'x');
+        try (org.apache.pdfbox.pdmodel.PDDocument d = new org.apache.pdfbox.pdmodel.PDDocument()) {
+            org.apache.pdfbox.cos.COSStream file = d.getDocument().createCOSStream();
+            try (java.io.OutputStream o = file.createOutputStream()) {
+                o.write(program);
+            }
+            org.apache.pdfbox.cos.COSDictionary fd = new org.apache.pdfbox.cos.COSDictionary();
+            fd.setItem(org.apache.pdfbox.cos.COSName.TYPE, org.apache.pdfbox.cos.COSName.FONT_DESC);
+            fd.setName(org.apache.pdfbox.cos.COSName.FONT_NAME, "Broken");
+            fd.setInt(org.apache.pdfbox.cos.COSName.FLAGS, 32);
+            fd.setItem(org.apache.pdfbox.cos.COSName.FONT_FILE2, file);
+            org.apache.pdfbox.cos.COSDictionary f = new org.apache.pdfbox.cos.COSDictionary();
+            f.setItem(org.apache.pdfbox.cos.COSName.TYPE, org.apache.pdfbox.cos.COSName.FONT);
+            f.setItem(org.apache.pdfbox.cos.COSName.SUBTYPE, org.apache.pdfbox.cos.COSName.TRUE_TYPE);
+            f.setName(org.apache.pdfbox.cos.COSName.BASE_FONT, "Broken");
+            f.setItem(org.apache.pdfbox.cos.COSName.ENCODING, org.apache.pdfbox.cos.COSName.WIN_ANSI_ENCODING);
+            f.setItem(org.apache.pdfbox.cos.COSName.FONT_DESC, fd);
+            byte[] out = WebFonts.toTrueType(org.apache.pdfbox.pdmodel.font.PDFontFactory.createFont(f));
+            try (org.apache.fontbox.ttf.TrueTypeFont t = new org.apache.fontbox.ttf.TTFParser()
+                    .parse(new org.apache.pdfbox.io.RandomAccessReadBuffer(out))) {
+                for (char c : "ABC".toCharArray()) {
+                    org.junit.jupiter.api.Assertions.assertEquals(c - 'A' + 1, t.getUnicodeCmapLookup().getGlyphId(c));
+                    org.junit.jupiter.api.Assertions.assertEquals(600 + c - 'A', t.getAdvanceWidth(c - 'A' + 1));
+                }
+            }
+        }
+    }
+}

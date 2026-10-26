@@ -77,13 +77,9 @@ public final class WebFonts {
         if (data == null || data.length < 12) {
             throw new IOException("The font program is empty");
         }
-        TrueTypeFont ttf;
-        try {
-            boolean otto = data[0] == 'O' && data[1] == 'T' && data[2] == 'T' && data[3] == 'O';
-            ttf = (otto ? new OTFParser(true) : new TTFParser(true)).parse(new RandomAccessReadBuffer(data));
-        } catch (IOException | RuntimeException e) {
-            throw new IOException("The TrueType program cannot be read: " + e.getMessage(), e);
-        }
+        Parsed parsed = open(data);
+        TrueTypeFont ttf = parsed.font();
+        boolean repaired = parsed.repaired();
         try (ttf) {
             TTFTable cff = ttf.getTableMap().get("CFF ");
             if (ttf.getTableMap().get("glyf") == null && cff != null) {
@@ -93,18 +89,75 @@ public final class WebFonts {
                                 : program.gid(name(font, code))));
             }
             Map<Integer, Integer> mapping = unicodeByGlyph;
-            if (font instanceof PDTrueTypeFont && font.isDamaged()) {
+            boolean pdfBoxReads = font instanceof PDTrueTypeFont && !font.isDamaged() && !repaired;
+            if (font instanceof PDType0Font && repaired) {
                 throw new IOException("PDFBox could not read the embedded font program");
             }
             if (font != null) {
                 mapping = unicodeByGlyph(font, ttf.getNumberOfGlyphs(),
-                        code -> font instanceof PDTrueTypeFont tt ? tt.codeToGID(code) : nameToGid(ttf, name(font, code)));
+                        code -> pdfBoxReads ? ((PDTrueTypeFont) font).codeToGID(code) : simpleGid(ttf, font, code));
             }
             String name = ttf.getName() != null ? ttf.getName() : font != null ? font.getName() : null;
             return convertTrueType(ttf, name, mapping);
         } catch (RuntimeException e) {
             throw new IOException("The TrueType program cannot be converted: " + e.getMessage(), e);
         }
+    }
+
+    private record Parsed(TrueTypeFont font, boolean repaired) {}
+
+    private static Parsed open(byte[] data) throws IOException {
+        try {
+            TrueTypeFont font = parseSfnt(data);
+            if (font.getNumberOfGlyphs() > 0) {
+                return new Parsed(font, false);
+            }
+            font.close();
+            throw new IOException("The TrueType program has no glyphs");
+        } catch (IOException | RuntimeException e) {
+            byte[] fixed = SfntRepair.repair(data);
+            if (fixed != null) {
+                try {
+                    return new Parsed(parseSfnt(fixed), true);
+                } catch (IOException | RuntimeException ignored) {
+                    PdfFiles.stopIfInterrupted();
+                }
+            }
+            throw new IOException("The TrueType program cannot be read: " + e.getMessage(), e);
+        }
+    }
+
+    private static TrueTypeFont parseSfnt(byte[] data) throws IOException {
+        boolean otto = data[0] == 'O' && data[1] == 'T' && data[2] == 'T' && data[3] == 'O';
+        return (otto ? new OTFParser(true) : new TTFParser(true)).parse(new RandomAccessReadBuffer(data));
+    }
+
+    private static int simpleGid(TrueTypeFont ttf, PDFont font, int code) throws IOException {
+        CmapTable table = ttf.getCmap();
+        CmapSubtable symbol = table == null ? null : table.getSubtable(3, 0);
+        CmapSubtable unicode = table == null ? null : table.getSubtable(3, 1);
+        CmapSubtable mac = table == null ? null : table.getSubtable(1, 0);
+        String name = name(font, code);
+        if (unicode != null && name != null) {
+            String u = GlyphList.getAdobeGlyphList().toUnicode(name);
+            int gid = u == null || u.isEmpty() ? 0 : unicode.getGlyphId(u.codePointAt(0));
+            if (gid > 0) {
+                return gid;
+            }
+        }
+        if (symbol != null) {
+            int gid = symbol.getGlyphId(code);
+            if (gid == 0) {
+                gid = symbol.getGlyphId(0xF000 + code);
+            }
+            if (gid > 0) {
+                return gid;
+            }
+        }
+        if (mac != null && mac.getGlyphId(code) > 0) {
+            return mac.getGlyphId(code);
+        }
+        return nameToGid(ttf, name);
     }
 
     private static int nameToGid(TrueTypeFont ttf, String name) throws IOException {
