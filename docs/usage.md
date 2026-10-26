@@ -791,6 +791,70 @@ A program that cannot be read fails with an `IOException`, and so does one whose
 tokens for a glyph, 64 nested subroutine calls or 2^27 tokens for the font, or whose converted glyphs need more than
 eight times the program's size (at least 16 MB).
 
+## Scanned photos
+
+`PhotoSplitter` (in the core module, package `stirling.software.officeconvert.photosplit`) finds the photos laid on a
+flatbed scanner and cuts each one out as its own picture, without OpenCV or any other native library. It replaces
+Stirling-PDF's `split_photos.py` and takes the same five settings with the same defaults: `angleThreshold` 10,
+`tolerance` 30, `minArea` 10000, `minContourArea` 500 and `borderSize` 0.
+
+```java
+import stirling.software.officeconvert.photosplit.PhotoSplitter;
+import stirling.software.officeconvert.photosplit.PhotoSplitter.Options;
+
+List<PhotoSplitter.Photo> photos = PhotoSplitter.split(bufferedImage, Options.defaults());
+photos.get(0).image();     // the photo, upright, as a BufferedImage
+photos.get(0).corners();   // where it lay on the scan, in scan pixels, clockwise from its top left
+photos.get(0).angle();     // degrees it was turned to stand upright
+
+List<Path> written = PhotoSplitter.split(Path.of("album.pdf"), Path.of("photos"), Options.defaults()
+        .tolerance(30).minArea(10000).minContourArea(500).borderSize(1).dpi(300));
+```
+
+The file form reads a PNG, JPEG, BMP, GIF, TIFF (first frame) or PDF; each PDF page is drawn at `dpi` (default 300, the
+resolution Stirling-PDF uses) and searched. Photos are written as `name_1.png`, `name_2.png` and so on, numbered on
+across pages, and an existing file is never replaced unless `overwrite(true)`. Images over 100 million pixels are
+refused; a PDF page that would exceed that is drawn at a lower resolution.
+
+There are two methods:
+
+- `Method.STRAIGHTEN` (the default) models the scanner bed from the scan's border and a coarse grid, so a tinted lid,
+  uneven lighting, a lid shadow or photos over the corners and the centre do not upset it. A photo is the area that
+  differs from the bed, extended by a fainter pass so white print borders and pale photos are kept whole. Photos
+  that touch are told apart by narrowing necks and by straight gaps between them, even a gap filled by a shadow. Each
+  photo's edges are then fitted to sub-pixel accuracy, and the photo is cut out along them and turned level.
+  Photos come back in reading order. `borderSize` trims that many pixels from every side; `angleThreshold` is not
+  used, because the measured angle is exact rather than a vote of detected lines.
+- `Method.SCRIPT` reproduces `split_photos.py`: background from four corners and the centre, the 9 by 9 dilated
+  difference mask, the upright bounding box of every outer contour, and a turn by the median Hough line angle when it
+  is at least `angleThreshold`, with the photos in the script's order (bottom of the scan first). Unlike the script,
+  it honours `minArea` and `minContourArea` (the script always used 10000 and 500).
+
+`office-convert split-photos <scan.png|scan.pdf>... [-o dir]` runs it from the command line with `--angle-threshold`,
+`--tolerance`, `--min-area`, `--min-contour-area`, `--border-size`, `--dpi`, `--method straighten|script`,
+`--overwrite` and `-q`; the underscore spellings the script takes (`--min_area`) work too.
+
+Measured against `split_photos.py` running in the Stirling-PDF 3.2.0 image (OpenCV 5.0, arm64, two CPUs), with
+Stirling-PDF's own settings (10, 30, 10000, 500, border 1), on synthetic scans built in test code (57 scans, 201
+photos: straight, tilted to 22 degrees, tinted and shaded beds, a black lid, a lid shadow, noise and dust, photos over
+the corners, across the scan edge, a few pixels apart, overlapping, abutting, pale and white bordered) and 16 scans of
+real photographs laid on the same kinds of bed:
+
+| | `split_photos.py` | `SCRIPT` | `STRAIGHTEN` |
+|---|---|---|---|
+| Synthetic: photos found (crop IoU at least 0.5) | 156 of 201 | the same boxes | 198 of 201 |
+| Synthetic: crop IoU at least 0.95 | 30 of 201 | | 175 of 201 |
+| Synthetic: scans with exactly the right photos | 33 of 57 | | 54 of 57 |
+| Real photos: found, tight, exact scans | 76, 7 of 80; 10 of 16 | | 79, 78 of 80; 15 of 16 |
+| Mean angle left after straightening | 16 to 29 degrees | | 0.01 to 0.03 degrees |
+| A4 at 300 dpi, PNG in and out, warm; peak RSS | 0.29 s, 137 MB | 0.69 s | 0.95 s, 248 MB at `-Xmx192m` |
+| A4 at 200 dpi, PNG in and out, warm; peak RSS | 0.11 s, 88 MB | 0.31 s | 0.34 s, 183 MB at `-Xmx128m` |
+
+`SCRIPT` finds the same boxes and angles as the script on every scan tried; where it turns a photo, 92 to 96 percent
+of the pixels match exactly and the rest differ by one level, because OpenCV 5's fixed-point bicubic weights are
+not reproduced. `STRAIGHTEN` still merges photos that abut along a whole edge with nothing between them, and a photo
+whose own background matches the bed (a product shot on white) can come back without its pale margin.
+
 ## How it works
 
 Two passes over the pages:

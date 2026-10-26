@@ -10,6 +10,7 @@ The converter needs no native libraries or external processes. It also converts 
 | PDF to spreadsheets | XLSX, ODS |
 | Office to PDF | DOCX, PPTX, XLSX, legacy DOC/XLS/PPT, XLSB, RTF, OpenDocument, Office XML, Visio, text and table formats, HTML, EPUB, MOBI/AZW3, FB2, JSON |
 | PDF to PDF/A | 1a, 1b, 2a, 2b, 2u, 3a, 3b, 3u |
+| Scanned photos | a flatbed scan (image or PDF) split into one straightened PNG per photo |
 
 PDF-to-Office documents contain real paragraphs, headings, lists, tables, footnotes, headers and footers.
 Office-to-PDF reads saved content without running macros, scripts or formulas or fetching linked resources.
@@ -43,6 +44,7 @@ java -jar cli/build/libs/stirling-office-convert-cli.jar in.pdf -o out.docx
 java -jar cli/build/libs/stirling-office-convert-cli.jar report.docx slides.pptx book.xlsx -o outdir/
 java -jar cli/build/libs/stirling-office-convert-cli.jar folder/ -o outdir/ --format pdf
 java -jar cli/build/libs/stirling-office-convert-cli.jar in.pdf --pdfa 2b -o archive.pdf
+java -jar cli/build/libs/stirling-office-convert-cli.jar split-photos album-scan.pdf -o photos/
 ```
 
 The output extension picks the PDF-to-Office format. Office inputs produce PDFs. A folder can contain both
@@ -64,6 +66,7 @@ input names retain their extensions in the output name. A failure, skipped input
 | `-q` | Quiet |
 
 The [usage guide](docs/usage.md#build-and-run) documents the remaining options and exit statuses.
+`split-photos` cuts the photos out of a flatbed scan; see [scanned photos](docs/usage.md#scanned-photos).
 
 ## Library
 
