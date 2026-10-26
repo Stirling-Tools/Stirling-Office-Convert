@@ -128,6 +128,22 @@ class PdfOptimizerTest {
     }
 
     @Test
+    void treeKidsStayIndirect() throws Exception {
+        RawPdf r = RawPdf.page("", "0 0 1 rg 10 10 50 50 re f");
+        r.set(1, "<</Type/Catalog/Pages 2 0 R/Names<</Dests 5 0 R>>>>");
+        r.add("<</Kids[6 0 R]>>");
+        r.add("<</Names[(a)[3 0 R/Fit]]/Limits[(a)(a)]>>");
+        Path in = r.write(dir, "tree");
+        Path out = dir.resolve("out.pdf");
+        PdfOptimizer.optimize(in, out, REWRITE);
+        try (PDDocument d = Loader.loadPDF(out.toFile())) {
+            COSDictionary dests = d.getDocumentCatalog().getCOSObject().getCOSDictionary(COSName.NAMES)
+                    .getCOSDictionary(COSName.DESTS);
+            assertTrue(dests.getCOSArray(COSName.KIDS).get(0) instanceof org.apache.pdfbox.cos.COSObject);
+        }
+    }
+
+    @Test
     void unusedResourcesAreDroppedButDefaultColourSpacesStay() throws Exception {
         Path in = RawPdf.page("/Font<<" + RawPdf.helvetica("F1") + RawPdf.helvetica("F2")
                 + ">>/ColorSpace<</DefaultRGB/DeviceRGB/CS9/DeviceGray>>",
@@ -243,6 +259,21 @@ class PdfOptimizerTest {
     }
 
     @Test
+    void sharedReferencesAreWrittenOnceNotExpanded() throws Exception {
+        RawPdf r = RawPdf.page("", "0 0 1 rg 10 10 50 50 re f");
+        int below = r.add("[1 2 3]");
+        for (int i = 0; i < 60; i++) {
+            below = r.add("[" + below + " 0 R " + below + " 0 R]");
+        }
+        r.set(1, "<</Type/Catalog/Pages 2 0 R/Fan " + below + " 0 R>>");
+        Path in = r.write(dir, "fan");
+        Path out = dir.resolve("out.pdf");
+        PdfOptimizer.optimize(in, out, REWRITE.timeout(Duration.ofSeconds(30)));
+        assertTrue(Files.size(out) < 20_000, Long.toString(Files.size(out)));
+        Pages.assertSameRendering(in, out);
+    }
+
+    @Test
     void deepNestingEndsCleanly() throws Exception {
         int depth = 20_000;
         RawPdf r = RawPdf.page("", "0 0 1 rg 10 10 50 50 re f");
@@ -258,16 +289,45 @@ class PdfOptimizerTest {
     }
 
     @Test
-    void encryptedDocumentsAreRefused() throws Exception {
-        Path in = dir.resolve("locked.pdf");
-        try (PDDocument d = new PDDocument()) {
-            d.addPage(new PDPage());
-            d.protect(new StandardProtectionPolicy("owner", "", new AccessPermission()));
-            d.save(in.toFile());
+    void encryptedDocumentsStayEncryptedWithTheirPermissions() throws Exception {
+        Path plain = sample("clear", CompressParameters.DEFAULT_COMPRESSION);
+        for (int keyLength : new int[] {40, 128, 256}) {
+            for (boolean aes : new boolean[] {false, true}) {
+                if (keyLength == 40 && aes || keyLength == 256 && !aes) {
+                    continue;
+                }
+                Path in = dir.resolve("locked" + keyLength + aes + ".pdf");
+                AccessPermission permissions = new AccessPermission();
+                permissions.setCanPrint(false);
+                try (PDDocument d = Loader.loadPDF(plain.toFile())) {
+                    d.getDocumentInformation().setTitle("A (secret) title");
+                    StandardProtectionPolicy policy = new StandardProtectionPolicy("owner", "user", permissions);
+                    policy.setEncryptionKeyLength(keyLength);
+                    policy.setPreferAES(aes);
+                    d.protect(policy);
+                    d.save(in.toFile());
+                }
+                Path out = dir.resolve("out" + keyLength + aes + ".pdf");
+                PdfOptimizer.optimize(in, out, REWRITE.password("user"));
+                String text = new String(Files.readAllBytes(out), StandardCharsets.ISO_8859_1);
+                assertFalse(text.contains("secret"));
+                assertFalse(text.contains("Page 1"));
+                try (PDDocument d = Loader.loadPDF(out.toFile(), "user")) {
+                    assertTrue(d.isEncrypted());
+                    assertFalse(d.getCurrentAccessPermission().canPrint());
+                    assertEquals("A (secret) title", d.getDocumentInformation().getTitle());
+                }
+                try (PDDocument a = Loader.loadPDF(in.toFile(), "user");
+                        PDDocument b = Loader.loadPDF(out.toFile(), "user")) {
+                    for (int p = 0; p < a.getNumberOfPages(); p++) {
+                        BufferedImage x = new org.apache.pdfbox.rendering.PDFRenderer(a).renderImageWithDPI(p, 72);
+                        BufferedImage y = new org.apache.pdfbox.rendering.PDFRenderer(b).renderImageWithDPI(p, 72);
+                        assertArrayEquals(x.getRGB(0, 0, x.getWidth(), x.getHeight(), null, 0, x.getWidth()),
+                                y.getRGB(0, 0, y.getWidth(), y.getHeight(), null, 0, y.getWidth()));
+                    }
+                }
+            }
         }
-        IOException e = assertThrows(IOException.class, () -> PdfOptimizer.optimize(in, dir.resolve("out.pdf")));
-        assertTrue(e.getMessage().contains("encrypted"));
-        assertFalse(Files.exists(dir.resolve("out.pdf")));
     }
 
     @Test

@@ -40,6 +40,8 @@ final class Squeeze {
 
     private static final int[] DIST_SYMBOL_SMALL = new int[512];
 
+    private static final int[] DIST_SYMBOL_LARGE = new int[256];
+
     private static final int[] CL_ORDER = {16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15};
 
     static {
@@ -52,6 +54,9 @@ final class Squeeze {
         LENGTH_SYMBOL[258] = 28;
         for (int d = 1; d <= 512; d++) {
             DIST_SYMBOL_SMALL[d - 1] = distSymbolSlow(d);
+        }
+        for (int k = 4; k < 256; k++) {
+            DIST_SYMBOL_LARGE[k] = distSymbolSlow((k << 7) + 1);
         }
     }
 
@@ -66,6 +71,10 @@ final class Squeeze {
     private int inserted;
 
     private final BitWriter out;
+
+    private char[] same = new char[0];
+
+    private int sameBase;
 
     private Squeeze(byte[] data, Settings settings) {
         this.data = data;
@@ -156,6 +165,13 @@ final class Squeeze {
 
     private void master(int start, int end, boolean last) throws InterruptedIOException {
         Matches m = matches(start, end);
+        sameBase = Math.max(0, start - MAX_MATCH);
+        int sameEnd = Math.min(data.length, end + 2 * MAX_MATCH + 2);
+        same = new char[sameEnd - sameBase];
+        for (int i = sameEnd - 1; i >= sameBase; i--) {
+            int run = i + 1 < sameEnd && data[i] == data[i + 1] ? same[i + 1 - sameBase] + 1 : 1;
+            same[i - sameBase] = (char) Math.min(65535, run);
+        }
         Store greedy = greedy(m, start, end, start, end);
         int[] splits = split(greedy);
         int blocks = splits.length + 1;
@@ -222,12 +238,23 @@ final class Squeeze {
             int sym = LENGTH_SYMBOL[l];
             lengthCost[l] = costs.litlen[257 + sym] + LENGTH_EXTRA[sym];
         }
+        double runCost = lengthCost[MAX_MATCH] + costs.dist[0];
         for (int k = 0; k < n; k++) {
             double here = cost[k];
             if (here == Double.MAX_VALUE) {
                 continue;
             }
             int i = from + k;
+            if (k > MAX_MATCH && k + 2 * MAX_MATCH + 1 < n && same[i - sameBase] > 2 * MAX_MATCH
+                    && same[i - MAX_MATCH - sameBase] > MAX_MATCH) {
+                for (int t = 0; t < MAX_MATCH && cost[k] != Double.MAX_VALUE; t++, k++) {
+                    cost[k + MAX_MATCH] = cost[k] + runCost;
+                    length[k + MAX_MATCH] = MAX_MATCH;
+                    dist[k + MAX_MATCH] = 1;
+                }
+                k--;
+                continue;
+            }
             double lit = here + costs.litlen[data[i] & 0xFF];
             if (lit < cost[k + 1]) {
                 cost[k + 1] = lit;
@@ -628,7 +655,7 @@ final class Squeeze {
     }
 
     static int distSymbol(int d) {
-        return d <= 512 ? DIST_SYMBOL_SMALL[d - 1] : distSymbolSlow(d);
+        return d <= 512 ? DIST_SYMBOL_SMALL[d - 1] : DIST_SYMBOL_LARGE[(d - 1) >> 7];
     }
 
     private static int distSymbolSlow(int d) {

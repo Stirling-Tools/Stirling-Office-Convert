@@ -22,6 +22,8 @@ final class Recoder {
 
     private static final COSName DL = COSName.getPDFName("DL");
 
+    private static final COSName DCT_ABBREVIATION = COSName.getPDFName("DCT");
+
     enum Kind {
         CONTENT, IMAGE, KEEP, OTHER
     }
@@ -32,24 +34,50 @@ final class Recoder {
 
     private Recoder() {}
 
-    static Plan plan(COSStream s, Kind kind, Predictors.Layout image, PdfOptimizer.Effort effort) throws IOException {
+    record Job(byte[] raw, Kind kind, List<COSName> filters, List<COSBase> parms, boolean chained,
+            Predictors.Layout image, int rows) {}
+
+    static Job prepare(COSStream s, Kind kind, Predictors.Layout image) throws IOException {
         if (s.getLength() > MAX_RAW_BYTES) {
-            return new Plan(null, null, false);
+            return null;
         }
         byte[] raw;
         try (InputStream in = s.createRawInputStream()) {
             raw = in.readNBytes((int) MAX_RAW_BYTES + 1);
         }
         if (raw.length > MAX_RAW_BYTES) {
-            return new Plan(null, null, false);
-        }
-        if (kind == Kind.KEEP || s.containsKey(COSName.F)) {
-            return original(raw, s);
+            return null;
         }
         List<COSName> filters = new ArrayList<>();
         List<COSBase> parms = new ArrayList<>();
-        if (!chain(s, filters, parms)) {
-            return original(raw, s);
+        boolean chained = !s.containsKey(COSName.F) && chain(s, filters, parms);
+        for (COSBase p : parms) {
+            if (Graph.resolve(p) instanceof COSDictionary d) {
+                for (COSBase v : d.getValues()) {
+                    Graph.resolve(v);
+                }
+            }
+        }
+        return new Job(raw, kind, filters, parms, chained, image, imageRows(s));
+    }
+
+    static Plan plan(Job job, PdfOptimizer.Effort effort) throws IOException {
+        byte[] raw = job.raw;
+        Kind kind = job.kind;
+        Predictors.Layout image = job.image;
+        List<COSName> filters = job.filters;
+        List<COSBase> parms = job.parms;
+        if (kind == Kind.KEEP && job.filters.isEmpty() && job.chained) {
+            byte[] trimmed = Xmp.withoutPadding(raw);
+            if (trimmed != raw) {
+                Map<COSName, COSBase> replace = new LinkedHashMap<>();
+                replace.put(DL, null);
+                replace.put(COSName.LENGTH, COSInteger.get(trimmed.length));
+                return new Plan(trimmed, replace, true);
+            }
+        }
+        if (!job.chained || kind == Kind.KEEP) {
+            return original(raw);
         }
         byte[] data = raw;
         int peeled = 0;
@@ -61,7 +89,7 @@ final class Recoder {
                 peeled++;
             }
         } catch (Filters.Undecodable e) {
-            return original(raw, s);
+            return original(raw);
         }
         List<COSName> rest = filters.subList(peeled, filters.size());
         List<COSBase> restParms = parms.subList(peeled, parms.size());
@@ -73,12 +101,19 @@ final class Recoder {
         }
         Candidate best = new Candidate(raw, filters, parms, raw.length + overhead(filters, parms));
         best = better(best, candidate(data, rest, restParms));
+        if (effort != PdfOptimizer.Effort.FAST && rest.size() == 1 && (COSName.DCT_DECODE.equals(rest.get(0))
+                || DCT_ABBREVIATION.equals(rest.get(0)))) {
+            byte[] jpeg = Jpeg.optimize(data);
+            if (jpeg != null) {
+                best = better(best, candidate(jpeg, rest, restParms));
+            }
+        }
         byte[] flateInput = data;
         List<COSName> flateFilters = with(COSName.FLATE_DECODE, rest);
         List<COSBase> flateParms = with(null, restParms);
         byte[] quick = Deflate.quick(data);
         long quickCost = quick.length + overhead(flateFilters, flateParms);
-        if (rest.isEmpty() && image != null && (long) image.rowBytes() * imageRows(s) == data.length
+        if (rest.isEmpty() && image != null && (long) image.rowBytes() * job.rows == data.length
                 && data.length > 0 && image.rowBytes() > 0) {
             int[] trials = switch (effort) {
                 case FAST -> new int[] {Predictors.ADAPTIVE};
@@ -103,7 +138,7 @@ final class Recoder {
         }
         best = better(best, candidate(Deflate.best(flateInput, quick, effort), flateFilters, flateParms));
         if (best.data == raw) {
-            return original(raw, s);
+            return original(raw);
         }
         Map<COSName, COSBase> replace = new LinkedHashMap<>();
         replace.put(COSName.FILTER, filterValue(best.filters));
@@ -143,7 +178,7 @@ final class Recoder {
         return data;
     }
 
-    private static Plan original(byte[] raw, COSStream s) {
+    private static Plan original(byte[] raw) {
         Map<COSName, COSBase> replace = new LinkedHashMap<>();
         replace.put(COSName.LENGTH, COSInteger.get(raw.length));
         return new Plan(raw, replace, false);

@@ -30,6 +30,10 @@ final class Syntax {
 
     private Bytes out;
 
+    private java.util.function.UnaryOperator<byte[]> strings;
+
+    private boolean copyUnknown;
+
     private boolean regularEnd;
 
     Syntax(Graph graph, References references) {
@@ -47,6 +51,16 @@ final class Syntax {
         return out;
     }
 
+    Syntax strings(java.util.function.UnaryOperator<byte[]> encrypt) {
+        strings = encrypt;
+        return this;
+    }
+
+    Syntax copyUnknown() {
+        copyUnknown = true;
+        return this;
+    }
+
     void node(int id) throws IOException {
         COSBase b = graph.node(id);
         if (b instanceof COSArray a) {
@@ -62,6 +76,10 @@ final class Syntax {
             int id = graph.id(t);
             if (id >= 0) {
                 references.reference(id, this);
+            } else if (copyUnknown && t instanceof COSDictionary d && !(t instanceof COSStream)) {
+                dictionary(d, null);
+            } else if (copyUnknown && t instanceof COSArray a) {
+                array(a);
             } else if (t instanceof COSDictionary || t instanceof COSArray) {
                 word("null");
             } else {
@@ -83,7 +101,7 @@ final class Syntax {
         } else if (v instanceof COSFloat f) {
             word(number(f));
         } else if (v instanceof COSString s) {
-            Lexical.string(s.getBytes(), out);
+            Lexical.string(strings == null ? s.getBytes() : strings.apply(s.getBytes()), out);
             regularEnd = false;
         } else if (v instanceof COSBoolean b) {
             word(b.getValue() ? "true" : "false");

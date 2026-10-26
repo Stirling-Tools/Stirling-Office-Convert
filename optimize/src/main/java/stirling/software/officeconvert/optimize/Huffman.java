@@ -53,6 +53,10 @@ final class Huffman {
             lengths[(int) (order[0] & 0xFFFF)] = 1;
             return lengths;
         }
+        if (unlimited(order, m, lengths) <= maxBits) {
+            return lengths;
+        }
+        Arrays.fill(lengths, 0);
         int capacity = m * 2 * maxBits + m;
         Workspace w = WORKSPACE.get();
         w.fit(capacity);
@@ -112,6 +116,37 @@ final class Huffman {
             }
         }
         return lengths;
+    }
+
+    private static int unlimited(long[] order, int m, int[] lengths) {
+        long[] weight = new long[2 * m];
+        int[] parent = new int[2 * m];
+        for (int i = 0; i < m; i++) {
+            weight[i] = order[i] >>> 16;
+        }
+        int leaf = 0;
+        int inner = m;
+        int next = m;
+        for (int step = 0; step < m - 1; step++) {
+            int a = leaf < m && (inner >= next || weight[leaf] <= weight[inner]) ? leaf++ : inner++;
+            int b = leaf < m && (inner >= next || weight[leaf] <= weight[inner]) ? leaf++ : inner++;
+            weight[next] = weight[a] + weight[b];
+            parent[a] = next;
+            parent[b] = next;
+            next++;
+        }
+        int root = next - 1;
+        int[] depth = new int[2 * m];
+        depth[root] = 0;
+        int max = 0;
+        for (int node = root - 1; node >= 0; node--) {
+            depth[node] = depth[parent[node]] + 1;
+            if (node < m) {
+                lengths[(int) (order[node] & 0xFFFF)] = depth[node];
+                max = Math.max(max, depth[node]);
+            }
+        }
+        return max;
     }
 
     static int[] codes(int[] lengths) {

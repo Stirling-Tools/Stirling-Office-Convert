@@ -54,6 +54,8 @@ final class Roles {
 
     final Set<COSDictionary> pinned = Collections.newSetFromMap(new IdentityHashMap<>());
 
+    final Set<COSBase> indirect = Collections.newSetFromMap(new IdentityHashMap<>());
+
     boolean signed;
 
     private Roles() {}
@@ -135,6 +137,14 @@ final class Roles {
     }
 
     private void dictionary(COSDictionary d) {
+        if (d.getDictionaryObject(COSName.KIDS) instanceof COSArray kids) {
+            for (int i = 0; i < kids.size(); i++) {
+                COSBase kid = kids.getObject(i);
+                if (kid != null) {
+                    indirect.add(kid);
+                }
+            }
+        }
         if (d.getDictionaryObject(COSName.RESOURCES) instanceof COSDictionary res) {
             resources.add(res);
         }

@@ -62,6 +62,16 @@ class SyntaxTest {
     }
 
     @Test
+    void xmpPaddingIsDroppedButThePacketStaysWhole() {
+        String head = "<?xpacket begin=\"\" id=\"W5M0MpCehiHzreSzNTczkc9d\"?><x:xmpmeta xmlns:x=\"adobe:ns:meta/\"/>";
+        String padded = head + "\n" + " ".repeat(2000) + "\n<?xpacket end=\"w\"?>";
+        assertEquals(head + "\n<?xpacket end=\"w\"?>", new String(Xmp.withoutPadding(bytes(padded)),
+                StandardCharsets.ISO_8859_1));
+        byte[] tight = bytes(head + "\n<?xpacket end=\"w\"?>");
+        assertArrayEquals(tight, Xmp.withoutPadding(tight));
+    }
+
+    @Test
     void resourceNamesAreFoundInTheContent() {
         Content.Usage u = Content.scan(bytes("/GS1 gs /Cs1 cs /P1 scn /Span <</MCID 1>> BDC /OC /L1 BDC "
                 + "BT /F#31 9 Tf ET /Im0 Do /Sh1 sh"));
