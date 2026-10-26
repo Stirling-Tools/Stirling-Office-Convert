@@ -145,7 +145,7 @@ final class ChartXml {
             b.append("<c:xVal>").append(numbers(s.xs() == null ? sequence(s.values().length) : s.xs()))
                     .append("</c:xVal><c:yVal>").append(numbers(s.values())).append("</c:yVal>");
         } else {
-            b.append("<c:cat>").append(strings(s.categories())).append("</c:cat><c:val>").append(numbers(s.values()))
+            b.append("<c:cat>").append(categories(s)).append("</c:cat><c:val>").append(numbers(s.values()))
                     .append("</c:val>");
         }
         if (lines) {
@@ -206,6 +206,22 @@ final class ChartXml {
             v[i] = i + 1;
         }
         return v;
+    }
+
+    private static String categories(BiffChart.Series s) {
+        BiffChart.Numbers n = s.categoryNumbers();
+        if (n == null) {
+            return strings(s.categories());
+        }
+        StringBuilder b = new StringBuilder("<c:numRef><c:f></c:f><c:numCache><c:formatCode>")
+                .append(Xml.text(n.format())).append("</c:formatCode><c:ptCount val=\"").append(n.values().length)
+                .append("\"/>");
+        for (int i = 0; i < n.values().length; i++) {
+            if (Double.isFinite(n.values()[i])) {
+                b.append("<c:pt idx=\"").append(i).append("\"><c:v>").append(n.values()[i]).append("</c:v></c:pt>");
+            }
+        }
+        return b.append("</c:numCache></c:numRef>").toString();
     }
 
     private static String strings(List<String> values) {

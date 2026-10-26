@@ -221,7 +221,7 @@ class XlsChartTest {
         byte[] data = XlsTest.xls(wb -> {
             HSSFSheet sheet = wb.createSheet("Data");
             HSSFCellStyle date = wb.createCellStyle();
-            date.setDataFormat(wb.createDataFormat().getFormat("m/d/yyyy"));
+            date.setDataFormat(wb.createDataFormat().getFormat("m\"月\"d\"日\""));
             for (int i = 0; i < 3; i++) {
                 HSSFRow row = sheet.createRow(i);
                 row.createCell(0).setCellValue(36526 + i);
@@ -234,8 +234,12 @@ class XlsChartTest {
                     new Area3DPtg(new AreaReference("A1:A3", SpreadsheetVersion.EXCEL97), extern), null));
         });
         String chart = chartXml(data);
-        assertTrue(chart.contains("<c:v>1/1/2000</c:v>") && chart.contains("<c:v>1/3/2000</c:v>"), chart);
-        assertFalse(chart.contains("<c:v>36526"), chart);
+        assertTrue(chart.contains("<c:formatCode>m\"月\"d\"日\"</c:formatCode>"), chart);
+        Path in = Fixtures.write(dir, "dated.xls", data);
+        Path pdf = dir.resolve("dated.pdf");
+        XlsTest.Converted out = XlsTest.read(OfficeToPdf.convert(in, pdf, OfficeToPdf.Options.defaults()), pdf);
+        assertTrue(out.pages().get(1).contains("1月1日") && out.pages().get(1).contains("1月3日"), out.all());
+        assertFalse(out.pages().get(1).contains("36526"), out.all());
     }
 
     @Test

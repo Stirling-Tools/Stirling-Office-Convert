@@ -312,6 +312,7 @@ final class ChartRecords {
         }
         List<Object> cells = s.categoryRef == null ? List.of() : fonts.cells(s.categoryRef);
         if (!cells.isEmpty()) {
+            s.categoryFormatCode = s.categoryCustom ? fonts.format(s.categoryFormat) : fonts.sourceFormat(s.categoryRef);
             s.categories.clear();
             s.xs.clear();
             List<String> labels = s.categoryCustom ? List.of() : fonts.labels(s.categoryRef);
@@ -813,6 +814,8 @@ final class ChartRecords {
 
         String valueFormat;
 
+        String categoryFormatCode;
+
         SeriesBuilder(int categories, int values) {
             this.categoryCount = Math.max(0, Math.min(MAX_POINTS, categories));
             this.valueCount = Math.max(0, Math.min(MAX_POINTS, values));
@@ -830,8 +833,15 @@ final class ChartRecords {
             }
             int c = Math.max(categoryCount, categories.isEmpty() ? 0 : categories.lastKey() + 1);
             List<String> cats = new ArrayList<>(c);
+            double[] numbers = categoryFormatCode == null || c == 0 ? null : new double[c];
             for (int i = 0; i < c; i++) {
                 cats.add(categories.getOrDefault(i, ""));
+                if (numbers != null) {
+                    numbers[i] = xs.getOrDefault(i, Double.NaN);
+                    if (Double.isNaN(numbers[i]) && !cats.get(i).isEmpty()) {
+                        numbers = null;
+                    }
+                }
             }
             int auto = iss >= 0 ? iss : index;
             Integer f = !fillSet || fillAuto ? autoFills.get(auto % autoFills.size()) : fill;
@@ -845,7 +855,8 @@ final class ChartRecords {
                     : new BiffChart.Labels(labels, look.position(), look.size(), look.bold(), look.color(),
                             valueFormat, Map.copyOf(pointLabels));
             return new BiffChart.Series(name == null ? "Series" + (index + 1) : name, cats, v, x, f, l,
-                    lineWidth, symbol, mfill, Map.copyOf(points), smooth, shown);
+                    lineWidth, symbol, mfill, Map.copyOf(points), smooth, shown,
+                    numbers == null ? null : new BiffChart.Numbers(categoryFormatCode, numbers));
         }
     }
 

@@ -23,7 +23,9 @@ record BiffChart(Text title, List<Group> groups, Legend legend, Axis[] values, A
 
     record Series(String name, List<String> categories, double[] values, double[] xs, Integer fill, Integer line,
             float lineWidth, String marker, Integer markerFill, Map<Integer, Integer> points, boolean smooth,
-            Labels labels) {}
+            Labels labels, Numbers categoryNumbers) {}
+
+    record Numbers(String format, double[] values) {}
 
     record Labels(int flags, String position, float size, boolean bold, Integer color, String format,
             Map<Integer, Integer> points) {}
