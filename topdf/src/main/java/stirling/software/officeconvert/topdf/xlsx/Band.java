@@ -1,11 +1,8 @@
 package stirling.software.officeconvert.topdf.xlsx;
 
-import java.util.Arrays;
 import java.util.function.IntToDoubleFunction;
 
 final class Band {
-
-    private static final int REACH = 4095;
 
     final int first;
 
@@ -16,14 +13,6 @@ final class Band {
     private final double[] sizes;
 
     private final IntToDoubleFunction size;
-
-    private double[] after;
-
-    private int afterCount = 1;
-
-    private double[] before = new double[1];
-
-    private int beforeCount = 1;
 
     Band(int first, int last, IntToDoubleFunction size) {
         this.first = first;
@@ -38,7 +27,6 @@ final class Band {
             at += sizes[i - first];
         }
         starts[last - first + 1] = at;
-        after = new double[] {at};
     }
 
     double length() {
@@ -50,25 +38,17 @@ final class Band {
             return starts[index - first];
         }
         if (index < first) {
-            int terms = (int) Math.min((long) first - index, REACH);
-            while (beforeCount <= terms) {
-                if (beforeCount == before.length) {
-                    before = Arrays.copyOf(before, Math.min(REACH + 1, before.length * 2));
-                }
-                before[beforeCount] = before[beforeCount - 1] - size.applyAsDouble(first - beforeCount);
-                beforeCount++;
+            double at = 0;
+            for (int i = first - 1; i >= index && first - i < 4096; i--) {
+                at -= size.applyAsDouble(i);
             }
-            return before[terms];
+            return at;
         }
-        int terms = (int) Math.min((long) index - last - 1, REACH);
-        while (afterCount <= terms) {
-            if (afterCount == after.length) {
-                after = Arrays.copyOf(after, Math.min(REACH + 1, after.length * 2));
-            }
-            after[afterCount] = after[afterCount - 1] + size.applyAsDouble(last + afterCount);
-            afterCount++;
+        double at = length();
+        for (int i = last + 1; i < index && i - last < 4096; i++) {
+            at += size.applyAsDouble(i);
         }
-        return after[terms];
+        return at;
     }
 
     double end(int index) {

@@ -39,6 +39,10 @@ final class DrawingPainter {
 
     private final double mirror;
 
+    private final BandOffsets rowOffsets;
+
+    private final BandOffsets colOffsets;
+
     // A mirror width above zero places each drawing mirrored across it, as a right-to-left sheet shows it
     DrawingPainter(Grid grid, PdfCanvas canvas, Band rows, Band cols, double originX, double originY,
             double mirror) {
@@ -47,6 +51,8 @@ final class DrawingPainter {
         this.canvas = canvas;
         this.rows = rows;
         this.cols = cols;
+        this.rowOffsets = new BandOffsets(rows);
+        this.colOffsets = new BandOffsets(cols);
         this.originX = originX;
         this.originY = originY;
         PrintMetrics m = grid.book().metrics();
@@ -125,12 +131,12 @@ final class DrawingPainter {
 
     private double x(Drawings.Anchor a) {
         double w = grid.columnWidth(a.col());
-        return originX + cols.start(a.col()) + Math.min(a.colOff() * colScale, w);
+        return originX + colOffsets.start(a.col()) + Math.min(a.colOff() * colScale, w);
     }
 
     private double y(Drawings.Anchor a) {
         double h = grid.rowHeight(a.row());
-        return originY + rows.start(a.row()) + Math.min(a.rowOff() * grid.rowFactor(), h);
+        return originY + rowOffsets.start(a.row()) + Math.min(a.rowOff() * grid.rowFactor(), h);
     }
 
     private void picture(Drawings.Item item, double[] r) throws IOException {
