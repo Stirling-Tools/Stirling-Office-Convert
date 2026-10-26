@@ -794,16 +794,25 @@ as FontFile or a Type 1 program filed as FontFile3 still converts.
 
 A Type 3 font (`PDType3Font`) is converted by running each glyph procedure: fills (nonzero and even-odd), strokes,
 image masks and pictures (ink pixels) become outlines at 1000 units per em through the FontMatrix, with the advance
-from `Widths`. Clipping, shading and colour are ignored. The cmap maps Unicode from ToUnicode or glyph names, and
+from `Widths`. Clipping paths, shadings inside a clip and luminosity or alpha soft masks cut the shape; colour is
+ignored. The cmap maps Unicode from ToUnicode or glyph names, and
 `0xF000` plus the character code in a (3,0) subtable, so the same font serves a browser and a PDF that shows the
 original codes.
+
+OpenType fonts with CFF2 outlines convert at their default instance (variations are not applied). Programs that
+fontbox rejects are repaired where fontforge would read them: TrueType tables with offsets past the end, a missing
+`head`, `hhea` or `maxp`, an unreadable `cmap` or an unknown `loca` format; CFF with a padded header or a malformed real
+number; Type 1 with broken PFB segments, an empty glyph name in its encoding or a private dictionary fontbox cannot
+tokenise. Composite glyphs that refer to themselves are emptied.
 
 ### Embedding missing fonts
 
 `FontEmbedder.embedMissing(PDDocument)` (or with a `FontSet`) embeds every font a page shows, or its resources list,
 that has no font program. Each one becomes a TrueType subset drawn from the closest installed font, with every
 glyph's advance set to the PDF's own width, so no text moves. Embedded fonts, Type 3 fonts, the content and the
-structure tree are left as they are. The result lists each substitution and each font that could not be embedded.
+structure tree are left as they are. Font dictionaries that are equal (one per page, say) share one subset, the
+subsets carry no TrueType hinting, and a font the resources list but no content shows gets an empty one. The result
+lists each substitution and each font that could not be embedded.
 
 ## How it works
 
