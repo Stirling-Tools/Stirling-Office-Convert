@@ -21,6 +21,7 @@ import java.util.regex.Pattern;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
+import javax.imageio.ImageIO;
 import javax.xml.parsers.DocumentBuilderFactory;
 
 import org.apache.pdfbox.pdmodel.PDDocument;
@@ -185,7 +186,7 @@ class PdfToEpubTest {
 
     @Test
     void picturesAreFilesInTheManifest() {
-        List<String> images = parts.keySet().stream().filter(n -> n.startsWith("OEBPS/images/")).toList();
+        List<String> images = parts.keySet().stream().filter(n -> n.startsWith("OEBPS/images/p")).toList();
         assertEquals(1, images.size(), parts.keySet().toString());
         String file = images.get(0).substring("OEBPS/".length());
         assertTrue(part("OEBPS/content.opf").contains("href=\"" + file + "\""));
@@ -195,5 +196,22 @@ class PdfToEpubTest {
                 assertFalse(part(name).contains("data:image"), name);
             }
         }
+    }
+
+    @Test
+    void firstPageIsTheCoverPicture() throws IOException {
+        byte[] cover = parts.get("OEBPS/images/cover.jpg");
+        BufferedImage image = ImageIO.read(new ByteArrayInputStream(cover));
+        assertEquals(BookCover.LONG_SIDE, image.getHeight(), 1);
+        assertEquals(Math.round(BookCover.LONG_SIDE * 612f / 792f), image.getWidth(), 1);
+        String opf = part("OEBPS/content.opf");
+        assertTrue(opf.contains("href=\"images/cover.jpg\" media-type=\"image/jpeg\" properties=\"cover-image\""), opf);
+        assertTrue(opf.contains("<meta name=\"cover\" content=\"cover\"/>"), opf);
+        assertFalse(opf.contains("<itemref idref=\"cover\""), opf);
+    }
+
+    @Test
+    void landmarksStartAtTheFirstChapter() {
+        assertTrue(part("OEBPS/nav.xhtml").contains("<a epub:type=\"bodymatter\" href=\"text/ch1.xhtml\">"));
     }
 }

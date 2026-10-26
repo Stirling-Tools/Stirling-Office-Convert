@@ -38,6 +38,9 @@ final class Kf8Writer {
     private static final Pattern NAV_POINT = Pattern.compile(
             "<navPoint\\b|</navPoint>|<navLabel><text>(.*?)</text></navLabel><content src=\"([^\"]*)\"", Pattern.DOTALL);
 
+    private static final Pattern COVER = Pattern.compile(
+            "<item id=\"[^\"]+\" href=\"([^\"]+)\" media-type=\"image/jpeg\" properties=\"cover-image\"");
+
     private static final Pattern BODY_MATTER = Pattern.compile("epub:type=\"bodymatter\" href=\"([^\"]*)\"");
 
     private static final Pattern TITLE = Pattern.compile("<dc:title>(.*?)</dc:title>", Pattern.DOTALL);
@@ -72,6 +75,7 @@ final class Kf8Writer {
     private String title = "Document";
     private Target start;
     private long startOffset = -1;
+    private int cover = -1;
     private String author;
     private int aid;
 
@@ -141,6 +145,18 @@ final class Kf8Writer {
         for (int i = 0; i < chapters.size(); i++) {
             Chapter ch = chapters.get(i);
             chapters.set(i, new Chapter(ch.path(), rewrite(zip, ch)));
+        }
+        Matcher coverItem = COVER.matcher(opf);
+        if (coverItem.find()) {
+            String path = resolve("", unescape(coverItem.group(1)));
+            Integer known = resources.get(path);
+            byte[] bytes = known == null ? read(zip, "OEBPS/" + path) : null;
+            if (bytes != null) {
+                resourceBytes.add(bytes);
+                resources.put(path, resourceBytes.size());
+                known = resourceBytes.size();
+            }
+            cover = known == null ? -1 : known - 1;
         }
     }
 
@@ -626,6 +642,10 @@ final class Kf8Writer {
         count += exth(body, 503, title.getBytes(StandardCharsets.UTF_8));
         if (startOffset >= 0) {
             count += exth(body, 116, u32(startOffset));
+        }
+        if (cover >= 0) {
+            count += exth(body, 201, u32(cover));
+            count += exth(body, 203, u32(0));
         }
         count += exth(body, 524, "und".getBytes(StandardCharsets.US_ASCII));
         count += exth(body, 501, "EBOK".getBytes(StandardCharsets.US_ASCII));

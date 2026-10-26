@@ -297,6 +297,18 @@ class PdfToAzw3Test {
     }
 
     @Test
+    void coverIsAJpegResourceNamedInTheHeader() {
+        Map<Integer, byte[]> exth = exthBytes();
+        long cover = u32(exth.get(201), 0);
+        assertEquals(0, u32(exth.get(203), 0));
+        byte[] r0 = records.get(0);
+        byte[] picture = records.get((int) (u32(r0, 108) + cover));
+        assertEquals(0xFF, picture[0] & 0xFF);
+        assertEquals(0xD8, picture[1] & 0xFF);
+        assertEquals(2, u32(exth.get(125), 0));
+    }
+
+    @Test
     void pictureIsAResourceRecord() {
         byte[] r0 = records.get(0);
         byte[] first = records.get((int) u32(r0, 108));

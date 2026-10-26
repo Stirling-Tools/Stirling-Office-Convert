@@ -13,10 +13,11 @@ public final class PdfToEpub {
     private PdfToEpub() {}
 
     public static void convert(Path pdf, Path epub, PdfToDocx.Options options) throws IOException {
-        PdfToDocx.convert(pdf, epub, options, out -> new EpubWriter(out, options.pictures()));
+        PdfToDocx.convertWithDocument(pdf, epub, options,
+                doc -> out -> new EpubWriter(out, options.pictures(), BookCover.of(doc, options)));
     }
 
     public static void convert(PDDocument doc, OutputStream out, PdfToDocx.Options options) throws IOException {
-        PdfToDocx.convert(doc, out, options, o -> new EpubWriter(o, options.pictures()));
+        PdfToDocx.convert(doc, out, options, o -> new EpubWriter(o, options.pictures(), BookCover.of(doc, options)));
     }
 }

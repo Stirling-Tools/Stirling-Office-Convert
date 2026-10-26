@@ -47,6 +47,8 @@ public final class EpubWriter implements DocSink, Closeable {
 
     private static final String BULLET = "\u2022";
 
+    private static final String COVER = "images/cover.jpg";
+
     private static final Pattern DATA_PICTURE = Pattern.compile(
             "src=\"data:(image/[a-z0-9.+-]+);base64,([A-Za-z0-9+/=]+)\"");
 
@@ -80,13 +82,19 @@ public final class EpubWriter implements DocSink, Closeable {
     private final Map<String, String> idFile = new HashMap<>();
     private int chapterChars;
     private int headings;
+    private final byte[] cover;
     private StyleSheet styles;
     private boolean started;
 
     public EpubWriter(OutputStream target, Pictures pictures) {
+        this(target, pictures, null);
+    }
+
+    public EpubWriter(OutputStream target, Pictures pictures, byte[] cover) {
         this.zip = new ZipOutputStream(new KeepOpen(target), StandardCharsets.UTF_8);
         this.media = new MediaStore(pictures);
         this.blocks = new HtmlBlocks(media);
+        this.cover = cover;
     }
 
     @Override
@@ -202,6 +210,9 @@ public final class EpubWriter implements DocSink, Closeable {
         close(w);
         if (notesFile != null) {
             writeNotes(w, notesFile, labels);
+        }
+        if (cover != null) {
+            ZipParts.picture(zip, "OEBPS/" + COVER, cover);
         }
         String css = css();
         entry("OEBPS/styles/book.css", css.getBytes(StandardCharsets.UTF_8));
@@ -494,7 +505,11 @@ public final class EpubWriter implements DocSink, Closeable {
         }
         sb.append("<meta property=\"dcterms:modified\">")
                 .append(Instant.now().truncatedTo(ChronoUnit.SECONDS).toString()).append("</meta>\n")
-                .append("<meta name=\"generator\" content=\"Stirling Office Convert\"/>\n</metadata>\n<manifest>\n")
+                .append("<meta name=\"generator\" content=\"Stirling Office Convert\"/>\n");
+        if (cover != null) {
+            sb.append("<meta name=\"cover\" content=\"cover\"/>\n");
+        }
+        sb.append("</metadata>\n<manifest>\n")
                 .append("<item id=\"nav\" href=\"nav.xhtml\" media-type=\"application/xhtml+xml\" properties=\"nav\"/>\n")
                 .append("<item id=\"ncx\" href=\"toc.ncx\" media-type=\"application/x-dtbncx+xml\"/>\n")
                 .append("<item id=\"css\" href=\"styles/book.css\" media-type=\"text/css\"/>\n");
@@ -504,6 +519,10 @@ public final class EpubWriter implements DocSink, Closeable {
         }
         if (notesFile != null) {
             sb.append("<item id=\"notes\" href=\"").append(notesFile).append("\" media-type=\"application/xhtml+xml\"/>\n");
+        }
+        if (cover != null) {
+            sb.append("<item id=\"cover\" href=\"").append(COVER)
+                    .append("\" media-type=\"image/jpeg\" properties=\"cover-image\"/>\n");
         }
         for (int i = 0; i < pictureFiles.size(); i++) {
             Media m = pictureFiles.get(i);
