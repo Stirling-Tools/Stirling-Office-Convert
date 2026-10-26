@@ -159,6 +159,15 @@ class XlsChartTest {
     }
 
     @Test
+    void aSeriesNamingItselfAsParentIsStillDrawn() throws Exception {
+        List<RecordBase> records = ChartFixtures.chart(null, LINE, new byte[2], new String[] {"Only"},
+                new String[] {"x", "y"}, new double[][] {{5, 6}});
+        records.add(4, new UnknownRecord(0x104A, new byte[] {1, 0}));
+        String chart = chartXml(XlsTest.xls(wb -> ChartFixtures.chartSheet(wb, "Chart1", records)));
+        assertTrue(chart.contains("<c:v>Only</c:v>") && chart.contains("<c:v>6.0</c:v>"), chart);
+    }
+
+    @Test
     void aSeriesNamedByACellTakesTheCellText() throws Exception {
         byte[] data = XlsTest.xls(wb -> {
             HSSFSheet sheet = wb.createSheet("Data");

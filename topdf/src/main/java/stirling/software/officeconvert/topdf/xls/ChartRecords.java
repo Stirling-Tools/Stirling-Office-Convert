@@ -153,7 +153,8 @@ final class ChartRecords {
                 }
             }
             case SERIES_PARENT -> {
-                if (top == SERIES && !series.isEmpty()) {
+                int parent = u16(d, 0) - 1;
+                if (top == SERIES && parent >= 0 && parent < series.size() - 1) {
                     current().auxiliary = true;
                 }
             }
