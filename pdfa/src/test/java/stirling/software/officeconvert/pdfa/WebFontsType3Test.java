@@ -141,6 +141,30 @@ class WebFontsType3Test {
     }
 
     @Test
+    void softMasksCutTheShapeTheyLetThrough() throws Exception {
+        RawPdf pdf = RawPdf.page("/Font<</T3 8 0 R>>", "BT /T3 50 Tf 20 100 Td (ab) Tj ET");
+        pdf.add(RawPdf.stream("", "500 0 d0 /L gs 0 0 500 500 re f"));
+        pdf.add(RawPdf.stream("", "500 0 d0 /A gs 0 0 500 500 re f"));
+        pdf.add(RawPdf.stream("/Type/XObject/Subtype/Form/BBox[0 0 1000 1000]/Group<</S/Transparency/CS/DeviceGray>>",
+                "0 g 0 0 1000 1000 re f 1 g 0 0 200 300 re f"));
+        pdf.add("<</Type/Font/Subtype/Type3/FontBBox[0 0 0 0]/FontMatrix[0.001 0 0 0.001 0 0]"
+                + "/CharProcs<</a 5 0 R/b 6 0 R>>/Resources<</ExtGState<</L<</SMask<</S/Luminosity/G 7 0 R>>>>"
+                + "/A<</SMask<</S/Alpha/G 9 0 R>>>>>>>>/Encoding<</Type/Encoding/Differences[97/a/b]>>"
+                + "/FirstChar 97/LastChar 98/Widths[500 500]>>");
+        pdf.add(RawPdf.stream("/Type/XObject/Subtype/Form/BBox[0 0 1000 1000]/Group<</S/Transparency>>",
+                "0 g 100 100 50 50 re f"));
+        try (TrueTypeFont ttf = convert(pdf)) {
+            Rectangle2D luminosity = path(ttf, 'a').getBounds2D();
+            assertEquals(0, luminosity.getMinX(), 1);
+            assertEquals(200, luminosity.getMaxX(), 1);
+            assertEquals(300, luminosity.getMaxY(), 1);
+            Rectangle2D alpha = path(ttf, 'b').getBounds2D();
+            assertEquals(100, alpha.getMinX(), 1);
+            assertEquals(150, alpha.getMaxX(), 1);
+        }
+    }
+
+    @Test
     void sharedProceduresWithOneAdvanceShareAGlyph() throws Exception {
         RawPdf pdf = RawPdf.page("/Font<</T3<</Type/Font/Subtype/Type3/FontBBox[0 0 0 0]"
                 + "/FontMatrix[0.001 0 0 0.001 0 0]/CharProcs<</a 5 0 R>>"

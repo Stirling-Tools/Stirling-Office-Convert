@@ -26,7 +26,9 @@ import org.apache.pdfbox.pdmodel.font.PDFont;
 import org.apache.pdfbox.pdmodel.font.PDType3CharProc;
 import org.apache.pdfbox.pdmodel.font.PDType3Font;
 import org.apache.pdfbox.pdmodel.font.PDVectorFont;
+import org.apache.pdfbox.pdmodel.graphics.form.PDTransparencyGroup;
 import org.apache.pdfbox.pdmodel.graphics.image.PDImage;
+import org.apache.pdfbox.pdmodel.graphics.state.PDSoftMask;
 import org.apache.pdfbox.util.Matrix;
 import org.apache.pdfbox.util.Vector;
 
@@ -54,40 +56,111 @@ final class Type3Outlines extends PDFGraphicsStreamEngine {
 
     private final java.util.ArrayDeque<java.util.Optional<Area>> clips = new java.util.ArrayDeque<>();
 
-    private Type3Outlines() {
+    private enum Mode {
+        GLYPH,
+        LUMINOSITY,
+        ALPHA
+    }
+
+    private final Mode mode;
+
+    private final Map<List<Object>, Area> masks;
+
+    private Type3Outlines(Mode mode, Map<List<Object>, Area> masks) {
         super(new PDPage());
+        this.mode = mode;
+        this.masks = masks;
     }
 
     static GeneralPath glyph(PDType3CharProc proc) throws IOException {
-        Type3Outlines engine = new Type3Outlines();
+        Type3Outlines engine = new Type3Outlines(Mode.GLYPH, new HashMap<>());
         engine.processChildStream(proc, engine.getPage());
         return engine.outline();
     }
 
-    private GeneralPath outline() {
+    private Area area() {
         Area area = new Area();
         for (Shape s : shapes) {
             area.add(s instanceof Area a ? a : new Area(s));
         }
-        GeneralPath out = new GeneralPath(area);
+        return area;
+    }
+
+    private GeneralPath outline() {
+        GeneralPath out = new GeneralPath(area());
         out.transform(AffineTransform.getScaleInstance(1000, 1000));
         return out;
     }
 
     private void paint(Shape s) {
+        paint(s, true);
+    }
+
+    private void paint(Shape s, boolean coloured) {
         if (shapes.size() >= MAX_SHAPES || s.getBounds2D().isEmpty()) {
             return;
         }
+        if (coloured && mode == Mode.LUMINOSITY && !light(getGraphicsState().getNonStrokingColor())) {
+            return;
+        }
         Area clip = clip();
-        if (clip == null) {
+        Area mask = softMask();
+        if (clip == null && mask == null) {
             shapes.add(s);
             return;
         }
         Area a = new Area(s);
-        a.intersect(clip);
+        if (clip != null) {
+            a.intersect(clip);
+        }
+        if (mask != null) {
+            a.intersect(mask);
+        }
         if (!a.isEmpty()) {
             shapes.add(a);
         }
+    }
+
+    private static boolean light(org.apache.pdfbox.pdmodel.graphics.color.PDColor colour) {
+        try {
+            int rgb = colour.toRGB();
+            return ((rgb >> 16 & 0xFF) * 299 + (rgb >> 8 & 0xFF) * 587 + (rgb & 0xFF) * 114) >= 128_000;
+        } catch (IOException | RuntimeException e) {
+            return true;
+        }
+    }
+
+    private Area softMask() {
+        PDSoftMask mask = getGraphicsState().getSoftMask();
+        if (mask == null || nesting >= MAX_NESTING) {
+            return null;
+        }
+        Matrix m = mask.getInitialTransformationMatrix();
+        List<Object> key = List.of(mask.getCOSObject(), m == null ? "" : java.util.Arrays.toString(m.getValues()[0])
+                + java.util.Arrays.toString(m.getValues()[1]) + java.util.Arrays.toString(m.getValues()[2]));
+        Area known = masks.get(key);
+        if (known != null) {
+            return known;
+        }
+        Area area = new Area();
+        masks.put(key, area);
+        try {
+            PDTransparencyGroup group = mask.getGroup();
+            if (group != null) {
+                Type3Outlines engine = new Type3Outlines(COSName.ALPHA.equals(mask.getSubType()) ? Mode.ALPHA
+                        : Mode.LUMINOSITY, masks);
+                engine.nesting = nesting + 1;
+                engine.processChildStream(group, engine.getPage());
+                area = engine.area();
+                if (m != null) {
+                    area.transform(m.createAffineTransform());
+                }
+                masks.put(key, area);
+            }
+        } catch (IOException | RuntimeException e) {
+            masks.put(key, area);
+        }
+        return area;
     }
 
     private Area clip() {
@@ -137,7 +210,10 @@ final class Type3Outlines extends PDFGraphicsStreamEngine {
         float miter = Math.max(1, getGraphicsState().getMiterLimit());
         int[] caps = {BasicStroke.CAP_BUTT, BasicStroke.CAP_ROUND, BasicStroke.CAP_SQUARE};
         int[] joins = {BasicStroke.JOIN_MITER, BasicStroke.JOIN_ROUND, BasicStroke.JOIN_BEVEL};
-        paint(new BasicStroke(width, caps[cap], joins[join], miter).createStrokedShape(current));
+        if (mode == Mode.LUMINOSITY && !light(getGraphicsState().getStrokingColor())) {
+            return;
+        }
+        paint(new BasicStroke(width, caps[cap], joins[join], miter).createStrokedShape(current), false);
     }
 
     @Override
@@ -155,7 +231,11 @@ final class Type3Outlines extends PDFGraphicsStreamEngine {
         if (pixels <= 0 || pixels > MAX_IMAGE_PIXELS) {
             return;
         }
-        BufferedImage img = image.isStencil() ? image.getStencilImage(Color.BLACK) : image.getImage();
+        boolean stencil = image.isStencil();
+        if (stencil && mode == Mode.LUMINOSITY && !light(getGraphicsState().getNonStrokingColor())) {
+            return;
+        }
+        BufferedImage img = stencil ? image.getStencilImage(Color.BLACK) : image.getImage();
         if (img == null) {
             return;
         }
@@ -167,9 +247,9 @@ final class Type3Outlines extends PDFGraphicsStreamEngine {
         for (int y = 0; y <= h && rectangles < MAX_RECTANGLES; y++) {
             Set<Long> runs = new HashSet<>();
             for (int x = 0; y < h && x < w; x++) {
-                if (inked(img.getRGB(x, y), image.isStencil())) {
+                if (inked(img.getRGB(x, y), stencil)) {
                     int end = x;
-                    while (end < w && inked(img.getRGB(end, y), image.isStencil())) {
+                    while (end < w && inked(img.getRGB(end, y), stencil)) {
                         end++;
                     }
                     runs.add((long) x << 32 | end);
@@ -193,7 +273,7 @@ final class Type3Outlines extends PDFGraphicsStreamEngine {
         }
         Shape glyph = getGraphicsState().getCurrentTransformationMatrix().createAffineTransform()
                 .createTransformedShape(ink);
-        paint(glyph);
+        paint(glyph, false);
     }
 
     private static void rectangle(Path2D.Double out, int x0, int x1, int y0, int y1, int w, int h) {
@@ -201,15 +281,16 @@ final class Type3Outlines extends PDFGraphicsStreamEngine {
                 (double) (y1 - y0) / h), false);
     }
 
-    private static boolean inked(int argb, boolean stencil) {
+    private boolean inked(int argb, boolean stencil) {
         int alpha = argb >>> 24;
-        if (stencil) {
+        if (stencil || mode == Mode.ALPHA) {
             return alpha >= 128;
         }
         int r = argb >> 16 & 0xFF;
         int g = argb >> 8 & 0xFF;
         int b = argb & 0xFF;
-        return alpha >= 128 && r * 299 + g * 587 + b * 114 < 128_000;
+        boolean dark = r * 299 + g * 587 + b * 114 < 128_000;
+        return alpha >= 128 && (mode == Mode.LUMINOSITY) != dark;
     }
 
     @Override
