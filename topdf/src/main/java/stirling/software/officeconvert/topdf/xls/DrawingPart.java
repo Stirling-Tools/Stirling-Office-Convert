@@ -643,8 +643,6 @@ final class DrawingPart {
             row--;
             rowOff += Math.round(geometry.rowPt(row) * 12700);
         }
-        colOff = Math.max(0, colOff);
-        rowOff = Math.max(0, rowOff);
         return "<xdr:oneCellAnchor><xdr:from><xdr:col>" + col + "</xdr:col><xdr:colOff>" + colOff
                 + "</xdr:colOff><xdr:row>" + row + "</xdr:row><xdr:rowOff>" + rowOff + "</xdr:rowOff></xdr:from>"
                 + "<xdr:ext cx=\"" + cx + "\" cy=\"" + cy + "\"/>" + body + "<xdr:clientData/></xdr:oneCellAnchor>";

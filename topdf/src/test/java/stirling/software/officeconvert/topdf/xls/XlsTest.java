@@ -771,6 +771,30 @@ class XlsTest {
     }
 
     @Test
+    void aSidewaysShapeCentredOnTheNextPageStillPrintsItsPartOnThisOne() throws Exception {
+        byte[] data = xls(wb -> {
+            HSSFSheet s = wb.createSheet("Wide");
+            HSSFRow r = s.createRow(0);
+            r.createCell(0).setCellValue("Start");
+            r.createCell(39).setCellValue("End");
+            HSSFSimpleShape line = s.createDrawingPatriarch()
+                    .createSimpleShape(new HSSFClientAnchor(0, 0, 0, 0, (short) 1, 6, (short) 39, 7));
+            line.setShapeType(HSSFSimpleShape.OBJECT_TYPE_LINE);
+            line.setLineStyleColor(255, 0, 0);
+            line.setLineWidth(HSSFShape.LINEWIDTH_ONE_PT * 4);
+            line.setRotationDegree((short) 90);
+        });
+        Path in = Fixtures.write(dir, "wide.xls", data);
+        Path out = dir.resolve("wide.pdf");
+        OfficeToPdf.convert(in, out, OfficeToPdf.Options.defaults());
+        try (PDDocument doc = Loader.loadPDF(out.toFile())) {
+            assertTrue(doc.getNumberOfPages() > 2, "pages " + doc.getNumberOfPages());
+            int[] b = bounds(new PDFRenderer(doc).renderImage(0, 1f), rgb -> rgb == 0xFF0000);
+            assertTrue(b[2] > b[0], "the first page shows the start of the line");
+        }
+    }
+
+    @Test
     void theStandardWidthRecordSetsTheDefaultColumnWidth() throws Exception {
         Consumer<HSSFWorkbook> sheet = wb -> {
             HSSFRow r = wb.createSheet("Wide").createRow(0);
