@@ -1,5 +1,6 @@
 package stirling.software.officeconvert.topdf.xls;
 
+import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
@@ -27,6 +28,7 @@ import org.apache.poi.hssf.usermodel.HSSFWorkbook;
 import org.apache.poi.poifs.filesystem.DirectoryEntry;
 import org.apache.poi.poifs.filesystem.DirectoryNode;
 import org.apache.poi.poifs.filesystem.Entry;
+import org.apache.poi.poifs.filesystem.POIFSFileSystem;
 import org.apache.poi.ss.util.CellRangeAddress;
 
 import stirling.software.officeconvert.memory.Admission;
@@ -66,8 +68,26 @@ public final class XlsPackage {
     }
 
     static Outcome write(DirectoryNode root, OutputStream out) throws IOException {
-        try (HSSFWorkbook wb = open(root)) {
-            return new XlsPackage.Writer(wb, root, new Parts(out)).write();
+        HSSFWorkbook wb;
+        POIFSFileSystem repaired = null;
+        try {
+            wb = open(root);
+        } catch (IOException e) {
+            byte[] fixed = e.getCause() instanceof RuntimeException ? Repair.workbook(root) : null;
+            if (fixed == null) {
+                throw e;
+            }
+            repaired = new POIFSFileSystem();
+            repaired.createDocument(new ByteArrayInputStream(fixed), "Workbook");
+            try {
+                wb = open(repaired.getRoot());
+            } catch (IOException again) {
+                repaired.close();
+                throw e;
+            }
+        }
+        try (HSSFWorkbook book = wb; POIFSFileSystem fs = repaired) {
+            return new XlsPackage.Writer(book, fs == null ? root : fs.getRoot(), root, new Parts(out)).write();
         }
     }
 
@@ -88,6 +108,8 @@ public final class XlsPackage {
     private static final class Writer {
 
         private final HSSFWorkbook wb;
+
+        private final DirectoryNode stream;
 
         private final DirectoryNode root;
 
@@ -115,8 +137,9 @@ public final class XlsPackage {
 
         private int chartParts;
 
-        Writer(HSSFWorkbook wb, DirectoryNode root, Parts parts) {
+        Writer(HSSFWorkbook wb, DirectoryNode stream, DirectoryNode root, Parts parts) {
             this.wb = wb;
+            this.stream = stream;
             this.root = root;
             this.parts = parts;
         }
@@ -129,7 +152,7 @@ public final class XlsPackage {
                 drawingsRefused = true;
             }
             ChartLookup fonts = new ChartLookup(wb);
-            chartStream = ChartStream.read(root, fonts, fonts.autoColors(false), fonts.autoColors(true));
+            chartStream = ChartStream.read(stream, fonts, fonts.autoColors(false), fonts.autoColors(true));
             StringBuilder book = new StringBuilder(Xml.HEAD).append("<workbook xmlns=\"").append(Xml.MAIN)
                     .append("\" xmlns:r=\"").append(Xml.REL).append("\"><fileVersion appName=\"xl\"/>");
             if (wb.getInternalWorkbook().isUsing1904DateWindowing()) {

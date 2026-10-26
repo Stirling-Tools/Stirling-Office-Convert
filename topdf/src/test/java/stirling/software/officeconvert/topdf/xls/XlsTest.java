@@ -389,6 +389,35 @@ class XlsTest {
     }
 
     @Test
+    void aFixedSizeRecordWithTrailingBytesIsTrimmedNotFatal() throws Exception {
+        byte[] data = xls(wb -> wb.createSheet("Long").createRow(0).createCell(0).setCellValue("Survives"));
+        byte[] stream;
+        try (POIFSFileSystem fs = new POIFSFileSystem(new ByteArrayInputStream(data))) {
+            stream = fs.createDocumentInputStream("Workbook").readAllBytes();
+        }
+        ByteArrayOutputStream patched = new ByteArrayOutputStream();
+        int at = 0;
+        while (at + 4 <= stream.length) {
+            int sid = stream[at] & 0xFF | (stream[at + 1] & 0xFF) << 8;
+            int len = stream[at + 2] & 0xFF | (stream[at + 3] & 0xFF) << 8;
+            if (sid == 0x10) {
+                patched.write(new byte[] {0x10, 0, (byte) (len + 8), 0}, 0, 4);
+                patched.write(stream, at + 4, len);
+                patched.write(new byte[8], 0, 8);
+            } else {
+                patched.write(stream, at, 4 + len);
+            }
+            at += 4 + len;
+        }
+        ByteArrayOutputStream file = new ByteArrayOutputStream();
+        try (POIFSFileSystem fs = new POIFSFileSystem()) {
+            fs.createDocument(new ByteArrayInputStream(patched.toByteArray()), "Workbook");
+            fs.writeFilesystem(file);
+        }
+        assertTrue(convert("long.xls", file.toByteArray()).all().contains("Survives"));
+    }
+
+    @Test
     void theContentDecidesNotTheExtension() throws Exception {
         byte[] data = xls(wb -> wb.createSheet("One").createRow(0).createCell(0).setCellValue("From a stream"));
         ByteArrayOutputStream pdf = new ByteArrayOutputStream();
