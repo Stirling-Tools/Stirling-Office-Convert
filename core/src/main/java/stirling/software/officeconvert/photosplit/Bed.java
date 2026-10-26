@@ -56,7 +56,7 @@ final class Bed {
         return (int) Math.round(Math.clamp(4 * wideNoise + 1.5, 3, Math.max(3, strong)));
     }
 
-    byte[] foreground(int[] smooth, int[] wide, int w, int h, int threshold, int faintThreshold, byte[] photo, byte[] faint) {
+    byte[] foreground(int[] smooth, int w, int h, int threshold, byte[] photo) {
         byte[] mask = new byte[w * h];
         float[] row = new float[3 * w];
         for (int y = 0; y < h; y++) {
@@ -66,11 +66,6 @@ final class Bed {
                 float mr = row[3 * x];
                 float mg = row[3 * x + 1];
                 float mb = row[3 * x + 2];
-                int q = wide[i];
-                float f = Math.max(Math.abs((q >> 16 & 0xFF) - mr), Math.max(Math.abs((q >> 8 & 0xFF) - mg), Math.abs((q & 0xFF) - mb)));
-                if (f > faintThreshold) {
-                    faint[i] = 1;
-                }
                 int p = smooth[i];
                 int r = p >> 16 & 0xFF;
                 int g = p >> 8 & 0xFF;
@@ -78,7 +73,7 @@ final class Bed {
                 float d = Math.max(Math.abs(r - mr), Math.max(Math.abs(g - mg), Math.abs(b - mb)));
                 if (d > threshold) {
                     mask[i] = 1;
-                    if (!shade(r, g, b, mr, mg, mb)) {
+                    if (photo != null && !shade(r, g, b, mr, mg, mb)) {
                         photo[i] = 1;
                     }
                 }

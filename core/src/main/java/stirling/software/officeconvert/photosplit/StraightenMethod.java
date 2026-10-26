@@ -62,10 +62,10 @@ final class StraightenMethod {
         Bed bed = Bed.fit(scan, smooth, options.tolerance());
         int strong = bed.threshold(options.tolerance());
         byte[] photo = new byte[w * h];
-        byte[] faint = new byte[w * h];
-        int[] wide = Filters.boxBlur(scan.rgb, w, h, WIDE_RADIUS);
-        byte[] mask = bed.foreground(smooth, wide, w, h, strong, bed.faintThreshold(strong, SMOOTH_RADIUS, WIDE_RADIUS), photo, faint);
+        byte[] mask = bed.foreground(smooth, w, h, strong, photo);
         smooth = null;
+        int[] wide = Filters.boxBlur(scan.rgb, w, h, WIDE_RADIUS);
+        byte[] faint = bed.foreground(wide, w, h, bed.faintThreshold(strong, SMOOTH_RADIUS, WIDE_RADIUS), null);
         wide = null;
         Filters.grow(mask, faint, w, h);
         faint = null;
