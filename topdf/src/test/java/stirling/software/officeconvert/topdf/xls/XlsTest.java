@@ -29,6 +29,7 @@ import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
 import org.apache.pdfbox.rendering.PDFRenderer;
 import org.apache.pdfbox.text.PDFTextStripper;
 import org.apache.poi.common.usermodel.HyperlinkType;
+import org.apache.poi.ddf.EscherBSERecord;
 import org.apache.poi.ddf.EscherPropertyTypes;
 import org.apache.poi.ddf.EscherSimpleProperty;
 import org.apache.poi.hssf.record.DefaultColWidthRecord;
@@ -457,6 +458,30 @@ class XlsTest {
         assertFalse(hasColour(out, Color.RED), "a hidden shape is not drawn");
         assertFalse(hasColour(out, Color.GREEN), "a shape set not to print is not drawn");
         assertTrue(hasColour(out, Color.BLUE), "a printed shape is drawn");
+    }
+
+    @Test
+    void macintoshPictPicturesAreDrawn() throws Exception {
+        byte[] pict = {0, 0, 0, 0, 0, 0, 0, 40, 0, 40, 0, 0x11, 0x02, (byte) 0xFF, 0x0C, 0x00, (byte) 0xFF,
+            (byte) 0xFF, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x00, 0x1A, (byte) 0xFF,
+            (byte) 0xFF, 0, 0, 0, 0, 0x00, 0x31, 0, 0, 0, 0, 0, 40, 0, 40, 0x00, (byte) 0xFF};
+        byte[] data = xls(wb -> {
+            HSSFSheet s = wb.createSheet("Mac");
+            s.createRow(0).createCell(0).setCellValue("Picture");
+            int index = wb.addPicture(pict, Workbook.PICTURE_TYPE_EMF);
+            EscherBSERecord bse = wb.getInternalWorkbook().getBSERecord(index);
+            bse.setBlipTypeWin32((byte) 4);
+            bse.setBlipTypeMacOS((byte) 4);
+            bse.getBlipRecord().setRecordId((short) 0xF01C);
+            bse.getBlipRecord().setOptions((short) 0x5420);
+            s.createDrawingPatriarch().createPicture(new HSSFClientAnchor(0, 0, 0, 0, (short) 1, 2, (short) 4, 10),
+                    index);
+        });
+        Path in = Fixtures.write(dir, "pict.xls", data);
+        Path out = dir.resolve("pict.pdf");
+        OfficeToPdf.Result result = OfficeToPdf.convert(in, out, OfficeToPdf.Options.defaults());
+        assertFalse(String.join(" ", result.warnings()).contains("PICT"), result.warnings().toString());
+        assertTrue(hasColour(out, Color.RED), "the PICT rectangle is painted");
     }
 
     @Test

@@ -109,8 +109,6 @@ public final class XlsPackage {
 
         private int skipped;
 
-        private int pict;
-
         private boolean drawingsRefused;
 
         private ChartStream chartStream;
@@ -231,9 +229,6 @@ public final class XlsPackage {
             }
             if (charts > 0) {
                 out.add("Some charts could not be drawn (" + charts + " left out)");
-            }
-            if (pict > 0) {
-                out.add("Macintosh PICT pictures are not supported (" + pict + " left out)");
             }
             if (skipped > 0) {
                 out.add("Some drawing objects could not be drawn (" + skipped + " left out)");
@@ -369,7 +364,6 @@ public final class XlsPackage {
                 return null;
             } finally {
                 skipped += d.skipped;
-                pict += d.pict;
             }
             StringBuilder rels = new StringBuilder(Xml.HEAD).append("<Relationships xmlns=\"").append(Xml.PKG_REL)
                     .append("\">");
@@ -515,6 +509,7 @@ public final class XlsPackage {
                     case "wmf" -> "image/x-wmf";
                     case "bmp" -> "image/bmp";
                     case "tif" -> "image/tiff";
+                    case "pict" -> "image/pict";
                     default -> "application/octet-stream";
                 }).append("\"/>");
             }

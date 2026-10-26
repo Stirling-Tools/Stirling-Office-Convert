@@ -71,8 +71,6 @@ final class DrawingPart {
 
     int skipped;
 
-    int pict;
-
     private int shapes;
 
     DrawingPart(HSSFWorkbook wb, SheetPart geometry, Map<Integer, String> media) {
@@ -307,10 +305,6 @@ final class DrawingPart {
             int index = pic.getPictureIndex();
             HSSFPictureData data = index <= 0 ? null : pic.getPictureData();
             if (data == null) {
-                return null;
-            }
-            if ("pict".equals(data.suggestFileExtension())) {
-                pict++;
                 return null;
             }
             target = media.containsKey(index) ? media.get(index) : store.add(index, data);
