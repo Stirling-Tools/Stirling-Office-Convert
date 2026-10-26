@@ -33,6 +33,8 @@ final class Content {
         }
     }
 
+    static final int MAX_OPERANDS = 1 << 20;
+
     private Content() {}
 
     static byte[] minify(byte[] in) {
@@ -114,6 +116,9 @@ final class Content {
             while (lex.next()) {
                 ContentLexer.Kind kind = lex.kind();
                 if (kind != ContentLexer.Kind.OPERATOR) {
+                    if (operandKinds.size() >= MAX_OPERANDS) {
+                        return new Usage(names, false);
+                    }
                     operandKinds.add(kind);
                     operandNames.add(kind == ContentLexer.Kind.NAME ? COSName.getPDFName(lex.nameBytes()) : null);
                     continue;
