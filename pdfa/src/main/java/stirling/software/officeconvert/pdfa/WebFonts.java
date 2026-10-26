@@ -110,13 +110,13 @@ public final class WebFonts {
                         code -> pdfBoxReads ? ((PDTrueTypeFont) font).codeToGID(code) : simpleGid(ttf, font, code)));
             }
             String name = ttf.getName() != null ? ttf.getName() : font != null ? font.getName() : null;
-            return convertTrueType(ttf, name, mapping);
+            return convertTrueType(ttf, parsed.bytes(), name, mapping);
         } catch (RuntimeException e) {
             throw new IOException("The TrueType program cannot be converted: " + e.getMessage(), e);
         }
     }
 
-    private record Parsed(TrueTypeFont font, boolean repaired) {}
+    private record Parsed(TrueTypeFont font, boolean repaired, byte[] bytes) {}
 
     private static Parsed open(byte[] data) throws IOException {
         try {
@@ -129,7 +129,7 @@ public final class WebFonts {
                 throw e;
             }
             if (font.getNumberOfGlyphs() > 0) {
-                return new Parsed(font, false);
+                return new Parsed(font, false, data);
             }
             font.close();
             throw new IOException("The TrueType program has no glyphs");
@@ -141,7 +141,7 @@ public final class WebFonts {
                         TrueTypeFont font = parseSfnt(fixed);
                         font.getCmap();
                         font.getHorizontalMetrics();
-                        return new Parsed(font, true);
+                        return new Parsed(font, true, fixed);
                     } catch (IOException | RuntimeException ignored) {
                         PdfFiles.stopIfInterrupted();
                     }
@@ -212,13 +212,13 @@ public final class WebFonts {
         return enc == null ? null : enc.getName(code);
     }
 
-    private static byte[] convertTrueType(TrueTypeFont ttf, String name, Map<Integer, Integer> unicodeByGlyph)
-            throws IOException {
+    private static byte[] convertTrueType(TrueTypeFont ttf, byte[] bytes, String name,
+            Map<Integer, Integer> unicodeByGlyph) throws IOException {
         int count = ttf.getNumberOfGlyphs();
         if (count < 1) {
             throw new IOException("The TrueType program has no glyphs");
         }
-        TrueTypeWriter w = new TrueTypeWriter(ttf);
+        TrueTypeWriter w = new TrueTypeWriter(ttf, bytes);
         HorizontalMetricsTable hmtx = ttf.getHorizontalMetrics();
         long budget = glyphBudget(ttf.getTableMap().get("glyf").getLength());
         for (int gid = 1; gid < count; gid++) {

@@ -41,6 +41,10 @@ final class TrueTypeWriter {
 
     private final byte[] glyf;
 
+    private final int glyfStart;
+
+    private final int glyfLength;
+
     private final long[] loca;
 
     private final HorizontalMetricsTable hmtx;
@@ -60,13 +64,25 @@ final class TrueTypeWriter {
     private boolean hinting = true;
 
     TrueTypeWriter(TrueTypeFont source) throws IOException {
+        this(source, null);
+    }
+
+    TrueTypeWriter(TrueTypeFont source, byte[] parsedFrom) throws IOException {
         this.source = source;
         this.unitsPerEm = source.getUnitsPerEm();
         TTFTable g = source.getTableMap().get("glyf");
         if (g == null || source.getIndexToLocation() == null) {
             throw new IOException("The font has no TrueType outlines");
         }
-        this.glyf = source.getTableBytes(g);
+        if (parsedFrom != null && g.getOffset() >= 0 && g.getOffset() + g.getLength() <= parsedFrom.length) {
+            this.glyf = parsedFrom;
+            this.glyfStart = (int) g.getOffset();
+            this.glyfLength = (int) g.getLength();
+        } else {
+            this.glyf = source.getTableBytes(g);
+            this.glyfStart = 0;
+            this.glyfLength = glyf.length;
+        }
         this.loca = source.getIndexToLocation().getOffsets();
         this.hmtx = source.getHorizontalMetrics();
         glyphs.add(copyGlyph(0, advanceOf(0)));
@@ -76,6 +92,8 @@ final class TrueTypeWriter {
         this.source = null;
         this.unitsPerEm = unitsPerEm;
         this.glyf = null;
+        this.glyfStart = 0;
+        this.glyfLength = 0;
         this.loca = null;
         this.hmtx = null;
         glyphs.add(new Glyph(new byte[0], unitsPerEm / 2, 0));
@@ -190,16 +208,17 @@ final class TrueTypeWriter {
         }
         long start = loca[gid];
         long end = loca[gid + 1];
-        if (end <= start || end > glyf.length) {
+        if (end <= start || end > glyfLength) {
             return new Glyph(new byte[0], advance, 0);
         }
         int length = (int) (end - start);
+        int at = glyfStart + (int) start;
         glyphBytes += length;
         int lsb = hmtx == null ? 0 : hmtx.getLeftSideBearing(gid);
-        if (length >= 10 && ByteBuffer.wrap(glyf).getShort((int) start) < 0) {
+        if (length >= 10 && ByteBuffer.wrap(glyf).getShort(at) < 0) {
             pending.add(glyphs.size());
         }
-        return new Glyph(glyf, (int) start, length, advance, lsb);
+        return new Glyph(glyf, at, length, advance, lsb);
     }
 
     private void breakComponentCycles() {
