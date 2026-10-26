@@ -396,7 +396,7 @@ final class Squeeze {
             return;
         }
         Histogram total = Histogram.of(s, from, to);
-        double whole = total.bits();
+        double whole = total.estimate();
         int lo = from + 1;
         int hi = to - 1;
         int bestAt = -1;
@@ -411,7 +411,7 @@ final class Squeeze {
                 while (at < p) {
                     left.add(s, at++, 1);
                 }
-                double c = left.bits() + total.minus(left).bits();
+                double c = left.estimate() + total.minus(left).estimate();
                 if (c < localCost) {
                     localCost = c;
                     localBest = p;
@@ -474,6 +474,30 @@ final class Squeeze {
             }
             h.extra = extra - o.extra;
             return h;
+        }
+
+        double estimate() {
+            return entropy(ll, 1) + entropy(dd, 0) + extra;
+        }
+
+        private static double entropy(int[] counts, int extraSymbol) {
+            long total = extraSymbol;
+            int used = extraSymbol;
+            for (int c : counts) {
+                total += c;
+                used += c > 0 ? 1 : 0;
+            }
+            if (total == 0) {
+                return 0;
+            }
+            double logTotal = log2(total);
+            double bits = extraSymbol * logTotal;
+            for (int c : counts) {
+                if (c > 0) {
+                    bits += c * (logTotal - log2(c));
+                }
+            }
+            return bits + used * 4.0 + 40;
         }
 
         double bits() {
@@ -729,6 +753,18 @@ final class Squeeze {
             l[i] = i < 144 ? 8 : i < 256 ? 9 : i < 280 ? 7 : 8;
         }
         return l;
+    }
+
+    private static final double[] LOG2 = new double[1 << 16];
+
+    static {
+        for (int i = 1; i < LOG2.length; i++) {
+            LOG2[i] = Math.log(i) / Math.log(2);
+        }
+    }
+
+    private static double log2(long v) {
+        return v < LOG2.length ? LOG2[(int) v] : Math.log(v) / Math.log(2);
     }
 
     static int distSymbol(int d) {
