@@ -10,6 +10,7 @@ import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
@@ -59,6 +60,9 @@ public final class Main {
     }
 
     static int run(String[] args) {
+        if (args.length > 0 && SplitPhotos.COMMAND.equals(args[0])) {
+            return SplitPhotos.run(Arrays.copyOfRange(args, 1, args.length));
+        }
         List<Path> inputs = new ArrayList<>();
         Path output = null;
         int first = 0;
@@ -529,6 +533,9 @@ public final class Main {
                         + System.lineSeparator()
                         + "       office-convert <in.pdf|dir>... --pdfa 1a|1b|2a|2b|2u|3a|3b|3u [-o out.pdf|dir] [--password p]"
                         + " [--timeout s] [--fonts dir]... [--font-map Family=Installed]... [--no-system-fonts] [--overwrite] [-q]"
+                        + System.lineSeparator()
+                        + "       office-convert split-photos <scan.png|scan.pdf>... [-o dir] (finds the photos on a flatbed scan;"
+                        + " office-convert split-photos --help lists its options)"
                         + System.lineSeparator()
                         + "Word, PowerPoint and Excel files (.docx .docm .dotx .dotm .pptx .pptm .ppsx .ppsm .potx .potm"
                         + " .xlsx .xlsm .xltx .xltm .xlsb, binary .doc .dot .xls .xlt .ppt .pps .pot back to Word 6.0 and"
