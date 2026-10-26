@@ -92,6 +92,11 @@ final class Flow {
     private String floatOf = "none";
     private boolean sectionStarted;
     private Paragraph rightOf;
+    private String pendingBookmark;
+    private Paragraph leaderOf;
+    private int leaderFrom;
+    private char leaderChar;
+    private RunStyle leaderStyle;
     private final List<Inline> right = new ArrayList<>();
     private RunStyle rightStyle;
     // the height left in a box that clips its overflow, as a browser shows only what fits
@@ -264,6 +269,14 @@ final class Flow {
 
     private void element(Element e, Look parentLook, Frame frame, int depth) throws IOException {
         String tag = e.normalName();
+        String bookmark = ctx.bookmarkFor(e.id());
+        if (bookmark != null && pendingBookmark == null) {
+            pendingBookmark = bookmark;
+        }
+        if (tag.equals(Generated.LEADER)) {
+            leader(e, parentLook);
+            return;
+        }
         if (Controls.TAGS.contains(tag)) {
             if (!e.hasAttr("hidden") && Controls.drawn(e)) {
                 control(e, parentLook, frame);
@@ -417,6 +430,18 @@ final class Flow {
         if (alone) {
             flush();
         }
+    }
+
+    private void leader(Element e, Look look) {
+        if (para == null) {
+            start();
+        }
+        String c = e.attr("data-char");
+        leaderOf = para;
+        leaderFrom = para.inlines.size();
+        leaderChar = c.isEmpty() ? '.' : c.charAt(0) == ' ' ? 0 : c.charAt(0);
+        leaderStyle = look.run();
+        lastSpace = true;
     }
 
     private void floatRight(Element e, Look look, Frame frame, int depth) throws IOException {
@@ -762,6 +787,18 @@ final class Flow {
     }
 
     private void emit(Block b) throws IOException {
+        if (pendingBookmark != null) {
+            Paragraph first = switch (b) {
+                case Paragraph p -> p;
+                case Table t -> t.rows.isEmpty() || t.rows.getFirst().cells.isEmpty()
+                        || t.rows.getFirst().cells.getFirst().paragraphs.isEmpty() ? null
+                        : t.rows.getFirst().cells.getFirst().paragraphs.getFirst();
+            };
+            if (first != null && first.bookmark == null) {
+                first.bookmark = pendingBookmark;
+                pendingBookmark = null;
+            }
+        }
         if (avoiding == 0 || outrun) {
             out.add(b);
             return;
@@ -1598,6 +1635,17 @@ final class Flow {
         }
         Paragraph p = para;
         para = null;
+        if (leaderOf == p) {
+            List<Inline> moved = new ArrayList<>(p.inlines.subList(leaderFrom, p.inlines.size()));
+            p.inlines.subList(leaderFrom, p.inlines.size()).clear();
+            trimEnd(p.inlines);
+            trimStart(moved);
+            p.inlines.add(new Inline.Tab(leaderStyle));
+            p.inlines.addAll(moved);
+            p.tabs.add(new Paragraph.TabStop(blockFrame.left() + blockFrame.width(),
+                    Paragraph.TabStop.Kind.RIGHT, leaderChar));
+            leaderOf = null;
+        }
         if (rightOf == p) {
             trimEnd(p.inlines);
             trimStart(right);

@@ -553,7 +553,9 @@ queries are answered for print at the page's text width, `!important`, custom pr
 (PNG, JPEG, GIF, BMP, WebP and SVG; AVIF is not). Web fonts (`@font-face`) are drawn from `data:` URIs, and from
 linked files only through the same opt-ins as pictures: TrueType, and WOFF 1 holding TrueType; WOFF 2 and
 PostScript-outline (CFF) fonts fall back to an installed font with a warning. A face is used under its CSS family
-name, weight and style. A `.zip` of a page is refused unless
+name, weight and style. `::before` and `::after` content is drawn: strings, `attr()`, quotes, `leader()` (a dotted, solid or
+spaced leader to the right edge) and `target-counter(attr(href), page)`, which converts the page twice to learn the
+page of each target; `counter()` and `string-set` are not drawn. A `.zip` of a page is refused unless
 `Options.allowPackages(true)` (`--allow-packages`) is given; then the page it holds (the shallowest `index.html`, else the
 shallowest `.html`) draws the pictures, linked style sheets and `@import`s it holds, resolved relative to the page and
 never outside the archive. A library caller can supply them another way with `Options.htmlAssets(HtmlAssets)`:

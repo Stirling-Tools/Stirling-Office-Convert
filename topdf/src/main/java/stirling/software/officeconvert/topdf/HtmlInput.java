@@ -7,8 +7,11 @@ import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
 
 import stirling.software.officeconvert.memory.Admission;
 import stirling.software.officeconvert.topdf.OfficeToPdf.Format;
@@ -209,13 +212,28 @@ final class HtmlInput {
         HtmlAssets once = HtmlDocument.readOnce(assets);
         Path pkg = Files.createTempFile("office-to-pdf-", ".docx");
         try {
-            HtmlDocument.Laid laid = lay(source, pkg, options, bytes, 1f, once);
+            HtmlDocument.Laid laid = lay(source, pkg, options, bytes, 1f, once, Map.of());
+            float zoom = 1f;
             if (laid.fit() < 0.99f) {
                 // content wider than the page: laid out again on larger paper, then shrunk to fit as browsers print
-                laid = lay(source, pkg, options, bytes, laid.fit(), once);
+                zoom = laid.fit();
+                laid = lay(source, pkg, options, bytes, zoom, once, Map.of());
             }
             OfficeToPdf.stopIfInterrupted();
             options = withFonts(options, laid.fonts());
+            if (!laid.targets().isEmpty()) {
+                Map<String, Integer> pages = new HashMap<>();
+                Set<String> targets = laid.targets();
+                Rewritten.render(pkg, source, laid.converted(), OutputStream.nullOutputStream(), options, renderer,
+                        job -> targets.forEach(id -> {
+                            int page = job.output().destinationPage("bm:" + HtmlDocument.targetBookmark(id));
+                            if (page >= 0) {
+                                pages.put(id, page + 1);
+                            }
+                        }));
+                OfficeToPdf.stopIfInterrupted();
+                laid = lay(source, pkg, options, bytes, zoom, once, pages);
+            }
             if (laid.fit() >= 0.99f) {
                 return Rewritten.render(pkg, source, laid.converted(), sink, options, renderer);
             }
@@ -251,10 +269,10 @@ final class HtmlInput {
     }
 
     private static HtmlDocument.Laid lay(Path source, Path pkg, Options options, long bytes, float zoom,
-            HtmlAssets assets) throws IOException {
+            HtmlAssets assets, Map<String, Integer> targetPages) throws IOException {
         Admission.Ticket ticket = Admission.jvm().enter(HtmlDocument.estimate(bytes));
         try (OutputStream os = new BufferedOutputStream(Files.newOutputStream(pkg), 1 << 16)) {
-            return HtmlDocument.lay(source, os, options.fontLibrary(), zoom, assets);
+            return HtmlDocument.lay(source, os, options.fontLibrary(), zoom, assets, targetPages);
         } finally {
             ticket.close();
         }

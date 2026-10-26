@@ -47,11 +47,16 @@ final class Cascade {
     private long work;
     private final Set<String> sheets = new HashSet<>();
     private final List<WebFonts.Face> faces = new ArrayList<>();
+    private final List<Generated.Rule> pseudoRules = new ArrayList<>();
+    private final Map<Element, Map<String, String>> generated = new IdentityHashMap<>();
     private long sheetChars;
 
     private static final long MAX_SHEET_CHARS = 8L << 20;
 
     private static final int MAX_NAMED_PAGES = 64;
+
+    private static final Pattern GENERATED = Pattern.compile("(.*?)::?(before|after)\\s*", Pattern.CASE_INSENSITIVE
+            | Pattern.DOTALL);
 
     /** {@code viewportPx} is the width media queries see, the page's text width in CSS pixels. */
     Cascade(Document doc, float viewportPx) {
@@ -106,6 +111,20 @@ final class Cascade {
                     Map<String, String> own = named.computeIfAbsent(rule.selector().substring(6), k -> new HashMap<>());
                     put(own, rule.declarations(), false);
                     put(own, rule.declarations(), true);
+                }
+                continue;
+            }
+            Matcher pseudo = GENERATED.matcher(rule.selector());
+            if (pseudo.matches()) {
+                String base = pseudo.group(1).isBlank() ? "*" : usable(pseudo.group(1).strip());
+                if (base != null && pseudoRules.size() < Generated.MAX_RULES) {
+                    try {
+                        pseudoRules.add(new Generated.Rule(QueryParser.parse(base),
+                                pseudo.group(2).toLowerCase(Locale.ROOT), specificity(base), order,
+                                rule.declarations()));
+                    } catch (RuntimeException e) {
+                        continue;
+                    }
                 }
                 continue;
             }
@@ -379,6 +398,13 @@ final class Cascade {
 
     /** The cascaded declarations of {@code e}: rules by specificity then order, then the style attribute. */
     Map<String, String> declared(Element e) {
+        Map<String, String> own = generated.get(e);
+        if (own != null) {
+            Map<String, String> out = new HashMap<>();
+            put(out, own, false);
+            put(out, own, true);
+            return out;
+        }
         Map<String, String> out = new HashMap<>();
         Presentation.apply(e, out);
         List<Hit> list = hits(e);
@@ -414,6 +440,18 @@ final class Cascade {
 
     List<WebFonts.Face> faces() {
         return faces;
+    }
+
+    List<Generated.Rule> pseudoRules() {
+        return pseudoRules;
+    }
+
+    void match(Element e) {
+        hits(e);
+    }
+
+    void generated(Element e, Map<String, String> declarations) {
+        generated.put(e, declarations);
     }
 
     Map<String, Map<String, String>> margins() {

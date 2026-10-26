@@ -5,6 +5,7 @@ import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import org.jsoup.nodes.Element;
 
@@ -34,6 +35,7 @@ final class HtmlContext {
     private boolean continuing;
     private float insetLeft;
     private float insetRight;
+    private Set<String> targets = Set.of();
     // the most items of any row of columns in an element or inside it, 0 when none
     private final Map<Element, Integer> rows = new IdentityHashMap<>();
     private Map<String, Element> labels;
@@ -303,5 +305,13 @@ final class HtmlContext {
 
     float insetRight() {
         return insetRight;
+    }
+
+    void targets(Set<String> ids) {
+        targets = ids;
+    }
+
+    String bookmarkFor(String id) {
+        return id != null && !id.isEmpty() && targets.contains(id) ? Generated.BOOKMARK_PREFIX + id : null;
     }
 }

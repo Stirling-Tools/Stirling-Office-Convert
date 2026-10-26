@@ -42,7 +42,7 @@ public final class HtmlDocument {
     }
 
     /** A page laid out, and the scale it should be printed at: below 1 when content was wider than the page. */
-    public record Laid(Converted converted, float fit, List<byte[]> fonts) {}
+    public record Laid(Converted converted, float fit, List<byte[]> fonts, Set<String> targets) {}
 
     // Chrome shrinks a page whose content is too wide by at most a third, and clips what is wider still
     static final float LEAST_FIT = 2f / 3f;
@@ -66,14 +66,23 @@ public final class HtmlDocument {
         return lay(source, out, fonts, zoom, HtmlAssets.NONE);
     }
 
+    public static String targetBookmark(String id) {
+        return Generated.BOOKMARK_PREFIX + id;
+    }
+
     public static HtmlAssets readOnce(HtmlAssets assets) {
         return assets instanceof Linked linked ? linked : new Linked(assets);
     }
 
     public static Laid lay(Path source, OutputStream out, FontLibrary fonts, float zoom, HtmlAssets assets)
             throws IOException {
+        return lay(source, out, fonts, zoom, assets, Map.of());
+    }
+
+    public static Laid lay(Path source, OutputStream out, FontLibrary fonts, float zoom, HtmlAssets assets,
+            Map<String, Integer> targetPages) throws IOException {
         try (DocxWriter writer = new DocxWriter(out)) {
-            return lay(source, writer, fonts, zoom, assets);
+            return lay(source, writer, fonts, zoom, assets, targetPages);
         }
     }
 
@@ -83,21 +92,22 @@ public final class HtmlDocument {
     }
 
     public static Converted write(Path source, DocSink sink, FontLibrary fonts) throws IOException {
-        return lay(source, sink, fonts, 1f, HtmlAssets.NONE).converted();
+        return lay(source, sink, fonts, 1f, HtmlAssets.NONE, Map.of()).converted();
     }
 
     public static Converted write(Path source, DocSink sink, FontLibrary fonts, HtmlAssets assets) throws IOException {
-        return lay(source, sink, fonts, 1f, assets).converted();
+        return lay(source, sink, fonts, 1f, assets, Map.of()).converted();
     }
 
-    private static Laid lay(Path source, DocSink sink, FontLibrary fonts, float zoom, HtmlAssets assets)
-            throws IOException {
+    private static Laid lay(Path source, DocSink sink, FontLibrary fonts, float zoom, HtmlAssets assets,
+            Map<String, Integer> targetPages) throws IOException {
         try {
             if (fonts != null) {
                 Map<String, Boolean> known = new HashMap<>();
                 Look.drawable(f -> known.computeIfAbsent(f, k -> installed(fonts, k)));
             }
-            return convert(source, sink, Math.max(LEAST_FIT, Math.min(1f, zoom)), (Linked) readOnce(assets));
+            return convert(source, sink, Math.max(LEAST_FIT, Math.min(1f, zoom)), (Linked) readOnce(assets),
+                    targetPages);
         } finally {
             Css.clearRootSize();
             Look.clearDrawable();
@@ -121,7 +131,8 @@ public final class HtmlDocument {
         return (page.pageWidth - page.marginLeft - page.marginRight) / 0.75f;
     }
 
-    private static Laid convert(Path source, DocSink writer, float zoom, Linked linked) throws IOException {
+    private static Laid convert(Path source, DocSink writer, float zoom, Linked linked,
+            Map<String, Integer> targetPages) throws IOException {
         // One bulk read: the parser's small reads are slow on network and container file systems
         byte[] bytes = Files.readAllBytes(source);
         Document doc = Jsoup.parse(new ByteArrayInputStream(bytes), null, "");
@@ -130,6 +141,7 @@ public final class HtmlDocument {
         Section page = page(new Cascade(doc, viewportPx(JsonModel.defaultPage()), linked).page());
         // media queries see the printed page, however wide the layout grows
         Cascade cascade = new Cascade(doc, viewportPx(page), linked);
+        Set<String> targets = Generated.apply(doc, cascade, targetPages);
         float[] inset = inset(page, cascade, doc);
         List<String> warnings = new ArrayList<>();
         WebFonts.Loaded web = WebFonts.load(cascade.faces(), linked, warnings);
@@ -166,6 +178,7 @@ public final class HtmlDocument {
         }
         HtmlContext ctx = new HtmlContext(cascade, styles, writer, warnings, page, linked);
         ctx.inset(inset[0], inset[1]);
+        ctx.targets(targets);
         List<Inline> fixedLayer = new ArrayList<>(Backgrounds.paint(Backgrounds.url(htmlStyle) != null ? htmlStyle
                 : bodyStyle, bodyLook, ctx.images(), 0, 0, page.pageWidth, page.pageHeight, false));
         if (ctx.positions()) {
@@ -196,7 +209,7 @@ public final class HtmlDocument {
         }
         // a second layout on larger paper is printed at the zoom it was laid out for
         float printAt = zoom < 1 ? (ownPaper ? 1f : zoom) : fit;
-        return new Laid(new Converted(warnings, ctx.truncated()), printAt, web.fonts());
+        return new Laid(new Converted(warnings, ctx.truncated()), printAt, web.fonts(), Set.copyOf(targets));
     }
 
     private static DocSink.HeaderFooterSet withFixed(DocSink.HeaderFooterSet running, List<Inline> drawings,
