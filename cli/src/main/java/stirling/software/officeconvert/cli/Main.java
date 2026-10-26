@@ -129,6 +129,7 @@ public final class Main {
                     case "--follow-redirects" -> web = web.redirects(true);
                     case "--allow-cookies" -> web = web.cookies(true);
                     case "--allow-private-addresses" -> web = web.privateAddresses(true);
+                    case "--fetch-linked" -> web = web.linkedFromFiles(true);
                     case "-h", "--help" -> {
                         usage();
                         return 0;
@@ -159,6 +160,9 @@ public final class Main {
                     throw new Usage("a URL is fetched only with --allow-network");
                 }
                 return url(urls.get(0), output, office, web, overwrite, quiet);
+            }
+            if (web.linkedFromFiles() && !web.network()) {
+                throw new Usage("--fetch-linked fetches only with --allow-network");
             }
             boolean anyOffice = false;
             boolean anyPdf = false;
@@ -269,8 +273,8 @@ public final class Main {
                 if (archival != null) {
                     notes = PdfToPdfA.convert(pdf, target, archival).warnings();
                 } else if (officeInput) {
-                    result = officeToPdf(pdf, target, localFiles && page(pdf) ? office.htmlAssets(
-                            HtmlAssets.folder(pdf.toAbsolutePath().getParent(), pdf.getFileName().toString())) : office);
+                    result = officeToPdf(pdf, target, page(pdf) ? office.htmlAssets(assets(pdf, localFiles, web))
+                            : office);
                 } else {
                     convert(pdf, target, options, slides, books);
                 }
@@ -372,6 +376,12 @@ public final class Main {
             case "docx" -> PdfToDocx.convert(pdf, target, options);
             default -> throw new IOException("unknown output format ." + extension(target));
         }
+    }
+
+    private static HtmlAssets assets(Path page, boolean localFiles, WebAssets.Access web) throws IOException {
+        HtmlAssets local = localFiles ? HtmlAssets.folder(page.toAbsolutePath().getParent(),
+                page.getFileName().toString()) : HtmlAssets.NONE;
+        return web.linkedFromFiles() ? WebAssets.linkedFrom(local, web) : local;
     }
 
     private static int url(String url, Path target, OfficeToPdf.Options office, WebAssets.Access web, boolean overwrite,
@@ -575,7 +585,8 @@ public final class Main {
                         + " [--no-system-fonts] [--allow-packages] [--allow-local-files] [--overwrite] [-q]"
                         + System.lineSeparator()
                         + "       office-convert <http(s)://url> -o out.pdf --allow-network [--follow-redirects] [--allow-cookies]"
-                        + " [--allow-private-addresses] [--timeout s] [--overwrite] [-q]"
+                        + " [--allow-private-addresses] [--timeout s] [--overwrite] [-q]; an HTML file with"
+                        + " --allow-network --fetch-linked draws http(s) pictures, style sheets and fonts it links"
                         + System.lineSeparator()
                         + "       office-convert <in.pdf|dir>... --pdfa 1a|1b|2a|2b|2u|3a|3b|3u [-o out.pdf|dir] [--password p]"
                         + " [--timeout s] [--fonts dir]... [--font-map Family=Installed]... [--no-system-fonts] [--overwrite] [-q]"

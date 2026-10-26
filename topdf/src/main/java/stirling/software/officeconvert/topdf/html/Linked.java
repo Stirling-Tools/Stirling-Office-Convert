@@ -37,6 +37,19 @@ final class Linked implements HtmlAssets {
         return b == null ? "" : b;
     }
 
+    String resolve(String base, String reference) {
+        if (reference != null && assets.absoluteWeb()) {
+            String r = reference.strip();
+            if (r.startsWith("//")) {
+                r = "https:" + r;
+            }
+            if (r.regionMatches(true, 0, "http://", 0, 7) || r.regionMatches(true, 0, "https://", 0, 8)) {
+                return r;
+            }
+        }
+        return HtmlRefs.resolve(base, reference);
+    }
+
     void rebase(String href) {
         String b = assets.base();
         String web = b != null && (b.regionMatches(true, 0, "http://", 0, 7) || b.regionMatches(true, 0, "https://", 0, 8))

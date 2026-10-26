@@ -76,7 +76,7 @@ final class Cascade {
             if (sheet.normalName().equals("style")) {
                 Css.rules(imported(sheet.data(), linked.base(), linked, viewportPx, 0), rules, viewportPx);
             } else if (stylesheet(sheet) && !linked.none()) {
-                String ref = HtmlRefs.resolve(linked.base(), sheet.attr("href"));
+                String ref = linked.resolve(linked.base(), sheet.attr("href"));
                 String text = sheet(ref, linked);
                 if (text != null) {
                     base = ref;
@@ -224,9 +224,9 @@ final class Cascade {
             if (depth >= MAX_IMPORT_DEPTH || !Media.matches(media, viewportPx)) {
                 continue;
             }
-            String text = sheet(HtmlRefs.resolve(base, target), linked);
+            String text = sheet(linked.resolve(base, target), linked);
             if (text != null) {
-                out.append(imported(text, HtmlRefs.resolve(base, target), linked, viewportPx, depth + 1)).append('\n');
+                out.append(imported(text, linked.resolve(base, target), linked, viewportPx, depth + 1)).append('\n');
             }
         }
         return out.append(s, i, s.length()).toString();

@@ -32,7 +32,7 @@ family with an installed one, such as `Aptos=Inter`), `--font-width Family=scale
 family's widths, 0.5 to 2), `--no-system-fonts` (only the given fonts and the bundled Liberation Sans, for
 reproducible output), `--allow-packages` (convert a `.zip` of an HTML page, or an EPUB book not named `.epub`), `--allow-local-files` (let an HTML page
 draw the pictures and style sheets in its own folder, never outside it), `--allow-network`, `--follow-redirects`,
-`--allow-cookies` and `--allow-private-addresses` (for a URL; see URL to PDF below), `-q`, and `--format pdf` to take only the Office files out
+`--allow-cookies`, `--allow-private-addresses` and `--fetch-linked` (see URL to PDF below), `-q`, and `--format pdf` to take only the Office files out
 of a folder. A folder converts both its PDFs and its Office files; its text and CSV files only with `--format pdf`. Inputs that would write the same output name (such
 as `report.docx` and `report.xlsx`) keep their own extension in it (`report.docx.pdf`, `report.xlsx.pdf`), and Office
 owner files (`~$name`) are skipped. An input is never overwritten: an output that would take an input's name keeps that
@@ -578,6 +578,12 @@ form, and the connection goes to the very address that was checked, so a second 
 Link-local, metadata, multicast and reserved addresses stay refused with `privateAddresses`. Fetching stops after
 60 s, 64 MB or 300 requests together (`timeout`, `maxBytes`, `maxRequests`); a `<base href>` on the page moves where
 its links resolve. A charset named by the server is kept by converting the page to UTF-8.
+
+An HTML file (not a URL) draws the `http`/`https` pictures, style sheets and fonts it links only when both
+`network(true)` and `linkedFromFiles(true)` are set and the caller passes `WebAssets.linkedFrom(localAssets, access)`
+as its `htmlAssets` (`--allow-network --fetch-linked`, which combines with `--allow-local-files`). The same address,
+redirect, cookie and size rules apply. Host lookups give up after 10 s (or the time left), TLS certificates are checked
+against the system trust store and the host name, and the host name is sent as SNI.
 
 EPUB (`.epub`, EPUB 2 and 3) is read in its reading order (the package document's spine) into one HTML page: each
 document starts a new page, its own `<style>` rules apply only to it, links between documents become links inside

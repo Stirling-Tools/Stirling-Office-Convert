@@ -131,7 +131,7 @@ final class WebFonts {
                 return null;
             }
         } else {
-            data = linked.read(HtmlRefs.resolve(base, url));
+            data = linked.read(linked.resolve(base, url));
         }
         return data == null ? null : sfnt(data);
     }

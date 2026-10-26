@@ -23,6 +23,10 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.function.Predicate;
 
 import javax.net.ssl.SNIHostName;
@@ -33,7 +37,7 @@ import javax.net.ssl.SSLSocketFactory;
 public final class WebAssets implements HtmlAssets {
 
     public record Access(boolean network, boolean redirects, boolean cookies, boolean privateAddresses,
-            Duration timeout, long maxBytes, int maxRequests, int maxRedirects) {
+            boolean linkedFromFiles, Duration timeout, long maxBytes, int maxRequests, int maxRedirects) {
 
         public static final Duration DEFAULT_TIMEOUT = Duration.ofSeconds(60);
 
@@ -54,42 +58,53 @@ public final class WebAssets implements HtmlAssets {
         }
 
         public static Access none() {
-            return new Access(false, false, false, false, DEFAULT_TIMEOUT, DEFAULT_MAX_BYTES, DEFAULT_MAX_REQUESTS,
-                    DEFAULT_MAX_REDIRECTS);
+            return new Access(false, false, false, false, false, DEFAULT_TIMEOUT, DEFAULT_MAX_BYTES,
+                    DEFAULT_MAX_REQUESTS, DEFAULT_MAX_REDIRECTS);
         }
 
         public Access network(boolean on) {
-            return new Access(on, redirects, cookies, privateAddresses, timeout, maxBytes, maxRequests, maxRedirects);
+            return new Access(on, redirects, cookies, privateAddresses, linkedFromFiles, timeout, maxBytes,
+                    maxRequests, maxRedirects);
         }
 
         public Access redirects(boolean on) {
-            return new Access(network, on, cookies, privateAddresses, timeout, maxBytes, maxRequests, maxRedirects);
+            return new Access(network, on, cookies, privateAddresses, linkedFromFiles, timeout, maxBytes,
+                    maxRequests, maxRedirects);
         }
 
         public Access cookies(boolean on) {
-            return new Access(network, redirects, on, privateAddresses, timeout, maxBytes, maxRequests, maxRedirects);
+            return new Access(network, redirects, on, privateAddresses, linkedFromFiles, timeout, maxBytes,
+                    maxRequests, maxRedirects);
         }
 
         public Access privateAddresses(boolean on) {
-            return new Access(network, redirects, cookies, on, timeout, maxBytes, maxRequests, maxRedirects);
+            return new Access(network, redirects, cookies, on, linkedFromFiles, timeout, maxBytes, maxRequests,
+                    maxRedirects);
+        }
+
+        public Access linkedFromFiles(boolean on) {
+            return new Access(network, redirects, cookies, privateAddresses, on, timeout, maxBytes, maxRequests,
+                    maxRedirects);
         }
 
         public Access timeout(Duration limit) {
-            return new Access(network, redirects, cookies, privateAddresses, limit, maxBytes, maxRequests,
-                    maxRedirects);
+            return new Access(network, redirects, cookies, privateAddresses, linkedFromFiles, limit, maxBytes,
+                    maxRequests, maxRedirects);
         }
 
         public Access maxBytes(long limit) {
-            return new Access(network, redirects, cookies, privateAddresses, timeout, limit, maxRequests,
-                    maxRedirects);
+            return new Access(network, redirects, cookies, privateAddresses, linkedFromFiles, timeout, limit,
+                    maxRequests, maxRedirects);
         }
 
         public Access maxRequests(int limit) {
-            return new Access(network, redirects, cookies, privateAddresses, timeout, maxBytes, limit, maxRedirects);
+            return new Access(network, redirects, cookies, privateAddresses, linkedFromFiles, timeout, maxBytes,
+                    limit, maxRedirects);
         }
 
         public Access maxRedirects(int limit) {
-            return new Access(network, redirects, cookies, privateAddresses, timeout, maxBytes, maxRequests, limit);
+            return new Access(network, redirects, cookies, privateAddresses, linkedFromFiles, timeout, maxBytes,
+                    maxRequests, limit);
         }
     }
 
@@ -103,6 +118,8 @@ public final class WebAssets implements HtmlAssets {
 
     private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(10);
 
+    private static final Duration LOOKUP_TIMEOUT = Duration.ofSeconds(10);
+
     private final Access access;
     private final Resolver resolver;
     private final Predicate<InetAddress> refused;
@@ -113,6 +130,7 @@ public final class WebAssets implements HtmlAssets {
     private int requests;
     private String url;
     private byte[] page;
+    private HtmlAssets local = HtmlAssets.NONE;
 
     private WebAssets(Access access, Resolver resolver, Predicate<InetAddress> refused, SSLSocketFactory tls) {
         this.access = access;
@@ -124,9 +142,32 @@ public final class WebAssets implements HtmlAssets {
 
     public static WebAssets fetch(String url, Access access) throws IOException {
         Objects.requireNonNull(access, "access");
-        return fetch(url, access, InetAddress::getAllByName,
-                access.privateAddresses() ? WebAssets::reserved : WebAssets::refused,
+        return fetch(url, access, InetAddress::getAllByName, policy(access),
                 (SSLSocketFactory) SSLSocketFactory.getDefault());
+    }
+
+    public static WebAssets linkedFrom(HtmlAssets local, Access access) throws IOException {
+        Objects.requireNonNull(access, "access");
+        return linkedFrom(local, access, InetAddress::getAllByName, policy(access),
+                (SSLSocketFactory) SSLSocketFactory.getDefault());
+    }
+
+    static WebAssets linkedFrom(HtmlAssets local, Access access, Resolver resolver, Predicate<InetAddress> refused,
+            SSLSocketFactory tls) throws IOException {
+        if (!access.network() || !access.linkedFromFiles()) {
+            throw new IOException("Pictures and style sheets on the web are fetched for an HTML file only when"
+                    + " network access and linked resources are both turned on (WebAssets.Access.network and"
+                    + " linkedFromFiles, --allow-network --fetch-linked)");
+        }
+        WebAssets web = new WebAssets(access, resolver, refused, tls);
+        web.local = local == null ? HtmlAssets.NONE : local;
+        String base = web.local.base();
+        web.url = base == null ? "" : base;
+        return web;
+    }
+
+    private static Predicate<InetAddress> policy(Access access) {
+        return access.privateAddresses() ? WebAssets::reserved : WebAssets::refused;
     }
 
     static WebAssets fetch(String url, Access access, Resolver resolver, Predicate<InetAddress> refused,
@@ -157,10 +198,15 @@ public final class WebAssets implements HtmlAssets {
     }
 
     @Override
-    public byte[] read(String reference) {
+    public boolean absoluteWeb() {
+        return true;
+    }
+
+    @Override
+    public byte[] read(String reference) throws IOException {
         if (reference == null || !(reference.regionMatches(true, 0, "http://", 0, 7)
                 || reference.regionMatches(true, 0, "https://", 0, 8))) {
-            return null;
+            return page == null && reference != null ? local.read(reference) : null;
         }
         try {
             return get(uri(reference), false).body();
@@ -232,7 +278,7 @@ public final class WebAssets implements HtmlAssets {
         }
         boolean secure = u.getScheme().equalsIgnoreCase("https");
         int port = u.getPort() < 0 ? secure ? 443 : 80 : u.getPort();
-        InetAddress[] addresses = resolver.resolve(host);
+        InetAddress[] addresses = lookup(host);
         if (addresses == null || addresses.length == 0) {
             throw new IOException("The host " + host + " has no address");
         }
@@ -267,6 +313,29 @@ public final class WebAssets implements HtmlAssets {
             return read(u, host, socket);
         } catch (SocketTimeoutException e) {
             throw new IOException("The server did not answer within " + access.timeout().toSeconds() + " s", e);
+        }
+    }
+
+    private InetAddress[] lookup(String host) throws IOException {
+        long limit = Math.max(1, Math.min(remainingMillis(), LOOKUP_TIMEOUT.toMillis()));
+        CompletableFuture<InetAddress[]> answer = new CompletableFuture<>();
+        Thread.ofVirtual().start(() -> {
+            try {
+                answer.complete(resolver.resolve(host));
+            } catch (IOException | RuntimeException e) {
+                answer.completeExceptionally(e);
+            }
+        });
+        try {
+            return answer.get(limit, TimeUnit.MILLISECONDS);
+        } catch (TimeoutException e) {
+            throw new IOException("Looking up " + host + " took longer than " + limit + " ms", e);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IOException("Interrupted while looking up " + host, e);
+        } catch (ExecutionException e) {
+            throw e.getCause() instanceof IOException io ? io
+                    : new IOException("The host " + host + " could not be looked up", e.getCause());
         }
     }
 

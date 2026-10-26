@@ -18,6 +18,10 @@ public interface HtmlAssets {
 
     byte[] read(String reference) throws IOException;
 
+    default boolean absoluteWeb() {
+        return false;
+    }
+
     static HtmlAssets folder(Path root, String page) throws IOException {
         Objects.requireNonNull(page, "page");
         Path real = root.toRealPath();

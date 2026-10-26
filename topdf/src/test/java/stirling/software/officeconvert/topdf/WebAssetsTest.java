@@ -365,6 +365,38 @@ class WebAssetsTest {
     }
 
     @Test
+    void anHtmlFileFetchesWhatItLinksOnlyWithItsOwnSwitchAndTheSameGuards() throws IOException {
+        java.nio.file.Path page = dir.resolve("upload.html");
+        java.nio.file.Files.writeString(page, "<html><head><link rel=stylesheet href=\"" + base() + "/style.css\">"
+                + "</head><body><h1>Uploaded</h1><img src=\"" + base() + "/img/red.png\" width=40 height=20>"
+                + "<img src=\"//127.0.0.1:" + server.getAddress().getPort() + "/img/red.png\" width=40 height=20>"
+                + "</body></html>");
+        Path plain = dir.resolve("plain.pdf");
+        OfficeToPdf.convert(page, plain, OfficeToPdf.Options.defaults());
+        assertTrue(hits.isEmpty(), hits.toString());
+        assertThrows(IOException.class, () -> WebAssets.linkedFrom(HtmlAssets.NONE, LOCAL));
+        assertThrows(IOException.class, () -> WebAssets.linkedFrom(HtmlAssets.NONE,
+                WebAssets.Access.none().linkedFromFiles(true)));
+        Path guarded = dir.resolve("guarded.pdf");
+        OfficeToPdf.convert(page, guarded, OfficeToPdf.Options.defaults().htmlAssets(WebAssets.linkedFrom(
+                HtmlAssets.NONE, WebAssets.Access.none().network(true).linkedFromFiles(true))));
+        assertTrue(hits.isEmpty(), hits.toString());
+        Path fetched = dir.resolve("fetched.pdf");
+        OfficeToPdf.convert(page, fetched, OfficeToPdf.Options.defaults().htmlAssets(WebAssets.linkedFrom(
+                HtmlAssets.NONE, LOCAL.linkedFromFiles(true))));
+        assertTrue(hits.containsAll(List.of("/style.css", "/img/red.png")), hits.toString());
+        try (PDDocument doc = Loader.loadPDF(fetched.toFile())) {
+            int images = 0;
+            for (var name : doc.getPage(0).getResources().getXObjectNames()) {
+                if (doc.getPage(0).getResources().getXObject(name) instanceof PDImageXObject) {
+                    images++;
+                }
+            }
+            assertTrue(images >= 1, "images " + images);
+        }
+    }
+
+    @Test
     void aBaseElementMovesWhereLinksResolve() throws IOException {
         server.createContext("/site/", ex -> send(ex, 200, "text/html", ("<html><head><base href=\"/assets/\">"
                 + "</head><body><p>Based</p><img src=\"red.png\" width=\"40\" height=\"20\"></body></html>")
