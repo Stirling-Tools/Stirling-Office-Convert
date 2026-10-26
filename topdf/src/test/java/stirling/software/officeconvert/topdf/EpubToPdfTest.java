@@ -152,19 +152,7 @@ class EpubToPdfTest {
             String contents = pageText(doc, 4);
             assertTrue(contents.contains("Contents"), contents);
             assertTrue(contents.matches("(?s).*Chapter One\\s*2\\s.*Chapter Two\\s*3\\s.*"), contents);
-            List<Integer> targets = new ArrayList<>();
-            for (PDAnnotation a : doc.getPage(3).getAnnotations()) {
-                if (a instanceof PDAnnotationLink link) {
-                    PDDestination d = link.getDestination();
-                    if (d == null && link.getAction() instanceof PDActionGoTo go) {
-                        d = go.getDestination();
-                    }
-                    PDPageDestination page = d instanceof PDNamedDestination named
-                            ? doc.getDocumentCatalog().findNamedDestinationPage(named) : (PDPageDestination) d;
-                    targets.add(doc.getPages().indexOf(page.getPage()));
-                }
-            }
-            assertEquals(List.of(1, 2), targets);
+            assertEquals(List.of(1, 2), linkTargets(doc, 3));
             List<String> bookmarks = new ArrayList<>();
             doc.getDocumentCatalog().getDocumentOutline().children().forEach(i -> bookmarks.add(i.getTitle()));
             assertEquals(List.of("Chapter One", "Chapter Two", "Contents"), bookmarks);
@@ -201,6 +189,32 @@ class EpubToPdfTest {
                 }
             }
             assertTrue(fonts > 0);
+        }
+    }
+
+    private static List<Integer> linkTargets(PDDocument doc, int page) throws IOException {
+        List<Integer> targets = new ArrayList<>();
+        for (PDAnnotation a : doc.getPage(page).getAnnotations()) {
+            if (a instanceof PDAnnotationLink link) {
+                PDDestination d = link.getDestination();
+                if (d == null && link.getAction() instanceof PDActionGoTo go) {
+                    d = go.getDestination();
+                }
+                PDPageDestination target = d instanceof PDNamedDestination named
+                        ? doc.getDocumentCatalog().findNamedDestinationPage(named) : (PDPageDestination) d;
+                targets.add(target == null ? -1 : doc.getPages().indexOf(target.getPage()));
+            }
+        }
+        return targets;
+    }
+
+    @Test
+    void linksBetweenChaptersLeadToTheirTarget() throws IOException {
+        Path in = epub("linked.epub", book());
+        Path out = dir.resolve("linked.pdf");
+        OfficeToPdf.convert(in, out, OfficeToPdf.Options.defaults().timeout(Duration.ofMinutes(2)));
+        try (PDDocument doc = Loader.loadPDF(out.toFile())) {
+            assertEquals(List.of(2), linkTargets(doc, 1));
         }
     }
 
