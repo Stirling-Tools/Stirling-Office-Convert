@@ -39,8 +39,11 @@ import org.apache.pdfbox.pdmodel.font.PDFontDescriptor;
 import org.apache.pdfbox.pdmodel.font.PDSimpleFont;
 import org.apache.pdfbox.pdmodel.font.PDTrueTypeFont;
 import org.apache.pdfbox.pdmodel.font.PDType0Font;
+import org.apache.pdfbox.pdmodel.font.PDType3CharProc;
+import org.apache.pdfbox.pdmodel.font.PDType3Font;
 import org.apache.pdfbox.pdmodel.font.encoding.Encoding;
 import org.apache.pdfbox.pdmodel.font.encoding.GlyphList;
+import org.apache.pdfbox.util.Matrix;
 
 import stirling.software.officeconvert.extract.PdfFiles;
 
@@ -174,6 +177,9 @@ public final class WebFonts {
     }
 
     public static byte[] toTrueType(PDFont font) throws IOException {
+        if (font instanceof PDType3Font t3) {
+            return fromType3(t3);
+        }
         PDFontDescriptor fd = font.getFontDescriptor();
         if (fd == null) {
             throw new IOException("The font has no descriptor");
@@ -203,6 +209,73 @@ public final class WebFonts {
         }
         Program p = program;
         return convert(p, unicodeByGlyph(font, p.count(), code -> p.gid(name(font, code))));
+    }
+
+    private static byte[] fromType3(PDType3Font font) throws IOException {
+        try {
+            return type3(font);
+        } catch (RuntimeException e) {
+            throw new IOException("The Type 3 font cannot be converted: " + e.getMessage(), e);
+        }
+    }
+
+    private static byte[] type3(PDType3Font font) throws IOException {
+        Matrix fm = font.getFontMatrix();
+        TrueTypeWriter w = new TrueTypeWriter(UNITS_PER_EM);
+        Map<List<Object>, Integer> byProc = new HashMap<>();
+        Map<Integer, Integer> gidByCode = new TreeMap<>();
+        long budget = MIN_GLYPH_BYTES;
+        for (int code = 0; code < 256; code++) {
+            PdfFiles.stopIfInterrupted();
+            PDType3CharProc proc = font.getCharProc(code);
+            if (proc == null) {
+                continue;
+            }
+            int advance = (int) Math.rint(fm.transformPoint(font.getWidth(code), 0).x * UNITS_PER_EM
+                    - fm.transformPoint(0, 0).x * UNITS_PER_EM);
+            List<Object> key = List.of(proc.getCOSObject(), advance);
+            Integer known = byProc.get(key);
+            if (known != null) {
+                gidByCode.put(code, known);
+                continue;
+            }
+            GeneralPath path;
+            try {
+                path = Type3Outlines.glyph(proc);
+            } catch (IOException | RuntimeException e) {
+                PdfFiles.stopIfInterrupted();
+                path = new GeneralPath();
+            }
+            int gid = w.addOutline(path, advance);
+            checkGlyphBytes(w, budget);
+            byProc.put(key, gid);
+            gidByCode.put(code, gid);
+        }
+        if (gidByCode.isEmpty()) {
+            throw new IOException("The Type 3 font has no glyph procedures");
+        }
+        TreeMap<Integer, Integer> unicode = cmap(w.size(), gid -> null,
+                unicodeByGlyph(font, w.size(), code -> gidByCode.getOrDefault(code, 0)), Map.of());
+        TreeMap<Integer, Integer> symbol = new TreeMap<>();
+        for (Map.Entry<Integer, Integer> e : gidByCode.entrySet()) {
+            symbol.put(0xF000 + e.getKey(), e.getValue());
+        }
+        List<Cmaps.Subtable> subtables = new ArrayList<>();
+        subtables.add(new Cmaps.Subtable(3, 0, symbol));
+        subtables.add(new Cmaps.Subtable(3, 1, new TreeMap<>(unicode.headMap(0xFFFF))));
+        if (!unicode.isEmpty() && unicode.lastKey() > 0xFFFF) {
+            subtables.add(new Cmaps.Subtable(3, 10, unicode));
+        }
+        TrueTypeWriter.Metrics m = w.metrics();
+        int ascent = Math.max(m.yMax(), 800);
+        int descent = Math.min(m.yMin(), -200);
+        Map<String, byte[]> tables = new HashMap<>();
+        tables.put("head", head(m, 0));
+        tables.put("hhea", hhea(m, ascent, descent, w.size()));
+        tables.put("OS/2", os2(m, ascent, descent, unicode.isEmpty() ? symbol : unicode, 0, UNITS_PER_EM));
+        tables.put("post", post(0));
+        String name = font.getName() == null || font.getName().isBlank() ? "Type3" : font.getName();
+        return w.build(FontRebuild.cleanName(name), Cmaps.table(subtables), tables);
     }
 
     private static byte[] bytes(PDStream s) throws IOException {
