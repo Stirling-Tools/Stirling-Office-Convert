@@ -60,8 +60,9 @@ final class DrawingPainter {
             if (r == null || !(r[2] > 0 || r[3] > 0)) {
                 continue;
             }
-            if (r[0] > cols.length() + originX + 2 || r[1] > rows.length() + originY + 2 || r[0] + r[2] < originX - 2
-                    || r[1] + r[3] < originY - 2) {
+            double reach = item.rotation() % 180 == 0 ? 0 : Math.max(r[2], r[3]) / 2;
+            if (r[0] - reach > cols.length() + originX + 2 || r[1] - reach > rows.length() + originY + 2
+                    || r[0] + r[2] + reach < originX - 2 || r[1] + r[3] + reach < originY - 2) {
                 continue;
             }
             if (mirror > 0) {
