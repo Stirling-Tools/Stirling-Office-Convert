@@ -125,6 +125,8 @@ public final class Main {
                     case "-q", "--quiet" -> quiet = true;
                     case "--overwrite" -> overwrite = true;
                     case "--allow-packages" -> office = office.allowPackages(true);
+                    case "--toc" -> office = office.tableOfContents(true);
+                    case "--page-numbers" -> office = office.pageNumbers(true);
                     case "--allow-local-files" -> localFiles = true;
                     case "-h", "--help" -> {
                         usage();
@@ -537,7 +539,7 @@ public final class Main {
                         + " [-o out.pdf|dir] [--format pdf] [--password p]"
                         + " [--max-pages n (default 10000, 0 = all)] [--timeout s (default 300, 0 = none)]"
                         + " [--fonts dir]... [--font-map Family=Installed]... [--font-width Family=scale]..."
-                        + " [--no-system-fonts] [--allow-packages] [--allow-local-files] [--overwrite] [-q]"
+                        + " [--no-system-fonts] [--allow-packages] [--allow-local-files] [--toc] [--page-numbers] [--overwrite] [-q]"
                         + System.lineSeparator()
                         + "       office-convert <in.pdf|dir>... --pdfa 1a|1b|2a|2b|2u|3a|3b|3u [-o out.pdf|dir] [--password p]"
                         + " [--timeout s] [--fonts dir]... [--font-map Family=Installed]... [--no-system-fonts] [--overwrite] [-q]"
@@ -556,7 +558,9 @@ public final class Main {
                         + " links to is fetched and no macro, field or formula is run. A .zip of an HTML page converts only"
                         + " with --allow-packages; --allow-local-files lets an HTML page draw the pictures and style sheets"
                         + " in its own folder (never outside it). eBooks use only what they hold; an EPUB inside another .zip, or"
-                        + " a FictionBook inside a .zip not named .fbz or .fb2.zip, needs --allow-packages."
+                        + " a FictionBook inside a .zip not named .fbz or .fb2.zip, needs --allow-packages. For an eBook, --toc"
+                        + " adds a table of contents with page numbers and links after the book and --page-numbers numbers"
+                        + " the pages at their foot; every font the PDF uses is embedded."
                         + System.lineSeparator()
                         + "The output's extension picks the format: .docx, .odt, .fodt, .xml (flat ODT), .rtf, .doc (RTF content),"
                         + " .txt, .html (one file, pictures inline), .json (the document model), .md, .epub, .azw3, .pptx, .odp, .ppt, .xlsx or .ods; --format names it for a directory of outputs."

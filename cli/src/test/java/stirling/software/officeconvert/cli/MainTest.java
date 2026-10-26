@@ -17,10 +17,12 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 import java.util.zip.ZipOutputStream;
 
+import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.PDPageContentStream;
 import org.apache.pdfbox.pdmodel.font.PDType0Font;
+import org.apache.pdfbox.text.PDFTextStripper;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -118,6 +120,42 @@ class MainTest {
             assertTrue(css.contains("font-size:1em"), css);
         }
         assertUsage(run(pdf.toString(), "-o", dir.resolve("book2.epub").toString(), "--device", "nook"), "--device");
+    }
+
+    @Test
+    void ebookToPdfTakesContentsAndPageNumbers() throws Exception {
+        Path pdf = dir.resolve("story.pdf");
+        try (PDDocument doc = new PDDocument();
+                InputStream font = PDDocument.class.getResourceAsStream(
+                        "/org/apache/pdfbox/resources/ttf/LiberationSans-Regular.ttf")) {
+            PDType0Font f = PDType0Font.load(doc, font);
+            for (String chapter : new String[] {"First Chapter", "Second Chapter"}) {
+                PDPage page = new PDPage();
+                doc.addPage(page);
+                try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
+                    cs.beginText();
+                    cs.setFont(f, 24);
+                    cs.newLineAtOffset(72, 700);
+                    cs.showText(chapter);
+                    cs.setFont(f, 11);
+                    for (int line = 0; line < 8; line++) {
+                        cs.newLineAtOffset(0, -18);
+                        cs.showText("A plain line of the story that runs along the page, number " + line + ".");
+                    }
+                    cs.endText();
+                }
+            }
+            doc.save(pdf.toFile());
+        }
+        Path epub = dir.resolve("story.epub");
+        assertEquals(0, run(pdf.toString(), "-o", epub.toString(), "-q").code());
+        Path back = dir.resolve("story-back.pdf");
+        Result r = run(epub.toString(), "-o", back.toString(), "--toc", "--page-numbers", "-q");
+        assertEquals(0, r.code(), r.err());
+        try (PDDocument doc = Loader.loadPDF(back.toFile())) {
+            String text = new PDFTextStripper().getText(doc);
+            assertTrue(text.contains("Contents") && text.contains("Second Chapter"), text);
+        }
     }
 
     @Test

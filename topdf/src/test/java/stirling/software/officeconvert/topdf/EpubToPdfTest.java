@@ -15,7 +15,9 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.zip.CRC32;
 import java.util.zip.ZipEntry;
@@ -24,9 +26,17 @@ import java.util.zip.ZipOutputStream;
 import javax.imageio.ImageIO;
 
 import org.apache.pdfbox.Loader;
+import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
+import org.apache.pdfbox.pdmodel.font.PDFont;
 import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
+import org.apache.pdfbox.pdmodel.interactive.action.PDActionGoTo;
+import org.apache.pdfbox.pdmodel.interactive.annotation.PDAnnotation;
+import org.apache.pdfbox.pdmodel.interactive.annotation.PDAnnotationLink;
+import org.apache.pdfbox.pdmodel.interactive.documentnavigation.destination.PDDestination;
+import org.apache.pdfbox.pdmodel.interactive.documentnavigation.destination.PDNamedDestination;
+import org.apache.pdfbox.pdmodel.interactive.documentnavigation.destination.PDPageDestination;
 import org.apache.pdfbox.text.PDFTextStripper;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -130,6 +140,75 @@ class EpubToPdfTest {
             assertEquals(1, images(doc.getPage(1)));
             assertEquals("The Test Book", doc.getDocumentInformation().getTitle());
         }
+    }
+
+    @Test
+    void tableOfContentsFollowsTheBookWithPageNumbersAndLinks() throws IOException {
+        Path in = epub("contents.epub", book());
+        Path out = dir.resolve("contents.pdf");
+        OfficeToPdf.convert(in, out, OfficeToPdf.Options.defaults().timeout(Duration.ofMinutes(2)).tableOfContents(true));
+        try (PDDocument doc = Loader.loadPDF(out.toFile())) {
+            assertEquals(4, doc.getNumberOfPages());
+            String contents = pageText(doc, 4);
+            assertTrue(contents.contains("Contents"), contents);
+            assertTrue(contents.matches("(?s).*Chapter One\\s*2\\s.*Chapter Two\\s*3\\s.*"), contents);
+            List<Integer> targets = new ArrayList<>();
+            for (PDAnnotation a : doc.getPage(3).getAnnotations()) {
+                if (a instanceof PDAnnotationLink link) {
+                    PDDestination d = link.getDestination();
+                    if (d == null && link.getAction() instanceof PDActionGoTo go) {
+                        d = go.getDestination();
+                    }
+                    PDPageDestination page = d instanceof PDNamedDestination named
+                            ? doc.getDocumentCatalog().findNamedDestinationPage(named) : (PDPageDestination) d;
+                    targets.add(doc.getPages().indexOf(page.getPage()));
+                }
+            }
+            assertEquals(List.of(1, 2), targets);
+            List<String> bookmarks = new ArrayList<>();
+            doc.getDocumentCatalog().getDocumentOutline().children().forEach(i -> bookmarks.add(i.getTitle()));
+            assertEquals(List.of("Chapter One", "Chapter Two", "Contents"), bookmarks);
+        }
+    }
+
+    @Test
+    void pageNumbersRunAlongTheFoot() throws IOException {
+        Path in = epub("numbered.epub", book());
+        Path out = dir.resolve("numbered.pdf");
+        OfficeToPdf.convert(in, out, OfficeToPdf.Options.defaults().timeout(Duration.ofMinutes(2)).pageNumbers(true));
+        try (PDDocument doc = Loader.loadPDF(out.toFile())) {
+            assertEquals(3, doc.getNumberOfPages());
+            for (int p = 1; p <= 3; p++) {
+                String text = pageText(doc, p);
+                assertTrue(List.of(text.split("\\R")).contains(Integer.toString(p)), text);
+            }
+        }
+    }
+
+    @Test
+    void everyFontIsEmbedded() throws IOException {
+        Path in = epub("fonts.epub", book());
+        Path out = dir.resolve("fonts.pdf");
+        OfficeToPdf.convert(in, out, OfficeToPdf.Options.defaults().timeout(Duration.ofMinutes(2)).tableOfContents(true)
+                .pageNumbers(true));
+        try (PDDocument doc = Loader.loadPDF(out.toFile())) {
+            int fonts = 0;
+            for (PDPage page : doc.getPages()) {
+                for (COSName name : page.getResources().getFontNames()) {
+                    PDFont font = page.getResources().getFont(name);
+                    assertTrue(font.isEmbedded(), font.getName());
+                    fonts++;
+                }
+            }
+            assertTrue(fonts > 0);
+        }
+    }
+
+    private static String pageText(PDDocument doc, int page) throws IOException {
+        PDFTextStripper stripper = new PDFTextStripper();
+        stripper.setStartPage(page);
+        stripper.setEndPage(page);
+        return stripper.getText(doc);
     }
 
     @Test
