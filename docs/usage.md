@@ -791,6 +791,14 @@ A program that cannot be read fails with an `IOException`, and so does one whose
 tokens for a glyph, 64 nested subroutine calls or 2^27 tokens for the font, or whose converted glyphs need more than
 eight times the program's size (at least 16 MB).
 
+## Line art
+
+The `lineart` module (`stirling-office-convert-lineart`) turns every picture in a PDF into a 1-bit image, in place:
+`LineArt.convert(in, out, LineArt.Options.defaults())` or `--line-art sauvola|otsu|fixed|edges` on the command line
+(`in.lineart.pdf` beside the input unless `-o` names it). `LineArt.Options.imageMagickEdges(level)` reproduces
+Stirling-PDF's ImageMagick line art step pixel for pixel. Methods, options, what is kept in the PDF and the
+benchmark are in [line art](line-art.md).
+
 ## How it works
 
 Two passes over the pages:

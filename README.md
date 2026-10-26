@@ -10,6 +10,7 @@ The converter needs no native libraries or external processes. It also converts 
 | PDF to spreadsheets | XLSX, ODS |
 | Office to PDF | DOCX, PPTX, XLSX, legacy DOC/XLS/PPT, XLSB, RTF, OpenDocument, Office XML, Visio, text and table formats, HTML, EPUB, MOBI/AZW3, FB2, JSON |
 | PDF to PDF/A | 1a, 1b, 2a, 2b, 2u, 3a, 3b, 3u |
+| PDF pictures to line art | 1-bit JBIG2, CCITT G4 or Flate, thresholded by Sauvola, Otsu, a fixed level or ImageMagick-style edges |
 
 PDF-to-Office documents contain real paragraphs, headings, lists, tables, footnotes, headers and footers.
 Office-to-PDF reads saved content without running macros, scripts or formulas or fetching linked resources.
@@ -43,6 +44,7 @@ java -jar cli/build/libs/stirling-office-convert-cli.jar in.pdf -o out.docx
 java -jar cli/build/libs/stirling-office-convert-cli.jar report.docx slides.pptx book.xlsx -o outdir/
 java -jar cli/build/libs/stirling-office-convert-cli.jar folder/ -o outdir/ --format pdf
 java -jar cli/build/libs/stirling-office-convert-cli.jar in.pdf --pdfa 2b -o archive.pdf
+java -jar cli/build/libs/stirling-office-convert-cli.jar scan.pdf --line-art sauvola -o small.pdf
 ```
 
 The output extension picks the PDF-to-Office format. Office inputs produce PDFs. A folder can contain both
@@ -59,6 +61,7 @@ input names retain their extensions in the output name. A failure, skipped input
 | `--max-pages n` | Office-to-PDF page limit; 0 converts all pages |
 | `--fonts dir` | Add a font directory for Office-to-PDF or PDF/A |
 | `--pictures compact\|lossless` | PDF-to-Office picture storage |
+| `--line-art sauvola\|otsu\|fixed\|edges` | Make every picture 1-bit; see [line art](docs/line-art.md) for `--threshold`, `--edge-level`, `--window`, `--sauvola-k`, `--codec` and `--ink-colour` |
 | `--sheets page\|table\|single` | PDF-to-spreadsheet layout |
 | `--overwrite` | Replace existing output files |
 | `-q` | Quiet |
@@ -67,7 +70,7 @@ The [usage guide](docs/usage.md#build-and-run) documents the remaining options a
 
 ## Library
 
-The main API entry points are `OfficeConvert`, `OfficeToPdf` and `PdfToPdfA`.
+The main API entry points are `OfficeConvert`, `OfficeToPdf`, `PdfToPdfA` and `LineArt`.
 Use `FontSet` to share configured fonts between Office-to-PDF and PDF/A conversions.
 
 ```java
@@ -112,6 +115,7 @@ Docker demo and optional LibreOffice comparison tester.
 | `legacy` | PowerPoint 97-2003 (`.ppt`) writer | `stirling-office-convert-legacy` |
 | `topdf` | Office to PDF | `stirling-office-convert-topdf` |
 | `pdfa` | PDF to PDF/A | `stirling-office-convert-pdfa` |
+| `lineart` | PDF pictures to 1-bit line art | `stirling-office-convert-lineart` |
 | `cli` | Command line tool | |
 | `app` | Local test web app | |
 

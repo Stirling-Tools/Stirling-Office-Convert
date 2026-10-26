@@ -31,6 +31,7 @@ import stirling.software.officeconvert.PdfToText;
 import stirling.software.officeconvert.PdfToXlsx;
 import stirling.software.officeconvert.Pictures;
 import stirling.software.officeconvert.legacy.PdfToPpt;
+import stirling.software.officeconvert.lineart.LineArt;
 import stirling.software.officeconvert.pdfa.PdfALevel;
 import stirling.software.officeconvert.pdfa.PdfToPdfA;
 import stirling.software.officeconvert.topdf.HtmlAssets;
@@ -82,6 +83,9 @@ public final class Main {
         PdfToPptx.Options slides;
         PdfToXlsx.Options books;
         PdfALevel pdfa = null;
+        LineArt.Method lineArtMethod = null;
+        LineArt.Options lineArt = LineArt.Options.defaults();
+        boolean lineArtTuned = false;
         FontSet fonts;
         try {
             for (int i = 0; i < args.length; i++) {
@@ -117,6 +121,31 @@ public final class Main {
                     case "--no-system-fonts" -> fontSet.systemFonts(false);
                     case "--sheets" -> sheets = sheets(value(args, ++i, a));
                     case "--pdfa" -> pdfa = level(value(args, ++i, a));
+                    case "--line-art" -> lineArtMethod = lineArtMethod(value(args, ++i, a));
+                    case "--threshold" -> {
+                        lineArt = lineArt.threshold(number(value(args, ++i, a), a));
+                        lineArtTuned = true;
+                    }
+                    case "--edge-level" -> {
+                        lineArt = lineArt.edgeLevel(count(value(args, ++i, a), a));
+                        lineArtTuned = true;
+                    }
+                    case "--window" -> {
+                        lineArt = lineArt.window(count(value(args, ++i, a), a));
+                        lineArtTuned = true;
+                    }
+                    case "--sauvola-k" -> {
+                        lineArt = lineArt.k(number(value(args, ++i, a), a));
+                        lineArtTuned = true;
+                    }
+                    case "--codec" -> {
+                        lineArt = lineArt.codec(codec(value(args, ++i, a)));
+                        lineArtTuned = true;
+                    }
+                    case "--ink-colour", "--ink-color" -> {
+                        lineArt = lineArt.inkColour(true);
+                        lineArtTuned = true;
+                    }
                     case "--pictures" -> pictures = pictures(value(args, ++i, a));
                     case "-q", "--quiet" -> quiet = true;
                     case "--overwrite" -> overwrite = true;
@@ -155,8 +184,17 @@ public final class Main {
                 anyOffice |= officeInput;
                 anyPdf |= !officeInput;
             }
+            if (lineArtTuned && lineArtMethod == null) {
+                throw new Usage("--threshold, --edge-level, --window, --sauvola-k, --codec and --ink-colour go with --line-art");
+            }
+            if (lineArtMethod != null && pdfa != null) {
+                throw new Usage("--line-art and --pdfa are separate runs; give one of them");
+            }
             if (pdfa != null && (anyOffice || formatGiven && !"pdf".equals(format) || pagesGiven)) {
                 throw new Usage("--pdfa converts whole PDFs to PDF/A; give it PDF input without --pages or --format");
+            }
+            if (lineArtMethod != null && (anyOffice || formatGiven && !"pdf".equals(format) || pagesGiven)) {
+                throw new Usage("--line-art rewrites the pictures of whole PDFs; give it PDF input without --pages or --format");
             }
             if (anyOffice && pagesGiven) {
                 throw new Usage("--pages is for PDF input; Office documents convert whole (--max-pages n limits them)");
@@ -164,18 +202,18 @@ public final class Main {
             if (anyOffice && formatGiven && !"pdf".equals(format)) {
                 throw new Usage("Office documents convert to PDF only; use --format pdf or leave it out");
             }
-            if (anyPdf && "pdf".equals(format) && pdfa == null) {
+            if (anyPdf && "pdf".equals(format) && pdfa == null && lineArtMethod == null) {
                 throw new Usage("PDF input converts to an Office format, not pdf");
             }
             options = new PdfToDocx.Options(first, last, tables, dpi, password, pictureFallback, pictures);
             slides = new PdfToPptx.Options(first, last, tables, dpi, password, pictureFallback, pictures);
             books = PdfToXlsx.Options.defaults().withPages(first, last).withTables(tables).withPassword(password)
                     .withSheets(sheets).withTextFallback(pictureFallback);
-            if (pdfa != null && output != null && !Files.isDirectory(output) && inputs.size() == 1
+            if ((pdfa != null || lineArtMethod != null) && output != null && !Files.isDirectory(output) && inputs.size() == 1
                     && !Files.isDirectory(inputs.get(0)) && !"pdf".equals(extension(output))) {
-                throw new Usage("--pdfa writes a PDF; name the output .pdf");
+                throw new Usage((pdfa != null ? "--pdfa" : "--line-art") + " writes a PDF; name the output .pdf");
             }
-            if (pdfa == null && output != null && !Files.isDirectory(output) && inputs.size() == 1
+            if (pdfa == null && lineArtMethod == null && output != null && !Files.isDirectory(output) && inputs.size() == 1
                     && !Files.isDirectory(inputs.get(0))) {
                 String ext = known(extension(output));
                 boolean officeInput = officeOrPage(inputs.get(0));
@@ -190,7 +228,8 @@ public final class Main {
             return 2;
         }
         List<Path> pdfs = new ArrayList<>();
-        boolean archive = pdfa != null;
+        String pdfSuffix = pdfa != null ? "pdfa.pdf" : lineArtMethod != null ? "lineart.pdf" : null;
+        boolean archive = pdfSuffix != null;
         boolean officeFolder = !archive && (!formatGiven || "pdf".equals(format));
         boolean pdfFolder = archive || !formatGiven || !"pdf".equals(format);
         boolean textFolder = formatGiven;
@@ -202,7 +241,7 @@ public final class Main {
                     s.filter(p -> Files.isRegularFile(p) && !lockFile(p) && (officeFolder && isOffice(p)
                             && (textFolder || !plainSource(p))
                             || pdfFolder && p.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".pdf")
-                            && !(archive && p.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".pdfa.pdf"))))
+                            && !(archive && p.getFileName().toString().toLowerCase(Locale.ROOT).endsWith("." + pdfSuffix))))
                             .sorted().forEach(pdfs::add);
                 } catch (IOException e) {
                     System.err.println("office-convert: cannot list " + in + ": " + e.getMessage());
@@ -222,11 +261,12 @@ public final class Main {
             }
         }
         warmUp(pdfs);
-        List<Path> targets = Targets.of(pdfs, output, pdfa != null ? "pdfa.pdf" : format,
+        List<Path> targets = Targets.of(pdfs, output, archive ? pdfSuffix : format,
                 inputs.stream().anyMatch(Files::isDirectory));
         Guard guard = new Guard(pdfs, overwrite);
         PdfToPdfA.Options archival = pdfa == null ? null : PdfToPdfA.Options.defaults().level(pdfa).password(password)
                 .timeout(office.timeout()).maxPages(office.maxPages()).fonts(fonts);
+        LineArt.Options bilevel = lineArtMethod == null ? null : lineArt.method(lineArtMethod).password(password);
         for (int k = 0; k < pdfs.size(); k++) {
             Path pdf = pdfs.get(k);
             boolean officeInput = officeOrPage(pdf);
@@ -247,6 +287,11 @@ public final class Main {
                 List<String> notes = List.of();
                 if (archival != null) {
                     notes = PdfToPdfA.convert(pdf, target, archival).warnings();
+                } else if (bilevel != null) {
+                    LineArt.Result art = LineArt.convert(pdf, target, bilevel);
+                    notes = new ArrayList<>(art.warnings());
+                    notes.add(art.converted() + " of " + art.images() + " pictures made 1-bit, " + art.bytesBefore() + " -> "
+                            + art.bytesAfter() + " bytes");
                 } else if (officeInput) {
                     result = officeToPdf(pdf, target, localFiles && page(pdf) ? office.htmlAssets(
                             HtmlAssets.folder(pdf.toAbsolutePath().getParent(), pdf.getFileName().toString())) : office);
@@ -507,6 +552,24 @@ public final class Main {
         }
     }
 
+    private static LineArt.Method lineArtMethod(String s) throws Usage {
+        try {
+            return LineArt.Method.valueOf(s.strip().toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException e) {
+            throw new Usage("--line-art is sauvola, otsu, fixed or edges, not '" + s + "'");
+        }
+    }
+
+    private static LineArt.Codec codec(String s) throws Usage {
+        return switch (s.strip().toLowerCase(Locale.ROOT)) {
+            case "smallest" -> LineArt.Codec.SMALLEST;
+            case "jbig2" -> LineArt.Codec.JBIG2;
+            case "g4", "ccitt" -> LineArt.Codec.CCITT_G4;
+            case "flate" -> LineArt.Codec.FLATE;
+            default -> throw new Usage("--codec is smallest, jbig2, g4 or flate, not '" + s + "'");
+        };
+    }
+
     private static Pictures pictures(String s) throws Usage {
         try {
             return Pictures.valueOf(s.strip().toUpperCase(Locale.ROOT));
@@ -530,6 +593,10 @@ public final class Main {
                         + "       office-convert <in.pdf|dir>... --pdfa 1a|1b|2a|2b|2u|3a|3b|3u [-o out.pdf|dir] [--password p]"
                         + " [--timeout s] [--fonts dir]... [--font-map Family=Installed]... [--no-system-fonts] [--overwrite] [-q]"
                         + System.lineSeparator()
+                        + "       office-convert <in.pdf|dir>... --line-art sauvola|otsu|fixed|edges [-o out.pdf|dir] [--threshold 0-100]"
+                        + " [--edge-level 1|2|3] [--window px] [--sauvola-k 0-1] [--codec smallest|jbig2|g4|flate] [--ink-colour]"
+                        + " [--password p] [--overwrite] [-q]"
+                        + System.lineSeparator()
                         + "Word, PowerPoint and Excel files (.docx .docm .dotx .dotm .pptx .pptm .ppsx .ppsm .potx .potm"
                         + " .xlsx .xlsm .xltx .xltm .xlsb, binary .doc .dot .xls .xlt .ppt .pps .pot back to Word 6.0 and"
                         + " Excel 2.0, and Word 2003 XML, XML Spreadsheet 2003 and Flat OPC .xml), Visio drawings (.vsdx"
@@ -552,6 +619,13 @@ public final class Main {
                         + "--pdfa makes an archival PDF/A copy of each PDF (in.pdfa.pdf unless -o names it): fonts are embedded,"
                         + " scripts and actions removed, colours given an sRGB output intent; 1a and 1b draw transparency as pictures;"
                         + " the a levels need a tagged PDF."
+                        + System.lineSeparator()
+                        + "--line-art makes every picture 1-bit black and white (in.lineart.pdf unless -o names it). sauvola, the"
+                        + " choice for scans, picks a threshold for each neighbourhood (--window, default from the picture size;"
+                        + " --sauvola-k, default 0.5, higher keeps less ink); otsu picks one for the whole picture; fixed uses --threshold percent of"
+                        + " white (default 50); edges draws outlines like ImageMagick's -edge (--edge-level, default 1), as"
+                        + " Stirling-PDF's compress tool does. --codec picks the compression, smallest by default; --ink-colour keeps"
+                        + " a coloured ink instead of black."
                         + System.lineSeparator()
                         + "--fonts adds a folder of .ttf, .ttc, .otf or .otc fonts (searched to a depth of 8, links not"
                         + " followed); --font-map draws a family with an installed one (Aptos=Inter); --font-width scales"
