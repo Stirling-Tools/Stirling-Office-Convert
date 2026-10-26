@@ -2,11 +2,13 @@ package stirling.software.officeconvert.pdfa;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.TreeSet;
 
+import org.apache.pdfbox.cos.COSBase;
 import org.apache.pdfbox.cos.COSDictionary;
 import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.pdmodel.PDDocument;
@@ -48,7 +50,8 @@ public final class FontEmbedder {
 
     private static Result run(PDDocument doc, FontSet fonts) throws IOException {
         FontUsage usage = new FontUsage();
-        for (ContentGraph.Node n : ContentGraph.of(doc).nodes()) {
+        ContentGraph graph = ContentGraph.of(doc);
+        for (ContentGraph.Node n : graph.nodes()) {
             PdfFiles.stopIfInterrupted();
             List<Object> tokens;
             try {
@@ -60,10 +63,23 @@ public final class FontEmbedder {
             usage.scan(tokens, n.resources(), n.owner());
         }
         usage.resolve();
+        Map<COSDictionary, TreeSet<Integer>> targets = new IdentityHashMap<>(usage.codes());
+        for (ContentGraph.Node n : graph.nodes()) {
+            COSDictionary dict = n.resources() == null ? null
+                    : ContentGraph.dict(n.resources().getDictionaryObject(COSName.FONT));
+            if (dict == null) {
+                continue;
+            }
+            for (COSBase v : dict.getValues()) {
+                if (ContentGraph.dict(v) instanceof COSDictionary font && !targets.containsKey(font)) {
+                    targets.put(font, unusedCodes(font));
+                }
+            }
+        }
         List<String> embedded = new ArrayList<>();
         List<String> failed = new ArrayList<>();
         FontLibrary library = null;
-        for (Map.Entry<COSDictionary, TreeSet<Integer>> e : usage.codes().entrySet()) {
+        for (Map.Entry<COSDictionary, TreeSet<Integer>> e : targets.entrySet()) {
             PdfFiles.stopIfInterrupted();
             PDFont font;
             try {
@@ -90,6 +106,19 @@ public final class FontEmbedder {
             }
         }
         return new Result(embedded, failed);
+    }
+
+    private static TreeSet<Integer> unusedCodes(COSDictionary font) {
+        TreeSet<Integer> codes = new TreeSet<>();
+        if (COSName.TYPE0.equals(font.getCOSName(COSName.SUBTYPE))) {
+            return codes;
+        }
+        int first = Math.max(0, font.getInt(COSName.FIRST_CHAR, 32));
+        int last = Math.min(255, font.getInt(COSName.LAST_CHAR, 255));
+        for (int c = first; c <= last; c++) {
+            codes.add(c);
+        }
+        return codes;
     }
 
     private static String name(COSDictionary font) {

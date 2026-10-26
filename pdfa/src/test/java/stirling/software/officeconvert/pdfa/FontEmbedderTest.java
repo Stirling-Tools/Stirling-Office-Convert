@@ -77,6 +77,34 @@ class FontEmbedderTest {
     }
 
     @Test
+    void fontsTheResourcesNameButNothingShowsAreEmbeddedToo() throws Exception {
+        RawPdf pdf = RawPdf.page("/Font<</F1<</Type/Font/Subtype/Type1/BaseFont/Helvetica/Encoding/WinAnsiEncoding>>"
+                + "/F2<</Type/Font/Subtype/Type1/BaseFont/Times-Bold/Encoding/WinAnsiEncoding>>"
+                + "/F3<</Type/Font/Subtype/Type0/BaseFont/Arial/Encoding/Identity-H/DescendantFonts[<</Type/Font"
+                + "/Subtype/CIDFontType2/BaseFont/Arial/CIDSystemInfo<</Registry(Adobe)/Ordering(Identity)/Supplement 0>>"
+                + "/FontDescriptor<</Type/FontDescriptor/FontName/Arial/Flags 32/FontBBox[0 0 1000 1000]/ItalicAngle 0"
+                + "/Ascent 900/Descent -200/CapHeight 700/StemV 80>>>>]>>>>",
+                "BT /F1 12 Tf 50 700 Td (Shown) Tj ET");
+        try (PDDocument d = Loader.loadPDF(pdf.bytes())) {
+            FontEmbedder.Result r = FontEmbedder.embedMissing(d);
+            assertEquals(3, r.embedded().size(), r.embedded().toString());
+            assertTrue(r.failed().isEmpty(), r.failed().toString());
+            java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+            d.save(out);
+            try (PDDocument saved = Loader.loadPDF(out.toByteArray())) {
+                PDPage p = saved.getPage(0);
+                for (COSName n : p.getResources().getFontNames()) {
+                    assertTrue(p.getResources().getFont(n).isEmbedded(), n.getName());
+                }
+                PDFont times = p.getResources().getFont(COSName.getPDFName("F2"));
+                assertEquals(times.getWidth('W'), new org.apache.pdfbox.pdmodel.font.PDType1Font(
+                        org.apache.pdfbox.pdmodel.font.Standard14Fonts.FontName.TIMES_BOLD).getWidth('W'), 0.5);
+                assertEquals("Shown", new org.apache.pdfbox.text.PDFTextStripper().getText(saved).strip());
+            }
+        }
+    }
+
+    @Test
     void embeddedAndType3FontsAreLeftAlone() throws Exception {
         for (String sample : List.of("s03_type3", "s14_widths_mismatch")) {
             try (PDDocument d = Loader.loadPDF(Samples.write(dir, sample).toFile())) {
