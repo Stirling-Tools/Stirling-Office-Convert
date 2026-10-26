@@ -101,6 +101,8 @@ public final class XlsPackage {
 
         private final BlipGuard guard = new BlipGuard();
 
+        private final CondFormats conditional = new CondFormats();
+
         private boolean lost;
 
         private int charts;
@@ -163,7 +165,7 @@ public final class XlsPackage {
                 charts += Math.max(0, charts(sheet) - drawn);
                 boolean complete;
                 try (Parts.Part p = parts.open("xl/worksheets/sheet" + (i + 1) + ".xml")) {
-                    complete = part.write(parts, p, strings, drawing);
+                    complete = part.write(parts, p, strings, drawing, conditional(sheet));
                 }
                 if (!complete) {
                     lost = true;
@@ -190,7 +192,7 @@ public final class XlsPackage {
             }
             book.append("</workbook>");
             parts.put("xl/workbook.xml", book.toString());
-            parts.put("xl/styles.xml", StylesPart.write(wb));
+            parts.put("xl/styles.xml", StylesPart.write(wb, conditional.styles()));
             strings.write(parts);
             int n = sheets;
             rels.append("<Relationship Id=\"rId").append(n + 1).append("\" Type=\"").append(Xml.REL)
@@ -208,12 +210,24 @@ public final class XlsPackage {
             return new Outcome(finalWarnings(), lost);
         }
 
+        private String conditional(HSSFSheet sheet) {
+            try {
+                return conditional.sheet(sheet);
+            } catch (RuntimeException e) {
+                conditional.skipped++;
+                return "";
+            }
+        }
+
         private List<String> finalWarnings() {
             List<String> out = new ArrayList<>(ActiveContent.describe(activeContent()));
             if (drawingsRefused) {
                 lost = true;
                 out.add("Pictures and shapes were left out: a picture in the workbook would inflate past the"
                         + " converter's limit");
+            }
+            if (conditional.skipped > 0) {
+                out.add("Left out " + conditional.skipped + " conditional formatting rules that depend on formulas");
             }
             if (charts > 0) {
                 out.add("Some charts could not be drawn (" + charts + " left out)");

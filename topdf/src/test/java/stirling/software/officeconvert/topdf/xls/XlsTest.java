@@ -37,6 +37,7 @@ import org.apache.poi.hssf.record.crypto.Biff8EncryptionKey;
 import org.apache.poi.hssf.usermodel.HSSFCell;
 import org.apache.poi.hssf.usermodel.HSSFCellStyle;
 import org.apache.poi.hssf.usermodel.HSSFClientAnchor;
+import org.apache.poi.hssf.usermodel.HSSFConditionalFormattingRule;
 import org.apache.poi.hssf.usermodel.HSSFFont;
 import org.apache.poi.hssf.usermodel.HSSFHyperlink;
 import org.apache.poi.hssf.usermodel.HSSFPatriarch;
@@ -46,6 +47,7 @@ import org.apache.poi.hssf.usermodel.HSSFChildAnchor;
 import org.apache.poi.hssf.usermodel.HSSFShape;
 import org.apache.poi.hssf.usermodel.HSSFShapeGroup;
 import org.apache.poi.hssf.usermodel.HSSFSheet;
+import org.apache.poi.hssf.usermodel.HSSFSheetConditionalFormatting;
 import org.apache.poi.hssf.usermodel.HSSFSimpleShape;
 import org.apache.poi.hssf.usermodel.HSSFTextbox;
 import org.apache.poi.hssf.usermodel.HSSFWorkbook;
@@ -53,6 +55,7 @@ import org.apache.poi.hssf.util.HSSFColor;
 import org.apache.poi.poifs.filesystem.DirectoryEntry;
 import org.apache.poi.poifs.filesystem.POIFSFileSystem;
 import org.apache.poi.ss.usermodel.BorderStyle;
+import org.apache.poi.ss.usermodel.ComparisonOperator;
 import org.apache.poi.ss.usermodel.FillPatternType;
 import org.apache.poi.ss.usermodel.PrintSetup;
 import org.apache.poi.ss.usermodel.Workbook;
@@ -402,6 +405,33 @@ class XlsTest {
         OfficeToPdf.Result result = OfficeToPdf.convert(in, out, OfficeToPdf.Options.defaults());
         assertFalse(String.join(" ", result.warnings()).contains("could not be drawn"), result.warnings().toString());
         assertTrue(hasColour(out, Color.RED));
+    }
+
+    @Test
+    void conditionalFormatsComparingWithConstantsAreApplied() throws Exception {
+        byte[] data = xls(wb -> {
+            HSSFSheet s = wb.createSheet("Scores");
+            for (int i = 0; i < 6; i++) {
+                s.createRow(i).createCell(0).setCellValue(i * 10);
+            }
+            HSSFSheetConditionalFormatting cf = s.getSheetConditionalFormatting();
+            HSSFConditionalFormattingRule high = cf.createConditionalFormattingRule(ComparisonOperator.GE, "40");
+            high.createPatternFormatting().setFillBackgroundColor(HSSFColor.HSSFColorPredefined.RED.getIndex());
+            HSSFConditionalFormattingRule mid = cf.createConditionalFormattingRule(ComparisonOperator.BETWEEN, "10",
+                    "20");
+            mid.createPatternFormatting().setFillBackgroundColor(HSSFColor.HSSFColorPredefined.BLUE.getIndex());
+            HSSFConditionalFormattingRule byFormula = cf.createConditionalFormattingRule("$A$1>0");
+            byFormula.createPatternFormatting().setFillBackgroundColor(HSSFColor.HSSFColorPredefined.GREEN.getIndex());
+            cf.addConditionalFormatting(new CellRangeAddress[] {CellRangeAddress.valueOf("A1:A6")}, high, mid);
+            cf.addConditionalFormatting(new CellRangeAddress[] {CellRangeAddress.valueOf("A1:A6")}, byFormula);
+        });
+        Path in = Fixtures.write(dir, "cf.xls", data);
+        Path out = dir.resolve("cf.pdf");
+        OfficeToPdf.Result result = OfficeToPdf.convert(in, out, OfficeToPdf.Options.defaults());
+        assertTrue(hasColour(out, Color.RED), "40 and 50 are filled");
+        assertTrue(hasColour(out, Color.BLUE), "10 and 20 are filled");
+        assertFalse(hasColour(out, Color.GREEN), "a formula rule is never evaluated");
+        assertTrue(String.join(" ", result.warnings()).contains("conditional formatting"), result.warnings().toString());
     }
 
     @Test

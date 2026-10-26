@@ -31,7 +31,7 @@ final class StylesPart {
 
     private StylesPart() {}
 
-    static String write(HSSFWorkbook wb) {
+    static String write(HSSFWorkbook wb, String dxfs) {
         StringBuilder b = new StringBuilder(8192).append(Xml.HEAD).append("<styleSheet xmlns=\"").append(Xml.MAIN)
                 .append("\">");
         StringBuilder formats = new StringBuilder();
@@ -75,7 +75,7 @@ final class StylesPart {
         b.append("</borders><cellStyleXfs count=\"1\"><xf numFmtId=\"0\" fontId=\"0\" fillId=\"0\" borderId=\"0\"/>"
                 + "</cellStyleXfs><cellXfs count=\"").append(count).append("\">").append(xfs).append("</cellXfs>");
         b.append("<cellStyles count=\"1\"><cellStyle name=\"Normal\" xfId=\"0\" builtinId=\"0\"/></cellStyles>");
-        b.append(palette(wb)).append("</styleSheet>");
+        b.append(dxfs).append(palette(wb)).append("</styleSheet>");
         return b.toString();
     }
 
