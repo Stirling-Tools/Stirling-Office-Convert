@@ -256,8 +256,7 @@ final class Flow {
             spacer(pendingSpace, frame);
             space(0);
         }
-        t.pageBreakBefore = pendingBreak && !sectionStarted;
-        pendingBreak = false;
+        breakBefore(t, pendingBreak && !sectionStarted, frame);
         sectionStarted = false;
         ctx.count();
         emit(t);
@@ -1006,8 +1005,7 @@ final class Flow {
         if (pendingSpace > 0) {
             spacer(pendingSpace, frame);
         }
-        t.pageBreakBefore = pendingBreak && !sectionStarted;
-        pendingBreak = false;
+        breakBefore(t, pendingBreak && !sectionStarted, frame);
         sectionStarted = false;
         ctx.count();
         emit(t);
@@ -1291,8 +1289,7 @@ final class Flow {
             spacer(pendingSpace, frame);
             space(0);
         }
-        t.pageBreakBefore = pendingBreak;
-        pendingBreak = false;
+        breakBefore(t, pendingBreak, frame);
         ctx.count();
         emit(t);
     }
@@ -2045,13 +2042,14 @@ final class Flow {
         if (t == null) {
             return;
         }
-        t.pageBreakBefore = pendingBreak && !sectionStarted && !inCell;
+        boolean newPage = pendingBreak && !sectionStarted && !inCell;
         pendingBreak = false;
         sectionStarted = false;
-        if (pendingSpace > 0) {
+        if (pendingSpace > 0 && !newPage) {
             spacer(pendingSpace, frame);
         }
         space(Math.max(0, length(d.get("margin-bottom"), em, frame.width())));
+        breakBefore(t, newPage, frame);
         ctx.count();
         emit(t);
     }
@@ -2187,6 +2185,21 @@ final class Flow {
         String size = d.getOrDefault("background-size", "auto").strip().toLowerCase(Locale.ROOT);
         boolean[] repeat = Backgrounds.repeat(d.get("background-repeat"));
         return size.equals("cover") || size.equals("100% 100%") || repeat[0] && repeat[1];
+    }
+
+    private void breakBefore(Table t, boolean newPage, Frame frame) throws IOException {
+        pendingBreak = false;
+        if (!newPage) {
+            return;
+        }
+        Paragraph opener = new Paragraph();
+        opener.indentLeft = frame.left();
+        opener.lineRule = Paragraph.LineRule.EXACT;
+        opener.lineHeight = 1;
+        opener.inlines.add(new Inline.Text("\u00a0", blockLook.run().withSize(1), null, -1));
+        opener.pageBreakBefore = true;
+        opener.keepNext = true;
+        emit(opener);
     }
 
     private void spacer(float space, Frame frame) throws IOException {

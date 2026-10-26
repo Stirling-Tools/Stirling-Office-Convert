@@ -144,6 +144,22 @@ class PositionedTest {
     }
 
     @Test
+    void aPageBreakBeforeATableOrABoxedRowStartsANewPage() throws IOException {
+        for (String after : new String[] {"<table border=1><tr><td>Second</td><td>cell</td></tr></table>",
+                "<div style=\"display:flex;gap:20px\"><div style=\"flex:1;border:1px solid\">Second</div>"
+                        + "<div style=\"flex:1;border:1px solid\">box</div></div>"}) {
+            Pdf before = html("after.html", "<html><body><p style=\"page-break-after:always\">First</p>" + after
+                    + "</body></html>");
+            assertEquals(2, before.pages().size(), after);
+            assertEquals(2, before.first("Second").page(), after);
+            String own = after.replace("<table ", "<table style=\"page-break-before:always\" ")
+                    .replace("style=\"display:flex", "style=\"page-break-before:always;display:flex");
+            Pdf ownBreak = html("own.html", "<html><body><p>First</p>" + own + "</body></html>");
+            assertEquals(2, ownBreak.pages().size(), own);
+        }
+    }
+
+    @Test
     void anAbsoluteBoxSitsAtItsOffsetsAndLeavesTheFlowAlone() throws IOException {
         Pdf with = html("abs.html", "<html><head><style>@page{size:A4;margin:72pt}"
                 + ".wrap{position:relative}.stamp{position:absolute;top:120pt;left:200pt}</style></head><body>"
