@@ -79,6 +79,14 @@ class MainTest {
             assertEquals(0, fetched.code(), fetched.err());
             assertEquals(1, hits.get());
             assertTrue(Files.size(pdf) > 0);
+            Path page = Files.writeString(dir.resolve("linked.html"), "<html><body><p>Local</p><img src=\"" + url
+                    + "\"></body></html>");
+            Result needsNetwork = run(page.toString(), "-o", dir.resolve("linked.pdf").toString(), "--fetch-linked");
+            assertEquals(2, needsNetwork.code(), needsNetwork.err());
+            Result linked = run(page.toString(), "-o", dir.resolve("linked.pdf").toString(), "--fetch-linked",
+                    "--allow-network", "--allow-private-addresses", "-q");
+            assertEquals(0, linked.code(), linked.err());
+            assertEquals(2, hits.get());
         } finally {
             server.stop(0);
         }
