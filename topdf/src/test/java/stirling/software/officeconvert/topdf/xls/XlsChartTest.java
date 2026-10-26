@@ -239,6 +239,16 @@ class XlsChartTest {
     }
 
     @Test
+    void automaticColoursFollowTheSeriesFormatIndex() throws Exception {
+        List<RecordBase> records = ChartFixtures.chart(null, BAR, new byte[6], new String[] {"First", "Second"},
+                new String[] {"x"}, new double[][] {{1}, {2}});
+        records.add(9, new UnknownRecord(0x1006, new byte[] {(byte) 0xFF, (byte) 0xFF, 1, 0, 0, 0, 0, 0}));
+        records.add(5, new UnknownRecord(0x1006, new byte[] {(byte) 0xFF, (byte) 0xFF, 0, 0, 1, 0, 0, 0}));
+        String chart = chartXml(XlsTest.xls(wb -> ChartFixtures.chartSheet(wb, "Chart1", records)));
+        assertTrue(chart.indexOf("993366") < chart.indexOf("9999FF"), chart);
+    }
+
+    @Test
     void errorBarAndTrendlineSeriesAreNotDrawnAsSeries() throws Exception {
         List<RecordBase> records = ChartFixtures.chart(null, LINE, new byte[2], new String[] {"Score", "Error"},
                 new String[] {"x", "y"}, new double[][] {{50, 60}, {2, 3}});

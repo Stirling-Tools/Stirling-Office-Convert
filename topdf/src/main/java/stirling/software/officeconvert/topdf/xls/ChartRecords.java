@@ -176,6 +176,9 @@ final class ChartRecords {
             case DATA_FORMAT -> {
                 dataPoint = (short) u16(d, 0);
                 dataSeries = u16(d, 4);
+                if (inSeriesFormat() && dataPoint == -1) {
+                    current().iss = dataSeries;
+                }
             }
             case LINE_FORMAT -> lineFormat(d, top);
             case AREA_FORMAT -> areaFormat(d, top);
