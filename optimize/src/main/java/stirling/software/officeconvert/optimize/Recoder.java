@@ -93,6 +93,8 @@ final class Recoder {
                         MAX_DECODED_BYTES);
                 peeled++;
             }
+        } catch (Filters.TooLarge e) {
+            return new Plan(null, null, false);
         } catch (Filters.Undecodable e) {
             return original(raw);
         }
@@ -290,7 +292,7 @@ final class Recoder {
         return a;
     }
 
-    private static COSDictionary predictorParms(Predictors.Layout layout) {
+    static COSDictionary predictorParms(Predictors.Layout layout) {
         COSDictionary d = new COSDictionary();
         d.setInt(COSName.PREDICTOR, 15);
         if (layout.colors() != 1) {

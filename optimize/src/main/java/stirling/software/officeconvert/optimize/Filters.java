@@ -8,9 +8,15 @@ import org.apache.pdfbox.cos.COSName;
 
 final class Filters {
 
-    static final class Undecodable extends Exception {
+    static class Undecodable extends Exception {
         Undecodable(String message) {
             super(message, null, false, false);
+        }
+    }
+
+    static final class TooLarge extends Undecodable {
+        TooLarge(String message) {
+            super(message);
         }
     }
 
@@ -79,7 +85,7 @@ final class Filters {
                     throw new Undecodable("the Flate data ends early");
                 }
                 if (out.size() + (long) n > limit) {
-                    throw new Undecodable("the Flate data decodes past the size limit");
+                    throw new TooLarge("the Flate data decodes past the size limit");
                 }
                 out.write(buf, 0, n);
             }
@@ -140,7 +146,7 @@ final class Filters {
                 throw new Undecodable("the LZW data is damaged");
             }
             if (out.size() + (long) entry.length > limit) {
-                throw new Undecodable("the LZW data decodes past the size limit");
+                throw new TooLarge("the LZW data decodes past the size limit");
             }
             out.write(entry);
             previous = entry;
@@ -250,7 +256,7 @@ final class Filters {
             }
             int count = len < 128 ? len + 1 : 257 - len;
             if (out.size() + (long) count > limit) {
-                throw new Undecodable("the RunLength data decodes past the size limit");
+                throw new TooLarge("the RunLength data decodes past the size limit");
             }
             if (len < 128) {
                 if (i + count > in.length) {

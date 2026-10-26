@@ -80,6 +80,75 @@ final class Spill implements Closeable {
         return index;
     }
 
+    final class Writer extends OutputStream {
+
+        private final MessageDigest digest;
+
+        private final long start;
+
+        private long length;
+
+        private final ByteBuffer buffer = ByteBuffer.allocate(1 << 16);
+
+        Writer(MessageDigest digest) throws IOException {
+            open();
+            this.digest = digest;
+            this.start = fileSize;
+        }
+
+        @Override
+        public void write(int b) throws IOException {
+            write(new byte[] {(byte) b}, 0, 1);
+        }
+
+        @Override
+        public void write(byte[] b, int off, int len) throws IOException {
+            if (length + len > Integer.MAX_VALUE - 16) {
+                throw new IOException("A stream is larger than 2 GB");
+            }
+            digest.update(b, off, len);
+            while (len > 0) {
+                int n = Math.min(len, buffer.remaining());
+                buffer.put(b, off, n);
+                off += n;
+                len -= n;
+                length += n;
+                if (!buffer.hasRemaining()) {
+                    drain();
+                }
+            }
+        }
+
+        private void drain() throws IOException {
+            buffer.flip();
+            while (buffer.hasRemaining()) {
+                fileSize += channel.write(buffer, fileSize);
+            }
+            buffer.clear();
+        }
+
+        long length() {
+            return length;
+        }
+
+        int finish() throws IOException {
+            drain();
+            int index = held.size();
+            if (index == offsets.length) {
+                offsets = Arrays.copyOf(offsets, index * 2);
+                lengths = Arrays.copyOf(lengths, index * 2);
+            }
+            held.add(null);
+            offsets[index] = start;
+            lengths[index] = (int) length;
+            return index;
+        }
+    }
+
+    Writer writer(MessageDigest digest) throws IOException {
+        return new Writer(digest);
+    }
+
     private void open() throws IOException {
         if (channel == null) {
             file = Files.createTempFile("pdf-optimize-", ".spill");

@@ -229,11 +229,7 @@ final class Rewrite {
                         : index.has(i, Index.IMAGE) ? Recoder.Kind.IMAGE : Recoder.Kind.OTHER;
                 Recoder.Job job = Recoder.prepare(s, kind, kind == Recoder.Kind.IMAGE ? Roles.layout(s) : null);
                 if (job == null) {
-                    try (InputStream in = s.createRawInputStream()) {
-                        spilled[i] = spill.put(in, sha);
-                    }
-                    digests[i] = sha.digest();
-                    recorder.record(i, s, Map.of(COSName.LENGTH, COSInteger.get(spill.length(spilled[i]))));
+                    large(i, s, kind, sha);
                     continue;
                 }
                 if (job.raw().length > INLINE_JOB_BYTES) {
@@ -277,7 +273,28 @@ final class Rewrite {
         }
     }
 
+    private void large(int i, COSStream s, Recoder.Kind kind, MessageDigest sha) throws IOException {
+        Streamed.Result big = Streamed.recode(s, kind, kind == Recoder.Kind.IMAGE ? Roles.layout(s) : null,
+                s.getInt(COSName.HEIGHT, -1), spill, sha, options.effort());
+        if (big != null) {
+            spilled[i] = big.spilled();
+            digests[i] = big.digest();
+            recorder.record(i, s, big.replace());
+            recoded++;
+            return;
+        }
+        try (InputStream in = s.createRawInputStream()) {
+            spilled[i] = spill.put(in, sha);
+        }
+        digests[i] = sha.digest();
+        recorder.record(i, s, Map.of(COSName.LENGTH, COSInteger.get(spill.length(spilled[i]))));
+    }
+
     private void store(int i, COSStream s, Recoder.Plan p, MessageDigest sha) throws IOException {
+        if (p.data() == null) {
+            large(i, s, index.has(i, Index.IMAGE) ? Recoder.Kind.IMAGE : Recoder.Kind.OTHER, sha);
+            return;
+        }
         spilled[i] = spill.put(p.data());
         digests[i] = sha.digest(p.data());
         recorder.record(i, s, p.replace());
