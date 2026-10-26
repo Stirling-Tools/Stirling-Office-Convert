@@ -32,6 +32,8 @@ final class HtmlContext {
     private int scrollers;
     private String pageName = "";
     private boolean continuing;
+    private float insetLeft;
+    private float insetRight;
     // the most items of any row of columns in an element or inside it, 0 when none
     private final Map<Element, Integer> rows = new IdentityHashMap<>();
     private Map<String, Element> labels;
@@ -288,5 +290,18 @@ final class HtmlContext {
 
     boolean truncated() {
         return blocks >= JsonModel.MAX_BLOCKS;
+    }
+
+    void inset(float left, float right) {
+        insetLeft = left;
+        insetRight = right;
+    }
+
+    float insetLeft() {
+        return insetLeft;
+    }
+
+    float insetRight() {
+        return insetRight;
     }
 }

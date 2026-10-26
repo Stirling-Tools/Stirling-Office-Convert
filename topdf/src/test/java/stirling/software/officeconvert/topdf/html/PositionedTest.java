@@ -132,6 +132,18 @@ class PositionedTest {
     }
 
     @Test
+    void anUnstyledPageHasWeasyPrintsPageMarginsAndTheBodysSideMargins() throws IOException {
+        Pdf plain = html("plain.html", "<html><body><p>Leftmost</p></body></html>");
+        assertEquals(56.25 + 6, plain.first("Leftmost").x(), 1);
+        Pdf flush = html("flush.html", "<html><head><style>body{margin:0}</style></head><body><p>Leftmost</p></body>"
+                + "</html>");
+        assertEquals(56.25, flush.first("Leftmost").x(), 1);
+        Pdf padded = html("padded.html", "<html><head><style>@page{margin:36pt}body{margin:0;padding:0 24pt}</style>"
+                + "</head><body><p>Leftmost</p></body></html>");
+        assertEquals(36 + 24, padded.first("Leftmost").x(), 1);
+    }
+
+    @Test
     void anAbsoluteBoxSitsAtItsOffsetsAndLeavesTheFlowAlone() throws IOException {
         Pdf with = html("abs.html", "<html><head><style>@page{size:A4;margin:72pt}"
                 + ".wrap{position:relative}.stamp{position:absolute;top:120pt;left:200pt}</style></head><body>"
@@ -143,7 +155,7 @@ class PositionedTest {
         Word opening = with.first("Opening");
         assertNotNull(opening, with.words().toString());
         assertNotNull(stamp, with.words().toString());
-        assertEquals(72 + 200, stamp.x(), 4);
+        assertEquals(72 + 6 + 200, stamp.x(), 4);
         assertEquals(opening.y() + 120, stamp.y(), 16);
         assertEquals(without.first("Closing").y(), with.first("Closing").y(), 3);
     }

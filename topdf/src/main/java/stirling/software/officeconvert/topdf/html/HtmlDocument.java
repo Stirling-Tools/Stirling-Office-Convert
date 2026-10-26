@@ -44,6 +44,10 @@ public final class HtmlDocument {
     // Chrome shrinks a page whose content is too wide by at most a third, and clips what is wider still
     static final float LEAST_FIT = 2f / 3f;
 
+    static final float PAGE_MARGIN = 56.25f;
+
+    static final float BODY_MARGIN = 6f;
+
     public static Converted write(Path source, OutputStream out) throws IOException {
         return write(source, out, null);
     }
@@ -118,14 +122,17 @@ public final class HtmlDocument {
         // One bulk read: the parser's small reads are slow on network and container file systems
         byte[] bytes = Files.readAllBytes(source);
         Document doc = Jsoup.parse(new ByteArrayInputStream(bytes), null, "");
-        List<String> warnings = new ArrayList<>();
         Section page = page(new Cascade(doc, viewportPx(JsonModel.defaultPage()), linked).page());
         // media queries see the printed page, however wide the layout grows
         Cascade cascade = new Cascade(doc, viewportPx(page), linked);
+        float[] inset = inset(page, cascade, doc);
+        List<String> warnings = new ArrayList<>();
         boolean ownPaper = cascade.declaresPages();
         float printed = page.pageWidth - page.marginLeft - page.marginRight;
         if (zoom < 1 && !ownPaper) {
             enlarge(page, zoom);
+            inset[0] /= zoom;
+            inset[1] /= zoom;
         }
         Element html = doc.selectFirst("html");
         Element body = doc.body();
@@ -146,6 +153,7 @@ public final class HtmlDocument {
             page.footerDistance = Math.max(6, page.marginBottom / 2 - 6);
         }
         HtmlContext ctx = new HtmlContext(cascade, styles, writer, warnings, page, linked);
+        ctx.inset(inset[0], inset[1]);
         List<Inline> fixedLayer = new ArrayList<>(Backgrounds.paint(Backgrounds.url(htmlStyle) != null ? htmlStyle
                 : bodyStyle, bodyLook, ctx.images(), 0, 0, page.pageWidth, page.pageHeight, false));
         if (ctx.positions()) {
@@ -206,6 +214,39 @@ public final class HtmlDocument {
         return "fixed".equalsIgnoreCase(d.getOrDefault("position", "").strip());
     }
 
+    private static float[] inset(Section page, Cascade cascade, Document doc) {
+        Element html = doc.selectFirst("html");
+        Look root = new Look();
+        Map<String, String> htmlStyle = html == null ? Map.of() : resolved(cascade, html, root);
+        Look parent = html == null ? root : root.child(htmlStyle, page.pageWidth, false);
+        Map<String, String> bodyStyle = resolved(cascade, doc.body(), parent);
+        float room = page.pageWidth - page.marginLeft - page.marginRight;
+        float[] insets = new float[2];
+        for (String side : new String[] {"left", "right"}) {
+            float inset = side(htmlStyle, "margin-" + side, 0, room) + side(htmlStyle, "padding-" + side, 0, room)
+                    + side(bodyStyle, "margin-" + side, BODY_MARGIN, room)
+                    + side(bodyStyle, "padding-" + side, 0, room);
+            inset = Math.max(0, Math.min(inset, room / 3));
+            if (side.equals("left")) {
+                page.marginLeft += inset;
+                insets[0] = inset;
+            } else {
+                page.marginRight += inset;
+                insets[1] = inset;
+            }
+        }
+        return insets;
+    }
+
+    private static float side(Map<String, String> d, String property, float fallback, float room) {
+        String v = d.get(property);
+        if (v == null) {
+            return fallback;
+        }
+        Float pt = Css.length(v, Look.ROOT_SIZE, room);
+        return pt == null ? 0 : Math.max(0, pt);
+    }
+
     private static void enlarge(Section page, float zoom) {
         page.pageWidth /= zoom;
         page.pageHeight /= zoom;
@@ -224,6 +265,10 @@ public final class HtmlDocument {
 
     static Section page(Map<String, String> d) {
         Section s = JsonModel.defaultPage();
+        s.marginTop = PAGE_MARGIN;
+        s.marginBottom = PAGE_MARGIN;
+        s.marginLeft = PAGE_MARGIN;
+        s.marginRight = PAGE_MARGIN;
         String size = d.get("size");
         if (size != null) {
             size(s, size.toLowerCase(Locale.ROOT));

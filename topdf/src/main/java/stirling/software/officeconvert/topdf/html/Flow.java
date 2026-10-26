@@ -117,8 +117,9 @@ final class Flow {
                 ctx.place(item.element());
             }
             Section s = ctx.defaultSection();
-            Positioned.Hung hung = Positioned.hang(ctx, items, s.marginLeft, s.marginTop,
-                    s.pageWidth - s.marginLeft - s.marginRight, ctx.pageRoom(), 0);
+            Positioned.Hung hung = Positioned.hang(ctx, items, s.marginLeft - ctx.insetLeft(), s.marginTop,
+                    s.pageWidth - s.marginLeft - s.marginRight + ctx.insetLeft() + ctx.insetRight(), ctx.pageRoom(),
+                    0);
             if (!hung.top().isEmpty()) {
                 anchor(Positioned.moved(hung.top(), 0, 0, false), frame);
             }
@@ -133,8 +134,9 @@ final class Flow {
     static List<Inline> fixedLayer(HtmlContext ctx, Element body, Look look, Section page) throws IOException {
         List<Positioned.Item> items = new ArrayList<>();
         int text = 0;
-        for (Positioned.Item item : Positioned.fixed(ctx, body, look, page.pageWidth - page.marginLeft
-                - page.marginRight)) {
+        float left = page.marginLeft - ctx.insetLeft();
+        float room = page.pageWidth - left - page.marginRight + ctx.insetRight();
+        for (Positioned.Item item : Positioned.fixed(ctx, body, look, room)) {
             text += Layout.text(item.element(), MAX_FIXED_TEXT + 1).length();
             if (items.size() >= MAX_FIXED || text > MAX_FIXED_TEXT) {
                 ctx.warn("Only the first boxes fixed to the page are repeated on every page; the rest are drawn once,"
@@ -144,8 +146,7 @@ final class Flow {
             items.add(item);
             ctx.place(item.element());
         }
-        Positioned.Hung hung = Positioned.hang(ctx, items, page.marginLeft, page.marginTop,
-                page.pageWidth - page.marginLeft - page.marginRight, ctx.pageRoom(), 0);
+        Positioned.Hung hung = Positioned.hang(ctx, items, left, page.marginTop, room, ctx.pageRoom(), 0);
         return Positioned.moved(hung.top(), 0, 0, false);
     }
 
