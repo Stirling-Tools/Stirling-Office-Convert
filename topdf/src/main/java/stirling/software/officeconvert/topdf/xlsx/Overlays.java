@@ -446,12 +446,6 @@ final class Overlays {
                     }
                 }
             }
-            case "expression" -> {
-                String[] f = rule.getFormulaArray();
-                if (f.length == 1 && f[0] != null && f[0].strip().equalsIgnoreCase("TRUE")) {
-                    out.addAll(values);
-                }
-            }
             case "duplicateValues", "uniqueValues" -> {
                 Map<String, Integer> counts = new HashMap<>();
                 for (Value v : values) {

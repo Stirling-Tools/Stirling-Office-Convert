@@ -472,19 +472,16 @@ class XlsTest {
             mid.createPatternFormatting().setFillBackgroundColor(HSSFColor.HSSFColorPredefined.BLUE.getIndex());
             HSSFConditionalFormattingRule byFormula = cf.createConditionalFormattingRule("$A$1>0");
             byFormula.createPatternFormatting().setFillBackgroundColor(HSSFColor.HSSFColorPredefined.GREEN.getIndex());
-            HSSFConditionalFormattingRule zero = cf.createConditionalFormattingRule("A1+5=5");
-            zero.createPatternFormatting().setFillBackgroundColor(HSSFColor.HSSFColorPredefined.YELLOW.getIndex());
             cf.addConditionalFormatting(new CellRangeAddress[] {CellRangeAddress.valueOf("A1:A6")}, high, mid);
-            cf.addConditionalFormatting(new CellRangeAddress[] {CellRangeAddress.valueOf("A1:A6")}, byFormula, zero);
+            cf.addConditionalFormatting(new CellRangeAddress[] {CellRangeAddress.valueOf("A1:A6")}, byFormula);
         });
         Path in = Fixtures.write(dir, "cf.xls", data);
         Path out = dir.resolve("cf.pdf");
         OfficeToPdf.Result result = OfficeToPdf.convert(in, out, OfficeToPdf.Options.defaults());
         assertTrue(hasColour(out, Color.RED), "40 and 50 are filled");
         assertTrue(hasColour(out, Color.BLUE), "10 and 20 are filled");
-        assertFalse(hasColour(out, Color.GREEN), "A1 is not above zero");
-        assertTrue(hasColour(out, Color.YELLOW), "the relative formula matches the zero");
-        assertFalse(String.join(" ", result.warnings()).contains("conditional formatting"), result.warnings().toString());
+        assertFalse(hasColour(out, Color.GREEN), "a formula rule is never evaluated");
+        assertTrue(String.join(" ", result.warnings()).contains("conditional formatting"), result.warnings().toString());
     }
 
     @Test

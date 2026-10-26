@@ -4,8 +4,6 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.TreeMap;
-import java.util.TreeSet;
 
 import org.apache.poi.hssf.record.CFRuleBase;
 import org.apache.poi.hssf.record.aggregates.CFRecordsAggregate;
@@ -16,10 +14,7 @@ import org.apache.poi.hssf.record.cf.PatternFormatting;
 import org.apache.poi.hssf.usermodel.HSSFColorScaleFormatting;
 import org.apache.poi.hssf.usermodel.HSSFConditionalFormattingRule;
 import org.apache.poi.hssf.usermodel.HSSFDataBarFormatting;
-import org.apache.poi.hssf.usermodel.HSSFFormulaEvaluator;
 import org.apache.poi.hssf.usermodel.HSSFSheet;
-import org.apache.poi.ss.formula.ConditionalFormattingEvaluator;
-import org.apache.poi.ss.formula.EvaluationConditionalFormatRule;
 import org.apache.poi.ss.formula.ptg.BoolPtg;
 import org.apache.poi.ss.formula.ptg.IntPtg;
 import org.apache.poi.ss.formula.ptg.NumberPtg;
@@ -28,7 +23,6 @@ import org.apache.poi.ss.formula.ptg.Ptg;
 import org.apache.poi.ss.formula.ptg.StringPtg;
 import org.apache.poi.ss.formula.ptg.UnaryMinusPtg;
 import org.apache.poi.ss.formula.ptg.UnaryPlusPtg;
-import org.apache.poi.ss.usermodel.Cell;
 import org.apache.poi.ss.usermodel.ConditionType;
 import org.apache.poi.ss.usermodel.ConditionalFormattingThreshold;
 import org.apache.poi.ss.usermodel.ExtendedColor;
@@ -38,10 +32,6 @@ import org.apache.poi.ss.util.CellRangeAddress;
 final class CondFormats {
 
     static final int MAX_RULES = 10_000;
-
-    static final long MAX_EVALUATED_CELLS = 200_000;
-
-    private static final int MAX_REFS = 4_000;
 
     private static final String[] OPERATORS = {null, "between", "notBetween", "equal", "notEqual", "greaterThan",
         "lessThan", "greaterThanOrEqual", "lessThanOrEqual"};
@@ -59,19 +49,11 @@ final class CondFormats {
 
     private int priority;
 
-    private long evaluatedCells;
-
-    private ConditionalFormattingEvaluator evaluator;
-
-    private List<EvaluationConditionalFormatRule> rulesOfSheet;
-
     int skipped;
 
     String sheet(HSSFSheet sheet) {
         ConditionalFormattingTable table = sheet.getSheet().getConditionalFormattingTable();
         StringBuilder b = new StringBuilder();
-        StringBuilder extra = new StringBuilder();
-        rulesOfSheet = null;
         for (int i = 0; i < table.size() && rules < MAX_RULES; i++) {
             CFRecordsAggregate cf = table.get(i);
             String sqref = sqref(cf.getHeader().getCellRanges());
@@ -85,13 +67,7 @@ final class CondFormats {
                     rule = scale(sheet, i, k);
                 }
                 if (rule == null) {
-                    String evaluated = evaluated(sheet, i, k, cf.getRule(k));
-                    if (evaluated == null) {
-                        skipped++;
-                    } else {
-                        extra.append(evaluated);
-                        rules++;
-                    }
+                    skipped++;
                 } else {
                     out.add(rule);
                     rules++;
@@ -103,7 +79,7 @@ final class CondFormats {
                 b.append("</conditionalFormatting>");
             }
         }
-        return b.append(extra).toString();
+        return b.toString();
     }
 
     private String scale(HSSFSheet sheet, int format, int index) {
@@ -191,86 +167,6 @@ final class CondFormats {
             return "<color indexed=\"" + c.getIndex() + "\"" + tint + "/>";
         }
         return "<color rgb=\"FF638EC6\"/>";
-    }
-
-    private String evaluated(HSSFSheet sheet, int format, int index, CFRuleBase r) {
-        String dxf = dxf(r);
-        if (dxf == null || evaluatedCells >= MAX_EVALUATED_CELLS) {
-            return null;
-        }
-        try {
-            if (evaluator == null) {
-                HSSFFormulaEvaluator formulas = new HSSFFormulaEvaluator(sheet.getWorkbook());
-                formulas.setIgnoreMissingWorkbooks(true);
-                evaluator = new ConditionalFormattingEvaluator(sheet.getWorkbook(), formulas);
-            }
-            if (rulesOfSheet == null) {
-                rulesOfSheet = evaluator.getFormatRulesForSheet(sheet);
-            }
-            EvaluationConditionalFormatRule rule = null;
-            for (EvaluationConditionalFormatRule e : rulesOfSheet) {
-                if (e.getFormattingIndex() == format && e.getRuleIndex() == index) {
-                    rule = e;
-                }
-            }
-            if (rule == null) {
-                return null;
-            }
-            long area = 0;
-            for (CellRangeAddress a : rule.getRegions()) {
-                area += (long) a.getNumberOfCells();
-            }
-            evaluatedCells += area;
-            if (evaluatedCells > MAX_EVALUATED_CELLS) {
-                return null;
-            }
-            String sqref = cells(evaluator.getMatchingCells(rule));
-            if (sqref == null) {
-                return "";
-            }
-            int id = dxfs.computeIfAbsent(dxf, k -> dxfs.size());
-            return "<conditionalFormatting sqref=\"" + sqref + "\"><cfRule type=\"expression\" dxfId=\"" + id
-                    + "\" priority=\"" + ++priority + "\" stopIfTrue=\"1\"><formula>TRUE</formula></cfRule>"
-                    + "</conditionalFormatting>";
-        } catch (RuntimeException | StackOverflowError e) {
-            return null;
-        }
-    }
-
-    private static String cells(List<Cell> cells) {
-        TreeMap<Integer, TreeSet<Integer>> rows = new TreeMap<>();
-        for (Cell c : cells) {
-            rows.computeIfAbsent(c.getRowIndex(), k -> new TreeSet<>()).add(c.getColumnIndex());
-        }
-        StringBuilder b = new StringBuilder();
-        int refs = 0;
-        for (Map.Entry<Integer, TreeSet<Integer>> row : rows.entrySet()) {
-            int start = -2;
-            int end = -2;
-            for (int col : row.getValue()) {
-                if (col != end + 1) {
-                    refs += range(b, row.getKey(), start, end);
-                    start = col;
-                }
-                end = col;
-            }
-            refs += range(b, row.getKey(), start, end);
-            if (refs > MAX_REFS) {
-                break;
-            }
-        }
-        return b.isEmpty() ? null : b.toString();
-    }
-
-    private static int range(StringBuilder b, int row, int start, int end) {
-        if (start < 0) {
-            return 0;
-        }
-        if (!b.isEmpty()) {
-            b.append(' ');
-        }
-        b.append(new CellRangeAddress(row, row, start, end).formatAsString());
-        return 1;
     }
 
     String styles() {
