@@ -137,6 +137,30 @@ class FontEmbedderTest {
     }
 
     @Test
+    void anUnreadableProgramIsReplacedAndARepairableOneKept() throws Exception {
+        String font = "<</Type/Font/Subtype/TrueType/BaseFont/Arial/Encoding/WinAnsiEncoding/FontDescriptor"
+                + "<</Type/FontDescriptor/FontName/Arial/Flags 32/FontBBox[0 0 1000 1000]/ItalicAngle 0/Ascent 900"
+                + "/Descent -200/CapHeight 700/StemV 80/FontFile2 5 0 R>>>>";
+        RawPdf pdf = RawPdf.page("/Font<</F1 " + font + ">>", "BT /F1 12 Tf 50 700 Td (Garbage) Tj ET");
+        pdf.add(RawPdf.stream("", "this is not a font program at all, not even close"));
+        try (PDDocument d = Loader.loadPDF(pdf.bytes())) {
+            FontEmbedder.Result r = FontEmbedder.embedMissing(d);
+            assertEquals(1, r.embedded().size(), r.embedded().toString());
+            PDFont f = d.getPage(0).getResources().getFont(COSName.getPDFName("F1"));
+            java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+            d.save(out);
+            try (PDDocument saved = Loader.loadPDF(out.toByteArray())) {
+                PDFont g = saved.getPage(0).getResources().getFont(COSName.getPDFName("F1"));
+                assertTrue(g.isEmbedded() && !g.isDamaged(), g.getName());
+            }
+            assertNotNull(f);
+        }
+        try (PDDocument d = Loader.loadPDF(Samples.write(dir, "s14_widths_mismatch").toFile())) {
+            assertTrue(FontEmbedder.embedMissing(d).embedded().isEmpty());
+        }
+    }
+
+    @Test
     void embeddedAndType3FontsAreLeftAlone() throws Exception {
         for (String sample : List.of("s03_type3", "s14_widths_mismatch")) {
             try (PDDocument d = Loader.loadPDF(Samples.write(dir, sample).toFile())) {

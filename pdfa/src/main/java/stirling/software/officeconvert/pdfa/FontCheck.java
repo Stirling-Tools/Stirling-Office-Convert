@@ -68,7 +68,7 @@ final class FontCheck {
         return fd != null && (fd.getFontFile() != null || fd.getFontFile2() != null || fd.getFontFile3() != null);
     }
 
-    private static boolean isDamaged(PDCIDFont cid) {
+    static boolean isDamaged(PDCIDFont cid) {
         return cid instanceof PDCIDFontType2 t2 ? t2.isDamaged() : cid instanceof PDCIDFontType0 t0 && t0.isDamaged();
     }
 

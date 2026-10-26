@@ -104,7 +104,7 @@ public final class FontEmbedder {
             }
             if (font instanceof PDType3Font || FontCheck.embedded(font instanceof PDType0Font t0
                     && t0.getDescendantFont() != null ? t0.getDescendantFont().getFontDescriptor()
-                            : font.getFontDescriptor())) {
+                            : font.getFontDescriptor()) && readable(font)) {
                 continue;
             }
             if (library == null) {
@@ -147,6 +147,21 @@ public final class FontEmbedder {
             match.add(font);
         }
         return out;
+    }
+
+    private static boolean readable(PDFont font) throws IOException {
+        boolean damaged = font.isDamaged() || font instanceof PDType0Font t0 && t0.getDescendantFont() != null
+                && FontCheck.isDamaged(t0.getDescendantFont());
+        if (!damaged) {
+            return true;
+        }
+        try {
+            WebFonts.toTrueType(font);
+            return true;
+        } catch (IOException e) {
+            PdfFiles.stopIfInterrupted();
+            return false;
+        }
     }
 
     private static TreeSet<Integer> allCodes(COSDictionary font) {
