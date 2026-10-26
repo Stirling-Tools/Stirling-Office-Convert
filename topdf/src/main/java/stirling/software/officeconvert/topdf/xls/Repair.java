@@ -3,13 +3,14 @@ package stirling.software.officeconvert.topdf.xls;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
 
 import org.apache.poi.poifs.filesystem.DirectoryNode;
 import org.apache.poi.poifs.filesystem.DocumentEntry;
 import org.apache.poi.poifs.filesystem.Entry;
+
+import stirling.software.officeconvert.topdf.io.SourceFile;
 
 final class Repair {
 
@@ -125,8 +126,8 @@ final class Repair {
 
     static byte[] salvage(Path file) {
         byte[] d;
-        try (InputStream in = Files.newInputStream(file)) {
-            d = in.readNBytes(MAX_STREAM_BYTES);
+        try {
+            d = SourceFile.head(file, MAX_STREAM_BYTES);
         } catch (IOException e) {
             return null;
         }
