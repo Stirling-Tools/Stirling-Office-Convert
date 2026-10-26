@@ -30,8 +30,8 @@ record BiffChart(Text title, List<Group> groups, Legend legend, Axis[] values, A
     record Labels(int flags, String position, float size, boolean bold, Integer color, String format,
             Map<Integer, Integer> points) {}
 
-    record Legend(String position, double[] box, int[] fill, int[] line) {}
+    record Legend(String position, double[] box, int[] fill, int[] line, Text font) {}
 
-    record Axis(Double min, Double max, Double major, boolean gridlines, Integer gridColor, Text title, String format, boolean reversed,
-            boolean log, boolean deleted) {}
+    record Axis(Double min, Double max, Double major, boolean gridlines, Integer gridColor, Text title, String format,
+            boolean reversed, boolean log, boolean deleted, Integer line, Text font) {}
 }

@@ -281,8 +281,9 @@ final class ChartXml {
         }
         b.append("<c:numFmt formatCode=\"").append(Xml.attr(format == null ? "General" : format))
                 .append("\" sourceLinked=\"0\"/><c:majorTickMark val=\"out\"/><c:minorTickMark val=\"none\"/>")
-                .append("<c:tickLblPos val=\"nextTo\"/><c:spPr><a:ln w=\"9525\"><a:solidFill><a:srgbClr val=\"")
-                .append("000000\"/></a:solidFill></a:ln></c:spPr><c:crossAx val=\"").append(cross)
+                .append("<c:tickLblPos val=\"nextTo\"/><c:spPr>").append(line(a == null ? Integer.valueOf(0)
+                        : a.line(), 0.75f)).append("</c:spPr>").append(a == null ? "" : font(a.font()))
+                .append("<c:crossAx val=\"").append(cross)
                 .append("\"/><c:crosses val=\"").append(crossMax ? "max" : "autoZero").append("\"/>");
         if (tag.equals("valAx")) {
             b.append("<c:crossBetween val=\"between\"/>");
@@ -305,7 +306,16 @@ final class ChartXml {
         int[] fill = l.fill() == null ? new int[] {0xFFFFFF} : l.fill();
         int[] line = l.line() == null ? new int[] {0} : l.line();
         b.append("<c:overlay val=\"0\"/><c:spPr>").append(fill(fill.length == 0 ? null : fill[0]))
-                .append(line(line.length == 0 ? null : line[0], 0.75f)).append("</c:spPr></c:legend>");
+                .append(line(line.length == 0 ? null : line[0], 0.75f)).append("</c:spPr>").append(font(l.font()))
+                .append("</c:legend>");
+    }
+
+    private static String font(BiffChart.Text t) {
+        if (t == null) {
+            return "";
+        }
+        return "<c:txPr><a:bodyPr/><a:lstStyle/><a:p><a:pPr><a:defRPr sz=\"" + Math.round(t.size() * 100) + "\" b=\""
+                + (t.bold() ? 1 : 0) + "\"/></a:pPr><a:endParaRPr lang=\"en-US\"/></a:p></c:txPr>";
     }
 
     private static double clamp(double v) {

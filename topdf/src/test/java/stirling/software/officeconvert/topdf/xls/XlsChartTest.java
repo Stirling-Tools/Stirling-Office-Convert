@@ -20,6 +20,7 @@ import org.apache.poi.hssf.record.UnknownRecord;
 import org.apache.poi.hssf.record.chart.BeginRecord;
 import org.apache.poi.hssf.record.chart.EndRecord;
 import org.apache.poi.hssf.usermodel.HSSFCellStyle;
+import org.apache.poi.hssf.usermodel.HSSFFont;
 import org.apache.poi.hssf.usermodel.HSSFRow;
 import org.apache.poi.hssf.usermodel.HSSFSheet;
 import org.apache.poi.poifs.filesystem.POIFSFileSystem;
@@ -146,6 +147,36 @@ class XlsChartTest {
         String chart = chartXml(XlsTest.xls(wb -> ChartFixtures.chartSheet(wb, "Chart1", records)));
         assertTrue(chart.contains("<c:dLblPos val=\"t\"/><c:showLegendKey val=\"0\"/><c:showVal val=\"1\"/>"),
                 chart);
+    }
+
+    @Test
+    void axisAndLegendFontsAndAHiddenAxisLineCarryOver() throws Exception {
+        String chart = chartXml(XlsTest.xls(wb -> {
+            HSSFFont big = wb.createFont();
+            big.setFontHeightInPoints((short) 14);
+            big.setBold(true);
+            int font = big.getIndex();
+            List<RecordBase> records = ChartFixtures.chart(null, BAR, new byte[6], new String[] {"A"},
+                    new String[] {"x", "y"}, new double[][] {{1, 2}});
+            int parent = 0;
+            while (!(records.get(parent) instanceof UnknownRecord u && u.getSid() == 0x1041)) {
+                parent++;
+            }
+            byte[] none = new byte[12];
+            none[4] = 5;
+            records.addAll(parent + 2, List.of(new UnknownRecord(0x101D, new byte[] {1, 0}), new BeginRecord(),
+                    new UnknownRecord(0x1026, new byte[] {(byte) font, 0}), new UnknownRecord(0x1021, new byte[2]),
+                    new UnknownRecord(0x1007, none), new EndRecord()));
+            records.addAll(2, List.of(new UnknownRecord(0x1015, new byte[20]), new BeginRecord(),
+                    new UnknownRecord(0x1025, new byte[32]), new BeginRecord(),
+                    new UnknownRecord(0x1026, new byte[] {(byte) font, 0}), new EndRecord(), new EndRecord()));
+            ChartFixtures.chartSheet(wb, "Chart1", records);
+        }));
+        int legend = chart.indexOf("<c:legend>");
+        assertTrue(legend > 0 && chart.indexOf("<a:defRPr sz=\"1400\" b=\"1\"/>", legend) > 0, chart);
+        int axis = chart.indexOf("<c:valAx>");
+        assertTrue(chart.indexOf("<a:defRPr sz=\"1400\" b=\"1\"/>", axis) < legend, chart);
+        assertTrue(chart.substring(axis, legend).contains("<c:spPr><a:ln><a:noFill/></a:ln></c:spPr>"), chart);
     }
 
     @Test

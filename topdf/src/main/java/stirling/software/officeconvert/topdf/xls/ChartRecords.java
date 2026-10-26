@@ -102,6 +102,8 @@ final class ChartRecords {
 
     private BiffChart.Text base;
 
+    private BiffChart.Text legendFont;
+
     ChartRecords(Lookup fonts) {
         this.fonts = fonts;
     }
@@ -229,6 +231,8 @@ final class ChartRecords {
             case FONTX -> {
                 if (text != null) {
                     text.font = u16(d, 0);
+                } else if (top == AXIS && axis() != null) {
+                    axis().font = fonts.font(u16(d, 0), "");
                 }
             }
             case OBJECT_LINK -> {
@@ -359,6 +363,8 @@ final class ChartRecords {
         } else if (axisType >= 0 && top == AXIS && axisLine == 1 && axis() != null) {
             axis().gridlines = rgb != null;
             axis().gridColor = rgb;
+        } else if (axisType >= 0 && top == AXIS && axisLine == 0 && axis() != null) {
+            axis().line = rgb == null ? null : auto ? Integer.valueOf(0) : rgb;
         } else if (frame == 1 && top == FRAME) {
             areaLine = rgb;
         } else if (frame == 4 && top == FRAME && !auto) {
@@ -486,6 +492,10 @@ final class ChartRecords {
         }
         if (t.link == 4) {
             dataLabel(t);
+            return;
+        }
+        if (t.link == 0 && stack.contains(LEGEND) && t.font >= 0) {
+            legendFont = fonts.font(t.font, "");
             return;
         }
         if (t.text == null || t.text.isBlank()) {
@@ -638,7 +648,7 @@ final class ChartRecords {
             box = new double[] {legend.getXAxisUpperLeft() / 4000.0, legend.getYAxisUpperLeft() / 4000.0,
                 legend.getXSize() / 4000.0, legend.getYSize() / 4000.0};
         }
-        return new BiffChart.Legend(pos, box, legendFill, legendLine);
+        return new BiffChart.Legend(pos, box, legendFill, legendLine, legendFont);
     }
 
     private static byte[] data(Record r, int sid) {
@@ -742,9 +752,13 @@ final class ChartRecords {
 
         BiffChart.Text title;
 
+        Integer line = 0;
+
+        BiffChart.Text font;
+
         BiffChart.Axis build(String numberFormat) {
             return new BiffChart.Axis(min, max, major, gridlines, gridColor, title, numberFormat, reversed, log,
-                    !labels);
+                    !labels, line, font);
         }
     }
 
