@@ -15,10 +15,14 @@ final class EdgeFit {
 
     private EdgeFit() {}
 
-    static RotatedRect refine(ScanImage scan, RotatedRect rect) {
+    static RotatedRect refine(Picture scan, RotatedRect rect) {
+        return refine(scan, rect, INSIDE, OUTSIDE, 2);
+    }
+
+    static RotatedRect refine(Picture scan, RotatedRect rect, double inside, double outside, int passes) {
         RotatedRect r = rect;
-        for (int pass = 0; pass < 2; pass++) {
-            RotatedRect next = once(scan, r);
+        for (int pass = 0; pass < passes; pass++) {
+            RotatedRect next = once(scan, r, inside, outside);
             if (next == null) {
                 return r;
             }
@@ -27,7 +31,7 @@ final class EdgeFit {
         return r;
     }
 
-    private static RotatedRect once(ScanImage scan, RotatedRect rect) {
+    private static RotatedRect once(Picture scan, RotatedRect rect, double inside, double outside) {
         if (rect.width() < MIN_SIDE || rect.height() < MIN_SIDE) {
             return null;
         }
@@ -50,7 +54,7 @@ final class EdgeFit {
             for (int k = 0; k < SEGMENTS; k++) {
                 double from = -length * 0.4 + length * 0.8 * k / SEGMENTS;
                 double to = -length * 0.4 + length * 0.8 * (k + 1) / SEGMENTS;
-                double[] edge = edge(scan, rect, c, s, nu, nv, half, from, to);
+                double[] edge = edge(scan, rect, c, s, nu, nv, half, from, to, inside, outside);
                 if (edge != null) {
                     t[found] = (from + to) / 2;
                     d[found] = edge[0];
@@ -96,9 +100,9 @@ final class EdgeFit {
         return new RotatedRect(rect.cx() + du * c - dv * s, rect.cy() + du * s + dv * c, width, height, rect.angle() + turn);
     }
 
-    private static double[] edge(ScanImage scan, RotatedRect rect, double c, double s, double nu, double nv, double half,
-            double from, double to) {
-        int offsets = (int) Math.round((INSIDE + OUTSIDE) / STEP) + 1;
+    private static double[] edge(Picture scan, RotatedRect rect, double c, double s, double nu, double nv, double half,
+            double from, double to, double inside, double outside) {
+        int offsets = (int) Math.round((inside + outside) / STEP) + 1;
         double[][] profile = new double[offsets][3];
         int samples = Math.max(3, (int) ((to - from) / 1.5));
         double tu = -nv;
@@ -107,7 +111,7 @@ final class EdgeFit {
         for (int i = 0; i < samples; i++) {
             double along = from + (to - from) * (i + 0.5) / samples;
             for (int o = 0; o < offsets; o++) {
-                double off = -INSIDE + o * STEP;
+                double off = -inside + o * STEP;
                 double u = nu * (half + off) + tu * along;
                 double v = nv * (half + off) + tv * along;
                 double x = rect.cx() + u * c - v * s;
@@ -144,7 +148,7 @@ final class EdgeFit {
         double r = grad[at + 1];
         double den = l - 2 * best + r;
         double sub = den < 0 ? 0.5 * (l - r) / den : 0;
-        return new double[] {-INSIDE + (at + sub) * STEP, best};
+        return new double[] {-inside + (at + sub) * STEP, best};
     }
 
     private static boolean sharp(double[] grad, int o) {
@@ -158,21 +162,21 @@ final class EdgeFit {
         return grad[o] >= SHARPNESS * side;
     }
 
-    private static void bilinear(ScanImage scan, double x, double y, double[] out) {
-        int w = scan.width;
-        int h = scan.height;
+    private static void bilinear(Picture scan, double x, double y, double[] out) {
+        int w = scan.width();
+        int h = scan.height();
         int x0 = (int) Math.floor(x);
         int y0 = (int) Math.floor(y);
         double fx = x - x0;
         double fy = y - y0;
         int xa = Math.clamp(x0, 0, w - 1);
         int xb = Math.clamp(x0 + 1, 0, w - 1);
-        int ya = Math.clamp(y0, 0, h - 1) * w;
-        int yb = Math.clamp(y0 + 1, 0, h - 1) * w;
-        int p00 = scan.rgb[ya + xa];
-        int p01 = scan.rgb[ya + xb];
-        int p10 = scan.rgb[yb + xa];
-        int p11 = scan.rgb[yb + xb];
+        int ya = Math.clamp(y0, 0, h - 1);
+        int yb = Math.clamp(y0 + 1, 0, h - 1);
+        int p00 = scan.rgb(xa, ya);
+        int p01 = scan.rgb(xb, ya);
+        int p10 = scan.rgb(xa, yb);
+        int p11 = scan.rgb(xb, yb);
         for (int k = 0; k < 3; k++) {
             int sh = 16 - 8 * k;
             double top = (p00 >> sh & 0xFF) * (1 - fx) + (p01 >> sh & 0xFF) * fx;

@@ -15,20 +15,57 @@ final class StraightenMethod {
     private static final double SOLID = 0.9;
     private static final double MAX_STRIP_ASPECT = 6;
     private static final int NESTED_POINTS = 4;
+    private static final double ANALYSIS_PIXELS = 4_500_000;
 
     private StraightenMethod() {}
 
-    static List<PhotoSplitter.Photo> split(ScanImage scan, PhotoSplitter.Options options) {
+    static List<PhotoSplitter.Photo> split(Source source, PhotoSplitter.Options options) {
+        List<PhotoSplitter.Photo> photos = new ArrayList<>();
+        for (RotatedRect rect : find(source, options)) {
+            photos.add(photo(source, rect));
+        }
+        return photos;
+    }
+
+    static PhotoSplitter.Photo photo(Source source, RotatedRect rect) {
+        return new PhotoSplitter.Photo(Crop.of(source, rect, LEVEL_ANGLE), rect.corners(), rect.angle());
+    }
+
+    static List<RotatedRect> find(Source source, PhotoSplitter.Options options) {
+        int factor = (int) Math.max(1, Math.ceil(Math.sqrt((double) source.width() * source.height() / ANALYSIS_PIXELS)));
+        ScanImage scan = source.shrink(factor);
+        int area = factor * factor;
+        PhotoSplitter.Options scaled = options.minArea(options.minArea() / area).minContourArea(options.minContourArea() / area);
+        double inside = 6.0 * factor + 4;
+        double outside = 2.0 * factor + 2;
+        List<RotatedRect> found = new ArrayList<>();
+        for (RotatedRect rect : candidates(scan, scaled)) {
+            RotatedRect full = rect.scaled(factor);
+            if (factor > 1) {
+                full = EdgeFit.refine(source, full, inside, outside, 2);
+            }
+            if (full.area() >= options.minArea()) {
+                found.add(full);
+            }
+        }
+        List<RotatedRect> out = new ArrayList<>();
+        for (RotatedRect rect : readingOrder(outermost(found))) {
+            out.add(rect.inset(options.borderSize()));
+        }
+        return out;
+    }
+
+    static List<RotatedRect> candidates(ScanImage scan, PhotoSplitter.Options options) {
         int w = scan.width;
         int h = scan.height;
         int[] smooth = Filters.boxBlur(scan.rgb, w, h, SMOOTH_RADIUS);
         Bed bed = Bed.fit(scan, smooth, options.tolerance());
         int strong = bed.threshold(options.tolerance());
         byte[] photo = new byte[w * h];
-        byte[] mask = bed.foreground(smooth, w, h, strong, photo);
-        smooth = null;
+        byte[] faint = new byte[w * h];
         int[] wide = Filters.boxBlur(scan.rgb, w, h, WIDE_RADIUS);
-        byte[] faint = bed.foreground(wide, w, h, bed.faintThreshold(strong, SMOOTH_RADIUS, WIDE_RADIUS));
+        byte[] mask = bed.foreground(smooth, wide, w, h, strong, bed.faintThreshold(strong, SMOOTH_RADIUS, WIDE_RADIUS), photo, faint);
+        smooth = null;
         wide = null;
         Filters.grow(mask, faint, w, h);
         faint = null;
@@ -39,7 +76,7 @@ final class StraightenMethod {
         Morphology.dilate(mask, w, h, OPEN_RADIUS);
         List<RotatedRect> found = new ArrayList<>();
         for (Region region : Region.label(mask, w, h)) {
-            for (Region part : Seams.split(Pieces.separate(region, options), photo, w, options)) {
+            for (Region part : Seams.split(Pieces.separate(region, options), photo, scan, options)) {
                 RotatedRect rect = part.rect();
                 if (rect.area() < options.minArea() || part.count < options.minContourArea() || strip(part, rect, w, h)) {
                     continue;
@@ -50,12 +87,7 @@ final class StraightenMethod {
                 }
             }
         }
-        List<PhotoSplitter.Photo> photos = new ArrayList<>();
-        for (RotatedRect rect : readingOrder(outermost(found))) {
-            RotatedRect out = rect.inset(options.borderSize());
-            photos.add(new PhotoSplitter.Photo(Crop.of(scan, out, LEVEL_ANGLE).toImage(), out.corners(), out.angle()));
-        }
-        return photos;
+        return found;
     }
 
     private static boolean strip(Region part, RotatedRect rect, int w, int h) {

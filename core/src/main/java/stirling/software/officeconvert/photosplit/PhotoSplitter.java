@@ -2,6 +2,7 @@ package stirling.software.officeconvert.photosplit;
 
 import java.awt.geom.Point2D;
 import java.awt.image.BufferedImage;
+import java.io.BufferedOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -15,13 +16,9 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Objects;
 
-import javax.imageio.IIOImage;
 import javax.imageio.ImageIO;
 import javax.imageio.ImageReader;
-import javax.imageio.ImageWriteParam;
-import javax.imageio.ImageWriter;
 import javax.imageio.stream.ImageInputStream;
-import javax.imageio.stream.ImageOutputStream;
 
 import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.pdmodel.PDDocument;
@@ -32,8 +29,6 @@ import org.apache.pdfbox.rendering.PDFRenderer;
 public final class PhotoSplitter {
 
     public static final long MAX_PIXELS = 100_000_000L;
-
-    private static final float PNG_QUALITY = 0.85f;
 
     public enum Method {
         STRAIGHTEN,
@@ -106,14 +101,18 @@ public final class PhotoSplitter {
     private PhotoSplitter() {}
 
     public static List<Photo> split(BufferedImage scan, Options options) {
-        Objects.requireNonNull(scan, "scan");
         Objects.requireNonNull(options, "options");
+        check(scan);
+        return options.method() == Method.SCRIPT ? ScriptMethod.split(ScanImage.of(scan), options)
+                : StraightenMethod.split(Source.of(scan), options);
+    }
+
+    private static void check(BufferedImage scan) {
+        Objects.requireNonNull(scan, "scan");
         if ((long) scan.getWidth() * scan.getHeight() > MAX_PIXELS) {
             throw new IllegalArgumentException("scan has " + (long) scan.getWidth() * scan.getHeight()
                     + " pixels; the limit is " + MAX_PIXELS);
         }
-        ScanImage image = ScanImage.of(scan);
-        return options.method() == Method.SCRIPT ? ScriptMethod.split(image, options) : StraightenMethod.split(image, options);
     }
 
     public static List<Path> split(Path input, Path outputDirectory, Options options) throws IOException {
@@ -129,12 +128,11 @@ public final class PhotoSplitter {
                 renderer.setSubsamplingAllowed(true);
                 for (int page = 0; page < document.getNumberOfPages(); page++) {
                     float dpi = pageDpi(document.getPage(page).getCropBox(), options.dpi());
-                    BufferedImage image = renderer.renderImageWithDPI(page, dpi, ImageType.RGB);
-                    write(split(image, options), outputDirectory, base, written, options.overwrite());
+                    write(renderer.renderImageWithDPI(page, dpi, ImageType.RGB), options, outputDirectory, base, written);
                 }
             }
         } else {
-            write(split(readImage(input), options), outputDirectory, base, written, options.overwrite());
+            write(readImage(input), options, outputDirectory, base, written);
         }
         return written;
     }
@@ -148,42 +146,28 @@ public final class PhotoSplitter {
         return (float) (dpi * Math.sqrt(MAX_PIXELS / (w * h)) * 0.999);
     }
 
-    private static void write(List<Photo> photos, Path dir, String base, List<Path> written, boolean overwrite)
-            throws IOException {
+    private static void write(BufferedImage scan, Options options, Path dir, String base, List<Path> written) throws IOException {
+        check(scan);
+        Source source = options.method() == Method.SCRIPT ? null : Source.of(scan);
+        List<Photo> eager = source == null ? ScriptMethod.split(ScanImage.of(scan), options) : null;
+        List<RotatedRect> rects = source == null ? null : StraightenMethod.find(source, options);
+        int count = eager != null ? eager.size() : rects.size();
         List<Path> targets = new ArrayList<>();
-        for (int i = 0; i < photos.size(); i++) {
+        for (int i = 0; i < count; i++) {
             Path target = dir.resolve(base + "_" + (written.size() + i + 1) + ".png");
-            if (!overwrite && Files.exists(target)) {
+            if (!options.overwrite() && Files.exists(target)) {
                 throw new FileAlreadyExistsException(target.toString());
             }
             targets.add(target);
         }
-        for (int i = 0; i < photos.size(); i++) {
+        for (int i = 0; i < count; i++) {
+            BufferedImage image = eager != null ? eager.get(i).image() : StraightenMethod.photo(source, rects.get(i)).image();
             Path target = targets.get(i);
-            try (OutputStream out = overwrite ? Files.newOutputStream(target)
-                    : Files.newOutputStream(target, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE)) {
-                png(photos.get(i).image(), out);
+            try (OutputStream out = new BufferedOutputStream(options.overwrite() ? Files.newOutputStream(target)
+                    : Files.newOutputStream(target, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE), 1 << 16)) {
+                PngWriter.write(image, out);
             }
             written.add(target);
-        }
-    }
-
-    private static void png(BufferedImage image, OutputStream out) throws IOException {
-        Iterator<ImageWriter> writers = ImageIO.getImageWritersByFormatName("png");
-        if (!writers.hasNext()) {
-            throw new IOException("no PNG writer available");
-        }
-        ImageWriter writer = writers.next();
-        try (ImageOutputStream stream = ImageIO.createImageOutputStream(out)) {
-            writer.setOutput(stream);
-            ImageWriteParam param = writer.getDefaultWriteParam();
-            if (param.canWriteCompressed()) {
-                param.setCompressionMode(ImageWriteParam.MODE_EXPLICIT);
-                param.setCompressionQuality(PNG_QUALITY);
-            }
-            writer.write(null, new IIOImage(image, null, null), param);
-        } finally {
-            writer.dispose();
         }
     }
 

@@ -81,7 +81,7 @@ final class ScriptMethod {
     }
 
     private static double angle(ScanImage crop, int threshold) {
-        byte[] edges = Canny.edges(crop.gray(), crop.width, crop.height, CANNY_LOW, CANNY_HIGH);
+        byte[] edges = Canny.edges(crop.luma(), crop.width, crop.height, CANNY_LOW, CANNY_HIGH);
         float[] thetas = HoughLines.thetas(edges, crop.width, crop.height, HOUGH_VOTES);
         if (thetas.length == 0) {
             return 0;

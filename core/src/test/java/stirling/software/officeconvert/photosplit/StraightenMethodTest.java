@@ -99,6 +99,31 @@ class StraightenMethodTest {
     }
 
     @Test
+    void aLargeScanIsSearchedSmallerAndCutAtFullSize() {
+        SyntheticScan.Scene scene = new SyntheticScan(2480, 2600, 12).noise(2)
+                .photo(1000, 700, 700, 600, 3, Style.BLOBS, 0)
+                .photo(900, 1100, 1750, 1600, -4, Style.TEXTURE, 0)
+                .render();
+        List<PhotoSplitter.Photo> photos = PhotoSplitter.split(scene.scan(), OPTIONS);
+        assertEquals(2, photos.size());
+        assertMatches(scene.photos().get(0), photos.get(0));
+        assertMatches(scene.photos().get(1), photos.get(1));
+    }
+
+    @Test
+    void grayScansGiveGrayPhotos() {
+        SyntheticScan.Scene scene = new SyntheticScan(900, 700, 4)
+                .photo(400, 300, 260, 220, 3, Style.BLOBS, 0)
+                .render();
+        BufferedImage gray = new BufferedImage(900, 700, BufferedImage.TYPE_BYTE_GRAY);
+        gray.getGraphics().drawImage(scene.scan(), 0, 0, null);
+        List<PhotoSplitter.Photo> photos = PhotoSplitter.split(gray, OPTIONS);
+        assertEquals(1, photos.size());
+        assertEquals(BufferedImage.TYPE_BYTE_GRAY, photos.getFirst().image().getType());
+        assertMatches(scene.photos().get(0), photos.getFirst());
+    }
+
+    @Test
     void anEmptyBedHasNoPhotos() {
         SyntheticScan.Scene scene = new SyntheticScan(800, 600, 1).noise(6).specks(80).render();
         assertTrue(PhotoSplitter.split(scene.scan(), OPTIONS).isEmpty());

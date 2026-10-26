@@ -10,7 +10,7 @@ import java.awt.image.Raster;
 import java.awt.image.SinglePixelPackedSampleModel;
 import java.util.Arrays;
 
-final class ScanImage {
+final class ScanImage implements Picture {
 
     final int width;
     final int height;
@@ -75,6 +75,26 @@ final class ScanImage {
         return wide ? Math.min(255, (int) Math.rint(v / 256.0)) : v;
     }
 
+    @Override
+    public int width() {
+        return width;
+    }
+
+    @Override
+    public int height() {
+        return height;
+    }
+
+    @Override
+    public int rgb(int x, int y) {
+        return rgb[y * width + x];
+    }
+
+    @Override
+    public boolean gray() {
+        return false;
+    }
+
     BufferedImage toImage() {
         BufferedImage image = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB);
         int[] data = ((DataBufferInt) image.getRaster().getDataBuffer()).getData();
@@ -101,7 +121,7 @@ final class ScanImage {
         return new ScanImage(w, h, out);
     }
 
-    int[] gray() {
+    int[] luma() {
         int[] g = new int[rgb.length];
         for (int i = 0; i < rgb.length; i++) {
             int p = rgb[i];

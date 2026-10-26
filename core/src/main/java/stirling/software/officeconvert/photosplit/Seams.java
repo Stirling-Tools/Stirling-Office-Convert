@@ -23,25 +23,26 @@ final class Seams {
 
     private Seams() {}
 
-    static List<Region> split(List<Region> regions, byte[] photo, int w, PhotoSplitter.Options options) {
+    static List<Region> split(List<Region> regions, byte[] photo, ScanImage scan, PhotoSplitter.Options options) {
         List<Region> out = new ArrayList<>();
         for (Region r : regions) {
-            out.addAll(split(r, photo, w, options, 0));
+            out.addAll(split(r, photo, scan, options, 0));
         }
         return out;
     }
 
-    private static List<Region> split(Region region, byte[] photo, int w, PhotoSplitter.Options options, int depth) {
+    private static List<Region> split(Region region, byte[] photo, ScanImage scan, PhotoSplitter.Options options, int depth) {
         if (depth >= MAX_DEPTH || region.count < 2L * Math.max(1, options.minArea())) {
             return List.of(region);
         }
-        Cut cut = find(region, photo, w, options);
-        if (cut == null) {
+        Cut cut = find(region, photo, scan.width, options);
+        List<Region> halves = cut != null ? apply(region, cut) : null;
+        if (halves == null) {
             return List.of(region);
         }
         List<Region> out = new ArrayList<>();
-        for (Region half : apply(region, cut)) {
-            out.addAll(split(half, photo, w, options, depth + 1));
+        for (Region half : halves) {
+            out.addAll(split(half, photo, scan, options, depth + 1));
         }
         return out;
     }

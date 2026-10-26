@@ -7,6 +7,7 @@ final class Bed {
 
     private static final int ROUNDS = 3;
     private static final int DESPECKLE = 2;
+    private static final int CELL_STEP = 2;
     private static final float SHADE_MIN_BED = 100;
     private static final float SHADE_MAX = 0.98f;
     private static final float SHADE_SPREAD = 0.06f;
@@ -55,28 +56,30 @@ final class Bed {
         return (int) Math.round(Math.clamp(4 * wideNoise + 1.5, 3, Math.max(3, strong)));
     }
 
-    byte[] foreground(int[] smooth, int w, int h, int threshold) {
-        return foreground(smooth, w, h, threshold, null);
-    }
-
-    byte[] foreground(int[] smooth, int w, int h, int threshold, byte[] photo) {
+    byte[] foreground(int[] smooth, int[] wide, int w, int h, int threshold, int faintThreshold, byte[] photo, byte[] faint) {
         byte[] mask = new byte[w * h];
         float[] row = new float[3 * w];
         for (int y = 0; y < h; y++) {
             model(y, w, row);
             for (int x = 0; x < w; x++) {
-                int p = smooth[y * w + x];
-                int r = p >> 16 & 0xFF;
-                int g = p >> 8 & 0xFF;
-                int b = p & 0xFF;
+                int i = y * w + x;
                 float mr = row[3 * x];
                 float mg = row[3 * x + 1];
                 float mb = row[3 * x + 2];
+                int q = wide[i];
+                float f = Math.max(Math.abs((q >> 16 & 0xFF) - mr), Math.max(Math.abs((q >> 8 & 0xFF) - mg), Math.abs((q & 0xFF) - mb)));
+                if (f > faintThreshold) {
+                    faint[i] = 1;
+                }
+                int p = smooth[i];
+                int r = p >> 16 & 0xFF;
+                int g = p >> 8 & 0xFF;
+                int b = p & 0xFF;
                 float d = Math.max(Math.abs(r - mr), Math.max(Math.abs(g - mg), Math.abs(b - mb)));
                 if (d > threshold) {
-                    mask[y * w + x] = 1;
-                    if (photo != null && !shade(r, g, b, mr, mg, mb)) {
-                        photo[y * w + x] = 1;
+                    mask[i] = 1;
+                    if (!shade(r, g, b, mr, mg, mb)) {
+                        photo[i] = 1;
                     }
                 }
             }
@@ -125,8 +128,8 @@ final class Bed {
                 long[] sum = new long[3];
                 int count = 0;
                 int total = 0;
-                for (int y = cy * cell; y < Math.min(h, (cy + 1) * cell); y++) {
-                    for (int x = cx * cell; x < Math.min(w, (cx + 1) * cell); x++) {
+                for (int y = cy * cell; y < Math.min(h, (cy + 1) * cell); y += CELL_STEP) {
+                    for (int x = cx * cell; x < Math.min(w, (cx + 1) * cell); x += CELL_STEP) {
                         int p = smooth[y * w + x];
                         int r = p >> 16 & 0xFF;
                         int g = p >> 8 & 0xFF;

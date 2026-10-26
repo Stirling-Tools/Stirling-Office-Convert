@@ -32,6 +32,10 @@ record RotatedRect(double cx, double cy, double width, double height, double ang
         return Math.abs(u) <= width / 2 && Math.abs(v) <= height / 2;
     }
 
+    RotatedRect scaled(double k) {
+        return new RotatedRect(cx * k, cy * k, width * k, height * k, angle);
+    }
+
     RotatedRect inset(double by) {
         return new RotatedRect(cx, cy, Math.max(1, width - 2 * by), Math.max(1, height - 2 * by), angle);
     }
