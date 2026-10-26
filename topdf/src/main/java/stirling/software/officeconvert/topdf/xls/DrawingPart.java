@@ -1,17 +1,23 @@
 package stirling.software.officeconvert.topdf.xls;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
+import org.apache.poi.ddf.EscherClientDataRecord;
 import org.apache.poi.ddf.EscherContainerRecord;
 import org.apache.poi.ddf.EscherOptRecord;
 import org.apache.poi.ddf.EscherProperty;
 import org.apache.poi.ddf.EscherRecord;
 import org.apache.poi.ddf.EscherSimpleProperty;
 import org.apache.poi.ddf.EscherTextboxRecord;
+import org.apache.poi.hssf.record.CommonObjectDataSubRecord;
 import org.apache.poi.hssf.record.EscherAggregate;
+import org.apache.poi.hssf.record.ObjRecord;
+import org.apache.poi.hssf.record.SubRecord;
 import org.apache.poi.hssf.record.TextObjectRecord;
 import org.apache.poi.hssf.usermodel.HSSFAnchor;
 import org.apache.poi.hssf.usermodel.HSSFChildAnchor;
@@ -58,6 +64,8 @@ final class DrawingPart {
     private final HSSFPalette palette;
 
     private final Map<EscherOptRecord, TextObjectRecord> texts = new IdentityHashMap<>();
+
+    private final Set<EscherOptRecord> unprinted = Collections.newSetFromMap(new IdentityHashMap<>());
 
     private int id = 1;
 
@@ -113,6 +121,7 @@ final class DrawingPart {
         }
         EscherOptRecord opt = null;
         EscherTextboxRecord box = null;
+        EscherClientDataRecord data = null;
         for (EscherRecord r : records) {
             if (r instanceof EscherContainerRecord c) {
                 index(c.getChildRecords(), objects, depth + 1);
@@ -120,10 +129,22 @@ final class DrawingPart {
                 opt = o;
             } else if (r instanceof EscherTextboxRecord t) {
                 box = t;
+            } else if (r instanceof EscherClientDataRecord d) {
+                data = d;
             }
         }
-        if (opt != null && box != null && objects.get(box) instanceof TextObjectRecord t) {
+        if (opt == null) {
+            return;
+        }
+        if (box != null && objects.get(box) instanceof TextObjectRecord t) {
             texts.put(opt, t);
+        }
+        if (data != null && objects.get(data) instanceof ObjRecord o) {
+            for (SubRecord sub : o.getSubRecords()) {
+                if (sub instanceof CommonObjectDataSubRecord c && !c.isPrintable()) {
+                    unprinted.add(opt);
+                }
+            }
         }
     }
 
@@ -183,7 +204,7 @@ final class DrawingPart {
     }
 
     private String shape(HSSFShape s, HSSFShapeGroup parent, Media store) {
-        if (++shapes > MAX_SHAPES) {
+        if (++shapes > MAX_SHAPES || !printed(s.getOptRecord())) {
             return null;
         }
         String xfrm = xfrm(s, parent);
@@ -452,6 +473,16 @@ final class DrawingPart {
             start = i + 1;
         }
         return b.append(p).append("</xdr:txBody>").toString();
+    }
+
+    private boolean printed(EscherOptRecord opt) {
+        if (opt == null) {
+            return true;
+        }
+        int flags = property(opt, 0x3BF, 0);
+        boolean hidden = (flags & 0x20000) != 0 && (flags & 0x2) != 0;
+        boolean noPrint = (flags & 0x10000) != 0 && (flags & 0x1) == 0;
+        return !hidden && !noPrint && !unprinted.contains(opt);
     }
 
     private static int property(EscherOptRecord opt, int prop, int fallback) {

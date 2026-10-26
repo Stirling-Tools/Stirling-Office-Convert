@@ -30,6 +30,7 @@ import org.apache.pdfbox.rendering.PDFRenderer;
 import org.apache.pdfbox.text.PDFTextStripper;
 import org.apache.poi.common.usermodel.HyperlinkType;
 import org.apache.poi.ddf.EscherPropertyTypes;
+import org.apache.poi.ddf.EscherSimpleProperty;
 import org.apache.poi.hssf.record.DefaultColWidthRecord;
 import org.apache.poi.hssf.record.RecordBase;
 import org.apache.poi.hssf.record.UnknownRecord;
@@ -432,6 +433,30 @@ class XlsTest {
         assertTrue(hasColour(out, Color.BLUE), "10 and 20 are filled");
         assertFalse(hasColour(out, Color.GREEN), "a formula rule is never evaluated");
         assertTrue(String.join(" ", result.warnings()).contains("conditional formatting"), result.warnings().toString());
+    }
+
+    @Test
+    void hiddenAndUnprintedShapesAreLeftOff() throws Exception {
+        int[][] shapes = {{255, 0, 0, 0x20002}, {0, 255, 0, 0x10000}, {0, 0, 255, 0x30001}};
+        byte[] data = xls(wb -> {
+            HSSFSheet s = wb.createSheet("Shapes");
+            s.createRow(0).createCell(0).setCellValue("Shaped");
+            HSSFPatriarch p = s.createDrawingPatriarch();
+            for (int i = 0; i < shapes.length; i++) {
+                HSSFSimpleShape box = p.createSimpleShape(new HSSFClientAnchor(0, 0, 0, 0, (short) 1, 2 + 4 * i,
+                        (short) 4, 5 + 4 * i));
+                box.setShapeType(HSSFSimpleShape.OBJECT_TYPE_RECTANGLE);
+                box.setFillColor(shapes[i][0], shapes[i][1], shapes[i][2]);
+                box.getOptRecord().setEscherProperty(new EscherSimpleProperty(EscherPropertyTypes.GROUPSHAPE__FLAGS,
+                        shapes[i][3]));
+            }
+        });
+        Path in = Fixtures.write(dir, "hidden.xls", data);
+        Path out = dir.resolve("hidden.pdf");
+        OfficeToPdf.convert(in, out, OfficeToPdf.Options.defaults());
+        assertFalse(hasColour(out, Color.RED), "a hidden shape is not drawn");
+        assertFalse(hasColour(out, Color.GREEN), "a shape set not to print is not drawn");
+        assertTrue(hasColour(out, Color.BLUE), "a printed shape is drawn");
     }
 
     @Test
