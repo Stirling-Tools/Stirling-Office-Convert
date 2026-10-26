@@ -121,7 +121,15 @@ final class DrawingPart {
                 continue;
             }
             String body = guarded(s, null, store);
-            if (body != null) {
+            if (body == null) {
+                continue;
+            }
+            long w = width(anchor);
+            long h = height(anchor);
+            if (!(s instanceof HSSFShapeGroup) && s.getOptRecord() != null && sideways(s.getRotationDegree())
+                    && w > 0 && h > 0) {
+                xml.append(fixed(anchor, (w - h) / 2, (h - w) / 2, h, w, body));
+            } else {
                 xml.append("<xdr:twoCellAnchor editAs=\"oneCell\">").append(anchor(anchor)).append(body)
                         .append("<xdr:clientData/></xdr:twoCellAnchor>");
             }
@@ -626,6 +634,10 @@ final class DrawingPart {
             }
             rowOff -= h;
             row++;
+        }
+        while (colOff < 0 && col > 0) {
+            col--;
+            colOff += Math.round(geometry.columnPx(col) * EMU_PX);
         }
         while (rowOff < 0 && row > 0) {
             row--;

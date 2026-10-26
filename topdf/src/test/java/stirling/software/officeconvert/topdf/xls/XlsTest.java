@@ -753,6 +753,27 @@ class XlsTest {
     }
 
     @Test
+    void aSidewaysTopLevelShapeKeepsTheBoxItsAnchorShows() throws Exception {
+        byte[] data = xls(wb -> {
+            HSSFSheet s = wb.createSheet("Line");
+            s.createRow(0).createCell(0).setCellValue("Turned");
+            HSSFSimpleShape line = s.createDrawingPatriarch()
+                    .createSimpleShape(new HSSFClientAnchor(0, 0, 0, 0, (short) 1, 6, (short) 9, 7));
+            line.setShapeType(HSSFSimpleShape.OBJECT_TYPE_LINE);
+            line.setLineStyleColor(255, 0, 0);
+            line.setLineWidth(HSSFShape.LINEWIDTH_ONE_PT * 4);
+            line.setRotationDegree((short) 90);
+        });
+        Path in = Fixtures.write(dir, "turned.xls", data);
+        Path out = dir.resolve("turned.pdf");
+        OfficeToPdf.convert(in, out, OfficeToPdf.Options.defaults());
+        try (PDDocument doc = Loader.loadPDF(out.toFile())) {
+            int[] b = bounds(new PDFRenderer(doc).renderImage(0, 1f), rgb -> rgb == 0xFF0000);
+            assertTrue(b[2] - b[0] > 4 * (b[3] - b[1]), b[0] + "," + b[1] + " " + b[2] + "," + b[3]);
+        }
+    }
+
+    @Test
     void theStandardWidthRecordSetsTheDefaultColumnWidth() throws Exception {
         Consumer<HSSFWorkbook> sheet = wb -> {
             HSSFRow r = wb.createSheet("Wide").createRow(0);
