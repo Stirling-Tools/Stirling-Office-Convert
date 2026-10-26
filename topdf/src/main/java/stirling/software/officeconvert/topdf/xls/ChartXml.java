@@ -141,6 +141,14 @@ final class ChartXml {
         if (s.labels() != null) {
             labels(b, s.labels(), kind == BiffChart.Kind.PIE ? "bestFit" : null);
         }
+        if (kind != BiffChart.Kind.PIE && kind != BiffChart.Kind.RADAR && kind != BiffChart.Kind.FILLED_RADAR) {
+            for (BiffChart.Trend t : s.trends()) {
+                trend(b, t);
+            }
+            for (boolean x : kind == BiffChart.Kind.SCATTER ? new boolean[] {false, true} : new boolean[] {false}) {
+                errorBars(b, s.errors().stream().filter(e -> e.x() == x).toList(), x);
+            }
+        }
         if (kind == BiffChart.Kind.SCATTER) {
             b.append("<c:xVal>").append(numbers(s.xs() == null ? sequence(s.values().length) : s.xs()))
                     .append("</c:xVal><c:yVal>").append(numbers(s.values())).append("</c:yVal>");
@@ -152,6 +160,51 @@ final class ChartXml {
             b.append("<c:smooth val=\"").append(s.smooth() ? 1 : 0).append("\"/>");
         }
         b.append("</c:ser>");
+    }
+
+    private static void trend(StringBuilder b, BiffChart.Trend t) {
+        b.append("<c:trendline><c:spPr>").append(line(t.line(), t.width())).append("</c:spPr><c:trendlineType val=\"")
+                .append(t.type()).append("\"/>");
+        if (t.type().equals("poly")) {
+            b.append("<c:order val=\"").append(Math.max(2, Math.min(6, t.order()))).append("\"/>");
+        } else if (t.type().equals("movingAvg")) {
+            b.append("<c:period val=\"").append(Math.max(2, Math.min(255, t.order()))).append("\"/>");
+        }
+        if (Double.isFinite(t.forward()) && t.forward() > 0) {
+            b.append("<c:forward val=\"").append(t.forward()).append("\"/>");
+        }
+        if (Double.isFinite(t.backward()) && t.backward() > 0) {
+            b.append("<c:backward val=\"").append(t.backward()).append("\"/>");
+        }
+        b.append("</c:trendline>");
+    }
+
+    private static void errorBars(StringBuilder b, List<BiffChart.ErrorBar> bars, boolean x) {
+        BiffChart.ErrorBar plus = bars.stream().filter(BiffChart.ErrorBar::plus).findFirst().orElse(null);
+        BiffChart.ErrorBar minus = bars.stream().filter(e -> !e.plus()).findFirst().orElse(null);
+        BiffChart.ErrorBar any = plus != null ? plus : minus;
+        if (any == null) {
+            return;
+        }
+        String kind = switch (any.source()) {
+            case 1 -> "percentage";
+            case 3 -> "stdDev";
+            case 4 -> "cust";
+            case 5 -> "stdErr";
+            default -> "fixedVal";
+        };
+        b.append("<c:errBars><c:errDir val=\"").append(x ? "x" : "y").append("\"/><c:errBarType val=\"")
+                .append(plus != null && minus != null ? "both" : plus != null ? "plus" : "minus")
+                .append("\"/><c:errValType val=\"").append(kind).append("\"/><c:noEndCap val=\"")
+                .append(any.cap() ? 0 : 1).append("\"/>");
+        if (kind.equals("cust")) {
+            b.append("<c:plus>").append(numbers(plus == null ? new double[0] : plus.values())).append("</c:plus>")
+                    .append("<c:minus>").append(numbers(minus == null ? new double[0] : minus.values()))
+                    .append("</c:minus>");
+        } else {
+            b.append("<c:val val=\"").append(any.value()).append("\"/>");
+        }
+        b.append("<c:spPr>").append(line(any.line(), any.width())).append("</c:spPr></c:errBars>");
     }
 
     private static void labels(StringBuilder b, BiffChart.Labels l, String position) {

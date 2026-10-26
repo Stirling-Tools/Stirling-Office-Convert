@@ -1,5 +1,7 @@
 package stirling.software.officeconvert.topdf.xls;
 
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
@@ -33,10 +35,10 @@ final class ChartRecords {
             MARKER_FORMAT = 0x1009, AREA_FORMAT = 0x100A, SERIES_TEXT = 0x100D, CHART_FORMAT = 0x1014,
             LEGEND = 0x1015, BAR = 0x1017, LINE = 0x1018, PIE = 0x1019, AREA = 0x101A, SCATTER = 0x101B,
             AXIS = 0x101D, TICK = 0x101E, VALUE_RANGE = 0x101F, CAT_SER_RANGE = 0x1020, AXIS_LINE = 0x1021,
-            ATTACHED_LABEL = 0x100C, DEFAULT_TEXT = 0x1024, TEXT = 0x1025, FONTX = 0x1026, OBJECT_LINK = 0x1027, FRAME = 0x1032,
-            BEGIN = 0x1033, END = 0x1034, PLOT_AREA = 0x1035, RADAR = 0x103E, RADAR_AREA = 0x1040,
+            ATTACHED_LABEL = 0x100C, DEFAULT_TEXT = 0x1024, TEXT = 0x1025, FONTX = 0x1026, OBJECT_LINK = 0x1027,
+            FRAME = 0x1032, BEGIN = 0x1033, END = 0x1034, PLOT_AREA = 0x1035, RADAR = 0x103E, RADAR_AREA = 0x1040,
             AXIS_PARENT = 0x1041, SERIES_GROUP = 0x1045, IFMT = 0x104E, SERFMT = 0x105D, BOP_POP = 0x1061,
-            SERIES_INDEX = 0x1065, SERIES_PARENT = 0x104A;
+            SERIES_INDEX = 0x1065, SERIES_PARENT = 0x104A, SERIES_TREND = 0x104B, SERIES_ERROR = 0x105B;
 
     interface Lookup {
         BiffChart.Text font(int index, String text);
@@ -158,6 +160,17 @@ final class ChartRecords {
                 int parent = u16(d, 0) - 1;
                 if (top == SERIES && parent >= 0 && parent < series.size() - 1) {
                     current().auxiliary = true;
+                    current().parent = parent;
+                }
+            }
+            case SERIES_TREND -> {
+                if (top == SERIES && !series.isEmpty() && d.length >= 28) {
+                    current().trend = d;
+                }
+            }
+            case SERIES_ERROR -> {
+                if (top == SERIES && !series.isEmpty() && d.length >= 14) {
+                    current().error = d;
                 }
             }
             case DATA_FORMAT -> {
@@ -317,7 +330,8 @@ final class ChartRecords {
         }
         List<Object> cells = s.categoryRef == null ? List.of() : fonts.cells(s.categoryRef);
         if (!cells.isEmpty()) {
-            s.categoryFormatCode = s.categoryCustom ? fonts.format(s.categoryFormat) : fonts.sourceFormat(s.categoryRef);
+            s.categoryFormatCode = s.categoryCustom ? fonts.format(s.categoryFormat)
+                    : fonts.sourceFormat(s.categoryRef);
             s.categories.clear();
             s.xs.clear();
             List<String> labels = s.categoryCustom ? List.of() : fonts.labels(s.categoryRef);
@@ -578,6 +592,17 @@ final class ChartRecords {
     }
 
     BiffChart build(List<Integer> autoFills, List<Integer> autoLines) {
+        for (SeriesBuilder s : series) {
+            if (s.auxiliary) {
+                fromCells(s);
+                SeriesBuilder parent = series.get(s.parent);
+                if (s.error != null && parent.errors.size() < 4) {
+                    parent.errors.add(errorBar(s));
+                } else if (s.trend != null && parent.trends.size() < 4) {
+                    parent.trends.add(trend(s));
+                }
+            }
+        }
         Map<Integer, List<BiffChart.Series>> bySeries = new HashMap<>();
         for (int i = 0; i < series.size(); i++) {
             SeriesBuilder s = series.get(i);
@@ -612,6 +637,35 @@ final class ChartRecords {
         float size = base == null ? 10 : base.size();
         return new BiffChart(title, out, legend(), values, cats, plotFill, areaFill, areaLine, size,
                 base == null ? null : base.text());
+    }
+
+    private static BiffChart.ErrorBar errorBar(SeriesBuilder s) {
+        byte[] d = s.error;
+        int direction = d[0] & 0xFF;
+        double value = ByteBuffer.wrap(d).order(ByteOrder.LITTLE_ENDIAN).getDouble(4);
+        int n = s.values.isEmpty() ? 0 : Math.min(MAX_POINTS, s.values.lastKey() + 1);
+        double[] values = new double[n];
+        for (int i = 0; i < n; i++) {
+            values[i] = s.values.getOrDefault(i, Double.NaN);
+        }
+        return new BiffChart.ErrorBar(direction <= 2, direction == 1 || direction == 3, d[1] & 0xFF,
+                Double.isFinite(value) ? value : 0, values, d[2] != 0, s.lineSet ? s.line : Integer.valueOf(0),
+                s.lineWidth);
+    }
+
+    private static BiffChart.Trend trend(SeriesBuilder s) {
+        byte[] d = s.trend;
+        ByteBuffer b = ByteBuffer.wrap(d).order(ByteOrder.LITTLE_ENDIAN);
+        int order = d[1] & 0xFF;
+        String type = switch (d[0] & 0xFF) {
+            case 0 -> order <= 1 ? "linear" : "poly";
+            case 1 -> "exp";
+            case 2 -> "log";
+            case 3 -> "power";
+            default -> "movingAvg";
+        };
+        return new BiffChart.Trend(type, order, b.getDouble(12), b.getDouble(20),
+                s.lineSet ? s.line : Integer.valueOf(0), s.lineWidth);
     }
 
     private String valueFormat(int group) {
@@ -789,6 +843,16 @@ final class ChartRecords {
 
         boolean auxiliary;
 
+        int parent;
+
+        byte[] error;
+
+        byte[] trend;
+
+        final List<BiffChart.ErrorBar> errors = new ArrayList<>();
+
+        final List<BiffChart.Trend> trends = new ArrayList<>();
+
         Ptg[] valueRef;
 
         Ptg[] categoryRef;
@@ -871,7 +935,8 @@ final class ChartRecords {
                             valueFormat, Map.copyOf(pointLabels));
             return new BiffChart.Series(name == null ? "Series" + (index + 1) : name, cats, v, x, f, l,
                     lineWidth, symbol, mfill, Map.copyOf(points), smooth, shown,
-                    numbers == null ? null : new BiffChart.Numbers(categoryFormatCode, numbers));
+                    numbers == null ? null : new BiffChart.Numbers(categoryFormatCode, numbers), List.copyOf(errors),
+                    List.copyOf(trends));
         }
     }
 

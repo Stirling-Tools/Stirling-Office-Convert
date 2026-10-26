@@ -109,7 +109,8 @@ final class SheetPart {
                 .append("\">");
         p.write(guarded(this::head, "<sheetViews><sheetView workbookViewId=\"0\"/></sheetViews>"));
         p.write(guarded(this::columnsXml, ""));
-        String tail = guarded(this::merges, "") + conditional + guarded(this::print, "<pageMargins left=\"0.75\" right=\"0.75\""
+        String tail = guarded(this::merges, "") + conditional + guarded(this::print,
+                "<pageMargins left=\"0.75\" right=\"0.75\""
                 + " top=\"1\" bottom=\"1\" header=\"0.5\" footer=\"0.5\"/>");
         boolean complete = writeRows(parts, p, strings);
         p.write(tail);

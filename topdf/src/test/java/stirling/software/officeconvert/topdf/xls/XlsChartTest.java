@@ -4,9 +4,12 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -14,6 +17,9 @@ import java.util.List;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
+import org.apache.pdfbox.Loader;
+import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.rendering.PDFRenderer;
 import org.apache.poi.hssf.record.NumberRecord;
 import org.apache.poi.hssf.record.RecordBase;
 import org.apache.poi.hssf.record.UnknownRecord;
@@ -177,6 +183,59 @@ class XlsChartTest {
         int axis = chart.indexOf("<c:valAx>");
         assertTrue(chart.indexOf("<a:defRPr sz=\"1400\" b=\"1\"/>", axis) < legend, chart);
         assertTrue(chart.substring(axis, legend).contains("<c:spPr><a:ln><a:noFill/></a:ln></c:spPr>"), chart);
+    }
+
+    @Test
+    void errorBarsAndTrendlinesAreDrawnOnTheirParentSeries() throws Exception {
+        List<RecordBase> records = ChartFixtures.chart(null, LINE, new byte[2],
+                new String[] {"Score", "Up", "Down", "Fit"}, new String[] {"a", "b", "c", "d"},
+                new double[][] {{2, 4, 3, 5}, {0, 0, 0, 0}, {0, 0, 0, 0}, {0, 0, 0, 0}});
+        byte[] up = new byte[14];
+        up[0] = 3;
+        up[1] = 2;
+        up[2] = 1;
+        byte[] down = up.clone();
+        down[0] = 4;
+        ByteBuffer.wrap(up).order(ByteOrder.LITTLE_ENDIAN).putDouble(4, 1);
+        ByteBuffer.wrap(down).order(ByteOrder.LITTLE_ENDIAN).putDouble(4, 1);
+        byte[] fit = new byte[28];
+        fit[1] = 1;
+        byte[][] aux = {up, down, fit};
+        int[] colours = {0xFF0000, 0xFF0000, 0x0000FF};
+        for (int k = 3; k >= 1; k--) {
+            byte[] line = new byte[12];
+            line[0] = (byte) (colours[k - 1] >> 16);
+            line[2] = (byte) colours[k - 1];
+            line[6] = 1;
+            records.addAll(2 + 4 * k + 3, List.of(new UnknownRecord(0x1006, new byte[] {(byte) 0xFF, (byte) 0xFF,
+                0, 0, (byte) k, 0, (byte) k, 0}), new BeginRecord(), new UnknownRecord(0x1007, line), new EndRecord(),
+                    new UnknownRecord(0x104A, new byte[] {1, 0}),
+                    new UnknownRecord(k == 3 ? 0x104B : 0x105B, aux[k - 1])));
+        }
+        byte[] data = XlsTest.xls(wb -> ChartFixtures.chartSheet(wb, "Chart1", records));
+        String chart = chartXml(data);
+        assertTrue(chart.contains("<c:trendline><c:spPr><a:ln w=\"19050\"><a:solidFill><a:srgbClr val=\"0000FF\"/>"
+                + "</a:solidFill></a:ln></c:spPr><c:trendlineType val=\"linear\"/></c:trendline>"), chart);
+        assertTrue(chart.contains("<c:errBars><c:errDir val=\"y\"/><c:errBarType val=\"both\"/>"
+                + "<c:errValType val=\"fixedVal\"/><c:noEndCap val=\"0\"/><c:val val=\"1.0\"/>"), chart);
+        assertFalse(chart.contains("<c:v>Up</c:v>"), chart);
+        Path in = Fixtures.write(dir, "errors.xls", data);
+        Path pdf = dir.resolve("errors.pdf");
+        OfficeToPdf.convert(in, pdf, OfficeToPdf.Options.defaults());
+        try (PDDocument doc = Loader.loadPDF(pdf.toFile())) {
+            BufferedImage img = new PDFRenderer(doc).renderImage(0, 1f);
+            int red = 0;
+            int blue = 0;
+            for (int y = 0; y < img.getHeight(); y++) {
+                for (int x = 0; x < img.getWidth(); x++) {
+                    int rgb = img.getRGB(x, y) & 0xFFFFFF;
+                    red += rgb == 0xFF0000 ? 1 : 0;
+                    blue += rgb == 0x0000FF ? 1 : 0;
+                }
+            }
+            assertTrue(red > 20, "error bars drawn: " + red);
+            assertTrue(blue > 50, "trendline drawn: " + blue);
+        }
     }
 
     @Test
