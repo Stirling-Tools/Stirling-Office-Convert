@@ -48,6 +48,8 @@ final class ChartRecords {
         String number(double value, int xf, int fallbackFormat);
 
         List<Object> cells(Ptg[] reference);
+
+        List<String> labels(Ptg[] reference);
     }
 
     private final Lookup fonts;
@@ -247,6 +249,7 @@ final class ChartRecords {
             s.valueRef = ref;
         } else if (r.getLinkType() == 2) {
             s.categoryFormat = r.getIndexNumberFmtRecord();
+            s.categoryCustom = r.isCustomNumberFormat();
             s.categoryRef = ref;
         }
     }
@@ -284,13 +287,23 @@ final class ChartRecords {
                 }
             }
         }
+        if (!s.categoryCustom && !s.categories.isEmpty() && s.categoryRef != null) {
+            List<String> labels = fonts.labels(s.categoryRef);
+            for (int i = 0; i < labels.size(); i++) {
+                if (labels.get(i) != null && s.xs.containsKey(i)) {
+                    s.categories.put(i, capped(labels.get(i)));
+                }
+            }
+        }
         if (s.categories.isEmpty() && s.categoryRef != null) {
             List<Object> cells = fonts.cells(s.categoryRef);
+            List<String> labels = s.categoryCustom ? List.of() : fonts.labels(s.categoryRef);
             for (int i = 0; i < cells.size() && i < MAX_POINTS; i++) {
                 Object v = cells.get(i);
                 if (v instanceof Double d) {
                     s.xs.put(i, d);
-                    s.categories.put(i, capped(fonts.number(d, -1, s.categoryFormat)));
+                    String label = i < labels.size() ? labels.get(i) : null;
+                    s.categories.put(i, capped(label != null ? label : fonts.number(d, -1, s.categoryFormat)));
                 } else if (v instanceof String t) {
                     s.categories.put(i, capped(t));
                 }
@@ -695,6 +708,8 @@ final class ChartRecords {
         int format;
 
         int categoryFormat;
+
+        boolean categoryCustom;
 
         Ptg[] valueRef;
 

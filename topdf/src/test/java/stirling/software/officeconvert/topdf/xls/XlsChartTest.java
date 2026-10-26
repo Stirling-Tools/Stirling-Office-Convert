@@ -13,6 +13,7 @@ import java.time.Duration;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
+import org.apache.poi.hssf.usermodel.HSSFCellStyle;
 import org.apache.poi.hssf.usermodel.HSSFRow;
 import org.apache.poi.hssf.usermodel.HSSFSheet;
 import org.apache.poi.poifs.filesystem.POIFSFileSystem;
@@ -145,6 +146,28 @@ class XlsChartTest {
                     chart);
             assertTrue(chart.contains("<c:spPr><a:noFill/></c:spPr></c:plotArea>"), chart);
         }
+    }
+
+    @Test
+    void dateCategoriesKeepTheFormatOfTheirCells() throws Exception {
+        byte[] data = XlsTest.xls(wb -> {
+            HSSFSheet sheet = wb.createSheet("Data");
+            HSSFCellStyle date = wb.createCellStyle();
+            date.setDataFormat(wb.createDataFormat().getFormat("m/d/yyyy"));
+            for (int i = 0; i < 3; i++) {
+                HSSFRow row = sheet.createRow(i);
+                row.createCell(0).setCellValue(36526 + i);
+                row.getCell(0).setCellStyle(date);
+                row.createCell(1).setCellValue(i + 1);
+            }
+            int extern = wb.getInternalWorkbook().checkExternSheet(0);
+            ChartFixtures.chartSheet(wb, "Chart1", ChartFixtures.linkedChart(BAR, "Dated", 3,
+                    new Area3DPtg(new AreaReference("B1:B3", SpreadsheetVersion.EXCEL97), extern),
+                    new Area3DPtg(new AreaReference("A1:A3", SpreadsheetVersion.EXCEL97), extern), null));
+        });
+        String chart = chartXml(data);
+        assertTrue(chart.contains("<c:v>1/1/2000</c:v>") && chart.contains("<c:v>1/3/2000</c:v>"), chart);
+        assertFalse(chart.contains("<c:v>36526"), chart);
     }
 
     @Test

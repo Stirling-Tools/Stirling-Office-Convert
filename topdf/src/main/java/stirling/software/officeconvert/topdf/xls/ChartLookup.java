@@ -82,6 +82,23 @@ final class ChartLookup implements ChartRecords.Lookup {
 
     @Override
     public List<Object> cells(Ptg[] reference) {
+        List<Object> out = new ArrayList<>();
+        for (HSSFCell cell : source(reference)) {
+            out.add(value(cell));
+        }
+        return out;
+    }
+
+    @Override
+    public List<String> labels(Ptg[] reference) {
+        List<String> out = new ArrayList<>();
+        for (HSSFCell cell : source(reference)) {
+            out.add(label(cell));
+        }
+        return out;
+    }
+
+    private List<HSSFCell> source(Ptg[] reference) {
         if (reference == null || reference.length != 1) {
             return List.of();
         }
@@ -106,26 +123,38 @@ final class ChartLookup implements ChartRecords.Lookup {
             if (index < 0 || index >= wb.getNumberOfSheets()) {
                 return List.of();
             }
-            return values(wb.getSheetAt(index), area);
+            return cells(wb.getSheetAt(index), area);
         } catch (RuntimeException e) {
             return List.of();
         }
     }
 
-    private List<Object> values(HSSFSheet sheet, AreaReference area) {
+    private static List<HSSFCell> cells(HSSFSheet sheet, AreaReference area) {
         CellReference first = area.getFirstCell();
         CellReference last = area.getLastCell();
-        List<Object> out = new ArrayList<>();
+        List<HSSFCell> out = new ArrayList<>();
         for (int r = first.getRow(); r <= last.getRow(); r++) {
             HSSFRow row = sheet.getRow(r);
             for (int c = first.getCol(); c <= last.getCol(); c++) {
                 if (out.size() >= ChartRecords.MAX_POINTS) {
                     return out;
                 }
-                out.add(row == null ? null : value(row.getCell(c)));
+                out.add(row == null ? null : row.getCell(c));
             }
         }
         return out;
+    }
+
+    private String label(HSSFCell cell) {
+        if (cell == null || !(value(cell) instanceof Double d)) {
+            return null;
+        }
+        try {
+            return formatter.formatRawCellContents(d, cell.getCellStyle().getDataFormat(),
+                    cell.getCellStyle().getDataFormatString());
+        } catch (RuntimeException e) {
+            return null;
+        }
     }
 
     private Object value(HSSFCell cell) {
