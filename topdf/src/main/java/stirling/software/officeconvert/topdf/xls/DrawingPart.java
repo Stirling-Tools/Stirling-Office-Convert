@@ -28,6 +28,7 @@ import org.apache.poi.hssf.usermodel.HSSFShape;
 import org.apache.poi.hssf.usermodel.HSSFShapeGroup;
 import org.apache.poi.hssf.usermodel.HSSFSheet;
 import org.apache.poi.hssf.usermodel.HSSFSimpleShape;
+import org.apache.poi.hssf.usermodel.HSSFTextbox;
 import org.apache.poi.hssf.usermodel.HSSFWorkbook;
 import org.apache.poi.ss.usermodel.Font;
 
@@ -397,10 +398,12 @@ final class DrawingPart {
 
     private String body(HSSFSimpleShape s, HSSFRichTextString text) {
         EscherOptRecord opt = s.getOptRecord();
+        int side = s instanceof HSSFTextbox ? 0 : 91440;
+        int edge = side / 2;
         StringBuilder b = new StringBuilder("<xdr:txBody><a:bodyPr wrap=\"square\" lIns=\"")
-                .append(inset(opt, 0x81, 91440)).append("\" tIns=\"").append(inset(opt, 0x82, 45720))
-                .append("\" rIns=\"").append(inset(opt, 0x83, 91440)).append("\" bIns=\"")
-                .append(inset(opt, 0x84, 45720)).append('"');
+                .append(inset(opt, 0x81, side)).append("\" tIns=\"").append(inset(opt, 0x82, edge))
+                .append("\" rIns=\"").append(inset(opt, 0x83, side)).append("\" bIns=\"")
+                .append(inset(opt, 0x84, edge)).append('"');
         TextObjectRecord txo = opt == null ? null : texts.get(opt);
         int vertical = txo != null ? txo.getVerticalTextAlignment() : switch (property(opt, 0x87, 0)) {
             case 1, 4 -> 2;
