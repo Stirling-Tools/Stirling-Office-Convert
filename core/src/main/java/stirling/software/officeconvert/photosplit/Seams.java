@@ -36,7 +36,7 @@ final class Seams {
             return List.of(region);
         }
         Cut cut = find(region, photo, scan.width, options);
-        List<Region> halves = cut != null ? apply(region, cut) : null;
+        List<Region> halves = cut != null ? apply(region, cut) : Steps.cut(region, scan, options);
         if (halves == null) {
             return List.of(region);
         }

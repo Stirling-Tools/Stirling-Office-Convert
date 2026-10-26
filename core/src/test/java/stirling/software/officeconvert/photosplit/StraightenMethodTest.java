@@ -99,6 +99,28 @@ class StraightenMethodTest {
     }
 
     @Test
+    void photosSharingAWholeEdgeAreToldApartByTheStepBetweenThem() {
+        SyntheticScan.Scene scene = new SyntheticScan(1300, 1000, 1)
+                .photo(500, 380, 350, 400, 1, Style.GRADIENT, 0)
+                .photo(500, 580, 850, 500, -2, Style.TEXTURE, 0)
+                .render();
+        List<PhotoSplitter.Photo> photos = PhotoSplitter.split(scene.scan(), OPTIONS);
+        assertEquals(2, photos.size());
+        assertMatches(scene.photos().get(0), photos.get(0));
+    }
+
+    @Test
+    void aTypedPageBesideThePhotosIsNotAPhoto() {
+        SyntheticScan.Scene scene = new SyntheticScan(1100, 1000, 3)
+                .photo(420, 300, 280, 250, 2, Style.GRADIENT, 0)
+                .document(420, 560, 800, 500, 1)
+                .render();
+        List<PhotoSplitter.Photo> photos = PhotoSplitter.split(scene.scan(), OPTIONS);
+        assertEquals(1, photos.size());
+        assertMatches(scene.photos().get(0), photos.get(0));
+    }
+
+    @Test
     void aLargeScanIsSearchedSmallerAndCutAtFullSize() {
         SyntheticScan.Scene scene = new SyntheticScan(2480, 2600, 12).noise(2)
                 .photo(1000, 700, 700, 600, 3, Style.BLOBS, 0)

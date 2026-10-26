@@ -82,7 +82,7 @@ final class StraightenMethod {
                     continue;
                 }
                 RotatedRect fitted = EdgeFit.refine(scan, rect);
-                if (fitted.area() >= options.minArea()) {
+                if (fitted.area() >= options.minArea() && !Documents.isText(scan, fitted)) {
                     found.add(fitted);
                 }
             }
