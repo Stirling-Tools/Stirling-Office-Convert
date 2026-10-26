@@ -138,6 +138,9 @@ final class ChartXml {
             b.append("<c:dPt><c:idx val=\"").append(p.getKey()).append("\"/><c:spPr>").append(fill(p.getValue()))
                     .append("</c:spPr></c:dPt>");
         }
+        if (s.labels() != null) {
+            labels(b, s.labels(), kind == BiffChart.Kind.PIE ? "bestFit" : null);
+        }
         if (kind == BiffChart.Kind.SCATTER) {
             b.append("<c:xVal>").append(numbers(s.xs() == null ? sequence(s.values().length) : s.xs()))
                     .append("</c:xVal><c:yVal>").append(numbers(s.values())).append("</c:yVal>");
@@ -149,6 +152,52 @@ final class ChartXml {
             b.append("<c:smooth val=\"").append(s.smooth() ? 1 : 0).append("\"/>");
         }
         b.append("</c:ser>");
+    }
+
+    private static void labels(StringBuilder b, BiffChart.Labels l, String position) {
+        b.append("<c:dLbls>");
+        for (Map.Entry<Integer, Integer> p : l.points().entrySet()) {
+            b.append("<c:dLbl><c:idx val=\"").append(p.getKey()).append("\"/>");
+            if (p.getValue() == 0) {
+                b.append("<c:delete val=\"1\"/>");
+            } else {
+                shown(b, p.getValue());
+            }
+            b.append("</c:dLbl>");
+        }
+        if (l.format() != null) {
+            b.append("<c:numFmt formatCode=\"").append(Xml.attr(l.format())).append("\" sourceLinked=\"0\"/>");
+        }
+        b.append("<c:spPr><a:noFill/><a:ln><a:noFill/></a:ln></c:spPr>");
+        if (l.size() > 0 || l.bold() || l.color() != null) {
+            b.append("<c:txPr><a:bodyPr/><a:lstStyle/><a:p><a:pPr><a:defRPr");
+            if (l.size() > 0) {
+                b.append(" sz=\"").append(Math.round(l.size() * 100)).append('"');
+            }
+            b.append(" b=\"").append(l.bold() ? 1 : 0).append("\">");
+            if (l.color() != null) {
+                b.append(fill(l.color()));
+            }
+            b.append("</a:defRPr></a:pPr><a:endParaRPr lang=\"en-US\"/></a:p></c:txPr>");
+        }
+        String at = l.position() != null ? l.position() : position;
+        if (at != null) {
+            b.append("<c:dLblPos val=\"").append(at).append("\"/>");
+        }
+        shown(b, l.flags());
+        if ((l.flags() & 4) != 0) {
+            b.append("<c:separator>\n</c:separator>");
+        }
+        b.append("</c:dLbls>");
+    }
+
+    private static void shown(StringBuilder b, int flags) {
+        boolean both = (flags & 4) != 0;
+        b.append("<c:showLegendKey val=\"0\"/><c:showVal val=\"").append((flags & 1) != 0 ? 1 : 0)
+                .append("\"/><c:showCatName val=\"").append((flags & 0x10) != 0 || both ? 1 : 0)
+                .append("\"/><c:showSerName val=\"").append((flags & 0x40) != 0 ? 1 : 0)
+                .append("\"/><c:showPercent val=\"").append((flags & 2) != 0 || both ? 1 : 0)
+                .append("\"/><c:showBubbleSize val=\"0\"/>");
     }
 
     private static double[] sequence(int n) {

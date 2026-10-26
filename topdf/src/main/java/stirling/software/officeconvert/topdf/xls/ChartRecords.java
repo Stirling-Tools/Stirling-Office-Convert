@@ -33,7 +33,7 @@ final class ChartRecords {
             MARKER_FORMAT = 0x1009, AREA_FORMAT = 0x100A, SERIES_TEXT = 0x100D, CHART_FORMAT = 0x1014,
             LEGEND = 0x1015, BAR = 0x1017, LINE = 0x1018, PIE = 0x1019, AREA = 0x101A, SCATTER = 0x101B,
             AXIS = 0x101D, TICK = 0x101E, VALUE_RANGE = 0x101F, CAT_SER_RANGE = 0x1020, AXIS_LINE = 0x1021,
-            DEFAULT_TEXT = 0x1024, TEXT = 0x1025, FONTX = 0x1026, OBJECT_LINK = 0x1027, FRAME = 0x1032,
+            ATTACHED_LABEL = 0x100C, DEFAULT_TEXT = 0x1024, TEXT = 0x1025, FONTX = 0x1026, OBJECT_LINK = 0x1027, FRAME = 0x1032,
             BEGIN = 0x1033, END = 0x1034, PLOT_AREA = 0x1035, RADAR = 0x103E, RADAR_AREA = 0x1040,
             AXIS_PARENT = 0x1041, SERIES_GROUP = 0x1045, IFMT = 0x104E, SERFMT = 0x105D, BOP_POP = 0x1061,
             SERIES_INDEX = 0x1065;
@@ -50,6 +50,8 @@ final class ChartRecords {
         List<Object> cells(Ptg[] reference);
 
         List<String> labels(Ptg[] reference);
+
+        String sourceFormat(Ptg[] reference);
     }
 
     private final Lookup fonts;
@@ -204,8 +206,18 @@ final class ChartRecords {
             case DEFAULT_TEXT -> defaultText = true;
             case TEXT -> {
                 if (!stack.contains(TEXT)) {
-                    text = new TextBuilder(defaultText);
+                    text = new TextBuilder(defaultText, d);
                     defaultText = false;
+                }
+            }
+            case ATTACHED_LABEL -> {
+                if (inSeriesFormat()) {
+                    SeriesBuilder s = current();
+                    if (dataPoint == -1) {
+                        s.labels = u16(d, 0);
+                    } else if (dataPoint >= 0 && dataPoint < MAX_POINTS) {
+                        s.pointLabels.put(dataPoint, u16(d, 0));
+                    }
                 }
             }
             case FONTX -> {
@@ -216,6 +228,8 @@ final class ChartRecords {
             case OBJECT_LINK -> {
                 if (text != null) {
                     text.link = u16(d, 0);
+                    text.series = u16(d, 2);
+                    text.point = u16(d, 4);
                 }
             }
             case PLOT_AREA -> plotNext = true;
@@ -246,6 +260,7 @@ final class ChartRecords {
             s.nameRef = ref;
         } else if (r.getLinkType() == 1) {
             s.format = r.getIndexNumberFmtRecord();
+            s.valueCustom = r.isCustomNumberFormat();
             s.valueRef = ref;
         } else if (r.getLinkType() == 2) {
             s.categoryFormat = r.getIndexNumberFmtRecord();
@@ -279,6 +294,8 @@ final class ChartRecords {
                 s.name = name.substring(0, end);
             }
         }
+        s.valueFormat = s.valueCustom ? fonts.format(s.format) : s.valueRef == null ? null
+                : fonts.sourceFormat(s.valueRef);
         List<Object> values = s.valueRef == null ? List.of() : fonts.cells(s.valueRef);
         if (!values.isEmpty()) {
             s.values.clear();
@@ -460,6 +477,10 @@ final class ChartRecords {
             base = fonts.font(t.font, fonts.face(t.font));
             return;
         }
+        if (t.link == 4) {
+            dataLabel(t);
+            return;
+        }
         if (t.text == null || t.text.isBlank()) {
             return;
         }
@@ -479,6 +500,26 @@ final class ChartRecords {
             }
         }
     }
+
+    private void dataLabel(TextBuilder t) {
+        if (t.series < 0 || t.series >= series.size()) {
+            return;
+        }
+        SeriesBuilder s = series.get(t.series);
+        if (t.point == 0xFFFF) {
+            BiffChart.Text font = t.font >= 0 ? fonts.font(t.font, "") : null;
+            s.labelLook = new BiffChart.Labels(0, POSITIONS[t.position & 0xF], font == null ? 0 : font.size(),
+                    font != null && font.bold(), t.color, null, Map.of());
+            if (t.deleted) {
+                s.labels = 0;
+            }
+        } else if (t.point < MAX_POINTS && t.deleted) {
+            s.pointLabels.put(t.point, 0);
+        }
+    }
+
+    private static final String[] POSITIONS = {null, "outEnd", "inEnd", "ctr", "inBase", "t", "b", "l", "r",
+        "bestFit", null, null, null, null, null, null};
 
     private void cached(Record r) {
         int row;
@@ -616,14 +657,28 @@ final class ChartRecords {
     private static final class TextBuilder {
         final boolean base;
 
+        final boolean deleted;
+
+        final int position;
+
+        final Integer color;
+
         int font = -1;
 
         int link;
 
+        int series = -1;
+
+        int point;
+
         String text;
 
-        TextBuilder(boolean base) {
+        TextBuilder(boolean base, byte[] d) {
             this.base = base;
+            int flags = u16(d, 26);
+            this.deleted = (flags & 0x40) != 0;
+            this.position = u16(d, 30) & 0xF;
+            this.color = d.length >= 8 && (flags & 1) == 0 ? rgb(d, 4) : null;
         }
     }
 
@@ -706,6 +761,8 @@ final class ChartRecords {
 
         boolean categoryCustom;
 
+        boolean valueCustom;
+
         Ptg[] valueRef;
 
         Ptg[] categoryRef;
@@ -738,6 +795,14 @@ final class ChartRecords {
 
         boolean smooth;
 
+        int labels;
+
+        final Map<Integer, Integer> pointLabels = new TreeMap<>();
+
+        BiffChart.Labels labelLook;
+
+        String valueFormat;
+
         SeriesBuilder(int categories, int values) {
             this.categoryCount = Math.max(0, Math.min(MAX_POINTS, categories));
             this.valueCount = Math.max(0, Math.min(MAX_POINTS, values));
@@ -764,8 +829,13 @@ final class ChartRecords {
                     : lineSet && line == null ? null : lines ? autoLines.get(auto % autoLines.size()) : 0;
             String symbol = markerAuto ? AUTO_MARKERS[auto % AUTO_MARKERS.length] : marker;
             Integer mfill = markerAuto ? l : markerFill;
+            BiffChart.Labels look = labelLook == null ? new BiffChart.Labels(0, null, 0, false, null, null, Map.of())
+                    : labelLook;
+            BiffChart.Labels shown = labels == 0 && pointLabels.isEmpty() ? null
+                    : new BiffChart.Labels(labels, look.position(), look.size(), look.bold(), look.color(),
+                            valueFormat, Map.copyOf(pointLabels));
             return new BiffChart.Series(name == null ? "Series" + (index + 1) : name, cats, v, x, f, l,
-                    lineWidth, symbol, mfill, Map.copyOf(points), smooth);
+                    lineWidth, symbol, mfill, Map.copyOf(points), smooth, shown);
         }
     }
 

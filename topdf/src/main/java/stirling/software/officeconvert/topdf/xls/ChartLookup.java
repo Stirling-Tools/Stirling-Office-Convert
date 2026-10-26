@@ -98,6 +98,21 @@ final class ChartLookup implements ChartRecords.Lookup {
         return out;
     }
 
+    @Override
+    public String sourceFormat(Ptg[] reference) {
+        for (HSSFCell cell : source(reference)) {
+            if (value(cell) instanceof Double) {
+                try {
+                    String f = cell.getCellStyle().getDataFormatString();
+                    return f == null || f.isBlank() ? null : f;
+                } catch (RuntimeException e) {
+                    return null;
+                }
+            }
+        }
+        return null;
+    }
+
     private List<HSSFCell> source(Ptg[] reference) {
         if (reference == null || reference.length != 1) {
             return List.of();

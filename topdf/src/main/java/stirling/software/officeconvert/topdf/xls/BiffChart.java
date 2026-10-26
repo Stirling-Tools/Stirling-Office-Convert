@@ -22,7 +22,11 @@ record BiffChart(Text title, List<Group> groups, Legend legend, Axis[] values, A
             int firstSlice, int donut, boolean vary, List<Series> series) {}
 
     record Series(String name, List<String> categories, double[] values, double[] xs, Integer fill, Integer line,
-            float lineWidth, String marker, Integer markerFill, Map<Integer, Integer> points, boolean smooth) {}
+            float lineWidth, String marker, Integer markerFill, Map<Integer, Integer> points, boolean smooth,
+            Labels labels) {}
+
+    record Labels(int flags, String position, float size, boolean bold, Integer color, String format,
+            Map<Integer, Integer> points) {}
 
     record Legend(String position, double[] box, int[] fill, int[] line) {}
 

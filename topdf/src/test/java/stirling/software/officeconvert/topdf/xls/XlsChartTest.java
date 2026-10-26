@@ -17,6 +17,8 @@ import java.util.zip.ZipInputStream;
 import org.apache.poi.hssf.record.NumberRecord;
 import org.apache.poi.hssf.record.RecordBase;
 import org.apache.poi.hssf.record.UnknownRecord;
+import org.apache.poi.hssf.record.chart.BeginRecord;
+import org.apache.poi.hssf.record.chart.EndRecord;
 import org.apache.poi.hssf.usermodel.HSSFCellStyle;
 import org.apache.poi.hssf.usermodel.HSSFRow;
 import org.apache.poi.hssf.usermodel.HSSFSheet;
@@ -116,6 +118,19 @@ class XlsChartTest {
         String chart = chartXml(data);
         assertTrue(chart.contains("<c:v>10.0</c:v>") && chart.contains("<c:v>30.0</c:v>"), chart);
         assertFalse(chart.contains("<c:v>0.0</c:v>"), chart);
+    }
+
+    @Test
+    void dataLabelsShowWhatTheSeriesAsksFor() throws Exception {
+        List<RecordBase> records = ChartFixtures.chart(null, 0x1019, new byte[6], new String[] {"Share"},
+                new String[] {"North", "South"}, new double[][] {{1, 3}});
+        records.addAll(5, List.of(new UnknownRecord(0x1006, new byte[] {(byte) 0xFF, (byte) 0xFF, 0, 0, 0, 0, 0, 0}),
+                new BeginRecord(), new UnknownRecord(0x100C, new byte[] {4, 0}), new EndRecord()));
+        String chart = chartXml(XlsTest.xls(wb -> ChartFixtures.chartSheet(wb, "Chart1", records)));
+        assertTrue(chart.contains("<c:showCatName val=\"1\"/><c:showSerName val=\"0\"/><c:showPercent val=\"1\"/>"),
+                chart);
+        assertTrue(chart.contains("<c:dLblPos val=\"bestFit\"/>"), chart);
+        assertTrue(chart.contains("<c:separator>\n</c:separator>"), chart);
     }
 
     @Test
