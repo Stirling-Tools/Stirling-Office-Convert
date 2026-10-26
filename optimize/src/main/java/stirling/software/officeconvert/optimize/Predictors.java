@@ -134,32 +134,52 @@ final class Predictors {
         int bpp = layout.pixelBytes();
         int rows = data.length / row;
         byte[] out = new byte[rows * (row + 1)];
-        byte[] scratch = filter == ADAPTIVE ? new byte[row] : null;
         for (int r = 0; r < rows; r++) {
             int src = r * row;
             int dst = r * (row + 1);
-            if (filter != ADAPTIVE) {
-                out[dst] = (byte) filter;
-                filterRow(data, src, row, bpp, r > 0, filter, out, dst + 1);
-                continue;
-            }
-            long best = Long.MAX_VALUE;
-            int bestFilter = NONE;
-            for (int f = NONE; f <= PAETH; f++) {
-                filterRow(data, src, row, bpp, r > 0, f, scratch, 0);
-                long cost = 0;
-                for (int i = 0; i < row && cost < best; i++) {
-                    cost += Math.abs((int) scratch[i]);
-                }
-                if (cost < best) {
-                    best = cost;
-                    bestFilter = f;
-                }
-            }
-            out[dst] = (byte) bestFilter;
-            filterRow(data, src, row, bpp, r > 0, bestFilter, out, dst + 1);
+            int f = filter != ADAPTIVE ? filter : choose(data, src, row, bpp, r > 0);
+            out[dst] = (byte) f;
+            filterRow(data, src, row, bpp, r > 0, f, out, dst + 1);
         }
         return out;
+    }
+
+    private static int choose(byte[] d, int src, int row, int bpp, boolean hasPrevious) {
+        long none = 0;
+        long sub = 0;
+        long up = 0;
+        long avg = 0;
+        long paeth = 0;
+        int prev = src - row;
+        for (int i = 0; i < row; i++) {
+            int x = d[src + i] & 0xFF;
+            int a = i >= bpp ? d[src + i - bpp] & 0xFF : 0;
+            int b = hasPrevious ? d[prev + i] & 0xFF : 0;
+            int c = hasPrevious && i >= bpp ? d[prev + i - bpp] & 0xFF : 0;
+            none += Math.abs((byte) x);
+            sub += Math.abs((byte) (x - a));
+            up += Math.abs((byte) (x - b));
+            avg += Math.abs((byte) (x - (a + b >>> 1)));
+            paeth += Math.abs((byte) (x - paeth(a, b, c)));
+        }
+        int best = NONE;
+        long cost = none;
+        if (sub < cost) {
+            cost = sub;
+            best = SUB;
+        }
+        if (up < cost) {
+            cost = up;
+            best = UP;
+        }
+        if (avg < cost) {
+            cost = avg;
+            best = AVERAGE;
+        }
+        if (paeth < cost) {
+            best = PAETH;
+        }
+        return best;
     }
 
     private static void filterRow(byte[] data, int src, int row, int bpp, boolean hasPrevious, int filter,
