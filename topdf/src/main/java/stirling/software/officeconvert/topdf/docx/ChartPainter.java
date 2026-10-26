@@ -1217,6 +1217,11 @@ final class ChartPainter {
                 } else {
                     ops.add(new Op.Rect(start, Math.min(a, b), bw, Math.abs(b - a), fill, s.outline()));
                 }
+                for (Chart.ErrorBars e : s.errorBars()) {
+                    if (!e.x() && !percent) {
+                        errorBar(e, p, start + bw / 2, base + v, i, s.values());
+                    }
+                }
                 Chart.Labels pl = labels.at(i);
                 if (pl.shown()) {
                     TextStyle ls = labelStyle(pl);
@@ -1255,6 +1260,7 @@ final class ChartPainter {
             List<List<float[]>> runs = new ArrayList<>();
             List<float[]> run = new ArrayList<>();
             List<Integer> index = new ArrayList<>();
+            List<double[]> raw = new ArrayList<>();
             for (int i = 0; i < count; i++) {
                 double v = s.values()[i];
                 if (Double.isNaN(v)) {
@@ -1275,6 +1281,7 @@ final class ChartPainter {
                     px = p.center(i);
                 }
                 float py = p.valuePos(v);
+                raw.add(new double[] {i, v, px});
                 if (p.horizontal()) {
                     float t = px;
                     px = py;
@@ -1326,6 +1333,13 @@ final class ChartPainter {
                     marker(m, pt[0], pt[1]);
                 }
             }
+            boolean scatter = g.kind() == Chart.Kind.SCATTER;
+            for (Chart.ErrorBars e : s.errorBars()) {
+                errorBars(e, s, p, raw, scatter);
+            }
+            for (Chart.Trend t : s.trends()) {
+                trend(t, s, p, raw, scatter);
+            }
             Chart.Labels labels = s.labels() != null ? s.labels() : g.labels();
             if (labels.any()) {
                 for (int k = 0; k < pts.size(); k++) {
@@ -1352,6 +1366,170 @@ final class ChartPainter {
                 }
             }
         }
+    }
+
+    private void errorBars(Chart.ErrorBars e, Chart.Series s, Plot p, List<double[]> raw, boolean scatter) {
+        if (e.x() && (!scatter || p.xScale() == null)) {
+            return;
+        }
+        for (double[] r : raw) {
+            int i = (int) r[0];
+            if (!e.x()) {
+                errorBar(e, p, (float) r[2], r[1], i, s.values());
+                continue;
+            }
+            double x = s.xs() != null && i < s.xs().length ? s.xs()[i] : Double.NaN;
+            if (Double.isNaN(x)) {
+                continue;
+            }
+            double[] range = errorRange(e, x, i, s.xs());
+            if (range == null) {
+                continue;
+            }
+            float y = p.valuePos(r[1]);
+            errorLine(e, p.xPos(range[0]), y, p.xPos(range[1]), y, true);
+        }
+    }
+
+    private void errorBar(Chart.ErrorBars e, Plot p, float along, double value, int i, double[] values) {
+        double[] range = errorRange(e, value, i, values);
+        if (range == null) {
+            return;
+        }
+        float a = p.valuePos(range[0]);
+        float b = p.valuePos(range[1]);
+        if (p.horizontal()) {
+            errorLine(e, a, along, b, along, true);
+        } else {
+            errorLine(e, along, a, along, b, false);
+        }
+    }
+
+    private static double[] errorRange(Chart.ErrorBars e, double value, int i, double[] all) {
+        double sum = 0;
+        double squares = 0;
+        int n = 0;
+        for (double v : all) {
+            if (Double.isFinite(v)) {
+                sum += v;
+                n++;
+            }
+        }
+        double mean = n == 0 ? 0 : sum / n;
+        for (double v : all) {
+            if (Double.isFinite(v)) {
+                squares += (v - mean) * (v - mean);
+            }
+        }
+        double deviation = n > 1 ? Math.sqrt(squares / (n - 1)) : 0;
+        double center = e.kind().equals("stdDev") ? mean : value;
+        double plus;
+        double minus;
+        switch (e.kind()) {
+            case "percentage" -> plus = minus = Math.abs(value) * e.value() / 100;
+            case "stdDev" -> plus = minus = e.value() * deviation;
+            case "stdErr" -> plus = minus = n > 0 ? deviation / Math.sqrt(n) : 0;
+            case "cust" -> {
+                plus = i < e.plus().length && Double.isFinite(e.plus()[i]) ? e.plus()[i] : 0;
+                minus = i < e.minus().length && Double.isFinite(e.minus()[i]) ? e.minus()[i] : 0;
+            }
+            default -> plus = minus = e.value();
+        }
+        if (e.type().equals("plus")) {
+            minus = 0;
+        } else if (e.type().equals("minus")) {
+            plus = 0;
+        }
+        if (!Double.isFinite(plus) || !Double.isFinite(minus) || plus == 0 && minus == 0) {
+            return null;
+        }
+        return new double[] {center - Math.abs(minus), center + Math.abs(plus)};
+    }
+
+    private void errorLine(Chart.ErrorBars e, float x1, float y1, float x2, float y2, boolean across) {
+        Path2D.Float path = new Path2D.Float();
+        path.moveTo(x1, y1);
+        path.lineTo(x2, y2);
+        if (e.endCap()) {
+            float c = 3;
+            for (float[] end : new float[][] {{x1, y1}, {x2, y2}}) {
+                if (across) {
+                    path.moveTo(end[0], end[1] - c);
+                    path.lineTo(end[0], end[1] + c);
+                } else {
+                    path.moveTo(end[0] - c, end[1]);
+                    path.lineTo(end[0] + c, end[1]);
+                }
+            }
+        }
+        ops.add(new Op.Path(path, null, e.line()));
+    }
+
+    private void trend(Chart.Trend t, Chart.Series s, Plot p, List<double[]> raw, boolean scatter) {
+        if (scatter && p.xScale() == null) {
+            return;
+        }
+        List<double[]> pts = new ArrayList<>();
+        for (double[] r : raw) {
+            int i = (int) r[0];
+            double x = scatter ? s.xs() != null && i < s.xs().length ? s.xs()[i] : Double.NaN : i + 1;
+            if (Double.isFinite(x) && Double.isFinite(r[1])) {
+                pts.add(new double[] {x, r[1]});
+            }
+        }
+        if (pts.size() < 2) {
+            return;
+        }
+        Path2D.Float path = new Path2D.Float();
+        if (t.type().equals("movingAvg")) {
+            boolean started = false;
+            for (int k = t.period() - 1; k < pts.size(); k++) {
+                double sum = 0;
+                for (int j = k - t.period() + 1; j <= k; j++) {
+                    sum += pts.get(j)[1];
+                }
+                started = trendTo(path, p, pts.get(k)[0], sum / t.period(), scatter, started);
+            }
+        } else {
+            double[] fit = Trends.fit(t.type(), t.order(), pts);
+            if (fit == null) {
+                return;
+            }
+            double lo = pts.stream().mapToDouble(q -> q[0]).min().orElse(0) - t.backward();
+            double hi = pts.stream().mapToDouble(q -> q[0]).max().orElse(0) + t.forward();
+            int steps = t.type().equals("linear") ? 1 : 96;
+            boolean started = false;
+            for (int k = 0; k <= steps; k++) {
+                double x = lo + (hi - lo) * k / steps;
+                double y = Trends.at(t.type(), fit, x);
+                if (!Double.isFinite(y) || y < p.scale().min() || y > p.scale().max()) {
+                    started = false;
+                    continue;
+                }
+                started = trendTo(path, p, x, y, scatter, started);
+            }
+        }
+        ops.add(new Op.Path(path, null, t.line()));
+    }
+
+    private static boolean trendTo(Path2D.Float path, Plot p, double x, double y, boolean scatter, boolean started) {
+        float along;
+        if (scatter) {
+            along = p.xPos(x);
+        } else {
+            float first = p.center(0);
+            float step = p.count() > 1 ? p.center(1) - first : p.band();
+            along = (float) (first + step * (x - 1));
+        }
+        float v = p.valuePos(y);
+        float px = p.horizontal() && !scatter ? v : along;
+        float py = p.horizontal() && !scatter ? along : v;
+        if (started) {
+            path.lineTo(px, py);
+        } else {
+            path.moveTo(px, py);
+        }
+        return true;
     }
 
     // Smoothed lines pass through every point on Bezier curves with Catmull-Rom tangents, as Office draws them

@@ -34,13 +34,19 @@ record Chart(Text title, List<Group> groups, List<String> categories, Legend leg
     record Marker(String symbol, float size, Color fill, Color line) {}
 
     record Series(String name, double[] values, double[] xs, Color fill, Stroke line, boolean markers,
-            List<Point> points, boolean smooth, Marker marker, Labels labels, Stroke outline, Shadow shadow) {
+            List<Point> points, boolean smooth, Marker marker, Labels labels, Stroke outline, Shadow shadow,
+            List<ErrorBars> errorBars, List<Trend> trends) {
 
         Series(String name, double[] values, double[] xs, Color fill, Stroke line, boolean markers,
                 List<Point> points) {
-            this(name, values, xs, fill, line, markers, points, false, null, null, null, null);
+            this(name, values, xs, fill, line, markers, points, false, null, null, null, null, List.of(), List.of());
         }
     }
+
+    record ErrorBars(boolean x, String type, String kind, double value, double[] plus, double[] minus,
+            boolean endCap, Stroke line) {}
+
+    record Trend(String type, int order, int period, double forward, double backward, Stroke line) {}
 
     // An outer shadow: offset in points, blur radius in points and a colour carrying its alpha
     record Shadow(float dx, float dy, float blur, Color color) {}
