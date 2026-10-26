@@ -335,6 +335,13 @@ class XlsChartTest {
     }
 
     @Test
+    void aSurfaceChartIsDrawnAsLinesRatherThanLeftOut() throws Exception {
+        byte[] data = XlsTest.xls(wb -> ChartFixtures.chartSheet(wb, "Chart1", ChartFixtures.chart(null, 0x103F,
+                new byte[2], new String[] {"Low", "High"}, new String[] {"x", "y"}, new double[][] {{1, 2}, {3, 4}})));
+        assertTrue(chartXml(data).contains("<c:lineChart>"), chartXml(data));
+    }
+
+    @Test
     void highLowLinesAndUpDownBarsAreDrawn() throws Exception {
         List<RecordBase> records = ChartFixtures.chart(null, LINE, new byte[2], new String[] {"Open", "High", "Close"},
                 new String[] {"a", "b"}, new double[][] {{1, 5}, {8, 9}, {4, 2}});

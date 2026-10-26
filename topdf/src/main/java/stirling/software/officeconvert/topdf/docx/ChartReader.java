@@ -157,7 +157,8 @@ final class ChartReader {
         Stroke border = spPr == null ? defaultBorder() : line(spPr);
         XEl table = chart.child("c:plotArea") == null ? null : chart.child("c:plotArea").child("c:dTable");
         Chart.DataTable dataTable = table == null ? null : new Chart.DataTable(on(table, "c:showHorzBorder", false),
-                on(table, "c:showVertBorder", false), on(table, "c:showOutline", false), on(table, "c:showKeys", false));
+                on(table, "c:showVertBorder", false), on(table, "c:showOutline", false),
+                on(table, "c:showKeys", false));
         return new Chart(title, groups, categories, legend, values, cats, fill, border, font, textSize,
                 color(space.child("c:txPr"), Color.BLACK), plotLayout, plotFill, plotBorder, date1904, secondary,
                 marked(space, Charts.TIGHT_SCALE), dataTable);
@@ -283,7 +284,8 @@ final class ChartReader {
     private Chart.Group group(XEl g, List<String> categories) {
         Chart.Kind kind = switch (g.name) {
             case "c:barChart", "c:bar3DChart" -> Chart.Kind.BAR;
-            case "c:lineChart", "c:line3DChart", "c:stockChart" -> Chart.Kind.LINE;
+            case "c:lineChart", "c:line3DChart", "c:stockChart", "c:surfaceChart", "c:surface3DChart" ->
+                    Chart.Kind.LINE;
             case "c:radarChart" -> Chart.Kind.RADAR;
             case "c:areaChart", "c:area3DChart" -> Chart.Kind.AREA;
             case "c:pieChart", "c:pie3DChart", "c:ofPieChart" -> Chart.Kind.PIE;

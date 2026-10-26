@@ -39,7 +39,7 @@ final class ChartRecords {
             FRAME = 0x1032, BEGIN = 0x1033, END = 0x1034, PLOT_AREA = 0x1035, RADAR = 0x103E, RADAR_AREA = 0x1040,
             AXIS_PARENT = 0x1041, SERIES_GROUP = 0x1045, IFMT = 0x104E, SERFMT = 0x105D, BOP_POP = 0x1061,
             SERIES_INDEX = 0x1065, SERIES_PARENT = 0x104A, SERIES_TREND = 0x104B, SERIES_ERROR = 0x105B,
-            CHART_3D = 0x103A, CHART_LINE = 0x101C, DROP_BAR = 0x103D, DATA_TABLE = 0x1063;
+            CHART_3D = 0x103A, SURFACE = 0x103F, CHART_LINE = 0x101C, DROP_BAR = 0x103D, DATA_TABLE = 0x1063;
 
     interface Lookup {
         BiffChart.Text font(int index, String text);
@@ -219,7 +219,7 @@ final class ChartRecords {
                 GroupBuilder g = new GroupBuilder(axisGroup, d.length >= 18 && (u16(d, 16) & 1) != 0);
                 groups.put(d.length >= 20 ? u16(d, 18) : groups.size(), g);
             }
-            case BAR, LINE, PIE, AREA, SCATTER, RADAR, RADAR_AREA, BOP_POP -> kind(sid, d);
+            case BAR, LINE, PIE, AREA, SCATTER, RADAR, RADAR_AREA, BOP_POP, SURFACE -> kind(sid, d);
             case CHART_LINE -> chartLine = u16(d, 0);
             case DROP_BAR -> {
                 GroupBuilder g = lastGroup();
@@ -521,6 +521,7 @@ final class ChartRecords {
                 g.stacked = (f & 2) != 0;
                 g.percent = (f & 4) != 0;
             }
+            case SURFACE -> g.kind = BiffChart.Kind.LINE;
             case LINE, AREA -> {
                 g.kind = sid == LINE ? BiffChart.Kind.LINE : BiffChart.Kind.AREA;
                 int f = u16(d, 0);
