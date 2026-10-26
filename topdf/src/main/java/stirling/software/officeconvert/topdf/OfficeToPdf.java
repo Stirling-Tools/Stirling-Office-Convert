@@ -650,6 +650,9 @@ public final class OfficeToPdf {
     static Result render(Path source, Format requested, OutputStream sink, Options options, Renderer renderer)
             throws IOException {
         stopIfInterrupted();
+        if (BookPages.wanted(options)) {
+            return BookPages.render(source, requested, sink, options, renderer);
+        }
         if (Files.size(source) > MAX_INPUT_BYTES) {
             throw tooLarge();
         }

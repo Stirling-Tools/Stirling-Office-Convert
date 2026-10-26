@@ -59,8 +59,8 @@ input names retain their extensions in the output name. A failure, skipped input
 | `--max-pages n` | Office-to-PDF page limit; 0 converts all pages |
 | `--fonts dir` | Add a font directory for Office-to-PDF or PDF/A |
 | `--pictures compact\|lossless` | PDF-to-Office picture storage |
-| `--toc` | eBook-to-PDF: add a table of contents with page numbers and links |
-| `--page-numbers` | eBook-to-PDF: number the pages at their foot |
+| `--toc` | Office/eBook-to-PDF: add a table of contents with page numbers and links |
+| `--page-numbers` | Office/eBook-to-PDF: number the pages at their foot |
 | `--no-chapters` | PDF-to-EPUB/AZW3: no new chapter at each top-level heading |
 | `--device tablet\|kindle` | PDF-to-EPUB/AZW3 output profile |
 | `--sheets page\|table\|single` | PDF-to-spreadsheet layout |

@@ -32,7 +32,7 @@ none), `--fonts dir` (repeatable; an extra folder of fonts), `--font-map Family=
 family with an installed one, such as `Aptos=Inter`), `--font-width Family=scale` (repeatable; scale a substituted
 family's widths, 0.5 to 2), `--no-system-fonts` (only the given fonts and the bundled Liberation Sans, for
 reproducible output), `--allow-packages` (convert a `.zip` of an HTML page, or an EPUB book not named `.epub`), `--allow-local-files` (let an HTML page
-draw the pictures and style sheets in its own folder, never outside it), `--toc` and `--page-numbers` (eBooks, see
+draw the pictures and style sheets in its own folder, never outside it), `--toc` and `--page-numbers` (see
 below), `-q`, and `--format pdf` to take only the Office files out
 of a folder. A folder converts both its PDFs and its Office files; its text and CSV files only with `--format pdf`. Inputs that would write the same output name (such
 as `report.docx` and `report.xlsx`) keep their own extension in it (`report.docx.pdf`, `report.xlsx.pdf`), and Office
@@ -577,11 +577,11 @@ metadata. FictionBook 2 (`.fb2`, or a `.fbz`/`.fb2.zip` holding one; any other `
 `--allow-packages`) is read with sections as chapters, its titles,
 epigraphs, poems, citations, tables, embedded pictures, cover and notes; a DOCTYPE is refused. eBooks are limited to
 256 MB (Kindle) and 128 MB (FictionBook) with 64 MB of text. An eBook only ever draws what the book file holds.
-For an eBook, `Options.tableOfContents(true)` (`--toc`) adds a table of contents after the book, as Calibre's
-`--pdf-add-toc` does: its bookmarks with their page numbers, each linked to its page (the book is laid out twice to
-find them). `Options.pageNumbers(true)` (`--page-numbers`) numbers every page at its foot, as `--pdf-page-numbers`
-does. Every font the PDF draws with is embedded (as a subset), so Calibre's `--embed-all-fonts` needs no counterpart;
-headings become the PDF's bookmarks. HTML files are limited to 64 MB, and parsing, the cascade, SVG
+`Options.tableOfContents(true)` (`--toc`) adds a table of contents after the document, as Calibre's
+`--pdf-add-toc` does: its bookmarks (headings) with their page numbers, each linked to its page, and a "Contents"
+bookmark. `Options.pageNumbers(true)` (`--page-numbers`) numbers every page at its foot, as `--pdf-page-numbers`
+does. Both work for every input (eBooks, Word, text and the rest); a document without headings gets no contents.
+Every font the PDF draws with is embedded (as a subset), so Calibre's `--embed-all-fonts` needs no counterpart. HTML files are limited to 64 MB, and parsing, the cascade, SVG
 painting and nesting each work within fixed budgets so a hostile page cannot hang or exhaust the converter.
 
 JSON (`.json`) is the document model that PDF to JSON writes ([format](json-format.md)), hand written or edited;

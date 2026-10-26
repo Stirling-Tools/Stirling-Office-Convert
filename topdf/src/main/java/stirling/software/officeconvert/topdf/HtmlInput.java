@@ -7,7 +7,6 @@ import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.List;
 import java.util.Locale;
 
 import stirling.software.officeconvert.memory.Admission;
@@ -157,39 +156,21 @@ final class HtmlInput {
 
     private static Result renderBook(Ebook ebook, OutputStream sink, Options options, OfficeToPdf.Renderer renderer)
             throws IOException {
-        String html = ebook.book().html();
-        if (options.pageNumbers()) {
-            html = BookPages.withPageNumbers(html);
+        Path page = Files.createTempFile("office-to-pdf-", ".html");
+        try {
+            Files.writeString(page, ebook.book().html(), StandardCharsets.UTF_8);
+            return render(page, sink, options, renderer, ebook.assets());
+        } finally {
+            OfficeToPdf.deleteQuietly(page);
         }
+    }
+
+    static Result renderPage(String html, OutputStream sink, Options options, OfficeToPdf.Renderer renderer)
+            throws IOException {
         Path page = Files.createTempFile("office-to-pdf-", ".html");
         try {
             Files.writeString(page, html, StandardCharsets.UTF_8);
-            if (!options.tableOfContents()) {
-                return render(page, sink, options, renderer, ebook.assets());
-            }
-            Path laid = Files.createTempFile("office-to-pdf-", ".pdf");
-            try {
-                Result first;
-                try (OutputStream os = new BufferedOutputStream(Files.newOutputStream(laid), 1 << 16)) {
-                    first = render(page, os, options, renderer, ebook.assets());
-                }
-                List<BookPages.Entry> entries = BookPages.outline(laid);
-                if (entries.isEmpty()) {
-                    Files.copy(laid, sink);
-                    return first;
-                }
-                OfficeToPdf.stopIfInterrupted();
-                String marker = BookPages.marker();
-                Files.writeString(page, BookPages.withContents(html, entries, marker), StandardCharsets.UTF_8);
-                Result result;
-                try (OutputStream os = new BufferedOutputStream(Files.newOutputStream(laid), 1 << 16)) {
-                    result = render(page, os, options, renderer, ebook.assets());
-                }
-                BookPages.linkContents(laid, marker, sink);
-                return result;
-            } finally {
-                OfficeToPdf.deleteQuietly(laid);
-            }
+            return render(page, sink, options, renderer, HtmlAssets.NONE);
         } finally {
             OfficeToPdf.deleteQuietly(page);
         }
