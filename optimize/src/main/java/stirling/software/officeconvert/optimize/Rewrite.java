@@ -216,6 +216,7 @@ final class Rewrite {
             found.add(id);
             s.word("@");
         });
+        MessageDigest sha = sha256();
         Bytes b = new Bytes(1 << 12);
         for (int i = 0; i < n; i++) {
             if ((i & 1023) == 0) {
@@ -230,7 +231,8 @@ final class Rewrite {
             } else {
                 syntax.node(i);
             }
-            signatures[i] = b.toByteArray();
+            sha.update(b.array(), 0, b.size());
+            signatures[i] = java.util.Arrays.copyOf(sha.digest(), 16);
             int[] e = new int[found.size()];
             for (int k = 0; k < e.length; k++) {
                 e[k] = found.get(k);

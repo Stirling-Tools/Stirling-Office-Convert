@@ -6,7 +6,7 @@ import java.util.zip.Deflater;
 
 final class Deflate {
 
-    static final Squeeze.Settings DEFAULT_SQUEEZE = new Squeeze.Settings(2, 64, 258, 15);
+    static final Squeeze.Settings DEFAULT_SQUEEZE = new Squeeze.Settings(2, 16, 258, 15);
 
     static final Squeeze.Settings MAX_SQUEEZE = new Squeeze.Settings(15, 1024, 258, 15);
 

@@ -28,6 +28,9 @@ class SyntaxTest {
         assertEquals("12", Lexical.number("+0012."));
         assertEquals("595.27559", Lexical.number("595.27559"));
         assertEquals("100000", Lexical.number("1e5"));
+        assertEquals("340282350000000000000000000000000000000.", Lexical.number("3.4028235E38"));
+        assertEquals("12345678901.", Lexical.number("12345678901.000"));
+        assertEquals("12345678901", Lexical.number("12345678901"));
         assertNull(Lexical.plainNumber("1.2.3"));
         assertNull(Lexical.plainNumber("-"));
     }

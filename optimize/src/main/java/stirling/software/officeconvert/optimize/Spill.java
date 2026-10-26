@@ -16,7 +16,7 @@ import java.util.List;
 
 final class Spill implements Closeable {
 
-    static final long MEMORY_BYTES = 48L << 20;
+    static final long MEMORY_BYTES = 16L << 20;
 
     private final List<byte[]> held = new ArrayList<>();
 

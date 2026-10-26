@@ -25,7 +25,8 @@ final class Lexical {
             return plain;
         }
         try {
-            return plainNumber(new BigDecimal(s.strip()).toPlainString());
+            String n = plainNumber(new BigDecimal(s.strip()).toPlainString());
+            return n != null && n.indexOf('.') < 0 && n.replace("-", "").length() > 9 ? n + "." : n;
         } catch (NumberFormatException e) {
             return null;
         }
@@ -69,6 +70,9 @@ final class Lexical {
                 return "0";
             }
             b.append(s, intStart, intEnd);
+            if (intEnd - intStart > 9 && s.indexOf('.') >= 0) {
+                b.append('.');
+            }
         } else {
             b.append(s, intStart, intEnd).append('.').append(s, fracStart, fracEnd);
         }
