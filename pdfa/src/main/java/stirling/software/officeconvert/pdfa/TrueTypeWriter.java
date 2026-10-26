@@ -313,6 +313,9 @@ final class TrueTypeWriter {
     byte[] build(String postScriptName, byte[] cmapTable, Map<String, byte[]> overrides) throws IOException {
         resolveComponents();
         breakComponentCycles();
+        if (glyphs.size() == 1 && glyphs.get(0).length() == 0) {
+            addEmpty(0);
+        }
         if (glyphs.size() > 65_535) {
             throw new IOException("The font needs more than 65535 glyphs");
         }

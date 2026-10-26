@@ -35,4 +35,29 @@ class UnhintedGlyphTest {
         byte[] plain = java.util.Arrays.copyOf(e.array(), e.capacity());
         assertArrayEquals(plain, TrueTypeWriter.unhinted(plain));
     }
+
+    @Test
+    void aSubsetOfOnlyEmptyGlyphsIsStillAReadableFont() throws Exception {
+        TrueTypeWriter w = new TrueTypeWriter(1000);
+        w.addEmpty(250);
+        byte[] font = w.build("Empty", Cmaps.table(java.util.List.of(new Cmaps.Subtable(3, 0, new java.util.TreeMap<>(
+                java.util.Map.of(0xF020, 1))))));
+        try (org.apache.fontbox.ttf.TrueTypeFont t = new org.apache.fontbox.ttf.TTFParser()
+                .parse(new org.apache.pdfbox.io.RandomAccessReadBuffer(font))) {
+            org.junit.jupiter.api.Assertions.assertEquals(2, t.getNumberOfGlyphs());
+            org.junit.jupiter.api.Assertions.assertNotNull(t.getGlyph());
+            org.junit.jupiter.api.Assertions.assertEquals(250, t.getAdvanceWidth(1));
+        }
+    }
+
+    @Test
+    void aFontOfOnlyAnEmptyNotdefStillReads() throws Exception {
+        byte[] font = new TrueTypeWriter(1000).build("Notdef", Cmaps.table(java.util.List.of(new Cmaps.Subtable(3, 0,
+                new java.util.TreeMap<>()))));
+        try (org.apache.fontbox.ttf.TrueTypeFont t = new org.apache.fontbox.ttf.TTFParser()
+                .parse(new org.apache.pdfbox.io.RandomAccessReadBuffer(font))) {
+            org.junit.jupiter.api.Assertions.assertNotNull(t.getIndexToLocation());
+            org.junit.jupiter.api.Assertions.assertEquals(2, t.getNumberOfGlyphs());
+        }
+    }
 }
