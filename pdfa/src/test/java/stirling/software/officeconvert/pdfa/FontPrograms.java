@@ -139,6 +139,10 @@ final class FontPrograms {
     }
 
     static byte[] cff(String fontName, byte[] topExtra, boolean hinted) {
+        return cff(fontName, topExtra, hinted, 0);
+    }
+
+    static byte[] cff(String fontName, byte[] topExtra, boolean hinted, int headerPadding) {
         int n = NAMES.size() + 1;
         byte[][] glyphs = new byte[n][];
         glyphs[0] = concat(num2(250), new byte[] {14});
@@ -175,12 +179,12 @@ final class FontPrograms {
         byte[] charstrings = index(glyphs);
         byte[] priv = concat(num2(0), new byte[] {20}, num2(0), new byte[] {21});
         byte[] probe = index(new byte[][] {concat(topExtra, top(0, 0, 0, 0))});
-        int charsetAt = 4 + name.length + probe.length + strings.length + gsubrs.length;
+        int charsetAt = 4 + headerPadding + name.length + probe.length + strings.length + gsubrs.length;
         int charstringsAt = charsetAt + charset.size();
         int privateAt = charstringsAt + charstrings.length;
         byte[] topIndex = index(new byte[][] {concat(topExtra, top(charsetAt, charstringsAt, priv.length, privateAt))});
-        return concat(new byte[] {1, 0, 4, 4}, name, topIndex, strings, gsubrs, charset.toByteArray(), charstrings,
-                priv);
+        return concat(new byte[] {1, 0, (byte) (4 + headerPadding), 4}, new byte[headerPadding], name, topIndex,
+                strings, gsubrs, charset.toByteArray(), charstrings, priv);
     }
 
     static byte[] real(double v) {

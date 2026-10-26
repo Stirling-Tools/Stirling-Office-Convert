@@ -733,7 +733,10 @@ public final class WebFonts {
             try {
                 fonts = new CFFParser().parse(new RandomAccessReadBuffer(data));
             } catch (IOException | RuntimeException e) {
-                byte[] fixed = CffRepair.realNumbers(data);
+                byte[] shifted = CffRepair.header(data);
+                byte[] base = shifted != null ? shifted : data;
+                byte[] reals = CffRepair.realNumbers(base);
+                byte[] fixed = reals != null ? reals : shifted;
                 if (fixed == null) {
                     throw e;
                 }

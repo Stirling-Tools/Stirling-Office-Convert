@@ -222,4 +222,20 @@ class WebFontsBrokenTest {
             org.junit.jupiter.api.Assertions.assertEquals(600, f.getAdvanceWidth(1));
         }
     }
+
+    @Test
+    void cffWithAPaddedHeaderOrUnreadableRealsStillConverts() throws Exception {
+        byte[] expected = WebFonts.toTrueType(FontPrograms.cff("Padded"), WebFonts.FontKind.CFF, Map.of());
+        byte[] padded = FontPrograms.cff("Padded", new byte[0], false, 8);
+        org.junit.jupiter.api.Assertions.assertThrows(Exception.class, () -> new org.apache.fontbox.cff.CFFParser()
+                .parse(new org.apache.pdfbox.io.RandomAccessReadBuffer(padded)));
+        org.junit.jupiter.api.Assertions.assertArrayEquals(expected, WebFonts.toTrueType(padded, WebFonts.FontKind.CFF,
+                Map.of()));
+        byte[] badReal = FontPrograms.cff("Padded", FontPrograms.concat(new byte[] {30, (byte) 0xC0, (byte) 0xFF},
+                new byte[] {12, 9}), false, 0);
+        org.junit.jupiter.api.Assertions.assertThrows(Exception.class, () -> new org.apache.fontbox.cff.CFFParser()
+                .parse(new org.apache.pdfbox.io.RandomAccessReadBuffer(badReal)));
+        org.junit.jupiter.api.Assertions.assertArrayEquals(expected, WebFonts.toTrueType(badReal, WebFonts.FontKind.CFF,
+                Map.of()));
+    }
 }
