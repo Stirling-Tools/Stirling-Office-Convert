@@ -81,6 +81,25 @@ class MarginBoxesTest {
     }
 
     @Test
+    void aFirstPageThatClearsItsBoxesHasNoHeaderOrFooter() throws IOException {
+        String html = "<html><head><style>@page { margin: 72pt; @top-center { content: \"Running head\" } "
+                + "@bottom-right { content: \"Page \" counter(page) } } "
+                + "@page :first { @top-center { content: none } @bottom-right { content: none } }</style></head><body>"
+                + body(150) + "</body></html>";
+        try (PDDocument doc = convert(html)) {
+            assertTrue(doc.getNumberOfPages() >= 2);
+            for (int i = 1; i <= 2; i++) {
+                PDFTextStripper s = new PDFTextStripper();
+                s.setStartPage(i);
+                s.setEndPage(i);
+                String text = s.getText(doc);
+                assertEquals(i > 1, text.contains("Running head"), text);
+                assertEquals(i > 1, text.contains("Page " + i), text);
+            }
+        }
+    }
+
+    @Test
     void laterRulesAndImportantCascadeIntoTheSameBox() throws IOException {
         String html = "<html><head><style>@page { margin: 72pt; @top-left { content: \"Left head\" } "
                 + "@top-right { content: \"Kept\" !important } } "

@@ -78,7 +78,13 @@ final class Css {
                 } else if (at.startsWith("@page")) {
                     // @page, or a named page: "@page wide"; page selectors like :first are left to the default page
                     String name = head.substring(5).strip();
-                    if (name.isEmpty() || name.matches("[A-Za-z_][A-Za-z0-9_-]{0,63}")) {
+                    if (name.equalsIgnoreCase(":first")) {
+                        Matcher box = MARGIN_BOX.matcher(inner);
+                        while (box.find()) {
+                            into.add(new Rule("@margin-first " + box.group(1).toLowerCase(Locale.ROOT),
+                                    declarations(box.group(2))));
+                        }
+                    } else if (name.isEmpty() || name.matches("[A-Za-z_][A-Za-z0-9_-]{0,63}")) {
                         Matcher box = MARGIN_BOX.matcher(inner);
                         while (name.isEmpty() && box.find()) {
                             into.add(new Rule("@margin " + box.group(1).toLowerCase(Locale.ROOT),

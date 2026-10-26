@@ -173,6 +173,11 @@ public final class HtmlDocument {
         DocSink.HeaderFooterSet running = new DocSink.HeaderFooterSet(List.of(), List.of(), List.of(), List.of(), false);
         if (MarginBoxes.any(cascade.margins())) {
             running = MarginBoxes.running(cascade.margins(), root, width);
+            if (cascade.styledFirstPage() && !MarginBoxes.any(cascade.firstMargins())) {
+                running = new DocSink.HeaderFooterSet(running.header(), running.footer(), running.evenHeader(),
+                        running.evenFooter(), true);
+                page.titlePage = true;
+            }
             page.headerDistance = Math.max(6, page.marginTop / 2 - 6);
             page.footerDistance = Math.max(6, page.marginBottom / 2 - 6);
         }

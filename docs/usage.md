@@ -543,7 +543,7 @@ saved as `.doc`) is laid out without a browser and drawn by the DOCX renderer: h
 `data:image/svg+xml` (shapes, paths, transforms and same-page `<use>`), floats beside text, page breaks, and `@page`
 size and margins, named pages included, with the default page's `@top-left|center|right` and
 `@bottom-left|center|right` margin boxes as running headers and footers (`content` strings, `counter(page)` and
-`counter(pages)`). Style comes from `<style>` sheets, `style` attributes and the old
+`counter(pages)`; `@page :first` boxes set to `content: none` leave the first page bare). Style comes from `<style>` sheets, `style` attributes and the old
 presentational attributes over a browser's defaults, with the cascade as Chrome applies it when printing: media
 queries are answered for print at the page's text width, `!important`, custom properties (`var()`), `calc()`,
 `min()`, `max()`, `clamp()`, `rem`, `hsl()` and alpha colours. Flex rows and grids become columns side by side
