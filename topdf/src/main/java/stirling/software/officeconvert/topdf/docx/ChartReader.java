@@ -845,9 +845,43 @@ final class ChartReader {
         }
         XEl grad = spPr.child("a:gradFill");
         if (grad != null && grad.child("a:gsLst") != null && !grad.child("a:gsLst").children("a:gs").isEmpty()) {
-            return Colors.drawing(grad.child("a:gsLst").children("a:gs").get(0), theme, null);
+            return average(grad.child("a:gsLst").children("a:gs"));
         }
         return null;
+    }
+
+    private Color average(List<XEl> stops) {
+        TreeMap<Double, Color> at = new TreeMap<>();
+        for (XEl gs : stops) {
+            Color c = Colors.drawing(gs, theme, null);
+            if (c != null) {
+                at.put(Math.max(0, Math.min(1, Ooxml.integer(gs.attr("pos"), 0) / 100000.0)), c);
+            }
+        }
+        if (at.isEmpty()) {
+            return null;
+        }
+        double[] sum = new double[3];
+        double prev = 0;
+        Color last = at.firstEntry().getValue();
+        for (Map.Entry<Double, Color> e : at.entrySet()) {
+            double span = e.getKey() - prev;
+            add(sum, last, e.getValue(), span);
+            prev = e.getKey();
+            last = e.getValue();
+        }
+        add(sum, last, last, 1 - prev);
+        return new Color(clip(sum[0]), clip(sum[1]), clip(sum[2]));
+    }
+
+    private static void add(double[] sum, Color a, Color b, double span) {
+        sum[0] += span * (a.getRed() + b.getRed()) / 2;
+        sum[1] += span * (a.getGreen() + b.getGreen()) / 2;
+        sum[2] += span * (a.getBlue() + b.getBlue()) / 2;
+    }
+
+    private static int clip(double v) {
+        return (int) Math.max(0, Math.min(255, Math.round(v)));
     }
 
     private Stroke line(XEl spPr) {
