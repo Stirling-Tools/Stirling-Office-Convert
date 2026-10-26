@@ -19,6 +19,8 @@ import org.apache.fontbox.cff.CFFFont;
 import org.apache.fontbox.cff.CFFParser;
 import org.apache.fontbox.cff.CFFType1Font;
 import org.apache.fontbox.cff.Type2CharString;
+import org.apache.fontbox.cff.Type2CharStringParser;
+import org.apache.fontbox.type1.Type1CharStringReader;
 import org.apache.fontbox.encoding.StandardEncoding;
 import org.apache.fontbox.ttf.CmapSubtable;
 import org.apache.fontbox.ttf.CmapTable;
@@ -603,6 +605,10 @@ public final class WebFonts {
 
         private final CFFFont font;
 
+        private final byte[][] globalSubrs;
+
+        private final Type2CharStringParser parser;
+
         Cff(byte[] data) throws IOException {
             List<CFFFont> fonts = new CFFParser().parse(new RandomAccessReadBuffer(data));
             if (fonts.isEmpty()) {
@@ -612,6 +618,9 @@ public final class WebFonts {
             if (font.getNumCharStrings() < 1) {
                 throw new IOException("The CFF program has no glyphs");
             }
+            List<byte[]> global = font.getGlobalSubrIndex();
+            globalSubrs = global == null ? new byte[0][] : global.toArray(new byte[0][]);
+            parser = new Type2CharStringParser(font.getName());
         }
 
         @Override
@@ -642,10 +651,14 @@ public final class WebFonts {
         }
 
         private Type2CharString charString(int gid) throws IOException {
-            if (font instanceof CFFCIDFont cid) {
-                return cid.getType2CharString(font.getCharset().getCIDForGID(gid));
-            }
-            return font.getType2CharString(gid);
+            Map<String, Object> priv = privateDict(gid);
+            byte[][] local = priv != null && priv.get("Subrs") instanceof byte[][] l ? l : null;
+            String name = name(gid);
+            List<Object> sequence = parser.parse(font.getCharStringBytes().get(gid), globalSubrs, local, name);
+            Type1CharStringReader reader = font instanceof CFFType1Font t1 ? t1::getType1CharString : n -> null;
+            return new Type2CharString(reader, font.getName(), name, gid, sequence,
+                    (int) number(priv == null ? null : priv.get("defaultWidthX")),
+                    (int) number(priv == null ? null : priv.get("nominalWidthX")));
         }
 
         @Override
@@ -675,10 +688,8 @@ public final class WebFonts {
 
         @Override
         CharStringExpansion.Result expansion(int gid) throws IOException {
-            List<byte[]> global = font.getGlobalSubrIndex();
             Map<String, Object> priv = privateDict(gid);
-            return CharStringExpansion.type2(font.getCharStringBytes().get(gid),
-                    global == null ? null : global.toArray(new byte[0][]),
+            return CharStringExpansion.type2(font.getCharStringBytes().get(gid), globalSubrs,
                     priv != null && priv.get("Subrs") instanceof byte[][] local ? local : null);
         }
 

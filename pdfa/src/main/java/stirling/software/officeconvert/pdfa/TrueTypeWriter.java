@@ -19,7 +19,21 @@ import stirling.software.officeconvert.extract.PdfFiles;
 
 final class TrueTypeWriter {
 
-    private record Glyph(byte[] data, int advance, int lsb) {}
+    private record Glyph(byte[] buffer, int offset, int length, int advance, int lsb) {
+
+        Glyph(byte[] data, int advance, int lsb) {
+            this(data, 0, data.length, advance, lsb);
+        }
+
+        ByteBuffer view() {
+            return ByteBuffer.wrap(buffer, offset, length).slice();
+        }
+
+        byte[] data() {
+            return offset == 0 && length == buffer.length ? buffer
+                    : java.util.Arrays.copyOfRange(buffer, offset, offset + length);
+        }
+    }
 
     private final TrueTypeFont source;
 
@@ -145,10 +159,10 @@ final class TrueTypeWriter {
             int adv = Math.max(0, Math.min(65_535, g.advance()));
             maxAdvance = Math.max(maxAdvance, adv);
             advances += adv;
-            if (g.data().length < 10) {
+            if (g.length() < 10) {
                 continue;
             }
-            ByteBuffer b = ByteBuffer.wrap(g.data());
+            ByteBuffer b = g.view();
             int gxMin = b.getShort(2);
             int gyMin = b.getShort(4);
             int gxMax = b.getShort(6);
@@ -179,13 +193,13 @@ final class TrueTypeWriter {
         if (end <= start || end > glyf.length) {
             return new Glyph(new byte[0], advance, 0);
         }
-        byte[] data = java.util.Arrays.copyOfRange(glyf, (int) start, (int) end);
-        glyphBytes += data.length;
+        int length = (int) (end - start);
+        glyphBytes += length;
         int lsb = hmtx == null ? 0 : hmtx.getLeftSideBearing(gid);
-        if (data.length >= 10 && ByteBuffer.wrap(data).getShort(0) < 0) {
+        if (length >= 10 && ByteBuffer.wrap(glyf).getShort((int) start) < 0) {
             pending.add(glyphs.size());
         }
-        return new Glyph(data, advance, lsb);
+        return new Glyph(glyf, (int) start, length, advance, lsb);
     }
 
     private void resolveComponents() {
@@ -235,24 +249,36 @@ final class TrueTypeWriter {
             throw new IOException("The font needs more than 65535 glyphs");
         }
         TreeMap<String, byte[]> tables = new TreeMap<>();
-        ByteArrayOutputStream glyfOut = new ByteArrayOutputStream();
+        List<Glyph> written = hinting ? glyphs : new ArrayList<>(glyphs.size());
+        if (!hinting) {
+            for (Glyph g : glyphs) {
+                written.add(new Glyph(unhinted(g.data()), g.advance(), g.lsb()));
+            }
+        }
+        long size = 0;
+        for (Glyph g : written) {
+            size += Sfnt.pad(g.length());
+        }
+        if (size > Integer.MAX_VALUE - 16) {
+            throw new IOException("The glyphs need more than 2 GB");
+        }
+        byte[] glyfOut = new byte[(int) size];
         ByteBuffer locaOut = ByteBuffer.allocate((glyphs.size() + 1) * 4);
         ByteBuffer hmtxOut = ByteBuffer.allocate(glyphs.size() * 4);
         int maxAdvance = 0;
-        for (Glyph g : glyphs) {
+        int at = 0;
+        for (Glyph g : written) {
             PdfFiles.stopIfInterrupted();
-            locaOut.putInt(glyfOut.size());
-            glyfOut.write(hinting ? g.data() : unhinted(g.data()));
-            while (glyfOut.size() % 4 != 0) {
-                glyfOut.write(0);
-            }
+            locaOut.putInt(at);
+            System.arraycopy(g.buffer(), g.offset(), glyfOut, at, g.length());
+            at += Sfnt.pad(g.length());
             int adv = Math.max(0, Math.min(65_535, g.advance()));
             maxAdvance = Math.max(maxAdvance, adv);
             hmtxOut.putShort((short) adv);
             hmtxOut.putShort((short) g.lsb());
         }
-        locaOut.putInt(glyfOut.size());
-        tables.put("glyf", glyfOut.toByteArray());
+        locaOut.putInt(at);
+        tables.put("glyf", glyfOut);
         tables.put("loca", locaOut.array());
         tables.put("hmtx", hmtxOut.array());
         tables.put("head", head());
