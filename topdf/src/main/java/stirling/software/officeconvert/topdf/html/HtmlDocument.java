@@ -109,6 +109,7 @@ public final class HtmlDocument {
                 Map<String, Boolean> known = new HashMap<>();
                 Look.drawable(f -> known.computeIfAbsent(f, k -> installed(fonts, k)));
                 Look.generics(generics(fonts));
+                Glyphs.fonts(fonts);
             }
             return convert(source, sink, Math.max(LEAST_FIT, Math.min(1f, zoom)), (Linked) readOnce(assets),
                     targetPages);
@@ -116,6 +117,7 @@ public final class HtmlDocument {
             Css.clearRootSize();
             Look.clearDrawable();
             Look.clearGenerics();
+            Glyphs.clearFonts();
         }
     }
 

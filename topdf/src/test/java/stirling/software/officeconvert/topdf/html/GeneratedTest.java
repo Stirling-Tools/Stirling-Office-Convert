@@ -107,6 +107,16 @@ class GeneratedTest {
     }
 
     @Test
+    void aShortBoldHeaderKeepsItsWordWhole() throws IOException {
+        for (String family : new String[] {"serif", "sans-serif", "Verdana, sans-serif", "monospace"}) {
+            String text = convert("header", "<html><body style=\"font-family:" + family + "\"><table><tr>"
+                    + "<th>Header</th><th>Only</th></tr><tr><td>row</td><td>" + "without outer pipes ".repeat(12)
+                    + "</td></tr></table></body></html>").text();
+            assertTrue(text.contains("Header"), family + ": " + text);
+        }
+    }
+
+    @Test
     void generatedBoxesDoNotChangeWhichChildIsFirstOrLast() throws IOException {
         Pdf pdf = convert("structural", "<html><head><style>ul::before{content:'Start'}ul::after{content:'End'}"
                 + "li:first-child::before{content:'[first] '}li:last-child::before{content:'[last] '}</style></head>"

@@ -326,15 +326,16 @@ final class HtmlTables {
                 }
                 String text = s.element().text();
                 float size = s.look().size;
-                natural[c] = Math.max(natural[c], Math.min(room, Glyphs.estimate(text, size) + across + 2));
+                natural[c] = Math.max(natural[c], Math.min(room, Glyphs.estimate(text, size, s.look().font, s.look().bold)
+                        + across + 2));
                 float longest = 0;
                 for (String word : text.split("\\s+")) {
-                    longest = Math.max(longest, Glyphs.word(word, size, s.look().bold));
+                    longest = Math.max(longest, Glyphs.word(word, size, s.look().bold, s.look().font));
                 }
                 least[c] = Math.max(least[c], Math.min(room / 2, longest + across));
                 least[c] = Math.max(least[c], Math.min(room, leastInside(s.element(), size * 0.5f, 1) + across));
                 boolean nowrap = s.look().whiteSpace.equals("nowrap") || s.look().whiteSpace.equals("pre");
-                unwrapped[c] = Math.max(unwrapped[c], (nowrap ? Glyphs.estimate(text, size) : longest) + across);
+                unwrapped[c] = Math.max(unwrapped[c], (nowrap ? Glyphs.estimate(text, size, s.look().font, s.look().bold) : longest) + across);
                 float[] pictures = pictures(s, room);
                 if (pictures[0] > 0) {
                     natural[c] = Math.max(natural[c], Math.min(room, pictures[1] + across));
