@@ -187,6 +187,35 @@ class XlsVariantsTest {
     }
 
     @Test
+    void localeTaggedFormatsUseTheirLanguage() throws Exception {
+        String[] formats = {"[$-407]d. mmmm yyyy", "[$-40C]dddd d mmmm yyyy", "[$-410]mmm yy", "[$-411]yyyy\"年\"m\"月\"d\"日\"",
+            "#,##0.00 [$€-407]", "[$£-809]#,##0.00", "[$-F800]dddd, mmmm dd, yyyy"};
+        byte[] data = xls(wb -> {
+            HSSFSheet s = wb.createSheet("Locales");
+            s.setColumnWidth(0, 40 * 256);
+            Calendar cal = Calendar.getInstance();
+            cal.clear();
+            cal.set(2024, Calendar.MARCH, 9);
+            for (int i = 0; i < formats.length; i++) {
+                HSSFCellStyle st = wb.createCellStyle();
+                st.setDataFormat(wb.createDataFormat().getFormat(formats[i]));
+                HSSFCell c = s.createRow(i).createCell(0);
+                if (formats[i].contains("#")) {
+                    c.setCellValue(1234.5);
+                } else {
+                    c.setCellValue(cal);
+                }
+                c.setCellStyle(st);
+            }
+        });
+        String text = convert("locales.xls", data).all();
+        for (String expected : new String[] {"9. März 2024", "samedi 9 mars 2024", "mar 24", "2024年3月9日",
+            "1,234.50 €", "£1,234.50", "Saturday, March 9, 2024"}) {
+            assertTrue(text.contains(expected), expected + " in " + text);
+        }
+    }
+
+    @Test
     void mergedRotatedHiddenAndGroupedCells() throws Exception {
         byte[] data = xls(wb -> {
             HSSFSheet s = wb.createSheet("Shapes");
