@@ -8,13 +8,22 @@ import stirling.software.officeconvert.topdf.pdf.Stroke;
 
 record Chart(Text title, List<Group> groups, List<String> categories, Legend legend, Axis values, Axis categoryAxis,
         Color fill, Stroke border, String font, float textSize, Color textColor, Layout plotLayout, Color plotFill,
-        Stroke plotBorder, boolean date1904, Axis secondary, boolean tightScale) {
+        Stroke plotBorder, boolean date1904, Axis secondary, boolean tightScale, DataTable dataTable) {
+
+    Chart(Text title, List<Group> groups, List<String> categories, Legend legend, Axis values, Axis categoryAxis,
+            Color fill, Stroke border, String font, float textSize, Color textColor, Layout plotLayout,
+            Color plotFill, Stroke plotBorder, boolean date1904, Axis secondary, boolean tightScale) {
+        this(title, groups, categories, legend, values, categoryAxis, fill, border, font, textSize, textColor,
+                plotLayout, plotFill, plotBorder, date1904, secondary, tightScale, null);
+    }
 
     Chart(Text title, List<Group> groups, List<String> categories, Legend legend, Axis values, Axis categoryAxis,
             Color fill, Stroke border, String font, float textSize, Color textColor) {
         this(title, groups, categories, legend, values, categoryAxis, fill, border, font, textSize, textColor, null,
-                null, null, false, null, false);
+                null, null, false, null, false, null);
     }
+
+    record DataTable(boolean horizontal, boolean vertical, boolean outline, boolean keys) {}
 
     enum Kind {
         BAR,
@@ -82,23 +91,36 @@ record Chart(Text title, List<Group> groups, List<String> categories, Legend leg
 
     record Group(Kind kind, boolean horizontal, String grouping, List<Series> series, float gapWidth, float overlap,
             float holeSize, float firstSliceAngle, boolean varyColors, Labels labels, boolean secondary,
-            boolean reversedOrder) {
+            boolean reversedOrder, boolean threeD, Stock stock) {
 
         Group(Kind kind, boolean horizontal, String grouping, List<Series> series, float gapWidth, float overlap,
                 float holeSize, float firstSliceAngle, boolean varyColors, Labels labels) {
             this(kind, horizontal, grouping, series, gapWidth, overlap, holeSize, firstSliceAngle, varyColors, labels,
-                    false, false);
+                    false, false, false, null);
         }
 
         Group onSecondary() {
             return new Group(kind, horizontal, grouping, series, gapWidth, overlap, holeSize, firstSliceAngle,
-                    varyColors, labels, true, reversedOrder);
+                    varyColors, labels, true, reversedOrder, threeD, stock);
         }
 
         Group inReversedOrder() {
             return new Group(kind, horizontal, grouping, series, gapWidth, overlap, holeSize, firstSliceAngle,
-                    varyColors, labels, secondary, true);
+                    varyColors, labels, secondary, true, threeD, stock);
         }
+
+        Group inThreeD() {
+            return new Group(kind, horizontal, grouping, series, gapWidth, overlap, holeSize, firstSliceAngle,
+                    varyColors, labels, secondary, reversedOrder, true, stock);
+        }
+
+        Group withStock(Stock s) {
+            return new Group(kind, horizontal, grouping, series, gapWidth, overlap, holeSize, firstSliceAngle,
+                    varyColors, labels, secondary, reversedOrder, threeD, s);
+        }
+    }
+
+    record Stock(Stroke hiLow, Color up, Color down, Stroke bars, float gapWidth) {
     }
 
     record Legend(String position, float size, Layout layout, String font, Color fill, Stroke border) {

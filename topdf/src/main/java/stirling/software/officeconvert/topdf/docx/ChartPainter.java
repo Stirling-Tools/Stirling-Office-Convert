@@ -73,6 +73,20 @@ final class ChartPainter {
 
     private float chartW;
 
+    private float depthX;
+
+    private float tableRow;
+
+    private float tableHeight;
+
+    private float tableName;
+
+    private static final float TILT = 0.55f;
+
+    private static final float THICKNESS = 0.08f;
+
+    private float depthY;
+
     private float chartH;
 
     private ChartPainter(Chart chart, Fonts fonts, Theme theme, List<Op> ops) {
@@ -604,8 +618,14 @@ final class ChartPainter {
         float d = Math.min(right - left, bottom - top);
         float cy = (top + bottom) / 2;
         float r = d / 2;
+        if (g.kind() != Chart.Kind.DOUGHNUT && g.threeD()) {
+            float rx = Math.min((right - left) / 2, (bottom - top) / (2 * TILT + 2 * THICKNESS));
+            float depth = rx * 2 * THICKNESS;
+            slices(g, g.series().get(0), cx, cy - depth / 2, 0, rx, Integer.MAX_VALUE, TILT, depth);
+            return;
+        }
         if (g.kind() != Chart.Kind.DOUGHNUT) {
-            slices(g, g.series().get(0), cx, cy, 0, r, Integer.MAX_VALUE);
+            slices(g, g.series().get(0), cx, cy, 0, r, Integer.MAX_VALUE, 1, 0);
             return;
         }
         float hole = r * Math.max(10, Math.min(90, g.holeSize())) / 100f;
@@ -615,11 +635,12 @@ final class ChartPainter {
         for (int k = 0; k < rings; k++) {
             int ring = g.reversedOrder() ? rings - 1 - k : k;
             float inner = hole + ring * width;
-            slices(g, g.series().get(k), cx, cy, inner, inner + width, perRing);
+            slices(g, g.series().get(k), cx, cy, inner, inner + width, perRing, 1, 0);
         }
     }
 
-    private void slices(Chart.Group g, Chart.Series s, float cx, float cy, float inner, float r, int limit) {
+    private void slices(Chart.Group g, Chart.Series s, float cx, float cy, float inner, float r, int limit,
+            float tilt, float depth) {
         double total = 0;
         int positive = 0;
         for (double v : s.values()) {
@@ -633,6 +654,9 @@ final class ChartPainter {
         }
         float d = r * 2;
         double angle = 90 - g.firstSliceAngle();
+        List<Op> walls = new ArrayList<>();
+        List<Op> tops = new ArrayList<>();
+        int mark = ops.size();
         Stroke edge = s.outline() != null ? s.outline() : Stroke.solid(1.5f, Color.WHITE);
         Chart.Labels labels = s.labels() != null ? s.labels() : g.labels();
         int every = (int) Math.ceil((double) positive / limit);
@@ -654,7 +678,8 @@ final class ChartPainter {
                 continue;
             }
             double extent = (g.reversedOrder() ? 360 : -360) * v / total;
-            java.awt.Shape shape = new Arc2D.Double(cx - r, cy - r, d, d, angle, extent, Arc2D.PIE);
+            float ry = r * tilt;
+            java.awt.Shape shape = new Arc2D.Double(cx - r, cy - ry, d, 2 * ry, angle, extent, Arc2D.PIE);
             if (inner > 0) {
                 Path2D.Double ring = new Path2D.Double();
                 ring.append(new Arc2D.Double(cx - r, cy - r, d, d, angle, extent, Arc2D.OPEN), false);
@@ -664,7 +689,12 @@ final class ChartPainter {
                 shape = ring;
             }
             Color c = pointColor(g, s, first);
-            ops.add(new Op.Path(shape, c == null ? null : Fill.solid(c), edge));
+            if (depth > 0) {
+                wall(cx, cy, r, ry, depth, angle, extent, c, edge, walls);
+                tops.add(new Op.Path(shape, c == null ? null : Fill.solid(c), edge));
+            } else {
+                ops.add(new Op.Path(shape, c == null ? null : Fill.solid(c), edge));
+            }
             Chart.Labels pl = labels.at(first);
             if (pl.shown() && every == 1) {
                 TextStyle ls = labelStyle(pl);
@@ -673,7 +703,7 @@ final class ChartPainter {
                         && v / total < 0.05);
                 float k = outside ? 1.12f : inner > 0 ? (inner / r + 1) / 2 : 0.65f;
                 float lx = (float) (cx + Math.cos(mid) * r * k) + pl.dx() * chartW;
-                float ly = (float) (cy - Math.sin(mid) * r * k) + pl.dy() * chartH;
+                float ly = (float) (cy - Math.sin(mid) * ry * k) + pl.dy() * chartH;
                 String text = label(pl, s, v, v / total, first, "; ");
                 if (outside) {
                     labelLines(text, lx, ly + ascent(ls) / 3, ls, Math.cos(mid) >= 0 ? -1 : 1);
@@ -682,6 +712,31 @@ final class ChartPainter {
                 }
             }
             angle += extent;
+        }
+        if (depth > 0) {
+            List<Op> labelOps = new ArrayList<>(ops.subList(mark, ops.size()));
+            ops.subList(mark, ops.size()).clear();
+            ops.addAll(walls);
+            ops.addAll(tops);
+            ops.addAll(labelOps);
+        }
+    }
+
+    private static void wall(float cx, float cy, float rx, float ry, float depth, double start, double extent,
+            Color c, Stroke edge, List<Op> out) {
+        double a = Math.min(start, start + extent);
+        double b = Math.max(start, start + extent);
+        for (int turn = -1; turn <= 1; turn++) {
+            double lo = Math.max(a, 180 + 360 * turn);
+            double hi = Math.min(b, 360 + 360 * turn);
+            if (hi - lo <= 0.01) {
+                continue;
+            }
+            Path2D.Double p = new Path2D.Double();
+            p.append(new Arc2D.Double(cx - rx, cy - ry, 2 * rx, 2 * ry, lo, hi - lo, Arc2D.OPEN), false);
+            p.append(new Arc2D.Double(cx - rx, cy - ry + depth, 2 * rx, 2 * ry, hi, lo - hi, Arc2D.OPEN), true);
+            p.closePath();
+            out.add(new Op.Path(p, c == null ? null : Fill.solid(shade(c, 0.75f)), edge));
         }
     }
 
@@ -756,12 +811,25 @@ final class ChartPainter {
         Scale sc2 = null;
         double[] xr = scatter() ? xRange() : null;
         Scale xs = null;
+        tableHeight = 0;
+        float leftEdge = left;
         if (!horizontal) {
             if (vTitle != null && inner == null) {
                 left += lineHeight(titleStyle(vTitle)) + AXIS_TITLE_GAP;
             }
             if (cTitle != null && inner == null) {
                 bottom -= lineHeight(titleStyle(cTitle)) + AXIS_TITLE_GAP;
+            }
+            if (chart.dataTable() != null && xr == null && n > 0 && inner == null) {
+                tableRow = lineHeight(cs) + 4;
+                tableHeight = tableRow * (1 + tableSeries().size());
+                if (tableHeight < (bottom - top) * 0.6f) {
+                    showCats = false;
+                    bottom -= tableHeight;
+                    tableName = tableNameWidth(cs);
+                } else {
+                    tableHeight = 0;
+                }
             }
             float estimate = inner != null ? inner.height
                     : bottom - top - (showCats ? lineHeight(cs) + CATEGORY_GAP : 0);
@@ -830,11 +898,27 @@ final class ChartPainter {
             sc = scaleAcross(va, plotW, vs, format);
             ticks = ticks(sc, format);
         }
+        if (tableHeight > 0 && plotLeft < leftEdge + tableName) {
+            plotW -= leftEdge + tableName - plotLeft;
+            plotLeft = leftEdge + tableName;
+        }
         if (plotW < 4 || plotH < 4) {
             return;
         }
+        depthX = 0;
+        depthY = 0;
+        if (!horizontal && xs == null && n > 0 && columns3D()) {
+            float depth = barWidth(chart.groups().get(0), plotW / n) * 2.5f;
+            depthX = Math.min(plotW * 0.15f, depth * 0.5f);
+            depthY = Math.min(plotH * 0.15f, depth * 0.35f);
+            plotW -= depthX;
+            plotTop += depthY;
+            plotH -= depthY;
+        }
         float plotBottom = plotTop + plotH;
-        if (chart.plotFill() != null || chart.plotBorder() != null) {
+        if (depthX > 0) {
+            walls(plotLeft, plotTop, plotW, plotH);
+        } else if (chart.plotFill() != null || chart.plotBorder() != null) {
             ops.add(new Op.Rect(plotLeft, plotTop, plotW, plotH,
                     chart.plotFill() == null ? null : Fill.solid(chart.plotFill()), chart.plotBorder()));
         }
@@ -846,7 +930,11 @@ final class ChartPainter {
             float f = sc.fraction(i);
             if (!horizontal) {
                 float gy = plotBottom - f * plotH;
-                if (grid && gridColor != null) {
+                if (grid && gridColor != null && depthX > 0) {
+                    Stroke gs = Stroke.solid(gridWidth, gridColor);
+                    ops.add(new Op.Line(plotLeft, gy, plotLeft + depthX, gy - depthY, gs));
+                    ops.add(new Op.Line(plotLeft + depthX, gy - depthY, plotLeft + plotW + depthX, gy - depthY, gs));
+                } else if (grid && gridColor != null) {
                     ops.add(new Op.Line(plotLeft, gy, plotLeft + plotW, gy, Stroke.solid(gridWidth, gridColor)));
                 }
                 if (showValues) {
@@ -939,7 +1027,8 @@ final class ChartPainter {
         if (cTitle != null) {
             TextStyle ts = titleStyle(cTitle);
             if (!horizontal) {
-                float by = inner != null ? plotBottom + CATEGORY_GAP + (cl == null ? 0 : cl.extent()) : bottom;
+                float by = inner != null ? plotBottom + CATEGORY_GAP + (cl == null ? 0 : cl.extent())
+                        : bottom + tableHeight;
                 center(cTitle.text(), plotLeft + plotW / 2, by + AXIS_TITLE_GAP + ascent(ts), ts);
             } else {
                 float cx = (inner != null ? plotLeft - VALUE_GAP : left) - AXIS_TITLE_GAP - lineHeight(ts) / 2;
@@ -963,6 +1052,9 @@ final class ChartPainter {
                             cs));
                 }
             }
+        }
+        if (tableHeight > 0) {
+            dataTable(plotLeft, plotBottom, plotW, n, cs, format);
         }
         Plot plot = new Plot(plotLeft, plotTop, plotW, plotH, sc, horizontal, reversed, n, midCat, xs);
         for (Chart.Group g : chart.groups()) {
@@ -1214,6 +1306,8 @@ final class ChartPainter {
                 Fill fill = c == null ? null : Fill.solid(c);
                 if (p.horizontal()) {
                     ops.add(new Op.Rect(Math.min(a, b), start, Math.abs(b - a), bw, fill, s.outline()));
+                } else if (depthX > 0) {
+                    box(start, Math.min(a, b), bw, Math.abs(b - a), c, s.outline());
                 } else {
                     ops.add(new Op.Rect(start, Math.min(a, b), bw, Math.abs(b - a), fill, s.outline()));
                 }
@@ -1247,8 +1341,156 @@ final class ChartPainter {
         }
     }
 
+    private List<Chart.Series> tableSeries() {
+        List<Chart.Series> out = new ArrayList<>();
+        for (Chart.Group g : chart.groups()) {
+            out.addAll(g.series());
+        }
+        return out;
+    }
+
+    private float tableNameWidth(TextStyle ts) {
+        float w = 0;
+        for (Chart.Series s : tableSeries()) {
+            w = Math.max(w, width(ts, s.name() == null ? "" : s.name()));
+        }
+        return w + 8 + (chart.dataTable().keys() ? ts.size() * 1.6f : 0);
+    }
+
+    private void dataTable(float x, float y, float w, int n, TextStyle ts, String format) {
+        Chart.DataTable t = chart.dataTable();
+        Stroke rule = Stroke.solid(0.75f, ChartReader.AUTO_LINE);
+        float band = w / n;
+        List<Chart.Series> list = tableSeries();
+        float mid = (ascent(ts) - descent(ts)) / 2;
+        for (int i = 0; i < n; i++) {
+            center(category(i), x + (i + 0.5f) * band, y + tableRow / 2 + mid, ts);
+        }
+        List<Entry> keys = entries(false);
+        for (int k = 0; k < list.size(); k++) {
+            Chart.Series s = list.get(k);
+            float ry = y + (k + 1) * tableRow;
+            float tx = x - tableName + 4;
+            if (t.keys() && k < keys.size()) {
+                key(keys.get(k), tx, ry + tableRow / 2, ts.size() * 0.6f);
+                tx += ts.size() * 1.6f;
+            }
+            ops.add(new Op.Text(tx, ry + tableRow / 2 + mid, s.name() == null ? "" : s.name(), ts));
+            for (int i = 0; i < n && i < s.values().length; i++) {
+                if (!Double.isNaN(s.values()[i])) {
+                    center(format(s.values()[i], format, chart.date1904()), x + (i + 0.5f) * band,
+                            ry + tableRow / 2 + mid, ts);
+                }
+            }
+        }
+        float bottom = y + tableHeight;
+        if (t.horizontal()) {
+            for (int k = 1; k <= list.size(); k++) {
+                ops.add(new Op.Line(x - tableName, y + k * tableRow, x + w, y + k * tableRow, rule));
+            }
+        }
+        if (t.vertical()) {
+            for (int i = 0; i <= n; i++) {
+                ops.add(new Op.Line(x + i * band, y, x + i * band, bottom, rule));
+            }
+        }
+        if (t.outline()) {
+            ops.add(new Op.Line(x - tableName, y + tableRow, x - tableName, bottom, rule));
+            ops.add(new Op.Line(x - tableName, bottom, x + w, bottom, rule));
+            ops.add(new Op.Line(x + w, y, x + w, bottom, rule));
+            ops.add(new Op.Line(x - tableName, y + tableRow, x, y + tableRow, rule));
+        }
+    }
+
+    private boolean columns3D() {
+        for (Chart.Group g : chart.groups()) {
+            if (g.kind() != Chart.Kind.BAR || !g.threeD() || g.horizontal()) {
+                return false;
+            }
+        }
+        return !chart.groups().isEmpty();
+    }
+
+    private static float barWidth(Chart.Group g, float band) {
+        int ns = Math.max(1, g.series().size());
+        boolean stacked = g.grouping().equals("stacked") || g.grouping().equals("percentStacked");
+        float gap = Math.max(0, Math.min(500, g.gapWidth())) / 100f;
+        float overlap = stacked ? 1 : Math.max(-1, Math.min(1, g.overlap() / 100f));
+        int slots = stacked ? 1 : ns;
+        return band / (slots - (slots - 1) * overlap + gap);
+    }
+
+    private void walls(float x, float y, float w, float h) {
+        Stroke edge = chart.plotBorder() != null ? chart.plotBorder() : Stroke.solid(0.75f, ChartReader.AUTO_LINE);
+        Fill fill = chart.plotFill() == null ? null : Fill.solid(chart.plotFill());
+        float bx = x + depthX;
+        float by = y - depthY;
+        ops.add(new Op.Path(polygon(bx, by, bx + w, by, bx + w, by + h, bx, by + h), fill, edge));
+        ops.add(new Op.Path(polygon(x, y, bx, by, bx, by + h, x, y + h), fill, edge));
+        ops.add(new Op.Path(polygon(x, y + h, bx, by + h, bx + w, by + h, x + w, y + h), fill, edge));
+    }
+
+    private void box(float x, float y, float w, float h, Color c, Stroke outline) {
+        float ox = depthX * 0.3f;
+        float oy = depthY * 0.3f;
+        float dx = depthX * 0.4f;
+        float dy = depthY * 0.4f;
+        float fx = x + ox;
+        float fy = y - oy;
+        Fill front = c == null ? null : Fill.solid(c);
+        Fill top = c == null ? null : Fill.solid(shade(c, 0.85f));
+        Fill side = c == null ? null : Fill.solid(shade(c, 0.7f));
+        ops.add(new Op.Path(polygon(fx + w, fy, fx + w + dx, fy - dy, fx + w + dx, fy + h - dy, fx + w, fy + h), side,
+                outline));
+        ops.add(new Op.Path(polygon(fx, fy, fx + w, fy, fx + w + dx, fy - dy, fx + dx, fy - dy), top, outline));
+        ops.add(new Op.Rect(fx, fy, w, h, front, outline));
+    }
+
+    private static Color shade(Color c, float f) {
+        return new Color(Math.round(c.getRed() * f), Math.round(c.getGreen() * f), Math.round(c.getBlue() * f));
+    }
+
+    private void stock(Chart.Group g, Plot p) {
+        Chart.Stock st = g.stock();
+        List<Chart.Series> list = g.series();
+        if (list.isEmpty()) {
+            return;
+        }
+        float width = p.band() / (1 + Math.max(0, Math.min(500, st.gapWidth())) / 100f);
+        for (int i = 0; i < p.count(); i++) {
+            double lo = Double.NaN;
+            double hi = Double.NaN;
+            for (Chart.Series s : list) {
+                double v = i < s.values().length ? s.values()[i] : Double.NaN;
+                if (!Double.isNaN(v)) {
+                    lo = Double.isNaN(lo) ? v : Math.min(lo, v);
+                    hi = Double.isNaN(hi) ? v : Math.max(hi, v);
+                }
+            }
+            float x = p.center(i);
+            if (st.hiLow() != null && !Double.isNaN(lo) && hi > lo) {
+                ops.add(new Op.Line(x, p.valuePos(lo), x, p.valuePos(hi), st.hiLow()));
+            }
+            Chart.Series first = list.get(0);
+            Chart.Series last = list.get(list.size() - 1);
+            double open = i < first.values().length ? first.values()[i] : Double.NaN;
+            double close = i < last.values().length ? last.values()[i] : Double.NaN;
+            if (list.size() < 2 || Double.isNaN(open) || Double.isNaN(close) || open == close) {
+                continue;
+            }
+            Color c = close > open ? st.up() : st.down();
+            float a = p.valuePos(open);
+            float b = p.valuePos(close);
+            ops.add(new Op.Rect(x - width / 2, Math.min(a, b), width, Math.abs(b - a), c == null ? null : Fill.solid(c),
+                    st.bars()));
+        }
+    }
+
     private void lines(Chart.Group g, Plot p, boolean area) {
         boolean stacked = g.grouping().equals("stacked") || g.grouping().equals("percentStacked");
+        if (g.stock() != null && !area && !stacked && !p.horizontal() && g.kind() == Chart.Kind.LINE) {
+            stock(g, p);
+        }
         double[] acc = new double[p.count()];
         List<Chart.Series> order = g.series();
         if (g.reversedOrder() && !stacked) {

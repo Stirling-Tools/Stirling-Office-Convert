@@ -155,9 +155,12 @@ final class ChartReader {
         XEl spPr = space.child("c:spPr");
         Color fill = spPr == null ? defaultFill : fill(spPr);
         Stroke border = spPr == null ? defaultBorder() : line(spPr);
+        XEl table = chart.child("c:plotArea") == null ? null : chart.child("c:plotArea").child("c:dTable");
+        Chart.DataTable dataTable = table == null ? null : new Chart.DataTable(on(table, "c:showHorzBorder", false),
+                on(table, "c:showVertBorder", false), on(table, "c:showOutline", false), on(table, "c:showKeys", false));
         return new Chart(title, groups, categories, legend, values, cats, fill, border, font, textSize,
                 color(space.child("c:txPr"), Color.BLACK), plotLayout, plotFill, plotBorder, date1904, secondary,
-                marked(space, Charts.TIGHT_SCALE));
+                marked(space, Charts.TIGHT_SCALE), dataTable);
     }
 
     private Chart.Axis secondary;
@@ -322,7 +325,37 @@ final class ChartReader {
         float first = number(g.child("c:firstSliceAng"), 0);
         Chart.Group group = new Chart.Group(kind, horizontal, grouping, series, gap, overlap, hole, first, vary,
                 labels(g.child("c:dLbls")));
-        return reversedOrder(g) ? group.inReversedOrder() : group;
+        group = reversedOrder(g) ? group.inReversedOrder() : group;
+        if (kind == Chart.Kind.LINE && (g.child("c:hiLowLines") != null || g.child("c:upDownBars") != null)) {
+            group = group.withStock(stock(g));
+        }
+        return g.is("c:bar3DChart") || g.is("c:pie3DChart") ? group.inThreeD() : group;
+    }
+
+    private Chart.Stock stock(XEl g) {
+        XEl hl = g.child("c:hiLowLines");
+        Stroke hiLow = null;
+        if (hl != null) {
+            XEl sp = hl.child("c:spPr");
+            hiLow = sp == null || sp.child("a:ln") == null ? Stroke.solid(0.75f, Color.BLACK) : line(sp);
+        }
+        XEl ud = g.child("c:upDownBars");
+        if (ud == null) {
+            return new Chart.Stock(hiLow, null, null, null, 150);
+        }
+        XEl up = ud.path("c:upBars", "c:spPr");
+        XEl down = ud.path("c:downBars", "c:spPr");
+        Stroke edge = up != null && up.child("a:ln") != null ? line(up) : Stroke.solid(0.75f, Color.BLACK);
+        return new Chart.Stock(hiLow, barFill(up, Color.WHITE), barFill(down, Color.BLACK), edge,
+                number(ud.child("c:gapWidth"), 150));
+    }
+
+    private Color barFill(XEl spPr, Color fallback) {
+        if (spPr == null || spPr.child("a:noFill") == null && spPr.child("a:solidFill") == null
+                && spPr.child("a:gradFill") == null) {
+            return fallback;
+        }
+        return spPr.child("a:noFill") != null ? null : fill(spPr);
     }
 
     private static boolean reversedOrder(XEl g) {
