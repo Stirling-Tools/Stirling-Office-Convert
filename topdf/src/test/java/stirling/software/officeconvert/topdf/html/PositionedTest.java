@@ -153,12 +153,42 @@ class PositionedTest {
                 + ".card{border:2px solid #000;padding:8px}nav a{margin-left:24px}</style></head><body>"
                 + "<nav><a href=#a>Home</a><a href=#b>Pricing</a></nav><div class=row>" + card + card + card
                 + "</div></body></html>");
-        assertTrue(verticalLines(pdf.pages().get(0), 40) >= 4, "card frames");
+        assertTrue(verticalLines(pdf.pages().get(0), 40) >= 6, "card frames apart");
         Word home = pdf.first("Home");
         Word pricing = pdf.first("Pricing");
         assertNotNull(home, pdf.words().toString());
         assertNotNull(pricing, pdf.words().toString());
         assertTrue(pricing.x() - home.x() > 40, home + " " + pricing);
+    }
+
+    @Test
+    void wrappingRowsPlaceItemsOfDifferentWidthsSideBySide() throws IOException {
+        Pdf pdf = html("wrap.html", "<html><head><style>.row{display:flex;flex-wrap:wrap}.a{width:66%}.b{width:33%}"
+                + "</style></head><body><div class=row><div class=a><table><tr><td>Storage</td><td>10 GB</td></tr>"
+                + "</table></div><div class=b><p>Secure</p></div></div></body></html>");
+        Word storage = pdf.first("Storage");
+        Word secure = pdf.first("Secure");
+        assertNotNull(storage, pdf.words().toString());
+        assertNotNull(secure, pdf.words().toString());
+        assertEquals(storage.y(), secure.y(), 12);
+        assertTrue(secure.x() > storage.x() + 200, storage + " " + secure);
+    }
+
+    @Test
+    void aCentredButtonTableInsideACellShrinksToItsContent() throws IOException {
+        Pdf pdf = html("button.html", "<html><body><table width=600><tr><td><p>Intro text</p><table align=center>"
+                + "<tr><td style=\"background:#e4572e;padding:12px 24px\"><a href=\"https://e.com\" "
+                + "style=\"color:#fff\">Shop now</a></td></tr></table></td></tr></table></body></html>");
+        BufferedImage page = pdf.pages().get(0);
+        int widest = 0;
+        for (int y = 0; y < page.getHeight(); y++) {
+            int run = 0;
+            for (int x = 0; x < page.getWidth(); x++) {
+                run = near(new Color(page.getRGB(x, y)), new Color(0xe4572e)) ? run + 1 : 0;
+                widest = Math.max(widest, run);
+            }
+        }
+        assertTrue(widest > 40 && widest < 160, "button width " + widest);
     }
 
     @Test

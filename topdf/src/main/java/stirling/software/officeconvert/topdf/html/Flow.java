@@ -1345,6 +1345,18 @@ final class Flow {
         return cd;
     }
 
+    private float gutter(List<Element> items, Look look, Frame frame) {
+        float widest = 0;
+        for (Element item : items) {
+            Map<String, String> d = ctx.declared(item, look);
+            if (framedChild(item, d, look) != null) {
+                widest = Math.max(widest, Math.max(0, length(d.get("padding-left"), look.size, frame.width()))
+                        + Math.max(0, length(d.get("padding-right"), look.size, frame.width())));
+            }
+        }
+        return Math.min(72, widest);
+    }
+
     private static boolean hasEdges(Map<String, String> d) {
         int edges = 0;
         for (String side : new String[] {"top", "bottom", "left", "right"}) {
@@ -1391,8 +1403,11 @@ final class Flow {
         }
         if (plan.areas() == null) {
             dropEmptyColumns(t);
+            float gutter = gutter(items, look, frame);
             if (plan.gap() >= 1 && Layout.framed(items, look, ctx)) {
                 gapColumns(t, plan.gap());
+            } else if (gutter >= 1) {
+                gapColumns(t, gutter);
             }
         }
         if (t.columnWidths.size() < 2) {

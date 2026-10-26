@@ -591,6 +591,14 @@ final class HtmlTables {
         }
     }
 
+    private static final int BUTTON_TEXT = 60;
+
+    // A short cell with its own fill in a table of no set width is a button, which keeps its width
+    private static boolean filled(Map<String, String> cd, Element td) {
+        Integer fill = Css.color(cd.getOrDefault("background-color", td.attr("bgcolor")));
+        return fill != null && fill >= 0 && fill != 0xFFFFFF;
+    }
+
     /** True for a table that only stacks things: one cell a row and no borders drawn. */
     static boolean layoutOnly(Element table, Map<String, String> d, HtmlContext ctx, Look look) {
         if (frameBorder(table) > 0 || Flow.border(d, "top") > 0 || Flow.border(d, "bottom") > 0) {
@@ -600,6 +608,8 @@ final class HtmlTables {
         if (rows.isEmpty() || rows.size() > MAX_ROWS) {
             return false;
         }
+        String given = table.hasAttr("width") ? table.attr("width") : d.getOrDefault("width", "auto");
+        boolean shrinks = given.isBlank() || given.strip().equalsIgnoreCase("auto");
         for (Element tr : rows) {
             Elements cells = tr.select("> td, > th");
             if (cells.size() > 1) {
@@ -609,6 +619,9 @@ final class HtmlTables {
                 Map<String, String> cd = ctx.declared(td, look);
                 if (Flow.border(cd, "top") > 0 || Flow.border(cd, "bottom") > 0 || Flow.border(cd, "left") > 0
                         || td.normalName().equals("th")) {
+                    return false;
+                }
+                if (shrinks && filled(cd, td) && Layout.text(td, BUTTON_TEXT + 1).length() <= BUTTON_TEXT) {
                     return false;
                 }
             }
