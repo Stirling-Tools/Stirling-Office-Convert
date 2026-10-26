@@ -4,6 +4,7 @@ import java.awt.image.BufferedImage;
 import java.awt.image.Raster;
 import java.io.BufferedOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
@@ -31,10 +32,11 @@ import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
 
 import stirling.software.officeconvert.extract.PdfFiles;
 import stirling.software.officeconvert.jpx.JpxImageIO;
+import stirling.software.officeconvert.memory.Admission;
 
 public final class LineArt {
 
-    public static final long DEFAULT_MAX_PIXELS = 50_000_000L;
+    public static final long DEFAULT_MAX_PIXELS = 1_000_000_000L;
 
     public static final long MAX_INPUT_BYTES = 1L << 30;
 
@@ -188,7 +190,8 @@ public final class LineArt {
         Objects.requireNonNull(options, "options");
         PdfFiles.checkOpen(document);
         JpxImageIO.install();
-        List<ImageWalk.Found> found = ImageWalk.images(document);
+        ImageWalk.Walk walk = ImageWalk.walk(document);
+        List<ImageWalk.Found> found = walk.images();
         Map<Codec, Integer> codecs = new EnumMap<>(Codec.class);
         List<String> warnings = new ArrayList<>();
         long before = 0;
@@ -215,10 +218,20 @@ public final class LineArt {
             codecs.merge(encoded.codec(), 1, Integer::sum);
             jbig2 |= encoded.codec() == Codec.JBIG2;
         }
+        long[] inline = new long[4];
+        for (ImageWalk.Content content : walk.contents()) {
+            try {
+                InlineImages.convert(content, options, codecs, inline, warnings);
+            } catch (IOException | RuntimeException e) {
+                warnings.add("Page " + content.page() + ": a content stream could not be read for inline images ("
+                        + e.getMessage() + ")");
+            }
+        }
         if (jbig2 && document.getVersion() < 1.4f) {
             document.setVersion(1.4f);
         }
-        return new Result(found.size(), converted, before, after, codecs, warnings);
+        return new Result(found.size() + (int) inline[0], converted + (int) inline[1], before + inline[2],
+                after + inline[3], codecs, warnings);
     }
 
     private static Codecs.Encoded convert(PDDocument document, ImageWalk.Found f, Options options, List<String> warnings)
@@ -237,50 +250,74 @@ public final class LineArt {
                     + " image is larger than " + options.maxPixels() + " pixels and was left as it was");
             return null;
         }
-        if (stream.getDictionaryObject(COSName.SMASK) instanceof COSStream soft
-                && soft.getDictionaryObject(COSName.MATTE) != null) {
-            warnings.add("Page " + f.page() + ": an image with a pre-blended soft mask was left as it was");
-            return null;
-        }
         PDColorSpace colourSpace = image.getColorSpace();
         boolean alreadyBilevel = image.getBitsPerComponent() == 1 && colourSpace.getNumberOfComponents() == 1
                 && options.method() != Method.EDGES;
-        BufferedImage source = image.getOpaqueImage(null, 1);
-        Bitmap bitmap = Binarizer.binarize(source, options);
-        source = null;
-        Codecs.Encoded encoded = Codecs.encode(bitmap, options.codec());
-        if (alreadyBilevel && encoded.data().length >= stream.getLength()) {
-            return null;
+        COSStream soft = stream.getDictionaryObject(COSName.SMASK) instanceof COSStream s ? s : null;
+        boolean matte = soft != null && soft.getDictionaryObject(COSName.MATTE) != null;
+        long bandPixels = bandPixels();
+        Source source = Source.of(image, f.resources(), matte);
+        long bitmapBytes = pixels / 8;
+        Admission.Ticket ticket = Admission.jvm().enter(bitmapBytes * 4 + Math.min(pixels, bandPixels) * 28);
+        try {
+            Bitmap bitmap = Binarizer.binarize(source, options, bandPixels);
+            Codecs.Encoded encoded = Codecs.encode(bitmap, options.codec());
+            if (alreadyBilevel && encoded.data().length >= stream.getLength()) {
+                return null;
+            }
+            COSStream keyMask = soft == null && stream.getDictionaryObject(COSName.MASK) instanceof COSArray
+                    ? keyMask(document, source, Source.bandRows(source.width, source.height, bandPixels),
+                            options.codec()) : null;
+            rewrite(stream, encoded, colour(encoded, bitmap, colourSpace, options.inkColour()),
+                    encoded.inkSample() == 1 && !options.inkColour() ? inverted() : null);
+            if (keyMask != null) {
+                stream.setItem(COSName.MASK, keyMask);
+            }
+            if (matte) {
+                stream.setItem(COSName.SMASK, withoutMatte(document, soft));
+            }
+            return encoded;
+        } finally {
+            ticket.close();
         }
-        COSStream keyMask = stream.getDictionaryObject(COSName.MASK) instanceof COSArray
-                ? keyMask(document, image, options.codec()) : null;
-        rewrite(stream, encoded, colour(encoded, bitmap, colourSpace, options.inkColour()),
-                encoded.inkSample() == 1 && !options.inkColour() ? inverted() : null);
-        if (keyMask != null) {
-            stream.setItem(COSName.MASK, keyMask);
-        }
-        return encoded;
     }
 
-    private static COSStream keyMask(PDDocument document, PDImageXObject image, Codec codec) throws IOException {
-        BufferedImage keyed = image.getImage();
-        Raster alpha = keyed.getAlphaRaster();
-        int w = image.getWidth();
-        int h = image.getHeight();
+    private static long bandPixels() {
+        return Math.clamp(Admission.jvm().budget() / 2 / 28, 1L << 20, 1L << 24);
+    }
+
+    private static COSStream withoutMatte(PDDocument document, COSStream soft) throws IOException {
+        COSStream copy = document.getDocument().createCOSStream();
+        for (COSName key : soft.keySet()) {
+            if (!COSName.MATTE.equals(key) && !COSName.LENGTH.equals(key)) {
+                copy.setItem(key, soft.getItem(key));
+            }
+        }
+        try (InputStream in = soft.createRawInputStream(); OutputStream os = copy.createRawOutputStream()) {
+            in.transferTo(os);
+        }
+        return copy;
+    }
+
+    private static COSStream keyMask(PDDocument document, Source source, int rows, Codec codec) throws IOException {
+        int w = source.width;
+        int h = source.height;
         Bitmap masked = Bitmap.blank(w, h);
-        if (alpha != null) {
-            byte[] bits = masked.packed();
-            int stride = masked.stride();
-            int[] row = new int[w];
-            for (int y = 0; y < h; y++) {
+        int[] row = new int[w];
+        source.bands(rows, true, (y0, keyed) -> {
+            Raster alpha = keyed.getAlphaRaster();
+            if (alpha == null) {
+                return;
+            }
+            for (int y = 0; y < keyed.getHeight(); y++) {
                 alpha.getSamples(0, y, w, 1, 0, row);
                 for (int x = 0; x < w; x++) {
                     if (row[x] == 0) {
-                        bits[y * stride + (x >>> 3)] |= (byte) (0x80 >>> (x & 7));
+                        masked.set(x, y0 + y);
                     }
                 }
             }
-        }
+        });
         Codecs.Encoded encoded = Codecs.encode(masked, codec);
         COSStream mask = document.getDocument().createCOSStream();
         mask.setItem(COSName.TYPE, COSName.XOBJECT);
@@ -293,7 +330,7 @@ public final class LineArt {
         return mask;
     }
 
-    private static COSBase colour(Codecs.Encoded encoded, Bitmap bitmap, PDColorSpace source, boolean keepInk) {
+    static COSBase colour(Codecs.Encoded encoded, Bitmap bitmap, PDColorSpace source, boolean keepInk) {
         if (!keepInk) {
             return COSName.DEVICEGRAY;
         }
@@ -328,7 +365,7 @@ public final class LineArt {
         return indexed;
     }
 
-    private static COSArray inverted() {
+    static COSArray inverted() {
         COSArray decode = new COSArray();
         decode.add(COSInteger.ONE);
         decode.add(COSInteger.ZERO);

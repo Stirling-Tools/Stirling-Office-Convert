@@ -4,24 +4,74 @@ import java.awt.color.ColorSpace;
 import java.awt.image.BufferedImage;
 import java.awt.image.DataBuffer;
 import java.awt.image.Raster;
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.util.Arrays;
 
 final class Binarizer {
 
     private static final double QUANTUM = 65535.0;
 
+    interface Rows {
+        void process(float[] buffer, int first, int from, int to);
+    }
+
     private Binarizer() {}
 
     static Bitmap binarize(BufferedImage image, LineArt.Options options) {
-        int w = image.getWidth();
-        int h = image.getHeight();
-        float[] grey = grey(image);
-        Bitmap bitmap = switch (options.method()) {
-            case EDGES -> edges(grey, w, h, options.edgeLevel(), options.threshold());
-            case FIXED -> fixed(grey, w, h, options.threshold());
-            case OTSU -> otsu(grey, w, h);
-            case SAUVOLA -> sauvola(grey, w, h, window(options.window(), w, h), options.k());
-        };
-        return options.inkColour() ? bitmap.withInk(meanInk(image, bitmap)) : bitmap;
+        try {
+            return binarize(Source.of(image), options, Long.MAX_VALUE);
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+    }
+
+    static Bitmap binarize(Source source, LineArt.Options options, long bandPixels) throws IOException {
+        int w = source.width;
+        int h = source.height;
+        int rows = Source.bandRows(w, h, bandPixels);
+        Bitmap out = Bitmap.blank(w, h);
+        switch (options.method()) {
+            case FIXED -> {
+                double level = options.threshold() / 100 * QUANTUM;
+                scan(source, rows, 0, (buffer, first, from, to) -> {
+                    for (int y = from; y < to; y++) {
+                        int base = (y - first) * w;
+                        for (int x = 0; x < w; x++) {
+                            if (buffer[base + x] <= level) {
+                                out.set(x, y);
+                            }
+                        }
+                    }
+                });
+            }
+            case OTSU -> {
+                long[] histogram = new long[256];
+                scan(source, rows, 0, (buffer, first, from, to) -> {
+                    for (int i = (from - first) * w; i < (to - first) * w; i++) {
+                        histogram[eight(buffer[i])]++;
+                    }
+                });
+                int level = otsuLevel(histogram);
+                scan(source, rows, 0, (buffer, first, from, to) -> {
+                    for (int y = from; y < to; y++) {
+                        int base = (y - first) * w;
+                        for (int x = 0; x < w; x++) {
+                            if (eight(buffer[base + x]) <= level) {
+                                out.set(x, y);
+                            }
+                        }
+                    }
+                });
+            }
+            case SAUVOLA -> {
+                int window = window(options.window(), w, h);
+                scan(source, rows, window / 2,
+                        (buffer, first, from, to) -> sauvola(buffer, first, w, h, from, to, window, options.k(), out));
+            }
+            case EDGES -> edges(source, rows, options.edgeLevel(), options.threshold(), out);
+        }
+        return options.inkColour() ? out.withInk(meanInk(source, rows, out)) : out;
     }
 
     static int window(int requested, int w, int h) {
@@ -29,6 +79,50 @@ final class Binarizer {
             return requested | 1;
         }
         return Math.clamp(Math.min(w, h) / 48, 15, 127) | 1;
+    }
+
+    static void scan(Source source, int rows, int radius, Rows sink) throws IOException {
+        int w = source.width;
+        int h = source.height;
+        int[] state = new int[3];
+        float[][] holder = {new float[0]};
+        source.bands(rows, false, (y, image) -> {
+            float[] grey = grey(image);
+            int n = image.getHeight();
+            int first = state[0];
+            int count = state[1];
+            float[] buffer = holder[0];
+            if (count == 0) {
+                buffer = grey;
+                first = y;
+            } else {
+                if (buffer.length < (count + n) * w) {
+                    buffer = Arrays.copyOf(buffer, Math.multiplyExact(count + n, w));
+                }
+                System.arraycopy(grey, 0, buffer, count * w, n * w);
+            }
+            count += n;
+            int available = first + count;
+            int done = state[2];
+            int to = available >= h ? h : available - radius;
+            if (to > done) {
+                sink.process(buffer, first, done, to);
+                done = to;
+            }
+            int keep = Math.max(first, done - radius);
+            if (keep > first) {
+                int drop = keep - first;
+                float[] kept = new float[Math.max((count - drop) * w, 0) + n * w];
+                System.arraycopy(buffer, drop * w, kept, 0, (count - drop) * w);
+                buffer = kept;
+                count -= drop;
+                first = keep;
+            }
+            holder[0] = buffer;
+            state[0] = first;
+            state[1] = count;
+            state[2] = done;
+        });
     }
 
     static float[] grey(BufferedImage image) {
@@ -60,13 +154,23 @@ final class Binarizer {
         return grey;
     }
 
-    static Bitmap edges(float[] grey, int w, int h, int edgeLevel, double threshold) {
-        float[] v = negatedEdges(grey, w, h, edgeLevel);
-        int n = v.length;
+    private static void edges(Source source, int rows, int level, double threshold, Bitmap out) throws IOException {
+        int w = source.width;
+        int h = source.height;
         double[] histogram = new double[65536];
-        for (float f : v) {
-            histogram[bin(f)]++;
-        }
+        float[] line = new float[w];
+        double[][] ring = new double[2 * level + 1][];
+        int[] ringRow = new int[2 * level + 1];
+        Arrays.fill(ringRow, -1);
+        scan(source, rows, level, (buffer, first, from, to) -> {
+            for (int y = from; y < to; y++) {
+                negatedEdges(buffer, first, w, h, y, level, ring, ringRow, line);
+                for (float f : line) {
+                    histogram[bin(f)]++;
+                }
+            }
+        });
+        double n = (double) w * h;
         double blackPoint = 0.02 * n;
         double whitePoint = 0.99 * n;
         int black = 0;
@@ -85,27 +189,29 @@ final class Binarizer {
                 break;
             }
         }
-        double level = threshold / 100 * QUANTUM;
-        Bitmap out = Bitmap.blank(w, h);
-        byte[] bits = out.packed();
-        int stride = out.stride();
+        double cut = threshold / 100 * QUANTUM;
         double gamma = white == black ? 0 : 1.0 / (white - black);
-        for (int y = 0; y < h; y++) {
-            for (int x = 0; x < w; x++) {
-                float f = v[y * w + x];
-                double s;
-                if (black == white) {
-                    s = f;
-                } else {
-                    int j = bin(f);
-                    s = j < black ? 0 : j > white ? QUANTUM : (float) Math.clamp(QUANTUM * gamma * (j - black), 0, QUANTUM);
-                }
-                if (s < level) {
-                    bits[y * stride + (x >>> 3)] |= (byte) (0x80 >>> (x & 7));
+        int b = black;
+        int wh = white;
+        Arrays.fill(ringRow, -1);
+        scan(source, rows, level, (buffer, first, from, to) -> {
+            for (int y = from; y < to; y++) {
+                negatedEdges(buffer, first, w, h, y, level, ring, ringRow, line);
+                for (int x = 0; x < w; x++) {
+                    float f = line[x];
+                    double s;
+                    if (b == wh) {
+                        s = f;
+                    } else {
+                        int j = bin(f);
+                        s = j < b ? 0 : j > wh ? QUANTUM : (float) Math.clamp(QUANTUM * gamma * (j - b), 0, QUANTUM);
+                    }
+                    if (s < cut) {
+                        out.set(x, y);
+                    }
                 }
             }
-        }
-        return out;
+        });
     }
 
     private static int bin(float f) {
@@ -118,69 +224,46 @@ final class Binarizer {
         return (int) (f + 0.5);
     }
 
-    private static float[] negatedEdges(float[] grey, int w, int h, int level) {
-        int r = level;
-        double area = (2 * r + 1) * (2 * r + 1);
-        float[] out = new float[grey.length];
-        double[][] across = new double[h][];
-        for (int y = 0; y < h; y++) {
-            for (int dy = -r; dy <= r; dy++) {
-                int yy = Math.clamp(y + dy, 0, h - 1);
-                if (across[yy] == null) {
-                    across[yy] = across(grey, w, yy, r);
-                }
-            }
-            for (int x = 0; x < w; x++) {
-                double total = 0;
-                for (int dy = -r; dy <= r; dy++) {
-                    total += across[Math.clamp(y + dy, 0, h - 1)][x];
-                }
-                float edge = (float) (area * grey[y * w + x] - total);
-                out[y * w + x] = (float) (QUANTUM - edge);
-            }
-            if (y - r >= 0 && y - r < h - 1) {
-                across[y - r] = null;
+    private static void negatedEdges(float[] buffer, int first, int w, int h, int y, int r, double[][] ring,
+            int[] ringRow, float[] line) {
+        int k = 2 * r + 1;
+        double area = k * k;
+        for (int dy = -r; dy <= r; dy++) {
+            int yy = Math.clamp(y + dy, 0, h - 1);
+            int slot = yy % k;
+            if (ringRow[slot] != yy) {
+                ring[slot] = across(buffer, (yy - first) * w, w, r, ring[slot]);
+                ringRow[slot] = yy;
             }
         }
-        return out;
+        int row = (y - first) * w;
+        for (int x = 0; x < w; x++) {
+            double total = 0;
+            for (int dy = -r; dy <= r; dy++) {
+                total += ring[Math.clamp(y + dy, 0, h - 1) % k][x];
+            }
+            float edge = (float) (area * buffer[row + x] - total);
+            line[x] = (float) (QUANTUM - edge);
+        }
     }
 
-    private static double[] across(float[] grey, int w, int y, int r) {
-        double[] sums = new double[w];
-        int row = y * w;
+    private static double[] across(float[] buffer, int row, int w, int r, double[] reuse) {
+        double[] sums = reuse != null && reuse.length == w ? reuse : new double[w];
         for (int x = 0; x < w; x++) {
             double s = 0;
             for (int dx = -r; dx <= r; dx++) {
-                s += grey[row + Math.clamp(x + dx, 0, w - 1)];
+                s += buffer[row + Math.clamp(x + dx, 0, w - 1)];
             }
             sums[x] = s;
         }
         return sums;
     }
 
-    static Bitmap fixed(float[] grey, int w, int h, double threshold) {
-        double level = threshold / 100 * QUANTUM;
-        Bitmap out = Bitmap.blank(w, h);
-        byte[] bits = out.packed();
-        int stride = out.stride();
-        for (int y = 0; y < h; y++) {
-            for (int x = 0; x < w; x++) {
-                if (grey[y * w + x] <= level) {
-                    bits[y * stride + (x >>> 3)] |= (byte) (0x80 >>> (x & 7));
-                }
-            }
-        }
-        return out;
-    }
-
-    static int otsuLevel(float[] grey) {
-        long[] histogram = new long[256];
-        for (float f : grey) {
-            histogram[eight(f)]++;
-        }
-        long total = grey.length;
+    static int otsuLevel(long[] histogram) {
+        long total = 0;
         double sumAll = 0;
         for (int i = 0; i < 256; i++) {
+            total += histogram[i];
             sumAll += (double) i * histogram[i];
         }
         double sumBelow = 0;
@@ -205,41 +288,23 @@ final class Binarizer {
         return level;
     }
 
-    static Bitmap otsu(float[] grey, int w, int h) {
-        int level = otsuLevel(grey);
-        Bitmap out = Bitmap.blank(w, h);
-        byte[] bits = out.packed();
-        int stride = out.stride();
-        for (int y = 0; y < h; y++) {
-            for (int x = 0; x < w; x++) {
-                if (eight(grey[y * w + x]) <= level) {
-                    bits[y * stride + (x >>> 3)] |= (byte) (0x80 >>> (x & 7));
-                }
-            }
-        }
-        return out;
-    }
-
-    static Bitmap sauvola(float[] grey, int w, int h, int window, double k) {
+    private static void sauvola(float[] buffer, int first, int w, int h, int from, int to, int window, double k, Bitmap out) {
         int r = window / 2;
-        byte[] eight = new byte[grey.length];
-        for (int i = 0; i < grey.length; i++) {
-            eight[i] = (byte) eight(grey[i]);
-        }
         long[] columnSum = new long[w];
         long[] columnSquares = new long[w];
-        Bitmap out = Bitmap.blank(w, h);
-        byte[] bits = out.packed();
-        int stride = out.stride();
-        for (int y = 0; y < Math.min(r, h); y++) {
-            addRow(eight, w, y, columnSum, columnSquares, 1);
+        int top = Math.max(0, from - r);
+        int bottom = Math.min(h - 1, from + r);
+        for (int y = top; y <= bottom; y++) {
+            addRow(buffer, (y - first) * w, w, columnSum, columnSquares, 1);
         }
-        for (int y = 0; y < h; y++) {
-            if (y + r < h) {
-                addRow(eight, w, y + r, columnSum, columnSquares, 1);
-            }
-            if (y - r - 1 >= 0) {
-                addRow(eight, w, y - r - 1, columnSum, columnSquares, -1);
+        for (int y = from; y < to; y++) {
+            if (y > from) {
+                if (y + r < h) {
+                    addRow(buffer, (y + r - first) * w, w, columnSum, columnSquares, 1);
+                }
+                if (y - r - 1 >= 0) {
+                    addRow(buffer, (y - r - 1 - first) * w, w, columnSum, columnSquares, -1);
+                }
             }
             int rows = Math.min(h - 1, y + r) - Math.max(0, y - r) + 1;
             long sum = 0;
@@ -248,6 +313,7 @@ final class Binarizer {
                 sum += columnSum[x];
                 squares += columnSquares[x];
             }
+            int base = (y - first) * w;
             for (int x = 0; x < w; x++) {
                 if (x + r < w) {
                     sum += columnSum[x + r];
@@ -261,18 +327,16 @@ final class Binarizer {
                 double mean = (double) sum / count;
                 double deviation = Math.sqrt(Math.max(0, (double) squares / count - mean * mean));
                 double level = mean * (1 + k * (deviation / 128 - 1));
-                if ((eight[y * w + x] & 0xFF) <= level) {
-                    bits[y * stride + (x >>> 3)] |= (byte) (0x80 >>> (x & 7));
+                if (eight(buffer[base + x]) <= level) {
+                    out.set(x, y);
                 }
             }
         }
-        return out;
     }
 
-    private static void addRow(byte[] eight, int w, int y, long[] sum, long[] squares, int sign) {
-        int row = y * w;
+    private static void addRow(float[] buffer, int row, int w, long[] sum, long[] squares, int sign) {
         for (int x = 0; x < w; x++) {
-            int v = eight[row + x] & 0xFF;
+            int v = eight(buffer[row + x]);
             sum[x] += sign * v;
             squares[x] += sign * v * v;
         }
@@ -282,31 +346,33 @@ final class Binarizer {
         return Math.clamp(Math.round(f / 257.0), 0, 255);
     }
 
-    private static int meanInk(BufferedImage image, Bitmap bitmap) {
-        if (image.getRaster().getNumBands() == 1) {
-            return 0;
-        }
+    private static int meanInk(Source source, int rows, Bitmap bitmap) throws IOException {
         int w = bitmap.width();
         int[] row = new int[w];
-        long r = 0;
-        long g = 0;
-        long b = 0;
-        long n = 0;
-        for (int y = 0; y < bitmap.height(); y++) {
-            image.getRGB(0, y, w, 1, row, 0, w);
-            for (int x = 0; x < w; x++) {
-                if (bitmap.ink(x, y)) {
-                    int p = row[x];
-                    r += (p >>> 16) & 0xFF;
-                    g += (p >>> 8) & 0xFF;
-                    b += p & 0xFF;
-                    n++;
+        long[] sums = new long[4];
+        boolean[] grey = {false};
+        source.bands(rows, false, (y0, image) -> {
+            if (image.getRaster().getNumBands() == 1) {
+                grey[0] = true;
+                return;
+            }
+            for (int y = 0; y < image.getHeight(); y++) {
+                image.getRGB(0, y, w, 1, row, 0, w);
+                for (int x = 0; x < w; x++) {
+                    if (bitmap.ink(x, y0 + y)) {
+                        int p = row[x];
+                        sums[0] += (p >>> 16) & 0xFF;
+                        sums[1] += (p >>> 8) & 0xFF;
+                        sums[2] += p & 0xFF;
+                        sums[3]++;
+                    }
                 }
             }
-        }
-        if (n == 0) {
+        });
+        if (grey[0] || sums[3] == 0) {
             return 0;
         }
-        return (int) (r / n) << 16 | (int) (g / n) << 8 | (int) (b / n);
+        long n = sums[3];
+        return (int) (sums[0] / n) << 16 | (int) (sums[1] / n) << 8 | (int) (sums[2] / n);
     }
 }

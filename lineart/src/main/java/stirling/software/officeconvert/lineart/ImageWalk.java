@@ -1,7 +1,9 @@
 package stirling.software.officeconvert.lineart;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Deque;
 import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -21,9 +23,17 @@ final class ImageWalk {
 
     record Found(COSStream stream, PDResources resources, int page) {}
 
+    record Content(COSStream stream, PDResources resources, int page) {}
+
+    record Walk(List<Found> images, List<Content> contents) {}
+
+    private record Pending(COSDictionary dictionary, PDResources resources, int page) {}
+
     private final Map<COSStream, Found> images = new LinkedHashMap<>();
+    private final Map<COSStream, Content> contents = new LinkedHashMap<>();
     private final Set<COSBase> visited = Collections.newSetFromMap(new IdentityHashMap<>());
     private final Set<COSBase> masks = Collections.newSetFromMap(new IdentityHashMap<>());
+    private final Deque<Pending> pending = new ArrayDeque<>();
     private final PDDocument document;
 
     private ImageWalk(PDDocument document) {
@@ -31,15 +41,30 @@ final class ImageWalk {
     }
 
     static List<Found> images(PDDocument document) {
+        return walk(document).images();
+    }
+
+    static Walk walk(PDDocument document) {
         ImageWalk walk = new ImageWalk(document);
         int number = 0;
         for (PDPage page : document.getPages()) {
             number++;
             PDResources resources = page.getResources();
-            if (resources != null) {
-                walk.resources(resources.getCOSObject(), resources, number);
+            COSBase body = page.getCOSObject().getDictionaryObject(COSName.CONTENTS);
+            if (body instanceof COSStream stream) {
+                walk.content(stream, resources, number);
+            } else if (body instanceof COSArray array) {
+                for (COSBase part : array) {
+                    if (part.getCOSObject() instanceof COSStream stream) {
+                        walk.content(stream, resources, number);
+                    }
+                }
             }
-            walk.annotations(page, number);
+            if (resources != null) {
+                walk.pending.push(new Pending(resources.getCOSObject(), resources, number));
+            }
+            walk.annotations(page, resources, number);
+            walk.drain();
         }
         List<Found> found = new ArrayList<>();
         for (Found f : walk.images.values()) {
@@ -47,10 +72,17 @@ final class ImageWalk {
                 found.add(f);
             }
         }
-        return found;
+        return new Walk(found, new ArrayList<>(walk.contents.values()));
     }
 
-    private void annotations(PDPage page, int number) {
+    private void drain() {
+        while (!pending.isEmpty()) {
+            Pending p = pending.pop();
+            resources(p.dictionary(), p.resources(), p.page());
+        }
+    }
+
+    private void annotations(PDPage page, PDResources pageResources, int number) {
         COSArray annotations = page.getCOSObject().getCOSArray(COSName.ANNOTS);
         if (annotations == null) {
             return;
@@ -63,11 +95,11 @@ final class ImageWalk {
             for (COSName state : new COSName[] {COSName.N, COSName.R, COSName.D}) {
                 COSBase appearance = appearances.getDictionaryObject(state);
                 if (appearance instanceof COSStream form) {
-                    form(form, number);
+                    form(form, pageResources, number);
                 } else if (appearance instanceof COSDictionary states) {
                     for (COSName name : states.keySet()) {
                         if (states.getDictionaryObject(name) instanceof COSStream form) {
-                            form(form, number);
+                            form(form, pageResources, number);
                         }
                     }
                 }
@@ -88,23 +120,58 @@ final class ImageWalk {
                 if (COSName.IMAGE.equals(subtype)) {
                     image(stream, resources, page);
                 } else if (COSName.FORM.equals(subtype)) {
-                    form(stream, page);
+                    form(stream, resources, page);
                 }
             }
         }
         if (dictionary.getDictionaryObject(COSName.PATTERN) instanceof COSDictionary patterns) {
             for (COSName name : patterns.keySet()) {
                 if (patterns.getDictionaryObject(name) instanceof COSStream pattern && pattern.getInt(COSName.PATTERN_TYPE) == 1) {
-                    form(pattern, page);
+                    form(pattern, resources, page);
+                }
+            }
+        }
+        if (dictionary.getDictionaryObject(COSName.FONT) instanceof COSDictionary fonts) {
+            for (COSName name : fonts.keySet()) {
+                if (fonts.getDictionaryObject(name) instanceof COSDictionary font) {
+                    type3(font, resources, page);
                 }
             }
         }
     }
 
-    private void form(COSStream form, int page) {
-        if (visited.add(form) && form.getDictionaryObject(COSName.RESOURCES) instanceof COSDictionary own) {
-            resources(own, new PDResources(own, document.getResourceCache()), page);
+    private void type3(COSDictionary font, PDResources inherited, int page) {
+        if (!COSName.TYPE3.equals(font.getCOSName(COSName.SUBTYPE)) || !visited.add(font)) {
+            return;
         }
+        PDResources resources = inherited;
+        if (font.getDictionaryObject(COSName.RESOURCES) instanceof COSDictionary own) {
+            resources = new PDResources(own, document.getResourceCache());
+            pending.push(new Pending(own, resources, page));
+        }
+        if (font.getDictionaryObject(COSName.CHAR_PROCS) instanceof COSDictionary procs) {
+            for (COSName glyph : procs.keySet()) {
+                if (procs.getDictionaryObject(glyph) instanceof COSStream proc) {
+                    content(proc, resources, page);
+                }
+            }
+        }
+    }
+
+    private void form(COSStream form, PDResources inherited, int page) {
+        if (!visited.add(form)) {
+            return;
+        }
+        PDResources resources = inherited;
+        if (form.getDictionaryObject(COSName.RESOURCES) instanceof COSDictionary own) {
+            resources = new PDResources(own, document.getResourceCache());
+            pending.push(new Pending(own, resources, page));
+        }
+        content(form, resources, page);
+    }
+
+    private void content(COSStream stream, PDResources resources, int page) {
+        contents.putIfAbsent(stream, new Content(stream, resources, page));
     }
 
     private void image(COSStream stream, PDResources resources, int page) {

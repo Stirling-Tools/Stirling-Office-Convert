@@ -68,6 +68,10 @@ public final class Bitmap {
         return bits.clone();
     }
 
+    void set(int x, int y) {
+        bits[y * stride + (x >>> 3)] |= (byte) (0x80 >>> (x & 7));
+    }
+
     byte[] packed() {
         return bits;
     }

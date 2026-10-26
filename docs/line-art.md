@@ -85,20 +85,35 @@ opaque image. Grey is `0.212656 R + 0.715158 G + 0.072186 B` in every method.
 
 ### What goes back into the PDF
 
-- The image stream is rewritten in place, so every reference to it (pages, nested forms, tiling patterns,
-  annotation appearances) draws the new picture, at the same place and size.
+- The image stream is rewritten in place, so every reference to it (pages, forms nested to any depth, tiling
+  patterns, annotation appearances, Type 3 glyphs) draws the new picture, at the same place and size.
+- Inline images (`BI` ... `EI`) in page, form, pattern, appearance and Type 3 glyph content are rewritten in place
+  with `CCITTFaxDecode` or `FlateDecode` (inline images cannot use `JBIG2Decode`); every other byte of the content
+  stream is kept.
 - `/SMask`, `/Interpolate`, `/Intent`, `/OC`, `/Metadata` and `/StructParent` stay. A colour-key `/Mask` becomes a
-  1-bit stencil `/Mask` of the same pixels, so keyed-out areas stay transparent.
-- Images used as another image's mask, `/ImageMask` stencils, external (`/F`) streams, images with a pre-blended
-  (`/Matte`) soft mask and images over `maxPixels` (50 million) are left alone. Inline images are not touched.
+  1-bit stencil `/Mask` of the same pixels, so keyed-out areas stay transparent. A soft mask with `/Matte` (colour
+  pre-blended with the matte) is undone before thresholding, and the image gets its own copy of the soft mask
+  without `/Matte`; the original stays for any other image sharing it.
+- Images used as another image's mask, `/ImageMask` stencils (XObject or inline), external (`/F`) streams and images
+  over `maxPixels` (one billion) are left alone.
 - An image that is already 1-bit is only replaced when the new stream is smaller, except with `EDGES`, which redraws it.
 - `inkColour(true)` keeps the ink's colour: a 2-entry `/Indexed` palette of the mean ink colour and white, the
   separation itself for a spot-colour image, and plain black when the ink is grey.
 - The codec is chosen per image. `SMALLEST` tries all three and keeps the shortest:
-  - `JBIG2`: generic region, arithmetic coded with typical prediction (`JBIG2Decode`, PDF 1.4; the document version
-    is raised to 1.4 when needed). Usually the smallest.
+  - `JBIG2`: lossless, arithmetic coded (`JBIG2Decode`, PDF 1.4; the document version is raised to 1.4 when needed).
+    Each picture is coded twice and the shorter kept: as one generic region with typical prediction, and as a
+    symbol dictionary of every connected shape that occurs at least twice (exact copies only), a text region placing
+    them, and a generic region for the rest. Usually the smallest; the symbol form wins on clean text.
   - `CCITT_G4`: what Stirling-PDF writes today.
   - `FLATE`: packed rows, with the PNG Up predictor when that is shorter. Wins on halftones and tiny pictures.
+
+### Memory
+
+Pictures larger than the band budget (half the memory admission budget at 28 bytes a pixel, between 1 and 16
+million pixels) are decoded in bands of rows: Flate, LZW, run-length and ASCII streams are inflated once, as a
+stream, and each band is decoded by PDFBox on its own; JPEG and JPEG 2000 are decoded by region. Thresholding only
+ever holds a band plus the rows its window needs, and the output is a 1-bit bitmap, so a 20000 x 20000 picture
+converts in a 1.2 GB heap. Each picture takes a ticket from the JVM's memory admission for its estimate first.
 
 ## Benchmark against ImageMagick
 
