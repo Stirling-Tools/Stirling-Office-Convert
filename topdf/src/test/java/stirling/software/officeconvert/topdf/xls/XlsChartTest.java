@@ -248,6 +248,138 @@ class XlsChartTest {
         assertTrue(chart.indexOf("993366") < chart.indexOf("9999FF"), chart);
     }
 
+    private static int index(List<RecordBase> records, int sid) {
+        int at = 0;
+        while (!(records.get(at) instanceof UnknownRecord u && u.getSid() == sid)) {
+            at++;
+        }
+        return at;
+    }
+
+    private static String colours(Path pdf) throws IOException {
+        java.util.Map<Integer, Integer> c = new java.util.HashMap<>();
+        try (PDDocument doc = Loader.loadPDF(pdf.toFile())) {
+            BufferedImage img = new PDFRenderer(doc).renderImage(0, 2f);
+            for (int y = 0; y < img.getHeight(); y++) {
+                for (int x = 0; x < img.getWidth(); x++) {
+                    c.merge(img.getRGB(x, y) & 0xFFFFFF, 1, Integer::sum);
+                }
+            }
+        }
+        StringBuilder b = new StringBuilder();
+        c.entrySet().stream().sorted((a, z) -> z.getValue() - a.getValue()).limit(8)
+                .forEach(e -> b.append(Integer.toHexString(e.getKey())).append('=').append(e.getValue()).append(' '));
+        return b.toString();
+    }
+
+    private static boolean hasColour(Path pdf, int rgb) throws IOException {
+        try (PDDocument doc = Loader.loadPDF(pdf.toFile())) {
+            BufferedImage img = new PDFRenderer(doc).renderImage(0, 2f);
+            for (int y = 0; y < img.getHeight(); y++) {
+                for (int x = 0; x < img.getWidth(); x++) {
+                    if ((img.getRGB(x, y) & 0xFFFFFF) == rgb) {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+    }
+
+    @Test
+    void threeDimensionalColumnsAndPiesHaveDepth() throws Exception {
+        List<RecordBase> bars = ChartFixtures.chart(null, BAR, new byte[6], new String[] {"A"},
+                new String[] {"x", "y"}, new double[][] {{3, 5}});
+        bars.add(index(bars, BAR) + 1, new UnknownRecord(0x103A, new byte[14]));
+        byte[] data = XlsTest.xls(wb -> ChartFixtures.chartSheet(wb, "Chart1", bars));
+        assertTrue(chartXml(data).contains("<c:bar3DChart>"), chartXml(data));
+        Path in = Fixtures.write(dir, "bar3d.xls", data);
+        Path pdf = dir.resolve("bar3d.pdf");
+        OfficeToPdf.convert(in, pdf, OfficeToPdf.Options.defaults());
+        assertTrue(hasColour(pdf, 0x6B6BB3), "the side of a column is a darker shade");
+        List<RecordBase> pie = ChartFixtures.chart(null, 0x1019, new byte[6], new String[] {"A"},
+                new String[] {"x", "y"}, new double[][] {{3, 5}});
+        pie.add(index(pie, 0x1019) + 1, new UnknownRecord(0x103A, new byte[14]));
+        byte[] pieData = XlsTest.xls(wb -> ChartFixtures.chartSheet(wb, "Chart1", pie));
+        assertTrue(chartXml(pieData).contains("<c:pie3DChart>"), chartXml(pieData));
+        Path pieIn = Fixtures.write(dir, "pie3d.xls", pieData);
+        Path piePdf = dir.resolve("pie3d.pdf");
+        OfficeToPdf.convert(pieIn, piePdf, OfficeToPdf.Options.defaults());
+        assertTrue(hasColour(piePdf, 0x7373BF) && hasColour(piePdf, 0x73264D), "the rims of the slices are shaded"
+                + " from the palette colours " + colours(piePdf));
+    }
+
+    @Test
+    void aDataTablePrintsTheValuesUnderThePlotAndThePlotKeepsItsPlace() throws Exception {
+        List<RecordBase> records = ChartFixtures.chart(null, BAR, new byte[6], new String[] {"Sales"},
+                new String[] {"North", "South"}, new double[][] {{1234, 5678}});
+        int parent = index(records, 0x1041);
+        byte[] axes = new byte[18];
+        axes[2] = (byte) 200;
+        axes[6] = (byte) 100;
+        axes[10] = (byte) 0xD8;
+        axes[11] = 0x0E;
+        axes[14] = (byte) 0xB8;
+        axes[15] = 0x0B;
+        records.set(parent, new UnknownRecord(0x1041, axes));
+        records.add(parent, new UnknownRecord(0x1063, new byte[] {0x0F, 0}));
+        byte[] data = XlsTest.xls(wb -> ChartFixtures.chartSheet(wb, "Chart1", records));
+        String chart = chartXml(data);
+        assertTrue(chart.contains("<c:dTable><c:showHorzBorder val=\"1\"/>"), chart);
+        assertTrue(chart.contains("<c:x val=\"0.05\"/><c:y val=\"0.025\"/><c:w val=\"0.95\"/><c:h val=\"0.75\"/>"),
+                chart);
+        Path in = Fixtures.write(dir, "table.xls", data);
+        Path pdf = dir.resolve("table.pdf");
+        XlsTest.Converted out = XlsTest.read(OfficeToPdf.convert(in, pdf, OfficeToPdf.Options.defaults()), pdf);
+        assertTrue(out.all().contains("1234") && out.all().contains("5678") && out.all().contains("Sales"), out.all());
+    }
+
+    @Test
+    void highLowLinesAndUpDownBarsAreDrawn() throws Exception {
+        List<RecordBase> records = ChartFixtures.chart(null, LINE, new byte[2], new String[] {"Open", "High", "Close"},
+                new String[] {"a", "b"}, new double[][] {{1, 5}, {8, 9}, {4, 2}});
+        int type = 0;
+        while (!(records.get(type) instanceof UnknownRecord u && u.getSid() == LINE)) {
+            type++;
+        }
+        byte[] red = new byte[12];
+        red[0] = (byte) 0xFF;
+        red[6] = 2;
+        byte[] green = new byte[16];
+        green[1] = (byte) 0xFF;
+        green[8] = 1;
+        byte[] blue = new byte[16];
+        blue[2] = (byte) 0xFF;
+        blue[8] = 1;
+        records.addAll(type + 1, List.of(new UnknownRecord(0x101C, new byte[] {1, 0}), new UnknownRecord(0x1007, red),
+                new UnknownRecord(0x103D, new byte[] {(byte) 150, 0}), new BeginRecord(),
+                new UnknownRecord(0x1007, new byte[12]), new UnknownRecord(0x100A, green), new EndRecord(),
+                new UnknownRecord(0x103D, new byte[] {(byte) 150, 0}), new BeginRecord(),
+                new UnknownRecord(0x1007, new byte[12]), new UnknownRecord(0x100A, blue), new EndRecord()));
+        byte[] data = XlsTest.xls(wb -> ChartFixtures.chartSheet(wb, "Chart1", records));
+        String chart = chartXml(data);
+        assertTrue(chart.contains("<c:hiLowLines><c:spPr><a:ln w=\"28575\"><a:solidFill><a:srgbClr val=\"FF0000\"/>")
+                && chart.contains("<c:upDownBars>"), chart);
+        Path in = Fixtures.write(dir, "stock.xls", data);
+        Path pdf = dir.resolve("stock.pdf");
+        OfficeToPdf.convert(in, pdf, OfficeToPdf.Options.defaults());
+        try (PDDocument doc = Loader.loadPDF(pdf.toFile())) {
+            BufferedImage img = new PDFRenderer(doc).renderImage(0, 1f);
+            boolean up = false;
+            boolean down = false;
+            boolean line = false;
+            for (int y = 0; y < img.getHeight(); y++) {
+                for (int x = 0; x < img.getWidth(); x++) {
+                    int rgb = img.getRGB(x, y) & 0xFFFFFF;
+                    up |= rgb == 0x00FF00;
+                    down |= rgb == 0x0000FF;
+                    line |= rgb == 0xFF0000;
+                }
+            }
+            assertTrue(up && down && line, "up " + up + " down " + down + " high-low " + line);
+        }
+    }
+
     @Test
     void errorBarAndTrendlineSeriesAreNotDrawnAsSeries() throws Exception {
         List<RecordBase> records = ChartFixtures.chart(null, LINE, new byte[2], new String[] {"Score", "Error"},

@@ -38,7 +38,8 @@ final class ChartRecords {
             ATTACHED_LABEL = 0x100C, DEFAULT_TEXT = 0x1024, TEXT = 0x1025, FONTX = 0x1026, OBJECT_LINK = 0x1027,
             FRAME = 0x1032, BEGIN = 0x1033, END = 0x1034, PLOT_AREA = 0x1035, RADAR = 0x103E, RADAR_AREA = 0x1040,
             AXIS_PARENT = 0x1041, SERIES_GROUP = 0x1045, IFMT = 0x104E, SERFMT = 0x105D, BOP_POP = 0x1061,
-            SERIES_INDEX = 0x1065, SERIES_PARENT = 0x104A, SERIES_TREND = 0x104B, SERIES_ERROR = 0x105B;
+            SERIES_INDEX = 0x1065, SERIES_PARENT = 0x104A, SERIES_TREND = 0x104B, SERIES_ERROR = 0x105B,
+            CHART_3D = 0x103A, CHART_LINE = 0x101C, DROP_BAR = 0x103D, DATA_TABLE = 0x1063;
 
     interface Lookup {
         BiffChart.Text font(int index, String text);
@@ -67,6 +68,16 @@ final class ChartRecords {
     private final AxisBuilder[][] axes = new AxisBuilder[2][2];
 
     private int last;
+
+    private int previous;
+
+    private int dataTable = -1;
+
+    private double[] plot;
+
+    private int chartLine = -1;
+
+    private int dropBars;
 
     private int axisGroup;
 
@@ -132,6 +143,7 @@ final class ChartRecords {
             }
             return;
         }
+        previous = last;
         last = sid;
         byte[] d = data(r, sid);
         int top = stack.isEmpty() ? 0 : stack.peek();
@@ -188,12 +200,40 @@ final class ChartRecords {
                     current().smooth = (u16(d, 0) & 1) != 0;
                 }
             }
-            case AXIS_PARENT -> axisGroup = Math.min(1, u16(d, 0));
+            case AXIS_PARENT -> {
+                axisGroup = Math.min(1, u16(d, 0));
+                if (axisGroup == 0 && plot == null && d.length >= 18) {
+                    double x = u32(d, 2) / 4000.0;
+                    double y = u32(d, 6) / 4000.0;
+                    double w = u32(d, 10) / 4000.0;
+                    double h = u32(d, 14) / 4000.0;
+                    if (x >= 0 && y >= 0 && w > 0.1 && h > 0.1 && x + w <= 1.01 && y + h <= 1.01) {
+                        plot = new double[] {x, y, w, h};
+                    }
+                }
+            }
+            case DATA_TABLE -> dataTable = u16(d, 0);
             case CHART_FORMAT -> {
+                dropBars = 0;
+                chartLine = -1;
                 GroupBuilder g = new GroupBuilder(axisGroup, d.length >= 18 && (u16(d, 16) & 1) != 0);
                 groups.put(d.length >= 20 ? u16(d, 18) : groups.size(), g);
             }
             case BAR, LINE, PIE, AREA, SCATTER, RADAR, RADAR_AREA, BOP_POP -> kind(sid, d);
+            case CHART_LINE -> chartLine = u16(d, 0);
+            case DROP_BAR -> {
+                GroupBuilder g = lastGroup();
+                if (g != null && dropBars < 2) {
+                    g.stock().bars = true;
+                    g.stock().gap = u16(d, 0);
+                }
+                dropBars++;
+            }
+            case CHART_3D -> {
+                if (!groups.isEmpty()) {
+                    new ArrayList<>(groups.values()).get(groups.size() - 1).threeD = true;
+                }
+            }
             case AXIS -> {
                 axisType = u16(d, 0);
                 axisLine = -1;
@@ -365,17 +405,22 @@ final class ChartRecords {
         }
         Integer rgb = u16(d, 4) == 5 ? null : rgb(d, 0);
         boolean auto = (u16(d, 8) & 1) != 0;
+        if (previous == CHART_LINE && chartLine == 1 && lastGroup() != null) {
+            lastGroup().stock().hiLow = true;
+            lastGroup().stock().hiLowColor = rgb;
+            lastGroup().stock().hiLowWidth = weight(d);
+            return;
+        }
+        if (top == DROP_BAR && lastGroup() != null && dropBars == 1) {
+            lastGroup().stock().edge = rgb;
+            return;
+        }
         if (inSeriesFormat() && top == DATA_FORMAT && dataPoint == -1) {
             SeriesBuilder s = current();
             s.line = rgb;
             s.lineSet = true;
             s.lineAuto = auto && rgb != null;
-            s.lineWidth = switch ((short) u16(d, 6)) {
-                case -1 -> 0.5f;
-                case 1 -> 1.5f;
-                case 2 -> 2.25f;
-                default -> 0.75f;
-            };
+            s.lineWidth = weight(d);
             s.iss = dataSeries;
         } else if (axisType >= 0 && top == AXIS && axisLine == 1 && axis() != null) {
             axis().gridlines = rgb != null;
@@ -389,12 +434,29 @@ final class ChartRecords {
         }
     }
 
+    private static float weight(byte[] d) {
+        return switch ((short) u16(d, 6)) {
+            case -1 -> 0.5f;
+            case 1 -> 1.5f;
+            case 2 -> 2.25f;
+            default -> 0.75f;
+        };
+    }
+
     private void areaFormat(byte[] d, int top) {
         if (d.length < 12) {
             return;
         }
         Integer rgb = u16(d, 8) == 0 ? null : rgb(d, 0);
         boolean auto = (u16(d, 10) & 1) != 0;
+        if (top == DROP_BAR && lastGroup() != null) {
+            if (dropBars == 1) {
+                lastGroup().stock().up = auto ? Integer.valueOf(0xFFFFFF) : rgb;
+            } else {
+                lastGroup().stock().down = auto ? Integer.valueOf(0) : rgb;
+            }
+            return;
+        }
         if (inSeriesFormat() && top == DATA_FORMAT) {
             SeriesBuilder s = current();
             if (dataPoint == -1) {
@@ -438,6 +500,10 @@ final class ChartRecords {
             case 9 -> "plus";
             default -> "none";
         };
+    }
+
+    private GroupBuilder lastGroup() {
+        return groups.isEmpty() ? null : new ArrayList<>(groups.values()).get(groups.size() - 1);
     }
 
     private void kind(int sid, byte[] d) {
@@ -616,6 +682,12 @@ final class ChartRecords {
             GroupBuilder g = groups.get(s.group);
             boolean lines = g != null && (g.kind == BiffChart.Kind.LINE || g.kind == BiffChart.Kind.SCATTER
                     || g.kind == BiffChart.Kind.RADAR);
+            if (g != null && (g.kind == BiffChart.Kind.PIE || g.vary) && !s.values.isEmpty()) {
+                int n = Math.min(MAX_POINTS, s.values.lastKey() + 1);
+                for (int p = 0; p < n; p++) {
+                    s.points.putIfAbsent(p, autoFills.get(p % autoFills.size()));
+                }
+            }
             bySeries.computeIfAbsent(s.group, k -> new ArrayList<>()).add(s.build(i, lines, autoFills, autoLines));
         }
         List<BiffChart.Group> out = new ArrayList<>();
@@ -626,7 +698,7 @@ final class ChartRecords {
                 continue;
             }
             out.add(new BiffChart.Group(g.kind, g.axisGroup, g.horizontal, g.stacked, g.percent, g.overlap, g.gap,
-                    g.firstSlice, g.donut, g.vary, list));
+                    g.firstSlice, g.donut, g.vary, list, g.threeD, g.stock == null ? null : g.stock.build()));
         }
         if (out.isEmpty()) {
             return null;
@@ -639,7 +711,7 @@ final class ChartRecords {
         }
         float size = base == null ? 10 : base.size();
         return new BiffChart(title, out, legend(), values, cats, plotFill, areaFill, areaLine, size,
-                base == null ? null : base.text());
+                base == null ? null : base.text(), dataTable, plot);
     }
 
     private static BiffChart.ErrorBar errorBar(SeriesBuilder s) {
@@ -780,9 +852,42 @@ final class ChartRecords {
 
         int donut;
 
+        boolean threeD;
+
+        StockBuilder stock;
+
+        StockBuilder stock() {
+            if (stock == null) {
+                stock = new StockBuilder();
+            }
+            return stock;
+        }
+
         GroupBuilder(int axisGroup, boolean vary) {
             this.axisGroup = axisGroup;
             this.vary = vary;
+        }
+    }
+
+    private static final class StockBuilder {
+        boolean hiLow;
+
+        Integer hiLowColor;
+
+        float hiLowWidth = 0.75f;
+
+        boolean bars;
+
+        Integer up = 0xFFFFFF;
+
+        Integer down = 0;
+
+        Integer edge = 0;
+
+        int gap = 150;
+
+        BiffChart.Stock build() {
+            return new BiffChart.Stock(hiLow, hiLowColor, hiLowWidth, bars, up, down, edge, gap);
         }
     }
 

@@ -18,7 +18,16 @@ final class ChartXml {
         if (chart.title() != null) {
             b.append("<c:title>").append(rich(chart.title())).append("<c:overlay val=\"0\"/></c:title>");
         }
-        b.append("<c:autoTitleDeleted val=\"1\"/><c:plotArea><c:layout/>");
+        b.append("<c:autoTitleDeleted val=\"1\"/><c:plotArea>");
+        double[] plot = chart.plot();
+        if (plot == null) {
+            b.append("<c:layout/>");
+        } else {
+            b.append("<c:layout><c:manualLayout><c:layoutTarget val=\"outer\"/><c:xMode val=\"edge\"/>")
+                    .append("<c:yMode val=\"edge\"/><c:x val=\"").append(clamp(plot[0])).append("\"/><c:y val=\"")
+                    .append(clamp(plot[1])).append("\"/><c:w val=\"").append(clamp(plot[2])).append("\"/><c:h val=\"")
+                    .append(clamp(plot[3])).append("\"/></c:manualLayout></c:layout>");
+        }
         boolean[] used = new boolean[2];
         boolean scatter = false;
         for (BiffChart.Group g : chart.groups()) {
@@ -36,6 +45,12 @@ final class ChartXml {
         }
         boolean polar = chart.groups().stream()
                 .anyMatch(g -> g.kind() == BiffChart.Kind.RADAR || g.kind() == BiffChart.Kind.FILLED_RADAR);
+        int table = chart.dataTable();
+        if (table >= 0) {
+            b.append("<c:dTable><c:showHorzBorder val=\"").append(table & 1).append("\"/><c:showVertBorder val=\"")
+                    .append(table >> 1 & 1).append("\"/><c:showOutline val=\"").append(table >> 2 & 1)
+                    .append("\"/><c:showKeys val=\"").append(table >> 3 & 1).append("\"/></c:dTable>");
+        }
         b.append("<c:spPr>").append(fill(polar ? null : chart.plotFill())).append("</c:spPr></c:plotArea>");
         if (chart.legend() != null) {
             legend(b, chart.legend());
@@ -64,10 +79,10 @@ final class ChartXml {
     private static void group(StringBuilder b, BiffChart.Group g) {
         String grouping = g.percent() ? "percentStacked" : g.stacked() ? "stacked" : null;
         String tag = switch (g.kind()) {
-            case BAR -> "barChart";
+            case BAR -> g.threeD() && !g.horizontal() ? "bar3DChart" : "barChart";
             case LINE -> "lineChart";
             case AREA -> "areaChart";
-            case PIE -> g.donut() > 0 ? "doughnutChart" : "pieChart";
+            case PIE -> g.donut() > 0 ? "doughnutChart" : g.threeD() ? "pie3DChart" : "pieChart";
             case SCATTER -> "scatterChart";
             case RADAR, FILLED_RADAR -> "radarChart";
         };
@@ -97,7 +112,12 @@ final class ChartXml {
             case BAR -> b.append("<c:gapWidth val=\"").append(Math.max(0, Math.min(500, g.gap())))
                     .append("\"/><c:overlap val=\"").append(Math.max(-100, Math.min(100, -g.overlap())))
                     .append("\"/>");
-            case LINE -> b.append("<c:marker val=\"1\"/>");
+            case LINE -> {
+                if (g.stock() != null) {
+                    stock(b, g.stock());
+                }
+                b.append("<c:marker val=\"1\"/>");
+            }
             case PIE -> {
                 b.append("<c:firstSliceAng val=\"").append(Math.floorMod(g.firstSlice(), 360)).append("\"/>");
                 if (g.donut() > 0) {
@@ -160,6 +180,18 @@ final class ChartXml {
             b.append("<c:smooth val=\"").append(s.smooth() ? 1 : 0).append("\"/>");
         }
         b.append("</c:ser>");
+    }
+
+    private static void stock(StringBuilder b, BiffChart.Stock s) {
+        if (s.hiLow()) {
+            b.append("<c:hiLowLines><c:spPr>").append(line(s.hiLowColor(), s.hiLowWidth())).append("</c:spPr></c:hiLowLines>");
+        }
+        if (s.bars()) {
+            b.append("<c:upDownBars><c:gapWidth val=\"").append(Math.max(0, Math.min(500, s.gap())))
+                    .append("\"/><c:upBars><c:spPr>").append(fill(s.up())).append(line(s.edge(), 0.75f))
+                    .append("</c:spPr></c:upBars><c:downBars><c:spPr>").append(fill(s.down()))
+                    .append(line(s.edge(), 0.75f)).append("</c:spPr></c:downBars></c:upDownBars>");
+        }
     }
 
     private static void trend(StringBuilder b, BiffChart.Trend t) {
