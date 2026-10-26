@@ -205,6 +205,13 @@ class WebAssetsTest {
     }
 
     @Test
+    void nonAsciiPathsArePercentEncodedAndBadHostsAreRefused() throws IOException {
+        WebAssets.fetch(base() + "/caf\u00e9 menu.html".replace(" ", "%20"), LOCAL);
+        assertEquals(List.of("/caf\u00e9 menu.html"), hits);
+        assertThrows(IOException.class, () -> WebAssets.fetch("http://a..b/", LOCAL));
+    }
+
+    @Test
     void aDeclaredCharsetBecomesUtf8WithAByteOrderMark() throws IOException {
         byte[] page = WebAssets.fetch(base() + "/latin1.html", LOCAL).page();
         assertEquals(0xEF, page[0] & 0xFF);

@@ -48,16 +48,33 @@ class NetworkSafetyTest {
         Map<String, byte[]> classes = ClassScan.classes(main);
         assertTrue(classes.size() > 30, "only " + classes.size() + " classes found in " + main);
         List<String> problems = new ArrayList<>();
+        TreeSet<String> used = new TreeSet<>();
         for (Map.Entry<String, byte[]> e : classes.entrySet()) {
             if (!e.getKey().startsWith("stirling/software/officeconvert/topdf/")) {
                 continue;
             }
+            String owner = e.getKey().replaceFirst("\\.class$", "").replaceFirst("\\$.*", "");
+            List<String> ok = TOPDF_ALLOWED.getOrDefault(owner, List.of());
             for (String v : ClassScan.ownCodeViolations(ClassScan.read(e.getValue()))) {
-                problems.add(e.getKey() + " " + v);
+                if (ok.contains(v)) {
+                    used.add(owner + " " + v);
+                } else {
+                    problems.add(e.getKey() + " " + v);
+                }
             }
         }
         assertEquals(List.of(), problems);
+        List<String> stale = new ArrayList<>();
+        TOPDF_ALLOWED.forEach((owner, vs) -> vs.stream().filter(v -> !used.contains(owner + " " + v))
+                .forEach(v -> stale.add(owner + " " + v)));
+        assertEquals(List.of(), stale, "allowed references no class makes any more");
     }
+
+    private static final Map<String, List<String>> TOPDF_ALLOWED = Map.of(
+            "stirling/software/officeconvert/topdf/WebAssets", List.of("uses java/net/InetAddress", "uses javax/net/",
+                    "uses java/net/IDN", "uses java/net/Socket", "uses java/net/InetSocketAddress",
+                    "uses java/net/SocketAddress", "uses java/net/SocketTimeoutException", "uses java/net/Inet4Address",
+                    "uses java/net/Inet6Address"));
 
     private static final String OC = "stirling/software/officeconvert/";
 

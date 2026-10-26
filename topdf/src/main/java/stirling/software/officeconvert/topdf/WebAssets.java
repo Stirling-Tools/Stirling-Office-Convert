@@ -225,7 +225,11 @@ public final class WebAssets implements HtmlAssets {
         if (host.startsWith("[") && host.endsWith("]")) {
             host = host.substring(1, host.length() - 1);
         }
-        host = IDN.toASCII(host, IDN.ALLOW_UNASSIGNED).toLowerCase(Locale.ROOT);
+        try {
+            host = IDN.toASCII(host, IDN.ALLOW_UNASSIGNED).toLowerCase(Locale.ROOT);
+        } catch (IllegalArgumentException e) {
+            throw new IOException("Not a valid host name: " + host, e);
+        }
         boolean secure = u.getScheme().equalsIgnoreCase("https");
         int port = u.getPort() < 0 ? secure ? 443 : 80 : u.getPort();
         InetAddress[] addresses = resolver.resolve(host);
@@ -266,7 +270,13 @@ public final class WebAssets implements HtmlAssets {
         }
     }
 
-    private String request(URI u, String host, int port, boolean secure) throws IOException {
+    private String request(URI given, String host, int port, boolean secure) throws IOException {
+        URI u;
+        try {
+            u = new URI(given.toASCIIString());
+        } catch (URISyntaxException e) {
+            throw new IOException("Not a valid URL: " + e.getMessage(), e);
+        }
         String path = u.getRawPath() == null || u.getRawPath().isEmpty() ? "/" : u.getRawPath();
         if (u.getRawQuery() != null) {
             path += "?" + u.getRawQuery();
