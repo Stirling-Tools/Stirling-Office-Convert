@@ -550,7 +550,10 @@ queries are answered for print at the page's text width, `!important`, custom pr
 (short items share a line); absolute positions and visually hidden text (screen-reader-only, off-page, closed
 `<details>`) are left out. Nothing is fetched and no script runs: linked style sheets, `@import`,
 `url()` and pictures on the web or on disk are left out with a warning, and only pictures inside the file are drawn
-(PNG, JPEG, GIF, BMP, WebP and SVG; AVIF is not). Web fonts (`@font-face`) are drawn from `data:` URIs, and from
+(PNG, JPEG, GIF, BMP, WebP and SVG; AVIF is not). The generic families `serif`, `sans-serif` and `monospace` (and unstyled text, which is `serif`) take the
+first installed family in fontconfig's own order (Noto Serif, DejaVu Serif, Times New Roman, ... and the
+same for sans and mono), so a server prints them with the faces WeasyPrint would pick there; with none of those
+installed they fall back to Times New Roman, Arial and Courier New or their look-alikes. Web fonts (`@font-face`) are drawn from `data:` URIs, and from
 linked files only through the same opt-ins as pictures: TrueType, and WOFF 1 holding TrueType; WOFF 2 and
 PostScript-outline (CFF) fonts fall back to an installed font with a warning. A face is used under its CSS family
 name, weight and style. `::before` and `::after` content is drawn: strings, `attr()`, quotes, `leader()` (a dotted, solid or

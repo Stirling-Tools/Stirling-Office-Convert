@@ -1,5 +1,6 @@
 package stirling.software.officeconvert.topdf.html;
 
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.function.Predicate;
@@ -12,7 +13,7 @@ final class Look {
 
     static final float ROOT_SIZE = 12f;
 
-    String font = "Times New Roman";
+    String font = generic("serif");
     float size = ROOT_SIZE;
     boolean bold;
     boolean italic;
@@ -276,11 +277,39 @@ final class Look {
         return null;
     }
 
+    private static final ThreadLocal<Map<String, String>> GENERICS = ThreadLocal.withInitial(Map::of);
+
+    static final Map<String, List<String>> FONTCONFIG_ORDER = Map.of(
+            "serif", List.of("Noto Serif", "DejaVu Serif", "Times New Roman", "Thorndale AMT", "Luxi Serif",
+                    "Nimbus Roman No9 L", "Nimbus Roman", "Times"),
+            "sans-serif", List.of("Noto Sans", "DejaVu Sans", "Verdana", "Arial", "Albany AMT", "Luxi Sans",
+                    "Nimbus Sans L", "Nimbus Sans", "Helvetica", "Lucida Sans Unicode", "Tahoma"),
+            "monospace", List.of("Noto Sans Mono", "DejaVu Sans Mono", "Inconsolata", "Andale Mono", "Courier New",
+                    "Cumberland AMT", "Luxi Mono", "Nimbus Mono L", "Nimbus Mono", "Nimbus Mono PS", "Courier"));
+
+    static void generics(Map<String, String> installed) {
+        GENERICS.set(installed);
+    }
+
+    static void clearGenerics() {
+        GENERICS.remove();
+    }
+
     private static String generic(String f) {
-        return switch (f) {
-            case "serif", "ui-serif" -> "Times New Roman";
-            case "sans-serif", "system-ui", "ui-sans-serif", "ui-rounded", "blinkmacsystemfont" -> "Arial";
-            case "monospace", "ui-monospace" -> "Courier New";
+        String key = switch (f) {
+            case "serif", "ui-serif" -> "serif";
+            case "sans-serif", "system-ui", "ui-sans-serif", "ui-rounded", "blinkmacsystemfont" -> "sans-serif";
+            case "monospace", "ui-monospace" -> "monospace";
+            default -> f;
+        };
+        String installed = GENERICS.get().get(key);
+        if (installed != null) {
+            return installed;
+        }
+        return switch (key) {
+            case "serif" -> "Times New Roman";
+            case "sans-serif" -> "Arial";
+            case "monospace" -> "Courier New";
             case "cursive" -> "Comic Sans MS";
             case "fantasy" -> "Impact";
             default -> null;

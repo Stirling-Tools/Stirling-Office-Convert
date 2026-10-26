@@ -6,12 +6,14 @@ import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.WeakHashMap;
 import java.util.function.Predicate;
 
 import org.jsoup.Jsoup;
@@ -105,13 +107,33 @@ public final class HtmlDocument {
             if (fonts != null) {
                 Map<String, Boolean> known = new HashMap<>();
                 Look.drawable(f -> known.computeIfAbsent(f, k -> installed(fonts, k)));
+                Look.generics(generics(fonts));
             }
             return convert(source, sink, Math.max(LEAST_FIT, Math.min(1f, zoom)), (Linked) readOnce(assets),
                     targetPages);
         } finally {
             Css.clearRootSize();
             Look.clearDrawable();
+            Look.clearGenerics();
         }
+    }
+
+    private static final Map<FontLibrary, Map<String, String>> GENERIC_CACHE = Collections.synchronizedMap(
+            new WeakHashMap<>());
+
+    private static Map<String, String> generics(FontLibrary fonts) {
+        return GENERIC_CACHE.computeIfAbsent(fonts, f -> {
+            Map<String, String> out = new HashMap<>();
+            Look.FONTCONFIG_ORDER.forEach((generic, order) -> {
+                for (String family : order) {
+                    if (f.exact(family, false, false) != null) {
+                        out.put(generic, family);
+                        return;
+                    }
+                }
+            });
+            return Map.copyOf(out);
+        });
     }
 
     // Installed, or a well-known family with a look-alike installed (Arial drawn with Liberation Sans)
