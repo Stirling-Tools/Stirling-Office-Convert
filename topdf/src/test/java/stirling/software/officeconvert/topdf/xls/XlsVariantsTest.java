@@ -275,4 +275,58 @@ class XlsVariantsTest {
         assertTrue(System.nanoTime() - start < Duration.ofMinutes(2).toNanos());
         assertFalse(out.pages().isEmpty());
     }
+
+    private static byte[] workbookStream(byte[] xls) throws IOException {
+        try (org.apache.poi.poifs.filesystem.POIFSFileSystem fs = new org.apache.poi.poifs.filesystem.POIFSFileSystem(
+                new ByteArrayInputStream(xls))) {
+            return fs.createDocumentInputStream("Workbook").readAllBytes();
+        }
+    }
+
+    private static byte[] withStream(byte[] stream) throws IOException {
+        ByteArrayOutputStream file = new ByteArrayOutputStream();
+        try (org.apache.poi.poifs.filesystem.POIFSFileSystem fs = new org.apache.poi.poifs.filesystem.POIFSFileSystem()) {
+            fs.createDocument(new ByteArrayInputStream(stream), "Workbook");
+            fs.writeFilesystem(file);
+        }
+        return file.toByteArray();
+    }
+
+    @Test
+    void aBrokenDrawingObjectIsDroppedAndTheCellsStillPrint() throws Exception {
+        byte[] stream = workbookStream(xls(wb -> {
+            HSSFSheet s = wb.createSheet("Broken");
+            s.createRow(0).createCell(0).setCellValue("Cells survive");
+            s.createDrawingPatriarch().createSimpleShape(new org.apache.poi.hssf.usermodel.HSSFClientAnchor(0, 0, 0,
+                    0, (short) 1, 1, (short) 3, 4)).setShapeType(1);
+        }));
+        int at = 0;
+        boolean broke = false;
+        while (at + 4 <= stream.length) {
+            int sid = stream[at] & 0xFF | (stream[at + 1] & 0xFF) << 8;
+            int len = stream[at + 2] & 0xFF | (stream[at + 3] & 0xFF) << 8;
+            if (sid == 0x5D) {
+                stream[at + 6] = 0;
+                broke = true;
+            }
+            at += 4 + len;
+        }
+        assertTrue(broke);
+        XlsTest.Converted out = convert("broken.xls", withStream(stream));
+        assertTrue(out.all().contains("Cells survive"), out.all());
+        assertTrue(String.join(" ", out.result().warnings()).contains("damaged"), out.result().warnings().toString());
+    }
+
+    @Test
+    void aWorkbookCutShortKeepsWhatWasWritten() throws Exception {
+        byte[] stream = workbookStream(xls(wb -> {
+            HSSFSheet s = wb.createSheet("Cut");
+            for (int i = 0; i < 50; i++) {
+                s.createRow(i).createCell(0).setCellValue("Line " + i);
+            }
+        }));
+        byte[] cut = java.util.Arrays.copyOf(stream, stream.length - 300);
+        XlsTest.Converted out = convert("cut.xls", withStream(cut));
+        assertTrue(out.all().contains("Line 1"), out.all());
+    }
 }

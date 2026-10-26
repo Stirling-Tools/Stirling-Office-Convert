@@ -68,28 +68,56 @@ public final class XlsPackage {
     }
 
     static Outcome write(DirectoryNode root, OutputStream out) throws IOException {
-        HSSFWorkbook wb;
+        HSSFWorkbook wb = null;
         POIFSFileSystem repaired = null;
+        boolean salvaged = false;
         try {
             wb = open(root);
         } catch (IOException e) {
-            byte[] fixed = e.getCause() instanceof RuntimeException ? Repair.workbook(root) : null;
-            if (fixed == null) {
-                throw e;
+            byte[] stream = e.getCause() instanceof RuntimeException ? Repair.stream(root) : null;
+            for (int level = 0; stream != null && wb == null && level < 2; level++) {
+                byte[] fixed = Repair.records(stream, level == 1);
+                if (fixed == null) {
+                    continue;
+                }
+                POIFSFileSystem fs = new POIFSFileSystem();
+                fs.createDocument(new ByteArrayInputStream(fixed), "Workbook");
+                try {
+                    wb = open(fs.getRoot());
+                    repaired = fs;
+                    salvaged = level == 1;
+                } catch (IOException again) {
+                    fs.close();
+                }
             }
-            repaired = new POIFSFileSystem();
-            repaired.createDocument(new ByteArrayInputStream(fixed), "Workbook");
-            try {
-                wb = open(repaired.getRoot());
-            } catch (IOException again) {
-                repaired.close();
+            if (wb == null) {
                 throw e;
             }
         }
         try (HSSFWorkbook book = wb; POIFSFileSystem fs = repaired) {
-            return new XlsPackage.Writer(book, fs == null ? root : fs.getRoot(), root, new Parts(out)).write();
+            Outcome done = new XlsPackage.Writer(book, fs == null ? root : fs.getRoot(), root, new Parts(out)).write();
+            if (!salvaged) {
+                return done;
+            }
+            List<String> warnings = new ArrayList<>(done.warnings());
+            warnings.add(DAMAGED);
+            return new Outcome(warnings, true);
         }
     }
+
+    static Outcome writeStream(byte[] stream, OutputStream out) throws IOException {
+        try (POIFSFileSystem fs = new POIFSFileSystem()) {
+            fs.createDocument(new ByteArrayInputStream(stream), "Workbook");
+            Outcome done = write(fs.getRoot(), out);
+            List<String> warnings = new ArrayList<>(done.warnings());
+            if (!warnings.contains(DAMAGED)) {
+                warnings.add(DAMAGED);
+            }
+            return new Outcome(warnings, true);
+        }
+    }
+
+    static final String DAMAGED = "The workbook is damaged; what could be recovered was converted";
 
     private static HSSFWorkbook open(DirectoryNode root) throws IOException {
         try {

@@ -1,10 +1,12 @@
 package stirling.software.officeconvert.topdf.xls;
 
 import java.io.ByteArrayInputStream;
+import java.io.FilterOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.file.Path;
+import java.util.Locale;
 
 import org.apache.poi.poifs.filesystem.DirectoryNode;
 import org.apache.poi.poifs.filesystem.POIFSFileSystem;
@@ -34,9 +36,38 @@ public final class XlsFile {
     }
 
     public static XlsPackage.Outcome rewrite(Path source, String password, OutputStream out) throws IOException {
+        Counted counted = new Counted(out);
         try (POIFSFileSystem fs = LegacyOffice.open(source);
                 POIFSFileSystem plain = decrypt(fs.getRoot(), password)) {
-            return XlsPackage.write(plain == null ? fs.getRoot() : plain.getRoot(), out);
+            return XlsPackage.write(plain == null ? fs.getRoot() : plain.getRoot(), counted);
+        } catch (IOException | RuntimeException e) {
+            boolean locked = e.getMessage() != null && e.getMessage().toLowerCase(Locale.ROOT)
+                    .contains("password");
+            byte[] stream = locked || counted.written > 0 ? null : Repair.salvage(source);
+            if (stream == null) {
+                throw e;
+            }
+            return XlsPackage.writeStream(stream, counted);
+        }
+    }
+
+    private static final class Counted extends FilterOutputStream {
+        long written;
+
+        Counted(OutputStream out) {
+            super(out);
+        }
+
+        @Override
+        public void write(int b) throws IOException {
+            written++;
+            out.write(b);
+        }
+
+        @Override
+        public void write(byte[] b, int off, int len) throws IOException {
+            written += len;
+            out.write(b, off, len);
         }
     }
 
