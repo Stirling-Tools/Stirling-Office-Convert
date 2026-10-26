@@ -21,6 +21,7 @@ final class Steps {
     private static final double SHARPNESS = 0.5;
     private static final int SLIVER = 4;
     private static final double MAX_FILL = 0.95;
+    private static final double PART_BALANCE = 0.25;
 
     private record Line(double nx, double ny, double at, double score) {}
 
@@ -47,6 +48,11 @@ final class Steps {
                     || Math.min(r.width(), r.height()) < MIN_REACH) {
                 return null;
             }
+        }
+        double shortA = Math.min(a.width(), a.height());
+        double shortB = Math.min(b.width(), b.height());
+        if (Math.min(shortA, shortB) < PART_BALANCE * Math.max(shortA, shortB)) {
+            return null;
         }
         double seam = Math.toDegrees(Math.atan2(line.nx(), -line.ny()));
         double la = along(a, seam);

@@ -7,7 +7,7 @@ final class Bed {
 
     private static final int ROUNDS = 3;
     private static final int DESPECKLE = 2;
-    private static final int CELL_STEP = 2;
+    private static final int CELL_STEP = 1;
     private static final float SHADE_MIN_BED = 100;
     private static final float SHADE_MAX = 0.98f;
     private static final float SHADE_SPREAD = 0.06f;
