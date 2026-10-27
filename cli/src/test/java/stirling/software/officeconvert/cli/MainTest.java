@@ -60,16 +60,19 @@ class MainTest {
 
     @Test
     void legacyCyrillicTextConvertsWithoutXmlProbeDiagnostics() throws Exception {
-        String text = "  \nСъешь ещё этих мягких французских булок, да выпей чаю. Москва Санкт-Петербург.\n".repeat(10);
         for (String encoding : new String[] {"windows-1251", "KOI8-R"}) {
-            Path source = Files.write(dir.resolve(encoding + ".txt"),
-                    text.getBytes(java.nio.charset.Charset.forName(encoding)));
-            Path pdf = dir.resolve(encoding + ".pdf");
-            Result r = run(source.toString(), "-o", pdf.toString(), "-q");
-            assertEquals(0, r.code(), r.err());
-            assertEquals("", r.err(), encoding);
-            try (PDDocument doc = Loader.loadPDF(pdf.toFile())) {
-                assertTrue(new PDFTextStripper().getText(doc).contains("Москва Санкт-Петербург"));
+            for (String prefix : new String[] {"Съешь", "привет", "юность", "ярмарка"}) {
+                String text = ("  \n" + prefix + " ещё этих мягких французских булок, да выпей чаю."
+                        + " Москва Санкт-Петербург.\n").repeat(10);
+                Path source = Files.write(dir.resolve(encoding + "-" + prefix + ".txt"),
+                        text.getBytes(java.nio.charset.Charset.forName(encoding)));
+                Path pdf = source.resolveSibling(source.getFileName() + ".pdf");
+                Result r = run(source.toString(), "-o", pdf.toString(), "-q");
+                assertEquals(0, r.code(), r.err());
+                assertEquals("", r.err(), encoding + " " + prefix);
+                try (PDDocument doc = Loader.loadPDF(pdf.toFile())) {
+                    assertTrue(new PDFTextStripper().getText(doc).contains("Москва Санкт-Петербург"));
+                }
             }
         }
     }

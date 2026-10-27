@@ -26,7 +26,14 @@ public final class Sniff {
                 }
                 first = in.read();
             } while (first == ' ' || first == '\t' || first == '\r' || first == '\n');
-            if (first != '<' && first != 0 && first != 0xEF && first != 0xFE && first != 0xFF) {
+            boolean xml = switch (first) {
+                case '<', 0 -> true;
+                case 0xEF -> in.read() == 0xBB && in.read() == 0xBF;
+                case 0xFE -> in.read() == 0xFF;
+                case 0xFF -> in.read() == 0xFE;
+                default -> false;
+            };
+            if (!xml) {
                 return false;
             }
         } catch (IOException e) {
