@@ -263,6 +263,19 @@ class WebFontsBrokenTest {
     }
 
     @Test
+    void glyphBearingsThatCannotFitTheHorizontalMetricsAreDiscarded() throws Exception {
+        for (short bearing : new short[] {32600, Short.MIN_VALUE}) {
+            byte[] f = font();
+            ByteBuffer b = ByteBuffer.wrap(f);
+            b.putShort(table(f, "hmtx")[1] + 4 * 2 + 2, bearing);
+            byte[] out = WebFonts.toTrueType(f, WebFonts.FontKind.TRUETYPE, null);
+            ByteBuffer converted = ByteBuffer.wrap(out);
+            int loca = table(out, "loca")[1];
+            org.junit.jupiter.api.Assertions.assertEquals(converted.getInt(loca + 8), converted.getInt(loca + 12));
+        }
+    }
+
+    @Test
     void glyphCoordinatesOutsideTheSignedBoundsAreDiscarded() throws Exception {
         for (int[] coordinates : new int[][] {{32767, 300, 0, 0}, {-32768, -300, 0, 0},
                 {0, 0, 32767, 300}, {0, 0, -32768, -300}}) {

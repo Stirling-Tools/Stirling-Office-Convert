@@ -213,11 +213,11 @@ final class TrueTypeWriter {
         }
         int length = (int) (end - start);
         int at = glyfStart + (int) start;
-        if (!wellFormed(ByteBuffer.wrap(glyf, at, length).slice())) {
+        int lsb = hmtx == null ? 0 : hmtx.getLeftSideBearing(gid);
+        if (!wellFormed(ByteBuffer.wrap(glyf, at, length).slice(), advance, lsb)) {
             return new Glyph(new byte[0], advance, 0);
         }
         glyphBytes += length;
-        int lsb = hmtx == null ? 0 : hmtx.getLeftSideBearing(gid);
         if (length >= 10 && ByteBuffer.wrap(glyf).getShort(at) < 0) {
             pending.add(glyphs.size());
         }
@@ -376,6 +376,10 @@ final class TrueTypeWriter {
     }
 
     static boolean wellFormed(ByteBuffer b) {
+        return wellFormed(b, -1, 0);
+    }
+
+    private static boolean wellFormed(ByteBuffer b, int advance, int lsb) {
         int length = b.capacity();
         if (length < 10) {
             return length == 0;
@@ -427,13 +431,15 @@ final class TrueTypeWriter {
             yBytes += n * ((flag & 0x04) != 0 ? 1 : (flag & 0x20) != 0 ? 0 : 2);
             p += repeat;
         }
-        return at + xBytes + yBytes <= length && coordinatesFit(b, flagsAt, at, points, 0x02, 0x10)
-                && coordinatesFit(b, flagsAt, at + xBytes, points, 0x04, 0x20);
+        return at + xBytes + yBytes <= length && coordinatesFit(b, flagsAt, at, points, 0x02, 0x10, advance, lsb)
+                && coordinatesFit(b, flagsAt, at + xBytes, points, 0x04, 0x20, -1, 0);
     }
 
     private static boolean coordinatesFit(ByteBuffer data, int flagsAt, int at, int points, int shortFlag,
-            int positiveFlag) {
+            int positiveFlag, int advance, int lsb) {
         int coordinate = 0;
+        int min = Integer.MAX_VALUE;
+        int max = Integer.MIN_VALUE;
         for (int p = 0; p < points;) {
             int flags = data.get(flagsAt++) & 0xFF;
             int repeat = (flags & 0x08) == 0 ? 1 : 1 + (data.get(flagsAt++) & 0xFF);
@@ -450,13 +456,18 @@ final class TrueTypeWriter {
                     at += 2;
                 }
                 coordinate += delta;
+                min = Math.min(min, coordinate);
+                max = Math.max(max, coordinate);
                 if (coordinate < Short.MIN_VALUE || coordinate > Short.MAX_VALUE) {
                     return false;
                 }
             }
             p += repeat;
         }
-        return true;
+        int extent = lsb + (points == 0 ? 0 : max - min);
+        int right = advance - extent;
+        return advance < 0 || extent >= Short.MIN_VALUE && extent <= Short.MAX_VALUE
+                && right >= Short.MIN_VALUE && right <= Short.MAX_VALUE;
     }
 
     static byte[] unhinted(byte[] data) {
