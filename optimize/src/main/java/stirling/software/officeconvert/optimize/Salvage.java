@@ -70,10 +70,24 @@ final class Salvage {
         int next = offsets.lastKey() + 1;
         int pagesNumber = next++;
         int catalogNumber = catalog;
+        int catalogGeneration = generations.getOrDefault(catalog, 0);
+        int pagesGeneration = 0;
         if (catalog >= 0) {
             Matcher m = PAGES_REF.matcher(objectText(text, offsets, catalog));
             if (m.find()) {
-                pagesNumber = Integer.parseInt(m.group(1));
+                try {
+                    int number = Integer.parseInt(m.group(1));
+                    int generation = Integer.parseInt(m.group(2));
+                    if (number > 0 && number < 8_000_000 && generation >= 0 && generation < 65535
+                            && number != catalog && !pages.contains(number)) {
+                        pagesNumber = number;
+                        pagesGeneration = generation;
+                    } else {
+                        catalogNumber = -1;
+                    }
+                } catch (NumberFormatException e) {
+                    catalogNumber = -1;
+                }
             } else {
                 catalogNumber = -1;
             }
@@ -83,15 +97,16 @@ final class Salvage {
         long position = data.length + 1;
         StringBuilder kids = new StringBuilder();
         for (int p : pages) {
-            kids.append(p).append(" 0 R ");
+            kids.append(p).append(' ').append(generations.getOrDefault(p, 0)).append(" R ");
         }
-        String pagesObject = pagesNumber + " 0 obj\n<</Type/Pages/Kids[" + kids + "]/Count " + pages.size()
+        String pagesObject = pagesNumber + " " + pagesGeneration + " obj\n<</Type/Pages/Kids[" + kids + "]/Count " + pages.size()
                 + ">>\nendobj\n";
         extra.put(pagesNumber, position);
         added.append(pagesObject);
         position += pagesObject.length();
         if (catalogNumber < 0) {
             catalogNumber = next++;
+            catalogGeneration = 0;
             String catalogObject = catalogNumber + " 0 obj\n<</Type/Catalog/Pages " + pagesNumber + " 0 R>>\nendobj\n";
             extra.put(catalogNumber, position);
             added.append(catalogObject);
@@ -108,11 +123,12 @@ final class Salvage {
                 stirling.software.officeconvert.extract.PdfFiles.stopIfInterrupted();
             }
             Long o = all.get(n);
-            int gen = o == null || extra.containsKey(n) ? 0 : generations.getOrDefault(n, 0);
+            int gen = o == null ? 0 : extra.containsKey(n) ? n == pagesNumber ? pagesGeneration : 0
+                    : generations.getOrDefault(n, 0);
             table.append(o == null ? "0000000000 65535 f\r\n" : String.format("%010d %05d n\r\n", o, gen));
         }
         table.append("trailer\n<</Size ").append(size).append("/Root ").append(catalogNumber)
-                .append(" 0 R>>\nstartxref\n").append(xref).append("\n%%EOF\n");
+                .append(' ').append(catalogGeneration).append(" R>>\nstartxref\n").append(xref).append("\n%%EOF\n");
         try (OutputStream os = Files.newOutputStream(out)) {
             os.write(data);
             os.write('\n');

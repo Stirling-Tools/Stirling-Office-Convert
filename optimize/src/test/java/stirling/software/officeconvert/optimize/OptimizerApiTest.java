@@ -168,6 +168,32 @@ class OptimizerApiTest {
     }
 
     @Test
+    void salvageRetainsCatalogAndPageGenerations() throws Exception {
+        Path input = dir.resolve("generations.pdf");
+        String damaged = "%PDF-1.4\n1 5 obj <</Type/Catalog/Pages 2 4 R>> endobj\n"
+                + "3 7 obj <</Type/Page/Parent 2 4 R/MediaBox[0 0 200 200]>> endobj\n";
+        Files.writeString(input, damaged);
+        Path output = dir.resolve("generations-rebuilt.pdf");
+        assertEquals(1, Salvage.rebuild(input, output).pages());
+        try (PDDocument document = Loader.loadPDF(output.toFile())) {
+            assertEquals(1, document.getNumberOfPages());
+            assertTrue(document.getDocument().getXrefTable().containsKey(new org.apache.pdfbox.cos.COSObjectKey(3, 7)));
+        }
+    }
+
+    @Test
+    void oversizedPageTreeReferencesDoNotEscapeAsNumberErrors() throws Exception {
+        Path input = dir.resolve("huge-reference.pdf");
+        Files.writeString(input, "%PDF-1.4\n1 0 obj <</Type/Catalog/Pages 999999999999999999999999 0 R>> endobj\n"
+                + "3 0 obj <</Type/Page/MediaBox[0 0 200 200]>> endobj\n");
+        Path output = dir.resolve("bounded-reference.pdf");
+        assertEquals(1, Salvage.rebuild(input, output).pages());
+        try (PDDocument document = Loader.loadPDF(output.toFile())) {
+            assertEquals(1, document.getNumberOfPages());
+        }
+    }
+
+    @Test
     void failedSalvageLeavesNoTemporaryFiles() throws Exception {
         Path input = Files.createDirectory(dir.resolve("not-a-pdf"));
         assertThrows(IOException.class, () -> PdfOptimizer.optimize(input, dir.resolve("out.pdf")));
