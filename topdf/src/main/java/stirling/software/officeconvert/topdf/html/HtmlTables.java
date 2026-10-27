@@ -333,7 +333,7 @@ final class HtmlTables {
                     longest = Math.max(longest, Glyphs.word(word, size, s.look().bold, s.look().font));
                 }
                 least[c] = Math.max(least[c], Math.min(room / 2, longest + across));
-                least[c] = Math.max(least[c], Math.min(room, leastInside(s.element(), size * 0.5f, 1) + across));
+                least[c] = Math.max(least[c], Math.min(room, leastInside(s.element(), s.look(), 1) + across));
                 boolean nowrap = s.look().whiteSpace.equals("nowrap") || s.look().whiteSpace.equals("pre");
                 unwrapped[c] = Math.max(unwrapped[c], (nowrap ? Glyphs.estimate(text, size, s.look().font, s.look().bold) : longest) + across);
                 float[] pictures = pictures(s, room);
@@ -387,7 +387,7 @@ final class HtmlTables {
         return sum;
     }
 
-    private static float leastInside(Element cell, float em, int level) {
+    private static float leastInside(Element cell, Look look, int level) {
         if (level >= Table.MAX_NESTING) {
             return 0;
         }
@@ -396,7 +396,7 @@ final class HtmlTables {
         while (!open.isEmpty()) {
             Element e = open.pop();
             if (e.normalName().equals("table")) {
-                most = Math.max(most, leastTable(e, em, level + 1));
+                most = Math.max(most, leastTable(e, look, level + 1));
             } else {
                 e.children().reversed().forEach(open::push);
             }
@@ -405,10 +405,10 @@ final class HtmlTables {
     }
 
     static float least(Element table, Look look) {
-        return leastTable(table, look.size * 0.5f, 1);
+        return leastTable(table, look, 1);
     }
 
-    private static float leastTable(Element table, float em, int level) {
+    private static float leastTable(Element table, Look look, int level) {
         float[] columns = new float[MAX_COLUMNS];
         int used = 0;
         Elements rows = table.select(ROWS);
@@ -420,11 +420,11 @@ final class HtmlTables {
                     break;
                 }
                 if (span == 1) {
-                    int longest = 0;
+                    float longest = 0;
                     for (String word : td.text().split("\\s+")) {
-                        longest = Math.max(longest, word.length());
+                        longest = Math.max(longest, Glyphs.word(word, look.size, look.bold, look.font));
                     }
-                    columns[col] = Math.max(columns[col], Math.max(longest * em, leastInside(td, em, level)));
+                    columns[col] = Math.max(columns[col], Math.max(longest, leastInside(td, look, level)));
                 }
                 col += span;
                 used = Math.max(used, col);

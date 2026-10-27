@@ -38,7 +38,8 @@ final class Measure {
         for (int i = 0; i < text.length(); i++) {
             w += advance(text.charAt(i), s);
         }
-        return w;
+        return Math.max(w, Glyphs.measured(text, s.size(), s.font(), s.bold(), s.italic())
+                + text.codePointCount(0, text.length()) * s.spacing());
     }
 
     static float unwrapped(List<Paragraph> paragraphs) {

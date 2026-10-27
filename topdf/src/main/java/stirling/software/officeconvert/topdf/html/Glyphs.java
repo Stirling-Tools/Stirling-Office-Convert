@@ -49,11 +49,37 @@ final class Glyphs {
     }
 
     static float estimate(String text, float size, String family, boolean bold) {
-        return estimate(text, size) * Math.max(1f, factor(family, bold));
+        return Math.max(estimate(text, size) * Math.max(1f, factor(family, bold)),
+                measured(text, size, family, bold, false));
     }
 
     static float word(String word, float size, boolean bold, String family) {
-        return word(word, size, bold) * Math.max(1f, factor(family, bold));
+        float estimate = word(word, size, bold) * Math.max(1f, factor(family, bold));
+        FontLibrary fonts = FONTS.get();
+        FontFace face = fonts == null ? null : fonts.find(family, bold, false);
+        if (face == null) {
+            return estimate;
+        }
+        float widest = 0;
+        float run = 0;
+        for (int i = 0; i < word.length();) {
+            int cp = word.codePointAt(i);
+            i += Character.charCount(cp);
+            float width = face.advance(cp, size);
+            if (wide(cp)) {
+                widest = Math.max(widest, Math.max(run, width));
+                run = 0;
+            } else {
+                run += width;
+            }
+        }
+        return Math.max(estimate, Math.max(widest, run) + 1f);
+    }
+
+    static float measured(String text, float size, String family, boolean bold, boolean italic) {
+        FontLibrary fonts = FONTS.get();
+        FontFace face = fonts == null || family == null ? null : fonts.find(family, bold, italic);
+        return face == null ? 0 : face.width(text, size);
     }
 
     static float estimate(String text, float size) {

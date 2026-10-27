@@ -282,7 +282,8 @@ class PositionedTest {
 
     @Test
     void aRotatedBlockIsTurnedWhereItStandsAndKeepsItsRoom() throws IOException {
-        Pdf p = html("turn.html", "<html><body><p>Before</p>"
+        Pdf p = html("turn.html", "<html><head><style>body{font-size:12pt;line-height:14pt}p{margin:0}</style>"
+                + "</head><body><p>Before</p>"
                 + "<div style=\"width:200pt;height:40pt;transform:rotate(90deg)\">Turned</div><p>After</p></body></html>");
         Word turned = p.first("Turned");
         assertNotNull(turned, p.words().toString());
