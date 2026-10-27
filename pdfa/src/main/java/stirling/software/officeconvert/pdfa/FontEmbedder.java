@@ -44,6 +44,7 @@ public final class FontEmbedder {
     public static Result embedMissing(PDDocument document, FontSet fonts) throws IOException {
         Objects.requireNonNull(document, "document");
         Objects.requireNonNull(fonts, "fonts");
+        PdfFiles.stopIfInterrupted();
         try {
             return run(document, fonts);
         } catch (RuntimeException e) {
@@ -192,6 +193,7 @@ public final class FontEmbedder {
             WebFonts.toTrueType(font);
             return true;
         } catch (IOException e) {
+            Decoded.rethrowFatal(e);
             PdfFiles.stopIfInterrupted();
             return false;
         }

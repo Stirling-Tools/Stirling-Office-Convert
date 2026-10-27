@@ -62,12 +62,18 @@ public final class WebFonts {
 
     private static final int MAX_CODE = 0xFFFF;
 
+    static final int MAX_PROGRAM_BYTES = 64 << 20;
+
     private static final long MIN_GLYPH_BYTES = 16L << 20;
 
     private WebFonts() {}
 
     public static byte[] toTrueType(byte[] fontProgram, FontKind kind, Map<Integer, Integer> unicodeByGlyph)
             throws IOException {
+        PdfFiles.stopIfInterrupted();
+        if (fontProgram != null && fontProgram.length > MAX_PROGRAM_BYTES) {
+            throw new Decoded.TooLarge("The font program", MAX_PROGRAM_BYTES);
+        }
         try {
             if (kind == FontKind.TRUETYPE) {
                 return fromSfnt(fontProgram, null, unicodeByGlyph);
@@ -285,6 +291,7 @@ public final class WebFonts {
     }
 
     public static byte[] toTrueType(PDFont font) throws IOException {
+        PdfFiles.stopIfInterrupted();
         try {
             return fromFont(font);
         } catch (RuntimeException e) {
@@ -405,9 +412,7 @@ public final class WebFonts {
     }
 
     private static byte[] bytes(PDStream s) throws IOException {
-        try (InputStream in = s.createInputStream()) {
-            return in.readAllBytes();
-        }
+        return Decoded.bytes(s.getCOSObject(), MAX_PROGRAM_BYTES, "The font program");
     }
 
     private static Map<Integer, Integer> unicodeByGlyph(PDFont font, int count, CodeToGlyph simpleGlyph)

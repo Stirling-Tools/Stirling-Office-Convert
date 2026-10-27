@@ -787,6 +787,8 @@ map leaves out. Every glyph keeps its glyph id and its advance width. Type 1 and
 TrueType at 1000 units per em through the FontMatrix; TrueType glyphs, hinting (`fpgm`, `prep`, `cvt `) and metrics
 are kept as they are, and a missing or truncated `OS/2` is replaced. The font has `glyf`, `loca`, `hmtx`, `hhea`,
 `head`, `maxp`, `OS/2`, `post`, `name` and a fresh `cmap` with format 4 and, for code points beyond the BMP, format 12.
+Programs over 64 MB are rejected before conversion; decoded PDF font streams and intermediate filter stages use
+the same limit. Conversion checks thread interruption before parsing and while decoding and processing glyphs.
 A program that cannot be read fails with an `IOException`, and so does one whose charstrings expand past 131,072
 tokens for a glyph, 64 nested subroutine calls or 2^27 tokens for the font, or whose converted glyphs need more than
 eight times the program's size (at least 16 MB). The program's bytes decide how it is read, so a CFF program filed
@@ -809,10 +811,18 @@ tokenise. Composite glyphs that refer to themselves are emptied.
 
 `FontEmbedder.embedMissing(PDDocument)` (or with a `FontSet`) embeds every font a page shows, or its resources list,
 that has no font program. Each one becomes a TrueType subset drawn from the closest installed font, with every
-glyph's advance set to the PDF's own width, so no text moves. Embedded fonts, Type 3 fonts, the content and the
+glyph's advance set to the PDF's own width, so no text moves. Readable embedded programs, Type 3 fonts, the content and the
 structure tree are left as they are. Font dictionaries that are equal (one per page, say) share one subset, the
 subsets carry no TrueType hinting, and a font the resources list but no content shows gets an empty one. The result
-lists each substitution and each font that could not be embedded.
+lists each substitution and each font that could not be embedded. The operation is best effort and mutates the
+provided document; a reported failure does not roll back earlier substitutions. Nonempty programs that `WebFonts` can read are retained to preserve rendering, even if PDFBox still reports
+`isEmbedded() == false`; an empty or unreadable program is substituted. Existing Unicode mappings, including
+control and private-use characters, are preserved for this embedding-only operation. Save and reload the PDF
+before inspecting the resulting font objects, since PDFBox caches font instances from the original dictionaries.
+`Result.embedded()` lists substitutions made by this call; `Result.failed()` lists fonts that could not be processed
+or substituted. An empty failure list does not guarantee that every PDFBox embedding flag is true or establish
+PDF/A conformance. Interruption and font byte-limit failures abort with an `IOException`, rather than becoming
+ordinary failure entries.
 
 ## How it works
 
