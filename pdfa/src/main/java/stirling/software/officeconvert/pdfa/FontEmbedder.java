@@ -112,6 +112,7 @@ public final class FontEmbedder {
                 library = fonts.library();
             }
             try {
+                boolean declared = leader.containsKey(COSName.TO_UNICODE);
                 TreeMap<Integer, String> text = new TreeMap<>();
                 for (int code : codes) {
                     try {
@@ -125,7 +126,7 @@ public final class FontEmbedder {
                 }
                 embedded.add(FontFixer.substitute(doc, font, codes, PdfALevel.A2B, library,
                         usage.bytesPerCode(leader), false));
-                if (!text.isEmpty()) {
+                if (!text.isEmpty() && (declared || !(font instanceof PDType0Font) || !keepsText(leader, text))) {
                     leader.setItem(COSName.TO_UNICODE, ToUnicodeWriter.preserve(doc, text,
                             font instanceof PDType0Font ? usage.bytesPerCode(leader) : 1));
                 }
@@ -140,6 +141,22 @@ public final class FontEmbedder {
             }
         }
         return new Result(embedded, failed);
+    }
+
+    private static boolean keepsText(COSDictionary font, Map<Integer, String> text) throws IOException {
+        font.removeItem(COSName.TO_UNICODE);
+        try {
+            PDFont fresh = PDFontFactory.createFont(font);
+            for (Map.Entry<Integer, String> entry : text.entrySet()) {
+                if (!entry.getValue().equals(fresh.toUnicode(entry.getKey()))) {
+                    return false;
+                }
+            }
+            return true;
+        } catch (IOException | RuntimeException e) {
+            PdfFiles.stopIfInterrupted();
+            return false;
+        }
     }
 
     private static List<List<COSDictionary>> groups(Map<COSDictionary, TreeSet<Integer>> targets) {

@@ -117,6 +117,39 @@ class FontEmbedderTest {
     }
 
     @Test
+    void embeddingKeepsTheSpaceWidthOfAnUnmappedCidFont() throws Exception {
+        RawPdf pdf = RawPdf.page("/Font<</F1<</Type/Font/Subtype/Type0/BaseFont/Ryumin-Light/Encoding/Identity-H"
+                + "/DescendantFonts[<</Type/Font/Subtype/CIDFontType0/BaseFont/Ryumin-Light"
+                + "/CIDSystemInfo<</Registry(Adobe)/Ordering(Japan1)/Supplement 0>>/DW 1000"
+                + "/FontDescriptor<</Type/FontDescriptor/FontName/Ryumin-Light/Flags 4/FontBBox[0 -200 1000 1000]"
+                + "/ItalicAngle 0/Ascent 800/Descent -200/CapHeight 700/StemV 80>>>>]>>>>",
+                "BT /F1 12 Tf 50 700 Td <002400250026> Tj ET");
+        Path input = dir.resolve("cid-space-before.pdf");
+        java.nio.file.Files.write(input, pdf.bytes());
+        List<float[]> positions = Converted.glyphs(input);
+        try (PDDocument d = Loader.loadPDF(pdf.bytes())) {
+            String before = new org.apache.pdfbox.text.PDFTextStripper().getText(d);
+            float space = d.getPage(0).getResources().getFont(COSName.getPDFName("F1")).getSpaceWidth();
+            assertTrue(FontEmbedder.embedMissing(d).failed().isEmpty());
+            java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+            d.save(out);
+            Path output = dir.resolve("cid-space-after.pdf");
+            java.nio.file.Files.write(output, out.toByteArray());
+            List<float[]> after = Converted.glyphs(output);
+            assertEquals(positions.size(), after.size());
+            for (int i = 0; i < positions.size(); i++) {
+                assertArrayEquals(positions.get(i), after.get(i), 0.01f);
+            }
+            try (PDDocument saved = Loader.loadPDF(out.toByteArray())) {
+                assertEquals(before, new org.apache.pdfbox.text.PDFTextStripper().getText(saved));
+                PDFont font = saved.getPage(0).getResources().getFont(COSName.getPDFName("F1"));
+                assertTrue(font.isEmbedded());
+                assertEquals(space, font.getSpaceWidth(), 0.01);
+            }
+        }
+    }
+
+    @Test
     void fontsTheResourcesNameButNothingShowsAreEmbeddedToo() throws Exception {
         RawPdf pdf = RawPdf.page("/Font<</F1<</Type/Font/Subtype/Type1/BaseFont/Helvetica/Encoding/WinAnsiEncoding>>"
                 + "/F2<</Type/Font/Subtype/Type1/BaseFont/Times-Bold/Encoding/WinAnsiEncoding>>"
