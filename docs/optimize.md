@@ -17,6 +17,13 @@ java -jar cli/build/libs/stirling-office-convert-cli.jar in.pdf --optimize [--ef
 `--overwrite` and `-q`. An output that would not be smaller is a copy of the input
 (`Options.alwaysRewrite(true)` writes the rewrite regardless, which is what a repair wants).
 
+The `PDDocument`/`OutputStream` overload borrows a document that PDFBox can save and leaves both caller-owned
+resources open. Its timeout includes serialization, and its serialized input has the same 1 GiB limit as the path
+API. It always writes the rewrite and reports unknown original input size (`inputBytes == -1`); keep-only-smaller
+selection applies to the path API. A failing stream call can leave partial output in its caller's stream; use the
+path API for a staged output file. Use the path API to rewrite an encrypted file opened without a new PDFBox
+protection policy.
+
 ## What Stirling-PDF asks qpdf for
 
 | Caller | qpdf command | What it does |

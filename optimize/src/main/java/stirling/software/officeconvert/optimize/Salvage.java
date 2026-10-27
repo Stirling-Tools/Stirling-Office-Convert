@@ -29,6 +29,7 @@ final class Salvage {
     private Salvage() {}
 
     static Rebuilt rebuild(Path in, Path out) throws IOException {
+        stirling.software.officeconvert.extract.PdfFiles.stopIfInterrupted();
         if (Files.size(in) > MAX_BYTES) {
             return null;
         }
@@ -47,6 +48,9 @@ final class Salvage {
         List<Map.Entry<Integer, Integer>> byOffset = new ArrayList<>(offsets.entrySet());
         byOffset.sort(Map.Entry.comparingByValue());
         for (int k = 0; k < byOffset.size(); k++) {
+            if ((k & 1023) == 0) {
+                stirling.software.officeconvert.extract.PdfFiles.stopIfInterrupted();
+            }
             int number = byOffset.get(k).getKey();
             int start = byOffset.get(k).getValue();
             int end = k + 1 < byOffset.size() ? byOffset.get(k + 1).getValue() : data.length;
@@ -100,6 +104,9 @@ final class Salvage {
         long xref = position;
         StringBuilder table = new StringBuilder("xref\n0 " + size + "\n0000000000 65535 f\r\n");
         for (int n = 1; n < size; n++) {
+            if ((n & 1023) == 0) {
+                stirling.software.officeconvert.extract.PdfFiles.stopIfInterrupted();
+            }
             Long o = all.get(n);
             int gen = o == null || extra.containsKey(n) ? 0 : generations.getOrDefault(n, 0);
             table.append(o == null ? "0000000000 65535 f\r\n" : String.format("%010d %05d n\r\n", o, gen));
@@ -121,9 +128,12 @@ final class Salvage {
         return text.substring(start, end < 0 ? Math.min(text.length(), start + 4096) : end);
     }
 
-    private static TreeMap<Integer, Integer> objects(byte[] d, Map<Integer, Integer> generations) {
+    private static TreeMap<Integer, Integer> objects(byte[] d, Map<Integer, Integer> generations) throws IOException {
         TreeMap<Integer, Integer> found = new TreeMap<>();
         for (int i = 0; i + 3 <= d.length; i++) {
+            if ((i & 4095) == 0) {
+                stirling.software.officeconvert.extract.PdfFiles.stopIfInterrupted();
+            }
             if (d[i] != 'o' || d[i + 1] != 'b' || d[i + 2] != 'j') {
                 continue;
             }
