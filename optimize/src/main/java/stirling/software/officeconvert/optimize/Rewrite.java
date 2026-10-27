@@ -153,11 +153,27 @@ final class Rewrite {
     }
 
     private void index(List<COSObjectKey> order, Roles roles) throws IOException {
-        source.load(order, (key, object) -> {
+        Source.Visitor visitor = (key, object) -> {
             int id = index.id(key);
             recorder.record(id, object, null);
             roles.collect(id, object);
-        });
+        };
+        source.load(order, visitor);
+        int scanned = 0;
+        while (scanned < index.size()) {
+            List<COSObjectKey> missing = new ArrayList<>();
+            int end = index.size();
+            for (; scanned < end; scanned++) {
+                if (index.kind(scanned) == Index.UNSEEN) {
+                    missing.add(index.key(scanned));
+                }
+                if ((scanned & 1023) == 0) {
+                    PdfFiles.stopIfInterrupted();
+                }
+            }
+            order.addAll(source.recover(missing, visitor));
+            PdfFiles.stopIfInterrupted();
+        }
     }
 
     private void prune() throws IOException {

@@ -15,6 +15,8 @@ import org.apache.pdfbox.cos.COSObjectKey;
 import org.apache.pdfbox.cos.COSStream;
 import org.apache.pdfbox.cos.ICOSParser;
 import org.apache.pdfbox.pdfparser.PDFObjectStreamParser;
+import org.apache.pdfbox.pdfparser.COSParser;
+import org.apache.pdfbox.pdfparser.BruteForceParser;
 
 final class Source {
 
@@ -84,6 +86,69 @@ final class Source {
             ordered.addAll(members);
         }
         return ordered;
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<COSObjectKey, Long> recovered() {
+        if (!(parser instanceof COSParser)) {
+            return Map.of();
+        }
+        try {
+            Field field = COSParser.class.getDeclaredField("bruteForceParser");
+            field.setAccessible(true);
+            Object brute = field.get(parser);
+            if (!(brute instanceof BruteForceParser recovery) || !recovery.bfSearchTriggered()) {
+                return Map.of();
+            }
+            field = BruteForceParser.class.getDeclaredField("bfSearchCOSObjectKeyOffsets");
+            field.setAccessible(true);
+            return (Map<COSObjectKey, Long>) field.get(brute);
+        } catch (ReflectiveOperationException | RuntimeException e) {
+            return Map.of();
+        }
+    }
+
+    List<COSObjectKey> recover(List<COSObjectKey> missing, Visitor visitor) throws IOException {
+        if (missing.isEmpty()) {
+            return List.of();
+        }
+        Map<COSObjectKey, Long> recovered = recovered();
+        if (recovered.isEmpty()) {
+            return List.of();
+        }
+        Map<Long, Integer> generations = new HashMap<>();
+        for (COSObjectKey key : missing) {
+            Long offset = recovered.get(key);
+            if (!xref.containsKey(key) && offset != null && offset < 0) {
+                generations.put(key.getNumber(), -1);
+            }
+        }
+        if (generations.isEmpty()) {
+            return List.of();
+        }
+        int scanned = 0;
+        for (COSObjectKey key : xref.keySet()) {
+            Integer generation = generations.get(key.getNumber());
+            if (generation != null) {
+                generations.put(key.getNumber(), Math.max(generation, key.getGeneration()));
+            }
+            if ((++scanned & 1023) == 0) {
+                stirling.software.officeconvert.extract.PdfFiles.stopIfInterrupted();
+            }
+        }
+        List<COSObjectKey> added = new ArrayList<>();
+        for (COSObjectKey key : missing) {
+            Integer generation = generations.get(key.getNumber());
+            if (generation != null && generation < 0 && !xref.containsKey(key)) {
+                Long offset = recovered.get(key);
+                if (offset != null && offset < 0) {
+                    xref.put(key, offset);
+                    added.add(key);
+                }
+            }
+        }
+        load(added, visitor);
+        return added;
     }
 
     private long containerOffset(long number) {

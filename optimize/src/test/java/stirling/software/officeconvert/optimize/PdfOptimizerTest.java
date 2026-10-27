@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -24,6 +25,7 @@ import java.util.zip.DeflaterOutputStream;
 import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.cos.COSDictionary;
 import org.apache.pdfbox.cos.COSName;
+import org.apache.pdfbox.cos.COSObjectKey;
 import org.apache.pdfbox.cos.COSStream;
 import org.apache.pdfbox.pdfwriter.compress.CompressParameters;
 import org.apache.pdfbox.pdmodel.PDDocument;
@@ -76,6 +78,97 @@ class PdfOptimizerTest {
             d.save(in.toFile(), compression);
         }
         return in;
+    }
+
+    @Test
+    void missingCompressedCrossReferencesKeepResources() throws Exception {
+        String[] members = {
+                "<</Type/Pages/Kids[3 0 R]/Count 1>>",
+                "<</Type/Page/Parent 2 0 R/MediaBox[0 0 200 200]/Resources 4 0 R/Contents 5 0 R>>",
+                "<</Font<</F1 6 0 R>>>>",
+                "<</Type/Font/Subtype/Type1/BaseFont/Courier>>"};
+        StringBuilder header = new StringBuilder();
+        StringBuilder bodies = new StringBuilder();
+        int[] numbers = {2, 3, 4, 6};
+        for (int i = 0; i < members.length; i++) {
+            header.append(numbers[i]).append(' ').append(bodies.length()).append(' ');
+            bodies.append(members[i]).append('\n');
+        }
+        String content = "BT /F1 18 Tf 20 100 Td (Recovered resources) Tj ET";
+        String pdf = "%PDF-1.5\n1 0 obj <</Type/Catalog/Pages 2 0 R>> endobj\n"
+                + "5 0 obj " + RawPdf.stream("", content) + " endobj\n"
+                + "7 0 obj " + RawPdf.stream("/Type/ObjStm/N 4/First " + header.length(), header + bodies.toString())
+                + " endobj\ntrailer <</Root 1 0 R/Size 8>>\nstartxref\n0\n%%EOF\n";
+        Path input = dir.resolve("missing-packed-xref.pdf");
+        Files.writeString(input, pdf, StandardCharsets.ISO_8859_1);
+        try (PDDocument document = Loader.loadPDF(input.toFile())) {
+            assertEquals(1, document.getNumberOfPages());
+            assertFalse(document.getDocument().getXrefTable().containsKey(new COSObjectKey(4, 0)));
+        }
+        Path output = dir.resolve("recovered-packed-xref.pdf");
+        PdfOptimizer.optimize(input, output, REWRITE);
+        Pages.assertSameRendering(input, output);
+        try (PDDocument document = Loader.loadPDF(output.toFile())) {
+            assertEquals("Courier", document.getPage(0).getResources().getFont(COSName.getPDFName("F1")).getName());
+        }
+    }
+
+    @Test
+    void partialObjectStreamsDoNotRestoreFreeObjects() throws Exception {
+        RawPdf raw = RawPdf.page("", "");
+        raw.set(3, "<</Type/Page/Parent 2 0 R/MediaBox[0 0 200 200]/Resources 5 0 R/Contents 4 0 R>>");
+        raw.add("null");
+        raw.add(RawPdf.stream("/Type/ObjStm/N 1/First 4", "5 0 <</Font<</F1 7 0 R>>>>"));
+        raw.add("<</Type/Font/Subtype/Type1/BaseFont/Courier>>");
+        String bytes = new String(raw.bytes(), StandardCharsets.ISO_8859_1);
+        int start = bytes.indexOf("xref\n");
+        int entry = start + "xref\n0 8\n".length() + 5 * 20;
+        bytes = bytes.substring(0, entry) + "0000000000 00001 f\r\n" + bytes.substring(entry + 20);
+        Path input = dir.resolve("free-packed-object.pdf");
+        Files.writeString(input, bytes, StandardCharsets.ISO_8859_1);
+        try (PDDocument document = Loader.loadPDF(input.toFile())) {
+            Source source = new Source(document.getDocument());
+            assertFalse(source.exists(new COSObjectKey(5, 0)));
+            assertTrue(source.recover(java.util.List.of(new COSObjectKey(5, 0)), (key, value) -> {
+                throw new AssertionError("A free member was restored");
+            }).isEmpty());
+        }
+        int firstEntry = start + "xref\n0 8\n".length() + 20;
+        String badOffset = bytes.substring(0, firstEntry) + "0000000001" + bytes.substring(firstEntry + 10);
+        Path shifted = dir.resolve("free-packed-bad-offset.pdf");
+        Files.writeString(shifted, badOffset, StandardCharsets.ISO_8859_1);
+        try (PDDocument document = Loader.loadPDF(shifted.toFile())) {
+            Source source = new Source(document.getDocument());
+            assertTrue(source.recover(java.util.List.of(new COSObjectKey(5, 0)), (key, value) -> {
+                throw new AssertionError("A free member was restored after offset repair");
+            }).isEmpty());
+        }
+        Path output = dir.resolve("free-packed-output.pdf");
+        PdfOptimizer.optimize(input, output, REWRITE);
+        try (PDDocument document = Loader.loadPDF(output.toFile())) {
+            assertNull(document.getPage(0).getResources());
+        }
+    }
+
+    @Test
+    void recoveryDoesNotRestoreAnObsoleteGeneration() throws Exception {
+        String old = "4 0 <</Font<</Old<</Type/Font/Subtype/Type1/BaseFont/Courier>>>>>>";
+        String pdf = "%PDF-1.5\n1 0 obj <</Type/Catalog/Pages 2 0 R>> endobj\n"
+                + "2 0 obj <</Type/Pages/Kids[3 0 R]/Count 1>> endobj\n"
+                + "3 0 obj <</Type/Page/Parent 2 0 R/MediaBox[0 0 200 200]/Resources 4 0 R>> endobj\n"
+                + "4 1 obj <</Font<</Current<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>>>>> endobj\n"
+                + "7 0 obj " + RawPdf.stream("/Type/ObjStm/N 1/First 4", old)
+                + " endobj\ntrailer <</Root 1 0 R/Size 8>>\nstartxref\n0\n%%EOF\n";
+        Path input = dir.resolve("obsolete-packed-object.pdf");
+        Files.writeString(input, pdf, StandardCharsets.ISO_8859_1);
+        try (PDDocument document = Loader.loadPDF(input.toFile())) {
+            Source source = new Source(document.getDocument());
+            assertTrue(source.exists(new COSObjectKey(4, 1)));
+            assertFalse(source.exists(new COSObjectKey(4, 0)));
+            assertTrue(source.recover(java.util.List.of(new COSObjectKey(4, 0)), (key, value) -> {
+                throw new AssertionError("An obsolete generation was restored");
+            }).isEmpty());
+        }
     }
 
     @Test
