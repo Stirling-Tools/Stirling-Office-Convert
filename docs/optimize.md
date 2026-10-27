@@ -57,13 +57,22 @@ image recompression, and `--linearize` has no equivalent.
   encryption: an encrypted PDF is written with the same key, permissions and security handler. A signed PDF is
   rewritten with a warning that its signatures no longer validate.
 
-Objects are read one at a time and kept only as a compact serialized record, so memory grows with the size of the
-objects' syntax, not with PDFBox's object model: a PDF with a million objects fits in a few hundred megabytes of heap.
-Stream data goes through a scratch file; a stream too large to decode in memory is recompressed row by row on its way
-there. Stream encodings are searched on up to four threads.
+Non-stream objects are kept as compact serialized records rather than a complete PDFBox object graph. Memory also
+includes cross-reference and reference indexes, object-stream batches and stream decoding buffers; object count alone
+does not determine the required heap. The 86 MB spreadsheet-derived stress file completed with a 1,200 MiB Java heap
+and a 1,500 MiB Docker limit on two CPUs. Its FAST and DEFAULT runs took 8.3 s and 12.1 s; the benchmark's sums of
+heap-pool peaks were 1,157 MiB and 1,120 MiB. These counters are neither simultaneous live-heap measurements nor
+process RSS, and this is not a minimum-heap guarantee for other million-object PDFs. Stream data goes through a
+scratch file; a stream too large to decode in memory is recompressed row by row on its way there. Stream encodings
+are searched on up to four threads.
 
-`FAST` uses zlib only and is about as quick as qpdf; `DEFAULT` adds the optimal-parse deflater and JPEG table
-re-coding; `MAX` searches harder for about one or two percent more.
+`FAST` uses zlib only; `DEFAULT` adds the optimal-parse deflater and JPEG table re-coding; `MAX` searches harder.
+`FAST` does not promise qpdf's speed. In the original matched 778-file benchmark (two CPUs, a 1,200 MiB Java heap),
+FAST took 142 s and DEFAULT 534 s, versus 66 s for qpdf's level-9 lossless pass. A separate 20-file cold-process
+benchmark measured a FAST median of 184 ms versus 11 ms for qpdf, including Java startup. Those historical timings
+are specific to the tested implementation, inputs and environment; later implementation changes and workload shape
+can change the comparison. On the original 176-file subset, MAX produced 1.8% smaller output than DEFAULT at 4.6
+times its processing time.
 
 Work is bounded like the rest of the library: a timeout (5 minutes by default), a decoded size cap per stream, a cap
 on objects, and the shared memory admission.
