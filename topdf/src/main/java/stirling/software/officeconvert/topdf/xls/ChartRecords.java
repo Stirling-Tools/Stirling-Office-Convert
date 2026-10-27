@@ -77,6 +77,8 @@ final class ChartRecords {
 
     private boolean plotVisibleOnly = true;
 
+    private boolean limited;
+
     private int chartLine = -1;
 
     private int dropBars;
@@ -153,6 +155,9 @@ final class ChartRecords {
             case 0x1044 -> plotVisibleOnly = (u16(d, 0) & 2) != 0;
             case SERIES -> {
                 if (series.size() < MAX_SERIES && r instanceof SeriesRecord s) {
+                    int categories = s.getNumCategories() & 0xFFFF;
+                    int values = s.getNumValues() & 0xFFFF;
+                    limited |= categories > MAX_POINTS || values > MAX_POINTS;
                     series.add(new SeriesBuilder(s.getNumCategories(), s.getNumValues()));
                 }
             }
@@ -719,7 +724,7 @@ final class ChartRecords {
         }
         float size = base == null ? 10 : base.size();
         return new BiffChart(title, out, legend(), values, cats, plotFill, areaFill, areaLine, size,
-                base == null ? null : base.text(), dataTable, plotVisibleOnly);
+                base == null ? null : base.text(), dataTable, plotVisibleOnly, limited);
     }
 
     private static BiffChart.ErrorBar errorBar(SeriesBuilder s) {

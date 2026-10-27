@@ -398,6 +398,10 @@ public final class XlsPackage {
 
         private String chartPart(BiffChart chart, StringBuilder types) throws IOException {
             String name = "chart" + ++chartParts + ".xml";
+            if (chart.limited()) {
+                lost = true;
+                warnings.add("A chart was limited to the first " + ChartRecords.MAX_POINTS + " data points per series");
+            }
             parts.put("xl/charts/" + name, ChartXml.write(chart));
             types.append("<Override PartName=\"/xl/charts/").append(name).append("\" ContentType=\"")
                     .append("application/vnd.openxmlformats-officedocument.drawingml.chart+xml\"/>");

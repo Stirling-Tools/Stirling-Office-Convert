@@ -104,6 +104,27 @@ class XlsChartTest {
     }
 
     @Test
+    void chartsPastThePointLimitReportPartialContent() throws Exception {
+        byte[] data = XlsTest.xls(wb -> {
+            HSSFSheet sheet = wb.createSheet("Data");
+            for (int i = 0; i < 4001; i++) {
+                sheet.createRow(i).createCell(0).setCellValue(i + 1);
+            }
+            int extern = wb.getInternalWorkbook().checkExternSheet(0);
+            ChartFixtures.chartSheet(wb, "Chart1", ChartFixtures.linkedChart(BAR, "Large", 4001,
+                    new Area3DPtg(new AreaReference("A1:A4001", SpreadsheetVersion.EXCEL97), extern)));
+        });
+        try (POIFSFileSystem file = new POIFSFileSystem(new ByteArrayInputStream(data))) {
+            ByteArrayOutputStream output = new ByteArrayOutputStream();
+            XlsPackage.Outcome outcome = XlsPackage.write(file.getRoot(), output);
+            assertTrue(outcome.lost());
+            assertTrue(outcome.warnings().stream().anyMatch(w -> w.contains("4000") && w.contains("chart")),
+                    outcome.warnings().toString());
+        }
+        assertTrue(chartXml(data).contains("<c:ptCount val=\"4000\"/>"));
+    }
+
+    @Test
     void visibleOnlyChartsExcludeHiddenSourceRowsAndColumns() throws Exception {
         for (boolean visibleOnly : new boolean[] {true, false}) {
             for (boolean hiddenColumn : new boolean[] {true, false}) {
