@@ -381,6 +381,9 @@ final class TrueTypeWriter {
             return length == 0;
         }
         int contours = b.getShort(0);
+        if (contours < -1) {
+            return false;
+        }
         if (contours < 0) {
             int at = 10;
             while (true) {

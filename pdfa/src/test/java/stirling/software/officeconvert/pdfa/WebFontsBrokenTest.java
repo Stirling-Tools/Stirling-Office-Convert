@@ -263,6 +263,28 @@ class WebFontsBrokenTest {
     }
 
     @Test
+    void negativeContourCountsOtherThanCompositeAreDiscarded() throws Exception {
+        for (short contours : new short[] {-2, -70, Short.MIN_VALUE}) {
+            byte[] f = font();
+            ByteBuffer b = ByteBuffer.wrap(f);
+            int glyph = table(f, "glyf")[1] + b.getInt(table(f, "loca")[1] + 8);
+            b.putShort(glyph, contours);
+            b.putShort(glyph + 10, (short) 0);
+            b.putShort(glyph + 12, (short) 0);
+            byte[] out = WebFonts.toTrueType(f, WebFonts.FontKind.TRUETYPE, null);
+            ByteBuffer converted = ByteBuffer.wrap(out);
+            int loca = table(out, "loca")[1];
+            org.junit.jupiter.api.Assertions.assertEquals(converted.getInt(loca + 8), converted.getInt(loca + 12),
+                    "invalid contour count " + contours);
+            try (org.apache.fontbox.ttf.TrueTypeFont t = new org.apache.fontbox.ttf.TTFParser()
+                    .parse(new org.apache.pdfbox.io.RandomAccessReadBuffer(out))) {
+                org.junit.jupiter.api.Assertions.assertEquals(400, t.getGlyph().getGlyph(3).getPath().getBounds2D()
+                        .getWidth(), 1);
+            }
+        }
+    }
+
+    @Test
     void truncatedGlyphsOddCvtLongMaxpAndHugeCmapsStillGiveAValidFont() throws Exception {
         byte[] f = font();
         int glyf = table(f, "glyf")[1];
