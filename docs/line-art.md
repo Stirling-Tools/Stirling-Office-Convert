@@ -109,7 +109,7 @@ opaque image. Grey is `0.212656 R + 0.715158 G + 0.072186 B` in every method.
 
 ### Memory
 
-Pictures larger than the band budget (half the memory admission budget at 28 bytes a pixel, between 1 and 16
+Pictures larger than the band budget (half the memory admission budget at 28 bytes a pixel, between 1 and 4
 million pixels) are decoded in bands of rows: Flate, LZW, run-length and ASCII streams are inflated once, as a
 stream, and each band is decoded by PDFBox on its own; JPEG and JPEG 2000 are decoded by region. Thresholding only
 ever holds a band plus the rows its window needs, and the output is a 1-bit bitmap, so a 20000 x 20000 picture
@@ -187,3 +187,34 @@ All 1010 PDFs of the pdf.js test suite, in Docker with `--network=none`, convert
 PDFBox before and after: 993 convert and render, 7 cannot be opened by PDFBox at all, 10 need a password. 5453
 images seen, 1681 converted; the only per-image warnings are three broken streams (a bad JPEG, a bad JPEG 2000 and a
 bad ASCII85 content stream), which are left as they were. The 14 encrypted files first failed to save; the file API now removes the encryption, as `PdfToPdfA` does, and says so in a warning. With `EDGES` (level 1) the same 993 convert and render, with 1734 images converted.
+
+
+## Round 3 memory follow-up
+
+The rolling greyscale buffer now moves overlapping rows within the existing allocation, bands are capped at
+4 Mi pixels, and each temporary PDFBox band stream is closed after decoding. These changes preserve the image
+bytes: all 188 olmOCR outputs and the three generated large-image outputs match the previous branch head after
+normalizing document metadata. The existing band-versus-whole-image tests cover every threshold method and
+ink colour, including bands narrower than the threshold window.
+
+Measured on 2026-10-27 in Docker with `--network=none --cpus=2 --memory=1500m` and `-Xmx1200m`:
+
+| Input | Previous head, Sauvola / edges | New, Sauvola / edges |
+|---|---|---|
+| 188 olmOCR PDFs | 925 / 548 MiB | 704 / 376 MiB |
+| 6000 x 8000 grey | 455 / 868 MiB | 286 / 197 MiB |
+| 20000 x 20000 grey | 986 / 1042 MiB | 926 / 921 MiB |
+| 20000 x 20000 RGB | 1130 / 1067 MiB | 966 / 949 MiB |
+
+All cases completed without conversion failures. These comparable numbers use the original harness, which
+requests collection before each group and sums the separate heap pools' peaks. That sum can combine peaks
+that occurred at different times, and includes uncollected garbage.
+
+A separate run with no explicit collection sampled simultaneous heap usage every millisecond. Its first
+188-file Sauvola group peaked at 697 MiB heap and 858 MiB process resident high-water memory, meeting the
+original 830 MiB heap target. Edges immediately afterwards in the same JVM peaked at 948 MiB heap and
+1286 MiB resident high-water memory. The target is therefore a measured result for the default Sauvola group,
+not a guaranteed process-memory bound or a bound across successive methods in one JVM.
+The same run also completed every large-image case; sampled heap for the 400 MP grey image was 539 / 629 MiB
+and for the 400 MP RGB image 725 / 835 MiB (Sauvola / edges). Resident high-water memory is cumulative for
+the process, so it cannot be interpreted as a separate peak for each subsequent group.

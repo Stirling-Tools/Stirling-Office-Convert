@@ -208,25 +208,26 @@ abstract class Source {
         }
 
         private BufferedImage decode(COSStream original, byte[] buffer, int rows, boolean keyed) throws IOException {
-            COSStream part = new COSStream();
-            part.setItem(COSName.TYPE, COSName.XOBJECT);
-            part.setItem(COSName.SUBTYPE, COSName.IMAGE);
-            part.setInt(COSName.WIDTH, width);
-            part.setInt(COSName.HEIGHT, rows);
-            for (COSName key : CARRIED) {
-                COSBase v = original.getItem(key);
-                if (v != null) {
-                    part.setItem(key, v);
+            try (COSStream part = new COSStream()) {
+                part.setItem(COSName.TYPE, COSName.XOBJECT);
+                part.setItem(COSName.SUBTYPE, COSName.IMAGE);
+                part.setInt(COSName.WIDTH, width);
+                part.setInt(COSName.HEIGHT, rows);
+                for (COSName key : CARRIED) {
+                    COSBase v = original.getItem(key);
+                    if (v != null) {
+                        part.setItem(key, v);
+                    }
                 }
+                if (keyed && original.getDictionaryObject(COSName.MASK) instanceof COSArray key) {
+                    part.setItem(COSName.MASK, key);
+                }
+                try (OutputStream os = part.createOutputStream()) {
+                    os.write(buffer, 0, rowBytes * rows);
+                }
+                PDImageXObject piece = new PDImageXObject(new PDStream(part), resources);
+                return keyed ? piece.getImage() : piece.getOpaqueImage(null, 1);
             }
-            if (keyed && original.getDictionaryObject(COSName.MASK) instanceof COSArray key) {
-                part.setItem(COSName.MASK, key);
-            }
-            try (OutputStream os = part.createOutputStream()) {
-                os.write(buffer, 0, rowBytes * rows);
-            }
-            PDImageXObject piece = new PDImageXObject(new PDStream(part), resources);
-            return keyed ? piece.getImage() : piece.getOpaqueImage(null, 1);
         }
     }
 }

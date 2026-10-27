@@ -290,7 +290,7 @@ public final class LineArt {
     }
 
     private static long bandPixels() {
-        return Math.clamp(Admission.jvm().budget() / 2 / 28, 1L << 20, 1L << 24);
+        return Math.clamp(Admission.jvm().budget() / 2 / 28, 1L << 20, 1L << 22);
     }
 
     private static COSStream withoutMatte(PDDocument document, COSStream soft) throws IOException {

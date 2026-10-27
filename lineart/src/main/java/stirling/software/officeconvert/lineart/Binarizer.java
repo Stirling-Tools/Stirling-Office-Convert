@@ -134,9 +134,7 @@ final class Binarizer {
             int keep = Math.max(first, done - radius);
             if (keep > first && done < h) {
                 int drop = keep - first;
-                float[] kept = new float[Math.max((count - drop) * w, 0) + n * w];
-                System.arraycopy(buffer, drop * w, kept, 0, (count - drop) * w);
-                buffer = kept;
+                System.arraycopy(buffer, drop * w, buffer, 0, (count - drop) * w);
                 count -= drop;
                 first = keep;
             }
