@@ -118,6 +118,8 @@ final class Measure {
                         tallest = 0;
                         x = 0;
                     }
+                    tallest = Math.max(tallest, Glyphs.lineHeight(t.style().size(), t.style().font(),
+                            t.style().bold(), t.style().italic()));
                     x += w;
                     any = true;
                 }

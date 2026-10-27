@@ -76,6 +76,24 @@ final class Glyphs {
         return Math.max(estimate, Math.max(widest, run) + 1f);
     }
 
+    static float lineHeight(float size, String family, boolean bold, boolean italic) {
+        FontLibrary fonts = FONTS.get();
+        FontFace face = fonts == null || family == null ? null : fonts.find(family, bold, italic);
+        if (face == null) {
+            return 0;
+        }
+        var metrics = face.metrics();
+        float height;
+        if (metrics.useTypoMetrics() && metrics.typoAscender() - metrics.typoDescender() > 0) {
+            height = metrics.typoLineHeight(size);
+        } else if (metrics.winAscent() + metrics.winDescent() > 0) {
+            height = metrics.gdiLineHeight(size);
+        } else {
+            height = metrics.hheaLineHeight(size);
+        }
+        return face.eastAsian() ? height * 1.15f : height;
+    }
+
     static float measured(String text, float size, String family, boolean bold, boolean italic) {
         FontLibrary fonts = FONTS.get();
         FontFace face = fonts == null || family == null ? null : fonts.find(family, bold, italic);
