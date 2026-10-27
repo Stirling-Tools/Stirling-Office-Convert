@@ -94,8 +94,8 @@ public final class XlsPackage {
                 throw e;
             }
         }
-        try (HSSFWorkbook book = wb; POIFSFileSystem fs = repaired) {
-            Outcome done = new XlsPackage.Writer(book, fs == null ? root : fs.getRoot(), root, new Parts(out)).write();
+        try (HSSFWorkbook book = wb; POIFSFileSystem fs = repaired; Parts parts = new Parts(out)) {
+            Outcome done = new XlsPackage.Writer(book, fs == null ? root : fs.getRoot(), root, parts).write();
             if (!salvaged) {
                 return done;
             }
@@ -278,7 +278,7 @@ public final class XlsPackage {
             }
         }
 
-        private String conditional(HSSFSheet sheet) {
+        private String conditional(HSSFSheet sheet) throws IOException {
             try {
                 return conditional.sheet(sheet);
             } catch (RuntimeException e) {
@@ -295,12 +295,15 @@ public final class XlsPackage {
                         + " converter's limit");
             }
             if (conditional.skipped > 0) {
-                out.add("Left out " + conditional.skipped + " conditional formatting rules that depend on formulas");
+                lost = true;
+                out.add("Left out " + conditional.skipped + " conditional formatting rules that are unsupported or exceed converter limits");
             }
             if (charts > 0) {
+                lost = true;
                 out.add("Some charts could not be drawn (" + charts + " left out)");
             }
             if (skipped > 0) {
+                lost = true;
                 out.add("Some drawing objects could not be drawn (" + skipped + " left out)");
             }
             out.addAll(warnings);

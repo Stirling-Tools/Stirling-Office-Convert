@@ -51,17 +51,28 @@ final class CondFormats {
 
     int skipped;
 
-    String sheet(HSSFSheet sheet) {
+    String sheet(HSSFSheet sheet) throws java.io.InterruptedIOException {
         ConditionalFormattingTable table = sheet.getSheet().getConditionalFormattingTable();
         StringBuilder b = new StringBuilder();
-        for (int i = 0; i < table.size() && rules < MAX_RULES; i++) {
+        for (int i = 0; i < table.size(); i++) {
+            if ((i & 255) == 0) {
+                SheetPart.stopIfInterrupted();
+            }
             CFRecordsAggregate cf = table.get(i);
+            if (rules >= MAX_RULES) {
+                skipped += cf.getNumberOfRules();
+                continue;
+            }
             String sqref = sqref(cf.getHeader().getCellRanges());
             if (sqref == null) {
                 continue;
             }
             List<String> out = new ArrayList<>();
-            for (int k = 0; k < cf.getNumberOfRules() && rules < MAX_RULES; k++) {
+            for (int k = 0; k < cf.getNumberOfRules(); k++) {
+                if (rules >= MAX_RULES) {
+                    skipped += cf.getNumberOfRules() - k;
+                    break;
+                }
                 String rule = rule(cf.getRule(k));
                 if (rule == null) {
                     rule = scale(sheet, i, k);

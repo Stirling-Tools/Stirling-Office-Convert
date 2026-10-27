@@ -4,6 +4,7 @@ import java.io.ByteArrayInputStream;
 import java.io.FilterOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InterruptedIOException;
 import java.io.OutputStream;
 import java.nio.file.Path;
 import java.util.Locale;
@@ -36,11 +37,15 @@ public final class XlsFile {
     }
 
     public static XlsPackage.Outcome rewrite(Path source, String password, OutputStream out) throws IOException {
+        SheetPart.stopIfInterrupted();
         Counted counted = new Counted(out);
         try (POIFSFileSystem fs = LegacyOffice.open(source);
                 POIFSFileSystem plain = decrypt(fs.getRoot(), password)) {
             return XlsPackage.write(plain == null ? fs.getRoot() : plain.getRoot(), counted);
+        } catch (InterruptedIOException e) {
+            throw e;
         } catch (IOException | RuntimeException e) {
+            SheetPart.stopIfInterrupted();
             boolean locked = e.getMessage() != null && e.getMessage().toLowerCase(Locale.ROOT)
                     .contains("password");
             byte[] stream = locked || counted.written > 0 ? null : Repair.salvage(source);
