@@ -5,7 +5,9 @@ import java.awt.image.Raster;
 import java.io.BufferedOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InterruptedIOException;
 import java.io.OutputStream;
+import java.io.UncheckedIOException;
 import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -152,6 +154,10 @@ public final class LineArt {
     public static Bitmap binarize(BufferedImage image, Options options) {
         Objects.requireNonNull(image, "image");
         Objects.requireNonNull(options, "options");
+        long pixels = (long) image.getWidth() * image.getHeight();
+        if (pixels > options.maxPixels()) {
+            throw new IllegalArgumentException("The image has " + pixels + " pixels; the limit is " + options.maxPixels());
+        }
         return Binarizer.binarize(image, options);
     }
 
@@ -196,6 +202,7 @@ public final class LineArt {
         Objects.requireNonNull(document, "document");
         Objects.requireNonNull(options, "options");
         PdfFiles.checkOpen(document);
+        PdfFiles.stopIfInterrupted();
         JpxImageIO.install();
         ImageWalk.Walk walk = ImageWalk.walk(document);
         List<ImageWalk.Found> found = walk.images();
@@ -213,6 +220,7 @@ public final class LineArt {
             try {
                 encoded = convert(document, f, options, warnings);
             } catch (IOException | RuntimeException e) {
+                rethrowCancelled(e);
                 warnings.add("Page " + f.page() + ": an image could not be read and was left as it was (" + e.getMessage() + ")");
                 continue;
             }
@@ -230,15 +238,35 @@ public final class LineArt {
             try {
                 InlineImages.convert(content, options, codecs, inline, warnings);
             } catch (IOException | RuntimeException e) {
+                rethrowCancelled(e);
                 warnings.add("Page " + content.page() + ": a content stream could not be read for inline images ("
                         + e.getMessage() + ")");
             }
         }
+        PdfFiles.stopIfInterrupted();
         if (jbig2 && document.getVersion() < 1.4f) {
             document.setVersion(1.4f);
         }
         return new Result(found.size() + (int) inline[0], converted + (int) inline[1], before + inline[2],
                 after + inline[3], codecs, warnings);
+    }
+
+    static void checkpoint() {
+        try {
+            PdfFiles.stopIfInterrupted();
+        } catch (IOException stopped) {
+            throw new UncheckedIOException(stopped);
+        }
+    }
+
+    static void rethrowCancelled(Exception error) throws IOException {
+        Throwable cause = error;
+        for (int depth = 0; cause != null && depth < 32; depth++, cause = cause.getCause()) {
+            if (cause instanceof InterruptedIOException stopped) {
+                throw stopped;
+            }
+        }
+        PdfFiles.stopIfInterrupted();
     }
 
     private static Codecs.Encoded convert(PDDocument document, ImageWalk.Found f, Options options, List<String> warnings)

@@ -58,6 +58,7 @@ final class InlineImages {
             try {
                 replacement = replacement(spot, content, options, codecs, totals);
             } catch (IOException | RuntimeException e) {
+                LineArt.rethrowCancelled(e);
                 warnings.add("Page " + content.page() + ": an inline image could not be read and was left as it was ("
                         + e.getMessage() + ")");
                 replacement = null;

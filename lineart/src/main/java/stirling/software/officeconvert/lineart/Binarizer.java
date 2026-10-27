@@ -43,6 +43,7 @@ final class Binarizer {
     }
 
     static Bitmap binarize(Source source, LineArt.Options options, long bandPixels) throws IOException {
+        LineArt.checkpoint();
         int w = source.width;
         int h = source.height;
         int rows = Source.bandRows(w, h, bandPixels);
@@ -53,6 +54,7 @@ final class Binarizer {
                 double level = options.threshold() / 100 * QUANTUM;
                 scan(greys, w, h, 0, (buffer, first, from, to) -> {
                     for (int y = from; y < to; y++) {
+                        LineArt.checkpoint();
                         int base = (y - first) * w;
                         for (int x = 0; x < w; x++) {
                             if (buffer[base + x] <= level) {
@@ -72,6 +74,7 @@ final class Binarizer {
                 int level = otsuLevel(histogram);
                 scan(greys, w, h, 0, (buffer, first, from, to) -> {
                     for (int y = from; y < to; y++) {
+                        LineArt.checkpoint();
                         int base = (y - first) * w;
                         for (int x = 0; x < w; x++) {
                             if (eight(buffer[base + x]) <= level) {
@@ -111,6 +114,7 @@ final class Binarizer {
         int[] state = new int[3];
         float[][] holder = {new float[0]};
         greys.each((y, grey, n) -> {
+            LineArt.checkpoint();
             int first = state[0];
             int count = state[1];
             float[] buffer = holder[0];
@@ -155,6 +159,7 @@ final class Binarizer {
             float scale = raster.getTransferType() == DataBuffer.TYPE_BYTE ? 257f : 1f;
             int[] row = new int[w];
             for (int y = 0; y < h; y++) {
+                LineArt.checkpoint();
                 raster.getSamples(0, y, w, 1, 0, row);
                 for (int x = 0; x < w; x++) {
                     grey[y * w + x] = row[x] * scale;
@@ -171,6 +176,7 @@ final class Binarizer {
         int dy = -raster.getSampleModelTranslateY();
         int[] row = packed ? null : new int[w];
         for (int y = 0; y < h; y++) {
+            LineArt.checkpoint();
             int offset = 0;
             if (packed) {
                 offset = (y + dy) * scan + dx + raster.getDataBuffer().getOffset();
@@ -201,6 +207,7 @@ final class Binarizer {
         Arrays.fill(ringRow, -1);
         scan(greys, w, h, level, (buffer, first, from, to) -> {
             for (int y = from; y < to; y++) {
+                LineArt.checkpoint();
                 negatedEdges(buffer, first, w, h, y, level, ring, ringRow, line);
                 for (float f : line) {
                     histogram[bin(f)]++;
@@ -233,6 +240,7 @@ final class Binarizer {
         Arrays.fill(ringRow, -1);
         scan(greys, w, h, level, (buffer, first, from, to) -> {
             for (int y = from; y < to; y++) {
+                LineArt.checkpoint();
                 negatedEdges(buffer, first, w, h, y, level, ring, ringRow, line);
                 for (int x = 0; x < w; x++) {
                     float f = line[x];
@@ -334,9 +342,11 @@ final class Binarizer {
         int top = Math.max(0, from - r);
         int bottom = Math.min(h - 1, from + r);
         for (int y = top; y <= bottom; y++) {
+            LineArt.checkpoint();
             addRow(buffer, (y - first) * w, w, columnSum, columnSquares, 1);
         }
         for (int y = from; y < to; y++) {
+            LineArt.checkpoint();
             if (y > from) {
                 if (y + r < h) {
                     addRow(buffer, (y + r - first) * w, w, columnSum, columnSquares, 1);
@@ -396,6 +406,7 @@ final class Binarizer {
                 return;
             }
             for (int y = 0; y < image.getHeight(); y++) {
+                LineArt.checkpoint();
                 image.getRGB(0, y, w, 1, row, 0, w);
                 for (int x = 0; x < w; x++) {
                     if (bitmap.ink(x, y0 + y)) {

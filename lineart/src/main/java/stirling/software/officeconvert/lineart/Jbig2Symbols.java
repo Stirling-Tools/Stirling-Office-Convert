@@ -215,6 +215,7 @@ final class Jbig2Symbols {
         int previousFirst = 0;
         int previousEnd = 0;
         for (int y = 0; y < h; y++) {
+            LineArt.checkpoint();
             int first = runs;
             int row = y * stride;
             int x = 0;
@@ -379,6 +380,7 @@ final class Jbig2Symbols {
         int left = w;
         int right = -1;
         for (int y = 0; y < h; y++) {
+            LineArt.checkpoint();
             for (int i = 0; i < stride; i++) {
                 int b = residual[y * stride + i] & 0xFF;
                 if (b != 0) {
@@ -399,6 +401,7 @@ final class Jbig2Symbols {
         int cstride = (cw + 7) >>> 3;
         byte[] crop = new byte[cstride * ch];
         for (int y = 0; y < ch; y++) {
+            LineArt.checkpoint();
             int row = (y + top) * stride;
             for (int x = 0; x < cw; x++) {
                 int sx = x + left;

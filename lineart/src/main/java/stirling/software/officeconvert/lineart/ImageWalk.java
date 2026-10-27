@@ -1,5 +1,6 @@
 package stirling.software.officeconvert.lineart;
 
+import java.io.IOException;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -18,6 +19,8 @@ import org.apache.pdfbox.cos.COSStream;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.PDResources;
+
+import stirling.software.officeconvert.extract.PdfFiles;
 
 final class ImageWalk {
 
@@ -40,14 +43,15 @@ final class ImageWalk {
         this.document = document;
     }
 
-    static List<Found> images(PDDocument document) {
+    static List<Found> images(PDDocument document) throws IOException {
         return walk(document).images();
     }
 
-    static Walk walk(PDDocument document) {
+    static Walk walk(PDDocument document) throws IOException {
         ImageWalk walk = new ImageWalk(document);
         int number = 0;
         for (PDPage page : document.getPages()) {
+            PdfFiles.stopIfInterrupted();
             number++;
             PDResources resources = page.getResources();
             COSBase body = page.getCOSObject().getDictionaryObject(COSName.CONTENTS);
@@ -75,8 +79,9 @@ final class ImageWalk {
         return new Walk(found, new ArrayList<>(walk.contents.values()));
     }
 
-    private void drain() {
+    private void drain() throws IOException {
         while (!pending.isEmpty()) {
+            PdfFiles.stopIfInterrupted();
             Pending p = pending.pop();
             resources(p.dictionary(), p.resources(), p.page());
         }

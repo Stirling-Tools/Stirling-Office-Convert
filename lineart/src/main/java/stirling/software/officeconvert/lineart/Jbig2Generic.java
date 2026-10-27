@@ -73,6 +73,7 @@ final class Jbig2Generic {
     static void generic(MqEncoder coder, MqEncoder.Contexts gb, byte[] bits, int stride, int w, int h, boolean typical) {
         boolean previousTypical = false;
         for (int y = 0; y < h; y++) {
+            LineArt.checkpoint();
             int row = y * stride;
             if (typical) {
                 boolean same = y == 0 ? emptyRow(bits, row, stride) : sameRow(bits, row, row - stride, stride);

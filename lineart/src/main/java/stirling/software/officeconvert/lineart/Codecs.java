@@ -2,7 +2,11 @@ package stirling.software.officeconvert.lineart;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.util.concurrent.CompletableFuture;
+import java.io.InterruptedIOException;
+import java.io.UncheckedIOException;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.FutureTask;
 import java.util.zip.Deflater;
 
 import org.apache.pdfbox.cos.COSDictionary;
@@ -15,6 +19,7 @@ final class Codecs {
     private Codecs() {}
 
     static Encoded encode(Bitmap bitmap, LineArt.Codec codec) throws IOException {
+        LineArt.checkpoint();
         return switch (codec) {
             case JBIG2 -> jbig2(bitmap);
             case CCITT_G4 -> g4(bitmap);
@@ -63,12 +68,24 @@ final class Codecs {
     private static Encoded flate(Bitmap bitmap, int shorterThan) {
         boolean bounded = shorterThan != Integer.MAX_VALUE;
         long rough = bounded ? 3L * shorterThan : Long.MAX_VALUE;
-        CompletableFuture<byte[]> upFuture = CompletableFuture.supplyAsync(() -> !bounded
+        FutureTask<byte[]> upFuture = new FutureTask<>(() -> !bounded
                 || deflate(bitmap, true, Deflater.BEST_SPEED, rough) != null
                 ? deflate(bitmap, true, Deflater.BEST_COMPRESSION, shorterThan) : null);
-        byte[] direct = !bounded || deflate(bitmap, false, Deflater.BEST_SPEED, rough) != null
-                ? deflate(bitmap, false, Deflater.BEST_COMPRESSION, shorterThan) : null;
-        byte[] up = upFuture.join();
+        Thread.ofVirtual().start(upFuture);
+        byte[] direct;
+        byte[] up;
+        try {
+            direct = !bounded || deflate(bitmap, false, Deflater.BEST_SPEED, rough) != null
+                    ? deflate(bitmap, false, Deflater.BEST_COMPRESSION, shorterThan) : null;
+            up = upFuture.get();
+        } catch (InterruptedException stopped) {
+            Thread.currentThread().interrupt();
+            throw new UncheckedIOException(new InterruptedIOException("Conversion interrupted"));
+        } catch (ExecutionException failed) {
+            throw new CompletionException(failed.getCause());
+        } finally {
+            upFuture.cancel(true);
+        }
         if (up != null && (direct == null || up.length < direct.length)) {
             COSDictionary parameters = new COSDictionary();
             parameters.setInt(COSName.PREDICTOR, 15);
@@ -95,6 +112,7 @@ final class Codecs {
             byte[] chunk = new byte[rows * rowBytes];
             byte[] previous = new byte[stride];
             for (int y0 = 0; y0 < h; y0 += rows) {
+                LineArt.checkpoint();
                 int n = Math.min(rows, h - y0);
                 for (int r = 0; r < n; r++) {
                     int src = (y0 + r) * stride;

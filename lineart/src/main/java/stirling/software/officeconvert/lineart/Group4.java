@@ -76,6 +76,7 @@ final class Group4 {
         byte[] reference = new byte[stride];
         byte[] coding = new byte[stride];
         for (int y = 0; y < h; y++) {
+            LineArt.checkpoint();
             System.arraycopy(bits, y * stride, coding, 0, stride);
             g.row(coding, reference, w);
             if (g.out.size() >= shorterThan) {

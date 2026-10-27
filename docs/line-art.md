@@ -218,3 +218,23 @@ not a guaranteed process-memory bound or a bound across successive methods in on
 The same run also completed every large-image case; sampled heap for the 400 MP grey image was 539 / 629 MiB
 and for the 400 MP RGB image 725 / 835 MiB (Sauvola / edges). Resident high-water memory is cumulative for
 the process, so it cannot be interpreted as a separate peak for each subsequent group.
+
+## Cancellation and output publication
+
+The path API honours thread interruption and memory-admission cancellation, reports `InterruptedIOException`,
+and removes its temporary output before returning a failure. The destination is replaced only after the complete
+PDF has been saved and cancellation checked. The caller-owned `PDDocument` API also propagates cancellation
+instead of describing it as an unreadable image; it mutates the document as images complete, so discard or reopen
+that document after an aborted conversion rather than saving a partially converted result.
+
+Standalone `binarize(BufferedImage, Options)` enforces `maxPixels` before allocation. It reports cooperative
+cancellation as `UncheckedIOException` with an `InterruptedIOException` cause because its signature has no checked
+exception. Row, image-walk and codec checkpoints preserve the interrupt flag. Parallel Flate prediction uses an
+owned task cancelled when its caller exits. A PDFBox or third-party decoder can finish its current operation before
+a checkpoint; these APIs do not promise to preempt arbitrary native decoding immediately.
+
+Generated cancellation regressions cover an empty document, interruption in the last image, inline stream
+cancellation, buffered-image/codec cancellation and the configured pixel bound. After these changes, all 128 normal
+cases (eight sources, every threshold method and every codec) have identical normalized PDFs to the preceding
+branch jar. This is a focused normal-output check; the earlier full-corpus and memory measurements retain their
+original provenance and limits. The standalone module also participates in snapshot publication and safety scans.
