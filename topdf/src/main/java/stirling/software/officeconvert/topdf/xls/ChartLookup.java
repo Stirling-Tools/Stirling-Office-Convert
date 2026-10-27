@@ -90,6 +90,16 @@ final class ChartLookup implements ChartRecords.Lookup {
     }
 
     @Override
+    public List<Boolean> hidden(Ptg[] reference) {
+        List<Boolean> out = new ArrayList<>();
+        for (HSSFCell cell : source(reference)) {
+            out.add(cell != null && (cell.getRow().getZeroHeight()
+                    || cell.getSheet().isColumnHidden(cell.getColumnIndex())));
+        }
+        return out;
+    }
+
+    @Override
     public List<String> labels(Ptg[] reference) {
         List<String> out = new ArrayList<>();
         for (HSSFCell cell : source(reference)) {

@@ -54,6 +54,8 @@ final class ChartRecords {
 
         List<String> labels(Ptg[] reference);
 
+        List<Boolean> hidden(Ptg[] reference);
+
         String sourceFormat(Ptg[] reference);
     }
 
@@ -72,6 +74,8 @@ final class ChartRecords {
     private int previous;
 
     private int dataTable = -1;
+
+    private boolean plotVisibleOnly = true;
 
     private int chartLine = -1;
 
@@ -146,6 +150,7 @@ final class ChartRecords {
         byte[] d = data(r, sid);
         int top = stack.isEmpty() ? 0 : stack.peek();
         switch (sid) {
+            case 0x1044 -> plotVisibleOnly = (u16(d, 0) & 2) != 0;
             case SERIES -> {
                 if (series.size() < MAX_SERIES && r instanceof SeriesRecord s) {
                     series.add(new SeriesBuilder(s.getNumCategories(), s.getNumValues()));
@@ -375,6 +380,19 @@ final class ChartRecords {
                     s.categories.put(i, capped(label != null ? label : fonts.number(d, -1, s.categoryFormat)));
                 } else if (v instanceof String t) {
                     s.categories.put(i, capped(t));
+                }
+            }
+        }
+        if (plotVisibleOnly) {
+            List<Boolean> hiddenValues = s.valueRef == null ? List.of() : fonts.hidden(s.valueRef);
+            List<Boolean> hiddenCategories = s.categoryRef == null ? List.of() : fonts.hidden(s.categoryRef);
+            int points = Math.max(hiddenValues.size(), hiddenCategories.size());
+            for (int i = 0; i < points; i++) {
+                if (i < hiddenValues.size() && hiddenValues.get(i)
+                        || i < hiddenCategories.size() && hiddenCategories.get(i)) {
+                    s.values.remove(i);
+                    s.categories.remove(i);
+                    s.xs.remove(i);
                 }
             }
         }
@@ -701,7 +719,7 @@ final class ChartRecords {
         }
         float size = base == null ? 10 : base.size();
         return new BiffChart(title, out, legend(), values, cats, plotFill, areaFill, areaLine, size,
-                base == null ? null : base.text(), dataTable);
+                base == null ? null : base.text(), dataTable, plotVisibleOnly);
     }
 
     private static BiffChart.ErrorBar errorBar(SeriesBuilder s) {

@@ -4,7 +4,7 @@ import java.util.List;
 import java.util.Map;
 
 record BiffChart(Text title, List<Group> groups, Legend legend, Axis[] values, Axis[] categories, Integer plotFill,
-        Integer areaFill, Integer areaLine, float textSize, String font, int dataTable) {
+        Integer areaFill, Integer areaLine, float textSize, String font, int dataTable, boolean plotVisibleOnly) {
 
     enum Kind {
         BAR,

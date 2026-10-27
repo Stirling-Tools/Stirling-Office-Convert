@@ -47,7 +47,8 @@ final class ChartXml {
         if (chart.legend() != null) {
             legend(b, chart.legend());
         }
-        b.append("<c:plotVisOnly val=\"1\"/></c:chart><c:spPr>").append(fill(chart.areaFill()))
+        b.append("<c:plotVisOnly val=\"").append(chart.plotVisibleOnly() ? 1 : 0)
+                .append("\"/></c:chart><c:spPr>").append(fill(chart.areaFill()))
                 .append(line(chart.areaLine(), 0.75f)).append("</c:spPr><c:txPr><a:bodyPr/><a:lstStyle/><a:p>")
                 .append("<a:pPr><a:defRPr sz=\"").append(Math.round(chart.textSize() * 100)).append("\">");
         if (chart.font() != null && !chart.font().isBlank()) {

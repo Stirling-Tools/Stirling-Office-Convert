@@ -104,6 +104,42 @@ class XlsChartTest {
     }
 
     @Test
+    void visibleOnlyChartsExcludeHiddenSourceRowsAndColumns() throws Exception {
+        for (boolean visibleOnly : new boolean[] {true, false}) {
+            for (boolean hiddenColumn : new boolean[] {true, false}) {
+                byte[] data = XlsTest.xls(wb -> {
+                    HSSFSheet sheet = wb.createSheet("Data");
+                    for (int i = 0; i < 3; i++) {
+                        HSSFRow row = sheet.createRow(i);
+                        row.createCell(0).setCellValue(i == 1 ? 987654 : 10 * (i + 1));
+                        row.createCell(1).setCellValue(i == 1 ? "Hidden category" : "Public " + i);
+                    }
+                    if (hiddenColumn) {
+                        sheet.setColumnHidden(0, true);
+                    } else {
+                        sheet.getRow(1).setZeroHeight(true);
+                    }
+                    int extern = wb.getInternalWorkbook().checkExternSheet(0);
+                    List<RecordBase> chart = ChartFixtures.linkedChart(BAR, "Linked", 3,
+                            new Area3DPtg(new AreaReference("A1:A3", SpreadsheetVersion.EXCEL97), extern),
+                            new Area3DPtg(new AreaReference("B1:B3", SpreadsheetVersion.EXCEL97), extern), null);
+                    var properties = new org.apache.poi.hssf.record.chart.SheetPropertiesRecord();
+                    properties.setPlotVisibleOnly(visibleOnly);
+                    chart.add(properties);
+                    ChartFixtures.chartSheet(wb, "Chart1", chart);
+                });
+                String chart = chartXml(data);
+                assertEquals(!visibleOnly, chart.contains("987654.0"), chart);
+                assertEquals(!visibleOnly, chart.contains("Hidden category"), chart);
+                assertTrue(chart.contains("<c:plotVisOnly val=\"" + (visibleOnly ? 1 : 0) + "\"/>"), chart);
+                if (visibleOnly && !hiddenColumn) {
+                    assertTrue(chart.contains("<c:v>10.0</c:v>") && chart.contains("<c:v>30.0</c:v>"), chart);
+                }
+            }
+        }
+    }
+
+    @Test
     void theCellsAChartLinksToOutrankItsCachedValues() throws Exception {
         byte[] data = XlsTest.xls(wb -> {
             HSSFSheet sheet = wb.createSheet("Data");
