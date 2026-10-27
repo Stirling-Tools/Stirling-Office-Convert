@@ -232,6 +232,30 @@ class FontEmbedderTest {
     }
 
     @Test
+    void anEmptyCffProgramIsReplacedEvenWhenItIsNotMarkedDamaged() throws Exception {
+        RawPdf pdf = RawPdf.page("/Font<</F1<</Type/Font/Subtype/Type1/BaseFont/Helvetica/Encoding/WinAnsiEncoding"
+                + "/FontDescriptor<</Type/FontDescriptor/FontName/Helvetica/Flags 32/FontBBox[0 -200 1000 1000]"
+                + "/ItalicAngle 0/Ascent 800/Descent -200/CapHeight 700/StemV 80/FontFile3 5 0 R>>>>>>",
+                "BT /F1 12 Tf 50 700 Td (Empty CFF) Tj ET");
+        pdf.add(RawPdf.stream("/Subtype /Type1C", ""));
+        try (PDDocument d = Loader.loadPDF(pdf.bytes())) {
+            PDFont before = d.getPage(0).getResources().getFont(COSName.getPDFName("F1"));
+            assertFalse(before.isEmbedded());
+            assertFalse(before.isDamaged());
+            String text = new org.apache.pdfbox.text.PDFTextStripper().getText(d);
+            FontEmbedder.Result result = FontEmbedder.embedMissing(d);
+            assertEquals(1, result.embedded().size());
+            assertTrue(result.failed().isEmpty());
+            java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+            d.save(out);
+            try (PDDocument saved = Loader.loadPDF(out.toByteArray())) {
+                assertTrue(saved.getPage(0).getResources().getFont(COSName.getPDFName("F1")).isEmbedded());
+                assertEquals(text, new org.apache.pdfbox.text.PDFTextStripper().getText(saved));
+            }
+        }
+    }
+
+    @Test
     void embeddedAndType3FontsAreLeftAlone() throws Exception {
         for (String sample : List.of("s03_type3", "s14_widths_mismatch")) {
             try (PDDocument d = Loader.loadPDF(Samples.write(dir, sample).toFile())) {

@@ -183,7 +183,7 @@ public final class FontEmbedder {
     }
 
     private static boolean readable(PDFont font) throws IOException {
-        boolean damaged = font.isDamaged() || font instanceof PDType0Font t0 && t0.getDescendantFont() != null
+        boolean damaged = !font.isEmbedded() || font.isDamaged() || font instanceof PDType0Font t0 && t0.getDescendantFont() != null
                 && FontCheck.isDamaged(t0.getDescendantFont());
         if (!damaged) {
             return true;
