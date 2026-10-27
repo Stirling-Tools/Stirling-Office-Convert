@@ -59,6 +59,34 @@ class MainTest {
     }
 
     @Test
+    void legacyCyrillicTextConvertsWithoutXmlProbeDiagnostics() throws Exception {
+        String text = "  \nСъешь ещё этих мягких французских булок, да выпей чаю. Москва Санкт-Петербург.\n".repeat(10);
+        for (String encoding : new String[] {"windows-1251", "KOI8-R"}) {
+            Path source = Files.write(dir.resolve(encoding + ".txt"),
+                    text.getBytes(java.nio.charset.Charset.forName(encoding)));
+            Path pdf = dir.resolve(encoding + ".pdf");
+            Result r = run(source.toString(), "-o", pdf.toString(), "-q");
+            assertEquals(0, r.code(), r.err());
+            assertEquals("", r.err(), encoding);
+            try (PDDocument doc = Loader.loadPDF(pdf.toFile())) {
+                assertTrue(new PDFTextStripper().getText(doc).contains("Москва Санкт-Петербург"));
+            }
+        }
+    }
+
+    @Test
+    void malformedOfficeXmlStillReportsItsConversionError() throws Exception {
+        Path source = Files.writeString(dir.resolve("broken.xml"),
+                "<w:wordDocument xmlns:w=\"http://schemas.microsoft.com/office/word/2003/wordml\">"
+                + "<w:body><w:p><w:r><w:t>Broken");
+        Path pdf = dir.resolve("broken.pdf");
+        Result r = run(source.toString(), "-o", pdf.toString(), "-q");
+        assertEquals(1, r.code(), r.err());
+        assertTrue(r.err().contains("FAIL " + source) && r.err().contains("not well-formed"), r.err());
+        assertFalse(Files.exists(pdf));
+    }
+
+    @Test
     void convertsSeveralOfficeFilesInOneRun() throws Exception {
         Path a = Files.writeString(dir.resolve("a.docx"), "x");
         Path b = Files.writeString(dir.resolve("b.pptx"), "x");
