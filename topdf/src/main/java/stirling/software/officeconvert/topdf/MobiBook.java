@@ -138,13 +138,28 @@ final class MobiBook {
             throw new IOException(MobiText.DAMAGED);
         }
         int records = PalmDatabase.u16(head, 2);
+        long expected = PalmDatabase.u32(head, 4);
+        if (records >= pdb.count() || expected > MobiText.MAX_TEXT_BYTES) {
+            throw new IOException(MobiText.DAMAGED);
+        }
         ByteArrayOutputStream text = new ByteArrayOutputStream();
         Inflater inflater = new Inflater();
         try {
             byte[] buf = new byte[1 << 16];
-            for (int i = 1; i <= records && pdb.has(i); i++) {
+            int tail = 0;
+            int tailBytes = 0;
+            for (int i = 1; i <= records; i++) {
                 OfficeToPdf.stopIfInterrupted();
-                inflater.setInput(pdb.record(i));
+                byte[] record = pdb.record(i);
+                if (record.length >= 4) {
+                    tail = 0;
+                    tailBytes = 0;
+                }
+                for (int at = Math.max(0, record.length - 4); at < record.length; at++) {
+                    tail = (tail << 8) | (record[at] & 0xff);
+                    tailBytes++;
+                }
+                inflater.setInput(record);
                 while (!inflater.needsInput() && !inflater.finished()) {
                     OfficeToPdf.stopIfInterrupted();
                     int n = inflater.inflate(buf);
@@ -157,7 +172,9 @@ final class MobiBook {
                     text.write(buf, 0, n);
                 }
             }
-            if (!inflater.finished()) {
+            boolean flushed = text.size() == expected && inflater.needsInput()
+                    && tailBytes >= 4 && tail == 0x0000ffff;
+            if ((!inflater.finished() && !flushed) || expected > 0 && text.size() != expected) {
                 throw new IOException(MobiText.DAMAGED);
             }
         } catch (DataFormatException e) {

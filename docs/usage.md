@@ -579,7 +579,7 @@ epigraphs, poems, citations, tables, embedded pictures, cover and notes; a DOCTY
 256 MB (Kindle) and 128 MB (FictionBook), checked while reading as well as against the file size. Kindle
 decompression is limited to 64 MB of text. Assembled books allow 5,000 chapters and 50,331,648 HTML characters;
 missing chapters, exceeded limits, missing PalmDOC/MOBI text and incomplete zTXT streams fail the conversion rather than returning a partial
-book. CSS selector scoping has a fixed expansion budget and honours cancellation. An eBook only ever draws what
+book. zTXT accepts completed streams and flush-terminated records whose declared text size matches. CSS selector scoping has a fixed expansion budget and honours cancellation. An eBook only ever draws what
 the book file holds.
 `Options.tableOfContents(true)` (`--toc`) adds a table of contents after the document, as Calibre's
 `--pdf-add-toc` does: its bookmarks (headings) with their page numbers, each linked to its page, and a "Contents"

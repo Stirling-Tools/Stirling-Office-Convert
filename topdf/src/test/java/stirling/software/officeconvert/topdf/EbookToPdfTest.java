@@ -173,6 +173,68 @@ class EbookToPdfTest {
     }
 
     @Test
+    void anEmptyFlushTerminatedZTxtBookIsAccepted() throws IOException {
+        Deflater deflater = new Deflater();
+        byte[] buffer = new byte[64];
+        int length;
+        try {
+            length = deflater.deflate(buffer, 0, buffer.length, Deflater.FULL_FLUSH);
+        } finally {
+            deflater.end();
+        }
+        MobiWriter writer = MobiWriter.create();
+        byte[] header = new byte[32];
+        MobiWriter.put16(header, 0, 0x012c);
+        MobiWriter.put16(header, 2, 1);
+        MobiWriter.put16(header, 8, 8192);
+        header[18] = 1;
+        writer.records.set(0, header);
+        writer.add(Arrays.copyOf(buffer, length));
+        assertTrue(MobiBook.read(write("empty-flush.pdb", writer.build("zTXTGPlm"))).book().html().contains("<body>"));
+    }
+
+    @Test
+    void fullFlushZTxtRecordsAreAcceptedAndTruncatedOnesRejected() throws IOException {
+        List<byte[]> text = List.of(utf8("The first paragraph of a flush-terminated book.\n"),
+                utf8("The second paragraph preserves the complete text.\n"));
+        List<byte[]> records = new ArrayList<>();
+        Deflater deflater = new Deflater();
+        try {
+            byte[] buffer = new byte[4096];
+            for (byte[] chunk : text) {
+                deflater.setInput(chunk);
+                int n = deflater.deflate(buffer, 0, buffer.length, Deflater.FULL_FLUSH);
+                assertTrue(deflater.needsInput());
+                records.add(Arrays.copyOf(buffer, n));
+            }
+        } finally {
+            deflater.end();
+        }
+        for (int change : List.of(0, 1, 2, 3)) {
+            MobiWriter writer = MobiWriter.create();
+            byte[] header = new byte[32];
+            MobiWriter.put16(header, 0, 0x012c);
+            MobiWriter.put16(header, 2, records.size());
+            MobiWriter.put32(header, 4, text.stream().mapToInt(a -> a.length).sum() + (change == 1 ? 1 : 0));
+            MobiWriter.put16(header, 8, 8192);
+            header[18] = 1;
+            writer.records.set(0, header);
+            writer.add(records.get(0));
+            if (change != 3) {
+                byte[] last = records.get(1);
+                writer.add(change == 2 ? Arrays.copyOf(last, last.length - 1) : last);
+            }
+            Path input = write("flush-" + change + ".pdb", writer.build("zTXTGPlm"));
+            if (change == 0) {
+                String html = MobiBook.read(input).book().html();
+                assertTrue(html.contains("first paragraph") && html.contains("second paragraph"), html);
+            } else {
+                assertThrows(IOException.class, () -> MobiBook.read(input));
+            }
+        }
+    }
+
+    @Test
     void truncatedZTxtCannotReturnPartialText() throws IOException {
         Deflater deflater = new Deflater();
         byte[] compressed = new byte[1024];
