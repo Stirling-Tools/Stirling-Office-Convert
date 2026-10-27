@@ -595,7 +595,7 @@ public final class Main {
                         + " -o names it), and repairs a damaged one on the way: unused objects and resources are dropped,"
                         + " duplicates merged, streams recompressed and objects packed into object streams; editing"
                         + " applications' private data goes too unless --keep-private-data. An output that would not be"
-                        + " smaller is a copy of the input. Encrypted PDFs are refused."
+                        + " smaller is a copy of the input. Supported encrypted PDFs keep their encryption and permissions; use --password when required."
                         + System.lineSeparator()
                         + "--fonts adds a folder of .ttf, .ttc, .otf or .otc fonts (searched to a depth of 8, links not"
                         + " followed); --font-map draws a family with an installed one (Aptos=Inter); --font-width scales"
