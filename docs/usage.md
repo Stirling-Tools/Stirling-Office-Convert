@@ -821,10 +821,13 @@ There are two methods:
 - `Method.STRAIGHTEN` (the default) models the scanner bed from the scan's border and a coarse grid, so a tinted lid,
   uneven lighting, a lid shadow or photos over the corners and the centre do not upset it. A photo is the area that
   differs from the bed, extended by a fainter pass so white print borders and pale photos are kept whole. Photos
-  that touch are told apart by narrowing necks and by straight gaps between them, even a gap filled by a shadow. Each
-  photo's edges are then fitted to sub-pixel accuracy, and the photo is cut out along them and turned level.
+  that touch are told apart by narrowing necks, straight gaps (including shadow-filled gaps), and colour steps along
+  shared edges. A text-pattern check leaves out typed pages. Each photo's edges are then fitted to sub-pixel
+  accuracy, and the photo is cut out along them and turned level.
   Photos come back in reading order. `borderSize` trims that many pixels from every side; `angleThreshold` is not
-  used, because the measured angle is exact rather than a vote of detected lines.
+  used, because the angle comes from the fitted photo edges. Large scans are searched on a reduced copy limited to
+  roughly 4.5 million pixels; edges are refined and crops are taken at the original resolution. The file API writes
+  one crop at a time, while the buffered-image API returns all cropped images together.
 - `Method.SCRIPT` reproduces `split_photos.py`: background from four corners and the centre, the 9 by 9 dilated
   difference mask, the upright bounding box of every outer contour, and a turn by the median Hough line angle when it
   is at least `angleThreshold`, with the photos in the script's order (bottom of the scan first). Unlike the script,
@@ -834,26 +837,52 @@ There are two methods:
 `--tolerance`, `--min-area`, `--min-contour-area`, `--border-size`, `--dpi`, `--method straighten|script`,
 `--overwrite` and `-q`; the underscore spellings the script takes (`--min_area`) work too.
 
-Measured against `split_photos.py` running in the Stirling-PDF 3.2.0 image (OpenCV 5.0, arm64, two CPUs), with
-Stirling-PDF's own settings (10, 30, 10000, 500, border 1), on synthetic scans built in test code (57 scans, 201
-photos: straight, tilted to 22 degrees, tinted and shaded beds, a black lid, a lid shadow, noise and dust, photos over
-the corners, across the scan edge, a few pixels apart, overlapping, abutting, pale and white bordered) and 16 scans of
-real photographs laid on the same kinds of bed:
+Rechecked on 2026-10-27 in offline Docker, with two CPUs, a 1500 MiB container limit and `-Xmx1200m`, against
+stored outputs from the original `split_photos.py` in the Stirling-PDF 3.2.0 image (OpenCV 5.0). Settings were
+Stirling-PDF's 10, 30, 10000, 500 and border 1. All 99 input scans and their declared JSON and PNG outputs were
+checked for completeness and decodability.
 
-| | `split_photos.py` | `SCRIPT` | `STRAIGHTEN` |
-|---|---|---|---|
-| Synthetic: photos found (crop IoU at least 0.5) | 156 of 201 | the same boxes | 198 of 201 |
-| Synthetic: crop IoU at least 0.95 | 30 of 201 | | 175 of 201 |
-| Synthetic: scans with exactly the right photos | 33 of 57 | | 54 of 57 |
-| Real photos: found, tight, exact scans | 76, 7 of 80; 10 of 16 | | 79, 78 of 80; 15 of 16 |
-| Mean angle left after straightening | 16 to 29 degrees | | 0.01 to 0.03 degrees |
-| A4 at 300 dpi, PNG in and out, warm; peak RSS | 0.29 s, 137 MB | 0.69 s | 0.95 s, 248 MB at `-Xmx192m` |
-| A4 at 200 dpi, PNG in and out, warm; peak RSS | 0.11 s, 88 MB | 0.31 s | 0.34 s, 183 MB at `-Xmx128m` |
+The truth sets contain 57 base synthetic scans (201 photos), 26 further generated scans (106 photos: aligned and
+angled shared edges, white product borders, Polaroids, rounded and torn edges, dark photos on dark beds, perforated
+stamps, typed pages, greyscale and JPEG), and 16 generated layouts using five real photographs (80 photos). The
+last set is not a collection of scans from independent scanners.
 
-`SCRIPT` finds the same boxes and angles as the script on every scan tried; where it turns a photo, 92 to 96 percent
-of the pixels match exactly and the rest differ by one level, because OpenCV 5's fixed-point bicubic weights are
-not reproduced. `STRAIGHTEN` still merges photos that abut along a whole edge with nothing between them, and a photo
-whose own background matches the bed (a product shot on white) can come back without its pale margin.
+| Set | Original script: found / tight / exact scans / extra crops | `STRAIGHTEN`: found / tight / exact scans / extra crops |
+|---|---|---|
+| Base synthetic | 156/201; 30/201; 33/57; 30 | 198/201; 175/201; 54/57; 0 |
+| Further generated | 96/106; 12/106; 12/26; 30 | 102/106; 100/106; 24/26; 2 |
+| Real-photograph layouts | 76/80; 7/80; 10/16; 14 | 79/80; 78/80; 15/16; 2 |
+
+Found means a truth photo matched by a crop at polygon IoU at least 0.5; tight means IoU at least 0.95. Exact scans
+have every truth photo matched and no extra crop. Matching uses the existing greedy IoU evaluator. Mean per-scan IoU for
+`STRAIGHTEN` is 0.964 / 0.935 / 0.979 across the three sets, and mean residual angle among matched photos is
+0.01 / 0.02 / 0.03 degrees.
+The historical colour-pixel MAE is 5.4 / 11.0 / 2.2, versus the script's 37.5 / 36.3 / 33.6. The greyscale fixtures
+retain coloured truth thumbnails, so that metric also counts intentionally removed colour; a separate measurement
+on the 12 photos in four known greyscale-input fixtures preserves their historical RGB MAE (29.97 for
+`STRAIGHTEN`, 52.43 for the script) and adds a greyscale-compatible MAE. Converting both aligned outputs and truth
+thumbnails with OpenCV BGR2GRAY gives 1.52 for `STRAIGHTEN` and 34.02 for the script.
+
+`SCRIPT` matches the original script's counts, boxes and angles on all 99 scans. The per-scan mean exact-pixel
+matches are 94.37%, 95.43% and 96.43% across the three sets; every differing channel is at most one level away.
+OpenCV 5's fixed-point bicubic weights are not reproduced exactly.
+
+Current file-API timings include PNG reading and writing, on generated A4/A3 scans. The time is the best of four
+calls at `-Xmx1200m`; memory is measured separately in a fresh process at the smallest successful heap from a fixed
+sweep, and is not the resident peak at `-Xmx1200m`. Other jobs shared the host, so timings are descriptive.
+
+| Scan | Pixels | Best of four | Smallest tested heap | RSS at that heap | Crops |
+|---|---|---|---|---|---|
+| A4, 150 dpi | 2.17 million | 290 ms | 48 MiB | 101 MiB | 4/4 |
+| A4, 200 dpi | 3.86 million | 409 ms | 80 MiB | 130 MiB | 4/4 |
+| A4, 300 dpi | 8.70 million | 561 ms | 64 MiB | 118 MiB | 4/4 |
+| A4, 600 dpi | 34.80 million | 1988 ms | 192 MiB | 239 MiB | 4/4 |
+| A3, 600 dpi | 69.61 million | 3871 ms | 320 MiB | 366 MiB | 5/5 |
+
+The analysis scale changes in whole-number steps, which explains why the 300 dpi case needs less heap than the
+200 dpi case in this sweep. `STRAIGHTEN` still merges perfectly aligned photos that abut along a whole edge; the
+abutting A4 cases are also loose or merged. A product photograph whose pale background matches its white print
+border can still lose its pale margin. These generated sets do not establish accuracy on arbitrary scanner output.
 
 ## How it works
 
