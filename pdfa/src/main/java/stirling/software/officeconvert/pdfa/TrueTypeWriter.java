@@ -407,6 +407,7 @@ final class TrueTypeWriter {
         }
         int points = contours == 0 ? 0 : (b.getShort(at - 2) & 0xFFFF) + 1;
         at += 2 + (b.getShort(at) & 0xFFFF);
+        int flagsAt = at;
         int xBytes = 0;
         int yBytes = 0;
         for (int p = 0; p < points;) {
@@ -426,7 +427,36 @@ final class TrueTypeWriter {
             yBytes += n * ((flag & 0x04) != 0 ? 1 : (flag & 0x20) != 0 ? 0 : 2);
             p += repeat;
         }
-        return at + xBytes + yBytes <= length;
+        return at + xBytes + yBytes <= length && coordinatesFit(b, flagsAt, at, points, 0x02, 0x10)
+                && coordinatesFit(b, flagsAt, at + xBytes, points, 0x04, 0x20);
+    }
+
+    private static boolean coordinatesFit(ByteBuffer data, int flagsAt, int at, int points, int shortFlag,
+            int positiveFlag) {
+        int coordinate = 0;
+        for (int p = 0; p < points;) {
+            int flags = data.get(flagsAt++) & 0xFF;
+            int repeat = (flags & 0x08) == 0 ? 1 : 1 + (data.get(flagsAt++) & 0xFF);
+            repeat = Math.min(repeat, points - p);
+            for (int i = 0; i < repeat; i++) {
+                int delta = 0;
+                if ((flags & shortFlag) != 0) {
+                    delta = data.get(at++) & 0xFF;
+                    if ((flags & positiveFlag) == 0) {
+                        delta = -delta;
+                    }
+                } else if ((flags & positiveFlag) == 0) {
+                    delta = data.getShort(at);
+                    at += 2;
+                }
+                coordinate += delta;
+                if (coordinate < Short.MIN_VALUE || coordinate > Short.MAX_VALUE) {
+                    return false;
+                }
+            }
+            p += repeat;
+        }
+        return true;
     }
 
     static byte[] unhinted(byte[] data) {

@@ -263,6 +263,27 @@ class WebFontsBrokenTest {
     }
 
     @Test
+    void glyphCoordinatesOutsideTheSignedBoundsAreDiscarded() throws Exception {
+        for (int[] coordinates : new int[][] {{32767, 300, 0, 0}, {-32768, -300, 0, 0},
+                {0, 0, 32767, 300}, {0, 0, -32768, -300}}) {
+            byte[] f = font();
+            ByteBuffer b = ByteBuffer.wrap(f);
+            int glyph = table(f, "glyf")[1] + b.getInt(table(f, "loca")[1] + 8);
+            ByteBuffer data = ByteBuffer.allocate(24);
+            data.putShort((short) 1).position(10);
+            data.putShort((short) 1).putShort((short) 0).put((byte) 1).put((byte) 1);
+            for (int coordinate : coordinates) {
+                data.putShort((short) coordinate);
+            }
+            System.arraycopy(data.array(), 0, f, glyph, data.capacity());
+            byte[] out = WebFonts.toTrueType(f, WebFonts.FontKind.TRUETYPE, null);
+            ByteBuffer converted = ByteBuffer.wrap(out);
+            int loca = table(out, "loca")[1];
+            org.junit.jupiter.api.Assertions.assertEquals(converted.getInt(loca + 8), converted.getInt(loca + 12));
+        }
+    }
+
+    @Test
     void negativeContourCountsOtherThanCompositeAreDiscarded() throws Exception {
         for (short contours : new short[] {-2, -70, Short.MIN_VALUE}) {
             byte[] f = font();
