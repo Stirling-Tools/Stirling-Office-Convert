@@ -591,6 +591,8 @@ as its `htmlAssets` (`--allow-network --fetch-linked`, which combines with `--al
 redirect, cookie and size rules apply. Host lookups give up after 10 s (or the time left), TLS certificates are checked
 against the system trust store and the host name, and the host name is sent as SNI.
 
+Current measurements and remaining limits are recorded in [HTML to PDF validation](html-parity.md).
+
 EPUB (`.epub`, EPUB 2 and 3) is read in its reading order (the package document's spine) into one HTML page: each
 document starts a new page, its own `<style>` rules apply only to it, links between documents become links inside
 the PDF, and the cover picture (an SVG-wrapped cover page included) comes first. Pictures and style sheets come from
