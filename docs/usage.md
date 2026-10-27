@@ -877,7 +877,8 @@ The cache belongs to the JDK build that made it; the JVM ignores a cache from an
 
 Published to Maven Central as `com.stirling:stirling-office-convert`, `com.stirling:stirling-office-convert-legacy`
 (the `.ppt` writer), `com.stirling:stirling-office-convert-topdf` (Office to PDF) and
-`com.stirling:stirling-office-convert-pdfa` (PDF to PDF/A), signed, the same way as JPDFium:
+`com.stirling:stirling-office-convert-pdfa` (PDF to PDF/A) and `com.stirling:stirling-office-convert-lineart`
+(bilevel PDF images), signed, the same way as JPDFium:
 
 - A `v1.2.3` tag runs `.github/workflows/release.yml`: build, test, then `publishAllToCentralPortal`, which uploads to
   the Central Portal staging API and finalizes the deployment for review at
