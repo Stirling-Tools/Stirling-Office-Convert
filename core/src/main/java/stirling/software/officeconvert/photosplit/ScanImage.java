@@ -43,6 +43,7 @@ final class ScanImage implements Picture {
             boolean wide = type == DataBuffer.TYPE_USHORT;
             int[] row = new int[w * bands];
             for (int y = 0; y < h; y++) {
+                PhotoSplitter.checkpoint();
                 raster.getPixels(0, y, w, 1, row);
                 int o = y * w;
                 for (int x = 0; x < w; x++) {
@@ -58,6 +59,7 @@ final class ScanImage implements Picture {
         } else {
             int[] row = new int[w];
             for (int y = 0; y < h; y++) {
+                PhotoSplitter.checkpoint();
                 image.getRGB(0, y, w, 1, row, 0, w);
                 for (int x = 0; x < w; x++) {
                     out[y * w + x] = row[x] & 0xFFFFFF;
@@ -105,17 +107,25 @@ final class ScanImage implements Picture {
     ScanImage crop(int x, int y, int w, int h) {
         int[] out = new int[w * h];
         for (int r = 0; r < h; r++) {
+            PhotoSplitter.checkpoint();
             System.arraycopy(rgb, (y + r) * width + x, out, r * w, w);
         }
         return new ScanImage(w, h, out);
     }
 
     ScanImage pad(int border, int fill) {
-        int w = width + 2 * border;
-        int h = height + 2 * border;
+        long paddedWidth = width + 2L * border;
+        long paddedHeight = height + 2L * border;
+        if (paddedWidth > Integer.MAX_VALUE || paddedHeight > Integer.MAX_VALUE
+                || paddedWidth * paddedHeight > PhotoSplitter.MAX_PIXELS) {
+            throw new IllegalArgumentException("Padded scan exceeds the " + PhotoSplitter.MAX_PIXELS + " pixel limit");
+        }
+        int w = (int) paddedWidth;
+        int h = (int) paddedHeight;
         int[] out = new int[Math.multiplyExact(w, h)];
         Arrays.fill(out, fill);
         for (int r = 0; r < height; r++) {
+            PhotoSplitter.checkpoint();
             System.arraycopy(rgb, r * width, out, (r + border) * w + border, width);
         }
         return new ScanImage(w, h, out);

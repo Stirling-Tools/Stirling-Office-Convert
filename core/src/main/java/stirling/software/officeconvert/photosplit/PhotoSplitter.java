@@ -5,26 +5,30 @@ import java.awt.image.BufferedImage;
 import java.io.BufferedOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InterruptedIOException;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardOpenOption;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.CancellationException;
 
 import javax.imageio.ImageIO;
 import javax.imageio.ImageReader;
 import javax.imageio.stream.ImageInputStream;
 
-import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.common.PDRectangle;
 import org.apache.pdfbox.rendering.ImageType;
 import org.apache.pdfbox.rendering.PDFRenderer;
+
+import stirling.software.officeconvert.extract.PdfFiles;
 
 public final class PhotoSplitter {
 
@@ -102,6 +106,7 @@ public final class PhotoSplitter {
 
     public static List<Photo> split(BufferedImage scan, Options options) {
         Objects.requireNonNull(options, "options");
+        checkpoint();
         check(scan);
         return options.method() == Method.SCRIPT ? ScriptMethod.split(ScanImage.of(scan), options)
                 : StraightenMethod.split(Source.of(scan), options);
@@ -119,14 +124,32 @@ public final class PhotoSplitter {
         Objects.requireNonNull(input, "input");
         Objects.requireNonNull(outputDirectory, "outputDirectory");
         Objects.requireNonNull(options, "options");
+        try {
+            checkpoint();
+            return splitFile(input, outputDirectory, options);
+        } catch (CancellationException stopped) {
+            InterruptedIOException error = new InterruptedIOException("Photo splitting interrupted");
+            error.initCause(stopped);
+            throw error;
+        }
+    }
+
+    static void checkpoint() {
+        if (Thread.currentThread().isInterrupted()) {
+            throw new CancellationException("Photo splitting interrupted");
+        }
+    }
+
+    private static List<Path> splitFile(Path input, Path outputDirectory, Options options) throws IOException {
         Files.createDirectories(outputDirectory);
         String base = baseName(input);
         List<Path> written = new ArrayList<>();
         if (isPdf(input)) {
-            try (PDDocument document = Loader.loadPDF(input.toFile())) {
+            try (PDDocument document = PdfFiles.open(input, null)) {
                 PDFRenderer renderer = new PDFRenderer(document);
                 renderer.setSubsamplingAllowed(true);
                 for (int page = 0; page < document.getNumberOfPages(); page++) {
+                    checkpoint();
                     float dpi = pageDpi(document.getPage(page).getCropBox(), options.dpi());
                     write(renderer.renderImageWithDPI(page, dpi, ImageType.RGB), options, outputDirectory, base, written);
                 }
@@ -134,6 +157,7 @@ public final class PhotoSplitter {
         } else {
             write(readImage(input), options, outputDirectory, base, written);
         }
+        checkpoint();
         return written;
     }
 
@@ -147,6 +171,7 @@ public final class PhotoSplitter {
     }
 
     private static void write(BufferedImage scan, Options options, Path dir, String base, List<Path> written) throws IOException {
+        checkpoint();
         check(scan);
         Source source = options.method() == Method.SCRIPT ? null : Source.of(scan);
         List<Photo> eager = source == null ? ScriptMethod.split(ScanImage.of(scan), options) : null;
@@ -163,11 +188,30 @@ public final class PhotoSplitter {
         for (int i = 0; i < count; i++) {
             BufferedImage image = eager != null ? eager.get(i).image() : StraightenMethod.photo(source, rects.get(i)).image();
             Path target = targets.get(i);
-            try (OutputStream out = new BufferedOutputStream(options.overwrite() ? Files.newOutputStream(target)
-                    : Files.newOutputStream(target, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE), 1 << 16)) {
+            writeImage(image, target, options.overwrite());
+            written.add(target);
+        }
+    }
+
+    static void writeImage(BufferedImage image, Path target, boolean overwrite) throws IOException {
+        checkpoint();
+        Path part = Files.createTempFile(target.toAbsolutePath().getParent(), ".photo-", ".part");
+        try {
+            try (OutputStream out = new BufferedOutputStream(Files.newOutputStream(part), 1 << 16)) {
                 PngWriter.write(image, out);
             }
-            written.add(target);
+            checkpoint();
+            if (overwrite) {
+                try {
+                    Files.move(part, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+                } catch (AtomicMoveNotSupportedException e) {
+                    Files.move(part, target, StandardCopyOption.REPLACE_EXISTING);
+                }
+            } else {
+                Files.move(part, target);
+            }
+        } finally {
+            Files.deleteIfExists(part);
         }
     }
 

@@ -27,6 +27,7 @@ final class Crop {
             BufferedImage out = image(cw, ch, gray);
             byte[] data = ((DataBufferByte) out.getRaster().getDataBuffer()).getData();
             for (int y = 0; y < ch; y++) {
+                PhotoSplitter.checkpoint();
                 for (int x = 0; x < cw; x++) {
                     put(data, y * cw + x, scan.rgb(Math.min(x0 + x, scan.width() - 1), Math.min(y0 + y, scan.height() - 1)), gray);
                 }
@@ -39,6 +40,7 @@ final class Crop {
         byte[] data = ((DataBufferByte) out.getRaster().getDataBuffer()).getData();
         int[] px = new int[16];
         for (int v = 0; v < h; v++) {
+            PhotoSplitter.checkpoint();
             double dv = v + 0.5 - h / 2.0;
             double rowX = rect.cx() - (w / 2.0 - 0.5) * c - dv * s - 0.5;
             double rowY = rect.cy() - (w / 2.0 - 0.5) * s + dv * c - 0.5;

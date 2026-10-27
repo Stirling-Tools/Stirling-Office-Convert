@@ -127,11 +127,13 @@ final class Source implements Picture {
         int[] b = new int[w];
         int[] n = new int[w];
         for (int ty = 0; ty < h; ty++) {
+            PhotoSplitter.checkpoint();
             Arrays.fill(r, 0);
             Arrays.fill(g, 0);
             Arrays.fill(b, 0);
             Arrays.fill(n, 0);
             for (int y = ty * factor; y < Math.min(height, (ty + 1) * factor); y++) {
+                PhotoSplitter.checkpoint();
                 int base = y * stride;
                 for (int x = 0; x < width; x++) {
                     int p;

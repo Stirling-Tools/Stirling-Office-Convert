@@ -814,7 +814,15 @@ List<Path> written = PhotoSplitter.split(Path.of("album.pdf"), Path.of("photos")
 The file form reads a PNG, JPEG, BMP, GIF, TIFF (first frame) or PDF; each PDF page is drawn at `dpi` (default 300, the
 resolution Stirling-PDF uses) and searched. Photos are written as `name_1.png`, `name_2.png` and so on, numbered on
 across pages, and an existing file is never replaced unless `overwrite(true)`. Images over 100 million pixels are
-refused; a PDF page that would exceed that is drawn at a lower resolution.
+refused; a PDF page that would exceed that is drawn at a lower resolution. SCRIPT padding is included in the
+same pixel limit, so a large border cannot bypass it.
+
+An interrupted buffered-image call throws `CancellationException`; the file API reports `InterruptedIOException`
+and preserves the thread's interrupt flag. Pixel rows, analysis phases, cropping and PNG encoding have cooperative
+checkpoints. A third-party image reader or PDF renderer may finish its current decode before reaching a checkpoint.
+Each PNG is encoded to a temporary file beside its target, then published only after encoding succeeds. A failed or
+cancelled encode removes that temporary file and preserves an existing target. Crops completed before a later
+photo or PDF page fails remain in the output folder; the whole scan is not a transaction.
 
 There are two methods:
 
@@ -831,7 +839,9 @@ There are two methods:
 - `Method.SCRIPT` reproduces `split_photos.py`: background from four corners and the centre, the 9 by 9 dilated
   difference mask, the upright bounding box of every outer contour, and a turn by the median Hough line angle when it
   is at least `angleThreshold`, with the photos in the script's order (bottom of the scan first). Unlike the script,
-  it honours `minArea` and `minContourArea` (the script always used 10000 and 500).
+  it honours `minArea` and `minContourArea` (the script always used 10000 and 500). Its full-resolution masks,
+  edge detection and Hough transform can need substantially more memory than the default reduced analysis path;
+  the pixel limit is an input bound, not a guaranteed heap or process-memory limit.
 
 `office-convert split-photos <scan.png|scan.pdf>... [-o dir]` runs it from the command line with `--angle-threshold`,
 `--tolerance`, `--min-area`, `--min-contour-area`, `--border-size`, `--dpi`, `--method straighten|script`,

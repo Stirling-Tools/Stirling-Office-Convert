@@ -8,6 +8,7 @@ final class Filters {
         int[] tmp = new int[rgb.length];
         int size = 2 * radius + 1;
         for (int y = 0; y < h; y++) {
+            PhotoSplitter.checkpoint();
             int base = y * w;
             int r = 0;
             int g = 0;
@@ -42,6 +43,7 @@ final class Filters {
         }
         int half = size / 2;
         for (int y = 0; y < h; y++) {
+            PhotoSplitter.checkpoint();
             int base = y * w;
             int add = Math.min(y + radius + 1, h - 1) * w;
             int drop = Math.max(y - radius, 0) * w;
@@ -65,6 +67,7 @@ final class Filters {
             }
         }
         while (!stack.isEmpty()) {
+            PhotoSplitter.checkpoint();
             int p = stack.pop();
             int x = p % w;
             int y = p / w;
@@ -88,10 +91,12 @@ final class Filters {
             seed(mask, (h - 1) * w + x, outside, stack);
         }
         for (int y = 0; y < h; y++) {
+            PhotoSplitter.checkpoint();
             seed(mask, y * w, outside, stack);
             seed(mask, y * w + w - 1, outside, stack);
         }
         while (!stack.isEmpty()) {
+            PhotoSplitter.checkpoint();
             int p = stack.pop();
             int x = p % w;
             int y = p / w;

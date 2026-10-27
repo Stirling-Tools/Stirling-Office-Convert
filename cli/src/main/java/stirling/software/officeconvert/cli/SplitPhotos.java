@@ -155,7 +155,7 @@ final class SplitPhotos {
                         + " 500) in its outline is ignored; --border-size (default 0) trims that many pixels from each side of"
                         + " every photo. The underscore spellings split_photos.py takes (--min_area) work too."
                         + System.lineSeparator()
-                        + "Existing photos are left alone and the scan skipped unless --overwrite is given."
+                        + "Existing photos are left alone unless --overwrite is given; crops completed before a later failure remain."
                         + System.lineSeparator()
                         + "Exit status: 0 every scan gave photos, 1 a scan failed, was skipped or had no photos, 2 a mistake in"
                         + " the arguments.");

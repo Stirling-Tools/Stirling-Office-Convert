@@ -42,6 +42,7 @@ final class PngWriter {
             byte[] row = new byte[1 + w * channels];
             row[0] = SUB;
             for (int y = 0; y < h; y++) {
+                PhotoSplitter.checkpoint();
                 int previous = 0;
                 for (int x = 0; x < w; x++) {
                     int p = picture.rgb(x, y);

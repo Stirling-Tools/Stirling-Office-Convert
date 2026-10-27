@@ -22,6 +22,7 @@ final class StraightenMethod {
     static List<PhotoSplitter.Photo> split(Source source, PhotoSplitter.Options options) {
         List<PhotoSplitter.Photo> photos = new ArrayList<>();
         for (RotatedRect rect : find(source, options)) {
+            PhotoSplitter.checkpoint();
             photos.add(photo(source, rect));
         }
         return photos;
@@ -58,7 +59,9 @@ final class StraightenMethod {
     static List<RotatedRect> candidates(ScanImage scan, PhotoSplitter.Options options) {
         int w = scan.width;
         int h = scan.height;
+        PhotoSplitter.checkpoint();
         int[] smooth = Filters.boxBlur(scan.rgb, w, h, SMOOTH_RADIUS);
+        PhotoSplitter.checkpoint();
         Bed bed = Bed.fit(scan, smooth, options.tolerance());
         int strong = bed.threshold(options.tolerance());
         byte[] photo = new byte[w * h];
@@ -76,6 +79,7 @@ final class StraightenMethod {
         Morphology.dilate(mask, w, h, OPEN_RADIUS);
         List<RotatedRect> found = new ArrayList<>();
         for (Region region : Region.label(mask, w, h)) {
+            PhotoSplitter.checkpoint();
             for (Region part : Seams.split(Pieces.separate(region, options), photo, scan, options)) {
                 RotatedRect rect = part.rect();
                 if (rect.area() < options.minArea() || part.count < options.minContourArea() || strip(part, rect, w, h)) {

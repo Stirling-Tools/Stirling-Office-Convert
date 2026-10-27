@@ -37,6 +37,7 @@ final class HoughLines {
         int count = 0;
         for (int n = 0; n < ANGLES; n++) {
             for (int r = 0; r < numrho; r++) {
+                PhotoSplitter.checkpoint();
                 int base = (n + 1) * stride + r + 1;
                 int v = accum[base];
                 if (v > threshold && v > accum[base - 1] && v >= accum[base + 1] && v > accum[base - stride]

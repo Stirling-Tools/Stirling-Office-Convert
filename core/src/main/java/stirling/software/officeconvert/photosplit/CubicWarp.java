@@ -20,6 +20,7 @@ final class CubicWarp {
         double[] wx = new double[4];
         double[] wy = new double[4];
         for (int y = 0; y < h; y++) {
+            PhotoSplitter.checkpoint();
             for (int x = 0; x < w; x++) {
                 double sx = m[0] * x + m[1] * y + m[2];
                 double sy = m[3] * x + m[4] * y + m[5];

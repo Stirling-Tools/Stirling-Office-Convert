@@ -14,6 +14,7 @@ final class ScriptMethod {
     private ScriptMethod() {}
 
     static List<PhotoSplitter.Photo> split(ScanImage scan, PhotoSplitter.Options options) {
+        PhotoSplitter.checkpoint();
         int background = background(scan);
         int border = options.borderSize();
         ScanImage image = border > 0 ? scan.pad(border, background) : scan;
@@ -21,6 +22,7 @@ final class ScriptMethod {
         Morphology.dilate(mask, image.width, image.height, DILATE_RADIUS);
         List<PhotoSplitter.Photo> photos = new ArrayList<>();
         for (OuterContours.Contour c : OuterContours.find(mask, image.width, image.height)) {
+            PhotoSplitter.checkpoint();
             if ((long) c.width() * c.height() < options.minArea()
                     || OuterContours.area(mask, image.width, image.height, c) < options.minContourArea()) {
                 continue;
@@ -71,6 +73,9 @@ final class ScriptMethod {
         int[] px = image.rgb;
         byte[] mask = new byte[px.length];
         for (int i = 0; i < px.length; i++) {
+            if ((i & 0xFFFF) == 0) {
+                PhotoSplitter.checkpoint();
+            }
             int r = px[i] >> 16 & 0xFF;
             int g = px[i] >> 8 & 0xFF;
             int b = px[i] & 0xFF;

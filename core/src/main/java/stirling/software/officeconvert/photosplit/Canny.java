@@ -12,6 +12,7 @@ final class Canny {
         int[] dy = new int[w * h];
         int[] mag = new int[w * h];
         for (int y = 0; y < h; y++) {
+            PhotoSplitter.checkpoint();
             int up = Math.max(y - 1, 0) * w;
             int mid = y * w;
             int down = Math.min(y + 1, h - 1) * w;
@@ -28,6 +29,7 @@ final class Canny {
         byte[] map = new byte[w * h];
         IntStack strong = new IntStack();
         for (int y = 0; y < h; y++) {
+            PhotoSplitter.checkpoint();
             for (int x = 0; x < w; x++) {
                 int i = y * w + x;
                 int m = mag[i];
@@ -42,6 +44,7 @@ final class Canny {
             }
         }
         while (!strong.isEmpty()) {
+            PhotoSplitter.checkpoint();
             int p = strong.pop();
             int px = p % w;
             int py = p / w;
