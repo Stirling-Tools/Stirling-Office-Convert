@@ -576,7 +576,11 @@ Mobipocket book keeps its `filepos` links, page breaks and pictures. The title, 
 metadata. FictionBook 2 (`.fb2`, or a `.fbz`/`.fb2.zip` holding one; any other `.zip` holding one only with
 `--allow-packages`) is read with sections as chapters, its titles,
 epigraphs, poems, citations, tables, embedded pictures, cover and notes; a DOCTYPE is refused. eBooks are limited to
-256 MB (Kindle) and 128 MB (FictionBook) with 64 MB of text. An eBook only ever draws what the book file holds.
+256 MB (Kindle) and 128 MB (FictionBook), checked while reading as well as against the file size. Kindle
+decompression is limited to 64 MB of text. Assembled books allow 5,000 chapters and 50,331,648 HTML characters;
+missing chapters, exceeded limits, missing PalmDOC/MOBI text and incomplete zTXT streams fail the conversion rather than returning a partial
+book. CSS selector scoping has a fixed expansion budget and honours cancellation. An eBook only ever draws what
+the book file holds.
 `Options.tableOfContents(true)` (`--toc`) adds a table of contents after the document, as Calibre's
 `--pdf-add-toc` does: its bookmarks (headings) with their page numbers, each linked to its page, and a "Contents"
 bookmark. `Options.pageNumbers(true)` (`--page-numbers`) numbers every page at its foot, as `--pdf-page-numbers`

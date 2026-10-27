@@ -102,11 +102,18 @@ final class EpubBook {
         Set<String> folded = new HashSet<>();
         for (Element ref : opf.select("spine > itemref, opf|spine > opf|itemref")) {
             Element item = manifest.get(ref.attr("idref"));
-            if (item == null || chapters.size() >= MAX_CHAPTERS) {
-                continue;
+            OfficeToPdf.stopIfInterrupted();
+            if (item == null) {
+                throw new IOException("The EPUB spine references a missing manifest item: " + ref.attr("idref"));
             }
             String path = resolve(opfPath, item.attr("href"));
-            if (path != null && folded.add(path.toLowerCase(Locale.ROOT))) {
+            if (path == null) {
+                throw new IOException("The EPUB spine references an invalid chapter path: " + item.attr("href"));
+            }
+            if (folded.add(path.toLowerCase(Locale.ROOT))) {
+                if (chapters.size() >= MAX_CHAPTERS) {
+                    throw new IOException("The EPUB has more than " + MAX_CHAPTERS + " chapters");
+                }
                 chapters.add(path);
             }
         }
@@ -121,6 +128,9 @@ final class EpubBook {
 
     static Book assemble(HtmlAssets files, List<String> chapters, String title, String author, String cover)
             throws IOException {
+        if (chapters.size() > MAX_CHAPTERS) {
+            throw new IOException("The eBook has more than " + MAX_CHAPTERS + " chapters");
+        }
         Map<String, Integer> chapterOf = new HashMap<>();
         for (int i = 0; i < chapters.size(); i++) {
             chapterOf.put(chapters.get(i), i);
@@ -136,7 +146,7 @@ final class EpubBook {
             String path = chapters.get(i);
             byte[] bytes = files.read(path);
             if (bytes == null) {
-                continue;
+                throw new IOException("The eBook chapter " + path + " is missing or exceeds the asset size limit");
             }
             Document doc = Jsoup.parse(xhtmlAsHtml(markup(bytes)), "");
             List<Element> links = doc.select("link[rel~=(?i)stylesheet][href]");
@@ -155,7 +165,7 @@ final class EpubBook {
             for (Element style : doc.select("style")) {
                 fontFaces(style.data(), path, fonts);
                 if (styles.length() + body.length() + style.data().length() > MAX_BOOK_CHARS) {
-                    break;
+                    throw new IOException("The eBook text exceeds " + (MAX_BOOK_CHARS >> 20) + " MB");
                 }
                 styles.append(scoped(style.data(), i, 0)).append('\n');
             }
@@ -186,7 +196,7 @@ final class EpubBook {
             }
             String chapterHtml = b.html();
             if (styles.length() + body.length() + chapterHtml.length() > MAX_BOOK_CHARS) {
-                break;
+                throw new IOException("The eBook text exceeds " + (MAX_BOOK_CHARS >> 20) + " MB");
             }
             body.append('>').append(chapterHtml).append("</section>\n");
         }
@@ -228,6 +238,9 @@ final class EpubBook {
                     .append("\" alt=\"\" style=\"max-width:100%\"></div>");
         }
         html.append(body).append("</body></html>");
+        if (html.length() > MAX_BOOK_CHARS) {
+            throw new IOException("The eBook text exceeds " + (MAX_BOOK_CHARS >> 20) + " MB");
+        }
         return new Book(html.toString(), title, author, fonts);
     }
 
@@ -501,12 +514,13 @@ final class EpubBook {
         }
     }
 
-    static String scoped(String css, int chapter, int depth) {
-        String scope = "#epub-c" + chapter;
+    static String scoped(String css, int chapter, int depth) throws IOException {
         StringBuilder out = new StringBuilder(css.length() + 64);
         String s = withoutComments(css);
         int i = 0;
+        int selectors = 0;
         while (i < s.length()) {
+            OfficeToPdf.stopIfInterrupted();
             int open = s.indexOf('{', i);
             if (open < 0) {
                 break;
@@ -514,6 +528,9 @@ final class EpubBook {
             int close = open;
             int level = 0;
             for (; close < s.length(); close++) {
+                if ((close & 4095) == 0) {
+                    OfficeToPdf.stopIfInterrupted();
+                }
                 char c = s.charAt(close);
                 if (c == '{') {
                     level++;
@@ -531,20 +548,38 @@ final class EpubBook {
             i = Math.min(close, s.length()) + 1;
             String at = head.toLowerCase(Locale.ROOT);
             if (at.startsWith("@media") || at.startsWith("@supports")) {
-                if (depth < 8) {
-                    out.append(head).append('{').append(scoped(inner, chapter, depth + 1)).append("}\n");
+                if (depth >= 8) {
+                    throw new IOException("The eBook style sheet has more than eight nested conditions");
                 }
+                out.append(head).append('{').append(scoped(inner, chapter, depth + 1)).append("}\n");
             } else if (at.startsWith("@font-face")) {
                 out.append(head).append('{').append(inner).append("}\n");
             } else if (!at.startsWith("@") && !head.isEmpty()) {
-                List<String> parts = new ArrayList<>();
-                for (String sel : head.split(",")) {
-                    String t = sel.strip();
-                    if (!t.isEmpty()) {
-                        parts.add(scopedSelector(t, chapter));
+                boolean first = true;
+                int from = 0;
+                while (from <= head.length()) {
+                    OfficeToPdf.stopIfInterrupted();
+                    int comma = head.indexOf(',', from);
+                    String selector = head.substring(from, comma < 0 ? head.length() : comma).strip();
+                    if (!selector.isEmpty()) {
+                        if (++selectors > 100_000) {
+                            throw new IOException("The eBook style sheet has more than 100000 selectors");
+                        }
+                        if (!first) {
+                            out.append(", ");
+                        }
+                        out.append(scopedSelector(selector, chapter));
+                        first = false;
                     }
+                    if (comma < 0) {
+                        break;
+                    }
+                    from = comma + 1;
                 }
-                out.append(String.join(", ", parts)).append('{').append(inner).append("}\n");
+                out.append('{').append(inner).append("}\n");
+            }
+            if (out.length() > MAX_BOOK_CHARS) {
+                throw new IOException("The eBook style sheet exceeds " + (MAX_BOOK_CHARS >> 20) + " MB");
             }
         }
         return out.toString();

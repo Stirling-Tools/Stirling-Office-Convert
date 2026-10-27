@@ -156,6 +156,46 @@ class EbookToPdfTest {
     }
 
     @Test
+    void missingPalmDocRecordsOrTextCannotReturnPartialBooks() throws IOException {
+        byte[] text = utf8("Only the first text chunk remains.");
+        for (int records : List.of(1, 2)) {
+            MobiWriter writer = MobiWriter.create();
+            byte[] header = new byte[16];
+            MobiWriter.put16(header, 0, MobiHeader.NONE);
+            MobiWriter.put32(header, 4, text.length + 10);
+            MobiWriter.put16(header, 8, records);
+            MobiWriter.put16(header, 10, 4096);
+            writer.records.set(0, header);
+            writer.add(text);
+            Path source = write("truncated-" + records + ".pdb", writer.build("TEXtREAd"));
+            assertThrows(IOException.class, () -> MobiBook.read(source));
+        }
+    }
+
+    @Test
+    void truncatedZTxtCannotReturnPartialText() throws IOException {
+        Deflater deflater = new Deflater();
+        byte[] compressed = new byte[1024];
+        int size;
+        try {
+            deflater.setInput(utf8("A complete paragraph in a truncated compressed book."));
+            deflater.finish();
+            size = deflater.deflate(compressed);
+        } finally {
+            deflater.end();
+        }
+        MobiWriter writer = MobiWriter.create();
+        byte[] header = new byte[20];
+        header[0] = 1;
+        header[1] = 0x44;
+        header[3] = 1;
+        writer.records.set(0, header);
+        writer.add(Arrays.copyOf(compressed, size - 2));
+        Path source = write("truncated.pdb", writer.build("zTXTGPlm"));
+        assertThrows(IOException.class, () -> MobiBook.read(source));
+    }
+
+    @Test
     void zTxtBooksReadAsText() throws IOException {
         StringBuilder text = new StringBuilder();
         for (int i = 0; i < 400; i++) {

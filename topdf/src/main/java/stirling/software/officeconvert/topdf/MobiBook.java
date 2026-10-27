@@ -85,10 +85,7 @@ final class MobiBook {
     }
 
     static Ebook read(Path source) throws IOException {
-        if (Files.size(source) > MAX_FILE_BYTES) {
-            throw new IOException("The eBook is larger than " + (MAX_FILE_BYTES >> 20) + " MB");
-        }
-        PalmDatabase pdb = new PalmDatabase(Files.readAllBytes(source));
+        PalmDatabase pdb = new PalmDatabase(BookInput.read(source, MAX_FILE_BYTES, "The eBook"));
         if (pdb.type().equals(ZTXT)) {
             return zTxt(pdb, source);
         }
@@ -149,6 +146,7 @@ final class MobiBook {
                 OfficeToPdf.stopIfInterrupted();
                 inflater.setInput(pdb.record(i));
                 while (!inflater.needsInput() && !inflater.finished()) {
+                    OfficeToPdf.stopIfInterrupted();
                     int n = inflater.inflate(buf);
                     if (n == 0 && inflater.needsDictionary()) {
                         throw new IOException(MobiText.DAMAGED);
@@ -158,6 +156,9 @@ final class MobiBook {
                     }
                     text.write(buf, 0, n);
                 }
+            }
+            if (!inflater.finished()) {
+                throw new IOException(MobiText.DAMAGED);
             }
         } catch (DataFormatException e) {
             throw new IOException(MobiText.DAMAGED, e);

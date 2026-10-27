@@ -422,7 +422,7 @@ class EpubToPdfTest {
     }
 
     @Test
-    void chapterSelectorsAreScoped() {
+    void chapterSelectorsAreScoped() throws IOException {
         assertEquals("#epub-c1{color:red}\n", EpubBook.scoped("body{color:red}", 1, 0));
         assertEquals("#epub-c1 p, #epub-c1.x{a:b}\n", EpubBook.scoped("p, body.x{a:b}", 1, 0));
         assertEquals("@media print{#epub-c1 h1{a:b}\n}\n", EpubBook.scoped("@media print{h1{a:b}}", 1, 0));
@@ -432,7 +432,7 @@ class EpubToPdfTest {
     }
 
     @Test
-    void unclosedCommentsStayLinear() {
+    void unclosedCommentsStayLinear() throws IOException {
         String css = "/*a".repeat(400_000) + "p{color:red}";
         long start = System.nanoTime();
         EpubBook.scoped(css, 1, 0);
@@ -453,6 +453,43 @@ class EpubToPdfTest {
         try (PDDocument doc = Loader.loadPDF(out.toFile())) {
             String text = new PDFTextStripper().getText(doc);
             assertEquals(text.indexOf("Chapter Two"), text.lastIndexOf("Chapter Two"), text);
+        }
+    }
+
+    @Test
+    void aBrokenSpineReferenceCannotReturnAPartialBook() throws IOException {
+        for (String reference : List.of("missing", "invalid")) {
+            Map<String, byte[]> entries = book();
+            String opf = new String(entries.get("OEBPS/content.opf"), StandardCharsets.UTF_8);
+            if (reference.equals("missing")) {
+                opf = opf.replace("</spine>", "<itemref idref='absent'/></spine>");
+            } else {
+                opf = opf.replace("text/two.xhtml", "https://example.invalid/chapter.xhtml");
+            }
+            entries.put("OEBPS/content.opf", utf8(opf));
+            try (HtmlPackage pkg = HtmlPackage.open(epub(reference + ".epub", entries))) {
+                assertThrows(IOException.class, () -> EpubBook.read(pkg));
+            }
+        }
+    }
+
+    @Test
+    void anOversizedSpineCannotSilentlyDropItsLastChapters() throws IOException {
+        Map<String, byte[]> entries = book();
+        StringBuilder opf = new StringBuilder("<package><manifest>");
+        for (int i = 0; i <= EpubBook.MAX_CHAPTERS; i++) {
+            opf.append("<item id='c").append(i).append("' href='c").append(i).append(".xhtml'/>");
+        }
+        opf.append("</manifest><spine>");
+        for (int i = 0; i <= EpubBook.MAX_CHAPTERS; i++) {
+            opf.append("<itemref idref='c").append(i).append("'/>");
+        }
+        opf.append("</spine></package>");
+        entries.put("OEBPS/content.opf", utf8(opf.toString()));
+        Path input = epub("too-many-chapters.epub", entries);
+        try (HtmlPackage pkg = HtmlPackage.open(input)) {
+            IOException error = assertThrows(IOException.class, () -> EpubBook.read(pkg));
+            assertTrue(error.getMessage().contains("5000 chapters"), error.getMessage());
         }
     }
 

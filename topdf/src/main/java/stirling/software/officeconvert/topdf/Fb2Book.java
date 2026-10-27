@@ -69,7 +69,7 @@ final class Fb2Book {
 
     static boolean root(InputStream in) {
         try {
-            XMLStreamReader r = SecureXml.reader(in);
+            XMLStreamReader r = SecureXml.reader(BookInput.bounded(in, MAX_BYTES, "The FictionBook file"));
             try {
                 while (r.hasNext()) {
                     if (r.next() == XMLStreamConstants.START_ELEMENT) {
@@ -99,7 +99,7 @@ final class Fb2Book {
     }
 
     private static Ebook read(InputStream in) throws IOException {
-        Document doc = SecureXml.parse(in);
+        Document doc = SecureXml.parse(BookInput.bounded(in, MAX_BYTES, "The FictionBook file"));
         Element root = doc.getDocumentElement();
         if (root == null || !ROOT.equals(local(root))) {
             throw new IOException("The file is not a FictionBook (FB2) book: its root element is not FictionBook");
