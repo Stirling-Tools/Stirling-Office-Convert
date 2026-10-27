@@ -79,6 +79,44 @@ class FontEmbedderTest {
     }
 
     @Test
+    void embeddingKeepsControlCharactersAndPrivateUseMappings() throws Exception {
+        RawPdf pdf = RawPdf.page("/Font<</F1<</Type/Font/Subtype/Type1/BaseFont/Helvetica/Encoding/WinAnsiEncoding"
+                + "/ToUnicode 5 0 R>>>>", "BT /F1 12 Tf 50 700 Td <414243> Tj ET");
+        pdf.add(RawPdf.stream("", "/CIDInit /ProcSet findresource begin 12 dict begin begincmap "
+                + "/CIDSystemInfo << /Registry (Adobe) /Ordering (UCS) /Supplement 0 >> def "
+                + "/CMapName /Original def /CMapType 2 def 1 begincodespacerange <00> <FF> endcodespacerange "
+                + "3 beginbfchar <41> <0000> <42> <E045> <43> <0043> endbfchar endcmap "
+                + "CMapName currentdict /CMap defineresource pop end end"));
+        try (PDDocument d = Loader.loadPDF(pdf.bytes())) {
+            String before = new org.apache.pdfbox.text.PDFTextStripper().getText(d);
+            assertTrue(before.contains("\u0000\uE045C"));
+            assertTrue(FontEmbedder.embedMissing(d).failed().isEmpty());
+            java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+            d.save(out);
+            try (PDDocument saved = Loader.loadPDF(out.toByteArray())) {
+                assertEquals(before, new org.apache.pdfbox.text.PDFTextStripper().getText(saved));
+                assertTrue(saved.getPage(0).getResources().getFont(COSName.getPDFName("F1")).isEmbedded());
+            }
+        }
+    }
+
+    @Test
+    void embeddingKeepsInferredPrivateUseMappings() throws Exception {
+        RawPdf pdf = RawPdf.page("/Font<</F1<</Type/Font/Subtype/Type1/BaseFont/Symbol/Encoding"
+                + "<</Type/Encoding/Differences[65/apple]>>>>>>", "BT /F1 12 Tf 50 700 Td (A) Tj ET");
+        try (PDDocument d = Loader.loadPDF(pdf.bytes())) {
+            String before = new org.apache.pdfbox.text.PDFTextStripper().getText(d);
+            assertTrue(before.contains("\uF8FF"));
+            assertTrue(FontEmbedder.embedMissing(d).failed().isEmpty());
+            java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+            d.save(out);
+            try (PDDocument saved = Loader.loadPDF(out.toByteArray())) {
+                assertEquals(before, new org.apache.pdfbox.text.PDFTextStripper().getText(saved));
+            }
+        }
+    }
+
+    @Test
     void fontsTheResourcesNameButNothingShowsAreEmbeddedToo() throws Exception {
         RawPdf pdf = RawPdf.page("/Font<</F1<</Type/Font/Subtype/Type1/BaseFont/Helvetica/Encoding/WinAnsiEncoding>>"
                 + "/F2<</Type/Font/Subtype/Type1/BaseFont/Times-Bold/Encoding/WinAnsiEncoding>>"

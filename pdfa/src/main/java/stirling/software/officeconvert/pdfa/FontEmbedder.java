@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.TreeSet;
 
 import org.apache.pdfbox.cos.COSBase;
@@ -111,8 +112,23 @@ public final class FontEmbedder {
                 library = fonts.library();
             }
             try {
+                TreeMap<Integer, String> text = new TreeMap<>();
+                for (int code : codes) {
+                    try {
+                        String unicode = font.toUnicode(code);
+                        if (unicode != null && !unicode.isEmpty()) {
+                            text.put(code, unicode);
+                        }
+                    } catch (RuntimeException e) {
+                        PdfFiles.stopIfInterrupted();
+                    }
+                }
                 embedded.add(FontFixer.substitute(doc, font, codes, PdfALevel.A2B, library,
                         usage.bytesPerCode(leader), false));
+                if (!text.isEmpty()) {
+                    leader.setItem(COSName.TO_UNICODE, ToUnicodeWriter.preserve(doc, text,
+                            font instanceof PDType0Font ? usage.bytesPerCode(leader) : 1));
+                }
             } catch (IOException | RuntimeException x) {
                 PdfFiles.stopIfInterrupted();
                 failed.add(FontRebuild.cleanName(font.getName()) + ": " + x.getMessage());
