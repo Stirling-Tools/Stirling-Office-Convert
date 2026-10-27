@@ -1,9 +1,12 @@
 package stirling.software.officeconvert.pdfa;
 
+import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.TreeMap;
+
+import stirling.software.officeconvert.extract.PdfFiles;
 
 final class SfntRepair {
 
@@ -12,14 +15,15 @@ final class SfntRepair {
     static final java.util.Set<String> CORE = java.util.Set.of("head", "hhea", "hmtx", "maxp", "loca", "glyf", "cvt ",
             "fpgm", "prep", "gasp");
 
-    static byte[] repair(byte[] data) {
+    static byte[] repair(byte[] data) throws IOException {
         return repair(data, false, null);
     }
 
-    static byte[] repair(byte[] data, boolean dropCmap, java.util.Set<String> keep) {
+    static byte[] repair(byte[] data, boolean dropCmap, java.util.Set<String> keep) throws IOException {
         if (data == null || data.length < 12) {
             return null;
         }
+        checkBudget(data);
         ByteBuffer in = ByteBuffer.wrap(data);
         int count = Math.min(in.getShort(4) & 0xFFFF, (data.length - 12) / 16);
         int directoryEnd = 12 + 16 * count;
@@ -34,10 +38,10 @@ final class SfntRepair {
                 continue;
             }
             length = Math.min(length, data.length - offset);
-            if (keep != null && !keep.contains(tag)) {
+            if (keep != null && !keep.contains(tag) || tables.containsKey(tag)) {
                 continue;
             }
-            tables.putIfAbsent(tag, Arrays.copyOfRange(data, (int) offset, (int) (offset + length)));
+            tables.put(tag, Arrays.copyOfRange(data, (int) offset, (int) (offset + length)));
         }
         byte[] glyf = tables.get("glyf");
         byte[] loca = tables.get("loca");
@@ -123,6 +127,40 @@ final class SfntRepair {
             tables.remove("cmap");
         }
         return Sfnt.write(tables);
+    }
+
+    static void checkBudget(byte[] data) throws IOException {
+        if (data == null || data.length < 12) {
+            return;
+        }
+        ByteBuffer in = ByteBuffer.wrap(data);
+        int count = Math.min(in.getShort(4) & 0xFFFF, (data.length - 12) / 16);
+        int directoryEnd = 12 + 16 * count;
+        int shift = shift(data, in, count);
+        java.util.Map<String, Long> lengths = new java.util.HashMap<>();
+        long total = directoryEnd;
+        for (int i = 0; i < count; i++) {
+            if ((i & 255) == 0) {
+                PdfFiles.stopIfInterrupted();
+            }
+            int at = 12 + 16 * i;
+            String tag = new String(data, at, 4, StandardCharsets.ISO_8859_1);
+            long original = in.getInt(at + 8) & 0xFFFFFFFFL;
+            long offset = Math.min(original, original + shift);
+            if (Math.max(original, original + shift) < directoryEnd || offset >= data.length) {
+                continue;
+            }
+            long length = Math.min(in.getInt(at + 12) & 0xFFFFFFFFL, data.length - offset);
+            long padded = (length + 3) & ~3L;
+            long previous = lengths.getOrDefault(tag, 0L);
+            if (padded > previous) {
+                total += padded - previous;
+                lengths.put(tag, padded);
+            }
+            if (total > WebFonts.MAX_PROGRAM_BYTES) {
+                throw new Decoded.TooLarge("The SFNT tables", WebFonts.MAX_PROGRAM_BYTES);
+            }
+        }
     }
 
     private static int shift(byte[] data, ByteBuffer in, int count) {

@@ -47,6 +47,26 @@ class WebFontsBoundaryTest {
     }
 
     @Test
+    void overlappingSfntTablesCannotAmplifyASmallProgram() {
+        for (int shift : new int[] {0, 2, -2}) {
+            int count = 70;
+            int start = 12 + 16 * count;
+            java.nio.ByteBuffer data = java.nio.ByteBuffer.allocate(start + (1 << 20) + 4);
+            data.putInt(0x00010000).putShort((short) count);
+            for (int i = 0; i < count; i++) {
+                int at = 12 + 16 * i;
+                data.putInt(at, i == 0 ? 0x68656164 : 0x58303030 + i);
+                data.putInt(at + 8, start - shift);
+                data.putInt(at + 12, 1 << 20);
+            }
+            data.putInt(start + 12, 0x5F0F3CF5);
+            assertThrows(Decoded.TooLarge.class,
+                    () -> WebFonts.toTrueType(data.array(), WebFonts.FontKind.TRUETYPE, Map.of()));
+            assertThrows(Decoded.TooLarge.class, () -> SfntRepair.repair(data.array()));
+        }
+    }
+
+    @Test
     void interruptedCallsStopBeforeParsingOrMutating() throws Exception {
         try (PDDocument document = new PDDocument()) {
             Thread.currentThread().interrupt();

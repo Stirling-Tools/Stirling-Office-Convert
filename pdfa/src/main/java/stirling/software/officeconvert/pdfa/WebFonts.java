@@ -89,6 +89,7 @@ public final class WebFonts {
         if (data == null || data.length < 12) {
             throw new IOException("The font program is empty");
         }
+        SfntRepair.checkBudget(data);
         Parsed parsed = open(data);
         TrueTypeFont ttf = parsed.font();
         boolean repaired = parsed.repaired();
