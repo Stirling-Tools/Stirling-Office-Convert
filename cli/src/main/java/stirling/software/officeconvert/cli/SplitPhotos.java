@@ -9,6 +9,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.regex.Pattern;
 
 import stirling.software.officeconvert.photosplit.PhotoSplitter;
 
@@ -61,6 +62,9 @@ final class SplitPhotos {
             if (output != null && Files.exists(output) && !Files.isDirectory(output)) {
                 throw new Usage("-o names the folder for the photos; " + output + " is a file");
             }
+            if (options.overwrite()) {
+                protectInputs(inputs, output);
+            }
         } catch (Usage | IllegalArgumentException e) {
             System.err.println("office-convert " + COMMAND + ": " + e.getMessage());
             System.err.println("Run office-convert " + COMMAND + " --help for the options.");
@@ -102,6 +106,56 @@ final class SplitPhotos {
             throw new Usage(option + " needs a value");
         }
         return args[i];
+    }
+
+    private static void protectInputs(List<Path> inputs, Path output) throws Usage {
+        for (Path input : inputs) {
+            Path name = input.getFileName();
+            Path folder = output == null ? input.toAbsolutePath().getParent() : output;
+            if (name == null || folder == null) {
+                continue;
+            }
+            String base = name.toString();
+            int dot = base.lastIndexOf('.');
+            if (dot > 0) {
+                base = base.substring(0, dot);
+            }
+            Pattern targetName = Pattern.compile(Pattern.quote(base + "_") + "[1-9][0-9]*\\.png",
+                    Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
+            Path destination = canonical(folder);
+            for (Path protectedInput : inputs) {
+                Path source = canonical(protectedInput);
+                if (destination.equals(source.getParent()) && targetName.matcher(source.getFileName().toString()).matches()) {
+                    throw collision(protectedInput);
+                }
+            }
+            if (!Files.isDirectory(folder)) {
+                continue;
+            }
+            try (var files = Files.list(folder)) {
+                for (Path target : files.filter(p -> targetName.matcher(p.getFileName().toString()).matches()).toList()) {
+                    for (Path protectedInput : inputs) {
+                        if (Files.exists(protectedInput) && Files.isSameFile(target, protectedInput)) {
+                            throw collision(protectedInput);
+                        }
+                    }
+                }
+            } catch (IOException e) {
+                throw new Usage("cannot verify photo output folder " + folder + ": " + e.getMessage());
+            }
+        }
+    }
+
+    private static Path canonical(Path path) {
+        try {
+            return path.toRealPath();
+        } catch (IOException e) {
+            return path.toAbsolutePath().normalize();
+        }
+    }
+
+    private static Usage collision(Path input) {
+        return new Usage("photo output could overwrite input " + input + "; choose another -o folder");
     }
 
     private static Path path(String s) throws Usage {

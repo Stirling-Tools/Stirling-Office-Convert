@@ -822,7 +822,9 @@ and preserves the thread's interrupt flag. Pixel rows, analysis phases, cropping
 checkpoints. A third-party image reader or PDF renderer may finish its current decode before reaching a checkpoint.
 Each PNG is encoded to a temporary file beside its target, then published only after encoding succeeds. A failed or
 cancelled encode removes that temporary file and preserves an existing target. Crops completed before a later
-photo or PDF page fails remain in the output folder; the whole scan is not a transaction.
+photo or PDF page fails remain in the output folder; the whole scan is not a transaction. The CLI rejects a batch
+before conversion if a possible PNG target is one of its supplied inputs, including file aliases, even with
+`--overwrite`; choose a separate output folder for such a batch.
 
 There are two methods:
 

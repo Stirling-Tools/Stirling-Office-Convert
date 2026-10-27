@@ -1,5 +1,6 @@
 package stirling.software.officeconvert.cli;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -11,6 +12,7 @@ import java.awt.RenderingHints;
 import java.awt.geom.AffineTransform;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -130,4 +132,46 @@ class SplitPhotosTest {
         g.dispose();
         return img;
     }
+
+    @Test
+    void overwriteCannotReplaceAnotherSuppliedScan() throws Exception {
+        Path first = dir.resolve("album.png");
+        Path second = dir.resolve("album_1.png");
+        ImageIO.write(scan(), "png", first.toFile());
+        ImageIO.write(scan(), "png", second.toFile());
+        byte[] original = Files.readAllBytes(second);
+        Result result = run("split-photos", first.toString(), second.toString(), "-o", dir.toString(), "--overwrite");
+        assertEquals(2, result.code(), result.err());
+        assertTrue(result.err().contains("overwrite input"), result.err());
+        assertArrayEquals(original, Files.readAllBytes(second));
+    }
+
+
+    @Test
+    void overwriteProtectsHardLinksAndSymbolicLinksToSuppliedInputs() throws Exception {
+        Path first = dir.resolve("album.png");
+        Path protectedScan = dir.resolve("original.png");
+        Path target = dir.resolve("album_1.png");
+        ImageIO.write(scan(), "png", first.toFile());
+        ImageIO.write(scan(), "png", protectedScan.toFile());
+        byte[] original = Files.readAllBytes(protectedScan);
+        for (boolean symbolic : new boolean[] {false, true}) {
+            if (symbolic) {
+                try {
+                    Files.createSymbolicLink(target, protectedScan);
+                } catch (UnsupportedOperationException | IOException unavailable) {
+                    org.junit.jupiter.api.Assumptions.assumeTrue(false, "Symbolic links unavailable: " + unavailable);
+                }
+            } else {
+                Files.createLink(target, protectedScan);
+            }
+            Result result = run("split-photos", first.toString(), protectedScan.toString(), "-o", dir.toString(),
+                    "--overwrite");
+            assertEquals(2, result.code(), result.err());
+            assertTrue(result.err().contains("overwrite input"), result.err());
+            assertArrayEquals(original, Files.readAllBytes(protectedScan));
+            Files.delete(target);
+        }
+    }
+
 }
