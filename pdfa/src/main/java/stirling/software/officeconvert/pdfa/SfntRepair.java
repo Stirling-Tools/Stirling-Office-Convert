@@ -146,8 +146,8 @@ final class SfntRepair {
             int at = 12 + 16 * i;
             String tag = new String(data, at, 4, StandardCharsets.ISO_8859_1);
             long original = in.getInt(at + 8) & 0xFFFFFFFFL;
-            long offset = Math.min(original, original + shift);
-            if (Math.max(original, original + shift) < directoryEnd || offset >= data.length) {
+            long offset = Math.max(0, Math.min(original, original + shift));
+            if (offset >= data.length) {
                 continue;
             }
             long length = Math.min(in.getInt(at + 12) & 0xFFFFFFFFL, data.length - offset);

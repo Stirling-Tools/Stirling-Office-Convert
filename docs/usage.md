@@ -788,7 +788,7 @@ TrueType at 1000 units per em through the FontMatrix; TrueType glyphs, hinting (
 are kept as they are, and a missing or truncated `OS/2` is replaced. The font has `glyf`, `loca`, `hmtx`, `hhea`,
 `head`, `maxp`, `OS/2`, `post`, `name` and a fresh `cmap` with format 4 and, for code points beyond the BMP, format 12.
 Programs over 64 MB are rejected before conversion; decoded PDF font streams and intermediate filter stages use
-the same limit. Declared SFNT tables also share a 64 MB aggregate budget, so overlapping or duplicate table
+the same limit. Input SFNT tables also share a 64 MB aggregate budget, so overlapping or duplicate table
 extents cannot amplify a small program during parsing or repair. Conversion checks thread interruption before parsing and while decoding and processing glyphs.
 A program that cannot be read fails with an `IOException`, and so does one whose charstrings expand past 131,072
 tokens for a glyph, 64 nested subroutine calls or 2^27 tokens for the font, or whose converted glyphs need more than
