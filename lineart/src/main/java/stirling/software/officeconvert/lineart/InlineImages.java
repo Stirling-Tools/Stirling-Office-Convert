@@ -384,12 +384,6 @@ final class InlineImages {
                 || b == '/' || b == '%';
     }
 
-    private static final class TooLarge extends IOException {
-        TooLarge(long limit) {
-            super("The data decodes to more than " + limit + " bytes");
-        }
-    }
-
     private static final class Capped extends OutputStream {
         private final ByteArrayOutputStream bytes = new ByteArrayOutputStream();
         private final long limit;

@@ -2,24 +2,17 @@ package stirling.software.officeconvert.lineart;
 
 import java.awt.Rectangle;
 import java.awt.image.BufferedImage;
-import java.io.FilterInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.io.PipedInputStream;
-import java.io.PipedOutputStream;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.Set;
-import java.util.concurrent.atomic.AtomicReference;
 
 import org.apache.pdfbox.cos.COSArray;
 import org.apache.pdfbox.cos.COSBase;
 import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.cos.COSStream;
-import org.apache.pdfbox.filter.Filter;
-import org.apache.pdfbox.filter.FilterFactory;
 import org.apache.pdfbox.pdmodel.PDResources;
 import org.apache.pdfbox.pdmodel.common.PDStream;
 import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
@@ -31,17 +24,6 @@ abstract class Source {
     interface Band {
         void accept(int y, BufferedImage rows) throws IOException;
     }
-
-    private static final Set<COSName> STREAMING = Set.of(COSName.FLATE_DECODE, COSName.FLATE_DECODE_ABBREVIATION,
-            COSName.LZW_DECODE, COSName.LZW_DECODE_ABBREVIATION, COSName.RUN_LENGTH_DECODE,
-            COSName.RUN_LENGTH_DECODE_ABBREVIATION, COSName.ASCII_HEX_DECODE, COSName.ASCII_HEX_DECODE_ABBREVIATION,
-            COSName.ASCII85_DECODE, COSName.ASCII85_DECODE_ABBREVIATION, COSName.CCITTFAX_DECODE,
-            COSName.CCITTFAX_DECODE_ABBREVIATION, COSName.JBIG2_DECODE);
-
-    private static final Set<COSName> PIPED = Set.of(COSName.FLATE_DECODE, COSName.FLATE_DECODE_ABBREVIATION,
-            COSName.LZW_DECODE, COSName.LZW_DECODE_ABBREVIATION, COSName.RUN_LENGTH_DECODE,
-            COSName.RUN_LENGTH_DECODE_ABBREVIATION, COSName.ASCII_HEX_DECODE, COSName.ASCII_HEX_DECODE_ABBREVIATION,
-            COSName.ASCII85_DECODE, COSName.ASCII85_DECODE_ABBREVIATION);
 
     private static final COSName[] CARRIED = {COSName.BITS_PER_COMPONENT, COSName.COLORSPACE, COSName.DECODE,
         COSName.INTENT};
@@ -68,7 +50,7 @@ abstract class Source {
     static Source of(PDImageXObject image, PDResources resources, boolean premultiplied) {
         COSStream stream = image.getCOSObject();
         List<COSName> filters = filters(stream);
-        if (!premultiplied && filters != null && STREAMING.containsAll(filters)) {
+        if (!premultiplied && filters != null && Decoded.STREAMING.containsAll(filters)) {
             return new Streamed(image, resources);
         }
         return new Regions(image, premultiplied);
@@ -125,6 +107,7 @@ abstract class Source {
     private static final class Regions extends Source {
         private final PDImageXObject image;
         private final boolean premultiplied;
+        private boolean checked;
 
         Regions(PDImageXObject image, boolean premultiplied) {
             super(image.getWidth(), image.getHeight());
@@ -135,6 +118,14 @@ abstract class Source {
         @Override
         void bands(int rows, boolean masked, Band band) throws IOException {
             boolean keyed = masked || premultiplied;
+            if (!checked) {
+                Decoded.check(image);
+                PDImageXObject soft = premultiplied ? image.getSoftMask() : null;
+                if (soft != null) {
+                    Decoded.check(soft);
+                }
+                checked = true;
+            }
             if (rows >= height) {
                 band.accept(0, keyed ? image.getImage() : image.getOpaqueImage(null, 1));
                 return;
@@ -157,100 +148,27 @@ abstract class Source {
             super(image.getWidth(), image.getHeight());
             this.image = image;
             this.resources = resources;
-            int components;
-            try {
-                components = image.getColorSpace().getNumberOfComponents();
-            } catch (IOException e) {
-                components = 1;
-            }
-            this.rowBytes = (int) (((long) width * components * image.getBitsPerComponent() + 7) / 8);
+            this.rowBytes = Math.toIntExact(Decoded.rowBytes(image));
         }
 
         @Override
         void bands(int rows, boolean keyed, Band band) throws IOException {
-            if (rows >= height) {
-                band.accept(0, keyed ? image.getImage() : image.getOpaqueImage(null, 1));
-                return;
-            }
             COSStream original = image.getCOSObject();
-            byte[] buffer = new byte[Math.multiplyExact(rowBytes, rows + 1)];
-            try (InputStream in = decoded(original)) {
+            int step = Math.min(rows, height);
+            byte[] buffer = new byte[Math.multiplyExact(rowBytes, Math.min(step + 1, height))];
+            try (InputStream in = Decoded.open(original, filters(original), (long) rowBytes * height)) {
                 for (int y = 0, n; y < height; y += n) {
                     PdfFiles.stopIfInterrupted();
-                    n = rows(rows, y);
+                    n = rows(step, y);
                     int read = in.readNBytes(buffer, 0, rowBytes * n);
                     if (read < rowBytes * n) {
                         Arrays.fill(buffer, read, rowBytes * n, (byte) 0);
                     }
+                    if (y + n >= height) {
+                        Decoded.drain(in);
+                    }
                     band.accept(y, decode(original, buffer, n, keyed));
                 }
-            }
-        }
-
-        private static InputStream decoded(COSStream stream) throws IOException {
-            List<COSName> filters = filters(stream);
-            if (filters == null || filters.size() != 1 || !PIPED.contains(filters.get(0))) {
-                return filters != null && filters.isEmpty() ? stream.createRawInputStream() : stream.createInputStream();
-            }
-            Filter filter = FilterFactory.INSTANCE.getFilter(filters.get(0));
-            PipedInputStream in = new PipedInputStream(1 << 16);
-            PipedOutputStream out = new PipedOutputStream(in);
-            AtomicReference<Throwable> failure = new AtomicReference<>();
-            Thread writer = Thread.ofVirtual().start(() -> {
-                try (InputStream raw = stream.createRawInputStream()) {
-                    filter.decode(raw, out, stream, 0);
-                } catch (Throwable e) {
-                    failure.set(e);
-                } finally {
-                    closeQuietly(out);
-                }
-            });
-            return new FilterInputStream(in) {
-                @Override
-                public int read() throws IOException {
-                    int b = super.read();
-                    if (b < 0) {
-                        failed(failure);
-                    }
-                    return b;
-                }
-
-                @Override
-                public int read(byte[] b, int off, int len) throws IOException {
-                    int n = super.read(b, off, len);
-                    if (n < 0) {
-                        failed(failure);
-                    }
-                    return n;
-                }
-
-                @Override
-                public void close() throws IOException {
-                    super.close();
-                    try {
-                        writer.join();
-                    } catch (InterruptedException e) {
-                        Thread.currentThread().interrupt();
-                    }
-                }
-            };
-        }
-
-        private static void failed(AtomicReference<Throwable> failure) throws IOException {
-            Throwable e = failure.get();
-            if (e instanceof IOException io) {
-                throw io;
-            }
-            if (e != null) {
-                throw new IOException("The image data could not be decoded: " + e.getMessage(), e);
-            }
-        }
-
-        private static void closeQuietly(OutputStream out) {
-            try {
-                out.close();
-            } catch (IOException e) {
-                Thread.currentThread().interrupt();
             }
         }
 
@@ -265,6 +183,12 @@ abstract class Source {
                     if (v != null) {
                         part.setItem(key, v);
                     }
+                }
+                if (!part.containsKey(COSName.BITS_PER_COMPONENT)) {
+                    part.setInt(COSName.BITS_PER_COMPONENT, image.getBitsPerComponent());
+                }
+                if (!part.containsKey(COSName.COLORSPACE)) {
+                    part.setItem(COSName.COLORSPACE, image.getColorSpace());
                 }
                 if (keyed && original.getDictionaryObject(COSName.MASK) instanceof COSArray key) {
                     part.setItem(COSName.MASK, key);
