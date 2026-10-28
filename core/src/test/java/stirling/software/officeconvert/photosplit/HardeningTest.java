@@ -10,6 +10,7 @@ import java.awt.Graphics2D;
 import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.lang.management.ManagementFactory;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -20,6 +21,9 @@ import java.util.zip.CRC32;
 
 import javax.imageio.ImageIO;
 
+import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.pdmodel.PDPage;
+import org.apache.pdfbox.pdmodel.common.PDRectangle;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.api.function.Executable;
@@ -132,6 +136,21 @@ class HardeningTest {
         Files.write(input, file.toByteArray());
         List<Path> written = PhotoSplitter.split(input, dir.resolve("out"), PhotoSplitter.Options.defaults());
         assertEquals(2, written.size());
+    }
+
+    @Test
+    void sliverPdfPageOverThePixelLimitIsRefusedBeforeItIsDrawn() throws Exception {
+        Path pdf = dir.resolve("sliver.pdf");
+        try (PDDocument doc = new PDDocument()) {
+            doc.addPage(new PDPage(new PDRectangle(54_000_000f, 0.001f)));
+            doc.save(pdf.toFile());
+        }
+        long bytes = allocated(() -> {
+            IOException refused = assertThrows(IOException.class,
+                    () -> PhotoSplitter.split(pdf, dir.resolve("out"), PhotoSplitter.Options.defaults()));
+            assertTrue(refused.getMessage().contains("the limit is " + PhotoSplitter.MAX_PIXELS), refused.getMessage());
+        });
+        assertTrue(bytes < 64L << 20, "allocated " + (bytes >> 20) + " MB before refusing");
     }
 
     @Test

@@ -169,7 +169,11 @@ public final class PhotoSplitter {
                     PDRectangle box = document.getPage(page).getCropBox();
                     float dpi = pageDpi(box, options.dpi());
                     long pixels = (long) Math.ceil(box.getWidth() / 72.0 * dpi) * (long) Math.ceil(box.getHeight() / 72.0 * dpi);
-                    budget(input.getFileName() + " page " + (page + 1), peakBytes(pixels, 4 * pixels, false, options.method()));
+                    String name = input.getFileName() + " page " + (page + 1);
+                    if (pixels > MAX_PIXELS) {
+                        throw new IOException(name + " would be drawn with " + pixels + " pixels; the limit is " + MAX_PIXELS);
+                    }
+                    budget(name, peakBytes(pixels, 4 * pixels, false, options.method()));
                     write(source(renderer.renderImageWithDPI(page, dpi, ImageType.RGB)), options, outputDirectory, base, written);
                 }
             }
