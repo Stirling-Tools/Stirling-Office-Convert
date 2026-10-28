@@ -306,8 +306,35 @@ public final class PhotoSplitter {
         }
     }
 
+    private static final class Page {
+        Admission.Ticket ticket;
+        boolean paged;
+    }
+
     private static void splitImage(Path input, Options options, Path dir, String base, List<Path> written)
             throws IOException {
+        for (int index = 0;; index++) {
+            checkpoint();
+            Page page = new Page();
+            try {
+                Source source = readPage(input, index, options.method(), page);
+                if (source == null) {
+                    return;
+                }
+                write(source, options, dir, base, written);
+            } finally {
+                if (page.ticket != null) {
+                    page.ticket.close();
+                }
+            }
+            if (!page.paged) {
+                return;
+            }
+        }
+    }
+
+    private static Source readPage(Path input, int index, Method method, Page page) throws IOException {
+        BufferedImage image;
         try (InputStream in = Files.newInputStream(input); ImageInputStream stream = ImageIO.createImageInputStream(in)) {
             if (stream == null) {
                 throw new IOException("cannot read " + input);
@@ -319,20 +346,34 @@ public final class PhotoSplitter {
             ImageReader reader = readers.next();
             try {
                 reader.setInput(stream, true, true);
-                boolean pages = "tif".equalsIgnoreCase(reader.getFormatName()) || "tiff".equalsIgnoreCase(reader.getFormatName());
-                for (int index = 0; index == 0 || pages && hasImage(reader, index); index++) {
-                    if (index == MAX_PAGES) {
-                        throw new IOException(input.getFileName() + " has more than " + MAX_PAGES + " pages; the limit is "
-                                + MAX_PAGES);
-                    }
-                    checkpoint();
-                    splitImage(reader, index, index == 0 ? input.getFileName().toString()
-                            : input.getFileName() + " page " + (index + 1), options, dir, base, written);
+                String format = reader.getFormatName();
+                page.paged = "tif".equalsIgnoreCase(format) || "tiff".equalsIgnoreCase(format);
+                if (index > 0 && !hasImage(reader, index)) {
+                    return null;
                 }
+                if (index == MAX_PAGES) {
+                    throw new IOException(input.getFileName() + " has more than " + MAX_PAGES + " pages; the limit is "
+                            + MAX_PAGES);
+                }
+                String name = index == 0 ? input.getFileName().toString() : input.getFileName() + " page " + (index + 1);
+                long pixels = (long) reader.getWidth(index) * reader.getHeight(index);
+                if (pixels > MAX_PIXELS) {
+                    throw new IOException(name + " has " + pixels + " pixels; the limit is " + MAX_PIXELS);
+                }
+                long bytes = peakBytes(pixels, 4 * pixels, true, method);
+                Iterator<ImageTypeSpecifier> types = reader.getImageTypes(index);
+                if (types != null && types.hasNext()) {
+                    ImageTypeSpecifier type = types.next();
+                    bytes = peakBytes(pixels, decodedBytes(type, pixels), converted(type), method);
+                    budget(name, bytes);
+                }
+                page.ticket = Admission.jvm().enter(bytes);
+                image = reader.read(index);
             } finally {
                 reader.dispose();
             }
         }
+        return source(image);
     }
 
     private static boolean hasImage(ImageReader reader, int index) throws IOException {
@@ -341,27 +382,6 @@ public final class PhotoSplitter {
             return true;
         } catch (IndexOutOfBoundsException e) {
             return false;
-        }
-    }
-
-    private static void splitImage(ImageReader reader, int index, String name, Options options, Path dir, String base,
-            List<Path> written) throws IOException {
-        long pixels = (long) reader.getWidth(index) * reader.getHeight(index);
-        if (pixels > MAX_PIXELS) {
-            throw new IOException(name + " has " + pixels + " pixels; the limit is " + MAX_PIXELS);
-        }
-        long bytes = peakBytes(pixels, 4 * pixels, true, options.method());
-        Iterator<ImageTypeSpecifier> types = reader.getImageTypes(index);
-        if (types != null && types.hasNext()) {
-            ImageTypeSpecifier type = types.next();
-            bytes = peakBytes(pixels, decodedBytes(type, pixels), converted(type), options.method());
-            budget(name, bytes);
-        }
-        Admission.Ticket ticket = Admission.jvm().enter(bytes);
-        try {
-            write(source(reader.read(index)), options, dir, base, written);
-        } finally {
-            ticket.close();
         }
     }
 
