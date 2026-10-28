@@ -70,6 +70,7 @@ final class StraightenMethod {
         int[] wide = Filters.boxBlur(scan.rgb, w, h, WIDE_RADIUS);
         byte[] faint = bed.foreground(wide, w, h, bed.faintThreshold(strong, SMOOTH_RADIUS, WIDE_RADIUS), null);
         wide = null;
+        PaleFrames.seed(mask, faint, photo, w, h, options);
         Filters.grow(mask, faint, w, h);
         PaleFrames.recover(mask, faint, photo, w, h, options);
         faint = null;
@@ -78,7 +79,7 @@ final class StraightenMethod {
         Filters.fillHoles(mask, w, h);
         Morphology.erode(mask, w, h, OPEN_RADIUS);
         Morphology.dilate(mask, w, h, OPEN_RADIUS);
-        List<RotatedRect> found = new ArrayList<>();
+        List<FalseFragments.Candidate> found = new ArrayList<>();
         for (Region region : Region.label(mask, w, h)) {
             PhotoSplitter.checkpoint();
             for (Region part : Seams.split(Pieces.separate(region, options), photo, scan, options)) {
@@ -86,13 +87,14 @@ final class StraightenMethod {
                 if (rect.area() < options.minArea() || part.count < options.minContourArea() || strip(part, rect, w, h)) {
                     continue;
                 }
-                RotatedRect fitted = EdgeFit.refine(scan, rect);
+                var fit = EdgeFit.checked(scan, rect);
+                RotatedRect fitted = fit.rect();
                 if (fitted.area() >= options.minArea() && !Documents.isText(scan, fitted)) {
-                    found.add(fitted);
+                    found.add(FalseFragments.candidate(fitted, part, photo, w, options, fit.supported()));
                 }
             }
         }
-        return found;
+        return OverlapFit.refine(scan, FalseFragments.reject(found), options);
     }
 
     private static boolean strip(Region part, RotatedRect rect, int w, int h) {

@@ -35,10 +35,17 @@ final class Region {
     }
 
     static List<Region> label(byte[] image, int w, int h) {
+        return label(image, w, h, Long.MAX_VALUE);
+    }
+
+    static List<Region> label(byte[] image, int w, int h, long remaining) {
         List<Region> out = new ArrayList<>();
         IntStack stack = new IntStack();
         int[] pixels = new int[1024];
         for (int start = 0; start < image.length; start++) {
+            if ((start & 0x3FFFF) == 0) {
+                PhotoSplitter.checkpoint();
+            }
             if (image[start] != 1) {
                 continue;
             }
@@ -50,6 +57,9 @@ final class Region {
             image[start] = 2;
             stack.push(start);
             while (!stack.isEmpty()) {
+                if ((n & 0xFFFF) == 0) {
+                    PhotoSplitter.checkpoint();
+                }
                 int p = stack.pop();
                 if (n == pixels.length) {
                     pixels = Arrays.copyOf(pixels, n * 2);
@@ -71,6 +81,11 @@ final class Region {
                 }
             }
             int bw = maxX - minX + 1;
+            long area = (long) bw * (maxY - minY + 1);
+            if (area > remaining) {
+                return null;
+            }
+            remaining -= area;
             byte[] sub = new byte[Math.multiplyExact(bw, maxY - minY + 1)];
             for (int i = 0; i < n; i++) {
                 sub[(pixels[i] / w - minY) * bw + pixels[i] % w - minX] = 1;

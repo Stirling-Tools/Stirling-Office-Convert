@@ -1,5 +1,7 @@
 package stirling.software.officeconvert.photosplit;
 
+import java.util.List;
+
 final class EdgeFit {
 
     private static final double STEP = 0.5;
@@ -13,25 +15,48 @@ final class EdgeFit {
     private static final int SHARP_REACH = 4;
     private static final double SHARPNESS = 1.6;
 
+    record Fit(RotatedRect rect, boolean supported) {}
+
     private EdgeFit() {}
 
     static RotatedRect refine(Picture scan, RotatedRect rect) {
-        return refine(scan, rect, INSIDE, OUTSIDE, 2);
+        return checked(scan, rect).rect();
+    }
+
+    static Fit checked(Picture scan, RotatedRect rect) {
+        return fit(scan, rect, INSIDE, OUTSIDE, 2, SEGMENTS, List.of());
     }
 
     static RotatedRect refine(Picture scan, RotatedRect rect, double inside, double outside, int passes) {
-        RotatedRect r = rect;
-        for (int pass = 0; pass < passes; pass++) {
-            RotatedRect next = once(scan, r, inside, outside);
-            if (next == null) {
-                return r;
-            }
-            r = next;
-        }
-        return r;
+        return refine(scan, rect, inside, outside, passes, SEGMENTS, List.of());
     }
 
-    private static RotatedRect once(Picture scan, RotatedRect rect, double inside, double outside) {
+    static RotatedRect conflicted(Picture scan, RotatedRect rect, double inside, List<RotatedRect> neighbors) {
+        return refine(scan, rect, inside, 4, 2, 8, neighbors);
+    }
+
+    private static RotatedRect refine(Picture scan, RotatedRect rect, double inside, double outside, int passes,
+            int segments, List<RotatedRect> neighbors) {
+        return fit(scan, rect, inside, outside, passes, segments, neighbors).rect();
+    }
+
+    private static Fit fit(Picture scan, RotatedRect rect, double inside, double outside, int passes,
+            int segments, List<RotatedRect> neighbors) {
+        RotatedRect r = rect;
+        boolean supported = false;
+        for (int pass = 0; pass < passes; pass++) {
+            RotatedRect next = once(scan, r, inside, outside, segments, neighbors);
+            if (next == null) {
+                break;
+            }
+            r = next;
+            supported = true;
+        }
+        return new Fit(r, supported);
+    }
+
+    private static RotatedRect once(Picture scan, RotatedRect rect, double inside, double outside, int segments,
+            List<RotatedRect> neighbors) {
         if (rect.width() < MIN_SIDE || rect.height() < MIN_SIDE) {
             return null;
         }
@@ -47,14 +72,14 @@ final class EdgeFit {
             double nv = normals[side][1];
             double half = nu != 0 ? rect.width() / 2 : rect.height() / 2;
             double length = nu != 0 ? rect.height() : rect.width();
-            double[] t = new double[SEGMENTS];
-            double[] d = new double[SEGMENTS];
-            double[] wgt = new double[SEGMENTS];
+            double[] t = new double[segments];
+            double[] d = new double[segments];
+            double[] wgt = new double[segments];
             int found = 0;
-            for (int k = 0; k < SEGMENTS; k++) {
-                double from = -length * 0.4 + length * 0.8 * k / SEGMENTS;
-                double to = -length * 0.4 + length * 0.8 * (k + 1) / SEGMENTS;
-                double[] edge = edge(scan, rect, c, s, nu, nv, half, from, to, inside, outside);
+            for (int k = 0; k < segments; k++) {
+                double from = -length * 0.4 + length * 0.8 * k / segments;
+                double to = -length * 0.4 + length * 0.8 * (k + 1) / segments;
+                double[] edge = edge(scan, rect, c, s, nu, nv, half, from, to, inside, outside, neighbors);
                 if (edge != null) {
                     t[found] = (from + to) / 2;
                     d[found] = edge[0];
@@ -101,15 +126,34 @@ final class EdgeFit {
     }
 
     private static double[] edge(Picture scan, RotatedRect rect, double c, double s, double nu, double nv, double half,
-            double from, double to, double inside, double outside) {
+            double from, double to, double inside, double outside, List<RotatedRect> neighbors) {
         int offsets = (int) Math.round((inside + outside) / STEP) + 1;
         double[][] profile = new double[offsets][3];
         int samples = Math.max(3, (int) ((to - from) / 1.5));
         double tu = -nv;
         double tv = nu;
         double[] rgb = new double[3];
+        int used = 0;
         for (int i = 0; i < samples; i++) {
+            if ((i & 31) == 0) {
+                PhotoSplitter.checkpoint();
+            }
             double along = from + (to - from) * (i + 0.5) / samples;
+            double edgeU = nu * half + tu * along;
+            double edgeV = nv * half + tv * along;
+            double edgeX = rect.cx() + edgeU * c - edgeV * s;
+            double edgeY = rect.cy() + edgeU * s + edgeV * c;
+            boolean hidden = false;
+            for (RotatedRect neighbor : neighbors) {
+                if (neighbor.contains(edgeX, edgeY)) {
+                    hidden = true;
+                    break;
+                }
+            }
+            if (hidden) {
+                continue;
+            }
+            used++;
             for (int o = 0; o < offsets; o++) {
                 double off = -inside + o * STEP;
                 double u = nu * (half + off) + tu * along;
@@ -122,6 +166,9 @@ final class EdgeFit {
                 }
             }
         }
+        if (used < 3) {
+            return null;
+        }
         double peak = 0;
         double[] grad = new double[offsets];
         for (int o = 1; o < offsets - 1; o++) {
@@ -129,7 +176,7 @@ final class EdgeFit {
             for (int k = 0; k < 3; k++) {
                 g += Math.abs(profile[o + 1][k] - profile[o - 1][k]);
             }
-            grad[o] = g / samples;
+            grad[o] = g / used;
             peak = Math.max(peak, grad[o]);
         }
         int at = -1;
