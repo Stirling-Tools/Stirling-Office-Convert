@@ -203,7 +203,8 @@ class FontEmbedderTest {
                     assertEquals(0, b.getShort(at + 10 + 2 * contours));
                 }
             }
-            assertEquals("Hello\nWorld", new org.apache.pdfbox.text.PDFTextStripper().getText(d).strip());
+            assertEquals(List.of("Hello", "World"),
+                    new org.apache.pdfbox.text.PDFTextStripper().getText(d).strip().lines().toList());
         }
     }
 
