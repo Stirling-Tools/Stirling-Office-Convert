@@ -238,7 +238,7 @@ class XlsVariantsTest {
             s.createRow(13).createCell(0).setCellValue("Visible after");
         });
         String text = convert("cells.xls", data).all();
-        assertTrue(text.contains("Merged across") && text.replace("\n", "").contains("Turned")
+        assertTrue(text.contains("Merged across") && text.replaceAll("\\R", "").contains("Turned")
                 && text.contains("Visible after"), text);
         assertFalse(text.contains("Hidden row") || text.contains("Hidden column"), text);
         assertFalse(text.contains("Detail 9"), "collapsed outline rows are hidden: " + text);
