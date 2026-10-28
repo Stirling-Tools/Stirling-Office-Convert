@@ -207,7 +207,7 @@ public final class PdfFonts implements Closeable {
         return Collections.unmodifiableList(substitutions);
     }
 
-    public int encoded(Embedded font, int glyph, int codePoint) throws IOException {
+    public int encoded(Embedded font, int glyph, int codePoint) {
         Use u = uses.get(font.font());
         if (u == null || glyph <= 0 || codePoint <= 0) {
             return glyph;
@@ -226,10 +226,6 @@ public final class PdfFonts implements Closeable {
             u.text.putIfAbsent(glyph, text);
             u.texted.set(glyph);
             return glyph;
-        }
-        String key = glyph + "\u0000" + text;
-        if (!u.aliases.containsKey(key) && u.program.glyphCount() + u.aliasGlyphs.size() > MAX_CODE) {
-            throw new IOException("The font has no remaining CID for Unicode aliases");
         }
         u.text.putIfAbsent(glyph, known);
         u.texted.set(glyph);
@@ -327,7 +323,7 @@ public final class PdfFonts implements Closeable {
         }
         int next = u.program.glyphCount() + u.aliasGlyphs.size();
         if (next > MAX_CODE) {
-            throw new IllegalStateException("The font has no remaining CID for Unicode aliases");
+            return glyph;
         }
         u.aliases.put(key, next);
         u.aliasGlyphs.add(glyph);

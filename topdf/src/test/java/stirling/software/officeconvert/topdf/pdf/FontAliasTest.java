@@ -4,7 +4,6 @@ import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.awt.image.BufferedImage;
@@ -176,7 +175,7 @@ class FontAliasTest {
     }
 
     @Test
-    void anExhaustedCidSpaceCannotSilentlyUseAnotherCharactersText() throws Exception {
+    void anExhaustedCidSpaceFallsBackToTheGlyphsOwnCode() throws Exception {
         FontLibrary fonts = library(false);
         FontFace face = fonts.exact("Aliased Face", false, false);
         assertNotNull(face);
@@ -189,15 +188,11 @@ class FontAliasTest {
                 last = pdf.encoded(embedded, glyph, 0x10000 + i);
             }
             assertEquals(0xFFFF, last);
-            IOException failure = assertThrows(IOException.class,
-                    () -> pdf.encoded(embedded, glyph, 0x20000));
-            assertTrue(failure.getMessage().contains("remaining CID"));
+            assertEquals(glyph, pdf.encoded(embedded, glyph, 0x20000));
             assertEquals(face.glyphCount(), pdf.encoded(embedded, glyph, 0x10000));
             var shaped = face.shape(new String(Character.toChars(0x20000)), false);
             assertEquals(glyph, shaped.glyph(0));
-            IllegalStateException shapedFailure = assertThrows(IllegalStateException.class,
-                    () -> pdf.used(embedded, shaped));
-            assertTrue(shapedFailure.getMessage().contains("remaining CID"));
+            assertEquals(glyph, pdf.used(embedded, shaped)[0]);
             int known = face.glyphCount() + 0x10437 - 0x10000;
             assertEquals(known, pdf.used(embedded, face.shape("\uD801\uDC37", false))[0]);
             pdf.finish();
@@ -206,6 +201,29 @@ class FontAliasTest {
             assertEquals(new String(Character.toChars(0x10000 + 0xFFFF - face.glyphCount())),
                     written.toUnicode(last));
             assertEquals(written.codeToGID(glyph), written.codeToGID(known));
+        }
+    }
+    @Test
+    void textStillDrawsOnceTheCidSpaceIsExhausted() throws Exception {
+        FontLibrary fonts = library(false);
+        FontFace face = fonts.exact("Aliased Face", false, false);
+        assertNotNull(face);
+        try (PdfOutput output = new PdfOutput(fonts)) {
+            PdfFonts.Embedded embedded = output.fonts().font(face);
+            int glyph = face.glyph('X');
+            for (int i = 0; i <= 0xFFFF - face.glyphCount(); i++) {
+                output.fonts().encoded(embedded, glyph, 0x30000 + i);
+            }
+            try (PdfCanvas canvas = output.newPage(PageSize.A4)) {
+                canvas.text("XQ \uD801\uDC38 X", 72, 100, TextStyle.of(face, 16));
+            }
+            ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+            output.save(bytes);
+            try (PDDocument doc = Loader.loadPDF(bytes.toByteArray())) {
+                assertEquals(1, doc.getNumberOfPages());
+                String text = new PDFTextStripper().getText(doc);
+                assertEquals(4, text.replaceAll("\\s", "").length(), text);
+            }
         }
     }
 }
