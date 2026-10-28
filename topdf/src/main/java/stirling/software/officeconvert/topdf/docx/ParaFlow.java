@@ -456,7 +456,7 @@ final class ParaFlow {
     private LineBreaker breaker(ParaItems pi, ParaProps pp, float width) {
         ShapeRules.fit(pi, width - pp.left() - pp.right());
         LineBreaker lb = new LineBreaker(pi, pp, ctx.settings.defaultTabStop, width);
-        if (ctx.settings.compatibilityMode >= 15 && LinePainter.justified(pp)) {
+        if ((ctx.settings.compatibilityMode >= 15 || ctx.settings.justifyShrink) && LinePainter.justified(pp)) {
             lb.shrink(SHRINK);
         }
         if (LinePainter.justified(pp)) {

@@ -126,7 +126,8 @@ final class DocWriter {
             }
         }
         b.append("<w:compat><w:compatSetting w:name=\"compatibilityMode\" w:uri=\"http://schemas.microsoft.com/")
-                .append("office/word\" w:val=\"").append(COMPATIBILITY).append("\"/></w:compat>");
+                .append("office/word\" w:val=\"").append(COMPATIBILITY).append("\"/><w:compatSetting")
+                .append(" w:name=\"justifyLinesWithShrinking\" w:uri=\"urn:stirling:officeconvert\" w:val=\"1\"/></w:compat>");
         return b.append("</w:settings>").toString();
     }
 }

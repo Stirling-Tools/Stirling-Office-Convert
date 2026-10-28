@@ -73,6 +73,15 @@ class DocTest {
     }
 
     @Test
+    void justifiedLinesShrinkLikeWordWhileTablesKeepTheOldLayout() throws IOException {
+        String settings = part(new WordFixture().para("Text").build(), "word/settings.xml");
+        assertTrue(settings.contains("w:name=\"compatibilityMode\" w:uri=\"http://schemas.microsoft.com/office/word\""
+                + " w:val=\"11\""), settings);
+        assertTrue(settings.contains("<w:compatSetting w:name=\"justifyLinesWithShrinking\""
+                + " w:uri=\"urn:stirling:officeconvert\" w:val=\"1\"/>"), settings);
+    }
+
+    @Test
     void anUnknownShadingPatternDoesNotStopTheConversion() throws IOException {
         byte[] shd = {0, 0, 0, 0, (byte) 0xFF, (byte) 0xEE, (byte) 0xDD, 0, 0, (byte) 0xFF};
         byte[] doc = new WordFixture().para("Shaded", Sprms.op(0xC64D, 10, shd[0], shd[1], shd[2], shd[3], shd[4],
