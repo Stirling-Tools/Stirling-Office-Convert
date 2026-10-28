@@ -57,9 +57,13 @@ final class Type3Outlines extends PDFGraphicsStreamEngine {
 
     static final long MAX_OPERATIONS = 1_000_000;
 
+    private static final long MAX_FONT_AREA_WORK = 4 * MAX_AREA_WORK;
+
     static final class Budget {
 
         private long left = MAX_OPERATIONS;
+
+        private long area = MAX_FONT_AREA_WORK;
 
         void spend(long n) throws IOException {
             PdfFiles.stopIfInterrupted();
@@ -119,7 +123,7 @@ final class Type3Outlines extends PDFGraphicsStreamEngine {
         long areaSegments = 0;
         for (Shape s : shapes) {
             PdfFiles.stopIfInterrupted();
-            long cost = areaSegments + segments(s);
+            long cost = areaSegments + conversion(s);
             if (!spendArea(cost)) {
                 break;
             }
@@ -130,12 +134,18 @@ final class Type3Outlines extends PDFGraphicsStreamEngine {
     }
 
     private boolean spendArea(long cost) {
-        if (areaWork + cost > MAX_AREA_WORK) {
+        if (areaWork + cost > MAX_AREA_WORK || cost > budget.area) {
             areaWork = MAX_AREA_WORK;
             return false;
         }
         areaWork += cost;
+        budget.area -= cost;
         return true;
+    }
+
+    private static long conversion(Shape s) {
+        long n = segments(s);
+        return s instanceof Area ? n : n * n;
     }
 
     private static long segments(Shape s) {
@@ -175,7 +185,7 @@ final class Type3Outlines extends PDFGraphicsStreamEngine {
             shapes.add(s);
             return;
         }
-        if (!spendArea(size + (clip == null ? 0 : segments(clip)) + (mask == null ? 0 : segments(mask)))) {
+        if (!spendArea(size * size + (clip == null ? 0 : segments(clip)) + (mask == null ? 0 : segments(mask)))) {
             return;
         }
         Area a = new Area(s);
@@ -257,7 +267,9 @@ final class Type3Outlines extends PDFGraphicsStreamEngine {
         if (pendingClip >= 0) {
             GeneralPath p = new GeneralPath(current);
             p.setWindingRule(pendingClip);
-            if (clip == null) {
+            if (!spendArea(conversion(p) + (clip == null ? 0 : segments(clip)))) {
+                clip = new Area();
+            } else if (clip == null) {
                 clip = new Area(p);
             } else {
                 clip.intersect(new Area(p));

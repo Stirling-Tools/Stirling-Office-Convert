@@ -341,6 +341,59 @@ class WebFontsCff2Test {
                 () -> new Cff2(t.array())));
     }
     @Test
+    void fontDictionariesThatShareOnePrivateDictionaryOrSubroutineIndexReadItOnce() {
+        int fonts = 8_000;
+        byte[] subrs = index2(new byte[1 << 20]);
+        byte[] charstrings = index2(ops(0, 0, op(21)));
+        int top = 13;
+        int charstringsAt = 5 + top + 4;
+        int fdArrayAt = charstringsAt + charstrings.length;
+        int fdArrayLength = 4 + 1 + 4 * (fonts + 1) + 11 * fonts;
+        int privatesAt = fdArrayAt + fdArrayLength;
+        int subrsAt = privatesAt + 6 * fonts;
+        byte[][] shared = new byte[fonts][];
+        byte[][] distinct = new byte[fonts][];
+        ByteArrayOutputStream privates = new ByteArrayOutputStream();
+        for (int i = 0; i < fonts; i++) {
+            shared[i] = ops(FontPrograms.int5(6), FontPrograms.int5(privatesAt), op(18));
+            distinct[i] = ops(FontPrograms.int5(6), FontPrograms.int5(privatesAt + 6 * i), op(18));
+            privates.writeBytes(ops(FontPrograms.int5(subrsAt - privatesAt - 6 * i), op(19)));
+        }
+        byte[] topDict = ops(FontPrograms.int5(charstringsAt), op(17), FontPrograms.int5(fdArrayAt), op(12, 36));
+        for (byte[][] fdArray : new byte[][][] {shared, distinct}) {
+            byte[] table = FontPrograms.concat(op(2, 0, 5, 0, top), topDict, index2(), charstrings, index2(fdArray),
+                    privates.toByteArray(), subrs);
+            assertEquals(subrsAt + subrs.length, table.length);
+            assertTimeoutPreemptively(Duration.ofSeconds(10), () -> {
+                Cff2 cff2 = new Cff2(table);
+                assertEquals(1, cff2.count());
+                assertEquals(1, cff2.localSubrs(0).length);
+            });
+        }
+    }
+
+    @Test
+    void privateDictionariesThatOverlapEachOtherAreRejectedQuickly() {
+        int fonts = 8_000;
+        int size = 1 << 20;
+        byte[] charstrings = index2(ops(0, 0, op(21)));
+        int top = 13;
+        int charstringsAt = 5 + top + 4;
+        int fdArrayAt = charstringsAt + charstrings.length;
+        int privatesAt = fdArrayAt + 4 + 1 + 4 * (fonts + 1) + 11 * fonts;
+        byte[][] fdArray = new byte[fonts][];
+        for (int i = 0; i < fonts; i++) {
+            fdArray[i] = ops(FontPrograms.int5(size), FontPrograms.int5(privatesAt + i), op(18));
+        }
+        byte[] numbers = new byte[size + fonts];
+        java.util.Arrays.fill(numbers, (byte) 139);
+        byte[] table = FontPrograms.concat(op(2, 0, 5, 0, top), ops(FontPrograms.int5(charstringsAt), op(17),
+                FontPrograms.int5(fdArrayAt), op(12, 36)), index2(), charstrings, index2(fdArray), numbers);
+        assertEquals(privatesAt + numbers.length, table.length);
+        assertTimeoutPreemptively(Duration.ofSeconds(5), () -> assertThrows(IOException.class, () -> new Cff2(table)));
+    }
+
+    @Test
     void theSourceEmbeddingPermissionsSurviveConversion() throws Exception {
         ByteBuffer os2 = ByteBuffer.allocate(96);
         os2.putShort(0, (short) 4).putShort(8, (short) 0x0002);
