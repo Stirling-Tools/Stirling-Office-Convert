@@ -3,6 +3,7 @@ package stirling.software.officeconvert.optimize;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InterruptedIOException;
 import java.util.zip.DataFormatException;
 import java.util.zip.Inflater;
 
@@ -12,6 +13,9 @@ import org.apache.pdfbox.cos.COSDictionary;
 import org.apache.pdfbox.cos.COSName;
 import org.brotli.dec.BrotliInputStream;
 
+import stirling.software.officeconvert.extract.BrotliBudget;
+import stirling.software.officeconvert.extract.PdfFiles;
+
 final class Filters {
 
     static class Undecodable extends Exception {
@@ -20,8 +24,14 @@ final class Filters {
         }
     }
 
-    static final class TooLarge extends Undecodable {
+    static class TooLarge extends Undecodable {
         TooLarge(String message) {
+            super(message);
+        }
+    }
+
+    static final class Spent extends TooLarge {
+        Spent(String message) {
             super(message);
         }
     }
@@ -60,7 +70,8 @@ final class Filters {
         return BROTLI_DECODE.equals(f);
     }
 
-    static byte[] decode(COSName f, COSDictionary parms, byte[] in, long limit) throws Undecodable {
+    static byte[] decode(COSName f, COSDictionary parms, byte[] in, long limit, BrotliBudget budget)
+            throws Undecodable {
         if (COSName.FLATE_DECODE.equals(f) || FLATE_ABBREVIATION.equals(f)) {
             return Predictors.decode(inflate(in, limit), parms, limit);
         }
@@ -69,7 +80,7 @@ final class Filters {
             return Predictors.decode(lzw(in, early != 0, limit), parms, limit);
         }
         if (BROTLI_DECODE.equals(f)) {
-            return Predictors.decode(brotli(in, limit), parms, limit);
+            return Predictors.decode(brotli(in, limit, budget), parms, limit);
         }
         if (COSName.ASCII_HEX_DECODE.equals(f) || HEX_ABBREVIATION.equals(f)) {
             return hex(in, limit);
@@ -121,17 +132,23 @@ final class Filters {
         }
     }
 
-    static byte[] brotli(byte[] in, long limit) throws Undecodable {
+    static byte[] brotli(byte[] in, long limit, BrotliBudget budget) throws Undecodable {
         Bytes out = new Bytes(initial(in.length * 4L, limit));
         try (InputStream z = new BrotliInputStream(new ByteArrayInputStream(in))) {
             byte[] buf = new byte[1 << 16];
             int n;
             while ((n = z.read(buf, 0, buf.length)) > 0) {
+                PdfFiles.stopIfInterrupted();
                 if (out.size() + (long) n > limit) {
                     throw new TooLarge("the Brotli data decodes past the size limit");
                 }
+                if (!budget.take(n)) {
+                    throw new Spent(budget.exhausted());
+                }
                 out.write(buf, 0, n);
             }
+        } catch (InterruptedIOException e) {
+            throw new Undecodable("the Brotli decoding was interrupted");
         } catch (IOException | RuntimeException e) {
             throw new Undecodable("the Brotli data is damaged");
         }

@@ -30,6 +30,7 @@ import org.apache.pdfbox.cos.COSObjectKey;
 import org.apache.pdfbox.cos.COSStream;
 import org.apache.pdfbox.pdmodel.PDDocument;
 
+import stirling.software.officeconvert.extract.BrotliBudget;
 import stirling.software.officeconvert.extract.PdfFiles;
 
 final class Rewrite {
@@ -80,6 +81,8 @@ final class Rewrite {
 
     private int brotli;
 
+    private BrotliBudget brotliBudget;
+
     private Rewrite(Index index, Source source, PdfOptimizer.Options options, Spill spill, boolean encrypted) {
         this.index = index;
         this.source = source;
@@ -106,6 +109,7 @@ final class Rewrite {
         try (Spill spill = new Spill()) {
             Rewrite r = new Rewrite(index, source, options, spill, encryption != null);
             r.encryption = encryption;
+            r.brotliBudget = BrotliBudget.of(doc);
             int root = index.id(rootRef.getKey());
             int info = trailer.getItem(COSName.INFO) instanceof COSObject infoRef && infoRef.getKey() != null
                     ? index.id(infoRef.getKey()) : -1;
@@ -138,7 +142,8 @@ final class Rewrite {
             Resolver resolver = new Resolver(source, index);
             roles.resolve(resolver, root);
             Resolver.Found dr = resolver.find(new Roles.Loc(root, new Object[] {COSName.ACRO_FORM, COSName.DR}));
-            r.removals = Cleanup.unusedResources(roles, resolver, source, index, dr == null ? null : dr.loc());
+            r.removals = Cleanup.unusedResources(roles, resolver, source, index, dr == null ? null : dr.loc(),
+                    r.brotliBudget);
             r.prune();
             COSBase catalog = source.load(index.key(root));
             boolean objectStreams = !(catalog instanceof COSDictionary c) || Roles.pdfaPart(c) != 1;
@@ -150,6 +155,10 @@ final class Rewrite {
             int infoNode = info < 0 ? -1 : r.rep[info];
             r.liveness(rootNode, infoNode, roles.indirect);
             CountingOutput out = new CountingOutput(os);
+            if (r.brotliBudget.spent()) {
+                warnings.add("Streams past the point where " + r.brotliBudget.exhausted()
+                        + " were kept as stored, still compressed with BrotliDecode");
+            }
             if (r.oversized > 0) {
                 warnings.add(r.oversized + (r.oversized == 1 ? " stream decodes" : " streams decode")
                         + " past the size limit and " + (r.oversized == 1 ? "was" : "were") + " kept as stored");
@@ -273,7 +282,8 @@ final class Rewrite {
                     Cleanup.apply(s, drop);
                 }
                 Recoder.Kind kind = kind(i, roles);
-                Recoder.Job job = Recoder.prepare(s, kind, kind == Recoder.Kind.IMAGE ? Roles.layout(s) : null);
+                Recoder.Job job = Recoder.prepare(s, kind, kind == Recoder.Kind.IMAGE ? Roles.layout(s) : null,
+                        brotliBudget);
                 if (job == null) {
                     large(i, s, kind, sha);
                     continue;
@@ -298,7 +308,7 @@ final class Rewrite {
             for (Pending p : retry) {
                 PdfFiles.stopIfInterrupted();
                 Recoder.Job job = Recoder.prepare(p.stream(), kind(p.node(), roles),
-                        kind(p.node(), roles) == Recoder.Kind.IMAGE ? Roles.layout(p.stream()) : null);
+                        kind(p.node(), roles) == Recoder.Kind.IMAGE ? Roles.layout(p.stream()) : null, brotliBudget);
                 if (job == null) {
                     large(p.node(), p.stream(), kind(p.node(), roles), sha);
                     continue;

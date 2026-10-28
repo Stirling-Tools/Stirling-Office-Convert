@@ -2,6 +2,7 @@ package stirling.software.officeconvert;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.awt.image.BufferedImage;
@@ -42,6 +43,8 @@ class BrotliPdfTest {
     private static final String BROTLI = "/BrotliDecode";
 
     private static final String FLATE = "/FlateDecode";
+
+    private static final String BUDGET = "stirling.officeconvert.brotliBudgetMB";
 
     @Test
     void textOfAPackedBrotliPdfMatchesTheFlateVersion() throws IOException {
@@ -109,6 +112,54 @@ class BrotliPdfTest {
         assertTrue(documentXml(docx(pdf)).contains("Still here"));
         long ms = (cpu() - start) / 1_000_000;
         assertTrue(ms < 30_000, "took " + ms + " ms of CPU");
+    }
+
+    @Test
+    void manyBrotliStreamsShareOneDocumentBudget() throws IOException {
+        RawPdf r = base("5 0 R", "");
+        r.add(RawPdf.stream("", "BT /F1 12 Tf 30 250 Td (Still here) Tj ET"));
+        StringBuilder payload = new StringBuilder("[");
+        for (int i = 0; i < 10; i++) {
+            r.add(RawPdf.stream("/Filter/BrotliDecode", BrotliData.zeros(16 << 20)));
+            payload.append(i + 6).append(" 0 R ");
+        }
+        r.objects.set(0, ("<</Type/Catalog/Pages 2 0 R/Payload" + payload + "]>>").getBytes(StandardCharsets.ISO_8859_1));
+        Path pdf = write("many-bombs", r.classic());
+        System.setProperty(BUDGET, "64");
+        try {
+            int decoded = 0;
+            int emptied = 0;
+            try (PDDocument doc = PdfFiles.open(pdf, null)) {
+                StreamGuard.check(doc);
+                for (int i = 6; i <= 15; i++) {
+                    COSStream s = (COSStream) doc.getDocument().getObjectFromPool(
+                            new org.apache.pdfbox.cos.COSObjectKey(i, 0)).getObject();
+                    if (COSName.FLATE_DECODE.equals(s.getFilters())) {
+                        decoded++;
+                    } else if (s.getFilters() == null && s.getLength() == 0) {
+                        emptied++;
+                    }
+                }
+            }
+            assertTrue(decoded <= 4, decoded + " streams decoded past a 64 MB budget");
+            assertEquals(10 - decoded, emptied);
+            assertTrue(OfficeConvert.text(pdf).contains("Still here"));
+        } finally {
+            System.clearProperty(BUDGET);
+        }
+    }
+
+    @Test
+    void aBrotliObjectStreamPastTheBudgetFailsTheDocument() throws IOException {
+        Path pdf = write("packed-budget", packed(BROTLI, BrotliData::stored, 2 << 20));
+        System.setProperty(BUDGET, "1");
+        try {
+            IOException e = assertThrows(IOException.class, () -> OfficeConvert.text(pdf));
+            assertTrue(e.getMessage().contains("budget"), e.getMessage());
+        } finally {
+            System.clearProperty(BUDGET);
+        }
+        assertTrue(OfficeConvert.text(pdf).contains("Brotli streams read like Flate ones"));
     }
 
     @Test
@@ -184,6 +235,10 @@ class BrotliPdfTest {
     }
 
     private static byte[] packed(String filter, UnaryOperator<byte[]> encoding) {
+        return packed(filter, encoding, 0);
+    }
+
+    private static byte[] packed(String filter, UnaryOperator<byte[]> encoding, int padding) {
         String[] objects = {"<</Type/Catalog/Pages 2 0 R>>", "<</Type/Pages/Kids[3 0 R]/Count 1>>",
             "<</Type/Page/Parent 2 0 R/MediaBox[0 0 300 300]/Resources<</Font<</F1 4 0 R>>>>/Contents 5 0 R>>", FONT};
         StringBuilder head = new StringBuilder();
@@ -192,7 +247,8 @@ class BrotliPdfTest {
             head.append(i + 1).append(' ').append(body.length()).append(' ');
             body.append(objects[i]).append('\n');
         }
-        byte[] objStm = encoding.apply((head + body.toString()).getBytes(StandardCharsets.ISO_8859_1));
+        byte[] objStm = encoding.apply((head + body.toString() + " ".repeat(padding))
+                .getBytes(StandardCharsets.ISO_8859_1));
         String text = TEXT;
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         write(out, "%PDF-1.7\n%âãÏÓ\n");
@@ -303,7 +359,7 @@ class BrotliPdfTest {
 
     private static final class RawPdf {
 
-        private final List<byte[]> objects = new ArrayList<>();
+        final List<byte[]> objects = new ArrayList<>();
 
         void add(String body) {
             add(body.getBytes(StandardCharsets.ISO_8859_1));

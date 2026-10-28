@@ -19,6 +19,7 @@ import org.apache.pdfbox.cos.COSObject;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.encryption.InvalidPasswordException;
 
+import stirling.software.officeconvert.extract.BrotliBudget;
 import stirling.software.officeconvert.extract.PdfFiles;
 import stirling.software.officeconvert.memory.Admission;
 
@@ -179,6 +180,9 @@ public final class PdfOptimizer {
         } catch (InvalidPasswordException | InterruptedIOException e) {
             throw e;
         } catch (IOException e) {
+            if (e.getCause() instanceof BrotliBudget.Spent) {
+                throw e;
+            }
             rebuilt = Files.createTempFile(folder, ".salvage-", ".part");
             boolean opened = false;
             try {

@@ -3,6 +3,7 @@ package stirling.software.officeconvert.optimize;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.ByteArrayOutputStream;
@@ -102,6 +103,51 @@ class BrotliOptimizeTest {
     }
 
     @Test
+    void manyBrotliStreamsShareOneRunBudget() throws Exception {
+        RawPdf r = RawPdf.page("", "0 0 1 rg 10 10 50 50 re f");
+        StringBuilder payload = new StringBuilder("[");
+        for (int i = 0; i < 6; i++) {
+            payload.append(r.add(RawPdf.stream("/Filter/BrotliDecode", BrotliData.zeros(4 << 20)))).append(" 0 R ");
+        }
+        r.set(1, "<</Type/Catalog/Pages 2 0 R/Payload" + payload + "]>>");
+        Path in = r.write(dir, "many-bombs");
+        Path out = dir.resolve("out.pdf");
+        System.setProperty("stirling.officeconvert.brotliBudgetMB", "8");
+        PdfOptimizer.Result result;
+        try {
+            result = PdfOptimizer.optimize(in, out, REWRITE);
+        } finally {
+            System.clearProperty("stirling.officeconvert.brotliBudgetMB");
+        }
+        assertTrue(result.warnings().stream().anyMatch(w -> w.contains("budget")), result.warnings().toString());
+        int kept = 0;
+        try (PDDocument d = Loader.loadPDF(out.toFile())) {
+            org.apache.pdfbox.cos.COSArray streams = (org.apache.pdfbox.cos.COSArray) d.getDocumentCatalog()
+                    .getCOSObject().getDictionaryObject(COSName.getPDFName("Payload"));
+            for (int i = 0; i < streams.size(); i++) {
+                if (Filters.brotli(((COSStream) streams.getObject(i)).getItem(COSName.FILTER))) {
+                    kept++;
+                }
+            }
+        }
+        assertTrue(kept >= 4, kept + " of 6 streams kept as stored");
+    }
+
+    @Test
+    void aBrotliObjectStreamPastTheBudgetFailsTheRun() throws Exception {
+        Path in = packed("packed-budget", "/BrotliDecode", true, 2 << 20);
+        Path out = dir.resolve("out.pdf");
+        System.setProperty("stirling.officeconvert.brotliBudgetMB", "1");
+        try {
+            IOException e = assertThrows(IOException.class, () -> PdfOptimizer.optimize(in, out, REWRITE));
+            assertTrue(e.getMessage().contains("budget"), e.getMessage());
+        } finally {
+            System.clearProperty("stirling.officeconvert.brotliBudgetMB");
+        }
+        assertFalse(Files.exists(out));
+    }
+
+    @Test
     void aCorruptBrotliStreamIsKeptAsStoredLikeACorruptFlateStream() throws Exception {
         byte[] cut = java.util.Arrays.copyOf(BrotliData.stored(bytes("0 0 1 rg 10 10 50 50 re f\n".repeat(50))), 300);
         byte[] garbage = bytes("not brotli at all, just text");
@@ -148,6 +194,10 @@ class BrotliOptimizeTest {
     }
 
     private Path packed(String name, String filter, boolean brotli) throws IOException {
+        return packed(name, filter, brotli, 0);
+    }
+
+    private Path packed(String name, String filter, boolean brotli, int padding) throws IOException {
         String[] objects = {"<</Type/Catalog/Pages 2 0 R>>", "<</Type/Pages/Kids[3 0 R]/Count 1>>",
             "<</Type/Page/Parent 2 0 R/MediaBox[0 0 200 200]/Resources<<" + RawPdf.helvetica("F1")
                     + ">>/Contents 4 0 R>>"};
@@ -166,7 +216,7 @@ class BrotliOptimizeTest {
         long stm = out.size();
         out.writeBytes(bytes("5 0 obj\n"));
         out.writeBytes(RawPdf.stream("/Type/ObjStm/N 3/First " + head.length() + "/Filter" + filter,
-                encode(bytes(head + body.toString()), brotli)));
+                encode(bytes(head + body.toString() + " ".repeat(padding)), brotli)));
         out.writeBytes(bytes("\nendobj\n"));
         long xref = out.size();
         ByteArrayOutputStream rows = new ByteArrayOutputStream();

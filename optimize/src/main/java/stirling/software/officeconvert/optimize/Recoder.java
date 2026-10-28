@@ -14,6 +14,8 @@ import org.apache.pdfbox.cos.COSInteger;
 import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.cos.COSStream;
 
+import stirling.software.officeconvert.extract.BrotliBudget;
+
 final class Recoder {
 
     static final long MAX_DECODED_BYTES = Math.max(16L << 20,
@@ -40,9 +42,9 @@ final class Recoder {
     }
 
     record Job(byte[] raw, Kind kind, List<COSName> filters, List<COSBase> parms, boolean chained,
-            Predictors.Layout image, int rows) {}
+            Predictors.Layout image, int rows, BrotliBudget budget) {}
 
-    static Job prepare(COSStream s, Kind kind, Predictors.Layout image) throws IOException {
+    static Job prepare(COSStream s, Kind kind, Predictors.Layout image, BrotliBudget budget) throws IOException {
         if (s.getLength() > MAX_RAW_BYTES) {
             return null;
         }
@@ -63,7 +65,7 @@ final class Recoder {
                 }
             }
         }
-        return new Job(raw, kind, filters, parms, chained, image, imageRows(s));
+        return new Job(raw, kind, filters, parms, chained, image, imageRows(s), budget);
     }
 
     static Plan plan(Job job, PdfOptimizer.Effort effort) throws IOException {
@@ -94,7 +96,7 @@ final class Recoder {
             while (peeled < filters.size() && Filters.generalized(filters.get(peeled))) {
                 COSBase p = resolve(parms.get(peeled));
                 data = Filters.decode(filters.get(peeled), p instanceof COSDictionary d ? d : null, data,
-                        Math.min(limit, MAX_DECODED_BYTES));
+                        Math.min(limit, MAX_DECODED_BYTES), job.budget);
                 peeled++;
             }
         } catch (Filters.TooLarge e) {
@@ -161,7 +163,7 @@ final class Recoder {
         return new Plan(best.data, replace, true);
     }
 
-    static byte[] decoded(COSStream s) throws IOException {
+    static byte[] decoded(COSStream s, BrotliBudget budget) throws IOException {
         if (s.getLength() > MAX_RAW_BYTES || s.containsKey(COSName.F)) {
             return null;
         }
@@ -183,7 +185,8 @@ final class Recoder {
                     return null;
                 }
                 COSBase p = resolve(parms.get(i));
-                data = Filters.decode(filters.get(i), p instanceof COSDictionary d ? d : null, data, MAX_DECODED_BYTES);
+                data = Filters.decode(filters.get(i), p instanceof COSDictionary d ? d : null, data, MAX_DECODED_BYTES,
+                        budget);
             }
         } catch (Filters.Undecodable e) {
             return null;

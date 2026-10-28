@@ -58,6 +58,8 @@ public final class StreamGuard {
                 }
             } catch (InterruptedIOException stop) {
                 throw stop;
+            } catch (BrotliBudget.Spent spent) {
+                throw spent;
             } catch (IOException | RuntimeException broken) {
             }
         }

@@ -17,6 +17,8 @@ import org.apache.pdfbox.cos.COSDocument;
 import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.pdfparser.PDFStreamParser;
 
+import stirling.software.officeconvert.extract.BrotliBudget;
+
 final class Salvage {
 
     static final long MAX_BYTES = 256L << 20;
@@ -85,6 +87,7 @@ final class Salvage {
         List<Map.Entry<Integer, Integer>> byOffset = new ArrayList<>(offsets.entrySet());
         byOffset.sort(Map.Entry.comparingByValue());
         TreeMap<Integer, String> packed = new TreeMap<>();
+        BrotliBudget budget = BrotliBudget.create();
         for (int k = 0; k < byOffset.size(); k++) {
             if ((k & 1023) == 0) {
                 stirling.software.officeconvert.extract.PdfFiles.stopIfInterrupted();
@@ -98,7 +101,7 @@ final class Salvage {
             bodies.put(number, head);
             order.put(number, (long) start << 20);
             if (stream >= 0 && OBJECT_STREAM.matcher(head).find()) {
-                unpack(data, start, Math.min(end, data.length), head, packed, order);
+                unpack(data, start, Math.min(end, data.length), head, packed, order, budget);
             }
         }
         packed.keySet().removeAll(offsets.keySet());
@@ -225,7 +228,7 @@ final class Salvage {
     }
 
     private static void unpack(byte[] data, int start, int end, String head, Map<Integer, String> packed,
-            Map<Integer, Long> order) {
+            Map<Integer, Long> order, BrotliBudget budget) {
         Matcher n = COUNT.matcher(head);
         Matcher first = FIRST.matcher(head);
         if (!n.find() || !first.find() || head.contains("/DecodeParms") || head.contains("/DP")) {
@@ -274,7 +277,7 @@ final class Salvage {
             decoded = plain.toByteArray();
         } else if (brotli) {
             try {
-                decoded = Filters.brotli(raw, MAX_UNPACKED);
+                decoded = Filters.brotli(raw, MAX_UNPACKED, budget);
             } catch (Filters.Undecodable e) {
                 return;
             }

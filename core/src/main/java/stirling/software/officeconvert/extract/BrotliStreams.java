@@ -67,15 +67,17 @@ final class BrotliStreams {
         if (s.containsKey(COSName.F)) {
             return;
         }
+        boolean structural = structural(s);
+        BrotliBudget budget = BrotliBudget.of(doc);
         for (int i = 0; i < MAX_STAGES && uses(s); i++) {
-            if (!replaceFirst(s)) {
+            if (!replaceFirst(s, structural, budget)) {
                 return;
             }
             DECODED.put(doc, Boolean.TRUE);
         }
     }
 
-    private static boolean replaceFirst(COSStream s) throws IOException {
+    private static boolean replaceFirst(COSStream s, boolean structural, BrotliBudget budget) throws IOException {
         List<COSName> filters = new ArrayList<>();
         List<COSBase> parms = new ArrayList<>();
         if (!chain(s, filters, parms)) {
@@ -88,17 +90,27 @@ final class BrotliStreams {
             if (before == null) {
                 return false;
             }
+            if (!budget.take(before.length)) {
+                return overBudget(s, structural, budget);
+            }
         }
         ByteArrayOutputStream flate = new ByteArrayOutputStream();
         Deflater deflater = new Deflater(Deflater.BEST_SPEED);
-        boolean damaged = false;
+        Outcome outcome;
         try (InputStream raw = before == null ? s.createRawInputStream() : new ByteArrayInputStream(before);
                 OutputStream z = new DeflaterOutputStream(flate, deflater, 1 << 16)) {
-            damaged = transcode(raw, z);
+            outcome = transcode(raw, z, budget);
         } finally {
             deflater.end();
         }
-        if (damaged) {
+        if (outcome == Outcome.SPENT) {
+            return overBudget(s, structural, budget);
+        }
+        if (outcome == Outcome.TRUNCATED && structural) {
+            throw new BrotliBudget.Spent("a BrotliDecode " + s.getCOSName(COSName.TYPE).getName()
+                    + " stream decodes past " + (StreamGuard.MAX_DECODED >> 20) + " MB");
+        }
+        if (outcome == Outcome.DAMAGED) {
             LOG.warn("A BrotliDecode stream is damaged; only the data before the damage is read");
         }
         try (OutputStream out = s.createRawOutputStream()) {
@@ -130,7 +142,23 @@ final class BrotliStreams {
         return true;
     }
 
-    private static boolean transcode(InputStream raw, OutputStream z) throws IOException {
+    private enum Outcome {
+        COMPLETE, DAMAGED, TRUNCATED, SPENT
+    }
+
+    private static boolean overBudget(COSStream s, boolean structural, BrotliBudget budget) throws IOException {
+        if (structural) {
+            throw new BrotliBudget.Spent(budget.exhausted());
+        }
+        LOG.warn("A BrotliDecode stream was left out: " + budget.exhausted());
+        s.removeItem(COSName.FILTER);
+        s.removeItem(COSName.DECODE_PARMS);
+        s.removeItem(COSName.DP);
+        s.createRawOutputStream().close();
+        return false;
+    }
+
+    private static Outcome transcode(InputStream raw, OutputStream z, BrotliBudget budget) throws IOException {
         long written = 0;
         try (InputStream brotli = new BrotliInputStream(raw)) {
             byte[] buf = new byte[1 << 16];
@@ -138,17 +166,20 @@ final class BrotliStreams {
             while ((n = brotli.read(buf, 0, buf.length)) > 0) {
                 PdfFiles.stopIfInterrupted();
                 int keep = (int) Math.min(n, StreamGuard.MAX_DECODED + 1 - written);
+                if (!budget.take(keep)) {
+                    return Outcome.SPENT;
+                }
                 z.write(buf, 0, keep);
                 written += keep;
                 if (written > StreamGuard.MAX_DECODED) {
-                    return false;
+                    return Outcome.TRUNCATED;
                 }
             }
-            return false;
+            return Outcome.COMPLETE;
         } catch (InterruptedIOException e) {
             throw e;
         } catch (IOException | RuntimeException e) {
-            return true;
+            return Outcome.DAMAGED;
         }
     }
 
