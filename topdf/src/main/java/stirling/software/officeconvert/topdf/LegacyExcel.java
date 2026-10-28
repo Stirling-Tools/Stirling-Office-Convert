@@ -58,7 +58,8 @@ final class LegacyExcel {
             }
             try (InputStream in = root.createDocumentInputStream(root.getEntryCaseInsensitive(name))) {
                 byte[] start = in.readNBytes(8);
-                if (Biff5Package.is(start) || Biff5Package.older(start)) {
+                if (Biff5Package.is(start) || Biff5Package.older(start)
+                        || name.equals("Book") && Biff5Package.globals8(start)) {
                     return concat(start, in.readNBytes(MAX_STREAM_BYTES));
                 }
             }
