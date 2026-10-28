@@ -22,6 +22,7 @@ import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.cos.COSObject;
 import org.apache.pdfbox.cos.COSObjectKey;
 import org.apache.pdfbox.cos.COSStream;
+import org.apache.pdfbox.cos.COSString;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.PDPageContentStream;
@@ -168,6 +169,58 @@ class PdfWriterTest {
                     .getInt(COSName.K));
         }
         VeraPdf.assertCompliant(out, PdfALevel.A1B);
+    }
+
+    @Test
+    void treeKidsStayIndirectWhenUsedOnce() throws Exception {
+        Path in = dir.resolve("tree.pdf");
+        try (PDDocument d = new PDDocument()) {
+            PDPage page = Samples.page(d);
+            COSArray kids = new COSArray();
+            for (int leaf = 0; leaf < 3; leaf++) {
+                COSArray pairs = new COSArray();
+                for (int i = 0; i < 2; i++) {
+                    String name = "dest." + leaf + "." + i;
+                    COSArray dest = new COSArray();
+                    dest.add(page.getCOSObject());
+                    dest.add(COSName.getPDFName("Fit"));
+                    COSDictionary value = new COSDictionary();
+                    value.setItem(COSName.D, dest);
+                    pairs.add(new COSString(name));
+                    pairs.add(value);
+                }
+                COSArray limits = new COSArray();
+                limits.add(new COSString("dest." + leaf + ".0"));
+                limits.add(new COSString("dest." + leaf + ".1"));
+                COSDictionary node = new COSDictionary();
+                node.setItem(COSName.LIMITS, limits);
+                node.setItem(COSName.NAMES, pairs);
+                kids.add(node);
+            }
+            COSDictionary tree = new COSDictionary();
+            tree.setItem(COSName.KIDS, kids);
+            COSDictionary names = new COSDictionary();
+            names.setItem(COSName.getPDFName("Dests"), tree);
+            d.getDocumentCatalog().getCOSObject().setItem(COSName.NAMES, names);
+            d.save(in.toFile());
+        }
+        for (PdfALevel level : new PdfALevel[] {PdfALevel.A1B, PdfALevel.A2B}) {
+            Path out = dir.resolve("tree-" + level + ".pdf");
+            PdfToPdfA.convert(in, out, PdfToPdfA.Options.defaults().level(level));
+            try (PDDocument d = Loader.loadPDF(out.toFile())) {
+                COSDictionary names = (COSDictionary) d.getDocumentCatalog().getCOSObject()
+                        .getDictionaryObject(COSName.NAMES);
+                COSDictionary tree = (COSDictionary) names.getDictionaryObject(COSName.getPDFName("Dests"));
+                COSArray kids = (COSArray) tree.getDictionaryObject(COSName.KIDS);
+                assertEquals(3, kids.size());
+                for (int i = 0; i < kids.size(); i++) {
+                    assertTrue(kids.get(i) instanceof COSObject, level + " kid " + i + " is written in place");
+                    COSDictionary leaf = (COSDictionary) kids.getObject(i);
+                    assertEquals(4, ((COSArray) leaf.getDictionaryObject(COSName.NAMES)).size());
+                }
+            }
+            VeraPdf.assertCompliant(out, level);
+        }
     }
 
     private static void checkItems(Path out, int n) throws Exception {
