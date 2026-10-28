@@ -412,6 +412,51 @@ class MainTest {
     }
 
     @Test
+    void lineArtMakesEachPictureOneBit() throws Exception {
+        Path pdf = dir.resolve("scan.pdf");
+        java.awt.image.BufferedImage picture = new java.awt.image.BufferedImage(64, 48, java.awt.image.BufferedImage.TYPE_INT_RGB);
+        for (int y = 0; y < 48; y++) {
+            for (int x = 0; x < 64; x++) {
+                picture.setRGB(x, y, (x / 8 + y / 8) % 2 == 0 ? 0x202020 : 0xF0F0E0);
+            }
+        }
+        try (PDDocument d = new PDDocument()) {
+            PDPage page = new PDPage();
+            d.addPage(page);
+            var image = org.apache.pdfbox.pdmodel.graphics.image.LosslessFactory.createFromImage(d, picture);
+            try (PDPageContentStream cs = new PDPageContentStream(d, page)) {
+                cs.drawImage(image, 72, 72);
+            }
+            d.save(pdf.toFile());
+        }
+        Result r = run(pdf.toString(), "--line-art", "otsu", "--codec", "g4");
+        assertEquals(0, r.code(), r.err());
+        assertTrue(r.err().contains("1 of 1 pictures made 1-bit"), r.err());
+        try (PDDocument d = org.apache.pdfbox.Loader.loadPDF(dir.resolve("scan.lineart.pdf").toFile())) {
+            var resources = d.getPage(0).getResources();
+            var image = (org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject) resources.getXObject(
+                    resources.getXObjectNames().iterator().next());
+            assertEquals(1, image.getBitsPerComponent());
+            assertEquals("CCITTFaxDecode", image.getCOSObject().getCOSName(org.apache.pdfbox.cos.COSName.FILTER).getName());
+        }
+        Result folder = run(dir.toString(), "--line-art", "edges", "--edge-level", "2", "-o", dir.resolve("art").toString(), "-q");
+        assertEquals(0, folder.code(), folder.err());
+        assertTrue(Files.exists(dir.resolve("art/scan.lineart.pdf")));
+        assertFalse(Files.exists(dir.resolve("art/scan.lineart.lineart.pdf")));
+    }
+
+    @Test
+    void lineArtRefusesMixedOrUnknownOptions() throws Exception {
+        Path pdf = helloPdf(dir.resolve("in.pdf"));
+        assertUsage(run(pdf.toString(), "--line-art", "magic"), "sauvola, otsu, fixed or edges");
+        assertUsage(run(pdf.toString(), "--threshold", "40"), "go with --line-art");
+        assertUsage(run(pdf.toString(), "--line-art", "fixed", "--pdfa", "2b"), "separate runs");
+        assertUsage(run(pdf.toString(), "--line-art", "edges", "--edge-level", "5"), "edgeLevel must be 1, 2 or 3");
+        assertUsage(run(pdf.toString(), "--line-art", "fixed", "--codec", "png"), "smallest, jbig2, g4 or flate");
+        assertUsage(run(pdf.toString(), "--line-art", "fixed", "-o", dir.resolve("x.docx").toString()), "name the output .pdf");
+    }
+
+    @Test
     void pdfaHonoursMaxPages() throws Exception {
         Path pdf = dir.resolve("three.pdf");
         try (PDDocument d = new PDDocument()) {
