@@ -67,29 +67,24 @@ class StructureTest {
     void deeplyNestedFormsDoNotOverflowTheStack() throws IOException {
         try (PDDocument doc = new PDDocument()) {
             PDImageXObject image = LosslessFactory.createFromImage(doc, Pictures.drawing(30, 30, Color.BLACK, Color.WHITE, 3));
-            PDFormXObject inner = new PDFormXObject(doc);
-            inner.setBBox(new PDRectangle(0, 0, 30, 30));
-            PDResources resources = new PDResources();
-            resources.put(COSName.getPDFName("I"), image);
-            inner.setResources(resources);
-            write(inner.getCOSObject(), "q 30 0 0 30 0 0 cm /I Do Q");
-            for (int i = 0; i < 3_000; i++) {
-                PDFormXObject outer = new PDFormXObject(doc);
-                outer.setBBox(new PDRectangle(0, 0, 30, 30));
-                PDResources r = new PDResources();
-                r.put(COSName.getPDFName("F"), inner);
-                outer.setResources(r);
-                write(outer.getCOSObject(), "/F Do");
-                inner = outer;
-            }
             PDPage page = new PDPage(new PDRectangle(30, 30));
             doc.addPage(page);
-            PDResources pageResources = new PDResources();
-            pageResources.put(COSName.getPDFName("F"), inner);
-            page.setResources(pageResources);
+            PDResources resources = new PDResources();
+            page.setResources(resources);
             write(page, "/F Do");
+            for (int i = 0; i <= 3_000; i++) {
+                PDFormXObject form = new PDFormXObject(doc);
+                form.setBBox(new PDRectangle(0, 0, 30, 30));
+                resources.put(COSName.getPDFName("F"), form);
+                resources = new PDResources();
+                form.setResources(resources);
+                write(form.getCOSObject(), i == 3_000 ? "q 30 0 0 30 0 0 cm /I Do Q" : "/F Do");
+            }
+            resources.put(COSName.getPDFName("I"), image);
+            assertEquals(3_002, ImageWalk.walk(doc).contents().size());
             LineArt.Result result = LineArt.convert(doc, LineArt.Options.defaults());
             assertEquals(1, result.converted(), result.toString());
+            assertTrue(result.warnings().isEmpty(), result.toString());
         }
     }
 
