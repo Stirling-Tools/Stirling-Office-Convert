@@ -234,7 +234,7 @@ final class OdsStyles {
                     .append(format(page.landscape() ? w : h)).append("in\" style:print-orientation=\"")
                     .append(page.landscape() ? "landscape" : "portrait")
                     .append("\" fo:margin-top=\"0.5in\" fo:margin-bottom=\"0.5in\" fo:margin-left=\"0.5in\""
-                            + " fo:margin-right=\"0.5in\"/>")
+                            + " fo:margin-right=\"0.5in\" style:scale-to-X=\"1\" style:scale-to-Y=\"0\"/>")
                     .append("<style:header-style/><style:footer-style/></style:page-layout>");
         });
         return sb.toString();

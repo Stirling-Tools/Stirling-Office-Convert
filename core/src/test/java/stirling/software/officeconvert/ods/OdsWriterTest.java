@@ -89,6 +89,23 @@ class OdsWriterTest {
         assertEquals(1, content.getElementsByTagNameNS("*", "tab").getLength());
     }
 
+    @Test
+    void pagesFitToOnePageWide() throws Exception {
+        Document styles = null;
+        try (ZipInputStream z = new ZipInputStream(new ByteArrayInputStream(sample()))) {
+            for (ZipEntry e; (e = z.getNextEntry()) != null; ) {
+                byte[] b = z.readAllBytes();
+                if (e.getName().equals("styles.xml")) {
+                    styles = parse(b);
+                }
+            }
+        }
+        Element props = (Element) styles.getElementsByTagNameNS("*", "page-layout-properties").item(0);
+        String style = "urn:oasis:names:tc:opendocument:xmlns:style:1.0";
+        assertEquals("1", props.getAttributeNS(style, "scale-to-X"));
+        assertEquals("0", props.getAttributeNS(style, "scale-to-Y"));
+    }
+
     private static Document parse(byte[] b) throws Exception {
         DocumentBuilderFactory f = DocumentBuilderFactory.newInstance();
         f.setNamespaceAware(true);
