@@ -45,6 +45,10 @@ final class Art {
 
     private static final float SHADING_DPI = 96f;
 
+    private static final int MAX_FIGURE_RUNS = 2;
+
+    private static final int MAX_EXTRA_RUNS = 2;
+
     private final PDDocument document;
     private final ArtRenderer renderer;
     private final PlacedContent.MediaStore media;
@@ -65,11 +69,48 @@ final class Art {
         return renderer.operators();
     }
 
+    private record Plan(List<Run> runs, List<Piece> shapes) {}
+
+    boolean drawable(PaintOrder paint, Set<Integer> represented, float width, float height) {
+        if (!paint.drawsShapes()) {
+            return false;
+        }
+        Plan plan = plan(paint, represented, true, width, height);
+        return !plan.shapes().isEmpty() && plan.runs().size() <= MAX_FIGURE_RUNS;
+    }
+
     List<Piece> pieces(PaintOrder paint, Set<Integer> represented, int pageIndex, AffineTransform toDisplay,
             float width, float height) {
+        Plan plan = plan(paint, represented, paint.drawsShapes(), width, height);
+        if (!plan.shapes().isEmpty()) {
+            Plan raster = plan(paint, represented, false, width, height);
+            if (plan.runs().size() > raster.runs().size() + MAX_EXTRA_RUNS) {
+                plan = raster;
+            }
+        }
+        List<Piece> out = new ArrayList<>(plan.shapes());
+        List<Run> kept = plan.runs();
+        kept.sort(Comparator.comparingDouble(r -> -r.box.area()));
+        int blanks = 0;
+        long start = renderer.operators();
+        for (Run r : kept.subList(0, Math.min(MAX_PIECES, kept.size()))) {
+            if (renderer.operators() - start > MAX_PAGE_OPERATORS) {
+                break;
+            }
+            Piece p = piece(paint, r.marks, r.box, pageIndex, toDisplay, width, height);
+            if (p != null) {
+                out.add(p);
+                blanks = 0;
+            } else if (++blanks >= MAX_BLANK_PIECES) {
+                break;
+            }
+        }
+        return out;
+    }
+
+    private static Plan plan(PaintOrder paint, Set<Integer> represented, boolean shapes, float width, float height) {
         List<Run> runs = new ArrayList<>();
-        List<Piece> out = new ArrayList<>();
-        boolean shapes = paint.drawsShapes();
+        List<Piece> drawn = new ArrayList<>();
         Run run = null;
         List<Mark> between = new ArrayList<>();
         for (Mark m : paint.marks()) {
@@ -80,7 +121,7 @@ final class Art {
             if (shapes && m.shape() != null) {
                 Piece p = shape(m);
                 if (p != null) {
-                    out.add(p);
+                    drawn.add(p);
                 }
                 between.add(m);
                 continue;
@@ -106,22 +147,7 @@ final class Art {
                 kept.add(r);
             }
         }
-        kept.sort(Comparator.comparingDouble(r -> -r.box.area()));
-        int blanks = 0;
-        long start = renderer.operators();
-        for (Run r : kept.subList(0, Math.min(MAX_PIECES, kept.size()))) {
-            if (renderer.operators() - start > MAX_PAGE_OPERATORS) {
-                break;
-            }
-            Piece p = piece(paint, r.marks, r.box, pageIndex, toDisplay, width, height);
-            if (p != null) {
-                out.add(p);
-                blanks = 0;
-            } else if (++blanks >= MAX_BLANK_PIECES) {
-                break;
-            }
-        }
-        return out;
+        return new Plan(kept, drawn);
     }
 
     private static Piece shape(Mark m) {

@@ -297,9 +297,6 @@ final class SlideBuilder {
 
     private boolean drawn(PageLayout.FigureItem fi, Box on, boolean textFree, PageLayout layout, AffineTransform toDisplay,
             Stack stack) {
-        if (!stack.paint.drawsShapes()) {
-            return false;
-        }
         Set<Integer> inside = new HashSet<>();
         stack.paint.inside(on, inside);
         boolean shapes = false;
@@ -313,7 +310,7 @@ final class SlideBuilder {
                 shapes |= m.shape() != null;
             }
         }
-        if (!shapes) {
+        if (!shapes || !art.drawable(stack.paint, skip, width, height)) {
             return false;
         }
         for (Art.Piece piece : art.pieces(stack.paint, skip, layout.page().index(), toDisplay, width, height)) {
