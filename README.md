@@ -112,7 +112,6 @@ Docker demo and optional LibreOffice comparison tester.
 | `legacy` | PowerPoint 97-2003 (`.ppt`) writer | `stirling-office-convert-legacy` |
 | `topdf` | Office to PDF | `stirling-office-convert-topdf` |
 | `pdfa` | PDF to PDF/A | `stirling-office-convert-pdfa` |
-| `optimize` | Lossless PDF size optimization and repair ([guide](docs/optimize.md)) | `stirling-office-convert-optimize` |
 | `cli` | Command line tool | |
 | `app` | Local test web app | |
 
