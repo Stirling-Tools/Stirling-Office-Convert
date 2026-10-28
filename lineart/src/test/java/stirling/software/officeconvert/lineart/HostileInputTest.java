@@ -137,6 +137,52 @@ class HostileInputTest {
     }
 
     @Test
+    void aDecoderFailureIsSeenEvenWhenClosingTheSourceIsSlow() throws IOException {
+        COSStream failing = new COSStream() {
+            @Override
+            public InputStream createRawInputStream() throws IOException {
+                InputStream raw = super.createRawInputStream();
+                long fail = getLength() / 3;
+                return new FilterInputStream(raw) {
+                    private long served;
+
+                    @Override
+                    public int read() throws IOException {
+                        byte[] one = new byte[1];
+                        return read(one, 0, 1) < 0 ? -1 : one[0] & 0xFF;
+                    }
+
+                    @Override
+                    public int read(byte[] b, int off, int len) throws IOException {
+                        if (served >= fail) {
+                            throw new IllegalStateException("decoder failed");
+                        }
+                        int n = super.read(b, off, (int) Math.min(len, fail - served));
+                        served += Math.max(0, n);
+                        return n;
+                    }
+
+                    @Override
+                    public void close() throws IOException {
+                        try {
+                            Thread.sleep(300);
+                        } catch (InterruptedException e) {
+                            Thread.currentThread().interrupt();
+                        }
+                        super.close();
+                    }
+                };
+            }
+        };
+        try (PDDocument doc = new PDDocument()) {
+            greyImage(doc, failing, 2_500, 2_000);
+            LineArt.Result result = LineArt.convert(doc, LineArt.Options.defaults().method(LineArt.Method.FIXED));
+            assertEquals(0, result.converted(), result.toString());
+            assertTrue(result.warnings().get(0).contains("decoder failed"), result.toString());
+        }
+    }
+
+    @Test
     void anImageWhoseFilterChainInflatesFarPastItsSizeIsLeftWithoutDecodingItAll() throws IOException {
         byte[] runs = new byte[1 << 21];
         for (int i = 0; i < runs.length; i += 2) {

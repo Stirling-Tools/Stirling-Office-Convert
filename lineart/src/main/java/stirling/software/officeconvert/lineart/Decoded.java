@@ -123,8 +123,14 @@ final class Decoded {
                 int index = i;
                 writers.add(Thread.ofVirtual().start(() -> {
                     try (from; OutputStream to = new Capped(out, cap)) {
-                        InputStream input = jbig2 ? checkedJbig2(from, stream, index, need, bitmap) : from;
-                        filter.decode(input, to, stream, index);
+                        try {
+                            InputStream input = jbig2 ? checkedJbig2(from, stream, index, need, bitmap) : from;
+                            filter.decode(input, to, stream, index);
+                        } catch (Throwable e) {
+                            if (!pipe.closed) {
+                                failure.compareAndSet(null, e);
+                            }
+                        }
                     } catch (Throwable e) {
                         if (!pipe.closed) {
                             failure.compareAndSet(null, e);
