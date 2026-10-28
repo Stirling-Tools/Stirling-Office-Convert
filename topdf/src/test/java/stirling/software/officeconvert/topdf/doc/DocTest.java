@@ -644,6 +644,21 @@ class DocTest {
     }
 
     @Test
+    void aFreeformWithAnEmptyGeometryBoxSpansItsVertices() throws IOException {
+        byte[] vertices = {3, 0, 3, 0, (byte) 0xF0, (byte) 0xFF, 0, 0, 0, 0, 100, 0, 0, 0, 50, 0, 100, 0};
+        byte[] segments = {4, 0, 4, 0, 2, 0, 0, 0x40, 2, 0, 1, 0x60, 0, (byte) 0x80};
+        byte[] doc = new WordFixture()
+                .para(List.of(WordFixture.run("Shape "), WordFixture.run("\u0008", Sprms.special())), 0)
+                .shape(new ShapeFixture.Shape(1025, 0, new int[] {0, 0, 2000, 2000},
+                        ShapeFixture.fspaFlags(2, 2, 3, 0, false),
+                        java.util.Map.of(0x0140, 0, 0x0141, 0, 0x0142, 0, 0x0143, 0),
+                        java.util.Map.of(0x0145, vertices, 0x0146, segments)))
+                .build();
+        String xml = body(doc);
+        assertTrue(xml.contains("<a:path w=\"100\" h=\"100\"><a:moveTo>"), xml);
+    }
+
+    @Test
     void aParagraphTakesItsPropertiesFromTheRunHoldingItsMark() throws IOException {
         byte[] doc = new WordFixture().para("First").staleRun(2, Sprms.u8(0x2407, 1)).para("Second").build();
         String xml = body(doc);

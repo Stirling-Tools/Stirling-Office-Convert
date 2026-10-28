@@ -15,8 +15,10 @@ final class Freeform {
         }
         long left = Shapes.prop(sp, 0x0140, 0);
         long top = Shapes.prop(sp, 0x0141, 0);
-        long w = Math.max(1, Shapes.prop(sp, 0x0142, 21600) - left);
-        long h = Math.max(1, Shapes.prop(sp, 0x0143, 21600) - top);
+        long right = Shapes.prop(sp, 0x0142, 21600);
+        long bottom = Shapes.prop(sp, 0x0143, 21600);
+        long w = Math.max(1, (right > left ? right : extent(pts, 0)) - left);
+        long h = Math.max(1, (bottom > top ? bottom : extent(pts, 1)) - top);
         StringBuilder path = new StringBuilder();
         byte[] seg = Shapes.complex(sp, 0x0146);
         int used = seg == null || seg.length < 6 ? polyline(pts, left, top, path)
@@ -26,6 +28,14 @@ final class Freeform {
         }
         return "<a:custGeom><a:avLst/><a:gdLst/><a:ahLst/><a:cxnLst/><a:rect l=\"0\" t=\"0\" r=\"r\" b=\"b\"/>"
                 + "<a:pathLst><a:path w=\"" + w + "\" h=\"" + h + "\">" + path + "</a:path></a:pathLst></a:custGeom>";
+    }
+
+    private static long extent(int[][] pts, int axis) {
+        long max = Long.MIN_VALUE;
+        for (int[] p : pts) {
+            max = Math.max(max, p[axis]);
+        }
+        return max;
     }
 
     private static int[][] vertices(byte[] d) {
