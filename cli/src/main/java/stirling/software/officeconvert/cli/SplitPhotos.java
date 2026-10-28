@@ -200,8 +200,8 @@ final class SplitPhotos {
                         + " [--method straighten|script] [--overwrite] [-q]"
                         + System.lineSeparator()
                         + "Finds the photos on a flatbed scan and writes each as name_1.png, name_2.png and so on, in the scan's"
-                        + " folder unless -o names another. Every page of a PDF is drawn at --dpi (default 300) and searched;"
-                        + " numbering continues across pages."
+                        + " folder unless -o names another. Every page of a PDF is drawn at --dpi (default 300) and searched, as is"
+                        + " every page of a TIFF; numbering continues across pages."
                         + System.lineSeparator()
                         + "--method straighten (default) cuts each photo out along its edges and turns it level, in reading order."
                         + " --method script reproduces Stirling-PDF's split_photos.py: the upright box around each photo, turned"
