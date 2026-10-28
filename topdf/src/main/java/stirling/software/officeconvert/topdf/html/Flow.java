@@ -300,7 +300,7 @@ final class Flow {
             }
             return;
         }
-        anchorAt(e, tag, !inline);
+        anchorAt(e, tag, !inline && !tag.equals("br"));
         if (depth > MAX_DEPTH) {
             text(e.text(), look);
             return;

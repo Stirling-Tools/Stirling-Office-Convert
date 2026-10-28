@@ -80,4 +80,14 @@ class HtmlAnchorTest {
             assertEquals(1, links(document).size());
         }
     }
+
+    @Test
+    void anIdentifiedBlockStyledBreakDoesNotIntroduceAnExtraBlankRun() throws Exception {
+        try (PDDocument plain = convert("split", "<p>Before<br style='display:block'></p><p>After</p>");
+                PDDocument identified = convert("split", "<p>Before<br id=split style='display:block'></p><p>After</p>")) {
+            PDFTextStripper text = new PDFTextStripper();
+            assertEquals(text.getText(plain), text.getText(identified));
+        }
+    }
+
 }
