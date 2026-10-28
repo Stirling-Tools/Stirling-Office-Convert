@@ -367,6 +367,103 @@ class RepairTest {
     }
 
     @Test
+    void anUnusableBoxOnAnInnerNodeDoesNotHideTheValidOneAbove() throws Exception {
+        RawPdf raw = new RawPdf();
+        raw.add("<</Type/Catalog/Pages 2 0 R>>");
+        raw.add("<</Type/Pages/Kids[3 0 R]/Count 1/MediaBox[0 0 200 300]>>");
+        raw.add("<</Type/Pages/Parent 2 0 R/Kids[4 0 R]/Count 1/MediaBox[0 0 0 0]/Resources 7>>");
+        raw.add("<</Type/Page/Parent 3 0 R/Resources<<>>/Contents 5 0 R>>");
+        raw.add(RawPdf.stream("", "1 0 0 rg 10 10 50 50 re f"));
+        Path in = raw.write(dir, "innerbox");
+        Path out = dir.resolve("out.pdf");
+        PdfOptimizer.Result r = PdfOptimizer.optimize(in, out, PdfOptimizer.Options.defaults().alwaysRewrite(true));
+        assertTrue(r.rewritten(), r.warnings().toString());
+        assertTrue(r.warnings().stream().noneMatch(w -> w.contains("failed its own check")), r.warnings().toString());
+        assertSoundTree(out, 1);
+        try (PDDocument d = Loader.loadPDF(out.toFile())) {
+            assertEquals(200, d.getPage(0).getMediaBox().getWidth(), 0.001);
+            assertEquals(300, d.getPage(0).getMediaBox().getHeight(), 0.001);
+        }
+    }
+
+    @Test
+    void crlfRestoreOfAHostileFileStaysLinearAndStoppable() throws Exception {
+        String good = "%PDF-1.4\r\n1 0 obj\r\n<</Length 5>>stream\r\nab\r\ncd\r\nendstream\r\nendobj\r\n";
+        String[] fillers = {"stream\r\n", "9 0 obj<</Length 3000000>>stream\r\n"};
+        for (String filler : fillers) {
+            StringBuilder b = new StringBuilder(good);
+            while (b.length() < 4 << 20) {
+                b.append(filler);
+            }
+            Path in = write("hostile", b.toString());
+            Path out = dir.resolve("hostile.restored.pdf");
+            int[] restored = {-1};
+            Thread worker = Thread.ofPlatform().daemon().unstarted(() -> {
+                try {
+                    restored[0] = LineEndings.restore(in, out);
+                } catch (IOException e) {
+                    restored[0] = -2;
+                }
+            });
+            worker.start();
+            worker.join(20_000);
+            boolean finished = !worker.isAlive();
+            worker.interrupt();
+            worker.join(5_000);
+            assertFalse(worker.isAlive(), "the restore ignored its interrupt");
+            assertTrue(finished, "the restore took longer than 20 s on a " + b.length() + " byte file");
+            assertEquals(1, restored[0]);
+            assertTrue(text(out).startsWith(good.replace("ab\r\ncd", "ab\ncd")));
+        }
+    }
+
+    @Test
+    void objectStreamsThatInflateHugelyShareOneBudget() throws Exception {
+        ByteArrayOutputStream pdf = new ByteArrayOutputStream();
+        pdf.writeBytes(("%PDF-1.5\n1 0 obj <</Type/Catalog/Pages 2 0 R>> endobj\n3 0 obj <</Type/Page/Parent 2 0 R"
+                + "/MediaBox[0 0 200 300]/Resources<<>>>> endobj\n").getBytes(StandardCharsets.ISO_8859_1));
+        byte[] filler = new byte[30 << 20];
+        Arrays.fill(filler, (byte) 'a');
+        for (int k = 0; k < 3; k++) {
+            String header = (100 + k) + " 0 ";
+            ByteArrayOutputStream body = new ByteArrayOutputStream();
+            body.writeBytes((header + "(").getBytes(StandardCharsets.ISO_8859_1));
+            body.writeBytes(filler);
+            body.writeBytes(")".getBytes(StandardCharsets.ISO_8859_1));
+            pdf.writeBytes(((10 + k) + " 0 obj ").getBytes(StandardCharsets.ISO_8859_1));
+            pdf.writeBytes(RawPdf.stream("/Type/ObjStm/N 1/First " + header.length() + "/Filter/FlateDecode",
+                    deflate(body.toByteArray())));
+            pdf.writeBytes(" endobj\n".getBytes(StandardCharsets.ISO_8859_1));
+        }
+        pdf.writeBytes("trailer <</Size 13/Root 1 0 R>>\nstartxref\n0\n%%EOF\n".getBytes(StandardCharsets.ISO_8859_1));
+        Path in = dir.resolve("bombs.pdf");
+        Files.write(in, pdf.toByteArray());
+        Path out = dir.resolve("bombs.salvaged.pdf");
+        assertNotNull(Salvage.rebuild(in, out));
+        assertTrue(Files.size(out) < Files.size(in) + (65L << 20), Files.size(out) + " bytes");
+    }
+
+    @Test
+    void pagesPackedInOneLargeObjectStreamAreReadOnce() throws Exception {
+        Path in = dir.resolve("packed.pdf");
+        int count = 4000;
+        try (PDDocument d = new PDDocument()) {
+            for (int p = 0; p < count; p++) {
+                d.addPage(new PDPage(PDRectangle.A6));
+            }
+            d.save(in.toFile(), new CompressParameters(count * 2));
+        }
+        Path out = dir.resolve("out.pdf");
+        PdfOptimizer.Result r = PdfOptimizer.optimize(in, out,
+                PdfOptimizer.Options.defaults().timeout(java.time.Duration.ofSeconds(30)).alwaysRewrite(true));
+        assertTrue(r.rewritten(), r.warnings().toString());
+        try (PDDocument d = Loader.loadPDF(out.toFile())) {
+            assertEquals(count, d.getNumberOfPages());
+            assertEquals(count, PageTree.census(d.getDocument(), true));
+        }
+    }
+
+    @Test
     void anOutputWithANullKidFailsTheCheck() throws Exception {
         RawPdf raw = pages(2);
         raw.set(2, "<</Type/Pages/Kids[3 0 R null]/Count 2/MediaBox[0 0 200 300]>>");
