@@ -106,6 +106,78 @@ class PositionedTest {
         return sb.append("</p>").toString();
     }
 
+    @Test
+    void automaticHeightAbsoluteTextContinuesOnLaterPages() throws IOException {
+        String lines = "<p>FirstLine</p>" + "<p>MiddleLine</p>".repeat(80) + "<p>LastLine</p>";
+        Pdf pdf = html("fragmented.html", "<style>@page{size:300pt 400pt;margin:30pt}"
+                + "p{margin:0;font-size:12pt}</style><div style='position:absolute;left:0;top:0;width:200pt'>"
+                + lines + "</div>");
+        assertTrue(pdf.pages().size() > 1);
+        assertNotNull(pdf.first("LastLine"));
+        assertTrue(pdf.first("LastLine").page() > 1);
+        assertEquals(80, pdf.all("MiddleLine").size());
+        assertTrue(pdf.words().stream().allMatch(word -> word.y() >= 30 && word.y() < 370), pdf.words().toString());
+    }
+
+    @Test
+    void nestedAutomaticHeightAbsoluteTextContinuesWithoutLosingLines() throws IOException {
+        String lines = "<p>NestedFirst</p>" + "<p>NestedMiddle</p>".repeat(80) + "<p>NestedLast</p>";
+        Pdf pdf = html("nested-fragmented.html", "<style>@page{size:300pt 400pt;margin:30pt}"
+                + "p{margin:0;font-size:12pt}</style><div style='position:absolute;left:0;top:0;width:200pt'>"
+                + "<span style='position:absolute'><span style='position:absolute'>" + lines + "</span></span></div>");
+        assertTrue(pdf.pages().size() > 1);
+        assertNotNull(pdf.first("NestedLast"));
+        assertTrue(pdf.first("NestedLast").page() > 1);
+        assertEquals(80, pdf.all("NestedMiddle").size());
+        assertTrue(pdf.words().stream().allMatch(word -> word.y() >= 30 && word.y() < 370), pdf.words().toString());
+    }
+
+    @Test
+    void fixedAndExplicitHeightBoxesDoNotAddContinuationPages() throws IOException {
+        String lines = "<p>MiddleLine</p>".repeat(80) + "<p>LastLine</p>";
+        for (String style : List.of("position:fixed", "position:absolute;height:100pt")) {
+            Pdf pdf = html("unfragmented-" + style.hashCode() + ".html",
+                    "<style>@page{size:300pt 400pt;margin:30pt}p{margin:0;font-size:12pt}</style><div style='"
+                            + style + ";left:0;top:0;width:200pt'>" + lines + "</div>");
+            assertEquals(1, pdf.pages().size());
+        }
+    }
+
+    @Test
+    void continuationOntoAnExistingBodyPageDoesNotDuplicateTheBox() throws IOException {
+        Pdf pdf = html("existing-pages.html", "<style>@page{size:300pt 400pt;margin:30pt}"
+                + "p{margin:0;font-size:12pt}</style><div style='position:absolute;left:0;top:0;width:200pt'>"
+                + "<p>AbsoluteMiddle</p>".repeat(30) + "</div>" + "<p>BodyMiddle</p>".repeat(30));
+        assertEquals(30, pdf.all("AbsoluteMiddle").size());
+        assertEquals(30, pdf.all("BodyMiddle").size());
+        assertTrue(pdf.pages().size() >= 2);
+    }
+
+    @Test
+    void fixedLayerOverflowKeepsItsDrawOnceFallback() throws IOException {
+        Pdf pdf = html("fixed-overflow.html", "<style>@page{size:300pt 400pt;margin:30pt}"
+                + "p{margin:0;font-size:12pt}</style>" + "<span style='position:fixed'></span>".repeat(64)
+                + "<div style='position:fixed;left:0;top:0;width:200pt'>"
+                + "<p>FixedMiddle</p>".repeat(80) + "</div>");
+        assertEquals(1, pdf.pages().size());
+        assertTrue(pdf.warnings().contains(HtmlDocument.FIXED_LAYER_LIMIT_WARNING));
+    }
+
+    @Test
+    void absoluteContinuationRespectsThePageLimit() throws IOException {
+        Path in = Files.writeString(dir.resolve("limited.html"), "<style>@page{size:300pt 400pt;margin:30pt}"
+                + "p{margin:0;font-size:12pt}</style><div style='position:absolute;left:0;top:0;width:200pt'>"
+                + "<p>LimitedMiddle</p>".repeat(80) + "</div>");
+        Path out = dir.resolve("limited.pdf");
+        OfficeToPdf.Result result = OfficeToPdf.convert(in, out, OfficeToPdf.Options.defaults().maxPages(2));
+        assertEquals(2, result.pages());
+        assertTrue(result.truncated());
+        assertTrue(result.pageLimitReached());
+        try (PDDocument pdf = Loader.loadPDF(out.toFile())) {
+            assertEquals(2, pdf.getNumberOfPages());
+        }
+    }
+
     private static byte[] png(int w, int h, Color a, Color b) throws IOException {
         BufferedImage img = new BufferedImage(w, h, BufferedImage.TYPE_INT_RGB);
         for (int y = 0; y < h; y++) {

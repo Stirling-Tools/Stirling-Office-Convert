@@ -36,6 +36,8 @@ import stirling.software.officeconvert.topdf.text.Converted;
  * links, and only pictures inside the file are drawn. */
 public final class HtmlDocument {
 
+    public static final String FIXED_LAYER_LIMIT_WARNING = "Only the first boxes fixed to the page are repeated on every page; the rest are drawn once, where they stand";
+
     private HtmlDocument() {}
 
     public static long estimate(long bytes) {

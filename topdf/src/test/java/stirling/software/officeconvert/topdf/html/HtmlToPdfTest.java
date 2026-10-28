@@ -71,6 +71,14 @@ class HtmlToPdfTest {
     }
 
     @Test
+    void aMixedSizeCellLabelStaysOnOnePrintedLine() throws IOException {
+        Pdf pdf = convert("inline-label.html", "<table style='width:300px'><tr><td>"
+                + "<span style='font-size:32px'>Wide</span>Label</td><td>"
+                + "Some other words that can wrap normally within their column</td></tr></table>");
+        assertTrue(pdf.text().lines().anyMatch(line -> line.replace(" ", "").contains("WideLabel")), pdf.text());
+    }
+
+    @Test
     void aCellSpanningIntoARowSpanAboveStillConverts() throws IOException {
         Pdf p = convert("overlap.html", "<table><tr><td>a1</td><td rowspan=2>b1</td><td>c1</td></tr>"
                 + "<tr><td colspan=2>d2</td><td>e2</td></tr></table>");

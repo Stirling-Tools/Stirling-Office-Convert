@@ -144,8 +144,7 @@ final class Flow {
         for (Positioned.Item item : Positioned.fixed(ctx, body, look, room)) {
             text += Layout.text(item.element(), MAX_FIXED_TEXT + 1).length();
             if (items.size() >= MAX_FIXED || text > MAX_FIXED_TEXT) {
-                ctx.warn("Only the first boxes fixed to the page are repeated on every page; the rest are drawn once,"
-                        + " where they stand");
+                ctx.warn(HtmlDocument.FIXED_LAYER_LIMIT_WARNING);
                 break;
             }
             items.add(item);

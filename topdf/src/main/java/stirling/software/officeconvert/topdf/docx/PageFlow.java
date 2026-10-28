@@ -184,6 +184,9 @@ final class PageFlow extends Region {
         if (page != null) {
             finishPage();
         }
+        if (Boolean.TRUE.equals(ctx.job.memo(stirling.software.officeconvert.topdf.html.HtmlDocument.class))) {
+            TextBoxPages.apply(pages, ctx, this::headerFooterBounds);
+        }
         finishHeaders();
     }
 

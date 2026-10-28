@@ -69,6 +69,25 @@ class MarginBoxesTest {
     }
 
     @Test
+    void absoluteBoxContinuationKeepsRunningHeadersAndCorrectPageTotals() throws IOException {
+        String html = "<style>@page { size:300pt 400pt; margin:30pt; "
+                + "@top-center { content:'Running'; font-size:8pt } "
+                + "@bottom-center { content:'Page ' counter(page) ' of ' counter(pages); font-size:8pt } }"
+                + "p{margin:0;font-size:12pt}</style><div style='position:absolute;left:0;top:0;width:200pt'>"
+                + "<p>AbsoluteLine</p>".repeat(80) + "</div>";
+        try (PDDocument doc = convert(html)) {
+            int pages = doc.getNumberOfPages();
+            assertTrue(pages > 1);
+            for (int i = 1; i <= pages; i++) {
+                String text = page(doc, i);
+                assertTrue(text.contains("Running"), text);
+                assertTrue(text.contains("Page " + i + " of " + pages), text);
+            }
+            assertEquals(80, new PDFTextStripper().getText(doc).split("AbsoluteLine", -1).length - 1);
+        }
+    }
+
+    @Test
     void namedPagesDoNotLeakBoxesAndFirstPageBoxesStayOnTheFirstPage() throws IOException {
         String html = "<html><head><style>@page :first { @top-center { content: \"First only\" } } "
                 + "@page wide { @top-center { content: \"Wide only\" } }</style></head><body>" + body(150)

@@ -225,8 +225,12 @@ final class HtmlInput {
                 Map<String, Integer> pages = new HashMap<>();
                 Map<String, String> targets = laid.targets();
                 Map<String, String[]> strings = laid.runningStrings();
+                boolean fragmentText = !laid.converted().warnings().contains(HtmlDocument.FIXED_LAYER_LIMIT_WARNING);
                 Rewritten.render(pkg, source, laid.converted(), OutputStream.nullOutputStream(), options, renderer,
-                        job -> job.runningStrings(strings), job -> targets.forEach((id, bookmark) -> {
+                        job -> {
+                            job.memo(HtmlDocument.class, fragmentText);
+                            job.runningStrings(strings);
+                        }, job -> targets.forEach((id, bookmark) -> {
                             int page = job.output().destinationPage("bm:" + bookmark);
                             if (page >= 0) {
                                 pages.put(id, page + 1);
@@ -258,7 +262,10 @@ final class HtmlInput {
 
     private static Consumer<RenderJob> strings(HtmlDocument.Laid laid) {
         Map<String, String[]> strings = laid.runningStrings();
-        return job -> job.runningStrings(strings);
+        return job -> {
+            job.memo(HtmlDocument.class, !laid.converted().warnings().contains(HtmlDocument.FIXED_LAYER_LIMIT_WARNING));
+            job.runningStrings(strings);
+        };
     }
 
     private static Options withFonts(Options options, List<byte[]> fonts) {
