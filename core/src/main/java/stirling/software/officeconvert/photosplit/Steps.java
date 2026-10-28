@@ -160,12 +160,12 @@ final class Steps {
         return step;
     }
 
-    private static Region clean(Region part) {
+    static Region clean(Region part, int radius) {
         int w = part.width();
         int h = part.height();
         byte[] mask = part.mask.clone();
-        Morphology.erode(mask, w, h, SLIVER);
-        Morphology.dilate(mask, w, h, SLIVER);
+        Morphology.erode(mask, w, h, radius);
+        Morphology.dilate(mask, w, h, radius);
         Region best = null;
         for (Region r : Region.label(mask, w, h)) {
             if (best == null || r.count > best.count) {
@@ -211,7 +211,7 @@ final class Steps {
                     }
                 }
             }
-            Region part = clean(new Region(region.minX + minX, region.minY + minY, region.minX + maxX, region.minY + maxY, sub));
+            Region part = clean(new Region(region.minX + minX, region.minY + minY, region.minX + maxX, region.minY + maxY, sub), SLIVER);
             if (part != null) {
                 out.add(part);
             }

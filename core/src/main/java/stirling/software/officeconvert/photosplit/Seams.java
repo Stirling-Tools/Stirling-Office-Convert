@@ -18,6 +18,7 @@ final class Seams {
     private static final int EDGE_SKIP = 2;
     private static final int EDGE_BINS = 4;
     private static final double EDGE_DENSITY = 0.5;
+    private static final int OPEN_RADIUS = 8;
 
     private record Cut(double nx, double ny, double from, double to, double balance) {}
 
@@ -54,6 +55,7 @@ final class Seams {
         int maxRun = (int) Math.max(MIN_RUN, RUN_SHARE * Math.min(rect.width(), rect.height()));
         long minSide = Math.max(1, options.minArea()) / (SUBSAMPLE * SUBSAMPLE);
         Cut best = null;
+        boolean ramps = !StraightenMethod.solid(region, rect);
         for (int axis = 0; axis < 2; axis++) {
             for (int delta = -SEARCH; delta <= SEARCH; delta++) {
                 double phi = Math.toRadians(rect.angle() + axis * 90 + delta);
@@ -76,7 +78,7 @@ final class Seams {
                         pho[i] += photo[row + x];
                     }
                 }
-                Cut cut = bestRun(reg, pho, maxRun, minSide);
+                Cut cut = bestRun(reg, pho, maxRun, minSide, ramps);
                 if (cut != null && (best == null || cut.balance() > best.balance())) {
                     best = new Cut(nx, ny, cut.from() + lo, cut.to() + lo, cut.balance());
                 }
@@ -85,7 +87,7 @@ final class Seams {
         return best;
     }
 
-    private static Cut bestRun(int[] reg, int[] pho, int maxRun, long minSide) {
+    private static Cut bestRun(int[] reg, int[] pho, int maxRun, long minSide, boolean ramps) {
         int n = reg.length;
         int peak = 0;
         long total = 0;
@@ -130,7 +132,7 @@ final class Seams {
             int minReach = Math.max(MIN_REACH, width * REACH_PER_RUN);
             if (width <= maxRun && before >= minSide && after >= minSide && beforePhoto >= SIDE_DENSITY * before
                     && afterPhoto >= SIDE_DENSITY * after && reachBefore >= minReach && reachAfter >= minReach
-                    && edge(reg, pho, start - 1 - EDGE_SKIP, -1) && edge(reg, pho, i + EDGE_SKIP, 1)) {
+                    && sides(reg, pho, start, i, ramps ? maxRun - width : 0)) {
                 double balance = Math.min(before, after);
                 if (best == null || balance > best.balance()) {
                     best = new Cut(0, 0, start, i - 1, balance);
@@ -140,6 +142,20 @@ final class Seams {
             beforePhoto += runPhoto;
         }
         return best;
+    }
+
+    private static boolean sides(int[] reg, int[] pho, int start, int end, int limit) {
+        boolean before = edge(reg, pho, start - 1 - EDGE_SKIP, -1);
+        boolean after = edge(reg, pho, end + EDGE_SKIP, 1);
+        return before && after || before && ramp(reg, pho, end, 1, limit) || after && ramp(reg, pho, start - 1, -1, limit);
+    }
+
+    private static boolean ramp(int[] reg, int[] pho, int from, int step, int limit) {
+        int i = from;
+        for (int k = 0; k < limit && i >= 0 && i < reg.length && reg[i] > 0 && pho[i] < EDGE_DENSITY * reg[i]; k++) {
+            i += step;
+        }
+        return edge(reg, pho, i + step * EDGE_SKIP, step);
     }
 
     private static boolean edge(int[] reg, int[] pho, int from, int step) {
@@ -189,7 +205,11 @@ final class Seams {
                     }
                 }
             }
-            out.add(new Region(region.minX + minX, region.minY + minY, region.minX + maxX, region.minY + maxY, sub));
+            Region part = Steps.clean(new Region(region.minX + minX, region.minY + minY, region.minX + maxX, region.minY + maxY, sub),
+                    OPEN_RADIUS);
+            if (part != null) {
+                out.add(part);
+            }
         }
         return out;
     }

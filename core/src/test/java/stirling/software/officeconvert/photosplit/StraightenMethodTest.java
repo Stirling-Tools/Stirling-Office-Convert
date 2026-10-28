@@ -122,6 +122,23 @@ class StraightenMethodTest {
     }
 
     @Test
+    void touchingWhiteBorderedPrintsOnAGreyBedAreSeparated() {
+        SyntheticScan.Scene scene = new SyntheticScan(1275, 1000, 15).bed(new Color(232, 230, 224)).shadow(1)
+                .photo(520, 400, 386, 400, 0, Style.GRADIENT, 9)
+                .photo(540, 380, 922, 460, -1.6, Style.BLOBS, 9)
+                .render();
+        List<PhotoSplitter.Photo> photos = PhotoSplitter.split(scene.scan(), OPTIONS);
+        assertEquals(2, photos.size());
+        for (int i = 0; i < 2; i++) {
+            SyntheticScan.Placed truth = scene.photos().get(i);
+            BufferedImage image = photos.get(i).image();
+            assertEquals(truth.content().getWidth(), image.getWidth(), 16);
+            assertEquals(truth.content().getHeight(), image.getHeight(), 6);
+            assertEquals(truth.angle(), photos.get(i).angle(), 0.6);
+        }
+    }
+
+    @Test
     void overlappingPhotosAreSeparated() {
         SyntheticScan.Scene scene = new SyntheticScan(1100, 900, 9)
                 .photo(420, 300, 280, 260, 0, Style.BLOBS, 0)
