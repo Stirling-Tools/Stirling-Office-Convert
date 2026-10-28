@@ -12,58 +12,114 @@ final class Crop {
     private Crop() {}
 
     static BufferedImage of(Source scan, RotatedRect rect, double levelAngle) {
+        Picture view = view(scan, rect, levelAngle);
+        int w = view.width();
+        int h = view.height();
+        boolean gray = view.gray();
+        BufferedImage out = image(w, h, gray);
+        byte[] data = ((DataBufferByte) out.getRaster().getDataBuffer()).getData();
+        for (int y = 0; y < h; y++) {
+            PhotoSplitter.checkpoint();
+            for (int x = 0; x < w; x++) {
+                put(data, y * w + x, view.rgb(x, y), gray);
+            }
+        }
+        return out;
+    }
+
+    static Picture view(Source scan, RotatedRect rect, double levelAngle) {
         int w = Math.max(1, (int) Math.round(rect.width()));
         int h = Math.max(1, (int) Math.round(rect.height()));
-        boolean gray = scan.gray();
         if (Math.abs(rect.angle()) < levelAngle) {
             int x0 = (int) Math.round(rect.cx() - w / 2.0);
             int y0 = (int) Math.round(rect.cy() - h / 2.0);
             int x1 = Math.min(scan.width(), x0 + w);
             int y1 = Math.min(scan.height(), y0 + h);
-            x0 = Math.max(0, x0);
-            y0 = Math.max(0, y0);
-            int cw = Math.max(1, x1 - x0);
-            int ch = Math.max(1, y1 - y0);
-            BufferedImage out = image(cw, ch, gray);
-            byte[] data = ((DataBufferByte) out.getRaster().getDataBuffer()).getData();
-            for (int y = 0; y < ch; y++) {
-                PhotoSplitter.checkpoint();
-                for (int x = 0; x < cw; x++) {
-                    put(data, y * cw + x, scan.rgb(Math.min(x0 + x, scan.width() - 1), Math.min(y0 + y, scan.height() - 1)), gray);
-                }
-            }
-            return out;
+            return new Level(scan, Math.max(0, x0), Math.max(0, y0), Math.max(1, x1 - Math.max(0, x0)),
+                    Math.max(1, y1 - Math.max(0, y0)));
         }
-        double c = Math.cos(Math.toRadians(rect.angle()));
-        double s = Math.sin(Math.toRadians(rect.angle()));
-        BufferedImage out = image(w, h, gray);
-        byte[] data = ((DataBufferByte) out.getRaster().getDataBuffer()).getData();
-        int[] px = new int[16];
-        for (int v = 0; v < h; v++) {
-            PhotoSplitter.checkpoint();
+        return new Turned(scan, rect, w, h);
+    }
+
+    private record Level(Source scan, int x0, int y0, int width, int height) implements Picture {
+
+        @Override
+        public int rgb(int x, int y) {
+            return pixel(scan.rgb(Math.min(x0 + x, scan.width() - 1), Math.min(y0 + y, scan.height() - 1)), scan.gray());
+        }
+
+        @Override
+        public boolean gray() {
+            return scan.gray();
+        }
+    }
+
+    private static final class Turned implements Picture {
+
+        private final Source scan;
+        private final RotatedRect rect;
+        private final int width;
+        private final int height;
+        private final double c;
+        private final double s;
+        private final int[] px = new int[16];
+
+        Turned(Source scan, RotatedRect rect, int width, int height) {
+            this.scan = scan;
+            this.rect = rect;
+            this.width = width;
+            this.height = height;
+            this.c = Math.cos(Math.toRadians(rect.angle()));
+            this.s = Math.sin(Math.toRadians(rect.angle()));
+        }
+
+        @Override
+        public int width() {
+            return width;
+        }
+
+        @Override
+        public int height() {
+            return height;
+        }
+
+        @Override
+        public boolean gray() {
+            return scan.gray();
+        }
+
+        @Override
+        public int rgb(int u, int v) {
+            int w = width;
+            int h = height;
             double dv = v + 0.5 - h / 2.0;
             double rowX = rect.cx() - (w / 2.0 - 0.5) * c - dv * s - 0.5;
             double rowY = rect.cy() - (w / 2.0 - 0.5) * s + dv * c - 0.5;
-            for (int u = 0; u < w; u++) {
-                double sx = rowX + u * c;
-                double sy = rowY + u * s;
-                int bx = (int) Math.floor(sx);
-                int by = (int) Math.floor(sy);
-                int fx = (int) ((sx - bx) * STEPS + 0.5);
-                int fy = (int) ((sy - by) * STEPS + 0.5);
-                if (fx == STEPS) {
-                    fx = 0;
-                    bx++;
-                }
-                if (fy == STEPS) {
-                    fy = 0;
-                    by++;
-                }
-                scan.taps(bx, by, px);
-                put(data, v * w + u, cubic(px, WEIGHTS[fx], WEIGHTS[fy]), gray);
+            double sx = rowX + u * c;
+            double sy = rowY + u * s;
+            int bx = (int) Math.floor(sx);
+            int by = (int) Math.floor(sy);
+            int fx = (int) ((sx - bx) * STEPS + 0.5);
+            int fy = (int) ((sy - by) * STEPS + 0.5);
+            if (fx == STEPS) {
+                fx = 0;
+                bx++;
             }
+            if (fy == STEPS) {
+                fy = 0;
+                by++;
+            }
+            scan.taps(bx, by, px);
+            return pixel(cubic(px, WEIGHTS[fx], WEIGHTS[fy]), scan.gray());
         }
-        return out;
+    }
+
+    private static int pixel(int rgb, boolean gray) {
+        if (!gray) {
+            return rgb;
+        }
+        int g = rgb >> 8 & 0xFF;
+        return g << 16 | g << 8 | g;
     }
 
     private static int cubic(int[] px, int[] wx, int[] wy) {

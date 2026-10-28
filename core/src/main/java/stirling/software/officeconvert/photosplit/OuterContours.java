@@ -39,20 +39,21 @@ final class OuterContours {
                     int p = stack.pop();
                     int px = p % w;
                     int py = p / w;
-                    minX = Math.min(minX, px);
-                    maxX = Math.max(maxX, px);
+                    int row = py * w;
+                    int left = px;
+                    while (left > 0 && mask[row + left - 1] == FOREGROUND) {
+                        mask[row + --left] = SEEN;
+                    }
+                    int right = px;
+                    while (right < w - 1 && mask[row + right + 1] == FOREGROUND) {
+                        mask[row + ++right] = SEEN;
+                    }
+                    minX = Math.min(minX, left);
+                    maxX = Math.max(maxX, right);
                     maxY = Math.max(maxY, py);
-                    for (int dy = -1; dy <= 1; dy++) {
-                        int ny = py + dy;
-                        if (ny < 0 || ny >= h) {
-                            continue;
-                        }
-                        for (int dx = -1; dx <= 1; dx++) {
-                            int nx = px + dx;
-                            if (nx >= 0 && nx < w && mask[ny * w + nx] == FOREGROUND) {
-                                mask[ny * w + nx] = SEEN;
-                                stack.push(ny * w + nx);
-                            }
+                    for (int ny = py - 1; ny <= py + 1; ny += 2) {
+                        if (ny >= 0 && ny < h) {
+                            seedRuns(mask, ny * w, Math.max(0, left - 1), Math.min(w - 1, right + 1), FOREGROUND, SEEN, stack);
                         }
                     }
                 }
@@ -63,6 +64,19 @@ final class OuterContours {
         }
         Collections.reverse(found);
         return found;
+    }
+
+    private static void seedRuns(byte[] mask, int row, int from, int to, byte match, byte mark, IntStack stack) {
+        boolean run = false;
+        for (int x = from; x <= to; x++) {
+            if (mask[row + x] != match) {
+                run = false;
+            } else if (!run) {
+                mask[row + x] = mark;
+                stack.push(row + x);
+                run = true;
+            }
+        }
     }
 
     static double area(byte[] mask, int w, int h, Contour c) {
@@ -116,36 +130,40 @@ final class OuterContours {
         PhotoSplitter.checkpoint();
         IntStack stack = new IntStack();
         for (int x = 0; x < w; x++) {
-            seed(mask, x, stack);
-            seed(mask, (h - 1) * w + x, stack);
+            fillOutside(mask, w, h, x, stack);
+            fillOutside(mask, w, h, (h - 1) * w + x, stack);
         }
         for (int y = 0; y < h; y++) {
-            seed(mask, y * w, stack);
-            seed(mask, y * w + w - 1, stack);
+            fillOutside(mask, w, h, y * w, stack);
+            fillOutside(mask, w, h, y * w + w - 1, stack);
         }
+    }
+
+    private static void fillOutside(byte[] mask, int w, int h, int i, IntStack stack) {
+        if (mask[i] != BACKGROUND) {
+            return;
+        }
+        mask[i] = OUTSIDE;
+        stack.push(i);
         while (!stack.isEmpty()) {
             int p = stack.pop();
             int px = p % w;
             int py = p / w;
-            if (px > 0) {
-                seed(mask, p - 1, stack);
+            int row = py * w;
+            int left = px;
+            while (left > 0 && mask[row + left - 1] == BACKGROUND) {
+                mask[row + --left] = OUTSIDE;
             }
-            if (px < w - 1) {
-                seed(mask, p + 1, stack);
+            int right = px;
+            while (right < w - 1 && mask[row + right + 1] == BACKGROUND) {
+                mask[row + ++right] = OUTSIDE;
             }
             if (py > 0) {
-                seed(mask, p - w, stack);
+                seedRuns(mask, row - w, left, right, BACKGROUND, OUTSIDE, stack);
             }
             if (py < h - 1) {
-                seed(mask, p + w, stack);
+                seedRuns(mask, row + w, left, right, BACKGROUND, OUTSIDE, stack);
             }
-        }
-    }
-
-    private static void seed(byte[] mask, int i, IntStack stack) {
-        if (mask[i] == BACKGROUND) {
-            mask[i] = OUTSIDE;
-            stack.push(i);
         }
     }
 }

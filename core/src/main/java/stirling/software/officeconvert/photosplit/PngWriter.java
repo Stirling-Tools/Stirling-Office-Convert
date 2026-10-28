@@ -18,7 +18,10 @@ final class PngWriter {
     private PngWriter() {}
 
     static void write(BufferedImage image, OutputStream out) throws IOException {
-        Picture picture = Source.of(image);
+        write(Source.of(image), out);
+    }
+
+    static void write(Picture picture, OutputStream out) throws IOException {
         int w = picture.width();
         int h = picture.height();
         boolean gray = picture.gray();
