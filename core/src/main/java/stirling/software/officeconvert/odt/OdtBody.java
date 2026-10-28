@@ -257,6 +257,8 @@ final class OdtBody {
                             : "<text:page-number text:select-page=\"current\">1</text:page-number>");
                     text.content();
                 });
+                case Inline.RunningText rt -> span(sb, rt.style(), base, rt.fallback(),
+                        () -> text.append(sb, rt.fallback()));
                 case Inline.Image img -> frames.picture(sb, img.picture());
                 case Inline.Shape shape -> frames.shape(sb, shape);
                 case Inline.TextBox box -> frames.textBox(sb, box);

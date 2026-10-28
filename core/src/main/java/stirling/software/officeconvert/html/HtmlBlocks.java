@@ -32,6 +32,12 @@ final class HtmlBlocks {
     private final Map<String, String> dataUris = new HashMap<>();
     private StyleSheet styles;
     private int section = -1;
+    private boolean relative;
+    private PictureFiles files;
+
+    interface PictureFiles {
+        String source(Picture.MediaRef ref) throws IOException;
+    }
 
     HtmlBlocks(MediaStore media) {
         this.media = media;
@@ -39,6 +45,14 @@ final class HtmlBlocks {
 
     void styles(StyleSheet styles) {
         this.styles = styles;
+    }
+
+    void pictureFiles(PictureFiles files) {
+        this.files = files;
+    }
+
+    void relativeSizes(boolean on) {
+        this.relative = on;
     }
 
     static String styleClass(String id) {
@@ -84,7 +98,7 @@ final class HtmlBlocks {
         }
         boolean gaps = justified(p);
         Paragraph.TabStop rightTab = rightTab(p);
-        String css = paragraphCss(p) + (columnBreak(p) ? "break-after:column;" : "")
+        String css = paragraphCss(p, base(p).size()) + (columnBreak(p) ? "break-after:column;" : "")
                 + (shapes.isEmpty() ? "" : "position:relative;")
                 + (rightTab != null ? "display:flex;align-items:baseline;" : "");
         if (!css.isEmpty()) {
@@ -158,7 +172,7 @@ final class HtmlBlocks {
         return "Title".equals(style) ? "h1" : "p";
     }
 
-    private static String paragraphCss(Paragraph p) {
+    private String paragraphCss(Paragraph p, float textSize) {
         StringBuilder sb = new StringBuilder();
         if (p.align != Paragraph.Align.LEFT) {
             sb.append("text-align:").append(p.align.name().toLowerCase(java.util.Locale.ROOT)).append(';');
@@ -168,7 +182,11 @@ final class HtmlBlocks {
         length(sb, "text-indent", p.indentFirst);
         length(sb, "margin-top", p.spaceBefore);
         length(sb, "margin-bottom", p.spaceAfter);
-        if (p.lineRule != Paragraph.LineRule.AUTO && p.lineHeight > 0) {
+        if (relative) {
+            if (p.lineRule == Paragraph.LineRule.EXACT && p.lineHeight > 0 && textSize > 0) {
+                sb.append("line-height:").append(HtmlText.ratio(Math.clamp(p.lineHeight / textSize, 1f, 2f))).append(';');
+            }
+        } else if (p.lineRule != Paragraph.LineRule.AUTO && p.lineHeight > 0) {
             sb.append(p.lineRule == Paragraph.LineRule.EXACT ? "line-height:" : "min-height:")
                     .append(HtmlText.pt(p.lineHeight)).append(';');
         }
@@ -341,7 +359,7 @@ final class HtmlBlocks {
         return sb.toString();
     }
 
-    private static void run(StringBuilder sb, String text, RunStyle s, RunStyle base, String href) {
+    private void run(StringBuilder sb, String text, RunStyle s, RunStyle base, String href) {
         if (text.isEmpty()) {
             return;
         }
@@ -353,7 +371,7 @@ final class HtmlBlocks {
             close.add("</a>");
         }
         if (s != null) {
-            String css = HtmlText.diff(s, base);
+            String css = HtmlText.diff(s, base, relative);
             if (!css.isEmpty()) {
                 sb.append("<span style=\"").append(css).append("\">");
                 close.add("</span>");
@@ -460,7 +478,7 @@ final class HtmlBlocks {
 
     private void image(StringBuilder sb, Picture pic, boolean inline) throws IOException {
         Picture.MediaRef ref = media.shaped(pic);
-        String uri = dataUris.get(ref.name());
+        String uri = files != null ? files.source(ref) : dataUris.get(ref.name());
         if (uri == null) {
             uri = "data:" + ref.contentType() + ";base64," + Base64.getEncoder().encodeToString(media.bytes(ref));
             if (uri.length() <= CACHED_URI_CHARS) {

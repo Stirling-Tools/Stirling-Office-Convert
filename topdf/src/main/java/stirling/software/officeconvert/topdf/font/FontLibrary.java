@@ -461,6 +461,11 @@ public final class FontLibrary {
         return Weights.emboldened(standIn(last, family, base, b, i, why + "; using " + last.family()), family, bold);
     }
 
+    public String substitute(String family) {
+        Objects.requireNonNull(family, "family");
+        return substitutions.get(normalize(family));
+    }
+
     private FontFace mapped(String family, boolean bold, boolean italic) {
         String target = substitutions.get(normalize(family));
         FontFace f = target == null ? null : exact(target, bold, italic);

@@ -37,14 +37,22 @@ final class FontRebuild {
 
     private final PdfALevel level;
 
-    private FontRebuild(PDDocument doc, PdfALevel level) {
+    private final boolean hinting;
+
+    private FontRebuild(PDDocument doc, PdfALevel level, boolean hinting) {
         this.doc = doc;
         this.level = level;
+        this.hinting = hinting;
     }
 
     static String rebuild(PDDocument doc, PDFont font, Set<Integer> codes, Mode mode, GlyphSource substitute,
             PdfALevel level, int bytesPerCode) throws IOException {
-        return new FontRebuild(doc, level).run(font, codes, mode, substitute, bytesPerCode);
+        return new FontRebuild(doc, level, true).run(font, codes, mode, substitute, bytesPerCode);
+    }
+
+    static String substitute(PDDocument doc, PDFont font, Set<Integer> codes, GlyphSource substitute,
+            PdfALevel level, int bytesPerCode, boolean hinting) throws IOException {
+        return new FontRebuild(doc, level, hinting).run(font, codes, Mode.SUBSTITUTE, substitute, bytesPerCode);
     }
 
     private String run(PDFont font, Set<Integer> codes, Mode mode, GlyphSource substitute, int bytesPerCode)
@@ -60,6 +68,9 @@ final class FontRebuild {
             w = new TrueTypeWriter(own);
         } else {
             w = new TrueTypeWriter(1000);
+        }
+        if (!hinting) {
+            w.dropHinting();
         }
         double scale = w.unitsPerEm() / 1000.0;
         TreeMap<Integer, Integer> slots = new TreeMap<>();

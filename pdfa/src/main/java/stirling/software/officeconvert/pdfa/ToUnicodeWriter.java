@@ -81,6 +81,15 @@ final class ToUnicodeWriter {
     }
 
     static COSStream write(PDDocument doc, TreeMap<Integer, String> map, int bytesPerCode) throws IOException {
+        return write(doc, map, bytesPerCode, false);
+    }
+
+    static COSStream preserve(PDDocument doc, TreeMap<Integer, String> map, int bytesPerCode) throws IOException {
+        return write(doc, map, bytesPerCode, true);
+    }
+
+    private static COSStream write(PDDocument doc, TreeMap<Integer, String> map, int bytesPerCode, boolean preserve)
+            throws IOException {
         StringBuilder b = new StringBuilder();
         b.append("/CIDInit /ProcSet findresource begin\n12 dict begin\nbegincmap\n/CIDSystemInfo\n")
                 .append("<< /Registry (Adobe)\n/Ordering (UCS)\n/Supplement 0\n>> def\n")
@@ -90,7 +99,8 @@ final class ToUnicodeWriter {
         b.append('<').append(lo).append("> <").append(hi).append(">\nendcodespacerange\n");
         List<Map.Entry<Integer, String>> entries = new ArrayList<>();
         for (Map.Entry<Integer, String> e : map.entrySet()) {
-            if (valid(e.getValue()) && e.getKey() >= 0 && e.getKey() < (1L << (8 * bytesPerCode))) {
+            if ((preserve ? e.getValue() != null && !e.getValue().isEmpty() : valid(e.getValue()))
+                    && e.getKey() >= 0 && e.getKey() < (1L << (8 * bytesPerCode))) {
                 entries.add(e);
             }
         }

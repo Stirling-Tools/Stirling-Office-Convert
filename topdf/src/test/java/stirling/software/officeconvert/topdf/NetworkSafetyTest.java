@@ -48,16 +48,34 @@ class NetworkSafetyTest {
         Map<String, byte[]> classes = ClassScan.classes(main);
         assertTrue(classes.size() > 30, "only " + classes.size() + " classes found in " + main);
         List<String> problems = new ArrayList<>();
+        TreeSet<String> used = new TreeSet<>();
         for (Map.Entry<String, byte[]> e : classes.entrySet()) {
             if (!e.getKey().startsWith("stirling/software/officeconvert/topdf/")) {
                 continue;
             }
+            String owner = e.getKey().replaceFirst("\\.class$", "").replaceFirst("\\$.*", "");
+            List<String> ok = TOPDF_ALLOWED.getOrDefault(owner, List.of());
             for (String v : ClassScan.ownCodeViolations(ClassScan.read(e.getValue()))) {
-                problems.add(e.getKey() + " " + v);
+                if (ok.contains(v)) {
+                    used.add(owner + " " + v);
+                } else {
+                    problems.add(e.getKey() + " " + v);
+                }
             }
         }
         assertEquals(List.of(), problems);
+        List<String> stale = new ArrayList<>();
+        TOPDF_ALLOWED.forEach((owner, vs) -> vs.stream().filter(v -> !used.contains(owner + " " + v))
+                .forEach(v -> stale.add(owner + " " + v)));
+        assertEquals(List.of(), stale, "allowed references no class makes any more");
     }
+
+    private static final Map<String, List<String>> TOPDF_ALLOWED = Map.of(
+            "stirling/software/officeconvert/topdf/WebAssets", List.of("uses java/net/InetAddress", "uses javax/net/",
+                    "uses java/net/IDN", "uses java/net/Socket", "uses java/nio/channels/SocketChannel",
+                    "uses java/net/InetSocketAddress",
+                    "uses java/net/SocketAddress", "uses java/net/SocketTimeoutException", "uses java/net/Inet4Address",
+                    "uses java/net/Inet6Address"));
 
     private static final String OC = "stirling/software/officeconvert/";
 
@@ -67,6 +85,7 @@ class NetworkSafetyTest {
     private static final Map<String, List<String>> MODULE_ALLOWED = Map.ofEntries(
             Map.entry(OC + "jpx/JpxImageIO", List.of("uses javax/imageio/spi/IIORegistry")),
             Map.entry(OC + "odp/OdpWriter", List.of("calls javax/imageio/ImageIO.read")),
+            Map.entry(OC + "photosplit/PhotoSplitter", List.of("calls javax/imageio/ImageIO.getImageReaders")),
             Map.entry(OC + "sink/ImageShaping", List.of("calls javax/imageio/ImageIO.read")),
             Map.entry(OC + "json/MediaBytes", List.of("calls javax/imageio/ImageIO.read")),
             Map.entry(OC + "slides/SlideMedia", List.of("calls javax/imageio/ImageIO.read")),
@@ -107,7 +126,7 @@ class NetworkSafetyTest {
                 }
             }
         }
-        assertEquals(6, modules, "the build passes topdf.scanClasses for core, legacy, pdfa, cli, app and optimize");
+        assertEquals(7, modules, "the build passes topdf.scanClasses for core, legacy, pdfa, lineart, cli, app and optimize");
         assertEquals(List.of(), problems);
         List<String> stale = new ArrayList<>();
         allowed.forEach((owner, vs) -> vs.stream().filter(v -> !used.contains(owner + " " + v))

@@ -15,6 +15,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.TreeSet;
+import java.util.function.Function;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
@@ -105,6 +106,11 @@ public final class PdfToDocx {
 
     static <W extends DocSink & Closeable> void convert(Path pdf, Path target, Options options, WriterFactory<W> format)
             throws IOException {
+        convertWithDocument(pdf, target, options, doc -> format);
+    }
+
+    static <W extends DocSink & Closeable> void convertWithDocument(Path pdf, Path target, Options options,
+            Function<PDDocument, WriterFactory<W>> format) throws IOException {
         Objects.requireNonNull(pdf, "pdf");
         Objects.requireNonNull(target, "target");
         Objects.requireNonNull(options, "options");
@@ -113,7 +119,7 @@ public final class PdfToDocx {
         try {
             try (PDDocument doc = load(pdf, options.password());
                     OutputStream out = Files.newOutputStream(part)) {
-                convert(doc, out, options, format);
+                convert(doc, out, options, format.apply(doc));
             }
             PdfFiles.stopIfInterrupted();
             moveIntoPlace(part, target);

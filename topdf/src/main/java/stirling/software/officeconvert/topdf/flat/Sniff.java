@@ -1,5 +1,6 @@
 package stirling.software.officeconvert.topdf.flat;
 
+import java.io.BufferedInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Path;
@@ -17,9 +18,22 @@ public final class Sniff {
     private Sniff() {}
 
     public static boolean root(Path file, String namespace, String local) {
-        try (InputStream in = SourceFile.open(file)) {
-            byte[] head = in.readNBytes(4);
-            if (head.length == 0 || head[0] == 'P' || (head[0] & 0xFF) == 0xD0) {
+        try (InputStream in = new BufferedInputStream(SourceFile.open(file))) {
+            int first;
+            do {
+                if (Thread.currentThread().isInterrupted()) {
+                    return false;
+                }
+                first = in.read();
+            } while (first == ' ' || first == '\t' || first == '\r' || first == '\n');
+            boolean xml = switch (first) {
+                case '<', 0 -> true;
+                case 0xEF -> in.read() == 0xBB && in.read() == 0xBF;
+                case 0xFE -> in.read() == 0xFF;
+                case 0xFF -> in.read() == 0xFE;
+                default -> false;
+            };
+            if (!xml) {
                 return false;
             }
         } catch (IOException e) {

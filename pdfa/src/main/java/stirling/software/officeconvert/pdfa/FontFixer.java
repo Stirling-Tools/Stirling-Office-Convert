@@ -3,6 +3,7 @@ package stirling.software.officeconvert.pdfa;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.function.Supplier;
@@ -93,18 +94,10 @@ final class FontFixer {
         }
         try {
             if (v == FontCheck.Verdict.SUBSTITUTE) {
-                PDFontDescriptor fd = font.getFontDescriptor();
-                BaseFontName name = BaseFontName.parse(font instanceof PDType0Font t0 && t0.getDescendantFont() != null
-                        ? t0.getDescendantFont().getBaseFont() : font.getName(), fd == null ? 0 : fd.getFlags(),
-                        fd == null ? 0 : fd.getFontWeight());
                 if (library == null) {
                     library = libraries.get();
                 }
-                try (GlyphSource source = GlyphSource.open(library, name)) {
-                    String note = FontRebuild.rebuild(doc, font, codes, FontRebuild.Mode.SUBSTITUTE, source, level,
-                            bytesPerCode);
-                    report.substituted(note);
-                }
+                report.substituted(substitute(doc, font, codes, level, library, bytesPerCode));
             } else {
                 FontRebuild.rebuild(doc, font, codes, FontRebuild.Mode.OWN, null, level, bytesPerCode);
             }
@@ -114,6 +107,22 @@ final class FontFixer {
                     + e.getMessage(), e);
         }
         return null;
+    }
+
+    static String substitute(PDDocument doc, PDFont font, Set<Integer> codes, PdfALevel level, FontLibrary library,
+            int bytesPerCode) throws IOException {
+        return substitute(doc, font, codes, level, library, bytesPerCode, true);
+    }
+
+    static String substitute(PDDocument doc, PDFont font, Set<Integer> codes, PdfALevel level, FontLibrary library,
+            int bytesPerCode, boolean hinting) throws IOException {
+        PDFontDescriptor fd = font.getFontDescriptor();
+        BaseFontName name = BaseFontName.parse(font instanceof PDType0Font t0 && t0.getDescendantFont() != null
+                ? t0.getDescendantFont().getBaseFont() : font.getName(), fd == null ? 0 : fd.getFlags(),
+                fd == null ? 0 : fd.getFontWeight());
+        try (GlyphSource source = GlyphSource.open(library, name)) {
+            return FontRebuild.substitute(doc, font, codes, source, level, bytesPerCode, hinting);
+        }
     }
 
     private void cmap(COSDictionary dict, TreeSet<Integer> codes) throws IOException {

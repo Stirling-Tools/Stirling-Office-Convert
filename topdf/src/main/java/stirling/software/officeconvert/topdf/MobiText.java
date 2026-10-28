@@ -15,6 +15,9 @@ final class MobiText {
     private MobiText() {}
 
     static byte[] read(PalmDatabase pdb, int base, MobiHeader h) throws IOException {
+        if (h.textLength() > MAX_TEXT_BYTES) {
+            throw new IOException("The eBook's text is larger than " + (MAX_TEXT_BYTES >> 20) + " MB");
+        }
         Huffman huffman = switch (h.compression()) {
             case MobiHeader.NONE, MobiHeader.PALMDOC -> null;
             case MobiHeader.HUFF_CDIC -> Huffman.load(pdb, base + h.huffRecord(), h.huffCount());
@@ -25,7 +28,7 @@ final class MobiText {
         for (int i = 1; i <= h.textRecords(); i++) {
             OfficeToPdf.stopIfInterrupted();
             if (!pdb.has(base + i)) {
-                break;
+                throw new IOException(DAMAGED);
             }
             byte[] record = pdb.record(base + i);
             int end = Math.max(0, record.length - trailing(record, h.extraFlags()));
@@ -44,6 +47,9 @@ final class MobiText {
         }
         byte[] text = out.toByteArray();
         long length = h.textLength();
+        if (length > text.length) {
+            throw new IOException(DAMAGED);
+        }
         return length > 0 && length < text.length ? Arrays.copyOf(text, (int) length) : text;
     }
 

@@ -12,8 +12,16 @@ final class Presentation {
 
     private Presentation() {}
 
+    static final String LANG = "-oc-lang";
+
     static void apply(Element e, Map<String, String> out) {
         tag(e.normalName(), out);
+        if (e.hasAttr("lang") || e.hasAttr("xml:lang")) {
+            String lang = e.hasAttr("lang") ? e.attr("lang") : e.attr("xml:lang");
+            if (lang.length() <= 35) {
+                out.put(LANG, lang);
+            }
+        }
         if ("table".equals(e.normalName()) && e.ownerDocument() != null
                 && e.ownerDocument().quirksMode() != org.jsoup.nodes.Document.QuirksMode.noQuirks) {
             // A page without a doctype gets the old table defaults: tables do not inherit text styles

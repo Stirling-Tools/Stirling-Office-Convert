@@ -43,14 +43,23 @@ final class Cascade {
     private final Map<String, String> page = new HashMap<>();
     private final Map<String, Map<String, String>> margins = new HashMap<>();
     private final Map<String, Map<String, String>> importantMargins = new HashMap<>();
+    private final Map<String, Map<String, Map<String, String>>> sidedMargins = new HashMap<>();
+
+    private static final Pattern SIDED_MARGIN = Pattern.compile("@margin-(first|left|right) (\\S+)");
     private final Map<String, Map<String, String>> named = new HashMap<>();
     private long work;
     private final Set<String> sheets = new HashSet<>();
+    private final List<WebFonts.Face> faces = new ArrayList<>();
+    private final List<Generated.Rule> pseudoRules = new ArrayList<>();
+    private final Map<Element, Map<String, String>> generated = new IdentityHashMap<>();
     private long sheetChars;
 
     private static final long MAX_SHEET_CHARS = 8L << 20;
 
     private static final int MAX_NAMED_PAGES = 64;
+
+    private static final Pattern GENERATED = Pattern.compile("(.*?)::?(before|after)\\s*", Pattern.CASE_INSENSITIVE
+            | Pattern.DOTALL);
 
     /** {@code viewportPx} is the width media queries see, the page's text width in CSS pixels. */
     Cascade(Document doc, float viewportPx) {
@@ -64,13 +73,21 @@ final class Cascade {
             if (!Media.matches(sheet.attr("media"), viewportPx)) {
                 continue;
             }
+            int before = rules.size();
+            String base = linked.base();
             if (sheet.normalName().equals("style")) {
                 Css.rules(imported(sheet.data(), linked.base(), linked, viewportPx, 0), rules, viewportPx);
             } else if (stylesheet(sheet) && !linked.none()) {
-                String ref = HtmlRefs.resolve(linked.base(), sheet.attr("href"));
+                String ref = linked.resolve(linked.base(), sheet.attr("href"));
                 String text = sheet(ref, linked);
                 if (text != null) {
+                    base = ref;
                     Css.rules(imported(text, ref, linked, viewportPx, 0), rules, viewportPx);
+                }
+            }
+            for (int k = before; k < rules.size(); k++) {
+                if (rules.get(k).selector().equals("@font-face") && faces.size() < WebFonts.MAX_FACES) {
+                    faces.add(new WebFonts.Face(rules.get(k).declarations(), base));
                 }
             }
         }
@@ -78,10 +95,26 @@ final class Cascade {
         for (Css.Rule rule : rules) {
             order++;
             positions |= positioning(rule.declarations());
+            for (Map.Entry<String, String> d : rule.declarations().entrySet()) {
+                hyphenates |= d.getKey().endsWith("hyphens") && d.getValue().strip().equalsIgnoreCase("auto");
+            }
+            strings |= rule.declarations().containsKey("string-set")
+                    || rule.declarations().containsKey(Css.IMPORTANT_MARK + "string-set");
+            Matcher sided = SIDED_MARGIN.matcher(rule.selector());
+            if (sided.matches()) {
+                Map<String, String> box = sidedMargins.computeIfAbsent(sided.group(1), k -> new HashMap<>())
+                        .computeIfAbsent(sided.group(2), k -> new HashMap<>());
+                put(box, rule.declarations(), false);
+                put(box, rule.declarations(), true);
+                continue;
+            }
             if (rule.selector().startsWith("@margin ")) {
                 String box = rule.selector().substring(8);
                 put(margins.computeIfAbsent(box, k -> new HashMap<>()), rule.declarations(), false);
                 put(importantMargins.computeIfAbsent(box, k -> new HashMap<>()), rule.declarations(), true);
+                continue;
+            }
+            if ("@font-face".equals(rule.selector())) {
                 continue;
             }
             if ("@page".equals(rule.selector())) {
@@ -94,6 +127,20 @@ final class Cascade {
                     Map<String, String> own = named.computeIfAbsent(rule.selector().substring(6), k -> new HashMap<>());
                     put(own, rule.declarations(), false);
                     put(own, rule.declarations(), true);
+                }
+                continue;
+            }
+            Matcher pseudo = GENERATED.matcher(rule.selector());
+            if (pseudo.matches()) {
+                String base = pseudo.group(1).isBlank() ? "*" : usable(pseudo.group(1).strip());
+                if (base != null && pseudoRules.size() < Generated.MAX_RULES) {
+                    try {
+                        pseudoRules.add(new Generated.Rule(QueryParser.parse(base),
+                                pseudo.group(2).toLowerCase(Locale.ROOT), specificity(base), order,
+                                rule.declarations()));
+                    } catch (RuntimeException e) {
+                        continue;
+                    }
                 }
                 continue;
             }
@@ -113,6 +160,30 @@ final class Cascade {
     }
 
     private boolean positions;
+
+    private boolean strings;
+
+    private boolean hyphenates;
+
+    boolean hyphenates() {
+        return hyphenates || !doc.select("[style*=hyphens]").isEmpty();
+    }
+
+    private boolean stringsChecked;
+
+    boolean setsStrings() {
+        if (!strings && !stringsChecked) {
+            stringsChecked = true;
+            for (Element e : doc.select("[style]")) {
+                Map<String, String> d = inline(e.attr("style"));
+                if (d.containsKey("string-set") || d.containsKey(Css.IMPORTANT_MARK + "string-set")) {
+                    strings = true;
+                    break;
+                }
+            }
+        }
+        return strings;
+    }
 
     private static boolean positioning(Map<String, String> d) {
         for (Map.Entry<String, String> e : d.entrySet()) {
@@ -185,9 +256,9 @@ final class Cascade {
             if (depth >= MAX_IMPORT_DEPTH || !Media.matches(media, viewportPx)) {
                 continue;
             }
-            String text = sheet(HtmlRefs.resolve(base, target), linked);
+            String text = sheet(linked.resolve(base, target), linked);
             if (text != null) {
-                out.append(imported(text, HtmlRefs.resolve(base, target), linked, viewportPx, depth + 1)).append('\n');
+                out.append(imported(text, linked.resolve(base, target), linked, viewportPx, depth + 1)).append('\n');
             }
         }
         return out.append(s, i, s.length()).toString();
@@ -202,7 +273,33 @@ final class Cascade {
             return null;
         }
         sheetChars += text.length();
-        return sheetChars > MAX_SHEET_CHARS ? null : text;
+        return sheetChars > MAX_SHEET_CHARS ? null : rebased(text, ref);
+    }
+
+    private static final Pattern URL = Pattern.compile("url\\(\\s*([\"']?)([^\"')]*)\\1\\s*\\)",
+            Pattern.CASE_INSENSITIVE);
+
+    private static final Pattern SCHEME = Pattern.compile("^[a-zA-Z][a-zA-Z0-9+.-]*:.*", Pattern.DOTALL);
+
+    static String rebased(String sheet, String ref) {
+        if (sheet.indexOf('(') < 0) {
+            return sheet;
+        }
+        Matcher m = URL.matcher(sheet);
+        StringBuilder out = new StringBuilder(sheet.length());
+        while (m.find()) {
+            String v = m.group(2).strip();
+            String replacement = m.group();
+            if (!v.isEmpty() && !v.startsWith("#") && !SCHEME.matcher(v).matches()) {
+                String resolved = HtmlRefs.resolve(ref, v);
+                if (resolved != null && resolved.indexOf('"') < 0 && resolved.indexOf('\\') < 0) {
+                    replacement = "url(\"" + (SCHEME.matcher(resolved).matches() ? resolved : "/" + resolved) + "\")";
+                }
+            }
+            m.appendReplacement(out, Matcher.quoteReplacement(replacement));
+        }
+        m.appendTail(out);
+        return out.toString();
     }
 
     // Filed under what the selector's last compound step needs: its id, else a class, else its tag
@@ -367,10 +464,17 @@ final class Cascade {
 
     /** The cascaded declarations of {@code e}: rules by specificity then order, then the style attribute. */
     Map<String, String> declared(Element e) {
+        Map<String, String> own = generated.get(e);
+        if (own != null) {
+            Map<String, String> out = new HashMap<>();
+            put(out, own, false);
+            put(out, own, true);
+            return out;
+        }
         Map<String, String> out = new HashMap<>();
         Presentation.apply(e, out);
         List<Hit> list = hits(e);
-        Map<String, String> inline = e.hasAttr("style") ? Css.declarations(e.attr("style")) : Map.of();
+        Map<String, String> inline = e.hasAttr("style") ? inline(e.attr("style")) : Map.of();
         // Normal rules, then the style attribute, then !important rules, then an !important style attribute
         if (list != null) {
             for (Hit h : list) {
@@ -387,6 +491,22 @@ final class Cascade {
         return out;
     }
 
+    private static final int MAX_STYLES = 20_000;
+
+    private final Map<String, Map<String, String>> styles = new HashMap<>();
+
+    private Map<String, String> inline(String style) {
+        Map<String, String> known = styles.get(style);
+        if (known != null) {
+            return known;
+        }
+        Map<String, String> parsed = Collections.unmodifiableMap(Css.declarations(style));
+        if (styles.size() < MAX_STYLES) {
+            styles.put(style, parsed);
+        }
+        return parsed;
+    }
+
     private static void put(Map<String, String> out, Map<String, String> declared, boolean important) {
         for (Map.Entry<String, String> d : declared.entrySet()) {
             boolean marked = d.getKey().startsWith(Css.IMPORTANT_MARK);
@@ -400,8 +520,38 @@ final class Cascade {
         return page;
     }
 
+    List<WebFonts.Face> faces() {
+        return faces;
+    }
+
+    List<Generated.Rule> pseudoRules() {
+        return pseudoRules;
+    }
+
+    void match(Element e) {
+        hits(e);
+    }
+
+    void generated(Element e, Map<String, String> declarations) {
+        generated.put(e, declarations);
+    }
+
     Map<String, Map<String, String>> margins() {
         return margins;
+    }
+
+    Map<String, Map<String, String>> margins(String... sides) {
+        Map<String, Map<String, String>> out = new HashMap<>();
+        margins.forEach((box, d) -> out.put(box, new HashMap<>(d)));
+        for (String side : sides) {
+            sidedMargins.getOrDefault(side, Map.of())
+                    .forEach((box, d) -> out.computeIfAbsent(box, k -> new HashMap<>()).putAll(d));
+        }
+        return out;
+    }
+
+    boolean styledPages(String side) {
+        return sidedMargins.containsKey(side);
     }
 
     /** Whether the page asks for its own paper (a size, or named pages), in which case it is printed as it asks. */

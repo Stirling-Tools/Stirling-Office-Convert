@@ -62,17 +62,24 @@ public final class OfficeConvert {
     }
 
     public record Settings(int firstPage, int lastPage, String password, boolean tables, boolean pictureFallback,
-            float figureDpi, PdfToXlsx.Sheets sheets, Duration timeout, Pictures pictures) {
+            float figureDpi, PdfToXlsx.Sheets sheets, Duration timeout, Pictures pictures, EbookOptions ebook) {
 
         public Settings(int firstPage, int lastPage, String password, boolean tables, boolean pictureFallback,
                 float figureDpi, PdfToXlsx.Sheets sheets, Duration timeout) {
             this(firstPage, lastPage, password, tables, pictureFallback, figureDpi, sheets, timeout, Pictures.COMPACT);
         }
 
+        public Settings(int firstPage, int lastPage, String password, boolean tables, boolean pictureFallback,
+                float figureDpi, PdfToXlsx.Sheets sheets, Duration timeout, Pictures pictures) {
+            this(firstPage, lastPage, password, tables, pictureFallback, figureDpi, sheets, timeout, pictures,
+                    EbookOptions.defaults());
+        }
+
         public Settings {
             Objects.requireNonNull(sheets, "sheets");
             Objects.requireNonNull(timeout, "timeout");
             Objects.requireNonNull(pictures, "pictures");
+            Objects.requireNonNull(ebook, "ebook");
             if (firstPage < 0 || lastPage < 0) {
                 throw new IllegalArgumentException("Page numbers are 1-based, or 0 for the first or last page");
             }
@@ -88,46 +95,60 @@ public final class OfficeConvert {
         }
 
         public static Settings defaults() {
-            return new Settings(0, 0, null, true, false, 150f, PdfToXlsx.Sheets.PAGE, Duration.ZERO, Pictures.COMPACT);
+            return new Settings(0, 0, null, true, false, 150f, PdfToXlsx.Sheets.PAGE, Duration.ZERO, Pictures.COMPACT,
+                    EbookOptions.defaults());
         }
 
         public Settings pages(int first, int last) {
-            return new Settings(first, last, password, tables, pictureFallback, figureDpi, sheets, timeout, pictures);
+            return new Settings(first, last, password, tables, pictureFallback, figureDpi, sheets, timeout, pictures,
+                    ebook);
         }
 
         public Settings password(String password) {
-            return new Settings(firstPage, lastPage, password, tables, pictureFallback, figureDpi, sheets, timeout, pictures);
+            return new Settings(firstPage, lastPage, password, tables, pictureFallback, figureDpi, sheets, timeout,
+                    pictures, ebook);
         }
 
         public Settings tables(boolean detect) {
-            return new Settings(firstPage, lastPage, password, detect, pictureFallback, figureDpi, sheets, timeout, pictures);
+            return new Settings(firstPage, lastPage, password, detect, pictureFallback, figureDpi, sheets, timeout,
+                    pictures, ebook);
         }
 
         public Settings pictureFallback(boolean on) {
-            return new Settings(firstPage, lastPage, password, tables, on, figureDpi, sheets, timeout, pictures);
+            return new Settings(firstPage, lastPage, password, tables, on, figureDpi, sheets, timeout, pictures, ebook);
         }
 
         public Settings figureDpi(float dpi) {
-            return new Settings(firstPage, lastPage, password, tables, pictureFallback, dpi, sheets, timeout, pictures);
+            return new Settings(firstPage, lastPage, password, tables, pictureFallback, dpi, sheets, timeout, pictures,
+                    ebook);
         }
 
         public Settings sheets(PdfToXlsx.Sheets how) {
-            return new Settings(firstPage, lastPage, password, tables, pictureFallback, figureDpi, how, timeout, pictures);
+            return new Settings(firstPage, lastPage, password, tables, pictureFallback, figureDpi, how, timeout, pictures,
+                    ebook);
         }
 
         public Settings timeout(Duration limit) {
-            return new Settings(firstPage, lastPage, password, tables, pictureFallback, figureDpi, sheets, limit, pictures);
+            return new Settings(firstPage, lastPage, password, tables, pictureFallback, figureDpi, sheets, limit, pictures,
+                    ebook);
         }
 
         public Settings pictures(Pictures how) {
-            return new Settings(firstPage, lastPage, password, tables, pictureFallback, figureDpi, sheets, timeout, how);
+            return new Settings(firstPage, lastPage, password, tables, pictureFallback, figureDpi, sheets, timeout, how,
+                    ebook);
+        }
+
+        public Settings ebook(EbookOptions how) {
+            return new Settings(firstPage, lastPage, password, tables, pictureFallback, figureDpi, sheets, timeout,
+                    pictures, how);
         }
 
         @Override
         public String toString() {
             return "Settings[pages=" + firstPage + "-" + lastPage + ", password=" + (password == null ? "none" : "***")
                     + ", tables=" + tables + ", pictureFallback=" + pictureFallback + ", figureDpi=" + figureDpi
-                    + ", sheets=" + sheets + ", timeout=" + timeout + ", pictures=" + pictures + "]";
+                    + ", sheets=" + sheets + ", timeout=" + timeout + ", pictures=" + pictures + ", ebook=" + ebook
+                    + "]";
         }
 
         PdfToDocx.Options document() {
@@ -178,8 +199,8 @@ public final class OfficeConvert {
                 case HTML -> PdfToHtml.convert(pdf, out, settings.document());
                 case JSON -> PdfToJson.convert(pdf, out, settings.document());
                 case MARKDOWN -> PdfToMarkdown.convert(pdf, out, settings.document());
-                case EPUB -> PdfToEpub.convert(pdf, out, settings.document());
-                case AZW3 -> PdfToAzw3.convert(pdf, out, settings.document());
+                case EPUB -> PdfToEpub.convert(pdf, out, settings.document(), settings.ebook());
+                case AZW3 -> PdfToAzw3.convert(pdf, out, settings.document(), settings.ebook());
                 case PPTX -> PdfToPptx.convert(pdf, out, settings.slides());
                 case ODP -> PdfToOdp.convert(pdf, out, settings.slides());
                 case XLSX, ODS -> PdfToXlsx.convert(pdf, out, settings.workbook(format));
@@ -203,8 +224,8 @@ public final class OfficeConvert {
                 case HTML -> PdfToHtml.convert(pdf, out, settings.document());
                 case JSON -> PdfToJson.convert(pdf, out, settings.document());
                 case MARKDOWN -> PdfToMarkdown.convert(pdf, out, settings.document());
-                case EPUB -> PdfToEpub.convert(pdf, out, settings.document());
-                case AZW3 -> PdfToAzw3.convert(pdf, out, settings.document());
+                case EPUB -> PdfToEpub.convert(pdf, out, settings.document(), settings.ebook());
+                case AZW3 -> PdfToAzw3.convert(pdf, out, settings.document(), settings.ebook());
                 case PPTX -> PdfToPptx.convert(pdf, out, settings.slides());
                 case ODP -> PdfToOdp.convert(pdf, out, settings.slides());
                 case XLSX, ODS -> PdfToXlsx.convert(pdf, out, settings.workbook(format));

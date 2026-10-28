@@ -18,10 +18,15 @@ final class PackageParts {
     private PackageParts() {}
 
     static String settings(HeaderFooterSet hf, boolean footnotes) {
+        return settings(hf, footnotes, false);
+    }
+
+    static String settings(HeaderFooterSet hf, boolean footnotes, boolean hyphenation) {
         boolean evenOdd = hf != null && (!hf.evenHeader().isEmpty() || !hf.evenFooter().isEmpty());
         return "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
                 + "<w:settings xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\">"
-                + "<w:zoom w:percent=\"100\"/><w:defaultTabStop w:val=\"720\"/>"
+                + "<w:zoom w:percent=\"100\"/>"
+                + "<w:defaultTabStop w:val=\"720\"/>" + (hyphenation ? "<w:autoHyphenation/>" : "")
                 + (evenOdd ? "<w:evenAndOddHeaders/>" : "")
                 + "<w:characterSpacingControl w:val=\"doNotCompress\"/>"
                 + (footnotes ? "<w:footnotePr><w:footnote w:id=\"-1\"/><w:footnote w:id=\"0\"/></w:footnotePr>" : "")

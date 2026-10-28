@@ -84,6 +84,10 @@ final class RunXml {
     }
 
     void field(StringBuilder sb, String instr, RunStyle style, RunStyle base) {
+        field(sb, instr, "1", style, base);
+    }
+
+    void field(StringBuilder sb, String instr, String shown, RunStyle style, RunStyle base) {
         sb.append("<w:r>");
         rPr(sb, style, base);
         sb.append("<w:fldChar w:fldCharType=\"begin\"/></w:r><w:r>");
@@ -92,7 +96,8 @@ final class RunXml {
         rPr(sb, style, base);
         sb.append("<w:fldChar w:fldCharType=\"separate\"/></w:r><w:r>");
         rPr(sb, style, base);
-        sb.append("<w:t>1</w:t></w:r><w:r>");
+        sb.append("<w:t").append(shown.strip().equals(shown) ? "" : " xml:space=\"preserve\"").append('>')
+                .append(shown).append("</w:t></w:r><w:r>");
         rPr(sb, style, base);
         sb.append("<w:fldChar w:fldCharType=\"end\"/></w:r>");
     }

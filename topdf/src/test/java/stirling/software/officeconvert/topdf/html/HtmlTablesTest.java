@@ -129,4 +129,33 @@ class HtmlTablesTest {
         assertNotNull(t);
         assertTrue(t.columnWidths.get(0) - t.cellMarginLeft - t.cellMarginRight >= 60, t.columnWidths.toString());
     }
+
+    @Test
+    void nonBreakingPaddingAroundStyledLabelsFitsTheColumn() throws IOException {
+        Table t = table("<table><tr><td>&nbsp;<b>Location</b>&nbsp;</td><td>Room</td></tr></table>");
+        float width = t.columnWidths.getFirst() - t.cellMarginLeft - t.cellMarginRight;
+        Look bold = new Look().child(java.util.Map.of("font-weight", "bold"), 300, true);
+        float need = Measure.width("Location", bold.run()) + Measure.width("\u00a0\u00a0", new Look().run());
+        assertTrue(width >= need, "column " + width + " needs " + need);
+    }
+
+    @Test
+    void largerInlineLabelsDetermineTheirMinimumColumnWidth() throws IOException {
+        Table t = table("<table style='width:300px'><tr><td><span style='font-size:32px'>Wide</span>Label</td>"
+                + "<td>Some other words that can wrap normally within their column</td></tr></table>");
+        float width = t.columnWidths.getFirst() - t.cellMarginLeft - t.cellMarginRight;
+        float need = Measure.width("Wide", new Look().child(java.util.Map.of("font-size", "32px"), 300, true).run())
+                + Measure.width("Label", new Look().run());
+        assertTrue(width >= need, "column " + width + " needs " + need);
+    }
+
+    @Test
+    void intrinsicInlineWidthsAreIndependentOfDisplayValueCasing() throws IOException {
+        String html = "<table style='width:300px'><tr><td><span style='display:%s;font-size:32px'>Wide</span>"
+                + "<span style='display:%s;font-size:32px'>Label</span></td>"
+                + "<td>Some other words that can wrap normally within their column</td></tr></table>";
+        Table lowercase = table(html.formatted("inline", "contents"));
+        Table uppercase = table(html.formatted("INLINE", "CONTENTS"));
+        assertEquals(lowercase.columnWidths.getFirst(), uppercase.columnWidths.getFirst(), 0.01);
+    }
 }

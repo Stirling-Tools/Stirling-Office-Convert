@@ -7,6 +7,7 @@ dependencies {
     implementation(project(":legacy"))
     implementation(project(":topdf"))
     implementation(project(":pdfa"))
+    implementation(project(":lineart"))
     implementation(project(":optimize"))
 
     testImplementation(platform("org.junit:junit-bom:5.13.4"))

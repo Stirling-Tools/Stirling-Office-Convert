@@ -132,7 +132,14 @@ final class MarginBoxes {
                     j++;
                 }
                 String token = v.substring(i, j).toLowerCase(Locale.ROOT).replace(" ", "");
-                if (token.startsWith("counter(page") && !token.startsWith("counter(pages")) {
+                String raw = v.substring(i, j).replace(" ", "");
+                if (token.startsWith("string(") && raw.endsWith(")")) {
+                    String[] args = raw.substring(7, raw.length() - 1).split(",");
+                    String policy = args.length > 1 ? args[1].toLowerCase(Locale.ROOT) : "first";
+                    if (!args[0].isEmpty() && args[0].length() <= 64) {
+                        out.add(new Inline.RunningText(args[0] + "/" + policy, "", style));
+                    }
+                } else if (token.startsWith("counter(page") && !token.startsWith("counter(pages")) {
                     out.add(new Inline.PageNumber(style, false));
                 } else if (token.startsWith("counter(pages")) {
                     out.add(new Inline.PageNumber(style, true));
