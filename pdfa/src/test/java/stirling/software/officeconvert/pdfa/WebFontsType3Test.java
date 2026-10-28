@@ -368,6 +368,35 @@ class WebFontsType3Test {
     }
 
     @Test
+    void onePathThatCrossesItselfThousandsOfTimesIsFilledAndClippedWithinABoundedAmountOfWork() throws Exception {
+        StringBuilder crossing = new StringBuilder();
+        for (int i = 0; i < 2000; i++) {
+            crossing.append((i * 37) % 900).append(' ').append((i * 53) % 900).append(" m ").append((i * 71) % 900)
+                    .append(' ').append((i * 29) % 900).append(" l ").append((i * 17) % 900).append(' ')
+                    .append((i * 91) % 900).append(" l ");
+        }
+        RawPdf pdf = RawPdf.page("/Font<</T3<</Type/Font/Subtype/Type3/FontBBox[0 0 0 0]"
+                + "/FontMatrix[0.001 0 0 0.001 0 0]/CharProcs<</a 5 0 R/b 6 0 R/c 7 0 R>>"
+                + "/Encoding<</Type/Encoding/Differences[97/a/b/c]>>/FirstChar 97/LastChar 99/Widths[1000 900 800]>>>>",
+                "BT /T3 50 Tf 20 100 Td (abc) Tj ET");
+        pdf.add(RawPdf.stream("", "1000 0 0 0 1000 1000 d1 " + crossing + "f"));
+        pdf.add(RawPdf.stream("", "900 0 0 0 1000 1000 d1 " + crossing + "W n 0 0 1000 1000 re f"));
+        pdf.add(RawPdf.stream("", "800 0 0 0 1000 1000 d1 100 100 500 500 re f"));
+        assertTimeoutPreemptively(Duration.ofSeconds(10), () -> {
+            try (TrueTypeFont ttf = convert(pdf)) {
+                assertEquals(1000, ttf.getAdvanceWidth(gid(ttf, 'a')));
+                assertEquals(900, ttf.getAdvanceWidth(gid(ttf, 'b')));
+                assertEquals(800, ttf.getAdvanceWidth(gid(ttf, 'c')));
+                Rectangle2D box = path(ttf, 'c').getBounds2D();
+                assertEquals(100, box.getMinX(), 1);
+                assertEquals(600, box.getMaxX(), 1);
+                assertEquals(100, box.getMinY(), 1);
+                assertEquals(600, box.getMaxY(), 1);
+            }
+        });
+    }
+
+    @Test
     void manyCrossingShapesAreUnitedWithinABoundedAmountOfWork() throws Exception {
         StringBuilder proc = new StringBuilder("1000 0 0 0 1000 1000 d1 ");
         for (int i = 0; i < 5000; i++) {

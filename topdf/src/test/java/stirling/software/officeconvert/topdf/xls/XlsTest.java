@@ -666,6 +666,29 @@ class XlsTest {
     }
 
     @Test
+    void aColourScaleWithAFormulaThresholdIsReportedAsLeftOut() throws Exception {
+        byte[] data = xls(wb -> {
+            HSSFSheet s = wb.createSheet("Scales");
+            for (int i = 0; i < 6; i++) {
+                s.createRow(i).createCell(0).setCellValue(i);
+            }
+            HSSFSheetConditionalFormatting cf = s.getSheetConditionalFormatting();
+            HSSFConditionalFormattingRule scale = cf.createConditionalFormattingColorScaleRule();
+            ColorScaleFormatting cs = scale.getColorScaleFormatting();
+            cs.setNumControlPoints(2);
+            cs.getThresholds()[0].setRangeType(ConditionalFormattingThreshold.RangeType.MIN);
+            cs.getThresholds()[1].setRangeType(ConditionalFormattingThreshold.RangeType.FORMULA);
+            cs.getThresholds()[1].setFormula("$A$6*2");
+            ((ExtendedColor) cs.getColors()[0]).setRGB(new byte[] {(byte) 255, 0, 0});
+            ((ExtendedColor) cs.getColors()[1]).setRGB(new byte[] {0, 0, (byte) 255});
+            cf.addConditionalFormatting(new CellRangeAddress[] {CellRangeAddress.valueOf("A1:A6")}, scale);
+        });
+        Converted out = convert("formula-scale.xls", data);
+        assertTrue(out.result().truncated(), out.warnings());
+        assertTrue(out.warnings().contains("conditional formatting"), out.warnings());
+    }
+
+    @Test
     void themeColoursOfExcel2007CellFormatsAreUsed() throws Exception {
         byte[] data = xls(wb -> {
             HSSFSheet s = wb.createSheet("Themed");

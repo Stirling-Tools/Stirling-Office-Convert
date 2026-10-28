@@ -108,7 +108,9 @@ final class ChartStream {
         int charts = 0;
         ChartRecords chart = null;
         int chartDepth = 0;
-        byte[] drawing = null;
+        ByteArrayOutputStream drawing = null;
+        int[] drawingAnchor = null;
+        boolean anchored = false;
         int[] anchor = null;
         boolean continuesDrawing = false;
         Record r;
@@ -149,17 +151,21 @@ final class ChartStream {
                 continue;
             }
             if (r instanceof DrawingRecord d) {
-                drawing = d.getRecordData();
+                drawing = new ByteArrayOutputStream();
+                drawing.writeBytes(d.getRecordData());
                 continuesDrawing = true;
+                anchored = false;
             } else if (r instanceof ContinueRecord c && continuesDrawing && drawing != null) {
-                ByteArrayOutputStream joined = new ByteArrayOutputStream();
-                joined.writeBytes(drawing);
-                joined.writeBytes(c.getData());
-                drawing = joined.toByteArray();
+                drawing.writeBytes(c.getData());
+                anchored = false;
             } else {
                 continuesDrawing = false;
                 if (r instanceof ObjRecord o && isChart(o)) {
-                    anchor = drawing == null ? null : lastAnchor(drawing);
+                    if (!anchored) {
+                        drawingAnchor = drawing == null ? null : lastAnchor(drawing.toByteArray());
+                        anchored = true;
+                    }
+                    anchor = drawingAnchor;
                 }
             }
         }

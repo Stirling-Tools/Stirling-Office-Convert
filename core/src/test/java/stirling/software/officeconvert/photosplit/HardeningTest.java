@@ -10,6 +10,7 @@ import java.awt.Graphics2D;
 import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.lang.management.ManagementFactory;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -18,8 +19,14 @@ import java.util.List;
 import java.util.concurrent.CancellationException;
 import java.util.zip.CRC32;
 
+import javax.imageio.IIOImage;
 import javax.imageio.ImageIO;
+import javax.imageio.ImageWriter;
+import javax.imageio.stream.ImageOutputStream;
 
+import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.pdmodel.PDPage;
+import org.apache.pdfbox.pdmodel.common.PDRectangle;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.api.function.Executable;
@@ -132,6 +139,73 @@ class HardeningTest {
         Files.write(input, file.toByteArray());
         List<Path> written = PhotoSplitter.split(input, dir.resolve("out"), PhotoSplitter.Options.defaults());
         assertEquals(2, written.size());
+    }
+
+    @Test
+    void sliverPdfPageOverThePixelLimitIsRefusedBeforeItIsDrawn() throws Exception {
+        Path pdf = dir.resolve("sliver.pdf");
+        try (PDDocument doc = new PDDocument()) {
+            doc.addPage(new PDPage(new PDRectangle(54_000_000f, 0.001f)));
+            doc.save(pdf.toFile());
+        }
+        long bytes = allocated(() -> {
+            IOException refused = assertThrows(IOException.class,
+                    () -> PhotoSplitter.split(pdf, dir.resolve("out"), PhotoSplitter.Options.defaults()));
+            assertTrue(refused.getMessage().contains("the limit is " + PhotoSplitter.MAX_PIXELS), refused.getMessage());
+        });
+        assertTrue(bytes < 64L << 20, "allocated " + (bytes >> 20) + " MB before refusing");
+    }
+
+    @Test
+    void corruptImageHeaderIsReportedAsAnIOException() throws Exception {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        ImageIO.write(scan(), "bmp", out);
+        byte[] bmp = out.toByteArray();
+        bmp[13] = (byte) 0xF4;
+        Path input = dir.resolve("broken.bmp");
+        Files.write(input, bmp);
+        assertThrows(IOException.class, () -> PhotoSplitter.split(input, dir.resolve("out"), PhotoSplitter.Options.defaults()));
+    }
+
+    @Test
+    void everyPageOfAMultiPageTiffIsSplitWithNumberingCarriedOn() throws Exception {
+        Path input = dir.resolve("album.tif");
+        ImageWriter writer = ImageIO.getImageWritersByFormatName("tiff").next();
+        try (ImageOutputStream out = ImageIO.createImageOutputStream(input.toFile())) {
+            writer.setOutput(out);
+            writer.prepareWriteSequence(null);
+            for (int page = 0; page < 3; page++) {
+                writer.writeToSequence(new IIOImage(scan(), null, null), null);
+            }
+            writer.endWriteSequence();
+        } finally {
+            writer.dispose();
+        }
+        List<Path> written = PhotoSplitter.split(input, dir.resolve("out"), PhotoSplitter.Options.defaults());
+        assertEquals(6, written.size());
+        for (int i = 0; i < 6; i++) {
+            assertEquals("album_" + (i + 1) + ".png", written.get(i).getFileName().toString());
+        }
+    }
+
+    @Test
+    void tiffWithMorePagesThanTheCapIsRefused() throws Exception {
+        Path input = dir.resolve("many.tif");
+        BufferedImage blank = new BufferedImage(8, 8, BufferedImage.TYPE_BYTE_GRAY);
+        ImageWriter writer = ImageIO.getImageWritersByFormatName("tiff").next();
+        try (ImageOutputStream out = ImageIO.createImageOutputStream(input.toFile())) {
+            writer.setOutput(out);
+            writer.prepareWriteSequence(null);
+            for (int page = 0; page <= PhotoSplitter.MAX_PAGES; page++) {
+                writer.writeToSequence(new IIOImage(blank, null, null), null);
+            }
+            writer.endWriteSequence();
+        } finally {
+            writer.dispose();
+        }
+        IOException refused = assertThrows(IOException.class,
+                () -> PhotoSplitter.split(input, dir.resolve("out"), PhotoSplitter.Options.defaults()));
+        assertTrue(refused.getMessage().contains("more than " + PhotoSplitter.MAX_PAGES + " pages"), refused.getMessage());
     }
 
     @Test

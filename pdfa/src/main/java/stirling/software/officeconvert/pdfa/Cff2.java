@@ -46,6 +46,9 @@ final class Cff2 {
             byte[][] fonts = index(offset(top, 0x0C24));
             localSubrs = new byte[fonts.length][][];
             defaultVsindex = new int[fonts.length];
+            Map<Long, Integer> privates = new HashMap<>();
+            Map<Integer, byte[][]> subrs = new HashMap<>();
+            long privateBytes = 0;
             for (int i = 0; i < fonts.length; i++) {
                 ByteBuffer f = ByteBuffer.wrap(fonts[i]);
                 Map<Integer, List<Number>> fd = dict(f, 0, fonts[i].length);
@@ -56,8 +59,19 @@ final class Cff2 {
                 }
                 int size = priv.get(0).intValue();
                 int start = priv.get(1).intValue();
+                Integer same = privates.putIfAbsent((long) start << 32 | size & 0xFFFFFFFFL, i);
+                if (same != null) {
+                    localSubrs[i] = localSubrs[same];
+                    defaultVsindex[i] = defaultVsindex[same];
+                    continue;
+                }
+                privateBytes += Math.max(0, Math.min(size, table.length - start));
+                if (privateBytes > table.length) {
+                    throw new IOException("The CFF2 private dictionaries overlap");
+                }
                 Map<Integer, List<Number>> p = dict(start, start + size);
-                localSubrs[i] = p.containsKey(19) ? index(start + p.get(19).get(0).intValue()) : new byte[0][];
+                localSubrs[i] = p.containsKey(19) ? subrs.computeIfAbsent(start + p.get(19).get(0).intValue(),
+                        this::index) : new byte[0][];
                 defaultVsindex[i] = p.containsKey(22) ? p.get(22).get(0).intValue() : 0;
             }
             fdSelect = top.containsKey(0x0C25) ? fdSelect(offset(top, 0x0C25), charStrings.length)
