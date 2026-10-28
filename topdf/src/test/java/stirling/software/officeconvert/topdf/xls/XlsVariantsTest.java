@@ -344,6 +344,7 @@ class XlsVariantsTest {
         XlsTest.Converted out = convert("broken.xls", withStream(stream));
         assertTrue(out.all().contains("Cells survive"), out.all());
         assertTrue(String.join(" ", out.result().warnings()).contains("damaged"), out.result().warnings().toString());
+        assertTrue(out.result().truncated(), "a dropped drawing marks the result partial");
     }
 
     @Test
@@ -357,6 +358,8 @@ class XlsVariantsTest {
         byte[] cut = java.util.Arrays.copyOf(stream, stream.length - 300);
         XlsTest.Converted out = convert("cut.xls", withStream(cut));
         assertTrue(out.all().contains("Line 1"), out.all());
+        assertTrue(out.warnings().contains("damaged"), out.warnings());
+        assertTrue(out.result().truncated(), "a cut workbook marks the result partial");
     }
 
     private static void iconsAndScales(org.apache.poi.ss.usermodel.Workbook wb) {

@@ -7,12 +7,13 @@ import java.io.InputStream;
 import java.io.InterruptedIOException;
 import java.io.OutputStream;
 import java.nio.file.Path;
-import java.util.Locale;
 
+import org.apache.poi.EncryptedDocumentException;
 import org.apache.poi.poifs.filesystem.DirectoryNode;
 import org.apache.poi.poifs.filesystem.POIFSFileSystem;
 
 import stirling.software.officeconvert.topdf.crypt.EncryptedWorkbook;
+import stirling.software.officeconvert.topdf.crypt.Passwords;
 import stirling.software.officeconvert.topdf.io.LegacyOffice;
 
 public final class XlsFile {
@@ -46,14 +47,22 @@ public final class XlsFile {
             throw e;
         } catch (IOException | RuntimeException e) {
             SheetPart.stopIfInterrupted();
-            boolean locked = e.getMessage() != null && e.getMessage().toLowerCase(Locale.ROOT)
-                    .contains("password");
-            byte[] stream = locked || counted.written > 0 ? null : Repair.salvage(source);
+            byte[] stream = refused(e) || counted.written > 0 ? null : Repair.salvage(source);
             if (stream == null) {
                 throw e;
             }
             return XlsPackage.writeStream(stream, counted);
         }
+    }
+
+    private static boolean refused(Throwable e) {
+        Throwable t = e;
+        for (int i = 0; t != null && i < 16; i++, t = t.getCause()) {
+            if (t instanceof Passwords.Refused || t instanceof EncryptedDocumentException) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static final class Counted extends FilterOutputStream {
