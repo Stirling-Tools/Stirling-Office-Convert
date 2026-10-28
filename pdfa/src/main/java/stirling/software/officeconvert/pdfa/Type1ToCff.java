@@ -145,9 +145,14 @@ final class Type1ToCff {
         ByteArrayOutputStream codes = new ByteArrayOutputStream();
         ByteArrayOutputStream sups = new ByteArrayOutputStream();
         int supCount = 0;
+        int nCodes = 0;
         for (Map.Entry<String, TreeSet<Integer>> e : encoded.entrySet()) {
-            codes.write(e.getValue().first());
-            for (int code : e.getValue().tailSet(e.getValue().first(), false)) {
+            boolean inFormat = nCodes < 255;
+            if (inFormat) {
+                codes.write(e.getValue().first());
+                nCodes++;
+            }
+            for (int code : inFormat ? e.getValue().tailSet(e.getValue().first(), false) : e.getValue()) {
                 int s = sid(e.getKey());
                 sups.write(code);
                 sups.write(s >> 8);
@@ -157,7 +162,7 @@ final class Type1ToCff {
         }
         ByteArrayOutputStream o = new ByteArrayOutputStream();
         o.write(supCount > 0 ? 0x80 : 0);
-        o.write(encoded.size());
+        o.write(nCodes);
         o.writeBytes(codes.toByteArray());
         if (supCount > 0) {
             o.write(supCount);

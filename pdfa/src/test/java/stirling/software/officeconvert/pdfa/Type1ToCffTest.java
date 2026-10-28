@@ -73,13 +73,13 @@ class Type1ToCffTest {
     private static final byte[] DIV = {12, 12};
     private static final byte[] SEAC = {12, 6};
 
-    private static final Map<String, byte[]> GLYPHS = glyphs();
+    private static final Map<String, byte[]> GLYPHS = glyphs(FILLERS);
 
     private static byte[] box(int w, int h) {
         return ops(w, 0, RLINETO, 0, h, RLINETO, -w, 0, RLINETO, CLOSEPATH);
     }
 
-    private static Map<String, byte[]> glyphs() {
+    private static Map<String, byte[]> glyphs(int fillers) {
         Map<String, byte[]> g = new LinkedHashMap<>();
         g.put(".notdef", ops(0, 250, HSBW, ENDCHAR));
         g.put("A", ops(20, 600, HSBW, 0, 0, RMOVETO, 280, 700, RLINETO, 280, -700, RLINETO, CLOSEPATH, ENDCHAR));
@@ -91,7 +91,7 @@ class Type1ToCffTest {
                 RLINETO, CLOSEPATH, ENDCHAR));
         g.put("O", ops(30, 650, HSBW, 0, 100, HSTEM, 50, 100, HSTEM, 0, 0, RMOVETO, box(590, 700), ENDCHAR));
         g.put("L", ops(30, 550, HSBW, 0, 0, RMOVETO, 0, 40, HSTEM, box(480, 680), ENDCHAR));
-        for (int i = 0; i < FILLERS; i++) {
+        for (int i = 0; i < fillers; i++) {
             byte[] body = new byte[0];
             for (int k = 0; k < 60; k++) {
                 body = ops(body, (k * 7 + i) % 90 - 45, (k * 13 + i) % 80 - 40, RLINETO);
@@ -102,6 +102,10 @@ class Type1ToCffTest {
     }
 
     private static Program program(String fontName) {
+        return program(fontName, GLYPHS);
+    }
+
+    private static Program program(String fontName, Map<String, byte[]> glyphs) {
         String clear = "%!PS-AdobeFont-1.0: " + fontName + " 001\n12 dict begin\n/FontInfo 4 dict dup begin"
                 + " /FullName (" + fontName + " Regular) readonly def /FamilyName (" + fontName + ") readonly def"
                 + " /ItalicAngle -12.5 def end readonly def\n/FontName /" + fontName + " def\n"
@@ -120,9 +124,9 @@ class Type1ToCffTest {
             plain.writeBytes(enc);
             plain.writeBytes(" NP\n".getBytes(StandardCharsets.ISO_8859_1));
         }
-        plain.writeBytes(("ND\n2 index /CharStrings " + GLYPHS.size() + " dict dup begin\n")
+        plain.writeBytes(("ND\n2 index /CharStrings " + glyphs.size() + " dict dup begin\n")
                 .getBytes(StandardCharsets.ISO_8859_1));
-        for (Map.Entry<String, byte[]> e : GLYPHS.entrySet()) {
+        for (Map.Entry<String, byte[]> e : glyphs.entrySet()) {
             byte[] enc = FontPrograms.charstring(e.getValue());
             plain.writeBytes(("/" + e.getKey() + " " + enc.length + " RD ").getBytes(StandardCharsets.ISO_8859_1));
             plain.writeBytes(enc);
@@ -233,6 +237,20 @@ class Type1ToCffTest {
         assertTrue(hasFixed(charString(cff, "I")), "the div result is kept as a fraction");
         assertFalse(hasStems(charString(cff, "O")), "overlapping stems need a hintmask");
         assertFalse(hasStems(charString(cff, "L")), "stems set after drawing are hint replacement");
+    }
+
+    @Test
+    void everyOneOf256CodesKeepsItsOwnGlyph() throws Exception {
+        Type1Font t1 = type1(program("TestWide", glyphs(300)));
+        Map<Integer, String> codes = new LinkedHashMap<>();
+        for (int c = 0; c < 256; c++) {
+            codes.put(c, "g" + c);
+        }
+        CFFType1Font cff = parse(Type1ToCff.convert(t1, codes, Set.of("g0", "g255")));
+        for (int c = 0; c < 256; c++) {
+            assertEquals("g" + c, cff.getEncoding().getName(c), "code " + c);
+        }
+        assertFalse(cff.getPath("g255").getBounds2D().isEmpty());
     }
 
     @Test
