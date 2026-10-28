@@ -24,7 +24,16 @@ public final class PdfFiles {
 
     public static PDDocument open(Path pdf, String password) throws IOException {
         JpxImageIO.install();
-        return load(pdf, password);
+        return load(pdf, password, true);
+    }
+
+    public static PDDocument openAsStored(Path pdf, String password) throws IOException {
+        JpxImageIO.install();
+        return load(pdf, password, false);
+    }
+
+    public static boolean decodedBrotli(PDDocument doc) {
+        return BrotliStreams.decoded(doc.getDocument());
     }
 
     public static String property(String value) {
@@ -32,7 +41,7 @@ public final class PdfFiles {
     }
 
     public static int pageCount(Path pdf, String password) {
-        try (PDDocument doc = load(pdf, password)) {
+        try (PDDocument doc = load(pdf, password, false)) {
             return doc.getNumberOfPages();
         } catch (IOException | RuntimeException e) {
             return 0;
@@ -85,11 +94,11 @@ public final class PdfFiles {
         return e;
     }
 
-    private static PDDocument load(Path pdf, String password) throws IOException {
+    private static PDDocument load(Path pdf, String password, boolean allStreams) throws IOException {
         RandomAccessRead source = new InterruptibleRead(new RandomAccessReadBufferedFile(pdf.toFile()));
         try {
             return new KeyedPdfParser(source, password == null ? "" : password,
-                    IOUtils.createTempFileOnlyStreamCache()).parse();
+                    IOUtils.createTempFileOnlyStreamCache(), allStreams).parse();
         } catch (NoClassDefFoundError e) {
             source.close();
             throw new IOException("This PDF is encrypted with a certificate, which needs BouncyCastle (bcpkix) on the classpath", e);

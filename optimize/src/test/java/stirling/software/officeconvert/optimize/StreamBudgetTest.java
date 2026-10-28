@@ -21,6 +21,8 @@ import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.cos.COSStream;
 import org.junit.jupiter.api.Test;
 
+import stirling.software.officeconvert.extract.BrotliBudget;
+
 class StreamBudgetTest {
 
     private static COSStream forbiddenInput() {
@@ -147,7 +149,7 @@ class StreamBudgetTest {
                 out.write(raw);
             }
             stream.setItem(COSName.FILTER, COSName.FLATE_DECODE);
-            Recoder.Job job = Recoder.prepare(stream, Recoder.Kind.OTHER, null);
+            Recoder.Job job = Recoder.prepare(stream, Recoder.Kind.OTHER, null, BrotliBudget.create());
             assertNotNull(job);
             assertNull(Recoder.plan(job, PdfOptimizer.Effort.FAST).data());
             Streamed.Result result = Streamed.recode(stream, Recoder.Kind.OTHER, null, 0, spill,
@@ -253,7 +255,7 @@ class StreamBudgetTest {
             filters.add(COSName.ASCII_HEX_DECODE);
             filters.add(COSName.FLATE_DECODE);
             stream.setItem(COSName.FILTER, filters);
-            Recoder.Job job = Recoder.prepare(stream, Recoder.Kind.OTHER, null);
+            Recoder.Job job = Recoder.prepare(stream, Recoder.Kind.OTHER, null, BrotliBudget.create());
             assertNull(Recoder.plan(job, PdfOptimizer.Effort.FAST, Rewrite.WINDOW_DECODED_BYTES).data());
             assertNotNull(Recoder.plan(job, PdfOptimizer.Effort.FAST).data());
             document.getDocumentCatalog().getCOSObject().setItem(payload, stream);

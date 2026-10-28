@@ -17,6 +17,8 @@ import org.apache.pdfbox.cos.COSDocument;
 import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.pdfparser.PDFStreamParser;
 
+import stirling.software.officeconvert.extract.BrotliBudget;
+
 final class Salvage {
 
     static final long MAX_BYTES = 256L << 20;
@@ -65,15 +67,6 @@ final class Salvage {
         return rebuild(in, out, true);
     }
 
-    static String unsupported(Path in) throws IOException {
-        if (Files.size(in) > MAX_BYTES) {
-            return null;
-        }
-        String text = new String(Files.readAllBytes(in), StandardCharsets.ISO_8859_1);
-        return text.contains("/BrotliDecode") ? "its objects are compressed with BrotliDecode, which is not supported"
-                : null;
-    }
-
     private static Rebuilt rebuild(Path in, Path out, boolean emptyOnly) throws IOException {
         stirling.software.officeconvert.extract.PdfFiles.stopIfInterrupted();
         if (Files.size(in) > MAX_BYTES) {
@@ -94,6 +87,7 @@ final class Salvage {
         List<Map.Entry<Integer, Integer>> byOffset = new ArrayList<>(offsets.entrySet());
         byOffset.sort(Map.Entry.comparingByValue());
         TreeMap<Integer, String> packed = new TreeMap<>();
+        BrotliBudget budget = BrotliBudget.create();
         for (int k = 0; k < byOffset.size(); k++) {
             if ((k & 1023) == 0) {
                 stirling.software.officeconvert.extract.PdfFiles.stopIfInterrupted();
@@ -107,7 +101,7 @@ final class Salvage {
             bodies.put(number, head);
             order.put(number, (long) start << 20);
             if (stream >= 0 && OBJECT_STREAM.matcher(head).find()) {
-                unpack(data, start, Math.min(end, data.length), head, packed, order);
+                unpack(data, start, Math.min(end, data.length), head, packed, order, budget);
             }
         }
         packed.keySet().removeAll(offsets.keySet());
@@ -228,17 +222,22 @@ final class Salvage {
         return new Rebuilt(pages.size(), packed.size());
     }
 
+    private static boolean only(String filter, String name) {
+        return filter.startsWith("/Filter/" + name) || filter.startsWith("/Filter /" + name)
+                || filter.matches("(?s)/Filter\\s*\\[\\s*/" + name + "\\s*\\].*");
+    }
+
     private static void unpack(byte[] data, int start, int end, String head, Map<Integer, String> packed,
-            Map<Integer, Long> order) {
+            Map<Integer, Long> order, BrotliBudget budget) {
         Matcher n = COUNT.matcher(head);
         Matcher first = FIRST.matcher(head);
         if (!n.find() || !first.find() || head.contains("/DecodeParms") || head.contains("/DP")) {
             return;
         }
         String filter = head.contains("/Filter") ? head.substring(head.indexOf("/Filter")) : "";
-        boolean flate = filter.startsWith("/Filter/FlateDecode") || filter.startsWith("/Filter /FlateDecode")
-                || filter.matches("(?s)/Filter\\s*\\[\\s*/FlateDecode\\s*\\].*");
-        if (!filter.isEmpty() && !flate) {
+        boolean flate = only(filter, "FlateDecode");
+        boolean brotli = only(filter, "BrotliDecode");
+        if (!filter.isEmpty() && !flate && !brotli) {
             return;
         }
         int keyword = indexOf(data, "stream", start + head.length(), end);
@@ -276,6 +275,13 @@ final class Salvage {
                 inflater.end();
             }
             decoded = plain.toByteArray();
+        } else if (brotli) {
+            try {
+                decoded = Filters.brotli(raw, MAX_UNPACKED, budget);
+            } catch (Filters.Undecodable e) {
+                return;
+            }
+            complete = true;
         } else {
             decoded = raw;
             complete = true;

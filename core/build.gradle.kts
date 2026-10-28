@@ -8,6 +8,7 @@ val pdfboxVersion = "3.0.8"
 dependencies {
     api("org.apache.pdfbox:pdfbox:$pdfboxVersion")
     implementation("commons-logging:commons-logging:1.4.0")
+    implementation("org.brotli:dec:0.1.2")
     runtimeOnly("org.apache.pdfbox:jbig2-imageio:3.0.5")
 
     testImplementation(platform("org.junit:junit-bom:5.13.4"))

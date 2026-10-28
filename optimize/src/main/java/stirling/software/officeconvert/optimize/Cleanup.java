@@ -14,6 +14,7 @@ import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.cos.COSObject;
 import org.apache.pdfbox.cos.COSStream;
 
+import stirling.software.officeconvert.extract.BrotliBudget;
 import stirling.software.officeconvert.extract.PdfFiles;
 
 final class Cleanup {
@@ -30,7 +31,7 @@ final class Cleanup {
     private Cleanup() {}
 
     static Map<Integer, List<Removal>> unusedResources(Roles roles, Resolver resolver, Source source, Index index,
-            Roles.Loc dr) throws IOException {
+            Roles.Loc dr, BrotliBudget budget) throws IOException {
         Map<List<Integer>, Content.Usage> scanned = new HashMap<>();
         Map<Roles.Loc, Set<COSName>> used = new HashMap<>();
         Map<Roles.Loc, Content.Category> categories = new HashMap<>();
@@ -45,7 +46,7 @@ final class Cleanup {
             List<Integer> streams = java.util.Arrays.stream(c.streams()).boxed().toList();
             Content.Usage usage = scanned.get(streams);
             if (usage == null) {
-                usage = scan(source, index, c.streams());
+                usage = scan(source, index, c.streams(), budget);
                 scanned.put(streams, usage);
             }
             Resolver.Found r = c.resources() == null ? null : resolver.find(c.resources());
@@ -138,14 +139,15 @@ final class Cleanup {
         }
     }
 
-    private static Content.Usage scan(Source source, Index index, int[] streams) throws IOException {
+    private static Content.Usage scan(Source source, Index index, int[] streams, BrotliBudget budget)
+            throws IOException {
         if (streams.length == 1) {
-            byte[] data = decoded(source.load(index.key(streams[0])));
+            byte[] data = decoded(source.load(index.key(streams[0])), budget);
             return data == null ? Content.Usage.unknown() : Content.scan(data);
         }
         Bytes joined = new Bytes(1 << 12);
         for (int stream : streams) {
-            byte[] data = decoded(source.load(index.key(stream)));
+            byte[] data = decoded(source.load(index.key(stream)), budget);
             if (data == null || joined.size() + (long) data.length + 1 > Recoder.MAX_DECODED_BYTES) {
                 return Content.Usage.unknown();
             }
@@ -155,12 +157,12 @@ final class Cleanup {
         return Content.scan(joined.toByteArray());
     }
 
-    private static byte[] decoded(COSBase s) {
+    private static byte[] decoded(COSBase s, BrotliBudget budget) {
         if (!(s instanceof COSStream stream)) {
             return null;
         }
         try {
-            return Recoder.decoded(stream);
+            return Recoder.decoded(stream, budget);
         } catch (IOException | RuntimeException e) {
             return null;
         }
