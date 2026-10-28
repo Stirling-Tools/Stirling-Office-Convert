@@ -19,6 +19,8 @@ import org.apache.pdfbox.filter.Filter;
 import org.apache.pdfbox.filter.FilterFactory;
 import org.junit.jupiter.api.Test;
 
+import stirling.software.officeconvert.extract.BrotliBudget;
+
 class SyntaxTest {
 
     @Test
@@ -100,7 +102,8 @@ class SyntaxTest {
             Filter filter = FilterFactory.INSTANCE.getFilter(f);
             ByteArrayOutputStream encoded = new ByteArrayOutputStream();
             filter.encode(new ByteArrayInputStream(data), encoded, new COSDictionary(), 0);
-            assertArrayEquals(data, Filters.decode(f, null, encoded.toByteArray(), 1 << 20), f.getName());
+            assertArrayEquals(data, Filters.decode(f, null, encoded.toByteArray(), 1 << 20,
+                    BrotliBudget.create()), f.getName());
         }
     }
 
@@ -108,21 +111,25 @@ class SyntaxTest {
     void decodingStopsAtTheSizeLimit() throws IOException {
         byte[] zeros = new byte[1 << 20];
         byte[] packed = Deflate.zlib(zeros, 9, 0);
-        assertThrows(Filters.Undecodable.class, () -> Filters.decode(COSName.FLATE_DECODE, null, packed, 1000));
+        assertThrows(Filters.Undecodable.class, () -> Filters.decode(COSName.FLATE_DECODE, null, packed, 1000,
+                BrotliBudget.create()));
     }
 
     @Test
     void textFiltersStopAtTheSizeLimit() {
         byte[] zeros = "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz~>"
                 .getBytes(StandardCharsets.US_ASCII);
-        assertThrows(Filters.TooLarge.class, () -> Filters.decode(COSName.ASCII85_DECODE, null, zeros, 100));
+        assertThrows(Filters.TooLarge.class, () -> Filters.decode(COSName.ASCII85_DECODE, null, zeros, 100,
+                BrotliBudget.create()));
         byte[] groups = "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!~>"
                 .getBytes(StandardCharsets.US_ASCII);
-        assertThrows(Filters.TooLarge.class, () -> Filters.decode(COSName.ASCII85_DECODE, null, groups, 40));
+        assertThrows(Filters.TooLarge.class, () -> Filters.decode(COSName.ASCII85_DECODE, null, groups, 40,
+                BrotliBudget.create()));
         byte[] hex = "00112233445566778899".getBytes(StandardCharsets.US_ASCII);
-        assertThrows(Filters.TooLarge.class, () -> Filters.decode(COSName.ASCII_HEX_DECODE, null, hex, 4));
+        assertThrows(Filters.TooLarge.class, () -> Filters.decode(COSName.ASCII_HEX_DECODE, null, hex, 4,
+                BrotliBudget.create()));
         assertArrayEquals(new byte[400], assertDoesNotThrow(
-                () -> Filters.decode(COSName.ASCII85_DECODE, null, zeros, 400)));
+                () -> Filters.decode(COSName.ASCII85_DECODE, null, zeros, 400, BrotliBudget.create())));
     }
 
     @Test
