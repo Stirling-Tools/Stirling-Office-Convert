@@ -281,7 +281,7 @@ public final class PdfOptimizer {
                 try {
                     Result r;
                     try (PDDocument doc = PdfFiles.open(saved, options.password())) {
-                        r = Rewrite.run(doc, out, options, -1).result();
+                        r = Rewrite.run(doc, out, options, size).result();
                     }
                     if (r.rewritten()) {
                         return r;

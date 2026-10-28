@@ -133,6 +133,44 @@ class OptimizerApiTest {
         }
     }
 
+    private long savedSize(PDDocument document) throws IOException {
+        Path saved = dir.resolve("saved.pdf");
+        PdfOptimizer.save(document, saved, Long.MAX_VALUE);
+        PdfOptimizer.save(document, saved, Long.MAX_VALUE);
+        return Files.size(saved);
+    }
+
+    @Test
+    void theDocumentApiReportsTheSavedInputSize() throws Exception {
+        try (PDDocument document = new PDDocument()) {
+            for (int i = 0; i < 3; i++) {
+                PDPage page = new PDPage();
+                document.addPage(page);
+                try (var cs = new org.apache.pdfbox.pdmodel.PDPageContentStream(document, page)) {
+                    cs.addRect(10.000f, 10.000f, 100.500f, 100.250f);
+                    cs.fill();
+                }
+            }
+            long saved = savedSize(document);
+            ByteArrayOutputStream output = new ByteArrayOutputStream();
+            PdfOptimizer.Result r = PdfOptimizer.optimize(document, output, PdfOptimizer.Options.defaults());
+            assertTrue(r.rewritten());
+            assertEquals(saved, r.inputBytes());
+            assertEquals(output.size(), r.outputBytes());
+        }
+        RawPdf raw = RawPdf.page("", "0    0 1 rg 10 10 50 50 re f");
+        raw.set(1, "<</Type/Catalog/Pages 2 0 R/AcroForm<</Fields[5 0 R]/SigFlags 3>>>>");
+        raw.add("<</FT/Sig/T(Signature1)/V 6 0 R/Rect[0 0 0 0]/Subtype/Widget/Type/Annot>>");
+        raw.add("<</Type/Sig/Filter/Adobe.PPKLite/ByteRange[0 10 20 10]/Contents<00>>>");
+        try (PDDocument signed = Loader.loadPDF(raw.write(dir, "signed").toFile())) {
+            ByteArrayOutputStream output = new ByteArrayOutputStream();
+            PdfOptimizer.Result r = PdfOptimizer.optimize(signed, output, PdfOptimizer.Options.defaults());
+            assertFalse(r.rewritten());
+            assertEquals(output.size(), r.inputBytes());
+            assertEquals(output.size(), r.outputBytes());
+        }
+    }
+
     @Test
     void salvageObservesCancellationBeforeScanning() throws Exception {
         Path input = RawPdf.page("", "").write(dir, "cancel-salvage");
