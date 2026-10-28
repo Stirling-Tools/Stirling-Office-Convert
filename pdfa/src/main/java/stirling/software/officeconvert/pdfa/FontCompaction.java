@@ -199,6 +199,15 @@ final class FontCompaction {
         COSStream file = COSName.FONT_FILE.equals(key)
                 ? OutlineCompaction.type1(doc, program, loaded, usage.codes())
                 : OutlineCompaction.cff(doc, program, loaded, usage.codes());
+        COSName target = key;
+        if (COSName.FONT_FILE.equals(key)) {
+            COSStream cff = OutlineCompaction.type1ToCff(doc, loaded, usage.codes());
+            long best = file == null ? program.getLength() - MIN_SAVING : file.getLength();
+            if (cff != null && cff.getLength() <= best) {
+                file = cff;
+                target = COSName.FONT_FILE3;
+            }
+        }
         if (file == null) {
             return;
         }
@@ -206,7 +215,10 @@ final class FontCompaction {
                 String.valueOf(loaded.get(0).getName()).hashCode()));
         for (PDFont f : loaded) {
             COSDictionary fd = descriptor(f);
-            fd.setItem(key, file);
+            if (target != key) {
+                fd.removeItem(key);
+            }
+            fd.setItem(target, file);
             retag(f, fd, tag);
         }
     }
