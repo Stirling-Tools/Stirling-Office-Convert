@@ -312,15 +312,25 @@ public final class LineArt {
         int context = Binarizer.context(options, w, h);
         int rows = Source.bandRows(w, h, context, budget);
         long band = Source.bandBytes(w, h, context, rows);
+        long kept = 0;
+        if (options.method() == Method.EDGES && rows < h && Binarizer.edgeBytes(w, h) <= budget / 4) {
+            int fewer = Source.bandRows(w, h, context, budget - Binarizer.edgeBytes(w, h));
+            long smaller = Source.bandBytes(w, h, context, fewer);
+            if (smaller + Binarizer.edgeBytes(w, h) <= budget) {
+                rows = fewer;
+                band = smaller;
+                kept = Binarizer.edgeBytes(w, h);
+            }
+        }
         if (band > budget) {
             warnings.add("Page " + f.page() + ": a " + w + "x" + h
                     + " image has rows too wide to convert in the memory available and was left as it was");
             return null;
         }
         Source source = Source.of(image, f.resources(), matte);
-        Admission.Ticket ticket = Admission.jvm().enter(pixels / 8 * 4 + band);
+        Admission.Ticket ticket = Admission.jvm().enter(pixels / 8 * 4 + band + kept);
         try {
-            Bitmap bitmap = Binarizer.binarize(source, options, rows);
+            Bitmap bitmap = Binarizer.binarize(source, options, rows, rows >= h || kept > 0);
             Codecs.Encoded encoded = Codecs.encode(bitmap, options.codec());
             if (alreadyBilevel && encoded.data().length >= stream.getLength()) {
                 return null;

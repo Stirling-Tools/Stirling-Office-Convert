@@ -47,6 +47,10 @@ final class Binarizer {
     }
 
     static Bitmap binarize(Source source, LineArt.Options options, int rows) throws IOException {
+        return binarize(source, options, rows, rows >= source.height);
+    }
+
+    static Bitmap binarize(Source source, LineArt.Options options, int rows, boolean keepEdges) throws IOException {
         LineArt.checkpoint();
         int w = source.width;
         int h = source.height;
@@ -92,7 +96,7 @@ final class Binarizer {
                 scan(greys, w, h, window / 2,
                         (buffer, first, from, to) -> sauvola(buffer, first, w, h, from, to, window, options.k(), out));
             }
-            case EDGES -> edges(greys, w, h, options.edgeLevel(), options.threshold(), out);
+            case EDGES -> edges(greys, w, h, options.edgeLevel(), options.threshold(), out, keepEdges);
         }
         return options.inkColour() ? out.withInk(meanInk(source, rows, out)) : out;
     }
@@ -221,7 +225,8 @@ final class Binarizer {
         return table;
     }
 
-    private static void edges(Greys greys, int w, int h, int level, double threshold, Bitmap out) throws IOException {
+    private static void edges(Greys greys, int w, int h, int level, double threshold, Bitmap out, boolean keep)
+            throws IOException {
         float[] line = new float[w];
         double[][] ring = new double[2 * level + 1][];
         int[] ringRow = new int[2 * level + 1];
@@ -234,14 +239,25 @@ final class Binarizer {
                     band.accept(y, line, 1);
                 }
             });
-        }, w, h, threshold, out);
+        }, w, h, threshold, out, keep);
     }
 
     static void thresholdEdges(Greys lines, int w, int h, double threshold, Bitmap out) throws IOException {
+        thresholdEdges(lines, w, h, threshold, out, false);
+    }
+
+    static void thresholdEdges(Greys lines, int w, int h, double threshold, Bitmap out, boolean keep)
+            throws IOException {
         double[] histogram = new double[65536];
+        char[] bins = keep ? new char[Math.multiplyExact(w, h)] : null;
         lines.each((y, line, rows) -> {
+            int at = y * w;
             for (float f : line) {
-                histogram[bin(f)]++;
+                int j = bin(f);
+                histogram[j]++;
+                if (bins != null && at < bins.length) {
+                    bins[at++] = (char) j;
+                }
             }
         });
         double n = (double) w * h;
@@ -264,24 +280,46 @@ final class Binarizer {
             }
         }
         double cut = threshold / 100 * QUANTUM;
-        double gamma = white == black ? 0 : 1.0 / (white - black);
-        int b = black;
-        int wh = white;
+        if (white == black) {
+            lines.each((y, line, rows) -> {
+                for (int x = 0; x < w; x++) {
+                    if (line[x] < cut) {
+                        out.set(x, y);
+                    }
+                }
+            });
+            return;
+        }
+        double gamma = 1.0 / (white - black);
+        boolean[] ink = new boolean[65536];
+        for (int j = 0; j < ink.length; j++) {
+            double value = j < black ? 0 : j > white ? QUANTUM
+                    : (float) Math.clamp(QUANTUM * gamma * (j - black), 0, QUANTUM);
+            ink[j] = value < cut;
+        }
+        if (bins != null) {
+            for (int y = 0; y < h; y++) {
+                LineArt.checkpoint();
+                int row = y * w;
+                for (int x = 0; x < w; x++) {
+                    if (ink[bins[row + x]]) {
+                        out.set(x, y);
+                    }
+                }
+            }
+            return;
+        }
         lines.each((y, line, rows) -> {
             for (int x = 0; x < w; x++) {
-                float f = line[x];
-                double value;
-                if (b == wh) {
-                    value = f;
-                } else {
-                    int j = bin(f);
-                    value = j < b ? 0 : j > wh ? QUANTUM : (float) Math.clamp(QUANTUM * gamma * (j - b), 0, QUANTUM);
-                }
-                if (value < cut) {
+                if (ink[bin(line[x])]) {
                     out.set(x, y);
                 }
             }
         });
+    }
+
+    static long edgeBytes(int w, int h) {
+        return 2L * w * h;
     }
 
     private static int bin(float f) {

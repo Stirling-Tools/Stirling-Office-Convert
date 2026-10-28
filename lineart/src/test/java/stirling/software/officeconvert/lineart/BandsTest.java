@@ -61,6 +61,34 @@ class BandsTest {
     }
 
     @Test
+    void keptEdgeBinsGiveTheSameBitmapAsASecondPass() throws IOException {
+        BufferedImage flat = new BufferedImage(40, 30, BufferedImage.TYPE_INT_RGB);
+        for (BufferedImage picture : new BufferedImage[] {Pictures.scan(211, 157, 3, 0.5), flat}) {
+            for (int level = 1; level <= 3; level++) {
+                for (double threshold : new double[] {0, 50, 100}) {
+                    LineArt.Options options = LineArt.Options.imageMagickEdges(level).threshold(threshold);
+                    for (int rows : new int[] {2, 7, picture.getHeight()}) {
+                        Source source = Source.of(picture);
+                        Source banded = new Source(picture.getWidth(), picture.getHeight()) {
+                            @Override
+                            void bands(int n, boolean keyed, Band band) throws IOException {
+                                for (int y = 0; y < height; y += n) {
+                                    band.accept(y, picture.getSubimage(0, y, width, Math.min(n, height - y)));
+                                }
+                            }
+                        };
+                        Bitmap twice = Binarizer.binarize(rows == picture.getHeight() ? source : banded, options, rows,
+                                false);
+                        Bitmap once = Binarizer.binarize(rows == picture.getHeight() ? source : banded, options, rows,
+                                true);
+                        assertEquals(twice, once, level + " " + threshold + " " + rows);
+                    }
+                }
+            }
+        }
+    }
+
+    @Test
     void bandsFitTheBudgetUnlessEvenTheSmallestBandIsTooWide() {
         long budget = (long) Source.BYTES_PER_PIXEL << 22;
         for (int w : new int[] {1, 211, 20_000, 1_000_000, 2_000_000, 100_000_000}) {
