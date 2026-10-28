@@ -107,6 +107,48 @@ class PasswordTest {
         assertEquals(Passwords.WRONG, refused("rc4wrong.xls", locked, "nope").getMessage());
     }
 
+    private static byte[] withFilePass(java.util.function.BiConsumer<byte[], Integer> damage) throws Exception {
+        byte[] plain;
+        try (HSSFWorkbook wb = new HSSFWorkbook(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+            wb.createSheet("Vault").createRow(0).createCell(0).setCellValue("Never shown");
+            wb.write(out);
+            plain = out.toByteArray();
+        }
+        byte[] stream;
+        try (POIFSFileSystem fs = new POIFSFileSystem(new ByteArrayInputStream(legacyEncrypt(plain, "pass")))) {
+            stream = fs.createDocumentInputStream("Workbook").readAllBytes();
+        }
+        int at = 0;
+        while ((stream[at] & 0xFF | (stream[at + 1] & 0xFF) << 8) != 0x2F) {
+            at += 4 + (stream[at + 2] & 0xFF | (stream[at + 3] & 0xFF) << 8);
+        }
+        damage.accept(stream, at);
+        ByteArrayOutputStream file = new ByteArrayOutputStream();
+        try (POIFSFileSystem fs = new POIFSFileSystem()) {
+            fs.createDocument(new ByteArrayInputStream(stream), "Workbook");
+            fs.writeFilesystem(file);
+        }
+        return file.toByteArray();
+    }
+
+    @Test
+    void anExcelWorkbookWithAnUnsupportedEncryptionKeepsItsRefusal() throws Exception {
+        IOException e = refused("unsupported.xls", withFilePass((s, at) -> s[at + 4] = 7), null);
+        assertTrue(e instanceof Passwords.Refused, e.getClass() + ": " + e.getMessage());
+        assertFalse(e.getMessage().contains("damaged"), e.getMessage());
+    }
+
+    @Test
+    void anExcelWorkbookWithAnUnknownEncryptionVersionKeepsThatReason() throws Exception {
+        IOException e = refused("unreadable.xls", withFilePass((s, at) -> {
+            for (int i = at + 6; i < at + 12; i++) {
+                s[i] = (byte) 0xFF;
+            }
+        }), null);
+        assertTrue(e instanceof Passwords.Refused, e.getClass() + ": " + e.getMessage());
+        assertFalse(e.getMessage().equals(Passwords.PROTECTED), e.getMessage());
+    }
+
     @Test
     void aWorkbookLockedOnlyWithExcelsBuiltInPasswordNeedsNone() throws Exception {
         byte[] plain;

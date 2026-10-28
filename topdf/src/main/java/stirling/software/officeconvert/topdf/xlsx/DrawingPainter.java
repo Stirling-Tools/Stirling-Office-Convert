@@ -39,6 +39,10 @@ final class DrawingPainter {
 
     private final double mirror;
 
+    private final BandOffsets rowOffsets;
+
+    private final BandOffsets colOffsets;
+
     // A mirror width above zero places each drawing mirrored across it, as a right-to-left sheet shows it
     DrawingPainter(Grid grid, PdfCanvas canvas, Band rows, Band cols, double originX, double originY,
             double mirror) {
@@ -47,6 +51,8 @@ final class DrawingPainter {
         this.canvas = canvas;
         this.rows = rows;
         this.cols = cols;
+        this.rowOffsets = new BandOffsets(rows);
+        this.colOffsets = new BandOffsets(cols);
         this.originX = originX;
         this.originY = originY;
         PrintMetrics m = grid.book().metrics();
@@ -60,8 +66,9 @@ final class DrawingPainter {
             if (r == null || !(r[2] > 0 || r[3] > 0)) {
                 continue;
             }
-            if (r[0] > cols.length() + originX + 2 || r[1] > rows.length() + originY + 2 || r[0] + r[2] < originX - 2
-                    || r[1] + r[3] < originY - 2) {
+            double reach = item.rotation() % 180 == 0 ? 0 : Math.max(r[2], r[3]) / 2;
+            if (r[0] - reach > cols.length() + originX + 2 || r[1] - reach > rows.length() + originY + 2
+                    || r[0] + r[2] + reach < originX - 2 || r[1] + r[3] + reach < originY - 2) {
                 continue;
             }
             if (mirror > 0) {
@@ -124,12 +131,12 @@ final class DrawingPainter {
 
     private double x(Drawings.Anchor a) {
         double w = grid.columnWidth(a.col());
-        return originX + cols.start(a.col()) + Math.min(a.colOff() * colScale, w);
+        return originX + colOffsets.start(a.col()) + Math.min(a.colOff() * colScale, w);
     }
 
     private double y(Drawings.Anchor a) {
         double h = grid.rowHeight(a.row());
-        return originY + rows.start(a.row()) + Math.min(a.rowOff() * grid.rowFactor(), h);
+        return originY + rowOffsets.start(a.row()) + Math.min(a.rowOff() * grid.rowFactor(), h);
     }
 
     private void picture(Drawings.Item item, double[] r) throws IOException {
