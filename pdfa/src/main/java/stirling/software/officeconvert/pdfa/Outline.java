@@ -12,6 +12,8 @@ final class Outline {
 
     private static final int MAX_POINTS = 30_000;
 
+    private static final int LIMIT = 16_383;
+
     private record Point(int x, int y, boolean on) {}
 
     private Outline() {}
@@ -200,7 +202,7 @@ final class Outline {
     }
 
     private static Point pt(double x, double y, boolean on) {
-        return new Point((int) Math.round(Math.max(-32_768, Math.min(32_767, x))),
-                (int) Math.round(Math.max(-32_768, Math.min(32_767, y))), on);
+        return new Point((int) Math.round(Math.max(-LIMIT, Math.min(LIMIT, x))),
+                (int) Math.round(Math.max(-LIMIT, Math.min(LIMIT, y))), on);
     }
 }

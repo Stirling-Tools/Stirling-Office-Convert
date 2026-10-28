@@ -135,6 +135,14 @@ final class FontPrograms {
     }
 
     static byte[] cff(String fontName) {
+        return cff(fontName, new byte[0], false);
+    }
+
+    static byte[] cff(String fontName, byte[] topExtra, boolean hinted) {
+        return cff(fontName, topExtra, hinted, 0);
+    }
+
+    static byte[] cff(String fontName, byte[] topExtra, boolean hinted, int headerPadding) {
         int n = NAMES.size() + 1;
         byte[][] glyphs = new byte[n][];
         glyphs[0] = concat(num2(250), new byte[] {14});
@@ -151,7 +159,9 @@ final class FontPrograms {
                     int dx = r.nextInt(400) - 200;
                     noise.writeBytes(concat(num2(dx), num2(r.nextInt(400) - 200), new byte[] {5}));
                 }
-                glyphs[i] = concat(num2(width(name)), num2(50), num2(0), new byte[] {21}, num2(300), num2(0),
+                byte[] hints = hinted ? concat(num2(0), num2(20), num2(680), num2(20), new byte[] {18}, num2(50),
+                        num2(30), new byte[] {19, (byte) 0xC0}) : new byte[0];
+                glyphs[i] = concat(num2(width(name)), hints, num2(50), num2(0), new byte[] {21}, num2(300), num2(0),
                         new byte[] {5}, num2(0), num2(700), new byte[] {5}, num2(-300), num2(0), new byte[] {5},
                         noise.toByteArray(), new byte[] {14});
             }
@@ -168,13 +178,40 @@ final class FontPrograms {
         }
         byte[] charstrings = index(glyphs);
         byte[] priv = concat(num2(0), new byte[] {20}, num2(0), new byte[] {21});
-        byte[] probe = index(new byte[][] {top(0, 0, 0, 0)});
-        int charsetAt = 4 + name.length + probe.length + strings.length + gsubrs.length;
+        byte[] probe = index(new byte[][] {concat(topExtra, top(0, 0, 0, 0))});
+        int charsetAt = 4 + headerPadding + name.length + probe.length + strings.length + gsubrs.length;
         int charstringsAt = charsetAt + charset.size();
         int privateAt = charstringsAt + charstrings.length;
-        byte[] topIndex = index(new byte[][] {top(charsetAt, charstringsAt, priv.length, privateAt)});
-        return concat(new byte[] {1, 0, 4, 4}, name, topIndex, strings, gsubrs, charset.toByteArray(), charstrings,
-                priv);
+        byte[] topIndex = index(new byte[][] {concat(topExtra, top(charsetAt, charstringsAt, priv.length, privateAt))});
+        return concat(new byte[] {1, 0, (byte) (4 + headerPadding), 4}, new byte[headerPadding], name, topIndex,
+                strings, gsubrs, charset.toByteArray(), charstrings, priv);
+    }
+
+    static byte[] real(double v) {
+        String t = Double.toString(v).replace("E", "e");
+        ByteArrayOutputStream nibbles = new ByteArrayOutputStream();
+        for (int i = 0; i < t.length(); i++) {
+            char c = t.charAt(i);
+            if (c >= '0' && c <= '9') {
+                nibbles.write(c - '0');
+            } else if (c == '.') {
+                nibbles.write(0xA);
+            } else if (c == '-' && i > 0) {
+                nibbles.write(0xC);
+            } else if (c == '-') {
+                nibbles.write(0xE);
+            } else if (c == 'e' && i + 1 < t.length() && t.charAt(i + 1) != '-') {
+                nibbles.write(0xB);
+            }
+        }
+        nibbles.write(0xF);
+        byte[] n = nibbles.toByteArray();
+        ByteArrayOutputStream o = new ByteArrayOutputStream();
+        o.write(30);
+        for (int i = 0; i < n.length; i += 2) {
+            o.write(n[i] << 4 | (i + 1 < n.length ? n[i + 1] : 0xF));
+        }
+        return o.toByteArray();
     }
 
     private static byte[] top(int charset, int charstrings, int privateSize, int privateAt) {
