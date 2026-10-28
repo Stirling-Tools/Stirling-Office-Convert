@@ -221,6 +221,12 @@ public final class LineArt {
                 encoded = convert(document, f, options, warnings);
             } catch (IOException | RuntimeException e) {
                 rethrowCancelled(e);
+                if (tooLarge(e)) {
+                    warnings.add("Page " + f.page() + ": a " + stream.getInt(COSName.WIDTH) + "x"
+                            + stream.getInt(COSName.HEIGHT)
+                            + " image decodes to far more data than its size needs and was left as it was");
+                    continue;
+                }
                 warnings.add("Page " + f.page() + ": an image could not be read and was left as it was (" + e.getMessage() + ")");
                 continue;
             }
@@ -257,6 +263,16 @@ public final class LineArt {
         } catch (IOException stopped) {
             throw new UncheckedIOException(stopped);
         }
+    }
+
+    private static boolean tooLarge(Exception error) {
+        Throwable cause = error;
+        for (int depth = 0; cause != null && depth < 32; depth++, cause = cause.getCause()) {
+            if (cause instanceof TooLarge) {
+                return true;
+            }
+        }
+        return false;
     }
 
     static void rethrowCancelled(Exception error) throws IOException {

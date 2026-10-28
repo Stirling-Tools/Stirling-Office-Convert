@@ -7,8 +7,12 @@ final class CubicWarp {
     private CubicWarp() {}
 
     static ScanImage rotate(ScanImage src, double degrees) {
-        int w = src.width;
-        int h = src.height;
+        return ScanImage.copy(rotated(src, degrees));
+    }
+
+    static Picture rotated(Picture src, double degrees) {
+        int w = src.width();
+        int h = src.height();
         double a = degrees * Math.PI / 180;
         double alpha = Math.cos(a);
         double beta = Math.sin(a);
@@ -16,38 +20,61 @@ final class CubicWarp {
         float cy = h / 2;
         double[] m = {alpha, beta, (1 - alpha) * cx - beta * cy, -beta, alpha, beta * cx + (1 - alpha) * cy};
         invert(m);
-        int[] out = new int[w * h];
-        double[] wx = new double[4];
-        double[] wy = new double[4];
-        for (int y = 0; y < h; y++) {
-            PhotoSplitter.checkpoint();
-            for (int x = 0; x < w; x++) {
-                double sx = m[0] * x + m[1] * y + m[2];
-                double sy = m[3] * x + m[4] * y + m[5];
-                out[y * w + x] = sample(src, sx, sy, wx, wy);
-            }
-        }
-        return new ScanImage(w, h, out);
+        return new Rotated(src, m);
     }
 
-    static int sample(ScanImage src, double sx, double sy, double[] wx, double[] wy) {
+    private static final class Rotated implements Picture {
+
+        private final Picture src;
+        private final double[] m;
+        private final double[] wx = new double[4];
+        private final double[] wy = new double[4];
+
+        Rotated(Picture src, double[] m) {
+            this.src = src;
+            this.m = m;
+        }
+
+        @Override
+        public int width() {
+            return src.width();
+        }
+
+        @Override
+        public int height() {
+            return src.height();
+        }
+
+        @Override
+        public boolean gray() {
+            return false;
+        }
+
+        @Override
+        public int rgb(int x, int y) {
+            double sx = m[0] * x + m[1] * y + m[2];
+            double sy = m[3] * x + m[4] * y + m[5];
+            return sample(src, sx, sy, wx, wy);
+        }
+    }
+
+    private static int sample(Picture src, double sx, double sy, double[] wx, double[] wy) {
         int bx = (int) Math.floor(sx);
         int by = (int) Math.floor(sy);
         weights(sx - bx, wx);
         weights(sy - by, wy);
-        int w = src.width;
-        int h = src.height;
-        int[] in = src.rgb;
+        int w = src.width();
+        int h = src.height();
         double r = 0;
         double g = 0;
         double b = 0;
         for (int i = 0; i < 4; i++) {
-            int row = Math.clamp(by - 1 + i, 0, h - 1) * w;
+            int row = Math.clamp(by - 1 + i, 0, h - 1);
             double rr = 0;
             double gg = 0;
             double bb = 0;
             for (int j = 0; j < 4; j++) {
-                int p = in[row + Math.clamp(bx - 1 + j, 0, w - 1)];
+                int p = src.rgb(Math.clamp(bx - 1 + j, 0, w - 1), row);
                 rr += (p >> 16 & 0xFF) * wx[j];
                 gg += (p >> 8 & 0xFF) * wx[j];
                 bb += (p & 0xFF) * wx[j];
