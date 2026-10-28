@@ -791,14 +791,6 @@ A program that cannot be read fails with an `IOException`, and so does one whose
 tokens for a glyph, 64 nested subroutine calls or 2^27 tokens for the font, or whose converted glyphs need more than
 eight times the program's size (at least 16 MB).
 
-## Line art
-
-The `lineart` module (`stirling-office-convert-lineart`) turns every picture in a PDF into a 1-bit image, in place:
-`LineArt.convert(in, out, LineArt.Options.defaults())` or `--line-art sauvola|otsu|fixed|edges` on the command line
-(`in.lineart.pdf` beside the input unless `-o` names it). `LineArt.Options.imageMagickEdges(level)` reproduces
-Stirling-PDF's ImageMagick line art step pixel for pixel. Methods, options, what is kept in the PDF and the
-benchmark are in [line art](line-art.md).
-
 ## How it works
 
 Two passes over the pages:
@@ -877,8 +869,7 @@ The cache belongs to the JDK build that made it; the JVM ignores a cache from an
 
 Published to Maven Central as `com.stirling:stirling-office-convert`, `com.stirling:stirling-office-convert-legacy`
 (the `.ppt` writer), `com.stirling:stirling-office-convert-topdf` (Office to PDF) and
-`com.stirling:stirling-office-convert-pdfa` (PDF to PDF/A) and `com.stirling:stirling-office-convert-lineart`
-(bilevel PDF images), signed, the same way as JPDFium:
+`com.stirling:stirling-office-convert-pdfa` (PDF to PDF/A), signed, the same way as JPDFium:
 
 - A `v1.2.3` tag runs `.github/workflows/release.yml`: build, test, then `publishAllToCentralPortal`, which uploads to
   the Central Portal staging API and finalizes the deployment for review at
