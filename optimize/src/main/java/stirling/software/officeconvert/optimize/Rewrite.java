@@ -112,15 +112,6 @@ final class Rewrite {
             }
             Resolver resolver = new Resolver(source, index);
             roles.resolve(resolver, root);
-            if (encryption != null) {
-                for (int s : roles.content) {
-                    COSBase b = source.load(index.key(s));
-                    if (b instanceof COSStream st && Encryption.usesCryptFilter(st)) {
-                        throw new IOException(
-                                "The PDF names crypt filters on its streams, which this optimizer does not write");
-                    }
-                }
-            }
             Resolver.Found dr = resolver.find(new Roles.Loc(root, new Object[] {COSName.ACRO_FORM, COSName.DR}));
             r.removals = Cleanup.unusedResources(roles, resolver, source, index, dr == null ? null : dr.loc());
             r.prune();
@@ -235,6 +226,10 @@ final class Rewrite {
                 if (!(source.load(key) instanceof COSStream s)) {
                     index.kind(i, Index.MISSING);
                     continue;
+                }
+                if (encryption != null && encryption.encrypts(s) && Encryption.usesCryptFilter(s)) {
+                    throw new IOException(
+                            "The PDF names crypt filters on its streams, which this optimizer does not write");
                 }
                 List<Cleanup.Removal> drop = removals.get(i);
                 if (drop != null) {

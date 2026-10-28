@@ -71,8 +71,12 @@ final class Encryption {
         }
     }
 
+    boolean encrypts(COSStream source) {
+        return metadata || !COSName.METADATA.equals(source.getCOSName(COSName.TYPE));
+    }
+
     byte[] stream(byte[] plain, int number, COSStream source) throws IOException {
-        if (!metadata && COSName.METADATA.equals(source.getCOSName(COSName.TYPE))) {
+        if (!encrypts(source)) {
             return plain;
         }
         return encrypt(plain, number);

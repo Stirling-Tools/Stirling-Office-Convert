@@ -268,9 +268,14 @@ public final class Main {
                 if (shrink != null) {
                     PdfOptimizer.Result r = PdfOptimizer.optimize(pdf, target, shrink);
                     List<String> lines = new ArrayList<>(r.warnings());
-                    lines.add(r.rewritten() ? String.format(Locale.ROOT, "%d -> %d bytes (%.1f%% smaller)",
-                            r.inputBytes(), r.outputBytes(), 100.0 - 100.0 * r.outputBytes() / Math.max(1,
-                                    r.inputBytes())) : "already as small as the rewrite; copied unchanged");
+                    if (r.rewritten()) {
+                        lines.add(String.format(Locale.ROOT, "%d -> %d bytes (%.1f%% %s)", r.inputBytes(),
+                                r.outputBytes(), 100.0 * Math.abs((double) r.inputBytes() - r.outputBytes())
+                                        / Math.max(1, r.inputBytes()),
+                                r.outputBytes() <= r.inputBytes() ? "smaller" : "larger"));
+                    } else {
+                        lines.add("already as small as the rewrite; copied unchanged; any private data is retained");
+                    }
                     notes = lines;
                 } else if (archival != null) {
                     notes = PdfToPdfA.convert(pdf, target, archival).warnings();
@@ -591,11 +596,12 @@ public final class Main {
                         + " scripts and actions removed, colours given an sRGB output intent; 1a and 1b draw transparency as pictures;"
                         + " the a levels need a tagged PDF."
                         + System.lineSeparator()
-                        + "--optimize rewrites each PDF smaller without changing how any page draws (in.optimized.pdf unless"
+                        + "--optimize tries to shrink each PDF without changing how any page draws (in.optimized.pdf unless"
                         + " -o names it), and repairs a damaged one on the way: unused objects and resources are dropped,"
                         + " duplicates merged, streams recompressed and objects packed into object streams; editing"
                         + " applications' private data goes too unless --keep-private-data. An output that would not be"
-                        + " smaller is a copy of the input. Supported encrypted PDFs keep their encryption and permissions; use --password when required."
+                        + " smaller is normally a copy of the input; repaired PDFs may be larger. A copied input retains its private data."
+                        + " Supported encrypted PDFs keep their encryption and permissions; use --password when required."
                         + System.lineSeparator()
                         + "--fonts adds a folder of .ttf, .ttc, .otf or .otc fonts (searched to a depth of 8, links not"
                         + " followed); --font-map draws a family with an installed one (Aptos=Inter); --font-width scales"
