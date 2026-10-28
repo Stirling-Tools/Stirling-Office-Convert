@@ -23,6 +23,10 @@ final class Ctx {
         String pages();
 
         String sectionPages();
+
+        default String running(String name) {
+            return null;
+        }
     }
 
     static final PageNumbers NO_NUMBERS = new PageNumbers() {

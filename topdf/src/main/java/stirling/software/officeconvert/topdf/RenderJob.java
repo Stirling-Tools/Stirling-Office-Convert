@@ -65,6 +65,7 @@ public final class RenderJob {
     private Admission.Ticket ticket;
 
     private final Map<Object, Object> memo = new HashMap<>();
+    private Map<String, String[]> runningStrings = Map.of();
 
     public RenderJob(OfficeZip zip, OfficeToPdf.Format format, OfficeToPdf.Options options, FontLibrary fonts,
             PdfOutput output) {
@@ -108,6 +109,14 @@ public final class RenderJob {
 
     public FontLibrary fonts() {
         return fonts;
+    }
+
+    public void runningStrings(Map<String, String[]> marks) {
+        runningStrings = Map.copyOf(marks);
+    }
+
+    public Map<String, String[]> runningStrings() {
+        return runningStrings;
     }
 
     public void addDocumentFonts(List<byte[]> fontData) {

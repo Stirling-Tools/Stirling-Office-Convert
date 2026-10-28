@@ -103,12 +103,14 @@ final class SheetPart {
     }
 
     // Returns false when the sheet was cut short at the part size limit
-    boolean write(Parts parts, Parts.Part p, Strings strings, String drawing) throws IOException {
+    boolean write(Parts parts, Parts.Part p, Strings strings, String drawing, String conditional)
+            throws IOException {
         p.append(Xml.HEAD).append("<worksheet xmlns=\"").append(Xml.MAIN).append("\" xmlns:r=\"").append(Xml.REL)
                 .append("\">");
         p.write(guarded(this::head, "<sheetViews><sheetView workbookViewId=\"0\"/></sheetViews>"));
         p.write(guarded(this::columnsXml, ""));
-        String tail = guarded(this::merges, "") + guarded(this::print, "<pageMargins left=\"0.75\" right=\"0.75\""
+        String tail = guarded(this::merges, "") + conditional + guarded(this::print,
+                "<pageMargins left=\"0.75\" right=\"0.75\""
                 + " top=\"1\" bottom=\"1\" header=\"0.5\" footer=\"0.5\"/>");
         boolean complete = writeRows(parts, p, strings);
         p.write(tail);

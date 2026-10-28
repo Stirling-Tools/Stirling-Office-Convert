@@ -94,6 +94,9 @@ final class BodyXml {
             }
             sb.append("</w:tabs>");
         }
+        if (styles.hyphenation && !p.hyphenate) {
+            sb.append("<w:suppressAutoHyphens/>");
+        }
         if (p.noHangingPunctuation) {
             sb.append("<w:overflowPunct w:val=\"0\"/>");
         }
@@ -231,6 +234,8 @@ final class BodyXml {
                 case Inline.ColumnBreak cb -> sb.append("<w:r><w:br w:type=\"column\"/></w:r>");
                 case Inline.PageBreak pb -> sb.append("<w:r><w:br w:type=\"page\"/></w:r>");
                 case Inline.PageNumber pn -> runs.field(sb, pn.total() ? "NUMPAGES" : "PAGE", pn.style(), base);
+                case Inline.RunningText rt -> runs.field(sb, "OCSTRING " + Xml.esc(rt.name()), Xml.esc(rt.fallback()),
+                        rt.style(), base);
                 case Inline.Image img -> drawings.drawing(sb, img.picture());
                 case Inline.Shape shape -> drawings.shape(sb, shape);
                 case Inline.FootnoteRef ref -> {

@@ -333,6 +333,28 @@ public final class OfficeToPdf {
         return result.get();
     }
 
+    public static Result convertUrl(String url, Path out, Options options, WebAssets.Access access) throws IOException {
+        Objects.requireNonNull(out, "out");
+        Objects.requireNonNull(options, "options");
+        Objects.requireNonNull(url, "url");
+        Objects.requireNonNull(access, "access");
+        JpxImageIO.install();
+        AtomicReference<Result> result = new AtomicReference<>();
+        writeAtomically(out.toAbsolutePath(), options.timeout(), STOP_MILLIS, os -> {
+            WebAssets web = WebAssets.fetch(url, access);
+            Path page = Files.createTempFile("office-to-pdf-", ".html");
+            try {
+                Files.write(page, web.page());
+                Options fetched = options.htmlAssets(web);
+                Options named = fetched.displayName() == null ? fetched.displayName(web.url()) : fetched;
+                result.set(render(page, Format.HTML, os, named));
+            } finally {
+                deleteQuietly(page);
+            }
+        });
+        return result.get();
+    }
+
     public static Result convert(InputStream in, Format format, OutputStream out, Options options) throws IOException {
         Objects.requireNonNull(in, "in");
         Objects.requireNonNull(format, "format");

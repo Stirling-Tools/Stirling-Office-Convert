@@ -187,6 +187,40 @@ class WebFontsTest {
     }
 
     @Test
+    void programsUnderTheWrongKeyConvertByWhatTheyAre() throws Exception {
+        try (PDDocument d = new PDDocument()) {
+            for (boolean cff : new boolean[] {true, false}) {
+                COSDictionary right = OutlineCompactionTest.font(d, cff);
+                byte[] expected = WebFonts.toTrueType(PDFontFactory.createFont(right));
+                COSDictionary wrong = OutlineCompactionTest.font(d, cff);
+                COSDictionary fd = (COSDictionary) wrong.getDictionaryObject(COSName.FONT_DESC);
+                COSStream file = (COSStream) fd.getDictionaryObject(cff ? COSName.FONT_FILE3 : COSName.FONT_FILE);
+                fd.removeItem(cff ? COSName.FONT_FILE3 : COSName.FONT_FILE);
+                file.setItem(COSName.SUBTYPE, cff ? null : COSName.getPDFName("Type1C"));
+                fd.setItem(cff ? COSName.FONT_FILE : COSName.FONT_FILE3, file);
+                assertArrayEquals(expected, WebFonts.toTrueType(PDFontFactory.createFont(wrong)), "cff " + cff);
+            }
+            COSDictionary type1 = OutlineCompactionTest.font(d, false);
+            COSDictionary fd = (COSDictionary) type1.getDictionaryObject(COSName.FONT_DESC);
+            fd.removeItem(COSName.FONT_FILE);
+            COSStream ttf = d.getDocument().createCOSStream();
+            try (OutputStream o = ttf.createOutputStream();
+                    java.io.InputStream in = PDDocument.class
+                            .getResourceAsStream("/org/apache/pdfbox/resources/ttf/LiberationSans-Regular.ttf")) {
+                in.transferTo(o);
+            }
+            fd.setItem(COSName.FONT_FILE3, ttf);
+            ttf.setItem(COSName.SUBTYPE, COSName.getPDFName("Type1C"));
+            try (TrueTypeFont t = parse(WebFonts.toTrueType(PDFontFactory.createFont(type1)));
+                    TrueTypeFont source = Samples.liberation()) {
+                int gid = t.getUnicodeCmapLookup().getGlyphId(0xC1);
+                assertEquals(source.nameToGID("Aacute"), gid);
+                assertEquals(source.getAdvanceWidth(gid), t.getAdvanceWidth(gid));
+            }
+        }
+    }
+
+    @Test
     void outlinesRenderLikeTheSourceProgram() throws Exception {
         byte[] cff = FontPrograms.cff("TestCff");
         CFFFont source = new CFFParser().parse(new RandomAccessReadBuffer(cff)).get(0);

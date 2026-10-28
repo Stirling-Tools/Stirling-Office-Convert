@@ -162,6 +162,10 @@ final class ParaItems {
                                 : NumberFormat.format(ctx.numbers.pageNumber(), f.format());
                         case "NUMPAGES" -> formatted(ctx.numbers.pages(), f.format());
                         case "SECTIONPAGES" -> formatted(ctx.numbers.sectionPages(), f.format());
+                        case "OCSTRING" -> {
+                            String running = f.argument() == null ? null : ctx.numbers.running(f.argument());
+                            yield running != null ? running : f.cached();
+                        }
                         default -> f.cached();
                     };
                     int b = items.size();

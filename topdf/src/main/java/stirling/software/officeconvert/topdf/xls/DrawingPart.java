@@ -1,12 +1,26 @@
 package stirling.software.officeconvert.topdf.xls;
 
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
+import org.apache.poi.ddf.EscherClientDataRecord;
+import org.apache.poi.ddf.EscherContainerRecord;
 import org.apache.poi.ddf.EscherOptRecord;
 import org.apache.poi.ddf.EscherProperty;
+import org.apache.poi.ddf.EscherRecord;
 import org.apache.poi.ddf.EscherSimpleProperty;
+import org.apache.poi.ddf.EscherTextboxRecord;
+import org.apache.poi.hssf.record.CommonObjectDataSubRecord;
+import org.apache.poi.hssf.record.EscherAggregate;
+import org.apache.poi.hssf.record.FtCblsSubRecord;
+import org.apache.poi.hssf.record.ObjRecord;
+import org.apache.poi.hssf.record.SubRecord;
+import org.apache.poi.hssf.record.TextObjectRecord;
 import org.apache.poi.hssf.usermodel.HSSFAnchor;
 import org.apache.poi.hssf.usermodel.HSSFChildAnchor;
 import org.apache.poi.hssf.usermodel.HSSFClientAnchor;
@@ -20,10 +34,12 @@ import org.apache.poi.hssf.usermodel.HSSFPictureData;
 import org.apache.poi.hssf.usermodel.HSSFRichTextString;
 import org.apache.poi.hssf.usermodel.HSSFShape;
 import org.apache.poi.hssf.usermodel.HSSFShapeGroup;
+import org.apache.poi.hssf.usermodel.HSSFSheet;
 import org.apache.poi.hssf.usermodel.HSSFSimpleShape;
 import org.apache.poi.hssf.usermodel.HSSFTextbox;
 import org.apache.poi.hssf.usermodel.HSSFWorkbook;
 import org.apache.poi.ss.usermodel.Font;
+import org.apache.poi.util.LittleEndianByteArrayOutputStream;
 
 // Pictures, text boxes, plain shapes and chart frames of a sheet's drawing as a DrawingML part; controls are left out
 final class DrawingPart {
@@ -38,6 +54,10 @@ final class DrawingPart {
 
     private static final int HOST_CONTROL = 201;
 
+    private static final int BUTTON = 7, CHECKBOX = 11, OPTION = 12, LABEL = 14, GROUP = 19;
+
+    private static final long EMU_PX = 9525;
+
     private final HSSFWorkbook wb;
 
     private final SheetPart geometry;
@@ -50,11 +70,15 @@ final class DrawingPart {
 
     private final HSSFPalette palette;
 
+    private final Map<EscherOptRecord, TextObjectRecord> texts = new IdentityHashMap<>();
+
+    private final Set<EscherOptRecord> unprinted = Collections.newSetFromMap(new IdentityHashMap<>());
+
+    private final Map<EscherOptRecord, ObjRecord> objects = new IdentityHashMap<>();
+
     private int id = 1;
 
     int skipped;
-
-    int pict;
 
     private int shapes;
 
@@ -69,7 +93,19 @@ final class DrawingPart {
         String add(int index, HSSFPictureData data);
     }
 
-    boolean read(HSSFPatriarch patriarch, Media store) {
+    boolean read(HSSFSheet sheet, Media store) {
+        try {
+            EscherAggregate drawing = sheet.getDrawingEscherAggregate();
+            if (drawing != null) {
+                index(drawing.getEscherRecords(), drawing.getShapeToObjMapping(), 0);
+            }
+        } catch (RuntimeException e) {
+            texts.clear();
+        }
+        HSSFPatriarch patriarch = sheet.getDrawingPatriarch();
+        if (patriarch == null) {
+            return false;
+        }
         for (HSSFShape s : patriarch.getChildren()) {
             if (shapes >= MAX_SHAPES) {
                 break;
@@ -77,13 +113,62 @@ final class DrawingPart {
             if (!(s.getAnchor() instanceof HSSFClientAnchor anchor)) {
                 continue;
             }
+            if (s instanceof HSSFSimpleShape control && !(s instanceof HSSFPicture)
+                    && control.getShapeType() == HOST_CONTROL) {
+                if (++shapes <= MAX_SHAPES && printed(s.getOptRecord())) {
+                    xml.append(controlGuarded(control, anchor));
+                }
+                continue;
+            }
             String body = guarded(s, null, store);
-            if (body != null) {
+            if (body == null) {
+                continue;
+            }
+            long w = width(anchor);
+            long h = height(anchor);
+            if (!(s instanceof HSSFShapeGroup) && s.getOptRecord() != null && sideways(s.getRotationDegree())
+                    && w > 0 && h > 0) {
+                xml.append(fixed(anchor, (w - h) / 2, (h - w) / 2, h, w, body));
+            } else {
                 xml.append("<xdr:twoCellAnchor editAs=\"oneCell\">").append(anchor(anchor)).append(body)
                         .append("<xdr:clientData/></xdr:twoCellAnchor>");
             }
         }
         return xml.length() > 0;
+    }
+
+    private void index(List<EscherRecord> records, Map<EscherRecord, ?> objects, int depth) {
+        if (depth > 64) {
+            return;
+        }
+        EscherOptRecord opt = null;
+        EscherTextboxRecord box = null;
+        EscherClientDataRecord data = null;
+        for (EscherRecord r : records) {
+            if (r instanceof EscherContainerRecord c) {
+                index(c.getChildRecords(), objects, depth + 1);
+            } else if (r instanceof EscherOptRecord o) {
+                opt = o;
+            } else if (r instanceof EscherTextboxRecord t) {
+                box = t;
+            } else if (r instanceof EscherClientDataRecord d) {
+                data = d;
+            }
+        }
+        if (opt == null) {
+            return;
+        }
+        if (box != null && objects.get(box) instanceof TextObjectRecord t) {
+            texts.put(opt, t);
+        }
+        if (data != null && objects.get(data) instanceof ObjRecord o) {
+            this.objects.put(opt, o);
+            for (SubRecord sub : o.getSubRecords()) {
+                if (sub instanceof CommonObjectDataSubRecord c && !c.isPrintable()) {
+                    unprinted.add(opt);
+                }
+            }
+        }
     }
 
     void chart(int[] a, String rel) {
@@ -142,7 +227,7 @@ final class DrawingPart {
     }
 
     private String shape(HSSFShape s, HSSFShapeGroup parent, Media store) {
-        if (++shapes > MAX_SHAPES) {
+        if (++shapes > MAX_SHAPES || !printed(s.getOptRecord())) {
             return null;
         }
         String xfrm = xfrm(s, parent);
@@ -170,6 +255,9 @@ final class DrawingPart {
             return picture(pic, xfrm, store);
         }
         if (s instanceof HSSFComment || s instanceof HSSFCombobox) {
+            return null;
+        }
+        if (s instanceof HSSFSimpleShape simple && simple.getShapeType() == HOST_CONTROL) {
             return null;
         }
         if (s instanceof HSSFSimpleShape simple) {
@@ -247,10 +335,6 @@ final class DrawingPart {
             if (data == null) {
                 return null;
             }
-            if ("pict".equals(data.suggestFileExtension())) {
-                pict++;
-                return null;
-            }
             target = media.containsKey(index) ? media.get(index) : store.add(index, data);
         } catch (RuntimeException e) {
             skipped++;
@@ -289,14 +373,13 @@ final class DrawingPart {
             sp.append("<a:noFill/>");
         } else {
             String fill = fill(s, opt);
-            sp.append(fill == null ? "<a:noFill/>" : "<a:solidFill><a:srgbClr val=\"" + fill + "\"/></a:solidFill>");
+            sp.append(fill == null ? "<a:noFill/>" : "<a:solidFill>" + colour(fill, opt, 0x182) + "</a:solidFill>");
         }
-        boolean dashed = !line || opt != null && opt.lookup(0x1CE) != null;
-        if (!flag(opt, 0x1FF, 0x8, 0x80000, true) || dashed && s.getLineStyle() == HSSFShape.LINESTYLE_NONE) {
+        if (!flag(opt, 0x1FF, 0x8, 0x80000, true)) {
             sp.append("<a:ln><a:noFill/></a:ln>");
         } else {
-            sp.append("<a:ln w=\"").append(Math.max(0, s.getLineWidth())).append("\"><a:solidFill><a:srgbClr val=\"")
-                    .append(rgb(s.getLineStyleColor(), "000000")).append("\"/></a:solidFill>")
+            sp.append("<a:ln w=\"").append(Math.max(0, s.getLineWidth())).append("\"><a:solidFill>")
+                    .append(colour(rgb(s.getLineStyleColor(), "000000"), opt, 0x1C1)).append("</a:solidFill>")
                     .append(arrow(opt, 0x1D0, "headEnd")).append(arrow(opt, 0x1D1, "tailEnd")).append("</a:ln>");
         }
         sp.append("</xdr:spPr>");
@@ -328,6 +411,14 @@ final class DrawingPart {
         return String.format("%06X", mixed);
     }
 
+    private static String colour(String rgb, EscherOptRecord opt, int opacity) {
+        if (opt == null || !(opt.lookup(opacity) instanceof EscherSimpleProperty property)) {
+            return "<a:srgbClr val=\"" + rgb + "\"/>";
+        }
+        int alpha = (int) ((Math.max(0, Math.min(65536, property.getPropertyValue())) * 100000L + 32768) / 65536);
+        return "<a:srgbClr val=\"" + rgb + "\"><a:alpha val=\"" + alpha + "\"/></a:srgbClr>";
+    }
+
     private static HSSFRichTextString text(HSSFSimpleShape s) {
         try {
             return s.getString();
@@ -336,46 +427,76 @@ final class DrawingPart {
         }
     }
 
+    private static final Map<Integer, String> PRESETS = presets();
+
+    private static Map<Integer, String> presets() {
+        Map<Integer, String> m = new HashMap<>();
+        String[] names = {"1 rect", "202 rect", "2 roundRect", "3 ellipse", "4 diamond", "5 triangle", "6 rtTriangle",
+            "7 parallelogram", "8 trapezoid", "9 hexagon", "10 octagon", "11 plus", "12 star5", "13 rightArrow",
+            "14 rightArrow", "15 homePlate", "16 cube", "19 arc", "20 line", "32 line", "21 plaque", "22 can",
+            "23 donut", "53 ribbon2", "54 ribbon", "55 chevron", "56 pentagon", "57 noSmoking", "58 star8",
+            "59 star16", "60 star32", "61 wedgeRectCallout", "62 wedgeRoundRectCallout", "63 wedgeEllipseCallout",
+            "64 wave", "65 foldedCorner", "66 leftArrow", "67 downArrow", "68 upArrow", "69 leftRightArrow",
+            "70 upDownArrow", "71 irregularSeal1", "72 irregularSeal2", "73 lightningBolt", "74 heart",
+            "76 quadArrow", "77 leftArrowCallout", "78 rightArrowCallout", "79 upArrowCallout",
+            "80 downArrowCallout", "81 leftRightArrowCallout", "82 upDownArrowCallout", "83 quadArrowCallout",
+            "84 bevel", "85 leftBracket", "86 rightBracket", "87 leftBrace", "88 rightBrace", "89 leftUpArrow",
+            "90 bentUpArrow", "91 bentArrow", "92 star24", "93 stripedRightArrow", "94 notchedRightArrow",
+            "95 blockArc", "96 smileyFace", "97 verticalScroll", "98 horizontalScroll", "99 circularArrow",
+            "101 uturnArrow", "102 curvedRightArrow", "103 curvedLeftArrow", "104 curvedUpArrow",
+            "105 curvedDownArrow", "106 cloudCallout", "107 ellipseRibbon", "108 ellipseRibbon2",
+            "109 flowChartProcess", "110 flowChartDecision", "111 flowChartInputOutput",
+            "112 flowChartPredefinedProcess", "113 flowChartInternalStorage", "114 flowChartDocument",
+            "115 flowChartMultidocument", "116 flowChartTerminator", "117 flowChartPreparation",
+            "118 flowChartManualInput", "119 flowChartManualOperation", "120 flowChartConnector",
+            "121 flowChartPunchedCard", "122 flowChartPunchedTape", "123 flowChartSummingJunction",
+            "124 flowChartOr", "125 flowChartCollate", "126 flowChartSort", "127 flowChartExtract",
+            "128 flowChartMerge", "129 flowChartOfflineStorage", "130 flowChartOnlineStorage",
+            "131 flowChartMagneticTape", "132 flowChartMagneticDisk", "133 flowChartMagneticDrum",
+            "134 flowChartDisplay", "135 flowChartDelay", "176 flowChartAlternateProcess",
+            "177 flowChartOffpageConnector", "182 leftRightUpArrow", "183 sun", "184 moon", "185 bracketPair",
+            "186 bracePair", "187 star4", "188 doubleWave"};
+        for (String n : names) {
+            int space = n.indexOf(' ');
+            m.put(Integer.parseInt(n.substring(0, space)), n.substring(space + 1));
+        }
+        return Map.copyOf(m);
+    }
+
     private static String preset(int type) {
-        return switch (type) {
-            case 1, 202 -> "rect";
-            case 2 -> "roundRect";
-            case 3 -> "ellipse";
-            case 4 -> "diamond";
-            case 5 -> "triangle";
-            case 6 -> "rtTriangle";
-            case 7 -> "parallelogram";
-            case 9 -> "hexagon";
-            case 10 -> "octagon";
-            case 11 -> "plus";
-            case 13 -> "rightArrow";
-            case 20, 32 -> "line";
-            case 22 -> "can";
-            case 23 -> "donut";
-            default -> null;
-        };
+        return PRESETS.get(type);
     }
 
     private String body(HSSFSimpleShape s, HSSFRichTextString text) {
-        StringBuilder b = new StringBuilder("<xdr:txBody><a:bodyPr wrap=\"square\"");
-        String align = null;
-        if (s instanceof HSSFTextbox t) {
-            b.append(" lIns=\"").append(Math.max(0, t.getMarginLeft())).append("\" tIns=\"")
-                    .append(Math.max(0, t.getMarginTop())).append("\" rIns=\"").append(Math.max(0, t.getMarginRight()))
-                    .append("\" bIns=\"").append(Math.max(0, t.getMarginBottom())).append('"');
-            b.append(switch (t.getVerticalAlignment()) {
-                case 2 -> " anchor=\"ctr\"";
-                case 3 -> " anchor=\"b\"";
-                default -> " anchor=\"t\"";
-            });
-            align = switch (t.getHorizontalAlignment()) {
-                case 2 -> "ctr";
-                case 3 -> "r";
-                case 4, 7 -> "just";
-                default -> null;
-            };
-        }
+        EscherOptRecord opt = s.getOptRecord();
+        int side = s instanceof HSSFTextbox ? 0 : 91440;
+        int edge = side / 2;
+        StringBuilder b = new StringBuilder("<xdr:txBody><a:bodyPr wrap=\"square\" lIns=\"")
+                .append(inset(opt, 0x81, side)).append("\" tIns=\"").append(inset(opt, 0x82, edge))
+                .append("\" rIns=\"").append(inset(opt, 0x83, side)).append("\" bIns=\"")
+                .append(inset(opt, 0x84, edge)).append('"');
+        TextObjectRecord txo = opt == null ? null : texts.get(opt);
+        int vertical = txo != null ? txo.getVerticalTextAlignment() : switch (property(opt, 0x87, 0)) {
+            case 1, 4 -> 2;
+            case 2, 5 -> 3;
+            default -> 1;
+        };
+        b.append(switch (vertical) {
+            case 2 -> " anchor=\"ctr\"";
+            case 3 -> " anchor=\"b\"";
+            default -> " anchor=\"t\"";
+        });
+        String align = switch (txo == null ? 1 : txo.getHorizontalTextAlignment()) {
+            case 2 -> "ctr";
+            case 3 -> "r";
+            case 4, 7 -> "just";
+            default -> null;
+        };
         b.append("/><a:lstStyle/>");
+        return b.append(paragraphs(text, align)).append("</xdr:txBody>").toString();
+    }
+
+    private String paragraphs(HSSFRichTextString text, String align) {
         String all = text.getString();
         int runs = text.numFormattingRuns();
         StringBuilder p = new StringBuilder();
@@ -405,7 +526,199 @@ final class DrawingPart {
             }
             start = i + 1;
         }
-        return b.append(p).append("</xdr:txBody>").toString();
+        return p.toString();
+    }
+
+    private boolean printed(EscherOptRecord opt) {
+        if (opt == null) {
+            return true;
+        }
+        int flags = property(opt, 0x3BF, 0);
+        boolean hidden = (flags & 0x20000) != 0 && (flags & 0x2) != 0;
+        boolean noPrint = (flags & 0x10000) != 0 && (flags & 0x1) == 0;
+        return !hidden && !noPrint && !unprinted.contains(opt);
+    }
+
+    private String controlGuarded(HSSFSimpleShape s, HSSFClientAnchor anchor) {
+        try {
+            return control(s, anchor);
+        } catch (RuntimeException e) {
+            skipped++;
+            return "";
+        }
+    }
+
+    private String control(HSSFSimpleShape s, HSSFClientAnchor anchor) {
+        ObjRecord obj = objects.get(s.getOptRecord());
+        int type = -1;
+        boolean checked = false;
+        for (SubRecord sub : obj == null ? List.<SubRecord>of() : obj.getSubRecords()) {
+            if (sub instanceof CommonObjectDataSubRecord c) {
+                type = c.getObjectType();
+            } else if (sub instanceof FtCblsSubRecord c) {
+                byte[] raw = new byte[64];
+                LittleEndianByteArrayOutputStream out = new LittleEndianByteArrayOutputStream(raw, 0);
+                c.serialize(out);
+                checked = out.getWriteIndex() >= 6 && (raw[4] != 0 || raw[5] != 0);
+            }
+        }
+        TextObjectRecord txo = texts.get(s.getOptRecord());
+        HSSFRichTextString text = txo == null ? null : txo.getStr();
+        boolean hasText = text != null && !text.getString().isBlank();
+        long h = height(anchor);
+        if (h <= 0) {
+            return "";
+        }
+        String align = txo == null ? null : switch (txo.getHorizontalTextAlignment()) {
+            case 2 -> "ctr";
+            case 3 -> "r";
+            default -> null;
+        };
+        String box = anchor(anchor);
+        long glyph = Math.min(h, 12 * EMU_PX);
+        StringBuilder b = new StringBuilder();
+        switch (type) {
+            case CHECKBOX, OPTION -> {
+                long left = 2 * EMU_PX;
+                long top = (h - glyph) / 2;
+                b.append(fixed(anchor, left, top, glyph, glyph, part(glyph, glyph, type == CHECKBOX ? "rect"
+                        : "ellipse", "FFFFFF", "000000", null)));
+                if (checked && type == CHECKBOX) {
+                    b.append(fixed(anchor, left, top, glyph, glyph, tick(glyph)));
+                } else if (checked) {
+                    long dot = glyph * 2 / 5;
+                    b.append(fixed(anchor, left + (glyph - dot) / 2, top + (glyph - dot) / 2, dot, dot,
+                            part(dot, dot, "ellipse", "000000", null, null)));
+                }
+                if (hasText) {
+                    b.append(cell(box, part(0, 0, "rect", null, null, label(text, align, "ctr", left + glyph
+                            + 4 * EMU_PX))));
+                }
+            }
+            case GROUP -> {
+                long half = Math.min(h / 2, 6 * EMU_PX);
+                b.append(cell(box, part(0, 0, "rect", null, "808080", null)));
+                if (hasText) {
+                    b.append(fixed(anchor, 6 * EMU_PX, -half, Math.max(1, width(anchor) - 12 * EMU_PX), 2 * half,
+                            part(0, 0, "rect", null, null, label(text, align, "ctr", 0))));
+                }
+            }
+            case BUTTON -> b.append(cell(box, part(0, 0, "rect", "F0F0F0", "808080", hasText
+                    ? label(text, align == null ? "ctr" : align, "ctr", 0) : null)));
+            case LABEL -> {
+                if (hasText) {
+                    b.append(cell(box, part(0, 0, "rect", null, null, label(text, align, "t", 0))));
+                }
+            }
+            default -> {
+            }
+        }
+        return b.toString();
+    }
+
+    private static String cell(String anchor, String body) {
+        return "<xdr:twoCellAnchor editAs=\"oneCell\">" + anchor + body + "<xdr:clientData/></xdr:twoCellAnchor>";
+    }
+
+    private String fixed(HSSFClientAnchor a, long dx, long dy, long cx, long cy, String body) {
+        int col = Math.max(0, Math.min(255, Math.min(a.getCol1(), a.getCol2())));
+        int row = Math.max(0, Math.min(65535, Math.min(a.getRow1(), a.getRow2())));
+        int dx1 = a.getCol1() <= a.getCol2() ? a.getDx1() : a.getDx2();
+        int dy1 = a.getRow1() <= a.getRow2() ? a.getDy1() : a.getDy2();
+        long colOff = Math.round(fraction(dx1, 1024) * geometry.columnPx(col) * EMU_PX) + dx;
+        long rowOff = Math.round(fraction(dy1, 256) * geometry.rowPt(row) * 12700) + dy;
+        for (int k = 0; k < 256 && col < 255 && colOff > 0; k++) {
+            long w = Math.round(geometry.columnPx(col) * EMU_PX);
+            if (colOff < w) {
+                break;
+            }
+            colOff -= w;
+            col++;
+        }
+        for (int k = 0; k < 4096 && row < 65535 && rowOff > 0; k++) {
+            long h = Math.round(geometry.rowPt(row) * 12700);
+            if (rowOff < h) {
+                break;
+            }
+            rowOff -= h;
+            row++;
+        }
+        while (colOff < 0 && col > 0) {
+            col--;
+            colOff += Math.round(geometry.columnPx(col) * EMU_PX);
+        }
+        while (rowOff < 0 && row > 0) {
+            row--;
+            rowOff += Math.round(geometry.rowPt(row) * 12700);
+        }
+        return "<xdr:oneCellAnchor><xdr:from><xdr:col>" + col + "</xdr:col><xdr:colOff>" + colOff
+                + "</xdr:colOff><xdr:row>" + row + "</xdr:row><xdr:rowOff>" + rowOff + "</xdr:rowOff></xdr:from>"
+                + "<xdr:ext cx=\"" + cx + "\" cy=\"" + cy + "\"/>" + body + "<xdr:clientData/></xdr:oneCellAnchor>";
+    }
+
+    private String label(HSSFRichTextString text, String align, String anchor, long left) {
+        return "<xdr:txBody><a:bodyPr wrap=\"square\" lIns=\"" + left + "\" tIns=\"0\" rIns=\"0\" bIns=\"0\""
+                + " anchor=\"" + anchor + "\"/><a:lstStyle/>" + paragraphs(text, align) + "</xdr:txBody>";
+    }
+
+    private String part(long cx, long cy, String prst, String fill, String line, String body) {
+        return "<xdr:sp><xdr:nvSpPr><xdr:cNvPr id=\"" + id++ + "\" name=\"Control part\"/><xdr:cNvSpPr/></xdr:nvSpPr>"
+                + "<xdr:spPr><a:xfrm><a:off x=\"0\" y=\"0\"/><a:ext cx=\"" + cx + "\" cy=\"" + cy
+                + "\"/></a:xfrm><a:prstGeom prst=\"" + prst + "\"><a:avLst/></a:prstGeom>"
+                + (fill == null ? "<a:noFill/>" : "<a:solidFill><a:srgbClr val=\"" + fill + "\"/></a:solidFill>")
+                + (line == null ? "<a:ln><a:noFill/></a:ln>" : "<a:ln w=\"9525\"><a:solidFill><a:srgbClr val=\""
+                        + line + "\"/></a:solidFill></a:ln>")
+                + "</xdr:spPr>" + (body == null ? "" : body) + "</xdr:sp>";
+    }
+
+    private String tick(long size) {
+        return "<xdr:sp><xdr:nvSpPr><xdr:cNvPr id=\"" + id++ + "\" name=\"Tick\"/><xdr:cNvSpPr/></xdr:nvSpPr>"
+                + "<xdr:spPr><a:xfrm><a:off x=\"0\" y=\"0\"/><a:ext cx=\"" + size + "\" cy=\"" + size
+                + "\"/></a:xfrm><a:custGeom><a:avLst/><a:gdLst/><a:ahLst/><a:cxnLst/><a:rect l=\"0\" t=\"0\" r=\"r\""
+                + " b=\"b\"/><a:pathLst><a:path w=\"100\" h=\"100\" fill=\"none\"><a:moveTo><a:pt x=\"22\" y=\"50\"/>"
+                + "</a:moveTo><a:lnTo><a:pt x=\"42\" y=\"72\"/></a:lnTo><a:lnTo><a:pt x=\"78\" y=\"28\"/></a:lnTo>"
+                + "</a:path></a:pathLst></a:custGeom><a:noFill/><a:ln w=\"19050\"><a:solidFill>"
+                + "<a:srgbClr val=\"000000\"/></a:solidFill></a:ln></xdr:spPr></xdr:sp>";
+    }
+
+    private long width(HSSFClientAnchor a) {
+        int c1 = Math.max(0, Math.min(255, Math.min(a.getCol1(), a.getCol2())));
+        int c2 = Math.max(0, Math.min(255, Math.max(a.getCol1(), a.getCol2())));
+        int dx1 = a.getCol1() <= a.getCol2() ? a.getDx1() : a.getDx2();
+        int dx2 = a.getCol1() <= a.getCol2() ? a.getDx2() : a.getDx1();
+        double px = -fraction(dx1, 1024) * geometry.columnPx(c1) + fraction(dx2, 1024) * geometry.columnPx(c2);
+        for (int c = c1; c < c2; c++) {
+            px += geometry.columnPx(c);
+        }
+        return Math.round(px * EMU_PX);
+    }
+
+    private long height(HSSFClientAnchor a) {
+        int r1 = Math.max(0, Math.min(65535, Math.min(a.getRow1(), a.getRow2())));
+        int r2 = Math.max(0, Math.min(65535, Math.max(a.getRow1(), a.getRow2())));
+        if (r2 - r1 > 4096) {
+            return 0;
+        }
+        int dy1 = a.getRow1() <= a.getRow2() ? a.getDy1() : a.getDy2();
+        int dy2 = a.getRow1() <= a.getRow2() ? a.getDy2() : a.getDy1();
+        double pt = -fraction(dy1, 256) * geometry.rowPt(r1) + fraction(dy2, 256) * geometry.rowPt(r2);
+        for (int r = r1; r < r2; r++) {
+            pt += geometry.rowPt(r);
+        }
+        return Math.round(pt * 12700);
+    }
+
+    private static double fraction(int v, int of) {
+        return Math.max(0, Math.min(of, v)) / (double) of;
+    }
+
+    private static int property(EscherOptRecord opt, int prop, int fallback) {
+        return opt != null && opt.lookup(prop) instanceof EscherSimpleProperty p ? p.getPropertyValue() : fallback;
+    }
+
+    private static int inset(EscherOptRecord opt, int prop, int fallback) {
+        int v = property(opt, prop, fallback);
+        return v < 0 || v > 20_000_000 ? fallback : v;
     }
 
     private static int fontAt(HSSFRichTextString text, int runs, int at) {
