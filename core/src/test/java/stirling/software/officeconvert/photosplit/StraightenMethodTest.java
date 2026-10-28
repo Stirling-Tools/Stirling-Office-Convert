@@ -7,6 +7,7 @@ import java.awt.Color;
 import java.awt.geom.Point2D;
 import java.awt.image.BufferedImage;
 import java.util.List;
+import java.util.Random;
 
 import org.junit.jupiter.api.Test;
 
@@ -67,6 +68,58 @@ class StraightenMethodTest {
     }
 
     @Test
+    void aFaintScannerFrameDoesNotMergeSeparatePrints() {
+        BufferedImage scan = new BufferedImage(900, 700, BufferedImage.TYPE_INT_RGB);
+        Random random = new Random(41);
+        for (int y = 0; y < 700; y++) {
+            for (int x = 0; x < 900; x++) {
+                boolean frame = x >= 70 && x < 830 && y >= 70 && y < 630
+                        && (x < 84 || x >= 816 || y < 84 || y >= 616);
+                int level = (frame ? 246 : 250) + random.nextInt(5) - 2;
+                scan.setRGB(x, y, new Color(level, level, level).getRGB());
+            }
+        }
+        for (int y = 0; y < 250; y++) {
+            for (int x = 0; x < 230; x++) {
+                scan.setRGB(130 + x, 210 + y, new Color(30 + x / 3, 70 + y / 4, 180).getRGB());
+                scan.setRGB(510 + x, 210 + y, new Color(180, 30 + x / 3, 70 + y / 4).getRGB());
+            }
+        }
+        var photos = PhotoSplitter.split(scan, OPTIONS);
+        assertEquals(2, photos.size());
+        for (var photo : photos) {
+            assertEquals(230, photo.image().getWidth(), 3);
+            assertEquals(250, photo.image().getHeight(), 3);
+        }
+    }
+
+    @Test
+    void disconnectedFaintPaperOutlineEnclosesTheProductAndItsMargins() {
+        BufferedImage image = new BufferedImage(600, 600, BufferedImage.TYPE_INT_RGB);
+        var graphics = image.createGraphics();
+        graphics.setColor(new Color(251, 251, 249));
+        graphics.fillRect(0, 0, 600, 600);
+        graphics.setColor(new Color(246, 246, 243));
+        graphics.fillRect(12, 12, 576, 576);
+        graphics.setColor(new Color(60, 70, 100));
+        graphics.fillRoundRect(170, 120, 260, 360, 30, 30);
+        graphics.dispose();
+        var scene = new SyntheticScan(1000, 900, 29).noise(3).shadow(0).photo(image, 500, 450, 2.6).render();
+        var photos = PhotoSplitter.split(scene.scan(), PhotoSplitter.Options.defaults());
+        assertEquals(1, photos.size());
+        assertMatches(scene.photos().getFirst(), photos.getFirst());
+    }
+
+    @Test
+    void faintPaperMarginsAroundAProductAreKept() {
+        SyntheticScan.Scene scene = new SyntheticScan(1000, 900, 29).bed(Color.WHITE).noise(1).shadow(2)
+                .photo(600, 600, 500, 450, 2.6, Style.PRODUCT, 22).render();
+        List<PhotoSplitter.Photo> photos = PhotoSplitter.split(scene.scan(), OPTIONS);
+        assertEquals(1, photos.size());
+        assertMatches(scene.photos().getFirst(), photos.getFirst());
+    }
+
+    @Test
     void overlappingPhotosAreSeparated() {
         SyntheticScan.Scene scene = new SyntheticScan(1100, 900, 9)
                 .photo(420, 300, 280, 260, 0, Style.BLOBS, 0)
@@ -107,6 +160,21 @@ class StraightenMethodTest {
         List<PhotoSplitter.Photo> photos = PhotoSplitter.split(scene.scan(), OPTIONS);
         assertEquals(2, photos.size());
         assertMatches(scene.photos().get(0), photos.get(0));
+    }
+
+    @Test
+    void aSinglePanoramaWithAStrongColourBoundaryStaysWholeByDefault() {
+        BufferedImage panorama = new BufferedImage(600, 300, BufferedImage.TYPE_INT_RGB);
+        for (int y = 0; y < 300; y++) {
+            for (int x = 0; x < 600; x++) {
+                panorama.setRGB(x, y, x < 300 ? 0xCC5533 : 0x3355CC);
+            }
+        }
+        SyntheticScan.Scene scene = new SyntheticScan(1000, 700, 43).noise(0).shadow(0)
+                .photo(panorama, 450, 350, 0).render();
+        List<PhotoSplitter.Photo> photos = PhotoSplitter.split(scene.scan(), OPTIONS);
+        assertEquals(1, photos.size());
+        assertMatches(scene.photos().getFirst(), photos.getFirst());
     }
 
     @Test

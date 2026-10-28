@@ -71,6 +71,7 @@ final class StraightenMethod {
         byte[] faint = bed.foreground(wide, w, h, bed.faintThreshold(strong, SMOOTH_RADIUS, WIDE_RADIUS), null);
         wide = null;
         Filters.grow(mask, faint, w, h);
+        PaleFrames.recover(mask, faint, photo, w, h, options);
         faint = null;
         Morphology.dilate(mask, w, h, CLOSE_RADIUS);
         Morphology.erode(mask, w, h, CLOSE_RADIUS);
