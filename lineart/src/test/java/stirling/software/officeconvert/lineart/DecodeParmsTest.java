@@ -76,5 +76,18 @@ class DecodeParmsTest {
                 throw new AssertionError(e);
             }
         }
+        try (COSStream stream = new COSStream()) {
+            stream.setItem(COSName.F, COSName.CCITTFAX_DECODE);
+            stream.setItem(COSName.FILTER, array(COSName.FLATE_DECODE, COSName.CCITTFAX_DECODE));
+            stream.setItem(COSName.DP, parms(-1));
+            stream.setItem(COSName.DECODE_PARMS, array(parms(1), parms(2)));
+            for (int i = 0; i < 2; i++) {
+                assertEquals(reference.of(stream, i).getInt(COSName.K, 0), Decoded.parameters(stream, i).getInt(COSName.K, 0),
+                        "/F precedence index " + i);
+            }
+            assertEquals(-1, Decoded.parameters(stream, 0).getInt(COSName.K, 0));
+        } catch (java.io.IOException e) {
+            throw new AssertionError(e);
+        }
     }
 }
