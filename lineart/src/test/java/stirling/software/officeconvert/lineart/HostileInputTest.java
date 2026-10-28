@@ -8,12 +8,15 @@ import java.io.FilterInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.lang.management.ManagementFactory;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.HexFormat;
 import java.util.zip.DeflaterOutputStream;
 
+import org.apache.pdfbox.cos.COSArray;
 import org.apache.pdfbox.cos.COSDictionary;
+import org.apache.pdfbox.cos.COSNull;
 import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.cos.COSStream;
 import org.apache.pdfbox.pdmodel.PDDocument;
@@ -133,6 +136,77 @@ class HostileInputTest {
         }
     }
 
+    @Test
+    void anImageWhoseFilterChainInflatesFarPastItsSizeIsLeftWithoutDecodingItAll() throws IOException {
+        byte[] runs = new byte[1 << 21];
+        for (int i = 0; i < runs.length; i += 2) {
+            runs[i] = (byte) 0x81;
+        }
+        try (PDDocument doc = new PDDocument()) {
+            COSStream stream = greyImage(doc, 64, 64);
+            chain(stream, deflate(runs), COSName.RUN_LENGTH_DECODE, null);
+            long allocated = allocatedDuring(() -> {
+                LineArt.Result result = LineArt.convert(doc, LineArt.Options.defaults().method(LineArt.Method.FIXED));
+                assertEquals(0, result.converted(), result.toString());
+                assertEquals(1, result.warnings().size(), result.toString());
+                assertTrue(result.warnings().get(0).contains("64x64"), result.toString());
+                assertTrue(result.warnings().get(0).contains("decodes to far more data"), result.toString());
+            });
+            assertTrue(allocated < 32 << 20, "allocated " + allocated + " bytes decoding a 4 KB picture");
+            assertEquals(8, stream.getInt(COSName.BITS_PER_COMPONENT));
+        }
+    }
+
+    @Test
+    void aFaxImageBehindAnInflatingFilterIsDecodedWithoutBufferingThePadding() throws IOException {
+        int w = 640;
+        int h = 480;
+        Bitmap bitmap = Bitmap.blank(w, h);
+        for (int y = 0; y < h; y++) {
+            for (int x = 0; x < w; x++) {
+                if ((x / 9 + y / 7) % 5 == 0) {
+                    bitmap.set(x, y);
+                }
+            }
+        }
+        Codecs.Encoded g4 = Codecs.g4(bitmap);
+        byte[] padded = Arrays.copyOf(g4.data(), g4.data().length + (128 << 20));
+        try (PDDocument doc = new PDDocument()) {
+            COSStream stream = greyImage(doc, w, h);
+            stream.setInt(COSName.BITS_PER_COMPONENT, 1);
+            chain(stream, deflate(padded), COSName.CCITTFAX_DECODE, g4.parameters());
+            long allocated = allocatedDuring(() -> {
+                LineArt.Result result = LineArt.convert(doc, LineArt.Options.defaults().method(LineArt.Method.FIXED));
+                assertTrue(result.warnings().isEmpty(), result.toString());
+            });
+            assertTrue(allocated < 48 << 20, "allocated " + allocated + " bytes decoding a 38 KB picture");
+        }
+    }
+
+    @Test
+    void aJbig2ImageDeclaringAHugePageIsLeftWithoutAllocatingIt() throws IOException {
+        ByteArrayOutputStream jbig2 = new ByteArrayOutputStream();
+        jbig2.writeBytes(new byte[] {0, 0, 0, 0, 0x30, 0, 1, 0, 0, 0, 19});
+        jbig2.writeBytes(new byte[] {0, 0, (byte) 0xEA, 0x60, 0, 0, (byte) 0xEA, 0x60});
+        jbig2.writeBytes(new byte[11]);
+        jbig2.writeBytes(new byte[] {0, 0, 0, 1, 0x31, 0, 1, 0, 0, 0, 0});
+        try (PDDocument doc = new PDDocument()) {
+            COSStream stream = greyImage(doc, 64, 64);
+            stream.setInt(COSName.BITS_PER_COMPONENT, 1);
+            try (OutputStream os = stream.createRawOutputStream()) {
+                os.write(jbig2.toByteArray());
+            }
+            stream.setItem(COSName.FILTER, COSName.JBIG2_DECODE);
+            long allocated = allocatedDuring(() -> {
+                LineArt.Result result = LineArt.convert(doc, LineArt.Options.defaults().method(LineArt.Method.FIXED));
+                assertEquals(0, result.converted(), result.toString());
+                assertEquals(1, result.warnings().size(), result.toString());
+                assertTrue(result.warnings().get(0).contains("decodes to far more data"), result.toString());
+            });
+            assertTrue(allocated < 32 << 20, "allocated " + allocated + " bytes decoding a 512-byte picture");
+        }
+    }
+
     private static COSStream greyImage(PDDocument doc, int w, int h) throws IOException {
         return greyImage(doc, doc.getDocument().createCOSStream(), w, h);
     }
@@ -178,6 +252,34 @@ class HostileInputTest {
         page.setResources(new PDResources());
         page.getCOSObject().setItem(COSName.CONTENTS, content);
         return content;
+    }
+
+    private interface Run {
+        void run() throws IOException;
+    }
+
+    private static long allocatedDuring(Run run) throws IOException {
+        com.sun.management.ThreadMXBean threads = (com.sun.management.ThreadMXBean) ManagementFactory.getThreadMXBean();
+        long before = threads.getTotalThreadAllocatedBytes();
+        run.run();
+        return threads.getTotalThreadAllocatedBytes() - before;
+    }
+
+    private static void chain(COSStream stream, byte[] raw, COSName second, COSDictionary parameters)
+            throws IOException {
+        try (OutputStream os = stream.createRawOutputStream()) {
+            os.write(raw);
+        }
+        COSArray filters = new COSArray();
+        filters.add(COSName.FLATE_DECODE);
+        filters.add(second);
+        stream.setItem(COSName.FILTER, filters);
+        if (parameters != null) {
+            COSArray parms = new COSArray();
+            parms.add(COSNull.NULL);
+            parms.add(parameters);
+            stream.setItem(COSName.DECODE_PARMS, parms);
+        }
     }
 
     private static byte[] deflate(byte[] data) throws IOException {
