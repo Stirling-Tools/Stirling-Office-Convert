@@ -435,12 +435,14 @@ class WebAssetsTest {
                 v6("::1"), v6("::"), v6("fe80::1"), v6("fc00::1"), v6("fd00:ec2::254"), v6("ff02::1"),
                 mapped(127, 0, 0, 1), mapped(169, 254, 169, 254), mapped(10, 0, 0, 1), compatible(127, 0, 0, 1),
                 v6("64:ff9b::a9fe:a9fe"), v6("64:ff9b::7f00:1"), v6("2002:7f00:1::"), v6("2002:a9fe:a9fe::"),
-                v6("2001::1"), v6("2001:db8::1"), v6("fec0::1"));
+                v6("2001::1"), v6("2001:db8::1"), v6("fec0::1"), v6("64:ff9b:1::a9fe:a9fe"), v6("64:ff9b:1:abcd::1"),
+                v6("::ffff:0:7f00:1"), v6("::ffff:0:a9fe:a9fe"), v6("::ffff:0:a00:1"), v4(168, 63, 129, 16));
         for (InetAddress a : refused) {
             assertTrue(WebAssets.refused(a), a.toString());
         }
         List<InetAddress> allowed = List.of(v4(8, 8, 8, 8), v4(1, 1, 1, 1), v4(172, 32, 0, 1), v4(100, 128, 0, 1),
-                v6("2606:4700::1111"), mapped(8, 8, 8, 8), v6("2002:808:808::"));
+                v6("2606:4700::1111"), mapped(8, 8, 8, 8), v6("2002:808:808::"), v6("::ffff:0:808:808"),
+                v4(168, 63, 129, 17), v6("64:ff9b::808:808"));
         for (InetAddress a : allowed) {
             assertFalse(WebAssets.refused(a), a.toString());
         }
@@ -456,7 +458,8 @@ class WebAssetsTest {
         for (InetAddress a : List.of(v4(169, 254, 169, 254), mapped(169, 254, 169, 254), v6("fe80::1"),
                 v4(0, 0, 0, 0), v6("::"), v4(239, 1, 1, 1), v6("64:ff9b::a9fe:a9fe"),
                 v4(100, 100, 100, 200), mapped(100, 100, 100, 200), v6("64:ff9b::6464:64c8"),
-                v6("2002:6464:64c8::"), v6("fd00:ec2::254"))) {
+                v6("2002:6464:64c8::"), v6("fd00:ec2::254"), v4(168, 63, 129, 16), mapped(168, 63, 129, 16),
+                v6("::ffff:0:a9fe:a9fe"), v6("64:ff9b:1::a00:1"), v6("64:ff9b:1:ffff::1"))) {
             assertTrue(WebAssets.reserved(a), a.toString());
         }
     }

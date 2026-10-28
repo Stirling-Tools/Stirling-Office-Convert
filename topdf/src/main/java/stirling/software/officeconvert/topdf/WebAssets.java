@@ -659,7 +659,8 @@ public final class WebAssets implements HtmlAssets {
             return x == 0 || x == 169 && y == 254 || x >= 224 || x == 192 && y == 0 && (z == 0 || z == 2)
                     || x == 198 && (y & 0xFE) == 18 || x == 198 && y == 51 && z == 100 || x == 203 && y == 0
                     && z == 113 || x == 192 && y == 88 && z == 99
-                    || x == 100 && y == 100 && z == 100 && (b[3] & 0xFF) == 200;
+                    || x == 100 && y == 100 && z == 100 && (b[3] & 0xFF) == 200
+                    || x == 168 && y == 63 && z == 129 && (b[3] & 0xFF) == 16;
         }
         byte[] v6 = a.getAddress();
         int w0 = (v6[0] & 0xFF) << 8 | v6[1] & 0xFF;
@@ -672,6 +673,7 @@ public final class WebAssets implements HtmlAssets {
             return true;
         }
         return (w0 & 0xFFC0) == 0xFE80 || (w0 & 0xFFC0) == 0xFEC0 || (w0 & 0xFF00) == 0xFF00
+                || w0 == 0x0064 && w1 == 0xFF9B && v6[4] == 0 && v6[5] == 1
                 || w0 == 0x2001 && w1 == 0 || w0 == 0x2001 && w1 == 0x0DB8 || w0 == 0x3FFF && (w1 & 0xF000) == 0
                 || w0 == 0x0100 && allZero(v6, 2, 8) || w0 == 0x2001 && (w1 & 0xFFF0) == 0x0010
                 || w0 == 0x2001 && (w1 & 0xFFF0) == 0x0020 || w0 == 0x5F00;
@@ -686,6 +688,9 @@ public final class WebAssets implements HtmlAssets {
             return null;
         }
         if (allZero(b, 0, 10) && (b[10] & 0xFF) == 0xFF && (b[11] & 0xFF) == 0xFF) {
+            return new byte[] {b[12], b[13], b[14], b[15]};
+        }
+        if (allZero(b, 0, 8) && (b[8] & 0xFF) == 0xFF && (b[9] & 0xFF) == 0xFF && allZero(b, 10, 12)) {
             return new byte[] {b[12], b[13], b[14], b[15]};
         }
         if (allZero(b, 0, 12) && !(allZero(b, 12, 15) && (b[15] & 0xFF) <= 1)) {
