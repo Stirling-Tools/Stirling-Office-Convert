@@ -6,13 +6,19 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
+
+import javax.net.ssl.SSLSocketFactory;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
@@ -76,6 +82,42 @@ class WebAssetsCookieTest {
             assertEquals("session=secret", seen.get("/secure-after"));
         } finally {
             secure.stop(0);
+            plain.stop(0);
+        }
+    }
+    @Test
+    void reusedLinkedAssetsStartAFreshSessionForEachConversion(@TempDir Path dir) throws Exception {
+        HttpServer plain = HttpServer.create(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 0);
+        String http = "http://site.test:" + plain.getAddress().getPort();
+        List<String> cookies = new CopyOnWriteArrayList<>();
+        plain.createContext("/", ex -> {
+            String cookie = ex.getRequestHeaders().getFirst("Cookie");
+            cookies.add(cookie == null ? "" : cookie);
+            ex.getResponseHeaders().add("Set-Cookie", "user=first; Path=/");
+            ex.getResponseHeaders().add("Content-Type", "text/css");
+            byte[] body = "p { color: red }".getBytes(StandardCharsets.UTF_8);
+            ex.sendResponseHeaders(200, body.length);
+            try (var out = ex.getResponseBody()) {
+                out.write(body);
+            }
+        });
+        plain.start();
+        try {
+            var access = WebAssets.Access.none().network(true).linkedFromFiles(true).cookies(true)
+                    .timeout(Duration.ofSeconds(2));
+            var web = WebAssets.linkedFrom(HtmlAssets.NONE, access,
+                    host -> new InetAddress[] {InetAddress.getByAddress(host, new byte[] {127, 0, 0, 1})},
+                    address -> !address.isLoopbackAddress(), (SSLSocketFactory) SSLSocketFactory.getDefault());
+            var options = OfficeToPdf.Options.defaults().htmlAssets(web);
+            Path page = Files.writeString(dir.resolve("page.html"), "<html><head><link rel=stylesheet href=\""
+                    + http + "/a.css\"><link rel=stylesheet href=\"" + http + "/b.css\"></head>"
+                    + "<body><p>Styled</p></body></html>");
+            OfficeToPdf.convert(page, dir.resolve("one.pdf"), options);
+            assertEquals(List.of("", "user=first"), cookies);
+            Thread.sleep(2_500);
+            OfficeToPdf.convert(page, dir.resolve("two.pdf"), options);
+            assertEquals(List.of("", "user=first", "", "user=first"), cookies);
+        } finally {
             plain.stop(0);
         }
     }

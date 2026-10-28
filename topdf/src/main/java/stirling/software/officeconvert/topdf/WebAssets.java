@@ -127,6 +127,7 @@ public final class WebAssets implements HtmlAssets {
     private final SSLSocketFactory tls;
     private final long deadline;
     private final Map<String, Map<String, String>> cookies = new HashMap<>();
+    private Map<String, Map<String, String>> seeded = Map.of();
     private long bytes;
     private int requests;
     private String url;
@@ -182,7 +183,14 @@ public final class WebAssets implements HtmlAssets {
         Response r = web.get(uri(url), true);
         web.url = r.url().toString();
         web.page = utf8(r.body(), r.contentType());
+        web.seeded = jars(web.cookies);
         return web;
+    }
+
+    private static Map<String, Map<String, String>> jars(Map<String, Map<String, String>> from) {
+        Map<String, Map<String, String>> out = new HashMap<>();
+        from.forEach((origin, jar) -> out.put(origin, new LinkedHashMap<>(jar)));
+        return out;
     }
 
     public String url() {
@@ -201,6 +209,17 @@ public final class WebAssets implements HtmlAssets {
     @Override
     public boolean absoluteWeb() {
         return true;
+    }
+
+    @Override
+    public HtmlAssets session() {
+        WebAssets web = new WebAssets(access, resolver, refused, tls);
+        web.local = local.session();
+        web.url = url;
+        web.page = page;
+        web.seeded = seeded;
+        web.cookies.putAll(jars(seeded));
+        return web;
     }
 
     @Override

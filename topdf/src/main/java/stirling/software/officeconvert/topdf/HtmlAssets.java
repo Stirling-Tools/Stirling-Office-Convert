@@ -22,6 +22,10 @@ public interface HtmlAssets {
         return false;
     }
 
+    default HtmlAssets session() {
+        return this;
+    }
+
     static HtmlAssets folder(Path root, String page) throws IOException {
         Objects.requireNonNull(page, "page");
         Path real = root.toRealPath();

@@ -110,7 +110,7 @@ final class HtmlInput {
         if (!is(source, requested)) {
             return null;
         }
-        return render(source, sink, options, renderer, options.htmlAssets());
+        return render(source, sink, options, renderer, options.htmlAssets().session());
     }
 
     private static Result renderPackage(Path source, Format requested, OutputStream sink, Options options,
