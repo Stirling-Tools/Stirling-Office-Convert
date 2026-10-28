@@ -12,6 +12,9 @@ final class Jpeg {
 
     private static final int MAX_BLOCKS = 1 << 22;
 
+    private static final int MAX_SYMBOLS = (int) Math.max(1 << 12,
+            Math.min(1 << 22, Runtime.getRuntime().maxMemory() / (Rewrite.MAX_THREADS * 64L)));
+
     private static final class Table {
 
         final int[] maxCode = new int[18];
@@ -56,15 +59,36 @@ final class Jpeg {
 
     private static final class Symbols {
 
-        int[] packed = new int[1 << 12];
+        int[] packed;
 
         int size;
 
-        void add(int slot, int symbol, int length, int value) {
-            if (size == packed.length) {
-                packed = Arrays.copyOf(packed, size * 2);
+        private final int limit;
+
+        private final Symbols expected;
+
+        Symbols(int limit, Symbols expected) {
+            this.limit = limit;
+            this.expected = expected;
+            packed = expected == null ? new int[Math.min(1 << 12, limit)] : expected.packed;
+        }
+
+        void add(int slot, int symbol, int length, int value) throws Unsupported {
+            if (size >= limit) {
+                throw new Unsupported("the JPEG holds too many symbols to rewrite");
             }
-            packed[size++] = slot << 29 | symbol << 21 | length << 16 | value & 0xFFFF;
+            int p = slot << 29 | symbol << 21 | length << 16 | value & 0xFFFF;
+            if (expected != null) {
+                if (size >= expected.size || packed[size] != p) {
+                    throw new Unsupported("the rewritten JPEG changes its symbols");
+                }
+                size++;
+                return;
+            }
+            if (size == packed.length) {
+                packed = Arrays.copyOf(packed, (int) Math.min(limit, size * 2L));
+            }
+            packed[size++] = p;
         }
 
         static int slot(int p) {
@@ -108,25 +132,34 @@ final class Jpeg {
 
     private int vMax;
 
-    private final Symbols symbols = new Symbols();
+    private final Symbols symbols;
 
     private int bitBuffer;
 
     private int bitCount;
 
-    private Jpeg(byte[] in) {
+    private Jpeg(byte[] in, int maxSymbols, Symbols expected) {
         this.in = in;
+        symbols = new Symbols(maxSymbols, expected);
     }
 
     static byte[] optimize(byte[] jpeg) {
+        return optimize(jpeg, MAX_SYMBOLS);
+    }
+
+    static byte[] optimize(byte[] jpeg, int maxSymbols) {
+        if (maxSymbols < 1) {
+            return null;
+        }
+        maxSymbols = Math.min(maxSymbols, MAX_SYMBOLS);
         try {
-            Jpeg first = new Jpeg(jpeg);
+            Jpeg first = new Jpeg(jpeg, maxSymbols, null);
             Bytes out = first.rewrite();
             if (out == null || out.size() >= jpeg.length) {
                 return null;
             }
             byte[] result = out.toByteArray();
-            Jpeg check = new Jpeg(result);
+            Jpeg check = new Jpeg(result, maxSymbols, first.symbols);
             if (check.rewrite() == null || !check.symbols.same(first.symbols)) {
                 return null;
             }

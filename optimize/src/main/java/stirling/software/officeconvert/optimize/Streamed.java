@@ -19,14 +19,29 @@ import org.apache.pdfbox.cos.COSInteger;
 import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.cos.COSStream;
 
+import stirling.software.officeconvert.extract.PdfFiles;
+
 final class Streamed {
 
     record Result(int spilled, byte[] digest, Map<COSName, COSBase> replace) {}
+
+    private static final int MAX_ROW_BYTES = (int) Math.max(1024,
+            Math.min(8 << 20, Runtime.getRuntime().maxMemory() / (Rewrite.MAX_THREADS * 64L)));
+
+    private static final long MAX_DECODED_BYTES = Math.min(512L << 20, 4 * Recoder.MAX_DECODED_BYTES);
 
     private Streamed() {}
 
     static Result recode(COSStream s, Recoder.Kind kind, Predictors.Layout image, int rows, Spill spill,
             MessageDigest sha, PdfOptimizer.Effort effort) throws IOException {
+        return recode(s, kind, image, rows, spill, sha, effort, MAX_ROW_BYTES, MAX_DECODED_BYTES);
+    }
+
+    static Result recode(COSStream s, Recoder.Kind kind, Predictors.Layout image, int rows, Spill spill,
+            MessageDigest sha, PdfOptimizer.Effort effort, int maxRowBytes, long maxDecodedBytes) throws IOException {
+        PdfFiles.stopIfInterrupted();
+        maxRowBytes = Math.min(maxRowBytes, MAX_ROW_BYTES);
+        maxDecodedBytes = Math.min(maxDecodedBytes, MAX_DECODED_BYTES);
         if (kind == Recoder.Kind.KEEP || s.containsKey(COSName.F)) {
             return null;
         }
@@ -41,7 +56,7 @@ final class Streamed {
         Predictors.Layout given = null;
         int predictor = predictorParms == null ? 1 : predictorParms.getInt(COSName.PREDICTOR, 1);
         if (predictor > 1) {
-            if (predictor < 10) {
+            if (predictor < 10 || predictor > 15) {
                 return null;
             }
             try {
@@ -50,36 +65,40 @@ final class Streamed {
                 return null;
             }
         }
-        long raw = s.getLength();
         Predictors.Layout target = image != null && rows > 0 ? image : null;
+        if (maxDecodedBytes < 1 || given != null && (given.rowBytes() < 1 || given.rowBytes() > maxRowBytes
+                || given.rowBytes() > maxDecodedBytes) || target != null && (target.rowBytes() < 1
+                || target.rowBytes() > maxRowBytes || (long) target.rowBytes() * rows > maxDecodedBytes)) {
+            return null;
+        }
+        long raw = s.getLength();
         Spill.Writer w = spill.writer(sha);
         Deflater deflater = new Deflater(6);
         Inflater inflater = filters.isEmpty() ? null : new Inflater();
-        long decoded = 0;
         boolean clean;
         try (InputStream in = s.createRawInputStream();
                 OutputStream z = new DeflaterOutputStream(w, deflater, 1 << 16)) {
-            Rows out = new Rows(z, target);
+            Rows out = new Rows(z, target, maxDecodedBytes);
             byte[] buf = new byte[1 << 16];
             byte[] chunk = new byte[1 << 16];
             RowsIn rowsIn = given == null ? null : new RowsIn(given);
             int n;
             while ((n = in.read(buf)) > 0) {
+                PdfFiles.stopIfInterrupted();
                 if (inflater == null) {
-                    decoded += n;
                     out.write(buf, 0, n);
                     continue;
                 }
                 inflater.setInput(buf, 0, n);
                 while (!inflater.needsInput() && !inflater.finished()) {
+                    PdfFiles.stopIfInterrupted();
                     int k = inflater.inflate(chunk);
                     if (k == 0 && (inflater.needsDictionary() || !inflater.needsInput() && !inflater.finished())) {
                         break;
                     }
                     if (rowsIn != null) {
-                        decoded += rowsIn.decode(chunk, k, out);
+                        rowsIn.decode(chunk, k, out);
                     } else {
-                        decoded += k;
                         out.write(chunk, 0, k);
                     }
                 }
@@ -88,8 +107,9 @@ final class Streamed {
                 }
             }
             clean = (inflater == null || inflater.finished()) && (rowsIn == null || rowsIn.clean())
-                    && out.clean() && (target == null || decoded == (long) target.rowBytes() * rows);
+                    && out.clean() && (target == null || out.written == (long) target.rowBytes() * rows);
         } catch (DataFormatException | IOException e) {
+            PdfFiles.stopIfInterrupted();
             clean = false;
         } finally {
             deflater.end();
@@ -97,10 +117,12 @@ final class Streamed {
                 inflater.end();
             }
         }
-        int index = w.finish();
+        PdfFiles.stopIfInterrupted();
         if (!clean || w.length() >= raw) {
+            sha.reset();
             return null;
         }
+        int index = w.finish();
         Map<COSName, COSBase> replace = new LinkedHashMap<>();
         replace.put(COSName.FILTER, COSName.FLATE_DECODE);
         replace.put(COSName.DECODE_PARMS, target == null ? null : Recoder.predictorParms(target));
@@ -121,8 +143,6 @@ final class Streamed {
 
         private int fill;
 
-        private boolean bad;
-
         RowsIn(Predictors.Layout layout) {
             row = layout.rowBytes() + 1;
             bpp = layout.pixelBytes();
@@ -130,8 +150,7 @@ final class Streamed {
             cur = new byte[row];
         }
 
-        long decode(byte[] data, int n, Rows out) throws IOException {
-            long produced = 0;
+        void decode(byte[] data, int n, Rows out) throws IOException {
             for (int i = 0; i < n; ) {
                 int take = Math.min(n - i, row - fill);
                 System.arraycopy(data, i, cur, fill, take);
@@ -140,11 +159,13 @@ final class Streamed {
                 if (fill == row) {
                     int tag = cur[0] & 0xFF;
                     if (tag > 4) {
-                        bad = true;
-                        return produced;
+                        throw new IOException("The PNG row filter is not defined");
                     }
                     byte[] line = new byte[row - 1];
                     for (int x = 0; x < row - 1; x++) {
+                        if ((x & 4095) == 0) {
+                            PdfFiles.stopIfInterrupted();
+                        }
                         int v = cur[x + 1] & 0xFF;
                         int a = x >= bpp ? line[x - bpp] & 0xFF : 0;
                         int b = prev[x] & 0xFF;
@@ -158,16 +179,14 @@ final class Streamed {
                         };
                     }
                     out.write(line, 0, line.length);
-                    produced += line.length;
                     prev = line;
                     fill = 0;
                 }
             }
-            return produced;
         }
 
         boolean clean() {
-            return !bad && fill == 0;
+            return fill == 0;
         }
     }
 
@@ -185,14 +204,24 @@ final class Streamed {
 
         private boolean first = true;
 
-        Rows(OutputStream out, Predictors.Layout layout) {
+        private final long limit;
+
+        private long written;
+
+        Rows(OutputStream out, Predictors.Layout layout, long limit) {
             this.out = out;
             this.layout = layout;
+            this.limit = limit;
             this.row = layout == null ? null : new byte[layout.rowBytes()];
             this.prev = layout == null ? null : new byte[layout.rowBytes()];
         }
 
         void write(byte[] data, int off, int len) throws IOException {
+            PdfFiles.stopIfInterrupted();
+            if (len > limit - written) {
+                throw new IOException("The decoded stream exceeds the streaming rewrite limit");
+            }
+            written += len;
             if (layout == null) {
                 out.write(data, off, len);
                 return;
@@ -204,6 +233,7 @@ final class Streamed {
                 off += take;
                 len -= take;
                 if (fill == row.length) {
+                    PdfFiles.stopIfInterrupted();
                     byte[] two = new byte[row.length * 2];
                     System.arraycopy(prev, 0, two, 0, row.length);
                     System.arraycopy(row, 0, two, row.length, row.length);
