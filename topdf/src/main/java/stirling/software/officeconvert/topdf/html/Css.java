@@ -10,8 +10,8 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /** Just enough CSS: rules from a style sheet, declarations, lengths and colours. Nothing is fetched here: a
- * background's url() is kept as {@code background-url} for the caller to resolve, an @font-face rule keeps its
- * declarations as written, and @import is dropped. */
+ * background's url() is kept as {@code background-url} for the caller to resolve, and @import and @font-face are
+ * dropped. */
 final class Css {
 
     static final int MAX_RULES = 200_000;

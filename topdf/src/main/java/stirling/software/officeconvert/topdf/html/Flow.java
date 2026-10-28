@@ -1330,7 +1330,7 @@ final class Flow {
         return !s.isEmpty() && !s.equals("none") && !s.startsWith("inset");
     }
 
-    // A grid or flex item that only wraps one card lends the card's frame to its column, as Bootstrap's .col > .card
+
     private Map<String, String> framedChild(Element item, Map<String, String> d, Look look) {
         if (Layout.framed(d) || shadowed(d) || item.childrenSize() != 1 || !item.ownText().isBlank()) {
             return null;

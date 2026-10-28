@@ -594,7 +594,7 @@ final class HtmlTables {
 
     private static final int BUTTON_TEXT = 60;
 
-    // A short cell with its own fill in a table of no set width is a button, which keeps its width
+
     private static boolean filled(Map<String, String> cd, Element td) {
         Integer fill = Css.color(cd.getOrDefault("background-color", td.attr("bgcolor")));
         return fill != null && fill >= 0 && fill != 0xFFFFFF;

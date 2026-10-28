@@ -31,8 +31,7 @@ none), `--fonts dir` (repeatable; an extra folder of fonts), `--font-map Family=
 family with an installed one, such as `Aptos=Inter`), `--font-width Family=scale` (repeatable; scale a substituted
 family's widths, 0.5 to 2), `--no-system-fonts` (only the given fonts and the bundled Liberation Sans, for
 reproducible output), `--allow-packages` (convert a `.zip` of an HTML page, or an EPUB book not named `.epub`), `--allow-local-files` (let an HTML page
-draw the pictures and style sheets in its own folder, never outside it), `--allow-network`, `--follow-redirects`,
-`--allow-cookies`, `--allow-private-addresses` and `--fetch-linked` (see URL to PDF below), `-q`, and `--format pdf` to take only the Office files out
+draw the pictures and style sheets in its own folder, never outside it), `-q`, and `--format pdf` to take only the Office files out
 of a folder. A folder converts both its PDFs and its Office files; its text and CSV files only with `--format pdf`. Inputs that would write the same output name (such
 as `report.docx` and `report.xlsx`) keep their own extension in it (`report.docx.pdf`, `report.xlsx.pdf`), and Office
 owner files (`~$name`) are skipped. An input is never overwritten: an output that would take an input's name keeps that
@@ -543,27 +542,14 @@ saved as `.doc`) is laid out without a browser and drawn by the DOCX renderer: h
 `data:image/svg+xml` (shapes, paths, transforms and same-page `<use>`), floats beside text, page breaks, and `@page`
 size and margins, named pages included, with the default page's `@top-left|center|right` and
 `@bottom-left|center|right` margin boxes as running headers and footers (`content` strings, `counter(page)` and
-`counter(pages)`; `@page :first`, `:left` and `:right` margin boxes apply to the first, even and odd pages, and
-`string-set` with `string(name[, first|start|last|first-except])` prints running strings such as the current
-chapter). Style comes from `<style>` sheets, `style` attributes and the old
+`counter(pages)`). Style comes from `<style>` sheets, `style` attributes and the old
 presentational attributes over a browser's defaults, with the cascade as Chrome applies it when printing: media
 queries are answered for print at the page's text width, `!important`, custom properties (`var()`), `calc()`,
 `min()`, `max()`, `clamp()`, `rem`, `hsl()` and alpha colours. Flex rows and grids become columns side by side
 (short items share a line); absolute positions and visually hidden text (screen-reader-only, off-page, closed
-`<details>`) are left out. Nothing is fetched and no script runs: linked style sheets, `@import`,
+`<details>`) are left out. Nothing is fetched and no script runs: linked style sheets, `@import`, `@font-face`,
 `url()` and pictures on the web or on disk are left out with a warning, and only pictures inside the file are drawn
-(PNG, JPEG, GIF, BMP, WebP and SVG; AVIF is not). The generic families `serif`, `sans-serif` and `monospace` (and unstyled text, which is `serif`) take the
-first installed family in fontconfig's own order (Noto Serif, DejaVu Serif, Times New Roman, ... and the
-same for sans and mono), so a server prints them with the faces WeasyPrint would pick there; with none of those
-installed they fall back to Times New Roman, Arial and Courier New or their look-alikes. Web fonts (`@font-face`) are drawn from `data:` URIs, and from
-linked files only through the same opt-ins as pictures: TrueType, and WOFF 1 holding TrueType; WOFF 2 and
-PostScript-outline (CFF) fonts fall back to an installed font with a warning. A face is used under its CSS family
-name, weight and style. A font is limited to 32 MiB after expanding its tables, with 128 MiB of accepted web-font
-data per page; an invalid or unusable source falls through to the next CSS source. `::before` and `::after` content is drawn: strings, `attr()`, quotes, `leader()` (a dotted, solid or
-spaced leader to the right edge) and `target-counter(attr(href), page)`, which converts the page twice to learn the
-page of each target; `counter()` and `counters()` with `counter-reset` and `counter-increment`, scoped to the
-element, its descendants and its following siblings as CSS defines. `hyphens: auto` hyphenates English text (`lang="en"`, any
-region) with the bundled patterns, as WeasyPrint does; other languages are not hyphenated. A `.zip` of a page is refused unless
+(PNG, JPEG, GIF, BMP, WebP and SVG; AVIF is not). A `.zip` of a page is refused unless
 `Options.allowPackages(true)` (`--allow-packages`) is given; then the page it holds (the shallowest `index.html`, else the
 shallowest `.html`) draws the pictures, linked style sheets and `@import`s it holds, resolved relative to the page and
 never outside the archive. A library caller can supply them another way with `Options.htmlAssets(HtmlAssets)`:
@@ -571,31 +557,6 @@ never outside the archive. A library caller can supply them another way with `Op
 `--allow-local-files` uses, rooted at the page's folder), and
 a caller's own implementation receives each reference resolved against its `base()`, such as a URL it fetches itself.
 At most 4,000 linked files and 192 MB are read per page, 64 MB each.
-
-URL to PDF is off unless asked for: `OfficeToPdf.convertUrl(url, out, options, access)` (on the command line, an
-`http://` or `https://` argument with `-o out.pdf`) fetches the page and the pictures, style sheets and fonts it links
-only when `WebAssets.Access.network(true)` (`--allow-network`) is given. Every other switch is off by default too:
-`redirects(true)` (`--follow-redirects`) follows up to 5 redirect hops, each checked like the first; `cookies(true)`
-(`--allow-cookies`) keeps cookies a host sets during the conversion and sends them back to that host only;
-`privateAddresses(true)` (`--allow-private-addresses`) lets loopback, private, shared and unique-local addresses
-through for intranet pages. Only `http` and `https` are fetched, never a URL with a user name or password. The host is
-resolved once per request, the request is refused when any resolved address is loopback, private, link-local (cloud
-metadata such as `169.254.169.254`), multicast or reserved, in its IPv4, IPv6, IPv4-mapped, NAT64, 6to4 or Teredo
-form, and the connection goes to the very address that was checked, so a second DNS answer cannot redirect it.
-Link-local, metadata, multicast and reserved addresses stay refused with `privateAddresses`. Fetching stops after
-60 s, 64 MB or 300 requests together (`timeout`, `maxBytes`, `maxRequests`); a `<base href>` on the page moves where
-its links resolve. The conversion timeout also covers the initial page fetch and linked resources; the separate
-web-access timeout remains active when the conversion timeout is disabled. Interruption closes a blocked connection.
-Request headers and response headers including chunked trailers are each limited to 64 KiB. A charset named by the
-server is kept by converting the page to UTF-8 unless a complete Unicode byte-order mark selects the encoding.
-
-An HTML file (not a URL) draws the `http`/`https` pictures, style sheets and fonts it links only when both
-`network(true)` and `linkedFromFiles(true)` are set and the caller passes `WebAssets.linkedFrom(localAssets, access)`
-as its `htmlAssets` (`--allow-network --fetch-linked`, which combines with `--allow-local-files`). The same address,
-redirect, cookie and size rules apply. Host lookups give up after 10 s (or the time left), TLS certificates are checked
-against the system trust store and the host name, and the host name is sent as SNI.
-
-Current measurements and remaining limits are recorded in [HTML to PDF validation](html-parity.md).
 
 EPUB (`.epub`, EPUB 2 and 3) is read in its reading order (the package document's spine) into one HTML page: each
 document starts a new page, its own `<style>` rules apply only to it, links between documents become links inside

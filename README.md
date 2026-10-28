@@ -15,9 +15,7 @@ PDF-to-Office documents contain real paragraphs, headings, lists, tables, footno
 Office-to-PDF reads saved content without running macros, scripts or formulas or fetching linked resources.
 HTML converts without a browser: scripts never run and nothing is fetched; pictures and style sheets come from the
 file itself (`data:` URIs) unless the caller opts in: a `.zip` of the page (or an EPUB not named
-`.epub`) only with `allowPackages` (`--allow-packages`), files beside the page only with `HtmlAssets` (`--allow-local-files`),
-and a web page by URL only with `WebAssets.Access.network` (`--allow-network`), guarded against local and private
-addresses, with redirects and cookies off unless asked for.
+`.epub`) only with `allowPackages` (`--allow-packages`), files beside the page only with `HtmlAssets` (`--allow-local-files`).
 iWork files use their embedded PDF or picture preview, and Visio 2003-2010 drawings their first page's preview. PDF/A level a requires an already tagged PDF;
 the converter does not create a structure tree for an untagged document.
 
