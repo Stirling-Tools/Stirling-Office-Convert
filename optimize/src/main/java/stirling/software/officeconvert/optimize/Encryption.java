@@ -1,7 +1,6 @@
 package stirling.software.officeconvert.optimize;
 
 import java.io.IOException;
-import java.io.InputStream;
 import java.io.OutputStream;
 import java.security.GeneralSecurityException;
 import java.security.MessageDigest;
@@ -14,7 +13,6 @@ import javax.crypto.spec.SecretKeySpec;
 import org.apache.pdfbox.cos.COSDictionary;
 import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.cos.COSStream;
-import org.apache.pdfbox.cos.COSString;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.encryption.PDEncryption;
 import org.apache.pdfbox.pdmodel.encryption.ProtectionPolicy;
@@ -31,12 +29,16 @@ final class Encryption {
 
     private final boolean metadata;
 
+    private final boolean identity;
+
     final COSDictionary dictionary;
 
     private Encryption(SecurityHandler<ProtectionPolicy> handler, boolean metadata, COSDictionary dictionary) {
         this.handler = handler;
         this.metadata = metadata;
         this.dictionary = dictionary;
+        this.identity = dictionary.getCOSDictionary(COSName.CF) != null
+                && COSName.IDENTITY.getName().equals(dictionary.getNameAsString(COSName.STM_F, ""));
     }
 
     static Encryption of(PDDocument doc, String password) throws IOException {
@@ -74,33 +76,29 @@ final class Encryption {
 
     byte[] string(byte[] plain, int number) {
         try {
-            COSString s = new COSString(plain);
-            handler.encryptString(s, number, 0);
-            return s.getBytes();
+            return identity ? plain : encrypt(plain, number);
         } catch (IOException e) {
             throw new IllegalStateException("A string could not be encrypted", e);
         }
     }
 
     boolean encrypts(COSStream source) {
-        return encrypts(COSName.METADATA.equals(source.getCOSName(COSName.TYPE)));
+        return metadata || !COSName.METADATA.equals(source.getCOSName(COSName.TYPE));
     }
 
     boolean encrypts(boolean metadataStream) {
-        return metadata || !metadataStream;
+        return !identity && (metadata || !metadataStream);
     }
 
     byte[] encrypt(byte[] plain, int number) throws IOException {
-        COSStream t = new COSStream();
-        try (OutputStream o = t.createRawOutputStream()) {
-            o.write(plain);
+        if (identity) {
+            return plain;
         }
-        handler.encryptStream(t, number, 0);
-        try (InputStream in = t.createRawInputStream()) {
-            return in.readAllBytes();
-        } finally {
-            t.close();
+        Bytes out = new Bytes((int) Math.min(Integer.MAX_VALUE - 16, encryptedLength(plain.length)));
+        try (OutputStream o = encrypting(out, number)) {
+            o.write(plain, 0, plain.length);
         }
+        return out.toByteArray();
     }
 
     long encryptedLength(long plain) {
