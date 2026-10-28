@@ -787,43 +787,9 @@ map leaves out. Every glyph keeps its glyph id and its advance width. Type 1 and
 TrueType at 1000 units per em through the FontMatrix; TrueType glyphs, hinting (`fpgm`, `prep`, `cvt `) and metrics
 are kept as they are, and a missing or truncated `OS/2` is replaced. The font has `glyf`, `loca`, `hmtx`, `hhea`,
 `head`, `maxp`, `OS/2`, `post`, `name` and a fresh `cmap` with format 4 and, for code points beyond the BMP, format 12.
-Programs over 64 MB are rejected before conversion; decoded PDF font streams and intermediate filter stages use
-the same limit. Input SFNT tables also share a 64 MB aggregate budget, so overlapping or duplicate table
-extents cannot amplify a small program during parsing or repair. Conversion checks thread interruption before parsing and while decoding and processing glyphs.
 A program that cannot be read fails with an `IOException`, and so does one whose charstrings expand past 131,072
 tokens for a glyph, 64 nested subroutine calls or 2^27 tokens for the font, or whose converted glyphs need more than
-eight times the program's size (at least 16 MB). The program's bytes decide how it is read, so a CFF program filed
-as FontFile or a Type 1 program filed as FontFile3 still converts.
-
-A Type 3 font (`PDType3Font`) is converted by running each glyph procedure: fills (nonzero and even-odd), strokes,
-image masks and pictures (ink pixels) become outlines at 1000 units per em through the FontMatrix, with the advance
-from `Widths`. Clipping paths, shadings inside a clip and luminosity or alpha soft masks cut the shape; colour is
-ignored. The cmap maps Unicode from ToUnicode or glyph names, and
-`0xF000` plus the character code in a (3,0) subtable, so the same font serves a browser and a PDF that shows the
-original codes.
-
-OpenType fonts with CFF2 outlines convert at their default instance (variations are not applied). Programs that
-fontbox rejects are repaired where fontforge would read them: TrueType tables with offsets past the end, a missing
-`head`, `hhea` or `maxp`, an unreadable `cmap` or an unknown `loca` format; CFF with a padded header or a malformed real
-number; Type 1 with broken PFB segments, an empty glyph name in its encoding or a private dictionary fontbox cannot
-tokenise. Composite glyphs that refer to themselves are emptied.
-
-### Embedding missing fonts
-
-`FontEmbedder.embedMissing(PDDocument)` (or with a `FontSet`) embeds every font a page shows, or its resources list,
-that has no font program. Each one becomes a TrueType subset drawn from the closest installed font, with every
-glyph's advance set to the PDF's own width, so no text moves. Readable embedded programs, Type 3 fonts, the content and the
-structure tree are left as they are. Font dictionaries that are equal (one per page, say) share one subset, the
-subsets carry no TrueType hinting, and a font the resources list but no content shows gets an empty one. The result
-lists each substitution and each font that could not be embedded. The operation is best effort and mutates the
-provided document; a reported failure does not roll back earlier substitutions. Nonempty programs that `WebFonts` can read are retained to preserve rendering, even if PDFBox still reports
-`isEmbedded() == false`; an empty or unreadable program is substituted. Existing Unicode mappings, including
-control and private-use characters, are preserved for this embedding-only operation. Save and reload the PDF
-before inspecting the resulting font objects, since PDFBox caches font instances from the original dictionaries.
-`Result.embedded()` lists substitutions made by this call; `Result.failed()` lists fonts that could not be processed
-or substituted. An empty failure list does not guarantee that every PDFBox embedding flag is true or establish
-PDF/A conformance. Interruption and font byte-limit failures abort with an `IOException`, rather than becoming
-ordinary failure entries.
+eight times the program's size (at least 16 MB).
 
 ## How it works
 
@@ -895,8 +861,7 @@ The cache belongs to the JDK build that made it; the JVM ignores a cache from an
   `Options(timeout, fontDirs, maxPages, maxScratchBytes)` are kept; a record pattern over `Options` needs the new
   components.
 - A new module, `stirling-office-convert-pdfa`, converts PDF to PDF/A.
-- `WebFonts` in the pdfa module converts Type 1, CFF, TrueType and Type 3 fonts from PDFs to TrueType web fonts.
-- `FontEmbedder` in the pdfa module embeds a PDF's missing fonts without converting it to PDF/A.
+- `WebFonts` in the pdfa module converts Type 1, CFF and TrueType font programs from PDFs to TrueType web fonts.
 - JPEG 2000 pictures are decoded by the library's own reader, which becomes the JVM's preferred `jpeg2000` ImageIO
   reader; `-Dstirling.officeconvert.jpxReader=imageio` keeps another one first (see Pictures).
 
