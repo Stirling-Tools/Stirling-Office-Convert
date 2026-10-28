@@ -1,3 +1,11 @@
+import com.github.jk1.license.render.JsonReportRenderer
+import stirling.software.gradle.DeclaredLicenseFilter
+import stirling.software.gradle.ModuleLicenseOverrideFilter
+
+plugins {
+    id("com.github.jk1.dependency-license-report")
+}
+
 allprojects {
     group = "com.stirling"
     version = findProperty("officeconvert.version")?.toString() ?: "0.1.0-SNAPSHOT"
@@ -161,4 +169,23 @@ tasks.register("publishAllToCentralPortal") {
         ":lineart:publishAllPublicationsToCentralPortalRepository",
         ":optimize:publishAllPublicationsToCentralPortalRepository")
     finalizedBy("finalizePortalDeployment")
+}
+
+val moduleLicenseOverridesFile = layout.projectDirectory.file("licenses/license-overrides.json").asFile
+
+licenseReport {
+    projects = (listOf(project) + subprojects).toTypedArray()
+    renderers = arrayOf(JsonReportRenderer())
+    allowedLicensesFile = layout.projectDirectory.file("licenses/allowed-licenses.json").asFile
+    outputDir = layout.buildDirectory.dir("reports/dependency-license").get().asFile.path
+    configurations = arrayOf("runtimeClasspath")
+    filters = arrayOf(DeclaredLicenseFilter(), ModuleLicenseOverrideFilter(moduleLicenseOverridesFile))
+}
+
+tasks.named("generateLicenseReport") {
+    inputs.file(moduleLicenseOverridesFile)
+}
+
+tasks.named("checkLicensePreparation") {
+    inputs.file(moduleLicenseOverridesFile)
 }
