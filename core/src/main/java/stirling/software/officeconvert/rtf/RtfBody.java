@@ -170,6 +170,7 @@ final class RtfBody {
             }
             switch (in) {
                 case Inline.Text t -> text(sb, t.text(), t.style());
+                case Inline.RunningText rt -> text(sb, rt.fallback(), rt.style());
                 case Inline.Tab tab -> sb.append('{').append(props(styleOr(tab.style()), false)).append("\\tab}");
                 case Inline.Break br -> sb.append("\\line ");
                 case Inline.ColumnBreak cb -> sb.append("\\column ");

@@ -28,7 +28,15 @@ public interface DocSink {
             List<Paragraph> footer,
             List<Paragraph> evenHeader,
             List<Paragraph> evenFooter,
-            boolean titlePage) {}
+            boolean titlePage,
+            List<Paragraph> firstHeader,
+            List<Paragraph> firstFooter) {
+
+        public HeaderFooterSet(List<Paragraph> header, List<Paragraph> footer, List<Paragraph> evenHeader,
+                List<Paragraph> evenFooter, boolean titlePage) {
+            this(header, footer, evenHeader, evenFooter, titlePage, List.of(), List.of());
+        }
+    }
 
     void finish(
             Section last,

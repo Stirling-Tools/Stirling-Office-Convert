@@ -107,6 +107,7 @@ final class ModelJson {
                 }
                 styled(o, t.style());
             }
+            case Inline.RunningText t -> styled(new JsonOut(sb).str("type", "text").str("text", t.fallback()), t.style());
             case Inline.Tab t -> styled(new JsonOut(sb).str("type", "tab"), t.style());
             case Inline.Break b -> new JsonOut(sb).str("type", "break").end();
             case Inline.ColumnBreak b -> new JsonOut(sb).str("type", "columnBreak").end();

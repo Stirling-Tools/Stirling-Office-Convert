@@ -18,7 +18,8 @@ final class ChartXml {
         if (chart.title() != null) {
             b.append("<c:title>").append(rich(chart.title())).append("<c:overlay val=\"0\"/></c:title>");
         }
-        b.append("<c:autoTitleDeleted val=\"1\"/><c:plotArea><c:layout/>");
+        b.append("<c:autoTitleDeleted val=\"1\"/><c:plotArea>");
+        b.append("<c:layout/>");
         boolean[] used = new boolean[2];
         boolean scatter = false;
         for (BiffChart.Group g : chart.groups()) {
@@ -36,11 +37,18 @@ final class ChartXml {
         }
         boolean polar = chart.groups().stream()
                 .anyMatch(g -> g.kind() == BiffChart.Kind.RADAR || g.kind() == BiffChart.Kind.FILLED_RADAR);
+        int table = chart.dataTable();
+        if (table >= 0) {
+            b.append("<c:dTable><c:showHorzBorder val=\"").append(table & 1).append("\"/><c:showVertBorder val=\"")
+                    .append(table >> 1 & 1).append("\"/><c:showOutline val=\"").append(table >> 2 & 1)
+                    .append("\"/><c:showKeys val=\"").append(table >> 3 & 1).append("\"/></c:dTable>");
+        }
         b.append("<c:spPr>").append(fill(polar ? null : chart.plotFill())).append("</c:spPr></c:plotArea>");
         if (chart.legend() != null) {
             legend(b, chart.legend());
         }
-        b.append("<c:plotVisOnly val=\"1\"/></c:chart><c:spPr>").append(fill(chart.areaFill()))
+        b.append("<c:plotVisOnly val=\"").append(chart.plotVisibleOnly() ? 1 : 0)
+                .append("\"/></c:chart><c:spPr>").append(fill(chart.areaFill()))
                 .append(line(chart.areaLine(), 0.75f)).append("</c:spPr><c:txPr><a:bodyPr/><a:lstStyle/><a:p>")
                 .append("<a:pPr><a:defRPr sz=\"").append(Math.round(chart.textSize() * 100)).append("\">");
         if (chart.font() != null && !chart.font().isBlank()) {
@@ -64,10 +72,10 @@ final class ChartXml {
     private static void group(StringBuilder b, BiffChart.Group g) {
         String grouping = g.percent() ? "percentStacked" : g.stacked() ? "stacked" : null;
         String tag = switch (g.kind()) {
-            case BAR -> "barChart";
+            case BAR -> g.threeD() && !g.horizontal() ? "bar3DChart" : "barChart";
             case LINE -> "lineChart";
             case AREA -> "areaChart";
-            case PIE -> g.donut() > 0 ? "doughnutChart" : "pieChart";
+            case PIE -> g.donut() > 0 ? "doughnutChart" : g.threeD() ? "pie3DChart" : "pieChart";
             case SCATTER -> "scatterChart";
             case RADAR, FILLED_RADAR -> "radarChart";
         };
@@ -97,7 +105,12 @@ final class ChartXml {
             case BAR -> b.append("<c:gapWidth val=\"").append(Math.max(0, Math.min(500, g.gap())))
                     .append("\"/><c:overlap val=\"").append(Math.max(-100, Math.min(100, -g.overlap())))
                     .append("\"/>");
-            case LINE -> b.append("<c:marker val=\"1\"/>");
+            case LINE -> {
+                if (g.stock() != null) {
+                    stock(b, g.stock());
+                }
+                b.append("<c:marker val=\"1\"/>");
+            }
             case PIE -> {
                 b.append("<c:firstSliceAng val=\"").append(Math.floorMod(g.firstSlice(), 360)).append("\"/>");
                 if (g.donut() > 0) {
@@ -138,11 +151,22 @@ final class ChartXml {
             b.append("<c:dPt><c:idx val=\"").append(p.getKey()).append("\"/><c:spPr>").append(fill(p.getValue()))
                     .append("</c:spPr></c:dPt>");
         }
+        if (s.labels() != null) {
+            labels(b, s.labels(), kind == BiffChart.Kind.PIE ? "bestFit" : null);
+        }
+        if (kind != BiffChart.Kind.PIE && kind != BiffChart.Kind.RADAR && kind != BiffChart.Kind.FILLED_RADAR) {
+            for (BiffChart.Trend t : s.trends()) {
+                trend(b, t);
+            }
+            for (boolean x : kind == BiffChart.Kind.SCATTER ? new boolean[] {false, true} : new boolean[] {false}) {
+                errorBars(b, s.errors().stream().filter(e -> e.x() == x).toList(), x);
+            }
+        }
         if (kind == BiffChart.Kind.SCATTER) {
             b.append("<c:xVal>").append(numbers(s.xs() == null ? sequence(s.values().length) : s.xs()))
                     .append("</c:xVal><c:yVal>").append(numbers(s.values())).append("</c:yVal>");
         } else {
-            b.append("<c:cat>").append(strings(s.categories())).append("</c:cat><c:val>").append(numbers(s.values()))
+            b.append("<c:cat>").append(categories(s)).append("</c:cat><c:val>").append(numbers(s.values()))
                     .append("</c:val>");
         }
         if (lines) {
@@ -151,12 +175,131 @@ final class ChartXml {
         b.append("</c:ser>");
     }
 
+    private static void stock(StringBuilder b, BiffChart.Stock s) {
+        if (s.hiLow()) {
+            b.append("<c:hiLowLines><c:spPr>").append(line(s.hiLowColor(), s.hiLowWidth())).append("</c:spPr></c:hiLowLines>");
+        }
+        if (s.bars()) {
+            b.append("<c:upDownBars><c:gapWidth val=\"").append(Math.max(0, Math.min(500, s.gap())))
+                    .append("\"/><c:upBars><c:spPr>").append(fill(s.up())).append(line(s.edge(), 0.75f))
+                    .append("</c:spPr></c:upBars><c:downBars><c:spPr>").append(fill(s.down()))
+                    .append(line(s.edge(), 0.75f)).append("</c:spPr></c:downBars></c:upDownBars>");
+        }
+    }
+
+    private static void trend(StringBuilder b, BiffChart.Trend t) {
+        b.append("<c:trendline><c:spPr>").append(line(t.line(), t.width())).append("</c:spPr><c:trendlineType val=\"")
+                .append(t.type()).append("\"/>");
+        if (t.type().equals("poly")) {
+            b.append("<c:order val=\"").append(Math.max(2, Math.min(6, t.order()))).append("\"/>");
+        } else if (t.type().equals("movingAvg")) {
+            b.append("<c:period val=\"").append(Math.max(2, Math.min(255, t.order()))).append("\"/>");
+        }
+        if (Double.isFinite(t.forward()) && t.forward() > 0) {
+            b.append("<c:forward val=\"").append(t.forward()).append("\"/>");
+        }
+        if (Double.isFinite(t.backward()) && t.backward() > 0) {
+            b.append("<c:backward val=\"").append(t.backward()).append("\"/>");
+        }
+        b.append("</c:trendline>");
+    }
+
+    private static void errorBars(StringBuilder b, List<BiffChart.ErrorBar> bars, boolean x) {
+        BiffChart.ErrorBar plus = bars.stream().filter(BiffChart.ErrorBar::plus).findFirst().orElse(null);
+        BiffChart.ErrorBar minus = bars.stream().filter(e -> !e.plus()).findFirst().orElse(null);
+        BiffChart.ErrorBar any = plus != null ? plus : minus;
+        if (any == null) {
+            return;
+        }
+        String kind = switch (any.source()) {
+            case 1 -> "percentage";
+            case 3 -> "stdDev";
+            case 4 -> "cust";
+            case 5 -> "stdErr";
+            default -> "fixedVal";
+        };
+        b.append("<c:errBars><c:errDir val=\"").append(x ? "x" : "y").append("\"/><c:errBarType val=\"")
+                .append(plus != null && minus != null ? "both" : plus != null ? "plus" : "minus")
+                .append("\"/><c:errValType val=\"").append(kind).append("\"/><c:noEndCap val=\"")
+                .append(any.cap() ? 0 : 1).append("\"/>");
+        if (kind.equals("cust")) {
+            b.append("<c:plus>").append(numbers(plus == null ? new double[0] : plus.values())).append("</c:plus>")
+                    .append("<c:minus>").append(numbers(minus == null ? new double[0] : minus.values()))
+                    .append("</c:minus>");
+        } else {
+            b.append("<c:val val=\"").append(any.value()).append("\"/>");
+        }
+        b.append("<c:spPr>").append(line(any.line(), any.width())).append("</c:spPr></c:errBars>");
+    }
+
+    private static void labels(StringBuilder b, BiffChart.Labels l, String position) {
+        b.append("<c:dLbls>");
+        for (Map.Entry<Integer, Integer> p : l.points().entrySet()) {
+            b.append("<c:dLbl><c:idx val=\"").append(p.getKey()).append("\"/>");
+            if (p.getValue() == 0) {
+                b.append("<c:delete val=\"1\"/>");
+            } else {
+                shown(b, p.getValue());
+            }
+            b.append("</c:dLbl>");
+        }
+        if (l.format() != null) {
+            b.append("<c:numFmt formatCode=\"").append(Xml.attr(l.format())).append("\" sourceLinked=\"0\"/>");
+        }
+        b.append("<c:spPr><a:noFill/><a:ln><a:noFill/></a:ln></c:spPr>");
+        if (l.size() > 0 || l.bold() || l.color() != null) {
+            b.append("<c:txPr><a:bodyPr/><a:lstStyle/><a:p><a:pPr><a:defRPr");
+            if (l.size() > 0) {
+                b.append(" sz=\"").append(Math.round(l.size() * 100)).append('"');
+            }
+            b.append(" b=\"").append(l.bold() ? 1 : 0).append("\">");
+            if (l.color() != null) {
+                b.append(fill(l.color()));
+            }
+            b.append("</a:defRPr></a:pPr><a:endParaRPr lang=\"en-US\"/></a:p></c:txPr>");
+        }
+        String at = l.position() != null ? l.position() : position;
+        if (at != null) {
+            b.append("<c:dLblPos val=\"").append(at).append("\"/>");
+        }
+        shown(b, l.flags());
+        if ((l.flags() & 4) != 0) {
+            b.append("<c:separator>\n</c:separator>");
+        }
+        b.append("</c:dLbls>");
+    }
+
+    private static void shown(StringBuilder b, int flags) {
+        boolean both = (flags & 4) != 0;
+        b.append("<c:showLegendKey val=\"0\"/><c:showVal val=\"").append((flags & 1) != 0 ? 1 : 0)
+                .append("\"/><c:showCatName val=\"").append((flags & 0x10) != 0 || both ? 1 : 0)
+                .append("\"/><c:showSerName val=\"").append((flags & 0x40) != 0 ? 1 : 0)
+                .append("\"/><c:showPercent val=\"").append((flags & 2) != 0 || both ? 1 : 0)
+                .append("\"/><c:showBubbleSize val=\"0\"/>");
+    }
+
     private static double[] sequence(int n) {
         double[] v = new double[n];
         for (int i = 0; i < n; i++) {
             v[i] = i + 1;
         }
         return v;
+    }
+
+    private static String categories(BiffChart.Series s) {
+        BiffChart.Numbers n = s.categoryNumbers();
+        if (n == null) {
+            return strings(s.categories());
+        }
+        StringBuilder b = new StringBuilder("<c:numRef><c:f></c:f><c:numCache><c:formatCode>")
+                .append(Xml.text(n.format())).append("</c:formatCode><c:ptCount val=\"").append(n.values().length)
+                .append("\"/>");
+        for (int i = 0; i < n.values().length; i++) {
+            if (Double.isFinite(n.values()[i])) {
+                b.append("<c:pt idx=\"").append(i).append("\"><c:v>").append(n.values()[i]).append("</c:v></c:pt>");
+            }
+        }
+        return b.append("</c:numCache></c:numRef>").toString();
     }
 
     private static String strings(List<String> values) {
@@ -216,8 +359,9 @@ final class ChartXml {
         }
         b.append("<c:numFmt formatCode=\"").append(Xml.attr(format == null ? "General" : format))
                 .append("\" sourceLinked=\"0\"/><c:majorTickMark val=\"out\"/><c:minorTickMark val=\"none\"/>")
-                .append("<c:tickLblPos val=\"nextTo\"/><c:spPr><a:ln w=\"9525\"><a:solidFill><a:srgbClr val=\"")
-                .append("000000\"/></a:solidFill></a:ln></c:spPr><c:crossAx val=\"").append(cross)
+                .append("<c:tickLblPos val=\"nextTo\"/><c:spPr>").append(line(a == null ? Integer.valueOf(0)
+                        : a.line(), 0.75f)).append("</c:spPr>").append(a == null ? "" : font(a.font()))
+                .append("<c:crossAx val=\"").append(cross)
                 .append("\"/><c:crosses val=\"").append(crossMax ? "max" : "autoZero").append("\"/>");
         if (tag.equals("valAx")) {
             b.append("<c:crossBetween val=\"between\"/>");
@@ -240,7 +384,16 @@ final class ChartXml {
         int[] fill = l.fill() == null ? new int[] {0xFFFFFF} : l.fill();
         int[] line = l.line() == null ? new int[] {0} : l.line();
         b.append("<c:overlay val=\"0\"/><c:spPr>").append(fill(fill.length == 0 ? null : fill[0]))
-                .append(line(line.length == 0 ? null : line[0], 0.75f)).append("</c:spPr></c:legend>");
+                .append(line(line.length == 0 ? null : line[0], 0.75f)).append("</c:spPr>").append(font(l.font()))
+                .append("</c:legend>");
+    }
+
+    private static String font(BiffChart.Text t) {
+        if (t == null) {
+            return "";
+        }
+        return "<c:txPr><a:bodyPr/><a:lstStyle/><a:p><a:pPr><a:defRPr sz=\"" + Math.round(t.size() * 100) + "\" b=\""
+                + (t.bold() ? 1 : 0) + "\"/></a:pPr><a:endParaRPr lang=\"en-US\"/></a:p></c:txPr>";
     }
 
     private static double clamp(double v) {

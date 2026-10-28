@@ -10,18 +10,26 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.PrintStream;
+import java.net.InetAddress;
+import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.zip.ZipEntry;
+import java.util.zip.ZipFile;
 import java.util.zip.ZipOutputStream;
 
+import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.PDPageContentStream;
 import org.apache.pdfbox.pdmodel.font.PDType0Font;
+import org.apache.pdfbox.text.PDFTextStripper;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+
+import com.sun.net.httpserver.HttpServer;
 
 class MainTest {
 
@@ -47,12 +55,84 @@ class MainTest {
     }
 
     @Test
+    void aUrlIsFetchedOnlyWithNetworkAccessAndNeverFromALocalAddressByDefault() throws Exception {
+        HttpServer server = HttpServer.create(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 0);
+        AtomicInteger hits = new AtomicInteger();
+        server.createContext("/", ex -> {
+            hits.incrementAndGet();
+            byte[] body = "<html><body><p>Served page</p></body></html>".getBytes(StandardCharsets.UTF_8);
+            ex.getResponseHeaders().add("Content-Type", "text/html; charset=utf-8");
+            ex.sendResponseHeaders(200, body.length);
+            try (OutputStream os = ex.getResponseBody()) {
+                os.write(body);
+            }
+        });
+        server.start();
+        try {
+            String url = "http://127.0.0.1:" + server.getAddress().getPort() + "/index.html";
+            Path pdf = dir.resolve("site.pdf");
+            Result off = run(url, "-o", pdf.toString());
+            assertEquals(2, off.code(), off.err());
+            assertTrue(off.err().contains("--allow-network"), off.err());
+            Result refused = run(url, "-o", pdf.toString(), "--allow-network");
+            assertEquals(1, refused.code(), refused.err());
+            assertEquals(0, hits.get());
+            assertFalse(Files.exists(pdf));
+            Result fetched = run(url, "-o", pdf.toString(), "--allow-network", "--allow-private-addresses", "-q");
+            assertEquals(0, fetched.code(), fetched.err());
+            assertEquals(1, hits.get());
+            assertTrue(Files.size(pdf) > 0);
+            Path page = Files.writeString(dir.resolve("linked.html"), "<html><body><p>Local</p><img src=\"" + url
+                    + "\"></body></html>");
+            Result needsNetwork = run(page.toString(), "-o", dir.resolve("linked.pdf").toString(), "--fetch-linked");
+            assertEquals(2, needsNetwork.code(), needsNetwork.err());
+            Result linked = run(page.toString(), "-o", dir.resolve("linked.pdf").toString(), "--fetch-linked",
+                    "--allow-network", "--allow-private-addresses", "-q");
+            assertEquals(0, linked.code(), linked.err());
+            assertEquals(2, hits.get());
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
     void routesOfficeInputToOfficeToPdf() throws Exception {
         Path docx = Files.writeString(dir.resolve("notes.docx"), "not a zip");
         Result r = run(docx.toString());
         assertEquals(1, r.code(), r.err());
         assertTrue(r.err().contains("FAIL " + docx) && r.err().contains("not a zip package"), r.err());
         assertFalse(Files.exists(dir.resolve("notes.pdf")));
+    }
+
+    @Test
+    void legacyCyrillicTextConvertsWithoutXmlProbeDiagnostics() throws Exception {
+        for (String encoding : new String[] {"windows-1251", "KOI8-R"}) {
+            for (String prefix : new String[] {"Съешь", "привет", "юность", "ярмарка"}) {
+                String text = ("  \n" + prefix + " ещё этих мягких французских булок, да выпей чаю."
+                        + " Москва Санкт-Петербург.\n").repeat(10);
+                Path source = Files.write(dir.resolve(encoding + "-" + prefix + ".txt"),
+                        text.getBytes(java.nio.charset.Charset.forName(encoding)));
+                Path pdf = source.resolveSibling(source.getFileName() + ".pdf");
+                Result r = run(source.toString(), "-o", pdf.toString(), "-q");
+                assertEquals(0, r.code(), r.err());
+                assertEquals("", r.err(), encoding + " " + prefix);
+                try (PDDocument doc = Loader.loadPDF(pdf.toFile())) {
+                    assertTrue(new PDFTextStripper().getText(doc).contains("Москва Санкт-Петербург"));
+                }
+            }
+        }
+    }
+
+    @Test
+    void malformedOfficeXmlStillReportsItsConversionError() throws Exception {
+        Path source = Files.writeString(dir.resolve("broken.xml"),
+                "<w:wordDocument xmlns:w=\"http://schemas.microsoft.com/office/word/2003/wordml\">"
+                + "<w:body><w:p><w:r><w:t>Broken");
+        Path pdf = dir.resolve("broken.pdf");
+        Result r = run(source.toString(), "-o", pdf.toString(), "-q");
+        assertEquals(1, r.code(), r.err());
+        assertTrue(r.err().contains("FAIL " + source) && r.err().contains("not well-formed"), r.err());
+        assertFalse(Files.exists(pdf));
     }
 
     @Test
@@ -103,6 +183,56 @@ class MainTest {
         Result r = run(pdf.toString(), "-o", txt.toString(), "--pages", "1");
         assertEquals(0, r.code(), r.err());
         assertTrue(Files.readString(txt).contains("Hello PDF"));
+    }
+
+    @Test
+    void ebookOptionsShapeTheBook() throws Exception {
+        Path pdf = helloPdf(dir.resolve("book.pdf"));
+        Path epub = dir.resolve("book.epub");
+        Result r = run(pdf.toString(), "-o", epub.toString(), "--device", "kindle", "--no-chapters", "-q");
+        assertEquals(0, r.code(), r.err());
+        try (ZipFile zip = new ZipFile(epub.toFile())) {
+            String css = new String(zip.getInputStream(zip.getEntry("OEBPS/styles/book.css")).readAllBytes(),
+                    StandardCharsets.UTF_8);
+            assertTrue(css.contains("font-size:1em"), css);
+        }
+        assertUsage(run(pdf.toString(), "-o", dir.resolve("book2.epub").toString(), "--device", "nook"), "--device");
+    }
+
+    @Test
+    void ebookToPdfTakesContentsAndPageNumbers() throws Exception {
+        Path pdf = dir.resolve("story.pdf");
+        try (PDDocument doc = new PDDocument();
+                InputStream font = PDDocument.class.getResourceAsStream(
+                        "/org/apache/pdfbox/resources/ttf/LiberationSans-Regular.ttf")) {
+            PDType0Font f = PDType0Font.load(doc, font);
+            for (String chapter : new String[] {"First Chapter", "Second Chapter"}) {
+                PDPage page = new PDPage();
+                doc.addPage(page);
+                try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
+                    cs.beginText();
+                    cs.setFont(f, 24);
+                    cs.newLineAtOffset(72, 700);
+                    cs.showText(chapter);
+                    cs.setFont(f, 11);
+                    for (int line = 0; line < 8; line++) {
+                        cs.newLineAtOffset(0, -18);
+                        cs.showText("A plain line of the story that runs along the page, number " + line + ".");
+                    }
+                    cs.endText();
+                }
+            }
+            doc.save(pdf.toFile());
+        }
+        Path epub = dir.resolve("story.epub");
+        assertEquals(0, run(pdf.toString(), "-o", epub.toString(), "-q").code());
+        Path back = dir.resolve("story-back.pdf");
+        Result r = run(epub.toString(), "-o", back.toString(), "--toc", "--page-numbers", "-q");
+        assertEquals(0, r.code(), r.err());
+        try (PDDocument doc = Loader.loadPDF(back.toFile())) {
+            String text = new PDFTextStripper().getText(doc);
+            assertTrue(text.contains("Contents") && text.contains("Second Chapter"), text);
+        }
     }
 
     @Test

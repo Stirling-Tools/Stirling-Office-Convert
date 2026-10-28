@@ -15,7 +15,9 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.zip.CRC32;
 import java.util.zip.ZipEntry;
@@ -24,9 +26,17 @@ import java.util.zip.ZipOutputStream;
 import javax.imageio.ImageIO;
 
 import org.apache.pdfbox.Loader;
+import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
+import org.apache.pdfbox.pdmodel.font.PDFont;
 import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
+import org.apache.pdfbox.pdmodel.interactive.action.PDActionGoTo;
+import org.apache.pdfbox.pdmodel.interactive.annotation.PDAnnotation;
+import org.apache.pdfbox.pdmodel.interactive.annotation.PDAnnotationLink;
+import org.apache.pdfbox.pdmodel.interactive.documentnavigation.destination.PDDestination;
+import org.apache.pdfbox.pdmodel.interactive.documentnavigation.destination.PDNamedDestination;
+import org.apache.pdfbox.pdmodel.interactive.documentnavigation.destination.PDPageDestination;
 import org.apache.pdfbox.text.PDFTextStripper;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -133,6 +143,194 @@ class EpubToPdfTest {
     }
 
     @Test
+    void tableOfContentsFollowsTheBookWithPageNumbersAndLinks() throws IOException {
+        Path in = epub("contents.epub", book());
+        Path out = dir.resolve("contents.pdf");
+        OfficeToPdf.convert(in, out, OfficeToPdf.Options.defaults().timeout(Duration.ofMinutes(2)).tableOfContents(true));
+        try (PDDocument doc = Loader.loadPDF(out.toFile())) {
+            assertEquals(4, doc.getNumberOfPages());
+            String contents = pageText(doc, 4);
+            assertTrue(contents.contains("Contents"), contents);
+            assertTrue(contents.matches("(?s).*Chapter One\\s*2\\s.*Chapter Two\\s*3\\s.*"), contents);
+            assertEquals(List.of(1, 2), linkTargets(doc, 3));
+            List<String> bookmarks = new ArrayList<>();
+            doc.getDocumentCatalog().getDocumentOutline().children().forEach(i -> bookmarks.add(i.getTitle()));
+            assertEquals(List.of("Chapter One", "Chapter Two", "Contents"), bookmarks);
+        }
+    }
+
+    @Test
+    void pageNumbersRunAlongTheFoot() throws IOException {
+        Path in = epub("numbered.epub", book());
+        Path out = dir.resolve("numbered.pdf");
+        OfficeToPdf.convert(in, out, OfficeToPdf.Options.defaults().timeout(Duration.ofMinutes(2)).pageNumbers(true));
+        try (PDDocument doc = Loader.loadPDF(out.toFile())) {
+            assertEquals(3, doc.getNumberOfPages());
+            for (int p = 1; p <= 3; p++) {
+                String text = pageText(doc, p);
+                assertTrue(List.of(text.split("\\R")).contains(Integer.toString(p)), text);
+            }
+        }
+    }
+
+    @Test
+    void everyFontIsEmbedded() throws IOException {
+        Path in = epub("fonts.epub", book());
+        Path out = dir.resolve("fonts.pdf");
+        OfficeToPdf.convert(in, out, OfficeToPdf.Options.defaults().timeout(Duration.ofMinutes(2)).tableOfContents(true)
+                .pageNumbers(true));
+        try (PDDocument doc = Loader.loadPDF(out.toFile())) {
+            int fonts = 0;
+            for (PDPage page : doc.getPages()) {
+                for (COSName name : page.getResources().getFontNames()) {
+                    PDFont font = page.getResources().getFont(name);
+                    assertTrue(font.isEmbedded(), font.getName());
+                    fonts++;
+                }
+            }
+            assertTrue(fonts > 0);
+        }
+    }
+
+    private static List<Integer> linkTargets(PDDocument doc, int page) throws IOException {
+        List<Integer> targets = new ArrayList<>();
+        for (PDAnnotation a : doc.getPage(page).getAnnotations()) {
+            if (a instanceof PDAnnotationLink link) {
+                PDDestination d = link.getDestination();
+                if (d == null && link.getAction() instanceof PDActionGoTo go) {
+                    d = go.getDestination();
+                }
+                PDPageDestination target = d instanceof PDNamedDestination named
+                        ? doc.getDocumentCatalog().findNamedDestinationPage(named) : (PDPageDestination) d;
+                targets.add(target == null ? -1 : doc.getPages().indexOf(target.getPage()));
+            }
+        }
+        return targets;
+    }
+
+    @Test
+    void linksBetweenChaptersLeadToTheirTarget() throws IOException {
+        Path in = epub("linked.epub", book());
+        Path out = dir.resolve("linked.pdf");
+        OfficeToPdf.convert(in, out, OfficeToPdf.Options.defaults().timeout(Duration.ofMinutes(2)));
+        try (PDDocument doc = Loader.loadPDF(out.toFile())) {
+            assertEquals(List.of(2), linkTargets(doc, 1));
+        }
+    }
+
+    private Map<String, byte[]> single(byte[] chapter, String uid, Map<String, byte[]> extra, String manifest) {
+        Map<String, byte[]> e = new LinkedHashMap<>();
+        e.put("META-INF/container.xml", utf8("<?xml version=\"1.0\"?><container version=\"1.0\" "
+                + "xmlns=\"urn:oasis:names:tc:opendocument:xmlns:container\"><rootfiles>"
+                + "<rootfile full-path=\"OEBPS/content.opf\" media-type=\"application/oebps-package+xml\"/>"
+                + "</rootfiles></container>"));
+        e.put("OEBPS/content.opf", utf8("<?xml version=\"1.0\"?><package xmlns=\"http://www.idpf.org/2007/opf\" "
+                + "version=\"3.0\" unique-identifier=\"uid\"><metadata xmlns:dc=\"http://purl.org/dc/elements/1.1/\">"
+                + "<dc:identifier id=\"uid\">" + uid + "</dc:identifier><dc:title>T</dc:title></metadata><manifest>"
+                + "<item id=\"c\" href=\"c.xhtml\" media-type=\"application/xhtml+xml\"/>" + manifest
+                + "</manifest><spine><itemref idref=\"c\"/></spine></package>"));
+        e.put("OEBPS/c.xhtml", chapter);
+        e.putAll(extra);
+        return e;
+    }
+
+    private String converted(String name, Map<String, byte[]> book) throws IOException {
+        Path out = dir.resolve(name + ".pdf");
+        OfficeToPdf.convert(epub(name + ".epub", book), out, OfficeToPdf.Options.defaults().timeout(Duration.ofMinutes(2)));
+        try (PDDocument doc = Loader.loadPDF(out.toFile())) {
+            StringBuilder fonts = new StringBuilder();
+            for (COSName n : doc.getPage(0).getResources().getFontNames()) {
+                fonts.append(doc.getPage(0).getResources().getFont(n).getName()).append(' ');
+            }
+            return new PDFTextStripper().getText(doc) + "\nFONTS " + fonts;
+        }
+    }
+
+    @Test
+    void chaptersReadInTheEncodingTheyDeclare() throws IOException {
+        String latin = converted("latin1", single(("<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?><html "
+                + "xmlns=\"http://www.w3.org/1999/xhtml\"><body><p>caf\u00e9 na\u00efve \u00fcber</p></body></html>")
+                .getBytes(StandardCharsets.ISO_8859_1), "x", Map.of(), ""));
+        assertTrue(latin.contains("caf\u00e9 na\u00efve \u00fcber"), latin);
+        String windows = converted("cp1252", single(("<?xml version=\"1.0\" encoding=\"windows-1252\"?><html "
+                + "xmlns=\"http://www.w3.org/1999/xhtml\"><body><p>price \u20ac5 \u201cquoted\u201d</p></body></html>")
+                .getBytes(java.nio.charset.Charset.forName("windows-1252")), "x", Map.of(), ""));
+        assertTrue(windows.contains("price \u20ac5 \u201cquoted\u201d"), windows);
+        ByteArrayOutputStream utf16 = new ByteArrayOutputStream();
+        utf16.write(0xFF);
+        utf16.write(0xFE);
+        utf16.writeBytes(("<?xml version=\"1.0\" encoding=\"UTF-16\"?><html xmlns=\"http://www.w3.org/1999/xhtml\">"
+                + "<body><p>\u00e9l\u00e8ve wide</p></body></html>").getBytes(StandardCharsets.UTF_16LE));
+        String wide = converted("utf16", single(utf16.toByteArray(), "x", Map.of(), ""));
+        assertTrue(wide.contains("\u00e9l\u00e8ve wide"), wide);
+    }
+
+    @Test
+    void htmlzBooksConvertWithTheirPictures() throws IOException {
+        Path in = dir.resolve("book.htmlz");
+        try (OutputStream os = Files.newOutputStream(in); ZipOutputStream zip = new ZipOutputStream(os)) {
+            zip.putNextEntry(new ZipEntry("index.html"));
+            zip.write(utf8("<html><head><link rel=\"stylesheet\" href=\"style.css\"></head><body><h1>Htmlz Book</h1>"
+                    + "<p class=\"x\">Zipped page text</p><img src=\"images/p.png\" alt=\"\"></body></html>"));
+            zip.putNextEntry(new ZipEntry("style.css"));
+            zip.write(utf8(".x{font-weight:bold}"));
+            zip.putNextEntry(new ZipEntry("images/p.png"));
+            zip.write(png(Color.GREEN));
+        }
+        Path out = dir.resolve("htmlz.pdf");
+        OfficeToPdf.convert(in, out, OfficeToPdf.Options.defaults().timeout(Duration.ofMinutes(2)));
+        try (PDDocument doc = Loader.loadPDF(out.toFile())) {
+            String text = new PDFTextStripper().getText(doc);
+            assertTrue(text.contains("Htmlz Book") && text.contains("Zipped page text"), text);
+            assertEquals(1, images(doc.getPage(0)));
+        }
+    }
+
+    @Test
+    void obfuscatedFontsAreReadBack() throws IOException {
+        byte[] font;
+        try (var in = PDDocument.class.getResourceAsStream("/org/apache/pdfbox/resources/ttf/LiberationSans-Regular.ttf")) {
+            font = in.readAllBytes();
+        }
+        String uid = "urn:uuid:0f1e2d3c-4b5a-6978-8796-a5b4c3d2e1f0";
+        byte[] chapter = utf8("<?xml version=\"1.0\"?><html xmlns=\"http://www.w3.org/1999/xhtml\"><head><style>"
+                + "@font-face{font-family:'ZedObf';src:url(f.ttf)} p{font-family:'ZedObf',serif}</style></head>"
+                + "<body><p>Obfuscated quick brown fox</p></body></html>");
+        byte[][] keys = {sha1(uid), java.util.HexFormat.of().parseHex("0f1e2d3c4b5a69788796a5b4c3d2e1f0")};
+        String[] methods = {"http://www.idpf.org/2008/embedding", "http://ns.adobe.com/pdf/enc#RC"};
+        for (int k = 0; k < 2; k++) {
+            byte[] hidden = font.clone();
+            for (int i = 0; i < (k == 0 ? 1040 : 1024); i++) {
+                hidden[i] ^= keys[k][i % keys[k].length];
+            }
+            String encryption = "<?xml version=\"1.0\"?><encryption xmlns=\"urn:oasis:names:tc:opendocument:xmlns:container\" "
+                    + "xmlns:enc=\"http://www.w3.org/2001/04/xmlenc#\"><enc:EncryptedData><enc:EncryptionMethod Algorithm=\""
+                    + methods[k] + "\"/><enc:CipherData><enc:CipherReference URI=\"OEBPS/f.ttf\"/></enc:CipherData>"
+                    + "</enc:EncryptedData></encryption>";
+            String text = converted("font" + k, single(chapter, uid, Map.of("OEBPS/f.ttf", hidden,
+                    "META-INF/encryption.xml", utf8(encryption)),
+                    "<item id=\"f\" href=\"f.ttf\" media-type=\"application/vnd.ms-opentype\"/>"));
+            assertTrue(text.contains("Obfuscated quick brown fox"), text);
+            assertTrue(text.substring(text.indexOf("FONTS")).contains("LiberationSans"), text);
+        }
+    }
+
+    private static byte[] sha1(String s) {
+        try {
+            return java.security.MessageDigest.getInstance("SHA-1").digest(utf8(s));
+        } catch (java.security.NoSuchAlgorithmException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    private static String pageText(PDDocument doc, int page) throws IOException {
+        PDFTextStripper stripper = new PDFTextStripper();
+        stripper.setStartPage(page);
+        stripper.setEndPage(page);
+        return stripper.getText(doc);
+    }
+
+    @Test
     void booksInsideOtherZipsNeedPackagesAllowed() throws IOException {
         OfficeToPdf.Options defaults = OfficeToPdf.Options.defaults().timeout(Duration.ofMinutes(2));
         Path zipped = epub("book.zip", book());
@@ -217,6 +415,71 @@ class EpubToPdfTest {
         assertTrue(ex.getMessage().contains("spine"), ex.getMessage());
     }
 
+    private static byte[] encryption(String algorithm, String uri) {
+        return utf8("<?xml version=\"1.0\"?><encryption xmlns=\"urn:oasis:names:tc:opendocument:xmlns:container\" "
+                + "xmlns:enc=\"http://www.w3.org/2001/04/xmlenc#\"><enc:EncryptedData><enc:EncryptionMethod Algorithm=\""
+                + algorithm + "\"/><enc:CipherData><enc:CipherReference URI=\"" + uri + "\"/></enc:CipherData>"
+                + "</enc:EncryptedData></encryption>");
+    }
+
+    @Test
+    void encryptedChaptersAreRefusedAsDrm() throws IOException {
+        Map<String, byte[]> e = book();
+        byte[] cipher = new byte[512];
+        new java.util.Random(7).nextBytes(cipher);
+        e.put("OEBPS/text/one.xhtml", cipher);
+        e.put("META-INF/encryption.xml", encryption("http://www.w3.org/2001/04/xmlenc#aes128-cbc",
+                "OEBPS/text/one.xhtml"));
+        Path in = epub("adept.epub", e);
+        Path out = dir.resolve("adept.pdf");
+        IOException ex = assertThrows(IOException.class, () -> OfficeToPdf.convert(in, out,
+                OfficeToPdf.Options.defaults().timeout(Duration.ofMinutes(2))));
+        assertEquals(MobiBook.DRM, ex.getMessage());
+        assertFalse(Files.exists(out));
+    }
+
+    @Test
+    void rightsManagedBooksAreRefusedAsDrm() throws IOException {
+        Map<String, byte[]> e = book();
+        e.put("META-INF/rights.xml", utf8("<?xml version=\"1.0\"?><adept:rights xmlns:adept=\"http://ns.adobe.com/adept\"/>"));
+        Path in = epub("rights.epub", e);
+        IOException ex = assertThrows(IOException.class, () -> OfficeToPdf.convert(in, dir.resolve("rights.pdf"),
+                OfficeToPdf.Options.defaults().timeout(Duration.ofMinutes(2))));
+        assertEquals(MobiBook.DRM, ex.getMessage());
+    }
+
+    @Test
+    void encryptedPicturesAloneDoNotRefuseTheBook() throws IOException {
+        Map<String, byte[]> e = book();
+        e.put("META-INF/encryption.xml", encryption("http://www.w3.org/2001/04/xmlenc#aes128-cbc",
+                "OEBPS/images/figure.png"));
+        Path out = dir.resolve("picture.pdf");
+        OfficeToPdf.convert(epub("picture.epub", e), out, OfficeToPdf.Options.defaults().timeout(Duration.ofMinutes(2)));
+        try (PDDocument doc = Loader.loadPDF(out.toFile())) {
+            assertTrue(new PDFTextStripper().getText(doc).contains("Chapter Two"));
+        }
+    }
+
+    @Test
+    void contentsPagesCountAgainstThePageLimit() throws IOException {
+        Path in = epub("limited.epub", book());
+        Path out = dir.resolve("limited.pdf");
+        OfficeToPdf.Options options = OfficeToPdf.Options.defaults().timeout(Duration.ofMinutes(2)).tableOfContents(true);
+        OfficeToPdf.Result r = OfficeToPdf.convert(in, out, options.maxPages(3));
+        try (PDDocument doc = Loader.loadPDF(out.toFile())) {
+            assertEquals(3, doc.getNumberOfPages());
+            assertEquals(3, r.pages());
+            assertTrue(r.pageLimitReached(), r.toString());
+            assertTrue(r.truncated(), r.toString());
+        }
+        OfficeToPdf.Result room = OfficeToPdf.convert(in, out, options.maxPages(4));
+        try (PDDocument doc = Loader.loadPDF(out.toFile())) {
+            assertEquals(4, doc.getNumberOfPages());
+            assertEquals(4, room.pages());
+            assertFalse(room.pageLimitReached(), room.toString());
+        }
+    }
+
     @Test
     void selfClosedElementsDoNotSwallowWhatFollows() {
         String html = EpubBook.xhtmlAsHtml("<?xml version='1.0'?><p>a<a id=\"x\"/>b<br/>c<div class=\"d\"/>e</p>");
@@ -224,7 +487,7 @@ class EpubToPdfTest {
     }
 
     @Test
-    void chapterSelectorsAreScoped() {
+    void chapterSelectorsAreScoped() throws IOException {
         assertEquals("#epub-c1{color:red}\n", EpubBook.scoped("body{color:red}", 1, 0));
         assertEquals("#epub-c1 p, #epub-c1.x{a:b}\n", EpubBook.scoped("p, body.x{a:b}", 1, 0));
         assertEquals("@media print{#epub-c1 h1{a:b}\n}\n", EpubBook.scoped("@media print{h1{a:b}}", 1, 0));
@@ -234,7 +497,7 @@ class EpubToPdfTest {
     }
 
     @Test
-    void unclosedCommentsStayLinear() {
+    void unclosedCommentsStayLinear() throws IOException {
         String css = "/*a".repeat(400_000) + "p{color:red}";
         long start = System.nanoTime();
         EpubBook.scoped(css, 1, 0);
@@ -255,6 +518,43 @@ class EpubToPdfTest {
         try (PDDocument doc = Loader.loadPDF(out.toFile())) {
             String text = new PDFTextStripper().getText(doc);
             assertEquals(text.indexOf("Chapter Two"), text.lastIndexOf("Chapter Two"), text);
+        }
+    }
+
+    @Test
+    void aBrokenSpineReferenceCannotReturnAPartialBook() throws IOException {
+        for (String reference : List.of("missing", "invalid")) {
+            Map<String, byte[]> entries = book();
+            String opf = new String(entries.get("OEBPS/content.opf"), StandardCharsets.UTF_8);
+            if (reference.equals("missing")) {
+                opf = opf.replace("</spine>", "<itemref idref='absent'/></spine>");
+            } else {
+                opf = opf.replace("text/two.xhtml", "https://example.invalid/chapter.xhtml");
+            }
+            entries.put("OEBPS/content.opf", utf8(opf));
+            try (HtmlPackage pkg = HtmlPackage.open(epub(reference + ".epub", entries))) {
+                assertThrows(IOException.class, () -> EpubBook.read(pkg));
+            }
+        }
+    }
+
+    @Test
+    void anOversizedSpineCannotSilentlyDropItsLastChapters() throws IOException {
+        Map<String, byte[]> entries = book();
+        StringBuilder opf = new StringBuilder("<package><manifest>");
+        for (int i = 0; i <= EpubBook.MAX_CHAPTERS; i++) {
+            opf.append("<item id='c").append(i).append("' href='c").append(i).append(".xhtml'/>");
+        }
+        opf.append("</manifest><spine>");
+        for (int i = 0; i <= EpubBook.MAX_CHAPTERS; i++) {
+            opf.append("<itemref idref='c").append(i).append("'/>");
+        }
+        opf.append("</spine></package>");
+        entries.put("OEBPS/content.opf", utf8(opf.toString()));
+        Path input = epub("too-many-chapters.epub", entries);
+        try (HtmlPackage pkg = HtmlPackage.open(input)) {
+            IOException error = assertThrows(IOException.class, () -> EpubBook.read(pkg));
+            assertTrue(error.getMessage().contains("5000 chapters"), error.getMessage());
         }
     }
 

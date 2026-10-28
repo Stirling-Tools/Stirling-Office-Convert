@@ -184,6 +184,9 @@ final class PageFlow extends Region {
         if (page != null) {
             finishPage();
         }
+        if (Boolean.TRUE.equals(ctx.job.memo(stirling.software.officeconvert.topdf.html.HtmlDocument.class))) {
+            TextBoxPages.apply(pages, ctx, this::headerFooterBounds);
+        }
         finishHeaders();
     }
 
@@ -433,6 +436,12 @@ final class PageFlow extends Region {
                 numbered = true;
                 return sectionPages;
             }
+
+            @Override
+            public String running(String name) {
+                numbered = true;
+                return runningValue(p, name);
+            }
         };
     }
 
@@ -490,7 +499,90 @@ final class PageFlow extends Region {
         }
     }
 
+    private record RunningMark(int page, String first, String last) {}
+
+    private final Map<String, List<RunningMark>> runningMarks = new HashMap<>();
+
+    private final Map<PageBox, Integer> pageIndex = new IdentityHashMap<>();
+
+    private void runningStrings() {
+        Map<String, String[]> marks = ctx.job.runningStrings();
+        if (marks.isEmpty()) {
+            return;
+        }
+        for (int i = 0; i < pages.size(); i++) {
+            PageBox p = pages.get(i);
+            pageIndex.put(p, i);
+            try {
+                ctx.job.checkpoint();
+            } catch (java.io.IOException e) {
+                throw new java.io.UncheckedIOException(e);
+            }
+            Map<String, String> first = new HashMap<>();
+            Map<String, String> last = new java.util.LinkedHashMap<>();
+            for (Placed pl : p.placed) {
+                dests(pl.strip.ops, name -> {
+                    String[] mark = marks.get(name);
+                    for (int j = 0; mark != null && j + 1 < mark.length; j += 2) {
+                        first.putIfAbsent(mark[j], mark[j + 1]);
+                        last.put(mark[j], mark[j + 1]);
+                    }
+                });
+            }
+            int index = i;
+            last.forEach((name, value) -> runningMarks.computeIfAbsent(name, k -> new ArrayList<>())
+                    .add(new RunningMark(index, first.get(name), value)));
+        }
+    }
+
+    private String runningValue(PageBox p, String key) {
+        Integer index = pageIndex.get(p);
+        if (index == null) {
+            return null;
+        }
+        int slash = key.lastIndexOf('/');
+        String name = slash < 0 ? key : key.substring(0, slash);
+        String policy = slash < 0 ? "" : key.substring(slash + 1);
+        List<RunningMark> list = runningMarks.get(name);
+        if (list == null) {
+            return null;
+        }
+        int lo = 0;
+        int hi = list.size();
+        while (lo < hi) {
+            int mid = (lo + hi) >>> 1;
+            if (list.get(mid).page() < index) {
+                lo = mid + 1;
+            } else {
+                hi = mid;
+            }
+        }
+        RunningMark here = lo < list.size() && list.get(lo).page() == index ? list.get(lo) : null;
+        String start = lo > 0 ? list.get(lo - 1).last() : null;
+        if (here == null && start == null) {
+            return null;
+        }
+        return switch (policy) {
+            case "", "first" -> here != null ? here.first() : start;
+            case "start" -> start != null ? start : here.first();
+            case "last" -> here != null ? here.last() : start;
+            case "first-except" -> here != null ? "" : start;
+            default -> null;
+        };
+    }
+
+    private static void dests(List<Op> ops, java.util.function.Consumer<String> found) {
+        for (Op op : ops) {
+            if (op instanceof Op.Dest d) {
+                found.accept(d.name());
+            } else if (op instanceof Op.Group g) {
+                dests(g.ops(), found);
+            }
+        }
+    }
+
     private void finishHeaders() {
+        runningStrings();
         int total = pages.size();
         Map<Integer, Integer> perSection = sectionCounts(pages);
         for (PageBox p : pages) {

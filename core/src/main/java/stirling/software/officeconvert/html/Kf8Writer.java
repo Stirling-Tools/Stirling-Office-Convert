@@ -7,10 +7,13 @@ import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.TreeMap;
+import java.util.TreeSet;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.zip.ZipEntry;
@@ -33,9 +36,16 @@ final class Kf8Writer {
     private static final Pattern ITEMREF = Pattern.compile("<itemref idref=\"([^\"]+)\"");
 
     private static final Pattern NAV_POINT = Pattern.compile(
-            "<navLabel><text>(.*?)</text></navLabel><content src=\"([^\"]*)\"", Pattern.DOTALL);
+            "<navPoint\\b|</navPoint>|<navLabel><text>(.*?)</text></navLabel><content src=\"([^\"]*)\"", Pattern.DOTALL);
+
+    private static final Pattern COVER = Pattern.compile(
+            "<item id=\"[^\"]+\" href=\"([^\"]+)\" media-type=\"image/jpeg\" properties=\"cover-image\"");
+
+    private static final Pattern BODY_MATTER = Pattern.compile("epub:type=\"bodymatter\" href=\"([^\"]*)\"");
 
     private static final Pattern TITLE = Pattern.compile("<dc:title>(.*?)</dc:title>", Pattern.DOTALL);
+
+    private static final Pattern LANGUAGE = Pattern.compile("<dc:language>([A-Za-z0-9-]{1,64})</dc:language>");
 
     private static final Pattern CREATOR = Pattern.compile("<dc:creator>(.*?)</dc:creator>", Pattern.DOTALL);
 
@@ -53,18 +63,23 @@ final class Kf8Writer {
 
     private record Target(String path, String id) {}
 
-    private record TocEntry(String title, Target target) {}
+    private record TocEntry(String title, Target target, int depth, int parent) {}
 
     private final List<Chapter> chapters = new ArrayList<>();
     private final List<TocEntry> toc = new ArrayList<>();
     private final Map<String, Integer> resources = new HashMap<>();
-    private final List<byte[]> resourceBytes = new ArrayList<>();
+    private final List<ZipEntry> resourceEntries = new ArrayList<>();
     private final List<byte[]> flows = new ArrayList<>();
     private final Map<String, Integer> svgFlows = new HashMap<>();
     private final List<Target> links = new ArrayList<>();
     private String currentChapter = "";
-    private final List<long[]> tocSpans = new ArrayList<>();
+    private final List<Tbs.Node> tocSpans = new ArrayList<>();
     private String title = "Document";
+    private Target start;
+    private long startOffset = -1;
+    private int cover = -1;
+    private String language = "und";
+    private boolean rightToLeft;
     private String author;
     private int aid;
 
@@ -74,8 +89,8 @@ final class Kf8Writer {
         Kf8Writer w = new Kf8Writer();
         try (ZipFile zip = new ZipFile(epub.toFile(), StandardCharsets.UTF_8)) {
             w.read(zip);
+            w.write(zip, out);
         }
-        w.write(out);
     }
 
     private void read(ZipFile zip) throws IOException {
@@ -84,6 +99,11 @@ final class Kf8Writer {
         if (t.find()) {
             title = unescape(t.group(1)).strip();
         }
+        Matcher lang = LANGUAGE.matcher(opf);
+        if (lang.find()) {
+            language = lang.group(1);
+        }
+        rightToLeft = opf.contains("page-progression-direction=\"rtl\"");
         Matcher c = CREATOR.matcher(opf);
         if (c.find()) {
             author = unescape(c.group(1)).strip();
@@ -106,13 +126,46 @@ final class Kf8Writer {
         ZipEntry ncx = zip.getEntry("OEBPS/toc.ncx");
         if (ncx != null) {
             Matcher m = NAV_POINT.matcher(text(zip, "OEBPS/toc.ncx"));
+            List<Integer> open = new ArrayList<>();
             while (m.find()) {
-                toc.add(new TocEntry(unescape(m.group(1)).strip(), target("", m.group(2))));
+                if (m.group().startsWith("<navPoint")) {
+                    open.add(open.isEmpty() ? -1 : open.get(open.size() - 1));
+                } else if (m.group().startsWith("</navPoint")) {
+                    if (!open.isEmpty()) {
+                        open.remove(open.size() - 1);
+                    }
+                } else {
+                    int depth = Math.max(0, open.size() - 1);
+                    int parent = open.size() < 2 ? -1 : open.get(open.size() - 2);
+                    toc.add(new TocEntry(unescape(m.group(1)).strip(), target("", m.group(2)), depth, parent));
+                    if (!open.isEmpty()) {
+                        open.set(open.size() - 1, toc.size() - 1);
+                    }
+                }
             }
+        }
+        byte[] nav = read(zip, "OEBPS/nav.xhtml");
+        Matcher body = BODY_MATTER.matcher(nav == null ? "" : new String(nav, StandardCharsets.UTF_8));
+        if (body.find()) {
+            start = target("nav.xhtml", body.group(1));
+        } else if (!chapters.isEmpty()) {
+            start = new Target(chapters.get(0).path(), null);
         }
         for (int i = 0; i < chapters.size(); i++) {
             Chapter ch = chapters.get(i);
             chapters.set(i, new Chapter(ch.path(), rewrite(zip, ch)));
+        }
+        Matcher coverItem = COVER.matcher(opf);
+        if (coverItem.find()) {
+            String path = resolve("", unescape(coverItem.group(1)));
+            Integer known = resources.get(path);
+            ZipEntry bytes = known == null ? resource(zip, "OEBPS/" + path) : null;
+            if (bytes != null) {
+                resourceEntries.add(bytes);
+                resources.put(path, resourceEntries.size());
+                known = resourceEntries.size();
+            }
+            cover = known == null ? -1 : known - 1;
         }
     }
 
@@ -191,12 +244,12 @@ final class Kf8Writer {
         } else {
             Integer index = resources.get(path);
             if (index == null) {
-                byte[] bytes = read(zip, "OEBPS/" + path);
+                ZipEntry bytes = resource(zip, "OEBPS/" + path);
                 if (bytes == null) {
                     return attrs;
                 }
-                resourceBytes.add(bytes);
-                index = resourceBytes.size();
+                resourceEntries.add(bytes);
+                index = resourceEntries.size();
                 resources.put(path, index);
             }
             String mime = lower.endsWith(".png") ? "image/png" : lower.endsWith(".gif") ? "image/gif" : "image/jpeg";
@@ -205,7 +258,12 @@ final class Kf8Writer {
         return attrs.substring(0, s.start()) + "src=\"" + replacement + "\"" + attrs.substring(s.end());
     }
 
-    private void write(OutputStream out) throws IOException {
+    private static ZipEntry resource(ZipFile zip, String name) {
+        ZipEntry e = zip.getEntry(name);
+        return e == null || e.getSize() < 0 || e.getSize() > Integer.MAX_VALUE - 16 ? null : e;
+    }
+
+    private void write(ZipFile zip, OutputStream out) throws IOException {
         ByteArrayOutputStream flow0 = new ByteArrayOutputStream();
         List<Fragment> fragments = new ArrayList<>();
         Kf8Index skeletons = new Kf8Index(List.of(List.of(new Kf8Index.Tag(1, 1, 3), new Kf8Index.Tag(6, 2, 12))));
@@ -256,6 +314,7 @@ final class Kf8Writer {
         }
         resolveLinks(text0, fragments, places, chapterStarts);
         Kf8Index ncx = ncx(fragments, places, chapterStarts, text0.length);
+        Kf8Index guide = guide(fragments, places, chapterStarts);
         ByteArrayOutputStream text = new ByteArrayOutputStream();
         text.writeBytes(text0);
         List<long[]> flowTable = new ArrayList<>();
@@ -288,8 +347,15 @@ final class Kf8Writer {
             ncxIndex = records.size();
             records.addAll(ncx.records());
         }
+        int guideIndex = -1;
+        if (!guide.isEmpty()) {
+            guideIndex = records.size();
+            records.addAll(guide.records());
+        }
         int firstResource = records.size();
-        records.addAll(resourceBytes);
+        for (int i = 0; i < resourceEntries.size(); i++) {
+            records.add(null);
+        }
         int fdst = records.size();
         records.add(fdst(flowTable));
         int flis = records.size();
@@ -301,8 +367,8 @@ final class Kf8Writer {
             throw new IOException("The book is too large for the AZW3 format");
         }
         records.set(0, recordZero(all.length, textRecords, firstNonBook, firstResource, fdst, flowTable.size(), fcis,
-                flis, ncxIndex, chunkIndex, skeletonIndex));
-        pdb(records, out);
+                flis, ncxIndex, chunkIndex, skeletonIndex, guideIndex));
+        pdb(records, zip, firstResource, out);
     }
 
     private List<String> split(String body) {
@@ -407,24 +473,82 @@ final class Kf8Writer {
         if (fragments.isEmpty()) {
             return index;
         }
-        List<Place> at = new ArrayList<>();
-        for (TocEntry e : toc) {
-            at.add(locate(e.target(), places, chapterStarts));
+        int n = toc.size();
+        Place[] at = new Place[n];
+        long[] offset = new long[n];
+        for (int i = 0; i < n; i++) {
+            at[i] = locate(toc.get(i).target(), places, chapterStarts);
+            offset[i] = fragments.get(at[i].fragment()).insert() + at[i].offset();
         }
-        for (int i = 0; i < toc.size(); i++) {
-            Place p = at.get(i);
-            long pos = fragments.get(p.fragment()).layout() + p.offset();
-            long next = i + 1 < toc.size()
-                    ? fragments.get(at.get(i + 1).fragment()).layout() + at.get(i + 1).offset() : length;
-            tocSpans.add(new long[] {pos, Math.max(0, next - pos)});
-            index.add(String.format("%02x", i), Map.of(
-                    1, new long[] {pos},
-                    2, new long[] {Math.max(0, next - pos)},
-                    3, new long[] {index.text(toc.get(i).title())},
-                    4, new long[] {0},
-                    6, new long[] {p.fragment(), p.offset()}));
+        List<Integer> order = new ArrayList<>();
+        for (int i = 0; i < n; i++) {
+            order.add(i);
+        }
+        order.sort(Comparator.<Integer>comparingInt(i -> toc.get(i).depth()).thenComparingLong(i -> offset[i]));
+        int[] position = new int[n];
+        for (int k = 0; k < n; k++) {
+            position[order.get(k)] = k;
+        }
+        List<List<Integer>> children = new ArrayList<>();
+        for (int i = 0; i < n; i++) {
+            children.add(new ArrayList<>());
+        }
+        for (int i = 0; i < n; i++) {
+            if (toc.get(i).parent() >= 0) {
+                children.get(toc.get(i).parent()).add(i);
+            }
+        }
+        TreeMap<Integer, TreeSet<Long>> starts = new TreeMap<>();
+        for (int i = 0; i < n; i++) {
+            starts.computeIfAbsent(toc.get(i).depth(), d -> new TreeSet<>()).add(offset[i]);
+        }
+        String key = "%0" + Math.max(2, Integer.toHexString(Math.max(0, n - 1)).length()) + "X";
+        for (int k = 0; k < n; k++) {
+            int i = order.get(k);
+            TocEntry e = toc.get(i);
+            long next = length;
+            for (TreeSet<Long> level : starts.headMap(e.depth(), true).values()) {
+                Long higher = level.higher(offset[i]);
+                if (higher != null) {
+                    next = Math.min(next, higher);
+                }
+            }
+            long span = Math.max(0, next - offset[i]);
+            Integer parent = e.parent() < 0 ? null : position[e.parent()];
+            tocSpans.add(new Tbs.Node(k, offset[i], span, e.depth(), parent));
+            Map<Integer, long[]> tags = new HashMap<>();
+            tags.put(1, new long[] {offset[i]});
+            tags.put(2, new long[] {span});
+            tags.put(3, new long[] {index.text(e.title())});
+            tags.put(4, new long[] {e.depth()});
+            if (parent != null) {
+                tags.put(21, new long[] {parent});
+            }
+            if (!children.get(i).isEmpty()) {
+                tags.put(22, new long[] {position[children.get(i).get(0)]});
+                tags.put(23, new long[] {position[children.get(i).get(children.get(i).size() - 1)]});
+            }
+            tags.put(6, new long[] {at[i].fragment(), at[i].offset()});
+            index.add(String.format(key, k), tags);
         }
         return index;
+    }
+
+    private Kf8Index guide(List<Fragment> fragments, Map<String, Place> places, Map<String, Integer> chapterStarts) {
+        Kf8Index index = new Kf8Index(List.of(List.of(new Kf8Index.Tag(1, 1, 1), new Kf8Index.Tag(6, 2, 2))));
+        if (fragments.isEmpty() || start == null) {
+            return index;
+        }
+        Place p = locate(start, places, chapterStarts);
+        startOffset = fragments.get(p.fragment()).insert() + p.offset();
+        index.add("text", Map.of(1, new long[] {index.text("Start")}, 6, new long[] {p.fragment(), p.offset()}));
+        return index;
+    }
+
+    private static byte[] u32(long v) {
+        byte[] b = new byte[4];
+        put32(b, 0, v);
+        return b;
     }
 
     private byte[] textRecord(byte[] all, int from) {
@@ -470,7 +594,7 @@ final class Kf8Writer {
     }
 
     private byte[] recordZero(long textLength, int textRecords, int firstNonBook, int firstResource, int fdst,
-            int fdstCount, int fcis, int flis, int ncx, int chunks, int skeletons) {
+            int fdstCount, int fcis, int flis, int ncx, int chunks, int skeletons, int guide) {
         byte[] h = new byte[16 + 264];
         put16(h, 0, 2);
         put32(h, 4, textLength);
@@ -508,7 +632,7 @@ final class Kf8Writer {
         put32(h, 248, chunks);
         put32(h, 252, skeletons);
         put32(h, 256, 0xFFFFFFFFL);
-        put32(h, 260, 0xFFFFFFFFL);
+        put32(h, 260, guide < 0 ? 0xFFFFFFFFL : guide);
         byte[] exth = exth();
         byte[] name = title.getBytes(StandardCharsets.UTF_8);
         put32(h, 84, h.length + exth.length);
@@ -532,9 +656,19 @@ final class Kf8Writer {
             count += exth(body, 100, author.getBytes(StandardCharsets.UTF_8));
         }
         count += exth(body, 503, title.getBytes(StandardCharsets.UTF_8));
-        count += exth(body, 524, "und".getBytes(StandardCharsets.US_ASCII));
+        if (startOffset >= 0) {
+            count += exth(body, 116, u32(startOffset));
+        }
+        if (cover >= 0) {
+            count += exth(body, 201, u32(cover));
+            count += exth(body, 203, u32(0));
+        }
+        count += exth(body, 524, language.getBytes(StandardCharsets.US_ASCII));
+        if (rightToLeft) {
+            count += exth(body, 527, "rtl".getBytes(StandardCharsets.US_ASCII));
+        }
         count += exth(body, 501, "EBOK".getBytes(StandardCharsets.US_ASCII));
-        count += exth(body, 125, new byte[] {0, 0, (byte) (resourceBytes.size() >>> 8), (byte) resourceBytes.size()});
+        count += exth(body, 125, new byte[] {0, 0, (byte) (resourceEntries.size() >>> 8), (byte) resourceEntries.size()});
         count += exth(body, 131, new byte[4]);
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         out.writeBytes("EXTH".getBytes(StandardCharsets.US_ASCII));
@@ -554,7 +688,7 @@ final class Kf8Writer {
         return 1;
     }
 
-    private void pdb(List<byte[]> records, OutputStream out) throws IOException {
+    private void pdb(List<byte[]> records, ZipFile zip, int firstResource, OutputStream out) throws IOException {
         ByteArrayOutputStream h = new ByteArrayOutputStream();
         byte[] name = new byte[32];
         byte[] ascii = title.replaceAll("[^A-Za-z0-9]+", "_").getBytes(StandardCharsets.US_ASCII);
@@ -577,12 +711,22 @@ final class Kf8Writer {
         for (int i = 0; i < records.size(); i++) {
             Kf8Index.u32(h, offset);
             Kf8Index.u32(h, 2L * i);
-            offset += records.get(i).length;
+            offset += records.get(i) != null ? records.get(i).length : resourceEntries.get(i - firstResource).getSize();
         }
         h.writeBytes(new byte[2]);
         out.write(h.toByteArray());
-        for (byte[] r : records) {
-            out.write(r);
+        for (int i = 0; i < records.size(); i++) {
+            if (records.get(i) != null) {
+                out.write(records.get(i));
+                continue;
+            }
+            PdfFiles.stopIfInterrupted();
+            ZipEntry e = resourceEntries.get(i - firstResource);
+            try (InputStream in = zip.getInputStream(e)) {
+                if (in.transferTo(out) != e.getSize()) {
+                    throw new IOException("A picture of the book changed size while it was written");
+                }
+            }
         }
     }
 

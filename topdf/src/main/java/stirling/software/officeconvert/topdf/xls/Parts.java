@@ -12,7 +12,7 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
 // The zip package the XLSX renderer reads, with each part and the whole package kept inside OfficeZip's limits
-public final class Parts {
+public final class Parts implements AutoCloseable {
 
     static final long MAX_PART_BYTES = 480L << 20;
 
@@ -71,8 +71,12 @@ public final class Parts {
     }
 
     public void finish() throws IOException {
-        zip.finish();
-        zip.flush();
+        close();
+    }
+
+    @Override
+    public void close() throws IOException {
+        zip.close();
     }
 
     public final class Part implements AutoCloseable {

@@ -5,6 +5,7 @@ import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import org.jsoup.nodes.Element;
 
@@ -32,11 +33,17 @@ final class HtmlContext {
     private int scrollers;
     private String pageName = "";
     private boolean continuing;
+    private float insetLeft;
+    private float insetRight;
+    private Generated.Result generated = Generated.Result.NONE;
+    private final Map<String, String> aliases = new HashMap<>();
     // the most items of any row of columns in an element or inside it, 0 when none
     private final Map<Element, Integer> rows = new IdentityHashMap<>();
     private Map<String, Element> labels;
 
     private static final int MAX_VISITS = 400_000;
+
+    private static final int MAX_ALIAS_DEPTH = 64;
 
     private int visits;
     private final java.util.Set<Element> placed = java.util.Collections.newSetFromMap(new IdentityHashMap<>());
@@ -288,5 +295,73 @@ final class HtmlContext {
 
     boolean truncated() {
         return blocks >= JsonModel.MAX_BLOCKS;
+    }
+
+    void inset(float left, float right) {
+        insetLeft = left;
+        insetRight = right;
+    }
+
+    float insetLeft() {
+        return insetLeft;
+    }
+
+    float insetRight() {
+        return insetRight;
+    }
+
+    void generated(Generated.Result result) {
+        generated = result;
+    }
+
+    String bookmarkFor(Element e) {
+        String mark = generated.marks().get(e);
+        String id = e.id();
+        boolean target = !id.isEmpty() && generated.targets().contains(id);
+        if (mark != null) {
+            if (target) {
+                alias(Generated.BOOKMARK_PREFIX + id, mark);
+            }
+            return mark;
+        }
+        return target ? Generated.BOOKMARK_PREFIX + id : null;
+    }
+
+    void alias(String bookmark, String written) {
+        if (aliases.size() < 100_000) {
+            aliases.put(bookmark, written);
+        }
+    }
+
+    String written(String bookmark) {
+        String current = bookmark;
+        for (int i = 0; i < MAX_ALIAS_DEPTH; i++) {
+            String next = aliases.get(current);
+            if (next == null || next.equals(current)) {
+                return current;
+            }
+            current = next;
+        }
+        return bookmark;
+    }
+
+    Map<String, String[]> runningStrings() {
+        Map<String, List<String>> pairs = new java.util.LinkedHashMap<>();
+        for (String[] v : generated.strings().values()) {
+            List<String> list = pairs.computeIfAbsent(written(v[0]), k -> new java.util.ArrayList<>());
+            list.add(v[1]);
+            list.add(v[2]);
+        }
+        Map<String, String[]> out = new java.util.LinkedHashMap<>();
+        pairs.forEach((k, v) -> out.put(k, v.toArray(String[]::new)));
+        return out;
+    }
+
+    Map<String, String> targetBookmarks() {
+        Map<String, String> out = new HashMap<>();
+        for (String id : generated.targets()) {
+            out.put(id, written(Generated.BOOKMARK_PREFIX + id));
+        }
+        return out;
     }
 }

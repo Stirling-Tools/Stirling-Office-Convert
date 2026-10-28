@@ -1,15 +1,19 @@
 package stirling.software.officeconvert.topdf.xls;
 
 import java.io.ByteArrayInputStream;
+import java.io.FilterOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InterruptedIOException;
 import java.io.OutputStream;
 import java.nio.file.Path;
 
+import org.apache.poi.EncryptedDocumentException;
 import org.apache.poi.poifs.filesystem.DirectoryNode;
 import org.apache.poi.poifs.filesystem.POIFSFileSystem;
 
 import stirling.software.officeconvert.topdf.crypt.EncryptedWorkbook;
+import stirling.software.officeconvert.topdf.crypt.Passwords;
 import stirling.software.officeconvert.topdf.io.LegacyOffice;
 
 public final class XlsFile {
@@ -34,9 +38,50 @@ public final class XlsFile {
     }
 
     public static XlsPackage.Outcome rewrite(Path source, String password, OutputStream out) throws IOException {
+        SheetPart.stopIfInterrupted();
+        Counted counted = new Counted(out);
         try (POIFSFileSystem fs = LegacyOffice.open(source);
                 POIFSFileSystem plain = decrypt(fs.getRoot(), password)) {
-            return XlsPackage.write(plain == null ? fs.getRoot() : plain.getRoot(), out);
+            return XlsPackage.write(plain == null ? fs.getRoot() : plain.getRoot(), counted);
+        } catch (InterruptedIOException e) {
+            throw e;
+        } catch (IOException | RuntimeException e) {
+            SheetPart.stopIfInterrupted();
+            byte[] stream = refused(e) || counted.written > 0 ? null : Repair.salvage(source);
+            if (stream == null) {
+                throw e;
+            }
+            return XlsPackage.writeStream(stream, counted);
+        }
+    }
+
+    private static boolean refused(Throwable e) {
+        Throwable t = e;
+        for (int i = 0; t != null && i < 16; i++, t = t.getCause()) {
+            if (t instanceof Passwords.Refused || t instanceof EncryptedDocumentException) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static final class Counted extends FilterOutputStream {
+        long written;
+
+        Counted(OutputStream out) {
+            super(out);
+        }
+
+        @Override
+        public void write(int b) throws IOException {
+            written++;
+            out.write(b);
+        }
+
+        @Override
+        public void write(byte[] b, int off, int len) throws IOException {
+            written += len;
+            out.write(b, off, len);
         }
     }
 

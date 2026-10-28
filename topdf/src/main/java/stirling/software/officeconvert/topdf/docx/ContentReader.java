@@ -491,7 +491,7 @@ final class ContentReader {
         if (ActiveContent.computedField(instr)) {
             XEl firstRun = k.child("w:r");
             RunProps rp = runProps(firstRun == null ? null : firstRun.child("w:rPr"), paraRun);
-            out.add(new Inline.Field(name, rp, collectText(k), link, fieldFormat(instr)));
+            out.add(new Inline.Field(name, rp, collectText(k), link, fieldFormat(instr), fieldArgument(instr)));
             return;
         }
         Inline.Link inner = name.equals("HYPERLINK") ? fieldLink(instr) : null;
@@ -525,6 +525,11 @@ final class ContentReader {
     }
 
     // A page field's format switch picks its number format; applying it is formatting, not execution
+    static String fieldArgument(String instr) {
+        List<String> tokens = tokens(instr);
+        return tokens.size() > 1 && !tokens.get(1).startsWith("\\") ? tokens.get(1) : null;
+    }
+
     static String fieldFormat(String instr) {
         List<String> tokens = tokens(instr);
         for (int i = 0; i + 1 < tokens.size(); i++) {
@@ -695,7 +700,7 @@ final class ContentReader {
                     }
                     if (f.computed && !inInstruction() && computedParentAllowsOutput()) {
                         out.add(new Inline.Field(f.name, f.rp, f.cached.toString(), fieldLinkInScope(link),
-                                fieldFormat(f.instr.toString())));
+                                fieldFormat(f.instr.toString()), fieldArgument(f.instr.toString())));
                     }
                 }
             }
