@@ -461,12 +461,12 @@ final class Flow {
 
     private void trailingGap(float pt, Look look, long boundary) throws IOException {
         if (para != null || boundary == edgeBoundary) {
-            if (para == null && !pendingEdges.isEmpty()) {
-                start();
-            }
-            if (para != null) {
-                para.inlines.addAll(pendingEdges);
+            if (!pendingEdges.isEmpty()) {
+                List<Inline> edges = new ArrayList<>(pendingEdges);
                 pendingEdges.clear();
+                for (Inline edge : edges) {
+                    inline(edge, look);
+                }
             }
             gap(pt, look);
         }
@@ -1783,8 +1783,6 @@ final class Flow {
         para = p;
         p.inlines.addAll(pendingFloats);
         pendingFloats.clear();
-        p.inlines.addAll(pendingEdges);
-        pendingEdges.clear();
         lastSpace = true;
     }
 

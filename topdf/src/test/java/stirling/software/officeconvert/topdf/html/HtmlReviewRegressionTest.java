@@ -207,6 +207,34 @@ class HtmlReviewRegressionTest {
         }
     }
 
+    @Test
+    void emptyPaddedFlexItemsRetainTheGapsOnBothSides() throws IOException {
+        List<Paragraph> paragraphs = paragraphs("<div style='display:flex;gap:12px'><span>A</span>"
+                + "<span style='padding-left:16px'></span><span>B</span></div>");
+        assertEquals(List.of("A\u2002\u00a0\u2002B"),
+                paragraphs.stream().map(HtmlReviewRegressionTest::text).toList());
+    }
+
+    @Test
+    void emptyPriorFlexItemsDoNotInsertAGapBetweenTheNextItemsOwnEdges() throws IOException {
+        List<Paragraph> paragraphs = paragraphs("<div style='display:flex;gap:12px'><span></span>"
+                + "<span style='padding:0 16px'></span><span>B</span></div>");
+        assertEquals(List.of("\u00a0\u00a0\u2002B"),
+                paragraphs.stream().map(HtmlReviewRegressionTest::text).toList());
+    }
+
+    @Test
+    void nestedEmptyInlineEdgesKeepTheirOuterToInnerOrderInAFlexItem() throws IOException {
+        List<Paragraph> paragraphs = paragraphs("<div style='display:flex;gap:12px'><span>A</span>"
+                + "<span style='padding-left:16px'><span style='padding-left:8px'></span></span>"
+                + "<span>B</span></div>");
+        Paragraph row = paragraphs.getFirst();
+        assertEquals("A\u2002\u00a0\u00a0\u2002B", text(row));
+        List<Float> spacing = row.inlines.stream().filter(Inline.Text.class::isInstance).map(Inline.Text.class::cast)
+                .filter(run -> run.text().equals("\u00a0")).map(run -> run.style().spacing()).toList();
+        assertEquals(List.of(9f, 3f), spacing);
+    }
+
     private record Destinations(HtmlContext context, List<Paragraph> paragraphs) {}
 
     private static Destinations destinations(String html, Set<String> targets) throws IOException {
