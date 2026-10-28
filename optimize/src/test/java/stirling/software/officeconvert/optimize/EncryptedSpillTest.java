@@ -141,11 +141,30 @@ class EncryptedSpillTest {
             Path file = fixture("unit-" + keyLength + aes, keyLength, aes, 16);
             try (PDDocument doc = Loader.loadPDF(file.toFile(), "user")) {
                 Encryption encryption = Encryption.of(doc, "user");
+                var reference = new org.apache.pdfbox.pdmodel.encryption.PDEncryption(
+                        doc.getDocument().getEncryptionDictionary()).getSecurityHandler();
+                reference.prepareForDecryption(new org.apache.pdfbox.pdmodel.encryption.PDEncryption(
+                        doc.getDocument().getEncryptionDictionary()), doc.getDocument().getDocumentID(),
+                        new org.apache.pdfbox.pdmodel.encryption.StandardDecryptionMaterial("user"));
                 for (int size : new int[] {0, 1, 15, 16, 17, 4096, 100_003}) {
                     for (int number : new int[] {1, 300, 70_000, 16_777_300}) {
                         byte[] plain = new byte[size];
                         random.nextBytes(plain);
-                        byte[] old = encryption.encrypt(plain, number);
+                        COSStream t = new COSStream();
+                        try (OutputStream o = t.createRawOutputStream()) {
+                            o.write(plain);
+                        }
+                        reference.encryptStream(t, number, 0);
+                        byte[] old;
+                        try (InputStream raw = t.createRawInputStream()) {
+                            old = raw.readAllBytes();
+                        }
+                        org.apache.pdfbox.cos.COSString string = new org.apache.pdfbox.cos.COSString(plain);
+                        reference.encryptString(string, number, 0);
+                        if (!aes) {
+                            assertArrayEquals(string.getBytes(), encryption.string(plain, number));
+                            assertArrayEquals(old, encryption.encrypt(plain, number));
+                        }
                         assertEquals(old.length, encryption.encryptedLength(size));
                         java.io.ByteArrayOutputStream streamed = new java.io.ByteArrayOutputStream();
                         byte[] iv = aes ? java.util.Arrays.copyOf(old, 16) : new byte[16];
@@ -157,6 +176,45 @@ class EncryptedSpillTest {
                         assertArrayEquals(old, streamed.toByteArray(), keyLength + " " + aes + " " + size + " " + number);
                     }
                 }
+            }
+        }
+    }
+
+    @Test
+    void rc4EncryptionIsSafeAcrossThePackingThreads() throws Exception {
+        Path file = fixture("rc4-threads", 128, false, 16);
+        try (PDDocument doc = Loader.loadPDF(file.toFile(), "user")) {
+            Encryption encryption = Encryption.of(doc, "user");
+            int threads = 8;
+            byte[][] plain = new byte[threads][];
+            byte[][] expected = new byte[threads][];
+            Random random = new Random(5);
+            for (int t = 0; t < threads; t++) {
+                plain[t] = new byte[1 << 18];
+                random.nextBytes(plain[t]);
+                expected[t] = encryption.encrypt(plain[t], 10 + t);
+            }
+            var pool = java.util.concurrent.Executors.newFixedThreadPool(threads);
+            try {
+                java.util.List<java.util.concurrent.Future<Boolean>> results = new java.util.ArrayList<>();
+                java.util.concurrent.CountDownLatch start = new java.util.concurrent.CountDownLatch(1);
+                for (int t = 0; t < threads; t++) {
+                    int n = t;
+                    results.add(pool.submit(() -> {
+                        start.await();
+                        boolean same = true;
+                        for (int round = 0; round < 40; round++) {
+                            same &= java.util.Arrays.equals(expected[n], encryption.encrypt(plain[n], 10 + n));
+                        }
+                        return same;
+                    }));
+                }
+                start.countDown();
+                for (int t = 0; t < threads; t++) {
+                    assertTrue(results.get(t).get(), "thread " + t + " encrypted differently");
+                }
+            } finally {
+                pool.shutdownNow();
             }
         }
     }

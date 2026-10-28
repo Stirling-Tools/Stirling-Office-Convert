@@ -32,6 +32,8 @@ final class Source {
 
     private final Map<COSObjectKey, COSBase> injected = new HashMap<>();
 
+    private Map<Long, Map<Long, COSBase>> containers;
+
     Source(COSDocument cos) {
         this.cos = cos;
         this.parser = parser(cos);
@@ -88,6 +90,10 @@ final class Source {
             ordered.addAll(members);
         }
         return ordered;
+    }
+
+    void keepContainers(boolean keep) {
+        containers = keep ? new HashMap<>() : null;
     }
 
     void inject(COSObjectKey key, COSBase object) {
@@ -221,7 +227,9 @@ final class Source {
         }
         Long off = xref.get(key);
         if (off != null && off < 0) {
-            COSBase b = unpack(-off).get(key.getNumber());
+            Map<Long, COSBase> objects = containers == null ? unpack(-off)
+                    : containers.computeIfAbsent(-off, this::unpack);
+            COSBase b = objects.get(key.getNumber());
             return b == null ? COSNull.NULL : b;
         }
         return top(key);

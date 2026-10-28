@@ -88,6 +88,7 @@ final class Salvage {
         byOffset.sort(Map.Entry.comparingByValue());
         TreeMap<Integer, String> packed = new TreeMap<>();
         BrotliBudget budget = BrotliBudget.create();
+        long[] left = {MAX_UNPACKED};
         for (int k = 0; k < byOffset.size(); k++) {
             if ((k & 1023) == 0) {
                 stirling.software.officeconvert.extract.PdfFiles.stopIfInterrupted();
@@ -100,8 +101,8 @@ final class Salvage {
             String head = stream >= 0 ? body.substring(0, stream) : body;
             bodies.put(number, head);
             order.put(number, (long) start << 20);
-            if (stream >= 0 && OBJECT_STREAM.matcher(head).find()) {
-                unpack(data, start, Math.min(end, data.length), head, packed, order, budget);
+            if (stream >= 0 && left[0] > 0 && OBJECT_STREAM.matcher(head).find()) {
+                unpack(data, start, Math.min(end, data.length), head, packed, order, budget, left);
             }
         }
         packed.keySet().removeAll(offsets.keySet());
@@ -228,7 +229,8 @@ final class Salvage {
     }
 
     private static void unpack(byte[] data, int start, int end, String head, Map<Integer, String> packed,
-            Map<Integer, Long> order, BrotliBudget budget) {
+            Map<Integer, Long> order, BrotliBudget budget, long[] left) {
+        int cap = (int) Math.min(MAX_UNPACKED, left[0]);
         Matcher n = COUNT.matcher(head);
         Matcher first = FIRST.matcher(head);
         if (!n.find() || !first.find() || head.contains("/DecodeParms") || head.contains("/DP")) {
@@ -261,7 +263,7 @@ final class Salvage {
             byte[] buffer = new byte[256];
             inflater.setInput(raw);
             try {
-                while (!inflater.finished() && !inflater.needsInput() && plain.size() < MAX_UNPACKED) {
+                while (!inflater.finished() && !inflater.needsInput() && plain.size() < cap) {
                     int got = inflater.inflate(buffer);
                     if (got == 0 && (inflater.needsDictionary() || inflater.needsInput())) {
                         break;
@@ -277,7 +279,7 @@ final class Salvage {
             decoded = plain.toByteArray();
         } else if (brotli) {
             try {
-                decoded = Filters.brotli(raw, MAX_UNPACKED, budget);
+                decoded = Filters.brotli(raw, cap, budget);
             } catch (Filters.Undecodable e) {
                 return;
             }
@@ -286,6 +288,7 @@ final class Salvage {
             decoded = raw;
             complete = true;
         }
+        left[0] -= decoded.length;
         int count;
         int offset;
         try {

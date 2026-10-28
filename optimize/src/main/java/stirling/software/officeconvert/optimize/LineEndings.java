@@ -40,40 +40,52 @@ final class LineEndings {
         Bytes fixed = new Bytes(data.length);
         int copied = 0;
         int restored = 0;
+        int steps = 0;
+        int floor = 0;
+        long budget = 2L * data.length;
         int at = 0;
         while ((at = text.indexOf("stream\r\n", at)) >= 0) {
-            if ((restored & 255) == 0) {
+            if ((steps++ & 255) == 0) {
                 PdfFiles.stopIfInterrupted();
             }
             int start = at + 8;
+            int from = floor;
+            floor = at;
             if (at >= 3 && text.startsWith("end", at - 3)) {
                 at = start;
                 continue;
             }
-            int dict = text.lastIndexOf("obj", at);
-            long length = dict < 0 ? -1 : length(text.substring(dict, at), numbers);
+            int dict = lastObject(text, from, at);
+            long length = dict < 0 ? -1 : length(text, dict, at, numbers);
             at = start;
             if (length <= 0 || length > data.length || ends(data, start + (int) Math.min(length, data.length))) {
                 continue;
             }
-            Bytes plain = new Bytes((int) length);
             int i = start;
-            while (plain.size() < length && i < data.length) {
-                if (data[i] == '\r' && i + 1 < data.length && data[i + 1] == '\n') {
-                    plain.write('\n');
-                    i += 2;
-                } else {
-                    plain.write(data[i]);
-                    i++;
+            long size = 0;
+            while (size < length && i < data.length && i - start < budget) {
+                if ((size & 0xFFFFF) == 0) {
+                    PdfFiles.stopIfInterrupted();
                 }
+                i += data[i] == '\r' && i + 1 < data.length && data[i + 1] == '\n' ? 2 : 1;
+                size++;
             }
-            if (plain.size() != length || !ends(data, i)) {
+            budget -= i - start;
+            if (budget <= 0) {
+                break;
+            }
+            if (size != length || !ends(data, i)) {
                 continue;
             }
             fixed.write(data, copied, start - copied);
-            plain.writeTo(fixed);
+            for (int k = start; k < i; k++) {
+                if (data[k] != '\r' || k + 1 >= i || data[k + 1] != '\n') {
+                    fixed.write(data[k]);
+                }
+            }
             copied = i;
             at = i;
+            floor = i;
             restored++;
         }
         if (restored == 0) {
@@ -86,8 +98,8 @@ final class LineEndings {
         return restored;
     }
 
-    private static long length(String dictionary, Map<Long, Long> numbers) {
-        Matcher m = LENGTH.matcher(dictionary);
+    private static long length(String text, int from, int to, Map<Long, Long> numbers) {
+        Matcher m = LENGTH.matcher(text).region(from, to);
         long found = -1;
         while (m.find()) {
             try {
@@ -98,6 +110,15 @@ final class LineEndings {
             }
         }
         return found;
+    }
+
+    private static int lastObject(String text, int from, int to) {
+        for (int p = to - 3; p >= from; p--) {
+            if (text.startsWith("obj", p)) {
+                return p;
+            }
+        }
+        return -1;
     }
 
     private static boolean ends(byte[] data, int at) {

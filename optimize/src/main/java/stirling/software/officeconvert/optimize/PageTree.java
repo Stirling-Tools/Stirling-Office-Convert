@@ -78,7 +78,12 @@ final class PageTree {
     static List<String> repair(Index index, Source source, Recorder recorder, Roles roles, int root)
             throws IOException {
         PageTree tree = new PageTree(index, source, recorder, roles);
-        tree.run(root);
+        source.keepContainers(true);
+        try {
+            tree.run(root);
+        } finally {
+            source.keepContainers(false);
+        }
         return List.copyOf(tree.notes);
     }
 
@@ -335,6 +340,8 @@ final class PageTree {
             COSBase own = usable(INHERITED[k], d.getDictionaryObject(INHERITED[k]));
             if (own != null) {
                 here[k] = own;
+            } else if (d.getItem(INHERITED[k]) != null) {
+                edit(node).removeItem(INHERITED[k]);
             }
         }
         int count = 0;

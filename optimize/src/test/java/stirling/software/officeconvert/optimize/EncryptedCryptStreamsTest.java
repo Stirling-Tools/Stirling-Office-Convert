@@ -156,6 +156,41 @@ class EncryptedCryptStreamsTest {
     }
 
     @Test
+    void identityDefaultFiltersStayUnencryptedWhenRewritten() throws Exception {
+        ByteArrayOutputStream template = new ByteArrayOutputStream();
+        try (PDDocument document = new PDDocument()) {
+            StandardProtectionPolicy policy = new StandardProtectionPolicy("owner", "user", new AccessPermission());
+            policy.setEncryptionKeyLength(128);
+            policy.setPreferAES(true);
+            document.protect(policy);
+            document.save(template);
+        }
+        Path input;
+        try (PDDocument templateDocument = Loader.loadPDF(template.toByteArray(), "owner")) {
+            COSDictionary encrypt = templateDocument.getEncryption().getCOSObject();
+            encrypt.setItem(COSName.STM_F, COSName.IDENTITY);
+            encrypt.setItem(COSName.STR_F, COSName.IDENTITY);
+            RawPdf raw = RawPdf.page("", new String(CONTENT, StandardCharsets.US_ASCII));
+            raw.header = "%PDF-1.7\n";
+            raw.set(1, "<</Type/Catalog/Pages 2 0 R/Lang(en-GB)>>");
+            int at = raw.add(syntax(encrypt));
+            raw.trailerExtra = "/Encrypt " + at + " 0 R/ID" + syntax(templateDocument.getDocument().getDocumentID());
+            input = raw.write(dir, "identity-default");
+        }
+        Path output = dir.resolve("identity-default-optimized.pdf");
+        PdfOptimizer.Result result = PdfOptimizer.optimize(input, output,
+                PdfOptimizer.Options.defaults().password("user").alwaysRewrite(true));
+        assertTrue(result.rewritten(), result.warnings().toString());
+        try (PDDocument document = Loader.loadPDF(output.toFile(), "user")) {
+            assertTrue(document.isEncrypted());
+            assertEquals("en-GB", document.getDocumentCatalog().getLanguage());
+            try (var in = document.getPage(0).getContents()) {
+                assertArrayEquals(CONTENT, in.readAllBytes());
+            }
+        }
+    }
+
+    @Test
     void unencryptedIdentityMetadataStillRoundTrips() throws Exception {
         Path input = dir.resolve("unencrypted-identity.pdf");
         try (PDDocument document = new PDDocument()) {
