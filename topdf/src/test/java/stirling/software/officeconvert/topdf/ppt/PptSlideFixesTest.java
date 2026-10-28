@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.awt.Color;
+import java.awt.geom.Path2D;
 import java.awt.geom.Rectangle2D;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -27,8 +28,12 @@ import org.apache.pdfbox.pdmodel.interactive.annotation.PDAnnotationLink;
 import org.apache.pdfbox.pdmodel.interactive.documentnavigation.destination.PDPageDestination;
 import org.apache.pdfbox.text.PDFTextStripper;
 import org.apache.pdfbox.text.TextPosition;
+import org.apache.poi.ddf.AbstractEscherOptRecord;
+import org.apache.poi.ddf.EscherArrayProperty;
+import org.apache.poi.ddf.EscherPropertyTypes;
 import org.apache.poi.hslf.record.SlideAtomLayout;
 import org.apache.poi.hslf.usermodel.HSLFAutoShape;
+import org.apache.poi.hslf.usermodel.HSLFFreeformShape;
 import org.apache.poi.hslf.usermodel.HSLFShape;
 import org.apache.poi.hslf.usermodel.HSLFSlide;
 import org.apache.poi.hslf.usermodel.HSLFSlideShow;
@@ -39,6 +44,7 @@ import org.apache.poi.hslf.usermodel.HSLFTextShape;
 import org.apache.poi.poifs.filesystem.POIFSFileSystem;
 import org.apache.poi.sl.usermodel.Placeholder;
 import org.apache.poi.sl.usermodel.ShapeType;
+import org.apache.poi.util.LittleEndian;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -237,6 +243,50 @@ class PptSlideFixesTest {
             java.awt.image.BufferedImage img = new org.apache.pdfbox.rendering.PDFRenderer(d).renderImageWithDPI(0, 72);
             assertEquals(0x808080, img.getRGB(201, 150) & 0xFFFFFF);
             assertEquals(0xFFFFFF, img.getRGB(502, 150) & 0xFFFFFF);
+        }
+    }
+
+    @Test
+    void aFreeformWithNoGeometryBoxAndCountedSegmentsIsDrawn() throws IOException {
+        byte[] ppt = deck(p -> {
+            HSLFSlide slide = p.createSlide();
+            HSLFFreeformShape f = new HSLFFreeformShape(slide);
+            Path2D.Double path = new Path2D.Double();
+            path.moveTo(100, 100);
+            path.lineTo(300, 100);
+            path.lineTo(300, 300);
+            path.lineTo(100, 300);
+            path.closePath();
+            f.setPath(path);
+            f.setAnchor(new Rectangle2D.Double(100, 100, 200, 200));
+            f.setFillColor(Color.BLUE);
+            f.setLineColor(null);
+            f.setEscherProperty(EscherPropertyTypes.GEOMETRY__LEFT, 0);
+            f.setEscherProperty(EscherPropertyTypes.GEOMETRY__TOP, 0);
+            f.setEscherProperty(EscherPropertyTypes.GEOMETRY__RIGHT, 0);
+            f.setEscherProperty(EscherPropertyTypes.GEOMETRY__BOTTOM, 0);
+            int[] counted = {0x4000, 0x0003, 0x6001, 0x8000};
+            EscherArrayProperty segments = new EscherArrayProperty(EscherPropertyTypes.GEOMETRY__SEGMENTINFO, false, 0);
+            segments.setNumberOfElementsInArray(counted.length);
+            segments.setNumberOfElementsInMemory(counted.length);
+            segments.setSizeOfElements(2);
+            for (int i = 0; i < counted.length; i++) {
+                byte[] e = new byte[2];
+                LittleEndian.putUShort(e, 0, counted[i]);
+                segments.setElement(i, e);
+            }
+            AbstractEscherOptRecord opt = f.getEscherOptRecord();
+            opt.removeEscherProperty(EscherPropertyTypes.GEOMETRY__SEGMENTINFO);
+            opt.addEscherProperty(segments);
+            opt.sortProperties();
+            slide.addShape(f);
+        });
+        Path pdf = convert("freeform.ppt", ppt);
+        try (PDDocument d = Loader.loadPDF(pdf.toFile())) {
+            java.awt.image.BufferedImage img = new org.apache.pdfbox.rendering.PDFRenderer(d).renderImageWithDPI(0, 72);
+            assertEquals(0x0000FF, img.getRGB(150, 150) & 0xFFFFFF);
+            assertEquals(0x0000FF, img.getRGB(290, 290) & 0xFFFFFF);
+            assertEquals(0xFFFFFF, img.getRGB(320, 320) & 0xFFFFFF);
         }
     }
 

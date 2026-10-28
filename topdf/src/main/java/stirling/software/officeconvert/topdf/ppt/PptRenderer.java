@@ -122,12 +122,21 @@ public final class PptRenderer {
             return;
         } finally {
             shadows(ppt);
+            freeforms(ppt);
         }
     }
 
     private static void shadows(HSLFSlideShow ppt) {
         try {
             ShapeShadows.apply(ppt);
+        } catch (RuntimeException e) {
+            return;
+        }
+    }
+
+    private static void freeforms(HSLFSlideShow ppt) {
+        try {
+            Freeforms.apply(ppt);
         } catch (RuntimeException e) {
             return;
         }
