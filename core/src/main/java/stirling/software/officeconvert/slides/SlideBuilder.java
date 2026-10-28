@@ -141,6 +141,7 @@ final class SlideBuilder {
                 stack.text(t);
             }
             whiteCards(layout, stack);
+            paper(stack);
             if (stack.backgroundOrder >= 0) {
                 hiddenByBackground(stack);
             }
@@ -364,6 +365,20 @@ final class SlideBuilder {
             }
         }
         return false;
+    }
+
+    private void paper(Stack stack) {
+        if (stack.background >= 0) {
+            return;
+        }
+        for (PaintOrder.Mark m : stack.paint.marks()) {
+            if (m.kind() == Kind.FILL && m.outline() == PaintOrder.Outline.RECT && m.opaque() && !m.blended()
+                    && m.rgb() >= 0 && white(m.rgb()) && covers(m.box()) && !stack.represented.contains(m.order())) {
+                stack.background = m.rgb();
+                stack.backgroundOrder = m.order();
+                return;
+            }
+        }
     }
 
     private static void hiddenByBackground(Stack stack) {

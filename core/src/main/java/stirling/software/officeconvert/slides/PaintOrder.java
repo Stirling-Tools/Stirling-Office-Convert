@@ -21,6 +21,7 @@ import org.apache.pdfbox.pdmodel.font.PDFont;
 import org.apache.pdfbox.pdmodel.font.PDType3CharProc;
 import org.apache.pdfbox.pdmodel.font.PDType3Font;
 import org.apache.pdfbox.pdmodel.graphics.blend.BlendMode;
+import org.apache.pdfbox.pdmodel.graphics.color.PDColor;
 import org.apache.pdfbox.pdmodel.graphics.color.PDPattern;
 import org.apache.pdfbox.pdmodel.graphics.form.PDFormXObject;
 import org.apache.pdfbox.pdmodel.graphics.form.PDTransparencyGroup;
@@ -51,7 +52,7 @@ final class PaintOrder extends PDFGraphicsStreamEngine {
     }
 
     record Mark(Kind kind, Box box, int order, float alpha, boolean opaque, Outline outline, float radius, int from,
-            boolean blended) {}
+            boolean blended, int rgb) {}
 
     record Slant(float x, float y, float angle, float advance, int order) {}
 
@@ -471,12 +472,24 @@ final class PaintOrder extends PDFGraphicsStreamEngine {
             Mark last = marks.getLast();
             if (last.kind() == Kind.TEXT && last.order() == order - 1 && sameLine(last.box(), b)) {
                 marks.set(marks.size() - 1, new Mark(Kind.TEXT, last.box().union(b), order++, alpha, opaque, outline,
-                        radius, last.from(), last.blended() || blended));
+                        radius, last.from(), last.blended() || blended, -1));
                 return;
             }
         }
-        marks.add(new Mark(kind, b, order, alpha, opaque, outline, radius, order, blended));
+        marks.add(new Mark(kind, b, order, alpha, opaque, outline, radius, order, blended, kind == Kind.FILL ? fillRgb() : -1));
         order++;
+    }
+
+    private int fillRgb() {
+        PDColor colour = getGraphicsState().getNonStrokingColor();
+        if (colour == null || colour.getColorSpace() instanceof PDPattern) {
+            return -1;
+        }
+        try {
+            return colour.toRGB() & 0xFFFFFF;
+        } catch (IOException | RuntimeException e) {
+            return -1;
+        }
     }
 
     private static boolean sameLine(Box a, Box b) {

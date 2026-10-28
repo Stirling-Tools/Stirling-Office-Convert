@@ -252,6 +252,40 @@ class PdfToPptxTest {
     }
 
     @Test
+    void whitePaperUnderArtworkIsTheBackgroundNotAPicture() throws Exception {
+        Path paper = dir.resolve("paper.pdf");
+        try (PDDocument doc = new PDDocument()) {
+            PDPage page = new PDPage(SlideFixtures.WIDE);
+            doc.addPage(page);
+            try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
+                cs.setNonStrokingColor(1f, 1f, 1f);
+                cs.addRect(0, 0, 960, 540);
+                cs.fill();
+                cs.setStrokingColor(0.2f, 0.5f, 0.1f);
+                cs.setLineWidth(3);
+                cs.moveTo(700, 540);
+                cs.curveTo(800, 400, 900, 200, 960, 0);
+                cs.stroke();
+                cs.setNonStrokingColor(0f, 0f, 0f);
+                cs.beginText();
+                cs.setFont(SlideFixtures.SANS, 40);
+                cs.newLineAtOffset(60, 440);
+                cs.showText("On paper");
+                cs.endText();
+            }
+            doc.save(paper.toFile());
+        }
+        Path out = dir.resolve("paper.pptx");
+        PdfToPptx.convert(paper, out, PdfToPptx.Options.defaults());
+        Map<String, byte[]> files = SlideFixtures.parts(Files.readAllBytes(out));
+        String slide = SlideFixtures.text(files, "ppt/slides/slide1.xml");
+        assertTrue(slide.contains("<p:bg><p:bgPr><a:solidFill><a:srgbClr val=\"FFFFFF\"/>"), "the paper is the background");
+        assertEquals(1, count(slide, "<p:pic>"), "only the stroke is a picture");
+        assertFalse(slide.contains("cx=\"12192000\""), "no picture covers the whole slide");
+        assertFalse(files.keySet().stream().anyMatch(n -> n.endsWith(".jpeg")));
+    }
+
+    @Test
     void ocrTextOverAScanStaysSearchableButInvisible() throws Exception {
         assertTrue(ocrSlide(true).matches("(?s).*<a:srgbClr val=\"[0-9A-F]{6}\"><a:alpha val=\"0\"/></a:srgbClr>(?:(?!</a:r>).)*"
                 + "<a:t>Scanned report text</a:t>.*"), "the scan shows the words, the text layer only carries them");
