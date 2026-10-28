@@ -61,14 +61,24 @@ final class BookPages {
             }
             String marker = "https://contents-" + UUID.randomUUID() + ".invalid/";
             List<Entry> entries = options.tableOfContents() ? outline(laid) : List.of();
-            if (!entries.isEmpty()) {
+            int room = options.maxPages() == 0 ? 0 : options.maxPages() - result.pages();
+            boolean cut = false;
+            if (!entries.isEmpty() && options.maxPages() != 0 && room <= 0) {
+                cut = true;
+            } else if (!entries.isEmpty()) {
                 OfficeToPdf.stopIfInterrupted();
                 contents = Files.createTempFile("office-to-pdf-", ".pdf");
                 try (OutputStream os = new BufferedOutputStream(Files.newOutputStream(contents), 1 << 16)) {
-                    HtmlInput.renderPage(contents(entries, marker), os, plain, renderer);
+                    cut = HtmlInput.renderPage(contents(entries, marker), os, plain.maxPages(room), renderer)
+                            .pageLimitReached();
                 }
             }
             int added = finish(laid, contents, marker, options.pageNumbers(), sink);
+            if (cut && !result.pageLimitReached()) {
+                List<String> warnings = new ArrayList<>(result.warnings());
+                warnings.add("Stopped at the page limit of " + options.maxPages() + " pages");
+                return new Result(result.pages() + added, true, warnings, true);
+            }
             return added == 0 ? result
                     : new Result(result.pages() + added, result.truncated(), result.warnings(), result.pageLimitReached());
         } finally {

@@ -461,6 +461,26 @@ class EpubToPdfTest {
     }
 
     @Test
+    void contentsPagesCountAgainstThePageLimit() throws IOException {
+        Path in = epub("limited.epub", book());
+        Path out = dir.resolve("limited.pdf");
+        OfficeToPdf.Options options = OfficeToPdf.Options.defaults().timeout(Duration.ofMinutes(2)).tableOfContents(true);
+        OfficeToPdf.Result r = OfficeToPdf.convert(in, out, options.maxPages(3));
+        try (PDDocument doc = Loader.loadPDF(out.toFile())) {
+            assertEquals(3, doc.getNumberOfPages());
+            assertEquals(3, r.pages());
+            assertTrue(r.pageLimitReached(), r.toString());
+            assertTrue(r.truncated(), r.toString());
+        }
+        OfficeToPdf.Result room = OfficeToPdf.convert(in, out, options.maxPages(4));
+        try (PDDocument doc = Loader.loadPDF(out.toFile())) {
+            assertEquals(4, doc.getNumberOfPages());
+            assertEquals(4, room.pages());
+            assertFalse(room.pageLimitReached(), room.toString());
+        }
+    }
+
+    @Test
     void selfClosedElementsDoNotSwallowWhatFollows() {
         String html = EpubBook.xhtmlAsHtml("<?xml version='1.0'?><p>a<a id=\"x\"/>b<br/>c<div class=\"d\"/>e</p>");
         assertEquals("<p>a<a id=\"x\"></a>b<br>c<div class=\"d\"></div>e</p>", html);
