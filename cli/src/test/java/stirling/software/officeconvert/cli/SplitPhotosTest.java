@@ -134,6 +134,27 @@ class SplitPhotosTest {
     }
 
     @Test
+    void scansSharingANameKeepTheirExtensionInThePhotoNames() throws Exception {
+        Path png = dir.resolve("album.png");
+        Path jpg = dir.resolve("album.jpg");
+        ImageIO.write(scan(), "png", png.toFile());
+        ImageIO.write(scan(), "jpg", jpg.toFile());
+        Path out = dir.resolve("out");
+        for (String overwrite : new String[] {"-q", "--overwrite"}) {
+            Result r = run("split-photos", png.toString(), jpg.toString(), "-o", out.toString(), overwrite);
+            assertEquals(0, r.code(), r.err());
+            assertFalse(Files.exists(out.resolve("album_1.png")));
+            BufferedImage fromPng = ImageIO.read(out.resolve("album.png_1.png").toFile());
+            BufferedImage fromJpg = ImageIO.read(out.resolve("album.jpg_1.png").toFile());
+            assertEquals(fromPng.getWidth(), fromJpg.getWidth(), 3);
+            assertTrue(Files.exists(out.resolve("album.png_2.png")) && Files.exists(out.resolve("album.jpg_2.png")));
+        }
+        Result alone = run("split-photos", png.toString(), "-o", dir.resolve("alone").toString());
+        assertEquals(0, alone.code(), alone.err());
+        assertTrue(Files.exists(dir.resolve("alone").resolve("album_1.png")));
+    }
+
+    @Test
     void overwriteCannotReplaceAnotherSuppliedScan() throws Exception {
         Path first = dir.resolve("album.png");
         Path second = dir.resolve("album_1.png");

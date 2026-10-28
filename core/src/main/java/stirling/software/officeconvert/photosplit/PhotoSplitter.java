@@ -33,10 +33,13 @@ import org.apache.pdfbox.rendering.ImageType;
 import org.apache.pdfbox.rendering.PDFRenderer;
 
 import stirling.software.officeconvert.extract.PdfFiles;
+import stirling.software.officeconvert.memory.Admission;
 
 public final class PhotoSplitter {
 
     public static final long MAX_PIXELS = 100_000_000L;
+
+    static final int MAX_PAGES = 1000;
 
     private static final long ANALYSIS_PIXELS = 4_500_000L;
     private static final long ANALYSIS_BYTES_PER_PIXEL = 24;
@@ -138,15 +141,27 @@ public final class PhotoSplitter {
 
     public static List<Path> split(Path input, Path outputDirectory, Options options) throws IOException {
         Objects.requireNonNull(input, "input");
+        return split(input, outputDirectory, baseName(input), options);
+    }
+
+    public static List<Path> split(Path input, Path outputDirectory, String baseName, Options options) throws IOException {
+        Objects.requireNonNull(input, "input");
         Objects.requireNonNull(outputDirectory, "outputDirectory");
+        Objects.requireNonNull(baseName, "baseName");
         Objects.requireNonNull(options, "options");
+        if (baseName.isEmpty() || baseName.indexOf('/') >= 0 || baseName.indexOf('\\') >= 0
+                || baseName.indexOf('\0') >= 0) {
+            throw new IllegalArgumentException("baseName must be a plain file name, was '" + baseName + "'");
+        }
         try {
             checkpoint();
-            return splitFile(input, outputDirectory, options);
+            return splitFile(input, outputDirectory, baseName, options);
         } catch (CancellationException stopped) {
             InterruptedIOException error = new InterruptedIOException("Photo splitting interrupted");
             error.initCause(stopped);
             throw error;
+        } catch (RuntimeException e) {
+            throw new IOException("Photo splitting failed: " + e, e);
         }
     }
 
@@ -156,9 +171,8 @@ public final class PhotoSplitter {
         }
     }
 
-    private static List<Path> splitFile(Path input, Path outputDirectory, Options options) throws IOException {
+    private static List<Path> splitFile(Path input, Path outputDirectory, String base, Options options) throws IOException {
         Files.createDirectories(outputDirectory);
-        String base = baseName(input);
         List<Path> written = new ArrayList<>();
         if (isPdf(input)) {
             try (PDDocument document = PdfFiles.open(input, null)) {
@@ -169,12 +183,23 @@ public final class PhotoSplitter {
                     PDRectangle box = document.getPage(page).getCropBox();
                     float dpi = pageDpi(box, options.dpi());
                     long pixels = (long) Math.ceil(box.getWidth() / 72.0 * dpi) * (long) Math.ceil(box.getHeight() / 72.0 * dpi);
-                    budget(input.getFileName() + " page " + (page + 1), peakBytes(pixels, 4 * pixels, false, options.method()));
-                    write(source(renderer.renderImageWithDPI(page, dpi, ImageType.RGB)), options, outputDirectory, base, written);
+                    String name = input.getFileName() + " page " + (page + 1);
+                    if (pixels > MAX_PIXELS) {
+                        throw new IOException(name + " would be drawn with " + pixels + " pixels; the limit is " + MAX_PIXELS);
+                    }
+                    long bytes = peakBytes(pixels, 4 * pixels, false, options.method());
+                    budget(name, bytes);
+                    Admission.Ticket ticket = Admission.jvm().enter(bytes);
+                    try {
+                        write(source(renderer.renderImageWithDPI(page, dpi, ImageType.RGB)), options, outputDirectory, base,
+                                written);
+                    } finally {
+                        ticket.close();
+                    }
                 }
             }
         } else {
-            write(source(readImage(input, options.method())), options, outputDirectory, base, written);
+            splitImage(input, options, outputDirectory, base, written);
         }
         checkpoint();
         return written;
@@ -281,7 +306,35 @@ public final class PhotoSplitter {
         }
     }
 
-    private static BufferedImage readImage(Path input, Method method) throws IOException {
+    private static final class Page {
+        Admission.Ticket ticket;
+        boolean paged;
+    }
+
+    private static void splitImage(Path input, Options options, Path dir, String base, List<Path> written)
+            throws IOException {
+        for (int index = 0;; index++) {
+            checkpoint();
+            Page page = new Page();
+            try {
+                Source source = readPage(input, index, options.method(), page);
+                if (source == null) {
+                    return;
+                }
+                write(source, options, dir, base, written);
+            } finally {
+                if (page.ticket != null) {
+                    page.ticket.close();
+                }
+            }
+            if (!page.paged) {
+                return;
+            }
+        }
+    }
+
+    private static Source readPage(Path input, int index, Method method, Page page) throws IOException {
+        BufferedImage image;
         try (InputStream in = Files.newInputStream(input); ImageInputStream stream = ImageIO.createImageInputStream(in)) {
             if (stream == null) {
                 throw new IOException("cannot read " + input);
@@ -293,19 +346,42 @@ public final class PhotoSplitter {
             ImageReader reader = readers.next();
             try {
                 reader.setInput(stream, true, true);
-                long pixels = (long) reader.getWidth(0) * reader.getHeight(0);
-                if (pixels > MAX_PIXELS) {
-                    throw new IOException(input.getFileName() + " has " + pixels + " pixels; the limit is " + MAX_PIXELS);
+                String format = reader.getFormatName();
+                page.paged = "tif".equalsIgnoreCase(format) || "tiff".equalsIgnoreCase(format);
+                if (index > 0 && !hasImage(reader, index)) {
+                    return null;
                 }
-                Iterator<ImageTypeSpecifier> types = reader.getImageTypes(0);
+                if (index == MAX_PAGES) {
+                    throw new IOException(input.getFileName() + " has more than " + MAX_PAGES + " pages; the limit is "
+                            + MAX_PAGES);
+                }
+                String name = index == 0 ? input.getFileName().toString() : input.getFileName() + " page " + (index + 1);
+                long pixels = (long) reader.getWidth(index) * reader.getHeight(index);
+                if (pixels > MAX_PIXELS) {
+                    throw new IOException(name + " has " + pixels + " pixels; the limit is " + MAX_PIXELS);
+                }
+                long bytes = peakBytes(pixels, 4 * pixels, true, method);
+                Iterator<ImageTypeSpecifier> types = reader.getImageTypes(index);
                 if (types != null && types.hasNext()) {
                     ImageTypeSpecifier type = types.next();
-                    budget(input.getFileName().toString(), peakBytes(pixels, decodedBytes(type, pixels), converted(type), method));
+                    bytes = peakBytes(pixels, decodedBytes(type, pixels), converted(type), method);
+                    budget(name, bytes);
                 }
-                return reader.read(0);
+                page.ticket = Admission.jvm().enter(bytes);
+                image = reader.read(index);
             } finally {
                 reader.dispose();
             }
+        }
+        return source(image);
+    }
+
+    private static boolean hasImage(ImageReader reader, int index) throws IOException {
+        try {
+            reader.getWidth(index);
+            return true;
+        } catch (IndexOutOfBoundsException e) {
+            return false;
         }
     }
 
@@ -323,7 +399,7 @@ public final class PhotoSplitter {
                 || head.startsWith("RIFF") && head.startsWith("WEBP", 8);
     }
 
-    private static String baseName(Path input) {
+    public static String baseName(Path input) {
         String name = input.getFileName().toString();
         int dot = name.lastIndexOf('.');
         return dot > 0 ? name.substring(0, dot) : name;
