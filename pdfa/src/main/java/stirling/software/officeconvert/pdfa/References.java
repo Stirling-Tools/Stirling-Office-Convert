@@ -24,6 +24,7 @@ final class References {
 
     static Set<COSBase> once(COSDictionary... roots) {
         Map<COSBase, Integer> count = new IdentityHashMap<>();
+        Set<COSBase> kids = Collections.newSetFromMap(new IdentityHashMap<>());
         Deque<COSBase> stack = new ArrayDeque<>();
         for (COSDictionary r : roots) {
             if (r != null && count.put(r, 2) == null) {
@@ -36,6 +37,11 @@ final class References {
                 for (Map.Entry<COSName, COSBase> e : d.entrySet()) {
                     visit(e.getValue(), count, stack);
                 }
+                if (resolve(d.getItem(COSName.KIDS)) instanceof COSArray a) {
+                    for (int i = 0, n = a.size(); i < n; i++) {
+                        kids.add(resolve(a.get(i)));
+                    }
+                }
             } else {
                 COSArray a = (COSArray) b;
                 for (int i = 0, n = a.size(); i < n; i++) {
@@ -45,15 +51,19 @@ final class References {
         }
         Set<COSBase> out = Collections.newSetFromMap(new IdentityHashMap<>());
         for (Map.Entry<COSBase, Integer> e : count.entrySet()) {
-            if (e.getValue() == 1 && movable(e.getKey())) {
+            if (e.getValue() == 1 && !kids.contains(e.getKey()) && movable(e.getKey())) {
                 out.add(e.getKey());
             }
         }
         return out;
     }
 
+    private static COSBase resolve(COSBase v) {
+        return v instanceof COSObject o ? o.getObject() : v;
+    }
+
     private static void visit(COSBase v, Map<COSBase, Integer> count, Deque<COSBase> stack) {
-        COSBase t = v instanceof COSObject o ? o.getObject() : v;
+        COSBase t = resolve(v);
         if (t instanceof COSDictionary || t instanceof COSArray) {
             Integer n = count.put(t, 1);
             if (n == null) {
