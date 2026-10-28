@@ -75,6 +75,8 @@ final class InlineImages {
             return;
         }
         out.write(bytes, at, bytes.length - at);
+        stream.removeItem(COSName.DECODE_PARMS);
+        stream.removeItem(COSName.getPDFName("DL"));
         try (OutputStream os = stream.createOutputStream(COSName.FLATE_DECODE)) {
             out.writeTo(os);
         }

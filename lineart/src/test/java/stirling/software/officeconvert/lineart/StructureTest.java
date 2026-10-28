@@ -1,6 +1,7 @@
 package stirling.software.officeconvert.lineart;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.awt.Color;
@@ -9,6 +10,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.zip.DeflaterOutputStream;
 
 import org.apache.pdfbox.cos.COSArray;
 import org.apache.pdfbox.cos.COSDictionary;
@@ -182,6 +184,63 @@ class StructureTest {
                 }
             }
             assertTrue(agree > 600 * 9 / 10, agree + " of 600");
+        }
+    }
+
+    @Test
+    void rewrittenInlineContentDropsTheOriginalPredictorAndDecodedLength() throws IOException {
+        StringBuilder samples = new StringBuilder();
+        for (int y = 0; y < 8; y++) {
+            for (int x = 0; x < 8; x++) {
+                samples.append((char) ((x + y) % 2 == 0 ? 0 : 255));
+            }
+        }
+        String body = "q 8 0 0 8 0 0 cm\nBI /W 8 /H 8 /CS /G /BPC 8 ID " + samples + "\nEI Q\n";
+        byte[] bytes = body.getBytes(StandardCharsets.ISO_8859_1);
+        for (boolean array : new boolean[] {false, true}) {
+            try (PDDocument doc = new PDDocument()) {
+                COSStream stream = doc.getDocument().createCOSStream();
+                COSDictionary predictor = new COSDictionary();
+                predictor.setInt(COSName.PREDICTOR, 12);
+                predictor.setInt(COSName.COLUMNS, bytes.length);
+                if (array) {
+                    COSArray filters = new COSArray();
+                    filters.add(COSName.FLATE_DECODE);
+                    stream.setItem(COSName.FILTER, filters);
+                    COSArray parameters = new COSArray();
+                    parameters.add(predictor);
+                    stream.setItem(COSName.DECODE_PARMS, parameters);
+                } else {
+                    stream.setItem(COSName.FILTER, COSName.FLATE_DECODE);
+                    stream.setItem(COSName.DECODE_PARMS, predictor);
+                }
+                stream.setInt(COSName.getPDFName("DL"), bytes.length);
+                try (OutputStream out = new DeflaterOutputStream(stream.createRawOutputStream())) {
+                    out.write(2);
+                    out.write(bytes);
+                }
+                assertEquals(body, read(stream));
+                PDPage page = new PDPage(new PDRectangle(8, 8));
+                doc.addPage(page);
+                page.setResources(new PDResources());
+                page.getCOSObject().setItem(COSName.CONTENTS, stream);
+                LineArt.Result result = LineArt.convert(doc, LineArt.Options.defaults().method(LineArt.Method.FIXED));
+                assertEquals(1, result.converted(), result.toString());
+                assertTrue(result.warnings().isEmpty(), result.toString());
+                String rewritten = read(stream);
+                assertTrue(rewritten.startsWith("q 8 0 0 8 0 0 cm\nBI"), rewritten);
+                assertNull(stream.getItem(COSName.DECODE_PARMS));
+                assertNull(stream.getItem(COSName.getPDFName("DL")));
+                assertEquals(COSName.FLATE_DECODE, stream.getItem(COSName.FILTER));
+                try (PDDocument converted = Pictures.reload(doc)) {
+                    BufferedImage rendered = new PDFRenderer(converted).renderImage(0, 1);
+                    for (int y = 0; y < 8; y++) {
+                        for (int x = 0; x < 8; x++) {
+                            assertEquals((x + y) % 2 == 0, Pictures.dark(rendered.getRGB(x, y)), x + "," + y);
+                        }
+                    }
+                }
+            }
         }
     }
 
