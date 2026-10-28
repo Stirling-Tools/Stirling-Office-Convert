@@ -346,4 +346,22 @@ class HtmlAssetsTest {
         assertFalse(HtmlAssets.packagePath("a/../b"));
         assertTrue(HtmlAssets.packagePath("a/b.png"));
     }
+    @Test
+    void protocolRelativeLinksKeepTheBasePagesScheme() {
+        HtmlAssets web = new HtmlAssets() {
+            @Override
+            public byte[] read(String reference) {
+                return null;
+            }
+
+            @Override
+            public boolean absoluteWeb() {
+                return true;
+            }
+        };
+        Linked linked = new Linked(web);
+        assertEquals("http://cdn.test/x.css", linked.resolve("http://e.test/a.html", "//cdn.test/x.css"));
+        assertEquals("https://cdn.test/x.css", linked.resolve("https://e.test/a.html", "//cdn.test/x.css"));
+        assertEquals("https://cdn.test/x.css", linked.resolve("index.html", "//cdn.test/x.css"));
+    }
 }
