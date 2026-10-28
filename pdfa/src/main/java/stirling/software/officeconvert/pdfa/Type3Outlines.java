@@ -22,6 +22,7 @@ import java.util.Set;
 import org.apache.pdfbox.contentstream.PDFGraphicsStreamEngine;
 import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.pdmodel.PDPage;
+import org.apache.pdfbox.pdmodel.PDResources;
 import org.apache.pdfbox.pdmodel.font.PDFont;
 import org.apache.pdfbox.pdmodel.font.PDType3CharProc;
 import org.apache.pdfbox.pdmodel.font.PDType3Font;
@@ -66,14 +67,17 @@ final class Type3Outlines extends PDFGraphicsStreamEngine {
 
     private final Map<List<Object>, Area> masks;
 
-    private Type3Outlines(Mode mode, Map<List<Object>, Area> masks) {
+    private Type3Outlines(Mode mode, Map<List<Object>, Area> masks, PDResources resources) {
         super(new PDPage());
+        if (resources != null) {
+            getPage().setResources(resources);
+        }
         this.mode = mode;
         this.masks = masks;
     }
 
-    static GeneralPath glyph(PDType3CharProc proc) throws IOException {
-        Type3Outlines engine = new Type3Outlines(Mode.GLYPH, new HashMap<>());
+    static GeneralPath glyph(PDType3CharProc proc, PDResources resources) throws IOException {
+        Type3Outlines engine = new Type3Outlines(Mode.GLYPH, new HashMap<>(), resources);
         engine.processChildStream(proc, engine.getPage());
         return engine.outline();
     }
@@ -148,7 +152,7 @@ final class Type3Outlines extends PDFGraphicsStreamEngine {
             PDTransparencyGroup group = mask.getGroup();
             if (group != null) {
                 Type3Outlines engine = new Type3Outlines(COSName.ALPHA.equals(mask.getSubType()) ? Mode.ALPHA
-                        : Mode.LUMINOSITY, masks);
+                        : Mode.LUMINOSITY, masks, getResources());
                 engine.nesting = nesting + 1;
                 engine.processChildStream(group, engine.getPage());
                 area = engine.area();

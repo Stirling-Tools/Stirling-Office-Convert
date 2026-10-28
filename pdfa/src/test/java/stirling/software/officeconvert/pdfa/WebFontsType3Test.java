@@ -8,6 +8,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.awt.Font;
 import java.awt.geom.GeneralPath;
 import java.awt.geom.Rectangle2D;
+import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 
@@ -18,8 +19,11 @@ import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.io.RandomAccessReadBuffer;
 import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.pdmodel.PDPage;
+import org.apache.pdfbox.pdmodel.PDPageContentStream;
 import org.apache.pdfbox.pdmodel.font.PDFont;
 import org.apache.pdfbox.pdmodel.font.PDType0Font;
+import org.apache.pdfbox.rendering.PDFRenderer;
 import org.junit.jupiter.api.Test;
 
 class WebFontsType3Test {
@@ -37,9 +41,14 @@ class WebFontsType3Test {
     }
 
     private static TrueTypeFont convert(RawPdf pdf) throws IOException {
+        return convert(pdf, false);
+    }
+
+    private static TrueTypeFont convert(RawPdf pdf, boolean resources) throws IOException {
         try (PDDocument doc = Loader.loadPDF(pdf.bytes())) {
             PDFont font = doc.getPage(0).getResources().getFont(COSName.getPDFName("T3"));
-            byte[] ttf = WebFonts.toTrueType(font);
+            byte[] ttf = resources ? WebFonts.toTrueType(font, doc.getPage(0).getResources())
+                    : WebFonts.toTrueType(font);
             assertTrue(TrueTypeSanity.sane(ttf));
             assertEquals(0x00010000, java.nio.ByteBuffer.wrap(ttf).getInt(0));
             try (PDDocument out = new PDDocument()) {
@@ -61,6 +70,37 @@ class WebFontsType3Test {
 
     private static GeneralPath path(TrueTypeFont ttf, int code) throws IOException {
         return ttf.getGlyph().getGlyph(gid(ttf, code)).getPath();
+    }
+
+    private static void assertRendering(RawPdf pdf, boolean resources) throws IOException {
+        try (PDDocument original = Loader.loadPDF(pdf.bytes()); PDDocument converted = new PDDocument()) {
+            PDFont font = original.getPage(0).getResources().getFont(COSName.getPDFName("T3"));
+            byte[] bytes = resources ? WebFonts.toTrueType(font, original.getPage(0).getResources())
+                    : WebFonts.toTrueType(font);
+            PDType0Font ttf = PDType0Font.load(converted, new ByteArrayInputStream(bytes), false);
+            PDPage page = new PDPage(original.getPage(0).getMediaBox());
+            converted.addPage(page);
+            try (PDPageContentStream content = new PDPageContentStream(converted, page)) {
+                content.beginText();
+                content.setFont(ttf, 50);
+                content.newLineAtOffset(20, 100);
+                content.showText("a");
+                content.endText();
+            }
+            BufferedImage before = new PDFRenderer(original).renderImage(0, 1);
+            BufferedImage after = new PDFRenderer(converted).renderImage(0, 1);
+            int ink = 0;
+            for (int y = 0; y < before.getHeight(); y++) {
+                for (int x = 0; x < before.getWidth(); x++) {
+                    int expected = before.getRGB(x, y);
+                    if ((expected & 0xFFFFFF) != 0xFFFFFF) {
+                        ink++;
+                    }
+                    assertEquals(expected, after.getRGB(x, y), x + "," + y);
+                }
+            }
+            assertTrue(ink > 100);
+        }
     }
 
     @Test
@@ -161,6 +201,100 @@ class WebFontsType3Test {
             Rectangle2D alpha = path(ttf, 'b').getBounds2D();
             assertEquals(100, alpha.getMinX(), 1);
             assertEquals(150, alpha.getMaxX(), 1);
+        }
+    }
+
+    @Test
+    void softMaskGroupsInheritNestedFormResources() throws Exception {
+        RawPdf pdf = RawPdf.page("/Font<</T3 8 0 R>>", "BT /T3 50 Tf 20 100 Td (a) Tj ET");
+        pdf.add(RawPdf.stream("", "500 0 d0 /L gs 0 0 500 500 re f"));
+        pdf.add(RawPdf.stream("/Type/XObject/Subtype/Form/BBox[0 0 1000 1000]"
+                + "/Group<</S/Transparency/CS/DeviceGray>>", "/Ink Do"));
+        pdf.add(RawPdf.stream("/Type/XObject/Subtype/Form/BBox[0 0 1000 1000]",
+                "1 g 100 100 200 300 re f"));
+        pdf.add("<</Type/Font/Subtype/Type3/FontBBox[0 0 500 500]/FontMatrix[0.001 0 0 0.001 0 0]"
+                + "/CharProcs<</a 5 0 R>>/Resources<</XObject<</Ink 7 0 R>>"
+                + "/ExtGState<</L<</SMask<</S/Luminosity/G 6 0 R>>>>>>>>"
+                + "/Encoding<</Type/Encoding/Differences[97/a]>>/FirstChar 97/LastChar 97/Widths[500]>>");
+        try (TrueTypeFont ttf = convert(pdf)) {
+            Rectangle2D box = path(ttf, 'a').getBounds2D();
+            assertEquals(100, box.getMinX(), 1);
+            assertEquals(300, box.getMaxX(), 1);
+            assertEquals(100, box.getMinY(), 1);
+            assertEquals(400, box.getMaxY(), 1);
+            assertEquals(500, ttf.getAdvanceWidth(gid(ttf, 'a')));
+        }
+        assertRendering(pdf, false);
+    }
+
+    @Test
+    void glyphsCanInheritPageResourcesThroughNestedForms() throws Exception {
+        RawPdf pdf = RawPdf.page("/Font<</T3 8 0 R>>/XObject<</Outer 6 0 R/Ink 7 0 R>>",
+                "BT /T3 50 Tf 20 100 Td (a) Tj ET");
+        pdf.add(RawPdf.stream("", "500 0 d0 /Outer Do"));
+        pdf.add(RawPdf.stream("/Type/XObject/Subtype/Form/BBox[0 0 500 500]", "/Ink Do"));
+        pdf.add(RawPdf.stream("/Type/XObject/Subtype/Form/BBox[0 0 500 500]", "100 100 200 300 re f"));
+        pdf.add("<</Type/Font/Subtype/Type3/FontBBox[0 0 500 500]/FontMatrix[0.001 0 0 0.001 0 0]"
+                + "/CharProcs<</a 5 0 R>>/Encoding<</Type/Encoding/Differences[97/a]>>"
+                + "/FirstChar 97/LastChar 97/Widths[500]>>");
+        try (TrueTypeFont ttf = convert(pdf, true)) {
+            Rectangle2D box = path(ttf, 'a').getBounds2D();
+            assertEquals(100, box.getMinX(), 1);
+            assertEquals(300, box.getMaxX(), 1);
+            assertEquals(100, box.getMinY(), 1);
+            assertEquals(400, box.getMaxY(), 1);
+        }
+        assertRendering(pdf, true);
+    }
+
+    @Test
+    void inheritedResourcesResolveNestedFontText() throws Exception {
+        RawPdf pdf = RawPdf.page("/Font<</T3 6 0 R/F1<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>>>",
+                "BT /T3 50 Tf 20 100 Td (a) Tj ET");
+        pdf.add(RawPdf.stream("", "500 0 d0 BT /F1 600 Tf 100 100 Td (H) Tj ET"));
+        pdf.add("<</Type/Font/Subtype/Type3/FontBBox[0 0 500 500]/FontMatrix[0.001 0 0 0.001 0 0]"
+                + "/CharProcs<</a 5 0 R>>/Encoding<</Type/Encoding/Differences[97/a]>>"
+                + "/FirstChar 97/LastChar 97/Widths[500]>>");
+        try (TrueTypeFont ttf = convert(pdf, true)) {
+            Rectangle2D box = path(ttf, 'a').getBounds2D();
+            assertTrue(box.getWidth() > 100);
+            assertTrue(box.getHeight() > 100);
+            assertEquals(500, ttf.getAdvanceWidth(gid(ttf, 'a')));
+        }
+    }
+
+    @Test
+    void fontResourcesTakePrecedenceOverContainingPageResources() throws Exception {
+        RawPdf pdf = RawPdf.page("/Font<</T3 8 0 R>>/XObject<</Ink 6 0 R>>",
+                "BT /T3 50 Tf 20 100 Td (a) Tj ET");
+        pdf.add(RawPdf.stream("", "500 0 d0 /Ink Do"));
+        pdf.add(RawPdf.stream("/Type/XObject/Subtype/Form/BBox[0 0 500 500]", "0 0 50 50 re f"));
+        pdf.add(RawPdf.stream("/Type/XObject/Subtype/Form/BBox[0 0 500 500]", "100 100 200 300 re f"));
+        pdf.add("<</Type/Font/Subtype/Type3/FontBBox[0 0 500 500]/FontMatrix[0.001 0 0 0.001 0 0]"
+                + "/CharProcs<</a 5 0 R>>/Resources<</XObject<</Ink 7 0 R>>>>"
+                + "/Encoding<</Type/Encoding/Differences[97/a]>>/FirstChar 97/LastChar 97/Widths[500]>>");
+        try (TrueTypeFont ttf = convert(pdf, true)) {
+            Rectangle2D box = path(ttf, 'a').getBounds2D();
+            assertEquals(100, box.getMinX(), 1);
+            assertEquals(300, box.getMaxX(), 1);
+            assertEquals(400, box.getMaxY(), 1);
+        }
+        assertRendering(pdf, true);
+    }
+
+    @Test
+    void inheritedSelfReferencesRemainBoundedWithoutDroppingIndependentInk() throws Exception {
+        RawPdf pdf = RawPdf.page("/Font<</T3 6 0 R>>", "BT /T3 50 Tf 20 100 Td (a) Tj ET");
+        pdf.add(RawPdf.stream("", "500 0 d0 BT /T3 1000 Tf (a) Tj ET 100 100 200 300 re f"));
+        pdf.add("<</Type/Font/Subtype/Type3/FontBBox[0 0 500 500]/FontMatrix[0.001 0 0 0.001 0 0]"
+                + "/CharProcs<</a 5 0 R>>/Encoding<</Type/Encoding/Differences[97/a]>>"
+                + "/FirstChar 97/LastChar 97/Widths[500]>>");
+        try (TrueTypeFont ttf = convert(pdf, true)) {
+            Rectangle2D box = path(ttf, 'a').getBounds2D();
+            assertEquals(100, box.getMinX(), 1);
+            assertEquals(300, box.getMaxX(), 1);
+            assertEquals(400, box.getMaxY(), 1);
+            assertEquals(500, ttf.getAdvanceWidth(gid(ttf, 'a')));
         }
     }
 

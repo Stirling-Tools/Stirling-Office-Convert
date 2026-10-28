@@ -34,6 +34,7 @@ import org.apache.fontbox.ttf.TrueTypeFont;
 import org.apache.fontbox.type1.Type1Font;
 import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.cos.COSStream;
+import org.apache.pdfbox.pdmodel.PDResources;
 import org.apache.pdfbox.io.RandomAccessReadBuffer;
 import org.apache.pdfbox.pdmodel.common.PDStream;
 import org.apache.pdfbox.pdmodel.font.PDCIDFont;
@@ -292,18 +293,22 @@ public final class WebFonts {
     }
 
     public static byte[] toTrueType(PDFont font) throws IOException {
+        return toTrueType(font, null);
+    }
+
+    public static byte[] toTrueType(PDFont font, PDResources resources) throws IOException {
         PdfFiles.stopIfInterrupted();
         try {
-            return fromFont(font);
+            return fromFont(font, resources);
         } catch (RuntimeException e) {
             PdfFiles.stopIfInterrupted();
             throw new IOException("The font cannot be converted: " + e, e);
         }
     }
 
-    private static byte[] fromFont(PDFont font) throws IOException {
+    private static byte[] fromFont(PDFont font, PDResources resources) throws IOException {
         if (font instanceof PDType3Font t3) {
-            return fromType3(t3);
+            return fromType3(t3, resources);
         }
         PDFontDescriptor fd = font.getFontDescriptor();
         if (fd == null) {
@@ -344,15 +349,15 @@ public final class WebFonts {
         return convert(p, unicodeByGlyph(font, p.count(), glyphs(font, p::gidForCid, code -> p.gid(name(font, code)))));
     }
 
-    private static byte[] fromType3(PDType3Font font) throws IOException {
+    private static byte[] fromType3(PDType3Font font, PDResources resources) throws IOException {
         try {
-            return type3(font);
+            return type3(font, resources);
         } catch (RuntimeException e) {
             throw new IOException("The Type 3 font cannot be converted: " + e.getMessage(), e);
         }
     }
 
-    private static byte[] type3(PDType3Font font) throws IOException {
+    private static byte[] type3(PDType3Font font, PDResources resources) throws IOException {
         Matrix fm = font.getFontMatrix();
         TrueTypeWriter w = new TrueTypeWriter(UNITS_PER_EM);
         Map<List<Object>, Integer> byProc = new HashMap<>();
@@ -374,7 +379,7 @@ public final class WebFonts {
             }
             GeneralPath path;
             try {
-                path = Type3Outlines.glyph(proc);
+                path = Type3Outlines.glyph(proc, resources);
             } catch (IOException | RuntimeException e) {
                 PdfFiles.stopIfInterrupted();
                 path = new GeneralPath();
