@@ -69,6 +69,47 @@ class HtmlWriterTest {
         }
     }
 
+    static Paragraph numbered(String... parts) {
+        Paragraph p = new Paragraph();
+        for (String part : parts) {
+            p.inlines.add(part == null ? new Inline.PageNumber(TEXT, false) : new Inline.Text(part, TEXT, null, -1));
+        }
+        return p;
+    }
+
+    static String running(List<Paragraph> header, List<Paragraph> footer) throws IOException {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        try (HtmlWriter w = new HtmlWriter(out, Pictures.COMPACT)) {
+            StyleSheet styles = new StyleSheet(TEXT);
+            w.begin(styles, new DocSink.HeaderFooterSet(header, footer, List.of(), List.of(), false));
+            w.block(para("Body text"));
+            w.finish(page(1), null, null, styles, "t", null);
+        }
+        return out.toString(StandardCharsets.UTF_8);
+    }
+
+    @Test
+    void pageNumberLinesLeaveTheFooterAndRunningTextIsNotPrinted() throws IOException {
+        String html = running(List.of(para("Northwind Traders - Annual Report")),
+                List.of(numbered("Page ", null, " of ", null), numbered("Confidential draft, page ", null)));
+        assertTrue(html.contains("<header class=\"running\">"), html);
+        assertTrue(html.contains("Northwind Traders - Annual Report"), html);
+        assertFalse(html.contains("Page </span>") || html.contains(">Page "), html);
+        assertTrue(html.contains("Confidential draft"), html);
+        assertTrue(html.contains("@media print{html{background:none}main{max-width:none;padding:0}.running{display:none}}"),
+                html);
+        assertFalse(running(List.of(), List.of(numbered("- ", null, " -"))).contains("<footer"));
+    }
+
+    @Test
+    void familiesFallBackToFontsWithTheSameWidths() {
+        assertEquals("'Calibri', 'Carlito', sans-serif", HtmlText.family("Calibri"));
+        assertEquals("'Cambria', 'Caladea', serif", HtmlText.family("Cambria"));
+        assertEquals("'Times New Roman', 'Liberation Serif', 'Tinos', serif", HtmlText.family("Times New Roman"));
+        assertEquals("'Courier New', 'Liberation Mono', 'Cousine', monospace", HtmlText.family("Courier New"));
+        assertEquals("'Georgia', serif", HtmlText.family("Georgia"));
+    }
+
     @Test
     void rightTabStopsKeepTheirLeaderAndAlignment() throws IOException {
         Paragraph toc = new Paragraph();

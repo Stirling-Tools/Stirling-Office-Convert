@@ -34,6 +34,7 @@ final class HtmlBlocks {
     private int section = -1;
     private boolean relative;
     private PictureFiles files;
+    private PdfWebFonts fonts;
 
     interface PictureFiles {
         String source(Picture.MediaRef ref) throws IOException;
@@ -49,6 +50,10 @@ final class HtmlBlocks {
 
     void pictureFiles(PictureFiles files) {
         this.files = files;
+    }
+
+    void fonts(PdfWebFonts fonts) {
+        this.fonts = fonts;
     }
 
     void relativeSizes(boolean on) {
@@ -382,6 +387,10 @@ final class HtmlBlocks {
             open(sb, close, s.strike(), "s");
             open(sb, close, s.vertAlign() > 0, "sup");
             open(sb, close, s.vertAlign() < 0, "sub");
+        }
+        if (fonts != null) {
+            RunStyle look = s != null ? s : base;
+            fonts.use(look.font() != null ? look.font() : base.font(), look.bold(), look.italic(), text);
         }
         HtmlText.escape(sb, text);
         for (int i = close.size() - 1; i >= 0; i--) {
