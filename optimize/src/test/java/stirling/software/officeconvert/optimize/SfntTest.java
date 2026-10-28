@@ -96,7 +96,9 @@ class SfntTest {
 
     @Test
     void aFontWithNothingToDropOrThatIsNotTrueTypeIsLeftAlone() throws Exception {
-        assertNull(Sfnt.tidy(Sfnt.tidy(withLeftovers(liberation()))));
+        byte[] tidy = Sfnt.tidy(withLeftovers(liberation()));
+        assertNull(Sfnt.tidy(tidy));
+        assertNull(Sfnt.tidy(Arrays.copyOf(tidy, tidy.length + 200)));
         assertNull(Sfnt.tidy("OTTO and some bytes".getBytes(StandardCharsets.ISO_8859_1)));
         byte[] broken = withLeftovers(liberation());
         ByteBuffer.wrap(broken).putInt(12 + 8, broken.length);

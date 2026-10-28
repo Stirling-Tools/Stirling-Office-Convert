@@ -19,6 +19,8 @@ final class Sfnt {
 
     private static final int TRUE = 0x74727565;
 
+    private static final int MIN_SAVING = 256;
+
     private record Table(String tag, int offset, int length) {}
 
     private Sfnt() {}
@@ -36,7 +38,7 @@ final class Sfnt {
                 size += 16 + (t.length + 3L & ~3L);
             }
         }
-        if (size >= font.length) {
+        if (size + MIN_SAVING > font.length) {
             return null;
         }
         byte[] out = new byte[(int) size];
