@@ -1,10 +1,16 @@
 package stirling.software.officeconvert.optimize;
 
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.io.InputStream;
 import java.util.zip.DataFormatException;
 import java.util.zip.Inflater;
 
+import org.apache.pdfbox.cos.COSArray;
+import org.apache.pdfbox.cos.COSBase;
 import org.apache.pdfbox.cos.COSDictionary;
 import org.apache.pdfbox.cos.COSName;
+import org.brotli.dec.BrotliInputStream;
 
 final class Filters {
 
@@ -30,13 +36,28 @@ final class Filters {
 
     private static final COSName RL_ABBREVIATION = COSName.getPDFName("RL");
 
+    static final COSName BROTLI_DECODE = COSName.getPDFName("BrotliDecode");
+
     private Filters() {}
 
     static boolean generalized(COSName f) {
         return COSName.FLATE_DECODE.equals(f) || FLATE_ABBREVIATION.equals(f) || COSName.LZW_DECODE.equals(f)
                 || LZW_ABBREVIATION.equals(f) || COSName.ASCII_HEX_DECODE.equals(f) || HEX_ABBREVIATION.equals(f)
                 || COSName.ASCII85_DECODE.equals(f) || A85_ABBREVIATION.equals(f)
-                || COSName.RUN_LENGTH_DECODE.equals(f) || RL_ABBREVIATION.equals(f);
+                || COSName.RUN_LENGTH_DECODE.equals(f) || RL_ABBREVIATION.equals(f) || BROTLI_DECODE.equals(f);
+    }
+
+    static boolean brotli(COSBase filter) {
+        COSBase f = Recoder.resolve(filter);
+        if (f instanceof COSArray a) {
+            for (COSBase b : a) {
+                if (BROTLI_DECODE.equals(Recoder.resolve(b))) {
+                    return true;
+                }
+            }
+            return false;
+        }
+        return BROTLI_DECODE.equals(f);
     }
 
     static byte[] decode(COSName f, COSDictionary parms, byte[] in, long limit) throws Undecodable {
@@ -46,6 +67,9 @@ final class Filters {
         if (COSName.LZW_DECODE.equals(f) || LZW_ABBREVIATION.equals(f)) {
             int early = parms == null ? 1 : parms.getInt(COSName.EARLY_CHANGE, 1);
             return Predictors.decode(lzw(in, early != 0, limit), parms, limit);
+        }
+        if (BROTLI_DECODE.equals(f)) {
+            return Predictors.decode(brotli(in, limit), parms, limit);
         }
         if (COSName.ASCII_HEX_DECODE.equals(f) || HEX_ABBREVIATION.equals(f)) {
             return hex(in, limit);
@@ -95,6 +119,23 @@ final class Filters {
         } finally {
             inf.end();
         }
+    }
+
+    static byte[] brotli(byte[] in, long limit) throws Undecodable {
+        Bytes out = new Bytes(initial(in.length * 4L, limit));
+        try (InputStream z = new BrotliInputStream(new ByteArrayInputStream(in))) {
+            byte[] buf = new byte[1 << 16];
+            int n;
+            while ((n = z.read(buf, 0, buf.length)) > 0) {
+                if (out.size() + (long) n > limit) {
+                    throw new TooLarge("the Brotli data decodes past the size limit");
+                }
+                out.write(buf, 0, n);
+            }
+        } catch (IOException | RuntimeException e) {
+            throw new Undecodable("the Brotli data is damaged");
+        }
+        return out.toByteArray();
     }
 
     static byte[] lzw(byte[] in, boolean earlyChange, long limit) throws Undecodable {

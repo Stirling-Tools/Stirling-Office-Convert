@@ -260,6 +260,8 @@ what 74,000 sampled real pages needed:
 - a page runs at most 5,000,000 operators and shows at most 50,000 forms per pass, and keeps 10,000 image draws;
   the rest of such a page is left out, with a warning;
 - a stream that inflates past 256 MB (a compression bomb) is emptied before PDFBox decodes it whole;
+- `/BrotliDecode` streams (the PDF Association's Brotli extension) are decoded with Google's pure-Java
+  `org.brotli:dec` 0.1.2 (MIT) as they are read and held as Flate, under the same 256 MB limit;
 - an image whose decoded pixels would take more than 256 MB is left out, with a warning, judged by the size a JPEG,
   JPEG 2000 or fax stream declares for itself as well as the size the PDF claims;
 - a page larger than Word's 22 inches is shrunk whole, text and all, to fit;

@@ -8,6 +8,7 @@ val pdfboxVersion = "3.0.8"
 dependencies {
     api("org.apache.pdfbox:pdfbox:$pdfboxVersion")
     implementation(project(":core"))
+    implementation("org.brotli:dec:0.1.2")
 
     testImplementation(platform("org.junit:junit-bom:5.13.4"))
     testImplementation("org.junit.jupiter:junit-jupiter")

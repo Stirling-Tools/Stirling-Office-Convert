@@ -47,10 +47,14 @@ public final class StreamGuard {
                 continue;
             }
             try {
-                if (cos.getObjectFromPool(e.getKey()).getObject() instanceof COSStream s
-                        && !COSName.IMAGE.equals(s.getCOSName(COSName.SUBTYPE)) && overflows(s)) {
-                    empty(s);
-                    emptied++;
+                if (cos.getObjectFromPool(e.getKey()).getObject() instanceof COSStream s) {
+                    if (BrotliStreams.uses(s)) {
+                        BrotliStreams.decode(s, cos);
+                    }
+                    if (!COSName.IMAGE.equals(s.getCOSName(COSName.SUBTYPE)) && overflows(s)) {
+                        empty(s);
+                        emptied++;
+                    }
                 }
             } catch (InterruptedIOException stop) {
                 throw stop;

@@ -5,7 +5,9 @@ import java.util.HashMap;
 import java.util.Map;
 
 import org.apache.pdfbox.cos.COSBase;
+import org.apache.pdfbox.cos.COSDictionary;
 import org.apache.pdfbox.cos.COSDocument;
+import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.cos.COSObjectKey;
 import org.apache.pdfbox.cos.COSStream;
 import org.apache.pdfbox.io.RandomAccessRead;
@@ -21,8 +23,41 @@ final class KeyedPdfParser extends PDFParser {
 
     private int indexedEntries = -1;
 
-    KeyedPdfParser(RandomAccessRead source, String password, StreamCacheCreateFunction cache) throws IOException {
+    private final boolean allStreams;
+
+    KeyedPdfParser(RandomAccessRead source, String password, StreamCacheCreateFunction cache, boolean allStreams)
+            throws IOException {
         super(source, password, null, null, cache);
+        this.allStreams = allStreams;
+    }
+
+    @Override
+    protected COSStream parseCOSStream(COSDictionary dic) throws IOException {
+        COSStream stream = super.parseCOSStream(dic);
+        if (COSName.XREF.equals(dic.getItem(COSName.TYPE)) && BrotliStreams.uses(stream)) {
+            decodeBrotli(stream);
+        }
+        return stream;
+    }
+
+    @Override
+    protected synchronized COSBase parseObjectDynamically(COSObjectKey objKey, boolean requireExistingNotCompressedObj)
+            throws IOException {
+        COSBase object = super.parseObjectDynamically(objKey, requireExistingNotCompressedObj);
+        if (object instanceof COSStream stream && BrotliStreams.uses(stream)
+                && (allStreams || BrotliStreams.structural(stream))) {
+            decodeBrotli(stream);
+        }
+        return object;
+    }
+
+    private void decodeBrotli(COSStream stream) throws IOException {
+        long at = source.getPosition();
+        try {
+            BrotliStreams.decode(stream, document);
+        } finally {
+            source.seek(at);
+        }
     }
 
     @Override

@@ -85,7 +85,7 @@ final class Recoder {
                 return new Plan(trimmed, replace, true);
             }
         }
-        if (!job.chained || kind == Kind.KEEP) {
+        if (!job.chained || kind == Kind.KEEP && !filters.contains(Filters.BROTLI_DECODE)) {
             return original(raw);
         }
         byte[] data = raw;
@@ -110,7 +110,9 @@ final class Recoder {
                 data = minified;
             }
         }
-        Candidate best = new Candidate(raw, filters, parms, raw.length + overhead(filters, parms));
+        Candidate best = filters.subList(0, peeled).contains(Filters.BROTLI_DECODE)
+                && !rest.contains(Filters.BROTLI_DECODE) ? null
+                : new Candidate(raw, filters, parms, raw.length + overhead(filters, parms));
         best = better(best, candidate(data, rest, restParms));
         if (effort != PdfOptimizer.Effort.FAST && rest.size() == 1 && (COSName.DCT_DECODE.equals(rest.get(0))
                 || DCT_ABBREVIATION.equals(rest.get(0)))) {
@@ -200,7 +202,7 @@ final class Recoder {
     }
 
     private static Candidate better(Candidate a, Candidate b) {
-        return b.cost < a.cost ? b : a;
+        return a == null || b.cost < a.cost ? b : a;
     }
 
     private static Candidate candidate(byte[] data, List<COSName> filters, List<COSBase> parms) {

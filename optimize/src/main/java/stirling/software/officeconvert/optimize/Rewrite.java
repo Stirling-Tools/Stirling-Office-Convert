@@ -78,6 +78,8 @@ final class Rewrite {
 
     private int oversized;
 
+    private int brotli;
+
     private Rewrite(Index index, Source source, PdfOptimizer.Options options, Spill spill, boolean encrypted) {
         this.index = index;
         this.source = source;
@@ -152,6 +154,11 @@ final class Rewrite {
                 warnings.add(r.oversized + (r.oversized == 1 ? " stream decodes" : " streams decode")
                         + " past the size limit and " + (r.oversized == 1 ? "was" : "were") + " kept as stored");
             }
+            boolean brotli = r.brotli > 0 || PdfFiles.decodedBrotli(doc);
+            if (brotli) {
+                warnings.add("The PDF uses BrotliDecode, which many viewers cannot read yet; its streams were"
+                        + " re-encoded with Flate");
+            }
             int objects = r.write(out, version, objectStreams, rootNode, infoNode, id instanceof COSArray a ? a : null);
             int merged = 0;
             for (int i = 0; i < index.size(); i++) {
@@ -160,7 +167,7 @@ final class Rewrite {
                 }
             }
             return new Run(new PdfOptimizer.Result(inputBytes, out.position(), true, objects, merged, r.recoded,
-                    warnings), !repairs.isEmpty());
+                    warnings), !repairs.isEmpty() || brotli);
         }
     }
 
@@ -363,9 +370,14 @@ final class Rewrite {
         }
         spilled[i] = spill.put(p.data());
         digests[i] = sha.digest(p.data());
+        boolean wasBrotli = p.recoded() && Filters.brotli(s.getItem(COSName.FILTER))
+                && !Filters.brotli(p.replace().get(COSName.FILTER));
         recorder.record(i, s, p.replace());
         if (p.recoded()) {
             recoded++;
+        }
+        if (wasBrotli) {
+            brotli++;
         }
     }
 

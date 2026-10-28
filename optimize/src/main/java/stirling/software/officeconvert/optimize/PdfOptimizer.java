@@ -175,7 +175,7 @@ public final class PdfOptimizer {
         Path rebuilt = null;
         Salvage.Rebuilt salvaged = null;
         try {
-            doc = PdfFiles.open(source, options.password());
+            doc = PdfFiles.openAsStored(source, options.password());
         } catch (InvalidPasswordException | InterruptedIOException e) {
             throw e;
         } catch (IOException e) {
@@ -184,11 +184,10 @@ public final class PdfOptimizer {
             try {
                 salvaged = Salvage.rebuild(source, rebuilt);
                 if (salvaged == null) {
-                    String unsupported = Salvage.unsupported(source);
-                    throw unsupported == null ? e : new IOException("The PDF could not be opened: " + unsupported, e);
+                    throw e;
                 }
                 try {
-                    doc = PdfFiles.open(rebuilt, options.password());
+                    doc = PdfFiles.openAsStored(rebuilt, options.password());
                 } catch (IOException again) {
                     throw e;
                 }
@@ -212,7 +211,7 @@ public final class PdfOptimizer {
                     Salvage.Rebuilt recovered = offset == null ? null
                             : Salvage.rebuildEmpty(source, emptyRepair, offset);
                     if (recovered != null) {
-                        try (PDDocument recoveredDoc = PdfFiles.open(emptyRepair, options.password());
+                        try (PDDocument recoveredDoc = PdfFiles.openAsStored(emptyRepair, options.password());
                                 OutputStream os = new BufferedOutputStream(Files.newOutputStream(part), 1 << 16)) {
                             Rewrite.Run r = Rewrite.run(recoveredDoc, os, options, size);
                             return repaired(r, recovered, notes);
@@ -234,7 +233,7 @@ public final class PdfOptimizer {
     }
 
     static int check(Path pdf, String password, int pages) throws IOException {
-        try (PDDocument doc = PdfFiles.open(pdf, password)) {
+        try (PDDocument doc = PdfFiles.openAsStored(pdf, password)) {
             int found = PageTree.census(doc.getDocument(), true);
             if (found < pages) {
                 throw new IOException("it has " + found + " usable pages where the input has " + pages);
@@ -280,7 +279,7 @@ public final class PdfOptimizer {
                 Admission.Ticket ticket = Admission.jvm().enter(estimate(size));
                 try {
                     Result r;
-                    try (PDDocument doc = PdfFiles.open(saved, options.password())) {
+                    try (PDDocument doc = PdfFiles.openAsStored(saved, options.password())) {
                         r = Rewrite.run(doc, out, options, -1).result();
                     }
                     if (r.rewritten()) {
