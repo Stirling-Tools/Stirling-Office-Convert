@@ -111,23 +111,33 @@ final class Cff2 {
             throw new IllegalArgumentException("index count " + count);
         }
         int offSize = data.get(at + 4) & 0xFF;
+        if (offSize < 1 || offSize > 4) {
+            throw new IllegalArgumentException("index offset size " + offSize);
+        }
         int offsets = at + 5;
-        int base = offsets + (int) ((count + 1) * offSize) - 1;
+        long base = offsets + (count + 1) * offSize - 1;
+        if (base >= data.capacity()) {
+            throw new IllegalArgumentException("index count " + count);
+        }
+        long start = readOffset(offsets, offSize);
+        if (start != 1) {
+            throw new IllegalArgumentException("index first offset " + start);
+        }
         byte[][] out = new byte[(int) count][];
         for (int i = 0; i < count; i++) {
-            int start = base + readOffset(offsets + i * offSize, offSize);
-            int end = base + readOffset(offsets + (i + 1) * offSize, offSize);
-            if (start > end || end > data.capacity()) {
+            long end = readOffset(offsets + (i + 1) * offSize, offSize);
+            if (end < start || base + end > data.capacity()) {
                 throw new IllegalArgumentException("index entry " + i);
             }
-            out[i] = new byte[end - start];
-            data.get(start, out[i]);
+            out[i] = new byte[(int) (end - start)];
+            data.get((int) (base + start), out[i]);
+            start = end;
         }
         return out;
     }
 
-    private int readOffset(int at, int size) {
-        int v = 0;
+    private long readOffset(int at, int size) {
+        long v = 0;
         for (int i = 0; i < size; i++) {
             v = v << 8 | data.get(at + i) & 0xFF;
         }
@@ -234,7 +244,10 @@ final class Cff2 {
                 int start = wide ? data.getInt(p) : data.getShort(p) & 0xFFFF;
                 int fd = wide ? data.getShort(p + 4) & 0xFFFF : data.get(p + 2) & 0xFF;
                 int end = wide ? data.getInt(p + rec) : data.getShort(p + rec) & 0xFFFF;
-                for (int g = Math.max(0, start); g < Math.min(glyphs, end); g++) {
+                if (start < 0 || end <= start || end > glyphs) {
+                    throw new IllegalArgumentException("FDSelect range " + r);
+                }
+                for (int g = start; g < end; g++) {
                     out[g] = fd;
                 }
             }

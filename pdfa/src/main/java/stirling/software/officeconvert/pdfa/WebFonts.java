@@ -100,12 +100,14 @@ public final class WebFonts {
             if (ttf.getTableMap().get("glyf") == null && cff == null && cff2 != null) {
                 Program program = new Cff2Program(new Cff2(ttf.getTableBytes(cff2)), ttf, ownUnicode(ttf,
                         ttf.getNumberOfGlyphs()));
+                program.fsType = fsType(ttf);
                 return convert(program, font == null ? unicodeByGlyph : unicodeByGlyph(font, program.count(),
                         glyphs(font, cid -> cid, code -> font instanceof PDTrueTypeFont tt && !tt.isDamaged()
                                 ? tt.codeToGID(code) : nameToGid(ttf, name(font, code)))));
             }
             if (ttf.getTableMap().get("glyf") == null && cff != null) {
                 Program program = Program.read(ttf.getTableBytes(cff), FontKind.CFF, -1, -1);
+                program.fsType = fsType(ttf);
                 return convert(program, font == null ? unicodeByGlyph : unicodeByGlyph(font, program.count(),
                         glyphs(font, program::gidForCid, code -> font instanceof PDTrueTypeFont tt && !tt.isDamaged()
                                 ? tt.codeToGID(code) : program.gid(name(font, code)))));
@@ -254,9 +256,18 @@ public final class WebFonts {
             int descent = hhea != null && hhea.getDescender() < 0 ? hhea.getDescender()
                     : Math.min(m.yMin(), -upem / 5);
             int style = ttf.getHeader() == null ? 0 : ttf.getHeader().getMacStyle() & 3;
-            tables.put("OS/2", os2(m, ascent, descent, cmap, style, upem));
+            tables.put("OS/2", os2(m, ascent, descent, cmap, style, upem, fsType(ttf)));
         }
         return w.build(FontRebuild.cleanName(name), cmapTable(cmap), tables);
+    }
+
+    private static int fsType(TrueTypeFont ttf) throws IOException {
+        TTFTable os2 = ttf.getTableMap().get("OS/2");
+        if (os2 == null || os2.getLength() < 10) {
+            return 0;
+        }
+        byte[] t = ttf.getTableBytes(os2);
+        return t.length < 10 ? 0 : ByteBuffer.wrap(t).getShort(8) & 0xFFFF;
     }
 
     private static boolean saneOs2(byte[] t) {
@@ -363,6 +374,7 @@ public final class WebFonts {
         Map<List<Object>, Integer> byProc = new HashMap<>();
         Map<Integer, Integer> gidByCode = new TreeMap<>();
         long budget = MIN_GLYPH_BYTES;
+        Type3Outlines.Budget work = new Type3Outlines.Budget();
         for (int code = 0; code < 256; code++) {
             PdfFiles.stopIfInterrupted();
             PDType3CharProc proc = font.getCharProc(code);
@@ -379,9 +391,12 @@ public final class WebFonts {
             }
             GeneralPath path;
             try {
-                path = Type3Outlines.glyph(proc, resources);
+                path = Type3Outlines.glyph(proc, resources, work);
             } catch (IOException | RuntimeException e) {
                 PdfFiles.stopIfInterrupted();
+                if (e instanceof IOException io) {
+                    Decoded.rethrowFatal(io);
+                }
                 path = new GeneralPath();
             }
             int gid = w.addOutline(path, advance);
@@ -411,7 +426,7 @@ public final class WebFonts {
         Map<String, byte[]> tables = new HashMap<>();
         tables.put("head", head(m, 0));
         tables.put("hhea", hhea(m, ascent, descent, w.size()));
-        tables.put("OS/2", os2(m, ascent, descent, unicode.isEmpty() ? symbol : unicode, 0, UNITS_PER_EM));
+        tables.put("OS/2", os2(m, ascent, descent, unicode.isEmpty() ? symbol : unicode, 0, UNITS_PER_EM, 0));
         tables.put("post", post(0));
         String name = font.getName() == null || font.getName().isBlank() ? "Type3" : font.getName();
         return w.build(FontRebuild.cleanName(name), Cmaps.table(subtables), tables);
@@ -502,7 +517,7 @@ public final class WebFonts {
         Map<String, byte[]> tables = new HashMap<>();
         tables.put("head", head(m, program.style()));
         tables.put("hhea", hhea(m, ascent, descent, w.size()));
-        tables.put("OS/2", os2(m, ascent, descent, cmap, program.style(), UNITS_PER_EM));
+        tables.put("OS/2", os2(m, ascent, descent, cmap, program.style(), UNITS_PER_EM, program.fsType));
         tables.put("post", post(program.italicAngle()));
         return w.build(FontRebuild.cleanName(program.name()), cmapTable(cmap), tables);
     }
@@ -592,7 +607,7 @@ public final class WebFonts {
     }
 
     private static byte[] os2(TrueTypeWriter.Metrics m, int ascent, int descent, TreeMap<Integer, Integer> cmap,
-            int style, int upem) {
+            int style, int upem, int fsType) {
         boolean bold = (style & 1) != 0;
         boolean italic = (style & 2) != 0;
         ByteBuffer b = ByteBuffer.allocate(96);
@@ -600,6 +615,7 @@ public final class WebFonts {
         b.putShort(2, (short) m.averageAdvance());
         b.putShort(4, (short) (bold ? 700 : 400));
         b.putShort(6, (short) 5);
+        b.putShort(8, (short) fsType);
         b.putShort(10, (short) (650 * upem / 1000));
         b.putShort(12, (short) (600 * upem / 1000));
         b.putShort(16, (short) (75 * upem / 1000));
@@ -635,6 +651,8 @@ public final class WebFonts {
     private abstract static class Program {
 
         private int sourceBytes;
+
+        private int fsType;
 
         abstract int count();
 

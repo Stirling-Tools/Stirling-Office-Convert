@@ -3,6 +3,7 @@ package stirling.software.officeconvert.pdfa;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.awt.Font;
@@ -11,6 +12,7 @@ import java.awt.geom.Rectangle2D;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.time.Duration;
 
 import org.apache.fontbox.ttf.CmapSubtable;
 import org.apache.fontbox.ttf.TTFParser;
@@ -332,5 +334,56 @@ class WebFontsType3Test {
             PDFont font = doc.getPage(0).getResources().getFont(COSName.getPDFName("T3"));
             assertThrows(IOException.class, () -> WebFonts.toTrueType(font));
         }
+    }
+    @Test
+    void glyphsThatShowTheirOwnFontManyTimesStopAtTheWorkBudget() throws Exception {
+        RawPdf pdf = RawPdf.page("/Font<</T3 6 0 R>>", "BT /T3 50 Tf 20 100 Td (a) Tj ET");
+        pdf.add(RawPdf.stream("", "500 0 d0 0 0 100 100 re f BT /T3 1 Tf (" + "a".repeat(200) + ") Tj ET"));
+        pdf.add("<</Type/Font/Subtype/Type3/FontBBox[0 0 0 0]/FontMatrix[0.001 0 0 0.001 0 0]"
+                + "/CharProcs<</a 5 0 R>>/Resources<</Font<</T3 6 0 R>>>>"
+                + "/Encoding<</Type/Encoding/Differences[97/a]>>/FirstChar 97/LastChar 97/Widths[500]>>");
+        assertStopsQuickly(pdf);
+    }
+
+    @Test
+    void formsThatDrawThemselvesTwiceStopAtTheWorkBudget() throws Exception {
+        RawPdf pdf = RawPdf.page("/Font<</T3 7 0 R>>", "BT /T3 50 Tf 20 100 Td (a) Tj ET");
+        pdf.add(RawPdf.stream("", "500 0 d0 /F Do /F Do"));
+        pdf.add(RawPdf.stream("/Type/XObject/Subtype/Form/BBox[0 0 1000 1000]/Resources<</XObject<</F 6 0 R>>>>",
+                "0 0 100 100 re f /F Do /F Do"));
+        pdf.add("<</Type/Font/Subtype/Type3/FontBBox[0 0 0 0]/FontMatrix[0.001 0 0 0.001 0 0]"
+                + "/CharProcs<</a 5 0 R>>/Resources<</XObject<</F 6 0 R>>>>"
+                + "/Encoding<</Type/Encoding/Differences[97/a]>>/FirstChar 97/LastChar 97/Widths[500]>>");
+        assertStopsQuickly(pdf);
+    }
+
+    private static void assertStopsQuickly(RawPdf pdf) {
+        assertTimeoutPreemptively(Duration.ofSeconds(15), () -> {
+            try (PDDocument doc = Loader.loadPDF(pdf.bytes())) {
+                PDFont font = doc.getPage(0).getResources().getFont(COSName.getPDFName("T3"));
+                IOException e = assertThrows(IOException.class, () -> WebFonts.toTrueType(font));
+                assertTrue(e.getMessage().contains("operations"), e.getMessage());
+            }
+        });
+    }
+
+    @Test
+    void manyCrossingShapesAreUnitedWithinABoundedAmountOfWork() throws Exception {
+        StringBuilder proc = new StringBuilder("1000 0 0 0 1000 1000 d1 ");
+        for (int i = 0; i < 5000; i++) {
+            proc.append((i * 37) % 900).append(' ').append((i * 53) % 900).append(" m ").append((i * 71) % 900)
+                    .append(' ').append((i * 29) % 900).append(" l ").append((i * 17) % 900).append(' ')
+                    .append((i * 91) % 900).append(" l f ");
+        }
+        RawPdf pdf = RawPdf.page("/Font<</T3<</Type/Font/Subtype/Type3/FontBBox[0 0 0 0]"
+                + "/FontMatrix[0.001 0 0 0.001 0 0]/CharProcs<</a 5 0 R>>/Encoding<</Type/Encoding/Differences[97/a]>>"
+                + "/FirstChar 97/LastChar 97/Widths[1000]>>>>", "BT /T3 50 Tf 20 100 Td (a) Tj ET");
+        pdf.add(RawPdf.stream("", proc.toString()));
+        assertTimeoutPreemptively(Duration.ofSeconds(5), () -> {
+            try (TrueTypeFont ttf = convert(pdf)) {
+                assertEquals(2, ttf.getNumberOfGlyphs());
+                assertEquals(1000, ttf.getAdvanceWidth(gid(ttf, 'a')));
+            }
+        });
     }
 }

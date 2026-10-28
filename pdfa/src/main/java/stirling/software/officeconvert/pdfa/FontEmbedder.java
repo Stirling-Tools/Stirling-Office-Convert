@@ -2,6 +2,7 @@ package stirling.software.officeconvert.pdfa;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.IdentityHashMap;
@@ -71,6 +72,7 @@ public final class FontEmbedder {
         }
         usage.resolve();
         Map<COSDictionary, TreeSet<Integer>> targets = new IdentityHashMap<>(usage.codes());
+        Set<COSDictionary> unknown = Collections.newSetFromMap(new IdentityHashMap<>());
         for (ContentGraph.Node n : graph.nodes()) {
             COSDictionary dict = n.resources() == null ? null
                     : ContentGraph.dict(n.resources().getDictionaryObject(COSName.FONT));
@@ -80,7 +82,12 @@ public final class FontEmbedder {
             for (COSBase v : dict.getValues()) {
                 if (ContentGraph.dict(v) instanceof COSDictionary font) {
                     TreeSet<Integer> codes = targets.computeIfAbsent(font, k -> new TreeSet<>());
-                    if (unreadable.contains(n)) {
+                    if (!unreadable.contains(n)) {
+                        continue;
+                    }
+                    if (COSName.TYPE0.equals(font.getCOSName(COSName.SUBTYPE))) {
+                        unknown.add(font);
+                    } else {
                         codes.addAll(allCodes(font));
                     }
                 }
@@ -107,6 +114,10 @@ public final class FontEmbedder {
             if (font instanceof PDType3Font || FontCheck.embedded(font instanceof PDType0Font t0
                     && t0.getDescendantFont() != null ? t0.getDescendantFont().getFontDescriptor()
                             : font.getFontDescriptor()) && readable(font)) {
+                continue;
+            }
+            if (group.stream().anyMatch(unknown::contains)) {
+                failed.add(name(leader) + ": it shows text in a content stream that cannot be read, so it was kept");
                 continue;
             }
             if (library == null) {
@@ -201,9 +212,6 @@ public final class FontEmbedder {
 
     private static TreeSet<Integer> allCodes(COSDictionary font) {
         TreeSet<Integer> codes = new TreeSet<>();
-        if (COSName.TYPE0.equals(font.getCOSName(COSName.SUBTYPE))) {
-            return codes;
-        }
         int first = Math.max(0, font.getInt(COSName.FIRST_CHAR, 32));
         int last = Math.min(255, font.getInt(COSName.LAST_CHAR, 255));
         for (int c = first; c <= last; c++) {

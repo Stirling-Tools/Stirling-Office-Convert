@@ -2,12 +2,14 @@ package stirling.software.officeconvert.pdfa;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.awt.geom.Rectangle2D;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
@@ -90,6 +92,10 @@ class WebFontsCff2Test {
     }
 
     static byte[] openType(byte[] cff2) {
+        return openType("CFF2", cff2, null);
+    }
+
+    private static byte[] openType(String tag, byte[] program, byte[] os2) {
         TreeMap<String, byte[]> tables = new TreeMap<>();
         ByteBuffer head = ByteBuffer.allocate(54);
         head.putInt(0, 0x00010000).putInt(12, 0x5F0F3CF5).putShort(18, (short) 1000).putShort(42, (short) 700);
@@ -106,7 +112,10 @@ class WebFontsCff2Test {
         tables.put("cmap", Cmaps.table(List.of(new Cmaps.Subtable(3, 1, new TreeMap<>(Map.of(0x41, 1, 0x42, 2,
                 0x43, 3))))));
         tables.put("post", ByteBuffer.allocate(32).putInt(0x00030000).array());
-        tables.put("CFF2", cff2);
+        tables.put(tag, program);
+        if (os2 != null) {
+            tables.put("OS/2", os2);
+        }
         byte[] font = Sfnt.write(tables);
         ByteBuffer.wrap(font).putInt(0, 0x4F54544F);
         return font;
@@ -290,5 +299,59 @@ class WebFontsCff2Test {
         byte[] fdArray = index2(ops(0, 0, op(18)));
         byte[] topDict = ops(FontPrograms.int5(charstringsAt), op(17), FontPrograms.int5(fdArrayAt), op(12, 36));
         return FontPrograms.concat(op(2, 0, 5, 0, top), topDict, gsubrs, charstrings, fdArray);
+    }
+
+    @Test
+    void anIndexOffsetWithItsTopBitSetIsRejectedWithoutAllocating() {
+        ByteBuffer table = ByteBuffer.allocate(19);
+        table.put(new byte[] {2, 0, 5, 0, 0}).putInt(1).put((byte) 4).putInt(0x80000010).putInt(1).put((byte) 0);
+        assertThrows(IOException.class, () -> new Cff2(table.array()));
+        ByteBuffer wide = ByteBuffer.allocate(19);
+        wide.put(new byte[] {2, 0, 5, 0, 0}).putInt(1).put((byte) 7).putInt(1).putInt(2).put((byte) 0);
+        assertThrows(IOException.class, () -> new Cff2(wide.array()));
+        ByteBuffer many = ByteBuffer.allocate(64);
+        many.put(new byte[] {2, 0, 5, 0, 0}).putInt(50).put((byte) 1);
+        assertThrows(IOException.class, () -> new Cff2(many.array()));
+    }
+
+    @Test
+    void fdSelectRangesThatDoNotIncreaseAreRejectedQuickly() {
+        int glyphs = 300_000;
+        int ranges = 600_000;
+        int charStringsAt = 25 + 4;
+        int fdArrayAt = charStringsAt + 5 + glyphs + 1;
+        int fdSelectAt = fdArrayAt + 4;
+        ByteBuffer t = ByteBuffer.allocate(fdSelectAt + 5 + ranges * 6 + 4);
+        t.put(new byte[] {2, 0, 5, 0, 20});
+        t.put((byte) 29).putInt(charStringsAt).put((byte) 17);
+        t.put((byte) 29).putInt(fdArrayAt).put((byte) 12).put((byte) 36);
+        t.put((byte) 29).putInt(fdSelectAt).put((byte) 12).put((byte) 37);
+        t.putInt(0);
+        t.putInt(glyphs).put((byte) 1);
+        for (int i = 0; i <= glyphs; i++) {
+            t.put((byte) 1);
+        }
+        t.putInt(0);
+        t.put((byte) 4).putInt(ranges);
+        for (int r = 0; r < ranges; r++) {
+            t.putInt(r % 2 == 0 ? 0 : glyphs).putShort((short) 0);
+        }
+        t.putInt(glyphs);
+        assertTimeoutPreemptively(Duration.ofSeconds(3), () -> assertThrows(IOException.class,
+                () -> new Cff2(t.array())));
+    }
+    @Test
+    void theSourceEmbeddingPermissionsSurviveConversion() throws Exception {
+        ByteBuffer os2 = ByteBuffer.allocate(96);
+        os2.putShort(0, (short) 4).putShort(8, (short) 0x0002);
+        byte[][] programs = {cff2(false), cff1(new byte[][] {op(14), op(14), op(14), op(14)})};
+        String[] tags = {"CFF2", "CFF "};
+        for (int i = 0; i < programs.length; i++) {
+            byte[] ttf = WebFonts.toTrueType(openType(tags[i], programs[i], os2.array()), WebFonts.FontKind.TRUETYPE,
+                    null);
+            try (TrueTypeFont t = new TTFParser().parse(new RandomAccessReadBuffer(ttf))) {
+                assertEquals(0x0002, t.getOS2Windows().getFsType(), tags[i]);
+            }
+        }
     }
 }

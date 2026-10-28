@@ -175,6 +175,28 @@ class FontEmbedderTest {
     }
 
     @Test
+    void aCidFontShownOnlyInAnUnreadableStreamKeepsItsGlyphs() throws Exception {
+        String arial = "<</Type/Font/Subtype/Type0/BaseFont/Arial/Encoding/Identity-H/DescendantFonts[<</Type/Font"
+                + "/Subtype/CIDFontType2/BaseFont/Arial/CIDSystemInfo<</Registry(Adobe)/Ordering(Identity)/Supplement 0>>"
+                + "/FontDescriptor<</Type/FontDescriptor/FontName/Arial/Flags 32/FontBBox[0 0 1000 1000]/ItalicAngle 0"
+                + "/Ascent 900/Descent -200/CapHeight 700/StemV 80>>>>]>>";
+        RawPdf pdf = RawPdf.page("/Font<</F1<</Type/Font/Subtype/Type1/BaseFont/Helvetica/Encoding/WinAnsiEncoding>>"
+                + "/F3 " + arial + ">>", "BT /F3 12 Tf 50 700 Td <002400250026> Tj /F1 12 Tf (Abc) Tj ET "
+                + "BI /W 1 /H 1 BI" + " 0 0 m".repeat(400));
+        try (PDDocument d = Loader.loadPDF(pdf.bytes())) {
+            COSDictionary f3 = d.getPage(0).getResources().getFont(COSName.getPDFName("F3")).getCOSObject();
+            String before = f3.toString();
+            FontEmbedder.Result r = FontEmbedder.embedMissing(d);
+            assertEquals(1, r.embedded().size(), r.embedded().toString());
+            assertEquals(1, r.failed().size(), r.failed().toString());
+            assertTrue(r.failed().get(0).startsWith("Arial"), r.failed().toString());
+            assertEquals(before, f3.toString());
+            assertFalse(d.getPage(0).getResources().getFont(COSName.getPDFName("F3")).isEmbedded());
+            assertTrue(d.getPage(0).getResources().getFont(COSName.getPDFName("F1")).isEmbedded());
+        }
+    }
+
+    @Test
     void equalFontDictionariesShareOneSubsetWithoutHinting() throws Exception {
         String helvetica = "<</Type/Font/Subtype/Type1/BaseFont/Helvetica/Encoding/WinAnsiEncoding>>";
         RawPdf pdf = RawPdf.page("/Font<</F1 " + helvetica + "/F2 " + helvetica + ">>",

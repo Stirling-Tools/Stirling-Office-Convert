@@ -7,10 +7,12 @@ import java.awt.geom.AffineTransform;
 import java.awt.geom.Area;
 import java.awt.geom.GeneralPath;
 import java.awt.geom.Path2D;
+import java.awt.geom.PathIterator;
 import java.awt.geom.Point2D;
 import java.awt.geom.Rectangle2D;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
+import java.io.InterruptedIOException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -20,6 +22,8 @@ import java.util.Map;
 import java.util.Set;
 
 import org.apache.pdfbox.contentstream.PDFGraphicsStreamEngine;
+import org.apache.pdfbox.contentstream.operator.Operator;
+import org.apache.pdfbox.cos.COSBase;
 import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.PDResources;
@@ -33,6 +37,8 @@ import org.apache.pdfbox.pdmodel.graphics.state.PDSoftMask;
 import org.apache.pdfbox.util.Matrix;
 import org.apache.pdfbox.util.Vector;
 
+import stirling.software.officeconvert.extract.PdfFiles;
+
 final class Type3Outlines extends PDFGraphicsStreamEngine {
 
     private static final double MIN_STROKE = 0.004;
@@ -44,6 +50,31 @@ final class Type3Outlines extends PDFGraphicsStreamEngine {
     private static final int MAX_NESTING = 4;
 
     private static final int MAX_SHAPES = 5_000;
+
+    private static final long MAX_SEGMENTS = 250_000;
+
+    private static final long MAX_AREA_WORK = 4_000_000;
+
+    static final long MAX_OPERATIONS = 1_000_000;
+
+    static final class Budget {
+
+        private long left = MAX_OPERATIONS;
+
+        void spend(long n) throws IOException {
+            PdfFiles.stopIfInterrupted();
+            left -= n;
+            if (left < 0) {
+                throw new Decoded.TooLarge("The Type 3 glyphs need more than " + MAX_OPERATIONS + " operations");
+            }
+        }
+    }
+
+    private final Budget budget;
+
+    private long segments;
+
+    private long areaWork;
 
     private final GeneralPath current = new GeneralPath();
 
@@ -67,50 +98,84 @@ final class Type3Outlines extends PDFGraphicsStreamEngine {
 
     private final Map<List<Object>, Area> masks;
 
-    private Type3Outlines(Mode mode, Map<List<Object>, Area> masks, PDResources resources) {
+    private Type3Outlines(Mode mode, Map<List<Object>, Area> masks, PDResources resources, Budget budget) {
         super(new PDPage());
         if (resources != null) {
             getPage().setResources(resources);
         }
         this.mode = mode;
         this.masks = masks;
+        this.budget = budget;
     }
 
-    static GeneralPath glyph(PDType3CharProc proc, PDResources resources) throws IOException {
-        Type3Outlines engine = new Type3Outlines(Mode.GLYPH, new HashMap<>(), resources);
+    static GeneralPath glyph(PDType3CharProc proc, PDResources resources, Budget budget) throws IOException {
+        Type3Outlines engine = new Type3Outlines(Mode.GLYPH, new HashMap<>(), resources, budget);
         engine.processChildStream(proc, engine.getPage());
         return engine.outline();
     }
 
-    private Area area() {
+    private Area area() throws IOException {
         Area area = new Area();
+        long areaSegments = 0;
         for (Shape s : shapes) {
+            PdfFiles.stopIfInterrupted();
+            long cost = areaSegments + segments(s);
+            if (!spendArea(cost)) {
+                break;
+            }
             area.add(s instanceof Area a ? a : new Area(s));
+            areaSegments = segments(area);
         }
         return area;
     }
 
-    private GeneralPath outline() {
+    private boolean spendArea(long cost) {
+        if (areaWork + cost > MAX_AREA_WORK) {
+            areaWork = MAX_AREA_WORK;
+            return false;
+        }
+        areaWork += cost;
+        return true;
+    }
+
+    private static long segments(Shape s) {
+        long n = 0;
+        for (PathIterator it = s.getPathIterator(null); !it.isDone(); it.next()) {
+            n++;
+        }
+        return n;
+    }
+
+    private GeneralPath outline() throws IOException {
         GeneralPath out = new GeneralPath(area());
         out.transform(AffineTransform.getScaleInstance(1000, 1000));
         return out;
     }
 
-    private void paint(Shape s) {
+    private void paint(Shape s) throws IOException {
         paint(s, true);
     }
 
-    private void paint(Shape s, boolean coloured) {
+    private void paint(Shape s, boolean coloured) throws IOException {
         if (shapes.size() >= MAX_SHAPES || s.getBounds2D().isEmpty()) {
             return;
         }
         if (coloured && mode == Mode.LUMINOSITY && !light(getGraphicsState().getNonStrokingColor())) {
             return;
         }
+        long size = segments(s);
+        if (segments + size > MAX_SEGMENTS) {
+            segments = MAX_SEGMENTS;
+            return;
+        }
+        segments += size;
         Area clip = clip();
         Area mask = softMask();
         if (clip == null && mask == null) {
             shapes.add(s);
+            return;
+        }
+        if (!spendArea(size + (clip == null ? 0 : segments(clip)) + (mask == null ? 0 : segments(mask)))) {
             return;
         }
         Area a = new Area(s);
@@ -134,7 +199,7 @@ final class Type3Outlines extends PDFGraphicsStreamEngine {
         }
     }
 
-    private Area softMask() {
+    private Area softMask() throws IOException {
         PDSoftMask mask = getGraphicsState().getSoftMask();
         if (mask == null || nesting >= MAX_NESTING) {
             return null;
@@ -152,7 +217,7 @@ final class Type3Outlines extends PDFGraphicsStreamEngine {
             PDTransparencyGroup group = mask.getGroup();
             if (group != null) {
                 Type3Outlines engine = new Type3Outlines(COSName.ALPHA.equals(mask.getSubType()) ? Mode.ALPHA
-                        : Mode.LUMINOSITY, masks, getResources());
+                        : Mode.LUMINOSITY, masks, getResources(), budget);
                 engine.nesting = nesting + 1;
                 engine.processChildStream(group, engine.getPage());
                 area = engine.area();
@@ -162,6 +227,9 @@ final class Type3Outlines extends PDFGraphicsStreamEngine {
                 masks.put(key, area);
             }
         } catch (IOException | RuntimeException e) {
+            if (e instanceof IOException io) {
+                Decoded.rethrowFatal(io);
+            }
             masks.put(key, area);
         }
         return area;
@@ -199,13 +267,13 @@ final class Type3Outlines extends PDFGraphicsStreamEngine {
         current.reset();
     }
 
-    private void fill(int windingRule) {
+    private void fill(int windingRule) throws IOException {
         GeneralPath p = new GeneralPath(current);
         p.setWindingRule(windingRule);
         paint(p);
     }
 
-    private void stroke() {
+    private void stroke() throws IOException {
         Matrix ctm = getGraphicsState().getCurrentTransformationMatrix();
         double scale = Math.sqrt(Math.abs(ctm.getScaleX() * ctm.getScaleY() - ctm.getShearX() * ctm.getShearY()));
         float width = (float) Math.max(MIN_STROKE, getGraphicsState().getLineWidth() * scale);
@@ -235,6 +303,7 @@ final class Type3Outlines extends PDFGraphicsStreamEngine {
         if (pixels <= 0 || pixels > MAX_IMAGE_PIXELS) {
             return;
         }
+        budget.spend(pixels >> 8);
         boolean stencil = image.isStencil();
         if (stencil && mode == Mode.LUMINOSITY && !light(getGraphicsState().getNonStrokingColor())) {
             return;
@@ -249,6 +318,7 @@ final class Type3Outlines extends PDFGraphicsStreamEngine {
         int rectangles = 0;
         Map<Long, Integer> open = new HashMap<>();
         for (int y = 0; y <= h && rectangles < MAX_RECTANGLES; y++) {
+            PdfFiles.stopIfInterrupted();
             Set<Long> runs = new HashSet<>();
             for (int x = 0; y < h && x < w; x++) {
                 if (inked(img.getRGB(x, y), stencil)) {
@@ -299,6 +369,7 @@ final class Type3Outlines extends PDFGraphicsStreamEngine {
 
     @Override
     protected void showFontGlyph(Matrix trm, PDFont font, int code, Vector displacement) throws IOException {
+        budget.spend(1);
         if (!(font instanceof PDVectorFont v)) {
             return;
         }
@@ -313,6 +384,7 @@ final class Type3Outlines extends PDFGraphicsStreamEngine {
 
     @Override
     protected void showType3Glyph(Matrix trm, PDType3Font font, int code, Vector displacement) throws IOException {
+        budget.spend(1);
         if (nesting >= MAX_NESTING) {
             return;
         }
@@ -322,6 +394,20 @@ final class Type3Outlines extends PDFGraphicsStreamEngine {
         } finally {
             nesting--;
         }
+    }
+
+    @Override
+    protected void processOperator(Operator operator, List<COSBase> operands) throws IOException {
+        budget.spend(1);
+        super.processOperator(operator, operands);
+    }
+
+    @Override
+    protected void operatorException(Operator operator, List<COSBase> operands, IOException e) throws IOException {
+        if (e instanceof Decoded.TooLarge || e instanceof InterruptedIOException) {
+            throw e;
+        }
+        super.operatorException(operator, operands, e);
     }
 
     @Override
@@ -370,26 +456,26 @@ final class Type3Outlines extends PDFGraphicsStreamEngine {
     }
 
     @Override
-    public void strokePath() {
+    public void strokePath() throws IOException {
         stroke();
         endOfPath();
     }
 
     @Override
-    public void fillPath(int windingRule) {
+    public void fillPath(int windingRule) throws IOException {
         fill(windingRule);
         endOfPath();
     }
 
     @Override
-    public void fillAndStrokePath(int windingRule) {
+    public void fillAndStrokePath(int windingRule) throws IOException {
         fill(windingRule);
         stroke();
         endOfPath();
     }
 
     @Override
-    public void shadingFill(COSName shadingName) {
+    public void shadingFill(COSName shadingName) throws IOException {
         Area clip = clip();
         if (clip != null) {
             paint(clip);
