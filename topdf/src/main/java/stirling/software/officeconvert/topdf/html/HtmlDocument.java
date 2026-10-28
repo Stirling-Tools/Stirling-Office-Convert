@@ -171,6 +171,9 @@ public final class HtmlDocument {
         Generated.Result generated = Generated.apply(doc, cascade, targetPages);
         float[] inset = inset(page, cascade, doc);
         List<String> warnings = new ArrayList<>();
+        if (generated.droppedStrings()) {
+            warnings.add(Generated.STRING_NAMES_WARNING);
+        }
         WebFonts.Loaded web = WebFonts.load(cascade.faces(), linked, warnings);
         if (!web.families().isEmpty()) {
             Predicate<String> installed = Look.drawable();

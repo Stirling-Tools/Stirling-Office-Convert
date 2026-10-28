@@ -17,6 +17,7 @@ import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.text.PDFTextStripper;
 import org.apache.pdfbox.text.TextPosition;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
 
 import stirling.software.officeconvert.model.Inline;
@@ -159,6 +160,26 @@ class MarginBoxesTest {
             assertTrue(page(doc, 4).contains("Head: Beta"), page(doc, 4));
             assertTrue(page(doc, pages).contains("Head: Gamma 3"), page(doc, pages));
             assertTrue(page(doc, pages).contains("Last: Gamma 3"), page(doc, pages));
+        }
+    }
+
+    @Test
+    @Timeout(120)
+    void manyRunningStringNamesAcrossManyPagesStayBounded() throws IOException {
+        StringBuilder sb = new StringBuilder("<html><head><style>@page { size: 200pt 200pt; margin: 40pt; "
+                + "@top-left { content: string(n0) } @top-right { content: string(n1, last) } }</style></head><body>");
+        for (int i = 0; i < 3000; i++) {
+            sb.append("<p style=\"string-set:n").append(i).append(" 'v").append(i)
+                    .append("';break-before:page\">x</p>");
+        }
+        sb.append("</body></html>");
+        try (PDDocument doc = convert(sb.toString())) {
+            int pages = doc.getNumberOfPages();
+            assertTrue(pages >= 3000, "pages " + pages);
+            assertTrue(page(doc, 1).contains("v0"), page(doc, 1));
+            assertTrue(page(doc, pages).contains("v0"), page(doc, pages));
+            assertTrue(page(doc, pages).contains("v1"), page(doc, pages));
+            assertFalse(page(doc, 1).contains("v1"), page(doc, 1));
         }
     }
 

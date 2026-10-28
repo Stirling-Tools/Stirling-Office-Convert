@@ -32,6 +32,21 @@ class InlineRunningStringsTest {
     }
 
     @Test
+    void distinctRunningStringNamesAreCapped() {
+        StringBuilder html = new StringBuilder();
+        for (int i = 0; i < 200; i++) {
+            html.append("<p style=\"string-set: n").append(i).append(" 'v'\">x</p>");
+        }
+        html.append("<p style=\"string-set: n0 'again'\">y</p>");
+        Document document = Jsoup.parse(html.toString());
+        Generated.Result result = Generated.apply(document, new Cascade(document, 600), Map.of());
+        assertTrue(result.droppedStrings());
+        assertEquals(Generated.MAX_STRING_NAMES + 1, result.strings().size());
+        assertEquals(Generated.MAX_STRING_NAMES,
+                result.strings().values().stream().map(v -> v[1]).distinct().count());
+    }
+
+    @Test
     void lowercaseInlineDeclarationActivatesRunningStrings() {
         collects("string-set: chapter content()");
     }

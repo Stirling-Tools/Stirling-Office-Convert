@@ -5,6 +5,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.Deque;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -42,8 +43,18 @@ final class Generated {
 
     private Generated() {}
 
-    record Result(Set<String> targets, Map<Element, String> marks, Map<String, String[]> strings) {
+    static final int MAX_STRING_NAMES = 64;
+
+    static final String STRING_NAMES_WARNING = "Only the first " + MAX_STRING_NAMES
+            + " running string names were kept: the document sets more";
+
+    record Result(Set<String> targets, Map<Element, String> marks, Map<String, String[]> strings,
+            boolean droppedStrings) {
         static final Result NONE = new Result(Set.of(), Map.of(), Map.of());
+
+        Result(Set<String> targets, Map<Element, String> marks, Map<String, String[]> strings) {
+            this(targets, marks, strings, false);
+        }
     }
 
     static Result apply(Document doc, Cascade cascade, Map<String, Integer> pages) {
@@ -75,7 +86,7 @@ final class Generated {
             }
         }
         if (walk.pending.isEmpty() && walk.marks.isEmpty()) {
-            return new Result(walk.targets, Map.of(), Map.of());
+            return new Result(walk.targets, Map.of(), Map.of(), walk.droppedStrings);
         }
         for (Element e : doc.getAllElements()) {
             cascade.match(e);
@@ -91,7 +102,7 @@ final class Generated {
                 p.element().appendChild(p.span());
             }
         }
-        return new Result(walk.targets, walk.marks, walk.stringValues);
+        return new Result(walk.targets, walk.marks, walk.stringValues, walk.droppedStrings);
     }
 
     private static final class Walk {
@@ -106,6 +117,8 @@ final class Generated {
         final List<Pending> pending = new ArrayList<>();
         final Map<Element, String> marks = new IdentityHashMap<>();
         final Map<String, String[]> stringValues = new LinkedHashMap<>();
+        final Set<String> stringNames = new HashSet<>();
+        boolean droppedStrings;
         final Map<Element, Map<String, String>> afters = new IdentityHashMap<>();
         final Map<Element, Map<String, String>> declared = new IdentityHashMap<>();
         long work;
@@ -198,6 +211,11 @@ final class Generated {
                     continue;
                 }
                 String name = p.substring(0, space);
+                if (!stringNames.contains(name) && stringNames.size() >= MAX_STRING_NAMES) {
+                    droppedStrings = true;
+                    continue;
+                }
+                stringNames.add(name);
                 String text = stringValue(e, p.substring(space + 1), afterSpan);
                 String mark = marks.computeIfAbsent(e, k -> "oc-mark-" + marks.size());
                 String key = mark + "#" + name;
