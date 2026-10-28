@@ -17,6 +17,7 @@ final class Morphology {
         byte miss = dilate ? 0 : (byte) 1;
         byte[] line = new byte[w];
         for (int y = 0; y < h; y++) {
+            PhotoSplitter.checkpoint();
             int start = y * w;
             int count = 0;
             for (int k = 0; k < Math.min(radius, w); k++) {
@@ -49,6 +50,7 @@ final class Morphology {
             }
         }
         for (int y = 0; y < h; y++) {
+            PhotoSplitter.checkpoint();
             int drop = y - radius - 1;
             if (drop >= 0) {
                 int base = (drop % rows) * w;

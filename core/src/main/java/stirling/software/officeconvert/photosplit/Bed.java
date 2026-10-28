@@ -48,7 +48,7 @@ final class Bed {
     }
 
     int threshold(int tolerance) {
-        return (int) Math.round(Math.clamp(4 * noise + 4, 6, Math.max(1, tolerance)));
+        return (int) Math.round(Math.clamp(4 * noise + 4, 6, Math.max(6, tolerance)));
     }
 
     int faintThreshold(int strong, int radius, int wideRadius) {
@@ -60,6 +60,7 @@ final class Bed {
         byte[] mask = new byte[w * h];
         float[] row = new float[3 * w];
         for (int y = 0; y < h; y++) {
+            PhotoSplitter.checkpoint();
             model(y, w, row);
             for (int x = 0; x < w; x++) {
                 int i = y * w + x;
@@ -118,6 +119,7 @@ final class Bed {
         boolean[] valid = new boolean[gw * gh];
         boolean any = false;
         for (int cy = 0; cy < gh; cy++) {
+            PhotoSplitter.checkpoint();
             for (int cx = 0; cx < gw; cx++) {
                 int c = cy * gw + cx;
                 long[] sum = new long[3];
@@ -159,6 +161,7 @@ final class Bed {
         float[][] copy = {grid[0].clone(), grid[1].clone(), grid[2].clone()};
         float[] near = new float[(2 * DESPECKLE + 1) * (2 * DESPECKLE + 1)];
         for (int cy = 0; cy < gh; cy++) {
+            PhotoSplitter.checkpoint();
             for (int cx = 0; cx < gw; cx++) {
                 int c = cy * gw + cx;
                 if (!valid[c]) {
@@ -194,6 +197,7 @@ final class Bed {
         while (changed) {
             changed = false;
             for (int cy = 0; cy < gh; cy++) {
+                PhotoSplitter.checkpoint();
                 for (int cx = 0; cx < gw; cx++) {
                     int c = cy * gw + cx;
                     if (valid[c]) {
@@ -295,6 +299,7 @@ final class Bed {
         int n = 0;
         int stride = Math.max(1, (int) Math.sqrt((double) ring * (w + h) * 2 / 40000));
         for (int y = 0; y < h; y += stride) {
+            PhotoSplitter.checkpoint();
             for (int x = 0; x + step < w; x += stride) {
                 if (y >= ring && y < h - ring && x >= ring && x < w - ring - step) {
                     continue;
@@ -332,6 +337,7 @@ final class Bed {
 
     private static void forRing(int w, int h, int ring, IntConsumer action) {
         for (int y = 0; y < h; y++) {
+            PhotoSplitter.checkpoint();
             boolean band = y < ring || y >= h - ring;
             for (int x = 0; x < w; x++) {
                 if (band || x < ring || x >= w - ring) {

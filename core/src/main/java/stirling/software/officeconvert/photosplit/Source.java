@@ -58,6 +58,10 @@ final class Source implements Picture {
         return new Source(w, h, copy.rgb, null, w, 1, 0, 0, 0, grayModel(image));
     }
 
+    static Source of(ScanImage scan) {
+        return new Source(scan.width, scan.height, scan.rgb, null, scan.width, 1, 0, 0, 0, false);
+    }
+
     private static boolean grayModel(BufferedImage image) {
         return image.getColorModel().getNumColorComponents() == 1;
     }

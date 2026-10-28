@@ -109,6 +109,7 @@ final class EdgeFit {
         double tv = nu;
         double[] rgb = new double[3];
         for (int i = 0; i < samples; i++) {
+            PhotoSplitter.checkpoint();
             double along = from + (to - from) * (i + 0.5) / samples;
             for (int o = 0; o < offsets; o++) {
                 double off = -inside + o * STEP;
