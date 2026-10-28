@@ -3,7 +3,9 @@ package stirling.software.officeconvert.lineart;
 import java.awt.color.ColorSpace;
 import java.awt.image.BufferedImage;
 import java.awt.image.DataBuffer;
+import java.awt.image.DataBufferByte;
 import java.awt.image.DataBufferInt;
+import java.awt.image.PixelInterleavedSampleModel;
 import java.awt.image.Raster;
 import java.awt.image.SinglePixelPackedSampleModel;
 import java.io.IOException;
@@ -196,10 +198,25 @@ final class Binarizer {
         boolean packed = (image.getType() == BufferedImage.TYPE_INT_RGB || image.getType() == BufferedImage.TYPE_INT_ARGB)
                 && raster.getDataBuffer() instanceof DataBufferInt
                 && raster.getSampleModel() instanceof SinglePixelPackedSampleModel;
-        int[] data = packed ? ((DataBufferInt) raster.getDataBuffer()).getData() : null;
-        int scan = packed ? ((SinglePixelPackedSampleModel) raster.getSampleModel()).getScanlineStride() : 0;
         int dx = -raster.getSampleModelTranslateX();
         int dy = -raster.getSampleModelTranslateY();
+        if (image.getType() == BufferedImage.TYPE_3BYTE_BGR && raster.getDataBuffer() instanceof DataBufferByte bytes
+                && raster.getSampleModel() instanceof PixelInterleavedSampleModel model) {
+            byte[] data = bytes.getData();
+            int step = model.getPixelStride();
+            int[] bands = model.getBandOffsets();
+            for (int y = 0; y < h; y++) {
+                LineArt.checkpoint();
+                int offset = (y + dy) * model.getScanlineStride() + dx * step + bytes.getOffset();
+                for (int x = 0; x < w; x++, offset += step) {
+                    grey[y * w + x] = (float) (RED[data[offset + bands[0]] & 0xFF] + GREEN[data[offset + bands[1]] & 0xFF]
+                            + BLUE[data[offset + bands[2]] & 0xFF]);
+                }
+            }
+            return grey;
+        }
+        int[] data = packed ? ((DataBufferInt) raster.getDataBuffer()).getData() : null;
+        int scan = packed ? ((SinglePixelPackedSampleModel) raster.getSampleModel()).getScanlineStride() : 0;
         int[] row = packed ? null : new int[w];
         for (int y = 0; y < h; y++) {
             LineArt.checkpoint();
