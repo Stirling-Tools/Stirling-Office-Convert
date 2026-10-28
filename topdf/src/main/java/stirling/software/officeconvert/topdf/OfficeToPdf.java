@@ -94,7 +94,7 @@ public final class OfficeToPdf {
                         "sylk", "dif", "dbf", "numbers", "wk1", "wks", "wk3", "wk4", "123" -> XLSX;
                 case "csv" -> CSV;
                 case "tsv", "tab" -> TSV;
-                case "html", "htm", "xhtml", "zip", "mobi", "azw3", "azw", "prc", "pdb", "fb2", "fbz" -> HTML;
+                case "html", "htm", "xhtml", "zip", "htmlz", "mobi", "azw3", "azw", "prc", "pdb", "fb2", "fbz" -> HTML;
                 case "epub" -> EPUB;
                 case "json" -> JSON;
                 case "ppt", "pps", "pot" -> PPT;
@@ -107,7 +107,7 @@ public final class OfficeToPdf {
                             + " .sxc, .stc, .sxi, .sti, .sxd, .std, .vsdx, .vsdm, .vssx, .vssm, .vstx, .vstm, .xml, .slk,"
                             + " .dif, .dbf, .wk1, .wks, .wk3, .wk4, .123, .pages, .numbers, .key, .pub, .vsd, .vss, .vst, .vsw,"
                             + " .txt,"
-                            + " .text, .log, .asc, .csv, .tsv, .tab, .html, .htm, .xhtml, .zip of HTML, .epub, .mobi, .azw3, .azw, .prc, .pdb, .fb2, .fbz or .json");
+                            + " .text, .log, .asc, .csv, .tsv, .tab, .html, .htm, .xhtml, .zip of HTML, .htmlz, .epub, .mobi, .azw3, .azw, .prc, .pdb, .fb2, .fbz or .json");
                 }
             };
         }
@@ -120,7 +120,7 @@ public final class OfficeToPdf {
                         "odm", "ods", "ots", "fods", "odp", "otp", "fodp", "odg", "otg", "fodg", "xml", "sxw", "stw", "sxc",
                         "stc", "sxi", "sti", "sxd", "std", "vsdx", "vsdm", "vssx", "vssm", "vstx", "vstm" -> true;
                 case "txt", "text", "log", "asc", "csv", "tsv", "tab", "html", "htm", "xhtml", "json" -> true;
-                case "mobi", "azw3", "azw", "prc", "fb2", "fbz" -> true;
+                case "mobi", "azw3", "azw", "prc", "fb2", "fbz", "htmlz" -> true;
                 case "slk", "sylk", "dif", "dbf", "pages", "numbers", "key", "wk1", "wks", "wk3", "wk4", "123" -> true;
                 case "pub", "vsd", "vss", "vst", "vsw" -> true;
                 default -> false;
@@ -138,7 +138,8 @@ public final class OfficeToPdf {
     /** {@code password} opens a password protected document; it is never written anywhere, nor printed by
      * {@link #toString()}. */
     public record Options(Duration timeout, List<Path> fontDirs, int maxPages, long maxScratchBytes, FontSet fonts,
-            String displayName, String password, HtmlAssets htmlAssets, boolean allowPackages) {
+            String displayName, String password, HtmlAssets htmlAssets, boolean allowPackages, boolean tableOfContents,
+            boolean pageNumbers) {
 
         public static final int DEFAULT_MAX_PAGES = 10_000;
 
@@ -166,6 +167,12 @@ public final class OfficeToPdf {
                 throw new IllegalArgumentException("The password is longer than " + MAX_PASSWORD_CHARS + " characters");
             }
             htmlAssets = htmlAssets == null ? HtmlAssets.NONE : htmlAssets;
+        }
+
+        public Options(Duration timeout, List<Path> fontDirs, int maxPages, long maxScratchBytes, FontSet fonts,
+                String displayName, String password, HtmlAssets htmlAssets, boolean allowPackages) {
+            this(timeout, fontDirs, maxPages, maxScratchBytes, fonts, displayName, password, htmlAssets, allowPackages,
+                    false, false);
         }
 
         public Options(Duration timeout, List<Path> fontDirs, int maxPages, long maxScratchBytes, FontSet fonts,
@@ -197,47 +204,57 @@ public final class OfficeToPdf {
 
         public Options timeout(Duration limit) {
             return new Options(limit, fontDirs, maxPages, maxScratchBytes, fonts, displayName, password, htmlAssets,
-                    allowPackages);
+                    allowPackages, tableOfContents, pageNumbers);
         }
 
         public Options fontDirs(List<Path> dirs) {
             return new Options(timeout, dirs, maxPages, maxScratchBytes, fonts, displayName, password, htmlAssets,
-                    allowPackages);
+                    allowPackages, tableOfContents, pageNumbers);
         }
 
         public Options fonts(FontSet set) {
             return new Options(timeout, fontDirs, maxPages, maxScratchBytes, set, displayName, password, htmlAssets,
-                    allowPackages);
+                    allowPackages, tableOfContents, pageNumbers);
         }
 
         public Options maxPages(int pages) {
             return new Options(timeout, fontDirs, pages, maxScratchBytes, fonts, displayName, password, htmlAssets,
-                    allowPackages);
+                    allowPackages, tableOfContents, pageNumbers);
         }
 
         public Options maxScratchBytes(long bytes) {
             return new Options(timeout, fontDirs, maxPages, bytes, fonts, displayName, password, htmlAssets,
-                    allowPackages);
+                    allowPackages, tableOfContents, pageNumbers);
         }
 
         public Options displayName(String name) {
             return new Options(timeout, fontDirs, maxPages, maxScratchBytes, fonts, name, password, htmlAssets,
-                    allowPackages);
+                    allowPackages, tableOfContents, pageNumbers);
         }
 
         public Options password(String secret) {
             return new Options(timeout, fontDirs, maxPages, maxScratchBytes, fonts, displayName, secret, htmlAssets,
-                    allowPackages);
+                    allowPackages, tableOfContents, pageNumbers);
         }
 
         public Options htmlAssets(HtmlAssets assets) {
             return new Options(timeout, fontDirs, maxPages, maxScratchBytes, fonts, displayName, password, assets,
-                    allowPackages);
+                    allowPackages, tableOfContents, pageNumbers);
         }
 
         public Options allowPackages(boolean allow) {
             return new Options(timeout, fontDirs, maxPages, maxScratchBytes, fonts, displayName, password, htmlAssets,
-                    allow);
+                    allow, tableOfContents, pageNumbers);
+        }
+
+        public Options tableOfContents(boolean add) {
+            return new Options(timeout, fontDirs, maxPages, maxScratchBytes, fonts, displayName, password, htmlAssets,
+                    allowPackages, add, pageNumbers);
+        }
+
+        public Options pageNumbers(boolean add) {
+            return new Options(timeout, fontDirs, maxPages, maxScratchBytes, fonts, displayName, password, htmlAssets,
+                    allowPackages, tableOfContents, add);
         }
 
         public FontLibrary fontLibrary() {
@@ -249,7 +266,8 @@ public final class OfficeToPdf {
             return "Options[timeout=" + timeout + ", fontDirs=" + fontDirs + ", maxPages=" + maxPages
                     + ", maxScratchBytes=" + maxScratchBytes + ", fonts=" + fonts + ", displayName=" + displayName
                     + ", password=" + (password == null ? "none" : "given") + ", htmlAssets="
-                    + (htmlAssets == HtmlAssets.NONE ? "none" : "given") + ", allowPackages=" + allowPackages + "]";
+                    + (htmlAssets == HtmlAssets.NONE ? "none" : "given") + ", allowPackages=" + allowPackages
+                    + ", tableOfContents=" + tableOfContents + ", pageNumbers=" + pageNumbers + "]";
         }
     }
 
@@ -654,6 +672,9 @@ public final class OfficeToPdf {
     static Result render(Path source, Format requested, OutputStream sink, Options options, Renderer renderer)
             throws IOException {
         stopIfInterrupted();
+        if (BookPages.wanted(options)) {
+            return BookPages.render(source, requested, sink, options, renderer);
+        }
         if (Files.size(source) > MAX_INPUT_BYTES) {
             throw tooLarge();
         }

@@ -57,6 +57,7 @@ public final class Paragraph implements Block {
     public float sourceTop = Float.NaN;
     public float sourceBottom = Float.NaN;
     public String bookmark;
+    public final List<String> anchors = new ArrayList<>();
     public RunStyle markStyle;
 
     public boolean isEmpty() {

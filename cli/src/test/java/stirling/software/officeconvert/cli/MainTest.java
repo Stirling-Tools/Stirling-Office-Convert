@@ -17,12 +17,15 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.zip.ZipEntry;
+import java.util.zip.ZipFile;
 import java.util.zip.ZipOutputStream;
 
+import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.PDPageContentStream;
 import org.apache.pdfbox.pdmodel.font.PDType0Font;
+import org.apache.pdfbox.text.PDFTextStripper;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -102,6 +105,37 @@ class MainTest {
     }
 
     @Test
+    void legacyCyrillicTextConvertsWithoutXmlProbeDiagnostics() throws Exception {
+        for (String encoding : new String[] {"windows-1251", "KOI8-R"}) {
+            for (String prefix : new String[] {"Съешь", "привет", "юность", "ярмарка"}) {
+                String text = ("  \n" + prefix + " ещё этих мягких французских булок, да выпей чаю."
+                        + " Москва Санкт-Петербург.\n").repeat(10);
+                Path source = Files.write(dir.resolve(encoding + "-" + prefix + ".txt"),
+                        text.getBytes(java.nio.charset.Charset.forName(encoding)));
+                Path pdf = source.resolveSibling(source.getFileName() + ".pdf");
+                Result r = run(source.toString(), "-o", pdf.toString(), "-q");
+                assertEquals(0, r.code(), r.err());
+                assertEquals("", r.err(), encoding + " " + prefix);
+                try (PDDocument doc = Loader.loadPDF(pdf.toFile())) {
+                    assertTrue(new PDFTextStripper().getText(doc).contains("Москва Санкт-Петербург"));
+                }
+            }
+        }
+    }
+
+    @Test
+    void malformedOfficeXmlStillReportsItsConversionError() throws Exception {
+        Path source = Files.writeString(dir.resolve("broken.xml"),
+                "<w:wordDocument xmlns:w=\"http://schemas.microsoft.com/office/word/2003/wordml\">"
+                + "<w:body><w:p><w:r><w:t>Broken");
+        Path pdf = dir.resolve("broken.pdf");
+        Result r = run(source.toString(), "-o", pdf.toString(), "-q");
+        assertEquals(1, r.code(), r.err());
+        assertTrue(r.err().contains("FAIL " + source) && r.err().contains("not well-formed"), r.err());
+        assertFalse(Files.exists(pdf));
+    }
+
+    @Test
     void convertsSeveralOfficeFilesInOneRun() throws Exception {
         Path a = Files.writeString(dir.resolve("a.docx"), "x");
         Path b = Files.writeString(dir.resolve("b.pptx"), "x");
@@ -149,6 +183,56 @@ class MainTest {
         Result r = run(pdf.toString(), "-o", txt.toString(), "--pages", "1");
         assertEquals(0, r.code(), r.err());
         assertTrue(Files.readString(txt).contains("Hello PDF"));
+    }
+
+    @Test
+    void ebookOptionsShapeTheBook() throws Exception {
+        Path pdf = helloPdf(dir.resolve("book.pdf"));
+        Path epub = dir.resolve("book.epub");
+        Result r = run(pdf.toString(), "-o", epub.toString(), "--device", "kindle", "--no-chapters", "-q");
+        assertEquals(0, r.code(), r.err());
+        try (ZipFile zip = new ZipFile(epub.toFile())) {
+            String css = new String(zip.getInputStream(zip.getEntry("OEBPS/styles/book.css")).readAllBytes(),
+                    StandardCharsets.UTF_8);
+            assertTrue(css.contains("font-size:1em"), css);
+        }
+        assertUsage(run(pdf.toString(), "-o", dir.resolve("book2.epub").toString(), "--device", "nook"), "--device");
+    }
+
+    @Test
+    void ebookToPdfTakesContentsAndPageNumbers() throws Exception {
+        Path pdf = dir.resolve("story.pdf");
+        try (PDDocument doc = new PDDocument();
+                InputStream font = PDDocument.class.getResourceAsStream(
+                        "/org/apache/pdfbox/resources/ttf/LiberationSans-Regular.ttf")) {
+            PDType0Font f = PDType0Font.load(doc, font);
+            for (String chapter : new String[] {"First Chapter", "Second Chapter"}) {
+                PDPage page = new PDPage();
+                doc.addPage(page);
+                try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
+                    cs.beginText();
+                    cs.setFont(f, 24);
+                    cs.newLineAtOffset(72, 700);
+                    cs.showText(chapter);
+                    cs.setFont(f, 11);
+                    for (int line = 0; line < 8; line++) {
+                        cs.newLineAtOffset(0, -18);
+                        cs.showText("A plain line of the story that runs along the page, number " + line + ".");
+                    }
+                    cs.endText();
+                }
+            }
+            doc.save(pdf.toFile());
+        }
+        Path epub = dir.resolve("story.epub");
+        assertEquals(0, run(pdf.toString(), "-o", epub.toString(), "-q").code());
+        Path back = dir.resolve("story-back.pdf");
+        Result r = run(epub.toString(), "-o", back.toString(), "--toc", "--page-numbers", "-q");
+        assertEquals(0, r.code(), r.err());
+        try (PDDocument doc = Loader.loadPDF(back.toFile())) {
+            String text = new PDFTextStripper().getText(doc);
+            assertTrue(text.contains("Contents") && text.contains("Second Chapter"), text);
+        }
     }
 
     @Test

@@ -77,6 +77,8 @@ final class Flow {
     private Paragraph.ListRef pendingMarker;
     private boolean lastSpace = true;
     private String link;
+    private final List<String> pendingAnchors = new ArrayList<>();
+    private int anchors;
     private int forceInline;
     private Inline pendingGap;
     private final List<Inline> pendingEdges = new ArrayList<>();
@@ -304,18 +306,21 @@ final class Flow {
                 && (ctx.positions() || ctx.placed(e))) {
             if (!ctx.placed(e)) {
                 bookmark(e);
+                anchorAt(e, tag, false);
                 ctx.place(e);
                 staticBox(e, d, look, frame, depth);
             }
             return;
         }
         String bookmark = ctx.bookmarkFor(e);
+        boolean opensBlock = !inline && !tag.equals("br");
         if (bookmark != null) {
-            if (!inline && !tag.equals("br")) {
+            if (opensBlock) {
                 flush();
             }
             bookmark(bookmark);
         }
+        anchorAt(e, tag, opensBlock && bookmark == null);
         if (depth > MAX_DEPTH) {
             text(e.text(), look);
             return;
@@ -522,6 +527,7 @@ final class Flow {
             flush();
         }
         bookmark(e);
+        anchorAt(e, e.normalName(), false);
         inline(control, look);
         lastSpace = false;
         if (alone) {
@@ -564,10 +570,27 @@ final class Flow {
         lastSpace = spaced;
     }
 
+    private void anchorAt(Element e, String tag, boolean boundary) throws IOException {
+        String id = e.id().isEmpty() && tag.equals("a") ? e.attr("name") : e.id();
+        if (!id.isEmpty() && anchors < MAX_ANCHORS) {
+            if (boundary) {
+                flush();
+            }
+            anchors++;
+            pendingAnchors.add(anchorName(id));
+        }
+    }
+
+    static String anchorName(String id) {
+        String clean = id.replaceAll("[^A-Za-z0-9_.:-]", "_");
+        return "a_" + (clean.length() > 190 ? clean.substring(0, 190) : clean);
+    }
+
     private void anchor(Element e, Look look, Frame frame, int depth) throws IOException {
         String before = link;
         String href = e.attr("href").strip();
-        String safe = href.isEmpty() ? null : Links.safeUrl(href);
+        String safe = href.isEmpty() ? null
+                : href.startsWith("#") && href.length() > 1 ? "#" + anchorName(href.substring(1)) : Links.safeUrl(href);
         if (safe != null) {
             link = safe;
         }
@@ -927,6 +950,8 @@ final class Flow {
             "menu", "dl", "dt", "dd", "table", "tr", "td", "th", "caption", "body", "html");
 
     private static final int BOX_TEXT = 4_000;
+
+    private static final int MAX_ANCHORS = 100_000;
 
     // The background a block paints: its colour, or for a picture we never load under light text, a dark stand-in
     private int fill(Map<String, String> d, Look look) {
@@ -1828,6 +1853,8 @@ final class Flow {
             return;
         }
         measureUnwrapped(p);
+        p.anchors.addAll(pendingAnchors);
+        pendingAnchors.clear();
         lastParagraph = p;
         lastSpace = true;
         ctx.count();

@@ -17,6 +17,7 @@ import java.util.stream.Stream;
 
 import org.apache.pdfbox.pdmodel.encryption.InvalidPasswordException;
 
+import stirling.software.officeconvert.EbookOptions;
 import stirling.software.officeconvert.PdfToAzw3;
 import stirling.software.officeconvert.PdfToDocx;
 import stirling.software.officeconvert.PdfToEpub;
@@ -81,6 +82,7 @@ public final class Main {
         FontSet.Builder fontSet = FontSet.builder();
         PdfToXlsx.Sheets sheets = PdfToXlsx.Sheets.PAGE;
         Pictures pictures = Pictures.COMPACT;
+        EbookOptions ebook = EbookOptions.defaults();
         PdfToDocx.Options options;
         PdfToPptx.Options slides;
         PdfToXlsx.Options books;
@@ -121,9 +123,13 @@ public final class Main {
                     case "--sheets" -> sheets = sheets(value(args, ++i, a));
                     case "--pdfa" -> pdfa = level(value(args, ++i, a));
                     case "--pictures" -> pictures = pictures(value(args, ++i, a));
+                    case "--no-chapters" -> ebook = ebook.chapters(false);
+                    case "--device" -> ebook = ebook.device(device(value(args, ++i, a)));
                     case "-q", "--quiet" -> quiet = true;
                     case "--overwrite" -> overwrite = true;
                     case "--allow-packages" -> office = office.allowPackages(true);
+                    case "--toc" -> office = office.tableOfContents(true);
+                    case "--page-numbers" -> office = office.pageNumbers(true);
                     case "--allow-local-files" -> localFiles = true;
                     case "--allow-network" -> web = web.network(true);
                     case "--follow-redirects" -> web = web.redirects(true);
@@ -276,7 +282,7 @@ public final class Main {
                     result = officeToPdf(pdf, target, page(pdf) ? office.htmlAssets(assets(pdf, localFiles, web))
                             : office);
                 } else {
-                    convert(pdf, target, options, slides, books);
+                    convert(pdf, target, options, slides, books, ebook);
                 }
                 guard.wrote(target);
                 long ms = (System.nanoTime() - start) / 1_000_000;
@@ -358,7 +364,7 @@ public final class Main {
     }
 
     private static void convert(Path pdf, Path target, PdfToDocx.Options options, PdfToPptx.Options slides,
-            PdfToXlsx.Options books) throws IOException {
+            PdfToXlsx.Options books, EbookOptions ebook) throws IOException {
         switch (extension(target)) {
             case "odt" -> PdfToOdt.convert(pdf, target, options);
             case "fodt", "xml" -> PdfToOdt.convertFlat(pdf, target, options);
@@ -367,8 +373,8 @@ public final class Main {
             case "html" -> PdfToHtml.convert(pdf, target, options);
             case "json" -> PdfToJson.convert(pdf, target, options);
             case "md" -> PdfToMarkdown.convert(pdf, target, options);
-            case "epub" -> PdfToEpub.convert(pdf, target, options);
-            case "azw3" -> PdfToAzw3.convert(pdf, target, options);
+            case "epub" -> PdfToEpub.convert(pdf, target, options, ebook);
+            case "azw3" -> PdfToAzw3.convert(pdf, target, options, ebook);
             case "pptx" -> PdfToPptx.convert(pdf, target, slides);
             case "odp" -> PdfToOdp.convert(pdf, target, slides);
             case "ppt" -> PdfToPpt.convert(pdf, target, slides);
@@ -564,6 +570,14 @@ public final class Main {
         }
     }
 
+    private static EbookOptions.Device device(String s) throws Usage {
+        return switch (s.toLowerCase(Locale.ROOT)) {
+            case "tablet" -> EbookOptions.Device.TABLET;
+            case "kindle" -> EbookOptions.Device.KINDLE;
+            default -> throw new Usage("--device is tablet or kindle, not '" + s + "'");
+        };
+    }
+
     private static Pictures pictures(String s) throws Usage {
         try {
             return Pictures.valueOf(s.strip().toUpperCase(Locale.ROOT));
@@ -576,13 +590,13 @@ public final class Main {
         System.out.println(
                 "Usage: office-convert <in.pdf|dir>... [-o out.docx|dir] [--format ext] [--sheets page|table|single]"
                         + " [--pages a-b] [--no-tables] [--dpi n] [--password p] [--picture-fallback]"
-                        + " [--pictures compact|lossless] [--overwrite] [-q]"
+                        + " [--pictures compact|lossless] [--no-chapters] [--device tablet|kindle] [--overwrite] [-q]"
                         + System.lineSeparator()
                         + "       office-convert <in.docx|in.pptx|in.xlsx|in.doc|in.rtf|in.xls|in.ppt|in.odt|in.ods|in.odp|in.txt|in.csv|in.html|in.json|dir>..."
                         + " [-o out.pdf|dir] [--format pdf] [--password p]"
                         + " [--max-pages n (default 10000, 0 = all)] [--timeout s (default 300, 0 = none)]"
                         + " [--fonts dir]... [--font-map Family=Installed]... [--font-width Family=scale]..."
-                        + " [--no-system-fonts] [--allow-packages] [--allow-local-files] [--overwrite] [-q]"
+                        + " [--no-system-fonts] [--allow-packages] [--allow-local-files] [--toc] [--page-numbers] [--overwrite] [-q]"
                         + System.lineSeparator()
                         + "       office-convert <http(s)://url> -o out.pdf --allow-network [--follow-redirects] [--allow-cookies]"
                         + " [--allow-private-addresses] [--timeout s] [--overwrite] [-q]; an HTML file with"
@@ -605,7 +619,9 @@ public final class Main {
                         + " links to is fetched and no macro, field or formula is run. A .zip of an HTML page converts only"
                         + " with --allow-packages; --allow-local-files lets an HTML page draw the pictures and style sheets"
                         + " in its own folder (never outside it). eBooks use only what they hold; an EPUB inside another .zip, or"
-                        + " a FictionBook inside a .zip not named .fbz or .fb2.zip, needs --allow-packages."
+                        + " a FictionBook inside a .zip not named .fbz or .fb2.zip, needs --allow-packages. --toc adds a table of"
+                        + " contents with page numbers and links after the document and --page-numbers numbers the pages at"
+                        + " their foot; every font the PDF uses is embedded."
                         + System.lineSeparator()
                         + "A URL is fetched, with the pictures, style sheets and fonts it links, only with --allow-network:"
                         + " http and https only, never a loopback, private, link-local or reserved address unless"
@@ -626,6 +642,10 @@ public final class Main {
                         + " bundled Liberation Sans. Fonts whose licence forbids embedding are not used."
                         + System.lineSeparator()
                         + "--pictures lossless keeps every pixel without JPEG compression; compact, the default, is smaller."
+                        + System.lineSeparator()
+                        + "An .epub or .azw3 book starts a chapter at each top-level heading unless --no-chapters is given;"
+                        + " --device kindle sizes its text relative to the reader's own font setting, tablet (the default)"
+                        + " keeps the PDF's sizes."
                         + System.lineSeparator()
                         + "An output that exists already is left alone and its input skipped unless --overwrite is given."
                         + " An input is never overwritten: an output that would take an input's name keeps that input's"

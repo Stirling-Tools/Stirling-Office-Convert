@@ -146,9 +146,10 @@ final class BodyXml {
         }
         sb.append("</w:pPr>");
         if (p.bookmark != null) {
-            int id = ctx.bookmark();
-            sb.append("<w:bookmarkStart w:id=\"").append(id).append("\" w:name=\"").append(Xml.esc(p.bookmark))
-                    .append("\"/><w:bookmarkEnd w:id=\"").append(id).append("\"/>");
+            bookmark(sb, p.bookmark);
+        }
+        for (String anchor : p.anchors) {
+            bookmark(sb, anchor);
         }
         if (field == null) {
             inlines(sb, p.inlines, base);
@@ -197,6 +198,12 @@ final class BodyXml {
                     .append("\"/><w14:uncheckedState w14:val=\"0020\"/></w14:checkbox>");
         }
         sb.append("</w:sdtPr>");
+    }
+
+    private void bookmark(StringBuilder sb, String name) {
+        int id = ctx.bookmark();
+        sb.append("<w:bookmarkStart w:id=\"").append(id).append("\" w:name=\"").append(Xml.esc(name))
+                .append("\"/><w:bookmarkEnd w:id=\"").append(id).append("\"/>");
     }
 
     private void inlines(StringBuilder sb, List<Inline> inlines, RunStyle base) {

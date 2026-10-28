@@ -13,13 +13,16 @@ import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Base64;
 import java.util.List;
+import java.util.zip.Deflater;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
@@ -150,6 +153,147 @@ class EbookToPdfTest {
         String id = html.substring(anchor + 4, html.indexOf('"', anchor + 4));
         assertTrue(html.contains("href=\"#" + id + "\""), html);
         assertTrue(html.contains("text-indent:20pt"), html);
+    }
+
+    @Test
+    void missingPalmDocRecordsOrTextCannotReturnPartialBooks() throws IOException {
+        byte[] text = utf8("Only the first text chunk remains.");
+        for (int records : List.of(1, 2)) {
+            MobiWriter writer = MobiWriter.create();
+            byte[] header = new byte[16];
+            MobiWriter.put16(header, 0, MobiHeader.NONE);
+            MobiWriter.put32(header, 4, text.length + 10);
+            MobiWriter.put16(header, 8, records);
+            MobiWriter.put16(header, 10, 4096);
+            writer.records.set(0, header);
+            writer.add(text);
+            Path source = write("truncated-" + records + ".pdb", writer.build("TEXtREAd"));
+            assertThrows(IOException.class, () -> MobiBook.read(source));
+        }
+    }
+
+    @Test
+    void anEmptyFlushTerminatedZTxtBookIsAccepted() throws IOException {
+        Deflater deflater = new Deflater();
+        byte[] buffer = new byte[64];
+        int length;
+        try {
+            length = deflater.deflate(buffer, 0, buffer.length, Deflater.FULL_FLUSH);
+        } finally {
+            deflater.end();
+        }
+        MobiWriter writer = MobiWriter.create();
+        byte[] header = new byte[32];
+        MobiWriter.put16(header, 0, 0x012c);
+        MobiWriter.put16(header, 2, 1);
+        MobiWriter.put16(header, 8, 8192);
+        header[18] = 1;
+        writer.records.set(0, header);
+        writer.add(Arrays.copyOf(buffer, length));
+        assertTrue(MobiBook.read(write("empty-flush.pdb", writer.build("zTXTGPlm"))).book().html().contains("<body>"));
+    }
+
+    @Test
+    void fullFlushZTxtRecordsAreAcceptedAndTruncatedOnesRejected() throws IOException {
+        List<byte[]> text = List.of(utf8("The first paragraph of a flush-terminated book.\n"),
+                utf8("The second paragraph preserves the complete text.\n"));
+        List<byte[]> records = new ArrayList<>();
+        Deflater deflater = new Deflater();
+        try {
+            byte[] buffer = new byte[4096];
+            for (byte[] chunk : text) {
+                deflater.setInput(chunk);
+                int n = deflater.deflate(buffer, 0, buffer.length, Deflater.FULL_FLUSH);
+                assertTrue(deflater.needsInput());
+                records.add(Arrays.copyOf(buffer, n));
+            }
+        } finally {
+            deflater.end();
+        }
+        for (int change : List.of(0, 1, 2, 3)) {
+            MobiWriter writer = MobiWriter.create();
+            byte[] header = new byte[32];
+            MobiWriter.put16(header, 0, 0x012c);
+            MobiWriter.put16(header, 2, records.size());
+            MobiWriter.put32(header, 4, text.stream().mapToInt(a -> a.length).sum() + (change == 1 ? 1 : 0));
+            MobiWriter.put16(header, 8, 8192);
+            header[18] = 1;
+            writer.records.set(0, header);
+            writer.add(records.get(0));
+            if (change != 3) {
+                byte[] last = records.get(1);
+                writer.add(change == 2 ? Arrays.copyOf(last, last.length - 1) : last);
+            }
+            Path input = write("flush-" + change + ".pdb", writer.build("zTXTGPlm"));
+            if (change == 0) {
+                String html = MobiBook.read(input).book().html();
+                assertTrue(html.contains("first paragraph") && html.contains("second paragraph"), html);
+            } else {
+                assertThrows(IOException.class, () -> MobiBook.read(input));
+            }
+        }
+    }
+
+    @Test
+    void truncatedZTxtCannotReturnPartialText() throws IOException {
+        Deflater deflater = new Deflater();
+        byte[] compressed = new byte[1024];
+        int size;
+        try {
+            deflater.setInput(utf8("A complete paragraph in a truncated compressed book."));
+            deflater.finish();
+            size = deflater.deflate(compressed);
+        } finally {
+            deflater.end();
+        }
+        MobiWriter writer = MobiWriter.create();
+        byte[] header = new byte[20];
+        header[0] = 1;
+        header[1] = 0x44;
+        header[3] = 1;
+        writer.records.set(0, header);
+        writer.add(Arrays.copyOf(compressed, size - 2));
+        Path source = write("truncated.pdb", writer.build("zTXTGPlm"));
+        assertThrows(IOException.class, () -> MobiBook.read(source));
+    }
+
+    @Test
+    void zTxtBooksReadAsText() throws IOException {
+        StringBuilder text = new StringBuilder();
+        for (int i = 0; i < 400; i++) {
+            text.append("Line ").append(i).append(" of the zTXT story with caf\u00e9.\n");
+        }
+        byte[] raw = text.toString().getBytes(Charset.forName("windows-1252"));
+        Deflater d = new Deflater();
+        d.setInput(raw);
+        d.finish();
+        ByteArrayOutputStream z = new ByteArrayOutputStream();
+        byte[] buf = new byte[4096];
+        while (!d.finished()) {
+            z.write(buf, 0, d.deflate(buf));
+        }
+        d.end();
+        byte[] all = z.toByteArray();
+        MobiWriter w = MobiWriter.create();
+        ByteArrayOutputStream head = new ByteArrayOutputStream();
+        int parts = (all.length + 999) / 1000;
+        head.writeBytes(new byte[] {1, 0x44, (byte) (parts >> 8), (byte) parts});
+        head.writeBytes(new byte[16]);
+        w.records.set(0, head.toByteArray());
+        for (int i = 0; i < all.length; i += 1000) {
+            w.add(Arrays.copyOfRange(all, i, Math.min(all.length, i + 1000)));
+        }
+        Converted c = convert(write("story.pdb", w.build("zTXTGPlm")));
+        assertTrue(c.text().contains("Line 0 of the zTXT story with caf\u00e9.") && c.text().contains("Line 399"), c.text());
+    }
+
+    @Test
+    void eReaderBooksAreRefusedByName() throws IOException {
+        MobiWriter w = MobiWriter.create();
+        w.records.set(0, new byte[16]);
+        Path in = write("reader.pdb", w.build("PNRdPPrs"));
+        IOException e = assertThrows(IOException.class, () -> OfficeToPdf.convert(in, dir.resolve("reader.pdf")));
+        assertTrue(e.getMessage().contains("eReader"), e.getMessage());
     }
 
     @Test
@@ -503,6 +647,73 @@ class EbookToPdfTest {
                 + "<p>The footnote text.</p></section></body>"
                 + "<binary id=\"cover.png\" content-type=\"image/png\">" + cover + "</binary>"
                 + "<binary id=\"pic.png\" content-type=\"image/png\">" + picture + "</binary></FictionBook>";
+    }
+
+    @Test
+    void utf32FictionBooksPreserveUnicodeAndAreDetectedWithoutTheirExtension() throws IOException {
+        String words = "caf\u00e9 \u65E5\u672C\u8A9E \uD801\uDC37";
+        for (String encoding : new String[] {"UTF-32BE", "UTF-32LE"}) {
+            String xml = fb2("<p>" + words + "</p>").replace("encoding=\"UTF-8\"", "encoding=\"" + encoding + "\"");
+            for (boolean bom : new boolean[] {false, true}) {
+                byte[] bytes = ((bom ? "\uFEFF" : "") + xml).getBytes(java.nio.charset.Charset.forName(encoding));
+                assertTrue(Fb2Book.read(bytes).book().html().contains(words));
+                assertTrue(Fb2Book.root(new java.io.ByteArrayInputStream(bytes)));
+                assertTrue(Fb2Book.is(write(encoding + "-" + bom + ".bin", bytes)));
+            }
+        }
+    }
+
+    @Test
+    void utf32FictionBookPackagesRenderLikeUtf8() throws IOException {
+        Converted baseline = convert(write("reference.fb2", utf8(fb2("<p>caf\u00e9 ending.</p>"))));
+        for (String encoding : new String[] {"UTF-32BE", "UTF-32LE"}) {
+            String xml = "\uFEFF" + fb2("<p>caf\u00e9 ending.</p>")
+                    .replace("encoding=\"UTF-8\"", "encoding=\"" + encoding + "\"");
+            byte[] bytes = xml.getBytes(java.nio.charset.Charset.forName(encoding));
+            Path input = dir.resolve(encoding + ".fbz");
+            try (OutputStream out = Files.newOutputStream(input); ZipOutputStream zip = new ZipOutputStream(out)) {
+                zip.putNextEntry(new ZipEntry("book.fb2"));
+                zip.write(bytes);
+                zip.closeEntry();
+            }
+            Converted converted = convert(input);
+            assertEquals(baseline.text(), converted.text());
+            assertEquals(baseline.title(), converted.title());
+            assertEquals(baseline.author(), converted.author());
+            assertEquals(baseline.images(), converted.images());
+            try (PDDocument reference = Loader.loadPDF(dir.resolve("reference.fb2.pdf").toFile());
+                    PDDocument actual = Loader.loadPDF(dir.resolve(encoding + ".fbz.pdf").toFile())) {
+                assertEquals(reference.getNumberOfPages(), actual.getNumberOfPages());
+                org.apache.pdfbox.rendering.PDFRenderer a = new org.apache.pdfbox.rendering.PDFRenderer(reference);
+                org.apache.pdfbox.rendering.PDFRenderer b = new org.apache.pdfbox.rendering.PDFRenderer(actual);
+                for (int page = 0; page < reference.getNumberOfPages(); page++) {
+                    BufferedImage expected = a.renderImage(page, 1);
+                    BufferedImage found = b.renderImage(page, 1);
+                    assertEquals(expected.getWidth(), found.getWidth());
+                    assertEquals(expected.getHeight(), found.getHeight());
+                    assertArrayEquals(expected.getRGB(0, 0, expected.getWidth(), expected.getHeight(), null, 0,
+                            expected.getWidth()), found.getRGB(0, 0, found.getWidth(), found.getHeight(), null, 0,
+                                    found.getWidth()));
+                }
+            }
+        }
+    }
+
+    @Test
+    void wideFictionBookProbingRejectsOtherRootsEntitiesAndMalformedCharacters() throws IOException {
+        for (String encoding : new String[] {"UTF-32BE", "UTF-32LE"}) {
+            java.nio.charset.Charset charset = java.nio.charset.Charset.forName(encoding);
+            byte[] other = ("\uFEFF<?xml version=\"1.0\" encoding=\"" + encoding + "\"?><html/>").getBytes(charset);
+            assertFalse(Fb2Book.root(new java.io.ByteArrayInputStream(other)));
+            byte[] entities = ("\uFEFF<?xml version=\"1.0\" encoding=\"" + encoding + "\"?>"
+                    + "<!DOCTYPE FictionBook [<!ENTITY x SYSTEM 'file:///must-not-read'>]>"
+                    + "<FictionBook><body><p>&x;</p></body></FictionBook>").getBytes(charset);
+            assertFalse(Fb2Book.root(new java.io.ByteArrayInputStream(entities)));
+            assertThrows(IOException.class, () -> Fb2Book.read(entities));
+            byte[] malformed = ("\uFEFF" + fb2("")).replace("UTF-8", encoding).getBytes(charset);
+            byte[] truncated = java.util.Arrays.copyOf(malformed, malformed.length - 1);
+            assertThrows(IOException.class, () -> Fb2Book.read(truncated));
+        }
     }
 
     @Test

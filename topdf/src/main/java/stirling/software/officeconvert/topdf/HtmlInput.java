@@ -66,7 +66,7 @@ final class HtmlInput {
     private static boolean zipNamed(Path source) {
         Path name = source.getFileName();
         String n = name == null ? "" : name.toString().toLowerCase(Locale.ROOT);
-        return n.endsWith(".zip") || n.endsWith(".epub") || n.endsWith(".fbz");
+        return n.endsWith(".zip") || n.endsWith(".epub") || n.endsWith(".fbz") || n.endsWith(".htmlz");
     }
 
     static boolean named(Path source) {
@@ -101,7 +101,7 @@ final class HtmlInput {
                 throw new IOException("The file is not a FictionBook (FB2) book");
             }
             if (MobiBook.named(source)) {
-                throw new IOException("The file is not a Kindle or Mobipocket book: it has no BOOKMOBI header");
+                throw new IOException(MobiBook.unsupported(head(source)));
             }
         }
         if (packaged(source, requested)) {
@@ -133,7 +133,7 @@ final class HtmlInput {
                 }
                 return renderBook(Fb2Book.read(xml), sink, options, renderer);
             }
-            if (!options.allowPackages()) {
+            if (!options.allowPackages() && !htmlBook(source)) {
                 throw new IOException(PACKAGES_REFUSED);
             }
             if (pkg.page() == null) {
@@ -156,7 +156,7 @@ final class HtmlInput {
             OfficeToPdf.Renderer renderer) throws IOException {
         EpubBook.Book book = EpubBook.read(pkg);
         pkg.page(Ebook.PAGE);
-        return renderBook(new Ebook(book, pkg), sink, options, renderer);
+        return renderBook(new Ebook(book, EpubBook.fonts(pkg)), sink, options, renderer);
     }
 
     private static Result renderBook(Ebook ebook, OutputStream sink, Options options, OfficeToPdf.Renderer renderer)
@@ -164,7 +164,19 @@ final class HtmlInput {
         Path page = Files.createTempFile("office-to-pdf-", ".html");
         try {
             Files.writeString(page, ebook.book().html(), StandardCharsets.UTF_8);
-            return render(page, sink, options, renderer, ebook.assets());
+            return render(page, sink, BookFonts.with(options, ebook.book().fonts(), ebook.assets()), renderer,
+                    ebook.assets());
+        } finally {
+            OfficeToPdf.deleteQuietly(page);
+        }
+    }
+
+    static Result renderPage(String html, OutputStream sink, Options options, OfficeToPdf.Renderer renderer)
+            throws IOException {
+        Path page = Files.createTempFile("office-to-pdf-", ".html");
+        try {
+            Files.writeString(page, html, StandardCharsets.UTF_8);
+            return render(page, sink, options, renderer, HtmlAssets.NONE);
         } finally {
             OfficeToPdf.deleteQuietly(page);
         }
@@ -181,6 +193,11 @@ final class HtmlInput {
         } finally {
             ticket.close();
         }
+    }
+
+    private static boolean htmlBook(Path source) {
+        Path name = source.getFileName();
+        return name != null && name.toString().toLowerCase(Locale.ROOT).endsWith(".htmlz");
     }
 
     private static boolean compressedFictionBook(Path source) {

@@ -3,6 +3,7 @@ package stirling.software.officeconvert.topdf.io;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InterruptedIOException;
+import java.io.Reader;
 import java.util.concurrent.ArrayBlockingQueue;
 
 import javax.xml.XMLConstants;
@@ -116,13 +117,21 @@ public final class SecureXml {
     }
 
     public static Document parse(InputStream in) throws IOException {
+        return parse(new InputSource(in));
+    }
+
+    public static Document parse(Reader in) throws IOException {
+        return parse(new InputSource(in));
+    }
+
+    private static Document parse(InputSource source) throws IOException {
         DocumentBuilder builder = REUSED.poll();
         if (builder == null) {
             builder = documentBuilder();
         }
         boolean clean = false;
         try {
-            Document doc = builder.parse(new InputSource(in));
+            Document doc = builder.parse(source);
             clean = true;
             return doc;
         } catch (SAXException e) {
@@ -149,6 +158,22 @@ public final class SecureXml {
         } catch (XMLStreamException e) {
             throw new IOException("Malformed XML: " + e.getMessage(), damaged(part, e));
         }
+        return checked(raw, part);
+    }
+
+    public static XMLStreamReader reader(Reader in) throws IOException {
+        XMLStreamReader raw;
+        try {
+            synchronized (STAX) {
+                raw = STAX.createXMLStreamReader(in);
+            }
+        } catch (XMLStreamException e) {
+            throw new IOException("Malformed XML: " + e.getMessage(), e);
+        }
+        return checked(raw, null);
+    }
+
+    private static XMLStreamReader checked(XMLStreamReader raw, String part) throws IOException {
         NoDoctype reader = new NoDoctype(raw, part);
         try {
             reader.refuse(raw.getEventType());
