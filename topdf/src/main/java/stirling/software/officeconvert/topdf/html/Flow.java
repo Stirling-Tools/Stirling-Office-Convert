@@ -275,11 +275,6 @@ final class Flow {
         if (SKIPPED.contains(tag) || e.hasAttr("hidden")) {
             return;
         }
-        if (depth > MAX_DEPTH) {
-            text(e.text(), parentLook);
-            return;
-        }
-        anchorAt(e, tag);
         Map<String, String> d = ctx.declared(e, parentLook);
         if (tag.equals("table") && parentLook.centerBlocks && !d.containsKey("text-align") && e.ownerDocument() != null
                 && e.ownerDocument().quirksMode() == org.jsoup.nodes.Document.QuirksMode.quirks) {
@@ -299,9 +294,15 @@ final class Flow {
         if (Positioned.outOfFlow(d) && !tag.equals("body") && !tag.equals("html")
                 && (ctx.positions() || ctx.placed(e))) {
             if (!ctx.placed(e)) {
+                anchorAt(e, tag, false);
                 ctx.place(e);
                 staticBox(e, d, look, frame, depth);
             }
+            return;
+        }
+        anchorAt(e, tag, !inline);
+        if (depth > MAX_DEPTH) {
+            text(e.text(), look);
             return;
         }
         if (tag.equals("details") && !e.hasAttr("open")) {
@@ -415,6 +416,7 @@ final class Flow {
         if (alone) {
             flush();
         }
+        anchorAt(e, e.normalName(), false);
         inline(control, look);
         lastSpace = false;
         if (alone) {
@@ -445,9 +447,12 @@ final class Flow {
         lastSpace = spaced;
     }
 
-    private void anchorAt(Element e, String tag) {
+    private void anchorAt(Element e, String tag, boolean boundary) throws IOException {
         String id = e.id().isEmpty() && tag.equals("a") ? e.attr("name") : e.id();
         if (!id.isEmpty() && anchors < MAX_ANCHORS) {
+            if (boundary) {
+                flush();
+            }
             anchors++;
             pendingAnchors.add(anchorName(id));
         }
