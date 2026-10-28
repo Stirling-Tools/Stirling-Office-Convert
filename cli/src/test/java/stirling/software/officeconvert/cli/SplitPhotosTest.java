@@ -174,4 +174,23 @@ class SplitPhotosTest {
         }
     }
 
+    @Test
+    void runningOutOfMemoryFailsThatScanAndCarriesOn() throws Exception {
+        Path huge = dir.resolve("huge.png");
+        ImageIO.write(new BufferedImage(3000, 3000, BufferedImage.TYPE_INT_RGB), "png", huge.toFile());
+        Path small = dir.resolve("small.png");
+        ImageIO.write(scan(), "png", small.toFile());
+        Path java = Path.of(System.getProperty("java.home"), "bin", "java");
+        Process process = new ProcessBuilder(java.toString(), "-Xmx64m", "-cp", System.getProperty("java.class.path"),
+                Main.class.getName(), "split-photos", huge.toString(), small.toString(), "--method", "script", "-o",
+                dir.resolve("out").toString())
+                .start();
+        process.getOutputStream().close();
+        byte[] out = process.getInputStream().readAllBytes();
+        String err = new String(process.getErrorStream().readAllBytes(), StandardCharsets.UTF_8);
+        assertEquals(1, process.waitFor(), err);
+        assertTrue(err.contains("FAIL " + huge), err);
+        assertFalse(err.contains("Exception in thread"), err);
+        assertTrue(new String(out, StandardCharsets.UTF_8).contains("OK " + small), err);
+    }
 }
