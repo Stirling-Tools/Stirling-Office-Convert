@@ -151,7 +151,8 @@ final class Recoder {
                 }
             }
         }
-        best = better(best, candidate(Deflate.best(flateInput, quick, effort), flateFilters, flateParms));
+        byte[] flated = rest.isEmpty() ? Deflate.best(flateInput, quick, effort) : quick;
+        best = better(best, candidate(flated, flateFilters, flateParms));
         if (best.data == raw) {
             return original(raw);
         }
