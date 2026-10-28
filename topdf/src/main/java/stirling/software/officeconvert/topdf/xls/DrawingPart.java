@@ -373,13 +373,13 @@ final class DrawingPart {
             sp.append("<a:noFill/>");
         } else {
             String fill = fill(s, opt);
-            sp.append(fill == null ? "<a:noFill/>" : "<a:solidFill><a:srgbClr val=\"" + fill + "\"/></a:solidFill>");
+            sp.append(fill == null ? "<a:noFill/>" : "<a:solidFill>" + colour(fill, opt, 0x182) + "</a:solidFill>");
         }
         if (!flag(opt, 0x1FF, 0x8, 0x80000, true)) {
             sp.append("<a:ln><a:noFill/></a:ln>");
         } else {
-            sp.append("<a:ln w=\"").append(Math.max(0, s.getLineWidth())).append("\"><a:solidFill><a:srgbClr val=\"")
-                    .append(rgb(s.getLineStyleColor(), "000000")).append("\"/></a:solidFill>")
+            sp.append("<a:ln w=\"").append(Math.max(0, s.getLineWidth())).append("\"><a:solidFill>")
+                    .append(colour(rgb(s.getLineStyleColor(), "000000"), opt, 0x1C1)).append("</a:solidFill>")
                     .append(arrow(opt, 0x1D0, "headEnd")).append(arrow(opt, 0x1D1, "tailEnd")).append("</a:ln>");
         }
         sp.append("</xdr:spPr>");
@@ -409,6 +409,14 @@ final class DrawingPart {
             mixed |= ((a >> shift & 0xFF) + (b >> shift & 0xFF)) / 2 << shift;
         }
         return String.format("%06X", mixed);
+    }
+
+    private static String colour(String rgb, EscherOptRecord opt, int opacity) {
+        if (opt == null || !(opt.lookup(opacity) instanceof EscherSimpleProperty property)) {
+            return "<a:srgbClr val=\"" + rgb + "\"/>";
+        }
+        int alpha = (int) ((Math.max(0, Math.min(65536, property.getPropertyValue())) * 100000L + 32768) / 65536);
+        return "<a:srgbClr val=\"" + rgb + "\"><a:alpha val=\"" + alpha + "\"/></a:srgbClr>";
     }
 
     private static HSSFRichTextString text(HSSFSimpleShape s) {

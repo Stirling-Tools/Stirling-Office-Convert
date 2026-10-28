@@ -485,6 +485,37 @@ class XlsTest {
     }
 
     @Test
+    void drawingFillAndLineOpacityIsPreserved() throws Exception {
+        for (boolean line : new boolean[] {false, true}) {
+            for (int opacity : new int[] {0, 32768, 65536}) {
+                byte[] data = xls(wb -> {
+                    HSSFSheet sheet = wb.createSheet("Opacity");
+                    sheet.createRow(0).createCell(0).setCellValue("Transparent shape");
+                    HSSFSimpleShape box = sheet.createDrawingPatriarch().createSimpleShape(
+                            new HSSFClientAnchor(0, 0, 0, 0, (short) 1, 2, (short) 5, 8));
+                    box.setShapeType(HSSFSimpleShape.OBJECT_TYPE_RECTANGLE);
+                    box.setFillColor(255, 0, 0);
+                    box.setNoFill(line);
+                    box.setLineStyle(line ? HSSFShape.LINESTYLE_SOLID : HSSFShape.LINESTYLE_NONE);
+                    box.setLineStyleColor(255, 0, 0);
+                    box.setLineWidth(HSSFShape.LINEWIDTH_ONE_PT * 6);
+                    box.getOptRecord().setEscherProperty(new EscherSimpleProperty(
+                            line ? EscherPropertyTypes.LINESTYLE__OPACITY : EscherPropertyTypes.FILL__FILLOPACITY,
+                            opacity));
+                });
+                String name = "opacity-" + line + "-" + opacity + ".xls";
+                Converted result = convert(name, data);
+                assertTrue(result.all().contains("Transparent shape"));
+                Path pdf = dir.resolve(name + ".pdf");
+                assertEquals(opacity == 65536, hasColour(pdf, Color.RED), "opaque red at " + opacity);
+                if (opacity == 32768) {
+                    assertTrue(hasColour(pdf, new Color(255, 127, 127)), "half-transparent shape blends with white");
+                }
+            }
+        }
+    }
+
+    @Test
     void hiddenAndUnprintedShapesAreLeftOff() throws Exception {
         int[][] shapes = {{255, 0, 0, 0x20002}, {0, 255, 0, 0x10000}, {0, 0, 255, 0x30001}};
         byte[] data = xls(wb -> {
