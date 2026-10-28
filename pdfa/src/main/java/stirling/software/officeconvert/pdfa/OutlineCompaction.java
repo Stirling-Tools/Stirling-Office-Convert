@@ -6,10 +6,12 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.TreeSet;
 
 import org.apache.fontbox.cff.CFFFont;
 import org.apache.fontbox.cff.CFFType1Font;
+import org.apache.fontbox.type1.Type1Font;
 import org.apache.pdfbox.cos.COSDictionary;
 import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.cos.COSStream;
@@ -22,6 +24,8 @@ import org.apache.pdfbox.pdmodel.font.PDType1Font;
 import org.apache.pdfbox.pdmodel.font.encoding.StandardEncoding;
 
 final class OutlineCompaction {
+
+    private static final COSName TYPE1C = COSName.getPDFName("Type1C");
 
     private OutlineCompaction() {}
 
@@ -49,6 +53,36 @@ final class OutlineCompaction {
         s.setInt(COSName.LENGTH1, p.length1());
         s.setInt(COSName.LENGTH2, p.length2());
         s.setInt(COSName.LENGTH3, p.length3());
+        return s;
+    }
+
+    static COSStream type1ToCff(PDDocument doc, List<PDFont> fonts, Map<COSDictionary, TreeSet<Integer>> codes)
+            throws IOException {
+        Map<Integer, String> names = new TreeMap<>();
+        Set<String> used = new HashSet<>();
+        Type1Font font = null;
+        for (PDFont f : fonts) {
+            if (!(f instanceof PDType1Font t1) || t1.getType1Font() == null) {
+                return null;
+            }
+            if (font == null) {
+                font = t1.getType1Font();
+            }
+            for (int code : codes.get(f.getCOSObject())) {
+                String name = t1.codeToName(code);
+                String before = names.putIfAbsent(code, name);
+                if (before != null && !before.equals(name)) {
+                    return null;
+                }
+                used.add(name);
+            }
+        }
+        byte[] cff = Type1ToCff.convert(font, names, used);
+        if (cff == null) {
+            return null;
+        }
+        COSStream s = stream(doc, cff);
+        s.setItem(COSName.SUBTYPE, TYPE1C);
         return s;
     }
 
