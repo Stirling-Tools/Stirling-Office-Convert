@@ -120,6 +120,7 @@ final class EpubBook {
         if (chapters.isEmpty()) {
             throw new IOException("The EPUB's reading order (spine) lists no documents");
         }
+        refuseDrm(pkg, opfPath, manifest.values(), chapters);
         String title = text(opf, "dc|title, title");
         String author = text(opf, "dc|creator, creator");
         String cover = cover(opf, manifest, opfPath);
@@ -283,6 +284,48 @@ final class EpubBook {
     private static final String IDPF_FONTS = "http://www.idpf.org/2008/embedding";
 
     private static final String ADOBE_FONTS = "http://ns.adobe.com/pdf/enc#RC";
+
+    private static final Set<String> CONTENT_TYPES = Set.of("application/xhtml+xml", "text/html", "image/svg+xml",
+            "application/x-dtbook+xml");
+
+    private static void refuseDrm(HtmlPackage pkg, String opfPath, Iterable<Element> items, List<String> chapters)
+            throws IOException {
+        if (pkg.read("META-INF/rights.xml") != null) {
+            throw new IOException(MobiBook.DRM);
+        }
+        byte[] encryption = pkg.read("META-INF/encryption.xml");
+        if (encryption == null) {
+            return;
+        }
+        Set<String> content = new HashSet<>();
+        for (String chapter : chapters) {
+            content.add(folded(chapter));
+        }
+        for (Element item : items) {
+            String path = resolve(opfPath, item.attr("href"));
+            if (path != null && CONTENT_TYPES.contains(item.attr("media-type").strip().toLowerCase(Locale.ROOT))) {
+                content.add(folded(path));
+            }
+        }
+        Document enc = Jsoup.parse(markup(encryption), "", Parser.xmlParser());
+        for (Element data : local(enc, "encrypteddata")) {
+            List<Element> methods = local(data, "encryptionmethod");
+            String algorithm = methods.isEmpty() ? "" : methods.get(0).attr("Algorithm").strip();
+            if (algorithm.equals(IDPF_FONTS) || algorithm.equals(ADOBE_FONTS)) {
+                continue;
+            }
+            for (Element ref : local(data, "cipherreference")) {
+                String path = resolve("", ref.attr("URI"));
+                if (path != null && content.contains(folded(path))) {
+                    throw new IOException(MobiBook.DRM);
+                }
+            }
+        }
+    }
+
+    private static String folded(String path) {
+        return path.replaceFirst("^/+", "").toLowerCase(Locale.ROOT);
+    }
 
     static HtmlAssets fonts(HtmlPackage pkg) throws IOException {
         byte[] encryption = pkg.read("META-INF/encryption.xml");

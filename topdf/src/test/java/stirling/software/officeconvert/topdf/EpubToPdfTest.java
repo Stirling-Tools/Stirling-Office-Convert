@@ -415,6 +415,51 @@ class EpubToPdfTest {
         assertTrue(ex.getMessage().contains("spine"), ex.getMessage());
     }
 
+    private static byte[] encryption(String algorithm, String uri) {
+        return utf8("<?xml version=\"1.0\"?><encryption xmlns=\"urn:oasis:names:tc:opendocument:xmlns:container\" "
+                + "xmlns:enc=\"http://www.w3.org/2001/04/xmlenc#\"><enc:EncryptedData><enc:EncryptionMethod Algorithm=\""
+                + algorithm + "\"/><enc:CipherData><enc:CipherReference URI=\"" + uri + "\"/></enc:CipherData>"
+                + "</enc:EncryptedData></encryption>");
+    }
+
+    @Test
+    void encryptedChaptersAreRefusedAsDrm() throws IOException {
+        Map<String, byte[]> e = book();
+        byte[] cipher = new byte[512];
+        new java.util.Random(7).nextBytes(cipher);
+        e.put("OEBPS/text/one.xhtml", cipher);
+        e.put("META-INF/encryption.xml", encryption("http://www.w3.org/2001/04/xmlenc#aes128-cbc",
+                "OEBPS/text/one.xhtml"));
+        Path in = epub("adept.epub", e);
+        Path out = dir.resolve("adept.pdf");
+        IOException ex = assertThrows(IOException.class, () -> OfficeToPdf.convert(in, out,
+                OfficeToPdf.Options.defaults().timeout(Duration.ofMinutes(2))));
+        assertEquals(MobiBook.DRM, ex.getMessage());
+        assertFalse(Files.exists(out));
+    }
+
+    @Test
+    void rightsManagedBooksAreRefusedAsDrm() throws IOException {
+        Map<String, byte[]> e = book();
+        e.put("META-INF/rights.xml", utf8("<?xml version=\"1.0\"?><adept:rights xmlns:adept=\"http://ns.adobe.com/adept\"/>"));
+        Path in = epub("rights.epub", e);
+        IOException ex = assertThrows(IOException.class, () -> OfficeToPdf.convert(in, dir.resolve("rights.pdf"),
+                OfficeToPdf.Options.defaults().timeout(Duration.ofMinutes(2))));
+        assertEquals(MobiBook.DRM, ex.getMessage());
+    }
+
+    @Test
+    void encryptedPicturesAloneDoNotRefuseTheBook() throws IOException {
+        Map<String, byte[]> e = book();
+        e.put("META-INF/encryption.xml", encryption("http://www.w3.org/2001/04/xmlenc#aes128-cbc",
+                "OEBPS/images/figure.png"));
+        Path out = dir.resolve("picture.pdf");
+        OfficeToPdf.convert(epub("picture.epub", e), out, OfficeToPdf.Options.defaults().timeout(Duration.ofMinutes(2)));
+        try (PDDocument doc = Loader.loadPDF(out.toFile())) {
+            assertTrue(new PDFTextStripper().getText(doc).contains("Chapter Two"));
+        }
+    }
+
     @Test
     void selfClosedElementsDoNotSwallowWhatFollows() {
         String html = EpubBook.xhtmlAsHtml("<?xml version='1.0'?><p>a<a id=\"x\"/>b<br/>c<div class=\"d\"/>e</p>");
