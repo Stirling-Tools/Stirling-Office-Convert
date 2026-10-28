@@ -126,7 +126,7 @@ class NetworkSafetyTest {
                 }
             }
         }
-        assertEquals(6, modules, "the build passes topdf.scanClasses for core, legacy, pdfa, lineart, cli and app");
+        assertEquals(7, modules, "the build passes topdf.scanClasses for core, legacy, pdfa, lineart, cli, app and optimize");
         assertEquals(List.of(), problems);
         List<String> stale = new ArrayList<>();
         allowed.forEach((owner, vs) -> vs.stream().filter(v -> !used.contains(owner + " " + v))

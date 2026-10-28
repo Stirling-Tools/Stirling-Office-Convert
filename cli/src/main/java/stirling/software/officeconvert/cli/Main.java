@@ -34,6 +34,7 @@ import stirling.software.officeconvert.PdfToXlsx;
 import stirling.software.officeconvert.Pictures;
 import stirling.software.officeconvert.legacy.PdfToPpt;
 import stirling.software.officeconvert.lineart.LineArt;
+import stirling.software.officeconvert.optimize.PdfOptimizer;
 import stirling.software.officeconvert.pdfa.PdfALevel;
 import stirling.software.officeconvert.pdfa.PdfToPdfA;
 import stirling.software.officeconvert.topdf.HtmlAssets;
@@ -95,6 +96,9 @@ public final class Main {
         LineArt.Method lineArtMethod = null;
         LineArt.Options lineArt = LineArt.Options.defaults();
         boolean lineArtTuned = false;
+        boolean optimize = false;
+        PdfOptimizer.Effort effort = null;
+        boolean keepPrivateData = false;
         FontSet fonts;
         try {
             for (int i = 0; i < args.length; i++) {
@@ -155,6 +159,9 @@ public final class Main {
                         lineArt = lineArt.inkColour(true);
                         lineArtTuned = true;
                     }
+                    case "--optimize" -> optimize = true;
+                    case "--effort" -> effort = effort(value(args, ++i, a));
+                    case "--keep-private-data" -> keepPrivateData = true;
                     case "--pictures" -> pictures = pictures(value(args, ++i, a));
                     case "--no-chapters" -> ebook = ebook.chapters(false);
                     case "--device" -> ebook = ebook.device(device(value(args, ++i, a)));
@@ -225,6 +232,18 @@ public final class Main {
             if (lineArtMethod != null && pdfa != null) {
                 throw new Usage("--line-art and --pdfa are separate runs; give one of them");
             }
+            if (optimize && lineArtMethod != null) {
+                throw new Usage("--optimize and --line-art are separate passes; give one of them");
+            }
+            if ((effort != null || keepPrivateData) && !optimize) {
+                throw new Usage("--effort and --keep-private-data go with --optimize");
+            }
+            if (optimize && pdfa != null) {
+                throw new Usage("--optimize and --pdfa are separate passes; give one of them");
+            }
+            if (optimize && (anyOffice || formatGiven && !"pdf".equals(format) || pagesGiven)) {
+                throw new Usage("--optimize rewrites whole PDFs; give it PDF input without --pages or --format");
+            }
             if (pdfa != null && (anyOffice || formatGiven && !"pdf".equals(format) || pagesGiven)) {
                 throw new Usage("--pdfa converts whole PDFs to PDF/A; give it PDF input without --pages or --format");
             }
@@ -237,18 +256,19 @@ public final class Main {
             if (anyOffice && formatGiven && !"pdf".equals(format)) {
                 throw new Usage("Office documents convert to PDF only; use --format pdf or leave it out");
             }
-            if (anyPdf && "pdf".equals(format) && pdfa == null && lineArtMethod == null) {
+            if (anyPdf && "pdf".equals(format) && pdfa == null && lineArtMethod == null && !optimize) {
                 throw new Usage("PDF input converts to an Office format, not pdf");
             }
             options = new PdfToDocx.Options(first, last, tables, dpi, password, pictureFallback, pictures);
             slides = new PdfToPptx.Options(first, last, tables, dpi, password, pictureFallback, pictures);
             books = PdfToXlsx.Options.defaults().withPages(first, last).withTables(tables).withPassword(password)
                     .withSheets(sheets).withTextFallback(pictureFallback);
-            if ((pdfa != null || lineArtMethod != null) && output != null && !Files.isDirectory(output) && inputs.size() == 1
+            if ((pdfa != null || lineArtMethod != null || optimize) && output != null && !Files.isDirectory(output) && inputs.size() == 1
                     && !Files.isDirectory(inputs.get(0)) && !"pdf".equals(extension(output))) {
-                throw new Usage((pdfa != null ? "--pdfa" : "--line-art") + " writes a PDF; name the output .pdf");
+                throw new Usage((pdfa != null ? "--pdfa" : lineArtMethod != null ? "--line-art" : "--optimize")
+                        + " writes a PDF; name the output .pdf");
             }
-            if (pdfa == null && lineArtMethod == null && output != null && !Files.isDirectory(output) && inputs.size() == 1
+            if (pdfa == null && lineArtMethod == null && !optimize && output != null && !Files.isDirectory(output) && inputs.size() == 1
                     && !Files.isDirectory(inputs.get(0))) {
                 String ext = known(extension(output));
                 boolean officeInput = officeOrPage(inputs.get(0));
@@ -263,7 +283,8 @@ public final class Main {
             return 2;
         }
         List<Path> pdfs = new ArrayList<>();
-        String pdfSuffix = pdfa != null ? "pdfa.pdf" : lineArtMethod != null ? "lineart.pdf" : null;
+        String pdfSuffix = pdfa != null ? "pdfa.pdf" : lineArtMethod != null ? "lineart.pdf"
+                : optimize ? "optimized.pdf" : null;
         boolean archive = pdfSuffix != null;
         boolean officeFolder = !archive && (!formatGiven || "pdf".equals(format));
         boolean pdfFolder = archive || !formatGiven || !"pdf".equals(format);
@@ -302,6 +323,9 @@ public final class Main {
         PdfToPdfA.Options archival = pdfa == null ? null : PdfToPdfA.Options.defaults().level(pdfa).password(password)
                 .timeout(office.timeout()).maxPages(office.maxPages()).fonts(fonts);
         LineArt.Options bilevel = lineArtMethod == null ? null : lineArt.method(lineArtMethod).password(password);
+        PdfOptimizer.Options shrink = !optimize ? null : PdfOptimizer.Options.defaults().password(password)
+                .timeout(office.timeout()).effort(effort == null ? PdfOptimizer.Effort.DEFAULT : effort)
+                .keepPrivateData(keepPrivateData);
         for (int k = 0; k < pdfs.size(); k++) {
             Path pdf = pdfs.get(k);
             boolean officeInput = officeOrPage(pdf);
@@ -320,7 +344,19 @@ public final class Main {
                 }
                 OfficeToPdf.Result result = null;
                 List<String> notes = List.of();
-                if (archival != null) {
+                if (shrink != null) {
+                    PdfOptimizer.Result r = PdfOptimizer.optimize(pdf, target, shrink);
+                    List<String> lines = new ArrayList<>(r.warnings());
+                    if (r.rewritten()) {
+                        lines.add(String.format(Locale.ROOT, "%d -> %d bytes (%.1f%% %s)", r.inputBytes(),
+                                r.outputBytes(), 100.0 * Math.abs((double) r.inputBytes() - r.outputBytes())
+                                        / Math.max(1, r.inputBytes()),
+                                r.outputBytes() <= r.inputBytes() ? "smaller" : "larger"));
+                    } else if (r.warnings().isEmpty()) {
+                        lines.add("already as small as the rewrite; copied unchanged; any private data is retained");
+                    }
+                    notes = lines;
+                } else if (archival != null) {
                     notes = PdfToPdfA.convert(pdf, target, archival).warnings();
                 } else if (bilevel != null) {
                     LineArt.Result art = LineArt.convert(pdf, target, bilevel);
@@ -645,6 +681,14 @@ public final class Main {
         };
     }
 
+    private static PdfOptimizer.Effort effort(String s) throws Usage {
+        try {
+            return PdfOptimizer.Effort.valueOf(s.strip().toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException e) {
+            throw new Usage("--effort is fast, default or max, not '" + s + "'");
+        }
+    }
+
     private static Pictures pictures(String s) throws Usage {
         try {
             return Pictures.valueOf(s.strip().toUpperCase(Locale.ROOT));
@@ -678,6 +722,9 @@ public final class Main {
                         + "       office-convert <in.pdf|dir>... --line-art sauvola|otsu|fixed|edges [-o out.pdf|dir] [--threshold 0-100]"
                         + " [--edge-level 1|2|3] [--window px] [--sauvola-k 0-1] [--codec smallest|jbig2|g4|flate] [--ink-colour]"
                         + " [--password p] [--overwrite] [-q]"
+                        + System.lineSeparator()
+                        + "       office-convert <in.pdf|dir>... --optimize [--effort fast|default|max] [--keep-private-data]"
+                        + " [-o out.pdf|dir] [--password p] [--timeout s] [--overwrite] [-q]"
                         + System.lineSeparator()
                         + "Word, PowerPoint and Excel files (.docx .docm .dotx .dotm .pptx .pptm .ppsx .ppsm .potx .potm"
                         + " .xlsx .xlsm .xltx .xltm .xlsb, binary .doc .dot .xls .xlt .ppt .pps .pot back to Word 6.0 and"
@@ -716,6 +763,13 @@ public final class Main {
                         + " white (default 50); edges draws outlines like ImageMagick's -edge (--edge-level, default 1), as"
                         + " Stirling-PDF's compress tool does. --codec picks the compression, smallest by default; --ink-colour keeps"
                         + " a coloured ink instead of black."
+                        + System.lineSeparator()
+                        + "--optimize tries to shrink each PDF without changing how any page draws (in.optimized.pdf unless"
+                        + " -o names it), and repairs a damaged one on the way: unused objects and resources are dropped,"
+                        + " duplicates merged, streams recompressed and objects packed into object streams; editing"
+                        + " applications' private data goes too unless --keep-private-data. An output that would not be"
+                        + " smaller is normally a copy of the input; repaired PDFs may be larger. A copied input retains its private data."
+                        + " Supported encrypted PDFs keep their encryption and permissions; use --password when required."
                         + System.lineSeparator()
                         + "--fonts adds a folder of .ttf, .ttc, .otf or .otc fonts (searched to a depth of 8, links not"
                         + " followed); --font-map draws a family with an installed one (Aptos=Inter); --font-width scales"

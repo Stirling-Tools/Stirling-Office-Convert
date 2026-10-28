@@ -457,6 +457,41 @@ class MainTest {
     }
 
     @Test
+    void optimizeWritesASmallerCopyBesideTheInput() throws Exception {
+        Path pdf = dir.resolve("in.pdf");
+        try (PDDocument d = new PDDocument()) {
+            for (int i = 0; i < 3; i++) {
+                org.apache.pdfbox.pdmodel.PDPage page = new org.apache.pdfbox.pdmodel.PDPage();
+                d.addPage(page);
+                try (org.apache.pdfbox.pdmodel.PDPageContentStream cs = new org.apache.pdfbox.pdmodel.PDPageContentStream(d,
+                        page)) {
+                    cs.addRect(10.000f, 10.000f, 100.500f, 100.250f);
+                    cs.fill();
+                }
+            }
+            d.save(pdf.toFile(), org.apache.pdfbox.pdfwriter.compress.CompressParameters.NO_COMPRESSION);
+        }
+        Result r = run(pdf.toString(), "--optimize");
+        assertEquals(0, r.code(), r.err());
+        Path out = dir.resolve("in.optimized.pdf");
+        assertTrue(Files.size(out) < Files.size(pdf));
+        assertTrue(r.err().contains("smaller"), r.err());
+        try (PDDocument d = org.apache.pdfbox.Loader.loadPDF(out.toFile())) {
+            assertEquals(3, d.getNumberOfPages());
+        }
+        Result again = run(dir.toString(), "--optimize", "--effort", "fast", "-o", dir.resolve("small").toString(), "-q");
+        assertEquals(0, again.code(), again.err());
+        assertTrue(Files.exists(dir.resolve("small/in.optimized.pdf")));
+        assertFalse(Files.exists(dir.resolve("small/in.optimized.optimized.pdf")));
+        assertUsage(run(pdf.toString(), "--optimize", "--pdfa", "2b"), "separate passes");
+        assertUsage(run(pdf.toString(), "--effort", "max"), "go with --optimize");
+        assertUsage(run(pdf.toString(), "--optimize", "--effort", "huge"), "fast, default or max");
+        assertUsage(run(pdf.toString(), "--optimize", "-o", dir.resolve("x.docx").toString()), "name the output .pdf");
+        assertUsage(run(minimalDocx(dir.resolve("a.docx")).toString(), "--optimize"), "PDF input");
+        assertUsage(run(pdf.toString(), "--optimize", "--line-art", "otsu"), "separate passes");
+    }
+
+    @Test
     void pdfaHonoursMaxPages() throws Exception {
         Path pdf = dir.resolve("three.pdf");
         try (PDDocument d = new PDDocument()) {
