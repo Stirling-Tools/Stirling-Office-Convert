@@ -2,6 +2,7 @@ package stirling.software.officeconvert.topdf;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -75,5 +76,27 @@ class Kf8FontTest {
         huge[4] = 0x7F;
         assertNull(Kf8Book.font(huge));
         assertNull(Kf8Book.font(new byte[] {'F', 'O', 'N', 'T'}));
+    }
+
+    @Test
+    void tinyFontRecordsCannotClaimHugeFonts() throws IOException {
+        byte[] lying = record(new byte[16], true, null);
+        lying[4] = 0x02;
+        lying[5] = 0;
+        lying[6] = 0;
+        lying[7] = 0;
+        com.sun.management.ThreadMXBean bean =
+                (com.sun.management.ThreadMXBean) java.lang.management.ManagementFactory.getThreadMXBean();
+        long tid = Thread.currentThread().threadId();
+        long before = bean.getThreadAllocatedBytes(tid);
+        assertNull(Kf8Book.font(lying));
+        long allocated = bean.getThreadAllocatedBytes(tid) - before;
+        assertTrue(allocated < (1 << 20), allocated + " bytes allocated");
+    }
+
+    @Test
+    void fontRecordsThatInflatePastTheZipRatioAreDropped() throws IOException {
+        byte[] bomb = new byte[8 << 20];
+        assertTrue(Kf8Book.font(record(bomb, true, null)) == null);
     }
 }

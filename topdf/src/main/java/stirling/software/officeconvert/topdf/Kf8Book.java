@@ -14,6 +14,8 @@ import java.util.regex.Pattern;
 import java.util.zip.DataFormatException;
 import java.util.zip.Inflater;
 
+import stirling.software.officeconvert.topdf.io.OfficeZip;
+
 final class Kf8Book {
 
     static final int MAX_FLOWS = 10_000;
@@ -130,6 +132,10 @@ final class Kf8Book {
             }
         }
         if ((flags & 0b1) != 0) {
+            OfficeZip.Limits limits = OfficeZip.Limits.DEFAULT;
+            if (size > limits.graceBytes() && data.length < size * limits.minInflateRatio()) {
+                return null;
+            }
             Inflater inflater = new Inflater();
             try {
                 inflater.setInput(data);
