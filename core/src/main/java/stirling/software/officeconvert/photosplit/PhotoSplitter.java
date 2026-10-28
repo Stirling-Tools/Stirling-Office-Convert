@@ -147,6 +147,8 @@ public final class PhotoSplitter {
             InterruptedIOException error = new InterruptedIOException("Photo splitting interrupted");
             error.initCause(stopped);
             throw error;
+        } catch (RuntimeException e) {
+            throw new IOException("Photo splitting failed: " + e, e);
         }
     }
 

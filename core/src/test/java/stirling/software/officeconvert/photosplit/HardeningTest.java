@@ -154,6 +154,17 @@ class HardeningTest {
     }
 
     @Test
+    void corruptImageHeaderIsReportedAsAnIOException() throws Exception {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        ImageIO.write(scan(), "bmp", out);
+        byte[] bmp = out.toByteArray();
+        bmp[13] = (byte) 0xF4;
+        Path input = dir.resolve("broken.bmp");
+        Files.write(input, bmp);
+        assertThrows(IOException.class, () -> PhotoSplitter.split(input, dir.resolve("out"), PhotoSplitter.Options.defaults()));
+    }
+
+    @Test
     void longPixelLoopsStopWhenInterrupted() {
         int n = 240;
         byte[] lShape = new byte[n * n];
