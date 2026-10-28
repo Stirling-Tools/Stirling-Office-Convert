@@ -8,7 +8,6 @@ import java.awt.image.DataBuffer;
 import java.awt.image.DataBufferInt;
 import java.awt.image.Raster;
 import java.awt.image.SinglePixelPackedSampleModel;
-import java.util.Arrays;
 
 final class ScanImage implements Picture {
 
@@ -97,46 +96,28 @@ final class ScanImage implements Picture {
         return false;
     }
 
-    BufferedImage toImage() {
-        BufferedImage image = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB);
-        int[] data = ((DataBufferInt) image.getRaster().getDataBuffer()).getData();
-        System.arraycopy(rgb, 0, data, 0, rgb.length);
+    static ScanImage copy(Picture picture) {
+        int w = picture.width();
+        int h = picture.height();
+        int[] out = new int[Math.multiplyExact(w, h)];
+        fill(picture, out);
+        return new ScanImage(w, h, out);
+    }
+
+    static BufferedImage image(Picture picture) {
+        BufferedImage image = new BufferedImage(picture.width(), picture.height(), BufferedImage.TYPE_INT_RGB);
+        fill(picture, ((DataBufferInt) image.getRaster().getDataBuffer()).getData());
         return image;
     }
 
-    ScanImage crop(int x, int y, int w, int h) {
-        int[] out = new int[w * h];
-        for (int r = 0; r < h; r++) {
+    private static void fill(Picture picture, int[] out) {
+        int w = picture.width();
+        int h = picture.height();
+        for (int y = 0; y < h; y++) {
             PhotoSplitter.checkpoint();
-            System.arraycopy(rgb, (y + r) * width + x, out, r * w, w);
+            for (int x = 0; x < w; x++) {
+                out[y * w + x] = picture.rgb(x, y);
+            }
         }
-        return new ScanImage(w, h, out);
-    }
-
-    ScanImage pad(int border, int fill) {
-        long paddedWidth = width + 2L * border;
-        long paddedHeight = height + 2L * border;
-        if (paddedWidth > Integer.MAX_VALUE || paddedHeight > Integer.MAX_VALUE
-                || paddedWidth * paddedHeight > PhotoSplitter.MAX_PIXELS) {
-            throw new IllegalArgumentException("Padded scan exceeds the " + PhotoSplitter.MAX_PIXELS + " pixel limit");
-        }
-        int w = (int) paddedWidth;
-        int h = (int) paddedHeight;
-        int[] out = new int[Math.multiplyExact(w, h)];
-        Arrays.fill(out, fill);
-        for (int r = 0; r < height; r++) {
-            PhotoSplitter.checkpoint();
-            System.arraycopy(rgb, r * width, out, (r + border) * w + border, width);
-        }
-        return new ScanImage(w, h, out);
-    }
-
-    int[] luma() {
-        int[] g = new int[rgb.length];
-        for (int i = 0; i < rgb.length; i++) {
-            int p = rgb[i];
-            g[i] = ((p >> 16 & 0xFF) * 4899 + (p >> 8 & 0xFF) * 9617 + (p & 0xFF) * 1868 + 8192) >> 14;
-        }
-        return g;
     }
 }

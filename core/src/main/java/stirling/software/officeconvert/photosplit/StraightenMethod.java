@@ -32,6 +32,10 @@ final class StraightenMethod {
         return new PhotoSplitter.Photo(Crop.of(source, rect, LEVEL_ANGLE), rect.corners(), rect.angle());
     }
 
+    static Picture view(Source source, RotatedRect rect) {
+        return Crop.view(source, rect, LEVEL_ANGLE);
+    }
+
     static List<RotatedRect> find(Source source, PhotoSplitter.Options options) {
         int factor = (int) Math.max(1, Math.ceil(Math.sqrt((double) source.width() * source.height() / ANALYSIS_PIXELS)));
         ScanImage scan = source.shrink(factor);

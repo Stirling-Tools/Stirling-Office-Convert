@@ -2,6 +2,9 @@ package stirling.software.officeconvert.photosplit;
 
 import java.awt.geom.Point2D;
 import java.awt.image.BufferedImage;
+import java.awt.image.DataBuffer;
+import java.awt.image.MultiPixelPackedSampleModel;
+import java.awt.image.SampleModel;
 import java.io.BufferedOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -21,6 +24,7 @@ import java.util.concurrent.CancellationException;
 
 import javax.imageio.ImageIO;
 import javax.imageio.ImageReader;
+import javax.imageio.ImageTypeSpecifier;
 import javax.imageio.stream.ImageInputStream;
 
 import org.apache.pdfbox.pdmodel.PDDocument;
@@ -33,6 +37,9 @@ import stirling.software.officeconvert.extract.PdfFiles;
 public final class PhotoSplitter {
 
     public static final long MAX_PIXELS = 100_000_000L;
+
+    private static final long ANALYSIS_PIXELS = 4_500_000L;
+    private static final long ANALYSIS_BYTES_PER_PIXEL = 24;
 
     public enum Method {
         STRAIGHTEN,
@@ -117,7 +124,7 @@ public final class PhotoSplitter {
         Objects.requireNonNull(options, "options");
         checkpoint();
         check(scan);
-        return options.method() == Method.SCRIPT ? ScriptMethod.split(ScanImage.of(scan), options)
+        return options.method() == Method.SCRIPT ? ScriptMethod.split(Source.of(scan), options)
                 : StraightenMethod.split(Source.of(scan), options);
     }
 
@@ -159,12 +166,15 @@ public final class PhotoSplitter {
                 renderer.setSubsamplingAllowed(true);
                 for (int page = 0; page < document.getNumberOfPages(); page++) {
                     checkpoint();
-                    float dpi = pageDpi(document.getPage(page).getCropBox(), options.dpi());
-                    write(renderer.renderImageWithDPI(page, dpi, ImageType.RGB), options, outputDirectory, base, written);
+                    PDRectangle box = document.getPage(page).getCropBox();
+                    float dpi = pageDpi(box, options.dpi());
+                    long pixels = (long) Math.ceil(box.getWidth() / 72.0 * dpi) * (long) Math.ceil(box.getHeight() / 72.0 * dpi);
+                    budget(input.getFileName() + " page " + (page + 1), peakBytes(pixels, 4 * pixels, false, options.method()));
+                    write(source(renderer.renderImageWithDPI(page, dpi, ImageType.RGB)), options, outputDirectory, base, written);
                 }
             }
         } else {
-            write(readImage(input), options, outputDirectory, base, written);
+            write(source(readImage(input, options.method())), options, outputDirectory, base, written);
         }
         checkpoint();
         return written;
@@ -179,30 +189,44 @@ public final class PhotoSplitter {
         return (float) (dpi * Math.sqrt(MAX_PIXELS / (w * h)) * 0.999);
     }
 
-    private static void write(BufferedImage scan, Options options, Path dir, String base, List<Path> written) throws IOException {
+    private static Source source(BufferedImage scan) {
         checkpoint();
         check(scan);
-        Source source = options.method() == Method.SCRIPT ? null : Source.of(scan);
-        List<Photo> eager = source == null ? ScriptMethod.split(ScanImage.of(scan), options) : null;
-        List<RotatedRect> rects = source == null ? null : StraightenMethod.find(source, options);
-        int count = eager != null ? eager.size() : rects.size();
+        return Source.of(scan);
+    }
+
+    private static void write(Source source, Options options, Path dir, String base, List<Path> written) throws IOException {
+        checkpoint();
+        List<Picture> photos = new ArrayList<>();
+        if (options.method() == Method.SCRIPT) {
+            for (ScriptMethod.Cut cut : ScriptMethod.cuts(source, options)) {
+                photos.add(cut.picture());
+            }
+        } else {
+            for (RotatedRect rect : StraightenMethod.find(source, options)) {
+                photos.add(StraightenMethod.view(source, rect));
+            }
+        }
         List<Path> targets = new ArrayList<>();
-        for (int i = 0; i < count; i++) {
+        for (int i = 0; i < photos.size(); i++) {
             Path target = dir.resolve(base + "_" + (written.size() + i + 1) + ".png");
             if (!options.overwrite() && Files.exists(target)) {
                 throw new FileAlreadyExistsException(target.toString());
             }
             targets.add(target);
         }
-        for (int i = 0; i < count; i++) {
-            BufferedImage image = eager != null ? eager.get(i).image() : StraightenMethod.photo(source, rects.get(i)).image();
+        for (int i = 0; i < photos.size(); i++) {
             Path target = targets.get(i);
-            writeImage(image, target, options.overwrite());
+            writeImage(photos.get(i), target, options.overwrite());
             written.add(target);
         }
     }
 
     static void writeImage(BufferedImage image, Path target, boolean overwrite) throws IOException {
+        writeImage(Source.of(image), target, overwrite);
+    }
+
+    private static void writeImage(Picture image, Path target, boolean overwrite) throws IOException {
         checkpoint();
         Path part = Files.createTempFile(target.toAbsolutePath().getParent(), ".photo-", ".part");
         try {
@@ -224,7 +248,40 @@ public final class PhotoSplitter {
         }
     }
 
-    private static BufferedImage readImage(Path input) throws IOException {
+    static long peakBytes(long pixels, long decoded, boolean converted, Method method) {
+        long analysis = ANALYSIS_BYTES_PER_PIXEL * Math.min(pixels, ANALYSIS_PIXELS);
+        long work = method == Method.SCRIPT ? Math.max(pixels, analysis) : analysis;
+        if (!converted) {
+            return decoded + work;
+        }
+        long copy = 4 * pixels;
+        return Math.max(decoded + copy, copy + work);
+    }
+
+    static long decodedBytes(ImageTypeSpecifier type, long pixels) {
+        SampleModel model = type.getSampleModel(1, 1);
+        long bits = model instanceof MultiPixelPackedSampleModel packed ? packed.getPixelBitStride()
+                : (long) model.getNumDataElements() * DataBuffer.getDataTypeSize(model.getDataType());
+        return (bits * pixels + 7) / 8;
+    }
+
+    private static boolean converted(ImageTypeSpecifier type) {
+        return switch (type.getBufferedImageType()) {
+            case BufferedImage.TYPE_INT_RGB, BufferedImage.TYPE_INT_ARGB, BufferedImage.TYPE_3BYTE_BGR,
+                    BufferedImage.TYPE_4BYTE_ABGR, BufferedImage.TYPE_BYTE_GRAY -> false;
+            default -> true;
+        };
+    }
+
+    static void budget(String name, long bytes) throws IOException {
+        long limit = Runtime.getRuntime().maxMemory();
+        if (limit != Long.MAX_VALUE && bytes > limit) {
+            throw new IOException(name + " needs about " + (bytes >> 20) + " MB of memory to split; the limit is "
+                    + (limit >> 20) + " MB");
+        }
+    }
+
+    private static BufferedImage readImage(Path input, Method method) throws IOException {
         try (InputStream in = Files.newInputStream(input); ImageInputStream stream = ImageIO.createImageInputStream(in)) {
             if (stream == null) {
                 throw new IOException("cannot read " + input);
@@ -239,6 +296,11 @@ public final class PhotoSplitter {
                 long pixels = (long) reader.getWidth(0) * reader.getHeight(0);
                 if (pixels > MAX_PIXELS) {
                     throw new IOException(input.getFileName() + " has " + pixels + " pixels; the limit is " + MAX_PIXELS);
+                }
+                Iterator<ImageTypeSpecifier> types = reader.getImageTypes(0);
+                if (types != null && types.hasNext()) {
+                    ImageTypeSpecifier type = types.next();
+                    budget(input.getFileName().toString(), peakBytes(pixels, decodedBytes(type, pixels), converted(type), method));
                 }
                 return reader.read(0);
             } finally {
