@@ -21,7 +21,7 @@ final class Binarizer {
     private static final double[] BLUE = weights(0.072186);
 
     interface Rows {
-        void process(float[] buffer, int first, int from, int to);
+        void process(float[] buffer, int first, int from, int to) throws IOException;
     }
 
     interface GreyBand {
@@ -36,6 +36,10 @@ final class Binarizer {
 
     static Bitmap binarize(BufferedImage image, LineArt.Options options) {
         try {
+            if (options.method() == LineArt.Method.EDGES && image.getColorModel().hasAlpha()) {
+                Bitmap out = AlphaEdges.binarize(image, options);
+                return options.inkColour() ? out.withInk(meanInk(Source.of(image), image.getHeight(), out)) : out;
+            }
             return binarize(Source.of(image), options, Long.MAX_VALUE);
         } catch (IOException e) {
             throw new UncheckedIOException(e);
@@ -103,7 +107,13 @@ final class Binarizer {
 
     static Greys greys(Source source, int rows) throws IOException {
         if (rows < source.height) {
-            return band -> source.bands(rows, false, (y, image) -> band.accept(y, grey(image), image.getHeight()));
+            float[][] reuse = new float[2][];
+            return band -> source.bands(rows, false, (y, image) -> {
+                int slot = y == 0 ? 0 : 1;
+                float[] values = grey(image, reuse[slot]);
+                band.accept(y, values, image.getHeight());
+                reuse[slot] = values;
+            });
         }
         float[][] whole = new float[1][];
         source.bands(rows, false, (y, image) -> whole[0] = grey(image));
@@ -150,9 +160,14 @@ final class Binarizer {
     }
 
     static float[] grey(BufferedImage image) {
+        return grey(image, null);
+    }
+
+    static float[] grey(BufferedImage image, float[] reuse) {
         int w = image.getWidth();
         int h = image.getHeight();
-        float[] grey = new float[Math.multiplyExact(w, h)];
+        int size = Math.multiplyExact(w, h);
+        float[] grey = reuse != null && reuse.length >= size ? reuse : new float[size];
         Raster raster = image.getRaster();
         if (raster.getNumBands() == 1 && image.getColorModel().getColorSpace().getType() == ColorSpace.TYPE_GRAY
                 && image.getColorModel().getPixelSize() >= 8) {
@@ -200,18 +215,26 @@ final class Binarizer {
     }
 
     private static void edges(Greys greys, int w, int h, int level, double threshold, Bitmap out) throws IOException {
-        double[] histogram = new double[65536];
         float[] line = new float[w];
         double[][] ring = new double[2 * level + 1][];
         int[] ringRow = new int[2 * level + 1];
-        Arrays.fill(ringRow, -1);
-        scan(greys, w, h, level, (buffer, first, from, to) -> {
-            for (int y = from; y < to; y++) {
-                LineArt.checkpoint();
-                negatedEdges(buffer, first, w, h, y, level, ring, ringRow, line);
-                for (float f : line) {
-                    histogram[bin(f)]++;
+        thresholdEdges(band -> {
+            Arrays.fill(ringRow, -1);
+            scan(greys, w, h, level, (buffer, first, from, to) -> {
+                for (int y = from; y < to; y++) {
+                    LineArt.checkpoint();
+                    negatedEdges(buffer, first, w, h, y, level, ring, ringRow, line);
+                    band.accept(y, line, 1);
                 }
+            });
+        }, w, h, threshold, out);
+    }
+
+    static void thresholdEdges(Greys lines, int w, int h, double threshold, Bitmap out) throws IOException {
+        double[] histogram = new double[65536];
+        lines.each((y, line, rows) -> {
+            for (float f : line) {
+                histogram[bin(f)]++;
             }
         });
         double n = (double) w * h;
@@ -237,23 +260,18 @@ final class Binarizer {
         double gamma = white == black ? 0 : 1.0 / (white - black);
         int b = black;
         int wh = white;
-        Arrays.fill(ringRow, -1);
-        scan(greys, w, h, level, (buffer, first, from, to) -> {
-            for (int y = from; y < to; y++) {
-                LineArt.checkpoint();
-                negatedEdges(buffer, first, w, h, y, level, ring, ringRow, line);
-                for (int x = 0; x < w; x++) {
-                    float f = line[x];
-                    double s;
-                    if (b == wh) {
-                        s = f;
-                    } else {
-                        int j = bin(f);
-                        s = j < b ? 0 : j > wh ? QUANTUM : (float) Math.clamp(QUANTUM * gamma * (j - b), 0, QUANTUM);
-                    }
-                    if (s < cut) {
-                        out.set(x, y);
-                    }
+        lines.each((y, line, rows) -> {
+            for (int x = 0; x < w; x++) {
+                float f = line[x];
+                double value;
+                if (b == wh) {
+                    value = f;
+                } else {
+                    int j = bin(f);
+                    value = j < b ? 0 : j > wh ? QUANTUM : (float) Math.clamp(QUANTUM * gamma * (j - b), 0, QUANTUM);
+                }
+                if (value < cut) {
+                    out.set(x, y);
                 }
             }
         });
