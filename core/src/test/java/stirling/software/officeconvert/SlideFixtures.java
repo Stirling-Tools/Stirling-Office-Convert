@@ -19,6 +19,7 @@ import org.apache.pdfbox.pdmodel.common.PDRectangle;
 import org.apache.pdfbox.pdmodel.font.PDType1Font;
 import org.apache.pdfbox.pdmodel.font.Standard14Fonts;
 import org.apache.pdfbox.pdmodel.graphics.image.LosslessFactory;
+import org.apache.pdfbox.pdmodel.graphics.state.PDExtendedGraphicsState;
 import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
 import org.apache.pdfbox.pdmodel.interactive.action.PDActionURI;
 import org.apache.pdfbox.pdmodel.interactive.annotation.PDAnnotationLink;
@@ -82,6 +83,51 @@ final class SlideFixtures {
                 cs.setTextMatrix(Matrix.getRotateInstance(Math.PI / 2, 920, 150));
                 cs.showText("Draft " + variant);
                 cs.endText();
+            }
+            doc.save(pdf.toFile());
+        }
+        return pdf;
+    }
+
+    static Path facets(Path dir) throws IOException {
+        Path pdf = dir.resolve("facets.pdf");
+        try (PDDocument doc = new PDDocument()) {
+            PDPage page = new PDPage(WIDE);
+            doc.addPage(page);
+            try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
+                cs.setNonStrokingColor(1f, 1f, 1f);
+                cs.addRect(0, 0, 960, 540);
+                cs.fill();
+                cs.saveGraphicsState();
+                cs.addRect(0, 0, 960, 540);
+                cs.clip();
+                PDExtendedGraphicsState gs = new PDExtendedGraphicsState();
+                gs.setNonStrokingAlphaConstant(0.6f);
+                cs.setGraphicsStateParameters(gs);
+                cs.setNonStrokingColor(0.25f, 0.5f, 0.75f);
+                cs.moveTo(700, 545);
+                cs.lineTo(960, 545);
+                cs.lineTo(960, 0);
+                cs.lineTo(820, 0);
+                cs.closePath();
+                cs.fill();
+                cs.restoreGraphicsState();
+                cs.saveGraphicsState();
+                cs.moveTo(800, 270);
+                cs.curveTo(800, 325, 845, 370, 900, 370);
+                cs.curveTo(955, 370, 1000, 325, 1000, 270);
+                cs.curveTo(1000, 215, 955, 170, 900, 170);
+                cs.curveTo(845, 170, 800, 215, 800, 270);
+                cs.clip();
+                cs.setNonStrokingColor(0.8f, 0.2f, 0.1f);
+                cs.moveTo(780, 150);
+                cs.lineTo(940, 400);
+                cs.lineTo(940, 150);
+                cs.closePath();
+                cs.fill();
+                cs.restoreGraphicsState();
+                cs.setNonStrokingColor(0f, 0f, 0f);
+                text(cs, SANS, 40, 60, 440, "Facets");
             }
             doc.save(pdf.toFile());
         }

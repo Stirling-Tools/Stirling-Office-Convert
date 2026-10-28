@@ -1,6 +1,7 @@
 package stirling.software.officeconvert.slides;
 
 import java.awt.geom.AffineTransform;
+import java.awt.geom.Rectangle2D;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -58,7 +59,7 @@ final class Art {
         this.lossless = lossless;
     }
 
-    record Piece(PictureShape picture, int order) {}
+    record Piece(SlideShape shape, int order) {}
 
     long operators() {
         return renderer.operators();
@@ -67,10 +68,20 @@ final class Art {
     List<Piece> pieces(PaintOrder paint, Set<Integer> represented, int pageIndex, AffineTransform toDisplay,
             float width, float height) {
         List<Run> runs = new ArrayList<>();
+        List<Piece> out = new ArrayList<>();
+        boolean shapes = paint.drawsShapes();
         Run run = null;
         List<Mark> between = new ArrayList<>();
         for (Mark m : paint.marks()) {
             if (m.kind() == Kind.TEXT || represented.contains(m.order())) {
+                between.add(m);
+                continue;
+            }
+            if (shapes && m.shape() != null) {
+                Piece p = shape(m);
+                if (p != null) {
+                    out.add(p);
+                }
                 between.add(m);
                 continue;
             }
@@ -96,7 +107,6 @@ final class Art {
             }
         }
         kept.sort(Comparator.comparingDouble(r -> -r.box.area()));
-        List<Piece> out = new ArrayList<>();
         int blanks = 0;
         long start = renderer.operators();
         for (Run r : kept.subList(0, Math.min(MAX_PIECES, kept.size()))) {
@@ -112,6 +122,15 @@ final class Art {
             }
         }
         return out;
+    }
+
+    private static Piece shape(Mark m) {
+        Rectangle2D b = m.shape().getBounds2D();
+        if (b.getWidth() * b.getHeight() < MIN_AREA) {
+            return null;
+        }
+        Frame frame = new Frame((float) b.getX(), (float) b.getY(), (float) b.getWidth(), (float) b.getHeight());
+        return new Piece(new PathShape(frame, m.shape(), m.rgb(), m.alpha()), m.order());
     }
 
     private static final class Run {

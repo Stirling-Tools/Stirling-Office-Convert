@@ -1,6 +1,8 @@
 package stirling.software.officeconvert.slides;
 
+import java.awt.Shape;
 import java.awt.geom.AffineTransform;
+import java.awt.geom.Area;
 import java.awt.geom.GeneralPath;
 import java.awt.geom.Path2D;
 import java.awt.geom.PathIterator;
@@ -8,9 +10,13 @@ import java.awt.geom.Point2D;
 import java.awt.geom.Rectangle2D;
 import java.io.IOException;
 import java.io.InterruptedIOException;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Deque;
 import java.util.List;
+import java.util.Map;
+import java.util.WeakHashMap;
 
 import org.apache.pdfbox.contentstream.PDFGraphicsStreamEngine;
 import org.apache.pdfbox.contentstream.operator.Operator;
@@ -27,6 +33,7 @@ import org.apache.pdfbox.pdmodel.graphics.form.PDFormXObject;
 import org.apache.pdfbox.pdmodel.graphics.form.PDTransparencyGroup;
 import org.apache.pdfbox.pdmodel.graphics.image.PDImage;
 import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
+import org.apache.pdfbox.pdmodel.graphics.state.PDGraphicsState;
 import org.apache.pdfbox.pdmodel.graphics.state.RenderingMode;
 import org.apache.pdfbox.util.Matrix;
 import org.apache.pdfbox.util.Vector;
@@ -52,7 +59,7 @@ final class PaintOrder extends PDFGraphicsStreamEngine {
     }
 
     record Mark(Kind kind, Box box, int order, float alpha, boolean opaque, Outline outline, float radius, int from,
-            boolean blended, int rgb) {}
+            boolean blended, int rgb, Path2D shape) {}
 
     record Slant(float x, float y, float angle, float advance, int order) {}
 
@@ -61,6 +68,12 @@ final class PaintOrder extends PDFGraphicsStreamEngine {
     private static final double MIN_SLANT = 1.0;
 
     private static final double DISPLAY_SIZE = 18.0;
+
+    private static final int MAX_SHAPES = 256;
+
+    private static final int MAX_SEGMENTS = 512;
+
+    private static final int MAX_CLIP_SEGMENTS = 16;
 
     private final AffineTransform toDisplay;
     private final float width;
@@ -75,6 +88,10 @@ final class PaintOrder extends PDFGraphicsStreamEngine {
     private float radius;
     private int maskedGroups;
     private int blendedGroups;
+    private int transparentGroups;
+    private int shapes;
+    private final Map<PDGraphicsState, List<Path2D>> clipped = new WeakHashMap<>();
+    private final Deque<List<Path2D>> formClips = new ArrayDeque<>();
 
     private PaintOrder(PDPage page, AffineTransform toDisplay, float width, float height) {
         super(page);
@@ -269,11 +286,13 @@ final class PaintOrder extends PDFGraphicsStreamEngine {
     @Override
     public void showForm(PDFormXObject form) throws IOException {
         int span = enterGroup();
+        formClips.push(clips());
         try {
             if (budget.form()) {
                 super.showForm(form);
             }
         } finally {
+            formClips.pop();
             exitGroup(span);
         }
     }
@@ -281,11 +300,15 @@ final class PaintOrder extends PDFGraphicsStreamEngine {
     @Override
     public void showTransparencyGroup(PDTransparencyGroup form) throws IOException {
         int span = enterGroup();
+        formClips.push(clips());
+        transparentGroups++;
         try {
             if (budget.form()) {
                 transparencyGroup(form);
             }
         } finally {
+            transparentGroups--;
+            formClips.pop();
             exitGroup(span);
         }
     }
@@ -333,11 +356,78 @@ final class PaintOrder extends PDFGraphicsStreamEngine {
     }
 
     private void mark(Kind kind, Rectangle2D device) {
+        mark(kind, device, null);
+    }
+
+    private void mark(Kind kind, Rectangle2D device, Path2D shape) {
         float alpha = kind == Kind.STROKE ? (float) getGraphicsState().getAlphaConstant()
                 : (float) getGraphicsState().getNonStrokeAlphaConstant();
         boolean path = kind == Kind.FILL || kind == Kind.STROKE;
         mark(kind, device, alpha, alpha >= 0.99f && !masked(),
-                path ? outline(this.path) : Outline.OTHER, path ? radius : 0);
+                path ? outline(this.path) : Outline.OTHER, path ? radius : 0, shape);
+    }
+
+    boolean drawsShapes() {
+        return shapes <= MAX_SHAPES;
+    }
+
+    private Path2D flat(int windingRule) {
+        if (shapes > MAX_SHAPES || transparentGroups > 0 || blendedGroups > 0 || masked() || blending()
+                || getGraphicsState().getNonStrokeAlphaConstant() < 0.01 || segments(path) > MAX_SEGMENTS) {
+            return null;
+        }
+        Path2D.Double fill = new Path2D.Double(path);
+        fill.setWindingRule(windingRule);
+        Area area = new Area(fill);
+        for (Path2D c : getGraphicsState().getCurrentClippingPaths()) {
+            if (!clipTo(area, c)) {
+                return null;
+            }
+        }
+        for (Path2D c : clips()) {
+            if (!clipTo(area, c)) {
+                return null;
+            }
+        }
+        if (area.isEmpty() || segments(area) > MAX_SEGMENTS) {
+            return null;
+        }
+        shapes++;
+        return new Path2D.Float(area.createTransformedArea(toDisplay));
+    }
+
+    private static boolean clipTo(Area area, Path2D clip) {
+        if (segments(clip) > MAX_CLIP_SEGMENTS) {
+            return false;
+        }
+        Area c = new Area(clip);
+        if (!c.isRectangular()) {
+            return false;
+        }
+        if (!c.contains(area.getBounds2D())) {
+            area.intersect(c);
+        }
+        return true;
+    }
+
+    private static int segments(Shape s) {
+        int n = 0;
+        for (PathIterator it = s.getPathIterator(null); !it.isDone() && n <= MAX_SEGMENTS; it.next()) {
+            n++;
+        }
+        return n;
+    }
+
+    private List<Path2D> clips() {
+        List<Path2D> own = clipped.get(getGraphicsState());
+        return own != null ? own : formClips.isEmpty() ? List.of() : formClips.peek();
+    }
+
+    @Override
+    public void saveGraphicsState() {
+        List<Path2D> c = clips();
+        super.saveGraphicsState();
+        clipped.put(getGraphicsState(), c);
     }
 
     private Outline outline(GeneralPath p) {
@@ -452,6 +542,11 @@ final class PaintOrder extends PDFGraphicsStreamEngine {
     }
 
     private void mark(Kind kind, Rectangle2D device, float alpha, boolean opaque, Outline outline, float radius) {
+        mark(kind, device, alpha, opaque, outline, radius, null);
+    }
+
+    private void mark(Kind kind, Rectangle2D device, float alpha, boolean opaque, Outline outline, float radius,
+            Path2D shape) {
         if (marks.size() >= MAX_MARKS || device == null || device.isEmpty() && kind != Kind.STROKE) {
             order++;
             return;
@@ -472,11 +567,12 @@ final class PaintOrder extends PDFGraphicsStreamEngine {
             Mark last = marks.getLast();
             if (last.kind() == Kind.TEXT && last.order() == order - 1 && sameLine(last.box(), b)) {
                 marks.set(marks.size() - 1, new Mark(Kind.TEXT, last.box().union(b), order++, alpha, opaque, outline,
-                        radius, last.from(), last.blended() || blended, -1));
+                        radius, last.from(), last.blended() || blended, -1, null));
                 return;
             }
         }
-        marks.add(new Mark(kind, b, order, alpha, opaque, outline, radius, order, blended, kind == Kind.FILL ? fillRgb() : -1));
+        int rgb = kind == Kind.FILL ? fillRgb() : -1;
+        marks.add(new Mark(kind, b, order, alpha, opaque, outline, radius, order, blended, rgb, rgb >= 0 ? shape : null));
         order++;
     }
 
@@ -583,7 +679,7 @@ final class PaintOrder extends PDFGraphicsStreamEngine {
 
     @Override
     public void fillPath(int windingRule) {
-        mark(Kind.FILL, path.getBounds2D());
+        mark(Kind.FILL, path.getBounds2D(), flat(windingRule));
         path.reset();
     }
 
@@ -595,6 +691,11 @@ final class PaintOrder extends PDFGraphicsStreamEngine {
 
     @Override
     public void clip(int windingRule) {
+        List<Path2D> c = new ArrayList<>(clips());
+        Path2D.Double p = new Path2D.Double(path);
+        p.setWindingRule(windingRule);
+        c.add(p);
+        clipped.put(getGraphicsState(), List.copyOf(c));
     }
 
     @Override

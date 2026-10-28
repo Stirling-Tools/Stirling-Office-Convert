@@ -42,6 +42,16 @@ class PdfToOdpTest {
     }
 
     @Test
+    void aTranslucentPolygonIsADrawPath() throws Exception {
+        Path out = dir.resolve("facets.odp");
+        PdfToOdp.convert(SlideFixtures.facets(dir), out, PdfToPptx.Options.defaults());
+        String content = SlideFixtures.text(SlideFixtures.parts(Files.readAllBytes(out)), "content.xml");
+        assertEquals(1, count(content, "<draw:path "), content);
+        assertTrue(content.contains("draw:fill-color=\"#4080bf\" draw:opacity=\"60%\" draw:stroke=\"none\""), content);
+        assertTrue(content.matches("(?s).*<draw:path [^>]*svg:viewBox=\"0 0 25890 54000\" svg:d=\"M[0-9 ]+L.*Z\"/>.*"), content);
+    }
+
+    @Test
     void mimetypeComesFirstUncompressed() throws Exception {
         try (ZipFile zip = new ZipFile(odp.toFile())) {
             ZipEntry first = zip.entries().nextElement();

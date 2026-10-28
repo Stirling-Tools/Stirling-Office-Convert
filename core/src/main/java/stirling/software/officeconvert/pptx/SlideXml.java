@@ -1,11 +1,13 @@
 package stirling.software.officeconvert.pptx;
 
+import java.awt.geom.PathIterator;
 import java.util.Map;
 
 import stirling.software.officeconvert.model.Picture;
 import stirling.software.officeconvert.model.Scripts;
 import stirling.software.officeconvert.slides.Frame;
 import stirling.software.officeconvert.slides.LineShape;
+import stirling.software.officeconvert.slides.PathShape;
 import stirling.software.officeconvert.slides.PictureShape;
 import stirling.software.officeconvert.slides.RectShape;
 import stirling.software.officeconvert.slides.Slide;
@@ -53,6 +55,7 @@ final class SlideXml {
                 case TableShape t -> tables.table(sb, t, nextId++);
                 case RectShape r -> rect(sb, r);
                 case LineShape l -> line(sb, l);
+                case PathShape p -> path(sb, p);
             }
         }
         sb.append("</p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sld>");
@@ -140,6 +143,39 @@ final class SlideXml {
         }
         Ooxml.line(sb, r.lineRgb(), r.lineWidth());
         sb.append("</p:spPr></p:sp>");
+    }
+
+    private void path(StringBuilder sb, PathShape p) {
+        int id = nextId++;
+        Frame f = p.frame();
+        long w = Math.max(1, Ooxml.emu(f.width()));
+        long h = Math.max(1, Ooxml.emu(f.height()));
+        sb.append("<p:sp><p:nvSpPr><p:cNvPr id=\"").append(id).append("\" name=\"Freeform ").append(id - 1)
+                .append("\"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr><p:spPr>");
+        xfrm(sb, f, false);
+        sb.append("<a:custGeom><a:avLst/><a:gdLst/><a:ahLst/><a:cxnLst/><a:rect l=\"0\" t=\"0\" r=\"r\" b=\"b\"/>")
+                .append("<a:pathLst><a:path w=\"").append(w).append("\" h=\"").append(h).append("\">");
+        double[] c = new double[6];
+        for (PathIterator it = p.path().getPathIterator(null); !it.isDone(); it.next()) {
+            switch (it.currentSegment(c)) {
+                case PathIterator.SEG_MOVETO -> points(sb.append("<a:moveTo>"), f, c, 1, w, h).append("</a:moveTo>");
+                case PathIterator.SEG_LINETO -> points(sb.append("<a:lnTo>"), f, c, 1, w, h).append("</a:lnTo>");
+                case PathIterator.SEG_QUADTO -> points(sb.append("<a:quadBezTo>"), f, c, 2, w, h).append("</a:quadBezTo>");
+                case PathIterator.SEG_CUBICTO -> points(sb.append("<a:cubicBezTo>"), f, c, 3, w, h).append("</a:cubicBezTo>");
+                default -> sb.append("<a:close/>");
+            }
+        }
+        sb.append("</a:path></a:pathLst></a:custGeom>");
+        Ooxml.solidFill(sb, p.fillRgb(), p.alpha());
+        sb.append("<a:ln><a:noFill/></a:ln></p:spPr></p:sp>");
+    }
+
+    private static StringBuilder points(StringBuilder sb, Frame f, double[] c, int n, long w, long h) {
+        for (int i = 0; i < n; i++) {
+            sb.append("<a:pt x=\"").append(Math.clamp(Math.round((c[2 * i] - f.x()) * 12700.0), 0, w)).append("\" y=\"")
+                    .append(Math.clamp(Math.round((c[2 * i + 1] - f.y()) * 12700.0), 0, h)).append("\"/>");
+        }
+        return sb;
     }
 
     private void line(StringBuilder sb, LineShape l) {

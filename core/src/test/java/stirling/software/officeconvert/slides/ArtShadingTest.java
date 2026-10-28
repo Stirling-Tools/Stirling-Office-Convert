@@ -58,7 +58,7 @@ class ArtShadingTest {
         Store store = new Store();
         List<Art.Piece> pieces = new Art(doc, store, 150f, false).pieces(paint, Set.of(), index, toDisplay, 720, 405);
         assertEquals(1, pieces.size());
-        return store.made.get(0).pixelWidth() * 72f / pieces.get(0).picture().frame().width();
+        return store.made.get(0).pixelWidth() * 72f / ((PictureShape) pieces.get(0).shape()).frame().width();
     }
 
     private static PDShading radial() {

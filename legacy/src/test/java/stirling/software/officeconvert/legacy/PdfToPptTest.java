@@ -2,6 +2,7 @@ package stirling.software.officeconvert.legacy;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
@@ -18,7 +19,10 @@ import org.apache.pdfbox.pdmodel.PDPageContentStream;
 import org.apache.pdfbox.pdmodel.common.PDRectangle;
 import org.apache.pdfbox.pdmodel.font.PDType1Font;
 import org.apache.pdfbox.pdmodel.font.Standard14Fonts;
+import org.apache.pdfbox.pdmodel.graphics.state.PDExtendedGraphicsState;
 import org.apache.pdfbox.util.Matrix;
+import org.apache.poi.ddf.EscherPropertyTypes;
+import org.apache.poi.hslf.usermodel.HSLFFreeformShape;
 import org.apache.poi.hslf.usermodel.HSLFShape;
 import org.apache.poi.hslf.usermodel.HSLFSlide;
 import org.apache.poi.hslf.usermodel.HSLFSlideShow;
@@ -165,5 +169,38 @@ class PdfToPptTest {
             }
         }
         fail("no sideways text box");
+    }
+
+    @Test
+    void aTranslucentPolygonIsAFreeform() throws IOException {
+        Path pdf = dir.resolve("facet.pdf");
+        try (PDDocument doc = new PDDocument()) {
+            PDPage page = new PDPage(new PDRectangle(720, 540));
+            doc.addPage(page);
+            try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
+                PDExtendedGraphicsState gs = new PDExtendedGraphicsState();
+                gs.setNonStrokingAlphaConstant(0.5f);
+                cs.setGraphicsStateParameters(gs);
+                cs.setNonStrokingColor(0.25f, 0.5f, 0.75f);
+                cs.moveTo(500, 540);
+                cs.lineTo(720, 540);
+                cs.lineTo(720, 0);
+                cs.lineTo(600, 0);
+                cs.closePath();
+                cs.fill();
+            }
+            doc.save(pdf.toFile());
+        }
+        Path ppt = dir.resolve("facet.ppt");
+        PdfToPpt.convert(pdf, ppt, PdfToPptx.Options.defaults());
+        try (InputStream in = Files.newInputStream(ppt); HSLFSlideShow facet = new HSLFSlideShow(in)) {
+            List<HSLFShape> shapes = facet.getSlides().get(0).getShapes();
+            assertEquals(1, shapes.size());
+            HSLFFreeformShape f = assertInstanceOf(HSLFFreeformShape.class, shapes.get(0));
+            assertEquals(0x4080BF, f.getFillColor().getRGB() & 0xFFFFFF);
+            assertEquals(0.5, f.getEscherProperty(EscherPropertyTypes.FILL__FILLOPACITY) / 65536.0, 0.01);
+            assertEquals(500, f.getAnchor().getX(), 0.5);
+            assertEquals(220, f.getAnchor().getWidth(), 0.5);
+        }
     }
 }

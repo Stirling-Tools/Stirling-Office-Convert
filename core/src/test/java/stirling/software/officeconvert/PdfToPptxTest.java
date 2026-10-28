@@ -286,6 +286,19 @@ class PdfToPptxTest {
     }
 
     @Test
+    void aTranslucentPolygonIsAFreeformAndAClippedOneStaysAPicture() throws Exception {
+        Path out = dir.resolve("facets.pptx");
+        PdfToPptx.convert(SlideFixtures.facets(dir), out, PdfToPptx.Options.defaults());
+        String slide = SlideFixtures.text(SlideFixtures.parts(Files.readAllBytes(out)), "ppt/slides/slide1.xml");
+        assertEquals(1, count(slide, "<a:custGeom>"), slide);
+        assertTrue(slide.contains("<a:srgbClr val=\"4080BF\"><a:alpha val=\"60000\"/>"), slide);
+        assertTrue(slide.matches("(?s).*name=\"Freeform \\d+\"/>.{0,80}<a:off x=\"\\d+\" y=\"0\"/><a:ext cx=\"\\d+\" cy=\"6858000\"/>.*"),
+                "the part above the page is clipped away");
+        assertEquals(1, count(slide, "<p:pic>"), "the polygon inside a round clip is still a picture");
+        assertTrue(slide.indexOf("<a:custGeom>") < slide.indexOf("<p:pic>"), "drawn in the PDF's order");
+    }
+
+    @Test
     void ocrTextOverAScanStaysSearchableButInvisible() throws Exception {
         assertTrue(ocrSlide(true).matches("(?s).*<a:srgbClr val=\"[0-9A-F]{6}\"><a:alpha val=\"0\"/></a:srgbClr>(?:(?!</a:r>).)*"
                 + "<a:t>Scanned report text</a:t>.*"), "the scan shows the words, the text layer only carries them");

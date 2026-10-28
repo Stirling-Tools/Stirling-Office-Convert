@@ -13,6 +13,7 @@ import java.util.Map;
 import org.apache.poi.ddf.EscherPropertyTypes;
 import org.apache.poi.hslf.usermodel.HSLFAutoShape;
 import org.apache.poi.hslf.usermodel.HSLFFill;
+import org.apache.poi.hslf.usermodel.HSLFFreeformShape;
 import org.apache.poi.hslf.usermodel.HSLFLine;
 import org.apache.poi.hslf.usermodel.HSLFPictureData;
 import org.apache.poi.hslf.usermodel.HSLFPictureShape;
@@ -25,6 +26,7 @@ import stirling.software.officeconvert.model.Picture;
 import stirling.software.officeconvert.model.Scripts;
 import stirling.software.officeconvert.slides.Frame;
 import stirling.software.officeconvert.slides.LineShape;
+import stirling.software.officeconvert.slides.PathShape;
 import stirling.software.officeconvert.slides.PictureShape;
 import stirling.software.officeconvert.slides.RectShape;
 import stirling.software.officeconvert.slides.Slide;
@@ -104,6 +106,7 @@ public final class PptWriter implements SlideSink {
                 case PictureShape p -> picture(s, p);
                 case RectShape r -> rect(s, r);
                 case LineShape l -> line(s, l);
+                case PathShape p -> path(s, p);
                 case TableShape t -> PptTables.table(s, t, text);
             }
         }
@@ -173,6 +176,18 @@ public final class PptWriter implements SlideSink {
         } else {
             shape.setLineColor(null);
         }
+        s.addShape(shape);
+    }
+
+    private static void path(HSLFSlide s, PathShape p) {
+        HSLFFreeformShape shape = new HSLFFreeformShape(s);
+        shape.setPath(p.path());
+        shape.setAnchor(p.path().getBounds2D());
+        shape.setFillColor(new Color(p.fillRgb()));
+        if (p.alpha() < 0.995f) {
+            shape.setEscherProperty(EscherPropertyTypes.FILL__FILLOPACITY, Math.round(p.alpha() * 65536));
+        }
+        shape.setLineColor(null);
         s.addShape(shape);
     }
 
