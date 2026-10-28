@@ -595,17 +595,26 @@ final class Rewrite {
                     b.writeTo(out);
                     spill.copy(spilled[i], out);
                 } else {
-                    Bytes clear = new Bytes(spill.length(spilled[i]));
-                    spill.copy(spilled[i], clear);
-                    COSBase s = source.load(index.key(i));
-                    byte[] data = encryption.stream(clear.toByteArray(), number,
-                            s instanceof COSStream cs ? cs : new COSStream());
+                    int length = spill.length(spilled[i]);
+                    boolean encrypted = encryption.encrypts(index.has(i, Index.METADATA));
+                    long stored = encrypted ? encryption.encryptedLength(length) : length;
                     byte[] dict = b.toByteArray();
                     b.reset();
-                    b.write(lengthReplaced(dict, spill.length(spilled[i]), data.length));
+                    b.write(lengthReplaced(dict, length, stored));
                     b.ascii("stream\n");
                     b.writeTo(out);
-                    out.write(data);
+                    long start = out.position();
+                    if (encrypted) {
+                        try (OutputStream c = encryption.encrypting(out, number)) {
+                            spill.copy(spilled[i], c);
+                        }
+                    } else {
+                        spill.copy(spilled[i], out);
+                    }
+                    if (out.position() - start != stored) {
+                        throw new IOException("A stream was encrypted to " + (out.position() - start)
+                                + " bytes where " + stored + " were expected");
+                    }
                 }
                 out.ascii("\nendstream\nendobj\n");
             } else {
@@ -713,7 +722,7 @@ final class Rewrite {
         }
     }
 
-    private static byte[] lengthReplaced(byte[] dict, int oldLength, int newLength) {
+    private static byte[] lengthReplaced(byte[] dict, int oldLength, long newLength) {
         String s = new String(dict, java.nio.charset.StandardCharsets.ISO_8859_1);
         String from = "/Length " + oldLength;
         int at = s.lastIndexOf(from);
