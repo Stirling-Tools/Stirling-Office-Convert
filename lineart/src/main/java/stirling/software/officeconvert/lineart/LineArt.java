@@ -290,21 +290,28 @@ public final class LineArt {
                 && options.method() != Method.EDGES;
         COSStream soft = stream.getDictionaryObject(COSName.SMASK) instanceof COSStream s ? s : null;
         boolean matte = soft != null && soft.getDictionaryObject(COSName.MATTE) != null;
-        long bandPixels = bandPixels();
+        long budget = bandBudget();
+        int w = image.getWidth();
+        int h = image.getHeight();
+        int context = Binarizer.context(options, w, h);
+        int rows = Source.bandRows(w, h, context, budget);
+        long band = Source.bandBytes(w, h, context, rows);
+        if (band > budget) {
+            warnings.add("Page " + f.page() + ": a " + w + "x" + h
+                    + " image has rows too wide to convert in the memory available and was left as it was");
+            return null;
+        }
         Source source = Source.of(image, f.resources(), matte);
-        long bitmapBytes = pixels / 8;
-        Admission.Ticket ticket = Admission.jvm().enter(bitmapBytes * 4 + Math.min(pixels, bandPixels) * 28);
+        Admission.Ticket ticket = Admission.jvm().enter(pixels / 8 * 4 + band);
         try {
-            Bitmap bitmap = Binarizer.binarize(source, options, bandPixels);
+            Bitmap bitmap = Binarizer.binarize(source, options, rows);
             Codecs.Encoded encoded = Codecs.encode(bitmap, options.codec());
             if (alreadyBilevel && encoded.data().length >= stream.getLength()) {
                 return null;
             }
             COSStream keyMask = soft == null && stream.getDictionaryObject(COSName.MASK) instanceof COSArray
-                    ? keyMask(document, source, Source.bandRows(source.width, source.height, bandPixels),
-                            options.codec()) : null;
-            rewrite(stream, encoded, colour(encoded, bitmap, colourSpace, options.inkColour()),
-                    encoded.inkSample() == 1 && !options.inkColour() ? inverted() : null);
+                    ? keyMask(document, source, rows, options.codec()) : null;
+            rewrite(stream, encoded, colour(bitmap, colourSpace, options.inkColour()), null);
             if (keyMask != null) {
                 stream.setItem(COSName.MASK, keyMask);
             }
@@ -317,8 +324,9 @@ public final class LineArt {
         }
     }
 
-    private static long bandPixels() {
-        return Math.clamp(Admission.jvm().budget() / 2 / 28, 1L << 20, 1L << 22);
+    static long bandBudget() {
+        return Math.clamp(Admission.jvm().budget() / 2, (long) Source.BYTES_PER_PIXEL << 20,
+                (long) Source.BYTES_PER_PIXEL << 22);
     }
 
     private static COSStream withoutMatte(PDDocument document, COSStream soft) throws IOException {
@@ -360,12 +368,12 @@ public final class LineArt {
         mask.setInt(COSName.WIDTH, w);
         mask.setInt(COSName.HEIGHT, h);
         mask.setBoolean(COSName.IMAGE_MASK, true);
-        rewrite(mask, encoded, null, encoded.inkSample() == 0 ? inverted() : null);
+        rewrite(mask, encoded, null, inverted());
         mask.removeItem(COSName.COLORSPACE);
         return mask;
     }
 
-    static COSBase colour(Codecs.Encoded encoded, Bitmap bitmap, PDColorSpace source, boolean keepInk) {
+    static COSBase colour(Bitmap bitmap, PDColorSpace source, boolean keepInk) {
         if (!keepInk) {
             return COSName.DEVICEGRAY;
         }
@@ -374,7 +382,7 @@ public final class LineArt {
         if (source instanceof PDSeparation) {
             base = source.getCOSObject();
             palette = new byte[2];
-            palette[encoded.inkSample()] = (byte) 0xFF;
+            palette[0] = (byte) 0xFF;
         } else {
             int rgb = bitmap.inkRgb();
             int r = (rgb >>> 16) & 0xFF;
@@ -383,13 +391,11 @@ public final class LineArt {
             boolean neutral = Math.max(r, Math.max(g, b)) - Math.min(r, Math.min(g, b)) < 32;
             base = COSName.DEVICERGB;
             palette = new byte[6];
-            int ink = encoded.inkSample() * 3;
-            int paper = (1 - encoded.inkSample()) * 3;
-            palette[paper] = palette[paper + 1] = palette[paper + 2] = (byte) 0xFF;
+            palette[3] = palette[4] = palette[5] = (byte) 0xFF;
             if (!neutral) {
-                palette[ink] = (byte) r;
-                palette[ink + 1] = (byte) g;
-                palette[ink + 2] = (byte) b;
+                palette[0] = (byte) r;
+                palette[1] = (byte) g;
+                palette[2] = (byte) b;
             }
         }
         COSArray indexed = new COSArray();

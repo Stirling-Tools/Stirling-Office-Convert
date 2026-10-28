@@ -38,7 +38,7 @@ class BandsTest {
         for (LineArt.Method method : LineArt.Method.values()) {
             LineArt.Options options = LineArt.Options.defaults().method(method).window(21).edgeLevel(3);
             Bitmap expected = LineArt.binarize(scan, options);
-            assertEquals(expected, Binarizer.binarize(source, options, 211 * 3), method.toString());
+            assertEquals(expected, Binarizer.binarize(source, options, 3), method.toString());
         }
     }
 
@@ -50,13 +50,30 @@ class BandsTest {
         try (PDDocument doc = new PDDocument()) {
             for (PDImageXObject image : new PDImageXObject[] {LosslessFactory.createFromImage(doc, scan),
                 JPEGFactory.createFromImage(doc, scan, 0.9f)}) {
-                Bitmap whole = Binarizer.binarize(Source.of(image, null, false), options, Long.MAX_VALUE);
-                for (long band : new long[] {211, 211 * 5, 211 * 23, 211 * 156}) {
-                    Bitmap banded = Binarizer.binarize(Source.of(image, null, false), options, band);
-                    assertEquals(whole, banded, method + " in bands of " + band / 211 + " rows");
+                Bitmap whole = Binarizer.binarize(Source.of(image, null, false), options, scan.getHeight());
+                for (int rows : new int[] {2, 5, 23, 156}) {
+                    Bitmap banded = Binarizer.binarize(Source.of(image, null, false), options, rows);
+                    assertEquals(whole, banded, method + " in bands of " + rows + " rows");
                     assertEquals(whole.inkRgb(), banded.inkRgb());
                 }
             }
         }
+    }
+
+    @Test
+    void bandsFitTheBudgetUnlessEvenTheSmallestBandIsTooWide() {
+        long budget = (long) Source.BYTES_PER_PIXEL << 22;
+        for (int w : new int[] {1, 211, 20_000, 1_000_000, 2_000_000, 100_000_000}) {
+            for (int h : new int[] {1, 2, 3, 4, 157, 100_000}) {
+                for (int context : new int[] {0, 8, 64}) {
+                    int rows = Source.bandRows(w, h, context, budget);
+                    assertTrue(rows >= 1 && rows <= h, w + "x" + h + ": " + rows);
+                    if (Source.bandBytes(w, h, context, rows) > budget) {
+                        assertEquals(Math.min(2, h), rows, w + "x" + h);
+                    }
+                }
+            }
+        }
+        assertTrue(Source.bandBytes(100_000_000, 3, 0, Source.bandRows(100_000_000, 3, 0, budget)) > budget);
     }
 }

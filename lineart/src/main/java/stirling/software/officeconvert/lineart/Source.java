@@ -12,6 +12,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicReference;
 
 import org.apache.pdfbox.cos.COSArray;
 import org.apache.pdfbox.cos.COSBase;
@@ -78,14 +79,29 @@ abstract class Source {
         return height - y - n == 1 ? n + 1 : n;
     }
 
-    static int bandRows(int width, int height, long budgetPixels) {
-        if ((long) width * height <= budgetPixels) {
+    static final int BYTES_PER_PIXEL = 28;
+
+    static final int CONTEXT_BYTES_PER_PIXEL = 8;
+
+    static int bandRows(int width, int height, int context, long budgetBytes) {
+        long perRow = (long) width * BYTES_PER_PIXEL;
+        long fits = (budgetBytes - contextBytes(width, height, context)) / perRow;
+        if (fits >= height) {
             return height;
         }
-        return Math.clamp(budgetPixels / width, Math.min(2, height), height);
+        return Math.clamp(fits - 1, Math.min(2, height), height);
     }
 
-    private static List<COSName> filters(COSStream stream) {
+    static long bandBytes(int width, int height, int context, int rows) {
+        long band = Math.min(height, rows + 1L);
+        return band * width * BYTES_PER_PIXEL + contextBytes(width, height, context);
+    }
+
+    private static long contextBytes(int width, int height, int context) {
+        return (long) Math.min(height, context) * width * CONTEXT_BYTES_PER_PIXEL;
+    }
+
+    static List<COSName> filters(COSStream stream) {
         COSBase f = stream.getDictionaryObject(COSName.FILTER);
         if (f == null) {
             return List.of();
@@ -179,14 +195,35 @@ abstract class Source {
             Filter filter = FilterFactory.INSTANCE.getFilter(filters.get(0));
             PipedInputStream in = new PipedInputStream(1 << 16);
             PipedOutputStream out = new PipedOutputStream(in);
+            AtomicReference<Throwable> failure = new AtomicReference<>();
             Thread writer = Thread.ofVirtual().start(() -> {
-                try (InputStream raw = stream.createRawInputStream(); OutputStream o = out) {
-                    filter.decode(raw, o, stream, 0);
-                } catch (IOException e) {
-                    closeQuietly(in);
+                try (InputStream raw = stream.createRawInputStream()) {
+                    filter.decode(raw, out, stream, 0);
+                } catch (Throwable e) {
+                    failure.set(e);
+                } finally {
+                    closeQuietly(out);
                 }
             });
             return new FilterInputStream(in) {
+                @Override
+                public int read() throws IOException {
+                    int b = super.read();
+                    if (b < 0) {
+                        failed(failure);
+                    }
+                    return b;
+                }
+
+                @Override
+                public int read(byte[] b, int off, int len) throws IOException {
+                    int n = super.read(b, off, len);
+                    if (n < 0) {
+                        failed(failure);
+                    }
+                    return n;
+                }
+
                 @Override
                 public void close() throws IOException {
                     super.close();
@@ -199,9 +236,19 @@ abstract class Source {
             };
         }
 
-        private static void closeQuietly(InputStream in) {
+        private static void failed(AtomicReference<Throwable> failure) throws IOException {
+            Throwable e = failure.get();
+            if (e instanceof IOException io) {
+                throw io;
+            }
+            if (e != null) {
+                throw new IOException("The image data could not be decoded: " + e.getMessage(), e);
+            }
+        }
+
+        private static void closeQuietly(OutputStream out) {
             try {
-                in.close();
+                out.close();
             } catch (IOException e) {
                 Thread.currentThread().interrupt();
             }

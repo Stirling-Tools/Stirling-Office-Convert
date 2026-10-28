@@ -14,7 +14,7 @@ import org.apache.pdfbox.cos.COSName;
 
 final class Codecs {
 
-    record Encoded(LineArt.Codec codec, byte[] data, COSName filter, COSDictionary parameters, int inkSample) {}
+    record Encoded(LineArt.Codec codec, byte[] data, COSName filter, COSDictionary parameters) {}
 
     private Codecs() {}
 
@@ -42,7 +42,7 @@ final class Codecs {
         byte[] generic = Jbig2Generic.encode(bitmap);
         byte[] symbols = Jbig2Symbols.encode(bitmap);
         byte[] data = symbols != null && symbols.length < generic.length ? symbols : generic;
-        return new Encoded(LineArt.Codec.JBIG2, data, COSName.JBIG2_DECODE, null, 0);
+        return new Encoded(LineArt.Codec.JBIG2, data, COSName.JBIG2_DECODE, null);
     }
 
     static Encoded g4(Bitmap bitmap) {
@@ -58,7 +58,7 @@ final class Codecs {
         parameters.setInt(COSName.K, -1);
         parameters.setInt(COSName.COLUMNS, bitmap.width());
         parameters.setInt(COSName.ROWS, bitmap.height());
-        return new Encoded(LineArt.Codec.CCITT_G4, data, COSName.CCITTFAX_DECODE, parameters, 0);
+        return new Encoded(LineArt.Codec.CCITT_G4, data, COSName.CCITTFAX_DECODE, parameters);
     }
 
     static Encoded flate(Bitmap bitmap) {
@@ -92,9 +92,9 @@ final class Codecs {
             parameters.setInt(COSName.COLORS, 1);
             parameters.setInt(COSName.BITS_PER_COMPONENT, 1);
             parameters.setInt(COSName.COLUMNS, bitmap.width());
-            return new Encoded(LineArt.Codec.FLATE, up, COSName.FLATE_DECODE, parameters, 0);
+            return new Encoded(LineArt.Codec.FLATE, up, COSName.FLATE_DECODE, parameters);
         }
-        return direct == null ? null : new Encoded(LineArt.Codec.FLATE, direct, COSName.FLATE_DECODE, null, 0);
+        return direct == null ? null : new Encoded(LineArt.Codec.FLATE, direct, COSName.FLATE_DECODE, null);
     }
 
     private static byte[] deflate(Bitmap bitmap, boolean predicted, int level, long shorterThan) {

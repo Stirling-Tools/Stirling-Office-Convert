@@ -260,8 +260,8 @@ class VariantsTest {
                 PDImageXObject image = new PDImageXObject(new PDStream(stream), null);
                 for (LineArt.Method method : LineArt.Method.values()) {
                     LineArt.Options o = LineArt.Options.defaults().method(method).window(15);
-                    Bitmap whole = Binarizer.binarize(Source.of(image, null, false), o, Long.MAX_VALUE);
-                    Bitmap banded = Binarizer.binarize(Source.of(image, null, false), o, W * 4L);
+                    Bitmap whole = Binarizer.binarize(Source.of(image, null, false), o, image.getHeight());
+                    Bitmap banded = Binarizer.binarize(Source.of(image, null, false), o, 4);
                     assertEquals(whole, banded, kind + " " + method);
                 }
             }

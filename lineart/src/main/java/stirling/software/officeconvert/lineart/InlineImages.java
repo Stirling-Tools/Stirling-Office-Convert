@@ -1,5 +1,6 @@
 package stirling.software.officeconvert.lineart;
 
+import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -21,10 +22,13 @@ import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.cos.COSNumber;
 import org.apache.pdfbox.cos.COSStream;
 import org.apache.pdfbox.cos.COSString;
+import org.apache.pdfbox.filter.DecodeResult;
+import org.apache.pdfbox.filter.FilterFactory;
 import org.apache.pdfbox.pdfparser.PDFStreamParser;
 import org.apache.pdfbox.pdmodel.graphics.image.PDInlineImage;
 
 import stirling.software.officeconvert.extract.PdfFiles;
+import stirling.software.officeconvert.memory.Admission;
 
 final class InlineImages {
 
@@ -32,14 +36,20 @@ final class InlineImages {
 
     private static final byte[] BI = {'B', 'I'};
 
+    static final int MAX_CONTENT_BYTES = 1 << 25;
+
     private InlineImages() {}
 
     static void convert(ImageWalk.Content content, LineArt.Options options, Map<LineArt.Codec, Integer> codecs,
             long[] totals, List<String> warnings) throws IOException {
         COSStream stream = content.stream();
         byte[] bytes;
-        try (InputStream in = stream.createInputStream()) {
-            bytes = in.readAllBytes();
+        try {
+            bytes = decoded(stream);
+        } catch (TooLarge e) {
+            warnings.add("Page " + content.page() + ": a content stream is larger than " + (MAX_CONTENT_BYTES >> 20)
+                    + " MB, so it was not searched for inline images");
+            return;
         }
         if (indexOf(bytes, BI, 0) < 0) {
             return;
@@ -48,47 +58,133 @@ final class InlineImages {
         if (spots == null || spots.isEmpty()) {
             return;
         }
-        ByteArrayOutputStream out = new ByteArrayOutputStream(bytes.length);
-        int at = 0;
-        boolean changed = false;
+        List<Spot> replaced = new ArrayList<>();
+        List<byte[]> replacements = new ArrayList<>();
         for (Spot spot : spots) {
             PdfFiles.stopIfInterrupted();
             totals[0]++;
             byte[] replacement;
             try {
-                replacement = replacement(spot, content, options, codecs, totals);
+                replacement = replacement(spot, content, options, codecs, totals, warnings);
             } catch (IOException | RuntimeException e) {
                 LineArt.rethrowCancelled(e);
                 warnings.add("Page " + content.page() + ": an inline image could not be read and was left as it was ("
                         + e.getMessage() + ")");
                 replacement = null;
             }
-            if (replacement == null) {
-                continue;
+            if (replacement != null) {
+                replaced.add(spot);
+                replacements.add(replacement);
             }
-            out.write(bytes, at, spot.start() - at);
-            out.writeBytes(replacement);
-            at = spot.end();
-            changed = true;
         }
-        if (!changed) {
+        if (replaced.isEmpty()) {
             return;
         }
-        out.write(bytes, at, bytes.length - at);
         stream.removeItem(COSName.DECODE_PARMS);
         stream.removeItem(COSName.getPDFName("DL"));
         try (OutputStream os = stream.createOutputStream(COSName.FLATE_DECODE)) {
-            out.writeTo(os);
+            int at = 0;
+            for (int i = 0; i < replaced.size(); i++) {
+                Spot spot = replaced.get(i);
+                os.write(bytes, at, spot.start() - at);
+                os.write(replacements.get(i));
+                at = spot.end();
+            }
+            os.write(bytes, at, bytes.length - at);
         }
     }
 
+    private static byte[] decoded(COSStream stream) throws IOException {
+        List<COSName> filters = Source.filters(stream);
+        if (filters == null) {
+            throw new IOException("The content stream has a malformed filter list");
+        }
+        Capped out = new Capped(MAX_CONTENT_BYTES);
+        if (filters.isEmpty()) {
+            try (InputStream in = stream.createInputStream()) {
+                in.transferTo(out);
+            }
+            return out.toByteArray();
+        }
+        InputStream in = stream.createRawInputStream();
+        try {
+            for (int i = 0; i < filters.size(); i++) {
+                PdfFiles.stopIfInterrupted();
+                out = new Capped(MAX_CONTENT_BYTES);
+                FilterFactory.INSTANCE.getFilter(filters.get(i)).decode(in, out, stream, i);
+                in.close();
+                in = new ByteArrayInputStream(out.toByteArray());
+            }
+        } finally {
+            in.close();
+        }
+        return out.toByteArray();
+    }
+
     private static byte[] replacement(Spot spot, ImageWalk.Content content, LineArt.Options options,
-            Map<LineArt.Codec, Integer> codecs, long[] totals) throws IOException {
-        PDInlineImage image = new PDInlineImage(spot.parameters(), spot.data(), content.resources());
-        if (image.isStencil() || image.getWidth() <= 0 || image.getHeight() <= 0
-                || (long) image.getWidth() * image.getHeight() > options.maxPixels()) {
+            Map<LineArt.Codec, Integer> codecs, long[] totals, List<String> warnings) throws IOException {
+        COSDictionary given = spot.parameters();
+        int w = given.getInt(COSName.W, COSName.WIDTH, -1);
+        int h = given.getInt(COSName.H, COSName.HEIGHT, -1);
+        if (given.getBoolean(COSName.IM, COSName.IMAGE_MASK, false) || w <= 0 || h <= 0) {
             return null;
         }
+        long pixels = (long) w * h;
+        if (pixels > options.maxPixels()) {
+            warnings.add("Page " + content.page() + ": a " + w + "x" + h + " inline image is larger than "
+                    + options.maxPixels() + " pixels and was left as it was");
+            return null;
+        }
+        long budget = LineArt.bandBudget();
+        long cost = Source.bandBytes(w, h, Binarizer.context(options, w, h), h);
+        if (cost > budget) {
+            warnings.add("Page " + content.page() + ": a " + w + "x" + h
+                    + " inline image is too large to convert in the memory available and was left as it was");
+            return null;
+        }
+        Admission.Ticket ticket = Admission.jvm().enter(pixels / 8 * 4 + cost);
+        try {
+            return replacement(spot, decoded(spot, content, Math.min(budget, pixels * 8 + (1 << 16))), options,
+                    codecs, totals);
+        } finally {
+            ticket.close();
+        }
+    }
+
+    private static PDInlineImage decoded(Spot spot, ImageWalk.Content content, long limit) throws IOException {
+        COSDictionary given = spot.parameters();
+        COSBase f = given.getDictionaryObject(COSName.F, COSName.FILTER);
+        List<COSName> filters = new ArrayList<>();
+        if (f instanceof COSName name) {
+            filters.add(name);
+        } else if (f instanceof COSArray array) {
+            for (COSBase b : array) {
+                if (!(b instanceof COSName name)) {
+                    throw new IOException("The inline image has a malformed filter list");
+                }
+                filters.add(name);
+            }
+        }
+        COSDictionary parameters = new COSDictionary(given);
+        byte[] data = spot.data();
+        DecodeResult result = null;
+        for (int i = 0; i < filters.size(); i++) {
+            Capped out = new Capped(limit);
+            result = FilterFactory.INSTANCE.getFilter(filters.get(i)).decode(new ByteArrayInputStream(data), out,
+                    given, i);
+            data = out.toByteArray();
+        }
+        if (result != null) {
+            parameters.addAll(result.getParameters());
+        }
+        for (COSName key : new COSName[] {COSName.F, COSName.FILTER, COSName.DP, COSName.DECODE_PARMS}) {
+            parameters.removeItem(key);
+        }
+        return new PDInlineImage(parameters, data, content.resources());
+    }
+
+    private static byte[] replacement(Spot spot, PDInlineImage image, LineArt.Options options,
+            Map<LineArt.Codec, Integer> codecs, long[] totals) throws IOException {
         boolean alreadyBilevel = image.getBitsPerComponent() == 1 && image.getColorSpace().getNumberOfComponents() == 1
                 && options.method() != LineArt.Method.EDGES;
         Bitmap bitmap = Binarizer.binarize(image.getImage(), options);
@@ -108,14 +204,11 @@ final class InlineImages {
         parameters.setInt(COSName.W, bitmap.width());
         parameters.setInt(COSName.H, bitmap.height());
         parameters.setInt(COSName.BPC, 1);
-        COSBase colour = LineArt.colour(encoded, bitmap, null, options.inkColour());
+        COSBase colour = LineArt.colour(bitmap, null, options.inkColour());
         parameters.setItem(COSName.CS, colour);
         parameters.setItem(COSName.F, encoded.filter());
         if (encoded.parameters() != null && encoded.parameters().size() > 0) {
             parameters.setItem(COSName.DP, encoded.parameters());
-        }
-        if (encoded.inkSample() == 1 && !options.inkColour()) {
-            parameters.setItem(COSName.D, LineArt.inverted());
         }
         if (image.getInterpolate()) {
             parameters.setBoolean(COSName.I, true);
@@ -289,6 +382,43 @@ final class InlineImages {
     private static boolean delimiter(int b) {
         return b == '(' || b == ')' || b == '<' || b == '>' || b == '[' || b == ']' || b == '{' || b == '}'
                 || b == '/' || b == '%';
+    }
+
+    private static final class TooLarge extends IOException {
+        TooLarge(long limit) {
+            super("The data decodes to more than " + limit + " bytes");
+        }
+    }
+
+    private static final class Capped extends OutputStream {
+        private final ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+        private final long limit;
+
+        Capped(long limit) {
+            this.limit = limit;
+        }
+
+        @Override
+        public void write(int b) throws IOException {
+            check(1);
+            bytes.write(b);
+        }
+
+        @Override
+        public void write(byte[] b, int off, int len) throws IOException {
+            check(len);
+            bytes.write(b, off, len);
+        }
+
+        byte[] toByteArray() {
+            return bytes.toByteArray();
+        }
+
+        private void check(int more) throws IOException {
+            if (bytes.size() + (long) more > limit) {
+                throw new TooLarge(limit);
+            }
+        }
     }
 
     private static int indexOf(byte[] haystack, byte[] needle, int from) {

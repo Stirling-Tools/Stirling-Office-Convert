@@ -40,17 +40,16 @@ final class Binarizer {
                 Bitmap out = AlphaEdges.binarize(image, options);
                 return options.inkColour() ? out.withInk(meanInk(Source.of(image), image.getHeight(), out)) : out;
             }
-            return binarize(Source.of(image), options, Long.MAX_VALUE);
+            return binarize(Source.of(image), options, image.getHeight());
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }
     }
 
-    static Bitmap binarize(Source source, LineArt.Options options, long bandPixels) throws IOException {
+    static Bitmap binarize(Source source, LineArt.Options options, int rows) throws IOException {
         LineArt.checkpoint();
         int w = source.width;
         int h = source.height;
-        int rows = Source.bandRows(w, h, bandPixels);
         Greys greys = greys(source, rows);
         Bitmap out = Bitmap.blank(w, h);
         switch (options.method()) {
@@ -96,6 +95,14 @@ final class Binarizer {
             case EDGES -> edges(greys, w, h, options.edgeLevel(), options.threshold(), out);
         }
         return options.inkColour() ? out.withInk(meanInk(source, rows, out)) : out;
+    }
+
+    static int context(LineArt.Options options, int w, int h) {
+        return switch (options.method()) {
+            case SAUVOLA -> window(options.window(), w, h) / 2 + 1;
+            case EDGES -> 2 * options.edgeLevel() + 1;
+            case FIXED, OTSU -> 0;
+        };
     }
 
     static int window(int requested, int w, int h) {
