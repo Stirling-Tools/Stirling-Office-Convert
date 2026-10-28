@@ -20,20 +20,18 @@ java -jar cli/build/libs/stirling-office-convert-cli.jar report.docx slides.pptx
 ```
 
 CLI options for PDF input: `--pages a-b`, `--no-tables`, `--dpi n` (vector figures), `--password p`,
-`--picture-fallback`, `--pictures compact|lossless` (see Pictures below), `--no-chapters` and `--device tablet|kindle`
-(EPUB and AZW3, see Other formats), `--overwrite`, `-q`.
+`--picture-fallback`, `--pictures compact|lossless` (see Pictures below), `--overwrite`, `-q`.
 For Word, PowerPoint and Excel input (`.docx .docm .dotx .dotm .pptx .pptm .ppsx .ppsm .potx .potm .xlsx .xlsm
 .xltx .xltm .xlsb`, Word 6.0 to 2003 `.doc .dot`, Excel 2.0 to 2003 `.xls .xlt`, PowerPoint 97-2003 `.ppt .pps .pot`,
 `.rtf`, Word 2003 XML, XML Spreadsheet 2003 and Flat OPC `.xml`, Visio 2013 and later `.vsdx .vsdm .vssx .vstx`,
 OpenDocument `.odt .ott .fodt .odm .ods .ots .fods .odp .otp .fodp .odg .otg .fodg`, OpenOffice.org 1.x `.sxw .stw .sxc
 .stc .sxi .sti .sxd .std`, SYLK, DIF and dBASE `.slk .dif .dbf`, Lotus 1-2-3 `.wk1 .wks .wk3 .wk4 .123`, Apple iWork `.pages .numbers .key`, Publisher `.pub` and Visio 2003-2010 `.vsd .vss .vst .vsw` (from the preview they hold), plain text `.txt .text .log .asc`, tables
-`.csv .tsv .tab`, HTML `.html .htm .xhtml` or a `.zip` of a page (with `--allow-packages`), eBooks `.epub .mobi .azw3 .azw .prc .pdb .fb2 .fbz .htmlz` and this library's JSON `.json`), which converts to PDF: `--password p` (a password protected document), `--max-pages n` (default 10000, 0 = all), `--timeout s` (default 300, 0 =
+`.csv .tsv .tab`, HTML `.html .htm .xhtml` or a `.zip` of a page (with `--allow-packages`), eBooks `.epub .mobi .azw3 .azw .prc .pdb .fb2 .fbz` and this library's JSON `.json`), which converts to PDF: `--password p` (a password protected document), `--max-pages n` (default 10000, 0 = all), `--timeout s` (default 300, 0 =
 none), `--fonts dir` (repeatable; an extra folder of fonts), `--font-map Family=Installed` (repeatable; draw a
 family with an installed one, such as `Aptos=Inter`), `--font-width Family=scale` (repeatable; scale a substituted
 family's widths, 0.5 to 2), `--no-system-fonts` (only the given fonts and the bundled Liberation Sans, for
 reproducible output), `--allow-packages` (convert a `.zip` of an HTML page, or an EPUB book not named `.epub`), `--allow-local-files` (let an HTML page
-draw the pictures and style sheets in its own folder, never outside it), `--toc` and `--page-numbers` (see
-below), `-q`, and `--format pdf` to take only the Office files out
+draw the pictures and style sheets in its own folder, never outside it), `-q`, and `--format pdf` to take only the Office files out
 of a folder. A folder converts both its PDFs and its Office files; its text and CSV files only with `--format pdf`. Inputs that would write the same output name (such
 as `report.docx` and `report.xlsx`) keep their own extension in it (`report.docx.pdf`, `report.xlsx.pdf`), and Office
 owner files (`~$name`) are skipped. An input is never overwritten: an output that would take an input's name keeps that
@@ -196,7 +194,6 @@ import java.nio.file.Path;
 import java.time.Duration;
 import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.pdmodel.PDDocument;
-import stirling.software.officeconvert.EbookOptions;
 import stirling.software.officeconvert.OfficeConvert;
 import stirling.software.officeconvert.OfficeConvert.Settings;
 import stirling.software.officeconvert.PdfToXlsx;
@@ -213,7 +210,6 @@ OfficeConvert.convert(Path.of("in.pdf"), Path.of("out.pptx"), Settings.defaults(
         .figureDpi(200)               // resolution of drawings turned into pictures
         .sheets(PdfToXlsx.Sheets.TABLE)   // spreadsheets: a sheet per table instead of per page
         .pictures(Pictures.LOSSLESS)  // every pixel, no JPEG compression (see Pictures)
-        .ebook(EbookOptions.defaults().device(EbookOptions.Device.KINDLE))  // EPUB and AZW3 shaping
         .timeout(Duration.ofMinutes(2)));  // interrupt and fail with OfficeConvert.TimedOut past this
 
 String text = OfficeConvert.text(Path.of("in.pdf"));                      // text in reading order
@@ -569,23 +565,14 @@ the book. A style sheet that only some documents link applies only to those. A b
 named `.epub` or streamed as `Format.EPUB`; a book inside any other `.zip`, or streamed as `Format.HTML`, is a package
 and needs `allowPackages`. DRM-protected books cannot be read.
 
-Kindle and Mobipocket books (`.mobi .azw .prc`, `.pdb` PalmDOC or zTXT text (eReader `.pdb` is refused), and KF8 `.azw3`) are read without DRM only:
+Kindle and Mobipocket books (`.mobi .azw .prc`, `.pdb` PalmDOC text, and KF8 `.azw3`) are read without DRM only:
 uncompressed, PalmDOC and HUFF/CDIC text; a KF8 book (or the KF8 half of a combined `.mobi`) is rebuilt from its
 skeleton and fragment tables with its style sheet flows, `kindle:embed` pictures and `kindle:pos` links; an older
 Mobipocket book keeps its `filepos` links, page breaks and pictures. The title, author and cover come from the EXTH
 metadata. FictionBook 2 (`.fb2`, or a `.fbz`/`.fb2.zip` holding one; any other `.zip` holding one only with
 `--allow-packages`) is read with sections as chapters, its titles,
 epigraphs, poems, citations, tables, embedded pictures, cover and notes; a DOCTYPE is refused. eBooks are limited to
-256 MB (Kindle) and 128 MB (FictionBook), checked while reading as well as against the file size. Kindle
-decompression is limited to 64 MB of text. Assembled books allow 5,000 chapters and 50,331,648 HTML characters;
-missing chapters, exceeded limits, missing PalmDOC/MOBI text and incomplete zTXT streams fail the conversion rather than returning a partial
-book. zTXT accepts completed streams and flush-terminated records whose declared text size matches. CSS selector scoping has a fixed expansion budget and honours cancellation. An eBook only ever draws what
-the book file holds.
-`Options.tableOfContents(true)` (`--toc`) adds a table of contents after the document, as Calibre's
-`--pdf-add-toc` does: its bookmarks (headings) with their page numbers, each linked to its page, and a "Contents"
-bookmark. `Options.pageNumbers(true)` (`--page-numbers`) numbers every page at its foot, as `--pdf-page-numbers`
-does. Both work for every input (eBooks, Word, text and the rest); a document without headings gets no contents.
-Every font the PDF draws with is embedded (as a subset), so Calibre's `--embed-all-fonts` needs no counterpart. HTML files are limited to 64 MB, and parsing, the cascade, SVG
+256 MB (Kindle) and 128 MB (FictionBook) with 64 MB of text. An eBook only ever draws what the book file holds. HTML files are limited to 64 MB, and parsing, the cascade, SVG
 painting and nesting each work within fixed budgets so a hostile page cannot hang or exhaust the converter.
 
 JSON (`.json`) is the document model that PDF to JSON writes ([format](json-format.md)), hand written or edited;
@@ -631,20 +618,12 @@ PdfToAzw3.convert(pdf, Path.of("out.azw3"), options);      // the same book for 
   margins as `@page` for printing. Floating pictures and text boxes join the flow next to their paragraph; columns
   flow as one. There are no scripts and no external references.
 - EPUB is an EPUB 3 book (with an EPUB 2 table of contents for older readers): a new chapter at each top-level
-  heading (unless `EbookOptions.chapters(false)`, `--no-chapters`) or every 150,000 characters, pictures as files,
-  footnotes in a notes chapter, links kept across chapters, a table of contents nested by heading level, a landmarks
-  guide to the start of the text and the first page as its cover picture. Running headers and footers are left out,
-  as a reflowing book has no pages; the title comes from the PDF's metadata, else its first heading. The language is
-  the PDF's own (`und` when it names none), and a book that is mostly right-to-left text reads right to left (its
-  pages turn that way, and a PDF that claims a left-to-right language gets Hebrew or Arabic from its script).
+  heading or every 150,000 characters, pictures as files, footnotes in a notes chapter, links kept across chapters,
+  and a table of contents from the headings. Running headers and footers are left out, as a reflowing book has no
+  pages; the title comes from the PDF's metadata, else its first heading.
 - AZW3 is the EPUB's book as a Kindle KF8 file: the same chapters, pictures, style sheet, footnotes and links
-  (`kindle:pos`), PalmDOC-compressed text, the nested table of contents as an NCX index, a start reading location
-  (guide and EXTH 116), the cover picture (EXTH 201), and the title, author, language and page direction in its
-  metadata. It has no DRM.
-- `EbookOptions.device(Device.KINDLE)` (`--device kindle`) shapes either book as Calibre's `kindle` output profile
-  does: text sizes relative to the body text and line spacing relative to the text, so the reader's own font size
-  setting scales everything; `TABLET`, the default, keeps the PDF's sizes, as Calibre's `tablet` profile does. Give
-  them with `Settings.ebook(...)` or `PdfToEpub.convert(pdf, out, options, ebookOptions)`.
+  (`kindle:pos`), PalmDOC-compressed text, the table of contents as an NCX index, and the title, author and
+  language (`und`) in its metadata. It has no cover picture and no DRM.
 - Fixed-layout HTML keeps every page as it looks instead of reflowing it, like `pdftohtml -c`: one self-contained
   file with a box per page at the page's size. `Text.LIVE` (the default) draws the page's graphics and pictures without
   its text as a picture (left out when the page has nothing else) and places the text over it as real SVG text at its
