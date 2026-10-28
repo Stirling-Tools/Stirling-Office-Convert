@@ -39,6 +39,14 @@ final class PalmDatabase {
         return head.length < 68 ? "" : new String(head, 60, 8, StandardCharsets.ISO_8859_1);
     }
 
+    String name() {
+        int end = 0;
+        while (end < 32 && data[end] != 0) {
+            end++;
+        }
+        return new String(data, 0, end, StandardCharsets.ISO_8859_1).replace('_', ' ').strip();
+    }
+
     String type() {
         return type(data);
     }

@@ -77,8 +77,12 @@ final class Flow {
     private Paragraph.ListRef pendingMarker;
     private boolean lastSpace = true;
     private String link;
+    private final List<String> pendingAnchors = new ArrayList<>();
+    private int anchors;
     private int forceInline;
     private Inline pendingGap;
+    private final List<Inline> pendingEdges = new ArrayList<>();
+    private long edgeBoundary;
     private int rowItemStart = -1;
     private int rowNested;
     private int avoiding;
@@ -92,6 +96,11 @@ final class Flow {
     private String floatOf = "none";
     private boolean sectionStarted;
     private Paragraph rightOf;
+    private String pendingBookmark;
+    private Paragraph leaderOf;
+    private int leaderFrom;
+    private char leaderChar;
+    private RunStyle leaderStyle;
     private final List<Inline> right = new ArrayList<>();
     private RunStyle rightStyle;
     // the height left in a box that clips its overflow, as a browser shows only what fits
@@ -117,8 +126,9 @@ final class Flow {
                 ctx.place(item.element());
             }
             Section s = ctx.defaultSection();
-            Positioned.Hung hung = Positioned.hang(ctx, items, s.marginLeft, s.marginTop,
-                    s.pageWidth - s.marginLeft - s.marginRight, ctx.pageRoom(), 0);
+            Positioned.Hung hung = Positioned.hang(ctx, items, s.marginLeft - ctx.insetLeft(), s.marginTop,
+                    s.pageWidth - s.marginLeft - s.marginRight + ctx.insetLeft() + ctx.insetRight(), ctx.pageRoom(),
+                    0);
             if (!hung.top().isEmpty()) {
                 anchor(Positioned.moved(hung.top(), 0, 0, false), frame);
             }
@@ -133,19 +143,18 @@ final class Flow {
     static List<Inline> fixedLayer(HtmlContext ctx, Element body, Look look, Section page) throws IOException {
         List<Positioned.Item> items = new ArrayList<>();
         int text = 0;
-        for (Positioned.Item item : Positioned.fixed(ctx, body, look, page.pageWidth - page.marginLeft
-                - page.marginRight)) {
+        float left = page.marginLeft - ctx.insetLeft();
+        float room = page.pageWidth - left - page.marginRight + ctx.insetRight();
+        for (Positioned.Item item : Positioned.fixed(ctx, body, look, room)) {
             text += Layout.text(item.element(), MAX_FIXED_TEXT + 1).length();
             if (items.size() >= MAX_FIXED || text > MAX_FIXED_TEXT) {
-                ctx.warn("Only the first boxes fixed to the page are repeated on every page; the rest are drawn once,"
-                        + " where they stand");
+                ctx.warn(HtmlDocument.FIXED_LAYER_LIMIT_WARNING);
                 break;
             }
             items.add(item);
             ctx.place(item.element());
         }
-        Positioned.Hung hung = Positioned.hang(ctx, items, page.marginLeft, page.marginTop,
-                page.pageWidth - page.marginLeft - page.marginRight, ctx.pageRoom(), 0);
+        Positioned.Hung hung = Positioned.hang(ctx, items, left, page.marginTop, room, ctx.pageRoom(), 0);
         return Positioned.moved(hung.top(), 0, 0, false);
     }
 
@@ -255,8 +264,7 @@ final class Flow {
             spacer(pendingSpace, frame);
             space(0);
         }
-        t.pageBreakBefore = pendingBreak && !sectionStarted;
-        pendingBreak = false;
+        breakBefore(t, pendingBreak && !sectionStarted, frame);
         sectionStarted = false;
         ctx.count();
         emit(t);
@@ -264,6 +272,11 @@ final class Flow {
 
     private void element(Element e, Look parentLook, Frame frame, int depth) throws IOException {
         String tag = e.normalName();
+        if (tag.equals(Generated.LEADER)) {
+            bookmark(e);
+            leader(e, parentLook);
+            return;
+        }
         if (Controls.TAGS.contains(tag)) {
             if (!e.hasAttr("hidden") && Controls.drawn(e)) {
                 control(e, parentLook, frame);
@@ -271,10 +284,6 @@ final class Flow {
             return;
         }
         if (SKIPPED.contains(tag) || e.hasAttr("hidden")) {
-            return;
-        }
-        if (depth > MAX_DEPTH) {
-            text(e.text(), parentLook);
             return;
         }
         Map<String, String> d = ctx.declared(e, parentLook);
@@ -296,9 +305,24 @@ final class Flow {
         if (Positioned.outOfFlow(d) && !tag.equals("body") && !tag.equals("html")
                 && (ctx.positions() || ctx.placed(e))) {
             if (!ctx.placed(e)) {
+                bookmark(e);
+                anchorAt(e, tag, false);
                 ctx.place(e);
                 staticBox(e, d, look, frame, depth);
             }
+            return;
+        }
+        String bookmark = ctx.bookmarkFor(e);
+        boolean opensBlock = !inline && !tag.equals("br");
+        if (bookmark != null) {
+            if (opensBlock) {
+                flush();
+            }
+            bookmark(bookmark);
+        }
+        anchorAt(e, tag, opensBlock && bookmark == null);
+        if (depth > MAX_DEPTH) {
+            text(e.text(), look);
             return;
         }
         if (tag.equals("details") && !e.hasAttr("open")) {
@@ -344,7 +368,16 @@ final class Flow {
             }
             case "hr" -> rule(d, look, frame);
             case "table" -> table(e, d, look, frame, parentLook.centerBlocks, depth);
-            case "a" -> anchor(e, look, frame, depth);
+            case "a" -> {
+                long boundary = edgeBoundary;
+                if (inline) {
+                    leadingGap(edge(d, "left", look, frame), look);
+                }
+                anchor(e, look, frame, depth);
+                if (inline) {
+                    trailingGap(edge(d, "right", look, frame), look, boundary);
+                }
+            }
             case "wbr" -> { }
             case "q" -> {
                 text("\u201c", look);
@@ -356,7 +389,14 @@ final class Flow {
                         && d.getOrDefault("float", "none").strip().equalsIgnoreCase("right")) {
                     floatRight(e, look, frame, depth);
                 } else if (inline) {
-                    walkChildren(e, look, frame, depth);
+                    long boundary = edgeBoundary;
+                    leadingGap(edge(d, "left", look, frame), look);
+                    if (forceInline > 0 && display.endsWith("flex")) {
+                        flexInline(e, look, frame, depth, Layout.gap(d, look));
+                    } else {
+                        walkChildren(e, look, frame, depth);
+                    }
+                    trailingGap(edge(d, "right", look, frame), look, boundary);
                 } else {
                     // overflow on html or body belongs to the window, which prints whole; fixed boxes never widen it
                     boolean scrolls = !tag.equals("body") && !tag.equals("html") && scrolls(d)
@@ -376,7 +416,81 @@ final class Flow {
         }
     }
 
+    private void bookmark(Element e) {
+        bookmark(ctx.bookmarkFor(e));
+    }
+
+    private void bookmark(String bookmark) {
+        if (bookmark != null) {
+            if (pendingBookmark == null) {
+                pendingBookmark = bookmark;
+            } else {
+                ctx.alias(bookmark, pendingBookmark);
+            }
+        }
+    }
+
     private static final int BUTTON_TEXT = 80;
+
+    private static final float MAX_INLINE_GAP = 144;
+
+    private float edge(Map<String, String> d, String side, Look look, Frame frame) {
+        return Math.max(0, length(d.get("margin-" + side), look.size, frame.width()))
+                + Math.max(0, length(d.get("padding-" + side), look.size, frame.width()));
+    }
+
+    private Inline gapInline(float pt, Look look) {
+        if (pt < 0.5f) {
+            return null;
+        }
+        RunStyle s = look.run();
+        float space = s.size() * 0.25f;
+        RunStyle g = new RunStyle(s.font(), s.size(), false, false, false, false, s.rgb(), -1, 0, false,
+                Math.max(0, Math.min(MAX_INLINE_GAP, pt) - space), s.scale(), false, -1);
+        return new Inline.Text("\u00a0", g, null, -1);
+    }
+
+    private void gap(float pt, Look look) throws IOException {
+        Inline gap = gapInline(pt, look);
+        if (gap != null) {
+            inline(gap, look);
+        }
+    }
+
+    private void leadingGap(float pt, Look look) {
+        Inline gap = gapInline(pt, look);
+        if (gap != null) {
+            pendingEdges.add(gap);
+        }
+    }
+
+    private void trailingGap(float pt, Look look, long boundary) throws IOException {
+        if (para != null || boundary == edgeBoundary) {
+            if (!pendingEdges.isEmpty()) {
+                List<Inline> edges = new ArrayList<>(pendingEdges);
+                pendingEdges.clear();
+                for (Inline edge : edges) {
+                    inline(edge, look);
+                }
+            }
+            gap(pt, look);
+        }
+    }
+
+    private void flexInline(Element e, Look look, Frame frame, int depth, float between) throws IOException {
+        boolean first = true;
+        for (Node n : e.childNodes()) {
+            if (n instanceof Element c) {
+                if (!first) {
+                    gap(between, look);
+                }
+                first = false;
+                element(c, look, frame, depth + 1);
+            } else if (n instanceof TextNode t && !t.isBlank()) {
+                text(t.getWholeText(), look);
+            }
+        }
+    }
 
     private static boolean padded(Element e, Map<String, String> d, Look look) {
         Integer fill = Css.color(d.get("background-color"));
@@ -412,11 +526,25 @@ final class Flow {
         if (alone) {
             flush();
         }
+        bookmark(e);
+        anchorAt(e, e.normalName(), false);
         inline(control, look);
         lastSpace = false;
         if (alone) {
             flush();
         }
+    }
+
+    private void leader(Element e, Look look) {
+        if (para == null) {
+            start();
+        }
+        String c = e.attr("data-char");
+        leaderOf = para;
+        leaderFrom = para.inlines.size();
+        leaderChar = c.isEmpty() ? '.' : c.charAt(0) == ' ' ? 0 : c.charAt(0);
+        leaderStyle = look.run();
+        lastSpace = true;
     }
 
     private void floatRight(Element e, Look look, Frame frame, int depth) throws IOException {
@@ -442,10 +570,27 @@ final class Flow {
         lastSpace = spaced;
     }
 
+    private void anchorAt(Element e, String tag, boolean boundary) throws IOException {
+        String id = e.id().isEmpty() && tag.equals("a") ? e.attr("name") : e.id();
+        if (!id.isEmpty() && anchors < MAX_ANCHORS) {
+            if (boundary) {
+                flush();
+            }
+            anchors++;
+            pendingAnchors.add(anchorName(id));
+        }
+    }
+
+    static String anchorName(String id) {
+        String clean = id.replaceAll("[^A-Za-z0-9_.:-]", "_");
+        return "a_" + (clean.length() > 190 ? clean.substring(0, 190) : clean);
+    }
+
     private void anchor(Element e, Look look, Frame frame, int depth) throws IOException {
         String before = link;
         String href = e.attr("href").strip();
-        String safe = href.isEmpty() ? null : Links.safeUrl(href);
+        String safe = href.isEmpty() ? null
+                : href.startsWith("#") && href.length() > 1 ? "#" + anchorName(href.substring(1)) : Links.safeUrl(href);
         if (safe != null) {
             link = safe;
         }
@@ -762,6 +907,18 @@ final class Flow {
     }
 
     private void emit(Block b) throws IOException {
+        if (pendingBookmark != null) {
+            Paragraph first = switch (b) {
+                case Paragraph p -> p;
+                case Table t -> t.rows.isEmpty() || t.rows.getFirst().cells.isEmpty()
+                        || t.rows.getFirst().cells.getFirst().paragraphs.isEmpty() ? null
+                        : t.rows.getFirst().cells.getFirst().paragraphs.getFirst();
+            };
+            if (first != null && first.bookmark == null) {
+                first.bookmark = pendingBookmark;
+                pendingBookmark = null;
+            }
+        }
         if (avoiding == 0 || outrun) {
             out.add(b);
             return;
@@ -793,6 +950,8 @@ final class Flow {
             "menu", "dl", "dt", "dd", "table", "tr", "td", "th", "caption", "body", "html");
 
     private static final int BOX_TEXT = 4_000;
+
+    private static final int MAX_ANCHORS = 100_000;
 
     // The background a block paints: its colour, or for a picture we never load under light text, a dark stand-in
     private int fill(Map<String, String> d, Look look) {
@@ -1005,8 +1164,7 @@ final class Flow {
         if (pendingSpace > 0) {
             spacer(pendingSpace, frame);
         }
-        t.pageBreakBefore = pendingBreak && !sectionStarted;
-        pendingBreak = false;
+        breakBefore(t, pendingBreak && !sectionStarted, frame);
         sectionStarted = false;
         ctx.count();
         emit(t);
@@ -1211,6 +1369,10 @@ final class Flow {
         Table.Cell cell = new Table.Cell();
         if (item != null) {
             Map<String, String> d = ctx.declared(item, look);
+            Map<String, String> box = framedChild(item, d, look);
+            if (box != null) {
+                d = box;
+            }
             Integer fill = Css.color(d.get("background-color"));
             // an item with no background of its own shows the row's
             cell.shading = fill == null || fill < 0 ? frame.shading() : fill;
@@ -1218,6 +1380,14 @@ final class Flow {
             cell.bottom = HtmlTables.border(d, "bottom", 0);
             cell.left = HtmlTables.border(d, "left", 0);
             cell.right = HtmlTables.border(d, "right", 0);
+            if (shadowed(d) && cell.top.width() <= 0 && cell.bottom.width() <= 0 && cell.left.width() <= 0
+                    && cell.right.width() <= 0) {
+                Table.Border edge = new Table.Border(0.5f, SHADOW_EDGE);
+                cell.top = edge;
+                cell.bottom = edge;
+                cell.left = edge;
+                cell.right = edge;
+            }
             Flow inner = new Flow(ctx, cell::add, true);
             inner.clipLeft = clipLeft;
             inner.sized = item;
@@ -1226,6 +1396,48 @@ final class Flow {
             inner.single(item, look, new Frame(0, 0, Math.max(24, width - gap), -1), depth + 1);
         }
         return cell;
+    }
+
+    private static final int SHADOW_EDGE = 0xD9D9D9;
+
+    private static boolean shadowed(Map<String, String> d) {
+        String s = d.getOrDefault("box-shadow", "none").strip().toLowerCase(Locale.ROOT);
+        return !s.isEmpty() && !s.equals("none") && !s.startsWith("inset");
+    }
+
+
+    private Map<String, String> framedChild(Element item, Map<String, String> d, Look look) {
+        if (Layout.framed(d) || shadowed(d) || item.childrenSize() != 1 || !item.ownText().isBlank()) {
+            return null;
+        }
+        Element only = item.child(0);
+        Map<String, String> cd = ctx.declared(only, look);
+        String display = cd.getOrDefault("display", BLOCKS.contains(only.normalName()) ? "block" : "inline")
+                .strip().toLowerCase(Locale.ROOT);
+        if (!display.equals("block") || !(Layout.framed(cd) || shadowed(cd) || hasEdges(cd))) {
+            return null;
+        }
+        return cd;
+    }
+
+    private float gutter(List<Element> items, Look look, Frame frame) {
+        float widest = 0;
+        for (Element item : items) {
+            Map<String, String> d = ctx.declared(item, look);
+            if (framedChild(item, d, look) != null) {
+                widest = Math.max(widest, Math.max(0, length(d.get("padding-left"), look.size, frame.width()))
+                        + Math.max(0, length(d.get("padding-right"), look.size, frame.width())));
+            }
+        }
+        return Math.min(72, widest);
+    }
+
+    private static boolean hasEdges(Map<String, String> d) {
+        int edges = 0;
+        for (String side : new String[] {"top", "bottom", "left", "right"}) {
+            edges += border(d, side) > 0 ? 1 : 0;
+        }
+        return edges >= 2;
     }
 
     private void row(Layout.Plan plan, Look look, Frame frame, int depth) throws IOException {
@@ -1266,8 +1478,11 @@ final class Flow {
         }
         if (plan.areas() == null) {
             dropEmptyColumns(t);
+            float gutter = gutter(items, look, frame);
             if (plan.gap() >= 1 && Layout.framed(items, look, ctx)) {
                 gapColumns(t, plan.gap());
+            } else if (gutter >= 1) {
+                gapColumns(t, gutter);
             }
         }
         if (t.columnWidths.size() < 2) {
@@ -1290,8 +1505,7 @@ final class Flow {
             spacer(pendingSpace, frame);
             space(0);
         }
-        t.pageBreakBefore = pendingBreak;
-        pendingBreak = false;
+        breakBefore(t, pendingBreak, frame);
         ctx.count();
         emit(t);
     }
@@ -1554,6 +1768,8 @@ final class Flow {
             }
             pendingGap = null;
         }
+        para.inlines.addAll(pendingEdges);
+        pendingEdges.clear();
         para.inlines.add(in);
     }
 
@@ -1571,6 +1787,7 @@ final class Flow {
         pendingBreak = false;
         sectionStarted = false;
         p.bidi = l.rightToLeft;
+        p.hyphenate = l.hyphenates();
         p.shading = f.shading();
         if (l.linePoints > 0) {
             p.lineRule = Paragraph.LineRule.AT_LEAST;
@@ -1595,11 +1812,24 @@ final class Flow {
     }
 
     void flush() throws IOException {
+        edgeBoundary++;
+        pendingEdges.clear();
         if (para == null) {
             return;
         }
         Paragraph p = para;
         para = null;
+        if (leaderOf == p) {
+            List<Inline> moved = new ArrayList<>(p.inlines.subList(leaderFrom, p.inlines.size()));
+            p.inlines.subList(leaderFrom, p.inlines.size()).clear();
+            trimEnd(p.inlines);
+            trimStart(moved);
+            p.inlines.add(new Inline.Tab(leaderStyle));
+            p.inlines.addAll(moved);
+            p.tabs.add(new Paragraph.TabStop(blockFrame.left() + blockFrame.width(),
+                    Paragraph.TabStop.Kind.RIGHT, leaderChar));
+            leaderOf = null;
+        }
         if (rightOf == p) {
             trimEnd(p.inlines);
             trimStart(right);
@@ -1623,6 +1853,8 @@ final class Flow {
             return;
         }
         measureUnwrapped(p);
+        p.anchors.addAll(pendingAnchors);
+        pendingAnchors.clear();
         lastParagraph = p;
         lastSpace = true;
         ctx.count();
@@ -2044,13 +2276,14 @@ final class Flow {
         if (t == null) {
             return;
         }
-        t.pageBreakBefore = pendingBreak && !sectionStarted && !inCell;
+        boolean newPage = pendingBreak && !sectionStarted && !inCell;
         pendingBreak = false;
         sectionStarted = false;
-        if (pendingSpace > 0) {
+        if (pendingSpace > 0 && !newPage) {
             spacer(pendingSpace, frame);
         }
         space(Math.max(0, length(d.get("margin-bottom"), em, frame.width())));
+        breakBefore(t, newPage, frame);
         ctx.count();
         emit(t);
     }
@@ -2186,6 +2419,21 @@ final class Flow {
         String size = d.getOrDefault("background-size", "auto").strip().toLowerCase(Locale.ROOT);
         boolean[] repeat = Backgrounds.repeat(d.get("background-repeat"));
         return size.equals("cover") || size.equals("100% 100%") || repeat[0] && repeat[1];
+    }
+
+    private void breakBefore(Table t, boolean newPage, Frame frame) throws IOException {
+        pendingBreak = false;
+        if (!newPage) {
+            return;
+        }
+        Paragraph opener = new Paragraph();
+        opener.indentLeft = frame.left();
+        opener.lineRule = Paragraph.LineRule.EXACT;
+        opener.lineHeight = 1;
+        opener.inlines.add(new Inline.Text("\u00a0", blockLook.run().withSize(1), null, -1));
+        opener.pageBreakBefore = true;
+        opener.keepNext = true;
+        emit(opener);
     }
 
     private void spacer(float space, Frame frame) throws IOException {

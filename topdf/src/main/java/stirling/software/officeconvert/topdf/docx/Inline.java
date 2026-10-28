@@ -10,7 +10,12 @@ sealed interface Inline {
 
     record Break(String type, RunProps rp) implements Inline {}
 
-    record Field(String name, RunProps rp, String cached, Link link, String format) implements Inline {}
+    record Field(String name, RunProps rp, String cached, Link link, String format, String argument) implements Inline {
+
+        Field(String name, RunProps rp, String cached, Link link, String format) {
+            this(name, rp, cached, link, format, null);
+        }
+    }
 
     record NoteRef(boolean endnote, int id, RunProps rp, String customMark) implements Inline {}
 

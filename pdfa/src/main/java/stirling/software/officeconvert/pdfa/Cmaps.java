@@ -11,6 +11,8 @@ final class Cmaps {
 
     record Subtable(int platform, int encoding, TreeMap<Integer, Integer> map) {}
 
+    private static final int MAX_SEGMENTS = 8_000;
+
     private Cmaps() {}
 
     static byte[] format4(TreeMap<Integer, Integer> map, int encodingId) {
@@ -22,7 +24,8 @@ final class Cmaps {
         for (Subtable s : subtables) {
             boolean bytes = s.platform() == 1 && s.encoding() == 0 && (s.map().isEmpty() || s.map().lastKey() < 256)
                     && s.map().values().stream().allMatch(g -> g < 256);
-            boolean wide = !s.map().isEmpty() && s.map().lastKey() >= 0xFFFF;
+            boolean wide = s.platform() == 3 && s.encoding() == 10
+                    || !s.map().isEmpty() && s.map().lastKey() >= 0xFFFF;
             bodies.add(bytes ? format0(s.map()) : wide ? format12(s.map()) : format4(s.map()));
         }
         ByteBuffer head = ByteBuffer.allocate(4 + 8 * subtables.size());
@@ -83,7 +86,11 @@ final class Cmaps {
         return sub.array();
     }
 
-    private static byte[] format4(TreeMap<Integer, Integer> map) {
+    static boolean fitsFormat4(TreeMap<Integer, Integer> map) {
+        return segments(map).size() <= MAX_SEGMENTS;
+    }
+
+    private static List<int[]> segments(TreeMap<Integer, Integer> map) {
         List<int[]> segments = new ArrayList<>();
         int[] cur = null;
         for (Map.Entry<Integer, Integer> e : map.entrySet()) {
@@ -98,6 +105,14 @@ final class Cmaps {
                 cur = new int[] {code, code, gid - code};
                 segments.add(cur);
             }
+        }
+        return segments;
+    }
+
+    private static byte[] format4(TreeMap<Integer, Integer> map) {
+        List<int[]> segments = segments(map);
+        if (segments.size() > MAX_SEGMENTS) {
+            segments = new ArrayList<>(segments.subList(0, MAX_SEGMENTS));
         }
         segments.add(new int[] {0xFFFF, 0xFFFF, 1});
         int segX2 = segments.size() * 2;

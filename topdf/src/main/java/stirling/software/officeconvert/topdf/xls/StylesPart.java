@@ -31,7 +31,7 @@ final class StylesPart {
 
     private StylesPart() {}
 
-    static String write(HSSFWorkbook wb) {
+    static String write(HSSFWorkbook wb, String dxfs, XfExt ext) {
         StringBuilder b = new StringBuilder(8192).append(Xml.HEAD).append("<styleSheet xmlns=\"").append(Xml.MAIN)
                 .append("\">");
         StringBuilder formats = new StringBuilder();
@@ -45,11 +45,11 @@ final class StylesPart {
             b.append("<numFmts count=\"").append(nf).append("\">").append(formats).append("</numFmts>");
         }
         int fonts = fontCount(wb);
-        b.append("<fonts count=\"").append(fonts).append("\">");
+        StringBuilder fontXml = new StringBuilder();
         for (int i = 0; i < fonts; i++) {
-            b.append(font(wb, i));
+            fontXml.append(font(wb, i));
         }
-        b.append("</fonts>");
+        Map<String, Integer> extraFonts = new LinkedHashMap<>();
         Map<String, Integer> fills = new LinkedHashMap<>();
         fills.put("<fill><patternFill patternType=\"none\"/></fill>", 0);
         fills.put("<fill><patternFill patternType=\"gray125\"/></fill>", 1);
@@ -59,15 +59,24 @@ final class StylesPart {
         StringBuilder xfs = new StringBuilder(count * 160);
         for (int i = 0; i < count; i++) {
             HSSFCellStyle s = wb.getCellStyleAt(i);
-            int fill = fills.computeIfAbsent(fill(s), k -> fills.size());
-            int border = borders.computeIfAbsent(border(s), k -> borders.size());
+            XfExt.Colours c = ext == null ? null : ext.at(i);
+            int fill = fills.computeIfAbsent(c == null ? fill(s) : fill(s, c), k -> fills.size());
+            int border = borders.computeIfAbsent(c == null ? border(s) : border(s, c), k -> borders.size());
             int font = s.getFontIndex() < fonts ? s.getFontIndex() : 0;
+            if (c != null && c.text() != null) {
+                String coloured = font(wb, font).replaceAll("<color [^>]*/>", "").replace("<sz ", "<color "
+                        + c.text() + "/><sz ");
+                font = fonts + extraFonts.computeIfAbsent(coloured, k -> extraFonts.size());
+            }
             xfs.append("<xf numFmtId=\"").append(s.getDataFormat() & 0xFFFF).append("\" fontId=\"").append(font)
                     .append("\" fillId=\"").append(fill).append("\" borderId=\"").append(border)
                     .append("\" xfId=\"0\" applyNumberFormat=\"1\" applyFont=\"1\" applyFill=\"1\" applyBorder=\"1\""
                             + " applyAlignment=\"1\">")
                     .append(alignment(s)).append("</xf>");
         }
+        b.append("<fonts count=\"").append(fonts + extraFonts.size()).append("\">").append(fontXml);
+        extraFonts.keySet().forEach(b::append);
+        b.append("</fonts>");
         b.append("<fills count=\"").append(fills.size()).append("\">");
         fills.keySet().forEach(b::append);
         b.append("</fills><borders count=\"").append(borders.size()).append("\">");
@@ -75,7 +84,7 @@ final class StylesPart {
         b.append("</borders><cellStyleXfs count=\"1\"><xf numFmtId=\"0\" fontId=\"0\" fillId=\"0\" borderId=\"0\"/>"
                 + "</cellStyleXfs><cellXfs count=\"").append(count).append("\">").append(xfs).append("</cellXfs>");
         b.append("<cellStyles count=\"1\"><cellStyle name=\"Normal\" xfId=\"0\" builtinId=\"0\"/></cellStyles>");
-        b.append(palette(wb)).append("</styleSheet>");
+        b.append(dxfs).append(palette(wb)).append("</styleSheet>");
         return b.toString();
     }
 
@@ -158,6 +167,37 @@ final class StylesPart {
         return "<fill><patternFill patternType=\"" + PATTERNS[code] + "\">" + color("fgColor",
                 s.getFillForegroundColor(), false) + color("bgColor", s.getFillBackgroundColor(), false)
                 + "</patternFill></fill>";
+    }
+
+    private static String fill(HSSFCellStyle s, XfExt.Colours c) {
+        FillPatternType p = s.getFillPattern();
+        int code = p == null ? 0 : p.getCode();
+        if (code <= 0 || code >= PATTERNS.length || c.fill() == null && c.back() == null) {
+            return fill(s);
+        }
+        String fore = c.fill() != null ? "<fgColor " + c.fill() + "/>" : color("fgColor", s.getFillForegroundColor(),
+                false);
+        String back = c.back() != null ? "<bgColor " + c.back() + "/>" : color("bgColor", s.getFillBackgroundColor(),
+                false);
+        return "<fill><patternFill patternType=\"" + PATTERNS[code] + "\">" + fore + back + "</patternFill></fill>";
+    }
+
+    private static String border(HSSFCellStyle s, XfExt.Colours c) {
+        return "<border>" + side("left", s.getBorderLeft(), s.getLeftBorderColor(), c.left())
+                + side("right", s.getBorderRight(), s.getRightBorderColor(), c.right())
+                + side("top", s.getBorderTop(), s.getTopBorderColor(), c.top())
+                + side("bottom", s.getBorderBottom(), s.getBottomBorderColor(), c.bottom()) + "<diagonal/></border>";
+    }
+
+    private static String side(String tag, BorderStyle style, short color, String ext) {
+        if (ext == null) {
+            return side(tag, style, color);
+        }
+        int code = style == null ? 0 : style.getCode();
+        if (code <= 0 || code >= BORDERS.length) {
+            return "<" + tag + "/>";
+        }
+        return "<" + tag + " style=\"" + BORDERS[code] + "\"><color " + ext + "/></" + tag + ">";
     }
 
     private static String border(HSSFCellStyle s) {

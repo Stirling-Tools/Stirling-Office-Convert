@@ -11,6 +11,8 @@ import java.util.Set;
 import java.util.TreeMap;
 
 import org.jsoup.nodes.Element;
+import org.jsoup.nodes.Node;
+import org.jsoup.nodes.TextNode;
 import org.jsoup.select.Elements;
 
 import stirling.software.officeconvert.model.Block;
@@ -326,15 +328,21 @@ final class HtmlTables {
                 }
                 String text = s.element().text();
                 float size = s.look().size;
-                natural[c] = Math.max(natural[c], Math.min(room, Glyphs.estimate(text, size) + across + 2));
+                CellWidths measured = new CellWidths();
+                measureChildren(s.element(), s.look(), room, measured, 0);
+                measured.lineEnd();
+                natural[c] = Math.max(natural[c], Math.min(room, Glyphs.estimate(text, size, s.look().font, s.look().bold)
+                        + across + 2));
+                natural[c] = Math.max(natural[c], Math.min(room, measured.widestLine + across + 2));
                 float longest = 0;
                 for (String word : text.split("\\s+")) {
-                    longest = Math.max(longest, Glyphs.word(word, size, s.look().bold));
+                    longest = Math.max(longest, Glyphs.word(word, size, s.look().bold, s.look().font));
                 }
+                longest = Math.max(longest, measured.widestWord + 1);
                 least[c] = Math.max(least[c], Math.min(room / 2, longest + across));
-                least[c] = Math.max(least[c], Math.min(room, leastInside(s.element(), size * 0.5f, 1) + across));
+                least[c] = Math.max(least[c], Math.min(room, leastInside(s.element(), s.look(), 1) + across));
                 boolean nowrap = s.look().whiteSpace.equals("nowrap") || s.look().whiteSpace.equals("pre");
-                unwrapped[c] = Math.max(unwrapped[c], (nowrap ? Glyphs.estimate(text, size) : longest) + across);
+                unwrapped[c] = Math.max(unwrapped[c], (nowrap ? Glyphs.estimate(text, size, s.look().font, s.look().bold) : longest) + across);
                 float[] pictures = pictures(s, room);
                 if (pictures[0] > 0) {
                     natural[c] = Math.max(natural[c], Math.min(room, pictures[1] + across));
@@ -386,7 +394,107 @@ final class HtmlTables {
         return sum;
     }
 
-    private static float leastInside(Element cell, float em, int level) {
+    private static final class CellWidths {
+        float line;
+        float word;
+        float widestLine;
+        float widestWord;
+        boolean space = true;
+
+        void wordEnd() {
+            widestWord = Math.max(widestWord, word);
+            word = 0;
+        }
+
+        void lineEnd() {
+            wordEnd();
+            widestLine = Math.max(widestLine, line);
+            line = 0;
+            space = true;
+        }
+
+        void text(String raw, Look look) {
+            boolean keepSpaces = look.whiteSpace.startsWith("pre") && !look.whiteSpace.equals("pre-line")
+                    || look.whiteSpace.equals("break-spaces");
+            boolean keepLines = look.whiteSpace.startsWith("pre") || look.whiteSpace.equals("break-spaces");
+            boolean nowrap = look.whiteSpace.equals("nowrap") || look.whiteSpace.equals("pre");
+            String text = look.transform(raw);
+            var style = look.run();
+            int from = 0;
+            for (int i = 0; i < text.length();) {
+                int at = i;
+                int cp = text.codePointAt(i);
+                i += Character.charCount(cp);
+                boolean blank = cp == ' ' || cp == '\t' || cp == '\n' || cp == '\r' || cp == '\f';
+                if (!blank && (nowrap || !Glyphs.wide(cp))) {
+                    continue;
+                }
+                if (at > from) {
+                    float width = Measure.width(text.substring(from, at), style);
+                    line += width;
+                    word += width;
+                    space = false;
+                }
+                from = i;
+                if (keepLines && (cp == '\n' || cp == '\r')) {
+                    lineEnd();
+                    continue;
+                }
+                if (blank && !keepSpaces && space) {
+                    continue;
+                }
+                if (!nowrap && (blank || Glyphs.wide(cp))) {
+                    wordEnd();
+                }
+                float width = Measure.width(blank && !keepSpaces ? " " : text.substring(at, i), style);
+                line += width;
+                if (nowrap || !blank) {
+                    word += width;
+                }
+                if (!nowrap && Glyphs.wide(cp)) {
+                    wordEnd();
+                }
+                space = blank;
+            }
+            if (from < text.length()) {
+                float width = Measure.width(text.substring(from), style);
+                line += width;
+                word += width;
+                space = false;
+            }
+        }
+    }
+
+    private void measureChildren(Element parent, Look look, float room, CellWidths into, int depth) {
+        if (depth >= Flow.MAX_DEPTH || ctx.stopped()) {
+            return;
+        }
+        for (Node child : parent.childNodes()) {
+            if (child instanceof TextNode text) {
+                into.text(text.getWholeText(), look);
+            } else if (child instanceof Element element) {
+                String tag = element.normalName();
+                Map<String, String> declared = ctx.declared(element, look);
+                if (Flow.SKIPPED.contains(tag) || hidden(element, declared, look)) {
+                    continue;
+                }
+                String display = declared.getOrDefault("display", Flow.BLOCKS.contains(tag) ? "block" : "inline")
+                        .strip().toLowerCase(Locale.ROOT);
+                boolean block = !display.startsWith("inline") && !display.equals("contents");
+                if (block || tag.equals("br") || tag.equals("table")) {
+                    into.lineEnd();
+                }
+                if (!tag.equals("table") && !tag.equals("br")) {
+                    measureChildren(element, look.child(declared, room, !block), room, into, depth + 1);
+                }
+                if (block) {
+                    into.lineEnd();
+                }
+            }
+        }
+    }
+
+    private static float leastInside(Element cell, Look look, int level) {
         if (level >= Table.MAX_NESTING) {
             return 0;
         }
@@ -395,7 +503,7 @@ final class HtmlTables {
         while (!open.isEmpty()) {
             Element e = open.pop();
             if (e.normalName().equals("table")) {
-                most = Math.max(most, leastTable(e, em, level + 1));
+                most = Math.max(most, leastTable(e, look, level + 1));
             } else {
                 e.children().reversed().forEach(open::push);
             }
@@ -404,10 +512,10 @@ final class HtmlTables {
     }
 
     static float least(Element table, Look look) {
-        return leastTable(table, look.size * 0.5f, 1);
+        return leastTable(table, look, 1);
     }
 
-    private static float leastTable(Element table, float em, int level) {
+    private static float leastTable(Element table, Look look, int level) {
         float[] columns = new float[MAX_COLUMNS];
         int used = 0;
         Elements rows = table.select(ROWS);
@@ -419,11 +527,11 @@ final class HtmlTables {
                     break;
                 }
                 if (span == 1) {
-                    int longest = 0;
+                    float longest = 0;
                     for (String word : td.text().split("\\s+")) {
-                        longest = Math.max(longest, word.length());
+                        longest = Math.max(longest, Glyphs.word(word, look.size, look.bold, look.font));
                     }
-                    columns[col] = Math.max(columns[col], Math.max(longest * em, leastInside(td, em, level)));
+                    columns[col] = Math.max(columns[col], Math.max(longest, leastInside(td, look, level)));
                 }
                 col += span;
                 used = Math.max(used, col);
@@ -591,6 +699,14 @@ final class HtmlTables {
         }
     }
 
+    private static final int BUTTON_TEXT = 60;
+
+
+    private static boolean filled(Map<String, String> cd, Element td) {
+        Integer fill = Css.color(cd.getOrDefault("background-color", td.attr("bgcolor")));
+        return fill != null && fill >= 0 && fill != 0xFFFFFF;
+    }
+
     /** True for a table that only stacks things: one cell a row and no borders drawn. */
     static boolean layoutOnly(Element table, Map<String, String> d, HtmlContext ctx, Look look) {
         if (frameBorder(table) > 0 || Flow.border(d, "top") > 0 || Flow.border(d, "bottom") > 0) {
@@ -600,6 +716,8 @@ final class HtmlTables {
         if (rows.isEmpty() || rows.size() > MAX_ROWS) {
             return false;
         }
+        String given = table.hasAttr("width") ? table.attr("width") : d.getOrDefault("width", "auto");
+        boolean shrinks = given.isBlank() || given.strip().equalsIgnoreCase("auto");
         for (Element tr : rows) {
             Elements cells = tr.select("> td, > th");
             if (cells.size() > 1) {
@@ -609,6 +727,9 @@ final class HtmlTables {
                 Map<String, String> cd = ctx.declared(td, look);
                 if (Flow.border(cd, "top") > 0 || Flow.border(cd, "bottom") > 0 || Flow.border(cd, "left") > 0
                         || td.normalName().equals("th")) {
+                    return false;
+                }
+                if (shrinks && filled(cd, td) && Layout.text(td, BUTTON_TEXT + 1).length() <= BUTTON_TEXT) {
                     return false;
                 }
             }

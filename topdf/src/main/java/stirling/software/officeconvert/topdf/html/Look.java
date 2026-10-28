@@ -1,5 +1,6 @@
 package stirling.software.officeconvert.topdf.html;
 
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.function.Predicate;
@@ -12,7 +13,7 @@ final class Look {
 
     static final float ROOT_SIZE = 12f;
 
-    String font = "Times New Roman";
+    String font = generic("serif");
     float size = ROOT_SIZE;
     boolean bold;
     boolean italic;
@@ -40,6 +41,8 @@ final class Look {
     // the family is the bare generic monospace, which browsers set at 13px where the keyword says 16
     boolean monoOnly;
     float opacity = 1;
+    boolean hyphens;
+    String lang = "";
 
     Look copy() {
         Look l = new Look();
@@ -57,6 +60,8 @@ final class Look {
         l.align = align;
         l.alignFixed = alignFixed;
         l.lineMultiple = lineMultiple;
+        l.hyphens = hyphens;
+        l.lang = lang;
         l.linePoints = linePoints;
         l.textIndent = textIndent;
         l.whiteSpace = whiteSpace;
@@ -83,6 +88,13 @@ final class Look {
             l.highlight = -1;
         }
         String v;
+        if ((v = d.get("hyphens")) != null || (v = d.get("-webkit-hyphens")) != null) {
+            String h = v.strip().toLowerCase(Locale.ROOT);
+            l.hyphens = h.equals("auto") || !h.equals("manual") && !h.equals("none") && hyphens;
+        }
+        if ((v = d.get(Presentation.LANG)) != null) {
+            l.lang = v.strip().toLowerCase(Locale.ROOT);
+        }
         if ((v = d.get("font-family")) != null) {
             String f = family(v);
             if (f != null) {
@@ -246,6 +258,10 @@ final class Look {
     // Which families can be drawn while one document converts; a browser skips web fonts it never loaded
     private static final ThreadLocal<Predicate<String>> DRAWABLE = ThreadLocal.withInitial(() -> f -> true);
 
+    static Predicate<String> drawable() {
+        return DRAWABLE.get();
+    }
+
     static void drawable(Predicate<String> test) {
         DRAWABLE.set(test);
     }
@@ -255,8 +271,12 @@ final class Look {
     }
 
     /** The first family of a CSS font stack that can be drawn, as a browser picks it. */
+    boolean hyphenates() {
+        return hyphens && (lang.equals("en") || lang.startsWith("en-") || lang.startsWith("en_"));
+    }
+
     static String family(String list) {
-        for (String raw : list.split(",")) {
+        for (String raw : Css.splitTopLevel(list, ',')) {
             String f = raw.strip().replaceAll("^[\"']|[\"']$", "").strip();
             if (f.isEmpty() || f.startsWith("-") || f.equalsIgnoreCase("inherit") || f.equalsIgnoreCase("initial")) {
                 continue;
@@ -272,11 +292,39 @@ final class Look {
         return null;
     }
 
+    private static final ThreadLocal<Map<String, String>> GENERICS = ThreadLocal.withInitial(Map::of);
+
+    static final Map<String, List<String>> FONTCONFIG_ORDER = Map.of(
+            "serif", List.of("Noto Serif", "DejaVu Serif", "Times New Roman", "Thorndale AMT", "Luxi Serif",
+                    "Nimbus Roman No9 L", "Nimbus Roman", "Times"),
+            "sans-serif", List.of("Noto Sans", "DejaVu Sans", "Verdana", "Arial", "Albany AMT", "Luxi Sans",
+                    "Nimbus Sans L", "Nimbus Sans", "Helvetica", "Lucida Sans Unicode", "Tahoma"),
+            "monospace", List.of("Noto Sans Mono", "DejaVu Sans Mono", "Inconsolata", "Andale Mono", "Courier New",
+                    "Cumberland AMT", "Luxi Mono", "Nimbus Mono L", "Nimbus Mono", "Nimbus Mono PS", "Courier"));
+
+    static void generics(Map<String, String> installed) {
+        GENERICS.set(installed);
+    }
+
+    static void clearGenerics() {
+        GENERICS.remove();
+    }
+
     private static String generic(String f) {
-        return switch (f) {
-            case "serif", "ui-serif" -> "Times New Roman";
-            case "sans-serif", "system-ui", "ui-sans-serif", "ui-rounded", "blinkmacsystemfont" -> "Arial";
-            case "monospace", "ui-monospace" -> "Courier New";
+        String key = switch (f) {
+            case "serif", "ui-serif" -> "serif";
+            case "sans-serif", "system-ui", "ui-sans-serif", "ui-rounded", "blinkmacsystemfont" -> "sans-serif";
+            case "monospace", "ui-monospace" -> "monospace";
+            default -> f;
+        };
+        String installed = GENERICS.get().get(key);
+        if (installed != null) {
+            return installed;
+        }
+        return switch (key) {
+            case "serif" -> "Times New Roman";
+            case "sans-serif" -> "Arial";
+            case "monospace" -> "Courier New";
             case "cursive" -> "Comic Sans MS";
             case "fantasy" -> "Impact";
             default -> null;

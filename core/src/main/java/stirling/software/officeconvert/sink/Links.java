@@ -4,6 +4,7 @@ import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.util.Locale;
 import java.util.Set;
+import java.util.regex.Pattern;
 
 import stirling.software.officeconvert.model.Inline;
 
@@ -13,11 +14,16 @@ public final class Links {
 
     private static final Set<String> MAIL_FIELDS = Set.of("to", "cc", "bcc", "subject", "body");
 
+    private static final Pattern INTERNAL = Pattern.compile("#[A-Za-z_][A-Za-z0-9_.:-]{0,199}");
+
     private static final char[] HEX = "0123456789ABCDEF".toCharArray();
 
     private Links() {}
 
     public static String target(Inline.Text t) {
+        if (t.link() != null && INTERNAL.matcher(t.link()).matches()) {
+            return t.link();
+        }
         String url = t.link() == null ? null : safeUrl(t.link());
         if (url != null) {
             return url;

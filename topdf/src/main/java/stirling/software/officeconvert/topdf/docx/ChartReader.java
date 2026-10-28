@@ -155,9 +155,13 @@ final class ChartReader {
         XEl spPr = space.child("c:spPr");
         Color fill = spPr == null ? defaultFill : fill(spPr);
         Stroke border = spPr == null ? defaultBorder() : line(spPr);
+        XEl table = chart.child("c:plotArea") == null ? null : chart.child("c:plotArea").child("c:dTable");
+        Chart.DataTable dataTable = table == null ? null : new Chart.DataTable(on(table, "c:showHorzBorder", false),
+                on(table, "c:showVertBorder", false), on(table, "c:showOutline", false),
+                on(table, "c:showKeys", false));
         return new Chart(title, groups, categories, legend, values, cats, fill, border, font, textSize,
                 color(space.child("c:txPr"), Color.BLACK), plotLayout, plotFill, plotBorder, date1904, secondary,
-                marked(space, Charts.TIGHT_SCALE));
+                marked(space, Charts.TIGHT_SCALE), dataTable);
     }
 
     private Chart.Axis secondary;
@@ -280,7 +284,8 @@ final class ChartReader {
     private Chart.Group group(XEl g, List<String> categories) {
         Chart.Kind kind = switch (g.name) {
             case "c:barChart", "c:bar3DChart" -> Chart.Kind.BAR;
-            case "c:lineChart", "c:line3DChart", "c:stockChart" -> Chart.Kind.LINE;
+            case "c:lineChart", "c:line3DChart", "c:stockChart", "c:surfaceChart", "c:surface3DChart" ->
+                    Chart.Kind.LINE;
             case "c:radarChart" -> Chart.Kind.RADAR;
             case "c:areaChart", "c:area3DChart" -> Chart.Kind.AREA;
             case "c:pieChart", "c:pie3DChart", "c:ofPieChart" -> Chart.Kind.PIE;
@@ -322,7 +327,37 @@ final class ChartReader {
         float first = number(g.child("c:firstSliceAng"), 0);
         Chart.Group group = new Chart.Group(kind, horizontal, grouping, series, gap, overlap, hole, first, vary,
                 labels(g.child("c:dLbls")));
-        return reversedOrder(g) ? group.inReversedOrder() : group;
+        group = reversedOrder(g) ? group.inReversedOrder() : group;
+        if (kind == Chart.Kind.LINE && (g.child("c:hiLowLines") != null || g.child("c:upDownBars") != null)) {
+            group = group.withStock(stock(g));
+        }
+        return g.is("c:bar3DChart") || g.is("c:pie3DChart") ? group.inThreeD() : group;
+    }
+
+    private Chart.Stock stock(XEl g) {
+        XEl hl = g.child("c:hiLowLines");
+        Stroke hiLow = null;
+        if (hl != null) {
+            XEl sp = hl.child("c:spPr");
+            hiLow = sp == null || sp.child("a:ln") == null ? Stroke.solid(0.75f, Color.BLACK) : line(sp);
+        }
+        XEl ud = g.child("c:upDownBars");
+        if (ud == null) {
+            return new Chart.Stock(hiLow, null, null, null, 150);
+        }
+        XEl up = ud.path("c:upBars", "c:spPr");
+        XEl down = ud.path("c:downBars", "c:spPr");
+        Stroke edge = up != null && up.child("a:ln") != null ? line(up) : Stroke.solid(0.75f, Color.BLACK);
+        return new Chart.Stock(hiLow, barFill(up, Color.WHITE), barFill(down, Color.BLACK), edge,
+                number(ud.child("c:gapWidth"), 150));
+    }
+
+    private Color barFill(XEl spPr, Color fallback) {
+        if (spPr == null || spPr.child("a:noFill") == null && spPr.child("a:solidFill") == null
+                && spPr.child("a:gradFill") == null) {
+            return fallback;
+        }
+        return spPr.child("a:noFill") != null ? null : fill(spPr);
     }
 
     private static boolean reversedOrder(XEl g) {
@@ -429,7 +464,62 @@ final class ChartReader {
             points.set(i, new Chart.Point(p == null ? null : fill(p)));
         }
         return new Chart.Series(name, values, xs, fill, kind == Chart.Kind.BAR ? null : line, markers, points,
-                smooth, mk, own, outline, spPr == null ? null : shadow(spPr.path("a:effectLst", "a:outerShdw")));
+                smooth, mk, own, outline, spPr == null ? null : shadow(spPr.path("a:effectLst", "a:outerShdw")),
+                errorBars(s), trends(s));
+    }
+
+    private List<Chart.ErrorBars> errorBars(XEl s) {
+        List<Chart.ErrorBars> out = new ArrayList<>();
+        for (XEl e : s.children("c:errBars")) {
+            if (out.size() >= 2) {
+                break;
+            }
+            String dir = e.child("c:errDir") == null ? "y" : e.child("c:errDir").attr("val", "y");
+            String type = e.child("c:errBarType") == null ? "both" : e.child("c:errBarType").attr("val", "both");
+            String kind = e.child("c:errValType") == null ? "fixedVal"
+                    : e.child("c:errValType").attr("val", "fixedVal");
+            Double value = decimal(e.child("c:val"));
+            boolean cap = e.child("c:noEndCap") == null || !Ooxml.flag(e.child("c:noEndCap").val(), true);
+            XEl spPr = e.child("c:spPr");
+            Stroke stroke = spPr == null || spPr.child("a:ln") == null ? Stroke.solid(0.75f, Color.BLACK)
+                    : line(spPr);
+            if (stroke == null) {
+                continue;
+            }
+            double amount = value == null || !Double.isFinite(value) ? 0 : value;
+            out.add(new Chart.ErrorBars(dir.equals("x"), type, kind, amount, numbers(e.child("c:plus")),
+                    numbers(e.child("c:minus")), cap, stroke));
+        }
+        return out;
+    }
+
+    private List<Chart.Trend> trends(XEl s) {
+        List<Chart.Trend> out = new ArrayList<>();
+        for (XEl t : s.children("c:trendline")) {
+            if (out.size() >= 4) {
+                break;
+            }
+            String type = t.child("c:trendlineType") == null ? "linear" : t.child("c:trendlineType").attr("val",
+                    "linear");
+            int order = Math.max(2, Math.min(6, Ooxml.integer(t.child("c:order") == null ? null
+                    : t.child("c:order").val(), 2)));
+            int period = Math.max(2, Math.min(255, Ooxml.integer(t.child("c:period") == null ? null
+                    : t.child("c:period").val(), 2)));
+            Double forward = decimal(t.child("c:forward"));
+            Double backward = decimal(t.child("c:backward"));
+            XEl spPr = t.child("c:spPr");
+            Stroke stroke = spPr == null || spPr.child("a:ln") == null ? Stroke.solid(0.75f, Color.BLACK)
+                    : line(spPr);
+            if (stroke == null) {
+                continue;
+            }
+            out.add(new Chart.Trend(type, order, period, finite(forward), finite(backward), stroke));
+        }
+        return out;
+    }
+
+    private static double finite(Double v) {
+        return v == null || !Double.isFinite(v) ? 0 : Math.max(0, Math.min(1e6, v));
     }
 
     private Chart.Shadow shadow(XEl s) {
@@ -757,9 +847,43 @@ final class ChartReader {
         }
         XEl grad = spPr.child("a:gradFill");
         if (grad != null && grad.child("a:gsLst") != null && !grad.child("a:gsLst").children("a:gs").isEmpty()) {
-            return Colors.drawing(grad.child("a:gsLst").children("a:gs").get(0), theme, null);
+            return average(grad.child("a:gsLst").children("a:gs"));
         }
         return null;
+    }
+
+    private Color average(List<XEl> stops) {
+        TreeMap<Double, Color> at = new TreeMap<>();
+        for (XEl gs : stops) {
+            Color c = Colors.drawing(gs, theme, null);
+            if (c != null) {
+                at.put(Math.max(0, Math.min(1, Ooxml.integer(gs.attr("pos"), 0) / 100000.0)), c);
+            }
+        }
+        if (at.isEmpty()) {
+            return null;
+        }
+        double[] sum = new double[3];
+        double prev = 0;
+        Color last = at.firstEntry().getValue();
+        for (Map.Entry<Double, Color> e : at.entrySet()) {
+            double span = e.getKey() - prev;
+            add(sum, last, e.getValue(), span);
+            prev = e.getKey();
+            last = e.getValue();
+        }
+        add(sum, last, last, 1 - prev);
+        return new Color(clip(sum[0]), clip(sum[1]), clip(sum[2]));
+    }
+
+    private static void add(double[] sum, Color a, Color b, double span) {
+        sum[0] += span * (a.getRed() + b.getRed()) / 2;
+        sum[1] += span * (a.getGreen() + b.getGreen()) / 2;
+        sum[2] += span * (a.getBlue() + b.getBlue()) / 2;
+    }
+
+    private static int clip(double v) {
+        return (int) Math.max(0, Math.min(255, Math.round(v)));
     }
 
     private Stroke line(XEl spPr) {

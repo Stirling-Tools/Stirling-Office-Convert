@@ -18,6 +18,7 @@ final class Linked implements HtmlAssets {
     private long total;
     private int reads;
     private boolean exhausted;
+    private String rebased;
 
     Linked(HtmlAssets assets) {
         this.assets = assets == null ? HtmlAssets.NONE : assets;
@@ -29,8 +30,39 @@ final class Linked implements HtmlAssets {
 
     @Override
     public String base() {
+        if (rebased != null) {
+            return rebased;
+        }
         String b = assets.base();
         return b == null ? "" : b;
+    }
+
+    String resolve(String base, String reference) {
+        if (reference != null && assets.absoluteWeb()) {
+            String r = reference.strip();
+            if (r.startsWith("//")) {
+                r = (plainHttp(base) || !web(base) && plainHttp(base()) ? "http:" : "https:") + r;
+            }
+            if (r.regionMatches(true, 0, "http://", 0, 7) || r.regionMatches(true, 0, "https://", 0, 8)) {
+                return r;
+            }
+        }
+        return HtmlRefs.resolve(base, reference);
+    }
+
+    private static boolean plainHttp(String url) {
+        return url != null && url.strip().regionMatches(true, 0, "http://", 0, 7);
+    }
+
+    private static boolean web(String url) {
+        return plainHttp(url) || url != null && url.strip().regionMatches(true, 0, "https://", 0, 8);
+    }
+
+    void rebase(String href) {
+        String b = assets.base();
+        String web = b != null && (b.regionMatches(true, 0, "http://", 0, 7) || b.regionMatches(true, 0, "https://", 0, 8))
+                ? HtmlRefs.resolve(b, href) : null;
+        rebased = web;
     }
 
     boolean exhausted() {

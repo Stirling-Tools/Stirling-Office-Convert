@@ -10,6 +10,7 @@ import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
@@ -17,6 +18,7 @@ import java.util.stream.Stream;
 
 import org.apache.pdfbox.pdmodel.encryption.InvalidPasswordException;
 
+import stirling.software.officeconvert.EbookOptions;
 import stirling.software.officeconvert.PdfToAzw3;
 import stirling.software.officeconvert.PdfToDocx;
 import stirling.software.officeconvert.PdfToEpub;
@@ -37,6 +39,7 @@ import stirling.software.officeconvert.pdfa.PdfToPdfA;
 import stirling.software.officeconvert.topdf.HtmlAssets;
 import stirling.software.officeconvert.topdf.OfficeToPdf;
 import stirling.software.officeconvert.topdf.UnsupportedFormats;
+import stirling.software.officeconvert.topdf.WebAssets;
 import stirling.software.officeconvert.topdf.crypt.Passwords;
 import stirling.software.officeconvert.topdf.font.FontSet;
 import stirling.software.officeconvert.topdf.io.PoiXml;
@@ -60,7 +63,12 @@ public final class Main {
     }
 
     static int run(String[] args) {
+        if (args.length > 0 && SplitPhotos.COMMAND.equals(args[0])) {
+            return SplitPhotos.run(Arrays.copyOfRange(args, 1, args.length));
+        }
         List<Path> inputs = new ArrayList<>();
+        List<String> urls = new ArrayList<>();
+        WebAssets.Access web = WebAssets.Access.none();
         Path output = null;
         int first = 0;
         int last = 0;
@@ -79,6 +87,7 @@ public final class Main {
         FontSet.Builder fontSet = FontSet.builder();
         PdfToXlsx.Sheets sheets = PdfToXlsx.Sheets.PAGE;
         Pictures pictures = Pictures.COMPACT;
+        EbookOptions ebook = EbookOptions.defaults();
         PdfToDocx.Options options;
         PdfToPptx.Options slides;
         PdfToXlsx.Options books;
@@ -147,10 +156,19 @@ public final class Main {
                         lineArtTuned = true;
                     }
                     case "--pictures" -> pictures = pictures(value(args, ++i, a));
+                    case "--no-chapters" -> ebook = ebook.chapters(false);
+                    case "--device" -> ebook = ebook.device(device(value(args, ++i, a)));
                     case "-q", "--quiet" -> quiet = true;
                     case "--overwrite" -> overwrite = true;
                     case "--allow-packages" -> office = office.allowPackages(true);
+                    case "--toc" -> office = office.tableOfContents(true);
+                    case "--page-numbers" -> office = office.pageNumbers(true);
                     case "--allow-local-files" -> localFiles = true;
+                    case "--allow-network" -> web = web.network(true);
+                    case "--follow-redirects" -> web = web.redirects(true);
+                    case "--allow-cookies" -> web = web.cookies(true);
+                    case "--allow-private-addresses" -> web = web.privateAddresses(true);
+                    case "--fetch-linked" -> web = web.linkedFromFiles(true);
                     case "-h", "--help" -> {
                         usage();
                         return 0;
@@ -159,15 +177,32 @@ public final class Main {
                         if (a.startsWith("-") && a.length() > 1) {
                             throw new Usage("unknown option " + a);
                         }
-                        inputs.add(path(a));
+                        if (a.regionMatches(true, 0, "http://", 0, 7) || a.regionMatches(true, 0, "https://", 0, 8)) {
+                            urls.add(a);
+                        } else {
+                            inputs.add(path(a));
+                        }
                     }
                 }
             }
-            if (inputs.isEmpty()) {
+            if (inputs.isEmpty() && urls.isEmpty()) {
                 throw new Usage("no PDF or Office document given");
             }
             fonts = fontSet.directories(fontDirs).build();
             office = office.fonts(fonts).password(password);
+            if (!urls.isEmpty()) {
+                if (urls.size() > 1 || !inputs.isEmpty() || output == null || !"pdf".equals(extension(output))
+                        || pdfa != null || pagesGiven || formatGiven && !"pdf".equals(format)) {
+                    throw new Usage("a URL converts on its own to the PDF named by -o out.pdf");
+                }
+                if (!web.network()) {
+                    throw new Usage("a URL is fetched only with --allow-network");
+                }
+                return url(urls.get(0), output, office, web, overwrite, quiet);
+            }
+            if (web.linkedFromFiles() && !web.network()) {
+                throw new Usage("--fetch-linked fetches only with --allow-network");
+            }
             boolean anyOffice = false;
             boolean anyPdf = false;
             for (Path in : inputs) {
@@ -293,10 +328,10 @@ public final class Main {
                     notes.add(art.converted() + " of " + art.images() + " pictures made 1-bit, " + art.bytesBefore() + " -> "
                             + art.bytesAfter() + " bytes");
                 } else if (officeInput) {
-                    result = officeToPdf(pdf, target, localFiles && page(pdf) ? office.htmlAssets(
-                            HtmlAssets.folder(pdf.toAbsolutePath().getParent(), pdf.getFileName().toString())) : office);
+                    result = officeToPdf(pdf, target, page(pdf) ? office.htmlAssets(assets(pdf, localFiles, web))
+                            : office);
                 } else {
-                    convert(pdf, target, options, slides, books);
+                    convert(pdf, target, options, slides, books, ebook);
                 }
                 guard.wrote(target);
                 long ms = (System.nanoTime() - start) / 1_000_000;
@@ -378,7 +413,7 @@ public final class Main {
     }
 
     private static void convert(Path pdf, Path target, PdfToDocx.Options options, PdfToPptx.Options slides,
-            PdfToXlsx.Options books) throws IOException {
+            PdfToXlsx.Options books, EbookOptions ebook) throws IOException {
         switch (extension(target)) {
             case "odt" -> PdfToOdt.convert(pdf, target, options);
             case "fodt", "xml" -> PdfToOdt.convertFlat(pdf, target, options);
@@ -387,14 +422,46 @@ public final class Main {
             case "html" -> PdfToHtml.convert(pdf, target, options);
             case "json" -> PdfToJson.convert(pdf, target, options);
             case "md" -> PdfToMarkdown.convert(pdf, target, options);
-            case "epub" -> PdfToEpub.convert(pdf, target, options);
-            case "azw3" -> PdfToAzw3.convert(pdf, target, options);
+            case "epub" -> PdfToEpub.convert(pdf, target, options, ebook);
+            case "azw3" -> PdfToAzw3.convert(pdf, target, options, ebook);
             case "pptx" -> PdfToPptx.convert(pdf, target, slides);
             case "odp" -> PdfToOdp.convert(pdf, target, slides);
             case "ppt" -> PdfToPpt.convert(pdf, target, slides);
             case "xlsx", "ods" -> PdfToXlsx.convert(pdf, target, books);
             case "docx" -> PdfToDocx.convert(pdf, target, options);
             default -> throw new IOException("unknown output format ." + extension(target));
+        }
+    }
+
+    private static HtmlAssets assets(Path page, boolean localFiles, WebAssets.Access web) throws IOException {
+        HtmlAssets local = localFiles ? HtmlAssets.folder(page.toAbsolutePath().getParent(),
+                page.getFileName().toString()) : HtmlAssets.NONE;
+        return web.linkedFromFiles() ? WebAssets.linkedFrom(local, web) : local;
+    }
+
+    private static int url(String url, Path target, OfficeToPdf.Options office, WebAssets.Access web, boolean overwrite,
+            boolean quiet) {
+        if (Files.exists(target) && !overwrite) {
+            System.err.println("SKIP " + url + ": " + target + " exists; --overwrite replaces it");
+            return 1;
+        }
+        long start = System.nanoTime();
+        try {
+            if (target.getParent() != null) {
+                Files.createDirectories(target.getParent());
+            }
+            PoiXml.raiseProcessLimits();
+            OfficeToPdf.Result result = OfficeToPdf.convertUrl(url, target, office, web);
+            if (!quiet) {
+                System.out.printf("OK %s -> %s (%d ms)%n", url, target, (System.nanoTime() - start) / 1_000_000);
+                for (String w : result.warnings()) {
+                    System.err.println("warning: " + oneLine(w));
+                }
+            }
+            return 0;
+        } catch (IOException e) {
+            System.err.println("FAIL " + url + ": " + oneLine(describe(e)));
+            return 1;
         }
     }
 
@@ -552,6 +619,14 @@ public final class Main {
         }
     }
 
+    private static EbookOptions.Device device(String s) throws Usage {
+        return switch (s.toLowerCase(Locale.ROOT)) {
+            case "tablet" -> EbookOptions.Device.TABLET;
+            case "kindle" -> EbookOptions.Device.KINDLE;
+            default -> throw new Usage("--device is tablet or kindle, not '" + s + "'");
+        };
+    }
+
     private static LineArt.Method lineArtMethod(String s) throws Usage {
         try {
             return LineArt.Method.valueOf(s.strip().toUpperCase(Locale.ROOT));
@@ -582,16 +657,23 @@ public final class Main {
         System.out.println(
                 "Usage: office-convert <in.pdf|dir>... [-o out.docx|dir] [--format ext] [--sheets page|table|single]"
                         + " [--pages a-b] [--no-tables] [--dpi n] [--password p] [--picture-fallback]"
-                        + " [--pictures compact|lossless] [--overwrite] [-q]"
+                        + " [--pictures compact|lossless] [--no-chapters] [--device tablet|kindle] [--overwrite] [-q]"
                         + System.lineSeparator()
                         + "       office-convert <in.docx|in.pptx|in.xlsx|in.doc|in.rtf|in.xls|in.ppt|in.odt|in.ods|in.odp|in.txt|in.csv|in.html|in.json|dir>..."
                         + " [-o out.pdf|dir] [--format pdf] [--password p]"
                         + " [--max-pages n (default 10000, 0 = all)] [--timeout s (default 300, 0 = none)]"
                         + " [--fonts dir]... [--font-map Family=Installed]... [--font-width Family=scale]..."
-                        + " [--no-system-fonts] [--allow-packages] [--allow-local-files] [--overwrite] [-q]"
+                        + " [--no-system-fonts] [--allow-packages] [--allow-local-files] [--toc] [--page-numbers] [--overwrite] [-q]"
+                        + System.lineSeparator()
+                        + "       office-convert <http(s)://url> -o out.pdf --allow-network [--follow-redirects] [--allow-cookies]"
+                        + " [--allow-private-addresses] [--timeout s] [--overwrite] [-q]; an HTML file with"
+                        + " --allow-network --fetch-linked draws http(s) pictures, style sheets and fonts it links"
                         + System.lineSeparator()
                         + "       office-convert <in.pdf|dir>... --pdfa 1a|1b|2a|2b|2u|3a|3b|3u [-o out.pdf|dir] [--password p]"
                         + " [--timeout s] [--fonts dir]... [--font-map Family=Installed]... [--no-system-fonts] [--overwrite] [-q]"
+                        + System.lineSeparator()
+                        + "       office-convert split-photos <scan.png|scan.pdf>... [-o dir] (finds the photos on a flatbed scan;"
+                        + " office-convert split-photos --help lists its options)"
                         + System.lineSeparator()
                         + "       office-convert <in.pdf|dir>... --line-art sauvola|otsu|fixed|edges [-o out.pdf|dir] [--threshold 0-100]"
                         + " [--edge-level 1|2|3] [--window px] [--sauvola-k 0-1] [--codec smallest|jbig2|g4|flate] [--ink-colour]"
@@ -611,7 +693,15 @@ public final class Main {
                         + " links to is fetched and no macro, field or formula is run. A .zip of an HTML page converts only"
                         + " with --allow-packages; --allow-local-files lets an HTML page draw the pictures and style sheets"
                         + " in its own folder (never outside it). eBooks use only what they hold; an EPUB inside another .zip, or"
-                        + " a FictionBook inside a .zip not named .fbz or .fb2.zip, needs --allow-packages."
+                        + " a FictionBook inside a .zip not named .fbz or .fb2.zip, needs --allow-packages. --toc adds a table of"
+                        + " contents with page numbers and links after the document and --page-numbers numbers the pages at"
+                        + " their foot; every font the PDF uses is embedded."
+                        + System.lineSeparator()
+                        + "A URL is fetched, with the pictures, style sheets and fonts it links, only with --allow-network:"
+                        + " http and https only, never a loopback, private, link-local or reserved address unless"
+                        + " --allow-private-addresses lets intranet hosts through (link-local and metadata addresses stay"
+                        + " refused); redirects are followed only with --follow-redirects (5 hops, each checked) and"
+                        + " cookies kept only with --allow-cookies. Fetching stops after 60 s, 64 MB or 300 requests."
                         + System.lineSeparator()
                         + "The output's extension picks the format: .docx, .odt, .fodt, .xml (flat ODT), .rtf, .doc (RTF content),"
                         + " .txt, .html (one file, pictures inline), .json (the document model), .md, .epub, .azw3, .pptx, .odp, .ppt, .xlsx or .ods; --format names it for a directory of outputs."
@@ -633,6 +723,10 @@ public final class Main {
                         + " bundled Liberation Sans. Fonts whose licence forbids embedding are not used."
                         + System.lineSeparator()
                         + "--pictures lossless keeps every pixel without JPEG compression; compact, the default, is smaller."
+                        + System.lineSeparator()
+                        + "An .epub or .azw3 book starts a chapter at each top-level heading unless --no-chapters is given;"
+                        + " --device kindle sizes its text relative to the reader's own font setting, tablet (the default)"
+                        + " keeps the PDF's sizes."
                         + System.lineSeparator()
                         + "An output that exists already is left alone and its input skipped unless --overwrite is given."
                         + " An input is never overwritten: an output that would take an input's name keeps that input's"

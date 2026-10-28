@@ -47,6 +47,7 @@ public final class Paragraph implements Block {
     public boolean keepLines;
     public boolean bidi;
     public boolean noHangingPunctuation;
+    public boolean hyphenate;
     public int shading = -1;
     public float borderBottom;
     public int borderBottomRgb;
@@ -56,6 +57,7 @@ public final class Paragraph implements Block {
     public float sourceTop = Float.NaN;
     public float sourceBottom = Float.NaN;
     public String bookmark;
+    public final List<String> anchors = new ArrayList<>();
     public RunStyle markStyle;
 
     public boolean isEmpty() {

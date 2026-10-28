@@ -152,8 +152,10 @@ public final class DocxWriter implements DocSink, Closeable {
             writeHeaderPart("header", "even", hf.evenHeader(), partRels);
             writeHeaderPart("footer", "even", hf.evenFooter(), partRels);
             if (hf.titlePage()) {
-                writeHeaderPart("header", "first", List.of(new Paragraph()), partRels);
-                writeHeaderPart("footer", "first", List.of(new Paragraph()), partRels);
+                writeHeaderPart("header", "first", hf.firstHeader().isEmpty() ? List.of(new Paragraph())
+                        : hf.firstHeader(), partRels);
+                writeHeaderPart("footer", "first", hf.firstFooter().isEmpty() ? List.of(new Paragraph())
+                        : hf.firstFooter(), partRels);
             }
         }
         boolean hasNumbering = numbering != null && !numbering.isEmpty();
@@ -166,7 +168,7 @@ public final class DocxWriter implements DocSink, Closeable {
             subPart("word/footnotes.xml", "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<w:footnotes " + NS + ">" + sep + footnotes + "</w:footnotes>");
         }
         entry("word/styles.xml", StylesPart.xml(styleSheet));
-        entry("word/settings.xml", PackageParts.settings(hf, hasFootnotes()));
+        entry("word/settings.xml", PackageParts.settings(hf, hasFootnotes(), styleSheet.hyphenation));
         entry("word/fontTable.xml", PackageParts.fontTable(ctx.fonts));
         for (Object[] m : mediaFiles) {
             ZipParts.picture(zip, "word/media/" + m[0], m[1] instanceof byte[] b ? b : spill.read((SpillFile.Block) m[1]));

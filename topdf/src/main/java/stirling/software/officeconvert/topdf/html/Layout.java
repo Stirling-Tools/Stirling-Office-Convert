@@ -285,7 +285,9 @@ final class Layout {
             edges += Flow.border(cd, side) > 0 ? 1 : 0;
         }
         Integer fill = Css.color(cd.get("background-color"));
-        return edges >= 3 || fill != null && fill >= 0 && fill != 0xFFFFFF;
+        String shadow = cd.getOrDefault("box-shadow", "none").strip().toLowerCase(Locale.ROOT);
+        return edges >= 3 || fill != null && fill >= 0 && fill != 0xFFFFFF
+                || !shadow.isEmpty() && !shadow.equals("none") && !shadow.startsWith("inset");
     }
 
     private static boolean placed(List<Element> items, Look look, HtmlContext ctx) {
@@ -307,7 +309,7 @@ final class Layout {
         return true;
     }
 
-    private static float gap(Map<String, String> d, Look look) {
+    static float gap(Map<String, String> d, Look look) {
         String g = d.getOrDefault("column-gap", d.get("gap"));
         if (g == null) {
             return 0;
@@ -323,15 +325,24 @@ final class Layout {
     // Wrapping rows hold as many items as fit at their basis or width
     private static int wrapColumns(List<Element> items, Look look, float room, HtmlContext ctx, int most,
             int unsized) {
-        Map<String, String> first = ctx.declared(items.get(0), look);
-        Float basis = size(first.getOrDefault("flex-basis", first.get("width")), look, room);
-        if (basis == null || basis <= 0) {
-            basis = size(first.get("min-width"), look, room);
+        float used = 0;
+        int fit = 0;
+        for (Element item : items) {
+            Map<String, String> cd = ctx.declared(item, look);
+            Float basis = size(cd.getOrDefault("flex-basis", cd.get("width")), look, room);
+            if (basis == null || basis <= 0) {
+                basis = size(cd.get("min-width"), look, room);
+            }
+            if (basis == null || basis <= 0) {
+                return fit == 0 ? Math.min(most, unsized) : Math.max(1, Math.min(most, fit));
+            }
+            if (fit > 0 && used + basis > room * 1.001f || fit >= most) {
+                break;
+            }
+            used += basis;
+            fit++;
         }
-        if (basis == null || basis <= 0) {
-            return Math.min(most, unsized);
-        }
-        return Math.max(1, Math.min(most, (int) Math.floor(room / basis)));
+        return Math.max(1, Math.min(most, fit));
     }
 
     static int gridColumns(String template, Look look, float room) {

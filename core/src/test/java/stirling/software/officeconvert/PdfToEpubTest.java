@@ -21,6 +21,7 @@ import java.util.regex.Pattern;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
+import javax.imageio.ImageIO;
 import javax.xml.parsers.DocumentBuilderFactory;
 
 import org.apache.pdfbox.pdmodel.PDDocument;
@@ -185,7 +186,7 @@ class PdfToEpubTest {
 
     @Test
     void picturesAreFilesInTheManifest() {
-        List<String> images = parts.keySet().stream().filter(n -> n.startsWith("OEBPS/images/")).toList();
+        List<String> images = parts.keySet().stream().filter(n -> n.startsWith("OEBPS/images/p")).toList();
         assertEquals(1, images.size(), parts.keySet().toString());
         String file = images.get(0).substring("OEBPS/".length());
         assertTrue(part("OEBPS/content.opf").contains("href=\"" + file + "\""));
@@ -195,5 +196,62 @@ class PdfToEpubTest {
                 assertFalse(part(name).contains("data:image"), name);
             }
         }
+    }
+
+    @Test
+    void firstPageIsTheCoverPicture() throws IOException {
+        byte[] cover = parts.get("OEBPS/images/cover.jpg");
+        BufferedImage image = ImageIO.read(new ByteArrayInputStream(cover));
+        assertEquals(PdfBook.COVER_SIDE, image.getHeight(), 1);
+        assertEquals(Math.round(PdfBook.COVER_SIDE * 612f / 792f), image.getWidth(), 1);
+        String opf = part("OEBPS/content.opf");
+        assertTrue(opf.contains("href=\"images/cover.jpg\" media-type=\"image/jpeg\" properties=\"cover-image\""), opf);
+        assertTrue(opf.contains("<meta name=\"cover\" content=\"cover\"/>"), opf);
+        assertFalse(opf.contains("<itemref idref=\"cover\""), opf);
+    }
+
+    @Test
+    void landmarksStartAtTheFirstChapter() {
+        assertTrue(part("OEBPS/nav.xhtml").contains("<a epub:type=\"bodymatter\" href=\"text/ch1.xhtml\">"));
+    }
+
+    private static Map<String, String> convertWith(EbookOptions book) throws IOException {
+        Path epub = dir.resolve(book.device() + "-" + book.chapters() + ".epub");
+        OfficeConvert.convert(dir.resolve("manual.pdf"), epub, OfficeConvert.Settings.defaults().ebook(book));
+        Map<String, String> out = new LinkedHashMap<>();
+        try (ZipInputStream zip = new ZipInputStream(new ByteArrayInputStream(Files.readAllBytes(epub)))) {
+            for (ZipEntry e; (e = zip.getNextEntry()) != null; ) {
+                out.put(e.getName(), new String(zip.readAllBytes(), StandardCharsets.UTF_8));
+            }
+        }
+        return out;
+    }
+
+    @Test
+    void withoutChapterDetectionTheBookSplitsOnlyForLength() throws IOException {
+        Map<String, String> book = convertWith(EbookOptions.defaults().chapters(false));
+        assertEquals(List.of("OEBPS/text/ch1.xhtml"),
+                book.keySet().stream().filter(n -> n.startsWith("OEBPS/text/")).toList());
+        String nav = book.get("OEBPS/nav.xhtml");
+        for (String chapter : CHAPTERS) {
+            assertTrue(nav.contains(chapter), nav);
+            assertTrue(book.get("OEBPS/text/ch1.xhtml").contains(chapter));
+        }
+    }
+
+    @Test
+    void kindleBooksSizeTextRelativeToTheReadersFont() throws IOException {
+        Map<String, String> kindle = convertWith(EbookOptions.defaults().device(EbookOptions.Device.KINDLE));
+        String css = kindle.get("OEBPS/styles/book.css");
+        assertTrue(css.contains("serif;font-size:1em;"), css);
+        assertTrue(css.contains(".s-Heading1{font-family:'Arial', sans-serif;font-size:2em;"), css);
+        for (Map.Entry<String, String> part : kindle.entrySet()) {
+            if (part.getKey().endsWith(".xhtml") || part.getKey().endsWith(".css")) {
+                assertFalse(Pattern.compile("(font-size|line-height):[0-9.]+pt").matcher(part.getValue()).find(),
+                        part.getKey());
+            }
+        }
+        String tablet = part("OEBPS/styles/book.css");
+        assertTrue(tablet.contains(".s-Heading1{font-family:'Arial', sans-serif;font-size:24pt;"), tablet);
     }
 }

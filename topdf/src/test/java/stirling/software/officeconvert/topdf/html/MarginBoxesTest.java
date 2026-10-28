@@ -17,6 +17,7 @@ import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.text.PDFTextStripper;
 import org.apache.pdfbox.text.TextPosition;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
 
 import stirling.software.officeconvert.model.Inline;
@@ -69,14 +70,116 @@ class MarginBoxesTest {
     }
 
     @Test
-    void namedOrSelectedPagesDoNotLeakBoxes() throws IOException {
+    void absoluteBoxContinuationKeepsRunningHeadersAndCorrectPageTotals() throws IOException {
+        String html = "<style>@page { size:300pt 400pt; margin:30pt; "
+                + "@top-center { content:'Running'; font-size:8pt } "
+                + "@bottom-center { content:'Page ' counter(page) ' of ' counter(pages); font-size:8pt } }"
+                + "p{margin:0;font-size:12pt}</style><div style='position:absolute;left:0;top:0;width:200pt'>"
+                + "<p>AbsoluteLine</p>".repeat(80) + "</div>";
+        try (PDDocument doc = convert(html)) {
+            int pages = doc.getNumberOfPages();
+            assertTrue(pages > 1);
+            for (int i = 1; i <= pages; i++) {
+                String text = page(doc, i);
+                assertTrue(text.contains("Running"), text);
+                assertTrue(text.contains("Page " + i + " of " + pages), text);
+            }
+            assertEquals(80, new PDFTextStripper().getText(doc).split("AbsoluteLine", -1).length - 1);
+        }
+    }
+
+    @Test
+    void namedPagesDoNotLeakBoxesAndFirstPageBoxesStayOnTheFirstPage() throws IOException {
         String html = "<html><head><style>@page :first { @top-center { content: \"First only\" } } "
-                + "@page wide { @top-center { content: \"Wide only\" } }</style></head><body>" + body(3)
+                + "@page wide { @top-center { content: \"Wide only\" } }</style></head><body>" + body(150)
                 + "</body></html>";
         try (PDDocument doc = convert(html)) {
-            String text = new PDFTextStripper().getText(doc);
-            assertFalse(text.contains("First only"), text);
-            assertFalse(text.contains("Wide only"), text);
+            assertTrue(doc.getNumberOfPages() >= 2);
+            assertTrue(page(doc, 1).contains("First only"), page(doc, 1));
+            assertFalse(page(doc, 2).contains("First only"), page(doc, 2));
+            assertFalse(new PDFTextStripper().getText(doc).contains("Wide only"));
+        }
+    }
+
+    @Test
+    void leftAndRightPagesGetTheirOwnBoxes() throws IOException {
+        String html = "<html><head><style>@page { margin: 72pt; @bottom-center { content: counter(page) } } "
+                + "@page :left { @top-left { content: \"Even side\" } } @page :right { @top-right { content: "
+                + "\"Odd side\" } }</style></head><body>" + body(260) + "</body></html>";
+        try (PDDocument doc = convert(html)) {
+            assertTrue(doc.getNumberOfPages() >= 3);
+            for (int i = 1; i <= 3; i++) {
+                String text = page(doc, i);
+                assertEquals(i % 2 == 1, text.contains("Odd side"), text);
+                assertEquals(i % 2 == 0, text.contains("Even side"), text);
+                String number = Integer.toString(i);
+                assertTrue(text.lines().anyMatch(line -> line.strip().equals(number)), text);
+            }
+        }
+    }
+
+    @Test
+    void aFirstPageThatClearsItsBoxesHasNoHeaderOrFooter() throws IOException {
+        String html = "<html><head><style>@page { margin: 72pt; @top-center { content: \"Running head\" } "
+                + "@bottom-right { content: \"Page \" counter(page) } } "
+                + "@page :first { @top-center { content: none } @bottom-right { content: none } }</style></head><body>"
+                + body(150) + "</body></html>";
+        try (PDDocument doc = convert(html)) {
+            assertTrue(doc.getNumberOfPages() >= 2);
+            for (int i = 1; i <= 2; i++) {
+                PDFTextStripper s = new PDFTextStripper();
+                s.setStartPage(i);
+                s.setEndPage(i);
+                String text = s.getText(doc);
+                assertEquals(i > 1, text.contains("Running head"), text);
+                assertEquals(i > 1, text.contains("Page " + i), text);
+            }
+        }
+    }
+
+    private static String page(PDDocument doc, int i) throws IOException {
+        PDFTextStripper s = new PDFTextStripper();
+        s.setStartPage(i);
+        s.setEndPage(i);
+        return s.getText(doc);
+    }
+
+    @Test
+    void runningStringsFollowTheChapterOnEachPage() throws IOException {
+        String html = "<html><head><style>@page { margin: 72pt; @top-left { content: \"Head: \" string(chapter) } "
+                + "@top-right { content: \"Last: \" string(chapter, last) } } h2 { string-set: chapter content(); "
+                + "page-break-before: always } .short { string-set: chapter \"Gamma \" attr(data-n) }</style></head>"
+                + "<body><p>Intro</p><h2>Alpha</h2>" + body(3) + "<h2>Beta</h2>" + body(120)
+                + "<h2 class=short data-n=3>ignored text</h2>" + body(2) + "</body></html>";
+        try (PDDocument doc = convert(html)) {
+            int pages = doc.getNumberOfPages();
+            assertTrue(pages >= 5, "pages " + pages);
+            assertFalse(page(doc, 1).contains("Alpha"), page(doc, 1));
+            assertTrue(page(doc, 2).contains("Head: Alpha"), page(doc, 2));
+            assertTrue(page(doc, 3).contains("Head: Beta"), page(doc, 3));
+            assertTrue(page(doc, 4).contains("Head: Beta"), page(doc, 4));
+            assertTrue(page(doc, pages).contains("Head: Gamma 3"), page(doc, pages));
+            assertTrue(page(doc, pages).contains("Last: Gamma 3"), page(doc, pages));
+        }
+    }
+
+    @Test
+    @Timeout(120)
+    void manyRunningStringNamesAcrossManyPagesStayBounded() throws IOException {
+        StringBuilder sb = new StringBuilder("<html><head><style>@page { size: 200pt 200pt; margin: 40pt; "
+                + "@top-left { content: string(n0) } @top-right { content: string(n1, last) } }</style></head><body>");
+        for (int i = 0; i < 3000; i++) {
+            sb.append("<p style=\"string-set:n").append(i).append(" 'v").append(i)
+                    .append("';break-before:page\">x</p>");
+        }
+        sb.append("</body></html>");
+        try (PDDocument doc = convert(sb.toString())) {
+            int pages = doc.getNumberOfPages();
+            assertTrue(pages >= 3000, "pages " + pages);
+            assertTrue(page(doc, 1).contains("v0"), page(doc, 1));
+            assertTrue(page(doc, pages).contains("v0"), page(doc, pages));
+            assertTrue(page(doc, pages).contains("v1"), page(doc, pages));
+            assertFalse(page(doc, 1).contains("v1"), page(doc, 1));
         }
     }
 
