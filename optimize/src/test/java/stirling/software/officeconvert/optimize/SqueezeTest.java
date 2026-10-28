@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Random;
+import java.util.concurrent.ForkJoinPool;
 import java.util.zip.Deflater;
 
 import org.junit.jupiter.api.Test;
@@ -35,6 +36,41 @@ class SqueezeTest {
             assertArrayEquals(s, Filters.inflate(z, Long.MAX_VALUE), "length " + s.length);
             byte[] zlib = Deflate.zlib(s, 9, Deflater.DEFAULT_STRATEGY);
             assertTrue(z.length <= zlib.length + 8, s.length + ": " + z.length + " vs zlib " + zlib.length);
+        }
+    }
+
+    @Test
+    void reusedWorkerBuffersGiveTheSameBytesAsFreshOnes() throws Exception {
+        Random r = new Random(3);
+        byte[] big = new byte[2_500_000];
+        for (int i = 0; i < big.length; i++) {
+            big[i] = (byte) (i % 9000 < 4000 ? i / 7 : r.nextInt(6));
+        }
+        StringBuilder text = new StringBuilder();
+        while (text.length() < 50_000) {
+            text.append("q ").append(r.nextInt(900)).append(" 0 0 1 re f Q\n");
+        }
+        byte[][] samples = {big, text.toString().getBytes(StandardCharsets.ISO_8859_1), new byte[3000], big};
+        byte[][] fresh = new byte[samples.length][];
+        for (int i = 0; i < samples.length; i++) {
+            fresh[i] = Squeeze.zlib(samples[i], THOROUGH);
+        }
+        ForkJoinPool pool = new ForkJoinPool(2);
+        try {
+            for (int round = 0; round < 2; round++) {
+                byte[][] reused = pool.submit(() -> {
+                    byte[][] z = new byte[samples.length][];
+                    for (int i = 0; i < samples.length; i++) {
+                        z[i] = Squeeze.zlib(samples[i], THOROUGH);
+                    }
+                    return z;
+                }).get();
+                for (int i = 0; i < samples.length; i++) {
+                    assertArrayEquals(fresh[i], reused[i], "sample " + i + " round " + round);
+                }
+            }
+        } finally {
+            pool.shutdown();
         }
     }
 }
