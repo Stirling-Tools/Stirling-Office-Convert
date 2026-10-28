@@ -3,7 +3,9 @@ package stirling.software.officeconvert.photosplit;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.awt.BasicStroke;
 import java.awt.Color;
+import java.awt.Graphics2D;
 import java.awt.geom.Point2D;
 import java.awt.image.BufferedImage;
 import java.util.List;
@@ -186,6 +188,47 @@ class StraightenMethodTest {
         List<PhotoSplitter.Photo> photos = PhotoSplitter.split(scene.scan(), OPTIONS);
         assertEquals(1, photos.size());
         assertMatches(scene.photos().get(0), photos.get(0));
+    }
+
+    @Test
+    void aTypedPageLyingSidewaysIsNotAPhoto() {
+        SyntheticScan.Scene scene = new SyntheticScan(1100, 1000, 3)
+                .photo(420, 300, 280, 250, 2, Style.GRADIENT, 0)
+                .document(420, 560, 800, 580, 91)
+                .render();
+        List<PhotoSplitter.Photo> photos = PhotoSplitter.split(scene.scan(), OPTIONS);
+        assertEquals(1, photos.size());
+        assertMatches(scene.photos().get(0), photos.get(0));
+    }
+
+    @Test
+    void aLineDiagramOnWhitePaperIsAPhoto() {
+        BufferedImage diagram = new BufferedImage(560, 420, BufferedImage.TYPE_INT_RGB);
+        Graphics2D g = diagram.createGraphics();
+        g.setColor(new Color(250, 250, 250));
+        g.fillRect(0, 0, 560, 420);
+        g.setStroke(new BasicStroke(3));
+        g.setColor(new Color(40, 40, 40));
+        g.drawRect(22, 22, 516, 376);
+        for (int i = 0; i < 6; i++) {
+            int x = 70 + i * 72;
+            g.setColor(new Color(200, 220, 245));
+            g.fillRect(x, 175, 55, 62);
+            g.setColor(new Color(30, 50, 100));
+            g.drawRect(x, 175, 55, 62);
+            if (i < 5) {
+                g.drawLine(x + 55, 206, x + 72, 206);
+            }
+        }
+        g.dispose();
+        SyntheticScan.Scene scene = new SyntheticScan(1200, 700, 6).bed(new Color(240, 240, 236))
+                .photo(diagram, 340, 330, -6)
+                .photo(420, 300, 900, 330, 4, Style.TEXTURE, 0)
+                .render();
+        List<PhotoSplitter.Photo> photos = PhotoSplitter.split(scene.scan(), OPTIONS);
+        assertEquals(2, photos.size());
+        assertMatches(scene.photos().get(0), photos.get(0));
+        assertMatches(scene.photos().get(1), photos.get(1));
     }
 
     @Test
