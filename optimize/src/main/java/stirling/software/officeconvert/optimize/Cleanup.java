@@ -31,7 +31,7 @@ final class Cleanup {
 
     static Map<Integer, List<Removal>> unusedResources(Roles roles, Resolver resolver, Source source, Index index,
             Roles.Loc dr) throws IOException {
-        Map<Integer, Content.Usage> scanned = new HashMap<>();
+        Map<List<Integer>, Content.Usage> scanned = new HashMap<>();
         Map<Roles.Loc, Set<COSName>> used = new HashMap<>();
         Map<Roles.Loc, Content.Category> categories = new HashMap<>();
         Map<Roles.Loc, COSDictionary> subs = new HashMap<>();
@@ -42,10 +42,11 @@ final class Cleanup {
             if ((++count & 255) == 0) {
                 PdfFiles.stopIfInterrupted();
             }
-            Content.Usage usage = scanned.get(c.stream());
+            List<Integer> streams = java.util.Arrays.stream(c.streams()).boxed().toList();
+            Content.Usage usage = scanned.get(streams);
             if (usage == null) {
-                usage = scan(source.load(index.key(c.stream())));
-                scanned.put(c.stream(), usage);
+                usage = scan(source, index, c.streams());
+                scanned.put(streams, usage);
             }
             Resolver.Found r = c.resources() == null ? null : resolver.find(c.resources());
             if (r == null || !(r.value() instanceof COSDictionary res)) {
@@ -137,15 +138,31 @@ final class Cleanup {
         }
     }
 
-    private static Content.Usage scan(COSBase s) {
+    private static Content.Usage scan(Source source, Index index, int[] streams) throws IOException {
+        if (streams.length == 1) {
+            byte[] data = decoded(source.load(index.key(streams[0])));
+            return data == null ? Content.Usage.unknown() : Content.scan(data);
+        }
+        Bytes joined = new Bytes(1 << 12);
+        for (int stream : streams) {
+            byte[] data = decoded(source.load(index.key(stream)));
+            if (data == null || joined.size() + (long) data.length + 1 > Recoder.MAX_DECODED_BYTES) {
+                return Content.Usage.unknown();
+            }
+            joined.write(data);
+            joined.write('\n');
+        }
+        return Content.scan(joined.toByteArray());
+    }
+
+    private static byte[] decoded(COSBase s) {
         if (!(s instanceof COSStream stream)) {
-            return Content.Usage.unknown();
+            return null;
         }
         try {
-            byte[] data = Recoder.decoded(stream);
-            return data == null ? Content.Usage.unknown() : Content.scan(data);
+            return Recoder.decoded(stream);
         } catch (IOException | RuntimeException e) {
-            return Content.Usage.unknown();
+            return null;
         }
     }
 }

@@ -43,7 +43,7 @@ final class Roles {
         }
     }
 
-    record Context(int stream, Loc resources) {}
+    record Context(int[] streams, Loc resources) {}
 
     private record Page(Loc kids, Loc contents, Loc resources, boolean leaf) {}
 
@@ -265,7 +265,7 @@ final class Roles {
             return;
         }
         content.add(stream);
-        contexts.add(new Context(stream, resources));
+        contexts.add(new Context(new int[] {stream}, resources));
     }
 
     private void walkPages(Resolver r, int top) throws IOException {
@@ -303,10 +303,19 @@ final class Roles {
             if (contents.loc().path.length == 0 && index.kind(contents.loc().holder) == Index.STREAM) {
                 context(contents.loc().holder, pageRes);
             } else if (contents.value() instanceof COSArray a) {
+                int[] streams = new int[a.size()];
+                boolean whole = true;
                 for (int i = 0; i < a.size(); i++) {
-                    if (a.get(i) instanceof COSObject o && o.getKey() != null) {
-                        context(index.id(o.getKey()), pageRes);
+                    if (a.get(i) instanceof COSObject o && o.getKey() != null
+                            && index.kind(index.id(o.getKey())) == Index.STREAM) {
+                        streams[i] = index.id(o.getKey());
+                        content.add(streams[i]);
+                    } else {
+                        whole = false;
                     }
+                }
+                if (whole && streams.length > 0) {
+                    contexts.add(new Context(streams, pageRes));
                 }
             }
         }

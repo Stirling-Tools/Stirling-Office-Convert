@@ -42,6 +42,8 @@ final class Rewrite {
 
     static final int INLINE_JOB_BYTES = 8 << 20;
 
+    static final long WINDOW_DECODED_BYTES = Recoder.MAX_DECODED_BYTES / MAX_THREADS;
+
     private static final byte[] NULL = {'n', 'u', 'l', 'l'};
 
     private final Index index;
@@ -74,6 +76,8 @@ final class Rewrite {
 
     private int recoded;
 
+    private int oversized;
+
     private Rewrite(Index index, Source source, PdfOptimizer.Options options, Spill spill, boolean encrypted) {
         this.index = index;
         this.source = source;
@@ -104,6 +108,11 @@ final class Rewrite {
             List<COSObjectKey> order = source.keys();
             r.index(order, roles);
             source.release();
+            if (roles.signed) {
+                return new PdfOptimizer.Result(inputBytes, 0, false, 0, 0, 0,
+                        List.of("The PDF is signed; it was left unchanged because rewriting it would invalidate its"
+                                + " signatures"));
+            }
             if (index.kind(root) != Index.DICT) {
                 throw new IOException("The PDF has no document catalog");
             }
@@ -115,9 +124,6 @@ final class Rewrite {
             Resolver.Found dr = resolver.find(new Roles.Loc(root, new Object[] {COSName.ACRO_FORM, COSName.DR}));
             r.removals = Cleanup.unusedResources(roles, resolver, source, index, dr == null ? null : dr.loc());
             r.prune();
-            if (roles.signed) {
-                warnings.add("The PDF is signed; rewriting it invalidates its signatures");
-            }
             COSBase catalog = source.load(index.key(root));
             boolean objectStreams = !(catalog instanceof COSDictionary c) || Roles.pdfaPart(c) != 1;
             float version = Math.max(cos.getVersion(), objectStreams ? 1.5f : 1.0f);
@@ -128,6 +134,10 @@ final class Rewrite {
             int infoNode = info < 0 ? -1 : r.rep[info];
             r.liveness(rootNode, infoNode, roles.indirect);
             CountingOutput out = new CountingOutput(os);
+            if (r.oversized > 0) {
+                warnings.add(r.oversized + (r.oversized == 1 ? " stream decodes" : " streams decode")
+                        + " past the size limit and " + (r.oversized == 1 ? "was" : "were") + " kept as stored");
+            }
             int objects = r.write(out, version, objectStreams, rootNode, infoNode, id instanceof COSArray a ? a : null);
             int merged = 0;
             for (int i = 0; i < index.size(); i++) {
@@ -179,7 +189,7 @@ final class Rewrite {
         }
     }
 
-    private record Pending(int node, COSStream stream, Future<Recoder.Plan> plan) {}
+    private record Pending(int node, COSStream stream, Future<Recoder.Plan> plan, boolean windowed) {}
 
     private boolean[] reachable(int[] roots) {
         boolean[] seen = new boolean[index.size()];
@@ -211,6 +221,7 @@ final class Rewrite {
         int threads = Math.max(1, Math.min(Runtime.getRuntime().availableProcessors(), MAX_THREADS));
         ExecutorService pool = new java.util.concurrent.ForkJoinPool(threads);
         ArrayDeque<Pending> window = new ArrayDeque<>();
+        List<Pending> retry = new ArrayList<>();
         boolean[] reached = reachable(roots);
         List<COSObjectKey> streams = new ArrayList<>();
         for (COSObjectKey key : order) {
@@ -235,9 +246,7 @@ final class Rewrite {
                 if (drop != null) {
                     Cleanup.apply(s, drop);
                 }
-                Recoder.Kind kind = index.has(i, Index.METADATA) ? Recoder.Kind.KEEP
-                        : roles.content.contains(i) ? Recoder.Kind.CONTENT
-                        : index.has(i, Index.IMAGE) ? Recoder.Kind.IMAGE : Recoder.Kind.OTHER;
+                Recoder.Kind kind = kind(i, roles);
                 Recoder.Job job = Recoder.prepare(s, kind, kind == Recoder.Kind.IMAGE ? Roles.layout(s) : null);
                 if (job == null) {
                     large(i, s, kind, sha);
@@ -245,27 +254,51 @@ final class Rewrite {
                 }
                 if (job.raw().length > INLINE_JOB_BYTES) {
                     while (!window.isEmpty()) {
-                        finish(window.poll(), sha);
+                        finish(window.poll(), sha, retry);
                     }
-                    finish(new Pending(i, s, pool.submit(() -> Recoder.plan(job, options.effort()))), sha);
+                    finish(new Pending(i, s, pool.submit(() -> Recoder.plan(job, options.effort())), false), sha,
+                            retry);
                     continue;
                 }
-                window.add(new Pending(i, s, pool.submit(() -> Recoder.plan(job, options.effort()))));
+                window.add(new Pending(i, s, pool.submit(() -> Recoder.plan(job, options.effort(),
+                        WINDOW_DECODED_BYTES)), true));
                 while (window.size() > threads * 2) {
-                    finish(window.poll(), sha);
+                    finish(window.poll(), sha, retry);
                 }
             }
             while (!window.isEmpty()) {
-                finish(window.poll(), sha);
+                finish(window.poll(), sha, retry);
+            }
+            for (Pending p : retry) {
+                PdfFiles.stopIfInterrupted();
+                Recoder.Job job = Recoder.prepare(p.stream(), kind(p.node(), roles),
+                        kind(p.node(), roles) == Recoder.Kind.IMAGE ? Roles.layout(p.stream()) : null);
+                if (job == null) {
+                    large(p.node(), p.stream(), kind(p.node(), roles), sha);
+                    continue;
+                }
+                finish(new Pending(p.node(), p.stream(), pool.submit(() -> Recoder.plan(job, options.effort())),
+                        false), sha, retry);
             }
         } finally {
             pool.shutdownNow();
         }
     }
 
-    private void finish(Pending p, MessageDigest sha) throws IOException {
+    private Recoder.Kind kind(int i, Roles roles) {
+        return index.has(i, Index.METADATA) ? Recoder.Kind.KEEP
+                : roles.content.contains(i) ? Recoder.Kind.CONTENT
+                : index.has(i, Index.IMAGE) ? Recoder.Kind.IMAGE : Recoder.Kind.OTHER;
+    }
+
+    private void finish(Pending p, MessageDigest sha, List<Pending> retry) throws IOException {
         try {
-            store(p.node(), p.stream(), p.plan().get(), sha);
+            Recoder.Plan plan = p.plan().get();
+            if (plan.data() == null && p.windowed()) {
+                retry.add(new Pending(p.node(), p.stream(), null, false));
+                return;
+            }
+            store(p.node(), p.stream(), plan, sha);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new java.io.InterruptedIOException("Interrupted while optimizing");
@@ -284,7 +317,7 @@ final class Rewrite {
         }
     }
 
-    private void large(int i, COSStream s, Recoder.Kind kind, MessageDigest sha) throws IOException {
+    private boolean large(int i, COSStream s, Recoder.Kind kind, MessageDigest sha) throws IOException {
         Streamed.Result big = Streamed.recode(s, kind, kind == Recoder.Kind.IMAGE ? Roles.layout(s) : null,
                 s.getInt(COSName.HEIGHT, -1), spill, sha, options.effort());
         if (big != null) {
@@ -292,18 +325,21 @@ final class Rewrite {
             digests[i] = big.digest();
             recorder.record(i, s, big.replace());
             recoded++;
-            return;
+            return true;
         }
         try (InputStream in = s.createRawInputStream()) {
             spilled[i] = spill.put(in, sha);
         }
         digests[i] = sha.digest();
         recorder.record(i, s, Map.of(COSName.LENGTH, COSInteger.get(spill.length(spilled[i]))));
+        return false;
     }
 
     private void store(int i, COSStream s, Recoder.Plan p, MessageDigest sha) throws IOException {
         if (p.data() == null) {
-            large(i, s, index.has(i, Index.IMAGE) ? Recoder.Kind.IMAGE : Recoder.Kind.OTHER, sha);
+            if (!large(i, s, index.has(i, Index.IMAGE) ? Recoder.Kind.IMAGE : Recoder.Kind.OTHER, sha)) {
+                oversized++;
+            }
             return;
         }
         spilled[i] = spill.put(p.data());
@@ -328,24 +364,24 @@ final class Rewrite {
             edges[i] = container(kind) ? index.edges(i) : new int[0];
             byte[] body = index.bytes(i);
             sha.update(kind);
+            length(sha, body == null ? -1 : body.length);
             if (body != null) {
                 sha.update(body);
             }
+            length(sha, index.holeCount(i));
             for (int k = 0; k < index.holeCount(i); k++) {
-                int at = index.holeAt(i, k);
-                sha.update((byte) (at >>> 24));
-                sha.update((byte) (at >>> 16));
-                sha.update((byte) (at >>> 8));
-                sha.update((byte) at);
+                length(sha, index.holeAt(i, k));
                 sha.update((byte) (index.holeRef(i, k) < 0 ? 1 : 0));
             }
             byte[][] strings = index.strings(i);
+            length(sha, strings == null ? -1 : strings.length);
             if (strings != null) {
                 for (byte[] s : strings) {
+                    length(sha, s.length);
                     sha.update(s);
-                    sha.update((byte) 0);
                 }
             }
+            length(sha, digests == null || digests[i] == null ? -1 : digests[i].length);
             if (digests != null && digests[i] != null) {
                 sha.update(digests[i]);
             }
@@ -354,6 +390,13 @@ final class Rewrite {
                     || kind == Index.SCALAR || kind == Index.MISSING || kind == Index.UNSEEN);
         }
         rep = Merge.representatives(signatures, edges, mergeable);
+    }
+
+    private static void length(MessageDigest sha, int value) {
+        sha.update((byte) (value >>> 24));
+        sha.update((byte) (value >>> 16));
+        sha.update((byte) (value >>> 8));
+        sha.update((byte) value);
     }
 
     private void liveness(int root, int info, Set<Integer> indirect) {

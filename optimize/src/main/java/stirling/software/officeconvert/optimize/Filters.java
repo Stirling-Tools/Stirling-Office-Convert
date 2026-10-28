@@ -48,10 +48,10 @@ final class Filters {
             return Predictors.decode(lzw(in, early != 0, limit), parms, limit);
         }
         if (COSName.ASCII_HEX_DECODE.equals(f) || HEX_ABBREVIATION.equals(f)) {
-            return hex(in);
+            return hex(in, limit);
         }
         if (COSName.ASCII85_DECODE.equals(f) || A85_ABBREVIATION.equals(f)) {
-            return ascii85(in);
+            return ascii85(in, limit);
         }
         if (COSName.RUN_LENGTH_DECODE.equals(f) || RL_ABBREVIATION.equals(f)) {
             return runLength(in, limit);
@@ -105,7 +105,7 @@ final class Filters {
         int next = 258;
         int width = 9;
         byte[] previous = null;
-        Bytes out = new Bytes(Math.max(64, in.length * 2));
+        Bytes out = new Bytes(initial(in.length * 2L, limit));
         long bits = 0;
         int count = 0;
         int pos = 0;
@@ -166,8 +166,18 @@ final class Filters {
         return out.toByteArray();
     }
 
-    static byte[] hex(byte[] in) throws Undecodable {
-        Bytes out = new Bytes(in.length / 2 + 1);
+    private static int initial(long expected, long limit) {
+        return (int) Math.max(64, Math.min(Math.min(expected, limit), 1 << 20));
+    }
+
+    private static void room(Bytes out, int more, long limit, String filter) throws TooLarge {
+        if (out.size() + (long) more > limit) {
+            throw new TooLarge("the " + filter + " data decodes past the size limit");
+        }
+    }
+
+    static byte[] hex(byte[] in, long limit) throws Undecodable {
+        Bytes out = new Bytes(initial(in.length / 2 + 1, limit));
         int high = -1;
         for (byte x : in) {
             int c = x & 0xFF;
@@ -184,18 +194,20 @@ final class Filters {
             if (high < 0) {
                 high = v;
             } else {
+                room(out, 1, limit, "ASCIIHex");
                 out.write(high << 4 | v);
                 high = -1;
             }
         }
         if (high >= 0) {
+            room(out, 1, limit, "ASCIIHex");
             out.write(high << 4);
         }
         return out.toByteArray();
     }
 
-    static byte[] ascii85(byte[] in) throws Undecodable {
-        Bytes out = new Bytes(in.length);
+    static byte[] ascii85(byte[] in, long limit) throws Undecodable {
+        Bytes out = new Bytes(initial(in.length, limit));
         long group = 0;
         int n = 0;
         for (int i = 0; i < in.length; i++) {
@@ -207,6 +219,7 @@ final class Filters {
                 continue;
             }
             if (c == 'z' && n == 0) {
+                room(out, 4, limit, "ASCII85");
                 out.write(0);
                 out.write(0);
                 out.write(0);
@@ -221,6 +234,7 @@ final class Filters {
                 if (group > 0xFFFFFFFFL) {
                     throw new Undecodable("the ASCII85 data holds a group that overflows");
                 }
+                room(out, 4, limit, "ASCII85");
                 out.write((int) (group >>> 24));
                 out.write((int) (group >>> 16));
                 out.write((int) (group >>> 8));
@@ -239,6 +253,7 @@ final class Filters {
             if (group > 0xFFFFFFFFL) {
                 throw new Undecodable("the ASCII85 data holds a group that overflows");
             }
+            room(out, n - 1, limit, "ASCII85");
             for (int k = 0; k < n - 1; k++) {
                 out.write((int) (group >>> (24 - 8 * k)));
             }
@@ -247,7 +262,7 @@ final class Filters {
     }
 
     static byte[] runLength(byte[] in, long limit) throws Undecodable {
-        Bytes out = new Bytes(in.length * 2 + 16);
+        Bytes out = new Bytes(initial(in.length * 2L + 16, limit));
         int i = 0;
         while (i < in.length) {
             int len = in[i++] & 0xFF;

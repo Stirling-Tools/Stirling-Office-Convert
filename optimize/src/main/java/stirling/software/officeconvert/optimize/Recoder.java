@@ -67,6 +67,10 @@ final class Recoder {
     }
 
     static Plan plan(Job job, PdfOptimizer.Effort effort) throws IOException {
+        return plan(job, effort, MAX_DECODED_BYTES);
+    }
+
+    static Plan plan(Job job, PdfOptimizer.Effort effort, long limit) throws IOException {
         byte[] raw = job.raw;
         Kind kind = job.kind;
         Predictors.Layout image = job.image;
@@ -90,7 +94,7 @@ final class Recoder {
             while (peeled < filters.size() && Filters.generalized(filters.get(peeled))) {
                 COSBase p = resolve(parms.get(peeled));
                 data = Filters.decode(filters.get(peeled), p instanceof COSDictionary d ? d : null, data,
-                        MAX_DECODED_BYTES);
+                        Math.min(limit, MAX_DECODED_BYTES));
                 peeled++;
             }
         } catch (Filters.TooLarge e) {

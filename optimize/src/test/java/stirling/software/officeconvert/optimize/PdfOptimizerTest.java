@@ -391,6 +391,29 @@ class PdfOptimizerTest {
     }
 
     @Test
+    void aChainedTextFilterBombIsNotExpanded() throws Exception {
+        byte[] letters = new byte[(int) (Recoder.MAX_DECODED_BYTES / 4) + (1 << 20) + 2];
+        java.util.Arrays.fill(letters, (byte) 'z');
+        letters[letters.length - 2] = '~';
+        letters[letters.length - 1] = '>';
+        byte[] bomb = deflate(letters);
+        RawPdf r = RawPdf.page("", "0 0 1 rg 10 10 50 50 re f");
+        r.set(1, "<</Type/Catalog/Pages 2 0 R/Payload 5 0 R>>");
+        r.add(RawPdf.stream("/Filter[/FlateDecode/ASCII85Decode]", bomb));
+        Path in = r.write(dir, "chained-bomb");
+        Path out = dir.resolve("out.pdf");
+        PdfOptimizer.Result result = PdfOptimizer.optimize(in, out, REWRITE);
+        assertTrue(result.warnings().stream().anyMatch(w -> w.contains("size limit")), result.warnings().toString());
+        try (PDDocument d = Loader.loadPDF(out.toFile())) {
+            COSStream kept = (COSStream) d.getDocumentCatalog().getCOSObject().getDictionaryObject(
+                    COSName.getPDFName("Payload"));
+            try (InputStream raw = kept.createRawInputStream()) {
+                assertArrayEquals(bomb, raw.readAllBytes());
+            }
+        }
+    }
+
+    @Test
     void cyclesEndTheWalk() throws Exception {
         RawPdf r = new RawPdf();
         r.add("<</Type/Catalog/Pages 2 0 R/Loop 5 0 R>>");
@@ -537,15 +560,66 @@ class PdfOptimizerTest {
         assertTrue(Files.size(twice) <= Files.size(once));
     }
 
-    @Test
-    void signedDocumentsAreWarnedAbout() throws Exception {
-        RawPdf r = RawPdf.page("", "0 0 1 rg 10 10 50 50 re f");
+    private Path signed() throws IOException {
+        RawPdf r = RawPdf.page("", "0    0 1 rg 10 10 50 50 re f");
         r.set(1, "<</Type/Catalog/Pages 2 0 R/AcroForm<</Fields[5 0 R]/SigFlags 3>>>>");
         r.add("<</FT/Sig/T(Signature1)/V 6 0 R/Rect[0 0 0 0]/Subtype/Widget/Type/Annot>>");
         r.add("<</Type/Sig/Filter/Adobe.PPKLite/ByteRange[0 10 20 10]/Contents<00>>>");
-        Path in = r.write(dir, "signed");
-        PdfOptimizer.Result result = PdfOptimizer.optimize(in, dir.resolve("out.pdf"), REWRITE);
-        assertTrue(result.warnings().stream().anyMatch(w -> w.contains("signatures")));
+        return r.write(dir, "signed");
+    }
+
+    @Test
+    void signedDocumentsAreCopiedUnchanged() throws Exception {
+        Path in = signed();
+        Path out = dir.resolve("out.pdf");
+        for (PdfOptimizer.Options options : new PdfOptimizer.Options[] {PdfOptimizer.Options.defaults(), REWRITE}) {
+            PdfOptimizer.Result result = PdfOptimizer.optimize(in, out, options);
+            assertTrue(result.warnings().stream().anyMatch(w -> w.contains("signed")), result.warnings().toString());
+            assertFalse(result.rewritten());
+            assertArrayEquals(Files.readAllBytes(in), Files.readAllBytes(out));
+        }
+    }
+
+    @Test
+    void theDocumentApiDoesNotRewriteSignedDocuments() throws Exception {
+        Path in = signed();
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        try (PDDocument d = Loader.loadPDF(in.toFile())) {
+            PdfOptimizer.Result result = PdfOptimizer.optimize(d, out, REWRITE);
+            assertFalse(result.rewritten());
+            assertTrue(result.warnings().stream().anyMatch(w -> w.contains("signed")), result.warnings().toString());
+            assertEquals(out.size(), result.outputBytes());
+        }
+        String text = new String(out.toByteArray(), StandardCharsets.ISO_8859_1);
+        assertTrue(text.contains("0    0 1 rg"), "the content stream is not recoded");
+    }
+
+    @Test
+    void fontsNamedAcrossSplitContentsStay() throws Exception {
+        RawPdf r = RawPdf.page("/Font<<" + RawPdf.helvetica("F1") + RawPdf.helvetica("F2") + ">>",
+                "BT /F1 12");
+        r.set(3, "<</Type/Page/Parent 2 0 R/MediaBox[0 0 200 200]/Resources<</Font<<" + RawPdf.helvetica("F1")
+                + RawPdf.helvetica("F2") + ">>>>/Contents[4 0 R 5 0 R]>>");
+        r.add(RawPdf.stream("", "Tf 10 10 Td (Split) Tj ET"));
+        Path in = r.write(dir, "split");
+        Path out = dir.resolve("out.pdf");
+        PdfOptimizer.optimize(in, out, REWRITE);
+        try (PDDocument d = Loader.loadPDF(out.toFile())) {
+            assertNotNull(d.getPage(0).getResources().getFont(COSName.getPDFName("F1")));
+            assertTrue(new org.apache.pdfbox.text.PDFTextStripper().getText(d).contains("Split"));
+        }
+        Pages.assertSameRendering(in, out);
+    }
+
+    @Test
+    void operandsLeftAtTheEndKeepEveryResource() throws Exception {
+        Path in = RawPdf.page("/Font<<" + RawPdf.helvetica("F1") + RawPdf.helvetica("F2") + ">>",
+                "BT /F1 12 Tf 10 10 Td (Hi) Tj ET /F2").write(dir, "leftover");
+        Path out = dir.resolve("out.pdf");
+        PdfOptimizer.optimize(in, out, REWRITE);
+        try (PDDocument d = Loader.loadPDF(out.toFile())) {
+            assertTrue(d.getPage(0).getResources().getCOSObject().getCOSDictionary(COSName.FONT).containsKey("F2"));
+        }
     }
 
     @Test

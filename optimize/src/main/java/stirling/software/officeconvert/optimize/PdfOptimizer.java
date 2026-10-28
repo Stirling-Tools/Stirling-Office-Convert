@@ -171,12 +171,12 @@ public final class PdfOptimizer {
                     ticket.close();
                 }
             });
-            if (salvage.get()) {
+            if (salvage.get() && result.rewritten()) {
                 move(part, out);
                 return result;
             }
             PdfFiles.stopIfInterrupted();
-            if (!options.alwaysRewrite() && result.outputBytes() >= size) {
+            if (!result.rewritten() || !options.alwaysRewrite() && result.outputBytes() >= size) {
                 Files.copy(in, part, StandardCopyOption.REPLACE_EXISTING);
                 result = new Result(size, size, false, result.objects(), result.mergedObjects(),
                         result.recodedStreams(), result.warnings());
@@ -191,6 +191,9 @@ public final class PdfOptimizer {
     }
 
     private static Result repaired(Result result, Salvage.Rebuilt salvaged) {
+        if (!result.rewritten()) {
+            return result;
+        }
         List<String> warnings = new java.util.ArrayList<>(result.warnings());
         warnings.add("The PDF was damaged past its own repair data; its page tree was rebuilt from the "
                 + salvaged.pages() + " pages found in the file");
@@ -207,12 +210,25 @@ public final class PdfOptimizer {
         Path saved = Files.createTempFile("pdf-optimize-", ".pdf");
         try {
             return Deadline.run(options.timeout(), () -> {
-                Admission.Ticket ticket = Admission.jvm().enter(estimate(MAX_INPUT_BYTES));
+                Admission.Ticket saving = Admission.jvm().enter(Admission.BASE_BYTES * 8);
                 try {
                     save(document, saved, MAX_INPUT_BYTES);
+                } finally {
+                    saving.close();
+                }
+                long size = Files.size(saved);
+                Admission.Ticket ticket = Admission.jvm().enter(estimate(size));
+                try {
+                    Result r;
                     try (PDDocument doc = PdfFiles.open(saved, options.password())) {
-                        return Rewrite.run(doc, out, options, -1);
+                        r = Rewrite.run(doc, out, options, -1);
                     }
+                    if (r.rewritten()) {
+                        return r;
+                    }
+                    Files.copy(saved, out);
+                    return new Result(r.inputBytes(), size, false, r.objects(), r.mergedObjects(),
+                            r.recodedStreams(), r.warnings());
                 } finally {
                     ticket.close();
                 }

@@ -180,8 +180,8 @@ final class Content {
                 operandNames.clear();
                 operandKinds.clear();
             }
-            if (lex.commentAtEnd()) {
-                return new Usage(names, true);
+            if (!operandKinds.isEmpty()) {
+                return new Usage(names, false);
             }
         } catch (ContentLexer.Malformed e) {
             return new Usage(names, false);

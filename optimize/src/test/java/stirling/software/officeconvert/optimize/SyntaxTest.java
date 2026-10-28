@@ -1,6 +1,7 @@
 package stirling.software.officeconvert.optimize;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -108,6 +109,20 @@ class SyntaxTest {
         byte[] zeros = new byte[1 << 20];
         byte[] packed = Deflate.zlib(zeros, 9, 0);
         assertThrows(Filters.Undecodable.class, () -> Filters.decode(COSName.FLATE_DECODE, null, packed, 1000));
+    }
+
+    @Test
+    void textFiltersStopAtTheSizeLimit() {
+        byte[] zeros = "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz~>"
+                .getBytes(StandardCharsets.US_ASCII);
+        assertThrows(Filters.TooLarge.class, () -> Filters.decode(COSName.ASCII85_DECODE, null, zeros, 100));
+        byte[] groups = "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!~>"
+                .getBytes(StandardCharsets.US_ASCII);
+        assertThrows(Filters.TooLarge.class, () -> Filters.decode(COSName.ASCII85_DECODE, null, groups, 40));
+        byte[] hex = "00112233445566778899".getBytes(StandardCharsets.US_ASCII);
+        assertThrows(Filters.TooLarge.class, () -> Filters.decode(COSName.ASCII_HEX_DECODE, null, hex, 4));
+        assertArrayEquals(new byte[400], assertDoesNotThrow(
+                () -> Filters.decode(COSName.ASCII85_DECODE, null, zeros, 400)));
     }
 
     @Test

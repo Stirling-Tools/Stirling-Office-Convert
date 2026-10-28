@@ -273,7 +273,7 @@ public final class Main {
                                 r.outputBytes(), 100.0 * Math.abs((double) r.inputBytes() - r.outputBytes())
                                         / Math.max(1, r.inputBytes()),
                                 r.outputBytes() <= r.inputBytes() ? "smaller" : "larger"));
-                    } else {
+                    } else if (r.warnings().isEmpty()) {
                         lines.add("already as small as the rewrite; copied unchanged; any private data is retained");
                     }
                     notes = lines;

@@ -231,6 +231,47 @@ class StreamBudgetTest {
     }
 
     @Test
+    void concurrentJobsShareOneDecodeBudgetAndOverBudgetJobsRunAlone() throws Exception {
+        assertTrue(Rewrite.WINDOW_DECODED_BYTES * Rewrite.MAX_THREADS <= Recoder.MAX_DECODED_BYTES);
+        assertTrue(PdfOptimizer.estimate(0) >= 3 * Recoder.MAX_DECODED_BYTES);
+        int size = (int) (Rewrite.WINDOW_DECODED_BYTES * 2);
+        byte[] zlib = compressed(size, 9);
+        StringBuilder hex = new StringBuilder(zlib.length * 2 + 1);
+        for (byte b : zlib) {
+            hex.append(String.format("%02X", b & 0xFF));
+        }
+        byte[] raw = hex.append('>').toString().getBytes(java.nio.charset.StandardCharsets.US_ASCII);
+        assertTrue(raw.length < Rewrite.INLINE_JOB_BYTES);
+        COSName payload = COSName.getPDFName("Payload");
+        try (org.apache.pdfbox.pdmodel.PDDocument document = new org.apache.pdfbox.pdmodel.PDDocument()) {
+            document.addPage(new org.apache.pdfbox.pdmodel.PDPage());
+            COSStream stream = document.getDocument().createCOSStream();
+            try (OutputStream out = stream.createRawOutputStream()) {
+                out.write(raw);
+            }
+            org.apache.pdfbox.cos.COSArray filters = new org.apache.pdfbox.cos.COSArray();
+            filters.add(COSName.ASCII_HEX_DECODE);
+            filters.add(COSName.FLATE_DECODE);
+            stream.setItem(COSName.FILTER, filters);
+            Recoder.Job job = Recoder.prepare(stream, Recoder.Kind.OTHER, null);
+            assertNull(Recoder.plan(job, PdfOptimizer.Effort.FAST, Rewrite.WINDOW_DECODED_BYTES).data());
+            assertNotNull(Recoder.plan(job, PdfOptimizer.Effort.FAST).data());
+            document.getDocumentCatalog().getCOSObject().setItem(payload, stream);
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            PdfOptimizer.Result result = PdfOptimizer.optimize(document, out,
+                    PdfOptimizer.Options.defaults().effort(PdfOptimizer.Effort.FAST).alwaysRewrite(true));
+            assertTrue(result.recodedStreams() >= 1);
+            try (org.apache.pdfbox.pdmodel.PDDocument optimized = org.apache.pdfbox.Loader.loadPDF(out.toByteArray())) {
+                COSStream kept = (COSStream) optimized.getDocumentCatalog().getCOSObject().getDictionaryObject(payload);
+                assertEquals(COSName.FLATE_DECODE, kept.getItem(COSName.FILTER));
+                try (InputStream in = kept.createInputStream()) {
+                    assertEquals(size, in.readAllBytes().length);
+                }
+            }
+        }
+    }
+
+    @Test
     void boundedRowsStillRoundTripPredictedData() throws Exception {
         byte[] pixels = new byte[64 * 128];
         for (int i = 0; i < pixels.length; i++) {

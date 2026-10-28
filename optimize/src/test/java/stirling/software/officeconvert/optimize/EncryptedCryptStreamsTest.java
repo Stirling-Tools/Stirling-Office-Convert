@@ -249,6 +249,52 @@ class EncryptedCryptStreamsTest {
         }
     }
 
+    private static String hex(byte[] bytes) {
+        StringBuilder b = new StringBuilder("<");
+        for (byte x : bytes) {
+            b.append(String.format("%02X", x & 0xFF));
+        }
+        return b.append('>').toString();
+    }
+
+    @Test
+    void stringsThatJoinTheSameStaySeparate() throws Exception {
+        ByteArrayOutputStream template = new ByteArrayOutputStream();
+        try (PDDocument document = new PDDocument()) {
+            StandardProtectionPolicy policy = new StandardProtectionPolicy("owner", "user", new AccessPermission());
+            policy.setEncryptionKeyLength(128);
+            policy.setPreferAES(true);
+            document.protect(policy);
+            document.save(template);
+        }
+        Path input;
+        try (PDDocument templateDocument = Loader.loadPDF(template.toByteArray(), "owner")) {
+            Encryption encryption = Encryption.of(templateDocument, "owner");
+            RawPdf raw = RawPdf.page("", "");
+            raw.header = "%PDF-1.7\n";
+            raw.objects.set(3, RawPdf.stream("", encryption.encrypt(new byte[0], 4)));
+            raw.set(1, "<</Type/Catalog/Pages 2 0 R/First 5 0 R/Second 6 0 R>>");
+            raw.add("[" + hex(encryption.string(new byte[] {'a', 0}, 5)) + " "
+                    + hex(encryption.string(new byte[] {'b'}, 5)) + "]");
+            raw.add("[" + hex(encryption.string(new byte[] {'a'}, 6)) + " "
+                    + hex(encryption.string(new byte[] {0, 'b'}, 6)) + "]");
+            int encrypt = raw.add(syntax(encryption.dictionary));
+            raw.trailerExtra = "/Encrypt " + encrypt + " 0 R/ID"
+                    + syntax(templateDocument.getDocument().getDocumentID());
+            input = raw.write(dir, "joined-strings");
+        }
+        Path output = dir.resolve("joined-strings-optimized.pdf");
+        PdfOptimizer.optimize(input, output, PdfOptimizer.Options.defaults().password("owner").alwaysRewrite(true));
+        try (PDDocument document = Loader.loadPDF(output.toFile(), "user")) {
+            COSDictionary catalog = document.getDocumentCatalog().getCOSObject();
+            var first = catalog.getCOSArray(COSName.getPDFName("First"));
+            var second = catalog.getCOSArray(COSName.getPDFName("Second"));
+            assertArrayEquals(new byte[] {'a', 0}, ((org.apache.pdfbox.cos.COSString) first.getObject(0)).getBytes());
+            assertArrayEquals(new byte[] {'a'}, ((org.apache.pdfbox.cos.COSString) second.getObject(0)).getBytes());
+            assertArrayEquals(new byte[] {0, 'b'}, ((org.apache.pdfbox.cos.COSString) second.getObject(1)).getBytes());
+        }
+    }
+
     private static void assertSameAppearance(Path input, Path output, String password) throws Exception {
         try (PDDocument before = Loader.loadPDF(input.toFile(), password);
                 PDDocument after = Loader.loadPDF(output.toFile(), password)) {
