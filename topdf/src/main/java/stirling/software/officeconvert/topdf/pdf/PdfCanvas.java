@@ -366,7 +366,7 @@ public final class PdfCanvas implements Closeable {
                     tj.append('<');
                     open = true;
                 }
-                Numbers.hex(tj, glyph, 4);
+                Numbers.hex(tj, output.fonts().encoded(embedded, glyph, face.encodedCodePoint(cp)), 4);
                 glyphs[used] = glyph;
                 codes[used++] = face.encodedCodePoint(cp);
                 any = true;
@@ -461,7 +461,7 @@ public final class PdfCanvas implements Closeable {
                 matrix(b, 1, skew, -1, x + advanced + Math.max(0, box - natural) / 2, baseline)
                         .setLength(b.length() - 1);
                 b.append(" [<");
-                Numbers.hex(b, glyph, 4).append(">] TJ\n");
+                Numbers.hex(b, output.fonts().encoded(embedded, glyph, cp), 4).append(">] TJ\n");
                 glyphs[n] = glyph;
                 codes[n++] = cp;
             }
@@ -501,7 +501,8 @@ public final class PdfCanvas implements Closeable {
                 matrix(b, fit[0] * th, skew * fit[1], -fit[1], x + drawn + fit[2] * size * th + skew * fit[3] * size,
                         baseline - fit[3] * size).setLength(b.length() - 1);
                 b.append(" [<");
-                Numbers.hex(b, ids[n++], 4).append(">] TJ\n");
+                Numbers.hex(b, output.fonts().encoded(embedded, ids[n], codes[n]), 4).append(">] TJ\n");
+                n++;
             }
             drawn += face.advance(cp) * size / face.unitsPerEm() * th + style.charSpacing();
             if (cp == ' ') {

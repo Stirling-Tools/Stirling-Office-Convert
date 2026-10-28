@@ -1,6 +1,7 @@
 package stirling.software.officeconvert.topdf.html;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -116,6 +117,27 @@ class WebFontsTest {
 
     private static boolean uses(Out out) {
         return out.fonts().stream().anyMatch(f -> f.contains("BrandishSans"));
+    }
+
+    @Test
+    void aFaceHasOneFamilyWhileQuotedCommasBelongToItsName() throws IOException {
+        assertNull(WebFonts.family("Alpha, Beta"));
+        assertNull(WebFonts.family("'Alpha', 'Beta'"));
+        assertNull(WebFonts.family("'Unclosed, Name"));
+        assertEquals("Alpha, Beta", WebFonts.family("'Alpha, Beta'"));
+        assertEquals("Alpha, Beta", WebFonts.family("\"Alpha, Beta\""));
+        assertEquals("Alpha Beta", WebFonts.family("Alpha Beta"));
+        byte[] renamed = WebFonts.renamed(ttf(), WebFonts.family("'Alpha, Beta'"), false, false);
+        assertNotNull(FontLibrary.of(List.of()).withFonts(List.of(renamed)).exact("Alpha, Beta", false, false));
+    }
+
+    @Test
+    void aQuotedCommaFamilyCanBeSelectedByThePage() throws IOException {
+        String uri = "data:font/ttf;base64," + Base64.getEncoder().encodeToString(ttf());
+        String html = page("url(" + uri + ") format('truetype')").replace("Brandish Sans", "Brandish, Sans");
+        Out out = convert("quoted-comma", html, OfficeToPdf.Options.defaults());
+        assertTrue(uses(out), out.fonts().toString());
+        assertTrue(out.text().contains("Webfont words here"), out.text());
     }
 
     @Test

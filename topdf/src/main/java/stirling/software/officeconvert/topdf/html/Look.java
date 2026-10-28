@@ -276,7 +276,7 @@ final class Look {
     }
 
     static String family(String list) {
-        for (String raw : list.split(",")) {
+        for (String raw : Css.splitTopLevel(list, ',')) {
             String f = raw.strip().replaceAll("^[\"']|[\"']$", "").strip();
             if (f.isEmpty() || f.startsWith("-") || f.equalsIgnoreCase("inherit") || f.equalsIgnoreCase("initial")) {
                 continue;

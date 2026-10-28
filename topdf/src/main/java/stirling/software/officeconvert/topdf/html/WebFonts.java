@@ -93,13 +93,21 @@ final class WebFonts {
             return null;
         }
         String f = value.strip();
+        if (Css.splitTopLevel(f, ',').size() != 1) {
+            return null;
+        }
+        if (!f.isEmpty() && (f.charAt(0) == '"' || f.charAt(0) == '\'')) {
+            if (f.length() < 2 || f.charAt(f.length() - 1) != f.charAt(0)) {
+                return null;
+            }
+        }
         if (f.length() >= 2 && (f.charAt(0) == '"' || f.charAt(0) == '\'') && f.charAt(f.length() - 1) == f.charAt(0)) {
             f = f.substring(1, f.length() - 1);
         }
         StringBuilder sb = new StringBuilder();
         for (int i = 0; i < f.length() && sb.length() < MAX_FAMILY_CHARS; i++) {
             char c = f.charAt(i);
-            if (c >= 0x20 && c < 0x7F && c != '"' && c != '\'' && c != ',' && c != ';') {
+            if (c >= 0x20 && c < 0x7F && c != '"' && c != '\'' && c != ';') {
                 sb.append(c);
             }
         }
