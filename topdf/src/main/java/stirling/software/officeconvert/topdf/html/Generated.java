@@ -54,7 +54,7 @@ final class Generated {
         }
         List<Rule> sorted = new ArrayList<>(rules);
         sorted.sort(Comparator.comparingInt(Rule::specificity).thenComparingInt(Rule::order));
-        boolean counting = sorted.stream().anyMatch(r -> counts(r.declarations()));
+        boolean counting = strings || sorted.stream().anyMatch(r -> counts(r.declarations()));
         Walk walk = new Walk(doc, cascade, sorted, pages, counting, strings);
         Deque<Element> stack = new ArrayDeque<>();
         Deque<Integer> next = new ArrayDeque<>();
@@ -208,6 +208,7 @@ final class Generated {
         String stringValue(Element e, String spec, Element afterSpan) {
             StringBuilder out = new StringBuilder();
             String v = spec.strip();
+            String own = null;
             int i = 0;
             while (i < v.length() && out.length() < MAX_TEXT) {
                 char c = v.charAt(i);
@@ -230,24 +231,26 @@ final class Generated {
                     String args = "";
                     if (i < v.length() && v.charAt(i) == '(') {
                         int close = close(v, i);
-                        args = v.substring(i + 1, Math.max(i + 1, close - 1)).strip().toLowerCase(Locale.ROOT);
+                        args = v.substring(i + 1, Math.max(i + 1, close - 1)).strip();
                         i = close;
                     }
-                    String own = e.text();
                     switch (name) {
                         case "content" -> {
-                            if (args.equals("after")) {
+                            String kind = args.toLowerCase(Locale.ROOT);
+                            if (kind.equals("after")) {
                                 out.append(afterSpan == null ? "" : afterSpan.text());
-                            } else if (args.equals("before")) {
+                            } else if (kind.equals("before")) {
                                 for (Pending p : pending) {
                                     if (p.element() == e && p.first()) {
                                         out.append(p.span().text());
                                     }
                                 }
-                            } else if (args.equals("first-letter")) {
-                                out.append(own.isEmpty() ? "" : own.substring(0, own.offsetByCodePoints(0, 1)));
                             } else {
-                                out.append(own);
+                                if (own == null) {
+                                    own = e.text();
+                                }
+                                out.append(kind.equals("first-letter")
+                                        ? own.isEmpty() ? "" : own.substring(0, own.offsetByCodePoints(0, 1)) : own);
                             }
                         }
                         case "attr" -> out.append(e.attr(args));

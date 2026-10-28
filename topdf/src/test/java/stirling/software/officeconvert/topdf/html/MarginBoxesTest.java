@@ -111,7 +111,8 @@ class MarginBoxesTest {
                 String text = page(doc, i);
                 assertEquals(i % 2 == 1, text.contains("Odd side"), text);
                 assertEquals(i % 2 == 0, text.contains("Even side"), text);
-                assertTrue(text.contains(Integer.toString(i)), text);
+                String number = Integer.toString(i);
+                assertTrue(text.lines().anyMatch(line -> line.strip().equals(number)), text);
             }
         }
     }

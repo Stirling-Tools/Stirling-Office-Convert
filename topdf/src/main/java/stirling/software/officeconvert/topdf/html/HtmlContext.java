@@ -43,6 +43,8 @@ final class HtmlContext {
 
     private static final int MAX_VISITS = 400_000;
 
+    private static final int MAX_ALIAS_DEPTH = 64;
+
     private int visits;
     private final java.util.Set<Element> placed = java.util.Collections.newSetFromMap(new IdentityHashMap<>());
 
@@ -314,11 +316,15 @@ final class HtmlContext {
 
     String bookmarkFor(Element e) {
         String mark = generated.marks().get(e);
+        String id = e.id();
+        boolean target = !id.isEmpty() && generated.targets().contains(id);
         if (mark != null) {
+            if (target) {
+                alias(Generated.BOOKMARK_PREFIX + id, mark);
+            }
             return mark;
         }
-        String id = e.id();
-        return !id.isEmpty() && generated.targets().contains(id) ? Generated.BOOKMARK_PREFIX + id : null;
+        return target ? Generated.BOOKMARK_PREFIX + id : null;
     }
 
     void alias(String bookmark, String written) {
@@ -328,7 +334,15 @@ final class HtmlContext {
     }
 
     String written(String bookmark) {
-        return aliases.getOrDefault(bookmark, bookmark);
+        String current = bookmark;
+        for (int i = 0; i < MAX_ALIAS_DEPTH; i++) {
+            String next = aliases.get(current);
+            if (next == null || next.equals(current)) {
+                return current;
+            }
+            current = next;
+        }
+        return bookmark;
     }
 
     Map<String, String[]> runningStrings() {

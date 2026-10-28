@@ -79,6 +79,8 @@ final class Flow {
     private String link;
     private int forceInline;
     private Inline pendingGap;
+    private final List<Inline> pendingEdges = new ArrayList<>();
+    private long edgeBoundary;
     private int rowItemStart = -1;
     private int rowNested;
     private int avoiding;
@@ -268,15 +270,8 @@ final class Flow {
 
     private void element(Element e, Look parentLook, Frame frame, int depth) throws IOException {
         String tag = e.normalName();
-        String bookmark = ctx.bookmarkFor(e);
-        if (bookmark != null) {
-            if (pendingBookmark == null) {
-                pendingBookmark = bookmark;
-            } else {
-                ctx.alias(bookmark, pendingBookmark);
-            }
-        }
         if (tag.equals(Generated.LEADER)) {
+            bookmark(e);
             leader(e, parentLook);
             return;
         }
@@ -287,10 +282,6 @@ final class Flow {
             return;
         }
         if (SKIPPED.contains(tag) || e.hasAttr("hidden")) {
-            return;
-        }
-        if (depth > MAX_DEPTH) {
-            text(e.text(), parentLook);
             return;
         }
         Map<String, String> d = ctx.declared(e, parentLook);
@@ -312,9 +303,21 @@ final class Flow {
         if (Positioned.outOfFlow(d) && !tag.equals("body") && !tag.equals("html")
                 && (ctx.positions() || ctx.placed(e))) {
             if (!ctx.placed(e)) {
+                bookmark(e);
                 ctx.place(e);
                 staticBox(e, d, look, frame, depth);
             }
+            return;
+        }
+        String bookmark = ctx.bookmarkFor(e);
+        if (bookmark != null) {
+            if (!inline) {
+                flush();
+            }
+            bookmark(bookmark);
+        }
+        if (depth > MAX_DEPTH) {
+            text(e.text(), look);
             return;
         }
         if (tag.equals("details") && !e.hasAttr("open")) {
@@ -361,9 +364,14 @@ final class Flow {
             case "hr" -> rule(d, look, frame);
             case "table" -> table(e, d, look, frame, parentLook.centerBlocks, depth);
             case "a" -> {
-                gap(edge(d, "left", look, frame), look);
+                long boundary = edgeBoundary;
+                if (inline) {
+                    leadingGap(edge(d, "left", look, frame), look);
+                }
                 anchor(e, look, frame, depth);
-                gap(edge(d, "right", look, frame), look);
+                if (inline) {
+                    trailingGap(edge(d, "right", look, frame), look, boundary);
+                }
             }
             case "wbr" -> { }
             case "q" -> {
@@ -376,13 +384,14 @@ final class Flow {
                         && d.getOrDefault("float", "none").strip().equalsIgnoreCase("right")) {
                     floatRight(e, look, frame, depth);
                 } else if (inline) {
-                    gap(edge(d, "left", look, frame), look);
+                    long boundary = edgeBoundary;
+                    leadingGap(edge(d, "left", look, frame), look);
                     if (forceInline > 0 && display.endsWith("flex")) {
                         flexInline(e, look, frame, depth, Layout.gap(d, look));
                     } else {
                         walkChildren(e, look, frame, depth);
                     }
-                    gap(edge(d, "right", look, frame), look);
+                    trailingGap(edge(d, "right", look, frame), look, boundary);
                 } else {
                     // overflow on html or body belongs to the window, which prints whole; fixed boxes never widen it
                     boolean scrolls = !tag.equals("body") && !tag.equals("html") && scrolls(d)
@@ -402,6 +411,20 @@ final class Flow {
         }
     }
 
+    private void bookmark(Element e) {
+        bookmark(ctx.bookmarkFor(e));
+    }
+
+    private void bookmark(String bookmark) {
+        if (bookmark != null) {
+            if (pendingBookmark == null) {
+                pendingBookmark = bookmark;
+            } else {
+                ctx.alias(bookmark, pendingBookmark);
+            }
+        }
+    }
+
     private static final int BUTTON_TEXT = 80;
 
     private static final float MAX_INLINE_GAP = 144;
@@ -411,15 +434,42 @@ final class Flow {
                 + Math.max(0, length(d.get("padding-" + side), look.size, frame.width()));
     }
 
-    private void gap(float pt, Look look) throws IOException {
+    private Inline gapInline(float pt, Look look) {
         if (pt < 0.5f) {
-            return;
+            return null;
         }
         RunStyle s = look.run();
         float space = s.size() * 0.25f;
         RunStyle g = new RunStyle(s.font(), s.size(), false, false, false, false, s.rgb(), -1, 0, false,
                 Math.max(0, Math.min(MAX_INLINE_GAP, pt) - space), s.scale(), false, -1);
-        inline(new Inline.Text("\u00a0", g, null, -1), look);
+        return new Inline.Text("\u00a0", g, null, -1);
+    }
+
+    private void gap(float pt, Look look) throws IOException {
+        Inline gap = gapInline(pt, look);
+        if (gap != null) {
+            inline(gap, look);
+        }
+    }
+
+    private void leadingGap(float pt, Look look) {
+        Inline gap = gapInline(pt, look);
+        if (gap != null) {
+            pendingEdges.add(gap);
+        }
+    }
+
+    private void trailingGap(float pt, Look look, long boundary) throws IOException {
+        if (para != null || boundary == edgeBoundary) {
+            if (para == null && !pendingEdges.isEmpty()) {
+                start();
+            }
+            if (para != null) {
+                para.inlines.addAll(pendingEdges);
+                pendingEdges.clear();
+            }
+            gap(pt, look);
+        }
     }
 
     private void flexInline(Element e, Look look, Frame frame, int depth, float between) throws IOException {
@@ -471,6 +521,7 @@ final class Flow {
         if (alone) {
             flush();
         }
+        bookmark(e);
         inline(control, look);
         lastSpace = false;
         if (alone) {
@@ -1692,6 +1743,8 @@ final class Flow {
             }
             pendingGap = null;
         }
+        para.inlines.addAll(pendingEdges);
+        pendingEdges.clear();
         para.inlines.add(in);
     }
 
@@ -1730,10 +1783,14 @@ final class Flow {
         para = p;
         p.inlines.addAll(pendingFloats);
         pendingFloats.clear();
+        p.inlines.addAll(pendingEdges);
+        pendingEdges.clear();
         lastSpace = true;
     }
 
     void flush() throws IOException {
+        edgeBoundary++;
+        pendingEdges.clear();
         if (para == null) {
             return;
         }
