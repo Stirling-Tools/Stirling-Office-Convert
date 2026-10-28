@@ -10,6 +10,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 
@@ -100,82 +101,50 @@ public final class PdfOptimizer {
         if (size > MAX_INPUT_BYTES) {
             throw new IOException("The PDF is larger than " + (MAX_INPUT_BYTES >> 20) + " MB");
         }
-        Path part = Files.createTempFile(PdfFiles.outputFolder(out), ".optimize-", ".part");
+        Path folder = PdfFiles.outputFolder(out);
+        Path part = Files.createTempFile(folder, ".optimize-", ".part");
+        Path lines = Files.createTempFile(folder, ".lines-", ".part");
         try {
-            java.util.concurrent.atomic.AtomicBoolean salvage = new java.util.concurrent.atomic.AtomicBoolean();
-            Result result = Deadline.run(options.timeout(), () -> {
+            int[] shown = {0};
+            String[] failed = {null};
+            Rewrite.Run run = Deadline.run(options.timeout(), () -> {
                 Admission.Ticket ticket = Admission.jvm().enter(estimate(size));
                 try {
-                    PDDocument doc;
-                    Path rebuilt = null;
-                    Salvage.Rebuilt salvaged = null;
-                    try {
-                        doc = PdfFiles.open(in, options.password());
-                    } catch (InvalidPasswordException | InterruptedIOException e) {
-                        throw e;
-                    } catch (IOException e) {
-                        rebuilt = Files.createTempFile(PdfFiles.outputFolder(out), ".salvage-", ".part");
-                        boolean opened = false;
+                    Rewrite.Run done = attempt(in, lines, part, folder, options, size, shown);
+                    if (done.result().rewritten()) {
                         try {
-                            salvaged = Salvage.rebuild(in, rebuilt);
-                            salvage.set(salvaged != null);
-                            if (salvaged == null) {
-                                throw e;
-                            }
-                            try {
-                                doc = PdfFiles.open(rebuilt, options.password());
-                            } catch (IOException again) {
-                                throw e;
-                            }
-                            opened = true;
-                        } finally {
-                            if (!opened) {
-                                Files.deleteIfExists(rebuilt);
-                            }
+                            check(part, options.password(), shown[0]);
+                        } catch (InterruptedIOException e) {
+                            throw e;
+                        } catch (IOException e) {
+                            failed[0] = e.getMessage();
                         }
                     }
-                    try (PDDocument open = doc) {
-                        if (salvaged == null && !open.isEncrypted() && open.getNumberOfPages() == 0) {
-                            Path emptyRepair = Files.createTempFile(PdfFiles.outputFolder(out), ".salvage-", ".part");
-                            try {
-                                var root = open.getDocumentCatalog().getCOSObject().getItem(COSName.PAGES);
-                                Long offset = root instanceof COSObject ref
-                                        ? open.getDocument().getXrefTable().get(ref.getKey()) : null;
-                                Salvage.Rebuilt recovered = offset == null ? null
-                                        : Salvage.rebuildEmpty(in, emptyRepair, offset);
-                                if (recovered != null) {
-                                    try (PDDocument recoveredDoc = PdfFiles.open(emptyRepair, options.password());
-                                            OutputStream os = new BufferedOutputStream(Files.newOutputStream(part), 1 << 16)) {
-                                        Result r = Rewrite.run(recoveredDoc, os, options, size);
-                                        salvage.set(true);
-                                        return repaired(r, recovered);
-                                    }
-                                }
-                            } finally {
-                                Files.deleteIfExists(emptyRepair);
-                            }
-                        }
-                        try (OutputStream os = new BufferedOutputStream(Files.newOutputStream(part), 1 << 16)) {
-                            Result r = Rewrite.run(open, os, options, size);
-                            if (salvaged == null) {
-                                return r;
-                            }
-                            return repaired(r, salvaged);
-                        }
-                    } finally {
-                        if (rebuilt != null) {
-                            Files.deleteIfExists(rebuilt);
-                        }
-                    }
+                    return done;
                 } finally {
                     ticket.close();
                 }
             });
-            if (salvage.get() && result.rewritten()) {
+            Result result = run.result();
+            PdfFiles.stopIfInterrupted();
+            if (failed[0] != null) {
+                if (shown[0] == 0) {
+                    throw new IOException("The PDF could not be repaired: the rebuilt file failed its own check ("
+                            + failed[0] + ")");
+                }
+                List<String> warnings = new ArrayList<>(result.warnings());
+                warnings.removeIf(w -> w.startsWith("The PDF was damaged") || w.startsWith("The PDF's line endings"));
+                warnings.add("The rewritten PDF failed its own check (" + failed[0] + "), so the input was copied"
+                        + " unchanged");
+                Files.copy(in, part, StandardCopyOption.REPLACE_EXISTING);
+                move(part, out);
+                return new Result(size, size, false, result.objects(), result.mergedObjects(), result.recodedStreams(),
+                        warnings);
+            }
+            if (run.repaired() && result.rewritten()) {
                 move(part, out);
                 return result;
             }
-            PdfFiles.stopIfInterrupted();
             if (!result.rewritten() || !options.alwaysRewrite() && result.outputBytes() >= size) {
                 Files.copy(in, part, StandardCopyOption.REPLACE_EXISTING);
                 result = new Result(size, size, false, result.objects(), result.mergedObjects(),
@@ -187,18 +156,109 @@ public final class PdfOptimizer {
             throw PdfFiles.interrupted(e);
         } finally {
             Files.deleteIfExists(part);
+            Files.deleteIfExists(lines);
         }
     }
 
-    private static Result repaired(Result result, Salvage.Rebuilt salvaged) {
-        if (!result.rewritten()) {
-            return result;
+    private static Rewrite.Run attempt(Path in, Path lines, Path part, Path folder, Options options, long size,
+            int[] shown) throws IOException {
+        List<String> notes = new ArrayList<>();
+        Path source = in;
+        int restored = LineEndings.restore(in, lines);
+        if (restored > 0) {
+            source = lines;
+            notes.add("The PDF's line endings had been converted to CRLF, which corrupts binary data; " + restored
+                    + (restored == 1 ? " stream was restored to its declared length"
+                            : " streams were restored to their declared lengths"));
         }
-        List<String> warnings = new java.util.ArrayList<>(result.warnings());
-        warnings.add("The PDF was damaged past its own repair data; its page tree was rebuilt from the "
-                + salvaged.pages() + " pages found in the file");
-        return new Result(result.inputBytes(), result.outputBytes(), true, result.objects(), result.mergedObjects(),
-                result.recodedStreams(), warnings);
+        PDDocument doc;
+        Path rebuilt = null;
+        Salvage.Rebuilt salvaged = null;
+        try {
+            doc = PdfFiles.open(source, options.password());
+        } catch (InvalidPasswordException | InterruptedIOException e) {
+            throw e;
+        } catch (IOException e) {
+            rebuilt = Files.createTempFile(folder, ".salvage-", ".part");
+            boolean opened = false;
+            try {
+                salvaged = Salvage.rebuild(source, rebuilt);
+                if (salvaged == null) {
+                    String unsupported = Salvage.unsupported(source);
+                    throw unsupported == null ? e : new IOException("The PDF could not be opened: " + unsupported, e);
+                }
+                try {
+                    doc = PdfFiles.open(rebuilt, options.password());
+                } catch (IOException again) {
+                    throw e;
+                }
+                opened = true;
+            } finally {
+                if (!opened) {
+                    Files.deleteIfExists(rebuilt);
+                }
+            }
+        }
+        try (PDDocument open = doc) {
+            if (salvaged == null) {
+                shown[0] = PageTree.census(open.getDocument(), false);
+            }
+            if (salvaged == null && !open.isEncrypted() && open.getNumberOfPages() == 0) {
+                Path emptyRepair = Files.createTempFile(folder, ".salvage-", ".part");
+                try {
+                    var root = open.getDocumentCatalog().getCOSObject().getItem(COSName.PAGES);
+                    Long offset = root instanceof COSObject ref
+                            ? open.getDocument().getXrefTable().get(ref.getKey()) : null;
+                    Salvage.Rebuilt recovered = offset == null ? null
+                            : Salvage.rebuildEmpty(source, emptyRepair, offset);
+                    if (recovered != null) {
+                        try (PDDocument recoveredDoc = PdfFiles.open(emptyRepair, options.password());
+                                OutputStream os = new BufferedOutputStream(Files.newOutputStream(part), 1 << 16)) {
+                            Rewrite.Run r = Rewrite.run(recoveredDoc, os, options, size);
+                            return repaired(r, recovered, notes);
+                        }
+                    }
+                } finally {
+                    Files.deleteIfExists(emptyRepair);
+                }
+            }
+            try (OutputStream os = new BufferedOutputStream(Files.newOutputStream(part), 1 << 16)) {
+                Rewrite.Run r = Rewrite.run(open, os, options, size);
+                return repaired(r, salvaged, notes);
+            }
+        } finally {
+            if (rebuilt != null) {
+                Files.deleteIfExists(rebuilt);
+            }
+        }
+    }
+
+    static int check(Path pdf, String password, int pages) throws IOException {
+        try (PDDocument doc = PdfFiles.open(pdf, password)) {
+            int found = PageTree.census(doc.getDocument(), true);
+            if (found < pages) {
+                throw new IOException("it has " + found + " usable pages where the input has " + pages);
+            }
+            return found;
+        } catch (RuntimeException e) {
+            throw new IOException(e.getMessage(), e);
+        }
+    }
+
+    private static Rewrite.Run repaired(Rewrite.Run run, Salvage.Rebuilt salvaged, List<String> notes) {
+        Result result = run.result();
+        if (!result.rewritten() || salvaged == null && notes.isEmpty()) {
+            return run;
+        }
+        List<String> warnings = new ArrayList<>(notes);
+        warnings.addAll(result.warnings());
+        if (salvaged != null) {
+            warnings.add("The PDF was damaged past its own repair data; its page tree was rebuilt from the "
+                    + salvaged.pages() + " pages found in the file" + (salvaged.unpacked() > 0 ? ", and "
+                            + salvaged.unpacked() + " objects were read back out of its object streams" : ""));
+        }
+        return new Rewrite.Run(new Result(result.inputBytes(), result.outputBytes(), true, result.objects(),
+                result.mergedObjects(), result.recodedStreams(), warnings), true);
     }
 
     public static Result optimize(PDDocument document, OutputStream out, Options options) throws IOException {
@@ -221,7 +281,7 @@ public final class PdfOptimizer {
                 try {
                     Result r;
                     try (PDDocument doc = PdfFiles.open(saved, options.password())) {
-                        r = Rewrite.run(doc, out, options, -1);
+                        r = Rewrite.run(doc, out, options, -1).result();
                     }
                     if (r.rewritten()) {
                         return r;
