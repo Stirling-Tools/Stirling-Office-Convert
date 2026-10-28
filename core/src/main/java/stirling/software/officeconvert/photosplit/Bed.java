@@ -58,15 +58,33 @@ final class Bed {
 
     byte[] foreground(int[] smooth, int w, int h, int threshold, byte[] photo) {
         byte[] mask = new byte[w * h];
-        float[] row = new float[3 * w];
+        int[] left = new int[w];
+        int[] right = new int[w];
+        float[] fx = new float[w];
+        for (int x = 0; x < w; x++) {
+            double gx = Math.clamp((x + 0.5) / cell - 0.5, 0, gw - 1);
+            left[x] = (int) gx;
+            right[x] = Math.min(left[x] + 1, gw - 1);
+            fx[x] = (float) (gx - left[x]);
+        }
+        float[] top = new float[3 * w];
+        float[] bottom = new float[3 * w];
+        int band = -1;
         for (int y = 0; y < h; y++) {
             PhotoSplitter.checkpoint();
-            model(y, w, row);
+            double gy = Math.clamp((y + 0.5) / cell - 0.5, 0, gh - 1);
+            int y0 = (int) gy;
+            float fy = (float) (gy - y0);
+            if (y0 != band) {
+                band = y0;
+                interpolate(y0 * gw, left, right, fx, top);
+                interpolate(Math.min(y0 + 1, gh - 1) * gw, left, right, fx, bottom);
+            }
             for (int x = 0; x < w; x++) {
                 int i = y * w + x;
-                float mr = row[3 * x];
-                float mg = row[3 * x + 1];
-                float mb = row[3 * x + 2];
+                float mr = top[3 * x] + (bottom[3 * x] - top[3 * x]) * fy;
+                float mg = top[3 * x + 1] + (bottom[3 * x + 1] - top[3 * x + 1]) * fy;
+                float mb = top[3 * x + 2] + (bottom[3 * x + 2] - top[3 * x + 2]) * fy;
                 int p = smooth[i];
                 int r = p >> 16 & 0xFF;
                 int g = p >> 8 & 0xFF;
@@ -95,21 +113,11 @@ final class Bed {
         return hi < SHADE_MAX && hi - lo < SHADE_SPREAD;
     }
 
-    void model(int y, int w, float[] out) {
-        double gy = Math.clamp((y + 0.5) / cell - 0.5, 0, gh - 1);
-        int y0 = (int) gy;
-        int y1 = Math.min(y0 + 1, gh - 1);
-        float fy = (float) (gy - y0);
-        for (int x = 0; x < w; x++) {
-            double gx = Math.clamp((x + 0.5) / cell - 0.5, 0, gw - 1);
-            int x0 = (int) gx;
-            int x1 = Math.min(x0 + 1, gw - 1);
-            float fx = (float) (gx - x0);
+    private void interpolate(int base, int[] left, int[] right, float[] fx, float[] out) {
+        for (int x = 0; x < left.length; x++) {
             for (int k = 0; k < 3; k++) {
                 float[] g = grid[k];
-                float top = g[y0 * gw + x0] + (g[y0 * gw + x1] - g[y0 * gw + x0]) * fx;
-                float bottom = g[y1 * gw + x0] + (g[y1 * gw + x1] - g[y1 * gw + x0]) * fx;
-                out[3 * x + k] = top + (bottom - top) * fy;
+                out[3 * x + k] = g[base + left[x]] + (g[base + right[x]] - g[base + left[x]]) * fx[x];
             }
         }
     }
