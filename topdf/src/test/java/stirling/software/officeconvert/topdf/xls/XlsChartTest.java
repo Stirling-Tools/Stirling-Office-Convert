@@ -155,9 +155,28 @@ class XlsChartTest {
                 assertTrue(chart.contains("<c:plotVisOnly val=\"" + (visibleOnly ? 1 : 0) + "\"/>"), chart);
                 if (visibleOnly && !hiddenColumn) {
                     assertTrue(chart.contains("<c:v>10.0</c:v>") && chart.contains("<c:v>30.0</c:v>"), chart);
+                    assertTrue(chart.contains("<c:ptCount val=\"2\"/>"), chart);
+                    assertFalse(chart.contains("<c:ptCount val=\"3\"/>"), chart);
                 }
             }
         }
+    }
+
+    @Test
+    void manyChartGroupsAndRecordsReadInLinearTime() {
+        ChartRecords chart = new ChartRecords(null);
+        org.junit.jupiter.api.Assertions.assertTimeoutPreemptively(java.time.Duration.ofSeconds(20), () -> {
+            for (int i = 0; i < 65_536; i++) {
+                byte[] format = new byte[20];
+                format[18] = (byte) i;
+                format[19] = (byte) (i >> 8);
+                chart.add(new org.apache.poi.hssf.record.UnknownRecord(0x1014, format));
+            }
+            for (int i = 0; i < 200_000; i++) {
+                chart.add(new org.apache.poi.hssf.record.UnknownRecord(0x103A, new byte[14]));
+                chart.add(new org.apache.poi.hssf.record.UnknownRecord(0x103D, new byte[2]));
+            }
+        });
     }
 
     @Test

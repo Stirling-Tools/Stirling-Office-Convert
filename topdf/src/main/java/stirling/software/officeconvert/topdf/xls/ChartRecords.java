@@ -65,7 +65,7 @@ final class ChartRecords {
 
     private final List<SeriesBuilder> series = new ArrayList<>();
 
-    private final Map<Integer, GroupBuilder> groups = new LinkedHashMap<>();
+    private final LinkedHashMap<Integer, GroupBuilder> groups = new LinkedHashMap<>();
 
     private final AxisBuilder[][] axes = new AxisBuilder[2][2];
 
@@ -230,7 +230,7 @@ final class ChartRecords {
             }
             case CHART_3D -> {
                 if (!groups.isEmpty()) {
-                    new ArrayList<>(groups.values()).get(groups.size() - 1).threeD = true;
+                    lastGroup().threeD = true;
                 }
             }
             case AXIS -> {
@@ -391,15 +391,13 @@ final class ChartRecords {
         if (plotVisibleOnly) {
             List<Boolean> hiddenValues = s.valueRef == null ? List.of() : fonts.hidden(s.valueRef);
             List<Boolean> hiddenCategories = s.categoryRef == null ? List.of() : fonts.hidden(s.categoryRef);
-            int points = Math.max(hiddenValues.size(), hiddenCategories.size());
+            int points = Math.min(MAX_POINTS, Math.max(hiddenValues.size(), hiddenCategories.size()));
+            boolean[] hidden = new boolean[points];
             for (int i = 0; i < points; i++) {
-                if (i < hiddenValues.size() && hiddenValues.get(i)
-                        || i < hiddenCategories.size() && hiddenCategories.get(i)) {
-                    s.values.remove(i);
-                    s.categories.remove(i);
-                    s.xs.remove(i);
-                }
+                hidden[i] = i < hiddenValues.size() && hiddenValues.get(i)
+                        || i < hiddenCategories.size() && hiddenCategories.get(i);
             }
+            s.collapse(hidden);
         }
     }
 
@@ -515,11 +513,11 @@ final class ChartRecords {
     }
 
     private GroupBuilder lastGroup() {
-        return groups.isEmpty() ? null : new ArrayList<>(groups.values()).get(groups.size() - 1);
+        return groups.isEmpty() ? null : groups.lastEntry().getValue();
     }
 
     private void kind(int sid, byte[] d) {
-        GroupBuilder g = groups.isEmpty() ? null : new ArrayList<>(groups.values()).get(groups.size() - 1);
+        GroupBuilder g = lastGroup();
         if (g == null || g.kind != null) {
             return;
         }
@@ -1016,13 +1014,43 @@ final class ChartRecords {
 
         String categoryFormatCode;
 
+        int hidden;
+
+        void collapse(boolean[] gone) {
+            int[] to = new int[gone.length];
+            int kept = 0;
+            for (int i = 0; i < gone.length; i++) {
+                to[i] = gone[i] ? -1 : kept++;
+            }
+            hidden = gone.length - kept;
+            if (hidden == 0) {
+                return;
+            }
+            shift(values, to);
+            shift(xs, to);
+            shift(categories, to);
+            shift(points, to);
+            shift(pointLabels, to);
+        }
+
+        private <V> void shift(Map<Integer, V> m, int[] to) {
+            Map<Integer, V> before = new TreeMap<>(m);
+            m.clear();
+            before.forEach((k, v) -> {
+                int at = k < 0 ? k : k < to.length ? to[k] : k - hidden;
+                if (at >= 0) {
+                    m.put(at, v);
+                }
+            });
+        }
+
         SeriesBuilder(int categories, int values) {
             this.categoryCount = Math.max(0, Math.min(MAX_POINTS, categories));
             this.valueCount = Math.max(0, Math.min(MAX_POINTS, values));
         }
 
         BiffChart.Series build(int index, boolean lines, List<Integer> autoFills, List<Integer> autoLines) {
-            int n = Math.max(valueCount, values.isEmpty() ? 0 : values.lastKey() + 1);
+            int n = Math.max(valueCount - hidden, values.isEmpty() ? 0 : values.lastKey() + 1);
             double[] v = new double[n];
             double[] x = xs.isEmpty() ? null : new double[n];
             for (int i = 0; i < n; i++) {
@@ -1031,7 +1059,7 @@ final class ChartRecords {
                     x[i] = xs.getOrDefault(i, (double) (i + 1));
                 }
             }
-            int c = Math.max(categoryCount, categories.isEmpty() ? 0 : categories.lastKey() + 1);
+            int c = Math.max(categoryCount - hidden, categories.isEmpty() ? 0 : categories.lastKey() + 1);
             List<String> cats = new ArrayList<>(c);
             double[] numbers = categoryFormatCode == null || c == 0 ? null : new double[c];
             for (int i = 0; i < c; i++) {
