@@ -311,7 +311,7 @@ final class Flow {
         }
         String bookmark = ctx.bookmarkFor(e);
         if (bookmark != null) {
-            if (!inline) {
+            if (!inline && !tag.equals("br")) {
                 flush();
             }
             bookmark(bookmark);

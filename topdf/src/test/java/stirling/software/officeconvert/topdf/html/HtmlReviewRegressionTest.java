@@ -235,6 +235,30 @@ class HtmlReviewRegressionTest {
         assertEquals(List.of(9f, 3f), spacing);
     }
 
+    @Test
+    void markedBlockStyledBreakDoesNotAddAParagraphBeforeTheClosingParagraphTag() throws IOException {
+        String css = "<style>.marked{string-set:marker attr(data-name)}</style>";
+        List<String> plain = paragraphs(css + "<p>Before<br style='display:block'></p><p>After</p>")
+                .stream().map(HtmlReviewRegressionTest::text).toList();
+        List<String> marked = paragraphs(css + "<p>Before<br style='display:block;string-set:marker attr(data-name)'"
+                + " class=marked id=marker data-name=Marker></p><p>After</p>")
+                .stream().map(HtmlReviewRegressionTest::text).toList();
+        assertEquals(List.of("Before", "After"), plain);
+        assertEquals(plain, marked);
+    }
+
+    @Test
+    void targetReferencedBlockStyledBreakKeepsTheUnmarkedBodyParagraphs() throws IOException {
+        String prefix = "<style>a::after{content:target-counter(attr(href),page)}</style>"
+                + "<p><a href='#marker'>Reference</a></p><p>Before";
+        List<String> plain = paragraphs(prefix + "<br style='display:block'></p><p>After</p>")
+                .stream().map(HtmlReviewRegressionTest::text).toList();
+        List<String> marked = paragraphs(prefix + "<br id=marker style='display:block'></p><p>After</p>")
+                .stream().map(HtmlReviewRegressionTest::text).toList();
+        assertEquals(3, plain.size());
+        assertEquals(plain, marked);
+    }
+
     private record Destinations(HtmlContext context, List<Paragraph> paragraphs) {}
 
     private static Destinations destinations(String html, Set<String> targets) throws IOException {
