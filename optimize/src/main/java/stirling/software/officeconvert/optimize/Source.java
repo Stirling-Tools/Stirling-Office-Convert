@@ -30,6 +30,8 @@ final class Source {
 
     private final Map<COSObjectKey, Long> xref;
 
+    private final Map<COSObjectKey, COSBase> injected = new HashMap<>();
+
     Source(COSDocument cos) {
         this.cos = cos;
         this.parser = parser(cos);
@@ -88,19 +90,36 @@ final class Source {
         return ordered;
     }
 
-    @SuppressWarnings("unchecked")
-    private Map<COSObjectKey, Long> recovered() {
+    void inject(COSObjectKey key, COSBase object) {
+        injected.put(key, object);
+    }
+
+    boolean rebuilt() {
+        return bruteForce() != null;
+    }
+
+    private BruteForceParser bruteForce() {
         if (!(parser instanceof COSParser)) {
-            return Map.of();
+            return null;
         }
         try {
             Field field = COSParser.class.getDeclaredField("bruteForceParser");
             field.setAccessible(true);
-            Object brute = field.get(parser);
-            if (!(brute instanceof BruteForceParser recovery) || !recovery.bfSearchTriggered()) {
-                return Map.of();
-            }
-            field = BruteForceParser.class.getDeclaredField("bfSearchCOSObjectKeyOffsets");
+            return field.get(parser) instanceof BruteForceParser recovery && recovery.bfSearchTriggered() ? recovery
+                    : null;
+        } catch (ReflectiveOperationException | RuntimeException e) {
+            return null;
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<COSObjectKey, Long> recovered() {
+        BruteForceParser brute = bruteForce();
+        if (brute == null) {
+            return Map.of();
+        }
+        try {
+            Field field = BruteForceParser.class.getDeclaredField("bfSearchCOSObjectKeyOffsets");
             field.setAccessible(true);
             return (Map<COSObjectKey, Long>) field.get(brute);
         } catch (ReflectiveOperationException | RuntimeException e) {
@@ -119,7 +138,7 @@ final class Source {
         Map<Long, Integer> generations = new HashMap<>();
         for (COSObjectKey key : missing) {
             Long offset = recovered.get(key);
-            if (!xref.containsKey(key) && offset != null && offset < 0) {
+            if (!xref.containsKey(key) && offset != null && offset != 0) {
                 generations.put(key.getNumber(), -1);
             }
         }
@@ -141,7 +160,7 @@ final class Source {
             Integer generation = generations.get(key.getNumber());
             if (generation != null && generation < 0 && !xref.containsKey(key)) {
                 Long offset = recovered.get(key);
-                if (offset != null && offset < 0) {
+                if (offset != null && offset != 0) {
                     xref.put(key, offset);
                     added.add(key);
                 }
@@ -157,6 +176,9 @@ final class Source {
     }
 
     boolean exists(COSObjectKey key) {
+        if (injected.containsKey(key)) {
+            return true;
+        }
         Long off = xref.get(key);
         return off != null && off != 0;
     }
@@ -193,6 +215,10 @@ final class Source {
     }
 
     COSBase load(COSObjectKey key) throws IOException {
+        COSBase own = injected.get(key);
+        if (own != null) {
+            return own;
+        }
         Long off = xref.get(key);
         if (off != null && off < 0) {
             COSBase b = unpack(-off).get(key.getNumber());
@@ -232,6 +258,22 @@ final class Source {
             for (Map.Entry<COSObjectKey, COSBase> e : new Unpacker(stream, cos).parseAllObjects()
                     .entrySet()) {
                 objects.putIfAbsent(e.getKey().getNumber(), e.getValue());
+            }
+            return objects;
+        } catch (IOException | RuntimeException e) {
+            objects.clear();
+        }
+        try {
+            Unpacker members = new Unpacker(stream, cos);
+            for (Long number : members.readObjectNumbers().keySet()) {
+                try {
+                    COSBase b = members.parseObject(number);
+                    if (b != null) {
+                        objects.putIfAbsent(number, b);
+                    }
+                } catch (IOException | RuntimeException e) {
+                    continue;
+                }
             }
         } catch (IOException | RuntimeException e) {
             return objects;

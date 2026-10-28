@@ -45,7 +45,7 @@ final class Roles {
 
     record Context(int[] streams, Loc resources) {}
 
-    private record Page(Loc kids, Loc contents, Loc resources, boolean leaf) {}
+    private record Page(Loc kids, Loc contents, Loc resources, boolean leaf, boolean typed) {}
 
     private record Type3(Loc charProcs, Loc resources) {}
 
@@ -76,7 +76,7 @@ final class Roles {
 
     private final Index index;
 
-    private final Map<Integer, Page> pages = new HashMap<>();
+    private final Map<Integer, Page> pages = new LinkedHashMap<>();
 
     private final Map<Integer, Loc> streamResources = new HashMap<>();
 
@@ -130,12 +130,27 @@ final class Roles {
             }
         } else if (COSName.PAGE.equals(type) || COSName.PAGES.equals(type) || top.containsKey(COSName.KIDS)
                 && !top.containsKey(COSName.NAMES) && !top.containsKey(COSName.NUMS)) {
-            Loc here = new Loc(id, HERE);
-            pages.put(id, new Page(ref(here, top, COSName.KIDS), ref(here, top, COSName.CONTENTS),
-                    ref(here, top, COSName.RESOURCES), COSName.PAGE.equals(type)
-                            || !top.containsKey(COSName.KIDS)));
+            page(id, top);
         }
         walk(id, object);
+    }
+
+    void page(int id, COSDictionary node) {
+        Loc here = new Loc(id, HERE);
+        COSName type = node.getCOSName(COSName.TYPE);
+        pages.put(id, new Page(ref(here, node, COSName.KIDS), ref(here, node, COSName.CONTENTS),
+                ref(here, node, COSName.RESOURCES), COSName.PAGE.equals(type) || !node.containsKey(COSName.KIDS),
+                COSName.PAGE.equals(type) && !node.containsKey(COSName.KIDS)));
+    }
+
+    List<Integer> pageObjects() {
+        List<Integer> found = new ArrayList<>();
+        for (Map.Entry<Integer, Page> e : pages.entrySet()) {
+            if (e.getValue().typed) {
+                found.add(e.getKey());
+            }
+        }
+        return found;
     }
 
     private Loc ref(Loc at, COSDictionary d, COSName key) {

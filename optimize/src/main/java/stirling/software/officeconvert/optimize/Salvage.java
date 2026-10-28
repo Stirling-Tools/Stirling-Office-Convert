@@ -29,7 +29,15 @@ final class Salvage {
 
     private static final Pattern PAGES_REF = Pattern.compile("/Pages\\s+(\\d+)\\s+(\\d+)\\s+R");
 
-    record Rebuilt(int pages) {}
+    private static final Pattern OBJECT_STREAM = Pattern.compile("/Type\\s*/ObjStm(?![A-Za-z0-9])");
+
+    private static final Pattern COUNT = Pattern.compile("/N\\s+(\\d+)");
+
+    private static final Pattern FIRST = Pattern.compile("/First\\s+(\\d+)");
+
+    private static final int MAX_UNPACKED = 64 << 20;
+
+    record Rebuilt(int pages, int unpacked) {}
 
     private Salvage() {}
 
@@ -50,11 +58,20 @@ final class Salvage {
             while (bytes.hasRemaining() && file.read(bytes) >= 0) {
                 stirling.software.officeconvert.extract.PdfFiles.stopIfInterrupted();
             }
-            if (!declaresPages(new String(bytes.array(), 0, bytes.position(), StandardCharsets.ISO_8859_1), 0)) {
+            if (!declaresPages(new String(bytes.array(), 0, bytes.position(), StandardCharsets.ISO_8859_1))) {
                 return null;
             }
         }
         return rebuild(in, out, true);
+    }
+
+    static String unsupported(Path in) throws IOException {
+        if (Files.size(in) > MAX_BYTES) {
+            return null;
+        }
+        String text = new String(Files.readAllBytes(in), StandardCharsets.ISO_8859_1);
+        return text.contains("/BrotliDecode") ? "its objects are compressed with BrotliDecode, which is not supported"
+                : null;
     }
 
     private static Rebuilt rebuild(Path in, Path out, boolean emptyOnly) throws IOException {
@@ -72,10 +89,11 @@ final class Salvage {
         if (offsets.isEmpty()) {
             return null;
         }
-        List<Integer> pages = new ArrayList<>();
-        int catalog = -1;
+        Map<Integer, String> bodies = new java.util.HashMap<>();
+        Map<Integer, Long> order = new java.util.HashMap<>();
         List<Map.Entry<Integer, Integer>> byOffset = new ArrayList<>(offsets.entrySet());
         byOffset.sort(Map.Entry.comparingByValue());
+        TreeMap<Integer, String> packed = new TreeMap<>();
         for (int k = 0; k < byOffset.size(); k++) {
             if ((k & 1023) == 0) {
                 stirling.software.officeconvert.extract.PdfFiles.stopIfInterrupted();
@@ -86,23 +104,41 @@ final class Salvage {
             String body = text.substring(start, Math.min(end, start + (1 << 16)));
             int stream = body.indexOf("stream");
             String head = stream >= 0 ? body.substring(0, stream) : body;
+            bodies.put(number, head);
+            order.put(number, (long) start << 20);
+            if (stream >= 0 && OBJECT_STREAM.matcher(head).find()) {
+                unpack(data, start, Math.min(end, data.length), head, packed, order);
+            }
+        }
+        packed.keySet().removeAll(offsets.keySet());
+        if (offsets.size() + packed.size() > MAX_OBJECTS) {
+            return null;
+        }
+        bodies.putAll(packed);
+        List<Integer> pages = new ArrayList<>();
+        int catalog = -1;
+        for (Map.Entry<Integer, String> e : bodies.entrySet()) {
+            String head = e.getValue();
             if (PAGE.matcher(head).find() && !head.contains("/Kids")) {
-                pages.add(number);
-            } else if (CATALOG.matcher(head).find()) {
-                catalog = number;
+                pages.add(e.getKey());
+            } else if (CATALOG.matcher(head).find()
+                    && (catalog < 0 || order.get(e.getKey()) > order.get(catalog))) {
+                catalog = e.getKey();
             }
         }
         if (pages.isEmpty()) {
             return null;
         }
-        pages.sort((a, b) -> Integer.compare(offsets.get(a), offsets.get(b)));
-        int next = offsets.lastKey() + 1;
+        pages.sort((a, b) -> Long.compare(order.get(a), order.get(b)));
+        int highest = Math.max(offsets.lastKey(), packed.isEmpty() ? 0 : packed.lastKey());
+        int next = highest + 1;
         int pagesNumber = next++;
         int catalogNumber = catalog;
-        int catalogGeneration = generations.getOrDefault(catalog, 0);
+        int catalogGeneration = packed.containsKey(catalog) ? 0 : generations.getOrDefault(catalog, 0);
         int pagesGeneration = 0;
         if (catalog >= 0) {
-            Matcher m = PAGES_REF.matcher(objectText(text, offsets, catalog));
+            Matcher m = PAGES_REF.matcher(packed.containsKey(catalog) ? packed.get(catalog)
+                    : objectText(text, offsets, catalog));
             if (m.find()) {
                 try {
                     int number = Integer.parseInt(m.group(1));
@@ -121,21 +157,33 @@ final class Salvage {
                 catalogNumber = -1;
             }
         }
-        Integer inheritedOffset = generations.getOrDefault(pagesNumber, -1) == pagesGeneration
-                ? offsets.get(pagesNumber) : null;
-        if (emptyOnly && !declaresPages(text, inheritedOffset)) {
+        String inheritedFrom = packed.containsKey(pagesNumber) && pagesGeneration == 0 ? packed.get(pagesNumber)
+                : generations.getOrDefault(pagesNumber, -1) == pagesGeneration && offsets.containsKey(pagesNumber)
+                        ? text.substring(offsets.get(pagesNumber), Math.min(text.length(),
+                                offsets.get(pagesNumber) + (1 << 16)))
+                        : null;
+        if (emptyOnly && !declaresPages(inheritedFrom)) {
             return null;
         }
         StringBuilder added = new StringBuilder();
         TreeMap<Integer, Long> extra = new TreeMap<>();
         long position = data.length + 1;
+        for (Map.Entry<Integer, String> e : packed.entrySet()) {
+            if (e.getKey() == pagesNumber) {
+                continue;
+            }
+            String object = e.getKey() + " 0 obj\n" + e.getValue() + "\nendobj\n";
+            extra.put(e.getKey(), position);
+            added.append(object);
+            position += object.length();
+        }
         StringBuilder kids = new StringBuilder();
         for (int p : pages) {
-            kids.append(p).append(' ').append(generations.getOrDefault(p, 0)).append(" R ");
+            kids.append(p).append(' ').append(packed.containsKey(p) ? 0 : generations.getOrDefault(p, 0))
+                    .append(" R ");
         }
         String pagesObject = pagesNumber + " " + pagesGeneration + " obj\n<</Type/Pages"
-                + inherited(text, inheritedOffset) + "/Kids[" + kids + "]/Count " + pages.size()
-                + ">>\nendobj\n";
+                + inherited(inheritedFrom) + "/Kids[" + kids + "]/Count " + pages.size() + ">>\nendobj\n";
         extra.put(pagesNumber, position);
         added.append(pagesObject);
         position += pagesObject.length();
@@ -177,7 +225,116 @@ final class Salvage {
             os.write(added.toString().getBytes(StandardCharsets.ISO_8859_1));
             os.write(table.toString().getBytes(StandardCharsets.ISO_8859_1));
         }
-        return new Rebuilt(pages.size());
+        return new Rebuilt(pages.size(), packed.size());
+    }
+
+    private static void unpack(byte[] data, int start, int end, String head, Map<Integer, String> packed,
+            Map<Integer, Long> order) {
+        Matcher n = COUNT.matcher(head);
+        Matcher first = FIRST.matcher(head);
+        if (!n.find() || !first.find() || head.contains("/DecodeParms") || head.contains("/DP")) {
+            return;
+        }
+        String filter = head.contains("/Filter") ? head.substring(head.indexOf("/Filter")) : "";
+        boolean flate = filter.startsWith("/Filter/FlateDecode") || filter.startsWith("/Filter /FlateDecode")
+                || filter.matches("(?s)/Filter\\s*\\[\\s*/FlateDecode\\s*\\].*");
+        if (!filter.isEmpty() && !flate) {
+            return;
+        }
+        int keyword = indexOf(data, "stream", start + head.length(), end);
+        if (keyword < 0) {
+            return;
+        }
+        int from = keyword + 6;
+        if (from < end && data[from] == '\r') {
+            from++;
+        }
+        if (from < end && data[from] == '\n') {
+            from++;
+        }
+        int stop = indexOf(data, "endstream", from, end);
+        byte[] raw = java.util.Arrays.copyOfRange(data, from, stop < 0 ? end : stop);
+        byte[] decoded;
+        boolean complete;
+        if (flate) {
+            java.util.zip.Inflater inflater = new java.util.zip.Inflater();
+            java.io.ByteArrayOutputStream plain = new java.io.ByteArrayOutputStream();
+            byte[] buffer = new byte[256];
+            inflater.setInput(raw);
+            try {
+                while (!inflater.finished() && !inflater.needsInput() && plain.size() < MAX_UNPACKED) {
+                    int got = inflater.inflate(buffer);
+                    if (got == 0 && (inflater.needsDictionary() || inflater.needsInput())) {
+                        break;
+                    }
+                    plain.write(buffer, 0, got);
+                }
+                complete = inflater.finished();
+            } catch (java.util.zip.DataFormatException e) {
+                complete = false;
+            } finally {
+                inflater.end();
+            }
+            decoded = plain.toByteArray();
+        } else {
+            decoded = raw;
+            complete = true;
+        }
+        int count;
+        int offset;
+        try {
+            count = Integer.parseInt(n.group(1));
+            offset = Integer.parseInt(first.group(1));
+        } catch (NumberFormatException e) {
+            return;
+        }
+        if (count <= 0 || count > MAX_OBJECTS || offset <= 0 || offset > decoded.length) {
+            return;
+        }
+        String content = new String(decoded, StandardCharsets.ISO_8859_1);
+        String[] index = content.substring(0, offset).trim().split("\\s+");
+        List<int[]> members = new ArrayList<>();
+        for (int i = 0; i + 1 < index.length && members.size() < count; i += 2) {
+            try {
+                int number = Integer.parseInt(index[i]);
+                int at = Integer.parseInt(index[i + 1]);
+                if (number <= 0 || number >= 8_000_000 || at < 0 || offset + (long) at > content.length()) {
+                    break;
+                }
+                members.add(new int[] {number, offset + at});
+            } catch (NumberFormatException e) {
+                break;
+            }
+        }
+        for (int i = 0; i < members.size(); i++) {
+            int at = members.get(i)[1];
+            boolean last = i + 1 == members.size();
+            if (last && !complete) {
+                break;
+            }
+            int to = last ? content.length() : members.get(i + 1)[1];
+            if (to <= at) {
+                continue;
+            }
+            String body = content.substring(at, to).strip();
+            if (!body.isEmpty() && packed.putIfAbsent(members.get(i)[0], body) == null) {
+                order.put(members.get(i)[0], ((long) start << 20) + 1 + i);
+            }
+        }
+    }
+
+    private static int indexOf(byte[] data, String word, int from, int end) {
+        byte[] w = word.getBytes(StandardCharsets.ISO_8859_1);
+        outer:
+        for (int i = Math.max(0, from); i + w.length <= end; i++) {
+            for (int k = 0; k < w.length; k++) {
+                if (data[i + k] != w[k]) {
+                    continue outer;
+                }
+            }
+            return i;
+        }
+        return -1;
     }
 
     private static String objectText(String text, TreeMap<Integer, Integer> offsets, int number) {
@@ -194,12 +351,12 @@ final class Salvage {
         out.append(digits);
     }
 
-    private static boolean declaresPages(String text, Integer offset) {
-        if (offset == null) {
+    private static boolean declaresPages(String text) {
+        if (text == null) {
             return false;
         }
-        int end = Math.min(text.length(), offset + (1 << 16));
-        int start = text.indexOf("<<", offset);
+        int end = Math.min(text.length(), 1 << 16);
+        int start = text.indexOf("<<");
         if (start < 0 || start >= end) {
             return false;
         }
@@ -211,12 +368,12 @@ final class Salvage {
         }
     }
 
-    private static String inherited(String text, Integer offset) {
-        if (offset == null) {
+    private static String inherited(String text) {
+        if (text == null) {
             return "";
         }
-        int end = Math.min(text.length(), offset + (1 << 16));
-        int start = text.indexOf("<<", offset);
+        int end = Math.min(text.length(), 1 << 16);
+        int start = text.indexOf("<<");
         if (start < 0 || start >= end) {
             return "";
         }

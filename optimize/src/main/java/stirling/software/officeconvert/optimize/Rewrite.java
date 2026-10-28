@@ -87,7 +87,9 @@ final class Rewrite {
                 : Set.of(Cleanup.PIECE_INFO));
     }
 
-    static PdfOptimizer.Result run(PDDocument doc, OutputStream os, PdfOptimizer.Options options, long inputBytes)
+    record Run(PdfOptimizer.Result result, boolean repaired) {}
+
+    static Run run(PDDocument doc, OutputStream os, PdfOptimizer.Options options, long inputBytes)
             throws IOException {
         Encryption encryption = Encryption.of(doc, options.password());
         COSDocument cos = doc.getDocument();
@@ -106,15 +108,27 @@ final class Rewrite {
             int info = trailer.getItem(COSName.INFO) instanceof COSObject infoRef && infoRef.getKey() != null
                     ? index.id(infoRef.getKey()) : -1;
             List<COSObjectKey> order = source.keys();
-            r.index(order, roles);
+            int recovered = r.index(order, roles);
             source.release();
             if (roles.signed) {
-                return new PdfOptimizer.Result(inputBytes, 0, false, 0, 0, 0,
+                return new Run(new PdfOptimizer.Result(inputBytes, 0, false, 0, 0, 0,
                         List.of("The PDF is signed; it was left unchanged because rewriting it would invalidate its"
-                                + " signatures"));
+                                + " signatures")), false);
             }
             if (index.kind(root) != Index.DICT) {
                 throw new IOException("The PDF has no document catalog");
+            }
+            List<String> repairs = new ArrayList<>();
+            if (source.rebuilt()) {
+                repairs.add("its cross-reference table was rebuilt");
+            }
+            if (recovered > 0) {
+                repairs.add(recovered + (recovered == 1 ? " object missing from it was"
+                        : " objects missing from it were") + " found by scanning the file");
+            }
+            repairs.addAll(PageTree.repair(index, source, r.recorder, roles, root));
+            if (!repairs.isEmpty()) {
+                warnings.add("The PDF was damaged and has been repaired: " + String.join("; ", repairs));
             }
             if (info >= 0 && index.kind(info) != Index.DICT) {
                 info = -1;
@@ -145,7 +159,8 @@ final class Rewrite {
                     merged++;
                 }
             }
-            return new PdfOptimizer.Result(inputBytes, out.position(), true, objects, merged, r.recoded, warnings);
+            return new Run(new PdfOptimizer.Result(inputBytes, out.position(), true, objects, merged, r.recoded,
+                    warnings), !repairs.isEmpty());
         }
     }
 
@@ -153,7 +168,7 @@ final class Rewrite {
         return kind == Index.DICT || kind == Index.ARRAY || kind == Index.STREAM;
     }
 
-    private void index(List<COSObjectKey> order, Roles roles) throws IOException {
+    private int index(List<COSObjectKey> order, Roles roles) throws IOException {
         Source.Visitor visitor = (key, object) -> {
             int id = index.id(key);
             recorder.record(id, object, null);
@@ -161,6 +176,7 @@ final class Rewrite {
         };
         source.load(order, visitor);
         int scanned = 0;
+        int recovered = 0;
         while (scanned < index.size()) {
             List<COSObjectKey> missing = new ArrayList<>();
             int end = index.size();
@@ -172,9 +188,12 @@ final class Rewrite {
                     PdfFiles.stopIfInterrupted();
                 }
             }
-            order.addAll(source.recover(missing, visitor));
+            List<COSObjectKey> added = source.recover(missing, visitor);
+            recovered += added.size();
+            order.addAll(added);
             PdfFiles.stopIfInterrupted();
         }
+        return recovered;
     }
 
     private void prune() throws IOException {
