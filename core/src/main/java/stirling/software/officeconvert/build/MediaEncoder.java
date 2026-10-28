@@ -445,13 +445,7 @@ final class MediaEncoder {
     }
 
     static Encoded jpeg(BufferedImage bi, float quality) throws IOException {
-        BufferedImage rgb = bi;
-        if (bi.getType() != BufferedImage.TYPE_INT_RGB && bi.getType() != BufferedImage.TYPE_3BYTE_BGR) {
-            rgb = new BufferedImage(bi.getWidth(), bi.getHeight(), BufferedImage.TYPE_INT_RGB);
-            Graphics2D g = rgb.createGraphics();
-            g.drawImage(bi, 0, 0, Color.WHITE, null);
-            g.dispose();
-        }
+        BufferedImage rgb = RgbPixels.onWhite(bi);
         Iterator<ImageWriter> writers = ImageIO.getImageWritersByFormatName("jpeg");
         if (!writers.hasNext()) {
             return png(bi);
