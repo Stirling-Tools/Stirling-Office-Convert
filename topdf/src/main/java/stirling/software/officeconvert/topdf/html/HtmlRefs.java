@@ -97,7 +97,7 @@ public final class HtmlRefs {
         return i < 0 ? j : j < 0 ? i : Math.min(i, j);
     }
 
-    private static String percentDecoded(String s) {
+    static String percentDecoded(String s) {
         if (s.indexOf('%') < 0) {
             return s;
         }

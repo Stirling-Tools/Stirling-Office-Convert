@@ -505,10 +505,14 @@ class EbookToPdfTest {
     }
 
     private static byte[] kf8(boolean joint, boolean overlapping, String padding) throws IOException {
+        return kf8(joint, overlapping, padding, "id=\"one\" aid=\"1\"");
+    }
+
+    private static byte[] kf8(boolean joint, boolean overlapping, String padding, String heading) throws IOException {
         String skel0 = "<?xml version=\"1.0\"?><html xmlns=\"http://www.w3.org/1999/xhtml\"><head>"
                 + "<link rel=\"stylesheet\" type=\"text/css\" href=\"kindle:flow:0001?mime=text/css\"/></head>"
                 + "<body aid=\"0\"></body></html>";
-        String frag0 = "<h1 id=\"one\" aid=\"1\">Chapter One</h1><p aid=\"2\">Opening line of KF8 text.</p>"
+        String frag0 = "<h1 " + heading + ">Chapter One</h1><p aid=\"2\">Opening line of KF8 text.</p>"
                 + "<p class=\"secret\">Hidden by the flow style sheet</p>"
                 + "<p><img src=\"kindle:embed:0002?mime=image/png\"/></p>" + padding;
         String skel1 = "<?xml version=\"1.0\"?><html xmlns=\"http://www.w3.org/1999/xhtml\"><head></head>"
@@ -579,6 +583,14 @@ class EbookToPdfTest {
         assertEquals(List.of(1, 0), c.images());
         String html = MobiBook.read(in).book().html();
         assertTrue(html.contains("href=\"#epub-c0-one\""), html);
+    }
+
+    @Test
+    void kf8IdAfterTheAidKeepsItsLinks() throws IOException {
+        Path in = write("aid-first.azw3", kf8(false, false, "", "aid=\"1\" id=\"one\""));
+        String html = MobiBook.read(in).book().html();
+        assertTrue(html.contains("href=\"#epub-c0-one\""), html);
+        assertTrue(html.contains("id=\"epub-c0-one\""), html);
     }
 
     @Test

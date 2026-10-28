@@ -590,7 +590,8 @@ final class Flow {
         String before = link;
         String href = e.attr("href").strip();
         String safe = href.isEmpty() ? null
-                : href.startsWith("#") && href.length() > 1 ? "#" + anchorName(href.substring(1)) : Links.safeUrl(href);
+                : href.startsWith("#") && href.length() > 1
+                        ? "#" + anchorName(HtmlRefs.percentDecoded(href.substring(1))) : Links.safeUrl(href);
         if (safe != null) {
             link = safe;
         }
