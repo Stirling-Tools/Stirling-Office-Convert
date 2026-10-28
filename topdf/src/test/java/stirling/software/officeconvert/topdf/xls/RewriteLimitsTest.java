@@ -92,6 +92,58 @@ class RewriteLimitsTest {
     }
 
     @Test
+    void everyConditionalRuleThatCannotBeConvertedIsCountedAndTheRestKept() throws Exception {
+        ByteArrayOutputStream source = new ByteArrayOutputStream();
+        try (HSSFWorkbook workbook = new HSSFWorkbook()) {
+            HSSFSheet sheet = workbook.createSheet("Rules");
+            sheet.createRow(0).createCell(0).setCellValue(10);
+            var formatting = sheet.getSheetConditionalFormatting();
+            for (int i = 0; i < 3; i++) {
+                var rule = formatting.createConditionalFormattingRule(ComparisonOperator.GT, "5");
+                rule.createPatternFormatting().setFillBackgroundColor((short) 10);
+                formatting.addConditionalFormatting(new CellRangeAddress[] {new CellRangeAddress(i, i, 0, 0)},
+                        rule);
+            }
+            workbook.write(source);
+        }
+        byte[] stream;
+        try (var fs = new org.apache.poi.poifs.filesystem.POIFSFileSystem(
+                new ByteArrayInputStream(source.toByteArray()))) {
+            stream = fs.createDocumentInputStream("Workbook").readAllBytes();
+        }
+        ByteArrayOutputStream edited = new ByteArrayOutputStream();
+        int headers = 0;
+        int rules = 0;
+        for (int at = 0; at + 4 <= stream.length;) {
+            int sid = stream[at] & 0xFF | (stream[at + 1] & 0xFF) << 8;
+            int len = stream[at + 2] & 0xFF | (stream[at + 3] & 0xFF) << 8;
+            byte[] rec = java.util.Arrays.copyOfRange(stream, at, at + 4 + len);
+            if (sid == 0x01B0 && headers++ == 0) {
+                rec = java.util.Arrays.copyOf(rec, rec.length - 8);
+                rec[2] = (byte) (len - 8);
+                rec[16] = 0;
+                rec[17] = 0;
+            } else if (sid == 0x01B1 && rules++ == 1) {
+                rec[rec.length - 3] = 0x17;
+            }
+            edited.writeBytes(rec);
+            at += 4 + len;
+        }
+        ByteArrayOutputStream file = new ByteArrayOutputStream();
+        try (var fs = new org.apache.poi.poifs.filesystem.POIFSFileSystem()) {
+            fs.createDocument(new ByteArrayInputStream(edited.toByteArray()), "Workbook");
+            fs.writeFilesystem(file);
+        }
+        try (HSSFWorkbook workbook = new HSSFWorkbook(new ByteArrayInputStream(file.toByteArray()))) {
+            CondFormats converted = new CondFormats();
+            String xml = converted.sheet(workbook.getSheetAt(0));
+            assertEquals(2, converted.skipped);
+            assertEquals(1, xml.split("<cfRule ", -1).length - 1, xml);
+            assertTrue(xml.contains("sqref=\"A3\""), xml);
+        }
+    }
+
+    @Test
     void rulesPastTheWorkbookLimitAreReported() throws Exception {
         try (HSSFWorkbook workbook = new HSSFWorkbook()) {
             HSSFSheet sheet = workbook.createSheet("Rules");

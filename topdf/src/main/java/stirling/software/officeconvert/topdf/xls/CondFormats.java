@@ -65,6 +65,7 @@ final class CondFormats {
             }
             String sqref = sqref(cf.getHeader().getCellRanges());
             if (sqref == null) {
+                skipped += cf.getNumberOfRules();
                 continue;
             }
             List<String> out = new ArrayList<>();
@@ -73,9 +74,14 @@ final class CondFormats {
                     skipped += cf.getNumberOfRules() - k;
                     break;
                 }
-                String rule = rule(cf.getRule(k));
-                if (rule == null) {
-                    rule = scale(sheet, i, k);
+                String rule;
+                try {
+                    rule = rule(cf.getRule(k));
+                    if (rule == null) {
+                        rule = scale(sheet, i, k);
+                    }
+                } catch (RuntimeException e) {
+                    rule = null;
                 }
                 if (rule == null) {
                     skipped++;
