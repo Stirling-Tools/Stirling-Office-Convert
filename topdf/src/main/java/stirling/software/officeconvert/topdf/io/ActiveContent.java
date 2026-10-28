@@ -33,7 +33,7 @@ public final class ActiveContent {
         EXTERNAL_TARGET
     }
 
-    public static final Set<String> COMPUTED_FIELDS = Set.of("PAGE", "NUMPAGES", "SECTIONPAGES");
+    public static final Set<String> COMPUTED_FIELDS = Set.of("PAGE", "NUMPAGES", "SECTIONPAGES", "OCSTRING");
 
     private static final Map<String, Kind> RELATIONSHIPS = new HashMap<>();
 

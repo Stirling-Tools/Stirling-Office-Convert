@@ -16,6 +16,8 @@ public sealed interface Inline {
 
     record PageNumber(RunStyle style, boolean total) implements Inline {}
 
+    record RunningText(String name, String fallback, RunStyle style) implements Inline {}
+
     record Image(Picture picture) implements Inline {}
 
     record FootnoteRef(int id, String marker, boolean custom, RunStyle style) implements Inline {}

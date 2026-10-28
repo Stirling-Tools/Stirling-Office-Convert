@@ -144,6 +144,11 @@ public final class PdfOutput implements Closeable {
         destinations.putIfAbsent(name, new Target(pageIndex, x, yTop));
     }
 
+    public int destinationPage(String name) {
+        Target t = destinations.get(name);
+        return t == null ? -1 : t.page();
+    }
+
     public boolean hasDestination(String name) {
         return destinations.containsKey(name);
     }

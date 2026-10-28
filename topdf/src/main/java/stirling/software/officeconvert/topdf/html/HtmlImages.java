@@ -155,7 +155,7 @@ final class HtmlImages {
 
     private Picture linkedImage(String src, Element img, Map<String, String> d, Look look, float maxWidth,
             float maxHeight) throws IOException {
-        String reference = HtmlRefs.resolve(linked.base(), src);
+        String reference = linked.resolve(linked.base(), src);
         byte[] bytes = reference == null ? null : linked.read(reference);
         if (bytes == null) {
             warn(linked.exhausted() ? "Left out pictures past the limit of linked files" : NOT_IN_PACKAGE);
@@ -233,7 +233,7 @@ final class HtmlImages {
                 warn(NOT_FETCHED);
                 return null;
             }
-            String reference = HtmlRefs.resolve(linked.base(), url);
+            String reference = linked.resolve(linked.base(), url);
             bytes = reference == null ? null : linked.read(reference);
             if (bytes == null) {
                 warn(linked.exhausted() ? "Left out pictures past the limit of linked files" : NOT_IN_PACKAGE);

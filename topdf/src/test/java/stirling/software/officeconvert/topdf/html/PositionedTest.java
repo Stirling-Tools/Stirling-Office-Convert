@@ -106,6 +106,78 @@ class PositionedTest {
         return sb.append("</p>").toString();
     }
 
+    @Test
+    void automaticHeightAbsoluteTextContinuesOnLaterPages() throws IOException {
+        String lines = "<p>FirstLine</p>" + "<p>MiddleLine</p>".repeat(80) + "<p>LastLine</p>";
+        Pdf pdf = html("fragmented.html", "<style>@page{size:300pt 400pt;margin:30pt}"
+                + "p{margin:0;font-size:12pt}</style><div style='position:absolute;left:0;top:0;width:200pt'>"
+                + lines + "</div>");
+        assertTrue(pdf.pages().size() > 1);
+        assertNotNull(pdf.first("LastLine"));
+        assertTrue(pdf.first("LastLine").page() > 1);
+        assertEquals(80, pdf.all("MiddleLine").size());
+        assertTrue(pdf.words().stream().allMatch(word -> word.y() >= 30 && word.y() < 370), pdf.words().toString());
+    }
+
+    @Test
+    void nestedAutomaticHeightAbsoluteTextContinuesWithoutLosingLines() throws IOException {
+        String lines = "<p>NestedFirst</p>" + "<p>NestedMiddle</p>".repeat(80) + "<p>NestedLast</p>";
+        Pdf pdf = html("nested-fragmented.html", "<style>@page{size:300pt 400pt;margin:30pt}"
+                + "p{margin:0;font-size:12pt}</style><div style='position:absolute;left:0;top:0;width:200pt'>"
+                + "<span style='position:absolute'><span style='position:absolute'>" + lines + "</span></span></div>");
+        assertTrue(pdf.pages().size() > 1);
+        assertNotNull(pdf.first("NestedLast"));
+        assertTrue(pdf.first("NestedLast").page() > 1);
+        assertEquals(80, pdf.all("NestedMiddle").size());
+        assertTrue(pdf.words().stream().allMatch(word -> word.y() >= 30 && word.y() < 370), pdf.words().toString());
+    }
+
+    @Test
+    void fixedAndExplicitHeightBoxesDoNotAddContinuationPages() throws IOException {
+        String lines = "<p>MiddleLine</p>".repeat(80) + "<p>LastLine</p>";
+        for (String style : List.of("position:fixed", "position:absolute;height:100pt")) {
+            Pdf pdf = html("unfragmented-" + style.hashCode() + ".html",
+                    "<style>@page{size:300pt 400pt;margin:30pt}p{margin:0;font-size:12pt}</style><div style='"
+                            + style + ";left:0;top:0;width:200pt'>" + lines + "</div>");
+            assertEquals(1, pdf.pages().size());
+        }
+    }
+
+    @Test
+    void continuationOntoAnExistingBodyPageDoesNotDuplicateTheBox() throws IOException {
+        Pdf pdf = html("existing-pages.html", "<style>@page{size:300pt 400pt;margin:30pt}"
+                + "p{margin:0;font-size:12pt}</style><div style='position:absolute;left:0;top:0;width:200pt'>"
+                + "<p>AbsoluteMiddle</p>".repeat(30) + "</div>" + "<p>BodyMiddle</p>".repeat(30));
+        assertEquals(30, pdf.all("AbsoluteMiddle").size());
+        assertEquals(30, pdf.all("BodyMiddle").size());
+        assertTrue(pdf.pages().size() >= 2);
+    }
+
+    @Test
+    void fixedLayerOverflowKeepsItsDrawOnceFallback() throws IOException {
+        Pdf pdf = html("fixed-overflow.html", "<style>@page{size:300pt 400pt;margin:30pt}"
+                + "p{margin:0;font-size:12pt}</style>" + "<span style='position:fixed'></span>".repeat(64)
+                + "<div style='position:fixed;left:0;top:0;width:200pt'>"
+                + "<p>FixedMiddle</p>".repeat(80) + "</div>");
+        assertEquals(1, pdf.pages().size());
+        assertTrue(pdf.warnings().contains(HtmlDocument.FIXED_LAYER_LIMIT_WARNING));
+    }
+
+    @Test
+    void absoluteContinuationRespectsThePageLimit() throws IOException {
+        Path in = Files.writeString(dir.resolve("limited.html"), "<style>@page{size:300pt 400pt;margin:30pt}"
+                + "p{margin:0;font-size:12pt}</style><div style='position:absolute;left:0;top:0;width:200pt'>"
+                + "<p>LimitedMiddle</p>".repeat(80) + "</div>");
+        Path out = dir.resolve("limited.pdf");
+        OfficeToPdf.Result result = OfficeToPdf.convert(in, out, OfficeToPdf.Options.defaults().maxPages(2));
+        assertEquals(2, result.pages());
+        assertTrue(result.truncated());
+        assertTrue(result.pageLimitReached());
+        try (PDDocument pdf = Loader.loadPDF(out.toFile())) {
+            assertEquals(2, pdf.getNumberOfPages());
+        }
+    }
+
     private static byte[] png(int w, int h, Color a, Color b) throws IOException {
         BufferedImage img = new BufferedImage(w, h, BufferedImage.TYPE_INT_RGB);
         for (int y = 0; y < h; y++) {
@@ -131,6 +203,94 @@ class PositionedTest {
                 && Math.abs(c.getBlue() - want.getBlue()) < 40;
     }
 
+    private static int verticalLines(BufferedImage page, int minLength) {
+        int lines = 0;
+        for (int x = 0; x < page.getWidth(); x++) {
+            int run = 0;
+            int best = 0;
+            for (int y = 0; y < page.getHeight(); y++) {
+                Color c = new Color(page.getRGB(x, y));
+                run = c.getRed() < 120 && c.getGreen() < 120 && c.getBlue() < 120 ? run + 1 : 0;
+                best = Math.max(best, run);
+            }
+            lines += best >= minLength ? 1 : 0;
+        }
+        return lines;
+    }
+
+    @Test
+    void aCardInsideAColumnFramesItsColumnAndInlineMarginsSpaceLinks() throws IOException {
+        String card = "<div class=col><div class=card><b>Plan</b><p>" + "words ".repeat(20) + "</p></div></div>";
+        Pdf pdf = html("cards.html", "<html><head><style>.row{display:flex}.col{flex:1;padding:0 6px}"
+                + ".card{border:2px solid #000;padding:8px}nav a{margin-left:24px}</style></head><body>"
+                + "<nav><a href=#a>Home</a><a href=#b>Pricing</a></nav><div class=row>" + card + card + card
+                + "</div></body></html>");
+        assertTrue(verticalLines(pdf.pages().get(0), 40) >= 6, "card frames apart");
+        Word home = pdf.first("Home");
+        Word pricing = pdf.first("Pricing");
+        assertNotNull(home, pdf.words().toString());
+        assertNotNull(pricing, pdf.words().toString());
+        assertTrue(pricing.x() - home.x() > 40, home + " " + pricing);
+    }
+
+    @Test
+    void wrappingRowsPlaceItemsOfDifferentWidthsSideBySide() throws IOException {
+        Pdf pdf = html("wrap.html", "<html><head><style>.row{display:flex;flex-wrap:wrap}.a{width:66%}.b{width:33%}"
+                + "</style></head><body><div class=row><div class=a><table><tr><td>Storage</td><td>10 GB</td></tr>"
+                + "</table></div><div class=b><p>Secure</p></div></div></body></html>");
+        Word storage = pdf.first("Storage");
+        Word secure = pdf.first("Secure");
+        assertNotNull(storage, pdf.words().toString());
+        assertNotNull(secure, pdf.words().toString());
+        assertEquals(storage.y(), secure.y(), 12);
+        assertTrue(secure.x() > storage.x() + 200, storage + " " + secure);
+    }
+
+    @Test
+    void aCentredButtonTableInsideACellShrinksToItsContent() throws IOException {
+        Pdf pdf = html("button.html", "<html><body><table width=600><tr><td><p>Intro text</p><table align=center>"
+                + "<tr><td style=\"background:#e4572e;padding:12px 24px\"><a href=\"https://e.com\" "
+                + "style=\"color:#fff\">Shop now</a></td></tr></table></td></tr></table></body></html>");
+        BufferedImage page = pdf.pages().get(0);
+        int widest = 0;
+        for (int y = 0; y < page.getHeight(); y++) {
+            int run = 0;
+            for (int x = 0; x < page.getWidth(); x++) {
+                run = near(new Color(page.getRGB(x, y)), new Color(0xe4572e)) ? run + 1 : 0;
+                widest = Math.max(widest, run);
+            }
+        }
+        assertTrue(widest > 40 && widest < 160, "button width " + widest);
+    }
+
+    @Test
+    void anUnstyledPageHasWeasyPrintsPageMarginsAndTheBodysSideMargins() throws IOException {
+        Pdf plain = html("plain.html", "<html><body><p>Leftmost</p></body></html>");
+        assertEquals(56.25 + 6, plain.first("Leftmost").x(), 1);
+        Pdf flush = html("flush.html", "<html><head><style>body{margin:0}</style></head><body><p>Leftmost</p></body>"
+                + "</html>");
+        assertEquals(56.25, flush.first("Leftmost").x(), 1);
+        Pdf padded = html("padded.html", "<html><head><style>@page{margin:36pt}body{margin:0;padding:0 24pt}</style>"
+                + "</head><body><p>Leftmost</p></body></html>");
+        assertEquals(36 + 24, padded.first("Leftmost").x(), 1);
+    }
+
+    @Test
+    void aPageBreakBeforeATableOrABoxedRowStartsANewPage() throws IOException {
+        for (String after : new String[] {"<table border=1><tr><td>Second</td><td>cell</td></tr></table>",
+                "<div style=\"display:flex;gap:20px\"><div style=\"flex:1;border:1px solid\">Second</div>"
+                        + "<div style=\"flex:1;border:1px solid\">box</div></div>"}) {
+            Pdf before = html("after.html", "<html><body><p style=\"page-break-after:always\">First</p>" + after
+                    + "</body></html>");
+            assertEquals(2, before.pages().size(), after);
+            assertEquals(2, before.first("Second").page(), after);
+            String own = after.replace("<table ", "<table style=\"page-break-before:always\" ")
+                    .replace("style=\"display:flex", "style=\"page-break-before:always;display:flex");
+            Pdf ownBreak = html("own.html", "<html><body><p>First</p>" + own + "</body></html>");
+            assertEquals(2, ownBreak.pages().size(), own);
+        }
+    }
+
     @Test
     void anAbsoluteBoxSitsAtItsOffsetsAndLeavesTheFlowAlone() throws IOException {
         Pdf with = html("abs.html", "<html><head><style>@page{size:A4;margin:72pt}"
@@ -143,7 +303,7 @@ class PositionedTest {
         Word opening = with.first("Opening");
         assertNotNull(opening, with.words().toString());
         assertNotNull(stamp, with.words().toString());
-        assertEquals(72 + 200, stamp.x(), 4);
+        assertEquals(72 + 6 + 200, stamp.x(), 4);
         assertEquals(opening.y() + 120, stamp.y(), 16);
         assertEquals(without.first("Closing").y(), with.first("Closing").y(), 3);
     }
@@ -194,7 +354,8 @@ class PositionedTest {
 
     @Test
     void aRotatedBlockIsTurnedWhereItStandsAndKeepsItsRoom() throws IOException {
-        Pdf p = html("turn.html", "<html><body><p>Before</p>"
+        Pdf p = html("turn.html", "<html><head><style>body{font-size:12pt;line-height:14pt}p{margin:0}</style>"
+                + "</head><body><p>Before</p>"
                 + "<div style=\"width:200pt;height:40pt;transform:rotate(90deg)\">Turned</div><p>After</p></body></html>");
         Word turned = p.first("Turned");
         assertNotNull(turned, p.words().toString());

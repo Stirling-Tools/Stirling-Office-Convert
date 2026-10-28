@@ -36,6 +36,7 @@ import stirling.software.officeconvert.pdfa.PdfToPdfA;
 import stirling.software.officeconvert.topdf.HtmlAssets;
 import stirling.software.officeconvert.topdf.OfficeToPdf;
 import stirling.software.officeconvert.topdf.UnsupportedFormats;
+import stirling.software.officeconvert.topdf.WebAssets;
 import stirling.software.officeconvert.topdf.crypt.Passwords;
 import stirling.software.officeconvert.topdf.font.FontSet;
 import stirling.software.officeconvert.topdf.io.PoiXml;
@@ -60,6 +61,8 @@ public final class Main {
 
     static int run(String[] args) {
         List<Path> inputs = new ArrayList<>();
+        List<String> urls = new ArrayList<>();
+        WebAssets.Access web = WebAssets.Access.none();
         Path output = null;
         int first = 0;
         int last = 0;
@@ -122,6 +125,11 @@ public final class Main {
                     case "--overwrite" -> overwrite = true;
                     case "--allow-packages" -> office = office.allowPackages(true);
                     case "--allow-local-files" -> localFiles = true;
+                    case "--allow-network" -> web = web.network(true);
+                    case "--follow-redirects" -> web = web.redirects(true);
+                    case "--allow-cookies" -> web = web.cookies(true);
+                    case "--allow-private-addresses" -> web = web.privateAddresses(true);
+                    case "--fetch-linked" -> web = web.linkedFromFiles(true);
                     case "-h", "--help" -> {
                         usage();
                         return 0;
@@ -130,15 +138,32 @@ public final class Main {
                         if (a.startsWith("-") && a.length() > 1) {
                             throw new Usage("unknown option " + a);
                         }
-                        inputs.add(path(a));
+                        if (a.regionMatches(true, 0, "http://", 0, 7) || a.regionMatches(true, 0, "https://", 0, 8)) {
+                            urls.add(a);
+                        } else {
+                            inputs.add(path(a));
+                        }
                     }
                 }
             }
-            if (inputs.isEmpty()) {
+            if (inputs.isEmpty() && urls.isEmpty()) {
                 throw new Usage("no PDF or Office document given");
             }
             fonts = fontSet.directories(fontDirs).build();
             office = office.fonts(fonts).password(password);
+            if (!urls.isEmpty()) {
+                if (urls.size() > 1 || !inputs.isEmpty() || output == null || !"pdf".equals(extension(output))
+                        || pdfa != null || pagesGiven || formatGiven && !"pdf".equals(format)) {
+                    throw new Usage("a URL converts on its own to the PDF named by -o out.pdf");
+                }
+                if (!web.network()) {
+                    throw new Usage("a URL is fetched only with --allow-network");
+                }
+                return url(urls.get(0), output, office, web, overwrite, quiet);
+            }
+            if (web.linkedFromFiles() && !web.network()) {
+                throw new Usage("--fetch-linked fetches only with --allow-network");
+            }
             boolean anyOffice = false;
             boolean anyPdf = false;
             for (Path in : inputs) {
@@ -248,8 +273,8 @@ public final class Main {
                 if (archival != null) {
                     notes = PdfToPdfA.convert(pdf, target, archival).warnings();
                 } else if (officeInput) {
-                    result = officeToPdf(pdf, target, localFiles && page(pdf) ? office.htmlAssets(
-                            HtmlAssets.folder(pdf.toAbsolutePath().getParent(), pdf.getFileName().toString())) : office);
+                    result = officeToPdf(pdf, target, page(pdf) ? office.htmlAssets(assets(pdf, localFiles, web))
+                            : office);
                 } else {
                     convert(pdf, target, options, slides, books);
                 }
@@ -350,6 +375,38 @@ public final class Main {
             case "xlsx", "ods" -> PdfToXlsx.convert(pdf, target, books);
             case "docx" -> PdfToDocx.convert(pdf, target, options);
             default -> throw new IOException("unknown output format ." + extension(target));
+        }
+    }
+
+    private static HtmlAssets assets(Path page, boolean localFiles, WebAssets.Access web) throws IOException {
+        HtmlAssets local = localFiles ? HtmlAssets.folder(page.toAbsolutePath().getParent(),
+                page.getFileName().toString()) : HtmlAssets.NONE;
+        return web.linkedFromFiles() ? WebAssets.linkedFrom(local, web) : local;
+    }
+
+    private static int url(String url, Path target, OfficeToPdf.Options office, WebAssets.Access web, boolean overwrite,
+            boolean quiet) {
+        if (Files.exists(target) && !overwrite) {
+            System.err.println("SKIP " + url + ": " + target + " exists; --overwrite replaces it");
+            return 1;
+        }
+        long start = System.nanoTime();
+        try {
+            if (target.getParent() != null) {
+                Files.createDirectories(target.getParent());
+            }
+            PoiXml.raiseProcessLimits();
+            OfficeToPdf.Result result = OfficeToPdf.convertUrl(url, target, office, web);
+            if (!quiet) {
+                System.out.printf("OK %s -> %s (%d ms)%n", url, target, (System.nanoTime() - start) / 1_000_000);
+                for (String w : result.warnings()) {
+                    System.err.println("warning: " + oneLine(w));
+                }
+            }
+            return 0;
+        } catch (IOException e) {
+            System.err.println("FAIL " + url + ": " + oneLine(describe(e)));
+            return 1;
         }
     }
 
@@ -527,6 +584,10 @@ public final class Main {
                         + " [--fonts dir]... [--font-map Family=Installed]... [--font-width Family=scale]..."
                         + " [--no-system-fonts] [--allow-packages] [--allow-local-files] [--overwrite] [-q]"
                         + System.lineSeparator()
+                        + "       office-convert <http(s)://url> -o out.pdf --allow-network [--follow-redirects] [--allow-cookies]"
+                        + " [--allow-private-addresses] [--timeout s] [--overwrite] [-q]; an HTML file with"
+                        + " --allow-network --fetch-linked draws http(s) pictures, style sheets and fonts it links"
+                        + System.lineSeparator()
                         + "       office-convert <in.pdf|dir>... --pdfa 1a|1b|2a|2b|2u|3a|3b|3u [-o out.pdf|dir] [--password p]"
                         + " [--timeout s] [--fonts dir]... [--font-map Family=Installed]... [--no-system-fonts] [--overwrite] [-q]"
                         + System.lineSeparator()
@@ -545,6 +606,12 @@ public final class Main {
                         + " with --allow-packages; --allow-local-files lets an HTML page draw the pictures and style sheets"
                         + " in its own folder (never outside it). eBooks use only what they hold; an EPUB inside another .zip, or"
                         + " a FictionBook inside a .zip not named .fbz or .fb2.zip, needs --allow-packages."
+                        + System.lineSeparator()
+                        + "A URL is fetched, with the pictures, style sheets and fonts it links, only with --allow-network:"
+                        + " http and https only, never a loopback, private, link-local or reserved address unless"
+                        + " --allow-private-addresses lets intranet hosts through (link-local and metadata addresses stay"
+                        + " refused); redirects are followed only with --follow-redirects (5 hops, each checked) and"
+                        + " cookies kept only with --allow-cookies. Fetching stops after 60 s, 64 MB or 300 requests."
                         + System.lineSeparator()
                         + "The output's extension picks the format: .docx, .odt, .fodt, .xml (flat ODT), .rtf, .doc (RTF content),"
                         + " .txt, .html (one file, pictures inline), .json (the document model), .md, .epub, .azw3, .pptx, .odp, .ppt, .xlsx or .ods; --format names it for a directory of outputs."
