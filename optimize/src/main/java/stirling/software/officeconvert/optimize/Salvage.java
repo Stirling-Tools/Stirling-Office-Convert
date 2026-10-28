@@ -12,6 +12,11 @@ import java.util.TreeMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import org.apache.pdfbox.cos.COSDictionary;
+import org.apache.pdfbox.cos.COSDocument;
+import org.apache.pdfbox.cos.COSName;
+import org.apache.pdfbox.pdfparser.PDFStreamParser;
+
 final class Salvage {
 
     static final long MAX_BYTES = 256L << 20;
@@ -29,6 +34,30 @@ final class Salvage {
     private Salvage() {}
 
     static Rebuilt rebuild(Path in, Path out) throws IOException {
+        return rebuild(in, out, false);
+    }
+
+    static Rebuilt rebuildEmpty(Path in, Path out, long rootOffset) throws IOException {
+        if (rootOffset < 0 || Files.size(in) > MAX_BYTES) {
+            return null;
+        }
+        try (var file = Files.newByteChannel(in)) {
+            if (rootOffset >= file.size()) {
+                return null;
+            }
+            file.position(rootOffset);
+            var bytes = java.nio.ByteBuffer.allocate((int) Math.min(1 << 16, file.size() - rootOffset));
+            while (bytes.hasRemaining() && file.read(bytes) >= 0) {
+                stirling.software.officeconvert.extract.PdfFiles.stopIfInterrupted();
+            }
+            if (!declaresPages(new String(bytes.array(), 0, bytes.position(), StandardCharsets.ISO_8859_1), 0)) {
+                return null;
+            }
+        }
+        return rebuild(in, out, true);
+    }
+
+    private static Rebuilt rebuild(Path in, Path out, boolean emptyOnly) throws IOException {
         stirling.software.officeconvert.extract.PdfFiles.stopIfInterrupted();
         if (Files.size(in) > MAX_BYTES) {
             return null;
@@ -92,6 +121,11 @@ final class Salvage {
                 catalogNumber = -1;
             }
         }
+        Integer inheritedOffset = generations.getOrDefault(pagesNumber, -1) == pagesGeneration
+                ? offsets.get(pagesNumber) : null;
+        if (emptyOnly && !declaresPages(text, inheritedOffset)) {
+            return null;
+        }
         StringBuilder added = new StringBuilder();
         TreeMap<Integer, Long> extra = new TreeMap<>();
         long position = data.length + 1;
@@ -99,7 +133,8 @@ final class Salvage {
         for (int p : pages) {
             kids.append(p).append(' ').append(generations.getOrDefault(p, 0)).append(" R ");
         }
-        String pagesObject = pagesNumber + " " + pagesGeneration + " obj\n<</Type/Pages/Kids[" + kids + "]/Count " + pages.size()
+        String pagesObject = pagesNumber + " " + pagesGeneration + " obj\n<</Type/Pages"
+                + inherited(text, inheritedOffset) + "/Kids[" + kids + "]/Count " + pages.size()
                 + ">>\nendobj\n";
         extra.put(pagesNumber, position);
         added.append(pagesObject);
@@ -125,7 +160,14 @@ final class Salvage {
             Long o = all.get(n);
             int gen = o == null ? 0 : extra.containsKey(n) ? n == pagesNumber ? pagesGeneration : 0
                     : generations.getOrDefault(n, 0);
-            table.append(o == null ? "0000000000 65535 f\r\n" : String.format("%010d %05d n\r\n", o, gen));
+            if (o == null) {
+                table.append("0000000000 65535 f\r\n");
+            } else {
+                padded(table, o, 10);
+                table.append(' ');
+                padded(table, gen, 5);
+                table.append(" n\r\n");
+            }
         }
         table.append("trailer\n<</Size ").append(size).append("/Root ").append(catalogNumber)
                 .append(' ').append(catalogGeneration).append(" R>>\nstartxref\n").append(xref).append("\n%%EOF\n");
@@ -142,6 +184,81 @@ final class Salvage {
         int start = offsets.get(number);
         int end = text.indexOf("endobj", start);
         return text.substring(start, end < 0 ? Math.min(text.length(), start + 4096) : end);
+    }
+
+    private static void padded(StringBuilder out, long value, int width) {
+        String digits = Long.toString(value);
+        for (int i = digits.length(); i < width; i++) {
+            out.append('0');
+        }
+        out.append(digits);
+    }
+
+    private static boolean declaresPages(String text, Integer offset) {
+        if (offset == null) {
+            return false;
+        }
+        int end = Math.min(text.length(), offset + (1 << 16));
+        int start = text.indexOf("<<", offset);
+        if (start < 0 || start >= end) {
+            return false;
+        }
+        byte[] data = text.substring(start, end).getBytes(StandardCharsets.ISO_8859_1);
+        try (DictionaryParser parser = new DictionaryParser(data)) {
+            return parser.read().getInt(COSName.COUNT, 0) > 0;
+        } catch (IOException | RuntimeException invalid) {
+            return false;
+        }
+    }
+
+    private static String inherited(String text, Integer offset) {
+        if (offset == null) {
+            return "";
+        }
+        int end = Math.min(text.length(), offset + (1 << 16));
+        int start = text.indexOf("<<", offset);
+        if (start < 0 || start >= end) {
+            return "";
+        }
+        byte[] data = text.substring(start, end).getBytes(StandardCharsets.ISO_8859_1);
+        try (DictionaryParser parser = new DictionaryParser(data)) {
+            COSDictionary source = parser.read();
+            COSDictionary values = new COSDictionary();
+            for (COSName name : new COSName[] {COSName.RESOURCES, COSName.MEDIA_BOX, COSName.CROP_BOX, COSName.ROTATE}) {
+                values.setItem(name, source.getItem(name));
+            }
+            Bytes out = new Bytes(256);
+            new Syntax((ref, syntax) -> {
+                syntax.word(Long.toString(ref.getKey().getNumber()));
+                syntax.word(Integer.toString(ref.getKey().getGeneration()));
+                syntax.word("R");
+            }).into(out).dictionary(values, null);
+            String dictionary = new String(out.toByteArray(), StandardCharsets.ISO_8859_1);
+            return dictionary.substring(2, dictionary.length() - 2);
+        } catch (IOException | RuntimeException invalid) {
+            return "";
+        }
+    }
+
+    private static final class DictionaryParser extends PDFStreamParser implements AutoCloseable {
+
+        DictionaryParser(byte[] data) {
+            super(data);
+            document = new COSDocument();
+        }
+
+        COSDictionary read() throws IOException {
+            return parseCOSDictionary(false);
+        }
+
+        @Override
+        public void close() throws IOException {
+            try {
+                document.close();
+            } finally {
+                super.close();
+            }
+        }
     }
 
     private static TreeMap<Integer, Integer> objects(byte[] d, Map<Integer, Integer> generations) throws IOException {

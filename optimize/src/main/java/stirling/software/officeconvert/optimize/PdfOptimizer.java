@@ -13,6 +13,8 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Objects;
 
+import org.apache.pdfbox.cos.COSName;
+import org.apache.pdfbox.cos.COSObject;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.encryption.InvalidPasswordException;
 
@@ -133,16 +135,32 @@ public final class PdfOptimizer {
                         }
                     }
                     try (PDDocument open = doc) {
+                        if (salvaged == null && !open.isEncrypted() && open.getNumberOfPages() == 0) {
+                            Path emptyRepair = Files.createTempFile(PdfFiles.outputFolder(out), ".salvage-", ".part");
+                            try {
+                                var root = open.getDocumentCatalog().getCOSObject().getItem(COSName.PAGES);
+                                Long offset = root instanceof COSObject ref
+                                        ? open.getDocument().getXrefTable().get(ref.getKey()) : null;
+                                Salvage.Rebuilt recovered = offset == null ? null
+                                        : Salvage.rebuildEmpty(in, emptyRepair, offset);
+                                if (recovered != null) {
+                                    try (PDDocument recoveredDoc = PdfFiles.open(emptyRepair, options.password());
+                                            OutputStream os = new BufferedOutputStream(Files.newOutputStream(part), 1 << 16)) {
+                                        Result r = Rewrite.run(recoveredDoc, os, options, size);
+                                        salvage.set(true);
+                                        return repaired(r, recovered);
+                                    }
+                                }
+                            } finally {
+                                Files.deleteIfExists(emptyRepair);
+                            }
+                        }
                         try (OutputStream os = new BufferedOutputStream(Files.newOutputStream(part), 1 << 16)) {
                             Result r = Rewrite.run(open, os, options, size);
                             if (salvaged == null) {
                                 return r;
                             }
-                            List<String> warnings = new java.util.ArrayList<>(r.warnings());
-                            warnings.add("The PDF was damaged past its own repair data; its page tree was rebuilt from the "
-                                    + salvaged.pages() + " pages found in the file");
-                            return new Result(r.inputBytes(), r.outputBytes(), true, r.objects(), r.mergedObjects(),
-                                    r.recodedStreams(), warnings);
+                            return repaired(r, salvaged);
                         }
                     } finally {
                         if (rebuilt != null) {
@@ -170,6 +188,14 @@ public final class PdfOptimizer {
         } finally {
             Files.deleteIfExists(part);
         }
+    }
+
+    private static Result repaired(Result result, Salvage.Rebuilt salvaged) {
+        List<String> warnings = new java.util.ArrayList<>(result.warnings());
+        warnings.add("The PDF was damaged past its own repair data; its page tree was rebuilt from the "
+                + salvaged.pages() + " pages found in the file");
+        return new Result(result.inputBytes(), result.outputBytes(), true, result.objects(), result.mergedObjects(),
+                result.recodedStreams(), warnings);
     }
 
     public static Result optimize(PDDocument document, OutputStream out, Options options) throws IOException {
