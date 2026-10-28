@@ -218,6 +218,25 @@ class EpubToPdfTest {
         }
     }
 
+    @Test
+    void percentEncodedFragmentsLeadToTheirTarget() throws IOException {
+        Map<String, byte[]> book = book();
+        book.put("OEBPS/text/one.xhtml", utf8(chapter("", "<h1>Chapter One</h1><p>Opening line.</p>"
+                + "<p><a href=\"two.xhtml#caf%C3%A9\">Jump to chapter two</a></p>")));
+        book.put("OEBPS/text/two.xhtml", utf8(chapter("", "<h1>Chapter Two</h1><p>Second chapter line.</p>"
+                + "<p><a href=\"#fin%20de\">Down to the end</a></p><p style=\"page-break-before:always\" "
+                + "id=\"caf\u00e9\">Landing paragraph.</p><p style=\"page-break-before:always\" id=\"fin de\">"
+                + "The end.</p>")));
+        Path out = dir.resolve("encoded.pdf");
+        OfficeToPdf.convert(epub("encoded.epub", book), out, OfficeToPdf.Options.defaults().timeout(Duration.ofMinutes(2)));
+        try (PDDocument doc = Loader.loadPDF(out.toFile())) {
+            assertTrue(pageText(doc, 4).contains("Landing paragraph"), pageText(doc, 4));
+            assertTrue(pageText(doc, 5).contains("The end"), pageText(doc, 5));
+            assertEquals(List.of(3), linkTargets(doc, 1));
+            assertEquals(List.of(4), linkTargets(doc, 2));
+        }
+    }
+
     private Map<String, byte[]> single(byte[] chapter, String uid, Map<String, byte[]> extra, String manifest) {
         Map<String, byte[]> e = new LinkedHashMap<>();
         e.put("META-INF/container.xml", utf8("<?xml version=\"1.0\"?><container version=\"1.0\" "

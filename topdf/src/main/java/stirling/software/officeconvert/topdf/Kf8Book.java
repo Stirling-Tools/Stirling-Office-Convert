@@ -28,7 +28,8 @@ final class Kf8Book {
 
     private static final Pattern FLOW = Pattern.compile("kindle:flow:([0-9A-Va-v]{1,8})(?:\\?mime=([^\"')\\s]*))?");
 
-    private static final Pattern AID = Pattern.compile("(<[A-Za-z][^<>]*?)\\s(?:aid|AID)\\s*=\\s*(['\"])([^'\"<>]*)\\2");
+    private static final Pattern AID = Pattern.compile(
+            "(<[A-Za-z][^<>]*?)\\s(?:aid|AID)\\s*=\\s*(['\"])([^'\"<>]*)\\2([^<>]*)");
 
     private static final Pattern HAS_ID = Pattern.compile("\\s(?:id|ID)\\s*=");
 
@@ -252,8 +253,9 @@ final class Kf8Book {
         StringBuilder ids = new StringBuilder(s.length());
         while (a.find()) {
             String head = a.group(1);
-            String replacement = HAS_ID.matcher(head).find() ? head
-                    : head + " id=\"aid-" + MobiBook.escape(a.group(3)) + "\"";
+            String tail = a.group(4);
+            String replacement = (HAS_ID.matcher(head).find() || HAS_ID.matcher(tail).find() ? head
+                    : head + " id=\"aid-" + MobiBook.escape(a.group(3)) + "\"") + tail;
             a.appendReplacement(ids, Matcher.quoteReplacement(replacement));
         }
         a.appendTail(ids);
