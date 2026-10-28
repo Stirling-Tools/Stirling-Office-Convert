@@ -63,6 +63,8 @@ final class ChartRecords {
 
     private final Deque<Integer> stack = new ArrayDeque<>();
 
+    private final Map<Integer, Integer> opened = new HashMap<>();
+
     private final List<SeriesBuilder> series = new ArrayList<>();
 
     private final LinkedHashMap<Integer, GroupBuilder> groups = new LinkedHashMap<>();
@@ -129,11 +131,15 @@ final class ChartRecords {
         int sid = r.getSid();
         if (sid == BEGIN) {
             stack.push(last);
+            opened.merge(last, 1, Integer::sum);
             return;
         }
         if (sid == END) {
             Integer top = stack.poll();
-            if (top != null && top == TEXT && text != null && !stack.contains(TEXT)) {
+            if (top != null) {
+                opened.computeIfPresent(top, (k, n) -> n > 1 ? n - 1 : null);
+            }
+            if (top != null && top == TEXT && text != null && !open(TEXT)) {
                 finishText();
             }
             if (top != null && top == FRAME) {
@@ -268,7 +274,7 @@ final class ChartRecords {
             }
             case DEFAULT_TEXT -> defaultText = true;
             case TEXT -> {
-                if (!stack.contains(TEXT)) {
+                if (!open(TEXT)) {
                     text = new TextBuilder(defaultText, d);
                     defaultText = false;
                 }
@@ -308,7 +314,7 @@ final class ChartRecords {
     }
 
     private void seriesText(SeriesTextRecord r, int top) {
-        if (text != null && stack.contains(TEXT)) {
+        if (text != null && open(TEXT)) {
             text.text = r.getText();
         } else if (top == SERIES && !series.isEmpty()) {
             series.get(series.size() - 1).name = r.getText();
@@ -362,6 +368,7 @@ final class ChartRecords {
         s.valueFormat = s.valueCustom ? fonts.format(s.format) : s.valueRef == null ? null
                 : fonts.sourceFormat(s.valueRef);
         List<Object> values = s.valueRef == null ? List.of() : fonts.cells(s.valueRef);
+        limited |= values.size() > MAX_POINTS;
         if (!values.isEmpty()) {
             s.values.clear();
             for (int i = 0; i < values.size() && i < MAX_POINTS; i++) {
@@ -371,6 +378,7 @@ final class ChartRecords {
             }
         }
         List<Object> cells = s.categoryRef == null ? List.of() : fonts.cells(s.categoryRef);
+        limited |= cells.size() > MAX_POINTS;
         if (!cells.isEmpty()) {
             s.categoryFormatCode = s.categoryCustom ? fonts.format(s.categoryFormat)
                     : fonts.sourceFormat(s.categoryRef);
@@ -401,8 +409,12 @@ final class ChartRecords {
         }
     }
 
+    private boolean open(int sid) {
+        return opened.containsKey(sid);
+    }
+
     private boolean inSeriesFormat() {
-        return dataPoint != Integer.MIN_VALUE && stack.contains(SERIES) && !series.isEmpty();
+        return dataPoint != Integer.MIN_VALUE && open(SERIES) && !series.isEmpty();
     }
 
     private SeriesBuilder current() {
@@ -588,7 +600,7 @@ final class ChartRecords {
             dataLabel(t);
             return;
         }
-        if (t.link == 0 && stack.contains(LEGEND) && t.font >= 0) {
+        if (t.link == 0 && open(LEGEND) && t.font >= 0) {
             legendFont = fonts.font(t.font, "");
             return;
         }

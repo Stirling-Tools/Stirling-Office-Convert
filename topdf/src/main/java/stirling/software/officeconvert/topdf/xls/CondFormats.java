@@ -113,6 +113,9 @@ final class CondFormats {
             if (at == null || colors == null || at.length < 2 || at.length != colors.length || at.length > 3) {
                 return null;
             }
+            if (!constants(at)) {
+                return null;
+            }
             StringBuilder b = new StringBuilder("<cfRule type=\"colorScale\" priority=\"").append(++priority)
                     .append("\"><colorScale>");
             for (ConditionalFormattingThreshold t : at) {
@@ -125,6 +128,9 @@ final class CondFormats {
         }
         if (rule.getConditionType() == ConditionType.DATA_BAR && rule.getDataBarFormatting() != null) {
             HSSFDataBarFormatting d = rule.getDataBarFormatting();
+            if (!constants(new ConditionalFormattingThreshold[] {d.getMinThreshold(), d.getMaxThreshold()})) {
+                return null;
+            }
             return "<cfRule type=\"dataBar\" priority=\"" + ++priority + "\"><dataBar minLength=\""
                     + Math.max(0, Math.min(100, d.getWidthMin())) + "\" maxLength=\""
                     + Math.max(0, Math.min(100, d.getWidthMax() == 0 ? 90 : d.getWidthMax())) + "\""
@@ -135,7 +141,7 @@ final class CondFormats {
         if (rule.getConditionType() == ConditionType.ICON_SET && rule.getMultiStateFormatting() != null) {
             IconMultiStateFormatting m = rule.getMultiStateFormatting();
             ConditionalFormattingThreshold[] at = m.getThresholds();
-            if (m.getIconSet() == null || at == null || at.length != m.getIconSet().num) {
+            if (m.getIconSet() == null || at == null || at.length != m.getIconSet().num || !constants(at)) {
                 return null;
             }
             StringBuilder b = new StringBuilder("<cfRule type=\"iconSet\" priority=\"").append(++priority)
@@ -148,6 +154,27 @@ final class CondFormats {
             return b.append("</iconSet></cfRule>").toString();
         }
         return null;
+    }
+
+    private static boolean constants(ConditionalFormattingThreshold[] thresholds) {
+        for (ConditionalFormattingThreshold t : thresholds) {
+            if (t == null) {
+                continue;
+            }
+            switch (t.getRangeType()) {
+                case MIN, MAX -> {
+                }
+                case NUMBER, PERCENT, PERCENTILE -> {
+                    if (t.getValue() == null || !Double.isFinite(t.getValue())) {
+                        return false;
+                    }
+                }
+                case null, default -> {
+                    return false;
+                }
+            }
+        }
+        return true;
     }
 
     private static String cfvo(ConditionalFormattingThreshold t) {
