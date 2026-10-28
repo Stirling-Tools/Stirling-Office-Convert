@@ -650,6 +650,73 @@ class EbookToPdfTest {
     }
 
     @Test
+    void utf32FictionBooksPreserveUnicodeAndAreDetectedWithoutTheirExtension() throws IOException {
+        String words = "caf\u00e9 \u65E5\u672C\u8A9E \uD801\uDC37";
+        for (String encoding : new String[] {"UTF-32BE", "UTF-32LE"}) {
+            String xml = fb2("<p>" + words + "</p>").replace("encoding=\"UTF-8\"", "encoding=\"" + encoding + "\"");
+            for (boolean bom : new boolean[] {false, true}) {
+                byte[] bytes = ((bom ? "\uFEFF" : "") + xml).getBytes(java.nio.charset.Charset.forName(encoding));
+                assertTrue(Fb2Book.read(bytes).book().html().contains(words));
+                assertTrue(Fb2Book.root(new java.io.ByteArrayInputStream(bytes)));
+                assertTrue(Fb2Book.is(write(encoding + "-" + bom + ".bin", bytes)));
+            }
+        }
+    }
+
+    @Test
+    void utf32FictionBookPackagesRenderLikeUtf8() throws IOException {
+        Converted baseline = convert(write("reference.fb2", utf8(fb2("<p>caf\u00e9 ending.</p>"))));
+        for (String encoding : new String[] {"UTF-32BE", "UTF-32LE"}) {
+            String xml = "\uFEFF" + fb2("<p>caf\u00e9 ending.</p>")
+                    .replace("encoding=\"UTF-8\"", "encoding=\"" + encoding + "\"");
+            byte[] bytes = xml.getBytes(java.nio.charset.Charset.forName(encoding));
+            Path input = dir.resolve(encoding + ".fbz");
+            try (OutputStream out = Files.newOutputStream(input); ZipOutputStream zip = new ZipOutputStream(out)) {
+                zip.putNextEntry(new ZipEntry("book.fb2"));
+                zip.write(bytes);
+                zip.closeEntry();
+            }
+            Converted converted = convert(input);
+            assertEquals(baseline.text(), converted.text());
+            assertEquals(baseline.title(), converted.title());
+            assertEquals(baseline.author(), converted.author());
+            assertEquals(baseline.images(), converted.images());
+            try (PDDocument reference = Loader.loadPDF(dir.resolve("reference.fb2.pdf").toFile());
+                    PDDocument actual = Loader.loadPDF(dir.resolve(encoding + ".fbz.pdf").toFile())) {
+                assertEquals(reference.getNumberOfPages(), actual.getNumberOfPages());
+                org.apache.pdfbox.rendering.PDFRenderer a = new org.apache.pdfbox.rendering.PDFRenderer(reference);
+                org.apache.pdfbox.rendering.PDFRenderer b = new org.apache.pdfbox.rendering.PDFRenderer(actual);
+                for (int page = 0; page < reference.getNumberOfPages(); page++) {
+                    BufferedImage expected = a.renderImage(page, 1);
+                    BufferedImage found = b.renderImage(page, 1);
+                    assertEquals(expected.getWidth(), found.getWidth());
+                    assertEquals(expected.getHeight(), found.getHeight());
+                    assertArrayEquals(expected.getRGB(0, 0, expected.getWidth(), expected.getHeight(), null, 0,
+                            expected.getWidth()), found.getRGB(0, 0, found.getWidth(), found.getHeight(), null, 0,
+                                    found.getWidth()));
+                }
+            }
+        }
+    }
+
+    @Test
+    void wideFictionBookProbingRejectsOtherRootsEntitiesAndMalformedCharacters() throws IOException {
+        for (String encoding : new String[] {"UTF-32BE", "UTF-32LE"}) {
+            java.nio.charset.Charset charset = java.nio.charset.Charset.forName(encoding);
+            byte[] other = ("\uFEFF<?xml version=\"1.0\" encoding=\"" + encoding + "\"?><html/>").getBytes(charset);
+            assertFalse(Fb2Book.root(new java.io.ByteArrayInputStream(other)));
+            byte[] entities = ("\uFEFF<?xml version=\"1.0\" encoding=\"" + encoding + "\"?>"
+                    + "<!DOCTYPE FictionBook [<!ENTITY x SYSTEM 'file:///must-not-read'>]>"
+                    + "<FictionBook><body><p>&x;</p></body></FictionBook>").getBytes(charset);
+            assertFalse(Fb2Book.root(new java.io.ByteArrayInputStream(entities)));
+            assertThrows(IOException.class, () -> Fb2Book.read(entities));
+            byte[] malformed = ("\uFEFF" + fb2("")).replace("UTF-8", encoding).getBytes(charset);
+            byte[] truncated = java.util.Arrays.copyOf(malformed, malformed.length - 1);
+            assertThrows(IOException.class, () -> Fb2Book.read(truncated));
+        }
+    }
+
+    @Test
     void fictionBookReadsSectionsNotesAndPictures() throws IOException {
         Converted c = convert(write("book.fb2", utf8(fb2(""))));
         String t = c.text();

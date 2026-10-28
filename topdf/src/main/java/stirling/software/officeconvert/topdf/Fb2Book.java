@@ -3,6 +3,11 @@ package stirling.software.officeconvert.topdf;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.io.PushbackInputStream;
+import java.io.Reader;
+import java.nio.charset.Charset;
+import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -59,7 +64,8 @@ final class Fb2Book {
             s = s.substring(3);
         }
         s = s.stripLeading();
-        if (!s.startsWith("<?xml") && !s.startsWith("<" + ROOT)) {
+        if (!s.startsWith("<?xml") && !s.startsWith("<" + ROOT) && utf32(head) == null
+                && !utf16(head)) {
             return false;
         }
         try (InputStream in = Files.newInputStream(source)) {
@@ -69,7 +75,8 @@ final class Fb2Book {
 
     static boolean root(InputStream in) {
         try {
-            XMLStreamReader r = SecureXml.reader(BookInput.bounded(in, MAX_BYTES, "The FictionBook file"));
+            XmlInput xml = xml(in);
+            XMLStreamReader r = xml.reader() == null ? SecureXml.reader(xml.stream()) : SecureXml.reader(xml.reader());
             try {
                 while (r.hasNext()) {
                     if (r.next() == XMLStreamConstants.START_ELEMENT) {
@@ -83,6 +90,49 @@ final class Fb2Book {
             return false;
         }
         return false;
+    }
+
+    private record XmlInput(InputStream stream, Reader reader) {}
+
+    private static XmlInput xml(InputStream in) throws IOException {
+        PushbackInputStream bytes = new PushbackInputStream(BookInput.bounded(in, MAX_BYTES,
+                "The FictionBook file"), 4);
+        byte[] head = bytes.readNBytes(4);
+        bytes.unread(head);
+        Charset charset = utf32(head);
+        if (charset == null) {
+            return new XmlInput(bytes, null);
+        }
+        if ((head[0] & 0xFF) == 0xFF || (head[3] & 0xFF) == 0xFF) {
+            bytes.skipNBytes(4);
+        }
+        return new XmlInput(bytes, new InputStreamReader(bytes, charset.newDecoder()
+                .onMalformedInput(CodingErrorAction.REPORT).onUnmappableCharacter(CodingErrorAction.REPORT)));
+    }
+
+    private static Charset utf32(byte[] head) {
+        if (head.length < 4) {
+            return null;
+        }
+        if (head[0] == 0 && head[1] == 0 && (head[2] == 0 && xmlStart(head[3])
+                || (head[2] & 0xFF) == 0xFE && (head[3] & 0xFF) == 0xFF)) {
+            return Charset.forName("UTF-32BE");
+        }
+        if (head[2] == 0 && head[3] == 0 && (head[1] == 0 && xmlStart(head[0])
+                || (head[0] & 0xFF) == 0xFF && (head[1] & 0xFF) == 0xFE)) {
+            return Charset.forName("UTF-32LE");
+        }
+        return null;
+    }
+
+    private static boolean xmlStart(byte b) {
+        return b == '<' || b == ' ' || b == '\t' || b == '\r' || b == '\n';
+    }
+
+    private static boolean utf16(byte[] head) {
+        return head.length >= 2 && ((head[0] & 0xFF) == 0xFE && (head[1] & 0xFF) == 0xFF
+                || (head[0] & 0xFF) == 0xFF && (head[1] & 0xFF) == 0xFE
+                || head[0] == 0 && head[1] == '<' || head[0] == '<' && head[1] == 0);
     }
 
     static Ebook read(Path source) throws IOException {
@@ -99,7 +149,8 @@ final class Fb2Book {
     }
 
     private static Ebook read(InputStream in) throws IOException {
-        Document doc = SecureXml.parse(BookInput.bounded(in, MAX_BYTES, "The FictionBook file"));
+        XmlInput xml = xml(in);
+        Document doc = xml.reader() == null ? SecureXml.parse(xml.stream()) : SecureXml.parse(xml.reader());
         Element root = doc.getDocumentElement();
         if (root == null || !ROOT.equals(local(root))) {
             throw new IOException("The file is not a FictionBook (FB2) book: its root element is not FictionBook");
