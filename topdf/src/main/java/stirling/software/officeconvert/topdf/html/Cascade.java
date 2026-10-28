@@ -169,7 +169,19 @@ final class Cascade {
         return hyphenates || !doc.select("[style*=hyphens]").isEmpty();
     }
 
+    private boolean stringsChecked;
+
     boolean setsStrings() {
+        if (!strings && !stringsChecked) {
+            stringsChecked = true;
+            for (Element e : doc.select("[style]")) {
+                Map<String, String> d = inline(e.attr("style"));
+                if (d.containsKey("string-set") || d.containsKey(Css.IMPORTANT_MARK + "string-set")) {
+                    strings = true;
+                    break;
+                }
+            }
+        }
         return strings;
     }
 
