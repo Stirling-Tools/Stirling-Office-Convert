@@ -147,12 +147,17 @@ final class Decoded {
         return new Limited(in, limit, failure, writers);
     }
 
-    private static COSDictionary parameters(COSStream stream, int index) {
-        COSBase parms = stream.getDictionaryObject(COSName.DECODE_PARMS, COSName.DP);
-        if (parms instanceof COSArray array) {
-            parms = index < array.size() ? array.getObject(index) : null;
+    static COSDictionary parameters(COSStream stream, int index) {
+        COSBase filter = stream.getDictionaryObject(COSName.F, COSName.FILTER);
+        COSBase parms = stream.getDictionaryObject(COSName.DP, COSName.DECODE_PARMS);
+        if (filter instanceof COSName && parms instanceof COSDictionary d) {
+            return d;
         }
-        return parms instanceof COSDictionary d ? d : new COSDictionary();
+        if (filter instanceof COSArray && parms instanceof COSArray array && index < array.size()
+                && array.getObject(index) instanceof COSDictionary d) {
+            return d;
+        }
+        return new COSDictionary();
     }
 
     private static InputStream checkedJbig2(InputStream from, COSStream stream, int index, long need, long bitmap)
