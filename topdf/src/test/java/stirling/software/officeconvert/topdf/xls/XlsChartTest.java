@@ -180,6 +180,121 @@ class XlsChartTest {
     }
 
     @Test
+    void deeplyNestedChartRecordsReadInLinearTime() {
+        ChartRecords chart = new ChartRecords(null);
+        org.junit.jupiter.api.Assertions.assertTimeoutPreemptively(java.time.Duration.ofSeconds(20), () -> {
+            for (int i = 0; i < 200_000; i++) {
+                chart.add(new BeginRecord());
+            }
+            for (int i = 0; i < 200_000; i++) {
+                chart.add(new UnknownRecord(0x1006, new byte[8]));
+                chart.add(new UnknownRecord(0x1025, new byte[32]));
+            }
+        });
+    }
+
+    @Test
+    void aDrawingWithManyContinuationsIsJoinedInLinearTime() throws Exception {
+        ByteArrayOutputStream stream = new ByteArrayOutputStream();
+        stream.writeBytes(record(0x0809, bof(5)));
+        stream.writeBytes(record(0x0042, new byte[] {(byte) 0xB0, 0x04}));
+        stream.writeBytes(record(0x000A, new byte[0]));
+        stream.writeBytes(record(0x0809, bof(0x10)));
+        stream.writeBytes(record(0x00EC, new byte[8224]));
+        for (int i = 0; i < 4000; i++) {
+            stream.writeBytes(record(0x003C, new byte[8224]));
+        }
+        for (int i = 0; i < 20_000; i++) {
+            stream.writeBytes(record(0x005D, chartObject(i + 1)));
+        }
+        stream.writeBytes(record(0x000A, new byte[0]));
+        stream.writeBytes(record(0x0809, bof(0x20)));
+        stream.writeBytes(record(0x000A, new byte[0]));
+        try (POIFSFileSystem fs = new POIFSFileSystem()) {
+            fs.createDocument(new ByteArrayInputStream(stream.toByteArray()), "Workbook");
+            org.junit.jupiter.api.Assertions.assertTimeoutPreemptively(java.time.Duration.ofSeconds(20),
+                    () -> ChartStream.read(fs.getRoot(), null, List.of(0), List.of(0)));
+        }
+    }
+
+    @Test
+    void seriesCellsPastThePointLimitReportPartialContentWhateverTheSeriesCountSays() throws Exception {
+        byte[] data = XlsTest.xls(wb -> {
+            HSSFSheet sheet = wb.createSheet("Data");
+            for (int i = 0; i < 4001; i++) {
+                sheet.createRow(i).createCell(0).setCellValue(i + 1);
+            }
+            int extern = wb.getInternalWorkbook().checkExternSheet(0);
+            ChartFixtures.chartSheet(wb, "Chart1", ChartFixtures.linkedChart(BAR, "Large", 3,
+                    new Area3DPtg(new AreaReference("A1:A4001", SpreadsheetVersion.EXCEL97), extern)));
+        });
+        try (POIFSFileSystem file = new POIFSFileSystem(new ByteArrayInputStream(data))) {
+            XlsPackage.Outcome outcome = XlsPackage.write(file.getRoot(), new ByteArrayOutputStream());
+            assertTrue(outcome.lost(), outcome.warnings().toString());
+            assertTrue(outcome.warnings().stream().anyMatch(w -> w.contains("4000") && w.contains("chart")),
+                    outcome.warnings().toString());
+        }
+        assertTrue(chartXml(data).contains("<c:ptCount val=\"4000\"/>"));
+    }
+
+    @Test
+    void anEmbeddedChartThatCannotBePlacedIsReportedAsLeftOut() throws Exception {
+        byte[] data = XlsTest.xls(wb -> {
+            HSSFSheet sheet = wb.createSheet("Data");
+            for (int i = 0; i < 3; i++) {
+                sheet.createRow(i).createCell(0).setCellValue(10 * (i + 1));
+            }
+            int extern = wb.getInternalWorkbook().checkExternSheet(0);
+            List<RecordBase> records = sheet.getSheet().getRecords();
+            int at = 0;
+            while (!(records.get(at) instanceof org.apache.poi.hssf.record.WindowTwoRecord)) {
+                at++;
+            }
+            org.apache.poi.hssf.record.BOFRecord bof = org.apache.poi.hssf.record.BOFRecord.createSheetBOF();
+            bof.setType(0x20);
+            List<RecordBase> chart = new java.util.ArrayList<>();
+            chart.add(bof);
+            chart.addAll(ChartFixtures.linkedChart(BAR, "Embedded", 3,
+                    new Area3DPtg(new AreaReference("A1:A3", SpreadsheetVersion.EXCEL97), extern)));
+            chart.add(org.apache.poi.hssf.record.EOFRecord.instance);
+            records.addAll(at + 1, chart);
+        });
+        try (POIFSFileSystem file = new POIFSFileSystem(new ByteArrayInputStream(data))) {
+            XlsPackage.Outcome outcome = XlsPackage.write(file.getRoot(), new ByteArrayOutputStream());
+            assertTrue(outcome.lost(), outcome.warnings().toString());
+            assertTrue(outcome.warnings().stream().anyMatch(w -> w.contains("charts could not be drawn")),
+                    outcome.warnings().toString());
+        }
+    }
+
+    private static byte[] record(int sid, byte[] body) {
+        byte[] r = new byte[4 + body.length];
+        r[0] = (byte) sid;
+        r[1] = (byte) (sid >> 8);
+        r[2] = (byte) body.length;
+        r[3] = (byte) (body.length >> 8);
+        System.arraycopy(body, 0, r, 4, body.length);
+        return r;
+    }
+
+    private static byte[] bof(int type) {
+        byte[] b = new byte[16];
+        b[1] = 0x06;
+        b[2] = (byte) type;
+        return b;
+    }
+
+    private static byte[] chartObject(int id) {
+        byte[] o = new byte[26];
+        o[0] = 0x15;
+        o[2] = 0x12;
+        o[4] = 5;
+        o[6] = (byte) id;
+        o[7] = (byte) (id >> 8);
+        return o;
+    }
+
+    @Test
     void theCellsAChartLinksToOutrankItsCachedValues() throws Exception {
         byte[] data = XlsTest.xls(wb -> {
             HSSFSheet sheet = wb.createSheet("Data");

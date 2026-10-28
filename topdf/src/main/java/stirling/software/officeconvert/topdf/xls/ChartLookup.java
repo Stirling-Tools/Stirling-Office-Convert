@@ -161,7 +161,7 @@ final class ChartLookup implements ChartRecords.Lookup {
         for (int r = first.getRow(); r <= last.getRow(); r++) {
             HSSFRow row = sheet.getRow(r);
             for (int c = first.getCol(); c <= last.getCol(); c++) {
-                if (out.size() >= ChartRecords.MAX_POINTS) {
+                if (out.size() > ChartRecords.MAX_POINTS) {
                     return out;
                 }
                 out.add(row == null ? null : row.getCell(c));
