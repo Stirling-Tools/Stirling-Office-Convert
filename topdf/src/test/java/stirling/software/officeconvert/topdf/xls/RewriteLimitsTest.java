@@ -58,6 +58,39 @@ class RewriteLimitsTest {
         }
     }
 
+    private static Path manyBofs(Path dir, int blocks) throws IOException {
+        byte[] d = new byte[512 + blocks * 64];
+        for (int at = 512; at + 64 <= d.length; at += 64) {
+            d[at] = 0x09;
+            d[at + 1] = 0x08;
+            d[at + 2] = 16;
+            d[at + 5] = 0x06;
+            d[at + 6] = 5;
+            d[at + 20] = (byte) 0xFC;
+            d[at + 22] = 40;
+        }
+        return java.nio.file.Files.write(dir.resolve("bofs.bin"), d);
+    }
+
+    @Test
+    void salvagingAFileOfRepeatedWorkbookStartsStaysWithinABudget(@org.junit.jupiter.api.io.TempDir Path dir)
+            throws Exception {
+        Path file = manyBofs(dir, 1 << 17);
+        org.junit.jupiter.api.Assertions.assertTimeoutPreemptively(java.time.Duration.ofSeconds(20),
+                () -> assertEquals(null, Repair.salvage(file)));
+    }
+
+    @Test
+    void salvageStopsWhenTheConversionIsCancelled(@org.junit.jupiter.api.io.TempDir Path dir) throws Exception {
+        Path file = manyBofs(dir, 64);
+        Thread.currentThread().interrupt();
+        try {
+            assertThrows(java.io.InterruptedIOException.class, () -> Repair.salvage(file));
+        } finally {
+            Thread.interrupted();
+        }
+    }
+
     @Test
     void rulesPastTheWorkbookLimitAreReported() throws Exception {
         try (HSSFWorkbook workbook = new HSSFWorkbook()) {

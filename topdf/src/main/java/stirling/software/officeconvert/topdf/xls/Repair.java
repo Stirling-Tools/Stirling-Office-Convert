@@ -3,6 +3,7 @@ package stirling.software.officeconvert.topdf.xls;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InterruptedIOException;
 import java.nio.file.Path;
 import java.util.Map;
 
@@ -15,6 +16,8 @@ import stirling.software.officeconvert.topdf.io.SourceFile;
 final class Repair {
 
     static final int MAX_STREAM_BYTES = 256 << 20;
+
+    private static final int MAX_PROBES = 4096;
 
     private static final int FILEPASS = 0x002F;
 
@@ -124,16 +127,22 @@ final class Repair {
         return changed ? out.toByteArray() : null;
     }
 
-    static byte[] salvage(Path file) {
+    static byte[] salvage(Path file) throws InterruptedIOException {
         byte[] d;
         try {
             d = SourceFile.head(file, MAX_STREAM_BYTES);
+        } catch (InterruptedIOException e) {
+            throw e;
         } catch (IOException e) {
             return null;
         }
-        for (int at = 512; at + 20 <= d.length; at += 64) {
+        long[] budget = {4L * d.length + (1 << 20)};
+        int probes = 0;
+        for (int at = 512; at + 20 <= d.length && probes < MAX_PROBES && budget[0] > 0; at += 64) {
             if (u16(d, at) == BOF && u16(d, at + 2) == 16 && u16(d, at + 4) == 0x0600 && u16(d, at + 6) == 5) {
-                byte[] stream = workbookAt(d, at);
+                SheetPart.stopIfInterrupted();
+                probes++;
+                byte[] stream = workbookAt(d, at, budget);
                 if (stream != null) {
                     return stream;
                 }
@@ -142,17 +151,25 @@ final class Repair {
         return null;
     }
 
-    private static byte[] workbookAt(byte[] d, int start) {
+    private static byte[] workbookAt(byte[] d, int start, long[] budget) throws InterruptedIOException {
         int sheets = 0;
         int ends = 0;
         int depth = 0;
         int at = start;
+        int records = 0;
         while (at + 4 <= d.length) {
+            if (budget[0] <= 0) {
+                return null;
+            }
+            if ((++records & 0xFFF) == 0) {
+                SheetPart.stopIfInterrupted();
+            }
             int sid = u16(d, at);
             int len = u16(d, at + 2);
             if (len > 8224 || at + 4 + len > d.length) {
                 break;
             }
+            budget[0] -= 4 + len;
             if (sid == BOUNDSHEET && depth == 1 && ends == 0) {
                 sheets++;
             }
