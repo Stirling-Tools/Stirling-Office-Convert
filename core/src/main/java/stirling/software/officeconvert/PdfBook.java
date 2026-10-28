@@ -18,6 +18,7 @@ import org.apache.pdfbox.pdmodel.common.PDRectangle;
 import org.apache.pdfbox.rendering.ImageType;
 import org.apache.pdfbox.rendering.PDFRenderer;
 
+import stirling.software.officeconvert.build.RgbPixels;
 import stirling.software.officeconvert.extract.PdfFiles;
 import stirling.software.officeconvert.html.EpubWriter;
 import stirling.software.officeconvert.memory.Admission;
@@ -97,7 +98,7 @@ final class PdfBook {
             ImageWriteParam param = writer.getDefaultWriteParam();
             param.setCompressionMode(ImageWriteParam.MODE_EXPLICIT);
             param.setCompressionQuality(0.75f);
-            writer.write(null, new IIOImage(image, null, null), param);
+            writer.write(null, new IIOImage(RgbPixels.forJpeg(image), null, null), param);
         } finally {
             writer.dispose();
         }

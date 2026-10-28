@@ -15,6 +15,7 @@ import javax.imageio.ImageWriteParam;
 import javax.imageio.ImageWriter;
 import javax.imageio.stream.ImageOutputStream;
 
+import stirling.software.officeconvert.build.RgbPixels;
 import stirling.software.officeconvert.model.Picture;
 
 final class ImageShaping {
@@ -110,7 +111,7 @@ final class ImageShaping {
             ImageWriteParam param = writer.getDefaultWriteParam();
             param.setCompressionMode(ImageWriteParam.MODE_EXPLICIT);
             param.setCompressionQuality(0.92f);
-            writer.write(null, new IIOImage(img, null, null), param);
+            writer.write(null, new IIOImage(RgbPixels.forJpeg(img), null, null), param);
         } finally {
             writer.dispose();
         }

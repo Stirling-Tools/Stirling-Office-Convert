@@ -1,7 +1,5 @@
 package stirling.software.officeconvert.slides;
 
-import java.awt.Color;
-import java.awt.Graphics2D;
 import java.awt.geom.AffineTransform;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
@@ -21,6 +19,7 @@ import org.apache.commons.logging.LogFactory;
 import org.apache.pdfbox.pdmodel.PDDocument;
 
 import stirling.software.officeconvert.build.PlacedContent;
+import stirling.software.officeconvert.build.RgbPixels;
 import stirling.software.officeconvert.extract.OperatorBudget;
 import stirling.software.officeconvert.layout.Box;
 import stirling.software.officeconvert.model.Picture;
@@ -234,11 +233,7 @@ final class Art {
     private static byte[] encode(BufferedImage img, boolean jpeg) throws IOException {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         if (jpeg) {
-            BufferedImage rgb = new BufferedImage(img.getWidth(), img.getHeight(), BufferedImage.TYPE_INT_RGB);
-            Graphics2D g = rgb.createGraphics();
-            g.drawImage(img, 0, 0, Color.WHITE, null);
-            g.dispose();
-            if (ImageIO.write(rgb, "jpeg", out)) {
+            if (ImageIO.write(RgbPixels.onWhite(img), "jpeg", out)) {
                 return out.toByteArray();
             }
             out.reset();

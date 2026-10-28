@@ -49,6 +49,7 @@ import org.apache.pdfbox.text.TextPosition;
 import org.apache.pdfbox.util.Matrix;
 import org.apache.pdfbox.util.Vector;
 
+import stirling.software.officeconvert.build.RgbPixels;
 import stirling.software.officeconvert.memory.Admission;
 import stirling.software.officeconvert.sink.Links;
 
@@ -304,7 +305,7 @@ public final class FixedHtml {
             ImageWriteParam param = writer.getDefaultWriteParam();
             param.setCompressionMode(ImageWriteParam.MODE_EXPLICIT);
             param.setCompressionQuality(0.85f);
-            writer.write(null, new IIOImage(image, null, null), param);
+            writer.write(null, new IIOImage(RgbPixels.forJpeg(image), null, null), param);
         } finally {
             writer.dispose();
         }
