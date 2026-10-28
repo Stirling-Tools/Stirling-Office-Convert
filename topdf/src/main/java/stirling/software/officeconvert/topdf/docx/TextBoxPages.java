@@ -13,6 +13,16 @@ final class TextBoxPages {
 
     private record Line(float x, float y, float height, List<Op> ops, Object flow) {}
 
+    private static final class Cursor {
+        int page;
+        float consumed;
+        float shift;
+
+        Cursor(int page) {
+            this.page = page;
+        }
+    }
+
     private TextBoxPages() {}
 
     static void apply(List<PageBox> pages, Ctx ctx, Consumer<PageBox> prepare) {
@@ -37,7 +47,7 @@ final class TextBoxPages {
                         || lines.stream().noneMatch(line -> line.y() + line.height() > bottom)) {
                     continue;
                 }
-                Map<Object, Float> shifts = new HashMap<>();
+                Map<Object, Cursor> cursors = new HashMap<>();
                 List<PageBox> planned = new ArrayList<>(pages);
                 List<Integer> targets = new ArrayList<>();
                 List<Float> positions = new ArrayList<>();
@@ -45,9 +55,19 @@ final class TextBoxPages {
                 boolean compatible = true;
                 int limit = ctx.job.maxPages() > 0 ? Math.min(10_000, ctx.job.maxPages()) : 10_000;
                 for (Line line : lines) {
-                    float shift = shifts.getOrDefault(line.flow(), 0f);
-                    float logical = line.y() - top + shift;
-                    int target = index;
+                    checkpoint(ctx);
+                    Cursor cursor = cursors.get(line.flow());
+                    if (cursor == null) {
+                        cursor = new Cursor(index);
+                        cursors.put(line.flow(), cursor);
+                    }
+                    float logical = line.y() - top + cursor.shift - cursor.consumed;
+                    if (logical < 0) {
+                        cursor.page = index;
+                        cursor.consumed = 0;
+                        logical = line.y() - top + cursor.shift;
+                    }
+                    int target = cursor.page;
                     PageBox destination = page;
                     while (true) {
                         if (target >= limit) {
@@ -66,10 +86,11 @@ final class TextBoxPages {
                         }
                         if (logical >= available) {
                             logical -= available;
+                            cursor.consumed += available;
                             target++;
                         } else if (logical + line.height() > available + 0.01f) {
-                            shift += available - logical;
-                            shifts.put(line.flow(), shift);
+                            cursor.shift += available - logical;
+                            cursor.consumed += available;
                             logical = 0;
                             target++;
                         } else {
@@ -79,6 +100,7 @@ final class TextBoxPages {
                     if (!compatible) {
                         break;
                     }
+                    cursor.page = target < 0 ? limit : target;
                     targets.add(target);
                     positions.add(destination.bodyTop + logical);
                     moved |= target != index;

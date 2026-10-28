@@ -478,7 +478,8 @@ final class HtmlTables {
                 if (Flow.SKIPPED.contains(tag) || hidden(element, declared, look)) {
                     continue;
                 }
-                String display = declared.getOrDefault("display", Flow.BLOCKS.contains(tag) ? "block" : "inline");
+                String display = declared.getOrDefault("display", Flow.BLOCKS.contains(tag) ? "block" : "inline")
+                        .strip().toLowerCase(Locale.ROOT);
                 boolean block = !display.startsWith("inline") && !display.equals("contents");
                 if (block || tag.equals("br") || tag.equals("table")) {
                     into.lineEnd();

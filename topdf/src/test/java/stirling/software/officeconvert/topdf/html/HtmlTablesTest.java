@@ -148,4 +148,14 @@ class HtmlTablesTest {
                 + Measure.width("Label", new Look().run());
         assertTrue(width >= need, "column " + width + " needs " + need);
     }
+
+    @Test
+    void intrinsicInlineWidthsAreIndependentOfDisplayValueCasing() throws IOException {
+        String html = "<table style='width:300px'><tr><td><span style='display:%s;font-size:32px'>Wide</span>"
+                + "<span style='display:%s;font-size:32px'>Label</span></td>"
+                + "<td>Some other words that can wrap normally within their column</td></tr></table>";
+        Table lowercase = table(html.formatted("inline", "contents"));
+        Table uppercase = table(html.formatted("INLINE", "CONTENTS"));
+        assertEquals(lowercase.columnWidths.getFirst(), uppercase.columnWidths.getFirst(), 0.01);
+    }
 }
