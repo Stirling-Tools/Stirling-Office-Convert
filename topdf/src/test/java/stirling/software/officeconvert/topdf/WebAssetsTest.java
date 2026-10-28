@@ -18,6 +18,7 @@ import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -29,6 +30,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Predicate;
 
 import javax.imageio.ImageIO;
@@ -216,6 +218,116 @@ class WebAssetsTest {
         byte[] page = WebAssets.fetch(base() + "/latin1.html", LOCAL).page();
         assertEquals(0xEF, page[0] & 0xFF);
         assertTrue(new String(page, StandardCharsets.UTF_8).contains("Café crème"));
+    }
+
+    @Test
+    void declaredLegacyCharsetsDoNotMistakeCyrillicPrefixesForByteOrderMarks() throws IOException {
+        for (String text : List.of("первый", "южный", "яркий")) {
+            String path = "/charset-" + (int) text.charAt(0);
+            server.createContext(path, ex -> send(ex, 200, "text/html; charset=windows-1251",
+                    text.getBytes(Charset.forName("windows-1251")), false));
+            String fetched = new String(WebAssets.fetch(base() + path, LOCAL).page(), StandardCharsets.UTF_8);
+            assertEquals("\uFEFF" + text, fetched);
+        }
+    }
+
+    @Test
+    void actualUnicodeByteOrderMarksOverrideTheDeclaredLegacyCharset() throws IOException {
+        for (Charset encoding : List.of(StandardCharsets.UTF_8, StandardCharsets.UTF_16BE, StandardCharsets.UTF_16LE)) {
+            byte[] original = "\uFEFF<p>Café мир</p>".getBytes(encoding);
+            String path = "/bom-" + encoding.name();
+            server.createContext(path, ex -> send(ex, 200, "text/html; charset=windows-1251", original, false));
+            assertArrayEquals(original, WebAssets.fetch(base() + path, LOCAL).page());
+        }
+    }
+
+    @Test
+    void theConversionDeadlineIncludesTheInitialPageFetchAndPreservesTheTarget() throws IOException {
+        Path target = dir.resolve("kept.pdf");
+        byte[] existing = "existing output".getBytes(StandardCharsets.US_ASCII);
+        java.nio.file.Files.write(target, existing);
+        IOException error = assertThrows(IOException.class, () -> OfficeToPdf.convertUrl(base() + "/slow", target,
+                OfficeToPdf.Options.defaults().timeout(Duration.ofMillis(100)),
+                LOCAL.timeout(Duration.ofMillis(1500))));
+        assertTrue(error instanceof OfficeToPdf.TimedOut, error.toString());
+        assertArrayEquals(existing, java.nio.file.Files.readAllBytes(target));
+        try (var files = java.nio.file.Files.list(dir)) {
+            assertEquals(List.of(target), files.toList());
+        }
+    }
+
+    @Test
+    void interruptingABlockedFetchClosesItsSocketWithoutWaitingForTheNetworkTimeout() throws Exception {
+        try (ServerSocket listener = new ServerSocket(0, 1, InetAddress.getLoopbackAddress())) {
+            CountDownLatch requested = new CountDownLatch(1);
+            CountDownLatch finish = new CountDownLatch(1);
+            CountDownLatch done = new CountDownLatch(1);
+            AtomicReference<Throwable> failure = new AtomicReference<>();
+            AtomicReference<Boolean> interrupted = new AtomicReference<>();
+            Thread remote = Thread.ofVirtual().start(() -> {
+                try (Socket socket = listener.accept()) {
+                    var reader = new java.io.BufferedReader(new java.io.InputStreamReader(socket.getInputStream(),
+                            StandardCharsets.US_ASCII));
+                    String header;
+                    do {
+                        header = reader.readLine();
+                    } while (header != null && !header.isEmpty());
+                    requested.countDown();
+                    finish.await(10, TimeUnit.SECONDS);
+                } catch (IOException | InterruptedException e) {
+                    requested.countDown();
+                }
+            });
+            Thread caller = Thread.ofPlatform().daemon().start(() -> {
+                try {
+                    WebAssets.fetch("http://127.0.0.1:" + listener.getLocalPort() + "/", LOCAL.timeout(Duration.ofSeconds(10)));
+                } catch (Throwable e) {
+                    failure.set(e);
+                } finally {
+                    interrupted.set(Thread.currentThread().isInterrupted());
+                    done.countDown();
+                }
+            });
+            try {
+                assertTrue(requested.await(5, TimeUnit.SECONDS));
+                caller.interrupt();
+                assertTrue(done.await(2, TimeUnit.SECONDS), "fetch remained blocked after interruption");
+                assertTrue(failure.get() instanceof IOException, String.valueOf(failure.get()));
+                assertEquals(Boolean.TRUE, interrupted.get());
+            } finally {
+                finish.countDown();
+                caller.join(5000);
+                remote.join(5000);
+            }
+        }
+    }
+
+    @Test
+    void chunkedResponseTrailersShareAnAggregateHeaderLimit() throws Exception {
+        try (ServerSocket listener = new ServerSocket(0, 1, InetAddress.getLoopbackAddress())) {
+            Thread remote = Thread.ofVirtual().start(() -> {
+                try (Socket socket = listener.accept()) {
+                    var reader = new java.io.BufferedReader(new java.io.InputStreamReader(socket.getInputStream(),
+                            StandardCharsets.US_ASCII));
+                    String header;
+                    do {
+                        header = reader.readLine();
+                    } while (header != null && !header.isEmpty());
+                    String response = "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n0\r\n"
+                            + ("X-Fill: " + "x".repeat(1024) + "\r\n").repeat(100) + "\r\n";
+                    socket.getOutputStream().write(response.getBytes(StandardCharsets.US_ASCII));
+                } catch (IOException e) {
+                    return;
+                }
+            });
+            try {
+                IOException error = assertThrows(IOException.class,
+                        () -> WebAssets.fetch("http://127.0.0.1:" + listener.getLocalPort() + "/", LOCAL));
+                assertTrue(error.getMessage().contains("trailer"), error.toString());
+            } finally {
+                remote.join(5000);
+            }
+        }
     }
 
     @Test

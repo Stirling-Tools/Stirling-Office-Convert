@@ -558,7 +558,8 @@ same for sans and mono), so a server prints them with the faces WeasyPrint would
 installed they fall back to Times New Roman, Arial and Courier New or their look-alikes. Web fonts (`@font-face`) are drawn from `data:` URIs, and from
 linked files only through the same opt-ins as pictures: TrueType, and WOFF 1 holding TrueType; WOFF 2 and
 PostScript-outline (CFF) fonts fall back to an installed font with a warning. A face is used under its CSS family
-name, weight and style. `::before` and `::after` content is drawn: strings, `attr()`, quotes, `leader()` (a dotted, solid or
+name, weight and style. A font is limited to 32 MiB after expanding its tables, with 128 MiB of accepted web-font
+data per page; an invalid or unusable source falls through to the next CSS source. `::before` and `::after` content is drawn: strings, `attr()`, quotes, `leader()` (a dotted, solid or
 spaced leader to the right edge) and `target-counter(attr(href), page)`, which converts the page twice to learn the
 page of each target; `counter()` and `counters()` with `counter-reset` and `counter-increment`, scoped to the
 element, its descendants and its following siblings as CSS defines. `hyphens: auto` hyphenates English text (`lang="en"`, any
@@ -583,7 +584,10 @@ metadata such as `169.254.169.254`), multicast or reserved, in its IPv4, IPv6, I
 form, and the connection goes to the very address that was checked, so a second DNS answer cannot redirect it.
 Link-local, metadata, multicast and reserved addresses stay refused with `privateAddresses`. Fetching stops after
 60 s, 64 MB or 300 requests together (`timeout`, `maxBytes`, `maxRequests`); a `<base href>` on the page moves where
-its links resolve. A charset named by the server is kept by converting the page to UTF-8.
+its links resolve. The conversion timeout also covers the initial page fetch and linked resources; the separate
+web-access timeout remains active when the conversion timeout is disabled. Interruption closes a blocked connection.
+Request headers and response headers including chunked trailers are each limited to 64 KiB. A charset named by the
+server is kept by converting the page to UTF-8 unless a complete Unicode byte-order mark selects the encoding.
 
 An HTML file (not a URL) draws the `http`/`https` pictures, style sheets and fonts it links only when both
 `network(true)` and `linkedFromFiles(true)` are set and the caller passes `WebAssets.linkedFrom(localAssets, access)`

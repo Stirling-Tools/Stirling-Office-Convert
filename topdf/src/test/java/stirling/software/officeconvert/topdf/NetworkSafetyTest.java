@@ -72,7 +72,8 @@ class NetworkSafetyTest {
 
     private static final Map<String, List<String>> TOPDF_ALLOWED = Map.of(
             "stirling/software/officeconvert/topdf/WebAssets", List.of("uses java/net/InetAddress", "uses javax/net/",
-                    "uses java/net/IDN", "uses java/net/Socket", "uses java/net/InetSocketAddress",
+                    "uses java/net/IDN", "uses java/net/Socket", "uses java/nio/channels/SocketChannel",
+                    "uses java/net/InetSocketAddress",
                     "uses java/net/SocketAddress", "uses java/net/SocketTimeoutException", "uses java/net/Inet4Address",
                     "uses java/net/Inet6Address"));
 

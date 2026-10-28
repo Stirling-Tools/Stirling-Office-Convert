@@ -4,10 +4,12 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InterruptedIOException;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -15,6 +17,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
+import java.util.Map;
 import java.util.zip.Deflater;
 
 import org.apache.pdfbox.Loader;
@@ -154,4 +157,109 @@ class WebFontsTest {
         assertNull(WebFonts.renamed(new byte[64], "House Face", false, false));
         assertNull(WebFonts.sfnt("wOF2 not supported".getBytes(StandardCharsets.US_ASCII)));
     }
+
+    @Test
+    void anUnreadableTrueTypeSourceDoesNotHideTheNextValidSource() throws IOException {
+        byte[] malformed = ByteBuffer.allocate(12).putInt(0x00010000).array();
+        String bad = "data:font/ttf;base64," + Base64.getEncoder().encodeToString(malformed);
+        String good = "data:font/ttf;base64," + Base64.getEncoder().encodeToString(ttf());
+        Out out = convert("next-source", page("url(" + bad + ") format('truetype'), url(" + good
+                + ") format('truetype')"), OfficeToPdf.Options.defaults());
+        assertTrue(uses(out), out.fonts().toString());
+        assertTrue(out.text().contains("Webfont words here"), out.text());
+    }
+
+    @Test
+    void unsupportedWoff2AndPostscriptOutlinesWarnAndKeepReadableText() throws IOException {
+        for (String format : new String[] {"woff2", "opentype"}) {
+            int tag = format.equals("woff2") ? 0x774F4632 : 0x4F54544F;
+            byte[] program = ByteBuffer.allocate(64).putInt(tag).array();
+            String uri = "data:font/" + format + ";base64," + Base64.getEncoder().encodeToString(program);
+            Out out = convert("unsupported-" + format, page("url(" + uri + ") format('" + format + "')"),
+                    OfficeToPdf.Options.defaults());
+            assertFalse(uses(out), out.fonts().toString());
+            assertTrue(out.text().contains("Webfont words here"), out.text());
+            assertTrue(out.result().warnings().stream().anyMatch(w -> w.contains("@font-face")));
+        }
+    }
+
+
+    private static byte[] overlappingTables() {
+        int count = 256;
+        int offset = 12 + 16 * count;
+        int length = FontLibrary.MAX_DOCUMENT_FONT_BYTES / count + 1;
+        ByteBuffer out = ByteBuffer.allocate(offset + length);
+        out.putInt(0x00010000).putShort((short) count);
+        for (int i = 0; i < count; i++) {
+            String tag = i == 0 ? "head" : i == 1 ? "glyf" : String.format(java.util.Locale.ROOT, "t%03d", i);
+            out.position(12 + 16 * i);
+            out.put(tag.getBytes(StandardCharsets.US_ASCII)).putInt(0).putInt(offset).putInt(length);
+        }
+        return out.array();
+    }
+
+    @Test
+    void overlappingSfntTablesCannotExpandBeyondTheFontByteLimit() {
+        byte[] source = overlappingTables();
+        assertTrue(source.length < 140000);
+        assertTrue(WebFonts.renamed(source, "Bounded Face", false, false) == null, "expanded sfnt exceeded its byte budget");
+    }
+
+    @Test
+    void overlappingWoffTablesCannotExpandBeyondTheirDeclaredFontSize() {
+        byte[] source = woff(overlappingTables());
+        assertTrue(source.length < 140000);
+        assertTrue(WebFonts.woff(source) == null, "expanded WOFF exceeded its declared byte budget");
+    }
+
+
+    private static byte[] unusableFont() {
+        ByteBuffer bad = ByteBuffer.allocate(104);
+        bad.putInt(0x00010000).putShort((short) 2);
+        bad.position(12);
+        bad.put("head".getBytes(StandardCharsets.US_ASCII)).putInt(0).putInt(44).putInt(54);
+        bad.put("glyf".getBytes(StandardCharsets.US_ASCII)).putInt(0).putInt(100).putInt(4);
+        bad.putInt(56, 0x5F0F3CF5).putShort(62, (short) 1000);
+        return bad.array();
+    }
+
+    @Test
+    void aRenameableButUnusableFontDoesNotHideTheNextValidSource() throws IOException {
+        byte[] bad = unusableFont();
+        assertNotNull(WebFonts.renamed(bad, "Brandish Sans", false, false));
+        String broken = "data:font/ttf;base64," + Base64.getEncoder().encodeToString(bad);
+        String good = "data:font/ttf;base64," + Base64.getEncoder().encodeToString(ttf());
+        Out out = convert("unusable-source", page("url(" + broken + "), url(" + good + ")"),
+                OfficeToPdf.Options.defaults());
+        assertTrue(uses(out), out.fonts().toString());
+        assertTrue(out.text().contains("Webfont words here"), out.text());
+    }
+
+
+    @Test
+    void aBundledFamilyCannotMakeAnUnusableSourceLookUsable() throws IOException {
+        byte[] good = ttf();
+        String family = "Liberation Sans";
+        String broken = "data:font/ttf;base64," + Base64.getEncoder().encodeToString(unusableFont());
+        String source = "url(" + broken + "), url(data:font/ttf;base64," + Base64.getEncoder().encodeToString(good) + ")";
+        var face = new WebFonts.Face(Map.of("font-family", family, "src", source), "");
+        var loaded = WebFonts.load(List.of(face), new Linked(HtmlAssets.NONE), new ArrayList<>());
+        assertTrue(loaded.fonts().size() == 1);
+        assertTrue(java.util.Arrays.equals(WebFonts.renamed(good, family, false, false), loaded.fonts().getFirst()));
+    }
+
+
+    @Test
+    void cancelledFontLoadingStopsBeforeTryingSources() {
+        var face = new WebFonts.Face(Map.of("font-family", "Brandish Sans", "src", "url(unread.ttf)"), "");
+        Thread.currentThread().interrupt();
+        try {
+            assertThrows(InterruptedIOException.class,
+                    () -> WebFonts.load(List.of(face), new Linked(HtmlAssets.NONE), new ArrayList<>()));
+            assertTrue(Thread.currentThread().isInterrupted());
+        } finally {
+            Thread.interrupted();
+        }
+    }
+
 }

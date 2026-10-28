@@ -1,6 +1,7 @@
 package stirling.software.officeconvert.topdf.html;
 
 import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -14,6 +15,7 @@ import java.util.TreeMap;
 import java.util.zip.DataFormatException;
 import java.util.zip.Inflater;
 
+import stirling.software.officeconvert.extract.PdfFiles;
 import stirling.software.officeconvert.topdf.font.FontLibrary;
 
 final class WebFonts {
@@ -32,7 +34,7 @@ final class WebFonts {
 
     private WebFonts() {}
 
-    static Loaded load(List<Face> faces, Linked linked, List<String> warnings) {
+    static Loaded load(List<Face> faces, Linked linked, List<String> warnings) throws IOException {
         if (faces.isEmpty()) {
             return Loaded.NONE;
         }
@@ -41,6 +43,7 @@ final class WebFonts {
         long total = 0;
         boolean missed = false;
         for (Face face : faces) {
+            PdfFiles.stopIfInterrupted();
             String family = family(face.declarations().get("font-family"));
             String src = face.declarations().get("src");
             if (family == null || src == null) {
@@ -49,14 +52,16 @@ final class WebFonts {
             boolean bold = bold(face.declarations().get("font-weight"));
             String style = face.declarations().getOrDefault("font-style", "normal").toLowerCase(Locale.ROOT);
             boolean italic = style.startsWith("italic") || style.startsWith("oblique");
-            byte[] font = null;
+            byte[] renamed = null;
             for (String part : Css.splitTopLevel(src, ',')) {
-                font = source(part.strip(), face.base(), linked);
-                if (font != null) {
+                PdfFiles.stopIfInterrupted();
+                byte[] font = source(part.strip(), face.base(), linked);
+                renamed = font == null ? null : renamed(font, family, bold, italic);
+                if (renamed != null && usable(renamed, family, bold, italic)) {
                     break;
                 }
+                renamed = null;
             }
-            byte[] renamed = font == null ? null : renamed(font, family, bold, italic);
             if (renamed == null || total + renamed.length > 4L * FontLibrary.MAX_DOCUMENT_FONT_BYTES) {
                 missed = true;
                 continue;
@@ -65,11 +70,22 @@ final class WebFonts {
             fonts.add(renamed);
             families.add(family);
         }
+        PdfFiles.stopIfInterrupted();
         if (missed) {
             warnings.add("Some web fonts (@font-face) could not be used: only TrueType, and WOFF holding TrueType,"
                     + " from data: URIs or files the page may read are drawn; other text uses an installed font");
         }
         return fonts.isEmpty() ? Loaded.NONE : new Loaded(List.copyOf(fonts), Set.copyOf(families));
+    }
+
+    private static boolean usable(byte[] font, String family, boolean bold, boolean italic) {
+        try {
+            FontLibrary bundled = FontLibrary.of(List.of());
+            var face = bundled.withFonts(List.of(font)).exact(family, bold, italic);
+            return face != null && !face.sameProgram(bundled.exact(family, bold, italic));
+        } catch (RuntimeException invalid) {
+            return false;
+        }
     }
 
     static String family(String value) {
@@ -158,13 +174,16 @@ final class WebFonts {
                 return null;
             }
             TreeMap<String, byte[]> tables = new TreeMap<>();
+            long expanded = 12L + 16L * numTables;
             for (int i = 0; i < numTables; i++) {
                 int at = 44 + 20 * i;
                 String tag = new String(data, at, 4, StandardCharsets.ISO_8859_1);
                 long offset = b.getInt(at + 4) & 0xFFFFFFFFL;
                 long compLength = b.getInt(at + 8) & 0xFFFFFFFFL;
                 long origLength = b.getInt(at + 12) & 0xFFFFFFFFL;
-                if (offset + compLength > data.length || origLength > total || compLength > origLength) {
+                expanded += (origLength + 3) & ~3L;
+                if (offset + compLength > data.length || origLength > total || compLength > origLength
+                        || expanded > total || expanded > FontLibrary.MAX_DOCUMENT_FONT_BYTES) {
                     return null;
                 }
                 byte[] table;
@@ -243,6 +262,9 @@ final class WebFonts {
         }
         int flavor = ByteBuffer.wrap(sfnt).getInt(0);
         byte[] out = assemble(flavor, tables);
+        if (out == null) {
+            return null;
+        }
         int adjust = (int) (0xB1B0AFBAL - checksum(out, 0, out.length));
         int headAt = tableOffset(out, "head");
         if (headAt >= 0) {
@@ -259,12 +281,14 @@ final class WebFonts {
                 return null;
             }
             TreeMap<String, byte[]> tables = new TreeMap<>();
+            long expanded = 12L + 16L * n;
             for (int i = 0; i < n; i++) {
                 int at = 12 + 16 * i;
                 String tag = new String(sfnt, at, 4, StandardCharsets.ISO_8859_1);
                 long offset = b.getInt(at + 8) & 0xFFFFFFFFL;
                 long length = b.getInt(at + 12) & 0xFFFFFFFFL;
-                if (offset + length > sfnt.length) {
+                expanded += (length + 3) & ~3L;
+                if (offset + length > sfnt.length || expanded > FontLibrary.MAX_DOCUMENT_FONT_BYTES) {
                     return null;
                 }
                 byte[] t = new byte[(int) length];
@@ -279,11 +303,14 @@ final class WebFonts {
 
     private static byte[] assemble(int flavor, TreeMap<String, byte[]> tables) {
         int n = tables.size();
-        int size = 12 + 16 * n;
+        long size = 12L + 16L * n;
         for (byte[] t : tables.values()) {
-            size += (t.length + 3) & ~3;
+            size += (t.length + 3L) & ~3L;
+            if (size > FontLibrary.MAX_DOCUMENT_FONT_BYTES) {
+                return null;
+            }
         }
-        ByteBuffer out = ByteBuffer.allocate(size);
+        ByteBuffer out = ByteBuffer.allocate((int) size);
         int entrySelector = 31 - Integer.numberOfLeadingZeros(n);
         int searchRange = 16 << entrySelector;
         out.putInt(flavor).putShort((short) n).putShort((short) searchRange).putShort((short) entrySelector)

@@ -13,6 +13,7 @@ import java.net.Socket;
 import java.net.SocketTimeoutException;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.nio.channels.SocketChannel;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
@@ -211,6 +212,7 @@ public final class WebAssets implements HtmlAssets {
         try {
             return get(uri(reference), false).body();
         } catch (IOException | IllegalArgumentException e) {
+            OfficeToPdf.stopIfInterrupted();
             return null;
         }
     }
@@ -289,28 +291,44 @@ public final class WebAssets implements HtmlAssets {
             }
         }
         InetAddress target = addresses[0];
-        try (Socket plain = new Socket()) {
-            plain.connect(new InetSocketAddress(target, port), (int) Math.max(1, Math.min(remainingMillis(),
-                    CONNECT_TIMEOUT.toMillis())));
-            Socket socket = plain;
-            if (secure) {
-                SSLSocket ssl = (SSLSocket) tls.createSocket(plain, host, port, true);
-                SSLParameters params = ssl.getSSLParameters();
-                params.setEndpointIdentificationAlgorithm("HTTPS");
-                if (!literal(host)) {
-                    params.setServerNames(List.of(new SNIHostName(host)));
+        try (SocketChannel channel = SocketChannel.open()) {
+            Socket plain = channel.socket();
+            Thread expiry = Thread.ofVirtual().start(() -> {
+                try {
+                    long wait = deadline - System.nanoTime();
+                    if (wait > 0) {
+                        TimeUnit.NANOSECONDS.sleep(wait);
+                    }
+                    plain.close();
+                } catch (InterruptedException | IOException e) {
+                    return;
                 }
-                ssl.setSSLParameters(params);
-                socket = ssl;
+            });
+            try {
+                plain.connect(new InetSocketAddress(target, port), (int) Math.max(1, Math.min(remainingMillis(),
+                        CONNECT_TIMEOUT.toMillis())));
+                Socket socket = plain;
+                if (secure) {
+                    SSLSocket ssl = (SSLSocket) tls.createSocket(plain, host, port, true);
+                    SSLParameters params = ssl.getSSLParameters();
+                    params.setEndpointIdentificationAlgorithm("HTTPS");
+                    if (!literal(host)) {
+                        params.setServerNames(List.of(new SNIHostName(host)));
+                    }
+                    ssl.setSSLParameters(params);
+                    socket = ssl;
+                }
+                socket.setSoTimeout((int) Math.max(1, Math.min(Integer.MAX_VALUE, remainingMillis())));
+                if (socket instanceof SSLSocket ssl) {
+                    ssl.startHandshake();
+                }
+                OutputStream out = socket.getOutputStream();
+                out.write(request(u, host, port, secure).getBytes(StandardCharsets.ISO_8859_1));
+                out.flush();
+                return read(u, host, socket);
+            } finally {
+                expiry.interrupt();
             }
-            socket.setSoTimeout((int) Math.max(1, remainingMillis()));
-            if (socket instanceof SSLSocket ssl) {
-                ssl.startHandshake();
-            }
-            OutputStream out = socket.getOutputStream();
-            out.write(request(u, host, port, secure).getBytes(StandardCharsets.ISO_8859_1));
-            out.flush();
-            return read(u, host, socket);
         } catch (SocketTimeoutException e) {
             throw new IOException("The server did not answer within " + access.timeout().toSeconds() + " s", e);
         }
@@ -366,6 +384,9 @@ public final class WebAssets implements HtmlAssets {
             sb.append("Cookie: ").append(String.join("; ", pairs)).append("\r\n");
         }
         sb.append("\r\n");
+        if (sb.length() > MAX_HEADER_BYTES) {
+            throw new IOException("The request headers are too large");
+        }
         for (int i = 0; i < sb.length(); i++) {
             char c = sb.charAt(i);
             if (c > 0x7E || c < 0x20 && c != '\r' && c != '\n') {
@@ -416,7 +437,7 @@ public final class WebAssets implements HtmlAssets {
         byte[] body;
         String encoding = headers.getOrDefault("transfer-encoding", "").toLowerCase(Locale.ROOT);
         if (encoding.contains("chunked")) {
-            body = chunked(in);
+            body = chunked(in, headerBytes);
         } else if (headers.containsKey("content-length")) {
             long length;
             try {
@@ -478,7 +499,7 @@ public final class WebAssets implements HtmlAssets {
         return b.toString(StandardCharsets.ISO_8859_1);
     }
 
-    private byte[] chunked(InputStream in) throws IOException {
+    private byte[] chunked(InputStream in, int headerBytes) throws IOException {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         for (;;) {
             String size = line(in).split(";", 2)[0].strip();
@@ -493,6 +514,10 @@ public final class WebAssets implements HtmlAssets {
             }
             if (n == 0) {
                 for (String t = line(in); !t.isEmpty(); t = line(in)) {
+                    headerBytes += t.length() + 2;
+                    if (headerBytes > MAX_HEADER_BYTES) {
+                        throw new IOException("The response trailers are too large");
+                    }
                     checkDeadline();
                 }
                 return out.toByteArray();
@@ -539,6 +564,7 @@ public final class WebAssets implements HtmlAssets {
     }
 
     private long remainingMillis() throws IOException {
+        OfficeToPdf.stopIfInterrupted();
         long left = (deadline - System.nanoTime()) / 1_000_000;
         if (left <= 0) {
             throw new IOException("Fetching took longer than " + access.timeout().toSeconds() + " s");
@@ -568,8 +594,9 @@ public final class WebAssets implements HtmlAssets {
                 }
             }
         }
-        boolean bom = body.length >= 2 && ((body[0] & 0xFF) == 0xEF || (body[0] & 0xFF) == 0xFE
-                || (body[0] & 0xFF) == 0xFF);
+        boolean bom = body.length >= 3 && (body[0] & 0xFF) == 0xEF && (body[1] & 0xFF) == 0xBB
+                && (body[2] & 0xFF) == 0xBF || body.length >= 2 && ((body[0] & 0xFF) == 0xFE
+                && (body[1] & 0xFF) == 0xFF || (body[0] & 0xFF) == 0xFF && (body[1] & 0xFF) == 0xFE);
         if (declared == null || bom || declared.equals(StandardCharsets.UTF_8)) {
             return body;
         }
