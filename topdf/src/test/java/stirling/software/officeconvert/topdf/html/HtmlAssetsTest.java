@@ -2,6 +2,7 @@ package stirling.software.officeconvert.topdf.html;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -291,19 +292,37 @@ class HtmlAssetsTest {
 
     @Test
     void oneLinkedSvgDrawnManyTimesIsParsedOnce() throws IOException {
-        StringBuilder svg = new StringBuilder("<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10'>");
+        StringBuilder svg = new StringBuilder("<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10'>"
+                + "<rect id='mark' width='10' height='10' fill='#2a6'/>");
         while (svg.length() < (2 << 20) - 200) {
             svg.append("<g><desc>padding padding padding padding padding</desc></g>");
         }
-        svg.append("<rect width='10' height='10' fill='#2a6'/></svg>");
+        svg.append("</svg>");
+        byte[] bytes = utf8(svg.toString());
+        List<String> reads = new ArrayList<>();
+        List<String> warnings = new ArrayList<>();
+        HtmlImages images = new HtmlImages(null, warnings, new Linked(reference -> {
+            reads.add(reference);
+            return reference.equals("icon.svg") ? bytes : null;
+        }));
+        HtmlImages.Source first = images.source("icon.svg");
+        assertNotNull(first);
+        assertNotNull(first.svg());
+        assertNotNull(first.ids().get("mark"));
+        for (int i = 0; i < 1_000; i++) {
+            HtmlImages.Source next = images.source("./icon.svg?v=" + i);
+            assertNotNull(next);
+            assertTrue(first.svg() == next.svg(), "The linked SVG was reparsed for reference " + i);
+            assertTrue(first.ids() == next.ids(), "The linked SVG IDs were rebuilt for reference " + i);
+        }
+        assertEquals(List.of("icon.svg"), reads);
+        assertTrue(warnings.isEmpty(), warnings.toString());
         Map<String, byte[]> entries = new LinkedHashMap<>();
         entries.put("index.html", utf8("<p>Icons</p>" + "<img src='icon.svg'>".repeat(1_000)));
-        entries.put("icon.svg", utf8(svg.toString()));
-        long start = System.nanoTime();
+        entries.put("icon.svg", bytes);
         Pdf pdf = convert(zip("icons.zip", entries), packages());
-        long millis = (System.nanoTime() - start) / 1_000_000;
         assertTrue(pdf.text().contains("Icons"));
-        assertTrue(millis < 8_000, millis + " ms");
+        assertTrue(pdf.images() > 0);
     }
 
     @Test
