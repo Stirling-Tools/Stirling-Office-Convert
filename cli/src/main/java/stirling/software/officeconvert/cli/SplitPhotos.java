@@ -7,8 +7,12 @@ import java.nio.file.InvalidPathException;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
 import java.util.regex.Pattern;
 
 import stirling.software.officeconvert.photosplit.PhotoSplitter;
@@ -30,6 +34,7 @@ final class SplitPhotos {
         Path output = null;
         boolean quiet = false;
         PhotoSplitter.Options options = PhotoSplitter.Options.defaults();
+        List<String> bases;
         try {
             for (int i = 0; i < args.length; i++) {
                 String a = args[i];
@@ -62,8 +67,9 @@ final class SplitPhotos {
             if (output != null && Files.exists(output) && !Files.isDirectory(output)) {
                 throw new Usage("-o names the folder for the photos; " + output + " is a file");
             }
+            bases = bases(inputs, output);
             if (options.overwrite()) {
-                protectInputs(inputs, output);
+                protectInputs(inputs, bases, output);
             }
         } catch (Usage | IllegalArgumentException e) {
             System.err.println("office-convert " + COMMAND + ": " + e.getMessage());
@@ -71,14 +77,15 @@ final class SplitPhotos {
             return 2;
         }
         int failures = 0;
-        for (Path in : inputs) {
-            Path dir = output != null ? output : in.toAbsolutePath().getParent();
+        for (int i = 0; i < inputs.size(); i++) {
+            Path in = inputs.get(i);
+            Path dir = folder(in, output);
             try {
                 if (Files.isDirectory(in)) {
                     throw new IOException("is a folder; give the scans themselves");
                 }
                 long start = System.nanoTime();
-                List<Path> photos = PhotoSplitter.split(in, dir, options);
+                List<Path> photos = PhotoSplitter.split(in, dir, bases.get(i), options);
                 long ms = (System.nanoTime() - start) / 1_000_000;
                 if (photos.isEmpty()) {
                     System.err.println("FAIL " + in + ": no photos found");
@@ -111,18 +118,51 @@ final class SplitPhotos {
         return args[i];
     }
 
-    private static void protectInputs(List<Path> inputs, Path output) throws Usage {
+    private static Path folder(Path input, Path output) {
+        return output != null ? output : input.toAbsolutePath().getParent();
+    }
+
+    private static List<String> bases(List<Path> inputs, Path output) {
+        List<String> bases = new ArrayList<>();
+        Map<String, Integer> counts = new HashMap<>();
         for (Path input : inputs) {
+            String base = input.getFileName() == null ? "" : PhotoSplitter.baseName(input);
+            bases.add(base);
+            counts.merge(key(input, output, base), 1, Integer::sum);
+        }
+        Set<String> used = new HashSet<>();
+        for (int i = 0; i < inputs.size(); i++) {
+            Path input = inputs.get(i);
+            String base = bases.get(i);
+            if (input.getFileName() == null) {
+                continue;
+            }
+            if (counts.get(key(input, output, base)) > 1) {
+                base = input.getFileName().toString();
+            }
+            String unique = base;
+            for (int n = 2; !used.add(key(input, output, unique)) && n < 10_000; n++) {
+                unique = base + " (" + n + ")";
+            }
+            bases.set(i, unique);
+        }
+        return bases;
+    }
+
+    private static String key(Path input, Path output, String base) {
+        Path folder = folder(input, output);
+        return Targets.key(folder == null ? Path.of(base) : folder.resolve(base));
+    }
+
+    private static void protectInputs(List<Path> inputs, List<String> bases, Path output) throws Usage {
+        for (int i = 0; i < inputs.size(); i++) {
+            Path input = inputs.get(i);
             Path name = input.getFileName();
-            Path folder = output == null ? input.toAbsolutePath().getParent() : output;
+            Path folder = folder(input, output);
             if (name == null || folder == null) {
                 continue;
             }
-            String base = name.toString();
-            int dot = base.lastIndexOf('.');
-            if (dot > 0) {
-                base = base.substring(0, dot);
-            }
+            String base = bases.get(i);
             Pattern targetName = Pattern.compile(Pattern.quote(base + "_") + "[1-9][0-9]*\\.png",
                     Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
             Path destination = canonical(folder);
@@ -201,7 +241,8 @@ final class SplitPhotos {
                         + System.lineSeparator()
                         + "Finds the photos on a flatbed scan and writes each as name_1.png, name_2.png and so on, in the scan's"
                         + " folder unless -o names another. Every page of a PDF is drawn at --dpi (default 300) and searched, as is"
-                        + " every page of a TIFF; numbering continues across pages."
+                        + " every page of a TIFF; numbering continues across pages. Scans given together that would share a"
+                        + " name keep their extension in it, as name.jpg_1.png."
                         + System.lineSeparator()
                         + "--method straighten (default) cuts each photo out along its edges and turns it level, in reading order."
                         + " --method script reproduces Stirling-PDF's split_photos.py: the upright box around each photo, turned"

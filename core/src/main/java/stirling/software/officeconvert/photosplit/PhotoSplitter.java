@@ -141,11 +141,21 @@ public final class PhotoSplitter {
 
     public static List<Path> split(Path input, Path outputDirectory, Options options) throws IOException {
         Objects.requireNonNull(input, "input");
+        return split(input, outputDirectory, baseName(input), options);
+    }
+
+    public static List<Path> split(Path input, Path outputDirectory, String baseName, Options options) throws IOException {
+        Objects.requireNonNull(input, "input");
         Objects.requireNonNull(outputDirectory, "outputDirectory");
+        Objects.requireNonNull(baseName, "baseName");
         Objects.requireNonNull(options, "options");
+        if (baseName.isEmpty() || baseName.indexOf('/') >= 0 || baseName.indexOf('\\') >= 0
+                || baseName.indexOf('\0') >= 0) {
+            throw new IllegalArgumentException("baseName must be a plain file name, was '" + baseName + "'");
+        }
         try {
             checkpoint();
-            return splitFile(input, outputDirectory, options);
+            return splitFile(input, outputDirectory, baseName, options);
         } catch (CancellationException stopped) {
             InterruptedIOException error = new InterruptedIOException("Photo splitting interrupted");
             error.initCause(stopped);
@@ -161,9 +171,8 @@ public final class PhotoSplitter {
         }
     }
 
-    private static List<Path> splitFile(Path input, Path outputDirectory, Options options) throws IOException {
+    private static List<Path> splitFile(Path input, Path outputDirectory, String base, Options options) throws IOException {
         Files.createDirectories(outputDirectory);
-        String base = baseName(input);
         List<Path> written = new ArrayList<>();
         if (isPdf(input)) {
             try (PDDocument document = PdfFiles.open(input, null)) {
@@ -370,7 +379,7 @@ public final class PhotoSplitter {
                 || head.startsWith("RIFF") && head.startsWith("WEBP", 8);
     }
 
-    private static String baseName(Path input) {
+    public static String baseName(Path input) {
         String name = input.getFileName().toString();
         int dot = name.lastIndexOf('.');
         return dot > 0 ? name.substring(0, dot) : name;
