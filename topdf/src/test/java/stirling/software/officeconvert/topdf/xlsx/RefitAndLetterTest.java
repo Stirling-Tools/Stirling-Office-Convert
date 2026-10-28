@@ -59,6 +59,27 @@ class RefitAndLetterTest {
     }
 
     @Test
+    void aLargerFontGrowsARowCalcStoredAFewPointsShort() throws Exception {
+        String styles = "<fonts count=\"2\"><font><sz val=\"11\"/><name val=\"Calibri\"/></font><font><b/>"
+                + "<sz val=\"14\"/><name val=\"Calibri\"/></font></fonts><fills count=\"1\"><fill><patternFill "
+                + "patternType=\"none\"/></fill></fills><borders count=\"1\"><border/></borders><cellStyleXfs "
+                + "count=\"1\"><xf/></cellStyleXfs><cellXfs count=\"2\"><xf/><xf fontId=\"1\" applyFont=\"1\"/>"
+                + "</cellXfs>";
+        String sheet = "<sheetData><row r=\"1\" ht=\"17.35\"><c r=\"A1\" s=\"1\" t=\"inlineStr\"><is><t>Title</t>"
+                + "</is></c></row><row r=\"2\">" + RawXlsx.inline("A2", "Below") + "</row></sheetData>";
+        XlsxTesting.convert(dir, "calc14.xlsx", new RawXlsx().styles(styles).sheet("S", sheet)
+                .workbookExtra("<fileVersion appName=\"Calc\"/>").bytes());
+        XlsxTesting.convert(dir, "other14.xlsx", new RawXlsx().styles(styles).sheet("S", sheet).bytes());
+        XlsxTesting.convert(dir, "excel14.xlsx", new RawXlsx().styles(styles).sheet("S", sheet)
+                .workbookExtra("<fileVersion appName=\"xl\"/>").bytes());
+        float calc = position(dir.resolve("calc14.xlsx.pdf"), "Below")[1];
+        float excel = position(dir.resolve("excel14.xlsx.pdf"), "Below")[1];
+        float other = position(dir.resolve("other14.xlsx.pdf"), "Below")[1];
+        assertTrue(calc > excel + 1, "grown " + calc + ", stored " + excel);
+        assertEquals(excel, other, 0.1);
+    }
+
+    @Test
     void windowsExcelRefitsTheRowsMacExcelSized() throws Exception {
         String words = "one two three four five six seven eight nine ten eleven twelve";
         String sheet = "<cols><col min=\"1\" max=\"1\" width=\"8\" customWidth=\"1\"/></cols><sheetData>"

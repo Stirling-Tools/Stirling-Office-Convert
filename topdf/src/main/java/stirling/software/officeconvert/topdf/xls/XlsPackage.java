@@ -15,6 +15,7 @@ import java.util.Set;
 import org.apache.poi.EncryptedDocumentException;
 import org.apache.poi.OldFileFormatException;
 import org.apache.poi.hpsf.SummaryInformation;
+import org.apache.poi.hssf.record.BOFRecord;
 import org.apache.poi.hssf.record.chart.ChartRecord;
 import org.apache.poi.hssf.record.ContinueRecord;
 import org.apache.poi.hssf.record.DrawingGroupRecord;
@@ -182,7 +183,8 @@ public final class XlsPackage {
             ChartLookup fonts = new ChartLookup(wb);
             chartStream = ChartStream.read(stream, fonts, fonts.autoColors(false), fonts.autoColors(true));
             StringBuilder book = new StringBuilder(Xml.HEAD).append("<workbook xmlns=\"").append(Xml.MAIN)
-                    .append("\" xmlns:r=\"").append(Xml.REL).append("\"><fileVersion appName=\"xl\"/>");
+                    .append("\" xmlns:r=\"").append(Xml.REL).append("\"><fileVersion appName=\"")
+                    .append(savedByExcel() ? "xl" : "Calc").append("\"/>");
             if (wb.getInternalWorkbook().isUsing1904DateWindowing()) {
                 book.append("<workbookPr date1904=\"1\"/>");
             }
@@ -335,6 +337,15 @@ public final class XlsPackage {
                 }
             }
             return found;
+        }
+
+        private boolean savedByExcel() {
+            for (Record r : wb.getInternalWorkbook().getRecords()) {
+                if (r instanceof BOFRecord bof) {
+                    return bof.getHistoryBitMask() != 0;
+                }
+            }
+            return false;
         }
 
         private byte[] drawingGroup() {

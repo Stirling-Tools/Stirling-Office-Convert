@@ -566,7 +566,8 @@ final class Grid {
         if (book.workbook().savedOnMac && wrapped) {
             return Math.min(409.5, fitted);
         }
-        if (empty && row.style() < 0 || !book.workbook().savedByExcel && fitted > stored + defaultSource / 4) {
+        if (empty && row.style() < 0 || !book.workbook().savedByExcel
+                && fitted > stored + (book.workbook().savedByCalc ? SCREEN_PX : defaultSource / 4)) {
             return Math.min(409.5, fitted);
         }
         return stored;
