@@ -15,6 +15,8 @@ import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
@@ -90,6 +92,43 @@ class MainTest {
                     "--allow-network", "--allow-private-addresses", "-q");
             assertEquals(0, linked.code(), linked.err());
             assertEquals(2, hits.get());
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
+    void aUrlRefusesThePdfRewritingOptionsBeforeFetching() throws Exception {
+        HttpServer server = HttpServer.create(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 0);
+        AtomicInteger hits = new AtomicInteger();
+        server.createContext("/", ex -> {
+            hits.incrementAndGet();
+            byte[] body = "<html><body><p>Served page</p></body></html>".getBytes(StandardCharsets.UTF_8);
+            ex.getResponseHeaders().add("Content-Type", "text/html; charset=utf-8");
+            ex.sendResponseHeaders(200, body.length);
+            try (OutputStream os = ex.getResponseBody()) {
+                os.write(body);
+            }
+        });
+        server.start();
+        try {
+            String url = "http://127.0.0.1:" + server.getAddress().getPort() + "/index.html";
+            Path pdf = dir.resolve("site.pdf");
+            List<List<String>> extras = List.of(List.of("--optimize"), List.of("--optimize", "--effort", "max"),
+                    List.of("--optimize", "--keep-private-data"), List.of("--effort", "fast"), List.of("--keep-private-data"),
+                    List.of("--line-art", "otsu"), List.of("--threshold", "40"), List.of("--pdfa", "2b"));
+            for (List<String> extra : extras) {
+                List<String> args = new ArrayList<>(List.of(url, "--allow-network", "--allow-private-addresses", "-o",
+                        pdf.toString()));
+                args.addAll(extra);
+                Result r = run(args.toArray(String[]::new));
+                assertEquals(2, r.code(), extra + ": " + r.err());
+                assertFalse(Files.exists(pdf), extra.toString());
+            }
+            assertEquals(0, hits.get());
+            assertUsage(run(url, "--allow-network", "--optimize", "-o", pdf.toString()), "--optimize");
+            assertUsage(run(url, "--allow-network", "--line-art", "otsu", "-o", pdf.toString()), "--line-art");
+            assertEquals(0, hits.get());
         } finally {
             server.stop(0);
         }

@@ -198,8 +198,11 @@ public final class Main {
             fonts = fontSet.directories(fontDirs).build();
             office = office.fonts(fonts).password(password);
             if (!urls.isEmpty()) {
+                if (pdfa != null || lineArtMethod != null || lineArtTuned || optimize || effort != null || keepPrivateData) {
+                    throw new Usage("--pdfa, --line-art and --optimize rewrite PDF input; a URL converts to PDF without them");
+                }
                 if (urls.size() > 1 || !inputs.isEmpty() || output == null || !"pdf".equals(extension(output))
-                        || pdfa != null || pagesGiven || formatGiven && !"pdf".equals(format)) {
+                        || pagesGiven || formatGiven && !"pdf".equals(format)) {
                     throw new Usage("a URL converts on its own to the PDF named by -o out.pdf");
                 }
                 if (!web.network()) {

@@ -3,6 +3,13 @@ package stirling.software.officeconvert.optimize;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.security.GeneralSecurityException;
+import java.security.MessageDigest;
+import java.security.SecureRandom;
+
+import javax.crypto.Cipher;
+import javax.crypto.spec.IvParameterSpec;
+import javax.crypto.spec.SecretKeySpec;
 
 import org.apache.pdfbox.cos.COSDictionary;
 import org.apache.pdfbox.cos.COSName;
@@ -15,6 +22,10 @@ import org.apache.pdfbox.pdmodel.encryption.SecurityHandler;
 import org.apache.pdfbox.pdmodel.encryption.StandardDecryptionMaterial;
 
 final class Encryption {
+
+    private static final byte[] AES_SALT = {0x73, 0x41, 0x6c, 0x54};
+
+    private static final SecureRandom RANDOM = new SecureRandom();
 
     private final SecurityHandler<ProtectionPolicy> handler;
 
@@ -72,14 +83,11 @@ final class Encryption {
     }
 
     boolean encrypts(COSStream source) {
-        return metadata || !COSName.METADATA.equals(source.getCOSName(COSName.TYPE));
+        return encrypts(COSName.METADATA.equals(source.getCOSName(COSName.TYPE)));
     }
 
-    byte[] stream(byte[] plain, int number, COSStream source) throws IOException {
-        if (!encrypts(source)) {
-            return plain;
-        }
-        return encrypt(plain, number);
+    boolean encrypts(boolean metadataStream) {
+        return metadata || !metadataStream;
     }
 
     byte[] encrypt(byte[] plain, int number) throws IOException {
@@ -93,5 +101,90 @@ final class Encryption {
         } finally {
             t.close();
         }
+    }
+
+    long encryptedLength(long plain) {
+        return handler.isAES() ? 16 + (plain / 16 + 1) * 16 : plain;
+    }
+
+    OutputStream encrypting(OutputStream out, int number) throws IOException {
+        byte[] iv = new byte[16];
+        if (handler.isAES()) {
+            RANDOM.nextBytes(iv);
+        }
+        return encrypting(out, number, iv);
+    }
+
+    OutputStream encrypting(OutputStream out, int number, byte[] iv) throws IOException {
+        byte[] file = handler.getEncryptionKey();
+        Cipher cipher;
+        try {
+            if (handler.isAES()) {
+                byte[] key = file.length == 32 ? file : objectKey(file, number, true);
+                cipher = Cipher.getInstance("AES/CBC/PKCS5Padding");
+                cipher.init(Cipher.ENCRYPT_MODE, new SecretKeySpec(key, "AES"), new IvParameterSpec(iv));
+                out.write(iv);
+            } else {
+                cipher = Cipher.getInstance("ARCFOUR");
+                cipher.init(Cipher.ENCRYPT_MODE, new SecretKeySpec(objectKey(file, number, false), "ARCFOUR"));
+            }
+        } catch (GeneralSecurityException e) {
+            throw new IOException("A stream could not be encrypted", e);
+        }
+        return new OutputStream() {
+            private boolean closed;
+
+            private byte[] buffer = new byte[0];
+
+            @Override
+            public void write(int b) throws IOException {
+                write(new byte[] {(byte) b}, 0, 1);
+            }
+
+            @Override
+            public void write(byte[] b, int off, int len) throws IOException {
+                int need = cipher.getOutputSize(len);
+                if (buffer.length < need) {
+                    buffer = new byte[need];
+                }
+                try {
+                    out.write(buffer, 0, cipher.update(b, off, len, buffer));
+                } catch (GeneralSecurityException e) {
+                    throw new IOException("A stream could not be encrypted", e);
+                }
+            }
+
+            @Override
+            public void close() throws IOException {
+                if (closed) {
+                    return;
+                }
+                closed = true;
+                try {
+                    out.write(cipher.doFinal());
+                } catch (GeneralSecurityException e) {
+                    throw new IOException("A stream could not be encrypted", e);
+                }
+            }
+        };
+    }
+
+    private static byte[] objectKey(byte[] file, int number, boolean aes) {
+        byte[] key = new byte[file.length + 5];
+        System.arraycopy(file, 0, key, 0, file.length);
+        key[file.length] = (byte) number;
+        key[file.length + 1] = (byte) (number >> 8);
+        key[file.length + 2] = (byte) (number >> 16);
+        MessageDigest md5;
+        try {
+            md5 = MessageDigest.getInstance("MD5");
+        } catch (GeneralSecurityException e) {
+            throw new IllegalStateException(e);
+        }
+        md5.update(key);
+        if (aes) {
+            md5.update(AES_SALT);
+        }
+        return java.util.Arrays.copyOf(md5.digest(), Math.min(key.length, 16));
     }
 }
