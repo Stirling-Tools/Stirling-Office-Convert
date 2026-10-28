@@ -419,6 +419,23 @@ class MainTest {
     }
 
     @Test
+    void fontsAreScannedOnlyForRunsThatDrawWithThem() throws Exception {
+        Path fonts = Files.createDirectories(dir.resolve("bad-fonts"));
+        Files.writeString(fonts.resolve("broken.ttf"), "not a font");
+        Path pdf = helloPdf(dir.resolve("hello.pdf"));
+        for (List<String> pass : List.of(List.of("--optimize"), List.of("--line-art", "otsu"),
+                List.of("-o", dir.resolve("hello.txt").toString()))) {
+            List<String> args = new ArrayList<>(List.of(pdf.toString(), "--fonts", fonts.toString(), "--overwrite"));
+            args.addAll(pass);
+            Result r = run(args.toArray(String[]::new));
+            assertEquals(0, r.code(), r.err());
+            assertFalse(r.err().contains("warning: fonts: "), pass + ": " + r.err());
+        }
+        Result archive = run(pdf.toString(), "--fonts", fonts.toString(), "--pdfa", "2b", "--overwrite");
+        assertTrue(archive.err().contains("warning: fonts: ") && archive.err().contains("broken.ttf"), archive.err());
+    }
+
+    @Test
     void messagesStayOnOneLine() {
         assertEquals("a b c", Main.oneLine("a\nb\u001bc"));
         assertFalse(Main.oneLine("x\u202Ey\r\nz").chars().anyMatch(c -> c < 32 || c == 0x202E));
