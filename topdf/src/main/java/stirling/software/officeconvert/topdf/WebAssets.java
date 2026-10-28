@@ -377,7 +377,7 @@ public final class WebAssets implements HtmlAssets {
         sb.append("Accept: */*\r\n");
         sb.append("Accept-Encoding: identity\r\n");
         sb.append("Connection: close\r\n");
-        Map<String, String> jar = access.cookies() ? cookies.get(host) : null;
+        Map<String, String> jar = access.cookies() ? cookies.get(cookieOrigin(host, secure)) : null;
         if (jar != null && !jar.isEmpty()) {
             List<String> pairs = new ArrayList<>();
             jar.forEach((k, v) -> pairs.add(k + "=" + v));
@@ -423,7 +423,7 @@ public final class WebAssets implements HtmlAssets {
             String name = h.substring(0, colon).strip().toLowerCase(Locale.ROOT);
             String value = h.substring(colon + 1).strip();
             if (name.equals("set-cookie")) {
-                keep(host, value);
+                keep(cookieOrigin(host, u.getScheme().equalsIgnoreCase("https")), value);
             } else {
                 headers.merge(name, value, (a, b) -> a + ", " + b);
             }
@@ -460,7 +460,11 @@ public final class WebAssets implements HtmlAssets {
         return new Response(u, code, headers.get("content-type"), null, body);
     }
 
-    private void keep(String host, String header) {
+    private static String cookieOrigin(String host, boolean secure) {
+        return (secure ? "https://" : "http://") + host;
+    }
+
+    private void keep(String origin, String header) {
         if (!access.cookies()) {
             return;
         }
@@ -469,7 +473,7 @@ public final class WebAssets implements HtmlAssets {
         if (eq <= 0) {
             return;
         }
-        Map<String, String> jar = cookies.computeIfAbsent(host, h -> new LinkedHashMap<>());
+        Map<String, String> jar = cookies.computeIfAbsent(origin, h -> new LinkedHashMap<>());
         if (jar.size() < 50 || jar.containsKey(pair.substring(0, eq).strip())) {
             jar.put(pair.substring(0, eq).strip(), pair.substring(eq + 1).strip());
         }
@@ -635,12 +639,17 @@ public final class WebAssets implements HtmlAssets {
             int z = b[2] & 0xFF;
             return x == 0 || x == 169 && y == 254 || x >= 224 || x == 192 && y == 0 && (z == 0 || z == 2)
                     || x == 198 && (y & 0xFE) == 18 || x == 198 && y == 51 && z == 100 || x == 203 && y == 0
-                    && z == 113 || x == 192 && y == 88 && z == 99;
+                    && z == 113 || x == 192 && y == 88 && z == 99
+                    || x == 100 && y == 100 && z == 100 && (b[3] & 0xFF) == 200;
         }
         byte[] v6 = a.getAddress();
         int w0 = (v6[0] & 0xFF) << 8 | v6[1] & 0xFF;
         int w1 = (v6[2] & 0xFF) << 8 | v6[3] & 0xFF;
         if (allZero(v6, 0, 16)) {
+            return true;
+        }
+        if (w0 == 0xFD00 && w1 == 0x0EC2 && allZero(v6, 4, 14) && v6[14] == 0x02
+                && (v6[15] & 0xFF) == 0x54) {
             return true;
         }
         return (w0 & 0xFFC0) == 0xFE80 || (w0 & 0xFFC0) == 0xFEC0 || (w0 & 0xFF00) == 0xFF00

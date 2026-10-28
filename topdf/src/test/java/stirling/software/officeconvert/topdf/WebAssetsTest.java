@@ -449,11 +449,14 @@ class WebAssetsTest {
     @Test
     void intranetFetchesStillRefuseLinkLocalMetadataAndReservedAddresses() throws IOException {
         for (InetAddress a : List.of(v4(127, 0, 0, 1), v4(10, 1, 2, 3), v4(192, 168, 0, 1), v6("::1"),
-                v6("fd12::1"))) {
+                v6("fd12::1"), v4(100, 100, 100, 199), v4(100, 100, 100, 201), v6("fd00:ec2::253"),
+                v6("fd00:ec2::255"))) {
             assertFalse(WebAssets.reserved(a), a.toString());
         }
         for (InetAddress a : List.of(v4(169, 254, 169, 254), mapped(169, 254, 169, 254), v6("fe80::1"),
-                v4(0, 0, 0, 0), v6("::"), v4(239, 1, 1, 1), v6("64:ff9b::a9fe:a9fe"))) {
+                v4(0, 0, 0, 0), v6("::"), v4(239, 1, 1, 1), v6("64:ff9b::a9fe:a9fe"),
+                v4(100, 100, 100, 200), mapped(100, 100, 100, 200), v6("64:ff9b::6464:64c8"),
+                v6("2002:6464:64c8::"), v6("fd00:ec2::254"))) {
             assertTrue(WebAssets.reserved(a), a.toString());
         }
     }
