@@ -33,6 +33,7 @@ import org.apache.pdfbox.rendering.ImageType;
 import org.apache.pdfbox.rendering.PDFRenderer;
 
 import stirling.software.officeconvert.extract.PdfFiles;
+import stirling.software.officeconvert.memory.Admission;
 
 public final class PhotoSplitter {
 
@@ -175,12 +176,19 @@ public final class PhotoSplitter {
                     if (pixels > MAX_PIXELS) {
                         throw new IOException(name + " would be drawn with " + pixels + " pixels; the limit is " + MAX_PIXELS);
                     }
-                    budget(name, peakBytes(pixels, 4 * pixels, false, options.method()));
-                    write(source(renderer.renderImageWithDPI(page, dpi, ImageType.RGB)), options, outputDirectory, base, written);
+                    long bytes = peakBytes(pixels, 4 * pixels, false, options.method());
+                    budget(name, bytes);
+                    Admission.Ticket ticket = Admission.jvm().enter(bytes);
+                    try {
+                        write(source(renderer.renderImageWithDPI(page, dpi, ImageType.RGB)), options, outputDirectory, base,
+                                written);
+                    } finally {
+                        ticket.close();
+                    }
                 }
             }
         } else {
-            write(source(readImage(input, options.method())), options, outputDirectory, base, written);
+            splitImage(input, options, outputDirectory, base, written);
         }
         checkpoint();
         return written;
@@ -287,7 +295,8 @@ public final class PhotoSplitter {
         }
     }
 
-    private static BufferedImage readImage(Path input, Method method) throws IOException {
+    private static void splitImage(Path input, Options options, Path dir, String base, List<Path> written)
+            throws IOException {
         try (InputStream in = Files.newInputStream(input); ImageInputStream stream = ImageIO.createImageInputStream(in)) {
             if (stream == null) {
                 throw new IOException("cannot read " + input);
@@ -303,12 +312,19 @@ public final class PhotoSplitter {
                 if (pixels > MAX_PIXELS) {
                     throw new IOException(input.getFileName() + " has " + pixels + " pixels; the limit is " + MAX_PIXELS);
                 }
+                long bytes = peakBytes(pixels, 4 * pixels, true, options.method());
                 Iterator<ImageTypeSpecifier> types = reader.getImageTypes(0);
                 if (types != null && types.hasNext()) {
                     ImageTypeSpecifier type = types.next();
-                    budget(input.getFileName().toString(), peakBytes(pixels, decodedBytes(type, pixels), converted(type), method));
+                    bytes = peakBytes(pixels, decodedBytes(type, pixels), converted(type), options.method());
+                    budget(input.getFileName().toString(), bytes);
                 }
-                return reader.read(0);
+                Admission.Ticket ticket = Admission.jvm().enter(bytes);
+                try {
+                    write(source(reader.read(0)), options, dir, base, written);
+                } finally {
+                    ticket.close();
+                }
             } finally {
                 reader.dispose();
             }
