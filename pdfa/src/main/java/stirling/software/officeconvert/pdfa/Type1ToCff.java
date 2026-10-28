@@ -7,8 +7,10 @@ import java.io.IOException;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -291,21 +293,30 @@ final class Type1ToCff {
             return null;
         }
         Hints hints = hints(seq);
-        if (hints != null && t.size() + hints.h.size() <= MAX_ARGS && hints.v.size() <= MAX_ARGS) {
-            if (!hints.h.isEmpty()) {
-                for (double v : hints.h) {
-                    t.arg(v);
+        GeneralPath glyph = cs.getPath();
+        Map<Integer, byte[]> masks = Map.of();
+        if (hints != null && t.size() + 2 * hints.h().size() <= MAX_ARGS && 2 * hints.v().size() <= MAX_ARGS) {
+            boolean masked = !hints.h().isEmpty() || !hints.v().isEmpty();
+            masked &= hints.groups().size() > 1 || overlap(hints.h()) || overlap(hints.v());
+            if (!masked || Arrays.equals(hints.segments(), segments(glyph))) {
+                if (masked) {
+                    masks = masks(hints);
                 }
-                t.op(1);
-            }
-            if (!hints.v.isEmpty()) {
-                for (double v : hints.v) {
-                    t.arg(v);
+                if (!hints.h().isEmpty()) {
+                    for (double v : encodeStems(hints.h())) {
+                        t.arg(v);
+                    }
+                    t.op(masked ? 18 : 1);
                 }
-                t.op(3);
+                if (!hints.v().isEmpty()) {
+                    for (double v : encodeStems(hints.v())) {
+                        t.arg(v);
+                    }
+                    t.op(masked ? 23 : 3);
+                }
             }
         }
-        path(t, cs.getPath());
+        path(t, glyph, masks);
         return t.op(14).bytes();
     }
 
@@ -325,14 +336,63 @@ final class Type1ToCff {
         return true;
     }
 
-    private record Hints(List<Double> h, List<Double> v) {}
+    private record Stem(boolean horizontal, double at, double size) {
+
+        double lo() {
+            return Math.min(at, at + size);
+        }
+
+        double hi() {
+            return Math.max(at, at + size);
+        }
+    }
+
+    private record Hints(List<Stem> h, List<Stem> v, Map<Integer, Set<Stem>> groups, int[] segments) {}
+
+    private static final class Segments {
+
+        private final List<Integer> types = new ArrayList<>();
+
+        private final Map<Integer, Set<Stem>> groups = new TreeMap<>();
+
+        private Set<Stem> pending;
+
+        void add(int type) {
+            int last = types.isEmpty() ? -1 : types.get(types.size() - 1);
+            if (!(type == PathIterator.SEG_MOVETO && last == PathIterator.SEG_MOVETO)
+                    && !(type == PathIterator.SEG_CLOSE && last == PathIterator.SEG_CLOSE)) {
+                types.add(type);
+            }
+            if (pending != null) {
+                groups.put(types.size() - 1, pending);
+                pending = null;
+            }
+        }
+
+        void draw(int type) {
+            add(types.isEmpty() ? PathIterator.SEG_MOVETO : type);
+        }
+
+        void close() {
+            if (!types.isEmpty()) {
+                add(PathIterator.SEG_CLOSE);
+            }
+            add(PathIterator.SEG_MOVETO);
+        }
+    }
 
     private static Hints hints(List<Object> seq) {
-        List<double[]> h = new ArrayList<>();
-        List<double[]> v = new ArrayList<>();
+        Set<Stem> h = new TreeSet<>(Type1ToCff::compare);
+        Set<Stem> v = new TreeSet<>(Type1ToCff::compare);
+        Segments segments = new Segments();
+        Set<Stem> group = new LinkedHashSet<>();
+        segments.pending = group;
         List<Number> stack = new ArrayList<>();
         double sbx = 0;
         boolean drawing = false;
+        boolean stemmed = false;
+        boolean flex = false;
+        int flexPoints = 0;
         for (Object o : seq) {
             if (o instanceof Number n) {
                 stack.add(n);
@@ -342,15 +402,6 @@ final class Type1ToCff {
                 return null;
             }
             CharStringCommand.Type1KeyWord k = c.getType1KeyWord();
-            boolean stem = k == CharStringCommand.Type1KeyWord.HSTEM || k == CharStringCommand.Type1KeyWord.VSTEM
-                    || k == CharStringCommand.Type1KeyWord.HSTEM3 || k == CharStringCommand.Type1KeyWord.VSTEM3;
-            if (drawing) {
-                if (stem) {
-                    return null;
-                }
-                stack.clear();
-                continue;
-            }
             if (k == CharStringCommand.Type1KeyWord.DIV) {
                 if (stack.size() < 2 || stack.get(stack.size() - 1).doubleValue() == 0) {
                     return null;
@@ -360,67 +411,152 @@ final class Type1ToCff {
                 stack.add(a / b);
                 continue;
             }
+            boolean stem = false;
+            int n = stack.size();
             switch (k) {
                 case HSBW -> {
-                    if (stack.size() < 2) {
+                    if (drawing || n < 2) {
                         return null;
                     }
                     sbx = stack.get(0).doubleValue();
                 }
-                case SBW, SEAC, CALLOTHERSUBR, SETCURRENTPOINT, POP, CALLSUBR -> {
+                case SBW, SEAC -> {
                     return null;
                 }
-                case HSTEM, VSTEM, HSTEM3, VSTEM3 -> {
-                    boolean horizontal = c.getType1KeyWord() == CharStringCommand.Type1KeyWord.HSTEM
-                            || c.getType1KeyWord() == CharStringCommand.Type1KeyWord.HSTEM3;
-                    int pairs = c.getType1KeyWord() == CharStringCommand.Type1KeyWord.HSTEM
-                            || c.getType1KeyWord() == CharStringCommand.Type1KeyWord.VSTEM ? 1 : 3;
-                    if (stack.size() != pairs * 2) {
+                case SETCURRENTPOINT, POP, CALLSUBR, RET -> {
+                    if (!drawing) {
                         return null;
                     }
+                }
+                case HSTEM, VSTEM, HSTEM3, VSTEM3 -> {
+                    boolean horizontal = k == CharStringCommand.Type1KeyWord.HSTEM
+                            || k == CharStringCommand.Type1KeyWord.HSTEM3;
+                    int pairs = k == CharStringCommand.Type1KeyWord.HSTEM || k == CharStringCommand.Type1KeyWord.VSTEM
+                            ? 1 : 3;
+                    if (n != pairs * 2) {
+                        return null;
+                    }
+                    if (drawing && !stemmed) {
+                        group = new LinkedHashSet<>();
+                        segments.pending = group;
+                    }
                     for (int p = 0; p < pairs; p++) {
-                        double at = stack.get(2 * p).doubleValue() + (horizontal ? 0 : sbx);
-                        double size = stack.get(2 * p + 1).doubleValue();
-                        (horizontal ? h : v).add(new double[] {at, size});
+                        Stem s = new Stem(horizontal, stack.get(2 * p).doubleValue() + (horizontal ? 0 : sbx),
+                                stack.get(2 * p + 1).doubleValue());
+                        (horizontal ? h : v).add(s);
+                        group.add(s);
+                    }
+                    stem = true;
+                }
+                case RMOVETO, HMOVETO, VMOVETO -> {
+                    drawing = true;
+                    if (n >= (k == CharStringCommand.Type1KeyWord.RMOVETO ? 2 : 1)) {
+                        if (flex) {
+                            flexPoints++;
+                        } else {
+                            segments.add(PathIterator.SEG_MOVETO);
+                        }
                     }
                 }
-                case RMOVETO, HMOVETO, VMOVETO, RLINETO, HLINETO, VLINETO, RRCURVETO, VHCURVETO, HVCURVETO,
-                        CLOSEPATH -> drawing = true;
+                case RLINETO, HLINETO, VLINETO -> {
+                    drawing = true;
+                    if (n >= (k == CharStringCommand.Type1KeyWord.RLINETO ? 2 : 1)) {
+                        segments.draw(PathIterator.SEG_LINETO);
+                    }
+                }
+                case RRCURVETO, VHCURVETO, HVCURVETO -> {
+                    drawing = true;
+                    if (n >= (k == CharStringCommand.Type1KeyWord.RRCURVETO ? 6 : 4)) {
+                        segments.draw(PathIterator.SEG_CUBICTO);
+                    }
+                }
+                case CLOSEPATH -> {
+                    drawing = true;
+                    segments.close();
+                }
+                case CALLOTHERSUBR -> {
+                    drawing = true;
+                    int which = n == 0 ? -1 : stack.get(0).intValue();
+                    if (which == 1) {
+                        flex = true;
+                    } else if (which == 0) {
+                        flex = false;
+                        if (flexPoints >= 7) {
+                            segments.draw(PathIterator.SEG_CUBICTO);
+                            segments.draw(PathIterator.SEG_CUBICTO);
+                            flexPoints = 0;
+                        }
+                    }
+                }
+                case ENDCHAR, DOTSECTION -> {
+                }
                 default -> {
+                    return null;
                 }
             }
+            stemmed = stem;
             stack.clear();
         }
-        List<Double> hs = encodeStems(h);
-        List<Double> vs = encodeStems(v);
-        return hs == null || vs == null ? null : new Hints(hs, vs);
+        return new Hints(new ArrayList<>(h), new ArrayList<>(v), segments.groups,
+                segments.types.stream().mapToInt(Integer::intValue).toArray());
     }
 
-    private static List<Double> encodeStems(List<double[]> stems) {
-        Map<String, double[]> unique = new LinkedHashMap<>();
-        for (double[] s : stems) {
-            unique.putIfAbsent(s[0] + "/" + s[1], s);
+    private static int compare(Stem a, Stem b) {
+        int c = Double.compare(a.lo(), b.lo());
+        if (c == 0) {
+            c = Double.compare(a.hi(), b.hi());
         }
-        List<double[]> sorted = new ArrayList<>(unique.values());
-        sorted.sort((a, b) -> Double.compare(Math.min(a[0], a[0] + a[1]), Math.min(b[0], b[0] + b[1])));
-        List<Double> out = new ArrayList<>();
+        return c == 0 ? Double.compare(a.at(), b.at()) : c;
+    }
+
+    private static boolean overlap(List<Stem> stems) {
         double end = Double.NEGATIVE_INFINITY;
-        double edge = 0;
-        for (double[] s : sorted) {
-            double lo = Math.min(s[0], s[0] + s[1]);
-            double hi = Math.max(s[0], s[0] + s[1]);
-            if (lo < end) {
-                return null;
+        for (Stem s : stems) {
+            if (s.lo() < end) {
+                return true;
             }
-            out.add(s[0] - edge);
-            out.add(s[1]);
-            edge = s[0] + s[1];
-            end = hi;
+            end = Math.max(end, s.hi());
+        }
+        return false;
+    }
+
+    private static List<Double> encodeStems(List<Stem> stems) {
+        List<Double> out = new ArrayList<>();
+        double edge = 0;
+        for (Stem s : stems) {
+            out.add(s.at() - edge);
+            out.add(s.size());
+            edge = s.at() + s.size();
         }
         return out;
     }
 
-    private static void path(Type2 t, GeneralPath path) {
+    private static int[] segments(GeneralPath path) {
+        List<Integer> types = new ArrayList<>();
+        float[] c = new float[6];
+        for (PathIterator it = path.getPathIterator(null); !it.isDone(); it.next()) {
+            types.add(it.currentSegment(c));
+        }
+        return types.stream().mapToInt(Integer::intValue).toArray();
+    }
+
+    private static Map<Integer, byte[]> masks(Hints hints) {
+        List<Stem> all = new ArrayList<>(hints.h());
+        all.addAll(hints.v());
+        Map<Integer, byte[]> masks = new HashMap<>();
+        for (Map.Entry<Integer, Set<Stem>> e : hints.groups().entrySet()) {
+            byte[] mask = new byte[(all.size() + 7) / 8];
+            for (int i = 0; i < all.size(); i++) {
+                if (e.getValue().contains(all.get(i))) {
+                    mask[i / 8] |= (byte) (0x80 >> i % 8);
+                }
+            }
+            masks.put(e.getKey(), mask);
+        }
+        return masks;
+    }
+
+    private static void path(Type2 t, GeneralPath path, Map<Integer, byte[]> masks) {
         PathIterator it = path.getPathIterator(null);
         float[] c = new float[6];
         double cx = 0;
@@ -430,9 +566,16 @@ final class Type1ToCff {
         boolean open = false;
         List<Double> batch = new ArrayList<>();
         int batchOp = 0;
-        while (!it.isDone()) {
+        byte[] active = null;
+        for (int index = 0; !it.isDone(); index++) {
             int seg = it.currentSegment(c);
             it.next();
+            byte[] mask = masks.get(index);
+            if (mask != null && !Arrays.equals(mask, active)) {
+                batchOp = flush(t, batch, batchOp);
+                t.op(19).mask(mask);
+                active = mask;
+            }
             if (seg == PathIterator.SEG_QUADTO) {
                 double x1 = cx + 2.0 / 3 * (c[0] - cx);
                 double y1 = cy + 2.0 / 3 * (c[1] - cy);
@@ -554,6 +697,11 @@ final class Type1ToCff {
 
         int size() {
             return args;
+        }
+
+        Type2 mask(byte[] mask) {
+            out.writeBytes(mask);
+            return this;
         }
 
         Type2 op(int op) {
