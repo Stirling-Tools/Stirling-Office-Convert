@@ -42,6 +42,8 @@ final class Art {
 
     private static final long MAX_PIXELS = 3_000_000L;
 
+    private static final float SHADING_DPI = 96f;
+
     private final PDDocument document;
     private final ArtRenderer renderer;
     private final PlacedContent.MediaStore media;
@@ -161,15 +163,17 @@ final class Art {
         Set<Integer> orders = new HashSet<>();
         int first = Integer.MAX_VALUE;
         boolean blended = false;
+        boolean shading = true;
         for (Mark m : run) {
             orders.add(m.order());
             first = Math.min(first, m.order());
             blended |= m.blended();
+            shading &= m.kind() == Kind.SHADING;
         }
         if (blended) {
             backdrop(paint, box, first, orders);
         }
-        float scale = dpi / 72f;
+        float scale = (shading ? Math.min(dpi, SHADING_DPI) : dpi) / 72f;
         if ((double) box.width() * box.height() * scale * scale > MAX_PIXELS) {
             scale = (float) Math.sqrt(MAX_PIXELS / ((double) box.width() * box.height()));
         }
