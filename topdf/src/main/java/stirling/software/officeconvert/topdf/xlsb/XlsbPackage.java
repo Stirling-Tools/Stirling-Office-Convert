@@ -87,8 +87,8 @@ public final class XlsbPackage {
     }
 
     public static Outcome write(Path source, OutputStream out) throws IOException {
-        try (OfficeZip zip = OfficeZip.open(source)) {
-            return new XlsbPackage.Writer(zip, new Parts(out)).write();
+        try (OfficeZip zip = OfficeZip.open(source); Parts parts = new Parts(out)) {
+            return new XlsbPackage.Writer(zip, parts).write();
         }
     }
 

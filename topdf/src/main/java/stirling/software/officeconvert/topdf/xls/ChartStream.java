@@ -1,6 +1,7 @@
 package stirling.software.officeconvert.topdf.xls;
 
 import java.io.ByteArrayOutputStream;
+import java.io.EOFException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
@@ -59,11 +60,45 @@ final class ChartStream {
             return out;
         }
         try (InputStream in = root.createDocumentInputStream(doc)) {
+            if (!hasCharts(in)) {
+                return out;
+            }
+        } catch (RuntimeException ex) {
+            return out;
+        }
+        try (InputStream in = root.createDocumentInputStream(doc)) {
             out.scan(new RecordFactoryInputStream(in, true));
         } catch (RuntimeException ex) {
             return out;
         }
         return out;
+    }
+
+    private static boolean hasCharts(InputStream in) throws IOException {
+        byte[] head = new byte[4];
+        byte[] bof = new byte[4];
+        while (in.readNBytes(head, 0, 4) == 4) {
+            int sid = head[0] & 0xFF | (head[1] & 0xFF) << 8;
+            int len = head[2] & 0xFF | (head[3] & 0xFF) << 8;
+            if (sid == 0x002F) {
+                return true;
+            }
+            if (sid == 0x0809 && len >= 4) {
+                if (in.readNBytes(bof, 0, 4) < 4) {
+                    return false;
+                }
+                if ((bof[2] & 0xFF | (bof[3] & 0xFF) << 8) == BOF_CHART) {
+                    return true;
+                }
+                len -= 4;
+            }
+            try {
+                in.skipNBytes(len);
+            } catch (EOFException e) {
+                return false;
+            }
+        }
+        return false;
     }
 
     private void scan(RecordFactoryInputStream rs) throws IOException {

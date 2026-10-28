@@ -15,6 +15,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Calendar;
 import java.util.List;
 import java.util.function.Consumer;
@@ -29,7 +30,9 @@ import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
 import org.apache.pdfbox.rendering.PDFRenderer;
 import org.apache.pdfbox.text.PDFTextStripper;
 import org.apache.poi.common.usermodel.HyperlinkType;
+import org.apache.poi.ddf.EscherBSERecord;
 import org.apache.poi.ddf.EscherPropertyTypes;
+import org.apache.poi.ddf.EscherSimpleProperty;
 import org.apache.poi.hssf.record.DefaultColWidthRecord;
 import org.apache.poi.hssf.record.RecordBase;
 import org.apache.poi.hssf.record.UnknownRecord;
@@ -37,6 +40,7 @@ import org.apache.poi.hssf.record.crypto.Biff8EncryptionKey;
 import org.apache.poi.hssf.usermodel.HSSFCell;
 import org.apache.poi.hssf.usermodel.HSSFCellStyle;
 import org.apache.poi.hssf.usermodel.HSSFClientAnchor;
+import org.apache.poi.hssf.usermodel.HSSFConditionalFormattingRule;
 import org.apache.poi.hssf.usermodel.HSSFFont;
 import org.apache.poi.hssf.usermodel.HSSFHyperlink;
 import org.apache.poi.hssf.usermodel.HSSFPatriarch;
@@ -46,6 +50,7 @@ import org.apache.poi.hssf.usermodel.HSSFChildAnchor;
 import org.apache.poi.hssf.usermodel.HSSFShape;
 import org.apache.poi.hssf.usermodel.HSSFShapeGroup;
 import org.apache.poi.hssf.usermodel.HSSFSheet;
+import org.apache.poi.hssf.usermodel.HSSFSheetConditionalFormatting;
 import org.apache.poi.hssf.usermodel.HSSFSimpleShape;
 import org.apache.poi.hssf.usermodel.HSSFTextbox;
 import org.apache.poi.hssf.usermodel.HSSFWorkbook;
@@ -53,6 +58,10 @@ import org.apache.poi.hssf.util.HSSFColor;
 import org.apache.poi.poifs.filesystem.DirectoryEntry;
 import org.apache.poi.poifs.filesystem.POIFSFileSystem;
 import org.apache.poi.ss.usermodel.BorderStyle;
+import org.apache.poi.ss.usermodel.ColorScaleFormatting;
+import org.apache.poi.ss.usermodel.ComparisonOperator;
+import org.apache.poi.ss.usermodel.ConditionalFormattingThreshold;
+import org.apache.poi.ss.usermodel.ExtendedColor;
 import org.apache.poi.ss.usermodel.FillPatternType;
 import org.apache.poi.ss.usermodel.PrintSetup;
 import org.apache.poi.ss.usermodel.Workbook;
@@ -369,6 +378,50 @@ class XlsTest {
     }
 
     @Test
+    void anExcel97WorkbookInAStreamNamedBookStillConverts() throws Exception {
+        byte[] data = xls(wb -> wb.createSheet("Named").createRow(0).createCell(0).setCellValue("Book stream text"));
+        byte[] stream;
+        try (POIFSFileSystem fs = new POIFSFileSystem(new ByteArrayInputStream(data))) {
+            stream = fs.createDocumentInputStream("Workbook").readAllBytes();
+        }
+        ByteArrayOutputStream renamed = new ByteArrayOutputStream();
+        try (POIFSFileSystem fs = new POIFSFileSystem()) {
+            fs.createDocument(new ByteArrayInputStream(stream), "Book");
+            fs.writeFilesystem(renamed);
+        }
+        assertTrue(convert("book.xls", renamed.toByteArray()).all().contains("Book stream text"));
+    }
+
+    @Test
+    void aFixedSizeRecordWithTrailingBytesIsTrimmedNotFatal() throws Exception {
+        byte[] data = xls(wb -> wb.createSheet("Long").createRow(0).createCell(0).setCellValue("Survives"));
+        byte[] stream;
+        try (POIFSFileSystem fs = new POIFSFileSystem(new ByteArrayInputStream(data))) {
+            stream = fs.createDocumentInputStream("Workbook").readAllBytes();
+        }
+        ByteArrayOutputStream patched = new ByteArrayOutputStream();
+        int at = 0;
+        while (at + 4 <= stream.length) {
+            int sid = stream[at] & 0xFF | (stream[at + 1] & 0xFF) << 8;
+            int len = stream[at + 2] & 0xFF | (stream[at + 3] & 0xFF) << 8;
+            if (sid == 0x10) {
+                patched.write(new byte[] {0x10, 0, (byte) (len + 8), 0}, 0, 4);
+                patched.write(stream, at + 4, len);
+                patched.write(new byte[8], 0, 8);
+            } else {
+                patched.write(stream, at, 4 + len);
+            }
+            at += 4 + len;
+        }
+        ByteArrayOutputStream file = new ByteArrayOutputStream();
+        try (POIFSFileSystem fs = new POIFSFileSystem()) {
+            fs.createDocument(new ByteArrayInputStream(patched.toByteArray()), "Workbook");
+            fs.writeFilesystem(file);
+        }
+        assertTrue(convert("long.xls", file.toByteArray()).all().contains("Survives"));
+    }
+
+    @Test
     void theContentDecidesNotTheExtension() throws Exception {
         byte[] data = xls(wb -> wb.createSheet("One").createRow(0).createCell(0).setCellValue("From a stream"));
         ByteArrayOutputStream pdf = new ByteArrayOutputStream();
@@ -405,6 +458,292 @@ class XlsTest {
     }
 
     @Test
+    void conditionalFormatsComparingWithConstantsAreApplied() throws Exception {
+        byte[] data = xls(wb -> {
+            HSSFSheet s = wb.createSheet("Scores");
+            for (int i = 0; i < 6; i++) {
+                s.createRow(i).createCell(0).setCellValue(i * 10);
+            }
+            HSSFSheetConditionalFormatting cf = s.getSheetConditionalFormatting();
+            HSSFConditionalFormattingRule high = cf.createConditionalFormattingRule(ComparisonOperator.GE, "40");
+            high.createPatternFormatting().setFillBackgroundColor(HSSFColor.HSSFColorPredefined.RED.getIndex());
+            HSSFConditionalFormattingRule mid = cf.createConditionalFormattingRule(ComparisonOperator.BETWEEN, "10",
+                    "20");
+            mid.createPatternFormatting().setFillBackgroundColor(HSSFColor.HSSFColorPredefined.BLUE.getIndex());
+            HSSFConditionalFormattingRule byFormula = cf.createConditionalFormattingRule("$A$1>0");
+            byFormula.createPatternFormatting().setFillBackgroundColor(HSSFColor.HSSFColorPredefined.GREEN.getIndex());
+            cf.addConditionalFormatting(new CellRangeAddress[] {CellRangeAddress.valueOf("A1:A6")}, high, mid);
+            cf.addConditionalFormatting(new CellRangeAddress[] {CellRangeAddress.valueOf("A1:A6")}, byFormula);
+        });
+        Path in = Fixtures.write(dir, "cf.xls", data);
+        Path out = dir.resolve("cf.pdf");
+        OfficeToPdf.Result result = OfficeToPdf.convert(in, out, OfficeToPdf.Options.defaults());
+        assertTrue(hasColour(out, Color.RED), "40 and 50 are filled");
+        assertTrue(hasColour(out, Color.BLUE), "10 and 20 are filled");
+        assertFalse(hasColour(out, Color.GREEN), "a formula rule is never evaluated");
+        assertTrue(String.join(" ", result.warnings()).contains("conditional formatting"), result.warnings().toString());
+    }
+
+    @Test
+    void drawingFillAndLineOpacityIsPreserved() throws Exception {
+        for (boolean line : new boolean[] {false, true}) {
+            for (int opacity : new int[] {0, 32768, 65536}) {
+                byte[] data = xls(wb -> {
+                    HSSFSheet sheet = wb.createSheet("Opacity");
+                    sheet.createRow(0).createCell(0).setCellValue("Transparent shape");
+                    HSSFSimpleShape box = sheet.createDrawingPatriarch().createSimpleShape(
+                            new HSSFClientAnchor(0, 0, 0, 0, (short) 1, 2, (short) 5, 8));
+                    box.setShapeType(HSSFSimpleShape.OBJECT_TYPE_RECTANGLE);
+                    box.setFillColor(255, 0, 0);
+                    box.setNoFill(line);
+                    box.setLineStyle(line ? HSSFShape.LINESTYLE_SOLID : HSSFShape.LINESTYLE_NONE);
+                    box.setLineStyleColor(255, 0, 0);
+                    box.setLineWidth(HSSFShape.LINEWIDTH_ONE_PT * 6);
+                    box.getOptRecord().setEscherProperty(new EscherSimpleProperty(
+                            line ? EscherPropertyTypes.LINESTYLE__OPACITY : EscherPropertyTypes.FILL__FILLOPACITY,
+                            opacity));
+                });
+                String name = "opacity-" + line + "-" + opacity + ".xls";
+                Converted result = convert(name, data);
+                assertTrue(result.all().contains("Transparent shape"));
+                Path pdf = dir.resolve(name + ".pdf");
+                assertEquals(opacity == 65536, hasColour(pdf, Color.RED), "opaque red at " + opacity);
+                if (opacity == 32768) {
+                    assertTrue(hasColour(pdf, new Color(255, 127, 127)), "half-transparent shape blends with white");
+                }
+            }
+        }
+    }
+
+    @Test
+    void hiddenAndUnprintedShapesAreLeftOff() throws Exception {
+        int[][] shapes = {{255, 0, 0, 0x20002}, {0, 255, 0, 0x10000}, {0, 0, 255, 0x30001}};
+        byte[] data = xls(wb -> {
+            HSSFSheet s = wb.createSheet("Shapes");
+            s.createRow(0).createCell(0).setCellValue("Shaped");
+            HSSFPatriarch p = s.createDrawingPatriarch();
+            for (int i = 0; i < shapes.length; i++) {
+                HSSFSimpleShape box = p.createSimpleShape(new HSSFClientAnchor(0, 0, 0, 0, (short) 1, 2 + 4 * i,
+                        (short) 4, 5 + 4 * i));
+                box.setShapeType(HSSFSimpleShape.OBJECT_TYPE_RECTANGLE);
+                box.setFillColor(shapes[i][0], shapes[i][1], shapes[i][2]);
+                box.getOptRecord().setEscherProperty(new EscherSimpleProperty(EscherPropertyTypes.GROUPSHAPE__FLAGS,
+                        shapes[i][3]));
+            }
+        });
+        Path in = Fixtures.write(dir, "hidden.xls", data);
+        Path out = dir.resolve("hidden.pdf");
+        OfficeToPdf.convert(in, out, OfficeToPdf.Options.defaults());
+        assertFalse(hasColour(out, Color.RED), "a hidden shape is not drawn");
+        assertFalse(hasColour(out, Color.GREEN), "a shape set not to print is not drawn");
+        assertTrue(hasColour(out, Color.BLUE), "a printed shape is drawn");
+    }
+
+    @Test
+    void macintoshPictPicturesAreDrawn() throws Exception {
+        byte[] pict = {0, 0, 0, 0, 0, 0, 0, 40, 0, 40, 0, 0x11, 0x02, (byte) 0xFF, 0x0C, 0x00, (byte) 0xFF,
+            (byte) 0xFF, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x00, 0x1A, (byte) 0xFF,
+            (byte) 0xFF, 0, 0, 0, 0, 0x00, 0x31, 0, 0, 0, 0, 0, 40, 0, 40, 0x00, (byte) 0xFF};
+        byte[] data = xls(wb -> {
+            HSSFSheet s = wb.createSheet("Mac");
+            s.createRow(0).createCell(0).setCellValue("Picture");
+            int index = wb.addPicture(pict, Workbook.PICTURE_TYPE_EMF);
+            EscherBSERecord bse = wb.getInternalWorkbook().getBSERecord(index);
+            bse.setBlipTypeWin32((byte) 4);
+            bse.setBlipTypeMacOS((byte) 4);
+            bse.getBlipRecord().setRecordId((short) 0xF01C);
+            bse.getBlipRecord().setOptions((short) 0x5420);
+            s.createDrawingPatriarch().createPicture(new HSSFClientAnchor(0, 0, 0, 0, (short) 1, 2, (short) 4, 10),
+                    index);
+        });
+        Path in = Fixtures.write(dir, "pict.xls", data);
+        Path out = dir.resolve("pict.pdf");
+        OfficeToPdf.Result result = OfficeToPdf.convert(in, out, OfficeToPdf.Options.defaults());
+        assertFalse(String.join(" ", result.warnings()).contains("PICT"), result.warnings().toString());
+        assertTrue(hasColour(out, Color.RED), "the PICT rectangle is painted");
+    }
+
+    @Test
+    void checkBoxesAndOptionButtonsPrintWithTheirLabels() throws Exception {
+        byte[] data = xls(wb -> {
+            HSSFSheet s = wb.createSheet("Form");
+            s.createRow(0).createCell(0).setCellValue("Form");
+            HSSFPatriarch p = s.createDrawingPatriarch();
+            String[] labels = {"Tick me", "Pick me"};
+            for (int i = 0; i < labels.length; i++) {
+                HSSFSimpleShape box = p.createSimpleShape(new HSSFClientAnchor(0, 0, 0, 0, (short) 1, 2 + 3 * i,
+                        (short) 5, 3 + 3 * i));
+                box.setShapeType(HSSFSimpleShape.OBJECT_TYPE_RECTANGLE);
+                box.setString(new HSSFRichTextString(labels[i]));
+            }
+        });
+        byte[] stream;
+        try (POIFSFileSystem fs = new POIFSFileSystem(new ByteArrayInputStream(data))) {
+            stream = fs.createDocumentInputStream("Workbook").readAllBytes();
+        }
+        ByteArrayOutputStream patched = new ByteArrayOutputStream();
+        int objects = 0;
+        int at = 0;
+        while (at + 4 <= stream.length) {
+            int sid = stream[at] & 0xFF | (stream[at + 1] & 0xFF) << 8;
+            int len = stream[at + 2] & 0xFF | (stream[at + 3] & 0xFF) << 8;
+            byte[] body = Arrays.copyOfRange(stream, at + 4, at + 4 + len);
+            if (sid == 0xEC) {
+                for (int k = 0; k + 3 < body.length; k++) {
+                    if (body[k] == 0x12 && body[k + 1] == 0 && body[k + 2] == 0x0A && body[k + 3] == (byte) 0xF0) {
+                        body[k] = (byte) 0x92;
+                        body[k + 1] = 0x0C;
+                    }
+                }
+            }
+            if (sid == 0x5D) {
+                body[4] = (byte) (objects++ == 0 ? 0x0B : 0x0C);
+                byte[] cbls = {0x0A, 0, 0x0C, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+                byte[] grown = new byte[body.length + cbls.length];
+                System.arraycopy(body, 0, grown, 0, body.length - 4);
+                System.arraycopy(cbls, 0, grown, body.length - 4, cbls.length);
+                body = grown;
+            }
+            patched.write(new byte[] {(byte) sid, (byte) (sid >> 8), (byte) body.length, (byte) (body.length >> 8)},
+                    0, 4);
+            patched.write(body, 0, body.length);
+            at += 4 + len;
+        }
+        ByteArrayOutputStream file = new ByteArrayOutputStream();
+        try (POIFSFileSystem fs = new POIFSFileSystem()) {
+            fs.createDocument(new ByteArrayInputStream(patched.toByteArray()), "Workbook");
+            fs.writeFilesystem(file);
+        }
+        assertEquals(2, objects);
+        String text = convert("form.xls", file.toByteArray()).all();
+        assertTrue(text.contains("Tick me") && text.contains("Pick me"), text);
+    }
+
+    @Test
+    void bracesArrowsAndFlowChartShapesAreDrawn() throws Exception {
+        byte[] data = xls(wb -> {
+            HSSFSheet s = wb.createSheet("Shapes");
+            s.createRow(0).createCell(0).setCellValue("Shaped");
+            HSSFPatriarch p = s.createDrawingPatriarch();
+            int[] types = {87, 66, 110};
+            for (int i = 0; i < types.length; i++) {
+                HSSFSimpleShape shape = p.createSimpleShape(new HSSFClientAnchor(0, 0, 0, 0, (short) (1 + 3 * i), 2,
+                        (short) (3 + 3 * i), 8));
+                shape.setShapeType(types[i]);
+                shape.setLineStyleColor(255, 0, 0);
+                shape.setNoFill(true);
+            }
+        });
+        Path in = Fixtures.write(dir, "presets.xls", data);
+        Path out = dir.resolve("presets.pdf");
+        OfficeToPdf.Result result = OfficeToPdf.convert(in, out, OfficeToPdf.Options.defaults());
+        assertFalse(String.join(" ", result.warnings()).contains("could not be drawn"), result.warnings().toString());
+        assertTrue(hasColour(out, Color.RED));
+    }
+
+    @Test
+    void colourScalesAreDrawn() throws Exception {
+        byte[] data = xls(wb -> {
+            HSSFSheet s = wb.createSheet("Scales");
+            for (int i = 0; i < 6; i++) {
+                s.createRow(i).createCell(0).setCellValue(i);
+            }
+            HSSFSheetConditionalFormatting cf = s.getSheetConditionalFormatting();
+            HSSFConditionalFormattingRule scale = cf.createConditionalFormattingColorScaleRule();
+            ColorScaleFormatting cs = scale.getColorScaleFormatting();
+            cs.setNumControlPoints(2);
+            cs.getThresholds()[0].setRangeType(ConditionalFormattingThreshold.RangeType.MIN);
+            cs.getThresholds()[1].setRangeType(ConditionalFormattingThreshold.RangeType.MAX);
+            ((ExtendedColor) cs.getColors()[0]).setRGB(new byte[] {(byte) 255, 0, 0});
+            ((ExtendedColor) cs.getColors()[1]).setRGB(new byte[] {0, 0, (byte) 255});
+            cf.addConditionalFormatting(new CellRangeAddress[] {CellRangeAddress.valueOf("A1:A6")}, scale);
+        });
+        Path in = Fixtures.write(dir, "scales.xls", data);
+        Path out = dir.resolve("scales.pdf");
+        OfficeToPdf.convert(in, out, OfficeToPdf.Options.defaults());
+        assertTrue(hasColour(out, Color.RED), "the lowest value takes the first colour");
+        assertTrue(hasColour(out, Color.BLUE), "the highest value takes the last colour");
+    }
+
+    @Test
+    void themeColoursOfExcel2007CellFormatsAreUsed() throws Exception {
+        byte[] data = xls(wb -> {
+            HSSFSheet s = wb.createSheet("Themed");
+            HSSFCellStyle st = wb.createCellStyle();
+            st.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+            st.setFillForegroundColor(HSSFColor.HSSFColorPredefined.BLUE.getIndex());
+            HSSFCell c = s.createRow(1).createCell(1);
+            c.setCellValue("Accent");
+            c.setCellStyle(st);
+            byte[] ext = new byte[40];
+            ext[0] = 0x7D;
+            ext[1] = 0x08;
+            ext[14] = (byte) st.getIndex();
+            ext[18] = 1;
+            ext[20] = 4;
+            ext[22] = 20;
+            ext[24] = 3;
+            ext[28] = 4;
+            List<org.apache.poi.hssf.record.Record> records = wb.getInternalWorkbook().getRecords();
+            records.add(records.size() - 1, new UnknownRecord(0x087D, ext));
+        });
+        Path in = Fixtures.write(dir, "themed.xls", data);
+        Path out = dir.resolve("themed.pdf");
+        OfficeToPdf.convert(in, out, OfficeToPdf.Options.defaults());
+        assertTrue(hasColour(out, new Color(0x4F81BD)), "accent 1 of the Office 2007 theme");
+        assertFalse(hasColour(out, Color.BLUE), "not the palette approximation");
+    }
+
+    @Test
+    void anAutoShapeKeepsItsOutlineAndCentresItsText() throws Exception {
+        byte[] data = xls(wb -> {
+            HSSFSheet s = wb.createSheet("Shapes");
+            s.createRow(0).createCell(0).setCellValue("Shaped");
+            HSSFSimpleShape box = s.createDrawingPatriarch()
+                    .createSimpleShape(new HSSFClientAnchor(0, 0, 0, 0, (short) 1, 2, (short) 7, 12));
+            box.setShapeType(HSSFSimpleShape.OBJECT_TYPE_RECTANGLE);
+            box.setLineStyleColor(255, 0, 0);
+            box.setLineWidth(HSSFShape.LINEWIDTH_ONE_PT * 2);
+            box.setNoFill(true);
+            box.getOptRecord().removeEscherProperty(EscherPropertyTypes.LINESTYLE__LINEDASHING);
+            box.setString(new HSSFRichTextString("Mid"));
+        });
+        Path in = Fixtures.write(dir, "shape.xls", data);
+        Path out = dir.resolve("shape.pdf");
+        OfficeToPdf.convert(in, out, OfficeToPdf.Options.defaults());
+        try (PDDocument doc = Loader.loadPDF(out.toFile())) {
+            BufferedImage img = new PDFRenderer(doc).renderImage(0, 1f);
+            int[] red = bounds(img, rgb -> rgb == 0xFF0000);
+            assertTrue(red[2] > red[0], "the outline is drawn");
+            int[] text = bounds(img, rgb -> (rgb >> 16 & 0xFF) < 80 && (rgb >> 8 & 0xFF) < 80 && (rgb & 0xFF) < 80
+                    && rgb != 0xFF0000, red);
+            double boxMid = (red[0] + red[2]) / 2.0;
+            double textMid = (text[0] + text[2]) / 2.0;
+            assertTrue(Math.abs(boxMid - textMid) < 6, boxMid + " vs " + textMid);
+            assertTrue(Math.abs((red[1] + red[3]) / 2.0 - (text[1] + text[3]) / 2.0) < 6, "centred vertically");
+        }
+    }
+
+    private static int[] bounds(BufferedImage img, java.util.function.IntPredicate match) {
+        return bounds(img, match, new int[] {0, 0, img.getWidth() - 1, img.getHeight() - 1});
+    }
+
+    private static int[] bounds(BufferedImage img, java.util.function.IntPredicate match, int[] within) {
+        int[] b = {Integer.MAX_VALUE, Integer.MAX_VALUE, -1, -1};
+        for (int y = within[1] + 3; y <= within[3] - 3; y++) {
+            for (int x = within[0] + 3; x <= within[2] - 3; x++) {
+                if (match.test(img.getRGB(x, y) & 0xFFFFFF)) {
+                    b[0] = Math.min(b[0], x);
+                    b[1] = Math.min(b[1], y);
+                    b[2] = Math.max(b[2], x);
+                    b[3] = Math.max(b[3], y);
+                }
+            }
+        }
+        return b;
+    }
+
+    @Test
     void aSidewaysShapeInAGroupKeepsTheBoxItsAnchorShows() throws Exception {
         byte[] data = xls(wb -> {
             HSSFSheet s = wb.createSheet("Group");
@@ -438,6 +777,51 @@ class XlsTest {
                 }
             }
             assertTrue(right - left > 4 * (bottom - top), left + "," + top + " " + right + "," + bottom);
+        }
+    }
+
+    @Test
+    void aSidewaysTopLevelShapeKeepsTheBoxItsAnchorShows() throws Exception {
+        byte[] data = xls(wb -> {
+            HSSFSheet s = wb.createSheet("Line");
+            s.createRow(0).createCell(0).setCellValue("Turned");
+            HSSFSimpleShape line = s.createDrawingPatriarch()
+                    .createSimpleShape(new HSSFClientAnchor(0, 0, 0, 0, (short) 1, 6, (short) 9, 7));
+            line.setShapeType(HSSFSimpleShape.OBJECT_TYPE_LINE);
+            line.setLineStyleColor(255, 0, 0);
+            line.setLineWidth(HSSFShape.LINEWIDTH_ONE_PT * 4);
+            line.setRotationDegree((short) 90);
+        });
+        Path in = Fixtures.write(dir, "turned.xls", data);
+        Path out = dir.resolve("turned.pdf");
+        OfficeToPdf.convert(in, out, OfficeToPdf.Options.defaults());
+        try (PDDocument doc = Loader.loadPDF(out.toFile())) {
+            int[] b = bounds(new PDFRenderer(doc).renderImage(0, 1f), rgb -> rgb == 0xFF0000);
+            assertTrue(b[2] - b[0] > 4 * (b[3] - b[1]), b[0] + "," + b[1] + " " + b[2] + "," + b[3]);
+        }
+    }
+
+    @Test
+    void aSidewaysShapeCentredOnTheNextPageStillPrintsItsPartOnThisOne() throws Exception {
+        byte[] data = xls(wb -> {
+            HSSFSheet s = wb.createSheet("Wide");
+            HSSFRow r = s.createRow(0);
+            r.createCell(0).setCellValue("Start");
+            r.createCell(39).setCellValue("End");
+            HSSFSimpleShape line = s.createDrawingPatriarch()
+                    .createSimpleShape(new HSSFClientAnchor(0, 0, 0, 0, (short) 1, 6, (short) 39, 7));
+            line.setShapeType(HSSFSimpleShape.OBJECT_TYPE_LINE);
+            line.setLineStyleColor(255, 0, 0);
+            line.setLineWidth(HSSFShape.LINEWIDTH_ONE_PT * 4);
+            line.setRotationDegree((short) 90);
+        });
+        Path in = Fixtures.write(dir, "wide.xls", data);
+        Path out = dir.resolve("wide.pdf");
+        OfficeToPdf.convert(in, out, OfficeToPdf.Options.defaults());
+        try (PDDocument doc = Loader.loadPDF(out.toFile())) {
+            assertTrue(doc.getNumberOfPages() > 2, "pages " + doc.getNumberOfPages());
+            int[] b = bounds(new PDFRenderer(doc).renderImage(0, 1f), rgb -> rgb == 0xFF0000);
+            assertTrue(b[2] > b[0], "the first page shows the start of the line");
         }
     }
 

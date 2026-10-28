@@ -1,5 +1,6 @@
 package stirling.software.officeconvert.topdf.xls;
 
+import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
@@ -21,13 +22,13 @@ import org.apache.poi.hssf.record.DrawingRecord;
 import org.apache.poi.hssf.record.Record;
 import org.apache.poi.hssf.record.RecordBase;
 import org.apache.poi.hssf.record.SupBookRecord;
-import org.apache.poi.hssf.usermodel.HSSFPatriarch;
 import org.apache.poi.hssf.usermodel.HSSFPictureData;
 import org.apache.poi.hssf.usermodel.HSSFSheet;
 import org.apache.poi.hssf.usermodel.HSSFWorkbook;
 import org.apache.poi.poifs.filesystem.DirectoryEntry;
 import org.apache.poi.poifs.filesystem.DirectoryNode;
 import org.apache.poi.poifs.filesystem.Entry;
+import org.apache.poi.poifs.filesystem.POIFSFileSystem;
 import org.apache.poi.ss.util.CellRangeAddress;
 
 import stirling.software.officeconvert.memory.Admission;
@@ -67,10 +68,56 @@ public final class XlsPackage {
     }
 
     static Outcome write(DirectoryNode root, OutputStream out) throws IOException {
-        try (HSSFWorkbook wb = open(root)) {
-            return new XlsPackage.Writer(wb, root, new Parts(out)).write();
+        HSSFWorkbook wb = null;
+        POIFSFileSystem repaired = null;
+        boolean salvaged = false;
+        try {
+            wb = open(root);
+        } catch (IOException e) {
+            byte[] stream = e.getCause() instanceof RuntimeException ? Repair.stream(root) : null;
+            for (int level = 0; stream != null && wb == null && level < 2; level++) {
+                byte[] fixed = Repair.records(stream, level == 1);
+                if (fixed == null) {
+                    continue;
+                }
+                POIFSFileSystem fs = new POIFSFileSystem();
+                fs.createDocument(new ByteArrayInputStream(fixed), "Workbook");
+                try {
+                    wb = open(fs.getRoot());
+                    repaired = fs;
+                    salvaged = level == 1;
+                } catch (IOException again) {
+                    fs.close();
+                }
+            }
+            if (wb == null) {
+                throw e;
+            }
+        }
+        try (HSSFWorkbook book = wb; POIFSFileSystem fs = repaired; Parts parts = new Parts(out)) {
+            Outcome done = new XlsPackage.Writer(book, fs == null ? root : fs.getRoot(), root, parts).write();
+            if (!salvaged) {
+                return done;
+            }
+            List<String> warnings = new ArrayList<>(done.warnings());
+            warnings.add(DAMAGED);
+            return new Outcome(warnings, true);
         }
     }
+
+    static Outcome writeStream(byte[] stream, OutputStream out) throws IOException {
+        try (POIFSFileSystem fs = new POIFSFileSystem()) {
+            fs.createDocument(new ByteArrayInputStream(stream), "Workbook");
+            Outcome done = write(fs.getRoot(), out);
+            List<String> warnings = new ArrayList<>(done.warnings());
+            if (!warnings.contains(DAMAGED)) {
+                warnings.add(DAMAGED);
+            }
+            return new Outcome(warnings, true);
+        }
+    }
+
+    static final String DAMAGED = "The workbook is damaged; what could be recovered was converted";
 
     private static HSSFWorkbook open(DirectoryNode root) throws IOException {
         try {
@@ -90,6 +137,8 @@ public final class XlsPackage {
 
         private final HSSFWorkbook wb;
 
+        private final DirectoryNode stream;
+
         private final DirectoryNode root;
 
         private final Parts parts;
@@ -102,13 +151,13 @@ public final class XlsPackage {
 
         private final BlipGuard guard = new BlipGuard();
 
+        private final CondFormats conditional = new CondFormats();
+
         private boolean lost;
 
         private int charts;
 
         private int skipped;
-
-        private int pict;
 
         private boolean drawingsRefused;
 
@@ -116,8 +165,9 @@ public final class XlsPackage {
 
         private int chartParts;
 
-        Writer(HSSFWorkbook wb, DirectoryNode root, Parts parts) {
+        Writer(HSSFWorkbook wb, DirectoryNode stream, DirectoryNode root, Parts parts) {
             this.wb = wb;
+            this.stream = stream;
             this.root = root;
             this.parts = parts;
         }
@@ -130,7 +180,7 @@ public final class XlsPackage {
                 drawingsRefused = true;
             }
             ChartLookup fonts = new ChartLookup(wb);
-            chartStream = ChartStream.read(root, fonts, fonts.autoColors(false), fonts.autoColors(true));
+            chartStream = ChartStream.read(stream, fonts, fonts.autoColors(false), fonts.autoColors(true));
             StringBuilder book = new StringBuilder(Xml.HEAD).append("<workbook xmlns=\"").append(Xml.MAIN)
                     .append("\" xmlns:r=\"").append(Xml.REL).append("\"><fileVersion appName=\"xl\"/>");
             if (wb.getInternalWorkbook().isUsing1904DateWindowing()) {
@@ -164,7 +214,7 @@ public final class XlsPackage {
                 charts += Math.max(0, charts(sheet) - drawn);
                 boolean complete;
                 try (Parts.Part p = parts.open("xl/worksheets/sheet" + (i + 1) + ".xml")) {
-                    complete = part.write(parts, p, strings, drawing);
+                    complete = part.write(parts, p, strings, drawing, conditional(sheet));
                 }
                 if (!complete) {
                     lost = true;
@@ -191,12 +241,23 @@ public final class XlsPackage {
             }
             book.append("</workbook>");
             parts.put("xl/workbook.xml", book.toString());
-            parts.put("xl/styles.xml", StylesPart.write(wb));
+            XfExt ext = extended();
+            parts.put("xl/styles.xml", StylesPart.write(wb, conditional.styles(), ext));
+            String theme = ext == null ? null : ext.theme();
+            if (theme != null) {
+                parts.put("xl/theme/theme1.xml", theme);
+                types.append("<Override PartName=\"/xl/theme/theme1.xml\" ContentType=\"").append(CT)
+                        .append("theme+xml\"/>");
+            }
             strings.write(parts);
             int n = sheets;
             rels.append("<Relationship Id=\"rId").append(n + 1).append("\" Type=\"").append(Xml.REL)
                     .append("/styles\" Target=\"styles.xml\"/><Relationship Id=\"rId").append(n + 2)
                     .append("\" Type=\"").append(Xml.REL).append("/sharedStrings\" Target=\"sharedStrings.xml\"/>");
+            if (theme != null) {
+                rels.append("<Relationship Id=\"rId").append(n + 3).append("\" Type=\"").append(Xml.REL)
+                        .append("/theme\" Target=\"theme/theme1.xml\"/>");
+            }
             parts.put("xl/_rels/workbook.xml.rels", Xml.HEAD + "<Relationships xmlns=\"" + Xml.PKG_REL + "\">" + rels
                     + "</Relationships>");
             parts.put("docProps/core.xml", core());
@@ -209,6 +270,23 @@ public final class XlsPackage {
             return new Outcome(finalWarnings(), lost);
         }
 
+        private XfExt extended() {
+            try {
+                return XfExt.read(wb);
+            } catch (RuntimeException e) {
+                return null;
+            }
+        }
+
+        private String conditional(HSSFSheet sheet) throws IOException {
+            try {
+                return conditional.sheet(sheet);
+            } catch (RuntimeException e) {
+                conditional.skipped++;
+                return "";
+            }
+        }
+
         private List<String> finalWarnings() {
             List<String> out = new ArrayList<>(ActiveContent.describe(activeContent()));
             if (drawingsRefused) {
@@ -216,13 +294,16 @@ public final class XlsPackage {
                 out.add("Pictures and shapes were left out: a picture in the workbook would inflate past the"
                         + " converter's limit");
             }
+            if (conditional.skipped > 0) {
+                lost = true;
+                out.add("Left out " + conditional.skipped + " conditional formatting rules that are unsupported or exceed converter limits");
+            }
             if (charts > 0) {
+                lost = true;
                 out.add("Some charts could not be drawn (" + charts + " left out)");
             }
-            if (pict > 0) {
-                out.add("Macintosh PICT pictures are not supported (" + pict + " left out)");
-            }
             if (skipped > 0) {
+                lost = true;
                 out.add("Some drawing objects could not be drawn (" + skipped + " left out)");
             }
             out.addAll(warnings);
@@ -317,6 +398,10 @@ public final class XlsPackage {
 
         private String chartPart(BiffChart chart, StringBuilder types) throws IOException {
             String name = "chart" + ++chartParts + ".xml";
+            if (chart.limited()) {
+                lost = true;
+                warnings.add("A chart was limited to the first " + ChartRecords.MAX_POINTS + " data points per series");
+            }
             parts.put("xl/charts/" + name, ChartXml.write(chart));
             types.append("<Override PartName=\"/xl/charts/").append(name).append("\" ContentType=\"")
                     .append("application/vnd.openxmlformats-officedocument.drawingml.chart+xml\"/>");
@@ -337,8 +422,7 @@ public final class XlsPackage {
             List<ChartStream.Embedded> embedded = chartStream.embedded.getOrDefault(number - 1, List.of());
             List<String> chartTargets = new ArrayList<>();
             try {
-                HSSFPatriarch patriarch = sheet.getDrawingPatriarch();
-                boolean shapes = patriarch != null && d.read(patriarch, this::picture);
+                boolean shapes = d.read(sheet, this::picture);
                 for (ChartStream.Embedded e : embedded) {
                     int[] a = e.anchor();
                     if (a[0] == a[4] && a[1] == a[5] || a[2] == a[6] && a[3] == a[7]) {
@@ -357,7 +441,6 @@ public final class XlsPackage {
                 return null;
             } finally {
                 skipped += d.skipped;
-                pict += d.pict;
             }
             StringBuilder rels = new StringBuilder(Xml.HEAD).append("<Relationships xmlns=\"").append(Xml.PKG_REL)
                     .append("\">");
@@ -503,6 +586,7 @@ public final class XlsPackage {
                     case "wmf" -> "image/x-wmf";
                     case "bmp" -> "image/bmp";
                     case "tif" -> "image/tiff";
+                    case "pict" -> "image/pict";
                     default -> "application/octet-stream";
                 }).append("\"/>");
             }

@@ -480,6 +480,14 @@ final class Grid {
                 put(row, col, new CellEntry(row, col, f, recolor(text, d, false)));
             }
         }
+        for (Map.Entry<Long, Overlays.Bar> e : o.bars().entrySet()) {
+            int row = (int) (e.getKey() >> 16);
+            int col = (int) (e.getKey() & 0xFFFF);
+            CellEntry old = cell(row, col);
+            if (e.getValue().valueHidden() && old != null && old.text() != null) {
+                put(row, col, new CellEntry(row, col, old.format(), null));
+            }
+        }
     }
 
     private void put(int row, int col, CellEntry e) {
