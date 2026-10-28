@@ -142,7 +142,7 @@ final class OdtBody {
         };
         a.append(" fo:text-align=\"").append(align).append('"');
         if (p.align == Paragraph.Align.JUSTIFY) {
-            a.append(" fo:text-align-last=\"start\"");
+            a.append(" fo:text-align-last=\"start\" loext:word-spacing-minimum=\"75%\"");
         }
         if (p.bidi) {
             a.append(" style:writing-mode=\"rl-tb\"");
