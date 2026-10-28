@@ -6,6 +6,7 @@ final class IntStack {
 
     private int[] items = new int[1024];
     private int size;
+    private int pops;
 
     void push(int v) {
         if (size == items.length) {
@@ -15,6 +16,9 @@ final class IntStack {
     }
 
     int pop() {
+        if ((++pops & 0xFFFF) == 0) {
+            PhotoSplitter.checkpoint();
+        }
         return items[--size];
     }
 

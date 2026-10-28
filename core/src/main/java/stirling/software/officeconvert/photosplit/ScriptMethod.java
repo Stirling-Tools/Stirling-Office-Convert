@@ -10,6 +10,8 @@ final class ScriptMethod {
     private static final int CANNY_LOW = 50;
     private static final int CANNY_HIGH = 150;
     private static final int HOUGH_VOTES = 200;
+    private static final double ANALYSIS_PIXELS = 4_500_000;
+    private static final double ANALYSIS_SPAN = 8192;
 
     private ScriptMethod() {}
 
@@ -42,6 +44,12 @@ final class ScriptMethod {
             photos.add(PhotoSplitter.Photo.of(crop.toImage(), x, y, crop.width, crop.height, angle));
         }
         return photos;
+    }
+
+    static int analysisFactor(int w, int h) {
+        double byArea = Math.sqrt((double) w * h / ANALYSIS_PIXELS);
+        double bySpan = ((double) w + h) / ANALYSIS_SPAN;
+        return (int) Math.max(1, Math.ceil(Math.max(byArea, bySpan)));
     }
 
     static int background(ScanImage scan) {
@@ -85,9 +93,11 @@ final class ScriptMethod {
         return mask;
     }
 
-    private static double angle(ScanImage crop, int threshold) {
-        byte[] edges = Canny.edges(crop.luma(), crop.width, crop.height, CANNY_LOW, CANNY_HIGH);
-        float[] thetas = HoughLines.thetas(edges, crop.width, crop.height, HOUGH_VOTES);
+    static double angle(ScanImage crop, int threshold) {
+        int factor = analysisFactor(crop.width, crop.height);
+        ScanImage view = factor > 1 ? Source.of(crop).shrink(factor) : crop;
+        byte[] edges = Canny.edges(view.luma(), view.width, view.height, CANNY_LOW, CANNY_HIGH);
+        float[] thetas = HoughLines.thetas(edges, view.width, view.height, Math.max(1, HOUGH_VOTES / factor));
         if (thetas.length == 0) {
             return 0;
         }

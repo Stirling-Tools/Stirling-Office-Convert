@@ -23,6 +23,7 @@ final class OuterContours {
         List<Contour> found = new ArrayList<>();
         IntStack stack = new IntStack();
         for (int y = 0; y < h; y++) {
+            PhotoSplitter.checkpoint();
             for (int x = 0; x < w; x++) {
                 int i = y * w + x;
                 if (mask[i] != FOREGROUND) {
@@ -112,6 +113,7 @@ final class OuterContours {
     }
 
     private static void markOutside(byte[] mask, int w, int h) {
+        PhotoSplitter.checkpoint();
         IntStack stack = new IntStack();
         for (int x = 0; x < w; x++) {
             seed(mask, x, stack);

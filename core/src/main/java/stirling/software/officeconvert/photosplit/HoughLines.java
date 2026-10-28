@@ -5,6 +5,7 @@ import java.util.Arrays;
 final class HoughLines {
 
     private static final int ANGLES = 180;
+    static final long MAX_CELLS = 1L << 23;
 
     private HoughLines() {}
 
@@ -18,11 +19,16 @@ final class HoughLines {
             cos[n] = (float) Math.cos(ang);
             ang += (float) step;
         }
-        int numrho = 2 * (w + h) + 1;
+        long rho = 2L * w + 2L * h + 1;
+        if ((ANGLES + 2) * (rho + 2) > MAX_CELLS) {
+            return new float[0];
+        }
+        int numrho = (int) rho;
         int stride = numrho + 2;
         int offset = (numrho - 1) / 2;
         int[] accum = new int[(ANGLES + 2) * stride];
         for (int i = 0; i < h; i++) {
+            PhotoSplitter.checkpoint();
             for (int j = 0; j < w; j++) {
                 if (edges[i * w + j] == 0) {
                     continue;

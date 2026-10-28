@@ -89,6 +89,7 @@ final class Steps {
                 int[] sums = new int[n * SEGMENTS * 3];
                 int[] reg = new int[n];
                 for (int y = 0; y < bh; y += SUBSAMPLE) {
+                    PhotoSplitter.checkpoint();
                     int row = (region.minY + y) * scan.width + region.minX;
                     for (int x = 0; x < bw; x += SUBSAMPLE) {
                         if (region.mask[y * bw + x] == 0) {
@@ -187,6 +188,7 @@ final class Steps {
             int maxX = -1;
             int maxY = -1;
             for (int y = 0; y < bh; y++) {
+                PhotoSplitter.checkpoint();
                 for (int x = 0; x < bw; x++) {
                     if (region.mask[y * bw + x] != 0 && on(line, x, y, side)) {
                         minX = Math.min(minX, x);
@@ -202,6 +204,7 @@ final class Steps {
             int pw = maxX - minX + 1;
             byte[] sub = new byte[pw * (maxY - minY + 1)];
             for (int y = minY; y <= maxY; y++) {
+                PhotoSplitter.checkpoint();
                 for (int x = minX; x <= maxX; x++) {
                     if (region.mask[y * bw + x] != 0 && on(line, x, y, side)) {
                         sub[(y - minY) * pw + x - minX] = 1;

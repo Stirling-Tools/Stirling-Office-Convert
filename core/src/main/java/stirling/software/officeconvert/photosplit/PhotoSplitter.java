@@ -44,6 +44,15 @@ public final class PhotoSplitter {
 
         public Options {
             Objects.requireNonNull(method, "method");
+            if (tolerance < 0 || tolerance > 255) {
+                throw new IllegalArgumentException("tolerance must be 0 to 255, was " + tolerance);
+            }
+            if (minArea < 0) {
+                throw new IllegalArgumentException("minArea must be 0 or more, was " + minArea);
+            }
+            if (minContourArea < 0) {
+                throw new IllegalArgumentException("minContourArea must be 0 or more, was " + minContourArea);
+            }
             if (borderSize < 0) {
                 throw new IllegalArgumentException("borderSize must be 0 or more, was " + borderSize);
             }
@@ -242,8 +251,14 @@ public final class PhotoSplitter {
         try (InputStream in = Files.newInputStream(input)) {
             byte[] head = in.readNBytes(1024);
             String text = new String(head, StandardCharsets.ISO_8859_1);
-            return text.contains("%PDF-");
+            return !isImage(text) && text.contains("%PDF-");
         }
+    }
+
+    private static boolean isImage(String head) {
+        return head.startsWith("\u0089PNG\r\n\u001A\n") || head.startsWith("\u00FF\u00D8\u00FF") || head.startsWith("II*\0")
+                || head.startsWith("MM\0*") || head.startsWith("GIF87a") || head.startsWith("GIF89a") || head.startsWith("BM")
+                || head.startsWith("RIFF") && head.startsWith("WEBP", 8);
     }
 
     private static String baseName(Path input) {

@@ -135,9 +135,7 @@ final class EdgeFit {
         double[] rgb = new double[3];
         int used = 0;
         for (int i = 0; i < samples; i++) {
-            if ((i & 31) == 0) {
-                PhotoSplitter.checkpoint();
-            }
+            PhotoSplitter.checkpoint();
             double along = from + (to - from) * (i + 0.5) / samples;
             double edgeU = nu * half + tu * along;
             double edgeV = nv * half + tv * along;

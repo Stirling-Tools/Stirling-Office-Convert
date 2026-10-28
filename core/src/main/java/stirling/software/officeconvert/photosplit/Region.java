@@ -43,7 +43,7 @@ final class Region {
         IntStack stack = new IntStack();
         int[] pixels = new int[1024];
         for (int start = 0; start < image.length; start++) {
-            if ((start & 0x3FFFF) == 0) {
+            if ((start & 0xFFFF) == 0) {
                 PhotoSplitter.checkpoint();
             }
             if (image[start] != 1) {

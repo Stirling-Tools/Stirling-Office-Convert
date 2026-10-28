@@ -58,6 +58,7 @@ final class Pieces {
         int big = Integer.MAX_VALUE / 4;
         int[] d = new int[w * h];
         for (int y = 0; y < h; y++) {
+            PhotoSplitter.checkpoint();
             for (int x = 0; x < w; x++) {
                 int i = y * w + x;
                 if (mask[i] == 0) {
@@ -72,6 +73,7 @@ final class Pieces {
             }
         }
         for (int y = h - 1; y >= 0; y--) {
+            PhotoSplitter.checkpoint();
             for (int x = w - 1; x >= 0; x--) {
                 int i = y * w + x;
                 if (mask[i] == 0) {
@@ -91,11 +93,17 @@ final class Pieces {
     private static List<int[]> seeds(int[] dist, int w, int h, int r, int minSeed) {
         byte[] core = new byte[w * h];
         for (int i = 0; i < core.length; i++) {
+            if ((i & 0xFFFF) == 0) {
+                PhotoSplitter.checkpoint();
+            }
             core[i] = dist[i] > r ? (byte) 1 : 0;
         }
         List<int[]> out = new ArrayList<>();
         IntStack stack = new IntStack();
         for (int start = 0; start < core.length; start++) {
+            if ((start & 0xFFFF) == 0) {
+                PhotoSplitter.checkpoint();
+            }
             if (core[start] != 1) {
                 continue;
             }
@@ -142,6 +150,9 @@ final class Pieces {
             }
         }
         while (head < tail) {
+            if ((head & 0xFFFF) == 0) {
+                PhotoSplitter.checkpoint();
+            }
             int p = queue[head++];
             int px = p % w;
             int py = p / w;
@@ -162,6 +173,9 @@ final class Pieces {
             int maxX = -1;
             int maxY = -1;
             for (int i = 0; i < owner.length; i++) {
+                if ((i & 0xFFFF) == 0) {
+                    PhotoSplitter.checkpoint();
+                }
                 if (owner[i] == s) {
                     minX = Math.min(minX, i % w);
                     maxX = Math.max(maxX, i % w);
@@ -175,6 +189,7 @@ final class Pieces {
             int pw = maxX - minX + 1;
             byte[] sub = new byte[pw * (maxY - minY + 1)];
             for (int y = minY; y <= maxY; y++) {
+                PhotoSplitter.checkpoint();
                 for (int x = minX; x <= maxX; x++) {
                     if (owner[y * w + x] == s) {
                         sub[(y - minY) * pw + x - minX] = 1;

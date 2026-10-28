@@ -96,6 +96,9 @@ final class SplitPhotos {
             } catch (IOException | RuntimeException e) {
                 System.err.println("FAIL " + in + ": " + (e.getMessage() == null ? e.toString() : e.getMessage()));
                 failures++;
+            } catch (OutOfMemoryError e) {
+                System.err.println("FAIL " + in + ": out of memory (" + e.getMessage() + ")");
+                failures++;
             }
         }
         return failures == 0 ? 0 : 1;
