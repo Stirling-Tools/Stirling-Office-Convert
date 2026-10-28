@@ -85,6 +85,7 @@ class NetworkSafetyTest {
     private static final Map<String, List<String>> MODULE_ALLOWED = Map.ofEntries(
             Map.entry(OC + "jpx/JpxImageIO", List.of("uses javax/imageio/spi/IIORegistry")),
             Map.entry(OC + "odp/OdpWriter", List.of("calls javax/imageio/ImageIO.read")),
+            Map.entry(OC + "photosplit/PhotoSplitter", List.of("calls javax/imageio/ImageIO.getImageReaders")),
             Map.entry(OC + "sink/ImageShaping", List.of("calls javax/imageio/ImageIO.read")),
             Map.entry(OC + "json/MediaBytes", List.of("calls javax/imageio/ImageIO.read")),
             Map.entry(OC + "slides/SlideMedia", List.of("calls javax/imageio/ImageIO.read")),
