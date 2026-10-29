@@ -72,18 +72,54 @@ final class Freeforms {
         if (right > left && bottom > top) {
             return;
         }
+        long minX = Long.MAX_VALUE;
+        long minY = Long.MAX_VALUE;
         long maxX = Long.MIN_VALUE;
         long maxY = Long.MIN_VALUE;
+        boolean narrow = false;
         for (byte[] e : vertices) {
             boolean wide = e.length >= 8;
-            maxX = Math.max(maxX, wide ? LittleEndian.getInt(e, 0) : LittleEndian.getShort(e, 0));
-            maxY = Math.max(maxY, wide ? LittleEndian.getInt(e, 4) : LittleEndian.getShort(e, 2));
+            narrow |= !wide;
+            long x = wide ? LittleEndian.getInt(e, 0) : LittleEndian.getShort(e, 0);
+            long y = wide ? LittleEndian.getInt(e, 4) : LittleEndian.getShort(e, 2);
+            minX = Math.min(minX, x);
+            minY = Math.min(minY, y);
+            maxX = Math.max(maxX, x);
+            maxY = Math.max(maxY, y);
         }
-        if (right <= left && maxX > left) {
-            set(opt, EscherPropertyTypes.GEOMETRY__RIGHT, (int) maxX);
+        long limit = narrow ? Short.MAX_VALUE : Integer.MAX_VALUE;
+        long shiftX = right <= left && minX < 0 && maxX - minX <= limit ? -minX : 0;
+        long shiftY = bottom <= top && minY < 0 && maxY - minY <= limit ? -minY : 0;
+        if (shiftX != 0 || shiftY != 0) {
+            shift(vertices, (int) shiftX, (int) shiftY);
+            if (shiftX != 0) {
+                set(opt, EscherPropertyTypes.GEOMETRY__LEFT, 0);
+                left = 0;
+            }
+            if (shiftY != 0) {
+                set(opt, EscherPropertyTypes.GEOMETRY__TOP, 0);
+                top = 0;
+            }
         }
-        if (bottom <= top && maxY > top) {
-            set(opt, EscherPropertyTypes.GEOMETRY__BOTTOM, (int) maxY);
+        if (right <= left && maxX + shiftX > left) {
+            set(opt, EscherPropertyTypes.GEOMETRY__RIGHT, (int) (maxX + shiftX));
+        }
+        if (bottom <= top && maxY + shiftY > top) {
+            set(opt, EscherPropertyTypes.GEOMETRY__BOTTOM, (int) (maxY + shiftY));
+        }
+    }
+
+    private static void shift(EscherArrayProperty vertices, int dx, int dy) {
+        for (int i = 0; i < vertices.getNumberOfElementsInArray(); i++) {
+            byte[] e = vertices.getElement(i);
+            if (e.length >= 8) {
+                LittleEndian.putInt(e, 0, LittleEndian.getInt(e, 0) + dx);
+                LittleEndian.putInt(e, 4, LittleEndian.getInt(e, 4) + dy);
+            } else if (e.length >= 4) {
+                LittleEndian.putShort(e, 0, (short) (LittleEndian.getShort(e, 0) + dx));
+                LittleEndian.putShort(e, 2, (short) (LittleEndian.getShort(e, 2) + dy));
+            }
+            vertices.setElement(i, e);
         }
     }
 

@@ -291,6 +291,44 @@ class PptSlideFixesTest {
     }
 
     @Test
+    void aFreeformWithNegativeVerticesAndNoGeometryBoxFillsItsAnchor() throws IOException {
+        byte[] ppt = deck(p -> {
+            HSLFSlide slide = p.createSlide();
+            HSLFFreeformShape f = new HSLFFreeformShape(slide);
+            Path2D.Double path = new Path2D.Double();
+            path.moveTo(100, 100);
+            path.lineTo(300, 100);
+            path.lineTo(300, 300);
+            path.lineTo(100, 300);
+            path.closePath();
+            f.setPath(path);
+            f.setAnchor(new Rectangle2D.Double(100, 100, 200, 200));
+            f.setFillColor(Color.BLUE);
+            f.setLineColor(null);
+            f.setEscherProperty(EscherPropertyTypes.GEOMETRY__LEFT, 0);
+            f.setEscherProperty(EscherPropertyTypes.GEOMETRY__TOP, 0);
+            f.setEscherProperty(EscherPropertyTypes.GEOMETRY__RIGHT, 0);
+            f.setEscherProperty(EscherPropertyTypes.GEOMETRY__BOTTOM, 0);
+            AbstractEscherOptRecord opt = f.getEscherOptRecord();
+            EscherArrayProperty vertices = opt.lookup(EscherPropertyTypes.GEOMETRY__VERTICES);
+            for (int i = 0; i < vertices.getNumberOfElementsInArray(); i++) {
+                byte[] e = vertices.getElement(i);
+                LittleEndian.putInt(e, 0, LittleEndian.getInt(e, 0) - 2000);
+                vertices.setElement(i, e);
+            }
+            slide.addShape(f);
+        });
+        Path pdf = convert("negative.ppt", ppt);
+        try (PDDocument d = Loader.loadPDF(pdf.toFile())) {
+            java.awt.image.BufferedImage img = new org.apache.pdfbox.rendering.PDFRenderer(d).renderImageWithDPI(0, 72);
+            assertEquals(0x0000FF, img.getRGB(110, 150) & 0xFFFFFF);
+            assertEquals(0x0000FF, img.getRGB(290, 290) & 0xFFFFFF);
+            assertEquals(0xFFFFFF, img.getRGB(90, 150) & 0xFFFFFF);
+            assertEquals(0xFFFFFF, img.getRGB(320, 320) & 0xFFFFFF);
+        }
+    }
+
+    @Test
     void aTodayDateFooterShowsThePresentationsSavedDateNotTheClock() throws IOException {
         java.time.LocalDate today = java.time.LocalDate.now(java.time.ZoneOffset.UTC);
         Path pdf = convert("date.ppt", deck(p -> {
