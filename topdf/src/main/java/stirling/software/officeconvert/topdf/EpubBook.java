@@ -23,6 +23,7 @@ import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.jsoup.parser.Parser;
 
+import stirling.software.officeconvert.topdf.html.HtmlDocument;
 import stirling.software.officeconvert.topdf.html.HtmlRefs;
 
 final class EpubBook {
@@ -142,6 +143,8 @@ final class EpubBook {
         StringBuilder body = new StringBuilder();
         Map<String, String> fonts = new LinkedHashMap<>();
         boolean coverShown = false;
+        boolean afterCover = false;
+        boolean covered = false;
         for (int i = 0; i < chapters.size(); i++) {
             OfficeToPdf.stopIfInterrupted();
             String path = chapters.get(i);
@@ -187,7 +190,10 @@ final class EpubBook {
                     img.attr("style", positive(w) && positive(h) ? "width:100%;aspect-ratio:" + w + "/" + h : "width:100%");
                 }
             }
-            String style = (i == 0 ? "" : "page-break-before:always;") + b.attr("style");
+            covered |= coverPage;
+            String style = (i == 0 || !afterCover && brief(b) ? "" : "page-break-before:always;")
+                    + (coverPage ? "page:" + HtmlDocument.BOOK_COVER + ";" : covered ? "page:auto;" : "") + b.attr("style");
+            afterCover = coverPage;
             body.append("<section id=\"epub-c").append(i).append("\"");
             if (!b.attr("class").isBlank()) {
                 body.append(" class=\"").append(escape(b.attr("class"))).append('"');
@@ -233,16 +239,36 @@ final class EpubBook {
         if (!styles.isEmpty()) {
             html.append("<style>").append(styles.toString().replace("</style", "<\\/style")).append("</style>");
         }
+        html.append("<style>@page{").append(HtmlDocument.BOOK_PAGE).append(":1}</style>");
         html.append("</head><body>");
         if (cover != null && !coverShown) {
-            html.append("<div style=\"page-break-after:always;text-align:center\"><img src=\"/").append(escape(cover))
-                    .append("\" alt=\"\" style=\"max-width:100%\"></div>");
+            html.append("<div style=\"page:").append(HtmlDocument.BOOK_COVER)
+                    .append(";page-break-after:always;text-align:center\"><img src=\"/").append(escape(cover))
+                    .append("\" alt=\"\" style=\"max-width:100%\"></div><div style=\"page:auto\"></div>");
         }
         html.append(body).append("</body></html>");
         if (html.length() > MAX_BOOK_CHARS) {
             throw new IOException("The eBook text exceeds " + (MAX_BOOK_CHARS >> 20) + " MB");
         }
         return new Book(html.toString(), title, author, fonts);
+    }
+
+    private static final int BRIEF_TEXT = 600;
+
+    private static final String NOTES = "[epub:type~=(?i)\\b(foot|end|rear)notes?\\b]";
+
+    private static boolean brief(Element body) {
+        if (body.is(NOTES)) {
+            return true;
+        }
+        if (body.selectFirst(NOTES) != null) {
+            Element rest = body.clone();
+            rest.select(NOTES).remove();
+            if (rest.text().length() < BRIEF_TEXT) {
+                return true;
+            }
+        }
+        return body.selectFirst("h1, h2, h3, img, svg, image, table") == null && body.text().length() < BRIEF_TEXT;
     }
 
     private static final Pattern DECLARED = Pattern.compile(

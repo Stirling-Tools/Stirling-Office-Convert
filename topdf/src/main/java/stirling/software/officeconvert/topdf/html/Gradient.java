@@ -6,8 +6,10 @@ import java.awt.LinearGradientPaint;
 import java.awt.MultipleGradientPaint;
 import java.awt.Paint;
 import java.awt.RadialGradientPaint;
+import java.awt.RenderingHints;
 import java.awt.geom.AffineTransform;
 import java.awt.geom.Point2D;
+import java.awt.geom.RoundRectangle2D;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -27,7 +29,7 @@ final class Gradient {
     static final long MAX_PIXELS = 1_500_000L;
     static final float PIXELS_PER_POINT = 1.5f;
 
-    record Painted(byte[] jpeg, int pixelWidth, int pixelHeight) {}
+    record Painted(byte[] bytes, String ext, int pixelWidth, int pixelHeight) {}
 
     private final String source;
     private final boolean radial;
@@ -183,9 +185,9 @@ final class Gradient {
         return f;
     }
 
-    String key(float widthPt, float heightPt) {
+    String key(float widthPt, float heightPt, float cornerPt) {
         int[] px = pixels(widthPt, heightPt);
-        return source + "@" + px[0] + "x" + px[1];
+        return source + "@" + px[0] + "x" + px[1] + (cornerPt > 0 ? "r" + Math.round(cornerPt * 10) : "");
     }
 
     static long pixelCount(float widthPt, float heightPt) {
@@ -202,26 +204,39 @@ final class Gradient {
         return new int[] {Math.max(1, Math.round(widthPt * scale)), Math.max(1, Math.round(heightPt * scale))};
     }
 
-    Painted paint(float widthPt, float heightPt) {
+    Painted paint(float widthPt, float heightPt, float cornerPt) {
         if (!(widthPt >= 1) || !(heightPt >= 1)) {
             return null;
         }
         int[] px = pixels(widthPt, heightPt);
         int w = px[0];
         int h = px[1];
-        BufferedImage img = new BufferedImage(w, h, BufferedImage.TYPE_INT_RGB);
+        boolean rounded = cornerPt > 0;
+        BufferedImage img = new BufferedImage(w, h, rounded ? BufferedImage.TYPE_INT_ARGB : BufferedImage.TYPE_INT_RGB);
         Graphics2D g = img.createGraphics();
         try {
             g.setPaint(paint(w, h));
-            g.fillRect(0, 0, w, h);
+            if (rounded) {
+                double arc = 2 * Math.min(cornerPt * w / widthPt, Math.min(w, h) / 2.0);
+                g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                g.fill(new RoundRectangle2D.Double(0, 0, w, h, arc, arc));
+            } else {
+                g.fillRect(0, 0, w, h);
+            }
         } finally {
             g.dispose();
         }
         try {
-            return new Painted(jpeg(img), w, h);
+            return rounded ? new Painted(png(img), "png", w, h) : new Painted(jpeg(img), "jpeg", w, h);
         } catch (IOException e) {
             return null;
         }
+    }
+
+    private static byte[] png(BufferedImage img) throws IOException {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        ImageIO.write(img, "png", out);
+        return out.toByteArray();
     }
 
     private Paint paint(int w, int h) {

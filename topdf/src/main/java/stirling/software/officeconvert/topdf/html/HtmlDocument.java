@@ -54,6 +54,14 @@ public final class HtmlDocument {
 
     static final float PAGE_MARGIN = 56.25f;
 
+    public static final String BOOK_PAGE = "-office-convert-book";
+
+    public static final String BOOK_COVER = "office-convert-cover";
+
+    static final float BOOK_LEAST_MARGIN = 36;
+
+    static final float BOOK_MARGIN = 72;
+
     static final float BODY_MARGIN = 6f;
 
     public static Converted write(Path source, OutputStream out) throws IOException {
@@ -169,7 +177,16 @@ public final class HtmlDocument {
         Document doc = Jsoup.parse(new ByteArrayInputStream(bytes), null, "");
         Element baseTag = doc.selectFirst("base[href]");
         linked.rebase(baseTag == null ? null : baseTag.attr("href"));
-        Section page = page(new Cascade(doc, viewportPx(JsonModel.defaultPage()), linked).page());
+        Map<String, String> declared = new Cascade(doc, viewportPx(JsonModel.defaultPage()), linked).page();
+        Section page = page(declared);
+        float[] widened = null;
+        if (declared.containsKey(BOOK_PAGE)) {
+            Map<String, String> own = new HashMap<>(declared);
+            own.remove(BOOK_PAGE);
+            Section plain = page(own);
+            widened = new float[] {page.marginTop - plain.marginTop, page.marginBottom - plain.marginBottom,
+                    page.marginLeft - plain.marginLeft, page.marginRight - plain.marginRight};
+        }
         // media queries see the printed page, however wide the layout grows
         Cascade cascade = new Cascade(doc, viewportPx(page), linked);
         Generated.Result generated = Generated.apply(doc, cascade, targetPages);
@@ -187,6 +204,7 @@ public final class HtmlDocument {
         }
         boolean ownPaper = cascade.declaresPages();
         float printed = page.pageWidth - page.marginLeft - page.marginRight;
+        float enlarged = zoom < 1 && !ownPaper ? zoom : 1;
         if (zoom < 1 && !ownPaper) {
             enlarge(page, zoom);
             inset[0] /= zoom;
@@ -224,6 +242,14 @@ public final class HtmlDocument {
             page.footerDistance = Math.max(6, page.marginBottom / 2 - 6);
         }
         HtmlContext ctx = new HtmlContext(cascade, styles, writer, warnings, page, linked);
+        if (widened != null && (widened[0] != 0 || widened[1] != 0 || widened[2] != 0 || widened[3] != 0)) {
+            Section cover = page.copy();
+            cover.marginTop -= widened[0] / enlarged;
+            cover.marginBottom -= widened[1] / enlarged;
+            cover.marginLeft -= widened[2] / enlarged;
+            cover.marginRight -= widened[3] / enlarged;
+            ctx.cover(cover);
+        }
         ctx.inset(inset[0], inset[1]);
         ctx.generated(generated);
         List<Inline> fixedLayer = new ArrayList<>(Backgrounds.paint(Backgrounds.url(htmlStyle) != null ? htmlStyle
@@ -355,7 +381,17 @@ public final class HtmlDocument {
         s.marginBottom = margin(d.get("margin-bottom"), s.marginBottom, half);
         s.marginLeft = margin(d.get("margin-left"), s.marginLeft, half);
         s.marginRight = margin(d.get("margin-right"), s.marginRight, half);
+        if (d.containsKey(BOOK_PAGE) && size == null) {
+            s.marginTop = bookMargin(s.marginTop, half);
+            s.marginBottom = bookMargin(s.marginBottom, half);
+            s.marginLeft = bookMargin(s.marginLeft, half);
+            s.marginRight = bookMargin(s.marginRight, half);
+        }
         return s;
+    }
+
+    private static float bookMargin(float margin, float max) {
+        return margin < BOOK_LEAST_MARGIN ? Math.min(max, BOOK_MARGIN) : margin;
     }
 
     private static float margin(String v, float fallback, float max) {

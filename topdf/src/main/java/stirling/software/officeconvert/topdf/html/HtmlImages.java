@@ -101,11 +101,11 @@ final class HtmlImages {
         return p == null ? null : new Labelled(p, labels);
     }
 
-    Picture gradient(Gradient g, float width, float height) throws IOException {
+    Picture gradient(Gradient g, float width, float height, float corner) throws IOException {
         if (!(width >= 1) || !(height >= 1)) {
             return null;
         }
-        String key = g.key(width, height);
+        String key = g.key(width, height, corner);
         Picture.MediaRef ref = gradients.get(key);
         if (ref == null) {
             long pixels = Gradient.pixelCount(width, height);
@@ -114,12 +114,12 @@ final class HtmlImages {
                         + " colour");
                 return null;
             }
-            Gradient.Painted p = g.paint(width, height);
+            Gradient.Painted p = g.paint(width, height, corner);
             if (p == null) {
                 return null;
             }
             gradientPixels += pixels;
-            ref = sink.media(p.jpeg(), "jpeg", p.pixelWidth(), p.pixelHeight(), "gradient:" + (++added));
+            ref = sink.media(p.bytes(), p.ext(), p.pixelWidth(), p.pixelHeight(), "gradient:" + (++added));
             gradients.put(key, ref);
         }
         return new Picture(ref, width, height);

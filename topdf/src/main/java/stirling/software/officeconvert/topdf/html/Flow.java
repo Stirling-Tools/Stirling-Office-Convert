@@ -5,6 +5,7 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
 import java.util.HashMap;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -67,7 +68,6 @@ final class Flow {
     private final boolean inCell;
     private final Deque<ListLevel> lists = new ArrayDeque<>();
     private Paragraph para;
-    private Paragraph lastParagraph;
     private Look blockLook;
     private Frame blockFrame;
     private String headingStyle;
@@ -88,6 +88,7 @@ final class Flow {
     private int avoiding;
     private boolean inColumns;
     private final List<Block> held = new ArrayList<>();
+    private Block waiting;
     private boolean outrun;
     private Element sized;
     private float besideLeft;
@@ -134,6 +135,10 @@ final class Flow {
             }
         }
         children(body, look, frame);
+        if (waiting != null) {
+            out.add(waiting);
+            waiting = null;
+        }
     }
 
     private static final int MAX_FIXED = 64;
@@ -602,7 +607,7 @@ final class Flow {
     private void block(Element e, String tag, Map<String, String> d, Look look, Frame frame, int depth)
             throws IOException {
         flush();
-        page(d.get("page"), frame);
+        frame = page(d.get("page"), frame);
         float em = look.size;
         Transform turn = forceInline > 0 ? Transform.NONE : Transform.of(d.get("transform"), em, frame.width(), 0);
         if (!turn.shiftOnly() && ctx.positions()) {
@@ -660,8 +665,8 @@ final class Flow {
             // a cell cannot hold a row, so a longer one inside, like a carousel, keeps its columns instead
             plan = null;
         }
-        if (plan != null && inCell && !plan.inline()) {
-            // a cell cannot hold a table of columns, but a row of short items still fits on one line
+        if (plan != null && inCell && !plan.inline() && (paragraphsOnly || ctx.cells() >= Table.MAX_NESTING)) {
+            // a cell nested too deep cannot hold a table of columns, but a row of short items still fits on one line
             plan = null;
         }
         boolean tall = !absolutes.isEmpty() && height(d, look) > 0 && e.selectFirst("table") == null;
@@ -697,6 +702,7 @@ final class Flow {
         if (isPageBreak(d.get("break-before"))) {
             pendingBreak = true;
         }
+        Block before = lastBlock();
         Look outerLook = blockLook;
         Frame outerFrame = blockFrame;
         String outerHeading = headingStyle;
@@ -753,10 +759,21 @@ final class Flow {
             pendingMarker = null;
         }
         float borderBottom = border(d, "bottom");
-        if (borderBottom > 0 && lastParagraph != null && !inCell) {
-            lastParagraph.borderBottom = borderBottom;
+        Block last = lastBlock();
+        if (borderBottom > 0 && last != null && last != before && !inCell
+                && (!held.isEmpty() || border(d, "left") <= 0 && border(d, "right") <= 0)) {
             Integer c = Css.color(d.getOrDefault("border-bottom-color", colorOf(d.get("border-bottom"))));
-            lastParagraph.borderBottomRgb = c == null || c < 0 ? 0 : c;
+            int rgb = c == null || c < 0 ? 0 : c;
+            if (last instanceof Paragraph p) {
+                p.borderBottom = borderBottom;
+                p.borderBottomRgb = rgb;
+            } else if (last instanceof Table t && !t.rows.isEmpty()) {
+                for (Table.Cell cell : t.rows.getLast().cells) {
+                    if (!cell.bottom.visible()) {
+                        cell.bottom = new Table.Border(borderBottom, rgb);
+                    }
+                }
+            }
         }
         blockLook = outerLook;
         blockFrame = outerFrame;
@@ -921,13 +938,13 @@ final class Flow {
             }
         }
         if (avoiding == 0 || outrun) {
-            out.add(b);
+            send(b);
             return;
         }
         held.add(b);
         if (held.size() > BlockFlow.CHAIN_LIMIT) {
             for (Block h : held) {
-                out.add(h);
+                send(h);
             }
             held.clear();
             outrun = true;
@@ -940,10 +957,25 @@ final class Flow {
                 p.keepLines = true;
                 p.keepNext |= i < held.size() - 1;
             }
-            out.add(held.get(i));
+            send(held.get(i));
         }
         held.clear();
         outrun = false;
+    }
+
+    private void send(Block b) throws IOException {
+        if (inCell) {
+            out.add(b);
+            return;
+        }
+        if (waiting != null) {
+            out.add(waiting);
+        }
+        waiting = b;
+    }
+
+    private Block lastBlock() {
+        return held.isEmpty() ? waiting : held.getLast();
     }
 
     // These shade their own lines, or carry list and heading structure a box would lose
@@ -1071,7 +1103,12 @@ final class Flow {
         cell.right = HtmlTables.border(d, "right", 0);
         Flow inner = new Flow(ctx, cell::add, true);
         inner.pad(Math.max(0, padding(d.get("padding-top"), em, frame.width())));
-        inner.children(e, look, new Frame(0, 0, Math.max(24, width - padLeft - padRight), -1), depth);
+        ctx.enterCell();
+        try {
+            inner.children(e, look, new Frame(0, 0, Math.max(24, width - padLeft - padRight), -1), depth);
+        } finally {
+            ctx.leaveCell();
+        }
         float padBottom = Math.max(0, padding(d.get("padding-bottom"), em, frame.width()));
         float padTop = Math.max(0, padding(d.get("padding-top"), em, frame.width()));
         Float tall = boxLength(d.get("height"), look, 0);
@@ -1143,7 +1180,7 @@ final class Flow {
             boolean borderBox = "border-box".equalsIgnoreCase(d.getOrDefault("box-sizing", "").strip());
             float high = Math.min(ctx.pageRoom(),
                     tall + (borderBox ? 0 : Math.max(0, padding(d.get("padding-top"), em, frame.width())) + padBottom));
-            if (gradient(cell, d.get("background-gradient"), width, high, padLeft, look)) {
+            if (gradient(cell, d.get("background-gradient"), width, high, padLeft, corner(d, look, width, high), look)) {
                 row.height = high;
             }
         }
@@ -1172,10 +1209,10 @@ final class Flow {
         space(bottom);
     }
 
-    private boolean gradient(Table.Cell cell, String css, float width, float height, float padLeft, Look look)
-            throws IOException {
+    private boolean gradient(Table.Cell cell, String css, float width, float height, float padLeft, float corner,
+            Look look) throws IOException {
         Gradient g = Gradient.parse(css);
-        Picture pic = g == null ? null : ctx.images().gradient(g, width, height);
+        Picture pic = g == null ? null : ctx.images().gradient(g, width, height, corner);
         if (pic == null) {
             return false;
         }
@@ -1192,6 +1229,34 @@ final class Flow {
         return true;
     }
 
+    private static float corner(Map<String, String> d, Look look, float width, float height) {
+        List<String> t = Css.tokens(d.getOrDefault("border-radius", ""));
+        Float r = t.isEmpty() ? null : Css.length(t.getFirst(), look.size, Math.min(width, height));
+        return r == null || r < 0.5f ? 0 : Math.min(r, Math.min(width, height) / 2);
+    }
+
+    private void itemGradient(Table.Row row, Table.Cell cell, Element item, Look look, float width, float margin)
+            throws IOException {
+        Map<String, String> d = ctx.declared(item, look);
+        Float tall = boxLength(d.get("height"), look, 0);
+        if (tall == null || tall < 1 || cell.empty() || Gradient.parse(d.get("background-gradient")) == null) {
+            return;
+        }
+        boolean borderBox = "border-box".equalsIgnoreCase(d.getOrDefault("box-sizing", "").strip());
+        float high = Math.min(ctx.pageRoom(), tall + (borderBox ? 0
+                : Math.max(0, padding(d.get("padding-top"), look.size, width))
+                + Math.max(0, padding(d.get("padding-bottom"), look.size, width))));
+        int fill = cell.shading;
+        if (gradient(cell, d.get("background-gradient"), width, high, margin, corner(d, look, width, high), look)) {
+            for (Paragraph p : cell.paragraphs) {
+                if (p.shading == fill) {
+                    p.shading = -1;
+                }
+            }
+            row.height = Math.max(row.height, high);
+        }
+    }
+
     private static Paragraph bar(float height, Look look) {
         Paragraph p = new Paragraph();
         p.lineRule = Paragraph.LineRule.EXACT;
@@ -1201,17 +1266,18 @@ final class Flow {
     }
 
     // A block on a page of another name starts a new section on that page's size and margins
-    private void page(String name, Frame frame) throws IOException {
-        if (name == null || inCell || name.isBlank() || name.strip().equalsIgnoreCase("auto")) {
-            return;
+    private Frame page(String name, Frame frame) throws IOException {
+        if (name == null || inCell || name.isBlank()) {
+            return frame;
         }
-        String next = name.strip();
-        if (next.equals(ctx.pageName()) || ctx.section(next) == null) {
-            return;
+        boolean back = name.strip().equalsIgnoreCase("auto");
+        String next = back ? "" : name.strip();
+        if (next.equals(ctx.pageName()) || !back && ctx.section(next) == null) {
+            return frame;
         }
         if (ctx.nothingWritten()) {
             ctx.pageName(next);
-            return;
+            return cover(next, frame);
         }
         Section ending = ctx.section(ctx.pageName());
         Paragraph mark = new Paragraph();
@@ -1224,6 +1290,17 @@ final class Flow {
         ctx.pageName(next);
         // the new section starts a page already, so a forced break right after it is the same break
         sectionStarted = true;
+        return cover(next, frame);
+    }
+
+    private Frame cover(String name, Frame frame) {
+        if (!HtmlDocument.BOOK_COVER.equals(name)) {
+            return frame;
+        }
+        Section from = ctx.defaultSection();
+        Section to = ctx.section(name);
+        float extra = from.marginLeft + from.marginRight - to.marginLeft - to.marginRight;
+        return new Frame(frame.left(), frame.right(), frame.width() + extra, frame.shading());
     }
 
     private void inlineRow(Layout.Plan plan, Map<String, String> d, Look look, Frame frame, int depth)
@@ -1394,7 +1471,12 @@ final class Flow {
             inner.sized = item;
             inner.besideLeft = besideLeft;
             inner.besideRight = besideRight;
-            inner.single(item, look, new Frame(0, 0, Math.max(24, width - gap), -1), depth + 1);
+            ctx.enterCell();
+            try {
+                inner.single(item, look, new Frame(0, 0, Math.max(24, width - gap), -1), depth + 1);
+            } finally {
+                ctx.leaveCell();
+            }
         }
         return cell;
     }
@@ -1468,12 +1550,17 @@ final class Flow {
                 t.rows.add(row);
             }
         }
+        Map<Table.Cell, Element> placed = new IdentityHashMap<>();
         for (int start = 0; plan.areas() == null && start < items.size(); start += columns) {
             Table.Row row = new Table.Row();
             row.splits = avoiding == 0;
             for (int c = 0; c < columns; c++) {
                 Element item = start + c < items.size() ? items.get(start + c) : null;
-                row.cells.add(cell(item, look, frame, widths[c], plan.gap(), depth));
+                Table.Cell cell = cell(item, look, frame, widths[c], plan.gap(), depth);
+                if (item != null) {
+                    placed.put(cell, item);
+                }
+                row.cells.add(cell);
             }
             t.rows.add(row);
         }
@@ -1484,6 +1571,14 @@ final class Flow {
                 gapColumns(t, plan.gap());
             } else if (gutter >= 1) {
                 gapColumns(t, gutter);
+            }
+            for (Table.Row row : t.rows) {
+                for (int c = 0; c < row.cells.size() && c < t.columnWidths.size(); c++) {
+                    Element item = placed.get(row.cells.get(c));
+                    if (item != null) {
+                        itemGradient(row, row.cells.get(c), item, look, t.columnWidths.get(c), t.cellMarginLeft);
+                    }
+                }
             }
         }
         if (t.columnWidths.size() < 2) {
@@ -1856,7 +1951,6 @@ final class Flow {
         measureUnwrapped(p);
         p.anchors.addAll(pendingAnchors);
         pendingAnchors.clear();
-        lastParagraph = p;
         lastSpace = true;
         ctx.count();
         emit(p);
