@@ -516,6 +516,12 @@ class EpubToPdfTest {
     }
 
     @Test
+    void classSelectorsAlsoMatchTheChapterBody() throws IOException {
+        assertEquals("#epub-c1 .calibre, #epub-c1.calibre{a:b}\n", EpubBook.scoped(".calibre{a:b}", 1, 0));
+        assertEquals("#epub-c2 .x #epub-c2-y, #epub-c2.x #epub-c2-y{a:b}\n", EpubBook.scoped(".x #y{a:b}", 2, 0));
+    }
+
+    @Test
     void unclosedCommentsStayLinear() throws IOException {
         String css = "/*a".repeat(400_000) + "p{color:red}";
         long start = System.nanoTime();

@@ -565,4 +565,14 @@ class HtmlLayoutTest {
     private static Word containing(Laid l, String text) {
         return l.words().stream().filter(w -> w.text().contains(text)).findFirst().orElseThrow();
     }
+
+    @Test
+    void bookPagesWithoutMarginsGetBookMargins() {
+        var book = HtmlDocument.page(Map.of(HtmlDocument.BOOK_PAGE, "1"));
+        assertEquals(HtmlDocument.BOOK_MARGIN, book.marginTop);
+        assertEquals(HtmlDocument.BOOK_MARGIN, book.marginLeft);
+        var own = HtmlDocument.page(Map.of(HtmlDocument.BOOK_PAGE, "1", "margin-left", "50pt"));
+        assertEquals(50f, own.marginLeft);
+        assertEquals(HtmlDocument.PAGE_MARGIN, HtmlDocument.page(Map.of()).marginTop);
+    }
 }

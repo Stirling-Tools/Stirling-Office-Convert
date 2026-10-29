@@ -856,4 +856,20 @@ class EbookToPdfTest {
         assertEquals(32 * 32 + 10, Kf8Book.base32("010A"));
         assertArrayEquals(new byte[] {(byte) 0x81}, MobiWriter.varint(1));
     }
+
+    @Test
+    void mobiFontSizesFollowKindleSteps() {
+        String html = MobiBook.html("<p><font size=\"7\">T</font><font size=\"+2\">H</font><font size=10>X</font></p>"
+                .getBytes(StandardCharsets.ISO_8859_1), StandardCharsets.ISO_8859_1);
+        assertTrue(html.contains("<font style=\"font-size:1.83333em\">T"), html);
+        assertTrue(html.contains("<font style=\"font-size:1.41667em\">H"), html);
+        assertTrue(html.contains("<font size=10>X"), html);
+    }
+
+    @Test
+    void mobiClosingBreaksAreNotSecondBreaks() {
+        String html = MobiBook.html("<p>a<br></br>b<BR></BR >c</p>".getBytes(StandardCharsets.ISO_8859_1),
+                StandardCharsets.ISO_8859_1);
+        assertTrue(html.contains("a<br>b<BR>c"), html);
+    }
 }

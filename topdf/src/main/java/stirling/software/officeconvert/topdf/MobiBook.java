@@ -43,10 +43,18 @@ final class MobiBook {
 
     private static final Pattern PAGE_BREAK = Pattern.compile("<mbp:pagebreak\\b[^<>]*>", Pattern.CASE_INSENSITIVE);
 
+    private static final Pattern BREAK_END = Pattern.compile("</br\\s*>", Pattern.CASE_INSENSITIVE);
+
     private static final Pattern MBP = Pattern.compile("</?mbp:[^<>]*>", Pattern.CASE_INSENSITIVE);
 
     private static final Pattern PARAGRAPH = Pattern.compile("<(p|div|blockquote|h[1-6]|li|ul|ol)\\b([^<>]*)>",
             Pattern.CASE_INSENSITIVE);
+
+    private static final Pattern FONT_SIZE = Pattern.compile(
+            "<font\\b([^<>]*?)\\ssize\\s*=\\s*['\"]?([+-]?[0-9])(?![0-9])['\"]?([^<>]*)>", Pattern.CASE_INSENSITIVE);
+
+    private static final String[] FONT_EMS = {"0.625em", "0.75em", "1em", "1.125em", "1.41667em", "1.66667em",
+        "1.83333em"};
 
     private static final String BASE_STYLE = "<style>blockquote{margin:0 0 0 2em}p{margin:0;text-indent:1.5em}</style>";
 
@@ -262,10 +270,26 @@ final class MobiBook {
         s = withoutGuides(s);
         s = PAGE_BREAK.matcher(s).replaceAll("<div style=\"page-break-before:always\"></div>");
         s = MBP.matcher(s).replaceAll("");
+        s = BREAK_END.matcher(s).replaceAll("");
         s = LINK.matcher(s).replaceAll("$1href=\"#filepos$2\"");
         s = OTHER_RECINDEX.matcher(s).replaceAll("");
         s = RECINDEX.matcher(s).replaceAll("src=\"images/$1\"");
-        return BASE_STYLE + paragraphSizes(s);
+        return BASE_STYLE + paragraphSizes(fontSizes(s));
+    }
+
+    private static String fontSizes(String s) {
+        Matcher m = FONT_SIZE.matcher(s);
+        StringBuilder out = new StringBuilder(s.length());
+        while (m.find()) {
+            String size = m.group(2);
+            int n = size.startsWith("+") || size.startsWith("-") ? 3 + Integer.parseInt(size) : Integer.parseInt(size);
+            String attrs = m.group(1) + m.group(3);
+            String replacement = attrs.toLowerCase(Locale.ROOT).contains("style") ? m.group(0)
+                    : "<font" + attrs + " style=\"font-size:" + FONT_EMS[Math.max(1, Math.min(7, n)) - 1] + "\">";
+            m.appendReplacement(out, Matcher.quoteReplacement(replacement));
+        }
+        m.appendTail(out);
+        return out.toString();
     }
 
     private static String withoutGuides(String s) {
