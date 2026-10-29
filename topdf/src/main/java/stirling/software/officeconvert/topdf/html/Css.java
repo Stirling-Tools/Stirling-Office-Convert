@@ -244,6 +244,16 @@ final class Css {
         }
     }
 
+    static void resetBorderSide(Map<String, String> out, String side) {
+        if (side.equals("border-top") || side.equals("border-right") || side.equals("border-bottom")
+                || side.equals("border-left")) {
+            out.remove(side);
+            out.remove(side + "-style");
+            out.remove(side + "-width");
+            out.remove(side + "-color");
+        }
+    }
+
     private static void expand(Map<String, String> out, String name, String value) {
         switch (name) {
             case "margin", "padding" -> {
@@ -255,8 +265,13 @@ final class Css {
             }
             case "border" -> {
                 for (String side : new String[] {"top", "right", "bottom", "left"}) {
+                    resetBorderSide(out, "border-" + side);
                     out.put("border-" + side, value);
                 }
+            }
+            case "border-top", "border-right", "border-bottom", "border-left" -> {
+                resetBorderSide(out, name);
+                out.put(name, value);
             }
             case "border-width", "border-color", "border-style" -> {
                 String[] v = box(value);

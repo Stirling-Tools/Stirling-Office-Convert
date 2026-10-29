@@ -267,6 +267,7 @@ public final class JsonModel {
         p.shading = in.color("shading", -1);
         p.borderBottom = in.num("borderBottom", 0, 0, 100);
         p.borderBottomRgb = in.color("borderBottomColor", 0);
+        p.borderBottomDouble = in.flag("borderBottomDouble");
         p.bookmark = in.str("bookmark", null);
         if (in.has("markStyle")) {
             p.markStyle = run(in.obj("markStyle"), normal);
@@ -452,7 +453,7 @@ public final class JsonModel {
         if (in == null) {
             return Table.Border.NONE;
         }
-        return new Table.Border(in.num("width", 0.5f, 0, 50), in.color("color", 0));
+        return new Table.Border(in.num("width", 0.5f, 0, 50), in.color("color", 0), in.flag("double"));
     }
 
     private Section section(JsonIn in) throws IOException {

@@ -644,6 +644,50 @@ class HtmlLayoutTest {
     }
 
     @Test
+    void doubleBordersWithoutAWidthOrWithAKeywordWidthStayDouble() {
+        Map<String, String> bare = Map.of("border-bottom", "double blue");
+        Map<String, String> thick = Map.of("border-bottom", "thick double blue");
+        assertTrue(Flow.doubled(bare, "bottom"));
+        assertEquals(2.25f, Flow.border(bare, "bottom"));
+        assertTrue(Flow.doubled(thick, "bottom"));
+        assertEquals(3.75f, Flow.border(thick, "bottom"));
+        assertEquals(3.75f, Flow.border(Map.of("border-bottom", "thick solid red"), "bottom"));
+        assertEquals(0.75f, Flow.border(Map.of("border-bottom", "solid red"), "bottom"));
+        assertFalse(Flow.doubled(Map.of("border-bottom", "thin double"), "bottom"));
+    }
+
+    @Test
+    void aLaterBorderShorthandReplacesEarlierBorderLonghands() throws IOException {
+        String page = "<html><head><style>div{border-bottom-style:double}</style></head><body>"
+                + "<div style=\"%s\">Ruled</div></body></html>";
+        for (String style : new String[] {"border-bottom-style:double;border-bottom:6px solid #0000ff",
+                "border-bottom:6px solid #0000ff"}) {
+            Laid l = lay(page.formatted(style));
+            int x = Math.round(l.word("Ruled").left()) + 2;
+            int runs = 0;
+            boolean inBlue = false;
+            for (int y = Math.round(l.word("Ruled").top()); y < Math.round(l.word("Ruled").top()) + 40; y++) {
+                int rgb = l.first().getRGB(x, y);
+                boolean blue = (rgb & 0xFF) > 0xC0 && (rgb >> 16 & 0xFF) < 0x80;
+                runs += blue && !inBlue ? 1 : 0;
+                inBlue = blue;
+            }
+            assertEquals(1, runs, style);
+        }
+        Map<String, String> d = Css.declarations("border-bottom:solid;border-bottom-style:double;border-bottom:thick solid red");
+        assertEquals(Map.of("border-bottom", "thick solid red"), d);
+    }
+
+    @Test
+    void aBottomPlacedBoxCountsItsRunLineHeight() throws IOException {
+        String box = "<html><body><div style=\"position:relative;height:400pt\"><div style=\"position:absolute;bottom:0;"
+                + "left:0\"><span style=\"line-height:%s\">Text</span></div></div></body></html>";
+        float plain = lay(box.formatted("normal")).word("Text").top();
+        float tall = lay(box.formatted("100pt")).word("Text").top();
+        assertTrue(plain - tall > 30, plain + " vs " + tall);
+    }
+
+    @Test
     void aLargerInlineFontWidensItsLineByItsOwnLineHeight() throws IOException {
         Laid l = lay("""
                 <html><body style="font-size:11pt;line-height:1.5"><div><span style="font-size:24pt">Big</span></div>

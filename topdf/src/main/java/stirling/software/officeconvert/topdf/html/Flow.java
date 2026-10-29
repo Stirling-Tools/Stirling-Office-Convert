@@ -1735,7 +1735,7 @@ final class Flow {
                 String t = token.toLowerCase(Locale.ROOT);
                 if (t.equals("none") || t.equals("hidden")) {
                     style = style == null ? "none" : style;
-                } else if (Css.length(t, 12, 0) != null) {
+                } else if (Css.length(t, 12, 0) != null || !keyword(t).equals(t)) {
                     width = width == null ? t : width;
                 } else if (Css.color(t) == null) {
                     style = style == null ? t : style;
@@ -1749,7 +1749,8 @@ final class Flow {
                 || onlyDouble && !style.equalsIgnoreCase("double")) {
             return 0;
         }
-        Float w = width == null ? Float.valueOf(0.75f) : Css.length(keyword(width), 12, 0);
+        Float w = width == null ? Float.valueOf(style.equalsIgnoreCase("double") ? DOUBLE_LEAST : 0.75f)
+                : Css.length(keyword(width), 12, 0);
         return w == null ? 0.75f : Math.max(0, Math.min(12, w));
     }
 

@@ -48,7 +48,7 @@ final class ModelJson {
                 .flag("noHangingPunctuation", p.noHangingPunctuation)
                 .color("shading", p.shading).num("borderBottom", p.borderBottom);
         if (p.borderBottom > 0) {
-            o.color("borderBottomColor", p.borderBottomRgb);
+            o.color("borderBottomColor", p.borderBottomRgb).flag("borderBottomDouble", p.borderBottomDouble);
         }
         o.str("bookmark", p.bookmark);
         if (p.markStyle != null) {
@@ -248,7 +248,8 @@ final class ModelJson {
 
     private static void border(JsonOut o, String side, Table.Border b) {
         if (b != null && b.visible()) {
-            new JsonOut(o.key(side)).always("width", b.width()).color("color", b.rgb()).end();
+            new JsonOut(o.key(side)).always("width", b.width()).color("color", b.rgb()).flag("double", b.doubled())
+                    .end();
         }
     }
 

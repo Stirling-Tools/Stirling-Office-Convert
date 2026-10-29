@@ -511,7 +511,9 @@ final class Cascade {
         for (Map.Entry<String, String> d : declared.entrySet()) {
             boolean marked = d.getKey().startsWith(Css.IMPORTANT_MARK);
             if (marked == important) {
-                out.put(marked ? d.getKey().substring(1) : d.getKey(), d.getValue());
+                String key = marked ? d.getKey().substring(1) : d.getKey();
+                Css.resetBorderSide(out, key);
+                out.put(key, d.getValue());
             }
         }
     }

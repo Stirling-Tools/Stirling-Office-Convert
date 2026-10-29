@@ -61,7 +61,7 @@ written straight from the PDF.
 | `list` | none | `{ "id", "level" }`: an item of a list in `lists`, level 0 to 8 |
 | `pageBreakBefore`, `keepNext`, `keepLines`, `rightToLeft`, `noHangingPunctuation` | false | |
 | `shading` | none | Background colour |
-| `borderBottom`, `borderBottomColor` | none | A rule under the paragraph |
+| `borderBottom`, `borderBottomColor`, `borderBottomDouble` | none | A rule under the paragraph, two lines when `borderBottomDouble` |
 | `bookmark` | none | A bookmark name |
 | `tabs` | none | `{ "pos", "kind" (left, center, right, decimal), "leader" }` |
 | `markStyle` | none | The look of the paragraph mark |
@@ -110,6 +110,6 @@ levels 1 to 9.
 Table: `columns` (widths), `indent`, `cellMarginLeft` and `cellMarginRight` (2), `pageBreakBefore`, `rightToLeft`.
 Row: `height` (at least), `exactHeight`, `header` (repeats on each page), `cells`. Cell: `span` (columns, 1),
 `verticalMerge` (`restart` starts a cell merged down, `continue` continues it), `top`, `bottom`, `left` and `right`
-borders as `{ "width", "color" }`, `shading`, `verticalAlign` (`top`, `center`, `bottom`), `paragraphs`, or
+borders as `{ "width", "color", "double" }` (`double` draws two lines, false when missing), `shading`, `verticalAlign` (`top`, `center`, `bottom`), `paragraphs`, or
 `blocks` in its place for a cell that holds tables: paragraphs and tables in order, as in `body`. Tables nest at most
 8 deep, counting the outermost; a table deeper than that is read as its paragraphs.
