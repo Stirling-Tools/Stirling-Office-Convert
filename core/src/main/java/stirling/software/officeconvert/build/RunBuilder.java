@@ -314,6 +314,12 @@ final class RunBuilder {
 
     private static final float SQUEEZED = 0.06f;
 
+    private static final float TRACKED = 0.02f;
+
+    private static final float TRACKED_BY = 0.3f;
+
+    private static final int TRACKED_GLYPHS = 5;
+
     private static final float MODEL_TOLERANCE = 0.015f;
 
     private static final float MODEL_NOISE = 0.1f;
@@ -371,6 +377,13 @@ final class RunBuilder {
                     float exact = substituteWidth(g) * scaleOf(g) / 100f;
                     float word = exact * wordSize(g) / g.size;
                     if (Float.isNaN(word)) {
+                        float placed = gi + 1 < w.glyphs.size() ? w.glyphs.get(gi + 1).x - g.x : Float.NaN;
+                        if (!g.font.substituted() && placed > 0.3f * g.width && placed < 2f * g.width) {
+                            float[] acc = look(sums, g);
+                            acc[10] += placed;
+                            acc[11] += g.width;
+                            acc[12] += 1;
+                        }
                         continue;
                     }
                     float[] acc = look(sums, g);
@@ -391,6 +404,13 @@ final class RunBuilder {
         Map<String, WidthFix> out = new HashMap<>();
         for (var e : sums.entrySet()) {
             float[] a = e.getValue();
+            if (a[2] == 0) {
+                float perGlyph = a[12] < TRACKED_GLYPHS ? 0 : (a[10] - a[11]) / a[12];
+                if (Math.abs(perGlyph) >= TRACKED_BY && Math.abs(a[10] / a[11] - 1) >= TRACKED) {
+                    out.put(e.getKey(), new WidthFix((float) Math.floor(Math.clamp(perGlyph, -2f, 4f) * 20f + 0.5f) / 20f, 100));
+                }
+                continue;
+            }
             if (a[9] > 0) {
                 String[] parts = e.getKey().split("\\|");
                 float[] pool = modelPool.computeIfAbsent(parts[0] + "|" + parts[1] + "|" + parts[2] + "|" + parts[4] + "|" + parts[5],
@@ -426,7 +446,7 @@ final class RunBuilder {
     }
 
     private static float[] look(Map<String, float[]> sums, Glyph g) {
-        float[] acc = sums.computeIfAbsent(lookKey(g), k -> new float[10]);
+        float[] acc = sums.computeIfAbsent(lookKey(g), k -> new float[13]);
         acc[5] = g.font.substituted() ? 1 : acc[5];
         return acc;
     }
