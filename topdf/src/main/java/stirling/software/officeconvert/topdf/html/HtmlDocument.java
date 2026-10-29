@@ -54,6 +54,12 @@ public final class HtmlDocument {
 
     static final float PAGE_MARGIN = 56.25f;
 
+    public static final String BOOK_PAGE = "-office-convert-book";
+
+    static final float BOOK_LEAST_MARGIN = 36;
+
+    static final float BOOK_MARGIN = 72;
+
     static final float BODY_MARGIN = 6f;
 
     public static Converted write(Path source, OutputStream out) throws IOException {
@@ -355,7 +361,17 @@ public final class HtmlDocument {
         s.marginBottom = margin(d.get("margin-bottom"), s.marginBottom, half);
         s.marginLeft = margin(d.get("margin-left"), s.marginLeft, half);
         s.marginRight = margin(d.get("margin-right"), s.marginRight, half);
+        if (d.containsKey(BOOK_PAGE) && size == null) {
+            s.marginTop = bookMargin(s.marginTop, half);
+            s.marginBottom = bookMargin(s.marginBottom, half);
+            s.marginLeft = bookMargin(s.marginLeft, half);
+            s.marginRight = bookMargin(s.marginRight, half);
+        }
         return s;
+    }
+
+    private static float bookMargin(float margin, float max) {
+        return margin < BOOK_LEAST_MARGIN ? Math.min(max, BOOK_MARGIN) : margin;
     }
 
     private static float margin(String v, float fallback, float max) {

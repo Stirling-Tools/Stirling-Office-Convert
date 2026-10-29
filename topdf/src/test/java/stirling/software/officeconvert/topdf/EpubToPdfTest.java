@@ -602,4 +602,82 @@ class EpubToPdfTest {
         s.getText(doc);
         return x[0];
     }
+
+    private Map<String, byte[]> notedBook() throws IOException {
+        Map<String, byte[]> book = book();
+        book.put("OEBPS/content.opf", utf8(new String(book.get("OEBPS/content.opf"), StandardCharsets.UTF_8)
+                .replace("<item id=\"c2\"", "<item id=\"n1\" href=\"text/n1.xhtml\" media-type=\"application/xhtml+xml\"/>"
+                        + "<item id=\"n2\" href=\"text/n2.xhtml\" media-type=\"application/xhtml+xml\"/><item id=\"c2\"")
+                .replace("<itemref idref=\"c2\"/>", "<itemref idref=\"n1\"/><itemref idref=\"n2\"/><itemref idref=\"c2\"/>")));
+        book.put("OEBPS/text/n1.xhtml", utf8(chapter("", "<div><p>[1] The first short note.</p></div>")));
+        book.put("OEBPS/text/n2.xhtml", utf8(chapter("", "<aside epub:type=\"footnote\"><p>[2] The second note, "
+                + "marked as a footnote.</p></aside>")));
+        return book;
+    }
+
+    @Test
+    void shortNotesInTheirOwnSpineFilesDoNotEachTakeAPage() throws IOException {
+        Path out = dir.resolve("notes.pdf");
+        OfficeToPdf.convert(epub("notes.epub", notedBook()), out,
+                OfficeToPdf.Options.defaults().timeout(Duration.ofMinutes(2)));
+        try (PDDocument doc = Loader.loadPDF(out.toFile())) {
+            assertEquals(3, doc.getNumberOfPages());
+            String second = pageText(doc, 2);
+            assertTrue(second.contains("Chapter One") && second.contains("The first short note")
+                    && second.contains("The second note"), second);
+            assertTrue(pageText(doc, 3).contains("Chapter Two"));
+        }
+    }
+
+    @Test
+    void aBooksNarrowPageMarginsWidenToAnInch() throws IOException {
+        Map<String, byte[]> book = book();
+        book.put("OEBPS/styles/book.css", utf8(".secret { display: none } @page { margin: 5pt 5pt 5pt 90pt }"));
+        Path out = dir.resolve("margins.pdf");
+        OfficeToPdf.convert(epub("margins.epub", book), out, OfficeToPdf.Options.defaults().timeout(Duration.ofMinutes(2)));
+        try (PDDocument doc = Loader.loadPDF(out.toFile())) {
+            List<float[]> at = new ArrayList<>();
+            PDFTextStripper stripper = new PDFTextStripper() {
+                @Override
+                protected void writeString(String text, List<org.apache.pdfbox.text.TextPosition> positions) {
+                    for (org.apache.pdfbox.text.TextPosition t : positions) {
+                        at.add(new float[] {t.getXDirAdj(), t.getYDirAdj() - t.getHeightDir(), t.getXDirAdj() + t.getWidthDirAdj()});
+                    }
+                }
+            };
+            stripper.setStartPage(2);
+            stripper.setEndPage(2);
+            stripper.getText(doc);
+            float width = doc.getPage(1).getMediaBox().getWidth();
+            assertFalse(at.isEmpty());
+            for (float[] p : at) {
+                assertTrue(p[1] >= 70, "top " + p[1]);
+                assertTrue(p[0] >= 89, "left " + p[0]);
+                assertTrue(p[2] <= width - 70, "right " + p[2]);
+            }
+        }
+    }
+
+    @Test
+    void aBookThatSizesItsOwnPaperKeepsItsMargins() throws IOException {
+        Map<String, byte[]> book = book();
+        book.put("OEBPS/styles/book.css", utf8(".secret { display: none } @page { size: 80mm 160mm; margin: 5pt 5mm }"));
+        Path out = dir.resolve("receipt.pdf");
+        OfficeToPdf.convert(epub("receipt.epub", book), out, OfficeToPdf.Options.defaults().timeout(Duration.ofMinutes(2)));
+        try (PDDocument doc = Loader.loadPDF(out.toFile())) {
+            List<Float> left = new ArrayList<>();
+            PDFTextStripper stripper = new PDFTextStripper() {
+                @Override
+                protected void writeString(String text, List<org.apache.pdfbox.text.TextPosition> positions) {
+                    left.add(positions.getFirst().getXDirAdj());
+                }
+            };
+            stripper.setStartPage(2);
+            stripper.setEndPage(2);
+            stripper.getText(doc);
+            assertEquals(227, doc.getPage(1).getMediaBox().getWidth(), 1);
+            assertFalse(left.isEmpty());
+            assertTrue(left.stream().allMatch(x -> x < 30), left.toString());
+        }
+    }
 }
