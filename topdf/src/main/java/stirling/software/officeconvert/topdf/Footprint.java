@@ -2,6 +2,8 @@ package stirling.software.officeconvert.topdf;
 
 import java.awt.Dimension;
 import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.Locale;
 
 import stirling.software.officeconvert.memory.Admission;
@@ -38,10 +40,95 @@ final class Footprint {
         long markup = switch (format) {
             case DOCX, TEXT, HTML, EPUB, JSON -> xml * 8 + media / 2;
             case PPTX -> xml * 7 + media * 2;
-            case XLSX, CSV, TSV -> xml * 5 / 2 + media / 2;
+            case XLSX, CSV, TSV -> {
+                long tree = Math.min(xml, treeBytes(zip));
+                yield tree * TREE_BYTES_PER_BYTE + (xml - tree) * 5 / 2 + media / 2;
+            }
             case PPT -> xml * 7 + media * 2;
         };
         return saturated(Admission.BASE_BYTES + markup + decode);
+    }
+
+    // XMLBeans holds a tree-parsed OOXML part in roughly this many bytes of heap per byte of markup;
+    // the streamed sheet data costs far less, so estimate() charges the two separately.
+    static final long TREE_BYTES_PER_BYTE = 24;
+
+    private static final int SHEET_SCAN_BYTES = 8 << 20;
+
+    private static final byte[] OPEN_SHEET_DATA = "<sheetData".getBytes(StandardCharsets.ISO_8859_1);
+
+    private static final byte[] CLOSE_SHEET_DATA = "</sheetData>".getBytes(StandardCharsets.ISO_8859_1);
+
+    /**
+     * Bytes of a workbook that XMLBeans parses into a DOM tree: the styles and shared-string parts in
+     * full, plus each worksheet's skeleton (everything outside its streamed {@code <sheetData>}).
+     */
+    private static long treeBytes(OfficeZip zip) {
+        long tree = 0;
+        for (String part : zip.partNames()) {
+            String p = part.toLowerCase(Locale.ROOT);
+            long size = Math.max(0, zip.size(part));
+            if (p.endsWith("/styles.xml") || p.endsWith("/sharedstrings.xml")) {
+                tree += size;
+            } else if (p.contains("/worksheets/") && p.endsWith(".xml")) {
+                tree += worksheetSkeletonBytes(zip, part, size);
+            }
+        }
+        return tree;
+    }
+
+    /**
+     * Bytes of a worksheet outside {@code <sheetData>} (its tree-parsed skeleton). Only the first
+     * {@link #SHEET_SCAN_BYTES} are scanned: when the sheet data does not close within that window it
+     * is large and streamed, so only the header counts; a small or empty sheet data followed by a
+     * large tail counts the tail.
+     */
+    private static long worksheetSkeletonBytes(OfficeZip zip, String part, long size) {
+        try (InputStream in = zip.open(part)) {
+            byte[] head = in.readNBytes(SHEET_SCAN_BYTES);
+            int open = indexOf(head, OPEN_SHEET_DATA, 0);
+            if (open < 0) {
+                return size;
+            }
+            int end = sheetDataEnd(head, open);
+            return end < 0 ? open : open + Math.max(0, size - end);
+        } catch (IOException | RuntimeException e) {
+            return size;
+        }
+    }
+
+    private static int sheetDataEnd(byte[] head, int open) {
+        int gt = indexOf(head, (byte) '>', open);
+        if (gt <= 0) {
+            return -1;
+        }
+        if (head[gt - 1] == '/') {
+            return gt + 1;
+        }
+        int close = indexOf(head, CLOSE_SHEET_DATA, gt);
+        return close < 0 ? -1 : close + CLOSE_SHEET_DATA.length;
+    }
+
+    private static int indexOf(byte[] haystack, byte[] needle, int from) {
+        outer:
+        for (int i = Math.max(0, from); i + needle.length <= haystack.length; i++) {
+            for (int j = 0; j < needle.length; j++) {
+                if (haystack[i + j] != needle[j]) {
+                    continue outer;
+                }
+            }
+            return i;
+        }
+        return -1;
+    }
+
+    private static int indexOf(byte[] haystack, byte needle, int from) {
+        for (int i = Math.max(0, from); i < haystack.length; i++) {
+            if (haystack[i] == needle) {
+                return i;
+            }
+        }
+        return -1;
     }
 
     // A binary file is read whole into records; its pictures sit inside it, one decoded at a time
