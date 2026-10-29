@@ -82,9 +82,24 @@ final class Content {
             String ref = noteMark;
             noteMark = null;
             noteMarkStory = null;
-            g.story.para.item(ref, superscript(g.chp), g.wrap);
+            CharProps c = new CharProps();
+            for (int prop : MARK_PROPS) {
+                if (g.chp.has(prop)) {
+                    c.mark(prop);
+                }
+            }
+            c.font = g.chp.font;
+            c.hFont = g.chp.hFont;
+            c.eaFont = g.chp.eaFont;
+            c.csFont = g.chp.csFont;
+            c.size = g.chp.size;
+            c.csSize = g.chp.csSize;
+            g.story.para.item(ref, superscript(c), null);
         }
     }
+
+    private static final int[] MARK_PROPS = {CharProps.FONT, CharProps.H_FONT, CharProps.EA_FONT, CharProps.CS_FONT,
+        CharProps.SIZE, CharProps.CS_SIZE};
 
     void math(Group g, String xml) {
         if (g.story != null) {

@@ -244,6 +244,20 @@ class RtfPackageTest {
     }
 
     @Test
+    void aNoteMarkBeforeALinkStaysOutOfTheLink() throws IOException {
+        Pkg p = convert(HEAD + "\\pard Text{\\super\\chftn{\\footnote\\chftn\\pard\\plain\\fs20{\\field{\\*\\fldinst"
+                + " HYPERLINK \"http://example.com/\"}{\\fldrslt\\cf1\\ul example}} more.}}\\par}");
+        String f = p.part("word/footnotes.xml");
+        String note = f.substring(f.indexOf("<w:footnote w:id=\"2\">"));
+        int mark = note.indexOf("<w:footnoteRef/>");
+        int link = note.indexOf("<w:hyperlink");
+        assertTrue(mark >= 0 && link > mark, note);
+        String run = note.substring(note.lastIndexOf("<w:r>", mark), mark);
+        assertTrue(run.contains("<w:sz w:val=\"20\"/>") && run.contains("superscript"), run);
+        assertFalse(run.contains("<w:color") || run.contains("<w:u "), run);
+    }
+
+    @Test
     void justifiedLinesShrinkLikeWord() throws IOException {
         assertTrue(convert(HEAD + "\\pard\\qj Text\\par}").part("word/settings.xml")
                 .contains("<w:compatSetting w:name=\"justifyLinesWithShrinking\" w:uri=\"urn:stirling:officeconvert\" w:val=\"1\"/>"));
