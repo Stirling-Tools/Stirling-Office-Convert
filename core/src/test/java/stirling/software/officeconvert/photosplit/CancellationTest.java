@@ -78,6 +78,11 @@ class CancellationTest {
         try {
             assertThrows(CancellationException.class, () -> Parallel.each(16, i -> {
                 if (Thread.currentThread() == caller) {
+                    try {
+                        waiting.await(30, TimeUnit.SECONDS);
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                    }
                     return;
                 }
                 waiting.countDown();
