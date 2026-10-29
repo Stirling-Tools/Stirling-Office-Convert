@@ -313,7 +313,7 @@ final class SlideBuilder {
         if (!shapes || !art.drawable(stack.paint, skip, width, height)) {
             return false;
         }
-        for (Art.Piece piece : art.pieces(stack.paint, skip, layout.page().index(), toDisplay, width, height)) {
+        for (Art.Piece piece : art.figure(stack.paint, skip, layout.page().index(), toDisplay, width, height)) {
             stack.add(piece.shape(), piece.order(), false);
         }
         stack.cover(on);

@@ -75,15 +75,25 @@ final class Art {
         if (!paint.drawsShapes()) {
             return false;
         }
-        Plan plan = plan(paint, represented, true, width, height);
+        Plan plan = plan(paint, represented, true, true, width, height);
         return !plan.shapes().isEmpty() && plan.runs().size() <= MAX_FIGURE_RUNS;
+    }
+
+    List<Piece> figure(PaintOrder paint, Set<Integer> represented, int pageIndex, AffineTransform toDisplay,
+            float width, float height) {
+        return pieces(paint, represented, true, pageIndex, toDisplay, width, height);
     }
 
     List<Piece> pieces(PaintOrder paint, Set<Integer> represented, int pageIndex, AffineTransform toDisplay,
             float width, float height) {
-        Plan plan = plan(paint, represented, paint.drawsShapes(), width, height);
+        return pieces(paint, represented, false, pageIndex, toDisplay, width, height);
+    }
+
+    private List<Piece> pieces(PaintOrder paint, Set<Integer> represented, boolean rects, int pageIndex,
+            AffineTransform toDisplay, float width, float height) {
+        Plan plan = plan(paint, represented, paint.drawsShapes(), rects, width, height);
         if (!plan.shapes().isEmpty()) {
-            Plan raster = plan(paint, represented, false, width, height);
+            Plan raster = plan(paint, represented, false, false, width, height);
             if (plan.runs().size() > raster.runs().size() + MAX_EXTRA_RUNS) {
                 plan = raster;
             }
@@ -108,7 +118,8 @@ final class Art {
         return out;
     }
 
-    private static Plan plan(PaintOrder paint, Set<Integer> represented, boolean shapes, float width, float height) {
+    private static Plan plan(PaintOrder paint, Set<Integer> represented, boolean shapes, boolean rects, float width,
+            float height) {
         List<Run> runs = new ArrayList<>();
         List<Piece> drawn = new ArrayList<>();
         Run run = null;
@@ -118,7 +129,7 @@ final class Art {
                 between.add(m);
                 continue;
             }
-            if (shapes && m.shape() != null) {
+            if (shapes && m.shape() != null && (rects || m.outline() != PaintOrder.Outline.RECT)) {
                 Piece p = shape(m);
                 if (p != null) {
                     drawn.add(p);
