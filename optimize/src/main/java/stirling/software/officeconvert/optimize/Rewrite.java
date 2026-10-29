@@ -252,7 +252,23 @@ final class Rewrite {
         }
     }
 
-    private record Pending(int node, COSStream stream, Future<Recoder.Plan> plan, boolean windowed) {}
+    private record Pending(int node, COSStream stream, Future<Done> plan, boolean windowed, Fonts.Rebuilt font) {}
+
+    private record Done(COSStream stream, Recoder.Plan plan, Fonts.Rebuilt font) {}
+
+    private Future<Done> submit(ExecutorService pool, COSStream s, Recoder.Job job, long limit, Fonts.Work work,
+            Recoder.Kind kind) {
+        return pool.submit(() -> {
+            Fonts.Rebuilt font = work == null ? null : work.run();
+            if (font != null) {
+                Recoder.Job smaller = Recoder.prepare(font.stream(), kind, null, brotliBudget);
+                if (smaller != null) {
+                    return new Done(font.stream(), Recoder.plan(smaller, options.effort(), limit), font);
+                }
+            }
+            return new Done(s, Recoder.plan(job, options.effort(), limit), null);
+        });
+    }
 
     private boolean[] reachable(int[] roots) {
         boolean[] seen = new boolean[index.size()];
@@ -301,8 +317,7 @@ final class Rewrite {
                     index.kind(i, Index.MISSING);
                     continue;
                 }
-                COSStream rebuilt = fonts.rebuild(i, stored, options.effort());
-                COSStream s = rebuilt == null ? stored : rebuilt;
+                COSStream s = stored;
                 if (encryption != null && encryption.encrypts(s) && Encryption.usesCryptFilter(s)) {
                     throw new IOException(
                             "The PDF names crypt filters on its streams, which this optimizer does not write");
@@ -318,16 +333,16 @@ final class Rewrite {
                     large(i, s, kind, sha);
                     continue;
                 }
+                Fonts.Work work = fonts.prepare(i, s, options.effort());
                 if (job.raw().length > INLINE_JOB_BYTES) {
                     while (!window.isEmpty()) {
                         finish(window.poll(), sha, retry);
                     }
-                    finish(new Pending(i, s, pool.submit(() -> Recoder.plan(job, options.effort())), false), sha,
-                            retry);
+                    finish(new Pending(i, s, submit(pool, s, job, Recoder.MAX_DECODED_BYTES, work, kind), false,
+                            null), sha, retry);
                     continue;
                 }
-                window.add(new Pending(i, s, pool.submit(() -> Recoder.plan(job, options.effort(),
-                        WINDOW_DECODED_BYTES)), true));
+                window.add(new Pending(i, s, submit(pool, s, job, WINDOW_DECODED_BYTES, work, kind), true, null));
                 while (window.size() > threads * 2) {
                     finish(window.poll(), sha, retry);
                 }
@@ -343,8 +358,8 @@ final class Rewrite {
                     large(p.node(), p.stream(), kind(p.node(), roles), sha);
                     continue;
                 }
-                finish(new Pending(p.node(), p.stream(), pool.submit(() -> Recoder.plan(job, options.effort())),
-                        false), sha, retry);
+                finish(new Pending(p.node(), p.stream(), submit(pool, p.stream(), job, Recoder.MAX_DECODED_BYTES,
+                        null, kind(p.node(), roles)), false, p.font()), sha, retry);
             }
         } finally {
             pool.shutdownNow();
@@ -360,12 +375,16 @@ final class Rewrite {
 
     private void finish(Pending p, MessageDigest sha, List<Pending> retry) throws IOException {
         try {
-            Recoder.Plan plan = p.plan().get();
-            if (plan.data() == null && p.windowed()) {
-                retry.add(new Pending(p.node(), p.stream(), null, false));
+            Done done = p.plan().get();
+            Fonts.Rebuilt font = done.font() != null ? done.font() : p.font();
+            if (done.plan().data() == null && p.windowed()) {
+                retry.add(new Pending(p.node(), done.stream(), null, false, font));
                 return;
             }
-            store(p.node(), p.stream(), plan, sha);
+            if (font != null) {
+                fonts.apply(font);
+            }
+            store(p.node(), done.stream(), done.plan(), sha);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new java.io.InterruptedIOException("Interrupted while optimizing");

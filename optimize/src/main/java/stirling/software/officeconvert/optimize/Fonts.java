@@ -408,13 +408,23 @@ final class Fonts {
         return v == null ? null : new Step(at.child(key), v);
     }
 
-    COSStream rebuild(int id, COSStream stream, PdfOptimizer.Effort effort) throws IOException {
+    record Rebuilt(COSStream stream, boolean cff, List<User> users) {}
+
+    interface Work {
+        Rebuilt run();
+    }
+
+    private interface Shrink {
+        Shrunk run() throws IOException;
+    }
+
+    Work prepare(int id, COSStream stream, PdfOptimizer.Effort effort) throws IOException {
         Program p = programs.remove(id);
         if (p == null) {
             return null;
         }
         try {
-            return build(p, stream, effort);
+            return work(p, stream, effort);
         } catch (InterruptedIOException e) {
             throw e;
         } catch (IOException | RuntimeException e) {
@@ -427,7 +437,13 @@ final class Fonts {
         }
     }
 
-    private COSStream build(Program p, COSStream stream, PdfOptimizer.Effort effort) throws IOException {
+    void apply(Rebuilt rebuilt) throws IOException {
+        if (rebuilt.cff()) {
+            rename(rebuilt.users());
+        }
+    }
+
+    private Work work(Program p, COSStream stream, PdfOptimizer.Effort effort) throws IOException {
         byte[] data = Recoder.decoded(stream, budget);
         if (data == null) {
             return null;
@@ -439,52 +455,60 @@ final class Fonts {
             }
             fonts.add(PDFontFactory.createFont(d));
         }
-        Map<COSName, COSBase> set = new LinkedHashMap<>();
-        byte[] out;
-        boolean cff = false;
-        if (COSName.FONT_FILE2.equals(p.key)) {
-            out = trueType(p, fonts, data);
-            if (out != null) {
-                set.put(COSName.LENGTH1, COSInteger.get(out.length));
-            }
-        } else if (COSName.FONT_FILE3.equals(p.key)) {
-            out = cff(p, fonts, data, stream.getCOSName(COSName.SUBTYPE));
-        } else {
-            Type1 t = type1(p, fonts, data, stream, effort);
-            out = t == null ? null : t.data;
-            cff = t != null && t.cff;
-            if (t != null && !cff) {
-                set.put(COSName.LENGTH1, COSInteger.get(t.lengths[0]));
-                set.put(COSName.LENGTH2, COSInteger.get(t.lengths[1]));
-                set.put(COSName.LENGTH3, COSInteger.get(t.lengths[2]));
-            }
-        }
-        if (out == null || !smaller(out, data, effort)) {
-            return null;
-        }
-        COSStream rebuilt = new COSStream();
+        Map<COSName, COSBase> base = new LinkedHashMap<>();
         Set<COSName> drop = Set.of(COSName.FILTER, COSName.DECODE_PARMS, DL, COSName.LENGTH, COSName.LENGTH1,
                 COSName.LENGTH2, COSName.LENGTH3);
         for (Map.Entry<COSName, COSBase> e : stream.entrySet()) {
-            if (!drop.contains(e.getKey()) && !(cff && COSName.SUBTYPE.equals(e.getKey()))) {
-                rebuilt.setItem(e.getKey(), e.getValue());
+            if (!drop.contains(e.getKey())) {
+                base.put(e.getKey(), e.getValue());
             }
         }
-        if (cff) {
-            rebuilt.setItem(COSName.SUBTYPE, TYPE1C);
+        Shrink program;
+        if (COSName.FONT_FILE2.equals(p.key)) {
+            BitSet keep = new BitSet();
+            Boolean simple = trueType(p, fonts, keep);
+            if (simple == null) {
+                return null;
+            }
+            program = () -> {
+                byte[] out = Sfnt.subset(data, keep, simple);
+                return out == null ? null : new Shrunk(out, false, new int[] {out.length});
+            };
+        } else if (COSName.FONT_FILE3.equals(p.key)) {
+            program = cff(p, fonts, data, stream.getCOSName(COSName.SUBTYPE));
+        } else {
+            program = type1(p, fonts, data, stream, effort);
         }
-        set.forEach(rebuilt::setItem);
-        try (OutputStream o = rebuilt.createRawOutputStream()) {
-            o.write(out);
+        if (program == null) {
+            return null;
         }
-        if (cff) {
-            rename(p.users);
-        }
-        return rebuilt;
-    }
-
-    private static boolean smaller(byte[] rebuilt, byte[] original, PdfOptimizer.Effort effort) {
-        return Deflate.baseline(rebuilt, effort).length < Deflate.baseline(original, effort).length;
+        return () -> {
+            try {
+                Shrunk t = program.run();
+                if (t == null || t.data.length >= data.length) {
+                    return null;
+                }
+                COSStream rebuilt = new COSStream();
+                base.forEach((k, v) -> {
+                    if (!(t.cff && COSName.SUBTYPE.equals(k))) {
+                        rebuilt.setItem(k, v);
+                    }
+                });
+                if (t.cff) {
+                    rebuilt.setItem(COSName.SUBTYPE, TYPE1C);
+                }
+                COSName[] lengths = {COSName.LENGTH1, COSName.LENGTH2, COSName.LENGTH3};
+                for (int k = 0; t.lengths != null && k < t.lengths.length; k++) {
+                    rebuilt.setInt(lengths[k], t.lengths[k]);
+                }
+                try (OutputStream o = rebuilt.createRawOutputStream()) {
+                    o.write(t.data);
+                }
+                return new Rebuilt(rebuilt, t.cff, p.users);
+            } catch (IOException | RuntimeException e) {
+                return null;
+            }
+        };
     }
 
     private void rename(List<User> users) throws IOException {
@@ -518,8 +542,7 @@ final class Fonts {
         }
     }
 
-    private byte[] trueType(Program p, List<PDFont> fonts, byte[] data) throws IOException {
-        BitSet keep = new BitSet();
+    private Boolean trueType(Program p, List<PDFont> fonts, BitSet keep) throws IOException {
         boolean simple = false;
         for (int i = 0; i < fonts.size(); i++) {
             PDFont f = fonts.get(i);
@@ -536,7 +559,7 @@ final class Fonts {
                 return null;
             }
         }
-        return Sfnt.subset(data, keep, simple);
+        return simple;
     }
 
     private static void add(BitSet keep, int gid) {
@@ -577,7 +600,7 @@ final class Fonts {
         }
     }
 
-    private byte[] cff(Program p, List<PDFont> fonts, byte[] data, COSName subtype) throws IOException {
+    private Shrink cff(Program p, List<PDFont> fonts, byte[] data, COSName subtype) throws IOException {
         Set<Integer> gids = new TreeSet<>();
         boolean simple = TYPE1C.equals(subtype);
         if (!simple && !CID_FONT_TYPE0C.equals(subtype)) {
@@ -606,24 +629,30 @@ final class Fonts {
                 return null;
             }
         }
-        if (simple) {
-            List<Integer> accents = CffSubset.seacComponents(data, gids);
-            if (accents == null) {
-                return null;
-            }
-            for (int code : accents) {
-                String name = StandardEncoding.INSTANCE.getName(code);
-                if (name != null) {
-                    gids.add(first.nameToGID(name));
+        CFFType1Font font = first;
+        boolean seac = simple;
+        return () -> {
+            if (seac) {
+                List<Integer> accents = CffSubset.seacComponents(data, gids);
+                if (accents == null) {
+                    return null;
+                }
+                for (int code : accents) {
+                    String name = StandardEncoding.INSTANCE.getName(code);
+                    if (name != null) {
+                        gids.add(font.nameToGID(name));
+                    }
                 }
             }
-        }
-        return CffSubset.hollow(data, gids);
+            byte[] out = CffSubset.hollow(data, gids);
+            return out == null ? null : new Shrunk(out, false, null);
+        };
     }
 
-    private record Type1(byte[] data, boolean cff, int[] lengths) {}
+    private record Shrunk(byte[] data, boolean cff, int[] lengths) {}
 
-    private Type1 type1(Program p, List<PDFont> fonts, byte[] data, COSStream stream, PdfOptimizer.Effort effort)
+    private Shrink type1(Program p, List<PDFont> fonts, byte[] data, COSStream stream,
+            PdfOptimizer.Effort effort)
             throws IOException {
         Map<Integer, String> names = new TreeMap<>();
         Set<String> used = new HashSet<>();
@@ -646,17 +675,23 @@ final class Fonts {
                 }
             }
         }
-        Type1 best = null;
-        Type1Subset.Program hollow = Type1Subset.hollow(data, stream.getInt(COSName.LENGTH1),
-                stream.getInt(COSName.LENGTH2), used);
-        if (hollow != null) {
-            best = new Type1(hollow.data(), false, new int[] {hollow.length1(), hollow.length2(), hollow.length3()});
-        }
-        byte[] converted = consistent ? Type1ToCff.convert(font, names, used) : null;
-        if (converted != null && (best == null || Deflate.baseline(converted, effort).length
-                <= Deflate.baseline(best.data, effort).length)) {
-            best = new Type1(converted, true, null);
-        }
-        return best;
+        int length1 = stream.getInt(COSName.LENGTH1);
+        int length2 = stream.getInt(COSName.LENGTH2);
+        Type1Font program = font;
+        boolean convertible = consistent;
+        return () -> {
+            Shrunk best = null;
+            Type1Subset.Program hollow = Type1Subset.hollow(data, length1, length2, used);
+            if (hollow != null) {
+                best = new Shrunk(hollow.data(), false,
+                        new int[] {hollow.length1(), hollow.length2(), hollow.length3()});
+            }
+            byte[] converted = convertible ? Type1ToCff.convert(program, names, used) : null;
+            if (converted != null && (best == null || Deflate.baseline(converted, effort).length
+                    <= Deflate.baseline(best.data, effort).length)) {
+                best = new Shrunk(converted, true, null);
+            }
+            return best;
+        };
     }
 }
