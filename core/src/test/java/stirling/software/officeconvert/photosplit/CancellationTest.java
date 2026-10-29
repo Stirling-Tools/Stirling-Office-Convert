@@ -56,6 +56,46 @@ class CancellationTest {
     }
 
     @Test
+    void workersStopWhenTheCallerIsInterruptedWhileItWaits() throws Exception {
+        assumeTrue(Parallel.enabled());
+        Thread caller = Thread.currentThread();
+        CountDownLatch waiting = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        AtomicInteger ran = new AtomicInteger();
+        Thread interrupter = Thread.ofPlatform().start(() -> {
+            try {
+                if (waiting.await(5, TimeUnit.SECONDS)) {
+                    Thread.sleep(100);
+                    caller.interrupt();
+                    Thread.sleep(100);
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            } finally {
+                release.countDown();
+            }
+        });
+        try {
+            assertThrows(CancellationException.class, () -> Parallel.each(16, i -> {
+                if (Thread.currentThread() == caller) {
+                    return;
+                }
+                waiting.countDown();
+                while (release.getCount() > 0) {
+                    Thread.onSpinWait();
+                }
+                PhotoSplitter.checkpoint();
+                ran.incrementAndGet();
+            }));
+            assertEquals(0, ran.get());
+            assertTrue(Thread.currentThread().isInterrupted());
+        } finally {
+            interrupter.join();
+            Thread.interrupted();
+        }
+    }
+
+    @Test
     void workerSeesTheCallerInterruptedPartWayThrough() {
         Thread caller = Thread.currentThread();
         AtomicInteger stopped = new AtomicInteger();
