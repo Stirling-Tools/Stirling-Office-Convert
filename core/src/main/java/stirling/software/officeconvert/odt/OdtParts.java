@@ -141,6 +141,10 @@ final class OdtParts {
     }
 
     static String manifest(List<Picture.MediaRef> media) {
+        return manifest(media, List.of());
+    }
+
+    static String manifest(List<Picture.MediaRef> media, List<String> fonts) {
         StringBuilder sb = new StringBuilder(OdtXml.HEAD)
                 .append("<manifest:manifest xmlns:manifest=\"urn:oasis:names:tc:opendocument:xmlns:manifest:1.0\"")
                 .append(" manifest:version=\"1.3\"><manifest:file-entry manifest:full-path=\"/\" manifest:version=\"1.3\"")
@@ -151,6 +155,10 @@ final class OdtParts {
         for (Picture.MediaRef m : media) {
             sb.append("<manifest:file-entry manifest:full-path=\"Pictures/").append(m.name()).append("\" manifest:media-type=\"")
                     .append(m.contentType()).append("\"/>");
+        }
+        for (String f : fonts) {
+            sb.append("<manifest:file-entry manifest:full-path=\"").append(f).append("\" manifest:media-type=\"")
+                    .append(f.endsWith(".otf") ? "application/vnd.ms-opentype" : "application/x-font-ttf").append("\"/>");
         }
         return sb.append("</manifest:manifest>").toString();
     }

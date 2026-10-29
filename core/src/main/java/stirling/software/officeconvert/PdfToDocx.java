@@ -25,6 +25,7 @@ import org.apache.pdfbox.pdmodel.PDDocumentInformation;
 import stirling.software.officeconvert.build.DocSink;
 import stirling.software.officeconvert.build.DocumentBuilder;
 import stirling.software.officeconvert.docx.DocxWriter;
+import stirling.software.officeconvert.html.PdfWebFonts;
 import stirling.software.officeconvert.extract.PageData;
 import stirling.software.officeconvert.extract.PageReader;
 import stirling.software.officeconvert.extract.PdfFiles;
@@ -101,7 +102,8 @@ public final class PdfToDocx {
     }
 
     public static void convert(Path pdf, Path docx, Options options) throws IOException {
-        convert(pdf, docx, options, DocxWriter::new);
+        convertWithDocument(pdf, docx, options, doc -> out -> new DocxWriter(out, PdfWebFonts.of(doc, options.firstPage(),
+                options.lastPage())));
     }
 
     static <W extends DocSink & Closeable> void convert(Path pdf, Path target, Options options, WriterFactory<W> format)
@@ -143,7 +145,7 @@ public final class PdfToDocx {
     }
 
     public static void convert(PDDocument doc, OutputStream out, Options options) throws IOException {
-        convert(doc, out, options, DocxWriter::new);
+        convert(doc, out, options, o -> new DocxWriter(o, PdfWebFonts.of(doc, options.firstPage(), options.lastPage())));
     }
 
     static <W extends DocSink & Closeable> void convert(PDDocument doc, OutputStream out, Options options,

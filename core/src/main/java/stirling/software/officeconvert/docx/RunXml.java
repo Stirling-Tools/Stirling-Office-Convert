@@ -22,6 +22,7 @@ final class RunXml {
         if (style != null && style.font() != null) {
             ctx.fonts.add(style.font());
         }
+        ctx.useFont(style, base, text);
         if (hasRtlChars(text)) {
             for (String[] seg : directionSegments(text)) {
                 sb.append("<w:r>");

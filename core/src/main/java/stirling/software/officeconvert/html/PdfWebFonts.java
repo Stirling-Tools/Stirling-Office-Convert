@@ -8,6 +8,7 @@ import java.util.Base64;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
@@ -96,7 +97,7 @@ public final class PdfWebFonts implements FixedHtml.FontSource {
         return family + '|' + bold + '|' + italic;
     }
 
-    void use(String family, boolean bold, boolean italic, String text) {
+    public void use(String family, boolean bold, boolean italic, String text) {
         if (family == null || faces.isEmpty()) {
             return;
         }
@@ -134,6 +135,54 @@ public final class PdfWebFonts implements FixedHtml.FontSource {
             css.append("url(data:font/woff;base64,").append(Base64.getEncoder().encodeToString(woff))
                     .append(") format('woff')}\n");
         }
+    }
+
+    public record Embedded(String family, boolean bold, boolean italic, byte[] sfnt) {}
+
+    private static final Set<String> EXPECTED = Set.of("arial", "helvetica", "times new roman", "times", "courier new",
+            "courier", "calibri", "cambria", "symbol", "liberation sans", "liberation serif", "liberation mono", "carlito",
+            "caladea");
+
+    public static boolean expected(String family) {
+        return family == null || EXPECTED.contains(family.toLowerCase(Locale.ROOT));
+    }
+
+    public List<Embedded> embedded() {
+        List<Embedded> out = new ArrayList<>();
+        long total = 0;
+        for (Map.Entry<String, Set<Integer>> e : used.entrySet()) {
+            Face face = faces.get(e.getKey());
+            byte[] sfnt;
+            try {
+                sfnt = webFont(face.font(), e.getValue());
+            } catch (IOException | RuntimeException ex) {
+                continue;
+            }
+            if (sfnt == null || restricted(sfnt) || sfnt.length > FixedHtml.MAX_FONT_BYTES
+                    || total + sfnt.length > FixedHtml.MAX_FONTS_BYTES) {
+                continue;
+            }
+            total += sfnt.length;
+            out.add(new Embedded(face.family(), face.bold(), face.italic(), sfnt));
+        }
+        return out;
+    }
+
+    static boolean restricted(byte[] sfnt) {
+        ByteBuffer in = ByteBuffer.wrap(sfnt);
+        int count = in.getShort(4) & 0xFFFF;
+        for (int i = 0; i < count && 12 + 16 * i + 16 <= sfnt.length; i++) {
+            int at = 12 + 16 * i;
+            if (in.getInt(at) == 0x4F532F32) {
+                int offset = in.getInt(at + 8);
+                if (offset < 0 || offset + 10 > sfnt.length) {
+                    return true;
+                }
+                int fsType = in.getShort(offset + 8) & 0xFFFF;
+                return (fsType & 0x000F) == 0x0002;
+            }
+        }
+        return true;
     }
 
     @Override

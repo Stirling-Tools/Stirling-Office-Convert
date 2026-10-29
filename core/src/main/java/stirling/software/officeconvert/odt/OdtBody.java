@@ -30,6 +30,11 @@ final class OdtBody {
     private final NoteHold notes;
     private final OdtLists lists;
     private final OdtTables tables;
+    private FontUse fontUse = (font, bold, italic, text) -> { };
+
+    interface FontUse {
+        void use(String font, boolean bold, boolean italic, String text);
+    }
 
     OdtBody(OdtStyles styles, StyleSheet sheet, OdtMedia media, NoteHold notes, OdtLists lists) {
         this.styles = styles;
@@ -38,6 +43,10 @@ final class OdtBody {
         this.lists = lists;
         this.frames = new OdtFrames(styles, media, this);
         this.tables = new OdtTables(styles, this);
+    }
+
+    void fontUse(FontUse use) {
+        fontUse = use;
     }
 
     OdtTables tables() {
@@ -284,6 +293,10 @@ final class OdtBody {
     }
 
     private void span(StringBuilder sb, RunStyle style, RunStyle base, String text, Content content) throws IOException {
+        RunStyle used = style != null ? style : base;
+        if (text != null && used != null) {
+            fontUse.use(used.font() != null || base == null ? used.font() : base.font(), used.bold(), used.italic(), text);
+        }
         String props = style == null ? "" : OdtProps.text(style, base, styles.fonts, text, sheet.scripts);
         if (props.isEmpty()) {
             content.write();
