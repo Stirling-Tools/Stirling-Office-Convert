@@ -13,6 +13,8 @@ final class Look {
 
     static final float ROOT_SIZE = 12f;
 
+    private static final int MAX_LINES = 20;
+
     String font = generic("serif");
     float size = ROOT_SIZE;
     boolean bold;
@@ -43,6 +45,8 @@ final class Look {
     float opacity = 1;
     boolean hyphens;
     String lang = "";
+    int widows = 2;
+    int orphans = 2;
 
     Look copy() {
         Look l = new Look();
@@ -62,6 +66,8 @@ final class Look {
         l.lineMultiple = lineMultiple;
         l.hyphens = hyphens;
         l.lang = lang;
+        l.widows = widows;
+        l.orphans = orphans;
         l.linePoints = linePoints;
         l.textIndent = textIndent;
         l.whiteSpace = whiteSpace;
@@ -92,6 +98,8 @@ final class Look {
             String h = v.strip().toLowerCase(Locale.ROOT);
             l.hyphens = h.equals("auto") || !h.equals("manual") && !h.equals("none") && hyphens;
         }
+        l.widows = lines(d.get("widows"), widows);
+        l.orphans = lines(d.get("orphans"), orphans);
         if ((v = d.get(Presentation.LANG)) != null) {
             l.lang = v.strip().toLowerCase(Locale.ROOT);
         }
@@ -273,6 +281,22 @@ final class Look {
     /** The first family of a CSS font stack that can be drawn, as a browser picks it. */
     boolean hyphenates() {
         return hyphens && (lang.equals("en") || lang.startsWith("en-") || lang.startsWith("en_"));
+    }
+
+    private static int lines(String v, int inherited) {
+        if (v == null) {
+            return inherited;
+        }
+        String s = v.strip().toLowerCase(Locale.ROOT);
+        if (s.equals("initial") || s.equals("unset")) {
+            return 2;
+        }
+        try {
+            int n = Integer.parseInt(s);
+            return n < 1 ? inherited : Math.min(n, MAX_LINES);
+        } catch (NumberFormatException e) {
+            return inherited;
+        }
     }
 
     static String family(String list) {

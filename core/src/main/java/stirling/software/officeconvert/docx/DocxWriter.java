@@ -37,7 +37,8 @@ public final class DocxWriter implements DocSink, Closeable {
                     + " xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\""
                     + " xmlns:pic=\"http://schemas.openxmlformats.org/drawingml/2006/picture\""
                     + " xmlns:wps=\"http://schemas.microsoft.com/office/word/2010/wordprocessingShape\""
-                    + " xmlns:mc=\"http://schemas.openxmlformats.org/markup-compatibility/2006\"";
+                    + " xmlns:mc=\"http://schemas.openxmlformats.org/markup-compatibility/2006\""
+                    + " xmlns:so=\"urn:stirling-software:office-convert\" mc:Ignorable=\"so\"";
 
     private static final long MEDIA_MEMORY_LIMIT = 4L * 1024 * 1024;
 

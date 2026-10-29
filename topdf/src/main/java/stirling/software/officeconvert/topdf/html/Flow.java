@@ -51,6 +51,8 @@ final class Flow {
     // Tabs past this many in a row are past the edge of any page, and each costs the layout memory
     private static final int MAX_TABS_IN_A_ROW = 32;
 
+    private static final int BOLD_LABEL_CHARS = 120;
+
     static final Set<String> SKIPPED = Set.of("head", "script", "style", "template", "title", "meta", "link",
             "base", "iframe", "object", "embed", "applet", "frame", "frameset", "video", "audio", "canvas",
             "map", "area", "input", "select", "option", "datalist", "param", "source", "track", "noembed", "noframes",
@@ -1884,6 +1886,8 @@ final class Flow {
         sectionStarted = false;
         p.bidi = l.rightToLeft;
         p.hyphenate = l.hyphenates();
+        p.widows = l.widows;
+        p.orphans = l.orphans;
         p.shading = f.shading();
         if (l.linePoints > 0) {
             p.lineRule = Paragraph.LineRule.AT_LEAST;
@@ -1953,7 +1957,24 @@ final class Flow {
         pendingAnchors.clear();
         lastSpace = true;
         ctx.count();
+        if (!inCell && p.list == null && p.orphans > 1 && boldLabel(p)) {
+            p.keepNext = true;
+        }
         emit(p);
+    }
+
+    private static boolean boldLabel(Paragraph p) {
+        int length = 0;
+        for (Inline i : p.inlines) {
+            if (!(i instanceof Inline.Text t)) {
+                return false;
+            }
+            if (!t.text().isBlank() && !t.style().bold()) {
+                return false;
+            }
+            length += t.text().strip().length();
+        }
+        return length > 0 && length <= BOLD_LABEL_CHARS;
     }
 
     // A box that scrolls or clips keeps what is too wide inside it, so the page does not grow

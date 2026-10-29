@@ -62,6 +62,7 @@ final class XTree {
         prefix("w10", "urn:schemas-microsoft-com:office:word");
         prefix("xml", "http://www.w3.org/XML/1998/namespace");
         prefix("dsp", "http://schemas.microsoft.com/office/drawing/2008/diagram");
+        prefix("so", "urn:stirling-software:office-convert");
     }
 
     private XTree() {}

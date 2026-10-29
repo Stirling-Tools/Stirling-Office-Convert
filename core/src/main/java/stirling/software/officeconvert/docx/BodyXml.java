@@ -60,6 +60,12 @@ final class BodyXml {
         if (p.pageBreakBefore) {
             sb.append("<w:pageBreakBefore/>");
         }
+        if (styles.widowControl && Math.max(p.widows, p.orphans) < 2) {
+            sb.append("<w:widowControl w:val=\"0\"/>");
+        } else if (styles.widowControl && (p.widows != 2 || p.orphans != 2)) {
+            sb.append("<w:widowControl so:widows=\"").append(p.widows).append("\" so:orphans=\"").append(p.orphans)
+                    .append("\"/>");
+        }
         if (p.list != null) {
             sb.append("<w:numPr><w:ilvl w:val=\"").append(p.list.level())
                     .append("\"/><w:numId w:val=\"").append(p.list.numId()).append("\"/></w:numPr>");

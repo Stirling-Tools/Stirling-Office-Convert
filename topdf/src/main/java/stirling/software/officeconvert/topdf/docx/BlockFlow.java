@@ -68,7 +68,7 @@ public final class BlockFlow {
         float after = r.lastAfter;
         int j = i;
         while (j < blocks.size() && j - i < CHAIN_LIMIT && blocks.get(j) instanceof Para p
-                && Boolean.TRUE.equals(p.pp.keepNext) && hardBreak(p) == NO_BREAK) {
+                && Boolean.TRUE.equals(p.pp.keepNext) && hardBreak(p) == NO_BREAK && (j == i || !startsPage(p))) {
             Block next = j + 1 < blocks.size() ? blocks.get(j + 1) : null;
             float[] m = paras.measure(p, width, next, r);
             chain += paras.collapse(m[0], after) + m[1] + m[2];
@@ -81,7 +81,7 @@ public final class BlockFlow {
         boolean headed = false;
         if (j < blocks.size()) {
             Block last = blocks.get(j);
-            if (last instanceof Para p && hardBreak(p) != LEADING_BREAK) {
+            if (last instanceof Para p && !startsPage(p)) {
                 float[] m = paras.measure(p, width, null, r);
                 chain += paras.collapse(m[0], after) + (Boolean.TRUE.equals(p.pp.keepLines) ? m[1] : m[3]);
             } else if (last instanceof TableBlock t) {
@@ -93,6 +93,10 @@ public final class BlockFlow {
         if (r.y + chain > r.limit() && (chain <= r.frameHeight() || headed)) {
             r.newFrame(false, false);
         }
+    }
+
+    private static boolean startsPage(Para p) {
+        return hardBreak(p) == LEADING_BREAK || Boolean.TRUE.equals(p.pp.pageBreakBefore);
     }
 
     private static boolean continuesChain(List<Block> blocks, int i) {

@@ -23,7 +23,8 @@ final class StylesPart {
                 .append("<w:lang w:val=\"").append(latinLanguage(sheet.scripts)).append("\" w:eastAsia=\"")
                 .append(eastAsianLanguage(sheet.scripts))
                 .append("\" w:bidi=\"").append(complexLanguage(sheet.scripts)).append("\"/>")
-                .append("</w:rPr></w:rPrDefault><w:pPrDefault><w:pPr><w:widowControl w:val=\"0\"/>")
+                .append("</w:rPr></w:rPrDefault><w:pPrDefault><w:pPr>")
+                .append(sheet.widowControl ? "<w:widowControl/>" : "<w:widowControl w:val=\"0\"/>")
                 .append("<w:spacing w:after=\"0\" w:line=\"240\" w:lineRule=\"auto\"/></w:pPr></w:pPrDefault>")
                 .append("</w:docDefaults>");
         sb.append("<w:style w:type=\"paragraph\" w:default=\"1\" w:styleId=\"Normal\"><w:name w:val=\"Normal\"/><w:qFormat/>");

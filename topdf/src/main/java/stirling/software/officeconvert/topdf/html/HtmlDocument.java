@@ -223,6 +223,7 @@ public final class HtmlDocument {
         Look bodyLook = root.child(bodyStyle, width, false);
         StyleSheet styles = new StyleSheet(bodyLook.run());
         styles.hyphenation = cascade.hyphenates();
+        styles.widowControl = true;
         DocSink.HeaderFooterSet running = new DocSink.HeaderFooterSet(List.of(), List.of(), List.of(), List.of(), false);
         boolean sided = cascade.styledPages("left") || cascade.styledPages("right");
         boolean first = cascade.styledPages("first");
