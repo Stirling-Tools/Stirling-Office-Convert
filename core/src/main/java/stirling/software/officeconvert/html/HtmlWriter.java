@@ -12,7 +12,9 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeMap;
 
 import stirling.software.officeconvert.Pictures;
@@ -34,6 +36,9 @@ import stirling.software.officeconvert.sink.SpillBuffer;
 public final class HtmlWriter implements DocSink, Closeable {
 
     private static final String BULLET = "\u2022";
+    private static final Set<String> PAGE_WORDS = Set.of("page", "pages", "pg", "p", "of", "seite", "von", "sur",
+            "página", "pagina", "de", "di", "blz", "blad", "van", "strona", "z", "sida", "av", "side", "af", "s",
+            "sheet", "slide", "oldal", "стр", "страница", "из", "第", "第页", "第頁", "页", "頁");
 
     private final OutputStream out;
     private final MediaStore media;
@@ -276,8 +281,8 @@ public final class HtmlWriter implements DocSink, Closeable {
         if (!numbered) {
             return true;
         }
-        List<String> words = Arrays.stream(text.toString().split("[\\s\\p{Punct}]+")).filter(w -> !w.isEmpty()).toList();
-        return words.size() > 2 || words.stream().anyMatch(w -> w.length() > 6);
+        return Arrays.stream(text.toString().toLowerCase(Locale.ROOT).split("[\\s\\p{Punct}]+"))
+                .anyMatch(w -> !w.isEmpty() && !PAGE_WORDS.contains(w) && !w.chars().allMatch(Character::isDigit));
     }
 
     private static Section defaultPage() {

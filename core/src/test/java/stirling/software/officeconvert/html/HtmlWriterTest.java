@@ -102,6 +102,16 @@ class HtmlWriterTest {
     }
 
     @Test
+    void shortRunningTextBesideAPageNumberStays() throws IOException {
+        String html = running(List.of(numbered("Draft - ", null)),
+                List.of(numbered("Acme | ", null), numbered("Seite ", null, " von ", null), numbered("p. ", null, "/", null),
+                        numbered("стр. ", null), numbered("第", null, "页")));
+        assertTrue(html.contains("Draft - "), html);
+        assertTrue(html.contains("Acme | "), html);
+        assertFalse(html.contains("Seite") || html.contains(">p. ") || html.contains("стр") || html.contains("第"), html);
+    }
+
+    @Test
     void familiesFallBackToFontsWithTheSameWidths() {
         assertEquals("'Calibri', 'Carlito', sans-serif", HtmlText.family("Calibri"));
         assertEquals("'Cambria', 'Caladea', serif", HtmlText.family("Cambria"));
