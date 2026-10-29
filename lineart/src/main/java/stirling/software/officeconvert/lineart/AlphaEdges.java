@@ -54,7 +54,7 @@ final class AlphaEdges {
                 }
                 band.accept(y, line, 1);
             }
-        }, w, h, options.threshold(), out);
+        }, w, h, out);
         return out;
     }
 }

@@ -117,8 +117,19 @@ class ImageMagickParityTest {
     @ParameterizedTest
     @ValueSource(ints = {1, 2, 3})
     void edgesMatchImageMagickPixelForPixel(int level) {
-        Bitmap bitmap = LineArt.binarize(picture(), LineArt.Options.imageMagickEdges(level));
-        String[] expected = EXPECTED[level - 1];
+        assertMatches(LineArt.binarize(picture(), LineArt.Options.imageMagickEdges(level)), EXPECTED[level - 1]);
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {1, 2, 3})
+    void edgesIgnoreThresholdLikeImageMagickBilevelType(int level) {
+        for (double threshold : new double[] {20, 55, 70}) {
+            assertMatches(LineArt.binarize(picture(), LineArt.Options.imageMagickEdges(level).threshold(threshold)),
+                    EXPECTED[level - 1]);
+        }
+    }
+
+    private static void assertMatches(Bitmap bitmap, String[] expected) {
         StringBuilder actual = new StringBuilder();
         StringBuilder wanted = new StringBuilder();
         for (int y = 0; y < 32; y++) {
