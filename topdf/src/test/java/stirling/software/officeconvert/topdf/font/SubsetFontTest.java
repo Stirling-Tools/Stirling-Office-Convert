@@ -23,6 +23,7 @@ import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.font.PDType0Font;
 import org.junit.jupiter.api.Test;
 
+import stirling.software.officeconvert.fonts.Unhinted;
 import stirling.software.officeconvert.topdf.testing.TestFonts;
 
 class SubsetFontTest {
@@ -86,6 +87,14 @@ class SubsetFontTest {
         if (loaded && at.equals("DescendantFonts/0/W")) {
             return;
         }
+        if (at.endsWith("FontDescriptor/FontFile2")) {
+            COSStream theirs = assertInstanceOf(COSStream.class, x, at);
+            COSStream ours = assertInstanceOf(COSStream.class, y, at);
+            byte[] unhinted = Unhinted.strip(decoded(theirs));
+            assertArrayEquals(unhinted, decoded(ours), at);
+            assertEquals(unhinted.length, ours.getInt(COSName.LENGTH1), at);
+            return;
+        }
         if (x instanceof COSDictionary dx) {
             COSDictionary dy = assertInstanceOf(COSDictionary.class, y, at);
             assertEquals(new ArrayList<>(dx.keySet()), new ArrayList<>(dy.keySet()), at);
@@ -107,6 +116,12 @@ class SubsetFontTest {
             }
         } else {
             assertEquals(String.valueOf(x), String.valueOf(y), at);
+        }
+    }
+
+    private static byte[] decoded(COSStream s) throws IOException {
+        try (InputStream in = s.createInputStream()) {
+            return in.readAllBytes();
         }
     }
 

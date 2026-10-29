@@ -365,8 +365,8 @@ fonts.problems();                                     // files that were skipped
 - Licences (OS/2 `fsType`). A font marked restricted licence embedding (`0x0002`, unless a less restrictive bit is
   also set) or bitmap embedding only (`0x0200`) is never used: its text is drawn with a stand-in and the warning
   says `X is installed but its licence does not permit embedding; using Y`. Installable, editable and preview and
-  print fonts are embedded as subsets; a font that forbids subsetting (`0x0100`) is embedded whole when it is not
-  in a collection, and replaced by a stand-in otherwise.
+  print fonts are embedded as subsets without their TrueType hinting; a font that forbids subsetting (`0x0100`) is
+  embedded whole when it is not in a collection, and replaced by a stand-in otherwise.
 
 `truncated()` is also set when content could not be read or was past a bound (a damaged slide, sheet or footnotes
 part, unreadable relationships, tables nested too deeply); the warnings say what. A host that must not serve an
