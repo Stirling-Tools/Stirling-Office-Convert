@@ -75,9 +75,7 @@ record Look(TextStyle style, float ascent, float descent, float leading, float r
             descent += extra;
             leading = 0;
         }
-        if (script) {
-            leading = 0;
-        } else if (rise != 0) {
+        if (!script && rise != 0) {
             ascent = Math.max(0, ascent + rise);
             descent = Math.max(0, descent - rise);
         }
