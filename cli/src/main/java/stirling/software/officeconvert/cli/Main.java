@@ -314,7 +314,7 @@ public final class Main {
                 pdfs.add(in);
             }
         }
-        if (!quiet) {
+        if (!quiet && (pdfa != null || pdfs.stream().anyMatch(Main::officeOrPage))) {
             for (String problem : fonts.problems()) {
                 System.err.println("warning: fonts: " + oneLine(problem));
             }

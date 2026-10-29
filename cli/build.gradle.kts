@@ -17,6 +17,7 @@ dependencies {
 
 application {
     mainClass.set("stirling.software.officeconvert.cli.Main")
+    applicationDefaultJvmArgs = listOf("-XX:+UseSerialGC")
 }
 
 val mergeServices by tasks.registering {

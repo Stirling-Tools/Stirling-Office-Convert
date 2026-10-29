@@ -324,7 +324,8 @@ final class Rewrite {
     private Recoder.Kind kind(int i, Roles roles) {
         return index.has(i, Index.METADATA) ? Recoder.Kind.KEEP
                 : roles.content.contains(i) ? Recoder.Kind.CONTENT
-                : index.has(i, Index.IMAGE) ? Recoder.Kind.IMAGE : Recoder.Kind.OTHER;
+                : index.has(i, Index.IMAGE) ? Recoder.Kind.IMAGE
+                : roles.trueType.contains(i) ? Recoder.Kind.TRUETYPE : Recoder.Kind.OTHER;
     }
 
     private void finish(Pending p, MessageDigest sha, List<Pending> retry) throws IOException {

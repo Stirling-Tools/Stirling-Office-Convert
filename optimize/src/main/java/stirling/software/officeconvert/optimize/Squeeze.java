@@ -85,14 +85,19 @@ final class Squeeze {
 
     private final BitWriter out;
 
-    private char[] same = new char[0];
+    private char[] same;
 
     private int sameBase;
 
-    private Squeeze(byte[] data, Settings settings, int capacity) {
+    private final Scratch scratch;
+
+    private static final ThreadLocal<Scratch> SCRATCH = new ThreadLocal<>();
+
+    private Squeeze(byte[] data, Settings settings, int capacity, Scratch scratch) {
         this.data = data;
         this.settings = settings;
         this.out = new BitWriter(capacity);
+        this.scratch = scratch;
         Arrays.fill(head, -1);
     }
 
@@ -149,15 +154,33 @@ final class Squeeze {
     private static byte[] part(byte[] data, Settings settings, int k, int blocks) throws InterruptedIOException {
         int start = k * MASTER_BLOCK;
         int end = Math.min(data.length, start + MASTER_BLOCK);
-        Squeeze s = new Squeeze(data, settings, Math.max(64, (end - start) / 3));
+        boolean worker = Thread.currentThread() instanceof java.util.concurrent.ForkJoinWorkerThread;
+        Scratch scratch = worker ? SCRATCH.get() : null;
+        if (scratch == null) {
+            scratch = new Scratch();
+        } else {
+            SCRATCH.remove();
+        }
+        try {
+            return part(new Squeeze(data, settings, Math.max(64, (end - start) / 3), scratch), start, end,
+                    k == blocks - 1);
+        } finally {
+            if (worker) {
+                SCRATCH.set(scratch);
+            }
+        }
+    }
+
+    private static byte[] part(Squeeze s, int start, int end, boolean last) throws InterruptedIOException {
+        byte[] data = s.data;
         if (data.length == 0) {
             s.out.bits(1, 1);
             s.out.bits(1, 2);
             s.out.bits(0, 7);
         } else {
             s.inserted = Math.max(0, start - WINDOW);
-            s.master(start, end, k == blocks - 1);
-            if (k < blocks - 1) {
+            s.master(start, end, last);
+            if (!last) {
                 s.out.bits(0, 1);
                 s.out.bits(0, 2);
                 s.out.align();
@@ -187,7 +210,7 @@ final class Squeeze {
         while (inserted < start) {
             insert(inserted++);
         }
-        Matches m = new Matches(end - start);
+        Matches m = new Matches(end - start, scratch);
         int runEnd = start;
         for (int i = start; i < end; i++) {
             if (((i - start) & 0xFFFF) == 0) {
@@ -244,7 +267,10 @@ final class Squeeze {
         Matches m = matches(start, end);
         sameBase = Math.max(0, start - MAX_MATCH);
         int sameEnd = Math.min(data.length, end + 2 * MAX_MATCH + 2);
-        same = new char[sameEnd - sameBase];
+        if (scratch.same.length < sameEnd - sameBase) {
+            scratch.same = new char[sameEnd - sameBase];
+        }
+        same = scratch.same;
         for (int i = sameEnd - 1; i >= sameBase; i--) {
             int run = i + 1 < sameEnd && data[i] == data[i + 1] ? same[i + 1 - sameBase] + 1 : 1;
             same[i - sameBase] = (char) Math.min(65535, run);
@@ -305,10 +331,11 @@ final class Squeeze {
 
     private Store parse(Matches m, int base, int from, int to, Costs costs) {
         int n = to - from;
-        double[] cost = new double[n + 1];
-        int[] length = new int[n + 1];
-        int[] dist = new int[n + 1];
-        Arrays.fill(cost, Double.MAX_VALUE);
+        scratch.fit(n + 1);
+        double[] cost = scratch.cost;
+        int[] length = scratch.length;
+        int[] dist = scratch.dist;
+        Arrays.fill(cost, 0, n + 1, Double.MAX_VALUE);
         cost[0] = 0;
         double[] lengthCost = new double[MAX_MATCH + 1];
         for (int l = MIN_MATCH; l <= MAX_MATCH; l++) {
@@ -362,22 +389,18 @@ final class Squeeze {
         for (int k = n; k > 0; k -= length[k]) {
             count++;
         }
-        int[] lens = new int[count];
-        int[] dists = new int[count];
+        Store s = new Store(count);
+        s.size = count;
         int j = count;
         for (int k = n; k > 0; k -= length[k]) {
             j--;
             if (dist[k] == 0) {
-                lens[j] = data[from + k - 1] & 0xFF;
-                dists[j] = 0;
+                s.lens[j] = data[from + k - 1] & 0xFF;
+                s.dists[j] = 0;
             } else {
-                lens[j] = length[k];
-                dists[j] = dist[k];
+                s.lens[j] = length[k];
+                s.dists[j] = dist[k];
             }
-        }
-        Store s = new Store(count);
-        for (int q = 0; q < count; q++) {
-            s.add(lens[q], dists[q]);
         }
         return s;
     }
@@ -858,16 +881,52 @@ final class Squeeze {
         }
     }
 
+    private static final class Scratch {
+
+        int[] pairs = new int[0];
+
+        int[] start = new int[0];
+
+        double[] cost = new double[0];
+
+        int[] length = new int[0];
+
+        int[] dist = new int[0];
+
+        char[] same = new char[0];
+
+        void fit(int n) {
+            if (cost.length < n) {
+                cost = new double[n];
+                length = new int[n];
+                dist = new int[n];
+            }
+        }
+    }
+
     private static final class Matches {
 
         final int[] start;
 
-        int[] pairs = new int[1024];
+        final int n;
+
+        final Scratch scratch;
+
+        int[] pairs;
 
         int used;
 
-        Matches(int n) {
-            start = new int[n + 1];
+        Matches(int n, Scratch scratch) {
+            this.n = n;
+            this.scratch = scratch;
+            if (scratch.start.length < n + 1) {
+                scratch.start = new int[n + 1];
+            }
+            if (scratch.pairs.length < Math.max(1024, 4L * n)) {
+                scratch.pairs = new int[(int) Math.min(Integer.MAX_VALUE - 8, Math.max(1024, 4L * n))];
+            }
+            start = scratch.start;
+            pairs = scratch.pairs;
         }
 
         void begin(int k) {
@@ -877,13 +936,14 @@ final class Squeeze {
         void add(int len, int dist) {
             if (used + 2 > pairs.length) {
                 pairs = Arrays.copyOf(pairs, pairs.length * 2);
+                scratch.pairs = pairs;
             }
             pairs[used++] = len;
             pairs[used++] = dist;
         }
 
         void finish() {
-            start[start.length - 1] = used;
+            start[n] = used;
         }
 
         int longest(int k) {

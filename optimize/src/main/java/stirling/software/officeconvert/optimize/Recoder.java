@@ -25,10 +25,12 @@ final class Recoder {
 
     private static final COSName DL = COSName.getPDFName("DL");
 
+    private static final COSName LENGTH1 = COSName.getPDFName("Length1");
+
     private static final COSName DCT_ABBREVIATION = COSName.getPDFName("DCT");
 
     enum Kind {
-        CONTENT, IMAGE, KEEP, OTHER
+        CONTENT, IMAGE, KEEP, TRUETYPE, OTHER
     }
 
     record Plan(byte[] data, Map<COSName, COSBase> replace, boolean recoded) {}
@@ -106,6 +108,14 @@ final class Recoder {
         }
         List<COSName> rest = filters.subList(peeled, filters.size());
         List<COSBase> restParms = parms.subList(peeled, parms.size());
+        boolean tidied = false;
+        if (kind == Kind.TRUETYPE && rest.isEmpty()) {
+            byte[] tidy = Sfnt.tidy(data);
+            if (tidy != null) {
+                data = tidy;
+                tidied = true;
+            }
+        }
         if (kind == Kind.CONTENT && rest.isEmpty()) {
             byte[] minified = Content.minify(data);
             if (minified != null && minified.length <= data.length) {
@@ -151,7 +161,8 @@ final class Recoder {
                 }
             }
         }
-        best = better(best, candidate(Deflate.best(flateInput, quick, effort), flateFilters, flateParms));
+        byte[] flated = rest.isEmpty() ? Deflate.best(flateInput, quick, effort) : quick;
+        best = better(best, candidate(flated, flateFilters, flateParms));
         if (best.data == raw) {
             return original(raw);
         }
@@ -159,6 +170,9 @@ final class Recoder {
         replace.put(COSName.FILTER, filterValue(best.filters));
         replace.put(COSName.DECODE_PARMS, parmsValue(best.parms));
         replace.put(DL, null);
+        if (tidied) {
+            replace.put(LENGTH1, COSInteger.get(data.length));
+        }
         replace.put(COSName.LENGTH, COSInteger.get(best.data.length));
         return new Plan(best.data, replace, true);
     }
