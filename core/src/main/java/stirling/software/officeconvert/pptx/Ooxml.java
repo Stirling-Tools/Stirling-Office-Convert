@@ -84,9 +84,10 @@ final class Ooxml {
     static void gradFill(StringBuilder sb, Gradient g, float alpha) {
         sb.append("<a:gradFill rotWithShape=\"1\"><a:gsLst>");
         for (int i = 0; i < g.colours().length; i++) {
-            sb.append("<a:gs pos=\"").append(Math.clamp(Math.round(g.positions()[i] * 100000), 0, 100000)).append("\">");
-            solidColour(sb, g.colours()[i], alpha);
-            sb.append("</a:gs>");
+            stop(sb, g.positions()[i], g.colours()[i], alpha);
+            if (g.colours().length == 2 && i == 0) {
+                stop(sb, (g.positions()[0] + g.positions()[1]) / 2, mix(g.colours()[0], g.colours()[1]), alpha);
+            }
         }
         sb.append("</a:gsLst>");
         if (g.radial()) {
@@ -95,6 +96,20 @@ final class Ooxml {
             sb.append("<a:lin ang=\"").append(Math.floorMod(Math.round(g.angle() * 60000), 21_600_000)).append("\" scaled=\"0\"/>");
         }
         sb.append("</a:gradFill>");
+    }
+
+    private static void stop(StringBuilder sb, float position, int rgb, float alpha) {
+        sb.append("<a:gs pos=\"").append(Math.clamp(Math.round(position * 100000), 0, 100000)).append("\">");
+        solidColour(sb, rgb, alpha);
+        sb.append("</a:gs>");
+    }
+
+    private static int mix(int a, int b) {
+        int out = 0;
+        for (int shift = 0; shift <= 16; shift += 8) {
+            out |= ((a >> shift & 0xFF) + (b >> shift & 0xFF) + 1) / 2 << shift;
+        }
+        return out;
     }
 
     private static void solidColour(StringBuilder sb, int rgb, float alpha) {

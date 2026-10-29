@@ -325,7 +325,8 @@ class PdfToPptxTest {
         String slide = SlideFixtures.text(files, "ppt/slides/slide1.xml");
         assertEquals(0, count(slide, "<p:pic>"), slide);
         assertFalse(files.keySet().stream().anyMatch(n -> n.startsWith("ppt/media/")));
-        assertTrue(slide.contains("<a:gsLst><a:gs pos=\"0\"><a:srgbClr val=\"FFFFFF\"/></a:gs><a:gs pos=\"100000\">"
+        assertTrue(slide.contains("<a:gsLst><a:gs pos=\"0\"><a:srgbClr val=\"FFFFFF\"/></a:gs><a:gs pos=\"50000\"><a:srgbClr val=\"A6CC8D\"/></a:gs>"
+                + "<a:gs pos=\"100000\">"
                 + "<a:srgbClr val=\"4D991A\"/></a:gs></a:gsLst><a:path path=\"circle\">"), slide);
     }
 
@@ -337,7 +338,8 @@ class PdfToPptxTest {
         PdfToPptx.convert(pdf, out, PdfToPptx.Options.defaults());
         String slide = SlideFixtures.text(SlideFixtures.parts(Files.readAllBytes(out)), "ppt/slides/slide1.xml");
         assertEquals(0, count(slide, "<p:pic>"), slide);
-        assertTrue(slide.contains("<a:gs pos=\"0\"><a:srgbClr val=\"FF0000\"/></a:gs><a:gs pos=\"100000\">"
+        assertTrue(slide.contains("<a:gs pos=\"0\"><a:srgbClr val=\"FF0000\"/></a:gs><a:gs pos=\"50000\"><a:srgbClr val=\"800080\"/></a:gs>"
+                + "<a:gs pos=\"100000\">"
                 + "<a:srgbClr val=\"0000FF\"/></a:gs></a:gsLst><a:lin ang=\"5400000\" scaled=\"0\"/>"), slide);
     }
 

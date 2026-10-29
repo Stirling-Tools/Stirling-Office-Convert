@@ -257,17 +257,13 @@ class PdfToPptTest {
     }
 
     @Test
-    void aTwoColourAxialShadingIsAShadedFreeform() throws IOException {
+    void anAxialShadingStaysAPicture() throws IOException {
         PDShadingType2 axial = new PDShadingType2(new COSDictionary());
         axial.setShadingType(PDShading.SHADING_TYPE2);
         axial.setCoords(floats(0, 540, 0, 0));
         List<HSLFShape> shapes = shapesOf(shadedPage("axial", axial));
         assertEquals(1, shapes.size());
-        HSLFFreeformShape f = assertInstanceOf(HSLFFreeformShape.class, shapes.get(0));
-        assertEquals(4, f.getFill().getFillType());
-        assertEquals(0xFF0000, f.getFill().getBackgroundColor().getRGB() & 0xFFFFFF);
-        assertEquals(0x0000FF, f.getFill().getForegroundColor().getRGB() & 0xFFFFFF);
-        assertEquals(0, f.getEscherProperty(EscherPropertyTypes.FILL__ANGLE));
+        assertInstanceOf(HSLFPictureShape.class, shapes.get(0));
     }
 
     @Test
