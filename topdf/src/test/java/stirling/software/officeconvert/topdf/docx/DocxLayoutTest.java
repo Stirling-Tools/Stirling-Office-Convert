@@ -196,6 +196,28 @@ class DocxLayoutTest {
     }
 
     @Test
+    void anOlderDocumentSqueezesJustifiedLinesOnlyWhenAskedTo() throws IOException {
+        FontFace face = FontLibrary.system().find(FONT, false, false);
+        String lead = "aa aa aa aa aa aa aa aa aa aa aa aa aa aa aa aa aa aa aa aa";
+        String tail = "mm";
+        float avail = face.width(lead + " " + tail, 10) - 0.2f * face.width(tail, 10);
+        String pPr = "<w:jc w:val=\"both\"/><w:ind w:right=\"" + Math.round((468 - avail) * 20) + "\"/>";
+        for (boolean shrink : new boolean[] {false, true}) {
+            String settings = "<w:settings " + DocxDoc.NS + "><w:compat><w:compatSetting w:name=\"compatibilityMode\""
+                    + " w:uri=\"http://schemas.microsoft.com/office/word\" w:val=\"11\"/>"
+                    + (shrink ? "<w:compatSetting w:name=\"justifyLinesWithShrinking\" w:uri=\"urn:stirling:officeconvert\""
+                            + " w:val=\"1\"/>" : "")
+                    + "</w:compat></w:settings>";
+            byte[] docx = new DocxDoc().styles(STYLES).part("settings.xml", "settings",
+                    "application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml", settings)
+                    .body(para(pPr, run(lead + " " + tail + " and more words"))).bytes();
+            List<Word> w = words(DocxDoc.render(dir, "compat11" + shrink, docx));
+            boolean sameLine = Math.abs(find(w, tail).y() - find(w, "aa").y()) < 0.5f;
+            assertEquals(shrink, sameLine, "shrink " + shrink + ": " + w);
+        }
+    }
+
+    @Test
     void theParagraphMarkAfterAColumnBreakStartsTheNextColumn() throws IOException {
         String cols = "<w:sectPr><w:pgSz w:w=\"12240\" w:h=\"15840\"/><w:pgMar w:top=\"1440\" w:right=\"1440\""
                 + " w:bottom=\"1440\" w:left=\"1440\" w:header=\"720\" w:footer=\"720\" w:gutter=\"0\"/>"

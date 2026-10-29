@@ -170,6 +170,27 @@ class OdtWriterTest {
     }
 
     @Test
+    void justifiedParagraphsLetTheirSpacesShrinkInLibreOffice() throws Exception {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        try (OdtWriter w = new OdtWriter(out, true)) {
+            StyleSheet styles = new StyleSheet(SampleDocument.BODY);
+            w.begin(styles, null);
+            Paragraph justified = SampleDocument.paragraph("Justified text.");
+            justified.align = Paragraph.Align.JUSTIFY;
+            w.block(justified);
+            w.block(SampleDocument.paragraph("Left text."));
+            w.finish(SampleDocument.section(1), null, new Numbering(), styles, "Justified", "Tester");
+        }
+        String s = new String(out.toByteArray(), StandardCharsets.UTF_8);
+        xml(out.toByteArray());
+        int at = s.indexOf("fo:text-align=\"justify\"");
+        assertTrue(at > 0);
+        String props = s.substring(s.lastIndexOf("<style:paragraph-properties", at), s.indexOf('>', at));
+        assertTrue(props.contains("loext:word-spacing-minimum=\"75%\""), props);
+        assertEquals(s.indexOf("loext:word-spacing-minimum"), s.lastIndexOf("loext:word-spacing-minimum"));
+    }
+
+    @Test
     void flatDocumentIsOneXmlFileWithPicturesInline() throws Exception {
         byte[] flat = convert(true);
         Document doc = xml(flat);

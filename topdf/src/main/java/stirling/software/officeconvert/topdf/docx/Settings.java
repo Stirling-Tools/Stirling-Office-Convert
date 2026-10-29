@@ -5,6 +5,7 @@ final class Settings {
     float defaultTabStop = 36;
     boolean evenAndOddHeaders;
     int compatibilityMode = 12;
+    boolean justifyShrink;
     boolean doNotExpandShiftReturn;
     boolean htmlAutoSpacingOff;
     boolean mirrorMargins;
@@ -92,6 +93,10 @@ final class Settings {
                     } else if ("overrideTableStyleFontSizeAndJustification".equals(c.attr("name"))) {
                         String v = c.attr("val");
                         overrideTableStyleFontSize = "1".equals(v) || "true".equalsIgnoreCase(v);
+                    } else if ("justifyLinesWithShrinking".equals(c.attr("name"))
+                            && "urn:stirling:officeconvert".equals(c.attr("uri"))) {
+                        String v = c.attr("val");
+                        justifyShrink = "1".equals(v) || "true".equalsIgnoreCase(v);
                     }
                 }
                 default -> {
