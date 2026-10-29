@@ -856,4 +856,41 @@ class EbookToPdfTest {
         assertEquals(32 * 32 + 10, Kf8Book.base32("010A"));
         assertArrayEquals(new byte[] {(byte) 0x81}, MobiWriter.varint(1));
     }
+
+    @Test
+    void mobiFontSizesFollowKindleSteps() {
+        String html = MobiBook.html("<p><font size=\"7\">T</font><font size=\"+2\">H</font><font size=10>X</font></p>"
+                .getBytes(StandardCharsets.ISO_8859_1), StandardCharsets.ISO_8859_1);
+        assertTrue(html.contains("<font style=\"font-size:1.83333rem\">T"), html);
+        assertTrue(html.contains("<font style=\"font-size:1.41667rem\">H"), html);
+        assertTrue(html.contains("<font size=10>X"), html);
+    }
+
+    @Test
+    void nestedMobiFontSizesDoNotCompound() throws IOException {
+        String html = MobiBook.html("<html><body><h2><font size=\"6\">Nested</font></h2></body></html>"
+                .getBytes(StandardCharsets.ISO_8859_1), StandardCharsets.ISO_8859_1);
+        Path page = Files.writeString(dir.resolve("nested.html"), html);
+        Path pdf = dir.resolve("nested.pdf");
+        OfficeToPdf.convert(page, pdf);
+        try (PDDocument doc = Loader.loadPDF(pdf.toFile())) {
+            float[] size = {0};
+            new PDFTextStripper() {
+                @Override
+                protected void writeString(String text, List<org.apache.pdfbox.text.TextPosition> positions) {
+                    if (text.contains("Nested")) {
+                        size[0] = positions.getFirst().getFontSizeInPt();
+                    }
+                }
+            }.getText(doc);
+            assertEquals(20, size[0], 0.6f);
+        }
+    }
+
+    @Test
+    void mobiClosingBreaksAreNotSecondBreaks() {
+        String html = MobiBook.html("<p>a<br></br>b<BR></BR >c</p>".getBytes(StandardCharsets.ISO_8859_1),
+                StandardCharsets.ISO_8859_1);
+        assertTrue(html.contains("a<br>b<BR>c"), html);
+    }
 }

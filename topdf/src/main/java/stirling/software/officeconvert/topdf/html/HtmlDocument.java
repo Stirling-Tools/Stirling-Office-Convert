@@ -373,11 +373,12 @@ public final class HtmlDocument {
 
     static Section page(Map<String, String> d) {
         Section s = JsonModel.defaultPage();
-        s.marginTop = PAGE_MARGIN;
-        s.marginBottom = PAGE_MARGIN;
-        s.marginLeft = PAGE_MARGIN;
-        s.marginRight = PAGE_MARGIN;
         String size = d.get("size");
+        float fallback = d.containsKey(BOOK_PAGE) && size == null ? BOOK_MARGIN : PAGE_MARGIN;
+        s.marginTop = fallback;
+        s.marginBottom = fallback;
+        s.marginLeft = fallback;
+        s.marginRight = fallback;
         if (size != null) {
             size(s, size.toLowerCase(Locale.ROOT));
         }

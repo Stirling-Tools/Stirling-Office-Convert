@@ -233,6 +233,7 @@ final class EpubBook {
         if (author != null) {
             html.append("<meta name=\"author\" content=\"").append(escape(author)).append("\">");
         }
+        html.append("<style>body{margin:0}</style>");
         for (String sheet : sheets) {
             html.append("<link rel=\"stylesheet\" href=\"/").append(escape(sheet)).append("\">");
         }
@@ -661,8 +662,13 @@ final class EpubBook {
     static String scopedSelector(String selector, int chapter) {
         String scope = "#epub-c" + chapter;
         Matcher m = ROOT_STEP.matcher(selector);
-        String rest = m.find() ? selector.substring(m.end()) : " " + selector;
-        return scope + ID_STEP.matcher(rest).replaceAll("#epub-c" + chapter + "-$1");
+        boolean root = m.find();
+        String rest = root ? selector.substring(m.end()) : " " + selector;
+        String scopedRest = scope + ID_STEP.matcher(rest).replaceAll("#epub-c" + chapter + "-$1");
+        if (root || !selector.startsWith(".")) {
+            return scopedRest;
+        }
+        return scopedRest + ", " + scope + ID_STEP.matcher(selector).replaceAll("#epub-c" + chapter + "-$1");
     }
 
     static String withoutComments(String css) {
