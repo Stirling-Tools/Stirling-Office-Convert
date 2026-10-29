@@ -47,6 +47,19 @@ class BookInputTest {
     }
 
     @Test
+    void theAssembledBookBodyLeavesMarginsToTheBooksOwnStyles() throws IOException {
+        HtmlAssets files = name -> switch (name) {
+            case "a.xhtml" -> ("<html><head><link rel=\"stylesheet\" href=\"s.css\"></head>"
+                    + "<body class=\"calibre\"><p>A</p></body></html>").getBytes();
+            case "s.css" -> ".calibre{margin:0 5pt}".getBytes();
+            default -> null;
+        };
+        String html = EpubBook.assemble(files, List.of("a.xhtml"), null, null, null).html();
+        int reset = html.indexOf("<style>body{margin:0}</style>");
+        assertTrue(reset >= 0 && reset < html.indexOf("<link"), html);
+    }
+
+    @Test
     void metadataCannotPushTheAssembledBookPastTheTextLimit() {
         String title = "x".repeat((int) EpubBook.MAX_BOOK_CHARS + 1);
         assertThrows(IOException.class, () -> EpubBook.assemble(name -> null, List.of(), title, null, null));

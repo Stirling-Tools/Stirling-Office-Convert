@@ -233,6 +233,7 @@ final class EpubBook {
         if (author != null) {
             html.append("<meta name=\"author\" content=\"").append(escape(author)).append("\">");
         }
+        html.append("<style>body{margin:0}</style>");
         for (String sheet : sheets) {
             html.append("<link rel=\"stylesheet\" href=\"/").append(escape(sheet)).append("\">");
         }
