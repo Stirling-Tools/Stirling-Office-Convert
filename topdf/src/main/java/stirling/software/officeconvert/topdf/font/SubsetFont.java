@@ -35,8 +35,10 @@ import org.apache.pdfbox.pdmodel.common.PDStream;
 import org.apache.pdfbox.pdmodel.font.PDFontDescriptor;
 import org.apache.pdfbox.util.Hex;
 
+import stirling.software.officeconvert.fonts.Unhinted;
+
 // The subset Type 0 font PDType0Font.load(document, ttf, true) writes, without the per-glyph width table PDFBox
-// builds at load only to replace it when subsetting
+// builds at load only to replace it when subsetting, and without TrueType hinting
 final class SubsetFont {
 
     private static final List<String> TABLES =
@@ -123,7 +125,7 @@ final class SubsetFont {
         subsetter.setPrefix(tag);
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         subsetter.writeToStream(out);
-        byte[] subset = out.toByteArray();
+        byte[] subset = Unhinted.strip(out.toByteArray(), ttf.getName(), family(ttf));
         TreeMap<Integer, Integer> cidToGid = new TreeMap<>();
         gidToCid.forEach((gid, cid) -> cidToGid.put(cid, gid));
         toUnicode(gidToCid);
@@ -288,6 +290,14 @@ final class SubsetFont {
             sb.insert(0, 'A');
         }
         return sb.append('+').toString();
+    }
+
+    private static String family(TrueTypeFont ttf) {
+        try {
+            return ttf.getNaming() == null ? null : ttf.getNaming().getFontFamily();
+        } catch (IOException | RuntimeException e) {
+            return null;
+        }
     }
 
     private static boolean embeddingPermitted(TrueTypeFont ttf) throws IOException {

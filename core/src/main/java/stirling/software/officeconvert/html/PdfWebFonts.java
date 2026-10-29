@@ -30,6 +30,7 @@ import org.apache.pdfbox.pdmodel.graphics.form.PDFormXObject;
 
 import stirling.software.officeconvert.extract.FontInfo;
 import stirling.software.officeconvert.extract.FontResolver;
+import stirling.software.officeconvert.fonts.Unhinted;
 public final class PdfWebFonts implements FixedHtml.FontSource {
 
     private static final int MAX_FORM_DEPTH = 4;
@@ -154,7 +155,7 @@ public final class PdfWebFonts implements FixedHtml.FontSource {
                 return null;
             }
             if (codePoints == null) {
-                return bytes(fd.getFontFile2());
+                return Unhinted.strip(bytes(fd.getFontFile2()), font.getName(), fd.getFontName(), fd.getFontFamily());
             }
             TTFSubsetter subset = new TTFSubsetter(ttf, KEEP_TABLES);
             subset.addAll(codePoints);
@@ -163,7 +164,8 @@ public final class PdfWebFonts implements FixedHtml.FontSource {
             }
             ByteArrayOutputStream out = new ByteArrayOutputStream();
             subset.writeToStream(out);
-            return os2Version(out.toByteArray());
+            return Unhinted.strip(os2Version(out.toByteArray()), font.getName(), fd.getFontName(),
+                    fd.getFontFamily());
         }
         PDStream file3 = fd.getFontFile3();
         if (file3 != null && "OpenType".equals(file3.getCOSObject().getNameAsString(COSName.SUBTYPE))) {
