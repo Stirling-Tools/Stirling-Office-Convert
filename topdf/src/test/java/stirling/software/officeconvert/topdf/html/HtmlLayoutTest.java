@@ -644,6 +644,28 @@ class HtmlLayoutTest {
     }
 
     @Test
+    void doubleBordersWithoutAWidthOrWithAKeywordWidthStayDouble() {
+        Map<String, String> bare = Map.of("border-bottom", "double blue");
+        Map<String, String> thick = Map.of("border-bottom", "thick double blue");
+        assertTrue(Flow.doubled(bare, "bottom"));
+        assertEquals(2.25f, Flow.border(bare, "bottom"));
+        assertTrue(Flow.doubled(thick, "bottom"));
+        assertEquals(3.75f, Flow.border(thick, "bottom"));
+        assertEquals(3.75f, Flow.border(Map.of("border-bottom", "thick solid red"), "bottom"));
+        assertEquals(0.75f, Flow.border(Map.of("border-bottom", "solid red"), "bottom"));
+        assertFalse(Flow.doubled(Map.of("border-bottom", "thin double"), "bottom"));
+    }
+
+    @Test
+    void aBottomPlacedBoxCountsItsRunLineHeight() throws IOException {
+        String box = "<html><body><div style=\"position:relative;height:400pt\"><div style=\"position:absolute;bottom:0;"
+                + "left:0\"><span style=\"line-height:%s\">Text</span></div></div></body></html>";
+        float plain = lay(box.formatted("normal")).word("Text").top();
+        float tall = lay(box.formatted("100pt")).word("Text").top();
+        assertTrue(plain - tall > 30, plain + " vs " + tall);
+    }
+
+    @Test
     void aLargerInlineFontWidensItsLineByItsOwnLineHeight() throws IOException {
         Laid l = lay("""
                 <html><body style="font-size:11pt;line-height:1.5"><div><span style="font-size:24pt">Big</span></div>

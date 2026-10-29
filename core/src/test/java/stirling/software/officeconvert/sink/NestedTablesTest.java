@@ -240,6 +240,27 @@ class NestedTablesTest {
         assertEquals(List.of(), warnings);
     }
 
+    @Test
+    void jsonKeepsDoubleBordersOnCellsAndParagraphs() throws IOException {
+        Table t = table("Boxed");
+        Table.Cell cell = t.rows.getFirst().cells.getFirst();
+        cell.top = new Table.Border(2.25f, 0x1f4e79, true);
+        cell.bottom = new Table.Border(0.75f, 0);
+        Paragraph ruled = cell.paragraphs.getFirst();
+        ruled.borderBottom = 2.25f;
+        ruled.borderBottomDouble = true;
+        String json = json(t);
+        List<String> warnings = new ArrayList<>();
+        List<Block> read = new ArrayList<>();
+        JsonModel.replay(Json.parse(json), new Collect(read), warnings);
+        Table.Cell back = ((Table) read.getFirst()).rows.getFirst().cells.getFirst();
+        assertEquals(new Table.Border(2.25f, 0x1f4e79, true), back.top);
+        assertFalse(back.bottom.doubled());
+        assertTrue(back.paragraphs.getFirst().borderBottomDouble);
+        assertEquals(1, count(json, "\"double\":true"), json);
+        assertEquals(List.of(), warnings);
+    }
+
     private static String json(Table t) throws IOException {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         try (JsonWriter w = new JsonWriter(out, Pictures.COMPACT)) {
