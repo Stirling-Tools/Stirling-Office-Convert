@@ -21,7 +21,7 @@ public final class Protrusion {
         return maxRight - edge <= HANG_EM * lines.getFirst().size ? edge : maxRight;
     }
 
-    private static boolean protrudes(Line l) {
+    static boolean protrudes(Line l) {
         String t = l.words.getLast().text;
         return t.length() >= 2 && PROTRUDING.indexOf(t.charAt(t.length() - 1)) >= 0;
     }
