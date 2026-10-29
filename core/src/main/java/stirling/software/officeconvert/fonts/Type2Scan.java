@@ -1,4 +1,4 @@
-package stirling.software.officeconvert.pdfa;
+package stirling.software.officeconvert.fonts;
 
 import java.util.ArrayList;
 import java.util.List;

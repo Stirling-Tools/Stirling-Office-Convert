@@ -406,7 +406,7 @@ final class Salvage {
         }
     }
 
-    private static final class DictionaryParser extends PDFStreamParser implements AutoCloseable {
+    static final class DictionaryParser extends PDFStreamParser implements AutoCloseable {
 
         DictionaryParser(byte[] data) {
             super(data);
@@ -415,6 +415,10 @@ final class Salvage {
 
         COSDictionary read() throws IOException {
             return parseCOSDictionary(false);
+        }
+
+        long position() throws IOException {
+            return source.getPosition();
         }
 
         @Override

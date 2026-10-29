@@ -26,7 +26,7 @@ final class Cleanup {
 
     record Removal(Object[] path, Set<COSName> keys) {}
 
-    private record Sub(Roles.Loc loc, COSDictionary dict) {}
+    record Sub(Roles.Loc loc, COSDictionary dict) {}
 
     private Cleanup() {}
 
@@ -108,7 +108,7 @@ final class Cleanup {
         return removals;
     }
 
-    private static Sub sub(Resolver resolver, Index index, Roles.Loc at, COSDictionary res, COSName key)
+    static Sub sub(Resolver resolver, Index index, Roles.Loc at, COSDictionary res, COSName key)
             throws IOException {
         COSBase v = res.getItem(key);
         if (v instanceof COSObject o && o.getKey() != null) {
@@ -141,20 +141,24 @@ final class Cleanup {
 
     private static Content.Usage scan(Source source, Index index, int[] streams, BrotliBudget budget)
             throws IOException {
+        byte[] data = content(source, index, streams, budget);
+        return data == null ? Content.Usage.unknown() : Content.scan(data);
+    }
+
+    static byte[] content(Source source, Index index, int[] streams, BrotliBudget budget) throws IOException {
         if (streams.length == 1) {
-            byte[] data = decoded(source.load(index.key(streams[0])), budget);
-            return data == null ? Content.Usage.unknown() : Content.scan(data);
+            return decoded(source.load(index.key(streams[0])), budget);
         }
         Bytes joined = new Bytes(1 << 12);
         for (int stream : streams) {
             byte[] data = decoded(source.load(index.key(stream)), budget);
             if (data == null || joined.size() + (long) data.length + 1 > Recoder.MAX_DECODED_BYTES) {
-                return Content.Usage.unknown();
+                return null;
             }
             joined.write(data);
             joined.write('\n');
         }
-        return Content.scan(joined.toByteArray());
+        return joined.toByteArray();
     }
 
     private static byte[] decoded(COSBase s, BrotliBudget budget) {

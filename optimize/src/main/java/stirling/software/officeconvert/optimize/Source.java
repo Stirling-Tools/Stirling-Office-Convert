@@ -176,6 +176,18 @@ final class Source {
         return added;
     }
 
+    Map<COSObjectKey, Long> locate(List<COSObjectKey> keys) throws IOException {
+        return parser == null ? Map.of() : Truncated.locate(parser, keys);
+    }
+
+    COSStream cutOff(long offset) {
+        try {
+            return parser == null ? null : Truncated.read(parser, offset, Recoder.MAX_RAW_BYTES);
+        } catch (IOException | RuntimeException e) {
+            return null;
+        }
+    }
+
     private long containerOffset(long number) {
         Long off = xref.get(new COSObjectKey(number, 0));
         return off == null ? Long.MAX_VALUE : off;

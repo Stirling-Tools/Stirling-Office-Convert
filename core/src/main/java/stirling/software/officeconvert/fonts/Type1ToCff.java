@@ -1,4 +1,4 @@
-package stirling.software.officeconvert.pdfa;
+package stirling.software.officeconvert.fonts;
 
 import java.awt.geom.GeneralPath;
 import java.awt.geom.PathIterator;
@@ -26,7 +26,7 @@ import org.apache.fontbox.encoding.StandardEncoding;
 import org.apache.fontbox.type1.Type1Font;
 import org.apache.fontbox.util.BoundingBox;
 
-final class Type1ToCff {
+public final class Type1ToCff {
 
     private static final int STANDARD_STRINGS = 391;
 
@@ -46,7 +46,7 @@ final class Type1ToCff {
         this.font = font;
     }
 
-    static byte[] convert(Type1Font font, Map<Integer, String> codes, Set<String> outlined) throws IOException {
+    public static byte[] convert(Type1Font font, Map<Integer, String> codes, Set<String> outlined) throws IOException {
         if (font == null || font.getFontType() != 1 || font.getPaintType() != 0
                 || font.getCharStringsDict().isEmpty()) {
             return null;
