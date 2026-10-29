@@ -143,7 +143,7 @@ final class Truncated {
         Inflater inflater = new Inflater();
         try {
             inflater.setInput(raw);
-            Bytes out = new Bytes(raw.length * 3);
+            Bytes out = new Bytes((int) Math.min(limit, Math.min(1 << 16, (long) raw.length * 3)));
             byte[] buffer = new byte[1 << 16];
             while (!inflater.finished() && !inflater.needsInput()) {
                 int n = inflater.inflate(buffer);
