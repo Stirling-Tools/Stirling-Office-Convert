@@ -405,6 +405,7 @@ final class ParaItems {
             it.look = it.look.spaced(grid);
             it.link = link;
             it.lang = rp.lang;
+            it.lineHeight = rp.lineHeight == null ? 0 : Math.max(0, Math.min(1584, rp.lineHeight));
             it.shaped = FontFace.needsShaping(it.text) && f.shapeable();
             it.rtl = BidiRuns.needed(it.text) && BidiRuns.baseRightToLeft(it.text);
             add(it);

@@ -50,6 +50,8 @@ final class Item {
 
     float objectHeight;
 
+    float lineHeight;
+
     float extra;
 
     private float fullWidth = -1;

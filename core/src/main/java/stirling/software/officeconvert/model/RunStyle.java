@@ -14,7 +14,15 @@ public record RunStyle(
         float spacing,
         int scale,
         boolean smallCaps,
-        int border) {
+        int border,
+        float lineHeight) {
+
+    public RunStyle(String font, float size, boolean bold, boolean italic, boolean underline, boolean strike,
+            int rgb, int highlight, int vertAlign, boolean symbol, float spacing, int scale, boolean smallCaps,
+            int border) {
+        this(font, size, bold, italic, underline, strike, rgb, highlight, vertAlign, symbol, spacing, scale, smallCaps,
+                border, 0f);
+    }
 
     public RunStyle(String font, float size, boolean bold, boolean italic, boolean underline, boolean strike,
             int rgb, int highlight, int vertAlign, boolean symbol, float spacing, int scale, boolean smallCaps) {
@@ -32,18 +40,22 @@ public record RunStyle(
     }
 
     public RunStyle withFont(String f) {
-        return new RunStyle(f, size, bold, italic, underline, strike, rgb, highlight, vertAlign, symbol, spacing, scale, smallCaps, border);
+        return new RunStyle(f, size, bold, italic, underline, strike, rgb, highlight, vertAlign, symbol, spacing, scale, smallCaps, border, lineHeight);
     }
 
     public RunStyle withSize(float s) {
-        return new RunStyle(font, s, bold, italic, underline, strike, rgb, highlight, vertAlign, symbol, spacing, scale, smallCaps, border);
+        return new RunStyle(font, s, bold, italic, underline, strike, rgb, highlight, vertAlign, symbol, spacing, scale, smallCaps, border, lineHeight);
     }
 
     public RunStyle withBorder(int b) {
-        return new RunStyle(font, size, bold, italic, underline, strike, rgb, highlight, vertAlign, symbol, spacing, scale, smallCaps, b);
+        return new RunStyle(font, size, bold, italic, underline, strike, rgb, highlight, vertAlign, symbol, spacing, scale, smallCaps, b, lineHeight);
     }
 
     public RunStyle withVertAlign(int v) {
-        return new RunStyle(font, size, bold, italic, underline, strike, rgb, highlight, v, symbol, spacing, scale, smallCaps, border);
+        return new RunStyle(font, size, bold, italic, underline, strike, rgb, highlight, v, symbol, spacing, scale, smallCaps, border, lineHeight);
+    }
+
+    public RunStyle withLineHeight(float l) {
+        return new RunStyle(font, size, bold, italic, underline, strike, rgb, highlight, vertAlign, symbol, spacing, scale, smallCaps, border, l);
     }
 }

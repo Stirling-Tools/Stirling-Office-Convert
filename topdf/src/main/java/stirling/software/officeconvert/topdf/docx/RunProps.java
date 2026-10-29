@@ -40,6 +40,7 @@ final class RunProps {
     Float spacing;
     Integer scale;
     Float position;
+    Float lineHeight;
     Float kern;
     String vertAlign;
     Border border;
@@ -104,6 +105,7 @@ final class RunProps {
         spacing = o.spacing != null ? o.spacing : spacing;
         scale = o.scale != null ? o.scale : scale;
         position = o.position != null ? o.position : position;
+        lineHeight = o.lineHeight != null ? o.lineHeight : lineHeight;
         kern = o.kern != null ? o.kern : kern;
         vertAlign = o.vertAlign != null ? o.vertAlign : vertAlign;
         border = o.border != null ? o.border : border;
@@ -180,6 +182,7 @@ final class RunProps {
                     }
                 }
                 case "w:position" -> position = Ooxml.halfPoints(k.val());
+                case "so:lineHeight" -> lineHeight = Ooxml.twips(k.attr("so:val"));
                 case "w:kern" -> kern = Ooxml.halfPoints(k.val());
                 case "w:vertAlign" -> vertAlign = k.val();
                 case "w:bdr" -> border = Border.parse(k, theme);

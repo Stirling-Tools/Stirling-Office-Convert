@@ -201,5 +201,8 @@ final class RunXml {
         if (s.vertAlign() != 0) {
             sb.append("<w:vertAlign w:val=\"").append(s.vertAlign() > 0 ? "superscript" : "subscript").append("\"/>");
         }
+        if (s.lineHeight() > 0) {
+            sb.append("<so:lineHeight so:val=\"").append(Xml.twips(s.lineHeight())).append("\"/>");
+        }
     }
 }

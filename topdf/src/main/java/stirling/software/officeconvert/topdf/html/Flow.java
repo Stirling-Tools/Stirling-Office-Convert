@@ -1904,15 +1904,14 @@ final class Flow {
         }
         para.inlines.addAll(pendingEdges);
         pendingEdges.clear();
-        para.inlines.add(in);
         if (in instanceof Inline.Text t && !t.text().isBlank() && para.lineRule != Paragraph.LineRule.EXACT) {
             float line = look.linePoints > 0 ? look.linePoints : look.lineMultiple * look.size;
-            if (line > 0 && (para.lineRule == Paragraph.LineRule.AUTO || line > para.lineHeight)) {
-                para.lineRule = Paragraph.LineRule.AT_LEAST;
-                para.lineHeight = line;
-                para.halfLeading = true;
+            float own = para.lineRule == Paragraph.LineRule.AT_LEAST ? para.lineHeight : 0;
+            if (line > own + 0.01f) {
+                in = new Inline.Text(t.text(), t.style().withLineHeight(line), t.link(), t.anchorPage());
             }
         }
+        para.inlines.add(in);
     }
 
     private void start() {
