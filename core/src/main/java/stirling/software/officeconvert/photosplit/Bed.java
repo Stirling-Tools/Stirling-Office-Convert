@@ -11,6 +11,7 @@ final class Bed {
     private static final float SHADE_MIN_BED = 100;
     private static final float SHADE_MAX = 0.98f;
     private static final float SHADE_SPREAD = 0.06f;
+    private static final int ROWS_PER_STRIP = 32;
 
     final int global;
     final double noise;
@@ -67,37 +68,39 @@ final class Bed {
             right[x] = Math.min(left[x] + 1, gw - 1);
             fx[x] = (float) (gx - left[x]);
         }
-        float[] top = new float[3 * w];
-        float[] bottom = new float[3 * w];
-        int band = -1;
-        for (int y = 0; y < h; y++) {
-            PhotoSplitter.checkpoint();
-            double gy = Math.clamp((y + 0.5) / cell - 0.5, 0, gh - 1);
-            int y0 = (int) gy;
-            float fy = (float) (gy - y0);
-            if (y0 != band) {
-                band = y0;
-                interpolate(y0 * gw, left, right, fx, top);
-                interpolate(Math.min(y0 + 1, gh - 1) * gw, left, right, fx, bottom);
-            }
-            for (int x = 0; x < w; x++) {
-                int i = y * w + x;
-                float mr = top[3 * x] + (bottom[3 * x] - top[3 * x]) * fy;
-                float mg = top[3 * x + 1] + (bottom[3 * x + 1] - top[3 * x + 1]) * fy;
-                float mb = top[3 * x + 2] + (bottom[3 * x + 2] - top[3 * x + 2]) * fy;
-                int p = smooth[i];
-                int r = p >> 16 & 0xFF;
-                int g = p >> 8 & 0xFF;
-                int b = p & 0xFF;
-                float d = Math.max(Math.abs(r - mr), Math.max(Math.abs(g - mg), Math.abs(b - mb)));
-                if (d > threshold) {
-                    mask[i] = 1;
-                    if (photo != null && !shade(r, g, b, mr, mg, mb)) {
-                        photo[i] = 1;
+        Parallel.strips(h, ROWS_PER_STRIP, (from, to) -> {
+            float[] top = new float[3 * w];
+            float[] bottom = new float[3 * w];
+            int band = -1;
+            for (int y = from; y < to; y++) {
+                PhotoSplitter.checkpoint();
+                double gy = Math.clamp((y + 0.5) / cell - 0.5, 0, gh - 1);
+                int y0 = (int) gy;
+                float fy = (float) (gy - y0);
+                if (y0 != band) {
+                    band = y0;
+                    interpolate(y0 * gw, left, right, fx, top);
+                    interpolate(Math.min(y0 + 1, gh - 1) * gw, left, right, fx, bottom);
+                }
+                for (int x = 0; x < w; x++) {
+                    int i = y * w + x;
+                    float mr = top[3 * x] + (bottom[3 * x] - top[3 * x]) * fy;
+                    float mg = top[3 * x + 1] + (bottom[3 * x + 1] - top[3 * x + 1]) * fy;
+                    float mb = top[3 * x + 2] + (bottom[3 * x + 2] - top[3 * x + 2]) * fy;
+                    int p = smooth[i];
+                    int r = p >> 16 & 0xFF;
+                    int g = p >> 8 & 0xFF;
+                    int b = p & 0xFF;
+                    float d = Math.max(Math.abs(r - mr), Math.max(Math.abs(g - mg), Math.abs(b - mb)));
+                    if (d > threshold) {
+                        mask[i] = 1;
+                        if (photo != null && !shade(r, g, b, mr, mg, mb)) {
+                            photo[i] = 1;
+                        }
                     }
                 }
             }
-        }
+        });
         return mask;
     }
 
@@ -125,8 +128,7 @@ final class Bed {
     private static float[][] cells(int[] smooth, int w, int h, int cell, int gw, int gh, float[][] ref, int band) {
         float[][] out = new float[3][gw * gh];
         boolean[] valid = new boolean[gw * gh];
-        boolean any = false;
-        for (int cy = 0; cy < gh; cy++) {
+        Parallel.each(gh, cy -> {
             PhotoSplitter.checkpoint();
             for (int cx = 0; cx < gw; cx++) {
                 int c = cy * gw + cx;
@@ -150,12 +152,15 @@ final class Bed {
                 }
                 if (count * 4 >= total) {
                     valid[c] = true;
-                    any = true;
                     for (int k = 0; k < 3; k++) {
                         out[k][c] = (float) sum[k] / count;
                     }
                 }
             }
+        });
+        boolean any = false;
+        for (boolean v : valid) {
+            any |= v;
         }
         if (!any) {
             return ref;
@@ -344,13 +349,22 @@ final class Bed {
     }
 
     private static void forRing(int w, int h, int ring, IntConsumer action) {
+        int left = Math.min(ring, w);
+        int right = Math.max(left, w - ring);
         for (int y = 0; y < h; y++) {
             PhotoSplitter.checkpoint();
-            boolean band = y < ring || y >= h - ring;
-            for (int x = 0; x < w; x++) {
-                if (band || x < ring || x >= w - ring) {
-                    action.accept(y * w + x);
+            int base = y * w;
+            if (y < ring || y >= h - ring) {
+                for (int x = 0; x < w; x++) {
+                    action.accept(base + x);
                 }
+                continue;
+            }
+            for (int x = 0; x < left; x++) {
+                action.accept(base + x);
+            }
+            for (int x = right; x < w; x++) {
+                action.accept(base + x);
             }
         }
     }

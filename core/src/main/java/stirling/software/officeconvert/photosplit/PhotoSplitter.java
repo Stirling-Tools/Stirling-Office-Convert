@@ -10,6 +10,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InterruptedIOException;
 import java.io.OutputStream;
+import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.FileAlreadyExistsException;
@@ -166,7 +167,7 @@ public final class PhotoSplitter {
     }
 
     static void checkpoint() {
-        if (Thread.currentThread().isInterrupted()) {
+        if (Thread.currentThread().isInterrupted() || Parallel.ownerInterrupted()) {
             throw new CancellationException("Photo splitting interrupted");
         }
     }
@@ -240,11 +241,23 @@ public final class PhotoSplitter {
             }
             targets.add(target);
         }
-        for (int i = 0; i < photos.size(); i++) {
-            Path target = targets.get(i);
-            writeImage(photos.get(i), target, options.overwrite());
-            written.add(target);
+        try {
+            Parallel.each(photos.size(), i -> {
+                try {
+                    writeImage(photos.get(i), targets.get(i), options.overwrite());
+                } catch (IOException e) {
+                    throw new UncheckedIOException(e);
+                }
+            });
+        } catch (RuntimeException e) {
+            for (Throwable cause = e; cause != null; cause = cause.getCause()) {
+                if (cause instanceof UncheckedIOException failed) {
+                    throw failed.getCause();
+                }
+            }
+            throw e;
         }
+        written.addAll(targets);
     }
 
     static void writeImage(BufferedImage image, Path target, boolean overwrite) throws IOException {

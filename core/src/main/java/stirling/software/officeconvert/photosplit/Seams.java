@@ -54,34 +54,41 @@ final class Seams {
         int bh = region.height();
         int maxRun = (int) Math.max(MIN_RUN, RUN_SHARE * Math.min(rect.width(), rect.height()));
         long minSide = Math.max(1, options.minArea()) / (SUBSAMPLE * SUBSAMPLE);
-        Cut best = null;
         boolean ramps = !StraightenMethod.solid(region, rect);
-        for (int axis = 0; axis < 2; axis++) {
-            for (int delta = -SEARCH; delta <= SEARCH; delta++) {
-                double phi = Math.toRadians(rect.angle() + axis * 90 + delta);
-                double nx = -Math.sin(phi);
-                double ny = Math.cos(phi);
-                double lo = Math.min(Math.min(0, bw * nx), Math.min(bh * ny, bw * nx + bh * ny));
-                double hi = Math.max(Math.max(0, bw * nx), Math.max(bh * ny, bw * nx + bh * ny));
-                int n = (int) Math.ceil(hi - lo) + 2;
-                int[] reg = new int[n];
-                int[] pho = new int[n];
-                for (int y = 0; y < bh; y += SUBSAMPLE) {
-                    PhotoSplitter.checkpoint();
-                    int row = (region.minY + y) * w + region.minX;
-                    for (int x = 0; x < bw; x += SUBSAMPLE) {
-                        if (region.mask[y * bw + x] == 0) {
-                            continue;
-                        }
-                        int i = (int) (x * nx + y * ny - lo);
-                        reg[i]++;
-                        pho[i] += photo[row + x];
+        int angles = 2 * SEARCH + 1;
+        Cut[] cuts = new Cut[2 * angles];
+        Parallel.each(cuts.length, index -> {
+            int axis = index / angles;
+            int delta = index % angles - SEARCH;
+            double phi = Math.toRadians(rect.angle() + axis * 90 + delta);
+            double nx = -Math.sin(phi);
+            double ny = Math.cos(phi);
+            double lo = Math.min(Math.min(0, bw * nx), Math.min(bh * ny, bw * nx + bh * ny));
+            double hi = Math.max(Math.max(0, bw * nx), Math.max(bh * ny, bw * nx + bh * ny));
+            int n = (int) Math.ceil(hi - lo) + 2;
+            int[] reg = new int[n];
+            int[] pho = new int[n];
+            for (int y = 0; y < bh; y += SUBSAMPLE) {
+                PhotoSplitter.checkpoint();
+                int row = (region.minY + y) * w + region.minX;
+                for (int x = 0; x < bw; x += SUBSAMPLE) {
+                    if (region.mask[y * bw + x] == 0) {
+                        continue;
                     }
+                    int i = (int) (x * nx + y * ny - lo);
+                    reg[i]++;
+                    pho[i] += photo[row + x];
                 }
-                Cut cut = bestRun(reg, pho, maxRun, minSide, ramps);
-                if (cut != null && (best == null || cut.balance() > best.balance())) {
-                    best = new Cut(nx, ny, cut.from() + lo, cut.to() + lo, cut.balance());
-                }
+            }
+            Cut cut = bestRun(reg, pho, maxRun, minSide, ramps);
+            if (cut != null) {
+                cuts[index] = new Cut(nx, ny, cut.from() + lo, cut.to() + lo, cut.balance());
+            }
+        });
+        Cut best = null;
+        for (Cut cut : cuts) {
+            if (cut != null && (best == null || cut.balance() > best.balance())) {
+                best = cut;
             }
         }
         return best;

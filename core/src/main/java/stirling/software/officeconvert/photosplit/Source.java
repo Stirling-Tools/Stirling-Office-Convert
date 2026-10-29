@@ -126,6 +126,24 @@ final class Source implements Picture {
         int w = (width + factor - 1) / factor;
         int h = (height + factor - 1) / factor;
         int[] out = new int[Math.multiplyExact(w, h)];
+        if (factor == 1) {
+            for (int y = 0; y < h; y++) {
+                PhotoSplitter.checkpoint();
+                int base = y * stride;
+                int row = y * w;
+                if (ints != null) {
+                    for (int x = 0; x < w; x++) {
+                        out[row + x] = ints[base + x] & 0xFFFFFF;
+                    }
+                } else {
+                    for (int x = 0; x < w; x++) {
+                        int k = base + x * pixelStride;
+                        out[row + x] = (bytes[k + red] & 0xFF) << 16 | (bytes[k + green] & 0xFF) << 8 | bytes[k + blue] & 0xFF;
+                    }
+                }
+            }
+            return new ScanImage(w, h, out);
+        }
         int[] r = new int[w];
         int[] g = new int[w];
         int[] b = new int[w];

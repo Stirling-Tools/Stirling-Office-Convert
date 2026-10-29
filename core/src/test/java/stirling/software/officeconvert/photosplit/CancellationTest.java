@@ -14,6 +14,7 @@ import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.concurrent.CancellationException;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -35,6 +36,39 @@ class CancellationTest {
             } finally {
                 Thread.interrupted();
             }
+        }
+    }
+
+    @Test
+    void interruptedCallerStopsWorkSpreadOverOtherThreads() {
+        AtomicInteger ran = new AtomicInteger();
+        Thread.currentThread().interrupt();
+        try {
+            assertThrows(CancellationException.class, () -> Parallel.each(8, i -> ran.incrementAndGet()));
+            assertEquals(0, ran.get());
+            assertTrue(Thread.currentThread().isInterrupted());
+        } finally {
+            Thread.interrupted();
+        }
+    }
+
+    @Test
+    void workerSeesTheCallerInterruptedPartWayThrough() {
+        Thread caller = Thread.currentThread();
+        AtomicInteger stopped = new AtomicInteger();
+        try {
+            assertThrows(CancellationException.class, () -> Parallel.each(8, i -> {
+                caller.interrupt();
+                try {
+                    PhotoSplitter.checkpoint();
+                } catch (CancellationException e) {
+                    stopped.incrementAndGet();
+                    throw e;
+                }
+            }));
+            assertTrue(stopped.get() > 0);
+        } finally {
+            Thread.interrupted();
         }
     }
 
