@@ -68,9 +68,11 @@ final class ParagraphMeasure {
         }
         boolean flushRight = maxGap - minGap <= EDGE;
         if (!wrapped) {
+            float flush = Protrusion.edge(lines, maxRight);
             flushRight = true;
             for (int i = 0; i < lines.size() - 1; i++) {
-                flushRight &= Math.abs(textRight(lines.get(i)) - maxRight) <= EDGE;
+                float r = textRight(lines.get(i));
+                flushRight &= Math.abs(r - flush) <= EDGE || r > flush && Protrusion.protrudes(lines.get(i));
             }
         }
         boolean centred = !wrapped;
