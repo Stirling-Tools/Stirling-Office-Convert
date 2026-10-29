@@ -7,12 +7,15 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.awt.geom.GeneralPath;
+import java.awt.geom.PathIterator;
 import java.awt.geom.Rectangle2D;
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -72,6 +75,11 @@ class Type1ToCffTest {
     private static final byte[] ENDCHAR = {14};
     private static final byte[] DIV = {12, 12};
     private static final byte[] SEAC = {12, 6};
+    private static final byte[] CALLSUBR = {10};
+    private static final byte[] CALLOTHERSUBR = {12, 16};
+    private static final byte[] POP = {12, 17};
+    private static final byte[] SETCURRENTPOINT = {12, 33};
+    private static final byte[] REPLACE_HINTS = ops(4, 1, 3, CALLOTHERSUBR, POP, CALLSUBR);
 
     private static final Map<String, byte[]> GLYPHS = glyphs(FILLERS);
 
@@ -91,6 +99,11 @@ class Type1ToCffTest {
                 RLINETO, CLOSEPATH, ENDCHAR));
         g.put("O", ops(30, 650, HSBW, 0, 100, HSTEM, 50, 100, HSTEM, 0, 0, RMOVETO, box(590, 700), ENDCHAR));
         g.put("L", ops(30, 550, HSBW, 0, 0, RMOVETO, 0, 40, HSTEM, box(480, 680), ENDCHAR));
+        g.put("E", ops(30, 600, HSBW, 0, 40, HSTEM, 10, 0, RMOVETO, 400, 0, RLINETO, 0, 300, RLINETO, REPLACE_HINTS,
+                0, 300, RLINETO, -400, 0, RLINETO, CLOSEPATH, ENDCHAR));
+        g.put("F", ops(0, 500, HSBW, 0, 50, HSTEM, 0, 0, RMOVETO, 300, 0, RLINETO, 0, 1, CALLOTHERSUBR,
+                flex(0, 100, 0, -75, 0, 25, 0, 50, 0, 25, 0, 25, 0, 50), 50, 300, 200, 3, 0, CALLOTHERSUBR, POP, POP,
+                SETCURRENTPOINT, REPLACE_HINTS, -300, 0, RLINETO, CLOSEPATH, ENDCHAR));
         for (int i = 0; i < fillers; i++) {
             byte[] body = new byte[0];
             for (int k = 0; k < 60; k++) {
@@ -99,6 +112,14 @@ class Type1ToCffTest {
             g.put("g" + i, ops(10, 500, HSBW, 0, 0, RMOVETO, body, CLOSEPATH, ENDCHAR));
         }
         return g;
+    }
+
+    private static byte[] flex(int... points) {
+        byte[] out = new byte[0];
+        for (int i = 0; i < points.length; i += 2) {
+            out = ops(out, points[i], points[i + 1], RMOVETO, 0, 2, CALLOTHERSUBR);
+        }
+        return out;
     }
 
     private static Program program(String fontName) {
@@ -116,10 +137,11 @@ class Type1ToCffTest {
         plain.writeBytes(("dup /Private 12 dict dup begin\n/RD{string currentfile exch readstring pop}executeonly def\n"
                 + "/ND{noaccess def}executeonly def\n/NP{noaccess put}executeonly def\n/lenIV 4 def\n"
                 + "/BlueValues [-10 0 700 710] def\n/StdHW [50] def\n/StdVW [60] def\n/BlueScale 0.0437917 def\n"
-                + "/StemSnapH [50 100] def\n/MinFeature{16 16}def\n/password 5839 def\n/Subrs 4 array\n")
+                + "/StemSnapH [50 100] def\n/MinFeature{16 16}def\n/password 5839 def\n/Subrs 5 array\n")
                 .getBytes(StandardCharsets.ISO_8859_1));
-        for (int i = 0; i < 4; i++) {
-            byte[] enc = FontPrograms.charstring(new byte[] {11});
+        for (int i = 0; i < 5; i++) {
+            byte[] subr = i < 4 ? new byte[] {11} : ops(0, 60, HSTEM, 300, 50, HSTEM, new byte[] {11});
+            byte[] enc = FontPrograms.charstring(subr);
             plain.writeBytes(("dup " + i + " " + enc.length + " RD ").getBytes(StandardCharsets.ISO_8859_1));
             plain.writeBytes(enc);
             plain.writeBytes(" NP\n".getBytes(StandardCharsets.ISO_8859_1));
@@ -225,6 +247,83 @@ class Type1ToCffTest {
         assertEquals(0.0437917, ((Number) cff.getPrivateDict().get("BlueScale")).doubleValue(), 1e-7);
     }
 
+    private static List<String> operators(byte[] cs) {
+        return decode(cs, new int[1]);
+    }
+
+    private static int tokens(byte[] cs) {
+        int[] n = new int[1];
+        return decode(cs, n).size() + n[0];
+    }
+
+    private static List<String> decode(byte[] cs, int[] numbers) {
+        List<String> out = new ArrayList<>();
+        int stems = 0;
+        int args = 0;
+        for (int i = 0; i < cs.length;) {
+            int v = cs[i] & 0xFF;
+            if (v == 28 || v >= 32) {
+                i += v == 28 ? 3 : v <= 246 ? 1 : v <= 254 ? 2 : 5;
+                args++;
+                numbers[0]++;
+                continue;
+            }
+            i++;
+            if (v == 1 || v == 3 || v == 18 || v == 23) {
+                stems += args / 2;
+            }
+            if (v == 19 || v == 20) {
+                int bytes = (stems + 7) / 8;
+                StringBuilder m = new StringBuilder(v + ":");
+                for (int k = 0; k < bytes; k++) {
+                    m.append(String.format("%02x", cs[i + k] & 0xFF));
+                }
+                out.add(m.toString());
+                i += bytes;
+            } else {
+                out.add(v == 12 ? "12." + (cs[i++] & 0xFF) : Integer.toString(v));
+            }
+            args = 0;
+        }
+        return out;
+    }
+
+    private static List<List<Double>> contours(GeneralPath path) {
+        List<List<Double>> out = new ArrayList<>();
+        float[] c = new float[6];
+        for (PathIterator it = path.getPathIterator(null); !it.isDone(); it.next()) {
+            int seg = it.currentSegment(c);
+            if (seg == PathIterator.SEG_MOVETO) {
+                out.add(new ArrayList<>());
+            }
+            int n = seg == PathIterator.SEG_CUBICTO ? 6 : seg == PathIterator.SEG_CLOSE ? 0 : 2;
+            for (int k = 0; k < n; k++) {
+                out.get(out.size() - 1).add((double) c[k]);
+            }
+        }
+        for (List<Double> p : out) {
+            int n = p.size();
+            if (n > 2 && Math.abs(p.get(n - 2) - p.get(0)) < 1e-4 && Math.abs(p.get(n - 1) - p.get(1)) < 1e-4) {
+                p.subList(n - 2, n).clear();
+            }
+        }
+        out.removeIf(p -> p.size() <= 2);
+        return out;
+    }
+
+    private static void assertSameOutline(GeneralPath want, GeneralPath got, String g) {
+        List<List<Double>> a = contours(want);
+        List<List<Double>> b = contours(got);
+        assertFalse(a.isEmpty(), g);
+        assertEquals(a.size(), b.size(), g);
+        for (int i = 0; i < a.size(); i++) {
+            assertEquals(a.get(i).size(), b.get(i).size(), g);
+            for (int k = 0; k < a.get(i).size(); k++) {
+                assertEquals(a.get(i).get(k), b.get(i).get(k), 1e-4, g);
+            }
+        }
+    }
+
     @Test
     void stemHintsAreKeptOnlyWhereType2CanCarryThem() throws Exception {
         Type1Font t1 = type1(program("TestHints"));
@@ -235,8 +334,36 @@ class Type1ToCffTest {
         assertArrayEquals(prefix, Arrays.copyOf(h, prefix.length));
         assertTrue(hasStems(charString(cff, "I")));
         assertTrue(hasFixed(charString(cff, "I")), "the div result is kept as a fraction");
-        assertFalse(hasStems(charString(cff, "O")), "overlapping stems need a hintmask");
-        assertFalse(hasStems(charString(cff, "L")), "stems set after drawing are hint replacement");
+        assertEquals(List.of("18", "19:c0", "21", "5", "21", "14"), operators(charString(cff, "O")),
+                "overlapping stems are declared for a hintmask that selects them all");
+        assertEquals(List.of("18", "19:00", "21", "19:80", "5", "21", "14"), operators(charString(cff, "L")),
+                "a stem set after the moveto takes effect from the next segment");
+    }
+
+    @Test
+    void hintReplacementBecomesHintmasks() throws Exception {
+        Type1Font t1 = type1(program("TestMasks"));
+        Set<String> used = Set.of("A", "H", "I", "L", "O", "E", "F");
+        CFFType1Font cff = parse(Type1ToCff.convert(t1, Map.of(65, "A", 69, "E", 70, "F", 72, "H", 73, "I", 76, "L",
+                79, "O"), used));
+        assertEquals(List.of("18", "19:80", "21", "5", "19:60", "5", "21", "14"), operators(charString(cff, "E")));
+        assertEquals(List.of("18", "19:80", "21", "5", "8", "19:60", "5", "21", "14"), operators(charString(cff, "F")),
+                "the flex curves count as two segments before the replaced hints");
+        byte[] declared = ops(600, 0, 40, -40, 60, 240, 50, new byte[] {18});
+        assertArrayEquals(declared, Arrays.copyOf(charString(cff, "E"), declared.length),
+                "the union of both groups is declared once, sorted, overlaps included");
+        int hinted = 0;
+        for (String g : used) {
+            byte[] cs = charString(cff, g);
+            if (operators(cs).stream().anyMatch(o -> o.equals("1") || o.equals("18"))) {
+                hinted++;
+            }
+            List<String> o = operators(cs);
+            assertEquals("14", o.get(o.size() - 1), g);
+            assertEquals(CharStringExpansion.type2(cs, null, null).tokens(), tokens(cs), g);
+            assertSameOutline(t1.getPath(g), cff.getPath(g), g);
+        }
+        assertEquals(used.size() - 1, hinted, "only A, which has no stems, is unhinted");
     }
 
     @Test
