@@ -90,6 +90,7 @@ final class FontFixer {
             if (level.unicode()) {
                 unicode(font, codes, bytesPerCode);
             }
+            trimUnicode(font, codes, bytesPerCode);
             return font;
         }
         try {
@@ -277,6 +278,28 @@ final class FontFixer {
             }
         }
         fd.setString(COSName.CHAR_SET, b.toString());
+    }
+
+    private void trimUnicode(PDFont font, TreeSet<Integer> codes, int bytesPerCode) throws IOException {
+        COSDictionary dict = font.getCOSObject();
+        String name = dict.getNameAsString(COSName.BASE_FONT);
+        if (codes.isEmpty() || name == null || name.length() < 8 || name.charAt(6) != '+'
+                || !name.substring(0, 6).chars().allMatch(c -> c >= 'A' && c <= 'Z')
+                || !(dict.getDictionaryObject(COSName.TO_UNICODE) instanceof COSStream declared)) {
+            return;
+        }
+        TreeMap<Integer, String> map = new TreeMap<>();
+        for (int code : codes) {
+            PdfFiles.stopIfInterrupted();
+            String t = UnicodeGuess.declared(font, code);
+            if (t != null && !t.isEmpty()) {
+                map.put(code, t);
+            }
+        }
+        COSStream trimmed = ToUnicodeWriter.preserve(doc, map, bytesPerCode);
+        if (trimmed.getLength() < declared.getLength()) {
+            dict.setItem(COSName.TO_UNICODE, trimmed);
+        }
     }
 
     private void unicode(PDFont font, TreeSet<Integer> codes, int bytesPerCode) throws IOException {
