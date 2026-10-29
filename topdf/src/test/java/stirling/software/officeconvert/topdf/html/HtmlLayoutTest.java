@@ -184,14 +184,24 @@ class HtmlLayoutTest {
 
     @Test
     void aParagraphKeepsAsManyLinesTogetherAsItsWidowsAndOrphansAsk() throws IOException {
+        StringBuilder fill = new StringBuilder("<html><head><style>@page{margin:72pt}"
+                + "p{margin:0;font-size:12pt;line-height:14pt}</style></head><body>");
+        for (int i = 0; i < 80; i++) {
+            fill.append("<p>line ").append(i).append("</p>");
+        }
+        int room = (int) lay(fill.append("</body></html>").toString()).words().stream()
+                .filter(w -> w.page() == 1 && w.text().equals("line")).count();
         for (String style : new String[] {"", "widows:3;orphans:3", "widows:1;orphans:1"}) {
             int fewest = Integer.MAX_VALUE;
-            for (int filler = 40; filler < 50; filler++) {
+            boolean split = false;
+            for (int filler = room - 6; filler < room; filler++) {
                 Map<Integer, Integer> counts = linesPerPage(style, filler);
                 if (counts.size() > 1) {
+                    split = true;
                     fewest = Math.min(fewest, counts.values().stream().min(Integer::compare).orElseThrow());
                 }
             }
+            assertTrue(split, "the paragraph never crossed a page with '" + style + "' and " + room + " lines a page");
             int expected = style.isEmpty() ? 2 : style.startsWith("widows:3") ? 3 : 1;
             assertEquals(expected, fewest, "the fewest lines left on a page with '" + style + "'");
         }
