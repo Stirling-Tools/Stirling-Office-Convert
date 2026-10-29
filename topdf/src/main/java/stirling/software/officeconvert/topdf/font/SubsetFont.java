@@ -125,7 +125,7 @@ final class SubsetFont {
         subsetter.setPrefix(tag);
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         subsetter.writeToStream(out);
-        byte[] subset = Unhinted.strip(out.toByteArray());
+        byte[] subset = Unhinted.strip(out.toByteArray(), ttf.getName(), family(ttf));
         TreeMap<Integer, Integer> cidToGid = new TreeMap<>();
         gidToCid.forEach((gid, cid) -> cidToGid.put(cid, gid));
         toUnicode(gidToCid);
@@ -290,6 +290,14 @@ final class SubsetFont {
             sb.insert(0, 'A');
         }
         return sb.append('+').toString();
+    }
+
+    private static String family(TrueTypeFont ttf) {
+        try {
+            return ttf.getNaming() == null ? null : ttf.getNaming().getFontFamily();
+        } catch (IOException | RuntimeException e) {
+            return null;
+        }
     }
 
     private static boolean embeddingPermitted(TrueTypeFont ttf) throws IOException {

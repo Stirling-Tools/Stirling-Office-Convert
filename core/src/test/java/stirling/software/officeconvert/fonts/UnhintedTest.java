@@ -14,7 +14,9 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Set;
 
@@ -74,6 +76,31 @@ class UnhintedTest {
             }
             assertEquals(0xB1B0AFBA, sum(stripped), "whole-font checksum");
         }
+    }
+
+    @Test
+    void freeTypesTrickyFontsKeepTheInstructionsThatPlaceTheirStrokes() throws IOException {
+        byte[] subset = subset(liberation(), "Hello");
+        for (String name : List.of("ABCDEF+PMingLiU", "MingLiU_HKSCS-ExtB", "DFKai-SB", "DFMingStd-W5")) {
+            assertSame(subset, Unhinted.strip(subset, null, name), name);
+            assertTrue(Unhinted.tricky(name), name);
+        }
+        assertFalse(Unhinted.tricky("LiberationSans"));
+        assertFalse(Unhinted.tricky(null));
+        assertTrue(Unhinted.strip(subset, "ABCDEF+LiberationSans", null).length < subset.length);
+
+        byte[] named = liberation();
+        byte[] from = "Liberati".getBytes(StandardCharsets.UTF_16BE);
+        byte[] to = "PMingLiU".getBytes(StandardCharsets.UTF_16BE);
+        int replaced = 0;
+        for (int i = 0; i + from.length <= named.length; i++) {
+            if (Arrays.equals(named, i, i + from.length, from, 0, from.length)) {
+                System.arraycopy(to, 0, named, i, to.length);
+                replaced++;
+            }
+        }
+        assertTrue(replaced > 0);
+        assertSame(named, Unhinted.strip(named));
     }
 
     @Test

@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
@@ -35,6 +36,23 @@ class SubsetFontTest {
         same(TestFonts.bundled(), TEXT, Set.of(3, 40));
         same(TestFonts.renamed("Subset Face"), TEXT, Set.of());
         same(TestFonts.bundled(), "", Set.of());
+    }
+
+    @Test
+    void aTrickyFontKeepsItsHinting() throws IOException {
+        for (String family : List.of("PMingLiU", "Liberation Sans")) {
+            try (PDDocument doc = new PDDocument()) {
+                SubsetFont font = new SubsetFont(doc, parse(TestFonts.renamed(family)));
+                "Hello".codePoints().forEach(font::addCodePoint);
+                font.subset();
+                COSDictionary cid = (COSDictionary) ((COSArray) font.dictionary()
+                        .getDictionaryObject(COSName.DESCENDANT_FONTS)).getObject(0);
+                COSDictionary fd = (COSDictionary) cid.getDictionaryObject(COSName.FONT_DESC);
+                byte[] file = decoded((COSStream) fd.getDictionaryObject(COSName.FONT_FILE2));
+                TrueTypeFont embedded = new TTFParser().parseEmbedded(new ByteArrayInputStream(file));
+                assertEquals(family.equals("PMingLiU"), embedded.getTableMap().containsKey("fpgm"), family);
+            }
+        }
     }
 
     @Test

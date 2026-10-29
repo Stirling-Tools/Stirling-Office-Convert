@@ -1,6 +1,9 @@
 package stirling.software.officeconvert.fonts;
 
 import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
@@ -18,6 +21,13 @@ public final class Unhinted {
     private static final Set<Integer> HINTS = Set.of(tag("fpgm"), tag("prep"), tag("cvt "), tag("hdmx"), tag("LTSH"),
             tag("VDMX"), tag("cvar"));
 
+    private static final int NAME = 0x6E616D65;
+
+    private static final List<String> TRICKY = List.of("cpop", "DFGirl-W6-WIN-BF", "DFGothic-EB", "DFGyoSho-Lt",
+            "DFHei", "DFHSGothic-W5", "DFHSMincho-W3", "DFHSMincho-W7", "DFKaiSho-SB", "DFKaiShu", "DFKai-SB", "DFMing",
+            "DLC", "HuaTianKaiTi", "HuaTianSongTi", "Ming(for ISO10646)", "MingLiU", "MingMedium", "PMingLiU",
+            "MingLi43");
+
     private static final int ARGS_ARE_WORDS = 0x0001;
 
     private static final int HAS_SCALE = 0x0008;
@@ -32,16 +42,73 @@ public final class Unhinted {
 
     private Unhinted() {}
 
-    public static byte[] strip(byte[] sfnt) {
+    public static byte[] strip(byte[] sfnt, String... names) {
         if (sfnt == null) {
             return null;
         }
+        for (String name : names) {
+            if (tricky(name)) {
+                return sfnt;
+            }
+        }
         try {
+            for (String name : names(sfnt)) {
+                if (tricky(name)) {
+                    return sfnt;
+                }
+            }
             byte[] out = rebuild(sfnt);
             return out != null && out.length < sfnt.length ? out : sfnt;
         } catch (RuntimeException e) {
             return sfnt;
         }
+    }
+
+    public static boolean tricky(String name) {
+        if (name == null) {
+            return false;
+        }
+        for (String trick : TRICKY) {
+            if (name.contains(trick)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static List<String> names(byte[] sfnt) {
+        List<String> out = new ArrayList<>();
+        if (sfnt.length < 12) {
+            return out;
+        }
+        ByteBuffer in = ByteBuffer.wrap(sfnt);
+        int count = in.getShort(4) & 0xFFFF;
+        for (int i = 0; i < count && 12 + 16 * i + 16 <= sfnt.length; i++) {
+            int at = 12 + 16 * i;
+            if (in.getInt(at) != NAME) {
+                continue;
+            }
+            long offset = in.getInt(at + 8) & 0xFFFFFFFFL;
+            long length = in.getInt(at + 12) & 0xFFFFFFFFL;
+            if (offset + 6 > sfnt.length || offset + length > sfnt.length) {
+                return out;
+            }
+            int table = (int) offset;
+            int records = in.getShort(table + 2) & 0xFFFF;
+            int strings = table + (in.getShort(table + 4) & 0xFFFF);
+            for (int r = 0; r < records && table + 6 + 12 * r + 12 <= offset + length; r++) {
+                int rec = table + 6 + 12 * r;
+                int platform = in.getShort(rec) & 0xFFFF;
+                int id = in.getShort(rec + 6) & 0xFFFF;
+                int size = in.getShort(rec + 8) & 0xFFFF;
+                int from = strings + (in.getShort(rec + 10) & 0xFFFF);
+                if ((id == 1 || id == 4 || id == 6 || id == 16) && from + size <= offset + length) {
+                    out.add(new String(sfnt, from, size,
+                            platform == 1 ? StandardCharsets.ISO_8859_1 : StandardCharsets.UTF_16BE));
+                }
+            }
+        }
+        return out;
     }
 
     private static byte[] rebuild(byte[] sfnt) {
