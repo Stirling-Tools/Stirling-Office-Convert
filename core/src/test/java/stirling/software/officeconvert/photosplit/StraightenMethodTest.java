@@ -3,7 +3,9 @@ package stirling.software.officeconvert.photosplit;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.awt.BasicStroke;
 import java.awt.Color;
+import java.awt.Graphics2D;
 import java.awt.geom.Point2D;
 import java.awt.image.BufferedImage;
 import java.util.List;
@@ -120,6 +122,23 @@ class StraightenMethodTest {
     }
 
     @Test
+    void touchingWhiteBorderedPrintsOnAGreyBedAreSeparated() {
+        SyntheticScan.Scene scene = new SyntheticScan(1275, 1000, 15).bed(new Color(232, 230, 224)).shadow(1)
+                .photo(520, 400, 386, 400, 0, Style.GRADIENT, 9)
+                .photo(540, 380, 922, 460, -1.6, Style.BLOBS, 9)
+                .render();
+        List<PhotoSplitter.Photo> photos = PhotoSplitter.split(scene.scan(), OPTIONS);
+        assertEquals(2, photos.size());
+        for (int i = 0; i < 2; i++) {
+            SyntheticScan.Placed truth = scene.photos().get(i);
+            BufferedImage image = photos.get(i).image();
+            assertEquals(truth.content().getWidth(), image.getWidth(), 16);
+            assertEquals(truth.content().getHeight(), image.getHeight(), 6);
+            assertEquals(truth.angle(), photos.get(i).angle(), 0.6);
+        }
+    }
+
+    @Test
     void overlappingPhotosAreSeparated() {
         SyntheticScan.Scene scene = new SyntheticScan(1100, 900, 9)
                 .photo(420, 300, 280, 260, 0, Style.BLOBS, 0)
@@ -186,6 +205,80 @@ class StraightenMethodTest {
         List<PhotoSplitter.Photo> photos = PhotoSplitter.split(scene.scan(), OPTIONS);
         assertEquals(1, photos.size());
         assertMatches(scene.photos().get(0), photos.get(0));
+    }
+
+    @Test
+    void aTypedPageLyingSidewaysIsNotAPhoto() {
+        SyntheticScan.Scene scene = new SyntheticScan(1100, 1000, 3)
+                .photo(420, 300, 280, 250, 2, Style.GRADIENT, 0)
+                .document(420, 560, 800, 580, 91)
+                .render();
+        List<PhotoSplitter.Photo> photos = PhotoSplitter.split(scene.scan(), OPTIONS);
+        assertEquals(1, photos.size());
+        assertMatches(scene.photos().get(0), photos.get(0));
+    }
+
+    @Test
+    void aLineDiagramOnWhitePaperIsAPhoto() {
+        BufferedImage diagram = new BufferedImage(560, 420, BufferedImage.TYPE_INT_RGB);
+        Graphics2D g = diagram.createGraphics();
+        g.setColor(new Color(250, 250, 250));
+        g.fillRect(0, 0, 560, 420);
+        g.setStroke(new BasicStroke(3));
+        g.setColor(new Color(40, 40, 40));
+        g.drawRect(22, 22, 516, 376);
+        for (int i = 0; i < 6; i++) {
+            int x = 70 + i * 72;
+            g.setColor(new Color(200, 220, 245));
+            g.fillRect(x, 175, 55, 62);
+            g.setColor(new Color(30, 50, 100));
+            g.drawRect(x, 175, 55, 62);
+            if (i < 5) {
+                g.drawLine(x + 55, 206, x + 72, 206);
+            }
+        }
+        g.dispose();
+        SyntheticScan.Scene scene = new SyntheticScan(1200, 700, 6).bed(new Color(240, 240, 236))
+                .photo(diagram, 340, 330, -6)
+                .photo(420, 300, 900, 330, 4, Style.TEXTURE, 0)
+                .render();
+        List<PhotoSplitter.Photo> photos = PhotoSplitter.split(scene.scan(), OPTIONS);
+        assertEquals(2, photos.size());
+        assertMatches(scene.photos().get(0), photos.get(0));
+        assertMatches(scene.photos().get(1), photos.get(1));
+    }
+
+    @Test
+    void formControlsOnAPrintedPageAreNotPhotos() {
+        BufferedImage page = new BufferedImage(2480, 3508, BufferedImage.TYPE_INT_RGB);
+        Graphics2D g = page.createGraphics();
+        g.scale(2, 2);
+        g.setColor(Color.WHITE);
+        g.fillRect(0, 0, 1240, 1754);
+        bevel(g, 250, 260, 280, 68, new Color(0xACA899), new Color(0x716F64), new Color(0xF1EFE2), Color.WHITE);
+        bevel(g, 250, 520, 152, 57, new Color(0xF1EFE2), new Color(0xECE9D8), new Color(0xACA899), new Color(0xECE9D8));
+        g.setColor(new Color(0x716F64));
+        g.fillRect(250, 576, 152, 1);
+        g.fillRect(401, 520, 1, 57);
+        g.setColor(Color.BLACK);
+        g.setFont(g.getFont().deriveFont(17f));
+        g.drawString("Push Me", 286, 556);
+        g.dispose();
+        assertEquals(0, PhotoSplitter.split(page, OPTIONS).size());
+    }
+
+    private static void bevel(Graphics2D g, int x, int y, int w, int h, Color outer, Color inner, Color lit, Color face) {
+        g.setColor(face);
+        g.fillRect(x, y, w, h);
+        g.setColor(lit);
+        g.fillRect(x, y + h - 2, w, 2);
+        g.fillRect(x + w - 2, y, 2, h);
+        g.setColor(outer);
+        g.fillRect(x, y, w - 2, 2);
+        g.fillRect(x, y, 2, h - 2);
+        g.setColor(inner);
+        g.fillRect(x + 2, y + 2, w - 4, 1);
+        g.fillRect(x + 2, y + 2, 1, h - 4);
     }
 
     @Test
