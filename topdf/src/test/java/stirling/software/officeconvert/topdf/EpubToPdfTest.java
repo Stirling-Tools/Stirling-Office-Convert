@@ -658,6 +658,67 @@ class EpubToPdfTest {
         }
     }
 
+    private static int[] redBox(PDDocument doc, int page) throws IOException {
+        BufferedImage img = new org.apache.pdfbox.rendering.PDFRenderer(doc).renderImage(page, 1f);
+        int[] box = {-1, img.getWidth(), -1, img.getHeight()};
+        for (int y = 0; y < img.getHeight(); y++) {
+            for (int x = 0; x < img.getWidth(); x++) {
+                int rgb = img.getRGB(x, y);
+                if ((rgb >> 16 & 0xFF) > 200 && (rgb >> 8 & 0xFF) < 60 && (rgb & 0xFF) < 60) {
+                    box[0] = box[0] < 0 ? y : box[0];
+                    box[1] = Math.min(box[1], x);
+                    box[2] = Math.max(box[2], x);
+                }
+            }
+        }
+        return box;
+    }
+
+    @Test
+    void theCoverKeepsTheBooksOwnNarrowMargins() throws IOException {
+        Map<String, byte[]> book = book();
+        book.put("OEBPS/styles/book.css", utf8(".secret { display: none } @page { margin: 5pt }"));
+        book.put("OEBPS/text/cover.xhtml", utf8(chapter("<meta name=\"calibre:cover\" content=\"true\"/>"
+                + "<link rel=\"stylesheet\" href=\"../styles/book.css\"/>",
+                "<div><img src=\"../images/cover.png\" alt=\"\"/></div>")));
+        Path out = dir.resolve("covered.pdf");
+        OfficeToPdf.convert(epub("covered.epub", book), out, OfficeToPdf.Options.defaults().timeout(Duration.ofMinutes(2)));
+        try (PDDocument doc = Loader.loadPDF(out.toFile())) {
+            int[] box = redBox(doc, 0);
+            float width = doc.getPage(0).getMediaBox().getWidth();
+            assertTrue(box[0] >= 0 && box[0] < 20, "cover starts at " + box[0]);
+            assertTrue(box[1] < 20 && box[2] > width - 20, "cover spans " + box[1] + " to " + box[2]);
+            assertTrue(pageText(doc, 2).contains("Chapter One"));
+            List<Float> tops = new ArrayList<>();
+            PDFTextStripper stripper = new PDFTextStripper() {
+                @Override
+                protected void writeString(String text, List<org.apache.pdfbox.text.TextPosition> positions) {
+                    tops.add(positions.getFirst().getYDirAdj() - positions.getFirst().getHeightDir());
+                }
+            };
+            stripper.setStartPage(2);
+            stripper.setEndPage(2);
+            stripper.getText(doc);
+            assertTrue(!tops.isEmpty() && tops.getFirst() >= 70, tops.toString());
+            assertEquals(3, doc.getNumberOfPages());
+        }
+    }
+
+    @Test
+    void aCoverOnlyNamedInTheManifestKeepsTheBooksOwnNarrowMargins() throws IOException {
+        Map<String, byte[]> book = book();
+        book.put("OEBPS/styles/book.css", utf8(".secret { display: none } @page { margin: 5pt }"));
+        book.put("OEBPS/content.opf", utf8(new String(book.get("OEBPS/content.opf"), StandardCharsets.UTF_8)
+                .replace("<itemref idref=\"cover\"/>", "")));
+        Path out = dir.resolve("listed.pdf");
+        OfficeToPdf.convert(epub("listed.epub", book), out, OfficeToPdf.Options.defaults().timeout(Duration.ofMinutes(2)));
+        try (PDDocument doc = Loader.loadPDF(out.toFile())) {
+            int[] box = redBox(doc, 0);
+            assertTrue(box[0] >= 0 && box[0] < 20, "cover starts at " + box[0]);
+            assertTrue(pageText(doc, 2).contains("Chapter One"), pageText(doc, 2));
+        }
+    }
+
     @Test
     void aBookThatSizesItsOwnPaperKeepsItsMargins() throws IOException {
         Map<String, byte[]> book = book();

@@ -242,6 +242,9 @@ final class HtmlContext {
     }
 
     float pageRoom() {
+        if (cover != null && HtmlDocument.BOOK_COVER.equals(pageName)) {
+            return cover.pageHeight - cover.marginTop - cover.marginBottom;
+        }
         return pageRoom;
     }
 
@@ -265,8 +268,17 @@ final class HtmlContext {
         }
     }
 
+    private Section cover;
+
+    void cover(Section s) {
+        cover = s;
+    }
+
     /** The section a page name lays out on; null for an unknown name. */
     Section section(String name) {
+        if (cover != null && HtmlDocument.BOOK_COVER.equals(name)) {
+            return cover;
+        }
         Map<String, String> d = cascade.page(name);
         return d == null ? null : HtmlDocument.page(d);
     }

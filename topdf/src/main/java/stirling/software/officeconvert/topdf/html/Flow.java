@@ -607,7 +607,7 @@ final class Flow {
     private void block(Element e, String tag, Map<String, String> d, Look look, Frame frame, int depth)
             throws IOException {
         flush();
-        page(d.get("page"), frame);
+        frame = page(d.get("page"), frame);
         float em = look.size;
         Transform turn = forceInline > 0 ? Transform.NONE : Transform.of(d.get("transform"), em, frame.width(), 0);
         if (!turn.shiftOnly() && ctx.positions()) {
@@ -1266,17 +1266,18 @@ final class Flow {
     }
 
     // A block on a page of another name starts a new section on that page's size and margins
-    private void page(String name, Frame frame) throws IOException {
-        if (name == null || inCell || name.isBlank() || name.strip().equalsIgnoreCase("auto")) {
-            return;
+    private Frame page(String name, Frame frame) throws IOException {
+        if (name == null || inCell || name.isBlank()) {
+            return frame;
         }
-        String next = name.strip();
-        if (next.equals(ctx.pageName()) || ctx.section(next) == null) {
-            return;
+        boolean back = name.strip().equalsIgnoreCase("auto");
+        String next = back ? "" : name.strip();
+        if (next.equals(ctx.pageName()) || !back && ctx.section(next) == null) {
+            return frame;
         }
         if (ctx.nothingWritten()) {
             ctx.pageName(next);
-            return;
+            return cover(next, frame);
         }
         Section ending = ctx.section(ctx.pageName());
         Paragraph mark = new Paragraph();
@@ -1289,6 +1290,17 @@ final class Flow {
         ctx.pageName(next);
         // the new section starts a page already, so a forced break right after it is the same break
         sectionStarted = true;
+        return cover(next, frame);
+    }
+
+    private Frame cover(String name, Frame frame) {
+        if (!HtmlDocument.BOOK_COVER.equals(name)) {
+            return frame;
+        }
+        Section from = ctx.defaultSection();
+        Section to = ctx.section(name);
+        float extra = from.marginLeft + from.marginRight - to.marginLeft - to.marginRight;
+        return new Frame(frame.left(), frame.right(), frame.width() + extra, frame.shading());
     }
 
     private void inlineRow(Layout.Plan plan, Map<String, String> d, Look look, Frame frame, int depth)
