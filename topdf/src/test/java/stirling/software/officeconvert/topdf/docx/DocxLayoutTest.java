@@ -121,6 +121,14 @@ class DocxLayoutTest {
     }
 
     @Test
+    void aLineOfOnlyRaisedTextIsAsTallAsALineOfPlainText() throws IOException {
+        String sup = "<w:r><w:rPr><w:vertAlign w:val=\"superscript\"/></w:rPr><w:t>12</w:t></w:r>";
+        List<Word> raised = words(render("raised", DocxDoc.p("Alpha") + para("", sup) + DocxDoc.p("Omega")));
+        List<Word> plain = words(render("plain", DocxDoc.p("Alpha") + DocxDoc.p("Plain") + DocxDoc.p("Omega")));
+        assertEquals(find(plain, "Omega").y(), find(raised, "Omega").y(), 0.05f);
+    }
+
+    @Test
     void aPictureAsWideAsTheLineEndsItsParagraphOnThatLine() throws IOException {
         String mark = "<w:rPr><w:sz w:val=\"2\"/></w:rPr>";
         float full = 468;
