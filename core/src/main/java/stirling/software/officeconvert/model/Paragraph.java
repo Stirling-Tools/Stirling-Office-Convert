@@ -41,6 +41,7 @@ public final class Paragraph implements Block {
     public float spaceAfter;
     public float lineHeight;
     public LineRule lineRule = LineRule.AUTO;
+    public boolean halfLeading;
     public ListRef list;
     public boolean pageBreakBefore;
     public boolean keepNext;
@@ -53,6 +54,7 @@ public final class Paragraph implements Block {
     public int shading = -1;
     public float borderBottom;
     public int borderBottomRgb;
+    public float borderBottomSpace = 1;
     public Section endsSection;
     public int sourceLines = 1;
     public float textWidth;

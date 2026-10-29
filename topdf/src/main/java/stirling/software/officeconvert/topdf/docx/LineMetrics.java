@@ -159,6 +159,8 @@ final class LineMetrics {
             line.baseline = (h - natural) / 2 + lead + asc;
         } else if (rule == ParaProps.Rule.AUTO && value >= 1) {
             line.baseline = asc + lead;
+        } else if (rule == ParaProps.Rule.AT_LEAST && pp.halfLeading) {
+            line.baseline = (h - natural) / 2 + lead + asc;
         } else {
             line.baseline = h - desc;
         }

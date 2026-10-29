@@ -51,6 +51,8 @@ final class Flow {
     // Tabs past this many in a row are past the edge of any page, and each costs the layout memory
     private static final int MAX_TABS_IN_A_ROW = 32;
 
+    private static final float MAX_BORDER_SPACE = 31;
+
     private static final int BOLD_LABEL_CHARS = 120;
 
     static final Set<String> SKIPPED = Set.of("head", "script", "style", "template", "title", "meta", "link",
@@ -136,6 +138,10 @@ final class Flow {
                 anchor(Positioned.moved(hung.top(), 0, 0, false), frame);
             }
         }
+        Map<String, String> d = ctx.declared(body, look);
+        String top = d.get("margin-top");
+        margin(top == null ? HtmlDocument.BODY_MARGIN : Math.max(0, length(top, look.size, frame.width())));
+        pad(padding(d.get("padding-top"), look.size, frame.width()));
         children(body, look, frame);
         if (waiting != null) {
             out.add(waiting);
@@ -761,6 +767,7 @@ final class Flow {
             pendingMarker = null;
         }
         float borderBottom = border(d, "bottom");
+        float padBottom = padding(d.get("padding-bottom"), em, frame.width());
         Block last = lastBlock();
         if (borderBottom > 0 && last != null && last != before && !inCell
                 && (!held.isEmpty() || border(d, "left") <= 0 && border(d, "right") <= 0)) {
@@ -769,18 +776,28 @@ final class Flow {
             if (last instanceof Paragraph p) {
                 p.borderBottom = borderBottom;
                 p.borderBottomRgb = rgb;
+                if (padBottom > 0 && padBottom <= MAX_BORDER_SPACE) {
+                    p.borderBottomSpace = padBottom;
+                    padBottom = 0;
+                }
             } else if (last instanceof Table t && !t.rows.isEmpty()) {
+                boolean padded = false;
                 for (Table.Cell cell : t.rows.getLast().cells) {
                     if (!cell.bottom.visible()) {
                         cell.bottom = new Table.Border(borderBottom, rgb);
+                        if (padBottom > 0 && !cell.paragraphs.isEmpty()) {
+                            cell.paragraphs.getLast().spaceAfter += padBottom;
+                            padded = true;
+                        }
                     }
                 }
+                padBottom = padded ? 0 : padBottom;
             }
         }
         blockLook = outerLook;
         blockFrame = outerFrame;
         headingStyle = outerHeading;
-        pad(padding(d.get("padding-bottom"), em, frame.width()));
+        pad(padBottom);
         margin(bottom);
         if (isPageBreak(d.get("break-after"))) {
             pendingBreak = true;
@@ -1479,6 +1496,10 @@ final class Flow {
             } finally {
                 ctx.leaveCell();
             }
+            List<Block> blocks = cell.blocks();
+            if (inner.pendingSpace > inner.pendingMargin && !blocks.isEmpty() && blocks.getLast() instanceof Paragraph p) {
+                p.spaceAfter += inner.pendingSpace - inner.pendingMargin;
+            }
         }
         return cell;
     }
@@ -1892,9 +1913,11 @@ final class Flow {
         if (l.linePoints > 0) {
             p.lineRule = Paragraph.LineRule.AT_LEAST;
             p.lineHeight = l.linePoints;
+            p.halfLeading = true;
         } else if (l.lineMultiple > 0) {
             p.lineRule = Paragraph.LineRule.AT_LEAST;
             p.lineHeight = l.lineMultiple * l.size;
+            p.halfLeading = true;
         }
         if (headingStyle != null && !inCell) {
             p.style = ctx.heading(headingStyle, l.run());
@@ -2178,6 +2201,10 @@ final class Flow {
             String alt = e.attr("alt").strip();
             if (!alt.isEmpty()) {
                 text("[" + alt + "]", look);
+            } else if (para == null || para.inlines.isEmpty()) {
+                RunStyle r = look.run();
+                inline(new Inline.Text("\u00a0", new RunStyle(r.font(), r.size(), false, false, false, false, r.rgb(),
+                        -1, 0, false, -r.size() * 0.25f, r.scale(), false, -1), null, -1), look);
             }
             return;
         }
