@@ -34,6 +34,7 @@ import org.apache.poi.hslf.usermodel.HSLFTable;
 import org.apache.poi.hslf.usermodel.HSLFTextParagraph;
 import org.apache.poi.hslf.usermodel.HSLFTextRun;
 import org.apache.poi.hslf.usermodel.HSLFTextShape;
+import org.apache.poi.sl.usermodel.StrokeStyle;
 import org.apache.poi.util.LittleEndian;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -218,6 +219,7 @@ class PdfToPptTest {
             try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
                 cs.setStrokingColor(0.75f, 0.75f, 0.75f);
                 cs.setLineWidth(0.75f);
+                cs.setLineCapStyle(1);
                 cs.moveTo(500, 540);
                 cs.lineTo(600, 0);
                 cs.stroke();
@@ -230,6 +232,7 @@ class PdfToPptTest {
             List<HSLFShape> shapes = rule.getSlides().get(0).getShapes();
             assertEquals(1, shapes.size());
             HSLFLine line = assertInstanceOf(HSLFLine.class, shapes.get(0));
+            assertEquals(StrokeStyle.LineCap.ROUND, line.getLineCap());
             assertEquals(0xBFBFBF, line.getLineColor().getRGB() & 0xFFFFFF);
             assertEquals(0.75, line.getLineWidth(), 0.01);
             assertEquals(500, line.getAnchor().getX(), 0.5);

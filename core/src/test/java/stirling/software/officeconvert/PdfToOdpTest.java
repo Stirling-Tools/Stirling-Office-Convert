@@ -68,6 +68,14 @@ class PdfToOdpTest {
     }
 
     @Test
+    void aRoundCappedLineKeepsItsCaps() throws Exception {
+        Path out = dir.resolve("strokes.odp");
+        PdfToOdp.convert(SlideFixtures.strokes(dir), out, PdfToPptx.Options.defaults());
+        String content = SlideFixtures.text(SlideFixtures.parts(Files.readAllBytes(out)), "content.xml");
+        assertTrue(content.contains("svg:stroke-width=\"0.7056cm\" svg:stroke-linecap=\"round\""), content);
+    }
+
+    @Test
     void aCurvedDrawPathIsPlacedByTheCurveNotItsControlPoints() throws Exception {
         Path heart = dir.resolve("heart.pdf");
         try (PDDocument doc = new PDDocument()) {

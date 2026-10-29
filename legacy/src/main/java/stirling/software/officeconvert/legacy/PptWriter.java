@@ -24,6 +24,7 @@ import org.apache.poi.hslf.usermodel.HSLFSlide;
 import org.apache.poi.hslf.usermodel.HSLFSlideShow;
 import org.apache.poi.sl.usermodel.PictureData.PictureType;
 import org.apache.poi.sl.usermodel.ShapeType;
+import org.apache.poi.sl.usermodel.StrokeStyle.LineCap;
 
 import stirling.software.officeconvert.model.Picture;
 import stirling.software.officeconvert.model.Scripts;
@@ -233,6 +234,7 @@ public final class PptWriter implements SlideSink {
         }
         line.setLineColor(new Color(Math.max(0, l.rgb())));
         line.setLineWidth(l.width());
+        line.setLineCap(l.cap() == 1 ? LineCap.ROUND : l.cap() == 2 ? LineCap.SQUARE : LineCap.FLAT);
         s.addShape(line);
     }
 

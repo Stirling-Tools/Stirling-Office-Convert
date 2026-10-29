@@ -4,6 +4,7 @@ import java.awt.Shape;
 import java.awt.geom.AffineTransform;
 import java.awt.geom.Area;
 import java.awt.geom.GeneralPath;
+import java.awt.geom.NoninvertibleTransformException;
 import java.awt.geom.Path2D;
 import java.awt.geom.PathIterator;
 import java.awt.geom.Point2D;
@@ -621,25 +622,44 @@ final class PaintOrder extends PDFGraphicsStreamEngine {
         if (segments != 2) {
             return null;
         }
-        for (Path2D clip : getGraphicsState().getCurrentClippingPaths()) {
-            if (!holds(clip, ends)) {
-                return null;
-            }
-        }
-        for (Path2D clip : clips()) {
-            if (!holds(clip, ends)) {
-                return null;
-            }
-        }
         int rgb;
         try {
             rgb = state.getStrokingColor().toRGB() & 0xFFFFFF;
         } catch (IOException | RuntimeException e) {
             return null;
         }
-        Matrix ctm = state.getCurrentTransformationMatrix();
-        double scale = Math.sqrt(Math.abs(ctm.getScaleX() * ctm.getScaleY() - ctm.getShearX() * ctm.getShearY())
-                * Math.abs(toDisplay.getDeterminant()));
+        AffineTransform ctm = state.getCurrentTransformationMatrix().createAffineTransform();
+        double det = Math.abs(ctm.getDeterminant());
+        int cap = state.getLineCap();
+        double dx = ends[2] - ends[0];
+        double dy = ends[3] - ends[1];
+        double along = Math.hypot(dx, dy);
+        if (det < 1e-9 || along < 1e-6 || cap != 0 && !conformal(ctm)) {
+            return null;
+        }
+        double[] user = new double[2];
+        try {
+            ctm.createInverse().deltaTransform(new double[] {dx, dy}, 0, user, 0, 1);
+        } catch (NoninvertibleTransformException e) {
+            return null;
+        }
+        double thickness = state.getLineWidth() * det * Math.hypot(user[0], user[1]) / along;
+        double half = thickness / 2;
+        double ux = dx / along;
+        double uy = dy / along;
+        double reach = cap == 0 ? 0 : half;
+        double[] outline = {
+            ends[0] - ux * reach - uy * half, ends[1] - uy * reach + ux * half,
+            ends[0] - ux * reach + uy * half, ends[1] - uy * reach - ux * half,
+            ends[2] + ux * reach - uy * half, ends[3] + uy * reach + ux * half,
+            ends[2] + ux * reach + uy * half, ends[3] + uy * reach - ux * half};
+        List<Path2D> all = new ArrayList<>(getGraphicsState().getCurrentClippingPaths());
+        all.addAll(clips());
+        for (Path2D clip : all) {
+            if (!holds(clip, outline)) {
+                return null;
+            }
+        }
         double[] d = new double[4];
         toDisplay.transform(ends, 0, d, 0, 2);
         if (Math.hypot(d[2] - d[0], d[3] - d[1]) < 1) {
@@ -647,16 +667,39 @@ final class PaintOrder extends PDFGraphicsStreamEngine {
         }
         shapes++;
         return new LineShape((float) d[0], (float) d[1], (float) d[2], (float) d[3], rgb,
-                (float) Math.max(0.25, state.getLineWidth() * scale));
+                (float) Math.max(0.25, thickness * Math.sqrt(Math.abs(toDisplay.getDeterminant()))), cap);
     }
 
-    private static boolean holds(Path2D clip, double[] ends) {
+    private boolean holds(Path2D clip, double[] points) {
         if (segments(clip) > MAX_CLIP_SEGMENTS || !new Area(clip).isRectangular()) {
             return false;
         }
+        Rectangle2D page;
+        try {
+            page = toDisplay.createInverse().createTransformedShape(new Rectangle2D.Float(0, 0, width, height)).getBounds2D();
+        } catch (NoninvertibleTransformException e) {
+            return false;
+        }
         Rectangle2D b = clip.getBounds2D();
-        b.setRect(b.getX() - 0.5, b.getY() - 0.5, b.getWidth() + 1, b.getHeight() + 1);
-        return b.contains(ends[0], ends[1]) && b.contains(ends[2], ends[3]);
+        double x0 = b.getMinX() <= page.getMinX() + 0.5 ? Double.NEGATIVE_INFINITY : b.getMinX() - 0.5;
+        double y0 = b.getMinY() <= page.getMinY() + 0.5 ? Double.NEGATIVE_INFINITY : b.getMinY() - 0.5;
+        double x1 = b.getMaxX() >= page.getMaxX() - 0.5 ? Double.POSITIVE_INFINITY : b.getMaxX() + 0.5;
+        double y1 = b.getMaxY() >= page.getMaxY() - 0.5 ? Double.POSITIVE_INFINITY : b.getMaxY() + 0.5;
+        for (int i = 0; i < points.length; i += 2) {
+            if (points[i] < x0 || points[i] > x1 || points[i + 1] < y0 || points[i + 1] > y1) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static boolean conformal(AffineTransform t) {
+        double a = t.getScaleX();
+        double b = t.getShearY();
+        double c = t.getShearX();
+        double d = t.getScaleY();
+        double eps = 1e-3 * Math.max(Math.max(Math.abs(a), Math.abs(b)), Math.max(Math.abs(c), Math.abs(d)));
+        return Math.abs(a - d) <= eps && Math.abs(b + c) <= eps || Math.abs(a + d) <= eps && Math.abs(b - c) <= eps;
     }
 
     private static boolean sameLine(Box a, Box b) {

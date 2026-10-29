@@ -351,8 +351,8 @@ final class SlideBuilder {
                 boolean horizontal = b.width() >= b.height();
                 float t = Math.max(0.25f, thin);
                 LineShape line = horizontal
-                        ? new LineShape(b.x(), b.centreY(), b.right(), b.centreY(), d.rgb(), t)
-                        : new LineShape(b.centreX(), b.top(), b.centreX(), b.bottom(), d.rgb(), t);
+                        ? new LineShape(b.x(), b.centreY(), b.right(), b.centreY(), d.rgb(), t, 0)
+                        : new LineShape(b.centreX(), b.top(), b.centreX(), b.bottom(), d.rgb(), t, 0);
                 int order = stack.paint.drew(b, 2f, Kind.STROKE, Kind.FILL);
                 stack.add(line, order >= 0 ? order : ruleOrder(b, horizontal, stack.paint), false);
             } else {

@@ -214,7 +214,8 @@ final class OdpSlideXml {
 
     private void line(StringBuilder sb, LineShape l) {
         String g = "<style:graphic-properties draw:stroke=\"solid\" svg:stroke-color=\"" + Odf.colour(Math.max(0, l.rgb()))
-                + "\" svg:stroke-width=\"" + Odf.cm(l.width()) + "\" draw:fill=\"none\" draw:shadow=\"hidden\"/>";
+                + "\" svg:stroke-width=\"" + Odf.cm(l.width()) + "\" svg:stroke-linecap=\""
+                + (l.cap() == 1 ? "round" : l.cap() == 2 ? "square" : "butt") + "\" draw:fill=\"none\" draw:shadow=\"hidden\"/>";
         sb.append("<draw:line draw:style-name=\"").append(styles.style("graphic", "gr", g)).append("\" draw:layer=\"layout\"")
                 .append(" svg:x1=\"").append(Odf.cm(l.x1())).append("\" svg:y1=\"").append(Odf.cm(l.y1()))
                 .append("\" svg:x2=\"").append(Odf.cm(l.x2())).append("\" svg:y2=\"").append(Odf.cm(l.y2())).append("\"/>");
