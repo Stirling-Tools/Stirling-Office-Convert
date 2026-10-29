@@ -68,7 +68,6 @@ final class Flow {
     private final boolean inCell;
     private final Deque<ListLevel> lists = new ArrayDeque<>();
     private Paragraph para;
-    private Paragraph lastParagraph;
     private Look blockLook;
     private Frame blockFrame;
     private String headingStyle;
@@ -89,6 +88,7 @@ final class Flow {
     private int avoiding;
     private boolean inColumns;
     private final List<Block> held = new ArrayList<>();
+    private Block waiting;
     private boolean outrun;
     private Element sized;
     private float besideLeft;
@@ -135,6 +135,10 @@ final class Flow {
             }
         }
         children(body, look, frame);
+        if (waiting != null) {
+            out.add(waiting);
+            waiting = null;
+        }
     }
 
     private static final int MAX_FIXED = 64;
@@ -698,6 +702,7 @@ final class Flow {
         if (isPageBreak(d.get("break-before"))) {
             pendingBreak = true;
         }
+        Block before = lastBlock();
         Look outerLook = blockLook;
         Frame outerFrame = blockFrame;
         String outerHeading = headingStyle;
@@ -754,10 +759,21 @@ final class Flow {
             pendingMarker = null;
         }
         float borderBottom = border(d, "bottom");
-        if (borderBottom > 0 && lastParagraph != null && !inCell) {
-            lastParagraph.borderBottom = borderBottom;
+        Block last = lastBlock();
+        if (borderBottom > 0 && last != null && last != before && !inCell
+                && (!held.isEmpty() || border(d, "left") <= 0 && border(d, "right") <= 0)) {
             Integer c = Css.color(d.getOrDefault("border-bottom-color", colorOf(d.get("border-bottom"))));
-            lastParagraph.borderBottomRgb = c == null || c < 0 ? 0 : c;
+            int rgb = c == null || c < 0 ? 0 : c;
+            if (last instanceof Paragraph p) {
+                p.borderBottom = borderBottom;
+                p.borderBottomRgb = rgb;
+            } else if (last instanceof Table t && !t.rows.isEmpty()) {
+                for (Table.Cell cell : t.rows.getLast().cells) {
+                    if (!cell.bottom.visible()) {
+                        cell.bottom = new Table.Border(borderBottom, rgb);
+                    }
+                }
+            }
         }
         blockLook = outerLook;
         blockFrame = outerFrame;
@@ -922,13 +938,13 @@ final class Flow {
             }
         }
         if (avoiding == 0 || outrun) {
-            out.add(b);
+            send(b);
             return;
         }
         held.add(b);
         if (held.size() > BlockFlow.CHAIN_LIMIT) {
             for (Block h : held) {
-                out.add(h);
+                send(h);
             }
             held.clear();
             outrun = true;
@@ -941,10 +957,25 @@ final class Flow {
                 p.keepLines = true;
                 p.keepNext |= i < held.size() - 1;
             }
-            out.add(held.get(i));
+            send(held.get(i));
         }
         held.clear();
         outrun = false;
+    }
+
+    private void send(Block b) throws IOException {
+        if (inCell) {
+            out.add(b);
+            return;
+        }
+        if (waiting != null) {
+            out.add(waiting);
+        }
+        waiting = b;
+    }
+
+    private Block lastBlock() {
+        return held.isEmpty() ? waiting : held.getLast();
     }
 
     // These shade their own lines, or carry list and heading structure a box would lose
@@ -1908,7 +1939,6 @@ final class Flow {
         measureUnwrapped(p);
         p.anchors.addAll(pendingAnchors);
         pendingAnchors.clear();
-        lastParagraph = p;
         lastSpace = true;
         ctx.count();
         emit(p);

@@ -29,12 +29,14 @@ class HtmlTablesTest {
     @TempDir
     Path dir;
 
-    static final class Blocks implements DocSink {
+    static class Blocks implements DocSink {
         final List<Block> blocks = new ArrayList<>();
+        final List<String> kinds = new ArrayList<>();
         int media;
 
         @Override
         public Picture.MediaRef media(byte[] bytes, String ext, int pixelWidth, int pixelHeight, Object key) {
+            kinds.add(ext);
             return new Picture.MediaRef("m" + (++media) + "." + ext, "image/" + ext, pixelWidth, pixelHeight);
         }
 
@@ -157,5 +159,123 @@ class HtmlTablesTest {
         Table lowercase = table(html.formatted("inline", "contents"));
         Table uppercase = table(html.formatted("INLINE", "CONTENTS"));
         assertEquals(lowercase.columnWidths.getFirst(), uppercase.columnWidths.getFirst(), 0.01);
+    }
+
+    List<Block> blocks(String html, DocSink sink) throws IOException {
+        Path in = Files.writeString(dir.resolve("b.html"), html, StandardCharsets.UTF_8);
+        HtmlDocument.write(in, sink);
+        return sink instanceof Blocks b ? b.blocks : List.of();
+    }
+
+    @Test
+    void aTableWithOnlyItsLeftMarginAutoSitsOnTheRight() throws IOException {
+        Table centred = table("<table style='width:200pt;margin:0 auto'><tr><td style='border:1px solid'>a</td></tr></table>");
+        Table right = table("<table style='width:200pt;margin-left:auto'><tr><td style='border:1px solid'>a</td></tr></table>");
+        Table aligned = table("<table align=right style='width:200pt'><tr><td style='border:1px solid'>a</td></tr></table>");
+        Table spaced = table("<table style='width:200pt;margin-left:auto;margin-right:20pt'><tr><td style='border:1px solid'>a</td></tr></table>");
+        assertTrue(centred.indent > 50, String.valueOf(centred.indent));
+        assertEquals(2 * centred.indent, right.indent, 0.5);
+        assertEquals(right.indent, aligned.indent, 0.5);
+        assertEquals(right.indent - 20, spaced.indent, 0.5);
+    }
+
+    @Test
+    void aRightToLeftTableWithItsRightMarginAutoSitsOnTheLeft() throws IOException {
+        Table t = table("<table dir=rtl style='direction:rtl;width:200pt;margin-right:auto'><tr><td style='border:1px solid'>a</td></tr></table>");
+        Table centred = table("<table style='direction:rtl;width:200pt;margin:0 auto'><tr><td style='border:1px solid'>a</td></tr></table>");
+        assertTrue(t.rightToLeft);
+        assertEquals(2 * centred.indent, t.indent, 0.5);
+    }
+
+    @Test
+    void aFlexRowInsideAFlexItemKeepsItsColumns() throws IOException {
+        Table t = table("<div style='display:flex;justify-content:space-between'>"
+                + "<div style='display:flex;gap:12px'><div style='width:56px;height:56px;background:#2f6fde'>NL</div>"
+                + "<div><b>Northwind Labs Ltd</b><br>14 Harbour Street, Leith<br>Edinburgh EH6 6QZ</div></div>"
+                + "<div><h1>INVOICE</h1>No. 1</div></div>");
+        assertNotNull(t);
+        Table inner = t.rows.getFirst().cells.getFirst().tables.stream().map(Table.Nested::table).findFirst()
+                .orElseThrow(() -> new AssertionError("the inner row was stacked"));
+        assertTrue(inner.columnWidths.size() >= 2, inner.columnWidths.toString());
+    }
+
+    @Test
+    void aFixedSizeFlexItemPaintsItsRoundedGradient() throws IOException {
+        Blocks sink = new Blocks();
+        blocks("<div style='display:flex;gap:12px'><div style='width:56px;height:56px;border-radius:12px;"
+                + "background:linear-gradient(135deg,#2f6fde,#7a4fe0);color:#fff'>NL</div>"
+                + "<div>Northwind Labs Ltd</div></div>", sink);
+        assertEquals(List.of("png"), sink.kinds);
+        Table t = (Table) sink.blocks.stream().filter(b -> b instanceof Table).findFirst().orElseThrow();
+        Table.Cell logo = t.rows.getFirst().cells.getFirst();
+        assertEquals(-1, logo.shading);
+        assertTrue(logo.paragraphs.getFirst().inlines.getFirst() instanceof Inline.Image, logo.paragraphs.toString());
+        assertTrue(logo.paragraphs.stream().allMatch(p -> p.shading < 0));
+    }
+
+    @Test
+    void aBlockBorderBottomReachesTheLastLineBeforeItIsWritten() throws IOException {
+        List<Float> seen = new ArrayList<>();
+        Blocks sink = new Blocks() {
+            @Override
+            public void block(Block block) {
+                if (block instanceof Paragraph p) {
+                    seen.add(p.borderBottom);
+                }
+                super.block(block);
+            }
+        };
+        blocks("<header style='display:flex;justify-content:space-between;border-bottom:3px solid #333'>"
+                + "<span>The Daily Example</span><nav>World</nav></header><p>Body text</p>", sink);
+        assertTrue(seen.size() >= 2, seen.toString());
+        assertEquals(2.25f, seen.getFirst(), 0.01);
+        assertEquals(0, seen.getLast(), 0.01);
+    }
+
+    @Test
+    void aFramedBlockDoesNotDrawOnlyItsBottomEdge() throws IOException {
+        List<Float> seen = new ArrayList<>();
+        Blocks sink = new Blocks() {
+            @Override
+            public void block(Block block) {
+                if (block instanceof Paragraph p) {
+                    seen.add(p.borderBottom);
+                }
+                super.block(block);
+            }
+        };
+        blocks("<ul style='list-style:none'><li style='border:1px dashed #ccc;padding:20px'>Nothing yet</li></ul>"
+                + "<p>Body text</p>", sink);
+        assertTrue(seen.stream().allMatch(b -> b == 0), seen.toString());
+    }
+
+    @Test
+    void aFramedBlockKeptTogetherStillClosesItsLastLine() throws IOException {
+        List<Float> seen = new ArrayList<>();
+        Blocks sink = new Blocks() {
+            @Override
+            public void block(Block block) {
+                if (block instanceof Paragraph p) {
+                    seen.add(p.borderBottom);
+                }
+                super.block(block);
+            }
+        };
+        String clause = "Clause text that is long enough to fill several lines of the box on the page. ".repeat(60);
+        blocks("<div style='border:1px solid #999;break-inside:avoid'><p>" + clause + "</p></div><p>after</p>", sink);
+        assertTrue(seen.size() >= 2, seen.toString());
+        assertEquals(0.75f, seen.get(seen.size() - 2), 0.01);
+    }
+
+    @Test
+    void aBorderBottomUnderARowOfColumnsLinesItsLastCells() throws IOException {
+        Table t = table("<div style='display:flex;justify-content:space-between;border-bottom:3px solid #2f6fde'>"
+                + "<div style='width:200px'><p>Northwind Labs Ltd</p><p>14 Harbour Street</p></div>"
+                + "<div style='width:200px'><h1>INVOICE</h1><p>No. INV-2041</p></div></div><p>After</p>");
+        assertNotNull(t);
+        for (Table.Cell c : t.rows.getLast().cells) {
+            assertEquals(2.25f, c.bottom.width(), 0.01);
+            assertEquals(0x2f6fde, c.bottom.rgb());
+        }
     }
 }
