@@ -73,6 +73,7 @@ class Type1ToCffTest {
     private static final byte[] VSTEM = {3};
     private static final byte[] RMOVETO = {21};
     private static final byte[] RLINETO = {5};
+    private static final byte[] RRCURVETO = {8};
     private static final byte[] CLOSEPATH = {9};
     private static final byte[] ENDCHAR = {14};
     private static final byte[] DIV = {12, 12};
@@ -336,10 +337,32 @@ class Type1ToCffTest {
         assertArrayEquals(prefix, Arrays.copyOf(h, prefix.length));
         assertTrue(hasStems(charString(cff, "I")));
         assertTrue(hasFixed(charString(cff, "I")), "the div result is kept as a fraction");
-        assertEquals(List.of("18", "19:c0", "21", "5", "21", "14"), operators(charString(cff, "O")),
+        assertEquals(List.of("18", "19:c0", "22", "6", "4", "14"), operators(charString(cff, "O")),
                 "overlapping stems are declared for a hintmask that selects them all");
-        assertEquals(List.of("18", "19:00", "21", "19:80", "5", "21", "14"), operators(charString(cff, "L")),
+        assertEquals(List.of("18", "19:00", "22", "19:80", "6", "4", "14"), operators(charString(cff, "L")),
                 "a stem set after the moveto takes effect from the next segment");
+    }
+
+    @Test
+    void segmentsUseTheShortestType2Operators() throws Exception {
+        Map<String, byte[]> glyphs = new LinkedHashMap<>();
+        glyphs.put(".notdef", ops(0, 250, HSBW, ENDCHAR));
+        glyphs.put("S", ops(0, 900, HSBW, 100, 100, RMOVETO, 200, 0, RLINETO, 0, 100, RLINETO, -50, 0, RLINETO,
+                30, 40, RLINETO, -20, 50, RLINETO, 10, 20, 30, 40, 50, 60, RRCURVETO,
+                50, 0, 20, 30, 0, 40, RRCURVETO, 0, 40, 30, 20, 50, 0, RRCURVETO,
+                0, -30, -20, -20, -30, 0, RRCURVETO,
+                -40, 0, -20, 10, -30, 0, RRCURVETO, -40, 0, -10, -10, -30, 0, RRCURVETO,
+                0, -40, -10, -20, 0, -30, RRCURVETO, 0, -20, 10, -20, 0, -30, RRCURVETO,
+                15, 25, 35, -45, -55, -65, RRCURVETO, -10, -20, RLINETO, CLOSEPATH,
+                300, 0, RMOVETO, box(50, 50), 0, 100, RMOVETO, 0, 40, RLINETO, 40, 0, RLINETO, 0, -40, RLINETO,
+                CLOSEPATH, ENDCHAR));
+        Type1Font t1 = type1(program("TestOps", glyphs));
+        CFFType1Font cff = parse(Type1ToCff.convert(t1, Map.of(83, "S"), Set.of("S")));
+        List<String> ops = operators(charString(cff, "S"));
+        for (String op : List.of("4", "6", "7", "22", "24", "25", "26", "27", "30", "31")) {
+            assertTrue(ops.contains(op), op + " in " + ops);
+        }
+        assertSameOutline(t1.getPath("S"), cff.getPath("S"), "S");
     }
 
     @Test
@@ -348,8 +371,8 @@ class Type1ToCffTest {
         Set<String> used = Set.of("A", "H", "I", "L", "O", "E", "F");
         CFFType1Font cff = parse(Type1ToCff.convert(t1, Map.of(65, "A", 69, "E", 70, "F", 72, "H", 73, "I", 76, "L",
                 79, "O"), used));
-        assertEquals(List.of("18", "19:80", "21", "5", "19:60", "5", "21", "14"), operators(charString(cff, "E")));
-        assertEquals(List.of("18", "19:80", "21", "5", "8", "19:60", "5", "21", "14"), operators(charString(cff, "F")),
+        assertEquals(List.of("18", "19:80", "22", "6", "19:60", "7", "4", "14"), operators(charString(cff, "E")));
+        assertEquals(List.of("18", "19:80", "22", "6", "26", "19:60", "6", "4", "14"), operators(charString(cff, "F")),
                 "the flex curves count as two segments before the replaced hints");
         byte[] declared = ops(600, 0, 40, -40, 60, 240, 50, new byte[] {18});
         assertArrayEquals(declared, Arrays.copyOf(charString(cff, "E"), declared.length),
