@@ -10,6 +10,7 @@ final class Documents {
     private static final double INK_MAX = 0.35;
     private static final double TRANSITIONS_PER_PIXEL = 0.003;
     private static final double SPARSE_INK = 0.05;
+    private static final double PHOTO_TONES = 0.05;
     private static final int MARGIN_SHARE = 20;
     private static final int LINE_INK_SHARE = 100;
     private static final int MIN_LINE_INK = 2;
@@ -68,7 +69,7 @@ final class Documents {
         double inkShare = (double) ink / total;
         return (double) paper / total >= PAPER_SHARE && inkShare >= INK_MIN && inkShare <= INK_MAX
                 && (double) transitions / total >= TRANSITIONS_PER_PIXEL
-                && (inkShare > SPARSE_INK || marks(scan, rect, c, s, w, h) >= MIN_MARKS || lines(scan, rect) >= MIN_LINES);
+                && (inkShare > SPARSE_INK || (double) (total - paper - ink) / total < PHOTO_TONES || marks(scan, rect, c, s, w, h) >= MIN_MARKS || lines(scan, rect) >= MIN_LINES);
     }
 
     private static int marks(ScanImage scan, RotatedRect rect, double c, double s, int w, int h) {

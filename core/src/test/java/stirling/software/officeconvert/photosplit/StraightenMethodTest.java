@@ -249,6 +249,39 @@ class StraightenMethodTest {
     }
 
     @Test
+    void formControlsOnAPrintedPageAreNotPhotos() {
+        BufferedImage page = new BufferedImage(2480, 3508, BufferedImage.TYPE_INT_RGB);
+        Graphics2D g = page.createGraphics();
+        g.scale(2, 2);
+        g.setColor(Color.WHITE);
+        g.fillRect(0, 0, 1240, 1754);
+        bevel(g, 250, 260, 280, 68, new Color(0xACA899), new Color(0x716F64), new Color(0xF1EFE2), Color.WHITE);
+        bevel(g, 250, 520, 152, 57, new Color(0xF1EFE2), new Color(0xECE9D8), new Color(0xACA899), new Color(0xECE9D8));
+        g.setColor(new Color(0x716F64));
+        g.fillRect(250, 576, 152, 1);
+        g.fillRect(401, 520, 1, 57);
+        g.setColor(Color.BLACK);
+        g.setFont(g.getFont().deriveFont(17f));
+        g.drawString("Push Me", 286, 556);
+        g.dispose();
+        assertEquals(0, PhotoSplitter.split(page, OPTIONS).size());
+    }
+
+    private static void bevel(Graphics2D g, int x, int y, int w, int h, Color outer, Color inner, Color lit, Color face) {
+        g.setColor(face);
+        g.fillRect(x, y, w, h);
+        g.setColor(lit);
+        g.fillRect(x, y + h - 2, w, 2);
+        g.fillRect(x + w - 2, y, 2, h);
+        g.setColor(outer);
+        g.fillRect(x, y, w - 2, 2);
+        g.fillRect(x, y, 2, h - 2);
+        g.setColor(inner);
+        g.fillRect(x + 2, y + 2, w - 4, 1);
+        g.fillRect(x + 2, y + 2, 1, h - 4);
+    }
+
+    @Test
     void aLargeScanIsSearchedSmallerAndCutAtFullSize() {
         SyntheticScan.Scene scene = new SyntheticScan(2480, 2600, 12).noise(2)
                 .photo(1000, 700, 700, 600, 3, Style.BLOBS, 0)
