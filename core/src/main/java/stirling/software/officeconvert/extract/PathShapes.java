@@ -21,7 +21,10 @@ final class PathShapes {
 
     private static final float HOLES = 0.1f;
 
-    record Paint(boolean fill, boolean stroke, boolean pattern, int fillRgb, int strokeRgb, float thickness, boolean evenOdd) {}
+    private static final float CLIP_SLACK = 0.25f;
+
+    record Paint(boolean fill, boolean stroke, boolean pattern, int fillRgb, int strokeRgb, float thickness, float rowThickness,
+            float columnThickness, boolean evenOdd) {}
 
     record Shapes(List<Rule> rules, List<Fill> fills, VectorMark mark) {}
 
@@ -73,9 +76,9 @@ final class PathShapes {
                     float dx = Math.abs(a.x - b.x);
                     float dy = Math.abs(a.y - b.y);
                     if (dy <= AXIS_TOLERANCE && dx >= RULE_MIN_LENGTH) {
-                        pathRules.add(new Rule(true, (a.y + b.y) / 2f, Math.min(a.x, b.x), Math.max(a.x, b.x), paint.thickness(), paint.strokeRgb()));
+                        pathRules.add(new Rule(true, (a.y + b.y) / 2f, Math.min(a.x, b.x), Math.max(a.x, b.x), paint.rowThickness(), paint.strokeRgb()));
                     } else if (dx <= AXIS_TOLERANCE && dy >= RULE_MIN_LENGTH) {
-                        pathRules.add(new Rule(false, (a.x + b.x) / 2f, Math.min(a.y, b.y), Math.max(a.y, b.y), paint.thickness(), paint.strokeRgb()));
+                        pathRules.add(new Rule(false, (a.x + b.x) / 2f, Math.min(a.y, b.y), Math.max(a.y, b.y), paint.columnThickness(), paint.strokeRgb()));
                     } else if (dx > AXIS_TOLERANCE && dy > AXIS_TOLERANCE) {
                         allRuled = false;
                         diagonal = true;
@@ -279,8 +282,12 @@ final class PathShapes {
             }
             float s = Math.max(r.start(), lo);
             float e = Math.min(r.end(), hi);
+            float near = Math.max(r.pos() - r.thickness() / 2f, posLo);
+            float far = Math.min(r.pos() + r.thickness() / 2f, posHi);
+            boolean cut = far > near && far - near < r.thickness() - CLIP_SLACK;
             if (e - s >= RULE_MIN_LENGTH) {
-                out.add(new Rule(r.horizontal(), r.pos(), s, e, r.thickness(), r.rgb()));
+                out.add(cut ? new Rule(r.horizontal(), (near + far) / 2f, s, e, far - near, r.rgb())
+                        : new Rule(r.horizontal(), r.pos(), s, e, r.thickness(), r.rgb()));
             }
         }
         return out;
