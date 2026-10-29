@@ -12,13 +12,27 @@ import java.util.TreeMap;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
+import org.apache.pdfbox.cos.COSArray;
+import org.apache.pdfbox.cos.COSBoolean;
+import org.apache.pdfbox.cos.COSDictionary;
+import org.apache.pdfbox.cos.COSFloat;
+import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.PDPageContentStream;
+import org.apache.pdfbox.pdmodel.PDResources;
 import org.apache.pdfbox.pdmodel.common.PDRectangle;
+import org.apache.pdfbox.pdmodel.common.function.PDFunctionType2;
 import org.apache.pdfbox.pdmodel.font.PDType1Font;
 import org.apache.pdfbox.pdmodel.font.Standard14Fonts;
+import org.apache.pdfbox.pdmodel.graphics.color.PDColor;
+import org.apache.pdfbox.pdmodel.graphics.color.PDDeviceRGB;
+import org.apache.pdfbox.pdmodel.graphics.color.PDPattern;
 import org.apache.pdfbox.pdmodel.graphics.image.LosslessFactory;
+import org.apache.pdfbox.pdmodel.graphics.pattern.PDShadingPattern;
+import org.apache.pdfbox.pdmodel.graphics.shading.PDShading;
+import org.apache.pdfbox.pdmodel.graphics.shading.PDShadingType2;
+import org.apache.pdfbox.pdmodel.graphics.shading.PDShadingType3;
 import org.apache.pdfbox.pdmodel.graphics.state.PDExtendedGraphicsState;
 import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
 import org.apache.pdfbox.pdmodel.interactive.action.PDActionURI;
@@ -89,6 +103,26 @@ final class SlideFixtures {
         return pdf;
     }
 
+    static Path shaded(Path dir, String name, PDShading shading) throws IOException {
+        Path pdf = dir.resolve(name + ".pdf");
+        try (PDDocument doc = new PDDocument()) {
+            PDPage page = new PDPage(WIDE);
+            doc.addPage(page);
+            page.setResources(new PDResources());
+            PDShadingPattern pattern = new PDShadingPattern();
+            pattern.setShading(shading);
+            PDPattern space = new PDPattern(page.getResources());
+            COSName patternName = page.getResources().add(pattern);
+            try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
+                cs.setNonStrokingColor(new PDColor(patternName, space));
+                cs.addRect(0, 0, 960, 540);
+                cs.fill();
+            }
+            doc.save(pdf.toFile());
+        }
+        return pdf;
+    }
+
     static Path strokes(Path dir) throws IOException {
         Path pdf = dir.resolve("strokes.pdf");
         try (PDDocument doc = new PDDocument()) {
@@ -123,6 +157,45 @@ final class SlideFixtures {
             doc.save(pdf.toFile());
         }
         return pdf;
+    }
+
+    static PDShading axial(float x0, float y0, float x1, float y1, float[] from, float[] to) {
+        PDShadingType2 shading = new PDShadingType2(new COSDictionary());
+        shading.setShadingType(PDShading.SHADING_TYPE2);
+        fill(shading, from, to);
+        shading.setCoords(floats(x0, y0, x1, y1));
+        return shading;
+    }
+
+    static PDShading radial(float x, float y, float r, float[] from, float[] to) {
+        PDShadingType3 shading = new PDShadingType3(new COSDictionary());
+        shading.setShadingType(PDShading.SHADING_TYPE3);
+        fill(shading, from, to);
+        shading.setCoords(floats(x, y, 0, x, y, r));
+        return shading;
+    }
+
+    private static void fill(PDShadingType2 shading, float[] from, float[] to) {
+        COSDictionary fn = new COSDictionary();
+        fn.setInt(COSName.FUNCTION_TYPE, 2);
+        fn.setItem(COSName.DOMAIN, floats(0, 1));
+        fn.setItem(COSName.C0, floats(from));
+        fn.setItem(COSName.C1, floats(to));
+        fn.setInt(COSName.N, 1);
+        shading.setColorSpace(PDDeviceRGB.INSTANCE);
+        shading.setFunction(new PDFunctionType2(fn));
+        COSArray extend = new COSArray();
+        extend.add(COSBoolean.TRUE);
+        extend.add(COSBoolean.TRUE);
+        shading.setExtend(extend);
+    }
+
+    private static COSArray floats(float... values) {
+        COSArray a = new COSArray();
+        for (float v : values) {
+            a.add(new COSFloat(v));
+        }
+        return a;
     }
 
     static Path ruledFacet(Path dir) throws IOException {

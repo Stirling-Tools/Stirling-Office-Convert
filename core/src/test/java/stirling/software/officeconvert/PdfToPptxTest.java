@@ -316,6 +316,43 @@ class PdfToPptxTest {
     }
 
     @Test
+    void aCentredRadialShadingIsACircleGradient() throws Exception {
+        Path pdf = SlideFixtures.shaded(dir, "radial",
+                SlideFixtures.radial(480, 270, 550.73f, new float[] {1, 1, 1}, new float[] {0.3f, 0.6f, 0.1f}));
+        Path out = dir.resolve("radial.pptx");
+        PdfToPptx.convert(pdf, out, PdfToPptx.Options.defaults());
+        Map<String, byte[]> files = SlideFixtures.parts(Files.readAllBytes(out));
+        String slide = SlideFixtures.text(files, "ppt/slides/slide1.xml");
+        assertEquals(0, count(slide, "<p:pic>"), slide);
+        assertFalse(files.keySet().stream().anyMatch(n -> n.startsWith("ppt/media/")));
+        assertTrue(slide.contains("<a:gsLst><a:gs pos=\"0\"><a:srgbClr val=\"FFFFFF\"/></a:gs><a:gs pos=\"100000\">"
+                + "<a:srgbClr val=\"4D991A\"/></a:gs></a:gsLst><a:path path=\"circle\">"), slide);
+    }
+
+    @Test
+    void anAxialShadingIsALinearGradientAlongItsAxis() throws Exception {
+        Path pdf = SlideFixtures.shaded(dir, "axial",
+                SlideFixtures.axial(0, 540, 0, 0, new float[] {1, 0, 0}, new float[] {0, 0, 1}));
+        Path out = dir.resolve("axial.pptx");
+        PdfToPptx.convert(pdf, out, PdfToPptx.Options.defaults());
+        String slide = SlideFixtures.text(SlideFixtures.parts(Files.readAllBytes(out)), "ppt/slides/slide1.xml");
+        assertEquals(0, count(slide, "<p:pic>"), slide);
+        assertTrue(slide.contains("<a:gs pos=\"0\"><a:srgbClr val=\"FF0000\"/></a:gs><a:gs pos=\"100000\">"
+                + "<a:srgbClr val=\"0000FF\"/></a:gs></a:gsLst><a:lin ang=\"5400000\" scaled=\"0\"/>"), slide);
+    }
+
+    @Test
+    void anOffCentreRadialShadingStaysAPicture() throws Exception {
+        Path pdf = SlideFixtures.shaded(dir, "offcentre",
+                SlideFixtures.radial(300, 200, 400, new float[] {1, 1, 1}, new float[] {0.3f, 0.6f, 0.1f}));
+        Path out = dir.resolve("offcentre.pptx");
+        PdfToPptx.convert(pdf, out, PdfToPptx.Options.defaults());
+        String slide = SlideFixtures.text(SlideFixtures.parts(Files.readAllBytes(out)), "ppt/slides/slide1.xml");
+        assertEquals(0, count(slide, "<a:gradFill"), slide);
+        assertEquals(1, count(slide, "<p:pic>"), slide);
+    }
+
+    @Test
     void aStrokedLineKeepsItsCapsWidthAndClip() throws Exception {
         Path out = dir.resolve("strokes.pptx");
         PdfToPptx.convert(SlideFixtures.strokes(dir), out, PdfToPptx.Options.defaults());

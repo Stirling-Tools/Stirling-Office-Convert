@@ -30,7 +30,7 @@ class ArtBudgetTest {
             PDPage page = doc.getPage(0);
             AffineTransform toDisplay = new AffineTransform(1, 0, 0, -1, 0, 792);
             PaintOrder paint = PaintOrder.read(page, toDisplay, 612, 792);
-            Art art = new Art(doc, new Store(), 72f, false);
+            Art art = new Art(doc, new Store(), 72f, false, g -> true);
             art.pieces(paint, Set.of(), 0, toDisplay, 612, 792);
             long perRender = 3L * FILLER + 1000;
             assertTrue(art.operators() <= 4 * OperatorBudget.MAX_OPERATORS + perRender, () -> "" + art.operators());

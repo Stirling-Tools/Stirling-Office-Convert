@@ -14,12 +14,26 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 
+import org.apache.pdfbox.cos.COSArray;
+import org.apache.pdfbox.cos.COSBoolean;
+import org.apache.pdfbox.cos.COSDictionary;
+import org.apache.pdfbox.cos.COSFloat;
+import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.PDPageContentStream;
+import org.apache.pdfbox.pdmodel.PDResources;
 import org.apache.pdfbox.pdmodel.common.PDRectangle;
+import org.apache.pdfbox.pdmodel.common.function.PDFunctionType2;
 import org.apache.pdfbox.pdmodel.font.PDType1Font;
 import org.apache.pdfbox.pdmodel.font.Standard14Fonts;
+import org.apache.pdfbox.pdmodel.graphics.color.PDColor;
+import org.apache.pdfbox.pdmodel.graphics.color.PDDeviceRGB;
+import org.apache.pdfbox.pdmodel.graphics.color.PDPattern;
+import org.apache.pdfbox.pdmodel.graphics.pattern.PDShadingPattern;
+import org.apache.pdfbox.pdmodel.graphics.shading.PDShading;
+import org.apache.pdfbox.pdmodel.graphics.shading.PDShadingType2;
+import org.apache.pdfbox.pdmodel.graphics.shading.PDShadingType3;
 import org.apache.pdfbox.pdmodel.graphics.state.PDExtendedGraphicsState;
 import org.apache.pdfbox.util.Matrix;
 import org.apache.poi.ddf.AbstractEscherOptRecord;
@@ -27,6 +41,7 @@ import org.apache.poi.ddf.EscherArrayProperty;
 import org.apache.poi.ddf.EscherPropertyTypes;
 import org.apache.poi.hslf.usermodel.HSLFFreeformShape;
 import org.apache.poi.hslf.usermodel.HSLFLine;
+import org.apache.poi.hslf.usermodel.HSLFPictureShape;
 import org.apache.poi.hslf.usermodel.HSLFShape;
 import org.apache.poi.hslf.usermodel.HSLFSlide;
 import org.apache.poi.hslf.usermodel.HSLFSlideShow;
@@ -239,6 +254,78 @@ class PdfToPptTest {
             assertEquals(100, line.getAnchor().getWidth(), 0.5);
             assertEquals(540, line.getAnchor().getHeight(), 0.5);
         }
+    }
+
+    @Test
+    void aTwoColourAxialShadingIsAShadedFreeform() throws IOException {
+        PDShadingType2 axial = new PDShadingType2(new COSDictionary());
+        axial.setShadingType(PDShading.SHADING_TYPE2);
+        axial.setCoords(floats(0, 540, 0, 0));
+        List<HSLFShape> shapes = shapesOf(shadedPage("axial", axial));
+        assertEquals(1, shapes.size());
+        HSLFFreeformShape f = assertInstanceOf(HSLFFreeformShape.class, shapes.get(0));
+        assertEquals(4, f.getFill().getFillType());
+        assertEquals(0xFF0000, f.getFill().getBackgroundColor().getRGB() & 0xFFFFFF);
+        assertEquals(0x0000FF, f.getFill().getForegroundColor().getRGB() & 0xFFFFFF);
+        assertEquals(0, f.getEscherProperty(EscherPropertyTypes.FILL__ANGLE));
+    }
+
+    @Test
+    void aRadialShadingStaysAPicture() throws IOException {
+        PDShadingType3 radial = new PDShadingType3(new COSDictionary());
+        radial.setShadingType(PDShading.SHADING_TYPE3);
+        radial.setCoords(floats(360, 270, 0, 360, 270, 450));
+        List<HSLFShape> shapes = shapesOf(shadedPage("radial", radial));
+        assertEquals(1, shapes.size());
+        assertInstanceOf(HSLFPictureShape.class, shapes.get(0));
+    }
+
+    private Path shadedPage(String name, PDShadingType2 shading) throws IOException {
+        COSDictionary fn = new COSDictionary();
+        fn.setInt(COSName.FUNCTION_TYPE, 2);
+        fn.setItem(COSName.DOMAIN, floats(0, 1));
+        fn.setItem(COSName.C0, floats(1, 0, 0));
+        fn.setItem(COSName.C1, floats(0, 0, 1));
+        fn.setInt(COSName.N, 1);
+        shading.setColorSpace(PDDeviceRGB.INSTANCE);
+        shading.setFunction(new PDFunctionType2(fn));
+        COSArray extend = new COSArray();
+        extend.add(COSBoolean.TRUE);
+        extend.add(COSBoolean.TRUE);
+        shading.setExtend(extend);
+        Path pdf = dir.resolve(name + ".pdf");
+        try (PDDocument doc = new PDDocument()) {
+            PDPage page = new PDPage(new PDRectangle(720, 540));
+            doc.addPage(page);
+            page.setResources(new PDResources());
+            PDShadingPattern pattern = new PDShadingPattern();
+            pattern.setShading(shading);
+            PDPattern space = new PDPattern(page.getResources());
+            COSName patternName = page.getResources().add(pattern);
+            try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
+                cs.setNonStrokingColor(new PDColor(patternName, space));
+                cs.addRect(0, 0, 720, 540);
+                cs.fill();
+            }
+            doc.save(pdf.toFile());
+        }
+        Path ppt = dir.resolve(name + ".ppt");
+        PdfToPpt.convert(pdf, ppt, PdfToPptx.Options.defaults());
+        return ppt;
+    }
+
+    private static List<HSLFShape> shapesOf(Path ppt) throws IOException {
+        try (InputStream in = Files.newInputStream(ppt); HSLFSlideShow show = new HSLFSlideShow(in)) {
+            return new ArrayList<>(show.getSlides().get(0).getShapes());
+        }
+    }
+
+    private static COSArray floats(float... values) {
+        COSArray a = new COSArray();
+        for (float v : values) {
+            a.add(new COSFloat(v));
+        }
+        return a;
     }
 
     @Test

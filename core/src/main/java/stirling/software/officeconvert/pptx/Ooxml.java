@@ -1,5 +1,7 @@
 package stirling.software.officeconvert.pptx;
 
+import stirling.software.officeconvert.slides.Gradient;
+
 final class Ooxml {
 
     static final String NS_A = "http://schemas.openxmlformats.org/drawingml/2006/main";
@@ -77,6 +79,31 @@ final class Ooxml {
         }
         sb.append("<a:solidFill><a:srgbClr val=\"").append(hex(rgb)).append("\"><a:alpha val=\"")
                 .append(Math.clamp(Math.round(alpha * 100000), 0, 100000)).append("\"/></a:srgbClr></a:solidFill>");
+    }
+
+    static void gradFill(StringBuilder sb, Gradient g, float alpha) {
+        sb.append("<a:gradFill rotWithShape=\"1\"><a:gsLst>");
+        for (int i = 0; i < g.colours().length; i++) {
+            sb.append("<a:gs pos=\"").append(Math.clamp(Math.round(g.positions()[i] * 100000), 0, 100000)).append("\">");
+            solidColour(sb, g.colours()[i], alpha);
+            sb.append("</a:gs>");
+        }
+        sb.append("</a:gsLst>");
+        if (g.radial()) {
+            sb.append("<a:path path=\"circle\"><a:fillToRect l=\"50000\" t=\"50000\" r=\"50000\" b=\"50000\"/></a:path>");
+        } else {
+            sb.append("<a:lin ang=\"").append(Math.floorMod(Math.round(g.angle() * 60000), 21_600_000)).append("\" scaled=\"0\"/>");
+        }
+        sb.append("</a:gradFill>");
+    }
+
+    private static void solidColour(StringBuilder sb, int rgb, float alpha) {
+        sb.append("<a:srgbClr val=\"").append(hex(rgb)).append('"');
+        if (alpha >= 0.995f) {
+            sb.append("/>");
+            return;
+        }
+        sb.append("><a:alpha val=\"").append(Math.clamp(Math.round(alpha * 100000), 0, 100000)).append("\"/></a:srgbClr>");
     }
 
     static void line(StringBuilder sb, int rgb, float width) {

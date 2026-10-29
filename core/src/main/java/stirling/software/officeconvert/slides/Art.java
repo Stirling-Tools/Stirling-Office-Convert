@@ -15,6 +15,7 @@ import java.util.HashSet;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Set;
+import java.util.function.Predicate;
 import javax.imageio.ImageIO;
 
 import org.apache.commons.logging.Log;
@@ -56,13 +57,15 @@ final class Art {
     private final PlacedContent.MediaStore media;
     private final float dpi;
     private final boolean lossless;
+    private final Predicate<Gradient> gradients;
 
-    Art(PDDocument document, PlacedContent.MediaStore media, float dpi, boolean lossless) {
+    Art(PDDocument document, PlacedContent.MediaStore media, float dpi, boolean lossless, Predicate<Gradient> gradients) {
         this.document = document;
         this.renderer = new ArtRenderer(document);
         this.media = media;
         this.dpi = dpi;
         this.lossless = lossless;
+        this.gradients = gradients;
     }
 
     record Piece(SlideShape shape, int order) {}
@@ -77,15 +80,15 @@ final class Art {
         if (!paint.drawsShapes()) {
             return false;
         }
-        Plan plan = plan(paint, represented, true, width, height);
+        Plan plan = plan(paint, represented, true, width, height, gradients);
         return !plan.shapes().isEmpty() && plan.runs().size() <= MAX_FIGURE_RUNS;
     }
 
     List<Piece> pieces(PaintOrder paint, Set<Integer> represented, int pageIndex, AffineTransform toDisplay,
             float width, float height) {
-        Plan plan = plan(paint, represented, paint.drawsShapes(), width, height);
+        Plan plan = plan(paint, represented, paint.drawsShapes(), width, height, gradients);
         if (!plan.shapes().isEmpty()) {
-            Plan raster = plan(paint, represented, false, width, height);
+            Plan raster = plan(paint, represented, false, width, height, gradients);
             if (plan.runs().size() > raster.runs().size() + MAX_EXTRA_RUNS) {
                 plan = raster;
             }
@@ -110,7 +113,8 @@ final class Art {
         return out;
     }
 
-    private static Plan plan(PaintOrder paint, Set<Integer> represented, boolean shapes, float width, float height) {
+    private static Plan plan(PaintOrder paint, Set<Integer> represented, boolean shapes, float width, float height,
+            Predicate<Gradient> gradients) {
         List<Run> runs = new ArrayList<>();
         List<Piece> drawn = new ArrayList<>();
         Run run = null;
@@ -125,7 +129,8 @@ final class Art {
                 between.add(m);
                 continue;
             }
-            if (shapes && m.shape() != null && m.outline() == PaintOrder.Outline.OTHER) {
+            if (shapes && m.shape() != null
+                    && (m.gradient() != null ? gradients.test(m.gradient()) : m.outline() == PaintOrder.Outline.OTHER)) {
                 Piece p = shape(m);
                 if (p != null) {
                     drawn.add(p);
@@ -164,7 +169,7 @@ final class Art {
         }
         Rectangle2D b = hull(m.shape());
         Frame frame = new Frame((float) b.getX(), (float) b.getY(), (float) b.getWidth(), (float) b.getHeight());
-        return new Piece(new PathShape(frame, m.shape(), m.rgb(), m.alpha()), m.order());
+        return new Piece(new PathShape(frame, m.shape(), m.rgb(), m.alpha(), m.gradient()), m.order());
     }
 
     private static Rectangle2D hull(Path2D path) {

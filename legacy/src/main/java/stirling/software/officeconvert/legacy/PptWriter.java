@@ -29,6 +29,7 @@ import org.apache.poi.sl.usermodel.StrokeStyle.LineCap;
 import stirling.software.officeconvert.model.Picture;
 import stirling.software.officeconvert.model.Scripts;
 import stirling.software.officeconvert.slides.Frame;
+import stirling.software.officeconvert.slides.Gradient;
 import stirling.software.officeconvert.slides.LineShape;
 import stirling.software.officeconvert.slides.PathShape;
 import stirling.software.officeconvert.slides.PictureShape;
@@ -44,6 +45,8 @@ public final class PptWriter implements SlideSink {
     private Scripts.Profile scripts = new Scripts.Profile();
 
     private static final int SOLID_FILL = 0;
+
+    private static final int SHADE_FILL = 4;
 
     private final OutputStream out;
     private final HSLFSlideShow show = new HSLFSlideShow();
@@ -188,12 +191,33 @@ public final class PptWriter implements SlideSink {
         shape.setPath(p.path());
         closeSubpaths(shape, p.path());
         shape.setAnchor(p.path().getBounds2D());
-        shape.setFillColor(new Color(p.fillRgb()));
+        if (p.gradient() != null) {
+            shade(shape, p.gradient());
+        } else {
+            shape.setFillColor(new Color(p.fillRgb()));
+        }
         if (p.alpha() < 0.995f) {
             shape.setEscherProperty(EscherPropertyTypes.FILL__FILLOPACITY, Math.round(p.alpha() * 65536));
+            if (p.gradient() != null) {
+                shape.setEscherProperty(EscherPropertyTypes.FILL__BACKOPACITY, Math.round(p.alpha() * 65536));
+            }
         }
         shape.setLineColor(null);
         s.addShape(shape);
+    }
+
+    private static void shade(HSLFFreeformShape shape, Gradient g) {
+        HSLFFill fill = shape.getFill();
+        fill.setFillType(SHADE_FILL);
+        fill.setBackgroundColor(new Color(g.colours()[0]));
+        fill.setForegroundColor(new Color(g.colours()[g.colours().length - 1]));
+        shape.setEscherProperty(EscherPropertyTypes.FILL__ANGLE, Math.round(Math.floorMod(90 - Math.round(g.angle()), 360) * 65536f));
+        shape.setEscherProperty(EscherPropertyTypes.FILL__FOCUS, 0);
+    }
+
+    @Override
+    public boolean draws(Gradient gradient) {
+        return !gradient.radial() && gradient.colours().length == 2;
     }
 
     private static void closeSubpaths(HSLFFreeformShape shape, Path2D path) {

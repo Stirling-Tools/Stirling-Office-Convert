@@ -7,7 +7,8 @@ final class OdpParts {
 
     private OdpParts() {}
 
-    static String styles(float width, float height, String fontDecls, String font, Collection<Integer> backgrounds) {
+    static String styles(float width, float height, String fontDecls, String font, Collection<Integer> backgrounds,
+            String gradients) {
         String f = Odf.esc(font);
         StringBuilder pageStyles = new StringBuilder();
         StringBuilder masters = new StringBuilder();
@@ -25,7 +26,7 @@ final class OdpParts {
                 + " draw:shadow=\"hidden\" draw:stroke=\"none\" draw:fill=\"none\"/><style:paragraph-properties"
                 + " fo:margin-top=\"0cm\" fo:margin-bottom=\"0cm\" fo:line-height=\"100%\"/><style:text-properties"
                 + " style:font-name=\"" + f + "\" fo:font-size=\"18pt\" fo:color=\"#000000\" fo:language=\"en\""
-                + " fo:country=\"US\"/></style:default-style></office:styles>"
+                + " fo:country=\"US\"/></style:default-style>" + gradients + "</office:styles>"
                 + "<office:automatic-styles><style:page-layout style:name=\"PM1\"><style:page-layout-properties"
                 + " fo:margin-top=\"0cm\" fo:margin-bottom=\"0cm\" fo:margin-left=\"0cm\" fo:margin-right=\"0cm\""
                 + " fo:page-width=\"" + Odf.cm(width) + "\" fo:page-height=\"" + Odf.cm(height) + "\""

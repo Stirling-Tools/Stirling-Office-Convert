@@ -30,6 +30,8 @@ import org.apache.pdfbox.pdmodel.font.PDType3Font;
 import org.apache.pdfbox.pdmodel.graphics.blend.BlendMode;
 import org.apache.pdfbox.pdmodel.graphics.color.PDColor;
 import org.apache.pdfbox.pdmodel.graphics.color.PDPattern;
+import org.apache.pdfbox.pdmodel.graphics.pattern.PDShadingPattern;
+import org.apache.pdfbox.pdmodel.graphics.shading.PDShading;
 import org.apache.pdfbox.pdmodel.graphics.form.PDFormXObject;
 import org.apache.pdfbox.pdmodel.graphics.form.PDTransparencyGroup;
 import org.apache.pdfbox.pdmodel.graphics.image.PDImage;
@@ -60,7 +62,7 @@ final class PaintOrder extends PDFGraphicsStreamEngine {
     }
 
     record Mark(Kind kind, Box box, int order, float alpha, boolean opaque, Outline outline, float radius, int from,
-            boolean blended, int rgb, Path2D shape, LineShape line) {}
+            boolean blended, int rgb, Path2D shape, LineShape line, Gradient gradient) {}
 
     record Slant(float x, float y, float angle, float advance, int order) {}
 
@@ -364,11 +366,15 @@ final class PaintOrder extends PDFGraphicsStreamEngine {
     }
 
     private void mark(Kind kind, Rectangle2D device, Path2D shape) {
+        mark(kind, device, shape, null);
+    }
+
+    private void mark(Kind kind, Rectangle2D device, Path2D shape, Gradient gradient) {
         float alpha = kind == Kind.STROKE ? (float) getGraphicsState().getAlphaConstant()
                 : (float) getGraphicsState().getNonStrokeAlphaConstant();
         boolean path = kind == Kind.FILL || kind == Kind.STROKE;
         mark(kind, device, alpha, alpha >= 0.99f && !masked(),
-                path ? outline(this.path) : Outline.OTHER, path ? radius : 0, shape);
+                path ? outline(this.path) : Outline.OTHER, path ? radius : 0, shape, gradient);
     }
 
     boolean drawsShapes() {
@@ -548,11 +554,11 @@ final class PaintOrder extends PDFGraphicsStreamEngine {
     }
 
     private void mark(Kind kind, Rectangle2D device, float alpha, boolean opaque, Outline outline, float radius) {
-        mark(kind, device, alpha, opaque, outline, radius, null);
+        mark(kind, device, alpha, opaque, outline, radius, null, null);
     }
 
     private void mark(Kind kind, Rectangle2D device, float alpha, boolean opaque, Outline outline, float radius,
-            Path2D shape) {
+            Path2D shape, Gradient gradient) {
         if (marks.size() >= MAX_MARKS || device == null || device.isEmpty() && kind != Kind.STROKE) {
             order++;
             return;
@@ -573,14 +579,15 @@ final class PaintOrder extends PDFGraphicsStreamEngine {
             Mark last = marks.getLast();
             if (last.kind() == Kind.TEXT && last.order() == order - 1 && sameLine(last.box(), b)) {
                 marks.set(marks.size() - 1, new Mark(Kind.TEXT, last.box().union(b), order++, alpha, opaque, outline,
-                        radius, last.from(), last.blended() || blended, -1, null, null));
+                        radius, last.from(), last.blended() || blended, -1, null, null, null));
                 return;
             }
         }
         int rgb = kind == Kind.FILL ? fillRgb() : -1;
         LineShape line = kind == Kind.STROKE && !blended ? straight() : null;
-        marks.add(new Mark(kind, b, order, alpha, opaque, outline, radius, order, blended, rgb, rgb >= 0 ? shape : null,
-                line));
+        Gradient fill = rgb < 0 && shape != null ? gradient : null;
+        marks.add(new Mark(kind, b, order, alpha, opaque, outline, radius, order, blended, rgb,
+                rgb >= 0 || fill != null ? shape : null, line, fill));
         order++;
     }
 
@@ -793,8 +800,27 @@ final class PaintOrder extends PDFGraphicsStreamEngine {
 
     @Override
     public void fillPath(int windingRule) {
-        mark(Kind.FILL, path.getBounds2D(), flat(windingRule));
+        Path2D shape = flat(windingRule);
+        mark(Kind.FILL, path.getBounds2D(), shape, shape == null ? null : patterned(shape));
         path.reset();
+    }
+
+    private Gradient patterned(Path2D shape) {
+        PDColor colour = getGraphicsState().getNonStrokingColor();
+        if (colour == null || !(colour.getColorSpace() instanceof PDPattern space)) {
+            return null;
+        }
+        try {
+            if (!(space.getPattern(colour) instanceof PDShadingPattern pattern) || pattern.getShading() == null) {
+                return null;
+            }
+            AffineTransform t = new AffineTransform(toDisplay);
+            t.concatenate(getInitialMatrix().createAffineTransform());
+            t.concatenate(pattern.getMatrix().createAffineTransform());
+            return Shadings.of(pattern.getShading(), t, shape.getBounds2D());
+        } catch (IOException | RuntimeException e) {
+            return null;
+        }
     }
 
     @Override
@@ -814,8 +840,55 @@ final class PaintOrder extends PDFGraphicsStreamEngine {
 
     @Override
     public void shadingFill(COSName shadingName) {
-        Rectangle2D clip = clipBounds();
-        mark(Kind.SHADING, clip != null ? clip : new Rectangle2D.Double(-1e6, -1e6, 2e6, 2e6));
+        Rectangle2D device = clipBounds();
+        for (Path2D c : clips()) {
+            device = device == null ? c.getBounds2D() : device.createIntersection(c.getBounds2D());
+        }
+        if (device == null) {
+            device = new Rectangle2D.Double(-1e6, -1e6, 2e6, 2e6);
+        }
+        Path2D shape = shaded();
+        Gradient gradient = null;
+        if (shape != null) {
+            try {
+                PDShading shading = getResources().getShading(shadingName);
+                AffineTransform t = new AffineTransform(toDisplay);
+                t.concatenate(getGraphicsState().getCurrentTransformationMatrix().createAffineTransform());
+                gradient = shading == null ? null : Shadings.of(shading, t, shape.getBounds2D());
+            } catch (IOException | RuntimeException e) {
+                gradient = null;
+            }
+        }
+        mark(Kind.SHADING, device, shape, gradient);
+    }
+
+    private Path2D shaded() {
+        if (shapes > MAX_SHAPES || transparentGroups > 0 || blendedGroups > 0 || masked() || blending()
+                || getGraphicsState().getNonStrokeAlphaConstant() < 0.01) {
+            return null;
+        }
+        AffineTransform fromDisplay;
+        try {
+            fromDisplay = toDisplay.createInverse();
+        } catch (NoninvertibleTransformException e) {
+            return null;
+        }
+        Area area = new Area(fromDisplay.createTransformedShape(new Rectangle2D.Float(0, 0, width, height)));
+        List<Path2D> all = new ArrayList<>(getGraphicsState().getCurrentClippingPaths());
+        all.addAll(clips());
+        for (Path2D c : all) {
+            if (segments(c) > MAX_SEGMENTS) {
+                return null;
+            }
+            area.intersect(new Area(c));
+        }
+        int n = segments(area);
+        if (area.isEmpty() || n > MAX_SEGMENTS) {
+            return null;
+        }
+        pageSegments += n;
+        shapes++;
+        return new Path2D.Float(area.createTransformedArea(toDisplay));
     }
 
     @Override
