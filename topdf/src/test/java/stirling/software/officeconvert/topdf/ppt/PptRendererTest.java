@@ -1,5 +1,6 @@
 package stirling.software.officeconvert.topdf.ppt;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -12,6 +13,7 @@ import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.UncheckedIOException;
 import java.nio.ByteBuffer;
 import java.nio.file.Files;
@@ -21,9 +23,15 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Random;
 import java.util.function.Consumer;
 
+import javax.imageio.ImageIO;
+
 import org.apache.pdfbox.Loader;
+import org.apache.pdfbox.cos.COSName;
+import org.apache.pdfbox.cos.COSObject;
+import org.apache.pdfbox.cos.COSStream;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.rendering.PDFRenderer;
@@ -160,6 +168,48 @@ class PptRendererTest {
         Converted c = convert("titles.ppt", ppt);
         assertEquals(List.of("1 p1 Opening", "1 p2 Slide 2", "1 p3 Opening (2)", "1 p4 Close"),
                 Outlines.titles(c.pdf()));
+    }
+
+    @Test
+    void aJpegPictureGoesIntoThePdfAsItIs() throws IOException {
+        byte[] jpeg = photo(160, 120);
+        byte[] ppt = deck(p -> p.createSlide().createPicture(picture(p, jpeg, PictureType.JPEG))
+                .setAnchor(new Rectangle2D.Double(100, 100, 320, 240)));
+        Converted c = convert("photo.ppt", ppt);
+        List<COSStream> images = new ArrayList<>();
+        try (PDDocument d = c.open()) {
+            for (COSObject o : d.getDocument().getObjectsByType(COSName.XOBJECT)) {
+                if (o.getObject() instanceof COSStream s && COSName.IMAGE.equals(s.getCOSName(COSName.SUBTYPE))) {
+                    images.add(s);
+                }
+            }
+            assertEquals(1, images.size());
+            assertEquals(COSName.DCT_DECODE, images.getFirst().getFilters());
+            try (InputStream in = images.getFirst().createRawInputStream()) {
+                assertArrayEquals(jpeg, in.readAllBytes());
+            }
+        }
+        Color centre = new Color(c.render(0).getRGB(260, 220));
+        Color expected = new Color(ImageIO.read(new ByteArrayInputStream(jpeg)).getRGB(80, 60));
+        assertTrue(Math.abs(centre.getRed() - expected.getRed()) < 24 && Math.abs(centre.getBlue() - expected.getBlue()) < 24,
+                centre + " " + expected);
+    }
+
+    private static byte[] photo(int w, int h) {
+        BufferedImage img = new BufferedImage(w, h, BufferedImage.TYPE_INT_RGB);
+        Random random = new Random(7);
+        for (int y = 0; y < h; y++) {
+            for (int x = 0; x < w; x++) {
+                int n = random.nextInt(16);
+                img.setRGB(x, y, new Color(Math.min(255, x * 255 / w + n), Math.min(255, y * 255 / h + n), 128 + n).getRGB());
+            }
+        }
+        try (ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+            ImageIO.write(img, "jpeg", out);
+            return out.toByteArray();
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
     }
 
     @Test

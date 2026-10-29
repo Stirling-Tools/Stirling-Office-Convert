@@ -55,6 +55,10 @@ public final class PictureDecoder {
 
     private static final String JDK_READERS = "com.sun.imageio.plugins.";
 
+    private static final float PHOTO_QUALITY = 0.9f;
+
+    private static final double PHOTO_SAVING = 0.7;
+
     private PictureDecoder() {}
 
     public static Kind sniff(byte[] data) {
@@ -130,6 +134,44 @@ public final class PictureDecoder {
         }
         PDImageXObject x = FlateImages.encode(doc, image);
         return DecodedPicture.raster(Kind.PNG, x, points(image.getWidth()), points(image.getHeight()));
+    }
+
+    public static DecodedPicture fromPhoto(PDDocument doc, BufferedImage image) throws IOException {
+        DecodedPicture lossless = fromImage(doc, image);
+        BufferedImage rgb = opaque(image);
+        if (rgb == null) {
+            return lossless;
+        }
+        PDImageXObject jpeg = JPEGFactory.createFromImage(doc, rgb, PHOTO_QUALITY);
+        if (jpeg.getCOSObject().getLength() >= PHOTO_SAVING * lossless.image().getCOSObject().getLength()) {
+            return lossless;
+        }
+        return DecodedPicture.raster(Kind.JPEG, jpeg, lossless.naturalWidth(), lossless.naturalHeight());
+    }
+
+    private static BufferedImage opaque(BufferedImage image) {
+        if (!image.getColorModel().hasAlpha()) {
+            return image;
+        }
+        int w = image.getWidth();
+        int h = image.getHeight();
+        BufferedImage rgb = new BufferedImage(w, h, BufferedImage.TYPE_INT_RGB);
+        int[] row = new int[w];
+        boolean packed = image.getType() == BufferedImage.TYPE_INT_ARGB;
+        for (int y = 0; y < h; y++) {
+            if (packed) {
+                image.getRaster().getDataElements(0, y, w, 1, row);
+            } else {
+                image.getRGB(0, y, w, 1, row, 0, w);
+            }
+            for (int p : row) {
+                if (p >>> 24 != 0xFF) {
+                    return null;
+                }
+            }
+            rgb.getRaster().setDataElements(0, y, w, 1, row);
+        }
+        return rgb;
     }
 
     public static Dimension pixelSize(byte[] data) throws IOException {
@@ -226,7 +268,7 @@ public final class PictureDecoder {
     }
 
     // The JPEG goes into the PDF as it is, as JPEGFactory would put it, without asking ImageIO about it first
-    private static PDImageXObject dct(PDDocument doc, byte[] data, JpegFrame frame) throws IOException {
+    static PDImageXObject dct(PDDocument doc, byte[] data, JpegFrame frame) throws IOException {
         PDColorSpace cs = switch (frame.components()) {
             case 1 -> PDDeviceGray.INSTANCE;
             case 3 -> PDDeviceRGB.INSTANCE;
