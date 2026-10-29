@@ -764,7 +764,7 @@ public final class Main {
                         + " choice for scans, picks a threshold for each neighbourhood (--window, default from the picture size;"
                         + " --sauvola-k, default 0.5, higher keeps less ink); otsu picks one for the whole picture; fixed uses --threshold percent of"
                         + " white (default 50); edges draws outlines like ImageMagick's -edge (--edge-level, default 1), as"
-                        + " Stirling-PDF's compress tool does. --codec picks the compression, smallest by default; --ink-colour keeps"
+                        + " Stirling-PDF's compress tool does, and cuts them at --threshold (higher keeps more ink). --codec picks the compression, smallest by default; --ink-colour keeps"
                         + " a coloured ink instead of black."
                         + System.lineSeparator()
                         + "--optimize tries to shrink each PDF without changing how any page draws (in.optimized.pdf unless"

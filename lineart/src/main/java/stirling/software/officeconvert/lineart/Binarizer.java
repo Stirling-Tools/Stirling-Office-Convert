@@ -98,7 +98,7 @@ final class Binarizer {
                 scan(greys, w, h, window / 2,
                         (buffer, first, from, to) -> sauvola(buffer, first, w, h, from, to, window, options.k(), out));
             }
-            case EDGES -> edges(greys, w, h, options.edgeLevel(), out, keepEdges);
+            case EDGES -> edges(greys, w, h, options.edgeLevel(), options.threshold(), out, keepEdges);
         }
         return options.inkColour() ? out.withInk(meanInk(source, rows, out)) : out;
     }
@@ -242,7 +242,7 @@ final class Binarizer {
         return table;
     }
 
-    private static void edges(Greys greys, int w, int h, int level, Bitmap out, boolean keep)
+    private static void edges(Greys greys, int w, int h, int level, double threshold, Bitmap out, boolean keep)
             throws IOException {
         float[] line = new float[w];
         double[][] ring = new double[2 * level + 1][];
@@ -256,14 +256,15 @@ final class Binarizer {
                     band.accept(y, line, 1);
                 }
             });
-        }, w, h, out, keep);
+        }, w, h, threshold, out, keep);
     }
 
-    static void thresholdEdges(Greys lines, int w, int h, Bitmap out) throws IOException {
-        thresholdEdges(lines, w, h, out, false);
+    static void thresholdEdges(Greys lines, int w, int h, double threshold, Bitmap out) throws IOException {
+        thresholdEdges(lines, w, h, threshold, out, false);
     }
 
-    static void thresholdEdges(Greys lines, int w, int h, Bitmap out, boolean keep) throws IOException {
+    static void thresholdEdges(Greys lines, int w, int h, double threshold, Bitmap out, boolean keep)
+            throws IOException {
         double[] histogram = new double[65536];
         char[] bins = keep ? new char[Math.multiplyExact(w, h)] : null;
         lines.each((y, line, rows) -> {
@@ -283,8 +284,9 @@ final class Binarizer {
         }
         double[] second = stretch(again, (double) w * h);
         boolean[] ink = new boolean[65536];
+        double level = threshold / 100 * QUANTUM;
         for (int j = 0; j < ink.length; j++) {
-            ink[j] = second[bin((float) first[j])] <= QUANTUM / 2;
+            ink[j] = second[bin((float) first[j])] <= level;
         }
         if (bins != null) {
             for (int y = 0; y < h; y++) {
