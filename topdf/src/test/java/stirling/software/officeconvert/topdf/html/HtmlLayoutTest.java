@@ -575,4 +575,55 @@ class HtmlLayoutTest {
         assertEquals(50f, own.marginLeft);
         assertEquals(HtmlDocument.PAGE_MARGIN, HtmlDocument.page(Map.of()).marginTop);
     }
+
+    @Test
+    void bottomPaddingOfARowSitsAboveItsBottomBorder() throws IOException {
+        Laid l = lay("""
+                <html><head><style>
+                .f{display:flex;justify-content:space-between;border-bottom:4px solid #0000ff;padding-bottom:30px}
+                </style></head><body><div class=f><span>Left</span><span>Right</span></div><p>After</p></body></html>""");
+        int x = Math.round(l.word("Left").left()) + 2;
+        int line = -1;
+        for (int y = Math.round(l.word("Left").top()); y < l.first().getHeight() && line < 0; y++) {
+            int rgb = l.first().getRGB(x, y);
+            if ((rgb & 0xFF) > 0xC0 && (rgb >> 16 & 0xFF) < 0x40) {
+                line = y;
+            }
+        }
+        assertTrue(line - l.word("Left").top() > 24, "border at " + line + ", text at " + l.word("Left").top());
+        assertTrue(l.word("After").top() > line, "After at " + l.word("After").top());
+    }
+
+    @Test
+    void gridItemsKeepTheirBottomPadding() throws IOException {
+        Laid l = lay("""
+                <html><head><style>
+                .g{display:grid;grid-template-columns:1fr 1fr;gap:14px}.c{background:#cccccc;padding:10px 14px 40px}
+                </style></head><body><div class=g><div class=c>One</div><div class=c>Two</div></div></body></html>""");
+        int rgb = l.first().getRGB(Math.round(l.word("One").left()), Math.round(l.word("One").top()) + 20);
+        assertEquals(0xCC, rgb & 0xFF, Integer.toHexString(rgb));
+    }
+
+    @Test
+    void tallLinesCentreTheirText() throws IOException {
+        Laid l = lay("""
+                <html><body style="font-size:12pt"><div style="line-height:60pt">Mid</div><div>Next</div></body></html>""");
+        float gap = l.word("Next").top() - l.word("Mid").top();
+        assertTrue(gap > 35, "baselines " + gap + "pt apart");
+    }
+
+    @Test
+    void unreadablePictureStillTakesItsLine() throws IOException {
+        float with = lay("<html><body><p>A</p><p><img src=\"missing.png\"></p><p>B</p></body></html>").word("B").top();
+        float without = lay("<html><body><p>A</p><p></p><p>B</p></body></html>").word("B").top();
+        assertTrue(with - without > 10, with + " vs " + without);
+    }
+
+    @Test
+    void bodyTopMarginOpensThePage() throws IOException {
+        float plain = lay("<html><body><p style=\"margin:0\">Top</p></body></html>").word("Top").top();
+        float bare = lay("<html><body style=\"margin:0\"><p style=\"margin:0\">Top</p></body></html>").word("Top")
+                .top();
+        assertEquals(HtmlDocument.BODY_MARGIN, plain - bare, 1f);
+    }
 }

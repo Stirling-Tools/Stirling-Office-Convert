@@ -30,6 +30,7 @@ final class ParaProps {
     Boolean pageBreakBefore;
     Boolean widowControl;
     Integer widows;
+    boolean halfLeading;
     Integer orphans;
     Boolean bidi;
     Boolean snapToGrid;
@@ -73,6 +74,7 @@ final class ParaProps {
         if (o.line != null) {
             line = o.line;
             lineRule = o.lineRule;
+            halfLeading = o.halfLeading;
         }
         contextualSpacing = o.contextualSpacing != null ? o.contextualSpacing : contextualSpacing;
         keepNext = o.keepNext != null ? o.keepNext : keepNext;
@@ -266,6 +268,7 @@ final class ParaProps {
                 } else {
                     lineRule = rule.equals("exact") ? Rule.EXACT : Rule.AT_LEAST;
                     line = Math.max(0, Math.min(1584, Math.abs(v) / 20f));
+                    halfLeading = lineRule == Rule.AT_LEAST && Ooxml.flag(k.attr("so:halfLeading"), false);
                 }
             }
         }

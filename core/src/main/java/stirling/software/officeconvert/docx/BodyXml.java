@@ -72,7 +72,8 @@ final class BodyXml {
         }
         if (p.borderBottom > 0) {
             sb.append("<w:pBdr><w:bottom w:val=\"single\" w:sz=\"").append(Xml.eighths(p.borderBottom))
-                    .append("\" w:space=\"1\" w:color=\"").append(Xml.hex(p.borderBottomRgb)).append("\"/></w:pBdr>");
+                    .append("\" w:space=\"").append(Math.round(Math.max(0, Math.min(31, p.borderBottomSpace))))
+                    .append("\" w:color=\"").append(Xml.hex(p.borderBottomRgb)).append("\"/></w:pBdr>");
         }
         if (p.shading >= 0) {
             sb.append("<w:shd w:val=\"clear\" w:color=\"auto\" w:fill=\"").append(Xml.hex(p.shading)).append("\"/>");
@@ -115,6 +116,9 @@ final class BodyXml {
             case EXACT -> sb.append(" w:line=\"").append(Math.max(20, Xml.twips(p.lineHeight))).append("\" w:lineRule=\"exact\"");
             case AT_LEAST -> sb.append(" w:line=\"").append(Math.max(20, Xml.twips(p.lineHeight))).append("\" w:lineRule=\"atLeast\"");
             default -> sb.append(" w:line=\"240\" w:lineRule=\"auto\"");
+        }
+        if (p.halfLeading && p.lineRule == Paragraph.LineRule.AT_LEAST) {
+            sb.append(" so:halfLeading=\"1\"");
         }
         sb.append("/>");
         int left = Xml.twips(p.bidi ? p.indentRight : p.indentLeft);
