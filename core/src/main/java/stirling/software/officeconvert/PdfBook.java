@@ -32,27 +32,27 @@ final class PdfBook {
 
     private PdfBook() {}
 
-    static EpubWriter.Book of(PDDocument doc, PdfToDocx.Options options, EbookOptions book) {
+    static EpubWriter.Book of(PDDocument doc, PdfToDocx.Options options, EbookOptions book, boolean paletteCover) {
         String language = null;
         try {
             language = doc.getDocumentCatalog().getLanguage();
         } catch (RuntimeException e) {
             LOG.debug("No language for the book", e);
         }
-        return new EpubWriter.Book(cover(doc, options), language, book);
+        return new EpubWriter.Book(cover(doc, options, paletteCover), language, book);
     }
 
-    static byte[] cover(PDDocument doc, PdfToDocx.Options options) {
+    static byte[] cover(PDDocument doc, PdfToDocx.Options options, boolean palette) {
         try {
             int page = PdfFiles.pageRange(doc.getNumberOfPages(), options.firstPage(), options.lastPage())[0];
-            return render(doc, page);
+            return render(doc, page, palette);
         } catch (IOException | RuntimeException e) {
             LOG.debug("No cover picture for the book", e);
             return null;
         }
     }
 
-    private static byte[] render(PDDocument doc, int index) throws IOException {
+    private static byte[] render(PDDocument doc, int index, boolean palette) throws IOException {
         PdfFiles.stopIfInterrupted();
         PDPage page = doc.getPage(index);
         PDRectangle box = page.getCropBox();
@@ -69,7 +69,7 @@ final class PdfBook {
             PDFRenderer renderer = new PDFRenderer(doc);
             renderer.setSubsamplingAllowed(true);
             BufferedImage image = renderer.renderImage(index, scale, ImageType.RGB);
-            return blank(image) ? null : jpeg(image);
+            return blank(image) ? null : palette ? CoverPicture.encode(image) : jpeg(image);
         } finally {
             ticket.close();
         }
