@@ -95,7 +95,7 @@ class OdsWriterTest {
         Element props = pageLayout(sheet(true, List.of(400f, 400f)));
         String style = "urn:oasis:names:tc:opendocument:xmlns:style:1.0";
         assertEquals("1", props.getAttributeNS(style, "scale-to-X"));
-        assertEquals("0", props.getAttributeNS(style, "scale-to-Y"));
+        assertFalse(props.hasAttributeNS(style, "scale-to-Y"));
     }
 
     @Test
