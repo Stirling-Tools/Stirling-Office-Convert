@@ -183,6 +183,30 @@ class OdsTest {
     }
 
     @Test
+    void aLetterSheetFittedToWidthPrintsOnLetterLikeAnUnfittedOne() throws IOException {
+        for (String fit : new String[] {"", " style:scale-to-X=\"1\" style:scale-to-Y=\"0\""}) {
+            String styles = OdfFixtures.styles("", "<style:page-layout style:name=\"pm1\"><style:page-layout-properties"
+                    + " fo:page-width=\"11in\" fo:page-height=\"8.5in\" style:print-orientation=\"landscape\""
+                    + " fo:margin-top=\"0.5in\" fo:margin-bottom=\"0.5in\" fo:margin-left=\"0.5in\""
+                    + " fo:margin-right=\"0.5in\"" + fit + "/></style:page-layout>",
+                    "<style:master-page style:name=\"Default\" style:page-layout-name=\"pm1\"><style:header"
+                    + " style:display=\"false\"/><style:footer style:display=\"false\"/></style:master-page>");
+            String auto = "<style:style style:name=\"ro1\" style:family=\"table-row\"><style:table-row-properties"
+                    + " style:row-height=\"15pt\" style:use-optimal-row-height=\"false\"/></style:style>";
+            String row = "<table:table-row table:style-name=\"ro1\"><table:table-cell office:value-type=\"string\">"
+                    + "<text:p>Row</text:p></table:table-cell></table:table-row>";
+            Path pdf = dir.resolve("letter.pdf");
+            OfficeToPdf.convert(ods(auto, "<table:table table:name=\"S\">" + row.repeat(37) + "</table:table>", styles),
+                    pdf);
+            try (PDDocument doc = Loader.loadPDF(pdf.toFile())) {
+                assertEquals(1, doc.getNumberOfPages(), fit);
+                assertEquals(792, doc.getPage(0).getMediaBox().getWidth(), 1, fit);
+                assertEquals(612, doc.getPage(0).getMediaBox().getHeight(), 1, fit);
+            }
+        }
+    }
+
+    @Test
     void hiddenSheetsStayHidden() throws IOException {
         String auto = "<style:style style:name=\"ta2\" style:family=\"table\"><style:table-properties"
                 + " table:display=\"false\"/></style:style>";

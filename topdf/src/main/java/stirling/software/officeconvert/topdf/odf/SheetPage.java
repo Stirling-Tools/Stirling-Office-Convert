@@ -83,7 +83,12 @@ final class SheetPage {
         double w = page.pt("fo:page-width", 595.3);
         double h = page.pt("fo:page-height", 841.9);
         boolean landscape = "landscape".equals(page.get("style:print-orientation")) || w > h;
-        b.append("<pageSetup paperSize=\"").append(paper(Math.min(w, h), Math.max(w, h))).append('"');
+        int code = paper(Math.min(w, h), Math.max(w, h));
+        b.append("<pageSetup paperSize=\"").append(code == 0 ? Math.min(w, h) < 600 ? 9 : 1 : code).append('"');
+        if (code <= 1) {
+            b.append(" paperWidth=\"").append(in(Math.min(w, h))).append("in\" paperHeight=\"").append(in(Math.max(w, h)))
+                    .append("in\"");
+        }
         String scale = page.get("style:scale-to");
         if (scale != null) {
             long s = Math.round(Length.percent(scale, 100));
@@ -198,7 +203,7 @@ final class SheetPage {
                 return (int) p[2];
             }
         }
-        return w < 600 ? 9 : 1;
+        return 0;
     }
 
     String text(Element hf) {
