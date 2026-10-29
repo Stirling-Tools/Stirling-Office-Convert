@@ -53,6 +53,8 @@ final class Flow {
 
     private static final float MAX_BORDER_SPACE = 31;
 
+    private static final float BROKEN_PICTURE = 12;
+
     private static final int BOLD_LABEL_CHARS = 120;
 
     static final Set<String> SKIPPED = Set.of("head", "script", "style", "template", "title", "meta", "link",
@@ -773,9 +775,11 @@ final class Flow {
                 && (!held.isEmpty() || border(d, "left") <= 0 && border(d, "right") <= 0)) {
             Integer c = Css.color(d.getOrDefault("border-bottom-color", colorOf(d.get("border-bottom"))));
             int rgb = c == null || c < 0 ? 0 : c;
+            boolean doubled = doubled(d, "bottom");
             if (last instanceof Paragraph p) {
                 p.borderBottom = borderBottom;
                 p.borderBottomRgb = rgb;
+                p.borderBottomDouble = doubled;
                 if (padBottom > 0 && padBottom <= MAX_BORDER_SPACE) {
                     p.borderBottomSpace = padBottom;
                     padBottom = 0;
@@ -784,7 +788,7 @@ final class Flow {
                 boolean padded = false;
                 for (Table.Cell cell : t.rows.getLast().cells) {
                     if (!cell.bottom.visible()) {
-                        cell.bottom = new Table.Border(borderBottom, rgb);
+                        cell.bottom = new Table.Border(borderBottom, rgb, doubled);
                         if (padBottom > 0 && !cell.paragraphs.isEmpty()) {
                             cell.paragraphs.getLast().spaceAfter += padBottom;
                             padded = true;
@@ -1713,6 +1717,16 @@ final class Flow {
     }
 
     static float border(Map<String, String> d, String side) {
+        return border(d, side, false);
+    }
+
+    static boolean doubled(Map<String, String> d, String side) {
+        return border(d, side, true) >= DOUBLE_LEAST;
+    }
+
+    private static final float DOUBLE_LEAST = 2.25f;
+
+    private static float border(Map<String, String> d, String side, boolean onlyDouble) {
         String style = d.get("border-" + side + "-style");
         String all = d.get("border-" + side);
         String width = d.get("border-" + side + "-width");
@@ -1731,7 +1745,8 @@ final class Flow {
                 style = "solid";
             }
         }
-        if (style == null || style.equalsIgnoreCase("none") || style.equalsIgnoreCase("hidden")) {
+        if (style == null || style.equalsIgnoreCase("none") || style.equalsIgnoreCase("hidden")
+                || onlyDouble && !style.equalsIgnoreCase("double")) {
             return 0;
         }
         Float w = width == null ? Float.valueOf(0.75f) : Css.length(keyword(width), 12, 0);
@@ -1890,6 +1905,14 @@ final class Flow {
         para.inlines.addAll(pendingEdges);
         pendingEdges.clear();
         para.inlines.add(in);
+        if (in instanceof Inline.Text t && !t.text().isBlank() && para.lineRule != Paragraph.LineRule.EXACT) {
+            float line = look.linePoints > 0 ? look.linePoints : look.lineMultiple * look.size;
+            if (line > 0 && (para.lineRule == Paragraph.LineRule.AUTO || line > para.lineHeight)) {
+                para.lineRule = Paragraph.LineRule.AT_LEAST;
+                para.lineHeight = line;
+                para.halfLeading = true;
+            }
+        }
     }
 
     private void start() {
@@ -2201,10 +2224,12 @@ final class Flow {
             String alt = e.attr("alt").strip();
             if (!alt.isEmpty()) {
                 text("[" + alt + "]", look);
-            } else if (para == null || para.inlines.isEmpty()) {
+            } else if (!e.hasAttr("alt") || para == null || para.inlines.isEmpty()) {
                 RunStyle r = look.run();
-                inline(new Inline.Text("\u00a0", new RunStyle(r.font(), r.size(), false, false, false, false, r.rgb(),
-                        -1, 0, false, -r.size() * 0.25f, r.scale(), false, -1), null, -1), look);
+                float size = e.hasAttr("alt") ? r.size() : Math.max(r.size(), BROKEN_PICTURE);
+                float box = e.hasAttr("alt") ? 0 : BROKEN_PICTURE;
+                inline(new Inline.Text("\u00a0", new RunStyle(r.font(), size, false, false, false, false, r.rgb(),
+                        -1, 0, false, box - size * 0.25f, r.scale(), false, -1), null, -1), look);
             }
             return;
         }

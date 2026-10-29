@@ -71,7 +71,8 @@ final class BodyXml {
                     .append("\"/><w:numId w:val=\"").append(p.list.numId()).append("\"/></w:numPr>");
         }
         if (p.borderBottom > 0) {
-            sb.append("<w:pBdr><w:bottom w:val=\"single\" w:sz=\"").append(Xml.eighths(p.borderBottom))
+            sb.append("<w:pBdr><w:bottom w:val=\"").append(p.borderBottomDouble ? "double" : "single")
+                    .append("\" w:sz=\"").append(Xml.eighths(p.borderBottomDouble ? p.borderBottom / 3 : p.borderBottom))
                     .append("\" w:space=\"").append(Math.round(Math.max(0, Math.min(31, p.borderBottomSpace))))
                     .append("\" w:color=\"").append(Xml.hex(p.borderBottomRgb)).append("\"/></w:pBdr>");
         }
@@ -385,7 +386,8 @@ final class BodyXml {
             sb.append("<w:").append(side).append(" w:val=\"nil\"/>");
             return;
         }
-        sb.append("<w:").append(side).append(" w:val=\"single\" w:sz=\"").append(Xml.eighths(b.width()))
+        sb.append("<w:").append(side).append(" w:val=\"").append(b.doubled() ? "double" : "single")
+                .append("\" w:sz=\"").append(Xml.eighths(b.doubled() ? b.width() / 3 : b.width()))
                 .append("\" w:space=\"0\" w:color=\"").append(Xml.hex(b.rgb())).append("\"/>");
     }
 
