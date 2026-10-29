@@ -315,6 +315,31 @@ class HtmlWriterTest {
     }
 
     @Test
+    void cellTextKeepsRoomForItsSourceWidthInsideTheBorders() throws IOException {
+        Table t = new Table();
+        t.columnWidths.addAll(List.of(21.4f, 80f));
+        t.cellMarginLeft = 0;
+        t.cellMarginRight = 0;
+        Table.Row row = new Table.Row();
+        for (int i = 0; i < 2; i++) {
+            Table.Cell cell = new Table.Cell();
+            cell.left = new Table.Border(0.3f, 0);
+            cell.right = new Table.Border(1f, 0);
+            Paragraph p = para(i == 0 ? "10 11 12" : "Moderate");
+            p.align = Paragraph.Align.JUSTIFY;
+            p.indentLeft = 5.6f;
+            p.indentRight = 4.2f;
+            p.textWidth = 11.63f;
+            cell.paragraphs.add(p);
+            row.cells.add(cell);
+        }
+        t.rows.add(row);
+        String html = html(page(1), null, w -> block(w, t));
+        assertTrue(html.contains("margin-left:5.6pt;margin-right:2.5pt;\">10 11 12"), html);
+        assertTrue(html.contains("margin-left:5.6pt;margin-right:4.2pt;\">Moderate"), html);
+    }
+
+    @Test
     void aLeaderSplitsAtTheTabNotInsideAPictureAfterIt() throws IOException {
         String html = html(page(1), new Numbering(), w -> {
             try {
