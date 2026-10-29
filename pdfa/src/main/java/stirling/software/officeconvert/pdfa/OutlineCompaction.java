@@ -23,6 +23,10 @@ import org.apache.pdfbox.pdmodel.font.PDType1CFont;
 import org.apache.pdfbox.pdmodel.font.PDType1Font;
 import org.apache.pdfbox.pdmodel.font.encoding.StandardEncoding;
 
+import stirling.software.officeconvert.fonts.CffSubset;
+import stirling.software.officeconvert.fonts.Type1Subset;
+import stirling.software.officeconvert.fonts.Type1ToCff;
+
 final class OutlineCompaction {
 
     private static final COSName TYPE1C = COSName.getPDFName("Type1C");

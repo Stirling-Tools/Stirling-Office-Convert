@@ -1,4 +1,4 @@
-package stirling.software.officeconvert.pdfa;
+package stirling.software.officeconvert.fonts;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -13,7 +13,7 @@ import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.cos.COSStream;
 import org.apache.pdfbox.io.RandomAccessReadBuffer;
 
-final class CodeReader {
+public final class CodeReader {
 
     private static final Map<String, CMap> PREDEFINED = new ConcurrentHashMap<>();
 
@@ -23,7 +23,7 @@ final class CodeReader {
         this.cmap = cmap;
     }
 
-    static CodeReader of(COSDictionary font) {
+    public static CodeReader of(COSDictionary font) {
         if (!COSName.TYPE0.equals(font.getCOSName(COSName.SUBTYPE))) {
             return new CodeReader(null);
         }
@@ -34,7 +34,7 @@ final class CodeReader {
         return new CodeReader(cmap);
     }
 
-    static CMap cmap(COSBase encoding) {
+    public static CMap cmap(COSBase encoding) {
         try {
             if (encoding instanceof COSName n) {
                 CMap known = PREDEFINED.get(n.getName());
@@ -55,15 +55,15 @@ final class CodeReader {
         return null;
     }
 
-    boolean multiByte() {
+    public boolean multiByte() {
         return cmap != null;
     }
 
-    CMap cmap() {
+    public CMap cmap() {
         return cmap;
     }
 
-    int read(InputStream in) throws IOException {
+    public int read(InputStream in) throws IOException {
         if (cmap == null) {
             int b = in.read();
             if (b < 0) {
@@ -74,7 +74,7 @@ final class CodeReader {
         return cmap.readCode(in);
     }
 
-    int cid(int code) {
+    public int cid(int code) {
         return cmap == null ? code : cmap.toCID(code);
     }
 }

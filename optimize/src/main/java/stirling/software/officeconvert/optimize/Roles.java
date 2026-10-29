@@ -96,6 +96,8 @@ final class Roles {
 
     final Set<Integer> trueType = new HashSet<>();
 
+    boolean fontPrograms;
+
     boolean signed;
 
     Roles(Index index) {
@@ -204,7 +206,10 @@ final class Roles {
         }
         if (d.getItem(COSName.FONT_FILE2) instanceof COSObject o && o.getKey() != null) {
             trueType.add(index.id(o.getKey()));
+            fontPrograms = true;
         }
+        fontPrograms |= d.getItem(COSName.FONT_FILE) instanceof COSObject
+                || d.getItem(COSName.FONT_FILE3) instanceof COSObject;
         Loc res = ref(at, d, COSName.RESOURCES);
         if (res != null) {
             resourceDicts.add(res);

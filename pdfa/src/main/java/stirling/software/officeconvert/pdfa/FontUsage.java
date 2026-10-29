@@ -23,6 +23,7 @@ import org.apache.pdfbox.cos.COSString;
 import org.apache.pdfbox.pdmodel.font.PDFont;
 
 import stirling.software.officeconvert.extract.PdfFiles;
+import stirling.software.officeconvert.fonts.CodeReader;
 
 final class FontUsage {
 

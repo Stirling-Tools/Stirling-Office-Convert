@@ -1,4 +1,4 @@
-package stirling.software.officeconvert.pdfa;
+package stirling.software.officeconvert.fonts;
 
 import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
@@ -16,9 +16,9 @@ import java.util.regex.Pattern;
 
 import org.apache.pdfbox.pdmodel.font.encoding.StandardEncoding;
 
-final class Type1Subset {
+public final class Type1Subset {
 
-    record Program(byte[] data, int length1, int length2, int length3) {}
+    public record Program(byte[] data, int length1, int length2, int length3) {}
 
     private record Entry(int start, int end, String key, byte[] charstring, String rd, String tail) {}
 
@@ -42,7 +42,7 @@ final class Type1Subset {
         this.lenIV = m.find() ? Integer.parseInt(m.group(1)) : 4;
     }
 
-    static Program hollow(byte[] data, int length1, int length2, Set<String> used) {
+    public static Program hollow(byte[] data, int length1, int length2, Set<String> used) {
         if (length1 <= 0 || length2 <= 0 || length1 + length2 > data.length) {
             return null;
         }

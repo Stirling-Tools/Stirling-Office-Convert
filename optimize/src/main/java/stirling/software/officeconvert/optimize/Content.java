@@ -33,7 +33,13 @@ final class Content {
         }
     }
 
+    interface Shows {
+        boolean show(COSName font, byte[] text);
+    }
+
     static final int MAX_OPERANDS = 1 << 20;
+
+    static final int MAX_SAVED_STATES = 1 << 12;
 
     private Content() {}
 
@@ -120,6 +126,70 @@ final class Content {
             }
             default -> raw(lex);
         };
+    }
+
+    static boolean text(byte[] in, Shows shows, Set<COSName> states) {
+        List<COSName> saved = new ArrayList<>();
+        List<byte[]> strings = new ArrayList<>();
+        COSName font = null;
+        COSName name = null;
+        int operands = 0;
+        try {
+            ContentLexer lex = new ContentLexer(in);
+            while (lex.next()) {
+                ContentLexer.Kind kind = lex.kind();
+                if (kind != ContentLexer.Kind.OPERATOR) {
+                    if (++operands > MAX_OPERANDS) {
+                        return false;
+                    }
+                    if (kind == ContentLexer.Kind.NAME) {
+                        name = COSName.getPDFName(lex.nameBytes());
+                    } else if (kind == ContentLexer.Kind.STRING) {
+                        strings.add(lex.stringBytes());
+                    }
+                    continue;
+                }
+                if (lex.operator("BI") || lex.operator("ID") || lex.operator("EI")) {
+                    return false;
+                }
+                if (lex.operator("q")) {
+                    if (saved.size() >= MAX_SAVED_STATES) {
+                        return false;
+                    }
+                    saved.add(font);
+                } else if (lex.operator("Q")) {
+                    if (!saved.isEmpty()) {
+                        font = saved.remove(saved.size() - 1);
+                    }
+                } else if (lex.operator("Tf")) {
+                    if (name == null) {
+                        return false;
+                    }
+                    font = name;
+                } else if (lex.operator("gs")) {
+                    if (name != null) {
+                        states.add(name);
+                    }
+                } else if (lex.operator("Tj") || lex.operator("'") || lex.operator("\"")) {
+                    if (!strings.isEmpty() && (font == null
+                            || !shows.show(font, strings.get(strings.size() - 1)))) {
+                        return false;
+                    }
+                } else if (lex.operator("TJ")) {
+                    for (byte[] text : strings) {
+                        if (font == null || !shows.show(font, text)) {
+                            return false;
+                        }
+                    }
+                }
+                strings.clear();
+                name = null;
+                operands = 0;
+            }
+            return operands == 0;
+        } catch (ContentLexer.Malformed e) {
+            return false;
+        }
     }
 
     static Usage scan(byte[] in) {

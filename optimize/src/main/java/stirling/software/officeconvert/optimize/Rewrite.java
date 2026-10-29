@@ -61,6 +61,8 @@ final class Rewrite {
 
     private Map<Integer, List<Cleanup.Removal>> removals = Map.of();
 
+    private Fonts fonts = Fonts.none();
+
     private int[] spilled;
 
     private byte[][] digests;
@@ -76,6 +78,8 @@ final class Rewrite {
     private int[] numbers;
 
     private int recoded;
+
+    private int cutOff;
 
     private int oversized;
 
@@ -132,6 +136,10 @@ final class Rewrite {
                 repairs.add(recovered + (recovered == 1 ? " object missing from it was"
                         : " objects missing from it were") + " found by scanning the file");
             }
+            if (r.cutOff > 0) {
+                repairs.add(r.cutOff + (r.cutOff == 1 ? " font program cut off by the end of the file was"
+                        : " font programs cut off by the end of the file were") + " recovered");
+            }
             repairs.addAll(PageTree.repair(index, source, r.recorder, roles, root));
             if (!repairs.isEmpty()) {
                 warnings.add("The PDF was damaged and has been repaired: " + String.join("; ", repairs));
@@ -145,6 +153,8 @@ final class Rewrite {
             r.removals = Cleanup.unusedResources(roles, resolver, source, index, dr == null ? null : dr.loc(),
                     r.brotliBudget);
             r.prune();
+            r.fonts = Fonts.of(roles, resolver, source, index, dr == null ? null : dr.loc(), r.recorder, r.removals,
+                    r.brotliBudget);
             COSBase catalog = source.load(index.key(root));
             boolean objectStreams = !(catalog instanceof COSDictionary c) || Roles.pdfaPart(c) != 1;
             float version = Math.max(cos.getVersion(), objectStreams ? 1.5f : 1.0f);
@@ -209,6 +219,24 @@ final class Rewrite {
             order.addAll(added);
             PdfFiles.stopIfInterrupted();
         }
+        List<COSObjectKey> programs = new ArrayList<>();
+        for (int id : roles.trueType) {
+            if (encryption == null && (index.kind(id) == Index.UNSEEN || index.kind(id) == Index.MISSING)) {
+                programs.add(index.key(id));
+            }
+        }
+        for (Map.Entry<COSObjectKey, Long> e : source.locate(programs).entrySet()) {
+            COSStream damaged = source.cutOff(e.getValue());
+            byte[] data = damaged == null ? null : Truncated.decoded(damaged, Recoder.MAX_DECODED_BYTES);
+            byte[] font = data == null ? null : Sfnt.complete(data);
+            if (font != null) {
+                COSStream fixed = Truncated.rebuilt(damaged, font);
+                source.inject(e.getKey(), fixed);
+                visitor.visit(e.getKey(), fixed);
+                order.add(e.getKey());
+                cutOff++;
+            }
+        }
         return recovered;
     }
 
@@ -269,10 +297,12 @@ final class Rewrite {
             for (COSObjectKey key : streams) {
                 PdfFiles.stopIfInterrupted();
                 int i = index.find(key);
-                if (!(source.load(key) instanceof COSStream s)) {
+                if (!(source.load(key) instanceof COSStream stored)) {
                     index.kind(i, Index.MISSING);
                     continue;
                 }
+                COSStream rebuilt = fonts.rebuild(i, stored, options.effort());
+                COSStream s = rebuilt == null ? stored : rebuilt;
                 if (encryption != null && encryption.encrypts(s) && Encryption.usesCryptFilter(s)) {
                     throw new IOException(
                             "The PDF names crypt filters on its streams, which this optimizer does not write");

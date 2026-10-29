@@ -1,4 +1,4 @@
-package stirling.software.officeconvert.pdfa;
+package stirling.software.officeconvert.fonts;
 
 import java.io.ByteArrayOutputStream;
 import java.util.ArrayList;
@@ -6,7 +6,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Set;
 
-final class CffSubset {
+public final class CffSubset {
 
     private static final int CHARSET = 15;
 
@@ -34,7 +34,7 @@ final class CffSubset {
         this.in = in;
     }
 
-    static byte[] hollow(byte[] cff, Set<Integer> keep) {
+    public static byte[] hollow(byte[] cff, Set<Integer> keep) {
         try {
             return new CffSubset(cff).run(keep);
         } catch (RuntimeException e) {
@@ -42,7 +42,7 @@ final class CffSubset {
         }
     }
 
-    static List<Integer> seacComponents(byte[] cff, Set<Integer> gids) {
+    public static List<Integer> seacComponents(byte[] cff, Set<Integer> gids) {
         try {
             return new CffSubset(cff).components(gids);
         } catch (RuntimeException e) {

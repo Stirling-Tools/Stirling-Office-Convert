@@ -25,6 +25,8 @@ import org.apache.pdfbox.pdmodel.font.encoding.DictionaryEncoding;
 import org.apache.pdfbox.pdmodel.font.encoding.GlyphList;
 import org.apache.pdfbox.pdmodel.font.encoding.WinAnsiEncoding;
 
+import stirling.software.officeconvert.fonts.CodeReader;
+
 final class UnicodeGuess {
 
     private UnicodeGuess() {}
