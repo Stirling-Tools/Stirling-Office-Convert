@@ -564,15 +564,14 @@ public final class Type1ToCff {
         double sx = 0;
         double sy = 0;
         boolean open = false;
-        List<Double> batch = new ArrayList<>();
-        int batchOp = 0;
+        List<double[]> run = new ArrayList<>();
         byte[] active = null;
         for (int index = 0; !it.isDone(); index++) {
             int seg = it.currentSegment(c);
             it.next();
             byte[] mask = masks.get(index);
             if (mask != null && !Arrays.equals(mask, active)) {
-                batchOp = flush(t, batch, batchOp);
+                Operators.encode(t, run);
                 t.op(19).mask(mask);
                 active = mask;
             }
@@ -586,9 +585,7 @@ public final class Type1ToCff {
             }
             if (seg == PathIterator.SEG_MOVETO || seg == PathIterator.SEG_CLOSE) {
                 if (open && (cx != sx || cy != sy)) {
-                    batchOp = flushIf(t, batch, batchOp, 5, 2);
-                    batch.add(sx - cx);
-                    batch.add(sy - cy);
+                    run.add(new double[] {sx - cx, sy - cy});
                     cx = sx;
                     cy = sy;
                 }
@@ -596,66 +593,219 @@ public final class Type1ToCff {
                 if (seg == PathIterator.SEG_CLOSE) {
                     continue;
                 }
-                batchOp = flush(t, batch, batchOp);
+                Operators.encode(t, run);
                 double x = q(c[0]);
                 double y = q(c[1]);
-                t.arg(x - cx).arg(y - cy).op(21);
+                if (y == cy) {
+                    t.arg(x - cx).op(22);
+                } else if (x == cx) {
+                    t.arg(y - cy).op(4);
+                } else {
+                    t.arg(x - cx).arg(y - cy).op(21);
+                }
                 cx = sx = x;
                 cy = sy = y;
             } else if (seg == PathIterator.SEG_LINETO) {
                 double x = q(c[0]);
                 double y = q(c[1]);
-                batchOp = flushIf(t, batch, batchOp, 5, 2);
-                batch.add(x - cx);
-                batch.add(y - cy);
+                run.add(new double[] {x - cx, y - cy});
                 cx = x;
                 cy = y;
                 open = true;
             } else {
-                batchOp = flushIf(t, batch, batchOp, 8, 6);
+                double[] d = new double[6];
                 double px = cx;
                 double py = cy;
                 for (int k = 0; k < 6; k += 2) {
                     double x = q(c[k]);
                     double y = q(c[k + 1]);
-                    batch.add(x - px);
-                    batch.add(y - py);
+                    d[k] = x - px;
+                    d[k + 1] = y - py;
                     px = x;
                     py = y;
                 }
+                run.add(d);
                 cx = px;
                 cy = py;
                 open = true;
             }
         }
         if (open && (cx != sx || cy != sy)) {
-            batchOp = flushIf(t, batch, batchOp, 5, 2);
-            batch.add(sx - cx);
-            batch.add(sy - cy);
+            run.add(new double[] {sx - cx, sy - cy});
         }
-        flush(t, batch, batchOp);
-    }
-
-    private static int flushIf(Type2 t, List<Double> batch, int batchOp, int op, int add) {
-        if (batchOp != op || batch.size() + add > MAX_ARGS) {
-            flush(t, batch, batchOp);
-        }
-        return op;
-    }
-
-    private static int flush(Type2 t, List<Double> batch, int batchOp) {
-        if (!batch.isEmpty()) {
-            for (double v : batch) {
-                t.arg(v);
-            }
-            t.op(batchOp);
-            batch.clear();
-        }
-        return 0;
+        Operators.encode(t, run);
     }
 
     private static double q(float v) {
         return Math.rint(v * 65536.0) / 65536.0;
+    }
+
+    private static final class Operators {
+
+        private static final int RLINETO = 5;
+        private static final int HLINETO = 6;
+        private static final int VLINETO = 7;
+        private static final int RRCURVETO = 8;
+        private static final int RCURVELINE = 24;
+        private static final int RLINECURVE = 25;
+        private static final int VVCURVETO = 26;
+        private static final int HHCURVETO = 27;
+        private static final int VHCURVETO = 30;
+        private static final int HVCURVETO = 31;
+
+        private Operators() {}
+
+        static void encode(Type2 t, List<double[]> run) {
+            int i = 0;
+            while (i < run.size()) {
+                i = run.get(i).length == 2 ? lines(t, run, i) : curves(t, run, i);
+            }
+            run.clear();
+        }
+
+        private static boolean line(List<double[]> run, int i) {
+            return i < run.size() && run.get(i).length == 2;
+        }
+
+        private static boolean curve(List<double[]> run, int i) {
+            return i < run.size() && run.get(i).length == 6;
+        }
+
+        private static int lines(Type2 t, List<double[]> run, int i) {
+            List<Double> args = new ArrayList<>();
+            double[] s = run.get(i);
+            if (s[0] == 0 || s[1] == 0) {
+                boolean horizontal = s[1] == 0;
+                int op = horizontal ? HLINETO : VLINETO;
+                while (line(run, i) && args.size() < MAX_ARGS && run.get(i)[horizontal ? 1 : 0] == 0) {
+                    args.add(run.get(i)[horizontal ? 0 : 1]);
+                    horizontal = !horizontal;
+                    i++;
+                }
+                emit(t, args, op);
+                return i;
+            }
+            while (line(run, i) && run.get(i)[0] != 0 && run.get(i)[1] != 0 && args.size() + 2 <= MAX_ARGS) {
+                args.add(run.get(i)[0]);
+                args.add(run.get(i)[1]);
+                i++;
+            }
+            if (curve(run, i) && args.size() + 6 <= MAX_ARGS && !special(run.get(i))) {
+                add(args, run.get(i), 0, 6);
+                emit(t, args, RLINECURVE);
+                return i + 1;
+            }
+            emit(t, args, RLINETO);
+            return i;
+        }
+
+        private static boolean special(double[] d) {
+            return d[0] == 0 || d[1] == 0 || d[4] == 0 || d[5] == 0;
+        }
+
+        private static int curves(Type2 t, List<double[]> run, int i) {
+            List<Double> args = new ArrayList<>();
+            double[] d = run.get(i);
+            boolean sh = d[1] == 0;
+            boolean sv = d[0] == 0;
+            boolean eh = d[5] == 0;
+            boolean ev = d[4] == 0;
+            if (sh && ev || sv && eh) {
+                boolean horizontal = sh && ev;
+                int op = horizontal ? HVCURVETO : VHCURVETO;
+                while (curve(run, i) && args.size() + 5 <= MAX_ARGS) {
+                    double[] c = run.get(i);
+                    if (horizontal ? c[1] != 0 : c[0] != 0) {
+                        break;
+                    }
+                    boolean turns = horizontal ? c[4] == 0 : c[5] == 0;
+                    if (horizontal) {
+                        args.add(c[0]);
+                        args.add(c[2]);
+                        args.add(c[3]);
+                        args.add(c[5]);
+                    } else {
+                        args.add(c[1]);
+                        args.add(c[2]);
+                        args.add(c[3]);
+                        args.add(c[4]);
+                    }
+                    i++;
+                    if (!turns) {
+                        args.add(horizontal ? c[4] : c[5]);
+                        break;
+                    }
+                    horizontal = !horizontal;
+                }
+                emit(t, args, op);
+                return i;
+            }
+            if (eh || ev) {
+                boolean horizontal = eh;
+                if (horizontal ? d[1] != 0 : d[0] != 0) {
+                    args.add(horizontal ? d[1] : d[0]);
+                }
+                do {
+                    double[] c = run.get(i);
+                    if (horizontal) {
+                        args.add(c[0]);
+                        args.add(c[2]);
+                        args.add(c[3]);
+                        args.add(c[4]);
+                    } else {
+                        args.add(c[1]);
+                        args.add(c[2]);
+                        args.add(c[3]);
+                        args.add(c[5]);
+                    }
+                    i++;
+                } while (curve(run, i) && args.size() + 4 <= MAX_ARGS
+                        && (horizontal ? run.get(i)[1] == 0 && run.get(i)[5] == 0 : run.get(i)[0] == 0 && run.get(i)[4] == 0));
+                emit(t, args, horizontal ? HHCURVETO : VVCURVETO);
+                return i;
+            }
+            if (sh || sv) {
+                if (sh) {
+                    args.add(d[0]);
+                    args.add(d[2]);
+                    args.add(d[3]);
+                    args.add(d[5]);
+                    args.add(d[4]);
+                } else {
+                    args.add(d[1]);
+                    args.add(d[2]);
+                    args.add(d[3]);
+                    args.add(d[4]);
+                    args.add(d[5]);
+                }
+                emit(t, args, sh ? HVCURVETO : VHCURVETO);
+                return i + 1;
+            }
+            while (curve(run, i) && !special(run.get(i)) && args.size() + 6 <= MAX_ARGS) {
+                add(args, run.get(i), 0, 6);
+                i++;
+            }
+            if (line(run, i) && args.size() + 2 <= MAX_ARGS) {
+                add(args, run.get(i), 0, 2);
+                emit(t, args, RCURVELINE);
+                return i + 1;
+            }
+            emit(t, args, RRCURVETO);
+            return i;
+        }
+
+        private static void add(List<Double> args, double[] values, int from, int to) {
+            for (int k = from; k < to; k++) {
+                args.add(values[k]);
+            }
+        }
+
+        private static void emit(Type2 t, List<Double> args, int op) {
+            for (double v : args) {
+                t.arg(v);
+            }
+            t.op(op);
+        }
     }
 
     private static final class Type2 {
