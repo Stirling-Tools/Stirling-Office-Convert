@@ -18,6 +18,7 @@ import javax.imageio.IIOImage;
 import javax.imageio.ImageIO;
 import javax.imageio.ImageWriteParam;
 import javax.imageio.ImageWriter;
+import javax.imageio.plugins.jpeg.JPEGImageWriteParam;
 import javax.imageio.stream.ImageOutputStream;
 
 import org.apache.commons.logging.Log;
@@ -59,6 +60,11 @@ final class MediaEncoder {
     private static final int SEPARATE_BACKDROPS = 8;
 
     private static final double PHOTO_SAVING = 0.7;
+
+    private static final double FLAT_RATIO = 0.2;
+
+    private static final List<COSName> LOSSY = List.of(COSName.DCT_DECODE, COSName.DCT_DECODE_ABBREVIATION,
+            COSName.JPX_DECODE);
 
     private static final double WHOLE_PAGE = 0.9;
 
@@ -149,7 +155,24 @@ final class MediaEncoder {
     }
 
     private static boolean isPhoto(PDImage image) {
-        return image.getBitsPerComponent() >= 8;
+        return image.getBitsPerComponent() >= 8 && !flat(image);
+    }
+
+    private static boolean flat(PDImage image) {
+        if (!(image instanceof PDImageXObject x)) {
+            return false;
+        }
+        try {
+            List<COSName> filters = x.getStream().getFilters();
+            if (filters.isEmpty() || filters.stream().anyMatch(LOSSY::contains)) {
+                return false;
+            }
+            long raw = (long) x.getWidth() * x.getHeight() * x.getColorSpace().getNumberOfComponents()
+                    * x.getBitsPerComponent() / 8;
+            return x.getCOSObject().getLength() < FLAT_RATIO * raw;
+        } catch (IOException | RuntimeException e) {
+            return false;
+        }
     }
 
     private static Encoded rawJpeg(PDImageXObject x, boolean anySize) throws IOException {
@@ -457,6 +480,9 @@ final class MediaEncoder {
             ImageWriteParam param = writer.getDefaultWriteParam();
             param.setCompressionMode(ImageWriteParam.MODE_EXPLICIT);
             param.setCompressionQuality(quality);
+            if (param instanceof JPEGImageWriteParam jpeg) {
+                jpeg.setOptimizeHuffmanTables(true);
+            }
             writer.write(null, new IIOImage(rgb, null, null), param);
         } finally {
             writer.dispose();
