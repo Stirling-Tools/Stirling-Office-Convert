@@ -91,7 +91,10 @@ class PdfWebFontsTest {
         assertTrue(html.contains("'Arial', 'Liberation Sans', 'Arimo', sans-serif"), html);
         byte[] woff = Base64.getDecoder().decode(face.group(1));
         assertTrue(woff.length < liberation().length / 4, "only the used glyphs are kept: " + woff.length);
-        TrueTypeFont ttf = new TTFParser().parse(new RandomAccessReadBuffer(sfnt(woff)));
+        byte[] sfnt = sfnt(woff);
+        TrueTypeFont ttf = new TTFParser().parse(new RandomAccessReadBuffer(sfnt));
+        int os2 = ttf.getTableMap().get("OS/2").getLength() >= 96 ? 5 : 1;
+        assertTrue(ttf.getOS2Windows().getVersion() <= os2, "OS/2 version fits its length");
         assertTrue(ttf.getNumberOfGlyphs() < 40, "glyphs " + ttf.getNumberOfGlyphs());
         assertTrue(ttf.getUnicodeCmapLookup().getGlyphId('Q') > 0);
         assertEquals(0, ttf.getUnicodeCmapLookup().getGlyphId('Z'));

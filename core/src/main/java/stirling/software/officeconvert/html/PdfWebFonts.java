@@ -160,7 +160,7 @@ public final class PdfWebFonts implements FixedHtml.FontSource {
             }
             ByteArrayOutputStream out = new ByteArrayOutputStream();
             subset.writeToStream(out);
-            return out.toByteArray();
+            return os2Version(out.toByteArray());
         }
         PDStream file3 = fd.getFontFile3();
         if (file3 != null && "OpenType".equals(file3.getCOSObject().getNameAsString(COSName.SUBTYPE))) {
@@ -191,6 +191,42 @@ public final class PdfWebFonts implements FixedHtml.FontSource {
         return null;
     }
 
+    private static byte[] os2Version(byte[] sfnt) {
+        ByteBuffer in = ByteBuffer.wrap(sfnt);
+        int count = in.getShort(4) & 0xFFFF;
+        for (int i = 0; i < count && 12 + 16 * i + 16 <= sfnt.length; i++) {
+            int at = 12 + 16 * i;
+            if (in.getInt(at) != 0x4F532F32) {
+                continue;
+            }
+            int offset = in.getInt(at + 8);
+            int length = in.getInt(at + 12);
+            if (offset >= 0 && length >= 2 && (long) offset + length <= sfnt.length) {
+                int version = in.getShort(offset) & 0xFFFF;
+                int fits = length >= 96 ? version : length >= 86 ? 1 : 0;
+                if (version > fits) {
+                    in.putShort(offset, (short) fits);
+                }
+            }
+        }
+        return sfnt;
+    }
+
+    private static int checksum(byte[] data, boolean head) {
+        int sum = 0;
+        for (int i = 0; i < data.length; i += 4) {
+            if (head && i == 8) {
+                continue;
+            }
+            int word = 0;
+            for (int j = 0; j < 4; j++) {
+                word = word << 8 | (i + j < data.length ? data[i + j] & 0xFF : 0);
+            }
+            sum += word;
+        }
+        return sum;
+    }
+
     static byte[] woff(byte[] sfnt) {
         if (sfnt == null || sfnt.length < 12) {
             return null;
@@ -210,7 +246,7 @@ public final class PdfWebFonts implements FixedHtml.FontSource {
             if (offset < 0 || length < 0 || (long) offset + length > sfnt.length) {
                 return null;
             }
-            tables.put(in.getInt(at), new int[] {in.getInt(at + 4), offset, length});
+            tables.put(in.getInt(at), new int[] {0, offset, length});
             sfntSize += (length + 3) & ~3;
         }
         List<byte[]> data = new ArrayList<>();
@@ -221,6 +257,7 @@ public final class PdfWebFonts implements FixedHtml.FontSource {
             int[] v = t.getValue();
             byte[] raw = new byte[v[2]];
             System.arraycopy(sfnt, v[1], raw, 0, v[2]);
+            v[0] = checksum(raw, t.getKey() == 0x68656164);
             byte[] z = deflate(raw);
             byte[] stored = z.length < raw.length ? z : raw;
             data.add(stored);
