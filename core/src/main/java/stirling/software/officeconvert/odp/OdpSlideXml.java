@@ -1,6 +1,7 @@
 package stirling.software.officeconvert.odp;
 
 import java.awt.geom.PathIterator;
+import java.awt.geom.Rectangle2D;
 import java.io.IOException;
 import java.util.Locale;
 import java.util.Set;
@@ -185,7 +186,8 @@ final class OdpSlideXml {
         StringBuilder g = new StringBuilder("<style:graphic-properties");
         fillAndStroke(g, p.fillRgb(), p.alpha(), -1, 0);
         g.append(" draw:shadow=\"hidden\"/>");
-        Frame f = p.frame();
+        Rectangle2D t = p.path().getBounds2D();
+        Frame f = new Frame((float) t.getX(), (float) t.getY(), (float) t.getWidth(), (float) t.getHeight());
         sb.append("<draw:path draw:style-name=\"").append(styles.style("graphic", "gr", g.toString())).append("\" draw:layer=\"layout\"");
         place(sb, f);
         sb.append(" svg:viewBox=\"0 0 ").append(Math.round(Math.max(0.1f, f.width()) * 100)).append(' ')
