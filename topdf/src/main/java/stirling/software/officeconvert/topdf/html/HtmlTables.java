@@ -689,17 +689,23 @@ final class HtmlTables {
 
     private static void indent(Table t, Element table, Map<String, String> d, Look look, Flow.Frame frame, float width,
             boolean inCentre) {
-        boolean centred = "auto".equalsIgnoreCase(d.getOrDefault("margin-left", "").strip())
-                && "auto".equalsIgnoreCase(d.getOrDefault("margin-right", "").strip());
+        boolean autoLeft = "auto".equalsIgnoreCase(d.getOrDefault("margin-left", "").strip());
+        boolean autoRight = "auto".equalsIgnoreCase(d.getOrDefault("margin-right", "").strip());
+        boolean centred = autoLeft && autoRight || inCentre || "center".equalsIgnoreCase(table.attr("align"));
         float left = Flow.length(d.get("margin-left"), look.size, frame.width());
-        if (centred || inCentre || "center".equalsIgnoreCase(table.attr("align"))) {
-            left = Math.max(0, (frame.width() - width) / 2);
+        float right = Flow.length(d.get("margin-right"), look.size, frame.width());
+        float slack = frame.width() - width;
+        if (centred) {
+            left = Math.max(0, slack / 2);
+            right = left;
+        } else if (autoLeft || "right".equalsIgnoreCase(table.attr("align"))) {
+            left = Math.max(0, slack - Math.max(0, right));
+        } else if (autoRight || "left".equalsIgnoreCase(table.attr("align"))) {
+            right = Math.max(0, slack - Math.max(0, left));
         }
         t.indent = frame.left() + left;
         if (look.rightToLeft) {
             t.rightToLeft = true;
-            float right = centred || inCentre || "center".equalsIgnoreCase(table.attr("align")) ? left
-                    : Flow.length(d.get("margin-right"), look.size, frame.width());
             t.indent = frame.right() + right;
         }
     }
