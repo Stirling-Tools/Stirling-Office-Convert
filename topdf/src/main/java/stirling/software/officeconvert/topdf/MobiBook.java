@@ -53,8 +53,8 @@ final class MobiBook {
     private static final Pattern FONT_SIZE = Pattern.compile(
             "<font\\b([^<>]*?)\\ssize\\s*=\\s*['\"]?([+-]?[0-9])(?![0-9])['\"]?([^<>]*)>", Pattern.CASE_INSENSITIVE);
 
-    private static final String[] FONT_EMS = {"0.625em", "0.75em", "1em", "1.125em", "1.41667em", "1.66667em",
-        "1.83333em"};
+    private static final String[] FONT_SIZES = {"0.625rem", "0.75rem", "1rem", "1.125rem", "1.41667rem", "1.66667rem",
+        "1.83333rem"};
 
     private static final String BASE_STYLE = "<style>blockquote{margin:0 0 0 2em}p{margin:0;text-indent:1.5em}</style>";
 
@@ -285,7 +285,7 @@ final class MobiBook {
             int n = size.startsWith("+") || size.startsWith("-") ? 3 + Integer.parseInt(size) : Integer.parseInt(size);
             String attrs = m.group(1) + m.group(3);
             String replacement = attrs.toLowerCase(Locale.ROOT).contains("style") ? m.group(0)
-                    : "<font" + attrs + " style=\"font-size:" + FONT_EMS[Math.max(1, Math.min(7, n)) - 1] + "\">";
+                    : "<font" + attrs + " style=\"font-size:" + FONT_SIZES[Math.max(1, Math.min(7, n)) - 1] + "\">";
             m.appendReplacement(out, Matcher.quoteReplacement(replacement));
         }
         m.appendTail(out);
