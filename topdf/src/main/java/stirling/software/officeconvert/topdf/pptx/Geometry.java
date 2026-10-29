@@ -23,6 +23,8 @@ import org.openxmlformats.schemas.presentationml.x2006.main.CTPicture;
 import org.openxmlformats.schemas.presentationml.x2006.main.CTPlaceholder;
 import org.openxmlformats.schemas.presentationml.x2006.main.CTShape;
 
+import stirling.software.officeconvert.topdf.io.SafeImageRenderer;
+
 final class Geometry {
 
     record Outline(Shape shape, PaintModifier fill, boolean stroked) {
@@ -167,7 +169,7 @@ final class Geometry {
         } else {
             sy = box.getHeight() == 0 || h == 0 ? 1 : box.getHeight() / h;
         }
-        Context ctx = new Context(geom, new Rectangle2D.Double(0, 0, w, h), shape);
+        Context ctx = SafeImageRenderer.geometry(geom, new Rectangle2D.Double(0, 0, w, h), shape);
         Path2D gp = p.getPath(ctx);
         if (gp == null) {
             return null;
