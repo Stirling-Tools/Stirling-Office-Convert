@@ -71,77 +71,86 @@ final class Steps {
         RotatedRect rect = region.rect();
         int bw = region.width();
         int bh = region.height();
-        Line best = null;
-        for (int axis = 0; axis < 2; axis++) {
-            for (int step = -2 * SEARCH; step <= 2 * SEARCH; step++) {
-                double phi = Math.toRadians(rect.angle() + axis * 90 + step * 0.5);
-                double tx = Math.cos(phi);
-                double ty = Math.sin(phi);
-                double nx = -ty;
-                double ny = tx;
-                double lo = Math.min(Math.min(0, bw * nx), Math.min(bh * ny, bw * nx + bh * ny));
-                double hi = Math.max(Math.max(0, bw * nx), Math.max(bh * ny, bw * nx + bh * ny));
-                double tlo = Math.min(Math.min(0, bw * tx), Math.min(bh * ty, bw * tx + bh * ty));
-                double thi = Math.max(Math.max(0, bw * tx), Math.max(bh * ty, bw * tx + bh * ty));
-                int n = (int) Math.ceil(hi - lo) + 2;
-                double segLength = (thi - tlo) / SEGMENTS + 1e-9;
-                int[] count = new int[n * SEGMENTS];
-                int[] sums = new int[n * SEGMENTS * 3];
-                int[] reg = new int[n];
-                for (int y = 0; y < bh; y += SUBSAMPLE) {
-                    PhotoSplitter.checkpoint();
-                    int row = (region.minY + y) * scan.width + region.minX;
-                    for (int x = 0; x < bw; x += SUBSAMPLE) {
-                        if (region.mask[y * bw + x] == 0) {
-                            continue;
-                        }
-                        int i = (int) (x * nx + y * ny - lo);
-                        int k = Math.min(SEGMENTS - 1, (int) ((x * tx + y * ty - tlo) / segLength));
-                        int cell = i * SEGMENTS + k;
-                        int p = scan.rgb[row + x];
-                        count[cell]++;
-                        sums[3 * cell] += p >> 16 & 0xFF;
-                        sums[3 * cell + 1] += p >> 8 & 0xFF;
-                        sums[3 * cell + 2] += p & 0xFF;
-                        reg[i]++;
-                    }
-                }
-                int peak = 0;
-                int first = n;
-                int last = -1;
-                for (int i = 0; i < n; i++) {
-                    peak = Math.max(peak, reg[i]);
-                    if (reg[i] > 0) {
-                        first = Math.min(first, i);
-                        last = i;
-                    }
-                }
-                double[] score = new double[n];
-                for (int i = first + MIN_REACH; i <= last - MIN_REACH; i++) {
-                    if (reg[i] < CHORD_SHARE * peak) {
+        int angles = 4 * SEARCH + 1;
+        Line[] lines = new Line[2 * angles];
+        Parallel.each(lines.length, index -> {
+            int axis = index / angles;
+            int step = index % angles - 2 * SEARCH;
+            Line best = null;
+            double phi = Math.toRadians(rect.angle() + axis * 90 + step * 0.5);
+            double tx = Math.cos(phi);
+            double ty = Math.sin(phi);
+            double nx = -ty;
+            double ny = tx;
+            double lo = Math.min(Math.min(0, bw * nx), Math.min(bh * ny, bw * nx + bh * ny));
+            double hi = Math.max(Math.max(0, bw * nx), Math.max(bh * ny, bw * nx + bh * ny));
+            double tlo = Math.min(Math.min(0, bw * tx), Math.min(bh * ty, bw * tx + bh * ty));
+            double thi = Math.max(Math.max(0, bw * tx), Math.max(bh * ty, bw * tx + bh * ty));
+            int n = (int) Math.ceil(hi - lo) + 2;
+            double segLength = (thi - tlo) / SEGMENTS + 1e-9;
+            int[] count = new int[n * SEGMENTS];
+            int[] sums = new int[n * SEGMENTS * 3];
+            int[] reg = new int[n];
+            for (int y = 0; y < bh; y += SUBSAMPLE) {
+                PhotoSplitter.checkpoint();
+                int row = (region.minY + y) * scan.width + region.minX;
+                for (int x = 0; x < bw; x += SUBSAMPLE) {
+                    if (region.mask[y * bw + x] == 0) {
                         continue;
                     }
-                    double[] steps = new double[SEGMENTS];
-                    int valid = 0;
-                    for (int k = 0; k < SEGMENTS; k++) {
-                        double wide = step(count, sums, i - REACH, i + REACH, k);
-                        double near = step(count, sums, i - 1, i + 1, k);
-                        if (wide < 0 || near < 0) {
-                            continue;
-                        }
-                        steps[valid++] = near >= SHARPNESS * wide ? wide : 0;
-                    }
-                    if (valid >= MIN_SEGMENTS) {
-                        Arrays.sort(steps, 0, valid);
-                        score[i] = steps[valid / 2 - (valid % 2 == 0 ? 1 : 0)];
-                    }
+                    int i = (int) (x * nx + y * ny - lo);
+                    int k = Math.min(SEGMENTS - 1, (int) ((x * tx + y * ty - tlo) / segLength));
+                    int cell = i * SEGMENTS + k;
+                    int p = scan.rgb[row + x];
+                    count[cell]++;
+                    sums[3 * cell] += p >> 16 & 0xFF;
+                    sums[3 * cell + 1] += p >> 8 & 0xFF;
+                    sums[3 * cell + 2] += p & 0xFF;
+                    reg[i]++;
                 }
-                for (int i = first + MIN_REACH; i <= last - MIN_REACH; i++) {
-                    if (score[i] >= MIN_STEP && score[i] >= score[i - 1] && score[i] >= score[i + 1]
-                            && (best == null || score[i] > best.score())) {
-                        best = new Line(nx, ny, i + lo, score[i]);
-                    }
+            }
+            int peak = 0;
+            int first = n;
+            int last = -1;
+            for (int i = 0; i < n; i++) {
+                peak = Math.max(peak, reg[i]);
+                if (reg[i] > 0) {
+                    first = Math.min(first, i);
+                    last = i;
                 }
+            }
+            double[] score = new double[n];
+            for (int i = first + MIN_REACH; i <= last - MIN_REACH; i++) {
+                if (reg[i] < CHORD_SHARE * peak) {
+                    continue;
+                }
+                double[] steps = new double[SEGMENTS];
+                int valid = 0;
+                for (int k = 0; k < SEGMENTS; k++) {
+                    double wide = step(count, sums, i - REACH, i + REACH, k);
+                    double near = step(count, sums, i - 1, i + 1, k);
+                    if (wide < 0 || near < 0) {
+                        continue;
+                    }
+                    steps[valid++] = near >= SHARPNESS * wide ? wide : 0;
+                }
+                if (valid >= MIN_SEGMENTS) {
+                    Arrays.sort(steps, 0, valid);
+                    score[i] = steps[valid / 2 - (valid % 2 == 0 ? 1 : 0)];
+                }
+            }
+            for (int i = first + MIN_REACH; i <= last - MIN_REACH; i++) {
+                if (score[i] >= MIN_STEP && score[i] >= score[i - 1] && score[i] >= score[i + 1]
+                        && (best == null || score[i] > best.score())) {
+                    best = new Line(nx, ny, i + lo, score[i]);
+                }
+            }
+            lines[index] = best;
+        });
+        Line best = null;
+        for (Line line : lines) {
+            if (line != null && (best == null || line.score() > best.score())) {
+                best = line;
             }
         }
         return best;

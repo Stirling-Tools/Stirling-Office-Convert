@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import java.awt.image.BufferedImage;
 import java.awt.image.WritableRaster;
@@ -14,6 +15,9 @@ import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.concurrent.CancellationException;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -36,6 +40,66 @@ class CancellationTest {
                 Thread.interrupted();
             }
         }
+    }
+
+    @Test
+    void interruptedCallerStopsWorkSpreadOverOtherThreads() {
+        AtomicInteger ran = new AtomicInteger();
+        Thread.currentThread().interrupt();
+        try {
+            assertThrows(CancellationException.class, () -> Parallel.each(8, i -> ran.incrementAndGet()));
+            assertEquals(0, ran.get());
+            assertTrue(Thread.currentThread().isInterrupted());
+        } finally {
+            Thread.interrupted();
+        }
+    }
+
+    @Test
+    void workerSeesTheCallerInterruptedPartWayThrough() {
+        Thread caller = Thread.currentThread();
+        AtomicInteger stopped = new AtomicInteger();
+        try {
+            assertThrows(CancellationException.class, () -> Parallel.each(8, i -> {
+                caller.interrupt();
+                try {
+                    PhotoSplitter.checkpoint();
+                } catch (CancellationException e) {
+                    stopped.incrementAndGet();
+                    throw e;
+                }
+            }));
+            assertTrue(stopped.get() > 0);
+        } finally {
+            Thread.interrupted();
+        }
+    }
+
+    @Test
+    void aFailingTaskWaitsForTheOthersBeforeItIsReported() {
+        assumeTrue(Parallel.enabled());
+        CountDownLatch started = new CountDownLatch(1);
+        AtomicInteger running = new AtomicInteger();
+        IllegalStateException thrown = assertThrows(IllegalStateException.class, () -> Parallel.each(4, i -> {
+            if (i == 0) {
+                try {
+                    started.await(5, TimeUnit.SECONDS);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+                throw new IllegalStateException("first");
+            }
+            running.incrementAndGet();
+            started.countDown();
+            try {
+                Thread.sleep(200);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+            running.decrementAndGet();
+        }));
+        assertEquals("first", thrown.getMessage());
+        assertEquals(0, running.get());
     }
 
     @Test
