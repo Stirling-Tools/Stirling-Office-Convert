@@ -4,11 +4,21 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.awt.Color;
+import java.awt.Graphics2D;
 import java.awt.image.BufferedImage;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Random;
 
+import javax.imageio.ImageIO;
+
+import org.apache.pdfbox.cos.COSName;
+import org.apache.pdfbox.cos.COSObject;
+import org.apache.pdfbox.cos.COSStream;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -33,6 +43,60 @@ class PptxPictureTest {
         z.relationship("/ppt/slides/slide1.xml", "rIdP", Fixtures.REL + "image", "../media/white.png", false);
         BufferedImage img = Decks.convert(dir, "duotone.pptx", z.bytes()).render(0, 72);
         assertEquals(Color.RED.getRGB(), img.getRGB(150, 150));
+    }
+
+    @Test
+    void aRecolouredPhotoStaysAJpegAndARecolouredGraphicStaysLossless() throws IOException {
+        String pic = "<p:pic " + Decks.NS + "><p:nvPicPr><p:cNvPr id=\"7\" name=\"Picture\"/><p:cNvPicPr/><p:nvPr/>"
+                + "</p:nvPicPr><p:blipFill><a:blip r:embed=\"rIdP\"><a:duotone><a:prstClr val=\"black\"/>"
+                + "<a:srgbClr val=\"FF0000\"/></a:duotone></a:blip><a:stretch><a:fillRect/></a:stretch></p:blipFill>"
+                + "<p:spPr><a:xfrm><a:off x=\"1270000\" y=\"1270000\"/><a:ext cx=\"2540000\" cy=\"1905000\"/></a:xfrm>"
+                + "<a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom></p:spPr></p:pic>";
+        for (boolean photo : new boolean[] {true, false}) {
+            Fixtures.Zip z = Fixtures.edit(Decks.slideXml(pic));
+            z.put("ppt/media/picture.jpeg", photo ? photo(240, 180) : flat(240, 180));
+            z.defaultType("jpeg", "image/jpeg");
+            z.relationship("/ppt/slides/slide1.xml", "rIdP", Fixtures.REL + "image", "../media/picture.jpeg", false);
+            Decks.Converted c = Decks.convert(dir, "recoloured" + photo + ".pptx", z.bytes());
+            List<COSName> filters = new ArrayList<>();
+            try (PDDocument d = c.open()) {
+                for (COSObject o : d.getDocument().getObjectsByType(COSName.XOBJECT)) {
+                    if (o.getObject() instanceof COSStream s && COSName.IMAGE.equals(s.getCOSName(COSName.SUBTYPE))) {
+                        filters.add((COSName) s.getFilters());
+                    }
+                }
+            }
+            assertEquals(List.of(photo ? COSName.DCT_DECODE : COSName.FLATE_DECODE), filters);
+            Color centre = new Color(c.render(0, 72).getRGB(200, 175));
+            assertTrue(centre.getRed() > 100 && centre.getGreen() < 40 && centre.getBlue() < 40, centre.toString());
+        }
+    }
+
+    private static byte[] photo(int w, int h) throws IOException {
+        BufferedImage img = new BufferedImage(w, h, BufferedImage.TYPE_INT_RGB);
+        Random random = new Random(7);
+        for (int y = 0; y < h; y++) {
+            for (int x = 0; x < w; x++) {
+                int n = random.nextInt(16);
+                img.setRGB(x, y, new Color(Math.min(255, x * 255 / w + n), Math.min(255, y * 255 / h + n), 128 + n).getRGB());
+            }
+        }
+        return jpeg(img);
+    }
+
+    private static byte[] flat(int w, int h) throws IOException {
+        BufferedImage img = new BufferedImage(w, h, BufferedImage.TYPE_INT_RGB);
+        Graphics2D g = img.createGraphics();
+        g.setColor(Color.LIGHT_GRAY);
+        g.fillRect(0, 0, w, h);
+        g.dispose();
+        return jpeg(img);
+    }
+
+    private static byte[] jpeg(BufferedImage img) throws IOException {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        ImageIO.write(img, "jpeg", out);
+        return out.toByteArray();
     }
 
     @Test

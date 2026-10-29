@@ -117,8 +117,10 @@ public final class SafeImageRenderer implements ImageRenderer {
         PictureDecoder.Kind k = PictureDecoder.sniff(bytes);
         ImageRenderer next;
         switch (k) {
-            case PNG, JPEG, GIF, BMP, TIFF ->
-                next = new Decoded(PictureDecoder.readRaster(bytes, PictureDecoder.DECODE_PIXELS));
+            case PNG, JPEG, GIF, BMP, TIFF -> {
+                BufferedImage image = PictureDecoder.readRaster(bytes, PictureDecoder.DECODE_PIXELS);
+                next = new Decoded(k == PictureDecoder.Kind.JPEG ? JpegRaster.of(image, bytes) : image);
+            }
             case EMF, WMF -> {
                 if (bytes.length > PictureDecoder.MAX_METAFILE_BYTES) {
                     throw new IOException("The metafile is too large: " + bytes.length + " bytes");

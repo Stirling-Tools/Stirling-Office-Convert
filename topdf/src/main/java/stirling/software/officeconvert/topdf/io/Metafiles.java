@@ -373,7 +373,7 @@ final class Metafiles {
         }
     }
 
-    // Bitmaps inside a metafile go through FlateImages too, each one encoded once
+    // Bitmaps inside a metafile go through FlateImages too, a decoded JPEG as its own bytes, each one encoded once
     private static final class Bitmaps implements IPdfBoxGraphics2DImageEncoder {
 
         private final Map<Image, PDImageXObject> done = new IdentityHashMap<>();
@@ -386,7 +386,8 @@ final class Metafiles {
                 return known;
             }
             try {
-                PDImageXObject x = FlateImages.encode(doc, buffered(image));
+                PDImageXObject x = image instanceof JpegRaster jpeg ? jpeg.encode(doc)
+                        : FlateImages.encode(doc, buffered(image));
                 done.put(image, x);
                 return x;
             } catch (IOException e) {
@@ -475,6 +476,10 @@ final class Metafiles {
         @Override
         public void drawRenderedImage(RenderedImage img, AffineTransform xform) {
             tick();
+            if (img instanceof JpegRaster jpeg) {
+                super.drawImage(jpeg, xform, null);
+                return;
+            }
             super.drawRenderedImage(img, xform);
         }
 

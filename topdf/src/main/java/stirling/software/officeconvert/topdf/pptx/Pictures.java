@@ -123,7 +123,9 @@ final class Pictures {
                 return picture(sourcePart, id);
             }
             BufferedImage src = PictureDecoder.readRaster(bytes, RECOLOR_PIXELS);
-            DecodedPicture p = PictureDecoder.fromImage(job.document(), recolour.apply(src, kind));
+            BufferedImage done = recolour.apply(src, kind);
+            DecodedPicture p = kind == PictureDecoder.Kind.JPEG ? PictureDecoder.fromPhoto(job.document(), done)
+                    : PictureDecoder.fromImage(job.document(), done);
             decoded.put(key, p);
             return p;
         } catch (InterruptedIOException e) {
