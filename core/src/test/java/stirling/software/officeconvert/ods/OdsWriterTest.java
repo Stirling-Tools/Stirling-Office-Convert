@@ -1,6 +1,7 @@
 package stirling.software.officeconvert.ods;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.ByteArrayInputStream;
@@ -87,6 +88,61 @@ class OdsWriterTest {
         assertEquals(1, content.getElementsByTagNameNS("*", "named-range").getLength());
         assertTrue(content.getElementsByTagNameNS("*", "s").getLength() > 0, "runs of spaces kept");
         assertEquals(1, content.getElementsByTagNameNS("*", "tab").getLength());
+    }
+
+    @Test
+    void sheetsWiderThanThePageFitToOnePageWide() throws Exception {
+        Element props = pageLayout(sheet(true, List.of(400f, 400f)));
+        String style = "urn:oasis:names:tc:opendocument:xmlns:style:1.0";
+        assertEquals("1", props.getAttributeNS(style, "scale-to-X"));
+        assertFalse(props.hasAttributeNS(style, "scale-to-Y"));
+    }
+
+    @Test
+    void textRunningPastThePageFitsItToOnePageWide() throws Exception {
+        String style = "urn:oasis:names:tc:opendocument:xmlns:style:1.0";
+        String title = "A long heading that runs on well past the right edge of the printed page ".repeat(3);
+        assertEquals("1", pageLayout(sheet(true, List.of(300f), CellStyle.DEFAULT, title))
+                .getAttributeNS(style, "scale-to-X"));
+        assertFalse(pageLayout(sheet(true, List.of(300f), CellStyle.DEFAULT.withWrap(true), title))
+                .hasAttributeNS(style, "scale-to-X"));
+    }
+
+    @Test
+    void sheetsThatFitThePageAreNotScaled() throws Exception {
+        Element props = pageLayout(sheet(true, List.of(569.5f)));
+        String style = "urn:oasis:names:tc:opendocument:xmlns:style:1.0";
+        assertFalse(props.hasAttributeNS(style, "scale-to-X"));
+        assertFalse(props.hasAttributeNS(style, "scale-to-Y"));
+        assertFalse(pageLayout(sample()).hasAttributeNS(style, "scale-to-X"));
+    }
+
+    private static byte[] sheet(boolean landscape, List<Float> widths) throws IOException {
+        return sheet(landscape, widths, CellStyle.DEFAULT, "Title");
+    }
+
+    private static byte[] sheet(boolean landscape, List<Float> widths, CellStyle cell, String text) throws IOException {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        try (OdsWriter w = new OdsWriter(out)) {
+            w.startSheet(new SheetSetup("Page 1", landscape, false, "", ""));
+            w.row(new Row(0, Float.NaN, List.of(new Row.Cell(0, CellValue.text(text), cell))));
+            w.endSheet(new SheetEnd(widths, 0, List.of()));
+            w.finish("Title", "Author");
+        }
+        return out.toByteArray();
+    }
+
+    private static Element pageLayout(byte[] ods) throws Exception {
+        Document styles = null;
+        try (ZipInputStream z = new ZipInputStream(new ByteArrayInputStream(ods))) {
+            for (ZipEntry e; (e = z.getNextEntry()) != null; ) {
+                byte[] b = z.readAllBytes();
+                if (e.getName().equals("styles.xml")) {
+                    styles = parse(b);
+                }
+            }
+        }
+        return (Element) styles.getElementsByTagNameNS("*", "page-layout-properties").item(0);
     }
 
     private static Document parse(byte[] b) throws Exception {

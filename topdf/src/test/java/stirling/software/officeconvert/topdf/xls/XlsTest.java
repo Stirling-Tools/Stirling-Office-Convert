@@ -11,16 +11,21 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Calendar;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.function.Consumer;
 import java.util.stream.Stream;
 import java.util.zip.Deflater;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
 
 import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.cos.COSName;
@@ -33,7 +38,9 @@ import org.apache.poi.common.usermodel.HyperlinkType;
 import org.apache.poi.ddf.EscherBSERecord;
 import org.apache.poi.ddf.EscherPropertyTypes;
 import org.apache.poi.ddf.EscherSimpleProperty;
+import org.apache.poi.hssf.record.BOFRecord;
 import org.apache.poi.hssf.record.DefaultColWidthRecord;
+import org.apache.poi.hssf.record.Record;
 import org.apache.poi.hssf.record.RecordBase;
 import org.apache.poi.hssf.record.UnknownRecord;
 import org.apache.poi.hssf.record.crypto.Biff8EncryptionKey;
@@ -869,6 +876,71 @@ class XlsTest {
         Converted out = convert("wide.xls", wide);
         assertEquals(2, out.pages().size());
         assertTrue(out.pages().get(1).contains("Eff"), out.all());
+    }
+
+    @Test
+    void onlyAWorkbookLibreOfficeWroteIsMarkedAsCalcs() throws Exception {
+        Consumer<HSSFWorkbook> sheet = wb -> {
+            HSSFFont bold = wb.createFont();
+            bold.setBold(true);
+            bold.setFontHeightInPoints((short) 14);
+            HSSFCellStyle title = wb.createCellStyle();
+            title.setFont(bold);
+            HSSFSheet s = wb.createSheet("Ledger");
+            HSSFRow r = s.createRow(0);
+            r.setHeightInPoints(17.35f);
+            s.getSheet().getRow(0).setBadFontHeight(false);
+            HSSFCell c = r.createCell(0);
+            c.setCellValue("General");
+            c.setCellStyle(title);
+            HSSFRow fixed = s.createRow(1);
+            fixed.setHeightInPoints(30);
+            fixed.createCell(0).setCellValue("Tall");
+        };
+        Map<String, String> excel = parts(xls(sheet));
+        assertTrue(excel.get("xl/workbook.xml").contains("appName=\"xl\""));
+        assertTrue(excel.get("xl/worksheets/sheet1.xml").contains("<row r=\"1\" ht=\""),
+                excel.get("xl/worksheets/sheet1.xml"));
+        Map<String, String> unknown = parts(xls(wb -> {
+            sheet.accept(wb);
+            bof(wb).setHistoryBitMask(0);
+        }));
+        assertTrue(unknown.get("xl/workbook.xml").contains("appName=\"xl\""));
+        Map<String, String> calc = parts(xls(wb -> {
+            sheet.accept(wb);
+            BOFRecord bof = bof(wb);
+            bof.setBuild(0x0DBB);
+            bof.setBuildYear(1996);
+            bof.setHistoryBitMask(0);
+            bof.setRequiredVersion(6);
+        }));
+        String rows = calc.get("xl/worksheets/sheet1.xml");
+        assertTrue(calc.get("xl/workbook.xml").contains("appName=\"Calc\""));
+        assertTrue(rows.contains("<row r=\"1\" ht=\"17.35"), rows);
+        assertTrue(rows.contains("<row r=\"2\" ht=\"30\" customHeight=\"1\""), rows);
+    }
+
+    private static BOFRecord bof(HSSFWorkbook wb) {
+        for (Record rec : wb.getInternalWorkbook().getRecords()) {
+            if (rec instanceof BOFRecord bof) {
+                return bof;
+            }
+        }
+        throw new AssertionError("no BOF");
+    }
+
+    private static Map<String, String> parts(byte[] xls) throws IOException {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        try (POIFSFileSystem fs = new POIFSFileSystem(new ByteArrayInputStream(xls))) {
+            XlsPackage.write(fs.getRoot(), out);
+        }
+        Map<String, String> parts = new HashMap<>();
+        try (ZipInputStream zip = new ZipInputStream(new ByteArrayInputStream(out.toByteArray()))) {
+            for (ZipEntry e; (e = zip.getNextEntry()) != null; ) {
+                parts.put(e.getName(), new String(zip.readAllBytes(), StandardCharsets.UTF_8));
+            }
+        }
+        return parts;
     }
 
     @Test

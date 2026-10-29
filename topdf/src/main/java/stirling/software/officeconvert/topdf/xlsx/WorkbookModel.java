@@ -31,6 +31,8 @@ final class WorkbookModel {
 
     final boolean savedByExcel;
 
+    final boolean savedByCalc;
+
     final boolean savedOnMac;
 
     final StylesTable styles;
@@ -55,6 +57,7 @@ final class WorkbookModel {
         date1904 = pr != null && Dml.flag(pr, "date1904");
         Element version = Dml.child(root, "fileVersion");
         savedByExcel = version != null && "xl".equals(Dml.attr(version, "appName"));
+        savedByCalc = version != null && "Calc".equals(Dml.attr(version, "appName"));
         savedOnMac = savedByExcel && MacExcel.saved(zip);
         int index = 0;
         for (Element s : Dml.children(Dml.child(root, "sheets"), "sheet")) {
