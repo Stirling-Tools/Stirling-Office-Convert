@@ -190,7 +190,8 @@ final class SlideXml {
                 .append("><a:off x=\"").append(Ooxml.offset(x)).append("\" y=\"").append(Ooxml.offset(y))
                 .append("\"/><a:ext cx=\"").append(Ooxml.emu(Math.abs(l.x2() - l.x1()))).append("\" cy=\"")
                 .append(Ooxml.emu(Math.abs(l.y2() - l.y1()))).append("\"/></a:xfrm><a:prstGeom prst=\"line\"><a:avLst/></a:prstGeom>")
-                .append("<a:ln w=\"").append(Ooxml.emu(l.width())).append("\">");
+                .append("<a:ln w=\"").append(Ooxml.emu(l.width())).append("\" cap=\"")
+                .append(l.cap() == 1 ? "rnd" : l.cap() == 2 ? "sq" : "flat").append("\">");
         Ooxml.solidFill(sb, Math.max(0, l.rgb()));
         sb.append("</a:ln></p:spPr></p:cxnSp>");
     }

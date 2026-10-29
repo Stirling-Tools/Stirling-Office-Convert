@@ -55,6 +55,27 @@ class PdfToOdpTest {
     }
 
     @Test
+    void aStraightRuleAcrossArtworkIsADrawLine() throws Exception {
+        Path out = dir.resolve("ruled.odp");
+        PdfToOdp.convert(SlideFixtures.ruledFacet(dir), out, PdfToPptx.Options.defaults());
+        Map<String, byte[]> files = SlideFixtures.parts(Files.readAllBytes(out));
+        String content = SlideFixtures.text(files, "content.xml");
+        assertEquals(0, count(content, "<draw:image "), content);
+        assertEquals(1, count(content, "<draw:path "), content);
+        assertTrue(content.matches("(?s).*<draw:line [^>]*svg:x1=\"26\\.03[0-9]*cm\" svg:y1=\"0\\.0000cm\" svg:x2=\"29\\.41[0-9]*cm\" svg:y2=\"19\\.0500cm\"/>.*"),
+                content);
+        assertTrue(content.contains("svg:stroke-color=\"#bfbfbf\""), content);
+    }
+
+    @Test
+    void aRoundCappedLineKeepsItsCaps() throws Exception {
+        Path out = dir.resolve("strokes.odp");
+        PdfToOdp.convert(SlideFixtures.strokes(dir), out, PdfToPptx.Options.defaults());
+        String content = SlideFixtures.text(SlideFixtures.parts(Files.readAllBytes(out)), "content.xml");
+        assertTrue(content.contains("svg:stroke-width=\"0.7056cm\" svg:stroke-linecap=\"round\""), content);
+    }
+
+    @Test
     void aCurvedDrawPathIsPlacedByTheCurveNotItsControlPoints() throws Exception {
         Path heart = dir.resolve("heart.pdf");
         try (PDDocument doc = new PDDocument()) {

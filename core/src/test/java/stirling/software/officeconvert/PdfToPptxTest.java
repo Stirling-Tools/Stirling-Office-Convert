@@ -299,6 +299,36 @@ class PdfToPptxTest {
     }
 
     @Test
+    void aStraightRuleAcrossArtworkIsALineNotAPicture() throws Exception {
+        Path out = dir.resolve("ruled.pptx");
+        PdfToPptx.convert(SlideFixtures.ruledFacet(dir), out, PdfToPptx.Options.defaults());
+        Map<String, byte[]> files = SlideFixtures.parts(Files.readAllBytes(out));
+        String slide = SlideFixtures.text(files, "ppt/slides/slide1.xml");
+        assertEquals(0, count(slide, "<p:pic>"), slide);
+        assertFalse(files.keySet().stream().anyMatch(n -> n.startsWith("ppt/media/")));
+        assertEquals(1, count(slide, "<a:custGeom>"), slide);
+        Matcher line = Pattern.compile("<p:cxnSp>.*?<a:off x=\"(\\d+)\" y=\"0\"/><a:ext cx=\"(\\d+)\" cy=\"6858000\"/>"
+                + ".*?<a:ln w=\"9525\" cap=\"flat\"><a:solidFill><a:srgbClr val=\"BFBFBF\"/>").matcher(slide);
+        assertTrue(line.find(), slide);
+        assertEquals(737.87 * 12700, Long.parseLong(line.group(1)), 12700);
+        assertEquals(96 * 12700, Long.parseLong(line.group(2)), 12700);
+        assertTrue(slide.indexOf("<p:cxnSp>") < slide.indexOf("<a:custGeom>"), "drawn in the PDF's order");
+    }
+
+    @Test
+    void aStrokedLineKeepsItsCapsWidthAndClip() throws Exception {
+        Path out = dir.resolve("strokes.pptx");
+        PdfToPptx.convert(SlideFixtures.strokes(dir), out, PdfToPptx.Options.defaults());
+        Map<String, byte[]> files = SlideFixtures.parts(Files.readAllBytes(out));
+        String pill = SlideFixtures.text(files, "ppt/slides/slide1.xml");
+        assertTrue(pill.matches("(?s).*<p:cxnSp>.*<a:ext cx=\"2540000\" cy=\"0\"/>.*<a:ln w=\"254000\" cap=\"rnd\">.*"), pill);
+        String scaled = SlideFixtures.text(files, "ppt/slides/slide2.xml");
+        assertTrue(scaled.contains("<a:ln w=\"37027\" cap=\"flat\">"), scaled);
+        String clipped = SlideFixtures.text(files, "ppt/slides/slide3.xml");
+        assertEquals(0, count(clipped, "<p:cxnSp>"), "half of the border is clipped away");
+    }
+
+    @Test
     void aFreeformBoxHoldsItsCurveControlPoints() throws Exception {
         Path heart = dir.resolve("heart.pdf");
         try (PDDocument doc = new PDDocument()) {

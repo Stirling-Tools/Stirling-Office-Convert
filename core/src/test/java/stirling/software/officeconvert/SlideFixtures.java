@@ -89,6 +89,73 @@ final class SlideFixtures {
         return pdf;
     }
 
+    static Path strokes(Path dir) throws IOException {
+        Path pdf = dir.resolve("strokes.pdf");
+        try (PDDocument doc = new PDDocument()) {
+            for (int i = 0; i < 3; i++) {
+                doc.addPage(new PDPage(WIDE));
+            }
+            try (PDPageContentStream cs = new PDPageContentStream(doc, doc.getPage(0))) {
+                cs.setStrokingColor(0.2f, 0.4f, 0.8f);
+                cs.setLineWidth(20);
+                cs.setLineCapStyle(1);
+                cs.moveTo(100, 300);
+                cs.lineTo(300, 300);
+                cs.stroke();
+            }
+            try (PDPageContentStream cs = new PDPageContentStream(doc, doc.getPage(1))) {
+                cs.transform(new Matrix(1, 0, 0, 4, 0, 0));
+                cs.setStrokingColor(0.2f, 0.4f, 0.8f);
+                cs.setLineWidth(1);
+                cs.moveTo(100, 20);
+                cs.lineTo(300, 70);
+                cs.stroke();
+            }
+            try (PDPageContentStream cs = new PDPageContentStream(doc, doc.getPage(2))) {
+                cs.addRect(100, 100, 400, 300);
+                cs.clip();
+                cs.setStrokingColor(0.2f, 0.4f, 0.8f);
+                cs.setLineWidth(6);
+                cs.moveTo(100, 100);
+                cs.lineTo(500, 100);
+                cs.stroke();
+            }
+            doc.save(pdf.toFile());
+        }
+        return pdf;
+    }
+
+    static Path ruledFacet(Path dir) throws IOException {
+        Path pdf = dir.resolve("ruled.pdf");
+        try (PDDocument doc = new PDDocument()) {
+            PDPage page = new PDPage(WIDE);
+            doc.addPage(page);
+            try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
+                cs.saveGraphicsState();
+                cs.addRect(0, 0, 960, 540);
+                cs.clip();
+                cs.setStrokingColor(0.75f, 0.75f, 0.75f);
+                cs.setLineWidth(0.75f);
+                cs.moveTo(737.87f, 540);
+                cs.lineTo(833.87f, 0);
+                cs.stroke();
+                PDExtendedGraphicsState gs = new PDExtendedGraphicsState();
+                gs.setNonStrokingAlphaConstant(0.6f);
+                cs.setGraphicsStateParameters(gs);
+                cs.setNonStrokingColor(0.25f, 0.5f, 0.75f);
+                cs.moveTo(700, 540);
+                cs.lineTo(960, 540);
+                cs.lineTo(960, 0);
+                cs.lineTo(820, 0);
+                cs.closePath();
+                cs.fill();
+                cs.restoreGraphicsState();
+            }
+            doc.save(pdf.toFile());
+        }
+        return pdf;
+    }
+
     static Path facets(Path dir) throws IOException {
         Path pdf = dir.resolve("facets.pdf");
         try (PDDocument doc = new PDDocument()) {
