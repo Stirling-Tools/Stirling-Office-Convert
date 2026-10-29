@@ -31,12 +31,25 @@ final class PartContext {
     }
 
     void useFont(RunStyle style, RunStyle base, String text) {
+        useFont(style, base, text, false);
+    }
+
+    void wantFont(RunStyle style, RunStyle base, String text) {
+        useFont(style, base, text, true);
+    }
+
+    private void useFont(RunStyle style, RunStyle base, String text, boolean optional) {
         RunStyle used = style != null ? style : base;
         if (sourceFonts == null || used == null) {
             return;
         }
         String font = used.font() != null || base == null ? used.font() : base.font();
-        if (!PdfWebFonts.expected(font)) {
+        if (PdfWebFonts.expected(font)) {
+            return;
+        }
+        if (optional) {
+            sourceFonts.want(font, used.bold(), used.italic(), text);
+        } else {
             sourceFonts.use(font, used.bold(), used.italic(), text);
         }
     }

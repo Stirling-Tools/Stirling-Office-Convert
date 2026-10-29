@@ -171,4 +171,35 @@ class PdfWebFontsTest {
         }
         return out.array();
     }
+
+    private static byte[] withFsType(int fsType) throws IOException {
+        byte[] sfnt = liberation();
+        ByteBuffer b = ByteBuffer.wrap(sfnt);
+        for (int i = 0; i < (b.getShort(4) & 0xFFFF); i++) {
+            if (b.getInt(12 + 16 * i) == 0x4F532F32) {
+                b.putShort(b.getInt(20 + 16 * i) + 8, (short) fsType);
+            }
+        }
+        return sfnt;
+    }
+
+    @Test
+    void fontsThatForbidEmbeddingSubsettingOrOutlinesAreNotEmbedded() throws IOException {
+        assertFalse(PdfWebFonts.restricted(withFsType(0)));
+        assertFalse(PdfWebFonts.restricted(withFsType(0x0008)));
+        assertTrue(PdfWebFonts.restricted(withFsType(0x0002)));
+        assertTrue(PdfWebFonts.restricted(withFsType(0x0100)));
+        assertTrue(PdfWebFonts.restricted(withFsType(0x0200)));
+    }
+
+    @Test
+    void anEmbeddedFontIsRenamedToTheDocumentsFamily() throws IOException {
+        byte[] named = PdfWebFonts.named(liberation(), "Georgia", true, false);
+        try (TrueTypeFont font = new TTFParser(true).parse(new RandomAccessReadBuffer(named))) {
+            assertEquals("Georgia", font.getNaming().getFontFamily());
+            assertEquals("Bold", font.getNaming().getFontSubFamily());
+            assertEquals("Georgia-Bold", font.getNaming().getPostScriptName());
+            assertNotNull(font.getUnicodeCmapLookup());
+        }
+    }
 }

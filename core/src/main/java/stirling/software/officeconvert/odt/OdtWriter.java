@@ -114,9 +114,13 @@ public final class OdtWriter implements DocSink, Closeable {
         }
     }
 
-    private void useFont(String font, boolean bold, boolean italic, String text) {
+    private void useFont(String font, boolean bold, boolean italic, String text, boolean optional) {
         if (sourceFonts != null && !PdfWebFonts.expected(font)) {
-            sourceFonts.use(font, bold, italic, text);
+            if (optional) {
+                sourceFonts.want(font, bold, italic, text);
+            } else {
+                sourceFonts.use(font, bold, italic, text);
+            }
         }
     }
 

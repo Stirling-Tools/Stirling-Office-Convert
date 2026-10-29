@@ -84,11 +84,14 @@ final class RunXml {
         return false;
     }
 
+    static final String DIGITS = "0123456789";
+
     void field(StringBuilder sb, String instr, RunStyle style, RunStyle base) {
         field(sb, instr, "1", style, base);
     }
 
     void field(StringBuilder sb, String instr, String shown, RunStyle style, RunStyle base) {
+        ctx.wantFont(style, base, DIGITS + shown);
         sb.append("<w:r>");
         rPr(sb, style, base);
         sb.append("<w:fldChar w:fldCharType=\"begin\"/></w:r><w:r>");

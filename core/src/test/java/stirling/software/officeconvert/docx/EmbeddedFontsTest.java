@@ -1,5 +1,6 @@
 package stirling.software.officeconvert.docx;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -17,7 +18,10 @@ import java.util.regex.Pattern;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
+import org.apache.fontbox.ttf.TTFParser;
+import org.apache.fontbox.ttf.TrueTypeFont;
 import org.apache.pdfbox.cos.COSName;
+import org.apache.pdfbox.io.RandomAccessReadBuffer;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.PDPageContentStream;
@@ -32,26 +36,34 @@ class EmbeddedFontsTest {
 
     private static final String TEXT = "Quarterly revenue grew in every region";
 
-    private static PDDocument document(String family) throws IOException {
-        PDDocument doc = new PDDocument();
-        PDPage page = new PDPage(PDRectangle.A4);
-        doc.addPage(page);
+    private static PDType0Font font(PDDocument doc, String family, boolean subset) throws IOException {
         byte[] ttf;
         try (InputStream in = PDDocument.class.getResourceAsStream("/org/apache/pdfbox/resources/ttf/LiberationSans-Regular.ttf")) {
             ttf = in.readAllBytes();
         }
-        PDType0Font font = PDType0Font.load(doc, new ByteArrayInputStream(ttf), false);
+        PDType0Font font = PDType0Font.load(doc, new ByteArrayInputStream(ttf), subset);
         font.getFontDescriptor().setFontFamily(family);
         font.getFontDescriptor().setFontName(family.replace(" ", ""));
         font.getCOSObject().setName(COSName.BASE_FONT, family.replace(" ", ""));
         font.getDescendantFont().getCOSObject().setName(COSName.BASE_FONT, family.replace(" ", ""));
+        return font;
+    }
+
+    private static void page(PDDocument doc, PDType0Font font, String text) throws IOException {
+        PDPage page = new PDPage(PDRectangle.A4);
+        doc.addPage(page);
         try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
             cs.beginText();
             cs.setFont(font, 11);
             cs.newLineAtOffset(72, 700);
-            cs.showText(TEXT);
+            cs.showText(text);
             cs.endText();
         }
+    }
+
+    private static PDDocument document(String family) throws IOException {
+        PDDocument doc = new PDDocument();
+        page(doc, font(doc, family, false), TEXT);
         return doc;
     }
 
@@ -65,17 +77,17 @@ class EmbeddedFontsTest {
         return out;
     }
 
-    private static Map<String, byte[]> odt(String family) throws IOException {
+    private static Map<String, byte[]> odt(PDDocument doc) throws IOException {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
-        try (PDDocument doc = document(family)) {
+        try (doc) {
             PdfToOdt.convert(doc, out, PdfToDocx.Options.defaults());
         }
         return parts(out.toByteArray());
     }
 
-    private static Map<String, byte[]> docx(String family) throws IOException {
+    private static Map<String, byte[]> docx(PDDocument doc) throws IOException {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
-        try (PDDocument doc = document(family)) {
+        try (doc) {
             PdfToDocx.convert(doc, out, PdfToDocx.Options.defaults());
         }
         return parts(out.toByteArray());
@@ -85,12 +97,18 @@ class EmbeddedFontsTest {
         return new String(parts.get(name), StandardCharsets.UTF_8);
     }
 
+    private static String family(byte[] sfnt) throws IOException {
+        try (TrueTypeFont font = new TTFParser(true).parse(new RandomAccessReadBuffer(sfnt))) {
+            return font.getNaming().getFontFamily();
+        }
+    }
+
     @Test
-    void aFontReadersMayLackTravelsInsideTheOdt() throws IOException {
-        Map<String, byte[]> p = odt("Georgia");
+    void aFontReadersMayLackTravelsInsideTheOdtUnderTheDocumentsName() throws IOException {
+        Map<String, byte[]> p = odt(document("Georgia"));
         byte[] font = p.get("Fonts/font1.ttf");
         assertNotNull(font, p.keySet().toString());
-        assertEquals(0x00010000, ((font[0] & 0xFF) << 24) | ((font[1] & 0xFF) << 16) | ((font[2] & 0xFF) << 8) | (font[3] & 0xFF));
+        assertEquals("Georgia", family(font));
         assertTrue(text(p, "styles.xml").contains("<svg:font-face-uri xlink:href=\"Fonts/font1.ttf\""), text(p, "styles.xml"));
         assertTrue(text(p, "content.xml").contains("Fonts/font1.ttf"));
         assertTrue(text(p, "META-INF/manifest.xml").contains("manifest:full-path=\"Fonts/font1.ttf\""));
@@ -99,22 +117,45 @@ class EmbeddedFontsTest {
 
     @Test
     void aFontReadersMayLackTravelsObfuscatedInsideTheDocx() throws IOException {
-        Map<String, byte[]> p = docx("Georgia");
+        Map<String, byte[]> p = docx(document("Georgia"));
         String table = text(p, "word/fontTable.xml");
         Matcher m = Pattern.compile("<w:embedRegular r:id=\"(rIdFont1)\" w:fontKey=\"(\\{[0-9A-F-]{36}\\})\"/>").matcher(table);
         assertTrue(m.find(), table);
         assertTrue(text(p, "word/_rels/fontTable.xml.rels").contains("Id=\"rIdFont1\""), text(p, "word/_rels/fontTable.xml.rels"));
         assertTrue(text(p, "[Content_Types].xml").contains("Extension=\"odttf\""));
         assertTrue(text(p, "word/settings.xml").contains("<w:embedTrueTypeFonts/>"));
-        byte[] clear = PackageParts.obfuscate(p.get("word/fonts/font1.odttf"), m.group(2));
-        assertEquals(0x00010000, ((clear[0] & 0xFF) << 24) | ((clear[1] & 0xFF) << 16) | ((clear[2] & 0xFF) << 8) | (clear[3] & 0xFF));
+        assertEquals("Georgia", family(PackageParts.obfuscate(p.get("word/fonts/font1.odttf"), m.group(2))));
+    }
+
+    @Test
+    void obfuscationXorsTheFirst32BytesWithTheReversedKey() {
+        byte[] font = new byte[40];
+        for (int i = 0; i < font.length; i++) {
+            font[i] = (byte) i;
+        }
+        byte[] expected = {
+            (byte) 0xFF, (byte) 0xEF, (byte) 0xDF, (byte) 0xCF, (byte) 0xBF, (byte) 0xAF, (byte) 0x9F, (byte) 0x8F,
+            0x7F, 0x6F, 0x5F, 0x4F, 0x3F, 0x2F, 0x1F, 0x0F,
+            (byte) 0xEF, (byte) 0xFF, (byte) 0xCF, (byte) 0xDF, (byte) 0xAF, (byte) 0xBF, (byte) 0x8F, (byte) 0x9F,
+            0x6F, 0x7F, 0x4F, 0x5F, 0x2F, 0x3F, 0x0F, 0x1F,
+            0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27};
+        assertArrayEquals(expected, PackageParts.obfuscate(font, "{00112233-4455-6677-8899-AABBCCDDEEFF}"));
+    }
+
+    @Test
+    void subsetsThatEachLackSomeTextAreNotEmbedded() throws IOException {
+        PDDocument doc = new PDDocument();
+        page(doc, font(doc, "Georgia", true), "alpha");
+        page(doc, font(doc, "Georgia", true), "omega");
+        Map<String, byte[]> p = odt(doc);
+        assertFalse(p.keySet().stream().anyMatch(k -> k.startsWith("Fonts/")), p.keySet().toString());
     }
 
     @Test
     void fontsEveryReaderHasStayOut() throws IOException {
-        Map<String, byte[]> o = odt("Arial");
+        Map<String, byte[]> o = odt(document("Arial"));
         assertFalse(o.keySet().stream().anyMatch(k -> k.startsWith("Fonts/")), o.keySet().toString());
-        Map<String, byte[]> d = docx("Arial");
+        Map<String, byte[]> d = docx(document("Arial"));
         assertFalse(d.keySet().stream().anyMatch(k -> k.startsWith("word/fonts/")), d.keySet().toString());
     }
 }
