@@ -237,6 +237,17 @@ class OdsTest {
     }
 
     @Test
+    void complexScriptTextInCdataKeepsThePreviousRowModel() throws IOException {
+        for (String[] c : new String[][] {{"Plain", "true"}, {"<![CDATA[\u6f22\u5b57]]>", "false"},
+            {"<![CDATA[\u0645\u0631\u062d\u0628\u0627]]>", "false"}}) {
+            String table = "<table:table table:name=\"S\"><table:table-row><table:table-cell office:value-type=\"string\">"
+                    + "<text:p>" + c[0] + "</text:p></table:table-cell></table:table-row></table:table>";
+            String book = OdfFixtures.rewrite(ods("", table, null)).get("xl/workbook.xml");
+            assertEquals(Boolean.parseBoolean(c[1]), book.contains("appName=\"OpenDocument\""), c[0]);
+        }
+    }
+
+    @Test
     void hiddenSheetsStayHidden() throws IOException {
         String auto = "<style:style style:name=\"ta2\" style:family=\"table\"><style:table-properties"
                 + " table:display=\"false\"/></style:style>";

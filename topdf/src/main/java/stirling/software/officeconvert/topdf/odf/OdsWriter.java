@@ -88,7 +88,8 @@ final class OdsWriter {
 
     private static boolean complexScript(Node n) {
         for (Node k = n == null ? null : n.getFirstChild(); k != null; k = k.getNextSibling()) {
-            if (k.getNodeType() == Node.TEXT_NODE ? complexScript(k.getNodeValue()) : complexScript(k)) {
+            boolean text = k.getNodeType() == Node.TEXT_NODE || k.getNodeType() == Node.CDATA_SECTION_NODE;
+            if (text ? complexScript(k.getNodeValue()) : complexScript(k)) {
                 return true;
             }
         }
