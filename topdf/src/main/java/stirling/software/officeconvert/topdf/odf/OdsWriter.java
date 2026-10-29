@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Map;
 
 import org.w3c.dom.Element;
+import org.w3c.dom.Node;
 
 final class OdsWriter {
 
@@ -29,6 +30,8 @@ final class OdsWriter {
     private final List<String> warnings = new ArrayList<>();
 
     private final StringBuilder sharedXml = new StringBuilder();
+
+    boolean complexScript;
 
     private long stringBytes;
 
@@ -83,6 +86,30 @@ final class OdsWriter {
         return index;
     }
 
+    private static boolean complexScript(Node n) {
+        for (Node k = n == null ? null : n.getFirstChild(); k != null; k = k.getNextSibling()) {
+            boolean text = k.getNodeType() == Node.TEXT_NODE || k.getNodeType() == Node.CDATA_SECTION_NODE;
+            if (text ? complexScript(k.getNodeValue()) : complexScript(k)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean complexScript(String s) {
+        for (int i = 0; i < s.length(); ) {
+            int cp = s.codePointAt(i);
+            Character.UnicodeScript script = Character.UnicodeScript.of(cp);
+            if (script != Character.UnicodeScript.LATIN && script != Character.UnicodeScript.GREEK
+                    && script != Character.UnicodeScript.CYRILLIC && script != Character.UnicodeScript.COMMON
+                    && script != Character.UnicodeScript.INHERITED) {
+                return true;
+            }
+            i += Character.charCount(cp);
+        }
+        return false;
+    }
+
     boolean stringsFull() {
         return stringBytes > (200L << 20);
     }
@@ -90,8 +117,10 @@ final class OdsWriter {
     List<String> write() throws IOException {
         Element body = Dom.kid(Dom.kid(doc.content(), Ns.OFFICE, "body"), Ns.OFFICE, "spreadsheet");
         List<Element> tables = Dom.kids(body, Ns.TABLE, "table");
+        complexScript = complexScript(body);
         StringBuilder book = new StringBuilder(Xml.HEAD).append("<workbook xmlns=\"").append(Xml.S)
                 .append("\" xmlns:r=\"").append(Xml.R).append("\">");
+        int head = book.length();
         if (date1904()) {
             book.append("<workbookPr date1904=\"1\"/>");
         }
@@ -128,6 +157,9 @@ final class OdsWriter {
                     + Xml.S + "\"><sheetData/></worksheet>");
             String rid = rels.add("worksheet", "worksheets/sheet1.xml");
             book.append("<sheet name=\"").append(name).append("\" sheetId=\"1\" r:id=\"").append(rid).append("\"/>");
+        }
+        if (!complexScript) {
+            book.insert(head, "<fileVersion appName=\"OpenDocument\"/>");
         }
         book.append("</sheets>");
         if (!names.isEmpty()) {

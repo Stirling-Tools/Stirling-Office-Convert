@@ -42,7 +42,12 @@ final class SheetPage {
     }
 
     boolean fitToPage() {
-        return page.has("style:scale-to-X") || page.has("style:scale-to-Y") || page.has("style:scale-to-pages");
+        return scale("scale-to-X") != null || scale("scale-to-Y") != null || scale("scale-to-pages") != null;
+    }
+
+    private String scale(String name) {
+        String v = page.get("style:" + name);
+        return v != null ? v : page.get("loext:" + name);
     }
 
     private static boolean shown(Element e) {
@@ -83,16 +88,21 @@ final class SheetPage {
         double w = page.pt("fo:page-width", 595.3);
         double h = page.pt("fo:page-height", 841.9);
         boolean landscape = "landscape".equals(page.get("style:print-orientation")) || w > h;
-        b.append("<pageSetup paperSize=\"").append(paper(Math.min(w, h), Math.max(w, h))).append('"');
+        int code = paper(Math.min(w, h), Math.max(w, h));
+        b.append("<pageSetup paperSize=\"").append(code == 0 ? Math.min(w, h) < 600 ? 9 : 1 : code).append('"');
+        if (code <= 1) {
+            b.append(" paperWidth=\"").append(in(Math.min(w, h))).append("in\" paperHeight=\"").append(in(Math.max(w, h)))
+                    .append("in\"");
+        }
         String scale = page.get("style:scale-to");
         if (scale != null) {
             long s = Math.round(Length.percent(scale, 100));
             b.append(" scale=\"").append(Math.max(10, Math.min(400, s))).append('"');
         }
         if (fitToPage()) {
-            int x = parse(page.get("style:scale-to-X"), 0);
-            int y = parse(page.get("style:scale-to-Y"), 0);
-            int pages = parse(page.get("style:scale-to-pages"), 0);
+            int x = parse(scale("scale-to-X"), 0);
+            int y = parse(scale("scale-to-Y"), 0);
+            int pages = parse(scale("scale-to-pages"), 0);
             if (pages > 0 && x == 0 && y == 0) {
                 x = 1;
                 y = pages;
@@ -198,7 +208,7 @@ final class SheetPage {
                 return (int) p[2];
             }
         }
-        return w < 600 ? 9 : 1;
+        return 0;
     }
 
     String text(Element hf) {

@@ -54,6 +54,11 @@ final class SheetStyles {
         return s > 0 ? s : 10;
     }
 
+    double size(String style) {
+        double s = text(style).pt("fo:font-size", 10);
+        return s > 0 ? s : 10;
+    }
+
     Xf xf(String style) {
         String key = style == null ? "" : style;
         Xf cached = byStyle.get(key);

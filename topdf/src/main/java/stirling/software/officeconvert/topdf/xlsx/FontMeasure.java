@@ -114,6 +114,14 @@ record FontMeasure(int unitsPerEm, int digit, int winAscent, int winDescent, int
         return (int) Math.max(1, text + (ppem <= 9 ? 1 : 2));
     }
 
+    int calcLinePx(double size) {
+        int ppem = ppem(size, 96);
+        int ascent = typoMetrics ? hheaAscent : winAscent;
+        int descent = typoMetrics ? Math.abs(hheaDescent) : winDescent;
+        return (int) Math.max(1, pixels((double) ascent * ppem / unitsPerEm)
+                + pixels((double) descent * ppem / unitsPerEm));
+    }
+
     // GDI rounds the external leading on screen; the printer's row height drops its fraction
     private long textHeightPx(int ppem, boolean screen) {
         int ext = Math.max(0, hheaLineGap - (winAscent + winDescent - (hheaAscent - hheaDescent)));
