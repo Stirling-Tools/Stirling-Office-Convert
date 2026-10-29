@@ -112,8 +112,16 @@ final class RunningContent {
             if (firstPiece) {
                 if (row.size() == 1) {
                     p.align = isCentre ? Align.CENTER : isRight ? Align.RIGHT : Align.LEFT;
+                    float room = Math.max(0, width - line.width());
+                    float areaRight = colRight + SectionPlanner.RIGHT_SLACK;
                     if (p.align == Align.LEFT) {
-                        p.indentLeft = Math.clamp(line.x - colLeft, 0, Math.max(0, width - line.width()));
+                        p.indentLeft = Math.clamp(line.x - colLeft, 0, room);
+                    } else if (p.align == Align.RIGHT) {
+                        p.indentRight = Math.clamp(areaRight - line.right, 0, room);
+                    } else {
+                        float shift = Math.clamp(2 * lc - colLeft - areaRight, -room, room);
+                        p.indentLeft = Math.max(0, shift);
+                        p.indentRight = Math.max(0, -shift);
                     }
                 } else if (line.x - colLeft > 4f) {
                     p.inlines.add(new Inline.Tab(null));
