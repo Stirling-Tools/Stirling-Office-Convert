@@ -325,6 +325,41 @@ class PdfToPptxTest {
     }
 
     @Test
+    void aPageOfDetailedShapesStaysPictures() throws Exception {
+        Path busy = dir.resolve("busy.pdf");
+        try (PDDocument doc = new PDDocument()) {
+            PDPage page = new PDPage(SlideFixtures.WIDE);
+            doc.addPage(page);
+            try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
+                cs.setNonStrokingColor(0.2f, 0.6f, 0.3f);
+                for (int i = 0; i < 200; i++) {
+                    float cx = 40 + (i % 20) * 45;
+                    float cy = 60 + (i / 20) * 45;
+                    for (int k = 0; k < 20; k++) {
+                        double a = Math.PI * 2 * k / 20;
+                        float r = k % 2 == 0 ? 18 : 8;
+                        float x = cx + (float) (r * Math.cos(a));
+                        float y = cy + (float) (r * Math.sin(a));
+                        if (k == 0) {
+                            cs.moveTo(x, y);
+                        } else {
+                            cs.lineTo(x, y);
+                        }
+                    }
+                    cs.closePath();
+                    cs.fill();
+                }
+            }
+            doc.save(busy.toFile());
+        }
+        Path out = dir.resolve("busy.pptx");
+        PdfToPptx.convert(busy, out, PdfToPptx.Options.defaults());
+        String slide = SlideFixtures.text(SlideFixtures.parts(Files.readAllBytes(out)), "ppt/slides/slide1.xml");
+        assertEquals(0, count(slide, "<a:custGeom>"));
+        assertTrue(slide.contains("<p:pic>"));
+    }
+
+    @Test
     void ocrTextOverAScanStaysSearchableButInvisible() throws Exception {
         assertTrue(ocrSlide(true).matches("(?s).*<a:srgbClr val=\"[0-9A-F]{6}\"><a:alpha val=\"0\"/></a:srgbClr>(?:(?!</a:r>).)*"
                 + "<a:t>Scanned report text</a:t>.*"), "the scan shows the words, the text layer only carries them");

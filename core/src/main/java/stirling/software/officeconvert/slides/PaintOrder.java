@@ -75,6 +75,8 @@ final class PaintOrder extends PDFGraphicsStreamEngine {
 
     private static final int MAX_CLIP_SEGMENTS = 16;
 
+    private static final int MAX_PAGE_SEGMENTS = 3000;
+
     private final AffineTransform toDisplay;
     private final float width;
     private final float height;
@@ -90,6 +92,7 @@ final class PaintOrder extends PDFGraphicsStreamEngine {
     private int blendedGroups;
     private int transparentGroups;
     private int shapes;
+    private int pageSegments;
     private final Map<PDGraphicsState, List<Path2D>> clipped = new WeakHashMap<>();
     private final Deque<List<Path2D>> formClips = new ArrayDeque<>();
 
@@ -389,10 +392,12 @@ final class PaintOrder extends PDFGraphicsStreamEngine {
                 return null;
             }
         }
-        if (area.isEmpty() || segments(area) > MAX_SEGMENTS) {
+        int n = segments(area);
+        if (area.isEmpty() || n > MAX_SEGMENTS) {
             return null;
         }
-        shapes++;
+        pageSegments += n;
+        shapes = pageSegments > MAX_PAGE_SEGMENTS ? MAX_SHAPES + 1 : shapes + 1;
         return new Path2D.Float(area.createTransformedArea(toDisplay));
     }
 
