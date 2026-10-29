@@ -5,6 +5,8 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.awt.Color;
+import java.awt.Graphics2D;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
@@ -86,6 +88,34 @@ class PicturesTest {
         assertEquals("jpeg", find(media, 900).format(), "the large opaque picture becomes a JPEG");
         assertTrue(media.stream().anyMatch(m -> m.width() == 240), "the picture drawn an inch wide is thinned to 220 ppi");
         assertFalse(media.stream().anyMatch(m -> m.width() == 1200), "nothing keeps its full 1200 pixels");
+    }
+
+    @Test
+    void aLargeFlatChartStaysAPngWithItsOwnPixels() throws IOException {
+        BufferedImage chart = new BufferedImage(900, 500, BufferedImage.TYPE_INT_RGB);
+        Graphics2D g = chart.createGraphics();
+        g.setColor(Color.WHITE);
+        g.fillRect(0, 0, 900, 500);
+        Color[] bars = {new Color(0x1F77B4), new Color(0xFF7F0E), new Color(0x2CA02C)};
+        for (int i = 0; i < 12; i++) {
+            g.setColor(bars[i % 3]);
+            g.fillRect(40 + i * 70, 480 - 30 * (i + 2), 50, 30 * (i + 2));
+        }
+        g.dispose();
+        Path chartPdf = dir.resolve("chart.pdf");
+        try (PDDocument doc = new PDDocument()) {
+            PDPage page = new PDPage(PDRectangle.LETTER);
+            doc.addPage(page);
+            try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
+                cs.drawImage(LosslessFactory.createFromImage(doc, chart), 72, 400, 450, 250);
+            }
+            doc.save(chartPdf.toFile());
+        }
+        Path out = dir.resolve("chart.docx");
+        OfficeConvert.convert(chartPdf, out, OfficeConvert.Settings.defaults());
+        Media media = find(media(out, "word/media/"), 900);
+        assertEquals("png", media.format());
+        assertTrue(samePixels(chart, media.image()), "the chart's pixels are the PDF's, exactly");
     }
 
     @Test

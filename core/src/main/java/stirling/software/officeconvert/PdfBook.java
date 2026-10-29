@@ -8,6 +8,7 @@ import javax.imageio.IIOImage;
 import javax.imageio.ImageIO;
 import javax.imageio.ImageWriteParam;
 import javax.imageio.ImageWriter;
+import javax.imageio.plugins.jpeg.JPEGImageWriteParam;
 import javax.imageio.stream.ImageOutputStream;
 
 import org.apache.commons.logging.Log;
@@ -98,6 +99,9 @@ final class PdfBook {
             ImageWriteParam param = writer.getDefaultWriteParam();
             param.setCompressionMode(ImageWriteParam.MODE_EXPLICIT);
             param.setCompressionQuality(0.75f);
+            if (param instanceof JPEGImageWriteParam jpeg) {
+                jpeg.setOptimizeHuffmanTables(true);
+            }
             writer.write(null, new IIOImage(RgbPixels.forJpeg(image), null, null), param);
         } finally {
             writer.dispose();
