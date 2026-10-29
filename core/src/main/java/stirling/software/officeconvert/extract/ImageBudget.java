@@ -32,6 +32,9 @@ public final class ImageBudget {
         if (!jpx && decodedBytes(image) > MAX_DECODED_BYTES) {
             return false;
         }
+        if (maskedRenderBytes(image) > MAX_DECODED_BYTES) {
+            return false;
+        }
         long limit = jpx ? MAX_JPX_SAMPLES : MAX_DECODED_BYTES;
         if (!(image instanceof PDImageXObject x)) {
             return codedBytes(image) <= limit;
@@ -54,6 +57,36 @@ public final class ImageBudget {
         }
         COSStream mask = x.getCOSObject().getCOSStream(COSName.SMASK);
         return StreamGuard.fits(x.getCOSObject()) && (mask == null || StreamGuard.fits(mask));
+    }
+
+    private static final COSName[] MASK_KEYS = {COSName.SMASK, COSName.MASK};
+
+    /**
+     * Bytes {@code getImage()} allocates for a masked image or a stencil: it scales the base image
+     * and its {@code /SMask} or stencil {@code /Mask} to a common size and builds a
+     * 4-byte-per-pixel raster. {@link #decodedBytes} measures the base samples only, so the mask
+     * and stencil dimensions are accounted for here. Returns 0 when no mask stream and no stencil
+     * applies, leaving plain images to {@code decodedBytes}.
+     */
+    static long maskedRenderBytes(PDImage image) {
+        long width = image.getWidth();
+        long height = image.getHeight();
+        boolean relevant;
+        try {
+            relevant = image.isStencil();
+        } catch (RuntimeException e) {
+            relevant = false;
+        }
+        if (image instanceof PDImageXObject x) {
+            for (COSName key : MASK_KEYS) {
+                if (x.getCOSObject().getDictionaryObject(key) instanceof COSStream mask) {
+                    width = Math.max(width, Math.max(0, mask.getInt(COSName.WIDTH, 0)));
+                    height = Math.max(height, Math.max(0, mask.getInt(COSName.HEIGHT, 0)));
+                    relevant = true;
+                }
+            }
+        }
+        return relevant ? samples(width, height, 4) : 0;
     }
 
     static long decodedBytes(PDImage image) {
