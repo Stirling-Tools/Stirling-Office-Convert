@@ -16,6 +16,7 @@ final class SectionProps {
     float gutter;
     boolean topFixed;
     boolean bottomFixed;
+    float tailStretch;
     String type = "nextPage";
     int cols = 1;
     float colSpace = 36;
@@ -73,6 +74,7 @@ final class SectionProps {
                     s.header = Math.max(0, Ooxml.twips(k.attr("header"), s.header));
                     s.footer = Math.max(0, Ooxml.twips(k.attr("footer"), s.footer));
                     s.gutter = Math.max(0, Ooxml.twips(k.attr("gutter"), 0));
+                    s.tailStretch = Math.max(0, Ooxml.twips(k.attr("so:tail"), 0));
                 }
                 case "w:type" -> s.type = k.val() == null ? "nextPage" : k.val();
                 case "w:cols" -> {

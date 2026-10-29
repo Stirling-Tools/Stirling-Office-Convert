@@ -756,4 +756,68 @@ class EpubToPdfTest {
             assertTrue(left.stream().allMatch(x -> x < 30), left.toString());
         }
     }
+
+    private Path linedBook(String name, int lines, String closing) throws IOException {
+        Map<String, byte[]> book = book();
+        book.put("OEBPS/styles/book.css", utf8(".secret { display: none } @page { margin: 5pt }"));
+        StringBuilder body = new StringBuilder("<h1>Chapter One</h1>");
+        for (int i = 1; i <= lines; i++) {
+            body.append("<p>Line ").append(i).append(" of the first chapter.</p>");
+        }
+        body.append("<p>").append(closing).append("</p>");
+        book.put("OEBPS/text/one.xhtml", utf8(chapter("<link rel=\"stylesheet\" href=\"../styles/book.css\"/>", body.toString())));
+        Path out = dir.resolve(name + ".pdf");
+        OfficeToPdf.convert(epub(name + ".epub", book), out, OfficeToPdf.Options.defaults().timeout(Duration.ofMinutes(2)));
+        return out;
+    }
+
+    @Test
+    void aChaptersLastLineStaysOnItsPageInsteadOfFillingOneAlone() throws IOException {
+        int full;
+        try (PDDocument doc = Loader.loadPDF(linedBook("probe", 80, "Probe closing").toFile())) {
+            String second = pageText(doc, 2);
+            java.util.regex.Matcher m = java.util.regex.Pattern.compile("Line (\\d+) of").matcher(second);
+            full = 0;
+            while (m.find()) {
+                full = Integer.parseInt(m.group(1));
+            }
+        }
+        assertTrue(full > 10, "lines on the first page " + full);
+        try (PDDocument doc = Loader.loadPDF(linedBook("tail", full, "Yours sincerely,").toFile())) {
+            String second = pageText(doc, 2);
+            assertTrue(second.contains("Yours sincerely,"), second);
+            assertTrue(pageText(doc, 3).contains("Chapter Two"));
+            assertEquals(3, doc.getNumberOfPages());
+            float height = doc.getPage(1).getMediaBox().getHeight();
+            float[] bottom = {0};
+            PDFTextStripper stripper = new PDFTextStripper() {
+                @Override
+                protected void writeString(String text, List<org.apache.pdfbox.text.TextPosition> positions) {
+                    for (org.apache.pdfbox.text.TextPosition t : positions) {
+                        bottom[0] = Math.max(bottom[0], t.getYDirAdj());
+                    }
+                }
+            };
+            stripper.setStartPage(2);
+            stripper.setEndPage(2);
+            stripper.getText(doc);
+            assertTrue(bottom[0] > height - 72 && bottom[0] <= height - 24, "last baseline " + bottom[0]);
+        }
+    }
+
+    @Test
+    void aChapterTailTooLongToAbsorbStillBreaks() throws IOException {
+        int full;
+        try (PDDocument doc = Loader.loadPDF(linedBook("probe", 80, "Probe closing").toFile())) {
+            java.util.regex.Matcher m = java.util.regex.Pattern.compile("Line (\\d+) of").matcher(pageText(doc, 2));
+            full = 0;
+            while (m.find()) {
+                full = Integer.parseInt(m.group(1));
+            }
+        }
+        try (PDDocument doc = Loader.loadPDF(linedBook("long", full + 3, "Yours sincerely,").toFile())) {
+            assertTrue(pageText(doc, 3).contains("Yours sincerely,"));
+            assertTrue(pageText(doc, 4).contains("Chapter Two"));
+        }
+    }
 }

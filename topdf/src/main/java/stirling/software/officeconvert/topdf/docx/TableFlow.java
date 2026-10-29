@@ -101,6 +101,14 @@ final class TableFlow {
         return h + leadHeight(l.rows().get(l.rows().size() - 1));
     }
 
+    float height(TableBlock t, float width) {
+        float h = 0;
+        for (RowBox row : layout(t, width, t.rows.size()).rows()) {
+            h += row.height;
+        }
+        return h;
+    }
+
     // How many rows from this one on keep with the row after them, as every cell's last paragraph asks
     private static int keptRows(List<RowBox> rows, int from) {
         int k = from;

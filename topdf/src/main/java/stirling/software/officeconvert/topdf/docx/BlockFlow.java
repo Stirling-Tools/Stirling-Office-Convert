@@ -2,6 +2,7 @@ package stirling.software.officeconvert.topdf.docx;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.util.Arrays;
 import java.util.List;
 
 public final class BlockFlow {
@@ -34,6 +35,9 @@ public final class BlockFlow {
             }
             Block b = blocks.get(i);
             Block next = i + 1 < n ? blocks.get(i + 1) : null;
+            if (r instanceof PageFlow pf && !(b instanceof Para fp && FrameFlow.framed(fp))) {
+                stretchTail(blocks, i, pf);
+            }
             if (b instanceof Para p && r instanceof PageFlow pf && FrameFlow.framed(p)) {
                 i = frames.place(blocks, i, pf) - 1;
             } else if (b instanceof Para p && r instanceof StackLayout s && s.floatsFrames() && FrameFlow.floats(p)) {
@@ -93,6 +97,100 @@ public final class BlockFlow {
         if (r.y + chain > r.limit() && (chain <= r.frameHeight() || headed)) {
             r.newFrame(false, false);
         }
+    }
+
+    private List<Block> tailBlocks;
+
+    private int tailEnd = -1;
+
+    private int tailFrom;
+
+    private float tailWidth;
+
+    private float[] tailHeights;
+
+    private float[] tailBefore;
+
+    private void stretchTail(List<Block> blocks, int i, PageFlow pf) {
+        float room = pf.tailRoom();
+        if (room <= 0 || pf.atTop()) {
+            return;
+        }
+        if (blocks != tailBlocks || i >= tailEnd || pf.width() != tailWidth) {
+            tailBlocks = blocks;
+            tailWidth = pf.width();
+            tailHeights = null;
+            if (chapterEnd(blocks, i, pf)) {
+                tailHeights(blocks, i, tailEnd, pf, pf.frameHeight() + room);
+            }
+        }
+        if (tailHeights == null || i < tailFrom) {
+            return;
+        }
+        float tail = tailHeights[i - tailFrom] + paras.collapse(tailBefore[i - tailFrom], pf.lastAfter);
+        float free = pf.limit() - pf.y;
+        if (tail > free && tail <= free + room) {
+            pf.stretchTail(room);
+        }
+    }
+
+    private boolean chapterEnd(List<Block> blocks, int i, PageFlow pf) {
+        for (int j = i; j < blocks.size(); j++) {
+            if (blocks.get(j) instanceof Para p) {
+                if (j > i && startsPage(p)) {
+                    tailEnd = j;
+                    return true;
+                }
+                if (hardBreak(p) != NO_BREAK || FrameFlow.framed(p)) {
+                    tailEnd = j + 1;
+                    return false;
+                }
+            }
+        }
+        tailEnd = blocks.size();
+        return pf.endsPage();
+    }
+
+    // The height of the blocks from each one to the end of the chapter, from the end back as far as a page reaches
+    private void tailHeights(List<Block> blocks, int from, int end, PageFlow pf, float most) {
+        float[] heights = new float[end - from];
+        float[] befores = new float[end - from];
+        float sum = 0;
+        float nextBefore = 0;
+        int k = end - 1;
+        for (; k >= from && sum <= most; k--) {
+            Block b = blocks.get(k);
+            float before;
+            if (b instanceof Para p && !hasNotes(p)) {
+                float[] m = paras.measure(p, tailWidth, k + 1 < end ? blocks.get(k + 1) : null, pf);
+                sum += m[1] + (k == end - 1 ? 0 : m[2] + paras.collapse(nextBefore, m[2]));
+                before = m[0];
+            } else if (b instanceof TableBlock t && t.rows.size() <= TAIL_ROWS && t.tp.floating == null) {
+                sum += tables.height(t, tailWidth) + (k == end - 1 ? 0 : nextBefore);
+                before = 0;
+            } else {
+                break;
+            }
+            heights[k - from] = sum;
+            befores[k - from] = before;
+            nextBefore = before;
+        }
+        tailFrom = k + 1;
+        if (tailFrom < end) {
+            tailHeights = Arrays.copyOfRange(heights, tailFrom - from, end - from);
+            tailBefore = Arrays.copyOfRange(befores, tailFrom - from, end - from);
+        }
+    }
+
+    private static final int TAIL_ROWS = 60;
+
+    private static boolean hasNotes(Para p) {
+        for (Inline in : p.items) {
+            if (in instanceof Inline.NoteRef) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static boolean startsPage(Para p) {
