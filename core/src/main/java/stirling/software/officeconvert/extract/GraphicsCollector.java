@@ -2,6 +2,7 @@ package stirling.software.officeconvert.extract;
 
 import java.awt.Shape;
 import java.awt.geom.AffineTransform;
+import java.awt.geom.NoninvertibleTransformException;
 import java.awt.geom.Path2D;
 import java.awt.geom.PathIterator;
 import java.awt.geom.Point2D;
@@ -523,6 +524,24 @@ final class GraphicsCollector extends PDFGraphicsStreamEngine {
         return w <= 0 ? 0.5f : w;
     }
 
+    private float lineWidthAcross(double dx, double dy) {
+        PDGraphicsState gs = getGraphicsState();
+        AffineTransform t = new AffineTransform(toDisplay);
+        t.concatenate(gs.getCurrentTransformationMatrix().createAffineTransform());
+        double det = Math.abs(t.getDeterminant());
+        if (det < 1e-12) {
+            return lineWidth();
+        }
+        double[] user = new double[2];
+        try {
+            t.createInverse().deltaTransform(new double[] {dx, dy}, 0, user, 0, 1);
+        } catch (NoninvertibleTransformException e) {
+            return lineWidth();
+        }
+        float w = (float) (gs.getLineWidth() * det * Math.hypot(user[0], user[1]));
+        return w <= 0 ? 0.5f : w;
+    }
+
     private void emit(boolean fill, boolean stroke) {
         PDGraphicsState gs = getGraphicsState();
         fill &= gs.getNonStrokeAlphaConstant() > 0.01;
@@ -553,7 +572,8 @@ final class GraphicsCollector extends PDFGraphicsStreamEngine {
             }
         }
         int strokeRgb = onPaper(toRgb(gs.getStrokingColor(), 0), gs.getAlphaConstant());
-        PathShapes.Paint paint = new PathShapes.Paint(fill, stroke, pattern, fillRgb, strokeRgb, lineWidth(), evenOdd);
+        PathShapes.Paint paint = new PathShapes.Paint(fill, stroke, pattern, fillRgb, strokeRgb, lineWidth(),
+                lineWidthAcross(1, 0), lineWidthAcross(0, 1), evenOdd);
         PathShapes.Shapes shapes = PathShapes.classify(subpaths, pathCurved, paint, clipBox());
         if (inMaskedGroup && (shapes.mark() != null || !shapes.fills().isEmpty() || shapes.rules().isEmpty())) {
             masked(stroke);

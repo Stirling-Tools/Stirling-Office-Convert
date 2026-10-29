@@ -325,7 +325,9 @@ class PdfToPptxTest {
         String scaled = SlideFixtures.text(files, "ppt/slides/slide2.xml");
         assertTrue(scaled.contains("<a:ln w=\"37027\" cap=\"flat\">"), scaled);
         String clipped = SlideFixtures.text(files, "ppt/slides/slide3.xml");
-        assertEquals(0, count(clipped, "<p:cxnSp>"), "half of the border is clipped away");
+        assertEquals(1, count(clipped, "<p:cxnSp>"), clipped);
+        assertTrue(clipped.matches("(?s).*<a:off x=\"1270000\" y=\"5568950\"/>.*<a:ln w=\"38100\" cap=\"flat\">.*"),
+                "only the visible half of the border is drawn: " + clipped);
     }
 
     @Test
