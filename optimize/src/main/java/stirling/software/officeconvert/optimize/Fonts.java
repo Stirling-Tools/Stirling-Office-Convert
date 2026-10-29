@@ -410,8 +410,11 @@ final class Fonts {
 
     record Rebuilt(COSStream stream, boolean cff, List<User> users) {}
 
-    interface Work {
-        Rebuilt run();
+    record Work(long decoded, java.util.function.Supplier<Rebuilt> task) {
+
+        Rebuilt run() {
+            return task.get();
+        }
     }
 
     private interface Shrink {
@@ -482,7 +485,7 @@ final class Fonts {
         if (program == null) {
             return null;
         }
-        return () -> {
+        return new Work(data.length, () -> {
             try {
                 Shrunk t = program.run();
                 if (t == null || t.data.length >= data.length) {
@@ -508,7 +511,7 @@ final class Fonts {
             } catch (IOException | RuntimeException e) {
                 return null;
             }
-        };
+        });
     }
 
     private void rename(List<User> users) throws IOException {

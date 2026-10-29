@@ -131,6 +131,34 @@ class FontsTest {
     }
 
     @Test
+    void aFontProgramLargerThanTheWindowBudgetIsStillSubset() throws Exception {
+        Path in = dir.resolve("big.pdf");
+        byte[] font = liberation();
+        byte[] padded = java.util.Arrays.copyOf(font, (int) Rewrite.WINDOW_DECODED_BYTES + (1 << 20));
+        try (PDDocument d = new PDDocument()) {
+            PDPage page = page(d);
+            PDType0Font f = PDType0Font.load(d, new ByteArrayInputStream(font), false);
+            COSStream file = f.getDescendantFont().getFontDescriptor().getFontFile2().getCOSObject();
+            try (OutputStream o = file.createOutputStream(COSName.FLATE_DECODE)) {
+                o.write(padded);
+            }
+            file.setInt(COSName.LENGTH1, padded.length);
+            show(d, page, f, "Hello");
+            d.save(in.toFile());
+        }
+        Path out = optimized(in);
+        try (PDDocument d = Loader.loadPDF(out.toFile())) {
+            PDType0Font f = (PDType0Font) onlyFont(d);
+            assertEquals("Hello", new PDFTextStripper().getText(d).strip());
+            try (TrueTypeFont kept = program(f.getDescendantFont().getFontDescriptor());
+                    TrueTypeFont whole = new TTFParser().parse(new RandomAccessReadBuffer(font))) {
+                assertTrue(outlined(kept, whole.getUnicodeCmapLookup().getGlyphId('H')));
+                assertFalse(outlined(kept, whole.getUnicodeCmapLookup().getGlyphId('Z')));
+            }
+        }
+    }
+
+    @Test
     void aSimpleTrueTypeFontKeepsItsCmapAndShownGlyphs() throws Exception {
         Path in = dir.resolve("simple.pdf");
         try (PDDocument d = new PDDocument()) {

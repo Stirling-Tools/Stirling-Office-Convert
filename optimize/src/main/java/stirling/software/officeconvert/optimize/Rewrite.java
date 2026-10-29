@@ -334,7 +334,7 @@ final class Rewrite {
                     continue;
                 }
                 Fonts.Work work = fonts.prepare(i, s, options.effort());
-                if (job.raw().length > INLINE_JOB_BYTES) {
+                if (job.raw().length > INLINE_JOB_BYTES || work != null && work.decoded() > WINDOW_DECODED_BYTES) {
                     while (!window.isEmpty()) {
                         finish(window.poll(), sha, retry);
                     }
