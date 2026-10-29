@@ -231,6 +231,25 @@ class RtfPackageTest {
     }
 
     @Test
+    void aNoteMarkBeforeTheNotesFirstParagraphTakesTheNoteTextSize() throws IOException {
+        Pkg p = convert(HEAD + "\\pard\\fs24 Text{\\super\\chftn{\\footnote\\chftn\\pard\\plain\\fs20{ }{Note one.}}}"
+                + " more{\\super\\chftn{\\footnote\\pard\\plain\\fs20{\\super\\fs16\\chftn} Note two.}}\\par}");
+        String f = p.part("word/footnotes.xml");
+        String first = f.substring(f.indexOf("<w:footnote w:id=\"2\">"), f.indexOf("Note one"));
+        assertTrue(first.contains("<w:sz w:val=\"20\"/><w:vertAlign w:val=\"superscript\"/></w:rPr><w:footnoteRef/>"),
+                first);
+        assertFalse(first.contains("w:val=\"24\""), first);
+        String second = f.substring(f.indexOf("<w:footnote w:id=\"3\">"), f.indexOf("Note two"));
+        assertTrue(second.contains("<w:sz w:val=\"16\"/>"), second);
+    }
+
+    @Test
+    void justifiedLinesShrinkLikeWord() throws IOException {
+        assertTrue(convert(HEAD + "\\pard\\qj Text\\par}").part("word/settings.xml")
+                .contains("<w:compatSetting w:name=\"justifyLinesWithShrinking\" w:uri=\"urn:stirling:officeconvert\" w:val=\"1\"/>"));
+    }
+
+    @Test
     void picturesAreEmbeddedPreferringTheShapePicture() throws IOException {
         String png = HexFormat.of().formatHex(Fixtures.png(4, 2, Color.RED));
         Pkg p = convert(HEAD + "\\pard {\\*\\shppict{\\pict\\pngblip\\picw4\\pich2\\picwgoal1440\\pichgoal720 "

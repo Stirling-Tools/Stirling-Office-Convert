@@ -43,6 +43,12 @@ final class Content {
 
     final List<Part> parts = new ArrayList<>();
 
+    private String noteMark;
+
+    private Story noteMarkStory;
+
+    private Story unstartedNote;
+
     final List<NoteOut> notes = new ArrayList<>();
 
     final Rels notesRels = new Rels("rId");
@@ -59,13 +65,24 @@ final class Content {
 
     void text(Group g, String s) {
         if (g.story != null) {
+            placeNoteMark(g);
             para(g).text(s, props.rPr(g.chp), g.wrap);
         }
     }
 
     void item(Group g, String inner) {
         if (g.story != null) {
+            placeNoteMark(g);
             para(g).item(inner, props.rPr(g.chp), g.wrap);
+        }
+    }
+
+    private void placeNoteMark(Group g) {
+        if (noteMark != null && g.story == noteMarkStory && !g.listText) {
+            String ref = noteMark;
+            noteMark = null;
+            noteMarkStory = null;
+            g.story.para.item(ref, superscript(g.chp), g.wrap);
         }
     }
 
@@ -110,6 +127,9 @@ final class Content {
             case "pard" -> {
                 g.pap.reset();
                 target = null;
+                if (g.story == unstartedNote) {
+                    unstartedNote = null;
+                }
             }
             case "trowd" -> {
                 if (g.nestProps) {
@@ -351,7 +371,13 @@ final class Content {
     private void footnoteMark(RtfReader r, Group g) {
         if (g.inNote) {
             Group n = r.noteGroup();
-            item(g, n != null && n.note.endnote ? "<w:endnoteRef/>" : "<w:footnoteRef/>");
+            String ref = n != null && n.note.endnote ? "<w:endnoteRef/>" : "<w:footnoteRef/>";
+            if (g.story != null && g.story == unstartedNote && !g.listText && g.story.para.length() == 0) {
+                noteMark = ref;
+                noteMarkStory = g.story;
+                return;
+            }
+            item(g, ref);
             return;
         }
         pendingNote = ++noteIds;
@@ -376,6 +402,7 @@ final class Content {
         g.note = new Group.Note(id, custom, g.story);
         g.inNote = true;
         g.story = body.buffered(notesRels);
+        unstartedNote = g.story;
         g.pap = new ParaProps();
         g.wrap = null;
         g.listText = false;
@@ -383,6 +410,13 @@ final class Content {
 
     void closeNote(Group done) throws IOException {
         Story s = done.story;
+        if (noteMarkStory == s) {
+            noteMark = null;
+            noteMarkStory = null;
+        }
+        if (unstartedNote == s) {
+            unstartedNote = null;
+        }
         finishStory(done);
         Group.Note n = done.note;
         Chunks content = s.chunks();
