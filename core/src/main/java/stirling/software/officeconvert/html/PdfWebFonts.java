@@ -99,10 +99,13 @@ public final class PdfWebFonts implements FixedHtml.FontSource {
         if (family == null || faces.isEmpty()) {
             return;
         }
-        String key = key(family, bold, italic);
-        if (faces.containsKey(key)) {
-            Set<Integer> set = used.computeIfAbsent(key, k -> new HashSet<>());
-            text.codePoints().forEach(set::add);
+        for (String key : List.of(key(family, bold, italic), key(family, bold, false), key(family, false, italic),
+                key(family, false, false))) {
+            if (faces.containsKey(key)) {
+                Set<Integer> set = used.computeIfAbsent(key, k -> new HashSet<>());
+                text.codePoints().forEach(set::add);
+                return;
+            }
         }
     }
 

@@ -30,6 +30,7 @@ import org.apache.pdfbox.pdmodel.font.PDFont;
 import org.apache.pdfbox.pdmodel.font.PDType0Font;
 import org.apache.pdfbox.pdmodel.font.PDType1Font;
 import org.apache.pdfbox.pdmodel.font.Standard14Fonts;
+import org.apache.pdfbox.pdmodel.graphics.state.RenderingMode;
 import org.junit.jupiter.api.Test;
 
 import stirling.software.officeconvert.PdfToDocx;
@@ -61,6 +62,10 @@ class PdfWebFontsTest {
     }
 
     private static PDDocument document(Font kind) throws IOException {
+        return document(kind, false);
+    }
+
+    private static PDDocument document(Font kind, boolean stroked) throws IOException {
         ByteArrayOutputStream pdf = new ByteArrayOutputStream();
         try (PDDocument doc = new PDDocument()) {
             PDPage page = new PDPage(PDRectangle.A4);
@@ -68,6 +73,10 @@ class PdfWebFontsTest {
             PDFont font = kind == Font.NONE ? new PDType1Font(Standard14Fonts.FontName.HELVETICA)
                     : arial(doc, kind == Font.SUBSET_WITHOUT_CMAP);
             try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
+                if (stroked) {
+                    cs.setLineWidth(0.5f);
+                    cs.setRenderingMode(RenderingMode.FILL_STROKE);
+                }
                 cs.beginText();
                 cs.setFont(font, 11);
                 cs.newLineAtOffset(72, 700);
@@ -98,6 +107,17 @@ class PdfWebFontsTest {
         assertTrue(ttf.getNumberOfGlyphs() < 40, "glyphs " + ttf.getNumberOfGlyphs());
         assertTrue(ttf.getUnicodeCmapLookup().getGlyphId('Q') > 0);
         assertEquals(0, ttf.getUnicodeCmapLookup().getGlyphId('Z'));
+    }
+
+    @Test
+    void textMadeBoldByAStrokeStillUsesTheEmbeddedRegularFace() throws IOException {
+        String html;
+        try (PDDocument doc = document(Font.FULL, true)) {
+            html = html(doc);
+        }
+        assertTrue(html.contains("<b>"), html);
+        assertTrue(html.contains("@font-face{font-family:'Arial';font-weight:normal;font-style:normal;"),
+                html.substring(0, Math.min(html.length(), 2000)));
     }
 
     @Test
