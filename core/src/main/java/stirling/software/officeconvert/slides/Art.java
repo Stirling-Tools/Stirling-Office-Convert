@@ -1,6 +1,8 @@
 package stirling.software.officeconvert.slides;
 
 import java.awt.geom.AffineTransform;
+import java.awt.geom.Path2D;
+import java.awt.geom.PathIterator;
 import java.awt.geom.Rectangle2D;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
@@ -75,25 +77,15 @@ final class Art {
         if (!paint.drawsShapes()) {
             return false;
         }
-        Plan plan = plan(paint, represented, true, true, width, height);
+        Plan plan = plan(paint, represented, true, width, height);
         return !plan.shapes().isEmpty() && plan.runs().size() <= MAX_FIGURE_RUNS;
-    }
-
-    List<Piece> figure(PaintOrder paint, Set<Integer> represented, int pageIndex, AffineTransform toDisplay,
-            float width, float height) {
-        return pieces(paint, represented, true, pageIndex, toDisplay, width, height);
     }
 
     List<Piece> pieces(PaintOrder paint, Set<Integer> represented, int pageIndex, AffineTransform toDisplay,
             float width, float height) {
-        return pieces(paint, represented, false, pageIndex, toDisplay, width, height);
-    }
-
-    private List<Piece> pieces(PaintOrder paint, Set<Integer> represented, boolean rects, int pageIndex,
-            AffineTransform toDisplay, float width, float height) {
-        Plan plan = plan(paint, represented, paint.drawsShapes(), rects, width, height);
+        Plan plan = plan(paint, represented, paint.drawsShapes(), width, height);
         if (!plan.shapes().isEmpty()) {
-            Plan raster = plan(paint, represented, false, false, width, height);
+            Plan raster = plan(paint, represented, false, width, height);
             if (plan.runs().size() > raster.runs().size() + MAX_EXTRA_RUNS) {
                 plan = raster;
             }
@@ -118,8 +110,7 @@ final class Art {
         return out;
     }
 
-    private static Plan plan(PaintOrder paint, Set<Integer> represented, boolean shapes, boolean rects, float width,
-            float height) {
+    private static Plan plan(PaintOrder paint, Set<Integer> represented, boolean shapes, float width, float height) {
         List<Run> runs = new ArrayList<>();
         List<Piece> drawn = new ArrayList<>();
         Run run = null;
@@ -129,7 +120,7 @@ final class Art {
                 between.add(m);
                 continue;
             }
-            if (shapes && m.shape() != null && (rects || m.outline() != PaintOrder.Outline.RECT)) {
+            if (shapes && m.shape() != null && m.outline() == PaintOrder.Outline.OTHER) {
                 Piece p = shape(m);
                 if (p != null) {
                     drawn.add(p);
@@ -162,12 +153,31 @@ final class Art {
     }
 
     private static Piece shape(Mark m) {
-        Rectangle2D b = m.shape().getBounds2D();
-        if (b.getWidth() * b.getHeight() < MIN_AREA) {
+        Rectangle2D tight = m.shape().getBounds2D();
+        if (tight.getWidth() * tight.getHeight() < MIN_AREA) {
             return null;
         }
+        Rectangle2D b = hull(m.shape());
         Frame frame = new Frame((float) b.getX(), (float) b.getY(), (float) b.getWidth(), (float) b.getHeight());
         return new Piece(new PathShape(frame, m.shape(), m.rgb(), m.alpha()), m.order());
+    }
+
+    private static Rectangle2D hull(Path2D path) {
+        double[] c = new double[6];
+        Rectangle2D.Double b = null;
+        for (PathIterator it = path.getPathIterator(null); !it.isDone(); it.next()) {
+            int seg = it.currentSegment(c);
+            int points = seg == PathIterator.SEG_CUBICTO ? 3 : seg == PathIterator.SEG_QUADTO ? 2
+                    : seg == PathIterator.SEG_CLOSE ? 0 : 1;
+            for (int i = 0; i < points; i++) {
+                if (b == null) {
+                    b = new Rectangle2D.Double(c[0], c[1], 0, 0);
+                } else {
+                    b.add(c[2 * i], c[2 * i + 1]);
+                }
+            }
+        }
+        return b == null ? path.getBounds2D() : b;
     }
 
     private static final class Run {

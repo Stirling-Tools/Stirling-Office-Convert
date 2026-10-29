@@ -304,7 +304,8 @@ final class SlideBuilder {
         for (PaintOrder.Mark m : stack.paint.marks()) {
             if (!inside.contains(m.order()) || stack.represented.contains(m.order())) {
                 skip.add(m.order());
-            } else if (m.kind() == Kind.TEXT && !fi.backdrop() && !textFree || m.kind() == Kind.EFFECT_TEXT) {
+            } else if (m.kind() == Kind.TEXT && !fi.backdrop() && !textFree || m.kind() == Kind.EFFECT_TEXT
+                    || decorated(m, layout)) {
                 return false;
             } else {
                 shapes |= m.shape() != null;
@@ -313,7 +314,7 @@ final class SlideBuilder {
         if (!shapes || !art.drawable(stack.paint, skip, width, height)) {
             return false;
         }
-        for (Art.Piece piece : art.figure(stack.paint, skip, layout.page().index(), toDisplay, width, height)) {
+        for (Art.Piece piece : art.pieces(stack.paint, skip, layout.page().index(), toDisplay, width, height)) {
             stack.add(piece.shape(), piece.order(), false);
         }
         stack.cover(on);
@@ -321,6 +322,21 @@ final class SlideBuilder {
             stack.textPictures.add(on);
         }
         return true;
+    }
+
+    private static boolean decorated(PaintOrder.Mark m, PageLayout layout) {
+        if (m.kind() != Kind.FILL || m.outline() == PaintOrder.Outline.OTHER) {
+            return false;
+        }
+        Box b = m.box();
+        for (PageLayout.Decoration d : layout.decorations()) {
+            Box c = d.box();
+            if (Math.abs(b.x() - c.x()) <= 2f && Math.abs(b.top() - c.top()) <= 2f && Math.abs(b.right() - c.right()) <= 2f
+                    && Math.abs(b.bottom() - c.bottom()) <= 2f) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private void decorations(PageLayout layout, Stack stack) {

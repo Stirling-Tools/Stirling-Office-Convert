@@ -299,6 +299,32 @@ class PdfToPptxTest {
     }
 
     @Test
+    void aFreeformBoxHoldsItsCurveControlPoints() throws Exception {
+        Path heart = dir.resolve("heart.pdf");
+        try (PDDocument doc = new PDDocument()) {
+            PDPage page = new PDPage(SlideFixtures.WIDE);
+            doc.addPage(page);
+            try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
+                cs.setNonStrokingColor(0.75f, 0f, 0f);
+                cs.moveTo(130.25f, 423.81f);
+                cs.curveTo(167.85f, 519.82f, 314.51f, 423.81f, 130.25f, 300.38f);
+                cs.curveTo(-54.01f, 423.81f, 92.646f, 519.82f, 130.25f, 423.81f);
+                cs.closePath();
+                cs.fillEvenOdd();
+            }
+            doc.save(heart.toFile());
+        }
+        Path out = dir.resolve("heart.pptx");
+        PdfToPptx.convert(heart, out, PdfToPptx.Options.defaults());
+        String slide = SlideFixtures.text(SlideFixtures.parts(Files.readAllBytes(out)), "ppt/slides/slide1.xml");
+        Matcher ext = Pattern.compile("<a:ext cx=\"(\\d+)\" cy=\"\\d+\"/></a:xfrm><a:custGeom>").matcher(slide);
+        assertTrue(ext.find(), slide);
+        long width = Long.parseLong(ext.group(1));
+        assertTrue(width > Math.round(184 * 12700.0), "the box spans the control points, not just the curve: " + width);
+        assertFalse(slide.matches("(?s).*<a:pt x=\"0\"[^>]*/><a:pt x=\"0\".*"), "no control point is pinned to the edge");
+    }
+
+    @Test
     void ocrTextOverAScanStaysSearchableButInvisible() throws Exception {
         assertTrue(ocrSlide(true).matches("(?s).*<a:srgbClr val=\"[0-9A-F]{6}\"><a:alpha val=\"0\"/></a:srgbClr>(?:(?!</a:r>).)*"
                 + "<a:t>Scanned report text</a:t>.*"), "the scan shows the words, the text layer only carries them");
