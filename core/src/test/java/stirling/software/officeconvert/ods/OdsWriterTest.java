@@ -1,6 +1,7 @@
 package stirling.software.officeconvert.ods;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.ByteArrayInputStream;
@@ -90,9 +91,36 @@ class OdsWriterTest {
     }
 
     @Test
-    void pagesFitToOnePageWide() throws Exception {
+    void sheetsWiderThanThePageFitToOnePageWide() throws Exception {
+        Element props = pageLayout(sheet(true, List.of(400f, 400f)));
+        String style = "urn:oasis:names:tc:opendocument:xmlns:style:1.0";
+        assertEquals("1", props.getAttributeNS(style, "scale-to-X"));
+        assertEquals("0", props.getAttributeNS(style, "scale-to-Y"));
+    }
+
+    @Test
+    void sheetsThatFitThePageAreNotScaled() throws Exception {
+        Element props = pageLayout(sheet(true, List.of(569.5f)));
+        String style = "urn:oasis:names:tc:opendocument:xmlns:style:1.0";
+        assertFalse(props.hasAttributeNS(style, "scale-to-X"));
+        assertFalse(props.hasAttributeNS(style, "scale-to-Y"));
+        assertFalse(pageLayout(sample()).hasAttributeNS(style, "scale-to-X"));
+    }
+
+    private static byte[] sheet(boolean landscape, List<Float> widths) throws IOException {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        try (OdsWriter w = new OdsWriter(out)) {
+            w.startSheet(new SheetSetup("Page 1", landscape, false, "", ""));
+            w.row(new Row(0, Float.NaN, List.of(new Row.Cell(0, CellValue.text("Title"), CellStyle.DEFAULT))));
+            w.endSheet(new SheetEnd(widths, 0, List.of()));
+            w.finish("Title", "Author");
+        }
+        return out.toByteArray();
+    }
+
+    private static Element pageLayout(byte[] ods) throws Exception {
         Document styles = null;
-        try (ZipInputStream z = new ZipInputStream(new ByteArrayInputStream(sample()))) {
+        try (ZipInputStream z = new ZipInputStream(new ByteArrayInputStream(ods))) {
             for (ZipEntry e; (e = z.getNextEntry()) != null; ) {
                 byte[] b = z.readAllBytes();
                 if (e.getName().equals("styles.xml")) {
@@ -100,10 +128,7 @@ class OdsWriterTest {
                 }
             }
         }
-        Element props = (Element) styles.getElementsByTagNameNS("*", "page-layout-properties").item(0);
-        String style = "urn:oasis:names:tc:opendocument:xmlns:style:1.0";
-        assertEquals("1", props.getAttributeNS(style, "scale-to-X"));
-        assertEquals("0", props.getAttributeNS(style, "scale-to-Y"));
+        return (Element) styles.getElementsByTagNameNS("*", "page-layout-properties").item(0);
     }
 
     private static Document parse(byte[] b) throws Exception {

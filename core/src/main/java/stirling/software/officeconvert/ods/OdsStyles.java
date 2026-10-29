@@ -17,7 +17,7 @@ final class OdsStyles {
 
     static final String FONT = "Calibri";
 
-    private record Page(boolean landscape, boolean a4, String header, String footer, boolean rtl) {}
+    private record Page(boolean landscape, boolean a4, String header, String footer, boolean rtl, boolean fit) {}
 
     private record Key(CellStyle style, String font, boolean rtl) {}
 
@@ -39,8 +39,18 @@ final class OdsStyles {
         return rows.computeIfAbsent(height, h -> "ro" + (rows.size() + 1));
     }
 
-    String table(boolean landscape, boolean a4, String header, String footer, boolean rtl) {
-        return pages.computeIfAbsent(new Page(landscape, a4, blank(header), blank(footer), rtl), p -> "ta" + (pages.size() + 1));
+    String table(boolean landscape, boolean a4, String header, String footer, boolean rtl, double width) {
+        boolean fit = width > ((landscape ? longSide(a4) : shortSide(a4)) - 1) * 72;
+        return pages.computeIfAbsent(new Page(landscape, a4, blank(header), blank(footer), rtl, fit),
+                p -> "ta" + (pages.size() + 1));
+    }
+
+    private static float shortSide(boolean a4) {
+        return a4 ? 8.27f : 8.5f;
+    }
+
+    private static float longSide(boolean a4) {
+        return a4 ? 11.69f : 11f;
     }
 
     String cell(CellStyle s) {
@@ -226,15 +236,16 @@ final class OdsStyles {
     String pageLayouts() {
         StringBuilder sb = new StringBuilder();
         pages.forEach((page, name) -> {
-            float w = page.a4() ? 8.27f : 8.5f;
-            float h = page.a4() ? 11.69f : 11f;
+            float w = shortSide(page.a4());
+            float h = longSide(page.a4());
             sb.append("<style:page-layout style:name=\"pm").append(name.substring(2)).append("\">")
                     .append("<style:page-layout-properties fo:page-width=\"")
                     .append(format(page.landscape() ? h : w)).append("in\" fo:page-height=\"")
                     .append(format(page.landscape() ? w : h)).append("in\" style:print-orientation=\"")
                     .append(page.landscape() ? "landscape" : "portrait")
                     .append("\" fo:margin-top=\"0.5in\" fo:margin-bottom=\"0.5in\" fo:margin-left=\"0.5in\""
-                            + " fo:margin-right=\"0.5in\" style:scale-to-X=\"1\" style:scale-to-Y=\"0\"/>")
+                            + " fo:margin-right=\"0.5in\"")
+                    .append(page.fit() ? " style:scale-to-X=\"1\" style:scale-to-Y=\"0\"/>" : "/>")
                     .append("<style:header-style/><style:footer-style/></style:page-layout>");
         });
         return sb.toString();

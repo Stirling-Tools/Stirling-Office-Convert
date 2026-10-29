@@ -236,7 +236,12 @@ public final class OdsWriter implements WorkbookSink {
     @Override
     public void endSheet(SheetEnd end) throws IOException {
         rowOut.flush();
-        String table = styles.table(setup.landscape(), setup.a4(), setup.header(), setup.footer(), end.rightToLeft());
+        double width = 0;
+        for (float w : end.columnWidths()) {
+            width += w;
+        }
+        String table = styles.table(setup.landscape(), setup.a4(), setup.header(), setup.footer(), end.rightToLeft(),
+                width);
         StringBuilder head = new StringBuilder(512);
         head.append("<table:table table:name=\"");
         SheetXml.escape(head, setup.name());
