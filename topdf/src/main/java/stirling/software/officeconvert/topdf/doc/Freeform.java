@@ -18,11 +18,11 @@ final class Freeform {
         long right = Shapes.prop(sp, 0x0142, 21600);
         long bottom = Shapes.prop(sp, 0x0143, 21600);
         if (right <= left) {
-            left = Math.min(left, extent(pts, 0, false));
+            left = origin(left, extent(pts, 0, false));
             right = extent(pts, 0, true);
         }
         if (bottom <= top) {
-            top = Math.min(top, extent(pts, 1, false));
+            top = origin(top, extent(pts, 1, false));
             bottom = extent(pts, 1, true);
         }
         long w = Math.max(1, right - left);
@@ -36,6 +36,10 @@ final class Freeform {
         }
         return "<a:custGeom><a:avLst/><a:gdLst/><a:ahLst/><a:cxnLst/><a:rect l=\"0\" t=\"0\" r=\"r\" b=\"b\"/>"
                 + "<a:pathLst><a:path w=\"" + w + "\" h=\"" + h + "\">" + path + "</a:path></a:pathLst></a:custGeom>";
+    }
+
+    static long origin(long stored, long min) {
+        return min < 0 ? min : Math.min(Math.max(stored, 0), min);
     }
 
     private static long extent(int[][] pts, int axis, boolean max) {
