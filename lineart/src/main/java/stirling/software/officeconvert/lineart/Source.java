@@ -2,12 +2,22 @@ package stirling.software.officeconvert.lineart;
 
 import java.awt.Rectangle;
 import java.awt.image.BufferedImage;
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Iterator;
 import java.util.List;
+import java.util.Set;
+
+import javax.imageio.ImageIO;
+import javax.imageio.ImageReadParam;
+import javax.imageio.ImageReader;
+import javax.imageio.ImageTypeSpecifier;
+import javax.imageio.stream.ImageInputStream;
+import javax.imageio.stream.MemoryCacheImageInputStream;
 
 import org.apache.pdfbox.cos.COSArray;
 import org.apache.pdfbox.cos.COSBase;
@@ -15,6 +25,9 @@ import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.cos.COSStream;
 import org.apache.pdfbox.pdmodel.PDResources;
 import org.apache.pdfbox.pdmodel.common.PDStream;
+import org.apache.pdfbox.pdmodel.graphics.color.PDColorSpace;
+import org.apache.pdfbox.pdmodel.graphics.color.PDDeviceGray;
+import org.apache.pdfbox.pdmodel.graphics.color.PDDeviceRGB;
 import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
 
 import stirling.software.officeconvert.extract.PdfFiles;
@@ -27,6 +40,8 @@ abstract class Source {
 
     private static final COSName[] CARRIED = {COSName.BITS_PER_COMPONENT, COSName.COLORSPACE, COSName.DECODE,
         COSName.INTENT};
+
+    private static final Set<COSName> DCT = Set.of(COSName.DCT_DECODE, COSName.DCT_DECODE_ABBREVIATION);
 
     final int width;
     final int height;
@@ -53,7 +68,30 @@ abstract class Source {
         if (!premultiplied && filters != null && Decoded.STREAMING.containsAll(filters)) {
             return new Streamed(image, resources);
         }
-        return new Regions(image, premultiplied);
+        Source regions = new Regions(image, premultiplied);
+        if (!premultiplied && filters != null && filters.size() == 1 && DCT.contains(filters.get(0))) {
+            int components = jpegComponents(image);
+            if (components > 0) {
+                return new Jpeg(image, components, regions);
+            }
+        }
+        return regions;
+    }
+
+    private static int jpegComponents(PDImageXObject image) {
+        COSStream stream = image.getCOSObject();
+        if (stream.getDictionaryObject(COSName.DECODE) != null
+                || stream.getDictionaryObject(COSName.DECODE_PARMS, COSName.DP) != null
+                || image.getBitsPerComponent() != 8) {
+            return 0;
+        }
+        PDColorSpace colourSpace;
+        try {
+            colourSpace = image.getColorSpace();
+        } catch (IOException e) {
+            return 0;
+        }
+        return colourSpace instanceof PDDeviceRGB ? 3 : colourSpace instanceof PDDeviceGray ? 1 : 0;
     }
 
     int rows(int rows, int y) {
@@ -199,6 +237,98 @@ abstract class Source {
                 PDImageXObject piece = new PDImageXObject(new PDStream(part), resources);
                 return keyed ? piece.getImage() : piece.getOpaqueImage(null, 1);
             }
+        }
+    }
+
+    private static final class Jpeg extends Source {
+        private final PDImageXObject image;
+        private final int components;
+        private final Source fallback;
+
+        Jpeg(PDImageXObject image, int components, Source fallback) {
+            super(image.getWidth(), image.getHeight());
+            this.image = image;
+            this.components = components;
+            this.fallback = fallback;
+        }
+
+        @Override
+        void bands(int rows, boolean keyed, Band band) throws IOException {
+            ImageReader reader = keyed ? null : reader();
+            if (reader == null) {
+                fallback.bands(rows, keyed, band);
+                return;
+            }
+            try {
+                byte[] data;
+                try (InputStream in = image.getCOSObject().createRawInputStream()) {
+                    data = in.readAllBytes();
+                }
+                int skip = data.length > 0 && data[0] == 0x0A ? 1 : 0;
+                try (ImageInputStream in = new MemoryCacheImageInputStream(
+                        new ByteArrayInputStream(data, skip, data.length - skip))) {
+                    reader.setInput(in);
+                    int step = Math.min(rows, height);
+                    int n = rows(step, 0);
+                    BufferedImage first = null;
+                    try {
+                        if (matches(reader)) {
+                            first = read(reader, 0, n);
+                        }
+                    } catch (IOException | RuntimeException e) {
+                        first = null;
+                    }
+                    if (first == null) {
+                        fallback.bands(rows, false, band);
+                        return;
+                    }
+                    PdfFiles.stopIfInterrupted();
+                    band.accept(0, first);
+                    first = null;
+                    for (int y = n; y < height; y += n) {
+                        PdfFiles.stopIfInterrupted();
+                        n = rows(step, y);
+                        band.accept(y, read(reader, y, n));
+                    }
+                }
+            } finally {
+                reader.dispose();
+            }
+        }
+
+        private boolean matches(ImageReader reader) throws IOException {
+            if (reader.getNumImages(true) < 1 || reader.getWidth(0) != width || reader.getHeight(0) != height) {
+                return false;
+            }
+            ImageTypeSpecifier raw = reader.getRawImageType(0);
+            return raw != null && raw.getNumBands() == components;
+        }
+
+        private BufferedImage read(ImageReader reader, int y, int n) throws IOException {
+            ImageReadParam param = reader.getDefaultReadParam();
+            if (n < height) {
+                param.setSourceRegion(new Rectangle(0, y, width, n));
+            }
+            BufferedImage rows = reader.read(0, param);
+            if (rows.getWidth() != width || rows.getHeight() != n || rows.getRaster().getNumBands() != components) {
+                throw new IOException("The JPEG decoded to an unexpected " + rows.getWidth() + "x" + rows.getHeight()
+                        + " picture");
+            }
+            return rows;
+        }
+
+        private static ImageReader reader() {
+            Iterator<ImageReader> readers = ImageIO.getImageReadersByFormatName("JPEG");
+            while (readers.hasNext()) {
+                ImageReader reader = readers.next();
+                if (reader != null && reader.canReadRaster()) {
+                    return reader;
+                }
+                if (reader != null) {
+                    reader.dispose();
+                }
+            }
+            return null;
         }
     }
 }

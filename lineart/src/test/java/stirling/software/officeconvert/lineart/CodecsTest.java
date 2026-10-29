@@ -1,6 +1,8 @@
 package stirling.software.officeconvert.lineart;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.awt.Color;
@@ -73,6 +75,19 @@ class CodecsTest {
         assertRoundTrip(page, LineArt.Codec.JBIG2);
         assertRoundTrip(glyphs(37, 29, 2), LineArt.Codec.JBIG2);
         assertRoundTrip(glyphs(3000, 40, 5), LineArt.Codec.JBIG2);
+    }
+
+    @Test
+    void symbolsGiveUpPastTheRunLimitButNotBeforeIt() {
+        Bitmap many = Bitmap.blank(4100, 1100);
+        for (int y = 0; y < many.height(); y++) {
+            for (int x = 0; x < many.width(); x += 2) {
+                many.set(x, y);
+            }
+        }
+        assertNull(Jbig2Symbols.encode(many));
+        Bitmap clean = LineArt.binarize(glyphs(901, 700, 4), LineArt.Options.defaults().method(LineArt.Method.FIXED));
+        assertNotNull(Jbig2Symbols.encode(clean));
     }
 
     static BufferedImage glyphs(int w, int h, long seed) {

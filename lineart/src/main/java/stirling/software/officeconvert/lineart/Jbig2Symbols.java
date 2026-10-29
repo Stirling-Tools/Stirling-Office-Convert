@@ -88,10 +88,10 @@ final class Jbig2Symbols {
     }
 
     private final Bitmap bitmap;
-    private int[] runY = new int[1024];
-    private int[] runStart = new int[1024];
-    private int[] runEnd = new int[1024];
-    private int[] parent = new int[1024];
+    private int[] runY;
+    private int[] runStart;
+    private int[] runEnd;
+    private int[] parent;
     private int runs;
 
     private Jbig2Symbols(Bitmap bitmap) {
@@ -212,6 +212,15 @@ final class Jbig2Symbols {
         int h = bitmap.height();
         int stride = bitmap.stride();
         byte[] bits = bitmap.packed();
+        long count = countRuns(bits, w, stride, h);
+        if (count > MAX_RUNS) {
+            return false;
+        }
+        int size = (int) Math.max(1, count);
+        runY = new int[size];
+        runStart = new int[size];
+        runEnd = new int[size];
+        parent = new int[size];
         int previousFirst = 0;
         int previousEnd = 0;
         for (int y = 0; y < h; y++) {
@@ -252,16 +261,23 @@ final class Jbig2Symbols {
         return runs > 0;
     }
 
+    private static long countRuns(byte[] bits, int w, int stride, int h) {
+        int last = (w & 7) == 0 ? 0xFF : 0xFF << (8 - (w & 7)) & 0xFF;
+        long count = 0;
+        for (int y = 0; y < h; y++) {
+            int previous = 0;
+            for (int i = y * stride, end = i + stride; i < end; i++) {
+                int b = bits[i] & (i == end - 1 ? last : 0xFF);
+                count += Integer.bitCount(b & ~(b >>> 1 | previous << 7));
+                previous = b & 1;
+            }
+        }
+        return count;
+    }
+
     private boolean addRun(int y, int start, int end) {
         if (runs == runY.length) {
-            if (runs >= MAX_RUNS) {
-                return false;
-            }
-            int size = runs * 2;
-            runY = Arrays.copyOf(runY, size);
-            runStart = Arrays.copyOf(runStart, size);
-            runEnd = Arrays.copyOf(runEnd, size);
-            parent = Arrays.copyOf(parent, size);
+            return false;
         }
         runY[runs] = y;
         runStart[runs] = start;

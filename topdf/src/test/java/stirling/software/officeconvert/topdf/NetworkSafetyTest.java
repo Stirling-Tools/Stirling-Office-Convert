@@ -86,6 +86,8 @@ class NetworkSafetyTest {
             Map.entry(OC + "jpx/JpxImageIO", List.of("uses javax/imageio/spi/IIORegistry")),
             Map.entry(OC + "odp/OdpWriter", List.of("calls javax/imageio/ImageIO.read")),
             Map.entry(OC + "photosplit/PhotoSplitter", List.of("calls javax/imageio/ImageIO.getImageReaders")),
+            Map.entry(OC + "lineart/Source",
+                    List.of("calls javax/imageio/ImageIO.getImageReadersByFormatName outside PictureDecoder")),
             Map.entry(OC + "sink/ImageShaping", List.of("calls javax/imageio/ImageIO.read")),
             Map.entry(OC + "json/MediaBytes", List.of("calls javax/imageio/ImageIO.read")),
             Map.entry(OC + "slides/SlideMedia", List.of("calls javax/imageio/ImageIO.read")),

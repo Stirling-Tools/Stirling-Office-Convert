@@ -9,7 +9,12 @@ import java.util.Collections;
 import java.util.IdentityHashMap;
 import java.util.Set;
 
+import org.apache.pdfbox.cos.COSArray;
+import org.apache.pdfbox.cos.COSInteger;
+import org.apache.pdfbox.cos.COSName;
+import org.apache.pdfbox.cos.COSStream;
 import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.pdmodel.common.PDStream;
 import org.apache.pdfbox.pdmodel.graphics.image.JPEGFactory;
 import org.apache.pdfbox.pdmodel.graphics.image.LosslessFactory;
 import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
@@ -55,6 +60,67 @@ class BandsTest {
                     Bitmap banded = Binarizer.binarize(Source.of(image, null, false), options, rows);
                     assertEquals(whole, banded, method + " in bands of " + rows + " rows");
                     assertEquals(whole.inkRgb(), banded.inkRgb());
+                }
+            }
+        }
+    }
+
+    @ParameterizedTest
+    @EnumSource(LineArt.Method.class)
+    void jpegsDecodedDirectlyMatchPdfBoxInEveryBandSize(LineArt.Method method) throws IOException {
+        BufferedImage scan = Pictures.scan(211, 157, 7, 0.5);
+        BufferedImage grey = new BufferedImage(211, 157, BufferedImage.TYPE_BYTE_GRAY);
+        grey.getGraphics().drawImage(scan, 0, 0, null);
+        LineArt.Options options = LineArt.Options.defaults().method(method).window(21).edgeLevel(2);
+        try (PDDocument doc = new PDDocument()) {
+            for (BufferedImage picture : new BufferedImage[] {scan, grey}) {
+                PDImageXObject jpeg = JPEGFactory.createFromImage(doc, picture, 0.8f);
+                Source direct = Source.of(jpeg, null, false);
+                assertEquals("Jpeg", direct.getClass().getSimpleName());
+                COSStream copy = doc.getDocument().createCOSStream();
+                copy.addAll(jpeg.getCOSObject());
+                try (var in = jpeg.getCOSObject().createRawInputStream(); var out = copy.createRawOutputStream()) {
+                    in.transferTo(out);
+                }
+                COSArray identity = new COSArray();
+                for (int i = 0; i < jpeg.getColorSpace().getNumberOfComponents(); i++) {
+                    identity.add(COSInteger.ZERO);
+                    identity.add(COSInteger.ONE);
+                }
+                copy.setItem(COSName.DECODE, identity);
+                Source pdfBox = Source.of(new PDImageXObject(new PDStream(copy), null), null, false);
+                assertEquals("Regions", pdfBox.getClass().getSimpleName());
+                for (int rows : new int[] {2, 5, 23, 156, 157}) {
+                    assertEquals(Binarizer.binarize(pdfBox, options, rows), Binarizer.binarize(direct, options, rows),
+                            method + " in bands of " + rows + " rows");
+                }
+            }
+        }
+    }
+
+    @Test
+    void keptEdgeBinsGiveTheSameBitmapAsASecondPass() throws IOException {
+        BufferedImage flat = new BufferedImage(40, 30, BufferedImage.TYPE_INT_RGB);
+        for (BufferedImage picture : new BufferedImage[] {Pictures.scan(211, 157, 3, 0.5), flat}) {
+            for (int level = 1; level <= 3; level++) {
+                for (double threshold : new double[] {0, 50, 100}) {
+                    LineArt.Options options = LineArt.Options.imageMagickEdges(level).threshold(threshold);
+                    for (int rows : new int[] {2, 7, picture.getHeight()}) {
+                        Source source = Source.of(picture);
+                        Source banded = new Source(picture.getWidth(), picture.getHeight()) {
+                            @Override
+                            void bands(int n, boolean keyed, Band band) throws IOException {
+                                for (int y = 0; y < height; y += n) {
+                                    band.accept(y, picture.getSubimage(0, y, width, Math.min(n, height - y)));
+                                }
+                            }
+                        };
+                        Bitmap twice = Binarizer.binarize(rows == picture.getHeight() ? source : banded, options, rows,
+                                false);
+                        Bitmap once = Binarizer.binarize(rows == picture.getHeight() ? source : banded, options, rows,
+                                true);
+                        assertEquals(twice, once, level + " " + threshold + " " + rows);
+                    }
                 }
             }
         }
