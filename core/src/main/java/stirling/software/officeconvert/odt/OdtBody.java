@@ -30,6 +30,13 @@ final class OdtBody {
     private final NoteHold notes;
     private final OdtLists lists;
     private final OdtTables tables;
+    private FontUse fontUse = (font, bold, italic, text, optional) -> { };
+
+    private static final String DIGITS = "0123456789";
+
+    interface FontUse {
+        void use(String font, boolean bold, boolean italic, String text, boolean optional);
+    }
 
     OdtBody(OdtStyles styles, StyleSheet sheet, OdtMedia media, NoteHold notes, OdtLists lists) {
         this.styles = styles;
@@ -38,6 +45,10 @@ final class OdtBody {
         this.lists = lists;
         this.frames = new OdtFrames(styles, media, this);
         this.tables = new OdtTables(styles, this);
+    }
+
+    void fontUse(FontUse use) {
+        fontUse = use;
     }
 
     OdtTables tables() {
@@ -252,7 +263,7 @@ final class OdtBody {
                 case Inline.Break br -> text.lineBreak(sb);
                 case Inline.ColumnBreak cb -> { }
                 case Inline.PageBreak pb -> { }
-                case Inline.PageNumber pn -> span(sb, pn.style(), base, () -> {
+                case Inline.PageNumber pn -> span(sb, pageNumberStyle(pn.style(), base), base, () -> {
                     sb.append(pn.total() ? "<text:page-count>1</text:page-count>"
                             : "<text:page-number text:select-page=\"current\">1</text:page-number>");
                     text.content();
@@ -284,6 +295,11 @@ final class OdtBody {
     }
 
     private void span(StringBuilder sb, RunStyle style, RunStyle base, String text, Content content) throws IOException {
+        RunStyle used = style != null ? style : base;
+        if (text != null && used != null) {
+            fontUse.use(used.font() != null || base == null ? used.font() : base.font(), used.bold(), used.italic(), text,
+                    false);
+        }
         String props = style == null ? "" : OdtProps.text(style, base, styles.fonts, text, sheet.scripts);
         if (props.isEmpty()) {
             content.write();
@@ -295,7 +311,19 @@ final class OdtBody {
         sb.append("</text:span>");
     }
 
+    private RunStyle pageNumberStyle(RunStyle style, RunStyle base) {
+        RunStyle used = style != null ? style : base;
+        if (used != null) {
+            fontUse.use(used.font() != null || base == null ? used.font() : base.font(), used.bold(), used.italic(), DIGITS,
+                    true);
+        }
+        return style;
+    }
+
     private void note(StringBuilder sb, Inline.FootnoteRef ref) throws IOException {
+        RunStyle mark = ref.style() != null ? ref.style() : sheet.normal;
+        fontUse.use(mark.font(), mark.bold(), mark.italic(), ref.marker(), false);
+        fontUse.use(mark.font(), mark.bold(), mark.italic(), DIGITS, true);
         List<Paragraph> body = notes == null ? null : notes.take(ref.id());
         if (body == null) {
             RunStyle s = ref.style() == null ? sheet.normal.withVertAlign(1) : ref.style().withVertAlign(1);

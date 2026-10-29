@@ -9,7 +9,9 @@ import java.io.OutputStream;
 import java.io.OutputStreamWriter;
 import java.io.Writer;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -19,6 +21,7 @@ import java.util.zip.ZipOutputStream;
 
 import stirling.software.officeconvert.Pictures;
 import stirling.software.officeconvert.build.DocSink;
+import stirling.software.officeconvert.html.PdfWebFonts;
 import stirling.software.officeconvert.model.Block;
 import stirling.software.officeconvert.model.Numbering;
 import stirling.software.officeconvert.model.Paragraph;
@@ -45,6 +48,7 @@ public final class OdtWriter implements DocSink, Closeable {
     private final OdtPages pages = new OdtPages();
     private final SpillBuffer body = new SpillBuffer();
     private final Map<String, String> resolved = new HashMap<>();
+    private final PdfWebFonts sourceFonts;
     private OdtBody writer;
     private OdtPages.Running running = new OdtPages.Running(null, null, null, null, false);
 
@@ -60,7 +64,12 @@ public final class OdtWriter implements DocSink, Closeable {
     }
 
     public OdtWriter(OutputStream target, boolean flat, Pictures pictures) throws IOException {
+        this(target, flat, pictures, null);
+    }
+
+    public OdtWriter(OutputStream target, boolean flat, Pictures pictures, PdfWebFonts sourceFonts) throws IOException {
         this.flat = flat;
+        this.sourceFonts = flat ? null : sourceFonts;
         this.store = new MediaStore(pictures);
         this.out = new BufferedOutputStream(new KeepOpen(target), 1 << 16);
         this.media = new OdtMedia(store, flat);
@@ -86,11 +95,13 @@ public final class OdtWriter implements DocSink, Closeable {
     @Override
     public void begin(StyleSheet styles, HeaderFooterSet set) {
         writer = new OdtBody(content, styles, media, notes, lists);
+        writer.fontUse(this::useFont);
         if (set == null) {
             return;
         }
         try {
             OdtBody side = new OdtBody(master, styles, media, null, new OdtLists());
+            side.fontUse(this::useFont);
             String header = running(side, set.header());
             String headerLeft = running(side, set.evenHeader());
             String footer = running(side, set.footer());
@@ -101,6 +112,40 @@ public final class OdtWriter implements DocSink, Closeable {
         } catch (IOException e) {
             throw new java.io.UncheckedIOException(e);
         }
+    }
+
+    private void useFont(String font, boolean bold, boolean italic, String text, boolean optional) {
+        if (sourceFonts != null && !PdfWebFonts.expected(font)) {
+            if (optional) {
+                sourceFonts.want(font, bold, italic, text);
+            } else {
+                sourceFonts.use(font, bold, italic, text);
+            }
+        }
+    }
+
+    private Map<String, String> embedFonts(List<String> files) throws IOException {
+        Map<String, StringBuilder> sources = new LinkedHashMap<>();
+        if (sourceFonts == null) {
+            return Map.of();
+        }
+        for (PdfWebFonts.Embedded e : sourceFonts.embedded()) {
+            boolean otf = e.sfnt().length >= 4 && e.sfnt()[0] == 'O' && e.sfnt()[1] == 'T' && e.sfnt()[2] == 'T'
+                    && e.sfnt()[3] == 'O';
+            String file = "Fonts/font" + (files.size() + 1) + (otf ? ".otf" : ".ttf");
+            zip.putNextEntry(new ZipEntry(file));
+            zip.write(e.sfnt());
+            zip.closeEntry();
+            files.add(file);
+            sources.computeIfAbsent(e.family(), k -> new StringBuilder()).append("<svg:font-face-uri xlink:href=\"")
+                    .append(file).append("\" xlink:type=\"simple\" loext:font-style=\"")
+                    .append(e.italic() ? "italic" : "normal").append("\" loext:font-weight=\"")
+                    .append(e.bold() ? "bold" : "normal").append("\"><svg:font-face-format svg:string=\"")
+                    .append(otf ? "opentype" : "truetype").append("\"/></svg:font-face-uri>");
+        }
+        Map<String, String> out = new HashMap<>();
+        sources.forEach((k, v) -> out.put(k, v.toString()));
+        return out;
     }
 
     private static String running(OdtBody side, List<Paragraph> paras) throws IOException {
@@ -265,10 +310,12 @@ public final class OdtWriter implements DocSink, Closeable {
             out.flush();
             return;
         }
+        List<String> fontFiles = new ArrayList<>();
+        Map<String, String> sources = embedFonts(fontFiles);
         zip.putNextEntry(new ZipEntry("content.xml"));
         Writer w = new BufferedWriter(new OutputStreamWriter(zip, StandardCharsets.UTF_8), 1 << 16);
         StringBuilder head = new StringBuilder(OdtXml.HEAD).append("<office:document-content").append(OdtXml.NS).append('>');
-        OdtStyles.fontFaces(head, fonts);
+        OdtStyles.fontFaces(head, fonts, sources);
         head.append("<office:automatic-styles>");
         content.write(head);
         head.append(listStyles).append("</office:automatic-styles><office:body><office:text>");
@@ -279,7 +326,7 @@ public final class OdtWriter implements DocSink, Closeable {
         zip.closeEntry();
 
         StringBuilder st = new StringBuilder(OdtXml.HEAD).append("<office:document-styles").append(OdtXml.NS).append('>');
-        OdtStyles.fontFaces(st, fonts);
+        OdtStyles.fontFaces(st, fonts, sources);
         st.append(common).append("<office:automatic-styles>").append(pageLayouts);
         master.write(st);
         st.append("</office:automatic-styles><office:master-styles>").append(masters)
@@ -295,7 +342,7 @@ public final class OdtWriter implements DocSink, Closeable {
         for (Picture.MediaRef m : used) {
             ZipParts.picture(zip, "Pictures/" + m.name(), store.bytes(m));
         }
-        entry("META-INF/manifest.xml", OdtParts.manifest(used));
+        entry("META-INF/manifest.xml", OdtParts.manifest(used, fontFiles));
         zip.finish();
     }
 

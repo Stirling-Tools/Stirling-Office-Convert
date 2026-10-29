@@ -250,6 +250,8 @@ final class BodyXml {
                 case Inline.Image img -> drawings.drawing(sb, img.picture());
                 case Inline.Shape shape -> drawings.shape(sb, shape);
                 case Inline.FootnoteRef ref -> {
+                    ctx.useFont(ref.style(), base, ref.marker());
+                    ctx.wantFont(ref.style(), base, RunXml.DIGITS);
                     sb.append("<w:r>");
                     runs.rPr(sb, ref.style() == null ? null : ref.style().withVertAlign(1), base);
                     if (ref.custom()) {
@@ -262,6 +264,8 @@ final class BodyXml {
                     sb.append("</w:r>");
                 }
                 case Inline.FootnoteMark mark -> {
+                    ctx.useFont(mark.style(), base, mark.marker());
+                    ctx.wantFont(mark.style(), base, RunXml.DIGITS);
                     sb.append("<w:r>");
                     runs.rPr(sb, mark.style(), base);
                     if (mark.custom()) {

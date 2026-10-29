@@ -3,19 +3,26 @@ package stirling.software.officeconvert.html;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Base64;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.zip.Deflater;
 
+import org.apache.fontbox.ttf.CmapLookup;
+import org.apache.fontbox.ttf.OTFParser;
+import org.apache.fontbox.ttf.TTFParser;
 import org.apache.fontbox.ttf.TTFSubsetter;
 import org.apache.fontbox.ttf.TrueTypeFont;
 import org.apache.pdfbox.cos.COSName;
+import org.apache.pdfbox.io.RandomAccessReadBuffer;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDResources;
 import org.apache.pdfbox.pdmodel.common.PDStream;
@@ -35,11 +42,17 @@ public final class PdfWebFonts implements FixedHtml.FontSource {
 
     private static final int MAX_FORM_DEPTH = 4;
 
+    private static final int MAX_WHOLE_FONT_BYTES = 256 << 10;
+
+    private static final long MAX_EMBEDDED_BYTES = 4L << 20;
+
     private static final List<String> KEEP_TABLES =
             List.of("head", "hhea", "loca", "maxp", "cvt ", "prep", "glyf", "hmtx", "fpgm", "name", "OS/2", "post", "cmap");
 
     private final Map<String, Face> faces = new LinkedHashMap<>();
+    private final Map<String, List<Face>> subsets = new LinkedHashMap<>();
     private final Map<String, Set<Integer>> used = new LinkedHashMap<>();
+    private final Map<String, Set<Integer>> wanted = new LinkedHashMap<>();
 
     private record Face(String family, boolean bold, boolean italic, String postScriptName, PDFont font) {}
 
@@ -70,8 +83,13 @@ public final class PdfWebFonts implements FixedHtml.FontSource {
                 }
                 FontInfo info = resolver.resolve(font);
                 if (info.exact()) {
-                    faces.putIfAbsent(key(info.family(), info.bold(), info.italic()),
-                            new Face(info.family(), info.bold(), info.italic(), info.postScriptName(), font));
+                    Face face = new Face(info.family(), info.bold(), info.italic(), info.postScriptName(), font);
+                    String key = key(info.family(), info.bold(), info.italic());
+                    faces.putIfAbsent(key, face);
+                    List<Face> list = subsets.computeIfAbsent(key, k -> new ArrayList<>());
+                    if (list.stream().noneMatch(f -> f.font().getCOSObject() == font.getCOSObject())) {
+                        list.add(face);
+                    }
                 }
             } catch (IOException | RuntimeException e) {
                 continue;
@@ -96,14 +114,22 @@ public final class PdfWebFonts implements FixedHtml.FontSource {
         return family + '|' + bold + '|' + italic;
     }
 
-    void use(String family, boolean bold, boolean italic, String text) {
+    public void use(String family, boolean bold, boolean italic, String text) {
+        record(used, family, bold, italic, text);
+    }
+
+    public void want(String family, boolean bold, boolean italic, String text) {
+        record(wanted, family, bold, italic, text);
+    }
+
+    private void record(Map<String, Set<Integer>> into, String family, boolean bold, boolean italic, String text) {
         if (family == null || faces.isEmpty()) {
             return;
         }
         for (String key : List.of(key(family, bold, italic), key(family, bold, false), key(family, false, italic),
                 key(family, false, false))) {
             if (faces.containsKey(key)) {
-                Set<Integer> set = used.computeIfAbsent(key, k -> new HashSet<>());
+                Set<Integer> set = into.computeIfAbsent(key, k -> new HashSet<>());
                 text.codePoints().forEach(set::add);
                 return;
             }
@@ -134,6 +160,152 @@ public final class PdfWebFonts implements FixedHtml.FontSource {
             css.append("url(data:font/woff;base64,").append(Base64.getEncoder().encodeToString(woff))
                     .append(") format('woff')}\n");
         }
+    }
+
+    public record Embedded(String family, boolean bold, boolean italic, byte[] sfnt) {}
+
+    private static final Set<String> EXPECTED = Set.of("arial", "helvetica", "times new roman", "times", "courier new",
+            "courier", "calibri", "cambria", "symbol", "liberation sans", "liberation serif", "liberation mono", "carlito",
+            "caladea");
+
+    public static boolean expected(String family) {
+        return family == null || EXPECTED.contains(family.toLowerCase(Locale.ROOT));
+    }
+
+    public List<Embedded> embedded() {
+        List<Embedded> out = new ArrayList<>();
+        long total = 0;
+        for (Map.Entry<String, Set<Integer>> e : used.entrySet()) {
+            Set<Integer> all = new HashSet<>(e.getValue());
+            all.addAll(wanted.getOrDefault(e.getKey(), Set.of()));
+            for (Face face : subsets.getOrDefault(e.getKey(), List.of())) {
+                byte[] sfnt = embeddable(face, all, e.getValue());
+                if (sfnt != null && total + sfnt.length <= MAX_EMBEDDED_BYTES) {
+                    total += sfnt.length;
+                    out.add(new Embedded(face.family(), face.bold(), face.italic(), sfnt));
+                    break;
+                }
+            }
+        }
+        return out;
+    }
+
+    private static byte[] embeddable(Face face, Set<Integer> codePoints, Set<Integer> required) {
+        try {
+            byte[] sfnt = webFont(face.font(), codePoints);
+            if (sfnt == null || sfnt.length < 12 || restricted(sfnt)) {
+                return null;
+            }
+            boolean cff = sfnt[0] == 'O' && sfnt[1] == 'T' && sfnt[2] == 'T' && sfnt[3] == 'O';
+            if (cff && sfnt.length > MAX_WHOLE_FONT_BYTES || !covers(sfnt, cff, required)) {
+                return null;
+            }
+            return named(sfnt, face.family(), face.bold(), face.italic());
+        } catch (IOException | RuntimeException ex) {
+            return null;
+        }
+    }
+
+    private static boolean covers(byte[] sfnt, boolean cff, Set<Integer> codePoints) throws IOException {
+        TrueTypeFont font = cff ? new OTFParser(true).parse(new RandomAccessReadBuffer(sfnt))
+                : new TTFParser(true).parse(new RandomAccessReadBuffer(sfnt));
+        try (font) {
+            CmapLookup cmap = font.getUnicodeCmapLookup(false);
+            if (cmap == null) {
+                return false;
+            }
+            for (int cp : codePoints) {
+                if (!Character.isWhitespace(cp) && !Character.isISOControl(cp) && cp != 0xAD && cp != 0xA0
+                        && cmap.getGlyphId(cp) == 0) {
+                    return false;
+                }
+            }
+            return true;
+        }
+    }
+
+    static boolean restricted(byte[] sfnt) {
+        ByteBuffer in = ByteBuffer.wrap(sfnt);
+        int count = in.getShort(4) & 0xFFFF;
+        for (int i = 0; i < count && 12 + 16 * i + 16 <= sfnt.length; i++) {
+            int at = 12 + 16 * i;
+            if (in.getInt(at) == 0x4F532F32) {
+                int offset = in.getInt(at + 8);
+                if (offset < 0 || offset + 10 > sfnt.length) {
+                    return true;
+                }
+                int fsType = in.getShort(offset + 8) & 0xFFFF;
+                return (fsType & 0x000F) == 0x0002 || (fsType & 0x0300) != 0;
+            }
+        }
+        return true;
+    }
+
+    static byte[] named(byte[] sfnt, String family, boolean bold, boolean italic) {
+        String style = bold ? italic ? "Bold Italic" : "Bold" : italic ? "Italic" : "Regular";
+        String full = bold || italic ? family + " " + style : family;
+        String ps = (family + (bold || italic ? "-" + style : "")).replaceAll("[^A-Za-z0-9-]", "");
+        String[] values = {family, style, full, ps, family, style};
+        int[] ids = {1, 2, 4, 6, 16, 17};
+        ByteArrayOutputStream strings = new ByteArrayOutputStream();
+        ByteBuffer name = ByteBuffer.allocate(6 + 12 * ids.length);
+        name.putShort((short) 0).putShort((short) ids.length).putShort((short) (6 + 12 * ids.length));
+        for (int i = 0; i < ids.length; i++) {
+            byte[] v = values[i].getBytes(StandardCharsets.UTF_16BE);
+            name.putShort((short) 3).putShort((short) 1).putShort((short) 0x409).putShort((short) ids[i])
+                    .putShort((short) v.length).putShort((short) strings.size());
+            strings.writeBytes(v);
+        }
+        ByteArrayOutputStream table = new ByteArrayOutputStream();
+        table.writeBytes(name.array());
+        table.writeBytes(strings.toByteArray());
+        return withTable(sfnt, 0x6E616D65, table.toByteArray());
+    }
+
+    private static byte[] withTable(byte[] sfnt, int tag, byte[] data) {
+        ByteBuffer in = ByteBuffer.wrap(sfnt);
+        int count = in.getShort(4) & 0xFFFF;
+        TreeMap<Integer, byte[]> tables = new TreeMap<>(Integer::compareUnsigned);
+        for (int i = 0; i < count && 12 + 16 * i + 16 <= sfnt.length; i++) {
+            int at = 12 + 16 * i;
+            int offset = in.getInt(at + 8);
+            int length = in.getInt(at + 12);
+            if (offset < 0 || length < 0 || (long) offset + length > sfnt.length) {
+                return sfnt;
+            }
+            tables.put(in.getInt(at), Arrays.copyOfRange(sfnt, offset, offset + length));
+        }
+        tables.put(tag, data);
+        int n = tables.size();
+        int size = 12 + 16 * n;
+        for (byte[] t : tables.values()) {
+            size += t.length + 3 & ~3;
+        }
+        ByteBuffer out = ByteBuffer.allocate(size);
+        int log = 31 - Integer.numberOfLeadingZeros(n);
+        out.putInt(in.getInt(0)).putShort((short) n).putShort((short) (16 << log)).putShort((short) log)
+                .putShort((short) (n * 16 - (16 << log)));
+        int offset = 12 + 16 * n;
+        int head = -1;
+        int i = 0;
+        for (Map.Entry<Integer, byte[]> t : tables.entrySet()) {
+            byte[] d = t.getValue();
+            boolean isHead = t.getKey() == 0x68656164;
+            if (isHead && d.length >= 12) {
+                d[8] = d[9] = d[10] = d[11] = 0;
+                head = offset;
+            }
+            out.putInt(12 + 16 * i, t.getKey()).putInt(16 + 16 * i, checksum(d, false))
+                    .putInt(20 + 16 * i, offset).putInt(24 + 16 * i, d.length);
+            out.put(offset, d);
+            offset += d.length + 3 & ~3;
+            i++;
+        }
+        byte[] result = out.array();
+        if (head >= 0) {
+            ByteBuffer.wrap(result).putInt(head + 8, 0xB1B0AFBA - checksum(result, false));
+        }
+        return result;
     }
 
     @Override

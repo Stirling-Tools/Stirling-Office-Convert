@@ -117,6 +117,10 @@ final class OdtStyles {
     }
 
     static void fontFaces(StringBuilder sb, Set<String> fonts) {
+        fontFaces(sb, fonts, Map.of());
+    }
+
+    static void fontFaces(StringBuilder sb, Set<String> fonts, Map<String, String> sources) {
         sb.append("<office:font-face-decls>");
         for (String f : fonts) {
             boolean symbol = FontNames.isSymbolFamily(f);
@@ -129,7 +133,12 @@ final class OdtStyles {
             if (symbol) {
                 sb.append(" style:font-charset=\"x-symbol\"");
             }
-            sb.append("/>");
+            String source = sources.get(f);
+            if (source == null) {
+                sb.append("/>");
+            } else {
+                sb.append("><svg:font-face-src>").append(source).append("</svg:font-face-src></style:font-face>");
+            }
         }
         sb.append("</office:font-face-decls>");
     }

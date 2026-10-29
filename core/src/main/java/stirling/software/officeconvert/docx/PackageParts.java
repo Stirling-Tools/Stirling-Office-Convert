@@ -22,10 +22,15 @@ final class PackageParts {
     }
 
     static String settings(HeaderFooterSet hf, boolean footnotes, boolean hyphenation) {
+        return settings(hf, footnotes, hyphenation, false);
+    }
+
+    static String settings(HeaderFooterSet hf, boolean footnotes, boolean hyphenation, boolean embedded) {
         boolean evenOdd = hf != null && (!hf.evenHeader().isEmpty() || !hf.evenFooter().isEmpty());
         return "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
                 + "<w:settings xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\">"
                 + "<w:zoom w:percent=\"100\"/>"
+                + (embedded ? "<w:embedTrueTypeFonts/><w:saveSubsetFonts/>" : "")
                 + "<w:defaultTabStop w:val=\"720\"/>" + (hyphenation ? "<w:autoHyphenation/>" : "")
                 + (evenOdd ? "<w:evenAndOddHeaders/>" : "")
                 + "<w:characterSpacingControl w:val=\"doNotCompress\"/>"
@@ -39,8 +44,13 @@ final class PackageParts {
     }
 
     static String fontTable(Iterable<String> fonts) {
+        return fontTable(fonts, Map.of());
+    }
+
+    static String fontTable(Iterable<String> fonts, Map<String, String> embeds) {
         StringBuilder sb = new StringBuilder("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
-                + "<w:fonts xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\">");
+                + "<w:fonts xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\""
+                + " xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\">");
         for (String f : fonts) {
             boolean symbol = FontNames.isSymbolFamily(f);
             boolean mono = FontNames.looksMono(f);
@@ -49,7 +59,8 @@ final class PackageParts {
             sb.append("<w:font w:name=\"").append(Xml.esc(f)).append("\">")
                     .append("<w:charset w:val=\"").append(symbol ? "02" : "00").append("\"/>")
                     .append("<w:family w:val=\"").append(family).append("\"/>")
-                    .append("<w:pitch w:val=\"").append(mono ? "fixed" : "variable").append("\"/></w:font>");
+                    .append("<w:pitch w:val=\"").append(mono ? "fixed" : "variable").append("\"/>")
+                    .append(embeds.getOrDefault(f, "")).append("</w:font>");
         }
         sb.append("</w:fonts>");
         return sb.toString();
@@ -112,12 +123,17 @@ final class PackageParts {
     }
 
     static String contentTypes(boolean numbering, boolean footnotes, Map<String, String> partRels) {
+        return contentTypes(numbering, footnotes, partRels, false);
+    }
+
+    static String contentTypes(boolean numbering, boolean footnotes, Map<String, String> partRels, boolean fonts) {
         StringBuilder sb = new StringBuilder("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
                 + "<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\">"
                 + "<Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/>"
                 + "<Default Extension=\"xml\" ContentType=\"application/xml\"/>"
                 + "<Default Extension=\"png\" ContentType=\"image/png\"/>"
                 + "<Default Extension=\"jpeg\" ContentType=\"image/jpeg\"/>"
+                + (fonts ? "<Default Extension=\"odttf\" ContentType=\"application/vnd.openxmlformats-officedocument.obfuscatedFont\"/>" : "")
                 + "<Override PartName=\"/word/document.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml\"/>"
                 + "<Override PartName=\"/word/styles.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml\"/>"
                 + "<Override PartName=\"/word/settings.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml\"/>"
@@ -137,6 +153,19 @@ final class PackageParts {
         }
         sb.append("</Types>");
         return sb.toString();
+    }
+
+    static byte[] obfuscate(byte[] font, String guid) {
+        String hex = guid.replaceAll("[{}-]", "");
+        byte[] key = new byte[16];
+        for (int i = 0; i < 16; i++) {
+            key[i] = (byte) Integer.parseInt(hex.substring(30 - 2 * i, 32 - 2 * i), 16);
+        }
+        byte[] out = font.clone();
+        for (int i = 0; i < Math.min(32, out.length); i++) {
+            out[i] ^= key[i % 16];
+        }
+        return out;
     }
 
     static String core(String title, String author) {

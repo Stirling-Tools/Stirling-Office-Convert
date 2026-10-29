@@ -13,11 +13,14 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.UUID;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
 import stirling.software.officeconvert.build.DocSink;
+import stirling.software.officeconvert.html.PdfWebFonts;
 import stirling.software.officeconvert.model.Block;
 import stirling.software.officeconvert.model.Numbering;
 import stirling.software.officeconvert.model.Paragraph;
@@ -67,6 +70,11 @@ public final class DocxWriter implements DocSink, Closeable {
     }
 
     public DocxWriter(OutputStream target) throws IOException {
+        this(target, null);
+    }
+
+    public DocxWriter(OutputStream target, PdfWebFonts sourceFonts) throws IOException {
+        ctx.sourceFonts = sourceFonts;
         this.zip = new ZipOutputStream(new BufferedOutputStream(new KeepOpen(target), 1 << 16), StandardCharsets.UTF_8);
         this.zip.setLevel(6);
         this.out = new BufferedWriter(new OutputStreamWriter(zip, StandardCharsets.UTF_8), 1 << 16);
@@ -169,13 +177,14 @@ public final class DocxWriter implements DocSink, Closeable {
             subPart("word/footnotes.xml", "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<w:footnotes " + NS + ">" + sep + footnotes + "</w:footnotes>");
         }
         entry("word/styles.xml", StylesPart.xml(styleSheet));
-        entry("word/settings.xml", PackageParts.settings(hf, hasFootnotes(), styleSheet.hyphenation));
-        entry("word/fontTable.xml", PackageParts.fontTable(ctx.fonts));
+        Map<String, String> embeds = embedFonts();
+        entry("word/settings.xml", PackageParts.settings(hf, hasFootnotes(), styleSheet.hyphenation, !embeds.isEmpty()));
+        entry("word/fontTable.xml", PackageParts.fontTable(ctx.fonts, embeds));
         for (Object[] m : mediaFiles) {
             ZipParts.picture(zip, "word/media/" + m[0], m[1] instanceof byte[] b ? b : spill.read((SpillFile.Block) m[1]));
         }
         entry("word/_rels/document.xml.rels", PackageParts.documentRels(hasNumbering, hasFootnotes(), partRels, ctx));
-        entry("[Content_Types].xml", PackageParts.contentTypes(hasNumbering, hasFootnotes(), partRels));
+        entry("[Content_Types].xml", PackageParts.contentTypes(hasNumbering, hasFootnotes(), partRels, !embeds.isEmpty()));
         entry("_rels/.rels",
                 "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
                         + "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">"
@@ -190,6 +199,44 @@ public final class DocxWriter implements DocSink, Closeable {
                         + "<Application>Stirling-PDF</Application></Properties>");
         zip.finish();
     }
+
+    private Map<String, String> embedFonts() throws IOException {
+        if (ctx.sourceFonts == null) {
+            return Map.of();
+        }
+        Map<String, String[]> tags = new LinkedHashMap<>();
+        StringBuilder rels = new StringBuilder("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+                + "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">");
+        int n = 0;
+        for (PdfWebFonts.Embedded e : ctx.sourceFonts.embedded()) {
+            n++;
+            String guid = "{" + UUID.nameUUIDFromBytes(e.sfnt()).toString().toUpperCase(Locale.ROOT) + "}";
+            zip.putNextEntry(new ZipEntry("word/fonts/font" + n + ".odttf"));
+            zip.write(PackageParts.obfuscate(e.sfnt(), guid));
+            zip.closeEntry();
+            rels.append("<Relationship Id=\"rIdFont").append(n).append("\" Type=\"").append(PackageParts.REL)
+                    .append("font\" Target=\"fonts/font").append(n).append(".odttf\"/>");
+            int slot = (e.bold() ? 1 : 0) + (e.italic() ? 2 : 0);
+            tags.computeIfAbsent(e.family(), k -> new String[4])[slot] = "<w:embed" + EMBED_KINDS.get(slot) + " r:id=\"rIdFont"
+                    + n + "\" w:fontKey=\"" + guid + "\"/>";
+        }
+        if (n == 0) {
+            return Map.of();
+        }
+        entry("word/_rels/fontTable.xml.rels", rels.append("</Relationships>").toString());
+        Map<String, String> out = new HashMap<>();
+        for (Map.Entry<String, String[]> t : tags.entrySet()) {
+            StringBuilder sb = new StringBuilder();
+            for (String tag : t.getValue()) {
+                sb.append(tag == null ? "" : tag);
+            }
+            out.put(t.getKey(), sb.toString());
+            ctx.fonts.add(t.getKey());
+        }
+        return out;
+    }
+
+    private static final List<String> EMBED_KINDS = List.of("Regular", "Bold", "Italic", "BoldItalic");
 
     private void writeHeaderPart(String kind, String type, List<Paragraph> content, Map<String, String> partRels)
             throws IOException {
