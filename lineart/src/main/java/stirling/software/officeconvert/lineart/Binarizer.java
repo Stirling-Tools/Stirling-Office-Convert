@@ -98,7 +98,7 @@ final class Binarizer {
                 scan(greys, w, h, window / 2,
                         (buffer, first, from, to) -> sauvola(buffer, first, w, h, from, to, window, options.k(), out));
             }
-            case EDGES -> edges(greys, w, h, options.edgeLevel(), options.threshold(), out, keepEdges);
+            case EDGES -> edges(greys, w, h, options.edgeLevel(), out, keepEdges);
         }
         return options.inkColour() ? out.withInk(meanInk(source, rows, out)) : out;
     }
@@ -242,7 +242,7 @@ final class Binarizer {
         return table;
     }
 
-    private static void edges(Greys greys, int w, int h, int level, double threshold, Bitmap out, boolean keep)
+    private static void edges(Greys greys, int w, int h, int level, Bitmap out, boolean keep)
             throws IOException {
         float[] line = new float[w];
         double[][] ring = new double[2 * level + 1][];
@@ -256,15 +256,14 @@ final class Binarizer {
                     band.accept(y, line, 1);
                 }
             });
-        }, w, h, threshold, out, keep);
+        }, w, h, out, keep);
     }
 
-    static void thresholdEdges(Greys lines, int w, int h, double threshold, Bitmap out) throws IOException {
-        thresholdEdges(lines, w, h, threshold, out, false);
+    static void thresholdEdges(Greys lines, int w, int h, Bitmap out) throws IOException {
+        thresholdEdges(lines, w, h, out, false);
     }
 
-    static void thresholdEdges(Greys lines, int w, int h, double threshold, Bitmap out, boolean keep)
-            throws IOException {
+    static void thresholdEdges(Greys lines, int w, int h, Bitmap out, boolean keep) throws IOException {
         double[] histogram = new double[65536];
         char[] bins = keep ? new char[Math.multiplyExact(w, h)] : null;
         lines.each((y, line, rows) -> {
@@ -277,42 +276,15 @@ final class Binarizer {
                 }
             }
         });
-        double n = (double) w * h;
-        double blackPoint = 0.02 * n;
-        double whitePoint = 0.99 * n;
-        int black = 0;
-        double sum = 0;
-        for (; black <= 65535; black++) {
-            sum += histogram[black];
-            if (sum > blackPoint) {
-                break;
-            }
+        double[] first = stretch(histogram, (double) w * h);
+        double[] again = new double[65536];
+        for (int j = 0; j < first.length; j++) {
+            again[bin((float) first[j])] += histogram[j];
         }
-        int white = 65535;
-        sum = 0;
-        for (; white != 0; white--) {
-            sum += histogram[white];
-            if (sum > n - whitePoint) {
-                break;
-            }
-        }
-        double cut = threshold / 100 * QUANTUM;
-        if (white == black) {
-            lines.each((y, line, rows) -> {
-                for (int x = 0; x < w; x++) {
-                    if (line[x] < cut) {
-                        out.set(x, y);
-                    }
-                }
-            });
-            return;
-        }
-        double gamma = 1.0 / (white - black);
+        double[] second = stretch(again, (double) w * h);
         boolean[] ink = new boolean[65536];
         for (int j = 0; j < ink.length; j++) {
-            double value = j < black ? 0 : j > white ? QUANTUM
-                    : (float) Math.clamp(QUANTUM * gamma * (j - black), 0, QUANTUM);
-            ink[j] = value < cut;
+            ink[j] = second[bin((float) first[j])] <= QUANTUM / 2;
         }
         if (bins != null) {
             for (int y = 0; y < h; y++) {
@@ -333,6 +305,34 @@ final class Binarizer {
                 }
             }
         });
+    }
+
+    private static double[] stretch(double[] histogram, double n) {
+        double blackPoint = 0.02 * n;
+        double whitePoint = 0.99 * n;
+        int black = 0;
+        double sum = 0;
+        for (; black <= 65535; black++) {
+            sum += histogram[black];
+            if (sum > blackPoint) {
+                break;
+            }
+        }
+        int white = 65535;
+        sum = 0;
+        for (; white != 0; white--) {
+            sum += histogram[white];
+            if (sum > n - whitePoint) {
+                break;
+            }
+        }
+        double[] map = new double[65536];
+        double gamma = white == black ? 0 : 1.0 / (white - black);
+        for (int j = 0; j < map.length; j++) {
+            map[j] = white == black ? j : j < black ? 0 : j > white ? QUANTUM
+                    : (float) Math.clamp(QUANTUM * gamma * (j - black), 0, QUANTUM);
+        }
+        return map;
     }
 
     static long edgeBytes(int w, int h) {
