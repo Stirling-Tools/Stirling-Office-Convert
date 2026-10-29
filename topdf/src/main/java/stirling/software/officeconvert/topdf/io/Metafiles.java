@@ -480,6 +480,10 @@ final class Metafiles {
                 super.drawImage(jpeg, xform, null);
                 return;
             }
+            if (img instanceof BufferedImage b && !b.isAlphaPremultiplied()) {
+                super.drawImage(b, xform, null);
+                return;
+            }
             super.drawRenderedImage(img, xform);
         }
 

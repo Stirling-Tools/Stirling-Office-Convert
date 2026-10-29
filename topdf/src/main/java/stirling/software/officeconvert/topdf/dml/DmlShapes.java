@@ -19,6 +19,8 @@ import org.apache.poi.sl.draw.geom.PresetGeometries;
 import org.w3c.dom.Element;
 import org.w3c.dom.Node;
 
+import stirling.software.officeconvert.topdf.io.SafeImageRenderer;
+
 /** DrawingML preset and custom shape outlines, shared by the renderers that draw shapes themselves. */
 public final class DmlShapes {
 
@@ -74,7 +76,7 @@ public final class DmlShapes {
         } else {
             sy = box.getHeight() == 0 || h == 0 ? 1 : box.getHeight() / h;
         }
-        Context ctx = new Context(geom, new Rectangle2D.Double(0, 0, w, h), guide -> {
+        Context ctx = SafeImageRenderer.geometry(geom, new Rectangle2D.Double(0, 0, w, h), guide -> {
             Long v = adjust == null ? null : adjust.get(guide);
             if (v == null) {
                 return null;

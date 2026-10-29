@@ -4,11 +4,15 @@ import java.awt.Dimension;
 import java.awt.Graphics2D;
 import java.awt.Insets;
 import java.awt.RenderingHints;
+import java.awt.geom.AffineTransform;
 import java.awt.geom.Dimension2D;
+import java.awt.geom.Path2D;
 import java.awt.geom.Rectangle2D;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
 import java.util.function.Consumer;
@@ -18,11 +22,27 @@ import org.apache.pdfbox.pdmodel.graphics.form.PDFormXObject;
 import org.apache.poi.hemf.draw.HemfImageRenderer;
 import org.apache.poi.hwmf.draw.HwmfImageRenderer;
 import org.apache.poi.sl.draw.BitmapImageRenderer;
+import org.apache.poi.sl.draw.DrawConnectorShape;
 import org.apache.poi.sl.draw.DrawFactory;
+import org.apache.poi.sl.draw.DrawFreeformShape;
+import org.apache.poi.sl.draw.DrawShape;
+import org.apache.poi.sl.draw.DrawTextBox;
+import org.apache.poi.sl.draw.DrawTextShape;
 import org.apache.poi.sl.draw.Drawable;
 import org.apache.poi.sl.draw.ImageRenderer;
+import org.apache.poi.sl.draw.geom.Context;
+import org.apache.poi.sl.draw.geom.CustomGeometry;
+import org.apache.poi.sl.draw.geom.IAdjustableShape;
+import org.apache.poi.sl.draw.geom.Outline;
+import org.apache.poi.sl.draw.geom.PathIf;
+import org.apache.poi.sl.usermodel.ConnectorShape;
+import org.apache.poi.sl.usermodel.FreeformShape;
 import org.apache.poi.sl.usermodel.Shape;
 import org.apache.poi.sl.usermodel.Sheet;
+import org.apache.poi.sl.usermodel.SimpleShape;
+import org.apache.poi.sl.usermodel.TextBox;
+import org.apache.poi.sl.usermodel.TextShape;
+import org.apache.poi.util.Units;
 
 import de.rototor.pdfbox.graphics2d.IPdfBoxGraphics2DFontTextDrawer;
 
@@ -48,6 +68,7 @@ public final class SafeImageRenderer implements ImageRenderer {
 
     public static void install(Graphics2D g) {
         Objects.requireNonNull(g, "graphics").setRenderingHint(Drawable.IMAGE_RENDERER, new SafeImageRenderer());
+        g.setRenderingHint(Drawable.DRAW_FACTORY, LiteralShapes.INSTANCE);
     }
 
     public static void draw(Graphics2D g, Sheet<?, ?> sheet) {
@@ -87,6 +108,10 @@ public final class SafeImageRenderer implements ImageRenderer {
         Objects.requireNonNull(doc, "doc");
         Objects.requireNonNull(sheet, "sheet");
         return Metafiles.sheetParts(doc, sheet, width, height, text, Objects.requireNonNull(skipped, "skipped"));
+    }
+
+    public static Context geometry(CustomGeometry geom, Rectangle2D anchor, IAdjustableShape props) {
+        return new LiteralContext(geom, anchor, props);
     }
 
     public PictureDecoder.Kind kind() {
@@ -366,6 +391,94 @@ public final class SafeImageRenderer implements ImageRenderer {
         public boolean drawImage(Graphics2D graphics, Rectangle2D anchor, Insets clip) {
             pict.draw(graphics, anchor);
             return true;
+        }
+    }
+
+    private static final class LiteralShapes extends DrawFactory {
+
+        private static final LiteralShapes INSTANCE = new LiteralShapes();
+
+        private LiteralShapes() {}
+
+        @Override
+        public DrawTextBox getDrawable(TextBox<?, ?> shape) {
+            return new DrawTextBox(shape) {
+                @Override
+                protected Collection<Outline> computeOutlines(Graphics2D graphics) {
+                    return outlines(getShape(), graphics);
+                }
+            };
+        }
+
+        @Override
+        public DrawFreeformShape getDrawable(FreeformShape<?, ?> shape) {
+            return new DrawFreeformShape(shape) {
+                @Override
+                protected Collection<Outline> computeOutlines(Graphics2D graphics) {
+                    return outlines(getShape(), graphics);
+                }
+            };
+        }
+
+        @Override
+        public DrawTextShape getDrawable(TextShape<?, ?> shape) {
+            return new DrawTextShape(shape) {
+                @Override
+                protected Collection<Outline> computeOutlines(Graphics2D graphics) {
+                    return outlines(getShape(), graphics);
+                }
+            };
+        }
+
+        @Override
+        public DrawConnectorShape getDrawable(ConnectorShape<?, ?> shape) {
+            return new DrawConnectorShape(shape) {
+                @Override
+                protected Collection<Outline> computeOutlines(Graphics2D graphics) {
+                    return outlines(getShape(), graphics);
+                }
+            };
+        }
+
+        private static List<Outline> outlines(SimpleShape<?, ?> shape, Graphics2D graphics) {
+            List<Outline> out = new ArrayList<>();
+            CustomGeometry geom = shape.getGeometry();
+            if (geom == null) {
+                return out;
+            }
+            Rectangle2D anchor = DrawShape.getAnchor(graphics, shape);
+            if (anchor == null) {
+                return out;
+            }
+            for (PathIf p : geom) {
+                double w = p.getW();
+                double h = p.getH();
+                double sx;
+                double sy;
+                if (w == -1) {
+                    w = Units.toEMU(anchor.getWidth());
+                    sx = Units.toPoints(1);
+                } else if (anchor.getWidth() == 0) {
+                    sx = 1;
+                } else {
+                    sx = anchor.getWidth() / w;
+                }
+                if (h == -1) {
+                    h = Units.toEMU(anchor.getHeight());
+                    sy = Units.toPoints(1);
+                } else if (anchor.getHeight() == 0) {
+                    sy = 1;
+                } else {
+                    sy = anchor.getHeight() / h;
+                }
+                Context ctx = new LiteralContext(geom, new Rectangle2D.Double(0, 0, w, h), shape);
+                Path2D.Double path = p.getPath(ctx);
+                AffineTransform at = new AffineTransform();
+                at.translate(anchor.getX(), anchor.getY());
+                at.scale(sx, sy);
+                out.add(new Outline(at.createTransformedShape(path), p));
+            }
+            return out;
         }
     }
 }
