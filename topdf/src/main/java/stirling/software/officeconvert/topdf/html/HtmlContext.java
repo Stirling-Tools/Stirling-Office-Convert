@@ -76,6 +76,20 @@ final class HtmlContext {
         boxes--;
     }
 
+    private int cells;
+
+    int cells() {
+        return cells;
+    }
+
+    void enterCell() {
+        cells++;
+    }
+
+    void leaveCell() {
+        cells--;
+    }
+
     HtmlContext(Cascade cascade, StyleSheet styles, DocSink sink, List<String> warnings, Section page, Linked linked) {
         this.cascade = cascade;
         this.styles = styles;

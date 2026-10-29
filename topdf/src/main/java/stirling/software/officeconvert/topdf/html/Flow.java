@@ -660,8 +660,8 @@ final class Flow {
             // a cell cannot hold a row, so a longer one inside, like a carousel, keeps its columns instead
             plan = null;
         }
-        if (plan != null && inCell && !plan.inline()) {
-            // a cell cannot hold a table of columns, but a row of short items still fits on one line
+        if (plan != null && inCell && !plan.inline() && (paragraphsOnly || ctx.cells() >= Table.MAX_NESTING)) {
+            // a cell nested too deep cannot hold a table of columns, but a row of short items still fits on one line
             plan = null;
         }
         boolean tall = !absolutes.isEmpty() && height(d, look) > 0 && e.selectFirst("table") == null;
@@ -1071,7 +1071,12 @@ final class Flow {
         cell.right = HtmlTables.border(d, "right", 0);
         Flow inner = new Flow(ctx, cell::add, true);
         inner.pad(Math.max(0, padding(d.get("padding-top"), em, frame.width())));
-        inner.children(e, look, new Frame(0, 0, Math.max(24, width - padLeft - padRight), -1), depth);
+        ctx.enterCell();
+        try {
+            inner.children(e, look, new Frame(0, 0, Math.max(24, width - padLeft - padRight), -1), depth);
+        } finally {
+            ctx.leaveCell();
+        }
         float padBottom = Math.max(0, padding(d.get("padding-bottom"), em, frame.width()));
         float padTop = Math.max(0, padding(d.get("padding-top"), em, frame.width()));
         Float tall = boxLength(d.get("height"), look, 0);
@@ -1394,7 +1399,12 @@ final class Flow {
             inner.sized = item;
             inner.besideLeft = besideLeft;
             inner.besideRight = besideRight;
-            inner.single(item, look, new Frame(0, 0, Math.max(24, width - gap), -1), depth + 1);
+            ctx.enterCell();
+            try {
+                inner.single(item, look, new Frame(0, 0, Math.max(24, width - gap), -1), depth + 1);
+            } finally {
+                ctx.leaveCell();
+            }
         }
         return cell;
     }

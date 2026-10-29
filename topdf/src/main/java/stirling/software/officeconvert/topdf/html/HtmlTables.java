@@ -182,8 +182,13 @@ final class HtmlTables {
             extraRight = 0;
         }
         Flow flow = new Flow(ctx, s.cell()::add, true);
-        flow.children(s.element(), s.look(), new Flow.Frame(0, 0, Math.max(MIN_COLUMN, inner - extraLeft - extraRight), -1),
-                depth);
+        ctx.enterCell();
+        try {
+            flow.children(s.element(), s.look(), new Flow.Frame(0, 0, Math.max(MIN_COLUMN, inner - extraLeft - extraRight), -1),
+                    depth);
+        } finally {
+            ctx.leaveCell();
+        }
         if (s.cell().empty()) {
             return;
         }
