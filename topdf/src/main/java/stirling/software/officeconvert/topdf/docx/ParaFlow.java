@@ -215,6 +215,7 @@ final class ParaFlow {
             float yy = top + topExtra;
             boolean complete = false;
             float estimate = pi.markLook.ascent() + pi.markLook.descent();
+            int spill = Math.max(2, pp.widowLines());
             while (true) {
                 float pre = lines.isEmpty() ? gap + topExtra : 0;
                 Line line = layoutLine(lb, pi, pp, r, grid, yy, pre, estimate);
@@ -239,7 +240,8 @@ final class ParaFlow {
                     complete = true;
                     break;
                 }
-                if (r.paginated() && yy > r.limit() && lines.size() > 2 && tops.get(lines.size() - 2) > r.limit()) {
+                if (r.paginated() && yy > r.limit() && lines.size() > spill
+                        && tops.get(lines.size() - spill) > r.limit()) {
                     break;
                 }
             }
@@ -300,13 +302,14 @@ final class ParaFlow {
                     if (Boolean.TRUE.equals(pp.keepLines) && firstPart && !r.atTop()) {
                         k = 0;
                     }
-                    boolean widow = !Boolean.FALSE.equals(pp.widowControl);
-                    if (widow && k > 0) {
-                        if (firstPart && k == 1 && (n > 1 || !complete)) {
+                    int orphans = pp.orphanLines();
+                    int widows = pp.widowLines();
+                    if (k > 0) {
+                        if (firstPart && k < orphans) {
                             k = 0;
-                        } else if (complete && n - k == 1 && !"page".equals(lines.get(n - 1).breakType)) {
-                            k--;
-                            if (firstPart && k == 1) {
+                        } else if (complete && n - k < widows && !"page".equals(lines.get(n - 1).breakType)) {
+                            k = Math.max(0, n - widows);
+                            if (firstPart && k < orphans) {
                                 k = 0;
                             }
                         }
@@ -650,8 +653,9 @@ final class ParaFlow {
         }
         float total = 0;
         float first = 0;
-        float firstTwo = 0;
+        float firstLines = 0;
         int count = 0;
+        int orphans = p.pp.orphanLines();
         float grid = gridPitch(r);
         while (true) {
             float left = p.pp.left() + (lb.first() ? p.pp.first() : 0);
@@ -662,8 +666,8 @@ final class ParaFlow {
             if (count == 0) {
                 first = line.height - line.slack;
             }
-            if (count < 2) {
-                firstTwo += line.height - (count == 0 ? 0 : line.slack);
+            if (count < orphans) {
+                firstLines += line.height - (count == orphans - 1 ? line.slack : 0);
             }
             count++;
             // Lines after a page or column break go to the next frame anyway, so they cannot be kept here
@@ -674,8 +678,13 @@ final class ParaFlow {
         }
         float before = p.pp.before == null ? 0 : p.pp.before;
         float after = after(p, next, r);
-        boolean widow = !Boolean.FALSE.equals(p.pp.widowControl) && count > 1;
-        // Widow control splits a three-line paragraph nowhere, so it keeps with the paragraph before only whole
-        return new float[] {before, total, after, !widow ? first : count == 3 ? total : firstTwo};
+        // Widow control splits a paragraph shorter than its orphans and widows together nowhere, so it keeps with
+        // the paragraph before only whole
+        int widows = p.pp.widowLines();
+        float kept = count == 1 ? first
+                : count <= orphans ? firstLines
+                : count < orphans + widows ? total
+                : orphans > 1 ? firstLines : first;
+        return new float[] {before, total, after, kept};
     }
 }

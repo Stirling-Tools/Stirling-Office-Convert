@@ -11,6 +11,7 @@ public final class StyleSheet {
     public final RunStyle normal;
     public Scripts.Profile scripts = new Scripts.Profile();
     public boolean hyphenation;
+    public boolean widowControl;
 
     public StyleSheet(RunStyle normal) {
         this.normal = normal;

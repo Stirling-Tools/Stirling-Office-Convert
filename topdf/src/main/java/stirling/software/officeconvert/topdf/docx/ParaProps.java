@@ -29,6 +29,8 @@ final class ParaProps {
     Boolean keepLines;
     Boolean pageBreakBefore;
     Boolean widowControl;
+    Integer widows;
+    Integer orphans;
     Boolean bidi;
     Boolean snapToGrid;
     Boolean suppressAutoHyphens;
@@ -76,7 +78,11 @@ final class ParaProps {
         keepNext = o.keepNext != null ? o.keepNext : keepNext;
         keepLines = o.keepLines != null ? o.keepLines : keepLines;
         pageBreakBefore = o.pageBreakBefore != null ? o.pageBreakBefore : pageBreakBefore;
-        widowControl = o.widowControl != null ? o.widowControl : widowControl;
+        if (o.widowControl != null) {
+            widowControl = o.widowControl;
+            widows = o.widows;
+            orphans = o.orphans;
+        }
         bidi = o.bidi != null ? o.bidi : bidi;
         snapToGrid = o.snapToGrid != null ? o.snapToGrid : snapToGrid;
         suppressAutoHyphens = o.suppressAutoHyphens != null ? o.suppressAutoHyphens : suppressAutoHyphens;
@@ -141,7 +147,11 @@ final class ParaProps {
                 case "w:keepNext" -> keepNext = Ooxml.on(k);
                 case "w:keepLines" -> keepLines = Ooxml.on(k);
                 case "w:pageBreakBefore" -> pageBreakBefore = Ooxml.on(k);
-                case "w:widowControl" -> widowControl = Ooxml.on(k);
+                case "w:widowControl" -> {
+                    widowControl = Ooxml.on(k);
+                    widows = Ooxml.integer(k.attr("so:widows"));
+                    orphans = Ooxml.integer(k.attr("so:orphans"));
+                }
                 case "w:bidi" -> bidi = Ooxml.on(k);
                 case "w:snapToGrid" -> snapToGrid = Ooxml.on(k);
                 case "w:suppressAutoHyphens" -> suppressAutoHyphens = Ooxml.on(k);
@@ -259,6 +269,14 @@ final class ParaProps {
                 }
             }
         }
+    }
+
+    int widowLines() {
+        return Boolean.FALSE.equals(widowControl) ? 1 : widows == null ? 2 : Math.max(1, widows);
+    }
+
+    int orphanLines() {
+        return Boolean.FALSE.equals(widowControl) ? 1 : orphans == null ? 2 : Math.max(1, orphans);
     }
 
     float left() {

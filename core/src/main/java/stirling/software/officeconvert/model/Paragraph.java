@@ -48,6 +48,8 @@ public final class Paragraph implements Block {
     public boolean bidi;
     public boolean noHangingPunctuation;
     public boolean hyphenate;
+    public int widows = 2;
+    public int orphans = 2;
     public int shading = -1;
     public float borderBottom;
     public int borderBottomRgb;

@@ -10,7 +10,11 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.TreeMap;
 
 import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.pdmodel.PDDocument;
@@ -152,6 +156,78 @@ class HtmlLayoutTest {
             for (int i = 0; i < 9; i++) {
                 assertEquals(l.word("Start" + i).page(), l.word("End" + i).page(), box + ": box " + i);
             }
+        }
+    }
+
+    private Map<Integer, Integer> linesPerPage(String style, int filler) throws IOException {
+        StringBuilder text = new StringBuilder();
+        for (int i = 0; i < 150; i++) {
+            text.append("w").append(i).append(' ');
+        }
+        StringBuilder html = new StringBuilder("<html><head><style>@page{margin:72pt}"
+                + "p{margin:0;font-size:12pt;line-height:14pt}</style></head><body>");
+        for (int i = 0; i < filler; i++) {
+            html.append("<p>line ").append(i).append("</p>");
+        }
+        html.append("<p style='margin-left:54pt;").append(style).append("'>").append(text).append("</p>");
+        Laid l = lay(html.append("<p>after</p></body></html>").toString());
+        Map<Integer, Set<Float>> lines = new TreeMap<>();
+        for (Word w : l.words()) {
+            if (w.text().matches("w\\d+")) {
+                lines.computeIfAbsent(w.page(), k -> new HashSet<>()).add(w.top());
+            }
+        }
+        Map<Integer, Integer> counts = new TreeMap<>();
+        lines.forEach((page, tops) -> counts.put(page, tops.size()));
+        return counts;
+    }
+
+    @Test
+    void aParagraphKeepsAsManyLinesTogetherAsItsWidowsAndOrphansAsk() throws IOException {
+        for (String style : new String[] {"", "widows:3;orphans:3", "widows:1;orphans:1"}) {
+            int fewest = Integer.MAX_VALUE;
+            for (int filler = 40; filler < 50; filler++) {
+                Map<Integer, Integer> counts = linesPerPage(style, filler);
+                if (counts.size() > 1) {
+                    fewest = Math.min(fewest, counts.values().stream().min(Integer::compare).orElseThrow());
+                }
+            }
+            int expected = style.isEmpty() ? 2 : style.startsWith("widows:3") ? 3 : 1;
+            assertEquals(expected, fewest, "the fewest lines left on a page with '" + style + "'");
+        }
+    }
+
+    @Test
+    void aHeadingBeforeAForcedPageBreakStaysWithTheTextAboveIt() throws IOException {
+        String head = "<html><head><style>@page{margin:72pt}p,h2{margin:0;font-size:12pt;line-height:14pt}</style>"
+                + "</head><body>";
+        StringBuilder fill = new StringBuilder();
+        for (int i = 0; i < 80; i++) {
+            fill.append("<p>line</p>");
+        }
+        int room = (int) lay(head + fill + "</body></html>").words().stream().filter(w -> w.page() == 1).count();
+        for (int filler = room - 4; filler < room; filler++) {
+            String html = head + "<p>line</p>".repeat(filler)
+                    + "<h2>Heading</h2><p style='break-before:page'>first second<br>third<br>fourth</p></body></html>";
+            Laid l = lay(html);
+            assertEquals(1, l.word("Heading").page(), "with " + filler + " of " + room + " lines filled");
+            assertEquals(2, l.word("first").page());
+            assertEquals(2, l.pages());
+        }
+    }
+
+    @Test
+    void aBoldLabelStaysWithTheParagraphItIntroduces() throws IOException {
+        String head = "<html><head><style>@page{margin:72pt}p{margin:0;font-size:12pt;line-height:14pt}</style>"
+                + "</head><body>";
+        int room = (int) lay(head + "<p>line</p>".repeat(80) + "</body></html>").words().stream()
+                .filter(w -> w.page() == 1).count();
+        for (int filler = room - 4; filler < room; filler++) {
+            String html = head + "<p>line</p>".repeat(filler)
+                    + "<p><strong>Label</strong></p><p>first<br>second<br>third<br>fourth</p></body></html>";
+            Laid l = lay(html);
+            assertEquals(l.word("first").page(), l.word("Label").page(),
+                    "with " + filler + " of " + room + " lines filled");
         }
     }
 
