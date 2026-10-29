@@ -13,6 +13,10 @@ public interface SlideSink extends PlacedContent.MediaStore, AutoCloseable {
 
     void slide(Slide slide) throws IOException;
 
+    default boolean draws(Gradient gradient) {
+        return true;
+    }
+
     void finish(String title, String author) throws IOException;
 
     @Override

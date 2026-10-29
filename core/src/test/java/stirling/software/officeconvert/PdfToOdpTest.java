@@ -68,6 +68,24 @@ class PdfToOdpTest {
     }
 
     @Test
+    void aRadialShadingIsANamedRadialGradient() throws Exception {
+        Path pdf = SlideFixtures.shaded(dir, "radial",
+                SlideFixtures.radial(480, 270, 550.73f, new float[] {1, 1, 1}, new float[] {0.3f, 0.6f, 0.1f}));
+        Path out = dir.resolve("radial.odp");
+        PdfToOdp.convert(pdf, out, PdfToPptx.Options.defaults());
+        Map<String, byte[]> files = SlideFixtures.parts(Files.readAllBytes(out));
+        String content = SlideFixtures.text(files, "content.xml");
+        String styles = SlideFixtures.text(files, "styles.xml");
+        assertEquals(0, count(content, "<draw:image "), content);
+        assertTrue(content.contains("draw:fill=\"gradient\" draw:fill-gradient-name=\"Gradient_1\""), content);
+        assertTrue(styles.contains("<draw:gradient draw:name=\"Gradient_1\" draw:style=\"radial\" draw:cx=\"50%\" draw:cy=\"50%\""
+                + " draw:angle=\"0deg\" draw:start-color=\"#4d991a\" draw:end-color=\"#ffffff\""), styles);
+        assertTrue(styles.contains("<loext:gradient-stop svg:offset=\"1.0000\" loext:color-type=\"rgb\" loext:color-value=\"#ffffff\"/>"),
+                styles);
+        DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(new ByteArrayInputStream(files.get("styles.xml")));
+    }
+
+    @Test
     void aRoundCappedLineKeepsItsCaps() throws Exception {
         Path out = dir.resolve("strokes.odp");
         PdfToOdp.convert(SlideFixtures.strokes(dir), out, PdfToPptx.Options.defaults());

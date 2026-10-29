@@ -56,7 +56,7 @@ class ArtShadingTest {
         AffineTransform toDisplay = new AffineTransform(1, 0, 0, -1, 0, 405);
         PaintOrder paint = PaintOrder.read(doc.getPage(index), toDisplay, 720, 405);
         Store store = new Store();
-        List<Art.Piece> pieces = new Art(doc, store, 150f, false).pieces(paint, Set.of(), index, toDisplay, 720, 405);
+        List<Art.Piece> pieces = new Art(doc, store, 150f, false, g -> false).pieces(paint, Set.of(), index, toDisplay, 720, 405);
         assertEquals(1, pieces.size());
         return store.made.get(0).pixelWidth() * 72f / ((PictureShape) pieces.get(0).shape()).frame().width();
     }

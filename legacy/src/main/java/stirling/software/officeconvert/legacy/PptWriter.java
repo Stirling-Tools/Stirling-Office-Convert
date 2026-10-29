@@ -29,6 +29,7 @@ import org.apache.poi.sl.usermodel.StrokeStyle.LineCap;
 import stirling.software.officeconvert.model.Picture;
 import stirling.software.officeconvert.model.Scripts;
 import stirling.software.officeconvert.slides.Frame;
+import stirling.software.officeconvert.slides.Gradient;
 import stirling.software.officeconvert.slides.LineShape;
 import stirling.software.officeconvert.slides.PathShape;
 import stirling.software.officeconvert.slides.PictureShape;
@@ -194,6 +195,11 @@ public final class PptWriter implements SlideSink {
         }
         shape.setLineColor(null);
         s.addShape(shape);
+    }
+
+    @Override
+    public boolean draws(Gradient gradient) {
+        return false;
     }
 
     private static void closeSubpaths(HSLFFreeformShape shape, Path2D path) {

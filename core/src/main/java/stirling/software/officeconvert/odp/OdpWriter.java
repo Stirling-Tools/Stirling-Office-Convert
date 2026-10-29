@@ -170,7 +170,8 @@ public final class OdpWriter implements SlideSink {
         w.write("</office:presentation></office:body></office:document-content>");
         w.flush();
         zip.closeEntry();
-        entry("styles.xml", OdpParts.styles(width, height, styles.fontDecls(), mostUsedFont(), backgrounds));
+        entry("styles.xml", OdpParts.styles(width, height, styles.fontDecls(), mostUsedFont(), backgrounds,
+                styles.gradients()));
         entry("meta.xml", OdpParts.meta(title, author, Instant.now().truncatedTo(ChronoUnit.SECONDS).toString()));
         List<String[]> manifest = new ArrayList<>();
         for (Map.Entry<String, Object> m : mediaData.entrySet()) {

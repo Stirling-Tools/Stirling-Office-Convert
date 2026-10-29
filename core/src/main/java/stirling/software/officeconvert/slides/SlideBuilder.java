@@ -45,7 +45,7 @@ final class SlideBuilder {
         boolean lossless = pictures == Pictures.LOSSLESS;
         PlacedContent.MediaStore media = new SlideMedia(sink, lossless);
         this.content = new PlacedContent(document, stats, media, figureDpi, dropHyphens, pictures);
-        this.art = new Art(document, media, figureDpi, lossless);
+        this.art = new Art(document, media, figureDpi, lossless, sink::draws);
         this.stats = stats;
         this.paragraphs = new ParagraphBuilder(stats);
         this.frames = new TextFrames(content, width);

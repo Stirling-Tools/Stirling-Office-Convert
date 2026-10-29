@@ -184,7 +184,15 @@ final class OdpSlideXml {
 
     private void path(StringBuilder sb, PathShape p) {
         StringBuilder g = new StringBuilder("<style:graphic-properties");
-        fillAndStroke(g, p.fillRgb(), p.alpha(), -1, 0);
+        if (p.gradient() != null) {
+            g.append(" draw:fill=\"gradient\" draw:fill-gradient-name=\"").append(styles.gradient(p.gradient())).append('"');
+            if (p.alpha() < 0.995f) {
+                g.append(" draw:opacity=\"").append(Math.round(p.alpha() * 100)).append("%\"");
+            }
+            g.append(" draw:stroke=\"none\"");
+        } else {
+            fillAndStroke(g, p.fillRgb(), p.alpha(), -1, 0);
+        }
         g.append(" draw:shadow=\"hidden\"/>");
         Rectangle2D t = p.path().getBounds2D();
         Frame f = new Frame((float) t.getX(), (float) t.getY(), (float) t.getWidth(), (float) t.getHeight());

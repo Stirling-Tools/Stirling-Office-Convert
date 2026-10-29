@@ -166,7 +166,11 @@ final class SlideXml {
             }
         }
         sb.append("</a:path></a:pathLst></a:custGeom>");
-        Ooxml.solidFill(sb, p.fillRgb(), p.alpha());
+        if (p.gradient() != null) {
+            Ooxml.gradFill(sb, p.gradient(), p.alpha());
+        } else {
+            Ooxml.solidFill(sb, p.fillRgb(), p.alpha());
+        }
         sb.append("<a:ln><a:noFill/></a:ln></p:spPr></p:sp>");
     }
 

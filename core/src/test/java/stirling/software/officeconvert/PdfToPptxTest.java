@@ -316,6 +316,77 @@ class PdfToPptxTest {
     }
 
     @Test
+    void aCentredRadialShadingIsACircleGradient() throws Exception {
+        Path pdf = SlideFixtures.shaded(dir, "radial",
+                SlideFixtures.radial(480, 270, 550.73f, new float[] {1, 1, 1}, new float[] {0.3f, 0.6f, 0.1f}));
+        Path out = dir.resolve("radial.pptx");
+        PdfToPptx.convert(pdf, out, PdfToPptx.Options.defaults());
+        Map<String, byte[]> files = SlideFixtures.parts(Files.readAllBytes(out));
+        String slide = SlideFixtures.text(files, "ppt/slides/slide1.xml");
+        assertEquals(0, count(slide, "<p:pic>"), slide);
+        assertFalse(files.keySet().stream().anyMatch(n -> n.startsWith("ppt/media/")));
+        assertTrue(slide.contains("<a:gsLst><a:gs pos=\"0\"><a:srgbClr val=\"FFFFFF\"/></a:gs><a:gs pos=\"50000\"><a:srgbClr val=\"A6CC8D\"/></a:gs>"
+                + "<a:gs pos=\"100000\">"
+                + "<a:srgbClr val=\"4D991A\"/></a:gs></a:gsLst><a:path path=\"circle\">"), slide);
+    }
+
+    @Test
+    void anAxialShadingIsALinearGradientAlongItsAxis() throws Exception {
+        Path pdf = SlideFixtures.shaded(dir, "axial",
+                SlideFixtures.axial(0, 540, 0, 0, new float[] {1, 0, 0}, new float[] {0, 0, 1}));
+        Path out = dir.resolve("axial.pptx");
+        PdfToPptx.convert(pdf, out, PdfToPptx.Options.defaults());
+        String slide = SlideFixtures.text(SlideFixtures.parts(Files.readAllBytes(out)), "ppt/slides/slide1.xml");
+        assertEquals(0, count(slide, "<p:pic>"), slide);
+        assertTrue(slide.contains("<a:gs pos=\"0\"><a:srgbClr val=\"FF0000\"/></a:gs><a:gs pos=\"50000\"><a:srgbClr val=\"800080\"/></a:gs>"
+                + "<a:gs pos=\"100000\">"
+                + "<a:srgbClr val=\"0000FF\"/></a:gs></a:gsLst><a:lin ang=\"5400000\" scaled=\"0\"/>"), slide);
+    }
+
+    @Test
+    void aGradientShapeBoxedByItsCurveNotItsControlPointsStaysAPicture() throws Exception {
+        Path drop = SlideFixtures.shaded(dir, "drop", SlideFixtures.axial(0, 300, 0, 420, new float[] {1, 0, 0}, new float[] {0, 0, 1}),
+                cs -> {
+                    cs.moveTo(130.25f, 423.81f);
+                    cs.curveTo(167.85f, 519.82f, 314.51f, 423.81f, 130.25f, 300.38f);
+                    cs.curveTo(-54.01f, 423.81f, 92.646f, 519.82f, 130.25f, 423.81f);
+                    cs.closePath();
+                });
+        Path out = dir.resolve("drop.pptx");
+        PdfToPptx.convert(drop, out, PdfToPptx.Options.defaults());
+        String slide = SlideFixtures.text(SlideFixtures.parts(Files.readAllBytes(out)), "ppt/slides/slide1.xml");
+        assertEquals(0, count(slide, "<a:gradFill"), slide);
+        assertEquals(1, count(slide, "<p:pic>"), slide);
+
+        float k = 0.5523f * 100;
+        Path circle = SlideFixtures.shaded(dir, "circle", SlideFixtures.radial(480, 270, 141.42f, new float[] {1, 1, 1}, new float[] {0, 0, 1}),
+                cs -> {
+                    cs.moveTo(380, 270);
+                    cs.curveTo(380, 270 + k, 480 - k, 370, 480, 370);
+                    cs.curveTo(480 + k, 370, 580, 270 + k, 580, 270);
+                    cs.curveTo(580, 270 - k, 480 + k, 170, 480, 170);
+                    cs.curveTo(480 - k, 170, 380, 270 - k, 380, 270);
+                    cs.closePath();
+                });
+        out = dir.resolve("circle.pptx");
+        PdfToPptx.convert(circle, out, PdfToPptx.Options.defaults());
+        slide = SlideFixtures.text(SlideFixtures.parts(Files.readAllBytes(out)), "ppt/slides/slide1.xml");
+        assertEquals(1, count(slide, "<a:path path=\"circle\">"), slide);
+        assertEquals(0, count(slide, "<p:pic>"), slide);
+    }
+
+    @Test
+    void anOffCentreRadialShadingStaysAPicture() throws Exception {
+        Path pdf = SlideFixtures.shaded(dir, "offcentre",
+                SlideFixtures.radial(300, 200, 400, new float[] {1, 1, 1}, new float[] {0.3f, 0.6f, 0.1f}));
+        Path out = dir.resolve("offcentre.pptx");
+        PdfToPptx.convert(pdf, out, PdfToPptx.Options.defaults());
+        String slide = SlideFixtures.text(SlideFixtures.parts(Files.readAllBytes(out)), "ppt/slides/slide1.xml");
+        assertEquals(0, count(slide, "<a:gradFill"), slide);
+        assertEquals(1, count(slide, "<p:pic>"), slide);
+    }
+
+    @Test
     void aStrokedLineKeepsItsCapsWidthAndClip() throws Exception {
         Path out = dir.resolve("strokes.pptx");
         PdfToPptx.convert(SlideFixtures.strokes(dir), out, PdfToPptx.Options.defaults());
