@@ -120,6 +120,11 @@ final class Art {
                 between.add(m);
                 continue;
             }
+            if (shapes && m.line() != null) {
+                drawn.add(new Piece(m.line(), m.order()));
+                between.add(m);
+                continue;
+            }
             if (shapes && m.shape() != null && m.outline() == PaintOrder.Outline.OTHER) {
                 Piece p = shape(m);
                 if (p != null) {

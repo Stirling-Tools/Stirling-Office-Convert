@@ -308,7 +308,7 @@ final class SlideBuilder {
                     || decorated(m, layout)) {
                 return false;
             } else {
-                shapes |= m.shape() != null;
+                shapes |= m.shape() != null || m.line() != null;
             }
         }
         if (!shapes || !art.drawable(stack.paint, skip, width, height)) {

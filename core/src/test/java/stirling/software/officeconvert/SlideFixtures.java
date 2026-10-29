@@ -89,6 +89,37 @@ final class SlideFixtures {
         return pdf;
     }
 
+    static Path ruledFacet(Path dir) throws IOException {
+        Path pdf = dir.resolve("ruled.pdf");
+        try (PDDocument doc = new PDDocument()) {
+            PDPage page = new PDPage(WIDE);
+            doc.addPage(page);
+            try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
+                cs.saveGraphicsState();
+                cs.addRect(0, 0, 960, 540);
+                cs.clip();
+                cs.setStrokingColor(0.75f, 0.75f, 0.75f);
+                cs.setLineWidth(0.75f);
+                cs.moveTo(737.87f, 540);
+                cs.lineTo(833.87f, 0);
+                cs.stroke();
+                PDExtendedGraphicsState gs = new PDExtendedGraphicsState();
+                gs.setNonStrokingAlphaConstant(0.6f);
+                cs.setGraphicsStateParameters(gs);
+                cs.setNonStrokingColor(0.25f, 0.5f, 0.75f);
+                cs.moveTo(700, 540);
+                cs.lineTo(960, 540);
+                cs.lineTo(960, 0);
+                cs.lineTo(820, 0);
+                cs.closePath();
+                cs.fill();
+                cs.restoreGraphicsState();
+            }
+            doc.save(pdf.toFile());
+        }
+        return pdf;
+    }
+
     static Path facets(Path dir) throws IOException {
         Path pdf = dir.resolve("facets.pdf");
         try (PDDocument doc = new PDDocument()) {

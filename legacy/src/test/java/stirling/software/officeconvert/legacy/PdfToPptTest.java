@@ -26,6 +26,7 @@ import org.apache.poi.ddf.AbstractEscherOptRecord;
 import org.apache.poi.ddf.EscherArrayProperty;
 import org.apache.poi.ddf.EscherPropertyTypes;
 import org.apache.poi.hslf.usermodel.HSLFFreeformShape;
+import org.apache.poi.hslf.usermodel.HSLFLine;
 import org.apache.poi.hslf.usermodel.HSLFShape;
 import org.apache.poi.hslf.usermodel.HSLFSlide;
 import org.apache.poi.hslf.usermodel.HSLFSlideShow;
@@ -205,6 +206,35 @@ class PdfToPptTest {
             assertEquals(0.5, f.getEscherProperty(EscherPropertyTypes.FILL__FILLOPACITY) / 65536.0, 0.01);
             assertEquals(500, f.getAnchor().getX(), 0.5);
             assertEquals(220, f.getAnchor().getWidth(), 0.5);
+        }
+    }
+
+    @Test
+    void aStraightRuleIsALine() throws IOException {
+        Path pdf = dir.resolve("rule.pdf");
+        try (PDDocument doc = new PDDocument()) {
+            PDPage page = new PDPage(new PDRectangle(720, 540));
+            doc.addPage(page);
+            try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
+                cs.setStrokingColor(0.75f, 0.75f, 0.75f);
+                cs.setLineWidth(0.75f);
+                cs.moveTo(500, 540);
+                cs.lineTo(600, 0);
+                cs.stroke();
+            }
+            doc.save(pdf.toFile());
+        }
+        Path ppt = dir.resolve("rule.ppt");
+        PdfToPpt.convert(pdf, ppt, PdfToPptx.Options.defaults());
+        try (InputStream in = Files.newInputStream(ppt); HSLFSlideShow rule = new HSLFSlideShow(in)) {
+            List<HSLFShape> shapes = rule.getSlides().get(0).getShapes();
+            assertEquals(1, shapes.size());
+            HSLFLine line = assertInstanceOf(HSLFLine.class, shapes.get(0));
+            assertEquals(0xBFBFBF, line.getLineColor().getRGB() & 0xFFFFFF);
+            assertEquals(0.75, line.getLineWidth(), 0.01);
+            assertEquals(500, line.getAnchor().getX(), 0.5);
+            assertEquals(100, line.getAnchor().getWidth(), 0.5);
+            assertEquals(540, line.getAnchor().getHeight(), 0.5);
         }
     }
 

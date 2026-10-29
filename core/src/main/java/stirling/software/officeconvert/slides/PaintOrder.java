@@ -59,7 +59,7 @@ final class PaintOrder extends PDFGraphicsStreamEngine {
     }
 
     record Mark(Kind kind, Box box, int order, float alpha, boolean opaque, Outline outline, float radius, int from,
-            boolean blended, int rgb, Path2D shape) {}
+            boolean blended, int rgb, Path2D shape, LineShape line) {}
 
     record Slant(float x, float y, float angle, float advance, int order) {}
 
@@ -572,12 +572,14 @@ final class PaintOrder extends PDFGraphicsStreamEngine {
             Mark last = marks.getLast();
             if (last.kind() == Kind.TEXT && last.order() == order - 1 && sameLine(last.box(), b)) {
                 marks.set(marks.size() - 1, new Mark(Kind.TEXT, last.box().union(b), order++, alpha, opaque, outline,
-                        radius, last.from(), last.blended() || blended, -1, null));
+                        radius, last.from(), last.blended() || blended, -1, null, null));
                 return;
             }
         }
         int rgb = kind == Kind.FILL ? fillRgb() : -1;
-        marks.add(new Mark(kind, b, order, alpha, opaque, outline, radius, order, blended, rgb, rgb >= 0 ? shape : null));
+        LineShape line = kind == Kind.STROKE && !blended ? straight() : null;
+        marks.add(new Mark(kind, b, order, alpha, opaque, outline, radius, order, blended, rgb, rgb >= 0 ? shape : null,
+                line));
         order++;
     }
 
@@ -591,6 +593,70 @@ final class PaintOrder extends PDFGraphicsStreamEngine {
         } catch (IOException | RuntimeException e) {
             return -1;
         }
+    }
+
+    private LineShape straight() {
+        PDGraphicsState state = getGraphicsState();
+        if (shapes > MAX_SHAPES || transparentGroups > 0 || state.getAlphaConstant() < 0.99
+                || state.getLineDashPattern().getDashArray().length > 0
+                || state.getStrokingColor().getColorSpace() instanceof PDPattern) {
+            return null;
+        }
+        double[] c = new double[6];
+        double[] ends = new double[4];
+        int segments = 0;
+        for (PathIterator it = path.getPathIterator(null); !it.isDone(); it.next()) {
+            int seg = it.currentSegment(c);
+            if (segments == 0 && seg == PathIterator.SEG_MOVETO) {
+                ends[0] = c[0];
+                ends[1] = c[1];
+            } else if (segments == 1 && seg == PathIterator.SEG_LINETO) {
+                ends[2] = c[0];
+                ends[3] = c[1];
+            } else {
+                return null;
+            }
+            segments++;
+        }
+        if (segments != 2) {
+            return null;
+        }
+        for (Path2D clip : getGraphicsState().getCurrentClippingPaths()) {
+            if (!holds(clip, ends)) {
+                return null;
+            }
+        }
+        for (Path2D clip : clips()) {
+            if (!holds(clip, ends)) {
+                return null;
+            }
+        }
+        int rgb;
+        try {
+            rgb = state.getStrokingColor().toRGB() & 0xFFFFFF;
+        } catch (IOException | RuntimeException e) {
+            return null;
+        }
+        Matrix ctm = state.getCurrentTransformationMatrix();
+        double scale = Math.sqrt(Math.abs(ctm.getScaleX() * ctm.getScaleY() - ctm.getShearX() * ctm.getShearY())
+                * Math.abs(toDisplay.getDeterminant()));
+        double[] d = new double[4];
+        toDisplay.transform(ends, 0, d, 0, 2);
+        if (Math.hypot(d[2] - d[0], d[3] - d[1]) < 1) {
+            return null;
+        }
+        shapes++;
+        return new LineShape((float) d[0], (float) d[1], (float) d[2], (float) d[3], rgb,
+                (float) Math.max(0.25, state.getLineWidth() * scale));
+    }
+
+    private static boolean holds(Path2D clip, double[] ends) {
+        if (segments(clip) > MAX_CLIP_SEGMENTS || !new Area(clip).isRectangular()) {
+            return false;
+        }
+        Rectangle2D b = clip.getBounds2D();
+        b.setRect(b.getX() - 0.5, b.getY() - 0.5, b.getWidth() + 1, b.getHeight() + 1);
+        return b.contains(ends[0], ends[1]) && b.contains(ends[2], ends[3]);
     }
 
     private static boolean sameLine(Box a, Box b) {
