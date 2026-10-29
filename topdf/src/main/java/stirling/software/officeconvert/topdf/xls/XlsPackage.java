@@ -184,7 +184,7 @@ public final class XlsPackage {
             chartStream = ChartStream.read(stream, fonts, fonts.autoColors(false), fonts.autoColors(true));
             StringBuilder book = new StringBuilder(Xml.HEAD).append("<workbook xmlns=\"").append(Xml.MAIN)
                     .append("\" xmlns:r=\"").append(Xml.REL).append("\"><fileVersion appName=\"")
-                    .append(savedByExcel() ? "xl" : "Calc").append("\"/>");
+                    .append(savedByCalc() ? "Calc" : "xl").append("\"/>");
             if (wb.getInternalWorkbook().isUsing1904DateWindowing()) {
                 book.append("<workbookPr date1904=\"1\"/>");
             }
@@ -339,10 +339,11 @@ public final class XlsPackage {
             return found;
         }
 
-        private boolean savedByExcel() {
+        private boolean savedByCalc() {
             for (Record r : wb.getInternalWorkbook().getRecords()) {
                 if (r instanceof BOFRecord bof) {
-                    return bof.getHistoryBitMask() != 0;
+                    return bof.getBuild() == 0x0DBB && bof.getBuildYear() == 1996 && bof.getHistoryBitMask() == 0
+                            && bof.getRequiredVersion() == 6;
                 }
             }
             return false;

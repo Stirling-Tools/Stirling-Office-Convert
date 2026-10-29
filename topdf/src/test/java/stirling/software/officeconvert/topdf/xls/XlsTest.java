@@ -879,7 +879,7 @@ class XlsTest {
     }
 
     @Test
-    void onlyAWorkbookExcelWroteIsMarkedAsExcels() throws Exception {
+    void onlyAWorkbookLibreOfficeWroteIsMarkedAsCalcs() throws Exception {
         Consumer<HSSFWorkbook> sheet = wb -> {
             HSSFFont bold = wb.createFont();
             bold.setBold(true);
@@ -901,19 +901,32 @@ class XlsTest {
         assertTrue(excel.get("xl/workbook.xml").contains("appName=\"xl\""));
         assertTrue(excel.get("xl/worksheets/sheet1.xml").contains("<row r=\"1\" ht=\""),
                 excel.get("xl/worksheets/sheet1.xml"));
+        Map<String, String> unknown = parts(xls(wb -> {
+            sheet.accept(wb);
+            bof(wb).setHistoryBitMask(0);
+        }));
+        assertTrue(unknown.get("xl/workbook.xml").contains("appName=\"xl\""));
         Map<String, String> calc = parts(xls(wb -> {
             sheet.accept(wb);
-            for (Record rec : wb.getInternalWorkbook().getRecords()) {
-                if (rec instanceof BOFRecord bof) {
-                    bof.setHistoryBitMask(0);
-                    break;
-                }
-            }
+            BOFRecord bof = bof(wb);
+            bof.setBuild(0x0DBB);
+            bof.setBuildYear(1996);
+            bof.setHistoryBitMask(0);
+            bof.setRequiredVersion(6);
         }));
         String rows = calc.get("xl/worksheets/sheet1.xml");
         assertTrue(calc.get("xl/workbook.xml").contains("appName=\"Calc\""));
         assertTrue(rows.contains("<row r=\"1\" ht=\"17.35"), rows);
         assertTrue(rows.contains("<row r=\"2\" ht=\"30\" customHeight=\"1\""), rows);
+    }
+
+    private static BOFRecord bof(HSSFWorkbook wb) {
+        for (Record rec : wb.getInternalWorkbook().getRecords()) {
+            if (rec instanceof BOFRecord bof) {
+                return bof;
+            }
+        }
+        throw new AssertionError("no BOF");
     }
 
     private static Map<String, String> parts(byte[] xls) throws IOException {
