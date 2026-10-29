@@ -55,6 +55,7 @@ public final class Paragraph implements Block {
     public float borderBottom;
     public int borderBottomRgb;
     public float borderBottomSpace = 1;
+    public boolean borderBottomDouble;
     public Section endsSection;
     public int sourceLines = 1;
     public float textWidth;

@@ -25,6 +25,7 @@ final class LineMetrics {
         float baseDesc = 0;
         float runAsc = 0;
         float runDesc = 0;
+        float runLine = 0;
         int last = lastVisible(line);
         for (int k = 0; k < line.slices.size(); k++) {
             Line.Slice s = line.slices.get(k);
@@ -44,6 +45,7 @@ final class LineMetrics {
                     } else {
                         textAsc = Math.max(textAsc, look.ascent() + look.leading());
                         textDesc = Math.max(textDesc, look.descent());
+                        runLine = Math.max(runLine, it.lineHeight);
                         content = true;
                     }
                 }
@@ -150,11 +152,17 @@ final class LineMetrics {
                 }
             }
         }
+        boolean runLeading = runLine > h && rule != ParaProps.Rule.EXACT;
+        if (runLeading) {
+            h = runLine;
+        }
         line.height = Math.max(0.5f, h);
         boolean grid = gridPitch > 0 && !Boolean.FALSE.equals(pp.snapToGrid);
-        line.slack = rule == ParaProps.Rule.AUTO && value > 1 && !grid ? Math.max(0, h - natural) : 0;
+        line.slack = rule == ParaProps.Rule.AUTO && value > 1 && !grid && !runLeading ? Math.max(0, h - natural) : 0;
         if (rule == ParaProps.Rule.EXACT) {
             line.baseline = h * 0.8f;
+        } else if (runLeading) {
+            line.baseline = (h - natural) / 2 + lead + asc;
         } else if (rule == ParaProps.Rule.AUTO && gridPitch > 0 && !Boolean.FALSE.equals(pp.snapToGrid)) {
             line.baseline = (h - natural) / 2 + lead + asc;
         } else if (rule == ParaProps.Rule.AUTO && value >= 1) {

@@ -5,9 +5,13 @@ import java.util.List;
 
 public final class Table implements Block {
 
-    public record Border(float width, int rgb) {
+    public record Border(float width, int rgb, boolean doubled) {
 
         public static final Border NONE = new Border(0, 0);
+
+        public Border(float width, int rgb) {
+            this(width, rgb, false);
+        }
 
         public boolean visible() {
             return width > 0;

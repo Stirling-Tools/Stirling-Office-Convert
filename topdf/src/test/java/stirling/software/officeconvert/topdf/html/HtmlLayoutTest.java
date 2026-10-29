@@ -626,4 +626,46 @@ class HtmlLayoutTest {
                 .top();
         assertEquals(HtmlDocument.BODY_MARGIN, plain - bare, 1f);
     }
+
+    @Test
+    void doubleBordersPrintTwoLines() throws IOException {
+        Laid l = lay("""
+                <html><body><div style="border-bottom:6px double #0000ff;padding-bottom:4px">Ruled</div></body></html>""");
+        int x = Math.round(l.word("Ruled").left()) + 2;
+        int runs = 0;
+        boolean inBlue = false;
+        for (int y = Math.round(l.word("Ruled").top()); y < Math.round(l.word("Ruled").top()) + 40; y++) {
+            int rgb = l.first().getRGB(x, y);
+            boolean blue = (rgb & 0xFF) > 0xC0 && (rgb >> 16 & 0xFF) < 0x80;
+            runs += blue && !inBlue ? 1 : 0;
+            inBlue = blue;
+        }
+        assertEquals(2, runs);
+    }
+
+    @Test
+    void aLargerInlineFontWidensItsLineByItsOwnLineHeight() throws IOException {
+        Laid l = lay("""
+                <html><body style="font-size:11pt;line-height:1.5"><div><span style="font-size:24pt">Big</span></div>
+                <div>Next</div></body></html>""");
+        assertTrue(l.word("Next").top() - l.word("Big").top() > 20, l.word("Next").top() + " vs " + l.word("Big").top());
+    }
+
+    @Test
+    void brokenPictureWithoutAltKeepsAnIconSizedBox() throws IOException {
+        Laid l = lay("<html><body style=\"font-size:8pt\"><p>A<img src=\"missing.png\">B</p></body></html>");
+        float a = l.words().getFirst().left();
+        assertTrue(l.word("B").left() - a >= 15, l.words().toString());
+    }
+
+    @Test
+    void aLargerInlineFontWidensOnlyItsOwnLine() throws IOException {
+        Laid l = lay("""
+                <html><body><div style="font-size:12pt;line-height:1.5">LineOne<br>LineTwo<br>LineThree<br>
+                <span style="font-size:24pt">Big</span></div><div style="font-size:12pt;line-height:1.5">After</div>
+                </body></html>""");
+        assertEquals(18, l.word("LineTwo").top() - l.word("LineOne").top(), 0.5f);
+        assertEquals(18, l.word("LineThree").top() - l.word("LineTwo").top(), 0.5f);
+        assertEquals(18 + 36, l.word("After").top() - l.word("LineThree").top(), 1f);
+    }
 }

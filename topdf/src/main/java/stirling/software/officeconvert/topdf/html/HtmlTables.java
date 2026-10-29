@@ -274,7 +274,7 @@ final class HtmlTables {
                 }
             }
         }
-        return new Table.Border(w, c == null || c < 0 ? 0 : c);
+        return new Table.Border(w, c == null || c < 0 ? 0 : c, Flow.doubled(d, side));
     }
 
     private static void outerBorders(Table t, Map<String, String> d) {
