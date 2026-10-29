@@ -141,11 +141,12 @@ final class SlideBuilder {
                 stack.text(t);
             }
             whiteCards(layout, stack);
+            paper(stack);
             if (stack.backgroundOrder >= 0) {
                 hiddenByBackground(stack);
             }
             for (Art.Piece piece : art.pieces(stack.paint, stack.represented, page.index(), toDisplay, width, height)) {
-                stack.add(piece.picture(), piece.order(), false);
+                stack.add(piece.shape(), piece.order(), false);
             }
             for (SlideShape icon : icons) {
                 stack.add(icon, stack.paint.textOver(box(frameOf(icon))), true);
@@ -232,7 +233,7 @@ final class SlideBuilder {
                 stack.represented.add(m.order());
             }
             if (piece != null) {
-                stack.addAt(piece.picture(), order - 0.5);
+                stack.addAt(piece.shape(), order - 0.5);
             }
         }
     }
@@ -251,6 +252,12 @@ final class SlideBuilder {
         List<ParaDraft> live = item instanceof PageLayout.FigureItem fi && !fi.backdrop() && !layout.ocrText() && !wholePage
                 ? figureText.live(layout.page(), on, stack.text, stack.paint)
                 : null;
+        if (item instanceof PageLayout.FigureItem fi && drawn(fi, on, live != null, layout, toDisplay, stack)) {
+            if (live != null) {
+                texts(live, stack, icons);
+            }
+            return;
+        }
         Picture pic = live != null ? content.region(on, layout.page(), toDisplay, false) : content.picture(item, layout, toDisplay);
         if (pic == null) {
             return;
@@ -286,6 +293,50 @@ final class SlideBuilder {
         if (live != null) {
             texts(live, stack, icons);
         }
+    }
+
+    private boolean drawn(PageLayout.FigureItem fi, Box on, boolean textFree, PageLayout layout, AffineTransform toDisplay,
+            Stack stack) {
+        Set<Integer> inside = new HashSet<>();
+        stack.paint.inside(on, inside);
+        boolean shapes = false;
+        Set<Integer> skip = new HashSet<>(stack.represented);
+        for (PaintOrder.Mark m : stack.paint.marks()) {
+            if (!inside.contains(m.order()) || stack.represented.contains(m.order())) {
+                skip.add(m.order());
+            } else if (m.kind() == Kind.TEXT && !fi.backdrop() && !textFree || m.kind() == Kind.EFFECT_TEXT
+                    || decorated(m, layout)) {
+                return false;
+            } else {
+                shapes |= m.shape() != null;
+            }
+        }
+        if (!shapes || !art.drawable(stack.paint, skip, width, height)) {
+            return false;
+        }
+        for (Art.Piece piece : art.pieces(stack.paint, skip, layout.page().index(), toDisplay, width, height)) {
+            stack.add(piece.shape(), piece.order(), false);
+        }
+        stack.cover(on);
+        if (!fi.backdrop() && !textFree) {
+            stack.textPictures.add(on);
+        }
+        return true;
+    }
+
+    private static boolean decorated(PaintOrder.Mark m, PageLayout layout) {
+        if (m.kind() != Kind.FILL || m.outline() == PaintOrder.Outline.OTHER) {
+            return false;
+        }
+        Box b = m.box();
+        for (PageLayout.Decoration d : layout.decorations()) {
+            Box c = d.box();
+            if (Math.abs(b.x() - c.x()) <= 2f && Math.abs(b.top() - c.top()) <= 2f && Math.abs(b.right() - c.right()) <= 2f
+                    && Math.abs(b.bottom() - c.bottom()) <= 2f) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private void decorations(PageLayout layout, Stack stack) {
@@ -364,6 +415,20 @@ final class SlideBuilder {
             }
         }
         return false;
+    }
+
+    private void paper(Stack stack) {
+        if (stack.background >= 0) {
+            return;
+        }
+        for (PaintOrder.Mark m : stack.paint.marks()) {
+            if (m.kind() == Kind.FILL && m.outline() == PaintOrder.Outline.RECT && m.opaque() && !m.blended()
+                    && m.rgb() >= 0 && white(m.rgb()) && covers(m.box()) && !stack.represented.contains(m.order())) {
+                stack.background = m.rgb();
+                stack.backgroundOrder = m.order();
+                return;
+            }
+        }
     }
 
     private static void hiddenByBackground(Stack stack) {
@@ -471,6 +536,7 @@ final class SlideBuilder {
             case TextShape t -> onPage(t.frame());
             case PictureShape p -> onPage(p.frame());
             case RectShape r -> r.frame();
+            case PathShape p -> p.frame();
             case TableShape t -> new Frame(t.x(), t.y(), t.width(), t.height());
             case LineShape l -> new Frame(Math.min(l.x1(), l.x2()), Math.min(l.y1(), l.y2()), Math.abs(l.x2() - l.x1()),
                     Math.abs(l.y2() - l.y1()));

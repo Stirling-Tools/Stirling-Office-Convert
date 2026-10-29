@@ -252,6 +252,114 @@ class PdfToPptxTest {
     }
 
     @Test
+    void whitePaperUnderArtworkIsTheBackgroundNotAPicture() throws Exception {
+        Path paper = dir.resolve("paper.pdf");
+        try (PDDocument doc = new PDDocument()) {
+            PDPage page = new PDPage(SlideFixtures.WIDE);
+            doc.addPage(page);
+            try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
+                cs.setNonStrokingColor(1f, 1f, 1f);
+                cs.addRect(0, 0, 960, 540);
+                cs.fill();
+                cs.setStrokingColor(0.2f, 0.5f, 0.1f);
+                cs.setLineWidth(3);
+                cs.moveTo(700, 540);
+                cs.curveTo(800, 400, 900, 200, 960, 0);
+                cs.stroke();
+                cs.setNonStrokingColor(0f, 0f, 0f);
+                cs.beginText();
+                cs.setFont(SlideFixtures.SANS, 40);
+                cs.newLineAtOffset(60, 440);
+                cs.showText("On paper");
+                cs.endText();
+            }
+            doc.save(paper.toFile());
+        }
+        Path out = dir.resolve("paper.pptx");
+        PdfToPptx.convert(paper, out, PdfToPptx.Options.defaults());
+        Map<String, byte[]> files = SlideFixtures.parts(Files.readAllBytes(out));
+        String slide = SlideFixtures.text(files, "ppt/slides/slide1.xml");
+        assertTrue(slide.contains("<p:bg><p:bgPr><a:solidFill><a:srgbClr val=\"FFFFFF\"/>"), "the paper is the background");
+        assertEquals(1, count(slide, "<p:pic>"), "only the stroke is a picture");
+        assertFalse(slide.contains("cx=\"12192000\""), "no picture covers the whole slide");
+        assertFalse(files.keySet().stream().anyMatch(n -> n.endsWith(".jpeg")));
+    }
+
+    @Test
+    void aTranslucentPolygonIsAFreeformAndAClippedOneStaysAPicture() throws Exception {
+        Path out = dir.resolve("facets.pptx");
+        PdfToPptx.convert(SlideFixtures.facets(dir), out, PdfToPptx.Options.defaults());
+        String slide = SlideFixtures.text(SlideFixtures.parts(Files.readAllBytes(out)), "ppt/slides/slide1.xml");
+        assertEquals(1, count(slide, "<a:custGeom>"), slide);
+        assertTrue(slide.contains("<a:srgbClr val=\"4080BF\"><a:alpha val=\"60000\"/>"), slide);
+        assertTrue(slide.matches("(?s).*name=\"Freeform \\d+\"/>.{0,80}<a:off x=\"\\d+\" y=\"0\"/><a:ext cx=\"\\d+\" cy=\"6858000\"/>.*"),
+                "the part above the page is clipped away");
+        assertEquals(1, count(slide, "<p:pic>"), "the polygon inside a round clip is still a picture");
+        assertTrue(slide.indexOf("<a:custGeom>") < slide.indexOf("<p:pic>"), "drawn in the PDF's order");
+    }
+
+    @Test
+    void aFreeformBoxHoldsItsCurveControlPoints() throws Exception {
+        Path heart = dir.resolve("heart.pdf");
+        try (PDDocument doc = new PDDocument()) {
+            PDPage page = new PDPage(SlideFixtures.WIDE);
+            doc.addPage(page);
+            try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
+                cs.setNonStrokingColor(0.75f, 0f, 0f);
+                cs.moveTo(130.25f, 423.81f);
+                cs.curveTo(167.85f, 519.82f, 314.51f, 423.81f, 130.25f, 300.38f);
+                cs.curveTo(-54.01f, 423.81f, 92.646f, 519.82f, 130.25f, 423.81f);
+                cs.closePath();
+                cs.fillEvenOdd();
+            }
+            doc.save(heart.toFile());
+        }
+        Path out = dir.resolve("heart.pptx");
+        PdfToPptx.convert(heart, out, PdfToPptx.Options.defaults());
+        String slide = SlideFixtures.text(SlideFixtures.parts(Files.readAllBytes(out)), "ppt/slides/slide1.xml");
+        Matcher ext = Pattern.compile("<a:ext cx=\"(\\d+)\" cy=\"\\d+\"/></a:xfrm><a:custGeom>").matcher(slide);
+        assertTrue(ext.find(), slide);
+        long width = Long.parseLong(ext.group(1));
+        assertTrue(width > Math.round(184 * 12700.0), "the box spans the control points, not just the curve: " + width);
+        assertFalse(slide.matches("(?s).*<a:pt x=\"0\"[^>]*/><a:pt x=\"0\".*"), "no control point is pinned to the edge");
+    }
+
+    @Test
+    void aPageOfDetailedShapesStaysPictures() throws Exception {
+        Path busy = dir.resolve("busy.pdf");
+        try (PDDocument doc = new PDDocument()) {
+            PDPage page = new PDPage(SlideFixtures.WIDE);
+            doc.addPage(page);
+            try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
+                cs.setNonStrokingColor(0.2f, 0.6f, 0.3f);
+                for (int i = 0; i < 200; i++) {
+                    float cx = 40 + (i % 20) * 45;
+                    float cy = 60 + (i / 20) * 45;
+                    for (int k = 0; k < 20; k++) {
+                        double a = Math.PI * 2 * k / 20;
+                        float r = k % 2 == 0 ? 18 : 8;
+                        float x = cx + (float) (r * Math.cos(a));
+                        float y = cy + (float) (r * Math.sin(a));
+                        if (k == 0) {
+                            cs.moveTo(x, y);
+                        } else {
+                            cs.lineTo(x, y);
+                        }
+                    }
+                    cs.closePath();
+                    cs.fill();
+                }
+            }
+            doc.save(busy.toFile());
+        }
+        Path out = dir.resolve("busy.pptx");
+        PdfToPptx.convert(busy, out, PdfToPptx.Options.defaults());
+        String slide = SlideFixtures.text(SlideFixtures.parts(Files.readAllBytes(out)), "ppt/slides/slide1.xml");
+        assertEquals(0, count(slide, "<a:custGeom>"));
+        assertTrue(slide.contains("<p:pic>"));
+    }
+
+    @Test
     void ocrTextOverAScanStaysSearchableButInvisible() throws Exception {
         assertTrue(ocrSlide(true).matches("(?s).*<a:srgbClr val=\"[0-9A-F]{6}\"><a:alpha val=\"0\"/></a:srgbClr>(?:(?!</a:r>).)*"
                 + "<a:t>Scanned report text</a:t>.*"), "the scan shows the words, the text layer only carries them");

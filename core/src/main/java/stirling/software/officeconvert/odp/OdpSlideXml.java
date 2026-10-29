@@ -1,5 +1,7 @@
 package stirling.software.officeconvert.odp;
 
+import java.awt.geom.PathIterator;
+import java.awt.geom.Rectangle2D;
 import java.io.IOException;
 import java.util.Locale;
 import java.util.Set;
@@ -9,6 +11,7 @@ import stirling.software.officeconvert.model.Picture;
 import stirling.software.officeconvert.model.Table;
 import stirling.software.officeconvert.slides.Frame;
 import stirling.software.officeconvert.slides.LineShape;
+import stirling.software.officeconvert.slides.PathShape;
 import stirling.software.officeconvert.slides.PictureShape;
 import stirling.software.officeconvert.slides.RectShape;
 import stirling.software.officeconvert.slides.Slide;
@@ -48,6 +51,7 @@ final class OdpSlideXml {
                 case PictureShape p -> picture(sb, p);
                 case RectShape r -> rect(sb, r);
                 case LineShape l -> line(sb, l);
+                case PathShape p -> path(sb, p);
                 case TableShape t -> table(sb, t);
             }
         }
@@ -176,6 +180,36 @@ final class OdpSlideXml {
         }
         place(sb, r.frame());
         sb.append("/>");
+    }
+
+    private void path(StringBuilder sb, PathShape p) {
+        StringBuilder g = new StringBuilder("<style:graphic-properties");
+        fillAndStroke(g, p.fillRgb(), p.alpha(), -1, 0);
+        g.append(" draw:shadow=\"hidden\"/>");
+        Rectangle2D t = p.path().getBounds2D();
+        Frame f = new Frame((float) t.getX(), (float) t.getY(), (float) t.getWidth(), (float) t.getHeight());
+        sb.append("<draw:path draw:style-name=\"").append(styles.style("graphic", "gr", g.toString())).append("\" draw:layer=\"layout\"");
+        place(sb, f);
+        sb.append(" svg:viewBox=\"0 0 ").append(Math.round(Math.max(0.1f, f.width()) * 100)).append(' ')
+                .append(Math.round(Math.max(0.1f, f.height()) * 100)).append("\" svg:d=\"");
+        double[] c = new double[6];
+        for (PathIterator it = p.path().getPathIterator(null); !it.isDone(); it.next()) {
+            switch (it.currentSegment(c)) {
+                case PathIterator.SEG_MOVETO -> points(sb.append('M'), f, c, 1);
+                case PathIterator.SEG_LINETO -> points(sb.append('L'), f, c, 1);
+                case PathIterator.SEG_QUADTO -> points(sb.append('Q'), f, c, 2);
+                case PathIterator.SEG_CUBICTO -> points(sb.append('C'), f, c, 3);
+                default -> sb.append('Z');
+            }
+        }
+        sb.append("\"/>");
+    }
+
+    private static void points(StringBuilder sb, Frame f, double[] c, int n) {
+        for (int i = 0; i < n; i++) {
+            sb.append(i == 0 ? "" : " ").append(Math.round((c[2 * i] - f.x()) * 100)).append(' ')
+                    .append(Math.round((c[2 * i + 1] - f.y()) * 100));
+        }
     }
 
     private void line(StringBuilder sb, LineShape l) {

@@ -1,7 +1,9 @@
 package stirling.software.officeconvert.legacy;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
@@ -18,7 +20,12 @@ import org.apache.pdfbox.pdmodel.PDPageContentStream;
 import org.apache.pdfbox.pdmodel.common.PDRectangle;
 import org.apache.pdfbox.pdmodel.font.PDType1Font;
 import org.apache.pdfbox.pdmodel.font.Standard14Fonts;
+import org.apache.pdfbox.pdmodel.graphics.state.PDExtendedGraphicsState;
 import org.apache.pdfbox.util.Matrix;
+import org.apache.poi.ddf.AbstractEscherOptRecord;
+import org.apache.poi.ddf.EscherArrayProperty;
+import org.apache.poi.ddf.EscherPropertyTypes;
+import org.apache.poi.hslf.usermodel.HSLFFreeformShape;
 import org.apache.poi.hslf.usermodel.HSLFShape;
 import org.apache.poi.hslf.usermodel.HSLFSlide;
 import org.apache.poi.hslf.usermodel.HSLFSlideShow;
@@ -26,6 +33,7 @@ import org.apache.poi.hslf.usermodel.HSLFTable;
 import org.apache.poi.hslf.usermodel.HSLFTextParagraph;
 import org.apache.poi.hslf.usermodel.HSLFTextRun;
 import org.apache.poi.hslf.usermodel.HSLFTextShape;
+import org.apache.poi.util.LittleEndian;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -165,5 +173,94 @@ class PdfToPptTest {
             }
         }
         fail("no sideways text box");
+    }
+
+    @Test
+    void aTranslucentPolygonIsAFreeform() throws IOException {
+        Path pdf = dir.resolve("facet.pdf");
+        try (PDDocument doc = new PDDocument()) {
+            PDPage page = new PDPage(new PDRectangle(720, 540));
+            doc.addPage(page);
+            try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
+                PDExtendedGraphicsState gs = new PDExtendedGraphicsState();
+                gs.setNonStrokingAlphaConstant(0.5f);
+                cs.setGraphicsStateParameters(gs);
+                cs.setNonStrokingColor(0.25f, 0.5f, 0.75f);
+                cs.moveTo(500, 540);
+                cs.lineTo(720, 540);
+                cs.lineTo(720, 0);
+                cs.lineTo(600, 0);
+                cs.closePath();
+                cs.fill();
+            }
+            doc.save(pdf.toFile());
+        }
+        Path ppt = dir.resolve("facet.ppt");
+        PdfToPpt.convert(pdf, ppt, PdfToPptx.Options.defaults());
+        try (InputStream in = Files.newInputStream(ppt); HSLFSlideShow facet = new HSLFSlideShow(in)) {
+            List<HSLFShape> shapes = facet.getSlides().get(0).getShapes();
+            assertEquals(1, shapes.size());
+            HSLFFreeformShape f = assertInstanceOf(HSLFFreeformShape.class, shapes.get(0));
+            assertEquals(0x4080BF, f.getFillColor().getRGB() & 0xFFFFFF);
+            assertEquals(0.5, f.getEscherProperty(EscherPropertyTypes.FILL__FILLOPACITY) / 65536.0, 0.01);
+            assertEquals(500, f.getAnchor().getX(), 0.5);
+            assertEquals(220, f.getAnchor().getWidth(), 0.5);
+        }
+    }
+
+    @Test
+    void eachPartOfAFreeformClosesOnItself() throws IOException {
+        Path pdf = dir.resolve("pair.pdf");
+        try (PDDocument doc = new PDDocument()) {
+            PDPage page = new PDPage(new PDRectangle(720, 540));
+            doc.addPage(page);
+            try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
+                PDExtendedGraphicsState gs = new PDExtendedGraphicsState();
+                gs.setNonStrokingAlphaConstant(0.5f);
+                cs.setGraphicsStateParameters(gs);
+                cs.setNonStrokingColor(0.25f, 0.5f, 0.75f);
+                cs.moveTo(100, 400);
+                cs.lineTo(200, 400);
+                cs.lineTo(150, 300);
+                cs.closePath();
+                cs.moveTo(500, 200);
+                cs.lineTo(600, 200);
+                cs.lineTo(550, 100);
+                cs.closePath();
+                cs.fill();
+            }
+            doc.save(pdf.toFile());
+        }
+        Path ppt = dir.resolve("pair.ppt");
+        PdfToPpt.convert(pdf, ppt, PdfToPptx.Options.defaults());
+        try (InputStream in = Files.newInputStream(ppt); HSLFSlideShow pair = new HSLFSlideShow(in)) {
+            List<HSLFShape> shapes = pair.getSlides().get(0).getShapes();
+            assertEquals(1, shapes.size());
+            HSLFFreeformShape f = assertInstanceOf(HSLFFreeformShape.class, shapes.get(0));
+            AbstractEscherOptRecord opt = f.getEscherOptRecord();
+            EscherArrayProperty vertices = opt.lookup(EscherPropertyTypes.GEOMETRY__VERTICES);
+            List<Integer> segments = new ArrayList<>();
+            for (byte[] e : (EscherArrayProperty) opt.lookup(EscherPropertyTypes.GEOMETRY__SEGMENTINFO)) {
+                segments.add(LittleEndian.getUShort(e, 0));
+            }
+            int n = 0;
+            int start = 0;
+            int last = -1;
+            int closes = 0;
+            for (int i = 0; i < segments.size(); i++) {
+                int t = segments.get(i);
+                if (t == 0x4000) {
+                    start = n++;
+                } else if (t == 0xAC00 && (i + 1 == segments.size() || segments.get(i + 1) != 0x6001)) {
+                    last = n++;
+                } else if (t == 0xAD00) {
+                    n += 3;
+                } else if (t == 0x6001) {
+                    assertArrayEquals(vertices.getElement(start), vertices.getElement(last), "part " + closes + " closes on its own start");
+                    closes++;
+                }
+            }
+            assertEquals(2, closes);
+        }
     }
 }

@@ -14,6 +14,9 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 import javax.xml.parsers.DocumentBuilderFactory;
 
+import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.pdmodel.PDPage;
+import org.apache.pdfbox.pdmodel.PDPageContentStream;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -39,6 +42,43 @@ class PdfToOdpTest {
             n++;
         }
         return n;
+    }
+
+    @Test
+    void aTranslucentPolygonIsADrawPath() throws Exception {
+        Path out = dir.resolve("facets.odp");
+        PdfToOdp.convert(SlideFixtures.facets(dir), out, PdfToPptx.Options.defaults());
+        String content = SlideFixtures.text(SlideFixtures.parts(Files.readAllBytes(out)), "content.xml");
+        assertEquals(1, count(content, "<draw:path "), content);
+        assertTrue(content.contains("draw:fill-color=\"#4080bf\" draw:opacity=\"60%\" draw:stroke=\"none\""), content);
+        assertTrue(content.matches("(?s).*<draw:path [^>]*svg:viewBox=\"0 0 25890 54000\" svg:d=\"M[0-9 ]+L.*Z\"/>.*"), content);
+    }
+
+    @Test
+    void aCurvedDrawPathIsPlacedByTheCurveNotItsControlPoints() throws Exception {
+        Path heart = dir.resolve("heart.pdf");
+        try (PDDocument doc = new PDDocument()) {
+            PDPage page = new PDPage(SlideFixtures.WIDE);
+            doc.addPage(page);
+            try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
+                cs.setNonStrokingColor(0.75f, 0f, 0f);
+                cs.moveTo(130.25f, 423.81f);
+                cs.curveTo(167.85f, 519.82f, 314.51f, 423.81f, 130.25f, 300.38f);
+                cs.curveTo(-54.01f, 423.81f, 92.646f, 519.82f, 130.25f, 423.81f);
+                cs.closePath();
+                cs.fillEvenOdd();
+            }
+            doc.save(heart.toFile());
+        }
+        Path out = dir.resolve("heart.odp");
+        PdfToOdp.convert(heart, out, PdfToPptx.Options.defaults());
+        String content = SlideFixtures.text(SlideFixtures.parts(Files.readAllBytes(out)), "content.xml");
+        Matcher m = Pattern.compile("<draw:path [^>]*svg:x=\"(-?[0-9.]+)cm\"[^>]*svg:viewBox=\"0 0 (\\d+) \\d+\" svg:d=\"([^\"]*)\"")
+                .matcher(content);
+        assertTrue(m.find(), content);
+        assertTrue(Integer.parseInt(m.group(2)) < 18400, "the box is the curve's own width: " + m.group(2));
+        assertTrue(Double.parseDouble(m.group(1)) > 0, "the box starts where the curve does: " + m.group(1));
+        assertTrue(m.group(3).contains(" -") || m.group(3).contains("C-"), "control points may sit outside the box: " + m.group(3));
     }
 
     @Test

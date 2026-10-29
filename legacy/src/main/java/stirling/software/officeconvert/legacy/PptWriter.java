@@ -2,6 +2,8 @@ package stirling.software.officeconvert.legacy;
 
 import java.awt.Color;
 import java.awt.Dimension;
+import java.awt.geom.Path2D;
+import java.awt.geom.PathIterator;
 import java.awt.geom.Rectangle2D;
 import java.io.IOException;
 import java.io.OutputStream;
@@ -10,9 +12,11 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import org.apache.poi.ddf.EscherArrayProperty;
 import org.apache.poi.ddf.EscherPropertyTypes;
 import org.apache.poi.hslf.usermodel.HSLFAutoShape;
 import org.apache.poi.hslf.usermodel.HSLFFill;
+import org.apache.poi.hslf.usermodel.HSLFFreeformShape;
 import org.apache.poi.hslf.usermodel.HSLFLine;
 import org.apache.poi.hslf.usermodel.HSLFPictureData;
 import org.apache.poi.hslf.usermodel.HSLFPictureShape;
@@ -25,6 +29,7 @@ import stirling.software.officeconvert.model.Picture;
 import stirling.software.officeconvert.model.Scripts;
 import stirling.software.officeconvert.slides.Frame;
 import stirling.software.officeconvert.slides.LineShape;
+import stirling.software.officeconvert.slides.PathShape;
 import stirling.software.officeconvert.slides.PictureShape;
 import stirling.software.officeconvert.slides.RectShape;
 import stirling.software.officeconvert.slides.Slide;
@@ -104,6 +109,7 @@ public final class PptWriter implements SlideSink {
                 case PictureShape p -> picture(s, p);
                 case RectShape r -> rect(s, r);
                 case LineShape l -> line(s, l);
+                case PathShape p -> path(s, p);
                 case TableShape t -> PptTables.table(s, t, text);
             }
         }
@@ -174,6 +180,44 @@ public final class PptWriter implements SlideSink {
             shape.setLineColor(null);
         }
         s.addShape(shape);
+    }
+
+    private static void path(HSLFSlide s, PathShape p) {
+        HSLFFreeformShape shape = new HSLFFreeformShape(s);
+        shape.setPath(p.path());
+        closeSubpaths(shape, p.path());
+        shape.setAnchor(p.path().getBounds2D());
+        shape.setFillColor(new Color(p.fillRgb()));
+        if (p.alpha() < 0.995f) {
+            shape.setEscherProperty(EscherPropertyTypes.FILL__FILLOPACITY, Math.round(p.alpha() * 65536));
+        }
+        shape.setLineColor(null);
+        s.addShape(shape);
+    }
+
+    private static void closeSubpaths(HSLFFreeformShape shape, Path2D path) {
+        if (!(shape.getEscherOptRecord().lookup(EscherPropertyTypes.GEOMETRY__VERTICES) instanceof EscherArrayProperty vertices)) {
+            return;
+        }
+        int count = vertices.getNumberOfElementsInArray();
+        int n = 0;
+        int start = 0;
+        double[] c = new double[6];
+        for (PathIterator it = path.getPathIterator(null); !it.isDone(); it.next()) {
+            switch (it.currentSegment(c)) {
+                case PathIterator.SEG_MOVETO -> start = n++;
+                case PathIterator.SEG_LINETO -> n++;
+                case PathIterator.SEG_CUBICTO -> n += 3;
+                case PathIterator.SEG_CLOSE -> {
+                    if (n < count && start < count) {
+                        vertices.setElement(n, vertices.getElement(start).clone());
+                    }
+                    n++;
+                }
+                default -> {
+                }
+            }
+        }
     }
 
     private static void line(HSLFSlide s, LineShape l) {

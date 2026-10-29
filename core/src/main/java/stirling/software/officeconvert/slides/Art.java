@@ -1,6 +1,9 @@
 package stirling.software.officeconvert.slides;
 
 import java.awt.geom.AffineTransform;
+import java.awt.geom.Path2D;
+import java.awt.geom.PathIterator;
+import java.awt.geom.Rectangle2D;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -42,6 +45,12 @@ final class Art {
 
     private static final long MAX_PIXELS = 3_000_000L;
 
+    private static final float SHADING_DPI = 96f;
+
+    private static final int MAX_FIGURE_RUNS = 2;
+
+    private static final int MAX_EXTRA_RUNS = 2;
+
     private final PDDocument document;
     private final ArtRenderer renderer;
     private final PlacedContent.MediaStore media;
@@ -56,19 +65,66 @@ final class Art {
         this.lossless = lossless;
     }
 
-    record Piece(PictureShape picture, int order) {}
+    record Piece(SlideShape shape, int order) {}
 
     long operators() {
         return renderer.operators();
     }
 
+    private record Plan(List<Run> runs, List<Piece> shapes) {}
+
+    boolean drawable(PaintOrder paint, Set<Integer> represented, float width, float height) {
+        if (!paint.drawsShapes()) {
+            return false;
+        }
+        Plan plan = plan(paint, represented, true, width, height);
+        return !plan.shapes().isEmpty() && plan.runs().size() <= MAX_FIGURE_RUNS;
+    }
+
     List<Piece> pieces(PaintOrder paint, Set<Integer> represented, int pageIndex, AffineTransform toDisplay,
             float width, float height) {
+        Plan plan = plan(paint, represented, paint.drawsShapes(), width, height);
+        if (!plan.shapes().isEmpty()) {
+            Plan raster = plan(paint, represented, false, width, height);
+            if (plan.runs().size() > raster.runs().size() + MAX_EXTRA_RUNS) {
+                plan = raster;
+            }
+        }
+        List<Piece> out = new ArrayList<>(plan.shapes());
+        List<Run> kept = plan.runs();
+        kept.sort(Comparator.comparingDouble(r -> -r.box.area()));
+        int blanks = 0;
+        long start = renderer.operators();
+        for (Run r : kept.subList(0, Math.min(MAX_PIECES, kept.size()))) {
+            if (renderer.operators() - start > MAX_PAGE_OPERATORS) {
+                break;
+            }
+            Piece p = piece(paint, r.marks, r.box, pageIndex, toDisplay, width, height);
+            if (p != null) {
+                out.add(p);
+                blanks = 0;
+            } else if (++blanks >= MAX_BLANK_PIECES) {
+                break;
+            }
+        }
+        return out;
+    }
+
+    private static Plan plan(PaintOrder paint, Set<Integer> represented, boolean shapes, float width, float height) {
         List<Run> runs = new ArrayList<>();
+        List<Piece> drawn = new ArrayList<>();
         Run run = null;
         List<Mark> between = new ArrayList<>();
         for (Mark m : paint.marks()) {
             if (m.kind() == Kind.TEXT || represented.contains(m.order())) {
+                between.add(m);
+                continue;
+            }
+            if (shapes && m.shape() != null && m.outline() == PaintOrder.Outline.OTHER) {
+                Piece p = shape(m);
+                if (p != null) {
+                    drawn.add(p);
+                }
                 between.add(m);
                 continue;
             }
@@ -93,23 +149,35 @@ final class Art {
                 kept.add(r);
             }
         }
-        kept.sort(Comparator.comparingDouble(r -> -r.box.area()));
-        List<Piece> out = new ArrayList<>();
-        int blanks = 0;
-        long start = renderer.operators();
-        for (Run r : kept.subList(0, Math.min(MAX_PIECES, kept.size()))) {
-            if (renderer.operators() - start > MAX_PAGE_OPERATORS) {
-                break;
-            }
-            Piece p = piece(paint, r.marks, r.box, pageIndex, toDisplay, width, height);
-            if (p != null) {
-                out.add(p);
-                blanks = 0;
-            } else if (++blanks >= MAX_BLANK_PIECES) {
-                break;
+        return new Plan(kept, drawn);
+    }
+
+    private static Piece shape(Mark m) {
+        Rectangle2D tight = m.shape().getBounds2D();
+        if (tight.getWidth() * tight.getHeight() < MIN_AREA) {
+            return null;
+        }
+        Rectangle2D b = hull(m.shape());
+        Frame frame = new Frame((float) b.getX(), (float) b.getY(), (float) b.getWidth(), (float) b.getHeight());
+        return new Piece(new PathShape(frame, m.shape(), m.rgb(), m.alpha()), m.order());
+    }
+
+    private static Rectangle2D hull(Path2D path) {
+        double[] c = new double[6];
+        Rectangle2D.Double b = null;
+        for (PathIterator it = path.getPathIterator(null); !it.isDone(); it.next()) {
+            int seg = it.currentSegment(c);
+            int points = seg == PathIterator.SEG_CUBICTO ? 3 : seg == PathIterator.SEG_QUADTO ? 2
+                    : seg == PathIterator.SEG_CLOSE ? 0 : 1;
+            for (int i = 0; i < points; i++) {
+                if (b == null) {
+                    b = new Rectangle2D.Double(c[0], c[1], 0, 0);
+                } else {
+                    b.add(c[2 * i], c[2 * i + 1]);
+                }
             }
         }
-        return out;
+        return b == null ? path.getBounds2D() : b;
     }
 
     private static final class Run {
@@ -161,15 +229,17 @@ final class Art {
         Set<Integer> orders = new HashSet<>();
         int first = Integer.MAX_VALUE;
         boolean blended = false;
+        boolean shading = true;
         for (Mark m : run) {
             orders.add(m.order());
             first = Math.min(first, m.order());
             blended |= m.blended();
+            shading &= m.kind() == Kind.SHADING;
         }
         if (blended) {
             backdrop(paint, box, first, orders);
         }
-        float scale = dpi / 72f;
+        float scale = (shading ? Math.min(dpi, SHADING_DPI) : dpi) / 72f;
         if ((double) box.width() * box.height() * scale * scale > MAX_PIXELS) {
             scale = (float) Math.sqrt(MAX_PIXELS / ((double) box.width() * box.height()));
         }
