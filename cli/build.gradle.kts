@@ -127,7 +127,8 @@ val extraLicences by tasks.registering {
 }
 
 tasks.named<Jar>("jar") {
-    archiveFileName.set("stirling-office-convert-cli.jar")
+    archiveFileName.set("stirling-office-convert-cli-unshrunk.jar")
+    destinationDirectory.set(layout.buildDirectory.dir("unshrunk"))
     manifest {
         attributes("Main-Class" to "stirling.software.officeconvert.cli.Main")
     }
@@ -147,4 +148,76 @@ tasks.named<Jar>("jar") {
             includeEmptyDirs = false
         }
     }
+}
+
+val proguard by configurations.creating
+
+dependencies {
+    proguard("com.guardsquare:proguard-base:7.9.1")
+}
+
+val toolchainLauncher = javaToolchains.launcherFor {
+    languageVersion.set(JavaLanguageVersion.of(25))
+}
+
+val jdkClasses by tasks.registering(Exec::class) {
+    val home = toolchainLauncher.map { it.metadata.installationPath.asFile }
+    val out = layout.buildDirectory.dir("jdk-classes")
+    inputs.property("jdk", toolchainLauncher.map { it.metadata.javaRuntimeVersion })
+    outputs.dir(out)
+    doFirst { out.get().asFile.deleteRecursively() }
+    executable(home.get().resolve("bin/jimage"))
+    args("extract", "--include", "regex:.*\\.class", "--dir", out.get().asFile, home.get().resolve("lib/modules"))
+}
+
+val proguardJar by tasks.registering(JavaExec::class) {
+    val unshrunk = tasks.named<Jar>("jar").flatMap { it.archiveFile }
+    val rules = layout.projectDirectory.file("proguard.pro")
+    val services = layout.buildDirectory.file("proguard/services.pro")
+    val jdk = layout.buildDirectory.dir("jdk-classes")
+    val shrunk = layout.buildDirectory.file("proguard/stirling-office-convert-cli.jar")
+    dependsOn(jdkClasses, mergeServices)
+    inputs.file(unshrunk)
+    inputs.file(rules)
+    inputs.dir(mergeServices.map { it.outputs.files.singleFile })
+    inputs.dir(jdk)
+    outputs.file(shrunk)
+    classpath = proguard
+    mainClass.set("proguard.ProGuard")
+    javaLauncher.set(toolchainLauncher)
+    maxHeapSize = "2g"
+    doFirst {
+        val providers = mergeServices.get().outputs.files.singleFile.resolve("META-INF/services")
+            .listFiles().orEmpty().flatMap { it.readLines() }.map { it.trim() }.filter { it.isNotEmpty() }.toSortedSet()
+        services.get().asFile.apply { parentFile.mkdirs() }
+            .writeText(providers.joinToString("") { "-keep class $it { *; }\n" })
+        shrunk.get().asFile.delete()
+    }
+    argumentProviders.add(CommandLineArgumentProvider {
+        val modules = jdk.get().asFile.listFiles().orEmpty().filter { it.isDirectory }.sortedBy { it.name }
+        listOf("-injars", "${unshrunk.get().asFile}(!META-INF/versions/**)", "-outjars", shrunk.get().asFile.path) +
+            modules.flatMap { listOf("-libraryjars", "$it(**.class,!module-info.class)") } +
+            listOf("@${rules.asFile}", "@${services.get().asFile}")
+    })
+}
+
+val shrunkJar by tasks.registering(Jar::class) {
+    val shrunk = proguardJar.map { it.outputs.files.singleFile }
+    dependsOn(proguardJar)
+    archiveFileName.set("stirling-office-convert-cli.jar")
+    destinationDirectory.set(layout.buildDirectory.dir("libs"))
+    manifest {
+        attributes("Main-Class" to "stirling.software.officeconvert.cli.Main")
+    }
+    from({ zipTree(shrunk) }) {
+        exclude("META-INF/MANIFEST.MF")
+    }
+}
+
+tasks.named("jar") {
+    finalizedBy(shrunkJar)
+}
+
+tasks.named("assemble") {
+    dependsOn(shrunkJar)
 }
