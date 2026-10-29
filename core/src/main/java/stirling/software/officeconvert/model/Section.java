@@ -18,6 +18,7 @@ public final class Section {
     public boolean columnRule;
     public boolean titlePage;
     public int pageNumberStart = 1;
+    public float tailStretch;
 
     public Section copy() {
         Section s = new Section();
@@ -34,6 +35,7 @@ public final class Section {
         s.columnRule = columnRule;
         s.titlePage = titlePage;
         s.pageNumberStart = pageNumberStart;
+        s.tailStretch = tailStretch;
         return s;
     }
 

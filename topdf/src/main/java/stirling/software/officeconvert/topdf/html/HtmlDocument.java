@@ -62,6 +62,8 @@ public final class HtmlDocument {
 
     static final float BOOK_MARGIN = 72;
 
+    static final float BOOK_TAIL_MARGIN = 24;
+
     static final float BODY_MARGIN = 6f;
 
     public static Converted write(Path source, OutputStream out) throws IOException {
@@ -249,6 +251,7 @@ public final class HtmlDocument {
             cover.marginBottom -= widened[1] / enlarged;
             cover.marginLeft -= widened[2] / enlarged;
             cover.marginRight -= widened[3] / enlarged;
+            cover.tailStretch = 0;
             ctx.cover(cover);
         }
         ctx.inset(inset[0], inset[1]);
@@ -358,6 +361,7 @@ public final class HtmlDocument {
         page.marginRight /= zoom;
         page.marginTop /= zoom;
         page.marginBottom /= zoom;
+        page.tailStretch /= zoom;
     }
 
     private static Map<String, String> resolved(Cascade cascade, Element e, Look parent) {
@@ -387,6 +391,7 @@ public final class HtmlDocument {
             s.marginBottom = bookMargin(s.marginBottom, half);
             s.marginLeft = bookMargin(s.marginLeft, half);
             s.marginRight = bookMargin(s.marginRight, half);
+            s.tailStretch = Math.max(0, Math.min(s.marginBottom - BOOK_TAIL_MARGIN, BOOK_MARGIN - BOOK_TAIL_MARGIN));
         }
         return s;
     }

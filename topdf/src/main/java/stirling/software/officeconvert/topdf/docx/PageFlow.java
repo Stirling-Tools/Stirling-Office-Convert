@@ -360,6 +360,7 @@ final class PageFlow extends Region {
         SectionProps s = p.sect;
         p.bodyTop = s.top;
         p.bodyBottom = s.pageH - s.bottom;
+        p.footerTop = s.pageH;
         ctx.numbers = numbers(p, ctx.knownPages > 0 ? Integer.toString(ctx.knownPages) : "1",
                 Integer.toString(ctx.knownSectionPages.getOrDefault(p.section, 1)));
         StackLayout.Result header = headerLayout(p, true);
@@ -375,6 +376,7 @@ final class PageFlow extends Region {
         }
         if (footer != null && !s.bottomFixed) {
             p.bodyBottom = Math.min(p.bodyBottom, s.pageH - s.footer - footer.height());
+            p.footerTop = s.pageH - s.footer - footer.height();
         }
         if (p.bodyBottom - p.bodyTop < 36) {
             p.bodyBottom = Math.min(s.pageH, p.bodyTop + 36);
@@ -908,12 +910,30 @@ final class PageFlow extends Region {
 
     @Override
     float limit() {
-        float l = page.bodyBottom - page.noteHeight;
+        float l = page.bodyBottom - page.noteHeight + page.tail;
         if (balanceBottom > 0 && col < colX.length - 1) {
             l = Math.min(l, balanceBottom);
         }
         return l;
     }
+
+    float tailRoom() {
+        if (sect.tailStretch <= 0 || colX.length > 1 || page.tail > 0 || page.noteHeight > 0 || !page.marginal.isEmpty()
+                || !page.notes.isEmpty()) {
+            return 0;
+        }
+        return Math.max(0, Math.min(sect.tailStretch, page.footerTop - TAIL_GAP - page.bodyBottom));
+    }
+
+    void stretchTail(float room) {
+        page.tail = room;
+    }
+
+    boolean endsPage() {
+        return newPageAfter || sectionIndex == pkg.sections.size() - 1;
+    }
+
+    private static final float TAIL_GAP = 6;
 
     @Override
     float frameHeight() {

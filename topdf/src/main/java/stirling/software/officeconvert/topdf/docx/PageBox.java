@@ -68,6 +68,10 @@ final class PageBox {
 
     float bodyBottom;
 
+    float footerTop;
+
+    float tail;
+
     final List<Placed> placed = new ArrayList<>();
 
     final List<FloatBox> floats = new ArrayList<>();

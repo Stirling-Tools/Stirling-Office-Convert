@@ -405,7 +405,11 @@ final class BodyXml {
                 .append(Xml.twips(s.marginRight)).append("\" w:bottom=\"").append(Xml.twips(s.marginBottom))
                 .append("\" w:left=\"").append(Xml.twips(s.marginLeft)).append("\" w:header=\"")
                 .append(Xml.twips(s.headerDistance)).append("\" w:footer=\"").append(Xml.twips(s.footerDistance))
-                .append("\" w:gutter=\"0\"/>");
+                .append("\" w:gutter=\"0\"");
+        if (s.tailStretch > 0) {
+            sb.append(" so:tail=\"").append(Xml.twips(s.tailStretch)).append('"');
+        }
+        sb.append("/>");
         if (firstSection && s.pageNumberStart != 1) {
             sb.append("<w:pgNumType w:start=\"").append(Math.max(0, s.pageNumberStart)).append("\"/>");
         }
