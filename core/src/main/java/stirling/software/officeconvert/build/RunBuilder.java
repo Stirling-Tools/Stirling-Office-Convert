@@ -626,6 +626,8 @@ final class RunBuilder {
 
     private static final float MAX_SQUEEZE = 0.4f;
 
+    private static final float FLUSH_EDGE = 1.8f;
+
     private static final float MAX_EXPAND = 0.3f;
 
     private float[] squeezesFor(List<Line> lines, float slack) {
@@ -635,7 +637,8 @@ final class RunBuilder {
         }
         edge = Protrusion.edge(lines, edge);
         float[] out = new float[lines.size()];
-        for (int i = 0; i + 1 < lines.size(); i++) {
+        int measured = Math.abs(lines.getLast().right - edge) <= FLUSH_EDGE ? lines.size() : lines.size() - 1;
+        for (int i = 0; i < measured; i++) {
             Line l = lines.get(i);
             float drawn = 0;
             float spaces = 0;
@@ -657,8 +660,8 @@ final class RunBuilder {
             if (chars == 0) {
                 continue;
             }
-            Word after = lines.get(i + 1).words.getFirst();
-            boolean glued = l.words.getLast().text.endsWith("-") && Character.isDigit(after.text.charAt(0));
+            Word after = i + 1 < lines.size() ? lines.get(i + 1).words.getFirst() : null;
+            boolean glued = after != null && l.words.getLast().text.endsWith("-") && Character.isDigit(after.text.charAt(0));
             if (glued) {
                 for (Glyph g : after.glyphs) {
                     drawn += drawnWidth(g);
@@ -669,8 +672,8 @@ final class RunBuilder {
             float full = drawn + spaces - avail;
             float least = drawn + FIT_SHRINK * spaces - avail;
             drawn += SPACE_SHRINK * spaces;
-            float next = glued ? Float.NaN : nextUnit(l, lines.get(i + 1));
-            int nextChars = chars + nextChars(l, lines.get(i + 1));
+            float next = glued || after == null ? Float.NaN : nextUnit(l, lines.get(i + 1));
+            int nextChars = after == null ? chars : chars + nextChars(l, lines.get(i + 1));
             float most = Float.isNaN(next) ? Float.MAX_VALUE : (drawn + next - avail - SQUEEZE_MARGIN) / nextChars;
             if (full > SQUEEZE_FROM) {
                 float k = Math.max(Math.min((full + SQUEEZE_MARGIN) / chars, most), (least + SQUEEZE_MARGIN) / chars);
