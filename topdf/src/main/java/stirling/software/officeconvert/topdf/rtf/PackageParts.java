@@ -133,7 +133,9 @@ final class PackageParts {
             b.append("<w:evenAndOddHeaders/>");
         }
         b.append("<w:footnotePr><w:footnote w:id=\"0\"/><w:footnote w:id=\"1\"/></w:footnotePr>")
-                .append("<w:endnotePr><w:endnote w:id=\"0\"/><w:endnote w:id=\"1\"/></w:endnotePr>");
+                .append("<w:endnotePr><w:endnote w:id=\"0\"/><w:endnote w:id=\"1\"/></w:endnotePr>")
+                .append("<w:compat><w:compatSetting w:name=\"justifyLinesWithShrinking\" w:uri=\"urn:stirling:officeconvert\"")
+                .append(" w:val=\"1\"/></w:compat>");
         return b.append("</w:settings>").toString();
     }
 
