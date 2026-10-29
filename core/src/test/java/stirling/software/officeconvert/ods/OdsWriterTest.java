@@ -99,6 +99,16 @@ class OdsWriterTest {
     }
 
     @Test
+    void textRunningPastThePageFitsItToOnePageWide() throws Exception {
+        String style = "urn:oasis:names:tc:opendocument:xmlns:style:1.0";
+        String title = "A long heading that runs on well past the right edge of the printed page ".repeat(3);
+        assertEquals("1", pageLayout(sheet(true, List.of(300f), CellStyle.DEFAULT, title))
+                .getAttributeNS(style, "scale-to-X"));
+        assertFalse(pageLayout(sheet(true, List.of(300f), CellStyle.DEFAULT.withWrap(true), title))
+                .hasAttributeNS(style, "scale-to-X"));
+    }
+
+    @Test
     void sheetsThatFitThePageAreNotScaled() throws Exception {
         Element props = pageLayout(sheet(true, List.of(569.5f)));
         String style = "urn:oasis:names:tc:opendocument:xmlns:style:1.0";
@@ -108,10 +118,14 @@ class OdsWriterTest {
     }
 
     private static byte[] sheet(boolean landscape, List<Float> widths) throws IOException {
+        return sheet(landscape, widths, CellStyle.DEFAULT, "Title");
+    }
+
+    private static byte[] sheet(boolean landscape, List<Float> widths, CellStyle cell, String text) throws IOException {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         try (OdsWriter w = new OdsWriter(out)) {
             w.startSheet(new SheetSetup("Page 1", landscape, false, "", ""));
-            w.row(new Row(0, Float.NaN, List.of(new Row.Cell(0, CellValue.text("Title"), CellStyle.DEFAULT))));
+            w.row(new Row(0, Float.NaN, List.of(new Row.Cell(0, CellValue.text(text), cell))));
             w.endSheet(new SheetEnd(widths, 0, List.of()));
             w.finish("Title", "Author");
         }

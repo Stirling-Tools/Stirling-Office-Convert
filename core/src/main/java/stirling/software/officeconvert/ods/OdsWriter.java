@@ -10,14 +10,17 @@ import java.io.Writer;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.zip.CRC32;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
+import stirling.software.officeconvert.sheet.CellStyle;
 import stirling.software.officeconvert.sheet.CellValue;
 import stirling.software.officeconvert.sheet.NumberFormat;
 import stirling.software.officeconvert.sheet.Row;
@@ -43,6 +46,7 @@ public final class OdsWriter implements WorkbookSink {
     private final StringBuilder sb = new StringBuilder(1 << 12);
 
     private final List<int[]> active = new ArrayList<>();
+    private final Map<Integer, Float> overflow = new HashMap<>();
 
     private SheetSetup setup;
     private SpillBuffer rows;
@@ -75,6 +79,7 @@ public final class OdsWriter implements WorkbookSink {
         rowOut = new BufferedWriter(new OutputStreamWriter(rows, StandardCharsets.UTF_8), 1 << 16);
         nextRow = 0;
         active.clear();
+        overflow.clear();
     }
 
     @Override
@@ -103,6 +108,7 @@ public final class OdsWriter implements WorkbookSink {
                 sb.append("<table:covered-table-cell table:style-name=\"").append(styles.cell(c.style())).append("\"/>");
             } else {
                 cell(c);
+                reach(c);
                 if (c.merged()) {
                     active.add(new int[] {r, c.col(), r + c.rowSpan() - 1, c.col() + c.colSpan() - 1});
                 }
@@ -124,6 +130,22 @@ public final class OdsWriter implements WorkbookSink {
         sb.append("</table:table-row>");
         rowOut.write(sb.toString());
         active.removeIf(m -> m[2] <= r);
+    }
+
+    private void reach(Row.Cell c) {
+        CellStyle s = c.style();
+        if (!c.value().isText() || s.wrap() || c.merged()
+                || s.horizontal() != CellStyle.HAlign.GENERAL && s.horizontal() != CellStyle.HAlign.LEFT) {
+            return;
+        }
+        String text = c.value().text();
+        int longest = 0;
+        int run = 0;
+        for (int i = 0; i < text.length(); i++) {
+            run = text.charAt(i) == '\n' ? 0 : run + 1;
+            longest = Math.max(longest, run);
+        }
+        overflow.merge(c.col(), longest * (s.fontSize() > 0 ? s.fontSize() : 11) * 0.55f, Math::max);
     }
 
     private int gap(int r, int col, int blanks) {
@@ -237,11 +259,13 @@ public final class OdsWriter implements WorkbookSink {
     public void endSheet(SheetEnd end) throws IOException {
         rowOut.flush();
         double width = 0;
-        for (float w : end.columnWidths()) {
-            width += w;
+        double reach = 0;
+        for (int c = 0; c < end.columnWidths().size(); c++) {
+            reach = Math.max(reach, width + overflow.getOrDefault(c, 0f));
+            width += end.columnWidths().get(c);
         }
         String table = styles.table(setup.landscape(), setup.a4(), setup.header(), setup.footer(), end.rightToLeft(),
-                width);
+                Math.max(width, reach));
         StringBuilder head = new StringBuilder(512);
         head.append("<table:table table:name=\"");
         SheetXml.escape(head, setup.name());
