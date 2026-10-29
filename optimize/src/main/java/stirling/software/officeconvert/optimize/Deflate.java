@@ -77,13 +77,15 @@ final class Deflate {
             d.setStrategy(strategy);
             d.setInput(data);
             d.finish();
-            Bytes out = new Bytes(Math.max(64, data.length / 3));
-            byte[] buf = new byte[1 << 16];
+            byte[] out = new byte[Math.max(64, data.length / 3)];
+            int size = 0;
             while (!d.finished()) {
-                int n = d.deflate(buf);
-                out.write(buf, 0, n);
+                if (size == out.length) {
+                    out = Arrays.copyOf(out, (int) Math.min(Integer.MAX_VALUE - 16, out.length * 2L));
+                }
+                size += d.deflate(out, size, out.length - size);
             }
-            return out.toByteArray();
+            return size == out.length ? out : Arrays.copyOf(out, size);
         } finally {
             d.end();
         }

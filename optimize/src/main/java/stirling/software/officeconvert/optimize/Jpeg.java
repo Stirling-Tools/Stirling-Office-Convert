@@ -12,6 +12,8 @@ final class Jpeg {
 
     private static final int MAX_BLOCKS = 1 << 22;
 
+    private static final int FAST_BITS = 9;
+
     private static final int MAX_SYMBOLS = (int) Math.max(1 << 12,
             Math.min(1 << 22, Runtime.getRuntime().maxMemory() / (Rewrite.MAX_THREADS * 64L)));
 
@@ -24,6 +26,8 @@ final class Jpeg {
         final int[] minCode = new int[17];
 
         final int[] values;
+
+        final int[] fast = new int[1 << FAST_BITS];
 
         Table(int[] counts, int[] values) throws Unsupported {
             this.values = values;
@@ -41,6 +45,17 @@ final class Jpeg {
                 code <<= 1;
             }
             maxCode[17] = Integer.MAX_VALUE;
+            for (int prefix = 0; prefix < fast.length; prefix++) {
+                int c = 0;
+                for (int l = 1; l <= FAST_BITS; l++) {
+                    c = c << 1 | prefix >> (FAST_BITS - l) & 1;
+                    if (maxCode[l] >= 0 && c <= maxCode[l] && c >= minCode[l]) {
+                        int at = valPtr[l] + c - minCode[l];
+                        fast[prefix] = at < values.length ? l << 8 | values[at] : -1;
+                        break;
+                    }
+                }
+            }
         }
     }
 
@@ -65,12 +80,12 @@ final class Jpeg {
 
         private final int limit;
 
-        private final Symbols expected;
+        final Symbols expected;
 
-        Symbols(int limit, Symbols expected) {
+        Symbols(int limit, Symbols expected, int initial) {
             this.limit = limit;
             this.expected = expected;
-            packed = expected == null ? new int[Math.min(1 << 12, limit)] : expected.packed;
+            packed = expected == null ? new int[Math.min(Math.max(1 << 12, initial), limit)] : expected.packed;
         }
 
         void add(int slot, int symbol, int length, int value) throws Unsupported {
@@ -134,13 +149,13 @@ final class Jpeg {
 
     private final Symbols symbols;
 
-    private int bitBuffer;
+    private long bitBuffer;
 
     private int bitCount;
 
     private Jpeg(byte[] in, int maxSymbols, Symbols expected) {
         this.in = in;
-        symbols = new Symbols(maxSymbols, expected);
+        symbols = new Symbols(maxSymbols, expected, in.length);
     }
 
     static byte[] optimize(byte[] jpeg) {
@@ -238,11 +253,13 @@ final class Jpeg {
                 int symbolsBefore = symbols.size;
                 decodeScan(scan);
                 int dataEnd = pos;
-                writeTables(out, scan, symbolsBefore);
-                out.write(0xFF);
-                out.write(0xDA);
-                out.write(in, start, length);
-                encodeScan(out, scan, symbolsBefore);
+                if (symbols.expected == null) {
+                    writeTables(out, scan, symbolsBefore);
+                    out.write(0xFF);
+                    out.write(0xDA);
+                    out.write(in, start, length);
+                    encodeScan(out, scan, symbolsBefore);
+                }
                 pos = dataEnd;
                 scanned = true;
                 continue;
@@ -423,39 +440,50 @@ final class Jpeg {
         pos += 2;
     }
 
-    private int bit() throws Unsupported {
-        if (bitCount == 0) {
-            if (pos >= in.length) {
-                throw new Unsupported("the scan ends early");
-            }
+    private void fill() {
+        while (bitCount <= 56 && pos < in.length) {
             int b = in[pos] & 0xFF;
             if (b == 0xFF) {
                 if (pos + 1 >= in.length || in[pos + 1] != 0) {
-                    throw new Unsupported("a marker inside the scan data");
+                    return;
                 }
                 pos += 2;
             } else {
                 pos++;
             }
-            bitBuffer = b;
-            bitCount = 8;
+            bitBuffer = bitBuffer << 8 | b;
+            bitCount += 8;
         }
-        bitCount--;
-        return bitBuffer >> bitCount & 1;
     }
 
     private int bits(int n) throws Unsupported {
-        int v = 0;
-        for (int i = 0; i < n; i++) {
-            v = v << 1 | bit();
+        if (n == 0) {
+            return 0;
         }
-        return v;
+        if (bitCount < n) {
+            fill();
+            if (bitCount < n) {
+                throw new Unsupported("the scan ends early");
+            }
+        }
+        bitCount -= n;
+        return (int) (bitBuffer >>> bitCount) & ((1 << n) - 1);
     }
 
     private int decode(Table t) throws Unsupported {
+        if (bitCount < 16) {
+            fill();
+        }
+        int prefix = bitCount >= FAST_BITS ? (int) (bitBuffer >>> (bitCount - FAST_BITS)) & ((1 << FAST_BITS) - 1)
+                : (int) (bitBuffer << (FAST_BITS - bitCount)) & ((1 << FAST_BITS) - 1);
+        int hit = t.fast[prefix];
+        if (hit > 0 && hit >> 8 <= bitCount) {
+            bitCount -= hit >> 8;
+            return hit & 0xFF;
+        }
         int code = 0;
         for (int l = 1; l <= 16; l++) {
-            code = code << 1 | bit();
+            code = code << 1 | bits(1);
             if (t.maxCode[l] >= 0 && code <= t.maxCode[l] && code >= t.minCode[l]) {
                 return t.values[t.valPtr[l] + code - t.minCode[l]];
             }
@@ -536,9 +564,15 @@ final class Jpeg {
 
     private int accBits;
 
+    private byte[] scanBytes;
+
+    private int scanSize;
+
     private void encodeScan(Bytes out, Scan s, int from) {
         acc = 0;
         accBits = 0;
+        scanBytes = new byte[Math.max(1 << 12, in.length + 64)];
+        scanSize = 0;
         int n = s.componentIndex.length;
         long mcus;
         int[] blocksPerMcu = new int[n];
@@ -556,16 +590,17 @@ final class Jpeg {
         int k = from;
         for (long m = 0; m < mcus; m++) {
             if (restartInterval > 0 && m > 0 && m % restartInterval == 0) {
-                flush(out);
-                out.write(0xFF);
-                out.write(0xD0 + (int) ((m / restartInterval - 1) & 7));
+                flush();
+                room(2);
+                scanBytes[scanSize++] = (byte) 0xFF;
+                scanBytes[scanSize++] = (byte) (0xD0 + (int) ((m / restartInterval - 1) & 7));
             }
             for (int i = 0; i < n; i++) {
                 for (int b = 0; b < blocksPerMcu[i]; b++) {
-                    k = emit(out, k);
+                    k = emit(k);
                     for (int c = 1; c < 64; ) {
                         int rs = Symbols.symbol(symbols.packed[k]);
-                        k = emit(out, k);
+                        k = emit(k);
                         int size = rs & 15;
                         int run = rs >> 4;
                         if (size == 0) {
@@ -580,38 +615,57 @@ final class Jpeg {
                 }
             }
         }
-        flush(out);
+        flush();
+        out.write(scanBytes, 0, scanSize);
+        scanBytes = null;
     }
 
-    private int emit(Bytes out, int k) {
+    private int emit(int k) {
         int p = symbols.packed[k];
         int slot = Symbols.slot(p);
         int sym = Symbols.symbol(p);
-        put(out, codeTables[slot][sym], codeLengths[slot][sym]);
-        put(out, Symbols.value(p), Symbols.length(p));
+        int extra = Symbols.length(p);
+        put(codeTables[slot][sym] << extra | Symbols.value(p) & ((1 << extra) - 1), codeLengths[slot][sym] + extra);
         return k + 1;
     }
 
-    private void put(Bytes out, int value, int n) {
+    private void put(int value, int n) {
         if (n == 0) {
             return;
         }
         acc = acc << n | (value & ((1L << n) - 1));
         accBits += n;
+        if (accBits >= 32) {
+            drain();
+        }
+    }
+
+    private void drain() {
+        room(2 * (accBits >> 3));
         while (accBits >= 8) {
             int b = (int) (acc >> (accBits - 8)) & 0xFF;
-            out.write(b);
+            scanBytes[scanSize++] = (byte) b;
             if (b == 0xFF) {
-                out.write(0);
+                scanBytes[scanSize++] = 0;
             }
             accBits -= 8;
         }
     }
 
-    private void flush(Bytes out) {
-        if (accBits > 0) {
-            put(out, (1 << (8 - accBits)) - 1, 8 - accBits);
+    private void room(int more) {
+        if (scanSize + more > scanBytes.length) {
+            scanBytes = Arrays.copyOf(scanBytes, Math.max(scanSize + more, scanBytes.length * 2));
         }
+    }
+
+    private void flush() {
+        if (accBits > 0) {
+            int pad = 8 - (accBits & 7);
+            if (pad < 8) {
+                put((1 << pad) - 1, pad);
+            }
+        }
+        drain();
         acc = 0;
         accBits = 0;
     }
