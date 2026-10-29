@@ -42,7 +42,12 @@ final class SheetPage {
     }
 
     boolean fitToPage() {
-        return page.has("style:scale-to-X") || page.has("style:scale-to-Y") || page.has("style:scale-to-pages");
+        return scale("scale-to-X") != null || scale("scale-to-Y") != null || scale("scale-to-pages") != null;
+    }
+
+    private String scale(String name) {
+        String v = page.get("style:" + name);
+        return v != null ? v : page.get("loext:" + name);
     }
 
     private static boolean shown(Element e) {
@@ -95,9 +100,9 @@ final class SheetPage {
             b.append(" scale=\"").append(Math.max(10, Math.min(400, s))).append('"');
         }
         if (fitToPage()) {
-            int x = parse(page.get("style:scale-to-X"), 0);
-            int y = parse(page.get("style:scale-to-Y"), 0);
-            int pages = parse(page.get("style:scale-to-pages"), 0);
+            int x = parse(scale("scale-to-X"), 0);
+            int y = parse(scale("scale-to-Y"), 0);
+            int pages = parse(scale("scale-to-pages"), 0);
             if (pages > 0 && x == 0 && y == 0) {
                 x = 1;
                 y = pages;

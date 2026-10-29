@@ -6,11 +6,14 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
 import java.nio.file.Path;
+import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.text.PDFTextStripper;
+import org.apache.pdfbox.text.TextPosition;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -99,7 +102,7 @@ class OdsTest {
     }
 
     @Test
-    void anOptimalRowTallerThanTheDefaultIsLeftToFitItsText() throws IOException {
+    void optimalRowsPassTheirStoredHeightWithoutFixingIt() throws IOException {
         String auto = "<style:style style:name=\"ro1\" style:family=\"table-row\"><style:table-row-properties"
                 + " style:row-height=\"0.4in\" style:use-optimal-row-height=\"true\"/></style:style><style:style"
                 + " style:name=\"ro2\" style:family=\"table-row\"><style:table-row-properties style:row-height=\"0.15in\""
@@ -111,8 +114,8 @@ class OdsTest {
                 + " office:value-type=\"string\"><text:p>Two</text:p><text:p>lines</text:p></table:table-cell>"
                 + "</table:table-row></table:table>";
         String sheet = OdfFixtures.rewrite(ods(auto, table, null)).get("xl/worksheets/sheet1.xml");
-        assertTrue(sheet.contains("<row r=\"1\">") && sheet.contains("<row r=\"2\" ht=\"10.8\">")
-                && sheet.contains("<row r=\"3\" ht=\"28.8\">"), sheet);
+        assertTrue(sheet.contains("<row r=\"1\" ht=\"28.8\">") && sheet.contains("<row r=\"2\" ht=\"10.8\">")
+                && sheet.contains("<row r=\"3\" ht=\"28.8\">") && !sheet.contains("customHeight"), sheet);
     }
 
     @Test
@@ -196,7 +199,7 @@ class OdsTest {
             String row = "<table:table-row table:style-name=\"ro1\"><table:table-cell office:value-type=\"string\">"
                     + "<text:p>Row</text:p></table:table-cell></table:table-row>";
             Path pdf = dir.resolve("letter.pdf");
-            OfficeToPdf.convert(ods(auto, "<table:table table:name=\"S\">" + row.repeat(37) + "</table:table>", styles),
+            OfficeToPdf.convert(ods(auto, "<table:table table:name=\"S\">" + row.repeat(35) + "</table:table>", styles),
                     pdf);
             try (PDDocument doc = Loader.loadPDF(pdf.toFile())) {
                 assertEquals(1, doc.getNumberOfPages(), fit);
@@ -204,6 +207,33 @@ class OdsTest {
                 assertEquals(612, doc.getPage(0).getMediaBox().getHeight(), 1, fit);
             }
         }
+    }
+
+    @Test
+    void wrappedRowsTakeLibreOfficesHeightAndLineSpacing() throws IOException {
+        String auto = "<style:style style:name=\"ce1\" style:family=\"table-cell\"><style:table-cell-properties"
+                + " fo:wrap-option=\"wrap\" style:vertical-align=\"top\"/><style:text-properties"
+                + " fo:font-family=\"Liberation Sans\" fo:font-size=\"10pt\"/></style:style>";
+        StringBuilder rows = new StringBuilder();
+        for (int i = 1; i <= 3; i++) {
+            rows.append("<table:table-row><table:table-cell table:style-name=\"ce1\" office:value-type=\"string\">"
+                    + "<text:p>Top").append(i).append("</text:p><text:p>Low").append(i)
+                    .append("</text:p></table:table-cell></table:table-row>");
+        }
+        Path pdf = dir.resolve("wrapped.pdf");
+        OfficeToPdf.convert(ods(auto, "<table:table table:name=\"S\">" + rows + "</table:table>", null), pdf);
+        Map<String, Float> tops = new HashMap<>();
+        try (PDDocument doc = Loader.loadPDF(pdf.toFile())) {
+            PDFTextStripper strip = new PDFTextStripper() {
+                @Override
+                protected void writeString(String text, List<TextPosition> positions) {
+                    tops.put(text.trim(), positions.get(0).getYDirAdj());
+                }
+            };
+            strip.getText(doc);
+        }
+        assertEquals(Math.floor(477 / 20.0 * 600 / 72) * 72 / 600, tops.get("Top2") - tops.get("Top1"), 0.02, tops.toString());
+        assertEquals((1854 + 434) * 10 / 2048.0, tops.get("Low1") - tops.get("Top1"), 0.02, tops.toString());
     }
 
     @Test

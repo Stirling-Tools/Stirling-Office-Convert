@@ -162,7 +162,12 @@ final class SheetWriter {
     }
 
     private String defaultRowHeight() {
-        return String.valueOf(defaultRowPoints());
+        return String.valueOf(w.complexScript ? defaultRowPoints() : calcRowPoints());
+    }
+
+    private double calcRowPoints() {
+        double size = columnFontSize > 0 ? columnFontSize : w.cellStyles.defaultSize();
+        return Math.max(256, Math.floor(size * 20 * 1.18 + 1e-6) + 17) / 20;
     }
 
     private double defaultRowPoints() {
@@ -205,6 +210,7 @@ final class SheetWriter {
                     }
                     continue;
                 }
+                columnFontSize = Math.max(columnFontSize, w.cellStyles.size(def));
                 cols.append("<col min=\"").append(start + 1).append("\" max=\"").append(start + repeat).append('"');
                 if (!Double.isNaN(width)) {
                     cols.append(" width=\"").append(chars(width)).append("\" customWidth=\"1\"");
@@ -296,7 +302,8 @@ final class SheetWriter {
         boolean hasValue = cellsXml.indexOf("<v>") >= 0;
         boolean wraps = rowWraps;
         boolean custom = !optimal && !Double.isNaN(height);
-        if (!content && !custom && !rowHidden) {
+        boolean stored = !w.complexScript && optimal && !Double.isNaN(height);
+        if (!content && !custom && !rowHidden && !(stored && Math.abs(height - calcRowPoints()) > 0.005)) {
             return;
         }
         if (!hasValue && repeat > STYLED_RUN) {
@@ -310,7 +317,8 @@ final class SheetWriter {
             int n = start + i;
             int rowStart = data.length();
             data.append("<row r=\"").append(n + 1).append('"');
-            if (!Double.isNaN(height) && (custom || rowHidden || !wraps && (rowMultiline || height <= defaultRowPoints()))) {
+            if (!Double.isNaN(height) && (custom || rowHidden || stored
+                    || !wraps && (rowMultiline || height <= defaultRowPoints()))) {
                 data.append(" ht=\"").append(Math.round(height * 100) / 100.0).append('"');
                 if (custom || rowHidden) {
                     data.append(" customHeight=\"1\"");
@@ -341,6 +349,8 @@ final class SheetWriter {
             }
         }
     }
+
+    private double columnFontSize;
 
     private boolean rowWraps;
 

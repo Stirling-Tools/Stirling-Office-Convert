@@ -35,6 +35,8 @@ final class WorkbookModel {
 
     final boolean savedOnMac;
 
+    final boolean openDocument;
+
     final StylesTable styles;
 
     final ThemesTable theme;
@@ -58,6 +60,7 @@ final class WorkbookModel {
         Element version = Dml.child(root, "fileVersion");
         savedByExcel = version != null && "xl".equals(Dml.attr(version, "appName"));
         savedByCalc = version != null && "Calc".equals(Dml.attr(version, "appName"));
+        openDocument = version != null && "OpenDocument".equals(Dml.attr(version, "appName"));
         savedOnMac = savedByExcel && MacExcel.saved(zip);
         int index = 0;
         for (Element s : Dml.children(Dml.child(root, "sheets"), "sheet")) {

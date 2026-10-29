@@ -214,8 +214,9 @@ final class Grid {
         }
         double screenDefault = metrics.estimatedScreenRowPt();
         boolean near = Math.abs(fileDefault - screenDefault) <= DEFAULT_ROW_TOLERANCE;
-        this.defaultSource = fileDefault > 0 && (customDefault || !near) ? fileDefault : screenDefault;
-        this.rowFactor = metrics.rowFactor(screenDefault);
+        this.defaultSource = fileDefault > 0 && (customDefault || !near || book.workbook().openDocument) ? fileDefault
+                : screenDefault;
+        this.rowFactor = book.workbook().openDocument ? 1 : metrics.rowFactor(screenDefault);
         this.defaultHidden = zero;
         this.fixedDefault = customDefault;
         this.columnTops = columns.anyStyle(st -> book.styles().at(st).top().visible());
@@ -369,7 +370,9 @@ final class Grid {
             }
             if (e.text() != null || inked(e.format())) {
                 printed = true;
-                lastRow = Math.max(lastRow, index);
+                if (columns.width(e.col()) > 0 || !book.workbook().openDocument) {
+                    lastRow = Math.max(lastRow, index);
+                }
                 if (columns.width(e.col()) > 0) {
                     lastCol = Math.max(lastCol, e.col());
                 }
@@ -563,6 +566,10 @@ final class Grid {
     // a height another program stored (Excel's own stored height is already its fit, but not the Mac's wrapping)
     private double refit(RawRow row, double fitted, boolean empty, boolean wrapped) {
         double stored = Math.min(409.5, row.height());
+        if (book.workbook().openDocument) {
+            return row.index() > CALC_REFIT_ROWS || calcPixels(stored) == calcPixels(fitted) ? stored
+                    : Math.min(409.5, fitted);
+        }
         if (book.workbook().savedOnMac && wrapped) {
             return Math.min(409.5, fitted);
         }
@@ -592,6 +599,9 @@ final class Grid {
     }
 
     private double autofit(int row, List<CellEntry> entries, List<FontSpec> blanks, FontSpec base, double defaultPx) {
+        if (book.workbook().openDocument) {
+            return calcFit(row, entries, blanks);
+        }
         double best = Math.min(546, fontLine(base, defaultPx));
         PrintMetrics m = book.metrics();
         for (FontSpec f : blanks) {
@@ -624,6 +634,78 @@ final class Grid {
         }
         return best * 0.75;
     }
+
+    private double calcFit(int row, List<CellEntry> entries, List<FontSpec> blanks) {
+        double best = Math.max(CALC_MIN_ROW_TWIPS / 20.0, defaultSource);
+        for (FontSpec f : blanks) {
+            best = Math.max(best, calcPlain(f.size()));
+        }
+        Typesetter t = book.typesetter();
+        for (CellEntry e : entries) {
+            if (columns.width(e.col()) <= 0) {
+                continue;
+            }
+            CellRangeAddress merge = mergeCovering(row, e.col());
+            if (merge != null && (merge.getFirstRow() != merge.getLastRow() || merge.getFirstColumn() != e.col())) {
+                continue;
+            }
+            if (e.text() == null) {
+                best = Math.max(best, calcPlain(e.format().font().size()));
+                continue;
+            }
+            CellFormat fmt = e.format();
+            boolean wraps = merge == null && fmt.wraps() && fmt.rotation() == 0
+                    && e.text().kind() == CellText.Kind.TEXT;
+            List<FontSpec> fonts = new ArrayList<>();
+            double size = 0;
+            for (TextRun r : e.text().runs()) {
+                fonts.add(r.font());
+                size = Math.max(size, r.font().size());
+            }
+            if (!wraps && e.text().plain().indexOf('\n') < 0) {
+                best = Math.max(best, calcPlain(size));
+                continue;
+            }
+            double avail = Double.MAX_VALUE;
+            if (wraps) {
+                double indent = fmt.indent() > 0 ? fmt.indent() * book.indentPoints() : 0;
+                avail = Math.max(1, columnWidth(e.col()) - 2 * CellLayout.pad(t, e.text(), fmt) - indent)
+                        + CellLayout.WRAP_SLACK;
+            }
+            int lines = Math.max(1, CellLayout.wrap(t, e.text().runs(), avail, 1).size());
+            best = Math.max(best, calcHeight(fonts, lines));
+        }
+        return Math.min(409.5, best);
+    }
+
+    private static long calcPixels(double points) {
+        return (long) Math.floor(Math.round(points * 20) * CALC_PX_PER_TWIP + 1e-9);
+    }
+
+    private static double calcPlain(double size) {
+        return Math.max(CALC_MIN_ROW_TWIPS, Math.floor(size * 20 * CALC_LINE + 1e-6) + CALC_PLAIN_TWIPS) / 20.0;
+    }
+
+    private double calcHeight(List<FontSpec> fonts, int lines) {
+        int line = 0;
+        for (FontSpec f : fonts) {
+            line = Math.max(line, book.typesetter().measure(f).calcLinePx(f.size()));
+        }
+        long twips = (long) Math.floor((Math.min(lines, 10_000) * (double) line + CALC_MARGIN_PX) / CALC_PX_PER_TWIP + 1e-6);
+        return twips / 20.0;
+    }
+
+    static final double CALC_LINE = 1.18;
+
+    static final int CALC_PLAIN_TWIPS = 17;
+
+    static final int CALC_MIN_ROW_TWIPS = 256;
+
+    static final int CALC_REFIT_ROWS = 200;
+
+    static final int CALC_MARGIN_PX = 2;
+
+    static final double CALC_PX_PER_TWIP = 0.067;
 
     // Wrapping keeps room on each line for the slant of italic text above the baseline
     private double overhang(List<TextRun> runs) {
@@ -752,6 +834,10 @@ final class Grid {
     }
 
     double linePitch(FontSpec f) {
+        if (book.workbook().openDocument) {
+            FontMeasure m = book.typesetter().measure(f);
+            return m.ascent(f.size()) + m.descent(f.size());
+        }
         FontSpec def = book.styles().defaultFont();
         if (f.family().equalsIgnoreCase(def.family()) && Math.abs(f.size() - def.size()) < 0.01) {
             return defaultHeight();
