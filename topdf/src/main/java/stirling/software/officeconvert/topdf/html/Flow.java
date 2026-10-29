@@ -5,6 +5,7 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
 import java.util.HashMap;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -1148,7 +1149,7 @@ final class Flow {
             boolean borderBox = "border-box".equalsIgnoreCase(d.getOrDefault("box-sizing", "").strip());
             float high = Math.min(ctx.pageRoom(),
                     tall + (borderBox ? 0 : Math.max(0, padding(d.get("padding-top"), em, frame.width())) + padBottom));
-            if (gradient(cell, d.get("background-gradient"), width, high, padLeft, look)) {
+            if (gradient(cell, d.get("background-gradient"), width, high, padLeft, corner(d, look, width, high), look)) {
                 row.height = high;
             }
         }
@@ -1177,10 +1178,10 @@ final class Flow {
         space(bottom);
     }
 
-    private boolean gradient(Table.Cell cell, String css, float width, float height, float padLeft, Look look)
-            throws IOException {
+    private boolean gradient(Table.Cell cell, String css, float width, float height, float padLeft, float corner,
+            Look look) throws IOException {
         Gradient g = Gradient.parse(css);
-        Picture pic = g == null ? null : ctx.images().gradient(g, width, height);
+        Picture pic = g == null ? null : ctx.images().gradient(g, width, height, corner);
         if (pic == null) {
             return false;
         }
@@ -1195,6 +1196,34 @@ final class Flow {
         cell.paragraphs.getFirst().inlines.addFirst(new Inline.Image(pic));
         cell.shading = -1;
         return true;
+    }
+
+    private static float corner(Map<String, String> d, Look look, float width, float height) {
+        List<String> t = Css.tokens(d.getOrDefault("border-radius", ""));
+        Float r = t.isEmpty() ? null : Css.length(t.getFirst(), look.size, Math.min(width, height));
+        return r == null || r < 0.5f ? 0 : Math.min(r, Math.min(width, height) / 2);
+    }
+
+    private void itemGradient(Table.Row row, Table.Cell cell, Element item, Look look, float width, float margin)
+            throws IOException {
+        Map<String, String> d = ctx.declared(item, look);
+        Float tall = boxLength(d.get("height"), look, 0);
+        if (tall == null || tall < 1 || cell.empty() || Gradient.parse(d.get("background-gradient")) == null) {
+            return;
+        }
+        boolean borderBox = "border-box".equalsIgnoreCase(d.getOrDefault("box-sizing", "").strip());
+        float high = Math.min(ctx.pageRoom(), tall + (borderBox ? 0
+                : Math.max(0, padding(d.get("padding-top"), look.size, width))
+                + Math.max(0, padding(d.get("padding-bottom"), look.size, width))));
+        int fill = cell.shading;
+        if (gradient(cell, d.get("background-gradient"), width, high, margin, corner(d, look, width, high), look)) {
+            for (Paragraph p : cell.paragraphs) {
+                if (p.shading == fill) {
+                    p.shading = -1;
+                }
+            }
+            row.height = Math.max(row.height, high);
+        }
     }
 
     private static Paragraph bar(float height, Look look) {
@@ -1478,12 +1507,17 @@ final class Flow {
                 t.rows.add(row);
             }
         }
+        Map<Table.Cell, Element> placed = new IdentityHashMap<>();
         for (int start = 0; plan.areas() == null && start < items.size(); start += columns) {
             Table.Row row = new Table.Row();
             row.splits = avoiding == 0;
             for (int c = 0; c < columns; c++) {
                 Element item = start + c < items.size() ? items.get(start + c) : null;
-                row.cells.add(cell(item, look, frame, widths[c], plan.gap(), depth));
+                Table.Cell cell = cell(item, look, frame, widths[c], plan.gap(), depth);
+                if (item != null) {
+                    placed.put(cell, item);
+                }
+                row.cells.add(cell);
             }
             t.rows.add(row);
         }
@@ -1494,6 +1528,14 @@ final class Flow {
                 gapColumns(t, plan.gap());
             } else if (gutter >= 1) {
                 gapColumns(t, gutter);
+            }
+            for (Table.Row row : t.rows) {
+                for (int c = 0; c < row.cells.size() && c < t.columnWidths.size(); c++) {
+                    Element item = placed.get(row.cells.get(c));
+                    if (item != null) {
+                        itemGradient(row, row.cells.get(c), item, look, t.columnWidths.get(c), t.cellMarginLeft);
+                    }
+                }
             }
         }
         if (t.columnWidths.size() < 2) {
