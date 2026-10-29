@@ -849,6 +849,35 @@ java -XX:AOTCache=office-convert.aot -jar stirling-office-convert-cli.jar in.pdf
 
 The cache belongs to the JDK build that made it; the JVM ignores a cache from another JDK and runs as usual.
 
+### JIT settings in a long-lived JVM
+
+In a server that keeps one JVM running, most of the CPU spent on the first few hundred documents goes to the JIT
+compiler, not to converting them. The library is large and each kind of document uses different code, so the C2
+compiler is still busy after a thousand documents of mixed kinds. The figures below are per document, wall then CPU,
+for 2,000 conversions in one JVM: 15 kinds in rotation (DOCX, DOC, ODT, RTF, TXT, CSV, XLS, XLSX, PPT and PPTX to
+PDF, PDF to DOCX, ODT, PPTX and XLSX, and PDF/A). They were measured on JDK 25 in a container with 18 CPUs, using
+generational Shenandoah and `-XX:ReservedCodeCacheSize=96m` (one unsegmented code cache; the JDK only
+segments it from 240 MB):
+
+| JIT flags | documents 11-50 | 51-200 | 501-1,000 | 1,001-2,000 | CPU for all 2,000 |
+|---|---|---|---|---|---|
+| defaults (12 compiler threads) | 51 / 220 ms | 30 / 115 ms | 21 / 38 ms | 20 / 29 ms | 92 to 98 s |
+| `-XX:CICompilerCount=2` | 46 / 112 ms | 27 / 56 ms | 21 / 36 ms | 21 / 33 ms | 80 s |
+| `-XX:CICompilerCount=2 -XX:TieredStopAtLevel=1` | 44 / 60 ms | 29 / 35 ms | 26 / 27 ms | 26 / 27 ms | 58 s |
+
+With two CPUs the picture is the same: 22 / 33 ms with both compilers and 26 / 27 ms with C1 alone, after the first
+thousand. So on a many-core host, two compiler threads (`-XX:CICompilerCount=2`) halve the CPU of the early documents
+and leave throughput unchanged once the JVM is warm. Stopping at C1 (`-XX:TieredStopAtLevel=1`) uses the least CPU
+overall but each warm conversion takes about a quarter longer. Use it where CPU is scarcer than time, such as the
+256 MB container above.
+
+In that 96 MB unsegmented cache, the compiled code for these 15 kinds of document took 74 MB, against 50 MB after
+1,000 Office to PDF conversions alone; a segmented cache lays the code out differently, so treat these as rough
+sizes. A host that caps the code cache (`-XX:ReservedCodeCacheSize`) should leave that much room on top of its own
+compiled code. When the code cache is full the JVM stops compiling new and replacement methods, so code that is not
+compiled yet keeps running in the interpreter or at a lower tier, and flushing and recompiling can slow conversions
+further; the JDK default is 240 MB.
+
 ## Changes
 
 ### 0.2.0
