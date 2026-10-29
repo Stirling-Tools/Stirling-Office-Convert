@@ -18,6 +18,10 @@ final class CoverPicture {
 
     static final double MAX_ERROR = 6.0;
 
+    static final double MAX_TILE_ERROR = 12.0;
+
+    private static final int TILE = 16;
+
     static final double ZIPPED_JPEG = 0.85;
 
     private static final int BUCKETS = 1 << 15;
@@ -76,6 +80,8 @@ final class CoverPicture {
                     (int) (sums[k * 3 + 2] / count[k]));
         }
         byte[] indices = new byte[rgb.length];
+        int across = (w + TILE - 1) / TILE;
+        double[] tiles = new double[across * ((h + TILE - 1) / TILE)];
         double error = 0;
         for (int i = 0; i < rgb.length; i++) {
             int p = rgb[i];
@@ -84,10 +90,18 @@ final class CoverPicture {
             int dr = (p >> 16 & 0xff) - (r[c] & 0xff);
             int dg = (p >> 8 & 0xff) - (g[c] & 0xff);
             int db = (p & 0xff) - (b[c] & 0xff);
-            error += dr * dr + dg * dg + db * db;
+            int d = dr * dr + dg * dg + db * db;
+            error += d;
+            tiles[i / w / TILE * across + i % w / TILE] += d;
         }
         if (Math.sqrt(error / (rgb.length * 3.0)) > MAX_ERROR) {
             return null;
+        }
+        double tileLimit = MAX_TILE_ERROR * MAX_TILE_ERROR * TILE * TILE * 3;
+        for (double t : tiles) {
+            if (t > tileLimit) {
+                return null;
+            }
         }
         int bits = colours <= 2 ? 1 : colours <= 4 ? 2 : colours <= 16 ? 4 : 8;
         return png(w, h, bits, r, g, b, indices);

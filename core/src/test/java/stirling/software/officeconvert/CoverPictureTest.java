@@ -67,6 +67,18 @@ class CoverPictureTest {
     }
 
     @Test
+    void aSmallPictureOnATextPageKeepsTheCoverJpeg() throws IOException {
+        BufferedImage page = textPage();
+        for (int y = 0; y < 120; y++) {
+            for (int x = 0; x < 120; x++) {
+                page.setRGB(400 + x, 600 + y, (x * 2) << 16 | (y * 2) << 8 | (240 - x - y / 2));
+            }
+        }
+        assertNull(CoverPicture.palettePng(page));
+        assertFalse(CoverPicture.isPng(CoverPicture.encode(page)));
+    }
+
+    @Test
     void aTwoColourPageUsesAOneBitPalette() throws IOException {
         BufferedImage page = new BufferedImage(200, 280, BufferedImage.TYPE_INT_RGB);
         Graphics2D g = page.createGraphics();
