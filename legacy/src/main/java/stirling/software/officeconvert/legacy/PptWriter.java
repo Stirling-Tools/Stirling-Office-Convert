@@ -6,6 +6,7 @@ import java.awt.geom.Path2D;
 import java.awt.geom.PathIterator;
 import java.awt.geom.Rectangle2D;
 import java.io.IOException;
+import java.io.InterruptedIOException;
 import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -62,10 +63,14 @@ public final class PptWriter implements SlideSink {
     }
 
     @Override
-    public void begin(float width, float height, int firstPage, int slideCount) {
+    public void begin(float width, float height, int firstPage, int slideCount) throws IOException {
         show.setPageSize(new Dimension(Math.round(width), Math.round(height)));
         this.firstPage = firstPage;
         for (int i = 0; i < slideCount; i++) {
+            // Slide creation cost grows with the slide count; yield to cancellation between slides.
+            if ((i & 0x3F) == 0 && Thread.currentThread().isInterrupted()) {
+                throw new InterruptedIOException("Conversion interrupted");
+            }
             slides.add(show.createSlide());
         }
     }
