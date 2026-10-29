@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ForkJoinTask;
 import java.util.concurrent.RecursiveAction;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.IntConsumer;
 
 final class Parallel {
@@ -34,20 +35,35 @@ final class Parallel {
             return;
         }
         Thread owner = OWNER.isBound() ? OWNER.get() : Thread.currentThread();
+        AtomicReference<Throwable> failure = new AtomicReference<>();
         List<RecursiveAction> tasks = new ArrayList<>(count);
         for (int i = 0; i < count; i++) {
             int index = i;
             tasks.add(new RecursiveAction() {
                 @Override
                 protected void compute() {
-                    ScopedValue.where(OWNER, owner).run(() -> {
-                        PhotoSplitter.checkpoint();
-                        task.accept(index);
-                    });
+                    if (failure.get() != null) {
+                        return;
+                    }
+                    try {
+                        ScopedValue.where(OWNER, owner).run(() -> {
+                            PhotoSplitter.checkpoint();
+                            task.accept(index);
+                        });
+                    } catch (Throwable e) {
+                        failure.compareAndSet(null, e);
+                    }
                 }
             });
         }
         ForkJoinTask.invokeAll(tasks);
+        Throwable first = failure.get();
+        if (first instanceof RuntimeException e) {
+            throw e;
+        }
+        if (first instanceof Error e) {
+            throw e;
+        }
         PhotoSplitter.checkpoint();
     }
 

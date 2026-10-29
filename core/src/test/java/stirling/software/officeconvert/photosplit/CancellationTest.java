@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import java.awt.image.BufferedImage;
 import java.awt.image.WritableRaster;
@@ -14,6 +15,8 @@ import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.concurrent.CancellationException;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import org.junit.jupiter.api.Test;
@@ -70,6 +73,33 @@ class CancellationTest {
         } finally {
             Thread.interrupted();
         }
+    }
+
+    @Test
+    void aFailingTaskWaitsForTheOthersBeforeItIsReported() {
+        assumeTrue(Parallel.enabled());
+        CountDownLatch started = new CountDownLatch(1);
+        AtomicInteger running = new AtomicInteger();
+        IllegalStateException thrown = assertThrows(IllegalStateException.class, () -> Parallel.each(4, i -> {
+            if (i == 0) {
+                try {
+                    started.await(5, TimeUnit.SECONDS);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+                throw new IllegalStateException("first");
+            }
+            running.incrementAndGet();
+            started.countDown();
+            try {
+                Thread.sleep(200);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+            running.decrementAndGet();
+        }));
+        assertEquals("first", thrown.getMessage());
+        assertEquals(0, running.get());
     }
 
     @Test
