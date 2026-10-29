@@ -21,7 +21,7 @@ public final class PdfToAzw3 {
             throws IOException {
         Objects.requireNonNull(book, "book");
         PdfToDocx.convertWithDocument(pdf, azw3, options,
-                doc -> out -> new Azw3Writer(out, options.pictures(), PdfBook.of(doc, options, book)));
+                doc -> out -> new Azw3Writer(out, options.pictures(), PdfBook.of(doc, options, book, false)));
     }
 
     public static void convert(PDDocument doc, OutputStream out, PdfToDocx.Options options) throws IOException {
@@ -31,6 +31,6 @@ public final class PdfToAzw3 {
     public static void convert(PDDocument doc, OutputStream out, PdfToDocx.Options options, EbookOptions book)
             throws IOException {
         Objects.requireNonNull(book, "book");
-        PdfToDocx.convert(doc, out, options, o -> new Azw3Writer(o, options.pictures(), PdfBook.of(doc, options, book)));
+        PdfToDocx.convert(doc, out, options, o -> new Azw3Writer(o, options.pictures(), PdfBook.of(doc, options, book, false)));
     }
 }

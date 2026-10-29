@@ -51,7 +51,7 @@ public final class EpubWriter implements DocSink, Closeable {
 
     private static final String BULLET = "\u2022";
 
-    private static final String COVER = "images/cover.jpg";
+    private static final String COVER = "images/cover.";
 
     private static final Set<String> RTL_LANGUAGES = Set.of("ar", "arc", "ckb", "dv", "fa", "he", "iw", "ks", "ku",
             "ps", "sd", "syr", "ug", "ur", "yi");
@@ -272,7 +272,7 @@ public final class EpubWriter implements DocSink, Closeable {
             writeNotes(w, notesFile, labels);
         }
         if (cover != null) {
-            ZipParts.picture(zip, "OEBPS/" + COVER, cover);
+            ZipParts.picture(zip, "OEBPS/" + COVER + coverExtension(), cover);
         }
         String css = css();
         entry("OEBPS/styles/book.css", css.getBytes(StandardCharsets.UTF_8));
@@ -603,8 +603,9 @@ public final class EpubWriter implements DocSink, Closeable {
             sb.append("<item id=\"notes\" href=\"").append(notesFile).append("\" media-type=\"application/xhtml+xml\"/>\n");
         }
         if (cover != null) {
-            sb.append("<item id=\"cover\" href=\"").append(COVER)
-                    .append("\" media-type=\"image/jpeg\" properties=\"cover-image\"/>\n");
+            sb.append("<item id=\"cover\" href=\"").append(COVER).append(coverExtension())
+                    .append("\" media-type=\"image/").append(coverExtension().equals("png") ? "png" : "jpeg")
+                    .append("\" properties=\"cover-image\"/>\n");
         }
         for (int i = 0; i < pictureFiles.size(); i++) {
             Media m = pictureFiles.get(i);
@@ -671,5 +672,10 @@ public final class EpubWriter implements DocSink, Closeable {
         public void close() throws IOException {
             out.flush();
         }
+    }
+
+    private String coverExtension() {
+        return cover.length > 3 && (cover[0] & 0xff) == 0x89 && cover[1] == 'P' && cover[2] == 'N' && cover[3] == 'G'
+                ? "png" : "jpg";
     }
 }
