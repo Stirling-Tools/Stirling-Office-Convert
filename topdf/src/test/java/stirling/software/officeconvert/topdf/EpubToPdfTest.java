@@ -630,6 +630,21 @@ class EpubToPdfTest {
     }
 
     @Test
+    void aLongChapterWithAFootnoteStillStartsANewPage() throws IOException {
+        Map<String, byte[]> book = book();
+        book.put("OEBPS/text/two.xhtml", utf8(chapter("", "<h1>Chapter Two</h1><p>"
+                + "Second chapter running text that fills more than a short note would. ".repeat(12)
+                + "</p><aside epub:type=\"footnote\"><p>[1] A single footnote.</p></aside>")));
+        Path out = dir.resolve("footnoted.pdf");
+        OfficeToPdf.convert(epub("footnoted.epub", book), out,
+                OfficeToPdf.Options.defaults().timeout(Duration.ofMinutes(2)));
+        try (PDDocument doc = Loader.loadPDF(out.toFile())) {
+            assertFalse(pageText(doc, 2).contains("Chapter Two"));
+            assertTrue(pageText(doc, 3).contains("Chapter Two"));
+        }
+    }
+
+    @Test
     void aBooksNarrowPageMarginsWidenToAnInch() throws IOException {
         Map<String, byte[]> book = book();
         book.put("OEBPS/styles/book.css", utf8(".secret { display: none } @page { margin: 5pt 5pt 5pt 90pt }"));

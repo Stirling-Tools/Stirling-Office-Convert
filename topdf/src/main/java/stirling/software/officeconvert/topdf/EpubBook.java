@@ -255,9 +255,20 @@ final class EpubBook {
 
     private static final int BRIEF_TEXT = 600;
 
+    private static final String NOTES = "[epub:type~=(?i)\\b(foot|end|rear)notes?\\b]";
+
     private static boolean brief(Element body) {
-        return body.selectFirst("[epub:type~=(?i)\\b(foot|end|rear)notes?\\b]") != null
-                || body.selectFirst("h1, h2, h3, img, svg, image, table") == null && body.text().length() < BRIEF_TEXT;
+        if (body.is(NOTES)) {
+            return true;
+        }
+        if (body.selectFirst(NOTES) != null) {
+            Element rest = body.clone();
+            rest.select(NOTES).remove();
+            if (rest.text().length() < BRIEF_TEXT) {
+                return true;
+            }
+        }
+        return body.selectFirst("h1, h2, h3, img, svg, image, table") == null && body.text().length() < BRIEF_TEXT;
     }
 
     private static final Pattern DECLARED = Pattern.compile(
