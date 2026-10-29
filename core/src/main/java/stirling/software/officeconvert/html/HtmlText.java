@@ -1,11 +1,23 @@
 package stirling.software.officeconvert.html;
 
 import java.util.Locale;
+import java.util.Map;
 
 import stirling.software.officeconvert.model.RunStyle;
 
 /** Escaping and the CSS for one run of text. */
 final class HtmlText {
+
+    private static final Map<String, String> SAME_WIDTHS = Map.of(
+            "calibri", "'Carlito', ",
+            "cambria", "'Caladea', ",
+            "arial", "'Liberation Sans', 'Arimo', ",
+            "helvetica", "'Liberation Sans', 'Arimo', ",
+            "arial narrow", "'Liberation Sans Narrow', ",
+            "times new roman", "'Liberation Serif', 'Tinos', ",
+            "times", "'Liberation Serif', 'Tinos', ",
+            "courier new", "'Liberation Mono', 'Cousine', ",
+            "courier", "'Liberation Mono', 'Cousine', ");
 
     private HtmlText() {}
 
@@ -45,12 +57,17 @@ final class HtmlText {
         return String.format("#%06x", rgb & 0xFFFFFF);
     }
 
+    static String name(String font) {
+        return font == null ? "" : font.replaceAll("[\"'\\\\;{}<>]", "");
+    }
+
     static String family(String font) {
         if (font == null || font.isBlank()) {
             return "sans-serif";
         }
-        String clean = font.replaceAll("[\"'\\\\;{}<>]", "");
-        return "'" + clean + "', " + generic(clean.toLowerCase(Locale.ROOT));
+        String clean = name(font);
+        String lower = clean.toLowerCase(Locale.ROOT);
+        return "'" + clean + "', " + SAME_WIDTHS.getOrDefault(lower, "") + generic(lower);
     }
 
     private static String generic(String n) {

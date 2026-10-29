@@ -10,8 +10,11 @@ import java.io.Writer;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeMap;
 
 import stirling.software.officeconvert.Pictures;
@@ -33,6 +36,9 @@ import stirling.software.officeconvert.sink.SpillBuffer;
 public final class HtmlWriter implements DocSink, Closeable {
 
     private static final String BULLET = "\u2022";
+    private static final Set<String> PAGE_WORDS = Set.of("page", "pages", "pg", "p", "of", "seite", "von", "sur",
+            "página", "pagina", "de", "di", "blz", "blad", "van", "strona", "z", "sida", "av", "side", "af", "s",
+            "sheet", "slide", "oldal", "стр", "страница", "из", "第", "第页", "第頁", "页", "頁");
 
     private final OutputStream out;
     private final MediaStore media;
@@ -46,11 +52,18 @@ public final class HtmlWriter implements DocSink, Closeable {
     private String pendingLabel;
     private String pendingKey;
     private Paragraph gapLine;
+    private final PdfWebFonts fonts;
 
     public HtmlWriter(OutputStream target, Pictures pictures) {
+        this(target, pictures, null);
+    }
+
+    public HtmlWriter(OutputStream target, Pictures pictures, PdfWebFonts fonts) {
         this.out = new KeepOpen(target);
         this.media = new MediaStore(pictures);
         this.blocks = new HtmlBlocks(media);
+        this.fonts = fonts;
+        blocks.fonts(fonts);
     }
 
     @Override
@@ -220,12 +233,16 @@ public final class HtmlWriter implements DocSink, Closeable {
             running(tail, "footer", hf.footer());
         }
         body.append(tail);
-        Writer w = new BufferedWriter(new OutputStreamWriter(out, StandardCharsets.UTF_8), 1 << 16);
-        w.write(head(sections, styles, title, author));
         StringBuilder top = new StringBuilder();
         if (hf != null) {
             running(top, "header", hf.header());
         }
+        StringBuilder faces = new StringBuilder();
+        if (fonts != null) {
+            fonts.faces(faces);
+        }
+        Writer w = new BufferedWriter(new OutputStreamWriter(out, StandardCharsets.UTF_8), 1 << 16);
+        w.write(head(sections, styles, title, author, faces));
         w.write(top.toString().replaceAll("\0[^\0]*\0", ""));
         this.numbering = numbering == null ? new Numbering() : numbering;
         ListLabels labels = new ListLabels(this.numbering);
@@ -248,12 +265,24 @@ public final class HtmlWriter implements DocSink, Closeable {
 
     // Page numbers mean nothing in one flowing page, so a header or footer line holding only those is left out
     private static boolean hasText(Paragraph p) {
+        StringBuilder text = new StringBuilder();
+        boolean numbered = false;
         for (Inline in : p.inlines) {
-            if (in instanceof Inline.Text t && t.text().chars().anyMatch(Character::isLetterOrDigit)) {
-                return true;
+            if (in instanceof Inline.Text t) {
+                text.append(t.text());
+            } else if (in instanceof Inline.PageNumber) {
+                numbered = true;
+                text.append(' ');
             }
         }
-        return false;
+        if (text.chars().noneMatch(Character::isLetterOrDigit)) {
+            return false;
+        }
+        if (!numbered) {
+            return true;
+        }
+        return Arrays.stream(text.toString().toLowerCase(Locale.ROOT).split("[\\s\\p{Punct}]+"))
+                .anyMatch(w -> !w.isEmpty() && !PAGE_WORDS.contains(w) && !w.chars().allMatch(Character::isDigit));
     }
 
     private static Section defaultPage() {
@@ -301,7 +330,8 @@ public final class HtmlWriter implements DocSink, Closeable {
         }
     }
 
-    private static String head(List<Section> sections, StyleSheet styles, String title, String author) {
+    private static String head(List<Section> sections, StyleSheet styles, String title, String author,
+            CharSequence faces) {
         Section page = sections.get(0);
         StringBuilder sb = new StringBuilder(2048);
         sb.append("<!DOCTYPE html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n")
@@ -319,7 +349,7 @@ public final class HtmlWriter implements DocSink, Closeable {
         float right = page.marginRight;
         float top = page.marginTop;
         float bottom = page.marginBottom;
-        sb.append("<style>\n");
+        sb.append("<style>\n").append(faces);
         pages(sb, sections);
         sb.append("html{background:#f3f3f3}\n")
                 .append("body{margin:0;").append(HtmlText.css(styles.normal)).append(";line-height:1.15}\n")
@@ -344,7 +374,7 @@ public final class HtmlWriter implements DocSink, Closeable {
                 .append(".float-left,.float-right,.figure{position:relative}\n")
                 .append(".picture-text{position:absolute;left:0;top:0;overflow:hidden;color:transparent;line-height:1.15;")
                 .append("white-space:pre-wrap}\n")
-                .append("@media print{html{background:none}main{max-width:none;padding:0}}\n");
+                .append("@media print{html{background:none}main{max-width:none;padding:0}.running{display:none}}\n");
         for (StyleSheet.Style s : styles.all()) {
             if (!"Normal".equals(s.id())) {
                 sb.append('.').append(HtmlBlocks.styleClass(s.id())).append('{').append(HtmlText.css(s.run())).append("}\n");

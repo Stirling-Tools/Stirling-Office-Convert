@@ -244,7 +244,7 @@ class PdfToEpubTest {
         Map<String, String> kindle = convertWith(EbookOptions.defaults().device(EbookOptions.Device.KINDLE));
         String css = kindle.get("OEBPS/styles/book.css");
         assertTrue(css.contains("serif;font-size:1em;"), css);
-        assertTrue(css.contains(".s-Heading1{font-family:'Arial', sans-serif;font-size:2em;"), css);
+        assertTrue(css.contains(".s-Heading1{font-family:'Arial', 'Liberation Sans', 'Arimo', sans-serif;font-size:2em;"), css);
         for (Map.Entry<String, String> part : kindle.entrySet()) {
             if (part.getKey().endsWith(".xhtml") || part.getKey().endsWith(".css")) {
                 assertFalse(Pattern.compile("(font-size|line-height):[0-9.]+pt").matcher(part.getValue()).find(),
@@ -252,6 +252,6 @@ class PdfToEpubTest {
             }
         }
         String tablet = part("OEBPS/styles/book.css");
-        assertTrue(tablet.contains(".s-Heading1{font-family:'Arial', sans-serif;font-size:24pt;"), tablet);
+        assertTrue(tablet.contains(".s-Heading1{font-family:'Arial', 'Liberation Sans', 'Arimo', sans-serif;font-size:24pt;"), tablet);
     }
 }

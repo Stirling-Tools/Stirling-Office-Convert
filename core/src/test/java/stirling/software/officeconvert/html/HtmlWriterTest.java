@@ -69,6 +69,57 @@ class HtmlWriterTest {
         }
     }
 
+    static Paragraph numbered(String... parts) {
+        Paragraph p = new Paragraph();
+        for (String part : parts) {
+            p.inlines.add(part == null ? new Inline.PageNumber(TEXT, false) : new Inline.Text(part, TEXT, null, -1));
+        }
+        return p;
+    }
+
+    static String running(List<Paragraph> header, List<Paragraph> footer) throws IOException {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        try (HtmlWriter w = new HtmlWriter(out, Pictures.COMPACT)) {
+            StyleSheet styles = new StyleSheet(TEXT);
+            w.begin(styles, new DocSink.HeaderFooterSet(header, footer, List.of(), List.of(), false));
+            w.block(para("Body text"));
+            w.finish(page(1), null, null, styles, "t", null);
+        }
+        return out.toString(StandardCharsets.UTF_8);
+    }
+
+    @Test
+    void pageNumberLinesLeaveTheFooterAndRunningTextIsNotPrinted() throws IOException {
+        String html = running(List.of(para("Northwind Traders - Annual Report")),
+                List.of(numbered("Page ", null, " of ", null), numbered("Confidential draft, page ", null)));
+        assertTrue(html.contains("<header class=\"running\">"), html);
+        assertTrue(html.contains("Northwind Traders - Annual Report"), html);
+        assertFalse(html.contains("Page </span>") || html.contains(">Page "), html);
+        assertTrue(html.contains("Confidential draft"), html);
+        assertTrue(html.contains("@media print{html{background:none}main{max-width:none;padding:0}.running{display:none}}"),
+                html);
+        assertFalse(running(List.of(), List.of(numbered("- ", null, " -"))).contains("<footer"));
+    }
+
+    @Test
+    void shortRunningTextBesideAPageNumberStays() throws IOException {
+        String html = running(List.of(numbered("Draft - ", null)),
+                List.of(numbered("Acme | ", null), numbered("Seite ", null, " von ", null), numbered("p. ", null, "/", null),
+                        numbered("стр. ", null), numbered("第", null, "页")));
+        assertTrue(html.contains("Draft - "), html);
+        assertTrue(html.contains("Acme | "), html);
+        assertFalse(html.contains("Seite") || html.contains(">p. ") || html.contains("стр") || html.contains("第"), html);
+    }
+
+    @Test
+    void familiesFallBackToFontsWithTheSameWidths() {
+        assertEquals("'Calibri', 'Carlito', sans-serif", HtmlText.family("Calibri"));
+        assertEquals("'Cambria', 'Caladea', serif", HtmlText.family("Cambria"));
+        assertEquals("'Times New Roman', 'Liberation Serif', 'Tinos', serif", HtmlText.family("Times New Roman"));
+        assertEquals("'Courier New', 'Liberation Mono', 'Cousine', monospace", HtmlText.family("Courier New"));
+        assertEquals("'Georgia', serif", HtmlText.family("Georgia"));
+    }
+
     @Test
     void rightTabStopsKeepTheirLeaderAndAlignment() throws IOException {
         Paragraph toc = new Paragraph();
@@ -271,6 +322,31 @@ class HtmlWriterTest {
         Table t = table(new String[][] {{"Website redesign", "4,800.00"}, {"Hosting for twelve months", "540.00"},
                 {"Support retainer", "1,200.00"}});
         assertTrue(html(page(1), null, w -> block(w, t)).contains("<table"));
+    }
+
+    @Test
+    void cellTextKeepsRoomForItsSourceWidthInsideTheBorders() throws IOException {
+        Table t = new Table();
+        t.columnWidths.addAll(List.of(21.4f, 80f));
+        t.cellMarginLeft = 0;
+        t.cellMarginRight = 0;
+        Table.Row row = new Table.Row();
+        for (int i = 0; i < 2; i++) {
+            Table.Cell cell = new Table.Cell();
+            cell.left = new Table.Border(0.3f, 0);
+            cell.right = new Table.Border(1f, 0);
+            Paragraph p = para(i == 0 ? "10 11 12" : "Moderate");
+            p.align = Paragraph.Align.JUSTIFY;
+            p.indentLeft = 5.6f;
+            p.indentRight = 4.2f;
+            p.textWidth = 11.63f;
+            cell.paragraphs.add(p);
+            row.cells.add(cell);
+        }
+        t.rows.add(row);
+        String html = html(page(1), null, w -> block(w, t));
+        assertTrue(html.contains("margin-left:5.6pt;margin-right:2.5pt;\">10 11 12"), html);
+        assertTrue(html.contains("margin-left:5.6pt;margin-right:4.2pt;\">Moderate"), html);
     }
 
     @Test

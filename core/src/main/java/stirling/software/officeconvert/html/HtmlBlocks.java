@@ -28,12 +28,16 @@ final class HtmlBlocks {
 
     private static final float HALF_PAGE = 297f;
 
+    private static final float CELL_SLACK = 1f;
+
     private final MediaStore media;
     private final Map<String, String> dataUris = new HashMap<>();
     private StyleSheet styles;
     private int section = -1;
     private boolean relative;
     private PictureFiles files;
+    private PdfWebFonts fonts;
+    private float cellRoom = Float.NaN;
 
     interface PictureFiles {
         String source(Picture.MediaRef ref) throws IOException;
@@ -49,6 +53,10 @@ final class HtmlBlocks {
 
     void pictureFiles(PictureFiles files) {
         this.files = files;
+    }
+
+    void fonts(PdfWebFonts fonts) {
+        this.fonts = fonts;
     }
 
     void relativeSizes(boolean on) {
@@ -178,7 +186,7 @@ final class HtmlBlocks {
             sb.append("text-align:").append(p.align.name().toLowerCase(java.util.Locale.ROOT)).append(';');
         }
         length(sb, "margin-left", p.indentLeft);
-        length(sb, "margin-right", p.indentRight);
+        length(sb, "margin-right", indentRight(p));
         length(sb, "text-indent", p.indentFirst);
         length(sb, "margin-top", p.spaceBefore);
         length(sb, "margin-bottom", p.spaceAfter);
@@ -201,6 +209,14 @@ final class HtmlBlocks {
             sb.append("break-before:page;");
         }
         return sb.toString();
+    }
+
+    private float indentRight(Paragraph p) {
+        if (Float.isNaN(cellRoom) || p.textWidth <= 0) {
+            return p.indentRight;
+        }
+        float missing = p.indentLeft + Math.max(0, p.indentFirst) + p.indentRight + p.textWidth + CELL_SLACK - cellRoom;
+        return missing > 0 ? p.indentRight - missing : p.indentRight;
     }
 
     private static void length(StringBuilder sb, String name, float v) {
@@ -383,6 +399,10 @@ final class HtmlBlocks {
             open(sb, close, s.vertAlign() > 0, "sup");
             open(sb, close, s.vertAlign() < 0, "sub");
         }
+        if (fonts != null) {
+            RunStyle look = s != null ? s : base;
+            fonts.use(look.font() != null ? look.font() : base.font(), look.bold(), look.italic(), text);
+        }
         HtmlText.escape(sb, text);
         for (int i = close.size() - 1; i >= 0; i--) {
             sb.append(close.get(i));
@@ -555,13 +575,31 @@ final class HtmlBlocks {
         }
         sb.append("padding:0 ").append(HtmlText.pt(t.cellMarginRight)).append(" 0 ").append(HtmlText.pt(t.cellMarginLeft))
                 .append("\">");
-        for (Block b : cell.blocks()) {
-            switch (b) {
-                case Paragraph p -> paragraph(sb, p);
-                case Table nested -> table(sb, nested);
+        float was = cellRoom;
+        cellRoom = room(t, col, cell);
+        try {
+            for (Block b : cell.blocks()) {
+                switch (b) {
+                    case Paragraph p -> paragraph(sb, p);
+                    case Table nested -> table(sb, nested);
+                }
             }
+        } finally {
+            cellRoom = was;
         }
         sb.append("</").append(tag).append('>');
+    }
+
+    private static float room(Table t, int col, Table.Cell cell) {
+        int end = Math.min(t.columnWidths.size(), col + Math.max(1, cell.gridSpan));
+        if (col >= end) {
+            return Float.NaN;
+        }
+        float width = 0;
+        for (int i = col; i < end; i++) {
+            width += t.columnWidths.get(i);
+        }
+        return width - t.cellMarginLeft - t.cellMarginRight - (cell.left.width() + cell.right.width()) / 2f;
     }
 
     private static void border(StringBuilder sb, String side, Table.Border b) {
