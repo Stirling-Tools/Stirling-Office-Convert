@@ -103,7 +103,15 @@ final class SlideFixtures {
         return pdf;
     }
 
+    interface Outline {
+        void draw(PDPageContentStream cs) throws IOException;
+    }
+
     static Path shaded(Path dir, String name, PDShading shading) throws IOException {
+        return shaded(dir, name, shading, cs -> cs.addRect(0, 0, 960, 540));
+    }
+
+    static Path shaded(Path dir, String name, PDShading shading, Outline outline) throws IOException {
         Path pdf = dir.resolve(name + ".pdf");
         try (PDDocument doc = new PDDocument()) {
             PDPage page = new PDPage(WIDE);
@@ -115,7 +123,7 @@ final class SlideFixtures {
             COSName patternName = page.getResources().add(pattern);
             try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
                 cs.setNonStrokingColor(new PDColor(patternName, space));
-                cs.addRect(0, 0, 960, 540);
+                outline.draw(cs);
                 cs.fill();
             }
             doc.save(pdf.toFile());

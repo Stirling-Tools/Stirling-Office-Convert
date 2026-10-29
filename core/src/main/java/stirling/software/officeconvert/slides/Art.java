@@ -172,7 +172,7 @@ final class Art {
         return new Piece(new PathShape(frame, m.shape(), m.rgb(), m.alpha(), m.gradient()), m.order());
     }
 
-    private static Rectangle2D hull(Path2D path) {
+    static Rectangle2D hull(Path2D path) {
         double[] c = new double[6];
         Rectangle2D.Double b = null;
         for (PathIterator it = path.getPathIterator(null); !it.isDone(); it.next()) {

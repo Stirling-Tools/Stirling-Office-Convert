@@ -805,9 +805,18 @@ final class PaintOrder extends PDFGraphicsStreamEngine {
         path.reset();
     }
 
+    private static Rectangle2D framed(Path2D shape) {
+        Rectangle2D tight = shape.getBounds2D();
+        Rectangle2D hull = Art.hull(shape);
+        boolean same = Math.abs(tight.getMinX() - hull.getMinX()) <= 0.5 && Math.abs(tight.getMinY() - hull.getMinY()) <= 0.5
+                && Math.abs(tight.getMaxX() - hull.getMaxX()) <= 0.5 && Math.abs(tight.getMaxY() - hull.getMaxY()) <= 0.5;
+        return same ? tight : null;
+    }
+
     private Gradient patterned(Path2D shape) {
         PDColor colour = getGraphicsState().getNonStrokingColor();
-        if (colour == null || !(colour.getColorSpace() instanceof PDPattern space)) {
+        Rectangle2D box = framed(shape);
+        if (box == null || colour == null || !(colour.getColorSpace() instanceof PDPattern space)) {
             return null;
         }
         try {
@@ -817,7 +826,7 @@ final class PaintOrder extends PDFGraphicsStreamEngine {
             AffineTransform t = new AffineTransform(toDisplay);
             t.concatenate(getInitialMatrix().createAffineTransform());
             t.concatenate(pattern.getMatrix().createAffineTransform());
-            return Shadings.of(pattern.getShading(), t, shape.getBounds2D());
+            return Shadings.of(pattern.getShading(), t, box);
         } catch (IOException | RuntimeException e) {
             return null;
         }
@@ -854,7 +863,8 @@ final class PaintOrder extends PDFGraphicsStreamEngine {
                 PDShading shading = getResources().getShading(shadingName);
                 AffineTransform t = new AffineTransform(toDisplay);
                 t.concatenate(getGraphicsState().getCurrentTransformationMatrix().createAffineTransform());
-                gradient = shading == null ? null : Shadings.of(shading, t, shape.getBounds2D());
+                Rectangle2D box = framed(shape);
+                gradient = shading == null || box == null ? null : Shadings.of(shading, t, box);
             } catch (IOException | RuntimeException e) {
                 gradient = null;
             }
