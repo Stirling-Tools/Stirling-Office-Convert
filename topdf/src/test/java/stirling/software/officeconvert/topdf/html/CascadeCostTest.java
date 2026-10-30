@@ -63,6 +63,37 @@ class CascadeCostTest {
     }
 
     @Test
+    void rulesEndingInEscapedOrNonAsciiOrDifferentlyCasedNamesStillApply() {
+        String[][] cases = {
+            {"<p class=\"caf\u00e9\" id=t>x</p>", ".caf\u00e9"},
+            {"<p class=\"p-[2px]\" id=t>x</p>", ".p-\\[2px\\]"},
+            {"<p class=\"a+b\" id=t>x</p>", ".a\\+b"},
+            {"<p class=\"md:x\" id=t>x</p>", ".md\\:x"},
+            {"<p id=\"123\">x</p>", "#\\31 23"},
+            {"<p class=\"Outer\" id=t>x</p>", ".OUTER"},
+            {"<p class=\"\u0130\" id=t>x</p>", ".i"},
+        };
+        for (String[] c : cases) {
+            Document d = Jsoup.parse("<style>" + c[1] + "{color:red}</style>" + c[0]);
+            Element t = d.getElementById("t") != null ? d.getElementById("t") : d.selectFirst("p");
+            assertTrue(QueryParser.parse(c[1]).matches(d, t), c[1]);
+            assertEquals("red", new Cascade(d, 800).declared(t).get("color"), c[1]);
+        }
+    }
+
+    @Test
+    void escapedNamesAreIndexedByWhatTheyDecodeTo() {
+        assertEquals(".a\\+b", Cascade.lastCompound("div .a\\+b"));
+        assertEquals("span", Cascade.lastCompound(".a\\+b span"));
+        assertEquals("p-[2px]", Cascade.ident(Cascade.lastCompound("div .p-\\[2px\\]"), '.'));
+        assertEquals("123", Cascade.ident(Cascade.lastCompound("#\\31 23"), '#'));
+        assertEquals("\u00e9t", Cascade.ident(".\\e9t", '.'));
+        assertEquals("caf\u00e9", Cascade.ident("p.caf\u00e9:hover", '.'));
+        assertEquals("x", Cascade.ident(".x:not(.z)[a=\".q\"]", '.'));
+        assertNull(Cascade.ident("p:not(.z)", '.'));
+    }
+
+    @Test
     void theAncestorFilterNeverRejectsWhatJsoupMatches() {
         String[][] cases = {
             {"<div class=\"caf\u00e9\"><span id=t>x</span></div>", ".caf\u00e9 span"},

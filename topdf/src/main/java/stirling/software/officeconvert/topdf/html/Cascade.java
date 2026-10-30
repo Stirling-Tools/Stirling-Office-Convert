@@ -30,8 +30,6 @@ final class Cascade {
     // of the page keeps the defaults
     private static final long MAX_MATCH_WORK = 10_000_000L;
 
-    private static final Pattern ID = Pattern.compile("#((?:[_a-zA-Z0-9-]|\\\\.)+)");
-    private static final Pattern CLASS = Pattern.compile("[.]((?:[_a-zA-Z0-9-]|\\\\.)+)");
     private static final Pattern TAG = Pattern.compile("^([a-zA-Z][a-zA-Z0-9-]*)");
 
     private record Hit(int specificity, int order, Map<String, String> declarations) {}
@@ -354,23 +352,129 @@ final class Cascade {
 
     // Filed under what the selector's last compound step needs: its id, else a class, else its tag
     private void index(String selector, Compiled c) {
-        String last = lastStep(selector);
-        Matcher m = ID.matcher(last);
-        if (m.find()) {
-            byId.computeIfAbsent(unescape(m.group(1)), k -> new ArrayList<>()).add(c);
+        String last = lastCompound(selector.strip());
+        String id = ident(last, '#');
+        if (id != null) {
+            byId.computeIfAbsent(id, k -> new ArrayList<>()).add(c);
             return;
         }
-        m = CLASS.matcher(last);
-        if (m.find()) {
-            byClass.computeIfAbsent(unescape(m.group(1)), k -> new ArrayList<>()).add(c);
+        String name = ident(last, '.');
+        if (name != null) {
+            byClass.computeIfAbsent(fold(name), k -> new ArrayList<>()).add(c);
             return;
         }
-        m = TAG.matcher(last);
+        Matcher m = TAG.matcher(last);
         if (m.find()) {
             byTag.computeIfAbsent(m.group(1).toLowerCase(Locale.ROOT), k -> new ArrayList<>()).add(c);
             return;
         }
         anyElement.add(c);
+    }
+
+    static String lastCompound(String s) {
+        int start = 0;
+        int depth = 0;
+        char quote = 0;
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            if (c == '\\') {
+                i = escapeEnd(s, i) - 1;
+            } else if (quote != 0) {
+                if (c == quote) {
+                    quote = 0;
+                }
+            } else if (c == '"' || c == '\'') {
+                quote = c;
+            } else if (c == '(' || c == '[') {
+                depth++;
+            } else if ((c == ')' || c == ']') && depth > 0) {
+                depth--;
+            } else if (depth == 0 && (space(c) || c == '>' || c == '+' || c == '~')) {
+                start = i + 1;
+            }
+        }
+        return s.substring(start);
+    }
+
+    static String ident(String compound, char marker) {
+        int depth = 0;
+        char quote = 0;
+        for (int i = 0; i < compound.length(); i++) {
+            char c = compound.charAt(i);
+            if (c == '\\') {
+                i = escapeEnd(compound, i) - 1;
+            } else if (quote != 0) {
+                if (c == quote) {
+                    quote = 0;
+                }
+            } else if (c == '"' || c == '\'') {
+                quote = c;
+            } else if (c == '(' || c == '[') {
+                depth++;
+            } else if ((c == ')' || c == ']') && depth > 0) {
+                depth--;
+            } else if (depth == 0 && c == marker) {
+                String name = identAt(compound, i + 1);
+                if (!name.isEmpty()) {
+                    return name;
+                }
+            }
+        }
+        return null;
+    }
+
+    private static String identAt(String s, int at) {
+        StringBuilder b = new StringBuilder();
+        int i = at;
+        while (i < s.length()) {
+            char c = s.charAt(i);
+            if (c == '\\') {
+                int end = escapeEnd(s, i);
+                b.appendCodePoint(escaped(s, i, end));
+                i = end;
+            } else if (name(c) || c >= 0x80) {
+                b.append(c);
+                i++;
+            } else {
+                break;
+            }
+        }
+        return b.toString();
+    }
+
+    private static int escapeEnd(String s, int slash) {
+        int i = slash + 1;
+        if (i >= s.length()) {
+            return i;
+        }
+        if (Character.digit(s.charAt(i), 16) < 0) {
+            return i + 1;
+        }
+        int hex = 0;
+        while (i < s.length() && hex < 6 && Character.digit(s.charAt(i), 16) >= 0) {
+            i++;
+            hex++;
+        }
+        if (i < s.length() && space(s.charAt(i))) {
+            i++;
+        }
+        return i;
+    }
+
+    private static int escaped(String s, int slash, int end) {
+        if (slash + 1 >= s.length()) {
+            return 0xFFFD;
+        }
+        char first = s.charAt(slash + 1);
+        if (Character.digit(first, 16) < 0) {
+            return first;
+        }
+        int code = 0;
+        for (int i = slash + 1; i < end && Character.digit(s.charAt(i), 16) >= 0; i++) {
+            code = code * 16 + Character.digit(s.charAt(i), 16);
+        }
+        return code == 0 || code > Character.MAX_CODE_POINT || Character.isSurrogate((char) code) && code <= 0xFFFF
+                ? 0xFFFD : code;
     }
 
     static int cost(String selector) {
@@ -396,11 +500,6 @@ final class Cascade {
             }
         }
         return cost;
-    }
-
-    // .md\:flex names the class md:flex
-    private static String unescape(String name) {
-        return name.replace("\\", "");
     }
 
     static long[] above(String selector) {
@@ -583,7 +682,7 @@ final class Cascade {
             long[] above = ancestry(e);
             test(e, above, byId.get(e.id()), found, seen);
             for (String c : e.classNames()) {
-                test(e, above, byClass.get(c), found, seen);
+                test(e, above, byClass.get(fold(c)), found, seen);
             }
             test(e, above, byTag.get(e.normalName()), found, seen);
             test(e, above, anyElement, found, seen);
