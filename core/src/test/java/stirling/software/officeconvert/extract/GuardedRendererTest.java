@@ -84,6 +84,16 @@ public class GuardedRendererTest {
 
     @Test
     @Timeout(value = 60, unit = TimeUnit.SECONDS)
+    void anImageTooLargeToDecodeWholeIsDrawnSubsampled() throws IOException {
+        try (PDDocument doc = imageBomb(20_000)) {
+            Watched r = new Watched(doc);
+            r.draw(0, 0.25f, ImageType.RGB);
+            assertTrue(!r.drawer.leftOut());
+        }
+    }
+
+    @Test
+    @Timeout(value = 60, unit = TimeUnit.SECONDS)
     void annotationsPastTheCapAreNotDrawn() throws IOException {
         try (PDDocument doc = annotated(GuardedRenderer.MAX_ANNOTATIONS + 1)) {
             Watched r = new Watched(doc);
@@ -143,13 +153,17 @@ public class GuardedRendererTest {
     }
 
     public static PDDocument imageBomb() throws IOException {
+        return imageBomb(200_000);
+    }
+
+    public static PDDocument imageBomb(int side) throws IOException {
         PDDocument doc = new PDDocument();
         COSStream data = doc.getDocument().createCOSStream();
         write(data, "tiny");
         data.setItem(COSName.TYPE, COSName.XOBJECT);
         data.setItem(COSName.SUBTYPE, COSName.IMAGE);
-        data.setInt(COSName.WIDTH, 20_000);
-        data.setInt(COSName.HEIGHT, 20_000);
+        data.setInt(COSName.WIDTH, side);
+        data.setInt(COSName.HEIGHT, side);
         data.setItem(COSName.COLORSPACE, COSName.DEVICERGB);
         data.setInt(COSName.BITS_PER_COMPONENT, 8);
         PDImageXObject image = new PDImageXObject(new PDStream(data), null);

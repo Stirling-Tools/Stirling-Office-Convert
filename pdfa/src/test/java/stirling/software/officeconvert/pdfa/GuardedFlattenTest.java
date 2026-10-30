@@ -50,8 +50,8 @@ class GuardedFlattenTest {
             write(data, "tiny");
             data.setItem(COSName.TYPE, COSName.XOBJECT);
             data.setItem(COSName.SUBTYPE, COSName.IMAGE);
-            data.setInt(COSName.WIDTH, 20_000);
-            data.setInt(COSName.HEIGHT, 20_000);
+            data.setInt(COSName.WIDTH, 200_000);
+            data.setInt(COSName.HEIGHT, 200_000);
             data.setItem(COSName.COLORSPACE, COSName.DEVICERGB);
             data.setInt(COSName.BITS_PER_COMPONENT, 8);
             page(doc, "q 612 0 0 792 0 0 cm /Im Do Q").getResources()
