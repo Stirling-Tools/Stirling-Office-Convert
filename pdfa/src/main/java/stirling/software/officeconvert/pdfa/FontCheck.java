@@ -1,11 +1,17 @@
 package stirling.software.officeconvert.pdfa;
 
 import java.io.IOException;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 
+import org.apache.fontbox.cff.CFFCIDFont;
+import org.apache.fontbox.cff.CFFType1Font;
 import org.apache.fontbox.ttf.CmapSubtable;
 import org.apache.fontbox.ttf.CmapTable;
 import org.apache.fontbox.ttf.TrueTypeFont;
+import org.apache.fontbox.type1.Type1Font;
 import org.apache.pdfbox.cos.COSArray;
 import org.apache.pdfbox.cos.COSBase;
 import org.apache.pdfbox.cos.COSDictionary;
@@ -78,12 +84,62 @@ final class FontCheck {
                 return false;
             }
             float dict = font.getWidth(code);
-            float program = font.getWidthFromFont(code);
-            if (Math.abs(dict - program) > 1) {
+            double program = programWidth(font, code);
+            if (!(Math.abs(dict - program) <= 1)) {
+                return false;
+            }
+            if (font instanceof PDType1Font && !(font instanceof PDType1CFont) && Math.abs(dict - (long) program) > 1) {
                 return false;
             }
         }
         return true;
+    }
+
+    static double programWidth(PDFont font, int code) throws IOException {
+        Double exact = null;
+        List<Number> matrix = null;
+        if (font instanceof PDType1CFont c) {
+            CFFType1Font cff = c.getCFFType1Font();
+            exact = type2Width(cff.getCharStringBytes(), cff.nameToGID(c.codeToName(code)), cff.getPrivateDict());
+            matrix = cff.getFontMatrix();
+        } else if (font instanceof PDType1Font t1 && t1.getType1Font() != null) {
+            Type1Font type1 = t1.getType1Font();
+            exact = Type1Width.of(type1.getCharStringsDict().get(t1.codeToName(code)));
+            matrix = type1.getFontMatrix();
+        } else if (font instanceof PDType0Font t0 && t0.getDescendantFont() instanceof PDCIDFontType0 c0
+                && c0.getCFFFont() instanceof CFFCIDFont cid) {
+            int gid = c0.codeToGID(code);
+            int fd = cid.getFdSelect() == null ? 0 : cid.getFdSelect().getFDIndex(gid);
+            List<Map<String, Object>> privates = cid.getPrivDicts();
+            exact = fd < 0 || fd >= privates.size() ? null : type2Width(cid.getCharStringBytes(), gid, privates.get(fd));
+            matrix = cid.getFontMatrix();
+            List<Map<String, Object>> dicts = cid.getFontDicts();
+            Object own = fd >= 0 && fd < dicts.size() ? dicts.get(fd).get("FontMatrix") : null;
+            Object first = dicts.isEmpty() ? null : dicts.get(0).get("FontMatrix");
+            if (exact != null && !Objects.equals(own, first)) {
+                return Double.NaN;
+            }
+        }
+        if (exact == null || matrix == null || matrix.isEmpty()) {
+            return font.getWidthFromFont(code);
+        }
+        double scale = matrix.get(0).doubleValue();
+        return (float) scale == 0.001f ? exact : exact * scale * 1000;
+    }
+
+    private static Double type2Width(List<byte[]> charStrings, int gid, Map<String, Object> priv) {
+        if (gid < 0 || gid >= charStrings.size() || priv == null) {
+            return null;
+        }
+        Double operand = Type2Width.operand(charStrings.get(gid));
+        if (operand == null) {
+            return null;
+        }
+        return Double.isNaN(operand) ? number(priv.get("defaultWidthX")) : number(priv.get("nominalWidthX")) + operand;
+    }
+
+    private static double number(Object o) {
+        return o instanceof Number n ? n.doubleValue() : 0;
     }
 
     static boolean present(PDFont font, int code) throws IOException {

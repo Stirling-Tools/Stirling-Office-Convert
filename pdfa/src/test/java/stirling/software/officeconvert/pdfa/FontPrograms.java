@@ -21,6 +21,10 @@ final class FontPrograms {
     }
 
     static Type1 type1(String fontName, int subrPadding) {
+        return type1(fontName, subrPadding, 0);
+    }
+
+    static Type1 type1(String fontName, int subrPadding, int widthTenths) {
         StringBuilder clear = new StringBuilder();
         clear.append("%!PS-AdobeFont-1.0: ").append(fontName).append(" 001\n")
                 .append("12 dict begin\n/FontInfo 2 dict dup begin /FullName (").append(fontName)
@@ -54,7 +58,9 @@ final class FontPrograms {
                         new byte[] {12, 6});
             } else {
                 int w = width(n);
-                body = concat(num(0), num(w), new byte[] {13}, num(50), num(0), new byte[] {21}, num(4),
+                byte[] advance = widthTenths == 0 ? num(w) : concat(num(w * 10 + widthTenths), num(10),
+                        new byte[] {12, 12});
+                body = concat(num(0), advance, new byte[] {13}, num(50), num(0), new byte[] {21}, num(4),
                         new byte[] {10, 9},
                         repeat(concat(num(10), num(0), new byte[] {5}, num(-10), num(0), new byte[] {5}), 30),
                         new byte[] {14});
@@ -143,6 +149,10 @@ final class FontPrograms {
     }
 
     static byte[] cff(String fontName, byte[] topExtra, boolean hinted, int headerPadding) {
+        return cff(fontName, topExtra, hinted, headerPadding, 0);
+    }
+
+    static byte[] cff(String fontName, byte[] topExtra, boolean hinted, int headerPadding, double widthFraction) {
         int n = NAMES.size() + 1;
         byte[][] glyphs = new byte[n][];
         glyphs[0] = concat(num2(250), new byte[] {14});
@@ -161,7 +171,8 @@ final class FontPrograms {
                 }
                 byte[] hints = hinted ? concat(num2(0), num2(20), num2(680), num2(20), new byte[] {18}, num2(50),
                         num2(30), new byte[] {19, (byte) 0xC0}) : new byte[0];
-                glyphs[i] = concat(num2(width(name)), hints, num2(50), num2(0), new byte[] {21}, num2(300), num2(0),
+                byte[] advance = widthFraction == 0 ? num2(width(name)) : fixed(width(name) + widthFraction);
+                glyphs[i] = concat(advance, hints, num2(50), num2(0), new byte[] {21}, num2(300), num2(0),
                         new byte[] {5}, num2(0), num2(700), new byte[] {5}, num2(-300), num2(0), new byte[] {5},
                         noise.toByteArray(), new byte[] {14});
             }
@@ -226,6 +237,11 @@ final class FontPrograms {
             }
         }
         throw new IllegalArgumentException(name);
+    }
+
+    static byte[] fixed(double v) {
+        int f = (int) Math.round(v * 65_536);
+        return new byte[] {(byte) 255, (byte) (f >> 24), (byte) (f >> 16), (byte) (f >> 8), (byte) f};
     }
 
     static byte[] num2(int v) {
