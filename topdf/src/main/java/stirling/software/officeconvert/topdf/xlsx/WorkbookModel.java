@@ -1,5 +1,6 @@
 package stirling.software.officeconvert.topdf.xlsx;
 
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InterruptedIOException;
@@ -171,7 +172,7 @@ final class WorkbookModel {
             return new StylesTable();
         }
         try (InputStream in = XmlElements.limit(zip.open(r), r.part(), XmlElements.MAX_STYLES)) {
-            return new StylesTable(in);
+            return new StylesTable(new ByteArrayInputStream(WorksheetReader.transitional(in.readAllBytes())));
         } catch (InterruptedIOException e) {
             throw e;
         } catch (IOException | RuntimeException e) {
@@ -197,7 +198,7 @@ final class WorkbookModel {
             return null;
         }
         try (InputStream in = zip.open(r)) {
-            return new ThemesTable(in);
+            return new ThemesTable(new ByteArrayInputStream(WorksheetReader.transitional(in.readAllBytes())));
         } catch (InterruptedIOException e) {
             throw e;
         } catch (IOException | RuntimeException e) {
