@@ -15,6 +15,7 @@ import java.util.regex.Pattern;
 
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
+import org.jsoup.select.Collector;
 import org.jsoup.select.Evaluator;
 import org.jsoup.select.QueryParser;
 
@@ -24,7 +25,7 @@ import org.jsoup.select.QueryParser;
 final class Cascade {
 
     // Selector tests past this many for one document stop matching: the rest of the page keeps the defaults
-    private static final long MAX_MATCH_WORK = 40_000_000L;
+    private static final long MAX_MATCH_WORK = 10_000_000L;
 
     private static final Pattern ID = Pattern.compile("#((?:[_a-zA-Z0-9-]|\\\\.)+)");
     private static final Pattern CLASS = Pattern.compile("[.]((?:[_a-zA-Z0-9-]|\\\\.)+)");
@@ -48,6 +49,14 @@ final class Cascade {
     private static final Pattern SIDED_MARGIN = Pattern.compile("@margin-(first|left|right) (\\S+)");
     private final Map<String, Map<String, String>> named = new HashMap<>();
     private long work;
+    private long forgotten;
+    private final Set<Evaluator> tested = Collections.newSetFromMap(new IdentityHashMap<>());
+    private boolean rulesLeftOut;
+
+    private static final long FORGET_EVERY = 250_000;
+
+    static final String LEFT_OUT_WARNING = "Some style rules were left out: the style sheets hold more than "
+            + Css.MAX_RULES + " rules or " + (Cascade.MAX_SHEET_CHARS >> 20) + " MB, or need too much matching";
     private final Set<String> sheets = new HashSet<>();
     private final List<WebFonts.Face> faces = new ArrayList<>();
     private final List<Generated.Rule> pseudoRules = new ArrayList<>();
@@ -76,7 +85,10 @@ final class Cascade {
             int before = rules.size();
             String base = linked.base();
             if (sheet.normalName().equals("style")) {
-                Css.rules(imported(sheet.data(), linked.base(), linked, viewportPx, 0), rules, viewportPx);
+                String text = budgeted(sheet.data());
+                if (text != null) {
+                    Css.rules(imported(text, linked.base(), linked, viewportPx, 0), rules, viewportPx);
+                }
             } else if (stylesheet(sheet) && !linked.none()) {
                 String ref = linked.resolve(linked.base(), sheet.attr("href"));
                 String text = sheet(ref, linked);
@@ -91,6 +103,7 @@ final class Cascade {
                 }
             }
         }
+        rulesLeftOut |= rules.size() >= Css.MAX_RULES;
         int order = 0;
         for (Css.Rule rule : rules) {
             order++;
@@ -264,6 +277,20 @@ final class Cascade {
         return out.append(s, i, s.length()).toString();
     }
 
+    private String budgeted(String text) {
+        long room = MAX_SHEET_CHARS - sheetChars;
+        if (room <= 0) {
+            rulesLeftOut |= !text.isBlank();
+            return null;
+        }
+        sheetChars += Math.min(room, text.length());
+        if (text.length() > room) {
+            rulesLeftOut = true;
+            return text.substring(0, (int) room);
+        }
+        return text;
+    }
+
     private String sheet(String ref, Linked linked) {
         if (ref == null || !sheets.add(ref) || sheetChars >= MAX_SHEET_CHARS) {
             return null;
@@ -362,9 +389,25 @@ final class Cascade {
             test(e, byTag.get(e.normalName()), found, seen);
             test(e, anyElement, found, seen);
             found.sort(Comparator.comparingInt(Hit::specificity).thenComparingInt(Hit::order));
+            if (work - forgotten >= FORGET_EVERY) {
+                forget();
+            }
         }
         hits.put(e, found);
         return found;
+    }
+
+    private void forget() {
+        Element blank = new Element("i");
+        for (Evaluator ev : tested) {
+            Collector.findFirst(ev, blank);
+        }
+        tested.clear();
+        forgotten = work;
+    }
+
+    boolean leftOutRules() {
+        return rulesLeftOut || work > MAX_MATCH_WORK;
     }
 
     private void test(Element e, List<Compiled> rules, List<Hit> found, Set<Compiled> seen) {
@@ -375,8 +418,12 @@ final class Cascade {
             if (++work > MAX_MATCH_WORK) {
                 return;
             }
+            if (!seen.add(c)) {
+                continue;
+            }
+            tested.add(c.evaluator());
             try {
-                if (seen.add(c) && c.evaluator().matches(doc, e)) {
+                if (c.evaluator().matches(doc, e)) {
                     found.add(c.hit());
                 }
             } catch (RuntimeException ignored) {

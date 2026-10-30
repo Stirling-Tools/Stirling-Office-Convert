@@ -279,6 +279,9 @@ public final class HtmlDocument {
             author = meta.attr("content");
         }
         writer.finish(ctx.lastSection(), null, ctx.numbering(), styles, doc.title(), author);
+        if (cascade.leftOutRules()) {
+            ctx.warn(Cascade.LEFT_OUT_WARNING);
+        }
         float fit = 1f;
         if (!ownPaper && ctx.wanted() > printed * 1.02f) {
             // widths here are estimates, so a little slack keeps a measured line from wrapping after all
