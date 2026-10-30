@@ -264,12 +264,12 @@ class PositionedTest {
     }
 
     @Test
-    void anUnstyledPageHasWeasyPrintsPageMarginsAndTheBodysSideMargins() throws IOException {
+    void anUnstyledPageHasChromesPrintMarginsAndTheBodysSideMargins() throws IOException {
         Pdf plain = html("plain.html", "<html><body><p>Leftmost</p></body></html>");
-        assertEquals(56.25 + 6, plain.first("Leftmost").x(), 1);
+        assertEquals(27.75 + 6, plain.first("Leftmost").x(), 1);
         Pdf flush = html("flush.html", "<html><head><style>body{margin:0}</style></head><body><p>Leftmost</p></body>"
                 + "</html>");
-        assertEquals(56.25, flush.first("Leftmost").x(), 1);
+        assertEquals(27.75, flush.first("Leftmost").x(), 1);
         Pdf padded = html("padded.html", "<html><head><style>@page{margin:36pt}body{margin:0;padding:0 24pt}</style>"
                 + "</head><body><p>Leftmost</p></body></html>");
         assertEquals(36 + 24, padded.first("Leftmost").x(), 1);

@@ -121,7 +121,8 @@ final class BookPages {
 
     static String contents(List<Entry> entries, String marker) {
         StringBuilder html = new StringBuilder(4096);
-        html.append("<!DOCTYPE html><html><head><meta charset=\"utf-8\"><title>Contents</title></head><body>")
+        html.append("<!DOCTYPE html><html><head><meta charset=\"utf-8\"><title>Contents</title>")
+                .append("<style>@page{margin:56.25pt}</style></head><body>")
                 .append("<h1 style=\"font-size:1.6em;margin:0 0 1em\">Contents</h1>");
         for (Entry e : entries) {
             html.append("<p style=\"margin:2pt 0 2pt ").append(1.5f * Math.min(e.depth(), 8)).append("em\">")

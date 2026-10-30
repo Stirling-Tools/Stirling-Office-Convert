@@ -52,7 +52,9 @@ public final class HtmlDocument {
     // Chrome shrinks a page whose content is too wide by at most a third, and clips what is wider still
     static final float LEAST_FIT = 2f / 3f;
 
-    static final float PAGE_MARGIN = 56.25f;
+    static final float PAGE_MARGIN = 27.75f;
+
+    static final float COVER_MARGIN = 56.25f;
 
     public static final String BOOK_PAGE = "-office-convert-book";
 
@@ -185,7 +187,7 @@ public final class HtmlDocument {
         if (declared.containsKey(BOOK_PAGE)) {
             Map<String, String> own = new HashMap<>(declared);
             own.remove(BOOK_PAGE);
-            Section plain = page(own);
+            Section plain = page(own, COVER_MARGIN);
             widened = new float[] {page.marginTop - plain.marginTop, page.marginBottom - plain.marginBottom,
                     page.marginLeft - plain.marginLeft, page.marginRight - plain.marginRight};
         }
@@ -391,9 +393,13 @@ public final class HtmlDocument {
     }
 
     static Section page(Map<String, String> d) {
+        return page(d, PAGE_MARGIN);
+    }
+
+    private static Section page(Map<String, String> d, float plain) {
         Section s = JsonModel.defaultPage();
         String size = d.get("size");
-        float fallback = d.containsKey(BOOK_PAGE) && size == null ? BOOK_MARGIN : PAGE_MARGIN;
+        float fallback = d.containsKey(BOOK_PAGE) && size == null ? BOOK_MARGIN : plain;
         s.marginTop = fallback;
         s.marginBottom = fallback;
         s.marginLeft = fallback;
