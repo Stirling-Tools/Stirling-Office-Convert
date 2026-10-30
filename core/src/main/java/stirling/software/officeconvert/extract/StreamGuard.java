@@ -120,6 +120,29 @@ public final class StreamGuard {
         }
     }
 
+    static InputStream head(COSStream s, long limit) throws IOException {
+        List<COSName> filters = filters(s.getFilters());
+        for (COSName filter : filters) {
+            if (ratio(filter) <= 0) {
+                throw new IOException("Content stream filter " + filter.getName() + " is not scanned");
+            }
+        }
+        InputStream data = s.createRawInputStream();
+        for (int i = 0; i < filters.size(); i++) {
+            boolean last = i == filters.size() - 1;
+            Capped out = new Capped(true, last ? limit + 1 : MAX_DECODED);
+            try (InputStream in = data) {
+                FilterFactory.INSTANCE.getFilter(filters.get(i)).decode(in, out, s, i);
+            } catch (Full full) {
+                if (!last) {
+                    throw full;
+                }
+            }
+            data = new ByteArrayInputStream(out.bytes());
+        }
+        return data;
+    }
+
     private static double potential(List<COSName> filters, long length) {
         double most = Math.max(0, length);
         int stages = 0;
@@ -190,31 +213,31 @@ public final class StreamGuard {
     private static final class Capped extends OutputStream {
 
         private final ByteArrayOutputStream kept;
+        private final long cap;
         private long written;
 
         Capped(boolean keep) {
+            this(keep, MAX_DECODED);
+        }
+
+        Capped(boolean keep, long cap) {
             this.kept = keep ? new ByteArrayOutputStream() : null;
+            this.cap = cap;
         }
 
         @Override
         public void write(int b) throws IOException {
-            add(1);
-            if (kept != null) {
-                kept.write(b);
-            }
+            write(new byte[] {(byte) b}, 0, 1);
         }
 
         @Override
         public void write(byte[] b, int off, int len) throws IOException {
-            add(len);
-            if (kept != null) {
-                kept.write(b, off, len);
+            int room = (int) Math.min(len, cap - written);
+            if (kept != null && room > 0) {
+                kept.write(b, off, room);
             }
-        }
-
-        private void add(long n) throws Full {
-            written += n;
-            if (written > MAX_DECODED) {
+            written += len;
+            if (written > cap) {
                 throw new Full();
             }
         }

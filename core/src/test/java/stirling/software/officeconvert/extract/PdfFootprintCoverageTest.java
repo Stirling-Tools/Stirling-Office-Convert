@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
 
 import org.apache.pdfbox.cos.COSArray;
 import org.apache.pdfbox.cos.COSDictionary;
@@ -71,6 +72,23 @@ class PdfFootprintCoverageTest {
 
     private static long extra(PDDocument doc) throws IOException {
         return PdfFootprint.estimate(doc, 0, 0, 150f) - baseline();
+    }
+
+    @Test
+    void aHugeContentStreamIsReadOnlyUpToTheScanLimit() throws IOException {
+        try (PDDocument doc = new PDDocument()) {
+            COSStream content = doc.getDocument().createCOSStream();
+            byte[] spaces = new byte[1 << 20];
+            Arrays.fill(spaces, (byte) ' ');
+            try (OutputStream out = content.createOutputStream(COSName.FLATE_DECODE)) {
+                for (int i = 0; i < 300; i++) {
+                    out.write(spaces);
+                }
+            }
+            assertEquals(4097, StreamGuard.head(content, 4096).readAllBytes().length);
+            page(doc).getCOSObject().setItem(COSName.CONTENTS, content);
+            assertTrue(extra(doc) > 0);
+        }
     }
 
     @Test

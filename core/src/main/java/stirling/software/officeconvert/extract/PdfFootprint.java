@@ -3,9 +3,11 @@ package stirling.software.officeconvert.extract;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.IdentityHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -13,6 +15,7 @@ import org.apache.pdfbox.cos.COSArray;
 import org.apache.pdfbox.cos.COSBase;
 import org.apache.pdfbox.cos.COSDictionary;
 import org.apache.pdfbox.cos.COSName;
+import org.apache.pdfbox.cos.COSObject;
 import org.apache.pdfbox.cos.COSStream;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
@@ -92,8 +95,8 @@ public final class PdfFootprint {
                 scan.area = Math.max(scan.area, (double) box.getWidth() * box.getHeight());
                 PDResources resources = page.getResources();
                 scan.resources(resources == null ? null : resources.getCOSObject(), 0);
-                if (page.hasContents()) {
-                    try (InputStream in = page.getContents()) {
+                for (COSStream content : contents(page)) {
+                    try (InputStream in = StreamGuard.head(content, scan.contentLeft)) {
                         scan.content(in);
                     }
                 }
@@ -105,6 +108,24 @@ public final class PdfFootprint {
         long render = renderBytes(scan.area, dpi) - renderBytes(scan.area, MEASURED_DPI);
         long sum = model + scan.picture + Math.max(0, render);
         return sum < 0 ? Long.MAX_VALUE : sum;
+    }
+
+    private static List<COSStream> contents(PDPage page) {
+        COSBase c = page.getCOSObject().getDictionaryObject(COSName.CONTENTS);
+        List<COSStream> out = new ArrayList<>();
+        if (c instanceof COSStream s) {
+            out.add(s);
+        } else if (c instanceof COSArray a) {
+            for (COSBase b : a) {
+                if (b instanceof COSObject o) {
+                    b = o.getObject();
+                }
+                if (b instanceof COSStream s) {
+                    out.add(s);
+                }
+            }
+        }
+        return out;
     }
 
     private static long renderBytes(double area, float dpi) {
