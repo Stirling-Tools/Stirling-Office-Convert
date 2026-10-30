@@ -6,7 +6,8 @@ import java.util.List;
 /** Puts the pieces of a line, drawn left to right, in reading order as Word writes them, so RTL text extracts. */
 final class TextOrder {
 
-    record Piece(String ops, float x0, float x1, float baseline, float size, String text, boolean upright) {}
+    record Piece(String ops, float x0, float x1, float baseline, float size, String text, boolean upright,
+            boolean visual) {}
 
     static final int NEUTRAL = 0;
 
@@ -35,7 +36,8 @@ final class TextOrder {
                     right += r;
                     kinds[k] = kind(t, l, r);
                 }
-                for (int k : right == 0 ? identity(kinds.length) : order(kinds, rightToLeft(kinds, left, right))) {
+                int[] order = right == 0 ? identity(kinds.length) : order(kinds, rightToLeft(kinds, left, right));
+                for (int k : visualRuns(line, kinds, order)) {
                     out.add(line.get(k));
                 }
                 start = i;
@@ -107,6 +109,28 @@ final class TextOrder {
             }
         }
         return order;
+    }
+
+    static int[] visualRuns(List<Piece> line, int[] kinds, int[] order) {
+        int i = 0;
+        while (i < order.length) {
+            int j = i + 1;
+            while (j < order.length && order[j] == order[j - 1] - 1 && visualRight(line, kinds, order[j])
+                    && visualRight(line, kinds, order[j - 1])) {
+                j++;
+            }
+            for (int a = i, b = j - 1; a < b; a++, b--) {
+                int t = order[a];
+                order[a] = order[b];
+                order[b] = t;
+            }
+            i = j;
+        }
+        return order;
+    }
+
+    private static boolean visualRight(List<Piece> line, int[] kinds, int i) {
+        return kinds[i] == RIGHT && line.get(i).visual();
     }
 
     // The direction a neutral piece takes from its nearest non-neutral neighbour on one side; numbers count as RTL

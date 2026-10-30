@@ -271,7 +271,7 @@ public final class PdfCanvas implements Closeable {
             i += Character.charCount(cp);
         }
         at += segment(ops, text.substring(start), Math.max(kind, GLYPHS), embedded, cover, x + at, baseline, style);
-        queue(ops, x, x + at, baseline, style.size(), text);
+        queue(ops, x, x + at, baseline, style.size(), text, false);
         return at;
     }
 
@@ -595,7 +595,8 @@ public final class PdfCanvas implements Closeable {
         float rise = size / face.unitsPerEm();
         float tz = th * run.stretch();
         float skew = face.syntheticItalic() ? ITALIC_SKEW : 0;
-        int[] codes = output.fonts().used(embedded, run);
+        boolean logical = upright() && tz == 1;
+        int[] codes = output.fonts().used(embedded, run, run.rightToLeft() && !logical && upright());
         StringBuilder ops = new StringBuilder();
         if (actualText) {
             ops.append("/Span <</ActualText ").append(textString(run.text())).append(">> BDC\n");
@@ -608,7 +609,7 @@ public final class PdfCanvas implements Closeable {
         StringBuilder tj = null;
         float pen = 0;
         float line = Float.NaN;
-        int[][] reading = readingOrder(run, actualText ? new int[run.size()] : run.groups(), upright());
+        int[][] reading = readingOrder(run, actualText ? new int[run.size()] : run.groups(), logical);
         int[] order = reading[0];
         int[] marks = reading[1];
         for (int k = 0; k < run.size(); k++) {
@@ -656,13 +657,14 @@ public final class PdfCanvas implements Closeable {
             ops.append("EMC\n");
         }
         float width = run.advance() * scale;
-        queue(ops, x, x + width, baseline, size, run.text());
+        queue(ops, x, x + width, baseline, size, run.text(), run.rightToLeft() && !logical);
         return width;
     }
 
-    // Glyphs in reading order, right-to-left runs from their right end as Word writes them; a group draws the
-    // glyph that carries its text first and marks the others as saying nothing (SILENT opens, SPOKEN closes)
-    private static int[][] readingOrder(GlyphRun run, int[] groups, boolean upright) {
+    // Glyphs in reading order, right-to-left runs from their right end as Word writes them unless horizontally
+    // scaled (MuPDF measures a backward step in unscaled advances and splits such words); a group draws the glyph
+    // that carries its text first and marks the others as saying nothing (SILENT opens, SPOKEN closes)
+    private static int[][] readingOrder(GlyphRun run, int[] groups, boolean logical) {
         int n = run.size();
         List<int[]> segments = new ArrayList<>();
         for (int i = 0; i < n; ) {
@@ -670,7 +672,7 @@ public final class PdfCanvas implements Closeable {
             segments.add(new int[] {i, end});
             i = end;
         }
-        if (run.rightToLeft() && upright) {
+        if (run.rightToLeft() && logical) {
             Collections.reverse(segments);
             segments.sort(Comparator.comparingInt(s -> firstCharacter(run, s)));
         }
@@ -704,10 +706,11 @@ public final class PdfCanvas implements Closeable {
     }
 
     // Text waits for the next drawing so that the pieces of a line reach the page in reading order
-    private void queue(StringBuilder ops, float x0, float x1, float baseline, float size, String text) {
+    private void queue(StringBuilder ops, float x0, float x1, float baseline, float size, String text,
+            boolean visual) {
         if (!ops.isEmpty()) {
             pending.add(new TextOrder.Piece(ops.toString(), Math.min(x0, x1), Math.max(x0, x1), baseline, size,
-                    text, upright()));
+                    text, upright(), visual));
         }
     }
 

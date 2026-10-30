@@ -261,6 +261,10 @@ public final class PdfFonts implements Closeable {
     // The code to draw each glyph of a shaped run with: a group's carrier stands for the group's text, under a
     // code of its own when its glyph already stands for other text, and the group's other glyphs for nothing
     public int[] used(Embedded font, GlyphRun run) {
+        return used(font, run, false);
+    }
+
+    public int[] used(Embedded font, GlyphRun run, boolean reversed) {
         int[] codes = run.glyphs();
         Use u = uses.get(font.font());
         if (u == null) {
@@ -293,7 +297,7 @@ public final class PdfFonts implements Closeable {
             if (t == null || t.isEmpty()) {
                 u.trailing.set(g);
             } else {
-                codes[i] = code(u, g, t);
+                codes[i] = code(u, g, reversed ? new StringBuilder(t).reverse().toString() : t);
             }
         }
         SubsetFont subset = subsets.get(font.font());
