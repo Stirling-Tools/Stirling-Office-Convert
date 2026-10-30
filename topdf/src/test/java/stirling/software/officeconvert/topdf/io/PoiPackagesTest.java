@@ -22,6 +22,7 @@ import org.apache.poi.openxml4j.opc.PackagePart;
 import org.apache.poi.openxml4j.opc.PackageRelationship;
 import org.apache.poi.openxml4j.opc.PackagingURIHelper;
 import org.apache.poi.openxml4j.opc.TargetMode;
+import org.apache.poi.openxml4j.util.ZipSecureFile;
 import org.apache.poi.xslf.usermodel.XMLSlideShow;
 import org.apache.poi.xslf.usermodel.XSLFGroupShape;
 import org.apache.poi.xslf.usermodel.XSLFSlide;
@@ -371,5 +372,19 @@ class PoiPackagesTest {
             IOException e = assertThrows(IOException.class, () -> PoiPackages.slideShow(zip));
             assertTrue(e.getMessage().contains("presentation"), e.getMessage());
         }
+    }
+
+    @Test
+    void openingASmallPackageLeavesPoiZipLimitsAlone() throws IOException {
+        long files = ZipSecureFile.getMaxFileCount();
+        long entry = ZipSecureFile.getMaxEntrySize();
+        double ratio = ZipSecureFile.getMinInflateRatio();
+        Path in = Fixtures.write(dir, "small.pptx", Fixtures.pptx("one"));
+        try (OfficeZip zip = OfficeZip.open(in); XMLSlideShow ppt = PoiPackages.slideShow(zip)) {
+            assertEquals(1, ppt.getSlides().size());
+        }
+        assertEquals(files, ZipSecureFile.getMaxFileCount());
+        assertEquals(entry, ZipSecureFile.getMaxEntrySize());
+        assertEquals(ratio, ZipSecureFile.getMinInflateRatio());
     }
 }
