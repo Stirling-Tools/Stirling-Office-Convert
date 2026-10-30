@@ -118,6 +118,37 @@ final class Limits {
         return false;
     }
 
+    static boolean numbersWithin(COSBase b, PdfALevel level, int depth) {
+        boolean changed = false;
+        if (depth > 32) {
+            return false;
+        }
+        if (b instanceof COSArray a) {
+            for (int i = 0; i < a.size(); i++) {
+                COSBase v = a.get(i);
+                COSBase f = number(v, level);
+                if (f != v) {
+                    a.set(i, f);
+                    changed = true;
+                } else {
+                    changed |= numbersWithin(v, level, depth + 1);
+                }
+            }
+        } else if (b instanceof COSDictionary d) {
+            for (COSName k : new ArrayList<>(d.keySet())) {
+                COSBase v = d.getItem(k);
+                COSBase f = number(v, level);
+                if (f != v) {
+                    d.setItem(k, f);
+                    changed = true;
+                } else {
+                    changed |= numbersWithin(v, level, depth + 1);
+                }
+            }
+        }
+        return changed;
+    }
+
     static COSBase number(COSBase b, PdfALevel level) {
         if (b instanceof COSFloat f) {
             double v = f.floatValue();

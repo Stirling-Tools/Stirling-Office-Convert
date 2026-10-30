@@ -86,6 +86,13 @@ class LargeNumbersAdversarialTest {
     }
 
     @Test
+    void hugeRealsInsideDictionaryOperandsMeetPartOne() throws Exception {
+        Path out = convert("/Artifact <</BBox [0 0 40000.5 10] /Attached [/Top]>> BDC 0 0 1 rg 10 10 50 50 re f EMC",
+                PdfALevel.A1B);
+        VeraPdf.assertCompliant(out, PdfALevel.A1B);
+    }
+
+    @Test
     void hugeRealsInDictionariesAndArraysBecomeIntegersAtPartOne() throws Exception {
         RawPdf raw = RawPdf.page("", "0 0 1 rg 10 10 50 50 re f");
         raw.set(3, "<</Type/Page/Parent 2 0 R/MediaBox[0 0 400 400]/Resources<<>>/Contents 4 0 R"
