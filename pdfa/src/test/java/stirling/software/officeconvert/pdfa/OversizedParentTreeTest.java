@@ -1,5 +1,6 @@
 package stirling.software.officeconvert.pdfa;
 
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 
 import java.nio.file.Path;
@@ -44,6 +45,9 @@ class OversizedParentTreeTest {
             root.setItem(COSName.PARENT_TREE, parentTree);
             root.setItem(COSName.K, element);
             d.getDocumentCatalog().getCOSObject().setItem(COSName.STRUCT_TREE_ROOT, root);
+            COSDictionary markInfo = new COSDictionary();
+            markInfo.setBoolean(COSName.getPDFName("Marked"), true);
+            d.getDocumentCatalog().getCOSObject().setItem(COSName.MARK_INFO, markInfo);
             d.save(in.toFile());
         }
         Path out = dir.resolve("out.pdf");
@@ -51,6 +55,8 @@ class OversizedParentTreeTest {
         VeraPdf.assertCompliant(out, PdfALevel.A1B);
         try (PDDocument d = Loader.loadPDF(out.toFile())) {
             assertNull(d.getDocumentCatalog().getCOSObject().getDictionaryObject(COSName.STRUCT_TREE_ROOT));
+            assertFalse(((COSDictionary) d.getDocumentCatalog().getCOSObject().getDictionaryObject(COSName.MARK_INFO))
+                    .getBoolean(COSName.getPDFName("Marked"), true));
         }
     }
 }

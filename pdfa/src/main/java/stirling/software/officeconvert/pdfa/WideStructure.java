@@ -32,6 +32,11 @@ final class WideStructure {
         if (!level.tagged() && oversizedParentTree(root)) {
             root.removeItem(COSName.PARENT_TREE);
             doc.getDocumentCatalog().getCOSObject().removeItem(COSName.STRUCT_TREE_ROOT);
+            COSDictionary markInfo = ContentGraph.dict(doc.getDocumentCatalog().getCOSObject()
+                    .getDictionaryObject(COSName.MARK_INFO));
+            if (markInfo != null) {
+                markInfo.setBoolean(COSName.getPDFName("Marked"), false);
+            }
             report.warn("Removed the structure tree, as a page marks more content than a PDF/A-1 array can index");
         }
         boolean changed = false;
