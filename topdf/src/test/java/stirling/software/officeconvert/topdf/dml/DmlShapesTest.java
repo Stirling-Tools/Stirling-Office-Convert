@@ -54,4 +54,20 @@ class DmlShapesTest {
         assertEquals(128, DmlColors.modify(Color.RED, "alphaMod", 50000).getAlpha());
         assertEquals(new Color(0x7F7F7F).getRed(), DmlColors.modify(Color.WHITE, "lumMod", 50000).getRed(), 1);
     }
+
+    @Test
+    void aCustomPathStopsAtTheCommandLimit() throws Exception {
+        String xml = "<a:custGeom xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><a:pathLst>"
+                + "<a:path w=\"100\" h=\"100\"><a:moveTo><a:pt x=\"0\" y=\"0\"/></a:moveTo>"
+                + "<a:lnTo><a:pt x=\"1\" y=\"1\"/></a:lnTo>".repeat(DmlShapes.MAX_PATH_COMMANDS + 10)
+                + "</a:path></a:pathLst></a:custGeom>";
+        Element geom = SecureXml.parse(new ByteArrayInputStream(xml.getBytes(StandardCharsets.UTF_8)))
+                .getDocumentElement();
+        List<DmlShapes.Outline> out = DmlShapes.custom(geom, new Rectangle2D.Float(0, 0, 100, 100));
+        int segments = 0;
+        for (java.awt.geom.PathIterator it = out.get(0).shape().getPathIterator(null); !it.isDone(); it.next()) {
+            segments++;
+        }
+        assertEquals(DmlShapes.MAX_PATH_COMMANDS, segments);
+    }
 }

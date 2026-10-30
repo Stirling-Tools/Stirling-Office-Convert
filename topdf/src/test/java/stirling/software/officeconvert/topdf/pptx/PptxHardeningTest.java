@@ -19,6 +19,7 @@ import org.junit.jupiter.api.io.TempDir;
 import stirling.software.officeconvert.topdf.OfficeToPdf;
 import stirling.software.officeconvert.topdf.font.CloudFonts;
 import stirling.software.officeconvert.topdf.font.FontLibrary;
+import stirling.software.officeconvert.topdf.io.XmlElements;
 import stirling.software.officeconvert.topdf.testing.Fixtures;
 import stirling.software.officeconvert.topdf.testing.TestFonts;
 
@@ -75,5 +76,22 @@ class PptxHardeningTest {
         assertEquals(100, e.scale());
         assertTrue(e.face().substituted());
         assertNull(e.face().note(), "a metric-compatible stand-in is not reported");
+    }
+
+    @Test
+    void aSlideWithTooManyXmlElementsIsLeftOutWithAWarning() throws IOException {
+        String path = "<a:lnTo><a:pt x=\"1\" y=\"1\"/></a:lnTo>".repeat((int) XmlElements.MAX_POI_PART / 2 + 1);
+        String shape = "<p:sp><p:nvSpPr><p:cNvPr id=\"9\" name=\"c\"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr><p:spPr>"
+                + "<a:xfrm><a:off x=\"0\" y=\"0\"/><a:ext cx=\"900000\" cy=\"600000\"/></a:xfrm><a:custGeom>"
+                + "<a:pathLst><a:path w=\"10\" h=\"10\"><a:moveTo><a:pt x=\"0\" y=\"0\"/></a:moveTo>" + path
+                + "</a:path></a:pathLst></a:custGeom></p:spPr></p:sp>";
+        Fixtures.Zip zip = Fixtures.edit(Fixtures.pptx("first", "second"));
+        String slide = zip.text("ppt/slides/slide2.xml");
+        zip.put("ppt/slides/slide2.xml", slide.replace("</p:spTree>", shape + "</p:spTree>"));
+        Path in = Fixtures.write(dir, "dense.pptx", zip.bytes());
+        OfficeToPdf.Result r = OfficeToPdf.convert(in, dir.resolve("dense.pdf"), OfficeToPdf.Options.defaults());
+        assertTrue(r.warnings().stream().anyMatch(w -> w.contains("more than " + XmlElements.MAX_POI_PART
+                + " XML elements")), r.warnings().toString());
+        assertTrue(text(dir.resolve("dense.pdf")).contains("first"));
     }
 }

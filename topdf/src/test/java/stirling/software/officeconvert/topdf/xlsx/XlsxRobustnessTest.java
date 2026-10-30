@@ -14,6 +14,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import stirling.software.officeconvert.topdf.OfficeToPdf;
+import stirling.software.officeconvert.topdf.io.XmlElements;
 import stirling.software.officeconvert.topdf.testing.Fixtures;
 
 class XlsxRobustnessTest {
@@ -109,5 +110,18 @@ class XlsxRobustnessTest {
             b.insert(0, (char) ('A' + (n - 1) % 26));
         }
         return b.toString();
+    }
+
+    @Test
+    void stylesWithTooManyElementsAreNotReadAndTheSheetStillPrints() throws Exception {
+        String xfs = "<xf numFmtId=\"0\" fontId=\"0\" fillId=\"0\" borderId=\"0\"/>"
+                .repeat((int) XmlElements.MAX_STYLES + 1);
+        byte[] xlsx = new RawXlsx().styles("<cellXfs>" + xfs + "</cellXfs>")
+                .sheet("S", "<sheetData><row r=\"1\">" + RawXlsx.inline("A1", "kept") + "</row></sheetData>").bytes();
+        Path in = Fixtures.write(dir, "styles.xlsx", xlsx);
+        OfficeToPdf.Result r = OfficeToPdf.convert(in, dir.resolve("styles.pdf"), OfficeToPdf.Options.defaults());
+        assertEquals(1, r.pages());
+        assertTrue(r.warnings().stream().anyMatch(w -> w.contains("more than " + XmlElements.MAX_STYLES)),
+                r.warnings().toString());
     }
 }
