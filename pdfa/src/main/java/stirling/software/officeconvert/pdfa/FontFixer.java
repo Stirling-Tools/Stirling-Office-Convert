@@ -73,7 +73,8 @@ final class FontFixer {
             COSName.TYPE3, COSName.TRUE_TYPE);
 
     static boolean repairSubtype(COSDictionary dict) {
-        if (FONT_SUBTYPES.contains(dict.getCOSName(COSName.SUBTYPE))) {
+        COSName current = dict.getCOSName(COSName.SUBTYPE);
+        if (current != null && FONT_SUBTYPES.contains(current)) {
             return false;
         }
         COSDictionary fd = ContentGraph.dict(dict.getDictionaryObject(COSName.FONT_DESC));
@@ -89,6 +90,25 @@ final class FontFixer {
         }
         dict.setItem(COSName.SUBTYPE, subtype);
         return true;
+    }
+
+    static void repairSubtypes(ContentGraph graph, Report report) {
+        boolean changed = false;
+        for (COSDictionary res : graph.resources()) {
+            COSDictionary fonts = ContentGraph.dict(res.getDictionaryObject(COSName.FONT));
+            if (fonts == null) {
+                continue;
+            }
+            for (COSName k : fonts.keySet()) {
+                COSDictionary font = ContentGraph.dict(fonts.getDictionaryObject(k));
+                if (font != null && repairSubtype(font)) {
+                    changed = true;
+                }
+            }
+        }
+        if (changed) {
+            report.warn("Gave a font with a missing or unknown Subtype the type its font program shows");
+        }
     }
 
     private PDFont fix(COSDictionary dict, TreeSet<Integer> codes, int bytesPerCode) throws IOException {

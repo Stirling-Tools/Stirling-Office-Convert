@@ -57,7 +57,9 @@ final class Annotations {
             String type = sub == null ? "" : sub.getName();
             boolean flatten = level.part() == 1 && Set.of("Polygon", "PolyLine", "Caret").contains(type);
             boolean forbidden = level.part() == 4 && "FileAttachment".equals(type);
-            if ((!(level.part() == 1 ? ALLOWED_A1 : ALLOWED).contains(type) || forbidden) && !flatten) {
+            boolean allowed = (level.part() == 1 ? ALLOWED_A1 : ALLOWED).contains(type)
+                    || level.part() == 4 && "Projection".equals(type);
+            if ((!allowed || forbidden) && !flatten) {
                 report.warn("Removed " + (type.isEmpty() ? "an annotation without a type" : "a " + type
                         + " annotation") + ", which " + level.label() + " does not allow");
                 continue;

@@ -11,6 +11,10 @@ import java.nio.file.Path;
 
 import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.cos.COSName;
+import org.apache.pdfbox.pdmodel.common.PDRectangle;
+import org.apache.pdfbox.pdmodel.PDPage;
+import org.apache.pdfbox.cos.COSDictionary;
+import org.apache.pdfbox.cos.COSArray;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -62,6 +66,34 @@ class PdfA4Test {
             String content = new String(d.getPage(0).getContents().readAllBytes(), StandardCharsets.ISO_8859_1);
             assertFalse(content.contains("E001"));
             assertTrue(new org.apache.pdfbox.text.PDFTextStripper().getText(d).contains("AB"));
+        }
+    }
+
+    @Test
+    void keepsProjectionAnnotationsThatOnlyPartFourAllows() throws Exception {
+        Path in = dir.resolve("projection.pdf");
+        try (PDDocument d = new PDDocument()) {
+            PDPage page = FontSamples.page(d, "BT /A 14 Tf 50 780 Td (Measured) Tj ET", FontSamples.trueType(d));
+            COSDictionary annot = new COSDictionary();
+            annot.setItem(COSName.TYPE, COSName.ANNOT);
+            annot.setItem(COSName.SUBTYPE, COSName.getPDFName("Projection"));
+            annot.setItem(COSName.RECT, new PDRectangle(50, 700, 0, 0).getCOSArray());
+            annot.setInt(COSName.F, 4);
+            COSArray annots = new COSArray();
+            annots.add(annot);
+            page.getCOSObject().setItem(COSName.ANNOTS, annots);
+            d.save(in.toFile());
+        }
+        Path out = dir.resolve("projection-out.pdf");
+        PdfToPdfA.convert(in, out, PdfToPdfA.Options.defaults().level(PdfALevel.A4));
+        VeraPdf.assertCompliant(out, PdfALevel.A4);
+        try (PDDocument d = Loader.loadPDF(out.toFile())) {
+            assertEquals("Projection", d.getPage(0).getAnnotations().get(0).getSubtype());
+        }
+        Path two = dir.resolve("projection-2b.pdf");
+        PdfToPdfA.convert(in, two, PdfToPdfA.Options.defaults().level(PdfALevel.A2B));
+        try (PDDocument d = Loader.loadPDF(two.toFile())) {
+            assertTrue(d.getPage(0).getAnnotations().isEmpty());
         }
     }
 }

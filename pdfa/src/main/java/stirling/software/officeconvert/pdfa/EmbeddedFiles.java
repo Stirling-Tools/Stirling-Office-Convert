@@ -216,7 +216,8 @@ final class EmbeddedFiles {
             if (!(fs.getDictionaryObject(AF_RELATIONSHIP) instanceof COSName)) {
                 fs.setItem(AF_RELATIONSHIP, UNSPECIFIED);
             }
-            if (!(file.getDictionaryObject(COSName.SUBTYPE) instanceof COSName)) {
+            if (!(file.getDictionaryObject(COSName.SUBTYPE) instanceof COSName mime)
+                    || !mime.getName().matches("[-\\w+.]+/[-\\w+.]+")) {
                 file.setItem(COSName.SUBTYPE, COSName.getPDFName(mime(name)));
             }
             COSDictionary params = ContentGraph.dict(file.getDictionaryObject(COSName.PARAMS));

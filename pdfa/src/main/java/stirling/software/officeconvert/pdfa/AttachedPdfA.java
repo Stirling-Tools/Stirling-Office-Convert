@@ -42,10 +42,6 @@ final class AttachedPdfA {
         return check(file, 0, partFour);
     }
 
-    private static boolean check(COSStream file, int depth) {
-        return check(file, depth, false);
-    }
-
     private static boolean check(COSStream file, int depth, boolean partFour) {
         byte[] data;
         try {
@@ -64,7 +60,7 @@ final class AttachedPdfA {
                 }
                 boolean[] ok = {true};
                 Set<COSStream> checked = Collections.newSetFromMap(new IdentityHashMap<>());
-                CosWalk.walk(doc, b -> ok[0] &= allowed(b, depth, checked));
+                CosWalk.walk(doc, b -> ok[0] &= allowed(b, depth, checked, partFour));
                 parser.checkBudget();
                 return ok[0];
             }
@@ -117,7 +113,7 @@ final class AttachedPdfA {
         return count == 1 ? value : "";
     }
 
-    private static boolean allowed(COSBase b, int depth, Set<COSStream> checked) {
+    private static boolean allowed(COSBase b, int depth, Set<COSStream> checked, boolean partFour) {
         if (!(b instanceof COSDictionary d)) {
             return true;
         }
@@ -136,13 +132,13 @@ final class AttachedPdfA {
         if (ef != null) {
             for (COSName key : ef.keySet()) {
                 if (!(ef.getDictionaryObject(key) instanceof COSStream file)
-                        || checked.add(file) && !(depth < MAX_DEPTH && check(file, depth + 1))) {
+                        || checked.add(file) && !(depth < MAX_DEPTH && check(file, depth + 1, partFour))) {
                     return false;
                 }
             }
         }
         if (d instanceof COSStream s && EMBEDDED_FILE.equals(s.getCOSName(COSName.TYPE)) && checked.add(s)) {
-            return depth < MAX_DEPTH && check(s, depth + 1);
+            return depth < MAX_DEPTH && check(s, depth + 1, partFour);
         }
         return true;
     }
