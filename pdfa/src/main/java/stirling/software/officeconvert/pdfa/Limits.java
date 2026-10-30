@@ -126,6 +126,9 @@ final class Limits {
         if (b instanceof COSFloat f) {
             double v = f.floatValue();
             double max = level.part() == 1 ? 32_767 : 3.4e38;
+            if (Math.abs(v) > max && level.part() == 1 && Math.abs(v) <= Integer.MAX_VALUE) {
+                return COSInteger.get(Math.round(v));
+            }
             if (Math.abs(v) > max) {
                 return level.part() == 1 ? v < 0 ? MIN_REAL_1 : MAX_REAL_1 : v < 0 ? MIN_REAL : MAX_REAL;
             }
