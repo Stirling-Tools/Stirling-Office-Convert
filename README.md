@@ -19,6 +19,9 @@ file itself (`data:` URIs) unless the caller opts in: a `.zip` of the page (or a
 iWork files use their embedded PDF or picture preview, and Visio 2003-2010 drawings their first page's preview. PDF/A level a requires an already tagged PDF;
 the converter does not create a structure tree for an untagged document.
 
+See [limits](docs/limits.md) for every memory, time and size limit, which ones a host can set, and suggested
+settings for a public server.
+
 See the [usage guide](docs/usage.md) for the complete format list, limitations, API options, fonts,
 JPEG 2000 reader registration, timeout behavior and the LibreOffice comparison tester.
 
