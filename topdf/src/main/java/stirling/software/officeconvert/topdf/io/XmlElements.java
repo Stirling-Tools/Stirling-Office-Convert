@@ -20,8 +20,6 @@ public final class XmlElements extends FilterInputStream {
 
     static final long DOM_ELEMENT_BYTES = 512;
 
-    private static final long SLOT_BYTES = 192L << 20;
-
     private final String part;
 
     private final long max;
@@ -52,9 +50,8 @@ public final class XmlElements extends FilterInputStream {
     }
 
     public static long share(long elementBytes, long min, long max) {
-        long budget = Admission.jvm().budget();
-        long slots = Math.max(2, Math.min(2L * Runtime.getRuntime().availableProcessors(), budget / SLOT_BYTES));
-        return Math.max(min, Math.min(max, budget / slots / elementBytes));
+        Admission.Status status = Admission.jvm().status();
+        return Math.max(min, Math.min(max, status.budgetBytes() / Math.max(1, status.slots()) / elementBytes));
     }
 
     String part() {
