@@ -135,4 +135,28 @@ class FootprintTest {
                 difference >= tail * 20,
                 "markup after the sheet data should be charged as tree-parsed, got " + difference);
     }
+
+    @Test
+    void anElementThatOnlyStartsLikeSheetDataDoesNotHideTheTree() throws IOException {
+        int size = 6 << 20;
+        Map<String, byte[]> streamed = workbook();
+        streamed.put("xl/worksheets/sheet1.xml", part(size, "<worksheet><sheetData>", "</sheetData></worksheet>"));
+        Map<String, byte[]> fake = workbook();
+        fake.put("xl/worksheets/sheet1.xml",
+                part(size, "<worksheet><sheetDataX><mergeCells>", "</mergeCells></sheetDataX><!--</sheetData>--></worksheet>"));
+        long difference = estimate("fake.xlsx", fake) - estimate("streamed.xlsx", streamed);
+        assertTrue(difference >= (long) size * 20, "a worksheet without real sheet data is tree-parsed, got " + difference);
+    }
+
+    @Test
+    void sheetDataMarkersInCommentsAreChargedForTheBytesTheReaderHolds() throws IOException {
+        int size = 10 << 20;
+        Map<String, byte[]> streamed = workbook();
+        streamed.put("xl/worksheets/sheet1.xml", part(size, "<worksheet><sheetData>", "</sheetData></worksheet>"));
+        Map<String, byte[]> commented = workbook();
+        commented.put("xl/worksheets/sheet1.xml",
+                part(size, "<worksheet><!--<sheetData>--></sheetData><mergeCells>", "</mergeCells><!--</sheetData>--></worksheet>"));
+        long difference = estimate("commented.xlsx", commented) - estimate("streamed.xlsx", streamed);
+        assertTrue(difference >= (long) size * 2, "the bytes held while cutting out the sheet data count, got " + difference);
+    }
 }
