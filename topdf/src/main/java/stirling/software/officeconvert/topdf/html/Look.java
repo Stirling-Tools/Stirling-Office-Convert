@@ -37,6 +37,7 @@ final class Look {
     String listStyle;
     boolean hidden;
     boolean centerBlocks;
+    boolean legacyAlign;
     Vars.Scope vars = Vars.Scope.root();
     // the keyword size in px the font size still follows (medium = 16), or 0 once a length sets it
     float keywordPx = 16;
@@ -76,6 +77,7 @@ final class Look {
         l.listStyle = listStyle;
         l.hidden = hidden;
         l.centerBlocks = centerBlocks;
+        l.legacyAlign = legacyAlign;
         l.vars = vars;
         l.keywordPx = keywordPx;
         l.monoOnly = monoOnly;
@@ -155,7 +157,8 @@ final class Look {
             String keyword = v.strip().toLowerCase(Locale.ROOT);
             l.alignFixed = keyword.contains("left") || keyword.contains("right")
                     || !keyword.equals("start") && !keyword.equals("end") && l.align == align && alignFixed;
-            l.centerBlocks = v.strip().equalsIgnoreCase("-webkit-center");
+            l.centerBlocks = keyword.equals("-webkit-center");
+            l.legacyAlign = keyword.startsWith("-webkit-");
         }
         if ((v = d.get("line-height")) != null) {
             lineHeight(l, v.strip().toLowerCase(Locale.ROOT));

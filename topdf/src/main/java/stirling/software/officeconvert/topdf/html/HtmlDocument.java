@@ -226,6 +226,7 @@ public final class HtmlDocument {
         StyleSheet styles = new StyleSheet(bodyLook.run());
         styles.hyphenation = cascade.hyphenates();
         styles.widowControl = true;
+        styles.autoSpace = false;
         DocSink.HeaderFooterSet running = new DocSink.HeaderFooterSet(List.of(), List.of(), List.of(), List.of(), false);
         boolean sided = cascade.styledPages("left") || cascade.styledPages("right");
         boolean first = cascade.styledPages("first");
@@ -258,6 +259,12 @@ public final class HtmlDocument {
         ctx.generated(generated);
         List<Inline> fixedLayer = new ArrayList<>(Backgrounds.paint(Backgrounds.url(htmlStyle) != null ? htmlStyle
                 : bodyStyle, bodyLook, ctx.images(), 0, 0, page.pageWidth, page.pageHeight, false));
+        int canvas = canvasColor(htmlStyle, bodyStyle);
+        if (canvas >= 0) {
+            fixedLayer.add(0, new Inline.Shape(page.marginLeft, page.marginTop,
+                    page.pageWidth - page.marginLeft - page.marginRight,
+                    page.pageHeight - page.marginTop - page.marginBottom, canvas));
+        }
         if (ctx.positions()) {
             fixedLayer.addAll(Flow.fixedLayer(ctx, body, bodyLook, page));
         }
@@ -291,6 +298,14 @@ public final class HtmlDocument {
         float printAt = zoom < 1 ? (ownPaper ? 1f : zoom) : fit;
         return new Laid(new Converted(warnings, ctx.truncated()), printAt, web.fonts(), ctx.targetBookmarks(),
                 ctx.runningStrings());
+    }
+
+    private static int canvasColor(Map<String, String> htmlStyle, Map<String, String> bodyStyle) {
+        Integer color = Css.color(htmlStyle.get("background-color"));
+        if (color == null || color < 0) {
+            color = Css.color(bodyStyle.get("background-color"));
+        }
+        return color == null || color < 0 || color == 0xFFFFFF ? -1 : color;
     }
 
     private static DocSink.HeaderFooterSet withFixed(DocSink.HeaderFooterSet running, List<Inline> drawings,

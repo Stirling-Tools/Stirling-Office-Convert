@@ -12,6 +12,7 @@ public final class StyleSheet {
     public Scripts.Profile scripts = new Scripts.Profile();
     public boolean hyphenation;
     public boolean widowControl;
+    public boolean autoSpace = true;
 
     public StyleSheet(RunStyle normal) {
         this.normal = normal;

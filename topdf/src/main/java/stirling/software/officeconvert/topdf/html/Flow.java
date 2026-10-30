@@ -304,9 +304,8 @@ final class Flow {
             return;
         }
         Map<String, String> d = ctx.declared(e, parentLook);
-        if (tag.equals("table") && parentLook.centerBlocks && !d.containsKey("text-align") && e.ownerDocument() != null
-                && e.ownerDocument().quirksMode() == org.jsoup.nodes.Document.QuirksMode.quirks) {
-            // <center> places a table in the middle but, in quirks mode, its text starts at the left, as Chrome does
+        if (tag.equals("table") && parentLook.legacyAlign && !d.containsKey("text-align")) {
+            // <center> or align places a table in the middle but its text starts at the left, as Chrome does
             d.put("text-align", "start");
         }
         String display = d.getOrDefault("display", BLOCKS.contains(tag) ? "block" : "inline").strip().toLowerCase(Locale.ROOT);
@@ -525,7 +524,8 @@ final class Flow {
                 return true;
             }
         }
-        return false;
+        return length(d.get("width"), look.size, 0) > 0 || length(d.get("height"), look.size, 0) > 0
+                || look.linePoints > 1.5f * look.size;
     }
 
     private void control(Element e, Look parentLook, Frame frame) throws IOException {
@@ -2428,7 +2428,9 @@ final class Flow {
         if (HtmlTables.layoutOnly(e, d, ctx, look)) {
             // a one-column table with no borders is only there to stack its cells: they flow as blocks
             Integer fill = Css.color(d.get("background-color"));
-            Frame inside = frame.inner(0, 0, fill == null ? -1 : fill);
+            float slack = frame.width() - stackWidth(d, look, frame.width());
+            float left = stackIndent(e, d, look, centred, slack);
+            Frame inside = frame.inner(left, slack - left, fill == null ? -1 : fill);
             for (Element tr : e.select(HtmlTables.ROWS)) {
                 for (Element cell : tr.select("> td, > th")) {
                     element(cell, look, inside, depth + 1);
@@ -2456,6 +2458,37 @@ final class Flow {
         breakBefore(t, newPage, frame);
         ctx.count();
         emit(t);
+    }
+
+    private static float stackWidth(Map<String, String> d, Look look, float room) {
+        float width = room;
+        for (String key : new String[] {"width", "max-width"}) {
+            Float pt = d.get(key) == null || d.get(key).strip().equalsIgnoreCase("auto") ? null
+                    : Css.length(d.get(key), look.size, room);
+            if (pt != null && pt > 0) {
+                width = Math.min(width, pt);
+            }
+        }
+        return width;
+    }
+
+    private static float stackIndent(Element table, Map<String, String> d, Look look, boolean centred, float slack) {
+        if (slack <= 0) {
+            return 0;
+        }
+        boolean autoLeft = "auto".equalsIgnoreCase(d.getOrDefault("margin-left", "").strip());
+        boolean autoRight = "auto".equalsIgnoreCase(d.getOrDefault("margin-right", "").strip());
+        String align = table.attr("align");
+        if (centred || autoLeft && autoRight || "center".equalsIgnoreCase(align)) {
+            return slack / 2;
+        }
+        if (autoLeft || "right".equalsIgnoreCase(align)) {
+            return slack;
+        }
+        if (autoRight || "left".equalsIgnoreCase(align)) {
+            return 0;
+        }
+        return look.rightToLeft ? slack : 0;
     }
 
     // A table nested past the limit: each row becomes a line, its cells side by side with their own formatting
