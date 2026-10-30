@@ -10,6 +10,7 @@ import org.apache.pdfbox.pdmodel.graphics.form.PDFormXObject;
 import stirling.software.officeconvert.topdf.OfficeToPdf;
 import stirling.software.officeconvert.topdf.RenderJob;
 import stirling.software.officeconvert.topdf.io.OfficeZip;
+import stirling.software.officeconvert.topdf.io.XmlElements;
 import stirling.software.officeconvert.topdf.pdf.PdfCanvas;
 
 /** Draws a DrawingML chart part from its cached values (never its workbook); shared by every format. */
@@ -88,12 +89,12 @@ public final class Charts {
     // a form XObject
     private static Read read(RenderJob job, OfficeZip zip, String chartPart, String themePart) throws IOException {
         XEl root;
-        try (InputStream in = zip.open(chartPart)) {
+        try (InputStream in = XmlElements.limit(zip.open(chartPart), OfficeZip.canonical(chartPart), XmlElements.MAX_PART)) {
             root = XTree.parse(in);
         }
         Theme theme = Theme.DEFAULT;
         if (themePart != null && zip.exists(themePart)) {
-            try (InputStream in = zip.open(themePart)) {
+            try (InputStream in = XmlElements.limit(zip.open(themePart), OfficeZip.canonical(themePart), XmlElements.MAX_PART)) {
                 theme = new Theme(XTree.parse(in));
             }
         }

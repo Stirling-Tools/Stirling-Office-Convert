@@ -12,6 +12,8 @@ public final class XmlElements extends FilterInputStream {
 
     public static final long MAX_STYLES = 500_000;
 
+    public static final long MAX_PART = 500_000;
+
     private final String part;
 
     private final long max;
@@ -28,6 +30,10 @@ public final class XmlElements extends FilterInputStream {
 
     public static InputStream limit(InputStream in, String part, long max) {
         return new XmlElements(in, part, max);
+    }
+
+    String part() {
+        return part;
     }
 
     public static String tooMany(String part, long max) {

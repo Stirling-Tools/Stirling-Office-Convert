@@ -411,9 +411,9 @@ public final class OfficeZip implements Closeable {
         }
     }
 
-    // The part a stream from open(...) reads, or null for any other stream
+    // The part a stream from open(...) or XmlElements.limit(...) reads, or null for any other stream
     static String partName(InputStream in) {
-        return in instanceof PartStream p ? p.name : null;
+        return in instanceof PartStream p ? p.name : in instanceof XmlElements x ? x.part() : null;
     }
 
     public byte[] read(String part) throws IOException {
@@ -435,7 +435,7 @@ public final class OfficeZip implements Closeable {
     }
 
     public Document xml(String part) throws IOException {
-        try (InputStream in = open(part)) {
+        try (InputStream in = XmlElements.limit(open(part), canonical(part), XmlElements.MAX_PART)) {
             return SecureXml.parse(in);
         } catch (InterruptedIOException | FileNotFoundException | DamagedPart e) {
             throw e;

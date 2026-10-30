@@ -278,4 +278,19 @@ class OfficeZipTest {
         IOException e = assertThrows(IOException.class, () -> OfficeZip.open(file));
         assertTrue(e.getMessage().contains(fragment), e.getMessage());
     }
+
+    @Test
+    void aDomPartWithTooManyXmlElementsIsADamagedPart() throws Exception {
+        StringBuilder many = new StringBuilder("<n>");
+        for (int i = 0; i <= XmlElements.MAX_PART; i++) {
+            many.append("<x a=\"").append(Integer.toHexString(i * 7919)).append("\"/>");
+        }
+        byte[] data = Fixtures.edit(Fixtures.docx("x")).put("word/numbering.xml", many + "</n>").bytes();
+        try (OfficeZip zip = OfficeZip.open(Fixtures.write(dir, "dense.docx", data))) {
+            OfficeZip.DamagedPart e = assertThrows(OfficeZip.DamagedPart.class, () -> zip.xml("/word/numbering.xml"));
+            assertEquals("/word/numbering.xml", e.part());
+            assertTrue(e.getCause() instanceof OfficeZip.Oversized, String.valueOf(e.getCause()));
+            assertNotNull(zip.xml("/word/document.xml"));
+        }
+    }
 }
