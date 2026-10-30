@@ -100,6 +100,9 @@ public final class PoiPackages {
                 try {
                     zip.xml(part);
                 } catch (OfficeZip.DamagedPart d) {
+                    if (d.getCause() instanceof OfficeZip.Oversized) {
+                        continue;
+                    }
                     d.addSuppressed(e);
                     return d;
                 } catch (InterruptedIOException i) {

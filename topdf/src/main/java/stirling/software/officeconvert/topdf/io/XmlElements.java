@@ -4,6 +4,8 @@ import java.io.FilterInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 
+import stirling.software.officeconvert.memory.Admission;
+
 public final class XmlElements extends FilterInputStream {
 
     public static final long MAX_POI_PART = 250_000;
@@ -14,22 +16,45 @@ public final class XmlElements extends FilterInputStream {
 
     public static final long MAX_PART = 500_000;
 
+    public static final long MAX_DOM_PART = 4_000_000;
+
+    static final long DOM_ELEMENT_BYTES = 512;
+
+    private static final long SLOT_BYTES = 192L << 20;
+
     private final String part;
 
     private final long max;
+
+    private final boolean checked;
 
     private long count;
 
     private boolean open;
 
-    private XmlElements(InputStream in, String part, long max) {
+    private XmlElements(InputStream in, String part, long max, boolean checked) {
         super(in);
         this.part = part;
         this.max = max;
+        this.checked = checked;
     }
 
     public static InputStream limit(InputStream in, String part, long max) {
-        return new XmlElements(in, part, max);
+        return new XmlElements(in, part, max, false);
+    }
+
+    static InputStream dom(InputStream in, String part) {
+        return new XmlElements(in, part, domElements(), true);
+    }
+
+    public static long domElements() {
+        return Math.max(MAX_PART, Math.min(MAX_DOM_PART, Admission.jvm().budget() / DOM_ELEMENT_BYTES));
+    }
+
+    public static long share(long elementBytes, long min, long max) {
+        long budget = Admission.jvm().budget();
+        long slots = Math.max(2, Math.min(2L * Runtime.getRuntime().availableProcessors(), budget / SLOT_BYTES));
+        return Math.max(min, Math.min(max, budget / slots / elementBytes));
     }
 
     String part() {
@@ -73,9 +98,14 @@ public final class XmlElements extends FilterInputStream {
                 return;
             }
             open = false;
-            if (c != '/' && c != '?' && c != '!' && ++count > max) {
-                String m = tooMany(part, max);
-                throw new OfficeZip.DamagedPart(part, m, new OfficeZip.Oversized(m));
+            if (c != '/' && c != '?' && c != '!') {
+                if (++count > max) {
+                    String m = tooMany(part, max);
+                    throw new OfficeZip.DamagedPart(part, m, new OfficeZip.Oversized(m));
+                }
+                if (checked && (count & 0xFFF) == 0) {
+                    Admission.checkpoint();
+                }
             }
         }
         if (c == '<') {

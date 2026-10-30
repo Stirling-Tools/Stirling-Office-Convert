@@ -15,6 +15,7 @@ import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import stirling.software.officeconvert.memory.Admission;
 import stirling.software.officeconvert.topdf.testing.Fixtures;
 import stirling.software.officeconvert.topdf.testing.NoNetwork;
 
@@ -282,8 +283,8 @@ class OfficeZipTest {
     @Test
     void aDomPartWithTooManyXmlElementsIsADamagedPart() throws Exception {
         StringBuilder many = new StringBuilder("<n>");
-        for (int i = 0; i <= XmlElements.MAX_PART; i++) {
-            many.append("<x a=\"").append(Integer.toHexString(i * 7919)).append("\"/>");
+        for (long i = 0; i <= XmlElements.domElements(); i++) {
+            many.append("<x a=\"").append(Long.toHexString(i * 7919)).append("\"/>");
         }
         byte[] data = Fixtures.edit(Fixtures.docx("x")).put("word/numbering.xml", many + "</n>").bytes();
         try (OfficeZip zip = OfficeZip.open(Fixtures.write(dir, "dense.docx", data))) {
@@ -292,5 +293,13 @@ class OfficeZipTest {
             assertTrue(e.getCause() instanceof OfficeZip.Oversized, String.valueOf(e.getCause()));
             assertNotNull(zip.xml("/word/document.xml"));
         }
+    }
+
+    @Test
+    void largeDomPartsGetMoreRoomWhenTheMemoryBudgetAllows() {
+        long most = XmlElements.domElements();
+        assertTrue(most >= XmlElements.MAX_PART && most <= XmlElements.MAX_DOM_PART, String.valueOf(most));
+        long share = XmlElements.share(384, 10, Long.MAX_VALUE);
+        assertTrue(share <= Admission.jvm().budget() / 2 / 384, String.valueOf(share));
     }
 }

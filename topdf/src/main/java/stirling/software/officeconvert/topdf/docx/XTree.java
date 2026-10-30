@@ -15,6 +15,7 @@ import javax.xml.stream.XMLStreamReader;
 import stirling.software.officeconvert.memory.Admission;
 import stirling.software.officeconvert.topdf.io.OfficeZip;
 import stirling.software.officeconvert.topdf.io.SecureXml;
+import stirling.software.officeconvert.topdf.io.XmlElements;
 
 final class XTree {
 
@@ -73,6 +74,8 @@ final class XTree {
 
     static final long MAX_BODY_ELEMENTS = 8_000_000;
 
+    static final long MAX_SECTION_ELEMENTS = 10_000;
+
     private XTree() {}
 
     private static void prefix(String p, String... uris) {
@@ -105,7 +108,7 @@ final class XTree {
     }
 
     static long bodyElements() {
-        return Math.max(MIN_BODY_ELEMENTS, Math.min(MAX_BODY_ELEMENTS, Admission.jvm().budget() / BODY_ELEMENT_BYTES));
+        return XmlElements.share(BODY_ELEMENT_BYTES, MIN_BODY_ELEMENTS, MAX_BODY_ELEMENTS);
     }
 
     static XEl streamBody(InputStream in, long[] left, BlockSink sink) throws IOException {
@@ -124,8 +127,12 @@ final class XTree {
                             skip(r);
                             continue;
                         }
-                        for (XEl e : build(r, left[0] <= 0 ? null : left)) {
+                        long[] cap = left[0] <= 0 ? new long[] {MAX_SECTION_ELEMENTS} : left;
+                        for (XEl e : build(r, cap)) {
                             sink.block(e);
+                        }
+                        if (cap[0] < 0) {
+                            left[0] = -1;
                         }
                         continue;
                     }

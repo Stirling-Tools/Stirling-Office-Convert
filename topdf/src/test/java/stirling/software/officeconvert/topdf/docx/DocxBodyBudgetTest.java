@@ -56,6 +56,19 @@ class DocxBodyBudgetTest {
     }
 
     @Test
+    @Timeout(value = 30, unit = TimeUnit.SECONDS)
+    void aSectionAfterTheSpentBudgetHasItsOwnSmallCap() throws IOException {
+        long[] left = {10};
+        String sect = "<w:sectPr><w:pgSz w:w=\"9000\"/>" + "<w:cols/>".repeat(200_000) + "</w:sectPr>";
+        List<XEl> blocks = stream("<w:p><w:r><w:t>x</w:t></w:r></w:p>".repeat(10) + sect, left);
+        assertTrue(left[0] < 0);
+        XEl last = blocks.get(blocks.size() - 2);
+        assertTrue(last.is("w:sectPr"));
+        assertEquals("9000", last.child("w:pgSz").attr("w"));
+        assertTrue(last.children("w:cols").size() < XTree.MAX_SECTION_ELEMENTS);
+    }
+
+    @Test
     void aBodyWithinItsBudgetIsReadWhole() throws IOException {
         long[] left = {1000};
         List<XEl> blocks = stream("<w:p><w:r><w:t>x</w:t></w:r></w:p>".repeat(10), left);

@@ -28,7 +28,7 @@ final class Cascade {
 
     // Selector work past this much for one document stops matching, each test weighed by cost(selector): the rest
     // of the page keeps the defaults
-    private static final long MAX_MATCH_WORK = 4_000_000L;
+    private static final long MAX_MATCH_WORK = 10_000_000L;
 
     private static final Pattern ID = Pattern.compile("#((?:[_a-zA-Z0-9-]|\\\\.)+)");
     private static final Pattern CLASS = Pattern.compile("[.]((?:[_a-zA-Z0-9-]|\\\\.)+)");
@@ -404,49 +404,101 @@ final class Cascade {
     }
 
     static long[] above(String selector) {
-        String s = flat(selector);
+        String s = selector.strip();
         long[] bits = null;
+        List<String> keys = new ArrayList<>();
+        StringBuilder open = new StringBuilder();
+        char combinator = 0;
+        boolean fresh = true;
         int i = 0;
         while (i < s.length()) {
-            int start = i;
-            while (i < s.length() && " >+~".indexOf(s.charAt(i)) < 0) {
-                i++;
+            char c = s.charAt(i);
+            if (c == '\\' || c == '"' || c == '\'' || c == ',' || c > '~' || c < ' ' && !space(c)) {
+                break;
             }
-            String compound = s.substring(start, i);
-            char combinator = 0;
-            while (i < s.length() && " >+~".indexOf(s.charAt(i)) >= 0) {
-                if (s.charAt(i) != ' ' || combinator == 0) {
-                    combinator = s.charAt(i);
-                }
-                i++;
-            }
-            if (i < s.length() && (combinator == ' ' || combinator == '>')) {
-                for (String key : keys(compound)) {
-                    if (bits == null) {
-                        bits = new long[ABOVE_BITS / 64];
+            if (!open.isEmpty()) {
+                if (c == '(' || c == '[') {
+                    open.append(c);
+                } else if (c == ')' || c == ']') {
+                    if (open.charAt(open.length() - 1) != (c == ')' ? '(' : '[')) {
+                        break;
                     }
-                    set(bits, key);
+                    open.setLength(open.length() - 1);
                 }
+                i++;
+                continue;
             }
+            if (space(c) || c == '>' || c == '+' || c == '~') {
+                if (!space(c) && combinator != 0 && combinator != ' ') {
+                    break;
+                }
+                if (!space(c) || combinator == 0) {
+                    combinator = space(c) ? ' ' : c;
+                }
+                i++;
+                continue;
+            }
+            if (combinator != 0) {
+                if (combinator == ' ' || combinator == '>') {
+                    for (String key : keys) {
+                        if (bits == null) {
+                            bits = new long[ABOVE_BITS / 64];
+                        }
+                        set(bits, key);
+                    }
+                }
+                keys.clear();
+                combinator = 0;
+                fresh = true;
+            }
+            if (c == '(' || c == '[') {
+                open.append(c);
+                i++;
+            } else if (c == '*' && fresh) {
+                i++;
+            } else if (c == '.' || c == '#') {
+                int end = ident(s, i + 1);
+                if (end == i + 1) {
+                    break;
+                }
+                keys.add(c + fold(s.substring(i + 1, end)));
+                i = end;
+            } else if (c == ':') {
+                i = ident(s, i + 1 < s.length() && s.charAt(i + 1) == ':' ? i + 2 : i + 1);
+            } else if (fresh && ident(s, i) > i) {
+                keys.add("<" + fold(s.substring(i, ident(s, i))));
+                i = ident(s, i);
+            } else {
+                break;
+            }
+            fresh = false;
         }
-        return bits;
+        return i < s.length() && s.indexOf(',', i) >= 0 ? null : bits;
     }
 
-    private static List<String> keys(String compound) {
-        List<String> keys = new ArrayList<>();
-        Matcher m = TAG.matcher(compound);
-        if (m.find() && (m.end() == compound.length() || ".#:".indexOf(compound.charAt(m.end())) >= 0)) {
-            keys.add("<" + m.group(1).toLowerCase(Locale.ROOT));
+    private static boolean space(char c) {
+        return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\f';
+    }
+
+    private static int ident(String s, int i) {
+        while (i < s.length() && name(s.charAt(i))) {
+            i++;
         }
-        m = ID.matcher(compound);
-        while (m.find()) {
-            keys.add("#" + unescape(m.group(1)).toLowerCase(Locale.ROOT));
-        }
-        m = CLASS.matcher(compound);
-        while (m.find()) {
-            keys.add("." + unescape(m.group(1)).toLowerCase(Locale.ROOT));
-        }
-        return keys;
+        return i;
+    }
+
+    private static boolean name(int c) {
+        return c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '_' || c == '-';
+    }
+
+    private static int fold(int c) {
+        return Character.toLowerCase(Character.toUpperCase(c));
+    }
+
+    private static String fold(String s) {
+        StringBuilder b = new StringBuilder(s.length());
+        s.codePoints().forEach(c -> b.appendCodePoint(fold(c)));
+        return b.toString();
     }
 
     private static void set(long[] bits, String key) {
@@ -454,7 +506,7 @@ final class Cascade {
         bits[h >>> 6] |= 1L << (h & 63);
     }
 
-    private long[] ancestry(Element e) {
+    long[] ancestry(Element e) {
         Deque<Element> todo = new ArrayDeque<>();
         long[] known = null;
         for (Element p = e.parent(); p != null; p = p.parent()) {
@@ -468,19 +520,27 @@ final class Cascade {
         while (!todo.isEmpty()) {
             Element p = todo.pop();
             bits = bits.clone();
-            set(bits, "<" + p.normalName());
+            set(bits, "<" + fold(p.normalName()));
             if (!p.id().isEmpty()) {
-                set(bits, "#" + p.id().toLowerCase(Locale.ROOT));
+                set(bits, "#" + fold(p.id()));
             }
-            for (String c : p.classNames()) {
-                set(bits, "." + c.toLowerCase(Locale.ROOT));
+            StringBuilder c = new StringBuilder();
+            String classes = p.attributes().getIgnoreCase("class") + " ";
+            for (int k = 0; k < classes.length(); k = classes.offsetByCodePoints(k, 1)) {
+                int f = fold(classes.codePointAt(k));
+                if (name(f)) {
+                    c.appendCodePoint(f);
+                } else if (!c.isEmpty()) {
+                    set(bits, "." + c);
+                    c.setLength(0);
+                }
             }
             ancestry.put(p, bits);
         }
         return bits;
     }
 
-    private static boolean within(long[] need, long[] have) {
+    static boolean within(long[] need, long[] have) {
         for (int i = 0; i < need.length; i++) {
             if ((need[i] & have[i]) != need[i]) {
                 return false;

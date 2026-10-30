@@ -435,7 +435,7 @@ public final class OfficeZip implements Closeable {
     }
 
     public Document xml(String part) throws IOException {
-        try (InputStream in = XmlElements.limit(open(part), canonical(part), XmlElements.MAX_PART)) {
+        try (InputStream in = XmlElements.dom(open(part), canonical(part))) {
             return SecureXml.parse(in);
         } catch (InterruptedIOException | FileNotFoundException | DamagedPart e) {
             throw e;

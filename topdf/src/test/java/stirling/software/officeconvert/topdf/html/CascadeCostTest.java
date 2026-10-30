@@ -16,6 +16,10 @@ import java.util.concurrent.TimeUnit;
 import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.text.PDFTextStripper;
+import org.jsoup.Jsoup;
+import org.jsoup.nodes.Document;
+import org.jsoup.nodes.Element;
+import org.jsoup.select.QueryParser;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
@@ -56,6 +60,46 @@ class CascadeCostTest {
         assertNull(Cascade.above(":not(div p) span"));
         assertNotNull(Cascade.above("div p"));
         assertNotNull(Cascade.above("div > p ~ span"));
+    }
+
+    @Test
+    void theAncestorFilterNeverRejectsWhatJsoupMatches() {
+        String[][] cases = {
+            {"<div class=\"caf\u00e9\"><span id=t>x</span></div>", ".caf\u00e9 span"},
+            {"<div id=\"\u00f1and\u00fa\"><span id=t>x</span></div>", "#\u00f1and\u00fa span"},
+            {"<div class=\"p-[2px]\"><span id=t>x</span></div>", ".p-\\[2px\\] span"},
+            {"<div id=\"123\"><span id=t>x</span></div>", "#\\31 23 span"},
+            {"<div class=\"a+b\"><span id=t>x</span></div>", ".a\\+b span"},
+            {"<div class=\"a b\"><span id=t>x</span></div>", ".a\\ b span"},
+            {"<div class=\"\u0130\"><span id=t>x</span></div>", ".i span"},
+            {"<div class=\"\u212a\"><span id=t>x</span></div>", ".k span"},
+            {"<div class=\"a\u2003b\"><span id=t>x</span></div>", ".a span"},
+            {"<div class=\"\u00e9t\"><span id=t>x</span></div>", ".\\e9t span"},
+            {"<div class=\"md:x\"><span id=t>x</span></div>", ".md\\:x span"},
+            {"<div class=\"x\"><span id=t>x</span></div>", ":is(.x) span"},
+            {"<div class=\"x\"><span id=t>x</span></div>", "div:not(.y) span"},
+            {"<div data-a=\"q r\"><span id=t>x</span></div>", "[data-a=\"q r\"] span"},
+            {"<div data-a=\"]\"><span id=t>x</span></div>", "[data-a=\"]\"] span"},
+            {"<div class=\"Outer\"><span id=t>x</span></div>", ".OUTER span"},
+            {"<DIV ID=\"Main\"><span id=t>x</span></DIV>", "div#Main span"},
+            {"<div class=\"x\"><p></p><span id=t>x</span></div>", ".x p ~ span"},
+            {"<div class=\"x\"><span id=t>x</span></div>", "div.x>span"},
+            {"<div class=\"x\"><span id=t>x</span></div>", "div.x\tspan"},
+            {"<div class=\"x\"><span id=t>x</span></div>", "div.x\nspan"},
+            {"<div class=\"x_y\"><span id=t>x</span></div>", ".x_y span"},
+            {"<div class=\"a\"><b class=\"c\"><span id=t>x</span></b></div>", ".a > .c > span"},
+            {"<svg><g class=\"k\"><text id=t>x</text></g></svg>", "g.k text"},
+            {"<svg><foreignObject><p id=t>x</p></foreignObject></svg>", "foreignObject p"},
+        };
+        for (String[] c : cases) {
+            Document d = Jsoup.parse(c[0]);
+            Element t = d.getElementById("t");
+            assertTrue(QueryParser.parse(c[1]).matches(d, t), c[1]);
+            long[] need = Cascade.above(c[1]);
+            assertTrue(need == null || Cascade.within(need, new Cascade(d, 800).ancestry(t)), c[1]);
+        }
+        assertNotNull(Cascade.above(".a > .c > span"));
+        assertNotNull(Cascade.above(".OUTER span"));
     }
 
     @Test
