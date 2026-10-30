@@ -40,10 +40,6 @@ final class Limits {
 
     static final int MAX_NAME_BYTES = 127;
 
-    private static final COSFloat MAX_REAL_1 = real("32767.0");
-
-    private static final COSFloat MIN_REAL_1 = real("-32767.0");
-
     private static final COSFloat MAX_REAL = real("340000000000000000000000000000000000000.0");
 
     private static final COSFloat MIN_REAL = real("-340000000000000000000000000000000000000.0");
@@ -126,11 +122,11 @@ final class Limits {
         if (b instanceof COSFloat f) {
             double v = f.floatValue();
             double max = level.part() == 1 ? 32_767 : 3.4e38;
-            if (Math.abs(v) > max && level.part() == 1 && Math.abs(v) <= Integer.MAX_VALUE) {
-                return COSInteger.get(Math.round(v));
+            if (Math.abs(v) > max && level.part() == 1) {
+                return COSInteger.get(Math.clamp(Math.round(v), Integer.MIN_VALUE, Integer.MAX_VALUE));
             }
             if (Math.abs(v) > max) {
-                return level.part() == 1 ? v < 0 ? MIN_REAL_1 : MAX_REAL_1 : v < 0 ? MIN_REAL : MAX_REAL;
+                return v < 0 ? MIN_REAL : MAX_REAL;
             }
             if (level.part() > 1 && v != 0 && Math.abs(v) < 1.2e-38) {
                 return COSInteger.ZERO;
