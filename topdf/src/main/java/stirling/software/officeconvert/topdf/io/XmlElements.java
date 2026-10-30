@@ -8,6 +8,8 @@ public final class XmlElements extends FilterInputStream {
 
     public static final long MAX_POI_PART = 250_000;
 
+    public static final long MAX_POI_CHART = 2_000_000;
+
     public static final long MAX_STYLES = 500_000;
 
     private final String part;
@@ -61,6 +63,9 @@ public final class XmlElements extends FilterInputStream {
 
     private void see(int c) throws IOException {
         if (open) {
+            if (c == 0) {
+                return;
+            }
             open = false;
             if (c != '/' && c != '?' && c != '!' && ++count > max) {
                 String m = tooMany(part, max);

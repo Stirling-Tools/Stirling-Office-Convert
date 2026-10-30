@@ -387,4 +387,17 @@ class PoiPackagesTest {
         assertEquals(entry, ZipSecureFile.getMaxEntrySize());
         assertEquals(ratio, ZipSecureFile.getMinInflateRatio());
     }
+
+    @Test
+    void chartPartsMayHoldMoreElementsThanSlides() throws Exception {
+        String points = "<c:pt idx=\"0\"><c:v>1</c:v></c:pt>".repeat((int) XmlElements.MAX_POI_PART);
+        Fixtures.Zip zip = Fixtures.edit(Fixtures.pptx("one"));
+        zip.put("ppt/charts/chart9.xml", "<c:chartSpace xmlns:c=\"urn:c\">" + points + "</c:chartSpace>");
+        Path in = Fixtures.write(dir, "chart.pptx", zip.bytes());
+        try (OfficeZip office = OfficeZip.open(in); XMLSlideShow ppt = PoiPackages.slideShow(office);
+                java.io.InputStream part = ppt.getPackage().getPart(PackagingURIHelper.createPartName(
+                        "/ppt/charts/chart9.xml")).getInputStream()) {
+            assertTrue(part.readAllBytes().length > XmlElements.MAX_POI_PART);
+        }
+    }
 }

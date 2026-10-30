@@ -172,7 +172,13 @@ public final class PoiPackages {
             String part = "/" + entry.getName();
             byte[] fixed = repaired.get(part.toLowerCase(Locale.ROOT));
             InputStream in = fixed != null ? new ByteArrayInputStream(fixed) : zip.open(part);
-            return xml(part) ? XmlElements.limit(in, part, XmlElements.MAX_POI_PART) : in;
+            if (!xml(part)) {
+                return in;
+            }
+            String type = zip.contentType(part);
+            boolean data = part.toLowerCase(Locale.ROOT).contains("/charts/")
+                    || type != null && type.startsWith("image/");
+            return XmlElements.limit(in, part, data ? XmlElements.MAX_POI_CHART : XmlElements.MAX_POI_PART);
         }
 
         private boolean xml(String part) {

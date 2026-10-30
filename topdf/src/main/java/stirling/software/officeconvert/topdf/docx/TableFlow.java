@@ -31,7 +31,7 @@ final class TableFlow {
 
     private final Map<TableBlock.Cell, Turned> turned = new IdentityHashMap<>();
 
-    private record Turned(float along, Color background, StackLayout.Result result) {
+    private record Turned(float along, Color background, Ctx.PageNumbers numbers, StackLayout.Result result) {
     }
 
     static final int MAX_TURNED_DEPTH = 8;
@@ -1753,7 +1753,8 @@ final class TableFlow {
 
     private StackLayout.Result turn(TableBlock.Cell cell, float along, Color fill) {
         Turned known = turned.get(cell);
-        if (known != null && known.along() == along && Objects.equals(known.background(), fill)) {
+        if (known != null && known.along() == along && Objects.equals(known.background(), fill)
+                && known.numbers() == ctx.numbers) {
             return known.result();
         }
         StackLayout region = StackLayout.cell(along, ctx);
@@ -1765,7 +1766,7 @@ final class TableFlow {
             turning--;
         }
         StackLayout.Result r = region.result();
-        turned.put(cell, new Turned(along, fill, r));
+        turned.put(cell, new Turned(along, fill, ctx.numbers, r));
         return r;
     }
 

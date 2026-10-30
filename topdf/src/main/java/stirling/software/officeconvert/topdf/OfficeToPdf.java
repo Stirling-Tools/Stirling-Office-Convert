@@ -767,11 +767,12 @@ public final class OfficeToPdf {
         while (true) {
             try {
                 return render(source, requested, sink, options, renderer, fonts, attempts, limits);
-            } catch (IOException | RuntimeException e) {
-                Throwable real = selfSuppressed(e);
-                if (real != e) {
+            } catch (IOException | RuntimeException caught) {
+                Throwable real = selfSuppressed(caught);
+                if (!(real instanceof IOException) && !(real instanceof RuntimeException)) {
                     throw rethrow(real);
                 }
+                Exception e = (Exception) real;
                 if (!attempts.leaveOut(e) && !attempts.salvageMain(source, e)) {
                     Exception reported = attempts.first == null ? e : attempts.first;
                     if (reported != e) {

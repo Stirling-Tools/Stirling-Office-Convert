@@ -283,13 +283,29 @@ final class Cascade {
             rulesLeftOut |= !text.isBlank();
             return null;
         }
-        sheetChars += Math.min(room, text.length());
-        if (text.length() > room) {
-            rulesLeftOut = true;
-            return text.substring(0, (int) room);
+        long used = 0;
+        int i = 0;
+        Matcher m = DATA_URL.matcher(text);
+        while (i < text.length()) {
+            boolean data = m.find(i);
+            int plain = data ? m.end() : text.length();
+            if (used + plain - i > room) {
+                sheetChars += room;
+                rulesLeftOut = true;
+                return text.substring(0, (int) (i + room - used));
+            }
+            used += plain - i;
+            if (!data) {
+                break;
+            }
+            int close = m.group(1).isEmpty() ? text.indexOf(')', plain) : text.indexOf(m.group(1), plain);
+            i = close < 0 ? text.length() : close;
         }
+        sheetChars += used;
         return text;
     }
+
+    private static final Pattern DATA_URL = Pattern.compile("url\\(\\s*([\"']?)data:", Pattern.CASE_INSENSITIVE);
 
     private String sheet(String ref, Linked linked) {
         if (ref == null || !sheets.add(ref) || sheetChars >= MAX_SHEET_CHARS) {
@@ -400,7 +416,10 @@ final class Cascade {
     private void forget() {
         Element blank = new Element("i");
         for (Evaluator ev : tested) {
-            Collector.findFirst(ev, blank);
+            try {
+                Collector.findFirst(ev, blank);
+            } catch (RuntimeException ignored) {
+            }
         }
         tested.clear();
         forgotten = work;
