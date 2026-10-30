@@ -1,7 +1,11 @@
 package stirling.software.officeconvert.extract;
 
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -12,6 +16,7 @@ import org.apache.pdfbox.cos.COSBase;
 import org.apache.pdfbox.cos.COSDictionary;
 import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.cos.COSStream;
+import org.apache.pdfbox.filter.FilterFactory;
 import org.apache.pdfbox.pdmodel.graphics.image.PDImage;
 import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
 
@@ -34,11 +39,12 @@ public final class ImageBudget {
         }
         long limit = jpx ? MAX_JPX_SAMPLES : MAX_DECODED_BYTES;
         if (!(image instanceof PDImageXObject x)) {
-            return codedBytes(image) <= limit;
+            return codedBytes(image) <= limit && maskedRenderBytes(image) <= MAX_DECODED_BYTES;
         }
         Boolean known = VERDICTS.get(x.getCOSObject());
         if (known == null) {
-            known = codedBytes(image) <= limit && inflatesWithin(image);
+            known = codedBytes(image) <= limit && maskedRenderBytes(image) <= MAX_DECODED_BYTES
+                    && inflatesWithin(image);
             VERDICTS.put(x.getCOSObject(), known);
         }
         return known;
@@ -48,12 +54,123 @@ public final class ImageBudget {
         return "jpx".equals(image.getSuffix());
     }
 
+    private static boolean jpx(COSStream stream) {
+        List<COSName> filters = filters(stream);
+        return !filters.isEmpty() && COSName.JPX_DECODE.equals(filters.get(filters.size() - 1));
+    }
+
+    private static List<COSName> filters(COSStream stream) {
+        COSBase f = stream.getFilters();
+        List<COSName> out = new ArrayList<>();
+        if (f instanceof COSName n) {
+            out.add(n);
+        } else if (f instanceof COSArray a) {
+            for (COSBase b : a) {
+                if (b instanceof COSName n) {
+                    out.add(n);
+                }
+            }
+        }
+        return out;
+    }
+
+    private static byte[] jpxHeader(COSStream stream) throws IOException {
+        List<COSName> filters = filters(stream);
+        InputStream data = stream.createRawInputStream();
+        try {
+            for (int i = 0; i < filters.size() - 1; i++) {
+                Head out = new Head();
+                try {
+                    FilterFactory.INSTANCE.getFilter(filters.get(i)).decode(data, out, stream, i);
+                } catch (IOException | RuntimeException stopped) {
+                }
+                data.close();
+                data = new ByteArrayInputStream(out.bytes());
+            }
+            return data.readNBytes(JPX_HEADER_SCAN);
+        } finally {
+            data.close();
+        }
+    }
+
+    private static final class Head extends OutputStream {
+
+        private final ByteArrayOutputStream kept = new ByteArrayOutputStream();
+
+        @Override
+        public void write(int b) throws IOException {
+            write(new byte[] {(byte) b}, 0, 1);
+        }
+
+        @Override
+        public void write(byte[] b, int off, int len) throws IOException {
+            int room = JPX_HEADER_SCAN - kept.size();
+            kept.write(b, off, Math.min(room, len));
+            if (len >= room) {
+                throw new IOException("JPX header window filled");
+            }
+        }
+
+        byte[] bytes() {
+            return kept.toByteArray();
+        }
+    }
+
     private static boolean inflatesWithin(PDImage image) {
         if (!(image instanceof PDImageXObject x)) {
             return true;
         }
-        COSStream mask = x.getCOSObject().getCOSStream(COSName.SMASK);
+        COSStream mask = appliedMask(x.getCOSObject());
         return StreamGuard.fits(x.getCOSObject()) && (mask == null || StreamGuard.fits(mask));
+    }
+
+    private static COSStream appliedMask(COSStream image) {
+        COSStream soft = image.getCOSStream(COSName.SMASK);
+        if (soft != null) {
+            return soft;
+        }
+        COSStream mask = image.getCOSStream(COSName.MASK);
+        return mask != null && mask.getBoolean(COSName.IMAGE_MASK, false) ? mask : null;
+    }
+
+    private static long[] size(COSStream stream) {
+        if (!jpx(stream)) {
+            return new long[] {Math.max(0, stream.getInt(COSName.WIDTH, 0)), Math.max(0, stream.getInt(COSName.HEIGHT, 0))};
+        }
+        try {
+            return jpxSize(jpxHeader(stream));
+        } catch (IOException | RuntimeException e) {
+            return null;
+        }
+    }
+
+    /**
+     * Bytes {@code getImage()} allocates for a masked image or a stencil: it scales the base image
+     * and its {@code /SMask} or stencil {@code /Mask} to a common size and builds a
+     * 4-byte-per-pixel raster. {@link #decodedBytes} measures the base samples only, so the mask
+     * and stencil dimensions are accounted for here. Returns 0 when no mask stream and no stencil
+     * applies, leaving plain images to {@code decodedBytes}.
+     */
+    static long maskedRenderBytes(PDImage image) {
+        boolean stencil;
+        try {
+            stencil = image.isStencil();
+        } catch (RuntimeException e) {
+            stencil = false;
+        }
+        if (!(image instanceof PDImageXObject x)) {
+            return stencil ? samples(image.getWidth(), image.getHeight(), 4) : 0;
+        }
+        COSStream mask = appliedMask(x.getCOSObject());
+        if (mask == null && !stencil) {
+            return 0;
+        }
+        long[] base = size(x.getCOSObject());
+        long[] applied = mask == null ? base : size(mask);
+        if (base == null || applied == null) {
+            return Long.MAX_VALUE;
+        }
+        return samples(Math.max(base[0], applied[0]), Math.max(base[1], applied[1]), 4);
     }
 
     static long decodedBytes(PDImage image) {
@@ -79,6 +196,9 @@ public final class ImageBudget {
                     }
                 }
                 case "jpx" -> {
+                    if (image.getCOSObject() instanceof COSStream stream) {
+                        yield jpxBytes(jpxHeader(stream));
+                    }
                     try (InputStream in = image.createInputStream(List.of(COSName.JPX_DECODE.getName()))) {
                         yield jpxBytes(in.readNBytes(JPX_HEADER_SCAN));
                     }
@@ -112,15 +232,20 @@ public final class ImageBudget {
     }
 
     static long jpxBytes(byte[] b) {
+        long[] size = jpxSize(b);
+        return size == null ? Long.MAX_VALUE : samples(size[0], size[1], (int) size[2]);
+    }
+
+    private static long[] jpxSize(byte[] b) {
         for (int i = 0; i + 42 <= b.length; i++) {
             if ((b[i] & 0xFF) == 0xFF && (b[i + 1] & 0xFF) == 0x4F && (b[i + 2] & 0xFF) == 0xFF && (b[i + 3] & 0xFF) == 0x51) {
                 long width = u32(b, i + 8) - u32(b, i + 16);
                 long height = u32(b, i + 12) - u32(b, i + 20);
                 int components = (b[i + 40] & 0xFF) << 8 | b[i + 41] & 0xFF;
-                return samples(width, height, components);
+                return new long[] {width, height, components};
             }
         }
-        return Long.MAX_VALUE;
+        return null;
     }
 
     private static long samples(long width, long height, int components) {

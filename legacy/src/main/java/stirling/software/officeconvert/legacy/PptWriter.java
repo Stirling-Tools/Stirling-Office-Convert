@@ -26,6 +26,7 @@ import org.apache.poi.sl.usermodel.PictureData.PictureType;
 import org.apache.poi.sl.usermodel.ShapeType;
 import org.apache.poi.sl.usermodel.StrokeStyle.LineCap;
 
+import stirling.software.officeconvert.extract.PdfFiles;
 import stirling.software.officeconvert.model.Picture;
 import stirling.software.officeconvert.model.Scripts;
 import stirling.software.officeconvert.slides.Frame;
@@ -64,10 +65,14 @@ public final class PptWriter implements SlideSink {
     }
 
     @Override
-    public void begin(float width, float height, int firstPage, int slideCount) {
+    public void begin(float width, float height, int firstPage, int slideCount) throws IOException {
         show.setPageSize(new Dimension(Math.round(width), Math.round(height)));
         this.firstPage = firstPage;
         for (int i = 0; i < slideCount; i++) {
+            // Slide creation cost grows with the slide count; yield to cancellation between slides.
+            if ((i & 0x3F) == 0) {
+                PdfFiles.stopIfInterrupted();
+            }
             slides.add(show.createSlide());
         }
     }

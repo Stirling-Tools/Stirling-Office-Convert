@@ -90,6 +90,9 @@ final class TextStyles {
         ParaStyle style = level.paragraph();
         List<Piece> pieces = new ArrayList<>();
         for (XSLFTextRun r : p.getTextRuns()) {
+            // Resolving a run's style scans the paragraph, so a long paragraph is expensive; yield
+            // to cancellation between runs.
+            deck.job().checkpoint();
             XmlObject x = r.getXmlObject();
             String text;
             if (x instanceof CTTextLineBreak) {
@@ -283,7 +286,11 @@ final class TextStyles {
         }
         List<Piece> out = new ArrayList<>();
         int i = 0;
+        int chunks = 0;
         while (i < text.length()) {
+            if ((++chunks & 0x3F) == 0) {
+                deck.job().checkpoint();
+            }
             int start = i;
             Script s = script(text.codePointAt(i));
             while (i < text.length()) {
