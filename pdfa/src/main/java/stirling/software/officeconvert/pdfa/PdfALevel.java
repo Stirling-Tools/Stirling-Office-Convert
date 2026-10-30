@@ -10,7 +10,8 @@ public enum PdfALevel {
     A2U(2, "U"),
     A3A(3, "A"),
     A3B(3, "B"),
-    A3U(3, "U");
+    A3U(3, "U"),
+    A4(4, "");
 
     private final int part;
 
@@ -30,7 +31,7 @@ public enum PdfALevel {
     }
 
     public boolean unicode() {
-        return !"B".equals(conformance);
+        return "A".equals(conformance) || "U".equals(conformance);
     }
 
     public boolean tagged() {
@@ -38,7 +39,7 @@ public enum PdfALevel {
     }
 
     public float pdfVersion() {
-        return part == 1 ? 1.4f : 1.7f;
+        return part == 1 ? 1.4f : part == 4 ? 2.0f : 1.7f;
     }
 
     public String label() {
@@ -57,8 +58,9 @@ public enum PdfALevel {
             case "1a" -> A1A;
             case "2a" -> A2A;
             case "3a" -> A3A;
+            case "4" -> A4;
             default -> throw new IllegalArgumentException(
-                    "Unknown PDF/A level '" + text + "': use 1a, 1b, 2a, 2b, 2u, 3a, 3b or 3u");
+                    "Unknown PDF/A level '" + text + "': use 1a, 1b, 2a, 2b, 2u, 3a, 3b, 3u or 4");
         };
     }
 }

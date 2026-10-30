@@ -69,8 +69,54 @@ final class FontFixer {
         }
     }
 
+    private static final Set<COSName> FONT_SUBTYPES = Set.of(COSName.TYPE0, COSName.TYPE1, COSName.MM_TYPE1,
+            COSName.TYPE3, COSName.TRUE_TYPE);
+
+    static boolean repairSubtype(COSDictionary dict) {
+        COSName current = dict.getCOSName(COSName.SUBTYPE);
+        if (current != null && (FONT_SUBTYPES.contains(current) || COSName.CID_FONT_TYPE0.equals(current)
+                || COSName.CID_FONT_TYPE2.equals(current))) {
+            return false;
+        }
+        COSDictionary fd = ContentGraph.dict(dict.getDictionaryObject(COSName.FONT_DESC));
+        COSName subtype;
+        if (dict.getDictionaryObject(COSName.DESCENDANT_FONTS) != null) {
+            subtype = COSName.TYPE0;
+        } else if (dict.getDictionaryObject(COSName.CHAR_PROCS) != null) {
+            subtype = COSName.TYPE3;
+        } else if (fd != null && fd.getDictionaryObject(COSName.FONT_FILE2) != null) {
+            subtype = COSName.TRUE_TYPE;
+        } else {
+            subtype = COSName.TYPE1;
+        }
+        dict.setItem(COSName.SUBTYPE, subtype);
+        return true;
+    }
+
+    static void repairSubtypes(ContentGraph graph, Report report) {
+        boolean changed = false;
+        for (COSDictionary res : graph.resources()) {
+            COSDictionary fonts = ContentGraph.dict(res.getDictionaryObject(COSName.FONT));
+            if (fonts == null) {
+                continue;
+            }
+            for (COSName k : fonts.keySet()) {
+                COSDictionary font = ContentGraph.dict(fonts.getDictionaryObject(k));
+                if (font != null && repairSubtype(font)) {
+                    changed = true;
+                }
+            }
+        }
+        if (changed) {
+            report.warn("Gave a font with a missing or unknown Subtype the type its font program shows");
+        }
+    }
+
     private PDFont fix(COSDictionary dict, TreeSet<Integer> codes, int bytesPerCode) throws IOException {
         PDFont font;
+        if (repairSubtype(dict)) {
+            report.warn("Gave a font with a missing or unknown Subtype the type its font program shows");
+        }
         try {
             font = PDFontFactory.createFont(dict);
         } catch (IOException | RuntimeException e) {
@@ -81,6 +127,8 @@ final class FontFixer {
             Type3Repair.run(doc, t3, codes, level, report);
             if (level.unicode()) {
                 unicode(t3, codes, 1);
+            } else if (level.part() == 4) {
+                dropForbiddenUnicode(t3, codes, 1);
             }
             return null;
         }
@@ -89,6 +137,8 @@ final class FontFixer {
             tidy(font, codes);
             if (level.unicode()) {
                 unicode(font, codes, bytesPerCode);
+            } else if (level.part() == 4) {
+                dropForbiddenUnicode(font, codes, bytesPerCode);
             }
             trimUnicode(font, codes, bytesPerCode);
             return font;
@@ -299,6 +349,29 @@ final class FontFixer {
         COSStream trimmed = ToUnicodeWriter.preserve(doc, map, bytesPerCode);
         if (trimmed.getLength() < declared.getLength()) {
             dict.setItem(COSName.TO_UNICODE, trimmed);
+        }
+    }
+
+    private void dropForbiddenUnicode(PDFont font, TreeSet<Integer> codes, int bytesPerCode) throws IOException {
+        if (!(font.getCOSObject().getDictionaryObject(COSName.TO_UNICODE) instanceof COSStream)) {
+            return;
+        }
+        TreeMap<Integer, String> map = new TreeMap<>();
+        boolean forbidden = false;
+        for (int code : codes) {
+            PdfFiles.stopIfInterrupted();
+            String t = UnicodeGuess.declared(font, code);
+            if (t == null || t.isEmpty()) {
+                continue;
+            }
+            if (t.chars().anyMatch(c -> c == 0 || c == 0xFEFF || c == 0xFFFE)) {
+                forbidden = true;
+            } else {
+                map.put(code, t);
+            }
+        }
+        if (forbidden) {
+            font.getCOSObject().setItem(COSName.TO_UNICODE, ToUnicodeWriter.preserve(doc, map, bytesPerCode));
         }
     }
 

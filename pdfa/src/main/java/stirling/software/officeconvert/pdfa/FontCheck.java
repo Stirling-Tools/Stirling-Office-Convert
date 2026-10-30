@@ -181,10 +181,11 @@ final class FontCheck {
             if (enc != null) {
                 return false;
             }
-            if (subs.length == 1) {
+            if (subs.length == 1 && level.part() < 4) {
                 return true;
             }
-            return level.part() > 1 && cmap.getSubtable(3, 0) != null;
+            return level.part() > 1 && (cmap.getSubtable(3, 0) != null
+                    || level.part() == 4 && cmap.getSubtable(1, 0) != null);
         }
         if (cmap == null || cmap.getSubtable(3, 1) == null && cmap.getSubtable(1, 0) == null) {
             return false;

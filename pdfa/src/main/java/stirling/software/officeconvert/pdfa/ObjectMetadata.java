@@ -44,7 +44,7 @@ final class ObjectMetadata {
                 owners.add(d);
             }
         }
-        if (level.part() > 1) {
+        if (level.part() == 2 || level.part() == 3) {
             for (COSDictionary d : owners) {
                 d.removeItem(COSName.METADATA);
             }

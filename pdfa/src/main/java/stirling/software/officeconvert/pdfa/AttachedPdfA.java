@@ -35,10 +35,14 @@ final class AttachedPdfA {
     private AttachedPdfA() {}
 
     static boolean check(COSStream file) {
-        return check(file, 0);
+        return check(file, false);
     }
 
-    private static boolean check(COSStream file, int depth) {
+    static boolean check(COSStream file, boolean partFour) {
+        return check(file, 0, partFour);
+    }
+
+    private static boolean check(COSStream file, int depth, boolean partFour) {
         byte[] data;
         try {
             data = Decoded.bytes(file, MAX_BYTES, "An attachment");
@@ -51,12 +55,12 @@ final class AttachedPdfA {
         try (RandomAccessReadBuffer source = new RandomAccessReadBuffer(data)) {
             AttachmentParser parser = new AttachmentParser(source);
             try (PDDocument doc = parser.parse(false)) {
-                if (doc.isEncrypted() || !declaresPdfA(doc)) {
+                if (doc.isEncrypted() || !declaresPdfA(doc, partFour)) {
                     return false;
                 }
                 boolean[] ok = {true};
                 Set<COSStream> checked = Collections.newSetFromMap(new IdentityHashMap<>());
-                CosWalk.walk(doc, b -> ok[0] &= allowed(b, depth, checked));
+                CosWalk.walk(doc, b -> ok[0] &= allowed(b, depth, checked, partFour));
                 parser.checkBudget();
                 return ok[0];
             }
@@ -65,7 +69,7 @@ final class AttachedPdfA {
         }
     }
 
-    private static boolean declaresPdfA(PDDocument doc) {
+    private static boolean declaresPdfA(PDDocument doc, boolean partFour) {
         COSDictionary cat = doc.getDocumentCatalog().getCOSObject();
         if (!(cat.getDictionaryObject(COSName.METADATA) instanceof COSStream xmp)) {
             return false;
@@ -79,7 +83,8 @@ final class AttachedPdfA {
             String part = property(xml, "part");
             String conformance = property(xml, "conformance");
             return ("1".equals(part) && Set.of("A", "B").contains(conformance))
-                    || ("2".equals(part) && Set.of("A", "B", "U").contains(conformance));
+                    || ("2".equals(part) && Set.of("A", "B", "U").contains(conformance))
+                    || (partFour && "4".equals(part) && Set.of("", "E", "F").contains(conformance));
         } catch (IOException e) {
             return false;
         }
@@ -108,15 +113,16 @@ final class AttachedPdfA {
         return count == 1 ? value : "";
     }
 
-    private static boolean allowed(COSBase b, int depth, Set<COSStream> checked) {
+    private static boolean allowed(COSBase b, int depth, Set<COSStream> checked, boolean partFour) {
         if (!(b instanceof COSDictionary d)) {
             return true;
         }
-        if (d.containsKey(COSName.JS) || d.containsKey(COSName.AA) || d.containsKey(XFA)
+        if (!partFour && (d.containsKey(COSName.JS) || d.containsKey(COSName.AA)) || d.containsKey(XFA)
                 || d.containsKey(COSName.ENCRYPT)) {
             return false;
         }
-        if (d.getDictionaryObject(COSName.S) instanceof COSName s && FORBIDDEN.contains(s.getName())) {
+        if (d.getDictionaryObject(COSName.S) instanceof COSName s && FORBIDDEN.contains(s.getName())
+                && !(partFour && "JavaScript".equals(s.getName()))) {
             return false;
         }
         if (COSName.FONT.equals(d.getCOSName(COSName.TYPE)) && !COSName.TYPE0.equals(d.getCOSName(COSName.SUBTYPE))
@@ -127,13 +133,13 @@ final class AttachedPdfA {
         if (ef != null) {
             for (COSName key : ef.keySet()) {
                 if (!(ef.getDictionaryObject(key) instanceof COSStream file)
-                        || checked.add(file) && !(depth < MAX_DEPTH && check(file, depth + 1))) {
+                        || checked.add(file) && !(depth < MAX_DEPTH && check(file, depth + 1, partFour))) {
                     return false;
                 }
             }
         }
         if (d instanceof COSStream s && EMBEDDED_FILE.equals(s.getCOSName(COSName.TYPE)) && checked.add(s)) {
-            return depth < MAX_DEPTH && check(s, depth + 1);
+            return depth < MAX_DEPTH && check(s, depth + 1, partFour);
         }
         return true;
     }

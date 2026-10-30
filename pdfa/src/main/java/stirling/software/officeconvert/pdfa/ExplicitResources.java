@@ -20,6 +20,11 @@ final class ExplicitResources {
 
     static void run(ContentGraph graph) throws IOException {
         for (ContentGraph.Node n : graph.nodes()) {
+            if (n.resources() == null && n.kind() != ContentGraph.Kind.GLYPH
+                    && n.owner().getDictionaryObject(COSName.RESOURCES) == null) {
+                n.owner().setItem(COSName.RESOURCES, new COSDictionary());
+                continue;
+            }
             if (n.resources() == null || n.kind() == ContentGraph.Kind.GLYPH
                     || n.owner().getDictionaryObject(COSName.RESOURCES) != null) {
                 continue;

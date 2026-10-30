@@ -94,6 +94,13 @@ final class ContentFixer {
                         }
                     }
                 }
+                if (level.part() == 4 && ("BDC".equals(name) || "DP".equals(name))) {
+                    for (Object operand : operation) {
+                        if (operand instanceof COSDictionary properties && ActualTexts.stripPrivateUse(properties)) {
+                            changed = true;
+                        }
+                    }
+                }
                 colours.operator(name);
                 if (!OPERATORS.contains(name)) {
                     changed = true;
@@ -132,7 +139,7 @@ final class ContentFixer {
             }
             List<Object> result = changed ? out : tokens;
             usage.scan(result, n.resources(), n.owner());
-            if (Nesting.depth(result) > Nesting.MAX_DEPTH) {
+            if (level.part() < 4 && Nesting.depth(result) > Nesting.MAX_DEPTH) {
                 COSDictionary res = resources(n);
                 if (res != null) {
                     result = Nesting.flatten(result, res, level, report);

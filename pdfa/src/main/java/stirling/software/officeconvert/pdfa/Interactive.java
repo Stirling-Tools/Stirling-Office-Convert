@@ -131,7 +131,12 @@ final class Interactive {
             if (!seen.add(f)) {
                 continue;
             }
-            if (f.containsKey(COSName.AA) || f.containsKey(COSName.A)) {
+            if (level.part() == 4) {
+                Actions.filterAdditional(f, null, level, report);
+                if (f.containsKey(COSName.A) && !COSName.WIDGET.equals(f.getCOSName(COSName.SUBTYPE))) {
+                    Actions.filterKey(f, COSName.A, level, report);
+                }
+            } else if (f.containsKey(COSName.AA) || f.containsKey(COSName.A)) {
                 f.removeItem(COSName.AA);
                 f.removeItem(COSName.A);
                 report.warn("Removed form field actions, which PDF/A does not allow");

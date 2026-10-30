@@ -31,8 +31,12 @@ class RuleSamplesTest {
         Set<String> profile = VeraPdf.rules(level);
         for (String r : RuleSamples.ALL.get(name).rules()) {
             String[] parts = r.split(":");
-            boolean partOne = parts[0].equals("1");
-            if (partOne == (level.part() == 1) && profile.contains(parts[1])) {
+            boolean applies = switch (parts[0]) {
+                case "1" -> level.part() == 1;
+                case "2" -> level.part() == 2 || level.part() == 3;
+                default -> parts[0].equals(String.valueOf(level.part()));
+            };
+            if (applies && profile.contains(parts[1])) {
                 expected.add(parts[1]);
             }
         }

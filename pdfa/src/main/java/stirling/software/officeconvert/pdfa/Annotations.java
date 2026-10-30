@@ -26,6 +26,8 @@ final class Annotations {
             "Polygon", "PolyLine", "Highlight", "Underline", "Squiggly", "StrikeOut", "Stamp", "Caret", "Ink", "Popup",
             "FileAttachment", "Widget", "PrinterMark", "TrapNet", "Watermark", "Redact");
 
+    private static final Set<String> ANNOTATION_TRIGGERS = Set.of("E", "X", "D", "U", "Fo", "Bl");
+
     private static final int INVISIBLE = 1;
 
     private static final int HIDDEN = 2;
@@ -56,7 +58,10 @@ final class Annotations {
             COSName sub = a.getCOSName(COSName.SUBTYPE);
             String type = sub == null ? "" : sub.getName();
             boolean flatten = level.part() == 1 && Set.of("Polygon", "PolyLine", "Caret").contains(type);
-            if (!(level.part() == 1 ? ALLOWED_A1 : ALLOWED).contains(type) && !flatten) {
+            boolean forbidden = level.part() == 4 && "FileAttachment".equals(type);
+            boolean allowed = (level.part() == 1 ? ALLOWED_A1 : ALLOWED).contains(type)
+                    || level.part() == 4 && "Projection".equals(type);
+            if ((!allowed || forbidden) && !flatten) {
                 report.warn("Removed " + (type.isEmpty() ? "an annotation without a type" : "a " + type
                         + " annotation") + ", which " + level.label() + " does not allow");
                 continue;
@@ -76,9 +81,14 @@ final class Annotations {
                 flags |= NO_ZOOM | NO_ROTATE;
             }
             a.setInt(COSName.F, flags);
-            if (a.containsKey(COSName.AA)) {
+            if (level.part() == 4) {
+                Actions.filterAdditional(a, "Widget".equals(type) ? null : ANNOTATION_TRIGGERS, level, report);
+            } else if (a.containsKey(COSName.AA)) {
                 a.removeItem(COSName.AA);
                 report.warn("Removed annotation actions, which PDF/A does not allow");
+            }
+            if (level.part() > 1) {
+                StreamFixer.blendMode(a);
             }
             if ("Widget".equals(type) && a.containsKey(COSName.A)) {
                 a.removeItem(COSName.A);

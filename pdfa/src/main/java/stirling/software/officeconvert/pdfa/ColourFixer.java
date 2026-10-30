@@ -50,6 +50,18 @@ final class ColourFixer {
             alongside.visit(b);
         });
         int components = c.outputIntent();
+        if (level.part() == 4) {
+            boolean dropped = false;
+            for (ContentGraph.Node n : graph.nodes()) {
+                if (n.kind() == ContentGraph.Kind.PAGE && n.owner().containsKey(COSName.OUTPUT_INTENTS)) {
+                    n.owner().removeItem(COSName.OUTPUT_INTENTS);
+                    dropped = true;
+                }
+            }
+            if (dropped) {
+                report.warn("Removed page output intents so every page uses the document's PDF/A output intent");
+            }
+        }
         c.shadings();
         COSName key = components == 3 && colours.cmyk() ? DEFAULT_CMYK
                 : components == 4 && colours.rgb() ? DEFAULT_RGB : null;

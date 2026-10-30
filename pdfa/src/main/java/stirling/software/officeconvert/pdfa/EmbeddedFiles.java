@@ -106,7 +106,7 @@ final class EmbeddedFiles {
                     COSDictionary fs = ContentGraph.dict(a.getDictionaryObject(COSName.FS));
                     if (fs == null || !keep(fs)) {
                         report.warn("Removed a file attachment annotation, as " + level.label()
-                                + " allows only " + (level.part() == 3 ? "attached files with a file specification"
+                                + " allows only " + (level.part() >= 3 ? "attached files with a file specification"
                                 : "PDF/A attachments"));
                         continue;
                     }
@@ -117,7 +117,7 @@ final class EmbeddedFiles {
                 page.getCOSObject().setItem(COSName.ANNOTS, kept);
             }
         }
-        if (level.part() == 3 && !associated.isEmpty()) {
+        if (level.part() >= 3 && !associated.isEmpty()) {
             COSArray af = ContentGraph.array(cat.getDictionaryObject(AF));
             if (af == null) {
                 af = new COSArray();
@@ -197,10 +197,10 @@ final class EmbeddedFiles {
         if (level.part() == 1) {
             return false;
         }
-        if (level.part() == 2) {
+        if (level.part() == 2 || level.part() == 4) {
             for (COSBase value : ef.getValues()) {
                 COSBase embedded = value instanceof COSObject object ? object.getObject() : value;
-                if (!(embedded instanceof COSStream stream) || !AttachedPdfA.check(stream)) {
+                if (!(embedded instanceof COSStream stream) || !AttachedPdfA.check(stream, level.part() == 4)) {
                     return false;
                 }
             }
@@ -212,12 +212,17 @@ final class EmbeddedFiles {
         if (fs.getDictionaryObject(COSName.UF) == null) {
             fs.setString(COSName.UF, name);
         }
-        if (level.part() == 3) {
+        if (level.part() >= 3) {
             if (!(fs.getDictionaryObject(AF_RELATIONSHIP) instanceof COSName)) {
                 fs.setItem(AF_RELATIONSHIP, UNSPECIFIED);
             }
-            if (!(file.getDictionaryObject(COSName.SUBTYPE) instanceof COSName)) {
-                file.setItem(COSName.SUBTYPE, COSName.getPDFName(mime(name)));
+            for (COSBase value : ef.getValues()) {
+                COSBase embedded = value instanceof COSObject object ? object.getObject() : value;
+                if (embedded instanceof COSStream stream
+                        && (!(stream.getDictionaryObject(COSName.SUBTYPE) instanceof COSName mime)
+                                || !mime.getName().matches("[-\\w+.]+/[-\\w+.]+"))) {
+                    stream.setItem(COSName.SUBTYPE, COSName.getPDFName(mime(name)));
+                }
             }
             COSDictionary params = ContentGraph.dict(file.getDictionaryObject(COSName.PARAMS));
             if (params == null) {

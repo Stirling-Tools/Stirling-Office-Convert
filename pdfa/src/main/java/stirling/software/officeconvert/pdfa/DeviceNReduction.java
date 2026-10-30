@@ -42,7 +42,7 @@ final class DeviceNReduction {
     }
 
     static int maxColourants(PdfALevel level) {
-        return level.part() == 1 ? 8 : 32;
+        return level.part() == 1 ? 8 : level.part() == 4 ? Integer.MAX_VALUE : 32;
     }
 
     static void run(PDDocument doc, Census census, ContentGraph graph, PdfALevel level, Report report)

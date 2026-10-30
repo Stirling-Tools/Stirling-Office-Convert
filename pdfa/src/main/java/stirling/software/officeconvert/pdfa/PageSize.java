@@ -42,7 +42,7 @@ final class PageSize {
     private PageSize() {}
 
     static void run(PDDocument doc, PdfALevel level, Report report) throws IOException {
-        if (level.part() == 1) {
+        if (level.part() == 1 || level.part() == 4) {
             return;
         }
         Map<COSDictionary, Float> scaled = new IdentityHashMap<>();

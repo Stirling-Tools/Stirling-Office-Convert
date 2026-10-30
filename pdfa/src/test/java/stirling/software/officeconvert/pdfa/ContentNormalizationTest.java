@@ -102,7 +102,7 @@ class ContentNormalizationTest {
             COSDictionary properties = new COSDictionary();
             properties.setItem(COSName.OCGS, groups);
             doc.getDocumentCatalog().getCOSObject().setItem(COSName.OCPROPERTIES, properties);
-            OptionalContent.configure(doc);
+            OptionalContent.configure(doc, PdfALevel.A2B);
             assertTrue(group.getString(COSName.NAME).startsWith("Layer"));
         }
     }

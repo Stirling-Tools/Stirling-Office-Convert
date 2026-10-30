@@ -47,10 +47,13 @@ final class Conversion {
         Interactive.run(doc, level, report);
         ObjectMetadata.run(doc, census, level, report);
         EmbeddedFiles.run(doc, level, report);
+        if (level.part() == 4) {
+            ActualTexts.run(doc, report);
+        }
         if (level.part() == 1) {
             OptionalContentRemoval.run(doc, report);
         } else {
-            OptionalContent.configure(doc);
+            OptionalContent.configure(doc, level);
         }
         PdfFiles.stopIfInterrupted();
         PageSize.run(doc, level, report);
@@ -60,6 +63,7 @@ final class Conversion {
         DeviceColours colours = new DeviceColours();
         DeviceNReduction.run(doc, census, graph, level, report);
         SpotColours.run(doc, census, level, report);
+        FontFixer.repairSubtypes(graph, report);
         ContentFixer.run(graph, level, report, usage, colours);
         FontFixer.run(doc, usage, level, options::fontLibrary, report);
         PdfFiles.stopIfInterrupted();
