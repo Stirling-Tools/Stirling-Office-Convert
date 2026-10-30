@@ -2,7 +2,9 @@ package stirling.software.officeconvert.topdf.docx;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Deque;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -103,9 +105,35 @@ final class DocxPackage {
         notes(first(main, "endnotes"), endnotes, "w:endnote");
     }
 
+    static int pageBreaks(XEl e) {
+        int n = 0;
+        Deque<XEl> todo = new ArrayDeque<>();
+        todo.push(e);
+        while (!todo.isEmpty()) {
+            XEl k = todo.pop();
+            if (k.is("w:br") && "page".equals(k.attr("type"))
+                    || k.is("w:pageBreakBefore") && Ooxml.on(k)
+                    || k.is("w:sectPr") && !continuous(k)) {
+                n++;
+            }
+            if (!k.is("w:txbxContent")) {
+                for (XEl kid : k.kids) {
+                    todo.push(kid);
+                }
+            }
+        }
+        return n;
+    }
+
+    private static boolean continuous(XEl sectPr) {
+        XEl type = sectPr.child("w:type");
+        return type != null && "continuous".equals(type.attr("val"));
+    }
+
     private void readBody() throws IOException {
         ContentReader reader = new ContentReader(this, main);
         List<Block> pending = new ArrayList<>();
+        int[] breaks = new int[1];
         try (InputStream in = zip.open(main)) {
             XEl outside = XTree.streamBody(in, e -> {
                 job.checkpoint();
@@ -114,6 +142,11 @@ final class DocxPackage {
                     pending.clear();
                     return;
                 }
+                if (job.maxPages() > 0 && breaks[0] >= job.maxPages()) {
+                    job.truncate();
+                    return;
+                }
+                breaks[0] += pageBreaks(e);
                 List<Block> added = new ArrayList<>();
                 reader.block(e, added, null);
                 for (Block b : added) {

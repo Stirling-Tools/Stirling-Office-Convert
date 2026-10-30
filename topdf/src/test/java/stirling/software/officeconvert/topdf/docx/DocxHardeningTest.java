@@ -11,6 +11,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
 
 import stirling.software.officeconvert.topdf.OfficeToPdf;
@@ -183,5 +184,63 @@ class DocxHardeningTest {
             assertEquals(lost, r.result().warnings().stream().anyMatch(w -> w.contains("levels deep was left out")),
                     depth + ": " + r.result().warnings());
         }
+    }
+
+    private static String rotatedTables(int depth) {
+        String inner = "";
+        for (int i = 0; i < depth; i++) {
+            inner = "<w:tbl><w:tblPr/><w:tblGrid><w:gridCol w:w=\"2000\"/></w:tblGrid><w:tr><w:tc><w:tcPr>"
+                    + "<w:textDirection w:val=\"btLr\"/></w:tcPr>" + DocxDoc.p("x") + inner + "<w:p/></w:tc></w:tr>"
+                    + "</w:tbl>";
+        }
+        return inner + "<w:p/>";
+    }
+
+    @Test
+    @Timeout(60)
+    void nestedRotatedCellsAreLaidOutOnceEach() throws IOException {
+        DocxDoc.Rendered r = DocxDoc.render(dir, "rotated", new DocxDoc().styles(DEFAULTS).body(rotatedTables(32))
+                .bytes());
+        assertEquals(1, r.result().pages());
+    }
+
+    @Test
+    void everyNestedRotatedCellIsDrawn() throws IOException {
+        DocxDoc.Rendered r = DocxDoc.render(dir, "rotated3", new DocxDoc().styles(DEFAULTS).body(rotatedTables(3))
+                .bytes());
+        assertEquals(3, r.text().chars().filter(c -> c == 'x').count(), r.text());
+    }
+
+    @Test
+    @Timeout(60)
+    void pageBreaksPastThePageLimitAreNotRead() throws IOException {
+        String breaks = "<w:p><w:r><w:t>p</w:t><w:br w:type=\"page\"/></w:r></w:p>".repeat(200_000);
+        Path in = Fixtures.write(dir, "breaks.docx", new DocxDoc().styles(DEFAULTS).body(breaks).bytes());
+        FontLibrary fonts = FontLibrary.system();
+        try (OfficeZip zip = OfficeZip.open(in); PdfOutput output = new PdfOutput(fonts)) {
+            RenderJob job = new RenderJob(zip, OfficeToPdf.Format.DOCX, OfficeToPdf.Options.defaults().maxPages(10),
+                    fonts, output);
+            DocxPackage pkg = new DocxPackage(zip, job);
+            pkg.load();
+            int blocks = 0;
+            for (Section s : pkg.sections) {
+                blocks += s.blocks().size();
+            }
+            assertTrue(blocks <= 11, "blocks read " + blocks);
+            assertTrue(job.truncated());
+        }
+        OfficeToPdf.Result result = OfficeToPdf.convert(in, dir.resolve("breaks.pdf"),
+                OfficeToPdf.Options.defaults().maxPages(10));
+        assertEquals(10, result.pages());
+        assertTrue(result.warnings().contains("Stopped at the page limit of 10 pages"), result.warnings().toString());
+    }
+
+    @Test
+    void pageBreaksAreCountedWhereTheyBreakPages() throws IOException {
+        XEl p = XTree.parse(new java.io.ByteArrayInputStream(("<w:p " + DocxDoc.NS + "><w:pPr><w:pageBreakBefore/>"
+                + "<w:sectPr><w:type w:val=\"continuous\"/></w:sectPr></w:pPr><w:r><w:br w:type=\"page\"/>"
+                + "<w:br/><w:txbxContent><w:p><w:r><w:br w:type=\"page\"/></w:r></w:p></w:txbxContent></w:r></w:p>")
+                .getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+        assertEquals(2, DocxPackage.pageBreaks(p));
     }
 }
