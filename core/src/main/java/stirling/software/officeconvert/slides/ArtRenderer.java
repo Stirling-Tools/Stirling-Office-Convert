@@ -232,8 +232,9 @@ final class ArtRenderer extends PDFRenderer {
 
         @Override
         public void drawImage(PDImage pdImage) throws IOException {
-            if (kept() && ImageBudget.affordable(pdImage)) {
-                paint(() -> super.drawImage(pdImage));
+            PDImage fitted = kept() ? ImageBudget.fitted(pdImage) : null;
+            if (fitted != null) {
+                paint(() -> super.drawImage(fitted));
             }
         }
 

@@ -160,8 +160,9 @@ final class FigureRenderer extends PDFRenderer {
 
             @Override
             public void drawImage(PDImage pdImage) throws IOException {
-                if ((!paper || painting) && ImageBudget.affordable(pdImage)) {
-                    super.drawImage(pdImage);
+                PDImage fitted = !paper || painting ? ImageBudget.fitted(pdImage) : null;
+                if (fitted != null) {
+                    super.drawImage(fitted);
                 }
             }
 
