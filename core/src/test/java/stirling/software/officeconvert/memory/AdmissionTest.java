@@ -2,6 +2,7 @@ package stirling.software.officeconvert.memory;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -84,6 +85,71 @@ class AdmissionTest {
     }
 
     @Test
+    void nestedTicketsClosedOutOfOrderLeaveTheOuterCurrent() {
+        Admission a = new Admission(100 * MB, 50, 1, collect -> 0);
+        assertTimeoutPreemptively(Duration.ofSeconds(10), () -> {
+            try (Admission.Ticket _ = a.enter(20 * MB)) {
+                Admission.Ticket first = a.enter(8 * MB);
+                Admission.Ticket second = a.enter(8 * MB);
+                first.close();
+                second.close();
+                assertEquals(20 * MB, a.status().inUseBytes());
+                try (Admission.Ticket _ = a.enter(8 * MB)) {
+                    assertEquals(1, a.running());
+                    assertEquals(28 * MB, a.status().inUseBytes());
+                }
+            }
+            assertEquals(0, a.running());
+            assertEquals(0, a.status().inUseBytes());
+        });
+    }
+
+    @Test
+    void aNestedEntryIsNeverRefusedAsOversize() throws Exception {
+        Admission a = new Admission(100 * MB, new Admission.Limits(50, 0, Duration.ZERO, true), collect -> 0);
+        try (Admission.Ticket _ = a.enter(20 * MB)) {
+            a.enter(80 * MB).close();
+        }
+        assertThrows(Admission.TooLarge.class, () -> a.enter(80 * MB));
+    }
+
+    @Test
+    void configuringKeepsTheTicketsHeldAndAppliesTheNewSlots() throws Exception {
+        Admission a = new Admission(100 * MB, new Admission.Limits(50, 1, Duration.ofMillis(200), false),
+                collect -> 0);
+        CountDownLatch holding = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        Thread worker = Thread.ofPlatform().start(() -> {
+            try (Admission.Ticket _ = a.enter(8 * MB)) {
+                holding.countDown();
+                release.await();
+            } catch (InterruptedIOException | InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        });
+        try {
+            assertTrue(holding.await(10, TimeUnit.SECONDS));
+            Admission.abandoned(worker);
+            assertThrows(AssertionError.class, () -> apart(a, 8 * MB));
+            a.apply(new Admission.Limits(50, 2, Duration.ofMillis(200), false));
+            assertEquals(8 * MB, a.status().inUseBytes());
+            assertEquals(1, a.status().stuck());
+            assertEquals(2, a.status().slots());
+            Admission.Ticket second = apart(a, 8 * MB);
+            assertEquals(2, a.running());
+            assertEquals(16 * MB, a.status().inUseBytes());
+            second.close();
+        } finally {
+            release.countDown();
+            worker.join();
+        }
+        assertEquals(0, a.running());
+        Admission jvm = Admission.jvm();
+        Admission.configure(jvm.limits());
+        assertSame(jvm, Admission.jvm());
+    }
+
+    @Test
     void aNestedEntryWaitsForNobodyEvenWhenOthersQueue() {
         Admission a = new Admission(100 * MB, 50, 1, collect -> 0);
         assertTimeoutPreemptively(Duration.ofSeconds(10), () -> {
@@ -133,7 +199,7 @@ class AdmissionTest {
     @Test
     void automaticSlotsFollowTheBudget() {
         Admission small = new Admission(256 * MB, new Admission.Limits(60, 0, Duration.ZERO, false), collect -> 0);
-        assertEquals(1, small.status().slots());
+        assertEquals(2, small.status().slots());
         Admission big = new Admission(64L * 1024 * MB, new Admission.Limits(60, 0, Duration.ZERO, false),
                 collect -> 0);
         assertEquals(2 * Runtime.getRuntime().availableProcessors(), big.status().slots());
@@ -167,6 +233,7 @@ class AdmissionTest {
             }
         }
         assertThrows(IllegalArgumentException.class, () -> new Admission.Limits(0, 0, Duration.ZERO, false));
+        assertThrows(IllegalArgumentException.class, () -> new Admission.Limits(9, 0, Duration.ZERO, false));
         assertThrows(IllegalArgumentException.class, () -> new Admission.Limits(60, -1, Duration.ZERO, false));
         assertThrows(IllegalArgumentException.class, () -> new Admission.Limits(60, 0, Duration.ofSeconds(-1), false));
     }

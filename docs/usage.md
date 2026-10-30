@@ -503,7 +503,7 @@ picture to decode (`OfficeToPdf.memoryEstimate(path)`); for a loaded PDF the pag
 the largest figure to render (`OfficeConvert.memoryEstimate(pdf, format, settings)`). Conversions start only while
 their estimates fit in 60 % of the heap (`-Dstirling.officeconvert.memoryBudgetPercent`), at most
 `-Dstirling.officeconvert.maxConcurrent` run at once (by default two per processor, but no more than one per 192 MB
-of budget, and at least one), and none starts while the heap after its last collection is over 75 % full or, in a Linux container, while
+of budget, and at least two), and none starts while the heap after its last collection is over 75 % full or, in a Linux container, while
 the memory that cannot be reclaimed (tmpfs included, page cache not) plus the heap the JVM may still commit is over
 85 % of the limit. A document larger than the whole budget runs alone, or with
 `-Dstirling.officeconvert.refuseOversize=true` is refused at once with `Admission.TooLarge`. The wait counts towards the
@@ -511,11 +511,11 @@ timeout, and a conversion that waits longer than `-Dstirling.officeconvert.maxWa
 fails with `Admission.Busy` ("The converter is busy; try again later"). A conversion that already holds memory never
 waits again for a nested step (such as an eBook cover). A host can set all four at once with
 `Admission.configure(new Admission.Limits(percent, maxConcurrent, maxWait, refuseOversize))`, where `maxConcurrent` 0 is
-automatic and `Limits.defaults()` reads the properties; conversions already running finish under the old limits.
-`Admission.jvm().status()` reports the budget, the bytes held, the conversions running, the slots, how many are stuck
-and the share of the heap in use. A worker that ignores its timeout is abandoned after a short wait and counted as
-stuck; its memory and slot stay held until it really ends, so later work fails with `Busy` rather than waiting
-forever behind it. If memory
+automatic and `Limits.defaults()` reads the properties; conversions already running keep their memory and slot, and
+the new limits apply to those that start or are waiting. `Admission.jvm().status()` reports the budget, the bytes
+held, the conversions running, the slots, how many are stuck and the share of the heap in use. A worker that ignores its timeout is abandoned after a short wait and counted as
+stuck; its memory and slot stay held until it really ends, so later work waits behind it with the wait counting towards
+its timeout: it times out, or fails with `Busy` first when `maxWaitSeconds` is shorter than the timeout. If memory
 still runs short (the heap over 90 % after a full collection, or the container over 90 %), the largest of the running
 conversions stops at its next page or checkpoint with "The document needs more memory to convert than is available"
 and the others go on; a conversion running alone stops only at 97 % of the heap or 95 % of the container, and with
