@@ -39,6 +39,7 @@ import stirling.software.officeconvert.extract.ImageBudget;
 import stirling.software.officeconvert.extract.Jpeg;
 import stirling.software.officeconvert.extract.PageGraphics.ImageDraw;
 import stirling.software.officeconvert.extract.PageGraphics;
+import stirling.software.officeconvert.extract.StreamGuard;
 import stirling.software.officeconvert.layout.Box;
 
 final class MediaEncoder {
@@ -98,7 +99,15 @@ final class MediaEncoder {
     Encoded image(ImageDraw draw) {
         try {
             PDImage image = draw.image();
-            if (!ImageBudget.affordable(image)) {
+            if (draw.stencilRgb() < 0 && image instanceof PDImageXObject x && opacity(draw) == 255
+                    && StreamGuard.fits(x.getCOSObject())) {
+                Encoded raw = rawJpeg(x, lossless);
+                if (raw != null) {
+                    return raw;
+                }
+            }
+            PDImage fitted = ImageBudget.fitted(image);
+            if (fitted == null) {
                 LOG.warn("Image left out: too large to decode");
                 return null;
             }
@@ -107,17 +116,11 @@ final class MediaEncoder {
                     LOG.warn("Stencil mask of " + image.getWidth() + "x" + image.getHeight() + " left out: too large to decode");
                     return null;
                 }
-                BufferedImage st = image.getStencilImage(new Color(draw.stencilRgb() | opacity(draw) << 24, true));
+                BufferedImage st = fitted.getStencilImage(new Color(draw.stencilRgb() | opacity(draw) << 24, true));
                 return png(lossless ? st : limit(st));
             }
-            if (image instanceof PDImageXObject x && opacity(draw) == 255) {
-                Encoded raw = rawJpeg(x, lossless);
-                if (raw != null) {
-                    return raw;
-                }
-            }
             int subsampling = subsampling(draw, lossless);
-            BufferedImage bi = subsampling > 1 ? image.getImage(null, subsampling) : image.getImage();
+            BufferedImage bi = subsampling > 1 ? fitted.getImage(null, subsampling) : fitted.getImage();
             if (bi == null) {
                 return null;
             }

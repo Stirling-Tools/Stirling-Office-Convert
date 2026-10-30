@@ -5,6 +5,8 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
+import org.apache.pdfbox.pdmodel.graphics.image.PDImage;
+
 import stirling.software.officeconvert.extract.ImageBudget;
 import stirling.software.officeconvert.extract.PageGraphics.ImageDraw;
 
@@ -15,14 +17,15 @@ final class ScanRegions {
     private ScanRegions() {}
 
     static List<Box> find(ImageDraw scan, List<Line> ocrLines, float pageW, float pageH) {
-        if (scan.quarterTurns() != 0 || scan.flipH() || scan.flipV() || !plausibleShape(scan)
-                || !ImageBudget.affordable(scan.image())) {
+        PDImage image = scan.quarterTurns() != 0 || scan.flipH() || scan.flipV() || !plausibleShape(scan) ? null
+                : ImageBudget.fitted(scan.image());
+        if (image == null) {
             return List.of();
         }
         BufferedImage img;
         try {
-            int sub = Math.max(1, scan.image().getWidth() / (GRID * 4));
-            img = scan.image().getImage(null, sub);
+            int sub = Math.max(1, image.getWidth() / (GRID * 4));
+            img = image.getImage(null, sub);
         } catch (IOException | RuntimeException e) {
             return List.of();
         }

@@ -5,6 +5,8 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
+import org.apache.pdfbox.pdmodel.graphics.image.PDImage;
+
 import stirling.software.officeconvert.extract.ImageBudget;
 import stirling.software.officeconvert.extract.PageGraphics.ImageDraw;
 import stirling.software.officeconvert.extract.PageGraphics.Rule;
@@ -28,13 +30,15 @@ final class ScanRules {
     private ScanRules() {}
 
     static List<Rule> find(ImageDraw scan) {
-        if (scan.quarterTurns() != 0 || scan.flipH() || scan.flipV() || !ImageBudget.affordable(scan.image())) {
+        PDImage image = scan.quarterTurns() != 0 || scan.flipH() || scan.flipV() ? null
+                : ImageBudget.fitted(scan.image());
+        if (image == null) {
             return List.of();
         }
         BufferedImage img;
         try {
-            int sub = Math.max(1, (Math.max(scan.image().getWidth(), scan.image().getHeight()) + MAX_SIDE - 1) / MAX_SIDE);
-            img = scan.image().getImage(null, sub);
+            int sub = Math.max(1, (Math.max(image.getWidth(), image.getHeight()) + MAX_SIDE - 1) / MAX_SIDE);
+            img = image.getImage(null, sub);
         } catch (IOException | RuntimeException e) {
             return List.of();
         }
