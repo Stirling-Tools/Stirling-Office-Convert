@@ -53,7 +53,7 @@ final class Conversion {
         if (level.part() == 1) {
             OptionalContentRemoval.run(doc, report);
         } else {
-            OptionalContent.configure(doc);
+            OptionalContent.configure(doc, level);
         }
         PdfFiles.stopIfInterrupted();
         PageSize.run(doc, level, report);

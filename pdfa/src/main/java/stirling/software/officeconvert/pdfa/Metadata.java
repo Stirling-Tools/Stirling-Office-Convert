@@ -69,7 +69,7 @@ final class Metadata {
         }
         doc.getDocumentCatalog().getCOSObject().setItem(COSName.METADATA, s);
         if (level.part() == 4) {
-            if (doc.getDocumentCatalog().getCOSObject().containsKey(COSName.PIECE_INFO)) {
+            if (doc.getDocumentCatalog().getCOSObject().getDictionaryObject(COSName.PIECE_INFO) != null) {
                 COSDictionary modOnly = new COSDictionary();
                 modOnly.setDate(COSName.MOD_DATE, modified);
                 trailer.setItem(COSName.INFO, modOnly);

@@ -57,7 +57,7 @@ final class Limits {
     }
 
     static int maxString(PdfALevel level) {
-        return level.part() == 1 ? 65_535 : 32_767;
+        return level.part() == 1 ? 65_535 : level.part() == 4 ? Integer.MAX_VALUE : 32_767;
     }
 
     static int maxArray(PdfALevel level) {

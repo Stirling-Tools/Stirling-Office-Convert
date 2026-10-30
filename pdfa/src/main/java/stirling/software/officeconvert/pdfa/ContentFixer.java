@@ -136,7 +136,7 @@ final class ContentFixer {
             }
             List<Object> result = changed ? out : tokens;
             usage.scan(result, n.resources(), n.owner());
-            if (Nesting.depth(result) > Nesting.MAX_DEPTH) {
+            if (level.part() < 4 && Nesting.depth(result) > Nesting.MAX_DEPTH) {
                 COSDictionary res = resources(n);
                 if (res != null) {
                     result = Nesting.flatten(result, res, level, report);

@@ -23,7 +23,7 @@ final class OptionalContent {
 
     private OptionalContent() {}
 
-    static void configure(PDDocument doc) throws InterruptedIOException {
+    static void configure(PDDocument doc, PdfALevel level) throws InterruptedIOException {
         COSDictionary oc = ContentGraph.dict(doc.getDocumentCatalog().getCOSObject().getDictionaryObject(COSName.OCPROPERTIES));
         if (oc == null) {
             return;
@@ -41,21 +41,23 @@ final class OptionalContent {
             d = new COSDictionary();
             oc.setItem(COSName.D, d);
         }
-        config(d, groups, names, "Default");
+        config(d, groups, names, "Default", level);
         COSArray configs = ContentGraph.array(oc.getDictionaryObject(CONFIGS));
         if (configs != null) {
             for (int i = 0; i < configs.size(); i++) {
                 COSDictionary c = ContentGraph.dict(configs.getObject(i));
                 if (c != null) {
-                    config(c, groups, names, "Configuration " + (i + 1));
+                    config(c, groups, names, "Configuration " + (i + 1), level);
                 }
             }
         }
     }
 
-    private static void config(COSDictionary c, COSArray groups, Set<String> names, String fallback)
-            throws InterruptedIOException {
-        c.removeItem(AS);
+    private static void config(COSDictionary c, COSArray groups, Set<String> names, String fallback,
+            PdfALevel level) throws InterruptedIOException {
+        if (level.part() < 4) {
+            c.removeItem(AS);
+        }
         String name = c.getDictionaryObject(COSName.NAME) instanceof COSString s ? s.getString().strip() : "";
         if (name.isEmpty() || !names.add(name)) {
             String n = fallback;

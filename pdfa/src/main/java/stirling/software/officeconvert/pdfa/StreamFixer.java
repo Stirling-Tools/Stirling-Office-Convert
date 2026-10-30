@@ -34,6 +34,8 @@ final class StreamFixer {
 
     private static final COSName HTP = COSName.getPDFName("HTP");
 
+    private static final COSName HTO = COSName.getPDFName("HTO");
+
     private static final COSName OPI = COSName.getPDFName("OPI");
 
     private static final COSName ALTERNATES = COSName.getPDFName("Alternates");
@@ -90,7 +92,7 @@ final class StreamFixer {
             }
         }
         if (COSName.EXT_G_STATE.equals(d.getCOSName(COSName.TYPE)) || d.containsKey(COSName.TR)
-                || d.containsKey(TR2) || d.containsKey(HT) || d.containsKey(HTP) || d.containsKey(OPM)) {
+                || d.containsKey(TR2) || d.containsKey(HT) || d.containsKey(HTP) || d.containsKey(HTO) || d.containsKey(OPM)) {
             extGState(d);
         }
     }
@@ -208,6 +210,7 @@ final class StreamFixer {
         }
         gs.removeItem(HT);
         gs.removeItem(HTP);
+        gs.removeItem(HTO);
         if (gs.getInt(OPM, 0) == 1) {
             gs.setInt(OPM, 0);
         }
@@ -215,7 +218,11 @@ final class StreamFixer {
         if (ri != null && !(ri instanceof COSName n && INTENTS.contains(n.getName()))) {
             gs.setItem(COSName.RI, COSName.getPDFName("RelativeColorimetric"));
         }
-        COSBase bm = gs.getDictionaryObject(COSName.BM);
+        blendMode(gs);
+    }
+
+    static void blendMode(COSDictionary d) {
+        COSBase bm = d.getDictionaryObject(COSName.BM);
         if (bm instanceof COSArray a) {
             COSName first = null;
             for (int i = 0; i < a.size() && first == null; i++) {
@@ -223,9 +230,9 @@ final class StreamFixer {
                     first = n;
                 }
             }
-            gs.setItem(COSName.BM, first == null ? COSName.getPDFName("Normal") : first);
+            d.setItem(COSName.BM, first == null ? COSName.getPDFName("Normal") : first);
         } else if (bm != null && !(bm instanceof COSName n && BLEND_MODES.contains(n.getName()))) {
-            gs.setItem(COSName.BM, COSName.getPDFName("Normal"));
+            d.setItem(COSName.BM, COSName.getPDFName("Normal"));
         }
     }
 

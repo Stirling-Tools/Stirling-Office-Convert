@@ -16,6 +16,11 @@ final class Actions {
     private static final Set<String> ALLOWED = Set.of("GoTo", "GoToR", "GoToE", "Thread", "URI", "Named",
             "SubmitForm");
 
+    private static final Set<String> ALLOWED_A4 = Set.of("GoTo", "GoToR", "GoToE", "Thread", "URI", "Named",
+            "SubmitForm", "GoToDp");
+
+    private static final Set<String> SCRIPTS = Set.of("JavaScript", "RichMediaExecute");
+
     private static final Set<String> ALLOWED_A1 = Set.of("GoTo", "GoToR", "Thread", "URI", "Named");
 
     private static final Set<String> NAMED = Set.of("NextPage", "PrevPage", "FirstPage", "LastPage");
@@ -53,7 +58,7 @@ final class Actions {
             int depth) throws InterruptedIOException {
         COSName s = a.getCOSName(COSName.S);
         String type = s == null ? "" : s.getName();
-        boolean ok = (level.part() == 1 ? ALLOWED_A1 : ALLOWED).contains(type);
+        boolean ok = (level.part() == 1 ? ALLOWED_A1 : level.part() == 4 ? ALLOWED_A4 : ALLOWED).contains(type);
         if (ok && "Named".equals(type)) {
             COSName n = a.getCOSName(COSName.N);
             ok = n != null && NAMED.contains(n.getName());
@@ -73,7 +78,9 @@ final class Actions {
             kept = filter(next, level, report, done, depth + 1);
         }
         if (!ok) {
-            report.warn("Removed " + (type.isEmpty() ? "an unknown" : "a " + type) + " action, which PDF/A does not allow");
+            report.warn(level.part() == 4 && SCRIPTS.contains(type)
+                    ? "Removed a " + type + " action, as the archived copy keeps no scripts"
+                    : "Removed " + (type.isEmpty() ? "an unknown" : "a " + type) + " action, which PDF/A does not allow");
             return kept;
         }
         if (kept == null) {
@@ -82,6 +89,26 @@ final class Actions {
             a.setItem(COSName.NEXT, kept);
         }
         return a;
+    }
+
+    static void filterAdditional(COSDictionary owner, Set<String> triggers, PdfALevel level, Report report)
+            throws InterruptedIOException {
+        COSDictionary aa = ContentGraph.dict(owner.getDictionaryObject(COSName.AA));
+        if (aa == null) {
+            owner.removeItem(COSName.AA);
+            return;
+        }
+        for (COSName key : new java.util.ArrayList<>(aa.keySet())) {
+            if (triggers != null && !triggers.contains(key.getName())) {
+                aa.removeItem(key);
+                report.warn("Removed a " + key.getName() + " trigger action, which " + level.label() + " does not allow");
+            } else {
+                filterKey(aa, key, level, report);
+            }
+        }
+        if (aa.size() == 0) {
+            owner.removeItem(COSName.AA);
+        }
     }
 
     static void filterKey(COSDictionary owner, COSName key, PdfALevel level, Report report)

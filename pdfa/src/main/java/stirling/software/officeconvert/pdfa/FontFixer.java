@@ -74,7 +74,8 @@ final class FontFixer {
 
     static boolean repairSubtype(COSDictionary dict) {
         COSName current = dict.getCOSName(COSName.SUBTYPE);
-        if (current != null && FONT_SUBTYPES.contains(current)) {
+        if (current != null && (FONT_SUBTYPES.contains(current) || COSName.CID_FONT_TYPE0.equals(current)
+                || COSName.CID_FONT_TYPE2.equals(current))) {
             return false;
         }
         COSDictionary fd = ContentGraph.dict(dict.getDictionaryObject(COSName.FONT_DESC));

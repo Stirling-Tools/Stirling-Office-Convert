@@ -117,11 +117,12 @@ final class AttachedPdfA {
         if (!(b instanceof COSDictionary d)) {
             return true;
         }
-        if (d.containsKey(COSName.JS) || d.containsKey(COSName.AA) || d.containsKey(XFA)
+        if (!partFour && (d.containsKey(COSName.JS) || d.containsKey(COSName.AA)) || d.containsKey(XFA)
                 || d.containsKey(COSName.ENCRYPT)) {
             return false;
         }
-        if (d.getDictionaryObject(COSName.S) instanceof COSName s && FORBIDDEN.contains(s.getName())) {
+        if (d.getDictionaryObject(COSName.S) instanceof COSName s && FORBIDDEN.contains(s.getName())
+                && !(partFour && "JavaScript".equals(s.getName()))) {
             return false;
         }
         if (COSName.FONT.equals(d.getCOSName(COSName.TYPE)) && !COSName.TYPE0.equals(d.getCOSName(COSName.SUBTYPE))
