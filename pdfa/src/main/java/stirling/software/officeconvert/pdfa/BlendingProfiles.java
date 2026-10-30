@@ -3,6 +3,7 @@ package stirling.software.officeconvert.pdfa;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -27,7 +28,11 @@ final class BlendingProfiles {
 
     private static final int MAX_DEPTH = 4;
 
+    private static final int MAX_RESOURCE_DEPTH = 64;
+
     private final Map<COSStream, String> digests = new IdentityHashMap<>();
+
+    private final Map<COSDictionary, Set<String>> reached = new IdentityHashMap<>();
 
     private BlendingProfiles() {}
 
@@ -47,14 +52,8 @@ final class BlendingProfiles {
     }
 
     private boolean dropRepeatedGroupSpaces(ContentGraph graph) {
-        Set<String> used = new HashSet<>();
         Set<COSBase> softMasks = Collections.newSetFromMap(new IdentityHashMap<>());
         for (COSDictionary res : graph.resources()) {
-            for (COSDictionary holder : holders(res)) {
-                for (COSName k : spaceKeys(holder)) {
-                    collect(holder.getDictionaryObject(k), used, 0);
-                }
-            }
             softMasks(res, softMasks);
         }
         boolean changed = false;
@@ -67,12 +66,69 @@ final class BlendingProfiles {
                 continue;
             }
             String profile = cmykProfile(group.getDictionaryObject(COSName.CS));
-            if (profile != null && used.contains(profile)) {
+            if (profile != null && usedUnder(n).contains(profile)) {
                 group.removeItem(COSName.CS);
                 changed = true;
             }
         }
         return changed;
+    }
+
+    private Set<String> usedUnder(ContentGraph.Node n) {
+        Set<String> out = new HashSet<>(profilesIn(n.resources(), 0));
+        if (n.kind() == ContentGraph.Kind.PAGE) {
+            COSArray annots = ContentGraph.array(n.owner().getDictionaryObject(COSName.ANNOTS));
+            for (int i = 0; annots != null && i < annots.size(); i++) {
+                COSDictionary annot = ContentGraph.dict(annots.getObject(i));
+                COSDictionary ap = annot == null ? null : ContentGraph.dict(annot.getDictionaryObject(COSName.AP));
+                if (ap == null) {
+                    continue;
+                }
+                for (COSName k : ap.keySet()) {
+                    COSBase v = ap.getDictionaryObject(k);
+                    if (v instanceof COSStream s) {
+                        out.addAll(profilesIn(ContentGraph.dict(s.getDictionaryObject(COSName.RESOURCES)), 0));
+                    } else if (v instanceof COSDictionary states) {
+                        for (COSName state : states.keySet()) {
+                            if (states.getDictionaryObject(state) instanceof COSStream s) {
+                                out.addAll(profilesIn(ContentGraph.dict(s.getDictionaryObject(COSName.RESOURCES)), 0));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        return out;
+    }
+
+    private Set<String> profilesIn(COSDictionary res, int depth) {
+        if (res == null || depth > MAX_RESOURCE_DEPTH) {
+            return Set.of();
+        }
+        Set<String> known = reached.get(res);
+        if (known != null) {
+            return known;
+        }
+        Set<String> out = new HashSet<>();
+        reached.put(res, out);
+        for (COSDictionary holder : holders(res)) {
+            for (COSName k : spaceKeys(holder)) {
+                collect(holder.getDictionaryObject(k), out, 0);
+            }
+        }
+        for (COSName kind : List.of(COSName.XOBJECT, COSName.PATTERN, COSName.FONT)) {
+            COSDictionary entries = ContentGraph.dict(res.getDictionaryObject(kind));
+            if (entries == null) {
+                continue;
+            }
+            for (COSName k : entries.keySet()) {
+                COSDictionary child = ContentGraph.dict(entries.getDictionaryObject(k));
+                if (child != null) {
+                    out.addAll(profilesIn(ContentGraph.dict(child.getDictionaryObject(COSName.RESOURCES)), depth + 1));
+                }
+            }
+        }
+        return out;
     }
 
     private boolean rewriteOutputIntentRepeats(PDDocument doc, ContentGraph graph) {
@@ -259,11 +315,25 @@ final class BlendingProfiles {
 
     private static String md5(COSStream s) {
         byte[] data = ColourFixer.read(s);
-        if (data == null) {
+        if (data == null || data.length < 128) {
             return null;
         }
+        byte[] id = Arrays.copyOfRange(data, 84, 100);
+        for (byte b : id) {
+            if (b != 0) {
+                return "id:" + HexFormat.of().formatHex(id);
+            }
+        }
+        int size = java.nio.ByteBuffer.wrap(data).getInt(0);
+        if (size < 128 || size > data.length) {
+            return null;
+        }
+        byte[] profile = Arrays.copyOf(data, size);
+        Arrays.fill(profile, 44, 48, (byte) 0);
+        Arrays.fill(profile, 64, 68, (byte) 0);
+        Arrays.fill(profile, 84, 100, (byte) 0);
         try {
-            return HexFormat.of().formatHex(MessageDigest.getInstance("MD5").digest(data));
+            return HexFormat.of().formatHex(MessageDigest.getInstance("MD5").digest(profile));
         } catch (NoSuchAlgorithmException e) {
             throw new IllegalStateException(e);
         }

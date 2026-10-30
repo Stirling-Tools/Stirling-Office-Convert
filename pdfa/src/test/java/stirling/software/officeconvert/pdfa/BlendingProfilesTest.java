@@ -87,11 +87,38 @@ class BlendingProfilesTest {
         assertSameColours(in, out);
     }
 
+    @Test
+    void pageGroupKeepsItsColourSpaceWhenOnlyAnotherPageRepeatsTheProfile() throws Exception {
+        Path in = dir.resolve("other-page.pdf");
+        try (PDDocument d = new PDDocument()) {
+            COSArray space = cmykSpace(d);
+            PDPage blended = FontSamples.page(d, "0 0 1 rg 100 600 200 100 re f", FontSamples.trueType(d));
+            COSDictionary group = new COSDictionary();
+            group.setItem(COSName.TYPE, COSName.GROUP);
+            group.setItem(COSName.S, COSName.TRANSPARENCY);
+            group.setItem(COSName.CS, space);
+            blended.getCOSObject().setItem(COSName.GROUP, group);
+            PDPage plain = FontSamples.page(d, "/CS0 cs 0 1 1 0 sc 100 600 200 100 re f", FontSamples.trueType(d));
+            COSDictionary spaces = new COSDictionary();
+            spaces.setItem("CS0", space);
+            plain.getResources().getCOSObject().setItem(COSName.COLORSPACE, spaces);
+            d.save(in.toFile());
+        }
+        Path out = dir.resolve("other-page-out.pdf");
+        PdfToPdfA.convert(in, out, PdfToPdfA.Options.defaults().level(PdfALevel.A4));
+        VeraPdf.assertCompliant(out, PdfALevel.A4);
+        try (PDDocument after = Loader.loadPDF(out.toFile())) {
+            assertTrue(((COSDictionary) after.getPage(0).getCOSObject().getDictionaryObject(COSName.GROUP))
+                    .getDictionaryObject(COSName.CS) instanceof COSArray);
+        }
+    }
+
     private static COSArray cmykSpace(PDDocument d) throws Exception {
         COSStream profile = d.getDocument().createCOSStream();
         try (OutputStream out = profile.createOutputStream(COSName.FLATE_DECODE)) {
             byte[] printer = IccProfiles.cmyk();
             System.arraycopy("prtr".getBytes(StandardCharsets.US_ASCII), 0, printer, 12, 4);
+            java.util.Arrays.fill(printer, 84, 100, (byte) 0);
             out.write(printer);
         }
         profile.setInt(COSName.N, 4);
