@@ -30,9 +30,9 @@ final class WideStructure {
             return;
         }
         if (!level.tagged() && oversizedParentTree(root)) {
+            root.removeItem(COSName.PARENT_TREE);
             doc.getDocumentCatalog().getCOSObject().removeItem(COSName.STRUCT_TREE_ROOT);
             report.warn("Removed the structure tree, as a page marks more content than a PDF/A-1 array can index");
-            return;
         }
         boolean changed = false;
         Set<COSDictionary> seen = Collections.newSetFromMap(new IdentityHashMap<>());
