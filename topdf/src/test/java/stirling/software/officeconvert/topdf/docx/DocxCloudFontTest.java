@@ -222,4 +222,17 @@ class DocxCloudFontTest {
         }
         assertEquals(aptos, width, aptos * 0.04);
     }
+
+    @Test
+    void eachCharacterOfAMissingCloudFontTakesThatFontsOwnAdvance() throws Exception {
+        String styles = "<w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii=\"Aptos\" w:hAnsi=\"Aptos\"/>"
+                + "<w:sz w:val=\"24\"/></w:rPr></w:rPrDefault></w:docDefaults>";
+        String sample = "WiMlE.mj";
+        List<TextPosition> pos = convert(new DocxDoc().styles(styles).body(DocxDoc.p(sample)).bytes());
+        CloudMetrics aptos = CloudMetrics.of("Aptos", false, false);
+        for (int i = 0; i + 1 < sample.length(); i++) {
+            float advance = pos.get(i + 1).getXDirAdj() - pos.get(i).getXDirAdj();
+            assertEquals(aptos.advance(sample.charAt(i)) * 12, advance, 0.05, "after " + sample.charAt(i));
+        }
+    }
 }

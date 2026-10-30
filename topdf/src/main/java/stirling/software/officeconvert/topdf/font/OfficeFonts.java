@@ -9,6 +9,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.IntToDoubleFunction;
 
 /** Widths and line metrics of fonts that come with Windows and Office, for laying text out when they are missing. */
 final class OfficeFonts {
@@ -94,6 +95,18 @@ final class OfficeFonts {
             }
         }
         return null;
+    }
+
+    static Style of(float average, float winAscent, float winDescent, IntToDoubleFunction advance) {
+        short[] advances = new short[CHARS];
+        int i = 0;
+        for (int[] r : RANGES) {
+            for (int cp = r[0]; cp <= r[1]; cp++) {
+                double a = advance.applyAsDouble(cp);
+                advances[i++] = (short) (Double.isNaN(a) ? -1 : Math.round(a * 1000));
+            }
+        }
+        return new Style(average, winAscent, winDescent, advances, Float.NaN, Float.NaN, Float.NaN, Float.NaN);
     }
 
     static float prose(FontProgram program) {

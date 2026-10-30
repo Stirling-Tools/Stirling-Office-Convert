@@ -167,6 +167,11 @@ public final class FontFace {
                 original, scale, embolden);
     }
 
+    FontFace withWidths(OfficeFonts.Style table, float scale) {
+        return new FontFace(program, requestedFamily, syntheticBold, syntheticItalic, note, symbols, table, scale,
+                original, scripts, embolden);
+    }
+
     FontFace withEmbolden(float stroke) {
         return new FontFace(program, requestedFamily, syntheticBold, syntheticItalic, note, symbols, widths, stretch,
                 original, scripts, stroke);
