@@ -1,9 +1,16 @@
 package stirling.software.officeconvert.topdf.io;
 
+import java.awt.BasicStroke;
+import java.awt.Color;
+import java.awt.GradientPaint;
 import java.awt.Graphics2D;
 import java.awt.Image;
+import java.awt.LinearGradientPaint;
+import java.awt.Paint;
+import java.awt.RadialGradientPaint;
 import java.awt.RenderingHints;
 import java.awt.Shape;
+import java.awt.TexturePaint;
 import java.awt.font.GlyphVector;
 import java.awt.geom.AffineTransform;
 import java.awt.geom.Rectangle2D;
@@ -18,9 +25,12 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.text.AttributedCharacterIterator;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.WeakHashMap;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 
 import org.apache.pdfbox.pdmodel.PDDocument;
@@ -67,6 +77,16 @@ final class Metafiles {
     private static final int DUAL_MODE = 1;
 
     private static final long RASTER_PIXELS = 8_000_000;
+
+    private static final long PAINT_PIXELS = 250_000;
+
+    private static final double PAINT_SCALE = 1;
+
+    private static final long PAINT_BUDGET = 4_000_000;
+
+    private static final int PAINT_SAMPLE = 8;
+
+    private static final Map<PDDocument, AtomicLong> PAINTED = Collections.synchronizedMap(new WeakHashMap<>());
 
     private Metafiles() {}
 
@@ -412,7 +432,9 @@ final class Metafiles {
         }
     }
 
-    private static final class Checked extends PdfBoxGraphics2D {
+    static final class Checked extends PdfBoxGraphics2D {
+
+        private final AtomicLong painted;
 
         private long calls;
 
@@ -423,6 +445,7 @@ final class Metafiles {
         Checked(PDDocument doc, float w, float h) throws IOException {
             super(doc, w, h);
             setImageEncoder(new Bitmaps());
+            painted = PAINTED.computeIfAbsent(doc, d -> new AtomicLong());
         }
 
         private void tick() {
@@ -439,13 +462,109 @@ final class Metafiles {
         @Override
         public void draw(Shape s) {
             tick();
+            if (s != null && !known(getPaint())) {
+                paintRaster((getStroke() == null ? new BasicStroke() : getStroke()).createStrokedShape(s));
+                return;
+            }
             super.draw(s);
         }
 
         @Override
         public void fill(Shape s) {
             tick();
+            if (s != null && !known(getPaint())) {
+                paintRaster(s);
+                return;
+            }
             super.fill(s);
+        }
+
+        private static boolean known(Paint p) {
+            return p == null || p instanceof Color || p instanceof GradientPaint || p instanceof TexturePaint
+                    || p instanceof LinearGradientPaint || p instanceof RadialGradientPaint
+                    || p instanceof org.apache.pdfbox.pdmodel.graphics.shading.ShadingPaint
+                    || p.getClass().getName().startsWith("org.apache.pdfbox.");
+        }
+
+        private void paintRaster(Shape s) {
+            Rectangle2D b = s.getBounds2D();
+            if (b.isEmpty() || !Double.isFinite(b.getWidth()) || !Double.isFinite(b.getHeight())) {
+                return;
+            }
+            AffineTransform t = getTransform();
+            double scale = PAINT_SCALE * Math.max(1e-3, Math.sqrt(Math.abs(t.getDeterminant())));
+            scale = Math.min(scale, Math.sqrt(PAINT_PIXELS / (b.getWidth() * b.getHeight())));
+            if (!(scale > 0)) {
+                return;
+            }
+            int pw = (int) Math.max(1, Math.min(MAX_SIDE, Math.ceil(b.getWidth() * scale)));
+            int ph = (int) Math.max(1, Math.min(MAX_SIDE, Math.ceil(b.getHeight() * scale)));
+            if (painted.addAndGet((long) pw * ph) > PAINT_BUDGET) {
+                paintAverage(s, b);
+                return;
+            }
+            BufferedImage img = rasterise(s, b, pw, ph);
+            if (img == null) {
+                return;
+            }
+            Paint paint = getPaint();
+            setPaint(Color.BLACK);
+            try {
+                super.drawImage(img, new AffineTransform(b.getWidth() / pw, 0, 0, b.getHeight() / ph, b.getX(),
+                        b.getY()), null);
+            } finally {
+                setPaint(paint);
+            }
+        }
+
+        private void paintAverage(Shape s, Rectangle2D b) {
+            BufferedImage img = rasterise(s, b, PAINT_SAMPLE, PAINT_SAMPLE);
+            if (img == null) {
+                return;
+            }
+            long r = 0;
+            long gr = 0;
+            long bl = 0;
+            long a = 0;
+            int n = 0;
+            for (int y = 0; y < PAINT_SAMPLE; y++) {
+                for (int x = 0; x < PAINT_SAMPLE; x++) {
+                    int argb = img.getRGB(x, y);
+                    int alpha = argb >>> 24;
+                    r += ((argb >> 16) & 0xFF) * alpha;
+                    gr += ((argb >> 8) & 0xFF) * alpha;
+                    bl += (argb & 0xFF) * alpha;
+                    a += alpha;
+                    n += alpha > 0 ? 1 : 0;
+                }
+            }
+            if (a == 0) {
+                return;
+            }
+            Paint paint = getPaint();
+            setPaint(new Color((int) (r / a), (int) (gr / a), (int) (bl / a), (int) Math.min(255, a / n)));
+            try {
+                super.fill(s);
+            } finally {
+                setPaint(paint);
+            }
+        }
+
+        private BufferedImage rasterise(Shape s, Rectangle2D b, int pw, int ph) {
+            BufferedImage img = new BufferedImage(pw, ph, BufferedImage.TYPE_INT_ARGB);
+            Graphics2D ig = img.createGraphics();
+            try {
+                ig.setRenderingHints(getRenderingHints());
+                ig.scale(pw / b.getWidth(), ph / b.getHeight());
+                ig.translate(-b.getX(), -b.getY());
+                ig.setPaint(getPaint());
+                ig.fill(s);
+                return img;
+            } catch (RuntimeException e) {
+                return null;
+            } finally {
+                ig.dispose();
+            }
         }
 
         @Override

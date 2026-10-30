@@ -33,6 +33,7 @@ import org.apache.poi.ddf.EscherArrayProperty;
 import org.apache.poi.ddf.EscherPropertyTypes;
 import org.apache.poi.hslf.record.SlideAtomLayout;
 import org.apache.poi.hslf.usermodel.HSLFAutoShape;
+import org.apache.poi.hslf.usermodel.HSLFFill;
 import org.apache.poi.hslf.usermodel.HSLFFreeformShape;
 import org.apache.poi.hslf.usermodel.HSLFShape;
 import org.apache.poi.hslf.usermodel.HSLFSlide;
@@ -46,6 +47,7 @@ import org.apache.poi.sl.usermodel.Placeholder;
 import org.apache.poi.sl.usermodel.ShapeType;
 import org.apache.poi.util.LittleEndian;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
 
 import stirling.software.officeconvert.topdf.OfficeToPdf;
@@ -362,6 +364,65 @@ class PptSlideFixesTest {
         assertTrue(text.contains("Body"), text);
         assertFalse(text.contains(String.valueOf(today.getYear())), text);
         assertFalse(text.contains(String.valueOf(today.getYear() % 100)), text);
+    }
+
+    @Test
+    void shadedBackgroundsAndShapesKeepTheirGradientColours() throws IOException {
+        int[] types = {4, 5, 6, 7, 8};
+        byte[] ppt = deck(p -> {
+            HSLFSlide slide = p.createSlide();
+            slide.setFollowMasterBackground(false);
+            HSLFFill bg = slide.getBackground().getFill();
+            bg.setFillType(6);
+            bg.setForegroundColor(new Color(202, 198, 193));
+            bg.setBackgroundColor(new Color(236, 234, 231));
+            for (int i = 0; i < types.length; i++) {
+                HSLFAutoShape r = new HSLFAutoShape(ShapeType.RECT);
+                r.setAnchor(new Rectangle2D.Double(40 + 130 * i, 300, 100, 100));
+                r.setLineColor(null);
+                HSLFFill f = r.getFill();
+                f.setFillType(types[i]);
+                f.setForegroundColor(new Color(0, 0, 255));
+                f.setBackgroundColor(new Color(255, 255, 0));
+                slide.addShape(r);
+            }
+        });
+        Path pdf = convert("shaded.ppt", ppt);
+        try (PDDocument d = Loader.loadPDF(pdf.toFile())) {
+            java.awt.image.BufferedImage img = new org.apache.pdfbox.rendering.PDFRenderer(d).renderImageWithDPI(0, 72);
+            for (int[] at : new int[][] {{10, 10}, {360, 100}, {700, 520}}) {
+                Color c = new Color(img.getRGB(at[0], at[1]));
+                assertTrue(c.getRed() > 180 && c.getGreen() > 180 && c.getBlue() > 180, at[0] + "," + at[1] + " " + c);
+            }
+            for (int i = 0; i < types.length; i++) {
+                Color c = new Color(img.getRGB(90 + 130 * i, 350));
+                assertTrue(c.getRed() + c.getGreen() + c.getBlue() > 150, types[i] + " " + c);
+            }
+        }
+    }
+
+    @Test
+    @Timeout(20)
+    void manyShadedShapesStayCheapAndSmall() throws IOException {
+        byte[] ppt = deck(p -> {
+            HSLFSlide slide = p.createSlide();
+            for (int i = 0; i < 200; i++) {
+                HSLFAutoShape r = new HSLFAutoShape(ShapeType.RECT);
+                r.setAnchor(new Rectangle2D.Double(i % 20, i / 20, 700, 520));
+                r.setLineColor(null);
+                HSLFFill f = r.getFill();
+                f.setFillType(6);
+                f.setForegroundColor(new Color(0, 0, 255));
+                f.setBackgroundColor(new Color(255, 255, 0));
+                slide.addShape(r);
+            }
+        });
+        Path pdf = convert("many-shaded.ppt", ppt);
+        assertTrue(java.nio.file.Files.size(pdf) < 500_000, String.valueOf(java.nio.file.Files.size(pdf)));
+        try (PDDocument d = Loader.loadPDF(pdf.toFile())) {
+            Color c = new Color(new org.apache.pdfbox.rendering.PDFRenderer(d).renderImageWithDPI(0, 72).getRGB(360, 270));
+            assertTrue(c.getRed() + c.getGreen() + c.getBlue() > 150, c.toString());
+        }
     }
 
     private static byte[] omitTitlePlaceholders(byte[] ppt) throws IOException {
