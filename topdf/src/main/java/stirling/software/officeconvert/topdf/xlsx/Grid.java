@@ -8,6 +8,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.NavigableMap;
+import java.util.Objects;
 import java.util.TreeMap;
 import java.util.function.Consumer;
 import java.util.function.IntPredicate;
@@ -463,13 +464,13 @@ final class Grid {
             if (base == null) {
                 base = book.styles().at(-1);
             }
-            boolean ownFont = !base.font().equals(book.styles().defaultFont());
-            CellFormat f = restyle(base, d, false, ownFont);
+            boolean ownColor = !Objects.equals(base.font().color(), book.styles().defaultFont().color());
+            CellFormat f = restyle(base, d, false, ownColor);
             if (old == null && !f.visible()) {
                 continue;
             }
             put(row, col, old == null ? new CellEntry(row, col, f, null)
-                    : new CellEntry(row, col, f, recolor(old.text(), d, ownFont)));
+                    : new CellEntry(row, col, f, recolor(old.text(), d, ownColor)));
         }
         for (Map.Entry<Long, Overlays.Delta> e : o.over().entrySet()) {
             int row = (int) (e.getKey() >> 16);
@@ -509,12 +510,11 @@ final class Grid {
         }
     }
 
-    private static CellFormat restyle(CellFormat f, Overlays.Delta d, boolean over, boolean ownFont) {
+    private static CellFormat restyle(CellFormat f, Overlays.Delta d, boolean over, boolean ownColor) {
         FontSpec font = f.font();
-        if (over || !ownFont) {
-            font = new FontSpec(font.family(), font.size(), font.bold() || d.bold(), font.italic() || d.italic(),
-                    font.underline(), font.strike(), d.font() != null ? d.font() : font.color(), font.offset());
-        }
+        Color color = d.font() != null && (over || !ownColor) ? d.font() : font.color();
+        font = new FontSpec(font.family(), font.size(), font.bold() || d.bold(), font.italic() || d.italic(),
+                font.underline(), font.strike(), color, font.offset());
         Color fill = over ? (d.fill() != null ? d.fill() : f.fill()) : (f.fill() != null ? f.fill() : d.fill());
         return new CellFormat(font, fill, pick(f.left(), d.left(), over), pick(f.right(), d.right(), over),
                 pick(f.top(), d.top(), over), pick(f.bottom(), d.bottom(), over), f.diagonal(), f.diagonalUp(),
@@ -529,18 +529,19 @@ final class Grid {
         return over || !own.visible() ? delta : own;
     }
 
-    private static CellText recolor(CellText t, Overlays.Delta d, boolean ownFont) {
-        if (t == null || ownFont || d.font() == null && !d.bold() && !d.italic()) {
+    private static CellText recolor(CellText t, Overlays.Delta d, boolean ownColor) {
+        Color color = ownColor ? null : d.font();
+        if (t == null || color == null && !d.bold() && !d.italic()) {
             return t;
         }
         List<TextRun> runs = new ArrayList<>();
         for (TextRun r : t.runs()) {
             FontSpec f = r.font();
             runs.add(new TextRun(r.text(), new FontSpec(f.family(), f.size(), f.bold() || d.bold(),
-                    f.italic() || d.italic(), f.underline(), f.strike(), d.font() != null ? d.font() : f.color(),
+                    f.italic() || d.italic(), f.underline(), f.strike(), color != null ? color : f.color(),
                     f.offset())));
         }
-        return new CellText(t.kind(), runs, d.font() != null ? null : t.color(), t.general(), t.number());
+        return new CellText(t.kind(), runs, color != null ? null : t.color(), t.general(), t.number());
     }
 
     boolean hasDataBars() {
