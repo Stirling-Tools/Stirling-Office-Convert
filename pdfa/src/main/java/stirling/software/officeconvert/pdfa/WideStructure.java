@@ -29,6 +29,11 @@ final class WideStructure {
         if (level.part() > 1 || root == null) {
             return;
         }
+        if (!level.tagged() && oversizedParentTree(root)) {
+            doc.getDocumentCatalog().getCOSObject().removeItem(COSName.STRUCT_TREE_ROOT);
+            report.warn("Removed the structure tree, as a page marks more content than a PDF/A-1 array can index");
+            return;
+        }
         boolean changed = false;
         Set<COSDictionary> seen = Collections.newSetFromMap(new IdentityHashMap<>());
         Deque<COSDictionary> stack = new ArrayDeque<>();
@@ -63,6 +68,40 @@ final class WideStructure {
             tree.rebuildParentTree();
         }
         report.warn("Grouped structure elements with more children than PDF/A-1 allows under NonStruct elements");
+    }
+
+    private static boolean oversizedParentTree(COSDictionary root) {
+        Set<COSDictionary> seen = Collections.newSetFromMap(new IdentityHashMap<>());
+        Deque<COSDictionary> stack = new ArrayDeque<>();
+        COSDictionary tree = ContentGraph.dict(root.getDictionaryObject(COSName.PARENT_TREE));
+        if (tree != null) {
+            stack.push(tree);
+        }
+        while (!stack.isEmpty() && seen.size() < 100_000) {
+            COSDictionary node = stack.pop();
+            if (!seen.add(node)) {
+                continue;
+            }
+            COSArray nums = ContentGraph.array(node.getDictionaryObject(COSName.NUMS));
+            if (nums != null) {
+                for (int i = 1; i < nums.size(); i += 2) {
+                    COSArray marked = ContentGraph.array(nums.getObject(i));
+                    if (marked != null && marked.size() > LongArrays.MAX) {
+                        return true;
+                    }
+                }
+            }
+            COSArray kids = ContentGraph.array(node.getDictionaryObject(COSName.KIDS));
+            if (kids != null) {
+                for (int i = 0; i < kids.size(); i++) {
+                    COSDictionary kid = ContentGraph.dict(kids.getObject(i));
+                    if (kid != null) {
+                        stack.push(kid);
+                    }
+                }
+            }
+        }
+        return false;
     }
 
     private static COSArray group(COSDictionary parent, COSArray kids) {
