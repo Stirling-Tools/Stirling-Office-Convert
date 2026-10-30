@@ -1,11 +1,11 @@
 package stirling.software.officeconvert.extract;
 
 import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InterruptedIOException;
 import java.io.OutputStream;
+import java.io.SequenceInputStream;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -130,7 +130,7 @@ public final class StreamGuard {
         InputStream data = s.createRawInputStream();
         for (int i = 0; i < filters.size(); i++) {
             boolean last = i == filters.size() - 1;
-            Capped out = new Capped(true, last ? limit + 1 : MAX_DECODED);
+            Capped out = new Capped(true, Math.min(limit + 1, MAX_DECODED));
             try (InputStream in = data) {
                 FilterFactory.INSTANCE.getFilter(filters.get(i)).decode(in, out, s, i);
             } catch (Full full) {
@@ -138,7 +138,7 @@ public final class StreamGuard {
                     throw full;
                 }
             }
-            data = new ByteArrayInputStream(out.bytes());
+            data = out.input();
         }
         return data;
     }
@@ -168,7 +168,7 @@ public final class StreamGuard {
                 boolean last = i == stages - 1;
                 Capped out = new Capped(!last);
                 filter.decode(data, out, params, i);
-                data = last ? InputStream.nullInputStream() : new ByteArrayInputStream(out.bytes());
+                data = last ? InputStream.nullInputStream() : out.input();
             }
             return false;
         } catch (Full full) {
@@ -212,16 +212,21 @@ public final class StreamGuard {
 
     private static final class Capped extends OutputStream {
 
-        private final ByteArrayOutputStream kept;
+        private static final int FIRST_CHUNK = 8 << 10;
+
+        private static final int LAST_CHUNK = 1 << 20;
+
+        private final List<byte[]> kept;
         private final long cap;
         private long written;
+        private int used;
 
         Capped(boolean keep) {
             this(keep, MAX_DECODED);
         }
 
         Capped(boolean keep, long cap) {
-            this.kept = keep ? new ByteArrayOutputStream() : null;
+            this.kept = keep ? new ArrayList<>() : null;
             this.cap = cap;
         }
 
@@ -234,7 +239,7 @@ public final class StreamGuard {
         public void write(byte[] b, int off, int len) throws IOException {
             int room = (int) Math.min(len, cap - written);
             if (kept != null && room > 0) {
-                kept.write(b, off, room);
+                keep(b, off, room);
             }
             written += len;
             if (written > cap) {
@@ -242,8 +247,29 @@ public final class StreamGuard {
             }
         }
 
-        byte[] bytes() {
-            return kept.toByteArray();
+        private void keep(byte[] b, int off, int len) {
+            while (len > 0) {
+                if (kept.isEmpty() || used == kept.get(kept.size() - 1).length) {
+                    long held = Math.min(written, LAST_CHUNK);
+                    kept.add(new byte[(int) Math.max(FIRST_CHUNK, held)]);
+                    used = 0;
+                }
+                byte[] chunk = kept.get(kept.size() - 1);
+                int n = Math.min(len, chunk.length - used);
+                System.arraycopy(b, off, chunk, used, n);
+                used += n;
+                off += n;
+                len -= n;
+            }
+        }
+
+        InputStream input() {
+            List<InputStream> parts = new ArrayList<>();
+            for (int i = 0; i < kept.size(); i++) {
+                byte[] chunk = kept.get(i);
+                parts.add(new ByteArrayInputStream(chunk, 0, i == kept.size() - 1 ? used : chunk.length));
+            }
+            return new SequenceInputStream(Collections.enumeration(parts));
         }
     }
 

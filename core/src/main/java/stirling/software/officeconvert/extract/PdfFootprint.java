@@ -153,7 +153,10 @@ public final class PdfFootprint {
                 return Math.max(1, Math.min(4, icc.getInt(COSName.N, 4)));
             }
             if (COSName.DEVICEN.equals(family) && a.size() > 1 && a.getObject(1) instanceof COSArray names) {
-                return Math.max(1, Math.min(32, names.size()));
+                return Math.max(1, Math.min(32, names.size())) + alternate(a);
+            }
+            if (COSName.SEPARATION.equals(family)) {
+                return 1 + alternate(a);
             }
             return components(family);
         }
@@ -167,25 +170,93 @@ public final class PdfFootprint {
         };
     }
 
+    private static int alternate(COSArray special) {
+        COSBase alternate = special.size() > 2 ? special.getObject(2) : null;
+        return alternate == null ? 4 : Math.min(4, components(alternate));
+    }
+
+    private static int channels(COSBase space) {
+        if (space instanceof COSArray a && a.size() > 1 && a.getObject(0) instanceof COSName family) {
+            if (COSName.DEVICEN.equals(family) && a.getObject(1) instanceof COSArray names) {
+                return Math.max(1, Math.min(32, names.size()));
+            }
+            if (COSName.SEPARATION.equals(family)) {
+                return 1;
+            }
+        }
+        return components(space);
+    }
+
     static long decoded(COSStream image) {
+        if ("JPXDecode".equals(last(image))) {
+            return Math.min(ImageBudget.MAX_DECODED_BYTES, decoded(image, 1));
+        }
+        for (int step = 1; step <= ImageBudget.MAX_SUBSAMPLING; step++) {
+            long cost = decoded(image, step);
+            if (cost <= ImageBudget.MAX_DECODED_BYTES) {
+                return cost;
+            }
+        }
+        return 0;
+    }
+
+    static long decoded(COSStream image, int step) {
         long width = image.getInt(COSName.WIDTH, 0);
         long height = image.getInt(COSName.HEIGHT, 0);
         boolean stencil = image.getBoolean(COSName.IMAGE_MASK, false);
-        int components = stencil ? 1 : components(image.getDictionaryObject(COSName.COLORSPACE));
+        COSBase space = image.getDictionaryObject(COSName.COLORSPACE);
+        int components = stencil ? 1 : components(space);
         COSBase mask = image.getDictionaryObject(COSName.MASK);
-        long base = samples(width, height, components + 4 + (mask instanceof COSArray ? 5 : 0));
+        int perPixel = components + 4 + (mask instanceof COSArray ? 5 : 0);
+        long base = add(samples(shrunk(width, step), shrunk(height, step), perPixel),
+                packed(image, width, height, stencil ? 1 : channels(space), step));
         COSStream applied = image.getCOSStream(COSName.SMASK);
         if (applied == null && mask instanceof COSStream m && m.getBoolean(COSName.IMAGE_MASK, false)) {
             applied = m;
         }
         if (applied == null) {
-            return affordable(base);
+            return base;
         }
         long mw = applied.getInt(COSName.WIDTH, 0);
         long mh = applied.getInt(COSName.HEIGHT, 0);
-        long masked = samples(Math.max(width, mw), Math.max(height, mh), 4);
-        long sum = base + samples(mw, mh, 5) + masked;
-        return masked > ImageBudget.MAX_DECODED_BYTES || base > ImageBudget.MAX_DECODED_BYTES ? 0 : Math.max(0, sum);
+        long masked = samples(Math.max(shrunk(width, step), shrunk(mw, step)),
+                Math.max(shrunk(height, step), shrunk(mh, step)), 4);
+        long own = add(samples(shrunk(mw, step), shrunk(mh, step), 5), packed(applied, mw, mh, 1, step));
+        return add(add(base, own), masked);
+    }
+
+    private static long packed(COSStream image, long width, long height, int channels, int step) {
+        if (image.getFilters() == null) {
+            return 0;
+        }
+        int bits = image.getBoolean(COSName.IMAGE_MASK, false) ? 1
+                : Math.max(1, image.getInt(COSName.BITS_PER_COMPONENT, 8));
+        int at = subsampledByFilter(image) ? step : 1;
+        long rowBits = samples(shrunk(width, at), 1, Math.min(32, bits) * channels);
+        return rowBits == Long.MAX_VALUE ? Long.MAX_VALUE : samples((rowBits + 7) / 8, shrunk(height, at), 1);
+    }
+
+    private static boolean subsampledByFilter(COSStream image) {
+        return switch (last(image)) {
+            case "DCTDecode", "DCT", "JPXDecode", "JBIG2Decode" -> true;
+            default -> false;
+        };
+    }
+
+    private static String last(COSStream image) {
+        COSBase filters = image.getFilters();
+        if (filters instanceof COSArray a && a.size() > 0) {
+            filters = a.getObject(a.size() - 1);
+        }
+        return filters instanceof COSName n ? n.getName() : "";
+    }
+
+    private static long shrunk(long length, int step) {
+        return length <= 0 ? length : (length + step - 1) / step;
+    }
+
+    private static long add(long a, long b) {
+        return a > Long.MAX_VALUE - b ? Long.MAX_VALUE : a + b;
     }
 
     static long inline(Map<String, String> params) {
@@ -360,7 +431,7 @@ public final class PdfFootprint {
         }
 
         void stream(COSStream stream) {
-            try (InputStream in = stream.createInputStream()) {
+            try (InputStream in = StreamGuard.head(stream, contentLeft)) {
                 content(in);
             } catch (IOException | RuntimeException e) {
                 unknown();

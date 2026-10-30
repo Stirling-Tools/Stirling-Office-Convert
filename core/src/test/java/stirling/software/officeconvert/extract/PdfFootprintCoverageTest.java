@@ -1,12 +1,16 @@
 package stirling.software.officeconvert.extract;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
 import java.io.OutputStream;
+import java.lang.management.ManagementFactory;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
+import java.util.zip.Deflater;
+import java.util.zip.DeflaterOutputStream;
 
 import org.apache.pdfbox.cos.COSArray;
 import org.apache.pdfbox.cos.COSDictionary;
@@ -88,6 +92,89 @@ class PdfFootprintCoverageTest {
             assertEquals(4097, StreamGuard.head(content, 4096).readAllBytes().length);
             page(doc).getCOSObject().setItem(COSName.CONTENTS, content);
             assertTrue(extra(doc) > 0);
+        }
+    }
+
+    private static final long HUGE = 300L << 20;
+
+    private static final long SCAN_ALLOWANCE = 2 * PdfFootprint.MAX_SCANNED_CONTENT;
+
+    private static COSStream spaces(PDDocument doc, long size) throws IOException {
+        COSStream s = doc.getDocument().createCOSStream();
+        byte[] chunk = new byte[1 << 20];
+        Arrays.fill(chunk, (byte) ' ');
+        try (OutputStream out = s.createOutputStream(COSName.FLATE_DECODE)) {
+            for (long written = 0; written < size; written += chunk.length) {
+                out.write(chunk);
+            }
+        }
+        return s;
+    }
+
+    private static long allocated() {
+        return ((com.sun.management.ThreadMXBean) ManagementFactory.getThreadMXBean()).getCurrentThreadAllocatedBytes();
+    }
+
+    private static long scannedWithin(PDDocument doc) {
+        long before = allocated();
+        long estimate = PdfFootprint.estimate(doc, 0, 0, 150f);
+        long used = allocated() - before;
+        assertTrue(used < SCAN_ALLOWANCE, "the scan should stop at its limit, allocated " + used);
+        return estimate;
+    }
+
+    @Test
+    void aHugeFormIsReadOnlyUpToTheScanLimit() throws IOException {
+        try (PDDocument doc = new PDDocument()) {
+            COSStream form = spaces(doc, HUGE);
+            form.setItem(COSName.TYPE, COSName.XOBJECT);
+            form.setItem(COSName.SUBTYPE, COSName.FORM);
+            COSDictionary xobjects = new COSDictionary();
+            xobjects.setItem(COSName.getPDFName("Fm0"), form);
+            COSDictionary resources = new COSDictionary();
+            resources.setItem(COSName.XOBJECT, xobjects);
+            page(doc).getCOSObject().setItem(COSName.RESOURCES, resources);
+            assertTrue(scannedWithin(doc) - baseline() >= PdfFootprint.UNSCANNED_PICTURE);
+        }
+    }
+
+    @Test
+    void aHugeAppearanceIsReadOnlyUpToTheScanLimit() throws IOException {
+        try (PDDocument doc = new PDDocument()) {
+            COSDictionary ap = new COSDictionary();
+            ap.setItem(COSName.N, spaces(doc, HUGE));
+            COSDictionary annot = new COSDictionary();
+            annot.setItem(COSName.SUBTYPE, COSName.getPDFName("Square"));
+            annot.setItem(COSName.AP, ap);
+            COSArray annots = new COSArray();
+            annots.add(annot);
+            page(doc).getCOSObject().setItem(COSName.ANNOTS, annots);
+            assertTrue(scannedWithin(doc) - baseline() >= PdfFootprint.UNSCANNED_PICTURE);
+        }
+    }
+
+    @Test
+    void anIntermediateFilterStageIsCutAtTheScanLimit() throws IOException {
+        try (PDDocument doc = new PDDocument()) {
+            COSStream content = doc.getDocument().createCOSStream();
+            COSArray filters = new COSArray();
+            filters.add(COSName.FLATE_DECODE);
+            filters.add(COSName.ASCII_HEX_DECODE);
+            content.setItem(COSName.FILTER, filters);
+            byte[] hex = new byte[1 << 20];
+            for (int i = 0; i < hex.length; i++) {
+                hex[i] = (byte) (i % 2 == 0 ? '2' : '0');
+            }
+            try (OutputStream out = new DeflaterOutputStream(content.createRawOutputStream(), new Deflater(1))) {
+                for (long written = 0; written < HUGE; written += hex.length) {
+                    out.write(hex);
+                }
+            }
+            long before = allocated();
+            assertThrows(IOException.class, () -> StreamGuard.head(content, 4096));
+            assertTrue(allocated() - before < (16L << 20));
+            page(doc).getCOSObject().setItem(COSName.CONTENTS, content);
+            assertTrue(scannedWithin(doc) - baseline() >= PdfFootprint.UNSCANNED_PICTURE);
         }
     }
 
