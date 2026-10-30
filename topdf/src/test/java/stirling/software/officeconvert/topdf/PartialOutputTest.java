@@ -97,6 +97,24 @@ class PartialOutputTest {
     }
 
     @Test
+    void anOutOfMemoryErrorThrownTwiceByTryWithResourcesIsReportedAsMemory() throws Exception {
+        Path in = Fixtures.write(dir, "m.docx", Fixtures.docx("x"));
+        OutOfMemoryError oom = new OutOfMemoryError("Java heap space");
+        OfficeToPdf.Renderer starved = (source, job) -> {
+            try (java.io.Closeable c = () -> {
+                throw oom;
+            }) {
+                java.util.Objects.requireNonNull(c);
+                throw oom;
+            }
+        };
+        IOException e = assertThrows(IOException.class, () -> OfficeToPdf.run(Duration.ZERO,
+                () -> OfficeToPdf.render(in, Format.DOCX, new ByteArrayOutputStream(), Options.defaults(), starved)));
+        assertEquals(RenderJob.NEEDS_MEMORY, e.getMessage());
+        assertFalse(String.valueOf(e.getCause()).contains("Self-suppression"), String.valueOf(e.getCause()));
+    }
+
+    @Test
     void aDeepDocumentThatOverflowsAfterSomePagesKeepsThem() throws Exception {
         Path in = Fixtures.write(dir, "c.docx", Fixtures.docx("x"));
         ByteArrayOutputStream pdf = new ByteArrayOutputStream();
