@@ -64,8 +64,8 @@ class BlankPagesTest {
     }
 
     @Test
-    void whiteBordersDoNotExtendThePrint() throws IOException {
-        assertEquals(1, whiteCells("whiteborder.xlsx", "Z", 2));
+    void whiteBordersExtendThePrintLikeAnyOtherBorder() throws IOException {
+        assertTrue(whiteCells("whiteborder.xlsx", "A", 2) > 1);
     }
 
     @Test

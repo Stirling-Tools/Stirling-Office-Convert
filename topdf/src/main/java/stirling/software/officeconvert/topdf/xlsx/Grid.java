@@ -435,7 +435,7 @@ final class Grid {
     }
 
     private static boolean inked(BorderLine b) {
-        return b.visible() && !white(b.color());
+        return b.visible();
     }
 
     private static boolean white(Color c) {
