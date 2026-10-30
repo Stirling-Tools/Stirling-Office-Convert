@@ -5,17 +5,33 @@ import java.lang.management.ManagementFactory;
 import java.lang.management.MemoryPoolMXBean;
 import java.lang.management.MemoryType;
 import java.lang.management.MemoryUsage;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
 
-/** One JVM-wide gate for conversions in both directions: each starts when its likely memory is free, two per processor
- * at most, and when the heap or container is nearly full the largest is stopped before the JVM runs out or is killed. */
+/** One JVM-wide gate for conversions in both directions: each starts when its likely memory is free, up to the
+ * limit on how many run at once, and when the heap or container is nearly full the largest is stopped before the JVM runs out or is killed. */
 public final class Admission {
 
     public static final String BUDGET_PROPERTY = "stirling.officeconvert.memoryBudgetPercent";
+
+    public static final String CONCURRENT_PROPERTY = "stirling.officeconvert.maxConcurrent";
+
+    public static final String WAIT_PROPERTY = "stirling.officeconvert.maxWaitSeconds";
+
+    public static final String OVERSIZE_PROPERTY = "stirling.officeconvert.refuseOversize";
+
+    public static final String BUSY = "The converter is busy; try again later";
+
+    public static final String TOO_LARGE = "The document needs more memory to convert than the converter may use";
+
+    static final long SLOT_BYTES = 192L << 20;
 
     public static final String NEEDS_MEMORY = "The document needs more memory to convert than is available";
 
@@ -39,10 +55,38 @@ public final class Admission {
 
     private static final long WAIT_MILLIS = 50;
 
-    private static final Admission JVM = new Admission(Runtime.getRuntime().maxMemory(), budgetPercent(),
-            Math.max(2, 2 * Runtime.getRuntime().availableProcessors()), memory(ContainerMemory.find()));
+    private static final Heap JVM_HEAP = memory(ContainerMemory.find());
+
+    private static final Admission JVM = new Admission(Runtime.getRuntime().maxMemory(), Limits.defaults(), JVM_HEAP);
 
     private static final ThreadLocal<Ticket> CURRENT = new ThreadLocal<>();
+
+    private static final Set<Thread> ABANDONED = ConcurrentHashMap.newKeySet();
+
+    public record Limits(int memoryBudgetPercent, int maxConcurrent, Duration maxWait, boolean refuseOversize) {
+
+        public Limits {
+            Objects.requireNonNull(maxWait, "maxWait");
+            if (memoryBudgetPercent < 10 || memoryBudgetPercent > 100) {
+                throw new IllegalArgumentException("memoryBudgetPercent must be 10 to 100, was " + memoryBudgetPercent);
+            }
+            if (maxConcurrent < 0) {
+                throw new IllegalArgumentException("maxConcurrent must be 0 (automatic) or more, was " + maxConcurrent);
+            }
+            if (maxWait.isNegative()) {
+                throw new IllegalArgumentException("maxWait must be zero (no limit) or more, was " + maxWait);
+            }
+        }
+
+        public static Limits defaults() {
+            return new Limits(Math.max(10, Math.min(100, integer(BUDGET_PROPERTY, 60))),
+                    Math.max(0, integer(CONCURRENT_PROPERTY, 0)),
+                    Duration.ofSeconds(Math.max(0, integer(WAIT_PROPERTY, 600))),
+                    Boolean.parseBoolean(System.getProperty(OVERSIZE_PROPERTY, "false").strip()));
+        }
+    }
+
+    public record Status(long budgetBytes, long inUseBytes, int running, int slots, int stuck, double heapUsed) {}
 
     interface Heap {
         double used(boolean collect);
@@ -67,13 +111,31 @@ public final class Admission {
         }
     }
 
+    public static final class Busy extends InterruptedIOException {
+        public Busy() {
+            super(BUSY);
+        }
+    }
+
+    public static final class TooLarge extends InterruptedIOException {
+        public TooLarge() {
+            super(TOO_LARGE);
+        }
+    }
+
     private final ReentrantLock lock = new ReentrantLock();
 
     private final Condition freed = lock.newCondition();
 
-    private final long budget;
+    private final long maxHeap;
 
-    private final int slots;
+    private volatile long budget;
+
+    private volatile int slots;
+
+    private volatile Limits limits;
+
+    private volatile long waitNanos;
 
     private final Heap heap;
 
@@ -84,14 +146,65 @@ public final class Admission {
     private long lastGc;
 
     Admission(long maxHeap, int percent, int slots, Heap heap) {
-        this.budget = Math.max(BASE_BYTES, maxHeap / 100 * percent);
-        this.slots = slots;
+        this(maxHeap, new Limits(percent, slots, Duration.ZERO, false), heap);
+    }
+
+    Admission(long maxHeap, Limits limits, Heap heap) {
+        this.maxHeap = maxHeap;
         this.heap = heap;
         this.lastGc = System.nanoTime() - GC_NANOS;
+        apply(limits);
     }
 
     public static Admission jvm() {
         return JVM;
+    }
+
+    public static void configure(Limits limits) {
+        JVM.apply(limits);
+    }
+
+    void apply(Limits limits) {
+        Objects.requireNonNull(limits, "limits");
+        lock.lock();
+        try {
+            long budget = Math.max(BASE_BYTES, maxHeap / 100 * limits.memoryBudgetPercent());
+            this.budget = budget;
+            this.slots = limits.maxConcurrent() > 0 ? limits.maxConcurrent()
+                    : (int) Math.max(2, Math.min(2L * Runtime.getRuntime().availableProcessors(), budget / SLOT_BYTES));
+            this.waitNanos = nanos(limits.maxWait());
+            this.limits = limits;
+            freed.signalAll();
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    public Limits limits() {
+        return limits;
+    }
+
+    public Status status() {
+        ABANDONED.removeIf(t -> !t.isAlive());
+        lock.lock();
+        try {
+            int stuck = 0;
+            for (Ticket t : running) {
+                if (ABANDONED.contains(t.owner)) {
+                    stuck++;
+                }
+            }
+            return new Status(budget, inUse, running.size(), slots, stuck, heap.used(false));
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    public static void abandoned(Thread worker) {
+        if (worker.isAlive()) {
+            ABANDONED.add(worker);
+        }
+        ABANDONED.removeIf(t -> !t.isAlive());
     }
 
     public long budget() {
@@ -100,7 +213,7 @@ public final class Admission {
 
     /** Stops the calling thread's conversion when memory is nearly exhausted and it was chosen to give way. */
     public static void checkpoint() throws Stopped {
-        Ticket t = CURRENT.get();
+        Ticket t = open(CURRENT.get());
         if (t != null && t.exhausted()) {
             throw new Stopped();
         }
@@ -112,7 +225,11 @@ public final class Admission {
 
         private final Ticket previous;
 
+        private final Ticket outer;
+
         private final Thread owner = Thread.currentThread();
+
+        private long held;
 
         private long checked;
 
@@ -120,17 +237,26 @@ public final class Admission {
 
         private volatile boolean closed;
 
-        private Ticket(long cost, Ticket previous) {
+        private Ticket(long cost, Ticket previous, Ticket outer) {
             this.cost = cost;
             this.previous = previous;
+            this.outer = outer;
+            this.held = cost;
         }
 
         public long cost() {
             return cost;
         }
 
+        private Admission gate() {
+            return Admission.this;
+        }
+
         /** Cheap enough to call per paragraph or cell: memory is looked at every 20 ms at most. */
         public boolean exhausted() {
+            if (outer != null) {
+                return outer.exhausted();
+            }
             if (stopped) {
                 return true;
             }
@@ -145,42 +271,69 @@ public final class Admission {
 
         @Override
         public void close() {
-            if (Thread.currentThread() == owner && CURRENT.get() == this) {
-                if (previous != null && !previous.closed) {
-                    CURRENT.set(previous);
-                } else {
-                    CURRENT.remove();
-                }
-            }
             lock.lock();
             try {
                 if (!closed) {
                     closed = true;
                     running.remove(this);
                     inUse -= cost;
+                    if (outer != null && outer.gate() == Admission.this) {
+                        outer.held -= cost;
+                    }
                     freed.signalAll();
                 }
             } finally {
                 lock.unlock();
             }
+            if (Thread.currentThread() == owner && CURRENT.get() == this) {
+                Ticket open = open(previous);
+                if (open != null) {
+                    CURRENT.set(open);
+                } else {
+                    CURRENT.remove();
+                }
+            }
         }
     }
 
+    private static Ticket open(Ticket t) {
+        while (t != null && t.closed) {
+            t = t.previous;
+        }
+        return t;
+    }
+
     /** Waits until the estimated heap is free and holds it until the ticket is closed; a document over the budget runs
-     * alone. Interruptible; throws {@link Stopped} if, with nothing converting, the container is still full. */
+     * alone, or is refused with {@link TooLarge} when the limits say so. A thread already holding a ticket never waits
+     * and is never refused: its nested ticket is charged to the outer one. Interruptible; throws {@link Busy} after waiting the longest
+     * allowed, and {@link Stopped} if, with nothing converting, the container is still full. */
     public Ticket enter(long estimate) throws InterruptedIOException {
-        long cost = Math.max(BASE_BYTES, Math.min(estimate, budget));
+        Ticket previous = open(CURRENT.get());
+        if (previous != null) {
+            return nested(estimate, previous);
+        }
         try {
             lock.lockInterruptibly();
             try {
-                while (!running.isEmpty() && (inUse + cost > budget || running.size() >= slots
-                        || heap.crowded())) {
+                long start = System.nanoTime();
+                long cost;
+                while (true) {
+                    if (limits.refuseOversize() && estimate > budget) {
+                        throw new TooLarge();
+                    }
+                    cost = Math.max(BASE_BYTES, Math.min(estimate, budget));
+                    if (running.isEmpty() || inUse + cost <= budget && running.size() < slots && !heap.crowded()) {
+                        break;
+                    }
+                    if (waitNanos > 0 && System.nanoTime() - start >= waitNanos) {
+                        throw new Busy();
+                    }
                     freed.await(WAIT_MILLIS, TimeUnit.MILLISECONDS);
                 }
                 if (running.isEmpty() && full()) {
                     throw new Stopped();
                 }
-                Ticket t = new Ticket(cost, CURRENT.get());
+                Ticket t = new Ticket(cost, null, null);
                 running.add(t);
                 inUse += cost;
                 CURRENT.set(t);
@@ -191,6 +344,23 @@ public final class Admission {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new InterruptedIOException("Interrupted while waiting to convert");
+        }
+    }
+
+    private Ticket nested(long estimate, Ticket previous) {
+        Ticket outer = previous.outer == null ? previous : previous.outer;
+        lock.lock();
+        try {
+            long cost = Math.max(BASE_BYTES, Math.min(estimate, budget));
+            Ticket t = new Ticket(cost, previous, outer);
+            inUse += cost;
+            if (outer.gate() == this) {
+                outer.held += cost;
+            }
+            CURRENT.set(t);
+            return t;
+        } finally {
+            lock.unlock();
         }
     }
 
@@ -238,7 +408,7 @@ public final class Admission {
             }
             Ticket largest = t;
             for (Ticket r : running) {
-                if (r.cost > largest.cost) {
+                if (r.held > largest.held) {
                     largest = r;
                 }
             }
@@ -325,13 +495,20 @@ public final class Admission {
         return new long[] {used, committed, Math.max(1, Math.max(most, committed))};
     }
 
-    private static int budgetPercent() {
-        String v = System.getProperty(BUDGET_PROPERTY);
+    private static int integer(String property, int fallback) {
+        String v = System.getProperty(property);
         try {
-            int p = v == null ? 60 : Integer.parseInt(v.strip());
-            return Math.max(10, Math.min(100, p));
+            return v == null || v.isBlank() ? fallback : Integer.parseInt(v.strip());
         } catch (NumberFormatException e) {
-            return 60;
+            return fallback;
+        }
+    }
+
+    private static long nanos(Duration d) {
+        try {
+            return d.toNanos();
+        } catch (ArithmeticException e) {
+            return Long.MAX_VALUE;
         }
     }
 }

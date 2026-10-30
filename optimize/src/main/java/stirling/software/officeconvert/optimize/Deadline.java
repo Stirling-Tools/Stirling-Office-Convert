@@ -8,6 +8,8 @@ import java.util.concurrent.FutureTask;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
+import stirling.software.officeconvert.memory.Admission;
+
 final class Deadline {
 
     private static final long STACK_BYTES = 8L << 20;
@@ -83,6 +85,7 @@ final class Deadline {
                 interrupted = true;
             }
         }
+        Admission.abandoned(worker);
         if (interrupted) {
             Thread.currentThread().interrupt();
         }

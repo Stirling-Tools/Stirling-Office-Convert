@@ -18,6 +18,8 @@ import org.apache.pdfbox.text.PDFTextStripper;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
+import stirling.software.officeconvert.memory.Admission;
+
 class ConvertHandlerTest {
 
     private HttpServer server;
@@ -67,6 +69,13 @@ class ConvertHandlerTest {
         assertEquals("1", header(r, "X-Pages"));
         assertTrue(Long.parseLong(header(r, "X-Convert-Ms")) >= 0);
         assertTrue(text(r.body()).contains(expected));
+    }
+
+    @Test
+    void admissionRefusalsBecomeBusyAndTooLargeAnswers() {
+        assertEquals(503, ConvertHandler.refusal(new Admission.Busy()).status);
+        assertEquals(413, ConvertHandler.refusal(new Admission.TooLarge()).status);
+        assertEquals(503, ConvertHandler.refusal(new Admission.Stopped()).status);
     }
 
     @Test

@@ -95,7 +95,7 @@ public final class OfficeConvert {
         }
 
         public static Settings defaults() {
-            return new Settings(0, 0, null, true, false, 150f, PdfToXlsx.Sheets.PAGE, Duration.ZERO, Pictures.COMPACT,
+            return new Settings(0, 0, null, true, false, 150f, PdfToXlsx.Sheets.PAGE, DEFAULT_TIMEOUT, Pictures.COMPACT,
                     EbookOptions.defaults());
         }
 
@@ -172,7 +172,13 @@ public final class OfficeConvert {
         }
     }
 
+    public static final Duration DEFAULT_TIMEOUT = Duration.ofMinutes(5);
+
+    public static final String TOO_DEEP = "The document nests too deeply to convert";
+
     private static final long STOP_MILLIS = 5_000;
+
+    private static final long STACK_BYTES = 8L << 20;
 
     private OfficeConvert() {}
 
@@ -262,14 +268,13 @@ public final class OfficeConvert {
     }
 
     @FunctionalInterface
-    private interface Work<T> {
+    public interface Work<T> {
         T call() throws IOException;
     }
 
-    private static <T> T run(Duration timeout, Work<T> work) throws IOException {
-        if (timeout.isZero()) {
-            return guarded(work);
-        }
+    public static <T> T run(Duration timeout, Work<T> work) throws IOException {
+        Objects.requireNonNull(timeout, "timeout");
+        Objects.requireNonNull(work, "work");
         long nanos;
         try {
             nanos = timeout.toNanos();
@@ -277,9 +282,9 @@ public final class OfficeConvert {
             nanos = Long.MAX_VALUE;
         }
         FutureTask<T> task = new FutureTask<>(() -> guarded(work));
-        Thread worker = Thread.ofPlatform().name("office-convert").daemon().start(task);
+        Thread worker = Thread.ofPlatform().name("office-convert").daemon().stackSize(STACK_BYTES).start(task);
         try {
-            return task.get(nanos, TimeUnit.NANOSECONDS);
+            return nanos == 0 ? task.get() : task.get(nanos, TimeUnit.NANOSECONDS);
         } catch (TimeoutException e) {
             task.cancel(true);
             join(worker);
@@ -320,6 +325,8 @@ public final class OfficeConvert {
             throw e;
         } catch (OutOfMemoryError e) {
             throw new IOException(Admission.NEEDS_MEMORY, e);
+        } catch (StackOverflowError e) {
+            throw new IOException(TOO_DEEP, e);
         }
     }
 
@@ -339,5 +346,6 @@ public final class OfficeConvert {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
+        Admission.abandoned(worker);
     }
 }

@@ -1420,6 +1420,7 @@ public final class OfficeToPdf {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
+        Admission.abandoned(worker);
     }
 
     static void stopIfInterrupted() throws InterruptedIOException {

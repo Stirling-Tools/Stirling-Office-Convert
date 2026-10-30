@@ -19,6 +19,7 @@ import java.util.stream.Stream;
 import org.apache.pdfbox.pdmodel.encryption.InvalidPasswordException;
 
 import stirling.software.officeconvert.EbookOptions;
+import stirling.software.officeconvert.OfficeConvert;
 import stirling.software.officeconvert.PdfToAzw3;
 import stirling.software.officeconvert.PdfToDocx;
 import stirling.software.officeconvert.PdfToEpub;
@@ -370,7 +371,11 @@ public final class Main {
                     result = officeToPdf(pdf, target, page(pdf) ? office.htmlAssets(assets(pdf, localFiles, web))
                             : office);
                 } else {
-                    convert(pdf, target, options, slides, books, ebook);
+                    EbookOptions book = ebook;
+                    OfficeConvert.run(office.timeout(), () -> {
+                        convert(pdf, target, options, slides, books, book);
+                        return null;
+                    });
                 }
                 guard.wrote(target);
                 long ms = (System.nanoTime() - start) / 1_000_000;
