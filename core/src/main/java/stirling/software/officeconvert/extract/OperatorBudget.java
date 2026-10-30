@@ -6,6 +6,8 @@ import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.pdfbox.contentstream.operator.Operator;
 
+import stirling.software.officeconvert.memory.Admission;
+
 public final class OperatorBudget {
 
     private static final Log LOG = LogFactory.getLog(OperatorBudget.class);
@@ -31,11 +33,18 @@ public final class OperatorBudget {
             interrupted = true;
             throw new InterruptedIOException("Conversion interrupted");
         }
+        if ((operators & (CHECK_EVERY - 1)) == 0) {
+            Admission.checkpoint();
+        }
         return (operators <= MAX_OPERATORS || spend("operators")) && StreamGuard.inlineFits(operator);
     }
 
     public boolean form() {
         return ++forms <= MAX_FORMS && !spent || spend("forms");
+    }
+
+    public boolean spent() {
+        return spent;
     }
 
     private boolean spend(String what) {

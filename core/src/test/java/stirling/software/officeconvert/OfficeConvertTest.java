@@ -13,6 +13,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.Set;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Stream;
 
 import org.apache.pdfbox.Loader;
@@ -25,6 +28,8 @@ import org.apache.pdfbox.pdmodel.font.PDType1Font;
 import org.apache.pdfbox.pdmodel.font.Standard14Fonts;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+
+import stirling.software.officeconvert.memory.Admission;
 
 class OfficeConvertTest {
 
@@ -69,6 +74,52 @@ class OfficeConvertTest {
         }
         assertEquals('P', out.toByteArray()[0]);
         assertTrue(OfficeConvert.text(pdf).contains("Quarterly figures"));
+    }
+
+    @Test
+    void conversionsTimeOutAfterFiveMinutesByDefault() {
+        assertEquals(Duration.ofMinutes(5), OfficeConvert.Settings.defaults().timeout());
+    }
+
+    @Test
+    void aStackOverflowInAConversionFailsAsAPlainIOException() {
+        for (Duration timeout : new Duration[] {Duration.ZERO, Duration.ofMinutes(1)}) {
+            IOException e = assertThrows(IOException.class, () -> OfficeConvert.run(timeout, () -> deep(0)));
+            assertEquals(OfficeConvert.TOO_DEEP, e.getMessage());
+        }
+    }
+
+    private static int deep(int n) {
+        return deep(n + 1) + 1;
+    }
+
+    @Test
+    void aWorkerThatIgnoresTheTimeoutIsStuckAndLaterWorkFailsBusy() throws Exception {
+        Admission.Limits saved = Admission.jvm().limits();
+        Admission.configure(new Admission.Limits(60, 1, Duration.ofMillis(300), false));
+        AtomicBoolean release = new AtomicBoolean();
+        CountDownLatch holding = new CountDownLatch(1);
+        try {
+            long start = System.nanoTime();
+            assertThrows(OfficeConvert.TimedOut.class, () -> OfficeConvert.run(Duration.ofMillis(100), () -> {
+                try (Admission.Ticket _ = Admission.jvm().enter(Admission.BASE_BYTES)) {
+                    holding.countDown();
+                    while (!release.get()) {
+                        Thread.onSpinWait();
+                    }
+                }
+                return null;
+            }));
+            assertTrue(System.nanoTime() - start < TimeUnit.SECONDS.toNanos(30));
+            assertTrue(holding.await(1, TimeUnit.SECONDS));
+            assertEquals(1, Admission.jvm().status().stuck());
+            Path out = dir.resolve("busy.docx");
+            IOException busy = assertThrows(IOException.class, () -> OfficeConvert.convert(sample(), out));
+            assertTrue(busy instanceof Admission.Busy, busy.toString());
+        } finally {
+            release.set(true);
+            Admission.configure(saved);
+        }
     }
 
     @Test

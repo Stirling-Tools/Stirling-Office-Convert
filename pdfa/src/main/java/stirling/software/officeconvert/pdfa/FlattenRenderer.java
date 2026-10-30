@@ -14,14 +14,14 @@ import org.apache.pdfbox.cos.COSStream;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.graphics.form.PDTransparencyGroup;
 import org.apache.pdfbox.rendering.ImageType;
-import org.apache.pdfbox.rendering.PDFRenderer;
 import org.apache.pdfbox.rendering.PageDrawer;
 import org.apache.pdfbox.rendering.PageDrawerParameters;
 
+import stirling.software.officeconvert.extract.GuardedRenderer;
 import stirling.software.officeconvert.extract.PdfFiles;
 import stirling.software.officeconvert.extract.RgbGroup;
 
-final class FlattenRenderer extends PDFRenderer {
+final class FlattenRenderer extends GuardedRenderer {
 
     static final int MAX_PATH_SEGMENTS = 100_000;
 
@@ -29,35 +29,41 @@ final class FlattenRenderer extends PDFRenderer {
 
     private boolean recursiveGroup;
 
+    private Drawer drawer;
+
     FlattenRenderer(PDDocument doc) {
-        super(doc);
+        super(doc, "flattening transparency");
     }
 
     BufferedImage render(int page, float scale) throws IOException {
         tooComplex = false;
         recursiveGroup = false;
-        BufferedImage image = renderImage(page, scale, ImageType.RGB);
-        PdfFiles.stopIfInterrupted();
+        drawer = null;
+        BufferedImage image = draw(page, scale, ImageType.RGB);
         if (recursiveGroup) {
             throw new IOException("A transparency group or soft mask is recursive or nested too deeply");
         }
         if (tooComplex) {
             throw new IOException("a path has more than " + MAX_PATH_SEGMENTS + " segments, too many to draw");
         }
+        if (drawer != null && drawer.leftOut()) {
+            throw new IOException("the page has more content than can be drawn safely");
+        }
         return image;
     }
 
     @Override
     protected PageDrawer createPageDrawer(PageDrawerParameters parameters) throws IOException {
-        return new Drawer(parameters);
+        drawer = new Drawer(parameters);
+        return drawer;
     }
 
-    private final class Drawer extends PageDrawer {
+    private final class Drawer extends GuardedRenderer.Drawer {
 
         private final Set<COSStream> groups = Collections.newSetFromMap(new IdentityHashMap<>());
 
         Drawer(PageDrawerParameters parameters) throws IOException {
-            super(parameters);
+            super(parameters, "flattening transparency");
         }
 
         @Override

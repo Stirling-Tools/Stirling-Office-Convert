@@ -29,10 +29,11 @@ import javax.imageio.ImageTypeSpecifier;
 import javax.imageio.stream.ImageInputStream;
 
 import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.common.PDRectangle;
 import org.apache.pdfbox.rendering.ImageType;
-import org.apache.pdfbox.rendering.PDFRenderer;
 
+import stirling.software.officeconvert.extract.GuardedRenderer;
 import stirling.software.officeconvert.extract.PdfFiles;
 import stirling.software.officeconvert.memory.Admission;
 
@@ -177,11 +178,17 @@ public final class PhotoSplitter {
         List<Path> written = new ArrayList<>();
         if (isPdf(input)) {
             try (PDDocument document = PdfFiles.open(input, null)) {
-                PDFRenderer renderer = new PDFRenderer(document);
+                GuardedRenderer renderer = new GuardedRenderer(document, "splitting photos");
                 renderer.setSubsamplingAllowed(true);
-                for (int page = 0; page < document.getNumberOfPages(); page++) {
+                int pages = document.getNumberOfPages();
+                if (pages > MAX_PAGES) {
+                    throw new IOException(input.getFileName() + " has more than " + MAX_PAGES + " pages; the limit is "
+                            + MAX_PAGES);
+                }
+                for (int page = 0; page < pages; page++) {
                     checkpoint();
-                    PDRectangle box = document.getPage(page).getCropBox();
+                    PDPage pdPage = document.getPage(page);
+                    PDRectangle box = pdPage.getCropBox();
                     float dpi = pageDpi(box, options.dpi());
                     long pixels = (long) Math.ceil(box.getWidth() / 72.0 * dpi) * (long) Math.ceil(box.getHeight() / 72.0 * dpi);
                     String name = input.getFileName() + " page " + (page + 1);
@@ -192,7 +199,7 @@ public final class PhotoSplitter {
                     budget(name, bytes);
                     Admission.Ticket ticket = Admission.jvm().enter(bytes);
                     try {
-                        write(source(renderer.renderImageWithDPI(page, dpi, ImageType.RGB)), options, outputDirectory, base,
+                        write(source(renderer.draw(page, dpi / 72f, ImageType.RGB)), options, outputDirectory, base,
                                 written);
                     } finally {
                         ticket.close();

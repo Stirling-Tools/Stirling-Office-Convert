@@ -43,6 +43,7 @@ import stirling.software.officeconvert.PdfToText;
 import stirling.software.officeconvert.PdfToXlsx;
 import stirling.software.officeconvert.Pictures;
 import stirling.software.officeconvert.extract.PdfFiles;
+import stirling.software.officeconvert.memory.Admission;
 import stirling.software.officeconvert.topdf.OfficeToPdf;
 import stirling.software.officeconvert.topdf.crypt.Passwords;
 
@@ -124,7 +125,7 @@ final class ConvertHandler implements HttpHandler {
         return limits.concurrent() + limits.queue() + (libreOffice == null ? 0 : libreOffice.slots());
     }
 
-    private static final class Refusal extends Exception {
+    static final class Refusal extends Exception {
         final int status;
         final String code;
 
@@ -571,9 +572,18 @@ final class ConvertHandler implements HttpHandler {
         return trimmed;
     }
 
-    private static Refusal refusal(Throwable e) {
+    static Refusal refusal(Throwable e) {
         if (e instanceof Refusal r) {
             return r;
+        }
+        if (e instanceof Admission.Busy) {
+            return new Refusal(503, "busy", BUSY);
+        }
+        if (e instanceof Admission.TooLarge) {
+            return new Refusal(413, "memory", "This file needs more memory to convert than this server allows.");
+        }
+        if (e instanceof Admission.Stopped) {
+            return new Refusal(503, "memory", "The server is short of memory right now. Please try again in a minute.");
         }
         if (e instanceof InvalidPasswordException) {
             return new Refusal(422, "password", "This PDF is password protected. Enter its password under Options and try again.");

@@ -225,6 +225,36 @@ class MainTest {
     }
 
     @Test
+    void theTimeoutStopsAPdfToOfficeConversion() throws Exception {
+        Path pdf = dir.resolve("long.pdf");
+        try (PDDocument doc = new PDDocument();
+                InputStream font = PDDocument.class.getResourceAsStream(
+                        "/org/apache/pdfbox/resources/ttf/LiberationSans-Regular.ttf")) {
+            PDType0Font f = PDType0Font.load(doc, font);
+            for (int i = 0; i < 400; i++) {
+                PDPage page = new PDPage();
+                doc.addPage(page);
+                try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
+                    cs.beginText();
+                    cs.setFont(f, 10);
+                    cs.newLineAtOffset(72, 700);
+                    for (int line = 0; line < 50; line++) {
+                        cs.showText("Line " + line + " of page " + i + " with a few more words on it");
+                        cs.newLineAtOffset(0, -12);
+                    }
+                    cs.endText();
+                }
+            }
+            doc.save(pdf.toFile());
+        }
+        Path docx = dir.resolve("long.docx");
+        Result r = run(pdf.toString(), "-o", docx.toString(), "--timeout", "0.001");
+        assertEquals(1, r.code(), r.err());
+        assertTrue(r.err().contains("took longer than"), r.err());
+        assertFalse(Files.exists(docx));
+    }
+
+    @Test
     void ebookOptionsShapeTheBook() throws Exception {
         Path pdf = helloPdf(dir.resolve("book.pdf"));
         Path epub = dir.resolve("book.epub");

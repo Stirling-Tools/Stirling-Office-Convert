@@ -4,22 +4,28 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InterruptedIOException;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.zip.Inflater;
 
 import org.apache.fontbox.ttf.TTFParser;
 import org.apache.pdfbox.Loader;
+import org.apache.pdfbox.cos.COSArray;
+import org.apache.pdfbox.cos.COSDictionary;
+import org.apache.pdfbox.cos.COSName;
 import org.apache.fontbox.ttf.TrueTypeFont;
 import org.apache.pdfbox.io.RandomAccessReadBuffer;
 import org.apache.pdfbox.pdmodel.PDDocument;
@@ -32,6 +38,7 @@ import org.apache.pdfbox.pdmodel.font.PDType1Font;
 import org.apache.pdfbox.pdmodel.font.Standard14Fonts;
 import org.apache.pdfbox.pdmodel.graphics.state.RenderingMode;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 
 import stirling.software.officeconvert.PdfToDocx;
 import stirling.software.officeconvert.PdfToHtml;
@@ -202,4 +209,77 @@ class PdfWebFontsTest {
             assertNotNull(font.getUnicodeCmapLookup());
         }
     }
+    @Test
+    @Timeout(value = 20, unit = TimeUnit.SECONDS)
+    void aFlatTreeOfManyPagesIsScannedInOnePass() throws IOException {
+        try (PDDocument doc = flat(40_000)) {
+            assertNotNull(PdfWebFonts.of(doc, 1, 0));
+        }
+    }
+
+    @Test
+    void anInterruptedScanStops() throws IOException {
+        try (PDDocument doc = flat(10)) {
+            Thread.currentThread().interrupt();
+            try {
+                assertThrows(InterruptedIOException.class, () -> PdfWebFonts.of(doc, 1, 0));
+            } finally {
+                Thread.interrupted();
+            }
+        }
+    }
+
+    @Test
+    @Timeout(value = 20, unit = TimeUnit.SECONDS)
+    void aPageTreeNestedTooDeeplyIsAnIOException() throws Exception {
+        try (PDDocument doc = new PDDocument()) {
+            COSDictionary node = new COSDictionary();
+            doc.getDocumentCatalog().getCOSObject().setItem(COSName.PAGES, node);
+            for (int i = 0; i < 200_000; i++) {
+                node.setItem(COSName.TYPE, COSName.PAGES);
+                node.setInt(COSName.COUNT, 1);
+                COSDictionary child = new COSDictionary();
+                COSArray kids = new COSArray();
+                kids.add(child);
+                node.setItem(COSName.KIDS, kids);
+                node = child;
+            }
+            node.setItem(COSName.TYPE, COSName.PAGE);
+            node.setItem(COSName.MEDIA_BOX, PDRectangle.LETTER.getCOSArray());
+            Throwable[] thrown = new Throwable[1];
+            Thread t = Thread.ofPlatform().stackSize(256 << 10).start(() -> {
+                try {
+                    PdfWebFonts.of(doc, 1, 0);
+                } catch (Throwable e) {
+                    thrown[0] = e;
+                }
+            });
+            t.join();
+            assertTrue(thrown[0] instanceof IOException, String.valueOf(thrown[0]));
+        }
+    }
+
+    @Test
+    void anUnreadablePageTreeLeavesTheFontsOut() throws IOException {
+        try (PDDocument doc = document(Font.FULL)) {
+            COSDictionary root = doc.getDocumentCatalog().getCOSObject().getCOSDictionary(COSName.PAGES);
+            COSDictionary bad = new COSDictionary() {
+                @Override
+                public COSName getCOSName(COSName key) {
+                    throw new IllegalStateException("unreadable page");
+                }
+            };
+            root.getCOSArray(COSName.KIDS).add(bad);
+            assertNotNull(PdfWebFonts.of(doc, 1, 0));
+        }
+    }
+
+    private static PDDocument flat(int pages) {
+        PDDocument doc = new PDDocument();
+        for (int i = 0; i < pages; i++) {
+            doc.addPage(new PDPage());
+        }
+        return doc;
+    }
 }
+
