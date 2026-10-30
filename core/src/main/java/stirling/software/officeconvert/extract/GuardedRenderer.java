@@ -96,8 +96,9 @@ public class GuardedRenderer extends PDFRenderer {
 
         @Override
         public void drawImage(PDImage pdImage) throws IOException {
-            if (ImageBudget.affordable(pdImage)) {
-                super.drawImage(pdImage);
+            PDImage fitted = ImageBudget.fitted(pdImage);
+            if (fitted != null) {
+                super.drawImage(fitted);
             } else {
                 left = true;
             }

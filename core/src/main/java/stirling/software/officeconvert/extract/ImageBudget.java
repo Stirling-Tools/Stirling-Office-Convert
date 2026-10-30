@@ -1,5 +1,10 @@
 package stirling.software.officeconvert.extract;
 
+import java.awt.Graphics2D;
+import java.awt.Paint;
+import java.awt.Rectangle;
+import java.awt.image.BufferedImage;
+import java.awt.image.WritableRaster;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -16,7 +21,11 @@ import org.apache.pdfbox.cos.COSBase;
 import org.apache.pdfbox.cos.COSDictionary;
 import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.cos.COSStream;
+import org.apache.pdfbox.filter.DecodeOptions;
 import org.apache.pdfbox.filter.FilterFactory;
+import org.apache.pdfbox.pdmodel.graphics.color.PDColorSpace;
+import org.apache.pdfbox.pdmodel.graphics.color.PDDeviceN;
+import org.apache.pdfbox.pdmodel.graphics.color.PDSeparation;
 import org.apache.pdfbox.pdmodel.graphics.image.PDImage;
 import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
 
@@ -30,24 +39,197 @@ public final class ImageBudget {
 
     private ImageBudget() {}
 
-    private static final Map<COSBase, Boolean> VERDICTS = Collections.synchronizedMap(new WeakHashMap<>());
+    public static final int MAX_SUBSAMPLING = 16;
+
+    private static final Map<COSBase, Integer> STEPS = Collections.synchronizedMap(new WeakHashMap<>());
 
     public static boolean affordable(PDImage image) {
-        boolean jpx = jpx(image);
-        if (!jpx && decodedBytes(image) > MAX_DECODED_BYTES) {
-            return false;
+        return step(image) == 1;
+    }
+
+    public static PDImage fitted(PDImage image) {
+        int step = step(image);
+        if (step == 1) {
+            return image;
         }
+        if (step < 1 || !(image instanceof PDImageXObject x) || x.getCOSObject().containsKey(COSName.OC)) {
+            return null;
+        }
+        return new Subsampled(x, step);
+    }
+
+    static int step(PDImage image) {
+        boolean jpx = jpx(image);
         long limit = jpx ? MAX_JPX_SAMPLES : MAX_DECODED_BYTES;
         if (!(image instanceof PDImageXObject x)) {
-            return codedBytes(image) <= limit && maskedRenderBytes(image) <= MAX_DECODED_BYTES;
+            return codedBytes(image) <= limit && cost(image, 1, jpx, null) <= MAX_DECODED_BYTES ? 1 : 0;
         }
-        Boolean known = VERDICTS.get(x.getCOSObject());
+        Integer known = STEPS.get(x.getCOSObject());
         if (known == null) {
-            known = codedBytes(image) <= limit && maskedRenderBytes(image) <= MAX_DECODED_BYTES
-                    && inflatesWithin(image);
-            VERDICTS.put(x.getCOSObject(), known);
+            Sizes sizes = sizes(x);
+            int most = jpx ? 1 : MAX_SUBSAMPLING;
+            int fit = 0;
+            for (int s = 1; s <= most && fit == 0; s++) {
+                if (cost(image, s, jpx, sizes) <= MAX_DECODED_BYTES) {
+                    fit = s;
+                }
+            }
+            known = fit > 0 && codedBytes(image) <= limit && inflatesWithin(image) ? fit : 0;
+            STEPS.put(x.getCOSObject(), known);
         }
         return known;
+    }
+
+    private static long cost(PDImage image, int step, boolean jpx, Sizes sizes) {
+        return add(jpx ? 0 : decodedBytes(image, step), maskedRenderBytes(image, step, sizes));
+    }
+
+    private record Subsampled(PDImageXObject image, int step) implements PDImage {
+
+        @Override
+        public BufferedImage getImage() throws IOException {
+            return image.getImage(null, step);
+        }
+
+        @Override
+        public BufferedImage getImage(Rectangle region, int subsampling) throws IOException {
+            return image.getImage(region, Math.max(step, subsampling));
+        }
+
+        @Override
+        public WritableRaster getRawRaster() throws IOException {
+            throw new IOException("The image is too large to read at full size");
+        }
+
+        @Override
+        public BufferedImage getRawImage() throws IOException {
+            throw new IOException("The image is too large to read at full size");
+        }
+
+        @Override
+        public InputStream createInputStream() throws IOException {
+            return image.createInputStream();
+        }
+
+        @Override
+        public InputStream createInputStream(List<String> stopFilters) throws IOException {
+            return image.createInputStream(stopFilters);
+        }
+
+        @Override
+        public InputStream createInputStream(DecodeOptions options) throws IOException {
+            return image.createInputStream(options);
+        }
+
+        @Override
+        public boolean isEmpty() {
+            return image.isEmpty();
+        }
+
+        @Override
+        public boolean isStencil() {
+            return image.isStencil();
+        }
+
+        @Override
+        public void setStencil(boolean stencil) {
+            image.setStencil(stencil);
+        }
+
+        @Override
+        public int getBitsPerComponent() {
+            return image.getBitsPerComponent();
+        }
+
+        @Override
+        public void setBitsPerComponent(int bits) {
+            image.setBitsPerComponent(bits);
+        }
+
+        @Override
+        public PDColorSpace getColorSpace() throws IOException {
+            return image.getColorSpace();
+        }
+
+        @Override
+        public void setColorSpace(PDColorSpace space) {
+            image.setColorSpace(space);
+        }
+
+        @Override
+        public int getHeight() {
+            return image.getHeight();
+        }
+
+        @Override
+        public void setHeight(int height) {
+            image.setHeight(height);
+        }
+
+        @Override
+        public int getWidth() {
+            return image.getWidth();
+        }
+
+        @Override
+        public void setWidth(int width) {
+            image.setWidth(width);
+        }
+
+        @Override
+        public void setDecode(COSArray decode) {
+            image.setDecode(decode);
+        }
+
+        @Override
+        public COSArray getDecode() {
+            return image.getDecode();
+        }
+
+        @Override
+        public boolean getInterpolate() {
+            return image.getInterpolate();
+        }
+
+        @Override
+        public void setInterpolate(boolean interpolate) {
+            image.setInterpolate(interpolate);
+        }
+
+        @Override
+        public String getSuffix() {
+            return image.getSuffix();
+        }
+
+        @Override
+        public COSStream getCOSObject() {
+            return image.getCOSObject();
+        }
+
+        @Override
+        public BufferedImage getStencilImage(Paint paint) throws IOException {
+            BufferedImage mask = image.getImage(null, step);
+            int w = mask.getWidth();
+            int h = mask.getHeight();
+            BufferedImage out = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
+            Graphics2D g = out.createGraphics();
+            try {
+                g.setPaint(paint);
+                g.fillRect(0, 0, w, h);
+            } finally {
+                g.dispose();
+            }
+            WritableRaster alpha = out.getAlphaRaster();
+            int[] row = new int[w];
+            for (int y = 0; y < h; y++) {
+                mask.getRGB(0, y, w, 1, row, 0, w);
+                for (int x = 0; x < w; x++) {
+                    row[x] = 255 - (row[x] & 0xFF);
+                }
+                alpha.setSamples(0, y, w, 1, 0, row);
+            }
+            return out;
+        }
     }
 
     private static boolean jpx(PDImage image) {
@@ -147,42 +329,136 @@ public final class ImageBudget {
     /**
      * Bytes {@code getImage()} allocates for a masked image or a stencil: it scales the base image
      * and its {@code /SMask} or stencil {@code /Mask} to a common size and builds a
-     * 4-byte-per-pixel raster. {@link #decodedBytes} measures the base samples only, so the mask
-     * and stencil dimensions are accounted for here. Returns 0 when no mask stream and no stencil
-     * applies, leaving plain images to {@code decodedBytes}.
+     * 4-byte-per-pixel raster. {@link #decodedBytes} measures the base image only, so the mask
+     * and stencil dimensions are accounted for here, as are the grey key mask and ARGB copy a
+     * colour-key {@code /Mask} array adds. Returns 0 when no mask applies, leaving plain images to
+     * {@code decodedBytes}.
      */
     static long maskedRenderBytes(PDImage image) {
-        boolean stencil;
-        try {
-            stencil = image.isStencil();
-        } catch (RuntimeException e) {
-            stencil = false;
-        }
+        return maskedRenderBytes(image, 1);
+    }
+
+    static long maskedRenderBytes(PDImage image, int step) {
+        return maskedRenderBytes(image, step, image instanceof PDImageXObject x ? sizes(x) : null);
+    }
+
+    private record Sizes(long[] base, COSStream mask, long[] applied) {}
+
+    private static Sizes sizes(PDImageXObject image) {
+        COSStream mask = appliedMask(image.getCOSObject());
+        long[] base = size(image.getCOSObject());
+        return new Sizes(base, mask, mask == null ? base : size(mask));
+    }
+
+    private static long maskedRenderBytes(PDImage image, int step, Sizes sizes) {
+        boolean stencil = isStencil(image);
         if (!(image instanceof PDImageXObject x)) {
-            return stencil ? samples(image.getWidth(), image.getHeight(), 4) : 0;
+            return stencil ? samples(shrunk(image.getWidth(), step), shrunk(image.getHeight(), step), 4) : 0;
         }
-        COSStream mask = appliedMask(x.getCOSObject());
+        COSStream mask = sizes.mask();
         if (mask == null && !stencil) {
-            return 0;
+            return x.getCOSObject().getDictionaryObject(COSName.MASK) instanceof COSArray
+                    ? colourKeyBytes(sizes.base(), components(image), step) : 0;
         }
-        long[] base = size(x.getCOSObject());
-        long[] applied = mask == null ? base : size(mask);
+        long[] base = sizes.base();
+        long[] applied = sizes.applied();
         if (base == null || applied == null) {
             return Long.MAX_VALUE;
         }
-        return samples(Math.max(base[0], applied[0]), Math.max(base[1], applied[1]), 4);
+        long composite = samples(Math.max(shrunk(base[0], step), shrunk(applied[0], step)),
+                Math.max(shrunk(base[1], step), shrunk(applied[1], step)), 4);
+        if (mask == null) {
+            return composite;
+        }
+        long own = samples(shrunk(applied[0], step), shrunk(applied[1], step), 5);
+        long packed = filters(mask).isEmpty() ? 0
+                : packed(applied[0], applied[1], mask.getInt(COSName.BITS_PER_COMPONENT, 8), 1,
+                        subsampledByFilter(mask) ? step : 1);
+        return add(composite, add(own, packed));
     }
 
     static long decodedBytes(PDImage image) {
-        int components;
-        try {
-            components = image.isStencil() || image.getColorSpace() == null ? 1 : image.getColorSpace().getNumberOfComponents();
-        } catch (Exception e) {
-            components = 4;
+        return decodedBytes(image, 1);
+    }
+
+    static long decodedBytes(PDImage image, int step) {
+        long unpacked = samples(shrunk(image.getWidth(), step), shrunk(image.getHeight(), step), components(image) + 4);
+        if (!(image.getCOSObject() instanceof COSStream s) || filters(s).isEmpty()) {
+            return unpacked;
         }
-        long samples = samples(image.getWidth(), image.getHeight(), Math.max(1, components));
-        long precision = Math.max(1, image.getBitsPerComponent());
-        return samples > Long.MAX_VALUE / precision ? Long.MAX_VALUE : samples * precision / 8;
+        boolean stencil = isStencil(image);
+        int bits = stencil ? 1 : image.getBitsPerComponent();
+        long packed = packed(image.getWidth(), image.getHeight(), bits <= 0 ? 8 : bits, stencil ? 1 : channels(image),
+                subsampledByFilter(s) ? step : 1);
+        return add(unpacked, packed);
+    }
+
+    private static long packed(long width, long height, int bits, int channels, int step) {
+        long rowBits = samples(shrunk(width, step), 1, Math.max(1, bits) * Math.max(1, channels));
+        return rowBits == Long.MAX_VALUE ? Long.MAX_VALUE : samples((rowBits + 7) / 8, shrunk(height, step), 1);
+    }
+
+    private static boolean subsampledByFilter(COSStream stream) {
+        List<COSName> filters = filters(stream);
+        if (filters.isEmpty()) {
+            return false;
+        }
+        String last = filters.get(filters.size() - 1).getName();
+        return switch (last) {
+            case "DCTDecode", "DCT", "JPXDecode", "JBIG2Decode" -> true;
+            default -> false;
+        };
+    }
+
+    private static long add(long a, long b) {
+        return a > Long.MAX_VALUE - b ? Long.MAX_VALUE : a + b;
+    }
+
+    private static boolean isStencil(PDImage image) {
+        try {
+            return image.isStencil();
+        } catch (RuntimeException e) {
+            return false;
+        }
+    }
+
+    private static long shrunk(long length, int step) {
+        return length <= 0 ? length : (length + step - 1) / step;
+    }
+
+    private static long colourKeyBytes(long[] base, int components, int step) {
+        return base == null ? Long.MAX_VALUE : samples(shrunk(base[0], step), shrunk(base[1], step), components + 9);
+    }
+
+    private static int components(PDImage image) {
+        try {
+            if (image.isStencil() || image.getColorSpace() == null) {
+                return 1;
+            }
+            PDColorSpace space = image.getColorSpace();
+            int own = Math.max(1, space.getNumberOfComponents());
+            if (space instanceof PDSeparation separation) {
+                return own + alternate(separation.getAlternateColorSpace());
+            }
+            if (space instanceof PDDeviceN deviceN) {
+                return own + alternate(deviceN.getAlternateColorSpace());
+            }
+            return own;
+        } catch (Exception e) {
+            return 4;
+        }
+    }
+
+    private static int alternate(PDColorSpace space) {
+        return space == null ? 4 : Math.max(1, space.getNumberOfComponents());
+    }
+
+    private static int channels(PDImage image) {
+        try {
+            return image.getColorSpace() == null ? 1 : Math.max(1, image.getColorSpace().getNumberOfComponents());
+        } catch (Exception e) {
+            return 4;
+        }
     }
 
     static long codedBytes(PDImage image) {
@@ -208,7 +484,7 @@ public final class ImageBudget {
                 default -> 0;
             };
         } catch (IOException | RuntimeException e) {
-            return 0;
+            return Long.MAX_VALUE;
         }
     }
 

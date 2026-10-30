@@ -135,4 +135,53 @@ class FootprintTest {
                 difference >= tail * 20,
                 "markup after the sheet data should be charged as tree-parsed, got " + difference);
     }
+
+    @Test
+    void anElementThatOnlyStartsLikeSheetDataDoesNotHideTheTree() throws IOException {
+        int size = 6 << 20;
+        Map<String, byte[]> streamed = workbook();
+        streamed.put("xl/worksheets/sheet1.xml", part(size, "<worksheet><sheetData>", "</sheetData></worksheet>"));
+        Map<String, byte[]> fake = workbook();
+        fake.put("xl/worksheets/sheet1.xml",
+                part(size, "<worksheet><sheetDataX><mergeCells>", "</mergeCells></sheetDataX><!--</sheetData>--></worksheet>"));
+        long difference = estimate("fake.xlsx", fake) - estimate("streamed.xlsx", streamed);
+        assertTrue(difference >= (long) size * 20, "a worksheet without real sheet data is tree-parsed, got " + difference);
+    }
+
+    @Test
+    void sheetDataMarkersInCommentsAreChargedForTheBytesTheReaderHolds() throws IOException {
+        int size = 10 << 20;
+        Map<String, byte[]> streamed = workbook();
+        streamed.put("xl/worksheets/sheet1.xml", part(size, "<worksheet><sheetData>", "</sheetData></worksheet>"));
+        Map<String, byte[]> commented = workbook();
+        commented.put("xl/worksheets/sheet1.xml",
+                part(size, "<worksheet><!--<sheetData>--></sheetData><mergeCells>", "</mergeCells><!--</sheetData>--></worksheet>"));
+        long difference = estimate("commented.xlsx", commented) - estimate("streamed.xlsx", streamed);
+        assertTrue(difference >= (long) size * 2, "the bytes held while cutting out the sheet data count, got " + difference);
+    }
+
+    @Test
+    void anEmptySheetDataHoldsNothingWhileItIsCutOut() throws IOException {
+        int size = 10 << 20;
+        Map<String, byte[]> streamed = workbook();
+        streamed.put("xl/worksheets/sheet1.xml", part(size, "<worksheet><sheetData>", "</sheetData></worksheet>"));
+        Map<String, byte[]> empty = workbook();
+        empty.put("xl/worksheets/sheet1.xml", part(size, "<worksheet><sheetData/><extLst>", "</extLst></worksheet>"));
+        long difference = estimate("empty.xlsx", empty) - estimate("streamed.xlsx", streamed);
+        long tree = (long) size * Footprint.TREE_BYTES_PER_BYTE;
+        assertTrue(difference < tree, "an empty sheet data holds no raw bytes, got " + difference);
+    }
+
+    @Test
+    void eachWorksheetIsScannedForItsOwnSheetData() throws IOException {
+        int size = 10 << 20;
+        Map<String, byte[]> one = workbook();
+        one.put("xl/worksheets/sheet1.xml", part(size, "<worksheet><sheetData>", "</sheetData></worksheet>"));
+        Map<String, byte[]> many = workbook();
+        for (int i = 1; i <= 30; i++) {
+            many.put("xl/worksheets/sheet" + i + ".xml", part(size, "<worksheet><sheetData>", "</sheetData></worksheet>"));
+        }
+        long difference = estimate("many.xlsx", many) - estimate("one.xlsx", one);
+        assertTrue(difference < 29L * size * 5, "streamed sheet data is not charged as tree-parsed, got " + difference);
+    }
 }

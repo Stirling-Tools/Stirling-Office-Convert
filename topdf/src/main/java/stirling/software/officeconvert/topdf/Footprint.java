@@ -4,7 +4,6 @@ import java.awt.Dimension;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
-import java.util.Arrays;
 import java.util.Locale;
 
 import stirling.software.officeconvert.memory.Admission;
@@ -42,8 +41,9 @@ final class Footprint {
             case DOCX, TEXT, HTML, EPUB, JSON -> xml * 8 + media / 2;
             case PPTX -> xml * 7 + media * 2;
             case XLSX, CSV, TSV -> {
-                long tree = Math.min(xml, treeBytes(zip));
-                yield tree * TREE_BYTES_PER_BYTE + (xml - tree) * 5 / 2 + media / 2;
+                Tree parsed = treeBytes(zip);
+                long tree = Math.min(xml, parsed.bytes());
+                yield tree * TREE_BYTES_PER_BYTE + (xml - tree) * 5 / 2 + media / 2 + parsed.held();
             }
             case PPT -> xml * 7 + media * 2;
         };
@@ -54,30 +54,36 @@ final class Footprint {
     // the streamed sheet data costs far less, so estimate() charges the two separately.
     static final long TREE_BYTES_PER_BYTE = 24;
 
-    private static final int SHEET_SCAN_BYTES = 8 << 20;
+    static final long MAX_SHEET_SCAN_BYTES = 256L << 20;
 
     private static final int SHEET_CHUNK_BYTES = 1 << 20;
 
-    private static final byte[] OPEN_SHEET_DATA = "<sheetData".getBytes(StandardCharsets.ISO_8859_1);
+    private static final byte[] SHEET_DATA = "sheetData".getBytes(StandardCharsets.ISO_8859_1);
 
-    private static final byte[] CLOSE_SHEET_DATA = "</sheetData>".getBytes(StandardCharsets.ISO_8859_1);
+    private static final int LOOKBACK = 64 + SHEET_DATA.length + 2;
+
+    record Tree(long bytes, long held) {}
 
     /**
      * Bytes of a workbook that XMLBeans parses into a DOM tree: the workbook, styles and shared-string
-     * parts in full, plus each worksheet's skeleton (everything outside its streamed {@code <sheetData>}).
+     * parts in full, plus each worksheet's skeleton (everything outside its streamed {@code <sheetData>}),
+     * and the most any one worksheet's skeleton holds in raw bytes while it is cut out.
      */
-    private static long treeBytes(OfficeZip zip) {
+    private static Tree treeBytes(OfficeZip zip) {
         long tree = mainPartBytes(zip);
+        long held = 0;
         for (String part : zip.partNames()) {
             String p = part.toLowerCase(Locale.ROOT);
             long size = Math.max(0, zip.size(part));
             if (p.endsWith("/styles.xml") || p.endsWith("/sharedstrings.xml")) {
-                tree += size;
+                tree = saturated(tree + size);
             } else if (p.contains("/worksheets/") && p.endsWith(".xml")) {
-                tree += worksheetSkeletonBytes(zip, part, size);
+                Tree sheet = worksheet(zip, part, size);
+                tree = saturated(tree + sheet.bytes());
+                held = Math.max(held, sheet.held());
             }
         }
-        return tree;
+        return new Tree(tree, held);
     }
 
     private static long mainPartBytes(OfficeZip zip) {
@@ -88,80 +94,142 @@ final class Footprint {
         }
     }
 
-    /**
-     * Bytes of a worksheet outside {@code <sheetData>} (its tree-parsed skeleton): the header before
-     * it and any markup after it, wherever the sheet data closes.
-     */
-    private static long worksheetSkeletonBytes(OfficeZip zip, String part, long size) {
+    private static Tree worksheet(OfficeZip zip, String part, long size) {
+        long left = MAX_SHEET_SCAN_BYTES;
         try (InputStream in = zip.open(part)) {
-            byte[] head = in.readNBytes(SHEET_SCAN_BYTES);
-            int open = indexOf(head, OPEN_SHEET_DATA, 0);
-            if (open < 0) {
-                return size;
+            SheetScan scan = new SheetScan();
+            byte[] buf = new byte[SHEET_CHUNK_BYTES + LOOKBACK];
+            int len = 0;
+            int from = 0;
+            long base = 0;
+            while (true) {
+                int n = in.readNBytes(buf, len, (int) Math.min(buf.length - len, left));
+                left -= n;
+                len += n;
+                boolean full = len == buf.length;
+                boolean cut = !full && left <= 0 && in.read() >= 0;
+                boolean end = !full && !cut;
+                int limit = full || cut ? Math.max(from, len - SHEET_DATA.length - 1) : len;
+                for (int i = from; i < limit && !scan.done; i++) {
+                    scan.at(buf, i, len, base);
+                }
+                if (scan.done) {
+                    return new Tree(size, 0);
+                }
+                if (end) {
+                    return scan.tree(size, -1);
+                }
+                if (cut) {
+                    return scan.tree(Math.max(size, base + len), base + limit);
+                }
+                int keep = len - limit + LOOKBACK;
+                int start = Math.max(0, len - keep);
+                System.arraycopy(buf, start, buf, 0, len - start);
+                base += start;
+                from = limit - start;
+                len -= start;
             }
-            long end = sheetDataEnd(head, open);
-            if (end < 0) {
-                end = closeAfter(in, head);
-            }
-            return end < 0 ? open : open + Math.max(0, size - end);
         } catch (IOException | RuntimeException e) {
-            return size;
+            return new Tree(size, 0);
         }
     }
 
-    private static long closeAfter(InputStream in, byte[] head) throws IOException {
-        int keep = Math.min(head.length, CLOSE_SHEET_DATA.length - 1);
-        byte[] carry = Arrays.copyOfRange(head, head.length - keep, head.length);
-        long base = head.length - keep;
-        byte[] chunk = new byte[SHEET_CHUNK_BYTES];
-        int n;
-        while ((n = in.readNBytes(chunk, 0, chunk.length)) > 0) {
-            byte[] window = new byte[carry.length + n];
-            System.arraycopy(carry, 0, window, 0, carry.length);
-            System.arraycopy(chunk, 0, window, carry.length, n);
-            int close = indexOf(window, CLOSE_SHEET_DATA, 0);
-            if (close >= 0) {
-                return base + close + CLOSE_SHEET_DATA.length;
-            }
-            keep = Math.min(window.length, CLOSE_SHEET_DATA.length - 1);
-            carry = Arrays.copyOfRange(window, window.length - keep, window.length);
-            base += window.length - keep;
-        }
-        return -1;
-    }
+    private static final class SheetScan {
 
-    private static int sheetDataEnd(byte[] head, int open) {
-        int gt = indexOf(head, (byte) '>', open);
-        if (gt <= 0) {
-            return -1;
-        }
-        if (head[gt - 1] == '/') {
-            return gt + 1;
-        }
-        int close = indexOf(head, CLOSE_SHEET_DATA, gt);
-        return close < 0 ? -1 : close + CLOSE_SHEET_DATA.length;
-    }
+        long open = -1;
 
-    private static int indexOf(byte[] haystack, byte[] needle, int from) {
-        outer:
-        for (int i = Math.max(0, from); i + needle.length <= haystack.length; i++) {
-            for (int j = 0; j < needle.length; j++) {
-                if (haystack[i + j] != needle[j]) {
-                    continue outer;
+        long tagEnd = -1;
+
+        long firstClose = -1;
+
+        long lastClose = -1;
+
+        long lastCloseEnd = -1;
+
+        boolean done;
+
+        void at(byte[] b, int i, int len, long base) {
+            long pos = base + i;
+            if (open < 0) {
+                int tag = tagAt(b, i, len, false);
+                if (tag >= 0) {
+                    open = base + tag;
+                    if (tag < i) {
+                        for (int k = tag; k < i; k++) {
+                            if (b[k] == '>') {
+                                tagEnd = base + k;
+                                done = k > 0 && b[k - 1] == '/';
+                                return;
+                            }
+                        }
+                    }
+                }
+                if (open < 0) {
+                    return;
                 }
             }
-            return i;
-        }
-        return -1;
-    }
-
-    private static int indexOf(byte[] haystack, byte needle, int from) {
-        for (int i = Math.max(0, from); i < haystack.length; i++) {
-            if (haystack[i] == needle) {
-                return i;
+            if (tagEnd < 0) {
+                if (b[i] == '>') {
+                    tagEnd = pos;
+                    done = i > 0 && b[i - 1] == '/';
+                }
+                return;
+            }
+            if (b[i] == '>' && lastClose >= 0 && lastCloseEnd < 0) {
+                lastCloseEnd = pos;
+            }
+            int tag = tagAt(b, i, len, true);
+            if (tag >= 0 && base + tag > tagEnd) {
+                if (firstClose < 0) {
+                    firstClose = base + tag;
+                }
+                lastClose = base + tag;
+                lastCloseEnd = -1;
             }
         }
-        return -1;
+
+        Tree tree(long size, long scanned) {
+            if (open < 0 || tagEnd < 0) {
+                return new Tree(size, 3 * size);
+            }
+            long head = tagEnd + 2;
+            if (scanned >= 0) {
+                long from = firstClose < 0 ? scanned : firstClose;
+                long tail = size - (lastClose < 0 ? scanned : lastClose);
+                return new Tree(saturated(head + Math.max(0, tail)), 3 * Math.max(0, size - from));
+            }
+            if (firstClose < 0) {
+                return new Tree(head, 0);
+            }
+            long tail = lastCloseEnd < 0 ? 0 : size - lastCloseEnd - 1;
+            return new Tree(head + Math.max(0, tail), 3 * Math.max(0, size - firstClose));
+        }
+    }
+
+    private static int tagAt(byte[] xml, int i, int len, boolean closing) {
+        if (i + SHEET_DATA.length >= len || xml[i] != 's') {
+            return -1;
+        }
+        for (int k = 0; k < SHEET_DATA.length; k++) {
+            if (xml[i + k] != SHEET_DATA[k]) {
+                return -1;
+            }
+        }
+        byte after = xml[i + SHEET_DATA.length];
+        if (!(after == '>' || after == '/' || after == ' ' || after == '\t' || after == '\r' || after == '\n')) {
+            return -1;
+        }
+        int j = i - 1;
+        if (j >= 0 && xml[j] == ':') {
+            j--;
+            while (j >= 0 && xml[j] != '<' && xml[j] != '/' && xml[j] > ' ' && i - j < 64) {
+                j--;
+            }
+        }
+        if (closing) {
+            return j >= 1 && xml[j] == '/' && xml[j - 1] == '<' ? j - 1 : -1;
+        }
+        return j >= 0 && xml[j] == '<' ? j : -1;
     }
 
     // A binary file is read whole into records; its pictures sit inside it, one decoded at a time
