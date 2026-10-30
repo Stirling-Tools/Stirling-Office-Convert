@@ -72,14 +72,13 @@ final class Footprint {
     private static Tree treeBytes(OfficeZip zip) {
         long tree = mainPartBytes(zip);
         long held = 0;
-        long[] left = {MAX_SHEET_SCAN_BYTES};
         for (String part : zip.partNames()) {
             String p = part.toLowerCase(Locale.ROOT);
             long size = Math.max(0, zip.size(part));
             if (p.endsWith("/styles.xml") || p.endsWith("/sharedstrings.xml")) {
                 tree = saturated(tree + size);
             } else if (p.contains("/worksheets/") && p.endsWith(".xml")) {
-                Tree sheet = worksheet(zip, part, size, left);
+                Tree sheet = worksheet(zip, part, size);
                 tree = saturated(tree + sheet.bytes());
                 held = Math.max(held, sheet.held());
             }
@@ -95,10 +94,8 @@ final class Footprint {
         }
     }
 
-    private static Tree worksheet(OfficeZip zip, String part, long size, long[] left) {
-        if (left[0] <= 0) {
-            return new Tree(size, 0);
-        }
+    private static Tree worksheet(OfficeZip zip, String part, long size) {
+        long left = MAX_SHEET_SCAN_BYTES;
         try (InputStream in = zip.open(part)) {
             SheetScan scan = new SheetScan();
             byte[] buf = new byte[SHEET_CHUNK_BYTES + LOOKBACK];
@@ -106,18 +103,18 @@ final class Footprint {
             int from = 0;
             long base = 0;
             while (true) {
-                int n = in.readNBytes(buf, len, (int) Math.min(buf.length - len, left[0]));
-                left[0] -= n;
+                int n = in.readNBytes(buf, len, (int) Math.min(buf.length - len, left));
+                left -= n;
                 len += n;
                 boolean full = len == buf.length;
-                boolean cut = !full && left[0] <= 0 && in.read() >= 0;
+                boolean cut = !full && left <= 0 && in.read() >= 0;
                 boolean end = !full && !cut;
                 int limit = full || cut ? Math.max(from, len - SHEET_DATA.length - 1) : len;
                 for (int i = from; i < limit && !scan.done; i++) {
                     scan.at(buf, i, len, base);
                 }
                 if (scan.done) {
-                    return new Tree(size, 3 * size);
+                    return new Tree(size, 0);
                 }
                 if (end) {
                     return scan.tree(size, -1);
