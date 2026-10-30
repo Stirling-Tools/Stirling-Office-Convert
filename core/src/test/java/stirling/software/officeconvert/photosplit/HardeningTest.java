@@ -24,6 +24,9 @@ import javax.imageio.ImageIO;
 import javax.imageio.ImageWriter;
 import javax.imageio.stream.ImageOutputStream;
 
+import org.apache.pdfbox.cos.COSArray;
+import org.apache.pdfbox.cos.COSDictionary;
+import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.common.PDRectangle;
@@ -206,6 +209,32 @@ class HardeningTest {
         IOException refused = assertThrows(IOException.class,
                 () -> PhotoSplitter.split(input, dir.resolve("out"), PhotoSplitter.Options.defaults()));
         assertTrue(refused.getMessage().contains("more than " + PhotoSplitter.MAX_PAGES + " pages"), refused.getMessage());
+    }
+
+    @Test
+    void aPageTreeWhoseKidsDisagreeWithItsCountIsSplitByCount() throws Exception {
+        Path input = dir.resolve("tree.pdf");
+        try (PDDocument doc = new PDDocument()) {
+            COSDictionary root = doc.getDocumentCatalog().getCOSObject().getCOSDictionary(COSName.PAGES);
+            COSDictionary middle = new COSDictionary();
+            middle.setItem(COSName.TYPE, COSName.PAGES);
+            middle.setInt(COSName.COUNT, 0);
+            middle.setItem(COSName.PARENT, root);
+            PDPage small = new PDPage(new PDRectangle(10, 10));
+            small.getCOSObject().setItem(COSName.PARENT, middle);
+            COSArray hidden = new COSArray();
+            hidden.add(small.getCOSObject());
+            middle.setItem(COSName.KIDS, hidden);
+            PDPage big = new PDPage(new PDRectangle(200, 200));
+            big.getCOSObject().setItem(COSName.PARENT, root);
+            COSArray kids = new COSArray();
+            kids.add(middle);
+            kids.add(big.getCOSObject());
+            root.setItem(COSName.KIDS, kids);
+            root.setInt(COSName.COUNT, 1);
+            doc.save(input.toFile());
+        }
+        assertDoesNotThrow(() -> PhotoSplitter.split(input, dir.resolve("out"), PhotoSplitter.Options.defaults()));
     }
 
     @Test

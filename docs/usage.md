@@ -756,7 +756,9 @@ that instance. Prefer the file-based overload for documents that need a strict t
   transparency groups, translucent annotations) is drawn into a picture of the smallest box covering all of them on
   that page, at `flattenDpi` (200 by default; JPEG when the box is photographic, lossless otherwise), drawn from the
   content up to the last of them and placed after it; what comes after stays vector and is drawn once, and transparent
-  text stays in the page as invisible text, so it can still be searched and copied.
+  text stays in the page as invisible text, so it can still be searched and copied. A page that runs past the operator
+  or form budget, or has an image too large to decode, fails the conversion instead of being written with part of it
+  missing.
 - Removed, with a warning each: JavaScript, launch, sound, movie, reset, import and hide actions and every additional
   action, forbidden annotation types and hidden annotations, XFA, PostScript XObjects, image alternates, transfer
   functions, halftones and undefined operators, form field actions, digital signatures (the rewrite would break them),

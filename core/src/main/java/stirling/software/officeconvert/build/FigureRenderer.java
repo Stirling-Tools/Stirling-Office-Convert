@@ -6,16 +6,12 @@ import java.awt.geom.Path2D;
 import java.awt.geom.PathIterator;
 import java.awt.geom.Rectangle2D;
 import java.io.IOException;
-import java.util.List;
 
-import org.apache.pdfbox.contentstream.operator.Operator;
-import org.apache.pdfbox.cos.COSBase;
 import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.common.PDRectangle;
 import org.apache.pdfbox.pdmodel.font.PDFont;
 import org.apache.pdfbox.pdmodel.font.PDType3Font;
-import org.apache.pdfbox.pdmodel.graphics.form.PDFormXObject;
 import org.apache.pdfbox.pdmodel.graphics.form.PDTransparencyGroup;
 import org.apache.pdfbox.pdmodel.graphics.image.PDImage;
 import org.apache.pdfbox.pdmodel.graphics.state.PDTextState;
@@ -27,8 +23,7 @@ import org.apache.pdfbox.rendering.PageDrawerParameters;
 import org.apache.pdfbox.util.Matrix;
 import org.apache.pdfbox.util.Vector;
 
-import stirling.software.officeconvert.extract.ImageBudget;
-import stirling.software.officeconvert.extract.OperatorBudget;
+import stirling.software.officeconvert.extract.GuardedRenderer;
 import stirling.software.officeconvert.extract.RgbGroup;
 
 final class FigureRenderer extends PDFRenderer {
@@ -60,30 +55,13 @@ final class FigureRenderer extends PDFRenderer {
     @Override
     protected PageDrawer createPageDrawer(PageDrawerParameters parameters) throws IOException {
         Rectangle2D target = span;
-        return new PageDrawer(parameters) {
+        return new GuardedRenderer.Drawer(parameters, "rendering a figure") {
             private boolean painting;
             private int masks;
-            private final OperatorBudget budget = new OperatorBudget("rendering a figure");
-
-            @Override
-            protected void processOperator(Operator operator, List<COSBase> operands) throws IOException {
-                if (budget.run(operator)) {
-                    super.processOperator(operator, operands);
-                }
-            }
-
-            @Override
-            public void showForm(PDFormXObject form) throws IOException {
-                if (budget.form()) {
-                    super.showForm(form);
-                }
-            }
 
             @Override
             public void showTransparencyGroup(PDTransparencyGroup form) throws IOException {
-                if (budget.form()) {
-                    super.showTransparencyGroup(RgbGroup.of(form));
-                }
+                super.showTransparencyGroup(RgbGroup.of(form));
             }
 
             @Override
@@ -160,7 +138,7 @@ final class FigureRenderer extends PDFRenderer {
 
             @Override
             public void drawImage(PDImage pdImage) throws IOException {
-                if ((!paper || painting) && ImageBudget.affordable(pdImage)) {
+                if (!paper || painting) {
                     super.drawImage(pdImage);
                 }
             }

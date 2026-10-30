@@ -3,6 +3,7 @@ package stirling.software.officeconvert;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InterruptedIOException;
 
 import javax.imageio.IIOImage;
 import javax.imageio.ImageIO;
@@ -17,9 +18,9 @@ import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.common.PDRectangle;
 import org.apache.pdfbox.rendering.ImageType;
-import org.apache.pdfbox.rendering.PDFRenderer;
 
 import stirling.software.officeconvert.build.RgbPixels;
+import stirling.software.officeconvert.extract.GuardedRenderer;
 import stirling.software.officeconvert.extract.PdfFiles;
 import stirling.software.officeconvert.html.EpubWriter;
 import stirling.software.officeconvert.memory.Admission;
@@ -32,7 +33,8 @@ final class PdfBook {
 
     private PdfBook() {}
 
-    static EpubWriter.Book of(PDDocument doc, PdfToDocx.Options options, EbookOptions book, boolean paletteCover) {
+    static EpubWriter.Book of(PDDocument doc, PdfToDocx.Options options, EbookOptions book, boolean paletteCover)
+            throws IOException {
         String language = null;
         try {
             language = doc.getDocumentCatalog().getLanguage();
@@ -42,11 +44,19 @@ final class PdfBook {
         return new EpubWriter.Book(cover(doc, options, paletteCover), language, book);
     }
 
-    static byte[] cover(PDDocument doc, PdfToDocx.Options options, boolean palette) {
+    static byte[] cover(PDDocument doc, PdfToDocx.Options options, boolean palette) throws IOException {
         try {
             int page = PdfFiles.pageRange(doc.getNumberOfPages(), options.firstPage(), options.lastPage())[0];
             return render(doc, page, palette);
-        } catch (IOException | RuntimeException e) {
+        } catch (InterruptedIOException e) {
+            throw e;
+        } catch (IOException e) {
+            if (Admission.NEEDS_MEMORY.equals(e.getMessage())) {
+                throw e;
+            }
+            LOG.debug("No cover picture for the book", e);
+            return null;
+        } catch (RuntimeException e) {
             LOG.debug("No cover picture for the book", e);
             return null;
         }
@@ -66,9 +76,9 @@ final class PdfBook {
         long pixels = (long) Math.ceil(width * scale) * (long) Math.ceil(height * scale);
         Admission.Ticket ticket = Admission.jvm().enter(pixels * 4L * 3L);
         try {
-            PDFRenderer renderer = new PDFRenderer(doc);
+            GuardedRenderer renderer = new GuardedRenderer(doc, "drawing the book cover");
             renderer.setSubsamplingAllowed(true);
-            BufferedImage image = renderer.renderImage(index, scale, ImageType.RGB);
+            BufferedImage image = renderer.draw(index, scale, ImageType.RGB);
             return blank(image) ? null : palette ? CoverPicture.encode(image) : jpeg(image);
         } finally {
             ticket.close();

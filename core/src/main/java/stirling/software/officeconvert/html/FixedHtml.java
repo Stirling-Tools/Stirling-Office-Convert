@@ -41,7 +41,6 @@ import org.apache.pdfbox.pdmodel.interactive.action.PDActionURI;
 import org.apache.pdfbox.pdmodel.interactive.annotation.PDAnnotation;
 import org.apache.pdfbox.pdmodel.interactive.annotation.PDAnnotationLink;
 import org.apache.pdfbox.rendering.ImageType;
-import org.apache.pdfbox.rendering.PDFRenderer;
 import org.apache.pdfbox.rendering.PageDrawer;
 import org.apache.pdfbox.rendering.PageDrawerParameters;
 import org.apache.pdfbox.text.PDFTextStripper;
@@ -50,6 +49,7 @@ import org.apache.pdfbox.util.Matrix;
 import org.apache.pdfbox.util.Vector;
 
 import stirling.software.officeconvert.build.RgbPixels;
+import stirling.software.officeconvert.extract.GuardedRenderer;
 import stirling.software.officeconvert.memory.Admission;
 import stirling.software.officeconvert.sink.Links;
 
@@ -143,6 +143,8 @@ public final class FixedHtml {
     private record Span(String text, float x, float y, float size, float width, float angle, int rgb, String font,
             boolean bold, boolean italic, PDFont pdFont) {}
 
+    private static final String PASS = "drawing a fixed-layout page";
+
     private FixedHtml() {}
 
     public static void write(PDDocument doc, OutputStream target, Options options) throws IOException {
@@ -152,7 +154,7 @@ public final class FixedHtml {
         OutputStream out = new KeepOpen(target);
         Writer w = new OutputStreamWriter(out, StandardCharsets.UTF_8);
         w.write(head(doc, options));
-        PDFRenderer renderer = options.text() == Text.LIVE ? new WithoutText(doc) : new PDFRenderer(doc);
+        GuardedRenderer renderer = options.text() == Text.LIVE ? new WithoutText(doc) : new GuardedRenderer(doc, PASS);
         renderer.setSubsamplingAllowed(true);
         Fonts fonts = new Fonts(options.text() == Text.LIVE ? options.fonts() : null);
         Set<String> sizes = new HashSet<>();
@@ -204,7 +206,7 @@ public final class FixedHtml {
                 + HtmlText.pt(turned ? box.getWidth() : box.getHeight());
     }
 
-    private static void page(PDDocument doc, PDFRenderer renderer, int index, Options options, Writer w,
+    private static void page(PDDocument doc, GuardedRenderer renderer, int index, Options options, Writer w,
             OutputStream out, Fonts fonts, Set<String> sizes) throws IOException {
         PDPage page = doc.getPage(index);
         PDRectangle box = page.getCropBox();
@@ -238,7 +240,7 @@ public final class FixedHtml {
         long estimate = pixels(width, height, scale) * 4L * 3L;
         Admission.Ticket ticket = Admission.jvm().enter(estimate);
         try {
-            BufferedImage image = renderer.renderImage(index, scale, ImageType.RGB);
+            BufferedImage image = renderer.draw(index, scale, ImageType.RGB);
             if (!live || !blank(image)) {
                 Picture picture = picture(image);
                 sb.append("<img alt=\"\" src=\"data:").append(picture.type()).append(";base64,");
@@ -557,15 +559,15 @@ public final class FixedHtml {
         }
     }
 
-    private static final class WithoutText extends PDFRenderer {
+    private static final class WithoutText extends GuardedRenderer {
 
         WithoutText(PDDocument doc) {
-            super(doc);
+            super(doc, PASS);
         }
 
         @Override
         protected PageDrawer createPageDrawer(PageDrawerParameters parameters) throws IOException {
-            return new PageDrawer(parameters) {
+            return new GuardedRenderer.Drawer(parameters, PASS) {
                 @Override
                 protected void showFontGlyph(Matrix matrix, PDFont font, int code, Vector displacement)
                         throws IOException {

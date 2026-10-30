@@ -11,6 +11,7 @@ import java.io.InterruptedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Stream;
@@ -20,6 +21,8 @@ import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+
+import stirling.software.officeconvert.memory.Admission;
 
 class PdfToPdfATest {
 
@@ -64,6 +67,26 @@ class PdfToPdfATest {
         try (Stream<Path> files = Files.list(dir)) {
             assertEquals(List.of("many.pdf"), files.map(p -> p.getFileName().toString()).toList());
         }
+    }
+
+    @Test
+    void aConversionTakingTheLastSlotDoesNotWaitOnItself() throws Exception {
+        Path in = dir.resolve("plain.pdf");
+        try (PDDocument d = new PDDocument()) {
+            d.addPage(new PDPage());
+            d.save(in.toFile());
+        }
+        int slots = Math.max(2, 2 * Runtime.getRuntime().availableProcessors());
+        List<Admission.Ticket> held = new ArrayList<>();
+        try {
+            for (int i = 0; i < slots - 1; i++) {
+                held.add(Admission.jvm().enter(0));
+            }
+            PdfToPdfA.convert(in, dir.resolve("out.pdf"), PdfToPdfA.Options.defaults().timeout(Duration.ofSeconds(10)));
+        } finally {
+            held.forEach(Admission.Ticket::close);
+        }
+        assertTrue(Files.exists(dir.resolve("out.pdf")));
     }
 
     @Test
