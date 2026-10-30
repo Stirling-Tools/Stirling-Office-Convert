@@ -61,8 +61,19 @@ final class Limits {
     }
 
     static COSName name(COSName n) {
+        return name(n, true);
+    }
+
+    static COSName name(COSName n, PdfALevel level) {
+        return name(n, level.part() < 4);
+    }
+
+    private static COSName name(COSName n, boolean shorten) {
         if (!NameText.accepted(n.getBytes())) {
-            return name(COSName.getPDFName(NameText.repair(n.getBytes())));
+            return name(COSName.getPDFName(NameText.repair(n.getBytes())), shorten);
+        }
+        if (!shorten) {
+            return n;
         }
         if (n.getName().length() <= MAX_NAME_BYTES / 3) {
             return n;
@@ -82,13 +93,13 @@ final class Limits {
         return COSName.getPDFName(s.substring(0, keep) + "_" + Integer.toHexString(s.hashCode()));
     }
 
-    static void names(PDDocument doc, Report report) throws IOException {
+    static void names(PDDocument doc, PdfALevel level, Report report) throws IOException {
         boolean[] changed = {false};
         CosWalk.walk(doc, b -> {
             if (b instanceof COSDictionary d && longNames(d)) {
                 for (Map.Entry<COSName, COSBase> e : new ArrayList<>(d.entrySet())) {
-                    COSName k = name(e.getKey());
-                    COSBase v = e.getValue() instanceof COSName n ? name(n) : e.getValue();
+                    COSName k = name(e.getKey(), level);
+                    COSBase v = e.getValue() instanceof COSName n ? name(n, level) : e.getValue();
                     if (k != e.getKey() || v != e.getValue()) {
                         d.removeItem(e.getKey());
                         d.setItem(k, v);
@@ -97,8 +108,8 @@ final class Limits {
                 }
             } else if (b instanceof COSArray a) {
                 for (int i = 0; i < a.size(); i++) {
-                    if (a.get(i) instanceof COSName n && name(n) != n) {
-                        a.set(i, name(n));
+                    if (a.get(i) instanceof COSName n && name(n, level) != n) {
+                        a.set(i, name(n, level));
                         changed[0] = true;
                     }
                 }
@@ -150,6 +161,9 @@ final class Limits {
     }
 
     static COSBase number(COSBase b, PdfALevel level) {
+        if (level.part() == 4) {
+            return b;
+        }
         if (b instanceof COSFloat f) {
             double v = f.floatValue();
             double max = level.part() == 1 ? 32_767 : 3.4e38;

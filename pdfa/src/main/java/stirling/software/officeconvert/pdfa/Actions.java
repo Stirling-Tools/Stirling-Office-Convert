@@ -17,9 +17,7 @@ final class Actions {
             "SubmitForm");
 
     private static final Set<String> ALLOWED_A4 = Set.of("GoTo", "GoToR", "GoToE", "Thread", "URI", "Named",
-            "SubmitForm", "GoToDp");
-
-    private static final Set<String> SCRIPTS = Set.of("JavaScript", "RichMediaExecute");
+            "SubmitForm", "GoToDp", "JavaScript", "RichMediaExecute");
 
     private static final Set<String> ALLOWED_A1 = Set.of("GoTo", "GoToR", "Thread", "URI", "Named");
 
@@ -78,9 +76,7 @@ final class Actions {
             kept = filter(next, level, report, done, depth + 1);
         }
         if (!ok) {
-            report.warn(level.part() == 4 && SCRIPTS.contains(type)
-                    ? "Removed a " + type + " action, as the archived copy keeps no scripts"
-                    : "Removed " + (type.isEmpty() ? "an unknown" : "a " + type) + " action, which PDF/A does not allow");
+            report.warn("Removed " + (type.isEmpty() ? "an unknown" : "a " + type) + " action, which PDF/A does not allow");
             return kept;
         }
         if (kept == null) {

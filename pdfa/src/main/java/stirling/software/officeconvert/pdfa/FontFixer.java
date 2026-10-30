@@ -218,14 +218,16 @@ final class FontFixer {
         if (subtype != null) {
             report.warn(subtype);
         }
-        if (level.part() > 1) {
+        if (level.part() == 2 || level.part() == 3) {
             d.removeItem(COSName.CHAR_SET);
             d.removeItem(COSName.CID_SET);
             return;
         }
-        if (font instanceof PDType0Font t0) {
+        boolean add = level.part() == 1;
+        if (font instanceof PDType0Font t0 && (add || d.containsKey(COSName.CID_SET))) {
             cidSet(t0, d);
-        } else if (font instanceof PDType1Font || font instanceof PDType1CFont) {
+        } else if ((font instanceof PDType1Font || font instanceof PDType1CFont)
+                && (add || d.containsKey(COSName.CHAR_SET))) {
             charSet(font, d);
         }
     }

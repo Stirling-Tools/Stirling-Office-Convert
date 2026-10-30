@@ -5,6 +5,7 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -22,6 +23,8 @@ final class ColourFixer {
     private static final COSName DEFAULT_RGB = COSName.getPDFName("DefaultRGB");
 
     private static final COSName DEST_OUTPUT_PROFILE = COSName.getPDFName("DestOutputProfile");
+
+    private static final COSName DEST_OUTPUT_PROFILE_REF = COSName.getPDFName("DestOutputProfileRef");
 
     private static final COSName GTS_PDFA1 = COSName.getPDFName("GTS_PDFA1");
 
@@ -51,44 +54,96 @@ final class ColourFixer {
         });
         int components = c.outputIntent();
         if (level.part() == 4) {
-            boolean dropped = false;
-            for (ContentGraph.Node n : graph.nodes()) {
-                if (n.kind() == ContentGraph.Kind.PAGE && n.owner().containsKey(COSName.OUTPUT_INTENTS)) {
-                    n.owner().removeItem(COSName.OUTPUT_INTENTS);
-                    dropped = true;
-                }
-            }
-            if (dropped) {
-                report.warn("Removed page output intents so every page uses the document's PDF/A output intent");
-            }
+            c.pageIntents(graph, components);
         }
         c.shadings();
-        COSName key = components == 3 && colours.cmyk() ? DEFAULT_CMYK
-                : components == 4 && colours.rgb() ? DEFAULT_RGB : null;
-        if (key == null) {
-            return;
+        Map<COSName, COSArray> fallbacks = new LinkedHashMap<>();
+        if (components != 4 && colours.cmyk()) {
+            fallbacks.put(DEFAULT_CMYK, c.iccBased(IccProfiles.cmyk(), 4));
         }
-        COSArray fallback = key == DEFAULT_CMYK ? c.iccBased(IccProfiles.cmyk(), 4) : c.iccBased(IccProfiles.srgb(), 3);
-        for (COSDictionary res : graph.resources()) {
-            COSDictionary cs = ContentGraph.dict(res.getDictionaryObject(COSName.COLORSPACE));
-            if (cs == null) {
-                cs = new COSDictionary();
-                res.setItem(COSName.COLORSPACE, cs);
+        if (components != 3 && colours.rgb()) {
+            fallbacks.put(DEFAULT_RGB, c.iccBased(IccProfiles.srgb(), 3));
+        }
+        for (Map.Entry<COSName, COSArray> f : fallbacks.entrySet()) {
+            for (COSDictionary res : graph.resources()) {
+                COSDictionary cs = ContentGraph.dict(res.getDictionaryObject(COSName.COLORSPACE));
+                if (cs == null) {
+                    cs = new COSDictionary();
+                    res.setItem(COSName.COLORSPACE, cs);
+                }
+                if (cs.getDictionaryObject(f.getKey()) == null) {
+                    cs.setItem(f.getKey(), f.getValue());
+                }
             }
-            if (cs.getDictionaryObject(key) == null) {
-                cs.setItem(key, fallback);
+            for (ContentGraph.Node n : graph.nodes()) {
+                if (n.kind() != ContentGraph.Kind.PAGE && n.kind() != ContentGraph.Kind.APPEARANCE) {
+                    continue;
+                }
+                COSDictionary res = ContentGraph.dict(n.owner().getDictionaryObject(COSName.RESOURCES));
+                if (res == null) {
+                    res = new COSDictionary();
+                    n.owner().setItem(COSName.RESOURCES, res);
+                }
+                COSDictionary cs = ContentGraph.dict(res.getDictionaryObject(COSName.COLORSPACE));
+                if (cs == null) {
+                    cs = new COSDictionary();
+                    res.setItem(COSName.COLORSPACE, cs);
+                }
+                if (cs.getDictionaryObject(f.getKey()) == null) {
+                    cs.setItem(f.getKey(), f.getValue());
+                }
             }
         }
+    }
+
+    private void pageIntents(ContentGraph graph, int components) {
+        boolean dropped = false;
         for (ContentGraph.Node n : graph.nodes()) {
-            if (n.owner().getDictionaryObject(COSName.RESOURCES) == null
-                    && (n.kind() == ContentGraph.Kind.PAGE || n.kind() == ContentGraph.Kind.APPEARANCE)) {
-                COSDictionary res = new COSDictionary();
-                COSDictionary cs = new COSDictionary();
-                cs.setItem(key, fallback);
-                res.setItem(COSName.COLORSPACE, cs);
-                n.owner().setItem(COSName.RESOURCES, res);
+            if (n.kind() != ContentGraph.Kind.PAGE || !n.owner().containsKey(COSName.OUTPUT_INTENTS)) {
+                continue;
+            }
+            COSArray intents = ContentGraph.array(n.owner().getDictionaryObject(COSName.OUTPUT_INTENTS));
+            if (!keepable(intents, components)) {
+                n.owner().removeItem(COSName.OUTPUT_INTENTS);
+                dropped = true;
             }
         }
+        if (dropped) {
+            report.warn("Removed page output intents that PDF/A-4 does not accept or that would change how the page's"
+                    + " device colours are read");
+        }
+    }
+
+    private boolean keepable(COSArray intents, int components) {
+        if (intents == null || intents.size() == 0) {
+            return false;
+        }
+        COSStream shared = null;
+        for (int i = 0; i < intents.size(); i++) {
+            COSDictionary oi = ContentGraph.dict(intents.getObject(i));
+            if (oi == null) {
+                return false;
+            }
+            oi.removeItem(DEST_OUTPUT_PROFILE_REF);
+            if (!(oi.getDictionaryObject(DEST_OUTPUT_PROFILE) instanceof COSStream p)) {
+                continue;
+            }
+            if (shared != null && shared != p) {
+                return false;
+            }
+            shared = p;
+            IccProfiles.Header h = IccProfiles.header(read(p));
+            if (h == null || !valid(h) || !output(h) || !intentSpace(h)
+                    || IccProfiles.components(h.colourSpace()) != components) {
+                return false;
+            }
+        }
+        return shared != null;
+    }
+
+    private boolean intentSpace(IccProfiles.Header h) {
+        return "RGB ".equals(h.colourSpace()) || "CMYK".equals(h.colourSpace())
+                || level.part() == 4 && "GRAY".equals(h.colourSpace());
     }
 
     private void shadings() throws IOException {
@@ -136,8 +191,7 @@ final class ColourFixer {
                     continue;
                 }
                 IccProfiles.Header h = IccProfiles.header(read(p));
-                if (h != null && valid(h) && output(h)
-                        && ("RGB ".equals(h.colourSpace()) || "CMYK".equals(h.colourSpace()))) {
+                if (h != null && valid(h) && output(h) && intentSpace(h)) {
                     keep = oi;
                     components = IccProfiles.components(h.colourSpace());
                     p.setInt(COSName.N, components);
@@ -158,12 +212,31 @@ final class ColourFixer {
             keep.setString(COSName.getPDFName("RegistryName"), "http://www.color.org");
             components = 3;
         }
+        if (level.part() == 4 && keep.getCOSName(COSName.S) != null && !GTS_PDFA1.equals(keep.getCOSName(COSName.S))) {
+            COSDictionary own = new COSDictionary();
+            for (Map.Entry<COSName, COSBase> e : keep.entrySet()) {
+                own.setItem(e.getKey(), e.getValue());
+            }
+            keep = own;
+        }
         keep.setItem(COSName.S, GTS_PDFA1);
         if (keep.getDictionaryObject(COSName.getPDFName("OutputConditionIdentifier")) == null) {
             keep.setString(COSName.getPDFName("OutputConditionIdentifier"), "Custom");
         }
         COSArray out = new COSArray();
         out.add(keep);
+        if (level.part() == 4 && intents != null) {
+            COSBase profile = keep.getDictionaryObject(DEST_OUTPUT_PROFILE);
+            for (int i = 0; i < intents.size(); i++) {
+                COSDictionary oi = ContentGraph.dict(intents.getObject(i));
+                if (oi != null && oi != keep && oi.getDictionaryObject(DEST_OUTPUT_PROFILE) == profile) {
+                    out.add(oi);
+                }
+            }
+        }
+        for (int i = 0; i < out.size(); i++) {
+            ((COSDictionary) out.getObject(i)).removeItem(DEST_OUTPUT_PROFILE_REF);
+        }
         cat.setItem(COSName.OUTPUT_INTENTS, out);
         return components;
     }

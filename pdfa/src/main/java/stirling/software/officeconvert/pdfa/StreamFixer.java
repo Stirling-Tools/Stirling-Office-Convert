@@ -36,6 +36,15 @@ final class StreamFixer {
 
     private static final COSName HTO = COSName.getPDFName("HTO");
 
+    private static final COSName HALFTONE_TYPE = COSName.getPDFName("HalftoneType");
+
+    private static final COSName HALFTONE_NAME = COSName.getPDFName("HalftoneName");
+
+    private static final COSName TRANSFER_FUNCTION = COSName.getPDFName("TransferFunction");
+
+    private static final Set<String> PRIMARY_COLOURANTS = Set.of("Cyan", "Magenta", "Yellow", "Black", "Red", "Green",
+            "Blue", "Gray", "Default");
+
     private static final COSName OPI = COSName.getPDFName("OPI");
 
     private static final COSName ALTERNATES = COSName.getPDFName("Alternates");
@@ -197,7 +206,7 @@ final class StreamFixer {
         if (intent != null && !(intent instanceof COSName n && INTENTS.contains(n.getName()))) {
             s.removeItem(COSName.INTENT);
         }
-        if (level.part() > 1 && COSName.JPX_DECODE.equals(s.getDictionaryObject(COSName.FILTER))) {
+        if ((level.part() == 2 || level.part() == 3) && COSName.JPX_DECODE.equals(s.getDictionaryObject(COSName.FILTER))) {
             s.removeItem(COSName.getPDFName("SMaskInData"));
         }
     }
@@ -208,7 +217,9 @@ final class StreamFixer {
         if (tr2 != null && !COSName.DEFAULT.equals(tr2)) {
             gs.removeItem(TR2);
         }
-        gs.removeItem(HT);
+        if (level.part() < 4 || !halftoneAllowed(gs.getDictionaryObject(HT), 0)) {
+            gs.removeItem(HT);
+        }
         gs.removeItem(HTP);
         gs.removeItem(HTO);
         if (gs.getInt(OPM, 0) == 1) {
@@ -219,6 +230,37 @@ final class StreamFixer {
             gs.setItem(COSName.RI, COSName.getPDFName("RelativeColorimetric"));
         }
         blendMode(gs);
+    }
+
+    private static boolean halftoneAllowed(COSBase ht, int depth) {
+        return halftoneAllowed(ht, depth, null);
+    }
+
+    private static boolean halftoneAllowed(COSBase ht, int depth, COSName colourant) {
+        if (ht == null || ht instanceof COSName) {
+            return true;
+        }
+        if (!(ht instanceof COSDictionary d) || depth > 8) {
+            return false;
+        }
+        boolean primary = colourant == null || PRIMARY_COLOURANTS.contains(colourant.getName());
+        if (d.containsKey(TRANSFER_FUNCTION) == primary) {
+            return false;
+        }
+        d.removeItem(HALFTONE_NAME);
+        int type = d.getInt(HALFTONE_TYPE, -1);
+        if (depth > 0 && type != 1 || depth == 0 && type != 1 && type != 5) {
+            return false;
+        }
+        if (type == 5) {
+            for (COSName k : d.keySet()) {
+                if (!COSName.TYPE.equals(k) && !HALFTONE_TYPE.equals(k)
+                        && !halftoneAllowed(d.getDictionaryObject(k), depth + 1, k)) {
+                    return false;
+                }
+            }
+        }
+        return true;
     }
 
     static void blendMode(COSDictionary d) {

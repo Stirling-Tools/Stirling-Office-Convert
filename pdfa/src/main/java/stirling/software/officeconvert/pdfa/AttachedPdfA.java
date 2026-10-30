@@ -60,7 +60,8 @@ final class AttachedPdfA {
                 }
                 boolean[] ok = {true};
                 Set<COSStream> checked = Collections.newSetFromMap(new IdentityHashMap<>());
-                CosWalk.walk(doc, b -> ok[0] &= allowed(b, depth, checked, partFour));
+                boolean carriesAnyFile = partFour && carriesAnyFile(doc);
+                CosWalk.walk(doc, b -> ok[0] &= allowed(b, depth, checked, partFour, carriesAnyFile));
                 parser.checkBudget();
                 return ok[0];
             }
@@ -113,7 +114,20 @@ final class AttachedPdfA {
         return count == 1 ? value : "";
     }
 
-    private static boolean allowed(COSBase b, int depth, Set<COSStream> checked, boolean partFour) {
+    private static boolean carriesAnyFile(PDDocument doc) {
+        if (!(doc.getDocumentCatalog().getCOSObject().getDictionaryObject(COSName.METADATA) instanceof COSStream xmp)) {
+            return false;
+        }
+        try {
+            Document xml = XmpCarryOver.parse(Decoded.bytes(xmp, StreamFixer.MAX_METADATA_BYTES, "XMP metadata"));
+            return xml != null && "4".equals(property(xml, "part")) && "F".equals(property(xml, "conformance"));
+        } catch (IOException e) {
+            return false;
+        }
+    }
+
+    private static boolean allowed(COSBase b, int depth, Set<COSStream> checked, boolean partFour,
+            boolean carriesAnyFile) {
         if (!(b instanceof COSDictionary d)) {
             return true;
         }
@@ -128,6 +142,9 @@ final class AttachedPdfA {
         if (COSName.FONT.equals(d.getCOSName(COSName.TYPE)) && !COSName.TYPE0.equals(d.getCOSName(COSName.SUBTYPE))
                 && !COSName.TYPE3.equals(d.getCOSName(COSName.SUBTYPE)) && !embedded(d)) {
             return false;
+        }
+        if (carriesAnyFile) {
+            return true;
         }
         COSDictionary ef = ContentGraph.dict(d.getDictionaryObject(COSName.EF));
         if (ef != null) {
