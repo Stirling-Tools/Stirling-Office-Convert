@@ -25,6 +25,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import stirling.software.officeconvert.topdf.OfficeToPdf;
+import stirling.software.officeconvert.topdf.font.FontSet;
+import stirling.software.officeconvert.topdf.testing.TestFonts;
 
 class HtmlLayoutTest {
 
@@ -829,5 +831,29 @@ class HtmlLayoutTest {
         assertTrue((right & 0xFF) > (right >> 16 & 0xFF) + 80, Integer.toHexString(right));
         int twoBottom = l.first().getRGB(Math.round(l.word("Two").left()), Math.round(l.word("more").top()));
         assertTrue((twoBottom & 0xFFFFFF) != 0xFFFFFF, "the shorter item stretches to the row");
+    }
+
+    @Test
+    void emojiDrawFromTheColourEmojiFontAndStayText() throws IOException {
+        Path fonts = Files.createDirectories(dir.resolve("fonts"));
+        Files.write(fonts.resolve("TestColorEmoji.ttf"), TestFonts.colourEmoji(0x00C000, 0xFF0000));
+        OfficeToPdf.Options options = OfficeToPdf.Options.defaults()
+                .fonts(FontSet.builder().directory(fonts).systemFonts(false).build());
+        Laid l = lay("<html><body style=\"font-size:48px\"><p>Go \u2705 now \u2b50\ufe0f end \u2b50\ufe0e</p></body>"
+                + "</html>", options);
+        assertTrue(l.text().contains("Go \u2705 now \u2b50"), l.text());
+        Word go = l.word("Go");
+        Word now = l.word("now");
+        int y = Math.round(go.top() - 14);
+        int green = 0;
+        int red = 0;
+        for (int x = Math.round(go.right()); x < l.first().getWidth(); x++) {
+            int rgb = l.first().getRGB(x, y) & 0xFFFFFF;
+            green += rgb == 0x00C000 ? 1 : 0;
+            red += rgb == 0xFF0000 ? 1 : 0;
+        }
+        assertEquals(1.245f * 36, green, 4);
+        assertEquals(1.245f * 36, red, 4);
+        assertTrue(now.left() - go.right() > 1.2f * 36, go + " " + now);
     }
 }

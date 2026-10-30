@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -20,6 +21,8 @@ import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.PDResources;
+import org.apache.pdfbox.rendering.PDFRenderer;
+import org.apache.pdfbox.text.PDFTextStripper;
 import org.apache.poi.xwpf.usermodel.XWPFDocument;
 import org.apache.poi.xwpf.usermodel.XWPFRun;
 import org.junit.jupiter.api.Test;
@@ -121,5 +124,39 @@ class OfficeToPdfFontSetTest {
                 .fonts(FontSet.builder().systemFonts(false).build());
         assertEquals("Old Sans", o.fontLibrary().find("Old Sans", false, false).family());
         assertEquals(FontSet.system(), OfficeToPdf.Options.defaults().fonts());
+    }
+
+    @Test
+    void wordEmojiDrawFromTheColourEmojiFontAndStayText() throws Exception {
+        Path fonts = Files.createDirectories(dir.resolve("emoji"));
+        Files.write(fonts.resolve("TestColorEmoji.ttf"), TestFonts.colourEmoji(0x00C000, 0xFF0000));
+        Path docx;
+        try (XWPFDocument doc = new XWPFDocument(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+            XWPFRun run = doc.createParagraph().createRun();
+            run.setFontFamily("Arial");
+            run.setFontSize(36);
+            run.setText("Done \u2705 star \u2b50\ufe0f");
+            doc.write(out);
+            docx = Files.write(dir.resolve("emoji.docx"), out.toByteArray());
+        }
+        Path pdf = dir.resolve("emoji.pdf");
+        OfficeToPdf.convert(docx, pdf, OfficeToPdf.Options.defaults()
+                .fonts(FontSet.builder().directory(fonts).systemFonts(false).build()));
+        try (PDDocument doc = Loader.loadPDF(pdf.toFile())) {
+            assertTrue(new PDFTextStripper().getText(doc).contains("Done \u2705 star \u2b50"));
+            BufferedImage page = new PDFRenderer(doc).renderImage(0, 1f);
+            int green = 0;
+            int red = 0;
+            for (int y = 0; y < page.getHeight(); y++) {
+                for (int x = 0; x < page.getWidth(); x++) {
+                    int rgb = page.getRGB(x, y) & 0xFFFFFF;
+                    green += rgb == 0x00C000 ? 1 : 0;
+                    red += rgb == 0xFF0000 ? 1 : 0;
+                }
+            }
+            float side = 1.245f * 36;
+            assertEquals(side * side * 128 / 136, green, side * 4);
+            assertEquals(green, red, side * 2);
+        }
     }
 }

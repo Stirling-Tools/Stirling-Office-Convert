@@ -8,6 +8,7 @@ import java.util.Optional;
 
 import stirling.software.officeconvert.topdf.RenderJob;
 import stirling.software.officeconvert.topdf.font.CloudFonts;
+import stirling.software.officeconvert.topdf.font.ColorEmoji;
 import stirling.software.officeconvert.topdf.font.FontFace;
 import stirling.software.officeconvert.topdf.font.FontLibrary;
 
@@ -132,6 +133,10 @@ final class Fonts {
     static boolean withEastAsianExtra(CloudFonts.Emulation e) {
         return e != null && e.vertical() != null
                 && Arrays.equals(e.vertical(), eastAsianVertical(e.face().requestedFamily()));
+    }
+
+    ColorEmoji colorEmoji() {
+        return job.fonts().colorEmoji();
     }
 
     FontFace fallback(int codePoint, FontFace like) {

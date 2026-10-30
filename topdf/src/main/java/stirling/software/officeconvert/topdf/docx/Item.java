@@ -1,5 +1,6 @@
 package stirling.software.officeconvert.topdf.docx;
 
+import stirling.software.officeconvert.topdf.font.ColorEmoji;
 import stirling.software.officeconvert.topdf.font.GlyphRun;
 
 final class Item {
@@ -42,6 +43,8 @@ final class Item {
 
     boolean shaped;
 
+    ColorEmoji emoji;
+
     int level = -1;
 
     int start;
@@ -71,6 +74,7 @@ final class Item {
         p.lang = lang;
         p.rtl = rtl;
         p.shaped = shaped;
+        p.emoji = emoji;
         p.level = level;
         p.start = start + from;
         p.note = from == 0 ? note : null;
@@ -104,6 +108,10 @@ final class Item {
     }
 
     private float measure(String s) {
+        if (emoji != null) {
+            return emoji.advance(s) * look.size() * look.style().horizontalScale() / 100f
+                    + look.style().charSpacing() * s.codePointCount(0, s.length());
+        }
         if (shaped) {
             GlyphRun run = look.face().shape(s, rtl);
             return run.width(look.size()) * look.style().horizontalScale() / 100f

@@ -73,6 +73,8 @@ public final class FontLibrary {
 
     private final Lru<Long, Optional<FontFace>> fallbacks = new Lru<>(MAX_FACES);
 
+    private volatile Optional<ColorEmoji> colorEmoji;
+
     private FontLibrary(List<FontEntry> entries) {
         this(entries, Map.of(), Map.of());
     }
@@ -349,6 +351,25 @@ public final class FontLibrary {
     public static boolean drawsScript(String family, int codePoint) {
         String sample = ScriptWidths.sample(codePoint);
         return sample != null && ScriptWidths.average(family, sample) > 0;
+    }
+
+    public ColorEmoji colorEmoji() {
+        Optional<ColorEmoji> known = colorEmoji;
+        if (known == null) {
+            ColorEmoji found = null;
+            for (FontEntry e : entries) {
+                if (e.file() != null && e.offset() == 0 && !e.usable() && e.family() != null
+                        && normalize(e.family()).contains("emoji")) {
+                    found = ColorEmoji.open(e.file());
+                    if (found != null) {
+                        break;
+                    }
+                }
+            }
+            known = Optional.ofNullable(found);
+            colorEmoji = known;
+        }
+        return known.orElse(null);
     }
 
     public List<FontRun> runs(String text, FontFace primary) {
