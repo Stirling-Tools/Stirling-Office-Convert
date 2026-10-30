@@ -21,6 +21,10 @@ final class FontPrograms {
     }
 
     static Type1 type1(String fontName, int subrPadding) {
+        return type1(fontName, subrPadding, 0);
+    }
+
+    static Type1 type1(String fontName, int subrPadding, int widthTenths) {
         StringBuilder clear = new StringBuilder();
         clear.append("%!PS-AdobeFont-1.0: ").append(fontName).append(" 001\n")
                 .append("12 dict begin\n/FontInfo 2 dict dup begin /FullName (").append(fontName)
@@ -54,7 +58,9 @@ final class FontPrograms {
                         new byte[] {12, 6});
             } else {
                 int w = width(n);
-                body = concat(num(0), num(w), new byte[] {13}, num(50), num(0), new byte[] {21}, num(4),
+                byte[] advance = widthTenths == 0 ? num(w) : concat(num(w * 10 + widthTenths), num(10),
+                        new byte[] {12, 12});
+                body = concat(num(0), advance, new byte[] {13}, num(50), num(0), new byte[] {21}, num(4),
                         new byte[] {10, 9},
                         repeat(concat(num(10), num(0), new byte[] {5}, num(-10), num(0), new byte[] {5}), 30),
                         new byte[] {14});

@@ -3,6 +3,7 @@ package stirling.software.officeconvert.pdfa;
 import java.io.IOException;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 
 import org.apache.fontbox.cff.CFFCIDFont;
@@ -84,7 +85,10 @@ final class FontCheck {
             }
             float dict = font.getWidth(code);
             double program = programWidth(font, code);
-            if (Math.abs(dict - program) > 1) {
+            if (!(Math.abs(dict - program) <= 1)) {
+                return false;
+            }
+            if (font instanceof PDType1Font && !(font instanceof PDType1CFont) && Math.abs(dict - (long) program) > 1) {
                 return false;
             }
         }
@@ -109,11 +113,18 @@ final class FontCheck {
             List<Map<String, Object>> privates = cid.getPrivDicts();
             exact = fd < 0 || fd >= privates.size() ? null : type2Width(cid.getCharStringBytes(), gid, privates.get(fd));
             matrix = cid.getFontMatrix();
+            List<Map<String, Object>> dicts = cid.getFontDicts();
+            Object own = fd >= 0 && fd < dicts.size() ? dicts.get(fd).get("FontMatrix") : null;
+            Object first = dicts.isEmpty() ? null : dicts.get(0).get("FontMatrix");
+            if (exact != null && !Objects.equals(own, first)) {
+                return Double.NaN;
+            }
         }
         if (exact == null || matrix == null || matrix.isEmpty()) {
             return font.getWidthFromFont(code);
         }
-        return exact * matrix.get(0).doubleValue() * 1000;
+        double scale = matrix.get(0).doubleValue();
+        return (float) scale == 0.001f ? exact : exact * scale * 1000;
     }
 
     private static Double type2Width(List<byte[]> charStrings, int gid, Map<String, Object> priv) {
