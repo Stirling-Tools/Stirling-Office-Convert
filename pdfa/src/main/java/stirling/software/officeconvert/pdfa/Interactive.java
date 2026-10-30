@@ -71,12 +71,14 @@ final class Interactive {
         }
         COSDictionary names = ContentGraph.dict(c.getDictionaryObject(COSName.NAMES));
         if (names != null) {
-            if (names.containsKey(COSName.JAVA_SCRIPT)) {
+            if (level.part() < 4 && names.containsKey(COSName.JAVA_SCRIPT)) {
                 names.removeItem(COSName.JAVA_SCRIPT);
                 report.warn("Removed document JavaScript, which PDF/A does not allow");
             }
             names.removeItem(COSName.getPDFName("AlternatePresentations"));
-            names.removeItem(COSName.getPDFName("Renditions"));
+            if (level.part() < 4) {
+                names.removeItem(COSName.getPDFName("Renditions"));
+            }
         }
     }
 

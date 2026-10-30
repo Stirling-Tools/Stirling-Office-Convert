@@ -139,7 +139,7 @@ class PdfA4FeaturesTest {
             COSDictionary aa = (COSDictionary) annot.getDictionaryObject(COSName.AA);
             assertNotNull(aa.getDictionaryObject("E"));
             assertNull(aa.getDictionaryObject("PO"));
-            assertNull(aa.getDictionaryObject("X"));
+            assertNotNull(aa.getDictionaryObject("X"));
             assertEquals(COSName.getPDFName("Normal"), annot.getDictionaryObject(COSName.BM));
         }
     }
@@ -213,7 +213,7 @@ class PdfA4FeaturesTest {
     }
 
     @Test
-    void scriptsAreRemovedWithAnHonestReason() throws Exception {
+    void scriptsThatPartFourAllowsAreKept() throws Exception {
         Path in = dir.resolve("script.pdf");
         try (PDDocument d = new PDDocument()) {
             FontSamples.page(d, "BT /A 14 Tf 50 780 Td (Script) Tj ET", FontSamples.trueType(d));
@@ -223,8 +223,12 @@ class PdfA4FeaturesTest {
         Path out = dir.resolve("script-a4.pdf");
         PdfToPdfA.Result r = PdfToPdfA.convert(in, out, PdfToPdfA.Options.defaults().level(PdfALevel.A4));
         VeraPdf.assertCompliant(out, PdfALevel.A4);
-        assertTrue(r.warnings().stream().anyMatch(w -> w.contains("keeps no scripts")), r.warnings().toString());
-        assertFalse(r.warnings().stream().anyMatch(w -> w.contains("JavaScript action, which PDF/A does not allow")));
+        assertFalse(r.warnings().stream().anyMatch(w -> w.contains("JavaScript")), r.warnings().toString());
+        try (PDDocument d = Loader.loadPDF(out.toFile())) {
+            COSDictionary action = (COSDictionary) d.getDocumentCatalog().getCOSObject()
+                    .getDictionaryObject(COSName.OPEN_ACTION);
+            assertEquals(COSName.JAVA_SCRIPT, action.getCOSName(COSName.S));
+        }
     }
 
     private static COSDictionary uri(String target) {

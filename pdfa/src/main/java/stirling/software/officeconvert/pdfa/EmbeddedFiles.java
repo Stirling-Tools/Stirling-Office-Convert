@@ -117,7 +117,7 @@ final class EmbeddedFiles {
                 page.getCOSObject().setItem(COSName.ANNOTS, kept);
             }
         }
-        if (level.part() >= 3 && !associated.isEmpty()) {
+        if (level.part() == 3 && !associated.isEmpty()) {
             COSArray af = ContentGraph.array(cat.getDictionaryObject(AF));
             if (af == null) {
                 af = new COSArray();
@@ -225,6 +225,9 @@ final class EmbeddedFiles {
                 }
             }
             COSDictionary params = ContentGraph.dict(file.getDictionaryObject(COSName.PARAMS));
+            if (level.part() == 4) {
+                return true;
+            }
             if (params == null) {
                 params = new COSDictionary();
                 file.setItem(COSName.PARAMS, params);

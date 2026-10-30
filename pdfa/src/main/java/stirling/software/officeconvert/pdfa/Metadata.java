@@ -57,9 +57,14 @@ final class Metadata {
             info.setDate(COSName.CREATION_DATE, created);
         }
         info.setDate(COSName.MOD_DATE, modified);
-        List<String> carried = new java.util.ArrayList<>(XmpCarryOver.descriptions(original));
-        carried.addAll(preserved.extras());
-        carried = XmpSupplementSchemas.add(carried, level, info.getNameAsString(COSName.TRAPPED), preserved);
+        List<String> carried;
+        if (level.part() == 4) {
+            carried = XmpPassThrough.descriptions(original);
+        } else {
+            carried = new java.util.ArrayList<>(XmpCarryOver.descriptions(original));
+            carried.addAll(preserved.extras());
+            carried = XmpSupplementSchemas.add(carried, level, info.getNameAsString(COSName.TRAPPED), preserved);
+        }
         String xmp = xmp(level, values, created, modified, carried, preserved, info.getNameAsString(COSName.TRAPPED));
         COSStream s = doc.getDocument().createCOSStream();
         s.setItem(COSName.TYPE, COSName.METADATA);

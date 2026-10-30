@@ -3,6 +3,7 @@ package stirling.software.officeconvert.pdfa;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.ByteArrayInputStream;
@@ -128,7 +129,7 @@ class PdfA4AdversarialTest {
             PDComplexFileSpecification fs = d.getDocumentCatalog().getNames().getEmbeddedFiles().getNames()
                     .get("four.pdf");
             assertNotNull(fs.getCOSObject().getDictionaryObject(COSName.getPDFName("AFRelationship")));
-            assertNotNull(d.getDocumentCatalog().getCOSObject().getDictionaryObject(COSName.getPDFName("AF")));
+            assertNull(d.getDocumentCatalog().getCOSObject().getDictionaryObject(COSName.getPDFName("AF")));
         }
         Path out2 = convert(in, "four-attached", PdfALevel.A2B);
         VeraPdf.assertCompliant(out2, PdfALevel.A2B);

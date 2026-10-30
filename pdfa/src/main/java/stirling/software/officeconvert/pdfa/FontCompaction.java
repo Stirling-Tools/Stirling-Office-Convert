@@ -306,7 +306,7 @@ final class FontCompaction {
         }
         cidFont.setItem(COSName.CID_TO_GID_MAP, s);
         COSDictionary fd = ContentGraph.dict(cidFont.getDictionaryObject(COSName.FONT_DESC));
-        if (level.part() == 1 && fd != null) {
+        if (fd != null && (level.part() == 1 || level.part() == 4 && fd.containsKey(COSName.CID_SET))) {
             COSStream set = doc.getDocument().createCOSStream();
             try (OutputStream out = set.createOutputStream(COSName.FLATE_DECODE)) {
                 out.write(bits);

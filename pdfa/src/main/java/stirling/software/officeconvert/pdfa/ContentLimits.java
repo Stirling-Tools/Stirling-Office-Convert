@@ -42,7 +42,7 @@ final class ContentLimits {
         for (int k = 0; k < o.size() - 1; k++) {
             Object v = o.get(k);
             if (v instanceof COSName n) {
-                COSName s = Limits.name(n);
+                COSName s = Limits.name(n, level);
                 if (s != n) {
                     if (!changed) {
                         o = new ArrayList<>(operation);
@@ -50,7 +50,7 @@ final class ContentLimits {
                     o.set(k, s);
                     changed = true;
                 }
-            } else if (v instanceof COSDictionary d && names(d)) {
+            } else if (v instanceof COSDictionary d && names(d, level)) {
                 if (!changed) {
                     o = new ArrayList<>(operation);
                 }
@@ -58,7 +58,7 @@ final class ContentLimits {
             }
         }
         if ("BI".equals(op.getName()) && op.getImageParameters() != null) {
-            changed |= names(op.getImageParameters());
+            changed |= names(op.getImageParameters(), level);
         }
         String name = op.getName();
         int maxString = Limits.maxString(level);
@@ -114,11 +114,11 @@ final class ContentLimits {
         return out;
     }
 
-    private static boolean names(COSDictionary d) {
+    private static boolean names(COSDictionary d, PdfALevel level) {
         boolean changed = false;
         for (Map.Entry<COSName, COSBase> e : new ArrayList<>(d.entrySet())) {
-            COSName k = Limits.name(e.getKey());
-            COSBase v = e.getValue() instanceof COSName n ? Limits.name(n) : e.getValue();
+            COSName k = Limits.name(e.getKey(), level);
+            COSBase v = e.getValue() instanceof COSName n ? Limits.name(n, level) : e.getValue();
             if (k != e.getKey() || v != e.getValue()) {
                 d.removeItem(e.getKey());
                 d.setItem(k, v);
