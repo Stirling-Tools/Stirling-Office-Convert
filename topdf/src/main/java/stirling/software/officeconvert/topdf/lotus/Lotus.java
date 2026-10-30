@@ -5,9 +5,11 @@ import java.io.InputStream;
 import java.io.InterruptedIOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
+import java.util.function.UnaryOperator;
 
 import stirling.software.officeconvert.topdf.grid.Grid;
 import stirling.software.officeconvert.topdf.grid.GridPackage;
@@ -18,6 +20,12 @@ public final class Lotus {
     public static final long MAX_BYTES = 256L << 20;
 
     private static final int MAX_SHEETS = 256;
+
+    private static final int MAX_LEVELS = 64;
+
+    private static final int MAX_RULES = 1 << 18;
+
+    private static final long MAX_RESTYLED = 20_000_000;
 
     private static final double[] SMALL = {5000, 500, 0.05, 0.005, 0.0005, 0.00005, 0.0625, 0.015625};
 
@@ -40,6 +48,31 @@ public final class Lotus {
     private int pendingFormat = LotusFormats.DEFAULT;
 
     private boolean unreadableText;
+
+    private final Map<Long, List<int[]>> rowFormats = new HashMap<>();
+
+    private int spans;
+
+    private int rowDefault = 0x71;
+
+    private final Map<Integer, Integer> angles = new HashMap<>();
+
+    private final Map<Integer, Integer> parents = new HashMap<>();
+
+    private final Map<Integer, Integer> namedStyles = new HashMap<>();
+
+    private final List<int[]> levels = new ArrayList<>();
+
+    private int deeper;
+
+    private final List<Rule> rules = new ArrayList<>();
+
+    private final List<int[]> widths = new ArrayList<>();
+
+    private final List<int[]> aligned = new ArrayList<>();
+
+    private record Rule(int sheet, int lastSheet, int col, int lastCol, int row, int lastRow, String format,
+            int rotation) {}
 
     private Lotus(byte[] d) {
         this.d = d;
@@ -73,6 +106,7 @@ public final class Lotus {
             throw new IOException("The file is not a Lotus 1-2-3 worksheet");
         }
         l.records();
+        l.restyle();
         List<GridPackage.Sheet> out = new ArrayList<>();
         for (Map.Entry<Integer, Grid> e : l.sheets.entrySet()) {
             String name = l.names.get(e.getKey());
@@ -168,7 +202,23 @@ public final class Lotus {
             }
             return;
         }
-        if (len < 4 || op < 0x16 || op > 0x27) {
+        if (op >= 0x100) {
+            layout(op, at, len);
+            return;
+        }
+        if (op == 0x07) {
+            columnWidths(at, len);
+            return;
+        }
+        if (op == 0x13) {
+            rowFormat(at, len);
+            return;
+        }
+        if (op == 0x1B) {
+            cellStyle(at, len);
+            return;
+        }
+        if (len < 4 || op < 0x16 || op > 0x28) {
             return;
         }
         int row = u16(at);
@@ -208,12 +258,205 @@ public final class Lotus {
             }
             case 0x27 -> {
                 if (len >= 12) {
-                    put(sheet, row, col, number(Double.longBitsToDouble(i64(v))), LotusFormats.DEFAULT);
+                    put(sheet, row, col, real(v), LotusFormats.DEFAULT);
+                }
+            }
+            case 0x28 -> {
+                if (len >= 12) {
+                    put(sheet, row, col, real(v), LotusFormats.DEFAULT);
+                    pendingRow = row;
+                    pendingSheet = sheet;
+                    pendingCol = col;
                 }
             }
             default -> {
             }
         }
+    }
+
+    private void layout(int op, int at, int len) {
+        switch (op) {
+            case 0x106 -> {
+                if (levels.size() < MAX_LEVELS) {
+                    levels.add(new int[2]);
+                } else {
+                    deeper++;
+                }
+            }
+            case 0x107 -> {
+                if (deeper > 0) {
+                    deeper--;
+                } else if (!levels.isEmpty()) {
+                    levels.remove(levels.size() - 1);
+                }
+            }
+            case 0x800 -> {
+                if (!levels.isEmpty() && deeper == 0 && (len == 2 || len == 4)) {
+                    long count = len == 2 ? u16(at) : i32(at) & 0xFFFFFFFFL;
+                    int[] level = levels.get(levels.size() - 1);
+                    level[0] = level[1];
+                    level[1] = (int) Math.min(Integer.MAX_VALUE, level[1] + count);
+                }
+            }
+            case 0x801 -> region(at, len);
+            default -> {
+            }
+        }
+    }
+
+    private void region(int at, int len) {
+        if (levels.size() < 4 || deeper > 0 || rules.size() >= MAX_RULES) {
+            return;
+        }
+        String format = null;
+        int rotation = 0;
+        if (len == 4) {
+            format = LotusFormats.millennium(d[at] & 0xFF, d[at + 2] & 0xFF, d[at + 3] & 0xFF);
+        } else if (len == 2 && (d[at + 1] & 0xFF) == 0x50) {
+            rotation = rotation(d[at] & 0xFF);
+        }
+        if (format == null && rotation == 0) {
+            return;
+        }
+        int[] s = levels.get(1);
+        int[] c = levels.get(2);
+        int[] r = levels.get(3);
+        rules.add(new Rule(s[0], s[1] - 1, c[0], c[1] - 1, r[0], r[1] - 1, format, rotation));
+    }
+
+    private int rotation(int style) {
+        Integer own = angles.get(style);
+        if (own != null) {
+            return own;
+        }
+        Integer parent = parents.containsKey(style) ? namedStyles.get(parents.get(style)) : null;
+        return parent == null ? 0 : angles.getOrDefault(parent, 0);
+    }
+
+    private void cellStyle(int at, int len) {
+        if (len == 10 && u16(at) == 0xFE6 && (d[at + 3] & 0xFF) == 0x60 && (d[at + 9] & 0xFF) == 0x50) {
+            namedStyles.put(d[at + 2] & 0xFF, d[at + 8] & 0xFF);
+            return;
+        }
+        if (len != 35 || u16(at) != 0xFD2 || (d[at + 3] & 0xFF) != 0x50) {
+            return;
+        }
+        if ((d[at + 30] & 0xFF) == 0x60) {
+            parents.put(d[at + 2] & 0xFF, d[at + 29] & 0xFF);
+        }
+        int align = d[at + 20] & 0xFF;
+        int rotation = switch (align == 0xFF ? 0 : align >> 4 & 7) {
+            case 3 -> 90;
+            case 4, 5 -> 180;
+            case 6 -> slant(u16(at + 22));
+            default -> 0;
+        };
+        if (rotation != 0) {
+            angles.put(d[at + 2] & 0xFF, rotation);
+        }
+    }
+
+    private static int slant(int degrees) {
+        int a = degrees == 3600 ? 45 : degrees % 360;
+        return a > 0 && a <= 90 ? a : a >= 270 ? 450 - a : 0;
+    }
+
+    private void columnWidths(int at, int len) {
+        for (int p = at + 4; p + 1 < at + len && widths.size() < MAX_RULES; p += 2) {
+            widths.add(new int[] {d[at] & 0xFF, d[p] & 0xFF, d[p + 1] & 0xFF});
+        }
+    }
+
+    private void rowFormat(int at, int len) {
+        if (len < 4) {
+            return;
+        }
+        int sheet = d[at] & 0xFF;
+        long key = (long) sheet << 32 | u16(at + 2);
+        switch (d[at + 1] & 0xFF) {
+            case 0 -> {
+                List<int[]> row = new ArrayList<>();
+                int col = 0;
+                int p = at + 4;
+                int end = at + len;
+                while (p + 4 <= end && col < Grid.MAX_COLS && spans < MAX_RULES) {
+                    int code = d[p] & 0xFF;
+                    int count = 1;
+                    boolean repeated = (d[p + 3] & 0x80) != 0;
+                    p += 4;
+                    if (repeated) {
+                        if (p >= end) {
+                            break;
+                        }
+                        count += d[p++] & 0xFF;
+                    }
+                    row.add(new int[] {col, col + count - 1, code});
+                    spans++;
+                    col += count;
+                }
+                rowFormats.put(key, row);
+            }
+            case 1 -> {
+                if (len >= 8) {
+                    rowDefault = d[at + 4] & 0xFF;
+                }
+            }
+            case 2 -> {
+                List<int[]> row = len >= 8 ? rowFormats.get((long) (d[at + 4] & 0xFF) << 32 | u16(at + 6)) : null;
+                if (row != null && spans + row.size() <= MAX_RULES) {
+                    rowFormats.put(key, row);
+                    spans += row.size();
+                }
+            }
+            default -> {
+            }
+        }
+    }
+
+    private void restyle() {
+        for (int[] w : widths) {
+            Grid g = sheets.get(w[0]);
+            if (g != null) {
+                g.width(w[1], w[2]);
+            }
+        }
+        for (int[] a : aligned) {
+            Grid g = sheets.get(a[0]);
+            if (a[3] > g.width(a[2])) {
+                g.put(a[1], a[2], new Grid.Cell(null, null, false, false, "left"));
+            }
+        }
+        long budget = MAX_RESTYLED;
+        for (Map.Entry<Long, List<int[]>> e : rowFormats.entrySet()) {
+            Grid g = sheets.get((int) (e.getKey() >>> 32));
+            int row = (int) (e.getKey() & 0xFFFF);
+            for (int[] span : e.getValue()) {
+                if (g == null || budget <= 0) {
+                    break;
+                }
+                int code = (span[2] & 0x7F) == 0x7F ? rowDefault : span[2];
+                String excel = LotusFormats.excel(code);
+                budget -= g.restyle(row, row, span[0], span[1], numbers(excel == null ? "General" : excel));
+            }
+        }
+        for (Rule r : rules) {
+            for (int s = Math.max(0, r.sheet()); s <= Math.min(r.lastSheet(), MAX_SHEETS - 1) && budget > 0; s++) {
+                Grid g = sheets.get(s);
+                if (g != null) {
+                    budget -= g.restyle(r.row(), r.lastRow(), r.col(), r.lastCol(), r.format() != null
+                            ? numbers(r.format()) : turned(r.rotation()));
+                }
+            }
+        }
+    }
+
+    private static UnaryOperator<Grid.Cell> numbers(String format) {
+        return c -> c.value() instanceof Double
+                ? new Grid.Cell(c.value(), format, c.bold(), c.italic(), c.align(), c.rotation()) : c;
+    }
+
+    private static UnaryOperator<Grid.Cell> turned(int rotation) {
+        return c -> new Grid.Cell(c.value(), c.format(), c.bold(), c.italic(), c.align(), rotation);
     }
 
     private void hiddenColumns(int at, int len) {
@@ -258,6 +501,9 @@ public final class Lotus {
             return;
         }
         grid(sheet).put(row, col, new Grid.Cell(s, null, false, false, align));
+        if (wide && align != null && !align.equals("fill") && aligned.size() < MAX_RULES) {
+            aligned.add(new int[] {sheet, row, col, s.length()});
+        }
     }
 
     private int effective(int format) {
@@ -280,9 +526,27 @@ public final class Lotus {
         return Double.isFinite(v) ? Double.valueOf(v) : new Grid.Error("#N/A");
     }
 
+    private Object real(int at) {
+        if (u16(at + 6) == 0xFFFF && special(d[at + 5] & 0xFF)) {
+            return specialValue(d[at + 5] & 0xFF);
+        }
+        return number(Double.longBitsToDouble(i64(at)));
+    }
+
+    private static boolean special(int tag) {
+        return tag == 0x00 || tag == 0xC0 || tag == 0xD0 || tag == 0xE0;
+    }
+
+    private static Object specialValue(int tag) {
+        return tag == 0xC0 ? new Grid.Error("#VALUE!") : tag == 0xD0 ? new Grid.Error("#N/A") : null;
+    }
+
     private Object extended(int at) {
         long mantissa = i64(at);
         int se = u16(at + 8);
+        if (se == 0xFFFF && special(d[at + 7] & 0xFF)) {
+            return specialValue(d[at + 7] & 0xFF);
+        }
         int exp = se & 0x7FFF;
         if (exp == 0x7FFF) {
             return new Grid.Error("#N/A");

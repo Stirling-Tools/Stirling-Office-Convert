@@ -622,6 +622,10 @@ final class Grid {
             double line = runsLine(e.text().runs(), defaultPx);
             int lines = 1;
             CellFormat fmt = e.format();
+            if (fmt.rotation() > 0 && fmt.rotation() <= 180) {
+                best = Math.max(best, Math.min(546, turnedHeight(e.text().runs(), line, fmt.rotation())));
+                continue;
+            }
             if (fmt.wraps() && fmt.rotation() == 0) {
                 double colPx = m.screenColumnPixels(columns.chars(e.col()));
                 double indent = fmt.indent() > 0 ? fmt.indent() * book.screenIndentPixels() : 0;
@@ -725,6 +729,16 @@ final class Grid {
     }
 
     static final double ITALIC_SLANT = 0.2;
+
+    private double turnedHeight(List<TextRun> runs, double line, int rotation) {
+        Typesetter t = book.typesetter();
+        double width = 0;
+        for (TextRun r : runs) {
+            width += t.screenWidth(r.text(), r.font(), FontMeasure.ppem(r.font().size(), 96));
+        }
+        double angle = Math.toRadians(rotation > 90 ? rotation - 90 : rotation);
+        return width * Math.sin(angle) + line * Math.cos(angle);
+    }
 
     private double runsLine(List<TextRun> runs, double defaultPx) {
         double line = 0;

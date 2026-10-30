@@ -258,4 +258,94 @@ class LotusTest {
         assertEquals("x", g.get(0, 0).value());
         assertFalse(g.warnings().isEmpty());
     }
+
+    private static byte[] u32(long v) {
+        return new byte[] {(byte) v, (byte) (v >> 8), (byte) (v >> 16), (byte) (v >> 24)};
+    }
+
+    private static byte[] style(int id, int align) {
+        byte[] b = new byte[35];
+        java.util.Arrays.fill(b, (byte) 0xFF);
+        b[0] = (byte) 0xD2;
+        b[1] = 0x0F;
+        b[2] = (byte) id;
+        b[3] = 0x50;
+        b[20] = (byte) align;
+        b[29] = 0;
+        b[30] = 0;
+        return b;
+    }
+
+    private static Records at(Records r, int[] sheet, int[] col, int[] row, byte[] format) {
+        r.rec(0x106, new byte[0]).rec(0x800, u32(1));
+        for (int[] level : new int[][] {sheet, col, row}) {
+            r.rec(0x106, new byte[0]);
+            if (level[0] > 0) {
+                r.rec(0x800, u32(level[0]));
+            }
+            r.rec(0x800, u32(level[1]));
+        }
+        r.rec(0x801, format);
+        for (int i = 0; i < 4; i++) {
+            r.rec(0x107, new byte[0]);
+        }
+        return r;
+    }
+
+    static byte[] millennium() {
+        byte[] bof = new byte[26];
+        bof[0] = 0x05;
+        bof[1] = 0x10;
+        Records r = new Records().rec(0x00, bof)
+                .rec(0x1B, style(7, 0x30))
+                .rec(0x16, wide(0, 0, 0, text("'red")))
+                .rec(0x25, wide(2, 0, 1, u32(36557L << 6)))
+                .rec(0x25, wide(2, 0, 2, u32(36557L << 6)))
+                .rec(0x28, wide(3, 0, 1, concat(new byte[] {0, 0, 0, 0, 0, (byte) 0xC0, (byte) 0xFF, (byte) 0xFF},
+                        new byte[] {1, 7, 0, 0})))
+                .rec(0x28, wide(3, 0, 2, concat(dbl(6), new byte[] {1, 7, 0, 0})));
+        at(r, new int[] {0, 1}, new int[] {1, 1}, new int[] {2, 1}, new byte[] {(byte) 0x80, 0, 0x6F, (byte) 0x80});
+        at(r, new int[] {0, 1}, new int[] {0, 1}, new int[] {0, 1}, new byte[] {7, 0x50});
+        return r.rec(0x01, new byte[0]).bytes();
+    }
+
+    @Test
+    void appliesMillenniumFormatsErrorsAndRotation() throws IOException {
+        Grid g = Lotus.read(Files.write(dir.resolve("m.123"), millennium())).get(0).grid();
+        assertEquals("mm/dd/yy", g.get(2, 1).format());
+        assertEquals(36557.0, g.get(2, 1).value());
+        assertEquals(null, g.get(2, 2).format());
+        assertEquals(new Grid.Error("#VALUE!"), g.get(3, 1).value());
+        assertEquals(6.0, g.get(3, 2).value());
+        assertEquals(90, g.get(0, 0).rotation());
+        Path pdf = dir.resolve("m.pdf");
+        OfficeToPdf.convert(Files.write(dir.resolve("m2.123"), millennium()), pdf);
+        try (PDDocument d = Loader.loadPDF(pdf.toFile())) {
+            String t = new PDFTextStripper().getText(d);
+            assertTrue(t.contains("02/01/00") && t.contains("36557") && t.contains("#VALUE!"), t);
+        }
+    }
+
+    @Test
+    void appliesRelease4RowFormats() throws IOException {
+        byte[] bof = new byte[26];
+        bof[0] = 0x02;
+        bof[1] = 0x10;
+        byte[] wk4 = new Records().rec(0x00, bof)
+                .rec(0x13, new byte[] {0, 0, 1, 0, (byte) 0xFF, 0, 0, (byte) 0x80, 1, (byte) 0xF9, 0, 0, 0,
+                        (byte) 0xB2, 0, 0, 0})
+                .rec(0x13, new byte[] {0, 2, 2, 0, 0, 0, 1, 0})
+                .rec(0x17, wide(1, 0, 2, extended(32368)))
+                .rec(0x17, wide(2, 0, 2, extended(32863)))
+                .rec(0x17, wide(2, 0, 3, extended(0.25)))
+                .rec(0x17, wide(1, 0, 0, extended(5)))
+                .rec(0x07, new byte[] {0, 0, 0, 0, 2, 12})
+                .rec(0x01, new byte[0]).bytes();
+        Grid g = Lotus.read(Files.write(dir.resolve("r.wk4"), wk4)).get(0).grid();
+        assertEquals("mm/dd/yy", g.get(1, 2).format());
+        assertEquals("mm/dd/yy", g.get(2, 2).format());
+        assertEquals("0.00%", g.get(2, 3).format());
+        assertEquals("General", g.get(1, 0).format());
+        assertEquals(12.0, g.width(2));
+    }
 }
