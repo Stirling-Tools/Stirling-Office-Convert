@@ -1,9 +1,15 @@
 package stirling.software.officeconvert.topdf.io;
 
+import java.awt.Color;
+import java.awt.GradientPaint;
 import java.awt.Graphics2D;
 import java.awt.Image;
+import java.awt.LinearGradientPaint;
+import java.awt.Paint;
+import java.awt.RadialGradientPaint;
 import java.awt.RenderingHints;
 import java.awt.Shape;
+import java.awt.TexturePaint;
 import java.awt.font.GlyphVector;
 import java.awt.geom.AffineTransform;
 import java.awt.geom.Rectangle2D;
@@ -67,6 +73,10 @@ final class Metafiles {
     private static final int DUAL_MODE = 1;
 
     private static final long RASTER_PIXELS = 8_000_000;
+
+    private static final long PAINT_PIXELS = 1_000_000;
+
+    private static final double PAINT_SCALE = 2;
 
     private Metafiles() {}
 
@@ -439,13 +449,61 @@ final class Metafiles {
         @Override
         public void draw(Shape s) {
             tick();
+            if (s != null && !known(getPaint())) {
+                paintRaster(getStroke().createStrokedShape(s));
+                return;
+            }
             super.draw(s);
         }
 
         @Override
         public void fill(Shape s) {
             tick();
+            if (s != null && !known(getPaint())) {
+                paintRaster(s);
+                return;
+            }
             super.fill(s);
+        }
+
+        private static boolean known(Paint p) {
+            return p == null || p instanceof Color || p instanceof GradientPaint || p instanceof TexturePaint
+                    || p instanceof LinearGradientPaint || p instanceof RadialGradientPaint
+                    || p instanceof org.apache.pdfbox.pdmodel.graphics.shading.ShadingPaint
+                    || p.getClass().getName().startsWith("org.apache.pdfbox.");
+        }
+
+        private void paintRaster(Shape s) {
+            Rectangle2D b = s.getBounds2D();
+            if (b.isEmpty() || !Double.isFinite(b.getWidth()) || !Double.isFinite(b.getHeight())) {
+                return;
+            }
+            AffineTransform t = getTransform();
+            double scale = PAINT_SCALE * Math.max(1e-3, Math.sqrt(Math.abs(t.getDeterminant())));
+            scale = Math.min(scale, Math.sqrt(PAINT_PIXELS / (b.getWidth() * b.getHeight())));
+            int pw = (int) Math.max(1, Math.min(MAX_SIDE, Math.ceil(b.getWidth() * scale)));
+            int ph = (int) Math.max(1, Math.min(MAX_SIDE, Math.ceil(b.getHeight() * scale)));
+            BufferedImage img = new BufferedImage(pw, ph, BufferedImage.TYPE_INT_ARGB);
+            Graphics2D ig = img.createGraphics();
+            try {
+                ig.setRenderingHints(getRenderingHints());
+                ig.scale(pw / b.getWidth(), ph / b.getHeight());
+                ig.translate(-b.getX(), -b.getY());
+                ig.setPaint(getPaint());
+                ig.fill(s);
+            } catch (RuntimeException e) {
+                return;
+            } finally {
+                ig.dispose();
+            }
+            Paint paint = getPaint();
+            setPaint(Color.BLACK);
+            try {
+                super.drawImage(img, new AffineTransform(b.getWidth() / pw, 0, 0, b.getHeight() / ph, b.getX(),
+                        b.getY()), null);
+            } finally {
+                setPaint(paint);
+            }
         }
 
         @Override
