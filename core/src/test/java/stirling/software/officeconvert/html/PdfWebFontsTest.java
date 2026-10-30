@@ -23,6 +23,9 @@ import java.util.zip.Inflater;
 
 import org.apache.fontbox.ttf.TTFParser;
 import org.apache.pdfbox.Loader;
+import org.apache.pdfbox.cos.COSArray;
+import org.apache.pdfbox.cos.COSDictionary;
+import org.apache.pdfbox.cos.COSName;
 import org.apache.fontbox.ttf.TrueTypeFont;
 import org.apache.pdfbox.io.RandomAccessReadBuffer;
 import org.apache.pdfbox.pdmodel.PDDocument;
@@ -223,6 +226,36 @@ class PdfWebFontsTest {
             } finally {
                 Thread.interrupted();
             }
+        }
+    }
+
+    @Test
+    @Timeout(value = 20, unit = TimeUnit.SECONDS)
+    void aPageTreeNestedTooDeeplyIsAnIOException() throws Exception {
+        try (PDDocument doc = new PDDocument()) {
+            COSDictionary node = new COSDictionary();
+            doc.getDocumentCatalog().getCOSObject().setItem(COSName.PAGES, node);
+            for (int i = 0; i < 200_000; i++) {
+                node.setItem(COSName.TYPE, COSName.PAGES);
+                node.setInt(COSName.COUNT, 1);
+                COSDictionary child = new COSDictionary();
+                COSArray kids = new COSArray();
+                kids.add(child);
+                node.setItem(COSName.KIDS, kids);
+                node = child;
+            }
+            node.setItem(COSName.TYPE, COSName.PAGE);
+            node.setItem(COSName.MEDIA_BOX, PDRectangle.LETTER.getCOSArray());
+            Throwable[] thrown = new Throwable[1];
+            Thread t = Thread.ofPlatform().stackSize(256 << 10).start(() -> {
+                try {
+                    PdfWebFonts.of(doc, 1, 0);
+                } catch (Throwable e) {
+                    thrown[0] = e;
+                }
+            });
+            t.join();
+            assertTrue(thrown[0] instanceof IOException, String.valueOf(thrown[0]));
         }
     }
 

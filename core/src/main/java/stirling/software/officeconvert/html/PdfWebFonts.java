@@ -64,23 +64,27 @@ public final class PdfWebFonts implements FixedHtml.FontSource {
         PdfWebFonts fonts = new PdfWebFonts();
         FontResolver resolver = new FontResolver();
         int first = Math.max(1, firstPage) - 1;
-        int last = lastPage > 0 ? Math.min(doc.getNumberOfPages(), lastPage) : doc.getNumberOfPages();
         Set<Object> seen = new HashSet<>();
         int i = 0;
-        for (PDPage page : doc.getPages()) {
-            if (i >= last) {
-                break;
-            }
-            if ((i & (CHECK_EVERY - 1)) == 0) {
-                PdfFiles.stopIfInterrupted();
-            }
-            if (i++ >= first) {
-                try {
-                    fonts.scan(page.getResources(), resolver, seen, 0);
-                } catch (RuntimeException e) {
-                    continue;
+        try {
+            int last = lastPage > 0 ? Math.min(doc.getNumberOfPages(), lastPage) : doc.getNumberOfPages();
+            for (PDPage page : doc.getPages()) {
+                if (i >= last) {
+                    break;
+                }
+                if ((i & (CHECK_EVERY - 1)) == 0) {
+                    PdfFiles.stopIfInterrupted();
+                }
+                if (i++ >= first) {
+                    try {
+                        fonts.scan(page.getResources(), resolver, seen, 0);
+                    } catch (RuntimeException e) {
+                        continue;
+                    }
                 }
             }
+        } catch (StackOverflowError e) {
+            throw new IOException("The PDF nests its pages too deeply to convert", e);
         }
         return fonts;
     }
