@@ -8,6 +8,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 import org.apache.pdfbox.contentstream.operator.Operator;
+import org.apache.pdfbox.cos.COSArray;
 import org.apache.pdfbox.cos.COSBase;
 import org.apache.pdfbox.cos.COSBoolean;
 import org.apache.pdfbox.cos.COSDictionary;
@@ -71,7 +72,9 @@ final class ContentFixer {
                 for (int k = 0; k < operation.size() - 1; k++) {
                     colours.operand(operation.get(k));
                     limits |= ContentLimits.candidate(operation.get(k), level);
-                    if (operation.get(k) instanceof COSBase b) {
+                    if (operation.get(k) instanceof COSArray || operation.get(k) instanceof COSDictionary) {
+                        changed |= Limits.numbersWithin((COSBase) operation.get(k), level, 0);
+                    } else if (operation.get(k) instanceof COSBase b) {
                         COSBase f = Limits.number(b, level);
                         if (f != b) {
                             if (!copied) {
