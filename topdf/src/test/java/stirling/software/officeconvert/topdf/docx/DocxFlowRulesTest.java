@@ -95,6 +95,29 @@ class DocxFlowRulesTest {
     }
 
     @Test
+    void anObjectBelowItsParagraphThatWouldPassThePageBottomMovesUpInsteadOfTakingItsParagraphOn()
+            throws IOException {
+        String shape = "<w:p><w:r><w:drawing><wp:anchor simplePos=\"0\" relativeHeight=\"1\" behindDoc=\"0\""
+                + " locked=\"0\" layoutInCell=\"1\" allowOverlap=\"1\" distL=\"0\" distR=\"0\" distT=\"0\""
+                + " distB=\"0\"><wp:simplePos x=\"0\" y=\"0\"/><wp:positionH relativeFrom=\"column\"><wp:posOffset>"
+                + "3810000</wp:posOffset></wp:positionH><wp:positionV relativeFrom=\"paragraph\"><wp:posOffset>"
+                + "2540000</wp:posOffset></wp:positionV><wp:extent cx=\"1270000\" cy=\"914400\"/><wp:wrapSquare"
+                + " wrapText=\"bothSides\"/><wp:docPr id=\"2\" name=\"logo\"/><a:graphic><a:graphicData"
+                + " uri=\"http://schemas.microsoft.com/office/word/2010/wordprocessingShape\"><wps:wsp><wps:spPr>"
+                + "<a:prstGeom prst=\"rect\"/></wps:spPr><wps:txbx><w:txbxContent><w:p><w:r><w:t>Logo</w:t></w:r>"
+                + "</w:p></w:txbxContent></wps:txbx><wps:bodyPr/></wps:wsp></a:graphicData></a:graphic></wp:anchor>"
+                + "</w:drawing></w:r></w:p>";
+        String sect = "<w:sectPr>" + LETTER + "</w:sectPr>";
+        DocxDoc.Rendered r = DocxDoc.render(dir, "floatup", new DocxDoc().styles(DEFAULTS)
+                .body(fillers(40) + shape).section(sect).bytes());
+        assertEquals(1, r.pages());
+        DocxDoc.Word logo = r.word("Logo");
+        assertEquals(1, logo.page());
+        assertTrue(logo.y() > r.word("F39").y() + 30 && logo.y() < 720, "moved up to end at the bottom margin: "
+                + logo.y());
+    }
+
+    @Test
     void bodyTextWrapsAroundAFloatingObjectInTheHeader() throws IOException {
         String shape = "<w:p><w:r><w:drawing><wp:anchor simplePos=\"0\" relativeHeight=\"1\" behindDoc=\"0\""
                 + " locked=\"0\" layoutInCell=\"1\" allowOverlap=\"1\" distL=\"0\" distR=\"0\" distT=\"0\""

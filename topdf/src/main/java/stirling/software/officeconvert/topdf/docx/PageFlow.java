@@ -1214,6 +1214,10 @@ final class PageFlow extends Region {
         FloatLayout.Frame frame = new FloatLayout.Frame(s.pageW, s.pageH, s.bodyLeft() + p.shift, s.right - p.shift,
                 s.top, s.bottom, cx, cw, cell);
         Rectangle2D.Float box = FloatLayout.position(d, frame, paraX - cx, paraTop);
+        if (cell == null && follows(d) && d.wraps() && box.y + box.height > p.bodyBottom
+                && paraTop + box.height <= p.bodyBottom) {
+            box.y = Math.max(paraTop, p.bodyBottom - box.height);
+        }
         List<Op> ops = new ArrayList<>();
         DrawingPainter.paint(d, box.x, box.y, ops, ctx);
         return new PageBox.FloatBox(d, box, ops, d.behind, d.z);
