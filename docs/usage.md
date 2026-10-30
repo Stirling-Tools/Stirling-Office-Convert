@@ -20,7 +20,8 @@ java -jar cli/build/libs/stirling-office-convert-cli.jar report.docx slides.pptx
 ```
 
 CLI options for PDF input: `--pages a-b`, `--no-tables`, `--dpi n` (vector figures), `--password p`,
-`--picture-fallback`, `--pictures compact|lossless` (see Pictures below), `--overwrite`, `-q`.
+`--picture-fallback`, `--pictures compact|lossless` (see Pictures below), `--timeout s` (default 300, 0 = none),
+`--overwrite`, `-q`.
 For Word, PowerPoint and Excel input (`.docx .docm .dotx .dotm .pptx .pptm .ppsx .ppsm .potx .potm .xlsx .xlsm
 .xltx .xltm .xlsb`, Word 6.0 to 2003 `.doc .dot`, Excel 2.0 to 2003 `.xls .xlt`, PowerPoint 97-2003 `.ppt .pps .pot`,
 `.rtf`, Word 2003 XML, XML Spreadsheet 2003 and Flat OPC `.xml`, Visio 2013 and later `.vsdx .vsdm .vssx .vstx`,
@@ -210,7 +211,7 @@ OfficeConvert.convert(Path.of("in.pdf"), Path.of("out.pptx"), Settings.defaults(
         .figureDpi(200)               // resolution of drawings turned into pictures
         .sheets(PdfToXlsx.Sheets.TABLE)   // spreadsheets: a sheet per table instead of per page
         .pictures(Pictures.LOSSLESS)  // every pixel, no JPEG compression (see Pictures)
-        .timeout(Duration.ofMinutes(2)));  // interrupt and fail with OfficeConvert.TimedOut past this
+        .timeout(Duration.ofMinutes(2)));  // fail with OfficeConvert.TimedOut past this (default 5 minutes, ZERO = none)
 
 String text = OfficeConvert.text(Path.of("in.pdf"));                      // text in reading order
 
@@ -250,7 +251,9 @@ is thinned.
 The `Path` overload writes beside the target and moves the file into place, so a failed conversion leaves nothing
 behind. Every failure is an `IOException`; a page that cannot be converted fails the conversion naming the page.
 An interrupted thread stops within moments, mid-page, with an `InterruptedIOException`, which is how the timeout
-works. Warnings go through Commons Logging, like PDFBox's own, which reaches SLF4J or Log4j when either is present.
+works. Each conversion runs on its own worker thread with an 8 MB stack; a document nested too deeply for it fails
+with "The document nests too deeply to convert" instead of a `StackOverflowError`. `OfficeConvert.run(timeout, work)`
+gives other converters, such as `PdfToPpt`, the same worker, timeout and failure handling. Warnings go through Commons Logging, like PDFBox's own, which reaches SLF4J or Log4j when either is present.
 
 Damaged input is read the way viewers read it: a broken operator is skipped, and a content stream that breaks off
 keeps what it drew before the break. Limits that keep one document from exhausting a shared server, each far above
@@ -498,10 +501,21 @@ core module, which the topdf module now depends on). Before a document is laid o
 is taken from its structure alone: for Office files the markup that becomes runs, cells and shapes and the largest
 picture to decode (`OfficeToPdf.memoryEstimate(path)`); for a loaded PDF the pages to read, the largest picture and
 the largest figure to render (`OfficeConvert.memoryEstimate(pdf, format, settings)`). Conversions start only while
-their estimates fit in 60 % of the heap (`-Dstirling.officeconvert.memoryBudgetPercent`), at most two per processor
-run at once, and none starts while the heap after its last collection is over 75 % full or, in a Linux container, while
+their estimates fit in 60 % of the heap (`-Dstirling.officeconvert.memoryBudgetPercent`), at most
+`-Dstirling.officeconvert.maxConcurrent` run at once (by default two per processor, but no more than one per 192 MB
+of budget, and at least one), and none starts while the heap after its last collection is over 75 % full or, in a Linux container, while
 the memory that cannot be reclaimed (tmpfs included, page cache not) plus the heap the JVM may still commit is over
-85 % of the limit. A document larger than the whole budget runs alone. The wait counts towards the timeout. If memory
+85 % of the limit. A document larger than the whole budget runs alone, or with
+`-Dstirling.officeconvert.refuseOversize=true` is refused at once with `Admission.TooLarge`. The wait counts towards the
+timeout, and a conversion that waits longer than `-Dstirling.officeconvert.maxWaitSeconds` (default 600, 0 = no limit)
+fails with `Admission.Busy` ("The converter is busy; try again later"). A conversion that already holds memory never
+waits again for a nested step (such as an eBook cover). A host can set all four at once with
+`Admission.configure(new Admission.Limits(percent, maxConcurrent, maxWait, refuseOversize))`, where `maxConcurrent` 0 is
+automatic and `Limits.defaults()` reads the properties; conversions already running finish under the old limits.
+`Admission.jvm().status()` reports the budget, the bytes held, the conversions running, the slots, how many are stuck
+and the share of the heap in use. A worker that ignores its timeout is abandoned after a short wait and counted as
+stuck; its memory and slot stay held until it really ends, so later work fails with `Busy` rather than waiting
+forever behind it. If memory
 still runs short (the heap over 90 % after a full collection, or the container over 90 %), the largest of the running
 conversions stops at its next page or checkpoint with "The document needs more memory to convert than is available"
 and the others go on; a conversion running alone stops only at 97 % of the heap or 95 % of the container, and with
