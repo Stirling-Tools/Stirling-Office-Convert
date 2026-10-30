@@ -147,9 +147,10 @@ public final class ImageBudget {
     /**
      * Bytes {@code getImage()} allocates for a masked image or a stencil: it scales the base image
      * and its {@code /SMask} or stencil {@code /Mask} to a common size and builds a
-     * 4-byte-per-pixel raster. {@link #decodedBytes} measures the base samples only, so the mask
-     * and stencil dimensions are accounted for here. Returns 0 when no mask stream and no stencil
-     * applies, leaving plain images to {@code decodedBytes}.
+     * 4-byte-per-pixel raster. {@link #decodedBytes} measures the base image only, so the mask
+     * and stencil dimensions are accounted for here, as are the grey key mask and ARGB copy a
+     * colour-key {@code /Mask} array adds. Returns 0 when no mask applies, leaving plain images to
+     * {@code decodedBytes}.
      */
     static long maskedRenderBytes(PDImage image) {
         boolean stencil;
@@ -163,7 +164,7 @@ public final class ImageBudget {
         }
         COSStream mask = appliedMask(x.getCOSObject());
         if (mask == null && !stencil) {
-            return 0;
+            return x.getCOSObject().getDictionaryObject(COSName.MASK) instanceof COSArray ? colourKeyBytes(x) : 0;
         }
         long[] base = size(x.getCOSObject());
         long[] applied = mask == null ? base : size(mask);
@@ -174,15 +175,21 @@ public final class ImageBudget {
     }
 
     static long decodedBytes(PDImage image) {
-        int components;
+        return samples(image.getWidth(), image.getHeight(), components(image) + 4);
+    }
+
+    private static long colourKeyBytes(PDImageXObject image) {
+        long[] base = size(image.getCOSObject());
+        return base == null ? Long.MAX_VALUE : samples(base[0], base[1], components(image) + 9);
+    }
+
+    private static int components(PDImage image) {
         try {
-            components = image.isStencil() || image.getColorSpace() == null ? 1 : image.getColorSpace().getNumberOfComponents();
+            return Math.max(1, image.isStencil() || image.getColorSpace() == null ? 1
+                    : image.getColorSpace().getNumberOfComponents());
         } catch (Exception e) {
-            components = 4;
+            return 4;
         }
-        long samples = samples(image.getWidth(), image.getHeight(), Math.max(1, components));
-        long precision = Math.max(1, image.getBitsPerComponent());
-        return samples > Long.MAX_VALUE / precision ? Long.MAX_VALUE : samples * precision / 8;
     }
 
     static long codedBytes(PDImage image) {
@@ -208,7 +215,7 @@ public final class ImageBudget {
                 default -> 0;
             };
         } catch (IOException | RuntimeException e) {
-            return 0;
+            return Long.MAX_VALUE;
         }
     }
 
