@@ -676,6 +676,30 @@ class MainTest {
     }
 
     @Test
+    void aFolderConvertsEveryBookAndOnlyWithAllowPackagesItsZips() throws Exception {
+        Path in = Files.createDirectories(dir.resolve("books"));
+        assertEquals(0, run(helloPdf(dir.resolve("story.pdf")).toString(), "-o", in.resolve("story.epub").toString(), "-q")
+                .code());
+        Files.writeString(in.resolve("~$story.epub"), "owner file");
+        try (OutputStream os = Files.newOutputStream(in.resolve("site.zip")); ZipOutputStream z = new ZipOutputStream(os)) {
+            entry(z, "index.html", "<p>Zipped page</p>");
+        }
+        Files.writeString(in.resolve("page.html"), "<p>hello</p>");
+        Path out = dir.resolve("books-out");
+        Result plain = run(in.toString(), "--format", "pdf", "-o", out.toString(), "-q");
+        assertEquals(0, plain.code(), plain.err());
+        assertTrue(Files.size(out.resolve("story.pdf")) > 0 && Files.size(out.resolve("page.pdf")) > 0);
+        assertFalse(Files.exists(out.resolve("site.pdf")) || Files.exists(out.resolve("~$story.pdf")));
+        Path all = dir.resolve("books-all");
+        Result packages = run(in.toString(), "--allow-packages", "--format", "pdf", "-o", all.toString(), "-q");
+        assertEquals(0, packages.code(), packages.err());
+        assertTrue(Files.size(all.resolve("story.pdf")) > 0 && Files.size(all.resolve("site.pdf")) > 0);
+        Result noFormat = run(in.toString(), "-o", dir.resolve("books-default").toString(), "-q");
+        assertEquals(0, noFormat.code(), noFormat.err());
+        assertTrue(Files.size(dir.resolve("books-default").resolve("story.pdf")) > 0);
+    }
+
+    @Test
     void pagesReadFilesBesideThemOnlyWithAllowLocalFiles() throws Exception {
         Path site = Files.createDirectories(dir.resolve("site"));
         Files.write(site.resolve("dot.png"), png());

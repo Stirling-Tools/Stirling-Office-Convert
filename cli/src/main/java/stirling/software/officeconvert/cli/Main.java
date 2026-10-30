@@ -293,12 +293,13 @@ public final class Main {
         boolean officeFolder = !archive && (!formatGiven || "pdf".equals(format));
         boolean pdfFolder = archive || !formatGiven || !"pdf".equals(format);
         boolean textFolder = formatGiven;
+        boolean packages = office.allowPackages();
         int failures = 0;
         for (Path in : inputs) {
             if (Files.isDirectory(in)) {
                 int before = pdfs.size();
                 try (Stream<Path> s = Files.list(in)) {
-                    s.filter(p -> Files.isRegularFile(p) && !lockFile(p) && (officeFolder && isOffice(p)
+                    s.filter(p -> Files.isRegularFile(p) && !lockFile(p) && (officeFolder && folderDocument(p, packages)
                             && (textFolder || !plainSource(p))
                             || pdfFolder && p.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".pdf")
                             && !(archive && p.getFileName().toString().toLowerCase(Locale.ROOT).endsWith("." + pdfSuffix))))
@@ -556,6 +557,10 @@ public final class Main {
         return isOffice(file) || name.endsWith(".zip") || name.endsWith(".epub") || name.endsWith(".pdb");
     }
 
+    private static boolean folderDocument(Path file, boolean packages) {
+        return officeOrPage(file) && (packages || !"zip".equals(extension(file)));
+    }
+
     private static boolean plainSource(Path file) {
         if (TextFormats.kind(file) != null) {
             return true;
@@ -743,8 +748,8 @@ public final class Main {
                         + " worksheets (.wk1 .wks .wk3 .wk4 .123), Apple iWork"
                         + " files, Publisher publications and Visio 2003-2010 drawings from their preview (.pages .numbers"
                         + " .key .pub .vsd .vss .vst .vsw), plain text (.txt .text .log .asc) and comma or"
-                        + " tab separated tables (.csv .tsv .tab), HTML (.html .htm .xhtml) and the JSON this tool writes (.json) convert to PDF; --password opens a protected one. A folder converts its PDFs and Office files;"
-                        + " --format pdf takes only its Office and text files. Nothing a document"
+                        + " tab separated tables (.csv .tsv .tab), HTML (.html .htm .xhtml) and the JSON this tool writes (.json) convert to PDF; --password opens a protected one. A folder converts its PDFs, Office files and eBooks,"
+                        + " and its .zip files with --allow-packages; --format pdf takes all but its PDFs, and its text files too. Nothing a document"
                         + " links to is fetched and no macro, field or formula is run. A .zip of an HTML page converts only"
                         + " with --allow-packages; --allow-local-files lets an HTML page draw the pictures and style sheets"
                         + " in its own folder (never outside it). eBooks use only what they hold; an EPUB inside another .zip, or"
