@@ -93,6 +93,27 @@ class FootprintTest {
                 "worksheet markup outside <sheetData> should be charged as tree-parsed");
     }
 
+    @Test
+    void theWorkbookPartIsChargedAsTreeParsed() throws IOException {
+        int size = 10 << 20;
+        Map<String, byte[]> small = workbookWithMainPart("<workbook/>".getBytes(StandardCharsets.ISO_8859_1));
+        Map<String, byte[]> large = workbookWithMainPart(part(size, "<workbook><definedNames>", "</definedNames></workbook>"));
+        long difference = estimate("large.xlsx", large) - estimate("small.xlsx", small);
+        assertTrue(difference >= (long) size * 20, "the workbook part should be charged as tree-parsed, got " + difference);
+    }
+
+    private static Map<String, byte[]> workbookWithMainPart(byte[] workbook) {
+        Map<String, byte[]> m = new LinkedHashMap<>();
+        m.put("[Content_Types].xml", ("<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\">"
+                + "<Override PartName=\"/xl/workbook.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml\"/>"
+                + "</Types>").getBytes(StandardCharsets.ISO_8859_1));
+        m.put("_rels/.rels", ("<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">"
+                + "<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument\" Target=\"xl/workbook.xml\"/>"
+                + "</Relationships>").getBytes(StandardCharsets.ISO_8859_1));
+        m.put("xl/workbook.xml", workbook);
+        return m;
+    }
+
     @ParameterizedTest
     @ValueSource(ints = {(8 << 20) - 5, 9 << 20, (10 << 20) - 6})
     void markupAfterLargeSheetDataIsChargedAsTreeParsed(int close) throws IOException {

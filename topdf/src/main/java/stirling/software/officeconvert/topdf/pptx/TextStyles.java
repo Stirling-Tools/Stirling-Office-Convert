@@ -286,7 +286,11 @@ final class TextStyles {
         }
         List<Piece> out = new ArrayList<>();
         int i = 0;
+        int chunks = 0;
         while (i < text.length()) {
+            if ((++chunks & 0x3F) == 0) {
+                deck.job().checkpoint();
+            }
             int start = i;
             Script s = script(text.codePointAt(i));
             while (i < text.length()) {

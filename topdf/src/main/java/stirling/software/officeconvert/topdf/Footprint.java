@@ -63,11 +63,11 @@ final class Footprint {
     private static final byte[] CLOSE_SHEET_DATA = "</sheetData>".getBytes(StandardCharsets.ISO_8859_1);
 
     /**
-     * Bytes of a workbook that XMLBeans parses into a DOM tree: the styles and shared-string parts in
-     * full, plus each worksheet's skeleton (everything outside its streamed {@code <sheetData>}).
+     * Bytes of a workbook that XMLBeans parses into a DOM tree: the workbook, styles and shared-string
+     * parts in full, plus each worksheet's skeleton (everything outside its streamed {@code <sheetData>}).
      */
     private static long treeBytes(OfficeZip zip) {
-        long tree = 0;
+        long tree = mainPartBytes(zip);
         for (String part : zip.partNames()) {
             String p = part.toLowerCase(Locale.ROOT);
             long size = Math.max(0, zip.size(part));
@@ -78,6 +78,14 @@ final class Footprint {
             }
         }
         return tree;
+    }
+
+    private static long mainPartBytes(OfficeZip zip) {
+        try {
+            return Math.max(0, zip.size(zip.mainPart()));
+        } catch (IOException e) {
+            return 0;
+        }
     }
 
     /**

@@ -1,7 +1,11 @@
 package stirling.software.officeconvert.extract;
 
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -12,7 +16,7 @@ import org.apache.pdfbox.cos.COSBase;
 import org.apache.pdfbox.cos.COSDictionary;
 import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.cos.COSStream;
-import org.apache.pdfbox.pdmodel.common.PDStream;
+import org.apache.pdfbox.filter.FilterFactory;
 import org.apache.pdfbox.pdmodel.graphics.image.PDImage;
 import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
 
@@ -51,9 +55,65 @@ public final class ImageBudget {
     }
 
     private static boolean jpx(COSStream stream) {
-        COSBase filters = stream.getFilters();
-        COSBase last = filters instanceof COSArray a && a.size() > 0 ? a.getObject(a.size() - 1) : filters;
-        return COSName.JPX_DECODE.equals(last);
+        List<COSName> filters = filters(stream);
+        return !filters.isEmpty() && COSName.JPX_DECODE.equals(filters.get(filters.size() - 1));
+    }
+
+    private static List<COSName> filters(COSStream stream) {
+        COSBase f = stream.getFilters();
+        List<COSName> out = new ArrayList<>();
+        if (f instanceof COSName n) {
+            out.add(n);
+        } else if (f instanceof COSArray a) {
+            for (COSBase b : a) {
+                if (b instanceof COSName n) {
+                    out.add(n);
+                }
+            }
+        }
+        return out;
+    }
+
+    private static byte[] jpxHeader(COSStream stream) throws IOException {
+        List<COSName> filters = filters(stream);
+        InputStream data = stream.createRawInputStream();
+        try {
+            for (int i = 0; i < filters.size() - 1; i++) {
+                Head out = new Head();
+                try {
+                    FilterFactory.INSTANCE.getFilter(filters.get(i)).decode(data, out, stream, i);
+                } catch (IOException | RuntimeException stopped) {
+                }
+                data.close();
+                data = new ByteArrayInputStream(out.bytes());
+            }
+            return data.readNBytes(JPX_HEADER_SCAN);
+        } finally {
+            data.close();
+        }
+    }
+
+    private static final class Head extends OutputStream {
+
+        private final ByteArrayOutputStream kept = new ByteArrayOutputStream();
+
+        @Override
+        public void write(int b) throws IOException {
+            write(new byte[] {(byte) b}, 0, 1);
+        }
+
+        @Override
+        public void write(byte[] b, int off, int len) throws IOException {
+            int room = JPX_HEADER_SCAN - kept.size();
+            kept.write(b, off, Math.min(room, len));
+            if (len >= room) {
+                throw new IOException("JPX header window filled");
+            }
+        }
+
+        byte[] bytes() {
+            return kept.toByteArray();
+        }
     }
 
     private static boolean inflatesWithin(PDImage image) {
@@ -77,8 +137,8 @@ public final class ImageBudget {
         if (!jpx(stream)) {
             return new long[] {Math.max(0, stream.getInt(COSName.WIDTH, 0)), Math.max(0, stream.getInt(COSName.HEIGHT, 0))};
         }
-        try (InputStream in = new PDStream(stream).createInputStream(List.of(COSName.JPX_DECODE.getName()))) {
-            return jpxSize(in.readNBytes(JPX_HEADER_SCAN));
+        try {
+            return jpxSize(jpxHeader(stream));
         } catch (IOException | RuntimeException e) {
             return null;
         }
@@ -136,6 +196,9 @@ public final class ImageBudget {
                     }
                 }
                 case "jpx" -> {
+                    if (image.getCOSObject() instanceof COSStream stream) {
+                        yield jpxBytes(jpxHeader(stream));
+                    }
                     try (InputStream in = image.createInputStream(List.of(COSName.JPX_DECODE.getName()))) {
                         yield jpxBytes(in.readNBytes(JPX_HEADER_SCAN));
                     }
