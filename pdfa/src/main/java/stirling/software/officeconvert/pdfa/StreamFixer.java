@@ -42,8 +42,7 @@ final class StreamFixer {
 
     private static final COSName TRANSFER_FUNCTION = COSName.getPDFName("TransferFunction");
 
-    private static final Set<String> PRIMARY_COLOURANTS = Set.of("Cyan", "Magenta", "Yellow", "Black", "Red", "Green",
-            "Blue", "Gray", "Default");
+    private static final Set<String> PROCESS_COLOURANTS = Set.of("Cyan", "Magenta", "Yellow", "Black");
 
     private static final COSName OPI = COSName.getPDFName("OPI");
 
@@ -243,8 +242,9 @@ final class StreamFixer {
         if (!(ht instanceof COSDictionary d) || depth > 8) {
             return false;
         }
-        boolean primary = colourant == null || PRIMARY_COLOURANTS.contains(colourant.getName());
-        if (d.containsKey(TRANSFER_FUNCTION) == primary) {
+        String name = colourant == null ? null : colourant.getName();
+        if (!"Default".equals(name)
+                && d.containsKey(TRANSFER_FUNCTION) == (name == null || PROCESS_COLOURANTS.contains(name))) {
             return false;
         }
         d.removeItem(HALFTONE_NAME);

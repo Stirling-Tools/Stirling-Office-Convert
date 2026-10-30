@@ -234,7 +234,7 @@ final class ColourFixer {
                 }
             }
         }
-        for (int i = 0; i < out.size(); i++) {
+        for (int i = 0; level.part() == 4 && i < out.size(); i++) {
             ((COSDictionary) out.getObject(i)).removeItem(DEST_OUTPUT_PROFILE_REF);
         }
         cat.setItem(COSName.OUTPUT_INTENTS, out);
