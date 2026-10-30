@@ -6,7 +6,6 @@ import java.awt.geom.Path2D;
 import java.awt.geom.PathIterator;
 import java.awt.geom.Rectangle2D;
 import java.io.IOException;
-import java.io.InterruptedIOException;
 import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -26,6 +25,7 @@ import org.apache.poi.hslf.usermodel.HSLFSlideShow;
 import org.apache.poi.sl.usermodel.PictureData.PictureType;
 import org.apache.poi.sl.usermodel.ShapeType;
 
+import stirling.software.officeconvert.extract.PdfFiles;
 import stirling.software.officeconvert.model.Picture;
 import stirling.software.officeconvert.model.Scripts;
 import stirling.software.officeconvert.slides.Frame;
@@ -68,8 +68,8 @@ public final class PptWriter implements SlideSink {
         this.firstPage = firstPage;
         for (int i = 0; i < slideCount; i++) {
             // Slide creation cost grows with the slide count; yield to cancellation between slides.
-            if ((i & 0x3F) == 0 && Thread.currentThread().isInterrupted()) {
-                throw new InterruptedIOException("Conversion interrupted");
+            if ((i & 0x3F) == 0) {
+                PdfFiles.stopIfInterrupted();
             }
             slides.add(show.createSlide());
         }

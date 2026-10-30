@@ -4,6 +4,7 @@ import java.awt.Dimension;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
 import java.util.Locale;
 
 import stirling.software.officeconvert.memory.Admission;
@@ -55,6 +56,8 @@ final class Footprint {
 
     private static final int SHEET_SCAN_BYTES = 8 << 20;
 
+    private static final int SHEET_CHUNK_BYTES = 1 << 20;
+
     private static final byte[] OPEN_SHEET_DATA = "<sheetData".getBytes(StandardCharsets.ISO_8859_1);
 
     private static final byte[] CLOSE_SHEET_DATA = "</sheetData>".getBytes(StandardCharsets.ISO_8859_1);
@@ -78,10 +81,8 @@ final class Footprint {
     }
 
     /**
-     * Bytes of a worksheet outside {@code <sheetData>} (its tree-parsed skeleton). Only the first
-     * {@link #SHEET_SCAN_BYTES} are scanned: when the sheet data does not close within that window it
-     * is large and streamed, so only the header counts; a small or empty sheet data followed by a
-     * large tail counts the tail.
+     * Bytes of a worksheet outside {@code <sheetData>} (its tree-parsed skeleton): the header before
+     * it and any markup after it, wherever the sheet data closes.
      */
     private static long worksheetSkeletonBytes(OfficeZip zip, String part, long size) {
         try (InputStream in = zip.open(part)) {
@@ -90,11 +91,35 @@ final class Footprint {
             if (open < 0) {
                 return size;
             }
-            int end = sheetDataEnd(head, open);
+            long end = sheetDataEnd(head, open);
+            if (end < 0) {
+                end = closeAfter(in, head);
+            }
             return end < 0 ? open : open + Math.max(0, size - end);
         } catch (IOException | RuntimeException e) {
             return size;
         }
+    }
+
+    private static long closeAfter(InputStream in, byte[] head) throws IOException {
+        int keep = Math.min(head.length, CLOSE_SHEET_DATA.length - 1);
+        byte[] carry = Arrays.copyOfRange(head, head.length - keep, head.length);
+        long base = head.length - keep;
+        byte[] chunk = new byte[SHEET_CHUNK_BYTES];
+        int n;
+        while ((n = in.readNBytes(chunk, 0, chunk.length)) > 0) {
+            byte[] window = new byte[carry.length + n];
+            System.arraycopy(carry, 0, window, 0, carry.length);
+            System.arraycopy(chunk, 0, window, carry.length, n);
+            int close = indexOf(window, CLOSE_SHEET_DATA, 0);
+            if (close >= 0) {
+                return base + close + CLOSE_SHEET_DATA.length;
+            }
+            keep = Math.min(window.length, CLOSE_SHEET_DATA.length - 1);
+            carry = Arrays.copyOfRange(window, window.length - keep, window.length);
+            base += window.length - keep;
+        }
+        return -1;
     }
 
     private static int sheetDataEnd(byte[] head, int open) {

@@ -15,6 +15,8 @@ import java.util.zip.ZipOutputStream;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import stirling.software.officeconvert.topdf.io.OfficeZip;
 
@@ -89,5 +91,27 @@ class FootprintTest {
         assertTrue(
                 tailEstimate > streamedEstimate * 5,
                 "worksheet markup outside <sheetData> should be charged as tree-parsed");
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {(8 << 20) - 5, 9 << 20, (10 << 20) - 6})
+    void markupAfterLargeSheetDataIsChargedAsTreeParsed(int close) throws IOException {
+        int size = 12 << 20;
+        Map<String, byte[]> streamed = workbook();
+        streamed.put(
+                "xl/worksheets/sheet1.xml",
+                part(size, "<worksheet><sheetData>", "</sheetData></worksheet>"));
+
+        byte[] sheet = part(size, "<worksheet><sheetData>", "</mergeCells></worksheet>");
+        byte[] mid = "</sheetData><mergeCells>".getBytes(StandardCharsets.ISO_8859_1);
+        System.arraycopy(mid, 0, sheet, close, mid.length);
+        Map<String, byte[]> trailing = workbook();
+        trailing.put("xl/worksheets/sheet1.xml", sheet);
+
+        long tail = size - close - "</sheetData>".length();
+        long difference = estimate("trailing.xlsx", trailing) - estimate("streamed.xlsx", streamed);
+        assertTrue(
+                difference >= tail * 20,
+                "markup after the sheet data should be charged as tree-parsed, got " + difference);
     }
 }
