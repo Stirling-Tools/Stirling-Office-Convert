@@ -319,7 +319,7 @@ OfficeToPdf.convert(Path.of("in.xlsx"), Path.of("out.pdf"), OfficeToPdf.Options.
         .maxPages(500)                         // 0 = every page; r.pageLimitReached(): cut at this limit
         .maxScratchBytes(1L << 30)             // past it OfficeToPdf.OutputTooLarge; 0 = no limit
         .fonts(fonts)                          // see Fonts below
-        .displayName("Sales Q3.xlsx"));        // the name a CSV header and FILENAME fields show
+        .displayName("Sales Q3.xlsx"));        // the name FILENAME fields show
 OfficeToPdf.convert(inputStream, OfficeToPdf.Format.PPTX, outputStream, OfficeToPdf.Options.defaults());
 OfficeToPdf.convert(inputStream, OfficeToPdf.Format.of(Path.of(uploadName)), outputStream,
         OfficeToPdf.Options.defaults().displayName(uploadName));   // TEXT, CSV and TSV say what a stream holds
@@ -484,8 +484,8 @@ page. The encoding comes from a byte order mark (UTF-8, UTF-16 or UTF-32), else 
 strictly and Windows-1252 otherwise; CR, LF and CRLF all end a line, and control characters are dropped. The text is
 rewritten as a WordprocessingML package that the DOCX renderer draws; nothing past the page limit is written.
 
-Comma separated (`.csv`) and tab separated (`.tsv .tab`) tables print the way LibreOffice Calc prints a CSV: A4, the
-file name centred above and "Page n" below, no grid, Liberation Sans 10 pt, each column as wide as LibreOffice makes
+Comma separated (`.csv`) and tab separated (`.tsv .tab`) tables print the way LibreOffice Calc prints a CSV: A4, no
+header, "Page n" below, no grid, Liberation Sans 10 pt, each column as wide as LibreOffice makes
 it (from its longest shown value), pages down then across. Fields follow RFC 4180 quoting, with LibreOffice's
 leniency for a stray or unclosed quote. Plain numbers (with thousands separators and exponents) are right aligned and
 shown in LibreOffice's general format, valid ISO 8601 dates are right aligned as written, and everything else is text:
@@ -493,8 +493,7 @@ formulas are never evaluated. Text wider than the page, or on several lines, wra
 characters, a row 16384 columns and a sheet 1048576 rows, and rows past the page limit are left out. The table is
 rewritten as a SpreadsheetML package that the XLSX renderer draws. Both kinds are recognised by their extension, or
 on a stream by `Format.TEXT`, `Format.CSV` or `Format.TSV` (what `Format.of` gives for those names), and a file with
-one of these names that is really an Office package or RTF converts as what it is. The CSV header shows
-`Options.displayName` without its extension when one is given (the Path overload gives the file's own name).
+one of these names that is really an Office package or RTF converts as what it is.
 
 Memory is shared out across the JVM, by both directions (`stirling.software.officeconvert.memory.Admission` in the
 core module, which the topdf module now depends on). Before a document is laid out, an estimate of the heap it needs
