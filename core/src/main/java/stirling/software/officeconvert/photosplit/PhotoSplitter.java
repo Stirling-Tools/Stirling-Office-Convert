@@ -180,14 +180,14 @@ public final class PhotoSplitter {
             try (PDDocument document = PdfFiles.open(input, null)) {
                 GuardedRenderer renderer = new GuardedRenderer(document, "splitting photos");
                 renderer.setSubsamplingAllowed(true);
-                if (document.getNumberOfPages() > MAX_PAGES) {
+                int pages = document.getNumberOfPages();
+                if (pages > MAX_PAGES) {
                     throw new IOException(input.getFileName() + " has more than " + MAX_PAGES + " pages; the limit is "
                             + MAX_PAGES);
                 }
-                int page = -1;
-                for (PDPage pdPage : document.getPages()) {
-                    page++;
+                for (int page = 0; page < pages; page++) {
                     checkpoint();
+                    PDPage pdPage = document.getPage(page);
                     PDRectangle box = pdPage.getCropBox();
                     float dpi = pageDpi(box, options.dpi());
                     long pixels = (long) Math.ceil(box.getWidth() / 72.0 * dpi) * (long) Math.ceil(box.getHeight() / 72.0 * dpi);

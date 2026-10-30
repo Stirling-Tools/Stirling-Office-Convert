@@ -259,6 +259,21 @@ class PdfWebFontsTest {
         }
     }
 
+    @Test
+    void anUnreadablePageTreeLeavesTheFontsOut() throws IOException {
+        try (PDDocument doc = document(Font.FULL)) {
+            COSDictionary root = doc.getDocumentCatalog().getCOSObject().getCOSDictionary(COSName.PAGES);
+            COSDictionary bad = new COSDictionary() {
+                @Override
+                public COSName getCOSName(COSName key) {
+                    throw new IllegalStateException("unreadable page");
+                }
+            };
+            root.getCOSArray(COSName.KIDS).add(bad);
+            assertNotNull(PdfWebFonts.of(doc, 1, 0));
+        }
+    }
+
     private static PDDocument flat(int pages) {
         PDDocument doc = new PDDocument();
         for (int i = 0; i < pages; i++) {

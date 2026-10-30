@@ -85,6 +85,8 @@ public final class PdfWebFonts implements FixedHtml.FontSource {
             }
         } catch (StackOverflowError e) {
             throw new IOException("The PDF nests its pages too deeply to convert", e);
+        } catch (RuntimeException e) {
+            return fonts;
         }
         return fonts;
     }

@@ -130,13 +130,14 @@ public final class PdfToPdfA {
         Path part = Files.createTempFile(PdfFiles.outputFolder(out), ".pdfa-", ".part");
         try {
             Result result = Deadline.run(options.timeout(), () -> ContentCache.run(() -> {
-                Admission.Ticket ticket = Admission.jvm().enter(estimate(Files.size(in), 0));
+                long size = Files.size(in);
+                Admission.Ticket ticket = Admission.jvm().enter(estimate(size, 0));
                 try (PDDocument doc = PdfFiles.open(in, options.password())) {
-                    Admission.Ticket content = Admission.jvm().enter(ContentBudget.peakBytes(doc));
+                    long content = ContentBudget.peakBytes(doc);
+                    ticket.close();
+                    ticket = Admission.jvm().enter(estimate(size, content));
                     try (OutputStream os = new BufferedOutputStream(Files.newOutputStream(part), 1 << 16)) {
                         return Conversion.run(doc, os, options);
-                    } finally {
-                        content.close();
                     }
                 } finally {
                     ticket.close();
