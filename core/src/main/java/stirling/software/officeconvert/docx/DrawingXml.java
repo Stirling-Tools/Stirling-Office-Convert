@@ -102,7 +102,7 @@ final class DrawingXml {
                 .append("<wps:wsp><wps:cNvSpPr txBox=\"1\"/><wps:spPr><a:xfrm").append(rotation(t))
                 .append("><a:off x=\"0\" y=\"0\"/><a:ext cx=\"").append(cx)
                 .append("\" cy=\"").append(cy).append("\"/></a:xfrm><a:prstGeom prst=\"").append(t.rounded() ? "roundRect" : "rect")
-                .append("\">").append(adjust(t.rounded(), t.width(), t.height())).append("</a:prstGeom>");
+                .append("\">").append(adjust(t.rounded(), Stacking.CORNER, t.width(), t.height())).append("</a:prstGeom>");
         if (t.fillRgb() >= 0) {
             sb.append("<a:solidFill><a:srgbClr val=\"").append(Xml.hex(t.fillRgb())).append("\"/></a:solidFill>");
         } else if (t.groundRgb() >= 0) {
@@ -194,11 +194,11 @@ final class DrawingXml {
                 .append("\"/></a:solidFill></a:ln>");
     }
 
-    private static String adjust(boolean rounded, float width, float height) {
+    private static String adjust(boolean rounded, float corner, float width, float height) {
         if (!rounded) {
             return "<a:avLst/>";
         }
-        long adj = Math.min(50000, Math.round(Stacking.CORNER / Math.max(1f, Math.min(width, height)) * 100000));
+        long adj = Math.min(50000, Math.round(corner / Math.max(1f, Math.min(width, height)) * 100000));
         return "<a:avLst><a:gd name=\"adj\" fmla=\"val " + adj + "\"/></a:avLst>";
     }
 
@@ -226,7 +226,7 @@ final class DrawingXml {
                 .append("<a:graphic><a:graphicData uri=\"http://schemas.microsoft.com/office/word/2010/wordprocessingShape\">")
                 .append("<wps:wsp><wps:cNvSpPr/><wps:spPr><a:xfrm><a:off x=\"0\" y=\"0\"/><a:ext cx=\"").append(cx)
                 .append("\" cy=\"").append(cy).append("\"/></a:xfrm><a:prstGeom prst=\"").append(geometry(s))
-                .append("\">").append(adjust(s.rounded() && !s.ellipse(), s.width(), s.height())).append("</a:prstGeom>");
+                .append("\">").append(adjust(s.rounded() && !s.ellipse(), s.corner(), s.width(), s.height())).append("</a:prstGeom>");
         if (s.rgb() >= 0) {
             sb.append("<a:solidFill><a:srgbClr val=\"").append(Xml.hex(s.rgb())).append("\"/></a:solidFill>");
         } else {

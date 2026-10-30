@@ -228,7 +228,7 @@ final class Positioned {
         if (empty && t.rotation() == 0) {
             if (fill >= 0 || even) {
                 drawings.add(0, new Inline.Shape(x, y, sw, sh, fill, line, even ? bT * k : 0, rounded, ellipse(d),
-                        true, 0));
+                        true, 0, rounded ? BoxPaint.corner(d, em, sw, sh) : 0));
             }
             return new Placed(drawings, fromBottom, sw, sh);
         }
@@ -331,7 +331,7 @@ final class Positioned {
                         b.lineWidth(), b.rounded(), b.overlay(), b.direction(), b.groundRgb(), b.upright(), b.rotation(),
                         fromParagraph, b.grow()));
                 case Inline.Shape s -> out.add(new Inline.Shape(s.x() + dx, s.y() + dy, s.width(), s.height(), s.rgb(),
-                        s.lineRgb(), s.lineWidth(), s.rounded(), s.ellipse(), fromParagraph, s.z()));
+                        s.lineRgb(), s.lineWidth(), s.rounded(), s.ellipse(), fromParagraph, s.z(), s.radius()));
                 case Inline.Image img -> {
                     Picture p = img.picture();
                     p.x += dx;

@@ -145,7 +145,7 @@ final class OdtFrames {
                 .append("\" svg:height=\"")
                 .append(OdtXml.pt(h)).append('"');
         if (s.rounded() && !s.ellipse()) {
-            sb.append(" draw:corner-radius=\"").append(OdtXml.pt(Math.min(Stacking.CORNER, Math.min(w, h) / 2f))).append('"');
+            sb.append(" draw:corner-radius=\"").append(OdtXml.pt(Math.min(s.corner(), Math.min(w, h) / 2f))).append('"');
         }
         sb.append(" draw:z-index=\"").append(Stacking.shape(s, z++) - Stacking.BACKDROP).append("\"/>");
     }

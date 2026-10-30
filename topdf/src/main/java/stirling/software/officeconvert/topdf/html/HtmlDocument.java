@@ -260,6 +260,7 @@ public final class HtmlDocument {
         List<Inline> fixedLayer = new ArrayList<>(Backgrounds.paint(Backgrounds.url(htmlStyle) != null ? htmlStyle
                 : bodyStyle, bodyLook, ctx.images(), 0, 0, page.pageWidth, page.pageHeight, false));
         int canvas = canvasColor(htmlStyle, bodyStyle);
+        ctx.canvas(canvas);
         if (canvas >= 0) {
             fixedLayer.add(0, new Inline.Shape(page.marginLeft, page.marginTop,
                     page.pageWidth - page.marginLeft - page.marginRight,

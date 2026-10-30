@@ -73,8 +73,13 @@ public sealed interface Inline {
             implements Inline {}
 
     record Shape(float x, float y, float width, float height, int rgb, int lineRgb, float lineWidth, boolean rounded,
-            boolean ellipse, boolean fromParagraph, int z)
+            boolean ellipse, boolean fromParagraph, int z, float radius)
             implements Inline {
+
+        public Shape(float x, float y, float width, float height, int rgb, int lineRgb, float lineWidth, boolean rounded,
+                boolean ellipse, boolean fromParagraph, int z) {
+            this(x, y, width, height, rgb, lineRgb, lineWidth, rounded, ellipse, fromParagraph, z, 0);
+        }
 
         public Shape(float x, float y, float width, float height, int rgb) {
             this(x, y, width, height, rgb, -1, 0, false, false, false, 0);
@@ -85,7 +90,11 @@ public sealed interface Inline {
         }
 
         public Shape riding(float offset) {
-            return new Shape(x, offset, width, height, rgb, lineRgb, lineWidth, rounded, ellipse, true, z);
+            return new Shape(x, offset, width, height, rgb, lineRgb, lineWidth, rounded, ellipse, true, z, radius);
+        }
+
+        public float corner() {
+            return Math.min(radius > 0 ? radius : Stacking.CORNER, Math.min(width, height) / 2);
         }
     }
 }

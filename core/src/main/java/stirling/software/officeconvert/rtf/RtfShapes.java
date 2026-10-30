@@ -140,7 +140,7 @@ final class RtfShapes {
         open(sb, s.x(), y, w, h, s.fromParagraph(), "\\shpwr3", true, id, Stacking.shape(s, id) - Stacking.BACKDROP);
         prop(sb, "shapeType", shapeType(s));
         if (s.rounded() && !s.ellipse()) {
-            long adjust = Math.round(Math.min(0.5f, Stacking.CORNER / Math.min(w, h)) * 21600);
+            long adjust = Math.round(Math.min(0.5f, s.corner() / Math.min(w, h)) * 21600);
             prop(sb, "adjustValue", Long.toString(adjust));
         }
         fill(sb, s.rgb());

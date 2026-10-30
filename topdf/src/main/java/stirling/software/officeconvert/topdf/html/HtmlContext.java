@@ -35,6 +35,7 @@ final class HtmlContext {
     private boolean continuing;
     private float insetLeft;
     private float insetRight;
+    private int canvas = -1;
     private Generated.Result generated = Generated.Result.NONE;
     private final Map<String, String> aliases = new HashMap<>();
     // the most items of any row of columns in an element or inside it, 0 when none
@@ -326,6 +327,14 @@ final class HtmlContext {
     void inset(float left, float right) {
         insetLeft = left;
         insetRight = right;
+    }
+
+    void canvas(int rgb) {
+        canvas = rgb;
+    }
+
+    int canvas() {
+        return canvas;
     }
 
     float insetLeft() {

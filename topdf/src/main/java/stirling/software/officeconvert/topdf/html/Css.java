@@ -527,6 +527,33 @@ final class Css {
 
     /** An RGB colour, -1 for transparent, null when not a colour. */
     static Integer color(String v) {
+        return color(v, true);
+    }
+
+    static Integer opaque(String v) {
+        return color(v, false);
+    }
+
+    static float alpha(String v) {
+        String s = v == null ? "" : v.strip().toLowerCase(Locale.ROOT);
+        if (s.equals("transparent")) {
+            return 0;
+        }
+        if (s.startsWith("rgb") || s.startsWith("hsl")) {
+            return Math.max(0, Math.min(1, alpha(args(s))));
+        }
+        if (s.startsWith("#") && (s.length() == 5 || s.length() == 9)) {
+            String a = s.length() == 5 ? s.substring(4).repeat(2) : s.substring(7);
+            try {
+                return Integer.parseInt(a, 16) / 255f;
+            } catch (NumberFormatException e) {
+                return 1;
+            }
+        }
+        return 1;
+    }
+
+    private static Integer color(String v, boolean flatten) {
         if (v == null) {
             return null;
         }
@@ -541,13 +568,13 @@ final class Css {
             return null;
         }
         if (s.startsWith("#")) {
-            return hex(s.substring(1));
+            return hex(s.substring(1), flatten);
         }
         if (s.startsWith("rgb")) {
-            return rgb(s);
+            return rgb(s, flatten);
         }
         if (s.startsWith("hsl")) {
-            return hsl(s);
+            return hsl(s, flatten);
         }
         return NamedColors.get(s);
     }
@@ -591,7 +618,7 @@ final class Css {
         return String.join(" ", out);
     }
 
-    private static Integer hex(String h) {
+    private static Integer hex(String h, boolean flatten) {
         String full = h;
         if (h.length() == 3 || h.length() == 4) {
             StringBuilder sb = new StringBuilder();
@@ -606,7 +633,7 @@ final class Css {
         try {
             int rgb = Integer.parseInt(full.substring(0, 6), 16);
             float alpha = full.length() == 8 ? Integer.parseInt(full.substring(6), 16) / 255f : 1f;
-            return withAlpha(rgb, alpha);
+            return flatten ? withAlpha(rgb, alpha) : rgb;
         } catch (NumberFormatException e) {
             return null;
         }
@@ -660,7 +687,7 @@ final class Css {
         return a == null ? 1f : a;
     }
 
-    private static Integer rgb(String s) {
+    private static Integer rgb(String s, boolean flatten) {
         List<String> parts = args(s);
         if (parts.size() < 3) {
             return null;
@@ -673,10 +700,10 @@ final class Css {
             }
             rgb = rgb << 8 | Math.max(0, Math.min(255, Math.round(f)));
         }
-        return withAlpha(rgb, alpha(parts));
+        return flatten ? withAlpha(rgb, alpha(parts)) : rgb;
     }
 
-    private static Integer hsl(String s) {
+    private static Integer hsl(String s, boolean flatten) {
         List<String> parts = args(s);
         if (parts.size() < 3) {
             return null;
@@ -696,7 +723,7 @@ final class Css {
         for (float t : new float[] {hue + 1f / 3, hue, hue - 1f / 3}) {
             rgb = rgb << 8 | Math.round(255 * channel(p, q, t));
         }
-        return withAlpha(rgb, alpha(parts));
+        return flatten ? withAlpha(rgb, alpha(parts)) : rgb;
     }
 
     private static float channel(float p, float q, float t) {
