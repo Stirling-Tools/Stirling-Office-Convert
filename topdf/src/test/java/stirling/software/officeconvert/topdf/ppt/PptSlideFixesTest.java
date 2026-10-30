@@ -47,6 +47,7 @@ import org.apache.poi.sl.usermodel.Placeholder;
 import org.apache.poi.sl.usermodel.ShapeType;
 import org.apache.poi.util.LittleEndian;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
 
 import stirling.software.officeconvert.topdf.OfficeToPdf;
@@ -397,6 +398,30 @@ class PptSlideFixesTest {
                 Color c = new Color(img.getRGB(90 + 130 * i, 350));
                 assertTrue(c.getRed() + c.getGreen() + c.getBlue() > 150, types[i] + " " + c);
             }
+        }
+    }
+
+    @Test
+    @Timeout(20)
+    void manyShadedShapesStayCheapAndSmall() throws IOException {
+        byte[] ppt = deck(p -> {
+            HSLFSlide slide = p.createSlide();
+            for (int i = 0; i < 200; i++) {
+                HSLFAutoShape r = new HSLFAutoShape(ShapeType.RECT);
+                r.setAnchor(new Rectangle2D.Double(i % 20, i / 20, 700, 520));
+                r.setLineColor(null);
+                HSLFFill f = r.getFill();
+                f.setFillType(6);
+                f.setForegroundColor(new Color(0, 0, 255));
+                f.setBackgroundColor(new Color(255, 255, 0));
+                slide.addShape(r);
+            }
+        });
+        Path pdf = convert("many-shaded.ppt", ppt);
+        assertTrue(java.nio.file.Files.size(pdf) < 500_000, String.valueOf(java.nio.file.Files.size(pdf)));
+        try (PDDocument d = Loader.loadPDF(pdf.toFile())) {
+            Color c = new Color(new org.apache.pdfbox.rendering.PDFRenderer(d).renderImageWithDPI(0, 72).getRGB(360, 270));
+            assertTrue(c.getRed() + c.getGreen() + c.getBlue() > 150, c.toString());
         }
     }
 
