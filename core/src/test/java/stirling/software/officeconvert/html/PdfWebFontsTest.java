@@ -4,16 +4,19 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InterruptedIOException;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.zip.Inflater;
@@ -32,6 +35,7 @@ import org.apache.pdfbox.pdmodel.font.PDType1Font;
 import org.apache.pdfbox.pdmodel.font.Standard14Fonts;
 import org.apache.pdfbox.pdmodel.graphics.state.RenderingMode;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 
 import stirling.software.officeconvert.PdfToDocx;
 import stirling.software.officeconvert.PdfToHtml;
@@ -202,4 +206,32 @@ class PdfWebFontsTest {
             assertNotNull(font.getUnicodeCmapLookup());
         }
     }
+    @Test
+    @Timeout(value = 20, unit = TimeUnit.SECONDS)
+    void aFlatTreeOfManyPagesIsScannedInOnePass() throws IOException {
+        try (PDDocument doc = flat(40_000)) {
+            assertNotNull(PdfWebFonts.of(doc, 1, 0));
+        }
+    }
+
+    @Test
+    void anInterruptedScanStops() throws IOException {
+        try (PDDocument doc = flat(10)) {
+            Thread.currentThread().interrupt();
+            try {
+                assertThrows(InterruptedIOException.class, () -> PdfWebFonts.of(doc, 1, 0));
+            } finally {
+                Thread.interrupted();
+            }
+        }
+    }
+
+    private static PDDocument flat(int pages) {
+        PDDocument doc = new PDDocument();
+        for (int i = 0; i < pages; i++) {
+            doc.addPage(new PDPage());
+        }
+        return doc;
+    }
 }
+

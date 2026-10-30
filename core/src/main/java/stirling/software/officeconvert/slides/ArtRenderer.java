@@ -29,8 +29,7 @@ import org.apache.pdfbox.rendering.PageDrawerParameters;
 import org.apache.pdfbox.util.Matrix;
 import org.apache.pdfbox.util.Vector;
 
-import stirling.software.officeconvert.extract.ImageBudget;
-import stirling.software.officeconvert.extract.OperatorBudget;
+import stirling.software.officeconvert.extract.GuardedRenderer;
 import stirling.software.officeconvert.extract.RgbGroup;
 import stirling.software.officeconvert.layout.Box;
 
@@ -107,32 +106,27 @@ final class ArtRenderer extends PDFRenderer {
         return new Drawer(parameters);
     }
 
-    private final class Drawer extends PageDrawer {
+    private final class Drawer extends GuardedRenderer.Drawer {
 
         private int order;
         private int group;
         private int nested;
-        private final OperatorBudget budget = new OperatorBudget("drawing slide art");
 
         Drawer(PageDrawerParameters parameters) throws IOException {
-            super(parameters);
+            super(parameters, "drawing slide art");
         }
 
         @Override
         protected void processOperator(Operator operator, List<COSBase> operands) throws IOException {
             operators++;
-            if (budget.run(operator)) {
-                super.processOperator(operator, operands);
-            }
+            super.processOperator(operator, operands);
         }
 
         @Override
         public void showForm(PDFormXObject form) throws IOException {
             int[] span = enterGroup();
             try {
-                if (budget.form()) {
-                    super.showForm(form);
-                }
+                super.showForm(form);
             } finally {
                 exitGroup(span);
             }
@@ -142,9 +136,7 @@ final class ArtRenderer extends PDFRenderer {
         public void showTransparencyGroup(PDTransparencyGroup form) throws IOException {
             int[] span = enterGroup();
             try {
-                if (budget.form()) {
-                    super.showTransparencyGroup(RgbGroup.of(form));
-                }
+                super.showTransparencyGroup(RgbGroup.of(form));
             } finally {
                 exitGroup(span);
             }
@@ -232,7 +224,7 @@ final class ArtRenderer extends PDFRenderer {
 
         @Override
         public void drawImage(PDImage pdImage) throws IOException {
-            if (kept() && ImageBudget.affordable(pdImage)) {
+            if (kept()) {
                 paint(() -> super.drawImage(pdImage));
             }
         }

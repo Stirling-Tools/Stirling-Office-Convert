@@ -17,9 +17,9 @@ import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.common.PDRectangle;
 import org.apache.pdfbox.rendering.ImageType;
-import org.apache.pdfbox.rendering.PDFRenderer;
 
 import stirling.software.officeconvert.build.RgbPixels;
+import stirling.software.officeconvert.extract.GuardedRenderer;
 import stirling.software.officeconvert.extract.PdfFiles;
 import stirling.software.officeconvert.html.EpubWriter;
 import stirling.software.officeconvert.memory.Admission;
@@ -66,9 +66,9 @@ final class PdfBook {
         long pixels = (long) Math.ceil(width * scale) * (long) Math.ceil(height * scale);
         Admission.Ticket ticket = Admission.jvm().enter(pixels * 4L * 3L);
         try {
-            PDFRenderer renderer = new PDFRenderer(doc);
+            GuardedRenderer renderer = new GuardedRenderer(doc, "drawing the book cover");
             renderer.setSubsamplingAllowed(true);
-            BufferedImage image = renderer.renderImage(index, scale, ImageType.RGB);
+            BufferedImage image = renderer.draw(index, scale, ImageType.RGB);
             return blank(image) ? null : palette ? CoverPicture.encode(image) : jpeg(image);
         } finally {
             ticket.close();

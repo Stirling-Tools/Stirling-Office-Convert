@@ -26,7 +26,8 @@ public final class PdfToHtml {
         PdfToDocx.convert(doc, out, options, o -> writer(doc, o, options));
     }
 
-    private static HtmlWriter writer(PDDocument doc, OutputStream out, PdfToDocx.Options options) {
+    private static HtmlWriter writer(PDDocument doc, OutputStream out, PdfToDocx.Options options)
+            throws IOException {
         return new HtmlWriter(out, options.pictures(), PdfWebFonts.of(doc, options.firstPage(), options.lastPage()));
     }
 

@@ -16,6 +16,9 @@ import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.common.PDRectangle;
 import org.apache.pdfbox.pdmodel.interactive.annotation.PDAnnotation;
 
+import stirling.software.officeconvert.extract.GuardedRenderer;
+import stirling.software.officeconvert.extract.PdfFiles;
+
 final class Annotations {
 
     private static final Set<String> ALLOWED_A1 = Set.of("Text", "Link", "FreeText", "Line", "Square", "Circle",
@@ -51,6 +54,14 @@ final class Annotations {
         }
         COSArray kept = new COSArray();
         for (int i = 0; i < annots.size(); i++) {
+            if (i == GuardedRenderer.MAX_ANNOTATIONS) {
+                report.warn("Removed the annotations past the first " + GuardedRenderer.MAX_ANNOTATIONS
+                        + " on a page, too many to draw safely");
+                break;
+            }
+            if ((i & 255) == 0) {
+                PdfFiles.stopIfInterrupted();
+            }
             COSDictionary a = ContentGraph.dict(annots.getObject(i));
             if (a == null) {
                 continue;

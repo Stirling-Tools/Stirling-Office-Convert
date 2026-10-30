@@ -24,6 +24,7 @@ import org.apache.fontbox.ttf.TrueTypeFont;
 import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.io.RandomAccessReadBuffer;
 import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.PDResources;
 import org.apache.pdfbox.pdmodel.common.PDStream;
 import org.apache.pdfbox.pdmodel.font.PDCIDFont;
@@ -37,10 +38,13 @@ import org.apache.pdfbox.pdmodel.graphics.form.PDFormXObject;
 
 import stirling.software.officeconvert.extract.FontInfo;
 import stirling.software.officeconvert.extract.FontResolver;
+import stirling.software.officeconvert.extract.PdfFiles;
 import stirling.software.officeconvert.fonts.Unhinted;
 public final class PdfWebFonts implements FixedHtml.FontSource {
 
     private static final int MAX_FORM_DEPTH = 4;
+
+    private static final int CHECK_EVERY = 64;
 
     private static final int MAX_WHOLE_FONT_BYTES = 256 << 10;
 
@@ -56,16 +60,26 @@ public final class PdfWebFonts implements FixedHtml.FontSource {
 
     private record Face(String family, boolean bold, boolean italic, String postScriptName, PDFont font) {}
 
-    public static PdfWebFonts of(PDDocument doc, int firstPage, int lastPage) {
+    public static PdfWebFonts of(PDDocument doc, int firstPage, int lastPage) throws IOException {
         PdfWebFonts fonts = new PdfWebFonts();
         FontResolver resolver = new FontResolver();
+        int first = Math.max(1, firstPage) - 1;
         int last = lastPage > 0 ? Math.min(doc.getNumberOfPages(), lastPage) : doc.getNumberOfPages();
         Set<Object> seen = new HashSet<>();
-        for (int i = Math.max(1, firstPage) - 1; i < last; i++) {
-            try {
-                fonts.scan(doc.getPage(i).getResources(), resolver, seen, 0);
-            } catch (RuntimeException e) {
-                continue;
+        int i = 0;
+        for (PDPage page : doc.getPages()) {
+            if (i >= last) {
+                break;
+            }
+            if ((i & (CHECK_EVERY - 1)) == 0) {
+                PdfFiles.stopIfInterrupted();
+            }
+            if (i++ >= first) {
+                try {
+                    fonts.scan(page.getResources(), resolver, seen, 0);
+                } catch (RuntimeException e) {
+                    continue;
+                }
             }
         }
         return fonts;
