@@ -119,6 +119,23 @@ class RefitAndLetterTest {
     }
 
     @Test
+    void wrappedRowsSizedOnAnotherScreenAreRefitButNotThoseSizedAtTheDefault() throws Exception {
+        String words = "one two three four five six seven eight nine ten eleven twelve";
+        String rows = "<cols><col min=\"1\" max=\"1\" width=\"8\" customWidth=\"1\"/></cols><sheetData>"
+                + "<row r=\"1\" ht=\"15\"><c r=\"A1\" s=\"1\" t=\"inlineStr\"><is><t>" + words
+                + "</t></is></c></row><row r=\"2\">" + RawXlsx.inline("A2", "Below") + "</row></sheetData>";
+        float stored = below("here.xlsx", "<sheetFormatPr defaultRowHeight=\"15\"/>" + rows);
+        float refit = below("there.xlsx", "<sheetFormatPr defaultRowHeight=\"14.4\"/>" + rows);
+        assertTrue(refit > stored + 30, "refit " + refit + ", stored " + stored);
+    }
+
+    private float below(String name, String sheet) throws Exception {
+        XlsxTesting.convert(dir, name, new RawXlsx().styles(WRAP_STYLES).sheet("S", sheet)
+                .workbookExtra("<fileVersion appName=\"xl\"/>").bytes());
+        return position(dir.resolve(name + ".pdf"), "Below")[1];
+    }
+
+    @Test
     void alignmentAppliesWithoutApplyAlignment() throws Exception {
         String styles = "<fonts count=\"1\"><font><sz val=\"11\"/><name val=\"Calibri\"/></font></fonts><fills "
                 + "count=\"1\"><fill><patternFill patternType=\"none\"/></fill></fills><borders count=\"1\"><border/>"

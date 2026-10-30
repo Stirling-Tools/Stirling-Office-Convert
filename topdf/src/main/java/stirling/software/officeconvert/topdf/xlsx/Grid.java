@@ -164,6 +164,8 @@ final class Grid {
 
     private final boolean fixedDefault;
 
+    private final boolean otherScreen;
+
     private boolean storedHeights;
 
     private final List<RowInfo> fitted = new ArrayList<>();
@@ -219,6 +221,7 @@ final class Grid {
         this.rowFactor = book.workbook().openDocument ? 1 : metrics.rowFactor(screenDefault);
         this.defaultHidden = zero;
         this.fixedDefault = customDefault;
+        this.otherScreen = !customDefault && near && Math.abs(fileDefault - screenDefault) > OTHER_SCREEN_ROW;
         this.columnTops = columns.anyStyle(st -> book.styles().at(st).top().visible());
         this.rightToLeft = rightToLeft(ws);
         this.defaultDescent = descentPoints(book.styles().defaultFont());
@@ -552,6 +555,8 @@ final class Grid {
 
     static final double DEFAULT_ROW_TOLERANCE = 1.5;
 
+    static final double OTHER_SCREEN_ROW = 0.05;
+
     static final int MAX_BLANK_FONTS = 64;
 
     static final double SCREEN_PX = 0.75;
@@ -570,7 +575,7 @@ final class Grid {
             return row.index() > CALC_REFIT_ROWS || calcPixels(stored) == calcPixels(fitted) ? stored
                     : Math.min(409.5, fitted);
         }
-        if (book.workbook().savedOnMac && wrapped) {
+        if ((book.workbook().savedOnMac || otherScreen) && wrapped) {
             return Math.min(409.5, fitted);
         }
         if (empty && row.style() < 0 || !book.workbook().savedByExcel
