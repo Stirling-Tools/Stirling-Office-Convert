@@ -3,6 +3,8 @@ package stirling.software.officeconvert.topdf.docx;
 import java.util.ArrayList;
 import java.util.List;
 
+import stirling.software.officeconvert.topdf.io.OfficeZip;
+
 final class LineBreaker {
 
     private static final float EPS = 0.01f;
@@ -121,6 +123,7 @@ final class LineBreaker {
     }
 
     Line next(float left, float right) {
+        OfficeZip.checkpoint();
         Line line = nextLine(left, right);
         hyphenRun = line.hyphen ? hyphenRun + 1 : 0;
         return line;

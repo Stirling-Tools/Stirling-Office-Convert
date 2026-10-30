@@ -29,7 +29,6 @@ public final class PoiPackages {
 
     public static OPCPackage open(OfficeZip zip) throws IOException {
         Objects.requireNonNull(zip, "zip");
-        PoiLimits.apply();
         PoiXml.install();
         try {
             Map<String, byte[]> repairs = SlideLinks.repairs(zip);
@@ -37,7 +36,9 @@ public final class PoiPackages {
             if (!hidden.isEmpty()) {
                 repairs = UndrawnParts.unlinked(zip, hidden);
             }
-            return OPCPackage.open(new Parts(zip, repairs, hidden));
+            Parts parts = new Parts(zip, repairs, hidden);
+            PoiLimits.allow(parts.entries.size());
+            return OPCPackage.open(parts);
         } catch (InvalidFormatException | RuntimeException e) {
             throw damagedOr(zip, e);
         }
@@ -83,6 +84,12 @@ public final class PoiPackages {
 
     // POI does not say which part it choked on: name the first XML part that is not well-formed, if any
     private static IOException damagedOr(OfficeZip zip, Throwable e) throws InterruptedIOException {
+        int depth = 0;
+        for (Throwable t = e; t != null && depth++ < 16; t = t.getCause()) {
+            if (t instanceof OfficeZip.DamagedPart d) {
+                return d;
+            }
+        }
         if (!(e instanceof StackOverflowError)) {
             for (String part : zip.partNames()) {
                 String lower = part.toLowerCase(Locale.ROOT);
@@ -162,8 +169,22 @@ public final class PoiPackages {
             if (closed) {
                 throw new IOException("The package is closed");
             }
-            byte[] fixed = repaired.get("/" + entry.getName().toLowerCase(Locale.ROOT));
-            return fixed != null ? new ByteArrayInputStream(fixed) : zip.open("/" + entry.getName());
+            String part = "/" + entry.getName();
+            byte[] fixed = repaired.get(part.toLowerCase(Locale.ROOT));
+            InputStream in = fixed != null ? new ByteArrayInputStream(fixed) : zip.open(part);
+            if (!xml(part)) {
+                return in;
+            }
+            String type = zip.contentType(part);
+            boolean data = part.toLowerCase(Locale.ROOT).contains("/charts/")
+                    || type != null && type.startsWith("image/");
+            return XmlElements.limit(in, part, data ? XmlElements.MAX_POI_CHART : XmlElements.MAX_POI_PART);
+        }
+
+        private boolean xml(String part) {
+            String lower = part.toLowerCase(Locale.ROOT);
+            String type = zip.contentType(part);
+            return lower.endsWith(".xml") || lower.endsWith(".rels") || type != null && type.contains("xml");
         }
 
         @Override

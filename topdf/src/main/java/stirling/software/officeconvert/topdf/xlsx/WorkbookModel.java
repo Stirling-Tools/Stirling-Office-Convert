@@ -20,6 +20,7 @@ import stirling.software.officeconvert.topdf.io.ActiveContent;
 import stirling.software.officeconvert.topdf.io.OfficeZip;
 import stirling.software.officeconvert.topdf.io.Relationship;
 import stirling.software.officeconvert.topdf.io.Relationships;
+import stirling.software.officeconvert.topdf.io.XmlElements;
 
 final class WorkbookModel {
 
@@ -169,14 +170,26 @@ final class WorkbookModel {
         if (r == null || !ActiveContent.mayFollow(r) || !zip.exists(r.part())) {
             return new StylesTable();
         }
-        try (InputStream in = zip.open(r)) {
+        try (InputStream in = XmlElements.limit(zip.open(r), r.part(), XmlElements.MAX_STYLES)) {
             return new StylesTable(in);
         } catch (InterruptedIOException e) {
             throw e;
         } catch (IOException | RuntimeException e) {
-            job.warn("The cell styles could not be read; default styles are used");
+            job.warn(oversized(e) ? "The cell styles have more than " + XmlElements.MAX_STYLES
+                    + " XML elements and were not read; default styles are used"
+                    : "The cell styles could not be read; default styles are used");
             return new StylesTable();
         }
+    }
+
+    private static boolean oversized(Throwable e) {
+        int depth = 0;
+        for (Throwable t = e; t != null && depth++ < 16; t = t.getCause()) {
+            if (t instanceof OfficeZip.Oversized) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static ThemesTable theme(OfficeZip zip, Relationship r, RenderJob job) throws InterruptedIOException {

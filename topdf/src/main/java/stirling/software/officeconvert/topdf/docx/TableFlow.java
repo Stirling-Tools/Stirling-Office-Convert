@@ -3,9 +3,14 @@ package stirling.software.officeconvert.topdf.docx;
 import java.awt.Color;
 import java.awt.geom.Rectangle2D;
 import java.util.ArrayList;
+import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.function.Function;
+import java.util.function.Supplier;
 
+import stirling.software.officeconvert.topdf.io.OfficeZip;
 import stirling.software.officeconvert.topdf.pdf.Fill;
 
 final class TableFlow {
@@ -17,6 +22,19 @@ final class TableFlow {
     private final BlockFlow blocks;
 
     private float rowMark = -1;
+
+    private int depth;
+
+    private int turning;
+
+    private final Map<TableBlock.Cell, Float> alongs = new IdentityHashMap<>();
+
+    private final Map<TableBlock.Cell, Turned> turned = new IdentityHashMap<>();
+
+    private record Turned(float along, Color background, Ctx.PageNumbers numbers, StackLayout.Result result) {
+    }
+
+    static final int MAX_TURNED_DEPTH = 8;
 
     // The shading of the region the table sits in, for cells that have none of their own
     private Color background;
@@ -90,7 +108,7 @@ final class TableFlow {
             heads++;
         }
         int count = heads > 0 && heads < t.rows.size() ? heads + 1 : 1;
-        Layout l = layout(t, width, count);
+        Layout l = scoped(() -> layout(t, width, count));
         if (l.rows().isEmpty()) {
             return 0;
         }
@@ -103,7 +121,7 @@ final class TableFlow {
 
     float height(TableBlock t, float width) {
         float h = 0;
-        for (RowBox row : layout(t, width, t.rows.size()).rows()) {
+        for (RowBox row : scoped(() -> layout(t, width, t.rows.size())).rows()) {
             h += row.height;
         }
         return h;
@@ -172,9 +190,24 @@ final class TableFlow {
         Color outer = background;
         background = r.background;
         try {
-            place(t, r, layout(t, r.width(), Integer.MAX_VALUE));
+            scoped(() -> {
+                place(t, r, layout(t, r.width(), Integer.MAX_VALUE));
+                return null;
+            });
         } finally {
             background = outer;
+        }
+    }
+
+    private <T> T scoped(Supplier<T> work) {
+        depth++;
+        try {
+            return work.get();
+        } finally {
+            if (--depth == 0) {
+                alongs.clear();
+                turned.clear();
+            }
         }
     }
 
@@ -808,6 +841,7 @@ final class TableFlow {
                 rows.add(new RowBox());
                 continue;
             }
+            OfficeZip.checkpoint();
             RowBox rb = rowBox(t, row, ri, colX, grid.length);
             rows.add(rb);
             if (headersOpen && Boolean.TRUE.equals(row.rp.header)) {
@@ -1163,9 +1197,22 @@ final class TableFlow {
         if (exact) {
             return set;
         }
+        Float known = alongs.get(cell);
+        if (known != null) {
+            return Math.max(set, known);
+        }
+        if (turning >= MAX_TURNED_DEPTH) {
+            return set;
+        }
         StackLayout region = StackLayout.cell(MAX_ALONG, ctx);
-        blocks.place(cell.blocks, region);
+        turning++;
+        try {
+            blocks.place(cell.blocks, region);
+        } finally {
+            turning--;
+        }
         float natural = Math.min(MAX_ALONG, longestWord(region.result().ops()));
+        alongs.put(cell, natural);
         return Math.max(set, natural);
     }
 
@@ -1679,10 +1726,7 @@ final class TableFlow {
 
     private void rotated(CellBox cb, float h, RowBox row, Strip s) {
         float along = Math.max(1, h - cb.marT - cb.marB - row.borderTop - row.borderBottom);
-        StackLayout region = StackLayout.cell(along, ctx);
-        region.background = cb.fill != null ? cb.fill : background;
-        blocks.place(cb.cell.blocks, region);
-        StackLayout.Result r = region.result();
+        StackLayout.Result r = turn(cb.cell, along, cb.fill != null ? cb.fill : background);
         float across = Math.max(0, cb.w - cb.marL - cb.marR);
         float free = Math.max(0, across - r.height());
         String va = cb.vAlign == null ? "top" : cb.vAlign;
@@ -1705,6 +1749,25 @@ final class TableFlow {
         for (Inline.NoteRef n : r.notes()) {
             s.note(n);
         }
+    }
+
+    private StackLayout.Result turn(TableBlock.Cell cell, float along, Color fill) {
+        Turned known = turned.get(cell);
+        if (known != null && known.along() == along && Objects.equals(known.background(), fill)
+                && known.numbers() == ctx.numbers) {
+            return known.result();
+        }
+        StackLayout region = StackLayout.cell(along, ctx);
+        region.background = fill;
+        turning++;
+        try {
+            blocks.place(cell.blocks, region);
+        } finally {
+            turning--;
+        }
+        StackLayout.Result r = region.result();
+        turned.put(cell, new Turned(along, fill, ctx.numbers, r));
+        return r;
     }
 
     private Strip render(RowBox row, Layout l) {

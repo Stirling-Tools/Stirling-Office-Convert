@@ -767,7 +767,12 @@ public final class OfficeToPdf {
         while (true) {
             try {
                 return render(source, requested, sink, options, renderer, fonts, attempts, limits);
-            } catch (IOException | RuntimeException e) {
+            } catch (IOException | RuntimeException caught) {
+                Throwable real = selfSuppressed(caught);
+                if (!(real instanceof IOException) && !(real instanceof RuntimeException)) {
+                    throw rethrow(real);
+                }
+                Exception e = (Exception) real;
                 if (!attempts.leaveOut(e) && !attempts.salvageMain(source, e)) {
                     Exception reported = attempts.first == null ? e : attempts.first;
                     if (reported != e) {
@@ -1329,6 +1334,12 @@ public final class OfficeToPdf {
             }
             throw plain(e);
         } catch (RuntimeException e) {
+            Throwable real = selfSuppressed(e);
+            if (real != e) {
+                return guarded(() -> {
+                    throw rethrow(real);
+                });
+            }
             if (outOfMemory(e)) {
                 throw new IOException(RenderJob.NEEDS_MEMORY, e);
             }
@@ -1345,6 +1356,28 @@ public final class OfficeToPdf {
         } catch (OutOfMemoryError e) {
             throw new IOException(RenderJob.NEEDS_MEMORY, e);
         }
+    }
+
+    static Throwable selfSuppressed(Throwable e) {
+        Throwable t = e;
+        for (int depth = 0; depth < 16 && t instanceof IllegalArgumentException && t.getCause() != null
+                && "Self-suppression not permitted".equals(t.getMessage()); depth++) {
+            t = t.getCause();
+        }
+        return t;
+    }
+
+    private static IOException rethrow(Throwable t) throws IOException {
+        if (t instanceof IOException io) {
+            throw io;
+        }
+        if (t instanceof RuntimeException r) {
+            throw r;
+        }
+        if (t instanceof Error err) {
+            throw err;
+        }
+        throw new IOException(t);
     }
 
     private static boolean outOfMemory(Throwable e) {

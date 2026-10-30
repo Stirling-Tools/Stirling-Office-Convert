@@ -2,10 +2,13 @@ package stirling.software.officeconvert.topdf.docx;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Deque;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import stirling.software.officeconvert.topdf.RenderJob;
 import stirling.software.officeconvert.topdf.io.ActiveContent;
@@ -103,9 +106,68 @@ final class DocxPackage {
         notes(first(main, "endnotes"), endnotes, "w:endnote");
     }
 
+    private static final Set<String> REVISIONS = Set.of("w:del", "w:moveFrom", "w:pPrChange", "w:rPrChange",
+            "w:sectPrChange", "w:tblPrChange", "w:trPrChange", "w:tcPrChange", "w:txbxContent");
+
+    static int pageBreaks(XEl e) {
+        int n = 0;
+        Deque<XEl> todo = new ArrayDeque<>();
+        Deque<Boolean> inTable = new ArrayDeque<>();
+        todo.push(e);
+        inTable.push(false);
+        while (!todo.isEmpty()) {
+            XEl k = todo.pop();
+            boolean table = inTable.pop() || k.is("w:tbl");
+            if (k.is("w:br") && "page".equals(k.attr("type"))
+                    || k.is("w:pageBreakBefore") && !table && Ooxml.on(k)
+                    || k.is("w:sectPr") && !continuous(k)) {
+                n++;
+            }
+            if (!REVISIONS.contains(k.name)) {
+                for (XEl kid : k.kids) {
+                    todo.push(kid);
+                    inTable.push(table);
+                }
+            }
+        }
+        return n;
+    }
+
+    static boolean pastPageLimit(int breaks, int maxPages) {
+        return maxPages > 0 && breaks >= 2L * maxPages + 16;
+    }
+
+    static XEl sectionMark(XEl e) {
+        Deque<XEl> todo = new ArrayDeque<>();
+        todo.push(e);
+        while (!todo.isEmpty()) {
+            XEl k = todo.pop();
+            if (k.is("w:p")) {
+                XEl pPr = k.child("w:pPr");
+                XEl sectPr = pPr == null ? null : pPr.child("w:sectPr");
+                XEl markPr = pPr == null ? null : pPr.child("w:rPr");
+                if (sectPr != null && (markPr == null || markPr.child("w:del") == null
+                        && markPr.child("w:moveFrom") == null)) {
+                    return sectPr;
+                }
+            } else if (!k.is("w:tbl") && !REVISIONS.contains(k.name)) {
+                for (int i = k.kids.size() - 1; i >= 0; i--) {
+                    todo.push(k.kids.get(i));
+                }
+            }
+        }
+        return null;
+    }
+
+    private static boolean continuous(XEl sectPr) {
+        XEl type = sectPr.child("w:type");
+        return type != null && "continuous".equals(type.attr("val"));
+    }
+
     private void readBody() throws IOException {
         ContentReader reader = new ContentReader(this, main);
         List<Block> pending = new ArrayList<>();
+        int[] breaks = new int[1];
         try (InputStream in = zip.open(main)) {
             XEl outside = XTree.streamBody(in, e -> {
                 job.checkpoint();
@@ -114,6 +176,16 @@ final class DocxPackage {
                     pending.clear();
                     return;
                 }
+                if (pastPageLimit(breaks[0], job.maxPages())) {
+                    job.truncate();
+                    XEl mark = pending.isEmpty() ? null : sectionMark(e);
+                    if (mark != null) {
+                        sections.add(new Section(SectionProps.parse(mark), ContentReader.joinMarks(pending)));
+                        pending.clear();
+                    }
+                    return;
+                }
+                breaks[0] += pageBreaks(e);
                 List<Block> added = new ArrayList<>();
                 reader.block(e, added, null);
                 for (Block b : added) {

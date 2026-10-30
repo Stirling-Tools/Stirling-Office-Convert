@@ -9,6 +9,7 @@ import java.io.FilterInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InterruptedIOException;
+import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -35,6 +36,8 @@ import org.apache.poi.poifs.filesystem.POIFSFileSystem;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 import org.w3c.dom.Node;
+
+import stirling.software.officeconvert.memory.Admission;
 
 public final class OfficeZip implements Closeable {
 
@@ -724,6 +727,15 @@ public final class OfficeZip implements Closeable {
     public static void checkNotInterrupted() throws InterruptedIOException {
         if (Thread.currentThread().isInterrupted()) {
             throw new InterruptedIOException("Conversion interrupted");
+        }
+    }
+
+    public static void checkpoint() {
+        try {
+            checkNotInterrupted();
+            Admission.checkpoint();
+        } catch (InterruptedIOException e) {
+            throw new UncheckedIOException(e);
         }
     }
 

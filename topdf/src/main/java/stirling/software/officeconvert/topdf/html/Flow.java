@@ -15,6 +15,7 @@ import org.jsoup.nodes.Element;
 import org.jsoup.nodes.Node;
 import org.jsoup.nodes.TextNode;
 
+import stirling.software.officeconvert.memory.Admission;
 import stirling.software.officeconvert.model.Block;
 import stirling.software.officeconvert.model.Inline;
 import stirling.software.officeconvert.model.Numbering;
@@ -193,6 +194,7 @@ final class Flow {
     private void walkChildren(Element parent, Look look, Frame frame, int depth) throws IOException {
         Element skip = null;
         for (Node child : parent.childNodes()) {
+            Admission.checkpoint();
             if (ctx.stopped()) {
                 return;
             }

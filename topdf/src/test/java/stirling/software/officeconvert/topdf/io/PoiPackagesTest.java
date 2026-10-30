@@ -22,6 +22,7 @@ import org.apache.poi.openxml4j.opc.PackagePart;
 import org.apache.poi.openxml4j.opc.PackageRelationship;
 import org.apache.poi.openxml4j.opc.PackagingURIHelper;
 import org.apache.poi.openxml4j.opc.TargetMode;
+import org.apache.poi.openxml4j.util.ZipSecureFile;
 import org.apache.poi.xslf.usermodel.XMLSlideShow;
 import org.apache.poi.xslf.usermodel.XSLFGroupShape;
 import org.apache.poi.xslf.usermodel.XSLFSlide;
@@ -370,6 +371,33 @@ class PoiPackagesTest {
         try (OfficeZip zip = OfficeZip.open(file)) {
             IOException e = assertThrows(IOException.class, () -> PoiPackages.slideShow(zip));
             assertTrue(e.getMessage().contains("presentation"), e.getMessage());
+        }
+    }
+
+    @Test
+    void openingASmallPackageLeavesPoiZipLimitsAlone() throws IOException {
+        long files = ZipSecureFile.getMaxFileCount();
+        long entry = ZipSecureFile.getMaxEntrySize();
+        double ratio = ZipSecureFile.getMinInflateRatio();
+        Path in = Fixtures.write(dir, "small.pptx", Fixtures.pptx("one"));
+        try (OfficeZip zip = OfficeZip.open(in); XMLSlideShow ppt = PoiPackages.slideShow(zip)) {
+            assertEquals(1, ppt.getSlides().size());
+        }
+        assertEquals(files, ZipSecureFile.getMaxFileCount());
+        assertEquals(entry, ZipSecureFile.getMaxEntrySize());
+        assertEquals(ratio, ZipSecureFile.getMinInflateRatio());
+    }
+
+    @Test
+    void chartPartsMayHoldMoreElementsThanSlides() throws Exception {
+        String points = "<c:pt idx=\"0\"><c:v>1</c:v></c:pt>".repeat((int) XmlElements.MAX_POI_PART);
+        Fixtures.Zip zip = Fixtures.edit(Fixtures.pptx("one"));
+        zip.put("ppt/charts/chart9.xml", "<c:chartSpace xmlns:c=\"urn:c\">" + points + "</c:chartSpace>");
+        Path in = Fixtures.write(dir, "chart.pptx", zip.bytes());
+        try (OfficeZip office = OfficeZip.open(in); XMLSlideShow ppt = PoiPackages.slideShow(office);
+                java.io.InputStream part = ppt.getPackage().getPart(PackagingURIHelper.createPartName(
+                        "/ppt/charts/chart9.xml")).getInputStream()) {
+            assertTrue(part.readAllBytes().length > XmlElements.MAX_POI_PART);
         }
     }
 }

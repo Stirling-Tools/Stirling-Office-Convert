@@ -4,23 +4,16 @@ import org.apache.poi.openxml4j.util.ZipSecureFile;
 
 final class PoiLimits {
 
-    private static volatile boolean applied;
-
     private PoiLimits() {}
 
-    static void apply() {
-        if (applied) {
+    static void allow(int parts) {
+        if (parts <= ZipSecureFile.getMaxFileCount()) {
             return;
         }
         synchronized (PoiLimits.class) {
-            if (applied) {
-                return;
+            if (parts > ZipSecureFile.getMaxFileCount()) {
+                ZipSecureFile.setMaxFileCount(parts);
             }
-            OfficeZip.Limits limits = OfficeZip.Limits.DEFAULT;
-            ZipSecureFile.setMinInflateRatio(Math.max(ZipSecureFile.getMinInflateRatio(), limits.minInflateRatio()));
-            ZipSecureFile.setMaxEntrySize(Math.min(ZipSecureFile.getMaxEntrySize(), limits.maxEntryBytes()));
-            ZipSecureFile.setMaxFileCount(Math.max(ZipSecureFile.getMaxFileCount(), limits.maxEntries()));
-            applied = true;
         }
     }
 }

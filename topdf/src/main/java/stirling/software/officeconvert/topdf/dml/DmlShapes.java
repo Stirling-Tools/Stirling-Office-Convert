@@ -96,6 +96,8 @@ public final class DmlShapes {
         return finite(s) ? s : null;
     }
 
+    static final int MAX_PATH_COMMANDS = 100_000;
+
     /** The outlines of an {@code a:custGeom} element in the box, from its literal path points; null if empty. */
     public static List<Outline> custom(Element custGeom, Rectangle2D box) {
         Element pathList = child(custGeom, "pathLst");
@@ -103,6 +105,7 @@ public final class DmlShapes {
             return null;
         }
         List<Outline> out = new ArrayList<>();
+        int commands = 0;
         for (Element path : children(pathList, "path")) {
             double pw = number(path, "w", 0);
             double ph = number(path, "h", 0);
@@ -112,6 +115,9 @@ public final class DmlShapes {
             Point2D.Double at = new Point2D.Double(0, 0);
             boolean started = false;
             for (Element cmd : children(path, null)) {
+                if (++commands > MAX_PATH_COMMANDS) {
+                    break;
+                }
                 List<Element> pts = children(cmd, "pt");
                 switch (cmd.getLocalName()) {
                     case "moveTo" -> {

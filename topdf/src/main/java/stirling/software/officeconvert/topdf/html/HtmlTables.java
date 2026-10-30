@@ -19,6 +19,7 @@ import stirling.software.officeconvert.model.Block;
 import stirling.software.officeconvert.model.Paragraph;
 import stirling.software.officeconvert.model.Picture;
 import stirling.software.officeconvert.model.Table;
+import stirling.software.officeconvert.topdf.io.OfficeZip;
 
 /** An HTML table as a grid: spans become merged cells, column widths come from the widths given or the text. */
 final class HtmlTables {
@@ -474,6 +475,7 @@ final class HtmlTables {
         if (depth >= Flow.MAX_DEPTH || ctx.stopped()) {
             return;
         }
+        OfficeZip.checkpoint();
         for (Node child : parent.childNodes()) {
             if (child instanceof TextNode text) {
                 into.text(text.getWholeText(), look);

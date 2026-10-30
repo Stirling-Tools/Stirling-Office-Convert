@@ -192,4 +192,77 @@ class HostileHtmlTest {
         assertEquals(4, list.size());
         assertTrue(list.get(0) == list.get(1) && list.get(2) == list.get(3));
     }
+
+    @Test
+    void styleRulesPastTheLimitAreLeftOutWithAWarning() throws IOException {
+        StringBuilder css = new StringBuilder();
+        for (int i = 0; i <= Css.MAX_RULES; i++) {
+            css.append(".c").append(i).append("{color:red}\n");
+        }
+        Path in = Files.writeString(dir.resolve("rules.html"), "<style>" + css + "</style><p>kept</p>",
+                StandardCharsets.UTF_8);
+        OfficeToPdf.Result r = OfficeToPdf.convert(in, dir.resolve("rules.pdf"), OfficeToPdf.Options.defaults());
+        assertTrue(r.warnings().contains(Cascade.LEFT_OUT_WARNING), r.warnings().toString());
+    }
+
+    @Test
+    void inlineStyleSheetsShareTheStyleSheetSizeBudget() throws IOException {
+        String big = ".a{color:red}\n".repeat(700_000);
+        Path in = Files.writeString(dir.resolve("big.html"), "<style>" + big + "</style><style>.k{display:none}"
+                + "</style><p>kept</p><p class=\"k\">SHOWN</p>", StandardCharsets.UTF_8);
+        OfficeToPdf.Result r = OfficeToPdf.convert(in, dir.resolve("big.pdf"), OfficeToPdf.Options.defaults());
+        assertTrue(r.warnings().contains(Cascade.LEFT_OUT_WARNING), r.warnings().toString());
+        try (PDDocument doc = Loader.loadPDF(dir.resolve("big.pdf").toFile())) {
+            assertTrue(new PDFTextStripper().getText(doc).contains("SHOWN"));
+        }
+    }
+
+    @Test
+    @Timeout(value = 120, unit = TimeUnit.SECONDS)
+    void structuralSelectorsStillMatchAfterTheirMemoryIsReleased() throws IOException {
+        StringBuilder css = new StringBuilder();
+        for (int i = 0; i < 400; i++) {
+            css.append("div.c").append(i).append(" > p span:not(.a):not(.b) { color: red }\n");
+        }
+        css.append("div.hide > p span:not(.a) { display: none }\n");
+        String body = "<div class=\"c1\"><p><span>x</span></p></div>".repeat(3000)
+                + "<div class=\"hide\"><p><span>SECRET</span></p></div><p>after</p>";
+        String text = convert("memo.html", "<style>" + css + "</style>" + body);
+        assertTrue(text.contains("after"), text);
+        assertTrue(!text.contains("SECRET"), "a rule matched after the memos were cleared still applies");
+    }
+
+    @Test
+    void inlinePicturesAndFontsDoNotSpendTheStyleSheetBudget() throws IOException {
+        String font = "@font-face{font-family:x;src:url(data:font/woff2;base64," + "A".repeat(9 << 20) + ")}\n"
+                + ".i{background:url('data:image/png;base64," + "B".repeat(1 << 20) + "')}\n";
+        Path in = Files.writeString(dir.resolve("single.html"), "<style>" + font + "</style><style>.k{display:none}"
+                + "</style><p>kept</p><p class=\"k\">HIDDEN</p>", StandardCharsets.UTF_8);
+        OfficeToPdf.Result r = OfficeToPdf.convert(in, dir.resolve("single.pdf"), OfficeToPdf.Options.defaults());
+        assertTrue(!r.warnings().contains(Cascade.LEFT_OUT_WARNING), r.warnings().toString());
+        try (PDDocument doc = Loader.loadPDF(dir.resolve("single.pdf").toFile())) {
+            String text = new PDFTextStripper().getText(doc);
+            assertTrue(text.contains("kept") && !text.contains("HIDDEN"), text);
+        }
+    }
+
+    @Test
+    void aSelectorThatFailsWhileItsMemoryIsReleasedIsSkipped() throws Exception {
+        Cascade cascade = new Cascade(org.jsoup.Jsoup.parse("<p>x</p>"), 600);
+        java.lang.reflect.Field field = Cascade.class.getDeclaredField("tested");
+        field.setAccessible(true);
+        @SuppressWarnings("unchecked")
+        java.util.Set<org.jsoup.select.Evaluator> tested = (java.util.Set<org.jsoup.select.Evaluator>) field.get(
+                cascade);
+        tested.add(new org.jsoup.select.Evaluator() {
+            @Override
+            public boolean matches(org.jsoup.nodes.Element root, org.jsoup.nodes.Element element) {
+                throw new IllegalStateException("cannot test");
+            }
+        });
+        java.lang.reflect.Method forget = Cascade.class.getDeclaredMethod("forget");
+        forget.setAccessible(true);
+        forget.invoke(cascade);
+        assertTrue(tested.isEmpty());
+    }
 }
