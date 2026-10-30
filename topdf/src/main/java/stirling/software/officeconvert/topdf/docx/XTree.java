@@ -12,7 +12,10 @@ import javax.xml.stream.XMLStreamConstants;
 import javax.xml.stream.XMLStreamException;
 import javax.xml.stream.XMLStreamReader;
 
+import stirling.software.officeconvert.memory.Admission;
+import stirling.software.officeconvert.topdf.io.OfficeZip;
 import stirling.software.officeconvert.topdf.io.SecureXml;
+import stirling.software.officeconvert.topdf.io.XmlElements;
 
 final class XTree {
 
@@ -65,6 +68,14 @@ final class XTree {
         prefix("so", "urn:stirling-software:office-convert");
     }
 
+    static final long BODY_ELEMENT_BYTES = 384;
+
+    static final long MIN_BODY_ELEMENTS = 250_000;
+
+    static final long MAX_BODY_ELEMENTS = 8_000_000;
+
+    static final long MAX_SECTION_ELEMENTS = 10_000;
+
     private XTree() {}
 
     private static void prefix(String p, String... uris) {
@@ -85,7 +96,7 @@ final class XTree {
         try {
             while (r.hasNext()) {
                 if (r.next() == XMLStreamConstants.START_ELEMENT) {
-                    return single(build(r));
+                    return single(build(r, null));
                 }
             }
             return XEl.NONE;
@@ -96,7 +107,11 @@ final class XTree {
         }
     }
 
-    static XEl streamBody(InputStream in, BlockSink sink) throws IOException {
+    static long bodyElements() {
+        return XmlElements.share(BODY_ELEMENT_BYTES, MIN_BODY_ELEMENTS, MAX_BODY_ELEMENTS);
+    }
+
+    static XEl streamBody(InputStream in, long[] left, BlockSink sink) throws IOException {
         XMLStreamReader r = SecureXml.reader(in);
         List<XEl> outside = new ArrayList<>();
         try {
@@ -107,8 +122,17 @@ final class XTree {
                 if (ev == XMLStreamConstants.START_ELEMENT) {
                     String name = name(r);
                     if (inBody) {
-                        for (XEl e : build(r)) {
+                        if (left[0] <= 0 && !name.equals("w:sectPr")) {
+                            left[0] = -1;
+                            skip(r);
+                            continue;
+                        }
+                        long[] cap = left[0] <= 0 ? new long[] {MAX_SECTION_ELEMENTS} : left;
+                        for (XEl e : build(r, cap)) {
                             sink.block(e);
+                        }
+                        if (cap[0] < 0) {
+                            left[0] = -1;
                         }
                         continue;
                     }
@@ -116,7 +140,7 @@ final class XTree {
                     if (depth == 2 && name.equals("w:body")) {
                         inBody = true;
                     } else if (depth == 2) {
-                        outside.addAll(build(r));
+                        outside.addAll(build(r, left));
                         depth--;
                     }
                 } else if (ev == XMLStreamConstants.END_ELEMENT) {
@@ -152,7 +176,31 @@ final class XTree {
         return p.isEmpty() ? local : p + ":" + local;
     }
 
-    private static List<XEl> build(XMLStreamReader r) throws XMLStreamException {
+    private static void skip(XMLStreamReader r) throws XMLStreamException {
+        int depth = 1;
+        while (depth > 0) {
+            int ev = r.next();
+            if (ev == XMLStreamConstants.START_ELEMENT) {
+                depth++;
+            } else if (ev == XMLStreamConstants.END_ELEMENT) {
+                depth--;
+            } else if (ev == XMLStreamConstants.END_DOCUMENT) {
+                throw new XMLStreamException("Unexpected end of the document");
+            }
+        }
+    }
+
+    private static List<XEl> build(XMLStreamReader r, long[] left) throws XMLStreamException, IOException {
+        if (left != null) {
+            if (--left[0] < 0) {
+                skip(r);
+                return List.of();
+            }
+            if ((left[0] & 0xFFF) == 0) {
+                OfficeZip.checkNotInterrupted();
+                Admission.checkpoint();
+            }
+        }
         String name = name(r);
         int n = r.getAttributeCount();
         String[] attrs = new String[n * 2];
@@ -180,7 +228,7 @@ final class XTree {
         while (true) {
             int ev = r.next();
             if (ev == XMLStreamConstants.START_ELEMENT) {
-                List<XEl> built = build(r);
+                List<XEl> built = build(r, left);
                 if (!built.isEmpty()) {
                     if (kids == null) {
                         kids = new ArrayList<>(4);

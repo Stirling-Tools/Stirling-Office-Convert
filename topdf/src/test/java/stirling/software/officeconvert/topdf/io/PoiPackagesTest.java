@@ -266,6 +266,24 @@ class PoiPackagesTest {
     }
 
     @Test
+    void aValidPartTooLargeToDiagnoseDoesNotHideWhyPoiFailed() throws Exception {
+        StringBuilder big = new StringBuilder("<n>");
+        for (long i = 0; i <= XmlElements.domElements(); i++) {
+            big.append("<x a=\"").append(Long.toHexString(i * 7919)).append("\"/>");
+        }
+        Fixtures.Zip base = Fixtures.edit(Fixtures.xlsx(new String[][] {{"x"}}));
+        String sheet = base.text("xl/worksheets/sheet1.xml");
+        String refused = "<?xml version=\"1.0\"?><!DOCTYPE worksheet []>" + sheet.substring(sheet.indexOf("?>") + 2);
+        Path file = Fixtures.write(dir, "big.xlsx", base.put("xl/worksheets/sheet1.xml", refused)
+                .put("xl/big.xml", big + "</n>").bytes());
+        try (OfficeZip zip = OfficeZip.open(file)) {
+            IOException e = assertThrows(IOException.class, () -> PoiPackages.workbook(zip).close());
+            assertFalse(e instanceof OfficeZip.DamagedPart, e.toString());
+            assertFalse(String.valueOf(e.getMessage()).contains("XML elements"), e.toString());
+        }
+    }
+
+    @Test
     void stillRefusesDoctypesAndNeverFetches() throws Exception {
         try (NoNetwork net = NoNetwork.start()) {
             String dtd = "<?xml version=\"1.0\"?><!DOCTYPE worksheet [<!ENTITY x SYSTEM \"" + net.url("sheet.dtd")

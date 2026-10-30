@@ -15,6 +15,7 @@ import stirling.software.officeconvert.topdf.io.ActiveContent;
 import stirling.software.officeconvert.topdf.io.OfficeZip;
 import stirling.software.officeconvert.topdf.io.Relationship;
 import stirling.software.officeconvert.topdf.io.Relationships;
+import stirling.software.officeconvert.topdf.io.XmlElements;
 
 final class DocxPackage {
 
@@ -168,8 +169,10 @@ final class DocxPackage {
         ContentReader reader = new ContentReader(this, main);
         List<Block> pending = new ArrayList<>();
         int[] breaks = new int[1];
+        long most = XTree.bodyElements();
+        long[] left = {most};
         try (InputStream in = zip.open(main)) {
-            XEl outside = XTree.streamBody(in, e -> {
+            XEl outside = XTree.streamBody(in, left, e -> {
                 job.checkpoint();
                 if (e.is("w:sectPr")) {
                     sections.add(new Section(SectionProps.parse(e), ContentReader.joinMarks(pending)));
@@ -196,6 +199,10 @@ final class DocxPackage {
                     }
                 }
             });
+            if (left[0] < 0) {
+                job.warn("The document is too long: only its first " + most + " XML elements were converted");
+                job.losePart();
+            }
             XEl bg = outside.child("w:background");
             if (bg != null && settings.displayBackgroundShape && !"auto".equals(bg.attr("color"))) {
                 pageColor = Colors.attribute(bg, theme);
@@ -332,7 +339,7 @@ final class DocxPackage {
             }
             return null;
         }
-        try (InputStream in = zip.open(r)) {
+        try (InputStream in = XmlElements.limit(zip.open(r), r.part(), XmlElements.MAX_PART)) {
             return XTree.parse(in);
         }
     }
