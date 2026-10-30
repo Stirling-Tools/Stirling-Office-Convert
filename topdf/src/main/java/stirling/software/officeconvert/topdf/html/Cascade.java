@@ -1,8 +1,10 @@
 package stirling.software.officeconvert.topdf.html;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.Deque;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.IdentityHashMap;
@@ -24,8 +26,9 @@ import org.jsoup.select.QueryParser;
  * that can match it. */
 final class Cascade {
 
-    // Selector tests past this many for one document stop matching: the rest of the page keeps the defaults
-    private static final long MAX_MATCH_WORK = 10_000_000L;
+    // Selector work past this much for one document stops matching, each test weighed by cost(selector): the rest
+    // of the page keeps the defaults
+    private static final long MAX_MATCH_WORK = 4_000_000L;
 
     private static final Pattern ID = Pattern.compile("#((?:[_a-zA-Z0-9-]|\\\\.)+)");
     private static final Pattern CLASS = Pattern.compile("[.]((?:[_a-zA-Z0-9-]|\\\\.)+)");
@@ -33,7 +36,9 @@ final class Cascade {
 
     private record Hit(int specificity, int order, Map<String, String> declarations) {}
 
-    private record Compiled(Evaluator evaluator, Hit hit) {}
+    private record Compiled(Evaluator evaluator, Hit hit, int cost, long[] above) {}
+
+    private static final int ABOVE_BITS = 512;
 
     private final Document doc;
     private final Map<String, List<Compiled>> byId = new HashMap<>();
@@ -41,6 +46,7 @@ final class Cascade {
     private final Map<String, List<Compiled>> byTag = new HashMap<>();
     private final List<Compiled> anyElement = new ArrayList<>();
     private final Map<Element, List<Hit>> hits = new IdentityHashMap<>();
+    private final Map<Element, long[]> ancestry = new IdentityHashMap<>();
     private final Map<String, String> page = new HashMap<>();
     private final Map<String, Map<String, String>> margins = new HashMap<>();
     private final Map<String, Map<String, String>> importantMargins = new HashMap<>();
@@ -167,7 +173,8 @@ final class Cascade {
             } catch (RuntimeException e) {
                 continue;
             }
-            index(selector, new Compiled(evaluator, new Hit(specificity(selector), order, rule.declarations())));
+            index(selector, new Compiled(evaluator, new Hit(specificity(selector), order, rule.declarations()),
+                    cost(selector), above(selector)));
         }
         importantMargins.forEach((box, d) -> margins.get(box).putAll(d));
     }
@@ -366,13 +373,130 @@ final class Cascade {
         anyElement.add(c);
     }
 
+    static int cost(String selector) {
+        String s = selector.strip();
+        int cost = 1;
+        int depth = 0;
+        boolean gap = true;
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            if (depth == 0 && (c == ':' || c == '[')) {
+                cost++;
+            }
+            if (c == '(' || c == '[') {
+                depth++;
+            } else if ((c == ')' || c == ']') && depth > 0) {
+                depth--;
+            } else if (depth == 0) {
+                boolean combinator = c == ' ' || c == '>' || c == '+' || c == '~';
+                if (combinator && !gap) {
+                    cost++;
+                }
+                gap = combinator;
+            }
+        }
+        return cost;
+    }
+
     // .md\:flex names the class md:flex
     private static String unescape(String name) {
         return name.replace("\\", "");
     }
 
+    static long[] above(String selector) {
+        String s = flat(selector);
+        long[] bits = null;
+        int i = 0;
+        while (i < s.length()) {
+            int start = i;
+            while (i < s.length() && " >+~".indexOf(s.charAt(i)) < 0) {
+                i++;
+            }
+            String compound = s.substring(start, i);
+            char combinator = 0;
+            while (i < s.length() && " >+~".indexOf(s.charAt(i)) >= 0) {
+                if (s.charAt(i) != ' ' || combinator == 0) {
+                    combinator = s.charAt(i);
+                }
+                i++;
+            }
+            if (i < s.length() && (combinator == ' ' || combinator == '>')) {
+                for (String key : keys(compound)) {
+                    if (bits == null) {
+                        bits = new long[ABOVE_BITS / 64];
+                    }
+                    set(bits, key);
+                }
+            }
+        }
+        return bits;
+    }
+
+    private static List<String> keys(String compound) {
+        List<String> keys = new ArrayList<>();
+        Matcher m = TAG.matcher(compound);
+        if (m.find() && (m.end() == compound.length() || ".#:".indexOf(compound.charAt(m.end())) >= 0)) {
+            keys.add("<" + m.group(1).toLowerCase(Locale.ROOT));
+        }
+        m = ID.matcher(compound);
+        while (m.find()) {
+            keys.add("#" + unescape(m.group(1)).toLowerCase(Locale.ROOT));
+        }
+        m = CLASS.matcher(compound);
+        while (m.find()) {
+            keys.add("." + unescape(m.group(1)).toLowerCase(Locale.ROOT));
+        }
+        return keys;
+    }
+
+    private static void set(long[] bits, String key) {
+        int h = (key.hashCode() * 0x9E3779B9 >>> 16) & (ABOVE_BITS - 1);
+        bits[h >>> 6] |= 1L << (h & 63);
+    }
+
+    private long[] ancestry(Element e) {
+        Deque<Element> todo = new ArrayDeque<>();
+        long[] known = null;
+        for (Element p = e.parent(); p != null; p = p.parent()) {
+            known = ancestry.get(p);
+            if (known != null) {
+                break;
+            }
+            todo.push(p);
+        }
+        long[] bits = known == null ? new long[ABOVE_BITS / 64] : known;
+        while (!todo.isEmpty()) {
+            Element p = todo.pop();
+            bits = bits.clone();
+            set(bits, "<" + p.normalName());
+            if (!p.id().isEmpty()) {
+                set(bits, "#" + p.id().toLowerCase(Locale.ROOT));
+            }
+            for (String c : p.classNames()) {
+                set(bits, "." + c.toLowerCase(Locale.ROOT));
+            }
+            ancestry.put(p, bits);
+        }
+        return bits;
+    }
+
+    private static boolean within(long[] need, long[] have) {
+        for (int i = 0; i < need.length; i++) {
+            if ((need[i] & have[i]) != need[i]) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     // The last compound selector, with the insides of brackets and :not() and the like taken out
     static String lastStep(String selector) {
+        String s = flat(selector);
+        int cut = Math.max(Math.max(s.lastIndexOf(' '), s.lastIndexOf('>')), Math.max(s.lastIndexOf('+'), s.lastIndexOf('~')));
+        return s.substring(cut + 1).strip();
+    }
+
+    private static String flat(String selector) {
         StringBuilder flat = new StringBuilder();
         int depth = 0;
         for (int i = 0; i < selector.length(); i++) {
@@ -385,9 +509,7 @@ final class Cascade {
                 flat.append(c);
             }
         }
-        String s = flat.toString().strip();
-        int cut = Math.max(Math.max(s.lastIndexOf(' '), s.lastIndexOf('>')), Math.max(s.lastIndexOf('+'), s.lastIndexOf('~')));
-        return s.substring(cut + 1).strip();
+        return flat.toString().strip();
     }
 
     private List<Hit> hits(Element e) {
@@ -398,12 +520,13 @@ final class Cascade {
         found = new ArrayList<>(4);
         if (work < MAX_MATCH_WORK) {
             Set<Compiled> seen = Collections.newSetFromMap(new IdentityHashMap<>());
-            test(e, byId.get(e.id()), found, seen);
+            long[] above = ancestry(e);
+            test(e, above, byId.get(e.id()), found, seen);
             for (String c : e.classNames()) {
-                test(e, byClass.get(c), found, seen);
+                test(e, above, byClass.get(c), found, seen);
             }
-            test(e, byTag.get(e.normalName()), found, seen);
-            test(e, anyElement, found, seen);
+            test(e, above, byTag.get(e.normalName()), found, seen);
+            test(e, above, anyElement, found, seen);
             found.sort(Comparator.comparingInt(Hit::specificity).thenComparingInt(Hit::order));
             if (work - forgotten >= FORGET_EVERY) {
                 forget();
@@ -429,16 +552,26 @@ final class Cascade {
         return rulesLeftOut || work > MAX_MATCH_WORK;
     }
 
-    private void test(Element e, List<Compiled> rules, List<Hit> found, Set<Compiled> seen) {
+    private void test(Element e, long[] above, List<Compiled> rules, List<Hit> found, Set<Compiled> seen) {
         if (rules == null) {
             return;
         }
         for (Compiled c : rules) {
-            if (++work > MAX_MATCH_WORK) {
-                return;
-            }
             if (!seen.add(c)) {
+                if (++work > MAX_MATCH_WORK) {
+                    return;
+                }
                 continue;
+            }
+            if (c.above() != null && !within(c.above(), above)) {
+                if (++work > MAX_MATCH_WORK) {
+                    return;
+                }
+                continue;
+            }
+            work += c.cost();
+            if (work > MAX_MATCH_WORK) {
+                return;
             }
             tested.add(c.evaluator());
             try {
