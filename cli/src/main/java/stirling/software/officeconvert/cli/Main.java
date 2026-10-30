@@ -716,7 +716,7 @@ public final class Main {
                         + " [--allow-private-addresses] [--timeout s] [--overwrite] [-q]; an HTML file with"
                         + " --allow-network --fetch-linked draws http(s) pictures, style sheets and fonts it links"
                         + System.lineSeparator()
-                        + "       office-convert <in.pdf|dir>... --pdfa 1a|1b|2a|2b|2u|3a|3b|3u [-o out.pdf|dir] [--password p]"
+                        + "       office-convert <in.pdf|dir>... --pdfa 1a|1b|2a|2b|2u|3a|3b|3u|4 [-o out.pdf|dir] [--password p]"
                         + " [--timeout s] [--fonts dir]... [--font-map Family=Installed]... [--no-system-fonts] [--overwrite] [-q]"
                         + System.lineSeparator()
                         + "       office-convert split-photos <scan.png|scan.pdf>... [-o dir] (finds the photos on a flatbed scan;"

@@ -44,7 +44,7 @@ drawn) print to stderr as `warning: <file>: <message>` unless `-q`.
 The output file's extension picks the format: `.docx`, `.odt`, `.fodt`, `.xml` (flat ODT), `.rtf`, `.doc`, `.txt`,
 `.html`, `.json`, `.md`, `.epub`, `.azw3`, `.pptx`, `.odp`, `.ppt`, `.xlsx` or `.ods` (see Other formats). For a folder of PDFs, `--format ext` names it; `--sheets
 page|table|single` sets a spreadsheet's layout. Each file prints its time and the heap in use when it finished.
-`--pdfa 1a|1b|2a|2b|2u|3a|3b|3u` makes an archival PDF/A copy of each PDF instead (see PDF to PDF/A): `in.pdfa.pdf` beside the
+`--pdfa 1a|1b|2a|2b|2u|3a|3b|3u|4` makes an archival PDF/A copy of each PDF instead (see PDF to PDF/A): `in.pdfa.pdf` beside the
 input, or the `-o` file or folder; it takes `--password`, `--timeout`, `--fonts`, `--font-map` and
 `--no-system-fonts`, and prints what it changed as
 `note: <file>: <message>`.
@@ -682,7 +682,7 @@ Options: page range, password, table detection on or off, `typedValues` off to k
 
 ## PDF to PDF/A
 
-The `pdfa` module (`stirling-office-convert-pdfa`) rewrites a PDF as PDF/A-1a, 1b, 2a, 2b, 2u, 3a, 3b or 3u in plain Java, without
+The `pdfa` module (`stirling-office-convert-pdfa`) rewrites a PDF as PDF/A-1a, 1b, 2a, 2b, 2u, 3a, 3b, 3u or 4 in plain Java, without
 Ghostscript or LibreOffice. It changes only what the level forbids, so pages keep their content streams, text stays
 text and fonts keep their glyphs:
 

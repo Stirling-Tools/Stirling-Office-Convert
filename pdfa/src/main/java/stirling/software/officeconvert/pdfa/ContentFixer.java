@@ -91,6 +91,13 @@ final class ContentFixer {
                         }
                     }
                 }
+                if (level.part() == 4 && ("BDC".equals(name) || "DP".equals(name))) {
+                    for (Object operand : operation) {
+                        if (operand instanceof COSDictionary properties && ActualTexts.stripPrivateUse(properties)) {
+                            changed = true;
+                        }
+                    }
+                }
                 colours.operator(name);
                 if (!OPERATORS.contains(name)) {
                     changed = true;

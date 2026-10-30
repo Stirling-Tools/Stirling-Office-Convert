@@ -47,6 +47,9 @@ final class Conversion {
         Interactive.run(doc, level, report);
         ObjectMetadata.run(doc, census, level, report);
         EmbeddedFiles.run(doc, level, report);
+        if (level.part() == 4) {
+            ActualTexts.run(doc, report);
+        }
         if (level.part() == 1) {
             OptionalContentRemoval.run(doc, report);
         } else {

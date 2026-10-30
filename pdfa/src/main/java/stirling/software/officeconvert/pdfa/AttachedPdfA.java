@@ -35,10 +35,18 @@ final class AttachedPdfA {
     private AttachedPdfA() {}
 
     static boolean check(COSStream file) {
-        return check(file, 0);
+        return check(file, false);
+    }
+
+    static boolean check(COSStream file, boolean partFour) {
+        return check(file, 0, partFour);
     }
 
     private static boolean check(COSStream file, int depth) {
+        return check(file, depth, false);
+    }
+
+    private static boolean check(COSStream file, int depth, boolean partFour) {
         byte[] data;
         try {
             data = Decoded.bytes(file, MAX_BYTES, "An attachment");
@@ -51,7 +59,7 @@ final class AttachedPdfA {
         try (RandomAccessReadBuffer source = new RandomAccessReadBuffer(data)) {
             AttachmentParser parser = new AttachmentParser(source);
             try (PDDocument doc = parser.parse(false)) {
-                if (doc.isEncrypted() || !declaresPdfA(doc)) {
+                if (doc.isEncrypted() || !declaresPdfA(doc, partFour)) {
                     return false;
                 }
                 boolean[] ok = {true};
@@ -65,7 +73,7 @@ final class AttachedPdfA {
         }
     }
 
-    private static boolean declaresPdfA(PDDocument doc) {
+    private static boolean declaresPdfA(PDDocument doc, boolean partFour) {
         COSDictionary cat = doc.getDocumentCatalog().getCOSObject();
         if (!(cat.getDictionaryObject(COSName.METADATA) instanceof COSStream xmp)) {
             return false;
@@ -79,7 +87,8 @@ final class AttachedPdfA {
             String part = property(xml, "part");
             String conformance = property(xml, "conformance");
             return ("1".equals(part) && Set.of("A", "B").contains(conformance))
-                    || ("2".equals(part) && Set.of("A", "B", "U").contains(conformance));
+                    || ("2".equals(part) && Set.of("A", "B", "U").contains(conformance))
+                    || (partFour && "4".equals(part) && Set.of("", "E", "F").contains(conformance));
         } catch (IOException e) {
             return false;
         }

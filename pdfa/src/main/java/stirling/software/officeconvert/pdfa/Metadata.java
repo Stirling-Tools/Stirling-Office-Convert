@@ -68,6 +68,15 @@ final class Metadata {
             out.write(xmp.getBytes(StandardCharsets.UTF_8));
         }
         doc.getDocumentCatalog().getCOSObject().setItem(COSName.METADATA, s);
+        if (level.part() == 4) {
+            if (doc.getDocumentCatalog().getCOSObject().containsKey(COSName.PIECE_INFO)) {
+                COSDictionary modOnly = new COSDictionary();
+                modOnly.setDate(COSName.MOD_DATE, modified);
+                trailer.setItem(COSName.INFO, modOnly);
+            } else {
+                trailer.removeItem(COSName.INFO);
+            }
+        }
     }
 
     private static byte[] original(PDDocument doc) {
@@ -111,9 +120,14 @@ final class Metadata {
                 .append("<x:xmpmeta xmlns:x=\"adobe:ns:meta/\">\n")
                 .append("<rdf:RDF xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\">\n")
                 .append("<rdf:Description rdf:about=\"\" xmlns:pdfaid=\"http://www.aiim.org/pdfa/ns/id/\">\n")
-                .append("<pdfaid:part>").append(level.part()).append("</pdfaid:part>\n")
-                .append("<pdfaid:conformance>").append(level.conformance()).append("</pdfaid:conformance>\n")
-                .append("</rdf:Description>\n");
+                .append("<pdfaid:part>").append(level.part()).append("</pdfaid:part>\n");
+        if (level.part() == 4) {
+            x.append("<pdfaid:rev>2020</pdfaid:rev>\n");
+        }
+        if (!level.conformance().isEmpty()) {
+            x.append("<pdfaid:conformance>").append(level.conformance()).append("</pdfaid:conformance>\n");
+        }
+        x.append("</rdf:Description>\n");
         x.append("<rdf:Description rdf:about=\"\" xmlns:dc=\"http://purl.org/dc/elements/1.1/\">\n")
                 .append("<dc:format>application/pdf</dc:format>\n");
         x.append("</rdf:Description>\n");

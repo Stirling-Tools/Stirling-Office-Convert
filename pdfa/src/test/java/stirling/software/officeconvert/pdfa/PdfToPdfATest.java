@@ -33,7 +33,8 @@ class PdfToPdfATest {
         assertEquals(PdfALevel.A3U, PdfALevel.parse("pdfa-3u"));
         assertEquals(PdfALevel.A2B, PdfALevel.parse("2"));
         assertEquals(PdfALevel.A2A, PdfALevel.parse("2a"));
-        IllegalArgumentException e = assertThrows(IllegalArgumentException.class, () -> PdfALevel.parse("4"));
+        assertEquals(PdfALevel.A4, PdfALevel.parse("PDF/A-4"));
+        IllegalArgumentException e = assertThrows(IllegalArgumentException.class, () -> PdfALevel.parse("5"));
         assertTrue(e.getMessage().contains("1a, 1b, 2a"));
     }
 

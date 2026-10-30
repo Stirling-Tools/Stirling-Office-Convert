@@ -56,7 +56,8 @@ final class Annotations {
             COSName sub = a.getCOSName(COSName.SUBTYPE);
             String type = sub == null ? "" : sub.getName();
             boolean flatten = level.part() == 1 && Set.of("Polygon", "PolyLine", "Caret").contains(type);
-            if (!(level.part() == 1 ? ALLOWED_A1 : ALLOWED).contains(type) && !flatten) {
+            boolean forbidden = level.part() == 4 && "FileAttachment".equals(type);
+            if ((!(level.part() == 1 ? ALLOWED_A1 : ALLOWED).contains(type) || forbidden) && !flatten) {
                 report.warn("Removed " + (type.isEmpty() ? "an annotation without a type" : "a " + type
                         + " annotation") + ", which " + level.label() + " does not allow");
                 continue;

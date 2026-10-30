@@ -9,7 +9,7 @@ The converter needs no native libraries or external processes. It also converts 
 | PDF to presentations | PPTX, ODP, PPT (via the `legacy` module) |
 | PDF to spreadsheets | XLSX, ODS |
 | Office to PDF | DOCX, PPTX, XLSX, legacy DOC/XLS/PPT, XLSB, RTF, OpenDocument, Office XML, Visio, text and table formats, HTML, EPUB, MOBI/AZW3, FB2, JSON |
-| PDF to PDF/A | 1a, 1b, 2a, 2b, 2u, 3a, 3b, 3u |
+| PDF to PDF/A | 1a, 1b, 2a, 2b, 2u, 3a, 3b, 3u, 4 |
 
 PDF-to-Office documents contain real paragraphs, headings, lists, tables, footnotes, headers and footers.
 Office-to-PDF reads saved content without running macros, scripts or formulas or fetching linked resources.
