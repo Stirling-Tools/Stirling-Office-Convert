@@ -84,6 +84,9 @@ final class Conversion {
         BigDictionaries.run(doc, census, graph, level, report);
         WideStructure.run(doc, level, report);
         ColourFixer.run(doc, graph, level, report, colours, Limits.prepare(doc, level, report));
+        if (level.part() == 4) {
+            BlendingProfiles.run(doc, graph, report);
+        }
         StructureSlimming.run(doc);
         Metadata.run(doc, level);
         PdfFiles.stopIfInterrupted();
