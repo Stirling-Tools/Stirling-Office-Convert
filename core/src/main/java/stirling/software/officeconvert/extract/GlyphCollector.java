@@ -234,7 +234,10 @@ final class GlyphCollector extends PDFStreamEngine {
             return;
         }
         try {
-            super.processOperator(operator, operands);
+            if (TextObjects.opensImplicitly(this, operator)) {
+                super.processOperator(TextObjects.BEGIN, List.of());
+            }
+            super.processOperator(operator, TextObjects.sized(operator, operands));
             clips.operator(operator.getName());
         } catch (IOException | RuntimeException e) {
             BrokenOperators.skip(operator, e);

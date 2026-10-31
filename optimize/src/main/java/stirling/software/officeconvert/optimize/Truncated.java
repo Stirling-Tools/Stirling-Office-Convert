@@ -23,6 +23,7 @@ import org.apache.pdfbox.cos.ICOSParser;
 import org.apache.pdfbox.io.RandomAccessRead;
 
 import stirling.software.officeconvert.extract.PdfFiles;
+import stirling.software.officeconvert.extract.Salvage;
 
 final class Truncated {
 
