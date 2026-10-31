@@ -44,6 +44,12 @@ final class CffSubsetter {
 
     private static final int MAX_STACK = 513;
 
+    private static final long MAX_WORK = 1L << 25;
+
+    private static final int MAX_PRIVATE_BYTES = 1 << 16;
+
+    private static final long MAX_EXTRA_BYTES = 16L << 20;
+
     private static final byte[] RETURN = {11};
 
     private record Entry(int op, byte[] operands, int[] numbers) {}
@@ -90,7 +96,11 @@ final class CffSubsetter {
 
     private int globalCount;
 
-    private final List<Fd> fds = new ArrayList<>();
+    private Fd[] fds = new Fd[1];
+
+    private long work;
+
+    private long written;
 
     private Index global;
 
@@ -125,40 +135,44 @@ final class CffSubsetter {
         int count = charStrings.count();
         boolean cidKeyed = entry(top, ROS) != null;
         int[] fdOf = new int[glyphs.length];
+        for (int g : glyphs) {
+            if (g < 0 || g >= count) {
+                throw new IllegalArgumentException("glyph " + g + " is not in the font");
+            }
+        }
         if (cidKeyed) {
             Index array = index(number(top, FD_ARRAY));
-            for (int i = 0; i < array.count(); i++) {
-                Fd fd = new Fd(i);
-                fd.font = dict(array.start(i), array.stop(i));
-                privateOf(fd, fd.font);
-                fds.add(fd);
-            }
-            int select = number(top, FD_SELECT);
+            fds = new Fd[array.count()];
+            int[] select = fdSelect(number(top, FD_SELECT), count);
             for (int k = 0; k < glyphs.length; k++) {
-                fdOf[k] = fdIndex(select, glyphs[k], count);
-                if (fdOf[k] < 0 || fdOf[k] >= fds.size()) {
+                int f = select[glyphs[k]];
+                if (f < 0 || f >= fds.length) {
                     throw new IOException("glyph " + glyphs[k] + " has no font dictionary");
                 }
+                if (fds[f] == null) {
+                    Fd fd = new Fd(f);
+                    fd.font = dict(array.start(f), array.stop(f));
+                    privateOf(fd, fd.font);
+                    fds[f] = fd;
+                }
+                fdOf[k] = f;
             }
         } else {
             Fd fd = new Fd(0);
             privateOf(fd, top);
-            fds.add(fd);
+            fds[0] = fd;
         }
         for (int k = 0; k < glyphs.length; k++) {
-            if (glyphs[k] < 0 || glyphs[k] >= count) {
-                throw new IllegalArgumentException("glyph " + glyphs[k] + " is not in the font");
-            }
-            new Scan(fds.get(fdOf[k])).glyph(charStrings.start(glyphs[k]), charStrings.stop(glyphs[k]));
+            new Scan(fds[fdOf[k]]).glyph(charStrings.start(glyphs[k]), charStrings.stop(glyphs[k]));
         }
 
         List<Fd> kept = new ArrayList<>();
-        int[] keptAt = new int[fds.size()];
+        int[] keptAt = new int[fds.length];
         Arrays.fill(keptAt, -1);
         for (int k = 0; k < glyphs.length; k++) {
             if (keptAt[fdOf[k]] < 0) {
                 keptAt[fdOf[k]] = kept.size();
-                kept.add(fds.get(fdOf[k]));
+                kept.add(fds[fdOf[k]]);
             }
         }
         if (renumber) {
@@ -308,6 +322,9 @@ final class CffSubsetter {
         if (size < 0 || at < 0 || at + size > in.length) {
             throw new IllegalArgumentException("bad Private DICT");
         }
+        if (size > MAX_PRIVATE_BYTES) {
+            throw new IllegalArgumentException("the Private DICT is too large");
+        }
         fd.priv = dict(at, at + size);
         Entry subrs = entry(fd.priv, SUBRS);
         if (subrs != null && subrs.numbers().length > 0 && subrs.numbers()[0] > 0) {
@@ -315,24 +332,32 @@ final class CffSubsetter {
         }
     }
 
-    private int fdIndex(int select, int glyph, int count) {
+    private int[] fdSelect(int select, int count) {
+        int[] fd = new int[count];
         int format = in[select] & 0xFF;
         if (format == 0) {
-            return in[select + 1 + glyph] & 0xFF;
+            for (int g = 0; g < count; g++) {
+                fd[g] = in[select + 1 + g] & 0xFF;
+            }
+            return fd;
         }
         if (format != 3) {
             throw new IllegalArgumentException("FDSelect format " + format);
         }
+        Arrays.fill(fd, -1);
         int ranges = u16(select + 1);
-        int fd = -1;
+        int previous = 0;
         for (int r = 0; r < ranges; r++) {
             int first = u16(select + 3 + 3 * r);
-            if (first > glyph) {
-                break;
+            int next = u16(select + 6 + 3 * r);
+            if (first < previous) {
+                throw new IllegalArgumentException("the FDSelect ranges are out of order");
             }
-            fd = in[select + 5 + 3 * r] & 0xFF;
+            Arrays.fill(fd, Math.min(first, count), Math.min(Math.max(first, next), count),
+                    in[select + 5 + 3 * r] & 0xFF);
+            previous = first;
         }
-        return glyph < count ? fd : -1;
+        return fd;
     }
 
     private byte[] subrs(Index subrs, BitSet used, boolean all) {
@@ -362,13 +387,14 @@ final class CffSubsetter {
         if (!renumber) {
             return slice(start, end);
         }
+        grow(end - start);
         ByteArrayOutputStream out = new ByteArrayOutputStream(end - start + 8);
         int at = start;
         for (Map.Entry<Integer, Call> e : calls.subMap(start, end).entrySet()) {
             int pos = e.getKey();
             Call call = e.getValue();
             out.write(in, at, pos - at);
-            Fd fd = call.fd() < 0 ? null : fds.get(call.fd());
+            Fd fd = call.fd() < 0 ? null : fds[call.fd()];
             int rank = fd == null ? globalRenumbered[call.subr()] : fd.renumbered[call.subr()];
             operand(out, rank - bias(fd == null ? globalCount : fd.renumberedCount));
             at = pos + call.length();
@@ -424,6 +450,10 @@ final class CffSubsetter {
             }
             int i = start;
             while (i < end && !done) {
+                if (++work > MAX_WORK) {
+                    fail();
+                    return;
+                }
                 int b = in[i] & 0xFF;
                 if (b == 28) {
                     push((short) ((in[i + 1] & 0xFF) << 8 | in[i + 2] & 0xFF), i, 3);
@@ -629,7 +659,15 @@ final class CffSubsetter {
         return (in[at] & 0xFF) << 8 | in[at + 1] & 0xFF;
     }
 
+    private void grow(long bytes) {
+        written += bytes;
+        if (written > 2L * in.length + MAX_EXTRA_BYTES) {
+            throw new IllegalArgumentException("the subset CFF would be too large");
+        }
+    }
+
     private byte[] slice(int start, int end) {
+        grow(end - start);
         byte[] b = new byte[end - start];
         System.arraycopy(in, start, b, 0, b.length);
         return b;
