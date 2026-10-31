@@ -1,0 +1,427 @@
+The reference glyph prints in stirling/software/officeconvert/extract/glyph-refs.txt are
+16x16 ink grids and ink boxes measured from the fonts below by GlyphRefsTool. No outlines or
+other font software are included. Each entry is read from the font file's own name table.
+
+cmr10.ttf  CMU Serif Roman, Version 0.7.0
+  SHA-256 cf2b28d1f36b680bc5851196c0da97d32ed564d8a703a9636f094092934babe6
+    Converted by Andrey V. Panov from TeX fonts. Some glyphs are copied from Blue Sky fonts released by AMS.
+  Licence: http://scripts.sil.org/OFL
+    This Font Software is licensed under the SIL Open Font License, Version 1.1.
+    This license is copied together with this font package in OFL.txt,
+    and is also available with a FAQ at: http://scripts.sil.org/OFL
+
+cmbx10.ttf  CMU Serif Bold Extended Roman, Version 0.7.0
+  SHA-256 82d500c7092f44de9de332b8ffdc16a6e7ce5b042832b7aa0203a6cea8f4f263
+    Converted by Andrey V. Panov from TeX fonts. Some glyphs are copied from Blue Sky fonts released by AMS.
+  Licence: http://scripts.sil.org/OFL
+    This Font Software is licensed under the SIL Open Font License, Version 1.1.
+    This license is copied together with this font package in OFL.txt,
+    and is also available with a FAQ at: http://scripts.sil.org/OFL
+
+cmti10.ttf  CMU Serif Italic, Version 0.7.0
+  SHA-256 0473b87393141b7ba311e8a590c568e8a82e29dc417574eb748c0093cce0911d
+    Converted by Andrey V. Panov from TeX fonts. Some glyphs are copied from Blue Sky fonts released by AMS.
+  Licence: http://scripts.sil.org/OFL
+    This Font Software is licensed under the SIL Open Font License, Version 1.1.
+    This license is copied together with this font package in OFL.txt,
+    and is also available with a FAQ at: http://scripts.sil.org/OFL
+
+cmss10.ttf  CMU Sans Serif, Version 0.7.0
+  SHA-256 e0760f13b32ff4ed789ef14badc8995c780e052195c2b57f5661a079d0ab9d52
+    Converted by Andrey V. Panov from TeX fonts
+  Licence: http://scripts.sil.org/OFL
+    This Font Software is licensed under the SIL Open Font License, Version 1.1.
+    This license is copied together with this font package in OFL.txt,
+    and is also available with a FAQ at: http://scripts.sil.org/OFL
+
+cmtt10.ttf  CMU Typewriter Text Regular, Version 0.7.0
+  SHA-256 408c037330446e5f3225add1fcca336e2072c459deb39f5318390004a780de82
+    Converted by Andrey V. Panov from TeX fonts. Some glyphs are copied from Blue Sky fonts released by AMS.
+  Licence: http://scripts.sil.org/OFL
+    This Font Software is licensed under the SIL Open Font License, Version 1.1.
+    This license is copied together with this font package in OFL.txt,
+    and is also available with a FAQ at: http://scripts.sil.org/OFL
+
+cmmi10.ttf  CMU Sans Serif Oblique, Version 0.7.0
+  SHA-256 ebb2bc739e7ab8b4a779f6194003976db1f58bbb2d63245159fc72fdb246e932
+    Converted by Andrey V. Panov from TeX fonts
+  Licence: http://scripts.sil.org/OFL
+    This Font Software is licensed under the SIL Open Font License, Version 1.1.
+    This license is copied together with this font package in OFL.txt,
+    and is also available with a FAQ at: http://scripts.sil.org/OFL
+
+LiberationSerif-Regular.ttf  Liberation Serif, Version 2.1.5
+  SHA-256 058ea80864aef09a23f45cbec2bb5400bc3dfbdea01c3f10538a21fcb497fb74
+    Digitized data copyright (c) 2010 Google Corporation.
+    Copyright (c) 2012 Red Hat, Inc.
+  Licence: http://scripts.sil.org/OFL
+    Licensed under the SIL Open Font License, Version 1.1
+
+LiberationSerif-Bold.ttf  Liberation Serif Bold, Version 2.1.5
+  SHA-256 d754ba427cfe0bca54ae052384baa8f842da5bd6550ad4da024ac441e7a7d5ce
+    Digitized data copyright (c) 2010 Google Corporation.
+    Copyright (c) 2012 Red Hat, Inc.
+  Licence: http://scripts.sil.org/OFL
+    Licensed under the SIL Open Font License, Version 1.1
+
+LiberationSerif-Italic.ttf  Liberation Serif Italic, Version 2.1.5
+  SHA-256 0e3dea9f8d613e006ccfa62201f33e265d19167bd0907725c3e145368b04fc2e
+    Digitized data copyright (c) 2010 Google Corporation.
+    Copyright (c) 2012 Red Hat, Inc.
+  Licence: http://scripts.sil.org/OFL
+    Licensed under the SIL Open Font License, Version 1.1
+
+LiberationSerif-BoldItalic.ttf  Liberation Serif Bold Italic, Version 2.1.5
+  SHA-256 f17db8af71e24d2066b587546021d4f0b296be389512b658dec3c09affeb11a7
+    Digitized data copyright (c) 2010 Google Corporation.
+    Copyright (c) 2012 Red Hat, Inc.
+  Licence: http://scripts.sil.org/OFL
+    Licensed under the SIL Open Font License, Version 1.1
+
+LiberationSans-Regular.ttf  Liberation Sans, Version 2.1.5
+  SHA-256 76d04c18ea243f426b7de1f3ad208e927008f961dc5945e5aad352d0dfde8ee8
+    Digitized data copyright (c) 2010 Google Corporation.
+    Copyright (c) 2012 Red Hat, Inc.
+  Licence: http://scripts.sil.org/OFL
+    Licensed under the SIL Open Font License, Version 1.1
+
+LiberationSans-Bold.ttf  Liberation Sans Bold, Version 2.1.5
+  SHA-256 788abee4c806d660e8aee46689dd8540cd4bb98da03dcc9d171ce3efd99a9173
+    Digitized data copyright (c) 2010 Google Corporation.
+    Copyright (c) 2012 Red Hat, Inc.
+  Licence: http://scripts.sil.org/OFL
+    Licensed under the SIL Open Font License, Version 1.1
+
+LiberationSans-Italic.ttf  Liberation Sans Italic, Version 2.1.5
+  SHA-256 e5bae5c4cde31f22142753855f4f8fb86da6ff39955ed3c0a11248b0d16948b0
+    Digitized data copyright (c) 2010 Google Corporation.
+    Copyright (c) 2012 Red Hat, Inc.
+  Licence: http://scripts.sil.org/OFL
+    Licensed under the SIL Open Font License, Version 1.1
+
+Carlito-Regular.ttf  Carlito Regular, Version 1.104
+  SHA-256 f6418f708baede9789daef5d458c0f53d2a888af9820e8062934e504fedc6595
+    Copyright 2013 The Carlito Project Authors (https://github.com/googlefonts/carlito)
+  Licence: https://scripts.sil.org/OFL
+    This Font Software is licensed under the SIL Open Font License, Version 1.1. This license is available with a FAQ at: https://scripts.sil.org/OFL
+
+Carlito-Bold.ttf  Carlito Bold, Version 1.104
+  SHA-256 bb5d20f79b82599ec72983597437373a80f2d2085fa91fc144fd74e876a594db
+    Copyright 2013 The Carlito Project Authors (https://github.com/googlefonts/carlito)
+  Licence: https://scripts.sil.org/OFL
+    This Font Software is licensed under the SIL Open Font License, Version 1.1. This license is available with a FAQ at: https://scripts.sil.org/OFL
+
+Carlito-Italic.ttf  Carlito Italic, Version 1.104
+  SHA-256 0b019225e58d702bfedcbd35c21696769f8ee115cb6343f84c2f240312450d1c
+    Copyright 2013 The Carlito Project Authors (https://github.com/googlefonts/carlito)
+  Licence: https://scripts.sil.org/OFL
+    This Font Software is licensed under the SIL Open Font License, Version 1.1. This license is available with a FAQ at: https://scripts.sil.org/OFL
+
+Caladea-Regular.ttf  Caladea Regular, Version 1.001
+  SHA-256 f1e899278b7b4491aba5b6a8253c4b04c050cc59b21865be5c37559a775153cd
+    Copyright 2012 The Caladea Project Authors (https://github.com/huertatipografica/Caladea)
+  Licence: http://scripts.sil.org/OFL
+    This Font Software is licensed under the SIL Open Font License, Version 1.1. This license is available with a FAQ at: http://scripts.sil.org/OFL
+
+Caladea-Bold.ttf  Caladea Bold, Version 1.001
+  SHA-256 ae3cb2dcbc925809dd29d2a44e9802211cab66be541bacbfc9c08c74b27c3742
+    Copyright 2012 The Caladea Project Authors (https://github.com/huertatipografica/Caladea)
+  Licence: http://scripts.sil.org/OFL
+    This Font Software is licensed under the SIL Open Font License, Version 1.1. This license is available with a FAQ at: http://scripts.sil.org/OFL
+
+Caladea-Italic.ttf  Caladea Italic, Version 1.001
+  SHA-256 4359a8e24f748b6447b1ff6d7a174febe70961d29f8bb8634b56dacd740a3deb
+    Copyright 2012 The Caladea Project Authors (https://github.com/huertatipografica/Caladea)
+  Licence: http://scripts.sil.org/OFL
+    This Font Software is licensed under the SIL Open Font License, Version 1.1. This license is available with a FAQ at: http://scripts.sil.org/OFL
+
+DejaVuSansMono.ttf  DejaVu Sans Mono, Version 2.37
+  SHA-256 54bf827eb99404e8f430c330ad30f063334f637eba0109b6a18d4f566a8e9dd8
+    Copyright (c) 2003 by Bitstream, Inc. All Rights Reserved.
+    DejaVu changes are in public domain
+  Licence: http://dejavu.sourceforge.net/wiki/index.php/License
+    Fonts are (c) Bitstream (see below). DejaVu changes are in public domain.
+
+    Bitstream Vera Fonts Copyright
+    ------------------------------
+
+    Copyright (c) 2003 by Bitstream, Inc. All Rights Reserved. Bitstream Vera is a trademark of Bitstream, Inc.
+
+    Permission is hereby granted, free of charge, to any person obtaining a copy of the fonts accompanying this license ("Fonts") and associated documentation files (the "Font Software"), to reproduce and distribute the Font Software, including without limitation the rights to use, copy, merge, publish, distribute, and/or sell copies of the Font Software, and to permit persons to whom the Font Software is furnished to do so, subject to the following conditions:
+
+    The above copyright and trademark notices and this permission notice shall be included in all copies of one or more of the Font Software typefaces.
+
+    The Font Software may be modified, altered, or added to, and in particular the designs of glyphs or characters in the Fonts may be modified and additional glyphs or  or characters may be added to the Fonts, only if the fonts are renamed to names not containing either the words "Bitstream" or the word "Vera".
+
+    This License becomes null and void to the extent applicable to Fonts or Font Software that has been modified and is distributed under the "Bitstream Vera" names.
+
+    The Font Software may be sold as part of a larger software package but no copy of one or more of the Font Software typefaces may be sold by itself.
+
+    THE FONT SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO ANY WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT OF COPYRIGHT, PATENT, TRADEMARK, OR OTHER RIGHT. IN NO EVENT SHALL BITSTREAM OR THE GNOME FOUNDATION BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, INCLUDING ANY GENERAL, SPECIAL, INDIRECT, INCIDENTAL, OR CONSEQUENTIAL DAMAGES, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF THE USE OR INABILITY TO USE THE FONT SOFTWARE OR FROM OTHER DEALINGS IN THE FONT SOFTWARE.
+
+    Except as contained in this notice, the names of Gnome, the Gnome Foundation, and Bitstream Inc., shall not be used in advertising or otherwise to promote the sale, use or other dealings in this Font Software without prior written authorization from the Gnome Foundation or Bitstream Inc., respectively. For further information, contact: fonts at gnome dot org.
+
+LiberationMono-Regular.ttf  Liberation Mono, Version 2.1.5
+  SHA-256 5883330d94debd992952cd8f0571b225f478c2d797d3f36c7521b0a5c9bde0f2
+    Digitized data copyright (c) 2010 Google Corporation.
+    Copyright (c) 2012 Red Hat, Inc.
+  Licence: http://scripts.sil.org/OFL
+    Licensed under the SIL Open Font License, Version 1.1
+
+DejaVuSerif.ttf  DejaVu Serif, Version 2.37
+  SHA-256 42d1edeb7952f31b1f96d767ed7030b08a39e0c372b0071641518864e2bffb51
+    Copyright (c) 2003 by Bitstream, Inc. All Rights Reserved.
+    DejaVu changes are in public domain
+  Licence: http://dejavu.sourceforge.net/wiki/index.php/License
+    Fonts are (c) Bitstream (see below). DejaVu changes are in public domain.
+
+    Bitstream Vera Fonts Copyright
+    ------------------------------
+
+    Copyright (c) 2003 by Bitstream, Inc. All Rights Reserved. Bitstream Vera is a trademark of Bitstream, Inc.
+
+    Permission is hereby granted, free of charge, to any person obtaining a copy of the fonts accompanying this license ("Fonts") and associated documentation files (the "Font Software"), to reproduce and distribute the Font Software, including without limitation the rights to use, copy, merge, publish, distribute, and/or sell copies of the Font Software, and to permit persons to whom the Font Software is furnished to do so, subject to the following conditions:
+
+    The above copyright and trademark notices and this permission notice shall be included in all copies of one or more of the Font Software typefaces.
+
+    The Font Software may be modified, altered, or added to, and in particular the designs of glyphs or characters in the Fonts may be modified and additional glyphs or  or characters may be added to the Fonts, only if the fonts are renamed to names not containing either the words "Bitstream" or the word "Vera".
+
+    This License becomes null and void to the extent applicable to Fonts or Font Software that has been modified and is distributed under the "Bitstream Vera" names.
+
+    The Font Software may be sold as part of a larger software package but no copy of one or more of the Font Software typefaces may be sold by itself.
+
+    THE FONT SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO ANY WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT OF COPYRIGHT, PATENT, TRADEMARK, OR OTHER RIGHT. IN NO EVENT SHALL BITSTREAM OR THE GNOME FOUNDATION BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, INCLUDING ANY GENERAL, SPECIAL, INDIRECT, INCIDENTAL, OR CONSEQUENTIAL DAMAGES, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF THE USE OR INABILITY TO USE THE FONT SOFTWARE OR FROM OTHER DEALINGS IN THE FONT SOFTWARE.
+
+    Except as contained in this notice, the names of Gnome, the Gnome Foundation, and Bitstream Inc., shall not be used in advertising or otherwise to promote the sale, use or other dealings in this Font Software without prior written authorization from the Gnome Foundation or Bitstream Inc., respectively. For further information, contact: fonts at gnome dot org.
+
+DejaVuSerif-Bold.ttf  DejaVu Serif Bold, Version 2.37
+  SHA-256 c47b5527bcdc8dcf9ea8c77054454c5a884beaca2f44851a2a823ee639cbf07f
+    Copyright (c) 2003 by Bitstream, Inc. All Rights Reserved.
+    DejaVu changes are in public domain
+  Licence: http://dejavu.sourceforge.net/wiki/index.php/License
+    Fonts are (c) Bitstream (see below). DejaVu changes are in public domain.
+
+    Bitstream Vera Fonts Copyright
+    ------------------------------
+
+    Copyright (c) 2003 by Bitstream, Inc. All Rights Reserved. Bitstream Vera is a trademark of Bitstream, Inc.
+
+    Permission is hereby granted, free of charge, to any person obtaining a copy of the fonts accompanying this license ("Fonts") and associated documentation files (the "Font Software"), to reproduce and distribute the Font Software, including without limitation the rights to use, copy, merge, publish, distribute, and/or sell copies of the Font Software, and to permit persons to whom the Font Software is furnished to do so, subject to the following conditions:
+
+    The above copyright and trademark notices and this permission notice shall be included in all copies of one or more of the Font Software typefaces.
+
+    The Font Software may be modified, altered, or added to, and in particular the designs of glyphs or characters in the Fonts may be modified and additional glyphs or  or characters may be added to the Fonts, only if the fonts are renamed to names not containing either the words "Bitstream" or the word "Vera".
+
+    This License becomes null and void to the extent applicable to Fonts or Font Software that has been modified and is distributed under the "Bitstream Vera" names.
+
+    The Font Software may be sold as part of a larger software package but no copy of one or more of the Font Software typefaces may be sold by itself.
+
+    THE FONT SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO ANY WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT OF COPYRIGHT, PATENT, TRADEMARK, OR OTHER RIGHT. IN NO EVENT SHALL BITSTREAM OR THE GNOME FOUNDATION BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, INCLUDING ANY GENERAL, SPECIAL, INDIRECT, INCIDENTAL, OR CONSEQUENTIAL DAMAGES, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF THE USE OR INABILITY TO USE THE FONT SOFTWARE OR FROM OTHER DEALINGS IN THE FONT SOFTWARE.
+
+    Except as contained in this notice, the names of Gnome, the Gnome Foundation, and Bitstream Inc., shall not be used in advertising or otherwise to promote the sale, use or other dealings in this Font Software without prior written authorization from the Gnome Foundation or Bitstream Inc., respectively. For further information, contact: fonts at gnome dot org.
+
+DejaVuSans.ttf  DejaVu Sans, Version 2.37
+  SHA-256 7da195a74c55bef988d0d48f9508bd5d849425c1770dba5d7bfc6ce9ed848954
+    Copyright (c) 2003 by Bitstream, Inc. All Rights Reserved.
+    Copyright (c) 2006 by Tavmjong Bah. All Rights Reserved.
+    DejaVu changes are in public domain
+  Licence: http://dejavu.sourceforge.net/wiki/index.php/License
+    Fonts are (c) Bitstream (see below). DejaVu changes are in public domain. Glyphs imported from Arev fonts are (c) Tavmjung Bah (see below)
+
+    Bitstream Vera Fonts Copyright
+    ------------------------------
+
+    Copyright (c) 2003 by Bitstream, Inc. All Rights Reserved. Bitstream Vera is
+    a trademark of Bitstream, Inc.
+
+    Permission is hereby granted, free of charge, to any person obtaining a copy
+    of the fonts accompanying this license ("Fonts") and associated
+    documentation files (the "Font Software"), to reproduce and distribute the
+    Font Software, including without limitation the rights to use, copy, merge,
+    publish, distribute, and/or sell copies of the Font Software, and to permit
+    persons to whom the Font Software is furnished to do so, subject to the
+    following conditions:
+
+    The above copyright and trademark notices and this permission notice shall
+    be included in all copies of one or more of the Font Software typefaces.
+
+    The Font Software may be modified, altered, or added to, and in particular
+    the designs of glyphs or characters in the Fonts may be modified and
+    additional glyphs or characters may be added to the Fonts, only if the fonts
+    are renamed to names not containing either the words "Bitstream" or the word
+    "Vera".
+
+    This License becomes null and void to the extent applicable to Fonts or Font
+    Software that has been modified and is distributed under the "Bitstream
+    Vera" names.
+
+    The Font Software may be sold as part of a larger software package but no
+    copy of one or more of the Font Software typefaces may be sold by itself.
+
+    THE FONT SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+    OR IMPLIED, INCLUDING BUT NOT LIMITED TO ANY WARRANTIES OF MERCHANTABILITY,
+    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT OF COPYRIGHT, PATENT,
+    TRADEMARK, OR OTHER RIGHT. IN NO EVENT SHALL BITSTREAM OR THE GNOME
+    FOUNDATION BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, INCLUDING
+    ANY GENERAL, SPECIAL, INDIRECT, INCIDENTAL, OR CONSEQUENTIAL DAMAGES,
+    WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF
+    THE USE OR INABILITY TO USE THE FONT SOFTWARE OR FROM OTHER DEALINGS IN THE
+    FONT SOFTWARE.
+
+    Except as contained in this notice, the names of Gnome, the Gnome
+    Foundation, and Bitstream Inc., shall not be used in advertising or
+    otherwise to promote the sale, use or other dealings in this Font Software
+    without prior written authorization from the Gnome Foundation or Bitstream
+    Inc., respectively. For further information, contact: fonts at gnome dot
+    org.
+
+    Arev Fonts Copyright
+    ------------------------------
+
+    Copyright (c) 2006 by Tavmjong Bah. All Rights Reserved.
+
+    Permission is hereby granted, free of charge, to any person obtaining
+    a copy of the fonts accompanying this license ("Fonts") and
+    associated documentation files (the "Font Software"), to reproduce
+    and distribute the modifications to the Bitstream Vera Font Software,
+    including without limitation the rights to use, copy, merge, publish,
+    distribute, and/or sell copies of the Font Software, and to permit
+    persons to whom the Font Software is furnished to do so, subject to
+    the following conditions:
+
+    The above copyright and trademark notices and this permission notice
+    shall be included in all copies of one or more of the Font Software
+    typefaces.
+
+    The Font Software may be modified, altered, or added to, and in
+    particular the designs of glyphs or characters in the Fonts may be
+    modified and additional glyphs or characters may be added to the
+    Fonts, only if the fonts are renamed to names not containing either
+    the words "Tavmjong Bah" or the word "Arev".
+
+    This License becomes null and void to the extent applicable to Fonts
+    or Font Software that has been modified and is distributed under the
+    "Tavmjong Bah Arev" names.
+
+    The Font Software may be sold as part of a larger software package but
+    no copy of one or more of the Font Software typefaces may be sold by
+    itself.
+
+    THE FONT SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+    EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO ANY WARRANTIES OF
+    MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT
+    OF COPYRIGHT, PATENT, TRADEMARK, OR OTHER RIGHT. IN NO EVENT SHALL
+    TAVMJONG BAH BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+    INCLUDING ANY GENERAL, SPECIAL, INDIRECT, INCIDENTAL, OR CONSEQUENTIAL
+    DAMAGES, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+    FROM, OUT OF THE USE OR INABILITY TO USE THE FONT SOFTWARE OR FROM
+    OTHER DEALINGS IN THE FONT SOFTWARE.
+
+    Except as contained in this notice, the name of Tavmjong Bah shall not
+    be used in advertising or otherwise to promote the sale, use or other
+    dealings in this Font Software without prior written authorization
+    from Tavmjong Bah. For further information, contact: tavmjong @ free
+    . fr.
+
+DejaVuSans-Bold.ttf  DejaVu Sans Bold, Version 2.37
+  SHA-256 e6476c1b80502924294eed40894c5b18e06c181444ca953e5334262df9c27724
+    Copyright (c) 2003 by Bitstream, Inc. All Rights Reserved.
+    Copyright (c) 2006 by Tavmjong Bah. All Rights Reserved.
+    DejaVu changes are in public domain
+  Licence: http://dejavu.sourceforge.net/wiki/index.php/License
+    Fonts are (c) Bitstream (see below). DejaVu changes are in public domain. Glyphs imported from Arev fonts are (c) Tavmjung Bah (see below)
+
+    Bitstream Vera Fonts Copyright
+    ------------------------------
+
+    Copyright (c) 2003 by Bitstream, Inc. All Rights Reserved. Bitstream Vera is
+    a trademark of Bitstream, Inc.
+
+    Permission is hereby granted, free of charge, to any person obtaining a copy
+    of the fonts accompanying this license ("Fonts") and associated
+    documentation files (the "Font Software"), to reproduce and distribute the
+    Font Software, including without limitation the rights to use, copy, merge,
+    publish, distribute, and/or sell copies of the Font Software, and to permit
+    persons to whom the Font Software is furnished to do so, subject to the
+    following conditions:
+
+    The above copyright and trademark notices and this permission notice shall
+    be included in all copies of one or more of the Font Software typefaces.
+
+    The Font Software may be modified, altered, or added to, and in particular
+    the designs of glyphs or characters in the Fonts may be modified and
+    additional glyphs or characters may be added to the Fonts, only if the fonts
+    are renamed to names not containing either the words "Bitstream" or the word
+    "Vera".
+
+    This License becomes null and void to the extent applicable to Fonts or Font
+    Software that has been modified and is distributed under the "Bitstream
+    Vera" names.
+
+    The Font Software may be sold as part of a larger software package but no
+    copy of one or more of the Font Software typefaces may be sold by itself.
+
+    THE FONT SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+    OR IMPLIED, INCLUDING BUT NOT LIMITED TO ANY WARRANTIES OF MERCHANTABILITY,
+    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT OF COPYRIGHT, PATENT,
+    TRADEMARK, OR OTHER RIGHT. IN NO EVENT SHALL BITSTREAM OR THE GNOME
+    FOUNDATION BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, INCLUDING
+    ANY GENERAL, SPECIAL, INDIRECT, INCIDENTAL, OR CONSEQUENTIAL DAMAGES,
+    WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF
+    THE USE OR INABILITY TO USE THE FONT SOFTWARE OR FROM OTHER DEALINGS IN THE
+    FONT SOFTWARE.
+
+    Except as contained in this notice, the names of Gnome, the Gnome
+    Foundation, and Bitstream Inc., shall not be used in advertising or
+    otherwise to promote the sale, use or other dealings in this Font Software
+    without prior written authorization from the Gnome Foundation or Bitstream
+    Inc., respectively. For further information, contact: fonts at gnome dot
+    org.
+
+    Arev Fonts Copyright
+    ------------------------------
+
+    Copyright (c) 2006 by Tavmjong Bah. All Rights Reserved.
+
+    Permission is hereby granted, free of charge, to any person obtaining
+    a copy of the fonts accompanying this license ("Fonts") and
+    associated documentation files (the "Font Software"), to reproduce
+    and distribute the modifications to the Bitstream Vera Font Software,
+    including without limitation the rights to use, copy, merge, publish,
+    distribute, and/or sell copies of the Font Software, and to permit
+    persons to whom the Font Software is furnished to do so, subject to
+    the following conditions:
+
+    The above copyright and trademark notices and this permission notice
+    shall be included in all copies of one or more of the Font Software
+    typefaces.
+
+    The Font Software may be modified, altered, or added to, and in
+    particular the designs of glyphs or characters in the Fonts may be
+    modified and additional glyphs or characters may be added to the
+    Fonts, only if the fonts are renamed to names not containing either
+    the words "Tavmjong Bah" or the word "Arev".
+
+    This License becomes null and void to the extent applicable to Fonts
+    or Font Software that has been modified and is distributed under the
+    "Tavmjong Bah Arev" names.
+
+    The Font Software may be sold as part of a larger software package but
+    no copy of one or more of the Font Software typefaces may be sold by
+    itself.
+
+    THE FONT SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+    EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO ANY WARRANTIES OF
+    MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT
+    OF COPYRIGHT, PATENT, TRADEMARK, OR OTHER RIGHT. IN NO EVENT SHALL
+    TAVMJONG BAH BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+    INCLUDING ANY GENERAL, SPECIAL, INDIRECT, INCIDENTAL, OR CONSEQUENTIAL
+    DAMAGES, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+    FROM, OUT OF THE USE OR INABILITY TO USE THE FONT SOFTWARE OR FROM
+    OTHER DEALINGS IN THE FONT SOFTWARE.
+
+    Except as contained in this notice, the name of Tavmjong Bah shall not
+    be used in advertising or otherwise to promote the sale, use or other
+    dealings in this Font Software without prior written authorization
+    from Tavmjong Bah. For further information, contact: tavmjong @ free
+    . fr.
