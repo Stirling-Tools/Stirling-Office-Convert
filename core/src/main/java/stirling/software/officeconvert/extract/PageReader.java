@@ -247,7 +247,7 @@ public final class PageReader {
                                 && Math.abs(o.x - g.x) < reachX
                                 && Math.abs(o.baseline - g.baseline) < reachY
                                 && Math.abs(o.size - g.size) < 0.5f
-                                && !(o.seq == g.seq - 1 && g.x - o.x > 0.5f * o.width)) {
+                                && !(o.seq == g.seq - 1 && g.x - o.x > Math.max(0.75f * o.width, 0.12f * o.size))) {
                             twin = o;
                             break outer;
                         }

@@ -27,6 +27,20 @@ class DuplicateTextTest {
     }
 
     @Test
+    void tinyFakeBoldDrawnGlyphByGlyphReadsOnce() throws IOException {
+        StringBuilder content = new StringBuilder("BT /F1 2 Tf ");
+        float x = 72;
+        for (char c : "illicit".toCharArray()) {
+            content.append("1 0 0 1 ").append(x).append(" 700 Tm (").append(c).append(") Tj 1 0 0 1 ").append(x + 0.3f)
+                    .append(" 700 Tm (").append(c).append(") Tj ");
+            x += 1.2f;
+        }
+        String text = text(content.append("ET BT /F1 12 Tf 72 680 Td (Normal line.) Tj ET").toString());
+        assertFalse(text.contains("ii"), text);
+        assertFalse(text.contains("tt"), text);
+    }
+
+    @Test
     void offsetShadowIsDroppedAsAWholeRun() throws IOException {
         String text = text("BT 0.7 g /F1 18 Tf 73.5 698.5 Td (Shadowed title) Tj ET"
                 + " BT 0 g /F1 18 Tf 72 700 Td (Shadowed title) Tj ET BT /F1 12 Tf 72 670 Td (Body.) Tj ET");
