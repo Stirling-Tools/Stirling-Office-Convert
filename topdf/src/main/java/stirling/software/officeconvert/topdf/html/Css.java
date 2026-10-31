@@ -283,6 +283,7 @@ final class Css {
             }
             case "background", "background-image" -> {
                 out.put("background-gradient", "none");
+                boolean coloured = false;
                 for (String token : tokens(value)) {
                     String t = token.toLowerCase(Locale.ROOT);
                     if (t.contains("gradient(")) {
@@ -292,8 +293,10 @@ final class Css {
                             out.put("background-color", first);
                         }
                         out.put("background-gradient", token);
-                    } else if (name.equals("background") && (color(token) != null || t.equals("transparent")
-                            || t.equals("none"))) {
+                    } else if (name.equals("background") && (color(token) != null || t.equals("transparent"))) {
+                        out.put("background-color", token);
+                        coloured = true;
+                    } else if (name.equals("background") && t.equals("none") && !coloured) {
                         out.put("background-color", token);
                     }
                 }
