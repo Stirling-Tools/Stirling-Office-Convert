@@ -14,6 +14,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -52,11 +53,19 @@ public final class PdfFonts implements Closeable {
 
     private final Map<FontProgram, Embedded> missing = new IdentityHashMap<>();
 
-    private final Map<COSDictionary, Map<Integer, Integer>> missingCodes = new IdentityHashMap<>();
+    private final Map<COSDictionary, Map<String, Integer>> missingCodes = new IdentityHashMap<>();
+
+    private final Set<Integer> uncovered = new LinkedHashSet<>();
+
+    private long uncoveredCount;
 
     static final int MAX_MISSING = 0xFFFE;
 
     static final int MAX_CODE = 0xFFFF;
+
+    private static final int MAX_UNCOVERED = 4096;
+
+    private static final int LISTED_UNCOVERED = 12;
 
     private boolean closed;
 
@@ -167,11 +176,12 @@ public final class PdfFonts implements Closeable {
 
     /** The code that draws the box for {@code codePoint} in a font from {@link #missing}; 0 draws it without text. */
     public int missingCode(Embedded font, int codePoint) {
-        Map<Integer, Integer> codes = missingCodes.get(font.font());
+        String text = new String(Character.toChars(codePoint));
+        Map<String, Integer> codes = missingCodes.get(font.font());
         if (codes == null) {
             return 0;
         }
-        Integer known = codes.get(codePoint);
+        Integer known = codes.get(text);
         if (known != null) {
             return known;
         }
@@ -179,7 +189,7 @@ public final class PdfFonts implements Closeable {
             return 0;
         }
         int made = codes.size() + 1;
-        codes.put(codePoint, made);
+        codes.put(text, made);
         return made;
     }
 
@@ -205,8 +215,34 @@ public final class PdfFonts implements Closeable {
                 : null;
     }
 
+    public void uncovered(int codePoint) {
+        uncoveredCount++;
+        if (uncovered.size() < MAX_UNCOVERED) {
+            uncovered.add(codePoint);
+        }
+    }
+
     public List<String> substitutions() {
-        return Collections.unmodifiableList(substitutions);
+        if (uncovered.isEmpty()) {
+            return Collections.unmodifiableList(substitutions);
+        }
+        StringBuilder b = new StringBuilder("No installed font has ").append(uncovered.size())
+                .append(uncovered.size() == MAX_UNCOVERED ? " or more" : "").append(" of the characters, drawn ")
+                .append(uncoveredCount).append(uncoveredCount == 1 ? " time" : " times").append(" as boxes:");
+        int listed = 0;
+        for (int cp : uncovered) {
+            if (listed++ == LISTED_UNCOVERED) {
+                b.append(" and others");
+                break;
+            }
+            b.append(listed == 1 ? " " : ", ").append(String.format(Locale.ROOT, "U+%04X", cp));
+            if (!Character.isISOControl(cp) && Character.getType(cp) != Character.PRIVATE_USE) {
+                b.append(' ').appendCodePoint(cp);
+            }
+        }
+        List<String> all = new ArrayList<>(substitutions);
+        all.add(b.toString());
+        return Collections.unmodifiableList(all);
     }
 
     public int encoded(Embedded font, int glyph, int codePoint) {
@@ -424,7 +460,7 @@ public final class PdfFonts implements Closeable {
     private void finishMissing(Embedded e) throws IOException {
         COSDictionary font = e.font();
         FontProgram program = e.face().program();
-        Map<Integer, Integer> codes = missingCodes.get(font);
+        Map<String, Integer> codes = missingCodes.get(font);
         try {
             subsets.get(font).subset();
         } catch (IOException | RuntimeException ex) {
@@ -451,9 +487,9 @@ public final class PdfFonts implements Closeable {
         cid.setItem(COSName.CID_TO_GID_MAP, map);
         List<Integer> glyphs = new ArrayList<>();
         List<String> texts = new ArrayList<>();
-        for (Map.Entry<Integer, Integer> c : codes.entrySet()) {
+        for (Map.Entry<String, Integer> c : codes.entrySet()) {
             glyphs.add(c.getValue());
-            texts.add(new String(Character.toChars(c.getKey())));
+            texts.add(c.getKey());
         }
         toUnicode(font, glyphs, texts);
     }
