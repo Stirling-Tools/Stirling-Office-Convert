@@ -230,9 +230,7 @@ class FontCoverageTest {
                 OfficeToPdf.convert(in, pdf, options(fonts));
                 try (PDDocument doc = Loader.loadPDF(pdf.toFile())) {
                     assertEquals(ColorEmoji.OFFICE_ADVANCE * 36, emojiGap(doc), 1.5f, in.toString());
-                    if (!in.toString().endsWith(".xlsx")) {
-                        assertTrue(new PDFTextStripper().getText(doc).contains(sequence), in.toString());
-                    }
+                    assertTrue(new PDFTextStripper().getText(doc).contains(sequence), in.toString());
                 }
             }
         }
