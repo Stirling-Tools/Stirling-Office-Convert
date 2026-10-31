@@ -46,6 +46,14 @@ class UnembeddedFontTest {
     }
 
     @Test
+    void aSpacingAccentDrawnOverALetterJoinsIt() throws Exception {
+        Path pdf = write("accent.pdf", "/F1 12 Tf", simple("Type1", "Times-Roman", COSName.WIN_ANSI_ENCODING, 34),
+                "[(Le caf\\264) 389 (e est ouvert)] TJ", null);
+        String text = text(pdf);
+        assertTrue(text.contains("Le caf\u00E9 est ouvert"), text);
+    }
+
+    @Test
     void anUnembeddedUrwSymbolFontReadsAsSymbol() throws Exception {
         Path pdf = write("symbol.pdf", "/F1 12 Tf", simple("Type1", "StandardSymL", null, 4), "(\\345 \\107) Tj", null);
         String text = text(pdf);
