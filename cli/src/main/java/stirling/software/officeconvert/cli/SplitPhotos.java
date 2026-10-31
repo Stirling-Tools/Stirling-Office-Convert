@@ -1,9 +1,12 @@
 package stirling.software.officeconvert.cli;
 
+import static stirling.software.officeconvert.cli.Usage.number;
+import static stirling.software.officeconvert.cli.Usage.path;
+import static stirling.software.officeconvert.cli.Usage.value;
+
 import java.io.IOException;
 import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
-import java.nio.file.InvalidPathException;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -23,12 +26,6 @@ final class SplitPhotos {
 
     private SplitPhotos() {}
 
-    private static final class Usage extends Exception {
-        Usage(String message) {
-            super(message, null, false, false);
-        }
-    }
-
     static int run(String[] args) {
         List<Path> inputs = new ArrayList<>();
         Path output = null;
@@ -45,7 +42,7 @@ final class SplitPhotos {
                     case "--min-area" -> options = options.minArea(integer(value(args, ++i, a), a));
                     case "--min-contour-area" -> options = options.minContourArea(integer(value(args, ++i, a), a));
                     case "--border-size" -> options = options.borderSize(integer(value(args, ++i, a), a));
-                    case "--dpi" -> options = options.dpi(dpi(value(args, ++i, a), a));
+                    case "--dpi" -> options = options.dpi(number(value(args, ++i, a), a));
                     case "--method" -> options = options.method(method(value(args, ++i, a)));
                     case "--overwrite" -> options = options.overwrite(true);
                     case "-q", "--quiet" -> quiet = true;
@@ -109,13 +106,6 @@ final class SplitPhotos {
             }
         }
         return failures == 0 ? 0 : 1;
-    }
-
-    private static String value(String[] args, int i, String option) throws Usage {
-        if (i >= args.length) {
-            throw new Usage(option + " needs a value");
-        }
-        return args[i];
     }
 
     private static Path folder(Path input, Path output) {
@@ -201,27 +191,11 @@ final class SplitPhotos {
         return new Usage("photo output could overwrite input " + input + "; choose another -o folder");
     }
 
-    private static Path path(String s) throws Usage {
-        try {
-            return Path.of(s);
-        } catch (InvalidPathException e) {
-            throw new Usage("not a valid path: " + s);
-        }
-    }
-
     private static int integer(String s, String option) throws Usage {
         try {
             return Integer.parseInt(s.strip());
         } catch (NumberFormatException e) {
             throw new Usage(option + " needs a whole number, not '" + s + "'");
-        }
-    }
-
-    private static float dpi(String s, String option) throws Usage {
-        try {
-            return Float.parseFloat(s.strip());
-        } catch (NumberFormatException e) {
-            throw new Usage(option + " needs a number, not '" + s + "'");
         }
     }
 
