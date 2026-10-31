@@ -69,9 +69,11 @@ final class MissingGlyphs {
             double w = em(cp) * size;
             if (w > 0 && !Character.isSpaceChar(cp)) {
                 canvas.output().fonts().uncovered(cp);
-                double inset = Math.min(size * BOX_INSET, w / 4);
-                canvas.rect((float) (at + inset), (float) (baseline - size * BOX_TOP), (float) (w - 2 * inset),
-                        (float) (size * (BOX_TOP + BOX_BOTTOM)), null, stroke);
+                if (canvas.visible((float) at, (float) (at + w), (float) baseline, (float) size)) {
+                    double inset = Math.min(size * BOX_INSET, w / 4);
+                    canvas.rect((float) (at + inset), (float) (baseline - size * BOX_TOP), (float) (w - 2 * inset),
+                            (float) (size * (BOX_TOP + BOX_BOTTOM)), null, stroke);
+                }
             }
             at += w;
         }

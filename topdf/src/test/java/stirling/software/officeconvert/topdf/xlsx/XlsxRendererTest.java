@@ -9,6 +9,11 @@ import java.nio.file.Path;
 import java.util.Calendar;
 import java.util.TimeZone;
 
+import org.apache.pdfbox.Loader;
+import org.apache.pdfbox.cos.COSArray;
+import org.apache.pdfbox.cos.COSString;
+import org.apache.pdfbox.pdfparser.PDFStreamParser;
+import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.poi.ss.usermodel.CellStyle;
 import org.apache.poi.ss.usermodel.ClientAnchor;
 import org.apache.poi.ss.usermodel.HorizontalAlignment;
@@ -225,6 +230,37 @@ class XlsxRendererTest {
         assertTrue(out.pages().get(0).contains("short"), out.pages().get(0));
         assertFalse(out.pages().get(1).isBlank(), "second page is empty");
         assertFalse(out.pages().get(out.pages().size() - 1).contains("short"));
+    }
+
+    @Test
+    void aLongOverflowingCellDrawsOnlyTheGlyphsEachPageShows() throws Exception {
+        byte[] xlsx = XlsxTesting.workbook(wb -> {
+            XSSFSheet s = wb.createSheet("O");
+            for (int r = 0; r < 10; r++) {
+                s.createRow(r).createCell(0).setCellValue("overflowing words that run on ".repeat(1000));
+            }
+            s.createRow(10).createCell(0).setCellValue("mixed \u05e9\u05dc\u05d5\u05dd text ".repeat(2000));
+        });
+        XlsxTesting.Converted out = XlsxTesting.convert(dir, "long.xlsx", xlsx);
+        assertTrue(out.pages().size() > 2, "pages: " + out.pages().size());
+        assertTrue(out.pages().get(2).contains("overflowing words"), out.pages().get(2));
+        try (PDDocument doc = Loader.loadPDF(dir.resolve("long.xlsx.pdf").toFile())) {
+            for (int i = 0; i < doc.getNumberOfPages(); i++) {
+                long glyphs = 0;
+                for (Object token : new PDFStreamParser(doc.getPage(i)).parse()) {
+                    if (token instanceof COSString string) {
+                        glyphs += string.getBytes().length / 2;
+                    } else if (token instanceof COSArray array) {
+                        for (int k = 0; k < array.size(); k++) {
+                            if (array.getObject(k) instanceof COSString string) {
+                                glyphs += string.getBytes().length / 2;
+                            }
+                        }
+                    }
+                }
+                assertTrue(glyphs < 4_000, "page " + (i + 1) + " draws " + glyphs + " glyphs");
+            }
+        }
     }
 
     @Test

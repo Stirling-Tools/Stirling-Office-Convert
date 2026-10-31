@@ -7,24 +7,36 @@ final class Numbers {
     private Numbers() {}
 
     static StringBuilder append(StringBuilder b, float value) {
-        if (!Float.isFinite(value)) {
+        return append(b, value, 10_000);
+    }
+
+    static StringBuilder fine(StringBuilder b, double value) {
+        return append(b, value, 100_000_000);
+    }
+
+    private static StringBuilder append(StringBuilder b, double value, long scale) {
+        if (!Double.isFinite(value)) {
             return b.append('0');
         }
-        long scaled = Math.round((double) value * 10_000);
+        long scaled = Math.round(value * scale);
         if (scaled < 0) {
             b.append('-');
             scaled = -scaled;
         }
-        b.append(scaled / 10_000);
-        long fraction = scaled % 10_000;
+        b.append(scaled / scale);
+        long fraction = scaled % scale;
         if (fraction != 0) {
             b.append('.');
-            for (long div = 1_000; div > 0 && fraction != 0; div /= 10) {
+            for (long div = scale / 10; div > 0 && fraction != 0; div /= 10) {
                 b.append((char) ('0' + fraction / div));
                 fraction %= div;
             }
         }
         return b;
+    }
+
+    static double written(float value) {
+        return Float.isFinite(value) ? Math.round((double) value * 10_000) / 10_000.0 : 0;
     }
 
     static StringBuilder hex(StringBuilder b, int value, int digits) {
