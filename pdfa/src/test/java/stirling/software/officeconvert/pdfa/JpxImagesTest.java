@@ -10,6 +10,7 @@ import java.awt.color.ColorSpace;
 import java.awt.image.BufferedImage;
 import java.awt.image.ComponentColorModel;
 import java.awt.image.DataBuffer;
+import java.awt.image.IndexColorModel;
 import java.awt.image.WritableRaster;
 import java.io.ByteArrayOutputStream;
 import java.io.OutputStream;
@@ -22,10 +23,14 @@ import javax.imageio.ImageWriter;
 import javax.imageio.stream.ImageOutputStream;
 
 import org.apache.pdfbox.Loader;
+import org.apache.pdfbox.cos.COSArray;
+import org.apache.pdfbox.cos.COSBase;
 import org.apache.pdfbox.cos.COSDictionary;
+import org.apache.pdfbox.cos.COSInteger;
 import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.cos.COSObjectKey;
 import org.apache.pdfbox.cos.COSStream;
+import org.apache.pdfbox.cos.COSString;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.common.PDStream;
@@ -84,6 +89,10 @@ class JpxImagesTest {
     }
 
     private Path page(byte[] jpx, int width, int height, boolean smaskInData) throws Exception {
+        return page(jpx, width, height, smaskInData, null);
+    }
+
+    private Path page(byte[] jpx, int width, int height, boolean smaskInData, COSBase colourSpace) throws Exception {
         Path in = dir.resolve("jpx.pdf");
         try (PDDocument d = new PDDocument()) {
             PDPage p = Samples.page(d);
@@ -98,6 +107,10 @@ class JpxImagesTest {
             img.setInt(COSName.HEIGHT, height);
             if (smaskInData) {
                 img.setInt(COSName.getPDFName("SMaskInData"), 1);
+            }
+            if (colourSpace != null) {
+                img.setItem(COSName.COLORSPACE, colourSpace);
+                img.setInt(COSName.BITS_PER_COMPONENT, 8);
             }
             COSDictionary xobjects = new COSDictionary();
             xobjects.setItem(COSName.getPDFName("Im0"), img);
@@ -303,6 +316,12 @@ class JpxImagesTest {
         }
     }
 
+    private static void assertPixel(int[] got, int[] want, String what) {
+        for (int i = 0; i < 3; i++) {
+            assertEquals(want[i], got[i], 6, what + " " + java.util.Arrays.toString(got));
+        }
+    }
+
     private static void assertPixel(int rgb, int[] want, String what) {
         for (int i = 0; i < 3; i++) {
             assertEquals(want[i], rgb >> (16 - 8 * i) & 0xFF, 6, what + " " + Integer.toHexString(rgb));
@@ -313,6 +332,114 @@ class JpxImagesTest {
         try (java.io.InputStream in = s.createInputStream()) {
             return in.readAllBytes();
         }
+    }
+
+    private static BufferedImage palette() {
+        byte[] r = {(byte) 255, 0, 0, (byte) 255};
+        byte[] g = {0, (byte) 255, 0, (byte) 255};
+        byte[] b = {0, 0, (byte) 255, 0};
+        BufferedImage img = new BufferedImage(80, 60, BufferedImage.TYPE_BYTE_INDEXED, new IndexColorModel(8, 4, r, g, b));
+        WritableRaster raster = img.getRaster();
+        for (int y = 0; y < 60; y++) {
+            for (int x = 0; x < 80; x++) {
+                raster.setSample(x, y, 0, x / 20);
+            }
+        }
+        return img;
+    }
+
+    private static int[] pagePixel(Path pdf, int x, int y) throws Exception {
+        try (PDDocument d = Loader.loadPDF(pdf.toFile())) {
+            int rgb = new PDFRenderer(d).renderImage(0).getRGB(100 + x * 4 + 2, 842 - 640 + y * 4 + 2);
+            return new int[] {rgb >> 16 & 0xFF, rgb >> 8 & 0xFF, rgb & 0xFF};
+        }
+    }
+
+    @Test
+    void anIndexedImageReadsThePaletteIndicesNotThePaletteColours() throws Exception {
+        byte[] data = jpx(palette());
+        assertTrue(JpxHeader.parse(data).palette());
+        COSArray indexed = new COSArray();
+        indexed.add(COSName.INDEXED);
+        indexed.add(COSName.DEVICERGB);
+        indexed.add(COSInteger.get(3));
+        indexed.add(new COSString(new byte[] {0, 0, (byte) 255, (byte) 255, 0, 0, 0, (byte) 255, 0, 0, 0, 0}));
+        Path in = page(data, 80, 60, false, indexed);
+        Path out = dir.resolve("1b-indexed.pdf");
+        PdfToPdfA.convert(in, out, PdfToPdfA.Options.defaults().level(PdfALevel.A1B));
+        assertFalse(hasJpx(out));
+        assertPixel(pagePixel(out, 5, 30), new int[] {0, 0, 255}, "index 0");
+        assertPixel(pagePixel(out, 25, 30), new int[] {255, 0, 0}, "index 1");
+        assertPixel(pagePixel(out, 45, 30), new int[] {0, 255, 0}, "index 2");
+        VeraPdf.assertCompliant(out, PdfALevel.A1B);
+    }
+
+    @Test
+    void twoComponentsInADeviceNSpaceAreBothColours() throws Exception {
+        COSStream tint = new COSStream();
+        try (OutputStream o = tint.createOutputStream()) {
+            o.write("{ 0 }".getBytes(StandardCharsets.US_ASCII));
+        }
+        tint.setInt(COSName.FUNCTION_TYPE, 4);
+        tint.setItem(COSName.DOMAIN, floats(0, 1, 0, 1));
+        tint.setItem(COSName.RANGE, floats(0, 1, 0, 1, 0, 1));
+        COSArray names = new COSArray();
+        names.add(COSName.getPDFName("A"));
+        names.add(COSName.getPDFName("B"));
+        COSArray deviceN = new COSArray();
+        deviceN.add(COSName.DEVICEN);
+        deviceN.add(names);
+        deviceN.add(COSName.DEVICERGB);
+        deviceN.add(tint);
+        Path in = page(jpx(grayWithAlpha()), 80, 60, false, deviceN);
+        for (PdfALevel level : new PdfALevel[] {PdfALevel.A1B, PdfALevel.A2B}) {
+            Path out = dir.resolve("devicen-" + level + ".pdf");
+            PdfToPdfA.convert(in, out, PdfToPdfA.Options.defaults().level(level));
+            assertFalse(hasJpx(out));
+            try (PDDocument d = Loader.loadPDF(out.toFile())) {
+                COSStream image = null;
+                for (COSObjectKey key : d.getDocument().getXrefTable().keySet()) {
+                    if (d.getDocument().getObjectFromPool(key).getObject() instanceof COSStream s
+                            && COSName.IMAGE.equals(s.getCOSName(COSName.SUBTYPE)) && s.getInt(COSName.WIDTH) == 80) {
+                        image = s;
+                    }
+                }
+                assertNotNull(image);
+                assertTrue(image.getDictionaryObject(COSName.COLORSPACE) instanceof COSArray a
+                        && COSName.DEVICEN.equals(a.getObject(0)), level.toString());
+                assertFalse(image.containsKey(COSName.SMASK));
+                byte[] samples = samples(image);
+                int left = (30 * 80 + 10) * 2;
+                int right = (30 * 80 + 70) * 2;
+                assertEquals(30, samples[left] & 0xFF, 2);
+                assertEquals(255, samples[left + 1] & 0xFF, 2);
+                assertEquals(210, samples[right] & 0xFF, 2);
+                assertEquals(128, samples[right + 1] & 0xFF, 2);
+            }
+            VeraPdf.assertCompliant(out, level);
+        }
+    }
+
+    @Test
+    void partTwoKeepsTheAlphaThatSMaskInDataAsksFor() throws Exception {
+        Path in = page(jpx(colourWithAlpha()), 80, 60, true);
+        Path out = dir.resolve("2b-smaskindata.pdf");
+        PdfToPdfA.convert(in, out, PdfToPdfA.Options.defaults().level(PdfALevel.A2B));
+        assertFalse(hasJpx(out));
+        try (PDDocument d = Loader.loadPDF(out.toFile())) {
+            BufferedImage page = new PDFRenderer(d).renderImage(0);
+            assertPixel(page.getRGB(100 + 10 * 4 + 2, 842 - 640 + 5 * 4 + 2), new int[] {30, 100, 225}, "opaque");
+            assertPixel(page.getRGB(100 + 50 * 4 + 2, 842 - 640 + 5 * 4 + 2), new int[] {202, 177, 180}, "half");
+        }
+        VeraPdf.assertCompliant(out, PdfALevel.A2B);
+    }
+
+    private static COSArray floats(float... v) {
+        COSArray a = new COSArray();
+        for (float f : v) {
+            a.add(new org.apache.pdfbox.cos.COSFloat(f));
+        }
+        return a;
     }
 
     @Test
