@@ -126,7 +126,8 @@ final class Typesetter {
         Look look = look(f);
         FontFace primary = look.face();
         text = spaces(text, primary);
-        boolean emulate = ScreenAdvances.emulates(look.family(), primary);
+        String row = ScreenAdvances.emulates(look.family(), primary)
+                ? ScreenAdvances.row(look.family(), look.bold(), look.italic(), ppem) : null;
         double hinted = 0;
         double approx = 0;
         double missing = 0;
@@ -134,7 +135,7 @@ final class Typesetter {
         for (FontRun r : fonts.runs(text, primary)) {
             FontFace face = r.face();
             boolean own = face.sameProgram(primary);
-            boolean table = emulate && own;
+            boolean table = row != null && own;
             boolean cloudy = own && look.emulated();
             for (int i = 0; i < r.text().length(); ) {
                 int cp = r.text().codePointAt(i);
@@ -143,7 +144,7 @@ final class Typesetter {
                     missing += MissingGlyphs.em(cp) * ppem;
                     continue;
                 }
-                int exact = table ? ScreenAdvances.advance(look.family(), look.bold(), look.italic(), cp, ppem) : -1;
+                int exact = table ? ScreenAdvances.advance(row, cp) : -1;
                 if (exact >= 0) {
                     tabled++;
                 }

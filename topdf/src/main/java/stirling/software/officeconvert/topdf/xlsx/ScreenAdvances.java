@@ -87,7 +87,14 @@ final class ScreenAdvances {
     }
 
     static int advance(String family, boolean bold, boolean italic, int codePoint, int ppem) {
-        String row = family == null ? null : ROWS.get(key(family.trim(), (bold ? 1 : 0) + (italic ? 2 : 0), ppem));
+        return advance(row(family, bold, italic, ppem), codePoint);
+    }
+
+    static String row(String family, boolean bold, boolean italic, int ppem) {
+        return family == null ? null : ROWS.get(key(family.trim(), (bold ? 1 : 0) + (italic ? 2 : 0), ppem));
+    }
+
+    static int advance(String row, int codePoint) {
         int i = index(codePoint);
         if (row == null || i < 0) {
             return -1;
