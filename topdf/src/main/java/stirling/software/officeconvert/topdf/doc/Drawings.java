@@ -11,11 +11,10 @@ import org.apache.poi.hwpf.usermodel.OfficeDrawing;
 import org.apache.poi.hwpf.usermodel.OfficeDrawings;
 import org.apache.poi.hwpf.usermodel.Picture;
 
+import stirling.software.officeconvert.topdf.dml.Emu;
 import stirling.software.officeconvert.topdf.io.PictureDecoder;
 
 final class Drawings {
-
-    static final long EMU_PER_TWIP = 635;
 
     static final int MAX_PICTURES = 20_000;
 
@@ -77,8 +76,8 @@ final class Drawings {
                 pic.getDxaCropRight() / (double) goalW, pic.getDyaCropBottom() / (double) goalH);
         int id = c.nextId();
         String rid = rels.image(name);
-        long cx = w * EMU_PER_TWIP;
-        long cy = h * EMU_PER_TWIP;
+        long cx = w * Emu.PER_TWIP;
+        long cy = h * Emu.PER_TWIP;
         return "<w:drawing><wp:inline distT=\"0\" distB=\"0\" distL=\"0\" distR=\"0\"><wp:extent cx=\"" + cx
                 + "\" cy=\"" + cy + "\"/><wp:docPr id=\"" + id + "\" name=\"Picture " + id + "\"/>"
                 + graphic(id, rid, cx, cy, crop) + "</wp:inline></w:drawing>";
@@ -150,8 +149,8 @@ final class Drawings {
         pictures++;
         int id = c.nextId();
         String rid = story.rels.image(name);
-        long cx = Math.max(1, (long) d.getRectangleRight() - d.getRectangleLeft()) * EMU_PER_TWIP;
-        long cy = Math.max(1, (long) d.getRectangleBottom() - d.getRectangleTop()) * EMU_PER_TWIP;
+        long cx = Math.max(1, (long) d.getRectangleRight() - d.getRectangleLeft()) * Emu.PER_TWIP;
+        long cy = Math.max(1, (long) d.getRectangleBottom() - d.getRectangleTop()) * Emu.PER_TWIP;
         int z = c.layer(d.getShapeId(), id, header);
         return "<w:drawing>" + Shapes.open(d, Shapes.container(d), fspa, id, z, cx, cy, 0, 0)
                 + graphic(id, rid, cx, cy, "")

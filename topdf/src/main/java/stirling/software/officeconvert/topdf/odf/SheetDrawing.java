@@ -5,6 +5,7 @@ import java.util.List;
 
 import org.w3c.dom.Element;
 
+import stirling.software.officeconvert.topdf.io.Dom;
 import stirling.software.officeconvert.topdf.io.PictureDecoder;
 
 final class SheetDrawing {

@@ -22,6 +22,7 @@ import org.w3c.dom.Element;
 
 import stirling.software.officeconvert.topdf.crypt.Passwords;
 import stirling.software.officeconvert.topdf.io.BoundedZip;
+import stirling.software.officeconvert.topdf.io.Dom;
 import stirling.software.officeconvert.topdf.io.OfficeZip;
 import stirling.software.officeconvert.topdf.io.ScratchFile;
 import stirling.software.officeconvert.topdf.io.SecureXml;

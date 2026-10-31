@@ -13,6 +13,8 @@ import java.util.regex.Pattern;
 import org.w3c.dom.Element;
 import org.w3c.dom.Node;
 
+import stirling.software.officeconvert.topdf.io.Dom;
+
 final class SheetWriter {
 
     static final int MAX_ROWS = 1_048_576;

@@ -9,6 +9,8 @@ import org.w3c.dom.Element;
 import org.w3c.dom.NamedNodeMap;
 import org.w3c.dom.Node;
 
+import stirling.software.officeconvert.topdf.io.Dom;
+
 /** A namespace-aware DOM written out with every namespace it uses declared once on its root. */
 final class XmlOut {
 
@@ -61,7 +63,7 @@ final class XmlOut {
     private String name(Node n) {
         String ns = n.getNamespaceURI();
         if (ns == null) {
-            return n.getLocalName() == null ? n.getNodeName() : n.getLocalName();
+            return Dom.local(n);
         }
         if ("http://www.w3.org/XML/1998/namespace".equals(ns)) {
             return "xml:" + n.getLocalName();

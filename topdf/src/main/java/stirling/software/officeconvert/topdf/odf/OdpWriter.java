@@ -9,6 +9,7 @@ import java.util.Map;
 import org.w3c.dom.Element;
 
 import stirling.software.officeconvert.topdf.font.FontLibrary;
+import stirling.software.officeconvert.topdf.io.Dom;
 
 final class OdpWriter {
 

@@ -10,6 +10,8 @@ import java.util.regex.Pattern;
 
 import org.w3c.dom.Element;
 
+import stirling.software.officeconvert.topdf.io.Dom;
+
 final class DateFields {
 
     static final String META = "urn:oasis:names:tc:opendocument:xmlns:meta:1.0";

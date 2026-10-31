@@ -4,6 +4,8 @@ import java.io.IOException;
 
 import org.w3c.dom.Element;
 
+import stirling.software.officeconvert.topdf.io.Dom;
+
 final class WordNotes {
 
     static final int MAX_NOTES = 20_000;

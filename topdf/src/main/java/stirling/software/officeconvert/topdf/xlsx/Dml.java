@@ -1,57 +1,21 @@
 package stirling.software.officeconvert.topdf.xlsx;
 
 import java.awt.Color;
-import java.util.ArrayList;
-import java.util.List;
 
 import org.w3c.dom.Element;
 import org.w3c.dom.Node;
 
 import stirling.software.officeconvert.topdf.dml.DmlColors;
+import stirling.software.officeconvert.topdf.io.Dom;
 
 final class Dml {
 
     private Dml() {}
 
-    static Element child(Element e, String local) {
-        if (e == null) {
-            return null;
-        }
-        for (Node n = e.getFirstChild(); n != null; n = n.getNextSibling()) {
-            if (n instanceof Element c && local.equals(c.getLocalName())) {
-                return c;
-            }
-        }
-        return null;
-    }
-
-    static List<Element> children(Element e) {
-        List<Element> out = new ArrayList<>();
-        if (e == null) {
-            return out;
-        }
-        for (Node n = e.getFirstChild(); n != null; n = n.getNextSibling()) {
-            if (n instanceof Element c) {
-                out.add(c);
-            }
-        }
-        return out;
-    }
-
-    static List<Element> children(Element e, String local) {
-        List<Element> out = new ArrayList<>();
-        for (Element c : children(e)) {
-            if (local.equals(c.getLocalName())) {
-                out.add(c);
-            }
-        }
-        return out;
-    }
-
     static Element path(Element e, String... locals) {
         Element at = e;
         for (String l : locals) {
-            at = child(at, l);
+            at = Dom.kid(at, l);
             if (at == null) {
                 return null;
             }
@@ -74,8 +38,7 @@ final class Dml {
         var attrs = e.getAttributes();
         for (int i = 0; i < attrs.getLength(); i++) {
             Node a = attrs.item(i);
-            String l = a.getLocalName() == null ? a.getNodeName() : a.getLocalName();
-            if (local.equals(l)) {
+            if (local.equals(Dom.local(a))) {
                 return a.getNodeValue();
             }
         }
@@ -118,7 +81,7 @@ final class Dml {
         if (holder == null) {
             return null;
         }
-        for (Element c : children(holder)) {
+        for (Element c : Dom.kids(holder)) {
             Color base = base(c, colors, placeholder);
             if (base != null) {
                 return modified(base, c);
@@ -195,7 +158,7 @@ final class Dml {
 
     private static Color modified(Color base, Element c) {
         Color out = base;
-        for (Element m : children(c)) {
+        for (Element m : Dom.kids(c)) {
             out = DmlColors.modify(out, m.getLocalName(), number(m, "val", 100000));
         }
         return out;

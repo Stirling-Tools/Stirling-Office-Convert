@@ -2,9 +2,11 @@ package stirling.software.officeconvert.topdf.rtf;
 
 import java.util.List;
 
+import stirling.software.officeconvert.topdf.dml.Emu;
+
 final class ShapeXml {
 
-    private static final long EMU = PictureXml.EMU_PER_TWIP;
+    private static final long EMU = Emu.PER_TWIP;
 
     private static final int MAX_TWIPS = 31680 * 4;
 

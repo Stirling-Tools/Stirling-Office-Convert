@@ -5,6 +5,8 @@ import java.util.Map;
 
 import org.w3c.dom.Element;
 
+import stirling.software.officeconvert.topdf.io.Dom;
+
 final class WordLists {
 
     static final int MAX_LISTS = 20_000;

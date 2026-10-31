@@ -31,6 +31,7 @@ import stirling.software.officeconvert.topdf.font.BidiRuns;
 import stirling.software.officeconvert.topdf.font.ColorEmoji;
 import stirling.software.officeconvert.topdf.font.FontFace;
 import stirling.software.officeconvert.topdf.pdf.PdfCanvas;
+import stirling.software.officeconvert.topdf.pdf.Units;
 
 final class TextFrame {
 
@@ -130,7 +131,7 @@ final class TextFrame {
                 : body != null ? body.verticalAlignment() : shape.getVerticalAlignment();
         List<CTTextBodyProperties> chain = bodyChain(shape);
         int columns = (int) Math.max(1, Math.min(16, inherited(chain, "numCol", 1)));
-        float gap = inherited(chain, "spcCol", 0) / 12_700f;
+        float gap = Units.emu(inherited(chain, "spcCol", 0));
         float rot = inherited(chain, "rot", 0) / 60_000f;
         TextDirection dir;
         try {

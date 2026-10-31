@@ -8,6 +8,7 @@ import org.openxmlformats.schemas.drawingml.x2006.main.CTTableCellProperties;
 
 import stirling.software.officeconvert.topdf.pdf.PdfCanvas;
 import stirling.software.officeconvert.topdf.pdf.Stroke;
+import stirling.software.officeconvert.topdf.pdf.Units;
 
 final class TableBorders {
 
@@ -57,7 +58,7 @@ final class TableBorders {
         if (ownSet) {
             s = own == null || own.isSetNoFill() ? null : TableStyles.line(own, sheet);
             if (own != null && !own.isSetNoFill() && !own.isSetSolidFill() && base != null) {
-                s = own.isSetW() ? base.width(Math.min(1000, own.getW() / 12_700f)) : base;
+                s = own.isSetW() ? base.width(Math.min(1000, Units.emu(own.getW()))) : base;
             }
         } else {
             s = base;

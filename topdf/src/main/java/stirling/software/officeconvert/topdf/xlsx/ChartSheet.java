@@ -11,6 +11,7 @@ import org.w3c.dom.NodeList;
 import stirling.software.officeconvert.topdf.RenderJob;
 import stirling.software.officeconvert.topdf.docx.Charts;
 import stirling.software.officeconvert.topdf.io.ActiveContent;
+import stirling.software.officeconvert.topdf.io.Dom;
 import stirling.software.officeconvert.topdf.io.OfficeZip;
 import stirling.software.officeconvert.topdf.io.Relationship;
 import stirling.software.officeconvert.topdf.pdf.PageSize;
@@ -23,9 +24,9 @@ record ChartSheet(String name, String chart, boolean portrait, double[] margins)
         try {
             OfficeZip zip = job.zip();
             Element root = zip.xml(ref.part()).getDocumentElement();
-            Element setup = Dml.child(root, "pageSetup");
+            Element setup = Dom.kid(root, "pageSetup");
             boolean portrait = setup != null && "portrait".equals(Dml.attr(setup, "orientation"));
-            Element m = Dml.child(root, "pageMargins");
+            Element m = Dom.kid(root, "pageMargins");
             double[] margins = {inches(m, "left", 0.7), inches(m, "top", 0.75), inches(m, "right", 0.7),
                 inches(m, "bottom", 0.75)};
             for (Relationship r : zip.relationships(ref.part()).ofType("drawing")) {

@@ -35,6 +35,7 @@ import org.w3c.dom.Element;
 import stirling.software.officeconvert.topdf.crypt.Argon2id;
 import stirling.software.officeconvert.topdf.crypt.OpenOfficeSha1;
 import stirling.software.officeconvert.topdf.crypt.Passwords;
+import stirling.software.officeconvert.topdf.io.Dom;
 import stirling.software.officeconvert.topdf.io.OfficeZip;
 import stirling.software.officeconvert.topdf.io.SecureXml;
 

@@ -3,6 +3,8 @@ package stirling.software.officeconvert.topdf.xls;
 import java.util.List;
 import java.util.Map;
 
+import stirling.software.officeconvert.topdf.pdf.Units;
+
 final class ChartXml {
 
     private static final String C = "http://schemas.openxmlformats.org/drawingml/2006/chart";
@@ -405,7 +407,7 @@ final class ChartXml {
     }
 
     private static String line(Integer rgb, float width) {
-        return rgb == null ? "<a:ln><a:noFill/></a:ln>" : "<a:ln w=\"" + Math.round(width * 12700)
+        return rgb == null ? "<a:ln><a:noFill/></a:ln>" : "<a:ln w=\"" + Math.round(width * Units.EMU_PER_POINT)
                 + "\"><a:solidFill><a:srgbClr val=\"" + hex(rgb) + "\"/></a:solidFill></a:ln>";
     }
 

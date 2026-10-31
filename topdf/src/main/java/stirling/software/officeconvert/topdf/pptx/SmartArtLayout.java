@@ -25,10 +25,10 @@ import org.openxmlformats.schemas.drawingml.x2006.main.CTSolidColorFillPropertie
 import org.openxmlformats.schemas.drawingml.x2006.main.STSchemeColorVal;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
-import org.w3c.dom.Node;
 
 import stirling.software.officeconvert.topdf.dml.DmlColors;
 import stirling.software.officeconvert.topdf.io.ActiveContent;
+import stirling.software.officeconvert.topdf.io.Dom;
 import stirling.software.officeconvert.topdf.io.Relationship;
 import stirling.software.officeconvert.topdf.io.Relationships;
 import stirling.software.officeconvert.topdf.pdf.Fill;
@@ -36,6 +36,7 @@ import stirling.software.officeconvert.topdf.pdf.Gradient;
 import stirling.software.officeconvert.topdf.pdf.PdfCanvas;
 import stirling.software.officeconvert.topdf.pdf.Stroke;
 import stirling.software.officeconvert.topdf.pdf.TextStyle;
+import stirling.software.officeconvert.topdf.pdf.Units;
 
 // A SmartArt graphic saved without its drawing, laid out from the data model in a few basic arrangements
 final class SmartArtLayout {
@@ -238,11 +239,11 @@ final class SmartArtLayout {
         Map<String, Point> nodes = new LinkedHashMap<>();
         Map<String, float[]> custom = new HashMap<>();
         String doc = null;
-        Element ptLst = child(data.getDocumentElement(), DGM, "ptLst");
-        for (Element pt : children(ptLst, DGM, "pt")) {
+        Element ptLst = Dom.kid(data.getDocumentElement(), DGM, "ptLst");
+        for (Element pt : Dom.kids(ptLst, DGM, "pt")) {
             String type = pt.getAttribute("type");
             String id = pt.getAttribute("modelId");
-            Element prSet = child(pt, DGM, "prSet");
+            Element prSet = Dom.kid(pt, DGM, "prSet");
             if ("pres".equals(type) && prSet != null && custom.size() < MAX_NODES) {
                 float[] c = {fraction(prSet, "custScaleX", 1), fraction(prSet, "custScaleY", 1),
                     fraction(prSet, "custRadScaleRad", 1), fraction(prSet, "custRadScaleInc", 0),
@@ -256,8 +257,8 @@ final class SmartArtLayout {
                 nodes.put(id, new Point(id));
             } else if ((type.isEmpty() || "node".equals(type)) && nodes.size() < MAX_NODES) {
                 Point p = new Point(id);
-                p.spPr = child(pt, DGM, "spPr");
-                text(child(pt, DGM, "t"), p);
+                p.spPr = Dom.kid(pt, DGM, "spPr");
+                text(Dom.kid(pt, DGM, "t"), p);
                 nodes.put(id, p);
             }
         }
@@ -266,7 +267,7 @@ final class SmartArtLayout {
         }
         record Link(String src, String dest, int order) {}
         List<Link> links = new ArrayList<>();
-        for (Element cxn : children(child(data.getDocumentElement(), DGM, "cxnLst"), DGM, "cxn")) {
+        for (Element cxn : Dom.kids(Dom.kid(data.getDocumentElement(), DGM, "cxnLst"), DGM, "cxn")) {
             String type = cxn.getAttribute("type");
             if ("presOf".equals(type)) {
                 Point node = nodes.get(cxn.getAttribute("srcId"));
@@ -318,10 +319,10 @@ final class SmartArtLayout {
     }
 
     private static void text(Element t, Point p) {
-        for (Element para : children(t, A, "p")) {
+        for (Element para : Dom.kids(t, A, "p")) {
             List<Run> runs = new ArrayList<>();
-            for (Element r : children(para, A, "r")) {
-                Element rPr = child(r, A, "rPr");
+            for (Element r : Dom.kids(para, A, "r")) {
+                Element rPr = Dom.kid(r, A, "rPr");
                 float size = -1;
                 if (rPr != null && !rPr.getAttribute("sz").isEmpty()) {
                     try {
@@ -330,12 +331,12 @@ final class SmartArtLayout {
                         size = -1;
                     }
                 }
-                Element tx = child(r, A, "t");
-                Element latin = rPr == null ? null : child(rPr, A, "latin");
+                Element tx = Dom.kid(r, A, "t");
+                Element latin = rPr == null ? null : Dom.kid(rPr, A, "latin");
                 String face = latin == null ? "" : latin.getAttribute("typeface").strip();
                 if (tx != null) {
                     runs.add(new Run(tx.getTextContent(), size > 0 && size < 400 ? size : -1,
-                            rPr == null ? null : child(rPr, A, "solidFill"), face.isEmpty() ? null : face));
+                            rPr == null ? null : Dom.kid(rPr, A, "solidFill"), face.isEmpty() ? null : face));
                 }
             }
             p.paragraphs.add(runs);
@@ -861,9 +862,9 @@ final class SmartArtLayout {
         if (colors == null) {
             return null;
         }
-        for (Element lbl : children(colors.getDocumentElement(), DGM, "styleLbl")) {
+        for (Element lbl : Dom.kids(colors.getDocumentElement(), DGM, "styleLbl")) {
             if (name.equals(lbl.getAttribute("name"))) {
-                List<Element> c = children(child(lbl, DGM, list), null, null);
+                List<Element> c = Dom.kids(Dom.kid(lbl, DGM, list));
                 return c.isEmpty() ? null : colour(c.get(0));
             }
         }
@@ -876,17 +877,17 @@ final class SmartArtLayout {
         if (colors == null) {
             return;
         }
-        for (Element lbl : children(colors.getDocumentElement(), DGM, "styleLbl")) {
+        for (Element lbl : Dom.kids(colors.getDocumentElement(), DGM, "styleLbl")) {
             if (!"node1".equals(lbl.getAttribute("name"))) {
                 continue;
             }
-            for (Element c : children(child(lbl, DGM, "fillClrLst"), null, null)) {
+            for (Element c : Dom.kids(Dom.kid(lbl, DGM, "fillClrLst"))) {
                 Color k = colour(c);
                 if (k != null && fills.size() < 16) {
                     fills.add(k);
                 }
             }
-            List<Element> lines = children(child(lbl, DGM, "linClrLst"), null, null);
+            List<Element> lines = Dom.kids(Dom.kid(lbl, DGM, "linClrLst"));
             outline = lines.isEmpty() ? null : colour(lines.get(0));
         }
     }
@@ -907,12 +908,12 @@ final class SmartArtLayout {
         if (style == null) {
             return;
         }
-        for (Element lbl : children(style.getDocumentElement(), DGM, "styleLbl")) {
+        for (Element lbl : Dom.kids(style.getDocumentElement(), DGM, "styleLbl")) {
             if (!"node1".equals(lbl.getAttribute("name"))) {
                 continue;
             }
-            Element s = child(lbl, DGM, "style");
-            Element ln = s == null ? null : child(s, A, "lnRef");
+            Element s = Dom.kid(lbl, DGM, "style");
+            Element ln = s == null ? null : Dom.kid(s, A, "lnRef");
             if (ln != null) {
                 try {
                     lineStyle = Integer.parseInt(ln.getAttribute("idx").strip());
@@ -920,7 +921,7 @@ final class SmartArtLayout {
                     lineStyle = -1;
                 }
             }
-            Element fillRef = s == null ? null : child(s, A, "fillRef");
+            Element fillRef = s == null ? null : Dom.kid(s, A, "fillRef");
             if (fillRef != null) {
                 try {
                     fillStyle = Integer.parseInt(fillRef.getAttribute("idx").strip());
@@ -928,8 +929,8 @@ final class SmartArtLayout {
                     fillStyle = -1;
                 }
             }
-            Element font = s == null ? null : child(s, A, "fontRef");
-            List<Element> c = font == null ? List.of() : children(font, null, null);
+            Element font = s == null ? null : Dom.kid(s, A, "fontRef");
+            List<Element> c = font == null ? List.of() : Dom.kids(font);
             textColour = c.isEmpty() ? null : colour(c.get(0));
         }
     }
@@ -938,7 +939,7 @@ final class SmartArtLayout {
         try {
             var list = sheet.getTheme().getXmlObject().getThemeElements().getFmtScheme().getLnStyleLst();
             if (idx >= 1 && idx <= list.sizeOfLnArray() && list.getLnArray(idx - 1).isSetW()) {
-                return Math.max(0.25f, Math.min(20, list.getLnArray(idx - 1).getW() / 12_700f));
+                return Math.max(0.25f, Math.min(20, Units.emu(list.getLnArray(idx - 1).getW())));
             }
         } catch (RuntimeException e) {
             return 1;
@@ -956,7 +957,7 @@ final class SmartArtLayout {
     }
 
     private Color fill(Point p) {
-        Element solid = p.spPr == null ? null : child(p.spPr, A, "solidFill");
+        Element solid = p.spPr == null ? null : Dom.kid(p.spPr, A, "solidFill");
         Color c = null;
         if (solid != null) {
             try {
@@ -973,30 +974,30 @@ final class SmartArtLayout {
 
     // A node without its own fill takes the theme fill style its quick style names, the node colour as phClr
     private Fill styled(Point p, Color base, Box b) {
-        if (p.spPr != null && child(p.spPr, A, "solidFill") != null || fillStyle < 1 || fillStyle > 999) {
+        if (p.spPr != null && Dom.kid(p.spPr, A, "solidFill") != null || fillStyle < 1 || fillStyle > 999) {
             return Fill.solid(base);
         }
         try {
             var list = sheet.getTheme().getXmlObject().getThemeElements().getFmtScheme().getFillStyleLst();
-            List<Element> styles = children(list.getDomNode(), null, null);
+            List<Element> styles = Dom.kids(list.getDomNode());
             if (fillStyle > styles.size()) {
                 return Fill.solid(base);
             }
             Element style = styles.get(fillStyle - 1);
             if ("solidFill".equals(style.getLocalName())) {
-                List<Element> c = children(style, null, null);
+                List<Element> c = Dom.kids(style);
                 return Fill.solid(c.isEmpty() ? base : placeholder(c.get(0), base));
             }
             if (!"gradFill".equals(style.getLocalName())) {
                 return Fill.solid(base);
             }
             List<Gradient.Stop> stops = new ArrayList<>();
-            for (Element gs : children(child(style, A, "gsLst"), A, "gs")) {
-                List<Element> c = children(gs, null, null);
+            for (Element gs : Dom.kids(Dom.kid(style, A, "gsLst"), A, "gs")) {
+                List<Element> c = Dom.kids(gs);
                 float pos = Integer.parseInt(gs.getAttribute("pos").strip()) / 100_000f;
                 stops.add(new Gradient.Stop(Math.max(0, Math.min(1, pos)), c.isEmpty() ? base : placeholder(c.get(0), base)));
             }
-            Element lin = child(style, A, "lin");
+            Element lin = Dom.kid(style, A, "lin");
             if (stops.size() < 2 || lin == null) {
                 return Fill.solid(stops.isEmpty() ? base : stops.get(0).color());
             }
@@ -1021,7 +1022,7 @@ final class SmartArtLayout {
             return c == null ? base : c;
         }
         Color c = base;
-        for (Element t : children(colour, null, null)) {
+        for (Element t : Dom.kids(colour)) {
             try {
                 c = DmlColors.modify(c, t.getLocalName(), Long.parseLong(t.getAttribute("val").strip()));
             } catch (NumberFormatException e) {
@@ -1032,7 +1033,7 @@ final class SmartArtLayout {
     }
 
     private Stroke line(Point p) {
-        Element ln = p.spPr == null ? null : child(p.spPr, A, "ln");
+        Element ln = p.spPr == null ? null : Dom.kid(p.spPr, A, "ln");
         if (ln != null) {
             try {
                 return TableStyles.line(CTLineProperties.Factory.parse(ln, fragment()), sheet);
@@ -1063,30 +1064,5 @@ final class SmartArtLayout {
 
     private static XmlOptions fragment() {
         return new XmlOptions().setLoadReplaceDocumentElement(null);
-    }
-
-    private static Element child(Node parent, String ns, String local) {
-        if (parent == null) {
-            return null;
-        }
-        for (Node n = parent.getFirstChild(); n != null; n = n.getNextSibling()) {
-            if (n instanceof Element e && ns.equals(e.getNamespaceURI()) && local.equals(e.getLocalName())) {
-                return e;
-            }
-        }
-        return null;
-    }
-
-    private static List<Element> children(Node parent, String ns, String local) {
-        List<Element> out = new ArrayList<>();
-        if (parent == null) {
-            return out;
-        }
-        for (Node n = parent.getFirstChild(); n != null; n = n.getNextSibling()) {
-            if (n instanceof Element e && (ns == null || ns.equals(e.getNamespaceURI()) && local.equals(e.getLocalName()))) {
-                out.add(e);
-            }
-        }
-        return out;
     }
 }

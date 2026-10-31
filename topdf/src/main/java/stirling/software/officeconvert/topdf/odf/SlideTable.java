@@ -6,6 +6,8 @@ import java.util.List;
 
 import org.w3c.dom.Element;
 
+import stirling.software.officeconvert.topdf.io.Dom;
+
 final class SlideTable {
 
     private static final String EMPTY_CELL = "<a:txBody><a:bodyPr/><a:lstStyle/><a:p/></a:txBody><a:tcPr/>";

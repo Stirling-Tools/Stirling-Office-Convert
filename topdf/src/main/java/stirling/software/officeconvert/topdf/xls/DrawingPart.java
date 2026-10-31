@@ -41,6 +41,8 @@ import org.apache.poi.hssf.usermodel.HSSFWorkbook;
 import org.apache.poi.ss.usermodel.Font;
 import org.apache.poi.util.LittleEndianByteArrayOutputStream;
 
+import stirling.software.officeconvert.topdf.dml.Emu;
+
 // Pictures, text boxes, plain shapes and chart frames of a sheet's drawing as a DrawingML part; controls are left out
 final class DrawingPart {
 
@@ -220,8 +222,8 @@ final class DrawingPart {
     private String marker(String tag, int col, int dx, int row, int dy) {
         col = Math.max(0, Math.min(255, col));
         row = Math.max(0, Math.min(65535, row));
-        long colOff = Math.round(Math.max(0, Math.min(1024, dx)) / 1024.0 * geometry.columnPx(col) * 9525);
-        long rowOff = Math.round(Math.max(0, Math.min(256, dy)) / 256.0 * geometry.rowPt(row) * 12700);
+        long colOff = Math.round(Math.max(0, Math.min(1024, dx)) / 1024.0 * geometry.columnPx(col) * EMU_PX);
+        long rowOff = Math.round(Math.max(0, Math.min(256, dy)) / 256.0 * geometry.rowPt(row) * Emu.PER_POINT);
         return "<xdr:" + tag + "><xdr:col>" + col + "</xdr:col><xdr:colOff>" + colOff + "</xdr:colOff><xdr:row>"
                 + row + "</xdr:row><xdr:rowOff>" + rowOff + "</xdr:rowOff></xdr:" + tag + ">";
     }
@@ -626,7 +628,7 @@ final class DrawingPart {
         int dx1 = a.getCol1() <= a.getCol2() ? a.getDx1() : a.getDx2();
         int dy1 = a.getRow1() <= a.getRow2() ? a.getDy1() : a.getDy2();
         long colOff = Math.round(fraction(dx1, 1024) * geometry.columnPx(col) * EMU_PX) + dx;
-        long rowOff = Math.round(fraction(dy1, 256) * geometry.rowPt(row) * 12700) + dy;
+        long rowOff = Math.round(fraction(dy1, 256) * geometry.rowPt(row) * Emu.PER_POINT) + dy;
         for (int k = 0; k < 256 && col < 255 && colOff > 0; k++) {
             long w = Math.round(geometry.columnPx(col) * EMU_PX);
             if (colOff < w) {
@@ -636,7 +638,7 @@ final class DrawingPart {
             col++;
         }
         for (int k = 0; k < 4096 && row < 65535 && rowOff > 0; k++) {
-            long h = Math.round(geometry.rowPt(row) * 12700);
+            long h = Math.round(geometry.rowPt(row) * Emu.PER_POINT);
             if (rowOff < h) {
                 break;
             }
@@ -649,7 +651,7 @@ final class DrawingPart {
         }
         while (rowOff < 0 && row > 0) {
             row--;
-            rowOff += Math.round(geometry.rowPt(row) * 12700);
+            rowOff += Math.round(geometry.rowPt(row) * Emu.PER_POINT);
         }
         return "<xdr:oneCellAnchor><xdr:from><xdr:col>" + col + "</xdr:col><xdr:colOff>" + colOff
                 + "</xdr:colOff><xdr:row>" + row + "</xdr:row><xdr:rowOff>" + rowOff + "</xdr:rowOff></xdr:from>"
@@ -705,7 +707,7 @@ final class DrawingPart {
         for (int r = r1; r < r2; r++) {
             pt += geometry.rowPt(r);
         }
-        return Math.round(pt * 12700);
+        return Math.round(pt * Emu.PER_POINT);
     }
 
     private static double fraction(int v, int of) {

@@ -19,6 +19,7 @@ import org.apache.poi.xslf.usermodel.XSLFSimpleShape;
 import org.apache.xmlbeans.XmlObject;
 import org.openxmlformats.schemas.drawingml.x2006.main.CTOuterShadowEffect;
 
+import stirling.software.officeconvert.topdf.dml.Emu;
 import stirling.software.officeconvert.topdf.io.DecodedPicture;
 import stirling.software.officeconvert.topdf.io.PictureDecoder;
 import stirling.software.officeconvert.topdf.pdf.Fill;
@@ -29,8 +30,6 @@ import stirling.software.officeconvert.topdf.pdf.Stroke;
 final class Shadows {
 
     static final int MAX_SIDE = 1200;
-
-    private static final double EMU = 12_700;
 
     record Shadow(double blur, double dx, double dy, double sx, double sy, double kx, double ky, String align,
             Color color) {}
@@ -61,9 +60,9 @@ final class Shadows {
         if (c == null || c.getAlpha() == 0) {
             return null;
         }
-        double dist = ct.isSetDist() ? ct.getDist() / EMU : 0;
+        double dist = ct.isSetDist() ? ct.getDist() / Emu.PER_POINT : 0;
         double dir = Math.toRadians(ct.isSetDir() ? ct.getDir() / 60_000.0 : 0);
-        double blur = ct.isSetBlurRad() ? ct.getBlurRad() / EMU : 0;
+        double blur = ct.isSetBlurRad() ? ct.getBlurRad() / Emu.PER_POINT : 0;
         double sx = ct.isSetSx() ? percent(ct.xgetSx()) : 1;
         double sy = ct.isSetSy() ? percent(ct.xgetSy()) : 1;
         double kx = ct.isSetKx() ? Math.toRadians(ct.getKx() / 60_000.0) : 0;

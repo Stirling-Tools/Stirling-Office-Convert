@@ -8,6 +8,8 @@ import java.util.Map;
 
 import org.w3c.dom.Element;
 
+import stirling.software.officeconvert.topdf.io.Dom;
+
 final class Shapes {
 
     record Geometry(String xml, boolean flipH, boolean flipV) {}

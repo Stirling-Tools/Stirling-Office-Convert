@@ -1,4 +1,4 @@
-package stirling.software.officeconvert.topdf.odf;
+package stirling.software.officeconvert.topdf.io;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -6,15 +6,15 @@ import java.util.List;
 import org.w3c.dom.Element;
 import org.w3c.dom.Node;
 
-final class Dom {
+public final class Dom {
 
     private Dom() {}
 
-    static boolean is(Node n, String ns, String local) {
+    public static boolean is(Node n, String ns, String local) {
         return n instanceof Element e && ns.equals(e.getNamespaceURI()) && local.equals(e.getLocalName());
     }
 
-    static List<Element> kids(Element e) {
+    public static List<Element> kids(Node e) {
         List<Element> out = new ArrayList<>();
         if (e == null) {
             return out;
@@ -27,7 +27,7 @@ final class Dom {
         return out;
     }
 
-    static List<Element> kids(Element e, String ns, String local) {
+    public static List<Element> kids(Node e, String ns, String local) {
         List<Element> out = new ArrayList<>();
         if (e == null) {
             return out;
@@ -40,7 +40,7 @@ final class Dom {
         return out;
     }
 
-    static Element kid(Element e, String ns, String local) {
+    public static Element kid(Node e, String ns, String local) {
         if (e == null) {
             return null;
         }
@@ -52,19 +52,44 @@ final class Dom {
         return null;
     }
 
-    static String attr(Element e, String ns, String local) {
+    public static List<Element> kids(Node e, String local) {
+        List<Element> out = new ArrayList<>();
+        if (e == null) {
+            return out;
+        }
+        for (Node n = e.getFirstChild(); n != null; n = n.getNextSibling()) {
+            if (n instanceof Element k && local.equals(k.getLocalName())) {
+                out.add(k);
+            }
+        }
+        return out;
+    }
+
+    public static Element kid(Node e, String local) {
+        if (e == null) {
+            return null;
+        }
+        for (Node n = e.getFirstChild(); n != null; n = n.getNextSibling()) {
+            if (n instanceof Element k && local.equals(k.getLocalName())) {
+                return k;
+            }
+        }
+        return null;
+    }
+
+    public static String attr(Element e, String ns, String local) {
         if (e == null || !e.hasAttributeNS(ns, local)) {
             return null;
         }
         return e.getAttributeNS(ns, local);
     }
 
-    static String attr(Element e, String ns, String local, String fallback) {
+    public static String attr(Element e, String ns, String local, String fallback) {
         String v = attr(e, ns, local);
         return v == null ? fallback : v;
     }
 
-    static int integer(Element e, String ns, String local, int fallback) {
+    public static int integer(Element e, String ns, String local, int fallback) {
         String v = attr(e, ns, local);
         if (v == null) {
             return fallback;
@@ -76,11 +101,11 @@ final class Dom {
         }
     }
 
-    static String text(Element e) {
+    public static String text(Element e) {
         return e == null ? "" : e.getTextContent();
     }
 
-    static String local(Node n) {
+    public static String local(Node n) {
         String l = n.getLocalName();
         return l == null ? n.getNodeName() : l;
     }

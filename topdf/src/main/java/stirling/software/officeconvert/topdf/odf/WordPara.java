@@ -2,6 +2,8 @@ package stirling.software.officeconvert.topdf.odf;
 
 import org.w3c.dom.Element;
 
+import stirling.software.officeconvert.topdf.io.Dom;
+
 final class WordPara {
 
     private WordPara() {}

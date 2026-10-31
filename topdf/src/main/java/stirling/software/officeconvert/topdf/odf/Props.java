@@ -8,6 +8,8 @@ import org.w3c.dom.Attr;
 import org.w3c.dom.Element;
 import org.w3c.dom.NamedNodeMap;
 
+import stirling.software.officeconvert.topdf.io.Dom;
+
 final class Props {
 
     static final Props EMPTY = new Props();
