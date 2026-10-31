@@ -352,10 +352,10 @@ public final class FontFace {
             int own = program.advanceOfGlyph(glyph);
             return wide(codePoint) ? own : Math.round(own * stretch);
         }
-        if (ignorable(codePoint)) {
+        if (ignorable(codePoint) || Character.isEmojiModifier(codePoint)) {
             return 0;
         }
-        return wide(codePoint) ? unitsPerEm() : program.advanceOfGlyph(0);
+        return wide(codePoint) || Character.isEmojiPresentation(codePoint) ? unitsPerEm() : program.advanceOfGlyph(0);
     }
 
     private int symbolAdvance(int codePoint) {

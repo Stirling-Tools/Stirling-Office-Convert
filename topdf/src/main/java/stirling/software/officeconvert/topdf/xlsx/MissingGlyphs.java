@@ -3,7 +3,9 @@ package stirling.software.officeconvert.topdf.xlsx;
 import java.awt.Color;
 import java.io.IOException;
 
+import stirling.software.officeconvert.topdf.font.ColorEmoji;
 import stirling.software.officeconvert.topdf.font.FontFace;
+import stirling.software.officeconvert.topdf.io.DecodedPicture;
 import stirling.software.officeconvert.topdf.pdf.PdfCanvas;
 import stirling.software.officeconvert.topdf.pdf.Stroke;
 
@@ -58,9 +60,17 @@ final class MissingGlyphs {
     static double draw(PdfCanvas canvas, String text, double size, double x, double baseline, Color color)
             throws IOException {
         Stroke stroke = Stroke.solid((float) (size * BOX_STROKE), color);
+        ColorEmoji colour = canvas.output().fonts().colorEmoji();
         double at = x;
         for (int i = 0; i < text.length(); ) {
             int cp = text.codePointAt(i);
+            int end = colour == null ? i : ColorEmoji.clusterEnd(text, i);
+            int[] glyphs = end > i ? colour.glyphs(text.substring(i, end)) : null;
+            if (glyphs != null) {
+                at += emoji(canvas, colour, glyphs, width(text.substring(i, end), size), size, at, baseline);
+                i = end;
+                continue;
+            }
             i += Character.charCount(cp);
             double w = em(cp) * size;
             if (w > 0 && !Character.isSpaceChar(cp)) {
@@ -72,6 +82,23 @@ final class MissingGlyphs {
             at += w;
         }
         return at - x;
+    }
+
+    private static double emoji(PdfCanvas canvas, ColorEmoji colour, int[] glyphs, double room, double size, double x,
+            double baseline) throws IOException {
+        double natural = colour.advance(glyphs) * size;
+        double fit = natural > room && natural > 0 ? room / natural : 1;
+        double pen = x + Math.max(0, room - natural * fit) / 2;
+        for (int g : glyphs) {
+            ColorEmoji.Bitmap b = colour.bitmap(g);
+            DecodedPicture pic = b == null ? null : canvas.output().emoji(b);
+            if (pic != null) {
+                canvas.image(pic, (float) (pen + b.left() * size * fit), (float) (baseline - b.top() * size * fit),
+                        (float) (b.width() * size * fit), (float) (b.height() * size * fit));
+            }
+            pen += colour.advance(g) * size * fit;
+        }
+        return room;
     }
 
     static double width(String text, double size) {

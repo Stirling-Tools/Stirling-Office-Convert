@@ -176,9 +176,12 @@ public final class PdfFonts implements Closeable {
 
     /** The code that draws the box for {@code codePoint} in a font from {@link #missing}; 0 draws it without text. */
     public int missingCode(Embedded font, int codePoint) {
-        String text = new String(Character.toChars(codePoint));
+        return missingCode(font, new String(Character.toChars(codePoint)));
+    }
+
+    public int missingCode(Embedded font, String text) {
         Map<String, Integer> codes = missingCodes.get(font.font());
-        if (codes == null) {
+        if (codes == null || text.isEmpty()) {
             return 0;
         }
         Integer known = codes.get(text);
@@ -213,6 +216,10 @@ public final class PdfFonts implements Closeable {
         FontFace f = library.fallback(codePoint, like);
         return f != null && f.covers(codePoint) && (!f.sameProgram(like) || f.symbolStandIn() && !f.equals(like)) ? f
                 : null;
+    }
+
+    public ColorEmoji colorEmoji() {
+        return library.colorEmoji();
     }
 
     public void uncovered(int codePoint) {

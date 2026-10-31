@@ -123,6 +123,24 @@ public final class ColorEmoji {
         return cp >= 0x1F1E6 && cp <= 0x1F1FF;
     }
 
+    public static boolean needsShaping(CharSequence text) {
+        if (!FontFace.needsShaping(text)) {
+            return false;
+        }
+        StringBuilder rest = new StringBuilder(text.length());
+        for (int i = 0; i < text.length(); ) {
+            int end = clusterEnd(text, i);
+            if (end > i) {
+                i = end;
+                continue;
+            }
+            int cp = Character.codePointAt(text, i);
+            rest.appendCodePoint(cp);
+            i += Character.charCount(cp);
+        }
+        return FontFace.needsShaping(rest);
+    }
+
     public int[] glyphs(String cluster) {
         int[] known = shaped.get(cluster);
         if (known != null) {

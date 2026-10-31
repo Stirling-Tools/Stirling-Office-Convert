@@ -28,6 +28,7 @@ import org.openxmlformats.schemas.presentationml.x2006.main.CTPlaceholder;
 import org.openxmlformats.schemas.presentationml.x2006.main.CTShape;
 
 import stirling.software.officeconvert.topdf.font.BidiRuns;
+import stirling.software.officeconvert.topdf.font.ColorEmoji;
 import stirling.software.officeconvert.topdf.font.FontFace;
 import stirling.software.officeconvert.topdf.pdf.PdfCanvas;
 
@@ -490,7 +491,7 @@ final class TextFrame {
     private static boolean plainScript(TextBlock b) {
         for (Line l : b.lines) {
             String text = l.chars.text(l.start, l.contentEnd, true);
-            if (l.para.rtl() || BidiRuns.needed(text) || FontFace.needsShaping(text)) {
+            if (l.para.rtl() || BidiRuns.needed(text) || ColorEmoji.needsShaping(text)) {
                 return false;
             }
         }
