@@ -1,5 +1,16 @@
 package stirling.software.officeconvert.optimize;
 
+import static stirling.software.officeconvert.optimize.DeflateTables.CL_ORDER;
+import static stirling.software.officeconvert.optimize.DeflateTables.DIST_BASE;
+import static stirling.software.officeconvert.optimize.DeflateTables.DIST_EXTRA;
+import static stirling.software.officeconvert.optimize.DeflateTables.LENGTH_BASE;
+import static stirling.software.officeconvert.optimize.DeflateTables.LENGTH_EXTRA;
+import static stirling.software.officeconvert.optimize.DeflateTables.LENGTH_SYMBOL;
+import static stirling.software.officeconvert.optimize.DeflateTables.MAX_MATCH;
+import static stirling.software.officeconvert.optimize.DeflateTables.MIN_MATCH;
+import static stirling.software.officeconvert.optimize.DeflateTables.NEXT;
+import static stirling.software.officeconvert.optimize.DeflateTables.distSymbol;
+
 import java.io.InterruptedIOException;
 import java.util.Arrays;
 import java.util.zip.Adler32;
@@ -14,10 +25,6 @@ final class Squeeze {
 
     private static final int WMASK = WINDOW - 1;
 
-    private static final int MIN_MATCH = 3;
-
-    private static final int MAX_MATCH = 258;
-
     private static final int MASTER_BLOCK = 1 << 20;
 
     private static final int HASH_BITS = 15;
@@ -27,51 +34,6 @@ final class Squeeze {
     private static final int MAX_PAIRS = 8;
 
     private static final int DENSE = 32;
-
-    private static final int[] NEXT = new int[MAX_MATCH + 2];
-
-    private static final int[] LENGTH_BASE = {3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 15, 17, 19, 23, 27, 31, 35, 43, 51, 59,
-            67, 83, 99, 115, 131, 163, 195, 227, 258};
-
-    private static final int[] LENGTH_EXTRA = {0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4,
-            5, 5, 5, 5, 0};
-
-    private static final int[] DIST_BASE = {1, 2, 3, 4, 5, 7, 9, 13, 17, 25, 33, 49, 65, 97, 129, 193, 257, 385, 513,
-            769, 1025, 1537, 2049, 3073, 4097, 6145, 8193, 12289, 16385, 24577};
-
-    private static final int[] DIST_EXTRA = {0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10, 10,
-            11, 11, 12, 12, 13, 13};
-
-    private static final int[] LENGTH_SYMBOL = new int[MAX_MATCH + 1];
-
-    private static final int[] DIST_SYMBOL_SMALL = new int[512];
-
-    private static final int[] DIST_SYMBOL_LARGE = new int[256];
-
-    private static final int[] CL_ORDER = {16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15};
-
-    static {
-        for (int code = 0; code < 29; code++) {
-            int end = code == 28 ? 258 : LENGTH_BASE[code] + (1 << LENGTH_EXTRA[code]) - 1;
-            for (int l = LENGTH_BASE[code]; l <= Math.min(end, 258); l++) {
-                LENGTH_SYMBOL[l] = code;
-            }
-        }
-        LENGTH_SYMBOL[258] = 28;
-        for (int l = 0; l <= MAX_MATCH; l++) {
-            int n = l + 1;
-            while (n <= MAX_MATCH && LENGTH_SYMBOL[n] == LENGTH_SYMBOL[l] && n < MAX_MATCH) {
-                n++;
-            }
-            NEXT[l] = n;
-        }
-        for (int d = 1; d <= 512; d++) {
-            DIST_SYMBOL_SMALL[d - 1] = distSymbolSlow(d);
-        }
-        for (int k = 4; k < 256; k++) {
-            DIST_SYMBOL_LARGE[k] = distSymbolSlow((k << 7) + 1);
-        }
-    }
 
     private final byte[] data;
 
@@ -459,87 +421,6 @@ final class Squeeze {
         return Histogram.of(s, from, to).bits();
     }
 
-    private static final class Histogram {
-
-        final int[] ll = new int[288];
-
-        final int[] dd = new int[30];
-
-        long extra;
-
-        static Histogram of(Store s, int from, int to) {
-            Histogram h = new Histogram();
-            for (int i = from; i < to; i++) {
-                h.add(s, i, 1);
-            }
-            return h;
-        }
-
-        void add(Store s, int i, int sign) {
-            if (s.dists[i] == 0) {
-                ll[s.lens[i]] += sign;
-            } else {
-                int ls = LENGTH_SYMBOL[s.lens[i]];
-                ll[257 + ls] += sign;
-                int ds = distSymbol(s.dists[i]);
-                dd[ds] += sign;
-                extra += sign * (long) (LENGTH_EXTRA[ls] + DIST_EXTRA[ds]);
-            }
-        }
-
-        Histogram minus(Histogram o) {
-            Histogram h = new Histogram();
-            for (int i = 0; i < 288; i++) {
-                h.ll[i] = ll[i] - o.ll[i];
-            }
-            for (int i = 0; i < 30; i++) {
-                h.dd[i] = dd[i] - o.dd[i];
-            }
-            h.extra = extra - o.extra;
-            return h;
-        }
-
-        double estimate() {
-            return entropy(ll, 1) + entropy(dd, 0) + extra;
-        }
-
-        private static double entropy(int[] counts, int extraSymbol) {
-            long total = extraSymbol;
-            int used = extraSymbol;
-            for (int c : counts) {
-                total += c;
-                used += c > 0 ? 1 : 0;
-            }
-            if (total == 0) {
-                return 0;
-            }
-            double logTotal = log2(total);
-            double bits = extraSymbol * logTotal;
-            for (int c : counts) {
-                if (c > 0) {
-                    bits += c * (logTotal - log2(c));
-                }
-            }
-            return bits + used * 4.0 + 40;
-        }
-
-        double bits() {
-            int[] llc = ll.clone();
-            llc[256] = 1;
-            int[] llLengths = Huffman.lengths(llc, 15);
-            int[] ddLengths = Huffman.lengths(dd, 15);
-            patchDistances(ddLengths);
-            long bits = extra;
-            for (int i = 0; i < 288; i++) {
-                bits += (long) llc[i] * llLengths[i];
-            }
-            for (int i = 0; i < 30; i++) {
-                bits += (long) dd[i] * ddLengths[i];
-            }
-            return bits + treeBits(llLengths, ddLengths, null);
-        }
-    }
-
     private void emit(Store s, int from, int to, boolean last) {
         int[] ll = new int[288];
         int[] dd = new int[30];
@@ -632,7 +513,7 @@ final class Squeeze {
         out.huffman(llCodes[256], llLengths[256]);
     }
 
-    private static long treeBits(int[] llLengths, int[] ddLengths, BitWriter w) {
+    static long treeBits(int[] llLengths, int[] ddLengths, BitWriter w) {
         int hlit = 286;
         while (hlit > 257 && llLengths[hlit - 1] == 0) {
             hlit--;
@@ -747,7 +628,7 @@ final class Squeeze {
         return bits;
     }
 
-    private static void patchDistances(int[] lengths) {
+    static void patchDistances(int[] lengths) {
         int used = 0;
         for (int i = 0; i < 30; i++) {
             used += lengths[i] > 0 ? 1 : 0;
@@ -776,249 +657,5 @@ final class Squeeze {
             l[i] = i < 144 ? 8 : i < 256 ? 9 : i < 280 ? 7 : 8;
         }
         return l;
-    }
-
-    private static final double[] LOG2 = new double[1 << 16];
-
-    static {
-        for (int i = 1; i < LOG2.length; i++) {
-            LOG2[i] = Math.log(i) / Math.log(2);
-        }
-    }
-
-    private static double log2(long v) {
-        return v < LOG2.length ? LOG2[(int) v] : Math.log(v) / Math.log(2);
-    }
-
-    static int distSymbol(int d) {
-        return d <= 512 ? DIST_SYMBOL_SMALL[d - 1] : DIST_SYMBOL_LARGE[(d - 1) >> 7];
-    }
-
-    private static int distSymbolSlow(int d) {
-        for (int c = 29; c >= 0; c--) {
-            if (d >= DIST_BASE[c]) {
-                return c;
-            }
-        }
-        return 0;
-    }
-
-    private static final class Costs {
-
-        final double[] litlen = new double[288];
-
-        final double[] dist = new double[30];
-
-        static Costs of(Store s) {
-            int[] ll = new int[288];
-            int[] dd = new int[30];
-            for (int i = 0; i < s.size; i++) {
-                if (s.dists[i] == 0) {
-                    ll[s.lens[i]]++;
-                } else {
-                    ll[257 + LENGTH_SYMBOL[s.lens[i]]]++;
-                    dd[distSymbol(s.dists[i])]++;
-                }
-            }
-            ll[256] = 1;
-            Costs c = new Costs();
-            entropy(ll, c.litlen);
-            entropy(dd, c.dist);
-            return c;
-        }
-
-        private static void entropy(int[] counts, double[] bits) {
-            long sum = 0;
-            for (int c : counts) {
-                sum += c;
-            }
-            double log2sum = sum == 0 ? Math.log(counts.length) / Math.log(2) : Math.log(sum) / Math.log(2);
-            for (int i = 0; i < counts.length; i++) {
-                bits[i] = counts[i] == 0 ? log2sum : log2sum - Math.log(counts[i]) / Math.log(2);
-                if (bits[i] < 0) {
-                    bits[i] = 0;
-                }
-            }
-        }
-    }
-
-    private static final class Store {
-
-        int[] lens;
-
-        int[] dists;
-
-        int size;
-
-        Store(int capacity) {
-            lens = new int[Math.max(16, capacity)];
-            dists = new int[Math.max(16, capacity)];
-        }
-
-        void add(int len, int dist) {
-            if (size == lens.length) {
-                lens = Arrays.copyOf(lens, size * 2);
-                dists = Arrays.copyOf(dists, size * 2);
-            }
-            lens[size] = len;
-            dists[size++] = dist;
-        }
-
-        int position(int index, int base) {
-            int p = base;
-            for (int i = 0; i < index; i++) {
-                p += dists[i] == 0 ? 1 : lens[i];
-            }
-            return p;
-        }
-
-        Store slice(int from, int to) {
-            Store s = new Store(to - from);
-            System.arraycopy(lens, from, s.lens, 0, to - from);
-            System.arraycopy(dists, from, s.dists, 0, to - from);
-            s.size = to - from;
-            return s;
-        }
-    }
-
-    private static final class Scratch {
-
-        int[] pairs = new int[0];
-
-        int[] start = new int[0];
-
-        double[] cost = new double[0];
-
-        int[] length = new int[0];
-
-        int[] dist = new int[0];
-
-        char[] same = new char[0];
-
-        void fit(int n) {
-            if (cost.length < n) {
-                cost = new double[n];
-                length = new int[n];
-                dist = new int[n];
-            }
-        }
-    }
-
-    private static final class Matches {
-
-        final int[] start;
-
-        final int n;
-
-        final Scratch scratch;
-
-        int[] pairs;
-
-        int used;
-
-        Matches(int n, Scratch scratch) {
-            this.n = n;
-            this.scratch = scratch;
-            if (scratch.start.length < n + 1) {
-                scratch.start = new int[n + 1];
-            }
-            if (scratch.pairs.length < Math.max(1024, 4L * n)) {
-                scratch.pairs = new int[(int) Math.min(Integer.MAX_VALUE - 8, Math.max(1024, 4L * n))];
-            }
-            start = scratch.start;
-            pairs = scratch.pairs;
-        }
-
-        void begin(int k) {
-            start[k] = used;
-        }
-
-        void add(int len, int dist) {
-            if (used + 2 > pairs.length) {
-                pairs = Arrays.copyOf(pairs, pairs.length * 2);
-                scratch.pairs = pairs;
-            }
-            pairs[used++] = len;
-            pairs[used++] = dist;
-        }
-
-        void finish() {
-            start[n] = used;
-        }
-
-        int longest(int k) {
-            int end = start[k + 1];
-            return end > start[k] ? pairs[end - 2] : 0;
-        }
-
-        int distance(int k, int length) {
-            for (int p = start[k]; p < start[k + 1]; p += 2) {
-                if (pairs[p] >= length) {
-                    return pairs[p + 1];
-                }
-            }
-            return 0;
-        }
-    }
-
-    private static final class BitWriter {
-
-        private byte[] buf;
-
-        private int size;
-
-        private long acc;
-
-        private int count;
-
-        BitWriter(int capacity) {
-            buf = new byte[capacity];
-        }
-
-        void bits(int value, int n) {
-            acc |= (long) (value & ((1 << n) - 1)) << count;
-            count += n;
-            while (count >= 8) {
-                put((int) acc);
-                acc >>>= 8;
-                count -= 8;
-            }
-        }
-
-        void huffman(int code, int length) {
-            int reversed = Integer.reverse(code) >>> (32 - length);
-            bits(reversed, length);
-        }
-
-        void align() {
-            if (count > 0) {
-                put((int) acc);
-                acc = 0;
-                count = 0;
-            }
-        }
-
-        void writeByte(int b) {
-            put(b);
-        }
-
-        void writeBytes(byte[] b, int off, int len) {
-            if (size + len > buf.length) {
-                buf = Arrays.copyOf(buf, Math.max(size + len, buf.length * 2));
-            }
-            System.arraycopy(b, off, buf, size, len);
-            size += len;
-        }
-
-        private void put(int b) {
-            if (size == buf.length) {
-                buf = Arrays.copyOf(buf, buf.length * 2);
-            }
-            buf[size++] = (byte) b;
-        }
-
-        byte[] toByteArray() {
-            return Arrays.copyOf(buf, size);
-        }
     }
 }

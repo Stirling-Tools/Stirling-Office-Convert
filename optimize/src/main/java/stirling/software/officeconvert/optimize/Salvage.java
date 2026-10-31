@@ -84,43 +84,15 @@ final class Salvage {
         }
         Map<Integer, String> bodies = new java.util.HashMap<>();
         Map<Integer, Long> order = new java.util.HashMap<>();
-        List<Map.Entry<Integer, Integer>> byOffset = new ArrayList<>(offsets.entrySet());
-        byOffset.sort(Map.Entry.comparingByValue());
         TreeMap<Integer, String> packed = new TreeMap<>();
-        BrotliBudget budget = BrotliBudget.create();
-        long[] left = {MAX_UNPACKED};
-        for (int k = 0; k < byOffset.size(); k++) {
-            if ((k & 1023) == 0) {
-                stirling.software.officeconvert.extract.PdfFiles.stopIfInterrupted();
-            }
-            int number = byOffset.get(k).getKey();
-            int start = byOffset.get(k).getValue();
-            int end = k + 1 < byOffset.size() ? byOffset.get(k + 1).getValue() : data.length;
-            String body = text.substring(start, Math.min(end, start + (1 << 16)));
-            int stream = body.indexOf("stream");
-            String head = stream >= 0 ? body.substring(0, stream) : body;
-            bodies.put(number, head);
-            order.put(number, (long) start << 20);
-            if (stream >= 0 && left[0] > 0 && OBJECT_STREAM.matcher(head).find()) {
-                unpack(data, start, Math.min(end, data.length), head, packed, order, budget, left);
-            }
-        }
+        scan(data, text, offsets, bodies, order, packed);
         packed.keySet().removeAll(offsets.keySet());
         if (offsets.size() + packed.size() > MAX_OBJECTS) {
             return null;
         }
         bodies.putAll(packed);
         List<Integer> pages = new ArrayList<>();
-        int catalog = -1;
-        for (Map.Entry<Integer, String> e : bodies.entrySet()) {
-            String head = e.getValue();
-            if (PAGE.matcher(head).find() && !head.contains("/Kids")) {
-                pages.add(e.getKey());
-            } else if (CATALOG.matcher(head).find()
-                    && (catalog < 0 || order.get(e.getKey()) > order.get(catalog))) {
-                catalog = e.getKey();
-            }
-        }
+        int catalog = leaves(bodies, order, pages);
         if (pages.isEmpty()) {
             return null;
         }
@@ -162,21 +134,8 @@ final class Salvage {
         }
         StringBuilder added = new StringBuilder();
         TreeMap<Integer, Long> extra = new TreeMap<>();
-        long position = data.length + 1;
-        for (Map.Entry<Integer, String> e : packed.entrySet()) {
-            if (e.getKey() == pagesNumber) {
-                continue;
-            }
-            String object = e.getKey() + " 0 obj\n" + e.getValue() + "\nendobj\n";
-            extra.put(e.getKey(), position);
-            added.append(object);
-            position += object.length();
-        }
-        StringBuilder kids = new StringBuilder();
-        for (int p : pages) {
-            kids.append(p).append(' ').append(packed.containsKey(p) ? 0 : generations.getOrDefault(p, 0))
-                    .append(" R ");
-        }
+        long position = appendPacked(packed, pagesNumber, added, extra, data.length + 1);
+        StringBuilder kids = kids(pages, packed, generations);
         String pagesObject = pagesNumber + " " + pagesGeneration + " obj\n<</Type/Pages"
                 + inherited(inheritedFrom) + "/Kids[" + kids + "]/Count " + pages.size() + ">>\nendobj\n";
         extra.put(pagesNumber, position);
@@ -195,6 +154,82 @@ final class Salvage {
         all.putAll(extra);
         int size = Math.max(all.lastKey(), next - 1) + 1;
         long xref = position;
+        StringBuilder table = xrefTable(size, all, extra, generations, pagesNumber, pagesGeneration);
+        table.append("trailer\n<</Size ").append(size).append("/Root ").append(catalogNumber)
+                .append(' ').append(catalogGeneration).append(" R>>\nstartxref\n").append(xref).append("\n%%EOF\n");
+        try (OutputStream os = Files.newOutputStream(out)) {
+            os.write(data);
+            os.write('\n');
+            os.write(added.toString().getBytes(StandardCharsets.ISO_8859_1));
+            os.write(table.toString().getBytes(StandardCharsets.ISO_8859_1));
+        }
+        return new Rebuilt(pages.size(), packed.size());
+    }
+
+    private static void scan(byte[] data, String text, TreeMap<Integer, Integer> offsets, Map<Integer, String> bodies,
+            Map<Integer, Long> order, TreeMap<Integer, String> packed) throws IOException {
+        List<Map.Entry<Integer, Integer>> byOffset = new ArrayList<>(offsets.entrySet());
+        byOffset.sort(Map.Entry.comparingByValue());
+        BrotliBudget budget = BrotliBudget.create();
+        long[] left = {MAX_UNPACKED};
+        for (int k = 0; k < byOffset.size(); k++) {
+            if ((k & 1023) == 0) {
+                stirling.software.officeconvert.extract.PdfFiles.stopIfInterrupted();
+            }
+            int number = byOffset.get(k).getKey();
+            int start = byOffset.get(k).getValue();
+            int end = k + 1 < byOffset.size() ? byOffset.get(k + 1).getValue() : data.length;
+            String body = text.substring(start, Math.min(end, start + (1 << 16)));
+            int stream = body.indexOf("stream");
+            String head = stream >= 0 ? body.substring(0, stream) : body;
+            bodies.put(number, head);
+            order.put(number, (long) start << 20);
+            if (stream >= 0 && left[0] > 0 && OBJECT_STREAM.matcher(head).find()) {
+                unpack(data, start, Math.min(end, data.length), head, packed, order, budget, left);
+            }
+        }
+    }
+
+    private static int leaves(Map<Integer, String> bodies, Map<Integer, Long> order, List<Integer> pages) {
+        int catalog = -1;
+        for (Map.Entry<Integer, String> e : bodies.entrySet()) {
+            String head = e.getValue();
+            if (PAGE.matcher(head).find() && !head.contains("/Kids")) {
+                pages.add(e.getKey());
+            } else if (CATALOG.matcher(head).find()
+                    && (catalog < 0 || order.get(e.getKey()) > order.get(catalog))) {
+                catalog = e.getKey();
+            }
+        }
+        return catalog;
+    }
+
+    private static long appendPacked(TreeMap<Integer, String> packed, int pagesNumber, StringBuilder added,
+            TreeMap<Integer, Long> extra, long position) {
+        for (Map.Entry<Integer, String> e : packed.entrySet()) {
+            if (e.getKey() == pagesNumber) {
+                continue;
+            }
+            String object = e.getKey() + " 0 obj\n" + e.getValue() + "\nendobj\n";
+            extra.put(e.getKey(), position);
+            added.append(object);
+            position += object.length();
+        }
+        return position;
+    }
+
+    private static StringBuilder kids(List<Integer> pages, TreeMap<Integer, String> packed,
+            Map<Integer, Integer> generations) {
+        StringBuilder kids = new StringBuilder();
+        for (int p : pages) {
+            kids.append(p).append(' ').append(packed.containsKey(p) ? 0 : generations.getOrDefault(p, 0))
+                    .append(" R ");
+        }
+        return kids;
+    }
+
+    private static StringBuilder xrefTable(int size, TreeMap<Integer, Long> all, TreeMap<Integer, Long> extra,
+            Map<Integer, Integer> generations, int pagesNumber, int pagesGeneration) throws IOException {
         StringBuilder table = new StringBuilder("xref\n0 " + size + "\n0000000000 65535 f\r\n");
         for (int n = 1; n < size; n++) {
             if ((n & 1023) == 0) {
@@ -212,15 +247,7 @@ final class Salvage {
                 table.append(" n\r\n");
             }
         }
-        table.append("trailer\n<</Size ").append(size).append("/Root ").append(catalogNumber)
-                .append(' ').append(catalogGeneration).append(" R>>\nstartxref\n").append(xref).append("\n%%EOF\n");
-        try (OutputStream os = Files.newOutputStream(out)) {
-            os.write(data);
-            os.write('\n');
-            os.write(added.toString().getBytes(StandardCharsets.ISO_8859_1));
-            os.write(table.toString().getBytes(StandardCharsets.ISO_8859_1));
-        }
-        return new Rebuilt(pages.size(), packed.size());
+        return table;
     }
 
     private static boolean only(String filter, String name) {
