@@ -305,7 +305,7 @@ public final class PageAnalyzer {
         List<Box> out = new ArrayList<>();
         for (PageData.Widget w : widgets) {
             Box field = new Box(w.x(), w.top(), w.right(), w.bottom());
-            if (w.choice() && field.area() > 0 && Float.isFinite(field.area()) && !Regions.overlapsMostly(field, tableBoxes)) {
+            if ((w.choice() || w.note()) && field.area() > 0 && Float.isFinite(field.area()) && !Regions.overlapsMostly(field, tableBoxes)) {
                 out.add(field);
                 if (out.size() > MAX_CHOICE_FIELDS) {
                     return List.of();

@@ -92,7 +92,7 @@ final class GlyphCollector extends PDFStreamEngine {
     private static final float ITALIC_SHEAR = 0.12f;
 
     interface PageSink {
-        void accept(int pageIndex, PDPage page, List<RawGlyph> glyphs) throws IOException;
+        void accept(int pageIndex, PDPage page, List<RawGlyph> glyphs, int firstAnnotationSeq) throws IOException;
     }
 
     record RawGlyph(Glyph glyph, int direction, boolean invisible, float originX, float originY) {}
@@ -127,11 +127,13 @@ final class GlyphCollector extends PDFStreamEngine {
     private final Set<Glyph> marks = Collections.newSetFromMap(new IdentityHashMap<>());
     private boolean inPage;
     private int seq;
+    private int annotationSeq;
     private int pageIndex;
 
     private int rotation;
     private int nextIndex;
     private PDDocument document;
+    private OptionalContent layers;
     private OperatorBudget budget = new OperatorBudget("reading text");
     private final StreamRunner runner;
     private final TextPositions positions;
@@ -211,12 +213,13 @@ final class GlyphCollector extends PDFStreamEngine {
             throws IOException {
         GlyphCollector collector = new GlyphCollector(fonts, sink, parsed);
         collector.document = doc;
+        collector.layers = OptionalContent.of(doc);
         collector.startPage = first + 1;
         collector.endPage = last + 1;
         collector.nextIndex = first;
         collector.currentPageNo = 1;
         for (PDPage page : doc.getPages()) {
-            if (page.hasContents()) {
+            if (page.hasContents() || Annotations.any(page)) {
                 collector.processPage(page);
             }
             collector.currentPageNo++;
@@ -289,7 +292,8 @@ final class GlyphCollector extends PDFStreamEngine {
             startPage(page);
             positions.page(page);
             runner.processPage(page);
-            Annotations.show(this, page);
+            annotationSeq = seq;
+            Annotations.show(this, page, layers);
             endPage(page);
             page.removePageResourceFromCache();
         } catch (IOException e) {
@@ -313,6 +317,7 @@ final class GlyphCollector extends PDFStreamEngine {
         actualDepth = 0;
         untracked = 0;
         seq = 0;
+        annotationSeq = Integer.MAX_VALUE;
     }
 
     @Override
@@ -446,7 +451,7 @@ final class GlyphCollector extends PDFStreamEngine {
         settleAlternatives(glyphs);
         current = new ArrayList<>();
         nextIndex = pageIndex + 1;
-        sink.accept(pageIndex, page, glyphs);
+        sink.accept(pageIndex, page, glyphs, annotationSeq);
     }
 
     private void composeMarks(List<RawGlyph> glyphs) {
@@ -503,7 +508,7 @@ final class GlyphCollector extends PDFStreamEngine {
     private void blankPagesBefore(int index) throws IOException {
         while (nextIndex < index) {
             int blank = nextIndex++;
-            sink.accept(blank, document.getPage(blank), List.of());
+            sink.accept(blank, document.getPage(blank), List.of(), Integer.MAX_VALUE);
         }
     }
 
