@@ -15,8 +15,6 @@ import stirling.software.officeconvert.topdf.html.HtmlDocument;
 
 final class ParaItems {
 
-    private static final float[] WORD_EMOJI_LINE = {2210f / 2048, 514f / 2048};
-
     final Para para;
 
     final List<Item> items = new ArrayList<>();
@@ -337,10 +335,10 @@ final class ParaItems {
             int cp = s.codePointAt(i);
             Fonts.Slot slot = slot(cp, rp);
             boolean lower = small && Character.isLowerCase(cp);
-            int j = Math.max(i + Character.charCount(cp), colour == null ? i : colour.run(s, i));
+            int j = Math.max(i + Character.charCount(cp), emojiEnd(colour, s, i));
             while (j < n) {
                 int c2 = s.codePointAt(j);
-                int emoji = colour == null ? j : colour.run(s, j);
+                int emoji = emojiEnd(colour, s, j);
                 if (emoji > j && slot(c2, rp) == slot) {
                     j = emoji;
                     continue;
@@ -397,8 +395,9 @@ final class ParaItems {
         int n = piece.length();
         while (i < n) {
             int cp = piece.codePointAt(i);
-            int emoji = colour == null ? i : colour.run(piece, i);
-            if (emoji > i && !ctx.emojiAllowed(colour, piece.substring(i, emoji))) {
+            int emoji = ColorEmoji.unitEnd(colour, piece, i, face);
+            boolean box = emoji > i && (colour == null || colour.run(piece, i) <= i);
+            if (emoji > i && !box && !ctx.emojiAllowed(colour, piece.substring(i, emoji))) {
                 emoji = i;
             }
             FontFace f = emoji > i ? face : faceFor(face, cp);
@@ -406,18 +405,19 @@ final class ParaItems {
             while (j < n && emoji <= i) {
                 int c2 = piece.codePointAt(j);
                 if (!faceFor(face, c2).equals(f) && !(covers(f, c2) && neutral(c2) && !ownSpaces)
-                        || colour != null && colour.run(piece, j) > j) {
+                        || ColorEmoji.unitEnd(colour, piece, j, face) > j) {
                     break;
                 }
                 j += Character.charCount(c2);
             }
             Item it = new Item(Item.Kind.TEXT);
             it.text = piece.substring(i, j);
-            it.emoji = emoji > i ? colour : null;
+            it.emoji = emoji > i && !box ? colour : null;
+            it.emojiBox = box;
             it.look = f == face ? look(rp, f, link, nominal) : fallbackLook(rp, f, face, link, nominal, cp);
-            if (it.emoji != null) {
-                it.look = it.look.withLineOf(emojiLine(rp, face, link, nominal, colour));
-                it.emojiAdvance = web() ? 0 : ColorEmoji.OFFICE_ADVANCE;
+            if (it.emoji != null || box) {
+                it.look = it.look.withLineOf(emojiLine(rp, face, link, nominal, it.emoji));
+                it.emojiAdvance = web() && !box ? 0 : ColorEmoji.OFFICE_ADVANCE;
             }
             if (full > nominal) {
                 // Small capitals keep the line height of the full size
@@ -427,11 +427,17 @@ final class ParaItems {
             it.link = link;
             it.lang = rp.lang;
             it.lineHeight = rp.lineHeight == null ? 0 : Math.max(0, Math.min(1584, rp.lineHeight));
-            it.shaped = it.emoji != null || FontFace.needsShaping(it.text) && f.shapeable();
+            it.shaped = it.emoji != null || box || FontFace.needsShaping(it.text) && f.shapeable();
             it.rtl = BidiRuns.needed(it.text) && BidiRuns.baseRightToLeft(it.text);
             add(it);
             i = j;
         }
+    }
+
+    private static int emojiEnd(ColorEmoji colour, String s, int i) {
+        int run = colour == null ? i : colour.run(s, i);
+        int end = ColorEmoji.clusterEnd(s, i);
+        return run > i ? run : end > i && ColorEmoji.sequence(s, i, end) ? end : i;
     }
 
     private FontFace faceFor(FontFace face, int cp) {
@@ -456,7 +462,8 @@ final class ParaItems {
     }
 
     private Look emojiLine(RunProps rp, FontFace face, Inline.Link link, float nominal, ColorEmoji colour) {
-        float[] vertical = web() ? new float[] {colour.ascent(), colour.descent()} : WORD_EMOJI_LINE.clone();
+        float[] vertical = web() && colour != null ? new float[] {colour.ascent(), colour.descent()}
+                : ColorEmoji.officeLine();
         return Look.of(face, rp, nominal, link, null, new CloudFonts.Emulation(face, 100, vertical, null, null));
     }
 

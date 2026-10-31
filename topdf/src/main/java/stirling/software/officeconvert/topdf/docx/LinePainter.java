@@ -243,7 +243,9 @@ final class LinePainter {
             runLook = null;
             if (it.kind == Item.Kind.TEXT && it.shaped && s.to > s.from) {
                 String t = it.text.substring(s.from, s.to);
-                if (it.emoji != null) {
+                if (it.emojiBox) {
+                    ops.add(new Op.Emoji(s.x, base - it.look.rise(), t, it.look.style(), it.emojiAdvance));
+                } else if (it.emoji != null) {
                     emoji(ops, ctx, it, t, s.x, base - it.look.rise());
                 } else {
                     ops.add(new Op.Glyphs(s.x, base - it.look.rise(), it.look.face().shape(t, it.rtl), it.look.style()));

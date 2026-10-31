@@ -492,6 +492,112 @@ public final class PdfCanvas implements Closeable {
         return pen - x;
     }
 
+    public float emoji(String text, float x, float baseline, TextStyle style, float each, boolean mono)
+            throws IOException {
+        Objects.requireNonNull(text, "text");
+        Objects.requireNonNull(style, "style");
+        open();
+        if (text.isEmpty()) {
+            return 0;
+        }
+        ColorEmoji colour = output.fonts().colorEmoji();
+        FontFace face = output.fonts().font(style.face()).face();
+        float size = style.size();
+        float th = style.horizontalScale() / 100f;
+        PdfFonts.Embedded tofu = output.fonts().missing(face);
+        FontFace boxFace = tofu.face();
+        float natural = boxFace.glyphAdvance(0) * size / boxFace.unitsPerEm();
+        StringBuilder ops = new StringBuilder(64 + text.length() * 16);
+        StringBuilder hidden = new StringBuilder("0 Tc\n");
+        StringBuilder shown = new StringBuilder("0 Tc\n");
+        float pen = x;
+        for (int i = 0; i < text.length(); ) {
+            int end = ColorEmoji.clusterEnd(text, i);
+            if (end <= i) {
+                end = i + Character.charCount(text.codePointAt(i));
+            }
+            String cluster = text.substring(i, end);
+            int base = cluster.codePointAt(0);
+            float room = each * size * th + style.charSpacing() * cluster.codePointCount(0, cluster.length());
+            int[] glyphs = mono || colour == null ? null : colour.glyphs(cluster);
+            FontFace cover = glyphs != null || ColorEmoji.regional(base) ? null
+                    : face.covers(base) ? face : output.fonts().fallback(base, face);
+            if (cover == null && glyphs == null && colour != null) {
+                glyphs = colour.glyphs(cluster);
+            }
+            float carried = pen;
+            if (cover != null) {
+                String first = new String(Character.toChars(base));
+                float own = cover.advance(base) * size / cover.unitsPerEm() * th;
+                float fit = own > room && own > 0 ? room / own : 1;
+                float at = pen + Math.max(0, room - own * fit) / 2;
+                text(first, at, baseline, style.face(cover).charSpacing(0).wordSpacing(0)
+                        .horizontalScale(style.horizontalScale() * fit));
+                carried = at + own * fit;
+                cluster = cluster.substring(first.length());
+            } else if (glyphs != null) {
+                if (!hiddenText) {
+                    float wide = colour.advance(glyphs) * size * th;
+                    float fit = wide > room && wide > 0 ? room / wide : 1;
+                    float drawn = pen + Math.max(0, room - wide * fit) / 2;
+                    for (int g : glyphs) {
+                        ColorEmoji.Bitmap bitmap = colour.bitmap(g);
+                        DecodedPicture pic = bitmap == null ? null : output.emoji(bitmap);
+                        if (pic != null) {
+                            float w = bitmap.width() * size * th * fit;
+                            float h = bitmap.height() * size * fit;
+                            float top = baseline - bitmap.top() * size * fit;
+                            ops.append("q\n");
+                            Numbers.append(ops, w).append(" 0 0 ");
+                            Numbers.append(ops, -h).append(' ');
+                            Numbers.append(ops, drawn + bitmap.left() * size * th * fit).append(' ');
+                            Numbers.append(ops, top + h).append(" cm /");
+                            ops.append(resources().add(pic.image()).getName()).append(" Do\nQ\n");
+                        }
+                        drawn += colour.advance(g) * size * th * fit;
+                    }
+                }
+            } else if (room > 0 && natural > 0) {
+                if (!hiddenText && !face.covers(base) && output.fonts().fallback(base, face) == null) {
+                    output.fonts().uncovered(base);
+                }
+                float tz = Math.min(100, 100 * room / natural);
+                Numbers.append(shown, tz).append(" Tz ");
+                matrix(shown, 1, 0, -1, pen + (room - natural * tz / 100) / 2, baseline)
+                        .setLength(shown.length() - 1);
+                shown.append(" [<");
+                Numbers.hex(shown, output.fonts().missingCode(tofu, cluster), 4).append(">] TJ\n");
+                cluster = "";
+            }
+            float left = pen + room - carried;
+            if (!cluster.isEmpty() && left > 0 && natural > 0) {
+                Numbers.append(hidden, 100 * left / natural).append(" Tz ");
+                matrix(hidden, 1, 0, -1, carried, baseline).setLength(hidden.length() - 1);
+                hidden.append(" [<");
+                Numbers.hex(hidden, output.fonts().missingCode(tofu, cluster), 4).append(">] TJ\n");
+            }
+            pen += room;
+            i = end;
+        }
+        if (hidden.length() > 5) {
+            boolean was = hideText(true);
+            try {
+                begin(ops, style, 0);
+            } finally {
+                hideText(was);
+            }
+            font(ops, tofu, size);
+            ops.append(hidden).append("ET\nQ\n");
+        }
+        if (shown.length() > 5) {
+            begin(ops, style, 0);
+            font(ops, tofu, size);
+            ops.append(shown).append("ET\nQ\n");
+        }
+        queue(ops, x, pen, baseline, size, text, false);
+        return pen - x;
+    }
+
     // Characters no font has show a missing-glyph box, as Word shows them, and still extract as their text
     private float missing(StringBuilder ops, String text, float x, float baseline, TextStyle style, FontFace face)
             throws IOException {

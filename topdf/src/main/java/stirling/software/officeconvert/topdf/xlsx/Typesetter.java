@@ -130,7 +130,19 @@ final class Typesetter {
         double hinted = 0;
         double approx = 0;
         double missing = 0;
-        for (FontRun r : fonts.runs(text, primary)) {
+        StringBuilder plain = new StringBuilder(text.length());
+        for (int i = 0; i < text.length(); ) {
+            int end = emojiEnd(text, i, primary);
+            if (end > i) {
+                missing += ColorEmoji.clusters(text.substring(i, end)) * ColorEmoji.OFFICE_ADVANCE * ppem;
+                i = end;
+            } else {
+                int cp = text.codePointAt(i);
+                plain.appendCodePoint(cp);
+                i += Character.charCount(cp);
+            }
+        }
+        for (FontRun r : fonts.runs(plain.toString(), primary)) {
             FontFace face = r.face();
             boolean own = face.sameProgram(primary);
             boolean table = emulate && own;
@@ -252,6 +264,26 @@ final class Typesetter {
         }
         Look look = look(f);
         double w = 0;
+        int start = 0;
+        for (int i = 0; i < text.length(); ) {
+            int end = emojiEnd(text, i, face);
+            if (end > i) {
+                w += runsWidth(look, face, text.substring(start, i), size)
+                        + ColorEmoji.clusters(text.substring(i, end)) * ColorEmoji.OFFICE_ADVANCE * size;
+                start = end;
+                i = end;
+            } else {
+                i += Character.charCount(text.codePointAt(i));
+            }
+        }
+        return w + runsWidth(look, face, text.substring(start), size);
+    }
+
+    private double runsWidth(Look look, FontFace face, String text, double size) {
+        double w = 0;
+        if (text.isEmpty()) {
+            return w;
+        }
         for (FontRun run : fonts.runs(text, face)) {
             for (FontRun r : parts(run)) {
                 if (MissingGlyphs.any(r.face(), r.text())) {
@@ -263,6 +295,11 @@ final class Typesetter {
             }
         }
         return w;
+    }
+
+    private static int emojiEnd(String text, int i, FontFace primary) {
+        int end = ColorEmoji.clusterEnd(text, i);
+        return end > i && !primary.covers(text.codePointAt(i)) ? end : i;
     }
 
     // Splits a run where its face stops covering the text, so missing characters can be measured apart
@@ -430,10 +467,33 @@ final class Typesetter {
         }
         Look look = look(f);
         double at = x;
+        int start = 0;
+        for (int i = 0; i < text.length(); ) {
+            int end = emojiEnd(text, i, face);
+            if (end > i) {
+                at += drawRuns(canvas, look, face, text.substring(start, i), size, at, baseline, style);
+                at += canvas.emoji(text.substring(i, end), (float) at, (float) baseline, style,
+                        ColorEmoji.OFFICE_ADVANCE, true);
+                start = end;
+                i = end;
+            } else {
+                i += Character.charCount(text.codePointAt(i));
+            }
+        }
+        at += drawRuns(canvas, look, face, text.substring(start), size, at, baseline, style);
+        return at - x;
+    }
+
+    private double drawRuns(PdfCanvas canvas, Look look, FontFace face, String text, double size, double x,
+            double baseline, TextStyle style) throws IOException {
+        double at = x;
+        if (text.isEmpty()) {
+            return 0;
+        }
         for (FontRun run : fonts.runs(text, face)) {
             for (FontRun r : parts(run)) {
                 at += MissingGlyphs.any(r.face(), r.text())
-                        ? MissingGlyphs.draw(canvas, r.text(), size, at, baseline, f.color())
+                        ? MissingGlyphs.draw(canvas, r.text(), size, at, baseline, style.color())
                         : drawRun(canvas, look, face, r, size, at, baseline, style);
             }
         }

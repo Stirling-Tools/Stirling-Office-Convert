@@ -215,6 +215,27 @@ public final class TestFonts {
     }
 
     public static byte[] colourEmoji(int... colours) throws IOException {
+        return colourEmoji(Arrays.copyOf(new int[] {0x2705, 0x2B50}, colours.length), colours, null);
+    }
+
+    public static byte[] colourEmojiJoined(int first, int second, int joined) throws IOException {
+        ByteBuffer gsub = ByteBuffer.allocate(82).putShort((short) 1).putShort((short) 0).putShort((short) 10)
+                .putShort((short) 30).putShort((short) 44);
+        gsub.putShort((short) 1).put("DFLT".getBytes(StandardCharsets.ISO_8859_1)).putShort((short) 8)
+                .putShort((short) 4).putShort((short) 0).putShort((short) 0).putShort((short) 0xFFFF)
+                .putShort((short) 1).putShort((short) 0);
+        gsub.putShort((short) 1).put("ccmp".getBytes(StandardCharsets.ISO_8859_1)).putShort((short) 8)
+                .putShort((short) 0).putShort((short) 1).putShort((short) 0);
+        gsub.putShort((short) 1).putShort((short) 4).putShort((short) 4).putShort((short) 0).putShort((short) 1)
+                .putShort((short) 8);
+        gsub.putShort((short) 1).putShort((short) 8).putShort((short) 1).putShort((short) 14).putShort((short) 1)
+                .putShort((short) 1).putShort((short) 1);
+        gsub.putShort((short) 1).putShort((short) 4).putShort((short) 3).putShort((short) 3).putShort((short) 4)
+                .putShort((short) 2);
+        return colourEmoji(new int[] {0x2705, 0x2B50, 0, 0x200D}, new int[] {first, second, joined, -1}, bytes(gsub));
+    }
+
+    private static byte[] colourEmoji(int[] codes, int[] colours, byte[] gsub) throws IOException {
         int glyphs = colours.length + 1;
         Map<String, byte[]> t = new TreeMap<>();
         t.put("head", bytes(ByteBuffer.allocate(54).putInt(0x00010000).putInt(0x00010000).putInt(0)
@@ -227,26 +248,33 @@ public final class TestFonts {
                 .putShort((short) glyphs)));
         t.put("maxp", bytes(ByteBuffer.allocate(6).putInt(0x00005000).putShort((short) glyphs)));
         ByteBuffer hmtx = ByteBuffer.allocate(4 * glyphs);
-        for (int g = 0; g < glyphs; g++) {
-            hmtx.putShort((short) 2550).putShort((short) 0);
+        hmtx.putShort((short) 2550).putShort((short) 0);
+        for (int colour : colours) {
+            hmtx.putShort((short) (colour < 0 ? 0 : 2550)).putShort((short) 0);
         }
         t.put("hmtx", bytes(hmtx));
-        int segs = colours.length + 1;
+        List<int[]> mapped = new ArrayList<>();
+        for (int i = 0; i < codes.length; i++) {
+            if (codes[i] > 0) {
+                mapped.add(new int[] {codes[i], i + 1});
+            }
+        }
+        mapped.sort((a, b) -> Integer.compare(a[0], b[0]));
+        int segs = mapped.size() + 1;
         ByteBuffer cmap = ByteBuffer.allocate(12 + 16 + 8 * segs);
         cmap.putShort((short) 0).putShort((short) 1).putShort((short) 3).putShort((short) 1).putInt(12);
         cmap.putShort((short) 4).putShort((short) (16 + 8 * segs)).putShort((short) 0).putShort((short) (2 * segs))
                 .putShort((short) 2).putShort((short) 0).putShort((short) 0);
-        int[] codes = {0x2705, 0x2B50};
-        for (int i = 0; i < colours.length; i++) {
-            cmap.putShort((short) codes[i]);
+        for (int[] m : mapped) {
+            cmap.putShort((short) m[0]);
         }
         cmap.putShort((short) 0xFFFF).putShort((short) 0);
-        for (int i = 0; i < colours.length; i++) {
-            cmap.putShort((short) codes[i]);
+        for (int[] m : mapped) {
+            cmap.putShort((short) m[0]);
         }
         cmap.putShort((short) 0xFFFF);
-        for (int i = 0; i < colours.length; i++) {
-            cmap.putShort((short) (i + 1 - codes[i]));
+        for (int[] m : mapped) {
+            cmap.putShort((short) (m[1] - m[0]));
         }
         cmap.putShort((short) 1);
         for (int i = 0; i < segs; i++) {
@@ -267,6 +295,9 @@ public final class TestFonts {
         List<Integer> offsets = new ArrayList<>();
         for (int c : colours) {
             offsets.add(cbdt.size() - 4);
+            if (c < 0) {
+                continue;
+            }
             byte[] p = png(c);
             cbdt.write(new byte[] {(byte) 128, (byte) 136, 0, 101, (byte) 136});
             cbdt.write(ByteBuffer.allocate(4).putInt(p.length).array());
@@ -282,6 +313,9 @@ public final class TestFonts {
         cblc.putShort((short) 1).putShort((short) 17).putInt(4);
         offsets.forEach(cblc::putInt);
         t.put("CBLC", bytes(cblc));
+        if (gsub != null) {
+            t.put("GSUB", gsub);
+        }
         int n = t.size();
         int at = 12 + 16 * n;
         ByteArrayOutputStream font = new ByteArrayOutputStream();
