@@ -169,11 +169,20 @@ final class FontFixer {
             throw new IOException("A font could not be read for PDF/A: " + e.getMessage(), e);
         }
         if (font instanceof PDType3Font t3) {
-            Type3Repair.run(doc, t3, codes, level, report);
+            TreeMap<Integer, String> named = new TreeMap<>();
             if (level.unicode()) {
                 unicode(t3, codes, 1);
-            } else if (level.part() == 4) {
-                dropForbiddenUnicode(t3, codes, 1);
+            } else {
+                for (int code : codes) {
+                    named.put(code, UnicodeGuess.nameText(t3, code));
+                }
+            }
+            Type3Repair.run(doc, t3, codes, level, report);
+            if (!level.unicode()) {
+                if (level.part() == 4) {
+                    dropForbiddenUnicode(t3, codes, 1);
+                }
+                keepRenamedText(t3, named);
             }
             return null;
         }
@@ -423,7 +432,7 @@ final class FontFixer {
                 map.put(code, t);
             }
         }
-        COSStream trimmed = ToUnicodeWriter.preserve(doc, map, bytesPerCode);
+        COSStream trimmed = ToUnicodeWriter.preserve(doc, map, font, bytesPerCode);
         if (trimmed.getLength() < declared.getLength()) {
             dict.setItem(COSName.TO_UNICODE, trimmed);
         }
@@ -448,7 +457,24 @@ final class FontFixer {
             }
         }
         if (forbidden) {
-            font.getCOSObject().setItem(COSName.TO_UNICODE, ToUnicodeWriter.preserve(doc, map, bytesPerCode));
+            font.getCOSObject().setItem(COSName.TO_UNICODE, ToUnicodeWriter.preserve(doc, map, font, bytesPerCode));
+        }
+    }
+
+    private void keepRenamedText(PDType3Font font, TreeMap<Integer, String> named) throws IOException {
+        TreeMap<Integer, String> map = new TreeMap<>();
+        boolean lost = false;
+        for (Map.Entry<Integer, String> e : named.entrySet()) {
+            String declared = UnicodeGuess.declared(font, e.getKey());
+            if (declared != null && !declared.isEmpty()) {
+                map.put(e.getKey(), declared);
+            } else if (e.getValue() != null) {
+                map.put(e.getKey(), e.getValue());
+                lost |= !e.getValue().equals(UnicodeGuess.nameText(font, e.getKey()));
+            }
+        }
+        if (lost) {
+            font.getCOSObject().setItem(COSName.TO_UNICODE, ToUnicodeWriter.preserve(doc, map, 1));
         }
     }
 
@@ -458,19 +484,33 @@ final class FontFixer {
         boolean complete = declared != null && ToUnicodeWriter.wellFormed(declared);
         for (int code : codes) {
             PdfFiles.stopIfInterrupted();
-            String t = UnicodeGuess.of(font, code, bytesPerCode);
+            String t = UnicodeGuess.text(font, code, bytesPerCode);
             if (complete && !ToUnicodeWriter.valid(UnicodeGuess.declared(font, code))) {
                 complete = false;
             }
-            if (!ToUnicodeWriter.valid(t) || level.tagged() && ToUnicodeWriter.privateUse(t)) {
+            if (!usable(t)) {
                 complete = false;
-                String s = ToUnicodeWriter.symbol(t, font.getName(), code);
-                t = s != null ? s : ToUnicodeWriter.unknown(code, level);
+                t = fallback(font, code, t);
+            } else {
+                t = UnicodeGuess.searchable(font, code, t);
             }
             map.put(code, t);
         }
         if (!complete) {
-            font.getCOSObject().setItem(COSName.TO_UNICODE, ToUnicodeWriter.write(doc, map, bytesPerCode));
+            font.getCOSObject().setItem(COSName.TO_UNICODE, ToUnicodeWriter.preserve(doc, map, font, bytesPerCode));
         }
+    }
+
+    private boolean usable(String t) {
+        return ToUnicodeWriter.valid(t) && !(level.tagged() && ToUnicodeWriter.privateUse(t));
+    }
+
+    private String fallback(PDFont font, int code, String guess) {
+        String s = ToUnicodeWriter.symbol(guess, font.getName(), code);
+        if (usable(s)) {
+            return s;
+        }
+        String e = UnicodeGuess.extracted(font, code);
+        return usable(e) || e != null && !level.tagged() ? e : ToUnicodeWriter.unknown(code, level);
     }
 }

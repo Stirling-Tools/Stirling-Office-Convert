@@ -139,7 +139,7 @@ public final class FontEmbedder {
                 embedded.add(FontFixer.substitute(doc, font, codes, PdfALevel.A2B, library,
                         usage.bytesPerCode(leader), false));
                 if (!text.isEmpty() && (declared || !(font instanceof PDType0Font) || !keepsText(leader, text))) {
-                    leader.setItem(COSName.TO_UNICODE, ToUnicodeWriter.preserve(doc, text,
+                    leader.setItem(COSName.TO_UNICODE, ToUnicodeWriter.preserve(doc, text, font,
                             font instanceof PDType0Font ? usage.bytesPerCode(leader) : 1));
                 }
             } catch (IOException | RuntimeException x) {

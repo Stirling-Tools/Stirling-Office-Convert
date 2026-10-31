@@ -78,6 +78,7 @@ final class FontRebuild {
         TreeMap<Integer, String> unicode = new TreeMap<>();
         TreeMap<Integer, Float> widths = new TreeMap<>();
         int missing = 0;
+        boolean standIn = UnicodeGuess.standIn(font);
         for (int code : codes) {
             PdfFiles.stopIfInterrupted();
             int key = type0 ? CidLookup.cid((PDType0Font) font, code) : code;
@@ -87,10 +88,12 @@ final class FontRebuild {
                 String s = ToUnicodeWriter.symbol(text, original, code);
                 text = s != null ? s : text;
             }
-            if (ToUnicodeWriter.valid(text) && !(level.tagged() && ToUnicodeWriter.privateUse(text))) {
-                unicode.put(code, text);
+            String mapped = standIn ? UnicodeGuess.text(font, code, type0 ? bytesPerCode : 1) : text;
+            if (usable(mapped)) {
+                unicode.put(code, UnicodeGuess.searchable(font, code, mapped));
             } else if (level.unicode()) {
-                unicode.put(code, ToUnicodeWriter.unknown(code, level));
+                String e = UnicodeGuess.extracted(font, code);
+                unicode.put(code, usable(e) || e != null && !level.tagged() ? e : ToUnicodeWriter.unknown(code, level));
             }
             if (slots.containsKey(key)) {
                 continue;
@@ -145,7 +148,7 @@ final class FontRebuild {
             updateSimple(font, name, fd, codes, widths);
         }
         if (!unicode.isEmpty()) {
-            font.getCOSObject().setItem(COSName.TO_UNICODE, ToUnicodeWriter.write(doc, unicode, type0 ? bytesPerCode : 1));
+            font.getCOSObject().setItem(COSName.TO_UNICODE, ToUnicodeWriter.preserve(doc, unicode, font, type0 ? bytesPerCode : 1));
         }
         String note = mode == Mode.SUBSTITUTE ? cleanName(original) + " as " + substitute.description()
                 : null;
@@ -153,6 +156,10 @@ final class FontRebuild {
             note += ", " + missing + (missing == 1 ? " character" : " characters") + " not in it";
         }
         return note;
+    }
+
+    private boolean usable(String text) {
+        return ToUnicodeWriter.valid(text) && !(level.tagged() && ToUnicodeWriter.privateUse(text));
     }
 
     private static TrueTypeFont ownTrueType(PDFont font) {
