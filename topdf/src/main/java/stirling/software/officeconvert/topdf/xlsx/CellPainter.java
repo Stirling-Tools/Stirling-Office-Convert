@@ -60,8 +60,7 @@ final class CellPainter {
         double indent = f.indent() > 0 ? f.indent() * grid.book().indentPoints() : 0;
         double pad = CellLayout.pad(type, text, f);
         double avail = box.width() - 2 * pad - indent;
-        boolean spread = text.numeric() && text.runs().size() == 1 && fillMarker(text.plain()) >= 0;
-        if (f.wraps() && h != CellFormat.HAlign.FILL && !spread) {
+        if (f.wraps() && !text.numeric() && h != CellFormat.HAlign.FILL) {
             wrapped(text, f, h, box, indent, pad, descent, clip);
             return;
         }

@@ -95,6 +95,25 @@ class CellInsetsTest {
         assertEquals(x, starts(dir.resolve("hash.xlsx.pdf")).get(0)[0], 0.01);
     }
 
+    @Test
+    void aWrappedNumberTooWideForItsColumnShowsHashesOrShortensInsteadOfWrapping() throws Exception {
+        String styles = STYLES.replace("<cellXfs count=\"4\">", "<cellXfs count=\"6\">").replace("</cellXfs>",
+                "<xf numFmtId=\"3\" fontId=\"0\" fillId=\"0\" borderId=\"0\" xfId=\"0\" applyNumberFormat=\"1\""
+                        + " applyAlignment=\"1\"><alignment wrapText=\"1\"/></xf><xf numFmtId=\"0\" fontId=\"0\""
+                        + " fillId=\"0\" borderId=\"0\" xfId=\"0\" applyAlignment=\"1\"><alignment wrapText=\"1\"/>"
+                        + "</xf></cellXfs>");
+        String sheet = "<cols><col min=\"1\" max=\"2\" width=\"4.625\" customWidth=\"1\"/><col min=\"3\" max=\"3\""
+                + " width=\"8\" customWidth=\"1\"/></cols><sheetData><row r=\"1\"><c r=\"A1\" s=\"4\"><v>22305.23</v>"
+                + "</c><c r=\"C1\" s=\"5\"><v>123456789012</v></c></row>"
+                + "</sheetData>" + SETUP;
+        String text = XlsxTesting.convert(dir, "wraphash.xlsx", new RawXlsx().styles(styles).sheet("S", sheet).bytes())
+                .all();
+        String[] cells = text.trim().split("\\s+");
+        assertEquals(2, cells.length, text);
+        assertTrue(cells[0].matches("#+"), text);
+        assertTrue(cells[1].contains("E+"), text);
+    }
+
     private static List<String> lines(String text, double width) {
         List<String> out = new ArrayList<>();
         FontSpec f = new FontSpec("Calibri", 11, false, false, null, false, null, null);
