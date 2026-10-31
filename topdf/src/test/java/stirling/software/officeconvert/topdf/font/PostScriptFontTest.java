@@ -119,4 +119,22 @@ class PostScriptFontTest {
             assertTrue(ink > 7 * 14, "ink " + ink);
         }
     }
+
+    @Test
+    void aThinFaceGivesWayToARegularOneForTheSameScript() throws Exception {
+        Path fonts = Files.createDirectories(dir.resolve("weights"));
+        Files.write(fonts.resolve("Thin.otf"), PostScriptFonts.font("Noto Sans SC", 100, false, CHARS));
+        Files.write(fonts.resolve("Cjk.otf"), PostScriptFonts.font("Noto Sans CJK SC", 400, true, CHARS));
+        FontLibrary lib = FontLibrary.of(List.of(fonts));
+        assertEquals("Noto Sans CJK SC", lib.fallback(0x4E00, false, false).family());
+        assertEquals("Noto Sans CJK SC", lib.find("Microsoft YaHei", false, false).family());
+        assertEquals("Noto Sans SC", lib.find("Noto Sans SC", false, false).family());
+        Path thinOnly = Files.createDirectories(dir.resolve("thin"));
+        Files.write(thinOnly.resolve("Thin.otf"), PostScriptFonts.font("Noto Sans SC", 100, false, CHARS));
+        FontLibrary thin = FontLibrary.of(List.of(thinOnly));
+        assertEquals("Noto Sans SC", thin.fallback(0x4E00, false, false).family());
+        FontFace yahei = thin.find("Microsoft YaHei", false, false);
+        assertEquals("Noto Sans SC", yahei.family());
+        assertTrue(yahei.embolden() > 0);
+    }
 }

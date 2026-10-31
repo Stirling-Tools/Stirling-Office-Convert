@@ -257,7 +257,7 @@ public final class PdfCanvas implements Closeable {
             int k = kind(face, cp);
             FontFace f = null;
             if (k == MISSING) {
-                f = output.fonts().fallback(cp, face);
+                f = kind == BORROWED && common(cp) && cover.covers(cp) ? cover : output.fonts().fallback(cp, face);
                 k = f == null ? MISSING : BORROWED;
             }
             if (k != SKIPPED && (k != kind || f != cover)) {
@@ -273,6 +273,11 @@ public final class PdfCanvas implements Closeable {
         at += segment(ops, text.substring(start), Math.max(kind, GLYPHS), embedded, cover, x + at, baseline, style);
         queue(ops, x, x + at, baseline, style.size(), text);
         return at;
+    }
+
+    private static boolean common(int cp) {
+        Character.UnicodeScript script = Character.UnicodeScript.of(cp);
+        return script == Character.UnicodeScript.COMMON || script == Character.UnicodeScript.INHERITED;
     }
 
     // Missing characters and fitted symbols draw apart from the glyphs, in text order so that text extracts in order
