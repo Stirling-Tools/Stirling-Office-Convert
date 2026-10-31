@@ -107,6 +107,19 @@ class CellInsetsTest {
     }
 
     @Test
+    void aWordWiderThanTheColumnBreaksWhereItsMeasuredWidthPassesTheColumn() {
+        FontSpec f = new FontSpec("Calibri", 11, false, false, null, false, null, null);
+        List<String> out = new ArrayList<>();
+        for (CellLayout.Line l : CellLayout.wrap(List.of(new TextRun("aaaa bb", f)), 5,
+                (s, font) -> Math.rint(s.length() * 1.4))) {
+            StringBuilder b = new StringBuilder();
+            l.runs().forEach(r -> b.append(r.text()));
+            out.add(b.toString());
+        }
+        assertEquals(List.of("aaa", "a", "bb"), out);
+    }
+
+    @Test
     void wrappedTextBreaksAfterAHyphenInsideAWord() {
         assertEquals(List.of("aa bb-", "cc"), lines("aa bb-cc", 6));
         assertEquals(List.of("1VA-3VA, 5WS-", "8WS"), lines("1VA-3VA, 5WS-8WS", 13));

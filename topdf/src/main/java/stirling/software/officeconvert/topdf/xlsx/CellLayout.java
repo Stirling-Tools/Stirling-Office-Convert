@@ -164,37 +164,62 @@ final class CellLayout {
     }
 
     private static List<List<TextRun>> breakWord(Measure t, List<TextRun> runs, double width) {
-        List<List<TextRun>> out = new ArrayList<>();
-        List<TextRun> line = new ArrayList<>();
-        double w = 0;
+        List<String> clusters = new ArrayList<>();
+        List<FontSpec> fonts = new ArrayList<>();
         for (TextRun r : runs) {
-            StringBuilder b = new StringBuilder();
             for (int i = 0; i < r.text().length(); ) {
                 int end = i + Character.charCount(r.text().codePointAt(i));
                 while (end < r.text().length() && Clusters.joined(r.text(), end)) {
                     end += Character.charCount(r.text().codePointAt(end));
                 }
-                String ch = r.text().substring(i, end);
-                double cw = t.width(ch, r.font());
-                if (w + cw > width && (w > 0 || b.length() > 0)) {
-                    if (b.length() > 0) {
-                        line.add(new TextRun(b.toString(), r.font()));
-                        b.setLength(0);
-                    }
-                    out.add(line);
-                    line = new ArrayList<>();
-                    w = 0;
-                }
-                b.append(ch);
-                w += cw;
+                clusters.add(r.text().substring(i, end));
+                fonts.add(r.font());
                 i = end;
             }
-            if (b.length() > 0) {
-                line.add(new TextRun(b.toString(), r.font()));
-            }
         }
-        out.add(line);
+        List<List<TextRun>> out = new ArrayList<>();
+        int start = 0;
+        while (start < clusters.size()) {
+            int fits = start + 1;
+            int over = clusters.size() + 1;
+            for (int step = 1; fits + step < over; step *= 2) {
+                if (measure(t, piece(clusters, fonts, start, fits + step)) > width) {
+                    over = fits + step;
+                    break;
+                }
+                fits += step;
+            }
+            while (over - fits > 1) {
+                int mid = (fits + over) >>> 1;
+                if (measure(t, piece(clusters, fonts, start, mid)) > width) {
+                    over = mid;
+                } else {
+                    fits = mid;
+                }
+            }
+            out.add(piece(clusters, fonts, start, fits));
+            start = fits;
+        }
+        if (out.isEmpty()) {
+            out.add(new ArrayList<>());
+        }
         return out;
+    }
+
+    private static List<TextRun> piece(List<String> clusters, List<FontSpec> fonts, int from, int to) {
+        List<TextRun> line = new ArrayList<>();
+        StringBuilder b = new StringBuilder();
+        for (int k = from; k < to; k++) {
+            if (b.length() > 0 && !fonts.get(k).equals(fonts.get(k - 1))) {
+                line.add(new TextRun(b.toString(), fonts.get(k - 1)));
+                b.setLength(0);
+            }
+            b.append(clusters.get(k));
+        }
+        if (b.length() > 0) {
+            line.add(new TextRun(b.toString(), fonts.get(to - 1)));
+        }
+        return line;
     }
 
     private static void append(List<TextRun> line, List<TextRun> add) {
