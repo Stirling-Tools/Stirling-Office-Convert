@@ -265,6 +265,23 @@ class FontCoverageTest {
     }
 
     @Test
+    void sheetsDrawAJoinedSequenceInColourWhenAPlainFontHasOnlyItsFirstEmoji() throws Exception {
+        Path fonts = Files.createDirectories(dir.resolve("joinedPlain"));
+        Files.write(fonts.resolve("TestColorEmoji.ttf"), TestFonts.colourEmojiJoined(0x00C000, 0xFF0000, 0x0000FF));
+        Files.write(fonts.resolve("Plain.ttf"), TestFonts.withGlyphs("Plain Symbols", 'W', 0x2705));
+        String sequence = "✅‍⭐";
+        Path xlsx = sheet("joinedPlain", "Done " + sequence + " star", "Done ✅ star");
+        Path pdf = dir.resolve("joinedPlain.xlsx.pdf");
+        OfficeToPdf.convert(xlsx, pdf, options(fonts));
+        try (PDDocument doc = Loader.loadPDF(pdf.toFile())) {
+            assertTrue(pixels(doc, 0x0000FF) > 400, pixels(doc, 0x0000FF) + " blue");
+            assertEquals(0, pixels(doc, 0x00C000));
+            assertTrue(new PDFTextStripper().getText(doc).contains(sequence));
+            assertEquals(ColorEmoji.OFFICE_ADVANCE * 36, emojiGap(doc), 1.5f);
+        }
+    }
+
+    @Test
     void eastAsianTextDrawsFromAPostScriptCollection() throws Exception {
         Path fonts = Files.createDirectories(dir.resolve("cjk"));
         int[] chars = {'A', 0x4E00, 0x3042, 0xAC00};

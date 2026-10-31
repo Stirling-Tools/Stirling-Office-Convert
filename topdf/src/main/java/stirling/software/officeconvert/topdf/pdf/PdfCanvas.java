@@ -519,7 +519,10 @@ public final class PdfCanvas implements Closeable {
             String cluster = text.substring(i, end);
             int base = cluster.codePointAt(0);
             float room = each * size * th + style.charSpacing() * cluster.codePointCount(0, cluster.length());
-            int[] glyphs = mono || colour == null ? null : colour.glyphs(cluster);
+            int[] glyphs = colour == null || mono && !joined(cluster) ? null : colour.glyphs(cluster);
+            if (mono && glyphs != null && glyphs.length > 1) {
+                glyphs = null;
+            }
             FontFace cover = glyphs != null || ColorEmoji.regional(base) ? null
                     : face.covers(base) ? face : output.fonts().fallback(base, face);
             if (cover == null && glyphs == null && colour != null) {
@@ -596,6 +599,10 @@ public final class PdfCanvas implements Closeable {
         }
         queue(ops, x, pen, baseline, size, text, false);
         return pen - x;
+    }
+
+    private static boolean joined(String cluster) {
+        return cluster.indexOf(0x200D) >= 0 || cluster.codePoints().anyMatch(cp -> cp >= 0xE0020 && cp <= 0xE007F);
     }
 
     // Characters no font has show a missing-glyph box, as Word shows them, and still extract as their text
