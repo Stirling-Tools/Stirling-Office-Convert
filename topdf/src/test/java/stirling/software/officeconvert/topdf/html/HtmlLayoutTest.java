@@ -766,6 +766,20 @@ class HtmlLayoutTest {
     }
 
     @Test
+    void aPaddedStackedCellHoldingOnlyAnEmptyBarStillDrawsTheBar() throws IOException {
+        Laid l = lay("""
+                <!doctype html><html><body><p>Before</p><table bgcolor="#ff0000" width="300" cellspacing="0"
+                cellpadding="0"><tr><td style="padding:20px"><div style="height:20px;background:#00ff00"></div></td>
+                </tr></table><p>After</p></body></html>""");
+        int x = Math.round(l.word("Before").left()) + 40;
+        boolean green = false;
+        for (int y = Math.round(l.word("Before").top()); y < Math.round(l.word("After").top()); y++) {
+            green |= (l.first().getRGB(x, y) & 0xFFFFFF) == 0x00FF00;
+        }
+        assertTrue(green);
+    }
+
+    @Test
     void textAutospaceSpacesIdeographsFromLatinLetters() throws IOException {
         Laid l = lay("""
                 <!doctype html><html><body><p style="text-autospace:normal">\u82f1\u8a9eEnglish\u6df7\u5728</p>

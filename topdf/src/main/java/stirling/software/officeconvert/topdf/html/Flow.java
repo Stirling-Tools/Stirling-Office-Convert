@@ -674,7 +674,7 @@ final class Flow {
         left += narrow[0];
         right += narrow[1];
         int fill = fill(d, look);
-        boolean paddedCell = e == stackedCell && hasPadding(d);
+        boolean paddedCell = e == stackedCell && hasPadding(d) && holdsContent(e);
         if (paddedCell && fill < 0) {
             fill = frame.shading();
         }
@@ -1098,6 +1098,12 @@ final class Flow {
             return legacy == Paragraph.Align.RIGHT ? new float[] {extra, 0} : new float[] {0, extra};
         }
         return autoLeft || look.rightToLeft && !autoRight ? new float[] {extra, 0} : new float[] {0, extra};
+    }
+
+    private static boolean holdsContent(Element cell) {
+        return !Layout.text(cell, STACK_TEXT).replaceAll("[ \t\n\r\f]", "").isEmpty() || cell.selectFirst(
+                "img, svg, picture, video, canvas, iframe, object, embed, input, button, select, textarea, hr")
+                != null;
     }
 
     private static boolean hasPadding(Map<String, String> d) {
