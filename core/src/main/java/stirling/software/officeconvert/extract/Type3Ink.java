@@ -11,6 +11,7 @@ import java.awt.geom.Point2D;
 import java.awt.geom.Rectangle2D;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.List;
 
 import org.apache.pdfbox.contentstream.PDFGraphicsStreamEngine;
@@ -34,29 +35,75 @@ final class Type3Ink extends PDFGraphicsStreamEngine {
 
     private static final int MAX_FORMS = 16;
 
+    private static final long MAX_ELEMENTS = 20_000;
+
+    private static final int MAX_AREA_ELEMENTS = 256;
+
+    private final UnmappedGlyphs owner;
     private final GeneralPath ink = new GeneralPath();
+    private final List<Path2D> evenOdd = new ArrayList<>();
     private final GeneralPath path = new GeneralPath();
     private long operators;
+    private long elements;
+    private long maskPixels;
     private int forms;
     private boolean failed;
 
-    private Type3Ink() {
+    private Type3Ink(UnmappedGlyphs owner) {
         super(new PDPage(new PDRectangle(1, 1)));
+        this.owner = owner;
     }
 
-    static GeneralPath of(PDType3CharProc proc) {
-        Type3Ink engine = new Type3Ink();
+    static GeneralPath of(PDType3CharProc proc, UnmappedGlyphs owner) {
+        Type3Ink engine = new Type3Ink(owner);
         try {
             engine.processChildStream(proc, engine.getPage());
         } catch (IOException | RuntimeException e) {
             return null;
         }
-        return engine.failed ? null : engine.ink;
+        return engine.failed ? null : engine.painted();
+    }
+
+    private GeneralPath painted() {
+        if (evenOdd.isEmpty()) {
+            return ink;
+        }
+        if (evenOdd.size() == 1 && ink.getCurrentPoint() == null) {
+            return new GeneralPath(evenOdd.getFirst());
+        }
+        int count = elements(ink);
+        for (Path2D piece : evenOdd) {
+            count += elements(piece);
+        }
+        if (count > MAX_AREA_ELEMENTS || !owner.spendArea(count)) {
+            return null;
+        }
+        Area area = new Area(ink);
+        for (Path2D piece : evenOdd) {
+            area.add(new Area(piece));
+        }
+        return new GeneralPath(area);
+    }
+
+    private static int elements(Shape shape) {
+        int count = 0;
+        for (var it = shape.getPathIterator(null); !it.isDone(); it.next()) {
+            count++;
+        }
+        return count;
+    }
+
+    private boolean grow(long more) {
+        elements += more;
+        if (elements > MAX_ELEMENTS) {
+            failed = true;
+        }
+        return !failed;
     }
 
     @Override
     protected void processOperator(Operator operator, List<COSBase> operands) throws IOException {
-        if (failed || ++operators > MAX_OPERATORS) {
+        if (failed || ++operators > MAX_OPERATORS || !owner.operators().run(operator)) {
             failed = true;
             return;
         }
@@ -85,6 +132,9 @@ final class Type3Ink extends PDFGraphicsStreamEngine {
 
     @Override
     public void appendRectangle(Point2D p0, Point2D p1, Point2D p2, Point2D p3) {
+        if (!grow(5)) {
+            return;
+        }
         path.moveTo(p0.getX(), p0.getY());
         path.lineTo(p1.getX(), p1.getY());
         path.lineTo(p2.getX(), p2.getY());
@@ -100,7 +150,8 @@ final class Type3Ink extends PDFGraphicsStreamEngine {
         }
         int w = image.getWidth();
         int h = image.getHeight();
-        if (w <= 0 || h <= 0 || (long) w * h > MAX_MASK_PIXELS) {
+        maskPixels += (long) w * h;
+        if (w <= 0 || h <= 0 || maskPixels > MAX_MASK_PIXELS) {
             failed = true;
             return;
         }
@@ -125,6 +176,9 @@ final class Type3Ink extends PDFGraphicsStreamEngine {
                 while (x < w && (row[x] >>> 24) >= 128) {
                     x++;
                 }
+                if (!grow(5)) {
+                    return;
+                }
                 runs.append(new Rectangle2D.Double(from, y, x - from, 1), false);
             }
         }
@@ -137,11 +191,17 @@ final class Type3Ink extends PDFGraphicsStreamEngine {
 
     @Override
     public void moveTo(float x, float y) {
+        if (!grow(1)) {
+            return;
+        }
         path.moveTo(x, y);
     }
 
     @Override
     public void lineTo(float x, float y) {
+        if (!grow(1)) {
+            return;
+        }
         if (path.getCurrentPoint() == null) {
             path.moveTo(x, y);
         } else {
@@ -151,6 +211,9 @@ final class Type3Ink extends PDFGraphicsStreamEngine {
 
     @Override
     public void curveTo(float x1, float y1, float x2, float y2, float x3, float y3) {
+        if (!grow(1)) {
+            return;
+        }
         if (path.getCurrentPoint() == null) {
             path.moveTo(x3, y3);
         } else {
@@ -185,9 +248,13 @@ final class Type3Ink extends PDFGraphicsStreamEngine {
 
     @Override
     public void fillPath(int windingRule) {
-        Path2D.Double filled = new Path2D.Double(path);
-        filled.setWindingRule(windingRule == Path2D.WIND_EVEN_ODD ? Path2D.WIND_EVEN_ODD : Path2D.WIND_NON_ZERO);
-        ink.append(new Area(filled), false);
+        if (windingRule == Path2D.WIND_EVEN_ODD) {
+            Path2D.Double filled = new Path2D.Double(path);
+            filled.setWindingRule(Path2D.WIND_EVEN_ODD);
+            evenOdd.add(filled);
+        } else {
+            ink.append(path, false);
+        }
         path.reset();
     }
 

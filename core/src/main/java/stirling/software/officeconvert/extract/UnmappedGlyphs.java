@@ -76,6 +76,12 @@ final class UnmappedGlyphs {
 
     private static final int MIN_SAMPLES = 3;
 
+    private static final int MAX_INKS = 16_384;
+
+    private static final long MAX_INK_ELEMENTS = 4_000_000;
+
+    private static final int MAX_AREA_ELEMENTS = 16_384;
+
     private static final String[][] TIES = {{"-", "\u2013"}, {"\u2013", "\u2014"}, {"l", "I"},
         {"(", "["}, {")", "]"}};
 
@@ -88,11 +94,31 @@ final class UnmappedGlyphs {
     private final GlyphList glyphs;
     private final Map<COSDictionary, Shapes> fonts = new WeakHashMap<>();
     private final List<Size> known = new ArrayList<>();
+    private final OperatorBudget operators = new OperatorBudget("reading glyph shapes");
     private int ids;
     private boolean rawCodesLie;
+    private int inks;
+    private long inkElements;
+    private int areaElements;
 
     UnmappedGlyphs(GlyphList glyphs) {
         this.glyphs = glyphs;
+    }
+
+    OperatorBudget operators() {
+        return operators;
+    }
+
+    boolean spendArea(int elements) {
+        areaElements += elements;
+        return areaElements <= MAX_AREA_ELEMENTS;
+    }
+
+    private boolean spendInk(GeneralPath path) {
+        for (var it = path.getPathIterator(null); !it.isDone() && inkElements <= MAX_INK_ELEMENTS; it.next()) {
+            inkElements++;
+        }
+        return inkElements <= MAX_INK_ELEMENTS;
     }
 
     String text(PDFont font, int code, Matrix trm) {
@@ -556,11 +582,14 @@ final class UnmappedGlyphs {
         }
 
         private Ink ink(int code) {
+            if (++owner.inks > MAX_INKS || owner.inkElements > MAX_INK_ELEMENTS) {
+                return null;
+            }
             try {
                 GeneralPath path;
                 if (font instanceof PDType3Font t3) {
                     PDType3CharProc proc = t3.getCharProc(code);
-                    path = proc == null ? null : Type3Ink.of(proc);
+                    path = proc == null ? null : Type3Ink.of(proc, owner);
                 } else if (font instanceof PDVectorFont vector && vector.hasGlyph(code)) {
                     path = vector.getNormalizedPath(code);
                     if (path != null) {
@@ -570,7 +599,7 @@ final class UnmappedGlyphs {
                 } else {
                     path = null;
                 }
-                if (path == null) {
+                if (path == null || !owner.spendInk(path)) {
                     return null;
                 }
                 path.transform(units);

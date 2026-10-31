@@ -1,6 +1,7 @@
 package stirling.software.officeconvert;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.awt.Color;
@@ -18,9 +19,11 @@ import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Random;
 import java.util.zip.ZipFile;
 
 import org.apache.fontbox.ttf.CmapLookup;
@@ -139,6 +142,57 @@ class UnmappedFontTest {
         writeType3(pdf, codes, false, false, true);
         String text = text(pdf);
         assertTrue(text.contains(LINE), text);
+    }
+
+    @Test
+    void tangledType3GlyphsFinishQuickly() throws Exception {
+        Path pdf = dir.resolve("tangled.pdf");
+        Random random = new Random(7);
+        try (PDDocument doc = new PDDocument()) {
+            COSDictionary procs = new COSDictionary();
+            COSArray differences = new COSArray();
+            differences.add(COSInteger.ZERO);
+            COSArray widths = new COSArray();
+            for (int code = 0; code < 32; code++) {
+                StringBuilder ops = new StringBuilder("1000 0 d0\n500 500 m\n");
+                for (int i = 0; i < 3000; i++) {
+                    ops.append(random.nextInt(1000)).append(' ').append(random.nextInt(1000)).append(" l\n");
+                }
+                ops.append(code % 2 == 0 ? "h f\n" : "h f* 0 0 m 10 0 l 10 10 l h f*\n");
+                COSStream proc = doc.getDocument().createCOSStream();
+                try (OutputStream out = proc.createOutputStream(COSName.FLATE_DECODE)) {
+                    out.write(ops.toString().getBytes(StandardCharsets.US_ASCII));
+                }
+                procs.setItem(COSName.getPDFName("t" + code), proc);
+                differences.add(COSName.getPDFName("t" + code));
+                widths.add(COSInteger.get(1000));
+            }
+            COSDictionary encoding = new COSDictionary();
+            encoding.setItem(COSName.TYPE, COSName.ENCODING);
+            encoding.setItem(COSName.DIFFERENCES, differences);
+            COSDictionary dict = new COSDictionary();
+            dict.setItem(COSName.TYPE, COSName.FONT);
+            dict.setItem(COSName.SUBTYPE, COSName.TYPE3);
+            dict.setItem(COSName.FONT_MATRIX, numbers(0.001f, 0, 0, 0.001f, 0, 0));
+            dict.setItem(COSName.FONT_BBOX, numbers(0, 0, 1000, 1000));
+            dict.setItem(COSName.CHAR_PROCS, procs);
+            dict.setItem(COSName.ENCODING, encoding);
+            dict.setInt(COSName.FIRST_CHAR, 0);
+            dict.setInt(COSName.LAST_CHAR, 31);
+            dict.setItem(COSName.WIDTHS, widths);
+            PDPage page = new PDPage(PDRectangle.A4);
+            doc.addPage(page);
+            PDResources resources = new PDResources();
+            resources.put(COSName.getPDFName("F1"), new PDType3Font(dict));
+            page.setResources(resources);
+            PDStream stream = new PDStream(doc);
+            try (OutputStream out = stream.createOutputStream()) {
+                out.write("BT /F1 14 Tf 72 720 Td <00010203> Tj ET".getBytes(StandardCharsets.US_ASCII));
+            }
+            page.setContents(stream);
+            doc.save(pdf.toFile());
+        }
+        assertTimeoutPreemptively(Duration.ofSeconds(30), () -> text(pdf));
     }
 
     private String text(Path pdf) throws IOException {
