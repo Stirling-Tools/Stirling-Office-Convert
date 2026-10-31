@@ -1,12 +1,19 @@
 package stirling.software.officeconvert.extract;
 
+import java.awt.Graphics2D;
+import java.awt.Shape;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import org.apache.pdfbox.contentstream.operator.Operator;
 import org.apache.pdfbox.cos.COSBase;
+import org.apache.pdfbox.cos.COSDictionary;
 import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.pdmodel.font.PDFont;
+import org.apache.pdfbox.pdmodel.font.PDType1Font;
 import org.apache.pdfbox.pdmodel.font.PDType3Font;
 import org.apache.pdfbox.pdmodel.graphics.form.PDFormXObject;
 import org.apache.pdfbox.pdmodel.graphics.form.PDTransparencyGroup;
@@ -53,10 +60,15 @@ public class GuardedRenderer extends PDFRenderer {
 
     public static class Drawer extends PageDrawer {
 
+        private static final String[] NONE = new String[0];
+
+        private static final int MAX_FONTS = 256;
+
         private final OperatorBudget budget;
         private int annotations;
         private int type3;
         private boolean left;
+        private final Map<COSDictionary, String[]> builtIn = new HashMap<>();
 
         public Drawer(PageDrawerParameters parameters, String pass) throws IOException {
             super(parameters);
@@ -111,6 +123,38 @@ public class GuardedRenderer extends PDFRenderer {
             } else {
                 left = true;
             }
+        }
+
+        @Override
+        protected void showFontGlyph(Matrix textRenderingMatrix, PDFont font, int code, Vector displacement)
+                throws IOException {
+            Shape substitute = substitute(font, code, displacement);
+            if (substitute == null) {
+                super.showFontGlyph(textRenderingMatrix, font, code, displacement);
+                return;
+            }
+            Graphics2D graphics = getGraphics();
+            setClip();
+            graphics.setComposite(getGraphicsState().getNonStrokingJavaComposite());
+            graphics.setPaint(getNonStrokingPaint());
+            graphics.fill(textRenderingMatrix.createAffineTransform().createTransformedShape(substitute));
+        }
+
+        private Shape substitute(PDFont font, int code, Vector displacement) {
+            if (!(font instanceof PDType1Font) || font.isEmbedded()
+                    || !getGraphicsState().getTextState().getRenderingMode().isFill()
+                    || getGraphicsState().getTextState().getRenderingMode().isClip()) {
+                return null;
+            }
+            if (builtIn.size() >= MAX_FONTS && !builtIn.containsKey(font.getCOSObject())) {
+                return null;
+            }
+            String[] encoding = builtIn.computeIfAbsent(font.getCOSObject(), k -> {
+                String[] found = BuiltInEncodings.of(font);
+                return found == null ? NONE : found;
+            });
+            String text = code >= 0 && code < encoding.length ? encoding[code] : null;
+            return text == null ? null : SubstituteGlyphs.outline(font, text, displacement.getX());
         }
 
         @Override

@@ -3,6 +3,7 @@ package stirling.software.officeconvert;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.awt.image.BufferedImage;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
@@ -10,6 +11,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.zip.ZipFile;
 
+import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.cos.COSArray;
 import org.apache.pdfbox.cos.COSDictionary;
 import org.apache.pdfbox.cos.COSInteger;
@@ -19,8 +21,11 @@ import org.apache.pdfbox.cos.COSString;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.common.PDRectangle;
+import org.apache.pdfbox.rendering.ImageType;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+
+import stirling.software.officeconvert.extract.GuardedRenderer;
 
 class UnembeddedFontTest {
 
@@ -90,6 +95,33 @@ class UnembeddedFontTest {
         Path pdf = write("arial.pdf", "/F1 12 Tf", composite("Arial"), hex + "> Tj", null);
         String text = text(pdf);
         assertTrue(text.contains("RECOMENDACI\u00D3N b\u00E9n\u00E9fice"), text);
+    }
+
+    @Test
+    void unembeddedTexMathGlyphsAreDrawnInPictures() throws Exception {
+        COSDictionary fonts = new COSDictionary();
+        fonts.setItem("F1", simple("Type1", "CMMI10", null, 4));
+        fonts.setItem("F2", simple("Type1", "CMSY10", null, 4));
+        Path pdf = write("drawn.pdf", fonts, "/F1 72 Tf (\\013) Tj /F2 72 Tf (\\024) Tj", null);
+        try (PDDocument doc = Loader.loadPDF(pdf.toFile())) {
+            BufferedImage image = new GuardedRenderer(doc, "test").draw(0, 1f, ImageType.GRAY);
+            int alpha = ink(image, 72, 50);
+            int lessEqual = ink(image, 108, 50);
+            assertTrue(alpha > 100 && lessEqual > 100, alpha + " " + lessEqual);
+        }
+    }
+
+    private static int ink(BufferedImage image, int left, int top) {
+        int dark = 0;
+        int base = image.getHeight() - 720;
+        for (int y = base - top; y < base + 20; y++) {
+            for (int x = left; x < left + 36; x++) {
+                if ((image.getRGB(x, y) & 0xFF) < 128) {
+                    dark++;
+                }
+            }
+        }
+        return dark;
     }
 
     private String text(Path pdf) throws IOException {
