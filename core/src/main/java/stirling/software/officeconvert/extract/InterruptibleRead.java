@@ -2,6 +2,8 @@ package stirling.software.officeconvert.extract;
 
 import java.io.IOException;
 import java.io.InterruptedIOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 
 import org.apache.pdfbox.io.RandomAccessRead;
 import org.apache.pdfbox.io.RandomAccessReadView;
@@ -10,8 +12,15 @@ final class InterruptibleRead implements RandomAccessRead {
 
     private final RandomAccessRead in;
 
+    private final Path deleteOnClose;
+
     InterruptibleRead(RandomAccessRead in) {
+        this(in, null);
+    }
+
+    InterruptibleRead(RandomAccessRead in, Path deleteOnClose) {
         this.in = in;
+        this.deleteOnClose = deleteOnClose;
     }
 
     private static void check() throws InterruptedIOException {
@@ -87,6 +96,12 @@ final class InterruptibleRead implements RandomAccessRead {
 
     @Override
     public void close() throws IOException {
-        in.close();
+        try {
+            in.close();
+        } finally {
+            if (deleteOnClose != null) {
+                Files.deleteIfExists(deleteOnClose);
+            }
+        }
     }
 }
