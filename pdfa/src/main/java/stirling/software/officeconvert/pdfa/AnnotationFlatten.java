@@ -4,6 +4,7 @@ import java.awt.geom.Rectangle2D;
 import java.io.IOException;
 
 import org.apache.pdfbox.cos.COSDictionary;
+import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.PDPageContentStream;
@@ -41,12 +42,14 @@ final class AnnotationFlatten {
         float ty = rect.getLowerLeftY() - (float) bounds.getMinY() * sy;
         try (PDPageContentStream content = new PDPageContentStream(doc, page,
                 PDPageContentStream.AppendMode.APPEND, true, true)) {
+            content.beginMarkedContent(COSName.ARTIFACT);
             content.saveGraphicsState();
             content.addRect(rect.getLowerLeftX(), rect.getLowerLeftY(), rect.getWidth(), rect.getHeight());
             content.clip();
             content.transform(new Matrix(sx, 0, 0, sy, tx, ty));
             content.drawForm(appearance);
             content.restoreGraphicsState();
+            content.endMarkedContent();
         }
     }
 }

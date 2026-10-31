@@ -96,4 +96,41 @@ class AnnotationFlattenTest {
         VeraPdf.assertCompliant(output, level);
         return output;
     }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"A1A", "A2A", "A3A"})
+    void aPosterDrawnIntoATaggedPageIsAnArtifact(PdfALevel level) throws Exception {
+        Path tagged = Samples.write(dir, "s21_tagged");
+        Path input = dir.resolve("tagged-screen-" + level + ".pdf");
+        try (PDDocument d = Loader.loadPDF(tagged.toFile())) {
+            org.apache.pdfbox.pdmodel.PDPage page = d.getPage(0);
+            org.apache.pdfbox.cos.COSStream appearance = d.getDocument().createCOSStream();
+            appearance.setItem(org.apache.pdfbox.cos.COSName.TYPE, org.apache.pdfbox.cos.COSName.XOBJECT);
+            appearance.setItem(org.apache.pdfbox.cos.COSName.SUBTYPE, org.apache.pdfbox.cos.COSName.FORM);
+            appearance.setItem(org.apache.pdfbox.cos.COSName.BBOX, ColourSamples.floats(0, 0, 60, 60));
+            try (java.io.OutputStream out = appearance.createOutputStream()) {
+                out.write("q 60 0 0 60 0 0 cm BI /W 1 /H 1 /CS /RGB /BPC 8 ID \u00ff\u0000\u0000 EI Q"
+                        .getBytes(java.nio.charset.StandardCharsets.ISO_8859_1));
+            }
+            org.apache.pdfbox.cos.COSDictionary ap = new org.apache.pdfbox.cos.COSDictionary();
+            ap.setItem(org.apache.pdfbox.cos.COSName.N, appearance);
+            org.apache.pdfbox.cos.COSDictionary screen = new org.apache.pdfbox.cos.COSDictionary();
+            screen.setItem(org.apache.pdfbox.cos.COSName.TYPE, org.apache.pdfbox.cos.COSName.ANNOT);
+            screen.setName(org.apache.pdfbox.cos.COSName.SUBTYPE, "Screen");
+            screen.setInt(org.apache.pdfbox.cos.COSName.F, 4);
+            screen.setItem(org.apache.pdfbox.cos.COSName.RECT, ColourSamples.floats(20, 20, 80, 80));
+            screen.setItem(org.apache.pdfbox.cos.COSName.AP, ap);
+            org.apache.pdfbox.cos.COSArray annots = new org.apache.pdfbox.cos.COSArray();
+            annots.add(screen);
+            page.getCOSObject().setItem(org.apache.pdfbox.cos.COSName.ANNOTS, annots);
+            d.save(input.toFile());
+        }
+        Path output = dir.resolve("tagged-screen-" + level + "-out.pdf");
+        PdfToPdfA.convert(input, output, PdfToPdfA.Options.defaults().level(level));
+        VeraPdf.assertCompliant(output, level);
+        try (PDDocument doc = Loader.loadPDF(output.toFile())) {
+            var image = new PDFRenderer(doc).renderImage(0);
+            assertEquals(0xFFFF0000, image.getRGB(50, image.getHeight() - 50));
+        }
+    }
 }
