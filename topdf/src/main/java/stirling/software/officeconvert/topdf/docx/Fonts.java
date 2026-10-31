@@ -125,7 +125,8 @@ final class Fonts {
         }
         float[] m = switch (FontLibrary.english(family).strip().toLowerCase(Locale.ROOT)) {
             case "ms gothic", "ms pgothic", "ms ui gothic", "ms mincho", "ms pmincho", "simsun", "nsimsun", "simhei",
-                    "batang", "batangche", "gulim", "gulimche", "dotum", "dotumche", "gungsuh", "gungsuhche" ->
+                    "batang", "batangche", "gulim", "gulimche", "dotum", "dotumche", "gungsuh", "gungsuhche", "mingliu",
+                    "pmingliu", "mingliu_hkscs", "mingliu-extb", "pmingliu-extb" ->
                     OFFICE_EAST_ASIAN;
             case "malgun gothic" -> new float[] {2229f / 2048, 495f / 2048};
             case "yu gothic", "yu gothic ui" -> new float[] {2017f / 2048, 619f / 2048};

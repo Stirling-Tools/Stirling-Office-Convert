@@ -194,6 +194,11 @@ class FontCoverageTest {
         assertEquals((1.0581f + 0.2617f) * 1.3f * 20, eastAsianLine("Test Ideographs", "Microsoft YaHei"), 0.5f);
     }
 
+    @Test
+    void aMissingPMingLiUTakesItsOfficeLineOnTheStandInThatCoversIt() throws Exception {
+        assertEquals(1.3f * 20, eastAsianLine("Noto Serif TC", "PMingLiU"), 0.5f);
+    }
+
     private float eastAsianLine(String cjkFont, String eastAsia) throws Exception {
         Path fonts = Files.createDirectories(dir.resolve("fallback"));
         Files.write(fonts.resolve("Cjk.otf"), PostScriptFonts.font(cjkFont, 400, true, 0x4E00));
