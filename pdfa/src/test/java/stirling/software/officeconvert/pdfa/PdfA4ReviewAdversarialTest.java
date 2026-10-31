@@ -148,8 +148,9 @@ class PdfA4ReviewAdversarialTest {
         try (PDDocument d = Loader.loadPDF(out.toFile())) {
             COSArray intents = (COSArray) d.getDocumentCatalog().getCOSObject()
                     .getDictionaryObject(COSName.OUTPUT_INTENTS);
-            assertNotNull(((COSDictionary) intents.getObject(0)).getDictionaryObject(DEST_REF),
-                    "part 2 output changed: DestOutputProfileRef was stripped");
+            COSDictionary ref = (COSDictionary) ((COSDictionary) intents.getObject(0)).getDictionaryObject(DEST_REF);
+            assertNotNull(ref, "part 2 output changed: DestOutputProfileRef was stripped");
+            assertEquals("4.3", ref.getString(COSName.getPDFName("ICCVersion")));
         }
     }
 
