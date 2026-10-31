@@ -67,7 +67,7 @@ class TextOrderTest {
     }
 
     @Test
-    void touchingRightToLeftPiecesDrawnLeftToRightStayLeftToRight() {
+    void rightToLeftPiecesDrawnLeftToRightStayLeftToRightWithTheSpacesBetweenThem() {
         List<TextOrder.Piece> pieces = new ArrayList<>();
         pieces.add(new TextOrder.Piece("", 10, 20, 100, 12, "\u0629", true, true));
         pieces.add(new TextOrder.Piece("", 20, 40, 100, 12, "\u0627\u0644\u0645\u064A\u0632\u0627\u0646\u064A",
@@ -78,8 +78,21 @@ class TextOrderTest {
         for (TextOrder.Piece p : TextOrder.reading(pieces)) {
             texts.add(p.text());
         }
-        assertEquals(List.of("\u0641\u064A", " ", "\u0629", "\u0627\u0644\u0645\u064A\u0632\u0627\u0646\u064A"),
+        assertEquals(List.of("\u0629", "\u0627\u0644\u0645\u064A\u0632\u0627\u0646\u064A", " ", "\u0641\u064A"),
                 texts);
+    }
+
+    @Test
+    void piecesOfOneLeftToRightStretchShareOneTextObject() {
+        List<TextOrder.Piece> pieces = new ArrayList<>();
+        pieces.add(new TextOrder.Piece("q\n0 0 0 rg\nBT\n<0001> Tj\nET\nQ\n", 10, 20, 100, 12, "\u0628", true, true));
+        pieces.add(new TextOrder.Piece("q\n0 0 0 rg\nBT\n<0003> Tj\nET\nQ\n", 20, 23, 100, 12, " ", true, false));
+        pieces.add(new TextOrder.Piece("q\n0 0 0 rg\nBT\n<0002> Tj\nET\nQ\n", 23, 30, 100, 12, "\u062A", true, true));
+        List<TextOrder.Piece> out = TextOrder.reading(pieces);
+        assertEquals(1, out.size());
+        String ops = out.get(0).ops();
+        assertEquals(1, ops.split("BT\n", -1).length - 1, ops);
+        assertTrue(ops.indexOf("<0001>") < ops.indexOf("<0003>") && ops.indexOf("<0003>") < ops.indexOf("<0002>"), ops);
     }
 
     @Test

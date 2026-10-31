@@ -114,6 +114,20 @@ class DocxBidiTest {
     }
 
     @Test
+    void horizontallyScaledArabicWithLigaturesAndSpacesExtractsInOrderSortedOrNot() throws IOException {
+        String line = "\u0627\u0644\u0633\u0644\u0627\u0645 \u0639\u0644\u064A\u0643\u0645 \u0644\u0627";
+        String body = "<w:p><w:pPr><w:bidi/></w:pPr><w:r><w:rPr><w:rtl/><w:w w:val=\"50\"/></w:rPr><w:t>" + line
+                + "</w:t></w:r></w:p>";
+        DocxDoc.Rendered r = DocxDoc.render(dir, "scaledline", new DocxDoc().body(body).bytes());
+        try (PDDocument d = r.open()) {
+            PDFTextStripper sorted = new PDFTextStripper();
+            sorted.setSortByPosition(true);
+            assertEquals(line, sorted.getText(d).strip());
+            assertEquals(line, new PDFTextStripper().getText(d).strip());
+        }
+    }
+
+    @Test
     void horizontallyScaledHebrewKeepsItsReadingOrder() throws IOException {
         String word = "\u05E9\u05DC\u05D5\u05DD";
         String body = "<w:p><w:pPr><w:bidi/></w:pPr><w:r><w:rPr><w:rtl/><w:w w:val=\"50\"/></w:rPr><w:t>" + word

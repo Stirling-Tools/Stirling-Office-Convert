@@ -37,8 +37,15 @@ final class TextOrder {
                     kinds[k] = kind(t, l, r);
                 }
                 int[] order = right == 0 ? identity(kinds.length) : order(kinds, rightToLeft(kinds, left, right));
-                for (int k : visualRuns(line, kinds, order)) {
-                    out.add(line.get(k));
+                boolean[] linked = new boolean[order.length];
+                visualRuns(line, kinds, order, linked);
+                for (int p = 0; p < order.length; p++) {
+                    Piece joined = linked[p] ? joined(out.get(out.size() - 1), line.get(order[p])) : null;
+                    if (joined != null) {
+                        out.set(out.size() - 1, joined);
+                    } else {
+                        out.add(line.get(order[p]));
+                    }
                 }
                 start = i;
             }
@@ -111,7 +118,7 @@ final class TextOrder {
         return order;
     }
 
-    static int[] visualRuns(List<Piece> line, int[] kinds, int[] order) {
+    static void visualRuns(List<Piece> line, int[] kinds, int[] order, boolean[] linked) {
         int i = 0;
         while (i < order.length) {
             int j = i + 1;
@@ -119,18 +126,65 @@ final class TextOrder {
                     && visualRight(line, kinds, order[j - 1])) {
                 j++;
             }
-            for (int a = i, b = j - 1; a < b; a++, b--) {
-                int t = order[a];
-                order[a] = order[b];
-                order[b] = t;
+            int first = i;
+            int last = j - 1;
+            while (first < last && blank(line.get(order[first]))) {
+                first++;
+            }
+            while (last > first && blank(line.get(order[last]))) {
+                last--;
+            }
+            boolean drawnForward = false;
+            for (int k = first; k <= last; k++) {
+                drawnForward |= kinds[order[k]] == RIGHT && line.get(order[k]).visual();
+            }
+            if (drawnForward && first < last) {
+                for (int a = first, b = last; a < b; a++, b--) {
+                    int t = order[a];
+                    order[a] = order[b];
+                    order[b] = t;
+                }
+                for (int k = first + 1; k <= last; k++) {
+                    linked[k] = true;
+                }
             }
             i = j;
         }
-        return order;
+    }
+
+    private static boolean blank(Piece piece) {
+        return !piece.text().isEmpty() && piece.text().isBlank();
+    }
+
+    static Piece joined(Piece left, Piece right) {
+        String a = left.ops();
+        String b = right.ops();
+        int open = b.indexOf("BT\n");
+        if (!single(a) || !single(b) || a.contains(" gs\n") || b.contains(" gs\n")) {
+            return null;
+        }
+        String ops = a.substring(0, a.length() - "ET\nQ\n".length()) + b.substring("q\n".length(), open)
+                + "0 Tc 0 Tw 100 Tz 0 Tr 0 Ts\n" + b.substring(open + "BT\n".length());
+        return new Piece(ops, Math.min(left.x0(), right.x0()), Math.max(left.x1(), right.x1()), left.baseline(),
+                left.size(), left.text() + right.text(), left.upright(), left.visual() || right.visual());
+    }
+
+    private static boolean single(String ops) {
+        int open = ops.indexOf("BT\n");
+        return ops.startsWith("q\n") && ops.endsWith("ET\nQ\n") && open > 0 && ops.indexOf("BT\n", open + 1) < 0
+                && ops.indexOf("ET\n") == ops.length() - "ET\nQ\n".length();
     }
 
     private static boolean visualRight(List<Piece> line, int[] kinds, int i) {
-        return kinds[i] == RIGHT && line.get(i).visual();
+        String text = line.get(i).text();
+        return kinds[i] == RIGHT && line.get(i).visual() || marks(text) || blank(line.get(i));
+    }
+
+    static boolean marks(String text) {
+        return !text.isEmpty() && text.codePoints().allMatch(cp -> {
+            int type = Character.getType(cp);
+            return type == Character.NON_SPACING_MARK || type == Character.ENCLOSING_MARK;
+        });
     }
 
     // The direction a neutral piece takes from its nearest non-neutral neighbour on one side; numbers count as RTL

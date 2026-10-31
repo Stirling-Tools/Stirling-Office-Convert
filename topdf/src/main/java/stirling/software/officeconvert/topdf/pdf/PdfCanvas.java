@@ -596,68 +596,87 @@ public final class PdfCanvas implements Closeable {
         float tz = th * run.stretch();
         float skew = face.syntheticItalic() ? ITALIC_SKEW : 0;
         boolean logical = upright() && (tz == 1 || !arabic(run.text()));
-        int[] codes = output.fonts().used(embedded, run, run.rightToLeft() && !logical && upright());
-        StringBuilder ops = new StringBuilder();
-        if (actualText) {
-            ops.append("/Span <</ActualText ").append(textString(run.text())).append(">> BDC\n");
-        }
-        begin(ops, style, outline(face, size));
-        font(ops, embedded, size);
-        if (tz != 1) {
-            Numbers.append(ops, tz * 100).append(" Tz\n");
-        }
-        StringBuilder tj = null;
-        float pen = 0;
-        float line = Float.NaN;
-        int[][] reading = readingOrder(run, actualText ? new int[run.size()] : run.groups(), logical);
+        boolean visual = run.rightToLeft() && !logical && upright();
+        int[] groups = actualText ? new int[run.size()] : visual ? visualGroups(run) : run.groups();
+        int[][] parts = visual ? output.fonts().usedVisually(embedded, run, groups) : null;
+        int[] codes = visual ? null : output.fonts().used(embedded, run);
+        int[][] reading = readingOrder(run, groups, logical);
         int[] order = reading[0];
         int[] marks = reading[1];
-        for (int k = 0; k < run.size(); k++) {
-            int i = order[k];
-            int glyph = run.glyph(i);
-            if (glyph > 0) {
-                float gx = run.x(i) * scale;
-                float gy = run.y(i) * rise;
-                if (gy != line) {
+        int lead = visual ? leadingBlanks(run, order, marks) : 0;
+        float width = run.advance() * scale;
+        for (int from = 0, to = lead > 0 ? lead : run.size(); from < run.size(); from = to, to = run.size()) {
+            StringBuilder ops = new StringBuilder();
+            if (actualText) {
+                ops.append("/Span <</ActualText ").append(textString(run.text())).append(">> BDC\n");
+            }
+            begin(ops, style, outline(face, size));
+            font(ops, embedded, size);
+            if (tz != 1) {
+                Numbers.append(ops, tz * 100).append(" Tz\n");
+            }
+            StringBuilder tj = null;
+            float pen = 0;
+            float line = Float.NaN;
+            for (int k = from; k < to; k++) {
+                int i = order[k];
+                int glyph = run.glyph(i);
+                if (glyph > 0) {
+                    float gx = run.x(i) * scale;
+                    float gy = run.y(i) * rise;
+                    if (gy != line) {
+                        if (tj != null) {
+                            ops.append(tj.append("] TJ\n"));
+                        }
+                        matrix(ops, 1, skew, -1, x + gx + skew * gy, baseline - gy);
+                        tj = new StringBuilder("[");
+                        pen = gx;
+                        line = gy;
+                    }
+                    float adjust = -(gx - pen) / (size * tz) * 1000;
+                    if (Math.abs(adjust) >= 0.5f) {
+                        Numbers.append(tj.append(' '), adjust).append(' ');
+                        pen = gx;
+                    }
+                    if (tj.charAt(tj.length() - 1) == '>') {
+                        tj.setLength(tj.length() - 1);
+                    } else {
+                        tj.append('<');
+                    }
+                    if (visual && parts[i].length > 1) {
+                        drawParts(tj, embedded, parts[i]);
+                        for (int code : parts[i]) {
+                            pen += output.fonts().advance(embedded, code) / 1000f * size * tz;
+                        }
+                    } else {
+                        Numbers.hex(tj, visual ? parts[i][0] : codes[i], 4).append('>');
+                        pen += Math.round(face.glyphAdvance(glyph) * 1000f / face.unitsPerEm()) / 1000f * size * tz;
+                    }
+                }
+                if (marks[k] != 0) {
                     if (tj != null) {
                         ops.append(tj.append("] TJ\n"));
+                        tj = null;
                     }
-                    matrix(ops, 1, skew, -1, x + gx + skew * gy, baseline - gy);
-                    tj = new StringBuilder("[");
-                    pen = gx;
-                    line = gy;
+                    ops.append(marks[k] == SILENT ? "/Span <</ActualText <FEFF>>> BDC\n" : "EMC\n");
+                    line = Float.NaN;
                 }
-                float adjust = -(gx - pen) / (size * tz) * 1000;
-                if (Math.abs(adjust) >= 0.5f) {
-                    Numbers.append(tj.append(' '), adjust).append(' ');
-                    pen = gx;
-                }
-                if (tj.charAt(tj.length() - 1) == '>') {
-                    tj.setLength(tj.length() - 1);
-                } else {
-                    tj.append('<');
-                }
-                Numbers.hex(tj, codes[i], 4).append('>');
-                pen += Math.round(face.glyphAdvance(glyph) * 1000f / face.unitsPerEm()) / 1000f * size * tz;
             }
-            if (marks[k] != 0) {
-                if (tj != null) {
-                    ops.append(tj.append("] TJ\n"));
-                    tj = null;
-                }
-                ops.append(marks[k] == SILENT ? "/Span <</ActualText <FEFF>>> BDC\n" : "EMC\n");
-                line = Float.NaN;
+            if (tj != null) {
+                ops.append(tj.append("] TJ\n"));
+            }
+            ops.append("ET\nQ\n");
+            if (actualText) {
+                ops.append("EMC\n");
+            }
+            if (to == lead) {
+                float x0 = x + run.x(order[0]) * scale;
+                float x1 = x + run.x(order[lead - 1]) * scale + face.glyphAdvance(run.glyph(order[lead - 1])) * scale;
+                queue(ops, x0, x1, baseline, size, " ".repeat(lead), false);
+            } else {
+                queue(ops, x, x + width, baseline, size, run.text(), visual);
             }
         }
-        if (tj != null) {
-            ops.append(tj.append("] TJ\n"));
-        }
-        ops.append("ET\nQ\n");
-        if (actualText) {
-            ops.append("EMC\n");
-        }
-        float width = run.advance() * scale;
-        queue(ops, x, x + width, baseline, size, run.text(), run.rightToLeft() && !logical);
         return width;
     }
 
@@ -696,6 +715,63 @@ public final class PdfCanvas implements Closeable {
             marks[k - 1] = SPOKEN;
         }
         return new int[][] {order, marks};
+    }
+
+    private static int leadingBlanks(GlyphRun run, int[] order, int[] marks) {
+        int n = 0;
+        while (n < order.length && marks[n] == 0 && run.glyph(order[n]) > 0) {
+            String t = run.clusterText(order[n]);
+            if (t == null || t.isEmpty() || !t.isBlank()) {
+                break;
+            }
+            n++;
+        }
+        return n < order.length ? n : 0;
+    }
+
+    private static int[] visualGroups(GlyphRun run) {
+        int[] groups = run.groups();
+        int[] out = groups.clone();
+        int n = run.size();
+        for (int i = 0; i < n; ) {
+            if (groups[i] > 0) {
+                i = groups[i];
+                continue;
+            }
+            int j = i;
+            while (j < n && groups[j] == 0 && marks(run.clusterText(j))) {
+                j++;
+            }
+            if (j > i && j < n && groups[j] == 0 && !marks(run.clusterText(j))) {
+                out[i] = j + 1;
+                i = j + 1;
+            } else {
+                i = Math.max(j, i + 1);
+            }
+        }
+        return out;
+    }
+
+    private static boolean marks(String text) {
+        return text != null && TextOrder.marks(text);
+    }
+
+    private void drawParts(StringBuilder tj, PdfFonts.Embedded embedded, int[] parts) {
+        for (int c = 0; c < parts.length; c++) {
+            int width = output.fonts().advance(embedded, parts[c]);
+            int ahead = 0;
+            for (int n = c + 1; width == 0 && n < parts.length && ahead == 0; n++) {
+                ahead = output.fonts().advance(embedded, parts[n]);
+            }
+            if (ahead > 0) {
+                Numbers.append(tj.append("> "), -ahead / 2f).append(" <");
+            }
+            Numbers.hex(tj, parts[c], 4);
+            if (ahead > 0) {
+                Numbers.append(tj.append("> "), ahead / 2f).append(" <");
+            }
+        }
+        tj.append('>');
     }
 
     private static boolean arabic(String text) {
