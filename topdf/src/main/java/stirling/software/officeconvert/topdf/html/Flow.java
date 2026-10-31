@@ -5,7 +5,6 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Deque;
-import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -147,8 +146,8 @@ final class Flow {
         }
         Map<String, String> d = ctx.declared(body, look);
         String top = d.get("margin-top");
-        margin(top == null ? HtmlDocument.BODY_MARGIN : Math.max(0, length(top, look.size, frame.width())));
-        pad(padding(d.get("padding-top"), look.size, frame.width()));
+        margin(top == null ? HtmlDocument.BODY_MARGIN : Math.max(0, BoxCss.length(top, look.size, frame.width())));
+        pad(BoxCss.padding(d.get("padding-top"), look.size, frame.width()));
         children(body, look, frame);
         if (waiting != null) {
             out.add(waiting);
@@ -249,13 +248,14 @@ final class Flow {
     }
 
     private float floatWidth(Element e, Map<String, String> d, Look look, float room) {
-        Float w = boxLength(d.get("width"), look, room);
+        Float w = BoxCss.boxLength(d.get("width"), look, room);
         if (w == null) {
             return 0;
         }
         if (!"border-box".equalsIgnoreCase(d.getOrDefault("box-sizing", "").strip())) {
-            w += Math.max(0, length(d.get("padding-left"), look.size, room))
-                    + Math.max(0, length(d.get("padding-right"), look.size, room)) + border(d, "left") + border(d, "right");
+            w += Math.max(0, BoxCss.length(d.get("padding-left"), look.size, room))
+                    + Math.max(0, BoxCss.length(d.get("padding-right"), look.size, room)) + BoxCss.border(d, "left")
+                    + BoxCss.border(d, "right");
         }
         return w;
     }
@@ -278,7 +278,7 @@ final class Flow {
         row.splits = true;
         row.cells.add(left ? floated : flowing);
         row.cells.add(left ? flowing : floated);
-        Float tall = boxLength(d.get("min-height"), look, 0);
+        Float tall = BoxCss.boxLength(d.get("min-height"), look, 0);
         row.height = tall == null ? 0 : Math.min(tall, ctx.pageRoom());
         t.rows.add(row);
         if (pendingSpace > 0) {
@@ -419,7 +419,7 @@ final class Flow {
                     trailingGap(edge(d, "right", look, frame), look, boundary);
                 } else {
                     // overflow on html or body belongs to the window, which prints whole; fixed boxes never widen it
-                    boolean scrolls = !tag.equals("body") && !tag.equals("html") && scrolls(d)
+                    boolean scrolls = !tag.equals("body") && !tag.equals("html") && BoxCss.scrolls(d)
                             || "fixed".equalsIgnoreCase(d.getOrDefault("position", "").strip());
                     ctx.scrolling(scrolls ? 1 : 0);
                     aroundOf = e;
@@ -457,8 +457,8 @@ final class Flow {
     private static final float MAX_INLINE_GAP = 144;
 
     private float edge(Map<String, String> d, String side, Look look, Frame frame) {
-        return Math.max(0, length(d.get("margin-" + side), look.size, frame.width()))
-                + Math.max(0, length(d.get("padding-" + side), look.size, frame.width()));
+        return Math.max(0, BoxCss.length(d.get("margin-" + side), look.size, frame.width()))
+                + Math.max(0, BoxCss.length(d.get("padding-" + side), look.size, frame.width()));
     }
 
     private Inline gapInline(float pt, Look look) {
@@ -517,7 +517,7 @@ final class Flow {
     private static boolean padded(Element e, Map<String, String> d, Look look) {
         Integer fill = Css.color(d.get("background-color"));
         boolean filled = fill != null && fill >= 0 && fill != 0xFFFFFF;
-        boolean wide = length(d.get("width"), look.size, 0) > 0;
+        boolean wide = BoxCss.length(d.get("width"), look.size, 0) > 0;
         if (!filled && !(wide && e.normalName().equals("a")) || Layout.text(e, BUTTON_TEXT + 1).strip().isEmpty()
                 || Layout.text(e, BUTTON_TEXT + 1).length() > BUTTON_TEXT) {
             return false;
@@ -528,11 +528,11 @@ final class Flow {
             }
         }
         for (String side : new String[] {"top", "right", "bottom", "left"}) {
-            if (length(d.get("padding-" + side), look.size, 0) > 0) {
+            if (BoxCss.length(d.get("padding-" + side), look.size, 0) > 0) {
                 return true;
             }
         }
-        return wide || length(d.get("height"), look.size, 0) > 0 || Controls.linePitch(look) > 1.5f * look.size;
+        return wide || BoxCss.length(d.get("height"), look.size, 0) > 0 || Controls.linePitch(look) > 1.5f * look.size;
     }
 
     private void control(Element e, Look parentLook, Frame frame) throws IOException {
@@ -633,7 +633,7 @@ final class Flow {
             lifted(e, d, look, frame, depth);
             return;
         }
-        float[] shift = relativeShift(d, look, frame, turn);
+        float[] shift = BoxCss.relativeShift(d, look, frame, turn);
         float lowered = 0;
         if (shift[0] != 0 || shift[1] != 0) {
             frame = new Frame(frame.left() + shift[0], frame.right() - shift[0], frame.width(), frame.shading());
@@ -658,23 +658,24 @@ final class Flow {
     private void contained(Element e, String tag, Map<String, String> d, Look look, Frame frame, int depth,
             List<Positioned.Item> absolutes) throws IOException {
         float em = look.size;
-        float top = length(d.get("margin-top"), em, frame.width());
-        float bottom = length(d.get("margin-bottom"), em, frame.width());
+        float top = BoxCss.length(d.get("margin-top"), em, frame.width());
+        float bottom = BoxCss.length(d.get("margin-bottom"), em, frame.width());
         if ((tag.equals("ul") || tag.equals("ol")) && !lists.isEmpty()) {
             top = 0;
             bottom = 0;
         }
         float besideL = e == sized ? besideLeft : 0;
         float besideR = e == sized ? besideRight : 0;
-        float left = Math.max(0, Math.max(0, length(d.get("margin-left"), em, frame.width() + besideL) - besideL)
-                + length(d.get("padding-left"), em, frame.width()) + border(d, "left"));
-        float right = Math.max(0, Math.max(0, length(d.get("margin-right"), em, frame.width() + besideR) - besideR)
-                + length(d.get("padding-right"), em, frame.width()) + border(d, "right"));
+        float left = Math.max(0, Math.max(0, BoxCss.length(d.get("margin-left"), em, frame.width() + besideL) - besideL)
+                + BoxCss.length(d.get("padding-left"), em, frame.width()) + BoxCss.border(d, "left"));
+        float right = Math.max(0, Math.max(0, BoxCss.length(d.get("margin-right"), em, frame.width() + besideR)
+                - besideR)
+                + BoxCss.length(d.get("padding-right"), em, frame.width()) + BoxCss.border(d, "right"));
         float[] narrow = narrowed(e, d, look, frame.width());
         left += narrow[0];
         right += narrow[1];
         int fill = fill(d, look);
-        boolean paddedCell = e == stackedCell && hasPadding(d) && holdsContent(e);
+        boolean paddedCell = e == stackedCell && BoxCss.hasPadding(d) && holdsContent(e);
         if (paddedCell && fill < 0) {
             fill = frame.shading();
         }
@@ -692,37 +693,39 @@ final class Flow {
             // a cell nested too deep cannot hold a table of columns, but a row of short items still fits on one line
             plan = null;
         }
-        boolean tall = !absolutes.isEmpty() && height(d, look) > 0 && e.selectFirst("table") == null;
+        boolean tall = !absolutes.isEmpty() && BoxCss.height(d, look) > 0 && e.selectFirst("table") == null;
         if (plan == null && (tall || boxed(e, tag, d, fill, paddedCell)) && !ctx.holdsRow(e, look, inner.width())) {
             box(e, d, look, frame, depth, fill, top, bottom, absolutes);
             return;
         }
-        boolean avoid = !inCell && avoidsBreaks(d);
+        boolean avoid = !inCell && BoxCss.avoidsBreaks(d);
         avoiding += avoid ? 1 : 0;
         Positioned.Hung hung = null;
         if (!absolutes.isEmpty()) {
-            float marginLeft = length(d.get("margin-left"), em, frame.width());
-            float marginRight = length(d.get("margin-right"), em, frame.width());
-            float cbWidth = Math.max(12, frame.width() - marginLeft - marginRight - border(d, "left") - border(d, "right"));
+            float marginLeft = BoxCss.length(d.get("margin-left"), em, frame.width());
+            float marginRight = BoxCss.length(d.get("margin-right"), em, frame.width());
+            float cbWidth = Math.max(12, frame.width() - marginLeft - marginRight - BoxCss.border(d, "left")
+                    - BoxCss.border(d, "right"));
             Float own = Css.length(d.getOrDefault("width", "auto"), em, frame.width());
             if (own != null && own > 0) {
                 boolean borderBox = "border-box".equalsIgnoreCase(d.getOrDefault("box-sizing", "").strip());
-                float pads = padding(d.get("padding-left"), em, frame.width())
-                        + padding(d.get("padding-right"), em, frame.width());
-                cbWidth = Math.min(cbWidth, borderBox ? own - border(d, "left") - border(d, "right") : own + pads);
+                float pads = BoxCss.padding(d.get("padding-left"), em, frame.width())
+                        + BoxCss.padding(d.get("padding-right"), em, frame.width());
+                cbWidth = Math.min(cbWidth,
+                        borderBox ? own - BoxCss.border(d, "left") - BoxCss.border(d, "right") : own + pads);
             }
-            float h = height(d, look);
-            float cbHeight = h > 0 ? h + padding(d.get("padding-top"), em, frame.width())
-                    + padding(d.get("padding-bottom"), em, frame.width()) : Float.NaN;
-            float x0 = originX() + frame.left() + marginLeft + border(d, "left");
-            hung = Positioned.hang(ctx, absolutes, x0, ANCHOR + pendingSpace + Math.max(0, top - pendingMargin) + border(d, "top"), cbWidth, cbHeight, depth);
+            float h = BoxCss.height(d, look);
+            float cbHeight = h > 0 ? h + BoxCss.padding(d.get("padding-top"), em, frame.width())
+                    + BoxCss.padding(d.get("padding-bottom"), em, frame.width()) : Float.NaN;
+            float x0 = originX() + frame.left() + marginLeft + BoxCss.border(d, "left");
+            hung = Positioned.hang(ctx, absolutes, x0, ANCHOR + pendingSpace + Math.max(0, top - pendingMargin) + BoxCss.border(d, "top"), cbWidth, cbHeight, depth);
             if (!hung.top().isEmpty()) {
                 anchor(hung.top(), frame);
             }
         }
         margin(top);
-        pad(padding(d.get("padding-top"), em, frame.width()));
-        if (isPageBreak(d.get("break-before"))) {
+        pad(BoxCss.padding(d.get("padding-top"), em, frame.width()));
+        if (BoxCss.isPageBreak(d.get("break-before"))) {
             pendingBreak = true;
         }
         Block before = lastBlock();
@@ -752,7 +755,7 @@ final class Flow {
         boolean stacked = (shown.endsWith("flex") || shown.endsWith("grid")) && plan == null
                 && !d.getOrDefault("flex-direction", "row").strip().toLowerCase(Locale.ROOT).startsWith("column");
         // a row stacked here is taller than the browser's, so its height says nothing about what shows
-        float clip = stacked ? -1 : clipHeight(d, look);
+        float clip = stacked ? -1 : BoxCss.clipHeight(d, look);
         if (clip >= 0) {
             flush();
             clipLeft = Math.min(clipLeft, clip);
@@ -768,8 +771,8 @@ final class Flow {
         floatOf = outerFloat;
         flush();
         if (hung != null && !hung.bottom().isEmpty()) {
-            float padBottom = padding(d.get("padding-bottom"), em, frame.width());
-            float below = padBottom + (padBottom > 0 || border(d, "bottom") > 0 ? pendingSpace : 0);
+            float padBottom = BoxCss.padding(d.get("padding-bottom"), em, frame.width());
+            float below = padBottom + (padBottom > 0 || BoxCss.border(d, "bottom") > 0 ? pendingSpace : 0);
             anchor(Positioned.moved(hung.bottom(), 0, below, true), frame);
         }
         if (clip >= 0) {
@@ -781,14 +784,14 @@ final class Flow {
         if (tag.equals("li")) {
             pendingMarker = null;
         }
-        float borderBottom = border(d, "bottom");
-        float padBottom = padding(d.get("padding-bottom"), em, frame.width());
+        float borderBottom = BoxCss.border(d, "bottom");
+        float padBottom = BoxCss.padding(d.get("padding-bottom"), em, frame.width());
         Block last = lastBlock();
         if (borderBottom > 0 && last != null && last != before && !inCell
-                && (!held.isEmpty() || border(d, "left") <= 0 && border(d, "right") <= 0)) {
-            Integer c = Css.color(d.getOrDefault("border-bottom-color", colorOf(d.get("border-bottom"))));
+                && (!held.isEmpty() || BoxCss.border(d, "left") <= 0 && BoxCss.border(d, "right") <= 0)) {
+            Integer c = Css.color(d.getOrDefault("border-bottom-color", BoxCss.colorOf(d.get("border-bottom"))));
             int rgb = c == null || c < 0 ? 0 : c;
-            boolean doubled = doubled(d, "bottom");
+            boolean doubled = BoxCss.doubled(d, "bottom");
             if (last instanceof Paragraph p) {
                 p.borderBottom = borderBottom;
                 p.borderBottomRgb = rgb;
@@ -816,7 +819,7 @@ final class Flow {
         headingStyle = outerHeading;
         pad(padBottom);
         margin(bottom);
-        if (isPageBreak(d.get("break-after"))) {
+        if (BoxCss.isPageBreak(d.get("break-after"))) {
             pendingBreak = true;
         }
         avoiding -= avoid ? 1 : 0;
@@ -832,8 +835,8 @@ final class Flow {
             return false;
         }
         float width = frame.width() - left - right;
-        float gap = columnGap(d, look);
-        int n = columnCount(d, look, width, gap);
+        float gap = BoxCss.columnGap(d, look);
+        int n = BoxCss.columnCount(d, look, width, gap);
         float each = n < 2 ? 0 : (width - gap * (n - 1)) / n;
         if (n < 2 || each < 36) {
             return false;
@@ -853,7 +856,7 @@ final class Flow {
         Paragraph opening = sectionMark(frame);
         opening.endsSection = ctx.ending(base);
         space(0);
-        pad(padding(d.get("padding-top"), em, frame.width()));
+        pad(BoxCss.padding(d.get("padding-top"), em, frame.width()));
         pendingBreak = false;
         sectionStarted = false;
         ctx.count();
@@ -865,7 +868,7 @@ final class Flow {
         for (int i = 0; i < n; i++) {
             set.columns.add(new float[] {each, i + 1 < n ? gap : 0});
         }
-        set.columnRule = columnRule(d) > 0;
+        set.columnRule = BoxCss.columnRule(d) > 0;
         Look outerLook = blockLook;
         Frame outerFrame = blockFrame;
         Frame inner = new Frame(0, 0, each, fill >= 0 && fill != 0xFFFFFF ? fill : -1);
@@ -882,7 +885,7 @@ final class Flow {
         blockLook = outerLook;
         blockFrame = outerFrame;
         space(0);
-        pad(padding(d.get("padding-bottom"), em, frame.width()));
+        pad(BoxCss.padding(d.get("padding-bottom"), em, frame.width()));
         margin(bottom);
         return true;
     }
@@ -893,48 +896,6 @@ final class Flow {
         mark.lineRule = Paragraph.LineRule.EXACT;
         mark.lineHeight = 1;
         return mark;
-    }
-
-    private static float columnGap(Map<String, String> d, Look look) {
-        String v = d.getOrDefault("column-gap", "normal").strip();
-        Float pt = v.equalsIgnoreCase("normal") ? null : Css.length(v, look.size, 0);
-        return pt == null ? look.size : Math.max(0, Math.min(pt, 144));
-    }
-
-    static int columnCount(Map<String, String> d, Look look, float width, float gap) {
-        Integer count = null;
-        Float least = null;
-        for (String token : Css.tokens(d.getOrDefault("columns", ""))) {
-            if (token.matches("[0-9]{1,3}")) {
-                count = Integer.parseInt(token);
-            } else if (!token.equalsIgnoreCase("auto")) {
-                least = Css.length(token, look.size, 0);
-            }
-        }
-        String c = d.getOrDefault("column-count", "").strip();
-        if (c.matches("[0-9]{1,3}")) {
-            count = Integer.parseInt(c);
-        }
-        String w = d.getOrDefault("column-width", "").strip();
-        if (!w.isEmpty() && !w.equalsIgnoreCase("auto")) {
-            least = Css.length(w, look.size, 0);
-        }
-        int n = count == null ? Integer.MAX_VALUE : count;
-        if (least != null && least > 0) {
-            n = Math.min(n, Math.max(1, (int) ((width + gap) / (least + gap))));
-        }
-        return n == Integer.MAX_VALUE ? 1 : Math.max(1, Math.min(n, 12));
-    }
-
-    private static float columnRule(Map<String, String> d) {
-        Map<String, String> rule = new HashMap<>();
-        for (String part : new String[] {"", "-style", "-width"}) {
-            String v = d.get("column-rule" + part);
-            if (v != null) {
-                rule.put("border-rule" + part, v);
-            }
-        }
-        return border(rule, "rule");
     }
 
     private void margin(float m) {
@@ -953,11 +914,6 @@ final class Flow {
     private void space(float s) {
         pendingSpace = s;
         pendingMargin = s;
-    }
-
-    static boolean avoidsBreaks(Map<String, String> d) {
-        String v = d.getOrDefault("break-inside", d.getOrDefault("page-break-inside", "")).strip();
-        return v.toLowerCase(Locale.ROOT).startsWith("avoid");
     }
 
     private void emit(Block b) throws IOException {
@@ -1028,18 +984,11 @@ final class Flow {
         if (c != null && c >= 0) {
             return c;
         }
-        if ("picture".equals(d.get("background-image")) && light(look.color)
+        if ("picture".equals(d.get("background-image")) && BoxCss.light(look.color)
                 && !(Backgrounds.url(d) != null && Backgrounds.drawable(d, ctx.images()))) {
             return 0x2B2B2B;
         }
         return -1;
-    }
-
-    private static boolean light(int rgb) {
-        int r = rgb >> 16 & 0xFF;
-        int g = rgb >> 8 & 0xFF;
-        int b = rgb & 0xFF;
-        return 0.299 * r + 0.587 * g + 0.114 * b > 200;
     }
 
     // A container drawn as a box (a coloured panel, a bordered card) keeps its background and edges in one piece
@@ -1049,12 +998,12 @@ final class Flow {
         }
         int edges = 0;
         for (String side : new String[] {"top", "bottom", "left", "right"}) {
-            edges += border(d, side) > 0 ? 1 : 0;
+            edges += BoxCss.border(d, side) > 0 ? 1 : 0;
         }
         boolean painted = fill >= 0 && (fill != 0xFFFFFF || paddedCell && ctx.canvas() >= 0)
                 && fill != blockFrame.shading()
                 || Backgrounds.url(d) != null && Backgrounds.drawable(d, ctx.images());
-        boolean bar = border(d, "left") > 0 || border(d, "right") > 0;
+        boolean bar = BoxCss.border(d, "left") > 0 || BoxCss.border(d, "right") > 0;
         boolean shadow = !BoxPaint.shadows(d.get("box-shadow"), Look.ROOT_SIZE, 0).isEmpty();
         return (painted || edges >= 3 || bar || shadow) && Layout.text(e, BOX_TEXT).length() < BOX_TEXT;
     }
@@ -1072,19 +1021,20 @@ final class Flow {
         if (around.endsWith("flex") || around.endsWith("grid")) {
             return none;
         }
-        Float width = boxLength(d.get("width"), look, room);
-        Float max = boxLength(d.get("max-width"), look, room);
+        Float width = BoxCss.boxLength(d.get("width"), look, room);
+        Float max = BoxCss.boxLength(d.get("max-width"), look, room);
         if (width == null && max == null) {
             return none;
         }
         float em = look.size;
         float outer = width == null ? max : max == null ? width : Math.min(width, max);
         if (!"border-box".equalsIgnoreCase(d.getOrDefault("box-sizing", "").strip())) {
-            outer += Math.max(0, length(d.get("padding-left"), em, room)) + Math.max(0, length(d.get("padding-right"),
-                    em, room)) + border(d, "left") + border(d, "right");
+            outer += Math.max(0, BoxCss.length(d.get("padding-left"), em, room))
+                    + Math.max(0, BoxCss.length(d.get("padding-right"), em, room)) + BoxCss.border(d, "left")
+                    + BoxCss.border(d, "right");
         }
-        float extra = room - Math.max(0, length(d.get("margin-left"), em, room))
-                - Math.max(0, length(d.get("margin-right"), em, room)) - outer;
+        float extra = room - Math.max(0, BoxCss.length(d.get("margin-left"), em, room))
+                - Math.max(0, BoxCss.length(d.get("margin-right"), em, room)) - outer;
         if (extra < 1) {
             return none;
         }
@@ -1106,32 +1056,6 @@ final class Flow {
                 != null;
     }
 
-    private static boolean hasPadding(Map<String, String> d) {
-        for (String side : new String[] {"top", "right", "bottom", "left"}) {
-            if (length(d.get("padding-" + side), Look.ROOT_SIZE, 0) > 0) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private static Float boxLength(String v, Look look, float room) {
-        if (v == null) {
-            return null;
-        }
-        String t = v.strip().toLowerCase(Locale.ROOT);
-        if (t.isEmpty() || t.equals("auto") || t.equals("none") || t.contains("content") || t.startsWith("calc")) {
-            return null;
-        }
-        Float pt = Css.length(t, look.size, room);
-        return pt == null || pt <= 0 ? null : pt;
-    }
-
-    // Percentage padding above or below makes an aspect-ratio box for absolute content, which flows here instead
-    private static float padding(String v, float em, float width) {
-        return v == null || v.contains("%") ? 0 : length(v, em, width);
-    }
-
     private boolean widerInside(Layout.Plan plan, Look look, float room) {
         for (Element item : plan.items()) {
             if (ctx.widestRow(item, look, room) > plan.items().size()) {
@@ -1144,10 +1068,10 @@ final class Flow {
     private void box(Element e, Map<String, String> d, Look look, Frame frame, int depth, int fill, float top,
             float bottom, List<Positioned.Item> absolutes) throws IOException {
         float em = look.size;
-        float marginLeft = Math.max(0, length(d.get("margin-left"), em, frame.width()));
-        float marginRight = Math.max(0, length(d.get("margin-right"), em, frame.width()));
-        float padLeft = Math.max(0, length(d.get("padding-left"), em, frame.width()));
-        float padRight = Math.max(0, length(d.get("padding-right"), em, frame.width()));
+        float marginLeft = Math.max(0, BoxCss.length(d.get("margin-left"), em, frame.width()));
+        float marginRight = Math.max(0, BoxCss.length(d.get("margin-right"), em, frame.width()));
+        float padLeft = Math.max(0, BoxCss.length(d.get("padding-left"), em, frame.width()));
+        float padRight = Math.max(0, BoxCss.length(d.get("padding-right"), em, frame.width()));
         float[] narrow = narrowed(e, d, look, frame.width());
         marginLeft += narrow[0];
         marginRight += narrow[1];
@@ -1159,17 +1083,17 @@ final class Flow {
         cell.left = HtmlTables.border(d, "left", 0);
         cell.right = HtmlTables.border(d, "right", 0);
         Flow inner = new Flow(ctx, cell::add, true);
-        inner.pad(Math.max(0, padding(d.get("padding-top"), em, frame.width())));
+        inner.pad(Math.max(0, BoxCss.padding(d.get("padding-top"), em, frame.width())));
         ctx.enterCell();
         try {
             inner.children(e, look, new Frame(0, 0, Math.max(24, width - padLeft - padRight), -1), depth);
         } finally {
             ctx.leaveCell();
         }
-        float padBottom = Math.max(0, padding(d.get("padding-bottom"), em, frame.width()));
-        float padTop = Math.max(0, padding(d.get("padding-top"), em, frame.width()));
-        Float tall = boxLength(d.get("height"), look, 0);
-        float fixed = height(d, look);
+        float padBottom = Math.max(0, BoxCss.padding(d.get("padding-bottom"), em, frame.width()));
+        float padTop = Math.max(0, BoxCss.padding(d.get("padding-top"), em, frame.width()));
+        Float tall = BoxCss.boxLength(d.get("height"), look, 0);
+        float fixed = BoxCss.height(d, look);
         boolean sized = fixed > 0 && !"border-box".equalsIgnoreCase(d.getOrDefault("box-sizing", "").strip());
         float boxHeight = fixed <= 0 ? -1 : sized ? fixed + padTop + padBottom + cell.top.width() + cell.bottom.width()
                 : fixed;
@@ -1186,7 +1110,7 @@ final class Flow {
             margin(top + bottom);
             return;
         }
-        if (!behind.isEmpty() && (covers(d) || boxHeight > 0) && cell.shading >= 0) {
+        if (!behind.isEmpty() && (BoxCss.covers(d) || boxHeight > 0) && cell.shading >= 0) {
             behind = new ArrayList<>(behind);
             behind.add(0, new Inline.Shape(-padLeft, 0, width, drawnHeight, cell.shading, -1, 0, false, false, true, 0));
             cell.shading = -1;
@@ -1237,8 +1161,10 @@ final class Flow {
         if (!cell.empty() && tall != null && tall >= 1) {
             boolean borderBox = "border-box".equalsIgnoreCase(d.getOrDefault("box-sizing", "").strip());
             float high = Math.min(ctx.pageRoom(),
-                    tall + (borderBox ? 0 : Math.max(0, padding(d.get("padding-top"), em, frame.width())) + padBottom));
-            if (gradient(cell, d.get("background-gradient"), width, high, padLeft, corner(d, look, width, high), look)) {
+                    tall + (borderBox ? 0
+                            : Math.max(0, BoxCss.padding(d.get("padding-top"), em, frame.width())) + padBottom));
+            if (gradient(cell, d.get("background-gradient"), width, high, padLeft,
+                    BoxCss.corner(d, look, width, high), look)) {
                 row.height = high;
                 painted = true;
             }
@@ -1256,7 +1182,7 @@ final class Flow {
         }
         t.cellMarginLeft = padLeft;
         t.cellMarginRight = padRight;
-        row.splits = !avoidsBreaks(d);
+        row.splits = !BoxCss.avoidsBreaks(d);
         row.cells.add(cell);
         if (boxHeight > 0 && row.height <= 0) {
             row.height = Math.min(boxHeight, ctx.pageRoom());
@@ -1293,13 +1219,9 @@ final class Flow {
         return true;
     }
 
-    private static float corner(Map<String, String> d, Look look, float width, float height) {
-        return BoxPaint.corner(d, look.size, width, height);
-    }
-
     private boolean decorate(Table.Cell cell, Map<String, String> d, Look look, float x, float width, float height,
             int backdrop) throws IOException {
-        float corner = corner(d, look, width, height);
+        float corner = BoxCss.corner(d, look, width, height);
         List<BoxPaint.Shadow> shadows = ctx.shadowsLeft() ? BoxPaint.shadows(d.get("box-shadow"), look.size, look.color)
                 : List.of();
         Gradient gradient = Gradient.parse(d.get("background-gradient"));
@@ -1362,16 +1284,17 @@ final class Flow {
     private boolean itemGradient(Table.Row row, Table.Cell cell, Element item, Look look, float width, float margin)
             throws IOException {
         Map<String, String> d = ctx.declared(item, look);
-        Float tall = boxLength(d.get("height"), look, 0);
+        Float tall = BoxCss.boxLength(d.get("height"), look, 0);
         if (tall == null || tall < 1 || cell.empty() || Gradient.parse(d.get("background-gradient")) == null) {
             return false;
         }
         boolean borderBox = "border-box".equalsIgnoreCase(d.getOrDefault("box-sizing", "").strip());
         float high = Math.min(ctx.pageRoom(), tall + (borderBox ? 0
-                : Math.max(0, padding(d.get("padding-top"), look.size, width))
-                + Math.max(0, padding(d.get("padding-bottom"), look.size, width))));
+                : Math.max(0, BoxCss.padding(d.get("padding-top"), look.size, width))
+                + Math.max(0, BoxCss.padding(d.get("padding-bottom"), look.size, width))));
         int fill = cell.shading;
-        if (gradient(cell, d.get("background-gradient"), width, high, margin, corner(d, look, width, high), look)) {
+        if (gradient(cell, d.get("background-gradient"), width, high, margin, BoxCss.corner(d, look, width, high),
+                look)) {
             for (Paragraph p : cell.paragraphs) {
                 if (p.shading == fill) {
                     p.shading = -1;
@@ -1560,8 +1483,8 @@ final class Flow {
 
     private float sideSpace(Element item, Look look, String side) {
         Map<String, String> d = ctx.declared(item, look);
-        return Math.max(0, length(d.get("margin-" + side), look.size, 0)) + Math.max(0, length(d.get("padding-" + side),
-                look.size, 0));
+        return Math.max(0, BoxCss.length(d.get("margin-" + side), look.size, 0))
+                + Math.max(0, BoxCss.length(d.get("padding-" + side), look.size, 0));
     }
 
     private Table.Cell cell(Element item, Look look, Frame frame, float width, float gap, int depth) throws IOException {
@@ -1584,9 +1507,9 @@ final class Flow {
             cell.bottom = HtmlTables.border(d, "bottom", 0);
             cell.left = HtmlTables.border(d, "left", 0);
             cell.right = HtmlTables.border(d, "right", 0);
-            if (shadowed(d) && cell.top.width() <= 0 && cell.bottom.width() <= 0 && cell.left.width() <= 0
+            if (BoxCss.shadowed(d) && cell.top.width() <= 0 && cell.bottom.width() <= 0 && cell.left.width() <= 0
                     && cell.right.width() <= 0) {
-                Table.Border edge = new Table.Border(0.5f, SHADOW_EDGE);
+                Table.Border edge = new Table.Border(0.5f, BoxCss.SHADOW_EDGE);
                 cell.top = edge;
                 cell.bottom = edge;
                 cell.left = edge;
@@ -1611,23 +1534,15 @@ final class Flow {
         return cell;
     }
 
-    private static final int SHADOW_EDGE = 0xD9D9D9;
-
-    private static boolean shadowed(Map<String, String> d) {
-        String s = d.getOrDefault("box-shadow", "none").strip().toLowerCase(Locale.ROOT);
-        return !s.isEmpty() && !s.equals("none") && !s.startsWith("inset");
-    }
-
-
     private Map<String, String> framedChild(Element item, Map<String, String> d, Look look) {
-        if (Layout.framed(d) || shadowed(d) || item.childrenSize() != 1 || !item.ownText().isBlank()) {
+        if (Layout.framed(d) || BoxCss.shadowed(d) || item.childrenSize() != 1 || !item.ownText().isBlank()) {
             return null;
         }
         Element only = item.child(0);
         Map<String, String> cd = ctx.declared(only, look);
         String display = cd.getOrDefault("display", BLOCKS.contains(only.normalName()) ? "block" : "inline")
                 .strip().toLowerCase(Locale.ROOT);
-        if (!display.equals("block") || !(Layout.framed(cd) || shadowed(cd) || hasEdges(cd))) {
+        if (!display.equals("block") || !(Layout.framed(cd) || BoxCss.shadowed(cd) || BoxCss.hasEdges(cd))) {
             return null;
         }
         return cd;
@@ -1638,19 +1553,11 @@ final class Flow {
         for (Element item : items) {
             Map<String, String> d = ctx.declared(item, look);
             if (framedChild(item, d, look) != null) {
-                widest = Math.max(widest, Math.max(0, length(d.get("padding-left"), look.size, frame.width()))
-                        + Math.max(0, length(d.get("padding-right"), look.size, frame.width())));
+                widest = Math.max(widest, Math.max(0, BoxCss.length(d.get("padding-left"), look.size, frame.width()))
+                        + Math.max(0, BoxCss.length(d.get("padding-right"), look.size, frame.width())));
             }
         }
         return Math.min(72, widest);
-    }
-
-    private static boolean hasEdges(Map<String, String> d) {
-        int edges = 0;
-        for (String side : new String[] {"top", "bottom", "left", "right"}) {
-            edges += border(d, side) > 0 ? 1 : 0;
-        }
-        return edges >= 2;
     }
 
     private void row(Layout.Plan plan, Look look, Frame frame, int depth) throws IOException {
@@ -1776,8 +1683,8 @@ final class Flow {
             if (d == null) {
                 continue;
             }
-            boolean shadowEdge = cell.top.equals(new Table.Border(0.5f, SHADOW_EDGE)) && cell.top.equals(cell.bottom)
-                    && cell.top.equals(cell.left) && cell.top.equals(cell.right);
+            boolean shadowEdge = cell.top.equals(new Table.Border(0.5f, BoxCss.SHADOW_EDGE))
+                    && cell.top.equals(cell.bottom) && cell.top.equals(cell.left) && cell.top.equals(cell.right);
             if (shadowEdge && !BoxPaint.shadows(d.get("box-shadow"), look.size, look.color).isEmpty()) {
                 cell.top = Table.Border.NONE;
                 cell.bottom = Table.Border.NONE;
@@ -1788,7 +1695,7 @@ final class Flow {
             if (decorate(cell, d, look, 0, w, tallest, frame.shading())) {
                 any = true;
             } else if (shadowEdge) {
-                Table.Border edge = new Table.Border(0.5f, SHADOW_EDGE);
+                Table.Border edge = new Table.Border(0.5f, BoxCss.SHADOW_EDGE);
                 cell.top = edge;
                 cell.bottom = edge;
                 cell.left = edge;
@@ -1872,81 +1779,6 @@ final class Flow {
         blockFrame = frame;
         element(item, look, frame, depth);
         flush();
-    }
-
-    private static boolean isPageBreak(String v) {
-        if (v == null) {
-            return false;
-        }
-        String t = v.strip().toLowerCase(Locale.ROOT);
-        return t.equals("page") || t.equals("always") || t.equals("left") || t.equals("right");
-    }
-
-    private static String colorOf(String border) {
-        if (border == null) {
-            return null;
-        }
-        for (String token : Css.tokens(border)) {
-            if (Css.color(token) != null) {
-                return token;
-            }
-        }
-        return null;
-    }
-
-    static float border(Map<String, String> d, String side) {
-        return border(d, side, false);
-    }
-
-    static boolean doubled(Map<String, String> d, String side) {
-        return border(d, side, true) >= DOUBLE_LEAST;
-    }
-
-    private static final float DOUBLE_LEAST = 2.25f;
-
-    private static float border(Map<String, String> d, String side, boolean onlyDouble) {
-        String style = d.get("border-" + side + "-style");
-        String all = d.get("border-" + side);
-        String width = d.get("border-" + side + "-width");
-        if (all != null) {
-            for (String token : Css.tokens(all)) {
-                String t = token.toLowerCase(Locale.ROOT);
-                if (t.equals("none") || t.equals("hidden")) {
-                    style = style == null ? "none" : style;
-                } else if (Css.length(t, 12, 0) != null || !keyword(t).equals(t)) {
-                    width = width == null ? t : width;
-                } else if (Css.color(t) == null) {
-                    style = style == null ? t : style;
-                }
-            }
-            if (style == null) {
-                style = "solid";
-            }
-        }
-        if (style == null || style.equalsIgnoreCase("none") || style.equalsIgnoreCase("hidden")
-                || onlyDouble && !style.equalsIgnoreCase("double")) {
-            return 0;
-        }
-        Float w = width == null ? Float.valueOf(style.equalsIgnoreCase("double") ? DOUBLE_LEAST : 0.75f)
-                : Css.length(keyword(width), 12, 0);
-        return w == null ? 0.75f : Math.max(0, Math.min(12, w));
-    }
-
-    private static String keyword(String width) {
-        return switch (width.strip().toLowerCase(Locale.ROOT)) {
-            case "thin" -> "1px";
-            case "medium" -> "3px";
-            case "thick" -> "5px";
-            default -> width;
-        };
-    }
-
-    static float length(String v, float em, float width) {
-        if (v == null || v.equalsIgnoreCase("auto")) {
-            return 0;
-        }
-        Float pt = Css.length(v, em, width);
-        return pt == null ? 0 : pt;
     }
 
     private void openList(Element e, String tag, Look look) {
@@ -2203,12 +2035,6 @@ final class Flow {
         return length > 0 && length <= BOLD_LABEL_CHARS;
     }
 
-    // A box that scrolls or clips keeps what is too wide inside it, so the page does not grow
-    private static boolean scrolls(Map<String, String> d) {
-        String o = d.getOrDefault("overflow-x", d.getOrDefault("overflow", "visible")).strip().toLowerCase(Locale.ROOT);
-        return !o.isEmpty() && !o.startsWith("visible");
-    }
-
     // Preformatted and no-wrap lines run as wide as they are, past the page if need be
     private void measureUnwrapped(Paragraph p) {
         String ws = blockLook.whiteSpace;
@@ -2252,10 +2078,10 @@ final class Flow {
         if (position.equals("absolute") || position.equals("fixed") || shrinksInRow(e, d, look)) {
             return;
         }
-        Float w = absolute(d.get("min-width"), look);
-        Float width = absolute(d.get("width"), look);
+        Float w = BoxCss.absolute(d.get("min-width"), look);
+        Float width = BoxCss.absolute(d.get("width"), look);
         if (width != null && (w == null || width > w)) {
-            Float max = absolute(d.get("max-width"), look);
+            Float max = BoxCss.absolute(d.get("max-width"), look);
             boolean capped = max != null || d.getOrDefault("max-width", "none").contains("%");
             w = capped ? (max == null ? null : Math.min(width, max)) : width;
         }
@@ -2277,32 +2103,6 @@ final class Flow {
         String shrink = d.getOrDefault("flex-shrink", "").strip();
         String flex = d.getOrDefault("flex", "").strip().toLowerCase(Locale.ROOT);
         return !shrink.equals("0") && !flex.equals("none") && !flex.matches("[0-9.]+\\s+0(\\s.*)?");
-    }
-
-    private static Float absolute(String v, Look look) {
-        return v == null || v.contains("%") || v.contains("vw") ? null : Css.length(v, look.size, 0);
-    }
-
-    // Overflow hidden under a fixed or maximum height, or a line clamp, shows only what fits; -1 when it does not clip
-    private static float clipHeight(Map<String, String> d, Look look) {
-        String overflow = d.getOrDefault("overflow-y", d.getOrDefault("overflow", "")).strip().toLowerCase(Locale.ROOT);
-        if (!overflow.startsWith("hidden") && !overflow.startsWith("clip")) {
-            return -1;
-        }
-        String clamp = d.getOrDefault("-webkit-line-clamp", d.getOrDefault("line-clamp", "")).strip();
-        if (clamp.matches("[0-9]{1,3}") && Integer.parseInt(clamp) > 0) {
-            return Integer.parseInt(clamp) * lineHeight(look);
-        }
-        String h = d.getOrDefault("max-height", d.get("height"));
-        Float pt = h == null || h.contains("%") ? null : Css.length(h, look.size, 0);
-        return pt == null || pt <= 1 ? -1 : pt;
-    }
-
-    private static float lineHeight(Look look) {
-        if (look.linePoints > 0) {
-            return look.linePoints;
-        }
-        return look.size * (look.lineMultiple > 0 ? look.lineMultiple : 1.2f);
     }
 
     // Spends the clip on a paragraph by its estimated height: whole lines that fit stay, the rest is cut
@@ -2437,7 +2237,7 @@ final class Flow {
         if (d.containsKey("max-width") && !d.get("max-width").strip().equalsIgnoreCase("none")) {
             return;
         }
-        Float w = absolute(d.get("width"), look);
+        Float w = BoxCss.absolute(d.get("width"), look);
         if (w == null && !d.containsKey("width") && e.attr("width").matches("[0-9]{1,5}")) {
             w = Integer.parseInt(e.attr("width")) * 0.75f;
         }
@@ -2579,7 +2379,7 @@ final class Flow {
     private void rule(Map<String, String> d, Look look, Frame frame) throws IOException {
         flush();
         float em = look.size;
-        margin(length(d.get("margin-top"), em, frame.width()));
+        margin(BoxCss.length(d.get("margin-top"), em, frame.width()));
         Paragraph p = new Paragraph();
         p.indentLeft = frame.left();
         p.indentRight = frame.right();
@@ -2590,7 +2390,7 @@ final class Flow {
         Integer c = Css.color(d.getOrDefault("border-top-color", d.getOrDefault("color", d.get("background-color"))));
         p.borderBottomRgb = c == null || c < 0 ? 0xA0A0A0 : c;
         p.inlines.add(new Inline.Text("\u00a0", look.run().withSize(1), null, -1));
-        space(length(d.get("margin-bottom"), em, frame.width()));
+        space(BoxCss.length(d.get("margin-bottom"), em, frame.width()));
         ctx.count();
         emit(p);
     }
@@ -2607,8 +2407,8 @@ final class Flow {
             // a one-column table with no borders is only there to stack its cells: they flow as blocks
             Integer fill = Css.color(d.get("background-color"));
             float room = frame.width();
-            float margins = Math.max(0, length(d.get("margin-left"), look.size, room))
-                    + Math.max(0, length(d.get("margin-right"), look.size, room));
+            float margins = Math.max(0, BoxCss.length(d.get("margin-left"), look.size, room))
+                    + Math.max(0, BoxCss.length(d.get("margin-right"), look.size, room));
             float width = stackWidth(e, d, look, room);
             float slack = room - (margins < room ? Math.min(width, room - margins) : width);
             float left = stackIndent(e, d, look, legacy, room, slack);
@@ -2623,8 +2423,8 @@ final class Flow {
             return;
         }
         float em = look.size;
-        margin(length(d.get("margin-top"), em, frame.width()));
-        if (isPageBreak(d.get("break-before"))) {
+        margin(BoxCss.length(d.get("margin-top"), em, frame.width()));
+        if (BoxCss.isPageBreak(d.get("break-before"))) {
             pendingBreak = true;
         }
         Table t = ctx.tables().table(e, d, look, frame, legacy, depth);
@@ -2637,7 +2437,7 @@ final class Flow {
         if (pendingSpace > 0 && !newPage) {
             spacer(pendingSpace, frame);
         }
-        space(Math.max(0, length(d.get("margin-bottom"), em, frame.width())));
+        space(Math.max(0, BoxCss.length(d.get("margin-bottom"), em, frame.width())));
         breakBefore(t, newPage, frame);
         ctx.count();
         emit(t);
@@ -2724,8 +2524,8 @@ final class Flow {
 
     private void lifted(Element e, Map<String, String> d, Look look, Frame frame, int depth) throws IOException {
         float em = look.size;
-        float top = length(d.get("margin-top"), em, frame.width());
-        float bottom = length(d.get("margin-bottom"), em, frame.width());
+        float top = BoxCss.length(d.get("margin-top"), em, frame.width());
+        float bottom = BoxCss.length(d.get("margin-bottom"), em, frame.width());
         Positioned.Placed p = Positioned.lay(ctx, new Positioned.Item(e, d, look), frame.width(), Float.NaN, true,
                 depth);
         Transform t = Transform.of(d.get("transform"), em, p.width(), p.height());
@@ -2780,42 +2580,6 @@ final class Flow {
         }
         Section s = ctx.section(ctx.pageName());
         return (s != null ? s : ctx.defaultSection()).marginLeft;
-    }
-
-    private static float[] relativeShift(Map<String, String> d, Look look, Frame frame, Transform turn) {
-        float dx = turn.dx();
-        float dy = turn.dy();
-        if (Positioned.position(d).equals("relative")) {
-            Float left = shiftBy(d.get("left"), look, frame.width());
-            Float right = shiftBy(d.get("right"), look, frame.width());
-            Float top = shiftBy(d.get("top"), look, 0);
-            Float bottom = shiftBy(d.get("bottom"), look, 0);
-            dx += left != null ? left : right != null ? -right : 0;
-            dy += top != null ? top : bottom != null ? -bottom : 0;
-        }
-        return new float[] {Math.max(-frame.left(), Math.min(dx, frame.width() / 2)), Math.max(-400, Math.min(dy, 400))};
-    }
-
-    private static Float shiftBy(String v, Look look, float base) {
-        if (v == null || v.strip().equalsIgnoreCase("auto") || base <= 0 && v.contains("%")) {
-            return null;
-        }
-        return Css.length(v, look.size, base);
-    }
-
-    private static float height(Map<String, String> d, Look look) {
-        String h = d.get("height");
-        if (h == null || h.contains("%") || h.strip().equalsIgnoreCase("auto")) {
-            return 0;
-        }
-        Float pt = Css.length(h, look.size, 0);
-        return pt == null || pt <= 1 ? 0 : Math.min(pt, 14_400);
-    }
-
-    private static boolean covers(Map<String, String> d) {
-        String size = d.getOrDefault("background-size", "auto").strip().toLowerCase(Locale.ROOT);
-        boolean[] repeat = Backgrounds.repeat(d.get("background-repeat"));
-        return size.equals("cover") || size.equals("100% 100%") || repeat[0] && repeat[1];
     }
 
     private void breakBefore(Table t, boolean newPage, Frame frame) throws IOException {

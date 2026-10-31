@@ -138,10 +138,10 @@ final class Positioned {
         float mR = margin(d.get("margin-right"), em, cbWidth);
         float mT = inFlow ? 0 : margin(d.get("margin-top"), em, cbWidth);
         float mB = inFlow ? 0 : margin(d.get("margin-bottom"), em, cbWidth);
-        float bL = Flow.border(d, "left");
-        float bR = Flow.border(d, "right");
-        float bT = Flow.border(d, "top");
-        float bB = Flow.border(d, "bottom");
+        float bL = BoxCss.border(d, "left");
+        float bR = BoxCss.border(d, "right");
+        float bT = BoxCss.border(d, "top");
+        float bB = BoxCss.border(d, "bottom");
         float pL = pad(d.get("padding-left"), em, cbWidth);
         float pR = pad(d.get("padding-right"), em, cbWidth);
         float pT = pad(d.get("padding-top"), em, cbWidth);
