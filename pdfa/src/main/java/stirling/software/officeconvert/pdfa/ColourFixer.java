@@ -134,7 +134,7 @@ final class ColourFixer {
             shared = p;
             IccProfiles.Header h = IccProfiles.header(read(p));
             if (h == null || !valid(h) || !output(h) || !intentSpace(h)
-                    || IccProfiles.components(h.colourSpace()) != components) {
+                    || IccProfiles.components(h.colourSpace()) != components || !StrictFilters.decodable(p)) {
                 return false;
             }
         }
@@ -191,7 +191,7 @@ final class ColourFixer {
                     continue;
                 }
                 IccProfiles.Header h = IccProfiles.header(read(p));
-                if (h != null && valid(h) && output(h) && intentSpace(h)) {
+                if (h != null && valid(h) && output(h) && intentSpace(h) && StrictFilters.decodable(p)) {
                     keep = oi;
                     components = IccProfiles.components(h.colourSpace());
                     p.setInt(COSName.N, components);
@@ -278,7 +278,7 @@ final class ColourFixer {
         IccProfiles.Header h = IccProfiles.header(data);
         int n = s.getInt(COSName.N, -1);
         boolean ok = h != null && valid(h) && IccProfiles.components(h.colourSpace()) == n
-                && !"Lab ".equals(h.colourSpace()) && !"XYZ ".equals(h.colourSpace());
+                && !"Lab ".equals(h.colourSpace()) && !"XYZ ".equals(h.colourSpace()) && StrictFilters.decodable(s);
         if (ok) {
             return;
         }
