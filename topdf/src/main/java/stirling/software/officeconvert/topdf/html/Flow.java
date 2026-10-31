@@ -52,8 +52,6 @@ final class Flow {
 
     private static final float BROKEN_PICTURE = 12;
 
-    private static final int BOLD_LABEL_CHARS = 120;
-
     static final Set<String> SKIPPED = Set.of("head", "script", "style", "template", "title", "meta", "link",
             "base", "iframe", "object", "embed", "applet", "frame", "frameset", "video", "audio", "canvas",
             "map", "area", "input", "select", "option", "datalist", "param", "source", "track", "noembed", "noframes",
@@ -679,7 +677,7 @@ final class Flow {
         if (columns(e, d, look, frame, depth, left, right, top, bottom, fill)) {
             return;
         }
-        measureFixed(e, d, look, frame, left, right);
+        TextFit.measureFixed(ctx, e, d, look, frame, left, right);
         Frame inner = frame.inner(left, right, fill);
         Layout.Plan plan = forceInline > 0 ? null : Layout.of(e, d, look, inner.width(), ctx, inCell);
         if (plan != null && !plan.inline() && widerInside(plan, look, inner.width())) {
@@ -1405,7 +1403,7 @@ final class Flow {
         List<List<List<Inline>>> items = new ArrayList<>();
         int lines = 0;
         for (int i = 0; i < n; i++) {
-            List<List<Inline>> item = lines(row.inlines.subList(from[i], from[i + 1]));
+            List<List<Inline>> item = TextFit.lines(row.inlines.subList(from[i], from[i + 1]));
             items.add(item);
             lines = Math.max(lines, item.size());
         }
@@ -1431,39 +1429,6 @@ final class Flow {
             }
         }
         lastSpace = false;
-    }
-
-    private static List<List<Inline>> lines(List<Inline> inlines) {
-        List<List<Inline>> lines = new ArrayList<>();
-        List<Inline> line = new ArrayList<>();
-        for (Inline in : inlines) {
-            if (in instanceof Inline.Break) {
-                lines.add(line);
-                line = new ArrayList<>();
-            } else {
-                line.add(in);
-            }
-        }
-        lines.add(line);
-        while (!lines.isEmpty() && blank(lines.getLast())) {
-            lines.removeLast();
-        }
-        while (!lines.isEmpty() && blank(lines.getFirst())) {
-            lines.removeFirst();
-        }
-        for (List<Inline> l : lines) {
-            trimEnd(l);
-        }
-        return lines;
-    }
-
-    private static boolean blank(List<Inline> line) {
-        for (Inline in : line) {
-            if (!(in instanceof Inline.Text t) || !t.text().isBlank()) {
-                return false;
-            }
-        }
-        return true;
     }
 
     private void breakInRow(Look look) {
@@ -1908,8 +1873,8 @@ final class Flow {
         if (leaderOf == p) {
             List<Inline> moved = new ArrayList<>(p.inlines.subList(leaderFrom, p.inlines.size()));
             p.inlines.subList(leaderFrom, p.inlines.size()).clear();
-            trimEnd(p.inlines);
-            trimStart(moved);
+            TextFit.trimEnd(p.inlines);
+            TextFit.trimStart(moved);
             p.inlines.add(new Inline.Tab(leaderStyle));
             p.inlines.addAll(moved);
             p.tabs.add(new Paragraph.TabStop(blockFrame.left() + blockFrame.width(),
@@ -1917,8 +1882,8 @@ final class Flow {
             leaderOf = null;
         }
         if (rightOf == p) {
-            trimEnd(p.inlines);
-            trimStart(right);
+            TextFit.trimEnd(p.inlines);
+            TextFit.trimStart(right);
             p.inlines.add(new Inline.Tab(rightStyle));
             p.inlines.addAll(right);
             p.tabs.add(new Paragraph.TabStop(blockFrame.left() + blockFrame.width(), Paragraph.TabStop.Kind.RIGHT,
@@ -1927,7 +1892,7 @@ final class Flow {
             right.clear();
         }
         boolean blankLine = !p.inlines.isEmpty();
-        trimEnd(p.inlines);
+        TextFit.trimEnd(p.inlines);
         if (p.inlines.isEmpty() && blankLine) {
             // <p><br></p> still takes a line
             p.inlines.add(new Inline.Text("\u00a0", blockLook.run(), null, -1));
@@ -1938,99 +1903,15 @@ final class Flow {
         if (clipLeft != Float.MAX_VALUE && !fits(p)) {
             return;
         }
-        measureUnwrapped(p);
+        TextFit.measureUnwrapped(ctx, p, blockLook.whiteSpace);
         p.anchors.addAll(pendingAnchors);
         pendingAnchors.clear();
         lastSpace = true;
         ctx.count();
-        if (!inCell && p.list == null && p.orphans > 1 && boldLabel(p)) {
+        if (!inCell && p.list == null && p.orphans > 1 && TextFit.boldLabel(p)) {
             p.keepNext = true;
         }
         emit(p);
-    }
-
-    private static boolean boldLabel(Paragraph p) {
-        int length = 0;
-        for (Inline i : p.inlines) {
-            if (!(i instanceof Inline.Text t)) {
-                return false;
-            }
-            if (!t.text().isBlank() && !t.style().bold()) {
-                return false;
-            }
-            length += t.text().strip().length();
-        }
-        return length > 0 && length <= BOLD_LABEL_CHARS;
-    }
-
-    // Preformatted and no-wrap lines run as wide as they are, past the page if need be
-    private void measureUnwrapped(Paragraph p) {
-        String ws = blockLook.whiteSpace;
-        if (!ws.equals("pre") && !ws.equals("nowrap")) {
-            return;
-        }
-        float line = 0;
-        float widest = 0;
-        int column = 0;
-        for (Inline i : p.inlines) {
-            if (i instanceof Inline.Text t) {
-                line += t.text().length() * t.style().size() * charWidth(t.style().font());
-                column += t.text().length();
-            } else if (i instanceof Inline.Tab t) {
-                // a tab moves to the next stop eight characters along
-                int step = 8 - column % 8;
-                line += step * t.style().size() * charWidth(t.style().font());
-                column += step;
-            } else if (i instanceof Inline.Break) {
-                widest = Math.max(widest, line);
-                line = 0;
-                column = 0;
-            }
-        }
-        widest = Math.max(widest, line);
-        // the paragraph's indent already counts from the text area's left edge
-        ctx.wants(p.indentLeft + widest);
-    }
-
-    // An average character's advance in ems: fixed-pitch faces are wider
-    private static float charWidth(String font) {
-        String f = font == null ? "" : font.toLowerCase(Locale.ROOT);
-        boolean mono = f.contains("mono") || f.contains("courier") || f.contains("consol") || f.contains("menlo")
-                || f.contains("code");
-        return mono ? 0.6f : 0.5f;
-    }
-
-    // A block given a width wider than its frame pushes past the page in a browser
-    private void measureFixed(Element e, Map<String, String> d, Look look, Frame frame, float left, float right) {
-        String position = d.getOrDefault("position", "").strip().toLowerCase(Locale.ROOT);
-        if (position.equals("absolute") || position.equals("fixed") || shrinksInRow(e, d, look)) {
-            return;
-        }
-        Float w = BoxCss.absolute(d.get("min-width"), look);
-        Float width = BoxCss.absolute(d.get("width"), look);
-        if (width != null && (w == null || width > w)) {
-            Float max = BoxCss.absolute(d.get("max-width"), look);
-            boolean capped = max != null || d.getOrDefault("max-width", "none").contains("%");
-            w = capped ? (max == null ? null : Math.min(width, max)) : width;
-        }
-        if (w != null && w > frame.width() - left - right) {
-            ctx.wants(frame.left() + left + w + right);
-        }
-    }
-
-    // A flex item gives up width to fit its row unless it is told not to shrink
-    private boolean shrinksInRow(Element e, Map<String, String> d, Look look) {
-        Element parent = e.parent();
-        if (parent == null) {
-            return false;
-        }
-        String display = ctx.declared(parent, look).getOrDefault("display", "").strip().toLowerCase(Locale.ROOT);
-        if (!display.endsWith("flex")) {
-            return false;
-        }
-        String shrink = d.getOrDefault("flex-shrink", "").strip();
-        String flex = d.getOrDefault("flex", "").strip().toLowerCase(Locale.ROOT);
-        return !shrink.equals("0") && !flex.equals("none") && !flex.matches("[0-9.]+\\s+0(\\s.*)?");
     }
 
     // Spends the clip on a paragraph by its estimated height: whole lines that fit stay, the rest is cut
@@ -2069,58 +1950,8 @@ final class Flow {
         if (keep < 1 || tallest > 0) {
             return false;
         }
-        cut(p, (int) (keep * width / (size * 0.5f)));
+        TextFit.cut(p, (int) (keep * width / (size * 0.5f)));
         return true;
-    }
-
-    // Keeps the first chars characters of a paragraph's text, ending at a word
-    private static void cut(Paragraph p, int chars) {
-        int left = chars;
-        for (int i = 0; i < p.inlines.size(); i++) {
-            if (!(p.inlines.get(i) instanceof Inline.Text t)) {
-                continue;
-            }
-            if (t.text().length() <= left) {
-                left -= t.text().length();
-                continue;
-            }
-            int at = t.text().lastIndexOf(' ', left);
-            String kept = t.text().substring(0, Math.max(0, at > 0 ? at : left)).stripTrailing();
-            p.inlines.set(i, new Inline.Text(kept + "\u2026", t.style(), t.link(), t.anchorPage()));
-            p.inlines.subList(i + 1, p.inlines.size()).clear();
-            return;
-        }
-    }
-
-    private static void trimStart(List<Inline> inlines) {
-        while (!inlines.isEmpty() && inlines.getFirst() instanceof Inline.Text t && t.text().isBlank()) {
-            inlines.removeFirst();
-        }
-        if (!inlines.isEmpty() && inlines.getFirst() instanceof Inline.Text t && t.text().startsWith(" ")) {
-            inlines.set(0, new Inline.Text(t.text().stripLeading(), t.style(), t.link(), t.anchorPage()));
-        }
-    }
-
-    private static void trimEnd(List<Inline> inlines) {
-        while (!inlines.isEmpty()) {
-            Inline last = inlines.getLast();
-            if (last instanceof Inline.Break) {
-                inlines.removeLast();
-                continue;
-            }
-            if (last instanceof Inline.Text t) {
-                String s = t.text().stripTrailing();
-                if (s.length() != t.text().length() && !t.text().endsWith("\u00a0")) {
-                    inlines.removeLast();
-                    if (!s.isEmpty()) {
-                        inlines.add(new Inline.Text(s, t.style(), t.link(), t.anchorPage()));
-                        return;
-                    }
-                    continue;
-                }
-            }
-            return;
-        }
     }
 
     private void image(Element e, Map<String, String> d, Look look, Frame frame) throws IOException {
@@ -2227,7 +2058,7 @@ final class Flow {
 
     private boolean onOwnLine(Element svg, Map<String, String> d, Look look) {
         if (forceInline > 0 || look.rightToLeft || !d.getOrDefault("float", floatOf).strip().equalsIgnoreCase("none")
-                || para != null && !blank(para.inlines)) {
+                || para != null && !TextFit.blank(para.inlines)) {
             return false;
         }
         for (Node n = svg.nextSibling(); n != null; n = n.nextSibling()) {
