@@ -29,6 +29,8 @@ final class Annotations {
             "Polygon", "PolyLine", "Highlight", "Underline", "Squiggly", "StrikeOut", "Stamp", "Caret", "Ink", "Popup",
             "FileAttachment", "Widget", "PrinterMark", "TrapNet", "Watermark", "Redact");
 
+    private static final Set<String> MULTIMEDIA = Set.of("Screen", "Movie", "Sound", "RichMedia", "3D");
+
     private static final Set<String> ANNOTATION_TRIGGERS = Set.of("E", "X", "D", "U", "Fo", "Bl");
 
     private static final int INVISIBLE = 1;
@@ -72,6 +74,16 @@ final class Annotations {
             boolean forbidden = level.part() == 4 && "FileAttachment".equals(type);
             boolean allowed = (level.part() == 1 ? ALLOWED_A1 : ALLOWED).contains(type)
                     || level.part() == 4 && "Projection".equals(type);
+            if (!allowed && poster(a, type, level)) {
+                try {
+                    AnnotationFlatten.run(doc, page, a);
+                    report.warn("Drew the appearance of a " + type + " annotation into the page and removed the"
+                            + " annotation, which " + level.label() + " does not allow");
+                    continue;
+                } catch (IOException | RuntimeException e) {
+                    PdfFiles.stopIfInterrupted();
+                }
+            }
             if ((!allowed || forbidden) && !flatten) {
                 report.warn("Removed " + (type.isEmpty() ? "an annotation without a type" : "a " + type
                         + " annotation") + ", which " + level.label() + " does not allow");
@@ -181,6 +193,22 @@ final class Annotations {
             }
             ap.setItem(COSName.N, chosen instanceof COSStream ? chosen : empty(doc, a));
         }
+    }
+
+    private static boolean poster(COSDictionary a, String type, PdfALevel level) {
+        if (!MULTIMEDIA.contains(type) && !(level.part() == 1 && "Watermark".equals(type))) {
+            return false;
+        }
+        if ((a.getInt(COSName.F, 0) & (HIDDEN | NO_VIEW)) != 0) {
+            return false;
+        }
+        COSDictionary ap = ContentGraph.dict(a.getDictionaryObject(COSName.AP));
+        COSBase n = ap == null ? null : ap.getDictionaryObject(COSName.N);
+        if (n instanceof COSStream) {
+            return true;
+        }
+        COSName state = a.getCOSName(COSName.AS);
+        return n instanceof COSDictionary states && state != null && states.getDictionaryObject(state) instanceof COSStream;
     }
 
     private static COSName fieldType(COSDictionary widget) {
