@@ -37,6 +37,10 @@ final class FontEntry {
 
     private final boolean noSubsetting;
 
+    private final boolean postScript;
+
+    private boolean outlinesChecked;
+
     private final String unusable;
 
     private volatile int[] coverage;
@@ -47,7 +51,7 @@ final class FontEntry {
 
     FontEntry(Path file, byte[] data, int index, long offset, String postScriptName, String family, String subfamily,
             String fullName, List<String> legacyFamilies, List<String> typographicFamilies, int weight, boolean bold,
-            boolean italic, boolean symbolCmap, boolean noSubsetting, String unusable) {
+            boolean italic, boolean symbolCmap, boolean noSubsetting, boolean postScript, String unusable) {
         this.file = file;
         this.data = data;
         this.index = index;
@@ -63,6 +67,7 @@ final class FontEntry {
         this.italic = italic;
         this.symbolCmap = symbolCmap;
         this.noSubsetting = noSubsetting;
+        this.postScript = postScript;
         this.unusable = unusable;
     }
 
@@ -126,6 +131,10 @@ final class FontEntry {
         return noSubsetting;
     }
 
+    boolean postScript() {
+        return postScript;
+    }
+
     String unusable() {
         return unusable;
     }
@@ -164,6 +173,10 @@ final class FontEntry {
         FontProgram p = program == null ? null : program.get();
         if (p == null) {
             try {
+                if (postScript && !outlinesChecked) {
+                    CffSubsetter.check(FontScanner.table(this, "CFF ", FontProgram.MAX_WHOLE_BYTES));
+                    outlinesChecked = true;
+                }
                 p = FontProgram.load(this);
             } catch (IOException | RuntimeException e) {
                 broken = new IOException("The font " + describe() + " could not be read: " + e.getMessage(), e);

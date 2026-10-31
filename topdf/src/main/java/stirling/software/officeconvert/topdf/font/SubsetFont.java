@@ -21,9 +21,11 @@ import org.apache.fontbox.ttf.HeaderTable;
 import org.apache.fontbox.ttf.HorizontalHeaderTable;
 import org.apache.fontbox.ttf.HorizontalMetricsTable;
 import org.apache.fontbox.ttf.OS2WindowsMetricsTable;
+import org.apache.fontbox.ttf.OpenTypeFont;
 import org.apache.fontbox.ttf.PostScriptTable;
 import org.apache.fontbox.ttf.TTFParser;
 import org.apache.fontbox.ttf.TTFSubsetter;
+import org.apache.fontbox.ttf.TTFTable;
 import org.apache.fontbox.ttf.TrueTypeFont;
 import org.apache.pdfbox.cos.COSArray;
 import org.apache.pdfbox.cos.COSDictionary;
@@ -64,9 +66,21 @@ final class SubsetFont {
 
     private final Set<Integer> glyphIds = new HashSet<>();
 
+    private final boolean postScript;
+
+    private final TreeMap<Integer, Integer> aliases = new TreeMap<>();
+
+    private final FontEntry source;
+
     SubsetFont(PDDocument document, TrueTypeFont ttf) throws IOException {
+        this(document, ttf, null);
+    }
+
+    SubsetFont(PDDocument document, TrueTypeFont ttf, FontEntry source) throws IOException {
         this.document = document;
         this.ttf = ttf;
+        this.source = source;
+        postScript = ttf instanceof OpenTypeFont otf && otf.isPostScript();
         dict.setItem(COSName.TYPE, COSName.FONT);
         cmap = ttf.getUnicodeCmapLookup();
         descriptor = descriptor(ttf);
@@ -78,7 +92,7 @@ final class SubsetFont {
         dict.setName(COSName.BASE_FONT, descriptor.getFontName());
         dict.setItem(COSName.ENCODING, COSName.IDENTITY_H);
         cidFont.setItem(COSName.TYPE, COSName.FONT);
-        cidFont.setItem(COSName.SUBTYPE, COSName.CID_FONT_TYPE2);
+        cidFont.setItem(COSName.SUBTYPE, postScript ? COSName.CID_FONT_TYPE0 : COSName.CID_FONT_TYPE2);
         cidFont.setName(COSName.BASE_FONT, descriptor.getFontName());
         COSDictionary info = new COSDictionary();
         info.setString(COSName.REGISTRY, "Adobe");
@@ -87,7 +101,9 @@ final class SubsetFont {
         cidFont.setItem(COSName.CIDSYSTEMINFO, info);
         cidFont.setItem(COSName.FONT_DESC, descriptor.getCOSObject());
         cidFont.setItem(COSName.W, new COSArray());
-        cidFont.setItem(COSName.CID_TO_GID_MAP, COSName.IDENTITY);
+        if (!postScript) {
+            cidFont.setItem(COSName.CID_TO_GID_MAP, COSName.IDENTITY);
+        }
         COSArray descendants = new COSArray();
         descendants.add(cidFont);
         dict.setItem(COSName.DESCENDANT_FONTS, descendants);
@@ -105,11 +121,23 @@ final class SubsetFont {
         glyphIds.addAll(glyphs);
     }
 
+    boolean postScript() {
+        return postScript;
+    }
+
+    void alias(int code, int glyph) {
+        aliases.put(code, glyph);
+    }
+
     void subset() throws IOException {
         OS2WindowsMetricsTable os2 = ttf.getOS2Windows();
         if (os2 != null && (os2.getFsType() & OS2WindowsMetricsTable.FSTYPE_NO_SUBSETTING)
                 == OS2WindowsMetricsTable.FSTYPE_NO_SUBSETTING) {
             throw new IOException("This font does not permit subsetting");
+        }
+        if (postScript) {
+            subsetCff();
+            return;
         }
         TTFSubsetter subsetter = new TTFSubsetter(ttf, TABLES);
         subsetter.addAll(codePoints);
@@ -140,9 +168,73 @@ final class SubsetFont {
         dict.setName(COSName.BASE_FONT, name);
         descriptor.setFontName(name);
         cidFont.setName(COSName.BASE_FONT, name);
-        widths(embedded, cidToGid);
+        widths(embedded.getHorizontalMetrics(), embedded.getHeader().getUnitsPerEm(), cidToGid);
         cidToGidMap(cidToGid);
         cidSet(cidToGid);
+    }
+
+    void subsetBlank() throws IOException {
+        subsetCff(true);
+    }
+
+    private void subsetCff() throws IOException {
+        subsetCff(false);
+    }
+
+    private void subsetCff(boolean blank) throws IOException {
+        TTFTable table = ttf.getTableMap().get("CFF ");
+        if (table == null) {
+            throw new IOException("The font has no CFF table");
+        }
+        byte[] outlines = blank ? null
+                : source != null ? FontScanner.table(source, "CFF ", FontProgram.MAX_WHOLE_BYTES)
+                        : ttf.getTableBytes(table);
+        int count = ttf.getNumberOfGlyphs();
+        TreeMap<Integer, Integer> cidToGid = new TreeMap<>();
+        cidToGid.put(0, 0);
+        for (int cp : codePoints) {
+            int gid = cmap.getGlyphId(cp);
+            if (gid > 0 && gid < count) {
+                cidToGid.put(gid, gid);
+            }
+        }
+        for (int gid : glyphIds) {
+            if (gid > 0 && gid < count) {
+                cidToGid.put(gid, gid);
+            }
+        }
+        Map<Integer, Integer> gidToCid = new HashMap<>();
+        for (int cid : cidToGid.keySet()) {
+            gidToCid.put(gidToCid.size(), cid);
+        }
+        aliases.forEach((code, gid) -> {
+            if (gid >= 0 && gid < count && code > 0 && code <= 0xFFFF) {
+                cidToGid.putIfAbsent(code, gid);
+            }
+        });
+        int[] cids = new int[cidToGid.size()];
+        int[] glyphs = new int[cids.length];
+        int k = 0;
+        for (Map.Entry<Integer, Integer> e : cidToGid.entrySet()) {
+            cids[k] = e.getKey();
+            glyphs[k++] = e.getValue();
+        }
+        String tag = tag(gidToCid);
+        String name = tag + descriptor.getFontName();
+        byte[] font = blank ? CffSubsetter.blank(name, cids) : CffSubsetter.subset(outlines, name, cids, glyphs);
+        toUnicode(gidToCid);
+        PDStream file = new PDStream(document, new ByteArrayInputStream(font), COSName.FLATE_DECODE);
+        file.getCOSObject().setItem(COSName.SUBTYPE, COSName.getPDFName("CIDFontType0C"));
+        descriptor.setFontFile3(file);
+        dict.setName(COSName.BASE_FONT, name);
+        descriptor.setFontName(name);
+        cidFont.setName(COSName.BASE_FONT, name);
+        widths(ttf.getHorizontalMetrics(), ttf.getHeader().getUnitsPerEm(), cidToGid);
+        byte[] bits = new byte[cids[cids.length - 1] / 8 + 1];
+        for (int cid : cids) {
+            bits[cid / 8] |= (byte) (1 << 7 - cid % 8);
+        }
+        descriptor.setCIDSet(new PDStream(document, new ByteArrayInputStream(bits), COSName.FLATE_DECODE));
     }
 
     private void toUnicode(Map<Integer, Integer> gidToCid) throws IOException {
@@ -235,9 +327,8 @@ final class SubsetFont {
                 && prev.codePointCount(0, prev.length()) == 1;
     }
 
-    private void widths(TrueTypeFont embedded, TreeMap<Integer, Integer> cidToGid) throws IOException {
-        float scaling = 1000f / embedded.getHeader().getUnitsPerEm();
-        HorizontalMetricsTable hmtx = embedded.getHorizontalMetrics();
+    private void widths(HorizontalMetricsTable hmtx, int unitsPerEm, TreeMap<Integer, Integer> cidToGid) {
+        float scaling = 1000f / unitsPerEm;
         COSArray widths = new COSArray();
         COSArray run = new COSArray();
         int prev = Integer.MIN_VALUE;

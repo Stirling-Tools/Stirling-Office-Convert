@@ -258,9 +258,14 @@ public final class FontLibrary {
             return known.orElse(null);
         }
         FontFace found = null;
+        FontFace light = null;
         for (String family : Substitutes.script(codePoint)) {
             FontFace f = exact(family, bold, italic);
             if (f != null && f.covers(codePoint)) {
+                if (Weights.tooLight(null, f)) {
+                    light = light == null ? f : light;
+                    continue;
+                }
                 found = f;
                 break;
             }
@@ -273,13 +278,19 @@ public final class FontLibrary {
                 }
                 FontFace f = face(e, e.family(), bold, italic, null);
                 if (f != null && f.covers(codePoint)) {
-                    found = f;
-                    break;
+                    if (!Weights.tooLight(null, f)) {
+                        found = f;
+                        break;
+                    }
+                    light = light == null ? f : light;
                 }
                 if (++loads >= FALLBACK_LOADS) {
                     break;
                 }
             }
+        }
+        if (found == null) {
+            found = light;
         }
         fallbacks.putIfAbsent(key, Optional.ofNullable(found));
         return found;
@@ -291,6 +302,10 @@ public final class FontLibrary {
      */
     public FontFace fallback(int codePoint, FontFace like) {
         Objects.requireNonNull(like, "like");
+        FontFace symbol = SymbolFonts.code(codePoint) >= 0 ? symbolFallback(codePoint, like) : null;
+        if (symbol != null) {
+            return symbol;
+        }
         FontFace f = fallback(codePoint, like.boldStyle(), like.italicStyle());
         if (f == null) {
             return null;
@@ -321,6 +336,39 @@ public final class FontLibrary {
             known = raced == null ? known : raced;
         }
         return known.get();
+    }
+
+    private FontFace symbolFallback(int codePoint, FontFace like) {
+        if ((codePoint < 0xF020 || codePoint > 0xF0FF) && !like.symbolStandIn()) {
+            return null;
+        }
+        String family = SymbolFonts.known(like.requestedFamily()) ? like.requestedFamily() : "Symbol";
+        int[] candidates = SymbolFonts.table(family)[SymbolFonts.code(codePoint)];
+        if (candidates == null) {
+            return null;
+        }
+        String key = "y\u0000" + normalize(family) + '\u0000' + codePoint + '\u0000' + like.boldStyle()
+                + like.italicStyle() + '\u0000' + like.program().entry().describe();
+        Optional<FontFace> known = faces.get(key);
+        if (known == null) {
+            FontFace found = null;
+            for (int cp : candidates) {
+                FontFace f = like.program().glyph(cp) > 0 ? like : fallback(cp, like.boldStyle(), like.italicStyle());
+                if (f != null && f.covers(cp)) {
+                    SymbolFonts.Remap remap = SymbolFonts.remap(family, f.program());
+                    found = remap == null ? null : new FontFace(f.program(), family, f.syntheticBold(),
+                            f.syntheticItalic(), null, remap, null, 1);
+                    if (found != null && found.covers(codePoint)) {
+                        break;
+                    }
+                    found = null;
+                }
+            }
+            known = Optional.ofNullable(found);
+            Optional<FontFace> raced = faces.putIfAbsent(key, known);
+            known = raced == null ? known : raced;
+        }
+        return known.orElse(null);
     }
 
     private FontFace officeWidths(FontFace f, FontFace like, OfficeFonts.Style widths) {
@@ -383,7 +431,7 @@ public final class FontLibrary {
             FontFace face;
             if (primary.covers(cp) || FontFace.ignorable(cp) || cp == FontFace.SOFT_HYPHEN) {
                 face = primary;
-            } else if (current != null && mark(cp) && current.covers(cp)) {
+            } else if (current != null && (mark(cp) || current != primary && common(cp)) && current.covers(cp)) {
                 face = current;
             } else {
                 FontFace f = fallback(cp, primary);
@@ -465,21 +513,44 @@ public final class FontLibrary {
             chain.addAll(Substitutes.generic(family));
         }
         chain.addAll(Substitutes.generic(base));
+        FontFace light = null;
         for (String candidate : chain) {
             if (!tried.add(normalize(candidate))) {
                 continue;
             }
             FontFace f = exact(candidate, b, i);
-            if (f != null) {
-                int named = alias != null && alias.bold() ? 700 : Weights.of(base);
-                boolean clone = Substitutes.metricClone(family, f)
-                        || Weights.of(family) == named && Substitutes.metricClone(base, f);
-                String note = clone ? null : why + "; using " + f.family();
-                return Weights.emboldened(standIn(f, family, base, b, i, note), family, bold);
+            if (f == null) {
+                continue;
             }
+            if (light == null && Weights.tooLight(family, f)) {
+                light = f;
+            } else if (light == null || !Weights.tooLight(family, f) && sameScripts(light, f)) {
+                return substitute(f, family, base, alias, why, b, i, bold);
+            }
+        }
+        if (light != null) {
+            return substitute(light, family, base, alias, why, b, i, bold);
         }
         FontFace last = lastResort(b, i);
         return Weights.emboldened(standIn(last, family, base, b, i, why + "; using " + last.family()), family, bold);
+    }
+
+    private FontFace substitute(FontFace f, String family, String base, FontNames.Alias alias, String why, boolean b,
+            boolean i, boolean bold) {
+        int named = alias != null && alias.bold() ? 700 : Weights.of(base);
+        boolean clone = Substitutes.metricClone(family, f)
+                || Weights.of(family) == named && Substitutes.metricClone(base, f);
+        String note = clone ? null : why + "; using " + f.family();
+        return Weights.emboldened(standIn(f, family, base, b, i, note), family, bold);
+    }
+
+    private static boolean sameScripts(FontFace light, FontFace f) {
+        for (int sample : new int[] {0x4E00, 0x3042, 0xAC00}) {
+            if (light.covers(sample) && !f.covers(sample)) {
+                return false;
+            }
+        }
+        return true;
     }
 
     public String substitute(String family) {
@@ -597,6 +668,15 @@ public final class FontLibrary {
             return new FontFace(p, requested, bold && !e.bold(), italic && !e.italic(), note);
         } catch (IOException ex) {
             return null;
+        }
+    }
+
+    private static boolean common(int cp) {
+        try {
+            Character.UnicodeScript script = Character.UnicodeScript.of(cp);
+            return script == Character.UnicodeScript.COMMON || script == Character.UnicodeScript.INHERITED;
+        } catch (IllegalArgumentException e) {
+            return false;
         }
     }
 

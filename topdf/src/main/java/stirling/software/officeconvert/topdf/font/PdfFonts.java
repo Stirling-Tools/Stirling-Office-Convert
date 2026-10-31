@@ -14,6 +14,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -53,11 +54,19 @@ public final class PdfFonts implements Closeable {
 
     private final Map<FontProgram, Embedded> missing = new IdentityHashMap<>();
 
-    private final Map<COSDictionary, Map<Integer, Integer>> missingCodes = new IdentityHashMap<>();
+    private final Map<COSDictionary, Map<String, Integer>> missingCodes = new IdentityHashMap<>();
+
+    private final Set<Integer> uncovered = new LinkedHashSet<>();
+
+    private long uncoveredCount;
 
     static final int MAX_MISSING = 0xFFFE;
 
     static final int MAX_CODE = 0xFFFF;
+
+    private static final int MAX_UNCOVERED = 4096;
+
+    private static final int LISTED_UNCOVERED = 12;
 
     private boolean closed;
 
@@ -145,7 +154,8 @@ public final class PdfFonts implements Closeable {
      */
     public Embedded missing(FontFace face) throws IOException {
         Objects.requireNonNull(face, "face");
-        FontFace box = face.notdefVisible() && !face.program().entry().noSubsetting() ? face
+        FontEntry entry = face.program().entry();
+        FontFace box = face.notdefVisible() && !entry.noSubsetting() && !entry.postScript() ? face
                 : boxFace(face.boldStyle(), face.italicStyle());
         Embedded known = missing.get(box.program());
         if (known != null) {
@@ -169,11 +179,15 @@ public final class PdfFonts implements Closeable {
 
     /** The code that draws the box for {@code codePoint} in a font from {@link #missing}; 0 draws it without text. */
     public int missingCode(Embedded font, int codePoint) {
-        Map<Integer, Integer> codes = missingCodes.get(font.font());
-        if (codes == null) {
+        return missingCode(font, new String(Character.toChars(codePoint)));
+    }
+
+    public int missingCode(Embedded font, String text) {
+        Map<String, Integer> codes = missingCodes.get(font.font());
+        if (codes == null || text.isEmpty()) {
             return 0;
         }
-        Integer known = codes.get(codePoint);
+        Integer known = codes.get(text);
         if (known != null) {
             return known;
         }
@@ -181,7 +195,7 @@ public final class PdfFonts implements Closeable {
             return 0;
         }
         int made = codes.size() + 1;
-        codes.put(codePoint, made);
+        codes.put(text, made);
         return made;
     }
 
@@ -203,11 +217,42 @@ public final class PdfFonts implements Closeable {
     /** An installed face that has a character {@code like} lacks, drawn in its place; null when none has it. */
     public FontFace fallback(int codePoint, FontFace like) {
         FontFace f = library.fallback(codePoint, like);
-        return f != null && f.covers(codePoint) && !f.sameProgram(like) ? f : null;
+        return f != null && f.covers(codePoint) && (!f.sameProgram(like) || f.symbolStandIn() && !f.equals(like)) ? f
+                : null;
+    }
+
+    public ColorEmoji colorEmoji() {
+        return library.colorEmoji();
+    }
+
+    public void uncovered(int codePoint) {
+        uncoveredCount++;
+        if (uncovered.size() < MAX_UNCOVERED) {
+            uncovered.add(codePoint);
+        }
     }
 
     public List<String> substitutions() {
-        return Collections.unmodifiableList(substitutions);
+        if (uncovered.isEmpty()) {
+            return Collections.unmodifiableList(substitutions);
+        }
+        StringBuilder b = new StringBuilder("No installed font has ").append(uncovered.size())
+                .append(uncovered.size() == MAX_UNCOVERED ? " or more" : "").append(" of the characters, drawn ")
+                .append(uncoveredCount).append(uncoveredCount == 1 ? " time" : " times").append(" as boxes:");
+        int listed = 0;
+        for (int cp : uncovered) {
+            if (listed++ == LISTED_UNCOVERED) {
+                b.append(" and others");
+                break;
+            }
+            b.append(listed == 1 ? " " : ", ").append(String.format(Locale.ROOT, "U+%04X", cp));
+            if (!Character.isISOControl(cp) && Character.getType(cp) != Character.PRIVATE_USE) {
+                b.append(' ').appendCodePoint(cp);
+            }
+        }
+        List<String> all = new ArrayList<>(substitutions);
+        all.add(b.toString());
+        return Collections.unmodifiableList(all);
     }
 
     public int encoded(Embedded font, int glyph, int codePoint) {
@@ -420,6 +465,11 @@ public final class PdfFonts implements Closeable {
             Use u = e.getValue();
             boolean whole = false;
             SubsetFont subset = subsets.get(font);
+            if (subset != null && subset.postScript()) {
+                for (int k = 0; k < u.aliasGlyphs.size(); k++) {
+                    subset.alias(u.program.glyphCount() + k, u.aliasGlyphs.get(k));
+                }
+            }
             if (subset != null) {
                 try {
                     subset.subset();
@@ -443,6 +493,18 @@ public final class PdfFonts implements Closeable {
     // Codes past the font's own glyphs draw the glyph they alias at its width
     private void aliases(COSDictionary font, Use u) throws IOException {
         COSDictionary cid = descendant(font);
+        if (COSName.CID_FONT_TYPE0.equals(cid.getCOSName(COSName.SUBTYPE))) {
+            COSArray widths = cid.getDictionaryObject(COSName.W) instanceof COSArray w ? w : new COSArray();
+            float scale = 1000f / u.program.metrics().unitsPerEm();
+            for (int k = 0; k < u.aliasGlyphs.size(); k++) {
+                COSArray one = new COSArray();
+                one.add(COSInteger.get(Math.round(u.program.advanceOfGlyph(u.aliasGlyphs.get(k)) * scale)));
+                widths.add(COSInteger.get(u.program.glyphCount() + k));
+                widths.add(one);
+            }
+            cid.setItem(COSName.W, widths);
+            return;
+        }
         int last = u.program.glyphCount() + u.aliasGlyphs.size() - 1;
         byte[] map = new byte[2 * (last + 1)];
         if (cid.getDictionaryObject(COSName.CID_TO_GID_MAP) instanceof COSStream stream) {
@@ -491,7 +553,7 @@ public final class PdfFonts implements Closeable {
     private void finishMissing(Embedded e) throws IOException {
         COSDictionary font = e.font();
         FontProgram program = e.face().program();
-        Map<Integer, Integer> codes = missingCodes.get(font);
+        Map<String, Integer> codes = missingCodes.get(font);
         try {
             subsets.get(font).subset();
         } catch (IOException | RuntimeException ex) {
@@ -518,9 +580,9 @@ public final class PdfFonts implements Closeable {
         cid.setItem(COSName.CID_TO_GID_MAP, map);
         List<Integer> glyphs = new ArrayList<>();
         List<String> texts = new ArrayList<>();
-        for (Map.Entry<Integer, Integer> c : codes.entrySet()) {
+        for (Map.Entry<String, Integer> c : codes.entrySet()) {
             glyphs.add(c.getValue());
-            texts.add(new String(Character.toChars(c.getKey())));
+            texts.add(c.getKey());
         }
         toUnicode(font, glyphs, texts);
     }
@@ -561,9 +623,13 @@ public final class PdfFonts implements Closeable {
             if (!subset && entry.index() >= 0) {
                 throw new IOException("its licence forbids subsetting and a collection cannot be embedded whole");
             }
+            if (!subset && entry.postScript()) {
+                throw new IOException("its licence forbids subsetting and its PostScript outlines cannot be embedded"
+                        + " whole");
+            }
             COSDictionary font;
             if (subset) {
-                SubsetFont s = new SubsetFont(document, opened.font());
+                SubsetFont s = new SubsetFont(document, opened.font(), entry.postScript() ? entry : null);
                 font = s.dictionary();
                 subsets.put(font, s);
             } else {
@@ -582,6 +648,15 @@ public final class PdfFonts implements Closeable {
         String name = u.program.entry().describe();
         String reason = why.getMessage() == null ? why.getClass().getSimpleName() : why.getMessage();
         COSDictionary cid = descendant(font);
+        if (u.program.entry().postScript()) {
+            substitutions.add("The font " + name + " could not be subset (" + reason + "); its text is not drawn");
+            try {
+                subsets.get(font).subsetBlank();
+            } catch (IOException | RuntimeException e) {
+                substitutions.add("The font " + name + " has no outlines in the PDF (" + e.getMessage() + ")");
+            }
+            return;
+        }
         cid.setItem(COSName.CID_TO_GID_MAP, COSName.IDENTITY);
         cid.setItem(COSName.W, widths(u));
         PDFontDescriptor fd = descriptor(font);

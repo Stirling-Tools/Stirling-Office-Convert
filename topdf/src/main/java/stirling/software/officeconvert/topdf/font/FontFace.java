@@ -364,8 +364,11 @@ public final class FontFace {
             int own = program.advanceOfGlyph(glyph);
             return wide(codePoint) ? own : Math.round(own * stretch);
         }
-        if (ignorable(codePoint)) {
+        if (ignorable(codePoint) || Character.isEmojiModifier(codePoint)) {
             return 0;
+        }
+        if (Character.isEmojiPresentation(codePoint)) {
+            return Math.round(unitsPerEm() * ColorEmoji.OFFICE_ADVANCE);
         }
         return wide(codePoint) ? unitsPerEm() : program.advanceOfGlyph(0);
     }

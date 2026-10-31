@@ -12,6 +12,7 @@ import java.util.List;
 import java.util.function.UnaryOperator;
 
 import stirling.software.officeconvert.topdf.font.BidiRuns;
+import stirling.software.officeconvert.topdf.font.ColorEmoji;
 import stirling.software.officeconvert.topdf.font.FontFace;
 import stirling.software.officeconvert.topdf.font.GlyphRun;
 import stirling.software.officeconvert.topdf.pdf.Fill;
@@ -72,7 +73,7 @@ final class TextPainter {
         TextStyle style = b.style();
         for (BidiRuns.Run run : BidiRuns.visual(BidiRuns.logical(t, true))) {
             String part = run.of(t);
-            if ((run.rightToLeft() || FontFace.needsShaping(part)) && style.face().shapeable()) {
+            if ((run.rightToLeft() || ColorEmoji.needsShaping(part)) && style.face().shapeable()) {
                 x += canvas.drawGlyphs(style.face().shape(part, run.rightToLeft()), x, baseline, style);
             } else {
                 x += canvas.text(part, x, baseline, style);
@@ -181,7 +182,7 @@ final class TextPainter {
                     float w = ch.width(part[0], part[1]) + (part[1] - part[0]) * l.extraPerSpace;
                     segment(canvas, ch, part[0], part[1], x, baseline, w, l.extraPerSpace, deck);
                     x += w;
-                } else if (run.rightToLeft() || FontFace.needsShaping(t)) {
+                } else if (run.rightToLeft() || ColorEmoji.needsShaping(t)) {
                     GlyphRun g = style.face().shape(t, run.rightToLeft());
                     float w = g.width(style.size()) * (style.horizontalScale() / 100f)
                             + t.codePointCount(0, t.length()) * style.charSpacing();
@@ -259,7 +260,7 @@ final class TextPainter {
             TextStyle style, float wordSpacing) throws IOException {
         if (p.metrics() != null) {
             emulated(canvas, ch, from, to, x, y, style.wordSpacing(0), wordSpacing);
-        } else if (FontFace.needsShaping(ch.text(from, to)) && style.face().shapeable()) {
+        } else if (ColorEmoji.needsShaping(ch.text(from, to)) && style.face().shapeable()) {
             shaped(canvas, ch, from, to, x, y, style, wordSpacing);
         } else {
             canvas.text(ch.text(from, to), x, y, style);

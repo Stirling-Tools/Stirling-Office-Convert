@@ -34,6 +34,7 @@ import org.apache.fontbox.ttf.HorizontalMetricsTable;
 import org.apache.fontbox.ttf.KerningSubtable;
 import org.apache.fontbox.ttf.KerningTable;
 import org.apache.fontbox.ttf.OS2WindowsMetricsTable;
+import org.apache.fontbox.ttf.OTFParser;
 import org.apache.fontbox.ttf.PostScriptTable;
 import org.apache.fontbox.ttf.TTFParser;
 import org.apache.fontbox.ttf.TTFTable;
@@ -297,11 +298,14 @@ final class FontProgram {
         if (reused != null) {
             return reused;
         }
-        byte[] bytes = key == null ? null : poolable(entry);
+        byte[] bytes = entry.postScript() ? FontScanner.metricsOnly(entry) : key == null ? null : poolable(entry);
         byte[] data = bytes != null ? bytes : entry.data();
         TrueTypeFont ttf;
         Closeable owner;
-        if (entry.index() < 0) {
+        if (entry.postScript()) {
+            ttf = new OTFParser().parse(new RandomAccessReadBuffer(bytes));
+            owner = ttf;
+        } else if (entry.index() < 0) {
             ttf = data != null ? new TTFParser().parse(new RandomAccessReadBuffer(data))
                     : new TTFParser().parse(new RandomAccessReadBufferedFile(entry.file().toFile()));
             owner = ttf;
@@ -330,7 +334,8 @@ final class FontProgram {
             owner = ttc;
         }
         ttf.setEnableGsub(false);
-        return bytes == null ? new Opened(ttf, owner, null, 0) : new Opened(ttf, owner, key, bytes.length);
+        return bytes == null || key == null ? new Opened(ttf, owner, null, 0)
+                : new Opened(ttf, owner, key, bytes.length);
     }
 
     FontEntry entry() {
@@ -394,13 +399,18 @@ final class FontProgram {
         if (r == null) {
             r = new int[advances.length];
             for (int i = codePoints.length - 1; i >= 0; i--) {
-                if (glyphs[i] < r.length) {
-                    r[glyphs[i]] = codePoints[i];
+                int g = glyphs[i];
+                if (g < r.length && (r[g] == 0 || !compatibility(codePoints[i]) || compatibility(r[g]))) {
+                    r[g] = codePoints[i];
                 }
             }
             reverse = r;
         }
         return glyph > 0 && glyph < r.length ? r[glyph] : 0;
+    }
+
+    private static boolean compatibility(int cp) {
+        return cp >= 0x2E80 && cp <= 0x2FDF || cp >= 0xF900 && cp <= 0xFAFF || cp >= 0x2F800 && cp <= 0x2FA1F;
     }
 
     Font awtFont() {

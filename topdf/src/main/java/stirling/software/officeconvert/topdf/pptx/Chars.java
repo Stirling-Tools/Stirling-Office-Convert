@@ -4,6 +4,7 @@ import java.util.List;
 
 import stirling.software.officeconvert.topdf.font.BidiRuns;
 import stirling.software.officeconvert.topdf.font.Clusters;
+import stirling.software.officeconvert.topdf.font.ColorEmoji;
 import stirling.software.officeconvert.topdf.font.FontFace;
 import stirling.software.officeconvert.topdf.font.GlyphRun;
 import stirling.software.officeconvert.topdf.pdf.TextStyle;
@@ -86,7 +87,7 @@ final class Chars {
                 i += Character.charCount(cp);
                 k++;
             }
-            if (FontFace.needsShaping(t)) {
+            if (ColorEmoji.needsShaping(t)) {
                 shapeWords(k - t.codePointCount(0, t.length()), k, face, s);
             }
         }

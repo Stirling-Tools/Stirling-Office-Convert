@@ -13,6 +13,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 
 import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.io.MemoryUsageSetting;
@@ -30,8 +31,11 @@ import org.apache.pdfbox.pdmodel.interactive.documentnavigation.outline.PDDocume
 import org.apache.pdfbox.pdmodel.interactive.documentnavigation.outline.PDOutlineItem;
 import org.apache.pdfbox.util.DateConverter;
 
+import stirling.software.officeconvert.topdf.font.ColorEmoji;
 import stirling.software.officeconvert.topdf.font.FontLibrary;
 import stirling.software.officeconvert.topdf.font.PdfFonts;
+import stirling.software.officeconvert.topdf.io.DecodedPicture;
+import stirling.software.officeconvert.topdf.io.PictureDecoder;
 
 public final class PdfOutput implements Closeable {
 
@@ -40,6 +44,8 @@ public final class PdfOutput implements Closeable {
     public static final long MEMORY_BYTES = 64L << 20;
 
     static final long MIN_MEMORY_BYTES = 4L << 20;
+
+    private static final int MAX_EMOJI = 1_000;
 
     private record Target(int page, float x, float yTop) {}
 
@@ -62,6 +68,8 @@ public final class PdfOutput implements Closeable {
     private final Map<Long, PDExtendedGraphicsState> alphas = new HashMap<>();
 
     private final AcroForms forms = new AcroForms();
+
+    private final Map<Integer, Optional<DecodedPicture>> emoji = new HashMap<>();
 
     private DocumentInfo info = DocumentInfo.EMPTY;
 
@@ -95,6 +103,25 @@ public final class PdfOutput implements Closeable {
 
     public PdfFonts fonts() {
         return fonts;
+    }
+
+    public DecodedPicture emoji(ColorEmoji.Bitmap bitmap) {
+        Objects.requireNonNull(bitmap, "bitmap");
+        Optional<DecodedPicture> known = emoji.get(bitmap.glyph());
+        if (known == null) {
+            if (emoji.size() >= MAX_EMOJI) {
+                return null;
+            }
+            DecodedPicture made;
+            try {
+                made = PictureDecoder.decode(document, bitmap.png());
+            } catch (IOException | RuntimeException e) {
+                made = null;
+            }
+            known = Optional.ofNullable(made != null && !made.vector() ? made : null);
+            emoji.put(bitmap.glyph(), known);
+        }
+        return known.orElse(null);
     }
 
     public PdfCanvas newPage(PageSize size) throws IOException {

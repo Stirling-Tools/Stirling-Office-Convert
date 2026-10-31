@@ -10,6 +10,7 @@ import java.util.Map;
 import stirling.software.officeconvert.topdf.font.BidiRuns;
 import stirling.software.officeconvert.topdf.font.CloudFonts;
 import stirling.software.officeconvert.topdf.font.CloudMetrics;
+import stirling.software.officeconvert.topdf.font.ColorEmoji;
 import stirling.software.officeconvert.topdf.font.FontFace;
 import stirling.software.officeconvert.topdf.font.FontLibrary;
 import stirling.software.officeconvert.topdf.font.FontRun;
@@ -440,7 +441,7 @@ final class Typesetter {
     }
 
     private static boolean complex(String text) {
-        return FontFace.needsShaping(text) || BidiRuns.needed(text);
+        return ColorEmoji.needsShaping(text) || BidiRuns.needed(text);
     }
 
     private record Piece(String text, FontFace face, GlyphRun glyphs) {
@@ -464,7 +465,7 @@ final class Typesetter {
                 java.util.Collections.reverse(fr);
             }
             for (FontRun r : fr) {
-                if (FontFace.needsShaping(r.text()) || run.rightToLeft()) {
+                if (ColorEmoji.needsShaping(r.text()) || run.rightToLeft()) {
                     out.add(new Piece(r.text(), r.face(), r.face().shape(r.text(), run.rightToLeft())));
                 } else {
                     out.add(new Piece(r.text(), r.face(), null));

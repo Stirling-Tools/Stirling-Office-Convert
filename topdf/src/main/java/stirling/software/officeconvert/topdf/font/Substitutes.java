@@ -142,11 +142,11 @@ final class Substitutes {
         put(List.of("Roboto", "Open Sans", "Noto Sans", "Liberation Sans", "Arial"), "Roboto", "Segoe UI Variable");
         put(List.of("Liberation Mono", "Courier New", "DejaVu Sans Mono"), "OCR A Extended");
         put(List.of("D050000L", "Noto Sans Symbols 2", "DejaVu Sans"), "ZapfDingbats", "Zapf Dingbats",
-                "ITC Zapf Dingbats", "Dingbats");
+                "ITC Zapf Dingbats", "Dingbats", "Monotype Sorts");
         put(List.of("Cambria Math", "STIX Two Math", "Latin Modern Math", "DejaVu Math TeX Gyre", "Noto Sans Math",
                 "Cambria", "Caladea"), "Cambria Math");
         put(List.of("Symbol", "Standard Symbols PS", "Standard Symbols L", "OpenSymbol", "Symbola", "DejaVu Sans"),
-                "Symbol");
+                "Symbol", "Symbol (PCL6)", "Symbol MT");
         put(List.of("Wingdings", "OpenSymbol", "Symbola", "Noto Sans Symbols 2", "DejaVu Sans"), "Wingdings",
                 "Wingdings 2", "Wingdings 3", "Webdings");
         put(JAPANESE_SANS, "MS Gothic", "MS PGothic", "MS UI Gothic", "Yu Gothic", "Yu Gothic UI", "Meiryo",

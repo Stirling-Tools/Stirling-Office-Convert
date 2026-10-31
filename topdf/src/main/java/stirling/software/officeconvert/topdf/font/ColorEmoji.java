@@ -23,6 +23,8 @@ public final class ColorEmoji {
 
     public record Bitmap(int glyph, byte[] png, float left, float top, float width, float height) {}
 
+    public static final float OFFICE_ADVANCE = 2812f / 2048;
+
     private static final int MAX_CLUSTER_CHARS = 64;
     private static final int MAX_TABLE_BYTES = 4 << 20;
     private static final int MAX_BITMAP_BYTES = 1 << 20;
@@ -124,6 +126,24 @@ public final class ColorEmoji {
 
     private static boolean regional(int cp) {
         return cp >= 0x1F1E6 && cp <= 0x1F1FF;
+    }
+
+    public static boolean needsShaping(CharSequence text) {
+        if (!FontFace.needsShaping(text)) {
+            return false;
+        }
+        StringBuilder rest = new StringBuilder(text.length());
+        for (int i = 0; i < text.length(); ) {
+            int end = clusterEnd(text, i);
+            if (end > i) {
+                i = end;
+                continue;
+            }
+            int cp = Character.codePointAt(text, i);
+            rest.appendCodePoint(cp);
+            i += Character.charCount(cp);
+        }
+        return FontFace.needsShaping(rest);
     }
 
     public int[] glyphs(String cluster) {

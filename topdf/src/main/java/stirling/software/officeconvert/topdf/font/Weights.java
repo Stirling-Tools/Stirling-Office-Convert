@@ -74,6 +74,10 @@ final class Weights {
         return stroke(bold ? 700 : 400, f);
     }
 
+    static boolean tooLight(String family, FontFace f) {
+        return weight(f.weight()) < 300 && of(family) >= 350;
+    }
+
     private static float stroke(int wanted, FontFace f) {
         float synthetic = f.syntheticBold() ? 300 * STROKE_PER_UNIT : 0;
         float extra = stem(wanted) - stem(weight(f.weight())) - synthetic;

@@ -55,6 +55,7 @@ import org.apache.pdfbox.pdmodel.interactive.annotation.PDAppearanceStream;
 import org.apache.pdfbox.util.Matrix;
 
 import stirling.software.officeconvert.model.FormField;
+import stirling.software.officeconvert.topdf.font.ColorEmoji;
 import stirling.software.officeconvert.topdf.font.FontFace;
 import stirling.software.officeconvert.topdf.font.FontRun;
 import stirling.software.officeconvert.topdf.font.GlyphRun;
@@ -252,12 +253,25 @@ public final class PdfCanvas implements Closeable {
         FontFace cover = null;
         int start = 0;
         float at = 0;
+        ColorEmoji colour = output.fonts().colorEmoji();
         for (int i = 0; i < text.length(); ) {
             int cp = text.codePointAt(i);
             int k = kind(face, cp);
+            int emoji = k == MISSING && colour != null ? colour.run(text, i) : i;
+            if (emoji > i) {
+                if (kind >= 0 && i > start) {
+                    at += segment(ops, text.substring(start, i), kind, embedded, cover, x + at, baseline, style);
+                }
+                at += emoji(ops, text.substring(i, emoji), colour, x + at, baseline, style, face);
+                kind = SKIPPED;
+                cover = null;
+                start = emoji;
+                i = emoji;
+                continue;
+            }
             FontFace f = null;
             if (k == MISSING) {
-                f = output.fonts().fallback(cp, face);
+                f = kind == BORROWED && common(cp) && cover.covers(cp) ? cover : output.fonts().fallback(cp, face);
                 k = f == null ? MISSING : BORROWED;
             }
             if (k != SKIPPED && (k != kind || f != cover)) {
@@ -273,6 +287,11 @@ public final class PdfCanvas implements Closeable {
         at += segment(ops, text.substring(start), Math.max(kind, GLYPHS), embedded, cover, x + at, baseline, style);
         queue(ops, x, x + at, baseline, style.size(), text, false);
         return at;
+    }
+
+    private static boolean common(int cp) {
+        Character.UnicodeScript script = Character.UnicodeScript.of(cp);
+        return script == Character.UnicodeScript.COMMON || script == Character.UnicodeScript.INHERITED;
     }
 
     // Missing characters and fitted symbols draw apart from the glyphs, in text order so that text extracts in order
@@ -409,6 +428,70 @@ public final class PdfCanvas implements Closeable {
         return drawn;
     }
 
+    private float emoji(StringBuilder ops, String text, ColorEmoji colour, float x, float baseline, TextStyle style,
+            FontFace face) throws IOException {
+        float size = style.size();
+        float th = style.horizontalScale() / 100f;
+        PdfFonts.Embedded tofu = output.fonts().missing(face);
+        FontFace boxFace = tofu.face();
+        float natural = boxFace.glyphAdvance(0) * size / boxFace.unitsPerEm();
+        StringBuilder b = new StringBuilder("0 Tc\n");
+        float pen = x;
+        for (int i = 0; i < text.length(); ) {
+            int end = ColorEmoji.clusterEnd(text, i);
+            int[] glyphs = end <= i ? null : colour.glyphs(text.substring(i, end));
+            if (glyphs == null) {
+                end = i + Character.charCount(text.codePointAt(i));
+            }
+            float room = 0;
+            for (int k = i; k < end; ) {
+                int cp = text.codePointAt(k);
+                k += Character.charCount(cp);
+                if (!TextStyle.skipped(cp)) {
+                    room += face.advance(cp) * size / face.unitsPerEm() * th + style.charSpacing();
+                }
+            }
+            if (glyphs != null && !hiddenText) {
+                float wide = colour.advance(glyphs) * size * th;
+                float fit = wide > room && wide > 0 ? room / wide : 1;
+                float drawn = pen + Math.max(0, room - wide * fit) / 2;
+                for (int g : glyphs) {
+                    ColorEmoji.Bitmap bitmap = colour.bitmap(g);
+                    DecodedPicture pic = bitmap == null ? null : output.emoji(bitmap);
+                    if (pic != null) {
+                        float w = bitmap.width() * size * th * fit;
+                        float h = bitmap.height() * size * fit;
+                        float top = baseline - bitmap.top() * size * fit;
+                        ops.append("q\n");
+                        Numbers.append(ops, w).append(" 0 0 ");
+                        Numbers.append(ops, -h).append(' ');
+                        Numbers.append(ops, drawn + bitmap.left() * size * th * fit).append(' ');
+                        Numbers.append(ops, top + h).append(" cm /");
+                        ops.append(resources().add(pic.image()).getName()).append(" Do\nQ\n");
+                    }
+                    drawn += colour.advance(g) * size * th * fit;
+                }
+            }
+            if (room > 0 && natural > 0) {
+                Numbers.append(b, 100 * room / natural).append(" Tz ");
+                matrix(b, 1, 0, -1, pen, baseline).setLength(b.length() - 1);
+                b.append(" [<");
+                Numbers.hex(b, output.fonts().missingCode(tofu, text.substring(i, end)), 4).append(">] TJ\n");
+            }
+            pen += room;
+            i = end;
+        }
+        boolean was = hideText(true);
+        try {
+            begin(ops, style, 0);
+        } finally {
+            hideText(was);
+        }
+        font(ops, tofu, size);
+        ops.append(b).append("ET\nQ\n");
+        return pen - x;
+    }
+
     // Characters no font has show a missing-glyph box, as Word shows them, and still extract as their text
     private float missing(StringBuilder ops, String text, float x, float baseline, TextStyle style, FontFace face)
             throws IOException {
@@ -432,6 +515,9 @@ public final class PdfCanvas implements Closeable {
             matrix(b, 1, skew, -1, x + drawn, baseline).setLength(b.length() - 1);
             b.append(" [<");
             Numbers.hex(b, output.fonts().missingCode(tofu, cp), 4).append(">] TJ\n");
+            if (!hiddenText) {
+                output.fonts().uncovered(cp);
+            }
             drawn += box + style.charSpacing();
         }
         begin(ops, style, 0);
@@ -468,9 +554,10 @@ public final class PdfCanvas implements Closeable {
                 matrix(b, 1, skew, -1, x + advanced + Math.max(0, box - natural) / 2, baseline)
                         .setLength(b.length() - 1);
                 b.append(" [<");
-                Numbers.hex(b, output.fonts().encoded(embedded, glyph, cp), 4).append(">] TJ\n");
+                int code = drawn.symbolStandIn() ? drawn.encodedCodePoint(cp) : cp;
+                Numbers.hex(b, output.fonts().encoded(embedded, glyph, code), 4).append(">] TJ\n");
                 glyphs[n] = glyph;
-                codes[n++] = cp;
+                codes[n++] = code;
             }
             advanced += box + style.charSpacing();
         }
