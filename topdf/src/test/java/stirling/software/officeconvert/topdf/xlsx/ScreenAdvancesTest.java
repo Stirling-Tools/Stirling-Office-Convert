@@ -7,10 +7,12 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.awt.Color;
+import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 
+import org.apache.pdfbox.pdmodel.PDDocument;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.CleanupMode;
 import org.junit.jupiter.api.io.TempDir;
@@ -48,18 +50,41 @@ class ScreenAdvancesTest {
         String text = "Operational budget 2026";
         int sum = 0;
         for (char c : text.toCharArray()) {
-            sum += ScreenAdvances.calibri(false, false, c, 15);
+            sum += ScreenAdvances.advance("Calibri", false, false, c, 15);
         }
         assertEquals(sum * Typesetter.SCREEN_REGULAR, t.screenWidth(text, calibri(11, false), 15), 1e-9);
-        assertEquals(8, ScreenAdvances.calibri(false, false, 'e', 15));
-        assertEquals(7, ScreenAdvances.calibri(false, false, '0', 15));
-        assertEquals(7, ScreenAdvances.calibri(true, false, '0', 15));
-        assertEquals(4, ScreenAdvances.calibri(false, false, 'i', 12));
-        assertEquals(ScreenAdvances.calibri(false, false, ' ', 15), ScreenAdvances.calibri(false, false, 0xA0, 15));
-        assertEquals(-1, ScreenAdvances.calibri(false, false, 'e', 14));
-        assertEquals(-1, ScreenAdvances.calibri(true, false, 'e', 12));
-        assertEquals(-1, ScreenAdvances.calibri(false, false, 0x4E2D, 15));
-        assertEquals(-1, ScreenAdvances.calibri(false, false, 0xAD, 15));
+        assertEquals(8, ScreenAdvances.advance("Calibri", false, false, 'e', 15));
+        assertEquals(7, ScreenAdvances.advance("Calibri", false, false, '0', 15));
+        assertEquals(7, ScreenAdvances.advance("Calibri", true, false, '0', 15));
+        assertEquals(4, ScreenAdvances.advance("Calibri", false, false, 'i', 12));
+        assertEquals(ScreenAdvances.advance("Calibri", false, false, ' ', 15),
+                ScreenAdvances.advance("Calibri", false, false, 0xA0, 15));
+        assertEquals(-1, ScreenAdvances.advance("Calibri", false, false, 'e', 14));
+        assertEquals(-1, ScreenAdvances.advance("Calibri", true, false, 'e', 12));
+        assertEquals(-1, ScreenAdvances.advance("Calibri", false, false, 0x4E2D, 15));
+        assertEquals(-1, ScreenAdvances.advance("Calibri", false, false, 0xAD, 15));
+    }
+
+    @Test
+    void arialKeepsItsOwnScreenWidthsWhenLiberationSansStandsIn() throws Exception {
+        Path fonts = Files.createDirectories(dir.resolve("liberation"));
+        Path file = fonts.resolve("LiberationSans-Regular.ttf");
+        if (!Files.exists(file)) {
+            try (InputStream in = PDDocument.class.getResourceAsStream(
+                    "/org/apache/pdfbox/resources/ttf/LiberationSans-Regular.ttf")) {
+                Files.copy(in, file);
+            }
+        }
+        Typesetter t = new Typesetter(FontLibrary.of(List.of(fonts)));
+        FontSpec bold = new FontSpec("Arial", 12, true, false, null, false, Color.BLACK, null);
+        FontSpec regular = new FontSpec("Arial", 12, false, false, null, false, Color.BLACK, null);
+        assertEquals("Liberation Sans", t.face(bold).family());
+        assertEquals(99 * Typesetter.SCREEN_BOLD, t.screenWidth("difference in", bold, 16), 1e-9);
+        assertEquals(10, ScreenAdvances.advance("Arial", true, false, 'd', 16));
+        assertEquals(-1, ScreenAdvances.advance("Arial", true, false, 'd', 14));
+        assertEquals(-1, ScreenAdvances.advance("Arial", false, false, 'd', 16));
+        assertEquals(t.face(regular).hintedAdvance('d', 16) * Typesetter.SCREEN_REGULAR,
+                t.screenWidth("d", regular, 16), 1e-9);
     }
 
     @Test
@@ -82,7 +107,7 @@ class ScreenAdvancesTest {
         FontFace face = t.face(calibri(11, false));
         assertEquals("Calibri", face.family());
         assertFalse(ScreenAdvances.emulates("Calibri", face));
-        assertFalse(ScreenAdvances.emulates("Arial", face));
+        assertTrue(ScreenAdvances.emulates("Arial", face));
         int sum = 0;
         for (char c : "eee".toCharArray()) {
             sum += face.hintedAdvance(c, 15);

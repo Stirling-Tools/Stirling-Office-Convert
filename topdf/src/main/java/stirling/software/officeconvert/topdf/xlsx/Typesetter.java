@@ -130,6 +130,7 @@ final class Typesetter {
         double hinted = 0;
         double approx = 0;
         double missing = 0;
+        int tabled = 0;
         for (FontRun r : fonts.runs(text, primary)) {
             FontFace face = r.face();
             boolean own = face.sameProgram(primary);
@@ -142,7 +143,10 @@ final class Typesetter {
                     missing += MissingGlyphs.em(cp) * ppem;
                     continue;
                 }
-                int exact = table ? ScreenAdvances.calibri(look.bold(), look.italic(), cp, ppem) : -1;
+                int exact = table ? ScreenAdvances.advance(look.family(), look.bold(), look.italic(), cp, ppem) : -1;
+                if (exact >= 0) {
+                    tabled++;
+                }
                 if (cloudy && !skipped(cp)) {
                     exact = (int) Math.round(look.em(face, cp) * ppem);
                 }
@@ -157,7 +161,7 @@ final class Typesetter {
             }
         }
         if (look.bold() && !primary.bold()) {
-            hinted += text.length();
+            hinted += text.length() - tabled;
         }
         return hinted * screenFactor(look.bold(), ppem) + (look.bold() ? approx : approx * HINTED_REGULAR) + missing;
     }
