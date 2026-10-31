@@ -541,15 +541,14 @@ class HtmlLayoutTest {
     }
 
     @Test
-    void emailMarkupCentresQuotesWithABarAndDrawsButtonsAsBoxes() throws IOException {
+    void emailMarkupStartsCentredTableTextAtTheLeftAndDrawsQuoteBarsAndButtons() throws IOException {
         Laid l = lay("""
                 <!doctype html><html><head><style>body{margin:0}
                 .btn{display:inline-block;background:#1a73e8;color:#fff;padding:10px 18px;text-decoration:none}
                 </style></head><body><center><table width="100%"><tr><td>Centred</td></tr></table></center>
                 <blockquote style="margin:0;border-left:3px solid #ff0000;padding-left:8px">Quoted</blockquote>
                 <p><a class="btn" href="https://example.com/go">Open</a></p></body></html>""");
-        Word centred = l.word("Centred");
-        assertEquals(l.pageWidth() / 2, (centred.left() + centred.right()) / 2, 3f);
+        assertTrue(l.word("Centred").left() < l.pageWidth() / 4, l.words().toString());
         Word quoted = l.word("Quoted");
         boolean bar = false;
         for (int x = 0; x < Math.round(quoted.left()); x++) {
@@ -560,6 +559,86 @@ class HtmlLayoutTest {
         Word open = l.word("Open");
         int fill = l.first().getRGB(Math.round(open.left()) - 6, Math.round(open.top()) - 4) & 0xFFFFFF;
         assertEquals(0x1A73E8, fill, Integer.toHexString(fill));
+    }
+
+    @Test
+    void alignAttributeCentresANestedTableButNotItsText() throws IOException {
+        Laid l = lay("""
+                <!doctype html><html><head><style>body{margin:0}</style></head><body>
+                <table width="100%" cellpadding="0" cellspacing="0"><tr><td align="center">
+                <table width="200" cellpadding="0" cellspacing="0"><tr><td>Inner</td></tr></table><p>Below</p>
+                </td></tr></table></body></html>""");
+        assertEquals((l.pageWidth() - 150) / 2, l.word("Inner").left(), 4f, l.words().toString());
+        Word below = l.word("Below");
+        assertEquals(l.pageWidth() / 2, (below.left() + below.right()) / 2, 3f);
+    }
+
+    @Test
+    void rightAlignAttributeMovesNestedTablesRightButNotTheirText() throws IOException {
+        Laid l = lay("""
+                <!doctype html><html><head><style>body{margin:0}</style></head><body>
+                <div align="right"><table width="200" cellpadding="0" cellspacing="0"><tr><td>Stacked</td></tr></table>
+                <table width="200" border="1"><tr><td>Bordered</td></tr></table></div>
+                <div dir="rtl"><table width="100%" cellpadding="0" cellspacing="0" border="1"><tr><td align="left">
+                <table width="200" cellpadding="0" cellspacing="0"><tr><td>Mirrored</td></tr></table></td></tr></table></div>
+                </body></html>""");
+        Word stacked = l.word("Stacked");
+        Word mirrored = l.word("Mirrored");
+        assertTrue(stacked.left() > l.pageWidth() / 2 && mirrored.right() < l.pageWidth() / 2, l.words().toString());
+        assertEquals(l.pageWidth(), stacked.left() + mirrored.right(), 4f);
+        assertEquals(stacked.left(), l.word("Bordered").left(), 4f);
+    }
+
+    @Test
+    void aNarrowLayoutTableStillFitsItsLongestWord() throws IOException {
+        Laid l = lay("""
+                <!doctype html><html><head><style>body{margin:0}</style></head><body>
+                <table width="20" cellpadding="0" cellspacing="0"><tr><td>Hello wonderful world</td></tr></table>
+                </body></html>""");
+        assertEquals(1, l.words().stream().filter(w -> w.text().equals("wonderful")).count(), l.words().toString());
+        assertTrue(l.word("wonderful").top() > l.word("Hello").top(), l.words().toString());
+    }
+
+    @Test
+    void bodyBackgroundColourPaintsThePageInsideItsMargins() throws IOException {
+        Laid l = lay("<html><body bgcolor=\"#ffff00\"><p>Hi</p></body></html>");
+        int midX = l.first().getWidth() / 2;
+        int midY = l.first().getHeight() / 2;
+        assertEquals(0xFFFF00, l.first().getRGB(midX, midY) & 0xFFFFFF);
+        assertEquals(0xFFFFFF, l.first().getRGB(2, 2) & 0xFFFFFF);
+        assertEquals(0xFFFFFF, lay("<html><body><p>Hi</p></body></html>").first().getRGB(midX, midY) & 0xFFFFFF);
+    }
+
+    @Test
+    void linkButtonKeepsItsWidthAndLineHeight() throws IOException {
+        Laid l = lay("""
+                <!doctype html><html><body><a href="https://example.com" style="display:inline-block;width:200px;
+                line-height:40px;background:#0000ff;color:#ffffff;text-align:center;text-decoration:none">Go</a>
+                </body></html>""");
+        Word go = l.word("Go");
+        int x0 = Math.round(go.left()) - 4;
+        int top = Math.round(go.top()) - 2;
+        while (top > 0 && (l.first().getRGB(x0, top - 1) & 0xFFFFFF) == 0x0000FF) {
+            top--;
+        }
+        int bottom = top;
+        while ((l.first().getRGB(x0, bottom + 1) & 0xFFFFFF) == 0x0000FF) {
+            bottom++;
+        }
+        int blue = 0;
+        for (int x = 0; x < l.first().getWidth(); x++) {
+            blue += (l.first().getRGB(x, top + 1) & 0xFFFFFF) == 0x0000FF ? 1 : 0;
+        }
+        assertEquals(150, blue, 4);
+        assertEquals(30, bottom - top + 1, 3);
+    }
+
+    @Test
+    void ideographsAndDigitsAreNotSpacedApart() throws IOException {
+        Laid l = lay("<!doctype html><html><body><p>11\u6708 5\u65e5</p></body></html>");
+        Word month = l.word("11\u6708");
+        assertEquals(1, l.words().stream().filter(w -> w.text().equals("11\u6708")).count(), l.words().toString());
+        assertTrue(month.right() > month.left());
     }
 
     private static Word containing(Laid l, String text) {

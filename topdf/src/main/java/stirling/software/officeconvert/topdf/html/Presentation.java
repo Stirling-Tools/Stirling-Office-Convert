@@ -97,9 +97,12 @@ final class Presentation {
     private static void attributes(Element e, Map<String, String> out) {
         String align = e.attr("align").toLowerCase(Locale.ROOT);
         if (!align.isEmpty() && !"table".equals(e.normalName()) && !"img".equals(e.normalName())) {
-            // align on a block centres the tables and blocks inside it too, as <center> does
-            boolean block = !"td".equals(e.normalName()) && !"th".equals(e.normalName());
-            out.put("text-align", block && "center".equals(align) ? "-webkit-center" : align);
+            // align centres the tables and blocks inside it too, as <center> does
+            out.put("text-align", switch (align) {
+                case "center", "middle" -> "-webkit-center";
+                case "left", "right" -> "-webkit-" + align;
+                default -> align;
+            });
         }
         String dir = e.attr("dir").strip().toLowerCase(Locale.ROOT);
         if (dir.equals("rtl") || dir.equals("ltr")) {

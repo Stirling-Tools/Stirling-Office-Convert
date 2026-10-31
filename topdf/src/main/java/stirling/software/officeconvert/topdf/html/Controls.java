@@ -103,7 +103,7 @@ final class Controls {
             String label, String own, String link) {
         float em = look.size;
         boolean check = kind.equals("checkbox") || kind.equals("radio");
-        float pad = 0.2f * em;
+        float pad = own != null ? 0 : 0.2f * em;
         float padLeft = side(d, "padding-left", em, room, pad);
         float padRight = side(d, "padding-right", em, room, pad);
         float padTop = side(d, "padding-top", em, room, pad);
@@ -165,6 +165,8 @@ final class Controls {
             contentH = digits(e.attr("rows")) ? Integer.parseInt(e.attr("rows").strip()) * 1.2f * em : 3 * em;
         } else if (kind.equals("select") && e.hasAttr("multiple")) {
             contentH = 3.6f * em;
+        } else if (own != null && look.linePoints > 0) {
+            contentH = look.linePoints;
         } else {
             contentH = 1.2f * em;
         }

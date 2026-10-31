@@ -45,7 +45,7 @@ final class HtmlTables {
         }
     }
 
-    Table table(Element table, Map<String, String> d, Look look, Flow.Frame frame, boolean inCentre, int depth)
+    Table table(Element table, Map<String, String> d, Look look, Flow.Frame frame, Paragraph.Align legacy, int depth)
             throws IOException {
         Elements rows = table.select(ROWS);
         if (rows.isEmpty()) {
@@ -165,7 +165,7 @@ final class HtmlTables {
             }
         }
         outerBorders(t, d);
-        indent(t, table, d, look, frame, width, inCentre);
+        indent(t, table, d, look, frame, width, legacy);
         return t;
     }
 
@@ -690,19 +690,20 @@ final class HtmlTables {
     }
 
     private static void indent(Table t, Element table, Map<String, String> d, Look look, Flow.Frame frame, float width,
-            boolean inCentre) {
+            Paragraph.Align legacy) {
         boolean autoLeft = "auto".equalsIgnoreCase(d.getOrDefault("margin-left", "").strip());
         boolean autoRight = "auto".equalsIgnoreCase(d.getOrDefault("margin-right", "").strip());
-        boolean centred = autoLeft && autoRight || inCentre || "center".equalsIgnoreCase(table.attr("align"));
+        boolean centred = autoLeft && autoRight || legacy == Paragraph.Align.CENTER
+                || "center".equalsIgnoreCase(table.attr("align"));
         float left = Flow.length(d.get("margin-left"), look.size, frame.width());
         float right = Flow.length(d.get("margin-right"), look.size, frame.width());
         float slack = frame.width() - width;
         if (centred) {
             left = Math.max(0, slack / 2);
             right = left;
-        } else if (autoLeft || "right".equalsIgnoreCase(table.attr("align"))) {
+        } else if (autoLeft || "right".equalsIgnoreCase(table.attr("align")) || legacy == Paragraph.Align.RIGHT) {
             left = Math.max(0, slack - Math.max(0, right));
-        } else if (autoRight || "left".equalsIgnoreCase(table.attr("align"))) {
+        } else if (autoRight || "left".equalsIgnoreCase(table.attr("align")) || legacy == Paragraph.Align.LEFT) {
             right = Math.max(0, slack - Math.max(0, left));
         }
         t.indent = frame.left() + left;
