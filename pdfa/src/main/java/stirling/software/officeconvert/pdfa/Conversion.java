@@ -35,7 +35,9 @@ final class Conversion {
             doc.setAllSecurityToBeRemoved(true);
         }
         doc.getDocument().setEncryptionDictionary(null);
-        PageTreeRepair.run(doc, report);
+        if (PdfFiles.repairPageTree(doc) || PdfFiles.repairs(doc).pageTree()) {
+            report.warn("Rebuilt a page tree that was not well formed");
+        }
         int pages = doc.getNumberOfPages();
         pageLimit(pages, options);
         if (level.tagged()) {

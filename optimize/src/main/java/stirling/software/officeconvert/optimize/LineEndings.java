@@ -12,6 +12,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import stirling.software.officeconvert.extract.PdfFiles;
+import stirling.software.officeconvert.extract.Salvage;
 
 final class LineEndings {
 

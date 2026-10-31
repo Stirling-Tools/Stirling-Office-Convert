@@ -158,7 +158,8 @@ final class PageTree {
             if (!slots.isEmpty()) {
                 reattach();
             }
-            if (leaves.isEmpty() && (cut || !slots.isEmpty())) {
+            boolean noKids = !(topDict.getDictionaryObject(COSName.KIDS) instanceof COSArray);
+            if (leaves.isEmpty() && (cut || !slots.isEmpty() || noKids)) {
                 topDict = null;
                 kids.clear();
                 rewired.clear();
@@ -477,9 +478,17 @@ final class PageTree {
 
     private static boolean leaf(COSDictionary d) {
         COSName type = d.getCOSName(COSName.TYPE);
-        return COSName.PAGE.equals(type) || type == null && !d.containsKey(COSName.KIDS)
-                && (d.containsKey(COSName.CONTENTS) || d.containsKey(COSName.MEDIA_BOX)
-                        || d.containsKey(COSName.PARENT));
+        if (COSName.PAGE.equals(type)) {
+            return true;
+        }
+        if (d.containsKey(COSName.KIDS) || COSName.PAGES.equals(type)) {
+            return false;
+        }
+        if (type == null) {
+            return d.containsKey(COSName.CONTENTS) || d.containsKey(COSName.MEDIA_BOX) || d.containsKey(COSName.PARENT);
+        }
+        COSBase contents = d.getDictionaryObject(COSName.CONTENTS);
+        return d.containsKey(COSName.MEDIA_BOX) || contents instanceof COSStream || contents instanceof COSArray;
     }
 
     private COSDictionary dict(int id) throws IOException {
