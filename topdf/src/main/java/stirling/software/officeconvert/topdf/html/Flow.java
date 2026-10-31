@@ -1,7 +1,6 @@
 package stirling.software.officeconvert.topdf.html;
 
 import java.io.IOException;
-import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.IdentityHashMap;
@@ -670,7 +669,7 @@ final class Flow {
         left += narrow[0];
         right += narrow[1];
         int fill = fill(d, look);
-        boolean paddedCell = e == stackedCell && BoxCss.hasPadding(d) && holdsContent(e);
+        boolean paddedCell = e == stackedCell && BoxCss.hasPadding(d) && StackedTables.holdsContent(e);
         if (paddedCell && fill < 0) {
             fill = frame.shading();
         }
@@ -1043,12 +1042,6 @@ final class Flow {
             return legacy == Paragraph.Align.RIGHT ? new float[] {extra, 0} : new float[] {0, extra};
         }
         return autoLeft || look.rightToLeft && !autoRight ? new float[] {extra, 0} : new float[] {0, extra};
-    }
-
-    private static boolean holdsContent(Element cell) {
-        return !Layout.text(cell, STACK_TEXT).replaceAll("[ \t\n\r\f]", "").isEmpty() || cell.selectFirst(
-                "img, svg, picture, video, canvas, iframe, object, embed, input, button, select, textarea, hr")
-                != null;
     }
 
     private boolean widerInside(Layout.Plan plan, Look look, float room) {
@@ -1831,9 +1824,9 @@ final class Flow {
             float room = frame.width();
             float margins = Math.max(0, BoxCss.length(d.get("margin-left"), look.size, room))
                     + Math.max(0, BoxCss.length(d.get("margin-right"), look.size, room));
-            float width = stackWidth(e, d, look, room);
+            float width = StackedTables.stackWidth(e, d, look, room);
             float slack = room - (margins < room ? Math.min(width, room - margins) : width);
-            float left = stackIndent(e, d, look, legacy, room, slack);
+            float left = StackedTables.stackIndent(e, d, look, legacy, room, slack);
             Frame inside = frame.inner(left, slack - left, fill == null ? -1 : fill);
             for (Element tr : e.select(HtmlTables.ROWS)) {
                 for (Element cell : tr.select("> td, > th")) {
@@ -1863,48 +1856,6 @@ final class Flow {
         breakBefore(t, newPage, frame);
         ctx.count();
         emit(t);
-    }
-
-    private static float stackWidth(Element table, Map<String, String> d, Look look, float room) {
-        float width = room;
-        for (String key : new String[] {"width", "max-width"}) {
-            Float pt = d.get(key) == null || d.get(key).strip().equalsIgnoreCase("auto") ? null
-                    : Css.length(d.get(key), look.size, room);
-            if (pt != null && pt > 0) {
-                width = Math.min(width, pt);
-            }
-        }
-        return width < room ? Math.min(room, Math.max(width, longestWord(table, look))) : width;
-    }
-
-    private static final int STACK_TEXT = 2_000;
-
-    private static float longestWord(Element table, Look look) {
-        float most = 0;
-        int seen = 0;
-        ArrayDeque<Node> open = new ArrayDeque<>();
-        open.push(table);
-        while (!open.isEmpty() && seen < STACK_TEXT) {
-            Node n = open.pop();
-            seen++;
-            if (n instanceof TextNode t) {
-                String text = t.text();
-                seen += text.length();
-                for (String word : text.split("\\s+")) {
-                    most = Math.max(most, Glyphs.word(word, look.size, look.bold, look.font));
-                }
-            } else {
-                for (int i = Math.min(n.childNodeSize(), STACK_TEXT) - 1; i >= 0; i--) {
-                    open.push(n.childNode(i));
-                }
-            }
-        }
-        return most;
-    }
-
-    private static float stackIndent(Element table, Map<String, String> d, Look look, Paragraph.Align legacy,
-            float room, float slack) {
-        return slack <= 0 ? 0 : Math.max(0, Math.min(slack, HtmlTables.offset(table, d, look, legacy, room, slack)));
     }
 
     // A table nested past the limit: each row becomes a line, its cells side by side with their own formatting
