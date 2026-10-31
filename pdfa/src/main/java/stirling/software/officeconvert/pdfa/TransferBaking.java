@@ -141,6 +141,10 @@ final class TransferBaking {
 
     private final Map<COSStream, Boolean> containsTransfer = new IdentityHashMap<>();
 
+    private final Map<COSDictionary, Map<COSName, Boolean>> uses = new IdentityHashMap<>();
+
+    private final Map<COSDictionary, Boolean> fresh = new IdentityHashMap<>();
+
     private boolean lost;
 
     private TransferBaking(PDDocument doc) {
@@ -176,9 +180,32 @@ final class TransferBaking {
                 ContentTokens.replace(n, out);
             }
         }
+        b.dropReplaced(graph);
         report.warn("Applied transfer functions, which PDF/A does not allow, to the colours they change");
         if (b.lost) {
             report.warn("Some transfer functions could not be applied to the content they change");
+        }
+    }
+
+    private void dropReplaced(ContentGraph graph) {
+        Map<COSDictionary, Boolean> shared = new IdentityHashMap<>();
+        for (ContentGraph.Node n : graph.nodes()) {
+            if (n.resources() != null && n.kind() != ContentGraph.Kind.PAGE
+                    && n.kind() != ContentGraph.Kind.APPEARANCE) {
+                shared.put(n.resources(), Boolean.TRUE);
+            }
+        }
+        for (Map.Entry<COSDictionary, Map<COSName, Boolean>> e : uses.entrySet()) {
+            COSDictionary res = e.getKey();
+            if (shared.containsKey(res) && !fresh.containsKey(res)) {
+                continue;
+            }
+            COSDictionary xobjects = ContentGraph.dict(res.getDictionaryObject(COSName.XOBJECT));
+            for (Map.Entry<COSName, Boolean> use : e.getValue().entrySet()) {
+                if (xobjects != null && !use.getValue()) {
+                    xobjects.removeItem(use.getKey());
+                }
+            }
         }
     }
 
@@ -410,6 +437,10 @@ final class TransferBaking {
                 case "Do" -> {
                     if (operands.size() == 1 && operands.get(0) instanceof COSName xn) {
                         COSName replacement = xobject(xn, t, resources, depth);
+                        if (resources != null) {
+                            uses.computeIfAbsent(resources, k -> new HashMap<>()).merge(xn, replacement == null,
+                                    Boolean::logicalOr);
+                        }
                         if (replacement != null) {
                             out.add(replacement);
                             out.add(op);
@@ -578,6 +609,7 @@ final class TransferBaking {
             COSDictionary res = ContentGraph.dict(copy.getDictionaryObject(COSName.RESOURCES));
             if (res != null) {
                 res = copyDict(res);
+                fresh.put(res, Boolean.TRUE);
                 copy.setItem(COSName.RESOURCES, res);
             }
             List<Object> out = content(List.of(s), res, t, depth + 1, false);
@@ -638,6 +670,8 @@ final class TransferBaking {
                 COSDictionary res = ContentGraph.dict(copy.getDictionaryObject(COSName.RESOURCES));
                 if (res != null) {
                     res = copyDict(res);
+                    fresh.put(res, Boolean.TRUE);
+                fresh.put(res, Boolean.TRUE);
                     copy.setItem(COSName.RESOURCES, res);
                 }
                 List<Object> out = content(List.of(ps), res, t, depth + 1, true);

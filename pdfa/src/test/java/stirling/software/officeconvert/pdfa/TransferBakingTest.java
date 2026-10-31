@@ -146,6 +146,33 @@ class TransferBakingTest {
     }
 
     @Test
+    void anImageDrawnOnlyUnderATransferIsNotKeptTwice() throws Exception {
+        COSStream img = new COSStream();
+        try (OutputStream o = img.createOutputStream()) {
+            o.write(new byte[] {(byte) 255, 0, 0});
+        }
+        img.setItem(COSName.TYPE, COSName.XOBJECT);
+        img.setItem(COSName.SUBTYPE, COSName.IMAGE);
+        img.setInt(COSName.WIDTH, 1);
+        img.setInt(COSName.HEIGHT, 1);
+        img.setInt(COSName.BITS_PER_COMPONENT, 8);
+        img.setItem(COSName.COLORSPACE, COSName.DEVICERGB);
+        COSDictionary res = resources("ExtGState", "GT", invert());
+        COSDictionary xo = new COSDictionary();
+        xo.setItem(COSName.getPDFName("Im"), img);
+        res.setItem(COSName.XOBJECT, xo);
+        Path in = page("q /GT gs 100 0 0 100 0 0 cm /Im Do Q", res);
+        Path out = dir.resolve("image-once.pdf");
+        PdfToPdfA.convert(in, out, PdfToPdfA.Options.defaults().level(PdfALevel.A2B));
+        assertColour(0x00FFFF, rgb(out, 50, 50));
+        try (PDDocument d = Loader.loadPDF(out.toFile())) {
+            COSDictionary x = (COSDictionary) d.getPage(0).getResources().getCOSObject()
+                    .getDictionaryObject(COSName.XOBJECT);
+            assertEquals(1, x.size());
+        }
+    }
+
+    @Test
     void aFormDrawnUnderATransferIsCopiedAndKeptAsItIsElsewhere() throws Exception {
         COSStream form = new COSStream();
         try (OutputStream o = form.createOutputStream()) {
