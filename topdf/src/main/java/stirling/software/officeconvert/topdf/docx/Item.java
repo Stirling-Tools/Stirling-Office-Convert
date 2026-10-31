@@ -45,6 +45,8 @@ final class Item {
 
     ColorEmoji emoji;
 
+    float emojiAdvance;
+
     int level = -1;
 
     int start;
@@ -75,6 +77,7 @@ final class Item {
         p.rtl = rtl;
         p.shaped = shaped;
         p.emoji = emoji;
+        p.emojiAdvance = emojiAdvance;
         p.level = level;
         p.start = start + from;
         p.note = from == 0 ? note : null;
@@ -109,7 +112,7 @@ final class Item {
 
     private float measure(String s) {
         if (emoji != null) {
-            return emoji.advance(s) * look.size() * look.style().horizontalScale() / 100f
+            return emoji.advance(s, emojiAdvance) * look.size() * look.style().horizontalScale() / 100f
                     + look.style().charSpacing() * s.codePointCount(0, s.length());
         }
         if (shaped) {

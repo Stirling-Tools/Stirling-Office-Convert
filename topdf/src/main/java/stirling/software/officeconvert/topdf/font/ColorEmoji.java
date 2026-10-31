@@ -25,6 +25,7 @@ public final class ColorEmoji {
     private static final int MAX_TABLE_BYTES = 4 << 20;
     private static final int MAX_BITMAP_BYTES = 1 << 20;
     private static final int MAX_STRIKE_GLYPHS = 65_536;
+    private static final long MAX_STRIKE_WORK = 4L * MAX_STRIKE_GLYPHS;
     private static final int CACHED = 512;
     private static final int[] NONE = {};
     private static final FontRenderContext FRC = new FontRenderContext(null, false, true);
@@ -190,7 +191,7 @@ public final class ColorEmoji {
         return end;
     }
 
-    public float advance(String text) {
+    public float advance(String text, float each) {
         float total = 0;
         for (int i = 0; i < text.length(); ) {
             int end = clusterEnd(text, i);
@@ -198,7 +199,7 @@ public final class ColorEmoji {
             if (g == null) {
                 end = i + Character.charCount(text.codePointAt(i));
             } else {
-                total += advance(g);
+                total += each > 0 ? each * g.length : advance(g);
             }
             i = end;
         }
@@ -359,6 +360,7 @@ public final class ColorEmoji {
         }
         int array = cblc.getInt(best);
         int tables = Math.min(cblc.getInt(best + 8), 4096);
+        long work = 0;
         for (int t = 0; t < tables; t++) {
             int entry = array + 8 * t;
             if (array < 0 || entry + 8 > cblc.capacity()) {
@@ -373,8 +375,8 @@ public final class ColorEmoji {
             int indexFormat = cblc.getShort(sub) & 0xFFFF;
             int imageFormat = cblc.getShort(sub + 2) & 0xFFFF;
             long data = cbdt + (cblc.getInt(sub + 4) & 0xFFFFFFFFL);
-            index(cblc, sub + 8, indexFormat, imageFormat, data, cbdt + cbdtLength, first, last, out);
-            if (out.size() > MAX_STRIKE_GLYPHS) {
+            work += index(cblc, sub + 8, indexFormat, imageFormat, data, cbdt + cbdtLength, first, last, out);
+            if (out.size() > MAX_STRIKE_GLYPHS || work > MAX_STRIKE_WORK) {
                 out.clear();
                 return 0;
             }
@@ -382,38 +384,40 @@ public final class ColorEmoji {
         return ppem;
     }
 
-    private static void index(ByteBuffer cblc, int at, int indexFormat, int imageFormat, long data, long end,
+    private static long index(ByteBuffer cblc, int at, int indexFormat, int imageFormat, long data, long end,
             int first, int last, Map<Integer, Location> out) {
         int n = last - first + 1;
         switch (indexFormat) {
             case 1, 3 -> {
                 int step = indexFormat == 1 ? 4 : 2;
                 if (at + step * (n + 1) > cblc.capacity()) {
-                    return;
+                    return 0;
                 }
                 for (int i = 0; i < n; i++) {
                     long from = offset(cblc, at + step * i, step);
                     long to = offset(cblc, at + step * (i + 1), step);
                     put(out, first + i, data + from, to - from, imageFormat, null, end);
                 }
+                return n;
             }
             case 2 -> {
                 if (at + 12 > cblc.capacity()) {
-                    return;
+                    return 0;
                 }
                 long size = cblc.getInt(at) & 0xFFFFFFFFL;
                 byte[] big = big(cblc, at + 4);
                 for (int i = 0; i < n; i++) {
                     put(out, first + i, data + size * i, size, imageFormat, big, end);
                 }
+                return n;
             }
             case 4 -> {
                 if (at + 4 > cblc.capacity()) {
-                    return;
+                    return 0;
                 }
                 int pairs = cblc.getInt(at);
                 if (pairs < 0 || at + 4 + 4L * (pairs + 1) > cblc.capacity()) {
-                    return;
+                    return 0;
                 }
                 for (int i = 0; i < pairs; i++) {
                     int rec = at + 4 + 4 * i;
@@ -422,22 +426,25 @@ public final class ColorEmoji {
                     long to = cblc.getShort(rec + 6) & 0xFFFF;
                     put(out, glyph, data + from, to - from, imageFormat, null, end);
                 }
+                return pairs;
             }
             case 5 -> {
                 if (at + 16 > cblc.capacity()) {
-                    return;
+                    return 0;
                 }
                 long size = cblc.getInt(at) & 0xFFFFFFFFL;
                 byte[] big = big(cblc, at + 4);
                 int count = cblc.getInt(at + 12);
                 if (count < 0 || at + 16 + 2L * count > cblc.capacity()) {
-                    return;
+                    return 0;
                 }
                 for (int i = 0; i < count; i++) {
                     put(out, cblc.getShort(at + 16 + 2 * i) & 0xFFFF, data + size * i, size, imageFormat, big, end);
                 }
+                return count;
             }
             default -> {
+                return 0;
             }
         }
     }

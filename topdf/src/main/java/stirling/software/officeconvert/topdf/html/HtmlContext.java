@@ -36,6 +36,7 @@ final class HtmlContext {
     private float insetLeft;
     private float insetRight;
     private int canvas = -1;
+    private int shadowShapes;
     private Generated.Result generated = Generated.Result.NONE;
     private final Map<String, String> aliases = new HashMap<>();
     // the most items of any row of columns in an element or inside it, 0 when none
@@ -45,6 +46,8 @@ final class HtmlContext {
     private static final int MAX_VISITS = 400_000;
 
     private static final int MAX_ALIAS_DEPTH = 64;
+
+    static final int MAX_SHADOW_SHAPES = 4_000;
 
     private int visits;
     private final java.util.Set<Element> placed = java.util.Collections.newSetFromMap(new IdentityHashMap<>());
@@ -335,6 +338,14 @@ final class HtmlContext {
 
     int canvas() {
         return canvas;
+    }
+
+    boolean shadowsLeft() {
+        return shadowShapes < MAX_SHADOW_SHAPES;
+    }
+
+    void drewShadows(int shapes) {
+        shadowShapes += shapes;
     }
 
     float insetLeft() {

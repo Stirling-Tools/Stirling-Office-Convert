@@ -399,7 +399,7 @@ public final class HtmlDocument {
     private static Section page(Map<String, String> d, float plain) {
         Section s = JsonModel.defaultPage();
         String size = d.get("size");
-        float fallback = d.containsKey(BOOK_PAGE) && size == null ? BOOK_MARGIN : plain;
+        float fallback = !d.containsKey(BOOK_PAGE) ? plain : size == null ? BOOK_MARGIN : COVER_MARGIN;
         s.marginTop = fallback;
         s.marginBottom = fallback;
         s.marginLeft = fallback;

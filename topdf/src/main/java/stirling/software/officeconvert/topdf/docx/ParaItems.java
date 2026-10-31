@@ -11,8 +11,13 @@ import stirling.software.officeconvert.topdf.font.CloudFonts;
 import stirling.software.officeconvert.topdf.font.ColorEmoji;
 import stirling.software.officeconvert.topdf.font.FontFace;
 import stirling.software.officeconvert.topdf.font.FontLibrary;
+import stirling.software.officeconvert.topdf.html.HtmlDocument;
 
 final class ParaItems {
+
+    private static final float[] WORD_EMOJI_LINE = {2210f / 2048, 514f / 2048};
+
+    private static final float WORD_EMOJI_ADVANCE = 2812f / 2048;
 
     final Para para;
 
@@ -412,6 +417,10 @@ final class ParaItems {
             it.text = piece.substring(i, j);
             it.emoji = emoji > i ? colour : null;
             it.look = f == face ? look(rp, f, link, nominal) : fallbackLook(rp, f, face, link, nominal, cp);
+            if (it.emoji != null) {
+                it.look = it.look.withLineOf(emojiLine(rp, face, link, nominal, colour));
+                it.emojiAdvance = web() ? 0 : WORD_EMOJI_ADVANCE;
+            }
             if (full > nominal) {
                 // Small capitals keep the line height of the full size
                 it.look = it.look.scaledMetrics(full / nominal);
@@ -446,6 +455,15 @@ final class ParaItems {
     private FontFace primaryFace(RunProps rp, String sample) {
         int cp = sample.isEmpty() ? 'x' : sample.codePointAt(0);
         return face(rp, Fonts.slot(cp, rp));
+    }
+
+    private Look emojiLine(RunProps rp, FontFace face, Inline.Link link, float nominal, ColorEmoji colour) {
+        float[] vertical = web() ? new float[] {colour.ascent(), colour.descent()} : WORD_EMOJI_LINE.clone();
+        return Look.of(face, rp, nominal, link, null, new CloudFonts.Emulation(face, 100, vertical, null, null));
+    }
+
+    private boolean web() {
+        return ctx.job.memo(HtmlDocument.class) != null;
     }
 
     private Look look(RunProps rp, FontFace face, Inline.Link link, float nominal) {

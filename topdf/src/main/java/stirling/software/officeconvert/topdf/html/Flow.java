@@ -1270,7 +1270,8 @@ final class Flow {
     private boolean decorate(Table.Cell cell, Map<String, String> d, Look look, float x, float width, float height,
             int backdrop) throws IOException {
         float corner = corner(d, look, width, height);
-        List<BoxPaint.Shadow> shadows = BoxPaint.shadows(d.get("box-shadow"), look.size, look.color);
+        List<BoxPaint.Shadow> shadows = ctx.shadowsLeft() ? BoxPaint.shadows(d.get("box-shadow"), look.size, look.color)
+                : List.of();
         Gradient gradient = Gradient.parse(d.get("background-gradient"));
         if (corner <= 0 && shadows.isEmpty() && gradient == null || cell.empty() || !(height >= 1)
                 || height > ctx.pageRoom() * BoxPaint.MAX_PAGE_SHARE) {
@@ -1294,6 +1295,7 @@ final class Flow {
             return false;
         }
         List<Inline> drawn = new ArrayList<>(BoxPaint.shadows(shadows, x, 0, width, height, corner, ground));
+        ctx.drewShadows(drawn.size());
         if (pic != null) {
             pic.wrap = Picture.Wrap.NONE;
             pic.behind = true;
@@ -1711,15 +1713,10 @@ final class Flow {
 
     private void decorate(Table.Row row, Table t, Map<Table.Cell, Element> placed, Set<Table.Cell> painted, Look look,
             Frame frame) throws IOException {
-        float tallest = row.height;
-        for (int c = 0; c < row.cells.size() && c < t.columnWidths.size(); c++) {
-            Table.Cell cell = row.cells.get(c);
-            float w = t.columnWidths.get(c) - t.cellMarginLeft - t.cellMarginRight;
-            tallest = Math.max(tallest, Measure.height(cell.blocks(), w) + spaceAfter(cell.blocks())
-                    + cell.top.width() + cell.bottom.width());
-        }
-        boolean any = false;
-        for (int c = 0; c < row.cells.size() && c < t.columnWidths.size(); c++) {
+        int columns = Math.min(row.cells.size(), t.columnWidths.size());
+        List<Map<String, String>> styles = new ArrayList<>(Collections.nCopies(columns, null));
+        boolean wanted = false;
+        for (int c = 0; c < columns; c++) {
             Table.Cell cell = row.cells.get(c);
             Element item = placed.get(cell);
             if (item == null || painted.contains(cell)) {
@@ -1727,8 +1724,27 @@ final class Flow {
             }
             Map<String, String> d = ctx.declared(item, look);
             Map<String, String> box = framedChild(item, d, look);
-            if (box != null) {
-                d = box;
+            d = box != null ? box : d;
+            styles.set(c, d);
+            wanted |= d.containsKey("border-radius") || d.containsKey("box-shadow")
+                    || d.containsKey("background-gradient");
+        }
+        if (!wanted) {
+            return;
+        }
+        float tallest = row.height;
+        for (int c = 0; c < columns; c++) {
+            Table.Cell cell = row.cells.get(c);
+            float w = t.columnWidths.get(c) - t.cellMarginLeft - t.cellMarginRight;
+            tallest = Math.max(tallest, Measure.height(cell.blocks(), w) + spaceAfter(cell.blocks())
+                    + cell.top.width() + cell.bottom.width());
+        }
+        boolean any = false;
+        for (int c = 0; c < columns; c++) {
+            Table.Cell cell = row.cells.get(c);
+            Map<String, String> d = styles.get(c);
+            if (d == null) {
+                continue;
             }
             boolean shadowEdge = cell.top.equals(new Table.Border(0.5f, SHADOW_EDGE)) && cell.top.equals(cell.bottom)
                     && cell.top.equals(cell.left) && cell.top.equals(cell.right);
