@@ -107,7 +107,8 @@ public final class PageAnalyzer {
         boolean tinted = tinted(page, gfx);
         Veils.Split veiled = Veils.split(gfx.marks(), gfx);
         List<PageGraphics.VectorMark> art = veiled.art();
-        List<TextBoxFinder.Container> containers = TextBoxFinder.containers(unused(art, usedMarks), segments, tinted);
+        List<TextBoxFinder.Container> containers =
+                TextBoxFinder.containers(outsideNotes(unused(art, usedMarks), page.widgets()), segments, tinted);
         for (TextBoxFinder.Container c : containers) {
             usedMarks.add(c.mark());
         }
@@ -305,11 +306,31 @@ public final class PageAnalyzer {
         List<Box> out = new ArrayList<>();
         for (PageData.Widget w : widgets) {
             Box field = new Box(w.x(), w.top(), w.right(), w.bottom());
-            if (w.choice() && field.area() > 0 && Float.isFinite(field.area()) && !Regions.overlapsMostly(field, tableBoxes)) {
+            if ((w.choice() || w.note()) && field.area() > 0 && Float.isFinite(field.area()) && !Regions.overlapsMostly(field, tableBoxes)) {
                 out.add(field);
                 if (out.size() > MAX_CHOICE_FIELDS) {
                     return List.of();
                 }
+            }
+        }
+        return out;
+    }
+
+    private static List<PageGraphics.VectorMark> outsideNotes(List<PageGraphics.VectorMark> marks,
+            List<PageData.Widget> widgets) {
+        List<Box> notes = new ArrayList<>();
+        for (PageData.Widget w : widgets) {
+            if (w.note()) {
+                notes.add(new Box(w.x(), w.top(), w.right(), w.bottom()));
+            }
+        }
+        if (notes.isEmpty()) {
+            return marks;
+        }
+        List<PageGraphics.VectorMark> out = new ArrayList<>();
+        for (PageGraphics.VectorMark m : marks) {
+            if (!Regions.insideAny(new Box(m.x(), m.top(), m.right(), m.bottom()), notes, FIELD_FRAME)) {
+                out.add(m);
             }
         }
         return out;

@@ -4,6 +4,7 @@ import java.awt.geom.AffineTransform;
 import java.awt.geom.Point2D;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -24,6 +25,8 @@ import org.apache.pdfbox.pdmodel.interactive.action.PDActionGoTo;
 import org.apache.pdfbox.pdmodel.interactive.action.PDActionURI;
 import org.apache.pdfbox.pdmodel.interactive.annotation.PDAnnotation;
 import org.apache.pdfbox.pdmodel.interactive.annotation.PDAnnotationLink;
+import org.apache.pdfbox.pdmodel.interactive.annotation.PDAnnotationPopup;
+import org.apache.pdfbox.pdmodel.interactive.annotation.PDAppearanceDictionary;
 import org.apache.pdfbox.pdmodel.interactive.annotation.PDAnnotationWidget;
 import org.apache.pdfbox.pdmodel.interactive.documentnavigation.destination.PDDestination;
 import org.apache.pdfbox.pdmodel.interactive.documentnavigation.destination.PDNamedDestination;
@@ -43,10 +46,12 @@ public final class PageReader {
     private final FontResolver fonts = new FontResolver();
     private final ParsedStreams parsed = new ParsedStreams();
     private final PageIndex pages;
+    private final OptionalContent layers;
 
     public PageReader(PDDocument document) {
         this.document = document;
         this.pages = new PageIndex(document);
+        this.layers = OptionalContent.of(document);
         document.setResourceCache(new KeptResources());
         TextMaps.seed(document);
     }
@@ -67,10 +72,10 @@ public final class PageReader {
                 last,
                 fonts,
                 withGraphics ? parsed : null,
-                (index, page, raw) -> consumer.accept(build(index, page, raw, withGraphics)));
+                (index, page, raw, annotationSeq) -> consumer.accept(build(index, page, raw, annotationSeq, withGraphics)));
     }
 
-    private PageData build(int index, PDPage page, List<RawGlyph> raw, boolean withGraphics)
+    private PageData build(int index, PDPage page, List<RawGlyph> raw, int annotationSeq, boolean withGraphics)
             throws IOException {
         int direction = raw.isEmpty() ? Math.floorMod(page.getRotation(), 360) / 90 * 90 : dominantDirection(raw);
         PDRectangle crop = page.getCropBox();
@@ -117,11 +122,12 @@ public final class PageReader {
         glyphs = dedupe(ShadowText.drop(Clusters.join(glyphs)));
         PageGraphics graphics =
                 withGraphics
-                        ? GraphicsCollector.read(page, toDisplay, width, height, parsed)
+                        ? GraphicsCollector.read(page, toDisplay, width, height, parsed, layers)
                         : new PageGraphics(List.of(), List.of(), List.of(), List.of());
         List<PageData.Link> links = withGraphics ? links(page, toDisplay, width, height) : List.of();
         return new PageData(
-                index, width, height, direction, glyphs, hidden, rotated, graphics, links, withGraphics ? widgets(page, toDisplay) : List.of());
+                index, width, height, direction, glyphs, hidden, rotated, graphics, links,
+                withGraphics && Annotations.any(page) ? widgets(page, toDisplay, content(glyphs, annotationSeq)) : List.of());
     }
 
     public PageData unreadable(int index) {
@@ -145,7 +151,7 @@ public final class PageReader {
         PDPage page = document.getPage(glyphsOnly.index());
         AffineTransform toDisplay = displayTransform(page.getCropBox(), glyphsOnly.direction());
         PageGraphics graphics =
-                GraphicsCollector.read(page, toDisplay, glyphsOnly.width(), glyphsOnly.height(), parsed);
+                GraphicsCollector.read(page, toDisplay, glyphsOnly.width(), glyphsOnly.height(), parsed, layers);
         return new PageData(
                 glyphsOnly.index(),
                 glyphsOnly.width(),
@@ -156,7 +162,7 @@ public final class PageReader {
                 glyphsOnly.rotated(),
                 graphics,
                 links(page, toDisplay, glyphsOnly.width(), glyphsOnly.height()),
-                widgets(page, toDisplay));
+                widgets(page, toDisplay, content(glyphsOnly.glyphs(), Integer.MAX_VALUE)));
     }
 
     private static Glyph relocate(Glyph g, RawGlyph r, AffineTransform toDisplay, PDRectangle crop, int direction) {
@@ -349,12 +355,32 @@ public final class PageReader {
         }
     }
 
-    private static List<PageData.Widget> widgets(PDPage page, AffineTransform toDisplay) {
+    private static float[][] content(List<Glyph> glyphs, int annotationSeq) {
+        List<float[]> out = new ArrayList<>();
+        for (Glyph g : glyphs) {
+            if (g.seq < annotationSeq) {
+                out.add(new float[] {g.baseline - g.size * 0.3f, g.x + g.width / 2});
+            }
+        }
+        float[][] centres = out.toArray(new float[0][]);
+        Arrays.sort(centres, (a, b) -> Float.compare(a[0], b[0]));
+        return centres;
+    }
+
+    private List<PageData.Widget> widgets(PDPage page, AffineTransform toDisplay, float[][] content) {
         List<PageData.Widget> out = new ArrayList<>();
         try {
             for (PDAnnotation a : page.getAnnotations()) {
-                if (a instanceof PDAnnotationWidget && !a.isHidden() && !a.isNoView()) {
-                    out.add(widget(a, toDisplay));
+                if (a.isHidden() || a.isNoView() || layers.hidden(a.getCOSObject().getDictionaryObject(COSName.OC))) {
+                    continue;
+                }
+                if (a instanceof PDAnnotationWidget) {
+                    out.add(widget(a, toDisplay, false));
+                } else if (!(a instanceof PDAnnotationLink) && !(a instanceof PDAnnotationPopup) && drawn(a)) {
+                    PageData.Widget note = widget(a, toDisplay, true);
+                    if (!overText(note, content)) {
+                        out.add(note);
+                    }
                 }
             }
         } catch (IOException | RuntimeException e) {
@@ -363,17 +389,41 @@ public final class PageReader {
         return out;
     }
 
-    private static PageData.Widget widget(PDAnnotation a, AffineTransform toDisplay) {
+    private static boolean overText(PageData.Widget note, float[][] content) {
+        int lo = 0;
+        int hi = content.length;
+        while (lo < hi) {
+            int mid = (lo + hi) >>> 1;
+            if (content[mid][0] < note.top()) {
+                lo = mid + 1;
+            } else {
+                hi = mid;
+            }
+        }
+        for (int i = lo; i < content.length && content[i][0] <= note.bottom(); i++) {
+            if (content[i][1] >= note.x() && content[i][1] <= note.right()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean drawn(PDAnnotation a) {
+        PDAppearanceDictionary ap = a.getAppearance();
+        return ap != null && ap.getNormalAppearance() != null;
+    }
+
+    private static PageData.Widget widget(PDAnnotation a, AffineTransform toDisplay, boolean note) {
         PDRectangle r = a.getRectangle();
         if (r == null) {
-            return new PageData.Widget(0, 0, 0, 0, false);
+            return new PageData.Widget(0, 0, 0, 0, false, note);
         }
         Point2D.Float p0 = new Point2D.Float();
         Point2D.Float p1 = new Point2D.Float();
         toDisplay.transform(new Point2D.Double(r.getLowerLeftX(), r.getLowerLeftY()), p0);
         toDisplay.transform(new Point2D.Double(r.getUpperRightX(), r.getUpperRightY()), p1);
         return new PageData.Widget(Math.min(p0.x, p1.x), Math.min(p0.y, p1.y), Math.max(p0.x, p1.x),
-                Math.max(p0.y, p1.y), COSName.CH.equals(fieldType(a.getCOSObject())));
+                Math.max(p0.y, p1.y), !note && COSName.CH.equals(fieldType(a.getCOSObject())), note);
     }
 
     private static COSName fieldType(COSDictionary field) {

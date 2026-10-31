@@ -127,10 +127,15 @@ final class GraphicsCollector extends PDFGraphicsStreamEngine {
 
     static PageGraphics read(PDPage page, AffineTransform toDisplay, float width, float height, ParsedStreams parsed)
             throws IOException {
+        return read(page, toDisplay, width, height, parsed, OptionalContent.of(null));
+    }
+
+    static PageGraphics read(PDPage page, AffineTransform toDisplay, float width, float height, ParsedStreams parsed,
+            OptionalContent layers) throws IOException {
         GraphicsCollector c = new GraphicsCollector(page, toDisplay, width, height, parsed);
         try {
             c.processPage(page);
-            Annotations.show(c, page);
+            Annotations.show(c, page, layers);
         } catch (IOException e) {
             BrokenOperators.brokenStream(e);
         }
