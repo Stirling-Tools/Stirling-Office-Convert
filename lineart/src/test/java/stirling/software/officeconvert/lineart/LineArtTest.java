@@ -9,11 +9,14 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.awt.Color;
+import java.awt.Font;
+import java.awt.Graphics2D;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 
 import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.cos.COSArray;
@@ -29,6 +32,8 @@ import org.apache.pdfbox.pdmodel.PDPageContentStream;
 import org.apache.pdfbox.pdmodel.PDResources;
 import org.apache.pdfbox.pdmodel.common.PDRectangle;
 import org.apache.pdfbox.pdmodel.common.PDStream;
+import org.apache.pdfbox.pdmodel.encryption.AccessPermission;
+import org.apache.pdfbox.pdmodel.encryption.StandardProtectionPolicy;
 import org.apache.pdfbox.pdmodel.graphics.PDXObject;
 import org.apache.pdfbox.pdmodel.graphics.form.PDFormXObject;
 import org.apache.pdfbox.pdmodel.graphics.image.LosslessFactory;
@@ -376,6 +381,121 @@ class LineArtTest {
             assertFalse(doc.isEncrypted());
             assertEquals(1, Pictures.firstImage(doc).getBitsPerComponent());
         }
+    }
+
+    @Test
+    void anEncryptedFileWithNoPicturesIsWrittenWithoutItsEncryption() throws IOException {
+        Path in = dir.resolve("locked-text.pdf");
+        try (PDDocument doc = new PDDocument()) {
+            doc.addPage(new PDPage());
+            doc.protect(new StandardProtectionPolicy("owner", "", new AccessPermission()));
+            doc.save(in.toFile());
+        }
+        Path out = dir.resolve("open-text.pdf");
+        LineArt.Result result = LineArt.convert(in, out);
+        assertEquals(0, result.images());
+        assertTrue(result.codecs().isEmpty());
+        assertTrue(result.warnings().getLast().contains("encryption was removed"), result.warnings().toString());
+        try (PDDocument doc = Loader.loadPDF(out.toFile())) {
+            assertFalse(doc.isEncrypted());
+        }
+    }
+
+    @Test
+    void resultCopiesAnyCodecMap() {
+        LineArt.Result result = new LineArt.Result(0, 0, 0, 0, Map.of(), List.of());
+        assertTrue(result.codecs().isEmpty());
+        assertEquals(1, new LineArt.Result(1, 1, 9, 1, Map.of(LineArt.Codec.FLATE, 1), List.of()).codecs()
+                .get(LineArt.Codec.FLATE));
+    }
+
+    @Test
+    void sauvolaKeepsSolidFillsSolidAndLightTintsPaper() {
+        int w = 600;
+        int h = 400;
+        for (Color fill : new Color[] {new Color(119, 119, 119), new Color(243, 121, 32), new Color(102, 33, 110)}) {
+            Bitmap bitmap = LineArt.binarize(panel(w, h, fill, Color.WHITE), LineArt.Options.defaults());
+            assertTrue(inside(bitmap, 40, 30, 500, 180) > 0.97, fill + ": " + inside(bitmap, 40, 30, 500, 180));
+            assertTrue(inside(bitmap, 0, 260, w, 140) < 0.1, fill.toString());
+        }
+        Bitmap tint = LineArt.binarize(panel(w, h, new Color(200, 200, 200), Color.BLACK), LineArt.Options.defaults());
+        assertTrue(inside(tint, 40, 30, 500, 180) < 0.2, "tint: " + inside(tint, 40, 30, 500, 180));
+    }
+
+    @Test
+    void sauvolaKeepsHatchingOnAMidToneAsLines() {
+        BufferedImage image = new BufferedImage(400, 300, BufferedImage.TYPE_INT_RGB);
+        Graphics2D g = image.createGraphics();
+        g.setColor(Color.WHITE);
+        g.fillRect(0, 0, 400, 300);
+        g.setColor(new Color(100, 100, 100));
+        g.fillRect(50, 50, 300, 200);
+        g.setColor(Color.BLACK);
+        for (int x = 50; x < 350; x += 5) {
+            g.drawLine(x, 50, x, 250);
+        }
+        g.dispose();
+        double ink = inside(LineArt.binarize(image, LineArt.Options.defaults()), 50, 50, 300, 200);
+        assertTrue(ink > 0.1 && ink < 0.4, "hatching: " + ink);
+    }
+
+    @Test
+    void aSmoothGradientHasNoStepAtTileBoundaries() {
+        int size = 600;
+        BufferedImage image = new BufferedImage(size, size, BufferedImage.TYPE_INT_RGB);
+        for (int y = 0; y < size; y++) {
+            for (int x = 0; x < size; x++) {
+                int v = 30 + 225 * (x + y) / (2 * size);
+                image.setRGB(x, y, v << 16 | v << 8 | v);
+            }
+        }
+        Bitmap bitmap = LineArt.binarize(image, LineArt.Options.defaults());
+        int previous = -1;
+        for (int y = 0; y < size; y++) {
+            int edge = 0;
+            while (edge < size && bitmap.ink(edge, y)) {
+                edge++;
+            }
+            for (int x = edge; x < size; x++) {
+                assertFalse(bitmap.ink(x, y), "ink past the edge at " + x + "," + y);
+            }
+            if (previous >= 0 && edge > 0 && edge < size) {
+                assertTrue(Math.abs(edge - previous + 1) <= 2, "row " + y + ": edge " + previous + " -> " + edge);
+            }
+            previous = edge;
+        }
+        assertTrue(bitmap.ink(0, 0) && !bitmap.ink(size - 1, size - 1));
+    }
+
+    private static BufferedImage panel(int w, int h, Color fill, Color text) {
+        BufferedImage image = new BufferedImage(w, h, BufferedImage.TYPE_INT_RGB);
+        Graphics2D g = image.createGraphics();
+        g.setColor(Color.WHITE);
+        g.fillRect(0, 0, w, h);
+        g.setColor(fill);
+        g.fillRect(40, 30, 500, 180);
+        g.setColor(text);
+        g.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 40));
+        g.drawString("PDF", 60, 90);
+        g.setColor(Color.BLACK);
+        g.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 14));
+        for (int i = 0; i < 5; i++) {
+            g.drawString("Lorem ipsum dolor sit amet consectetur", 10, 260 + i * 20);
+        }
+        g.dispose();
+        return image;
+    }
+
+    private static double inside(Bitmap bitmap, int x0, int y0, int w, int h) {
+        long ink = 0;
+        for (int y = y0 + 8; y < y0 + h - 8; y++) {
+            for (int x = x0 + 8; x < x0 + w - 8; x++) {
+                if (bitmap.ink(x, y)) {
+                    ink++;
+                }
+            }
+        }
+        return ink / (double) ((w - 16L) * (h - 16L));
     }
 
     @Test
