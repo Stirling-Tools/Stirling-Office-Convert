@@ -164,6 +164,57 @@ class UnmappedFontTest {
     }
 
     @Test
+    void anAccentDrawnOverALetterJoinsIt() throws Exception {
+        Map<Character, Integer> codes = codesFor(LINE + SECOND + "Schrodinger\u00A8");
+        float o = advance('o');
+        float dieresis = advance('\u00A8');
+        String raw = "[" + hex("Schro", codes) + " " + Math.round((o + dieresis) / 2) + " " + hex("\u00A8", codes) + " "
+                + Math.round((dieresis - o) / 2) + " " + hex("dinger", codes) + "] TJ";
+        Path pdf = dir.resolve("accent.pdf");
+        writeType3(pdf, codes, false, false, false, LINE, SECOND, Map.of(), Map.of(), raw);
+        String text = text(pdf);
+        assertTrue(text.contains("Schr\u00F6dinger"), text);
+    }
+
+    @Test
+    void claimedCodesThatFitTheirShapesKeepTheirText() throws Exception {
+        String first = "Ill lIl IlI";
+        String second = "O0O 0O0 00 OO";
+        Map<Character, Integer> codes = new LinkedHashMap<>();
+        for (char c : (first + second).toCharArray()) {
+            if (c != ' ') {
+                codes.putIfAbsent(c, (int) c);
+            }
+        }
+        Path pdf = dir.resolve("claimed.pdf");
+        writeType3(pdf, codes, false, false, false, first, second, Map.of('I', 'l', '0', 'O'));
+        String text = text(pdf);
+        assertTrue(text.contains(first), text);
+        assertTrue(text.contains(second), text);
+    }
+
+    @Test
+    void aBarTiedWithAnUnderscoreReadsAsADash() throws Exception {
+        Map<Character, Integer> codes = codesFor(LINE + SECOND + "\u2013");
+        Path pdf = dir.resolve("dash.pdf");
+        writeType3(pdf, codes, false, false, false, LINE, SECOND, Map.of('\u2013', '_'),
+                Map.of('\u2013', AffineTransform.getTranslateInstance(0, 300)), hex("lazy\u2013dog", codes) + " Tj");
+        String text = text(pdf);
+        assertTrue(text.contains("lazy\u2014dog"), text);
+    }
+
+    @Test
+    void aSymbolIsNeverGuessedInsideAWord() throws Exception {
+        Map<Character, Integer> codes = codesFor(LINE + SECOND + "#");
+        Path pdf = dir.resolve("symbol.pdf");
+        writeType3(pdf, codes, false, false, false, LINE, SECOND, Map.of(),
+                Map.of('#', AffineTransform.getShearInstance(0.5, 0)), hex("ab#cd", codes) + " Tj");
+        String text = text(pdf);
+        assertFalse(text.contains("ab#cd"), text);
+        assertTrue(text.contains("ab" + UNREADABLE + "cd"), text);
+    }
+
+    @Test
     void mappedType3FontsKeepTheirOwnText() throws Exception {
         Path pdf = dir.resolve("named.pdf");
         Map<Character, Integer> codes = new LinkedHashMap<>();
@@ -288,6 +339,12 @@ class UnmappedFontTest {
 
     private static void writeType3(Path pdf, Map<Character, Integer> codes, boolean bitmap, boolean star, boolean named,
             String first, String second, Map<Character, Character> drawnAs) throws IOException {
+        writeType3(pdf, codes, bitmap, star, named, first, second, drawnAs, Map.of(), null);
+    }
+
+    private static void writeType3(Path pdf, Map<Character, Integer> codes, boolean bitmap, boolean star, boolean named,
+            String first, String second, Map<Character, Character> drawnAs, Map<Character, AffineTransform> warp,
+            String raw) throws IOException {
         TrueTypeFont ttf;
         try (InputStream in = PDTrueTypeFont.class.getResourceAsStream(FONT)) {
             ttf = new TTFParser().parse(new RandomAccessReadBuffer(in));
@@ -305,6 +362,9 @@ class UnmappedFontTest {
                 int gid = cmap.getGlyphId(drawnAs.getOrDefault(e.getKey(), e.getKey()));
                 GeneralPath path = new GeneralPath(ttf.getGlyph().getGlyph(gid).getPath());
                 path.transform(AffineTransform.getScaleInstance(unit, unit));
+                if (warp.containsKey(e.getKey())) {
+                    path.transform(warp.get(e.getKey()));
+                }
                 int width = Math.round(ttf.getAdvanceWidth(gid) * unit);
                 String name = named ? glyphName(e.getKey()) : "g" + e.getValue();
                 procs.setItem(COSName.getPDFName(name), charProc(doc, path, width, bitmap));
@@ -339,13 +399,43 @@ class UnmappedFontTest {
             resources.put(COSName.getPDFName("F1"), font);
             page.setResources(resources);
             StringBuilder content = new StringBuilder("BT /F1 14 Tf 72 720 Td ");
-            content.append(show(first, codes, star)).append(" 0 -24 Td ").append(show(second, codes, false)).append(" ET");
+            content.append(show(first, codes, star)).append(" 0 -24 Td ").append(show(second, codes, false));
+            if (raw != null) {
+                content.append(" 0 -24 Td ").append(raw);
+            }
+            content.append(" ET");
             PDStream stream = new PDStream(doc);
             try (OutputStream out = stream.createOutputStream()) {
                 out.write(content.toString().getBytes(StandardCharsets.US_ASCII));
             }
             page.setContents(stream);
             doc.save(pdf.toFile());
+        }
+    }
+
+    private static Map<Character, Integer> codesFor(String text) {
+        Map<Character, Integer> codes = new LinkedHashMap<>();
+        int next = 0;
+        for (char c : text.toCharArray()) {
+            if (c != ' ' && !codes.containsKey(c)) {
+                codes.put(c, 40 + (next++ * 37) % 150);
+            }
+        }
+        return codes;
+    }
+
+    private static String hex(String text, Map<Character, Integer> codes) {
+        StringBuilder sb = new StringBuilder("<");
+        for (char c : text.toCharArray()) {
+            sb.append(String.format("%02X", codes.get(c)));
+        }
+        return sb.append('>').toString();
+    }
+
+    private static float advance(char c) throws IOException {
+        try (InputStream in = PDTrueTypeFont.class.getResourceAsStream(FONT)) {
+            TrueTypeFont ttf = new TTFParser().parse(new RandomAccessReadBuffer(in));
+            return ttf.getAdvanceWidth(ttf.getUnicodeCmapLookup().getGlyphId(c)) * 1000f / ttf.getUnitsPerEm();
         }
     }
 

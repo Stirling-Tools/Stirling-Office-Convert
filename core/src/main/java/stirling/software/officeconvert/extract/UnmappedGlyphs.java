@@ -297,6 +297,30 @@ final class UnmappedGlyphs {
         return new AffineTransform(r.getScaleX(), r.getShearY(), r.getShearX(), r.getScaleY(), 0, 0);
     }
 
+    static GlyphRef preferred(GlyphRef best, GlyphRef runner) {
+        String a = best.text();
+        String b = runner.text();
+        if (a.equalsIgnoreCase(b)) {
+            return a.equals(a.toLowerCase(Locale.ROOT)) ? best : runner;
+        }
+        for (String[] pair : TIES) {
+            if (pair[0].equals(a) && pair[1].equals(b)) {
+                return best;
+            }
+            if (pair[0].equals(b) && pair[1].equals(a)) {
+                return runner;
+            }
+        }
+        if (letter(a) && letter(b) && (a.charAt(0) < 0x80) != (b.charAt(0) < 0x80)) {
+            return a.charAt(0) < 0x80 ? best : runner;
+        }
+        return null;
+    }
+
+    private static boolean letter(String text) {
+        return text.length() == 1 && Character.isLetterOrDigit(text.charAt(0));
+    }
+
     private IntFunction<String> named(PDFont font) {
         return font instanceof PDSimpleFont ? code -> String.valueOf((char) code) : programText(font);
     }
@@ -846,10 +870,6 @@ final class UnmappedGlyphs {
             return a && !b ? best.text() : b && !a ? runner.text() : null;
         }
 
-        private static boolean letter(String text) {
-            return text.length() == 1 && Character.isLetterOrDigit(text.charAt(0));
-        }
-
         private String lookalike(Ink ink, String text, float distance) {
             String found = null;
             float nearest = distance + LOOKALIKE_MARGIN;
@@ -879,26 +899,6 @@ final class UnmappedGlyphs {
                 }
             }
             return false;
-        }
-
-        private static GlyphRef preferred(GlyphRef best, GlyphRef runner) {
-            String a = best.text();
-            String b = runner.text();
-            if (a.equalsIgnoreCase(b)) {
-                return a.equals(a.toLowerCase(Locale.ROOT)) ? best : runner;
-            }
-            for (String[] pair : TIES) {
-                if (pair[0].equals(a) && pair[1].equals(b)) {
-                    return best;
-                }
-                if (pair[0].equals(b) && pair[1].equals(a)) {
-                    return runner;
-                }
-            }
-            if (letter(a) && letter(b) && (a.charAt(0) < 0x80) != (b.charAt(0) < 0x80)) {
-                return a.charAt(0) < 0x80 ? best : runner;
-            }
-            return null;
         }
 
         private static float advance(GlyphPrint g, GlyphPrint r) {
