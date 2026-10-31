@@ -633,6 +633,9 @@ class HtmlLayoutTest {
         var own = HtmlDocument.page(Map.of(HtmlDocument.BOOK_PAGE, "1", "margin-left", "50pt"));
         assertEquals(50f, own.marginLeft);
         assertEquals(HtmlDocument.PAGE_MARGIN, HtmlDocument.page(Map.of()).marginTop);
+        var sized = HtmlDocument.page(Map.of(HtmlDocument.BOOK_PAGE, "1", "size", "A5"));
+        assertEquals(HtmlDocument.COVER_MARGIN, sized.marginTop);
+        assertEquals(HtmlDocument.COVER_MARGIN, sized.marginLeft);
     }
 
     @Test
