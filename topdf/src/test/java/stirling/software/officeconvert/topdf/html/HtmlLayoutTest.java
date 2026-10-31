@@ -574,6 +574,22 @@ class HtmlLayoutTest {
     }
 
     @Test
+    void rightAlignAttributeMovesNestedTablesRightButNotTheirText() throws IOException {
+        Laid l = lay("""
+                <!doctype html><html><head><style>body{margin:0}</style></head><body>
+                <div align="right"><table width="200" cellpadding="0" cellspacing="0"><tr><td>Stacked</td></tr></table>
+                <table width="200" border="1"><tr><td>Bordered</td></tr></table></div>
+                <div dir="rtl"><table width="100%" cellpadding="0" cellspacing="0" border="1"><tr><td align="left">
+                <table width="200" cellpadding="0" cellspacing="0"><tr><td>Mirrored</td></tr></table></td></tr></table></div>
+                </body></html>""");
+        Word stacked = l.word("Stacked");
+        Word mirrored = l.word("Mirrored");
+        assertTrue(stacked.left() > l.pageWidth() / 2 && mirrored.right() < l.pageWidth() / 2, l.words().toString());
+        assertEquals(l.pageWidth(), stacked.left() + mirrored.right(), 4f);
+        assertEquals(stacked.left(), l.word("Bordered").left(), 4f);
+    }
+
+    @Test
     void bodyBackgroundColourPaintsThePageInsideItsMargins() throws IOException {
         Laid l = lay("<html><body bgcolor=\"#ffff00\"><p>Hi</p></body></html>");
         int midX = l.first().getWidth() / 2;

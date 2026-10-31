@@ -383,7 +383,7 @@ final class Flow {
                 }
             }
             case "hr" -> rule(d, look, frame);
-            case "table" -> table(e, d, look, frame, parentLook.centerBlocks, depth);
+            case "table" -> table(e, d, look, frame, parentLook.legacyAlign ? parentLook.align : null, depth);
             case "a" -> {
                 long boundary = edgeBoundary;
                 if (inline) {
@@ -2417,7 +2417,7 @@ final class Flow {
         emit(p);
     }
 
-    private void table(Element e, Map<String, String> d, Look look, Frame frame, boolean centred, int depth)
+    private void table(Element e, Map<String, String> d, Look look, Frame frame, Paragraph.Align legacy, int depth)
             throws IOException {
         flush();
         if (inCell && (paragraphsOnly || e.parents().stream().filter(p -> p.normalName().equals("table")).count() >= Table.MAX_NESTING
@@ -2429,7 +2429,7 @@ final class Flow {
             // a one-column table with no borders is only there to stack its cells: they flow as blocks
             Integer fill = Css.color(d.get("background-color"));
             float slack = frame.width() - stackWidth(d, look, frame.width());
-            float left = stackIndent(e, d, look, centred, slack);
+            float left = stackIndent(e, d, look, legacy, slack);
             Frame inside = frame.inner(left, slack - left, fill == null ? -1 : fill);
             for (Element tr : e.select(HtmlTables.ROWS)) {
                 for (Element cell : tr.select("> td, > th")) {
@@ -2444,7 +2444,7 @@ final class Flow {
         if (isPageBreak(d.get("break-before"))) {
             pendingBreak = true;
         }
-        Table t = ctx.tables().table(e, d, look, frame, centred, depth);
+        Table t = ctx.tables().table(e, d, look, frame, legacy, depth);
         if (t == null) {
             return;
         }
@@ -2472,20 +2472,21 @@ final class Flow {
         return width;
     }
 
-    private static float stackIndent(Element table, Map<String, String> d, Look look, boolean centred, float slack) {
+    private static float stackIndent(Element table, Map<String, String> d, Look look, Paragraph.Align legacy,
+            float slack) {
         if (slack <= 0) {
             return 0;
         }
         boolean autoLeft = "auto".equalsIgnoreCase(d.getOrDefault("margin-left", "").strip());
         boolean autoRight = "auto".equalsIgnoreCase(d.getOrDefault("margin-right", "").strip());
         String align = table.attr("align");
-        if (centred || autoLeft && autoRight || "center".equalsIgnoreCase(align)) {
+        if (legacy == Paragraph.Align.CENTER || autoLeft && autoRight || "center".equalsIgnoreCase(align)) {
             return slack / 2;
         }
-        if (autoLeft || "right".equalsIgnoreCase(align)) {
+        if (autoLeft || "right".equalsIgnoreCase(align) || legacy == Paragraph.Align.RIGHT) {
             return slack;
         }
-        if (autoRight || "left".equalsIgnoreCase(align)) {
+        if (autoRight || "left".equalsIgnoreCase(align) || legacy == Paragraph.Align.LEFT) {
             return 0;
         }
         return look.rightToLeft ? slack : 0;
