@@ -1,14 +1,25 @@
 package stirling.software.officeconvert.topdf.font;
 
+import java.awt.geom.GeneralPath;
+import java.awt.geom.PathIterator;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.BitSet;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeMap;
+
+import org.apache.fontbox.cff.CFFCIDFont;
+import org.apache.fontbox.cff.CFFFont;
+import org.apache.fontbox.cff.CFFParser;
+import org.apache.fontbox.cff.CFFType1Font;
+import org.apache.fontbox.cff.Type2CharString;
+import org.apache.pdfbox.io.RandomAccessReadBuffer;
 
 final class CffSubsetter {
 
@@ -51,6 +62,10 @@ final class CffSubsetter {
     private static final long MAX_EXTRA_BYTES = 16L << 20;
 
     private static final byte[] RETURN = {11};
+
+    private static final byte[] EMPTY = {14};
+
+    private static final int MAX_CHARSTRING_BYTES = 65_535;
 
     private record Entry(int op, byte[] operands, int[] numbers) {}
 
@@ -106,6 +121,20 @@ final class CffSubsetter {
 
     private Index global;
 
+    private Index strings;
+
+    private List<Entry> top;
+
+    private Index charStrings;
+
+    private Index fdArray;
+
+    private int[] select;
+
+    private final Set<Integer> flattened = new HashSet<>();
+
+    private CFFFont parsed;
+
     private CffSubsetter(byte[] in) {
         this.in = in;
     }
@@ -118,54 +147,122 @@ final class CffSubsetter {
         }
     }
 
-    private byte[] write(String name, int[] cids, int[] glyphs) throws IOException {
+    static void check(byte[] cff) throws IOException {
+        try {
+            new CffSubsetter(cff).verify();
+        } catch (RuntimeException e) {
+            throw new IOException("the CFF outlines could not be read: " + e, e);
+        }
+    }
+
+    static byte[] blank(String name, int[] cids) throws IOException {
+        List<byte[]> outlines = new ArrayList<>(cids.length);
+        for (int k = 0; k < cids.length; k++) {
+            outlines.add(EMPTY);
+        }
+        byte[] charStringIndex = index(outlines);
+        byte[] nameIndex = index(List.of(new byte[] {'X'}));
+        int topLength = 2 + 1 + 2 + 17;
+        int charStringsAt = 4 + nameIndex.length + topLength + 2 + 2;
+        byte[] top = concat(int5(charStringsAt), new byte[] {CHAR_STRINGS}, int5(0),
+                int5(charStringsAt + charStringIndex.length), new byte[] {PRIVATE});
+        ByteArrayOutputStream empty = new ByteArrayOutputStream();
+        empty.writeBytes(new byte[] {1, 0, 4, 4});
+        empty.writeBytes(nameIndex);
+        empty.writeBytes(index(List.of(top)));
+        empty.writeBytes(new byte[] {0, 0, 0, 0});
+        empty.writeBytes(charStringIndex);
+        int[] glyphs = new int[cids.length];
+        for (int k = 0; k < glyphs.length; k++) {
+            glyphs[k] = k;
+        }
+        return subset(empty.toByteArray(), name, cids, glyphs);
+    }
+
+    private void read() throws IOException {
         if (in.length < 4 || (in[0] & 0xFF) != 1) {
             throw new IOException("the CFF version is not 1");
         }
-        if (cids.length == 0 || cids[0] != 0 || glyphs[0] != 0) {
-            throw new IllegalArgumentException("CID 0 must draw glyph 0");
-        }
         Index names = index(in[2] & 0xFF);
         Index tops = index(names.end());
-        Index strings = index(tops.end());
+        strings = index(tops.end());
         global = index(strings.end());
         if (tops.count() < 1) {
             throw new IOException("the CFF has no font");
         }
-        List<Entry> top = dict(tops.start(0), tops.stop(0));
-        Index charStrings = index(number(top, CHAR_STRINGS));
+        top = dict(tops.start(0), tops.stop(0));
+        charStrings = index(number(top, CHAR_STRINGS));
+        if (entry(top, ROS) != null) {
+            fdArray = index(number(top, FD_ARRAY));
+            fds = new Fd[fdArray.count()];
+            select = fdSelect(number(top, FD_SELECT), charStrings.count());
+        }
+    }
+
+    private int fdOf(int glyph) throws IOException {
+        int f = select == null ? 0 : select[glyph];
+        if (f < 0 || f >= fds.length) {
+            throw new IOException("glyph " + glyph + " has no font dictionary");
+        }
+        if (fds[f] == null) {
+            Fd fd = new Fd(f);
+            if (select == null) {
+                privateOf(fd, top);
+            } else {
+                fd.font = dict(fdArray.start(f), fdArray.stop(f));
+                privateOf(fd, fd.font);
+            }
+            fds[f] = fd;
+        }
+        return f;
+    }
+
+    private void verify() throws IOException {
+        read();
         int count = charStrings.count();
-        boolean cidKeyed = entry(top, ROS) != null;
-        int[] fdOf = new int[glyphs.length];
-        for (int g : glyphs) {
-            if (g < 0 || g >= count) {
-                throw new IllegalArgumentException("glyph " + g + " is not in the font");
+        if (count < 1) {
+            throw new IOException("the CFF has no glyphs");
+        }
+        long locals = 0;
+        BitSet counted = new BitSet();
+        for (int g = 0; g < count; g++) {
+            if (charStrings.stop(g) - charStrings.start(g) > MAX_CHARSTRING_BYTES) {
+                throw new IOException("glyph " + g + " is too long");
+            }
+            int f = fdOf(g);
+            if (!counted.get(f)) {
+                counted.set(f);
+                locals += fds[f].subrs == null ? 0 : fds[f].subrs.end() - fds[f].subrs.base();
             }
         }
-        if (cidKeyed) {
-            Index array = index(number(top, FD_ARRAY));
-            fds = new Fd[array.count()];
-            int[] select = fdSelect(number(top, FD_SELECT), count);
-            for (int k = 0; k < glyphs.length; k++) {
-                int f = select[glyphs[k]];
-                if (f < 0 || f >= fds.length) {
-                    throw new IOException("glyph " + glyphs[k] + " has no font dictionary");
-                }
-                if (fds[f] == null) {
-                    Fd fd = new Fd(f);
-                    fd.font = dict(array.start(f), array.stop(f));
-                    privateOf(fd, fd.font);
-                    fds[f] = fd;
-                }
-                fdOf[k] = f;
+        if (locals > in.length) {
+            throw new IOException("the font dictionaries share their subroutines");
+        }
+    }
+
+    private byte[] write(String name, int[] cids, int[] glyphs) throws IOException {
+        if (cids.length == 0 || cids[0] != 0 || glyphs[0] != 0) {
+            throw new IllegalArgumentException("CID 0 must draw glyph 0");
+        }
+        read();
+        int count = charStrings.count();
+        int[] fdOf = new int[glyphs.length];
+        for (int k = 0; k < glyphs.length; k++) {
+            if (glyphs[k] < 0 || glyphs[k] >= count) {
+                throw new IllegalArgumentException("glyph " + glyphs[k] + " is not in the font");
             }
-        } else {
-            Fd fd = new Fd(0);
-            privateOf(fd, top);
-            fds[0] = fd;
+            fdOf[k] = fdOf(glyphs[k]);
         }
         for (int k = 0; k < glyphs.length; k++) {
-            new Scan(fds[fdOf[k]]).glyph(charStrings.start(glyphs[k]), charStrings.stop(glyphs[k]));
+            Scan scan = new Scan(fds[fdOf[k]]);
+            try {
+                scan.glyph(charStrings.start(glyphs[k]), charStrings.stop(glyphs[k]));
+            } catch (RuntimeException e) {
+                scan.composite = true;
+            }
+            if (scan.composite) {
+                flattened.add(glyphs[k]);
+            }
         }
 
         for (int pos : calls.keySet()) {
@@ -223,7 +320,7 @@ final class CffSubsetter {
         u16(select, glyphs.length);
         List<byte[]> outlines = new ArrayList<>(glyphs.length);
         for (int g : glyphs) {
-            outlines.add(rewritten(charStrings.start(g), charStrings.stop(g)));
+            outlines.add(flattened.contains(g) ? flat(g) : rewritten(charStrings.start(g), charStrings.stop(g)));
         }
         byte[] charStringIndex = index(outlines);
 
@@ -265,7 +362,8 @@ final class CffSubsetter {
             fontDicts.add(fontDict(kept.get(i).font, privates.get(i).length, at));
             at += privates.get(i).length + (locals.get(i) == null ? 0 : locals.get(i).length);
         }
-        byte[] topIndex = index(List.of(topDict(top, registry, ordering, cids, charsetAt, selectAt, charStringsAt, fdArrayAt)));
+        byte[] topIndex = index(List.of(topDict(top, registry, ordering, cids, charsetAt, selectAt, charStringsAt,
+                fdArrayAt)));
         ByteArrayOutputStream out = new ByteArrayOutputStream(at);
         out.writeBytes(new byte[] {1, 0, (byte) headerSize, 4});
         out.writeBytes(nameIndex);
@@ -421,6 +519,104 @@ final class CffSubsetter {
         return out.toByteArray();
     }
 
+    private byte[] flat(int glyph) {
+        try {
+            if (parsed == null) {
+                parsed = new CFFParser().parse(new RandomAccessReadBuffer(in)).get(0);
+            }
+            Type2CharString outline;
+            Object nominal;
+            if (parsed instanceof CFFCIDFont cid) {
+                outline = cid.getType2CharString(cid.getCharset().getCIDForGID(glyph));
+                nominal = cid.getPrivDicts().get(cid.getFdSelect().getFDIndex(glyph)).get("nominalWidthX");
+            } else {
+                CFFType1Font font = (CFFType1Font) parsed;
+                outline = font.getType2CharString(glyph);
+                nominal = font.getPrivateDict().get("nominalWidthX");
+            }
+            float width = outline.getWidth() - (nominal instanceof Number n ? n.floatValue() : 0);
+            byte[] drawn = charString(outline.getPath(), width);
+            grow(drawn.length);
+            return drawn;
+        } catch (IOException | RuntimeException e) {
+            return EMPTY;
+        }
+    }
+
+    private static byte[] charString(GeneralPath path, float width) {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        fixed(out, width);
+        float[] c = new float[6];
+        float x = 0;
+        float y = 0;
+        float startX = 0;
+        float startY = 0;
+        for (PathIterator it = path.getPathIterator(null); !it.isDone(); it.next()) {
+            switch (it.currentSegment(c)) {
+                case PathIterator.SEG_MOVETO -> {
+                    fixed(out, c[0] - x);
+                    fixed(out, c[1] - y);
+                    out.write(21);
+                    x = startX = c[0];
+                    y = startY = c[1];
+                }
+                case PathIterator.SEG_LINETO -> {
+                    fixed(out, c[0] - x);
+                    fixed(out, c[1] - y);
+                    out.write(5);
+                    x = c[0];
+                    y = c[1];
+                }
+                case PathIterator.SEG_QUADTO -> {
+                    curve(out, x + 2f / 3 * (c[0] - x), y + 2f / 3 * (c[1] - y), c[2] + 2f / 3 * (c[0] - c[2]),
+                            c[3] + 2f / 3 * (c[1] - c[3]), c[2], c[3], x, y);
+                    x = c[2];
+                    y = c[3];
+                }
+                case PathIterator.SEG_CUBICTO -> {
+                    curve(out, c[0], c[1], c[2], c[3], c[4], c[5], x, y);
+                    x = c[4];
+                    y = c[5];
+                }
+                default -> {
+                    if (x != startX || y != startY) {
+                        fixed(out, startX - x);
+                        fixed(out, startY - y);
+                        out.write(5);
+                        x = startX;
+                        y = startY;
+                    }
+                }
+            }
+        }
+        out.write(14);
+        return out.toByteArray();
+    }
+
+    private static void curve(ByteArrayOutputStream out, float x1, float y1, float x2, float y2, float x3, float y3,
+            float x, float y) {
+        fixed(out, x1 - x);
+        fixed(out, y1 - y);
+        fixed(out, x2 - x1);
+        fixed(out, y2 - y1);
+        fixed(out, x3 - x2);
+        fixed(out, y3 - y2);
+        out.write(8);
+    }
+
+    private static void fixed(ByteArrayOutputStream out, float v) {
+        if (v == Math.rint(v) && Math.abs(v) <= 32767) {
+            operand(out, (int) v);
+            return;
+        }
+        int f = Math.round(v * 65536);
+        out.write(255);
+        out.write(f >> 24);
+        out.write(f >> 16);
+        out.write(f >> 8);
+        out.write(f);
+    }
+
     private static void operand(ByteArrayOutputStream out, int v) {
         if (v >= -107 && v <= 107) {
             out.write(v + 139);
@@ -452,6 +648,8 @@ final class CffSubsetter {
         private int stems;
 
         private boolean done;
+
+        private boolean composite;
 
         Scan(Fd fd) {
             this.fd = fd;
@@ -541,9 +739,7 @@ final class CffSubsetter {
                     return end;
                 }
                 case 14 -> {
-                    if (top >= 4) {
-                        throw new IllegalArgumentException("a glyph is built from accented parts (seac)");
-                    }
+                    composite |= top >= 4;
                     clear();
                     done = true;
                     return end;

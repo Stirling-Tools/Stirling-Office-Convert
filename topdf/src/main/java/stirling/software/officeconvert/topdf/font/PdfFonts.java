@@ -563,7 +563,12 @@ public final class PdfFonts implements Closeable {
         String reason = why.getMessage() == null ? why.getClass().getSimpleName() : why.getMessage();
         COSDictionary cid = descendant(font);
         if (u.program.entry().postScript()) {
-            substitutions.add("The font " + name + " could not be subset (" + reason + "); its text may not display");
+            substitutions.add("The font " + name + " could not be subset (" + reason + "); its text is not drawn");
+            try {
+                subsets.get(font).subsetBlank();
+            } catch (IOException | RuntimeException e) {
+                substitutions.add("The font " + name + " has no outlines in the PDF (" + e.getMessage() + ")");
+            }
             return;
         }
         cid.setItem(COSName.CID_TO_GID_MAP, COSName.IDENTITY);

@@ -39,6 +39,8 @@ final class FontEntry {
 
     private final boolean postScript;
 
+    private boolean outlinesChecked;
+
     private final String unusable;
 
     private volatile int[] coverage;
@@ -171,6 +173,10 @@ final class FontEntry {
         FontProgram p = program == null ? null : program.get();
         if (p == null) {
             try {
+                if (postScript && !outlinesChecked) {
+                    CffSubsetter.check(FontScanner.table(this, "CFF ", FontProgram.MAX_WHOLE_BYTES));
+                    outlinesChecked = true;
+                }
                 p = FontProgram.load(this);
             } catch (IOException | RuntimeException e) {
                 broken = new IOException("The font " + describe() + " could not be read: " + e.getMessage(), e);

@@ -32,6 +32,15 @@ class CffSubsetterTest {
     }
 
     @Test
+    void aBlankStandInKeepsEveryCode() throws IOException {
+        byte[] blank = CffSubsetter.blank("X", new int[] {0, 5, 4464});
+        CFFCIDFont out = (CFFCIDFont) new CFFParser().parse(new RandomAccessReadBuffer(blank)).get(0);
+        assertEquals(3, out.getNumCharStrings());
+        assertEquals(5, out.getCharset().getCIDForGID(1));
+        assertEquals(0, out.getType2CharString(5).getPath().getBounds2D().getWidth());
+    }
+
+    @Test
     void subroutinesThatCallEachOtherManyTimesAreScannedQuickly() {
         List<byte[]> globals = new ArrayList<>();
         for (int s = 0; s < 9; s++) {

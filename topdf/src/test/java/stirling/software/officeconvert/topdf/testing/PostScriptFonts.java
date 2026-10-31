@@ -4,6 +4,7 @@ import java.io.ByteArrayOutputStream;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
@@ -18,6 +19,62 @@ public final class PostScriptFonts {
 
     public static byte[] font(String family, int weight, boolean cidKeyed, int... codePoints) {
         return sfnt(tables(family, weight, cidKeyed, codePoints));
+    }
+
+    public static byte[] font(String family, byte[] cff, int glyphs, int... codePoints) {
+        Map<String, byte[]> t = metrics(family, 400, codePoints, glyphs);
+        t.put("CFF ", cff);
+        return sfnt(t);
+    }
+
+    public static byte[] accentedCff(String name) {
+        List<byte[]> charStrings = List.of(cs(op(14)),
+                cs(num(ADVANCE), num(50), num(0), op(21), num(250), num(700), op(5), num(250), num(-700), op(5),
+                        op(14)),
+                cs(num(ADVANCE), num(250), num(750), op(21), num(100), num(0), op(5), num(0), num(100), op(5),
+                        num(-100), num(0), op(5), op(14)),
+                cs(num(ADVANCE), num(60), num(0), num(65), num(194), op(14)));
+        return nameKeyedCff(name, charStrings, new int[] {34, 125, 171}, new byte[0]);
+    }
+
+    public static byte[] largePrivateCff(String name, int glyphs) {
+        List<byte[]> charStrings = new ArrayList<>();
+        int[] sids = new int[glyphs - 1];
+        charStrings.add(cs(op(14)));
+        for (int g = 1; g < glyphs; g++) {
+            charStrings.add(cs(num(ADVANCE), num(50), num(0), op(21), num(400), num(0), op(5), num(0), num(700),
+                    op(5), op(14)));
+            sids[g - 1] = 33 + g;
+        }
+        byte[] priv = new byte[70_001];
+        Arrays.fill(priv, (byte) 139);
+        priv[priv.length - 1] = 6;
+        return nameKeyedCff(name, charStrings, sids, priv);
+    }
+
+    private static byte[] nameKeyedCff(String name, List<byte[]> charStrings, int[] sids, byte[] priv) {
+        byte[] nameIndex = index(List.of(name.getBytes(StandardCharsets.US_ASCII)));
+        ByteArrayOutputStream charset = new ByteArrayOutputStream();
+        charset.write(0);
+        for (int sid : sids) {
+            charset.write(sid >> 8);
+            charset.write(sid);
+        }
+        byte[] charStringIndex = index(charStrings);
+        int charsetAt = 4 + nameIndex.length + 2 + 1 + 2 + 23 + 2 + 2;
+        int charStringsAt = charsetAt + charset.size();
+        int privateAt = charStringsAt + charStringIndex.length;
+        byte[] top = cs(int5(charsetAt), op(15), int5(charStringsAt), op(17), int5(priv.length), int5(privateAt),
+                op(18));
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        out.writeBytes(new byte[] {1, 0, 4, 4});
+        out.writeBytes(nameIndex);
+        out.writeBytes(index(List.of(top)));
+        out.writeBytes(new byte[] {0, 0, 0, 0});
+        out.writeBytes(charset.toByteArray());
+        out.writeBytes(charStringIndex);
+        out.writeBytes(priv);
+        return out.toByteArray();
     }
 
     public static byte[] collection(byte[]... fonts) {
@@ -92,6 +149,12 @@ public final class PostScriptFonts {
 
     private static Map<String, byte[]> tables(String family, int weight, boolean cidKeyed, int[] codePoints) {
         int glyphs = 1 + codePoints.length + UNUSED_GLYPHS;
+        Map<String, byte[]> t = metrics(family, weight, codePoints, glyphs);
+        t.put("CFF ", cff(family.replace(" ", ""), glyphs, cidKeyed));
+        return t;
+    }
+
+    private static Map<String, byte[]> metrics(String family, int weight, int[] codePoints, int glyphs) {
         Map<String, byte[]> t = new TreeMap<>();
         t.put("head", ByteBuffer.allocate(54).putInt(0x00010000).putInt(0x00010000).putInt(0).putInt(0x5F0F3CF5)
                 .putShort((short) 0).putShort((short) 1000).putLong(0).putLong(0).putShort((short) 0)
@@ -115,7 +178,6 @@ public final class PostScriptFonts {
         t.put("OS/2", os2(weight));
         t.put("post", ByteBuffer.allocate(32).putInt(0x00030000).putInt(0).putShort((short) -100)
                 .putShort((short) 50).array());
-        t.put("CFF ", cff(family.replace(" ", ""), glyphs, cidKeyed));
         return t;
     }
 

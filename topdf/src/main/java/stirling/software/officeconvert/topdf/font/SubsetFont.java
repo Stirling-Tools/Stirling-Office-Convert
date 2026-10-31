@@ -173,13 +173,22 @@ final class SubsetFont {
         cidSet(cidToGid);
     }
 
+    void subsetBlank() throws IOException {
+        subsetCff(true);
+    }
+
     private void subsetCff() throws IOException {
+        subsetCff(false);
+    }
+
+    private void subsetCff(boolean blank) throws IOException {
         TTFTable table = ttf.getTableMap().get("CFF ");
         if (table == null) {
             throw new IOException("The font has no CFF table");
         }
-        byte[] outlines = source != null ? FontScanner.table(source, "CFF ", FontProgram.MAX_WHOLE_BYTES)
-                : ttf.getTableBytes(table);
+        byte[] outlines = blank ? null
+                : source != null ? FontScanner.table(source, "CFF ", FontProgram.MAX_WHOLE_BYTES)
+                        : ttf.getTableBytes(table);
         int count = ttf.getNumberOfGlyphs();
         TreeMap<Integer, Integer> cidToGid = new TreeMap<>();
         cidToGid.put(0, 0);
@@ -212,7 +221,7 @@ final class SubsetFont {
         }
         String tag = tag(gidToCid);
         String name = tag + descriptor.getFontName();
-        byte[] font = CffSubsetter.subset(outlines, name, cids, glyphs);
+        byte[] font = blank ? CffSubsetter.blank(name, cids) : CffSubsetter.subset(outlines, name, cids, glyphs);
         toUnicode(gidToCid);
         PDStream file = new PDStream(document, new ByteArrayInputStream(font), COSName.FLATE_DECODE);
         file.getCOSObject().setItem(COSName.SUBTYPE, COSName.getPDFName("CIDFontType0C"));

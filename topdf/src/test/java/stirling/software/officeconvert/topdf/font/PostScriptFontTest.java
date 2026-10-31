@@ -2,10 +2,12 @@ package stirling.software.officeconvert.topdf.font;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.awt.geom.Area;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -17,13 +19,16 @@ import java.util.Map;
 import org.apache.fontbox.cff.CFFCIDFont;
 import org.apache.fontbox.cff.CFFFont;
 import org.apache.fontbox.cff.CFFParser;
+import org.apache.fontbox.cff.CFFType1Font;
 import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.io.RandomAccessReadBuffer;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.common.PDStream;
+import org.apache.pdfbox.pdmodel.font.PDCIDFont;
 import org.apache.pdfbox.pdmodel.font.PDCIDFontType0;
 import org.apache.pdfbox.pdmodel.font.PDFont;
+import org.apache.pdfbox.pdmodel.font.PDFontDescriptor;
 import org.apache.pdfbox.pdmodel.font.PDType0Font;
 import org.apache.pdfbox.rendering.PDFRenderer;
 import org.apache.pdfbox.text.PDFTextStripper;
@@ -168,5 +173,88 @@ class PostScriptFontTest {
         assertEquals(0x2714, FontLibrary.symbolUnicode("Monotype Sorts", 0xF034));
         assertEquals(0x2605, FontLibrary.symbolUnicode("ZapfDingbats", 0x48));
         assertEquals(0x2217, FontLibrary.symbolUnicode("Symbol (PCL6)", 0xF02A));
+    }
+
+    @Test
+    void accentedGlyphsBuiltFromTheirPartsAreDrawn() throws Exception {
+        byte[] cff = PostScriptFonts.accentedCff("AccentSans");
+        Path fonts = Files.createDirectories(dir.resolve("accent"));
+        Files.write(fonts.resolve("Accent.otf"), PostScriptFonts.font("Accent Sans", cff, 4, 'A', 0xB4, 0xC1));
+        FontLibrary lib = FontLibrary.of(List.of(fonts));
+        FontFace face = lib.exact("Accent Sans", false, false);
+        assertNotNull(face);
+        byte[] pdf;
+        try (PdfOutput output = new PdfOutput(lib)) {
+            try (PdfCanvas canvas = output.newPage(PageSize.A4)) {
+                canvas.text("\u00C1A", 72, 100, TextStyle.of(face, 40));
+            }
+            ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+            output.save(bytes);
+            pdf = bytes.toByteArray();
+            assertTrue(output.fonts().substitutions().isEmpty(), output.fonts().substitutions().toString());
+        }
+        try (PDDocument doc = Loader.loadPDF(pdf)) {
+            assertEquals("\u00C1A", new PDFTextStripper().getText(doc).strip());
+            PDFontDescriptor fd = only(doc).getFontDescriptor();
+            CFFCIDFont subset = (CFFCIDFont) new CFFParser()
+                    .parse(new RandomAccessReadBuffer(fd.getFontFile3().toByteArray())).get(0);
+            CFFType1Font source = (CFFType1Font) new CFFParser().parse(new RandomAccessReadBuffer(cff)).get(0);
+            Area drawn = new Area(subset.getType2CharString(3).getPath());
+            assertFalse(drawn.isEmpty());
+            assertTrue(new Area(source.getType2CharString(3).getPath()).equals(drawn));
+            assertEquals(source.getType2CharString(3).getWidth(), subset.getType2CharString(3).getWidth());
+            BufferedImage page = new PDFRenderer(doc).renderImage(0, 1f);
+            assertTrue(ink(page, 72, 96, 63, 71) > 10, "accent");
+            assertEquals(0, ink(page, 96, 120, 63, 71));
+            assertTrue(ink(page, 96, 120, 80, 99) > 10, "letter");
+        }
+    }
+
+    @Test
+    void aFontTheSubsetterRefusesGivesWayToAnother() throws Exception {
+        Path fonts = Files.createDirectories(dir.resolve("refused"));
+        Files.write(fonts.resolve("Refused.otf"), PostScriptFonts.font("Refused Sans",
+                PostScriptFonts.largePrivateCff("RefusedSans", 4), 4, 'A', 'B', 'C'));
+        FontLibrary lib = FontLibrary.of(List.of(fonts));
+        FontFace face = lib.find("Refused Sans", false, false);
+        assertNotEquals("Refused Sans", face.family());
+        byte[] pdf;
+        try (PdfOutput output = new PdfOutput(lib)) {
+            try (PdfCanvas canvas = output.newPage(PageSize.A4)) {
+                canvas.text("ABC", 72, 100, TextStyle.of(face, 40));
+            }
+            ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+            output.save(bytes);
+            pdf = bytes.toByteArray();
+        }
+        try (PDDocument doc = Loader.loadPDF(pdf)) {
+            assertEquals("ABC", new PDFTextStripper().getText(doc).strip());
+            PDFontDescriptor fd = only(doc).getFontDescriptor();
+            assertTrue(fd.getFontFile2() != null || fd.getFontFile3() != null);
+            assertTrue(ink(new PDFRenderer(doc).renderImage(0, 1f), 72, 140, 70, 99) > 40);
+        }
+    }
+
+    private static PDCIDFont only(PDDocument doc) throws IOException {
+        return ((PDType0Font) only0(doc)).getDescendantFont();
+    }
+
+    private static PDFont only0(PDDocument doc) throws IOException {
+        PDFont font = null;
+        for (COSName n : doc.getPage(0).getResources().getFontNames()) {
+            assertNull(font, "one font");
+            font = doc.getPage(0).getResources().getFont(n);
+        }
+        return font;
+    }
+
+    private static int ink(BufferedImage page, int x0, int x1, int y0, int y1) {
+        int n = 0;
+        for (int y = y0; y <= y1; y++) {
+            for (int x = x0; x < x1; x++) {
+                n += (page.getRGB(x, y) & 0xFF) < 128 ? 1 : 0;
+            }
+        }
+        return n;
     }
 }
