@@ -162,13 +162,14 @@ final class DrawingXml {
         body.formParagraph(sb, f.shown(), f.field());
         boolean oneLine = f.field() != null && f.field().kind() != FormField.Kind.MULTILINE
                 && f.field().kind() != FormField.Kind.LIST && f.shown().align == Paragraph.Align.LEFT;
-        boolean top = f.field() != null
+        boolean top = f.top() || f.field() != null
                 && (f.field().kind() == FormField.Kind.MULTILINE || f.field().kind() == FormField.Kind.LIST);
         sb.append("</w:txbxContent></wps:txbx><wps:bodyPr rot=\"0\" vert=\"horz\" wrap=\"").append(oneLine ? "none" : "square")
                 .append("\" lIns=\"").append(Xml.emu(f.insetLeft())).append("\" tIns=\"").append(Xml.emu(f.insetTop()))
                 .append("\" rIns=\"").append(Xml.emu(f.insetRight())).append("\" bIns=\"").append(Xml.emu(f.insetBottom()))
                 .append("\" anchor=\"").append(top ? "t" : "ctr")
-                .append("\" anchorCtr=\"0\"><a:noAutofit/></wps:bodyPr></wps:wsp>")
+                .append("\" anchorCtr=\"0\">").append(f.grows() ? "<a:spAutoFit/>" : "<a:noAutofit/>")
+                .append("</wps:bodyPr></wps:wsp>")
                 .append("</a:graphicData></a:graphic></wp:inline></w:drawing></mc:Choice></mc:AlternateContent></w:r>");
     }
 

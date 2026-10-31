@@ -41,6 +41,7 @@ import org.openxmlformats.schemas.drawingml.x2006.main.CTTextParagraphProperties
 import org.openxmlformats.schemas.drawingml.x2006.main.CTTextTabStop;
 import org.openxmlformats.schemas.drawingml.x2006.main.STSchemeColorVal;
 
+import stirling.software.officeconvert.topdf.font.ColorEmoji;
 import stirling.software.officeconvert.topdf.font.FontFace;
 import stirling.software.officeconvert.topdf.font.FontLibrary;
 import stirling.software.officeconvert.topdf.font.FontRun;
@@ -319,19 +320,35 @@ final class TextStyles {
                 deck.job().warn(emulation.note());
             }
             FontLibrary lib = deck.fonts();
-            for (FontRun fr : lib.runs(chunk, face)) {
-                boolean primary = fr.face().equals(face);
-                float stretch = primary ? scale : 100;
-                float[] vertical = primary ? win : null;
-                Advances metrics = primary ? emulation.metrics() : null;
-                if (cap == TextCap.SMALL) {
-                    smallCaps(out, fr, drawSize, color, spc, kern, stretch, vertical, metrics, underline, strike,
-                            rise, highlight, link, shadow);
-                } else {
-                    TextStyle ts = style(fr.face(), drawSize, color, spc, kern, stretch);
-                    out.add(new Piece(fr.text(), ts, drawSize, underline, strike, rise, highlight, link, vertical,
-                            metrics, shadow));
+            ColorEmoji colour = lib.colorEmoji();
+            int from = 0;
+            for (int k = 0; k <= chunk.length(); ) {
+                int end = k < chunk.length() ? ColorEmoji.unitEnd(colour, chunk, k, face) : k;
+                if (end == k && k < chunk.length()) {
+                    k += Character.charCount(chunk.codePointAt(k));
+                    continue;
                 }
+                for (FontRun fr : from < k ? lib.runs(chunk.substring(from, k), face) : List.<FontRun>of()) {
+                    boolean primary = fr.face().equals(face);
+                    float stretch = primary ? scale : 100;
+                    float[] vertical = primary ? win : null;
+                    Advances metrics = primary ? emulation.metrics() : null;
+                    if (cap == TextCap.SMALL) {
+                        smallCaps(out, fr, drawSize, color, spc, kern, stretch, vertical, metrics, underline, strike,
+                                rise, highlight, link, shadow);
+                    } else {
+                        TextStyle ts = style(fr.face(), drawSize, color, spc, kern, stretch);
+                        out.add(new Piece(fr.text(), ts, drawSize, underline, strike, rise, highlight, link, vertical,
+                                metrics, shadow));
+                    }
+                }
+                if (end > k) {
+                    out.add(new Piece(chunk.substring(k, end), style(face, drawSize, color, spc, 0, 100), drawSize,
+                            underline, strike, rise, highlight, link, null, null, shadow)
+                            .asEmoji(ColorEmoji.officeLine()));
+                }
+                from = end;
+                k = end > k ? end : k + 1;
             }
         }
         if (outline != null) {

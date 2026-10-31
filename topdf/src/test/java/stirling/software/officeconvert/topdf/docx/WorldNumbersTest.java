@@ -37,4 +37,12 @@ class WorldNumbersTest {
         assertEquals("\u58F1\u767E\u4F0D", NumberFormat.format(105, "japaneseLegal"));
         assertEquals("\u5F10\u62FE", NumberFormat.format(20, "japaneseLegal"));
     }
+
+    @Test
+    void stemAndBranchNumbersTurnDecimalOnceTheirSignsRunOut() {
+        assertEquals("\u7678", NumberFormat.format(10, "ideographTraditional"));
+        assertEquals("11", NumberFormat.format(11, "ideographTraditional"));
+        assertEquals("\u4EA5", NumberFormat.format(12, "ideographZodiac"));
+        assertEquals("13", NumberFormat.format(13, "ideographZodiac"));
+    }
 }

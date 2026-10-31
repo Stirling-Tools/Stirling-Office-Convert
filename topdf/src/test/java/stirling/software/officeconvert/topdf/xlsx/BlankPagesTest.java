@@ -183,6 +183,17 @@ class BlankPagesTest {
         assertEquals(1, XlsxTesting.convert(dir, "shape.xlsx", xlsx).pages().size());
     }
 
+    @Test
+    void blankPagesLeftOutOfASheetPastTenThousandPagesAreReported() throws IOException {
+        String sheet = "<sheetData><row r=\"1\">" + RawXlsx.inline("A1", "First") + "</row><row r=\"1000000\">"
+                + RawXlsx.inline("A1000000", "Far") + "</row></sheetData>";
+        XlsxTesting.Converted c = XlsxTesting.convert(dir, "far.xlsx",
+                new RawXlsx().styles(STYLES).sheet("S", sheet).bytes());
+        assertEquals(2, c.pages().size());
+        assertTrue(c.result().warnings().stream().anyMatch(w -> w.matches("Left out \\d+ blank pages of sheet S")),
+                c.result().warnings().toString());
+    }
+
     private int spilled(String name, String text) throws IOException {
         String sheet = "<sheetData><row r=\"1\">" + RawXlsx.inline("A1", text) + "</row></sheetData>";
         return XlsxTesting.convert(dir, name, new RawXlsx().styles(STYLES).sheet("S", sheet).bytes()).pages().size();

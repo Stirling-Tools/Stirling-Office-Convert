@@ -44,6 +44,8 @@ final class Look {
     boolean monoOnly;
     float opacity = 1;
     boolean hyphens;
+    boolean autoSpaceLetters;
+    boolean autoSpaceDigits;
     String lang = "";
     int widows = 2;
     int orphans = 2;
@@ -65,6 +67,8 @@ final class Look {
         l.alignFixed = alignFixed;
         l.lineMultiple = lineMultiple;
         l.hyphens = hyphens;
+        l.autoSpaceLetters = autoSpaceLetters;
+        l.autoSpaceDigits = autoSpaceDigits;
         l.lang = lang;
         l.widows = widows;
         l.orphans = orphans;
@@ -97,6 +101,9 @@ final class Look {
         if ((v = d.get("hyphens")) != null || (v = d.get("-webkit-hyphens")) != null) {
             String h = v.strip().toLowerCase(Locale.ROOT);
             l.hyphens = h.equals("auto") || !h.equals("manual") && !h.equals("none") && hyphens;
+        }
+        if ((v = d.get("text-autospace")) != null) {
+            autoSpace(l, v.strip().toLowerCase(Locale.ROOT));
         }
         l.widows = lines(d.get("widows"), widows);
         l.orphans = lines(d.get("orphans"), orphans);
@@ -180,6 +187,25 @@ final class Look {
             l.hidden = "hidden".equalsIgnoreCase(v.strip()) || "collapse".equalsIgnoreCase(v.strip());
         }
         return l;
+    }
+
+    private static void autoSpace(Look l, String v) {
+        switch (v) {
+            case "normal", "auto" -> {
+                l.autoSpaceLetters = true;
+                l.autoSpaceDigits = true;
+            }
+            case "no-autospace", "initial" -> {
+                l.autoSpaceLetters = false;
+                l.autoSpaceDigits = false;
+            }
+            default -> {
+                if (v.contains("ideograph-alpha") || v.contains("ideograph-numeric")) {
+                    l.autoSpaceLetters = v.contains("ideograph-alpha");
+                    l.autoSpaceDigits = v.contains("ideograph-numeric");
+                }
+            }
+        }
     }
 
     private static void lineHeight(Look l, String v) {

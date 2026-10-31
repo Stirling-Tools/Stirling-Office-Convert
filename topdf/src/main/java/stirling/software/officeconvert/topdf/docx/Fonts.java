@@ -14,6 +14,8 @@ import stirling.software.officeconvert.topdf.font.FontLibrary;
 
 final class Fonts {
 
+    private static final float[] OFFICE_EAST_ASIAN = {220f / 256, 36f / 256};
+
     enum Slot {
         ASCII,
         HANSI,
@@ -123,8 +125,9 @@ final class Fonts {
         }
         float[] m = switch (FontLibrary.english(family).strip().toLowerCase(Locale.ROOT)) {
             case "ms gothic", "ms pgothic", "ms ui gothic", "ms mincho", "ms pmincho", "simsun", "nsimsun", "simhei",
-                    "batang", "batangche", "gulim", "gulimche", "dotum", "dotumche", "gungsuh", "gungsuhche" ->
-                    new float[] {220f / 256, 36f / 256};
+                    "batang", "batangche", "gulim", "gulimche", "dotum", "dotumche", "gungsuh", "gungsuhche", "mingliu",
+                    "pmingliu", "mingliu_hkscs", "mingliu-extb", "pmingliu-extb" ->
+                    OFFICE_EAST_ASIAN;
             case "malgun gothic" -> new float[] {2229f / 2048, 495f / 2048};
             case "yu gothic", "yu gothic ui" -> new float[] {2017f / 2048, 619f / 2048};
             case "dengxian", "dengxian light" -> new float[] {0.81f, 0.232f};
@@ -135,6 +138,10 @@ final class Fonts {
         }
         float extra = Look.EAST_ASIAN_EXTRA * (m[0] + m[1]);
         return new float[] {m[0] + extra, m[1] + extra};
+    }
+
+    static CloudFonts.Emulation officeEastAsianLine(FontFace face) {
+        return new CloudFonts.Emulation(face, 100, OFFICE_EAST_ASIAN.clone(), null, null);
     }
 
     // True when an emulation's line metrics already hold the extra Word gives East Asian fonts

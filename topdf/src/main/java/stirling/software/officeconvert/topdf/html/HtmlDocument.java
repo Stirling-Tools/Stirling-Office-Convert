@@ -264,8 +264,8 @@ public final class HtmlDocument {
         int canvas = canvasColor(htmlStyle, bodyStyle);
         ctx.canvas(canvas);
         if (canvas >= 0) {
-            fixedLayer.add(0, new Inline.Shape(page.marginLeft, page.marginTop,
-                    page.pageWidth - page.marginLeft - page.marginRight,
+            fixedLayer.add(0, new Inline.Shape(page.marginLeft - inset[0], page.marginTop,
+                    page.pageWidth - page.marginLeft - page.marginRight + inset[0] + inset[1],
                     page.pageHeight - page.marginTop - page.marginBottom, canvas));
         }
         if (ctx.positions()) {
@@ -282,7 +282,8 @@ public final class HtmlDocument {
             // a page locked in place, as behind an open dialog, does not grow wider than the window
             ctx.scrolling(1);
         }
-        new Flow(ctx, writer::block, false).root(body, bodyLook, new Flow.Frame(0, 0, width, -1));
+        new Flow(ctx, writer::block, false).root(body, bodyLook,
+                new Flow.Frame(0, 0, width, bodyBoxColor(htmlStyle, bodyStyle, canvas)));
         String author = null;
         Element meta = doc.selectFirst("meta[name=author]");
         if (meta != null) {
@@ -309,6 +310,15 @@ public final class HtmlDocument {
             color = Css.color(bodyStyle.get("background-color"));
         }
         return color == null || color < 0 || color == 0xFFFFFF ? -1 : color;
+    }
+
+    private static int bodyBoxColor(Map<String, String> htmlStyle, Map<String, String> bodyStyle, int canvas) {
+        Integer own = Css.color(htmlStyle.get("background-color"));
+        Integer color = Css.color(bodyStyle.get("background-color"));
+        if (own == null || own < 0 || color == null || color < 0 || color == canvas) {
+            return -1;
+        }
+        return color;
     }
 
     private static DocSink.HeaderFooterSet withFixed(DocSink.HeaderFooterSet running, List<Inline> drawings,

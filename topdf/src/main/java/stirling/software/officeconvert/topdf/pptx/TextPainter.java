@@ -182,7 +182,7 @@ final class TextPainter {
                     float w = ch.width(part[0], part[1]) + (part[1] - part[0]) * l.extraPerSpace;
                     segment(canvas, ch, part[0], part[1], x, baseline, w, l.extraPerSpace, deck);
                     x += w;
-                } else if (run.rightToLeft() || ColorEmoji.needsShaping(t)) {
+                } else if (!p.emoji() && (run.rightToLeft() || ColorEmoji.needsShaping(t))) {
                     GlyphRun g = style.face().shape(t, run.rightToLeft());
                     float w = g.width(style.size()) * (style.horizontalScale() / 100f)
                             + t.codePointCount(0, t.length()) * style.charSpacing();
@@ -258,7 +258,9 @@ final class TextPainter {
 
     private static void glyphs(PdfCanvas canvas, Chars ch, int from, int to, float x, float y, Piece p,
             TextStyle style, float wordSpacing) throws IOException {
-        if (p.metrics() != null) {
+        if (p.emoji()) {
+            canvas.emoji(ch.text(from, to), x, y, style, ColorEmoji.OFFICE_ADVANCE, false);
+        } else if (p.metrics() != null) {
             emulated(canvas, ch, from, to, x, y, style.wordSpacing(0), wordSpacing);
         } else if (ColorEmoji.needsShaping(ch.text(from, to)) && style.face().shapeable()) {
             shaped(canvas, ch, from, to, x, y, style, wordSpacing);
@@ -393,7 +395,7 @@ final class TextPainter {
             return;
         }
         if (!text.isBlank() && style.color().getAlpha() > 0) {
-            if (p.shadow() != null) {
+            if (p.shadow() != null && !p.emoji()) {
                 shadow(canvas, ch, from, to, x, y, p, wordSpacing, deck);
             }
             glyphs(canvas, ch, from, to, x, y, p, style, wordSpacing);
@@ -402,7 +404,7 @@ final class TextPainter {
             canvas.text(text, x, y, style.charSpacing(0).wordSpacing(0).horizontalScale(100 * width / Math.max(
                     0.01f, style.charSpacing(0).wordSpacing(0).horizontalScale(100).width(text))));
         }
-        if (!text.isBlank() && p.outline() != null) {
+        if (!text.isBlank() && p.outline() != null && !p.emoji()) {
             Path2D outline = outlines(ch, from, to, x, y, p, wordSpacing);
             if (!outline.getBounds2D().isEmpty()) {
                 canvas.draw(outline, null, p.outline());

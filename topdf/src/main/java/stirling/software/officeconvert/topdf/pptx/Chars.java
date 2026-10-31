@@ -66,6 +66,24 @@ final class Chars {
             Advances metrics = p.metrics();
             String t = p.text();
             int previous = -1;
+            if (p.emoji()) {
+                for (int i = 0; i < t.length(); ) {
+                    int end = ColorEmoji.clusterEnd(t, i);
+                    end = end > i ? end : i + Character.charCount(t.codePointAt(i));
+                    int count = t.codePointCount(i, end);
+                    for (int c = 0; c < count; c++) {
+                        int cp = t.codePointAt(i);
+                        codePoints[k] = cp;
+                        piece[k] = pi;
+                        offset[k] = i;
+                        advances[k] = c > 0 ? 0 : device(ColorEmoji.OFFICE_ADVANCE * s.size()
+                                * (s.horizontalScale() / 100f)) + count * s.charSpacing();
+                        i += Character.charCount(cp);
+                        k++;
+                    }
+                }
+                continue;
+            }
             for (int i = 0; i < t.length(); ) {
                 int cp = t.codePointAt(i);
                 codePoints[k] = cp;
