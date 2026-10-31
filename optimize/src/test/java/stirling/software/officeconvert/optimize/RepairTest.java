@@ -182,6 +182,28 @@ class RepairTest {
     }
 
     @Test
+    void aPageTypedAsSomethingElseKeepsItsContent() throws Exception {
+        Path good = pages(3).write(dir, "good");
+        Path in = write("mistyped", text(good).replace("5 0 obj\n<</Type/Page/", "5 0 obj\n<</Type/Font/"));
+        Path out = dir.resolve("out.pdf");
+        PdfOptimizer.Result r = PdfOptimizer.optimize(in, out, PdfOptimizer.Options.defaults());
+        assertFalse(r.warnings().stream().anyMatch(w -> w.contains("blank")), r.warnings().toString());
+        assertSoundTree(out, 3);
+        Pages.assertSameRendering(good, out);
+    }
+
+    @Test
+    void aRootWithoutKidsIsRebuiltFromThePagesInTheFile() throws Exception {
+        Path good = pages(2).write(dir, "good");
+        Path in = write("kidless", text(good).replace("/Kids[3 0 R 5 0 R ]", ""));
+        Path out = dir.resolve("out.pdf");
+        PdfOptimizer.Result r = PdfOptimizer.optimize(in, out, PdfOptimizer.Options.defaults());
+        assertTrue(r.rewritten(), r.warnings().toString());
+        assertSoundTree(out, 2);
+        Pages.assertSameRendering(good, out);
+    }
+
+    @Test
     void aDeletedPageBecomesASizedBlankPageNotANullKid() throws Exception {
         RawPdf raw = pages(3);
         raw.set(5, "null");
