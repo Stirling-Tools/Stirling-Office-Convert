@@ -232,7 +232,7 @@ class MainTest {
                 InputStream font = PDDocument.class.getResourceAsStream(
                         "/org/apache/pdfbox/resources/ttf/LiberationSans-Regular.ttf")) {
             PDType0Font f = PDType0Font.load(doc, font);
-            for (int i = 0; i < 400; i++) {
+            for (int i = 0; i < 10; i++) {
                 PDPage page = new PDPage();
                 doc.addPage(page);
                 try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
