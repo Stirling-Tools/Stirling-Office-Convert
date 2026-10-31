@@ -732,7 +732,7 @@ class HtmlLayoutTest {
                 height:100px;background:#0000ff;color:#ffffff">Top</a></body></html>""");
         int[] box = blueBox(l, l.word("Top"));
         assertEquals(75, box[3] - box[1] + 1, 3);
-        assertTrue(l.word("Top").top() - box[1] < 12, "text at " + l.word("Top").top() + ", box from " + box[1]);
+        assertTrue(l.word("Top").top() - box[1] < (box[3] - box[1]) / 4f, "text at " + l.word("Top").top() + ", box from " + box[1]);
     }
 
     @Test

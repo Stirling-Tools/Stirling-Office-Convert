@@ -172,7 +172,6 @@ final class Controls {
         }
         contentW = clamp(contentW, 1);
         contentH = clamp(contentH, 1);
-        float below = own != null && height != null ? Math.max(0, contentH - lines(text, look, contentW)) : 0;
         float outerW = Math.min(MAX_SIDE, contentW + outsideX);
         float outerH = Math.min(MAX_SIDE, contentH + outsideY);
         Integer fill = Css.color(d.get("background-color"));
@@ -189,8 +188,9 @@ final class Controls {
             lower = Math.max(0, contentH / 2 - 0.355f * em + padBottom + edge);
         }
         return new Inline.FormControl(field, shown, outerW, outerH, padLeft + edge, padTop + edge, padRight + edge,
-                padBottom + edge + (bottomOnly ? shown.borderBottom : 0) + below, fill == null ? -1 : fill,
-                line.visible() ? line.rgb() : -1, edge, corner, round, lower);
+                padBottom + edge + (bottomOnly ? shown.borderBottom : 0), fill == null ? -1 : fill,
+                line.visible() ? line.rgb() : -1, edge, corner, round, lower, own != null,
+                own != null && height != null);
     }
 
     private static FormField field(Element e, String kind, String label) {
