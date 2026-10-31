@@ -67,7 +67,9 @@ public final class PageTreeRepair {
                 defaultBox(p);
             }
         }
-        COSDictionary top = root != null && !(root instanceof COSStream) ? root : new COSDictionary();
+        boolean reuse = root != null && !(root instanceof COSStream)
+                && !COSName.PAGE.equals(root.getCOSName(COSName.TYPE)) && tree.pages.stream().noneMatch(p -> p == root);
+        COSDictionary top = reuse ? root : new COSDictionary();
         top.clear();
         top.setItem(COSName.TYPE, COSName.PAGES);
         List<COSDictionary> level = tree.pages;

@@ -114,6 +114,16 @@ class DamagedPdfLoadingTest {
     }
 
     @Test
+    void aCatalogPointingStraightAtAPageKeepsThatPage() throws IOException {
+        try (PDDocument doc = PdfFiles.open(write(DamagedPdf.hello().object(5, "<< /Pages 2 0 R /Type /Catalog >>")),
+                null)) {
+            assertEquals(1, doc.getNumberOfPages());
+            assertEquals("Hello PDF-world!", text(doc));
+            assertEquals(612, doc.getPage(0).getMediaBox().getWidth());
+        }
+    }
+
+    @Test
     void aKidThatDoesNotExistIsFilledByTheOrphanedPage() throws IOException {
         assertReadsOnePage(DamagedPdf.hello().object(1, "<< /Kids [8 0 R] /Type /Pages /Count 1 >>"), false);
     }
