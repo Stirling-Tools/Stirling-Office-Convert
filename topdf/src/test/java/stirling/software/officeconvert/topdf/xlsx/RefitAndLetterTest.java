@@ -129,6 +129,25 @@ class RefitAndLetterTest {
         assertTrue(refit > stored + 30, "refit " + refit + ", stored " + stored);
     }
 
+    @Test
+    void aWholePixelDefaultOrAnUnknownFontKeepsTheStoredHeight() throws Exception {
+        String words = "one two three four five six seven eight nine ten eleven twelve";
+        String rows = "<cols><col min=\"1\" max=\"1\" width=\"8\" customWidth=\"1\"/></cols><sheetData>"
+                + "<row r=\"1\" ht=\"15\"><c r=\"A1\" s=\"1\" t=\"inlineStr\"><is><t>" + words
+                + "</t></is></c></row><row r=\"2\">" + RawXlsx.inline("A2", "Below") + "</row></sheetData>";
+        float stored = below("stored.xlsx", "<sheetFormatPr defaultRowHeight=\"15\"/>" + rows);
+        assertEquals(stored, below("pixel.xlsx", "<sheetFormatPr defaultRowHeight=\"14.25\"/>" + rows), 0.5);
+        String unknown = WRAP_STYLES.replace("<name val=\"Calibri\"/>", "<name val=\"Unheard Of Sans\"/>");
+        XlsxTesting.convert(dir, "unknown.xlsx", new RawXlsx().styles(unknown)
+                .sheet("S", "<sheetFormatPr defaultRowHeight=\"14.4\"/>" + rows)
+                .workbookExtra("<fileVersion appName=\"xl\"/>").bytes());
+        XlsxTesting.convert(dir, "unknownhere.xlsx", new RawXlsx().styles(unknown)
+                .sheet("S", "<sheetFormatPr defaultRowHeight=\"15\"/>" + rows)
+                .workbookExtra("<fileVersion appName=\"xl\"/>").bytes());
+        assertEquals(position(dir.resolve("unknownhere.xlsx.pdf"), "Below")[1],
+                position(dir.resolve("unknown.xlsx.pdf"), "Below")[1], 1.5);
+    }
+
     private float below(String name, String sheet) throws Exception {
         XlsxTesting.convert(dir, name, new RawXlsx().styles(WRAP_STYLES).sheet("S", sheet)
                 .workbookExtra("<fileVersion appName=\"xl\"/>").bytes());

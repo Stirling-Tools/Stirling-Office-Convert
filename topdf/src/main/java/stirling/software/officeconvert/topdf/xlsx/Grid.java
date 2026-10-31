@@ -222,7 +222,9 @@ final class Grid {
         this.rowFactor = book.workbook().openDocument ? 1 : metrics.rowFactor(screenDefault);
         this.defaultHidden = zero;
         this.fixedDefault = customDefault;
-        this.otherScreen = !customDefault && near && Math.abs(fileDefault - screenDefault) > OTHER_SCREEN_ROW;
+        double filePx = fileDefault / 0.75;
+        this.otherScreen = !customDefault && near && Math.abs(fileDefault - screenDefault) > OTHER_SCREEN_ROW
+                && Math.abs(filePx - Math.rint(filePx)) > OTHER_SCREEN_ROW;
         this.columnTops = columns.anyStyle(st -> book.styles().at(st).top().visible());
         this.rightToLeft = rightToLeft(ws);
         this.defaultDescent = descentPoints(book.styles().defaultFont());
@@ -362,7 +364,7 @@ final class Grid {
                     + Math.max(0, row.thickEdges()) * SCREEN_PX);
         } else if (fit) {
             height = refit(row, autofit(index, entries, blanks, base) + Math.max(0, row.thickEdges()) * SCREEN_PX,
-                    entries.isEmpty() && blanks.isEmpty(), wrapsText(entries));
+                    entries.isEmpty() && blanks.isEmpty(), wrapsText(entries) && measurable(entries));
         } else {
             height = Math.min(409.5, row.height());
         }
@@ -590,6 +592,20 @@ final class Grid {
     private boolean inTallMerge(int row, int col) {
         CellRangeAddress m = mergeCovering(row, col);
         return m != null && m.getFirstRow() != m.getLastRow();
+    }
+
+    private boolean measurable(List<CellEntry> entries) {
+        for (CellEntry e : entries) {
+            if (e.text() == null) {
+                continue;
+            }
+            for (TextRun r : e.text().runs()) {
+                if (book.typesetter().measure(r.font()).estimated()) {
+                    return false;
+                }
+            }
+        }
+        return true;
     }
 
     private static boolean wrapsText(List<CellEntry> entries) {
