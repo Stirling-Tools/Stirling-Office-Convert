@@ -565,7 +565,8 @@ final class FontFixer {
     private void unicode(PDFont font, TreeSet<Integer> codes, int bytesPerCode) throws IOException {
         TreeMap<Integer, String> map = new TreeMap<>();
         COSBase declared = font.getCOSObject().getDictionaryObject(COSName.TO_UNICODE);
-        boolean complete = declared != null && ToUnicodeWriter.wellFormed(declared);
+        boolean complete = declared != null && ToUnicodeWriter.wellFormed(declared)
+                && !ToUnicodeWriter.usesOther(declared);
         for (int code : codes) {
             PdfFiles.stopIfInterrupted();
             String t = UnicodeGuess.text(font, code, bytesPerCode);

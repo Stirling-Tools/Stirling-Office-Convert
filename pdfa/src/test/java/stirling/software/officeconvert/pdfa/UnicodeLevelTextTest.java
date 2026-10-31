@@ -50,6 +50,19 @@ class UnicodeLevelTextTest {
     }
 
     @Test
+    void aToUnicodeMapThatUsesAnotherIsNotSelfContained() throws Exception {
+        try (PDDocument d = new PDDocument()) {
+            COSStream uses = d.getDocument().createCOSStream();
+            try (OutputStream o = uses.createOutputStream()) {
+                o.write("begincmap /Adobe-Korea1-UCS2 usecmap 1 beginbfchar <46FD> <0081> endbfchar endcmap"
+                        .getBytes(StandardCharsets.US_ASCII));
+            }
+            assertTrue(ToUnicodeWriter.usesOther(uses));
+            assertFalse(ToUnicodeWriter.usesOther(ToUnicodeWriter.write(d, new TreeMap<>(java.util.Map.of(1, "A")), 1)));
+        }
+    }
+
+    @Test
     void presentationFormLigaturesAreWrittenAsTheirLetters() {
         assertEquals("fi", ToUnicodeWriter.plain("ﬁ"));
         assertEquals("ffl", ToUnicodeWriter.plain("ﬄ"));

@@ -62,6 +62,14 @@ final class ToUnicodeWriter {
         return Normalizer.normalize(text, Normalizer.Form.NFKC);
     }
 
+    static boolean usesOther(COSBase map) {
+        if (!(map instanceof COSStream s)) {
+            return false;
+        }
+        byte[] b = StreamFixer.read(s);
+        return b != null && new String(b, StandardCharsets.ISO_8859_1).contains("usecmap");
+    }
+
     static boolean wellFormed(COSBase map) {
         if (!(map instanceof COSStream s)) {
             return map == null;
