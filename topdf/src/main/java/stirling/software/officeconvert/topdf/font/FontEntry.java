@@ -37,6 +37,8 @@ final class FontEntry {
 
     private final boolean noSubsetting;
 
+    private final boolean postScript;
+
     private final String unusable;
 
     private volatile int[] coverage;
@@ -47,7 +49,7 @@ final class FontEntry {
 
     FontEntry(Path file, byte[] data, int index, long offset, String postScriptName, String family, String subfamily,
             String fullName, List<String> legacyFamilies, List<String> typographicFamilies, int weight, boolean bold,
-            boolean italic, boolean symbolCmap, boolean noSubsetting, String unusable) {
+            boolean italic, boolean symbolCmap, boolean noSubsetting, boolean postScript, String unusable) {
         this.file = file;
         this.data = data;
         this.index = index;
@@ -63,6 +65,7 @@ final class FontEntry {
         this.italic = italic;
         this.symbolCmap = symbolCmap;
         this.noSubsetting = noSubsetting;
+        this.postScript = postScript;
         this.unusable = unusable;
     }
 
@@ -124,6 +127,10 @@ final class FontEntry {
 
     boolean noSubsetting() {
         return noSubsetting;
+    }
+
+    boolean postScript() {
+        return postScript;
     }
 
     String unusable() {

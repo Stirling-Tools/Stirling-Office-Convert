@@ -13,6 +13,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 
 final class FontScanner {
 
@@ -27,6 +28,12 @@ final class FontScanner {
     private static final int MAX_RANGES = 1 << 16;
 
     private static final Charset MAC_ROMAN = macRoman();
+
+    private static final List<String> METRIC_TABLES =
+            List.of("head", "hhea", "maxp", "OS/2", "post", "name", "cmap", "hmtx", "kern");
+
+    private static final byte[] EMPTY_CFF = {1, 0, 4, 1, 0, 1, 1, 1, 2, 'A', 0, 1, 1, 1, 18, 29, 0, 0, 0, 36, 17, 29,
+        0, 0, 0, 2, 29, 0, 0, 0, 42, 18, 0, 0, 0, 0, 0, 1, 1, 1, 2, 14, (byte) 139, 20};
 
     private FontScanner() {}
 
@@ -78,6 +85,51 @@ final class FontScanner {
                 out.putInt(12 + 16 * i + 12, length);
                 out.put(at, src.slice(offset, length).bytes);
                 at += (length + 3) & ~3;
+            }
+            return out.array();
+        }
+    }
+
+    static byte[] table(FontEntry entry, String tag, long maxBytes) throws IOException {
+        try (Source src = entry.file() != null ? Source.of(entry.file()) : Source.of(entry.data())) {
+            long[] t = tables(src, entry.offset()).get(tag);
+            if (t == null) {
+                throw new IOException("the font has no " + tag.strip() + " table");
+            }
+            if (t[1] > maxBytes) {
+                throw new IOException("the " + tag.strip() + " table is too large");
+            }
+            return src.slice(t[0], (int) t[1]).bytes;
+        }
+    }
+
+    static byte[] metricsOnly(FontEntry entry) throws IOException {
+        try (Source src = entry.file() != null ? Source.of(entry.file()) : Source.of(entry.data())) {
+            Map<String, long[]> tables = tables(src, entry.offset());
+            TreeMap<String, byte[]> kept = new TreeMap<>();
+            for (String tag : METRIC_TABLES) {
+                long[] t = tables.get(tag);
+                if (t != null) {
+                    if (t[1] > MAX_CMAP_BYTES) {
+                        throw new IOException("the " + tag.strip() + " table is too large");
+                    }
+                    kept.put(tag, src.slice(t[0], (int) t[1]).bytes);
+                }
+            }
+            kept.put("CFF ", EMPTY_CFF);
+            int n = kept.size();
+            int size = 12 + 16 * n;
+            for (byte[] t : kept.values()) {
+                size += (t.length + 3) & ~3;
+            }
+            ByteBuffer out = ByteBuffer.allocate(size);
+            out.putInt(0x4F54544F).putShort((short) n).putShort((short) 0).putShort((short) 0).putShort((short) 0);
+            int at = 12 + 16 * n;
+            for (Map.Entry<String, byte[]> e : kept.entrySet()) {
+                out.put(e.getKey().getBytes(StandardCharsets.ISO_8859_1)).putInt(0).putInt(at)
+                        .putInt(e.getValue().length);
+                out.put(at, e.getValue());
+                at += (e.getValue().length + 3) & ~3;
             }
             return out.array();
         }
@@ -158,9 +210,11 @@ final class FontScanner {
         boolean cff = otto || tables.containsKey("CFF ") || tables.containsKey("CFF2");
         int cmapKind = cmapKind(src.slice(cmap[0], (int) Math.min(cmap[1], 4 + 8 * MAX_TABLES)));
         String unusable = null;
-        if (cff) {
-            unusable = "it has PostScript (CFF) outlines, which PDFBox cannot embed";
-        } else if (!tables.containsKey("glyf") || !tables.containsKey("loca")) {
+        if (tables.containsKey("CFF2")) {
+            unusable = "it has variable PostScript (CFF2) outlines, which cannot be embedded";
+        } else if (cff && !tables.containsKey("CFF ")) {
+            unusable = "it is marked as having PostScript (CFF) outlines but has no CFF table";
+        } else if (!cff && (!tables.containsKey("glyf") || !tables.containsKey("loca"))) {
             unusable = "it has no TrueType outlines";
         } else if (os2 == null || !tables.containsKey("post")) {
             unusable = "it lacks the OS/2 or post table";
@@ -171,7 +225,7 @@ final class FontScanner {
         }
         return new FontEntry(file, data, index, offset, names.postScript, names.family, names.subfamily,
                 names.fullName, List.copyOf(names.legacy), List.copyOf(names.typographic), weight, bold, italic,
-                cmapKind == 2, (fsType & 0x0100) != 0, unusable);
+                cmapKind == 2, (fsType & 0x0100) != 0, cff, unusable);
     }
 
     private static Map<String, long[]> tables(Source src, long offset) throws IOException {

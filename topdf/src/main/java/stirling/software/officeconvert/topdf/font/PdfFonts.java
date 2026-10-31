@@ -142,7 +142,8 @@ public final class PdfFonts implements Closeable {
      */
     public Embedded missing(FontFace face) throws IOException {
         Objects.requireNonNull(face, "face");
-        FontFace box = face.notdefVisible() && !face.program().entry().noSubsetting() ? face
+        FontEntry entry = face.program().entry();
+        FontFace box = face.notdefVisible() && !entry.noSubsetting() && !entry.postScript() ? face
                 : boxFace(face.boldStyle(), face.italicStyle());
         Embedded known = missing.get(box.program());
         if (known != null) {
@@ -341,6 +342,11 @@ public final class PdfFonts implements Closeable {
             Use u = e.getValue();
             boolean whole = false;
             SubsetFont subset = subsets.get(font);
+            if (subset != null && subset.postScript()) {
+                for (int k = 0; k < u.aliasGlyphs.size(); k++) {
+                    subset.alias(u.program.glyphCount() + k, u.aliasGlyphs.get(k));
+                }
+            }
             if (subset != null) {
                 try {
                     subset.subset();
@@ -364,6 +370,18 @@ public final class PdfFonts implements Closeable {
     // Codes past the font's own glyphs draw the glyph they alias at its width
     private void aliases(COSDictionary font, Use u) throws IOException {
         COSDictionary cid = descendant(font);
+        if (COSName.CID_FONT_TYPE0.equals(cid.getCOSName(COSName.SUBTYPE))) {
+            COSArray widths = cid.getDictionaryObject(COSName.W) instanceof COSArray w ? w : new COSArray();
+            float scale = 1000f / u.program.metrics().unitsPerEm();
+            for (int k = 0; k < u.aliasGlyphs.size(); k++) {
+                COSArray one = new COSArray();
+                one.add(COSInteger.get(Math.round(u.program.advanceOfGlyph(u.aliasGlyphs.get(k)) * scale)));
+                widths.add(COSInteger.get(u.program.glyphCount() + k));
+                widths.add(one);
+            }
+            cid.setItem(COSName.W, widths);
+            return;
+        }
         int last = u.program.glyphCount() + u.aliasGlyphs.size() - 1;
         byte[] map = new byte[2 * (last + 1)];
         if (cid.getDictionaryObject(COSName.CID_TO_GID_MAP) instanceof COSStream stream) {
@@ -475,9 +493,13 @@ public final class PdfFonts implements Closeable {
             if (!subset && entry.index() >= 0) {
                 throw new IOException("its licence forbids subsetting and a collection cannot be embedded whole");
             }
+            if (!subset && entry.postScript()) {
+                throw new IOException("its licence forbids subsetting and its PostScript outlines cannot be embedded"
+                        + " whole");
+            }
             COSDictionary font;
             if (subset) {
-                SubsetFont s = new SubsetFont(document, opened.font());
+                SubsetFont s = new SubsetFont(document, opened.font(), entry.postScript() ? entry : null);
                 font = s.dictionary();
                 subsets.put(font, s);
             } else {
@@ -496,6 +518,10 @@ public final class PdfFonts implements Closeable {
         String name = u.program.entry().describe();
         String reason = why.getMessage() == null ? why.getClass().getSimpleName() : why.getMessage();
         COSDictionary cid = descendant(font);
+        if (u.program.entry().postScript()) {
+            substitutions.add("The font " + name + " could not be subset (" + reason + "); its text may not display");
+            return;
+        }
         cid.setItem(COSName.CID_TO_GID_MAP, COSName.IDENTITY);
         cid.setItem(COSName.W, widths(u));
         PDFontDescriptor fd = descriptor(font);
