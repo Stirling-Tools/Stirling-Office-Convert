@@ -186,14 +186,24 @@ class FontCoverageTest {
 
     @Test
     void eastAsianTextInALatinRunTakesTheLineOfWordsEastAsianFallback() throws Exception {
+        assertEquals(1.3f * 20, eastAsianLine("Noto Sans CJK SC", "Liberation Sans"), 0.5f);
+    }
+
+    @Test
+    void eastAsianTextInAMissingEastAsianFontKeepsThatFontsLine() throws Exception {
+        assertEquals((1.0581f + 0.2617f) * 1.3f * 20, eastAsianLine("Test Ideographs", "Microsoft YaHei"), 0.5f);
+    }
+
+    private float eastAsianLine(String cjkFont, String eastAsia) throws Exception {
         Path fonts = Files.createDirectories(dir.resolve("fallback"));
-        Files.write(fonts.resolve("Cjk.otf"), PostScriptFonts.font("Noto Sans CJK SC", 400, true, 0x4E00));
+        Files.write(fonts.resolve("Cjk.otf"), PostScriptFonts.font(cjkFont, 400, true, 0x4E00));
         Files.write(fonts.resolve("Latin.ttf"), TestFonts.renamed("Liberation Sans"));
         Path docx = dir.resolve("fallback.docx");
         try (XWPFDocument doc = new XWPFDocument(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
             for (String text : new String[] {"Ab", "Ab", "A\u4E00", "Ab"}) {
                 XWPFRun run = doc.createParagraph().createRun();
                 run.setFontFamily("Liberation Sans");
+                run.setFontFamily(eastAsia, XWPFRun.FontCharRange.eastAsia);
                 run.setFontSize(20);
                 run.setText(text);
             }
@@ -215,7 +225,6 @@ class FontCoverageTest {
         }
         assertEquals(4, baselines.size(), baselines.toString());
         float latin = baselines.get(1) - baselines.get(0);
-        float withEastAsian = baselines.get(3) - baselines.get(1);
-        assertEquals(1.3f * 20, withEastAsian - latin, 0.5f, baselines.toString());
+        return baselines.get(3) - baselines.get(1) - latin;
     }
 }
