@@ -14,6 +14,9 @@ import java.util.regex.Pattern;
 
 import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.pdmodel.PDPage;
+import org.apache.pdfbox.pdmodel.PDPageContentStream;
+import org.apache.pdfbox.pdmodel.common.PDRectangle;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -34,6 +37,39 @@ class PdfToXlsxTest {
             PdfToXlsx.convert(doc, out, options);
         }
         return SpreadsheetPdfs.parts(out.toByteArray());
+    }
+
+    @Test
+    void aRuledBoxHoldingOnlyACaptionKeepsTheCaption() throws IOException {
+        Path boxed = dir.resolve("boxed.pdf");
+        try (PDDocument doc = new PDDocument()) {
+            PDPage page = new PDPage(PDRectangle.A4);
+            doc.addPage(page);
+            try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
+                SpreadsheetPdfs.text(cs, SpreadsheetPdfs.BOLD, 14, 60, 780, "Group test");
+                float[] cols = {60, 140, 220, 300, 380, 460};
+                float top = 740;
+                float rowH = 60;
+                for (int r = 0; r <= 3; r++) {
+                    cs.moveTo(cols[0], top - r * rowH);
+                    cs.lineTo(cols[cols.length - 1], top - r * rowH);
+                }
+                for (float x : cols) {
+                    cs.moveTo(x, top);
+                    cs.lineTo(x, top - 3 * rowH);
+                }
+                cs.stroke();
+                SpreadsheetPdfs.text(cs, SpreadsheetPdfs.REGULAR, 10, 64, top - 14,
+                        "Nested inner group sees the transparent backdrop behind every rectangle here");
+            }
+            doc.save(boxed.toFile());
+        }
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        try (PDDocument doc = Loader.loadPDF(boxed.toFile())) {
+            PdfToXlsx.convert(doc, out, PdfToXlsx.Options.defaults());
+        }
+        String strings = SpreadsheetPdfs.part(SpreadsheetPdfs.parts(out.toByteArray()), "xl/sharedStrings.xml");
+        assertTrue(strings.contains("transparent backdrop"), strings);
     }
 
     private static boolean number(String sheet, String value) {
