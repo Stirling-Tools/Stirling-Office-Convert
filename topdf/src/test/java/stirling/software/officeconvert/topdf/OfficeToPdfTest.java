@@ -191,7 +191,7 @@ class OfficeToPdfTest {
         });
         try {
             assertThrows(InterruptedIOException.class,
-                    () -> OfficeToPdf.run(Duration.ZERO, OfficeToPdfTest::blockUntilInterrupted));
+                    () -> ConversionWorker.run(Duration.ZERO, OfficeToPdfTest::blockUntilInterrupted));
             assertTrue(Thread.currentThread().isInterrupted());
         } finally {
             Thread.interrupted();
@@ -201,7 +201,7 @@ class OfficeToPdfTest {
 
     @Test
     void timesOut() {
-        IOException e = assertThrows(IOException.class, () -> OfficeToPdf.run(Duration.ofMillis(100),
+        IOException e = assertThrows(IOException.class, () -> ConversionWorker.run(Duration.ofMillis(100),
                 OfficeToPdfTest::blockUntilInterrupted));
         assertInstanceOf(OfficeToPdf.TimedOut.class, e);
         assertFalse(Thread.currentThread().isInterrupted());
@@ -210,7 +210,7 @@ class OfficeToPdfTest {
     @Test
     void aTimeoutTooLongToMeasureMeansNoLimit() throws Exception {
         Duration forever = Duration.ofSeconds(Long.MAX_VALUE);
-        assertEquals("done", OfficeToPdf.run(forever, () -> "done"));
+        assertEquals("done", ConversionWorker.run(forever, () -> "done"));
         Path in = Fixtures.write(dir, "a.docx", Fixtures.docx("x"));
         Path out = dir.resolve("a.pdf");
         try {
@@ -327,11 +327,11 @@ class OfficeToPdfTest {
 
     @Test
     void wrapsRendererCrashesAsIOExceptions() {
-        IOException crash = assertThrows(IOException.class, () -> OfficeToPdf.run(Duration.ZERO, () -> {
+        IOException crash = assertThrows(IOException.class, () -> ConversionWorker.run(Duration.ZERO, () -> {
             throw new IllegalStateException("broken table");
         }));
         assertTrue(crash.getMessage().contains("broken table"));
-        IOException deep = assertThrows(IOException.class, () -> OfficeToPdf.run(Duration.ZERO, () -> recurse(0)));
+        IOException deep = assertThrows(IOException.class, () -> ConversionWorker.run(Duration.ZERO, () -> recurse(0)));
         assertTrue(deep.getMessage().contains("nests too deeply"));
     }
 
@@ -434,7 +434,7 @@ class OfficeToPdfTest {
     @Test
     void theWarmUpSamplesAreRealDocumentsAndLeaveNothingBehind() throws Exception {
         for (Format f : Format.values()) {
-            Path in = Fixtures.write(dir, "sample." + f.name().toLowerCase(java.util.Locale.ROOT), OfficeToPdf.sample(f));
+            Path in = Fixtures.write(dir, "sample." + f.name().toLowerCase(java.util.Locale.ROOT), WarmUp.sample(f));
             OfficeToPdf.Result r = OfficeToPdf.convert(in, dir.resolve(f + ".pdf"));
             assertEquals(1, r.pages(), f.name());
             try (org.apache.pdfbox.pdmodel.PDDocument pdf = org.apache.pdfbox.Loader.loadPDF(dir.resolve(f + ".pdf")

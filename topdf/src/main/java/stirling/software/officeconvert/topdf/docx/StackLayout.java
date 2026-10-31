@@ -216,7 +216,7 @@ final class StackLayout extends Region {
     List<Object> anchor(Drawing d, Para p, float paraX, float paraTop) {
         Strip.Anchor a = new Strip.Anchor(d, paraX, paraTop);
         pending.add(a);
-        boolean wraps = d.wraps() && !d.wrap.equals("topAndBottom") && !PageFlow.emptyPolygon(d);
+        boolean wraps = d.wraps() && !d.wrap.equals("topAndBottom") && !Exclusions.emptyPolygon(d);
         PageBox.Exclusion e = page == null || !wraps ? null : exclusion(d, paraX, paraTop);
         if (e == null) {
             return List.of(a);
@@ -235,7 +235,7 @@ final class StackLayout extends Region {
         float left = pageLeft();
         FloatLayout.Frame frame = new FloatLayout.Frame(page.pageW, page.pageH, left, page.right - shift, page.top,
                 page.bottom, left, width);
-        Rectangle2D.Float b = PageFlow.wrapBox(d, FloatLayout.position(d, frame, paraX, top + paraTop));
+        Rectangle2D.Float b = Exclusions.wrapBox(d, FloatLayout.position(d, frame, paraX, top + paraTop));
         b.x -= left;
         b.y -= top;
         return new PageBox.Exclusion(b, d.wrapSide, false, null);
@@ -254,6 +254,6 @@ final class StackLayout extends Region {
 
     @Override
     float[] spans(float top, float h, float x0, float x1, float minWidth) {
-        return PageFlow.spans(exclusions, top, h, x0, x1, minWidth);
+        return Exclusions.spans(exclusions, top, h, x0, x1, minWidth);
     }
 }

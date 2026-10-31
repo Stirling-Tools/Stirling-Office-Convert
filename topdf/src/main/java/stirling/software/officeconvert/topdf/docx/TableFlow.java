@@ -21,6 +21,8 @@ final class TableFlow {
 
     private final BlockFlow blocks;
 
+    private final ColumnWidths widths;
+
     private float rowMark = -1;
 
     private int depth;
@@ -42,6 +44,7 @@ final class TableFlow {
     TableFlow(Ctx ctx, BlockFlow blocks) {
         this.ctx = ctx;
         this.blocks = blocks;
+        this.widths = new ColumnWidths(ctx);
     }
 
     static final class CellBox {
@@ -174,7 +177,8 @@ final class TableFlow {
             }
             // The first lines a row may break after, as widow control and keep rules allow
             int k = 1;
-            while (k < cb.content.size() && keepSafe(cb.content, widowSafe(cb.content, k)) != k) {
+            while (k < cb.content.size()
+                    && RowSplitter.keepSafe(cb.content, RowSplitter.widowSafe(cb.content, k)) != k) {
                 k++;
             }
             Placed p = cb.content.get(k - 1);
@@ -314,7 +318,7 @@ final class TableFlow {
             boolean fresh = r.atTop();
             while (current != null && guard++ < 10_000) {
                 if (opening) {
-                    current = edged(current, true, false);
+                    current = RowSplitter.edged(current, true, false);
                     opening = false;
                 }
                 if (r.paginated()) {
@@ -325,7 +329,8 @@ final class TableFlow {
                     carryMerged(l.rows(), i, current, r.y, limit);
                 }
                 // A row that ends the page must hold the table's bottom border too
-                float closing = edges && !current.last ? edged(current, false, true).height : current.height;
+                float closing = edges && !current.last ? RowSplitter.edged(current, false, true).height
+                        : current.height;
                 boolean room = r.y + current.height <= limit + 0.01f
                         && (closing <= current.height || r.y + closing <= limit + 0.01f);
                 if (!r.paginated() || room && notesFit(current, r.y, r)) {
@@ -362,7 +367,7 @@ final class TableFlow {
                     }
                     continue;
                 }
-                placeRow(edges ? edged(parts[0], false, true) : parts[0], l, r);
+                placeRow(edges ? RowSplitter.edged(parts[0], false, true) : parts[0], l, r);
                 placedAny = true;
                 current = parts[1];
                 spanOn(current, row, i, l.rows());
@@ -390,7 +395,7 @@ final class TableFlow {
         if (!edges || placed == null || row == null || row.last || row.header) {
             return;
         }
-        Strip s = render(edged(row, false, true), l);
+        Strip s = render(RowSplitter.edged(row, false, true), l);
         placed.ops.clear();
         placed.ops.addAll(s.ops);
         placed.height = s.height;
@@ -431,14 +436,14 @@ final class TableFlow {
             while (k < cb.content.size() && cb.content.get(k).y + cb.content.get(k).strip.height <= room + 0.01f) {
                 k++;
             }
-            k = cb.rotation != 0 ? cb.content.size() : widowSafe(cb.content, k);
-            CellBox next = at(rows.get(index + m), cb.cell.col);
+            k = cb.rotation != 0 ? cb.content.size() : RowSplitter.widowSafe(cb.content, k);
+            CellBox next = TableBorders.at(rows.get(index + m), cb.cell.col);
             if (next == null || !next.continuation) {
                 continue;
             }
             float shift = k == 0 ? 0 : k < cb.content.size() ? cb.content.get(k).y : cb.contentH;
             boolean split = k > 0 && k < cb.content.size();
-            CellBox carry = copy(cb);
+            CellBox carry = RowSplitter.copy(cb);
             carry.continuation = false;
             carry.rotation = 0;
             carry.top = null;
@@ -448,13 +453,13 @@ final class TableFlow {
                 Placed p = cb.content.get(j);
                 carry.content.add(new Placed(p.strip, p.x, p.y - shift, 0, 0, p.gap));
             }
-            carry.contentH = Math.max(contentHeight(carry.content), cb.contentH - shift);
+            carry.contentH = Math.max(RowSplitter.contentHeight(carry.content), cb.contentH - shift);
             carry.anchors.clear();
             cb.content = new ArrayList<>(cb.content.subList(0, k));
-            cb.contentH = contentHeight(cb.content);
+            cb.contentH = RowSplitter.contentHeight(cb.content);
             cb.rowSpan = m;
             cb.vAlign = split ? "top" : cb.vAlign;
-            CellBox end = at(rows.get(index + m - 1), cb.cell.col);
+            CellBox end = TableBorders.at(rows.get(index + m - 1), cb.cell.col);
             cb.bottom = end == null ? null : end.bottom;
             cb.spanHeight = y - top;
             RowBox first = rows.get(index + m);
@@ -556,13 +561,13 @@ final class TableFlow {
                 return null;
             }
         }
-        return split(row, avail, true);
+        return RowSplitter.split(row, avail, true);
     }
 
     private RowBox[] splitWithNotes(RowBox row, float avail, Region r, boolean keeps) {
         float room = avail;
         for (int tries = 0; tries < 60 && room >= 12; tries++) {
-            RowBox[] parts = split(row, room, keeps);
+            RowBox[] parts = RowSplitter.split(row, room, keeps);
             if (parts == null || notesFit(parts[0], r.y, r)) {
                 return parts;
             }
@@ -657,12 +662,13 @@ final class TableFlow {
         boolean edges = l.spacing() <= 0 && fit < l.rows().size();
         for (int k = 0; k < fit; k++) {
             RowBox row = l.rows().get(k);
-            pf.placeFixed(render(edges && k == fit - 1 && parts == null ? edged(row, false, true) : row, l), x, at);
+            RowBox shown = edges && k == fit - 1 && parts == null ? RowSplitter.edged(row, false, true) : row;
+            pf.placeFixed(render(shown, l), x, at);
             at += row.height;
         }
         List<RowBox> rows = l.rows();
         if (parts != null) {
-            pf.placeFixed(render(edges ? edged(parts[0], false, true) : parts[0], l), x, at);
+            pf.placeFixed(render(edges ? RowSplitter.edged(parts[0], false, true) : parts[0], l), x, at);
             at += parts[0].height;
             fitted += parts[0].height;
             rows = new ArrayList<>(rows);
@@ -722,94 +728,24 @@ final class TableFlow {
             return null;
         }
         return avail -> {
-            RowBox[] parts = split(row, avail, false);
+            RowBox[] parts = RowSplitter.split(row, avail, false);
             if (parts == null) {
                 return null;
             }
             boolean edges = l.spacing() <= 0;
-            Strip first = render(edges ? edged(parts[0], false, true) : parts[0], l);
-            RowBox next = edges ? edged(parts[1], true, false) : parts[1];
+            Strip first = render(edges ? RowSplitter.edged(parts[0], false, true) : parts[0], l);
+            RowBox next = edges ? RowSplitter.edged(parts[1], true, false) : parts[1];
             Strip rest = render(next, l);
             rest.splitter = splitter(next, l);
             return new Strip[] {first, rest};
         };
     }
 
-    private float pctBase(TableBlock t, float avail) {
-        if (ctx.settings.compatibilityMode >= 15 || t.rows.isEmpty() || t.rows.get(0).cells.isEmpty()) {
-            return avail;
-        }
-        return avail + hangingMargins(t);
-    }
-
-    private static float hangingMargins(TableBlock t) {
-        TableProps tp = t.tp;
-        List<TableBlock.Cell> cells = t.rows.get(0).cells;
-        CellProps first = cells.get(0).cp;
-        CellProps last = cells.get(cells.size() - 1).cp;
-        float ml = first.marLeft != null ? first.marLeft : tp.marLeft != null ? tp.marLeft : DEFAULT_MARGIN;
-        float mr = last.marRight != null ? last.marRight : tp.marRight != null ? tp.marRight : DEFAULT_MARGIN;
-        return ml + mr;
-    }
-
     private Layout layout(TableBlock t, float avail, int maxRows) {
         TableProps tp = t.tp;
-        int ncols = t.grid.length;
-        int maxCells = 0;
-        for (TableBlock.Row row : t.rows) {
-            int c = row.rp.gridBefore == null ? 0 : row.rp.gridBefore;
-            for (TableBlock.Cell cell : row.cells) {
-                c += cell.span;
-            }
-            maxCells = Math.max(maxCells, c + (row.rp.gridAfter == null ? 0 : row.rp.gridAfter));
-        }
-        float[] grid = new float[Math.max(ncols, maxCells)];
-        float sum = 0;
-        for (int i = 0; i < ncols; i++) {
-            grid[i] = t.grid[i];
-            sum += grid[i];
-        }
-        float target = 0;
-        if (tp.width != null && tp.width > 0) {
-            target = "pct".equals(tp.widthType) ? pctBase(t, avail) * Math.min(tp.width, 1000) / 100f : tp.width;
-        }
-        if (sum <= 0.5f) {
-            float total = target > 0 ? target : avail;
-            fromCells(t, grid, total);
-        } else if (grid.length > ncols) {
-            float each = sum / ncols;
-            for (int i = ncols; i < grid.length; i++) {
-                grid[i] = each;
-            }
-        }
-        sum = 0;
-        for (float g : grid) {
-            sum += g;
-        }
-        if ("pct".equals(tp.widthType) && target > 0 && Math.abs(sum - target) > 1 && sum > 0) {
-            float scale = target / sum;
-            for (int i = 0; i < grid.length; i++) {
-                grid[i] *= scale;
-            }
-            sum = target;
-        }
-        float fit = autoFitLimit(t, avail);
-        float[] content = fit > 0 && maxCells == ncols ? contentWidths(t, fit) : null;
-        if (content != null) {
-            grid = content;
-            sum = 0;
-            for (float g : grid) {
-                sum += g;
-            }
-        }
-        if (sum > fit + 1 && fit > 0) {
-            // An autofit table without a width of its own shrinks to fit between the margins
-            float scale = fit / sum;
-            for (int i = 0; i < grid.length; i++) {
-                grid[i] *= scale;
-            }
-            sum = fit;
-        }
+        ColumnWidths.Columns columns = widths.layout(t, avail);
+        float[] grid = columns.grid();
+        float sum = columns.sum();
         float[] colX = new float[grid.length + 1];
         for (int i = 0; i < grid.length; i++) {
             colX[i + 1] = colX[i] + grid[i];
@@ -851,9 +787,9 @@ final class TableFlow {
                 headersOpen = false;
             }
         }
-        mergeVertical(t, rows, count, rowMark());
+        TableBorders.mergeVertical(t, rows, count, rowMark());
         for (RowBox rb : rows) {
-            finishHeight(rb);
+            TableBorders.finishHeight(rb);
         }
         float spacing = tp.cellSpacing == null ? 0 : Math.max(0, tp.cellSpacing);
         for (int i = 0; i < rows.size(); i++) {
@@ -882,7 +818,7 @@ final class TableFlow {
             }
         }
         if (spacing <= 0) {
-            shareBorders(rows);
+            TableBorders.shareBorders(rows);
         }
         if (headerRows == rows.size()) {
             headerRows = 0;
@@ -891,151 +827,6 @@ final class TableFlow {
             }
         }
         return new Layout(x, colX, rows, headerRows, spacing, tp);
-    }
-
-    private float autoFitLimit(TableBlock t, float avail) {
-        TableProps tp = t.tp;
-        boolean sized = tp.width != null && tp.width > 0 && !"auto".equals(tp.widthType) && !"nil".equals(tp.widthType);
-        if (sized || Boolean.TRUE.equals(tp.fixed) || tp.floating != null || t.rows.isEmpty()
-                || t.rows.get(0).cells.isEmpty()) {
-            return 0;
-        }
-        float limit = avail - (tp.ind == null ? 0 : tp.ind);
-        if (ctx.settings.compatibilityMode < 15) {
-            // Old layouts hang the cell margins outside the text column
-            limit += hangingMargins(t);
-        }
-        return limit;
-    }
-
-    // Word sizes an autofit table whose cells set no width from their text: each column its widest line, or when
-    // that is too wide its longest word plus a share of the room left in proportion to what more it wants
-    private float[] contentWidths(TableBlock t, float limit) {
-        float[] min = new float[t.grid.length];
-        float[] max = new float[t.grid.length];
-        for (TableBlock.Row row : t.rows) {
-            if (row.rp.gridBefore != null && row.rp.gridBefore > 0 || row.rp.gridAfter != null && row.rp.gridAfter > 0
-                    || row.cells.size() != min.length) {
-                return null;
-            }
-            for (int c = 0; c < min.length; c++) {
-                TableBlock.Cell cell = row.cells.get(c);
-                if (cell.span != 1 || cell.cp.width != null && cell.cp.width > 0 && !"auto".equals(cell.cp.widthType)
-                        && !"nil".equals(cell.cp.widthType)) {
-                    return null;
-                }
-                float margins = margin(cell.cp.marLeft, t.tp.marLeft) + margin(cell.cp.marRight, t.tp.marRight);
-                for (Block b : cell.blocks) {
-                    if (!(b instanceof Para para)) {
-                        return null;
-                    }
-                    float[] w = textWidths(para);
-                    min[c] = Math.max(min[c], w[0] + margins);
-                    max[c] = Math.max(max[c], w[1] + margins);
-                }
-            }
-        }
-        float minSum = 0;
-        float maxSum = 0;
-        for (int c = 0; c < min.length; c++) {
-            minSum += min[c];
-            maxSum += max[c];
-        }
-        if (maxSum <= 0) {
-            return null;
-        }
-        if (maxSum <= limit) {
-            return max;
-        }
-        if (minSum >= limit) {
-            return min;
-        }
-        float share = (limit - minSum) / (maxSum - minSum);
-        float[] out = new float[min.length];
-        for (int c = 0; c < min.length; c++) {
-            out[c] = min[c] + (max[c] - min[c]) * share;
-        }
-        return out;
-    }
-
-    private static float margin(Float cell, Float table) {
-        return cell != null ? cell : table != null ? table : DEFAULT_MARGIN;
-    }
-
-    // The longest word and the widest line of a paragraph, with its indents
-    private float[] textWidths(Para para) {
-        float word = 0;
-        float line = 0;
-        float longest = 0;
-        float widest = 0;
-        for (Item it : new ParaItems(ctx, para, null).items) {
-            switch (it.kind) {
-                case TEXT -> {
-                    int from = 0;
-                    for (int i = 0; i <= it.length(); i++) {
-                        if (i == it.length() || it.text.charAt(i) == ' ') {
-                            word += it.width(from, i);
-                            if (i < it.length()) {
-                                longest = Math.max(longest, word);
-                                word = 0;
-                            }
-                            from = i + 1;
-                        }
-                    }
-                    line += it.width(0, it.length());
-                }
-                case OBJECT -> {
-                    word += it.objectWidth;
-                    line += it.objectWidth;
-                }
-                case TAB -> {
-                    longest = Math.max(longest, word);
-                    word = 0;
-                    line += ctx.settings.defaultTabStop;
-                }
-                case BREAK -> {
-                    longest = Math.max(longest, word);
-                    widest = Math.max(widest, line);
-                    word = 0;
-                    line = 0;
-                }
-                default -> {
-                }
-            }
-        }
-        longest = Math.max(longest, word);
-        widest = Math.max(widest, line);
-        ParaProps pp = para.pp;
-        float ind = (pp.indLeft == null ? 0 : pp.indLeft) + (pp.indRight == null ? 0 : pp.indRight);
-        float first = pp.indFirst == null ? 0 : Math.max(0, pp.indFirst);
-        return new float[] {longest + ind + first, widest + ind + first};
-    }
-
-    private static void fromCells(TableBlock t, float[] grid, float total) {
-        float[] widths = new float[grid.length];
-        for (TableBlock.Row row : t.rows) {
-            int c = row.rp.gridBefore == null ? 0 : row.rp.gridBefore;
-            for (TableBlock.Cell cell : row.cells) {
-                if (cell.span == 1 && c < widths.length && cell.cp.width != null && !"pct".equals(cell.cp.widthType)
-                        && cell.cp.width > 0) {
-                    widths[c] = Math.max(widths[c], cell.cp.width);
-                }
-                c += cell.span;
-            }
-        }
-        float known = 0;
-        int unknown = 0;
-        for (float w : widths) {
-            if (w > 0) {
-                known += w;
-            } else {
-                unknown++;
-            }
-        }
-        float rest = unknown > 0 ? Math.max(18, (total - known) / unknown) : 0;
-        for (int i = 0; i < grid.length; i++) {
-            grid[i] = widths[i] > 0 ? widths[i] : rest;
-        }
     }
 
     private RowBox rowBox(TableBlock t, TableBlock.Row row, int ri, float[] colX, int ncols) {
@@ -1070,7 +861,7 @@ final class TableFlow {
             cb.edgeBottom = cp.bottom != null ? cp.bottom : tp.bottom;
             if (ctx.settings.compatibilityMode >= 15) {
                 // Word 2013 layout moves cell content right by half the left border, keeping its width
-                float shift = half(cb.left);
+                float shift = TableBorders.half(cb.left);
                 cb.marL += shift;
                 cb.marR -= shift;
             }
@@ -1129,7 +920,7 @@ final class TableFlow {
             } else if ("restart".equals(cb.cell.cp.vMerge)) {
                 starts++;
             } else {
-                height = Math.max(height, sizing(cb) + cb.marT + cb.marB);
+                height = Math.max(height, TableBorders.sizing(cb) + cb.marT + cb.marB);
             }
         }
         // A row whose cells all start, or all continue, vertical merges is as tall as its end-of-row mark, an empty
@@ -1141,25 +932,6 @@ final class TableFlow {
         rb.allStart = n > 0 && starts == n;
         rb.height = height;
         return rb;
-    }
-
-    private static float half(Border b) {
-        return ParaProps.visible(b) ? b.total() / 2 : 0;
-    }
-
-    // With hideMark a closing empty paragraph after other content, the end-of-cell mark, does not size the row
-    private static float sizing(CellBox cb) {
-        if (!hidesMark(cb)) {
-            return cb.contentH;
-        }
-        Placed mark = cb.content.get(cb.content.size() - 1);
-        return Math.max(0, mark.y - mark.gap);
-    }
-
-    private static boolean hidesMark(CellBox cb) {
-        List<Block> blocks = cb.cell.blocks;
-        return Boolean.TRUE.equals(cb.cell.cp.hideMark) && !blocks.isEmpty() && !cb.content.isEmpty()
-                && blocks.get(blocks.size() - 1) instanceof Para last && last.empty();
     }
 
     private float rowMark() {
@@ -1242,420 +1014,6 @@ final class TableFlow {
 
     private static float pick(Float a, Float b, float fallback) {
         return a != null ? a : b != null ? b : fallback;
-    }
-
-    private static void resolveRowBorders(List<RowBox> rows, int count) {
-        for (int ri = 1; ri < count; ri++) {
-            RowBox rb = rows.get(ri);
-            RowBox prev = rows.get(ri - 1);
-            for (CellBox cb : rb.cells) {
-                if (cb.cell == null) {
-                    continue;
-                }
-                if (cb.continuation && ParaProps.visible(cb.cell.cp.top)) {
-                    rb.borderTop = Math.max(rb.borderTop, cb.cell.cp.top.total());
-                }
-                CellBox above = at(prev, cb.cell.col);
-                // A border the cell above draws under itself takes room only where the top cell margin cannot hold it
-                if (above != null && above.cell != null && ParaProps.visible(above.cell.cp.bottom)
-                        && above.cell.cp.bottom.total() > cb.marT + 0.01f) {
-                    rb.borderTop = Math.max(rb.borderTop, above.cell.cp.bottom.total());
-                }
-            }
-        }
-    }
-
-    private static void mergeVertical(TableBlock t, List<RowBox> rows, int count, float mark) {
-        resolveRowBorders(rows, count);
-        for (int ri = 0; ri < count; ri++) {
-            RowBox rb = rows.get(ri);
-            for (CellBox cb : rb.cells) {
-                if (cb.cell == null || !"restart".equals(cb.cell.cp.vMerge)) {
-                    continue;
-                }
-                int span = 1;
-                for (int rj = ri + 1; rj < count; rj++) {
-                    CellBox below = at(rows.get(rj), cb.cell.col);
-                    if (below == null || !below.continuation) {
-                        break;
-                    }
-                    span++;
-                    below.top = null;
-                }
-                cb.rowSpan = span;
-                if (span > 1) {
-                    CellBox lastCell = at(rows.get(ri + span - 1), cb.cell.col);
-                    if (lastCell != null) {
-                        cb.bottom = lastCell.bottom != null ? lastCell.bottom : cb.bottom;
-                    }
-                }
-            }
-            // A restart that no row below continues is a plain cell and sizes the row itself
-            boolean merged = rb.allStart;
-            for (CellBox cb : rb.cells) {
-                merged &= cb.rowSpan > 1;
-            }
-            if (merged) {
-                rb.height = Math.max(rb.height, mark);
-            }
-        }
-        for (int ri = 0; ri < count; ri++) {
-            RowBox rb = rows.get(ri);
-            finishHeight(rb);
-            for (CellBox cb : rb.cells) {
-                if (cb.cell == null || !"restart".equals(cb.cell.cp.vMerge)) {
-                    continue;
-                }
-                float need = sizing(cb) + cb.marT + cb.marB + rb.borderTop + rb.borderBottom;
-                if (cb.rowSpan == 1) {
-                    rb.height = Math.max(rb.height, need);
-                    continue;
-                }
-                float have = 0;
-                for (int k = 0; k < cb.rowSpan; k++) {
-                    finishHeight(rows.get(ri + k));
-                    have += rows.get(ri + k).height;
-                }
-                if (need > have) {
-                    RowBox lastRow = rows.get(ri + cb.rowSpan - 1);
-                    if (!lastRow.exact) {
-                        lastRow.height += need - have;
-                        lastRow.grown += need - have;
-                    }
-                }
-            }
-        }
-        for (int ri = 0; ri < count; ri++) {
-            RowBox rb = rows.get(ri);
-            for (CellBox cb : rb.cells) {
-                if (cb.rowSpan > 1) {
-                    float h = 0;
-                    for (int k = 0; k < cb.rowSpan && ri + k < count; k++) {
-                        h += rows.get(ri + k).height;
-                    }
-                    cb.spanHeight = h;
-                }
-            }
-        }
-    }
-
-    // Word draws one border between two rows, the heavier of the upper cells' bottoms and the lower cells' tops
-    private static void shareBorders(List<RowBox> rows) {
-        for (int ri = 0; ri < rows.size(); ri++) {
-            for (CellBox up : rows.get(ri).cells) {
-                int below = ri + Math.max(1, up.rowSpan);
-                if (up.continuation || up.cell == null || below >= rows.size() || !ParaProps.visible(up.bottom)) {
-                    continue;
-                }
-                List<CellBox> lower = new ArrayList<>();
-                float covered = 0;
-                boolean shared = true;
-                for (CellBox low : rows.get(below).cells) {
-                    float from = Math.max(low.x, up.x);
-                    float to = Math.min(low.x + low.w, up.x + up.w);
-                    if (to - from <= 0.01f) {
-                        continue;
-                    }
-                    covered += to - from;
-                    boolean inside = low.x >= up.x - 0.01f && low.x + low.w <= up.x + up.w + 0.01f;
-                    shared &= !low.continuation && ParaProps.visible(low.top)
-                            && (inside || low.top.total() >= up.bottom.total());
-                    lower.add(low);
-                }
-                if (!shared || lower.isEmpty() || covered < up.w - 0.01f) {
-                    continue;
-                }
-                for (CellBox low : lower) {
-                    if (up.bottom.total() > low.top.total()) {
-                        low.top = up.bottom;
-                    }
-                }
-                up.bottom = null;
-            }
-        }
-    }
-
-    private static CellBox at(RowBox row, int col) {
-        for (CellBox cb : row.cells) {
-            if (cb.cell != null && cb.cell.col == col) {
-                return cb;
-            }
-        }
-        return null;
-    }
-
-    private static void finishHeight(RowBox rb) {
-        if (rb.finished) {
-            return;
-        }
-        rb.finished = true;
-        if (rb.exact) {
-            rb.height = rb.minHeight;
-        } else {
-            rb.height = Math.max(rb.height, rb.minHeight) + rb.borderTop + rb.borderBottom;
-        }
-    }
-
-    private RowBox[] split(RowBox row, float avail, boolean keeps) {
-        if (avail < 12) {
-            return null;
-        }
-        float content = 0;
-        for (CellBox cb : row.cells) {
-            if (cb.rotation != 0 && !cb.continuation) {
-                return null;
-            }
-            if (!cb.continuation && !"restart".equals(cb.cell.cp.vMerge)) {
-                content = Math.max(content, cb.contentH + cb.marT + cb.marB);
-            }
-        }
-        // A row whose set minimum height holds all its content moves whole, as Word keeps it
-        if (row.minHeight > 0 && content <= row.minHeight + 0.01f) {
-            return null;
-        }
-        int[] fits = fits(row, avail, keeps);
-        RowBox first = new RowBox();
-        RowBox rest = new RowBox();
-        boolean anyFirst = false;
-        boolean anyRest = false;
-        float firstH = 0;
-        float restH = 0;
-        for (int ci = 0; ci < row.cells.size(); ci++) {
-            CellBox cb = row.cells.get(ci);
-            CellBox a = copy(cb);
-            CellBox b = copy(cb);
-            a.bottom = null;
-            a.rowSpan = 1;
-            b.rowSpan = 1;
-            a.spanHeight = 0;
-            b.spanHeight = 0;
-            // The part left on this page keeps its cell margins and the borders drawn above and below it
-            float cut = cut(row, cb, avail);
-            int fit = fits[ci];
-            Strip[] halves = null;
-            if (fit < cb.content.size() && cb.content.get(fit).strip.splitter != null) {
-                Placed p = cb.content.get(fit);
-                if (cut - p.y >= 12) {
-                    halves = p.strip.splitter.apply(cut - p.y);
-                }
-            }
-            float shift = -1;
-            for (int k = 0; k < cb.content.size(); k++) {
-                Placed p = cb.content.get(k);
-                if (k < fit) {
-                    a.content.add(p);
-                    anyFirst = true;
-                } else if (k == fit && halves != null) {
-                    // A nested table row splits too: its first part ends this page, the rest starts the next
-                    a.content.add(new Placed(halves[0], p.x, p.y, 0, 0, p.gap));
-                    b.content.add(new Placed(halves[1], p.x, 0, 0, 0, p.gap));
-                    shift = p.y + p.strip.height - halves[1].height;
-                    anyFirst = true;
-                    anyRest = true;
-                } else {
-                    if (shift < 0) {
-                        shift = p.y;
-                    }
-                    b.content.add(new Placed(p.strip, p.x, p.y - shift, 0, 0, p.gap));
-                    anyRest = true;
-                }
-            }
-            // The part left on this page ends with the space after its last paragraph, as Word draws it
-            a.contentH = contentHeight(a.content) + (fit > 0 && halves == null ? trail(cb, fit - 1) : 0);
-            b.contentH = shift >= 0 ? Math.max(contentHeight(b.content), cb.contentH - shift)
-                    : contentHeight(b.content);
-            b.anchors.clear();
-            a.vAlign = "top";
-            b.vAlign = "top";
-            first.cells.add(a);
-            rest.cells.add(b);
-            firstH = Math.max(firstH, a.contentH + a.marT + a.marB + row.borderTop);
-            restH = Math.max(restH, b.contentH + b.marT + b.marB + row.borderTop + row.borderBottom);
-        }
-        if (!anyFirst || !anyRest) {
-            return null;
-        }
-        first.height = firstH;
-        first.height = Math.min(first.height, avail);
-        rest.height = Math.max(restH, 0);
-        rest.minHeight = 0;
-        first.borderTop = row.borderTop;
-        rest.borderTop = row.borderTop;
-        rest.borderBottom = row.borderBottom;
-        return new RowBox[] {first, rest};
-    }
-
-    private static float cut(RowBox row, CellBox cb, float avail) {
-        float below = ParaProps.visible(cb.edgeBottom) ? cb.edgeBottom.total() : 0;
-        return avail - cb.marT - cb.marB - row.borderTop - below;
-    }
-
-    // At a page break Word closes the table: the row ending a page takes the table's bottom border and the row
-    // starting the next page its top border
-    static RowBox edged(RowBox row, boolean opens, boolean closes) {
-        RowBox e = new RowBox();
-        e.cantSplit = row.cantSplit;
-        e.header = row.header;
-        e.exact = row.exact;
-        e.minHeight = row.minHeight;
-        e.finished = row.finished;
-        e.allStart = row.allStart;
-        e.index = row.index;
-        e.last = row.last;
-        e.grown = row.grown;
-        e.borderTop = opens ? 0 : row.borderTop;
-        e.borderBottom = closes ? 0 : row.borderBottom;
-        for (CellBox cb : row.cells) {
-            CellBox c = copy(cb);
-            c.content = cb.content;
-            c.contentH = cb.contentH;
-            if (opens && !c.continuation) {
-                c.top = c.edgeTop;
-                if (ParaProps.visible(c.top)) {
-                    e.borderTop = Math.max(e.borderTop, c.top.total());
-                }
-            }
-            if (closes && !c.continuation && c.rowSpan <= 1) {
-                c.bottom = c.edgeBottom;
-                if (ParaProps.visible(c.bottom)) {
-                    e.borderBottom = Math.max(e.borderBottom, c.bottom.total());
-                }
-            }
-            e.cells.add(c);
-        }
-        float grow = row.exact ? 0 : e.borderTop - row.borderTop + e.borderBottom - row.borderBottom;
-        e.height = row.height + grow;
-        for (CellBox c : e.cells) {
-            if (c.rowSpan > 1) {
-                c.spanHeight += grow;
-            }
-        }
-        return e;
-    }
-
-    // Lines of each cell left on this page: a paragraph's last line must also fit the space after it, and widow
-    // control applies; when it would empty a cell the row moves, unless only the space after held the lines back
-    private static int[] fits(RowBox row, float avail, boolean keeps) {
-        int n = row.cells.size();
-        int[] fits = new int[n];
-        for (int ci = 0; ci < n; ci++) {
-            CellBox cb = row.cells.get(ci);
-            float cut = cut(row, cb, avail);
-            int physical = 0;
-            int fit = 0;
-            while (physical < cb.content.size()) {
-                Placed p = cb.content.get(physical);
-                float bottom = p.y + p.strip.height;
-                if (bottom > cut + 0.01f) {
-                    break;
-                }
-                physical++;
-                if (bottom + trail(cb, physical - 1) <= cut + 0.01f) {
-                    fit = physical;
-                }
-            }
-            int safe = widowSafe(cb.content, fit);
-            if (fit > 0 && safe == 0) {
-                if (physical <= fit) {
-                    return new int[n];
-                }
-                safe = fit;
-            }
-            if (keeps) {
-                int kept = keepSafe(cb.content, safe);
-                if (safe > 0 && kept == 0) {
-                    return new int[n];
-                }
-                safe = kept;
-            }
-            fits[ci] = safe;
-        }
-        return fits;
-    }
-
-    // Keep lines together and keep with next hold inside a cell too, so a row may only break where they allow
-    private static int keepSafe(List<Placed> content, int fit) {
-        int k = fit;
-        while (k > 0 && k < content.size()) {
-            Strip before = content.get(k - 1).strip;
-            Strip after = content.get(k).strip;
-            boolean inside = after.line > 0;
-            boolean ends = before.lines > 0 && before.line == before.lines - 1;
-            if (inside ? !after.keepLines : !(ends && before.keepNext)) {
-                break;
-            }
-            k--;
-        }
-        return k;
-    }
-
-    private static int widowSafe(List<Placed> content, int fit) {
-        if (fit <= 0 || fit >= content.size()) {
-            return fit;
-        }
-        Strip next = content.get(fit).strip;
-        if (next.line <= 0 || !next.widow) {
-            return fit;
-        }
-        int before = next.line;
-        int after = next.lines > 0 ? next.lines - next.line : 2;
-        int k = fit;
-        if (after == 1 && before >= 2) {
-            k--;
-            before--;
-        }
-        if (before == 1) {
-            k -= 1;
-        }
-        return Math.max(0, k);
-    }
-
-    // A paragraph's last line in a cell carries the space after it
-    private static float trail(CellBox cb, int i) {
-        Placed p = cb.content.get(i);
-        float bottom = p.y + p.strip.height;
-        if (i == cb.content.size() - 1) {
-            return Math.max(0, cb.contentH - bottom);
-        }
-        if (p.strip.lines <= 0 || p.strip.line != p.strip.lines - 1) {
-            return 0;
-        }
-        Placed next = cb.content.get(i + 1);
-        return Math.max(0, next.y - next.gap - bottom);
-    }
-
-    private static float contentHeight(List<Placed> content) {
-        float h = 0;
-        for (Placed p : content) {
-            h = Math.max(h, p.y + p.strip.height);
-        }
-        return h;
-    }
-
-    private static CellBox copy(CellBox cb) {
-        CellBox c = new CellBox();
-        c.cell = cb.cell;
-        c.x = cb.x;
-        c.w = cb.w;
-        c.marL = cb.marL;
-        c.marR = cb.marR;
-        c.marT = cb.marT;
-        c.marB = cb.marB;
-        c.top = cb.top;
-        c.bottom = cb.bottom;
-        c.left = cb.left;
-        c.right = cb.right;
-        c.edgeTop = cb.edgeTop;
-        c.edgeBottom = cb.edgeBottom;
-        c.fill = cb.fill;
-        c.vAlign = cb.vAlign;
-        c.continuation = cb.continuation;
-        c.rowSpan = cb.rowSpan;
-        c.spanHeight = cb.spanHeight;
-        c.rotation = cb.rotation;
-        c.notes.addAll(cb.notes);
-        c.anchors.addAll(cb.anchors);
-        return c;
     }
 
     // Cells with spacing are separate boxes inside the table's own outline, as Word draws them

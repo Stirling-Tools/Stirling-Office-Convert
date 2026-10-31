@@ -1,13 +1,12 @@
 package stirling.software.officeconvert.topdf;
 
-import java.awt.geom.Rectangle2D;
+import static stirling.software.officeconvert.topdf.ConversionWorker.run;
+
 import java.io.BufferedOutputStream;
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InterruptedIOException;
 import java.io.OutputStream;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -15,7 +14,6 @@ import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.time.Duration;
 import java.util.ArrayList;
-import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -23,21 +21,10 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.FutureTask;
 import java.util.concurrent.ThreadLocalRandom;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Pattern;
-import java.util.zip.ZipEntry;
-import java.util.zip.ZipOutputStream;
-
-import org.apache.poi.hslf.usermodel.HSLFSlideShow;
-import org.apache.poi.hslf.usermodel.HSLFTextBox;
-import org.apache.poi.xslf.usermodel.XMLSlideShow;
-import org.apache.poi.xslf.usermodel.XSLFTextBox;
 
 import stirling.software.officeconvert.jpx.JpxImageIO;
 import stirling.software.officeconvert.memory.Admission;
@@ -48,15 +35,12 @@ import stirling.software.officeconvert.topdf.font.FontSet;
 import stirling.software.officeconvert.topdf.io.ActiveContent;
 import stirling.software.officeconvert.topdf.io.LegacyOffice;
 import stirling.software.officeconvert.topdf.io.OfficeZip;
-import stirling.software.officeconvert.topdf.io.PictureDecoder;
 import stirling.software.officeconvert.topdf.io.SecureXml;
 import stirling.software.officeconvert.topdf.odf.OdfDocument;
 import stirling.software.officeconvert.topdf.odf.OdfPackage;
 import stirling.software.officeconvert.topdf.pdf.DocumentInfo;
 import stirling.software.officeconvert.topdf.pdf.PageSize;
-import stirling.software.officeconvert.topdf.pdf.PdfCanvas;
 import stirling.software.officeconvert.topdf.pdf.PdfOutput;
-import stirling.software.officeconvert.topdf.pdf.TextStyle;
 import stirling.software.officeconvert.topdf.ppt.PptRenderer;
 import stirling.software.officeconvert.topdf.pptx.PptxRenderer;
 import stirling.software.officeconvert.topdf.rtf.RtfPackage;
@@ -303,9 +287,7 @@ public final class OfficeToPdf {
 
     public static final long MAX_INPUT_BYTES = 512L << 20;
 
-    private static final long STOP_MILLIS = 5_000;
-
-    private static final long STACK_BYTES = 8L << 20;
+    static final long STOP_MILLIS = 5_000;
 
     private OfficeToPdf() {}
 
@@ -511,138 +493,13 @@ public final class OfficeToPdf {
     // Converts a tiny built-in document of each format to nowhere, so a first real conversion finds the fonts scanned
     // and the classes loaded; run it on a spare thread at startup. Never throws.
     public static void warmUp(Format... formats) {
-        for (Format f : formats) {
-            Path tmp = null;
-            try {
-                tmp = Files.createTempFile("office-warm-up-", "." + f.name().toLowerCase(Locale.ROOT));
-                Files.write(tmp, sample(f));
-                render(tmp, f, OutputStream.nullOutputStream(), Options.defaults().maxPages(2));
-            } catch (IOException | RuntimeException ignored) {
-                // warming up is only an optimisation
-            } finally {
-                if (tmp != null) {
-                    deleteQuietly(tmp);
-                }
-            }
-        }
+        WarmUp.formats(formats);
     }
-
-    private static final byte[] SAMPLE_PNG = HexFormat.of().parseHex("89504e470d0a1a0a0000000d494844520000000200000002"
-            + "080600000072b60d240000001249444154789c63f8cfc0d0c0f01f0c210c003c5f06fb4398423e0000000049454e44ae426082");
 
     // Loads only what every format shares (fonts, PDF writing, pictures), for a caller converting at the same time
     // whose document needs other classes than a sample would load. Never throws.
     public static void warmUpFoundation() {
-        try {
-            FontLibrary fonts = FontLibrary.system();
-            try (PdfOutput out = new PdfOutput(fonts)) {
-                try (PdfCanvas c = out.newPage(PageSize.LETTER)) {
-                    c.text("Warm up", 72, 72, TextStyle.of(fonts.find("Calibri", false, false), 11));
-                    c.text("Warm up", 72, 90, TextStyle.of(fonts.find("Arial", true, false), 11));
-                    c.image(PictureDecoder.decode(out.document(), SAMPLE_PNG), 72, 100, 20, 20);
-                }
-                out.save(OutputStream.nullOutputStream());
-            }
-        } catch (IOException | RuntimeException ignored) {
-            // warming up is only an optimisation
-        }
-    }
-
-    private static final String CT = "application/vnd.openxmlformats-officedocument.";
-
-    private static final String RELS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/";
-
-    static byte[] sample(Format format) throws IOException {
-        if (format == Format.HTML) {
-            return ("<!DOCTYPE html><html><body><h1>Warm up</h1><p>Warm <b>up</b></p><ul><li>Warm up</li></ul>"
-                    + "<table border=\"1\"><tr><th>Warm</th><td>up</td></tr></table></body></html>")
-                    .getBytes(StandardCharsets.UTF_8);
-        }
-        if (format == Format.JSON) {
-            return ("{\"format\":\"stirling-office-convert\",\"version\":1,\"body\":[{\"type\":\"paragraph\","
-                    + "\"content\":[{\"type\":\"text\",\"text\":\"Warm up\"}]}]}").getBytes(StandardCharsets.UTF_8);
-        }
-        if (format == Format.TEXT || format == Format.CSV || format == Format.TSV) {
-            String sep = format == Format.TSV ? "\t" : ",";
-            return (format == Format.TEXT ? "Warm up\n" : "Warm up" + sep + "1.5\n")
-                    .getBytes(StandardCharsets.UTF_8);
-        }
-        if (format == Format.PPT) {
-            try (HSLFSlideShow ppt = new HSLFSlideShow(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
-                HSLFTextBox box = ppt.createSlide().createTextBox();
-                box.setAnchor(new Rectangle2D.Double(40, 40, 400, 60));
-                box.setText("Warm up");
-                ppt.write(out);
-                return out.toByteArray();
-            }
-        }
-        if (format == Format.PPTX) {
-            try (XMLSlideShow ppt = new XMLSlideShow(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
-                XSLFTextBox box = ppt.createSlide().createTextBox();
-                box.setAnchor(new Rectangle2D.Double(40, 40, 400, 60));
-                box.setText("Warm up");
-                ppt.write(out);
-                return out.toByteArray();
-            }
-        }
-        if (format == Format.EPUB) {
-            Map<String, String> book = new LinkedHashMap<>();
-            book.put("mimetype", "application/epub+zip");
-            book.put("META-INF/container.xml", "<container version=\"1.0\" xmlns=\"urn:oasis:names:tc:opendocument:xmlns"
-                    + ":container\"><rootfiles><rootfile full-path=\"content.opf\" media-type=\"application/oebps-"
-                    + "package+xml\"/></rootfiles></container>");
-            book.put("content.opf", "<package xmlns=\"http://www.idpf.org/2007/opf\" version=\"3.0\"><manifest><item"
-                    + " id=\"c\" href=\"warm.xhtml\" media-type=\"application/xhtml+xml\"/></manifest><spine><itemref"
-                    + " idref=\"c\"/></spine></package>");
-            book.put("warm.xhtml", "<html xmlns=\"http://www.w3.org/1999/xhtml\"><head><title>Warm up</title></head>"
-                    + "<body><h1>Warm up</h1><p>Warm <b>up</b></p></body></html>");
-            return zipped(book);
-        }
-        boolean word = format == Format.DOCX;
-        String main = word ? "word/document.xml" : "xl/workbook.xml";
-        Map<String, String> parts = new LinkedHashMap<>();
-        parts.put("[Content_Types].xml", "<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\">"
-                + "<Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/>"
-                + "<Default Extension=\"xml\" ContentType=\"application/xml\"/><Override PartName=\"/" + main
-                + "\" ContentType=\"" + CT + (word ? "wordprocessingml.document.main+xml" : "spreadsheetml.sheet.main+xml")
-                + "\"/>" + (word ? "" : "<Override PartName=\"/xl/worksheets/sheet1.xml\" ContentType=\"" + CT
-                        + "spreadsheetml.worksheet+xml\"/><Override PartName=\"/xl/styles.xml\" ContentType=\"" + CT
-                        + "spreadsheetml.styles+xml\"/>") + "</Types>");
-        parts.put("_rels/.rels", "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">"
-                + "<Relationship Id=\"rId1\" Type=\"" + RELS + "officeDocument\" Target=\"" + main + "\"/></Relationships>");
-        if (word) {
-            String w = "<w:p><w:r><w:rPr><w:b/></w:rPr><w:t>Warm up</w:t></w:r></w:p>";
-            parts.put(main, "<w:document xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><w:body>"
-                    + w + "<w:tbl><w:tr><w:tc>" + w + "</w:tc><w:tc>" + w + "</w:tc></w:tr></w:tbl>" + w
-                    + "<w:sectPr><w:pgSz w:w=\"12240\" w:h=\"15840\"/></w:sectPr></w:body></w:document>");
-        } else {
-            String ns = "xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"";
-            parts.put(main, "<workbook " + ns + " xmlns:r=\"" + RELS.substring(0, RELS.length() - 1) + "\"><sheets><sheet"
-                    + " name=\"Sheet1\" sheetId=\"1\" r:id=\"rId1\"/></sheets></workbook>");
-            parts.put("xl/_rels/workbook.xml.rels", "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/"
-                    + "relationships\"><Relationship Id=\"rId1\" Type=\"" + RELS + "worksheet\" Target=\"worksheets/"
-                    + "sheet1.xml\"/><Relationship Id=\"rId2\" Type=\"" + RELS + "styles\" Target=\"styles.xml\"/>"
-                    + "</Relationships>");
-            parts.put("xl/styles.xml", "<styleSheet " + ns + "><fonts count=\"1\"><font><sz val=\"11\"/><name"
-                    + " val=\"Calibri\"/></font></fonts><fills count=\"1\"><fill><patternFill patternType=\"none\"/>"
-                    + "</fill></fills><borders count=\"1\"><border/></borders><cellXfs count=\"1\"><xf numFmtId=\"0\""
-                    + " fontId=\"0\" fillId=\"0\" borderId=\"0\"/></cellXfs></styleSheet>");
-            parts.put("xl/worksheets/sheet1.xml", "<worksheet " + ns + "><sheetData><row r=\"1\"><c r=\"A1\""
-                    + " t=\"inlineStr\"><is><t>Warm up</t></is></c><c r=\"B1\"><v>1.5</v></c></row></sheetData></worksheet>");
-        }
-        return zipped(parts);
-    }
-
-    private static byte[] zipped(Map<String, String> parts) throws IOException {
-        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
-        try (ZipOutputStream zip = new ZipOutputStream(bytes)) {
-            for (Map.Entry<String, String> e : parts.entrySet()) {
-                zip.putNextEntry(new ZipEntry(e.getKey()));
-                zip.write(e.getValue().getBytes(StandardCharsets.UTF_8));
-                zip.closeEntry();
-            }
-        }
-        return bytes.toByteArray();
+        WarmUp.foundation();
     }
 
     static void dispatch(Path source, RenderJob job) throws IOException {
@@ -768,9 +625,9 @@ public final class OfficeToPdf {
             try {
                 return render(source, requested, sink, options, renderer, fonts, attempts, limits);
             } catch (IOException | RuntimeException caught) {
-                Throwable real = selfSuppressed(caught);
+                Throwable real = ConversionWorker.selfSuppressed(caught);
                 if (!(real instanceof IOException) && !(real instanceof RuntimeException)) {
-                    throw rethrow(real);
+                    throw ConversionWorker.rethrow(real);
                 }
                 Exception e = (Exception) real;
                 if (!attempts.leaveOut(e) && !attempts.salvageMain(source, e)) {
@@ -1212,7 +1069,7 @@ public final class OfficeToPdf {
         if (pages < 2 || Thread.currentThread().isInterrupted() || damagedPart(e) != null) {
             return false;
         }
-        if (SecureXml.refusedDoctype(e) || scratchExceeded(e)) {
+        if (SecureXml.refusedDoctype(e) || ConversionWorker.scratchExceeded(e)) {
             return false;
         }
         int depth = 0;
@@ -1254,161 +1111,11 @@ public final class OfficeToPdf {
         };
     }
 
-    @FunctionalInterface
-    interface Work<T> {
-        T call() throws IOException;
-    }
-
-    static <T> T run(Duration timeout, Work<T> work) throws IOException {
-        return run(timeout, System.nanoTime(), new AtomicBoolean(), STOP_MILLIS, work);
-    }
-
-    static <T> T run(Duration timeout, long started, AtomicBoolean abandoned, long stopMillis, Work<T> work)
-            throws IOException {
-        stopIfInterrupted();
-        long limit = limitNanos(timeout);
-        long wait = limit - (System.nanoTime() - started);
-        if (limit > 0 && wait <= 0) {
-            throw new TimedOut(timeout);
-        }
-        FutureTask<T> task = new FutureTask<>(() -> guarded(work));
-        Thread worker = Thread.ofPlatform().name("office-to-pdf").daemon().stackSize(STACK_BYTES).unstarted(task);
-        boolean finished = false;
-        try {
-            worker.start();
-            T result = limit == 0 ? task.get() : task.get(wait, TimeUnit.NANOSECONDS);
-            finished = true;
-            return result;
-        } catch (TimeoutException e) {
-            throw new TimedOut(timeout);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new InterruptedIOException("Interrupted while converting");
-        } catch (ExecutionException e) {
-            finished = true;
-            Throwable cause = e.getCause();
-            if (cause instanceof IOException io) {
-                throw io;
-            }
-            if (cause instanceof RuntimeException r) {
-                throw r;
-            }
-            if (cause instanceof Error err) {
-                throw err;
-            }
-            throw new IOException(cause);
-        } finally {
-            if (!finished) {
-                abandoned.set(true);
-                task.cancel(true);
-                join(worker, stopMillis);
-            }
-        }
-    }
-
-    private static long limitNanos(Duration timeout) {
-        try {
-            return timeout.toNanos();
-        } catch (ArithmeticException e) {
-            return 0;
-        }
-    }
-
     static final String DOCTYPE = "The document has a DOCTYPE or entity declaration, which Office files never"
             + " contain, so it was not read";
 
-    private static <T> T guarded(Work<T> work) throws IOException {
-        try {
-            return work.call();
-        } catch (InterruptedIOException e) {
-            if (outOfMemory(e)) {
-                throw new IOException(RenderJob.NEEDS_MEMORY, e);
-            }
-            throw e;
-        } catch (IOException e) {
-            if (outOfMemory(e)) {
-                throw new IOException(RenderJob.NEEDS_MEMORY, e);
-            }
-            if (scratchExceeded(e)) {
-                throw new OutputTooLarge(e);
-            }
-            throw plain(e);
-        } catch (RuntimeException e) {
-            Throwable real = selfSuppressed(e);
-            if (real != e) {
-                return guarded(() -> {
-                    throw rethrow(real);
-                });
-            }
-            if (outOfMemory(e)) {
-                throw new IOException(RenderJob.NEEDS_MEMORY, e);
-            }
-            if (scratchExceeded(e)) {
-                throw new OutputTooLarge(e);
-            }
-            if (Thread.currentThread().isInterrupted()) {
-                throw new InterruptedIOException("Conversion interrupted");
-            }
-            String reason = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
-            throw new IOException("The document could not be converted: " + reason, e);
-        } catch (StackOverflowError e) {
-            throw new IOException("The document nests too deeply to convert", e);
-        } catch (OutOfMemoryError e) {
-            throw new IOException(RenderJob.NEEDS_MEMORY, e);
-        }
-    }
-
-    static Throwable selfSuppressed(Throwable e) {
-        Throwable t = e;
-        for (int depth = 0; depth < 16 && t instanceof IllegalArgumentException && t.getCause() != null
-                && "Self-suppression not permitted".equals(t.getMessage()); depth++) {
-            t = t.getCause();
-        }
-        return t;
-    }
-
-    private static IOException rethrow(Throwable t) throws IOException {
-        if (t instanceof IOException io) {
-            throw io;
-        }
-        if (t instanceof RuntimeException r) {
-            throw r;
-        }
-        if (t instanceof Error err) {
-            throw err;
-        }
-        throw new IOException(t);
-    }
-
-    private static boolean outOfMemory(Throwable e) {
-        int depth = 0;
-        for (Throwable t = e; t != null && depth++ < 16; t = t.getCause()) {
-            if (t instanceof RenderJob.OutOfMemory || t instanceof Admission.Stopped) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    // PDFBox's own words when the output passes maxScratchBytes
-    static boolean scratchExceeded(Throwable e) {
-        int depth = 0;
-        for (Throwable t = e; t != null && depth++ < 16; t = t.getCause()) {
-            if (t instanceof OutputTooLarge || t instanceof IOException && t.getMessage() != null
-                    && t.getMessage().startsWith("Maximum allowed scratch file memory exceeded")) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    // One plain reason for a refused DOCTYPE, whichever parser (ours or POI's) met it first
-    private static IOException plain(IOException e) {
-        return SecureXml.refusedDoctype(e) ? new IOException(DOCTYPE, e) : e;
-    }
-
     private static void copy(InputStream in, Path target, Duration timeout, long started) throws IOException {
-        long limit = limitNanos(timeout);
+        long limit = ConversionWorker.limitNanos(timeout);
         long total = 0;
         byte[] buffer = new byte[1 << 16];
         try (OutputStream os = Files.newOutputStream(target)) {
@@ -1445,15 +1152,6 @@ public final class OfficeToPdf {
         } catch (IOException | RuntimeException e) {
             file.toFile().deleteOnExit();
         }
-    }
-
-    private static void join(Thread worker, long millis) {
-        try {
-            worker.join(millis);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
-        Admission.abandoned(worker);
     }
 
     static void stopIfInterrupted() throws InterruptedIOException {

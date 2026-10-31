@@ -90,7 +90,7 @@ class PartialOutputTest {
                 }
                 throw new IllegalStateException("broken table");
             };
-            IOException e = assertThrows(IOException.class, () -> OfficeToPdf.run(Duration.ZERO,
+            IOException e = assertThrows(IOException.class, () -> ConversionWorker.run(Duration.ZERO,
                     () -> OfficeToPdf.render(in, Format.DOCX, new ByteArrayOutputStream(), Options.defaults(), broken)));
             assertTrue(e.getMessage().contains("broken table"), e.getMessage());
         }
@@ -108,7 +108,7 @@ class PartialOutputTest {
                 throw oom;
             }
         };
-        IOException e = assertThrows(IOException.class, () -> OfficeToPdf.run(Duration.ZERO,
+        IOException e = assertThrows(IOException.class, () -> ConversionWorker.run(Duration.ZERO,
                 () -> OfficeToPdf.render(in, Format.DOCX, new ByteArrayOutputStream(), Options.defaults(), starved)));
         assertEquals(RenderJob.NEEDS_MEMORY, e.getMessage());
         assertFalse(String.valueOf(e.getCause()).contains("Self-suppression"), String.valueOf(e.getCause()));
@@ -131,7 +131,7 @@ class PartialOutputTest {
             }
             page(job, "Drawn");
         };
-        OfficeToPdf.Result r = OfficeToPdf.run(Duration.ZERO,
+        OfficeToPdf.Result r = ConversionWorker.run(Duration.ZERO,
                 () -> OfficeToPdf.render(in, Format.DOCX, new ByteArrayOutputStream(), Options.defaults(), reader));
         assertEquals(1, r.pages());
         assertEquals(2, tries.get());

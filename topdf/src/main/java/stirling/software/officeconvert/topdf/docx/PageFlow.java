@@ -394,7 +394,7 @@ final class PageFlow extends Region {
     private void headerWrap(PageBox p, StackLayout.Result r, float x, float y) {
         for (Strip.Anchor a : r.anchors()) {
             Drawing d = a.drawing();
-            if (!d.wraps() || emptyPolygon(d)) {
+            if (!d.wraps() || Exclusions.emptyPolygon(d)) {
                 continue;
             }
             boolean cell = inCell(a);
@@ -404,8 +404,8 @@ final class PageFlow extends Region {
             if (f == null || f.box().height > (p.bodyBottom - p.bodyTop) / 2) {
                 continue;
             }
-            PageBox.Exclusion e = new PageBox.Exclusion(wrapBox(d, f.box()), d.wrapSide, d.wrap.equals("topAndBottom"),
-                    null, wrapShape(d, f.box()));
+            PageBox.Exclusion e = new PageBox.Exclusion(Exclusions.wrapBox(d, f.box()), d.wrapSide,
+                    d.wrap.equals("topAndBottom"), null, Exclusions.wrapShape(d, f.box()));
             p.exclusions.add(e);
             p.marginal.add(e);
         }
@@ -743,7 +743,8 @@ final class PageFlow extends Region {
             return;
         }
         SectionProps next = sections.get(i + 1).props();
-        if (!"continuous".equals(next.type) || !next.samePage(sect) || columnBreak(sections.get(i).blocks())) {
+        if (!"continuous".equals(next.type) || !next.samePage(sect)
+                || ColumnBalance.columnBreak(sections.get(i).blocks())) {
             return;
         }
         StackLayout trial = StackLayout.body(colW[0], pitch(sections.get(i).props()));
@@ -762,40 +763,19 @@ final class PageFlow extends Region {
         float total = 0;
         float tallest = 0;
         boolean topSuppressed = frameTop <= page.bodyTop + 0.5f;
-        float[] gaps = gaps(list, 0);
+        float[] gaps = ColumnBalance.gaps(list, 0);
         for (int k = 0; k < list.size(); k++) {
             Placed p = list.get(k);
             total += p.strip.height + gaps[k];
             tallest = Math.max(tallest, p.strip.height);
         }
         float avail = page.bodyBottom - page.noteHeight - y;
-        if (!fits(list, gaps, avail, cols, topSuppressed)) {
+        if (!ColumnBalance.fits(list, gaps, avail, cols, topSuppressed)) {
             return;
         }
         float lo = Math.max(tallest, total / cols - 1);
-        float hi = avail;
-        for (int it = 0; it < 30 && hi - lo > 0.05f; it++) {
-            float mid = (lo + hi) / 2;
-            if (fits(list, gaps, mid, cols, topSuppressed)) {
-                hi = mid;
-            } else {
-                lo = mid;
-            }
-        }
+        float hi = ColumnBalance.shortest(list, gaps, lo, avail, cols, topSuppressed);
         balanceBottom = y + hi + 0.5f;
-    }
-
-    private static boolean columnBreak(List<Block> blocks) {
-        for (Block b : blocks) {
-            if (b instanceof Para p) {
-                for (Inline in : p.items) {
-                    if (in instanceof Inline.Break br && "column".equals(br.type())) {
-                        return true;
-                    }
-                }
-            }
-        }
-        return false;
     }
 
     private void balance(SectionProps previous, int previousIndex) {
@@ -815,7 +795,7 @@ final class PageFlow extends Region {
         float total = 0;
         float tallest = 0;
         boolean topSuppressed = frameTop <= page.bodyTop + 0.5f;
-        float[] gaps = gaps(list, frameTop);
+        float[] gaps = ColumnBalance.gaps(list, frameTop);
         for (int i = 0; i < list.size(); i++) {
             total += list.get(i).strip.height + gaps[i];
             tallest = Math.max(tallest, list.get(i).strip.height);
@@ -823,38 +803,11 @@ final class PageFlow extends Region {
         float avail = page.bodyBottom - page.noteHeight - frameTop;
         float lo = Math.max(tallest, total / cols - 1);
         float hi = Math.min(avail, total);
-        if (!fits(list, gaps, hi, cols, topSuppressed)) {
+        if (!ColumnBalance.fits(list, gaps, hi, cols, topSuppressed)) {
             return;
         }
-        for (int it = 0; it < 30 && hi - lo > 0.05f; it++) {
-            float mid = (lo + hi) / 2;
-            if (fits(list, gaps, mid, cols, topSuppressed)) {
-                hi = mid;
-            } else {
-                lo = mid;
-            }
-        }
-        float height = hi;
-        int c = 0;
-        float at = 0;
-        float max = 0;
-        for (int k = 0; k < list.size(); k++) {
-            Placed p = list.get(k);
-            float g = gaps[k];
-            if (at > 0 && at + g + p.strip.height > height + 0.05f) {
-                c++;
-                at = 0;
-                g = topSuppressed ? 0 : gaps[k];
-            }
-            c = Math.min(c, cols - 1);
-            float dx = colX[c] - colX[Math.min(p.column, colX.length - 1)];
-            p.x += dx;
-            p.y = frameTop + at + g;
-            p.column = c;
-            at += g + p.strip.height;
-            max = Math.max(max, at);
-        }
-        y = frameTop + max;
+        float height = ColumnBalance.shortest(list, gaps, lo, hi, cols, topSuppressed);
+        y = frameTop + ColumnBalance.arrange(list, gaps, height, colX, frameTop, topSuppressed);
     }
 
     private float lowest(int section) {
@@ -865,37 +818,6 @@ final class PageFlow extends Region {
             }
         }
         return max;
-    }
-
-    private static float[] gaps(List<Placed> list, float origin) {
-        float[] g = new float[list.size()];
-        g[0] = Math.max(0, list.get(0).y - origin);
-        for (int k = 1; k < list.size(); k++) {
-            Placed a = list.get(k - 1);
-            Placed b = list.get(k);
-            float bottom = a.y + a.strip.height;
-            g[k] = a.column == b.column && b.y >= bottom - 0.01f ? b.y - bottom : b.gap;
-        }
-        return g;
-    }
-
-    private static boolean fits(List<Placed> list, float[] gaps, float height, int cols, boolean topSuppressed) {
-        int c = 0;
-        float at = 0;
-        for (int k = 0; k < list.size(); k++) {
-            Placed p = list.get(k);
-            float g = gaps[k];
-            if (at > 0 && at + g + p.strip.height > height + 0.05f) {
-                c++;
-                at = 0;
-                g = topSuppressed ? 0 : gaps[k];
-                if (c >= cols) {
-                    return false;
-                }
-            }
-            at += g + p.strip.height;
-        }
-        return true;
     }
 
     @Override
@@ -1166,46 +1088,11 @@ final class PageFlow extends Region {
     private void addFloat(PageBox.FloatBox f) {
         page.floats.add(f);
         Drawing d = f.drawing();
-        if (d.wraps() && !emptyPolygon(d)) {
+        if (d.wraps() && !Exclusions.emptyPolygon(d)) {
             boolean band = d.wrap.equals("topAndBottom");
-            page.exclusions.add(new PageBox.Exclusion(wrapBox(d, f.box()), d.wrapSide, band, f, wrapShape(d, f.box())));
+            page.exclusions.add(new PageBox.Exclusion(Exclusions.wrapBox(d, f.box()), d.wrapSide, band, f,
+                    Exclusions.wrapShape(d, f.box())));
         }
-    }
-
-    // The area text keeps clear of: the object and its distances, or the bounds of a tight or through wrap polygon
-    static Rectangle2D.Float wrapBox(Drawing d, Rectangle2D.Float b) {
-        float x0 = b.x - d.effL;
-        float y0 = b.y - d.effT;
-        float x1 = b.x + b.width + d.effR;
-        float y1 = b.y + b.height + d.effB;
-        float[] p = d.wrapBounds;
-        if (p != null && (d.wrap.equals("tight") || d.wrap.equals("through"))) {
-            x0 = b.x + p[0] * b.width - d.effL;
-            y0 = b.y + p[1] * b.height - d.effT;
-            x1 = b.x + p[2] * b.width + d.effR;
-            y1 = b.y + p[3] * b.height + d.effB;
-        }
-        return new Rectangle2D.Float(x0 - d.distL, y0 - d.distT, x1 - x0 + d.distL + d.distR,
-                y1 - y0 + d.distT + d.distB);
-    }
-
-    // A tight or through wrap polygon with no area leaves nothing for text to wrap around
-    static boolean emptyPolygon(Drawing d) {
-        return d.wrapPoints != null && d.wrapBounds == null && (d.wrap.equals("tight") || d.wrap.equals("through"));
-    }
-
-    // Text follows the outline of a tight or through wrap polygon, not only its bounds
-    static PageBox.WrapShape wrapShape(Drawing d, Rectangle2D.Float b) {
-        float[] p = d.wrapPoints;
-        if (p == null || d.wrapBounds == null || !(d.wrap.equals("tight") || d.wrap.equals("through"))) {
-            return null;
-        }
-        float[] xy = new float[p.length];
-        for (int i = 0; i + 1 < p.length; i += 2) {
-            xy[i] = b.x + p[i] * b.width;
-            xy[i + 1] = b.y + p[i + 1] * b.height;
-        }
-        return new PageBox.WrapShape(xy, d.effL + d.distL, d.effR + d.distR, d.effT + d.distT, d.effB + d.distB);
     }
 
     private PageBox.FloatBox floatBox(PageBox p, Drawing d, float paraX, float paraTop, float cx, float cw,
@@ -1229,88 +1116,9 @@ final class PageFlow extends Region {
         return new PageBox.FloatBox(d, box, ops, d.behind, d.z);
     }
 
-    static final float MIN_SEGMENT = 18;
-
     @Override
     float[] spans(float top, float h, float x0, float x1, float minWidth) {
-        return spans(page.exclusions, top, h, x0, x1, minWidth);
-    }
-
-    static float[] spans(List<PageBox.Exclusion> ex, float top, float h, float x0, float x1, float minWidth) {
-        float t = top;
-        if (ex.isEmpty()) {
-            return new float[] {t, x0, x1};
-        }
-        for (int guard = 0; guard < 200; guard++) {
-            List<float[]> free = new ArrayList<>();
-            free.add(new float[] {x0, x1});
-            float lowest = Float.NaN;
-            boolean band = false;
-            for (PageBox.Exclusion e : ex) {
-                Rectangle2D.Float r = e.box();
-                if (r.y >= t + h || r.y + r.height <= t || r.x >= x1 || r.x + r.width <= x0) {
-                    continue;
-                }
-                float ex0 = r.x;
-                float ex1 = r.x + r.width;
-                float below = r.y + r.height;
-                if (e.shape() != null && !e.band()) {
-                    float[] reach = e.shape().extent(t, t + h);
-                    if (reach == null || reach[0] >= x1 || reach[1] <= x0) {
-                        continue;
-                    }
-                    ex0 = reach[0];
-                    ex1 = reach[1];
-                    // Word tries a line that does not fit beside a wrap polygon again one line lower
-                    below = t + Math.max(h, 1);
-                }
-                lowest = Float.isNaN(lowest) ? below : Math.min(lowest, below);
-                if (e.band()) {
-                    band = true;
-                    break;
-                }
-                String side = e.side() == null ? "bothSides" : e.side();
-                if (side.equals("largest")) {
-                    side = ex0 - x0 >= x1 - ex1 ? "left" : "right";
-                }
-                List<float[]> next = new ArrayList<>();
-                for (float[] iv : free) {
-                    if (ex1 <= iv[0] || ex0 >= iv[1]) {
-                        next.add(iv);
-                        continue;
-                    }
-                    if (!side.equals("right") && ex0 > iv[0]) {
-                        next.add(new float[] {iv[0], ex0});
-                    }
-                    if (!side.equals("left") && ex1 < iv[1]) {
-                        next.add(new float[] {ex1, iv[1]});
-                    }
-                }
-                free = next;
-            }
-            if (!band) {
-                if (minWidth > x1 - x0 + 0.5f) {
-                    // Word sets what cannot fit even the full width at the top, over side-wrapped objects
-                    return new float[] {t, x0, x1};
-                }
-                float need = Math.max(MIN_SEGMENT, minWidth);
-                free.removeIf(iv -> iv[1] - iv[0] < need);
-                if (!free.isEmpty()) {
-                    float[] out = new float[1 + free.size() * 2];
-                    out[0] = t;
-                    for (int i = 0; i < free.size(); i++) {
-                        out[1 + i * 2] = free.get(i)[0];
-                        out[2 + i * 2] = free.get(i)[1];
-                    }
-                    return out;
-                }
-            }
-            if (Float.isNaN(lowest) || lowest <= t) {
-                break;
-            }
-            t = lowest;
-        }
-        return new float[] {t, x0, x1};
+        return Exclusions.spans(page.exclusions, top, h, x0, x1, minWidth);
     }
 
     @Override
@@ -1329,13 +1137,13 @@ final class PageFlow extends Region {
 
     @Override
     float clearFloats(float top, float h, float x0, float x1) {
-        return clear(top, h, x0, x1, false);
+        return Exclusions.clear(page.exclusions, page.marginal, top, h, x0, x1, false);
     }
 
     // A row moves below a header object it meets, but a footer object below its top ends the space instead
     @Override
     float clearRow(float top, float h, float x0, float x1) {
-        return clear(top, h, x0, x1, true);
+        return Exclusions.clear(page.exclusions, page.marginal, top, h, x0, x1, true);
     }
 
     @Override
@@ -1350,71 +1158,9 @@ final class PageFlow extends Region {
         return lim;
     }
 
-    private float clear(float top, float h, float x0, float x1, boolean rows) {
-        float t = top;
-        for (int guard = 0; guard < 50; guard++) {
-            boolean moved = false;
-            for (PageBox.Exclusion e : page.exclusions) {
-                Rectangle2D.Float r = e.box();
-                if (rows && r.y > t && page.marginal.contains(e) || r.y >= t + h || r.y + r.height <= t
-                        || r.x >= x1 || r.x + r.width <= x0) {
-                    continue;
-                }
-                t = r.y + r.height;
-                moved = true;
-            }
-            if (!moved) {
-                break;
-            }
-        }
-        return t;
-    }
-
     @Override
     float clearBox(float top, float h, float boxLeft, float boxRight) {
-        float x0 = left();
-        float x1 = left() + width();
-        float t = top;
-        for (int guard = 0; guard < 50; guard++) {
-            List<float[]> free = new ArrayList<>();
-            free.add(new float[] {x0, x1});
-            float lowest = Float.NaN;
-            for (PageBox.Exclusion e : page.exclusions) {
-                Rectangle2D.Float r = e.box();
-                if (page.marginal.contains(e) || r.y >= t + h || r.y + r.height <= t
-                        || r.x >= Math.max(x1, boxRight) || r.x + r.width <= Math.min(x0, boxLeft)) {
-                    continue;
-                }
-                lowest = Float.isNaN(lowest) ? r.y + r.height : Math.min(lowest, r.y + r.height);
-                List<float[]> next = new ArrayList<>();
-                for (float[] iv : free) {
-                    if (e.band() || r.x < iv[1] && r.x + r.width > iv[0]) {
-                        if (!e.band() && r.x > iv[0]) {
-                            next.add(new float[] {iv[0], r.x});
-                        }
-                        if (!e.band() && r.x + r.width < iv[1]) {
-                            next.add(new float[] {r.x + r.width, iv[1]});
-                        }
-                    } else {
-                        next.add(iv);
-                    }
-                }
-                free = next;
-            }
-            if (Float.isNaN(lowest)) {
-                return t;
-            }
-            for (float[] iv : free) {
-                if (boxLeft >= iv[0] - 0.01f && boxRight <= iv[1] + 0.01f) {
-                    return t;
-                }
-            }
-            if (lowest <= t) {
-                return t;
-            }
-            t = lowest;
-        }
-        return t;
+        return Exclusions.clearBox(page.exclusions, page.marginal, left(), left() + width(), top, h, boxLeft, boxRight);
     }
 
     @Override

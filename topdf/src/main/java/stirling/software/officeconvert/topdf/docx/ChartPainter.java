@@ -3,12 +3,12 @@ package stirling.software.officeconvert.topdf.docx;
 import java.awt.Color;
 import java.awt.geom.AffineTransform;
 import java.awt.geom.Arc2D;
-import java.awt.geom.Ellipse2D;
 import java.awt.geom.Path2D;
 import java.awt.geom.Rectangle2D;
 import java.util.ArrayList;
 import java.util.List;
 
+import stirling.software.officeconvert.topdf.docx.ChartScale.Scale;
 import stirling.software.officeconvert.topdf.font.FontFace;
 import stirling.software.officeconvert.topdf.font.FontMetrics;
 import stirling.software.officeconvert.topdf.pdf.Fill;
@@ -53,8 +53,6 @@ final class ChartPainter {
 
     private static final float SIN45 = (float) Math.sqrt(0.5);
 
-    private static final int MAX_TIGHT_STEPS = 10;
-
     private static final int MAX_WEB_POINTS = 50_000;
 
     private static final int MAX_DOUGHNUT_SLICES = 16_384;
@@ -66,6 +64,8 @@ final class ChartPainter {
     private final Theme theme;
 
     private final List<Op> ops;
+
+    private final ChartScale scales;
 
     static final int MAX_LABEL_LINES = 100_000;
 
@@ -94,6 +94,7 @@ final class ChartPainter {
         this.fonts = fonts;
         this.theme = theme;
         this.ops = ops;
+        this.scales = new ChartScale(chart);
     }
 
     static void paint(Chart chart, float x, float y, float w, float h, List<Op> ops, Fonts fonts, Theme theme) {
@@ -303,7 +304,7 @@ final class ChartPainter {
         if (r < 4) {
             return;
         }
-        Scale sc = scale(va, r, gridGap(vs));
+        Scale sc = scales.scale(va, r, gridGap(vs));
         boolean reversed = ca != null && ca.reversed();
         float[] ux = new float[n];
         float[] uy = new float[n];
@@ -380,7 +381,7 @@ final class ChartPainter {
                     Chart.Marker m = s.marker() != null ? s.marker()
                             : new Chart.Marker("circle", 5, s.fill(), s.fill());
                     for (float[] pt : pts) {
-                        marker(m, pt[0], pt[1]);
+                        ChartMarks.marker(ops, m, pt[0], pt[1]);
                     }
                 }
             }
@@ -565,7 +566,7 @@ final class ChartPainter {
                 ops.add(new Op.Line(x, cy, x + size * 4, cy, Stroke.solid(e.width(), e.color())));
             }
             if (e.marker() != null) {
-                marker(e.marker(), x + size * 2, cy);
+                ChartMarks.marker(ops, e.marker(), x + size * 2, cy);
             }
         } else if (e.color() != null) {
             ops.add(new Op.Rect(x, cy - size / 2, size, size, Fill.solid(e.color()), null));
@@ -765,18 +766,6 @@ final class ChartPainter {
         return ChartReader.clipped(String.join(separator, parts));
     }
 
-    private record Scale(double min, double max, double unit) {
-
-        // A set maximum that is no multiple of the unit ends the axis between gridlines
-        int steps() {
-            return (int) Math.max(1, Math.min(1000, Math.floor((max - min) / unit + 1e-6)));
-        }
-
-        float fraction(int step) {
-            return max > min ? (float) Math.min(1, step * unit / (max - min)) : 0;
-        }
-    }
-
     // How category labels are set: rotation in degrees (negative reads upwards), every skip-th label, wrapped lines
     private record Labels(float rotation, int skip, List<List<String>> lines, float extent) {}
 
@@ -809,7 +798,7 @@ final class ChartPainter {
         boolean showSecond = second && va2.labelsShown();
         String format2 = va2 == null ? "General" : va2.format();
         Scale sc2 = null;
-        double[] xr = scatter() ? xRange() : null;
+        double[] xr = scatter() ? scales.xRange() : null;
         Scale xs = null;
         tableHeight = 0;
         float leftEdge = left;
@@ -833,12 +822,12 @@ final class ChartPainter {
             }
             float estimate = inner != null ? inner.height
                     : bottom - top - (showCats ? lineHeight(cs) + CATEGORY_GAP : 0);
-            sc = scale(va, estimate, gridGap(vs));
+            sc = scales.scale(va, estimate, gridGap(vs));
             ticks = ticks(sc, format);
             plotLeft = inner != null ? inner.x : left + (showValues ? widest(ticks, vs) + VALUE_GAP : 0);
             plotW = inner != null ? inner.width : right - plotLeft;
             if (second) {
-                sc2 = scale(va2, estimate, gridGap(vs2), range(true));
+                sc2 = scales.scale(va2, estimate, gridGap(vs2), scales.range(true));
                 if (inner == null && showSecond) {
                     plotW -= widest(ticks(sc2, format2), vs2) + VALUE_GAP;
                 }
@@ -856,19 +845,19 @@ final class ChartPainter {
             } else {
                 float reserve = cl == null ? 0 : cl.extent() + CATEGORY_GAP;
                 plotH = bottom - top - reserve;
-                sc = scale(va, plotH, gridGap(vs));
+                sc = scales.scale(va, plotH, gridGap(vs));
                 if (cl != null && crossesInside(sc, ca)) {
                     // labels hang from the axis where it crosses at zero, so only what reaches past the plot counts
                     for (int pass = 0; pass < 2; pass++) {
                         float below = (float) ((0 - sc.min()) / (sc.max() - sc.min())) * plotH;
                         plotH = bottom - top - Math.max(0, reserve - below);
-                        sc = scale(va, plotH, gridGap(vs));
+                        sc = scales.scale(va, plotH, gridGap(vs));
                     }
                 }
                 ticks = ticks(sc, format);
                 float again = left + (showValues ? widest(ticks, vs) + VALUE_GAP : 0);
                 if (second) {
-                    sc2 = scale(va2, plotH, gridGap(vs2), range(true));
+                    sc2 = scales.scale(va2, plotH, gridGap(vs2), scales.range(true));
                 }
                 if (Math.abs(again - plotLeft) > 0.5f) {
                     plotLeft = again;
@@ -876,7 +865,7 @@ final class ChartPainter {
                 }
             }
             if (second && inner != null) {
-                sc2 = scale(va2, plotH, gridGap(vs2), range(true));
+                sc2 = scales.scale(va2, plotH, gridGap(vs2), scales.range(true));
             }
         } else {
             if (cTitle != null && inner == null) {
@@ -1214,7 +1203,7 @@ final class ChartPainter {
         }
     }
 
-    private record Plot(float x, float y, float w, float h, Scale scale, boolean horizontal, boolean reversed,
+    record Plot(float x, float y, float w, float h, Scale scale, boolean horizontal, boolean reversed,
             int count, boolean midCat, Scale xScale) {
 
         Plot with(Scale s) {
@@ -1313,7 +1302,7 @@ final class ChartPainter {
                 }
                 for (Chart.ErrorBars e : s.errorBars()) {
                     if (!e.x() && !percent) {
-                        errorBar(e, p, start + bw / 2, base + v, i, s.values());
+                        ChartMarks.errorBar(ops, e, p, start + bw / 2, base + v, i, s.values());
                     }
                 }
                 Chart.Labels pl = labels.at(i);
@@ -1425,9 +1414,9 @@ final class ChartPainter {
         Fill fill = chart.plotFill() == null ? null : Fill.solid(chart.plotFill());
         float bx = x + depthX;
         float by = y - depthY;
-        ops.add(new Op.Path(polygon(bx, by, bx + w, by, bx + w, by + h, bx, by + h), fill, edge));
-        ops.add(new Op.Path(polygon(x, y, bx, by, bx, by + h, x, y + h), fill, edge));
-        ops.add(new Op.Path(polygon(x, y + h, bx, by + h, bx + w, by + h, x + w, y + h), fill, edge));
+        ops.add(new Op.Path(ChartMarks.polygon(bx, by, bx + w, by, bx + w, by + h, bx, by + h), fill, edge));
+        ops.add(new Op.Path(ChartMarks.polygon(x, y, bx, by, bx, by + h, x, y + h), fill, edge));
+        ops.add(new Op.Path(ChartMarks.polygon(x, y + h, bx, by + h, bx + w, by + h, x + w, y + h), fill, edge));
     }
 
     private void box(float x, float y, float w, float h, Color c, Stroke outline) {
@@ -1440,9 +1429,11 @@ final class ChartPainter {
         Fill front = c == null ? null : Fill.solid(c);
         Fill top = c == null ? null : Fill.solid(shade(c, 0.85f));
         Fill side = c == null ? null : Fill.solid(shade(c, 0.7f));
-        ops.add(new Op.Path(polygon(fx + w, fy, fx + w + dx, fy - dy, fx + w + dx, fy + h - dy, fx + w, fy + h), side,
+        ops.add(new Op.Path(
+                ChartMarks.polygon(fx + w, fy, fx + w + dx, fy - dy, fx + w + dx, fy + h - dy, fx + w, fy + h), side,
                 outline));
-        ops.add(new Op.Path(polygon(fx, fy, fx + w, fy, fx + w + dx, fy - dy, fx + dx, fy - dy), top, outline));
+        ops.add(new Op.Path(ChartMarks.polygon(fx, fy, fx + w, fy, fx + w + dx, fy - dy, fx + dx, fy - dy), top,
+                outline));
         ops.add(new Op.Rect(fx, fy, w, h, front, outline));
     }
 
@@ -1555,7 +1546,7 @@ final class ChartPainter {
             if (s.line() != null) {
                 Path2D.Float path = new Path2D.Float();
                 for (List<float[]> r : runs) {
-                    trace(path, r, s.smooth());
+                    ChartMarks.trace(path, r, s.smooth());
                 }
                 Chart.Shadow sh = s.shadow();
                 if (sh != null) {
@@ -1572,15 +1563,15 @@ final class ChartPainter {
                 Chart.Marker m = s.marker() != null ? s.marker()
                         : new Chart.Marker("circle", 5, s.fill(), s.fill());
                 for (float[] pt : pts) {
-                    marker(m, pt[0], pt[1]);
+                    ChartMarks.marker(ops, m, pt[0], pt[1]);
                 }
             }
             boolean scatter = g.kind() == Chart.Kind.SCATTER;
             for (Chart.ErrorBars e : s.errorBars()) {
-                errorBars(e, s, p, raw, scatter);
+                ChartMarks.errorBars(ops, e, s, p, raw, scatter);
             }
             for (Chart.Trend t : s.trends()) {
-                trend(t, s, p, raw, scatter);
+                ChartMarks.trend(ops, t, s, p, raw, scatter);
             }
             Chart.Labels labels = s.labels() != null ? s.labels() : g.labels();
             if (labels.any()) {
@@ -1608,238 +1599,6 @@ final class ChartPainter {
                 }
             }
         }
-    }
-
-    private void errorBars(Chart.ErrorBars e, Chart.Series s, Plot p, List<double[]> raw, boolean scatter) {
-        if (e.x() && (!scatter || p.xScale() == null)) {
-            return;
-        }
-        for (double[] r : raw) {
-            int i = (int) r[0];
-            if (!e.x()) {
-                errorBar(e, p, (float) r[2], r[1], i, s.values());
-                continue;
-            }
-            double x = s.xs() != null && i < s.xs().length ? s.xs()[i] : Double.NaN;
-            if (Double.isNaN(x)) {
-                continue;
-            }
-            double[] range = errorRange(e, x, i, s.xs());
-            if (range == null) {
-                continue;
-            }
-            float y = p.valuePos(r[1]);
-            errorLine(e, p.xPos(range[0]), y, p.xPos(range[1]), y, true);
-        }
-    }
-
-    private void errorBar(Chart.ErrorBars e, Plot p, float along, double value, int i, double[] values) {
-        double[] range = errorRange(e, value, i, values);
-        if (range == null) {
-            return;
-        }
-        float a = p.valuePos(range[0]);
-        float b = p.valuePos(range[1]);
-        if (p.horizontal()) {
-            errorLine(e, a, along, b, along, true);
-        } else {
-            errorLine(e, along, a, along, b, false);
-        }
-    }
-
-    private static double[] errorRange(Chart.ErrorBars e, double value, int i, double[] all) {
-        double sum = 0;
-        double squares = 0;
-        int n = 0;
-        for (double v : all) {
-            if (Double.isFinite(v)) {
-                sum += v;
-                n++;
-            }
-        }
-        double mean = n == 0 ? 0 : sum / n;
-        for (double v : all) {
-            if (Double.isFinite(v)) {
-                squares += (v - mean) * (v - mean);
-            }
-        }
-        double deviation = n > 1 ? Math.sqrt(squares / (n - 1)) : 0;
-        double center = e.kind().equals("stdDev") ? mean : value;
-        double plus;
-        double minus;
-        switch (e.kind()) {
-            case "percentage" -> plus = minus = Math.abs(value) * e.value() / 100;
-            case "stdDev" -> plus = minus = e.value() * deviation;
-            case "stdErr" -> plus = minus = n > 0 ? deviation / Math.sqrt(n) : 0;
-            case "cust" -> {
-                plus = i < e.plus().length && Double.isFinite(e.plus()[i]) ? e.plus()[i] : 0;
-                minus = i < e.minus().length && Double.isFinite(e.minus()[i]) ? e.minus()[i] : 0;
-            }
-            default -> plus = minus = e.value();
-        }
-        if (e.type().equals("plus")) {
-            minus = 0;
-        } else if (e.type().equals("minus")) {
-            plus = 0;
-        }
-        if (!Double.isFinite(plus) || !Double.isFinite(minus) || plus == 0 && minus == 0) {
-            return null;
-        }
-        return new double[] {center - Math.abs(minus), center + Math.abs(plus)};
-    }
-
-    private void errorLine(Chart.ErrorBars e, float x1, float y1, float x2, float y2, boolean across) {
-        Path2D.Float path = new Path2D.Float();
-        path.moveTo(x1, y1);
-        path.lineTo(x2, y2);
-        if (e.endCap()) {
-            float c = 3;
-            for (float[] end : new float[][] {{x1, y1}, {x2, y2}}) {
-                if (across) {
-                    path.moveTo(end[0], end[1] - c);
-                    path.lineTo(end[0], end[1] + c);
-                } else {
-                    path.moveTo(end[0] - c, end[1]);
-                    path.lineTo(end[0] + c, end[1]);
-                }
-            }
-        }
-        ops.add(new Op.Path(path, null, e.line()));
-    }
-
-    private void trend(Chart.Trend t, Chart.Series s, Plot p, List<double[]> raw, boolean scatter) {
-        if (scatter && p.xScale() == null) {
-            return;
-        }
-        List<double[]> pts = new ArrayList<>();
-        for (double[] r : raw) {
-            int i = (int) r[0];
-            double x = scatter ? s.xs() != null && i < s.xs().length ? s.xs()[i] : Double.NaN : i + 1;
-            if (Double.isFinite(x) && Double.isFinite(r[1])) {
-                pts.add(new double[] {x, r[1]});
-            }
-        }
-        if (pts.size() < 2) {
-            return;
-        }
-        Path2D.Float path = new Path2D.Float();
-        if (t.type().equals("movingAvg")) {
-            boolean started = false;
-            for (int k = t.period() - 1; k < pts.size(); k++) {
-                double sum = 0;
-                for (int j = k - t.period() + 1; j <= k; j++) {
-                    sum += pts.get(j)[1];
-                }
-                started = trendTo(path, p, pts.get(k)[0], sum / t.period(), scatter, started);
-            }
-        } else {
-            double[] fit = Trends.fit(t.type(), t.order(), pts);
-            if (fit == null) {
-                return;
-            }
-            double lo = pts.stream().mapToDouble(q -> q[0]).min().orElse(0) - t.backward();
-            double hi = pts.stream().mapToDouble(q -> q[0]).max().orElse(0) + t.forward();
-            int steps = t.type().equals("linear") ? 1 : 96;
-            boolean started = false;
-            for (int k = 0; k <= steps; k++) {
-                double x = lo + (hi - lo) * k / steps;
-                double y = Trends.at(t.type(), fit, x);
-                if (!Double.isFinite(y) || y < p.scale().min() || y > p.scale().max()) {
-                    started = false;
-                    continue;
-                }
-                started = trendTo(path, p, x, y, scatter, started);
-            }
-        }
-        ops.add(new Op.Path(path, null, t.line()));
-    }
-
-    private static boolean trendTo(Path2D.Float path, Plot p, double x, double y, boolean scatter, boolean started) {
-        float along;
-        if (scatter) {
-            along = p.xPos(x);
-        } else {
-            float first = p.center(0);
-            float step = p.count() > 1 ? p.center(1) - first : p.band();
-            along = (float) (first + step * (x - 1));
-        }
-        float v = p.valuePos(y);
-        float px = p.horizontal() && !scatter ? v : along;
-        float py = p.horizontal() && !scatter ? along : v;
-        if (started) {
-            path.lineTo(px, py);
-        } else {
-            path.moveTo(px, py);
-        }
-        return true;
-    }
-
-    // Smoothed lines pass through every point on Bezier curves with Catmull-Rom tangents, as Office draws them
-    private static void trace(Path2D.Float path, List<float[]> pts, boolean smooth) {
-        path.moveTo(pts.get(0)[0], pts.get(0)[1]);
-        for (int i = 1; i < pts.size(); i++) {
-            float[] b = pts.get(i);
-            if (!smooth || pts.size() < 3) {
-                path.lineTo(b[0], b[1]);
-                continue;
-            }
-            float[] a = pts.get(i - 1);
-            float[] before = pts.get(Math.max(0, i - 2));
-            float[] after = pts.get(Math.min(pts.size() - 1, i + 1));
-            path.curveTo(a[0] + (b[0] - before[0]) / 6, a[1] + (b[1] - before[1]) / 6, b[0] - (after[0] - a[0]) / 6,
-                    b[1] - (after[1] - a[1]) / 6, b[0], b[1]);
-        }
-    }
-
-    private void marker(Chart.Marker m, float cx, float cy) {
-        float r = m.size() / 2;
-        Fill fill = m.fill() == null ? null : Fill.solid(m.fill());
-        Stroke line = m.line() == null ? null : Stroke.solid(0.75f, m.line());
-        if (fill == null && line == null) {
-            return;
-        }
-        java.awt.Shape shape;
-        switch (m.symbol()) {
-            case "none" -> {
-                return;
-            }
-            case "square" -> shape = new Rectangle2D.Float(cx - r, cy - r, 2 * r, 2 * r);
-            case "diamond" -> shape = polygon(cx, cy - r, cx + r, cy, cx, cy + r, cx - r, cy);
-            case "triangle" -> shape = polygon(cx, cy - r, cx + r, cy + r, cx - r, cy + r);
-            case "arrowDown" -> shape = polygon(cx - r, cy - r, cx + r, cy - r, cx, cy + r);
-            case "dash" -> shape = new Rectangle2D.Float(cx - r, cy - r / 4, 2 * r, r / 2);
-            case "dot" -> shape = new Rectangle2D.Float(cx - r / 2, cy - r / 4, r, r / 2);
-            case "x", "star", "plus" -> {
-                Path2D.Float p = new Path2D.Float();
-                if (!m.symbol().equals("plus")) {
-                    p.moveTo(cx - r, cy - r);
-                    p.lineTo(cx + r, cy + r);
-                    p.moveTo(cx - r, cy + r);
-                    p.lineTo(cx + r, cy - r);
-                }
-                if (!m.symbol().equals("x")) {
-                    p.moveTo(cx, cy - r);
-                    p.lineTo(cx, cy + r);
-                    p.moveTo(cx - r, cy);
-                    p.lineTo(cx + r, cy);
-                }
-                Color c = m.line() != null ? m.line() : m.fill();
-                ops.add(new Op.Path(p, null, Stroke.solid(0.75f, c)));
-                return;
-            }
-            default -> shape = new Ellipse2D.Float(cx - r, cy - r, 2 * r, 2 * r);
-        }
-        ops.add(new Op.Path(shape, fill, line));
-    }
-
-    private static Path2D.Float polygon(float... xy) {
-        Path2D.Float p = new Path2D.Float();
-        p.moveTo(xy[0], xy[1]);
-        for (int i = 2; i < xy.length; i += 2) {
-            p.lineTo(xy[i], xy[i + 1]);
-        }
-        p.closePath();
-        return p;
     }
 
     private static float scatterX(double[] xs, int i, Plot p) {
@@ -1873,175 +1632,18 @@ final class ChartPainter {
         return chart.categories().isEmpty() ? Integer.toString(i + 1) : "";
     }
 
-    private double[] range(boolean secondary) {
-        double lo = 0;
-        double hi = 0;
-        double dataLo = Double.POSITIVE_INFINITY;
-        double dataHi = Double.NEGATIVE_INFINITY;
-        boolean any = false;
-        boolean stackedAny = false;
-        for (Chart.Group g : chart.groups()) {
-            if (g.secondary() != secondary) {
-                continue;
-            }
-            boolean percent = g.grouping().equals("percentStacked");
-            boolean stacked = g.grouping().equals("stacked");
-            int n = 0;
-            for (Chart.Series s : g.series()) {
-                n = Math.max(n, s.values().length);
-            }
-            if (percent) {
-                hi = Math.max(hi, 1);
-                any = true;
-                stackedAny = true;
-                continue;
-            }
-            double[] pos = new double[n];
-            double[] neg = new double[n];
-            for (Chart.Series s : g.series()) {
-                for (int i = 0; i < s.values().length; i++) {
-                    double v = s.values()[i];
-                    if (Double.isNaN(v)) {
-                        continue;
-                    }
-                    any = true;
-                    if (stacked) {
-                        stackedAny = true;
-                        if (v >= 0) {
-                            pos[i] += v;
-                        } else {
-                            neg[i] += v;
-                        }
-                    } else {
-                        dataLo = Math.min(dataLo, v);
-                        dataHi = Math.max(dataHi, v);
-                        lo = Math.min(lo, v);
-                        hi = Math.max(hi, v);
-                    }
-                }
-            }
-            for (int i = 0; i < n; i++) {
-                hi = Math.max(hi, pos[i]);
-                lo = Math.min(lo, neg[i]);
-            }
-        }
-        if (!any || hi - lo <= 0) {
-            return new double[] {lo, lo + 1};
-        }
-        return stackedAny ? new double[] {lo, hi} : zeroRule(dataLo, dataHi, lo, hi);
-    }
-
-    // Excel leaves zero out when the values sit in a band narrower than a sixth of their size
-    private static double[] zeroRule(double dataLo, double dataHi, double lo, double hi) {
-        if (dataLo > 0 && dataHi > dataLo && (dataHi - dataLo) < dataHi / 6) {
-            return new double[] {dataLo - (dataHi - dataLo) / 2, dataHi};
-        }
-        if (dataHi < 0 && dataHi > dataLo && (dataHi - dataLo) < -dataLo / 6) {
-            return new double[] {dataLo, dataHi + (dataHi - dataLo) / 2};
-        }
-        return new double[] {lo, hi};
-    }
-
-    private double[] xRange() {
-        double lo = Double.POSITIVE_INFINITY;
-        double hi = Double.NEGATIVE_INFINITY;
-        for (Chart.Group g : chart.groups()) {
-            for (Chart.Series s : g.series()) {
-                if (s.xs() == null) {
-                    continue;
-                }
-                for (double x : s.xs()) {
-                    if (!Double.isNaN(x)) {
-                        lo = Math.min(lo, x);
-                        hi = Math.max(hi, x);
-                    }
-                }
-            }
-        }
-        if (lo > hi) {
-            return null;
-        }
-        if (hi - lo <= 0) {
-            return new double[] {Math.min(0, lo), Math.max(hi, lo + 1)};
-        }
-        if (chart.tightScale()) {
-            return new double[] {lo, hi};
-        }
-        return zeroRule(lo, hi, Math.min(0, lo), Math.max(0, hi));
-    }
-
-    private Scale fit(Chart.Axis va, double unit, double[] r, boolean clearOfData) {
-        double range = r[1] - r[0];
-        double room = chart.tightScale() ? 0 : 0.05 * range;
-        double top = r[1] > 0 ? r[1] + room : r[1];
-        double bottom = r[0] < 0 ? r[0] - room : r[0];
-        double max = va != null && va.max() != null ? va.max() : Math.ceil(top / unit - 1e-9) * unit;
-        double min = va != null && va.min() != null ? va.min() : Math.floor(bottom / unit + 1e-9) * unit;
-        if (chart.tightScale() && clearOfData) {
-            if ((va == null || va.max() == null) && r[1] > 0 && max - r[1] < unit * 1e-6) {
-                max += unit;
-            }
-            if ((va == null || va.min() == null) && r[0] < 0 && r[0] - min < unit * 1e-6) {
-                min -= unit;
-            }
-        }
-        if (max <= min) {
-            max = min + unit;
-        }
-        return new Scale(min, max, unit);
-    }
-
-    private List<Double> units(Chart.Axis va, double[] r) {
-        List<Double> out = new ArrayList<>();
-        if (va != null && va.majorUnit() != null) {
-            out.add(va.majorUnit());
-            return out;
-        }
-        double lo = va != null && va.min() != null ? va.min() : r[0];
-        double hi = va != null && va.max() != null ? va.max() : r[1];
-        double span = Math.max(Math.abs(hi - lo), 1e-9);
-        double magnitude = Math.pow(10, Math.floor(Math.log10(span)) - 2);
-        for (int k = 0; k < 6; k++) {
-            for (double m : new double[] {1, 2, 5}) {
-                out.add(m * magnitude);
-            }
-            magnitude *= 10;
-        }
-        return out;
-    }
-
-    // The smallest round major unit whose gridlines stay at least the given gap apart
-    private Scale scale(Chart.Axis va, float length, float spacing) {
-        return scale(va, length, spacing, range(false));
-    }
-
-    private Scale scale(Chart.Axis va, float length, float spacing, double[] r) {
-        Scale last = null;
-        for (double unit : units(va, r)) {
-            Scale sc = fit(va, unit, r, false);
-            last = sc;
-            if ((sc.max() - sc.min()) / unit > (chart.tightScale() ? MAX_TIGHT_STEPS : 1000)) {
-                continue;
-            }
-            if (length / ((sc.max() - sc.min()) / unit) >= spacing) {
-                return sc;
-            }
-        }
-        return last == null ? new Scale(0, 1, 1) : last;
-    }
-
     // Across the page the labels must fit side by side with room to spare
     private Scale scaleAcross(Chart.Axis va, float length, TextStyle vs, String format) {
-        return scaleAcross(va, length, vs, format, range(false), false);
+        return scaleAcross(va, length, vs, format, scales.range(false), false);
     }
 
     private Scale scaleAcross(Chart.Axis va, float length, TextStyle vs, String format, double[] r,
             boolean clearOfData) {
         Scale last = null;
-        for (double unit : units(va, r)) {
-            Scale sc = fit(va, unit, r, clearOfData);
+        for (double unit : scales.units(va, r)) {
+            Scale sc = scales.fit(va, unit, r, clearOfData);
             last = sc;
-            if ((sc.max() - sc.min()) / unit > (chart.tightScale() ? MAX_TIGHT_STEPS : 1000)) {
+            if ((sc.max() - sc.min()) / unit > (chart.tightScale() ? ChartScale.MAX_TIGHT_STEPS : 1000)) {
                 continue;
             }
             float need = Math.max(widest(ticks(sc, format), vs) * 1.5f, lineHeight(vs) * 2.5f);

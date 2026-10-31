@@ -151,7 +151,7 @@ class AdmissionTest {
     void aConversionThatFailsClosesItsScratchAndFreesItsShare() throws Exception {
         Path in = Fixtures.write(dir, "fail.docx", Fixtures.docx("x"));
         AtomicReference<org.apache.pdfbox.pdmodel.PDDocument> seen = new AtomicReference<>();
-        IOException e = assertThrows(IOException.class, () -> OfficeToPdf.run(Duration.ZERO,
+        IOException e = assertThrows(IOException.class, () -> ConversionWorker.run(Duration.ZERO,
                 () -> OfficeToPdf.render(in, Format.DOCX, new ByteArrayOutputStream(), Options.defaults(),
                         (source, job) -> {
                             seen.set(job.document());
@@ -174,7 +174,7 @@ class AdmissionTest {
     @Test
     void aStoppedConversionFailsWithThePlainMemoryMessage() throws Exception {
         Path in = Fixtures.write(dir, "a.docx", Fixtures.docx("x"));
-        IOException e = assertThrows(IOException.class, () -> OfficeToPdf.run(Duration.ZERO,
+        IOException e = assertThrows(IOException.class, () -> ConversionWorker.run(Duration.ZERO,
                 () -> OfficeToPdf.render(in, Format.DOCX, new ByteArrayOutputStream(), Options.defaults(),
                         (source, job) -> {
                             job.newPage(PageSize.A4).close();
