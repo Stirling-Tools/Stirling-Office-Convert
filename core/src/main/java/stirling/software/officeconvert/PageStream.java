@@ -2,10 +2,6 @@ package stirling.software.officeconvert;
 
 import java.io.IOException;
 import java.io.InterruptedIOException;
-import java.nio.file.AtomicMoveNotSupportedException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -27,18 +23,6 @@ final class PageStream {
     static final int SAMPLE_ALL_BELOW = 40;
 
     private PageStream() {}
-
-    static PDDocument load(Path pdf, String password) throws IOException {
-        return PdfFiles.open(pdf, password);
-    }
-
-    static void moveIntoPlace(Path part, Path target) throws IOException {
-        try {
-            Files.move(part, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
-        } catch (AtomicMoveNotSupportedException e) {
-            Files.move(part, target, StandardCopyOption.REPLACE_EXISTING);
-        }
-    }
 
     static void stopIfInterrupted() throws InterruptedIOException {
         PdfFiles.stopIfInterrupted();

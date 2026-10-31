@@ -5,7 +5,6 @@ import java.io.IOException;
 import java.io.FilterOutputStream;
 import java.io.InterruptedIOException;
 import java.io.OutputStream;
-import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
@@ -22,10 +21,14 @@ import org.apache.pdfbox.pdmodel.encryption.InvalidPasswordException;
 import stirling.software.officeconvert.extract.BrotliBudget;
 import stirling.software.officeconvert.extract.PdfFiles;
 import stirling.software.officeconvert.memory.Admission;
+import stirling.software.officeconvert.memory.Deadline;
 
 public final class PdfOptimizer {
 
-    public static final long MAX_INPUT_BYTES = 1L << 30;
+    public static final long MAX_INPUT_BYTES = PdfFiles.MAX_INPUT_BYTES;
+
+    private static final Deadline DEADLINE = new Deadline("pdf-optimize", "Optimization interrupted", "optimize",
+            "optimizing", TimedOut::new);
 
     public enum Effort {
         FAST, DEFAULT, MAX
@@ -98,17 +101,14 @@ public final class PdfOptimizer {
         Objects.requireNonNull(out, "out");
         Objects.requireNonNull(options, "options");
         PdfFiles.stopIfInterrupted();
-        long size = Files.size(in);
-        if (size > MAX_INPUT_BYTES) {
-            throw new IOException("The PDF is larger than " + (MAX_INPUT_BYTES >> 20) + " MB");
-        }
+        long size = PdfFiles.checkSize(in);
         Path folder = PdfFiles.outputFolder(out);
         Path part = Files.createTempFile(folder, ".optimize-", ".part");
         Path lines = Files.createTempFile(folder, ".lines-", ".part");
         try {
             int[] shown = {0};
             String[] failed = {null};
-            Rewrite.Run run = Deadline.run(options.timeout(), () -> {
+            Rewrite.Run run = DEADLINE.run(options.timeout(), () -> {
                 Admission.Ticket ticket = Admission.jvm().enter(estimate(size));
                 try {
                     Rewrite.Run done = attempt(in, lines, part, folder, options, size, shown);
@@ -138,12 +138,12 @@ public final class PdfOptimizer {
                 warnings.add("The rewritten PDF failed its own check (" + failed[0] + "), so the input was copied"
                         + " unchanged");
                 Files.copy(in, part, StandardCopyOption.REPLACE_EXISTING);
-                move(part, out);
+                PdfFiles.moveIntoPlace(part, out);
                 return new Result(size, size, false, result.objects(), result.mergedObjects(), result.recodedStreams(),
                         warnings);
             }
             if (run.repaired() && result.rewritten()) {
-                move(part, out);
+                PdfFiles.moveIntoPlace(part, out);
                 return result;
             }
             if (!result.rewritten() || !options.alwaysRewrite() && result.outputBytes() >= size) {
@@ -151,7 +151,7 @@ public final class PdfOptimizer {
                 result = new Result(size, size, false, result.objects(), result.mergedObjects(),
                         result.recodedStreams(), result.warnings());
             }
-            move(part, out);
+            PdfFiles.moveIntoPlace(part, out);
             return result;
         } catch (IOException e) {
             throw PdfFiles.interrupted(e);
@@ -272,7 +272,7 @@ public final class PdfOptimizer {
         PdfFiles.checkOpen(document);
         Path saved = Files.createTempFile("pdf-optimize-", ".pdf");
         try {
-            return Deadline.run(options.timeout(), () -> {
+            return DEADLINE.run(options.timeout(), () -> {
                 Admission.Ticket saving = Admission.jvm().enter(Admission.BASE_BYTES * 8);
                 try {
                     save(document, saved, MAX_INPUT_BYTES);
@@ -332,13 +332,5 @@ public final class PdfOptimizer {
 
     static long estimate(long bytes) {
         return Admission.BASE_BYTES * 8 + Math.min(bytes, 256L << 20) * 3 + Recoder.MAX_DECODED_BYTES * 3;
-    }
-
-    private static void move(Path part, Path out) throws IOException {
-        try {
-            Files.move(part, out, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
-        } catch (AtomicMoveNotSupportedException e) {
-            Files.move(part, out, StandardCopyOption.REPLACE_EXISTING);
-        }
     }
 }

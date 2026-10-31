@@ -4,10 +4,8 @@ import java.awt.geom.AffineTransform;
 import java.io.IOException;
 import java.io.InterruptedIOException;
 import java.io.OutputStream;
-import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -64,19 +62,13 @@ public final class SlideConversion {
         Objects.requireNonNull(target, "target");
         Objects.requireNonNull(options, "options");
         PdfFiles.stopIfInterrupted();
-        Path part = Files.createTempFile(PdfFiles.outputFolder(target), ".office-convert-", ".part");
-        try {
-            try (PDDocument doc = load(pdf, options.password());
+        PdfFiles.writeThenMove(target, ".office-convert-", part -> {
+            try (PDDocument doc = PdfFiles.open(pdf, options.password());
                     OutputStream out = Files.newOutputStream(part)) {
                 convert(doc, out, options, writer);
             }
-            PdfFiles.stopIfInterrupted();
-            moveIntoPlace(part, target);
-        } catch (IOException e) {
-            throw PdfFiles.interrupted(e);
-        } finally {
-            Files.deleteIfExists(part);
-        }
+            return null;
+        });
     }
 
     public static void convert(PDDocument doc, OutputStream out, PdfToPptx.Options options, Writer writer)
@@ -95,18 +87,6 @@ public final class SlideConversion {
             throw new IOException("Conversion failed: " + (e.getMessage() != null ? e.getMessage() : e.toString()), e);
         } finally {
             ticket.close();
-        }
-    }
-
-    private static PDDocument load(Path pdf, String password) throws IOException {
-        return PdfFiles.open(pdf, password);
-    }
-
-    private static void moveIntoPlace(Path part, Path target) throws IOException {
-        try {
-            Files.move(part, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
-        } catch (AtomicMoveNotSupportedException e) {
-            Files.move(part, target, StandardCopyOption.REPLACE_EXISTING);
         }
     }
 

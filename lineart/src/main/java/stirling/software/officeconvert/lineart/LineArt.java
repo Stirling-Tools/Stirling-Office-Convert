@@ -8,10 +8,8 @@ import java.io.InputStream;
 import java.io.InterruptedIOException;
 import java.io.OutputStream;
 import java.io.UncheckedIOException;
-import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.EnumMap;
@@ -40,7 +38,7 @@ public final class LineArt {
 
     public static final long DEFAULT_MAX_PIXELS = 1_000_000_000L;
 
-    public static final long MAX_INPUT_BYTES = 1L << 30;
+    public static final long MAX_INPUT_BYTES = PdfFiles.MAX_INPUT_BYTES;
 
     public enum Method {
         EDGES,
@@ -169,11 +167,8 @@ public final class LineArt {
         Objects.requireNonNull(in, "in");
         Objects.requireNonNull(out, "out");
         Objects.requireNonNull(options, "options");
-        if (Files.size(in) > MAX_INPUT_BYTES) {
-            throw new IOException("The PDF is larger than " + (MAX_INPUT_BYTES >> 20) + " MB");
-        }
-        Path part = Files.createTempFile(PdfFiles.outputFolder(out), ".lineart-", ".part");
-        try {
+        PdfFiles.checkSize(in);
+        return PdfFiles.writeThenMove(out, ".lineart-", part -> {
             Result result;
             try (PDDocument doc = PdfFiles.open(in, options.password())) {
                 result = convert(doc, options);
@@ -188,14 +183,8 @@ public final class LineArt {
                     doc.save(os);
                 }
             }
-            PdfFiles.stopIfInterrupted();
-            move(part, out);
             return result;
-        } catch (IOException e) {
-            throw PdfFiles.interrupted(e);
-        } finally {
-            Files.deleteIfExists(part);
-        }
+        });
     }
 
     public static Result convert(PDDocument document, Options options) throws IOException {
@@ -458,14 +447,6 @@ public final class LineArt {
         }
         if (decode != null) {
             stream.setItem(COSName.DECODE, decode);
-        }
-    }
-
-    private static void move(Path part, Path out) throws IOException {
-        try {
-            Files.move(part, out, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
-        } catch (AtomicMoveNotSupportedException e) {
-            Files.move(part, out, StandardCopyOption.REPLACE_EXISTING);
         }
     }
 }

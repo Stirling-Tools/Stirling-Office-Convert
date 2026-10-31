@@ -1,4 +1,4 @@
-package stirling.software.officeconvert.optimize;
+package stirling.software.officeconvert.memory;
 
 import java.io.IOException;
 import java.io.InterruptedIOException;
@@ -7,10 +7,9 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.FutureTask;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.function.Function;
 
-import stirling.software.officeconvert.memory.Admission;
-
-final class Deadline {
+public final class Deadline {
 
     private static final long STACK_BYTES = 8L << 20;
 
@@ -19,19 +18,40 @@ final class Deadline {
     private static final Duration GRACE = Duration.ofSeconds(10);
 
     @FunctionalInterface
-    interface Work<T> {
+    public interface Work<T> {
         T call() throws IOException;
     }
 
-    private Deadline() {}
+    private final String threadName;
 
-    static <T> T run(Duration timeout, Work<T> work) throws IOException {
+    private final String interrupted;
+
+    private final String verb;
+
+    private final String gerund;
+
+    private final Function<Duration, ? extends IOException> timedOut;
+
+    public Deadline(String threadName, String interrupted, String verb, String gerund,
+            Function<Duration, ? extends IOException> timedOut) {
+        this.threadName = threadName;
+        this.interrupted = interrupted;
+        this.verb = verb;
+        this.gerund = gerund;
+        this.timedOut = timedOut;
+    }
+
+    public <T> T run(Duration timeout, Work<T> work) throws IOException {
+        return run(timeout, GRACE, work);
+    }
+
+    public <T> T run(Duration timeout, Duration grace, Work<T> work) throws IOException {
         if (Thread.currentThread().isInterrupted()) {
-            throw new InterruptedIOException("Optimization interrupted");
+            throw new InterruptedIOException(interrupted);
         }
         long limit = nanos(timeout);
         FutureTask<T> task = new FutureTask<>(work::call);
-        Thread worker = Thread.ofPlatform().name("pdf-optimize").daemon().stackSize(STACK_BYTES).unstarted(task);
+        Thread worker = Thread.ofPlatform().name(threadName).daemon().stackSize(STACK_BYTES).unstarted(task);
         boolean finished = false;
         try {
             long started = System.nanoTime();
@@ -39,14 +59,14 @@ final class Deadline {
             T result = limit == 0 ? task.get() : task.get(limit, TimeUnit.NANOSECONDS);
             finished = true;
             if (limit != 0 && System.nanoTime() - started > limit) {
-                throw new PdfOptimizer.TimedOut(timeout);
+                throw timedOut.apply(timeout);
             }
             return result;
         } catch (TimeoutException e) {
-            throw new PdfOptimizer.TimedOut(timeout);
+            throw timedOut.apply(timeout);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            throw new InterruptedIOException("Interrupted while optimizing");
+            throw new InterruptedIOException("Interrupted while " + gerund);
         } catch (ExecutionException e) {
             finished = true;
             Throwable cause = e.getCause();
@@ -57,10 +77,10 @@ final class Deadline {
                 throw r;
             }
             if (cause instanceof OutOfMemoryError) {
-                throw new IOException("The PDF needs more memory to optimize than is available", cause);
+                throw new IOException("The PDF needs more memory to " + verb + " than is available", cause);
             }
             if (cause instanceof StackOverflowError) {
-                throw new IOException("The PDF nests its objects too deeply to optimize", cause);
+                throw new IOException("The PDF nests its objects too deeply to " + verb, cause);
             }
             if (cause instanceof Error err) {
                 throw err;
@@ -69,14 +89,14 @@ final class Deadline {
         } finally {
             if (!finished) {
                 task.cancel(true);
-                stop(worker);
+                stop(worker, grace);
             }
         }
     }
 
-    private static void stop(Thread worker) {
+    private static void stop(Thread worker, Duration grace) {
         boolean interrupted = false;
-        long end = System.nanoTime() + GRACE.toNanos();
+        long end = System.nanoTime() + grace.toNanos();
         while (worker.isAlive() && end - System.nanoTime() > 0) {
             worker.interrupt();
             try {

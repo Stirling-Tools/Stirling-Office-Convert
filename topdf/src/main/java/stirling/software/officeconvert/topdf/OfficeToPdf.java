@@ -7,10 +7,8 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InterruptedIOException;
 import java.io.OutputStream;
-import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -26,6 +24,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Pattern;
 
+import stirling.software.officeconvert.extract.PdfFiles;
 import stirling.software.officeconvert.jpx.JpxImageIO;
 import stirling.software.officeconvert.memory.Admission;
 import stirling.software.officeconvert.topdf.crypt.EncryptedPackage;
@@ -472,7 +471,7 @@ public final class OfficeToPdf {
                 }
                 return null;
             });
-            move(part, target);
+            PdfFiles.moveIntoPlace(part, target);
             moved = true;
         } finally {
             if (!moved) {
@@ -1136,14 +1135,6 @@ public final class OfficeToPdf {
 
     private static IOException tooLarge() {
         return new OfficeZip.Oversized("The document is too large: over " + (MAX_INPUT_BYTES >> 20) + " MB");
-    }
-
-    private static void move(Path from, Path to) throws IOException {
-        try {
-            Files.move(from, to, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
-        } catch (AtomicMoveNotSupportedException e) {
-            Files.move(from, to, StandardCopyOption.REPLACE_EXISTING);
-        }
     }
 
     static void deleteQuietly(Path file) {

@@ -133,19 +133,13 @@ public final class PdfToXlsx {
         String name = out.getFileName().toString().toLowerCase(Locale.ROOT);
         Options opts = name.endsWith(".xlsx") || name.endsWith(".ods") ? options.withFormat(Format.of(out)) : options;
         PdfFiles.stopIfInterrupted();
-        Path part = Files.createTempFile(PdfFiles.outputFolder(out), ".office-convert-", ".part");
-        try {
-            try (PDDocument doc = PageStream.load(pdf, opts.password());
+        PdfFiles.writeThenMove(out, ".office-convert-", part -> {
+            try (PDDocument doc = PdfFiles.open(pdf, opts.password());
                     OutputStream stream = Files.newOutputStream(part)) {
                 convert(doc, stream, opts);
             }
-            PdfFiles.stopIfInterrupted();
-            PageStream.moveIntoPlace(part, out);
-        } catch (IOException e) {
-            throw PdfFiles.interrupted(e);
-        } finally {
-            Files.deleteIfExists(part);
-        }
+            return null;
+        });
     }
 
     public static void convert(PDDocument doc, OutputStream out, Options options) throws IOException {
