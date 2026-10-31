@@ -116,18 +116,6 @@ final class Content {
         return b;
     }
 
-    private static byte[] shortest(ContentLexer lex) {
-        return switch (lex.kind()) {
-            case NUMBER -> Lexical.plainNumber(lex.text()).getBytes(java.nio.charset.StandardCharsets.US_ASCII);
-            case STRING -> {
-                Bytes b = new Bytes(lex.end() - lex.start());
-                Lexical.string(lex.stringBytes(), b);
-                yield b.toByteArray();
-            }
-            default -> raw(lex);
-        };
-    }
-
     static boolean text(byte[] in, Shows shows, Set<COSName> states) {
         List<COSName> saved = new ArrayList<>();
         List<byte[]> strings = new ArrayList<>();
