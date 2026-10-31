@@ -569,7 +569,8 @@ final class Grid {
     }
 
     // Excel re-fits a row without customHeight: an empty one drops to the default, and wrapped text grows
-    // a height another program stored (Excel's own stored height is already its fit, but not the Mac's wrapping)
+    // a height another program stored (Excel's own stored height is already its fit, unless the Mac or a screen
+    // at another DPI wrapped it)
     private double refit(RawRow row, double fitted, boolean empty, boolean wrapped) {
         double stored = Math.min(409.5, row.height());
         if (book.workbook().openDocument) {
