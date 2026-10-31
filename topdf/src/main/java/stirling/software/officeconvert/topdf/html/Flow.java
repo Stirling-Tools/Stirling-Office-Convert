@@ -1713,15 +1713,10 @@ final class Flow {
 
     private void decorate(Table.Row row, Table t, Map<Table.Cell, Element> placed, Set<Table.Cell> painted, Look look,
             Frame frame) throws IOException {
-        float tallest = row.height;
-        for (int c = 0; c < row.cells.size() && c < t.columnWidths.size(); c++) {
-            Table.Cell cell = row.cells.get(c);
-            float w = t.columnWidths.get(c) - t.cellMarginLeft - t.cellMarginRight;
-            tallest = Math.max(tallest, Measure.height(cell.blocks(), w) + spaceAfter(cell.blocks())
-                    + cell.top.width() + cell.bottom.width());
-        }
-        boolean any = false;
-        for (int c = 0; c < row.cells.size() && c < t.columnWidths.size(); c++) {
+        int columns = Math.min(row.cells.size(), t.columnWidths.size());
+        List<Map<String, String>> styles = new ArrayList<>(Collections.nCopies(columns, null));
+        boolean wanted = false;
+        for (int c = 0; c < columns; c++) {
             Table.Cell cell = row.cells.get(c);
             Element item = placed.get(cell);
             if (item == null || painted.contains(cell)) {
@@ -1729,8 +1724,27 @@ final class Flow {
             }
             Map<String, String> d = ctx.declared(item, look);
             Map<String, String> box = framedChild(item, d, look);
-            if (box != null) {
-                d = box;
+            d = box != null ? box : d;
+            styles.set(c, d);
+            wanted |= d.containsKey("border-radius") || d.containsKey("box-shadow")
+                    || d.containsKey("background-gradient");
+        }
+        if (!wanted) {
+            return;
+        }
+        float tallest = row.height;
+        for (int c = 0; c < columns; c++) {
+            Table.Cell cell = row.cells.get(c);
+            float w = t.columnWidths.get(c) - t.cellMarginLeft - t.cellMarginRight;
+            tallest = Math.max(tallest, Measure.height(cell.blocks(), w) + spaceAfter(cell.blocks())
+                    + cell.top.width() + cell.bottom.width());
+        }
+        boolean any = false;
+        for (int c = 0; c < columns; c++) {
+            Table.Cell cell = row.cells.get(c);
+            Map<String, String> d = styles.get(c);
+            if (d == null) {
+                continue;
             }
             boolean shadowEdge = cell.top.equals(new Table.Border(0.5f, SHADOW_EDGE)) && cell.top.equals(cell.bottom)
                     && cell.top.equals(cell.left) && cell.top.equals(cell.right);
