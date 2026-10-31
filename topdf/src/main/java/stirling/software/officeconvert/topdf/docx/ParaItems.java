@@ -273,6 +273,7 @@ final class ParaItems {
         if (!letters && !digits) {
             return;
         }
+        float share = para.pp.autoSpaceEm != null ? para.pp.autoSpaceEm : 0.25f;
         for (int i = 0; i + 1 < items.size(); i++) {
             Item a = items.get(i);
             Item b = items.get(i + 1);
@@ -288,7 +289,7 @@ final class ParaItems {
                 asian = b;
             }
             if (asian != null) {
-                a.extra += asian.look.size() / 4f;
+                a.extra += asian.look.size() * share;
             }
         }
     }

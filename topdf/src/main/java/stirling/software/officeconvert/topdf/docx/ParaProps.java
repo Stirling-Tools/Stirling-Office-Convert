@@ -50,6 +50,7 @@ final class ParaProps {
     Boolean mirrorIndents;
     Boolean autoSpaceDE;
     Boolean autoSpaceDN;
+    Float autoSpaceEm;
     Boolean overflowPunct;
 
     ParaProps copy() {
@@ -111,6 +112,7 @@ final class ParaProps {
         mirrorIndents = o.mirrorIndents != null ? o.mirrorIndents : mirrorIndents;
         autoSpaceDE = o.autoSpaceDE != null ? o.autoSpaceDE : autoSpaceDE;
         autoSpaceDN = o.autoSpaceDN != null ? o.autoSpaceDN : autoSpaceDN;
+        autoSpaceEm = o.autoSpaceEm != null ? o.autoSpaceEm : autoSpaceEm;
         overflowPunct = o.overflowPunct != null ? o.overflowPunct : overflowPunct;
     }
 
@@ -159,7 +161,10 @@ final class ParaProps {
                 case "w:suppressAutoHyphens" -> suppressAutoHyphens = Ooxml.on(k);
                 case "w:suppressLineNumbers" -> suppressLineNumbers = Ooxml.on(k);
                 case "w:mirrorIndents" -> mirrorIndents = Ooxml.on(k);
-                case "w:autoSpaceDE" -> autoSpaceDE = Ooxml.on(k);
+                case "w:autoSpaceDE" -> {
+                    autoSpaceDE = Ooxml.on(k);
+                    autoSpaceEm = autoSpaceEm(k.attr("so:em"));
+                }
                 case "w:autoSpaceDN" -> autoSpaceDN = Ooxml.on(k);
                 case "w:overflowPunct" -> overflowPunct = Ooxml.on(k);
                 case "w:outlineLvl" -> outlineLvl = Ooxml.integer(k.val());
@@ -300,6 +305,13 @@ final class ParaProps {
 
     boolean hasBorders() {
         return visible(bdrTop) || visible(bdrBottom) || visible(bdrLeft) || visible(bdrRight) || visible(bdrBetween);
+    }
+
+    private static Float autoSpaceEm(String v) {
+        if (v == null || !v.strip().matches("0?[.][0-9]{1,4}")) {
+            return null;
+        }
+        return Float.parseFloat(v.strip());
     }
 
     static boolean visible(Border b) {
