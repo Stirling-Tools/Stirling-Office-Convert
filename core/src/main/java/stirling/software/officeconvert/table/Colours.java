@@ -1,23 +1,8 @@
 package stirling.software.officeconvert.table;
 
-import java.io.IOException;
-
-import org.apache.pdfbox.pdmodel.graphics.color.PDColor;
-
 final class Colours {
 
     private Colours() {}
-
-    static int toRgb(PDColor colour, int fallback) {
-        if (colour == null) {
-            return fallback;
-        }
-        try {
-            return colour.toRGB() & 0xFFFFFF;
-        } catch (IOException | RuntimeException e) {
-            return fallback;
-        }
-    }
 
     static boolean isNearWhite(int rgb) {
         return red(rgb) >= 0xF5 && green(rgb) >= 0xF5 && blue(rgb) >= 0xF5;

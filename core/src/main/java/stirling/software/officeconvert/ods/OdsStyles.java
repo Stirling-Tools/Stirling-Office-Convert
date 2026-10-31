@@ -12,6 +12,7 @@ import stirling.software.officeconvert.sheet.CellStyle.VAlign;
 import stirling.software.officeconvert.sheet.NumberFormat;
 import stirling.software.officeconvert.sheet.NumberFormat.DatePart;
 import stirling.software.officeconvert.sheet.SheetXml;
+import stirling.software.officeconvert.sink.ColourHex;
 
 final class OdsStyles {
 
@@ -304,6 +305,6 @@ final class OdsStyles {
     }
 
     private static String hex(int rgb) {
-        return String.format(Locale.ROOT, "#%06x", rgb & 0xFFFFFF);
+        return "#" + ColourHex.lower(rgb);
     }
 }

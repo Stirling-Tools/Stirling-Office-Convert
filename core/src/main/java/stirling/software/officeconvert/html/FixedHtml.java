@@ -2,7 +2,6 @@ package stirling.software.officeconvert.html;
 
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
-import java.io.FilterOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.io.OutputStreamWriter;
@@ -51,6 +50,7 @@ import org.apache.pdfbox.util.Vector;
 import stirling.software.officeconvert.build.RgbPixels;
 import stirling.software.officeconvert.extract.GuardedRenderer;
 import stirling.software.officeconvert.memory.Admission;
+import stirling.software.officeconvert.sink.KeepOpen;
 import stirling.software.officeconvert.sink.Links;
 
 public final class FixedHtml {
@@ -584,23 +584,6 @@ public final class FixedHtml {
                     }
                 }
             };
-        }
-    }
-
-    private static final class KeepOpen extends FilterOutputStream {
-
-        KeepOpen(OutputStream target) {
-            super(target);
-        }
-
-        @Override
-        public void write(byte[] b, int off, int len) throws IOException {
-            out.write(b, off, len);
-        }
-
-        @Override
-        public void close() throws IOException {
-            out.flush();
         }
     }
 }

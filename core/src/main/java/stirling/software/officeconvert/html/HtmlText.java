@@ -4,6 +4,7 @@ import java.util.Locale;
 import java.util.Map;
 
 import stirling.software.officeconvert.model.RunStyle;
+import stirling.software.officeconvert.sink.ColourHex;
 
 /** Escaping and the CSS for one run of text. */
 final class HtmlText {
@@ -54,7 +55,7 @@ final class HtmlText {
     }
 
     static String hex(int rgb) {
-        return String.format("#%06x", rgb & 0xFFFFFF);
+        return "#" + ColourHex.lower(rgb);
     }
 
     static String name(String font) {

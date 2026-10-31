@@ -5,7 +5,6 @@ import java.io.BufferedOutputStream;
 import java.io.BufferedWriter;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
-import java.io.FilterOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.io.OutputStreamWriter;
@@ -29,6 +28,7 @@ import javax.imageio.ImageIO;
 import stirling.software.officeconvert.Pictures;
 import stirling.software.officeconvert.model.Picture;
 import stirling.software.officeconvert.model.Scripts;
+import stirling.software.officeconvert.sink.KeepOpen;
 import stirling.software.officeconvert.sink.SpillFile;
 import stirling.software.officeconvert.sink.ZipParts;
 import stirling.software.officeconvert.slides.Slide;
@@ -61,7 +61,7 @@ public final class OdpWriter implements SlideSink {
 
     public OdpWriter(OutputStream target, Pictures pictures) throws IOException {
         this.lossless = pictures == Pictures.LOSSLESS;
-        this.zip = new ZipOutputStream(new BufferedOutputStream(new KeepOpen(target), 1 << 16), StandardCharsets.UTF_8);
+        this.zip = ZipParts.open(target);
         ZipParts.stored(zip, "mimetype", MIME.getBytes(StandardCharsets.US_ASCII));
         zip.setLevel(6);
     }
@@ -243,23 +243,6 @@ public final class OdpWriter implements SlideSink {
             if (file != null) {
                 Files.deleteIfExists(file);
             }
-        }
-    }
-
-    private static final class KeepOpen extends FilterOutputStream {
-
-        KeepOpen(OutputStream target) {
-            super(target);
-        }
-
-        @Override
-        public void write(byte[] b, int off, int len) throws IOException {
-            out.write(b, off, len);
-        }
-
-        @Override
-        public void close() throws IOException {
-            out.flush();
         }
     }
 }

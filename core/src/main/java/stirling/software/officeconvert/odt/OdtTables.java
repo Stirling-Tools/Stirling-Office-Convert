@@ -78,7 +78,7 @@ final class OdtTables {
             if (span > 1) {
                 sb.append(" table:number-columns-spanned=\"").append(span).append('"');
             }
-            int down = cell.vMerge == 1 ? rowsMerged(t, r, col) : 1;
+            int down = cell.vMerge == 1 ? t.rowSpan(r, col) : 1;
             if (down > 1) {
                 sb.append(" table:number-rows-spanned=\"").append(down).append('"');
             }
@@ -103,32 +103,6 @@ final class OdtTables {
                     .append("\"/></table:table-cell>");
         }
         sb.append("</table:table-row>");
-    }
-
-    private static int rowsMerged(Table t, int r, int col) {
-        int n = 1;
-        for (int k = r + 1; k < t.rows.size(); k++) {
-            Table.Cell below = cellAt(t.rows.get(k), col);
-            if (below == null || below.vMerge != 2) {
-                break;
-            }
-            n++;
-        }
-        return n;
-    }
-
-    private static Table.Cell cellAt(Table.Row row, int col) {
-        int c = 0;
-        for (Table.Cell cell : row.cells) {
-            if (c == col) {
-                return cell;
-            }
-            c += Math.max(1, cell.gridSpan);
-            if (c > col) {
-                return null;
-            }
-        }
-        return null;
     }
 
     private String cellStyle(Table t, Table.Cell cell) {

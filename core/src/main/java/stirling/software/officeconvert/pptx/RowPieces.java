@@ -23,7 +23,7 @@ final class RowPieces {
         for (int r = 0; r < t.rows.size(); r++) {
             int col = 0;
             for (Table.Cell cell : t.rows.get(r).cells) {
-                int span = cell.vMerge == 1 ? TableXml.rowSpan(t, r, col) : 1;
+                int span = cell.vMerge == 1 ? t.rowSpan(r, col) : 1;
                 List<List<Paragraph>> parts = span > 1 ? parts(cell, tops, r, span) : null;
                 if (parts != null) {
                     if (out == null) {
@@ -64,7 +64,7 @@ final class RowPieces {
     private static void apply(Table out, int row, int col, Table.Cell origin, List<List<Paragraph>> parts, float[] tops,
             Map<Table.Cell, Float> offsets) {
         for (int i = 0; i < parts.size(); i++) {
-            Table.Cell piece = TableXml.cellAt(out.rows.get(row + i), col);
+            Table.Cell piece = out.rows.get(row + i).cellAt(col);
             if (piece == null) {
                 continue;
             }

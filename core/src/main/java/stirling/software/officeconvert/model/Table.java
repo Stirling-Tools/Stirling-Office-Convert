@@ -90,6 +90,20 @@ public final class Table implements Block {
         public boolean header;
         public boolean exactHeight;
         public boolean splits;
+
+        public Cell cellAt(int col) {
+            int c = 0;
+            for (Cell cell : cells) {
+                if (c == col) {
+                    return cell;
+                }
+                c += Math.max(1, cell.gridSpan);
+                if (c > col) {
+                    return null;
+                }
+            }
+            return null;
+        }
     }
 
     public static final float BORDER_REACH = 4.5f;
@@ -130,6 +144,18 @@ public final class Table implements Block {
             }
         }
         return out;
+    }
+
+    public int rowSpan(int row, int col) {
+        int span = 1;
+        for (int r = row + 1; r < rows.size(); r++) {
+            Cell below = rows.get(r).cellAt(col);
+            if (below == null || below.vMerge != 2) {
+                break;
+            }
+            span++;
+        }
+        return span;
     }
 
     public boolean floating() {

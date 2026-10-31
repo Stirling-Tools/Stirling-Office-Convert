@@ -1,5 +1,7 @@
 package stirling.software.officeconvert.pptx;
 
+import stirling.software.officeconvert.sink.ColourHex;
+import stirling.software.officeconvert.sink.XmlText;
 import stirling.software.officeconvert.slides.Gradient;
 
 final class Ooxml {
@@ -16,26 +18,7 @@ final class Ooxml {
     private Ooxml() {}
 
     static void text(StringBuilder sb, String s) {
-        for (int i = 0; i < s.length(); i++) {
-            char c = s.charAt(i);
-            switch (c) {
-                case '<' -> sb.append("&lt;");
-                case '>' -> sb.append("&gt;");
-                case '&' -> sb.append("&amp;");
-                case '"' -> sb.append("&quot;");
-                default -> {
-                    if (c >= 0x20 && c != 0xFFFE && c != 0xFFFF || c == '\t') {
-                        if (Character.isHighSurrogate(c)) {
-                            if (i + 1 < s.length() && Character.isLowSurrogate(s.charAt(i + 1))) {
-                                sb.append(c).append(s.charAt(++i));
-                            }
-                        } else if (!Character.isLowSurrogate(c)) {
-                            sb.append(c);
-                        }
-                    }
-                }
-            }
-        }
+        XmlText.escapeKeepingTabs(sb, s);
     }
 
     static String esc(String s) {
@@ -65,7 +48,7 @@ final class Ooxml {
     }
 
     static String hex(int rgb) {
-        return String.format("%06X", rgb & 0xFFFFFF);
+        return ColourHex.upper(rgb);
     }
 
     static void solidFill(StringBuilder sb, int rgb) {
