@@ -6,7 +6,6 @@ import java.awt.geom.AffineTransform;
 import java.awt.geom.Ellipse2D;
 import java.awt.geom.Line2D;
 import java.awt.geom.PathIterator;
-import java.awt.geom.Point2D;
 import java.awt.geom.Rectangle2D;
 import java.awt.geom.RoundRectangle2D;
 import java.io.Closeable;
@@ -37,9 +36,6 @@ import org.apache.pdfbox.pdmodel.graphics.color.PDDeviceRGB;
 import org.apache.pdfbox.pdmodel.graphics.form.PDFormXObject;
 import org.apache.pdfbox.pdmodel.graphics.shading.PDShading;
 import org.apache.pdfbox.pdmodel.graphics.state.PDExtendedGraphicsState;
-import org.apache.pdfbox.pdmodel.interactive.action.PDActionURI;
-import org.apache.pdfbox.pdmodel.interactive.annotation.PDAnnotation;
-import org.apache.pdfbox.pdmodel.interactive.annotation.PDAnnotationLink;
 import org.apache.pdfbox.pdmodel.interactive.annotation.PDAppearanceStream;
 import org.apache.pdfbox.util.Matrix;
 
@@ -89,7 +85,9 @@ public final class PdfCanvas implements Closeable {
 
     private final Map<COSDictionary, String> fontNames = new IdentityHashMap<>();
 
-    private AffineTransform ctm = new AffineTransform();
+    private final AffineTransform ctm = new AffineTransform();
+
+    private final CanvasLinks links;
 
     private final List<TextOrder.Piece> pending = new ArrayList<>();
 
@@ -111,6 +109,7 @@ public final class PdfCanvas implements Closeable {
         this.index = index;
         this.width = page.getMediaBox().getWidth();
         this.height = page.getMediaBox().getHeight();
+        this.links = new CanvasLinks(output, page, index, height, ctm);
         this.cs = new PDPageContentStream(output.document(), page, AppendMode.OVERWRITE, true);
         cs.saveGraphicsState();
         cs.transform(new Matrix(1, 0, 0, -1, 0, height));
@@ -129,6 +128,7 @@ public final class PdfCanvas implements Closeable {
         this.index = -1;
         this.width = width;
         this.height = height;
+        this.links = new CanvasLinks(output, null, -1, height, ctm);
         form.setBBox(new PDRectangle(-margin, -margin, width + 2 * margin, height + 2 * margin));
         form.setResources(new PDResources());
         this.cs = new PDPageContentStream(output.document(), form,
@@ -198,7 +198,7 @@ public final class PdfCanvas implements Closeable {
             throw new IllegalStateException("restore() without a matching save()");
         }
         cs.restoreGraphicsState();
-        ctm = saved.pop();
+        ctm.setTransform(saved.pop());
     }
 
     public void transform(AffineTransform t) throws IOException {
@@ -1330,54 +1330,31 @@ public final class PdfCanvas implements Closeable {
 
     public boolean link(float x, float y, float w, float h, String url) throws IOException {
         open();
-        String safe = SafeLinks.safeUrl(url);
-        if (safe == null || !(w > 0 && h > 0) || page == null) {
-            return false;
-        }
-        PDAnnotationLink link = new PDAnnotationLink();
-        link.setRectangle(pdfRect(x, y, w, h));
-        link.setBorderStyle(PdfOutput.noBorder());
-        link.setPrinted(true);
-        PDActionURI action = new PDActionURI();
-        action.setURI(safe);
-        link.setAction(action);
-        addAnnotation(page, link);
-        return true;
+        return links.link(x, y, w, h, url);
     }
 
     public void field(float x, float y, float w, float h, FormField field, float size, Color color,
             PDFormXObject look) {
         Objects.requireNonNull(field, "field");
         open();
-        if (w > 0 && h > 0 && page != null) {
-            output.field(new AcroForms.Widget(page, pdfRect(x, y, w, h), field, Math.max(0, size),
-                    color == null ? Color.BLACK : color, look));
-        }
+        links.field(x, y, w, h, field, size, color, look);
     }
 
     public void linkTo(float x, float y, float w, float h, String destination) {
         Objects.requireNonNull(destination, "destination");
         open();
-        if (w > 0 && h > 0 && page != null) {
-            output.link(page, pdfRect(x, y, w, h), destination);
-        }
+        links.linkTo(x, y, w, h, destination);
     }
 
     public void linkToPage(float x, float y, float w, float h, int pageIndex, float yTop) {
         open();
-        if (w > 0 && h > 0 && page != null) {
-            output.link(page, pdfRect(x, y, w, h), pageIndex, 0, yTop);
-        }
+        links.linkToPage(x, y, w, h, pageIndex, yTop);
     }
 
     public void destination(String name, float x, float yTop) {
         Objects.requireNonNull(name, "name");
         open();
-        if (page == null) {
-            return;
-        }
-        Point2D p = ctm.transform(new Point2D.Float(x, yTop), null);
-        output.destination(name, index, (float) p.getX(), (float) p.getY());
+        links.destination(name, x, yTop);
     }
 
     public PDPageContentStream stream() {
@@ -1414,12 +1391,6 @@ public final class PdfCanvas implements Closeable {
             cs.close();
             output.closed(this);
         }
-    }
-
-    static void addAnnotation(PDPage page, PDAnnotation annotation) throws IOException {
-        List<PDAnnotation> annotations = new ArrayList<>(page.getAnnotations());
-        annotations.add(annotation);
-        page.setAnnotations(annotations);
     }
 
     private void placeForm(PDFormXObject form, float bw, float bh, float x, float y, float w, float h)
@@ -1614,21 +1585,5 @@ public final class PdfCanvas implements Closeable {
 
     private void setStroke(Color c) throws IOException {
         cs.setStrokingColor(new PDColor(Shadings.office(c), PDDeviceRGB.INSTANCE));
-    }
-
-    private PDRectangle pdfRect(float x, float y, float w, float h) {
-        double[] pts = {x, y, x + w, y, x, y + h, x + w, y + h};
-        ctm.transform(pts, 0, pts, 0, 4);
-        double minX = Double.MAX_VALUE;
-        double minY = Double.MAX_VALUE;
-        double maxX = -Double.MAX_VALUE;
-        double maxY = -Double.MAX_VALUE;
-        for (int i = 0; i < 8; i += 2) {
-            minX = Math.min(minX, pts[i]);
-            maxX = Math.max(maxX, pts[i]);
-            minY = Math.min(minY, pts[i + 1]);
-            maxY = Math.max(maxY, pts[i + 1]);
-        }
-        return new PDRectangle((float) minX, (float) (height - maxY), (float) (maxX - minX), (float) (maxY - minY));
     }
 }
