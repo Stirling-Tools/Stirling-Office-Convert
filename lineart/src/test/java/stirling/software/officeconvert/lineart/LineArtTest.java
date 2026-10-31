@@ -9,6 +9,8 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.awt.Color;
+import java.awt.Font;
+import java.awt.Graphics2D;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -405,6 +407,67 @@ class LineArtTest {
         assertTrue(result.codecs().isEmpty());
         assertEquals(1, new LineArt.Result(1, 1, 9, 1, Map.of(LineArt.Codec.FLATE, 1), List.of()).codecs()
                 .get(LineArt.Codec.FLATE));
+    }
+
+    @Test
+    void sauvolaKeepsSolidFillsSolidAndLightTintsPaper() {
+        int w = 600;
+        int h = 400;
+        for (Color fill : new Color[] {new Color(119, 119, 119), new Color(243, 121, 32), new Color(102, 33, 110)}) {
+            Bitmap bitmap = LineArt.binarize(panel(w, h, fill, Color.WHITE), LineArt.Options.defaults());
+            assertTrue(inside(bitmap, 40, 30, 500, 180) > 0.97, fill + ": " + inside(bitmap, 40, 30, 500, 180));
+            assertTrue(inside(bitmap, 0, 260, w, 140) < 0.1, fill.toString());
+        }
+        Bitmap tint = LineArt.binarize(panel(w, h, new Color(200, 200, 200), Color.BLACK), LineArt.Options.defaults());
+        assertTrue(inside(tint, 40, 30, 500, 180) < 0.2, "tint: " + inside(tint, 40, 30, 500, 180));
+    }
+
+    @Test
+    void sauvolaKeepsHatchingOnAMidToneAsLines() {
+        BufferedImage image = new BufferedImage(400, 300, BufferedImage.TYPE_INT_RGB);
+        Graphics2D g = image.createGraphics();
+        g.setColor(Color.WHITE);
+        g.fillRect(0, 0, 400, 300);
+        g.setColor(new Color(100, 100, 100));
+        g.fillRect(50, 50, 300, 200);
+        g.setColor(Color.BLACK);
+        for (int x = 50; x < 350; x += 5) {
+            g.drawLine(x, 50, x, 250);
+        }
+        g.dispose();
+        double ink = inside(LineArt.binarize(image, LineArt.Options.defaults()), 50, 50, 300, 200);
+        assertTrue(ink > 0.1 && ink < 0.4, "hatching: " + ink);
+    }
+
+    private static BufferedImage panel(int w, int h, Color fill, Color text) {
+        BufferedImage image = new BufferedImage(w, h, BufferedImage.TYPE_INT_RGB);
+        Graphics2D g = image.createGraphics();
+        g.setColor(Color.WHITE);
+        g.fillRect(0, 0, w, h);
+        g.setColor(fill);
+        g.fillRect(40, 30, 500, 180);
+        g.setColor(text);
+        g.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 40));
+        g.drawString("PDF", 60, 90);
+        g.setColor(Color.BLACK);
+        g.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 14));
+        for (int i = 0; i < 5; i++) {
+            g.drawString("Lorem ipsum dolor sit amet consectetur", 10, 260 + i * 20);
+        }
+        g.dispose();
+        return image;
+    }
+
+    private static double inside(Bitmap bitmap, int x0, int y0, int w, int h) {
+        long ink = 0;
+        for (int y = y0 + 8; y < y0 + h - 8; y++) {
+            for (int x = x0 + 8; x < x0 + w - 8; x++) {
+                if (bitmap.ink(x, y)) {
+                    ink++;
+                }
+            }
+        }
+        return ink / (double) ((w - 16L) * (h - 16L));
     }
 
     @Test
