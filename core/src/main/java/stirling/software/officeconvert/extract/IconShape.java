@@ -9,6 +9,10 @@ import org.apache.pdfbox.pdmodel.font.PDVectorFont;
 
 public record IconShape(GeneralPath outline, int rgb, String key) {
 
+    public boolean unmapped() {
+        return key.startsWith(UnmappedGlyphs.ICON_KEY);
+    }
+
     GeneralPath scaled(float k) {
         GeneralPath p = new GeneralPath(outline);
         p.transform(AffineTransform.getScaleInstance(k, k));

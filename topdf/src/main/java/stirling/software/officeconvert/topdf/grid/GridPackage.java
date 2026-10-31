@@ -35,7 +35,7 @@ public final class GridPackage {
     public static void write(List<Sheet> sheets, OutputStream out) throws IOException {
         Map<String, Integer> xfs = new LinkedHashMap<>();
         Map<String, Integer> formats = new LinkedHashMap<>();
-        xfs.put("0|0|0|", 0);
+        xfs.put("0|0|0||0", 0);
         Parts parts = new Parts(out);
         StringBuilder book = new StringBuilder();
         StringBuilder rels = new StringBuilder();
@@ -118,7 +118,7 @@ public final class GridPackage {
             format = formats.computeIfAbsent(c.format(), f -> 164 + formats.size());
         }
         String key = format + "|" + (c.bold() ? 1 : 0) + "|" + (c.italic() ? 1 : 0) + "|" + (c.align() == null ? ""
-                : c.align());
+                : c.align()) + "|" + c.rotation();
         int xf = xfs.computeIfAbsent(key, k -> xfs.size());
         String ref = ref(row, col);
         String s = xf == 0 ? "" : " s=\"" + xf + "\"";
@@ -161,8 +161,10 @@ public final class GridPackage {
             int font2 = (k[1].equals("1") ? 1 : 0) + (k[2].equals("1") ? 2 : 0);
             b.append("<xf numFmtId=\"").append(k[0]).append("\" fontId=\"").append(font2)
                     .append("\" fillId=\"0\" borderId=\"0\" xfId=\"0\"");
-            if (!k[3].isEmpty()) {
-                b.append(" applyAlignment=\"1\"><alignment horizontal=\"").append(k[3]).append("\"/></xf>");
+            if (!k[3].isEmpty() || !k[4].equals("0")) {
+                b.append(" applyAlignment=\"1\"><alignment")
+                        .append(k[3].isEmpty() ? "" : " horizontal=\"" + k[3] + "\"")
+                        .append(k[4].equals("0") ? "" : " textRotation=\"" + k[4] + "\"").append("/></xf>");
             } else {
                 b.append("/>");
             }

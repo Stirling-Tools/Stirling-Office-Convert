@@ -54,6 +54,11 @@ public final class TextWriter implements DocSink, Closeable {
     }
 
     @Override
+    public boolean showsPictures() {
+        return false;
+    }
+
+    @Override
     public void begin(StyleSheet styles, HeaderFooterSet running) {
         if (running == null) {
             return;

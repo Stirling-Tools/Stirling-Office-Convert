@@ -23,6 +23,7 @@ import java.util.Set;
 
 import org.apache.pdfbox.cos.COSArray;
 import org.apache.pdfbox.cos.COSDictionary;
+import org.apache.pdfbox.cos.COSFloat;
 import org.apache.pdfbox.cos.COSInteger;
 import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.cos.COSStream;
@@ -90,6 +91,8 @@ public final class PdfFonts implements Closeable {
         final List<Integer> aliasGlyphs = new ArrayList<>();
 
         final List<String> aliasTexts = new ArrayList<>();
+
+        final List<Float> aliasWidths = new ArrayList<>();
 
         boolean shaped;
 
@@ -275,7 +278,18 @@ public final class PdfFonts implements Closeable {
         u.text.putIfAbsent(glyph, known);
         u.texted.set(glyph);
         u.shaped = true;
-        return alias(u, glyph, text);
+        return alias(u, glyph, text, -1);
+    }
+
+    public int encoded(Embedded font, int glyph, int codePoint, float width) {
+        Use u = uses.get(font.font());
+        if (u == null || glyph <= 0 || codePoint <= 0) {
+            return glyph;
+        }
+        int known = encoded(font, glyph, codePoint);
+        String text = known == glyph ? unicode(u, glyph) : u.aliasTexts.get(known - u.program.glyphCount());
+        u.shaped = true;
+        return text == null ? known : alias(u, glyph, text, width);
     }
 
     public void used(Embedded font, int[] glyphs, int[] codePoints, int count) {
@@ -306,17 +320,34 @@ public final class PdfFonts implements Closeable {
     // The code to draw each glyph of a shaped run with: a group's carrier stands for the group's text, under a
     // code of its own when its glyph already stands for other text, and the group's other glyphs for nothing
     public int[] used(Embedded font, GlyphRun run) {
-        int[] codes = run.glyphs();
+        int[][] parts = codes(font, run, run.groups(), false);
+        int[] codes = new int[parts.length];
+        for (int i = 0; i < parts.length; i++) {
+            codes[i] = parts[i][0];
+        }
+        return codes;
+    }
+
+    public int[][] usedVisually(Embedded font, GlyphRun run, int[] groups) {
+        return codes(font, run, groups, true);
+    }
+
+    private int[][] codes(Embedded font, GlyphRun run, int[] groups, boolean visual) {
+        int[] glyphs = run.glyphs();
+        int[][] codes = new int[glyphs.length][];
+        for (int i = 0; i < glyphs.length; i++) {
+            codes[i] = new int[] {glyphs[i]};
+        }
         Use u = uses.get(font.font());
         if (u == null) {
             return codes;
         }
         u.shaped = true;
         Set<Integer> added = new HashSet<>();
-        int[] groups = run.groups();
         int end = -1;
         int carrier = -1;
         String group = null;
+        int blank = visual ? u.program.glyph(' ') : 0;
         for (int i = 0; i < run.size(); i++) {
             if (groups[i] > 0) {
                 end = groups[i];
@@ -337,8 +368,36 @@ public final class PdfFonts implements Closeable {
             }
             if (t == null || t.isEmpty()) {
                 u.trailing.set(g);
+                continue;
+            }
+            int[] cps = t.codePoints().toArray();
+            if (!visual || cps.length == 1) {
+                codes[i][0] = code(u, g, t);
+            } else if (blank <= 0) {
+                codes[i][0] = code(u, g, new StringBuilder(t).reverse().toString());
             } else {
-                codes[i] = code(u, g, t);
+                if (!u.glyphs.get(blank)) {
+                    u.glyphs.set(blank);
+                    added.add(blank);
+                }
+                int letters = 0;
+                for (int cp : cps) {
+                    letters += mark(cp) ? 0 : 1;
+                }
+                int width = Math.round(u.program.advanceOfGlyph(g) * 1000f / u.program.metrics().unitsPerEm()
+                        / Math.max(1, letters));
+                int[] parts = new int[cps.length];
+                boolean inked = false;
+                boolean aliased = true;
+                for (int k = 0; k < cps.length; k++) {
+                    int cp = cps[cps.length - 1 - k];
+                    boolean letter = letters == 0 || !mark(cp);
+                    parts[k] = alias(u, letter && !inked ? g : blank, new String(Character.toChars(cp)),
+                            letter ? width : 0);
+                    aliased &= parts[k] >= u.program.glyphCount();
+                    inked |= letter;
+                }
+                codes[i] = aliased ? parts : new int[] {code(u, g, new StringBuilder(t).reverse().toString())};
             }
         }
         SubsetFont subset = subsets.get(font.font());
@@ -346,6 +405,25 @@ public final class PdfFonts implements Closeable {
             subset.addGlyphs(added);
         }
         return codes;
+    }
+
+    private static boolean mark(int cp) {
+        int type = Character.getType(cp);
+        return type == Character.NON_SPACING_MARK || type == Character.ENCLOSING_MARK;
+    }
+
+    public float advance(Embedded font, int code) {
+        Use u = uses.get(font.font());
+        int glyph = code;
+        if (u != null && code >= u.program.glyphCount()) {
+            int k = code - u.program.glyphCount();
+            if (u.aliasWidths.get(k) >= 0) {
+                return u.aliasWidths.get(k);
+            }
+            glyph = u.aliasGlyphs.get(k);
+        }
+        FontFace face = font.face();
+        return Math.round(face.glyphAdvance(glyph) * 1000f / face.unitsPerEm());
     }
 
     // A glyph keeps its own character; text it stands in for elsewhere gets a code of its own
@@ -357,11 +435,11 @@ public final class PdfFonts implements Closeable {
             u.texted.set(glyph);
             return glyph;
         }
-        return alias(u, glyph, text);
+        return alias(u, glyph, text, -1);
     }
 
-    private static int alias(Use u, int glyph, String text) {
-        String key = glyph + "\u0000" + text;
+    private static int alias(Use u, int glyph, String text, float width) {
+        String key = glyph + "\u0000" + text + "\u0000" + width;
         Integer alias = u.aliases.get(key);
         if (alias != null) {
             return alias;
@@ -373,6 +451,7 @@ public final class PdfFonts implements Closeable {
         u.aliases.put(key, next);
         u.aliasGlyphs.add(glyph);
         u.aliasTexts.add(text);
+        u.aliasWidths.add(width);
         return next;
     }
 
@@ -447,7 +526,14 @@ public final class PdfFonts implements Closeable {
             map[2 * code] = map[2 * glyph];
             map[2 * code + 1] = map[2 * glyph + 1];
             COSArray one = new COSArray();
-            one.add(COSInteger.get(Math.round(u.program.advanceOfGlyph(glyph) * scale)));
+            float width = u.aliasWidths.get(k);
+            if (width < 0) {
+                one.add(COSInteger.get(Math.round(u.program.advanceOfGlyph(glyph) * scale)));
+            } else if (width == Math.round(width)) {
+                one.add(COSInteger.get(Math.round(width)));
+            } else {
+                one.add(new COSFloat(width));
+            }
             widths.add(COSInteger.get(code));
             widths.add(one);
         }

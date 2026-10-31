@@ -33,3 +33,19 @@ publishing.publications.named<MavenPublication>("mavenJava") {
         description.set("PDF to editable Word, OpenDocument, RTF, text, PowerPoint and Excel in plain Java on Apache PDFBox")
     }
 }
+
+tasks.register<JavaExec>("glyphRefs") {
+    description = "Rebuilds the reference glyph prints from a folder of source fonts given as -PglyphFonts=<dir>"
+    group = "build setup"
+    classpath = sourceSets["test"].runtimeClasspath
+    mainClass.set("stirling.software.officeconvert.extract.GlyphRefsTool")
+    val fonts = providers.gradleProperty("glyphFonts")
+    val refs = layout.projectDirectory.file("src/main/resources/stirling/software/officeconvert/extract/glyph-refs.txt")
+    val notice = layout.projectDirectory.file("src/main/resources/META-INF/licenses/glyph-refs/NOTICE.txt")
+    argumentProviders.add(CommandLineArgumentProvider {
+        listOf(fonts.orNull ?: error("Pass -PglyphFonts=<folder of source fonts>"), refs.asFile.path, notice.asFile.path)
+    })
+    doFirst {
+        notice.asFile.parentFile.mkdirs()
+    }
+}

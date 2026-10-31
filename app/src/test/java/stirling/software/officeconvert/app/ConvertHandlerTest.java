@@ -1,6 +1,7 @@
 package stirling.software.officeconvert.app;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
@@ -144,7 +145,7 @@ class ConvertHandlerTest {
         HttpResponse<byte[]> csv = post(url + "?name=" + java.net.URLEncoder.encode("Team list.csv",
                 java.nio.charset.StandardCharsets.UTF_8), "who,role\nAnn,lead\n".getBytes());
         assertPdf(csv, "csv", "lead");
-        assertTrue(text(csv.body()).contains("Team list"), text(csv.body()));
+        assertFalse(text(csv.body()).contains("Team list"), text(csv.body()));
         HttpResponse<byte[]> other = post(url + "?name=notes.md", "Plain upload text".getBytes());
         assertEquals(415, other.statusCode());
         assertPdf(post(url + "?name=report.txt", Fixtures.docx("Word text", 1)), "docx", "Word text 1");

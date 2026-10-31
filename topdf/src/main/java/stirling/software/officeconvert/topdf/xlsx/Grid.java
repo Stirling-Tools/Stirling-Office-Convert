@@ -8,6 +8,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.NavigableMap;
+import java.util.Objects;
 import java.util.TreeMap;
 import java.util.function.Consumer;
 import java.util.function.IntPredicate;
@@ -164,6 +165,8 @@ final class Grid {
 
     private final boolean fixedDefault;
 
+    private final boolean otherScreen;
+
     private boolean storedHeights;
 
     private final List<RowInfo> fitted = new ArrayList<>();
@@ -219,6 +222,9 @@ final class Grid {
         this.rowFactor = book.workbook().openDocument ? 1 : metrics.rowFactor(screenDefault);
         this.defaultHidden = zero;
         this.fixedDefault = customDefault;
+        double filePx = fileDefault / 0.75;
+        this.otherScreen = !customDefault && near && Math.abs(fileDefault - screenDefault) > OTHER_SCREEN_ROW
+                && Math.abs(filePx - Math.rint(filePx)) > OTHER_SCREEN_ROW;
         this.columnTops = columns.anyStyle(st -> book.styles().at(st).top().visible());
         this.rightToLeft = rightToLeft(ws);
         this.defaultDescent = descentPoints(book.styles().defaultFont());
@@ -358,7 +364,7 @@ final class Grid {
                     + Math.max(0, row.thickEdges()) * SCREEN_PX);
         } else if (fit) {
             height = refit(row, autofit(index, entries, blanks, base) + Math.max(0, row.thickEdges()) * SCREEN_PX,
-                    entries.isEmpty() && blanks.isEmpty(), wrapsText(entries));
+                    entries.isEmpty() && blanks.isEmpty(), wrapsText(entries) && measurable(entries));
         } else {
             height = Math.min(409.5, row.height());
         }
@@ -435,7 +441,7 @@ final class Grid {
     }
 
     private static boolean inked(BorderLine b) {
-        return b.visible() && !white(b.color());
+        return b.visible();
     }
 
     private static boolean white(Color c) {
@@ -460,13 +466,13 @@ final class Grid {
             if (base == null) {
                 base = book.styles().at(-1);
             }
-            boolean ownFont = !base.font().equals(book.styles().defaultFont());
-            CellFormat f = restyle(base, d, false, ownFont);
+            boolean ownColor = !Objects.equals(base.font().color(), book.styles().defaultFont().color());
+            CellFormat f = restyle(base, d, false, ownColor);
             if (old == null && !f.visible()) {
                 continue;
             }
             put(row, col, old == null ? new CellEntry(row, col, f, null)
-                    : new CellEntry(row, col, f, recolor(old.text(), d, ownFont)));
+                    : new CellEntry(row, col, f, recolor(old.text(), d, ownColor)));
         }
         for (Map.Entry<Long, Overlays.Delta> e : o.over().entrySet()) {
             int row = (int) (e.getKey() >> 16);
@@ -506,12 +512,11 @@ final class Grid {
         }
     }
 
-    private static CellFormat restyle(CellFormat f, Overlays.Delta d, boolean over, boolean ownFont) {
+    private static CellFormat restyle(CellFormat f, Overlays.Delta d, boolean over, boolean ownColor) {
         FontSpec font = f.font();
-        if (over || !ownFont) {
-            font = new FontSpec(font.family(), font.size(), font.bold() || d.bold(), font.italic() || d.italic(),
-                    font.underline(), font.strike(), d.font() != null ? d.font() : font.color(), font.offset());
-        }
+        Color color = d.font() != null && (over || !ownColor) ? d.font() : font.color();
+        font = new FontSpec(font.family(), font.size(), font.bold() || d.bold(), font.italic() || d.italic(),
+                font.underline(), font.strike(), color, font.offset());
         Color fill = over ? (d.fill() != null ? d.fill() : f.fill()) : (f.fill() != null ? f.fill() : d.fill());
         return new CellFormat(font, fill, pick(f.left(), d.left(), over), pick(f.right(), d.right(), over),
                 pick(f.top(), d.top(), over), pick(f.bottom(), d.bottom(), over), f.diagonal(), f.diagonalUp(),
@@ -526,18 +531,19 @@ final class Grid {
         return over || !own.visible() ? delta : own;
     }
 
-    private static CellText recolor(CellText t, Overlays.Delta d, boolean ownFont) {
-        if (t == null || ownFont || d.font() == null && !d.bold() && !d.italic()) {
+    private static CellText recolor(CellText t, Overlays.Delta d, boolean ownColor) {
+        Color color = ownColor ? null : d.font();
+        if (t == null || color == null && !d.bold() && !d.italic()) {
             return t;
         }
         List<TextRun> runs = new ArrayList<>();
         for (TextRun r : t.runs()) {
             FontSpec f = r.font();
             runs.add(new TextRun(r.text(), new FontSpec(f.family(), f.size(), f.bold() || d.bold(),
-                    f.italic() || d.italic(), f.underline(), f.strike(), d.font() != null ? d.font() : f.color(),
+                    f.italic() || d.italic(), f.underline(), f.strike(), color != null ? color : f.color(),
                     f.offset())));
         }
-        return new CellText(t.kind(), runs, d.font() != null ? null : t.color(), t.general(), t.number());
+        return new CellText(t.kind(), runs, color != null ? null : t.color(), t.general(), t.number());
     }
 
     boolean hasDataBars() {
@@ -552,6 +558,8 @@ final class Grid {
 
     static final double DEFAULT_ROW_TOLERANCE = 1.5;
 
+    static final double OTHER_SCREEN_ROW = 0.05;
+
     static final int MAX_BLANK_FONTS = 64;
 
     static final double SCREEN_PX = 0.75;
@@ -563,14 +571,15 @@ final class Grid {
     }
 
     // Excel re-fits a row without customHeight: an empty one drops to the default, and wrapped text grows
-    // a height another program stored (Excel's own stored height is already its fit, but not the Mac's wrapping)
+    // a height another program stored (Excel's own stored height is already its fit, unless the Mac or a screen
+    // at another DPI wrapped it)
     private double refit(RawRow row, double fitted, boolean empty, boolean wrapped) {
         double stored = Math.min(409.5, row.height());
         if (book.workbook().openDocument) {
             return row.index() > CALC_REFIT_ROWS || calcPixels(stored) == calcPixels(fitted) ? stored
                     : Math.min(409.5, fitted);
         }
-        if (book.workbook().savedOnMac && wrapped) {
+        if ((book.workbook().savedOnMac || otherScreen) && wrapped) {
             return Math.min(409.5, fitted);
         }
         if (empty && row.style() < 0 || !book.workbook().savedByExcel
@@ -583,6 +592,20 @@ final class Grid {
     private boolean inTallMerge(int row, int col) {
         CellRangeAddress m = mergeCovering(row, col);
         return m != null && m.getFirstRow() != m.getLastRow();
+    }
+
+    private boolean measurable(List<CellEntry> entries) {
+        for (CellEntry e : entries) {
+            if (e.text() == null) {
+                continue;
+            }
+            for (TextRun r : e.text().runs()) {
+                if (book.typesetter().measure(r.font()).estimated()) {
+                    return false;
+                }
+            }
+        }
+        return true;
     }
 
     private static boolean wrapsText(List<CellEntry> entries) {
@@ -622,6 +645,10 @@ final class Grid {
             double line = runsLine(e.text().runs(), defaultPx);
             int lines = 1;
             CellFormat fmt = e.format();
+            if (fmt.rotation() > 0 && fmt.rotation() <= 180) {
+                best = Math.max(best, Math.min(546, turnedHeight(e.text().runs(), line, fmt.rotation())));
+                continue;
+            }
             if (fmt.wraps() && fmt.rotation() == 0) {
                 double colPx = m.screenColumnPixels(columns.chars(e.col()));
                 double indent = fmt.indent() > 0 ? fmt.indent() * book.screenIndentPixels() : 0;
@@ -725,6 +752,16 @@ final class Grid {
     }
 
     static final double ITALIC_SLANT = 0.2;
+
+    private double turnedHeight(List<TextRun> runs, double line, int rotation) {
+        Typesetter t = book.typesetter();
+        double width = 0;
+        for (TextRun r : runs) {
+            width += t.screenWidth(r.text(), r.font(), FontMeasure.ppem(r.font().size(), 96));
+        }
+        double angle = Math.toRadians(rotation > 90 ? rotation - 90 : rotation);
+        return width * Math.sin(angle) + line * Math.cos(angle);
+    }
 
     private double runsLine(List<TextRun> runs, double defaultPx) {
         double line = 0;

@@ -62,7 +62,7 @@ final class Fonts {
             if (f.substituted() && alt != null && !windowsFont(family) && FontLibrary.officeFont(alt)) {
                 f = job.fonts().find(alt, bold, italic);
             }
-            f = synthetic(f, bold, italic);
+            f = cloud().withWidths(synthetic(f, bold, italic));
             cache.put(key, f);
         }
         return f;
@@ -81,14 +81,22 @@ final class Fonts {
         if (asian != null) {
             return new CloudFonts.Emulation(face, 100, asian, null, null);
         }
+        float[] cloudLines = face.emulated() ? CloudFonts.vertical(face.requestedFamily()) : null;
+        if (cloudLines != null) {
+            return new CloudFonts.Emulation(face, 100, cloudLines, null, null);
+        }
         return emulations.computeIfAbsent(face, f -> {
-            if (cloud == null) {
-                cloud = new CloudFonts(job.fonts());
-            }
-            CloudFonts.Emulation e = cloud.emulate(f.requestedFamily(), f.boldStyle(), f.italicStyle());
+            CloudFonts.Emulation e = cloud().emulate(f.requestedFamily(), f.boldStyle(), f.italicStyle());
             boolean useful = e.vertical() != null && e.face().sameProgram(f);
             return useful ? Optional.of(e) : Optional.empty();
         }).orElse(null);
+    }
+
+    private CloudFonts cloud() {
+        if (cloud == null) {
+            cloud = new CloudFonts(job.fonts());
+        }
+        return cloud;
     }
 
     private static boolean windowsFont(String family) {

@@ -94,6 +94,57 @@ class DocxFlowRulesTest {
         assertEquals(r.word("One").y(), r.word("Two").y(), 0.5f);
     }
 
+    private static String logoBelowParagraph(long offset, long height) {
+        return "<w:p><w:r><w:drawing><wp:anchor simplePos=\"0\" relativeHeight=\"1\" behindDoc=\"0\""
+                + " locked=\"0\" layoutInCell=\"1\" allowOverlap=\"1\" distL=\"0\" distR=\"0\" distT=\"0\""
+                + " distB=\"0\"><wp:simplePos x=\"0\" y=\"0\"/><wp:positionH relativeFrom=\"column\"><wp:posOffset>"
+                + "3810000</wp:posOffset></wp:positionH><wp:positionV relativeFrom=\"paragraph\"><wp:posOffset>"
+                + offset + "</wp:posOffset></wp:positionV><wp:extent cx=\"1270000\" cy=\"" + height + "\"/>"
+                + "<wp:wrapSquare wrapText=\"bothSides\"/><wp:docPr id=\"2\" name=\"logo\"/><a:graphic><a:graphicData"
+                + " uri=\"http://schemas.microsoft.com/office/word/2010/wordprocessingShape\"><wps:wsp><wps:spPr>"
+                + "<a:prstGeom prst=\"rect\"/></wps:spPr><wps:txbx><w:txbxContent><w:p><w:r><w:t>Logo</w:t></w:r>"
+                + "</w:p></w:txbxContent></wps:txbx><wps:bodyPr/></wps:wsp></a:graphicData></a:graphic></wp:anchor>"
+                + "</w:drawing></w:r></w:p>";
+    }
+
+    @Test
+    void anObjectBelowItsParagraphThatWouldPassThePageBottomMovesUpInsteadOfTakingItsParagraphOn()
+            throws IOException {
+        String sect = "<w:sectPr>" + LETTER + "</w:sectPr>";
+        DocxDoc.Rendered r = DocxDoc.render(dir, "floatup", new DocxDoc().styles(DEFAULTS)
+                .body(fillers(40) + logoBelowParagraph(2540000, 914400)).section(sect).bytes());
+        assertEquals(1, r.pages());
+        DocxDoc.Word logo = r.word("Logo");
+        assertEquals(1, logo.page());
+        assertTrue(logo.y() > r.word("F39").y() + 30 && logo.y() < 720, "moved up to end at the bottom margin: "
+                + logo.y());
+    }
+
+    @Test
+    void anObjectMovedUpToThePageBottomEndsAboveTheFootnotes() throws IOException {
+        String separators = "<w:footnote w:type=\"separator\" w:id=\"-1\"><w:p><w:r><w:separator/></w:r></w:p>"
+                + "</w:footnote><w:footnote w:type=\"continuationSeparator\" w:id=\"0\"><w:p><w:r>"
+                + "<w:continuationSeparator/></w:r></w:p></w:footnote>";
+        String note = "<w:footnote w:id=\"1\">" + DocxDoc.p("Note1") + DocxDoc.p("Note2") + DocxDoc.p("Note3")
+                + "</w:footnote>";
+        String ref = "<w:p><w:r><w:t>Ref</w:t></w:r><w:r><w:footnoteReference w:id=\"1\"/></w:r></w:p>";
+        String sect = "<w:sectPr>" + LETTER + "</w:sectPr>";
+        DocxDoc.Rendered r = DocxDoc.render(dir, "floatnote", new DocxDoc().styles(DEFAULTS)
+                .footnotes(separators + note).body(ref + fillers(44) + logoBelowParagraph(1270000, 457200))
+                .section(sect).bytes());
+        DocxDoc.Word logo = r.word("Logo");
+        assertEquals(1, logo.page());
+        assertTrue(logo.y() < r.word("Note1").y() - 20, "logo " + logo.y() + " above the notes " + r.word("Note1").y());
+    }
+
+    @Test
+    void aHeaderObjectBelowItsParagraphIsNotMovedUpToTheBodyBottom() throws IOException {
+        String sect = "<w:sectPr><w:headerReference w:type=\"default\" r:id=\"rIdh1xml\"/>" + LETTER + "</w:sectPr>";
+        DocxDoc.Rendered r = DocxDoc.render(dir, "headlow", new DocxDoc().styles(DEFAULTS)
+                .header("h1.xml", logoBelowParagraph(8412480, 457200)).body(fillers(10)).section(sect).bytes());
+        assertTrue(r.word("Logo").y() > 705, "where the header puts it: " + r.word("Logo").y());
+    }
+
     @Test
     void bodyTextWrapsAroundAFloatingObjectInTheHeader() throws IOException {
         String shape = "<w:p><w:r><w:drawing><wp:anchor simplePos=\"0\" relativeHeight=\"1\" behindDoc=\"0\""

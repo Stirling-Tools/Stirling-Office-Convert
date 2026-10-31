@@ -36,6 +36,8 @@ public final class FontFace {
 
     private final float embolden;
 
+    private final boolean evenStretch;
+
     private byte substitutedState;
 
     private byte eastAsianGlyphs;
@@ -52,13 +54,14 @@ public final class FontFace {
     FontFace(FontProgram program, String requestedFamily, boolean syntheticBold, boolean syntheticItalic, String note,
             SymbolFonts.Remap symbols, OfficeFonts.Style widths, float stretch, OfficeFonts.Style original) {
         this(program, requestedFamily, syntheticBold, syntheticItalic, note, symbols, widths, stretch, original, null,
-                0);
+                0, false);
     }
 
     private FontFace(FontProgram program, String requestedFamily, boolean syntheticBold, boolean syntheticItalic,
             String note, SymbolFonts.Remap symbols, OfficeFonts.Style widths, float stretch, OfficeFonts.Style original,
-            float[] scripts, float embolden) {
+            float[] scripts, float embolden, boolean evenStretch) {
         this.program = Objects.requireNonNull(program, "program");
+        this.evenStretch = evenStretch;
         this.scripts = scripts;
         this.embolden = embolden;
         this.requestedFamily = requestedFamily == null ? program.entry().family() : requestedFamily;
@@ -97,9 +100,13 @@ public final class FontFace {
         return widths != null;
     }
 
+    public boolean keepsWidths() {
+        return !substituted() || emulated() || OfficeFonts.compatible(requestedFamily(), family());
+    }
+
     /** True when glyphs are drawn at their own horizontal scale, {@link #glyphScale(int)}, not one for the face. */
     public boolean scaledPerGlyph() {
-        return widths != null || scripts != null;
+        return widths != null && !evenStretch || scripts != null;
     }
 
     /** The horizontal scale that makes a glyph of an emulated stand-in fill the original font's advance. */
@@ -164,12 +171,17 @@ public final class FontFace {
 
     FontFace withScripts(float[] scale) {
         return new FontFace(program, requestedFamily, syntheticBold, syntheticItalic, note, symbols, widths, stretch,
-                original, scale, embolden);
+                original, scale, embolden, evenStretch);
+    }
+
+    FontFace withWidths(OfficeFonts.Style table, float scale) {
+        return new FontFace(program, requestedFamily, syntheticBold, syntheticItalic, note, symbols, table, scale,
+                original, scripts, embolden, true);
     }
 
     FontFace withEmbolden(float stroke) {
         return new FontFace(program, requestedFamily, syntheticBold, syntheticItalic, note, symbols, widths, stretch,
-                original, scripts, stroke);
+                original, scripts, stroke, evenStretch);
     }
 
     // A Symbol or Wingdings character drawn with a Unicode font takes its Unicode look-alike
@@ -304,7 +316,7 @@ public final class FontFace {
             return this;
         }
         return new FontFace(program, requestedFamily, bold, italic, note, symbols, widths, stretch, original, scripts,
-                embolden);
+                embolden, evenStretch);
     }
 
     public int unitsPerEm() {

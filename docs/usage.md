@@ -33,7 +33,8 @@ family with an installed one, such as `Aptos=Inter`), `--font-width Family=scale
 family's widths, 0.5 to 2), `--no-system-fonts` (only the given fonts and the bundled Liberation Sans, for
 reproducible output), `--allow-packages` (convert a `.zip` of an HTML page, or an EPUB book not named `.epub`), `--allow-local-files` (let an HTML page
 draw the pictures and style sheets in its own folder, never outside it), `-q`, and `--format pdf` to take only the Office files out
-of a folder. A folder converts both its PDFs and its Office files; its text and CSV files only with `--format pdf`. Inputs that would write the same output name (such
+of a folder. A folder converts its PDFs, its Office files and its eBooks (EPUB, AZW3, MOBI, PRC/PDB, FB2/FBZ), and
+its `.zip` files only with `--allow-packages`; its text, CSV, HTML and JSON files only with `--format pdf`. Inputs that would write the same output name (such
 as `report.docx` and `report.xlsx`) keep their own extension in it (`report.docx.pdf`, `report.xlsx.pdf`), and Office
 owner files (`~$name`) are skipped. An input is never overwritten: an output that would take an input's name keeps that
 input's extension instead (`b.docx` and `b.pdf` in one folder give `b.docx.pdf` and `b.pdf.docx`), and nothing a run
@@ -319,7 +320,7 @@ OfficeToPdf.convert(Path.of("in.xlsx"), Path.of("out.pdf"), OfficeToPdf.Options.
         .maxPages(500)                         // 0 = every page; r.pageLimitReached(): cut at this limit
         .maxScratchBytes(1L << 30)             // past it OfficeToPdf.OutputTooLarge; 0 = no limit
         .fonts(fonts)                          // see Fonts below
-        .displayName("Sales Q3.xlsx"));        // the name a CSV header and FILENAME fields show
+        .displayName("Sales Q3.xlsx"));        // the name FILENAME fields show
 OfficeToPdf.convert(inputStream, OfficeToPdf.Format.PPTX, outputStream, OfficeToPdf.Options.defaults());
 OfficeToPdf.convert(inputStream, OfficeToPdf.Format.of(Path.of(uploadName)), outputStream,
         OfficeToPdf.Options.defaults().displayName(uploadName));   // TEXT, CSV and TSV say what a stream holds
@@ -484,8 +485,8 @@ page. The encoding comes from a byte order mark (UTF-8, UTF-16 or UTF-32), else 
 strictly and Windows-1252 otherwise; CR, LF and CRLF all end a line, and control characters are dropped. The text is
 rewritten as a WordprocessingML package that the DOCX renderer draws; nothing past the page limit is written.
 
-Comma separated (`.csv`) and tab separated (`.tsv .tab`) tables print the way LibreOffice Calc prints a CSV: A4, the
-file name centred above and "Page n" below, no grid, Liberation Sans 10 pt, each column as wide as LibreOffice makes
+Comma separated (`.csv`) and tab separated (`.tsv .tab`) tables print the way LibreOffice Calc prints a CSV: A4, no
+header, "Page n" below, no grid, Liberation Sans 10 pt, each column as wide as LibreOffice makes
 it (from its longest shown value), pages down then across. Fields follow RFC 4180 quoting, with LibreOffice's
 leniency for a stray or unclosed quote. Plain numbers (with thousands separators and exponents) are right aligned and
 shown in LibreOffice's general format, valid ISO 8601 dates are right aligned as written, and everything else is text:
@@ -493,8 +494,7 @@ formulas are never evaluated. Text wider than the page, or on several lines, wra
 characters, a row 16384 columns and a sheet 1048576 rows, and rows past the page limit are left out. The table is
 rewritten as a SpreadsheetML package that the XLSX renderer draws. Both kinds are recognised by their extension, or
 on a stream by `Format.TEXT`, `Format.CSV` or `Format.TSV` (what `Format.of` gives for those names), and a file with
-one of these names that is really an Office package or RTF converts as what it is. The CSV header shows
-`Options.displayName` without its extension when one is given (the Path overload gives the file's own name).
+one of these names that is really an Office package or RTF converts as what it is.
 
 Memory is shared out across the JVM, by both directions (`stirling.software.officeconvert.memory.Admission` in the
 core module, which the topdf module now depends on). Before a document is laid out, an estimate of the heap it needs

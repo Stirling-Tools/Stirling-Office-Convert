@@ -2,8 +2,10 @@ package stirling.software.officeconvert.topdf.grid;
 
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.function.UnaryOperator;
 
 /** One sheet of cells read from a simple table format (SYLK, DIF, dBASE), with what little formatting they carry. */
 public final class Grid {
@@ -14,8 +16,15 @@ public final class Grid {
 
     public static final int MAX_CELLS = 5_000_000;
 
+    private static final double POINTS_PER_CHAR = 5.25;
+
     /** A cell's value: a Double, String or Boolean, or an Error. */
-    public record Cell(Object value, String format, boolean bold, boolean italic, String align) {}
+    public record Cell(Object value, String format, boolean bold, boolean italic, String align, int rotation) {
+
+        public Cell(Object value, String format, boolean bold, boolean italic, String align) {
+            this(value, format, bold, italic, align, 0);
+        }
+    }
 
     public record Error(String code) {}
 
@@ -47,13 +56,29 @@ public final class Grid {
         } else {
             r.put(col, new Cell(cell.value() != null ? cell.value() : old.value(),
                     cell.format() != null ? cell.format() : old.format(), cell.bold() || old.bold(),
-                    cell.italic() || old.italic(), cell.align() != null ? cell.align() : old.align()));
+                    cell.italic() || old.italic(), cell.align() != null ? cell.align() : old.align(),
+                    cell.rotation() != 0 ? cell.rotation() : old.rotation()));
         }
     }
 
     public Cell get(int row, int col) {
         TreeMap<Integer, Cell> r = rows.get(row);
         return r == null ? null : r.get(col);
+    }
+
+    public long restyle(int firstRow, int lastRow, int firstCol, int lastCol, UnaryOperator<Cell> change) {
+        if (firstRow > lastRow || firstCol > lastCol) {
+            return 1;
+        }
+        long seen = 1;
+        for (TreeMap<Integer, Cell> r : rows.subMap(firstRow, true, lastRow, true).values()) {
+            seen++;
+            for (Map.Entry<Integer, Cell> e : r.subMap(firstCol, true, lastCol, true).entrySet()) {
+                e.setValue(change.apply(e.getValue()));
+                seen++;
+            }
+        }
+        return seen;
     }
 
     public void value(int row, int col, Object value) {
@@ -64,6 +89,18 @@ public final class Grid {
         if (col >= 0 && col < MAX_COLS && chars >= 0 && chars <= 255) {
             widths.put(col, chars);
         }
+    }
+
+    public void widthPoints(int col, double points) {
+        width(col, Math.min(255, points / POINTS_PER_CHAR));
+    }
+
+    public double widthPoints(int col) {
+        return widths.getOrDefault(col, defaultWidth > 0 ? defaultWidth : 8.43) * POINTS_PER_CHAR;
+    }
+
+    public void defaultWidthPoints(double points) {
+        defaultWidth(Math.min(255, points / POINTS_PER_CHAR));
     }
 
     public void defaultWidth(double chars) {

@@ -127,7 +127,7 @@ class CsvPackageTest {
         Pkg p = convert("a\n");
         String s = p.sheet();
         assertTrue(s.contains("<pageSetup paperSize=\"9\" orientation=\"portrait\"/>"), s);
-        assertTrue(s.contains("&amp;A</oddHeader>") && s.contains("Page &amp;P</oddFooter>"), s);
+        assertTrue(!s.contains("oddHeader") && s.contains("Page &amp;P</oddFooter>"), s);
         assertFalse(s.contains("gridLines"), s);
         assertTrue(p.parts().get("xl/workbook.xml").contains("<sheet name=\"Report\""));
         assertTrue(p.parts().get("xl/styles.xml").contains("<sz val=\"10\"/><name val=\"Liberation Sans\"/>"));

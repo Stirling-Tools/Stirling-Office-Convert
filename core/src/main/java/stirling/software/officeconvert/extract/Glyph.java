@@ -77,6 +77,23 @@ public final class Glyph {
         return g;
     }
 
+    Glyph withText(String replacement) {
+        Glyph g = new Glyph(replacement, x, width, baseline, size, ascent, descent, font, rgb, seq, spaceWidth, bold,
+                italic);
+        g.underline = underline;
+        g.strike = strike;
+        g.highlightRgb = highlightRgb;
+        g.boxRgb = boxRgb;
+        g.link = link;
+        g.footnote = footnote;
+        g.vertAlign = vertAlign;
+        g.hscale = hscale;
+        g.upright = upright;
+        g.invisible = invisible;
+        g.icon = icon;
+        return g;
+    }
+
     public float right() {
         return x + width;
     }

@@ -83,14 +83,22 @@ class TextToPdfTest {
     }
 
     @Test
-    void aCsvPrintsLikeLibreOfficeWithTheNameOnTopAndPageNumbersBelow() throws IOException {
+    void aCsvPrintsLikeLibreOfficeWithPageNumbersBelowAndNoHeader() throws IOException {
         StringBuilder csv = new StringBuilder("item,amount\n");
         for (int i = 0; i < 199; i++) {
             csv.append("thing ").append(i).append(',').append(i * 1.25).append('\n');
         }
         Pdf p = convert("ledger.csv", csv.toString());
         assertEquals(4, p.pages());
-        assertTrue(p.text().contains("ledger") && p.text().contains("Page 1") && p.text().contains("Page 4"), p.text());
+        assertTrue(!p.text().contains("ledger") && p.text().contains("Page 1") && p.text().contains("Page 4"),
+                p.text());
+        try (PDDocument doc = Loader.loadPDF(dir.resolve("ledger.csv.pdf").toFile())) {
+            PDFTextStripper second = new PDFTextStripper();
+            second.setStartPage(2);
+            second.setEndPage(2);
+            String t = second.getText(doc);
+            assertTrue(t.contains("thing 54 ") && !t.contains("thing 53 "), t);
+        }
         assertTrue(p.text().contains("thing 198") && p.text().contains("247.5"), p.text());
         assertEquals(PDRectangle.A4.getWidth(), p.size().getWidth(), 0.5);
     }
@@ -118,8 +126,7 @@ class TextToPdfTest {
         assertTrue(text.text().contains("line 65"), text.text());
         Pdf csv = stream(OfficeToPdf.Format.CSV, "item,amount\nrent,12.5\n".getBytes(StandardCharsets.UTF_8),
                 OfficeToPdf.Options.defaults().displayName("Household budget.csv"));
-        assertTrue(csv.text().contains("Household budget") && !csv.text().contains("budget.csv")
-                && csv.text().contains("12.5"), csv.text());
+        assertTrue(!csv.text().contains("Household budget") && csv.text().contains("12.5"), csv.text());
         Pdf tsv = stream(OfficeToPdf.Format.TSV, "left\tright\n".getBytes(StandardCharsets.UTF_8),
                 OfficeToPdf.Options.defaults());
         assertFalse(tsv.text().contains("leftright"), tsv.text());
@@ -137,13 +144,13 @@ class TextToPdfTest {
     }
 
     @Test
-    void aRenamedCsvPrintsTheNameTheCallerGives() throws IOException {
+    void aRenamedCsvPrintsNoFileName() throws IOException {
         Path in = Files.write(dir.resolve("upload-7f3a.csv"), "a,b\n".getBytes(StandardCharsets.UTF_8));
         Path out = dir.resolve("named.pdf");
         OfficeToPdf.convert(in, out, OfficeToPdf.Options.defaults().displayName("C:\\Users\\me\\Team list.csv"));
         try (PDDocument doc = Loader.loadPDF(out.toFile())) {
             String t = new PDFTextStripper().getText(doc);
-            assertTrue(t.contains("Team list") && !t.contains("upload-7f3a") && !t.contains("Users"), t);
+            assertTrue(t.contains("a") && !t.contains("Team list") && !t.contains("upload-7f3a"), t);
         }
     }
 

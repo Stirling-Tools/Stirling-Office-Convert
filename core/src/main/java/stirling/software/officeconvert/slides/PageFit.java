@@ -78,7 +78,15 @@ record PageFit(float scale, float dx, float dy) {
         }
         return new PageData(p.index(), width, height, p.direction(), glyphs(p.glyphs()), glyphs(p.hidden()),
                 glyphs(p.rotated()), new PageGraphics(rules, fills, images, marks, areas, order, seeThrough, Map.of(), areas(g.masked()), Map.of()),
-                links, p.widgets());
+                links, widgets(p.widgets()));
+    }
+
+    private List<PageData.Widget> widgets(List<PageData.Widget> from) {
+        List<PageData.Widget> out = new ArrayList<>();
+        for (PageData.Widget w : from) {
+            out.add(new PageData.Widget(x(w.x()), y(w.top()), x(w.right()), y(w.bottom()), w.choice()));
+        }
+        return out;
     }
 
     private List<PageGraphics.Area> areas(List<PageGraphics.Area> from) {
