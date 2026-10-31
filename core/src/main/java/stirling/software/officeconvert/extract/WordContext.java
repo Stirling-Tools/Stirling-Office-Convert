@@ -10,6 +10,8 @@ final class WordContext {
 
     private static final float LETTER_GAP = 0.15f;
 
+    private static final float MARK_OVERLAP = 0.3f;
+
     private WordContext() {}
 
     static String choose(List<Glyph> glyphs, int index, String alternative, Map<Glyph, String> alternatives) {
@@ -81,7 +83,9 @@ final class WordContext {
         }
         float centre = mark.centreX();
         float slack = 0.1f * Math.max(base.size, 1e-3f);
+        float overlap = Math.min(base.right(), mark.right()) - Math.max(base.x, mark.x);
         if (centre < base.x - slack || centre > base.right() + slack
+                || overlap < MARK_OVERLAP * Math.min(base.width, mark.width)
                 || Math.abs(base.baseline - mark.baseline) > LINE_SLACK * base.size) {
             return null;
         }

@@ -59,6 +59,14 @@ class UnembeddedFontTest {
     }
 
     @Test
+    void aSpacingAccentAfterALetterInCondensedTextStaysApart() throws Exception {
+        Path pdf = write("condensed.pdf", "/F1 12 Tf -1 Tc", simple("Type1", "Times-Roman", COSName.WIN_ANSI_ENCODING, 34),
+                "(Don\\264t say ma\\250 or x\\257) Tj", null);
+        String text = text(pdf);
+        assertTrue(text.contains("Don\u00B4t say ma\u00A8 or x\u00AF"), text);
+    }
+
+    @Test
     void anUnembeddedUrwSymbolFontReadsAsSymbol() throws Exception {
         Path pdf = write("symbol.pdf", "/F1 12 Tf", simple("Type1", "StandardSymL", null, 4), "(\\345 \\107) Tj", null);
         String text = text(pdf);
