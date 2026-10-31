@@ -76,10 +76,18 @@ class UnembeddedFontTest {
     @Test
     void anUnembeddedWingdingsBoxStaysAWingdingsBox() throws Exception {
         COSDictionary font = simple("TrueType", "Wingdings-Regular", COSName.MAC_ROMAN_ENCODING, 4);
-        Path pdf = write("wingdings.pdf", "/F1 12 Tf", font, "(\\250) Tj", null);
+        Path pdf = write("wingdings.pdf", "/F1 12 Tf", font, "(\\250 \\376) Tj", null);
         String text = text(pdf);
-        assertTrue(text.contains("\uF0A8"), text);
-        assertFalse(text.contains("\u00AE"), text);
+        assertTrue(text.contains("\u25FB \u2611"), text);
+        assertFalse(text.contains("\u00AE") || text.contains("\uF0A8"), text);
+        Path markdown = dir.resolve("wingdings.md");
+        PdfToMarkdown.convert(pdf, markdown, PdfToDocx.Options.defaults());
+        String md = Files.readString(markdown, StandardCharsets.UTF_8);
+        assertTrue(md.contains("\u25FB \u2611") && !md.contains("\uF0A8"), md);
+        Path html = dir.resolve("wingdings.html");
+        PdfToHtml.convert(pdf, html, PdfToDocx.Options.defaults());
+        String page = Files.readString(html, StandardCharsets.UTF_8);
+        assertTrue(page.contains("\u25FB \u2611") && !page.contains("\uF0A8"), page);
         Path docx = dir.resolve("wingdings.docx");
         PdfToDocx.convert(pdf, docx, PdfToDocx.Options.defaults());
         try (ZipFile zip = new ZipFile(docx.toFile())) {
@@ -87,7 +95,7 @@ class UnembeddedFontTest {
                     StandardCharsets.UTF_8);
             String styles = new String(zip.getInputStream(zip.getEntry("word/styles.xml")).readAllBytes(),
                     StandardCharsets.UTF_8);
-            assertTrue(xml.contains("\uF0A8"), xml);
+            assertTrue(xml.contains("\uF0A8\uF020\uF0FE") || xml.contains("\uF0A8") && xml.contains("\uF0FE"), xml);
             assertTrue(xml.contains("Wingdings") || styles.contains("Wingdings"), styles);
             assertFalse(xml.contains("\u00AE"), xml);
         }

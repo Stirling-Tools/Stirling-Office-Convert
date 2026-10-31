@@ -7,6 +7,7 @@ import java.util.Objects;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import stirling.software.officeconvert.fonts.SymbolCodes;
 import stirling.software.officeconvert.model.Inline;
 import stirling.software.officeconvert.model.Paragraph;
 import stirling.software.officeconvert.model.Picture;
@@ -207,11 +208,11 @@ final class MarkdownBlocks {
             Inline in = list.get(i);
             switch (in) {
                 case Inline.Text t -> {
-                    StringBuilder text = new StringBuilder(clean(t.text()));
+                    StringBuilder text = new StringBuilder(clean(SymbolCodes.plain(t.text(), t.style() == null ? null : t.style().font())));
                     while (i + 1 < list.size() && list.get(i + 1) instanceof Inline.Text n
                             && sameMarkup(n.style(), t.style()) && Objects.equals(n.link(), t.link())
                             && n.anchorPage() == t.anchorPage()) {
-                        text.append(clean(n.text()));
+                        text.append(clean(SymbolCodes.plain(n.text(), n.style() == null ? null : n.style().font())));
                         i++;
                     }
                     run(sb, text.toString(), t.style(), Links.target(t), inTable, plainWeight);
@@ -381,7 +382,7 @@ final class MarkdownBlocks {
         float size = 10f;
         for (Inline in : p.inlines) {
             if (in instanceof Inline.Text t) {
-                line.append(clean(t.text()));
+                line.append(clean(SymbolCodes.plain(t.text(), t.style() == null ? null : t.style().font())));
                 size = t.style().size() > 0 ? t.style().size() : size;
             } else if (in instanceof Inline.Tab) {
                 line.append("    ");
