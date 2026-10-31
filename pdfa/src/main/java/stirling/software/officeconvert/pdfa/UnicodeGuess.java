@@ -15,6 +15,7 @@ import org.apache.fontbox.cmap.CMap;
 import org.apache.fontbox.cmap.CMapParser;
 import org.apache.fontbox.ttf.CmapLookup;
 import org.apache.fontbox.ttf.TrueTypeFont;
+import org.apache.pdfbox.cos.COSArray;
 import org.apache.pdfbox.cos.COSBase;
 import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.cos.COSStream;
@@ -42,7 +43,12 @@ final class UnicodeGuess {
     }
 
     static String text(PDFont font, int code, int bytesPerCode) {
-        return of(font, code, bytesPerCode, !standIn(font));
+        return of(font, code, bytesPerCode, !standIn(font) || unreadableMap(font));
+    }
+
+    private static boolean unreadableMap(PDFont font) {
+        return font.getCOSObject().getDictionaryObject(COSName.TO_UNICODE) instanceof COSStream s
+                && MAPS.computeIfAbsent(s, k -> Optional.ofNullable(readable(k))).isEmpty();
     }
 
     static String extracted(PDFont font, int code) {
@@ -95,7 +101,10 @@ final class UnicodeGuess {
 
     private static CMap readable(COSStream s) {
         CMap cmap = CodeReader.cmap(s);
-        if (cmap != null || !COSName.FLATE_DECODE.equals(s.getDictionaryObject(COSName.FILTER))) {
+        COSBase filter = s.getDictionaryObject(COSName.FILTER);
+        boolean flate = COSName.FLATE_DECODE.equals(filter) || filter instanceof COSArray a && a.size() == 1
+                && COSName.FLATE_DECODE.equals(a.getObject(0));
+        if (cmap != null && cmap.hasUnicodeMappings() || !flate) {
             return cmap;
         }
         byte[] raw;
@@ -105,8 +114,14 @@ final class UnicodeGuess {
             return null;
         }
         byte[] text = inflatedPrefix(raw);
+        CMap partial = parsed(text);
+        return partial != null && partial.hasUnicodeMappings() ? partial : parsed(raw);
+    }
+
+    private static CMap parsed(byte[] text) {
         try {
-            return text.length == 0 ? null : new CMapParser().parse(new RandomAccessReadBuffer(text));
+            CMap cmap = text.length == 0 ? null : new CMapParser().parse(new RandomAccessReadBuffer(text));
+            return cmap != null && cmap.hasUnicodeMappings() ? cmap : null;
         } catch (IOException | RuntimeException e) {
             return null;
         }
@@ -117,7 +132,7 @@ final class UnicodeGuess {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         try {
             inflater.setInput(raw);
-            byte[] buffer = new byte[8192];
+            byte[] buffer = new byte[16];
             while (!inflater.finished() && out.size() < MAX_MAP_BYTES) {
                 int n = inflater.inflate(buffer);
                 if (n == 0 && (inflater.needsInput() || inflater.needsDictionary())) {

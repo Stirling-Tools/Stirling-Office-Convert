@@ -78,11 +78,19 @@ class UnicodeLevelTextTest {
             try (OutputStream o = map.createRawOutputStream()) {
                 o.write(cut);
             }
-            map.setItem(COSName.FILTER, COSName.FLATE_DECODE);
+            map.setItem(COSName.FILTER, new COSArray(java.util.List.of(COSName.FLATE_DECODE)));
             PDFont font = FontSamples.trueType(d);
             font.getCOSObject().setItem(COSName.TO_UNICODE, map);
             assertEquals("H", UnicodeGuess.declared(font, 0x41));
             assertEquals("i", UnicodeGuess.declared(font, 0x42));
+            COSStream plain = d.getDocument().createCOSStream();
+            try (OutputStream o = plain.createRawOutputStream()) {
+                o.write(text.getBytes(StandardCharsets.US_ASCII));
+            }
+            plain.setItem(COSName.FILTER, COSName.FLATE_DECODE);
+            PDFont other = FontSamples.trueType(d);
+            other.getCOSObject().setItem(COSName.TO_UNICODE, plain);
+            assertEquals("H", UnicodeGuess.declared(other, 0x41));
         }
     }
 
