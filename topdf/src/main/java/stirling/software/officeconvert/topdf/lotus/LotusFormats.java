@@ -25,6 +25,15 @@ final class LotusFormats {
         };
     }
 
+    static String millennium(int code, int kind, int flags) {
+        int format = code & 0x7F;
+        if ((flags & 0x80) != 0 && format >> 4 == 0) {
+            return kind >= 0x7A ? special(7) : kind >= 0x63 ? special(9) : excel(0x20 | format & 0x0F);
+        }
+        String excel = hidden(format) ? null : excel(format);
+        return excel == null ? "General" : excel;
+    }
+
     private static String special(int sub) {
         return switch (sub) {
             case 2 -> "dd\\-mmm\\-yy";

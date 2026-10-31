@@ -54,9 +54,8 @@ final class SheetXml {
             + "</cellStyles></styleSheet>";
 
     private static final String PAGE = "<pageMargins left=\"0.77768\" right=\"0.787401574803\""
-            + " top=\"1.07185\" bottom=\"1.082677165354\" header=\"0.787401574803\" footer=\"0.787401574803\"/>"
+            + " top=\"0.787401574803\" bottom=\"1.082677165354\" header=\"0.787401574803\" footer=\"0.787401574803\"/>"
             + "<pageSetup paperSize=\"9\" orientation=\"portrait\"/><headerFooter>"
-            + "<oddHeader>&amp;C&amp;\"" + ColumnWidths.FONT + ",Regular\"&amp;10&amp;A</oddHeader>"
             + "<oddFooter>&amp;C&amp;\"" + ColumnWidths.FONT + ",Regular\"&amp;10Page &amp;P</oddFooter>"
             + "</headerFooter>";
 
