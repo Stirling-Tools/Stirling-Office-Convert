@@ -114,6 +114,30 @@ class DocxBidiTest {
     }
 
     @Test
+    void horizontallyScaledHebrewKeepsItsReadingOrder() throws IOException {
+        String word = "\u05E9\u05DC\u05D5\u05DD";
+        String body = "<w:p><w:pPr><w:bidi/></w:pPr><w:r><w:rPr><w:rtl/><w:w w:val=\"50\"/></w:rPr><w:t>" + word
+                + "</w:t></w:r></w:p>";
+        DocxDoc.Rendered r = DocxDoc.render(dir, "scaledhebrew", new DocxDoc().body(body).bytes());
+        List<TextPosition> drawn = new ArrayList<>();
+        try (PDDocument d = r.open()) {
+            new PDFTextStripper() {
+                @Override
+                protected void processTextPosition(TextPosition text) {
+                    if (!text.getUnicode().isBlank()) {
+                        drawn.add(text);
+                    }
+                }
+            }.getText(d);
+        }
+        assertEquals(word.length(), drawn.size(), drawn.toString());
+        for (int i = 1; i < drawn.size(); i++) {
+            assertTrue(drawn.get(i).getXDirAdj() < drawn.get(i - 1).getXDirAdj(), "right to left: " + drawn);
+            assertEquals(String.valueOf(word.charAt(i)), drawn.get(i).getUnicode());
+        }
+    }
+
+    @Test
     void justifiedRightToLeftLinesEndAtTheRightMargin() throws IOException {
         String sentence = "\u05DB\u05DC \u05D1\u05E0\u05D9 \u05D0\u05D3\u05DD \u05E0\u05D5\u05DC\u05D3\u05D5 "
                 + "\u05D1\u05E0\u05D9 \u05D7\u05D5\u05E8\u05D9\u05DF \u05D5\u05E9\u05D5\u05D5\u05D9\u05DD ";

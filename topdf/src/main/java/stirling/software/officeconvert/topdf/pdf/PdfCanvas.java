@@ -595,7 +595,7 @@ public final class PdfCanvas implements Closeable {
         float rise = size / face.unitsPerEm();
         float tz = th * run.stretch();
         float skew = face.syntheticItalic() ? ITALIC_SKEW : 0;
-        boolean logical = upright() && tz == 1;
+        boolean logical = upright() && (tz == 1 || !arabic(run.text()));
         int[] codes = output.fonts().used(embedded, run, run.rightToLeft() && !logical && upright());
         StringBuilder ops = new StringBuilder();
         if (actualText) {
@@ -662,8 +662,9 @@ public final class PdfCanvas implements Closeable {
     }
 
     // Glyphs in reading order, right-to-left runs from their right end as Word writes them unless horizontally
-    // scaled (MuPDF measures a backward step in unscaled advances and splits such words); a group draws the glyph
-    // that carries its text first and marks the others as saying nothing (SILENT opens, SPOKEN closes)
+    // scaled Arabic (MuPDF measures a backward step in unscaled advances and splits such words; Hebrew does not
+    // split, and drawn left to right MuPDF reads its words backwards); a group draws the glyph that carries its
+    // text first and marks the others as saying nothing (SILENT opens, SPOKEN closes)
     private static int[][] readingOrder(GlyphRun run, int[] groups, boolean logical) {
         int n = run.size();
         List<int[]> segments = new ArrayList<>();
@@ -695,6 +696,10 @@ public final class PdfCanvas implements Closeable {
             marks[k - 1] = SPOKEN;
         }
         return new int[][] {order, marks};
+    }
+
+    private static boolean arabic(String text) {
+        return text.codePoints().anyMatch(cp -> Character.UnicodeScript.of(cp) == Character.UnicodeScript.ARABIC);
     }
 
     private static int firstCharacter(GlyphRun run, int[] segment) {
