@@ -9,14 +9,15 @@ import stirling.software.officeconvert.topdf.font.FontLibrary;
 import stirling.software.officeconvert.topdf.font.FontMetrics;
 
 record FontMeasure(int unitsPerEm, int digit, int winAscent, int winDescent, int hheaAscent, int hheaDescent,
-        int hheaLineGap, boolean typoMetrics, boolean screenLeading, FontFace hinting, boolean estimated) {
+        int hheaLineGap, boolean typoMetrics, boolean screenLeading, FontFace hinting, boolean estimated,
+        int[] screenDigits, int[] screenLines) {
 
     private static final Map<String, FontMeasure> KNOWN = new HashMap<>();
 
     FontMeasure(int unitsPerEm, int digit, int winAscent, int winDescent, int hheaAscent, int hheaDescent,
             int hheaLineGap, boolean typoMetrics) {
         this(unitsPerEm, digit, winAscent, winDescent, hheaAscent, hheaDescent, hheaLineGap, typoMetrics, true, null,
-                false);
+                false, null, null);
     }
 
     static {
@@ -67,10 +68,20 @@ record FontMeasure(int unitsPerEm, int digit, int winAscent, int winDescent, int
     private static void known(String family, int digit, int winAscent, int winDescent, int hheaAscent,
             int hheaDescent, int gap, boolean screenLeading) {
         KNOWN.put(family.toLowerCase(Locale.ROOT), new FontMeasure(2048, digit, winAscent, winDescent, hheaAscent,
-                hheaDescent, gap, family.startsWith("Aptos"), screenLeading, null, false));
+                hheaDescent, gap, family.startsWith("Aptos"), screenLeading, null, false, null, null));
     }
 
     static FontMeasure of(FontLibrary fonts, String family, boolean bold, boolean italic) {
+        FontMeasure measure = measure(fonts, family, bold, italic);
+        int[] screenDigits = bold || italic ? null : ScreenDigits.of(family);
+        int[] screenLines = ScreenRows.of(family, bold, italic);
+        return screenDigits == null && screenLines == null ? measure : new FontMeasure(measure.unitsPerEm,
+                measure.digit, measure.winAscent, measure.winDescent, measure.hheaAscent, measure.hheaDescent,
+                measure.hheaLineGap, measure.typoMetrics, measure.screenLeading, measure.hinting, measure.estimated,
+                screenDigits, screenLines);
+    }
+
+    private static FontMeasure measure(FontLibrary fonts, String family, boolean bold, boolean italic) {
         String key = family == null ? "" : family.toLowerCase(Locale.ROOT).trim();
         FontFace exact = family == null ? null : fonts.exact(family, bold, italic);
         if (exact == null) {
@@ -94,7 +105,7 @@ record FontMeasure(int unitsPerEm, int digit, int winAscent, int winDescent, int
 
     FontMeasure withHinting(FontFace face) {
         return new FontMeasure(unitsPerEm, digit, winAscent, winDescent, hheaAscent, hheaDescent, hheaLineGap,
-                typoMetrics, screenLeading, face, false);
+                typoMetrics, screenLeading, face, false, screenDigits, screenLines);
     }
 
     private static FontMeasure of(FontFace face, FontFace hinting, boolean estimated) {
@@ -109,7 +120,7 @@ record FontMeasure(int unitsPerEm, int digit, int winAscent, int winDescent, int
         int winA = m.winAscent() > 0 ? m.winAscent() : m.hheaAscender();
         int winD = m.winDescent() > 0 ? m.winDescent() : -m.hheaDescender();
         return new FontMeasure(Math.max(16, m.unitsPerEm()), digit, winA, Math.abs(winD), m.hheaAscender(),
-                m.hheaDescender(), m.hheaLineGap(), m.useTypoMetrics(), true, hinting, estimated);
+                m.hheaDescender(), m.hheaLineGap(), m.useTypoMetrics(), true, hinting, estimated, null, null);
     }
 
     static int ppem(double size, double dpi) {
@@ -122,6 +133,9 @@ record FontMeasure(int unitsPerEm, int digit, int winAscent, int winDescent, int
 
     int screenDigit(double size) {
         int ppem = ppem(size, 96);
+        if (screenDigits != null && ppem < screenDigits.length) {
+            return Math.max(1, screenDigits[ppem]);
+        }
         int hinted = -1;
         if (hinting != null) {
             for (char c = '0'; c <= '9'; c++) {
@@ -137,6 +151,9 @@ record FontMeasure(int unitsPerEm, int digit, int winAscent, int winDescent, int
 
     int screenLinePx(double size) {
         int ppem = ppem(size, 96);
+        if (screenLines != null && ppem < screenLines.length) {
+            return screenLines[ppem];
+        }
         long text = typoMetrics ? pixels((double) hheaAscent * ppem / unitsPerEm)
                 + pixels((double) Math.abs(hheaDescent) * ppem / unitsPerEm) + pixels((double) hheaLineGap * ppem / unitsPerEm)
                 : textHeightPx(ppem, true);

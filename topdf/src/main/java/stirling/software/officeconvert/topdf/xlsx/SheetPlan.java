@@ -75,6 +75,9 @@ final class SheetPlan {
         if (result.cut()) {
             job.truncate();
         }
+        if (result.blankPagesLeftOut() > 0) {
+            job.warn("Left out " + result.blankPagesLeftOut() + " blank pages of sheet " + name);
+        }
     }
 
     private static int[] rowBreaks(CTWorksheet ws) {

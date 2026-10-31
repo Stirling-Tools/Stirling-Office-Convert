@@ -126,7 +126,8 @@ final class Typesetter {
         Look look = look(f);
         FontFace primary = look.face();
         text = spaces(text, primary);
-        boolean emulate = ScreenAdvances.emulates(look.family(), primary);
+        String row = ScreenAdvances.emulates(look.family(), primary)
+                ? ScreenAdvances.row(look.family(), look.bold(), look.italic(), ppem) : null;
         double hinted = 0;
         double approx = 0;
         double missing = 0;
@@ -142,10 +143,11 @@ final class Typesetter {
                 i += Character.charCount(cp);
             }
         }
+        int tabled = 0;
         for (FontRun r : fonts.runs(plain.toString(), primary)) {
             FontFace face = r.face();
             boolean own = face.sameProgram(primary);
-            boolean table = emulate && own;
+            boolean table = row != null && own;
             boolean cloudy = own && look.emulated();
             for (int i = 0; i < r.text().length(); ) {
                 int cp = r.text().codePointAt(i);
@@ -154,7 +156,10 @@ final class Typesetter {
                     missing += MissingGlyphs.em(cp) * ppem;
                     continue;
                 }
-                int exact = table ? ScreenAdvances.calibri(look.bold(), look.italic(), cp, ppem) : -1;
+                int exact = table ? ScreenAdvances.advance(row, cp) : -1;
+                if (exact >= 0) {
+                    tabled++;
+                }
                 if (cloudy && !skipped(cp)) {
                     exact = (int) Math.round(look.em(face, cp) * ppem);
                 }
@@ -169,7 +174,7 @@ final class Typesetter {
             }
         }
         if (look.bold() && !primary.bold()) {
-            hinted += text.length();
+            hinted += text.length() - tabled;
         }
         return hinted * screenFactor(look.bold(), ppem) + (look.bold() ? approx : approx * HINTED_REGULAR) + missing;
     }

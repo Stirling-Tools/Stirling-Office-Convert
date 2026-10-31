@@ -18,7 +18,7 @@ final class Paginator {
 
     record Page(List<Band> rows, List<Band> cols, Band bodyRows, Band bodyCols) {}
 
-    record Result(double scale, List<Page> pages, boolean cut) {}
+    record Result(double scale, List<Page> pages, boolean cut, long blankPagesLeftOut) {}
 
     @FunctionalInterface
     interface Content {
@@ -45,6 +45,8 @@ final class Paginator {
     private Headings headings;
 
     private boolean wholeArea;
+
+    private long blankPagesLeftOut;
 
     Paginator(Grid grid, PageSetup setup, CellRangeAddress titleRows, CellRangeAddress titleCols, int[] rowBreaks,
             int[] colBreaks) {
@@ -118,7 +120,7 @@ final class Paginator {
             }
             cut |= pages(r, scale, content, limit - pages.size(), pages);
         }
-        return new Result(scale, pages, cut);
+        return new Result(scale, pages, cut, blankPagesLeftOut);
     }
 
     private double fitScale(List<CellRangeAddress> ranges) throws InterruptedIOException {
@@ -222,7 +224,9 @@ final class Paginator {
                 }
             });
         }
-        fillGaps(picked, limit);
+        if (!fillGaps(picked, limit)) {
+            blankPagesLeftOut += picked.last() + 1 - picked.size();
+        }
         Map<Integer, Band> rowBands = new HashMap<>();
         Map<Integer, Band> colBands = new HashMap<>();
         Band[] titles = new Band[2];
@@ -239,15 +243,19 @@ final class Paginator {
 
     static final int MAX_FILLED_PAGES = 10_000;
 
-    private static void fillGaps(TreeSet<Long> picked, int limit) throws InterruptedIOException {
-        if (picked.isEmpty() || picked.last() >= MAX_FILLED_PAGES) {
-            return;
+    private static boolean fillGaps(TreeSet<Long> picked, int limit) throws InterruptedIOException {
+        if (picked.isEmpty()) {
+            return true;
+        }
+        if (picked.last() >= MAX_FILLED_PAGES) {
+            return false;
         }
         long last = picked.last();
         for (long k = 0; k < last && picked.size() < limit; k++) {
             checkpoint(k);
             picked.add(k);
         }
+        return true;
     }
 
     private boolean manualBreaks(int fitPages) {

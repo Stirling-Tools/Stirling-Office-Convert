@@ -364,7 +364,7 @@ final class Grid {
                     + Math.max(0, row.thickEdges()) * SCREEN_PX);
         } else if (fit) {
             height = refit(row, autofit(index, entries, blanks, base) + Math.max(0, row.thickEdges()) * SCREEN_PX,
-                    entries.isEmpty() && blanks.isEmpty(), wrapsText(entries) && measurable(entries));
+                    entries.isEmpty() && blanks.isEmpty(), wrapsText(entries), measurable(entries));
         } else {
             height = Math.min(409.5, row.height());
         }
@@ -571,15 +571,15 @@ final class Grid {
     }
 
     // Excel re-fits a row without customHeight: an empty one drops to the default, and wrapped text grows
-    // a height another program stored (Excel's own stored height is already its fit, unless the Mac or a screen
-    // at another DPI wrapped it)
-    private double refit(RawRow row, double fitted, boolean empty, boolean wrapped) {
+    // a height another program stored (Excel's own stored height is already its fit, unless a screen at another
+    // DPI sized it or the Mac wrapped it)
+    private double refit(RawRow row, double fitted, boolean empty, boolean wrapped, boolean measurable) {
         double stored = Math.min(409.5, row.height());
         if (book.workbook().openDocument) {
             return row.index() > CALC_REFIT_ROWS || calcPixels(stored) == calcPixels(fitted) ? stored
                     : Math.min(409.5, fitted);
         }
-        if ((book.workbook().savedOnMac || otherScreen) && wrapped) {
+        if (measurable && (otherScreen || book.workbook().savedOnMac && wrapped)) {
             return Math.min(409.5, fitted);
         }
         if (empty && row.style() < 0 || !book.workbook().savedByExcel
@@ -643,23 +643,35 @@ final class Grid {
                 continue;
             }
             double line = runsLine(e.text().runs(), defaultPx);
-            int lines = 1;
+            double height = line;
             CellFormat fmt = e.format();
             if (fmt.rotation() > 0 && fmt.rotation() <= 180) {
                 best = Math.max(best, Math.min(546, turnedHeight(e.text().runs(), line, fmt.rotation())));
                 continue;
             }
-            if (fmt.wraps() && fmt.rotation() == 0) {
+            if (fmt.wraps() && fmt.rotation() == 0 && e.text().kind() == CellText.Kind.TEXT) {
                 double colPx = m.screenColumnPixels(columns.chars(e.col()));
                 double indent = fmt.indent() > 0 ? fmt.indent() * book.screenIndentPixels() : 0;
                 double avail = colPx - SCREEN_PAD - indent - overhang(e.text().runs());
                 Typesetter t = book.typesetter();
-                lines = Math.max(1, CellLayout.wrap(e.text().runs(), avail,
-                        (str, font) -> Math.rint(t.screenWidth(str, font, FontMeasure.ppem(font.size(), 96)))).size());
+                height = stackedLines(CellLayout.wrap(e.text().runs(), avail,
+                        (str, font) -> Math.rint(t.screenWidth(str, font, FontMeasure.ppem(font.size(), 96)))),
+                        e.text().runs().isEmpty() ? line : runsLine(e.text().runs().subList(0, 1), defaultPx),
+                        defaultPx);
             }
-            best = Math.max(best, Math.min(546, line * lines));
+            best = Math.max(best, Math.min(546, height));
         }
         return best * 0.75;
+    }
+
+    private double stackedLines(List<CellLayout.Line> lines, double first, double defaultPx) {
+        double total = 0;
+        double previous = first;
+        for (CellLayout.Line l : lines) {
+            previous = l.runs().isEmpty() ? previous : runsLine(l.runs(), defaultPx);
+            total += previous;
+        }
+        return Math.max(first, total);
     }
 
     private double calcFit(int row, List<CellEntry> entries, List<FontSpec> blanks) {
