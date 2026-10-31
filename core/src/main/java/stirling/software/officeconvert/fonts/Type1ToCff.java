@@ -91,14 +91,14 @@ public final class Type1ToCff {
         byte[] charset = charset(glyphs);
         byte[] encoding = encoding(encoded);
         byte[] privateDict = privateDict();
-        byte[] charStringIndex = CffSubset.index(charStrings);
+        byte[] charStringIndex = CffCodec.index(charStrings);
 
         String name = font.getFontName() == null || font.getFontName().isEmpty() ? "Font" : font.getFontName();
-        byte[] nameIndex = CffSubset.index(List.of(name.getBytes(StandardCharsets.ISO_8859_1)));
+        byte[] nameIndex = CffCodec.index(List.of(name.getBytes(StandardCharsets.ISO_8859_1)));
         byte[] probe = topDict(0, 0, 0, privateDict.length, 0);
-        byte[] stringIndex = CffSubset.index(strings);
-        byte[] globalSubrs = CffSubset.index(List.of());
-        int base = 4 + nameIndex.length + CffSubset.index(List.of(probe)).length + stringIndex.length
+        byte[] stringIndex = CffCodec.index(strings);
+        byte[] globalSubrs = CffCodec.index(List.of());
+        int base = 4 + nameIndex.length + CffCodec.index(List.of(probe)).length + stringIndex.length
                 + globalSubrs.length;
         int charsetAt = base;
         int encodingAt = charsetAt + charset.length;
@@ -111,7 +111,7 @@ public final class Type1ToCff {
         ByteArrayOutputStream o = new ByteArrayOutputStream();
         o.writeBytes(new byte[] {1, 0, 4, 4});
         o.writeBytes(nameIndex);
-        o.writeBytes(CffSubset.index(List.of(top)));
+        o.writeBytes(CffCodec.index(List.of(top)));
         o.writeBytes(stringIndex);
         o.writeBytes(globalSubrs);
         o.writeBytes(charset);
@@ -818,29 +818,9 @@ public final class Type1ToCff {
             args++;
             double r = Math.rint(v);
             if (Math.abs(v - r) < 1e-9 && r >= -32768 && r <= 32767) {
-                int i = (int) r;
-                if (i >= -107 && i <= 107) {
-                    out.write(i + 139);
-                } else if (i >= 108 && i <= 1131) {
-                    i -= 108;
-                    out.write((i >> 8) + 247);
-                    out.write(i);
-                } else if (i >= -1131 && i <= -108) {
-                    i = -i - 108;
-                    out.write((i >> 8) + 251);
-                    out.write(i);
-                } else {
-                    out.write(28);
-                    out.write(i >> 8);
-                    out.write(i);
-                }
+                CffCodec.writeShortInt(out, (int) r);
             } else {
-                int f = (int) Math.round(v * 65536.0);
-                out.write(255);
-                out.write(f >> 24);
-                out.write(f >> 16);
-                out.write(f >> 8);
-                out.write(f);
+                CffCodec.writeFixed(out, (int) Math.round(v * 65536.0));
             }
             return this;
         }
@@ -884,31 +864,15 @@ public final class Type1ToCff {
         }
 
         private void integer(int i) {
-            if (i >= -107 && i <= 107) {
-                out.write(i + 139);
-            } else if (i >= 108 && i <= 1131) {
-                i -= 108;
-                out.write((i >> 8) + 247);
-                out.write(i);
-            } else if (i >= -1131 && i <= -108) {
-                i = -i - 108;
-                out.write((i >> 8) + 251);
-                out.write(i);
-            } else if (i >= -32768 && i <= 32767) {
-                out.write(28);
-                out.write(i >> 8);
-                out.write(i);
+            if (i >= -32768 && i <= 32767) {
+                CffCodec.writeShortInt(out, i);
             } else {
                 fixed(i);
             }
         }
 
         Dict fixed(int i) {
-            out.write(29);
-            out.write(i >> 24);
-            out.write(i >> 16);
-            out.write(i >> 8);
-            out.write(i);
+            out.writeBytes(CffCodec.int5(i));
             return this;
         }
 

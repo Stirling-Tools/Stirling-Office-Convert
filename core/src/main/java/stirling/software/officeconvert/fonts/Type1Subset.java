@@ -296,11 +296,8 @@ public final class Type1Subset {
         if (b <= 246) {
             return new int[] {b - 139, i + 1};
         }
-        if (b <= 250) {
-            return new int[] {(b - 247) * 256 + (i + 1 < cs.length ? cs[i + 1] & 0xFF : 0) + 108, i + 2};
-        }
         if (b <= 254) {
-            return new int[] {-(b - 251) * 256 - (i + 1 < cs.length ? cs[i + 1] & 0xFF : 0) - 108, i + 2};
+            return new int[] {CffCodec.twoByteInt(b, i + 1 < cs.length ? cs[i + 1] & 0xFF : 0), i + 2};
         }
         int v = 0;
         for (int k = 1; k <= 4; k++) {

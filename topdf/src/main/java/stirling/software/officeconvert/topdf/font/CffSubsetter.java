@@ -21,6 +21,8 @@ import org.apache.fontbox.cff.CFFType1Font;
 import org.apache.fontbox.cff.Type2CharString;
 import org.apache.pdfbox.io.RandomAccessReadBuffer;
 
+import stirling.software.officeconvert.fonts.CffCodec;
+
 final class CffSubsetter {
 
     private static final int UNIQUE_ID = 13;
@@ -160,16 +162,16 @@ final class CffSubsetter {
         for (int k = 0; k < cids.length; k++) {
             outlines.add(EMPTY);
         }
-        byte[] charStringIndex = index(outlines);
-        byte[] nameIndex = index(List.of(new byte[] {'X'}));
+        byte[] charStringIndex = CffCodec.index(outlines);
+        byte[] nameIndex = CffCodec.index(List.of(new byte[] {'X'}));
         int topLength = 2 + 1 + 2 + 17;
         int charStringsAt = 4 + nameIndex.length + topLength + 2 + 2;
-        byte[] top = concat(int5(charStringsAt), new byte[] {CHAR_STRINGS}, int5(0),
-                int5(charStringsAt + charStringIndex.length), new byte[] {PRIVATE});
+        byte[] top = CffCodec.concat(CffCodec.int5(charStringsAt), new byte[] {CHAR_STRINGS}, CffCodec.int5(0),
+                CffCodec.int5(charStringsAt + charStringIndex.length), new byte[] {PRIVATE});
         ByteArrayOutputStream empty = new ByteArrayOutputStream();
         empty.writeBytes(new byte[] {1, 0, 4, 4});
         empty.writeBytes(nameIndex);
-        empty.writeBytes(index(List.of(top)));
+        empty.writeBytes(CffCodec.index(List.of(top)));
         empty.writeBytes(new byte[] {0, 0, 0, 0});
         empty.writeBytes(charStringIndex);
         int[] glyphs = new int[cids.length];
@@ -294,8 +296,8 @@ final class CffSubsetter {
         List<byte[]> stringItems = items(strings);
         int registry = sid(stringItems, "Adobe");
         int ordering = sid(stringItems, "Identity");
-        byte[] stringIndex = index(stringItems);
-        byte[] nameIndex = index(List.of(name.getBytes(StandardCharsets.ISO_8859_1)));
+        byte[] stringIndex = CffCodec.index(stringItems);
+        byte[] nameIndex = CffCodec.index(List.of(name.getBytes(StandardCharsets.ISO_8859_1)));
         byte[] globalIndex = subrs(global, usedGlobal, allGlobal);
 
         ByteArrayOutputStream charset = new ByteArrayOutputStream();
@@ -322,7 +324,7 @@ final class CffSubsetter {
         for (int g : glyphs) {
             outlines.add(flattened.contains(g) ? flat(g) : rewritten(charStrings.start(g), charStrings.stop(g)));
         }
-        byte[] charStringIndex = index(outlines);
+        byte[] charStringIndex = CffCodec.index(outlines);
 
         List<byte[]> privates = new ArrayList<>();
         List<byte[]> locals = new ArrayList<>();
@@ -336,14 +338,14 @@ final class CffSubsetter {
             }
             byte[] bytes = entries(body);
             if (local != null) {
-                bytes = concat(bytes, int5(bytes.length + 6), new byte[] {SUBRS});
+                bytes = CffCodec.concat(bytes, CffCodec.int5(bytes.length + 6), new byte[] {SUBRS});
             }
             privates.add(bytes);
             locals.add(local);
         }
 
         int headerSize = 4;
-        byte[] topProbe = index(List.of(topDict(top, registry, ordering, cids, 0, 0, 0, 0)));
+        byte[] topProbe = CffCodec.index(List.of(topDict(top, registry, ordering, cids, 0, 0, 0, 0)));
         int at = headerSize + nameIndex.length + topProbe.length + stringIndex.length + globalIndex.length;
         int charsetAt = at;
         at += charset.size();
@@ -356,14 +358,14 @@ final class CffSubsetter {
         for (Fd fd : kept) {
             fontProbe.add(fontDict(fd.font, 0, 0));
         }
-        at += index(fontProbe).length;
+        at += CffCodec.index(fontProbe).length;
         List<byte[]> fontDicts = new ArrayList<>();
         for (int i = 0; i < kept.size(); i++) {
             fontDicts.add(fontDict(kept.get(i).font, privates.get(i).length, at));
             at += privates.get(i).length + (locals.get(i) == null ? 0 : locals.get(i).length);
         }
-        byte[] topIndex = index(List.of(topDict(top, registry, ordering, cids, charsetAt, selectAt, charStringsAt,
-                fdArrayAt)));
+        byte[] topIndex = CffCodec.index(List.of(topDict(top, registry, ordering, cids, charsetAt, selectAt,
+                charStringsAt, fdArrayAt)));
         ByteArrayOutputStream out = new ByteArrayOutputStream(at);
         out.writeBytes(new byte[] {1, 0, (byte) headerSize, 4});
         out.writeBytes(nameIndex);
@@ -373,7 +375,7 @@ final class CffSubsetter {
         charset.writeTo(out);
         select.writeTo(out);
         out.writeBytes(charStringIndex);
-        out.writeBytes(index(fontDicts));
+        out.writeBytes(CffCodec.index(fontDicts));
         for (int i = 0; i < kept.size(); i++) {
             out.writeBytes(privates.get(i));
             if (locals.get(i) != null) {
@@ -400,7 +402,7 @@ final class CffSubsetter {
     private byte[] topDict(List<Entry> top, int registry, int ordering, int[] cids, int charset, int select,
             int charStrings, int fdArray) {
         List<Entry> out = new ArrayList<>();
-        out.add(new Entry(ROS, concat(integer(registry), integer(ordering), integer(0)), null));
+        out.add(new Entry(ROS, CffCodec.concat(integer(registry), integer(ordering), integer(0)), null));
         for (Entry e : top) {
             switch (e.op()) {
                 case ROS, CID_COUNT, CHARSET, ENCODING, CHAR_STRINGS, PRIVATE, FD_ARRAY, FD_SELECT, UNIQUE_ID, XUID,
@@ -410,10 +412,10 @@ final class CffSubsetter {
             }
         }
         out.add(new Entry(CID_COUNT, integer(cids[cids.length - 1] + 1), null));
-        out.add(new Entry(CHARSET, int5(charset), null));
-        out.add(new Entry(FD_SELECT, int5(select), null));
-        out.add(new Entry(CHAR_STRINGS, int5(charStrings), null));
-        out.add(new Entry(FD_ARRAY, int5(fdArray), null));
+        out.add(new Entry(CHARSET, CffCodec.int5(charset), null));
+        out.add(new Entry(FD_SELECT, CffCodec.int5(select), null));
+        out.add(new Entry(CHAR_STRINGS, CffCodec.int5(charStrings), null));
+        out.add(new Entry(FD_ARRAY, CffCodec.int5(fdArray), null));
         return entries(out);
     }
 
@@ -424,7 +426,7 @@ final class CffSubsetter {
                 out.add(e);
             }
         }
-        out.add(new Entry(PRIVATE, concat(int5(privateSize), int5(privateAt)), null));
+        out.add(new Entry(PRIVATE, CffCodec.concat(CffCodec.int5(privateSize), CffCodec.int5(privateAt)), null));
         return entries(out);
     }
 
@@ -487,7 +489,7 @@ final class CffSubsetter {
                 out.add(all || used.get(i) ? slice(subrs.start(i), subrs.stop(i)) : RETURN);
             }
         }
-        return index(out);
+        return CffCodec.index(out);
     }
 
     private static int[] ranks(BitSet used, int count) {
@@ -512,7 +514,7 @@ final class CffSubsetter {
             out.write(in, at, pos - at);
             Fd fd = call.fd() < 0 ? null : fds[call.fd()];
             int rank = fd == null ? globalRenumbered[call.subr()] : fd.renumbered[call.subr()];
-            operand(out, rank - bias(fd == null ? globalCount : fd.renumberedCount));
+            CffCodec.writeShortInt(out, rank - CffCodec.subrBias(fd == null ? globalCount : fd.renumberedCount));
             at = pos + call.length();
         }
         out.write(in, at, end - at);
@@ -606,31 +608,10 @@ final class CffSubsetter {
 
     private static void fixed(ByteArrayOutputStream out, float v) {
         if (v == Math.rint(v) && Math.abs(v) <= 32767) {
-            operand(out, (int) v);
+            CffCodec.writeShortInt(out, (int) v);
             return;
         }
-        int f = Math.round(v * 65536);
-        out.write(255);
-        out.write(f >> 24);
-        out.write(f >> 16);
-        out.write(f >> 8);
-        out.write(f);
-    }
-
-    private static void operand(ByteArrayOutputStream out, int v) {
-        if (v >= -107 && v <= 107) {
-            out.write(v + 139);
-        } else if (v >= 108 && v <= 1131) {
-            out.write((v - 108 >> 8) + 247);
-            out.write(v - 108);
-        } else if (v >= -1131 && v <= -108) {
-            out.write((-v - 108 >> 8) + 251);
-            out.write(-v - 108);
-        } else {
-            out.write(28);
-            out.write(v >> 8);
-            out.write(v);
-        }
+        CffCodec.writeFixed(out, Math.round(v * 65536));
     }
 
     private final class Scan {
@@ -677,11 +658,8 @@ final class CffSubsetter {
                 } else if (b >= 32 && b <= 246) {
                     push(b - 139, i, 1);
                     i++;
-                } else if (b >= 247 && b <= 250) {
-                    push((b - 247) * 256 + (in[i + 1] & 0xFF) + 108, i, 2);
-                    i += 2;
-                } else if (b >= 251 && b <= 254) {
-                    push(-(b - 251) * 256 - (in[i + 1] & 0xFF) - 108, i, 2);
+                } else if (b >= 247 && b <= 254) {
+                    push(CffCodec.twoByteInt(b, in[i + 1] & 0xFF), i, 2);
                     i += 2;
                 } else if (b == 255) {
                     push((short) ((in[i + 1] & 0xFF) << 8 | in[i + 2] & 0xFF), -1, 5);
@@ -721,7 +699,7 @@ final class CffSubsetter {
                         fail();
                         return end;
                     }
-                    int n = stack[--top] + bias(subrs.count());
+                    int n = stack[--top] + CffCodec.subrBias(subrs.count());
                     if (n < 0 || n >= subrs.count()) {
                         fail();
                         return end;
@@ -772,10 +750,6 @@ final class CffSubsetter {
         }
     }
 
-    private static int bias(int count) {
-        return count < 1240 ? 107 : count < 33900 ? 1131 : 32768;
-    }
-
     private Index index(int at) {
         int count = u16(at);
         if (count == 0) {
@@ -814,49 +788,24 @@ final class CffSubsetter {
 
     private List<Entry> dict(int start, int end) {
         List<Entry> out = new ArrayList<>();
-        int p = start;
+        int[] p = {start};
         int from = start;
         List<Integer> nums = new ArrayList<>();
-        while (p < end) {
-            int b = in[p] & 0xFF;
+        while (p[0] < end) {
+            int b = in[p[0]] & 0xFF;
             if (b <= 21) {
-                int op = b == 12 ? 1200 + (in[p + 1] & 0xFF) : b;
-                byte[] operands = slice(from, p);
-                p += b == 12 ? 2 : 1;
+                int op = b == 12 ? 1200 + (in[p[0] + 1] & 0xFF) : b;
+                byte[] operands = slice(from, p[0]);
+                p[0] += b == 12 ? 2 : 1;
                 int[] n = new int[nums.size()];
                 for (int i = 0; i < n.length; i++) {
                     n[i] = nums.get(i);
                 }
                 out.add(new Entry(op, operands, n));
                 nums.clear();
-                from = p;
-            } else if (b == 30) {
-                p++;
-                while (p < end) {
-                    int x = in[p++] & 0xFF;
-                    if ((x & 0x0F) == 0x0F || (x & 0xF0) == 0xF0) {
-                        break;
-                    }
-                }
-                nums.add(0);
-            } else if (b == 28) {
-                nums.add((int) (short) ((in[p + 1] & 0xFF) << 8 | in[p + 2] & 0xFF));
-                p += 3;
-            } else if (b == 29) {
-                nums.add((in[p + 1] & 0xFF) << 24 | (in[p + 2] & 0xFF) << 16 | (in[p + 3] & 0xFF) << 8
-                        | in[p + 4] & 0xFF);
-                p += 5;
-            } else if (b >= 32 && b <= 246) {
-                nums.add(b - 139);
-                p++;
-            } else if (b >= 247 && b <= 250) {
-                nums.add((b - 247) * 256 + (in[p + 1] & 0xFF) + 108);
-                p += 2;
-            } else if (b >= 251 && b <= 254) {
-                nums.add(-(b - 251) * 256 - (in[p + 1] & 0xFF) - 108);
-                p += 2;
+                from = p[0];
             } else {
-                throw new IllegalArgumentException("bad DICT operand " + b);
+                nums.add(CffCodec.dictOperand(in, p, end));
             }
         }
         return out;
@@ -916,51 +865,12 @@ final class CffSubsetter {
         return o.toByteArray();
     }
 
-    private static byte[] index(List<byte[]> items) {
-        ByteArrayOutputStream o = new ByteArrayOutputStream();
-        u16(o, items.size());
-        if (items.isEmpty()) {
-            return o.toByteArray();
-        }
-        long total = 1;
-        for (byte[] b : items) {
-            total += b.length;
-        }
-        int offSize = total < 1 << 8 ? 1 : total < 1 << 16 ? 2 : total < 1 << 24 ? 3 : 4;
-        o.write(offSize);
-        long off = 1;
-        for (int i = 0; i <= items.size(); i++) {
-            for (int k = offSize - 1; k >= 0; k--) {
-                o.write((int) (off >> (8 * k)));
-            }
-            if (i < items.size()) {
-                off += items.get(i).length;
-            }
-        }
-        for (byte[] b : items) {
-            o.writeBytes(b);
-        }
-        return o.toByteArray();
-    }
-
     private static byte[] integer(int v) {
         if (v >= -1131 && v <= 1131) {
             ByteArrayOutputStream out = new ByteArrayOutputStream(2);
-            operand(out, v);
+            CffCodec.writeShortInt(out, v);
             return out.toByteArray();
         }
-        return int5(v);
-    }
-
-    private static byte[] int5(int v) {
-        return new byte[] {29, (byte) (v >> 24), (byte) (v >> 16), (byte) (v >> 8), (byte) v};
-    }
-
-    private static byte[] concat(byte[]... parts) {
-        ByteArrayOutputStream o = new ByteArrayOutputStream();
-        for (byte[] p : parts) {
-            o.writeBytes(p);
-        }
-        return o.toByteArray();
+        return CffCodec.int5(v);
     }
 }

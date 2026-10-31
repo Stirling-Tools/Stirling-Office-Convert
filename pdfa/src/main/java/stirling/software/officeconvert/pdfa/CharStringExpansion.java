@@ -7,6 +7,8 @@ import java.util.Deque;
 import java.util.List;
 import java.util.function.IntUnaryOperator;
 
+import stirling.software.officeconvert.fonts.CffCodec;
+
 final class CharStringExpansion {
 
     static final int MAX_TOKENS = 1 << 17;
@@ -162,7 +164,7 @@ final class CharStringExpansion {
             throw new Malformed();
         }
         int count = subrs.length;
-        int index = n + (count < 1240 ? 107 : count < 33900 ? 1131 : 32768);
+        int index = n + CffCodec.subrBias(count);
         if (index < 0) {
             throw new Malformed();
         }
@@ -313,7 +315,7 @@ final class CharStringExpansion {
         }
         i = need(cs, i, 1);
         int w = cs[i - 1] & 0xFF;
-        sequence.add(b <= 250 ? (b - 247) * 256 + w + 108 : -(b - 251) * 256 - w - 108);
+        sequence.add(CffCodec.twoByteInt(b, w));
         return i;
     }
 }

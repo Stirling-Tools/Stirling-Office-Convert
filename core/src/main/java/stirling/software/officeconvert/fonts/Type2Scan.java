@@ -29,10 +29,6 @@ final class Type2Scan {
         return seac;
     }
 
-    private static int bias(int count) {
-        return count < 1240 ? 107 : count < 33900 ? 1131 : 32768;
-    }
-
     private void run(byte[] cs, int depth) {
         if (depth > MAX_DEPTH) {
             done = true;
@@ -47,11 +43,8 @@ final class Type2Scan {
             } else if (b >= 32 && b <= 246) {
                 stack.add(b - 139);
                 i++;
-            } else if (b >= 247 && b <= 250 && i + 1 < cs.length) {
-                stack.add((b - 247) * 256 + (cs[i + 1] & 0xFF) + 108);
-                i += 2;
-            } else if (b >= 251 && b <= 254 && i + 1 < cs.length) {
-                stack.add(-(b - 251) * 256 - (cs[i + 1] & 0xFF) - 108);
+            } else if (b >= 247 && b <= 254 && i + 1 < cs.length) {
+                stack.add(CffCodec.twoByteInt(b, cs[i + 1] & 0xFF));
                 i += 2;
             } else if (b == 255 && i + 4 < cs.length) {
                 stack.add(((cs[i + 1] & 0xFF) << 8 | cs[i + 2] & 0xFF));
@@ -80,7 +73,7 @@ final class Type2Scan {
                     done = true;
                     return cs.length;
                 }
-                int n = stack.remove(stack.size() - 1) + bias(subrs.size());
+                int n = stack.remove(stack.size() - 1) + CffCodec.subrBias(subrs.size());
                 if (n < 0 || n >= subrs.size()) {
                     done = true;
                     return cs.length;
