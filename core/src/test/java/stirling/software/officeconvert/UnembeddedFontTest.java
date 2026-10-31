@@ -86,6 +86,19 @@ class UnembeddedFontTest {
     }
 
     @Test
+    void anUnembeddedTrueTypeFontKeepsItsOwnFamilyName() throws Exception {
+        Path pdf = write("calibri.pdf", "/F1 12 Tf", simple("TrueType", "Calibri,Bold", COSName.WIN_ANSI_ENCODING, 32),
+                "(Quarterly results) Tj", null);
+        Path docx = dir.resolve("calibri.docx");
+        PdfToDocx.convert(pdf, docx, PdfToDocx.Options.defaults());
+        try (ZipFile zip = new ZipFile(docx.toFile())) {
+            String fonts = new String(zip.getInputStream(zip.getEntry("word/fontTable.xml")).readAllBytes(),
+                    StandardCharsets.UTF_8);
+            assertTrue(fonts.contains("w:name=\"Calibri\""), fonts);
+        }
+    }
+
+    @Test
     void unembeddedCoreFontGlyphIdsReadInTheirOwnOrder() throws Exception {
         int[] word = {53, 40, 38, 50, 48, 40, 49, 39, 36, 38, 44, 207, 49, 3, 69, 112, 81, 112, 73, 76, 70, 72};
         StringBuilder hex = new StringBuilder("<");
