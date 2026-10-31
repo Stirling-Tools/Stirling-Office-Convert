@@ -520,7 +520,7 @@ final class GlyphCollector extends PDFStreamEngine {
         boolean invisible = mode == RenderingMode.NEITHER || mode == RenderingMode.NEITHER_CLIP;
         PDColor colour =
                 mode.isStroke() && !mode.isFill() ? gs.getStrokingColor() : gs.getNonStrokingColor();
-        int rgb = toRgb(colour);
+        int rgb = PdfColours.toRgb(colour, 0);
 
         PDFont pdFont = tp.getFont();
         FontInfo font = fonts.resolve(pdFont);
@@ -746,17 +746,6 @@ final class GlyphCollector extends PDFStreamEngine {
             size = Math.max(tp.getHeightDir() * 1.4f, 4f);
         }
         return size;
-    }
-
-    private static int toRgb(PDColor colour) {
-        if (colour == null) {
-            return 0;
-        }
-        try {
-            return colour.toRGB() & 0xFFFFFF;
-        } catch (IOException | RuntimeException e) {
-            return 0;
-        }
     }
 
     private static final String CP1252 =

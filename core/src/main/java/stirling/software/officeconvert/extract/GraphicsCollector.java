@@ -26,7 +26,6 @@ import org.apache.pdfbox.pdmodel.PDResources;
 import org.apache.pdfbox.pdmodel.font.PDType3CharProc;
 import org.apache.pdfbox.pdmodel.font.PDType3Font;
 import org.apache.pdfbox.pdmodel.graphics.blend.BlendMode;
-import org.apache.pdfbox.pdmodel.graphics.color.PDColor;
 import org.apache.pdfbox.pdmodel.graphics.color.PDPattern;
 import org.apache.pdfbox.pdmodel.graphics.form.PDFormXObject;
 import org.apache.pdfbox.pdmodel.graphics.form.PDTransparencyGroup;
@@ -439,7 +438,7 @@ final class GraphicsCollector extends PDFGraphicsStreamEngine {
 
         int stencil = -1;
         if (pdImage.isStencil()) {
-            stencil = toRgb(gs.getNonStrokingColor(), 0);
+            stencil = PdfColours.toRgb(gs.getNonStrokingColor(), 0);
         }
         float alpha = (float) gs.getNonStrokeAlphaConstant();
         if (alpha <= 0.01f) {
@@ -562,7 +561,7 @@ final class GraphicsCollector extends PDFGraphicsStreamEngine {
             return;
         }
         boolean pattern = fill && gs.getNonStrokingColor().getColorSpace() instanceof PDPattern;
-        int fillRgb = onPaper(toRgb(gs.getNonStrokingColor(), 0xFFFFFF), gs.getNonStrokeAlphaConstant());
+        int fillRgb = onPaper(PdfColours.toRgb(gs.getNonStrokingColor(), 0xFFFFFF), gs.getNonStrokeAlphaConstant());
         if (pattern) {
             int tone = tones.computeIfAbsent(getResources(), k -> new HashMap<>())
                     .computeIfAbsent(gs.getNonStrokingColor().getPatternName(), k -> PatternTone.of(gs.getNonStrokingColor(), getResources()));
@@ -571,7 +570,7 @@ final class GraphicsCollector extends PDFGraphicsStreamEngine {
                 fillRgb = onPaper(tone, gs.getNonStrokeAlphaConstant());
             }
         }
-        int strokeRgb = onPaper(toRgb(gs.getStrokingColor(), 0), gs.getAlphaConstant());
+        int strokeRgb = onPaper(PdfColours.toRgb(gs.getStrokingColor(), 0), gs.getAlphaConstant());
         PathShapes.Paint paint = new PathShapes.Paint(fill, stroke, pattern, fillRgb, strokeRgb, lineWidth(),
                 lineWidthAcross(1, 0), lineWidthAcross(0, 1), evenOdd);
         PathShapes.Shapes shapes = PathShapes.classify(subpaths, pathCurved, paint, clipBox());
@@ -598,7 +597,7 @@ final class GraphicsCollector extends PDFGraphicsStreamEngine {
             seeThrough.add(shapes.mark());
             if (fill) {
                 outlines.put(shapes.mark(), new PageGraphics.Outline(outline(),
-                        toRgb(gs.getNonStrokingColor(), 0xFFFFFF), (float) gs.getNonStrokeAlphaConstant()));
+                        PdfColours.toRgb(gs.getNonStrokingColor(), 0xFFFFFF), (float) gs.getNonStrokeAlphaConstant()));
             }
         } else if (shapes.mark() != null && fill && panel(shapes.mark()) && panels++ < MAX_PANELS) {
             outlines.put(shapes.mark(), new PageGraphics.Outline(outline(), shapes.mark().rgb(), 1f));
@@ -610,7 +609,7 @@ final class GraphicsCollector extends PDFGraphicsStreamEngine {
     }
 
     private void pastBudget(boolean fill, boolean stroke) {
-        if (onlyRectangles || !stroke && toRgb(getGraphicsState().getNonStrokingColor(), 0xFFFFFF) == 0xFFFFFF) {
+        if (onlyRectangles || !stroke && PdfColours.toRgb(getGraphicsState().getNonStrokingColor(), 0xFFFFFF) == 0xFFFFFF) {
             return;
         }
         float[] box = paintedBox(stroke);
@@ -703,16 +702,5 @@ final class GraphicsCollector extends PDFGraphicsStreamEngine {
         int g = (int) Math.round(255 - alpha * (255 - ((rgb >> 8) & 0xFF)));
         int b = (int) Math.round(255 - alpha * (255 - (rgb & 0xFF)));
         return r << 16 | g << 8 | b;
-    }
-
-    static int toRgb(PDColor colour, int fallback) {
-        if (colour == null) {
-            return fallback;
-        }
-        try {
-            return colour.toRGB() & 0xFFFFFF;
-        } catch (IOException | RuntimeException e) {
-            return fallback;
-        }
     }
 }
