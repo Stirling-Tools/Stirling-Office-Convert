@@ -11,6 +11,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Random;
 
@@ -267,7 +268,7 @@ class LotusTest {
 
     private static byte[] style(int id, int align) {
         byte[] b = new byte[35];
-        java.util.Arrays.fill(b, (byte) 0xFF);
+        Arrays.fill(b, (byte) 0xFF);
         b[0] = (byte) 0xD2;
         b[1] = 0x0F;
         b[2] = (byte) id;
