@@ -78,4 +78,22 @@ class MissingWidgetAppearanceTest {
             assertTrue(Decoded.bytes(yes, 4096, "button").length > Decoded.bytes(off, 4096, "button").length);
         }
     }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"A1B", "A2B", "A4"})
+    void aZeroSizeRadioParentListedAsAWidgetGetsAnAppearanceAtPartOne(PdfALevel level) throws Exception {
+        RawPdf pdf = RawPdf.page("", "");
+        pdf.add("<</Type/Annot/Subtype/Widget/FT/Btn/Ff 49152/T(drink)/V/Beer/Rect[0 0 0 0]/F 4"
+                + "/Kids[6 0 R]>>");
+        pdf.add("<</Type/Annot/Subtype/Widget/Parent 5 0 R/AS/Beer/Rect[20 20 40 40]/F 4"
+                + "/AP<</N<</Beer 7 0 R/Off 7 0 R>>>>>>");
+        pdf.add(RawPdf.stream("/Type/XObject/Subtype/Form/BBox[0 0 20 20]/Resources<<>>", "0 0 20 20 re f"));
+        pdf.set(1, "<</Type/Catalog/Pages 2 0 R/AcroForm<</Fields[5 0 R]>>>>");
+        pdf.set(3, "<</Type/Page/Parent 2 0 R/MediaBox[0 0 200 100]/Resources<<>>/Contents 4 0 R"
+                + "/Annots[6 0 R 5 0 R]>>");
+        String name = "radio-parent-" + level;
+        Path output = dir.resolve(name + "-out.pdf");
+        PdfToPdfA.convert(Hostile.write(dir, name, pdf), output, PdfToPdfA.Options.defaults().level(level));
+        VeraPdf.assertCompliant(output, level);
+    }
 }

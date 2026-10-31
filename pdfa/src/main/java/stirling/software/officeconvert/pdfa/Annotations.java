@@ -133,7 +133,8 @@ final class Annotations {
     private static void appearance(PDDocument doc, COSDictionary a, String type, PdfALevel level, Report report)
             throws IOException {
         COSDictionary ap = ContentGraph.dict(a.getDictionaryObject(COSName.AP));
-        boolean needs = !"Popup".equals(type) && !"Link".equals(type) && !zeroSize(a);
+        boolean needs = !"Popup".equals(type) && !"Link".equals(type)
+                && (!zeroSize(a) || level.part() == 1 && "Widget".equals(type));
         if (ap != null) {
             ap.removeItem(COSName.R);
             ap.removeItem(COSName.D);
