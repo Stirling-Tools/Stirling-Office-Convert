@@ -331,6 +331,21 @@ class FontCoverageTest {
     }
 
     @Test
+    void emojiInABidiSheetCellAreDrawnLikeOtherSheetEmoji() throws Exception {
+        Path fonts = emojiFonts();
+        Files.write(fonts.resolve("Plain.ttf"), TestFonts.withGlyphs("Plain Symbols", 'W', 0x2705));
+        Path xlsx = sheet("bidi", "Done \u2705 star \u05D0\u05D1");
+        Path pdf = dir.resolve("bidi.xlsx.pdf");
+        OfficeToPdf.convert(xlsx, pdf, options(fonts));
+        try (PDDocument doc = Loader.loadPDF(pdf.toFile())) {
+            String text = new PDFTextStripper().getText(doc).replaceAll(" +", " ");
+            assertTrue(text.contains("Done \u2705 star"), text);
+            assertEquals(0, pixels(doc, 0x00C000));
+            assertEquals(ColorEmoji.OFFICE_ADVANCE * 36, emojiGap(doc), 1.5f);
+        }
+    }
+
+    @Test
     void eastAsianTextDrawsFromAPostScriptCollection() throws Exception {
         Path fonts = Files.createDirectories(dir.resolve("cjk"));
         int[] chars = {'A', 0x4E00, 0x3042, 0xAC00};
