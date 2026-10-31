@@ -182,7 +182,7 @@ public final class LineArt {
                             result.codecs(), warnings);
                 }
                 try (OutputStream os = new BufferedOutputStream(Files.newOutputStream(part), 1 << 16)) {
-                    doc.save(os);
+                    PdfSave.save(doc, os);
                 }
             }
             return result;
