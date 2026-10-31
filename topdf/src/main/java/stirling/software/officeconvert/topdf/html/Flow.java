@@ -1270,7 +1270,8 @@ final class Flow {
     private boolean decorate(Table.Cell cell, Map<String, String> d, Look look, float x, float width, float height,
             int backdrop) throws IOException {
         float corner = corner(d, look, width, height);
-        List<BoxPaint.Shadow> shadows = BoxPaint.shadows(d.get("box-shadow"), look.size, look.color);
+        List<BoxPaint.Shadow> shadows = ctx.shadowsLeft() ? BoxPaint.shadows(d.get("box-shadow"), look.size, look.color)
+                : List.of();
         Gradient gradient = Gradient.parse(d.get("background-gradient"));
         if (corner <= 0 && shadows.isEmpty() && gradient == null || cell.empty() || !(height >= 1)
                 || height > ctx.pageRoom() * BoxPaint.MAX_PAGE_SHARE) {
@@ -1294,6 +1295,7 @@ final class Flow {
             return false;
         }
         List<Inline> drawn = new ArrayList<>(BoxPaint.shadows(shadows, x, 0, width, height, corner, ground));
+        ctx.drewShadows(drawn.size());
         if (pic != null) {
             pic.wrap = Picture.Wrap.NONE;
             pic.behind = true;

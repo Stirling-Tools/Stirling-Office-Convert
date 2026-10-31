@@ -821,6 +821,17 @@ class HtmlLayoutTest {
     }
 
     @Test
+    void manyShadowedBoxesKeepAllTheirText() throws IOException {
+        StringBuilder html = new StringBuilder("<html><body>");
+        for (int i = 0; i < 1500; i++) {
+            html.append("<div style=\"border-radius:12px;background:#fff;padding:8px;box-shadow:0 4px 30px #888,")
+                    .append("0 0 60px 10px #f00,2px 2px 40px blue,0 0 50px green\">Card").append(i).append("</div>");
+        }
+        String text = lay(html.append("</body></html>").toString()).text();
+        assertTrue(text.contains("Card0") && text.contains("Card1499"), text.substring(Math.max(0, text.length() - 80)));
+    }
+
+    @Test
     void gridItemsWithoutAHeightPaintTheirGradients() throws IOException {
         Laid l = lay("""
                 <html><head><style>.g{display:grid;grid-template-columns:1fr 1fr;gap:12px}
