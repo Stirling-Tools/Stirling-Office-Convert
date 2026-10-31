@@ -26,6 +26,9 @@ final class IconPictures {
 
     Picture picture(Glyph g, float advance) {
         IconShape icon = g.icon;
+        if (icon.unmapped() && !sink.showsPictures()) {
+            return null;
+        }
         float top = -g.ascent;
         float bottom = g.descent;
         float width = Math.max(Math.max(g.width, Math.min(advance, 2 * g.width)), 0.5f);
@@ -59,6 +62,9 @@ final class IconPictures {
             }
             Picture pic = new Picture(ref, width, height);
             pic.baselineShift = -bottom;
+            if (icon.unmapped()) {
+                pic.description = g.text;
+            }
             return pic;
         } catch (IOException | RuntimeException e) {
             return null;

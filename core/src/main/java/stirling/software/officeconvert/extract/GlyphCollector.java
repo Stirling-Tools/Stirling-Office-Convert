@@ -9,6 +9,7 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
 import java.util.HashMap;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.WeakHashMap;
@@ -120,6 +121,7 @@ final class GlyphCollector extends PDFStreamEngine {
     private int actualDepth;
     private int untracked;
     private List<RawGlyph> current = new ArrayList<>();
+    private final Map<Glyph, String> alternatives = new IdentityHashMap<>();
     private boolean inPage;
     private int seq;
     private int pageIndex;
@@ -437,9 +439,33 @@ final class GlyphCollector extends PDFStreamEngine {
         inPage = false;
         List<RawGlyph> glyphs = current;
         glyphs.removeIf(r -> r.glyph().text == HIDDEN);
+        settleAlternatives(glyphs);
         current = new ArrayList<>();
         nextIndex = pageIndex + 1;
         sink.accept(pageIndex, page, glyphs);
+    }
+
+    private void settleAlternatives(List<RawGlyph> glyphs) {
+        if (alternatives.isEmpty()) {
+            return;
+        }
+        List<Glyph> plain = new ArrayList<>(glyphs.size());
+        for (RawGlyph r : glyphs) {
+            plain.add(r.glyph());
+        }
+        for (int i = 0; i < glyphs.size(); i++) {
+            RawGlyph r = glyphs.get(i);
+            String alternative = alternatives.get(r.glyph());
+            if (alternative == null) {
+                continue;
+            }
+            String chosen = WordContext.choose(plain, i, alternative, alternatives);
+            if (!chosen.equals(r.glyph().text)) {
+                glyphs.set(i, new RawGlyph(r.glyph().withText(chosen), r.direction(), r.invisible(), r.originX(),
+                        r.originY()));
+            }
+        }
+        alternatives.clear();
     }
 
     private void blankPagesBefore(int index) throws IOException {
@@ -519,6 +545,11 @@ final class GlyphCollector extends PDFStreamEngine {
         }
         if (g.icon == null && unicode.equals(UnmappedGlyphs.STAND_IN) && codes != null && codes.length == 1) {
             g.icon = positions.unmapped.icon(pdFont, codes[0], tp.getTextMatrix(), rgb);
+        }
+        String alternative = codes != null && codes.length == 1
+                ? positions.unmapped.alternative(pdFont, codes[0], unicode) : null;
+        if (alternative != null) {
+            alternatives.put(g, alternative);
         }
         Matrix tm = tp.getTextMatrix();
         if (current.size() >= MAX_PAGE_GLYPHS) {

@@ -40,6 +40,8 @@ final class UnmappedGlyphs {
 
     static final String STAND_IN = "\uFFFC";
 
+    static final String ICON_KEY = "unmapped|";
+
     private static final float UNMAPPED_SHARE = 0.5f;
 
     private static final float READ_SHARE = 0.5f;
@@ -85,7 +87,15 @@ final class UnmappedGlyphs {
     private static final double MAX_ICON_POINTS = 300;
 
     private static final String[][] TIES = {{"-", "\u2013"}, {"\u2013", "\u2014"}, {"l", "I"},
-        {"(", "["}, {")", "]"}};
+        {"(", "["}, {")", "]"}, {"O", "0"}, {"l", "1"}};
+
+    private static final String[][] LOOKALIKES = {{"l", "I"}, {"O", "0"}, {"o", "0"}, {"l", "1"}, {"I", "1"}};
+
+    private static final float LOOKALIKE_MARGIN = 0.01f;
+
+    private static final float GUESS_MARGIN = 0.02f;
+
+    private static final float GUESS_LIMIT = 0.07f;
 
     private static final List<String> CJK_ORDERINGS = List.of("Japan1", "GB1", "CNS1", "Korea1");
 
@@ -153,7 +163,13 @@ final class UnmappedGlyphs {
             return null;
         }
         return new IconShape(outline, rgb,
-                "unmapped|" + shapes.id + "|" + code + "|" + Integer.toHexString(rgb) + "|" + Math.round(k * 4000));
+                ICON_KEY + shapes.id + "|" + code + "|" + Integer.toHexString(rgb) + "|" + Math.round(k * 4000));
+    }
+
+    String alternative(PDFont font, int code, String text) {
+        Shapes shapes = fonts.get(font.getCOSObject());
+        Read read = shapes == null ? null : shapes.reads.get(code);
+        return read == null || !read.text.equals(text) ? null : read.alternative;
     }
 
     float rise(PDFont font, int code, Matrix trm) {
@@ -328,7 +344,12 @@ final class UnmappedGlyphs {
     }
 
     private record Read(String text, GeneralPath outline, GlyphRef ref, float distance, float right, float base,
-            float em) {}
+            float em, String alternative) {
+
+        Read(String text, GeneralPath outline, GlyphRef ref, float distance, float right, float base, float em) {
+            this(text, outline, ref, distance, right, base, em, null);
+        }
+    }
 
     private record Ink(int code, GeneralPath outline, GlyphPrint print, float advance, List<Match> matches) {}
 
@@ -504,7 +525,8 @@ final class UnmappedGlyphs {
                 placed[option.index] = true;
                 taken.put(option.ref.text(), ink.print);
                 found.set(option.index, new Read(option.ref.text(), ink.outline, option.ref, option.distance,
-                        advance(ink.print, option.ref.print()), 0, 1));
+                        advance(ink.print, option.ref.print()), 0, 1,
+                        lookalike(ink, option.ref.text(), option.distance)));
             }
             for (int i = 0; i < inks.size(); i++) {
                 if (!placed[i] && found.get(i).ref != null) {
@@ -765,22 +787,75 @@ final class UnmappedGlyphs {
                     runner = r;
                 }
             }
-            if (best == null || bestD > ACCEPT) {
-                return unreadable(ink, bestD);
+            if (best == null) {
+                return unreadable(ink, bestD, null);
+            }
+            if (bestD > GUESS_LIMIT) {
+                return unreadable(ink, bestD, null);
+            }
+            if (bestD > ACCEPT) {
+                return unreadable(ink, bestD, other - bestD >= GUESS_MARGIN ? best.text() : letterOf(best, runner));
             }
             if (other - bestD < MARGIN) {
-                best = preferred(best, runner);
-                if (best == null) {
-                    return unreadable(ink, bestD);
+                GlyphRef chosen = preferred(best, runner);
+                if (chosen == null) {
+                    return unreadable(ink, bestD, letterOf(best, runner));
                 }
+                best = chosen;
             }
             return new Read(best.text(), ink.outline, best, bestD, advance(ink.print, best.print()),
-                    base(ink.print, best.print()), em(settled(ink.print, best.print())));
+                    base(ink.print, best.print()), em(settled(ink.print, best.print())),
+                    lookalike(ink, best.text(), bestD));
         }
 
         private Read unreadable(Ink ink, float distance) {
+            return unreadable(ink, distance, null);
+        }
+
+        private Read unreadable(Ink ink, float distance, String guess) {
             float[] rest = resting(ink.print);
-            return new Read(STAND_IN, ink.outline, null, distance, ink.print.right(), rest[0], rest[1]);
+            return new Read(STAND_IN, ink.outline, null, distance, ink.print.right(), rest[0], rest[1], guess);
+        }
+
+        private static String letterOf(GlyphRef best, GlyphRef runner) {
+            boolean a = letter(best.text());
+            boolean b = runner != null && letter(runner.text());
+            return a && !b ? best.text() : b && !a ? runner.text() : null;
+        }
+
+        private static boolean letter(String text) {
+            return text.length() == 1 && Character.isLetterOrDigit(text.charAt(0));
+        }
+
+        private String lookalike(Ink ink, String text, float distance) {
+            String found = null;
+            float nearest = distance + LOOKALIKE_MARGIN;
+            for (Match m : ink.matches) {
+                String other = m.ref.text();
+                if (!other.equals(text) && lookalikes(text, other)) {
+                    float d = m.shape + misplaced(ink.print, m.ref.print());
+                    if (d < nearest) {
+                        nearest = d;
+                        found = other;
+                    }
+                }
+            }
+            return found;
+        }
+
+        private static boolean lookalikes(String a, String b) {
+            if (a.length() != 1 || b.length() != 1) {
+                return false;
+            }
+            if (a.equalsIgnoreCase(b)) {
+                return true;
+            }
+            for (String[] pair : LOOKALIKES) {
+                if (pair[0].equals(a) && pair[1].equals(b) || pair[0].equals(b) && pair[1].equals(a)) {
+                    return true;
+                }
+            }
+            return false;
         }
 
         private static GlyphRef preferred(GlyphRef best, GlyphRef runner) {

@@ -65,6 +65,8 @@ class UnmappedFontTest {
 
     private static final int STAR = 200;
 
+    private static final String UNREADABLE = "\uFFFC";
+
     @TempDir Path dir;
 
     @Test
@@ -87,6 +89,7 @@ class UnmappedFontTest {
         String text = text(pdf);
         assertTrue(text.contains(LINE), text);
         assertFalse(text.contains(String.valueOf((char) STAR)), text);
+        assertTrue(text.contains(UNREADABLE), text);
         Path docx = dir.resolve("star.docx");
         PdfToDocx.convert(pdf, docx, PdfToDocx.Options.defaults());
         try (ZipFile zip = new ZipFile(docx.toFile())) {
@@ -140,6 +143,24 @@ class UnmappedFontTest {
         String text = text(pdf);
         assertTrue(text.contains(LINE), text);
         assertTrue(text.contains(SECOND), text);
+    }
+
+    @Test
+    void lookalikeLettersFollowTheirWord() throws Exception {
+        String caps = "ILLINOIS BILL 1990";
+        String lower = "lily will fill " + LINE;
+        Map<Character, Integer> codes = new LinkedHashMap<>();
+        int next = 0;
+        for (char c : (caps + lower + SECOND).toCharArray()) {
+            if (c != ' ' && !codes.containsKey(c)) {
+                codes.put(c, 40 + (next++ * 37) % 150);
+            }
+        }
+        Path pdf = dir.resolve("lookalikes.pdf");
+        writeType3(pdf, codes, false, false, false, caps + " " + SECOND, lower, Map.of('I', 'l'));
+        String text = text(pdf);
+        assertTrue(text.contains(caps), text);
+        assertTrue(text.contains(lower), text);
     }
 
     @Test
@@ -262,6 +283,11 @@ class UnmappedFontTest {
 
     private static void writeType3(Path pdf, Map<Character, Integer> codes, boolean bitmap, boolean star, boolean named)
             throws IOException {
+        writeType3(pdf, codes, bitmap, star, named, LINE, SECOND, Map.of());
+    }
+
+    private static void writeType3(Path pdf, Map<Character, Integer> codes, boolean bitmap, boolean star, boolean named,
+            String first, String second, Map<Character, Character> drawnAs) throws IOException {
         TrueTypeFont ttf;
         try (InputStream in = PDTrueTypeFont.class.getResourceAsStream(FONT)) {
             ttf = new TTFParser().parse(new RandomAccessReadBuffer(in));
@@ -276,7 +302,7 @@ class UnmappedFontTest {
                 widths.add(COSInteger.ZERO);
             }
             for (Map.Entry<Character, Integer> e : codes.entrySet()) {
-                int gid = cmap.getGlyphId(e.getKey());
+                int gid = cmap.getGlyphId(drawnAs.getOrDefault(e.getKey(), e.getKey()));
                 GeneralPath path = new GeneralPath(ttf.getGlyph().getGlyph(gid).getPath());
                 path.transform(AffineTransform.getScaleInstance(unit, unit));
                 int width = Math.round(ttf.getAdvanceWidth(gid) * unit);
@@ -313,7 +339,7 @@ class UnmappedFontTest {
             resources.put(COSName.getPDFName("F1"), font);
             page.setResources(resources);
             StringBuilder content = new StringBuilder("BT /F1 14 Tf 72 720 Td ");
-            content.append(show(LINE, codes, star)).append(" 0 -24 Td ").append(show(SECOND, codes, false)).append(" ET");
+            content.append(show(first, codes, star)).append(" 0 -24 Td ").append(show(second, codes, false)).append(" ET");
             PDStream stream = new PDStream(doc);
             try (OutputStream out = stream.createOutputStream()) {
                 out.write(content.toString().getBytes(StandardCharsets.US_ASCII));
