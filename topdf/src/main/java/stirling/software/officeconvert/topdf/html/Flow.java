@@ -4,7 +4,6 @@ import java.io.IOException;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.Deque;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -18,7 +17,6 @@ import org.jsoup.nodes.TextNode;
 import stirling.software.officeconvert.memory.Admission;
 import stirling.software.officeconvert.model.Block;
 import stirling.software.officeconvert.model.Inline;
-import stirling.software.officeconvert.model.Numbering;
 import stirling.software.officeconvert.model.Paragraph;
 import stirling.software.officeconvert.model.Picture;
 import stirling.software.officeconvert.model.RunStyle;
@@ -44,8 +42,6 @@ final class Flow {
             return new Frame(left + addLeft, right + addRight, w, fill >= 0 ? fill : shading);
         }
     }
-
-    private record ListLevel(Numbering.Instance list, int level, boolean bullets) {}
 
     static final int MAX_DEPTH = 200;
 
@@ -73,7 +69,7 @@ final class Flow {
     private final Out out;
     private final boolean paragraphsOnly;
     private final boolean inCell;
-    private final Deque<ListLevel> lists = new ArrayDeque<>();
+    private final HtmlLists lists;
     private Paragraph para;
     private Look blockLook;
     private Frame blockFrame;
@@ -126,6 +122,7 @@ final class Flow {
         this.out = out;
         this.inCell = inCell;
         this.paragraphsOnly = paragraphsOnly;
+        this.lists = new HtmlLists(ctx);
     }
 
     void root(Element body, Look look, Frame frame) throws IOException {
@@ -660,7 +657,7 @@ final class Flow {
         float em = look.size;
         float top = BoxCss.length(d.get("margin-top"), em, frame.width());
         float bottom = BoxCss.length(d.get("margin-bottom"), em, frame.width());
-        if ((tag.equals("ul") || tag.equals("ol")) && !lists.isEmpty()) {
+        if ((tag.equals("ul") || tag.equals("ol")) && lists.nested()) {
             top = 0;
             bottom = 0;
         }
@@ -739,10 +736,10 @@ final class Flow {
         }
         boolean list = tag.equals("ul") || tag.equals("ol") || tag.equals("menu");
         if (list) {
-            openList(e, tag, look);
+            lists.open(e, tag, look);
         }
         if (tag.equals("li")) {
-            pendingMarker = marker(e, look);
+            pendingMarker = lists.marker(look);
         }
         String outerFloat = floatOf;
         Element only = e.children().size() == 1 ? e.child(0) : null;
@@ -779,7 +776,7 @@ final class Flow {
             clipLeft = outerClip == Float.MAX_VALUE ? outerClip : outerClip - (inside - clipLeft);
         }
         if (list) {
-            lists.pop();
+            lists.close();
         }
         if (tag.equals("li")) {
             pendingMarker = null;
@@ -1779,75 +1776,6 @@ final class Flow {
         blockFrame = frame;
         element(item, look, frame, depth);
         flush();
-    }
-
-    private void openList(Element e, String tag, Look look) {
-        boolean top = lists.isEmpty();
-        Numbering.Instance inst = top ? ctx.numbering().create() : lists.peek().list();
-        int level = top ? 0 : Math.min(8, lists.peek().level() + 1);
-        String type = listType(e, tag, look);
-        boolean bullets = !type.matches("decimal|decimal-leading-zero|lower-alpha|lower-latin|upper-alpha|upper-latin"
-                + "|lower-roman|upper-roman|1|a|A|i|I");
-        Numbering.Level wanted = level(type, level);
-        Numbering.Level defined = inst.definition.levels[level];
-        if (defined != null && (!defined.format().equals(wanted.format()) || !defined.text().equals(wanted.text()))) {
-            Numbering.Instance own = ctx.numbering().create();
-            System.arraycopy(inst.definition.levels, 0, own.definition.levels, 0, level);
-            inst = own;
-        }
-        if (inst.definition.levels[level] == null) {
-            inst.definition.levels[level] = wanted;
-            if (tag.equals("ol") && e.hasAttr("start")) {
-                try {
-                    inst.starts[level] = Math.max(0, Math.min(32_767, Integer.parseInt(e.attr("start").strip())));
-                } catch (NumberFormatException ignored) {
-                    // the list starts at 1
-                }
-            }
-        }
-        lists.push(new ListLevel(inst, level, bullets));
-    }
-
-    private String listType(Element e, String tag, Look look) {
-        String attr = e.attr("type").strip();
-        if (!attr.isEmpty()) {
-            return attr;
-        }
-        if (look.listStyle != null) {
-            return look.listStyle;
-        }
-        if (tag.equals("ol")) {
-            return "decimal";
-        }
-        return switch (lists.size() % 3) {
-            case 0 -> "disc";
-            case 1 -> "circle";
-            default -> "square";
-        };
-    }
-
-    private static Numbering.Level level(String type, int level) {
-        String number = "%" + (level + 1) + ".";
-        return switch (type) {
-            case "decimal", "1" -> new Numbering.Level("decimal", number, null, 36f * (level + 1), 18f);
-            case "decimal-leading-zero" -> new Numbering.Level("decimalZero", number, null, 36f * (level + 1), 18f);
-            case "lower-alpha", "lower-latin", "a" -> new Numbering.Level("lowerLetter", number, null, 36f * (level + 1), 18f);
-            case "upper-alpha", "upper-latin", "A" -> new Numbering.Level("upperLetter", number, null, 36f * (level + 1), 18f);
-            case "lower-roman", "i" -> new Numbering.Level("lowerRoman", number, null, 36f * (level + 1), 18f);
-            case "upper-roman", "I" -> new Numbering.Level("upperRoman", number, null, 36f * (level + 1), 18f);
-            case "circle" -> new Numbering.Level("bullet", "\u25e6", null, 36f * (level + 1), 18f);
-            case "square" -> new Numbering.Level("bullet", "\u25aa", null, 36f * (level + 1), 18f);
-            case "none" -> new Numbering.Level("none", "", null, 36f * (level + 1), 18f);
-            default -> new Numbering.Level("bullet", "\u2022", null, 36f * (level + 1), 18f);
-        };
-    }
-
-    private Paragraph.ListRef marker(Element li, Look look) {
-        ListLevel l = lists.peek();
-        if (l == null || "none".equals(look.listStyle)) {
-            return null;
-        }
-        return new Paragraph.ListRef(l.list().numId, l.level());
     }
 
     private void text(String raw, Look look) throws IOException {
