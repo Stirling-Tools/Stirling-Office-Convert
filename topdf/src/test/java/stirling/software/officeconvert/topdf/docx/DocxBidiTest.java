@@ -87,6 +87,7 @@ class DocxBidiTest {
                 + "</w:t></w:r></w:p>";
         DocxDoc.Rendered r = DocxDoc.render(dir, "scaledarabic", new DocxDoc().body(body).bytes());
         Map<Integer, List<TextPosition>> lines = new TreeMap<>();
+        String extracted;
         try (PDDocument d = r.open()) {
             new PDFTextStripper() {
                 @Override
@@ -96,6 +97,9 @@ class DocxBidiTest {
                     }
                 }
             }.getText(d);
+            PDFTextStripper sorted = new PDFTextStripper();
+            sorted.setSortByPosition(true);
+            extracted = sorted.getText(d).strip();
         }
         assertEquals(2, lines.size(), lines.keySet().toString());
         List<List<TextPosition>> drawn = new ArrayList<>(lines.values());
@@ -108,9 +112,7 @@ class DocxBidiTest {
             }
         }
         assertEquals(word, text.reverse().toString());
-        List<TextPosition> plain = drawn.get(1);
-        assertTrue(plain.get(0).getXDirAdj() > plain.get(plain.size() - 1).getXDirAdj(),
-                "unscaled text keeps its reading order: " + plain);
+        assertEquals(List.of(word, word), extracted.lines().map(String::strip).toList());
     }
 
     @Test
