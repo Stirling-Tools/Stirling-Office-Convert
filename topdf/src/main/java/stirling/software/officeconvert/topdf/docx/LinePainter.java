@@ -3,8 +3,12 @@ package stirling.software.officeconvert.topdf.docx;
 import java.awt.Color;
 import java.util.List;
 
+import stirling.software.officeconvert.topdf.font.ColorEmoji;
 import stirling.software.officeconvert.topdf.font.FontFace;
 import stirling.software.officeconvert.topdf.font.FontMetrics;
+import stirling.software.officeconvert.topdf.font.GlyphRun;
+import stirling.software.officeconvert.topdf.io.DecodedPicture;
+import stirling.software.officeconvert.topdf.pdf.Crop;
 import stirling.software.officeconvert.topdf.pdf.Fill;
 import stirling.software.officeconvert.topdf.pdf.Stroke;
 import stirling.software.officeconvert.topdf.pdf.TextStyle;
@@ -239,7 +243,11 @@ final class LinePainter {
             runLook = null;
             if (it.kind == Item.Kind.TEXT && it.shaped && s.to > s.from) {
                 String t = it.text.substring(s.from, s.to);
-                ops.add(new Op.Glyphs(s.x, base - it.look.rise(), it.look.face().shape(t, it.rtl), it.look.style()));
+                if (it.emoji != null) {
+                    emoji(ops, ctx, it, t, s.x, base - it.look.rise());
+                } else {
+                    ops.add(new Op.Glyphs(s.x, base - it.look.rise(), it.look.face().shape(t, it.rtl), it.look.style()));
+                }
             } else if (it.kind == Item.Kind.TAB && s.tab != null && s.tab.leader() != 0 && s.w > 2) {
                 leader(ops, s, base);
             } else if (it.kind == Item.Kind.BREAK && s.w > 0) {
@@ -290,6 +298,39 @@ final class LinePainter {
             } else if (z.kind == Item.Kind.NOTE && notes != null && z.note != null && !notes.contains(z.note)) {
                 notes.add(z.note);
             }
+        }
+    }
+
+    private static void emoji(List<Op> ops, Ctx ctx, Item it, String text, float x, float baseline) {
+        float size = it.look.size();
+        float scale = it.look.style().horizontalScale() / 100f;
+        float spacing = it.look.style().charSpacing();
+        float pen = x;
+        for (int i = 0; i < text.length(); ) {
+            int end = ColorEmoji.clusterEnd(text, i);
+            int[] glyphs = end <= i ? null : it.emoji.glyphs(text.substring(i, end));
+            if (glyphs == null) {
+                end = i + Character.charCount(text.codePointAt(i));
+                glyphs = new int[0];
+            }
+            for (int g : glyphs) {
+                float own = it.emoji.advance(g);
+                float step = it.emojiAdvance > 0 ? it.emojiAdvance : own;
+                ColorEmoji.Bitmap b = it.emoji.bitmap(g);
+                DecodedPicture pic = b == null ? null : ctx.emoji(b);
+                if (pic != null) {
+                    ops.add(new Op.Image(pic, pen + (b.left() + (step - own) / 2) * size * scale,
+                            baseline - b.top() * size, b.width() * size * scale, b.height() * size, Crop.NONE, 0,
+                            false, false, 1));
+                }
+                pen += step * size * scale;
+            }
+            pen += spacing * text.codePointCount(i, end);
+            i = end;
+        }
+        GlyphRun carrier = ColorEmoji.carrier(it.look.face(), text, pen - x, size);
+        if (carrier != null) {
+            ops.add(new Op.HiddenGlyphs(x, baseline, carrier, it.look.style().horizontalScale(100)));
         }
     }
 

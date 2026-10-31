@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.Map;
 
 import stirling.software.officeconvert.topdf.RenderJob;
+import stirling.software.officeconvert.topdf.font.ColorEmoji;
 import stirling.software.officeconvert.topdf.io.DecodedPicture;
 import stirling.software.officeconvert.topdf.io.PictureDecoder;
 
@@ -28,6 +29,8 @@ final class Ctx {
             return null;
         }
     }
+
+    private static final int MAX_EMOJI = 1_000;
 
     static final PageNumbers NO_NUMBERS = new PageNumbers() {
         @Override
@@ -60,6 +63,8 @@ final class Ctx {
     private final Map<Chart, Map<Long, List<Op>>> charts = new IdentityHashMap<>();
 
     private final Map<String, Boolean> failedPictures = new HashMap<>();
+
+    private final Map<Integer, DecodedPicture> emoji = new HashMap<>();
 
     private final Map<Integer, String> footnoteNumbers = new HashMap<>();
 
@@ -137,6 +142,44 @@ final class Ctx {
             job.warn("A picture could not be drawn (" + part + "): " + e.getMessage());
             return null;
         }
+    }
+
+    boolean emojiAllowed(ColorEmoji colour, String text) {
+        for (int i = 0; i < text.length(); ) {
+            int end = ColorEmoji.clusterEnd(text, i);
+            int[] glyphs = end <= i ? null : colour.glyphs(text.substring(i, end));
+            if (glyphs == null) {
+                return false;
+            }
+            for (int g : glyphs) {
+                if (!emoji.containsKey(g)) {
+                    if (emoji.size() >= MAX_EMOJI) {
+                        return false;
+                    }
+                    emoji.put(g, null);
+                }
+            }
+            i = end;
+        }
+        return true;
+    }
+
+    DecodedPicture emoji(ColorEmoji.Bitmap bitmap) {
+        DecodedPicture p = emoji.get(bitmap.glyph());
+        if (p != null || !emoji.containsKey(bitmap.glyph())) {
+            return p;
+        }
+        try {
+            p = PictureDecoder.decode(job.document(), bitmap.png());
+        } catch (IOException | RuntimeException e) {
+            if (e instanceof RenderJob.PageLimitReached r) {
+                throw r;
+            }
+            emoji.remove(bitmap.glyph());
+            return null;
+        }
+        emoji.put(bitmap.glyph(), p);
+        return p;
     }
 
     String noteNumber(Inline.NoteRef ref) {

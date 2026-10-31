@@ -1,13 +1,19 @@
 package stirling.software.officeconvert.topdf.testing;
 
+import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
+import java.util.Map;
 import java.util.TreeMap;
+
+import javax.imageio.ImageIO;
 
 import org.apache.fontbox.ttf.TTFParser;
 import org.apache.fontbox.ttf.TrueTypeFont;
@@ -125,7 +131,7 @@ public final class TestFonts {
         return b.array();
     }
 
-    private static byte[] replaced(byte[] ttf, String table, byte[] data) {
+    public static byte[] replaced(byte[] ttf, String table, byte[] data) {
         ByteBuffer in = ByteBuffer.wrap(ttf);
         int tables = in.getShort(4) & 0xFFFF;
         for (int i = 0; i < tables; i++) {
@@ -188,5 +194,108 @@ public final class TestFonts {
         all.writeBytes(head.array());
         all.writeBytes(strings.toByteArray());
         return all.toByteArray();
+    }
+
+    private static byte[] png(int rgb) throws IOException {
+        BufferedImage img = new BufferedImage(136, 128, BufferedImage.TYPE_INT_ARGB);
+        for (int y = 0; y < 128; y++) {
+            for (int x = 0; x < 136; x++) {
+                img.setRGB(x, y, 0xFF000000 | rgb);
+            }
+        }
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        ImageIO.write(img, "png", out);
+        return out.toByteArray();
+    }
+
+    private static byte[] bytes(ByteBuffer b) {
+        byte[] out = new byte[b.position()];
+        b.flip().get(out);
+        return out;
+    }
+
+    public static byte[] colourEmoji(int... colours) throws IOException {
+        int glyphs = colours.length + 1;
+        Map<String, byte[]> t = new TreeMap<>();
+        t.put("head", bytes(ByteBuffer.allocate(54).putInt(0x00010000).putInt(0x00010000).putInt(0)
+                .putInt(0x5F0F3CF5).putShort((short) 0).putShort((short) 2048).putLong(0).putLong(0)
+                .putShort((short) 0).putShort((short) -500).putShort((short) 2550).putShort((short) 1900)
+                .putShort((short) 0).putShort((short) 8).putShort((short) 2).putShort((short) 0)
+                .putShort((short) 0)));
+        t.put("hhea", bytes(ByteBuffer.allocate(36).putInt(0x00010000).putShort((short) 1900)
+                .putShort((short) -500).putShort((short) 0).putShort((short) 2550).put(new byte[22])
+                .putShort((short) glyphs)));
+        t.put("maxp", bytes(ByteBuffer.allocate(6).putInt(0x00005000).putShort((short) glyphs)));
+        ByteBuffer hmtx = ByteBuffer.allocate(4 * glyphs);
+        for (int g = 0; g < glyphs; g++) {
+            hmtx.putShort((short) 2550).putShort((short) 0);
+        }
+        t.put("hmtx", bytes(hmtx));
+        int segs = colours.length + 1;
+        ByteBuffer cmap = ByteBuffer.allocate(12 + 16 + 8 * segs);
+        cmap.putShort((short) 0).putShort((short) 1).putShort((short) 3).putShort((short) 1).putInt(12);
+        cmap.putShort((short) 4).putShort((short) (16 + 8 * segs)).putShort((short) 0).putShort((short) (2 * segs))
+                .putShort((short) 2).putShort((short) 0).putShort((short) 0);
+        int[] codes = {0x2705, 0x2B50};
+        for (int i = 0; i < colours.length; i++) {
+            cmap.putShort((short) codes[i]);
+        }
+        cmap.putShort((short) 0xFFFF).putShort((short) 0);
+        for (int i = 0; i < colours.length; i++) {
+            cmap.putShort((short) codes[i]);
+        }
+        cmap.putShort((short) 0xFFFF);
+        for (int i = 0; i < colours.length; i++) {
+            cmap.putShort((short) (i + 1 - codes[i]));
+        }
+        cmap.putShort((short) 1);
+        for (int i = 0; i < segs; i++) {
+            cmap.putShort((short) 0);
+        }
+        t.put("cmap", bytes(cmap));
+        byte[] family = "Test Color Emoji".getBytes(StandardCharsets.UTF_16BE);
+        ByteBuffer name = ByteBuffer.allocate(6 + 12 * 3 + family.length);
+        name.putShort((short) 0).putShort((short) 3).putShort((short) (6 + 12 * 3));
+        for (int id : new int[] {1, 4, 6}) {
+            name.putShort((short) 3).putShort((short) 1).putShort((short) 0x409).putShort((short) id)
+                    .putShort((short) family.length).putShort((short) 0);
+        }
+        t.put("name", bytes(name.put(family)));
+        t.put("post", bytes(ByteBuffer.allocate(32).putInt(0x00030000)));
+        ByteArrayOutputStream cbdt = new ByteArrayOutputStream();
+        cbdt.write(new byte[] {0, 3, 0, 0});
+        List<Integer> offsets = new ArrayList<>();
+        for (int c : colours) {
+            offsets.add(cbdt.size() - 4);
+            byte[] p = png(c);
+            cbdt.write(new byte[] {(byte) 128, (byte) 136, 0, 101, (byte) 136});
+            cbdt.write(ByteBuffer.allocate(4).putInt(p.length).array());
+            cbdt.write(p);
+        }
+        offsets.add(cbdt.size() - 4);
+        t.put("CBDT", cbdt.toByteArray());
+        ByteBuffer cblc = ByteBuffer.allocate(8 + 48 + 8 + 8 + 4 * offsets.size());
+        cblc.putInt(0x00030000).putInt(1).putInt(56).putInt(16 + 4 * offsets.size()).putInt(1).putInt(0)
+                .put(new byte[24]).putShort((short) 1).putShort((short) colours.length).put((byte) 109)
+                .put((byte) 109).put((byte) 32).put((byte) 1);
+        cblc.putShort((short) 1).putShort((short) colours.length).putInt(8);
+        cblc.putShort((short) 1).putShort((short) 17).putInt(4);
+        offsets.forEach(cblc::putInt);
+        t.put("CBLC", bytes(cblc));
+        int n = t.size();
+        int at = 12 + 16 * n;
+        ByteArrayOutputStream font = new ByteArrayOutputStream();
+        ByteBuffer dir = ByteBuffer.allocate(12 + 16 * n).putInt(0x00010000).putShort((short) n)
+                .putShort((short) 0).putShort((short) 0).putShort((short) 0);
+        ByteArrayOutputStream body = new ByteArrayOutputStream();
+        for (Map.Entry<String, byte[]> e : t.entrySet()) {
+            dir.put(e.getKey().getBytes(StandardCharsets.ISO_8859_1)).putInt(0).putInt(at + body.size())
+                    .putInt(e.getValue().length);
+            body.write(e.getValue());
+            body.write(new byte[(4 - e.getValue().length % 4) % 4]);
+        }
+        font.write(dir.array());
+        font.write(body.toByteArray());
+        return font.toByteArray();
     }
 }

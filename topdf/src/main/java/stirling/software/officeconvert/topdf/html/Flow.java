@@ -3,6 +3,7 @@ package stirling.software.officeconvert.topdf.html;
 import java.io.IOException;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Deque;
 import java.util.HashMap;
 import java.util.IdentityHashMap;
@@ -1043,7 +1044,8 @@ final class Flow {
         boolean painted = fill >= 0 && fill != 0xFFFFFF && fill != blockFrame.shading()
                 || Backgrounds.url(d) != null && Backgrounds.drawable(d, ctx.images());
         boolean bar = border(d, "left") > 0 || border(d, "right") > 0;
-        return (painted || edges >= 3 || bar) && Layout.text(e, BOX_TEXT).length() < BOX_TEXT;
+        boolean shadow = !BoxPaint.shadows(d.get("box-shadow"), Look.ROOT_SIZE, 0).isEmpty();
+        return (painted || edges >= 3 || bar || shadow) && Layout.text(e, BOX_TEXT).length() < BOX_TEXT;
     }
 
     private float[] narrowed(Element e, Map<String, String> d, Look look, float room) {
@@ -1201,13 +1203,20 @@ final class Flow {
                 inner.spacer(padBottom, new Frame(0, 0, width, -1));
             }
         }
+        boolean painted = false;
         if (!cell.empty() && tall != null && tall >= 1) {
             boolean borderBox = "border-box".equalsIgnoreCase(d.getOrDefault("box-sizing", "").strip());
             float high = Math.min(ctx.pageRoom(),
                     tall + (borderBox ? 0 : Math.max(0, padding(d.get("padding-top"), em, frame.width())) + padBottom));
             if (gradient(cell, d.get("background-gradient"), width, high, padLeft, corner(d, look, width, high), look)) {
                 row.height = high;
+                painted = true;
             }
+        }
+        if (!painted && behind.isEmpty() && row.cells.isEmpty()
+                && decorate(cell, d, look, -padLeft, width, drawnHeight, frame.shading())) {
+            row.splits = false;
+            row.height = Math.max(row.height, Math.min(drawnHeight, ctx.pageRoom()));
         }
         t.columnWidths.add(width);
         t.indent = frame.left() + marginLeft;
@@ -1255,17 +1264,77 @@ final class Flow {
     }
 
     private static float corner(Map<String, String> d, Look look, float width, float height) {
-        List<String> t = Css.tokens(d.getOrDefault("border-radius", ""));
-        Float r = t.isEmpty() ? null : Css.length(t.getFirst(), look.size, Math.min(width, height));
-        return r == null || r < 0.5f ? 0 : Math.min(r, Math.min(width, height) / 2);
+        return BoxPaint.corner(d, look.size, width, height);
     }
 
-    private void itemGradient(Table.Row row, Table.Cell cell, Element item, Look look, float width, float margin)
+    private boolean decorate(Table.Cell cell, Map<String, String> d, Look look, float x, float width, float height,
+            int backdrop) throws IOException {
+        float corner = corner(d, look, width, height);
+        List<BoxPaint.Shadow> shadows = ctx.shadowsLeft() ? BoxPaint.shadows(d.get("box-shadow"), look.size, look.color)
+                : List.of();
+        Gradient gradient = Gradient.parse(d.get("background-gradient"));
+        if (corner <= 0 && shadows.isEmpty() && gradient == null || cell.empty() || !(height >= 1)
+                || height > ctx.pageRoom() * BoxPaint.MAX_PAGE_SHARE) {
+            return false;
+        }
+        Table.Border edge = BoxPaint.even(cell);
+        if (corner > 0 && edge == null && BoxPaint.bordered(cell)) {
+            corner = 0;
+        }
+        Picture pic = gradient == null ? null : ctx.images().gradient(gradient, width, height, corner);
+        if (pic == null && corner <= 0 && shadows.isEmpty()) {
+            return false;
+        }
+        int fill = cell.shading;
+        int ground = backdrop >= 0 ? backdrop : ctx.canvas();
+        boolean stroked = pic == null && corner > 0 && edge != null;
+        Integer own = Css.color(d.get("background-color"));
+        int cover = fill >= 0 ? fill : own != null && own >= 0 ? own : shadows.isEmpty() ? -1
+                : ground >= 0 ? ground : 0xFFFFFF;
+        if (pic == null && cover < 0 && !stroked) {
+            return false;
+        }
+        List<Inline> drawn = new ArrayList<>(BoxPaint.shadows(shadows, x, 0, width, height, corner, ground));
+        ctx.drewShadows(drawn.size());
+        if (pic != null) {
+            pic.wrap = Picture.Wrap.NONE;
+            pic.behind = true;
+            pic.x = x;
+            pic.y = 0;
+            drawn.add(new Inline.Image(pic));
+        } else {
+            float inset = stroked ? edge.width() / 2 : 0;
+            drawn.add(new Inline.Shape(x + inset, inset, width - 2 * inset, height - 2 * inset, cover,
+                    stroked ? edge.rgb() : -1, stroked ? edge.width() : 0, corner > 0, false, true, 0,
+                    Math.max(0, corner - inset)));
+            if (stroked) {
+                cell.top = Table.Border.NONE;
+                cell.bottom = Table.Border.NONE;
+                cell.left = Table.Border.NONE;
+                cell.right = Table.Border.NONE;
+            }
+        }
+        if (cell.blocks().getFirst() instanceof Paragraph first) {
+            first.inlines.addAll(0, drawn);
+        } else {
+            cell.tables.replaceAll(n -> new Table.Nested(n.before() + 1, n.table()));
+            cell.paragraphs.addFirst(anchorParagraph(drawn, 0));
+        }
+        cell.shading = -1;
+        for (Paragraph p : cell.paragraphs) {
+            if (p.shading == fill) {
+                p.shading = -1;
+            }
+        }
+        return true;
+    }
+
+    private boolean itemGradient(Table.Row row, Table.Cell cell, Element item, Look look, float width, float margin)
             throws IOException {
         Map<String, String> d = ctx.declared(item, look);
         Float tall = boxLength(d.get("height"), look, 0);
         if (tall == null || tall < 1 || cell.empty() || Gradient.parse(d.get("background-gradient")) == null) {
-            return;
+            return false;
         }
         boolean borderBox = "border-box".equalsIgnoreCase(d.getOrDefault("box-sizing", "").strip());
         float high = Math.min(ctx.pageRoom(), tall + (borderBox ? 0
@@ -1279,7 +1348,9 @@ final class Flow {
                 }
             }
             row.height = Math.max(row.height, high);
+            return true;
         }
+        return false;
     }
 
     private static Paragraph bar(float height, Look look) {
@@ -1602,11 +1673,16 @@ final class Flow {
                 gapColumns(t, gutter);
             }
             for (Table.Row row : t.rows) {
+                Set<Table.Cell> painted = Collections.newSetFromMap(new IdentityHashMap<>());
                 for (int c = 0; c < row.cells.size() && c < t.columnWidths.size(); c++) {
                     Element item = placed.get(row.cells.get(c));
-                    if (item != null) {
-                        itemGradient(row, row.cells.get(c), item, look, t.columnWidths.get(c), t.cellMarginLeft);
+                    if (item != null && itemGradient(row, row.cells.get(c), item, look, t.columnWidths.get(c),
+                            t.cellMarginLeft)) {
+                        painted.add(row.cells.get(c));
                     }
+                }
+                if (t.columnWidths.size() >= 2) {
+                    decorate(row, t, placed, painted, look, frame);
                 }
             }
         }
@@ -1633,6 +1709,76 @@ final class Flow {
         breakBefore(t, pendingBreak, frame);
         ctx.count();
         emit(t);
+    }
+
+    private void decorate(Table.Row row, Table t, Map<Table.Cell, Element> placed, Set<Table.Cell> painted, Look look,
+            Frame frame) throws IOException {
+        int columns = Math.min(row.cells.size(), t.columnWidths.size());
+        List<Map<String, String>> styles = new ArrayList<>(Collections.nCopies(columns, null));
+        boolean wanted = false;
+        for (int c = 0; c < columns; c++) {
+            Table.Cell cell = row.cells.get(c);
+            Element item = placed.get(cell);
+            if (item == null || painted.contains(cell)) {
+                continue;
+            }
+            Map<String, String> d = ctx.declared(item, look);
+            Map<String, String> box = framedChild(item, d, look);
+            d = box != null ? box : d;
+            styles.set(c, d);
+            wanted |= d.containsKey("border-radius") || d.containsKey("box-shadow")
+                    || d.containsKey("background-gradient");
+        }
+        if (!wanted) {
+            return;
+        }
+        float tallest = row.height;
+        for (int c = 0; c < columns; c++) {
+            Table.Cell cell = row.cells.get(c);
+            float w = t.columnWidths.get(c) - t.cellMarginLeft - t.cellMarginRight;
+            tallest = Math.max(tallest, Measure.height(cell.blocks(), w) + spaceAfter(cell.blocks())
+                    + cell.top.width() + cell.bottom.width());
+        }
+        boolean any = false;
+        for (int c = 0; c < columns; c++) {
+            Table.Cell cell = row.cells.get(c);
+            Map<String, String> d = styles.get(c);
+            if (d == null) {
+                continue;
+            }
+            boolean shadowEdge = cell.top.equals(new Table.Border(0.5f, SHADOW_EDGE)) && cell.top.equals(cell.bottom)
+                    && cell.top.equals(cell.left) && cell.top.equals(cell.right);
+            if (shadowEdge && !BoxPaint.shadows(d.get("box-shadow"), look.size, look.color).isEmpty()) {
+                cell.top = Table.Border.NONE;
+                cell.bottom = Table.Border.NONE;
+                cell.left = Table.Border.NONE;
+                cell.right = Table.Border.NONE;
+            }
+            float w = t.columnWidths.get(c) - t.cellMarginLeft - t.cellMarginRight;
+            if (decorate(cell, d, look, 0, w, tallest, frame.shading())) {
+                any = true;
+            } else if (shadowEdge) {
+                Table.Border edge = new Table.Border(0.5f, SHADOW_EDGE);
+                cell.top = edge;
+                cell.bottom = edge;
+                cell.left = edge;
+                cell.right = edge;
+            }
+        }
+        if (any) {
+            row.splits = false;
+            row.height = Math.max(row.height, tallest);
+        }
+    }
+
+    private static float spaceAfter(List<Block> blocks) {
+        float total = 0;
+        for (Block b : blocks) {
+            if (b instanceof Paragraph p) {
+                total += Math.max(0, p.spaceAfter);
+            }
+        }
+        return total;
     }
 
     private static void gapColumns(Table t, float gap) {

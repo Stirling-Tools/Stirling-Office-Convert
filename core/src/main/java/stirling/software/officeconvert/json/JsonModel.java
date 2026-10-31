@@ -316,7 +316,7 @@ public final class JsonModel {
             case "shape" -> new Inline.Shape(in.length("x"), in.length("y"), in.num("width", 0, 0, JsonIn.MAX_LENGTH),
                     in.num("height", 0, 0, JsonIn.MAX_LENGTH), in.color("fill", -1), in.color("line", -1),
                     in.num("lineWidth", 0, 0, 100), in.flag("rounded"), in.flag("ellipse"), in.flag("fromParagraph"),
-                    in.integer("z", 0, 0, 0x1E000000));
+                    in.integer("z", 0, 0, 0x1E000000), in.num("radius", 0, 0, JsonIn.MAX_LENGTH));
             default -> throw new IOException("Unknown paragraph content type \"" + type + "\"");
         };
     }

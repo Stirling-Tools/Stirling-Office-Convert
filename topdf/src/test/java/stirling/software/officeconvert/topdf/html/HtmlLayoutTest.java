@@ -25,6 +25,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import stirling.software.officeconvert.topdf.OfficeToPdf;
+import stirling.software.officeconvert.topdf.font.FontSet;
+import stirling.software.officeconvert.topdf.testing.TestFonts;
 
 class HtmlLayoutTest {
 
@@ -42,9 +44,13 @@ class HtmlLayoutTest {
     }
 
     Laid lay(String html) throws IOException {
+        return lay(html, OfficeToPdf.Options.defaults());
+    }
+
+    Laid lay(String html, OfficeToPdf.Options options) throws IOException {
         Path in = Files.writeString(dir.resolve("page.html"), html);
         Path out = dir.resolve("page.pdf");
-        OfficeToPdf.convert(in, out, OfficeToPdf.Options.defaults().timeout(Duration.ofMinutes(2)));
+        OfficeToPdf.convert(in, out, options.timeout(Duration.ofMinutes(2)));
         try (PDDocument doc = Loader.loadPDF(out.toFile())) {
             List<Word> words = new ArrayList<>();
             PDFTextStripper stripper = new PDFTextStripper() {
@@ -653,6 +659,9 @@ class HtmlLayoutTest {
         var own = HtmlDocument.page(Map.of(HtmlDocument.BOOK_PAGE, "1", "margin-left", "50pt"));
         assertEquals(50f, own.marginLeft);
         assertEquals(HtmlDocument.PAGE_MARGIN, HtmlDocument.page(Map.of()).marginTop);
+        var sized = HtmlDocument.page(Map.of(HtmlDocument.BOOK_PAGE, "1", "size", "A5"));
+        assertEquals(HtmlDocument.COVER_MARGIN, sized.marginTop);
+        assertEquals(HtmlDocument.COVER_MARGIN, sized.marginLeft);
     }
 
     @Test
@@ -790,5 +799,101 @@ class HtmlLayoutTest {
         assertEquals(18, l.word("LineTwo").top() - l.word("LineOne").top(), 0.5f);
         assertEquals(18, l.word("LineThree").top() - l.word("LineTwo").top(), 0.5f);
         assertEquals(18 + 36, l.word("After").top() - l.word("LineThree").top(), 1f);
+    }
+
+    private static int[] box(BufferedImage page, int rgb) {
+        int[] b = {Integer.MAX_VALUE, Integer.MAX_VALUE, -1, -1};
+        for (int y = 0; y < page.getHeight(); y++) {
+            for (int x = 0; x < page.getWidth(); x++) {
+                if ((page.getRGB(x, y) & 0xFFFFFF) == rgb) {
+                    b[0] = Math.min(b[0], x);
+                    b[1] = Math.min(b[1], y);
+                    b[2] = Math.max(b[2], x);
+                    b[3] = Math.max(b[3], y);
+                }
+            }
+        }
+        assertTrue(b[2] > b[0] && b[3] > b[1], "no " + Integer.toHexString(rgb) + " box");
+        return b;
+    }
+
+    @Test
+    void roundedBoxesHaveRoundCorners() throws IOException {
+        for (String layout : new String[] {"", "display:grid;grid-template-columns:1fr 1fr;gap:12px"}) {
+            Laid l = lay("<html><body><div style=\"" + layout + "\"><div style=\"background:#2050c0;color:#fff;"
+                    + "padding:24px;border-radius:24px\"><p>Card</p><p>Second line</p></div><div>Beside</div></div>"
+                    + "</body></html>");
+            int[] b = box(l.first(), 0x2050c0);
+            assertTrue((l.first().getRGB(b[0], b[1]) & 0xFFFFFF) != 0x2050c0, layout);
+            assertTrue((l.first().getRGB(b[2], b[3]) & 0xFFFFFF) != 0x2050c0, layout);
+            assertEquals(0x2050c0, l.first().getRGB((b[0] + b[2]) / 2, b[1] + 1) & 0xFFFFFF, layout);
+            assertEquals(0x2050c0, l.first().getRGB(b[0] + 1, (b[1] + b[3]) / 2) & 0xFFFFFF, layout);
+            assertTrue(l.word("Card").top() > b[1] + 18 && l.word("line").top() < b[3] - 18, layout);
+        }
+    }
+
+    @Test
+    void boxShadowsFadeOutBelowTheBox() throws IOException {
+        Laid l = lay("""
+                <html><body><div style="background:#dde0ff;padding:12px;border-radius:8px;
+                box-shadow:0 6px 10px rgba(0,0,0,.5)">Shadowed</div></body></html>""");
+        int[] b = box(l.first(), 0xdde0ff);
+        int x = (b[0] + b[2]) / 2;
+        int near = l.first().getRGB(x, b[3] + 3) & 0xFF;
+        int far = l.first().getRGB(x, b[3] + 30) & 0xFF;
+        assertTrue(near < 0xE0, Integer.toHexString(near));
+        assertEquals(0xFF, far);
+        assertTrue((l.first().getRGB(x, b[1] - 6) & 0xFF) > near);
+    }
+
+    @Test
+    void manyShadowedBoxesKeepAllTheirText() throws IOException {
+        StringBuilder html = new StringBuilder("<html><body>");
+        for (int i = 0; i < 1500; i++) {
+            html.append("<div style=\"border-radius:12px;background:#fff;padding:8px;box-shadow:0 4px 30px #888,")
+                    .append("0 0 60px 10px #f00,2px 2px 40px blue,0 0 50px green\">Card").append(i).append("</div>");
+        }
+        String text = lay(html.append("</body></html>").toString()).text();
+        assertTrue(text.contains("Card0") && text.contains("Card1499"), text.substring(Math.max(0, text.length() - 80)));
+    }
+
+    @Test
+    void gridItemsWithoutAHeightPaintTheirGradients() throws IOException {
+        Laid l = lay("""
+                <html><head><style>.g{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+                .c{background:linear-gradient(90deg,#ff0000,#0000ff);border-radius:12px;padding:12px;
+                box-shadow:0 2px 6px rgba(0,0,0,.15)}</style></head><body><div class=g><div class=c>One<br>more</div>
+                <div class=c>Two</div></div></body></html>""");
+        int y = Math.round((l.word("One").top() + l.word("more").top()) / 2);
+        int left = l.first().getRGB(Math.round(l.word("One").left()) - 4, y);
+        int right = l.first().getRGB(Math.round(l.word("Two").left()) - 20, y);
+        assertTrue((left >> 16 & 0xFF) > (left & 0xFF) + 80, Integer.toHexString(left));
+        assertTrue((right & 0xFF) > (right >> 16 & 0xFF) + 80, Integer.toHexString(right));
+        int twoBottom = l.first().getRGB(Math.round(l.word("Two").left()), Math.round(l.word("more").top()));
+        assertTrue((twoBottom & 0xFFFFFF) != 0xFFFFFF, "the shorter item stretches to the row");
+    }
+
+    @Test
+    void emojiDrawFromTheColourEmojiFontAndStayText() throws IOException {
+        Path fonts = Files.createDirectories(dir.resolve("fonts"));
+        Files.write(fonts.resolve("TestColorEmoji.ttf"), TestFonts.colourEmoji(0x00C000, 0xFF0000));
+        OfficeToPdf.Options options = OfficeToPdf.Options.defaults()
+                .fonts(FontSet.builder().directory(fonts).systemFonts(false).build());
+        Laid l = lay("<html><body style=\"font-size:48px\"><p>Go \u2705 now \u2b50\ufe0f end \u2b50\ufe0e</p></body>"
+                + "</html>", options);
+        assertTrue(l.text().contains("Go \u2705 now \u2b50"), l.text());
+        Word go = l.word("Go");
+        Word now = l.word("now");
+        int y = Math.round(go.top() - 14);
+        int green = 0;
+        int red = 0;
+        for (int x = Math.round(go.right()); x < l.first().getWidth(); x++) {
+            int rgb = l.first().getRGB(x, y) & 0xFFFFFF;
+            green += rgb == 0x00C000 ? 1 : 0;
+            red += rgb == 0xFF0000 ? 1 : 0;
+        }
+        assertEquals(1.245f * 36, green, 4);
+        assertEquals(1.245f * 36, red, 4);
+        assertTrue(now.left() - go.right() > 1.2f * 36, go + " " + now);
     }
 }

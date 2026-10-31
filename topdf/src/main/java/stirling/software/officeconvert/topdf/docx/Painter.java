@@ -274,6 +274,14 @@ final class Painter {
         switch (op) {
             case Op.Text t -> text(c, t);
             case Op.Glyphs g -> c.drawGlyphs(g.run(), g.x(), g.baseline(), g.style());
+            case Op.HiddenGlyphs g -> {
+                boolean was = c.hideText(true);
+                try {
+                    c.drawGlyphs(g.run(), g.x(), g.baseline(), g.style());
+                } finally {
+                    c.hideText(was);
+                }
+            }
             case Op.Rect r -> c.rect(r.x(), r.y(), r.w(), r.h(), r.fill(), r.stroke());
             case Op.Line l -> c.line(l.x1(), l.y1(), l.x2(), l.y2(), l.stroke());
             case Op.Path p -> c.draw(p.shape(), p.fill(), p.stroke());

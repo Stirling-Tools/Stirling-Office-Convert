@@ -145,7 +145,8 @@ final class ModelJson {
             case Inline.Shape s -> new JsonOut(sb).str("type", "shape").always("x", s.x()).always("y", s.y())
                     .always("width", s.width()).always("height", s.height()).color("fill", s.rgb())
                     .color("line", s.lineRgb()).num("lineWidth", s.lineWidth()).flag("rounded", s.rounded())
-                    .flag("ellipse", s.ellipse()).flag("fromParagraph", s.fromParagraph()).integer("z", s.z(), 0).end();
+                    .flag("ellipse", s.ellipse()).flag("fromParagraph", s.fromParagraph()).integer("z", s.z(), 0)
+                    .num("radius", s.radius()).end();
         }
     }
 

@@ -4,13 +4,16 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Random;
 import java.util.Set;
 import java.util.TreeSet;
@@ -20,6 +23,9 @@ import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.PDResources;
+import org.apache.pdfbox.rendering.PDFRenderer;
+import org.apache.pdfbox.text.PDFTextStripper;
+import org.apache.pdfbox.text.TextPosition;
 import org.apache.poi.xwpf.usermodel.XWPFDocument;
 import org.apache.poi.xwpf.usermodel.XWPFRun;
 import org.junit.jupiter.api.Test;
@@ -121,5 +127,77 @@ class OfficeToPdfFontSetTest {
                 .fonts(FontSet.builder().systemFonts(false).build());
         assertEquals("Old Sans", o.fontLibrary().find("Old Sans", false, false).family());
         assertEquals(FontSet.system(), OfficeToPdf.Options.defaults().fonts());
+    }
+
+    @Test
+    void wordEmojiDrawFromTheColourEmojiFontAndStayText() throws Exception {
+        Path fonts = Files.createDirectories(dir.resolve("emoji"));
+        Files.write(fonts.resolve("TestColorEmoji.ttf"), TestFonts.colourEmoji(0x00C000, 0xFF0000));
+        Path docx;
+        try (XWPFDocument doc = new XWPFDocument(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+            XWPFRun run = doc.createParagraph().createRun();
+            run.setFontFamily("Arial");
+            run.setFontSize(36);
+            run.setText("Done \u2705 star \u2b50\ufe0f");
+            doc.write(out);
+            docx = Files.write(dir.resolve("emoji.docx"), out.toByteArray());
+        }
+        Path pdf = dir.resolve("emoji.pdf");
+        OfficeToPdf.convert(docx, pdf, OfficeToPdf.Options.defaults()
+                .fonts(FontSet.builder().directory(fonts).systemFonts(false).build()));
+        try (PDDocument doc = Loader.loadPDF(pdf.toFile())) {
+            assertTrue(new PDFTextStripper().getText(doc).contains("Done \u2705 star \u2b50"));
+            BufferedImage page = new PDFRenderer(doc).renderImage(0, 1f);
+            int green = 0;
+            int red = 0;
+            for (int y = 0; y < page.getHeight(); y++) {
+                for (int x = 0; x < page.getWidth(); x++) {
+                    int rgb = page.getRGB(x, y) & 0xFFFFFF;
+                    green += rgb == 0x00C000 ? 1 : 0;
+                    red += rgb == 0xFF0000 ? 1 : 0;
+                }
+            }
+            float side = 1.245f * 36;
+            assertEquals(side * side * 128 / 136, green, side * 4);
+            assertEquals(green, red, side * 2);
+        }
+    }
+
+    @Test
+    void wordEmojiTakeTheLineAndWidthOfWordsEmojiFont() throws Exception {
+        Path fonts = Files.createDirectories(dir.resolve("emoji"));
+        Files.write(fonts.resolve("TestColorEmoji.ttf"), TestFonts.colourEmoji(0x00C000, 0xFF0000));
+        Path docx;
+        try (XWPFDocument doc = new XWPFDocument(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+            for (String text : new String[] {"Above", "Done \u2705 star", "Below", "Coda"}) {
+                XWPFRun run = doc.createParagraph().createRun();
+                run.setFontFamily("Arial");
+                run.setFontSize(36);
+                run.setText(text);
+            }
+            doc.write(out);
+            docx = Files.write(dir.resolve("lines.docx"), out.toByteArray());
+        }
+        Path pdf = dir.resolve("lines.pdf");
+        OfficeToPdf.convert(docx, pdf, OfficeToPdf.Options.defaults()
+                .fonts(FontSet.builder().directory(fonts).systemFonts(false).build()));
+        Map<Character, TextPosition> first = new HashMap<>();
+        try (PDDocument doc = Loader.loadPDF(pdf.toFile())) {
+            PDFTextStripper stripper = new PDFTextStripper() {
+                @Override
+                protected void writeString(String text, List<TextPosition> positions) {
+                    for (TextPosition t : positions) {
+                        first.putIfAbsent(t.getUnicode().charAt(0), t);
+                    }
+                }
+            };
+            stripper.getText(doc);
+        }
+        float plain = first.get('C').getY() - first.get('B').getY();
+        float emoji = first.get('B').getY() - first.get('A').getY() - plain;
+        assertEquals((2210f + 514f) / 2048 * 36, emoji, 1f);
+        TextPosition n = first.get('n');
+        float gap = first.get('s').getX() - (n.getX() + n.getWidth() + first.get('e').getWidth());
+        assertEquals(2812f / 2048 * 36, gap - 2 * first.get(' ').getWidth(), 1.5f);
     }
 }
