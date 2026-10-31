@@ -314,13 +314,16 @@ final class LinePainter {
                 glyphs = new int[0];
             }
             for (int g : glyphs) {
+                float own = it.emoji.advance(g);
+                float step = it.emojiAdvance > 0 ? it.emojiAdvance : own;
                 ColorEmoji.Bitmap b = it.emoji.bitmap(g);
                 DecodedPicture pic = b == null ? null : ctx.emoji(b);
                 if (pic != null) {
-                    ops.add(new Op.Image(pic, pen + b.left() * size * scale, baseline - b.top() * size,
-                            b.width() * size * scale, b.height() * size, Crop.NONE, 0, false, false, 1));
+                    ops.add(new Op.Image(pic, pen + (b.left() + (step - own) / 2) * size * scale,
+                            baseline - b.top() * size, b.width() * size * scale, b.height() * size, Crop.NONE, 0,
+                            false, false, 1));
                 }
-                pen += it.emoji.advance(g) * size * scale;
+                pen += step * size * scale;
             }
             pen += spacing * text.codePointCount(i, end);
             i = end;

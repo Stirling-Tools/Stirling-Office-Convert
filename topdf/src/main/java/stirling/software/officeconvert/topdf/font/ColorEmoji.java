@@ -173,7 +173,7 @@ public final class ColorEmoji {
         return end;
     }
 
-    public float advance(String text) {
+    public float advance(String text, float each) {
         float total = 0;
         for (int i = 0; i < text.length(); ) {
             int end = clusterEnd(text, i);
@@ -181,7 +181,7 @@ public final class ColorEmoji {
             if (g == null) {
                 end = i + Character.charCount(text.codePointAt(i));
             } else {
-                total += advance(g);
+                total += each > 0 ? each * g.length : advance(g);
             }
             i = end;
         }
