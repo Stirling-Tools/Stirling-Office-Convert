@@ -27,6 +27,7 @@ import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.font.PDFont;
 import org.apache.pdfbox.pdmodel.font.PDType3CharProc;
 import org.apache.pdfbox.pdmodel.font.PDType3Font;
+import org.apache.pdfbox.pdmodel.graphics.PDXObject;
 import org.apache.pdfbox.pdmodel.graphics.blend.BlendMode;
 import org.apache.pdfbox.pdmodel.graphics.color.PDColor;
 import org.apache.pdfbox.pdmodel.graphics.color.PDPattern;
@@ -41,6 +42,7 @@ import org.apache.pdfbox.pdmodel.graphics.state.RenderingMode;
 import org.apache.pdfbox.util.Matrix;
 import org.apache.pdfbox.util.Vector;
 
+import stirling.software.officeconvert.extract.HiddenContent;
 import stirling.software.officeconvert.extract.OperatorBudget;
 import stirling.software.officeconvert.layout.Box;
 
@@ -81,6 +83,7 @@ final class PaintOrder extends PDFGraphicsStreamEngine {
     private static final int MAX_PAGE_SEGMENTS = 3000;
 
     private final AffineTransform toDisplay;
+    private HiddenContent hiddenContent;
     private final float width;
     private final float height;
     private final List<Mark> marks = new ArrayList<>();
@@ -106,8 +109,10 @@ final class PaintOrder extends PDFGraphicsStreamEngine {
         this.height = height;
     }
 
-    static PaintOrder read(PDPage page, AffineTransform toDisplay, float width, float height) {
+    static PaintOrder read(PDPage page, AffineTransform toDisplay, float width, float height, HiddenContent hidden) {
         PaintOrder p = new PaintOrder(page, toDisplay, width, height);
+        p.hiddenContent = hidden;
+        hidden.reset();
         try {
             p.processPage(page);
         } catch (IOException | RuntimeException | StackOverflowError e) {
@@ -282,7 +287,10 @@ final class PaintOrder extends PDFGraphicsStreamEngine {
             return;
         }
         try {
-            super.processOperator(operator, operands);
+            Operator painted = hiddenContent == null ? operator : hiddenContent.painted(operator, operands, getResources());
+            if (painted != null) {
+                super.processOperator(painted, painted == operator ? operands : List.of());
+            }
         } catch (InterruptedIOException e) {
             throw e;
         } catch (IOException | RuntimeException e) {
@@ -294,7 +302,7 @@ final class PaintOrder extends PDFGraphicsStreamEngine {
         int span = enterGroup();
         formClips.push(clips());
         try {
-            if (budget.form()) {
+            if (budget.form() && (hiddenContent == null || !hiddenContent.hidden(form))) {
                 super.showForm(form);
             }
         } finally {
@@ -903,6 +911,9 @@ final class PaintOrder extends PDFGraphicsStreamEngine {
 
     @Override
     public void drawImage(PDImage pdImage) {
+        if (hiddenContent != null && pdImage instanceof PDXObject x && hiddenContent.hidden(x)) {
+            return;
+        }
         AffineTransform ctm = getGraphicsState().getCurrentTransformationMatrix().createAffineTransform();
         float alpha = (float) getGraphicsState().getNonStrokeAlphaConstant();
         boolean opaque = alpha >= 0.99f && getGraphicsState().getSoftMask() == null && !pdImage.isStencil()
