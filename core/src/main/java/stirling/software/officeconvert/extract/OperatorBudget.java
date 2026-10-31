@@ -18,14 +18,22 @@ public final class OperatorBudget {
 
     private static final int CHECK_EVERY = 1024;
 
+    private final String subject;
     private final String pass;
+    private final String rest;
     private long operators;
     private int forms;
     private boolean spent;
     private boolean interrupted;
 
     public OperatorBudget(String pass) {
+        this("A page", pass, "the rest of it is left out");
+    }
+
+    OperatorBudget(String subject, String pass, String rest) {
+        this.subject = subject;
         this.pass = pass;
+        this.rest = rest;
     }
 
     public boolean run(Operator operator) throws InterruptedIOException {
@@ -50,8 +58,8 @@ public final class OperatorBudget {
     private boolean spend(String what) {
         if (!spent) {
             spent = true;
-            LOG.warn("A page ran past " + (what.equals("forms") ? MAX_FORMS : MAX_OPERATORS) + " " + what + " while "
-                    + pass + "; the rest of it is left out");
+            LOG.warn(subject + " ran past " + (what.equals("forms") ? MAX_FORMS : MAX_OPERATORS) + " " + what
+                    + " while " + pass + "; " + rest);
         }
         return false;
     }

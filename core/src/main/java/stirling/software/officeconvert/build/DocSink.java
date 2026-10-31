@@ -17,6 +17,10 @@ public interface DocSink {
 
     MediaRef media(Object key);
 
+    default boolean showsPictures() {
+        return true;
+    }
+
     void begin(StyleSheet styles, HeaderFooterSet running);
 
     void block(Block block) throws IOException;

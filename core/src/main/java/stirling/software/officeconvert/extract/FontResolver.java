@@ -17,7 +17,12 @@ import org.apache.pdfbox.pdmodel.font.PDType3Font;
 public final class FontResolver {
 
     private final Map<COSDictionary, FontInfo> cache = new WeakHashMap<>();
+    private final UnmappedGlyphs unmapped = new UnmappedGlyphs(TextPositions.GLYPHS);
     private Boolean namelessSerif;
+
+    UnmappedGlyphs unmapped() {
+        return unmapped;
+    }
 
     public FontInfo resolve(PDFont font) {
         if (font == null) {
