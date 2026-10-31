@@ -11,6 +11,8 @@ import java.nio.file.Path;
 import java.util.List;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.DisabledOnOs;
+import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 
 class LibreOfficeTest {
@@ -83,6 +85,7 @@ class LibreOfficeTest {
     }
 
     @Test
+    @DisabledOnOs(OS.WINDOWS)
     void aProfileItCannotDeleteIsLogged() throws IOException {
         Path locked = Files.createDirectories(dir.resolve("profile/locked"));
         Files.writeString(locked.resolve("file"), "x");
