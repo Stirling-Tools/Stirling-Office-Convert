@@ -150,10 +150,18 @@ final class UnicodeRecovery {
                     return "";
                 }
                 int gid = tt.codeToGID(c);
-                return gid > 0 && cmap.getGlyphId(u.codePointAt(0)) == gid ? u : "";
+                if (gid <= 0 || unicode.equals(glyphName(gid))) {
+                    return "";
+                }
+                return cmap.getGlyphId(u.codePointAt(0)) == gid ? u : "";
             } catch (IOException | RuntimeException e) {
                 return "";
             }
+        }
+
+        private String glyphName(int gid) {
+            String name = post == null ? null : post.getName(gid);
+            return name == null ? null : GlyphList.getAdobeGlyphList().toUnicode(name);
         }
 
         private String composite(PDType0Font t0, int code, String unicode) throws IOException {
