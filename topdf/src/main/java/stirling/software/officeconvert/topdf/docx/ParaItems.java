@@ -477,8 +477,12 @@ final class ParaItems {
         if (own == null) {
             CloudFonts.Emulation wanted = ctx.fonts.emulation(requested);
             boolean usable = wanted != null && wanted.vertical() != null && wanted.scale() == 100;
-            if (usable && (!Look.eastAsianGlyphs(f) || Fonts.withEastAsianExtra(wanted))) {
+            boolean eastAsianLine = !web() && Fonts.eastAsian(cp) && Look.eastAsianGlyphs(f);
+            if (usable && (!Look.eastAsianGlyphs(f) || Fonts.withEastAsianExtra(wanted)
+                    || eastAsianLine && requested.eastAsian())) {
                 own = wanted;
+            } else if (eastAsianLine) {
+                own = Fonts.officeEastAsianLine(f);
             } else {
                 ownLine = FontLibrary.drawsScript(requested.requestedFamily(), cp);
             }

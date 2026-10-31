@@ -10,6 +10,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -181,5 +182,54 @@ class FontCoverageTest {
             String text = new PDFTextStripper().getText(doc);
             assertTrue(text.startsWith("\u2022 item"), text);
         }
+    }
+
+    @Test
+    void eastAsianTextInALatinRunTakesTheLineOfWordsEastAsianFallback() throws Exception {
+        assertEquals(1.3f * 20, eastAsianLine("Noto Sans CJK SC", "Liberation Sans"), 0.5f);
+    }
+
+    @Test
+    void eastAsianTextInAMissingEastAsianFontKeepsThatFontsLine() throws Exception {
+        assertEquals((1.0581f + 0.2617f) * 1.3f * 20, eastAsianLine("Test Ideographs", "Microsoft YaHei"), 0.5f);
+    }
+
+    @Test
+    void aMissingPMingLiUTakesItsOfficeLineOnTheStandInThatCoversIt() throws Exception {
+        assertEquals(1.3f * 20, eastAsianLine("Noto Serif TC", "PMingLiU"), 0.5f);
+    }
+
+    private float eastAsianLine(String cjkFont, String eastAsia) throws Exception {
+        Path fonts = Files.createDirectories(dir.resolve("fallback"));
+        Files.write(fonts.resolve("Cjk.otf"), PostScriptFonts.font(cjkFont, 400, true, 0x4E00));
+        Files.write(fonts.resolve("Latin.ttf"), TestFonts.renamed("Liberation Sans"));
+        Path docx = dir.resolve("fallback.docx");
+        try (XWPFDocument doc = new XWPFDocument(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+            for (String text : new String[] {"Ab", "Ab", "A\u4E00", "Ab"}) {
+                XWPFRun run = doc.createParagraph().createRun();
+                run.setFontFamily("Liberation Sans");
+                run.setFontFamily(eastAsia, XWPFRun.FontCharRange.eastAsia);
+                run.setFontSize(20);
+                run.setText(text);
+            }
+            doc.write(out);
+            Files.write(docx, out.toByteArray());
+        }
+        Path pdf = dir.resolve("fallback.pdf");
+        OfficeToPdf.convert(docx, pdf, options(fonts));
+        List<Float> baselines = new ArrayList<>();
+        try (PDDocument doc = Loader.loadPDF(pdf.toFile())) {
+            new PDFTextStripper() {
+                @Override
+                protected void processTextPosition(TextPosition t) {
+                    if (t.getUnicode().equals("A")) {
+                        baselines.add(t.getYDirAdj());
+                    }
+                }
+            }.getText(doc);
+        }
+        assertEquals(4, baselines.size(), baselines.toString());
+        float latin = baselines.get(1) - baselines.get(0);
+        return baselines.get(3) - baselines.get(1) - latin;
     }
 }
