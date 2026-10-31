@@ -2,6 +2,7 @@ package stirling.software.officeconvert.topdf.lotus;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.ByteArrayOutputStream;
@@ -9,6 +10,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.List;
 import java.util.Random;
 
@@ -347,5 +349,24 @@ class LotusTest {
         assertEquals("0.00%", g.get(2, 3).format());
         assertEquals("General", g.get(1, 0).format());
         assertEquals(12.0, g.width(2));
+    }
+
+    @Test
+    void manyFormatRulesOverEmptyColumnsStayCheap() throws IOException {
+        byte[] bof = new byte[26];
+        bof[0] = 0x05;
+        bof[1] = 0x10;
+        Records r = new Records().rec(0x00, bof);
+        for (int row = 0; row < 65_535; row++) {
+            r.rec(0x18, wide(row, 0, 0, new byte[] {4, 0}));
+        }
+        r.rec(0x106, new byte[0]).rec(0x106, new byte[0]).rec(0x800, u32(1)).rec(0x106, new byte[0])
+                .rec(0x800, u32(5)).rec(0x800, u32(1)).rec(0x106, new byte[0]).rec(0x800, u32(65_536));
+        for (int i = 0; i < 1 << 18; i++) {
+            r.rec(0x801, new byte[4]);
+        }
+        Path file = Files.write(dir.resolve("rules.123"), r.rec(0x01, new byte[0]).bytes());
+        Grid g = assertTimeoutPreemptively(Duration.ofSeconds(20), () -> Lotus.read(file)).get(0).grid();
+        assertEquals(2.0, g.get(65_534, 0).value());
     }
 }

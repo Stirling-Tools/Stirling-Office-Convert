@@ -66,10 +66,11 @@ public final class Grid {
 
     public long restyle(int firstRow, int lastRow, int firstCol, int lastCol, UnaryOperator<Cell> change) {
         if (firstRow > lastRow || firstCol > lastCol) {
-            return 0;
+            return 1;
         }
-        long seen = 0;
+        long seen = 1;
         for (TreeMap<Integer, Cell> r : rows.subMap(firstRow, true, lastRow, true).values()) {
+            seen++;
             for (Map.Entry<Integer, Cell> e : r.subMap(firstCol, true, lastCol, true).entrySet()) {
                 e.setValue(change.apply(e.getValue()));
                 seen++;
