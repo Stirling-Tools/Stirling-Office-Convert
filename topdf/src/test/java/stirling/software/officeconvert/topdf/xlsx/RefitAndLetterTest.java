@@ -130,6 +130,30 @@ class RefitAndLetterTest {
     }
 
     @Test
+    void eachWrappedLineTakesTheHeightOfItsOwnFont() throws Exception {
+        String styles = "<fonts count=\"1\"><font><sz val=\"11\"/><name val=\"Calibri\"/></font></fonts><fills"
+                + " count=\"1\"><fill><patternFill patternType=\"none\"/></fill></fills><borders count=\"1\"><border/>"
+                + "</borders><cellStyleXfs count=\"1\"><xf/></cellStyleXfs><cellXfs count=\"2\"><xf/><xf>"
+                + "<alignment wrapText=\"1\"/></xf></cellXfs>";
+        String regular = "<rPr><sz val=\"12\"/><rFont val=\"Arial\"/></rPr>";
+        String bold = "<rPr><b/><sz val=\"12\"/><rFont val=\"Arial\"/></rPr>";
+        float[] below = new float[2];
+        String[] heads = {regular, bold};
+        for (int i = 0; i < 2; i++) {
+            String sheet = "<sheetFormatPr defaultRowHeight=\"15\"/><sheetData><row r=\"1\"><c r=\"A1\" s=\"1\""
+                    + " t=\"inlineStr\"><is><r>" + heads[i] + "<t>Head</t></r><r>" + regular
+                    + "<t xml:space=\"preserve\">\none\ntwo\nthree</t></r></is></c></row><row r=\"2\">"
+                    + RawXlsx.inline("A2", "Below") + "</row></sheetData>";
+            String name = "lines" + i + ".xlsx";
+            XlsxTesting.convert(dir, name, new RawXlsx().styles(styles).sheet("S", sheet)
+                    .workbookExtra("<fileVersion appName=\"xl\"/>").bytes());
+            below[i] = position(dir.resolve(name + ".pdf"), "Below")[1];
+        }
+        float grown = below[1] - below[0];
+        assertTrue(grown > 0.3 && grown < 1.2, "bold head grew the row by " + grown);
+    }
+
+    @Test
     void unwrappedRowsSizedOnAnotherScreenAreRefitToTheirFont() throws Exception {
         String styles = "<fonts count=\"2\"><font><sz val=\"11\"/><name val=\"Calibri\"/></font><font><sz val=\"20\"/>"
                 + "<name val=\"Calibri\"/></font></fonts><fills count=\"1\"><fill><patternFill patternType=\"none\"/>"

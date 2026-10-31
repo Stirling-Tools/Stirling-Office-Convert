@@ -643,7 +643,7 @@ final class Grid {
                 continue;
             }
             double line = runsLine(e.text().runs(), defaultPx);
-            int lines = 1;
+            double height = line;
             CellFormat fmt = e.format();
             if (fmt.rotation() > 0 && fmt.rotation() <= 180) {
                 best = Math.max(best, Math.min(546, turnedHeight(e.text().runs(), line, fmt.rotation())));
@@ -654,12 +654,24 @@ final class Grid {
                 double indent = fmt.indent() > 0 ? fmt.indent() * book.screenIndentPixels() : 0;
                 double avail = colPx - SCREEN_PAD - indent - overhang(e.text().runs());
                 Typesetter t = book.typesetter();
-                lines = Math.max(1, CellLayout.wrap(e.text().runs(), avail,
-                        (str, font) -> Math.rint(t.screenWidth(str, font, FontMeasure.ppem(font.size(), 96)))).size());
+                height = stackedLines(CellLayout.wrap(e.text().runs(), avail,
+                        (str, font) -> Math.rint(t.screenWidth(str, font, FontMeasure.ppem(font.size(), 96)))),
+                        e.text().runs().isEmpty() ? line : runsLine(e.text().runs().subList(0, 1), defaultPx),
+                        defaultPx);
             }
-            best = Math.max(best, Math.min(546, line * lines));
+            best = Math.max(best, Math.min(546, height));
         }
         return best * 0.75;
+    }
+
+    private double stackedLines(List<CellLayout.Line> lines, double first, double defaultPx) {
+        double total = 0;
+        double previous = first;
+        for (CellLayout.Line l : lines) {
+            previous = l.runs().isEmpty() ? previous : runsLine(l.runs(), defaultPx);
+            total += previous;
+        }
+        return Math.max(first, total);
     }
 
     private double calcFit(int row, List<CellEntry> entries, List<FontSpec> blanks) {
