@@ -50,6 +50,16 @@ final class Decoded {
         return out.toByteArray();
     }
 
+    static byte[] firstStages(COSStream s, int stages, long limit, String what) throws IOException {
+        Capped out = new Capped(limit, what, null);
+        decode(s, out, limit, what, filters(s).subList(0, stages));
+        return out.toByteArray();
+    }
+
+    static List<COSName> filterNames(COSStream s) throws IOException {
+        return filters(s);
+    }
+
     static long copy(COSStream s, OutputStream to, long limit, String what) throws IOException {
         Capped out = new Capped(limit, what, to);
         decode(s, out, limit, what, filters(s));
