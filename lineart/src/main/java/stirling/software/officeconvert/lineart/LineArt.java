@@ -133,7 +133,9 @@ public final class LineArt {
             List<String> warnings) {
 
         public Result {
-            codecs = Collections.unmodifiableMap(new EnumMap<>(codecs));
+            EnumMap<Codec, Integer> copy = new EnumMap<>(Codec.class);
+            copy.putAll(codecs);
+            codecs = Collections.unmodifiableMap(copy);
             warnings = List.copyOf(warnings);
         }
 

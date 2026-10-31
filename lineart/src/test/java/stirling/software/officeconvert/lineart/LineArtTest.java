@@ -14,6 +14,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 
 import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.cos.COSArray;
@@ -29,6 +30,8 @@ import org.apache.pdfbox.pdmodel.PDPageContentStream;
 import org.apache.pdfbox.pdmodel.PDResources;
 import org.apache.pdfbox.pdmodel.common.PDRectangle;
 import org.apache.pdfbox.pdmodel.common.PDStream;
+import org.apache.pdfbox.pdmodel.encryption.AccessPermission;
+import org.apache.pdfbox.pdmodel.encryption.StandardProtectionPolicy;
 import org.apache.pdfbox.pdmodel.graphics.PDXObject;
 import org.apache.pdfbox.pdmodel.graphics.form.PDFormXObject;
 import org.apache.pdfbox.pdmodel.graphics.image.LosslessFactory;
@@ -376,6 +379,32 @@ class LineArtTest {
             assertFalse(doc.isEncrypted());
             assertEquals(1, Pictures.firstImage(doc).getBitsPerComponent());
         }
+    }
+
+    @Test
+    void anEncryptedFileWithNoPicturesIsWrittenWithoutItsEncryption() throws IOException {
+        Path in = dir.resolve("locked-text.pdf");
+        try (PDDocument doc = new PDDocument()) {
+            doc.addPage(new PDPage());
+            doc.protect(new StandardProtectionPolicy("owner", "", new AccessPermission()));
+            doc.save(in.toFile());
+        }
+        Path out = dir.resolve("open-text.pdf");
+        LineArt.Result result = LineArt.convert(in, out);
+        assertEquals(0, result.images());
+        assertTrue(result.codecs().isEmpty());
+        assertTrue(result.warnings().getLast().contains("encryption was removed"), result.warnings().toString());
+        try (PDDocument doc = Loader.loadPDF(out.toFile())) {
+            assertFalse(doc.isEncrypted());
+        }
+    }
+
+    @Test
+    void resultCopiesAnyCodecMap() {
+        LineArt.Result result = new LineArt.Result(0, 0, 0, 0, Map.of(), List.of());
+        assertTrue(result.codecs().isEmpty());
+        assertEquals(1, new LineArt.Result(1, 1, 9, 1, Map.of(LineArt.Codec.FLATE, 1), List.of()).codecs()
+                .get(LineArt.Codec.FLATE));
     }
 
     @Test
