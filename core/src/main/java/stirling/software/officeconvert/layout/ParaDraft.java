@@ -35,7 +35,6 @@ public final class ParaDraft {
     public int headingLevel;
     public Marker marker;
     public float markerTextX;
-    public int listLevel;
     public int numId = -1;
     public boolean continuation;
     public boolean endsHyphenated;

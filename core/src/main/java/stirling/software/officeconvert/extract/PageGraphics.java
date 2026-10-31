@@ -92,16 +92,7 @@ public record PageGraphics(
             boolean flipV,
             boolean skewed,
             int stencilRgb,
-            float alpha) {
-
-        public float visibleWidth() {
-            return clipRight - clipX;
-        }
-
-        public float visibleHeight() {
-            return clipBottom - clipTop;
-        }
-    }
+            float alpha) {}
 
     public record VectorMark(
             float x,
