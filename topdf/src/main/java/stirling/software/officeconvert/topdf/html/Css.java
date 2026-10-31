@@ -227,7 +227,7 @@ final class Css {
         return out;
     }
 
-    static final Set<String> SHORTHANDS = Set.of("margin", "padding", "border", "border-width", "border-color",
+    static final List<String> SHORTHANDS = List.of("margin", "padding", "border", "border-width", "border-color",
             "border-style", "background", "background-image", "font", "list-style", "page-break-before",
             "page-break-after");
 
