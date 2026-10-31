@@ -6,6 +6,7 @@ import java.util.Comparator;
 import java.util.IdentityHashMap;
 import java.util.Iterator;
 import java.util.List;
+import java.util.ListIterator;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -176,9 +177,16 @@ public final class PageAnalyzer {
         List<Box> figures = new ArrayList<>();
         List<Box> backdrops = new ArrayList<>(FigureFinder.cluster(concat(shaped, drawnBehind), 1f));
         List<PageGraphics.VectorMark> marks = unused(art, usedMarks);
+        List<Box> choiceFields = choiceFields(page.widgets(), tableBoxes);
+        List<Box> framedChoices = new ArrayList<>();
         for (Box f : FigureFinder.figures(strong, freeFills, freeRules, segments, marks, page.width(), page.height())) {
             if (!Regions.overlapsMostly(f, tableBoxes) || cellArt(f, tableBoxes)) {
-                (Backdrops.isBackdrop(f, segments) ? backdrops : figures).add(f);
+                boolean backdrop = Backdrops.isBackdrop(f, segments);
+                Box field = backdrop ? null : framedChoice(f, choiceFields);
+                if (field != null && !framedChoices.contains(field)) {
+                    framedChoices.add(field);
+                }
+                (backdrop || field != null ? backdrops : figures).add(f);
             }
         }
         List<Box> wholeDrawings = new ArrayList<>();
@@ -201,6 +209,7 @@ public final class PageAnalyzer {
 
         List<PageLayout.Item> blocks = new ArrayList<>(boxes.boxes());
         blocks.removeIf(b -> Regions.insideAny(new Box(b.x(), b.top(), b.right(), b.bottom()), wholeDrawings, 2f));
+        choiceText(framedChoices, figures, segments, blocks);
         diagrams(figures, backdrops, gfx, segments, blocks, page.width());
         List<Box> pictured = figures;
         blocks.removeIf(b -> b instanceof PageLayout.TextBoxItem tb && boxes.boxes().contains(tb) && labels(tb)
@@ -291,6 +300,68 @@ public final class PageAnalyzer {
         return new PageLayout(page, bands, ocr, poster ? List.of() : FormPage.shapes(rules, fills, gfx), List.of(),
                 List.of(), boxes, List.of(), textPaint);
     }
+
+    private static List<Box> choiceFields(List<PageData.Widget> widgets, List<Box> tableBoxes) {
+        List<Box> out = new ArrayList<>();
+        for (PageData.Widget w : widgets) {
+            Box field = new Box(w.x(), w.top(), w.right(), w.bottom());
+            if (w.choice() && field.area() > 0 && Float.isFinite(field.area()) && !Regions.overlapsMostly(field, tableBoxes)) {
+                out.add(field);
+                if (out.size() > MAX_CHOICE_FIELDS) {
+                    return List.of();
+                }
+            }
+        }
+        return out;
+    }
+
+    private static Box framedChoice(Box figure, List<Box> fields) {
+        for (Box field : fields) {
+            if (Regions.insideAny(figure, List.of(field), FIELD_FRAME) && field.area() >= 0.5f * figure.area()) {
+                return field;
+            }
+        }
+        return null;
+    }
+
+    private void choiceText(List<Box> fields, List<Box> figures, List<Line> segments, List<PageLayout.Item> blocks) {
+        for (Box field : fields) {
+            if (Regions.insideAny(field, figures, 0.5f)) {
+                continue;
+            }
+            List<Box> inside = List.of(field);
+            List<Line> options = new ArrayList<>();
+            for (ListIterator<Line> it = segments.listIterator(); it.hasNext(); ) {
+                Line seg = it.next();
+                float cy = Regions.wordY(seg);
+                if (cy < field.top() || cy > field.bottom()) {
+                    continue;
+                }
+                List<Word> in = new ArrayList<>();
+                List<Word> out = new ArrayList<>();
+                for (Word w : seg.words) {
+                    (Regions.insideAny(Regions.wordX(w), cy, inside, 0f) ? in : out).add(w);
+                }
+                if (in.isEmpty()) {
+                    continue;
+                }
+                options.add(out.isEmpty() ? seg : LineGroups.fromWords(in));
+                if (out.isEmpty()) {
+                    it.remove();
+                } else {
+                    it.set(LineGroups.fromWords(out));
+                }
+            }
+            if (!options.isEmpty()) {
+                options.sort(Comparator.comparingDouble((Line l) -> l.baseline));
+                blocks.add(placed.framed(options, field));
+            }
+        }
+    }
+
+    private static final int MAX_CHOICE_FIELDS = 500;
+
+    private static final float FIELD_FRAME = 3f;
 
     private static List<FigureLabels.Label> labels(List<Line> segments, List<RotatedText.Block> turned, List<Box> tables) {
         List<FigureLabels.Label> out = new ArrayList<>();
