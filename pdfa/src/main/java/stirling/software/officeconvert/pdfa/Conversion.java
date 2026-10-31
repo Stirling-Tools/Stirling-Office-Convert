@@ -66,6 +66,7 @@ final class Conversion {
         DeviceNReduction.run(doc, census, graph, level, report);
         SpotColours.run(doc, census, level, report);
         FontFixer.repairSubtypes(graph, report);
+        FontFixer.dropUnreadable(graph, report);
         ContentFixer.run(graph, level, report, usage, colours);
         FontFixer.run(doc, usage, level, options::fontLibrary, report);
         PdfFiles.stopIfInterrupted();

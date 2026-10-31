@@ -157,6 +157,31 @@ final class FontFixer {
         }
     }
 
+    static void dropUnreadable(ContentGraph graph, Report report) {
+        boolean dropped = false;
+        for (COSDictionary res : graph.resources()) {
+            COSDictionary fonts = ContentGraph.dict(res.getDictionaryObject(COSName.FONT));
+            if (fonts == null) {
+                continue;
+            }
+            for (COSName k : new ArrayList<>(fonts.keySet())) {
+                COSDictionary font = ContentGraph.dict(fonts.getDictionaryObject(k));
+                if (font != null && COSName.TYPE0.equals(font.getCOSName(COSName.SUBTYPE)) && !hasDescendant(font)) {
+                    fonts.removeItem(k);
+                    dropped = true;
+                }
+            }
+        }
+        if (dropped) {
+            report.warn("Removed text drawn with a composite font that has no descendant font, which no reader can draw");
+        }
+    }
+
+    private static boolean hasDescendant(COSDictionary font) {
+        COSArray descendants = ContentGraph.array(font.getDictionaryObject(COSName.DESCENDANT_FONTS));
+        return descendants != null && descendants.size() > 0 && ContentGraph.dict(descendants.getObject(0)) != null;
+    }
+
     private PDFont fix(COSDictionary dict, TreeSet<Integer> codes, int bytesPerCode) throws IOException {
         PDFont font;
         if (repairSubtype(dict)) {
