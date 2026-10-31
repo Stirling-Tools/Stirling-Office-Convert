@@ -165,8 +165,8 @@ final class Controls {
             contentH = digits(e.attr("rows")) ? Integer.parseInt(e.attr("rows").strip()) * 1.2f * em : 3 * em;
         } else if (kind.equals("select") && e.hasAttr("multiple")) {
             contentH = 3.6f * em;
-        } else if (own != null && linePitch(look) > 0) {
-            contentH = linePitch(look);
+        } else if (own != null) {
+            contentH = lines(text, look, clamp(contentW, 1));
         } else {
             contentH = 1.2f * em;
         }
@@ -427,8 +427,26 @@ final class Controls {
 
     private static float lines(String text, Look look, float width) {
         float pitch = linePitch(look) > 0 ? linePitch(look) : 1.2f * look.size;
-        int lines = (int) Math.min(MAX_SIDE / pitch, Math.max(1, Math.ceil(labelWidth(text, look) / width)));
-        return lines * pitch;
+        float space = labelWidth(" ", look);
+        int lines = 0;
+        for (String line : text.split("\n")) {
+            lines++;
+            float used = 0;
+            for (String word : line.strip().split(" +")) {
+                float w = labelWidth(word, look);
+                if (used > 0 && used + space + w > width) {
+                    lines++;
+                    used = 0;
+                }
+                if (used == 0 && w > width) {
+                    lines += (int) Math.ceil(w / width) - 1;
+                    used = width;
+                } else {
+                    used += (used > 0 ? space : 0) + w;
+                }
+            }
+        }
+        return Math.min(MAX_SIDE / pitch, Math.max(1, lines)) * pitch;
     }
 
     private static float labelWidth(String text, Look look) {

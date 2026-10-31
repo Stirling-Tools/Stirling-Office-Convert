@@ -766,6 +766,15 @@ class HtmlLayoutTest {
     }
 
     @Test
+    void aSizedLinkWithALongLabelKeepsEveryWord() throws IOException {
+        Laid l = lay("""
+                <!doctype html><html><body><a href="https://example.com" style="display:inline-block;width:150px;
+                font-weight:bold">A sized link without any background has long text</a><p>After</p></body></html>""");
+        assertTrue(l.word("background").top() > l.word("sized").top(), l.words().toString());
+        assertTrue(l.word("After").top() > l.word("text").top(), l.words().toString());
+    }
+
+    @Test
     void aPaddedStackedCellHoldingOnlyAnEmptyBarStillDrawsTheBar() throws IOException {
         Laid l = lay("""
                 <!doctype html><html><body><p>Before</p><table bgcolor="#ff0000" width="300" cellspacing="0"
