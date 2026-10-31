@@ -16,7 +16,7 @@ final class FormPage {
     private FormPage() {}
 
     static boolean looksLikeForm(PageData page, List<Line> segments, List<Rule> rules) {
-        if (page.widgets() < MIN_WIDGETS) {
+        if (page.widgets().size() < MIN_WIDGETS) {
             return false;
         }
         int across = 0;

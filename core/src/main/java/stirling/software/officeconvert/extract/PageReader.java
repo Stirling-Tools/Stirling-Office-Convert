@@ -13,6 +13,7 @@ import java.util.Set;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.pdfbox.cos.COSDictionary;
+import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.common.PDRectangle;
@@ -101,7 +102,7 @@ public final class PageReader {
                         : new PageGraphics(List.of(), List.of(), List.of(), List.of());
         List<PageData.Link> links = withGraphics ? links(page, toDisplay, width, height) : List.of();
         return new PageData(
-                index, width, height, direction, glyphs, hidden, rotated, graphics, links, withGraphics ? widgets(page) : 0);
+                index, width, height, direction, glyphs, hidden, rotated, graphics, links, withGraphics ? widgets(page, toDisplay) : List.of());
     }
 
     public PageData unreadable(int index) {
@@ -136,7 +137,7 @@ public final class PageReader {
                 glyphsOnly.rotated(),
                 graphics,
                 links(page, toDisplay, glyphsOnly.width(), glyphsOnly.height()),
-                widgets(page));
+                widgets(page, toDisplay));
     }
 
     private static Glyph relocate(Glyph g, RawGlyph r, AffineTransform toDisplay, PDRectangle crop, int direction) {
@@ -329,18 +330,41 @@ public final class PageReader {
         }
     }
 
-    private static int widgets(PDPage page) {
-        int n = 0;
+    private static List<PageData.Widget> widgets(PDPage page, AffineTransform toDisplay) {
+        List<PageData.Widget> out = new ArrayList<>();
         try {
             for (PDAnnotation a : page.getAnnotations()) {
                 if (a instanceof PDAnnotationWidget && !a.isHidden() && !a.isNoView()) {
-                    n++;
+                    out.add(widget(a, toDisplay));
                 }
             }
         } catch (IOException | RuntimeException e) {
-            return 0;
+            return List.of();
         }
-        return n;
+        return out;
+    }
+
+    private static PageData.Widget widget(PDAnnotation a, AffineTransform toDisplay) {
+        PDRectangle r = a.getRectangle();
+        if (r == null) {
+            return new PageData.Widget(0, 0, 0, 0, false);
+        }
+        Point2D.Float p0 = new Point2D.Float();
+        Point2D.Float p1 = new Point2D.Float();
+        toDisplay.transform(new Point2D.Double(r.getLowerLeftX(), r.getLowerLeftY()), p0);
+        toDisplay.transform(new Point2D.Double(r.getUpperRightX(), r.getUpperRightY()), p1);
+        return new PageData.Widget(Math.min(p0.x, p1.x), Math.min(p0.y, p1.y), Math.max(p0.x, p1.x),
+                Math.max(p0.y, p1.y), COSName.CH.equals(fieldType(a.getCOSObject())));
+    }
+
+    private static COSName fieldType(COSDictionary field) {
+        for (int depth = 0; field != null && depth < 32; depth++) {
+            if (field.getDictionaryObject(COSName.FT) instanceof COSName type) {
+                return type;
+            }
+            field = field.getCOSDictionary(COSName.PARENT);
+        }
+        return null;
     }
 
     private List<PageData.Link> links(PDPage page, AffineTransform toDisplay, float width, float height)

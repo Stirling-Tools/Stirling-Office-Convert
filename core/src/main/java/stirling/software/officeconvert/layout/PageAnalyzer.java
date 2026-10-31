@@ -178,7 +178,7 @@ public final class PageAnalyzer {
         List<PageGraphics.VectorMark> marks = unused(art, usedMarks);
         for (Box f : FigureFinder.figures(strong, freeFills, freeRules, segments, marks, page.width(), page.height())) {
             if (!Regions.overlapsMostly(f, tableBoxes) || cellArt(f, tableBoxes)) {
-                (Backdrops.isBackdrop(f, segments) ? backdrops : figures).add(f);
+                (Backdrops.isBackdrop(f, segments) || framesChoice(f, page.widgets()) ? backdrops : figures).add(f);
             }
         }
         List<Box> wholeDrawings = new ArrayList<>();
@@ -291,6 +291,19 @@ public final class PageAnalyzer {
         return new PageLayout(page, bands, ocr, poster ? List.of() : FormPage.shapes(rules, fills, gfx), List.of(),
                 List.of(), boxes, List.of(), textPaint);
     }
+
+    private static boolean framesChoice(Box figure, List<PageData.Widget> widgets) {
+        for (PageData.Widget w : widgets) {
+            Box field = new Box(w.x(), w.top(), w.right(), w.bottom());
+            if (w.choice() && Regions.insideAny(figure, List.of(field), FIELD_FRAME)
+                    && field.area() >= 0.5f * figure.area()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static final float FIELD_FRAME = 3f;
 
     private static List<FigureLabels.Label> labels(List<Line> segments, List<RotatedText.Block> turned, List<Box> tables) {
         List<FigureLabels.Label> out = new ArrayList<>();
