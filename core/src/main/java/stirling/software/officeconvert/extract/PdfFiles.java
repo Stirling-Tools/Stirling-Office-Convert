@@ -12,6 +12,7 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.Collections;
 import java.util.Map;
+import java.util.Set;
 import java.util.WeakHashMap;
 
 import org.apache.pdfbox.cos.COSDocument;
@@ -39,6 +40,9 @@ public final class PdfFiles {
 
     private static final Map<COSDocument, Repairs> REPAIRS = Collections.synchronizedMap(new WeakHashMap<>());
 
+    private static final Set<COSDocument> TREE_CHECKED = Collections.synchronizedSet(
+            Collections.newSetFromMap(new WeakHashMap<>()));
+
     public static PDDocument open(Path pdf, String password) throws IOException {
         JpxImageIO.install();
         return load(pdf, password, true, true);
@@ -64,7 +68,7 @@ public final class PdfFiles {
     }
 
     public static boolean repairPageTree(PDDocument doc) {
-        if (!PageTreeRepair.run(doc)) {
+        if (!TREE_CHECKED.add(doc.getDocument()) || !PageTreeRepair.run(doc)) {
             return false;
         }
         REPAIRS.merge(doc.getDocument(), new Repairs(null, true), (a, b) -> new Repairs(a.salvaged(), true));
