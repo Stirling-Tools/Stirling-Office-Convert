@@ -396,7 +396,8 @@ final class GraphicsCollector extends PDFGraphicsStreamEngine {
 
     @Override
     public void drawImage(PDImage pdImage) throws IOException {
-        if (images.size() >= MAX_IMAGES || pdImage instanceof PDXObject x && hiddenContent.hidden(x)) {
+        if (images.size() >= MAX_IMAGES || pdImage instanceof PDXObject x && hiddenContent.hidden(x)
+                || pdImage instanceof PDImageXObject image && !StrictFilters.decodable(image.getCOSObject())) {
             return;
         }
         PDGraphicsState gs = getGraphicsState();

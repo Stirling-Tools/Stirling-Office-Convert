@@ -16,6 +16,8 @@ import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.cos.COSStream;
 import org.apache.pdfbox.pdmodel.PDDocument;
 
+import stirling.software.officeconvert.extract.StrictFilters;
+
 final class ColourFixer {
 
     private static final COSName DEFAULT_CMYK = COSName.getPDFName("DefaultCMYK");
