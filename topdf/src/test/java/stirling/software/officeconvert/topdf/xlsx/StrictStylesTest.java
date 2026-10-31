@@ -1,9 +1,12 @@
 package stirling.software.officeconvert.topdf.xlsx;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 
 import org.junit.jupiter.api.Test;
@@ -44,5 +47,27 @@ class StrictStylesTest {
         assertTrue(c.result().warnings().stream().noneMatch(w -> w.contains("could not be read")),
                 c.result().warnings().toString());
         assertEquals(3, c.pages().size());
+    }
+
+    @Test
+    void aTransitionalPartIsStreamedAndAStrictOneIsBounded() throws IOException {
+        byte[] head = "<styleSheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">"
+                .getBytes(StandardCharsets.ISO_8859_1);
+        try (InputStream in = WorkbookModel.transitional(endless(head))) {
+            assertEquals('<', in.read());
+        }
+        byte[] strict = ("<styleSheet " + STRICT + ">").getBytes(StandardCharsets.ISO_8859_1);
+        assertThrows(IOException.class, () -> WorkbookModel.transitional(endless(strict)));
+    }
+
+    private static InputStream endless(byte[] head) {
+        return new InputStream() {
+            private long at;
+
+            @Override
+            public int read() {
+                return at < head.length ? head[(int) at++] : at++ < 1L << 40 ? ' ' : -1;
+            }
+        };
     }
 }
