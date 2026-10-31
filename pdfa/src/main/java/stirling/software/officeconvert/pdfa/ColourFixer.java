@@ -56,7 +56,7 @@ final class ColourFixer {
         if (level.part() == 4) {
             c.pageIntents(graph, components);
         }
-        c.shadings();
+        c.shadings(components);
         Map<COSName, COSArray> fallbacks = new LinkedHashMap<>();
         if (components != 4 && colours.cmyk()) {
             fallbacks.put(DEFAULT_CMYK, c.iccBased(IccProfiles.cmyk(), 4));
@@ -146,7 +146,7 @@ final class ColourFixer {
                 || level.part() == 4 && "GRAY".equals(h.colourSpace());
     }
 
-    private void shadings() throws IOException {
+    private void shadings(int components) throws IOException {
         Map<COSName, COSArray> spaces = new HashMap<>();
         for (COSDictionary shading : shadings) {
             if (!(shading.getDictionaryObject(COSName.COLORSPACE) instanceof COSName name)) {
@@ -154,7 +154,7 @@ final class ColourFixer {
             }
             int n = COSName.DEVICECMYK.equals(name) ? 4 : COSName.DEVICERGB.equals(name) ? 3
                     : COSName.DEVICEGRAY.equals(name) ? 1 : 0;
-            if (n == 0) {
+            if (n == 0 || n == components) {
                 continue;
             }
             COSArray space = spaces.get(name);
