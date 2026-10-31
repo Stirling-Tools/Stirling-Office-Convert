@@ -17,8 +17,6 @@ final class ParaItems {
 
     private static final float[] WORD_EMOJI_LINE = {2210f / 2048, 514f / 2048};
 
-    private static final float WORD_EMOJI_ADVANCE = 2812f / 2048;
-
     final Para para;
 
     final List<Item> items = new ArrayList<>();
@@ -419,7 +417,7 @@ final class ParaItems {
             it.look = f == face ? look(rp, f, link, nominal) : fallbackLook(rp, f, face, link, nominal, cp);
             if (it.emoji != null) {
                 it.look = it.look.withLineOf(emojiLine(rp, face, link, nominal, colour));
-                it.emojiAdvance = web() ? 0 : WORD_EMOJI_ADVANCE;
+                it.emojiAdvance = web() ? 0 : ColorEmoji.OFFICE_ADVANCE;
             }
             if (full > nominal) {
                 // Small capitals keep the line height of the full size

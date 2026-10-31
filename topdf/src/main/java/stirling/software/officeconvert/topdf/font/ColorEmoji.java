@@ -21,6 +21,8 @@ public final class ColorEmoji {
 
     public record Bitmap(int glyph, byte[] png, float left, float top, float width, float height) {}
 
+    public static final float OFFICE_ADVANCE = 2812f / 2048;
+
     private static final int MAX_CLUSTER_CHARS = 64;
     private static final int MAX_TABLE_BYTES = 4 << 20;
     private static final int MAX_BITMAP_BYTES = 1 << 20;

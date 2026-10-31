@@ -355,7 +355,10 @@ public final class FontFace {
         if (ignorable(codePoint) || Character.isEmojiModifier(codePoint)) {
             return 0;
         }
-        return wide(codePoint) || Character.isEmojiPresentation(codePoint) ? unitsPerEm() : program.advanceOfGlyph(0);
+        if (Character.isEmojiPresentation(codePoint)) {
+            return Math.round(unitsPerEm() * ColorEmoji.OFFICE_ADVANCE);
+        }
+        return wide(codePoint) ? unitsPerEm() : program.advanceOfGlyph(0);
     }
 
     private int symbolAdvance(int codePoint) {

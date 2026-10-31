@@ -36,8 +36,11 @@ final class MissingGlyphs {
             return 0;
         }
         int type = Character.getType(cp);
-        if (type == Character.NON_SPACING_MARK || type == Character.ENCLOSING_MARK) {
+        if (type == Character.NON_SPACING_MARK || type == Character.ENCLOSING_MARK || Character.isEmojiModifier(cp)) {
             return 0;
+        }
+        if (Character.isEmojiPresentation(cp)) {
+            return ColorEmoji.OFFICE_ADVANCE;
         }
         if (wide(cp)) {
             return 1;

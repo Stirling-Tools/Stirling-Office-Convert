@@ -10,12 +10,15 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.rendering.PDFRenderer;
 import org.apache.pdfbox.text.PDFTextStripper;
+import org.apache.pdfbox.text.TextPosition;
 import org.apache.poi.xslf.usermodel.XMLSlideShow;
 import org.apache.poi.xslf.usermodel.XSLFTextBox;
 import org.apache.poi.xslf.usermodel.XSLFTextRun;
@@ -29,6 +32,7 @@ import org.apache.poi.xwpf.usermodel.XWPFRun;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import stirling.software.officeconvert.topdf.font.ColorEmoji;
 import stirling.software.officeconvert.topdf.font.FontSet;
 import stirling.software.officeconvert.topdf.testing.PostScriptFonts;
 import stirling.software.officeconvert.topdf.testing.TestFonts;
@@ -63,6 +67,21 @@ class FontCoverageTest {
         return out;
     }
 
+    private static float emojiGap(PDDocument doc) throws IOException {
+        Map<Character, TextPosition> first = new HashMap<>();
+        PDFTextStripper stripper = new PDFTextStripper() {
+            @Override
+            protected void writeString(String text, List<TextPosition> positions) {
+                for (TextPosition t : positions) {
+                    first.putIfAbsent(t.getUnicode().charAt(0), t);
+                }
+            }
+        };
+        stripper.getText(doc);
+        TextPosition e = first.get('e');
+        return first.get('s').getX() - (e.getX() + e.getWidth()) - 2 * first.get(' ').getWidth();
+    }
+
     @Test
     void slideEmojiDrawFromTheColourEmojiFontAndStayText() throws Exception {
         Path pptx = dir.resolve("emoji.pptx");
@@ -84,6 +103,7 @@ class FontCoverageTest {
             int[] c = colours(doc);
             assertTrue(c[0] > 400 && c[1] > 400, c[0] + " green, " + c[1] + " red");
             assertEquals(c[0], c[1], c[0] / 10f);
+            assertEquals(ColorEmoji.OFFICE_ADVANCE * 36, emojiGap(doc), 1.5f);
         }
     }
 
@@ -111,6 +131,7 @@ class FontCoverageTest {
             int[] c = colours(doc);
             assertTrue(c[0] > 400 && c[1] > 400, c[0] + " green, " + c[1] + " red");
             assertEquals(c[0], c[1], c[0] / 10f);
+            assertEquals(ColorEmoji.OFFICE_ADVANCE * 36, emojiGap(doc), 1.5f);
         }
     }
 
