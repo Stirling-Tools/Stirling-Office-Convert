@@ -2428,7 +2428,7 @@ final class Flow {
         if (HtmlTables.layoutOnly(e, d, ctx, look)) {
             // a one-column table with no borders is only there to stack its cells: they flow as blocks
             Integer fill = Css.color(d.get("background-color"));
-            float slack = frame.width() - stackWidth(d, look, frame.width());
+            float slack = frame.width() - stackWidth(e, d, look, frame.width());
             float left = stackIndent(e, d, look, legacy, slack);
             Frame inside = frame.inner(left, slack - left, fill == null ? -1 : fill);
             for (Element tr : e.select(HtmlTables.ROWS)) {
@@ -2460,7 +2460,7 @@ final class Flow {
         emit(t);
     }
 
-    private static float stackWidth(Map<String, String> d, Look look, float room) {
+    private static float stackWidth(Element table, Map<String, String> d, Look look, float room) {
         float width = room;
         for (String key : new String[] {"width", "max-width"}) {
             Float pt = d.get(key) == null || d.get(key).strip().equalsIgnoreCase("auto") ? null
@@ -2469,7 +2469,32 @@ final class Flow {
                 width = Math.min(width, pt);
             }
         }
-        return width;
+        return width < room ? Math.min(room, Math.max(width, longestWord(table, look))) : width;
+    }
+
+    private static final int STACK_TEXT = 2_000;
+
+    private static float longestWord(Element table, Look look) {
+        float most = 0;
+        int seen = 0;
+        ArrayDeque<Node> open = new ArrayDeque<>();
+        open.push(table);
+        while (!open.isEmpty() && seen < STACK_TEXT) {
+            Node n = open.pop();
+            seen++;
+            if (n instanceof TextNode t) {
+                String text = t.text();
+                seen += text.length();
+                for (String word : text.split("\\s+")) {
+                    most = Math.max(most, Glyphs.word(word, look.size, look.bold, look.font));
+                }
+            } else {
+                for (int i = Math.min(n.childNodeSize(), STACK_TEXT) - 1; i >= 0; i--) {
+                    open.push(n.childNode(i));
+                }
+            }
+        }
+        return most;
     }
 
     private static float stackIndent(Element table, Map<String, String> d, Look look, Paragraph.Align legacy,

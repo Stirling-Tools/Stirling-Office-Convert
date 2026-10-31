@@ -590,6 +590,16 @@ class HtmlLayoutTest {
     }
 
     @Test
+    void aNarrowLayoutTableStillFitsItsLongestWord() throws IOException {
+        Laid l = lay("""
+                <!doctype html><html><head><style>body{margin:0}</style></head><body>
+                <table width="20" cellpadding="0" cellspacing="0"><tr><td>Hello wonderful world</td></tr></table>
+                </body></html>""");
+        assertEquals(1, l.words().stream().filter(w -> w.text().equals("wonderful")).count(), l.words().toString());
+        assertTrue(l.word("wonderful").top() > l.word("Hello").top(), l.words().toString());
+    }
+
+    @Test
     void bodyBackgroundColourPaintsThePageInsideItsMargins() throws IOException {
         Laid l = lay("<html><body bgcolor=\"#ffff00\"><p>Hi</p></body></html>");
         int midX = l.first().getWidth() / 2;
