@@ -3,7 +3,6 @@ package stirling.software.officeconvert.topdf.docx;
 import java.awt.Color;
 import java.awt.geom.AffineTransform;
 import java.awt.geom.Arc2D;
-import java.awt.geom.Ellipse2D;
 import java.awt.geom.Path2D;
 import java.awt.geom.Rectangle2D;
 import java.util.ArrayList;
@@ -382,7 +381,7 @@ final class ChartPainter {
                     Chart.Marker m = s.marker() != null ? s.marker()
                             : new Chart.Marker("circle", 5, s.fill(), s.fill());
                     for (float[] pt : pts) {
-                        marker(m, pt[0], pt[1]);
+                        ChartMarks.marker(ops, m, pt[0], pt[1]);
                     }
                 }
             }
@@ -567,7 +566,7 @@ final class ChartPainter {
                 ops.add(new Op.Line(x, cy, x + size * 4, cy, Stroke.solid(e.width(), e.color())));
             }
             if (e.marker() != null) {
-                marker(e.marker(), x + size * 2, cy);
+                ChartMarks.marker(ops, e.marker(), x + size * 2, cy);
             }
         } else if (e.color() != null) {
             ops.add(new Op.Rect(x, cy - size / 2, size, size, Fill.solid(e.color()), null));
@@ -1204,7 +1203,7 @@ final class ChartPainter {
         }
     }
 
-    private record Plot(float x, float y, float w, float h, Scale scale, boolean horizontal, boolean reversed,
+    record Plot(float x, float y, float w, float h, Scale scale, boolean horizontal, boolean reversed,
             int count, boolean midCat, Scale xScale) {
 
         Plot with(Scale s) {
@@ -1303,7 +1302,7 @@ final class ChartPainter {
                 }
                 for (Chart.ErrorBars e : s.errorBars()) {
                     if (!e.x() && !percent) {
-                        errorBar(e, p, start + bw / 2, base + v, i, s.values());
+                        ChartMarks.errorBar(ops, e, p, start + bw / 2, base + v, i, s.values());
                     }
                 }
                 Chart.Labels pl = labels.at(i);
@@ -1415,9 +1414,9 @@ final class ChartPainter {
         Fill fill = chart.plotFill() == null ? null : Fill.solid(chart.plotFill());
         float bx = x + depthX;
         float by = y - depthY;
-        ops.add(new Op.Path(polygon(bx, by, bx + w, by, bx + w, by + h, bx, by + h), fill, edge));
-        ops.add(new Op.Path(polygon(x, y, bx, by, bx, by + h, x, y + h), fill, edge));
-        ops.add(new Op.Path(polygon(x, y + h, bx, by + h, bx + w, by + h, x + w, y + h), fill, edge));
+        ops.add(new Op.Path(ChartMarks.polygon(bx, by, bx + w, by, bx + w, by + h, bx, by + h), fill, edge));
+        ops.add(new Op.Path(ChartMarks.polygon(x, y, bx, by, bx, by + h, x, y + h), fill, edge));
+        ops.add(new Op.Path(ChartMarks.polygon(x, y + h, bx, by + h, bx + w, by + h, x + w, y + h), fill, edge));
     }
 
     private void box(float x, float y, float w, float h, Color c, Stroke outline) {
@@ -1430,9 +1429,11 @@ final class ChartPainter {
         Fill front = c == null ? null : Fill.solid(c);
         Fill top = c == null ? null : Fill.solid(shade(c, 0.85f));
         Fill side = c == null ? null : Fill.solid(shade(c, 0.7f));
-        ops.add(new Op.Path(polygon(fx + w, fy, fx + w + dx, fy - dy, fx + w + dx, fy + h - dy, fx + w, fy + h), side,
+        ops.add(new Op.Path(
+                ChartMarks.polygon(fx + w, fy, fx + w + dx, fy - dy, fx + w + dx, fy + h - dy, fx + w, fy + h), side,
                 outline));
-        ops.add(new Op.Path(polygon(fx, fy, fx + w, fy, fx + w + dx, fy - dy, fx + dx, fy - dy), top, outline));
+        ops.add(new Op.Path(ChartMarks.polygon(fx, fy, fx + w, fy, fx + w + dx, fy - dy, fx + dx, fy - dy), top,
+                outline));
         ops.add(new Op.Rect(fx, fy, w, h, front, outline));
     }
 
@@ -1545,7 +1546,7 @@ final class ChartPainter {
             if (s.line() != null) {
                 Path2D.Float path = new Path2D.Float();
                 for (List<float[]> r : runs) {
-                    trace(path, r, s.smooth());
+                    ChartMarks.trace(path, r, s.smooth());
                 }
                 Chart.Shadow sh = s.shadow();
                 if (sh != null) {
@@ -1562,15 +1563,15 @@ final class ChartPainter {
                 Chart.Marker m = s.marker() != null ? s.marker()
                         : new Chart.Marker("circle", 5, s.fill(), s.fill());
                 for (float[] pt : pts) {
-                    marker(m, pt[0], pt[1]);
+                    ChartMarks.marker(ops, m, pt[0], pt[1]);
                 }
             }
             boolean scatter = g.kind() == Chart.Kind.SCATTER;
             for (Chart.ErrorBars e : s.errorBars()) {
-                errorBars(e, s, p, raw, scatter);
+                ChartMarks.errorBars(ops, e, s, p, raw, scatter);
             }
             for (Chart.Trend t : s.trends()) {
-                trend(t, s, p, raw, scatter);
+                ChartMarks.trend(ops, t, s, p, raw, scatter);
             }
             Chart.Labels labels = s.labels() != null ? s.labels() : g.labels();
             if (labels.any()) {
@@ -1598,238 +1599,6 @@ final class ChartPainter {
                 }
             }
         }
-    }
-
-    private void errorBars(Chart.ErrorBars e, Chart.Series s, Plot p, List<double[]> raw, boolean scatter) {
-        if (e.x() && (!scatter || p.xScale() == null)) {
-            return;
-        }
-        for (double[] r : raw) {
-            int i = (int) r[0];
-            if (!e.x()) {
-                errorBar(e, p, (float) r[2], r[1], i, s.values());
-                continue;
-            }
-            double x = s.xs() != null && i < s.xs().length ? s.xs()[i] : Double.NaN;
-            if (Double.isNaN(x)) {
-                continue;
-            }
-            double[] range = errorRange(e, x, i, s.xs());
-            if (range == null) {
-                continue;
-            }
-            float y = p.valuePos(r[1]);
-            errorLine(e, p.xPos(range[0]), y, p.xPos(range[1]), y, true);
-        }
-    }
-
-    private void errorBar(Chart.ErrorBars e, Plot p, float along, double value, int i, double[] values) {
-        double[] range = errorRange(e, value, i, values);
-        if (range == null) {
-            return;
-        }
-        float a = p.valuePos(range[0]);
-        float b = p.valuePos(range[1]);
-        if (p.horizontal()) {
-            errorLine(e, a, along, b, along, true);
-        } else {
-            errorLine(e, along, a, along, b, false);
-        }
-    }
-
-    private static double[] errorRange(Chart.ErrorBars e, double value, int i, double[] all) {
-        double sum = 0;
-        double squares = 0;
-        int n = 0;
-        for (double v : all) {
-            if (Double.isFinite(v)) {
-                sum += v;
-                n++;
-            }
-        }
-        double mean = n == 0 ? 0 : sum / n;
-        for (double v : all) {
-            if (Double.isFinite(v)) {
-                squares += (v - mean) * (v - mean);
-            }
-        }
-        double deviation = n > 1 ? Math.sqrt(squares / (n - 1)) : 0;
-        double center = e.kind().equals("stdDev") ? mean : value;
-        double plus;
-        double minus;
-        switch (e.kind()) {
-            case "percentage" -> plus = minus = Math.abs(value) * e.value() / 100;
-            case "stdDev" -> plus = minus = e.value() * deviation;
-            case "stdErr" -> plus = minus = n > 0 ? deviation / Math.sqrt(n) : 0;
-            case "cust" -> {
-                plus = i < e.plus().length && Double.isFinite(e.plus()[i]) ? e.plus()[i] : 0;
-                minus = i < e.minus().length && Double.isFinite(e.minus()[i]) ? e.minus()[i] : 0;
-            }
-            default -> plus = minus = e.value();
-        }
-        if (e.type().equals("plus")) {
-            minus = 0;
-        } else if (e.type().equals("minus")) {
-            plus = 0;
-        }
-        if (!Double.isFinite(plus) || !Double.isFinite(minus) || plus == 0 && minus == 0) {
-            return null;
-        }
-        return new double[] {center - Math.abs(minus), center + Math.abs(plus)};
-    }
-
-    private void errorLine(Chart.ErrorBars e, float x1, float y1, float x2, float y2, boolean across) {
-        Path2D.Float path = new Path2D.Float();
-        path.moveTo(x1, y1);
-        path.lineTo(x2, y2);
-        if (e.endCap()) {
-            float c = 3;
-            for (float[] end : new float[][] {{x1, y1}, {x2, y2}}) {
-                if (across) {
-                    path.moveTo(end[0], end[1] - c);
-                    path.lineTo(end[0], end[1] + c);
-                } else {
-                    path.moveTo(end[0] - c, end[1]);
-                    path.lineTo(end[0] + c, end[1]);
-                }
-            }
-        }
-        ops.add(new Op.Path(path, null, e.line()));
-    }
-
-    private void trend(Chart.Trend t, Chart.Series s, Plot p, List<double[]> raw, boolean scatter) {
-        if (scatter && p.xScale() == null) {
-            return;
-        }
-        List<double[]> pts = new ArrayList<>();
-        for (double[] r : raw) {
-            int i = (int) r[0];
-            double x = scatter ? s.xs() != null && i < s.xs().length ? s.xs()[i] : Double.NaN : i + 1;
-            if (Double.isFinite(x) && Double.isFinite(r[1])) {
-                pts.add(new double[] {x, r[1]});
-            }
-        }
-        if (pts.size() < 2) {
-            return;
-        }
-        Path2D.Float path = new Path2D.Float();
-        if (t.type().equals("movingAvg")) {
-            boolean started = false;
-            for (int k = t.period() - 1; k < pts.size(); k++) {
-                double sum = 0;
-                for (int j = k - t.period() + 1; j <= k; j++) {
-                    sum += pts.get(j)[1];
-                }
-                started = trendTo(path, p, pts.get(k)[0], sum / t.period(), scatter, started);
-            }
-        } else {
-            double[] fit = Trends.fit(t.type(), t.order(), pts);
-            if (fit == null) {
-                return;
-            }
-            double lo = pts.stream().mapToDouble(q -> q[0]).min().orElse(0) - t.backward();
-            double hi = pts.stream().mapToDouble(q -> q[0]).max().orElse(0) + t.forward();
-            int steps = t.type().equals("linear") ? 1 : 96;
-            boolean started = false;
-            for (int k = 0; k <= steps; k++) {
-                double x = lo + (hi - lo) * k / steps;
-                double y = Trends.at(t.type(), fit, x);
-                if (!Double.isFinite(y) || y < p.scale().min() || y > p.scale().max()) {
-                    started = false;
-                    continue;
-                }
-                started = trendTo(path, p, x, y, scatter, started);
-            }
-        }
-        ops.add(new Op.Path(path, null, t.line()));
-    }
-
-    private static boolean trendTo(Path2D.Float path, Plot p, double x, double y, boolean scatter, boolean started) {
-        float along;
-        if (scatter) {
-            along = p.xPos(x);
-        } else {
-            float first = p.center(0);
-            float step = p.count() > 1 ? p.center(1) - first : p.band();
-            along = (float) (first + step * (x - 1));
-        }
-        float v = p.valuePos(y);
-        float px = p.horizontal() && !scatter ? v : along;
-        float py = p.horizontal() && !scatter ? along : v;
-        if (started) {
-            path.lineTo(px, py);
-        } else {
-            path.moveTo(px, py);
-        }
-        return true;
-    }
-
-    // Smoothed lines pass through every point on Bezier curves with Catmull-Rom tangents, as Office draws them
-    private static void trace(Path2D.Float path, List<float[]> pts, boolean smooth) {
-        path.moveTo(pts.get(0)[0], pts.get(0)[1]);
-        for (int i = 1; i < pts.size(); i++) {
-            float[] b = pts.get(i);
-            if (!smooth || pts.size() < 3) {
-                path.lineTo(b[0], b[1]);
-                continue;
-            }
-            float[] a = pts.get(i - 1);
-            float[] before = pts.get(Math.max(0, i - 2));
-            float[] after = pts.get(Math.min(pts.size() - 1, i + 1));
-            path.curveTo(a[0] + (b[0] - before[0]) / 6, a[1] + (b[1] - before[1]) / 6, b[0] - (after[0] - a[0]) / 6,
-                    b[1] - (after[1] - a[1]) / 6, b[0], b[1]);
-        }
-    }
-
-    private void marker(Chart.Marker m, float cx, float cy) {
-        float r = m.size() / 2;
-        Fill fill = m.fill() == null ? null : Fill.solid(m.fill());
-        Stroke line = m.line() == null ? null : Stroke.solid(0.75f, m.line());
-        if (fill == null && line == null) {
-            return;
-        }
-        java.awt.Shape shape;
-        switch (m.symbol()) {
-            case "none" -> {
-                return;
-            }
-            case "square" -> shape = new Rectangle2D.Float(cx - r, cy - r, 2 * r, 2 * r);
-            case "diamond" -> shape = polygon(cx, cy - r, cx + r, cy, cx, cy + r, cx - r, cy);
-            case "triangle" -> shape = polygon(cx, cy - r, cx + r, cy + r, cx - r, cy + r);
-            case "arrowDown" -> shape = polygon(cx - r, cy - r, cx + r, cy - r, cx, cy + r);
-            case "dash" -> shape = new Rectangle2D.Float(cx - r, cy - r / 4, 2 * r, r / 2);
-            case "dot" -> shape = new Rectangle2D.Float(cx - r / 2, cy - r / 4, r, r / 2);
-            case "x", "star", "plus" -> {
-                Path2D.Float p = new Path2D.Float();
-                if (!m.symbol().equals("plus")) {
-                    p.moveTo(cx - r, cy - r);
-                    p.lineTo(cx + r, cy + r);
-                    p.moveTo(cx - r, cy + r);
-                    p.lineTo(cx + r, cy - r);
-                }
-                if (!m.symbol().equals("x")) {
-                    p.moveTo(cx, cy - r);
-                    p.lineTo(cx, cy + r);
-                    p.moveTo(cx - r, cy);
-                    p.lineTo(cx + r, cy);
-                }
-                Color c = m.line() != null ? m.line() : m.fill();
-                ops.add(new Op.Path(p, null, Stroke.solid(0.75f, c)));
-                return;
-            }
-            default -> shape = new Ellipse2D.Float(cx - r, cy - r, 2 * r, 2 * r);
-        }
-        ops.add(new Op.Path(shape, fill, line));
-    }
-
-    private static Path2D.Float polygon(float... xy) {
-        Path2D.Float p = new Path2D.Float();
-        p.moveTo(xy[0], xy[1]);
-        for (int i = 2; i < xy.length; i += 2) {
-            p.lineTo(xy[i], xy[i + 1]);
-        }
-        p.closePath();
-        return p;
     }
 
     private static float scatterX(double[] xs, int i, Plot p) {
