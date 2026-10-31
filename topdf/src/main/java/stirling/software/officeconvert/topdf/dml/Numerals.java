@@ -83,8 +83,8 @@ public final class Numerals {
             case "japaneseLegal" -> legal(n, LEGAL_JAPANESE, "\u9621\u767E\u62FE", false);
             case "ideographDigital", "japaneseDigitalTenThousand", "taiwaneseDigital" -> spelled(n, CJK_DIGITS);
             case "koreanDigital", "koreanDigital2" -> spelled(n, KOREAN_DIGITS);
-            case "ideographTraditional" -> cycle(n, STEMS);
-            case "ideographZodiac" -> cycle(n, BRANCHES);
+            case "ideographTraditional" -> sequence(n, STEMS);
+            case "ideographZodiac" -> sequence(n, BRANCHES);
             case "ganada" -> letters(n, GANADA);
             case "chosung" -> letters(n, CHOSUNG);
             case "aiueo", "aiueoFullWidth" -> letters(n, AIUEO);
@@ -157,8 +157,8 @@ public final class Numerals {
         return new String(Character.toChars(letter)).repeat(repeat);
     }
 
-    private static String cycle(int n, String signs) {
-        return n <= 0 ? Integer.toString(n) : String.valueOf(signs.charAt((n - 1) % signs.length()));
+    private static String sequence(int n, String signs) {
+        return n <= 0 || n > signs.length() ? Integer.toString(n) : String.valueOf(signs.charAt(n - 1));
     }
 
     private static String spelled(int n, String digits) {

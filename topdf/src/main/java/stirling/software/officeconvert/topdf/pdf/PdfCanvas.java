@@ -492,6 +492,193 @@ public final class PdfCanvas implements Closeable {
         return pen - x;
     }
 
+    public float emoji(String text, float x, float baseline, TextStyle style, float each, boolean mono)
+            throws IOException {
+        Objects.requireNonNull(text, "text");
+        Objects.requireNonNull(style, "style");
+        open();
+        if (text.isEmpty()) {
+            return 0;
+        }
+        ColorEmoji colour = output.fonts().colorEmoji();
+        FontFace face = output.fonts().font(style.face()).face();
+        float size = style.size();
+        float th = style.horizontalScale() / 100f;
+        PdfFonts.Embedded tofu = output.fonts().missing(face);
+        FontFace boxFace = tofu.face();
+        float natural = boxFace.glyphAdvance(0) * size / boxFace.unitsPerEm();
+        StringBuilder images = new StringBuilder();
+        StringBuilder run = new StringBuilder("0 Tc\n");
+        PdfFonts.Embedded current = null;
+        int mode = -1;
+        float stroke = 0;
+        boolean any = false;
+        float pen = x;
+        for (int i = 0; i < text.length(); ) {
+            int end = ColorEmoji.clusterEnd(text, i);
+            if (end <= i) {
+                end = i + Character.charCount(text.codePointAt(i));
+            }
+            String cluster = text.substring(i, end);
+            int base = cluster.codePointAt(0);
+            float room = each * size * th + style.charSpacing() * cluster.codePointCount(0, cluster.length());
+            boolean seen = onPage(pen, pen + room, baseline - 2 * size, baseline + size);
+            int[] glyphs = colour == null || mono && !joined(cluster) ? null : colour.glyphs(cluster);
+            if (mono && glyphs != null && glyphs.length > 1) {
+                glyphs = null;
+            }
+            FontFace cover = glyphs != null || ColorEmoji.regional(base) ? null
+                    : face.covers(base) ? face : output.fonts().fallback(base, face);
+            if (cover == null && glyphs == null && colour != null) {
+                glyphs = colour.glyphs(cluster);
+            }
+            float carried = pen;
+            if (cover != null) {
+                String first = new String(Character.toChars(base));
+                float own = cover.advance(base) * size / cover.unitsPerEm() * th;
+                float fit = own > room && own > 0 ? room / own : 1;
+                float at = pen + Math.max(0, room - own * fit) / 2;
+                PdfFonts.Embedded embedded = seen ? output.fonts().font(cover) : null;
+                FontFace drawn = embedded == null ? null : embedded.face();
+                int glyph = drawn != null && drawn.covers(base) ? drawn.glyph(base) : 0;
+                if (glyph > 0 && direct(drawn)) {
+                    float line = outline(drawn, size);
+                    int want = hiddenText ? 3 : line > 0 ? 2 : 0;
+                    if (want == 2 && line != stroke) {
+                        rgb(run, style.color()).append(" RG ");
+                        Numbers.append(run, line).append(" w 1 j\n");
+                        stroke = line;
+                    }
+                    if (want != mode) {
+                        run.append(want).append(" Tr\n");
+                        mode = want;
+                    }
+                    if (embedded != current) {
+                        font(run, embedded, size);
+                        current = embedded;
+                    }
+                    int code = drawn.encodedCodePoint(base);
+                    Numbers.append(run, th * fit * 100).append(" Tz ");
+                    matrix(run, 1, drawn.syntheticItalic() ? ITALIC_SKEW : 0, -1, at, baseline)
+                            .setLength(run.length() - 1);
+                    run.append(" [<");
+                    Numbers.hex(run, output.fonts().encoded(embedded, glyph, code), 4).append(">] TJ\n");
+                    output.fonts().used(embedded, new int[] {glyph}, new int[] {code}, 1);
+                    any = true;
+                } else if (seen) {
+                    queue(emojiOps(images, run, any, style), x, pen, baseline, size, text.substring(0, i), false);
+                    images.setLength(0);
+                    run.setLength(0);
+                    run.append("0 Tc\n");
+                    current = null;
+                    mode = -1;
+                    stroke = 0;
+                    any = false;
+                    text(first, at, baseline, style.face(cover).charSpacing(0).wordSpacing(0)
+                            .horizontalScale(style.horizontalScale() * fit));
+                }
+                carried = at + own * fit;
+                cluster = cluster.substring(first.length());
+            } else if (glyphs != null) {
+                if (!hiddenText && seen) {
+                    float wide = colour.advance(glyphs) * size * th;
+                    float fit = wide > room && wide > 0 ? room / wide : 1;
+                    float drawn = pen + Math.max(0, room - wide * fit) / 2;
+                    for (int g : glyphs) {
+                        ColorEmoji.Bitmap bitmap = colour.bitmap(g);
+                        DecodedPicture pic = bitmap == null ? null : output.emoji(bitmap);
+                        if (pic != null) {
+                            float w = bitmap.width() * size * th * fit;
+                            float h = bitmap.height() * size * fit;
+                            float top = baseline - bitmap.top() * size * fit;
+                            images.append("q\n");
+                            Numbers.append(images, w).append(" 0 0 ");
+                            Numbers.append(images, -h).append(' ');
+                            Numbers.append(images, drawn + bitmap.left() * size * th * fit).append(' ');
+                            Numbers.append(images, top + h).append(" cm /");
+                            images.append(resources().add(pic.image()).getName()).append(" Do\nQ\n");
+                        }
+                        drawn += colour.advance(g) * size * th * fit;
+                    }
+                }
+            } else if (room > 0 && natural > 0) {
+                if (!hiddenText && !face.covers(base) && output.fonts().fallback(base, face) == null) {
+                    output.fonts().uncovered(base);
+                }
+                if (seen) {
+                    int want = hiddenText ? 3 : 0;
+                    if (want != mode) {
+                        run.append(want).append(" Tr\n");
+                        mode = want;
+                    }
+                    if (tofu != current) {
+                        font(run, tofu, size);
+                        current = tofu;
+                    }
+                    float tz = Math.min(100, 100 * room / natural);
+                    Numbers.append(run, tz).append(" Tz ");
+                    matrix(run, 1, 0, -1, pen + (room - natural * tz / 100) / 2, baseline)
+                            .setLength(run.length() - 1);
+                    run.append(" [<");
+                    Numbers.hex(run, output.fonts().missingCode(tofu, cluster), 4).append(">] TJ\n");
+                    any = true;
+                }
+                cluster = "";
+            }
+            float left = pen + room - carried;
+            if (seen && !cluster.isEmpty() && left > 0 && natural > 0) {
+                if (mode != 3) {
+                    run.append("3 Tr\n");
+                    mode = 3;
+                }
+                if (tofu != current) {
+                    font(run, tofu, size);
+                    current = tofu;
+                }
+                Numbers.append(run, 100 * left / natural).append(" Tz ");
+                matrix(run, 1, 0, -1, carried, baseline).setLength(run.length() - 1);
+                run.append(" [<");
+                Numbers.hex(run, output.fonts().missingCode(tofu, cluster), 4).append(">] TJ\n");
+                any = true;
+            }
+            pen += room;
+            i = end;
+        }
+        queue(emojiOps(images, run, any, style), x, pen, baseline, size, text, false);
+        return pen - x;
+    }
+
+    private StringBuilder emojiOps(StringBuilder images, StringBuilder run, boolean any, TextStyle style) {
+        StringBuilder ops = new StringBuilder(images.length() + run.length() + 32);
+        ops.append(images);
+        if (any) {
+            begin(ops, style, 0);
+            ops.append(run).append("ET\nQ\n");
+        }
+        return ops;
+    }
+
+    private static boolean direct(FontFace f) {
+        return !f.emulated() && !f.scaledPerGlyph() && f.glyphStretch() == 1 && !f.symbolStandIn();
+    }
+
+    private boolean onPage(float x0, float x1, float top, float bottom) {
+        if (form != null) {
+            return true;
+        }
+        double[] p = {x0, top, x1, top, x0, bottom, x1, bottom};
+        ctm.transform(p, 0, p, 0, 4);
+        double minX = Math.min(Math.min(p[0], p[2]), Math.min(p[4], p[6]));
+        double maxX = Math.max(Math.max(p[0], p[2]), Math.max(p[4], p[6]));
+        double minY = Math.min(Math.min(p[1], p[3]), Math.min(p[5], p[7]));
+        double maxY = Math.max(Math.max(p[1], p[3]), Math.max(p[5], p[7]));
+        return maxX >= 0 && minX <= width && maxY >= 0 && minY <= height;
+    }
+
+    private static boolean joined(String cluster) {
+        return cluster.indexOf(0x200D) >= 0 || cluster.codePoints().anyMatch(cp -> cp >= 0xE0020 && cp <= 0xE007F);
+    }
+
     // Characters no font has show a missing-glyph box, as Word shows them, and still extract as their text
     private float missing(StringBuilder ops, String text, float x, float baseline, TextStyle style, FontFace face)
             throws IOException {

@@ -48,6 +48,8 @@ public final class Paragraph implements Block {
     public boolean keepLines;
     public boolean bidi;
     public boolean noHangingPunctuation;
+    public boolean autoSpaceLetters;
+    public boolean autoSpaceDigits;
     public boolean hyphenate;
     public int widows = 2;
     public int orphans = 2;

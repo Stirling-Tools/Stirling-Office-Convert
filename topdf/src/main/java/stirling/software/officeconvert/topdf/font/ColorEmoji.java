@@ -25,6 +25,9 @@ public final class ColorEmoji {
 
     public static final float OFFICE_ADVANCE = 2812f / 2048;
 
+    private static final float OFFICE_ASCENT = 2210f / 2048;
+    private static final float OFFICE_DESCENT = 514f / 2048;
+
     private static final int MAX_CLUSTER_CHARS = 64;
     private static final int MAX_TABLE_BYTES = 4 << 20;
     private static final int MAX_BITMAP_BYTES = 1 << 20;
@@ -124,8 +127,35 @@ public final class ColorEmoji {
         return i;
     }
 
-    private static boolean regional(int cp) {
+    public static boolean regional(int cp) {
         return cp >= 0x1F1E6 && cp <= 0x1F1FF;
+    }
+
+    public static float[] officeLine() {
+        return new float[] {OFFICE_ASCENT, OFFICE_DESCENT};
+    }
+
+    public static boolean sequence(CharSequence s, int start, int end) {
+        int rest = end - start - Character.charCount(Character.codePointAt(s, start));
+        return rest > 1 || rest == 1 && s.charAt(end - 1) != 0xFE0F;
+    }
+
+    public static int unitEnd(ColorEmoji colour, CharSequence s, int i, FontFace face) {
+        int run = colour == null ? i : colour.run(s, i);
+        if (run > i) {
+            return run;
+        }
+        int end = clusterEnd(s, i);
+        return end > i && sequence(s, i, end) && !face.covers(Character.codePointAt(s, i)) ? end : i;
+    }
+
+    public static int clusters(CharSequence s) {
+        int n = 0;
+        for (int i = 0; i < s.length(); n++) {
+            int end = clusterEnd(s, i);
+            i = end > i ? end : i + Character.charCount(Character.codePointAt(s, i));
+        }
+        return n;
     }
 
     public static boolean needsShaping(CharSequence text) {
