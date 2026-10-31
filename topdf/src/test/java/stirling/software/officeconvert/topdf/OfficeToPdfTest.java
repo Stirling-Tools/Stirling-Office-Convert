@@ -434,7 +434,7 @@ class OfficeToPdfTest {
     @Test
     void theWarmUpSamplesAreRealDocumentsAndLeaveNothingBehind() throws Exception {
         for (Format f : Format.values()) {
-            Path in = Fixtures.write(dir, "sample." + f.name().toLowerCase(java.util.Locale.ROOT), OfficeToPdf.sample(f));
+            Path in = Fixtures.write(dir, "sample." + f.name().toLowerCase(java.util.Locale.ROOT), WarmUp.sample(f));
             OfficeToPdf.Result r = OfficeToPdf.convert(in, dir.resolve(f + ".pdf"));
             assertEquals(1, r.pages(), f.name());
             try (org.apache.pdfbox.pdmodel.PDDocument pdf = org.apache.pdfbox.Loader.loadPDF(dir.resolve(f + ".pdf")
