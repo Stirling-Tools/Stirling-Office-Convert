@@ -9,9 +9,15 @@ import stirling.software.officeconvert.topdf.font.FontLibrary;
 import stirling.software.officeconvert.topdf.font.FontMetrics;
 
 record FontMeasure(int unitsPerEm, int digit, int winAscent, int winDescent, int hheaAscent, int hheaDescent,
-        int hheaLineGap, boolean typoMetrics) {
+        int hheaLineGap, boolean typoMetrics, boolean screenLeading, FontFace hinting, boolean estimated) {
 
     private static final Map<String, FontMeasure> KNOWN = new HashMap<>();
+
+    FontMeasure(int unitsPerEm, int digit, int winAscent, int winDescent, int hheaAscent, int hheaDescent,
+            int hheaLineGap, boolean typoMetrics) {
+        this(unitsPerEm, digit, winAscent, winDescent, hheaAscent, hheaDescent, hheaLineGap, typoMetrics, true, null,
+                false);
+    }
 
     static {
         known("Aptos", 1094, 2068, 563, 1923, -577, 0);
@@ -38,7 +44,7 @@ record FontMeasure(int unitsPerEm, int digit, int winAscent, int winDescent, int
         known("Palatino Linotype", 1024, 2150, 613, 1499, -582, 682);
         known("Segoe UI", 1104, 2210, 514, 2210, -514, 0);
         known("Tahoma", 1118, 2049, 423, 2049, -423, 0);
-        known("Times New Roman", 1024, 1825, 443, 1825, -443, 87);
+        known("Times New Roman", 1024, 1825, 443, 1825, -443, 87, false);
         known("Trebuchet MS", 1074, 1923, 455, 1923, -455, 0);
         known("Verdana", 1302, 2059, 430, 2059, -430, 0);
         known("Microsoft Sans Serif", 1139, 1888, 430, 1888, -430, 0);
@@ -55,8 +61,13 @@ record FontMeasure(int unitsPerEm, int digit, int winAscent, int winDescent, int
 
     private static void known(String family, int digit, int winAscent, int winDescent, int hheaAscent,
             int hheaDescent, int gap) {
+        known(family, digit, winAscent, winDescent, hheaAscent, hheaDescent, gap, true);
+    }
+
+    private static void known(String family, int digit, int winAscent, int winDescent, int hheaAscent,
+            int hheaDescent, int gap, boolean screenLeading) {
         KNOWN.put(family.toLowerCase(Locale.ROOT), new FontMeasure(2048, digit, winAscent, winDescent, hheaAscent,
-                hheaDescent, gap, family.startsWith("Aptos")));
+                hheaDescent, gap, family.startsWith("Aptos"), screenLeading, null, false));
     }
 
     static FontMeasure of(FontLibrary fonts, String family, boolean bold, boolean italic) {
@@ -65,17 +76,28 @@ record FontMeasure(int unitsPerEm, int digit, int winAscent, int winDescent, int
         if (exact == null) {
             exact = family == null ? null : fonts.exact(family, false, false);
         }
+        boolean calibri = key.equals(ScreenAdvances.CALIBRI.toLowerCase(Locale.ROOT));
         if (exact != null) {
-            return of(exact);
+            return of(exact, calibri ? null : exact, false);
         }
         FontMeasure known = KNOWN.get(key);
         if (known != null) {
-            return known;
+            FontFace standIn = calibri ? null : fonts.find(family, false, false);
+            return standIn != null && standIn.keepsWidths() ? known.withHinting(standIn) : known;
         }
-        return of(fonts.find(family == null ? "Calibri" : family, bold, italic));
+        return of(fonts.find(family == null ? "Calibri" : family, bold, italic), null, true);
     }
 
     static FontMeasure of(FontFace face) {
+        return of(face, null, false);
+    }
+
+    FontMeasure withHinting(FontFace face) {
+        return new FontMeasure(unitsPerEm, digit, winAscent, winDescent, hheaAscent, hheaDescent, hheaLineGap,
+                typoMetrics, screenLeading, face, false);
+    }
+
+    private static FontMeasure of(FontFace face, FontFace hinting, boolean estimated) {
         FontMetrics m = face.metrics();
         int digit = 0;
         for (char c = '0'; c <= '9'; c++) {
@@ -87,7 +109,7 @@ record FontMeasure(int unitsPerEm, int digit, int winAscent, int winDescent, int
         int winA = m.winAscent() > 0 ? m.winAscent() : m.hheaAscender();
         int winD = m.winDescent() > 0 ? m.winDescent() : -m.hheaDescender();
         return new FontMeasure(Math.max(16, m.unitsPerEm()), digit, winA, Math.abs(winD), m.hheaAscender(),
-                m.hheaDescender(), m.hheaLineGap(), m.useTypoMetrics());
+                m.hheaDescender(), m.hheaLineGap(), m.useTypoMetrics(), true, hinting, estimated);
     }
 
     static int ppem(double size, double dpi) {
@@ -99,7 +121,14 @@ record FontMeasure(int unitsPerEm, int digit, int winAscent, int winDescent, int
     }
 
     int screenDigit(double size) {
-        return (int) Math.max(1, Math.floor((double) digit * ppem(size, 96) / unitsPerEm));
+        int ppem = ppem(size, 96);
+        int hinted = -1;
+        if (hinting != null) {
+            for (char c = '0'; c <= '9'; c++) {
+                hinted = Math.max(hinted, hinting.hintedAdvance(c, ppem));
+            }
+        }
+        return hinted > 0 ? hinted : (int) Math.max(1, Math.floor((double) digit * ppem / unitsPerEm));
     }
 
     int printerLinePx(double size) {
@@ -127,7 +156,7 @@ record FontMeasure(int unitsPerEm, int digit, int winAscent, int winDescent, int
         int ext = Math.max(0, hheaLineGap - (winAscent + winDescent - (hheaAscent - hheaDescent)));
         double leading = (double) ext * ppem / unitsPerEm;
         return pixels((double) winAscent * ppem / unitsPerEm) + pixels((double) winDescent * ppem / unitsPerEm)
-                + (screen ? pixels(leading) : (long) Math.floor(leading));
+                + (screen ? screenLeading ? pixels(leading) : 0 : (long) Math.floor(leading));
     }
 
     private static long pixels(double v) {
