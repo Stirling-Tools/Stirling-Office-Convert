@@ -87,7 +87,7 @@ final class UnmappedGlyphs {
     private static final double MAX_ICON_POINTS = 300;
 
     private static final String[][] TIES = {{"-", "\u2013"}, {"\u2013", "\u2014"}, {"l", "I"},
-        {"(", "["}, {")", "]"}, {"O", "0"}, {"l", "1"}};
+        {"(", "["}, {")", "]"}, {"O", "0"}, {"l", "1"}, {"-", "_"}, {"\u2013", "_"}, {"\u2014", "_"}};
 
     private static final String[][] LOOKALIKES = {{"l", "I"}, {"O", "0"}, {"o", "0"}, {"l", "1"}, {"I", "1"}};
 
@@ -164,6 +164,12 @@ final class UnmappedGlyphs {
         }
         return new IconShape(outline, rgb,
                 ICON_KEY + shapes.id + "|" + code + "|" + Integer.toHexString(rgb) + "|" + Math.round(k * 4000));
+    }
+
+    boolean shapeRead(PDFont font, int code, String text) {
+        Shapes shapes = fonts.get(font.getCOSObject());
+        Read read = shapes == null ? null : shapes.reads.get(code);
+        return read != null && read.ref != null && read.text.equals(text);
     }
 
     String alternative(PDFont font, int code, String text) {
@@ -543,7 +549,7 @@ final class UnmappedGlyphs {
                 String text = read.ref == null ? null : named.apply(inks.get(i).code);
                 if (text != null) {
                     checked++;
-                    agreed += plain(text).equalsIgnoreCase(plain(read.text)) ? 1 : 0;
+                    agreed += consistent(inks.get(i), read, text) ? 1 : 0;
                 }
             }
             if (checked < MIN_SAMPLES) {
@@ -554,6 +560,20 @@ final class UnmappedGlyphs {
                 owner.rawCodesLie = true;
             }
             return agrees;
+        }
+
+        private boolean consistent(Ink ink, Read read, String text) {
+            String claimed = plain(text);
+            if (claimed.equalsIgnoreCase(plain(read.text))) {
+                return true;
+            }
+            for (Match m : ink.matches) {
+                if (plain(m.ref.text()).equalsIgnoreCase(claimed)
+                        && m.shape + misplaced(ink.print, m.ref.print()) <= read.distance + LOOKALIKE_MARGIN) {
+                    return true;
+                }
+            }
+            return false;
         }
 
         private static String plain(String text) {
@@ -650,6 +670,9 @@ final class UnmappedGlyphs {
                 float other = Float.MAX_VALUE;
                 for (Match m : ink.matches) {
                     GlyphRef r = m.ref;
+                    if (letter(r.text()) && r.text().charAt(0) >= 0x80) {
+                        continue;
+                    }
                     float d = m.shape;
                     if (d < best) {
                         if (ref != null && !ref.text().equals(r.text())) {
@@ -794,7 +817,7 @@ final class UnmappedGlyphs {
                 return unreadable(ink, bestD, null);
             }
             if (bestD > ACCEPT) {
-                return unreadable(ink, bestD, other - bestD >= GUESS_MARGIN ? best.text() : letterOf(best, runner));
+                return unreadable(ink, bestD, other - bestD >= GUESS_MARGIN && letter(best.text()) ? best.text() : letterOf(best, runner));
             }
             if (other - bestD < MARGIN) {
                 GlyphRef chosen = preferred(best, runner);
@@ -871,6 +894,9 @@ final class UnmappedGlyphs {
                 if (pair[0].equals(b) && pair[1].equals(a)) {
                     return runner;
                 }
+            }
+            if (letter(a) && letter(b) && (a.charAt(0) < 0x80) != (b.charAt(0) < 0x80)) {
+                return a.charAt(0) < 0x80 ? best : runner;
             }
             return null;
         }

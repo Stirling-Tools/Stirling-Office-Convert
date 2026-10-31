@@ -24,7 +24,12 @@ import org.apache.pdfbox.io.RandomAccessReadBufferedFile;
 
 public final class GlyphRefsTool {
 
-    private record Source(String file, int style) {}
+    private record Source(String file, int style, boolean extrasOnly) {
+
+        Source(String file, int style) {
+            this(file, style, false);
+        }
+    }
 
     private static final List<Source> SOURCES = List.of(
             new Source("cmr10.ttf", 0),
@@ -51,7 +56,12 @@ public final class GlyphRefsTool {
             new Source("DejaVuSerif.ttf", 0),
             new Source("DejaVuSerif-Bold.ttf", GlyphRef.BOLD),
             new Source("DejaVuSans.ttf", GlyphRef.SANS),
-            new Source("DejaVuSans-Bold.ttf", GlyphRef.SANS | GlyphRef.BOLD));
+            new Source("DejaVuSans-Bold.ttf", GlyphRef.SANS | GlyphRef.BOLD),
+            new Source("DejaVuSans-Oblique.ttf", GlyphRef.SANS | GlyphRef.ITALIC, true),
+            new Source("DejaVuSans-BoldOblique.ttf", GlyphRef.SANS | GlyphRef.BOLD | GlyphRef.ITALIC, true),
+            new Source("LiberationSans-BoldItalic.ttf", GlyphRef.SANS | GlyphRef.BOLD | GlyphRef.ITALIC, true),
+            new Source("NotoSans-Regular.ttf", GlyphRef.SANS, true),
+            new Source("NotoSans-Italic.ttf", GlyphRef.SANS | GlyphRef.ITALIC, true));
 
     private static final String[][] NAMED = {
         {".", "period"}, {",", "comma"}, {";", "semicolon"}, {":", "colon"}, {"!", "exclam"}, {"?", "question"},
@@ -61,6 +71,15 @@ public final class GlyphRefsTool {
         {"%", "percent"}, {"&", "ampersand"}, {"•", "bullet"}, {"·", "periodcentered"}, {"fi", "fi"},
         {"fl", "fl"}, {"ff", "ff"}, {"ffi", "ffi"}, {"ffl", "ffl"}
     };
+
+    private static final String EXTRA = "_@#\\|~'\"\u2026\u2023\u00B4`\u02C6\u02DC\u00A8\u02DA\u00B8\u0131"
+            + "\u00E0\u00E1\u00E2\u00E3\u00E4\u00E5\u00E7\u00E8\u00E9\u00EA\u00EB\u00EC\u00ED\u00EE\u00EF"
+            + "\u00F1\u00F2\u00F3\u00F4\u00F5\u00F6\u00F8\u00F9\u00FA\u00FB\u00FC\u00FD\u00FF\u00DF"
+            + "\u00C0\u00C1\u00C2\u00C3\u00C4\u00C5\u00C7\u00C8\u00C9\u00CA\u00CB\u00CD\u00D1\u00D3\u00D4"
+            + "\u00D5\u00D6\u00D8\u00DA\u00DC"
+            + "\u0393\u0394\u0398\u039B\u03A0\u03A3\u03A6\u03A8\u03A9"
+            + "\u03B1\u03B2\u03B3\u03B4\u03B5\u03B6\u03B7\u03B8\u03B9\u03BA\u03BB\u03BC\u03BD\u03BE\u03C0"
+            + "\u03C1\u03C2\u03C3\u03C4\u03C5\u03C6\u03C7\u03C8\u03C9";
 
     private static final Map<String, Integer> LIGATURES =
             Map.of("ff", 0xFB00, "fi", 0xFB01, "fl", 0xFB02, "ffi", 0xFB03, "ffl", 0xFB04);
@@ -88,7 +107,7 @@ public final class GlyphRefsTool {
                 TrueTypeFont ttf = new TTFParser().parse(new RandomAccessReadBufferedFile(file.toFile()));
                 try {
                     describe(notice, file, ttf);
-                    for (String[] ch : characters()) {
+                    for (String[] ch : source.extrasOnly() ? extras() : characters()) {
                         GlyphRef ref = reference(ttf, ch[0], ch[1], source.style());
                         if (ref != null) {
                             refs.println(line(ref));
@@ -113,6 +132,13 @@ public final class GlyphRefsTool {
             out.add(new String[] {String.valueOf((char) ('0' + i)), DIGITS[i]});
         }
         out.addAll(List.of(NAMED));
+        out.addAll(extras());
+        return out;
+    }
+
+    private static List<String[]> extras() {
+        List<String[]> out = new ArrayList<>();
+        EXTRA.codePoints().forEach(cp -> out.add(new String[] {Character.toString(cp), String.format("uni%04X", cp)}));
         return out;
     }
 
