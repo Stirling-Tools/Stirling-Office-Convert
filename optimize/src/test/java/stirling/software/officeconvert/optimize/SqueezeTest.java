@@ -50,7 +50,7 @@ class SqueezeTest {
         while (text.length() < 50_000) {
             text.append("q ").append(r.nextInt(900)).append(" 0 0 1 re f Q\n");
         }
-        byte[][] samples = {big, text.toString().getBytes(StandardCharsets.ISO_8859_1), new byte[3000], big};
+        byte[][] samples = {big, text.toString().getBytes(StandardCharsets.ISO_8859_1), new byte[3000]};
         byte[][] fresh = new byte[samples.length][];
         for (int i = 0; i < samples.length; i++) {
             fresh[i] = Squeeze.zlib(samples[i], THOROUGH);

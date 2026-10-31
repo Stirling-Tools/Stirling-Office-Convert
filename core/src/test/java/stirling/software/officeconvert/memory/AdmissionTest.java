@@ -16,6 +16,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.locks.LockSupport;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -23,6 +24,22 @@ import org.junit.jupiter.api.io.TempDir;
 class AdmissionTest {
 
     private static final long MB = 1L << 20;
+
+    private static void awaitBlocked(Thread t) {
+        long deadline = System.nanoTime() + Duration.ofMinutes(1).toNanos();
+        while (t.getState() != Thread.State.WAITING && t.getState() != Thread.State.TIMED_WAITING) {
+            assertTrue(t.isAlive() && System.nanoTime() < deadline, "never blocked: " + t.getState());
+            LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(1));
+        }
+    }
+
+    private static void awaitExhausted(Admission.Ticket t) {
+        long deadline = System.nanoTime() + Duration.ofMinutes(1).toNanos();
+        while (!t.exhausted()) {
+            assertTrue(System.nanoTime() < deadline, "never stopped");
+            LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(1));
+        }
+    }
 
     private static Admission.Ticket apart(Admission a, long bytes) throws Exception {
         AtomicReference<Object> got = new AtomicReference<>();
@@ -161,7 +178,7 @@ class AdmissionTest {
                         Thread.currentThread().interrupt();
                     }
                 });
-                Thread.sleep(100);
+                awaitBlocked(other);
                 a.enter(30 * MB).close();
                 other.interrupt();
                 other.join();
@@ -317,9 +334,8 @@ class AdmissionTest {
         used[0] = 0.95;
         Thread.sleep(30);
         assertFalse(small.exhausted(), "the smaller conversion goes on");
-        Thread.sleep(30);
-        assertTrue(large.exhausted(), "the largest one is stopped");
-        assertTrue(large.exhausted());
+        awaitExhausted(large);
+        assertTrue(large.exhausted(), "the largest one stays stopped");
         large.close();
         Thread.sleep(30);
         assertFalse(small.exhausted(), "left alone, a conversion is never stopped for memory");
@@ -333,8 +349,7 @@ class AdmissionTest {
         try (Admission.Ticket alone = a.enter(10 * MB)) {
             assertFalse(alone.exhausted());
             used[0] = 0.99;
-            Thread.sleep(30);
-            assertTrue(alone.exhausted());
+            awaitExhausted(alone);
         }
     }
 
@@ -383,14 +398,12 @@ class AdmissionTest {
         outside[0] = 0.92;
         Thread.sleep(30);
         assertFalse(small.exhausted());
-        Thread.sleep(30);
-        assertTrue(large.exhausted());
+        awaitExhausted(large);
         large.close();
         Thread.sleep(30);
         assertFalse(small.exhausted(), "alone, 92 % of the container is still room");
         outside[0] = 0.96;
-        Thread.sleep(1100);
-        assertTrue(small.exhausted());
+        awaitExhausted(small);
         small.close();
     }
 

@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -23,6 +24,7 @@ import java.util.zip.Deflater;
 import java.util.zip.DeflaterOutputStream;
 
 import org.apache.pdfbox.Loader;
+import org.apache.pdfbox.cos.COSArray;
 import org.apache.pdfbox.cos.COSDictionary;
 import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.cos.COSObjectKey;
@@ -424,11 +426,15 @@ class PdfOptimizerTest {
         r.add("<</Back 5 0 R/Self 6 0 R>>");
         Path in = r.write(dir, "cycles");
         Path out = dir.resolve("out.pdf");
-        PdfOptimizer.optimize(in, out, REWRITE);
+        PdfOptimizer.optimize(in, out, REWRITE.timeout(Duration.ofSeconds(30)));
         try (PDDocument d = Loader.loadPDF(out.toFile())) {
-            COSDictionary loop = (COSDictionary) d.getDocumentCatalog().getCOSObject()
-                    .getCOSArray(COSName.getPDFName("Loop")).getObject(0);
-            assertNotNull(loop);
+            assertEquals(1, d.getNumberOfPages());
+            COSArray loop = d.getDocumentCatalog().getCOSObject().getCOSArray(COSName.getPDFName("Loop"));
+            assertEquals(2, loop.size());
+            COSDictionary inside = (COSDictionary) loop.getObject(0);
+            assertSame(loop, inside.getDictionaryObject(COSName.getPDFName("Back")));
+            assertSame(inside, inside.getDictionaryObject(COSName.getPDFName("Self")));
+            assertSame(loop, loop.getObject(1));
         }
     }
 

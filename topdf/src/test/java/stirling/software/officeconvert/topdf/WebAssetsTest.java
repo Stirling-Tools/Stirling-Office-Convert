@@ -483,26 +483,41 @@ class WebAssetsTest {
     }
 
     @Test
-    void anHtmlFileFetchesWhatItLinksOnlyWithItsOwnSwitchAndTheSameGuards() throws IOException {
-        java.nio.file.Path page = dir.resolve("upload.html");
-        java.nio.file.Files.writeString(page, "<html><head><link rel=stylesheet href=\"" + base() + "/style.css\">"
-                + "</head><body><h1>Uploaded</h1><img src=\"" + base() + "/img/red.png\" width=40 height=20>"
-                + "<img src=\"//127.0.0.1:" + server.getAddress().getPort() + "/img/red.png\" width=40 height=20>"
-                + "</body></html>");
-        Path plain = dir.resolve("plain.pdf");
-        OfficeToPdf.convert(page, plain, OfficeToPdf.Options.defaults());
-        assertTrue(hits.isEmpty(), hits.toString());
-        assertThrows(IOException.class, () -> WebAssets.linkedFrom(HtmlAssets.NONE, LOCAL));
-        assertThrows(IOException.class, () -> WebAssets.linkedFrom(HtmlAssets.NONE,
-                WebAssets.Access.none().linkedFromFiles(true)));
-        Path guarded = dir.resolve("guarded.pdf");
-        OfficeToPdf.convert(page, guarded, OfficeToPdf.Options.defaults().htmlAssets(WebAssets.linkedFrom(
-                HtmlAssets.NONE, WebAssets.Access.none().network(true).linkedFromFiles(true))));
-        assertTrue(hits.isEmpty(), hits.toString());
+    void anHtmlFileFetchesWhatItLinksOnlyWithItsOwnSwitchAndTheSameGuards() throws Exception {
+        AtomicInteger protocolRelative = new AtomicInteger();
+        try (ServerSocket refusing = new ServerSocket(0, 50, InetAddress.getLoopbackAddress())) {
+            Thread.ofVirtual().start(() -> {
+                while (!refusing.isClosed()) {
+                    try (Socket _ = refusing.accept()) {
+                        protocolRelative.incrementAndGet();
+                    } catch (IOException e) {
+                        return;
+                    }
+                }
+            });
+            java.nio.file.Path page = dir.resolve("upload.html");
+            java.nio.file.Files.writeString(page, "<html><head><link rel=stylesheet href=\"" + base() + "/style.css\">"
+                    + "</head><body><h1>Uploaded</h1><img src=\"" + base() + "/img/red.png\" width=40 height=20>"
+                    + "<img src=\"//127.0.0.1:" + refusing.getLocalPort() + "/img/red.png\" width=40 height=20>"
+                    + "</body></html>");
+            Path plain = dir.resolve("plain.pdf");
+            OfficeToPdf.convert(page, plain, OfficeToPdf.Options.defaults());
+            assertTrue(hits.isEmpty(), hits.toString());
+            assertThrows(IOException.class, () -> WebAssets.linkedFrom(HtmlAssets.NONE, LOCAL));
+            assertThrows(IOException.class, () -> WebAssets.linkedFrom(HtmlAssets.NONE,
+                    WebAssets.Access.none().linkedFromFiles(true)));
+            Path guarded = dir.resolve("guarded.pdf");
+            OfficeToPdf.convert(page, guarded, OfficeToPdf.Options.defaults().htmlAssets(WebAssets.linkedFrom(
+                    HtmlAssets.NONE, WebAssets.Access.none().network(true).linkedFromFiles(true))));
+            assertTrue(hits.isEmpty(), hits.toString());
+            assertEquals(0, protocolRelative.get());
+            Path fetched = dir.resolve("fetched.pdf");
+            OfficeToPdf.convert(page, fetched, OfficeToPdf.Options.defaults().htmlAssets(WebAssets.linkedFrom(
+                    HtmlAssets.NONE, LOCAL.linkedFromFiles(true))));
+            assertTrue(hits.containsAll(List.of("/style.css", "/img/red.png")), hits.toString());
+            assertEquals(1, protocolRelative.get());
+        }
         Path fetched = dir.resolve("fetched.pdf");
-        OfficeToPdf.convert(page, fetched, OfficeToPdf.Options.defaults().htmlAssets(WebAssets.linkedFrom(
-                HtmlAssets.NONE, LOCAL.linkedFromFiles(true))));
-        assertTrue(hits.containsAll(List.of("/style.css", "/img/red.png")), hits.toString());
         try (PDDocument doc = Loader.loadPDF(fetched.toFile())) {
             int images = 0;
             for (var name : doc.getPage(0).getResources().getXObjectNames()) {

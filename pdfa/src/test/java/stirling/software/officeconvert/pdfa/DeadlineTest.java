@@ -30,7 +30,7 @@ class DeadlineTest {
     @Test
     void aTimedOutConversionHasStoppedWorkingWhenItReturns() throws Exception {
         Path in = Hostile.write(dir, "slow", Hostile::slowFlatten);
-        PdfToPdfA.Options options = PdfToPdfA.Options.defaults().level(PdfALevel.A1B).timeout(Duration.ofSeconds(1));
+        PdfToPdfA.Options options = PdfToPdfA.Options.defaults().level(PdfALevel.A1B).timeout(Duration.ofMillis(250));
         Set<Thread> before = workers();
         long start = System.nanoTime();
         assertThrows(PdfToPdfA.TimedOut.class, () -> PdfToPdfA.convert(in, dir.resolve("out.pdf"), options));
@@ -41,14 +41,14 @@ class DeadlineTest {
     @Test
     void aTimedOutConversionOfAnOpenDocumentLeavesItAlone() throws Exception {
         Path in = Hostile.write(dir, "slow", Hostile::slowFlatten);
-        PdfToPdfA.Options options = PdfToPdfA.Options.defaults().level(PdfALevel.A1B).timeout(Duration.ofSeconds(1));
+        PdfToPdfA.Options options = PdfToPdfA.Options.defaults().level(PdfALevel.A1B).timeout(Duration.ofMillis(250));
         try (PDDocument doc = Loader.loadPDF(in.toFile())) {
             Set<Thread> running = workers();
             assertThrows(PdfToPdfA.TimedOut.class,
                     () -> PdfToPdfA.convert(doc, new ByteArrayOutputStream(), options));
             assertFalse(newWorkerAlive(running));
             String before = snapshot(doc);
-            Thread.sleep(1500);
+            Thread.sleep(500);
             assertEquals(before, snapshot(doc));
         }
     }

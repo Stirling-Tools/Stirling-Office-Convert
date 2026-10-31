@@ -16,6 +16,8 @@ import org.junit.jupiter.api.io.TempDir;
 
 class RecursionLimitsTest {
 
+    private static final Duration WALK_ONCE = Duration.ofSeconds(20);
+
     @TempDir
     Path dir;
 
@@ -98,11 +100,11 @@ class RecursionLimitsTest {
     }
 
     private void finishesInTime(String name, RawPdf raw) {
-        assertTimeoutPreemptively(Duration.ofMinutes(5), () -> {
+        assertTimeoutPreemptively(Duration.ofMinutes(1), () -> {
             Path in = Hostile.write(dir, name, raw);
             try {
                 PdfToPdfA.convert(in, dir.resolve(name + "-out.pdf"),
-                        PdfToPdfA.Options.defaults().level(PdfALevel.A2A).timeout(Duration.ofMinutes(3)));
+                        PdfToPdfA.Options.defaults().level(PdfALevel.A2A).timeout(WALK_ONCE));
             } catch (IOException e) {
                 assertFalse(e instanceof PdfToPdfA.TimedOut, e.toString());
             }
@@ -120,8 +122,7 @@ class RecursionLimitsTest {
     private void convert(String name, Path in, PdfALevel level) throws Exception {
         assertTrue(Files.size(in) < 1 << 20, "input " + Files.size(in));
         Path out = dir.resolve(name + "-out.pdf");
-        PdfToPdfA.Result r = PdfToPdfA.convert(in, out,
-                PdfToPdfA.Options.defaults().level(level).timeout(Duration.ofMinutes(3)));
+        PdfToPdfA.Result r = PdfToPdfA.convert(in, out, PdfToPdfA.Options.defaults().level(level).timeout(WALK_ONCE));
         assertEquals(1, r.pages());
         assertTrue(Files.size(out) < 1 << 20);
     }

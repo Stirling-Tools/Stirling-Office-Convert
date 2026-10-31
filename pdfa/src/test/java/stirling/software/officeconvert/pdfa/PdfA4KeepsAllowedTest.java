@@ -124,7 +124,12 @@ class PdfA4KeepsAllowedTest {
             out = convert(d, "page-intent");
         }
         try (PDDocument d = Loader.loadPDF(out.toFile())) {
-            assertNotNull(d.getPage(0).getCOSObject().getDictionaryObject(COSName.OUTPUT_INTENTS));
+            COSArray intents = (COSArray) d.getPage(0).getCOSObject().getDictionaryObject(COSName.OUTPUT_INTENTS);
+            assertEquals(1, intents.size());
+            COSDictionary kept = (COSDictionary) intents.getObject(0);
+            assertEquals("GTS_PDFA1", kept.getNameAsString(COSName.S));
+            assertEquals("Test condition", kept.getString(COSName.getPDFName("OutputConditionIdentifier")));
+            assertTrue(kept.getDictionaryObject(DEST) instanceof COSStream);
         }
     }
 

@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
@@ -18,10 +19,12 @@ import java.time.Duration;
 import java.util.Arrays;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.locks.LockSupport;
 import java.util.zip.Deflater;
 import java.util.zip.DeflaterOutputStream;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
+
 import javax.imageio.ImageIO;
 
 import org.apache.pdfbox.Loader;
@@ -229,6 +232,8 @@ class HostileInputTest {
         AtomicReference<Throwable> failure = new AtomicReference<>();
         AtomicLong cpuAtEnd = new AtomicLong();
         ThreadMXBean mx = ManagementFactory.getThreadMXBean();
+        assumeTrue(mx.isThreadCpuTimeSupported());
+        mx.setThreadCpuTimeEnabled(true);
         Thread t = new Thread(() -> {
             try {
                 PdfToDocx.convert(pdf, dir.resolve("ops.docx"), PdfToDocx.Options.defaults());
@@ -239,10 +244,18 @@ class HostileInputTest {
             }
         });
         t.start();
-        Thread.sleep(300);
-        long cpuAtInterrupt = mx.getThreadCpuTime(t.threadId());
-        t.interrupt();
-        t.join(Duration.ofMinutes(1));
+        long cpuAtInterrupt;
+        try {
+            long deadline = System.nanoTime() + Duration.ofMinutes(1).toNanos();
+            while (t.isAlive() && mx.getThreadCpuTime(t.threadId()) < 100_000_000L) {
+                assertTrue(System.nanoTime() < deadline, "the conversion never got going");
+                LockSupport.parkNanos(1_000_000L);
+            }
+            cpuAtInterrupt = mx.getThreadCpuTime(t.threadId());
+        } finally {
+            t.interrupt();
+            t.join(Duration.ofMinutes(1));
+        }
         assertFalse(t.isAlive(), "still running a minute after the interrupt");
         // CPU time, unlike the wall clock, is not stretched by a busy machine; -1 means it had already ended
         long ms = (cpuAtEnd.get() - cpuAtInterrupt) / 1_000_000;
