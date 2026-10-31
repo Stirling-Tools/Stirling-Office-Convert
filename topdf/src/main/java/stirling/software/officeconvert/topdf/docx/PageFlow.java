@@ -1008,7 +1008,7 @@ final class PageFlow extends Region {
         for (Strip.Anchor a : s.anchors) {
             boolean cell = inCell(a);
             PageBox.FloatBox f = floatBox(page, a.drawing(), x + a.paraX(), atY + a.paraTop(),
-                    cell ? x + a.cellX() : left(), cell ? a.cellW() : width(), cell ? cellBox(a, x, atY) : null);
+                    cell ? x + a.cellX() : left(), cell ? a.cellW() : width(), cell ? cellBox(a, x, atY) : null, true);
             if (f != null) {
                 addFloat(f);
             }
@@ -1068,7 +1068,7 @@ final class PageFlow extends Region {
 
     @Override
     List<Object> anchor(Drawing d, Para p, float paraX, float paraTop) {
-        PageBox.FloatBox f = floatBox(page, d, left() + paraX, paraTop, left(), width(), null);
+        PageBox.FloatBox f = floatBox(page, d, left() + paraX, paraTop, left(), width(), null, true);
         if (f == null) {
             return List.of();
         }
@@ -1210,13 +1210,19 @@ final class PageFlow extends Region {
 
     private PageBox.FloatBox floatBox(PageBox p, Drawing d, float paraX, float paraTop, float cx, float cw,
             Rectangle2D.Float cell) {
+        return floatBox(p, d, paraX, paraTop, cx, cw, cell, false);
+    }
+
+    private PageBox.FloatBox floatBox(PageBox p, Drawing d, float paraX, float paraTop, float cx, float cw,
+            Rectangle2D.Float cell, boolean body) {
         SectionProps s = p.sect;
         FloatLayout.Frame frame = new FloatLayout.Frame(s.pageW, s.pageH, s.bodyLeft() + p.shift, s.right - p.shift,
                 s.top, s.bottom, cx, cw, cell);
         Rectangle2D.Float box = FloatLayout.position(d, frame, paraX - cx, paraTop);
-        if (cell == null && follows(d) && d.wraps() && box.y + box.height > p.bodyBottom
-                && paraTop + box.height <= p.bodyBottom) {
-            box.y = Math.max(paraTop, p.bodyBottom - box.height);
+        float bottom = p.bodyBottom - p.noteHeight;
+        if (body && cell == null && follows(d) && d.wraps() && box.y + box.height > bottom
+                && paraTop + box.height <= bottom) {
+            box.y = Math.max(paraTop, bottom - box.height);
         }
         List<Op> ops = new ArrayList<>();
         DrawingPainter.paint(d, box.x, box.y, ops, ctx);
