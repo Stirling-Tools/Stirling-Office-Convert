@@ -36,6 +36,15 @@ class DuplicateTextTest {
     }
 
     @Test
+    void rotatedFakeBoldReadsOnce() throws IOException {
+        String text = text("BT /F1 12 Tf 0 1 -1 0 40 300 Tm (Rotated heading) Tj ET BT /F1 12 Tf 0 1 -1 0 40.3 300 Tm (Rotated heading) Tj ET"
+                + " BT /F1 12 Tf 72 700 Td (Upright body text on the page.) Tj ET");
+        assertTrue(text.contains("Rotated heading"), text);
+        assertFalse(text.contains("RRoo"), text);
+        assertFalse(text.contains("Rotated heading Rotated"), text);
+    }
+
+    @Test
     void doubledLettersNextToEachOtherAreNotAShadow() throws IOException {
         String text = text("BT /F1 12 Tf 72 700 Td (Balloons fill all small rooms.) Tj ET");
         assertTrue(text.contains("Balloons fill all small rooms."), text);

@@ -4,8 +4,10 @@ import java.awt.geom.AffineTransform;
 import java.awt.geom.Point2D;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -81,15 +83,32 @@ public final class PageReader {
         List<Glyph> glyphs = new ArrayList<>(raw.size());
         List<Glyph> hidden = new ArrayList<>();
         List<Glyph> rotated = new ArrayList<>();
+        List<RawGlyph> turnedRaw = new ArrayList<>();
+        List<Glyph> turned = new ArrayList<>();
+        Map<Integer, List<Glyph>> byDirection = new HashMap<>();
         for (RawGlyph r : raw) {
             Glyph g = k == 1 ? r.glyph() : r.glyph().scaled(k);
             g.invisible = r.invisible();
             if (r.direction() != direction) {
-                rotated.add(relocate(g, r, toDisplay, crop, direction));
+                turnedRaw.add(r);
+                turned.add(g);
+                if (!r.invisible()) {
+                    byDirection.computeIfAbsent(r.direction(), d -> new ArrayList<>()).add(g);
+                }
             } else if (r.invisible()) {
                 hidden.add(g);
             } else {
                 glyphs.add(g);
+            }
+        }
+        Set<Glyph> doubled = Collections.newSetFromMap(new IdentityHashMap<>());
+        for (List<Glyph> run : byDirection.values()) {
+            doubled.addAll(run);
+            dedupe(ShadowText.drop(run)).forEach(doubled::remove);
+        }
+        for (int i = 0; i < turned.size(); i++) {
+            if (!doubled.contains(turned.get(i))) {
+                rotated.add(relocate(turned.get(i), turnedRaw.get(i), toDisplay, crop, direction));
             }
         }
         if (direction == 0) {
