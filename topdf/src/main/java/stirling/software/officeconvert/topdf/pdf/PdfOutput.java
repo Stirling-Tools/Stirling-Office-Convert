@@ -216,7 +216,7 @@ public final class PdfOutput implements Closeable {
             link.setBorderStyle(noBorder());
             link.setDestination(dest);
             link.setPrinted(true);
-            PdfCanvas.addAnnotation(l.page(), link);
+            CanvasLinks.addAnnotation(l.page(), link);
         }
         forms.write(document);
         writeOutline();
