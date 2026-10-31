@@ -4,7 +4,8 @@ import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
 
-record JpxHeader(int channels, int bitDepth, boolean perChannelDepths, boolean palette, List<int[]> colours) {
+record JpxHeader(int channels, int bitDepth, boolean perChannelDepths, boolean palette, List<int[]> colours,
+        boolean bare) {
 
     private static final int JP2_SIGNATURE = 0x6A502020;
 
@@ -69,7 +70,7 @@ record JpxHeader(int channels, int bitDepth, boolean perChannelDepths, boolean p
             return null;
         }
         int bpc = ihdr[1];
-        return new JpxHeader(ihdr[0], bpc == 255 ? -1 : bpc + 1, bpc == 255 || bpcc, pclr, colr);
+        return new JpxHeader(ihdr[0], bpc == 255 ? -1 : bpc + 1, bpc == 255 || bpcc, pclr, colr, false);
     }
 
     private static JpxHeader codestream(ByteBuffer b) {
@@ -83,13 +84,34 @@ record JpxHeader(int channels, int bitDepth, boolean perChannelDepths, boolean p
         int depth = (b.get(42) & 0xFF) + 1;
         boolean mixed = false;
         for (int i = 1; i < components; i++) {
-            mixed |= (b.get(42 + 3 * i) & 0xFF) + 1 != depth;
+            mixed |= b.get(42 + 3 * i) != b.get(42);
         }
-        return new JpxHeader(components, mixed ? -1 : depth, mixed, false, List.of());
+        return new JpxHeader(components, mixed ? -1 : depth, mixed, false, List.of(), true);
+    }
+
+    static byte[] wrap(byte[] codestream, int width, int height) {
+        ByteBuffer b = ByteBuffer.wrap(codestream);
+        int components = b.getShort(40) & 0xFFFF;
+        int depth = codestream[42] & 0xFF;
+        int colour = components == 1 ? 17 : components == 3 ? 16 : 12;
+        ByteBuffer out = ByteBuffer.allocate(12 + 20 + 8 + 22 + 15 + 8 + codestream.length);
+        out.putInt(12).putInt(JP2_SIGNATURE).putInt(0x0D0A870A);
+        out.putInt(20).putInt(box("ftyp")).putInt(box("jp2 ")).putInt(0).putInt(box("jp2 "));
+        out.putInt(8 + 22 + 15).putInt(box("jp2h"));
+        out.putInt(22).putInt(box("ihdr")).putInt(height).putInt(width).putShort((short) components)
+                .put((byte) depth).put((byte) 7).put((byte) 0).put((byte) 0);
+        out.putInt(15).putInt(box("colr")).put((byte) 1).put((byte) 0).put((byte) 0).putInt(colour);
+        out.putInt(8 + codestream.length).putInt(box("jp2c")).put(codestream);
+        return out.array();
+    }
+
+    boolean wrappable() {
+        return bare && (channels == 1 || channels == 3 || channels == 4) && !perChannelDepths && bitDepth >= 1
+                && bitDepth <= 38;
     }
 
     boolean allowedInPdfA(boolean dictionaryHasColourSpace) {
-        if (channels != 1 && channels != 3 && channels != 4 || perChannelDepths || bitDepth < 1 || bitDepth > 38) {
+        if (bare || channels != 1 && channels != 3 && channels != 4 || perChannelDepths || bitDepth < 1 || bitDepth > 38) {
             return false;
         }
         if (dictionaryHasColourSpace) {

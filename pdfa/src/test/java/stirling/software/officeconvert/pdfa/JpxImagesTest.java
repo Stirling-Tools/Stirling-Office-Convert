@@ -194,6 +194,55 @@ class JpxImagesTest {
     }
 
     @Test
+    void aBareCodestreamIsKeptInsideAJp2Container() throws Exception {
+        byte[] codestream = codestream(unsigned(jpx(photo())));
+        assertTrue(JpxHeader.parse(codestream).bare(), "bare");
+        assertFalse(JpxHeader.parse(codestream).allowedInPdfA(true));
+        for (PdfALevel level : new PdfALevel[] {PdfALevel.A2B, PdfALevel.A4}) {
+            Path in = page(codestream, 160, 120, false);
+            Path out = dir.resolve("bare-" + level + ".pdf");
+            PdfToPdfA.convert(in, out, PdfToPdfA.Options.defaults().level(level));
+            assertTrue(hasJpx(out), "kept");
+            VeraPdf.assertCompliant(out, level);
+            try (PDDocument d = Loader.loadPDF(out.toFile())) {
+                COSStream image = d.getPage(0).getResources().getXObject(COSName.getPDFName("Im0"))
+                        .getCOSObject();
+                byte[] raw;
+                try (java.io.InputStream i = image.createRawInputStream()) {
+                    raw = i.readAllBytes();
+                }
+                JpxHeader h = JpxHeader.parse(raw);
+                assertFalse(h.bare());
+                assertEquals(3, h.channels());
+                assertEquals(8, h.bitDepth());
+                assertTrue(h.allowedInPdfA(false), "allowed");
+            }
+            assertTrue(meanDifference(in, out) < 0.5, level.toString());
+        }
+        byte[] signed = codestream(jpx(photo()));
+        signed[42] |= (byte) 0x80;
+        Path in = page(signed, 160, 120, false);
+        Path out = dir.resolve("bare-signed.pdf");
+        PdfToPdfA.convert(in, out, PdfToPdfA.Options.defaults().level(PdfALevel.A2B));
+        assertFalse(hasJpx(out));
+        VeraPdf.assertCompliant(out, PdfALevel.A2B);
+    }
+
+    private static byte[] codestream(byte[] jp2) {
+        for (int i = 0; i + 8 < jp2.length; i++) {
+            if (jp2[i] == 'j' && jp2[i + 1] == 'p' && jp2[i + 2] == '2' && jp2[i + 3] == 'c') {
+                byte[] c = java.util.Arrays.copyOfRange(jp2, i + 4, jp2.length);
+                int components = (c[40] & 0xFF) << 8 | c[41] & 0xFF;
+                for (int k = 0; k < components; k++) {
+                    c[42 + 3 * k] &= 0x7F;
+                }
+                return c;
+            }
+        }
+        throw new IllegalStateException("no codestream");
+    }
+
+    @Test
     void partTwoConvertsJpegTwoThousandWithTwoChannels() throws Exception {
         byte[] data = jpx(grayWithAlpha());
         JpxHeader h = JpxHeader.parse(data);
