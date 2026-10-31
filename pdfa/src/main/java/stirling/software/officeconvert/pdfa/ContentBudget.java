@@ -25,8 +25,8 @@ final class ContentBudget {
             if (!seen.add(n.streams())) {
                 continue;
             }
-            byte[] content = ContentTokens.checked(ContentTokens.bytes(n.streams()));
-            most = Math.max(most, content.length + ContentTokens.tokens(content) * BYTES_PER_TOKEN);
+            byte[] content = ContentTokens.bytes(n.streams());
+            most = Math.max(most, content.length + ContentTokens.checkedTokens(content) * BYTES_PER_TOKEN);
         }
         return most;
     }

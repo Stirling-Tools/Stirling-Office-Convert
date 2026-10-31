@@ -61,22 +61,48 @@ final class ContentTokens {
     }
 
     static byte[] checked(byte[] content) throws IOException {
-        if (tokens(content) > MAX_TOKENS) {
+        checkedTokens(content);
+        return content;
+    }
+
+    static long checkedTokens(byte[] content) throws IOException {
+        long n = tokens(content);
+        if (n > MAX_TOKENS) {
             throw new Decoded.TooLarge("A content stream has more than " + MAX_TOKENS + " operators and operands");
         }
-        return content;
+        return n;
+    }
+
+    private static final byte REGULAR = 0;
+
+    private static final byte SPACE = 1;
+
+    private static final byte DELIMITER = 2;
+
+    private static final byte[] KINDS = new byte[256];
+
+    static {
+        for (char c : " \n\r\t\f\0".toCharArray()) {
+            KINDS[c] = SPACE;
+        }
+        for (char c : "[]/(<".toCharArray()) {
+            KINDS[c] = DELIMITER;
+        }
     }
 
     static long tokens(byte[] content) {
         long n = 0;
         boolean inside = false;
         for (byte b : content) {
-            boolean space = b == ' ' || b == '\n' || b == '\r' || b == '\t' || b == '\f' || b == 0;
-            boolean delimiter = b == '[' || b == ']' || b == '/' || b == '(' || b == '<';
-            if (!space && (!inside || delimiter)) {
-                n++;
+            byte kind = KINDS[b & 0xFF];
+            if (kind == SPACE) {
+                inside = false;
+            } else {
+                if (!inside || kind == DELIMITER) {
+                    n++;
+                }
+                inside = true;
             }
-            inside = !space;
         }
         return n;
     }

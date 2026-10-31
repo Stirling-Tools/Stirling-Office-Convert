@@ -135,7 +135,9 @@ public final class Scripts {
 
     private static final Map<String, String[]> WORDS = new HashMap<>();
 
-    private static final Map<Integer, String> LETTERS = new HashMap<>();
+    private static final String[] LETTERS = new String[0x1F00];
+
+    private static final Character.UnicodeScript[] SCRIPTS = Character.UnicodeScript.values();
 
     static {
         words("en-US", "the and of to is in that it for with be are as this by on or not has have all shall any");
@@ -211,12 +213,12 @@ public final class Scripts {
     }
 
     private static void letters(String tag, String list) {
-        list.codePoints().forEach(cp -> LETTERS.put(cp, tag));
+        list.codePoints().forEach(cp -> LETTERS[cp] = tag);
     }
 
     public static final class Profile {
 
-        private final Map<Character.UnicodeScript, Integer> letters = new EnumMap<>(Character.UnicodeScript.class);
+        private final int[] letters = new int[SCRIPTS.length];
         private final Map<String, Integer> votes = new HashMap<>();
         private final Map<String, Integer> shortHits = new HashMap<>();
         private final Map<String, Integer> letterHits = new HashMap<>();
@@ -228,12 +230,25 @@ public final class Scripts {
         private int traditional;
         private Answers fixed;
 
+        private Answers counted;
+
         /** What a profile concluded, to carry it without the text it counted. */
         public record Answers(String latin, String eastAsian, String complex, Character.UnicodeScript latinScript,
                 Character.UnicodeScript complexScript, boolean rightToLeft) {}
 
         public Answers answers() {
-            return new Answers(latin(), eastAsian(), complex(), latinScript(), complexScript(), rightToLeft());
+            if (fixed != null) {
+                return fixed;
+            }
+            Answers a = counted;
+            if (a == null) {
+                Character.UnicodeScript latin = top(letters, OTHER_LANGUAGES.keySet());
+                Character.UnicodeScript complex = top(letters, COMPLEX_LANGUAGES.keySet());
+                a = new Answers(latin == null ? null : language(latin), countedEastAsian(),
+                        complex == null ? null : language(complex), latin, complex, countedRightToLeft());
+                counted = a;
+            }
+            return a;
         }
 
         public static Profile of(Answers answers) {
@@ -243,19 +258,23 @@ public final class Scripts {
         }
 
         public void add(CharSequence text) {
+            counted = null;
             StringBuilder word = new StringBuilder();
             for (int i = 0; i < text.length(); ) {
                 int cp = Character.codePointAt(text, i);
                 i += Character.charCount(cp);
-                String tag = LETTERS.get(cp);
+                String tag = cp < LETTERS.length ? LETTERS[cp] : null;
                 if (tag != null) {
                     votes.merge(tag, 1, Integer::sum);
                     letterHits.merge(tag, 1, Integer::sum);
                 }
-                if (Character.isLetter(cp) || Character.getType(cp) == Character.NON_SPACING_MARK
-                        || Character.getType(cp) == Character.COMBINING_SPACING_MARK) {
+                int type = Character.getType(cp);
+                boolean letter = letter(type);
+                if (letter || type == Character.NON_SPACING_MARK || type == Character.COMBINING_SPACING_MARK) {
                     word.appendCodePoint(cp);
-                    count(cp);
+                    if (letter) {
+                        count(cp);
+                    }
                 } else {
                     vote(word);
                 }
@@ -264,11 +283,8 @@ public final class Scripts {
         }
 
         private void count(int cp) {
-            if (!Character.isLetter(cp)) {
-                return;
-            }
-            Character.UnicodeScript s = Character.UnicodeScript.of(cp);
-            letters.merge(s, 1, Integer::sum);
+            Character.UnicodeScript s = script(cp);
+            letters[s.ordinal()]++;
             switch (s) {
                 case HIRAGANA, KATAKANA -> kana++;
                 case HANGUL -> hangul++;
@@ -305,30 +321,40 @@ public final class Scripts {
             if (n > 3 || Character.UnicodeScript.of(Character.codePointAt(word, 0)) != Character.UnicodeScript.LATIN) {
                 return false;
             }
-            return word.codePoints().skip(1).noneMatch(Character::isUpperCase);
+            for (int i = Character.charCount(Character.codePointAt(word, 0)); i < word.length(); ) {
+                int cp = Character.codePointAt(word, i);
+                if (Character.isUpperCase(cp)) {
+                    return false;
+                }
+                i += Character.charCount(cp);
+            }
+            return true;
         }
 
         public boolean rightToLeft() {
-            if (fixed != null) {
-                return fixed.rightToLeft();
-            }
+            return answers().rightToLeft();
+        }
+
+        private boolean countedRightToLeft() {
             int rtl = 0;
             int all = 0;
-            for (Map.Entry<Character.UnicodeScript, Integer> e : letters.entrySet()) {
-                all += e.getValue();
-                if (e.getKey() == Character.UnicodeScript.ARABIC || e.getKey() == Character.UnicodeScript.HEBREW
-                        || e.getKey() == Character.UnicodeScript.SYRIAC || e.getKey() == Character.UnicodeScript.THAANA
-                        || e.getKey() == Character.UnicodeScript.NKO) {
-                    rtl += e.getValue();
+            for (int i = 0; i < letters.length; i++) {
+                Character.UnicodeScript s = SCRIPTS[i];
+                all += letters[i];
+                if (s == Character.UnicodeScript.ARABIC || s == Character.UnicodeScript.HEBREW
+                        || s == Character.UnicodeScript.SYRIAC || s == Character.UnicodeScript.THAANA
+                        || s == Character.UnicodeScript.NKO) {
+                    rtl += letters[i];
                 }
             }
             return rtl * 2 > all;
         }
 
         public String eastAsian() {
-            if (fixed != null) {
-                return fixed.eastAsian();
-            }
+            return answers().eastAsian();
+        }
+
+        private String countedEastAsian() {
             if (kana == 0 && hangul == 0 && han == 0) {
                 return null;
             }
@@ -345,33 +371,19 @@ public final class Scripts {
         }
 
         public String complex() {
-            if (fixed != null) {
-                return fixed.complex();
-            }
-            Character.UnicodeScript s = complexScript();
-            return s == null ? null : language(s);
+            return answers().complex();
         }
 
         public String latin() {
-            if (fixed != null) {
-                return fixed.latin();
-            }
-            Character.UnicodeScript s = latinScript();
-            return s == null ? null : language(s);
+            return answers().latin();
         }
 
         Character.UnicodeScript complexScript() {
-            if (fixed != null) {
-                return fixed.complexScript();
-            }
-            return top(letters, COMPLEX_LANGUAGES.keySet());
+            return answers().complexScript();
         }
 
         Character.UnicodeScript latinScript() {
-            if (fixed != null) {
-                return fixed.latinScript();
-            }
-            return top(letters, OTHER_LANGUAGES.keySet());
+            return answers().latinScript();
         }
 
         String language(Character.UnicodeScript s) {
@@ -391,7 +403,7 @@ public final class Scripts {
             String tag = best(java.util.List.of("en-US", "de-DE", "fr-FR", "es-ES", "it-IT", "pt-BR", "nl-NL", "pl-PL",
                     "cs-CZ", "tr-TR", "vi-VN", "yo-NG"), 4);
             int marked = letterHits.getOrDefault(tag, 0);
-            boolean byLetters = marked >= 3 && marked * 100 >= letters.getOrDefault(Character.UnicodeScript.LATIN, 0);
+            boolean byLetters = marked >= 3 && marked * 100 >= letters[Character.UnicodeScript.LATIN.ordinal()];
             boolean byWords = shortHits.getOrDefault(tag, 0) * 5 >= shortWords * 2;
             return byLetters || byWords ? tag : "en-US";
         }
@@ -425,25 +437,57 @@ public final class Scripts {
         }
     }
 
-    private static Character.UnicodeScript top(Map<Character.UnicodeScript, Integer> counts, Set<Character.UnicodeScript> among) {
+    private static boolean letter(int type) {
+        return type == Character.UPPERCASE_LETTER || type == Character.LOWERCASE_LETTER
+                || type == Character.TITLECASE_LETTER || type == Character.MODIFIER_LETTER || type == Character.OTHER_LETTER;
+    }
+
+    private static Character.UnicodeScript script(int cp) {
+        if (cp < 0x80) {
+            return cp >= 'A' && cp <= 'Z' || cp >= 'a' && cp <= 'z' ? Character.UnicodeScript.LATIN
+                    : Character.UnicodeScript.COMMON;
+        }
+        return Character.UnicodeScript.of(cp);
+    }
+
+    private static Character.UnicodeScript top(int[] counts, Set<Character.UnicodeScript> among) {
         Character.UnicodeScript best = null;
         int n = 0;
-        for (Map.Entry<Character.UnicodeScript, Integer> e : counts.entrySet()) {
-            if (among.contains(e.getKey()) && e.getValue() > n) {
-                best = e.getKey();
-                n = e.getValue();
+        for (int i = 0; i < counts.length; i++) {
+            if (counts[i] > n && among.contains(SCRIPTS[i])) {
+                best = SCRIPTS[i];
+                n = counts[i];
+            }
+        }
+        return best;
+    }
+
+    private static Character.UnicodeScript top(int[] counts) {
+        Character.UnicodeScript best = null;
+        int n = 0;
+        for (int i = 0; i < counts.length; i++) {
+            if (counts[i] > n) {
+                best = SCRIPTS[i];
+                n = counts[i];
             }
         }
         return best;
     }
 
     private record Census(Character.UnicodeScript complex, Character.UnicodeScript other, Character.UnicodeScript latinScript,
-            int latin, int eastAsian, int complexCount, int otherCount, int kana, int hangul, int emoji, Profile own) {}
+            int latin, int eastAsian, int complexCount, int otherCount, int kana, int hangul, int emoji, String text) {
+
+        Profile own() {
+            Profile own = new Profile();
+            own.add(text);
+            return own;
+        }
+    }
 
     private static Census census(String text) {
-        Map<Character.UnicodeScript, Integer> complex = new EnumMap<>(Character.UnicodeScript.class);
-        Map<Character.UnicodeScript, Integer> other = new EnumMap<>(Character.UnicodeScript.class);
-        Map<Character.UnicodeScript, Integer> latins = new EnumMap<>(Character.UnicodeScript.class);
+        int[] complex = new int[SCRIPTS.length];
+        int[] other = new int[SCRIPTS.length];
+        int[] latins = new int[SCRIPTS.length];
         int latin = 0;
         int eastAsian = 0;
         int kana = 0;
@@ -452,6 +496,13 @@ public final class Scripts {
         for (int i = 0; i < text.length(); ) {
             int cp = text.codePointAt(i);
             i += Character.charCount(cp);
+            if (cp < 0x0370) {
+                if (Character.isLetter(cp)) {
+                    latin++;
+                    latins[script(cp).ordinal()]++;
+                }
+                continue;
+            }
             Character.UnicodeScript s = Character.UnicodeScript.of(cp);
             if (cp >= 0x1F000 && cp <= 0x1FAFF) {
                 emoji++;
@@ -461,7 +512,7 @@ public final class Scripts {
                 case LATIN -> {
                     if (Character.isLetter(cp)) {
                         latin++;
-                        latins.merge(s, 1, Integer::sum);
+                        latins[s.ordinal()]++;
                     }
                 }
                 case EAST_ASIAN -> {
@@ -469,20 +520,19 @@ public final class Scripts {
                     kana += s == Character.UnicodeScript.HIRAGANA || s == Character.UnicodeScript.KATAKANA ? 1 : 0;
                     hangul += s == Character.UnicodeScript.HANGUL ? 1 : 0;
                 }
-                case COMPLEX -> complex.merge(s, 1, Integer::sum);
+                case COMPLEX -> complex[s.ordinal()]++;
                 case OTHER -> {
                     if (s != Character.UnicodeScript.COMMON) {
-                        other.merge(s, 1, Integer::sum);
+                        other[s.ordinal()]++;
                     }
                 }
             }
         }
-        Character.UnicodeScript topOther = top(other, other.keySet());
-        Profile own = new Profile();
-        own.add(text);
-        Character.UnicodeScript topComplex = top(complex, complex.keySet());
-        return new Census(topComplex, topOther, top(latins, latins.keySet()), latin, eastAsian,
-                topComplex == null ? 0 : complex.get(topComplex), topOther == null ? 0 : other.get(topOther), kana, hangul, emoji, own);
+        Character.UnicodeScript topOther = top(other);
+        Character.UnicodeScript topComplex = top(complex);
+        return new Census(topComplex, topOther, top(latins), latin, eastAsian,
+                topComplex == null ? 0 : complex[topComplex.ordinal()], topOther == null ? 0 : other[topOther.ordinal()], kana, hangul,
+                emoji, text);
     }
 
     private static Group group(int cp, Character.UnicodeScript s) {
@@ -516,7 +566,10 @@ public final class Scripts {
         if (family == null || text == null || text.isEmpty() || western(text)) {
             return new Fonts(family, family, family, false);
         }
-        Census c = census(text);
+        return fonts(family, census(text), profile);
+    }
+
+    private static Fonts fonts(String family, Census c, Profile profile) {
         boolean serif = serif(family);
         String latin = family;
         if (c.otherCount() > 0 && c.otherCount() >= c.latin()) {
@@ -543,15 +596,23 @@ public final class Scripts {
         Character.UnicodeScript hAnsi = c.otherCount() > 0 && c.otherCount() >= c.latin() ? c.other()
                 : c.latin() > 0 ? c.latinScript() : null;
         String latin = null;
+        Profile own = null;
         if (hAnsi != null && profile != null && hAnsi == profile.latinScript()) {
             latin = profile.latin();
-        } else if (hAnsi != null && c.own().letters.getOrDefault(hAnsi, 0) >= 2) {
-            latin = c.own().language(hAnsi);
+        } else if (hAnsi != null) {
+            own = c.own();
+            if (own.letters[hAnsi.ordinal()] >= 2) {
+                latin = own.language(hAnsi);
+            }
         }
         String eastAsian = c.eastAsian() > 0 ? eastAsian(c, profile) : null;
         String complex = null;
         if (c.complex() != null) {
-            complex = profile != null && c.complex() == profile.complexScript() ? profile.complex() : c.own().language(c.complex());
+            if (profile != null && c.complex() == profile.complexScript()) {
+                complex = profile.complex();
+            } else {
+                complex = (own == null ? c.own() : own).language(c.complex());
+            }
         }
         return new Languages(latin, eastAsian, complex);
     }
@@ -570,7 +631,7 @@ public final class Scripts {
             return family;
         }
         Census c = census(text);
-        Fonts f = fonts(family, text, profile);
+        Fonts f = family == null ? new Fonts(null, null, null, false) : fonts(family, c, profile);
         int latin = c.latin() + c.otherCount();
         if (c.eastAsian() > 0 && c.eastAsian() >= latin && c.eastAsian() >= c.complexCount()) {
             return f.eastAsian();
