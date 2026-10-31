@@ -132,7 +132,7 @@ record FontMeasure(int unitsPerEm, int digit, int winAscent, int winDescent, int
     int screenDigit(double size) {
         int ppem = ppem(size, 96);
         if (screenDigits != null && ppem < screenDigits.length) {
-            return screenDigits[ppem];
+            return Math.max(1, screenDigits[ppem]);
         }
         int hinted = -1;
         if (hinting != null) {

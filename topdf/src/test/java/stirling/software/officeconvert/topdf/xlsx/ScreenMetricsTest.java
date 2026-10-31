@@ -1,6 +1,7 @@
 package stirling.software.officeconvert.topdf.xlsx;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -51,6 +52,22 @@ class ScreenMetricsTest {
             assertEquals(8, ColumnUnits.screenDigit(library, "Georgia", 9));
             assertEquals(7, ColumnUnits.screenDigit(library, "Aptos Narrow", 11));
         }
+    }
+
+    @Test
+    void aOnePointDefaultFontStillLaysOutItsCells() throws IOException {
+        FontLibrary none = FontLibrary.of(List.of(Files.createDirectories(dir.resolve("none"))));
+        assertEquals(1, ColumnUnits.screenDigit(none, "Garamond", 1));
+        assertEquals(1, ColumnUnits.screenDigit(none, "Arial Narrow", 1));
+        String styles = "<fonts count=\"1\"><font><sz val=\"1\"/><name val=\"Garamond\"/></font></fonts><fills"
+                + " count=\"2\"><fill><patternFill patternType=\"none\"/></fill><fill><patternFill"
+                + " patternType=\"gray125\"/></fill></fills><borders count=\"1\"><border/></borders><cellStyleXfs"
+                + " count=\"1\"><xf/></cellStyleXfs><cellXfs count=\"1\"><xf/></cellXfs>";
+        String sheet = "<sheetData><row r=\"1\">" + RawXlsx.inline("A1", "Hello") + RawXlsx.inline("C1", "World")
+                + "</row></sheetData>";
+        String text = XlsxTesting.convert(dir, "tiny.xlsx", new RawXlsx().styles(styles).sheet("S", sheet).bytes())
+                .all();
+        assertTrue(text.contains("Hello") && text.contains("World"), text);
     }
 
     @Test
