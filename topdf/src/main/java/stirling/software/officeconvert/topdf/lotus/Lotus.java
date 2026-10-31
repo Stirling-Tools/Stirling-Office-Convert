@@ -394,7 +394,11 @@ public final class Lotus {
                     spans++;
                     col += count;
                 }
-                rowFormats.put(key, row);
+                if (row.isEmpty()) {
+                    rowFormats.remove(key);
+                } else {
+                    rowFormats.put(key, row);
+                }
             }
             case 1 -> {
                 if (len >= 8) {
