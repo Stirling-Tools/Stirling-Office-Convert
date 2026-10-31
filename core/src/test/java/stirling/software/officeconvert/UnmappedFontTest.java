@@ -20,7 +20,11 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Random;
@@ -154,22 +158,56 @@ class UnmappedFontTest {
 
     @Test
     void tangledType3GlyphsFinishQuickly() throws Exception {
-        Path pdf = dir.resolve("tangled.pdf");
         Random random = new Random(7);
+        List<String> procs = new ArrayList<>();
+        for (int code = 0; code < 32; code++) {
+            StringBuilder ops = new StringBuilder("500 500 m\n");
+            for (int i = 0; i < 3000; i++) {
+                ops.append(random.nextInt(1000)).append(' ').append(random.nextInt(1000)).append(" l\n");
+            }
+            procs.add(ops.append(code % 2 == 0 ? "h f\n" : "h f* 0 0 m 10 0 l 10 10 l h f*\n").toString());
+        }
+        Path pdf = dir.resolve("tangled.pdf");
+        writeProcs(pdf, procs, new COSDictionary());
+        assertTimeoutPreemptively(Duration.ofSeconds(30), () -> text(pdf));
+    }
+
+    @Test
+    void repeatedLargeType3MasksFinishQuickly() throws Exception {
+        Path pdf = dir.resolve("masks.pdf");
+        try (PDDocument doc = new PDDocument()) {
+            byte[] bits = new byte[128 * 1024];
+            Arrays.fill(bits, (byte) 0xAA);
+            COSStream mask = doc.getDocument().createCOSStream();
+            try (OutputStream out = mask.createOutputStream(COSName.FLATE_DECODE)) {
+                out.write(bits);
+            }
+            mask.setItem(COSName.TYPE, COSName.XOBJECT);
+            mask.setItem(COSName.SUBTYPE, COSName.IMAGE);
+            mask.setInt(COSName.WIDTH, 1024);
+            mask.setInt(COSName.HEIGHT, 1024);
+            mask.setBoolean(COSName.IMAGE_MASK, true);
+            mask.setInt(COSName.BITS_PER_COMPONENT, 1);
+            COSDictionary images = new COSDictionary();
+            images.setItem(COSName.getPDFName("M"), mask);
+            COSDictionary resources = new COSDictionary();
+            resources.setItem(COSName.XOBJECT, images);
+            String draw = "q 1000 0 0 1000 0 0 cm /M Do Q\n".repeat(40);
+            writeProcs(pdf, Collections.nCopies(16, draw), resources);
+        }
+        assertTimeoutPreemptively(Duration.ofSeconds(30), () -> text(pdf));
+    }
+
+    private static void writeProcs(Path pdf, List<String> bodies, COSDictionary resources) throws IOException {
         try (PDDocument doc = new PDDocument()) {
             COSDictionary procs = new COSDictionary();
             COSArray differences = new COSArray();
             differences.add(COSInteger.ZERO);
             COSArray widths = new COSArray();
-            for (int code = 0; code < 32; code++) {
-                StringBuilder ops = new StringBuilder("1000 0 d0\n500 500 m\n");
-                for (int i = 0; i < 3000; i++) {
-                    ops.append(random.nextInt(1000)).append(' ').append(random.nextInt(1000)).append(" l\n");
-                }
-                ops.append(code % 2 == 0 ? "h f\n" : "h f* 0 0 m 10 0 l 10 10 l h f*\n");
+            for (int code = 0; code < bodies.size(); code++) {
                 COSStream proc = doc.getDocument().createCOSStream();
                 try (OutputStream out = proc.createOutputStream(COSName.FLATE_DECODE)) {
-                    out.write(ops.toString().getBytes(StandardCharsets.US_ASCII));
+                    out.write(("1000 0 d0\n" + bodies.get(code)).getBytes(StandardCharsets.US_ASCII));
                 }
                 procs.setItem(COSName.getPDFName("t" + code), proc);
                 differences.add(COSName.getPDFName("t" + code));
@@ -186,13 +224,14 @@ class UnmappedFontTest {
             dict.setItem(COSName.CHAR_PROCS, procs);
             dict.setItem(COSName.ENCODING, encoding);
             dict.setInt(COSName.FIRST_CHAR, 0);
-            dict.setInt(COSName.LAST_CHAR, 31);
+            dict.setInt(COSName.LAST_CHAR, bodies.size() - 1);
             dict.setItem(COSName.WIDTHS, widths);
+            dict.setItem(COSName.RESOURCES, resources);
             PDPage page = new PDPage(PDRectangle.A4);
             doc.addPage(page);
-            PDResources resources = new PDResources();
-            resources.put(COSName.getPDFName("F1"), new PDType3Font(dict));
-            page.setResources(resources);
+            PDResources pageResources = new PDResources();
+            pageResources.put(COSName.getPDFName("F1"), new PDType3Font(dict));
+            page.setResources(pageResources);
             PDStream stream = new PDStream(doc);
             try (OutputStream out = stream.createOutputStream()) {
                 out.write("BT /F1 14 Tf 72 720 Td <00010203> Tj ET".getBytes(StandardCharsets.US_ASCII));
@@ -200,7 +239,6 @@ class UnmappedFontTest {
             page.setContents(stream);
             doc.save(pdf.toFile());
         }
-        assertTimeoutPreemptively(Duration.ofSeconds(30), () -> text(pdf));
     }
 
     private String text(Path pdf) throws IOException {
