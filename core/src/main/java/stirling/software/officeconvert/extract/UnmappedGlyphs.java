@@ -96,7 +96,8 @@ final class UnmappedGlyphs {
     private final GlyphList glyphs;
     private final Map<COSDictionary, Shapes> fonts = new WeakHashMap<>();
     private final List<Size> known = new ArrayList<>();
-    private final OperatorBudget operators = new OperatorBudget("reading glyph shapes");
+    private final OperatorBudget operators = new OperatorBudget("The document", "reading the shapes of glyphs without a text map",
+            "the remaining glyphs in those fonts are left unread");
     private int ids;
     private boolean rawCodesLie;
     private int inks;
