@@ -130,6 +130,16 @@ class RefitAndLetterTest {
     }
 
     @Test
+    void aRefitRowKeepsAWrappedNumberWiderThanItsColumnOnOneLine() throws Exception {
+        String rows = "<cols><col min=\"1\" max=\"1\" width=\"4\" customWidth=\"1\"/></cols><sheetData>"
+                + "<row r=\"1\" ht=\"15\">" + RawXlsx.number("A1", 1, "%s") + "</row><row r=\"2\">"
+                + RawXlsx.inline("A2", "Below") + "</row></sheetData>";
+        String sheet = "<sheetFormatPr defaultRowHeight=\"14.4\"/>" + rows;
+        float oneLine = below("short.xlsx", sheet.formatted("1"));
+        assertEquals(oneLine, below("long.xlsx", sheet.formatted("12345678901")), 0.5);
+    }
+
+    @Test
     void aWholePixelDefaultOrAnUnknownFontKeepsTheStoredHeight() throws Exception {
         String words = "one two three four five six seven eight nine ten eleven twelve";
         String rows = "<cols><col min=\"1\" max=\"1\" width=\"8\" customWidth=\"1\"/></cols><sheetData>"

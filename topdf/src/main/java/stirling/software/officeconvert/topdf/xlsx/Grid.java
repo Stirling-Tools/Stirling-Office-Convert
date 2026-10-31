@@ -649,7 +649,7 @@ final class Grid {
                 best = Math.max(best, Math.min(546, turnedHeight(e.text().runs(), line, fmt.rotation())));
                 continue;
             }
-            if (fmt.wraps() && fmt.rotation() == 0) {
+            if (fmt.wraps() && fmt.rotation() == 0 && e.text().kind() == CellText.Kind.TEXT) {
                 double colPx = m.screenColumnPixels(columns.chars(e.col()));
                 double indent = fmt.indent() > 0 ? fmt.indent() * book.screenIndentPixels() : 0;
                 double avail = colPx - SCREEN_PAD - indent - overhang(e.text().runs());
