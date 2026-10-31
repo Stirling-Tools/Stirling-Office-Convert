@@ -20,6 +20,8 @@ sealed interface Op {
 
     record HiddenGlyphs(float x, float baseline, GlyphRun run, TextStyle style) implements Op {}
 
+    record Emoji(float x, float baseline, String text, TextStyle style, float each) implements Op {}
+
     record Rect(float x, float y, float w, float h, Fill fill, Stroke stroke) implements Op {}
 
     record Line(float x1, float y1, float x2, float y2, Stroke stroke) implements Op {}

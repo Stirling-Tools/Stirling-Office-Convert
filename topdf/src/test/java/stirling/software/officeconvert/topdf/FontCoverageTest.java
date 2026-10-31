@@ -8,6 +8,8 @@ import java.awt.Rectangle;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -68,7 +70,7 @@ class FontCoverageTest {
         return out;
     }
 
-    private static float emojiGap(PDDocument doc) throws IOException {
+    private static Map<Character, TextPosition> positions(PDDocument doc) throws IOException {
         Map<Character, TextPosition> first = new HashMap<>();
         PDFTextStripper stripper = new PDFTextStripper() {
             @Override
@@ -79,6 +81,11 @@ class FontCoverageTest {
             }
         };
         stripper.getText(doc);
+        return first;
+    }
+
+    private static float emojiGap(PDDocument doc) throws IOException {
+        Map<Character, TextPosition> first = positions(doc);
         TextPosition e = first.get('e');
         return first.get('s').getX() - (e.getX() + e.getWidth()) - 2 * first.get(' ').getWidth();
     }
@@ -132,6 +139,209 @@ class FontCoverageTest {
             int[] c = colours(doc);
             assertTrue(c[0] > 400 && c[1] > 400, c[0] + " green, " + c[1] + " red");
             assertEquals(c[0], c[1], c[0] / 10f);
+            assertEquals(ColorEmoji.OFFICE_ADVANCE * 36, emojiGap(doc), 1.5f);
+        }
+    }
+
+    private Path slide(String name, String text) throws IOException {
+        Path pptx = dir.resolve(name + ".pptx");
+        try (XMLSlideShow show = new XMLSlideShow(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+            XSLFTextBox box = show.createSlide().createTextBox();
+            box.setAnchor(new Rectangle(40, 40, 600, 120));
+            XSLFTextRun run = box.addNewTextParagraph().addNewTextRun();
+            run.setText(text);
+            run.setFontFamily("Arial");
+            run.setFontSize(36.0);
+            show.write(out);
+            Files.write(pptx, out.toByteArray());
+        }
+        return pptx;
+    }
+
+    private Path sheet(String name, String... rows) throws IOException {
+        Path xlsx = dir.resolve(name + ".xlsx");
+        try (XSSFWorkbook book = new XSSFWorkbook(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+            XSSFSheet sheet = book.createSheet("One");
+            XSSFFont font = book.createFont();
+            font.setFontName("Arial");
+            font.setFontHeightInPoints((short) 36);
+            XSSFCellStyle style = book.createCellStyle();
+            style.setFont(font);
+            sheet.setColumnWidth(0, 60 * 256);
+            for (int i = 0; i < rows.length; i++) {
+                XSSFRow row = sheet.createRow(i);
+                row.createCell(0).setCellValue(rows[i]);
+                row.getCell(0).setCellStyle(style);
+            }
+            book.write(out);
+            Files.write(xlsx, out.toByteArray());
+        }
+        return xlsx;
+    }
+
+    private Path document(String name, String text) throws IOException {
+        Path docx = dir.resolve(name + ".docx");
+        try (XWPFDocument doc = new XWPFDocument(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+            XWPFRun run = doc.createParagraph().createRun();
+            run.setFontFamily("Arial");
+            run.setFontSize(36);
+            run.setText(text);
+            doc.write(out);
+            Files.write(docx, out.toByteArray());
+        }
+        return docx;
+    }
+
+    private static int pixels(PDDocument doc, int rgb) throws IOException {
+        BufferedImage page = new PDFRenderer(doc).renderImage(0, 1f);
+        int n = 0;
+        for (int y = 0; y < page.getHeight(); y++) {
+            for (int x = 0; x < page.getWidth(); x++) {
+                n += (page.getRGB(x, y) & 0xFFFFFF) == rgb ? 1 : 0;
+            }
+        }
+        return n;
+    }
+
+    @Test
+    void aJoinedSequenceTakesOneEmojiAdvanceInSlidesAndSheets() throws Exception {
+        Path fonts = Files.createDirectories(dir.resolve("joined"));
+        Files.write(fonts.resolve("TestColorEmoji.ttf"), TestFonts.colourEmojiJoined(0x00C000, 0xFF0000, 0x0000FF));
+        String sequence = "✅‍⭐";
+        for (Path in : List.of(slide("joined", "Done " + sequence + " star"), sheet("joined", "Done " + sequence + " star"))) {
+            Path pdf = dir.resolve(in.getFileName() + ".pdf");
+            OfficeToPdf.convert(in, pdf, options(fonts));
+            try (PDDocument doc = Loader.loadPDF(pdf.toFile())) {
+                assertTrue(new PDFTextStripper().getText(doc).contains(sequence), in.toString());
+                assertTrue(pixels(doc, 0x0000FF) > 400, in + ": " + pixels(doc, 0x0000FF) + " blue");
+                assertEquals(0, pixels(doc, 0x00C000), in.toString());
+                assertEquals(ColorEmoji.OFFICE_ADVANCE * 36, emojiGap(doc), 1.5f, in.toString());
+            }
+        }
+    }
+
+    @Test
+    void withoutAColourFontASequenceIsOneBoxOneEmojiAdvanceWide() throws Exception {
+        Path fonts = Files.createDirectories(dir.resolve("none"));
+        String family = "👨‍👩‍👧";
+        String flag = "🇬🇧";
+        for (String sequence : List.of(family, flag)) {
+            String text = "Done " + sequence + " star";
+            String name = "box" + sequence.length();
+            for (Path in : List.of(slide(name, text), sheet(name, text), document(name, text))) {
+                Path pdf = dir.resolve(in.getFileName() + ".pdf");
+                OfficeToPdf.convert(in, pdf, options(fonts));
+                try (PDDocument doc = Loader.loadPDF(pdf.toFile())) {
+                    assertEquals(ColorEmoji.OFFICE_ADVANCE * 36, emojiGap(doc), 1.5f, in.toString());
+                    assertTrue(new PDFTextStripper().getText(doc).contains(sequence), in.toString());
+                }
+            }
+        }
+    }
+
+    @Test
+    void sheetsDrawEmojiFromAPlainFontInTheirColourAndSlidesInColour() throws Exception {
+        Path fonts = emojiFonts();
+        Files.write(fonts.resolve("Plain.ttf"), TestFonts.withGlyphs("Plain Symbols", 'W', 0x2705));
+        Path pptx = slide("plain", "Done \u2705 star");
+        Path xlsx = sheet("plain", "Done \u2705 star", "zz");
+        Path bare = sheet("bare", "Done x star", "zz");
+        for (Path in : List.of(pptx, xlsx, bare)) {
+            OfficeToPdf.convert(in, dir.resolve(in.getFileName() + ".pdf"), options(fonts));
+        }
+        try (PDDocument doc = Loader.loadPDF(dir.resolve("plain.pptx.pdf").toFile())) {
+            assertTrue(pixels(doc, 0x00C000) > 400, pixels(doc, 0x00C000) + " green");
+        }
+        float plainRow;
+        try (PDDocument doc = Loader.loadPDF(dir.resolve("bare.xlsx.pdf").toFile())) {
+            plainRow = positions(doc).get('z').getYDirAdj();
+        }
+        try (PDDocument doc = Loader.loadPDF(dir.resolve("plain.xlsx.pdf").toFile())) {
+            assertEquals(0, pixels(doc, 0x00C000));
+            String text = new PDFTextStripper().getText(doc).replaceAll(" +", " ");
+            assertTrue(text.contains("Done \u2705 star"), text);
+            assertEquals(ColorEmoji.OFFICE_ADVANCE * 36, emojiGap(doc), 1.5f);
+            assertEquals(plainRow, positions(doc).get('z').getYDirAdj(), 0.01f);
+        }
+    }
+
+    @Test
+    void sheetsDrawAJoinedSequenceInColourWhenAPlainFontHasOnlyItsFirstEmoji() throws Exception {
+        Path fonts = Files.createDirectories(dir.resolve("joinedPlain"));
+        Files.write(fonts.resolve("TestColorEmoji.ttf"), TestFonts.colourEmojiJoined(0x00C000, 0xFF0000, 0x0000FF));
+        Files.write(fonts.resolve("Plain.ttf"), TestFonts.withGlyphs("Plain Symbols", 'W', 0x2705));
+        String sequence = "✅‍⭐";
+        Path xlsx = sheet("joinedPlain", "Done " + sequence + " star", "Done ✅ star");
+        Path pdf = dir.resolve("joinedPlain.xlsx.pdf");
+        OfficeToPdf.convert(xlsx, pdf, options(fonts));
+        try (PDDocument doc = Loader.loadPDF(pdf.toFile())) {
+            assertTrue(pixels(doc, 0x0000FF) > 400, pixels(doc, 0x0000FF) + " blue");
+            assertEquals(0, pixels(doc, 0x00C000));
+            assertTrue(new PDFTextStripper().getText(doc).contains(sequence));
+            assertEquals(ColorEmoji.OFFICE_ADVANCE * 36, emojiGap(doc), 1.5f);
+        }
+    }
+
+    private static String content(PDDocument doc, int page) throws IOException {
+        try (InputStream in = doc.getPage(page).getContents()) {
+            return new String(in.readAllBytes(), StandardCharsets.ISO_8859_1);
+        }
+    }
+
+    private static int count(String text, String what) {
+        int n = 0;
+        for (int at = text.indexOf(what); at >= 0; at = text.indexOf(what, at + what.length())) {
+            n++;
+        }
+        return n;
+    }
+
+    @Test
+    void neighbouringSheetEmojiShareOneTextBlock() throws Exception {
+        Path fonts = emojiFonts();
+        Files.write(fonts.resolve("Plain.ttf"), TestFonts.withGlyphs("Plain Symbols", 'W', 0x2705));
+        String run = "✅".repeat(6);
+        Path xlsx = sheet("run", run);
+        Path pdf = dir.resolve("run.xlsx.pdf");
+        OfficeToPdf.convert(xlsx, pdf, options(fonts));
+        try (PDDocument doc = Loader.loadPDF(pdf.toFile())) {
+            String text = new PDFTextStripper().getText(doc);
+            assertTrue(text.replace(" ", "").contains(run), text);
+            assertEquals(1, count(content(doc, 0), "BT\n"), content(doc, 0));
+        }
+    }
+
+    @Test
+    void sheetEmojiPastThePageEdgeAreLeftOffThatPage() throws Exception {
+        Path fonts = emojiFonts();
+        Files.write(fonts.resolve("Plain.ttf"), TestFonts.withGlyphs("Plain Symbols", 'W', 0x2705));
+        int emoji = 200;
+        Path xlsx = sheet("long", "✅".repeat(emoji));
+        Path pdf = dir.resolve("long.xlsx.pdf");
+        OfficeToPdf.convert(xlsx, pdf, options(fonts));
+        try (PDDocument doc = Loader.loadPDF(pdf.toFile())) {
+            assertTrue(doc.getNumberOfPages() > 4, doc.getNumberOfPages() + " pages");
+            int drawn = 0;
+            for (int p = 0; p < doc.getNumberOfPages(); p++) {
+                int shown = count(content(doc, p), " TJ");
+                assertTrue(shown < emoji / 4, "page " + p + ": " + shown);
+                drawn += shown;
+            }
+            assertTrue(drawn >= emoji && drawn < 2 * emoji, drawn + " drawn");
+        }
+    }
+
+    @Test
+    void emojiInABidiSheetCellAreDrawnLikeOtherSheetEmoji() throws Exception {
+        Path fonts = emojiFonts();
+        Files.write(fonts.resolve("Plain.ttf"), TestFonts.withGlyphs("Plain Symbols", 'W', 0x2705));
+        Path xlsx = sheet("bidi", "Done \u2705 star \u05D0\u05D1");
+        Path pdf = dir.resolve("bidi.xlsx.pdf");
+        OfficeToPdf.convert(xlsx, pdf, options(fonts));
+        try (PDDocument doc = Loader.loadPDF(pdf.toFile())) {
+            String text = new PDFTextStripper().getText(doc).replaceAll(" +", " ");
+            assertTrue(text.contains("Done \u2705 star"), text);
+            assertEquals(0, pixels(doc, 0x00C000));
             assertEquals(ColorEmoji.OFFICE_ADVANCE * 36, emojiGap(doc), 1.5f);
         }
     }
