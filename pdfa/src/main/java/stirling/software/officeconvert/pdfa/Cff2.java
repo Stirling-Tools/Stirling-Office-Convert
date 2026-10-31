@@ -8,6 +8,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import stirling.software.officeconvert.fonts.CffCodec;
+
 final class Cff2 {
 
     private final ByteBuffer data;
@@ -217,11 +219,8 @@ final class Cff2 {
             } else if (b0 >= 32 && b0 <= 246) {
                 operands.add(b0 - 139);
                 at++;
-            } else if (b0 >= 247 && b0 <= 250) {
-                operands.add((b0 - 247) * 256 + (b.get(at + 1) & 0xFF) + 108);
-                at += 2;
-            } else if (b0 >= 251 && b0 <= 254) {
-                operands.add(-(b0 - 251) * 256 - (b.get(at + 1) & 0xFF) - 108);
+            } else if (b0 >= 247 && b0 <= 254) {
+                operands.add(CffCodec.twoByteInt(b0, b.get(at + 1) & 0xFF));
                 at += 2;
             } else {
                 at++;

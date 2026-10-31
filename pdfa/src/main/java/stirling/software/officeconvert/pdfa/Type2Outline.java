@@ -4,6 +4,8 @@ import java.awt.geom.AffineTransform;
 import java.awt.geom.GeneralPath;
 import java.io.IOException;
 
+import stirling.software.officeconvert.fonts.CffCodec;
+
 final class Type2Outline {
 
     interface Accents {
@@ -108,10 +110,6 @@ final class Type2Outline {
         path.curveTo(x1, y1, x2, y2, x, y);
     }
 
-    private static int bias(int count) {
-        return count < 1240 ? 107 : count < 33900 ? 1131 : 32768;
-    }
-
     void run(byte[] cs, int depth) {
         if (depth > MAX_DEPTH) {
             throw new IllegalStateException("subroutines nest too deep");
@@ -127,13 +125,8 @@ final class Type2Outline {
                 at++;
                 continue;
             }
-            if (b0 >= 247 && b0 <= 250) {
-                push((b0 - 247) * 256 + (cs[at + 1] & 0xFF) + 108);
-                at += 2;
-                continue;
-            }
-            if (b0 >= 251 && b0 <= 254) {
-                push(-(b0 - 251) * 256 - (cs[at + 1] & 0xFF) - 108);
+            if (b0 >= 247 && b0 <= 254) {
+                push(CffCodec.twoByteInt(b0, cs[at + 1] & 0xFF));
                 at += 2;
                 continue;
             }
@@ -259,7 +252,7 @@ final class Type2Outline {
                 }
                 case 10, 29 -> {
                     byte[][] subrs = b0 == 10 ? local : globalSubrs;
-                    int n = (int) stack[--sp] + bias(subrs.length);
+                    int n = (int) stack[--sp] + CffCodec.subrBias(subrs.length);
                     if (n < 0 || n >= subrs.length) {
                         throw new IllegalStateException("subroutine " + n + " missing");
                     }

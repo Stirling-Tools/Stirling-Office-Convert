@@ -2,6 +2,8 @@ package stirling.software.officeconvert.pdfa;
 
 import java.nio.ByteBuffer;
 
+import stirling.software.officeconvert.fonts.CffCodec;
+
 final class CffRepair {
 
     private CffRepair() {}
@@ -76,11 +78,8 @@ final class CffRepair {
             } else if (b0 >= 32 && b0 <= 246) {
                 operands.add(new int[] {at, b0 - 139});
                 at++;
-            } else if (b0 >= 247 && b0 <= 250) {
-                operands.add(new int[] {at, (b0 - 247) * 256 + (b.get(at + 1) & 0xFF) + 108});
-                at += 2;
-            } else if (b0 >= 251 && b0 <= 254) {
-                operands.add(new int[] {at, -(b0 - 251) * 256 - (b.get(at + 1) & 0xFF) - 108});
+            } else if (b0 >= 247 && b0 <= 254) {
+                operands.add(new int[] {at, CffCodec.twoByteInt(b0, b.get(at + 1) & 0xFF)});
                 at += 2;
             } else {
                 at++;
@@ -203,11 +202,8 @@ final class CffRepair {
             } else if (b0 >= 32 && b0 <= 246) {
                 stack.add(b0 - 139);
                 at++;
-            } else if (b0 >= 247 && b0 <= 250) {
-                stack.add((b0 - 247) * 256 + (b.get(at + 1) & 0xFF) + 108);
-                at += 2;
-            } else if (b0 >= 251 && b0 <= 254) {
-                stack.add(-(b0 - 251) * 256 - (b.get(at + 1) & 0xFF) - 108);
+            } else if (b0 >= 247 && b0 <= 254) {
+                stack.add(CffCodec.twoByteInt(b0, b.get(at + 1) & 0xFF));
                 at += 2;
             } else {
                 at++;

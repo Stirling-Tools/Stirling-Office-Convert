@@ -95,12 +95,12 @@ public final class CffSubset {
         if (!changed) {
             return null;
         }
-        byte[] newCharStrings = index(items);
+        byte[] newCharStrings = CffCodec.index(items);
         byte[] head = Arrays.copyOfRange(in, 0, hdrSize);
         byte[] nameIndex = Arrays.copyOfRange(in, names.start(), names.end());
         byte[] stringIndex = Arrays.copyOfRange(in, strings.start(), strings.end());
         byte[] gsubrIndex = Arrays.copyOfRange(in, gsubrs.start(), gsubrs.end());
-        byte[] topProbe = index(List.of(writeDict(top, new int[7])));
+        byte[] topProbe = CffCodec.index(List.of(writeDict(top, new int[7])));
         int at = head.length + nameIndex.length + topProbe.length + stringIndex.length + gsubrIndex.length;
         int[] offsets = new int[7];
         offsets[0] = charset == null ? value(top, CHARSET, 0) : at;
@@ -118,7 +118,7 @@ public final class CffSubset {
                 probe.add(writeDict(d, new int[7]));
             }
             int fdAt = at;
-            at += index(probe).length;
+            at += CffCodec.index(probe).length;
             List<byte[]> dicts = new ArrayList<>();
             for (int i = 0; i < fontDicts.size(); i++) {
                 int[] o = new int[7];
@@ -127,13 +127,13 @@ public final class CffSubset {
                 dicts.add(writeDict(fontDicts.get(i), o));
                 at += privates.get(i).length;
             }
-            fdArray = index(dicts);
+            fdArray = CffCodec.index(dicts);
             offsets[4] = fdAt;
         } else if (!privates.isEmpty()) {
             offsets[5] = privateSize(privates.get(0));
             offsets[6] = at;
         }
-        byte[] topIndex = index(List.of(writeDict(top, offsets)));
+        byte[] topIndex = CffCodec.index(List.of(writeDict(top, offsets)));
         ByteArrayOutputStream out = new ByteArrayOutputStream(in.length);
         for (byte[] b : new byte[][] {head, nameIndex, topIndex, stringIndex, gsubrIndex, charset, encoding, fdSelect,
                 newCharStrings, fdArray}) {
@@ -167,8 +167,8 @@ public final class CffSubset {
         if (local == null) {
             return body;
         }
-        byte[] withSubrs = concat(body, int5(body.length + 6), new byte[] {SUBRS});
-        return concat(withSubrs, local);
+        byte[] withSubrs = CffCodec.concat(body, CffCodec.int5(body.length + 6), new byte[] {SUBRS});
+        return CffCodec.concat(withSubrs, local);
     }
 
     private static int privateSize(byte[] block) {
@@ -184,7 +184,7 @@ public final class CffSubset {
                     return size;
                 }
             } else {
-                skipOperand(block, p);
+                CffCodec.dictOperand(block, p, block.length);
             }
         }
         return size;
@@ -206,9 +206,10 @@ public final class CffSubset {
                     && offsets[1] <= 1)) {
                 out.add(e);
             } else if (k == 5) {
-                out.add(new Entry(e.op(), concat(int5(offsets[5]), int5(offsets[6])), null));
+                out.add(new Entry(e.op(), CffCodec.concat(CffCodec.int5(offsets[5]), CffCodec.int5(offsets[6])),
+                        null));
             } else {
-                out.add(new Entry(e.op(), int5(offsets[k]), null));
+                out.add(new Entry(e.op(), CffCodec.int5(offsets[k]), null));
             }
         }
         return writeEntries(out);
@@ -247,50 +248,10 @@ public final class CffSubset {
                 nums.clear();
                 start = p[0];
             } else {
-                nums.add(skipOperand(d, p));
+                nums.add(CffCodec.dictOperand(d, p, d.length));
             }
         }
         return out;
-    }
-
-    private static int skipOperand(byte[] d, int[] p) {
-        int b = d[p[0]] & 0xFF;
-        if (b == 30) {
-            p[0]++;
-            while (p[0] < d.length) {
-                int x = d[p[0]++] & 0xFF;
-                if ((x & 0x0F) == 0x0F || (x & 0xF0) == 0xF0) {
-                    break;
-                }
-            }
-            return 0;
-        }
-        if (b == 28) {
-            int v = (short) ((d[p[0] + 1] & 0xFF) << 8 | d[p[0] + 2] & 0xFF);
-            p[0] += 3;
-            return v;
-        }
-        if (b == 29) {
-            int v = (d[p[0] + 1] & 0xFF) << 24 | (d[p[0] + 2] & 0xFF) << 16 | (d[p[0] + 3] & 0xFF) << 8
-                    | d[p[0] + 4] & 0xFF;
-            p[0] += 5;
-            return v;
-        }
-        if (b >= 32 && b <= 246) {
-            p[0]++;
-            return b - 139;
-        }
-        if (b >= 247 && b <= 250) {
-            int v = (b - 247) * 256 + (d[p[0] + 1] & 0xFF) + 108;
-            p[0] += 2;
-            return v;
-        }
-        if (b >= 251 && b <= 254) {
-            int v = -(b - 251) * 256 - (d[p[0] + 1] & 0xFF) - 108;
-            p[0] += 2;
-            return v;
-        }
-        throw new IllegalArgumentException("bad DICT operand " + b);
     }
 
     private static Entry entry(List<Entry> d, int op) {
@@ -409,45 +370,5 @@ public final class CffSubset {
             }
         }
         return out;
-    }
-
-    static byte[] index(List<byte[]> items) {
-        ByteArrayOutputStream o = new ByteArrayOutputStream();
-        o.write(items.size() >> 8);
-        o.write(items.size());
-        if (items.isEmpty()) {
-            return o.toByteArray();
-        }
-        long total = 1;
-        for (byte[] b : items) {
-            total += b.length;
-        }
-        int offSize = total < 1 << 8 ? 1 : total < 1 << 16 ? 2 : total < 1 << 24 ? 3 : 4;
-        o.write(offSize);
-        long off = 1;
-        for (int i = 0; i <= items.size(); i++) {
-            for (int k = offSize - 1; k >= 0; k--) {
-                o.write((int) (off >> (8 * k)));
-            }
-            if (i < items.size()) {
-                off += items.get(i).length;
-            }
-        }
-        for (byte[] b : items) {
-            o.writeBytes(b);
-        }
-        return o.toByteArray();
-    }
-
-    private static byte[] int5(int v) {
-        return new byte[] {29, (byte) (v >> 24), (byte) (v >> 16), (byte) (v >> 8), (byte) v};
-    }
-
-    private static byte[] concat(byte[]... parts) {
-        ByteArrayOutputStream o = new ByteArrayOutputStream();
-        for (byte[] p : parts) {
-            o.writeBytes(p);
-        }
-        return o.toByteArray();
     }
 }

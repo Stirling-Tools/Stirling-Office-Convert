@@ -3,6 +3,8 @@ package stirling.software.officeconvert.pdfa;
 import java.util.ArrayList;
 import java.util.List;
 
+import stirling.software.officeconvert.fonts.CffCodec;
+
 final class Type2Width {
 
     private Type2Width() {}
@@ -21,11 +23,8 @@ final class Type2Width {
             } else if (b >= 32 && b <= 246) {
                 stack.add((double) (b - 139));
                 i++;
-            } else if (b >= 247 && b <= 250 && i + 1 < cs.length) {
-                stack.add((double) ((b - 247) * 256 + (cs[i + 1] & 0xFF) + 108));
-                i += 2;
-            } else if (b >= 251 && b <= 254 && i + 1 < cs.length) {
-                stack.add((double) (-(b - 251) * 256 - (cs[i + 1] & 0xFF) - 108));
+            } else if (b >= 247 && b <= 254 && i + 1 < cs.length) {
+                stack.add((double) CffCodec.twoByteInt(b, cs[i + 1] & 0xFF));
                 i += 2;
             } else if (b == 255 && i + 4 < cs.length) {
                 int v = (cs[i + 1] & 0xFF) << 24 | (cs[i + 2] & 0xFF) << 16 | (cs[i + 3] & 0xFF) << 8 | cs[i + 4] & 0xFF;
