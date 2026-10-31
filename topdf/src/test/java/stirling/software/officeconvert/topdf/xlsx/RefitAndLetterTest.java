@@ -130,6 +130,26 @@ class RefitAndLetterTest {
     }
 
     @Test
+    void unwrappedRowsSizedOnAnotherScreenAreRefitToTheirFont() throws Exception {
+        String styles = "<fonts count=\"2\"><font><sz val=\"11\"/><name val=\"Calibri\"/></font><font><sz val=\"20\"/>"
+                + "<name val=\"Calibri\"/></font></fonts><fills count=\"1\"><fill><patternFill patternType=\"none\"/>"
+                + "</fill></fills><borders count=\"1\"><border/></borders><cellStyleXfs count=\"1\"><xf/></cellStyleXfs>"
+                + "<cellXfs count=\"2\"><xf/><xf fontId=\"1\" applyFont=\"1\"/></cellXfs>";
+        String rows = "<sheetData><row r=\"1\" ht=\"15\"><c r=\"A1\" s=\"1\" t=\"inlineStr\"><is><t>Title</t></is></c>"
+                + "</row><row r=\"2\">" + RawXlsx.inline("A2", "Below") + "</row></sheetData>";
+        float[] tops = new float[2];
+        String[] defaults = {"15", "14.4"};
+        for (int i = 0; i < 2; i++) {
+            String name = "title" + i + ".xlsx";
+            XlsxTesting.convert(dir, name, new RawXlsx().styles(styles)
+                    .sheet("S", "<sheetFormatPr defaultRowHeight=\"" + defaults[i] + "\"/>" + rows)
+                    .workbookExtra("<fileVersion appName=\"xl\"/>").bytes());
+            tops[i] = position(dir.resolve(name + ".pdf"), "Below")[1];
+        }
+        assertTrue(tops[1] > tops[0] + 8, "refit " + tops[1] + ", stored " + tops[0]);
+    }
+
+    @Test
     void aRefitRowKeepsAWrappedNumberWiderThanItsColumnOnOneLine() throws Exception {
         String rows = "<cols><col min=\"1\" max=\"1\" width=\"4\" customWidth=\"1\"/></cols><sheetData>"
                 + "<row r=\"1\" ht=\"15\">" + RawXlsx.number("A1", 1, "%s") + "</row><row r=\"2\">"

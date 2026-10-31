@@ -364,7 +364,7 @@ final class Grid {
                     + Math.max(0, row.thickEdges()) * SCREEN_PX);
         } else if (fit) {
             height = refit(row, autofit(index, entries, blanks, base) + Math.max(0, row.thickEdges()) * SCREEN_PX,
-                    entries.isEmpty() && blanks.isEmpty(), wrapsText(entries) && measurable(entries));
+                    entries.isEmpty() && blanks.isEmpty(), wrapsText(entries), measurable(entries));
         } else {
             height = Math.min(409.5, row.height());
         }
@@ -571,15 +571,15 @@ final class Grid {
     }
 
     // Excel re-fits a row without customHeight: an empty one drops to the default, and wrapped text grows
-    // a height another program stored (Excel's own stored height is already its fit, unless the Mac or a screen
-    // at another DPI wrapped it)
-    private double refit(RawRow row, double fitted, boolean empty, boolean wrapped) {
+    // a height another program stored (Excel's own stored height is already its fit, unless a screen at another
+    // DPI sized it or the Mac wrapped it)
+    private double refit(RawRow row, double fitted, boolean empty, boolean wrapped, boolean measurable) {
         double stored = Math.min(409.5, row.height());
         if (book.workbook().openDocument) {
             return row.index() > CALC_REFIT_ROWS || calcPixels(stored) == calcPixels(fitted) ? stored
                     : Math.min(409.5, fitted);
         }
-        if ((book.workbook().savedOnMac || otherScreen) && wrapped) {
+        if (measurable && (otherScreen || book.workbook().savedOnMac && wrapped)) {
             return Math.min(409.5, fitted);
         }
         if (empty && row.style() < 0 || !book.workbook().savedByExcel
