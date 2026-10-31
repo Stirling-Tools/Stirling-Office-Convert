@@ -10,6 +10,8 @@ import org.w3c.dom.Element;
 import org.w3c.dom.NamedNodeMap;
 import org.w3c.dom.Node;
 
+import stirling.software.officeconvert.topdf.io.Dom;
+
 /** One OpenOffice.org 1.x XML document reshaped in place as OpenDocument: namespaces moved, renamed elements and
  * attributes given their ODF names, style:properties split into the property elements of the style's family, the
  * body wrapped by document class, and loose text boxes and pictures put in frames. */
@@ -34,8 +36,8 @@ final class Upgrade {
         Upgrade u = new Upgrade(doc);
         Element root = doc.getDocumentElement();
         u.element(root, null, 0);
-        Element body = child(root, Names.OFFICE, "body");
-        if (body != null && kind != null && child(body, Names.OFFICE, kind) == null) {
+        Element body = Dom.kid(root, Names.OFFICE, "body");
+        if (body != null && kind != null && Dom.kid(body, Names.OFFICE, kind) == null) {
             Element wrap = doc.createElementNS(Names.OFFICE, "office:" + kind);
             while (body.getFirstChild() != null) {
                 wrap.appendChild(body.getFirstChild());
@@ -204,14 +206,5 @@ final class Upgrade {
         }
         parent.replaceChild(frame, e);
         frame.appendChild(e);
-    }
-
-    private static Element child(Element e, String ns, String local) {
-        for (Node k = e.getFirstChild(); k != null; k = k.getNextSibling()) {
-            if (k instanceof Element c && ns.equals(c.getNamespaceURI()) && local.equals(c.getLocalName())) {
-                return c;
-            }
-        }
-        return null;
     }
 }

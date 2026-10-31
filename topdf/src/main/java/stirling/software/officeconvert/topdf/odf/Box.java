@@ -4,6 +4,8 @@ import java.util.Locale;
 
 import org.w3c.dom.Element;
 
+import stirling.software.officeconvert.topdf.io.Dom;
+
 record Box(double x, double y, double w, double h, double rot) {
 
     static Box of(Element e) {

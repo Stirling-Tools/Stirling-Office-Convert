@@ -15,6 +15,7 @@ import org.w3c.dom.NodeList;
 
 import stirling.software.officeconvert.topdf.RenderJob;
 import stirling.software.officeconvert.topdf.io.ActiveContent;
+import stirling.software.officeconvert.topdf.io.Dom;
 import stirling.software.officeconvert.topdf.io.Relationship;
 import stirling.software.officeconvert.topdf.io.VmlXml;
 
@@ -54,7 +55,7 @@ final class FormControls {
     }
 
     private static Drawings.Item control(Book book, Element shape) {
-        Element data = Dml.child(shape, "ClientData");
+        Element data = Dom.kid(shape, "ClientData");
         if (data == null) {
             return null;
         }
@@ -92,7 +93,7 @@ final class FormControls {
             default -> new double[] {1.8, 1.8, 1.8, 1.8};
         };
         List<Drawings.Para> text = type.equals("drop") || type.equals("list") ? List.of()
-                : text(book, Dml.child(shape, "textbox"), align);
+                : text(book, Dom.kid(shape, "textbox"), align);
         return new Drawings.Item(from, to, 0, 0, 0, 0, null, null, null, null, null, null, 0, text, insets, anchor, 0,
                 false, false, false, null, null, null, null, null, type, "1".equals(value(data, "Checked")));
     }
@@ -103,7 +104,7 @@ final class FormControls {
     }
 
     private static String value(Element data, String name) {
-        Element e = Dml.child(data, name);
+        Element e = Dom.kid(data, name);
         return e == null ? null : e.getTextContent().strip().toLowerCase(Locale.ROOT);
     }
 

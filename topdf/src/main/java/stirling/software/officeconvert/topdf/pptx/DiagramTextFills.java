@@ -16,6 +16,7 @@ import org.w3c.dom.Element;
 import org.w3c.dom.Node;
 
 import stirling.software.officeconvert.topdf.io.ActiveContent;
+import stirling.software.officeconvert.topdf.io.Dom;
 import stirling.software.officeconvert.topdf.io.OfficeZip;
 import stirling.software.officeconvert.topdf.io.Relationship;
 import stirling.software.officeconvert.topdf.io.Relationships;
@@ -70,7 +71,7 @@ final class DiagramTextFills {
     }
 
     private static void place(Element pt, Map<String, Element[]> lists, Map<String, Element> byModel) {
-        Element pr = child(pt, DGM, "prSet");
+        Element pr = Dom.kid(pt, DGM, "prSet");
         String model = pt.getAttribute("modelId");
         if (pr == null || model.isEmpty()) {
             return;
@@ -94,7 +95,7 @@ final class DiagramTextFills {
             if (!(n instanceof Element label) || !"styleLbl".equals(label.getLocalName())) {
                 continue;
             }
-            Element list = child(label, DGM, "txFillClrLst");
+            Element list = Dom.kid(label, DGM, "txFillClrLst");
             if (list == null) {
                 continue;
             }
@@ -131,14 +132,5 @@ final class DiagramTextFills {
         } else if (val.matches("[0-9A-Fa-f]{6}")) {
             ref.addNewSrgbClr().setVal(HexFormat.of().parseHex(val));
         }
-    }
-
-    private static Element child(Element parent, String ns, String local) {
-        for (Node n = parent.getFirstChild(); n != null; n = n.getNextSibling()) {
-            if (n instanceof Element e && ns.equals(e.getNamespaceURI()) && local.equals(e.getLocalName())) {
-                return e;
-            }
-        }
-        return null;
     }
 }

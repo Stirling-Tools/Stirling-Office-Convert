@@ -6,6 +6,8 @@ import java.util.List;
 
 import org.w3c.dom.Element;
 
+import stirling.software.officeconvert.topdf.io.Dom;
+
 final class WordTables {
 
     static final int MAX_COLUMNS = 63;

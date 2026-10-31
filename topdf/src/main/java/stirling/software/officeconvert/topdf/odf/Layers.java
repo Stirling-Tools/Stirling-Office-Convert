@@ -5,6 +5,8 @@ import java.util.Set;
 
 import org.w3c.dom.Element;
 
+import stirling.software.officeconvert.topdf.io.Dom;
+
 /** The drawing layers a printout leaves out: those shown on screen only, or never. */
 final class Layers {
 

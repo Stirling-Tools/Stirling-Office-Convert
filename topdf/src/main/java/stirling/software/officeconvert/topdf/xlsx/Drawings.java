@@ -14,6 +14,7 @@ import org.w3c.dom.Element;
 
 import stirling.software.officeconvert.topdf.RenderJob;
 import stirling.software.officeconvert.topdf.io.ActiveContent;
+import stirling.software.officeconvert.topdf.io.Dom;
 import stirling.software.officeconvert.topdf.io.OfficeZip;
 import stirling.software.officeconvert.topdf.io.Relationship;
 import stirling.software.officeconvert.topdf.io.Relationships;
@@ -116,7 +117,7 @@ final class Drawings {
         }
 
         void root(Element wsDr) {
-            for (Element anchor : Dml.children(wsDr)) {
+            for (Element anchor : Dom.kids(wsDr)) {
                 if (out.size() >= 2000) {
                     return;
                 }
@@ -128,16 +129,16 @@ final class Drawings {
                 double aw = 0;
                 double ah = 0;
                 if (kind.equals("twoCellAnchor")) {
-                    from = anchor(Dml.child(anchor, "from"));
-                    to = anchor(Dml.child(anchor, "to"));
+                    from = anchor(Dom.kid(anchor, "from"));
+                    to = anchor(Dom.kid(anchor, "to"));
                 } else if (kind.equals("oneCellAnchor")) {
-                    from = anchor(Dml.child(anchor, "from"));
-                    Element ext = Dml.child(anchor, "ext");
+                    from = anchor(Dom.kid(anchor, "from"));
+                    Element ext = Dom.kid(anchor, "ext");
                     aw = Dml.number(ext, "cx", 0) / EMU;
                     ah = Dml.number(ext, "cy", 0) / EMU;
                 } else if (kind.equals("absoluteAnchor")) {
-                    Element pos = Dml.child(anchor, "pos");
-                    Element ext = Dml.child(anchor, "ext");
+                    Element pos = Dom.kid(anchor, "pos");
+                    Element ext = Dom.kid(anchor, "ext");
                     ax = Dml.number(pos, "x", 0) / EMU;
                     ay = Dml.number(pos, "y", 0) / EMU;
                     aw = Dml.number(ext, "cx", 0) / EMU;
@@ -148,12 +149,12 @@ final class Drawings {
                 if (from == null && !kind.equals("absoluteAnchor")) {
                     continue;
                 }
-                Element client = Dml.child(anchor, "clientData");
+                Element client = Dom.kid(anchor, "clientData");
                 if (client != null && "0".equals(client.getAttribute("fPrintsWithSheet"))
                         || client != null && "false".equals(client.getAttribute("fPrintsWithSheet"))) {
                     continue;
                 }
-                for (Element obj : Dml.children(anchor)) {
+                for (Element obj : Dom.kids(anchor)) {
                     object(obj, from, to, ax, ay, aw, ah, null);
                 }
             }
@@ -163,10 +164,10 @@ final class Drawings {
             if (e == null) {
                 return null;
             }
-            int col = (int) Math.max(0, Math.min(Columns.MAX - 1, Dml.text(Dml.child(e, "col"), 0)));
-            int row = (int) Math.max(0, Math.min(Grid.MAX_ROWS - 1, Dml.text(Dml.child(e, "row"), 0)));
-            double co = Dml.text(Dml.child(e, "colOff"), 0) / EMU;
-            double ro = Dml.text(Dml.child(e, "rowOff"), 0) / EMU;
+            int col = (int) Math.max(0, Math.min(Columns.MAX - 1, Dml.text(Dom.kid(e, "col"), 0)));
+            int row = (int) Math.max(0, Math.min(Grid.MAX_ROWS - 1, Dml.text(Dom.kid(e, "row"), 0)));
+            double co = Dml.text(Dom.kid(e, "colOff"), 0) / EMU;
+            double ro = Dml.text(Dom.kid(e, "rowOff"), 0) / EMU;
             return new Anchor(col, co, row, ro);
         }
 
@@ -182,9 +183,9 @@ final class Drawings {
                 case "cxnSp" -> shape(obj, from, to, ax, ay, aw, ah, child, true);
                 case "grpSp" -> group(obj, from, to, ax, ay, aw, ah, child);
                 case "AlternateContent" -> {
-                    Element fallback = Dml.child(obj, "Fallback");
+                    Element fallback = Dom.kid(obj, "Fallback");
                     if (fallback != null) {
-                        for (Element c : Dml.children(fallback)) {
+                        for (Element c : Dom.kids(fallback)) {
                             object(c, from, to, ax, ay, aw, ah, child);
                         }
                     }
@@ -196,9 +197,9 @@ final class Drawings {
 
         // Shapes hidden in the selection pane never print
         private static boolean hidden(Element obj) {
-            for (Element nv : Dml.children(obj)) {
+            for (Element nv : Dom.kids(obj)) {
                 if (nv.getLocalName().startsWith("nv")) {
-                    Element pr = Dml.child(nv, "cNvPr");
+                    Element pr = Dom.kid(nv, "cNvPr");
                     String h = pr == null ? null : pr.getAttribute("hidden");
                     return "1".equals(h) || "true".equals(h);
                 }
@@ -222,10 +223,10 @@ final class Drawings {
         private void group(Element grp, Anchor from, Anchor to, double ax, double ay, double aw, double ah,
                 Rect parent) {
             Element xfrm = Dml.path(grp, "grpSpPr", "xfrm");
-            Element off = Dml.child(xfrm, "off");
-            Element ext = Dml.child(xfrm, "ext");
-            Element chOff = Dml.child(xfrm, "chOff");
-            Element chExt = Dml.child(xfrm, "chExt");
+            Element off = Dom.kid(xfrm, "off");
+            Element ext = Dom.kid(xfrm, "ext");
+            Element chOff = Dom.kid(xfrm, "chOff");
+            Element chExt = Dom.kid(xfrm, "chExt");
             double gx = Dml.number(off, "x", 0);
             double gy = Dml.number(off, "y", 0);
             double gw = Math.max(1, Dml.number(ext, "cx", 1));
@@ -234,7 +235,7 @@ final class Drawings {
             double cy = Dml.number(chOff, "y", (long) gy);
             double cw = Math.max(1, Dml.number(chExt, "cx", (long) gw));
             double ch = Math.max(1, Dml.number(chExt, "cy", (long) gh));
-            for (Element c : Dml.children(grp)) {
+            for (Element c : Dom.kids(grp)) {
                 String n = c.getLocalName();
                 if (!(n.equals("pic") || n.equals("sp") || n.equals("cxnSp") || n.equals("grpSp")
                         || n.equals("AlternateContent") || n.equals("graphicFrame"))) {
@@ -245,10 +246,10 @@ final class Drawings {
                 if (cx2 == null) {
                     inGroup = new Rect(0, 0, 1, 1);
                 } else {
-                    double x = (Dml.number(Dml.child(cx2, "off"), "x", (long) cx) - cx) / cw;
-                    double y = (Dml.number(Dml.child(cx2, "off"), "y", (long) cy) - cy) / ch;
-                    double w = Dml.number(Dml.child(cx2, "ext"), "cx", 0) / cw;
-                    double h = Dml.number(Dml.child(cx2, "ext"), "cy", 0) / ch;
+                    double x = (Dml.number(Dom.kid(cx2, "off"), "x", (long) cx) - cx) / cw;
+                    double y = (Dml.number(Dom.kid(cx2, "off"), "y", (long) cy) - cy) / ch;
+                    double w = Dml.number(Dom.kid(cx2, "ext"), "cx", 0) / cw;
+                    double h = Dml.number(Dom.kid(cx2, "ext"), "cy", 0) / ch;
                     inGroup = new Rect(x, y, w, h);
                 }
                 Rect r = parent == null ? inGroup : new Rect(parent.x + inGroup.x * parent.w,
@@ -267,14 +268,14 @@ final class Drawings {
                 return Dml.path(c, "grpSpPr", "xfrm");
             }
             if (n.equals("graphicFrame")) {
-                return Dml.child(c, "xfrm");
+                return Dom.kid(c, "xfrm");
             }
             return Dml.path(c, "spPr", "xfrm");
         }
 
         private void picture(Element pic, Anchor from, Anchor to, double ax, double ay, double aw, double ah,
                 Rect child) {
-            Element owner = Dml.child(pic, "blipFill") != null ? pic : Dml.child(pic, "spPr");
+            Element owner = Dom.kid(pic, "blipFill") != null ? pic : Dom.kid(pic, "spPr");
             Element blip = Dml.path(owner, "blipFill", "blip");
             String id = blip == null ? null : Dml.attrNs(blip, "embed");
             if (id == null) {
@@ -293,14 +294,14 @@ final class Drawings {
 
         private void shape(Element sp, Anchor from, Anchor to, double ax, double ay, double aw, double ah,
                 Rect child, boolean connector) {
-            Element spPr = Dml.child(sp, "spPr");
-            Element style = Dml.child(sp, "style");
+            Element spPr = Dom.kid(sp, "spPr");
+            Element style = Dom.kid(sp, "style");
             ExcelColors colors = book.colors();
-            Element geom = Dml.child(spPr, "prstGeom");
-            Element custom = Dml.child(spPr, "custGeom");
+            Element geom = Dom.kid(spPr, "prstGeom");
+            Element custom = Dom.kid(spPr, "custGeom");
             String prst = geom == null ? "rect" : Dml.attr(geom, "prst");
             Map<String, Long> adjust = new HashMap<>();
-            for (Element gd : Dml.children(Dml.child(geom, "avLst"), "gd")) {
+            for (Element gd : Dom.kids(Dom.kid(geom, "avLst"), "gd")) {
                 String f = gd.getAttribute("fmla");
                 if (f != null && f.startsWith("val ")) {
                     try {
@@ -311,19 +312,19 @@ final class Drawings {
                 }
             }
             Color fill = null;
-            if (Dml.child(spPr, "blipFill") != null) {
+            if (Dom.kid(spPr, "blipFill") != null) {
                 if (custom == null && "rect".equals(prst) && !connector) {
                     picture(sp, from, to, ax, ay, aw, ah, child);
                 }
-            } else if (Dml.child(spPr, "noFill") == null) {
-                Element solid = Dml.child(spPr, "solidFill");
+            } else if (Dom.kid(spPr, "noFill") == null) {
+                Element solid = Dom.kid(spPr, "solidFill");
                 if (solid != null) {
                     fill = Dml.color(solid, colors, null);
-                } else if (Dml.child(spPr, "gradFill") != null) {
+                } else if (Dom.kid(spPr, "gradFill") != null) {
                     Element gs = Dml.path(spPr, "gradFill", "gsLst", "gs");
                     fill = gs == null ? null : Dml.color(gs, colors, null);
                 } else if (style != null && !connector) {
-                    Element ref = Dml.child(style, "fillRef");
+                    Element ref = Dom.kid(style, "fillRef");
                     if (ref != null && Dml.number(ref, "idx", 0) > 0) {
                         fill = Dml.color(ref, colors, null);
                     }
@@ -331,16 +332,16 @@ final class Drawings {
             }
             Color line = null;
             double width = 0.75;
-            Element ln = Dml.child(spPr, "ln");
+            Element ln = Dom.kid(spPr, "ln");
             if (ln != null && Dml.attr(ln, "w") != null) {
                 width = Dml.number(ln, "w", 9525) / EMU;
             }
-            if (ln == null || Dml.child(ln, "noFill") == null) {
-                Element solid = ln == null ? null : Dml.child(ln, "solidFill");
+            if (ln == null || Dom.kid(ln, "noFill") == null) {
+                Element solid = ln == null ? null : Dom.kid(ln, "solidFill");
                 if (solid != null) {
                     line = Dml.color(solid, colors, null);
                 } else if (style != null) {
-                    Element ref = Dml.child(style, "lnRef");
+                    Element ref = Dom.kid(style, "lnRef");
                     if (ref != null && Dml.number(ref, "idx", 0) > 0) {
                         line = Dml.color(ref, colors, null);
                         if (ln == null || Dml.attr(ln, "w") == null) {
@@ -351,7 +352,7 @@ final class Drawings {
             }
             Color textColor = Color.BLACK;
             if (style != null) {
-                Element fontRef = Dml.child(style, "fontRef");
+                Element fontRef = Dom.kid(style, "fontRef");
                 Color c = Dml.color(fontRef, colors, null);
                 if (c != null) {
                     textColor = c;
@@ -360,9 +361,9 @@ final class Drawings {
             List<Para> paras = new ArrayList<>();
             double[] insets = {7.2, 3.6, 7.2, 3.6};
             String anchor = "t";
-            Element tx = Dml.child(sp, "txBody");
+            Element tx = Dom.kid(sp, "txBody");
             if (tx != null) {
-                Element body = Dml.child(tx, "bodyPr");
+                Element body = Dom.kid(tx, "bodyPr");
                 if (body != null) {
                     insets[0] = Dml.number(body, "lIns", 91440) / EMU;
                     insets[1] = Dml.number(body, "tIns", 45720) / EMU;
@@ -372,11 +373,11 @@ final class Drawings {
                     anchor = a == null ? "t" : a;
                 }
                 FontSpec base = book.styles().defaultFont().color(textColor);
-                for (Element p : Dml.children(tx, "p")) {
+                for (Element p : Dom.kids(tx, "p")) {
                     paras.add(paragraph(p, base));
                 }
             }
-            Element xfrm = Dml.child(spPr, "xfrm");
+            Element xfrm = Dom.kid(spPr, "xfrm");
             double rot = Dml.number(xfrm, "rot", 0) / 60000.0;
             out.add(new Item(from, to, ax, ay, aw, ah, child, null, null, prst, fill, line, width, paras, insets,
                     anchor, rot, Dml.flag(xfrm, "flipH"), Dml.flag(xfrm, "flipV"), connector, custom, adjust,
@@ -384,27 +385,27 @@ final class Drawings {
         }
 
         private static String end(Element ln, String name) {
-            Element e = ln == null ? null : Dml.child(ln, name);
+            Element e = ln == null ? null : Dom.kid(ln, name);
             String t = e == null ? null : e.getAttribute("type");
             return t == null || t.isEmpty() || t.equals("none") ? null : t;
         }
 
         private Para paragraph(Element p, FontSpec base) {
-            Element pPr = Dml.child(p, "pPr");
+            Element pPr = Dom.kid(p, "pPr");
             String align = pPr == null ? null : Dml.attr(pPr, "algn");
             List<TextRun> runs = new ArrayList<>();
-            for (Element r : Dml.children(p)) {
+            for (Element r : Dom.kids(p)) {
                 String n = r.getLocalName();
                 if (n.equals("r") || n.equals("fld")) {
-                    Element t = Dml.child(r, "t");
+                    Element t = Dom.kid(r, "t");
                     String s = t == null ? "" : t.getTextContent();
-                    runs.add(new TextRun(s, font(Dml.child(r, "rPr"), base)));
+                    runs.add(new TextRun(s, font(Dom.kid(r, "rPr"), base)));
                 } else if (n.equals("br")) {
-                    runs.add(new TextRun("\n", font(Dml.child(r, "rPr"), base)));
+                    runs.add(new TextRun("\n", font(Dom.kid(r, "rPr"), base)));
                 }
             }
             if (runs.isEmpty()) {
-                runs.add(new TextRun("", font(Dml.child(p, "endParaRPr"), base)));
+                runs.add(new TextRun("", font(Dom.kid(p, "endParaRPr"), base)));
             }
             return new Para(runs, align);
         }
@@ -421,7 +422,7 @@ final class Drawings {
                     : u.startsWith("dbl") ? FontSpec.Underline.DOUBLE : FontSpec.Underline.SINGLE;
             boolean strike = Dml.attr(rPr, "strike") != null && !"noStrike".equals(Dml.attr(rPr, "strike"));
             Color color = base.color();
-            Element solid = Dml.child(rPr, "solidFill");
+            Element solid = Dom.kid(rPr, "solidFill");
             if (solid != null) {
                 Color c = Dml.color(solid, book.colors(), base.color());
                 if (c != null) {
@@ -429,7 +430,7 @@ final class Drawings {
                 }
             }
             String family = base.family();
-            Element latin = Dml.child(rPr, "latin");
+            Element latin = Dom.kid(rPr, "latin");
             String face = latin == null ? null : Dml.attr(latin, "typeface");
             if (face != null && !face.startsWith("+")) {
                 family = face;

@@ -9,6 +9,8 @@ import java.util.Set;
 
 import org.w3c.dom.Element;
 
+import stirling.software.officeconvert.topdf.io.Dom;
+
 final class FloatingTables {
 
     private final OdtWriter w;

@@ -17,8 +17,8 @@ import org.apache.poi.sl.draw.geom.Guide;
 import org.apache.poi.sl.draw.geom.PathIf;
 import org.apache.poi.sl.draw.geom.PresetGeometries;
 import org.w3c.dom.Element;
-import org.w3c.dom.Node;
 
+import stirling.software.officeconvert.topdf.io.Dom;
 import stirling.software.officeconvert.topdf.io.SafeImageRenderer;
 
 /** DrawingML preset and custom shape outlines, shared by the renderers that draw shapes themselves. */
@@ -100,13 +100,13 @@ public final class DmlShapes {
 
     /** The outlines of an {@code a:custGeom} element in the box, from its literal path points; null if empty. */
     public static List<Outline> custom(Element custGeom, Rectangle2D box) {
-        Element pathList = child(custGeom, "pathLst");
+        Element pathList = Dom.kid(custGeom, "pathLst");
         if (pathList == null) {
             return null;
         }
         List<Outline> out = new ArrayList<>();
         int commands = 0;
-        for (Element path : children(pathList, "path")) {
+        for (Element path : Dom.kids(pathList, "path")) {
             double pw = number(path, "w", 0);
             double ph = number(path, "h", 0);
             double sx = pw > 0 ? box.getWidth() / pw : 1 / EMU;
@@ -114,11 +114,11 @@ public final class DmlShapes {
             Path2D.Double p = new Path2D.Double();
             Point2D.Double at = new Point2D.Double(0, 0);
             boolean started = false;
-            for (Element cmd : children(path, null)) {
+            for (Element cmd : Dom.kids(path)) {
                 if (++commands > MAX_PATH_COMMANDS) {
                     break;
                 }
-                List<Element> pts = children(cmd, "pt");
+                List<Element> pts = Dom.kids(cmd, "pt");
                 switch (cmd.getLocalName()) {
                     case "moveTo" -> {
                         if (!pts.isEmpty()) {
@@ -199,21 +199,6 @@ public final class DmlShapes {
         } catch (NumberFormatException ex) {
             return fallback;
         }
-    }
-
-    private static Element child(Element e, String local) {
-        List<Element> k = children(e, local);
-        return k.isEmpty() ? null : k.get(0);
-    }
-
-    private static List<Element> children(Element e, String local) {
-        List<Element> out = new ArrayList<>();
-        for (Node n = e.getFirstChild(); n != null; n = n.getNextSibling()) {
-            if (n instanceof Element c && (local == null || local.equals(c.getLocalName()))) {
-                out.add(c);
-            }
-        }
-        return out;
     }
 
     private static boolean finite(Shape s) {

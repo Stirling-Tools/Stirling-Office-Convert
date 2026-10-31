@@ -10,6 +10,8 @@ import java.util.Map;
 
 import org.w3c.dom.Element;
 
+import stirling.software.officeconvert.topdf.io.Dom;
+
 final class OdtWriter {
 
     static final String NAMESPACES = "xmlns:w=\"" + Xml.W + "\" xmlns:r=\"" + Xml.R + "\" xmlns:wp=\"" + Xml.WP

@@ -27,6 +27,8 @@ import org.openxmlformats.schemas.spreadsheetml.x2006.main.STPatternType;
 import org.w3c.dom.Element;
 import org.w3c.dom.Node;
 
+import stirling.software.officeconvert.topdf.io.Dom;
+
 final class StyleCache {
 
     private final StylesTable styles;
@@ -282,8 +284,8 @@ final class StyleCache {
         if (!(node instanceof Element e)) {
             return null;
         }
-        Element g = Dml.child(e, "gradientFill");
-        List<Element> stops = Dml.children(g, "stop");
+        Element g = Dom.kid(e, "gradientFill");
+        List<Element> stops = Dom.kids(g, "stop");
         if (stops.isEmpty()) {
             return null;
         }
@@ -291,7 +293,7 @@ final class StyleCache {
         double gr = 0;
         double b = 0;
         for (Element stop : stops) {
-            Color c = domColor(Dml.child(stop, "color"));
+            Color c = domColor(Dom.kid(stop, "color"));
             r += c.getRed();
             gr += c.getGreen();
             b += c.getBlue();

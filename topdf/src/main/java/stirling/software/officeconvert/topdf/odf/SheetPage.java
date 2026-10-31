@@ -5,6 +5,8 @@ import java.util.Locale;
 import org.w3c.dom.Element;
 import org.w3c.dom.Node;
 
+import stirling.software.officeconvert.topdf.io.Dom;
+
 final class SheetPage {
 
     private static final double[][] PAPERS = {{612, 792, 1}, {612, 1008, 5}, {595.3, 841.9, 9}, {841.9, 1190.6, 8},

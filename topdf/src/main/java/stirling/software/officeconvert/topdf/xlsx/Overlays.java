@@ -30,6 +30,7 @@ import org.w3c.dom.Element;
 
 import stirling.software.officeconvert.topdf.RenderJob;
 import stirling.software.officeconvert.topdf.io.ActiveContent;
+import stirling.software.officeconvert.topdf.io.Dom;
 import stirling.software.officeconvert.topdf.io.OfficeZip;
 import stirling.software.officeconvert.topdf.io.Relationship;
 
@@ -129,7 +130,7 @@ final class Overlays {
             } catch (java.io.IOException e) {
                 continue;
             }
-            Element info = Dml.child(t, "tableStyleInfo");
+            Element info = Dom.kid(t, "tableStyleInfo");
             String name = Dml.attr(info, "name");
             TableStyle style = null;
             if (name != null && styles != null) {

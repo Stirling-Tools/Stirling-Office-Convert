@@ -4,6 +4,8 @@ import java.util.Locale;
 
 import org.w3c.dom.Element;
 
+import stirling.software.officeconvert.topdf.io.Dom;
+
 final class Dml {
 
     private Dml() {}

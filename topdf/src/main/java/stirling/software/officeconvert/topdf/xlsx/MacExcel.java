@@ -5,6 +5,7 @@ import java.io.InterruptedIOException;
 
 import org.w3c.dom.Element;
 
+import stirling.software.officeconvert.topdf.io.Dom;
 import stirling.software.officeconvert.topdf.io.OfficeZip;
 import stirling.software.officeconvert.topdf.io.Relationship;
 
@@ -18,7 +19,7 @@ final class MacExcel {
             if (r == null || r.part() == null || !zip.exists(r.part())) {
                 return false;
             }
-            Element app = Dml.child(zip.xml(r).getDocumentElement(), "Application");
+            Element app = Dom.kid(zip.xml(r).getDocumentElement(), "Application");
             return app != null && app.getTextContent().trim().startsWith("Microsoft Macintosh Excel");
         } catch (InterruptedIOException e) {
             throw e;

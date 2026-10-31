@@ -5,6 +5,8 @@ import java.util.Set;
 
 import org.w3c.dom.Element;
 
+import stirling.software.officeconvert.topdf.io.Dom;
+
 final class MathOmml {
 
     static final String MATHML = "http://www.w3.org/1998/Math/MathML";

@@ -16,6 +16,7 @@ import org.w3c.dom.Node;
 
 import stirling.software.officeconvert.topdf.io.ActiveContent;
 import stirling.software.officeconvert.topdf.io.DecodedPicture;
+import stirling.software.officeconvert.topdf.io.Dom;
 import stirling.software.officeconvert.topdf.io.Relationship;
 import stirling.software.officeconvert.topdf.io.VmlXml;
 import stirling.software.officeconvert.topdf.dml.DmlColors;
@@ -87,7 +88,7 @@ final class LegacyShapes {
             Color line = paint(shape, "stroke", "stroked", "strokecolor", Color.BLACK);
             if (fill != null || line != null) {
                 canvas.rect(frame[0], frame[1], frame[2], frame[3], fill == null ? null : Fill.solid(fill),
-                        line == null ? null : Stroke.solid(weight(child(shape, "stroke")), line));
+                        line == null ? null : Stroke.solid(weight(Dom.kid(shape, VML, "stroke")), line));
             }
         }
         String id = data.getAttributeNS(OFFICE, "relid");
@@ -106,7 +107,7 @@ final class LegacyShapes {
 
     // A preview's own fill or outline counts only when the shape or its v:fill / v:stroke turns it on
     private static Color paint(Element shape, String element, String flag, String colorAttr, Color fallback) {
-        Element e = child(shape, element);
+        Element e = Dom.kid(shape, VML, element);
         boolean on = e != null ? on(e.getAttribute("on")) : on(shape.getAttribute(flag));
         if (!on) {
             return null;
@@ -124,15 +125,6 @@ final class LegacyShapes {
     private static boolean on(String v) {
         String s = v.strip().toLowerCase(Locale.ROOT);
         return s.equals("t") || s.equals("true");
-    }
-
-    private static Element child(Element shape, String name) {
-        for (Node c = shape.getFirstChild(); c != null; c = c.getNextSibling()) {
-            if (c instanceof Element e && VML.equals(e.getNamespaceURI()) && name.equals(e.getLocalName())) {
-                return e;
-            }
-        }
-        return null;
     }
 
     static Color color(String spec) {

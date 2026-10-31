@@ -6,6 +6,8 @@ import java.util.Locale;
 import org.w3c.dom.Element;
 import org.w3c.dom.Node;
 
+import stirling.software.officeconvert.topdf.io.Dom;
+
 final class TextRuns {
 
     private final TextBody body;

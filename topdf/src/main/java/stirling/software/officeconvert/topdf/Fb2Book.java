@@ -26,6 +26,7 @@ import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 import org.w3c.dom.Node;
 
+import stirling.software.officeconvert.topdf.io.Dom;
 import stirling.software.officeconvert.topdf.io.SecureXml;
 
 final class Fb2Book {
@@ -152,7 +153,7 @@ final class Fb2Book {
         XmlInput xml = xml(in);
         Document doc = xml.reader() == null ? SecureXml.parse(xml.stream()) : SecureXml.parse(xml.reader());
         Element root = doc.getDocumentElement();
-        if (root == null || !ROOT.equals(local(root))) {
+        if (root == null || !ROOT.equals(Dom.local(root))) {
             throw new IOException("The file is not a FictionBook (FB2) book: its root element is not FictionBook");
         }
         return new Fb2Book().convert(root);
@@ -222,7 +223,7 @@ final class Fb2Book {
         }
         html.append('>');
         for (Element e : children(body, null)) {
-            switch (local(e)) {
+            switch (Dom.local(e)) {
                 case "title" -> heading(e, 1);
                 case "section" -> section(e, notes ? 2 : 1, !notes);
                 default -> block(e, 1);
@@ -243,7 +244,7 @@ final class Fb2Book {
         html.append('>');
         firstSection = false;
         for (Element e : children(section, null)) {
-            switch (local(e)) {
+            switch (Dom.local(e)) {
                 case "title" -> heading(e, Math.min(depth + 1, 6));
                 case "section" -> section(e, depth + 1, false);
                 default -> block(e, depth);
@@ -258,7 +259,7 @@ final class Fb2Book {
         html.append('>');
         boolean first = true;
         for (Element e : children(title, null)) {
-            if (local(e).equals("p")) {
+            if (Dom.local(e).equals("p")) {
                 if (!first) {
                     html.append("<br>");
                 }
@@ -271,7 +272,7 @@ final class Fb2Book {
 
     private void block(Element e, int depth) throws IOException {
         checkSize();
-        switch (local(e)) {
+        switch (Dom.local(e)) {
             case "p" -> paragraph(e, "p", null);
             case "empty-line" -> html.append("<p>&nbsp;</p>");
             case "subtitle" -> paragraph(e, "p", "text-align:center;font-weight:bold;margin:1em 0");
@@ -321,7 +322,7 @@ final class Fb2Book {
         for (Element tr : children(table, "tr")) {
             html.append("<tr>");
             for (Element cell : children(tr, null)) {
-                String tag = local(cell).equals("th") ? "th" : "td";
+                String tag = Dom.local(cell).equals("th") ? "th" : "td";
                 html.append('<').append(tag);
                 for (String attr : new String[] {"colspan", "rowspan", "align", "valign"}) {
                     String v = cell.getAttribute(attr);
@@ -383,7 +384,7 @@ final class Fb2Book {
     }
 
     private void inlineElement(Element e) throws IOException {
-        String tag = switch (local(e)) {
+        String tag = switch (Dom.local(e)) {
             case "emphasis" -> "em";
             case "strong" -> "strong";
             case "strikethrough" -> "s";
@@ -399,7 +400,7 @@ final class Fb2Book {
             html.append("</").append(tag).append('>');
             return;
         }
-        switch (local(e)) {
+        switch (Dom.local(e)) {
             case "a" -> {
                 String href = href(e);
                 boolean note = e.getAttribute("type").equalsIgnoreCase("note");
@@ -447,7 +448,7 @@ final class Fb2Book {
         if (href.isEmpty()) {
             for (int i = 0; i < e.getAttributes().getLength(); i++) {
                 Node a = e.getAttributes().item(i);
-                String name = a.getLocalName() != null ? a.getLocalName() : a.getNodeName();
+                String name = Dom.local(a);
                 if (name.equals("href") || name.endsWith(":href")) {
                     return a.getNodeValue();
                 }
@@ -485,16 +486,12 @@ final class Fb2Book {
         return t.isEmpty() ? null : t;
     }
 
-    private static String local(Node n) {
-        return n.getLocalName() != null ? n.getLocalName() : n.getNodeName();
-    }
-
     private static Element first(Element parent, String name) {
         if (parent == null) {
             return null;
         }
         for (Node n = parent.getFirstChild(); n != null; n = n.getNextSibling()) {
-            if (n instanceof Element e && local(e).equals(name)) {
+            if (n instanceof Element e && Dom.local(e).equals(name)) {
                 return e;
             }
         }
@@ -504,7 +501,7 @@ final class Fb2Book {
     private static List<Element> children(Element parent, String name) {
         List<Element> out = new ArrayList<>();
         for (Node n = parent.getFirstChild(); n != null; n = n.getNextSibling()) {
-            if (n instanceof Element e && (name == null || local(e).equals(name))) {
+            if (n instanceof Element e && (name == null || Dom.local(e).equals(name))) {
                 out.add(e);
             }
         }

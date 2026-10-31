@@ -20,6 +20,7 @@ import org.w3c.dom.Element;
 
 import stirling.software.officeconvert.topdf.RenderJob;
 import stirling.software.officeconvert.topdf.io.ActiveContent;
+import stirling.software.officeconvert.topdf.io.Dom;
 import stirling.software.officeconvert.topdf.io.OfficeZip;
 import stirling.software.officeconvert.topdf.io.Relationship;
 import stirling.software.officeconvert.topdf.io.Relationships;
@@ -59,15 +60,15 @@ final class WorkbookModel {
         Document doc = zip.xml(main);
         Element root = doc.getDocumentElement();
         Relationships rels = zip.relationships(main);
-        Element pr = Dml.child(root, "workbookPr");
+        Element pr = Dom.kid(root, "workbookPr");
         date1904 = pr != null && Dml.flag(pr, "date1904");
-        Element version = Dml.child(root, "fileVersion");
+        Element version = Dom.kid(root, "fileVersion");
         savedByExcel = version != null && "xl".equals(Dml.attr(version, "appName"));
         savedByCalc = version != null && "Calc".equals(Dml.attr(version, "appName"));
         openDocument = version != null && "OpenDocument".equals(Dml.attr(version, "appName"));
         savedOnMac = savedByExcel && MacExcel.saved(zip);
         int index = 0;
-        for (Element s : Dml.children(Dml.child(root, "sheets"), "sheet")) {
+        for (Element s : Dom.kids(Dom.kid(root, "sheets"), "sheet")) {
             String name = Dml.attr(s, "name");
             String state = Dml.attr(s, "state");
             Relationship r = rels.get(Dml.attrNs(s, "id"));
@@ -81,7 +82,7 @@ final class WorkbookModel {
                 break;
             }
         }
-        for (Element d : Dml.children(Dml.child(root, "definedNames"), "definedName")) {
+        for (Element d : Dom.kids(Dom.kid(root, "definedNames"), "definedName")) {
             String name = Dml.attr(d, "name");
             String local = Dml.attr(d, "localSheetId");
             if (name == null || local == null) {
