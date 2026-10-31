@@ -2,6 +2,9 @@ package stirling.software.officeconvert.pdfa;
 
 import java.io.IOException;
 import java.io.OutputStream;
+import java.util.ArrayList;
+import java.util.IdentityHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
@@ -12,6 +15,7 @@ import org.apache.fontbox.cff.CFFCIDFont;
 import org.apache.fontbox.cff.CFFFont;
 import org.apache.fontbox.cmap.CMap;
 import org.apache.fontbox.ttf.TrueTypeFont;
+import org.apache.pdfbox.cos.COSArray;
 import org.apache.pdfbox.cos.COSBase;
 import org.apache.pdfbox.cos.COSDictionary;
 import org.apache.pdfbox.cos.COSName;
@@ -53,6 +57,7 @@ final class FontFixer {
     static void run(PDDocument doc, FontUsage usage, PdfALevel level, Supplier<FontLibrary> libraries, Report report)
             throws IOException {
         FontFixer f = new FontFixer(doc, level, libraries, report);
+        Map<COSDictionary, List<COSDictionary>> siblings = sharedDescendants(usage);
         for (Map.Entry<COSDictionary, TreeSet<Integer>> e : usage.codes().entrySet()) {
             PdfFiles.stopIfInterrupted();
             if (CMapFixer.unknownName(e.getKey())) {
@@ -64,9 +69,49 @@ final class FontFixer {
             PDFont kept = f.fix(e.getKey(), e.getValue(), usage.bytesPerCode(e.getKey()));
             if (kept != null) {
                 usage.unchanged(kept);
+            } else {
+                for (COSDictionary sibling : siblings.getOrDefault(e.getKey(), List.of())) {
+                    sibling.setItem(COSName.BASE_FONT, e.getKey().getItem(COSName.BASE_FONT));
+                    sibling.setItem(COSName.TO_UNICODE, e.getKey().getItem(COSName.TO_UNICODE));
+                }
             }
             f.cmap(e.getKey(), e.getValue());
         }
+    }
+
+    private static Map<COSDictionary, List<COSDictionary>> sharedDescendants(FontUsage usage) {
+        Map<COSDictionary, List<COSDictionary>> byDescendant = new IdentityHashMap<>();
+        for (COSDictionary font : usage.codes().keySet()) {
+            if (COSName.TYPE0.equals(font.getCOSName(COSName.SUBTYPE))
+                    && ContentGraph.array(font.getDictionaryObject(COSName.DESCENDANT_FONTS)) instanceof COSArray a
+                    && a.size() > 0 && ContentGraph.dict(a.getObject(0)) instanceof COSDictionary cid) {
+                byDescendant.computeIfAbsent(cid, k -> new ArrayList<>()).add(font);
+            }
+        }
+        Map<COSDictionary, List<COSDictionary>> out = new IdentityHashMap<>();
+        for (List<COSDictionary> fonts : byDescendant.values()) {
+            for (COSDictionary font : fonts) {
+                List<COSDictionary> same = new ArrayList<>();
+                for (COSDictionary other : fonts) {
+                    if (other != font && sameEncoding(font, other)) {
+                        same.add(other);
+                    }
+                }
+                if (!same.isEmpty()) {
+                    out.put(font, same);
+                    for (COSDictionary other : same) {
+                        usage.codes().get(font).addAll(usage.codes().get(other));
+                    }
+                }
+            }
+        }
+        return out;
+    }
+
+    private static boolean sameEncoding(COSDictionary a, COSDictionary b) {
+        COSBase x = a.getDictionaryObject(COSName.ENCODING);
+        COSBase y = b.getDictionaryObject(COSName.ENCODING);
+        return x == y || x instanceof COSName && x.equals(y);
     }
 
     private static final Set<COSName> FONT_SUBTYPES = Set.of(COSName.TYPE0, COSName.TYPE1, COSName.MM_TYPE1,
@@ -168,12 +213,42 @@ final class FontFixer {
     static String substitute(PDDocument doc, PDFont font, Set<Integer> codes, PdfALevel level, FontLibrary library,
             int bytesPerCode, boolean hinting) throws IOException {
         PDFontDescriptor fd = font.getFontDescriptor();
-        BaseFontName name = BaseFontName.parse(font instanceof PDType0Font t0 && t0.getDescendantFont() != null
-                ? t0.getDescendantFont().getBaseFont() : font.getName(), fd == null ? 0 : fd.getFlags(),
-                fd == null ? 0 : fd.getFontWeight());
-        try (GlyphSource source = GlyphSource.open(library, name)) {
+        String baseFont = font instanceof PDType0Font t0 && t0.getDescendantFont() != null
+                ? t0.getDescendantFont().getBaseFont() : font.getName();
+        int flags = fd == null ? 0 : fd.getFlags();
+        BaseFontName name = BaseFontName.parse(baseFont, flags, fd == null ? 0 : fd.getFontWeight());
+        String eastAsian = GlyphSource.eastAsianFamily(ordering(font), baseFont, flags);
+        try (GlyphSource source = GlyphSource.open(library, name, shown(font, codes, bytesPerCode), eastAsian)) {
             return FontRebuild.substitute(doc, font, codes, source, level, bytesPerCode, hinting);
         }
+    }
+
+    private static List<Integer> shown(PDFont font, Set<Integer> codes, int bytesPerCode) {
+        List<Integer> out = new ArrayList<>();
+        for (int code : codes) {
+            String t = UnicodeGuess.of(font, code, font instanceof PDType0Font ? bytesPerCode : 1);
+            if (t != null && t.codePointCount(0, t.length()) == 1) {
+                int cp = t.codePointAt(0);
+                if (!Character.isWhitespace(cp) && !Character.isISOControl(cp) && !Character.isSpaceChar(cp)) {
+                    out.add(cp);
+                }
+            }
+        }
+        return out;
+    }
+
+    private static String ordering(PDFont font) {
+        if (!(font instanceof PDType0Font t0)) {
+            return null;
+        }
+        String ordering = null;
+        if (t0.getDescendantFont() != null && t0.getDescendantFont().getCIDSystemInfo() != null) {
+            ordering = t0.getDescendantFont().getCIDSystemInfo().getOrdering();
+        }
+        if ((ordering == null || "Identity".equals(ordering)) && t0.getCMap() != null) {
+            ordering = t0.getCMap().getOrdering();
+        }
+        return ordering;
     }
 
     private void cmap(COSDictionary dict, TreeSet<Integer> codes) throws IOException {
@@ -306,7 +381,7 @@ final class FontFixer {
     }
 
     private void charSet(PDFont font, COSDictionary fd) {
-        java.util.List<String> names = new java.util.ArrayList<>();
+        List<String> names = new ArrayList<>();
         try {
             if (font instanceof PDType1Font t1 && t1.getType1Font() != null) {
                 names.addAll(t1.getType1Font().getCharStringsDict().keySet());

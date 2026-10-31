@@ -75,6 +75,12 @@ final class UnicodeGuess {
     private static String fromProgram(PDFont font, int code) throws IOException {
         TrueTypeFont ttf = null;
         int gid = 0;
+        if (font instanceof PDType0Font t0 && t0.getCMapUCS2() != null && (!t0.isEmbedded() || !identity(t0))) {
+            String u = t0.getCMapUCS2().toUnicode(CidLookup.cid(t0, code));
+            if (ToUnicodeWriter.valid(u) && u.indexOf('�') < 0) {
+                return u;
+            }
+        }
         if (font instanceof PDTrueTypeFont tt) {
             ttf = tt.getTrueTypeFont();
             gid = tt.codeToGID(code);
@@ -119,6 +125,11 @@ final class UnicodeGuess {
             return glyphName(ttf.getPostScript().getName(gid));
         }
         return null;
+    }
+
+    private static boolean identity(PDType0Font font) {
+        return font.getCOSObject().getDictionaryObject(COSName.ENCODING) instanceof COSName n
+                && n.getName().startsWith("Identity-");
     }
 
     private static boolean named(PDFont font, int code) {

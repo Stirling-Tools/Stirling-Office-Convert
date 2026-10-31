@@ -63,7 +63,8 @@ final class FontRebuild {
         TrueTypeFont own = mode == Mode.OWN ? ownTrueType(font) : null;
         TrueTypeWriter w;
         if (mode == Mode.SUBSTITUTE) {
-            w = new TrueTypeWriter(substitute.font());
+            w = substitute.copies() ? new TrueTypeWriter(substitute.font())
+                    : new TrueTypeWriter(substitute.font().getUnitsPerEm());
         } else if (own != null) {
             w = new TrueTypeWriter(own);
         } else {
@@ -79,7 +80,8 @@ final class FontRebuild {
         int missing = 0;
         for (int code : codes) {
             PdfFiles.stopIfInterrupted();
-            int key = type0 ? cid.codeToCID(code) : code;
+            int key = type0 ? CidLookup.cid((PDType0Font) font, code) : code;
+            int inherited = type0 ? cid.codeToCID(code) : code;
             String text = UnicodeGuess.of(font, code, type0 ? bytesPerCode : 1);
             if (!ToUnicodeWriter.valid(text) || ToUnicodeWriter.privateUse(text)) {
                 String s = ToUnicodeWriter.symbol(text, original, code);
@@ -100,10 +102,11 @@ final class FontRebuild {
             if (mode == Mode.SUBSTITUTE) {
                 String name = font instanceof PDSimpleFont s && s.getEncoding() != null ? s.getEncoding().getName(code) : null;
                 int gid = substitute.glyph(code, name, text);
-                if (gid > 0) {
+                if (gid > 0 && substitute.copies()) {
                     slot = w.addCopy(gid, advance);
                 } else {
-                    GeneralPath p = substitute.fallback(text, w.unitsPerEm());
+                    GeneralPath p = gid > 0 ? substitute.outline(gid, w.unitsPerEm()) : null;
+                    p = p != null ? p : substitute.fallback(text, w.unitsPerEm());
                     slot = p != null ? w.addOutline(p, advance) : w.addEmpty(advance);
                     if (p == null && text != null && !text.isBlank()) {
                         missing++;
@@ -117,6 +120,9 @@ final class FontRebuild {
                 slot = p == null ? w.addEmpty(advance) : w.addOutline(p, advance);
             }
             slots.put(key, slot);
+            if (inherited != key && inherited > 0) {
+                slots.putIfAbsent(inherited, slot);
+            }
         }
         String base = cleanName(type0 ? cid.getBaseFont() : font.getName());
         String name = tag(slots, base) + base;
