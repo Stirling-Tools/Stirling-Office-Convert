@@ -41,9 +41,11 @@ final class CellPainter {
         }
         rtl = CellLayout.rightToLeft(cell.format(), text, grid.rightToLeft());
         Boolean was = type.direction(rtl);
+        boolean skipped = canvas.skipOffPage(true);
         try {
             paint(cell, colored(text), box, spillLeft, spillRight, descent, clip);
         } finally {
+            canvas.skipOffPage(skipped);
             type.direction(was);
         }
     }

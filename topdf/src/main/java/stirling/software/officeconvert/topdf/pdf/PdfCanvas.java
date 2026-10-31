@@ -108,6 +108,10 @@ public final class PdfCanvas implements Closeable {
 
     private boolean hiddenText;
 
+    private boolean offPageSkipped;
+
+    private boolean skippedSince;
+
     private final String marked;
 
     PdfCanvas(PdfOutput output, PDPage page, int index) throws IOException {
@@ -187,6 +191,12 @@ public final class PdfCanvas implements Closeable {
         return was;
     }
 
+    public boolean skipOffPage(boolean skip) {
+        boolean was = offPageSkipped;
+        offPageSkipped = skip;
+        return was;
+    }
+
     public void save() throws IOException {
         ready();
         cs.saveGraphicsState();
@@ -246,6 +256,7 @@ public final class PdfCanvas implements Closeable {
         if (text.isEmpty()) {
             return 0;
         }
+        skippedSince = false;
         PdfFonts.Embedded embedded = output.fonts().font(style.face());
         FontFace face = embedded.face();
         StringBuilder ops = new StringBuilder(text.length() * 5 + 96);
@@ -335,6 +346,9 @@ public final class PdfCanvas implements Closeable {
         boolean open = false;
         boolean any = false;
         float pending = 0;
+        double skipped = 0;
+        double spacing = style.charSpacing() == 0 ? 0
+                : Numbers.written(style.charSpacing() / (th * scale)) * 1000 / Numbers.written(size);
         float drawn = 0;
         int previous = -1;
         for (int i = 0; i < text.length(); ) {
@@ -350,7 +364,21 @@ public final class PdfCanvas implements Closeable {
                 drawn += kern;
             }
             int glyph = face.covers(cp) ? face.glyph(cp) : 0;
-            if (glyph > 0) {
+            if (glyph > 0 && !perGlyph && !visible(x + drawn, x + drawn + advance, baseline, size)) {
+                if (pending != 0 && !(placed && Math.abs(pending / unit) < 0.5f)) {
+                    skipped -= Numbers.written(-pending / unit);
+                    pending = 0;
+                }
+                float width = placed
+                        ? output.fonts().advance(embedded, output.fonts().encoded(embedded, glyph,
+                                face.encodedCodePoint(cp),
+                                Math.round(face.advance(cp) * 100000f / face.unitsPerEm() / scale) / 100f))
+                        : Math.round(face.glyphAdvance(glyph) * (1000f / face.unitsPerEm()));
+                float own = placed ? width / 1000f * face.unitsPerEm() : face.glyphAdvance(glyph);
+                skipped += width + spacing;
+                pending += (face.advance(cp) - own * scale) * size / face.unitsPerEm() * th;
+                previous = cp;
+            } else if (glyph > 0) {
                 if (perGlyph) {
                     float s = Math.round(face.glyphScale(cp) * 200) / 200f;
                     if (segment && (cp == ' ' || cp == 0xA0)) {
@@ -374,13 +402,20 @@ public final class PdfCanvas implements Closeable {
                         segment = true;
                     }
                 }
-                if (pending != 0 && !(placed && Math.abs(pending / unit) < 0.5f)) {
+                boolean flush = pending != 0 && !(placed && Math.abs(pending / unit) < 0.5f);
+                if (flush || skipped != 0) {
                     if (open) {
                         tj.append('>');
                         open = false;
                     }
-                    Numbers.append(tj.append(' '), -pending / unit).append(' ');
-                    pending = 0;
+                    float shift = flush ? -pending / unit : 0;
+                    if (skipped == 0) {
+                        Numbers.append(tj.append(' '), shift).append(' ');
+                    } else {
+                        Numbers.fine(tj.append(' '), shift - skipped).append(' ');
+                    }
+                    pending = flush ? 0 : pending;
+                    skipped = 0;
                 }
                 if (!open) {
                     tj.append('<');
@@ -436,6 +471,7 @@ public final class PdfCanvas implements Closeable {
         FontFace boxFace = tofu.face();
         float natural = boxFace.glyphAdvance(0) * size / boxFace.unitsPerEm();
         StringBuilder b = new StringBuilder("0 Tc\n");
+        boolean carried = false;
         float pen = x;
         for (int i = 0; i < text.length(); ) {
             int end = ColorEmoji.clusterEnd(text, i);
@@ -451,7 +487,8 @@ public final class PdfCanvas implements Closeable {
                     room += face.advance(cp) * size / face.unitsPerEm() * th + style.charSpacing();
                 }
             }
-            if (glyphs != null && !hiddenText) {
+            boolean seen = visible(pen, pen + room, baseline, size);
+            if (glyphs != null && !hiddenText && seen) {
                 float wide = colour.advance(glyphs) * size * th;
                 float fit = wide > room && wide > 0 ? room / wide : 1;
                 float drawn = pen + Math.max(0, room - wide * fit) / 2;
@@ -472,14 +509,18 @@ public final class PdfCanvas implements Closeable {
                     drawn += colour.advance(g) * size * th * fit;
                 }
             }
-            if (room > 0 && natural > 0) {
+            if (room > 0 && natural > 0 && seen) {
                 Numbers.append(b, 100 * room / natural).append(" Tz ");
                 matrix(b, 1, 0, -1, pen, baseline).setLength(b.length() - 1);
                 b.append(" [<");
                 Numbers.hex(b, output.fonts().missingCode(tofu, text.substring(i, end)), 4).append(">] TJ\n");
+                carried = true;
             }
             pen += room;
             i = end;
+        }
+        if (!carried && offPageSkipped) {
+            return pen - x;
         }
         boolean was = hideText(true);
         try {
@@ -662,6 +703,28 @@ public final class PdfCanvas implements Closeable {
         return !f.emulated() && !f.scaledPerGlyph() && f.glyphStretch() == 1 && !f.symbolStandIn();
     }
 
+    public boolean visible(float x0, float x1, float baseline, float size) {
+        if (!offPageSkipped || form != null) {
+            return true;
+        }
+        float left = x0 - size;
+        float right = x1 + size;
+        float top = baseline - 2 * size;
+        float bottom = baseline + size;
+        boolean seen;
+        if (ctm.getShearX() == 0 && ctm.getShearY() == 0) {
+            double a = left * ctm.getScaleX() + ctm.getTranslateX();
+            double b = right * ctm.getScaleX() + ctm.getTranslateX();
+            double c = top * ctm.getScaleY() + ctm.getTranslateY();
+            double d = bottom * ctm.getScaleY() + ctm.getTranslateY();
+            seen = Math.max(a, b) >= 0 && Math.min(a, b) <= width && Math.max(c, d) >= 0 && Math.min(c, d) <= height;
+        } else {
+            seen = onPage(left, right, top, bottom);
+        }
+        skippedSince |= !seen;
+        return seen;
+    }
+
     private boolean onPage(float x0, float x1, float top, float bottom) {
         if (form != null) {
             return true;
@@ -689,6 +752,7 @@ public final class PdfCanvas implements Closeable {
         float natural = boxFace.glyphAdvance(0) * size / boxFace.unitsPerEm();
         float skew = face.syntheticItalic() ? ITALIC_SKEW : 0;
         StringBuilder b = new StringBuilder("0 Tc\n");
+        boolean any = false;
         float drawn = 0;
         for (int i = 0; i < text.length(); ) {
             int cp = text.codePointAt(i);
@@ -697,19 +761,24 @@ public final class PdfCanvas implements Closeable {
                 continue;
             }
             float box = face.advance(cp) * size / face.unitsPerEm() * th;
-            float tz = natural > 0 ? Math.min(100, 100 * box / natural) : 100;
-            Numbers.append(b, tz).append(" Tz ");
-            matrix(b, 1, skew, -1, x + drawn, baseline).setLength(b.length() - 1);
-            b.append(" [<");
-            Numbers.hex(b, output.fonts().missingCode(tofu, cp), 4).append(">] TJ\n");
+            if (visible(x + drawn, x + drawn + box, baseline, size)) {
+                float tz = natural > 0 ? Math.min(100, 100 * box / natural) : 100;
+                Numbers.append(b, tz).append(" Tz ");
+                matrix(b, 1, skew, -1, x + drawn, baseline).setLength(b.length() - 1);
+                b.append(" [<");
+                Numbers.hex(b, output.fonts().missingCode(tofu, cp), 4).append(">] TJ\n");
+                any = true;
+            }
             if (!hiddenText) {
                 output.fonts().uncovered(cp);
             }
             drawn += box + style.charSpacing();
         }
-        begin(ops, style, 0);
-        font(ops, tofu, size);
-        ops.append(b).append("ET\nQ\n");
+        if (any || !offPageSkipped) {
+            begin(ops, style, 0);
+            font(ops, tofu, size);
+            ops.append(b).append("ET\nQ\n");
+        }
         return drawn;
     }
 
@@ -734,7 +803,7 @@ public final class PdfCanvas implements Closeable {
             }
             float box = face.advance(cp) * size / face.unitsPerEm() * th;
             int glyph = drawn.covers(cp) ? drawn.glyph(cp) : 0;
-            if (glyph > 0) {
+            if (glyph > 0 && visible(x + advanced, x + advanced + box, baseline, size)) {
                 float natural = drawn.glyphAdvance(glyph) * size / drawn.unitsPerEm() * th;
                 float fit = natural > box && natural > 0 ? box / natural : 1;
                 Numbers.append(b, 100 * th * fit).append(" Tz ");
@@ -776,7 +845,8 @@ public final class PdfCanvas implements Closeable {
                 continue;
             }
             float[] fit = face.symbolFit(cp);
-            if (fit != null) {
+            float advance = face.advance(cp) * size / face.unitsPerEm() * th;
+            if (fit != null && visible(x + drawn, x + drawn + advance, baseline, size)) {
                 ids[n] = face.glyph(cp);
                 codes[n] = face.encodedCodePoint(cp);
                 matrix(b, fit[0] * th, skew * fit[1], -fit[1], x + drawn + fit[2] * size * th + skew * fit[3] * size,
@@ -785,7 +855,7 @@ public final class PdfCanvas implements Closeable {
                 Numbers.hex(b, output.fonts().encoded(embedded, ids[n], codes[n]), 4).append(">] TJ\n");
                 n++;
             }
-            drawn += face.advance(cp) * size / face.unitsPerEm() * th + style.charSpacing();
+            drawn += advance + style.charSpacing();
             if (cp == ' ') {
                 drawn += style.wordSpacing();
             }
@@ -864,6 +934,7 @@ public final class PdfCanvas implements Closeable {
         if (run.size() == 0) {
             return 0;
         }
+        skippedSince = false;
         PdfFonts.Embedded embedded = output.fonts().font(run.face());
         FontFace face = embedded.face();
         float size = style.size();
@@ -899,6 +970,9 @@ public final class PdfCanvas implements Closeable {
             StringBuilder tj = null;
             float pen = 0;
             float line = Float.NaN;
+            float originX = 0;
+            float originY = 0;
+            double skipped = 0;
             for (int k = from; k < to; k++) {
                 int i = order[k];
                 int glyph = run.glyph(i);
@@ -908,29 +982,54 @@ public final class PdfCanvas implements Closeable {
                     if (gy != line) {
                         if (tj != null) {
                             ops.append(tj.append("] TJ\n"));
+                            tj = null;
                         }
-                        matrix(ops, 1, skew, -1, x + gx + skew * gy, baseline - gy);
-                        tj = new StringBuilder("[");
+                        originX = x + gx + skew * gy;
+                        originY = baseline - gy;
+                        skipped = 0;
                         pen = gx;
                         line = gy;
                     }
                     float adjust = -(gx - pen) / (size * tz) * 1000;
-                    if (Math.abs(adjust) >= 0.5f) {
-                        Numbers.append(tj.append(' '), adjust).append(' ');
+                    boolean moved = Math.abs(adjust) >= 0.5f;
+                    if (moved) {
                         pen = gx;
                     }
-                    if (tj.charAt(tj.length() - 1) == '>') {
-                        tj.setLength(tj.length() - 1);
+                    float units = 0;
+                    if (offPageSkipped) {
+                        for (int c = 0; c < (visual ? parts[i].length : 1); c++) {
+                            units += output.fonts().advance(embedded, visual ? parts[i][c] : codes[i]);
+                        }
+                    }
+                    if (!visible(x + gx, x + gx + units / 1000f * size * tz, baseline - gy, size)) {
+                        skipped += units - (moved ? Numbers.written(adjust) : 0);
                     } else {
-                        tj.append('<');
+                        if (tj == null) {
+                            matrix(ops, 1, skew, -1, originX, originY);
+                            tj = new StringBuilder("[");
+                        }
+                        if (skipped != 0) {
+                            Numbers.fine(tj.append(' '), (moved ? adjust : 0) - skipped).append(' ');
+                            skipped = 0;
+                        } else if (moved) {
+                            Numbers.append(tj.append(' '), adjust).append(' ');
+                        }
+                        if (tj.charAt(tj.length() - 1) == '>') {
+                            tj.setLength(tj.length() - 1);
+                        } else {
+                            tj.append('<');
+                        }
+                        if (visual && parts[i].length > 1) {
+                            drawParts(tj, embedded, parts[i]);
+                        } else {
+                            Numbers.hex(tj, visual ? parts[i][0] : codes[i], 4).append('>');
+                        }
                     }
                     if (visual && parts[i].length > 1) {
-                        drawParts(tj, embedded, parts[i]);
                         for (int code : parts[i]) {
                             pen += output.fonts().advance(embedded, code) / 1000f * size * tz;
                         }
                     } else {
-                        Numbers.hex(tj, visual ? parts[i][0] : codes[i], 4).append('>');
                         pen += Math.round(face.glyphAdvance(glyph) * 1000f / face.unitsPerEm()) / 1000f * size * tz;
                     }
                 }
@@ -1070,10 +1169,11 @@ public final class PdfCanvas implements Closeable {
     // Text waits for the next drawing so that the pieces of a line reach the page in reading order
     private void queue(StringBuilder ops, float x0, float x1, float baseline, float size, String text,
             boolean visual) {
-        if (!ops.isEmpty()) {
+        if (!ops.isEmpty() || skippedSince) {
             pending.add(new TextOrder.Piece(ops.toString(), Math.min(x0, x1), Math.max(x0, x1), baseline, size,
                     text, upright(), visual));
         }
+        skippedSince = false;
     }
 
     // Viewers find right-to-left lines only in upright text; rotated text keeps the order it is drawn in
