@@ -36,6 +36,14 @@ class CssTest {
     }
 
     @Test
+    void backgroundShorthandKeepsItsColourAfterANoneImage() {
+        assertEquals(0xFFD700,
+                Css.color(Css.declarations("background:#ffd700 none repeat scroll 0 0").get("background-color")));
+        assertEquals(0xFFD700, Css.color(Css.declarations("background:none #ffd700").get("background-color")));
+        assertNull(Css.color(Css.declarations("background-color:red;background:none").get("background-color")));
+    }
+
+    @Test
     void rulesInsideMediaSupportsAndLayersApplyOnlyWhenTheyMatch() {
         List<Css.Rule> rules = Css.rules("p{color:red} @media (max-width: 300px){p{color:blue}}"
                 + " @media print{h1{color:green}} @supports (display:grid){.g{display:grid}}"

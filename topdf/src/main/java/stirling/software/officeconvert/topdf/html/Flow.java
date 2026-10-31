@@ -306,7 +306,7 @@ final class Flow {
         }
         Map<String, String> d = ctx.declared(e, parentLook);
         if (tag.equals("table") && parentLook.legacyAlign && !d.containsKey("text-align")) {
-            // <center> or align places a table in the middle but its text starts at the left, as Chrome does
+            // <center> or align moves a table across but not its text, which starts at the start edge, as Chrome does
             d.put("text-align", "start");
         }
         String display = d.getOrDefault("display", BLOCKS.contains(tag) ? "block" : "inline").strip().toLowerCase(Locale.ROOT);
@@ -384,7 +384,7 @@ final class Flow {
                 }
             }
             case "hr" -> rule(d, look, frame);
-            case "table" -> table(e, d, look, frame, parentLook.centerBlocks, depth);
+            case "table" -> table(e, d, look, frame, parentLook.legacyAlign ? parentLook.align : null, depth);
             case "a" -> {
                 long boundary = edgeBoundary;
                 if (inline) {
@@ -2563,7 +2563,7 @@ final class Flow {
         emit(p);
     }
 
-    private void table(Element e, Map<String, String> d, Look look, Frame frame, boolean centred, int depth)
+    private void table(Element e, Map<String, String> d, Look look, Frame frame, Paragraph.Align legacy, int depth)
             throws IOException {
         flush();
         if (inCell && (paragraphsOnly || e.parents().stream().filter(p -> p.normalName().equals("table")).count() >= Table.MAX_NESTING
@@ -2574,8 +2574,8 @@ final class Flow {
         if (HtmlTables.layoutOnly(e, d, ctx, look)) {
             // a one-column table with no borders is only there to stack its cells: they flow as blocks
             Integer fill = Css.color(d.get("background-color"));
-            float slack = frame.width() - stackWidth(d, look, frame.width());
-            float left = stackIndent(e, d, look, centred, slack);
+            float slack = frame.width() - stackWidth(e, d, look, frame.width());
+            float left = stackIndent(e, d, look, legacy, slack);
             Frame inside = frame.inner(left, slack - left, fill == null ? -1 : fill);
             for (Element tr : e.select(HtmlTables.ROWS)) {
                 for (Element cell : tr.select("> td, > th")) {
@@ -2590,7 +2590,7 @@ final class Flow {
         if (isPageBreak(d.get("break-before"))) {
             pendingBreak = true;
         }
-        Table t = ctx.tables().table(e, d, look, frame, centred, depth);
+        Table t = ctx.tables().table(e, d, look, frame, legacy, depth);
         if (t == null) {
             return;
         }
@@ -2606,7 +2606,7 @@ final class Flow {
         emit(t);
     }
 
-    private static float stackWidth(Map<String, String> d, Look look, float room) {
+    private static float stackWidth(Element table, Map<String, String> d, Look look, float room) {
         float width = room;
         for (String key : new String[] {"width", "max-width"}) {
             Float pt = d.get(key) == null || d.get(key).strip().equalsIgnoreCase("auto") ? null
@@ -2615,23 +2615,49 @@ final class Flow {
                 width = Math.min(width, pt);
             }
         }
-        return width;
+        return width < room ? Math.min(room, Math.max(width, longestWord(table, look))) : width;
     }
 
-    private static float stackIndent(Element table, Map<String, String> d, Look look, boolean centred, float slack) {
+    private static final int STACK_TEXT = 2_000;
+
+    private static float longestWord(Element table, Look look) {
+        float most = 0;
+        int seen = 0;
+        ArrayDeque<Node> open = new ArrayDeque<>();
+        open.push(table);
+        while (!open.isEmpty() && seen < STACK_TEXT) {
+            Node n = open.pop();
+            seen++;
+            if (n instanceof TextNode t) {
+                String text = t.text();
+                seen += text.length();
+                for (String word : text.split("\\s+")) {
+                    most = Math.max(most, Glyphs.word(word, look.size, look.bold, look.font));
+                }
+            } else {
+                for (int i = Math.min(n.childNodeSize(), STACK_TEXT) - 1; i >= 0; i--) {
+                    open.push(n.childNode(i));
+                }
+            }
+        }
+        return most;
+    }
+
+    private static float stackIndent(Element table, Map<String, String> d, Look look, Paragraph.Align legacy,
+            float slack) {
         if (slack <= 0) {
             return 0;
         }
         boolean autoLeft = "auto".equalsIgnoreCase(d.getOrDefault("margin-left", "").strip());
         boolean autoRight = "auto".equalsIgnoreCase(d.getOrDefault("margin-right", "").strip());
         String align = table.attr("align");
-        if (centred || autoLeft && autoRight || "center".equalsIgnoreCase(align)) {
+        if (legacy == Paragraph.Align.CENTER || autoLeft && autoRight || "center".equalsIgnoreCase(align)) {
             return slack / 2;
         }
-        if (autoLeft || "right".equalsIgnoreCase(align)) {
+        if (autoLeft || "right".equalsIgnoreCase(align) || legacy == Paragraph.Align.RIGHT) {
             return slack;
         }
-        if (autoRight || "left".equalsIgnoreCase(align)) {
+        if (autoRight || "left".equalsIgnoreCase(align) || legacy == Paragraph.Align.LEFT) {
             return 0;
         }
         return look.rightToLeft ? slack : 0;
