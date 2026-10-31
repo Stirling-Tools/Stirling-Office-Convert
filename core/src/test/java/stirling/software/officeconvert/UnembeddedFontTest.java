@@ -102,6 +102,24 @@ class UnembeddedFontTest {
     }
 
     @Test
+    void anUnembeddedWingdingsDifferencesArrayNamesItsCharacters() throws Exception {
+        COSDictionary encoding = new COSDictionary();
+        encoding.setItem(COSName.TYPE, COSName.ENCODING);
+        encoding.setItem(COSName.BASE_ENCODING, COSName.WIN_ANSI_ENCODING);
+        COSArray differences = new COSArray();
+        differences.add(COSInteger.get(65));
+        differences.add(COSName.getPDFName("uni2713"));
+        differences.add(COSName.getPDFName("uni2610"));
+        encoding.setItem(COSName.DIFFERENCES, differences);
+        COSDictionary font = simple("TrueType", "Wingdings", null, 4);
+        font.setItem(COSName.ENCODING, encoding);
+        Path pdf = write("wingdings-differences.pdf", "/F1 12 Tf", font, "(AB \\376) Tj", null);
+        String text = text(pdf);
+        assertTrue(text.contains("\u2713\u2610 \u2611"), text);
+        assertFalse(text.contains("\u270C"), text);
+    }
+
+    @Test
     void anUnembeddedTrueTypeFontKeepsItsOwnFamilyName() throws Exception {
         Path pdf = write("calibri.pdf", "/F1 12 Tf", simple("TrueType", "Calibri,Bold", COSName.WIN_ANSI_ENCODING, 32),
                 "(Quarterly results) Tj", null);

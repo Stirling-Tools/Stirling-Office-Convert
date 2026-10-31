@@ -66,12 +66,12 @@ final class BuiltInEncodings {
         }
         String letters = name.toLowerCase(Locale.ROOT).replaceAll("[^a-z]", "");
         if (letters.startsWith("wingdings") || letters.startsWith("webdings")) {
-            return PRIVATE_USE;
+            return withDifferences(font, PRIVATE_USE);
         }
         if (font instanceof PDTrueTypeFont) {
             PDFontDescriptor fd = font.getFontDescriptor();
-            return "Symbol".equals(FontNames.family(null, name)) && fd != null && fd.isSymbolic() ? fonts().get(SYMBOL_NAMES[0])
-                    : null;
+            return "Symbol".equals(FontNames.family(null, name)) && fd != null && fd.isSymbolic()
+                    ? withDifferences(font, fonts().get(SYMBOL_NAMES[0])) : null;
         }
         COSDictionary dict = font.getCOSObject();
         String[] builtin = fonts().get(name.toLowerCase(Locale.ROOT));
@@ -98,6 +98,33 @@ final class BuiltInEncodings {
             }
         }
         return out;
+    }
+
+    private static String[] withDifferences(PDFont font, String[] fallback) {
+        if (!(font.getCOSObject().getDictionaryObject(COSName.ENCODING) instanceof COSDictionary encoding)
+                || !(encoding.getDictionaryObject(COSName.DIFFERENCES) instanceof COSArray array)) {
+            return fallback;
+        }
+        String[] out = fallback.clone();
+        int code = -1;
+        for (int i = 0; i < array.size(); i++) {
+            COSBase item = array.getObject(i);
+            if (item instanceof COSNumber n) {
+                code = n.intValue();
+            } else if (item instanceof COSName glyph && code >= 0 && code < CODES) {
+                String text = glyphText(glyph.getName());
+                if (text != null) {
+                    out[code] = text;
+                }
+                code++;
+            }
+        }
+        return out;
+    }
+
+    private static String glyphText(String glyph) {
+        String text = GlyphList.getAdobeGlyphList().toUnicode(glyph);
+        return text != null ? text : GlyphList.getZapfDingbats().toUnicode(glyph);
     }
 
     private static boolean inCoreFontOrder(PDType0Font font, String name) {
