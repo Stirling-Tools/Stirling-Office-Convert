@@ -479,6 +479,9 @@ final class ParaItems {
             boolean usable = wanted != null && wanted.vertical() != null && wanted.scale() == 100;
             if (usable && (!Look.eastAsianGlyphs(f) || Fonts.withEastAsianExtra(wanted))) {
                 own = wanted;
+            } else if (!web() && Fonts.eastAsian(cp) && Look.eastAsianGlyphs(f)
+                    && !FontLibrary.drawsScript(requested.requestedFamily(), cp)) {
+                own = Fonts.officeEastAsianLine(f);
             } else {
                 ownLine = FontLibrary.drawsScript(requested.requestedFamily(), cp);
             }
