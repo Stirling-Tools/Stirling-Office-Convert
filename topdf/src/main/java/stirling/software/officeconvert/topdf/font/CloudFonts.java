@@ -61,6 +61,31 @@ public final class CloudFonts {
         return new Emulation(face, scale, new float[] {w[4], w[5]}, note, CloudMetrics.of(family, bold, italic));
     }
 
+    public FontFace withWidths(FontFace face) {
+        String family = face.requestedFamily();
+        String key = FontLibrary.normalize(family);
+        float[] w = WIDTHS.get(key);
+        boolean bold = face.boldStyle();
+        boolean italic = face.italicStyle();
+        CloudMetrics metrics = CloudMetrics.of(family, bold, italic);
+        if (w == null || metrics == null || !face.substituted() || face.emulated() || ALTERNATIVES.containsKey(key)
+                || fonts.widthScale(family) > 0 || bold && metrics == CloudMetrics.of(family, false, italic)) {
+            return face;
+        }
+        float average = w[(bold ? 2 : 0) + (italic ? 1 : 0)];
+        if (Float.isNaN(average)) {
+            average = w[bold ? 2 : 0];
+        }
+        float own = OfficeFonts.prose(face.program());
+        float stretch = own > 0 && average > 0 ? Math.max(0.7f, Math.min(1.3f, average / own)) : 1;
+        return face.withWidths(OfficeFonts.of(average, w[4], w[5], metrics::advance), stretch);
+    }
+
+    public static float[] vertical(String family) {
+        float[] w = WIDTHS.get(FontLibrary.normalize(family));
+        return w == null ? null : new float[] {w[4], w[5]};
+    }
+
     private synchronized float average(FontFace face) {
         Float known = averages.get(face);
         if (known != null) {

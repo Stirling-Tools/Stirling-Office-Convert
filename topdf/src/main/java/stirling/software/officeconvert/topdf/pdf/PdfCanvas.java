@@ -271,7 +271,7 @@ public final class PdfCanvas implements Closeable {
             i += Character.charCount(cp);
         }
         at += segment(ops, text.substring(start), Math.max(kind, GLYPHS), embedded, cover, x + at, baseline, style);
-        queue(ops, x, x + at, baseline, style.size(), text);
+        queue(ops, x, x + at, baseline, style.size(), text, false);
         return at;
     }
 
@@ -302,6 +302,7 @@ public final class PdfCanvas implements Closeable {
         float size = style.size();
         float th = style.horizontalScale() / 100f;
         boolean perGlyph = face.scaledPerGlyph();
+        boolean placed = face.emulated() && !perGlyph;
         float scale = perGlyph ? 1 : face.glyphStretch();
         float unit = size * th * scale / 1000f;
         StringBuilder tj = new StringBuilder(text.length() * 4 + 32);
@@ -354,7 +355,7 @@ public final class PdfCanvas implements Closeable {
                         segment = true;
                     }
                 }
-                if (pending != 0) {
+                if (pending != 0 && !(placed && Math.abs(pending / unit) < 0.5f)) {
                     if (open) {
                         tj.append('>');
                         open = false;
@@ -366,12 +367,18 @@ public final class PdfCanvas implements Closeable {
                     tj.append('<');
                     open = true;
                 }
-                Numbers.hex(tj, output.fonts().encoded(embedded, glyph, face.encodedCodePoint(cp)), 4);
+                int code = placed
+                        ? output.fonts().encoded(embedded, glyph, face.encodedCodePoint(cp),
+                                Math.round(face.advance(cp) * 100000f / face.unitsPerEm() / scale) / 100f)
+                        : output.fonts().encoded(embedded, glyph, face.encodedCodePoint(cp));
+                Numbers.hex(tj, code, 4);
                 glyphs[used] = glyph;
                 codes[used++] = face.encodedCodePoint(cp);
                 any = true;
                 previous = cp;
-                pending += (face.advance(cp) - face.glyphAdvance(glyph) * scale) * size / face.unitsPerEm() * th;
+                float own = placed ? output.fonts().advance(embedded, code) / 1000f * face.unitsPerEm()
+                        : face.glyphAdvance(glyph);
+                pending += (face.advance(cp) - own * scale) * size / face.unitsPerEm() * th;
             } else {
                 pending += advance;
                 previous = -1;
@@ -595,74 +602,96 @@ public final class PdfCanvas implements Closeable {
         float rise = size / face.unitsPerEm();
         float tz = th * run.stretch();
         float skew = face.syntheticItalic() ? ITALIC_SKEW : 0;
-        int[] codes = output.fonts().used(embedded, run);
-        StringBuilder ops = new StringBuilder();
-        if (actualText) {
-            ops.append("/Span <</ActualText ").append(textString(run.text())).append(">> BDC\n");
-        }
-        begin(ops, style, outline(face, size));
-        font(ops, embedded, size);
-        if (tz != 1) {
-            Numbers.append(ops, tz * 100).append(" Tz\n");
-        }
-        StringBuilder tj = null;
-        float pen = 0;
-        float line = Float.NaN;
-        int[][] reading = readingOrder(run, actualText ? new int[run.size()] : run.groups(), upright());
+        boolean logical = upright() && (tz == 1 || !arabic(run.text()));
+        boolean visual = run.rightToLeft() && !logical && upright();
+        int[] groups = actualText ? new int[run.size()] : visual ? visualGroups(run) : run.groups();
+        int[][] parts = visual ? output.fonts().usedVisually(embedded, run, groups) : null;
+        int[] codes = visual ? null : output.fonts().used(embedded, run);
+        int[][] reading = readingOrder(run, groups, logical);
         int[] order = reading[0];
         int[] marks = reading[1];
-        for (int k = 0; k < run.size(); k++) {
-            int i = order[k];
-            int glyph = run.glyph(i);
-            if (glyph > 0) {
-                float gx = run.x(i) * scale;
-                float gy = run.y(i) * rise;
-                if (gy != line) {
+        int lead = visual ? leadingBlanks(run, order, marks) : 0;
+        float width = run.advance() * scale;
+        for (int from = 0, to = lead > 0 ? lead : run.size(); from < run.size(); from = to, to = run.size()) {
+            StringBuilder ops = new StringBuilder();
+            if (actualText) {
+                ops.append("/Span <</ActualText ").append(textString(run.text())).append(">> BDC\n");
+            }
+            begin(ops, style, outline(face, size));
+            font(ops, embedded, size);
+            if (tz != 1) {
+                Numbers.append(ops, tz * 100).append(" Tz\n");
+            }
+            StringBuilder tj = null;
+            float pen = 0;
+            float line = Float.NaN;
+            for (int k = from; k < to; k++) {
+                int i = order[k];
+                int glyph = run.glyph(i);
+                if (glyph > 0) {
+                    float gx = run.x(i) * scale;
+                    float gy = run.y(i) * rise;
+                    if (gy != line) {
+                        if (tj != null) {
+                            ops.append(tj.append("] TJ\n"));
+                        }
+                        matrix(ops, 1, skew, -1, x + gx + skew * gy, baseline - gy);
+                        tj = new StringBuilder("[");
+                        pen = gx;
+                        line = gy;
+                    }
+                    float adjust = -(gx - pen) / (size * tz) * 1000;
+                    if (Math.abs(adjust) >= 0.5f) {
+                        Numbers.append(tj.append(' '), adjust).append(' ');
+                        pen = gx;
+                    }
+                    if (tj.charAt(tj.length() - 1) == '>') {
+                        tj.setLength(tj.length() - 1);
+                    } else {
+                        tj.append('<');
+                    }
+                    if (visual && parts[i].length > 1) {
+                        drawParts(tj, embedded, parts[i]);
+                        for (int code : parts[i]) {
+                            pen += output.fonts().advance(embedded, code) / 1000f * size * tz;
+                        }
+                    } else {
+                        Numbers.hex(tj, visual ? parts[i][0] : codes[i], 4).append('>');
+                        pen += Math.round(face.glyphAdvance(glyph) * 1000f / face.unitsPerEm()) / 1000f * size * tz;
+                    }
+                }
+                if (marks[k] != 0) {
                     if (tj != null) {
                         ops.append(tj.append("] TJ\n"));
+                        tj = null;
                     }
-                    matrix(ops, 1, skew, -1, x + gx + skew * gy, baseline - gy);
-                    tj = new StringBuilder("[");
-                    pen = gx;
-                    line = gy;
+                    ops.append(marks[k] == SILENT ? "/Span <</ActualText <FEFF>>> BDC\n" : "EMC\n");
+                    line = Float.NaN;
                 }
-                float adjust = -(gx - pen) / (size * tz) * 1000;
-                if (Math.abs(adjust) >= 0.5f) {
-                    Numbers.append(tj.append(' '), adjust).append(' ');
-                    pen = gx;
-                }
-                if (tj.charAt(tj.length() - 1) == '>') {
-                    tj.setLength(tj.length() - 1);
-                } else {
-                    tj.append('<');
-                }
-                Numbers.hex(tj, codes[i], 4).append('>');
-                pen += Math.round(face.glyphAdvance(glyph) * 1000f / face.unitsPerEm()) / 1000f * size * tz;
             }
-            if (marks[k] != 0) {
-                if (tj != null) {
-                    ops.append(tj.append("] TJ\n"));
-                    tj = null;
-                }
-                ops.append(marks[k] == SILENT ? "/Span <</ActualText <FEFF>>> BDC\n" : "EMC\n");
-                line = Float.NaN;
+            if (tj != null) {
+                ops.append(tj.append("] TJ\n"));
+            }
+            ops.append("ET\nQ\n");
+            if (actualText) {
+                ops.append("EMC\n");
+            }
+            if (to == lead) {
+                float x0 = x + run.x(order[0]) * scale;
+                float x1 = x + run.x(order[lead - 1]) * scale + face.glyphAdvance(run.glyph(order[lead - 1])) * scale;
+                queue(ops, x0, x1, baseline, size, " ".repeat(lead), false);
+            } else {
+                queue(ops, x, x + width, baseline, size, run.text(), visual);
             }
         }
-        if (tj != null) {
-            ops.append(tj.append("] TJ\n"));
-        }
-        ops.append("ET\nQ\n");
-        if (actualText) {
-            ops.append("EMC\n");
-        }
-        float width = run.advance() * scale;
-        queue(ops, x, x + width, baseline, size, run.text());
         return width;
     }
 
-    // Glyphs in reading order, right-to-left runs from their right end as Word writes them; a group draws the
-    // glyph that carries its text first and marks the others as saying nothing (SILENT opens, SPOKEN closes)
-    private static int[][] readingOrder(GlyphRun run, int[] groups, boolean upright) {
+    // Glyphs in reading order, right-to-left runs from their right end as Word writes them unless horizontally
+    // scaled Arabic (MuPDF measures a backward step in unscaled advances and splits such words; Hebrew does not
+    // split, and drawn left to right MuPDF reads its words backwards); a group draws the glyph that carries its
+    // text first and marks the others as saying nothing (SILENT opens, SPOKEN closes)
+    private static int[][] readingOrder(GlyphRun run, int[] groups, boolean logical) {
         int n = run.size();
         List<int[]> segments = new ArrayList<>();
         for (int i = 0; i < n; ) {
@@ -670,7 +699,7 @@ public final class PdfCanvas implements Closeable {
             segments.add(new int[] {i, end});
             i = end;
         }
-        if (run.rightToLeft() && upright) {
+        if (run.rightToLeft() && logical) {
             Collections.reverse(segments);
             segments.sort(Comparator.comparingInt(s -> firstCharacter(run, s)));
         }
@@ -695,6 +724,67 @@ public final class PdfCanvas implements Closeable {
         return new int[][] {order, marks};
     }
 
+    private static int leadingBlanks(GlyphRun run, int[] order, int[] marks) {
+        int n = 0;
+        while (n < order.length && marks[n] == 0 && run.glyph(order[n]) > 0) {
+            String t = run.clusterText(order[n]);
+            if (t == null || t.isEmpty() || !t.isBlank()) {
+                break;
+            }
+            n++;
+        }
+        return n < order.length ? n : 0;
+    }
+
+    private static int[] visualGroups(GlyphRun run) {
+        int[] groups = run.groups();
+        int[] out = groups.clone();
+        int n = run.size();
+        for (int i = 0; i < n; ) {
+            if (groups[i] > 0) {
+                i = groups[i];
+                continue;
+            }
+            int j = i;
+            while (j < n && groups[j] == 0 && marks(run.clusterText(j))) {
+                j++;
+            }
+            if (j > i && j < n && groups[j] == 0 && !marks(run.clusterText(j))) {
+                out[i] = j + 1;
+                i = j + 1;
+            } else {
+                i = Math.max(j, i + 1);
+            }
+        }
+        return out;
+    }
+
+    private static boolean marks(String text) {
+        return text != null && TextOrder.marks(text);
+    }
+
+    private void drawParts(StringBuilder tj, PdfFonts.Embedded embedded, int[] parts) {
+        for (int c = 0; c < parts.length; c++) {
+            float width = output.fonts().advance(embedded, parts[c]);
+            float ahead = 0;
+            for (int n = c + 1; width == 0 && n < parts.length && ahead == 0; n++) {
+                ahead = output.fonts().advance(embedded, parts[n]);
+            }
+            if (ahead > 0) {
+                Numbers.append(tj.append("> "), -ahead / 2f).append(" <");
+            }
+            Numbers.hex(tj, parts[c], 4);
+            if (ahead > 0) {
+                Numbers.append(tj.append("> "), ahead / 2f).append(" <");
+            }
+        }
+        tj.append('>');
+    }
+
+    private static boolean arabic(String text) {
+        return text.codePoints().anyMatch(cp -> Character.UnicodeScript.of(cp) == Character.UnicodeScript.ARABIC);
+    }
+
     private static int firstCharacter(GlyphRun run, int[] segment) {
         int first = Integer.MAX_VALUE;
         for (int i = segment[0]; i < segment[1]; i++) {
@@ -704,10 +794,11 @@ public final class PdfCanvas implements Closeable {
     }
 
     // Text waits for the next drawing so that the pieces of a line reach the page in reading order
-    private void queue(StringBuilder ops, float x0, float x1, float baseline, float size, String text) {
+    private void queue(StringBuilder ops, float x0, float x1, float baseline, float size, String text,
+            boolean visual) {
         if (!ops.isEmpty()) {
             pending.add(new TextOrder.Piece(ops.toString(), Math.min(x0, x1), Math.max(x0, x1), baseline, size,
-                    text, upright()));
+                    text, upright(), visual));
         }
     }
 

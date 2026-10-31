@@ -80,6 +80,80 @@ class DocxBidiTest {
     }
 
     @Test
+    void horizontallyScaledArabicIsDrawnLeftToRightWithItsLigaturesTextReversed() throws IOException {
+        String word = "\u0627\u0644\u0633\u0644\u0627\u0645";
+        String body = "<w:p><w:pPr><w:bidi/></w:pPr><w:r><w:rPr><w:rtl/><w:w w:val=\"50\"/></w:rPr><w:t>" + word
+                + "</w:t></w:r></w:p><w:p><w:pPr><w:bidi/></w:pPr><w:r><w:rPr><w:rtl/></w:rPr><w:t>" + word
+                + "</w:t></w:r></w:p>";
+        DocxDoc.Rendered r = DocxDoc.render(dir, "scaledarabic", new DocxDoc().body(body).bytes());
+        Map<Integer, List<TextPosition>> lines = new TreeMap<>();
+        String extracted;
+        try (PDDocument d = r.open()) {
+            new PDFTextStripper() {
+                @Override
+                protected void processTextPosition(TextPosition text) {
+                    if (!text.getUnicode().isBlank()) {
+                        lines.computeIfAbsent(Math.round(text.getYDirAdj()), k -> new ArrayList<>()).add(text);
+                    }
+                }
+            }.getText(d);
+            PDFTextStripper sorted = new PDFTextStripper();
+            sorted.setSortByPosition(true);
+            extracted = sorted.getText(d).strip();
+        }
+        assertEquals(2, lines.size(), lines.keySet().toString());
+        List<List<TextPosition>> drawn = new ArrayList<>(lines.values());
+        List<TextPosition> scaled = drawn.get(0);
+        StringBuilder text = new StringBuilder();
+        for (int i = 0; i < scaled.size(); i++) {
+            text.append(scaled.get(i).getUnicode());
+            if (i > 0) {
+                assertTrue(scaled.get(i).getXDirAdj() > scaled.get(i - 1).getXDirAdj(), "left to right: " + scaled);
+            }
+        }
+        assertEquals(word, text.reverse().toString());
+        assertEquals(List.of(word, word), extracted.lines().map(String::strip).toList());
+    }
+
+    @Test
+    void horizontallyScaledArabicWithLigaturesAndSpacesExtractsInOrderSortedOrNot() throws IOException {
+        String line = "\u0627\u0644\u0633\u0644\u0627\u0645 \u0639\u0644\u064A\u0643\u0645 \u0644\u0627";
+        String body = "<w:p><w:pPr><w:bidi/></w:pPr><w:r><w:rPr><w:rtl/><w:w w:val=\"50\"/></w:rPr><w:t>" + line
+                + "</w:t></w:r></w:p>";
+        DocxDoc.Rendered r = DocxDoc.render(dir, "scaledline", new DocxDoc().body(body).bytes());
+        try (PDDocument d = r.open()) {
+            PDFTextStripper sorted = new PDFTextStripper();
+            sorted.setSortByPosition(true);
+            assertEquals(line, sorted.getText(d).strip());
+            assertEquals(line, new PDFTextStripper().getText(d).strip());
+        }
+    }
+
+    @Test
+    void horizontallyScaledHebrewKeepsItsReadingOrder() throws IOException {
+        String word = "\u05E9\u05DC\u05D5\u05DD";
+        String body = "<w:p><w:pPr><w:bidi/></w:pPr><w:r><w:rPr><w:rtl/><w:w w:val=\"50\"/></w:rPr><w:t>" + word
+                + "</w:t></w:r></w:p>";
+        DocxDoc.Rendered r = DocxDoc.render(dir, "scaledhebrew", new DocxDoc().body(body).bytes());
+        List<TextPosition> drawn = new ArrayList<>();
+        try (PDDocument d = r.open()) {
+            new PDFTextStripper() {
+                @Override
+                protected void processTextPosition(TextPosition text) {
+                    if (!text.getUnicode().isBlank()) {
+                        drawn.add(text);
+                    }
+                }
+            }.getText(d);
+        }
+        assertEquals(word.length(), drawn.size(), drawn.toString());
+        for (int i = 1; i < drawn.size(); i++) {
+            assertTrue(drawn.get(i).getXDirAdj() < drawn.get(i - 1).getXDirAdj(), "right to left: " + drawn);
+            assertEquals(String.valueOf(word.charAt(i)), drawn.get(i).getUnicode());
+        }
+    }
+
+    @Test
     void justifiedRightToLeftLinesEndAtTheRightMargin() throws IOException {
         String sentence = "\u05DB\u05DC \u05D1\u05E0\u05D9 \u05D0\u05D3\u05DD \u05E0\u05D5\u05DC\u05D3\u05D5 "
                 + "\u05D1\u05E0\u05D9 \u05D7\u05D5\u05E8\u05D9\u05DF \u05D5\u05E9\u05D5\u05D5\u05D9\u05DD ";
@@ -104,9 +178,10 @@ class DocxBidiTest {
                 .body("<w:p>" + DocxDoc.chartRun("rIdChart") + "</w:p>");
         String text = DocxDoc.render(dir, "chart", doc.bytes()).text();
         assertTrue(text.contains("\u9500\u552E\u989D") && text.contains("\u5317\u4EAC"), text);
-        // PDFBox reads glyphs left to right: a right-to-left word drawn in visual order comes out reversed
+        // PDFBox reverses a right-to-left word drawn from its right end, and reads one drawn left to right, as a
+        // stand-in that draws Arabic at another width does, in order
         String arabic = "\u0627\u0644\u0645\u0628\u064A\u0639\u0627\u062A";
-        assertTrue(text.contains(new StringBuilder(arabic).reverse()), text);
+        assertTrue(text.contains(arabic) || text.contains(new StringBuilder(arabic).reverse()), text);
     }
 
     @Test
