@@ -178,9 +178,15 @@ public final class PageAnalyzer {
         List<Box> backdrops = new ArrayList<>(FigureFinder.cluster(concat(shaped, drawnBehind), 1f));
         List<PageGraphics.VectorMark> marks = unused(art, usedMarks);
         List<Box> choiceFields = choiceFields(page.widgets(), tableBoxes);
+        List<Box> framedChoices = new ArrayList<>();
         for (Box f : FigureFinder.figures(strong, freeFills, freeRules, segments, marks, page.width(), page.height())) {
             if (!Regions.overlapsMostly(f, tableBoxes) || cellArt(f, tableBoxes)) {
-                (Backdrops.isBackdrop(f, segments) || framesChoice(f, choiceFields) ? backdrops : figures).add(f);
+                boolean backdrop = Backdrops.isBackdrop(f, segments);
+                Box field = backdrop ? null : framedChoice(f, choiceFields);
+                if (field != null && !framedChoices.contains(field)) {
+                    framedChoices.add(field);
+                }
+                (backdrop || field != null ? backdrops : figures).add(f);
             }
         }
         List<Box> wholeDrawings = new ArrayList<>();
@@ -203,7 +209,7 @@ public final class PageAnalyzer {
 
         List<PageLayout.Item> blocks = new ArrayList<>(boxes.boxes());
         blocks.removeIf(b -> Regions.insideAny(new Box(b.x(), b.top(), b.right(), b.bottom()), wholeDrawings, 2f));
-        choiceText(choiceFields, figures, segments, blocks);
+        choiceText(framedChoices, figures, segments, blocks);
         diagrams(figures, backdrops, gfx, segments, blocks, page.width());
         List<Box> pictured = figures;
         blocks.removeIf(b -> b instanceof PageLayout.TextBoxItem tb && boxes.boxes().contains(tb) && labels(tb)
@@ -309,13 +315,13 @@ public final class PageAnalyzer {
         return out;
     }
 
-    private static boolean framesChoice(Box figure, List<Box> fields) {
+    private static Box framedChoice(Box figure, List<Box> fields) {
         for (Box field : fields) {
             if (Regions.insideAny(figure, List.of(field), FIELD_FRAME) && field.area() >= 0.5f * figure.area()) {
-                return true;
+                return field;
             }
         }
-        return false;
+        return null;
     }
 
     private void choiceText(List<Box> fields, List<Box> figures, List<Line> segments, List<PageLayout.Item> blocks) {
