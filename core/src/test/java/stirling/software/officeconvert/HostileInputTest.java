@@ -18,10 +18,12 @@ import java.time.Duration;
 import java.util.Arrays;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.locks.LockSupport;
 import java.util.zip.Deflater;
 import java.util.zip.DeflaterOutputStream;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
+
 import javax.imageio.ImageIO;
 
 import org.apache.pdfbox.Loader;
@@ -239,7 +241,11 @@ class HostileInputTest {
             }
         });
         t.start();
-        Thread.sleep(300);
+        long deadline = System.nanoTime() + Duration.ofMinutes(1).toNanos();
+        while (t.isAlive() && mx.getThreadCpuTime(t.threadId()) < 100_000_000L) {
+            assertTrue(System.nanoTime() < deadline, "the conversion never got going");
+            LockSupport.parkNanos(1_000_000L);
+        }
         long cpuAtInterrupt = mx.getThreadCpuTime(t.threadId());
         t.interrupt();
         t.join(Duration.ofMinutes(1));

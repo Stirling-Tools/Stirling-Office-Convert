@@ -104,7 +104,8 @@ class WebAssetsCookieTest {
         plain.start();
         try {
             var access = WebAssets.Access.none().network(true).linkedFromFiles(true).cookies(true)
-                    .timeout(Duration.ofSeconds(2));
+                    .timeout(Duration.ofSeconds(1));
+            long expired = System.nanoTime() + access.timeout().toNanos();
             var web = WebAssets.linkedFrom(HtmlAssets.NONE, access,
                     host -> new InetAddress[] {InetAddress.getByAddress(host, new byte[] {127, 0, 0, 1})},
                     address -> !address.isLoopbackAddress(), (SSLSocketFactory) SSLSocketFactory.getDefault());
@@ -114,7 +115,10 @@ class WebAssetsCookieTest {
                     + "<body><p>Styled</p></body></html>");
             OfficeToPdf.convert(page, dir.resolve("one.pdf"), options);
             assertEquals(List.of("", "user=first"), cookies);
-            Thread.sleep(2_500);
+            long left = expired - System.nanoTime();
+            if (left > 0) {
+                Thread.sleep(Duration.ofNanos(left).plusMillis(50));
+            }
             OfficeToPdf.convert(page, dir.resolve("two.pdf"), options);
             assertEquals(List.of("", "user=first", "", "user=first"), cookies);
         } finally {

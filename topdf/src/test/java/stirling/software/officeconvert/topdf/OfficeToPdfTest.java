@@ -181,10 +181,11 @@ class OfficeToPdfTest {
     void interruptingTheCallerStopsTheWork() throws Exception {
         Thread caller = Thread.currentThread();
         Thread interrupter = Thread.ofPlatform().start(() -> {
-            try {
-                Thread.sleep(200);
-            } catch (InterruptedException e) {
-                return;
+            while (caller.getState() != Thread.State.WAITING && caller.getState() != Thread.State.TIMED_WAITING) {
+                if (Thread.interrupted()) {
+                    return;
+                }
+                Thread.onSpinWait();
             }
             caller.interrupt();
         });
