@@ -94,7 +94,7 @@ public final class PageReader {
         if (direction == 0) {
             VerticalText.lift(glyphs, rotated);
         }
-        glyphs = dedupe(Clusters.join(glyphs));
+        glyphs = dedupe(ShadowText.drop(Clusters.join(glyphs)));
         PageGraphics graphics =
                 withGraphics
                         ? GraphicsCollector.read(page, toDisplay, width, height, parsed)
@@ -226,7 +226,8 @@ public final class PageReader {
                         if (o.text.equals(g.text)
                                 && Math.abs(o.x - g.x) < reachX
                                 && Math.abs(o.baseline - g.baseline) < reachY
-                                && Math.abs(o.size - g.size) < 0.5f) {
+                                && Math.abs(o.size - g.size) < 0.5f
+                                && !(o.seq == g.seq - 1 && g.x - o.x > 0.5f * o.width)) {
                             twin = o;
                             break outer;
                         }
