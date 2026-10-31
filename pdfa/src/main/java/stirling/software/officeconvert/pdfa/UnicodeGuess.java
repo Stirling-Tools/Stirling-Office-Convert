@@ -7,6 +7,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.WeakHashMap;
+import java.util.regex.Pattern;
 
 import org.apache.fontbox.cmap.CMap;
 import org.apache.fontbox.ttf.CmapLookup;
@@ -53,7 +54,10 @@ final class UnicodeGuess {
             CMap cmap = MAPS.computeIfAbsent(s, k -> Optional.ofNullable(CodeReader.cmap(k))).orElse(null);
             return cmap == null ? null : cmap.toUnicode(code);
         }
-        if (font instanceof PDType0Font t0 && !adobeCjk(t0) || font instanceof PDType3Font) {
+        if (font instanceof PDType0Font t0) {
+            return adobeCjk(t0) ? cjk(t0, code) : null;
+        }
+        if (font instanceof PDType3Font) {
             return null;
         }
         try {
@@ -63,7 +67,43 @@ final class UnicodeGuess {
         }
     }
 
-    private static final Set<String> CJK_ORDERINGS = Set.of("GB1", "CNS1", "Japan1", "Korea1");
+    private static final String KOREA1 = "Korea1";
+
+    private static final Set<String> CJK_ORDERINGS = Set.of("GB1", "CNS1", "Japan1", KOREA1);
+
+    private static final Pattern UNICODE_CMAP = Pattern.compile("Uni[A-Za-z0-9]+-(UCS2|UTF16)(-HW)?-[HV]");
+
+    /** Unicode CMaps carry the text in the code itself; the CID round trip would lose some of it. */
+    private static String cjk(PDType0Font font, int code) {
+        String cmap = font.getCOSObject().getNameAsString(COSName.ENCODING);
+        String t;
+        if (cmap != null && UNICODE_CMAP.matcher(cmap).matches()) {
+            t = (code & 0xFFFF0000) == 0 ? String.valueOf((char) code)
+                    : new String(new char[] {(char) (code >>> 16), (char) code});
+        } else if (KOREA1.equals(font.getDescendantFont().getCIDSystemInfo().getOrdering())) {
+            // PDFBox's Adobe-Korea1-UCS2 map is shifted (CID 1 gives U+0000), so it names the wrong text
+            return null;
+        } else {
+            try {
+                t = font.toUnicode(code);
+            } catch (RuntimeException e) {
+                return null;
+            }
+        }
+        return t == null || t.indexOf('\uFFFD') >= 0 || !pairedSurrogates(t) ? null : t;
+    }
+
+    private static boolean pairedSurrogates(String t) {
+        for (int i = 0; i < t.length(); i++) {
+            char c = t.charAt(i);
+            if (Character.isHighSurrogate(c) && i + 1 < t.length() && Character.isLowSurrogate(t.charAt(i + 1))) {
+                i++;
+            } else if (Character.isSurrogate(c)) {
+                return false;
+            }
+        }
+        return true;
+    }
 
     /** An Adobe CJK collection fixes each CID's meaning, so its UCS2 map is the spec's own answer. */
     private static boolean adobeCjk(PDType0Font font) {

@@ -68,6 +68,36 @@ class FontEmbedderCjkTest {
         }
     }
 
+    @Test
+    void aUnicodeCMapCodeIsItsOwnTextWithoutTheLossyCidRoundTrip() throws Exception {
+        COSDictionary cid = cidFont(COSName.CID_FONT_TYPE0, "KozMinPr6N-Regular", "Adobe", "Japan1", 6);
+        try (PDDocument d = Loader.loadPDF(document(type0("K-UniJIS-UTF16-H", "UniJIS-UTF16-H", cid, null),
+                new byte[] {0x20, 0x14}))) {
+            PDType0Font font = (PDType0Font) d.getPage(0).getResources().getFont(COSName.getPDFName("F1"));
+            assertEquals("—", UnicodeGuess.of(font, 0x2014));
+            assertEquals("−", UnicodeGuess.of(font, 0x2212));
+            assertEquals("…", UnicodeGuess.of(font, 0x2026));
+            assertEquals(new String(Character.toChars(0x20000)), UnicodeGuess.of(font, 0xD840DC00));
+            assertEquals(null, UnicodeGuess.of(font, 0xD840), "a lone surrogate is not text");
+        }
+    }
+
+    @Test
+    void koreanThroughALegacyCMapIsNotGuessedFromAShiftedMap() throws Exception {
+        COSDictionary cid = cidFont(COSName.CID_FONT_TYPE0, "Batang", "Adobe", "Korea1", 2);
+        try (PDDocument d = Loader.loadPDF(document(type0("Batang-KSCms-UHC-H", "KSCms-UHC-H", cid, null),
+                new byte[] {(byte) 0xBE, (byte) 0xC8}))) {
+            PDType0Font font = (PDType0Font) d.getPage(0).getResources().getFont(COSName.getPDFName("F1"));
+            assertEquals(null, UnicodeGuess.of(font, 0xBEC8));
+        }
+        COSDictionary uni = cidFont(COSName.CID_FONT_TYPE0, "Batang", "Adobe", "Korea1", 2);
+        try (PDDocument d = Loader.loadPDF(document(type0("Batang-UniKS-UTF16-H", "UniKS-UTF16-H", uni, null),
+                new byte[] {(byte) 0xC5, 0x48}))) {
+            PDType0Font font = (PDType0Font) d.getPage(0).getResources().getFont(COSName.getPDFName("F1"));
+            assertEquals("안", UnicodeGuess.of(font, 0xC548));
+        }
+    }
+
     private Path embed(byte[] pdf, FontSet fonts, boolean complete) throws IOException {
         Path out = Files.createTempFile(dir, "cjk", ".pdf");
         try (PDDocument d = Loader.loadPDF(pdf)) {
