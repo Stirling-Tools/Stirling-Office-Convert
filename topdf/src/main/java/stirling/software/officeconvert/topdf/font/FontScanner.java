@@ -90,6 +90,22 @@ final class FontScanner {
         }
     }
 
+    static void checkCff(FontEntry entry, long maxBytes) throws IOException {
+        try (Source src = entry.file() != null ? Source.of(entry.file()) : Source.of(entry.data())) {
+            long[] t = tables(src, entry.offset()).get("CFF ");
+            if (t == null) {
+                throw new IOException("the font has no CFF table");
+            }
+            if (t[1] > maxBytes) {
+                throw new IOException("the CFF table is too large");
+            }
+            CffSubsetter.check((int) t[1], (into, from, to) -> {
+                byte[] b = src.slice(t[0] + from, to - from).bytes;
+                System.arraycopy(b, 0, into, from, b.length);
+            });
+        }
+    }
+
     static byte[] table(FontEntry entry, String tag, long maxBytes) throws IOException {
         try (Source src = entry.file() != null ? Source.of(entry.file()) : Source.of(entry.data())) {
             long[] t = tables(src, entry.offset()).get(tag);

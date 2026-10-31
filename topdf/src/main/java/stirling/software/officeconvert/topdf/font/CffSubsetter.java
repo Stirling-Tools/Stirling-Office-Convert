@@ -4,6 +4,7 @@ import java.awt.geom.GeneralPath;
 import java.awt.geom.PathIterator;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -101,6 +102,8 @@ final class CffSubsetter {
 
     private final byte[] in;
 
+    private final Pages pages;
+
     private final BitSet usedGlobal = new BitSet();
 
     private final BitSet operands = new BitSet();
@@ -139,6 +142,53 @@ final class CffSubsetter {
 
     private CffSubsetter(byte[] in) {
         this.in = in;
+        this.pages = null;
+    }
+
+    private CffSubsetter(int length, Filler filler) {
+        this.in = new byte[length];
+        this.pages = new Pages(filler);
+    }
+
+    interface Filler {
+        void fill(byte[] into, int from, int to) throws IOException;
+    }
+
+    private static final class Pages {
+
+        private static final int PAGE = 1 << 14;
+
+        private final Filler filler;
+
+        private final BitSet loaded = new BitSet();
+
+        Pages(Filler filler) {
+            this.filler = filler;
+        }
+
+        void need(byte[] in, long from, long to) {
+            int first = (int) (Math.max(0, from) / PAGE);
+            int last = (int) ((Math.min(in.length, to) - 1) / PAGE);
+            for (int page = loaded.nextClearBit(first); page <= last; page = loaded.nextClearBit(page + 1)) {
+                int end = page + 1;
+                while (end <= last && !loaded.get(end)) {
+                    end++;
+                }
+                try {
+                    filler.fill(in, page * PAGE, (int) Math.min(in.length, (long) end * PAGE));
+                } catch (IOException e) {
+                    throw new UncheckedIOException(e);
+                }
+                loaded.set(page, end);
+                page = end - 1;
+            }
+        }
+    }
+
+    private void need(long from, long to) {
+        if (pages != null && to > from) {
+            pages.need(in, from, to);
+        }
     }
 
     static byte[] subset(byte[] cff, String name, int[] cids, int[] glyphs) throws IOException {
@@ -152,6 +202,16 @@ final class CffSubsetter {
     static void check(byte[] cff) throws IOException {
         try {
             new CffSubsetter(cff).verify();
+        } catch (RuntimeException e) {
+            throw new IOException("the CFF outlines could not be read: " + e, e);
+        }
+    }
+
+    static void check(int length, Filler filler) throws IOException {
+        try {
+            new CffSubsetter(length, filler).verify();
+        } catch (UncheckedIOException e) {
+            throw e.getCause();
         } catch (RuntimeException e) {
             throw new IOException("the CFF outlines could not be read: " + e, e);
         }
@@ -182,6 +242,7 @@ final class CffSubsetter {
     }
 
     private void read() throws IOException {
+        need(0, 4);
         if (in.length < 4 || (in[0] & 0xFF) != 1) {
             throw new IOException("the CFF version is not 1");
         }
@@ -452,8 +513,10 @@ final class CffSubsetter {
 
     private int[] fdSelect(int select, int count) {
         int[] fd = new int[count];
+        need(select, select + 3L);
         int format = in[select] & 0xFF;
         if (format == 0) {
+            need(select, select + 1L + count);
             for (int g = 0; g < count; g++) {
                 fd[g] = in[select + 1 + g] & 0xFF;
             }
@@ -464,6 +527,7 @@ final class CffSubsetter {
         }
         Arrays.fill(fd, -1);
         int ranges = u16(select + 1);
+        need(select, select + 5L + 3L * ranges);
         int previous = 0;
         for (int r = 0; r < ranges; r++) {
             int first = u16(select + 3 + 3 * r);
@@ -751,6 +815,7 @@ final class CffSubsetter {
     }
 
     private Index index(int at) {
+        need(at, at + 3L);
         int count = u16(at);
         if (count == 0) {
             return new Index(0, at + 2, new int[] {0}, at + 2);
@@ -759,6 +824,7 @@ final class CffSubsetter {
         if (offSize < 1 || offSize > 4) {
             throw new IllegalArgumentException("bad INDEX offset size " + offSize);
         }
+        need(at + 3L, at + 3L + (count + 1L) * offSize);
         int[] offsets = new int[count + 1];
         int p = at + 3;
         for (int i = 0; i <= count; i++) {
@@ -787,6 +853,7 @@ final class CffSubsetter {
     }
 
     private List<Entry> dict(int start, int end) {
+        need(start, end + 1L);
         List<Entry> out = new ArrayList<>();
         int[] p = {start};
         int from = start;
