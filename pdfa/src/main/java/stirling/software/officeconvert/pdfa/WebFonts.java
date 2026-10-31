@@ -1,11 +1,9 @@
 package stirling.software.officeconvert.pdfa;
 
 import java.awt.geom.AffineTransform;
-import java.awt.geom.GeneralPath;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -32,11 +30,9 @@ import org.apache.pdfbox.pdmodel.font.PDFontDescriptor;
 import org.apache.pdfbox.pdmodel.font.PDSimpleFont;
 import org.apache.pdfbox.pdmodel.font.PDTrueTypeFont;
 import org.apache.pdfbox.pdmodel.font.PDType0Font;
-import org.apache.pdfbox.pdmodel.font.PDType3CharProc;
 import org.apache.pdfbox.pdmodel.font.PDType3Font;
 import org.apache.pdfbox.pdmodel.font.encoding.Encoding;
 import org.apache.pdfbox.pdmodel.font.encoding.GlyphList;
-import org.apache.pdfbox.util.Matrix;
 
 import stirling.software.officeconvert.extract.PdfFiles;
 
@@ -54,7 +50,7 @@ public final class WebFonts {
 
     static final int MAX_PROGRAM_BYTES = 64 << 20;
 
-    private static final long MIN_GLYPH_BYTES = 16L << 20;
+    static final long MIN_GLYPH_BYTES = 16L << 20;
 
     private WebFonts() {}
 
@@ -308,7 +304,7 @@ public final class WebFonts {
 
     private static byte[] fromFont(PDFont font, PDResources resources) throws IOException {
         if (font instanceof PDType3Font t3) {
-            return fromType3(t3, resources);
+            return Type3TrueType.convert(t3, resources);
         }
         PDFontDescriptor fd = font.getFontDescriptor();
         if (fd == null) {
@@ -349,84 +345,11 @@ public final class WebFonts {
         return convert(p, unicodeByGlyph(font, p.count(), glyphs(font, p::gidForCid, code -> p.gid(name(font, code)))));
     }
 
-    private static byte[] fromType3(PDType3Font font, PDResources resources) throws IOException {
-        try {
-            return type3(font, resources);
-        } catch (RuntimeException e) {
-            throw new IOException("The Type 3 font cannot be converted: " + e.getMessage(), e);
-        }
-    }
-
-    private static byte[] type3(PDType3Font font, PDResources resources) throws IOException {
-        Matrix fm = font.getFontMatrix();
-        TrueTypeWriter w = new TrueTypeWriter(UNITS_PER_EM);
-        Map<List<Object>, Integer> byProc = new HashMap<>();
-        Map<Integer, Integer> gidByCode = new TreeMap<>();
-        long budget = MIN_GLYPH_BYTES;
-        Type3Outlines.Budget work = new Type3Outlines.Budget();
-        for (int code = 0; code < 256; code++) {
-            PdfFiles.stopIfInterrupted();
-            PDType3CharProc proc = font.getCharProc(code);
-            if (proc == null) {
-                continue;
-            }
-            int advance = (int) Math.rint(fm.transformPoint(font.getWidth(code), 0).x * UNITS_PER_EM
-                    - fm.transformPoint(0, 0).x * UNITS_PER_EM);
-            List<Object> key = List.of(proc.getCOSObject(), advance);
-            Integer known = byProc.get(key);
-            if (known != null) {
-                gidByCode.put(code, known);
-                continue;
-            }
-            GeneralPath path;
-            try {
-                path = Type3Outlines.glyph(proc, resources, work);
-            } catch (IOException | RuntimeException e) {
-                PdfFiles.stopIfInterrupted();
-                if (e instanceof IOException io) {
-                    Decoded.rethrowFatal(io);
-                }
-                path = new GeneralPath();
-            }
-            int gid = w.addOutline(path, advance);
-            checkGlyphBytes(w, budget);
-            byProc.put(key, gid);
-            gidByCode.put(code, gid);
-        }
-        if (gidByCode.isEmpty()) {
-            throw new IOException("The Type 3 font has no glyph procedures");
-        }
-        TreeMap<Integer, Integer> unicode = cmap(w.size(), gid -> null,
-                unicodeByGlyph(font, w.size(), code -> gidByCode.getOrDefault(code, 0)), Map.of());
-        TreeMap<Integer, Integer> symbol = new TreeMap<>();
-        for (Map.Entry<Integer, Integer> e : gidByCode.entrySet()) {
-            symbol.put(0xF000 + e.getKey(), e.getValue());
-        }
-        List<Cmaps.Subtable> subtables = new ArrayList<>();
-        subtables.add(new Cmaps.Subtable(3, 0, symbol));
-        TreeMap<Integer, Integer> bmp = new TreeMap<>(unicode.headMap(0xFFFF));
-        subtables.add(new Cmaps.Subtable(3, 1, bmp));
-        if (!unicode.isEmpty() && unicode.lastKey() > 0xFFFF || !Cmaps.fitsFormat4(bmp)) {
-            subtables.add(new Cmaps.Subtable(3, 10, unicode));
-        }
-        TrueTypeWriter.Metrics m = w.metrics();
-        int ascent = Math.max(m.yMax(), 800);
-        int descent = Math.min(m.yMin(), -200);
-        Map<String, byte[]> tables = new HashMap<>();
-        tables.put("head", SfntTables.head(m, 0));
-        tables.put("hhea", SfntTables.hhea(m, ascent, descent, w.size()));
-        tables.put("OS/2", SfntTables.os2(m, ascent, descent, unicode.isEmpty() ? symbol : unicode, 0, UNITS_PER_EM,
-                0));
-        tables.put("post", SfntTables.post(0));
-        String name = font.getName() == null || font.getName().isBlank() ? "Type3" : font.getName();
-        return w.build(FontRebuild.cleanName(name), Cmaps.table(subtables), tables);
-    }
-
     private static byte[] bytes(PDStream s) throws IOException {
         return Decoded.bytes(s.getCOSObject(), MAX_PROGRAM_BYTES, "The font program");
     }
 
-    private static Map<Integer, Integer> unicodeByGlyph(PDFont font, int count, CodeToGlyph simpleGlyph)
+    static Map<Integer, Integer> unicodeByGlyph(PDFont font, int count, CodeToGlyph simpleGlyph)
             throws IOException {
         Map<Integer, Integer> out = new HashMap<>();
         if (font instanceof PDType0Font t0) {
@@ -473,7 +396,7 @@ public final class WebFonts {
         return c -> c;
     }
 
-    private interface CodeToGlyph {
+    interface CodeToGlyph {
         int gid(int code) throws IOException;
     }
 
@@ -516,13 +439,13 @@ public final class WebFonts {
         return Math.max(MIN_GLYPH_BYTES, 8 * sourceBytes);
     }
 
-    private static void checkGlyphBytes(TrueTypeWriter w, long budget) throws IOException {
+    static void checkGlyphBytes(TrueTypeWriter w, long budget) throws IOException {
         if (w.glyphBytes() > budget) {
             throw new IOException("The converted glyphs need more than " + budget + " bytes");
         }
     }
 
-    private static TreeMap<Integer, Integer> cmap(int count, IntFunction<String> nameOf,
+    static TreeMap<Integer, Integer> cmap(int count, IntFunction<String> nameOf,
             Map<Integer, Integer> unicodeByGlyph, Map<Integer, Integer> ownByCodePoint) {
         TreeMap<Integer, Integer> cmap = new TreeMap<>();
         if (unicodeByGlyph != null) {
