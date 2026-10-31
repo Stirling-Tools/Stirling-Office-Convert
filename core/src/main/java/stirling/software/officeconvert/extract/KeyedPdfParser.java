@@ -25,10 +25,22 @@ final class KeyedPdfParser extends PDFParser {
 
     private final boolean allStreams;
 
-    KeyedPdfParser(RandomAccessRead source, String password, StreamCacheCreateFunction cache, boolean allStreams)
-            throws IOException {
+    private final boolean tolerant;
+
+    KeyedPdfParser(RandomAccessRead source, String password, StreamCacheCreateFunction cache, boolean allStreams,
+            boolean tolerant) throws IOException {
         super(source, password, null, null, cache);
         this.allStreams = allStreams;
+        this.tolerant = tolerant;
+    }
+
+    @Override
+    protected void checkPages(COSDictionary root) throws IOException {
+        if (!tolerant) {
+            super.checkPages(root);
+        } else if (root.getCOSDictionary(COSName.PAGES) == null) {
+            throw new IOException("Page tree root must be a dictionary");
+        }
     }
 
     @Override

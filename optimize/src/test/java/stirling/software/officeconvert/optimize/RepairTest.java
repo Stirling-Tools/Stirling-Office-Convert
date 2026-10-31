@@ -38,6 +38,8 @@ import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import stirling.software.officeconvert.extract.Salvage;
+
 class RepairTest {
 
     @TempDir
