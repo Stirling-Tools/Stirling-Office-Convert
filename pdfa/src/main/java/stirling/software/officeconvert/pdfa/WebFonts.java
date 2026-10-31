@@ -5,7 +5,6 @@ import java.awt.geom.GeneralPath;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -246,9 +245,9 @@ public final class WebFonts {
             int descent = hhea != null && hhea.getDescender() < 0 ? hhea.getDescender()
                     : Math.min(m.yMin(), -upem / 5);
             int style = ttf.getHeader() == null ? 0 : ttf.getHeader().getMacStyle() & 3;
-            tables.put("OS/2", os2(m, ascent, descent, cmap, style, upem, fsType(ttf)));
+            tables.put("OS/2", SfntTables.os2(m, ascent, descent, cmap, style, upem, fsType(ttf)));
         }
-        return w.build(FontRebuild.cleanName(name), cmapTable(cmap), tables);
+        return w.build(FontRebuild.cleanName(name), SfntTables.cmapTable(cmap), tables);
     }
 
     private static int fsType(TrueTypeFont ttf) throws IOException {
@@ -414,10 +413,11 @@ public final class WebFonts {
         int ascent = Math.max(m.yMax(), 800);
         int descent = Math.min(m.yMin(), -200);
         Map<String, byte[]> tables = new HashMap<>();
-        tables.put("head", head(m, 0));
-        tables.put("hhea", hhea(m, ascent, descent, w.size()));
-        tables.put("OS/2", os2(m, ascent, descent, unicode.isEmpty() ? symbol : unicode, 0, UNITS_PER_EM, 0));
-        tables.put("post", post(0));
+        tables.put("head", SfntTables.head(m, 0));
+        tables.put("hhea", SfntTables.hhea(m, ascent, descent, w.size()));
+        tables.put("OS/2", SfntTables.os2(m, ascent, descent, unicode.isEmpty() ? symbol : unicode, 0, UNITS_PER_EM,
+                0));
+        tables.put("post", SfntTables.post(0));
         String name = font.getName() == null || font.getName().isBlank() ? "Type3" : font.getName();
         return w.build(FontRebuild.cleanName(name), Cmaps.table(subtables), tables);
     }
@@ -505,11 +505,11 @@ public final class WebFonts {
         int ascent = Math.max(m.yMax(), 800);
         int descent = Math.min(m.yMin(), -200);
         Map<String, byte[]> tables = new HashMap<>();
-        tables.put("head", head(m, program.style()));
-        tables.put("hhea", hhea(m, ascent, descent, w.size()));
-        tables.put("OS/2", os2(m, ascent, descent, cmap, program.style(), UNITS_PER_EM, program.fsType));
-        tables.put("post", post(program.italicAngle()));
-        return w.build(FontRebuild.cleanName(program.name()), cmapTable(cmap), tables);
+        tables.put("head", SfntTables.head(m, program.style()));
+        tables.put("hhea", SfntTables.hhea(m, ascent, descent, w.size()));
+        tables.put("OS/2", SfntTables.os2(m, ascent, descent, cmap, program.style(), UNITS_PER_EM, program.fsType));
+        tables.put("post", SfntTables.post(program.italicAngle()));
+        return w.build(FontRebuild.cleanName(program.name()), SfntTables.cmapTable(cmap), tables);
     }
 
     private static long glyphBudget(long sourceBytes) {
@@ -520,16 +520,6 @@ public final class WebFonts {
         if (w.glyphBytes() > budget) {
             throw new IOException("The converted glyphs need more than " + budget + " bytes");
         }
-    }
-
-    private static byte[] cmapTable(TreeMap<Integer, Integer> cmap) {
-        List<Cmaps.Subtable> subtables = new ArrayList<>();
-        TreeMap<Integer, Integer> bmp = new TreeMap<>(cmap.headMap(0xFFFF));
-        subtables.add(new Cmaps.Subtable(3, 1, bmp));
-        if (!cmap.isEmpty() && cmap.lastKey() > 0xFFFF || !Cmaps.fitsFormat4(bmp)) {
-            subtables.add(new Cmaps.Subtable(3, 10, cmap));
-        }
-        return Cmaps.table(subtables);
     }
 
     private static TreeMap<Integer, Integer> cmap(int count, IntFunction<String> nameOf,
@@ -562,79 +552,5 @@ public final class WebFonts {
 
     private static boolean mappable(int cp) {
         return cp > 0 && cp <= 0x10FFFF && cp != 0xFFFF && cp != 0xFFFE && (cp < 0xD800 || cp > 0xDFFF);
-    }
-
-    private static byte[] head(TrueTypeWriter.Metrics m, int style) {
-        ByteBuffer b = ByteBuffer.allocate(54);
-        b.putInt(0, 0x00010000);
-        b.putInt(4, 0x00010000);
-        b.putInt(12, 0x5F0F3CF5);
-        b.putShort(16, (short) 0x000B);
-        b.putShort(18, (short) UNITS_PER_EM);
-        b.putShort(36, (short) m.xMin());
-        b.putShort(38, (short) m.yMin());
-        b.putShort(40, (short) m.xMax());
-        b.putShort(42, (short) m.yMax());
-        b.putShort(44, (short) style);
-        b.putShort(46, (short) 8);
-        b.putShort(48, (short) 2);
-        b.putShort(50, (short) 1);
-        return b.array();
-    }
-
-    private static byte[] hhea(TrueTypeWriter.Metrics m, int ascent, int descent, int glyphs) {
-        ByteBuffer b = ByteBuffer.allocate(36);
-        b.putInt(0, 0x00010000);
-        b.putShort(4, (short) ascent);
-        b.putShort(6, (short) descent);
-        b.putShort(10, (short) m.maxAdvance());
-        b.putShort(12, (short) m.minLsb());
-        b.putShort(14, (short) m.minRsb());
-        b.putShort(16, (short) m.maxExtent());
-        b.putShort(18, (short) 1);
-        b.putShort(34, (short) glyphs);
-        return b.array();
-    }
-
-    private static byte[] os2(TrueTypeWriter.Metrics m, int ascent, int descent, TreeMap<Integer, Integer> cmap,
-            int style, int upem, int fsType) {
-        boolean bold = (style & 1) != 0;
-        boolean italic = (style & 2) != 0;
-        ByteBuffer b = ByteBuffer.allocate(96);
-        b.putShort(0, (short) 4);
-        b.putShort(2, (short) m.averageAdvance());
-        b.putShort(4, (short) (bold ? 700 : 400));
-        b.putShort(6, (short) 5);
-        b.putShort(8, (short) fsType);
-        b.putShort(10, (short) (650 * upem / 1000));
-        b.putShort(12, (short) (600 * upem / 1000));
-        b.putShort(16, (short) (75 * upem / 1000));
-        b.putShort(18, (short) (650 * upem / 1000));
-        b.putShort(20, (short) (600 * upem / 1000));
-        b.putShort(24, (short) (350 * upem / 1000));
-        b.putShort(26, (short) (50 * upem / 1000));
-        b.putShort(28, (short) (300 * upem / 1000));
-        b.put(58, "SPDF".getBytes(StandardCharsets.US_ASCII));
-        b.putShort(62, (short) ((bold ? 0x20 : 0) | (italic ? 0x01 : 0) | (bold || italic ? 0 : 0x40)));
-        b.putShort(64, (short) (cmap.isEmpty() ? 0x20 : Math.min(0xFFFF, cmap.firstKey())));
-        b.putShort(66, (short) (cmap.isEmpty() ? 0x7E : Math.min(0xFFFF, cmap.lastKey())));
-        b.putShort(68, (short) ascent);
-        b.putShort(70, (short) descent);
-        b.putShort(74, (short) Math.max(0, m.yMax()));
-        b.putShort(76, (short) Math.max(0, -m.yMin()));
-        b.putInt(78, 1);
-        b.putShort(86, (short) (500 * upem / 1000));
-        b.putShort(88, (short) (700 * upem / 1000));
-        b.putShort(92, (short) 32);
-        return b.array();
-    }
-
-    private static byte[] post(float italicAngle) {
-        ByteBuffer b = ByteBuffer.allocate(32);
-        b.putInt(0, 0x00030000);
-        b.putInt(4, Math.round(italicAngle * 65_536f));
-        b.putShort(8, (short) -100);
-        b.putShort(10, (short) 50);
-        return b.array();
     }
 }
