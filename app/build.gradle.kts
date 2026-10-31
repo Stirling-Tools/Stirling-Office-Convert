@@ -7,6 +7,7 @@ plugins {
 dependencies {
     implementation(project(":core"))
     implementation(project(":topdf"))
+    implementation(project(":legacy"))
 
     testImplementation(platform(libs.junit.bom))
     testImplementation(libs.junit.jupiter)
