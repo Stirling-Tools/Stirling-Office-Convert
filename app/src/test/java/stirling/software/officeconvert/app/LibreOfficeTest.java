@@ -11,6 +11,8 @@ import java.nio.file.Path;
 import java.util.List;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.DisabledOnOs;
+import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 
 class LibreOfficeTest {
@@ -80,5 +82,25 @@ class LibreOfficeTest {
         assertTrue(LibreOffice.converts("docx"));
         assertFalse(LibreOffice.converts("xlsx"));
         assertTrue(LibreOffice.formats().contains("pdf"));
+    }
+
+    @Test
+    @DisabledOnOs(OS.WINDOWS)
+    void aProfileItCannotDeleteIsLogged() throws IOException {
+        Path locked = Files.createDirectories(dir.resolve("profile/locked"));
+        Files.writeString(locked.resolve("file"), "x");
+        assertTrue(locked.toFile().setWritable(false));
+        java.io.PrintStream original = System.out;
+        java.io.ByteArrayOutputStream log = new java.io.ByteArrayOutputStream();
+        try {
+            System.setOut(new java.io.PrintStream(log, true, StandardCharsets.UTF_8));
+            LibreOffice.delete(dir.resolve("profile"));
+        } finally {
+            System.setOut(original);
+            locked.toFile().setWritable(true);
+        }
+        assertTrue(log.toString(StandardCharsets.UTF_8).startsWith("Could not delete " + dir.resolve("profile")),
+                log.toString(StandardCharsets.UTF_8));
+        assertTrue(Files.exists(locked.resolve("file")));
     }
 }

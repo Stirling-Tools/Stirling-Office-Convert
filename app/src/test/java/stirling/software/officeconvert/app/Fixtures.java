@@ -98,15 +98,21 @@ final class Fixtures {
     }
 
     static byte[] pdf(String text) throws IOException {
+        return pdf(text, 1);
+    }
+
+    static byte[] pdf(String text, int pages) throws IOException {
         try (PDDocument doc = new PDDocument(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
-            PDPage page = new PDPage();
-            doc.addPage(page);
-            try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
-                cs.beginText();
-                cs.setFont(new PDType1Font(Standard14Fonts.FontName.HELVETICA), 14);
-                cs.newLineAtOffset(72, 700);
-                cs.showText(text);
-                cs.endText();
+            for (int i = 0; i < pages; i++) {
+                PDPage page = new PDPage();
+                doc.addPage(page);
+                try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
+                    cs.beginText();
+                    cs.setFont(new PDType1Font(Standard14Fonts.FontName.HELVETICA), 14);
+                    cs.newLineAtOffset(72, 700);
+                    cs.showText(text);
+                    cs.endText();
+                }
             }
             doc.save(out);
             return out.toByteArray();

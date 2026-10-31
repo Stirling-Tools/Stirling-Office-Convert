@@ -147,10 +147,13 @@ final class LibreOffice {
         }
     }
 
-    private static void delete(Path dir) {
+    static void delete(Path dir) {
         try (Stream<Path> tree = Files.walk(dir)) {
-            tree.sorted(Comparator.reverseOrder()).forEach(p -> p.toFile().delete());
+            for (Path p : (Iterable<Path>) tree.sorted(Comparator.reverseOrder())::iterator) {
+                Files.deleteIfExists(p);
+            }
         } catch (IOException e) {
+            System.out.println("Could not delete " + dir + ": " + e.getMessage());
         }
     }
 
