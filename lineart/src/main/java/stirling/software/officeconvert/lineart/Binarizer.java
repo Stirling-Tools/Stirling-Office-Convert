@@ -97,13 +97,13 @@ final class Binarizer {
                 int window = window(options.window(), w, h);
                 Paper paper = new Paper(w, h, window);
                 Bitmap core = Bitmap.blank(w, h);
-                Bitmap dark = Bitmap.blank(w, h);
+                Bitmap edge = Bitmap.blank(w, h);
                 int ahead = window / 2 + Paper.lookahead(w, h, window);
                 scan(greys, w, h, window / 2, ahead, (buffer, first, from, to) -> {
                     paper.feed(buffer, first, Math.min(h, to + ahead));
-                    sauvola(buffer, first, w, h, from, to, window, options.k(), paper, out, core, dark);
+                    sauvola(buffer, first, w, h, from, to, window, options.k(), paper, out, core, edge);
                 });
-                Paper.fill(out, core, dark, window);
+                Paper.grow(out, core, edge, window);
             }
             case EDGES -> edges(greys, w, h, options.edgeLevel(), options.threshold(), out, keepEdges);
         }
@@ -432,9 +432,9 @@ final class Binarizer {
     }
 
     private static void sauvola(float[] buffer, int first, int w, int h, int from, int to, int window, double k,
-            Paper surface, Bitmap out, Bitmap core, Bitmap dark) {
+            Paper surface, Bitmap out, Bitmap core, Bitmap edge) {
         int r = window / 2;
-        int[] paper = new int[w];
+        float[] paper = new float[w];
         long[] columnSum = new long[w];
         long[] columnSquares = new long[w];
         int top = Math.max(0, from - r);
@@ -477,13 +477,14 @@ final class Binarizer {
                 double level = mean * (1 + k * (deviation / 128 - 1));
                 int v = eight(buffer[base + x]);
                 double solid = Paper.SOLID * paper[x];
-                if (v <= level) {
+                boolean flat = deviation < Paper.FLAT;
+                if (flat && mean <= solid) {
+                    core.set(x, y);
                     out.set(x, y);
-                } else if (v <= solid) {
-                    dark.set(x, y);
-                    if (mean <= solid && deviation < Paper.FLAT) {
-                        core.set(x, y);
-                    }
+                } else if (v <= level) {
+                    out.set(x, y);
+                } else if (!flat && v <= solid) {
+                    edge.set(x, y);
                 }
             }
         }

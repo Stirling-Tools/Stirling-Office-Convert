@@ -439,6 +439,34 @@ class LineArtTest {
         assertTrue(ink > 0.1 && ink < 0.4, "hatching: " + ink);
     }
 
+    @Test
+    void aSmoothGradientHasNoStepAtTileBoundaries() {
+        int size = 600;
+        BufferedImage image = new BufferedImage(size, size, BufferedImage.TYPE_INT_RGB);
+        for (int y = 0; y < size; y++) {
+            for (int x = 0; x < size; x++) {
+                int v = 30 + 225 * (x + y) / (2 * size);
+                image.setRGB(x, y, v << 16 | v << 8 | v);
+            }
+        }
+        Bitmap bitmap = LineArt.binarize(image, LineArt.Options.defaults());
+        int previous = -1;
+        for (int y = 0; y < size; y++) {
+            int edge = 0;
+            while (edge < size && bitmap.ink(edge, y)) {
+                edge++;
+            }
+            for (int x = edge; x < size; x++) {
+                assertFalse(bitmap.ink(x, y), "ink past the edge at " + x + "," + y);
+            }
+            if (previous >= 0 && edge > 0 && edge < size) {
+                assertTrue(Math.abs(edge - previous + 1) <= 2, "row " + y + ": edge " + previous + " -> " + edge);
+            }
+            previous = edge;
+        }
+        assertTrue(bitmap.ink(0, 0) && !bitmap.ink(size - 1, size - 1));
+    }
+
     private static BufferedImage panel(int w, int h, Color fill, Color text) {
         BufferedImage image = new BufferedImage(w, h, BufferedImage.TYPE_INT_RGB);
         Graphics2D g = image.createGraphics();
