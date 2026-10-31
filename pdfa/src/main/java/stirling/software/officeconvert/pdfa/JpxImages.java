@@ -18,10 +18,12 @@ import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.cos.COSStream;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.common.PDStream;
+import org.apache.pdfbox.pdmodel.graphics.color.PDColorSpace;
 import org.apache.pdfbox.pdmodel.graphics.image.JPEGFactory;
 import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
 
 import stirling.software.officeconvert.jpx.JpxDecoder;
+import stirling.software.officeconvert.jpx.JpxImage;
 
 final class JpxImages {
 
@@ -71,22 +73,39 @@ final class JpxImages {
         }
         s.setInt(COSName.WIDTH, size[0]);
         s.setInt(COSName.HEIGHT, size[1]);
+        COSBase colourSpace = s.getDictionaryObject(COSName.COLORSPACE);
+        int smaskInData = s.getInt(SMASK_IN_DATA, 0);
         if (level.part() > 1) {
             JpxHeader h = JpxHeader.parse(encoded);
-            if (h != null && h.allowedInPdfA(s.getDictionaryObject(COSName.COLORSPACE) != null)) {
+            if (h != null && h.allowedInPdfA(colourSpace != null)
+                    && !(level.part() < 4 && smaskInData != 0 && h.channels() == 4 && components(colourSpace) < 4)) {
                 return;
             }
         }
         if (s.getBoolean(COSName.IMAGE_MASK, false)) {
             throw new IOException("The PDF has a JPEG 2000 image mask, which " + level.label() + " does not allow");
         }
-        BufferedImage decoded = decoded(encoded);
-        BufferedImage alpha = alpha(decoded);
-        BufferedImage opaque = alpha != null ? colours(decoded)
-                : new PDImageXObject(new PDStream(s), null).getOpaqueImage();
-        PDImageXObject replacement = encode(opaque);
-        PDImageXObject mask = alpha == null ? null : GreyImages.lossless(doc, alpha);
-        COSStream from = replacement.getCOSObject();
+        JpxImage jpx = jpx(encoded);
+        BufferedImage decoded = composed(jpx);
+        COSStream from;
+        PDImageXObject mask;
+        RawJpx raw = colourSpace == null ? null : RawJpx.of(jpx, colourSpace, smaskInData, decoded);
+        if (raw != null) {
+            from = raw.colours(doc);
+            mask = raw.alpha(doc);
+        } else {
+            BufferedImage alpha = alpha(decoded);
+            BufferedImage opaque = alpha != null ? colours(decoded)
+                    : new PDImageXObject(new PDStream(s), null).getOpaqueImage();
+            from = encode(opaque).getCOSObject();
+            mask = alpha == null ? null : GreyImages.lossless(doc, alpha);
+        }
+        if (mask != null && smaskInData == 2) {
+            COSBase matte = s.getDictionaryObject(COSName.getPDFName("Matte"));
+            if (matte instanceof COSArray m && m.size() == components(from.getDictionaryObject(COSName.COLORSPACE))) {
+                mask.getCOSObject().setItem(COSName.getPDFName("Matte"), m);
+            }
+        }
         byte[] data;
         try (InputStream in = from.createRawInputStream()) {
             data = in.readAllBytes();
@@ -121,11 +140,30 @@ final class JpxImages {
                 : GreyImages.lossless(doc, img);
     }
 
-    private static BufferedImage decoded(byte[] encoded) throws IOException {
+    private static JpxImage jpx(byte[] encoded) throws IOException {
         try {
-            return JpxDecoder.decode(encoded).toBufferedImage();
+            return JpxDecoder.decode(encoded);
         } catch (RuntimeException e) {
             throw new IOException("A JPEG 2000 image could not be read: " + e.getMessage(), e);
+        }
+    }
+
+    private static BufferedImage composed(JpxImage jpx) throws IOException {
+        try {
+            return jpx.toBufferedImage();
+        } catch (RuntimeException e) {
+            throw new IOException("A JPEG 2000 image could not be read: " + e.getMessage(), e);
+        }
+    }
+
+    static int components(COSBase colourSpace) {
+        if (colourSpace == null) {
+            return -1;
+        }
+        try {
+            return PDColorSpace.create(colourSpace).getNumberOfComponents();
+        } catch (IOException | RuntimeException e) {
+            return -1;
         }
     }
 
