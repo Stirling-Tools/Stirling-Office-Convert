@@ -78,11 +78,11 @@ final class UnmappedGlyphs {
 
     private static final int MAX_INKS = 16_384;
 
-    private static final long MAX_INK_ELEMENTS = 4_000_000;
+    private static final long MAX_INK_ELEMENTS = 8_000_000;
 
     private static final int MAX_AREA_ELEMENTS = 16_384;
 
-    private static final double MAX_ICON_EM = 4;
+    private static final double MAX_ICON_POINTS = 300;
 
     private static final String[][] TIES = {{"-", "\u2013"}, {"\u2013", "\u2014"}, {"l", "I"},
         {"(", "["}, {")", "]"}};
@@ -139,15 +139,18 @@ final class UnmappedGlyphs {
             return null;
         }
         float k = scale(trm);
-        Rectangle2D b = read.outline.getBounds2D();
-        if (!(k > 0) || !Float.isFinite(k) || !(Math.max(Math.abs(b.getMinX()), Math.abs(b.getMaxX())) <= MAX_ICON_EM)
-                || !(Math.max(Math.abs(b.getMinY() - read.base), Math.abs(b.getMaxY() - read.base)) <= MAX_ICON_EM)) {
+        if (!(k > 0) || !Float.isFinite(k)) {
             return null;
         }
         GeneralPath outline = new GeneralPath(read.outline);
         AffineTransform toPoints = AffineTransform.getScaleInstance(k, -k);
         toPoints.translate(0, -read.base);
         outline.transform(toPoints);
+        Rectangle2D b = outline.getBounds2D();
+        if (!(Math.max(Math.max(Math.abs(b.getMinX()), Math.abs(b.getMaxX())),
+                Math.max(Math.abs(b.getMinY()), Math.abs(b.getMaxY()))) <= MAX_ICON_POINTS)) {
+            return null;
+        }
         return new IconShape(outline, rgb,
                 "unmapped|" + shapes.id + "|" + code + "|" + Integer.toHexString(rgb) + "|" + Math.round(k * 4000));
     }
