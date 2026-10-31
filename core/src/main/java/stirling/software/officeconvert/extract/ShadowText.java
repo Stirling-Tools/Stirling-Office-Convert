@@ -30,11 +30,11 @@ final class ShadowText {
         for (Run run : runs(glyphs)) {
             Run twin = twin(index, run);
             if (twin == null) {
-                index.computeIfAbsent(key(run, 0, 0), k -> new ArrayList<>(1)).add(run);
+                index.computeIfAbsent(home(run), k -> new ArrayList<>(1)).add(run);
             } else if (twin.first.rgb != run.first.rgb) {
                 dropped.addAll(twin.glyphs);
-                index.get(key(twin, 0, 0)).remove(twin);
-                index.computeIfAbsent(key(run, 0, 0), k -> new ArrayList<>(1)).add(run);
+                index.get(home(twin)).remove(twin);
+                index.computeIfAbsent(home(run), k -> new ArrayList<>(1)).add(run);
             } else {
                 if (Math.abs(twin.first.x - run.first.x) > 0.05f
                         || Math.abs(twin.first.baseline - run.first.baseline) > 0.05f) {
@@ -58,8 +58,14 @@ final class ShadowText {
     }
 
     private static List<Run> runs(List<Glyph> glyphs) {
-        List<Glyph> bySeq = new ArrayList<>(glyphs);
-        bySeq.sort(Comparator.comparingInt(g -> g.seq));
+        List<Glyph> bySeq = glyphs;
+        for (int i = 1; i < glyphs.size(); i++) {
+            if (glyphs.get(i).seq < glyphs.get(i - 1).seq) {
+                bySeq = new ArrayList<>(glyphs);
+                bySeq.sort(Comparator.comparingInt(g -> g.seq));
+                break;
+            }
+        }
         List<Run> out = new ArrayList<>();
         List<Glyph> current = new ArrayList<>();
         for (Glyph g : bySeq) {
@@ -98,9 +104,14 @@ final class ShadowText {
     }
 
     private static Run twin(Map<Long, List<Run>> index, Run run) {
-        for (int dx = -1; dx <= 1; dx++) {
-            for (int dy = -1; dy <= 1; dy++) {
-                List<Run> near = index.get(key(run, dx, dy));
+        float reach = REACH * run.first.size;
+        double x0 = cell(run, run.first.x - reach);
+        double y0 = cell(run, run.first.baseline - reach);
+        int nx = cells(x0, cell(run, run.first.x + reach));
+        int ny = cells(y0, cell(run, run.first.baseline + reach));
+        for (int ix = 0; ix <= nx; ix++) {
+            for (int iy = 0; iy <= ny; iy++) {
+                List<Run> near = index.get(key(run, (long) (x0 + ix), (long) (y0 + iy)));
                 if (near == null) {
                     continue;
                 }
@@ -136,10 +147,19 @@ final class ShadowText {
         return true;
     }
 
-    private static long key(Run run, int dx, int dy) {
-        float cell = run.first.size;
-        long cx = (long) Math.floor(run.first.x / cell) + dx;
-        long cy = (long) Math.floor(run.first.baseline / cell) + dy;
+    private static long home(Run run) {
+        return key(run, (long) cell(run, run.first.x), (long) cell(run, run.first.baseline));
+    }
+
+    private static double cell(Run run, float v) {
+        return Math.floor((double) v / Math.max(1, Math.round(run.first.size)));
+    }
+
+    private static int cells(double from, double to) {
+        return to - from >= 1 ? (to - from >= 2 ? 2 : 1) : 0;
+    }
+
+    private static long key(Run run, long cx, long cy) {
         return ((cx * 0x9E3779B97F4A7C15L + cy) * 0x9E3779B97F4A7C15L + run.text) * 0x9E3779B97F4A7C15L
                 + Math.round(run.first.size);
     }
