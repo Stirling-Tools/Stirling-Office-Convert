@@ -55,6 +55,27 @@ class ScreenMetricsTest {
     }
 
     @Test
+    void arialRowsTakeExcelsHeightsWhicheverStandInIsInstalled() throws IOException {
+        Path sans = Files.createDirectories(dir.resolve("liberation"));
+        try (InputStream in = PDDocument.class.getResourceAsStream(
+                "/org/apache/pdfbox/resources/ttf/LiberationSans-Regular.ttf")) {
+            Files.copy(in, sans.resolve("LiberationSans-Regular.ttf"));
+        }
+        FontLibrary none = FontLibrary.of(List.of(Files.createDirectories(dir.resolve("none"))));
+        for (FontLibrary library : List.of(FontLibrary.of(List.of(sans)), none)) {
+            assertEquals(20, FontMeasure.of(library, "Arial", true, false).screenLinePx(11));
+            assertEquals(21, FontMeasure.of(library, "Arial", true, false).screenLinePx(12));
+            assertEquals(24, FontMeasure.of(library, "Arial", true, false).screenLinePx(14));
+            assertEquals(15, FontMeasure.of(library, "Arial", false, false).screenLinePx(8));
+            assertEquals(17, FontMeasure.of(library, "Arial", false, false).screenLinePx(10));
+            assertEquals(19, FontMeasure.of(library, "Arial", false, false).screenLinePx(11));
+            assertEquals(20, FontMeasure.of(library, "Arial", false, false).screenLinePx(12));
+            assertEquals(27, FontMeasure.of(library, "Arial", false, false).screenLinePx(16));
+            assertEquals(20, FontMeasure.of(library, "Calibri", true, false).screenLinePx(11));
+        }
+    }
+
+    @Test
     void aOnePointDefaultFontStillLaysOutItsCells() throws IOException {
         FontLibrary none = FontLibrary.of(List.of(Files.createDirectories(dir.resolve("none"))));
         assertEquals(1, ColumnUnits.screenDigit(none, "Garamond", 1));
