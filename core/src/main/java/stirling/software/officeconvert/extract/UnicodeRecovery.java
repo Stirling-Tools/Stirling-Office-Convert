@@ -5,6 +5,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.function.IntFunction;
 
 import org.apache.fontbox.ttf.CmapSubtable;
 import org.apache.fontbox.ttf.CmapTable;
@@ -89,6 +90,11 @@ final class UnicodeRecovery {
             }
         }
         return true;
+    }
+
+    static IntFunction<String> programText(PDFont font) {
+        Lookup lookup = Lookup.of(font);
+        return lookup == null ? null : lookup::text;
     }
 
     static Map<Integer, String> programText(PDType0Font font, int codes) {

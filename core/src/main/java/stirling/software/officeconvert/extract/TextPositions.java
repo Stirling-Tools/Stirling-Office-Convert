@@ -31,12 +31,17 @@ final class TextPositions {
 
     private static final Log LOG = LogFactory.getLog(TextPositions.class);
 
-    private static final GlyphList GLYPHS = glyphs();
+    static final GlyphList GLYPHS = glyphs();
 
+    final UnmappedGlyphs unmapped;
     private final Map<COSDictionary, Float> fontHeights = new WeakHashMap<>();
     private int pageRotation;
     private PDRectangle pageSize;
     private Matrix translateMatrix;
+
+    TextPositions(UnmappedGlyphs unmapped) {
+        this.unmapped = unmapped;
+    }
 
     void page(PDPage page) {
         pageRotation = page.getRotation();
@@ -100,6 +105,26 @@ final class TextPositions {
         }
         float spaceWidthDisplay = spaceWidthText * trm.getScalingFactorX();
         String unicode = font.toUnicode(code, GLYPHS);
+        if (unicode == null) {
+            unicode = unmapped.text(font, code, trm);
+            float along = (float) Math.hypot(trm.getScaleX(), trm.getShearY());
+            float drawn = unicode == null || dxDisplay > 0 ? Float.NaN : unmapped.drawnWidth(font, code, trm);
+            if (drawn > 0) {
+                nextX = trm.getTranslateX() + drawn * trm.getScaleX() / along;
+                nextY = trm.getTranslateY() + drawn * trm.getShearY() / along;
+                dxDisplay = nextX - trm.getTranslateX();
+            }
+            float lift = unicode == null ? 0 : unmapped.rise(font, code, trm);
+            if (lift != 0) {
+                float dx = -lift * trm.getShearY() / along;
+                float dy = lift * trm.getScaleX() / along;
+                trm = trm.clone();
+                trm.setValue(2, 0, trm.getTranslateX() + dx);
+                trm.setValue(2, 1, trm.getTranslateY() + dy);
+                nextX += dx;
+                nextY += dy;
+            }
+        }
         if (unicode == null) {
             if (!(font instanceof PDSimpleFont)) {
                 return null;

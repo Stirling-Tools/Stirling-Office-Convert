@@ -129,7 +129,7 @@ final class GlyphCollector extends PDFStreamEngine {
     private PDDocument document;
     private OperatorBudget budget = new OperatorBudget("reading text");
     private final StreamRunner runner;
-    private final TextPositions positions = new TextPositions();
+    private final TextPositions positions;
     private final ClipPath clipPath = new ClipPath();
     private final ClipArea clipArea = new ClipArea();
     private int currentPageNo;
@@ -138,6 +138,7 @@ final class GlyphCollector extends PDFStreamEngine {
 
     private GlyphCollector(FontResolver fonts, PageSink sink, ParsedStreams parsed) {
         this.fonts = fonts;
+        this.positions = new TextPositions(fonts.unmapped());
         this.sink = sink;
         this.recovery = new UnicodeRecovery(fonts);
         this.runner = new StreamRunner(new StreamRunner.Host() {
@@ -465,12 +466,20 @@ final class GlyphCollector extends PDFStreamEngine {
 
         PDFont pdFont = tp.getFont();
         FontInfo font = fonts.resolve(pdFont);
-        float size = fontSize(tp);
+        int[] codes = tp.getCharacterCodes();
+        float drawnSize = codes != null && codes.length == 1
+                ? positions.unmapped.size(pdFont, codes[0], tp.getTextMatrix()) : Float.NaN;
+        if (drawnSize > 0 && pdFont.toUnicode(codes[0], TextPositions.GLYPHS) != null) {
+            drawnSize = Float.NaN;
+        }
+        float size = drawnSize > 0 && drawnSize < 400f ? drawnSize : fontSize(tp);
         float[] m = metrics(pdFont);
         float space = spaceWidth(tp, pdFont, size, m[2]);
 
-        boolean bold = font.bold() || mode == RenderingMode.FILL_STROKE && strokeIsVisible(gs, size);
-        boolean italic = font.italic() || isSheared(tp);
+        int drawnStyle = positions.unmapped.style(pdFont);
+        boolean bold = font.bold() || (drawnStyle & GlyphRef.BOLD) != 0
+                || mode == RenderingMode.FILL_STROKE && strokeIsVisible(gs, size);
+        boolean italic = font.italic() || (drawnStyle & GlyphRef.ITALIC) != 0 || isSheared(tp);
         float width = tp.getWidthDirAdj();
         if (!(width > 0)) {
             width = Math.max(size * 0.1f, 0.1f);
@@ -503,11 +512,13 @@ final class GlyphCollector extends PDFStreamEngine {
                         bold,
                         italic);
         g.hscale = horizontalScale(tp);
-        int[] codes = tp.getCharacterCodes();
         boolean dingbat = font.symbolic() && pdFont.isEmbedded()
                 && (size >= DINGBAT_SIZE && !textLike(unicode) || belowSymbolRange(unicode));
         if ((font.icons() || dingbat) && codes != null && codes.length == 1) {
             g.icon = IconShape.of(pdFont, codes[0], size, rgb);
+        }
+        if (g.icon == null && unicode.equals(UnmappedGlyphs.STAND_IN) && codes != null && codes.length == 1) {
+            g.icon = positions.unmapped.icon(pdFont, codes[0], tp.getTextMatrix(), rgb);
         }
         Matrix tm = tp.getTextMatrix();
         if (current.size() >= MAX_PAGE_GLYPHS) {
