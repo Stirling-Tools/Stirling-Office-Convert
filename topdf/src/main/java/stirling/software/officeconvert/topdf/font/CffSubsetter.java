@@ -195,9 +195,8 @@ final class CffSubsetter {
         }
 
         List<byte[]> stringItems = items(strings);
-        int adobe = STANDARD_STRINGS + stringItems.size();
-        stringItems.add("Adobe".getBytes(StandardCharsets.US_ASCII));
-        stringItems.add("Identity".getBytes(StandardCharsets.US_ASCII));
+        int registry = sid(stringItems, "Adobe");
+        int ordering = sid(stringItems, "Identity");
         byte[] stringIndex = index(stringItems);
         byte[] nameIndex = index(List.of(name.getBytes(StandardCharsets.ISO_8859_1)));
         byte[] globalIndex = subrs(global, usedGlobal, allGlobal);
@@ -247,7 +246,7 @@ final class CffSubsetter {
         }
 
         int headerSize = 4;
-        byte[] topProbe = index(List.of(topDict(top, adobe, cids, 0, 0, 0, 0)));
+        byte[] topProbe = index(List.of(topDict(top, registry, ordering, cids, 0, 0, 0, 0)));
         int at = headerSize + nameIndex.length + topProbe.length + stringIndex.length + globalIndex.length;
         int charsetAt = at;
         at += charset.size();
@@ -266,7 +265,7 @@ final class CffSubsetter {
             fontDicts.add(fontDict(kept.get(i).font, privates.get(i).length, at));
             at += privates.get(i).length + (locals.get(i) == null ? 0 : locals.get(i).length);
         }
-        byte[] topIndex = index(List.of(topDict(top, adobe, cids, charsetAt, selectAt, charStringsAt, fdArrayAt)));
+        byte[] topIndex = index(List.of(topDict(top, registry, ordering, cids, charsetAt, selectAt, charStringsAt, fdArrayAt)));
         ByteArrayOutputStream out = new ByteArrayOutputStream(at);
         out.writeBytes(new byte[] {1, 0, (byte) headerSize, 4});
         out.writeBytes(nameIndex);
@@ -289,10 +288,21 @@ final class CffSubsetter {
         return out.toByteArray();
     }
 
-    private byte[] topDict(List<Entry> top, int adobe, int[] cids, int charset, int select, int charStrings,
-            int fdArray) {
+    private static int sid(List<byte[]> strings, String value) {
+        byte[] bytes = value.getBytes(StandardCharsets.US_ASCII);
+        for (int i = 0; i < strings.size(); i++) {
+            if (Arrays.equals(strings.get(i), bytes)) {
+                return STANDARD_STRINGS + i;
+            }
+        }
+        strings.add(bytes);
+        return STANDARD_STRINGS + strings.size() - 1;
+    }
+
+    private byte[] topDict(List<Entry> top, int registry, int ordering, int[] cids, int charset, int select,
+            int charStrings, int fdArray) {
         List<Entry> out = new ArrayList<>();
-        out.add(new Entry(ROS, concat(integer(adobe), integer(adobe + 1), integer(0)), null));
+        out.add(new Entry(ROS, concat(integer(registry), integer(ordering), integer(0)), null));
         for (Entry e : top) {
             switch (e.op()) {
                 case ROS, CID_COUNT, CHARSET, ENCODING, CHAR_STRINGS, PRIVATE, FD_ARRAY, FD_SELECT, UNIQUE_ID, XUID,
@@ -738,8 +748,10 @@ final class CffSubsetter {
     }
 
     private static byte[] integer(int v) {
-        if (v >= -107 && v <= 107) {
-            return new byte[] {(byte) (v + 139)};
+        if (v >= -1131 && v <= 1131) {
+            ByteArrayOutputStream out = new ByteArrayOutputStream(2);
+            operand(out, v);
+            return out.toByteArray();
         }
         return int5(v);
     }
