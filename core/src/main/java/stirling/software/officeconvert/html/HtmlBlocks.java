@@ -559,7 +559,7 @@ final class HtmlBlocks {
         if (cell.gridSpan > 1) {
             sb.append(" colspan=\"").append(cell.gridSpan).append('"');
         }
-        int span = cell.vMerge == 1 ? rowSpan(t, r, col) : 1;
+        int span = cell.vMerge == 1 ? t.rowSpan(r, col) : 1;
         if (span > 1) {
             sb.append(" rowspan=\"").append(span).append('"');
         }
@@ -608,31 +608,5 @@ final class HtmlBlocks {
             sb.append("border-").append(side).append(':').append(HtmlText.pt(b.width())).append(" solid ")
                     .append(HtmlText.hex(b.rgb())).append(';');
         }
-    }
-
-    private static int rowSpan(Table t, int r, int col) {
-        int span = 1;
-        for (int next = r + 1; next < t.rows.size(); next++) {
-            Table.Cell below = cellAt(t.rows.get(next), col);
-            if (below == null || below.vMerge != 2) {
-                break;
-            }
-            span++;
-        }
-        return span;
-    }
-
-    private static Table.Cell cellAt(Table.Row row, int col) {
-        int at = 0;
-        for (Table.Cell c : row.cells) {
-            if (at == col) {
-                return c;
-            }
-            at += Math.max(1, c.gridSpan);
-            if (at > col) {
-                return null;
-            }
-        }
-        return null;
     }
 }

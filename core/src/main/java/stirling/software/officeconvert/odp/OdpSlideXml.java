@@ -9,6 +9,7 @@ import java.util.Set;
 import stirling.software.officeconvert.model.Paragraph;
 import stirling.software.officeconvert.model.Picture;
 import stirling.software.officeconvert.model.Table;
+import stirling.software.officeconvert.sink.ColourHex;
 import stirling.software.officeconvert.slides.Frame;
 import stirling.software.officeconvert.slides.LineShape;
 import stirling.software.officeconvert.slides.PathShape;
@@ -59,7 +60,7 @@ final class OdpSlideXml {
     }
 
     static String master(int background) {
-        return background < 0 ? "Default" : String.format(Locale.ROOT, "Bg%06X", background & 0xFFFFFF);
+        return background < 0 ? "Default" : "Bg" + ColourHex.upper(background);
     }
 
     private static void place(StringBuilder sb, Frame f) {
@@ -257,7 +258,7 @@ final class OdpSlideXml {
                         sb.append("<table:covered-table-cell/>");
                     }
                 } else {
-                    cell(sb, t, cell, span, cell.vMerge == 1 ? rowSpan(t, r, col) : 1);
+                    cell(sb, t, cell, span, cell.vMerge == 1 ? t.rowSpan(r, col) : 1);
                     for (int k = 1; k < span; k++) {
                         sb.append("<table:covered-table-cell/>");
                     }
@@ -332,31 +333,5 @@ final class OdpSlideXml {
         } else {
             sb.append(Odf.pt(b.width())).append(" solid ").append(Odf.colour(Math.max(0, b.rgb()))).append('"');
         }
-    }
-
-    private static int rowSpan(Table t, int row, int col) {
-        int span = 1;
-        for (int r = row + 1; r < t.rows.size(); r++) {
-            Table.Cell below = cellAt(t.rows.get(r), col);
-            if (below == null || below.vMerge != 2) {
-                break;
-            }
-            span++;
-        }
-        return span;
-    }
-
-    private static Table.Cell cellAt(Table.Row row, int col) {
-        int c = 0;
-        for (Table.Cell cell : row.cells) {
-            if (c == col) {
-                return cell;
-            }
-            c += Math.max(1, cell.gridSpan);
-            if (c > col) {
-                return null;
-            }
-        }
-        return null;
     }
 }

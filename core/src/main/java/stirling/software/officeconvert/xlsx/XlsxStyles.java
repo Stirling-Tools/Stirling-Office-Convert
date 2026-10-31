@@ -10,6 +10,7 @@ import stirling.software.officeconvert.sheet.CellStyle.Border;
 import stirling.software.officeconvert.sheet.CellStyle.HAlign;
 import stirling.software.officeconvert.sheet.CellStyle.VAlign;
 import stirling.software.officeconvert.sheet.SheetXml;
+import stirling.software.officeconvert.sink.ColourHex;
 
 final class XlsxStyles {
 
@@ -170,7 +171,7 @@ final class XlsxStyles {
     }
 
     private static String argb(int rgb) {
-        return String.format(Locale.ROOT, "FF%06X", rgb & 0xFFFFFF);
+        return "FF" + ColourHex.upper(rgb);
     }
 
     private static String size(float pt) {

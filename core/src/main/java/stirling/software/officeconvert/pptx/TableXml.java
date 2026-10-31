@@ -49,7 +49,7 @@ final class TableXml {
                 }
                 int span = Math.max(1, Math.min(cell.gridSpan, cols - col));
                 boolean continued = cell.vMerge == 2;
-                int rowSpan = cell.vMerge == 1 ? rowSpan(t, r, col) : 1;
+                int rowSpan = cell.vMerge == 1 ? t.rowSpan(r, col) : 1;
                 cell(sb, t, cell, span, rowSpan, continued, h, spanned(t, r, rowSpan), offsets.get(cell));
                 for (int k = 1; k < span; k++) {
                     sb.append("<a:tc hMerge=\"1\"").append(continued ? " vMerge=\"1\"" : "").append('>');
@@ -165,32 +165,6 @@ final class TableXml {
         sb.append('<').append(tag).append(" w=\"").append(Ooxml.emu(b.width())).append("\" cmpd=\"sng\">");
         Ooxml.solidFill(sb, Math.max(0, b.rgb()));
         sb.append("</").append(tag).append('>');
-    }
-
-    static int rowSpan(Table t, int row, int col) {
-        int span = 1;
-        for (int r = row + 1; r < t.rows.size(); r++) {
-            Table.Cell below = cellAt(t.rows.get(r), col);
-            if (below == null || below.vMerge != 2) {
-                break;
-            }
-            span++;
-        }
-        return span;
-    }
-
-    static Table.Cell cellAt(Table.Row row, int col) {
-        int c = 0;
-        for (Table.Cell cell : row.cells) {
-            if (c == col) {
-                return cell;
-            }
-            c += Math.max(1, cell.gridSpan);
-            if (c > col) {
-                return null;
-            }
-        }
-        return null;
     }
 
     static float rowHeight(Table t, int r) {

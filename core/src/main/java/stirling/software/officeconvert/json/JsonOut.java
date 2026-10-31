@@ -1,5 +1,7 @@
 package stirling.software.officeconvert.json;
 
+import stirling.software.officeconvert.sink.ColourHex;
+
 /** Writes one JSON object, leaving out values that equal their defaults. */
 final class JsonOut {
 
@@ -82,6 +84,6 @@ final class JsonOut {
     }
 
     static String hex(int rgb) {
-        return String.format("#%06X", rgb & 0xFFFFFF);
+        return "#" + ColourHex.upper(rgb);
     }
 }

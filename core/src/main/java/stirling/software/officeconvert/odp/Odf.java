@@ -2,6 +2,9 @@ package stirling.software.officeconvert.odp;
 
 import java.util.Locale;
 
+import stirling.software.officeconvert.sink.ColourHex;
+import stirling.software.officeconvert.sink.XmlText;
+
 final class Odf {
 
     static final String HEADER = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n";
@@ -23,26 +26,7 @@ final class Odf {
     private Odf() {}
 
     static void text(StringBuilder sb, String s) {
-        for (int i = 0; i < s.length(); i++) {
-            char c = s.charAt(i);
-            switch (c) {
-                case '<' -> sb.append("&lt;");
-                case '>' -> sb.append("&gt;");
-                case '&' -> sb.append("&amp;");
-                case '"' -> sb.append("&quot;");
-                default -> {
-                    if (c >= 0x20 && c != 0xFFFE && c != 0xFFFF) {
-                        if (Character.isHighSurrogate(c)) {
-                            if (i + 1 < s.length() && Character.isLowSurrogate(s.charAt(i + 1))) {
-                                sb.append(c).append(s.charAt(++i));
-                            }
-                        } else if (!Character.isLowSurrogate(c)) {
-                            sb.append(c);
-                        }
-                    }
-                }
-            }
-        }
+        XmlText.escape(sb, s);
     }
 
     static String esc(String s) {
@@ -60,6 +44,6 @@ final class Odf {
     }
 
     static String colour(int rgb) {
-        return String.format("#%06x", rgb & 0xFFFFFF);
+        return "#" + ColourHex.lower(rgb);
     }
 }
