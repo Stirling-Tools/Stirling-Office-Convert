@@ -305,7 +305,7 @@ final class Flow {
         }
         Map<String, String> d = ctx.declared(e, parentLook);
         if (tag.equals("table") && parentLook.legacyAlign && !d.containsKey("text-align")) {
-            // <center> or align places a table in the middle but its text starts at the left, as Chrome does
+            // <center> or align moves a table across but not its text, which starts at the start edge, as Chrome does
             d.put("text-align", "start");
         }
         String display = d.getOrDefault("display", BLOCKS.contains(tag) ? "block" : "inline").strip().toLowerCase(Locale.ROOT);
