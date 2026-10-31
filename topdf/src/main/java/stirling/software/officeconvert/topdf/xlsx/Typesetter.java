@@ -297,6 +297,18 @@ final class Typesetter {
         return w;
     }
 
+    private static int emojiRunEnd(String text, int i, FontFace primary) {
+        int end = emojiEnd(text, i, primary);
+        while (end > i && end < text.length()) {
+            int next = emojiEnd(text, end, primary);
+            if (next <= end) {
+                break;
+            }
+            end = next;
+        }
+        return end;
+    }
+
     private static int emojiEnd(String text, int i, FontFace primary) {
         int end = ColorEmoji.clusterEnd(text, i);
         return end > i && !primary.covers(text.codePointAt(i)) ? end : i;
@@ -469,7 +481,7 @@ final class Typesetter {
         double at = x;
         int start = 0;
         for (int i = 0; i < text.length(); ) {
-            int end = emojiEnd(text, i, face);
+            int end = emojiRunEnd(text, i, face);
             if (end > i) {
                 at += drawRuns(canvas, look, face, text.substring(start, i), size, at, baseline, style);
                 at += canvas.emoji(text.substring(i, end), (float) at, (float) baseline, style,

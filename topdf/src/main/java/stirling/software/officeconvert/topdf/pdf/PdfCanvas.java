@@ -507,9 +507,12 @@ public final class PdfCanvas implements Closeable {
         PdfFonts.Embedded tofu = output.fonts().missing(face);
         FontFace boxFace = tofu.face();
         float natural = boxFace.glyphAdvance(0) * size / boxFace.unitsPerEm();
-        StringBuilder ops = new StringBuilder(64 + text.length() * 16);
-        StringBuilder hidden = new StringBuilder("0 Tc\n");
-        StringBuilder shown = new StringBuilder("0 Tc\n");
+        StringBuilder images = new StringBuilder();
+        StringBuilder run = new StringBuilder("0 Tc\n");
+        PdfFonts.Embedded current = null;
+        int mode = -1;
+        float stroke = 0;
+        boolean any = false;
         float pen = x;
         for (int i = 0; i < text.length(); ) {
             int end = ColorEmoji.clusterEnd(text, i);
@@ -519,6 +522,7 @@ public final class PdfCanvas implements Closeable {
             String cluster = text.substring(i, end);
             int base = cluster.codePointAt(0);
             float room = each * size * th + style.charSpacing() * cluster.codePointCount(0, cluster.length());
+            boolean seen = onPage(pen, pen + room, baseline - 2 * size, baseline + size);
             int[] glyphs = colour == null || mono && !joined(cluster) ? null : colour.glyphs(cluster);
             if (mono && glyphs != null && glyphs.length > 1) {
                 glyphs = null;
@@ -534,12 +538,49 @@ public final class PdfCanvas implements Closeable {
                 float own = cover.advance(base) * size / cover.unitsPerEm() * th;
                 float fit = own > room && own > 0 ? room / own : 1;
                 float at = pen + Math.max(0, room - own * fit) / 2;
-                text(first, at, baseline, style.face(cover).charSpacing(0).wordSpacing(0)
-                        .horizontalScale(style.horizontalScale() * fit));
+                PdfFonts.Embedded embedded = seen ? output.fonts().font(cover) : null;
+                FontFace drawn = embedded == null ? null : embedded.face();
+                int glyph = drawn != null && drawn.covers(base) ? drawn.glyph(base) : 0;
+                if (glyph > 0 && direct(drawn)) {
+                    float line = outline(drawn, size);
+                    int want = hiddenText ? 3 : line > 0 ? 2 : 0;
+                    if (want == 2 && line != stroke) {
+                        rgb(run, style.color()).append(" RG ");
+                        Numbers.append(run, line).append(" w 1 j\n");
+                        stroke = line;
+                    }
+                    if (want != mode) {
+                        run.append(want).append(" Tr\n");
+                        mode = want;
+                    }
+                    if (embedded != current) {
+                        font(run, embedded, size);
+                        current = embedded;
+                    }
+                    int code = drawn.encodedCodePoint(base);
+                    Numbers.append(run, th * fit * 100).append(" Tz ");
+                    matrix(run, 1, drawn.syntheticItalic() ? ITALIC_SKEW : 0, -1, at, baseline)
+                            .setLength(run.length() - 1);
+                    run.append(" [<");
+                    Numbers.hex(run, output.fonts().encoded(embedded, glyph, code), 4).append(">] TJ\n");
+                    output.fonts().used(embedded, new int[] {glyph}, new int[] {code}, 1);
+                    any = true;
+                } else if (seen) {
+                    queue(emojiOps(images, run, any, style), x, pen, baseline, size, text.substring(0, i), false);
+                    images.setLength(0);
+                    run.setLength(0);
+                    run.append("0 Tc\n");
+                    current = null;
+                    mode = -1;
+                    stroke = 0;
+                    any = false;
+                    text(first, at, baseline, style.face(cover).charSpacing(0).wordSpacing(0)
+                            .horizontalScale(style.horizontalScale() * fit));
+                }
                 carried = at + own * fit;
                 cluster = cluster.substring(first.length());
             } else if (glyphs != null) {
-                if (!hiddenText) {
+                if (!hiddenText && seen) {
                     float wide = colour.advance(glyphs) * size * th;
                     float fit = wide > room && wide > 0 ? room / wide : 1;
                     float drawn = pen + Math.max(0, room - wide * fit) / 2;
@@ -550,12 +591,12 @@ public final class PdfCanvas implements Closeable {
                             float w = bitmap.width() * size * th * fit;
                             float h = bitmap.height() * size * fit;
                             float top = baseline - bitmap.top() * size * fit;
-                            ops.append("q\n");
-                            Numbers.append(ops, w).append(" 0 0 ");
-                            Numbers.append(ops, -h).append(' ');
-                            Numbers.append(ops, drawn + bitmap.left() * size * th * fit).append(' ');
-                            Numbers.append(ops, top + h).append(" cm /");
-                            ops.append(resources().add(pic.image()).getName()).append(" Do\nQ\n");
+                            images.append("q\n");
+                            Numbers.append(images, w).append(" 0 0 ");
+                            Numbers.append(images, -h).append(' ');
+                            Numbers.append(images, drawn + bitmap.left() * size * th * fit).append(' ');
+                            Numbers.append(images, top + h).append(" cm /");
+                            images.append(resources().add(pic.image()).getName()).append(" Do\nQ\n");
                         }
                         drawn += colour.advance(g) * size * th * fit;
                     }
@@ -564,41 +605,74 @@ public final class PdfCanvas implements Closeable {
                 if (!hiddenText && !face.covers(base) && output.fonts().fallback(base, face) == null) {
                     output.fonts().uncovered(base);
                 }
-                float tz = Math.min(100, 100 * room / natural);
-                Numbers.append(shown, tz).append(" Tz ");
-                matrix(shown, 1, 0, -1, pen + (room - natural * tz / 100) / 2, baseline)
-                        .setLength(shown.length() - 1);
-                shown.append(" [<");
-                Numbers.hex(shown, output.fonts().missingCode(tofu, cluster), 4).append(">] TJ\n");
+                if (seen) {
+                    int want = hiddenText ? 3 : 0;
+                    if (want != mode) {
+                        run.append(want).append(" Tr\n");
+                        mode = want;
+                    }
+                    if (tofu != current) {
+                        font(run, tofu, size);
+                        current = tofu;
+                    }
+                    float tz = Math.min(100, 100 * room / natural);
+                    Numbers.append(run, tz).append(" Tz ");
+                    matrix(run, 1, 0, -1, pen + (room - natural * tz / 100) / 2, baseline)
+                            .setLength(run.length() - 1);
+                    run.append(" [<");
+                    Numbers.hex(run, output.fonts().missingCode(tofu, cluster), 4).append(">] TJ\n");
+                    any = true;
+                }
                 cluster = "";
             }
             float left = pen + room - carried;
-            if (!cluster.isEmpty() && left > 0 && natural > 0) {
-                Numbers.append(hidden, 100 * left / natural).append(" Tz ");
-                matrix(hidden, 1, 0, -1, carried, baseline).setLength(hidden.length() - 1);
-                hidden.append(" [<");
-                Numbers.hex(hidden, output.fonts().missingCode(tofu, cluster), 4).append(">] TJ\n");
+            if (seen && !cluster.isEmpty() && left > 0 && natural > 0) {
+                if (mode != 3) {
+                    run.append("3 Tr\n");
+                    mode = 3;
+                }
+                if (tofu != current) {
+                    font(run, tofu, size);
+                    current = tofu;
+                }
+                Numbers.append(run, 100 * left / natural).append(" Tz ");
+                matrix(run, 1, 0, -1, carried, baseline).setLength(run.length() - 1);
+                run.append(" [<");
+                Numbers.hex(run, output.fonts().missingCode(tofu, cluster), 4).append(">] TJ\n");
+                any = true;
             }
             pen += room;
             i = end;
         }
-        if (hidden.length() > 5) {
-            boolean was = hideText(true);
-            try {
-                begin(ops, style, 0);
-            } finally {
-                hideText(was);
-            }
-            font(ops, tofu, size);
-            ops.append(hidden).append("ET\nQ\n");
-        }
-        if (shown.length() > 5) {
-            begin(ops, style, 0);
-            font(ops, tofu, size);
-            ops.append(shown).append("ET\nQ\n");
-        }
-        queue(ops, x, pen, baseline, size, text, false);
+        queue(emojiOps(images, run, any, style), x, pen, baseline, size, text, false);
         return pen - x;
+    }
+
+    private StringBuilder emojiOps(StringBuilder images, StringBuilder run, boolean any, TextStyle style) {
+        StringBuilder ops = new StringBuilder(images.length() + run.length() + 32);
+        ops.append(images);
+        if (any) {
+            begin(ops, style, 0);
+            ops.append(run).append("ET\nQ\n");
+        }
+        return ops;
+    }
+
+    private static boolean direct(FontFace f) {
+        return !f.emulated() && !f.scaledPerGlyph() && f.glyphStretch() == 1 && !f.symbolStandIn();
+    }
+
+    private boolean onPage(float x0, float x1, float top, float bottom) {
+        if (form != null) {
+            return true;
+        }
+        double[] p = {x0, top, x1, top, x0, bottom, x1, bottom};
+        ctm.transform(p, 0, p, 0, 4);
+        double minX = Math.min(Math.min(p[0], p[2]), Math.min(p[4], p[6]));
+        double maxX = Math.max(Math.max(p[0], p[2]), Math.max(p[4], p[6]));
+        double minY = Math.min(Math.min(p[1], p[3]), Math.min(p[5], p[7]));
+        double maxY = Math.max(Math.max(p[1], p[3]), Math.max(p[5], p[7]));
+        return maxX >= 0 && minX <= width && maxY >= 0 && minY <= height;
     }
 
     private static boolean joined(String cluster) {
