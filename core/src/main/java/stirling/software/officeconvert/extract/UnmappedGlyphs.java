@@ -257,7 +257,10 @@ final class UnmappedGlyphs {
     private IntFunction<String> programText(PDFont font) {
         IntFunction<String> trueType = UnicodeRecovery.programText(font);
         if (trueType != null) {
-            return trueType;
+            return code -> {
+                String text = trueType.apply(code);
+                return text == null || UnicodeRecovery.privateUse(text) ? null : text;
+            };
         }
         IntFunction<String> ordered = orderedText(font);
         if (ordered != null) {
