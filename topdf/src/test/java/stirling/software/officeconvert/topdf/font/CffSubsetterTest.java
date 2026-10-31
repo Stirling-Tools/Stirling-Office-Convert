@@ -1,5 +1,6 @@
 package stirling.software.officeconvert.topdf.font;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 
@@ -10,9 +11,25 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
+import org.apache.fontbox.cff.CFFCIDFont;
+import org.apache.fontbox.cff.CFFParser;
+import org.apache.fontbox.cff.CFFType1Font;
+import org.apache.pdfbox.io.RandomAccessReadBuffer;
 import org.junit.jupiter.api.Test;
 
 class CffSubsetterTest {
+
+    @Test
+    void aNumberThatIsBothASubroutineAndACoordinateIsLeftAlone() throws IOException {
+        List<byte[]> globals = List.of(new byte[] {11}, new byte[] {(byte) (2 - 107 + 139), 11}, new byte[] {11});
+        byte[] cff = nameKeyed(globals, List.of(new byte[] {14}, new byte[] {(byte) (1 - 107 + 139), 29, 29, 14},
+                new byte[] {(byte) (1 - 107 + 139), 29, (byte) 139, 21, (byte) 239, (byte) 139, 5, 14}));
+        byte[] subset = CffSubsetter.subset(cff, "X", new int[] {0, 1, 2}, new int[] {0, 1, 2});
+        CFFType1Font source = (CFFType1Font) new CFFParser().parse(new RandomAccessReadBuffer(cff)).get(0);
+        CFFCIDFont out = (CFFCIDFont) new CFFParser().parse(new RandomAccessReadBuffer(subset)).get(0);
+        assertEquals(source.getType2CharString(2).getPath().getBounds2D(),
+                out.getType2CharString(2).getPath().getBounds2D());
+    }
 
     @Test
     void subroutinesThatCallEachOtherManyTimesAreScannedQuickly() {

@@ -86,6 +86,8 @@ final class CffSubsetter {
 
     private final BitSet usedGlobal = new BitSet();
 
+    private final BitSet operands = new BitSet();
+
     private boolean allGlobal;
 
     private boolean renumber = true;
@@ -166,6 +168,12 @@ final class CffSubsetter {
             new Scan(fds[fdOf[k]]).glyph(charStrings.start(glyphs[k]), charStrings.stop(glyphs[k]));
         }
 
+        for (int pos : calls.keySet()) {
+            if (operands.get(pos)) {
+                renumber = false;
+                break;
+            }
+        }
         List<Fd> kept = new ArrayList<>();
         int[] keptAt = new int[fds.length];
         Arrays.fill(keptAt, -1);
@@ -490,12 +498,12 @@ final class CffSubsetter {
             switch (b) {
                 case 1, 3, 18, 23 -> {
                     stems += top / 2;
-                    top = 0;
+                    clear();
                     return i + 1;
                 }
                 case 19, 20 -> {
                     stems += top / 2;
-                    top = 0;
+                    clear();
                     return i + 1 + (stems + 7) / 8;
                 }
                 case 10, 29 -> {
@@ -526,18 +534,28 @@ final class CffSubsetter {
                     if (top >= 4) {
                         throw new IllegalArgumentException("a glyph is built from accented parts (seac)");
                     }
+                    clear();
                     done = true;
                     return end;
                 }
                 case 12 -> {
-                    top = 0;
+                    clear();
                     return i + 2;
                 }
                 default -> {
-                    top = 0;
+                    clear();
                     return i + 1;
                 }
             }
+        }
+
+        private void clear() {
+            for (int k = 0; k < top; k++) {
+                if (at[k] >= 0) {
+                    operands.set(at[k]);
+                }
+            }
+            top = 0;
         }
 
         private void fail() {
