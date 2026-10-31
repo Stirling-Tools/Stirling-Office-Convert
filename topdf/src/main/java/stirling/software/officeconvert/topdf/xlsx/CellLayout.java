@@ -177,26 +177,14 @@ final class CellLayout {
                 i = end;
             }
         }
+        double[] sums = new double[clusters.size() + 1];
+        for (int k = 0; k < clusters.size(); k++) {
+            sums[k + 1] = sums[k] + t.width(clusters.get(k), fonts.get(k));
+        }
         List<List<TextRun>> out = new ArrayList<>();
         int start = 0;
         while (start < clusters.size()) {
-            int fits = start + 1;
-            int over = clusters.size() + 1;
-            for (int step = 1; fits + step < over; step *= 2) {
-                if (measure(t, piece(clusters, fonts, start, fits + step)) > width) {
-                    over = fits + step;
-                    break;
-                }
-                fits += step;
-            }
-            while (over - fits > 1) {
-                int mid = (fits + over) >>> 1;
-                if (measure(t, piece(clusters, fonts, start, mid)) > width) {
-                    over = mid;
-                } else {
-                    fits = mid;
-                }
-            }
+            int fits = longestFit(t, clusters, fonts, sums, start, width);
             out.add(piece(clusters, fonts, start, fits));
             start = fits;
         }
@@ -204,6 +192,40 @@ final class CellLayout {
             out.add(new ArrayList<>());
         }
         return out;
+    }
+
+    private static int longestFit(Measure t, List<String> clusters, List<FontSpec> fonts, double[] sums, int start,
+            double width) {
+        int fits = start + 1;
+        int over = clusters.size() + 1;
+        double ratio = 1;
+        for (int probes = 0; over - fits > 1; probes++) {
+            int guess = probes < 4 ? within(sums, start, width / ratio) : (fits + over) >>> 1;
+            int probe = Math.max(fits + 1, Math.min(over - 1, guess));
+            double measured = measure(t, piece(clusters, fonts, start, probe));
+            if (measured > width) {
+                over = probe;
+            } else {
+                fits = probe;
+            }
+            double summed = sums[probe] - sums[start];
+            ratio = summed > 0 && measured > 0 ? measured / summed : 1;
+        }
+        return fits;
+    }
+
+    private static int within(double[] sums, int start, double width) {
+        int lo = start;
+        int hi = sums.length - 1;
+        while (lo < hi) {
+            int mid = (lo + hi + 1) >>> 1;
+            if (sums[mid] - sums[start] > width) {
+                hi = mid - 1;
+            } else {
+                lo = mid;
+            }
+        }
+        return lo;
     }
 
     private static List<TextRun> piece(List<String> clusters, List<FontSpec> fonts, int from, int to) {
