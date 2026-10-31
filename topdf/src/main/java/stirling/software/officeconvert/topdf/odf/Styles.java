@@ -168,10 +168,6 @@ final class Styles {
         return out;
     }
 
-    Element defaultStyle(String family) {
-        return defaults.get(family);
-    }
-
     List<Element> chain(String family, String name, Scope scope) {
         List<Element> out = new ArrayList<>();
         Element s = style(family, name, scope);

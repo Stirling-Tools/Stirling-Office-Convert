@@ -14,8 +14,6 @@ public final class TextFormats {
 
     public static final Set<String> PLAIN_EXTENSIONS = Set.of("txt", "text", "log", "asc");
 
-    public static final Set<String> DELIMITED_EXTENSIONS = Set.of("csv", "tsv", "tab");
-
     private TextFormats() {}
 
     public static Kind kind(Path file) {

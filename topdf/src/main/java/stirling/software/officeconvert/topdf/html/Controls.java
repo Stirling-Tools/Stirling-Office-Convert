@@ -25,8 +25,6 @@ final class Controls {
 
     private static final Set<String> NOT_DRAWN = Set.of("hidden", "image");
 
-    private static final int LIGHT_GREY = 0xD3D3D3;
-
     private static final int PLACEHOLDER_GREY = 0x757575;
 
     private static final int SELECTED_GREY = 0xCECECE;

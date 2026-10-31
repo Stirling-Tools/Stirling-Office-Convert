@@ -648,29 +648,6 @@ final class Cascade {
         return true;
     }
 
-    // The last compound selector, with the insides of brackets and :not() and the like taken out
-    static String lastStep(String selector) {
-        String s = flat(selector);
-        int cut = Math.max(Math.max(s.lastIndexOf(' '), s.lastIndexOf('>')), Math.max(s.lastIndexOf('+'), s.lastIndexOf('~')));
-        return s.substring(cut + 1).strip();
-    }
-
-    private static String flat(String selector) {
-        StringBuilder flat = new StringBuilder();
-        int depth = 0;
-        for (int i = 0; i < selector.length(); i++) {
-            char c = selector.charAt(i);
-            if (c == '(' || c == '[') {
-                depth++;
-            } else if ((c == ')' || c == ']') && depth > 0) {
-                depth--;
-            } else if (depth == 0) {
-                flat.append(c);
-            }
-        }
-        return flat.toString().strip();
-    }
-
     private List<Hit> hits(Element e) {
         List<Hit> found = hits.get(e);
         if (found != null) {

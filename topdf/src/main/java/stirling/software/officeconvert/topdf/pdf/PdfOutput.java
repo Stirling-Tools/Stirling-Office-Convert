@@ -176,10 +176,6 @@ public final class PdfOutput implements Closeable {
         return t == null ? -1 : t.page();
     }
 
-    public boolean hasDestination(String name) {
-        return destinations.containsKey(name);
-    }
-
     public void outline(String title, int level, int pageIndex, float yTop) {
         Objects.requireNonNull(title, "title");
         checkWritable();

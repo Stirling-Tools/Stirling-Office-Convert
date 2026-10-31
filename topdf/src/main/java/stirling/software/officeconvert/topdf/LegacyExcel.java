@@ -28,8 +28,6 @@ final class LegacyExcel {
     static final String UNKNOWN = "The file is an Excel binary workbook in a form that is not supported; save it as"
             + " .xlsx";
 
-    static final String OLDER = "The file is an Excel 4.0 or older workbook, which is not supported; save it as .xlsx";
-
     private static final int MAX_STREAM_BYTES = 256 << 20;
 
     private LegacyExcel() {}
