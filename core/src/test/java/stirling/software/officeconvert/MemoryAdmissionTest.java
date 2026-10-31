@@ -28,6 +28,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import stirling.software.officeconvert.memory.Admission;
+import stirling.software.officeconvert.testing.Workers;
 
 class MemoryAdmissionTest {
 

@@ -1,5 +1,6 @@
 plugins {
     `java-library`
+    `java-test-fixtures`
     `maven-publish`
 }
 
@@ -12,6 +13,13 @@ dependencies {
     testImplementation(platform(libs.junit.bom))
     testImplementation(libs.junit.jupiter)
     testRuntimeOnly(libs.junit.platform.launcher)
+
+    testFixturesImplementation(platform(libs.junit.bom))
+    testFixturesImplementation(libs.junit.jupiter.api)
+}
+
+listOf("testFixturesApiElements", "testFixturesRuntimeElements").forEach {
+    (components["java"] as AdhocComponentWithVariants).withVariantsFromConfiguration(configurations[it]) { skip() }
 }
 
 base {

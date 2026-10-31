@@ -23,6 +23,8 @@ import org.apache.pdfbox.text.PDFTextStripper;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import stirling.software.officeconvert.testing.BrotliData;
+
 class BrotliOptimizeTest {
 
     @TempDir

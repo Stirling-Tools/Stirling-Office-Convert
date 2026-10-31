@@ -1,15 +1,15 @@
-package stirling.software.officeconvert.optimize;
+package stirling.software.officeconvert.testing;
 
 import java.io.ByteArrayOutputStream;
 
-final class BrotliData {
+public final class BrotliData {
 
-    static final byte[] HELLO = bytes(0x02, 0x06, 0x00, 0xbf, 0xc0, 0xd3, 0xce, 0x9f, 0xd6, 0x37, 0x32, 0x39, 0x32,
+    public static final byte[] HELLO = bytes(0x02, 0x06, 0x00, 0xbf, 0xc0, 0xd3, 0xce, 0x9f, 0xd6, 0x37, 0x32, 0x39, 0x32,
             0x98, 0x15, 0x69, 0xbf, 0x61, 0x44, 0xd1, 0x95, 0xfa, 0xfd, 0x44, 0x44, 0x94, 0x91, 0xea, 0x04, 0x1c, 0x9e,
             0xaa, 0x84, 0x1e, 0x89, 0x05, 0xdd, 0x64, 0x21, 0x89, 0xa0, 0x13, 0x37, 0x96, 0xd9, 0xa3, 0x7e, 0xef, 0xb7,
             0x43, 0x5e, 0x97, 0xa6);
 
-    static final String HELLO_TEXT = "BT /F1 18 Tf 40 200 Td (Hello Brotli world) Tj ET";
+    public static final String HELLO_TEXT = "BT /F1 18 Tf 40 200 Td (Hello Brotli world) Tj ET";
 
     private final ByteArrayOutputStream out = new ByteArrayOutputStream();
 
@@ -19,7 +19,7 @@ final class BrotliData {
 
     private BrotliData() {}
 
-    static byte[] stored(byte[] data) {
+    public static byte[] stored(byte[] data) {
         BrotliData b = new BrotliData();
         b.put(0, 1);
         for (int at = 0; at < data.length; at += 1 << 16) {
@@ -29,7 +29,7 @@ final class BrotliData {
         return b.finish();
     }
 
-    static byte[] zeros(long total) {
+    public static byte[] zeros(long total) {
         BrotliData b = new BrotliData();
         b.put(0, 1);
         b.storedBlock(new byte[1], 0, 1);

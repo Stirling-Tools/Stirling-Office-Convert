@@ -21,13 +21,13 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import stirling.software.officeconvert.memory.Admission;
+import stirling.software.officeconvert.testing.Workers;
 import stirling.software.officeconvert.topdf.OfficeToPdf.Format;
 import stirling.software.officeconvert.topdf.OfficeToPdf.Options;
 import stirling.software.officeconvert.topdf.io.OfficeZip;
 import stirling.software.officeconvert.topdf.pdf.PageSize;
 import stirling.software.officeconvert.topdf.testing.Fixtures;
 import stirling.software.officeconvert.topdf.testing.Retained;
-import stirling.software.officeconvert.topdf.testing.Workers;
 import stirling.software.officeconvert.topdf.testing.ZipBytes;
 
 class AdmissionTest {
