@@ -36,6 +36,7 @@ import stirling.software.officeconvert.topdf.pdf.Gradient;
 import stirling.software.officeconvert.topdf.pdf.PdfCanvas;
 import stirling.software.officeconvert.topdf.pdf.Stroke;
 import stirling.software.officeconvert.topdf.pdf.TextStyle;
+import stirling.software.officeconvert.topdf.pdf.Units;
 
 // A SmartArt graphic saved without its drawing, laid out from the data model in a few basic arrangements
 final class SmartArtLayout {
@@ -938,7 +939,7 @@ final class SmartArtLayout {
         try {
             var list = sheet.getTheme().getXmlObject().getThemeElements().getFmtScheme().getLnStyleLst();
             if (idx >= 1 && idx <= list.sizeOfLnArray() && list.getLnArray(idx - 1).isSetW()) {
-                return Math.max(0.25f, Math.min(20, list.getLnArray(idx - 1).getW() / 12_700f));
+                return Math.max(0.25f, Math.min(20, Units.emu(list.getLnArray(idx - 1).getW())));
             }
         } catch (RuntimeException e) {
             return 1;

@@ -39,6 +39,7 @@ import stirling.software.officeconvert.topdf.io.Dom;
 import stirling.software.officeconvert.topdf.pdf.Fill;
 import stirling.software.officeconvert.topdf.pdf.Gradient;
 import stirling.software.officeconvert.topdf.pdf.Stroke;
+import stirling.software.officeconvert.topdf.pdf.Units;
 
 final class TableStyles {
 
@@ -270,7 +271,7 @@ final class TableStyles {
         if (c == null) {
             return null;
         }
-        float w = ln.isSetW() ? ln.getW() / 12_700f : 1;
+        float w = ln.isSetW() ? Units.emu(ln.getW()) : 1;
         if (!(w > 0)) {
             return null;
         }

@@ -23,6 +23,7 @@ import org.openxmlformats.schemas.presentationml.x2006.main.CTPicture;
 import org.openxmlformats.schemas.presentationml.x2006.main.CTPlaceholder;
 import org.openxmlformats.schemas.presentationml.x2006.main.CTShape;
 
+import stirling.software.officeconvert.topdf.dml.Emu;
 import stirling.software.officeconvert.topdf.io.SafeImageRenderer;
 
 final class Geometry {
@@ -33,8 +34,6 @@ final class Geometry {
             return fill != null && fill != PaintModifier.NONE;
         }
     }
-
-    private static final double EMU_PER_POINT = 12_700;
 
     private Geometry() {}
 
@@ -158,14 +157,14 @@ final class Geometry {
         double sx;
         double sy;
         if (w == -1) {
-            w = box.getWidth() * EMU_PER_POINT;
-            sx = 1 / EMU_PER_POINT;
+            w = box.getWidth() * Emu.PER_POINT;
+            sx = 1 / Emu.PER_POINT;
         } else {
             sx = box.getWidth() == 0 || w == 0 ? 1 : box.getWidth() / w;
         }
         if (h == -1) {
-            h = box.getHeight() * EMU_PER_POINT;
-            sy = 1 / EMU_PER_POINT;
+            h = box.getHeight() * Emu.PER_POINT;
+            sy = 1 / Emu.PER_POINT;
         } else {
             sy = box.getHeight() == 0 || h == 0 ? 1 : box.getHeight() / h;
         }

@@ -31,10 +31,12 @@ import org.openxmlformats.schemas.drawingml.x2006.main.STShapeType;
 import org.openxmlformats.schemas.presentationml.x2006.main.CTPicture;
 import org.openxmlformats.schemas.presentationml.x2006.main.CTShape;
 
+import stirling.software.officeconvert.topdf.dml.Emu;
 import stirling.software.officeconvert.topdf.io.DecodedPicture;
 import stirling.software.officeconvert.topdf.pdf.Crop;
 import stirling.software.officeconvert.topdf.pdf.PdfCanvas;
 import stirling.software.officeconvert.topdf.pdf.Stroke;
+import stirling.software.officeconvert.topdf.pdf.Units;
 
 final class PicturePainter {
 
@@ -136,7 +138,7 @@ final class PicturePainter {
         float stPos = number(r, "stPos", 0) / 100_000f;
         float endA = number(r, "endA", 0) / 100_000f;
         float endPos = number(r, "endPos", 100_000) / 100_000f;
-        double dist = number(r, "dist", 0) / 12_700.0;
+        double dist = number(r, "dist", 0) / Emu.PER_POINT;
         double dir = Math.toRadians(number(r, "dir", 5_400_000) / 60_000.0);
         Crop c = BlipFills.crop(fill.getSrcRect());
         DecodedPicture img = deck.pictures().reflection(relsPart, fill.getBlip().getEmbed(),
@@ -174,9 +176,9 @@ final class PicturePainter {
             }
             return;
         }
-        Rectangle2D anchor = new Rectangle2D.Double(POIXMLUnits.parseLength(xfrm.getOff().xgetX()) / 12_700.0,
-                POIXMLUnits.parseLength(xfrm.getOff().xgetY()) / 12_700.0, xfrm.getExt().getCx() / 12_700.0,
-                xfrm.getExt().getCy() / 12_700.0);
+        Rectangle2D anchor = new Rectangle2D.Double(POIXMLUnits.parseLength(xfrm.getOff().xgetX()) / Emu.PER_POINT,
+                POIXMLUnits.parseLength(xfrm.getOff().xgetY()) / Emu.PER_POINT, xfrm.getExt().getCx() / Emu.PER_POINT,
+                xfrm.getExt().getCy() / Emu.PER_POINT);
         paint(anchor, xfrm.getRot() / 60_000.0, xfrm.getFlipH(), xfrm.getFlipV(), fill, space);
     }
 
@@ -235,7 +237,7 @@ final class PicturePainter {
                 return List.of();
             }
             String v = c.getAttributeText(new QName("", "rad"));
-            rad = v == null ? 0 : Long.parseLong(v.strip()) / 12_700f;
+            rad = v == null ? 0 : Units.emu(Long.parseLong(v.strip()));
         } catch (RuntimeException e) {
             return List.of();
         }

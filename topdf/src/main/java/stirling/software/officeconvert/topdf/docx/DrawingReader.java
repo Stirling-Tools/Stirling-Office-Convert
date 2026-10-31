@@ -11,6 +11,7 @@ import stirling.software.officeconvert.topdf.io.Relationship;
 import stirling.software.officeconvert.topdf.pdf.Crop;
 import stirling.software.officeconvert.topdf.pdf.Gradient;
 import stirling.software.officeconvert.topdf.pdf.Stroke;
+import stirling.software.officeconvert.topdf.pdf.Units;
 
 final class DrawingReader {
 
@@ -708,7 +709,7 @@ final class DrawingReader {
 
     private Drawing.Graphic canvas(XEl c, float w, float h) {
         List<Drawing.Child> children = new ArrayList<>();
-        Frame f = new Frame(0, 0, 1f / 12700f, 1f / 12700f, 0, 0);
+        Frame f = new Frame(0, 0, 1f / Units.EMU_PER_POINT, 1f / Units.EMU_PER_POINT, 0, 0);
         collectChildren(c, f, children, 0);
         return new Drawing.Group(children, 0, false, false, w, h);
     }
@@ -725,7 +726,7 @@ final class DrawingReader {
 
     private static Frame frame(XEl xfrm, float w, float h) {
         if (xfrm == null) {
-            return new Frame(0, 0, 1f / 12700f, 1f / 12700f, 0, 0);
+            return new Frame(0, 0, 1f / Units.EMU_PER_POINT, 1f / Units.EMU_PER_POINT, 0, 0);
         }
         XEl chOff = xfrm.child("a:chOff");
         XEl chExt = xfrm.child("a:chExt");
@@ -734,10 +735,10 @@ final class DrawingReader {
         float cy = chOff == null ? 0 : Ooxml.longValue(chOff.attr("y"), 0);
         float cw = chExt == null ? 0 : Ooxml.longValue(chExt.attr("cx"), 0);
         float chh = chExt == null ? 0 : Ooxml.longValue(chExt.attr("cy"), 0);
-        float ew = ext == null ? w * 12700 : Ooxml.longValue(ext.attr("cx"), 0);
-        float eh = ext == null ? h * 12700 : Ooxml.longValue(ext.attr("cy"), 0);
-        float sx = cw > 0 ? w / cw : (ew > 0 ? w / ew : 1f / 12700f);
-        float sy = chh > 0 ? h / chh : (eh > 0 ? h / eh : 1f / 12700f);
+        float ew = ext == null ? w * Units.EMU_PER_POINT : Ooxml.longValue(ext.attr("cx"), 0);
+        float eh = ext == null ? h * Units.EMU_PER_POINT : Ooxml.longValue(ext.attr("cy"), 0);
+        float sx = cw > 0 ? w / cw : (ew > 0 ? w / ew : 1f / Units.EMU_PER_POINT);
+        float sy = chh > 0 ? h / chh : (eh > 0 ? h / eh : 1f / Units.EMU_PER_POINT);
         return new Frame(cx, cy, sx, sy, 0, 0);
     }
 

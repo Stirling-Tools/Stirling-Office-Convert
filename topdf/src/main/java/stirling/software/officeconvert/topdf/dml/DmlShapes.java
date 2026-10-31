@@ -27,8 +27,6 @@ public final class DmlShapes {
     /** One path of a shape: its outline in page coordinates and whether it is filled and stroked. */
     public record Outline(Shape shape, boolean filled, boolean stroked) {}
 
-    private static final double EMU = 12_700;
-
     private DmlShapes() {}
 
     /** The outlines of a preset shape in the box, with {@code a:avLst} values by guide name; null if unknown. */
@@ -65,14 +63,14 @@ public final class DmlShapes {
         double sx;
         double sy;
         if (w == -1) {
-            w = box.getWidth() * EMU;
-            sx = 1 / EMU;
+            w = box.getWidth() * Emu.PER_POINT;
+            sx = 1 / Emu.PER_POINT;
         } else {
             sx = box.getWidth() == 0 || w == 0 ? 1 : box.getWidth() / w;
         }
         if (h == -1) {
-            h = box.getHeight() * EMU;
-            sy = 1 / EMU;
+            h = box.getHeight() * Emu.PER_POINT;
+            sy = 1 / Emu.PER_POINT;
         } else {
             sy = box.getHeight() == 0 || h == 0 ? 1 : box.getHeight() / h;
         }
@@ -109,8 +107,8 @@ public final class DmlShapes {
         for (Element path : Dom.kids(pathList, "path")) {
             double pw = number(path, "w", 0);
             double ph = number(path, "h", 0);
-            double sx = pw > 0 ? box.getWidth() / pw : 1 / EMU;
-            double sy = ph > 0 ? box.getHeight() / ph : 1 / EMU;
+            double sx = pw > 0 ? box.getWidth() / pw : 1 / Emu.PER_POINT;
+            double sy = ph > 0 ? box.getHeight() / ph : 1 / Emu.PER_POINT;
             Path2D.Double p = new Path2D.Double();
             Point2D.Double at = new Point2D.Double(0, 0);
             boolean started = false;

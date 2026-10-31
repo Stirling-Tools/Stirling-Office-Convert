@@ -14,6 +14,7 @@ import java.util.List;
 import java.util.Map;
 
 import stirling.software.officeconvert.topdf.dml.DmlShapes;
+import stirling.software.officeconvert.topdf.pdf.Units;
 
 final class Geometry {
 
@@ -209,8 +210,8 @@ final class Geometry {
         for (XEl path : list.children("a:path")) {
             float pw = Ooxml.longValue(path.attr("w"), 0);
             float ph = Ooxml.longValue(path.attr("h"), 0);
-            float sx = pw > 0 ? w / pw : 1f / 12700f;
-            float sy = ph > 0 ? h / ph : 1f / 12700f;
+            float sx = pw > 0 ? w / pw : 1f / Units.EMU_PER_POINT;
+            float sy = ph > 0 ? h / ph : 1f / Units.EMU_PER_POINT;
             Point2D.Float cur = new Point2D.Float(0, 0);
             for (XEl c : path.kids) {
                 if (++commands > 20_000) {

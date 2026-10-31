@@ -3,9 +3,9 @@ package stirling.software.officeconvert.topdf.doc6;
 import java.util.Locale;
 import java.util.function.Supplier;
 
-final class Shape6 {
+import stirling.software.officeconvert.topdf.dml.Emu;
 
-    private static final long EMU_PER_TWIP = 635;
+final class Shape6 {
 
     private static final int MAX_POINTS = 4096;
 
@@ -42,19 +42,19 @@ final class Shape6 {
     }
 
     long left() {
-        return xa * EMU_PER_TWIP;
+        return xa * Emu.PER_TWIP;
     }
 
     long top() {
-        return ya * EMU_PER_TWIP;
+        return ya * Emu.PER_TWIP;
     }
 
     long width() {
-        return Math.max(1, dxa) * EMU_PER_TWIP;
+        return Math.max(1, dxa) * Emu.PER_TWIP;
     }
 
     long height() {
-        return Math.max(1, dya) * EMU_PER_TWIP;
+        return Math.max(1, dya) * Emu.PER_TWIP;
     }
 
     String xml(Supplier<String> box) {
@@ -127,7 +127,7 @@ final class Shape6 {
     }
 
     private String pt(double x, double y) {
-        return "<a:pt x=\"" + Math.round(x * EMU_PER_TWIP) + "\" y=\"" + Math.round(y * EMU_PER_TWIP) + "\"/>";
+        return "<a:pt x=\"" + Math.round(x * Emu.PER_TWIP) + "\" y=\"" + Math.round(y * Emu.PER_TWIP) + "\"/>";
     }
 
     private String custom(String path, String fill, String line) {
@@ -144,7 +144,7 @@ final class Shape6 {
                 .append(height()).append("\"/></a:xfrm><a:prstGeom prst=\"").append(preset)
                 .append("\"><a:avLst/></a:prstGeom>").append(fill).append(stroke(0, 0, 0)).append("</wps:spPr>");
         if (box) {
-            long inset = Math.max(0, (short) fib.u16(at + 38)) * EMU_PER_TWIP;
+            long inset = Math.max(0, (short) fib.u16(at + 38)) * Emu.PER_TWIP;
             b.append("<wps:txbx><w:txbxContent>").append(text.isEmpty() ? "<w:p/>" : text)
                     .append("</w:txbxContent></wps:txbx><wps:bodyPr lIns=\"").append(inset).append("\" tIns=\"")
                     .append(inset).append("\" rIns=\"").append(inset).append("\" bIns=\"").append(inset)
@@ -176,7 +176,7 @@ final class Shape6 {
         if (style == 5) {
             return "<a:ln><a:noFill/></a:ln>";
         }
-        long w = Math.max(3175, fib.u16(at + off + 4) * EMU_PER_TWIP);
+        long w = Math.max(3175, fib.u16(at + off + 4) * Emu.PER_TWIP);
         StringBuilder b = new StringBuilder("<a:ln w=\"").append(w).append("\"><a:solidFill><a:srgbClr val=\"")
                 .append(color(fib.i32(at + off))).append("\"/></a:solidFill>");
         String dash = switch (style) {

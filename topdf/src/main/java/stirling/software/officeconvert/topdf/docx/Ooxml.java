@@ -2,6 +2,8 @@ package stirling.software.officeconvert.topdf.docx;
 
 import java.util.Locale;
 
+import stirling.software.officeconvert.topdf.pdf.Units;
+
 final class Ooxml {
 
     private Ooxml() {}
@@ -107,7 +109,7 @@ final class Ooxml {
             return universal;
         }
         Long l = longValue(v);
-        return l == null ? null : clamp(l / 12700f);
+        return l == null ? null : clamp(Units.emu(l));
     }
 
     static float emu(String v, float fallback) {

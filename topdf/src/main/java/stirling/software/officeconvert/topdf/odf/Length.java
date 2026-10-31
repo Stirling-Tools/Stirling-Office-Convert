@@ -2,6 +2,8 @@ package stirling.software.officeconvert.topdf.odf;
 
 import java.util.Locale;
 
+import stirling.software.officeconvert.topdf.dml.Emu;
+
 final class Length {
 
     private Length() {}
@@ -63,7 +65,7 @@ final class Length {
     }
 
     static long emu(double pt) {
-        return Math.round(clamp(pt) * 12700);
+        return Math.round(clamp(pt) * Emu.PER_POINT);
     }
 
     static long halfPoints(double pt) {

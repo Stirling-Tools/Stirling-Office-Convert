@@ -13,6 +13,8 @@ import org.apache.poi.ddf.AbstractEscherOptRecord;
 import org.apache.poi.hwpf.model.FSPA;
 import org.apache.poi.hwpf.usermodel.OfficeDrawing;
 
+import stirling.software.officeconvert.topdf.dml.Emu;
+
 final class Shapes {
 
     static final int MAX_TEXTBOX_DEPTH = 4;
@@ -37,8 +39,8 @@ final class Shapes {
         if (rec == null) {
             return null;
         }
-        long cx = Math.max(1, (long) d.getRectangleRight() - d.getRectangleLeft()) * Drawings.EMU_PER_TWIP;
-        long cy = Math.max(1, (long) d.getRectangleBottom() - d.getRectangleTop()) * Drawings.EMU_PER_TWIP;
+        long cx = Math.max(1, (long) d.getRectangleRight() - d.getRectangleLeft()) * Emu.PER_TWIP;
+        long cy = Math.max(1, (long) d.getRectangleBottom() - d.getRectangleTop()) * Emu.PER_TWIP;
         boolean wraps = fspa != null && fspa.getWr() != 3;
         boolean group = (rec.getFlags() & 0x01) != 0;
         long[] box = group ? new long[] {0, 0, cx, cy} : unrotated(sp, 0, 0, cx, cy);
@@ -246,7 +248,7 @@ final class Shapes {
         if (h != null) {
             b.append("<wp:align>").append(h).append("</wp:align>");
         } else {
-            b.append("<wp:posOffset>").append((long) d.getRectangleLeft() * Drawings.EMU_PER_TWIP + shiftX)
+            b.append("<wp:posOffset>").append((long) d.getRectangleLeft() * Emu.PER_TWIP + shiftX)
                     .append("</wp:posOffset>");
         }
         b.append("</wp:positionH><wp:positionV relativeFrom=\"").append(verticalFrom(sp, fspa)).append("\">");
@@ -254,7 +256,7 @@ final class Shapes {
         if (v != null) {
             b.append("<wp:align>").append(v).append("</wp:align>");
         } else {
-            b.append("<wp:posOffset>").append((long) d.getRectangleTop() * Drawings.EMU_PER_TWIP + shiftY)
+            b.append("<wp:posOffset>").append((long) d.getRectangleTop() * Emu.PER_TWIP + shiftY)
                     .append("</wp:posOffset>");
         }
         b.append("</wp:positionV><wp:extent cx=\"").append(cx).append("\" cy=\"").append(cy)

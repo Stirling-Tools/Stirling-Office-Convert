@@ -13,6 +13,7 @@ import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 
 import stirling.software.officeconvert.topdf.RenderJob;
+import stirling.software.officeconvert.topdf.dml.Emu;
 import stirling.software.officeconvert.topdf.io.ActiveContent;
 import stirling.software.officeconvert.topdf.io.Dom;
 import stirling.software.officeconvert.topdf.io.OfficeZip;
@@ -20,8 +21,6 @@ import stirling.software.officeconvert.topdf.io.Relationship;
 import stirling.software.officeconvert.topdf.io.Relationships;
 
 final class Drawings {
-
-    static final double EMU = 12700.0;
 
     record Anchor(int col, double colOff, int row, double rowOff) {}
 
@@ -134,15 +133,15 @@ final class Drawings {
                 } else if (kind.equals("oneCellAnchor")) {
                     from = anchor(Dom.kid(anchor, "from"));
                     Element ext = Dom.kid(anchor, "ext");
-                    aw = Dml.number(ext, "cx", 0) / EMU;
-                    ah = Dml.number(ext, "cy", 0) / EMU;
+                    aw = Dml.number(ext, "cx", 0) / Emu.PER_POINT;
+                    ah = Dml.number(ext, "cy", 0) / Emu.PER_POINT;
                 } else if (kind.equals("absoluteAnchor")) {
                     Element pos = Dom.kid(anchor, "pos");
                     Element ext = Dom.kid(anchor, "ext");
-                    ax = Dml.number(pos, "x", 0) / EMU;
-                    ay = Dml.number(pos, "y", 0) / EMU;
-                    aw = Dml.number(ext, "cx", 0) / EMU;
-                    ah = Dml.number(ext, "cy", 0) / EMU;
+                    ax = Dml.number(pos, "x", 0) / Emu.PER_POINT;
+                    ay = Dml.number(pos, "y", 0) / Emu.PER_POINT;
+                    aw = Dml.number(ext, "cx", 0) / Emu.PER_POINT;
+                    ah = Dml.number(ext, "cy", 0) / Emu.PER_POINT;
                 } else {
                     continue;
                 }
@@ -166,8 +165,8 @@ final class Drawings {
             }
             int col = (int) Math.max(0, Math.min(Columns.MAX - 1, Dml.text(Dom.kid(e, "col"), 0)));
             int row = (int) Math.max(0, Math.min(Grid.MAX_ROWS - 1, Dml.text(Dom.kid(e, "row"), 0)));
-            double co = Dml.text(Dom.kid(e, "colOff"), 0) / EMU;
-            double ro = Dml.text(Dom.kid(e, "rowOff"), 0) / EMU;
+            double co = Dml.text(Dom.kid(e, "colOff"), 0) / Emu.PER_POINT;
+            double ro = Dml.text(Dom.kid(e, "rowOff"), 0) / Emu.PER_POINT;
             return new Anchor(col, co, row, ro);
         }
 
@@ -334,7 +333,7 @@ final class Drawings {
             double width = 0.75;
             Element ln = Dom.kid(spPr, "ln");
             if (ln != null && Dml.attr(ln, "w") != null) {
-                width = Dml.number(ln, "w", 9525) / EMU;
+                width = Dml.number(ln, "w", 9525) / Emu.PER_POINT;
             }
             if (ln == null || Dom.kid(ln, "noFill") == null) {
                 Element solid = ln == null ? null : Dom.kid(ln, "solidFill");
@@ -365,10 +364,10 @@ final class Drawings {
             if (tx != null) {
                 Element body = Dom.kid(tx, "bodyPr");
                 if (body != null) {
-                    insets[0] = Dml.number(body, "lIns", 91440) / EMU;
-                    insets[1] = Dml.number(body, "tIns", 45720) / EMU;
-                    insets[2] = Dml.number(body, "rIns", 91440) / EMU;
-                    insets[3] = Dml.number(body, "bIns", 45720) / EMU;
+                    insets[0] = Dml.number(body, "lIns", 91440) / Emu.PER_POINT;
+                    insets[1] = Dml.number(body, "tIns", 45720) / Emu.PER_POINT;
+                    insets[2] = Dml.number(body, "rIns", 91440) / Emu.PER_POINT;
+                    insets[3] = Dml.number(body, "bIns", 45720) / Emu.PER_POINT;
                     String a = Dml.attr(body, "anchor");
                     anchor = a == null ? "t" : a;
                 }

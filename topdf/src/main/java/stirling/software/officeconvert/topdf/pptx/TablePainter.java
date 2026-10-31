@@ -13,6 +13,7 @@ import org.openxmlformats.schemas.drawingml.x2006.main.CTTableCellProperties;
 
 import stirling.software.officeconvert.topdf.pdf.Fill;
 import stirling.software.officeconvert.topdf.pdf.PdfCanvas;
+import stirling.software.officeconvert.topdf.pdf.Units;
 
 final class TablePainter {
 
@@ -188,10 +189,10 @@ final class TablePainter {
 
     private static float emu(Object v) {
         if (v instanceof Number n) {
-            return n.longValue() / 12_700f;
+            return Units.emu(n.longValue());
         }
         try {
-            return Long.parseLong(String.valueOf(v)) / 12_700f;
+            return Units.emu(Long.parseLong(String.valueOf(v)));
         } catch (NumberFormatException e) {
             return 0;
         }

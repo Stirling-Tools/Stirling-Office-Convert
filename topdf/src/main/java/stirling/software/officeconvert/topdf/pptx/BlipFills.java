@@ -21,6 +21,7 @@ import org.openxmlformats.schemas.drawingml.x2006.main.CTBlipFillProperties;
 import org.openxmlformats.schemas.drawingml.x2006.main.CTRelativeRect;
 import org.openxmlformats.schemas.drawingml.x2006.main.CTTileInfoProperties;
 
+import stirling.software.officeconvert.topdf.dml.Emu;
 import stirling.software.officeconvert.topdf.io.DecodedPicture;
 import stirling.software.officeconvert.topdf.io.PictureDecoder;
 import stirling.software.officeconvert.topdf.pdf.Crop;
@@ -301,8 +302,8 @@ final class BlipFills {
         if (!(tw > 0.5 && th > 0.5)) {
             return false;
         }
-        double ox = tile.isSetTx() ? POIXMLUnits.parseLength(tile.xgetTx()) / 12_700.0 : 0;
-        double oy = tile.isSetTy() ? POIXMLUnits.parseLength(tile.xgetTy()) / 12_700.0 : 0;
+        double ox = tile.isSetTx() ? POIXMLUnits.parseLength(tile.xgetTx()) / Emu.PER_POINT : 0;
+        double oy = tile.isSetTy() ? POIXMLUnits.parseLength(tile.xgetTy()) / Emu.PER_POINT : 0;
         long cols = (long) Math.ceil(box.getWidth() / tw) + 1;
         long rows = (long) Math.ceil(box.getHeight() / th) + 1;
         if (cols * rows > MAX_TILES) {
