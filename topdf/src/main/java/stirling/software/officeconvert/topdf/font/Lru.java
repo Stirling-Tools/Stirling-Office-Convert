@@ -24,6 +24,10 @@ final class Lru<K, V> {
         return map.get(key);
     }
 
+    synchronized void put(K key, V value) {
+        map.put(key, value);
+    }
+
     V putIfAbsent(K key, V value) {
         synchronized (this) {
             V old = map.get(key);
