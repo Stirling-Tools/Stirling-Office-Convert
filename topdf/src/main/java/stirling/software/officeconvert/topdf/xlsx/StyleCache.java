@@ -1,6 +1,7 @@
 package stirling.software.officeconvert.topdf.xlsx;
 
 import java.awt.Color;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -42,6 +43,10 @@ final class StyleCache {
     private final Map<Integer, Boolean> ruled = new HashMap<>();
 
     private final CellFormat fallback;
+
+    private CellFormat[] byPosition = new CellFormat[0];
+
+    static final int MAX_REMEMBERED = 1 << 16;
 
     StyleCache(StylesTable styles, ExcelColors colors) {
         this.styles = styles;
@@ -85,6 +90,25 @@ final class StyleCache {
         if (styles == null || index < 0 || index >= styles.getNumCellStyles()) {
             return fallback;
         }
+        if (index >= MAX_REMEMBERED) {
+            return lookUp(index);
+        }
+        if (index >= byPosition.length) {
+            byPosition = Arrays.copyOf(byPosition, Math.min(MAX_REMEMBERED, Math.max(index + 1, byPosition.length * 2)));
+        }
+        CellFormat f = byPosition[index];
+        if (f == null) {
+            f = lookUp(index);
+            byPosition[index] = f;
+        }
+        return f;
+    }
+
+    int remembered() {
+        return byPosition.length;
+    }
+
+    private CellFormat lookUp(int index) {
         try {
             return of(styles.getStyleAt(index));
         } catch (RuntimeException e) {

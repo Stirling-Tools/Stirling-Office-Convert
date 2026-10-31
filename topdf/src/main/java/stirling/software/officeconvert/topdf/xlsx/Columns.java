@@ -17,6 +17,8 @@ final class Columns {
 
     private final TreeMap<Integer, Span> spans = new TreeMap<>();
 
+    private final Span[] byColumn;
+
     private final double defaultChars;
 
     private final double defaultWidth;
@@ -47,6 +49,23 @@ final class Columns {
                 spans.put(min, new Span(max, ch, hidden, style));
             }
         }
+        byColumn = byColumn(spans);
+    }
+
+    private static Span[] byColumn(TreeMap<Integer, Span> spans) {
+        int end = 0;
+        for (Span s : spans.values()) {
+            end = Math.max(end, s.last + 1);
+        }
+        Span[] table = new Span[end];
+        for (Map.Entry<Integer, Span> e : spans.entrySet()) {
+            Integer next = spans.higherKey(e.getKey());
+            int stop = Math.min(next == null ? end : next, e.getValue().last + 1);
+            for (int col = e.getKey(); col < stop; col++) {
+                table[col] = e.getValue();
+            }
+        }
+        return table;
     }
 
     double width(int col) {
@@ -77,10 +96,6 @@ final class Columns {
     }
 
     private Span span(int col) {
-        Map.Entry<Integer, Span> e = spans.floorEntry(col);
-        if (e == null || e.getValue().last < col) {
-            return null;
-        }
-        return e.getValue();
+        return col >= 0 && col < byColumn.length ? byColumn[col] : null;
     }
 }
