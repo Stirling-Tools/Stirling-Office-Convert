@@ -647,6 +647,136 @@ class HtmlLayoutTest {
         assertTrue(month.right() > month.left());
     }
 
+    @Test
+    void anAutoLeftMarginBeatsCentringAndAPixelMarginMovesALayoutTable() throws IOException {
+        Laid l = lay("""
+                <!doctype html><html><head><style>body{margin:0}</style></head><body>
+                <table width="200" cellpadding="0" cellspacing="0"><tr><td>Plain</td></tr></table>
+                <div align="center"><table width="200" cellpadding="0" cellspacing="0" style="margin-left:auto">
+                <tr><td>Righted</td></tr></table></div>
+                <table width="200" cellpadding="0" cellspacing="0" style="margin-left:80px"><tr><td>Indented</td></tr>
+                </table><table align="center" width="200" cellpadding="0" cellspacing="0" style="margin:0">
+                <tr><td>Lefted</td></tr></table><table align="right" width="200" cellpadding="0" cellspacing="0"
+                style="margin:0"><tr><td>Floated</td></tr></table></body></html>""");
+        float start = l.word("Plain").left();
+        assertEquals(l.pageWidth() - start - 150, l.word("Righted").left(), 4f, l.words().toString());
+        assertEquals(start + 60, l.word("Indented").left(), 3f, l.words().toString());
+        assertEquals(start, l.word("Lefted").left(), 2f, l.words().toString());
+        assertEquals(l.word("Righted").left(), l.word("Floated").left(), 2f, l.words().toString());
+    }
+
+    @Test
+    void cellpaddingInsetsAStackedCellInsideItsBackground() throws IOException {
+        Laid l = lay("""
+                <!doctype html><html><head><style>body{margin:0}</style></head><body>
+                <table width="200" cellpadding="0" cellspacing="0"><tr><td>Plain</td></tr></table>
+                <table width="200" cellpadding="20" cellspacing="0"><tr><td bgcolor="#00ff00">Padded</td></tr></table>
+                </body></html>""");
+        Word padded = l.word("Padded");
+        assertEquals(l.word("Plain").left() + 15, padded.left(), 2f, l.words().toString());
+        int rgb = l.first().getRGB(Math.round(padded.left()) - 10, Math.round(padded.top()) - 8) & 0xFFFFFF;
+        assertEquals(0x00FF00, rgb, Integer.toHexString(rgb));
+    }
+
+    @Test
+    void theBodyBoxKeepsItsColourOverTheRootColour() throws IOException {
+        Laid l = lay("""
+                <!doctype html><html style="background:#0000ff"><body style="background:#ff0000">
+                <p>Hi</p></body></html>""");
+        Word hi = l.word("Hi");
+        assertEquals(0xFF0000, l.first().getRGB(Math.round(hi.right()) + 20, Math.round(hi.top()) - 4) & 0xFFFFFF);
+        assertEquals(0x0000FF, l.first().getRGB(l.first().getWidth() / 2, l.first().getHeight() / 2) & 0xFFFFFF);
+    }
+
+    @Test
+    void thePageColourReachesThePageMarginsWhateverTheBodyMargin() throws IOException {
+        Laid l = lay("<html><body bgcolor=\"#ffff00\" style=\"margin:40px\"><p>Hi</p></body></html>");
+        int x = Math.round(HtmlDocument.PAGE_MARGIN) + 3;
+        assertEquals(0xFFFF00, l.first().getRGB(x, l.first().getHeight() / 2) & 0xFFFFFF);
+    }
+
+    @Test
+    void aSizedBlockUnderCentreAlignmentIsCentred() throws IOException {
+        Laid l = lay("""
+                <!doctype html><html><head><style>body{margin:0}</style></head><body>
+                <center><div style="width:200px;text-align:left">Middle</div></center>
+                <div align="right"><div style="width:200px;text-align:left">Righted</div></div></body></html>""");
+        assertEquals((l.pageWidth() - 150) / 2, l.word("Middle").left(), 3f, l.words().toString());
+        assertTrue(l.word("Righted").left() > l.pageWidth() / 2, l.words().toString());
+    }
+
+    private static int[] blueBox(Laid l, Word w) {
+        int top = Integer.MAX_VALUE;
+        int bottom = -1;
+        int left = Integer.MAX_VALUE;
+        int right = -1;
+        int y0 = Math.max(0, Math.round(w.top()) - 120);
+        int y1 = Math.min(l.first().getHeight(), Math.round(w.top()) + 120);
+        for (int y = y0; y < y1; y++) {
+            for (int x = 0; x < l.first().getWidth(); x++) {
+                if ((l.first().getRGB(x, y) & 0xFFFFFF) == 0x0000FF) {
+                    top = Math.min(top, y);
+                    bottom = Math.max(bottom, y);
+                    left = Math.min(left, x);
+                    right = Math.max(right, x);
+                }
+            }
+        }
+        return new int[] {left, top, right, bottom};
+    }
+
+    @Test
+    void aLinkButtonWithOnlyAHeightHasItsTextAtTheTop() throws IOException {
+        Laid l = lay("""
+                <!doctype html><html><body><a href="https://example.com" style="display:inline-block;width:200px;
+                height:100px;background:#0000ff;color:#ffffff">Top</a></body></html>""");
+        int[] box = blueBox(l, l.word("Top"));
+        assertEquals(75, box[3] - box[1] + 1, 3);
+        assertTrue(l.word("Top").top() - box[1] < 12, "text at " + l.word("Top").top() + ", box from " + box[1]);
+    }
+
+    @Test
+    void aUnitlessLineHeightMakesALinkButton() throws IOException {
+        Laid l = lay("""
+                <!doctype html><html><body style="font-size:16px"><a href="https://example.com"
+                style="display:inline-block;line-height:3;background:#0000ff;color:#ffffff">Tall</a></body></html>""");
+        int[] box = blueBox(l, l.word("Tall"));
+        assertEquals(36, box[3] - box[1] + 1, 3);
+    }
+
+    @Test
+    void aSizedLinkWithoutABackgroundKeepsItsWidth() throws IOException {
+        Laid l = lay("""
+                <!doctype html><html><head><style>body{margin:0}</style></head><body><p>Start</p>
+                <a href="https://example.com" style="display:inline-block;width:200px;text-align:center;
+                border:1px solid #000000">Mid</a></body></html>""");
+        Word mid = l.word("Mid");
+        assertEquals(l.word("Start").left() + 75, (mid.left() + mid.right()) / 2, 4f, l.words().toString());
+    }
+
+    @Test
+    void aLongButtonLabelGetsABoxAsWideAsItsText() throws IOException {
+        Laid l = lay("""
+                <!doctype html><html><body><a href="https://example.com" style="display:inline-block;
+                padding:4px 0;background:#0000ff;color:#ffffff">Fifty six character button label goes right here for you</a>
+                </body></html>""");
+        int[] box = blueBox(l, l.word("Fifty"));
+        float text = l.word("you").right() - l.word("Fifty").left();
+        assertTrue(box[2] - box[0] + 1 < text + 6, "box " + (box[2] - box[0] + 1) + " for text " + text);
+    }
+
+    @Test
+    void textAutospaceSpacesIdeographsFromLatinLetters() throws IOException {
+        Laid l = lay("""
+                <!doctype html><html><body><p style="text-autospace:normal">\u82f1\u8a9eEnglish\u6df7\u5728</p>
+                <p>\u82f1\u8a9eEnglish\u6df7\u5728</p></body></html>""");
+        List<Word> lines = l.words().stream().filter(w -> w.text().contains("English")).toList();
+        assertEquals(2, lines.size(), l.words().toString());
+        float spaced = lines.get(0).right() - lines.get(0).left();
+        float plain = lines.get(1).right() - lines.get(1).left();
+        assertEquals(3f, spaced - plain, 1f, lines.toString());
+    }
+
     private static Word containing(Laid l, String text) {
         return l.words().stream().filter(w -> w.text().contains(text)).findFirst().orElseThrow();
     }

@@ -147,7 +147,7 @@ final class Controls {
         } else if (check) {
             contentW = 0.7f * em;
         } else if (kind.equals("button")) {
-            float measured = own != null ? Math.max(textWidth(text, em), drawnWidth(text, look)) : textWidth(text, em);
+            float measured = own != null ? labelWidth(text, look) : textWidth(text, em);
             contentW = Math.min(room - outsideX, measured + 0.1f * em);
         } else if (kind.equals("textarea") && digits(e.attr("cols"))) {
             contentW = Integer.parseInt(e.attr("cols").strip()) * 0.55f * em;
@@ -165,13 +165,14 @@ final class Controls {
             contentH = digits(e.attr("rows")) ? Integer.parseInt(e.attr("rows").strip()) * 1.2f * em : 3 * em;
         } else if (kind.equals("select") && e.hasAttr("multiple")) {
             contentH = 3.6f * em;
-        } else if (own != null && look.linePoints > 0) {
-            contentH = look.linePoints;
+        } else if (own != null && linePitch(look) > 0) {
+            contentH = linePitch(look);
         } else {
             contentH = 1.2f * em;
         }
         contentW = clamp(contentW, 1);
         contentH = clamp(contentH, 1);
+        float below = own != null && height != null ? Math.max(0, contentH - lines(text, look, contentW)) : 0;
         float outerW = Math.min(MAX_SIDE, contentW + outsideX);
         float outerH = Math.min(MAX_SIDE, contentH + outsideY);
         Integer fill = Css.color(d.get("background-color"));
@@ -188,7 +189,7 @@ final class Controls {
             lower = Math.max(0, contentH / 2 - 0.355f * em + padBottom + edge);
         }
         return new Inline.FormControl(field, shown, outerW, outerH, padLeft + edge, padTop + edge, padRight + edge,
-                padBottom + edge + (bottomOnly ? shown.borderBottom : 0), fill == null ? -1 : fill,
+                padBottom + edge + (bottomOnly ? shown.borderBottom : 0) + below, fill == null ? -1 : fill,
                 line.visible() ? line.rgb() : -1, edge, corner, round, lower);
     }
 
@@ -416,6 +417,26 @@ final class Controls {
         float widest = 0;
         for (String line : text.split("\n")) {
             widest = Math.max(widest, line.codePointCount(0, line.length()) * 0.55f * em);
+        }
+        return widest;
+    }
+
+    static float linePitch(Look look) {
+        return look.linePoints > 0 ? look.linePoints : look.lineMultiple * look.size;
+    }
+
+    private static float lines(String text, Look look, float width) {
+        float pitch = linePitch(look) > 0 ? linePitch(look) : 1.2f * look.size;
+        int lines = (int) Math.min(MAX_SIDE / pitch, Math.max(1, Math.ceil(labelWidth(text, look) / width)));
+        return lines * pitch;
+    }
+
+    private static float labelWidth(String text, Look look) {
+        float widest = 0;
+        for (String line : text.split("\n")) {
+            float measured = Glyphs.measured(line, look.size, look.font, look.bold, look.italic);
+            widest = Math.max(widest, measured > 0 ? measured + look.spacing * line.codePointCount(0, line.length())
+                    : Math.max(textWidth(line, look.size), drawnWidth(line, look)));
         }
         return widest;
     }

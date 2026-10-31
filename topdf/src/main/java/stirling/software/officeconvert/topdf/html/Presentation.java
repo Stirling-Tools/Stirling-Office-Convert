@@ -130,8 +130,24 @@ final class Presentation {
             }
             fontSize(e.attr("size"), out);
         }
+        if ("td".equals(e.normalName()) || "th".equals(e.normalName())) {
+            cellPadding(e, out);
+        }
         if ("body".equals(e.normalName()) && e.hasAttr("text")) {
             out.put("color", e.attr("text"));
+        }
+    }
+
+    private static void cellPadding(Element cell, Map<String, String> out) {
+        Element table = cell.parent();
+        for (int i = 0; i < 2 && table != null && !"table".equals(table.normalName()); i++) {
+            table = table.parent();
+        }
+        String v = table == null || !"table".equals(table.normalName()) ? "" : table.attr("cellpadding").strip();
+        if (v.matches("[0-9]{1,4}([.][0-9]+)?")) {
+            for (String side : new String[] {"top", "right", "bottom", "left"}) {
+                out.put("padding-" + side, v + "px");
+            }
         }
     }
 

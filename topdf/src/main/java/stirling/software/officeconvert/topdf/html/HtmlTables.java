@@ -691,26 +691,41 @@ final class HtmlTables {
 
     private static void indent(Table t, Element table, Map<String, String> d, Look look, Flow.Frame frame, float width,
             Paragraph.Align legacy) {
-        boolean autoLeft = "auto".equalsIgnoreCase(d.getOrDefault("margin-left", "").strip());
-        boolean autoRight = "auto".equalsIgnoreCase(d.getOrDefault("margin-right", "").strip());
-        boolean centred = autoLeft && autoRight || legacy == Paragraph.Align.CENTER
-                || "center".equalsIgnoreCase(table.attr("align"));
-        float left = Flow.length(d.get("margin-left"), look.size, frame.width());
-        float right = Flow.length(d.get("margin-right"), look.size, frame.width());
         float slack = frame.width() - width;
-        if (centred) {
-            left = Math.max(0, slack / 2);
-            right = left;
-        } else if (autoLeft || "right".equalsIgnoreCase(table.attr("align")) || legacy == Paragraph.Align.RIGHT) {
-            left = Math.max(0, slack - Math.max(0, right));
-        } else if (autoRight || "left".equalsIgnoreCase(table.attr("align")) || legacy == Paragraph.Align.LEFT) {
-            right = Math.max(0, slack - Math.max(0, left));
-        }
+        float left = Math.max(0, offset(table, d, look, legacy, frame.width(), slack));
         t.indent = frame.left() + left;
         if (look.rightToLeft) {
             t.rightToLeft = true;
-            t.indent = frame.right() + right;
+            t.indent = frame.right() + Math.max(0, slack - left);
         }
+    }
+
+    static float offset(Element table, Map<String, String> d, Look look, Paragraph.Align legacy, float room,
+            float slack) {
+        String align = table.attr("align").strip().toLowerCase(Locale.ROOT);
+        String marginLeft = d.get("margin-left");
+        String marginRight = d.get("margin-right");
+        boolean autoLeft = marginLeft == null ? align.equals("center") : marginLeft.strip().equalsIgnoreCase("auto");
+        boolean autoRight = marginRight == null ? align.equals("center")
+                : marginRight.strip().equalsIgnoreCase("auto");
+        float left = autoLeft ? 0 : Flow.length(marginLeft, look.size, room);
+        float right = autoRight ? 0 : Flow.length(marginRight, look.size, room);
+        if (align.equals("right") || align.equals("left")) {
+            return align.equals("right") ? slack - right : left;
+        }
+        if (autoLeft && autoRight) {
+            return slack / 2;
+        }
+        if (autoLeft || !autoRight && legacy == Paragraph.Align.RIGHT) {
+            return slack - right;
+        }
+        if (autoRight || legacy == Paragraph.Align.LEFT) {
+            return left;
+        }
+        if (legacy == Paragraph.Align.CENTER) {
+            return left + (slack - left - right) / 2;
+        }
+        return look.rightToLeft ? slack - right : left;
     }
 
     private static final int BUTTON_TEXT = 60;

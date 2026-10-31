@@ -99,6 +99,9 @@ final class Flow {
     private Block waiting;
     private boolean outrun;
     private Element sized;
+    private Element aroundOf;
+    private Element stackedCell;
+    private Paragraph.Align aroundAlign;
     private float besideLeft;
     private float besideRight;
     private final List<Inline> pendingFloats = new ArrayList<>();
@@ -419,6 +422,8 @@ final class Flow {
                     boolean scrolls = !tag.equals("body") && !tag.equals("html") && scrolls(d)
                             || "fixed".equalsIgnoreCase(d.getOrDefault("position", "").strip());
                     ctx.scrolling(scrolls ? 1 : 0);
+                    aroundOf = e;
+                    aroundAlign = parentLook.legacyAlign ? parentLook.align : null;
                     try {
                         block(e, tag, d, look, frame, depth);
                     } finally {
@@ -511,7 +516,9 @@ final class Flow {
 
     private static boolean padded(Element e, Map<String, String> d, Look look) {
         Integer fill = Css.color(d.get("background-color"));
-        if (fill == null || fill < 0 || fill == 0xFFFFFF || Layout.text(e, BUTTON_TEXT + 1).strip().isEmpty()
+        boolean filled = fill != null && fill >= 0 && fill != 0xFFFFFF;
+        boolean wide = length(d.get("width"), look.size, 0) > 0;
+        if (!filled && !(wide && e.normalName().equals("a")) || Layout.text(e, BUTTON_TEXT + 1).strip().isEmpty()
                 || Layout.text(e, BUTTON_TEXT + 1).length() > BUTTON_TEXT) {
             return false;
         }
@@ -525,8 +532,7 @@ final class Flow {
                 return true;
             }
         }
-        return length(d.get("width"), look.size, 0) > 0 || length(d.get("height"), look.size, 0) > 0
-                || look.linePoints > 1.5f * look.size;
+        return wide || length(d.get("height"), look.size, 0) > 0 || Controls.linePitch(look) > 1.5f * look.size;
     }
 
     private void control(Element e, Look parentLook, Frame frame) throws IOException {
@@ -668,6 +674,10 @@ final class Flow {
         left += narrow[0];
         right += narrow[1];
         int fill = fill(d, look);
+        boolean paddedCell = e == stackedCell && hasPadding(d);
+        if (paddedCell && fill < 0) {
+            fill = frame.shading();
+        }
         if (columns(e, d, look, frame, depth, left, right, top, bottom, fill)) {
             return;
         }
@@ -683,7 +693,7 @@ final class Flow {
             plan = null;
         }
         boolean tall = !absolutes.isEmpty() && height(d, look) > 0 && e.selectFirst("table") == null;
-        if (plan == null && (tall || boxed(e, tag, d, fill)) && !ctx.holdsRow(e, look, inner.width())) {
+        if (plan == null && (tall || boxed(e, tag, d, fill, paddedCell)) && !ctx.holdsRow(e, look, inner.width())) {
             box(e, d, look, frame, depth, fill, top, bottom, absolutes);
             return;
         }
@@ -1033,15 +1043,16 @@ final class Flow {
     }
 
     // A container drawn as a box (a coloured panel, a bordered card) keeps its background and edges in one piece
-    private boolean boxed(Element e, String tag, Map<String, String> d, int fill) {
-        if (inCell || forceInline > 0 || NOT_BOXES.contains(tag)) {
+    private boolean boxed(Element e, String tag, Map<String, String> d, int fill, boolean paddedCell) {
+        if (inCell || forceInline > 0 || NOT_BOXES.contains(tag) && !paddedCell) {
             return false;
         }
         int edges = 0;
         for (String side : new String[] {"top", "bottom", "left", "right"}) {
             edges += border(d, side) > 0 ? 1 : 0;
         }
-        boolean painted = fill >= 0 && fill != 0xFFFFFF && fill != blockFrame.shading()
+        boolean painted = fill >= 0 && (fill != 0xFFFFFF || paddedCell && ctx.canvas() >= 0)
+                && fill != blockFrame.shading()
                 || Backgrounds.url(d) != null && Backgrounds.drawable(d, ctx.images());
         boolean bar = border(d, "left") > 0 || border(d, "right") > 0;
         boolean shadow = !BoxPaint.shadows(d.get("box-shadow"), Look.ROOT_SIZE, 0).isEmpty();
@@ -1079,10 +1090,23 @@ final class Flow {
         }
         boolean autoLeft = "auto".equalsIgnoreCase(d.getOrDefault("margin-left", "").strip());
         boolean autoRight = "auto".equalsIgnoreCase(d.getOrDefault("margin-right", "").strip());
-        if (autoLeft && autoRight) {
+        Paragraph.Align legacy = e == aroundOf && !autoLeft && !autoRight ? aroundAlign : null;
+        if (autoLeft && autoRight || legacy == Paragraph.Align.CENTER) {
             return new float[] {extra / 2, extra / 2};
         }
+        if (legacy != null) {
+            return legacy == Paragraph.Align.RIGHT ? new float[] {extra, 0} : new float[] {0, extra};
+        }
         return autoLeft || look.rightToLeft && !autoRight ? new float[] {extra, 0} : new float[] {0, extra};
+    }
+
+    private static boolean hasPadding(Map<String, String> d) {
+        for (String side : new String[] {"top", "right", "bottom", "left"}) {
+            if (length(d.get("padding-" + side), Look.ROOT_SIZE, 0) > 0) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static Float boxLength(String v, Look look, float room) {
@@ -1123,7 +1147,7 @@ final class Flow {
         marginRight += narrow[1];
         float width = Math.max(36, frame.width() - marginLeft - marginRight);
         Table.Cell cell = new Table.Cell();
-        cell.shading = fill >= 0 && fill != 0xFFFFFF ? fill : -1;
+        cell.shading = fill >= 0 && (fill != 0xFFFFFF || ctx.canvas() >= 0) ? fill : -1;
         cell.top = HtmlTables.border(d, "top", 0);
         cell.bottom = HtmlTables.border(d, "bottom", 0);
         cell.left = HtmlTables.border(d, "left", 0);
@@ -2078,6 +2102,8 @@ final class Flow {
         sectionStarted = false;
         p.bidi = l.rightToLeft;
         p.hyphenate = l.hyphenates();
+        p.autoSpaceLetters = l.autoSpaceLetters;
+        p.autoSpaceDigits = l.autoSpaceDigits;
         p.widows = l.widows;
         p.orphans = l.orphans;
         p.shading = f.shading();
@@ -2574,11 +2600,16 @@ final class Flow {
         if (HtmlTables.layoutOnly(e, d, ctx, look)) {
             // a one-column table with no borders is only there to stack its cells: they flow as blocks
             Integer fill = Css.color(d.get("background-color"));
-            float slack = frame.width() - stackWidth(e, d, look, frame.width());
-            float left = stackIndent(e, d, look, legacy, slack);
+            float room = frame.width();
+            float margins = Math.max(0, length(d.get("margin-left"), look.size, room))
+                    + Math.max(0, length(d.get("margin-right"), look.size, room));
+            float width = stackWidth(e, d, look, room);
+            float slack = room - (margins < room ? Math.min(width, room - margins) : width);
+            float left = stackIndent(e, d, look, legacy, room, slack);
             Frame inside = frame.inner(left, slack - left, fill == null ? -1 : fill);
             for (Element tr : e.select(HtmlTables.ROWS)) {
                 for (Element cell : tr.select("> td, > th")) {
+                    stackedCell = cell;
                     element(cell, look, inside, depth + 1);
                 }
             }
@@ -2644,23 +2675,8 @@ final class Flow {
     }
 
     private static float stackIndent(Element table, Map<String, String> d, Look look, Paragraph.Align legacy,
-            float slack) {
-        if (slack <= 0) {
-            return 0;
-        }
-        boolean autoLeft = "auto".equalsIgnoreCase(d.getOrDefault("margin-left", "").strip());
-        boolean autoRight = "auto".equalsIgnoreCase(d.getOrDefault("margin-right", "").strip());
-        String align = table.attr("align");
-        if (legacy == Paragraph.Align.CENTER || autoLeft && autoRight || "center".equalsIgnoreCase(align)) {
-            return slack / 2;
-        }
-        if (autoLeft || "right".equalsIgnoreCase(align) || legacy == Paragraph.Align.RIGHT) {
-            return slack;
-        }
-        if (autoRight || "left".equalsIgnoreCase(align) || legacy == Paragraph.Align.LEFT) {
-            return 0;
-        }
-        return look.rightToLeft ? slack : 0;
+            float room, float slack) {
+        return slack <= 0 ? 0 : Math.max(0, Math.min(slack, HtmlTables.offset(table, d, look, legacy, room, slack)));
     }
 
     // A table nested past the limit: each row becomes a line, its cells side by side with their own formatting

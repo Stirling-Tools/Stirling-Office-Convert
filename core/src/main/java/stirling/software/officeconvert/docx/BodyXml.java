@@ -108,6 +108,11 @@ final class BodyXml {
         if (p.noHangingPunctuation) {
             sb.append("<w:overflowPunct w:val=\"0\"/>");
         }
+        if (!styles.autoSpace && (p.autoSpaceLetters || p.autoSpaceDigits)) {
+            sb.append("<w:autoSpaceDE w:val=\"").append(p.autoSpaceLetters ? 1 : 0)
+                    .append("\" so:em=\"0.125\"/><w:autoSpaceDN w:val=\"").append(p.autoSpaceDigits ? 1 : 0)
+                    .append("\"/>");
+        }
         if (p.bidi) {
             sb.append("<w:bidi/>");
         }
