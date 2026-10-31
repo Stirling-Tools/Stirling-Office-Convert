@@ -27,6 +27,10 @@ public final class Lotus {
 
     private static final long MAX_RESTYLED = 20_000_000;
 
+    private static final double NARROW_CHAR_POINTS = 8;
+
+    private static final double WIDE_CHAR_POINTS = 7;
+
     private static final double[] SMALL = {5000, 500, 0.05, 0.005, 0.0005, 0.00005, 0.0625, 0.015625};
 
     private final byte[] d;
@@ -67,7 +71,13 @@ public final class Lotus {
 
     private final List<Rule> rules = new ArrayList<>();
 
-    private final List<int[]> widths = new ArrayList<>();
+    private final Map<Integer, Double> columnPoints = new HashMap<>();
+
+    private int columnWrites;
+
+    private boolean columnZone;
+
+    private double defaultPoints = 64;
 
     private final List<int[]> aligned = new ArrayList<>();
 
@@ -154,12 +164,12 @@ public final class Lotus {
             case 0x07 -> {
                 if (len >= 8) {
                     defaultFormat = d[at + 4] & 0xFF;
-                    grid(0).defaultWidth(Math.max(1, u16(at + 6)));
+                    defaultPoints = Math.max(1, u16(at + 6)) * NARROW_CHAR_POINTS;
                 }
             }
             case 0x08 -> {
                 if (len >= 3) {
-                    grid(0).width(u16(at), d[at + 2] & 0xFF);
+                    grid(0).widthPoints(u16(at), (d[at + 2] & 0xFF) * NARROW_CHAR_POINTS);
                 }
             }
             case 0x64 -> hiddenColumns(at, len);
@@ -298,7 +308,14 @@ public final class Lotus {
                     level[1] = (int) Math.min(Integer.MAX_VALUE, level[1] + count);
                 }
             }
-            case 0x801 -> region(at, len);
+            case 0x295 -> columnZone = !columnZone;
+            case 0x801 -> {
+                if (columnZone) {
+                    columnSize(at, len);
+                } else {
+                    region(at, len);
+                }
+            }
             default -> {
             }
         }
@@ -362,8 +379,29 @@ public final class Lotus {
     }
 
     private void columnWidths(int at, int len) {
-        for (int p = at + 4; p + 1 < at + len && widths.size() < MAX_RULES; p += 2) {
-            widths.add(new int[] {d[at] & 0xFF, d[p] & 0xFF, d[p + 1] & 0xFF});
+        for (int p = at + 4; p + 1 < at + len; p += 2) {
+            column(d[at] & 0xFF, d[p] & 0xFF, (d[p + 1] & 0xFF) * WIDE_CHAR_POINTS);
+        }
+    }
+
+    private void columnSize(int at, int len) {
+        if (len != 12 || levels.size() != 3 || deeper > 0 || u16(4) >= 0x1005) {
+            return;
+        }
+        int[] s = levels.get(1);
+        int[] c = levels.get(2);
+        double points = u16(at + 4) / 256.0;
+        for (int sheet = Math.max(0, s[0]); sheet < Math.min(s[1], MAX_SHEETS) && columnWrites < MAX_RULES; sheet++) {
+            for (int col = Math.max(0, c[0]); col < Math.min(c[1], 256) && columnWrites < MAX_RULES; col++) {
+                column(sheet, col, points);
+            }
+        }
+    }
+
+    private void column(int sheet, int col, double points) {
+        if (columnWrites < MAX_RULES) {
+            columnWrites++;
+            columnPoints.put(sheet << 8 | col, points);
         }
     }
 
@@ -418,15 +456,18 @@ public final class Lotus {
     }
 
     private void restyle() {
-        for (int[] w : widths) {
-            Grid g = sheets.get(w[0]);
-            if (g != null) {
-                g.width(w[1], w[2]);
-            }
+        for (Grid g : sheets.values()) {
+            g.defaultWidthPoints(defaultPoints);
         }
+        columnPoints.forEach((key, points) -> {
+            Grid g = sheets.get(key >> 8);
+            if (g != null) {
+                g.widthPoints(key & 0xFF, points);
+            }
+        });
         for (int[] a : aligned) {
             Grid g = sheets.get(a[0]);
-            if (a[3] > g.width(a[2])) {
+            if (a[3] * WIDE_CHAR_POINTS > g.widthPoints(a[2])) {
                 g.put(a[1], a[2], new Grid.Cell(null, null, false, false, "left"));
             }
         }

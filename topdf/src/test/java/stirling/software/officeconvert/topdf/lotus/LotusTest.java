@@ -348,7 +348,7 @@ class LotusTest {
         assertEquals("mm/dd/yy", g.get(2, 2).format());
         assertEquals("0.00%", g.get(2, 3).format());
         assertEquals("General", g.get(1, 0).format());
-        assertEquals(12.0, g.width(2));
+        assertEquals(84.0, g.widthPoints(2));
     }
 
     @Test
@@ -368,5 +368,31 @@ class LotusTest {
         Path file = Files.write(dir.resolve("rules.123"), r.rec(0x01, new byte[0]).bytes());
         Grid g = assertTimeoutPreemptively(Duration.ofSeconds(20), () -> Lotus.read(file)).get(0).grid();
         assertEquals(2.0, g.get(65_534, 0).value());
+    }
+
+    private static byte[] columnSizes(int version) {
+        byte[] bof = new byte[26];
+        bof[0] = (byte) version;
+        bof[1] = 0x10;
+        Records r = new Records().rec(0x00, bof).rec(0x18, wide(0, 0, 1, new byte[] {4, 0})).rec(0x295, new byte[0]);
+        r.rec(0x106, new byte[0]).rec(0x106, new byte[0]).rec(0x800, new byte[] {1, 0}).rec(0x106, new byte[0])
+                .rec(0x800, new byte[] {1, 0}).rec(0x800, new byte[] {1, 0})
+                .rec(0x801, new byte[] {0, 0, 1, 0, 0, 0x4E, 0, 0, 0, 0, 0, 0});
+        for (int i = 0; i < 3; i++) {
+            r.rec(0x107, new byte[0]);
+        }
+        return r.rec(0x295, new byte[0]).rec(0x01, new byte[0]).bytes();
+    }
+
+    @Test
+    void sizesColumnsInLotusPoints() throws IOException {
+        Grid wide = Lotus.read(Files.write(dir.resolve("w.123"), columnSizes(0x03))).get(0).grid();
+        assertEquals(78.0, wide.widthPoints(1), 0.01);
+        assertEquals(64.0, wide.widthPoints(0), 0.01);
+        Grid later = Lotus.read(Files.write(dir.resolve("l.123"), columnSizes(0x05))).get(0).grid();
+        assertEquals(64.0, later.widthPoints(1), 0.01);
+        Grid narrow = Lotus.read(Files.write(dir.resolve("n.wk1"), wk1())).get(0).grid();
+        assertEquals(160.0, narrow.widthPoints(1), 0.01);
+        assertEquals(96.0, narrow.widthPoints(0), 0.01);
     }
 }

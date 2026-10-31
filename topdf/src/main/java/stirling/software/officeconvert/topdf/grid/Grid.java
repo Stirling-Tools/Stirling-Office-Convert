@@ -16,6 +16,8 @@ public final class Grid {
 
     public static final int MAX_CELLS = 5_000_000;
 
+    private static final double POINTS_PER_CHAR = 5.25;
+
     /** A cell's value: a Double, String or Boolean, or an Error. */
     public record Cell(Object value, String format, boolean bold, boolean italic, String align, int rotation) {
 
@@ -89,8 +91,16 @@ public final class Grid {
         }
     }
 
-    public double width(int col) {
-        return widths.getOrDefault(col, defaultWidth > 0 ? defaultWidth : 8.43);
+    public void widthPoints(int col, double points) {
+        width(col, Math.min(255, points / POINTS_PER_CHAR));
+    }
+
+    public double widthPoints(int col) {
+        return widths.getOrDefault(col, defaultWidth > 0 ? defaultWidth : 8.43) * POINTS_PER_CHAR;
+    }
+
+    public void defaultWidthPoints(double points) {
+        defaultWidth(Math.min(255, points / POINTS_PER_CHAR));
     }
 
     public void defaultWidth(double chars) {
