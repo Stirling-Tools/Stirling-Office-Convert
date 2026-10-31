@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Deque;
 import java.util.IdentityHashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -29,7 +30,7 @@ final class FontUsage {
 
     static final int MAX_CODES_PER_FONT = 70_000;
 
-    private final Map<COSDictionary, TreeSet<Integer>> codes = new IdentityHashMap<>();
+    private final Map<COSDictionary, TreeSet<Integer>> codes = new LinkedHashMap<>();
 
     private final Map<COSDictionary, CodeReader> readers = new IdentityHashMap<>();
 
