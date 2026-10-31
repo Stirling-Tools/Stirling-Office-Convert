@@ -97,6 +97,10 @@ public final class FontFace {
         return widths != null;
     }
 
+    public boolean keepsWidths() {
+        return !substituted() || emulated() || OfficeFonts.compatible(requestedFamily(), family());
+    }
+
     /** True when glyphs are drawn at their own horizontal scale, {@link #glyphScale(int)}, not one for the face. */
     public boolean scaledPerGlyph() {
         return widths != null || scripts != null;

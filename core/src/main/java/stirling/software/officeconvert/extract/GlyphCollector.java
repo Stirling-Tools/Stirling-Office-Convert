@@ -7,10 +7,13 @@ import java.awt.geom.Rectangle2D;
 import java.text.Normalizer;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Deque;
 import java.util.HashMap;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.WeakHashMap;
 
 import org.apache.pdfbox.contentstream.PDFStreamEngine;
@@ -120,6 +123,8 @@ final class GlyphCollector extends PDFStreamEngine {
     private int actualDepth;
     private int untracked;
     private List<RawGlyph> current = new ArrayList<>();
+    private final Map<Glyph, String> alternatives = new IdentityHashMap<>();
+    private final Set<Glyph> marks = Collections.newSetFromMap(new IdentityHashMap<>());
     private boolean inPage;
     private int seq;
     private int pageIndex;
@@ -129,7 +134,7 @@ final class GlyphCollector extends PDFStreamEngine {
     private PDDocument document;
     private OperatorBudget budget = new OperatorBudget("reading text");
     private final StreamRunner runner;
-    private final TextPositions positions = new TextPositions();
+    private final TextPositions positions;
     private final ClipPath clipPath = new ClipPath();
     private final ClipArea clipArea = new ClipArea();
     private int currentPageNo;
@@ -138,6 +143,7 @@ final class GlyphCollector extends PDFStreamEngine {
 
     private GlyphCollector(FontResolver fonts, PageSink sink, ParsedStreams parsed) {
         this.fonts = fonts;
+        this.positions = new TextPositions(fonts.unmapped());
         this.sink = sink;
         this.recovery = new UnicodeRecovery(fonts);
         this.runner = new StreamRunner(new StreamRunner.Host() {
@@ -436,9 +442,62 @@ final class GlyphCollector extends PDFStreamEngine {
         inPage = false;
         List<RawGlyph> glyphs = current;
         glyphs.removeIf(r -> r.glyph().text == HIDDEN);
+        composeMarks(glyphs);
+        settleAlternatives(glyphs);
         current = new ArrayList<>();
         nextIndex = pageIndex + 1;
         sink.accept(pageIndex, page, glyphs);
+    }
+
+    private void composeMarks(List<RawGlyph> glyphs) {
+        if (marks.isEmpty()) {
+            return;
+        }
+        for (int i = 0; i < glyphs.size(); i++) {
+            Glyph mark = glyphs.get(i).glyph();
+            if (!marks.contains(mark)) {
+                continue;
+            }
+            for (int j : new int[] {i - 1, i + 1}) {
+                if (j < 0 || j >= glyphs.size()) {
+                    continue;
+                }
+                RawGlyph base = glyphs.get(j);
+                String composed = WordContext.composed(base.glyph(), mark);
+                if (composed != null) {
+                    glyphs.set(j, new RawGlyph(base.glyph().withText(composed), base.direction(), base.invisible(),
+                            base.originX(), base.originY()));
+                    alternatives.remove(base.glyph());
+                    glyphs.remove(i);
+                    i--;
+                    break;
+                }
+            }
+        }
+        marks.clear();
+    }
+
+    private void settleAlternatives(List<RawGlyph> glyphs) {
+        if (alternatives.isEmpty()) {
+            return;
+        }
+        List<Glyph> plain = new ArrayList<>(glyphs.size());
+        for (RawGlyph r : glyphs) {
+            plain.add(r.glyph());
+        }
+        for (int i = 0; i < glyphs.size(); i++) {
+            RawGlyph r = glyphs.get(i);
+            String alternative = alternatives.get(r.glyph());
+            if (alternative == null) {
+                continue;
+            }
+            String chosen = WordContext.choose(plain, i, alternative, alternatives);
+            if (!chosen.equals(r.glyph().text)) {
+                glyphs.set(i, new RawGlyph(r.glyph().withText(chosen), r.direction(), r.invisible(), r.originX(),
+                        r.originY()));
+            }
+        }
+        alternatives.clear();
     }
 
     private void blankPagesBefore(int index) throws IOException {
@@ -465,12 +524,20 @@ final class GlyphCollector extends PDFStreamEngine {
 
         PDFont pdFont = tp.getFont();
         FontInfo font = fonts.resolve(pdFont);
-        float size = fontSize(tp);
+        int[] codes = tp.getCharacterCodes();
+        float drawnSize = codes != null && codes.length == 1
+                ? positions.unmapped.size(pdFont, codes[0], tp.getTextMatrix()) : Float.NaN;
+        if (drawnSize > 0 && pdFont.toUnicode(codes[0], TextPositions.GLYPHS) != null) {
+            drawnSize = Float.NaN;
+        }
+        float size = drawnSize > 0 && drawnSize < 400f ? drawnSize : fontSize(tp);
         float[] m = metrics(pdFont);
         float space = spaceWidth(tp, pdFont, size, m[2]);
 
-        boolean bold = font.bold() || mode == RenderingMode.FILL_STROKE && strokeIsVisible(gs, size);
-        boolean italic = font.italic() || isSheared(tp);
+        int drawnStyle = positions.unmapped.style(pdFont);
+        boolean bold = font.bold() || (drawnStyle & GlyphRef.BOLD) != 0
+                || mode == RenderingMode.FILL_STROKE && strokeIsVisible(gs, size);
+        boolean italic = font.italic() || (drawnStyle & GlyphRef.ITALIC) != 0 || isSheared(tp);
         float width = tp.getWidthDirAdj();
         if (!(width > 0)) {
             width = Math.max(size * 0.1f, 0.1f);
@@ -503,11 +570,22 @@ final class GlyphCollector extends PDFStreamEngine {
                         bold,
                         italic);
         g.hscale = horizontalScale(tp);
-        int[] codes = tp.getCharacterCodes();
         boolean dingbat = font.symbolic() && pdFont.isEmbedded()
                 && (size >= DINGBAT_SIZE && !textLike(unicode) || belowSymbolRange(unicode));
         if ((font.icons() || dingbat) && codes != null && codes.length == 1) {
             g.icon = IconShape.of(pdFont, codes[0], size, rgb);
+        }
+        if (g.icon == null && unicode.equals(UnmappedGlyphs.STAND_IN) && codes != null && codes.length == 1) {
+            g.icon = positions.unmapped.icon(pdFont, codes[0], tp.getTextMatrix(), rgb);
+        }
+        String alternative = codes != null && codes.length == 1
+                ? positions.unmapped.alternative(pdFont, codes[0], unicode) : null;
+        if (alternative != null) {
+            alternatives.put(g, alternative);
+        }
+        if (WordContext.mark(unicode) && codes != null && codes.length == 1
+                && positions.unmapped.shapeRead(pdFont, codes[0], unicode)) {
+            marks.add(g);
         }
         Matrix tm = tp.getTextMatrix();
         if (current.size() >= MAX_PAGE_GLYPHS) {

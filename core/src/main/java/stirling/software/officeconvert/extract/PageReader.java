@@ -4,8 +4,10 @@ import java.awt.geom.AffineTransform;
 import java.awt.geom.Point2D;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -13,6 +15,7 @@ import java.util.Set;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.pdfbox.cos.COSDictionary;
+import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.common.PDRectangle;
@@ -80,28 +83,45 @@ public final class PageReader {
         List<Glyph> glyphs = new ArrayList<>(raw.size());
         List<Glyph> hidden = new ArrayList<>();
         List<Glyph> rotated = new ArrayList<>();
+        List<RawGlyph> turnedRaw = new ArrayList<>();
+        List<Glyph> turned = new ArrayList<>();
+        Map<Integer, List<Glyph>> byDirection = new HashMap<>();
         for (RawGlyph r : raw) {
             Glyph g = k == 1 ? r.glyph() : r.glyph().scaled(k);
             g.invisible = r.invisible();
             if (r.direction() != direction) {
-                rotated.add(relocate(g, r, toDisplay, crop));
+                turnedRaw.add(r);
+                turned.add(g);
+                if (!r.invisible()) {
+                    byDirection.computeIfAbsent(r.direction(), d -> new ArrayList<>()).add(g);
+                }
             } else if (r.invisible()) {
                 hidden.add(g);
             } else {
                 glyphs.add(g);
             }
         }
+        Set<Glyph> doubled = Collections.newSetFromMap(new IdentityHashMap<>());
+        for (List<Glyph> run : byDirection.values()) {
+            doubled.addAll(run);
+            dedupe(ShadowText.drop(run)).forEach(doubled::remove);
+        }
+        for (int i = 0; i < turned.size(); i++) {
+            if (!doubled.contains(turned.get(i))) {
+                rotated.add(relocate(turned.get(i), turnedRaw.get(i), toDisplay, crop, direction));
+            }
+        }
         if (direction == 0) {
             VerticalText.lift(glyphs, rotated);
         }
-        glyphs = dedupe(Clusters.join(glyphs));
+        glyphs = dedupe(ShadowText.drop(Clusters.join(glyphs)));
         PageGraphics graphics =
                 withGraphics
                         ? GraphicsCollector.read(page, toDisplay, width, height, parsed)
                         : new PageGraphics(List.of(), List.of(), List.of(), List.of());
         List<PageData.Link> links = withGraphics ? links(page, toDisplay, width, height) : List.of();
         return new PageData(
-                index, width, height, direction, glyphs, hidden, rotated, graphics, links, withGraphics ? widgets(page) : 0);
+                index, width, height, direction, glyphs, hidden, rotated, graphics, links, withGraphics ? widgets(page, toDisplay) : List.of());
     }
 
     public PageData unreadable(int index) {
@@ -136,10 +156,10 @@ public final class PageReader {
                 glyphsOnly.rotated(),
                 graphics,
                 links(page, toDisplay, glyphsOnly.width(), glyphsOnly.height()),
-                widgets(page));
+                widgets(page, toDisplay));
     }
 
-    private static Glyph relocate(Glyph g, RawGlyph r, AffineTransform toDisplay, PDRectangle crop) {
+    private static Glyph relocate(Glyph g, RawGlyph r, AffineTransform toDisplay, PDRectangle crop, int direction) {
         Point2D.Float p = new Point2D.Float();
         toDisplay.transform(
                 new Point2D.Double(
@@ -149,7 +169,7 @@ public final class PageReader {
                 new Glyph(
                         g.text, p.x, g.width, p.y, g.size, g.ascent, g.descent, g.font, g.rgb,
                         g.seq, g.spaceWidth, g.bold, g.italic);
-        moved.vertAlign = r.direction();
+        moved.vertAlign = Math.floorMod(r.direction() - direction, 360);
         moved.hscale = g.hscale;
         moved.invisible = g.invisible;
         return moved;
@@ -157,12 +177,15 @@ public final class PageReader {
 
     private static int dominantDirection(List<RawGlyph> raw) {
         Map<Integer, Integer> counts = new HashMap<>();
+        int visible = 0;
         for (RawGlyph r : raw) {
             if (!r.invisible()) {
                 counts.merge(r.direction(), 1, Integer::sum);
+                visible++;
             }
         }
-        if (counts.isEmpty()) {
+        if (visible * 10 < raw.size()) {
+            counts.clear();
             for (RawGlyph r : raw) {
                 counts.merge(r.direction(), 1, Integer::sum);
             }
@@ -223,7 +246,8 @@ public final class PageReader {
                         if (o.text.equals(g.text)
                                 && Math.abs(o.x - g.x) < reachX
                                 && Math.abs(o.baseline - g.baseline) < reachY
-                                && Math.abs(o.size - g.size) < 0.5f) {
+                                && Math.abs(o.size - g.size) < 0.5f
+                                && !(o.seq == g.seq - 1 && g.x - o.x > Math.max(0.75f * o.width, 0.12f * o.size))) {
                             twin = o;
                             break outer;
                         }
@@ -325,18 +349,41 @@ public final class PageReader {
         }
     }
 
-    private static int widgets(PDPage page) {
-        int n = 0;
+    private static List<PageData.Widget> widgets(PDPage page, AffineTransform toDisplay) {
+        List<PageData.Widget> out = new ArrayList<>();
         try {
             for (PDAnnotation a : page.getAnnotations()) {
                 if (a instanceof PDAnnotationWidget && !a.isHidden() && !a.isNoView()) {
-                    n++;
+                    out.add(widget(a, toDisplay));
                 }
             }
         } catch (IOException | RuntimeException e) {
-            return 0;
+            return List.of();
         }
-        return n;
+        return out;
+    }
+
+    private static PageData.Widget widget(PDAnnotation a, AffineTransform toDisplay) {
+        PDRectangle r = a.getRectangle();
+        if (r == null) {
+            return new PageData.Widget(0, 0, 0, 0, false);
+        }
+        Point2D.Float p0 = new Point2D.Float();
+        Point2D.Float p1 = new Point2D.Float();
+        toDisplay.transform(new Point2D.Double(r.getLowerLeftX(), r.getLowerLeftY()), p0);
+        toDisplay.transform(new Point2D.Double(r.getUpperRightX(), r.getUpperRightY()), p1);
+        return new PageData.Widget(Math.min(p0.x, p1.x), Math.min(p0.y, p1.y), Math.max(p0.x, p1.x),
+                Math.max(p0.y, p1.y), COSName.CH.equals(fieldType(a.getCOSObject())));
+    }
+
+    private static COSName fieldType(COSDictionary field) {
+        for (int depth = 0; field != null && depth < 32; depth++) {
+            if (field.getDictionaryObject(COSName.FT) instanceof COSName type) {
+                return type;
+            }
+            field = field.getCOSDictionary(COSName.PARENT);
+        }
+        return null;
     }
 
     private List<PageData.Link> links(PDPage page, AffineTransform toDisplay, float width, float height)
