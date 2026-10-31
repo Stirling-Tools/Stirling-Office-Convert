@@ -34,7 +34,7 @@ family's widths, 0.5 to 2), `--no-system-fonts` (only the given fonts and the bu
 reproducible output), `--allow-packages` (convert a `.zip` of an HTML page, or an EPUB book not named `.epub`), `--allow-local-files` (let an HTML page
 draw the pictures and style sheets in its own folder, never outside it), `-q`, and `--format pdf` to take only the Office files out
 of a folder. A folder converts its PDFs, its Office files and its eBooks (EPUB, AZW3, MOBI, PRC/PDB, FB2/FBZ), and
-its `.zip` files only with `--allow-packages`; its text and CSV files only with `--format pdf`. Inputs that would write the same output name (such
+its `.zip` files only with `--allow-packages`; its text, CSV, HTML and JSON files only with `--format pdf`. Inputs that would write the same output name (such
 as `report.docx` and `report.xlsx`) keep their own extension in it (`report.docx.pdf`, `report.xlsx.pdf`), and Office
 owner files (`~$name`) are skipped. An input is never overwritten: an output that would take an input's name keeps that
 input's extension instead (`b.docx` and `b.pdf` in one folder give `b.docx.pdf` and `b.pdf.docx`), and nothing a run

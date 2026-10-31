@@ -16,6 +16,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.zip.ZipEntry;
@@ -680,7 +681,11 @@ class MainTest {
         Path in = Files.createDirectories(dir.resolve("books"));
         assertEquals(0, run(helloPdf(dir.resolve("story.pdf")).toString(), "-o", in.resolve("story.epub").toString(), "-q")
                 .code());
+        assertEquals(0, run(helloPdf(dir.resolve("tale.pdf")).toString(), "-o", in.resolve("tale.azw3").toString(), "-q")
+                .code());
         Files.writeString(in.resolve("~$story.epub"), "owner file");
+        Files.write(in.resolve("symbols.pdb"), Arrays.copyOf("Microsoft C/C++ MSF 7.00\r\n".getBytes(StandardCharsets.US_ASCII),
+                4096));
         try (OutputStream os = Files.newOutputStream(in.resolve("site.zip")); ZipOutputStream z = new ZipOutputStream(os)) {
             entry(z, "index.html", "<p>Zipped page</p>");
         }
@@ -694,9 +699,12 @@ class MainTest {
         Result packages = run(in.toString(), "--allow-packages", "--format", "pdf", "-o", all.toString(), "-q");
         assertEquals(0, packages.code(), packages.err());
         assertTrue(Files.size(all.resolve("story.pdf")) > 0 && Files.size(all.resolve("site.pdf")) > 0);
-        Result noFormat = run(in.toString(), "-o", dir.resolve("books-default").toString(), "-q");
+        Path plainOut = dir.resolve("books-default");
+        Result noFormat = run(in.toString(), "--allow-packages", "-o", plainOut.toString(), "-q");
         assertEquals(0, noFormat.code(), noFormat.err());
-        assertTrue(Files.size(dir.resolve("books-default").resolve("story.pdf")) > 0);
+        assertTrue(Files.size(plainOut.resolve("story.pdf")) > 0 && Files.size(plainOut.resolve("tale.pdf")) > 0
+                && Files.size(plainOut.resolve("site.pdf")) > 0);
+        assertFalse(Files.exists(plainOut.resolve("page.pdf")) || Files.exists(plainOut.resolve("symbols.pdf")));
     }
 
     @Test

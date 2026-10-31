@@ -1,9 +1,11 @@
 package stirling.software.officeconvert.cli;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.lang.management.ManagementFactory;
 import java.lang.management.MemoryPoolMXBean;
 import java.lang.management.MemoryType;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.NoSuchFileException;
@@ -558,15 +560,25 @@ public final class Main {
     }
 
     private static boolean folderDocument(Path file, boolean packages) {
-        return officeOrPage(file) && (packages || !"zip".equals(extension(file)));
+        return switch (extension(file)) {
+            case "zip" -> packages;
+            case "pdb" -> palmBook(file);
+            default -> officeOrPage(file);
+        };
+    }
+
+    private static boolean palmBook(Path file) {
+        try (InputStream in = Files.newInputStream(file)) {
+            byte[] head = in.readNBytes(68);
+            String type = head.length < 68 ? "" : new String(head, 60, 8, StandardCharsets.ISO_8859_1);
+            return type.equals("BOOKMOBI") || type.equals("TEXtREAd") || type.equals("zTXTGPlm");
+        } catch (IOException e) {
+            return false;
+        }
     }
 
     private static boolean plainSource(Path file) {
-        if (TextFormats.kind(file) != null) {
-            return true;
-        }
-        OfficeToPdf.Format format = OfficeToPdf.Format.of(file);
-        return format == OfficeToPdf.Format.HTML || format == OfficeToPdf.Format.JSON;
+        return TextFormats.kind(file) != null || page(file) || "json".equals(extension(file));
     }
 
     private static float seconds(String s, String option) throws Usage {
@@ -749,7 +761,7 @@ public final class Main {
                         + " files, Publisher publications and Visio 2003-2010 drawings from their preview (.pages .numbers"
                         + " .key .pub .vsd .vss .vst .vsw), plain text (.txt .text .log .asc) and comma or"
                         + " tab separated tables (.csv .tsv .tab), HTML (.html .htm .xhtml) and the JSON this tool writes (.json) convert to PDF; --password opens a protected one. A folder converts its PDFs, Office files and eBooks,"
-                        + " and its .zip files with --allow-packages; --format pdf takes all but its PDFs, and its text files too. Nothing a document"
+                        + " and its .zip files with --allow-packages; --format pdf takes all but its PDFs, and its text, HTML and JSON files too. Nothing a document"
                         + " links to is fetched and no macro, field or formula is run. A .zip of an HTML page converts only"
                         + " with --allow-packages; --allow-local-files lets an HTML page draw the pictures and style sheets"
                         + " in its own folder (never outside it). eBooks use only what they hold; an EPUB inside another .zip, or"
