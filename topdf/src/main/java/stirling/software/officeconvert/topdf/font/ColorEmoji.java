@@ -6,9 +6,11 @@ import java.awt.FontFormatException;
 import java.awt.font.FontRenderContext;
 import java.awt.font.GlyphVector;
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.Arrays;
@@ -334,7 +336,10 @@ public final class ColorEmoji {
             if (ppem <= 0 || locations.isEmpty()) {
                 return null;
             }
-            Font awt = Font.createFont(Font.TRUETYPE_FONT, file.toFile()).deriveFont((float) unitsPerEm);
+            Font awt;
+            try (InputStream in = Files.newInputStream(file)) {
+                awt = Font.createFont(Font.TRUETYPE_FONT, in).deriveFont((float) unitsPerEm);
+            }
             return new ColorEmoji(file, awt, unitsPerEm, hhea.getShort(4) / (float) unitsPerEm,
                     -hhea.getShort(6) / (float) unitsPerEm, advances, ppem, locations);
         } catch (IOException | FontFormatException | RuntimeException | LinkageError | AWTError e) {
