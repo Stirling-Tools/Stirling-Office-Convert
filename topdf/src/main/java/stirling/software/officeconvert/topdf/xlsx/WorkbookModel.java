@@ -1,8 +1,11 @@
 package stirling.software.officeconvert.topdf.xlsx;
 
+import java.io.BufferedInputStream;
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InterruptedIOException;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -171,7 +174,7 @@ final class WorkbookModel {
             return new StylesTable();
         }
         try (InputStream in = XmlElements.limit(zip.open(r), r.part(), XmlElements.MAX_STYLES)) {
-            return new StylesTable(in);
+            return new StylesTable(transitional(in));
         } catch (InterruptedIOException e) {
             throw e;
         } catch (IOException | RuntimeException e) {
@@ -180,6 +183,25 @@ final class WorkbookModel {
                     : "The cell styles could not be read; default styles are used");
             return new StylesTable();
         }
+    }
+
+    private static final int STRICT_SNIFF = 4096;
+
+    private static final int MAX_STRICT_PART = 32 << 20;
+
+    static InputStream transitional(InputStream in) throws IOException {
+        BufferedInputStream buffered = new BufferedInputStream(in, STRICT_SNIFF);
+        buffered.mark(STRICT_SNIFF);
+        byte[] head = buffered.readNBytes(STRICT_SNIFF);
+        buffered.reset();
+        if (!new String(head, StandardCharsets.ISO_8859_1).contains("http://purl.oclc.org/ooxml/")) {
+            return buffered;
+        }
+        byte[] all = buffered.readNBytes(MAX_STRICT_PART + 1);
+        if (all.length > MAX_STRICT_PART) {
+            throw new IOException("A strict OOXML part is over " + (MAX_STRICT_PART >> 20) + " MB");
+        }
+        return new ByteArrayInputStream(WorksheetReader.transitional(all));
     }
 
     private static boolean oversized(Throwable e) {
@@ -197,7 +219,7 @@ final class WorkbookModel {
             return null;
         }
         try (InputStream in = zip.open(r)) {
-            return new ThemesTable(in);
+            return new ThemesTable(transitional(in));
         } catch (InterruptedIOException e) {
             throw e;
         } catch (IOException | RuntimeException e) {

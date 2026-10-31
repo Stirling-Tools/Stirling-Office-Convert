@@ -196,6 +196,44 @@ class XlsxContentTest {
         assertTrue(c.getBlue() > 150 && c.getRed() < 120, "header fill " + c);
     }
 
+    @Test
+    void aTableHeaderIsBoldEvenWhenTheCellHasItsOwnFont() throws Exception {
+        String styles = "<fonts count=\"2\"><font><sz val=\"11\"/><name val=\"Calibri\"/></font><font><sz val=\"14\"/>"
+                + "<name val=\"Calibri\"/></font></fonts><fills count=\"2\"><fill><patternFill patternType=\"none\"/>"
+                + "</fill><fill><patternFill patternType=\"gray125\"/></fill></fills><borders count=\"1\"><border/>"
+                + "</borders><cellStyleXfs count=\"1\"><xf/></cellStyleXfs><cellXfs count=\"2\"><xf/><xf fontId=\"1\""
+                + " applyFont=\"1\"/></cellXfs><dxfs count=\"1\"><dxf><font><b/></font></dxf></dxfs><tableStyles"
+                + " count=\"1\"><tableStyle name=\"Plan\" pivot=\"0\" count=\"1\"><tableStyleElement type=\"headerRow\""
+                + " dxfId=\"0\"/></tableStyle></tableStyles>";
+        String data = "<sheetData><row r=\"1\"><c r=\"A1\" s=\"1\" t=\"inlineStr\"><is><t>Heading</t></is></c></row>"
+                + "</sheetData>";
+        RawXlsx table = new RawXlsx().styles(styles)
+                .sheet("S", data + "<tableParts count=\"1\"><tablePart r:id=\"rIdT\"/></tableParts>")
+                .part("xl/tables/table1.xml", "application/vnd.openxmlformats-officedocument.spreadsheetml.table+xml",
+                        "<table xmlns=\"" + RawXlsx.MAIN + "\" id=\"1\" name=\"T1\" displayName=\"T1\" ref=\"A1:A2\">"
+                                + "<tableColumns count=\"1\"><tableColumn id=\"1\" name=\"Heading\"/></tableColumns>"
+                                + "<tableStyleInfo name=\"Plan\" showRowStripes=\"1\"/></table>")
+                .rel("xl/worksheets/sheet1.xml", "rIdT", "table", "../tables/table1.xml");
+        XlsxTesting.convert(dir, "table.xlsx", table.bytes());
+        XlsxTesting.convert(dir, "plain.xlsx", new RawXlsx().styles(styles).sheet("S", data).bytes());
+        assertTrue(bold(dir.resolve("table.xlsx.pdf")));
+        assertFalse(bold(dir.resolve("plain.xlsx.pdf")));
+    }
+
+    private static boolean bold(Path pdf) throws Exception {
+        try (org.apache.pdfbox.pdmodel.PDDocument d = org.apache.pdfbox.Loader.loadPDF(pdf.toFile())) {
+            org.apache.pdfbox.pdmodel.PDPage page = d.getPage(0);
+            for (org.apache.pdfbox.cos.COSName n : page.getResources().getFontNames()) {
+                if (page.getResources().getFont(n).getName().contains("Bold")) {
+                    return true;
+                }
+            }
+            try (java.io.InputStream in = page.getContents()) {
+                return new String(in.readAllBytes(), java.nio.charset.StandardCharsets.ISO_8859_1).contains("2 Tr");
+            }
+        }
+    }
+
     // The pixel position (72 dpi) of a word's first letter, found through PDFBox
     static int[] find(java.awt.image.BufferedImage img, String word, Path pdf) throws Exception {
         int[] out = new int[2];
