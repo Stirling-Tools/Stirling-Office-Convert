@@ -1,5 +1,7 @@
 package stirling.software.officeconvert.topdf;
 
+import static stirling.software.officeconvert.topdf.ConversionWorker.run;
+
 import java.io.BufferedOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -19,11 +21,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.FutureTask;
 import java.util.concurrent.ThreadLocalRandom;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Pattern;
@@ -289,9 +287,7 @@ public final class OfficeToPdf {
 
     public static final long MAX_INPUT_BYTES = 512L << 20;
 
-    private static final long STOP_MILLIS = 5_000;
-
-    private static final long STACK_BYTES = 8L << 20;
+    static final long STOP_MILLIS = 5_000;
 
     private OfficeToPdf() {}
 
@@ -629,9 +625,9 @@ public final class OfficeToPdf {
             try {
                 return render(source, requested, sink, options, renderer, fonts, attempts, limits);
             } catch (IOException | RuntimeException caught) {
-                Throwable real = selfSuppressed(caught);
+                Throwable real = ConversionWorker.selfSuppressed(caught);
                 if (!(real instanceof IOException) && !(real instanceof RuntimeException)) {
-                    throw rethrow(real);
+                    throw ConversionWorker.rethrow(real);
                 }
                 Exception e = (Exception) real;
                 if (!attempts.leaveOut(e) && !attempts.salvageMain(source, e)) {
@@ -1073,7 +1069,7 @@ public final class OfficeToPdf {
         if (pages < 2 || Thread.currentThread().isInterrupted() || damagedPart(e) != null) {
             return false;
         }
-        if (SecureXml.refusedDoctype(e) || scratchExceeded(e)) {
+        if (SecureXml.refusedDoctype(e) || ConversionWorker.scratchExceeded(e)) {
             return false;
         }
         int depth = 0;
@@ -1115,161 +1111,11 @@ public final class OfficeToPdf {
         };
     }
 
-    @FunctionalInterface
-    interface Work<T> {
-        T call() throws IOException;
-    }
-
-    static <T> T run(Duration timeout, Work<T> work) throws IOException {
-        return run(timeout, System.nanoTime(), new AtomicBoolean(), STOP_MILLIS, work);
-    }
-
-    static <T> T run(Duration timeout, long started, AtomicBoolean abandoned, long stopMillis, Work<T> work)
-            throws IOException {
-        stopIfInterrupted();
-        long limit = limitNanos(timeout);
-        long wait = limit - (System.nanoTime() - started);
-        if (limit > 0 && wait <= 0) {
-            throw new TimedOut(timeout);
-        }
-        FutureTask<T> task = new FutureTask<>(() -> guarded(work));
-        Thread worker = Thread.ofPlatform().name("office-to-pdf").daemon().stackSize(STACK_BYTES).unstarted(task);
-        boolean finished = false;
-        try {
-            worker.start();
-            T result = limit == 0 ? task.get() : task.get(wait, TimeUnit.NANOSECONDS);
-            finished = true;
-            return result;
-        } catch (TimeoutException e) {
-            throw new TimedOut(timeout);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new InterruptedIOException("Interrupted while converting");
-        } catch (ExecutionException e) {
-            finished = true;
-            Throwable cause = e.getCause();
-            if (cause instanceof IOException io) {
-                throw io;
-            }
-            if (cause instanceof RuntimeException r) {
-                throw r;
-            }
-            if (cause instanceof Error err) {
-                throw err;
-            }
-            throw new IOException(cause);
-        } finally {
-            if (!finished) {
-                abandoned.set(true);
-                task.cancel(true);
-                join(worker, stopMillis);
-            }
-        }
-    }
-
-    private static long limitNanos(Duration timeout) {
-        try {
-            return timeout.toNanos();
-        } catch (ArithmeticException e) {
-            return 0;
-        }
-    }
-
     static final String DOCTYPE = "The document has a DOCTYPE or entity declaration, which Office files never"
             + " contain, so it was not read";
 
-    private static <T> T guarded(Work<T> work) throws IOException {
-        try {
-            return work.call();
-        } catch (InterruptedIOException e) {
-            if (outOfMemory(e)) {
-                throw new IOException(RenderJob.NEEDS_MEMORY, e);
-            }
-            throw e;
-        } catch (IOException e) {
-            if (outOfMemory(e)) {
-                throw new IOException(RenderJob.NEEDS_MEMORY, e);
-            }
-            if (scratchExceeded(e)) {
-                throw new OutputTooLarge(e);
-            }
-            throw plain(e);
-        } catch (RuntimeException e) {
-            Throwable real = selfSuppressed(e);
-            if (real != e) {
-                return guarded(() -> {
-                    throw rethrow(real);
-                });
-            }
-            if (outOfMemory(e)) {
-                throw new IOException(RenderJob.NEEDS_MEMORY, e);
-            }
-            if (scratchExceeded(e)) {
-                throw new OutputTooLarge(e);
-            }
-            if (Thread.currentThread().isInterrupted()) {
-                throw new InterruptedIOException("Conversion interrupted");
-            }
-            String reason = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
-            throw new IOException("The document could not be converted: " + reason, e);
-        } catch (StackOverflowError e) {
-            throw new IOException("The document nests too deeply to convert", e);
-        } catch (OutOfMemoryError e) {
-            throw new IOException(RenderJob.NEEDS_MEMORY, e);
-        }
-    }
-
-    static Throwable selfSuppressed(Throwable e) {
-        Throwable t = e;
-        for (int depth = 0; depth < 16 && t instanceof IllegalArgumentException && t.getCause() != null
-                && "Self-suppression not permitted".equals(t.getMessage()); depth++) {
-            t = t.getCause();
-        }
-        return t;
-    }
-
-    private static IOException rethrow(Throwable t) throws IOException {
-        if (t instanceof IOException io) {
-            throw io;
-        }
-        if (t instanceof RuntimeException r) {
-            throw r;
-        }
-        if (t instanceof Error err) {
-            throw err;
-        }
-        throw new IOException(t);
-    }
-
-    private static boolean outOfMemory(Throwable e) {
-        int depth = 0;
-        for (Throwable t = e; t != null && depth++ < 16; t = t.getCause()) {
-            if (t instanceof RenderJob.OutOfMemory || t instanceof Admission.Stopped) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    // PDFBox's own words when the output passes maxScratchBytes
-    static boolean scratchExceeded(Throwable e) {
-        int depth = 0;
-        for (Throwable t = e; t != null && depth++ < 16; t = t.getCause()) {
-            if (t instanceof OutputTooLarge || t instanceof IOException && t.getMessage() != null
-                    && t.getMessage().startsWith("Maximum allowed scratch file memory exceeded")) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    // One plain reason for a refused DOCTYPE, whichever parser (ours or POI's) met it first
-    private static IOException plain(IOException e) {
-        return SecureXml.refusedDoctype(e) ? new IOException(DOCTYPE, e) : e;
-    }
-
     private static void copy(InputStream in, Path target, Duration timeout, long started) throws IOException {
-        long limit = limitNanos(timeout);
+        long limit = ConversionWorker.limitNanos(timeout);
         long total = 0;
         byte[] buffer = new byte[1 << 16];
         try (OutputStream os = Files.newOutputStream(target)) {
@@ -1306,15 +1152,6 @@ public final class OfficeToPdf {
         } catch (IOException | RuntimeException e) {
             file.toFile().deleteOnExit();
         }
-    }
-
-    private static void join(Thread worker, long millis) {
-        try {
-            worker.join(millis);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
-        Admission.abandoned(worker);
     }
 
     static void stopIfInterrupted() throws InterruptedIOException {
