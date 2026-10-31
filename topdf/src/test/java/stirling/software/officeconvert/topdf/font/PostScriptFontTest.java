@@ -137,4 +137,36 @@ class PostScriptFontTest {
         assertEquals("Noto Sans SC", yahei.family());
         assertTrue(yahei.embolden() > 0);
     }
+
+    @Test
+    void symbolCodesInAPlainRunDrawAsTheirSymbolLookAlike() throws Exception {
+        FontLibrary lib = FontLibrary.of(List.of(Files.createDirectories(dir.resolve("none"))))
+                .withFonts(List.of(TestFonts.withGlyphs("Body Face", 'o', 0x2022)));
+        FontFace body = lib.exact("Body Face", false, false);
+        assertFalse(body.covers(0xF0B7));
+        FontFace bullet = lib.fallback(0xF0B7, body);
+        assertNotNull(bullet);
+        assertTrue(bullet.covers(0xF0B7));
+        assertEquals(body.glyph(0x2022), bullet.glyph(0xF0B7));
+    }
+
+    @Test
+    void aSymbolStandInBorrowsALookAlikeItLacks() throws Exception {
+        FontLibrary lib = FontLibrary.of(List.of(Files.createDirectories(dir.resolve("none2"))))
+                .withFonts(List.of(TestFonts.withGlyphs("Dings Face", 'A', 0x2779)));
+        FontFace standIn = lib.find("Wingdings 2", false, false);
+        assertTrue(standIn.symbolStandIn());
+        assertFalse(standIn.covers(0xF09B));
+        FontFace borrowed = lib.fallback(0xF09B, standIn);
+        assertNotNull(borrowed);
+        assertEquals("Dings Face", borrowed.family());
+        assertTrue(borrowed.covers(0xF09B));
+    }
+
+    @Test
+    void printerAndMonotypeSymbolFontsAreKnown() {
+        assertEquals(0x2714, FontLibrary.symbolUnicode("Monotype Sorts", 0xF034));
+        assertEquals(0x2605, FontLibrary.symbolUnicode("ZapfDingbats", 0x48));
+        assertEquals(0x2217, FontLibrary.symbolUnicode("Symbol (PCL6)", 0xF02A));
+    }
 }

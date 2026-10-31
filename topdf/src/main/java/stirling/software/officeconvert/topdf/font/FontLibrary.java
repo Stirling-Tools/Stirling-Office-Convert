@@ -302,6 +302,10 @@ public final class FontLibrary {
      */
     public FontFace fallback(int codePoint, FontFace like) {
         Objects.requireNonNull(like, "like");
+        FontFace symbol = SymbolFonts.code(codePoint) >= 0 ? symbolFallback(codePoint, like) : null;
+        if (symbol != null) {
+            return symbol;
+        }
         FontFace f = fallback(codePoint, like.boldStyle(), like.italicStyle());
         if (f == null) {
             return null;
@@ -332,6 +336,39 @@ public final class FontLibrary {
             known = raced == null ? known : raced;
         }
         return known.get();
+    }
+
+    private FontFace symbolFallback(int codePoint, FontFace like) {
+        if ((codePoint < 0xF020 || codePoint > 0xF0FF) && !like.symbolStandIn()) {
+            return null;
+        }
+        String family = SymbolFonts.known(like.requestedFamily()) ? like.requestedFamily() : "Symbol";
+        int[] candidates = SymbolFonts.table(family)[SymbolFonts.code(codePoint)];
+        if (candidates == null) {
+            return null;
+        }
+        String key = "y\u0000" + normalize(family) + '\u0000' + codePoint + '\u0000' + like.boldStyle()
+                + like.italicStyle() + '\u0000' + like.program().entry().describe();
+        Optional<FontFace> known = faces.get(key);
+        if (known == null) {
+            FontFace found = null;
+            for (int cp : candidates) {
+                FontFace f = like.program().glyph(cp) > 0 ? like : fallback(cp, like.boldStyle(), like.italicStyle());
+                if (f != null && f.covers(cp)) {
+                    SymbolFonts.Remap remap = SymbolFonts.remap(family, f.program());
+                    found = remap == null ? null : new FontFace(f.program(), family, f.syntheticBold(),
+                            f.syntheticItalic(), null, remap, null, 1);
+                    if (found != null && found.covers(codePoint)) {
+                        break;
+                    }
+                    found = null;
+                }
+            }
+            known = Optional.ofNullable(found);
+            Optional<FontFace> raced = faces.putIfAbsent(key, known);
+            known = raced == null ? known : raced;
+        }
+        return known.orElse(null);
     }
 
     private FontFace officeWidths(FontFace f, FontFace like, OfficeFonts.Style widths) {

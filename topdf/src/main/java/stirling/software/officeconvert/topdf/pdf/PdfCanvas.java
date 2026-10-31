@@ -466,9 +466,10 @@ public final class PdfCanvas implements Closeable {
                 matrix(b, 1, skew, -1, x + advanced + Math.max(0, box - natural) / 2, baseline)
                         .setLength(b.length() - 1);
                 b.append(" [<");
-                Numbers.hex(b, output.fonts().encoded(embedded, glyph, cp), 4).append(">] TJ\n");
+                int code = drawn.symbolStandIn() ? drawn.encodedCodePoint(cp) : cp;
+                Numbers.hex(b, output.fonts().encoded(embedded, glyph, code), 4).append(">] TJ\n");
                 glyphs[n] = glyph;
-                codes[n++] = cp;
+                codes[n++] = code;
             }
             advanced += box + style.charSpacing();
         }

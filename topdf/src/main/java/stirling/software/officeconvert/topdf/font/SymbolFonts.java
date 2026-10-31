@@ -9,7 +9,7 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
 
-/** What Symbol, Wingdings and Webdings characters look like in Unicode, for drawing them with another font. */
+/** What Symbol, Wingdings, Webdings and Dingbats characters look like in Unicode, for drawing them in another font. */
 final class SymbolFonts {
 
     /**
@@ -160,6 +160,25 @@ final class SymbolFonts {
             + "EA:1F6C6,267A EB:1F588 ED:1F5E4 EE:1F5E5 EF:1F5E6 F0:1F5E7 F1:1F6EA F2:1F43F F7:1F66C F8:1F66E "
             + "F9:1F66D FA:1F66F FB:1F5FA FD:1F30F ";
 
+    private static final String DINGBATS = ""
+            + "20:20 21:2701 22:2702 23:2703 24:2704 25:260E 26:2706 27:2707 28:2708 29:2709 2A:261B 2B:261E 2C:270C "
+            + "2D:270D 2E:270E 2F:270F 30:2710 31:2711 32:2712 33:2713 34:2714 35:2715 36:2716 37:2717 38:2718 "
+            + "39:2719 3A:271A 3B:271B 3C:271C 3D:271D 3E:271E 3F:271F 40:2720 41:2721 42:2722 43:2723 44:2724 "
+            + "45:2725 46:2726 47:2727 48:2605 49:2729 4A:272A 4B:272B 4C:272C 4D:272D 4E:272E 4F:272F 50:2730 "
+            + "51:2731 52:2732 53:2733 54:2734 55:2735 56:2736 57:2737 58:2738 59:2739 5A:273A 5B:273B 5C:273C "
+            + "5D:273D 5E:273E 5F:273F 60:2740 61:2741 62:2742 63:2743 64:2744 65:2745 66:2746 67:2747 68:2748 "
+            + "69:2749 6A:274A 6B:274B 6C:25CF 6D:274D 6E:25A0 6F:274F 70:2750 71:2751 72:2752 73:25B2 74:25BC "
+            + "75:25C6 76:2756 77:25D7 78:2758 79:2759 7A:275A 7B:275B 7C:275C 7D:275D 7E:275E 80:2768 81:2769 "
+            + "82:276A 83:276B 84:276C 85:276D 86:276E 87:276F 88:2770 89:2771 8A:2772 8B:2773 8C:2774 8D:2775 "
+            + "A1:2761 A2:2762 A3:2763 A4:2764 A5:2765 A6:2766 A7:2767 A8:2663 A9:2666 AA:2665 AB:2660 AC:2460 "
+            + "AD:2461 AE:2462 AF:2463 B0:2464 B1:2465 B2:2466 B3:2467 B4:2468 B5:2469 B6:2776 B7:2777 B8:2778 "
+            + "B9:2779 BA:277A BB:277B BC:277C BD:277D BE:277E BF:277F C0:2780 C1:2781 C2:2782 C3:2783 C4:2784 "
+            + "C5:2785 C6:2786 C7:2787 C8:2788 C9:2789 CA:278A CB:278B CC:278C CD:278D CE:278E CF:278F D0:2790 "
+            + "D1:2791 D2:2792 D3:2793 D4:2794 D5:2192 D6:2194 D7:2195 D8:2798 D9:2799 DA:279A DB:279B DC:279C "
+            + "DD:279D DE:279E DF:279F E0:27A0 E1:27A1 E2:27A2 E3:27A3 E4:27A4 E5:27A5 E6:27A6 E7:27A7 E8:27A8 "
+            + "E9:27A9 EA:27AA EB:27AB EC:27AC ED:27AD EE:27AE EF:27AF F1:27B1 F2:27B2 F3:27B3 F4:27B4 F5:27B5 "
+            + "F6:27B6 F7:27B7 F8:27B8 F9:27B9 FA:27BA FB:27BB FC:27BC FD:27BD FE:27BE ";
+
     private static final Map<String, int[][]> TABLES = new HashMap<>();
 
     static {
@@ -168,6 +187,13 @@ final class SymbolFonts {
         TABLES.put("wingdings 2", parse(WINGDINGS_2));
         TABLES.put("wingdings 3", parse(WINGDINGS_3));
         TABLES.put("webdings", parse(WEBDINGS));
+        TABLES.put("symbol (pcl6)", TABLES.get("symbol"));
+        TABLES.put("symbol mt", TABLES.get("symbol"));
+        int[][] dingbats = parse(DINGBATS);
+        for (String name : new String[] {"zapfdingbats", "zapf dingbats", "itc zapf dingbats", "dingbats",
+                "monotype sorts"}) {
+            TABLES.put(name, dingbats);
+        }
     }
 
     private SymbolFonts() {}

@@ -201,7 +201,8 @@ public final class PdfFonts implements Closeable {
     /** An installed face that has a character {@code like} lacks, drawn in its place; null when none has it. */
     public FontFace fallback(int codePoint, FontFace like) {
         FontFace f = library.fallback(codePoint, like);
-        return f != null && f.covers(codePoint) && !f.sameProgram(like) ? f : null;
+        return f != null && f.covers(codePoint) && (!f.sameProgram(like) || f.symbolStandIn() && !f.equals(like)) ? f
+                : null;
     }
 
     public List<String> substitutions() {
