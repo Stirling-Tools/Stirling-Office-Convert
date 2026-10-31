@@ -20,6 +20,7 @@ import org.apache.pdfbox.cos.COSBase;
 import org.apache.pdfbox.cos.COSDictionary;
 import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.cos.COSStream;
+import org.apache.pdfbox.cos.COSString;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.font.PDCIDFont;
 import org.apache.pdfbox.pdmodel.font.PDCIDFontType0;
@@ -150,11 +151,49 @@ final class FontFixer {
                 if (font != null && repairSubtype(font)) {
                     changed = true;
                 }
+                if (font != null) {
+                    repairEntries(font);
+                    COSArray descendants = ContentGraph.array(font.getDictionaryObject(COSName.DESCENDANT_FONTS));
+                    COSDictionary cid = descendants == null || descendants.size() == 0 ? null
+                            : ContentGraph.dict(descendants.getObject(0));
+                    if (cid != null) {
+                        repairEntries(cid);
+                    }
+                }
             }
         }
         if (changed) {
             report.warn("Gave a font with a missing or unknown Subtype the type its font program shows");
         }
+    }
+
+    static void repairEntries(COSDictionary font) {
+        if (!COSName.FONT.equals(font.getCOSName(COSName.TYPE))) {
+            font.setItem(COSName.TYPE, COSName.FONT);
+        }
+        COSDictionary fd = ContentGraph.dict(font.getDictionaryObject(COSName.FONT_DESC));
+        if (fd != null && fd.getDictionaryObject(COSName.FONT_NAME) instanceof COSString name) {
+            COSName fixed = fontName(name.getString());
+            if (fixed != null) {
+                fd.setItem(COSName.FONT_NAME, fixed);
+            }
+        }
+        COSBase base = font.getDictionaryObject(COSName.BASE_FONT);
+        if (base instanceof COSString name) {
+            COSName fixed = fontName(name.getString());
+            if (fixed != null) {
+                font.setItem(COSName.BASE_FONT, fixed);
+            }
+        } else if (base == null && !COSName.TYPE3.equals(font.getCOSName(COSName.SUBTYPE)) && fd != null
+                && fd.getDictionaryObject(COSName.FONT_NAME) instanceof COSName name) {
+            font.setItem(COSName.BASE_FONT, name);
+        }
+    }
+
+    private static COSName fontName(String text) {
+        StringBuilder b = new StringBuilder();
+        text.codePoints().filter(c -> c > 0x20 && c < 0x7F && "()<>[]{}/%".indexOf(c) < 0).forEach(b::appendCodePoint);
+        return b.isEmpty() ? null : COSName.getPDFName(b.toString());
     }
 
     static void dropUnreadable(ContentGraph graph, Report report) {
@@ -347,7 +386,18 @@ final class FontFixer {
             return;
         }
         CMap cmap = t0.getCMap();
-        if (cmap == null || cmap.getRegistry() == null || cmap.getOrdering() == null) {
+        String registry = cmap == null ? null : cmap.getRegistry();
+        String ordering = cmap == null ? null : cmap.getOrdering();
+        int cmapSupplement = cmap == null ? 0 : cmap.getSupplement();
+        COSDictionary declared = enc instanceof COSStream st ? ContentGraph.dict(st.getDictionaryObject(COSName.CIDSYSTEMINFO))
+                : null;
+        if ((registry == null || ordering == null) && declared != null && declared.getString(COSName.REGISTRY) != null
+                && declared.getString(COSName.ORDERING) != null) {
+            registry = declared.getString(COSName.REGISTRY).strip();
+            ordering = declared.getString(COSName.ORDERING).strip();
+            cmapSupplement = declared.getInt(COSName.SUPPLEMENT, 0);
+        }
+        if (registry == null || ordering == null) {
             return;
         }
         COSDictionary info = ContentGraph.dict(cid.getCOSObject().getDictionaryObject(COSName.CIDSYSTEMINFO));
@@ -355,12 +405,20 @@ final class FontFixer {
             info = new COSDictionary();
             cid.getCOSObject().setItem(COSName.CIDSYSTEMINFO, info);
         }
-        if (!cmap.getRegistry().equals(info.getString(COSName.REGISTRY))
-                || !cmap.getOrdering().equals(info.getString(COSName.ORDERING))
-                || info.getInt(COSName.SUPPLEMENT) > cmap.getSupplement()) {
-            info.setString(COSName.REGISTRY, cmap.getRegistry());
-            info.setString(COSName.ORDERING, cmap.getOrdering());
-            info.setInt(COSName.SUPPLEMENT, cmap.getSupplement());
+        if (!registry.equals(info.getString(COSName.REGISTRY)) || !ordering.equals(info.getString(COSName.ORDERING))
+                || info.getInt(COSName.SUPPLEMENT) > cmapSupplement) {
+            info.setString(COSName.REGISTRY, registry);
+            info.setString(COSName.ORDERING, ordering);
+            info.setInt(COSName.SUPPLEMENT, cmapSupplement);
+        }
+        if (enc instanceof COSStream stream) {
+            COSDictionary own = ContentGraph.dict(stream.getDictionaryObject(COSName.CIDSYSTEMINFO));
+            int supplement = Math.max(info.getInt(COSName.SUPPLEMENT, 0), own == null ? 0 : own.getInt(COSName.SUPPLEMENT, 0));
+            COSDictionary aligned = new COSDictionary();
+            aligned.setString(COSName.REGISTRY, info.getString(COSName.REGISTRY));
+            aligned.setString(COSName.ORDERING, info.getString(COSName.ORDERING));
+            aligned.setInt(COSName.SUPPLEMENT, supplement);
+            stream.setItem(COSName.CIDSYSTEMINFO, aligned);
         }
     }
 

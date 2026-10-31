@@ -10,6 +10,8 @@ import java.util.Set;
 
 import org.apache.pdfbox.cos.COSArray;
 import org.apache.pdfbox.cos.COSBase;
+import org.apache.pdfbox.cos.COSInteger;
+import org.apache.pdfbox.cos.COSObject;
 import org.apache.pdfbox.cos.COSDictionary;
 import org.apache.pdfbox.cos.COSFloat;
 import org.apache.pdfbox.cos.COSName;
@@ -41,7 +43,26 @@ final class PageSize {
 
     private PageSize() {}
 
+    static void directBoxes(COSDictionary page) {
+        for (COSName box : BOXES) {
+            COSBase value = box.equals(COSName.MEDIA_BOX) || box.equals(COSName.CROP_BOX)
+                    ? org.apache.pdfbox.pdmodel.PDPageTree.getInheritableAttribute(page, box)
+                    : page.getDictionaryObject(box);
+            if (!(value instanceof COSArray a) || a.toList().stream().noneMatch(v -> v instanceof COSObject)) {
+                continue;
+            }
+            COSArray direct = new COSArray();
+            for (int i = 0; i < a.size(); i++) {
+                direct.add(a.getObject(i) instanceof COSNumber n ? n : COSInteger.ZERO);
+            }
+            page.setItem(box, direct);
+        }
+    }
+
     static void run(PDDocument doc, PdfALevel level, Report report) throws IOException {
+        for (PDPage page : doc.getPages()) {
+            directBoxes(page.getCOSObject());
+        }
         if (level.part() == 1 || level.part() == 4) {
             return;
         }
