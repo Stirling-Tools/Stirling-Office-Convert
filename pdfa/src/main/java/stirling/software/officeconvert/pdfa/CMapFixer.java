@@ -40,6 +40,8 @@ final class CMapFixer {
     private static final Pattern CID_RANGE = Pattern.compile(
             "<([0-9A-Fa-f]+)>\\s*<([0-9A-Fa-f]+)>\\s*(\\d+)");
 
+    private static final Pattern DECLARED_WMODE = Pattern.compile("/WMode\\s+([01])\\s+def");
+
     private static final Pattern CID_CHAR = Pattern.compile("<([0-9A-Fa-f]+)>\\s*(\\d+)");
 
     private static final Set<String> PREDEFINED = Set.of("GB-EUC-H", "GB-EUC-V", "GBpc-EUC-H", "GBpc-EUC-V",
@@ -232,6 +234,10 @@ final class CMapFixer {
     }
 
     private COSStream predefined(String name, CMap parsed) throws IOException {
+        return predefined(name, parsed, parsed.getWMode());
+    }
+
+    private COSStream predefined(String name, CMap parsed, int wmode) throws IOException {
         byte[] data;
         try (InputStream in = CMap.class.getResourceAsStream("/org/apache/fontbox/cmap/" + name)) {
             if (in == null || name.contains("/") || name.contains("..")) {
@@ -247,10 +253,10 @@ final class CMapFixer {
         info.setString(COSName.ORDERING, parsed.getOrdering() == null ? "Identity" : parsed.getOrdering());
         info.setInt(COSName.SUPPLEMENT, parsed.getSupplement());
         s.setItem(COSName.CIDSYSTEMINFO, info);
-        s.setInt(WMODE, parsed.getWMode());
+        s.setInt(WMODE, wmode);
         Matcher m = Pattern.compile("/([^\\s/]+)\\s+usecmap").matcher(new String(data, StandardCharsets.ISO_8859_1));
         if (m.find() && !m.group(1).equals(name)) {
-            COSStream parent = predefined(m.group(1), parsed);
+            COSStream parent = predefined(m.group(1), parsed, declaredWMode(m.group(1)));
             if (parent != null) {
                 s.setItem(USE_CMAP, parent);
             }
@@ -259,6 +265,16 @@ final class CMapFixer {
             out.write(data);
         }
         return s;
+    }
+
+    private static int declaredWMode(String name) throws IOException {
+        try (InputStream in = CMap.class.getResourceAsStream("/org/apache/fontbox/cmap/" + name)) {
+            if (in == null || name.contains("/") || name.contains("..")) {
+                return 0;
+            }
+            Matcher m = DECLARED_WMODE.matcher(new String(in.readAllBytes(), StandardCharsets.ISO_8859_1));
+            return m.find() ? Integer.parseInt(m.group(1)) : 0;
+        }
     }
 
     private boolean flatten(PDType0Font font, PDCIDFont cid, CMap cmap, Set<Integer> codes, String text)
