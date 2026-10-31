@@ -1,5 +1,6 @@
 package stirling.software.officeconvert;
 
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.ByteArrayInputStream;
@@ -44,6 +45,24 @@ class ChoiceFieldTextTest {
                 new Field(new PDRectangle(20, 615, 170, 70), list.toString())));
         assertTrue(xml.contains(">Dolor<"), xml);
         assertTrue(xml.contains(">Sit<"), xml);
+    }
+
+    @Test
+    void listBoxOptionsStayOnTheirOwnLines() throws IOException {
+        String bevels = bevel(20, 615, 170, 70);
+        String labels = "BT 0 g /F1 10 Tf 20 691 Td (List box) Tj ET BT 0 g /F1 10 Tf 200 671 Td (Beside) Tj ET";
+        StringBuilder list = new StringBuilder("/Tx BMC q 1 1 168 68 re W n 0 g ");
+        String[] options = {"Lorem", "Ipsum", "Dolor"};
+        for (int i = 0; i < options.length; i++) {
+            list.append("BT /F1 10 Tf 2 ").append(56f - 12 * i).append(" Td (").append(options[i]).append(") Tj ET ");
+        }
+        list.append("Q EMC");
+        try (PDDocument document = document(bevels + labels, List.of(new Field(new PDRectangle(20, 615, 170, 70), list.toString())))) {
+            String text = PdfToText.text(document, PdfToDocx.Options.defaults());
+            assertTrue(text.matches("(?s).*Lorem\\n+Ipsum\\n+Dolor.*"), text);
+            assertFalse(text.contains("List box Lorem"), text);
+            assertFalse(text.contains("Lorem\tBeside"), text);
+        }
     }
 
     private record Field(PDRectangle rect, String appearance) {}
