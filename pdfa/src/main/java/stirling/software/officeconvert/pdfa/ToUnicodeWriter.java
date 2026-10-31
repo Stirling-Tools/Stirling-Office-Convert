@@ -131,7 +131,7 @@ final class ToUnicodeWriter {
         for (Map.Entry<Integer, String> e : map.entrySet()) {
             int width = widths.applyAsInt(e.getKey());
             if ((preserve ? e.getValue() != null && !e.getValue().isEmpty() : valid(e.getValue()))
-                    && e.getKey() >= 0 && e.getKey() < (1L << (8 * width))) {
+                    && Integer.toUnsignedLong(e.getKey()) < 1L << (8 * width)) {
                 entries.add(e);
                 lengths.add(width);
             }

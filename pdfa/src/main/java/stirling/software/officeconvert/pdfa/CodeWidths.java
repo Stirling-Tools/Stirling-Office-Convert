@@ -25,7 +25,7 @@ final class CodeWidths {
 
     static int width(CMap cmap, int code, int fallback) {
         for (int n = 1; n <= 4; n++) {
-            if (n < 4 && code >= 1 << (8 * n)) {
+            if (Integer.toUnsignedLong(code) >= 1L << (8 * n)) {
                 continue;
             }
             byte[] bytes = new byte[n];

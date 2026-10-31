@@ -462,6 +462,7 @@ final class FontFixer {
     }
 
     private void keepRenamedText(PDType3Font font, TreeMap<Integer, String> named) throws IOException {
+        PDFont repaired = PDFontFactory.createFont(font.getCOSObject());
         TreeMap<Integer, String> map = new TreeMap<>();
         boolean lost = false;
         for (Map.Entry<Integer, String> e : named.entrySet()) {
@@ -470,7 +471,7 @@ final class FontFixer {
                 map.put(e.getKey(), declared);
             } else if (e.getValue() != null) {
                 map.put(e.getKey(), e.getValue());
-                lost |= !e.getValue().equals(UnicodeGuess.nameText(font, e.getKey()));
+                lost |= !e.getValue().equals(UnicodeGuess.nameText(repaired, e.getKey()));
             }
         }
         if (lost) {

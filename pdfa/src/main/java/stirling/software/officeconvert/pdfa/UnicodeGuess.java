@@ -188,7 +188,8 @@ final class UnicodeGuess {
         }
         String ordering = t0.getDescendantFont() == null || t0.getDescendantFont().getCIDSystemInfo() == null ? null
                 : t0.getDescendantFont().getCIDSystemInfo().getOrdering();
-        if (ordering != null && !"Identity".equals(ordering) && !"UCS".equals(ordering)) {
+        if (ordering != null && !"Identity".equals(ordering) && !"UCS".equals(ordering)
+                || t0.getCOSObject().getDictionaryObject(COSName.TO_UNICODE) instanceof COSStream) {
             return null;
         }
         return cid > 0 && cid <= Character.MAX_CODE_POINT ? new String(Character.toChars(cid)) : null;
