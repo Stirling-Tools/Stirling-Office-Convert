@@ -743,7 +743,8 @@ final class PageFlow extends Region {
             return;
         }
         SectionProps next = sections.get(i + 1).props();
-        if (!"continuous".equals(next.type) || !next.samePage(sect) || columnBreak(sections.get(i).blocks())) {
+        if (!"continuous".equals(next.type) || !next.samePage(sect)
+                || ColumnBalance.columnBreak(sections.get(i).blocks())) {
             return;
         }
         StackLayout trial = StackLayout.body(colW[0], pitch(sections.get(i).props()));
@@ -762,40 +763,19 @@ final class PageFlow extends Region {
         float total = 0;
         float tallest = 0;
         boolean topSuppressed = frameTop <= page.bodyTop + 0.5f;
-        float[] gaps = gaps(list, 0);
+        float[] gaps = ColumnBalance.gaps(list, 0);
         for (int k = 0; k < list.size(); k++) {
             Placed p = list.get(k);
             total += p.strip.height + gaps[k];
             tallest = Math.max(tallest, p.strip.height);
         }
         float avail = page.bodyBottom - page.noteHeight - y;
-        if (!fits(list, gaps, avail, cols, topSuppressed)) {
+        if (!ColumnBalance.fits(list, gaps, avail, cols, topSuppressed)) {
             return;
         }
         float lo = Math.max(tallest, total / cols - 1);
-        float hi = avail;
-        for (int it = 0; it < 30 && hi - lo > 0.05f; it++) {
-            float mid = (lo + hi) / 2;
-            if (fits(list, gaps, mid, cols, topSuppressed)) {
-                hi = mid;
-            } else {
-                lo = mid;
-            }
-        }
+        float hi = ColumnBalance.shortest(list, gaps, lo, avail, cols, topSuppressed);
         balanceBottom = y + hi + 0.5f;
-    }
-
-    private static boolean columnBreak(List<Block> blocks) {
-        for (Block b : blocks) {
-            if (b instanceof Para p) {
-                for (Inline in : p.items) {
-                    if (in instanceof Inline.Break br && "column".equals(br.type())) {
-                        return true;
-                    }
-                }
-            }
-        }
-        return false;
     }
 
     private void balance(SectionProps previous, int previousIndex) {
@@ -815,7 +795,7 @@ final class PageFlow extends Region {
         float total = 0;
         float tallest = 0;
         boolean topSuppressed = frameTop <= page.bodyTop + 0.5f;
-        float[] gaps = gaps(list, frameTop);
+        float[] gaps = ColumnBalance.gaps(list, frameTop);
         for (int i = 0; i < list.size(); i++) {
             total += list.get(i).strip.height + gaps[i];
             tallest = Math.max(tallest, list.get(i).strip.height);
@@ -823,38 +803,11 @@ final class PageFlow extends Region {
         float avail = page.bodyBottom - page.noteHeight - frameTop;
         float lo = Math.max(tallest, total / cols - 1);
         float hi = Math.min(avail, total);
-        if (!fits(list, gaps, hi, cols, topSuppressed)) {
+        if (!ColumnBalance.fits(list, gaps, hi, cols, topSuppressed)) {
             return;
         }
-        for (int it = 0; it < 30 && hi - lo > 0.05f; it++) {
-            float mid = (lo + hi) / 2;
-            if (fits(list, gaps, mid, cols, topSuppressed)) {
-                hi = mid;
-            } else {
-                lo = mid;
-            }
-        }
-        float height = hi;
-        int c = 0;
-        float at = 0;
-        float max = 0;
-        for (int k = 0; k < list.size(); k++) {
-            Placed p = list.get(k);
-            float g = gaps[k];
-            if (at > 0 && at + g + p.strip.height > height + 0.05f) {
-                c++;
-                at = 0;
-                g = topSuppressed ? 0 : gaps[k];
-            }
-            c = Math.min(c, cols - 1);
-            float dx = colX[c] - colX[Math.min(p.column, colX.length - 1)];
-            p.x += dx;
-            p.y = frameTop + at + g;
-            p.column = c;
-            at += g + p.strip.height;
-            max = Math.max(max, at);
-        }
-        y = frameTop + max;
+        float height = ColumnBalance.shortest(list, gaps, lo, hi, cols, topSuppressed);
+        y = frameTop + ColumnBalance.arrange(list, gaps, height, colX, frameTop, topSuppressed);
     }
 
     private float lowest(int section) {
@@ -865,37 +818,6 @@ final class PageFlow extends Region {
             }
         }
         return max;
-    }
-
-    private static float[] gaps(List<Placed> list, float origin) {
-        float[] g = new float[list.size()];
-        g[0] = Math.max(0, list.get(0).y - origin);
-        for (int k = 1; k < list.size(); k++) {
-            Placed a = list.get(k - 1);
-            Placed b = list.get(k);
-            float bottom = a.y + a.strip.height;
-            g[k] = a.column == b.column && b.y >= bottom - 0.01f ? b.y - bottom : b.gap;
-        }
-        return g;
-    }
-
-    private static boolean fits(List<Placed> list, float[] gaps, float height, int cols, boolean topSuppressed) {
-        int c = 0;
-        float at = 0;
-        for (int k = 0; k < list.size(); k++) {
-            Placed p = list.get(k);
-            float g = gaps[k];
-            if (at > 0 && at + g + p.strip.height > height + 0.05f) {
-                c++;
-                at = 0;
-                g = topSuppressed ? 0 : gaps[k];
-                if (c >= cols) {
-                    return false;
-                }
-            }
-            at += g + p.strip.height;
-        }
-        return true;
     }
 
     @Override
