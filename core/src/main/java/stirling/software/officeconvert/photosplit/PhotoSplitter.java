@@ -280,11 +280,7 @@ public final class PhotoSplitter {
             }
             checkpoint();
             if (overwrite) {
-                try {
-                    Files.move(part, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
-                } catch (AtomicMoveNotSupportedException e) {
-                    Files.move(part, target, StandardCopyOption.REPLACE_EXISTING);
-                }
+                PdfFiles.moveIntoPlace(part, target);
             } else {
                 Files.move(part, target);
             }

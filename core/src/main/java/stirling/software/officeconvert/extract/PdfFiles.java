@@ -5,9 +5,11 @@ import java.io.InputStream;
 import java.io.InterruptedIOException;
 import java.nio.channels.ClosedChannelException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 
 import org.apache.pdfbox.io.IOUtils;
 import org.apache.pdfbox.io.RandomAccessRead;
@@ -19,6 +21,13 @@ import stirling.software.officeconvert.jpx.JpxImageIO;
 import stirling.software.officeconvert.memory.Admission;
 
 public final class PdfFiles {
+
+    public static final long MAX_INPUT_BYTES = 1L << 30;
+
+    @FunctionalInterface
+    public interface Output<T> {
+        T writeTo(Path part) throws IOException;
+    }
 
     private PdfFiles() {}
 
@@ -69,6 +78,36 @@ public final class PdfFiles {
             throw new NoSuchFileException(String.valueOf(dir), null, "The output folder does not exist");
         }
         return dir;
+    }
+
+    public static long checkSize(Path pdf) throws IOException {
+        long size = Files.size(pdf);
+        if (size > MAX_INPUT_BYTES) {
+            throw new IOException("The PDF is larger than " + (MAX_INPUT_BYTES >> 20) + " MB");
+        }
+        return size;
+    }
+
+    public static <T> T writeThenMove(Path target, String prefix, Output<T> output) throws IOException {
+        Path part = Files.createTempFile(outputFolder(target), prefix, ".part");
+        try {
+            T result = output.writeTo(part);
+            stopIfInterrupted();
+            moveIntoPlace(part, target);
+            return result;
+        } catch (IOException e) {
+            throw interrupted(e);
+        } finally {
+            Files.deleteIfExists(part);
+        }
+    }
+
+    public static void moveIntoPlace(Path part, Path target) throws IOException {
+        try {
+            Files.move(part, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+        } catch (AtomicMoveNotSupportedException e) {
+            Files.move(part, target, StandardCopyOption.REPLACE_EXISTING);
+        }
     }
 
     public static void checkOpen(PDDocument doc) throws IOException {

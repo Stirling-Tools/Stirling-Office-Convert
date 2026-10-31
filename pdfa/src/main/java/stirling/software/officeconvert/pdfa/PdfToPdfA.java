@@ -21,7 +21,7 @@ import stirling.software.officeconvert.topdf.font.FontSet;
 
 public final class PdfToPdfA {
 
-    public static final long MAX_INPUT_BYTES = 1L << 30;
+    public static final long MAX_INPUT_BYTES = PdfFiles.MAX_INPUT_BYTES;
 
     public record Options(PdfALevel level, String password, Duration timeout, List<Path> fontDirs, int maxPages,
             float flattenDpi, FontSet fonts) {
@@ -124,33 +124,22 @@ public final class PdfToPdfA {
         Objects.requireNonNull(out, "out");
         Objects.requireNonNull(options, "options");
         PdfFiles.stopIfInterrupted();
-        if (Files.size(in) > MAX_INPUT_BYTES) {
-            throw new IOException("The PDF is larger than " + (MAX_INPUT_BYTES >> 20) + " MB");
-        }
-        Path part = Files.createTempFile(PdfFiles.outputFolder(out), ".pdfa-", ".part");
-        try {
-            Result result = Deadline.run(options.timeout(), () -> ContentCache.run(() -> {
-                long size = Files.size(in);
-                Admission.Ticket ticket = Admission.jvm().enter(estimate(size, 0));
-                try (PDDocument doc = PdfFiles.open(in, options.password())) {
-                    long content = ContentBudget.peakBytes(doc);
-                    ticket.close();
-                    ticket = Admission.jvm().enter(estimate(size, content));
-                    try (OutputStream os = new BufferedOutputStream(Files.newOutputStream(part), 1 << 16)) {
-                        return Conversion.run(doc, os, options);
+        PdfFiles.checkSize(in);
+        return PdfFiles.writeThenMove(out, ".pdfa-", part ->
+                Deadline.run(options.timeout(), () -> ContentCache.run(() -> {
+                    long size = Files.size(in);
+                    Admission.Ticket ticket = Admission.jvm().enter(estimate(size, 0));
+                    try (PDDocument doc = PdfFiles.open(in, options.password())) {
+                        long content = ContentBudget.peakBytes(doc);
+                        ticket.close();
+                        ticket = Admission.jvm().enter(estimate(size, content));
+                        try (OutputStream os = new BufferedOutputStream(Files.newOutputStream(part), 1 << 16)) {
+                            return Conversion.run(doc, os, options);
+                        }
+                    } finally {
+                        ticket.close();
                     }
-                } finally {
-                    ticket.close();
-                }
-            }));
-            PdfFiles.stopIfInterrupted();
-            move(part, out);
-            return result;
-        } catch (IOException e) {
-            throw PdfFiles.interrupted(e);
-        } finally {
-            Files.deleteIfExists(part);
-        }
+                })));
     }
 
     public static Result convert(PDDocument document, OutputStream out, Options options) throws IOException {
@@ -164,13 +153,5 @@ public final class PdfToPdfA {
 
     static long estimate(long bytes, long content) {
         return Admission.BASE_BYTES * 8 + Math.min(bytes, 256L << 20) * 3 + content;
-    }
-
-    private static void move(Path part, Path out) throws IOException {
-        try {
-            Files.move(part, out, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
-        } catch (AtomicMoveNotSupportedException e) {
-            Files.move(part, out, StandardCopyOption.REPLACE_EXISTING);
-        }
     }
 }
