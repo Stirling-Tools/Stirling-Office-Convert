@@ -1,0 +1,24 @@
+[versions]
+pdfbox = "3.0.8"
+poi = "5.5.1"
+junit = "5.13.4"
+
+[libraries]
+pdfbox = { module = "org.apache.pdfbox:pdfbox", version.ref = "pdfbox" }
+jbig2-imageio = { module = "org.apache.pdfbox:jbig2-imageio", version = "3.0.5" }
+pdfbox-graphics2d = { module = "de.rototor.pdfbox:graphics2d", version = "3.0.5" }
+commons-logging = { module = "commons-logging:commons-logging", version = "1.4.0" }
+brotli-dec = { module = "org.brotli:dec", version = "0.1.2" }
+poi-ooxml = { module = "org.apache.poi:poi-ooxml", version.ref = "poi" }
+poi-scratchpad = { module = "org.apache.poi:poi-scratchpad", version.ref = "poi" }
+jsoup = { module = "org.jsoup:jsoup", version = "1.22.2" }
+imageio-webp = { module = "com.twelvemonkeys.imageio:imageio-webp", version = "3.15.2" }
+proguard-base = { module = "com.guardsquare:proguard-base", version = "7.9.1" }
+
+junit-bom = { module = "org.junit:junit-bom", version.ref = "junit" }
+junit-jupiter = { module = "org.junit.jupiter:junit-jupiter" }
+junit-jupiter-api = { module = "org.junit.jupiter:junit-jupiter-api" }
+junit-jupiter-params = { module = "org.junit.jupiter:junit-jupiter-params" }
+junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher" }
+verapdf-validation-model = { module = "org.verapdf:validation-model", version = "1.30.2" }
+jai-imageio-jpeg2000 = { module = "com.github.jai-imageio:jai-imageio-jpeg2000", version = "1.4.0" }

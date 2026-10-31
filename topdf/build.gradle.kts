@@ -3,21 +3,18 @@ plugins {
     `maven-publish`
 }
 
-val pdfboxVersion = "3.0.8"
-val poiVersion = "5.5.1"
-
 dependencies {
-    api("org.apache.pdfbox:pdfbox:$pdfboxVersion")
+    api(libs.pdfbox)
     implementation(project(":core"))
-    implementation("org.apache.poi:poi-ooxml:$poiVersion")
-    implementation("org.apache.poi:poi-scratchpad:$poiVersion")
-    implementation("de.rototor.pdfbox:graphics2d:3.0.5")
-    implementation("org.jsoup:jsoup:1.22.2")
-    implementation("com.twelvemonkeys.imageio:imageio-webp:3.15.2")
+    implementation(libs.poi.ooxml)
+    implementation(libs.poi.scratchpad)
+    implementation(libs.pdfbox.graphics2d)
+    implementation(libs.jsoup)
+    implementation(libs.imageio.webp)
 
-    testImplementation(platform("org.junit:junit-bom:5.13.4"))
-    testImplementation("org.junit.jupiter:junit-jupiter")
-    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+    testImplementation(platform(libs.junit.bom))
+    testImplementation(libs.junit.jupiter)
+    testRuntimeOnly(libs.junit.platform.launcher)
 }
 
 base {

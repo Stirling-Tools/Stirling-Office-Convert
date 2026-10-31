@@ -6,11 +6,11 @@ dependencies {
     implementation(project(":core"))
     implementation(project(":topdf"))
 
-    testImplementation(platform("org.junit:junit-bom:5.13.4"))
-    testImplementation("org.junit.jupiter:junit-jupiter")
-    testImplementation("org.apache.poi:poi-ooxml:5.5.1")
-    testImplementation("org.apache.poi:poi-scratchpad:5.5.1")
-    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+    testImplementation(platform(libs.junit.bom))
+    testImplementation(libs.junit.jupiter)
+    testImplementation(libs.poi.ooxml)
+    testImplementation(libs.poi.scratchpad)
+    testRuntimeOnly(libs.junit.platform.launcher)
 }
 
 application {
