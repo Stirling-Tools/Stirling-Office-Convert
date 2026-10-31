@@ -22,8 +22,6 @@ public final class CffSubset {
 
     private static final int FD_SELECT = 1237;
 
-    private static final Set<Integer> OFFSETS = Set.of(CHARSET, ENCODING, CHAR_STRINGS, PRIVATE, FD_ARRAY, FD_SELECT);
-
     private record Entry(int op, byte[] operands, int[] numbers) {}
 
     private record Index(int start, int end, List<byte[]> items) {}

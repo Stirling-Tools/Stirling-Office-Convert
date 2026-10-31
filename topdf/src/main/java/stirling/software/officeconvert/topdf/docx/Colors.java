@@ -205,10 +205,6 @@ final class Colors {
         return out;
     }
 
-    private static int mix(int c, int target, float keep) {
-        return Math.max(0, Math.min(255, Math.round(c * keep + target * (1 - keep))));
-    }
-
     static boolean dark(Color c) {
         return c != null && (c.getRed() * 0.299 + c.getGreen() * 0.587 + c.getBlue() * 0.114) < 96;
     }

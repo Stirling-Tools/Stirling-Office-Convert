@@ -27,8 +27,6 @@ public final class Biff4Upgrade {
 
     private int xfs;
 
-    private int fonts;
-
     private byte[] lastFont;
 
     private Biff4Upgrade(byte[] in) {
@@ -155,7 +153,6 @@ public final class Biff4Upgrade {
         }
         lastFont = b.toByteArray();
         globals.add(0x0031, lastFont);
-        fonts++;
     }
 
     private void fontColor(int at, int len) {

@@ -91,10 +91,6 @@ final class CharProps implements Cloneable {
         set |= 1L << prop;
     }
 
-    void unmark(int prop) {
-        set &= ~(1L << prop);
-    }
-
     CharProps copy() {
         try {
             CharProps c = (CharProps) super.clone();

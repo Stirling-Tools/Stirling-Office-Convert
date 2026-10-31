@@ -37,8 +37,6 @@ final class Sheet {
 
     private String view = "";
 
-    private String format = "";
-
     private int baseWidth = -1;
 
     private double standardWidth = -1;

@@ -83,10 +83,6 @@ public final class HtmlDocument {
         return lay(source, out, fonts, zoom, HtmlAssets.NONE);
     }
 
-    public static String targetBookmark(String id) {
-        return Generated.BOOKMARK_PREFIX + id;
-    }
-
     public static HtmlAssets readOnce(HtmlAssets assets) {
         return assets instanceof Linked linked ? linked : new Linked(assets);
     }

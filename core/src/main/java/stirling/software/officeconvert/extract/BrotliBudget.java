@@ -45,10 +45,6 @@ public final class BrotliBudget {
         return left.get() < 0;
     }
 
-    public long totalBytes() {
-        return total;
-    }
-
     public String exhausted() {
         return "the PDF's BrotliDecode streams decode past the " + (total >> 20) + " MB budget for one document";
     }

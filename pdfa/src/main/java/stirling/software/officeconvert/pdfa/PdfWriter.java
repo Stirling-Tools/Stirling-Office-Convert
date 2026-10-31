@@ -35,8 +35,6 @@ final class PdfWriter {
 
     static final int MAX_OBJECTS = 8_388_607;
 
-    private static final COSName OBJ_STM = COSName.getPDFName("ObjStm");
-
     private final CountingOutput out;
 
     private final boolean objectStreams;

@@ -517,14 +517,4 @@ final class WordDrawings {
                 : "<wp:posOffset>" + Length.emu(b.y()) + "</wp:posOffset>";
         return "<wp:positionV relativeFrom=\"" + from + "\">" + inner + "</wp:positionV>";
     }
-
-    static List<Element> drawingKids(Element e) {
-        List<Element> out = new ArrayList<>();
-        for (Element k : Dom.kids(e)) {
-            if (Ns.DRAW.equals(k.getNamespaceURI())) {
-                out.add(k);
-            }
-        }
-        return out;
-    }
 }

@@ -65,11 +65,6 @@ public record CellStyle(
                 vertical, wrap, format);
     }
 
-    public CellStyle withAlignment(HAlign h, VAlign v) {
-        return new CellStyle(fontSize, bold, italic, underline, strike, rgb, fill, top, bottom, left, right, h, v, wrap,
-                format);
-    }
-
     public CellStyle frameOnly() {
         return new CellStyle(fontSize, false, false, false, false, -1, fill, top, bottom, left, right, HAlign.GENERAL,
                 vertical, false, NumberFormat.GENERAL);

@@ -34,8 +34,6 @@ final class OptionalContentRemoval {
 
     private boolean baseOff;
 
-    private int removed;
-
     private OptionalContentRemoval() {}
 
     static void run(PDDocument doc, Report report) throws IOException {
@@ -60,7 +58,6 @@ final class OptionalContentRemoval {
             for (int i = 0; i < annots.size(); i++) {
                 COSDictionary a = ContentGraph.dict(annots.getObject(i));
                 if (a != null && r.hidden(a.getDictionaryObject(COSName.OC), 0)) {
-                    r.removed++;
                     continue;
                 }
                 if (a != null) {
