@@ -139,6 +139,7 @@ final class GlyphCollector extends PDFStreamEngine {
     private final TextPositions positions;
     private final ClipPath clipPath = new ClipPath();
     private final ClipArea clipArea = new ClipArea();
+    private final TextClips clips = new TextClips();
     private int currentPageNo;
     private int startPage;
     private int endPage;
@@ -234,15 +235,34 @@ final class GlyphCollector extends PDFStreamEngine {
         }
         try {
             super.processOperator(operator, operands);
+            clips.operator(operator.getName());
         } catch (IOException | RuntimeException e) {
             BrokenOperators.skip(operator, e);
         }
     }
 
     @Override
+    public void saveGraphicsState() {
+        super.saveGraphicsState();
+        clips.save();
+    }
+
+    @Override
+    public void restoreGraphicsState() {
+        super.restoreGraphicsState();
+        clips.restore();
+    }
+
+    @Override
     public void showForm(PDFormXObject form) throws IOException {
         if (budget.form()) {
-            runner.showForm(form);
+            int mark = clips.mark();
+            int level = clips.level();
+            try {
+                runner.showForm(form);
+            } finally {
+                clips.leave(mark, level);
+            }
         }
     }
 
@@ -255,12 +275,24 @@ final class GlyphCollector extends PDFStreamEngine {
 
     @Override
     protected void processTransparencyGroup(PDTransparencyGroup group) throws IOException {
-        runner.processTransparencyGroup(group);
+        int mark = clips.mark();
+        int level = clips.level();
+        try {
+            runner.processTransparencyGroup(group);
+        } finally {
+            clips.leave(mark, level);
+        }
     }
 
     @Override
     protected void processAnnotation(PDAnnotation annotation, PDAppearanceStream appearance) throws IOException {
-        runner.processAnnotation(annotation, appearance);
+        int mark = clips.mark();
+        int level = clips.level();
+        try {
+            runner.processAnnotation(annotation, appearance);
+        } finally {
+            clips.leave(mark, level);
+        }
     }
 
     @Override
@@ -312,6 +344,7 @@ final class GlyphCollector extends PDFStreamEngine {
         rotation = page.getRotation();
         blankPagesBefore(pageIndex);
         current = new ArrayList<>();
+        clips.reset();
         spans.clear();
         outerActual = null;
         actualDepth = 0;
@@ -447,11 +480,21 @@ final class GlyphCollector extends PDFStreamEngine {
         inPage = false;
         List<RawGlyph> glyphs = current;
         glyphs.removeIf(r -> r.glyph().text == HIDDEN);
+        revealClipText(glyphs);
         composeMarks(glyphs);
         settleAlternatives(glyphs);
         current = new ArrayList<>();
         nextIndex = pageIndex + 1;
         sink.accept(pageIndex, page, glyphs, annotationSeq);
+    }
+
+    private void revealClipText(List<RawGlyph> glyphs) {
+        for (int i = 0; i < glyphs.size(); i++) {
+            RawGlyph r = glyphs.get(i);
+            if (r.invisible() && clips.painted(r.glyph())) {
+                glyphs.set(i, new RawGlyph(r.glyph(), r.direction(), false, r.originX(), r.originY()));
+            }
+        }
     }
 
     private void composeMarks(List<RawGlyph> glyphs) {
@@ -591,6 +634,9 @@ final class GlyphCollector extends PDFStreamEngine {
         if (WordContext.mark(unicode) && codes != null && codes.length == 1
                 && (positions.mapped(pdFont, codes[0]) || positions.unmapped.shapeRead(pdFont, codes[0], unicode))) {
             marks.add(g);
+        }
+        if (mode == RenderingMode.NEITHER_CLIP) {
+            clips.clip(g);
         }
         Matrix tm = tp.getTextMatrix();
         if (current.size() >= MAX_PAGE_GLYPHS) {
