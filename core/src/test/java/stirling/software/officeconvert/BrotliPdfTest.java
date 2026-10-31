@@ -30,6 +30,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 import stirling.software.officeconvert.extract.PdfFiles;
 import stirling.software.officeconvert.extract.StreamGuard;
+import stirling.software.officeconvert.testing.BrotliData;
 
 class BrotliPdfTest {
 

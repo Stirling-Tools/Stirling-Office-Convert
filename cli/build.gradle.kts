@@ -1,3 +1,5 @@
+import stirling.software.gradle.FatJar
+
 plugins {
     application
 }
@@ -10,9 +12,9 @@ dependencies {
     implementation(project(":lineart"))
     implementation(project(":optimize"))
 
-    testImplementation(platform("org.junit:junit-bom:5.13.4"))
-    testImplementation("org.junit.jupiter:junit-jupiter")
-    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+    testImplementation(platform(libs.junit.bom))
+    testImplementation(libs.junit.jupiter)
+    testRuntimeOnly(libs.junit.platform.launcher)
 }
 
 application {
@@ -20,27 +22,7 @@ application {
     applicationDefaultJvmArgs = listOf("-XX:+UseSerialGC")
 }
 
-val mergeServices by tasks.registering {
-    val runtime = configurations.runtimeClasspath
-    val out = layout.buildDirectory.dir("merged-services")
-    inputs.files(runtime)
-    outputs.dir(out)
-    doLast {
-        val merged = sortedMapOf<String, LinkedHashSet<String>>()
-        runtime.get().filter { it.name.endsWith(".jar") }.forEach { jar ->
-            zipTree(jar).matching { include("META-INF/services/*") }.visit {
-                if (!isDirectory) {
-                    val lines = file.readLines().map { it.substringBefore('#').trim() }.filter { it.isNotEmpty() }
-                    merged.getOrPut(name) { LinkedHashSet() }.addAll(lines)
-                }
-            }
-        }
-        val dir = out.get().asFile.resolve("META-INF/services")
-        dir.deleteRecursively()
-        dir.mkdirs()
-        merged.forEach { (name, lines) -> dir.resolve(name).writeText(lines.joinToString("\n", postfix = "\n")) }
-    }
-}
+val mergeServices = FatJar.registerMergeServices(project)
 
 val bsdCurves = """
     curvesapi (com.github.virtuald:curvesapi), BSD 3-Clause License
@@ -133,28 +115,13 @@ tasks.named<Jar>("jar") {
     manifest {
         attributes("Main-Class" to "stirling.software.officeconvert.cli.Main")
     }
-    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
-    dependsOn(configurations.runtimeClasspath, mergeServices, extraLicences)
-    from(mergeServices)
-    from(extraLicences)
-    val libraries = configurations.runtimeClasspath.get().filter { it.name.endsWith(".jar") }
-    from({ libraries.map { zipTree(it) } }) {
-        exclude("META-INF/*.SF", "META-INF/*.DSA", "META-INF/*.RSA", "META-INF/versions/**/module-info.class", "module-info.class")
-        exclude("META-INF/LICENSE*", "META-INF/NOTICE*", "META-INF/DEPENDENCIES*", "META-INF/services/**")
-    }
-    libraries.forEach { jar ->
-        from(zipTree(jar)) {
-            include("META-INF/LICENSE*", "META-INF/NOTICE*")
-            eachFile { path = "META-INF/licenses/${jar.name.removeSuffix(".jar")}/$name" }
-            includeEmptyDirs = false
-        }
-    }
+    FatJar.bundleRuntime(this, mergeServices, extraLicences)
 }
 
 val proguard by configurations.creating
 
 dependencies {
-    proguard("com.guardsquare:proguard-base:7.9.1")
+    proguard(libs.proguard.base)
 }
 
 val toolchainLauncher = javaToolchains.launcherFor {

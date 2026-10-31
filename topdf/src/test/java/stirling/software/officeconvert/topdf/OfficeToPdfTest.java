@@ -27,6 +27,7 @@ import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import stirling.software.officeconvert.testing.Workers;
 import stirling.software.officeconvert.topdf.OfficeToPdf.Format;
 import stirling.software.officeconvert.topdf.OfficeToPdf.Options;
 import stirling.software.officeconvert.topdf.font.FontLibrary;
@@ -36,7 +37,6 @@ import stirling.software.officeconvert.topdf.pdf.PdfOutput;
 import stirling.software.officeconvert.topdf.pdf.TextStyle;
 import stirling.software.officeconvert.topdf.testing.Fixtures;
 import stirling.software.officeconvert.topdf.testing.OwnTempFolder;
-import stirling.software.officeconvert.topdf.testing.Workers;
 
 class OfficeToPdfTest {
 

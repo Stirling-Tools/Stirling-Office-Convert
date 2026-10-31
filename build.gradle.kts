@@ -164,10 +164,10 @@ tasks.register("finalizePortalDeployment") {
 tasks.register("publishAllToCentralPortal") {
     group = "publishing"
     description = "Publish every published module to the Central Portal (upload + finalize)"
-    dependsOn(":core:publishAllPublicationsToCentralPortalRepository", ":legacy:publishAllPublicationsToCentralPortalRepository",
-        ":topdf:publishAllPublicationsToCentralPortalRepository", ":pdfa:publishAllPublicationsToCentralPortalRepository",
-        ":lineart:publishAllPublicationsToCentralPortalRepository",
-        ":optimize:publishAllPublicationsToCentralPortalRepository")
+    dependsOn(provider {
+        subprojects.filter { it.plugins.hasPlugin("maven-publish") }
+            .map { "${it.path}:publishAllPublicationsToCentralPortalRepository" }
+    })
     finalizedBy("finalizePortalDeployment")
 }
 

@@ -1,19 +1,25 @@
 plugins {
     `java-library`
+    `java-test-fixtures`
     `maven-publish`
 }
 
-val pdfboxVersion = "3.0.8"
-
 dependencies {
-    api("org.apache.pdfbox:pdfbox:$pdfboxVersion")
-    implementation("commons-logging:commons-logging:1.4.0")
-    implementation("org.brotli:dec:0.1.2")
-    runtimeOnly("org.apache.pdfbox:jbig2-imageio:3.0.5")
+    api(libs.pdfbox)
+    implementation(libs.commons.logging)
+    implementation(libs.brotli.dec)
+    runtimeOnly(libs.jbig2.imageio)
 
-    testImplementation(platform("org.junit:junit-bom:5.13.4"))
-    testImplementation("org.junit.jupiter:junit-jupiter")
-    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+    testImplementation(platform(libs.junit.bom))
+    testImplementation(libs.junit.jupiter)
+    testRuntimeOnly(libs.junit.platform.launcher)
+
+    testFixturesImplementation(platform(libs.junit.bom))
+    testFixturesImplementation(libs.junit.jupiter.api)
+}
+
+listOf("testFixturesApiElements", "testFixturesRuntimeElements").forEach {
+    (components["java"] as AdhocComponentWithVariants).withVariantsFromConfiguration(configurations[it]) { skip() }
 }
 
 base {

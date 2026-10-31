@@ -3,18 +3,16 @@ plugins {
     `maven-publish`
 }
 
-val pdfboxVersion = "3.0.8"
-
 dependencies {
-    api("org.apache.pdfbox:pdfbox:$pdfboxVersion")
+    api(libs.pdfbox)
     implementation(project(":core"))
     api(project(":topdf"))
 
-    testImplementation(platform("org.junit:junit-bom:5.13.4"))
-    testImplementation("org.junit.jupiter:junit-jupiter")
-    testImplementation("org.verapdf:validation-model:1.30.2")
-    testImplementation("com.github.jai-imageio:jai-imageio-jpeg2000:1.4.0")
-    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+    testImplementation(platform(libs.junit.bom))
+    testImplementation(libs.junit.jupiter)
+    testImplementation(libs.verapdf.validation.model)
+    testImplementation(libs.jai.imageio.jpeg2000)
+    testRuntimeOnly(libs.junit.platform.launcher)
 }
 
 base {

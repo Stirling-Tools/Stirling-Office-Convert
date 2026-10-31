@@ -3,16 +3,15 @@ plugins {
     `maven-publish`
 }
 
-val pdfboxVersion = "3.0.8"
-
 dependencies {
-    api("org.apache.pdfbox:pdfbox:$pdfboxVersion")
+    api(libs.pdfbox)
     implementation(project(":core"))
-    implementation("org.brotli:dec:0.1.2")
+    implementation(libs.brotli.dec)
 
-    testImplementation(platform("org.junit:junit-bom:5.13.4"))
-    testImplementation("org.junit.jupiter:junit-jupiter")
-    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+    testImplementation(testFixtures(project(":core")))
+    testImplementation(platform(libs.junit.bom))
+    testImplementation(libs.junit.jupiter)
+    testRuntimeOnly(libs.junit.platform.launcher)
 }
 
 base {

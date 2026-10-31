@@ -5,11 +5,11 @@ plugins {
 
 dependencies {
     api(project(":core"))
-    implementation("org.apache.poi:poi-scratchpad:5.5.1")
+    implementation(libs.poi.scratchpad)
 
-    testImplementation(platform("org.junit:junit-bom:5.13.4"))
-    testImplementation("org.junit.jupiter:junit-jupiter")
-    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+    testImplementation(platform(libs.junit.bom))
+    testImplementation(libs.junit.jupiter)
+    testRuntimeOnly(libs.junit.platform.launcher)
 }
 
 base {
