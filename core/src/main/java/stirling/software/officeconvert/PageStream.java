@@ -2,10 +2,6 @@ package stirling.software.officeconvert;
 
 import java.io.IOException;
 import java.io.InterruptedIOException;
-import java.nio.file.AtomicMoveNotSupportedException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
