@@ -25,6 +25,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Random;
 import java.util.zip.ZipFile;
+import javax.imageio.ImageIO;
 
 import org.apache.fontbox.ttf.CmapLookup;
 import org.apache.fontbox.ttf.TTFParser;
@@ -86,6 +87,13 @@ class UnmappedFontTest {
         PdfToDocx.convert(pdf, docx, PdfToDocx.Options.defaults());
         try (ZipFile zip = new ZipFile(docx.toFile())) {
             assertTrue(zip.stream().anyMatch(e -> e.getName().startsWith("word/media/")));
+            for (var entry : zip.stream().filter(e -> e.getName().startsWith("word/media/")).toList()) {
+                try (InputStream in = zip.getInputStream(entry)) {
+                    BufferedImage picture = ImageIO.read(in);
+                    assertTrue(picture.getHeight() < 300 && picture.getWidth() < 300,
+                            picture.getWidth() + "x" + picture.getHeight());
+                }
+            }
         }
     }
 

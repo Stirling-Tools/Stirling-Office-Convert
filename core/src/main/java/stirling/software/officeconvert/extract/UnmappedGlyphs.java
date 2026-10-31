@@ -2,8 +2,8 @@ package stirling.software.officeconvert.extract;
 
 import java.awt.geom.AffineTransform;
 import java.awt.geom.GeneralPath;
-import java.awt.geom.NoninvertibleTransformException;
 import java.awt.geom.Point2D;
+import java.awt.geom.Rectangle2D;
 import java.io.IOException;
 import java.text.Normalizer;
 import java.util.ArrayList;
@@ -82,6 +82,8 @@ final class UnmappedGlyphs {
 
     private static final int MAX_AREA_ELEMENTS = 16_384;
 
+    private static final double MAX_ICON_EM = 4;
+
     private static final String[][] TIES = {{"-", "\u2013"}, {"\u2013", "\u2014"}, {"l", "I"},
         {"(", "["}, {")", "]"}};
 
@@ -136,8 +138,10 @@ final class UnmappedGlyphs {
         if (read == null || read.outline == null) {
             return null;
         }
-        float k = scale(trm, font);
-        if (!(k > 0) || !Float.isFinite(k)) {
+        float k = scale(trm);
+        Rectangle2D b = read.outline.getBounds2D();
+        if (!(k > 0) || !Float.isFinite(k) || !(Math.max(Math.abs(b.getMinX()), Math.abs(b.getMaxX())) <= MAX_ICON_EM)
+                || !(Math.max(Math.abs(b.getMinY() - read.base), Math.abs(b.getMaxY() - read.base)) <= MAX_ICON_EM)) {
             return null;
         }
         GeneralPath outline = new GeneralPath(read.outline);
@@ -154,14 +158,14 @@ final class UnmappedGlyphs {
         if (read == null || read.base == 0) {
             return 0;
         }
-        float k = scale(trm, font);
+        float k = scale(trm);
         return k > 0 && Float.isFinite(k) ? read.base * k : 0;
     }
 
     float size(PDFont font, int code, Matrix trm) {
         Shapes shapes = fonts.get(font.getCOSObject());
         Read read = shapes == null ? null : shapes.reads.get(code);
-        return read == null ? Float.NaN : read.em * scale(trm, font);
+        return read == null ? Float.NaN : read.em * scale(trm);
     }
 
     float drawnWidth(PDFont font, int code, Matrix trm) {
@@ -170,7 +174,7 @@ final class UnmappedGlyphs {
         if (read == null || !(read.right > 0)) {
             return Float.NaN;
         }
-        return read.right * scale(trm, font);
+        return read.right * scale(trm);
     }
 
     int style(PDFont font) {
@@ -186,7 +190,7 @@ final class UnmappedGlyphs {
         Shapes shapes = null;
         try {
             if (handled(font)) {
-                AffineTransform units = units(trm, font);
+                AffineTransform units = units(trm);
                 if (units != null) {
                     shapes = new Shapes(this, font, ids++, units, named(font));
                 }
@@ -244,35 +248,26 @@ final class UnmappedGlyphs {
         return out.stream().mapToInt(Integer::intValue).sorted().toArray();
     }
 
-    private static AffineTransform units(Matrix trm, PDFont font) {
-        try {
-            AffineTransform r = rest(trm, font);
-            double angle = Math.atan2(r.getShearY(), r.getScaleX());
-            AffineTransform n = AffineTransform.getRotateInstance(-angle);
-            n.concatenate(r);
-            double det = Math.abs(n.getDeterminant());
-            if (!(det > 0) || !Double.isFinite(det)) {
-                return null;
-            }
-            AffineTransform out = AffineTransform.getScaleInstance(1 / Math.sqrt(det), 1 / Math.sqrt(det));
-            out.concatenate(n);
-            return out;
-        } catch (NoninvertibleTransformException e) {
+    private static AffineTransform units(Matrix trm) {
+        AffineTransform r = rest(trm);
+        double angle = Math.atan2(r.getShearY(), r.getScaleX());
+        AffineTransform n = AffineTransform.getRotateInstance(-angle);
+        n.concatenate(r);
+        double det = Math.abs(n.getDeterminant());
+        if (!(det > 0) || !Double.isFinite(det)) {
             return null;
         }
+        AffineTransform out = AffineTransform.getScaleInstance(1 / Math.sqrt(det), 1 / Math.sqrt(det));
+        out.concatenate(n);
+        return out;
     }
 
-    private static float scale(Matrix trm, PDFont font) {
-        try {
-            return (float) Math.sqrt(Math.abs(rest(trm, font).getDeterminant()));
-        } catch (NoninvertibleTransformException e) {
-            return Float.NaN;
-        }
+    private static float scale(Matrix trm) {
+        return (float) Math.sqrt(Math.abs(rest(trm).getDeterminant()));
     }
 
-    private static AffineTransform rest(Matrix trm, PDFont font) throws NoninvertibleTransformException {
+    private static AffineTransform rest(Matrix trm) {
         AffineTransform r = trm.createAffineTransform();
-        r.concatenate(font.getFontMatrix().createAffineTransform().createInverse());
         return new AffineTransform(r.getScaleX(), r.getShearY(), r.getShearX(), r.getScaleY(), 0, 0);
     }
 
