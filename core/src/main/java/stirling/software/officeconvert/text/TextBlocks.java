@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.regex.Pattern;
 
+import stirling.software.officeconvert.fonts.SymbolCodes;
 import stirling.software.officeconvert.model.Inline;
 import stirling.software.officeconvert.model.Paragraph;
 import stirling.software.officeconvert.model.Table;
@@ -161,7 +162,7 @@ final class TextBlocks {
         StringBuilder sb = new StringBuilder();
         for (Inline in : p.inlines) {
             switch (in) {
-                case Inline.Text t -> clean(sb, t.text());
+                case Inline.Text t -> clean(sb, SymbolCodes.plain(t.text(), t.style() == null ? null : t.style().font()));
                 case Inline.Tab tab -> sb.append('\t');
                 case Inline.Break br -> sb.append(!join ? "\n" : !sb.isEmpty() && sb.charAt(sb.length() - 1) == '-' ? "" : " ");
                 case Inline.FootnoteRef ref -> {

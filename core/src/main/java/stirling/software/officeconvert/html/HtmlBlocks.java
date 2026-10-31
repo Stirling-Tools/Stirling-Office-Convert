@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
+import stirling.software.officeconvert.fonts.SymbolCodes;
 import stirling.software.officeconvert.model.Block;
 import stirling.software.officeconvert.model.Inline;
 import stirling.software.officeconvert.model.Paragraph;
@@ -232,11 +233,11 @@ final class HtmlBlocks {
             Inline in = list.get(i);
             switch (in) {
                 case Inline.Text t -> {
-                    StringBuilder text = new StringBuilder(t.text());
+                    StringBuilder text = new StringBuilder(SymbolCodes.plain(t.text(), t.style() == null ? null : t.style().font()));
                     while (i + 1 < list.size() && list.get(i + 1) instanceof Inline.Text n
                             && Objects.equals(n.style(), t.style()) && Objects.equals(n.link(), t.link())
                             && n.anchorPage() == t.anchorPage()) {
-                        text.append(n.text());
+                        text.append(SymbolCodes.plain(n.text(), n.style() == null ? null : n.style().font()));
                         i++;
                     }
                     run(sb, text.toString(), t.style(), base, Links.target(t));

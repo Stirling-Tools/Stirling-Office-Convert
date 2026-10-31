@@ -35,6 +35,7 @@ final class TextPositions {
 
     final UnmappedGlyphs unmapped;
     private final Map<COSDictionary, Float> fontHeights = new WeakHashMap<>();
+    private final Map<COSDictionary, String[]> builtInEncodings = new WeakHashMap<>();
     private int pageRotation;
     private PDRectangle pageSize;
     private Matrix translateMatrix;
@@ -104,7 +105,10 @@ final class TextPositions {
             spaceWidthText = 1.0f;
         }
         float spaceWidthDisplay = spaceWidthText * trm.getScalingFactorX();
-        String unicode = font.toUnicode(code, GLYPHS);
+        String unicode = builtInText(font, code);
+        if (unicode == null) {
+            unicode = font.toUnicode(code, GLYPHS);
+        }
         if (unicode == null) {
             unicode = unmapped.text(font, code, trm);
             float along = (float) Math.hypot(trm.getScaleX(), trm.getShearY());
@@ -141,6 +145,20 @@ final class TextPositions {
                 Math.abs(dyDisplay), dxDisplay, Math.abs(spaceWidthDisplay), unicode, new int[] {code}, font, fontSize,
                 (int) (fontSize * textMatrix.getScalingFactorX()));
     }
+
+    boolean mapped(PDFont font, int code) {
+        return builtInText(font, code) != null || font.toUnicode(code, GLYPHS) != null;
+    }
+
+    private String builtInText(PDFont font, int code) {
+        String[] encoding = builtInEncodings.computeIfAbsent(font.getCOSObject(), k -> {
+            String[] found = BuiltInEncodings.of(font);
+            return found == null ? NO_ENCODING : found;
+        });
+        return code >= 0 && code < encoding.length ? encoding[code] : null;
+    }
+
+    private static final String[] NO_ENCODING = new String[0];
 
     private static float fontHeight(PDFont font) throws IOException {
         BoundingBox bbox = font.getBoundingBox();

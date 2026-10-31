@@ -584,7 +584,7 @@ final class GlyphCollector extends PDFStreamEngine {
             alternatives.put(g, alternative);
         }
         if (WordContext.mark(unicode) && codes != null && codes.length == 1
-                && positions.unmapped.shapeRead(pdFont, codes[0], unicode)) {
+                && (positions.mapped(pdFont, codes[0]) || positions.unmapped.shapeRead(pdFont, codes[0], unicode))) {
             marks.add(g);
         }
         Matrix tm = tp.getTextMatrix();

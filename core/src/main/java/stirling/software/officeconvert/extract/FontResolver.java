@@ -123,6 +123,9 @@ public final class FontResolver {
     }
 
     private static String embeddedFamily(PDFont font) {
+        if (!font.isEmbedded()) {
+            return null;
+        }
         try {
             TrueTypeFont ttf = null;
             if (font instanceof PDTrueTypeFont tt) {
