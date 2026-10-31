@@ -302,6 +302,7 @@ public final class PdfCanvas implements Closeable {
         float size = style.size();
         float th = style.horizontalScale() / 100f;
         boolean perGlyph = face.scaledPerGlyph();
+        boolean placed = face.emulated() && !perGlyph;
         float scale = perGlyph ? 1 : face.glyphStretch();
         float unit = size * th * scale / 1000f;
         StringBuilder tj = new StringBuilder(text.length() * 4 + 32);
@@ -354,7 +355,7 @@ public final class PdfCanvas implements Closeable {
                         segment = true;
                     }
                 }
-                if (pending != 0) {
+                if (pending != 0 && !(placed && Math.abs(pending / unit) < 0.5f)) {
                     if (open) {
                         tj.append('>');
                         open = false;
@@ -366,12 +367,18 @@ public final class PdfCanvas implements Closeable {
                     tj.append('<');
                     open = true;
                 }
-                Numbers.hex(tj, output.fonts().encoded(embedded, glyph, face.encodedCodePoint(cp)), 4);
+                int code = placed
+                        ? output.fonts().encoded(embedded, glyph, face.encodedCodePoint(cp),
+                                Math.round(face.advance(cp) * 100000f / face.unitsPerEm() / scale) / 100f)
+                        : output.fonts().encoded(embedded, glyph, face.encodedCodePoint(cp));
+                Numbers.hex(tj, code, 4);
                 glyphs[used] = glyph;
                 codes[used++] = face.encodedCodePoint(cp);
                 any = true;
                 previous = cp;
-                pending += (face.advance(cp) - face.glyphAdvance(glyph) * scale) * size / face.unitsPerEm() * th;
+                float own = placed ? output.fonts().advance(embedded, code) / 1000f * face.unitsPerEm()
+                        : face.glyphAdvance(glyph);
+                pending += (face.advance(cp) - own * scale) * size / face.unitsPerEm() * th;
             } else {
                 pending += advance;
                 previous = -1;
@@ -758,8 +765,8 @@ public final class PdfCanvas implements Closeable {
 
     private void drawParts(StringBuilder tj, PdfFonts.Embedded embedded, int[] parts) {
         for (int c = 0; c < parts.length; c++) {
-            int width = output.fonts().advance(embedded, parts[c]);
-            int ahead = 0;
+            float width = output.fonts().advance(embedded, parts[c]);
+            float ahead = 0;
             for (int n = c + 1; width == 0 && n < parts.length && ahead == 0; n++) {
                 ahead = output.fonts().advance(embedded, parts[n]);
             }

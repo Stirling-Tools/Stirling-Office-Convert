@@ -4,6 +4,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -37,7 +39,7 @@ class DocxCloudFontTest {
         return convert(docx, FontLibrary.of(List.of(Files.createDirectories(dir.resolve("nofonts")))));
     }
 
-    private List<TextPosition> convert(byte[] docx, FontLibrary fonts) throws Exception {
+    private byte[] pdf(byte[] docx, FontLibrary fonts) throws Exception {
         Path in = Fixtures.write(dir, "aptos.docx", docx);
         assertTrue(fonts.find("Aptos", false, false).substituted());
         ByteArrayOutputStream out = new ByteArrayOutputStream();
@@ -46,8 +48,12 @@ class DocxCloudFontTest {
             DocxRenderer.render(in, job);
             output.save(out);
         }
+        return out.toByteArray();
+    }
+
+    private List<TextPosition> convert(byte[] docx, FontLibrary fonts) throws Exception {
         List<TextPosition> all = new ArrayList<>();
-        try (PDDocument d = Loader.loadPDF(out.toByteArray())) {
+        try (PDDocument d = Loader.loadPDF(pdf(docx, fonts))) {
             new PDFTextStripper() {
                 @Override
                 protected void processTextPosition(TextPosition p) {
@@ -233,6 +239,19 @@ class DocxCloudFontTest {
         for (int i = 0; i + 1 < sample.length(); i++) {
             float advance = pos.get(i + 1).getXDirAdj() - pos.get(i).getXDirAdj();
             assertEquals(aptos.advance(sample.charAt(i)) * 12, advance, 0.05, "after " + sample.charAt(i));
+        }
+    }
+
+    @Test
+    void aMissingCloudFontDrawsEachLineAtOneHorizontalScale() throws Exception {
+        String styles = "<w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii=\"Aptos\" w:hAnsi=\"Aptos\"/>"
+                + "<w:sz w:val=\"24\"/></w:rPr></w:rPrDefault></w:docDefaults>";
+        byte[] bytes = pdf(new DocxDoc().styles(styles).body(DocxDoc.p("WiMlE.mj and some more running text")).bytes(),
+                FontLibrary.of(List.of(Files.createDirectories(dir.resolve("nofonts")))));
+        try (PDDocument d = Loader.loadPDF(bytes);
+                InputStream content = d.getPage(0).getContents()) {
+            String ops = new String(content.readAllBytes(), StandardCharsets.ISO_8859_1);
+            assertEquals(1, ops.split(" Tz", -1).length - 1, ops);
         }
     }
 }

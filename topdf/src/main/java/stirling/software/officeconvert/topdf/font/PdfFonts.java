@@ -22,6 +22,7 @@ import java.util.Set;
 
 import org.apache.pdfbox.cos.COSArray;
 import org.apache.pdfbox.cos.COSDictionary;
+import org.apache.pdfbox.cos.COSFloat;
 import org.apache.pdfbox.cos.COSInteger;
 import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.cos.COSStream;
@@ -82,7 +83,7 @@ public final class PdfFonts implements Closeable {
 
         final List<String> aliasTexts = new ArrayList<>();
 
-        final List<Integer> aliasWidths = new ArrayList<>();
+        final List<Float> aliasWidths = new ArrayList<>();
 
         boolean shaped;
 
@@ -235,6 +236,17 @@ public final class PdfFonts implements Closeable {
         return alias(u, glyph, text, -1);
     }
 
+    public int encoded(Embedded font, int glyph, int codePoint, float width) {
+        Use u = uses.get(font.font());
+        if (u == null || glyph <= 0 || codePoint <= 0) {
+            return glyph;
+        }
+        int known = encoded(font, glyph, codePoint);
+        String text = known == glyph ? unicode(u, glyph) : u.aliasTexts.get(known - u.program.glyphCount());
+        u.shaped = true;
+        return text == null ? known : alias(u, glyph, text, width);
+    }
+
     public void used(Embedded font, int[] glyphs, int[] codePoints, int count) {
         Use u = uses.get(font.font());
         if (u == null) {
@@ -355,7 +367,7 @@ public final class PdfFonts implements Closeable {
         return type == Character.NON_SPACING_MARK || type == Character.ENCLOSING_MARK;
     }
 
-    public int advance(Embedded font, int code) {
+    public float advance(Embedded font, int code) {
         Use u = uses.get(font.font());
         int glyph = code;
         if (u != null && code >= u.program.glyphCount()) {
@@ -381,7 +393,7 @@ public final class PdfFonts implements Closeable {
         return alias(u, glyph, text, -1);
     }
 
-    private static int alias(Use u, int glyph, String text, int width) {
+    private static int alias(Use u, int glyph, String text, float width) {
         String key = glyph + "\u0000" + text + "\u0000" + width;
         Integer alias = u.aliases.get(key);
         if (alias != null) {
@@ -452,8 +464,14 @@ public final class PdfFonts implements Closeable {
             map[2 * code] = map[2 * glyph];
             map[2 * code + 1] = map[2 * glyph + 1];
             COSArray one = new COSArray();
-            int width = u.aliasWidths.get(k);
-            one.add(COSInteger.get(width >= 0 ? width : Math.round(u.program.advanceOfGlyph(glyph) * scale)));
+            float width = u.aliasWidths.get(k);
+            if (width < 0) {
+                one.add(COSInteger.get(Math.round(u.program.advanceOfGlyph(glyph) * scale)));
+            } else if (width == Math.round(width)) {
+                one.add(COSInteger.get(Math.round(width)));
+            } else {
+                one.add(new COSFloat(width));
+            }
             widths.add(COSInteger.get(code));
             widths.add(one);
         }
