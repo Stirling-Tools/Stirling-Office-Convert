@@ -1,18 +1,24 @@
 package stirling.software.officeconvert.pdfa;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.WeakHashMap;
+import java.util.zip.DataFormatException;
+import java.util.zip.Inflater;
 
 import org.apache.fontbox.cmap.CMap;
+import org.apache.fontbox.cmap.CMapParser;
 import org.apache.fontbox.ttf.CmapLookup;
 import org.apache.fontbox.ttf.TrueTypeFont;
 import org.apache.pdfbox.cos.COSBase;
 import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.cos.COSStream;
+import org.apache.pdfbox.io.RandomAccessReadBuffer;
 import org.apache.pdfbox.pdmodel.font.PDCIDFontType2;
 import org.apache.pdfbox.pdmodel.font.PDFont;
 import org.apache.pdfbox.pdmodel.font.PDSimpleFont;
@@ -77,6 +83,8 @@ final class UnicodeGuess {
         return ToUnicodeWriter.valid(u) ? u : null;
     }
 
+    private static final int MAX_MAP_BYTES = 4 << 20;
+
     private static final Map<COSStream, Optional<CMap>> MAPS = Collections.synchronizedMap(new WeakHashMap<>());
 
     static String searchable(PDFont font, int code, String text) {
@@ -85,10 +93,50 @@ final class UnicodeGuess {
         return authored ? text : ToUnicodeWriter.plain(text);
     }
 
+    private static CMap readable(COSStream s) {
+        CMap cmap = CodeReader.cmap(s);
+        if (cmap != null || !COSName.FLATE_DECODE.equals(s.getDictionaryObject(COSName.FILTER))) {
+            return cmap;
+        }
+        byte[] raw;
+        try (InputStream in = s.createRawInputStream()) {
+            raw = in.readNBytes(MAX_MAP_BYTES);
+        } catch (IOException | RuntimeException e) {
+            return null;
+        }
+        byte[] text = inflatedPrefix(raw);
+        try {
+            return text.length == 0 ? null : new CMapParser().parse(new RandomAccessReadBuffer(text));
+        } catch (IOException | RuntimeException e) {
+            return null;
+        }
+    }
+
+    private static byte[] inflatedPrefix(byte[] raw) {
+        Inflater inflater = new Inflater();
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        try {
+            inflater.setInput(raw);
+            byte[] buffer = new byte[8192];
+            while (!inflater.finished() && out.size() < MAX_MAP_BYTES) {
+                int n = inflater.inflate(buffer);
+                if (n == 0 && (inflater.needsInput() || inflater.needsDictionary())) {
+                    break;
+                }
+                out.write(buffer, 0, n);
+            }
+        } catch (DataFormatException e) {
+            return out.toByteArray();
+        } finally {
+            inflater.end();
+        }
+        return out.toByteArray();
+    }
+
     static String declared(PDFont font, int code) {
         COSBase tu = font.getCOSObject().getDictionaryObject(COSName.TO_UNICODE);
         if (tu instanceof COSStream s) {
-            CMap cmap = MAPS.computeIfAbsent(s, k -> Optional.ofNullable(CodeReader.cmap(k))).orElse(null);
+            CMap cmap = MAPS.computeIfAbsent(s, k -> Optional.ofNullable(readable(k))).orElse(null);
             if (cmap == null) {
                 return null;
             }

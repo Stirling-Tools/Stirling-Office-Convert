@@ -63,6 +63,30 @@ class UnicodeLevelTextTest {
     }
 
     @Test
+    void aToUnicodeMapWithADamagedDeflateTailStillGivesItsEntries() throws Exception {
+        try (PDDocument d = new PDDocument()) {
+            String text = "/CIDInit /ProcSet findresource begin 12 dict begin begincmap 1 begincodespacerange <00> <FF>"
+                    + " endcodespacerange 2 beginbfchar <41> <0048> <42> <0069> endbfchar endcmap"
+                    + " CMapName currentdict /CMap defineresource pop end end\n" + "%".repeat(4000);
+            java.io.ByteArrayOutputStream packed = new java.io.ByteArrayOutputStream();
+            try (var z = new java.util.zip.DeflaterOutputStream(packed)) {
+                z.write(text.getBytes(StandardCharsets.US_ASCII));
+            }
+            byte[] cut = java.util.Arrays.copyOf(packed.toByteArray(), packed.size() - 6);
+            cut[cut.length - 1] ^= 0x55;
+            COSStream map = d.getDocument().createCOSStream();
+            try (OutputStream o = map.createRawOutputStream()) {
+                o.write(cut);
+            }
+            map.setItem(COSName.FILTER, COSName.FLATE_DECODE);
+            PDFont font = FontSamples.trueType(d);
+            font.getCOSObject().setItem(COSName.TO_UNICODE, map);
+            assertEquals("H", UnicodeGuess.declared(font, 0x41));
+            assertEquals("i", UnicodeGuess.declared(font, 0x42));
+        }
+    }
+
+    @Test
     void presentationFormLigaturesAreWrittenAsTheirLetters() {
         assertEquals("fi", ToUnicodeWriter.plain("ﬁ"));
         assertEquals("ffl", ToUnicodeWriter.plain("ﬄ"));
