@@ -2,7 +2,6 @@ package stirling.software.officeconvert.rtf;
 
 import java.io.BufferedWriter;
 import java.io.Closeable;
-import java.io.FilterOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.io.OutputStreamWriter;
@@ -23,6 +22,7 @@ import stirling.software.officeconvert.model.Scripts;
 import stirling.software.officeconvert.model.Section;
 import stirling.software.officeconvert.model.StyleSheet;
 import stirling.software.officeconvert.model.Table;
+import stirling.software.officeconvert.sink.KeepOpen;
 import stirling.software.officeconvert.sink.MediaStore;
 import stirling.software.officeconvert.sink.NoteHold;
 import stirling.software.officeconvert.sink.SpillBuffer;
@@ -210,23 +210,6 @@ public final class RtfWriter implements DocSink, Closeable {
     public void close() throws IOException {
         try (store; body) {
             out.close();
-        }
-    }
-
-    private static final class KeepOpen extends FilterOutputStream {
-
-        KeepOpen(OutputStream target) {
-            super(target);
-        }
-
-        @Override
-        public void write(byte[] b, int off, int len) throws IOException {
-            out.write(b, off, len);
-        }
-
-        @Override
-        public void close() throws IOException {
-            out.flush();
         }
     }
 }

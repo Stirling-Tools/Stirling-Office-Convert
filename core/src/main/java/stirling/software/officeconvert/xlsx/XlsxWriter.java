@@ -1,8 +1,6 @@
 package stirling.software.officeconvert.xlsx;
 
-import java.io.BufferedOutputStream;
 import java.io.BufferedWriter;
-import java.io.FilterOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.io.OutputStreamWriter;
@@ -22,6 +20,7 @@ import stirling.software.officeconvert.sheet.Row;
 import stirling.software.officeconvert.sheet.SheetXml;
 import stirling.software.officeconvert.sheet.SpillBuffer;
 import stirling.software.officeconvert.sheet.WorkbookSink;
+import stirling.software.officeconvert.sink.ZipParts;
 
 public final class XlsxWriter implements WorkbookSink {
 
@@ -45,7 +44,7 @@ public final class XlsxWriter implements WorkbookSink {
     private int lastCol;
 
     public XlsxWriter(OutputStream target) {
-        this.zip = new ZipOutputStream(new BufferedOutputStream(new KeepOpen(target), 1 << 16), StandardCharsets.UTF_8);
+        this.zip = ZipParts.open(target);
         this.zip.setLevel(6);
     }
 
@@ -281,23 +280,6 @@ public final class XlsxWriter implements WorkbookSink {
                     rows.close();
                 }
             }
-        }
-    }
-
-    private static final class KeepOpen extends FilterOutputStream {
-
-        KeepOpen(OutputStream target) {
-            super(target);
-        }
-
-        @Override
-        public void write(byte[] b, int off, int len) throws IOException {
-            out.write(b, off, len);
-        }
-
-        @Override
-        public void close() throws IOException {
-            out.flush();
         }
     }
 }

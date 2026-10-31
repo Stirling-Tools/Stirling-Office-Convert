@@ -1,8 +1,6 @@
 package stirling.software.officeconvert.ods;
 
-import java.io.BufferedOutputStream;
 import java.io.BufferedWriter;
-import java.io.FilterOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.io.OutputStreamWriter;
@@ -27,6 +25,7 @@ import stirling.software.officeconvert.sheet.Row;
 import stirling.software.officeconvert.sheet.SheetXml;
 import stirling.software.officeconvert.sheet.SpillBuffer;
 import stirling.software.officeconvert.sheet.WorkbookSink;
+import stirling.software.officeconvert.sink.ZipParts;
 
 public final class OdsWriter implements WorkbookSink {
 
@@ -54,7 +53,7 @@ public final class OdsWriter implements WorkbookSink {
     private int nextRow;
 
     public OdsWriter(OutputStream target) throws IOException {
-        this.zip = new ZipOutputStream(new BufferedOutputStream(new KeepOpen(target), 1 << 16), StandardCharsets.UTF_8);
+        this.zip = ZipParts.open(target);
         zip.setLevel(6);
         byte[] mime = MIME.getBytes(StandardCharsets.US_ASCII);
         ZipEntry e = new ZipEntry("mimetype");
@@ -356,23 +355,6 @@ public final class OdsWriter implements WorkbookSink {
                     rows.close();
                 }
             }
-        }
-    }
-
-    private static final class KeepOpen extends FilterOutputStream {
-
-        KeepOpen(OutputStream target) {
-            super(target);
-        }
-
-        @Override
-        public void write(byte[] b, int off, int len) throws IOException {
-            out.write(b, off, len);
-        }
-
-        @Override
-        public void close() throws IOException {
-            out.flush();
         }
     }
 }

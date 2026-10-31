@@ -1,9 +1,7 @@
 package stirling.software.officeconvert.docx;
 
-import java.io.BufferedOutputStream;
 import java.io.BufferedWriter;
 import java.io.Closeable;
-import java.io.FilterOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.io.OutputStreamWriter;
@@ -75,7 +73,7 @@ public final class DocxWriter implements DocSink, Closeable {
 
     public DocxWriter(OutputStream target, PdfWebFonts sourceFonts) throws IOException {
         ctx.sourceFonts = sourceFonts;
-        this.zip = new ZipOutputStream(new BufferedOutputStream(new KeepOpen(target), 1 << 16), StandardCharsets.UTF_8);
+        this.zip = ZipParts.open(target);
         this.zip.setLevel(6);
         this.out = new BufferedWriter(new OutputStreamWriter(zip, StandardCharsets.UTF_8), 1 << 16);
         zip.putNextEntry(new ZipEntry("word/document.xml"));
@@ -277,23 +275,6 @@ public final class DocxWriter implements DocSink, Closeable {
             zip.close();
         } finally {
             spill.close();
-        }
-    }
-
-    private static final class KeepOpen extends FilterOutputStream {
-
-        KeepOpen(OutputStream target) {
-            super(target);
-        }
-
-        @Override
-        public void write(byte[] b, int off, int len) throws IOException {
-            out.write(b, off, len);
-        }
-
-        @Override
-        public void close() throws IOException {
-            out.flush();
         }
     }
 }

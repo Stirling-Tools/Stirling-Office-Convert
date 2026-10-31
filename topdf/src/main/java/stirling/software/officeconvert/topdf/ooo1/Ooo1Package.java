@@ -13,6 +13,7 @@ import java.util.zip.ZipOutputStream;
 
 import org.w3c.dom.Document;
 
+import stirling.software.officeconvert.sink.KeepOpen;
 import stirling.software.officeconvert.topdf.io.BoundedZip;
 import stirling.software.officeconvert.topdf.io.SecureXml;
 import stirling.software.officeconvert.topdf.io.SourceFile;
@@ -150,21 +151,5 @@ public final class Ooo1Package {
         System.arraycopy(xml, 0, out, 0, m.start());
         System.arraycopy(xml, m.end(), out, m.start(), xml.length - m.end());
         return out;
-    }
-
-    private static final class KeepOpen extends java.io.FilterOutputStream {
-        KeepOpen(OutputStream out) {
-            super(out);
-        }
-
-        @Override
-        public void write(byte[] b, int off, int len) throws IOException {
-            out.write(b, off, len);
-        }
-
-        @Override
-        public void close() throws IOException {
-            out.flush();
-        }
     }
 }

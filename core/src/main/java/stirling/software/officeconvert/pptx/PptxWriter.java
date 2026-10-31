@@ -1,7 +1,5 @@
 package stirling.software.officeconvert.pptx;
 
-import java.io.BufferedOutputStream;
-import java.io.FilterOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
@@ -36,7 +34,7 @@ public final class PptxWriter implements SlideSink {
     private int mediaCount;
 
     public PptxWriter(OutputStream target) {
-        this.zip = new ZipOutputStream(new BufferedOutputStream(new KeepOpen(target), 1 << 16), StandardCharsets.UTF_8);
+        this.zip = ZipParts.open(target);
         this.zip.setLevel(6);
     }
 
@@ -145,22 +143,5 @@ public final class PptxWriter implements SlideSink {
     @Override
     public void close() throws IOException {
         zip.close();
-    }
-
-    private static final class KeepOpen extends FilterOutputStream {
-
-        KeepOpen(OutputStream target) {
-            super(target);
-        }
-
-        @Override
-        public void write(byte[] b, int off, int len) throws IOException {
-            out.write(b, off, len);
-        }
-
-        @Override
-        public void close() throws IOException {
-            out.flush();
-        }
     }
 }
