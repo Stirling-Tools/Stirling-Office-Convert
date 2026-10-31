@@ -40,6 +40,8 @@ final class BuiltInEncodings {
 
     private static final int SPACE_GID = 3;
 
+    private static final float BOLD_WEIGHT = 600;
+
     private static final Set<String> CORE_FONT_FAMILIES = Set.of("Arial", "Arial Narrow", "Times New Roman", "Courier New",
             "Verdana", "Tahoma", "Georgia");
 
@@ -111,7 +113,14 @@ final class BuiltInEncodings {
         if (ordering != null && !"Identity".equals(ordering)) {
             return false;
         }
-        return CORE_FONT_FAMILIES.contains(FontNames.family(null, name.replace("-Identity-H", "")));
+        String family = FontNames.family(null, name.replace("-Identity-H", ""));
+        return CORE_FONT_FAMILIES.contains(family) && !("Arial Narrow".equals(family) && bold(cid, name));
+    }
+
+    private static boolean bold(PDCIDFontType2 cid, String name) {
+        PDFontDescriptor fd = cid.getFontDescriptor();
+        return name.toLowerCase(Locale.ROOT).contains("bold")
+                || fd != null && (fd.isForceBold() || fd.getFontWeight() >= BOLD_WEIGHT);
     }
 
     private static String[] coreFontOrder() {
