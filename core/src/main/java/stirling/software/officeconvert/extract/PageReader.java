@@ -84,7 +84,7 @@ public final class PageReader {
             Glyph g = k == 1 ? r.glyph() : r.glyph().scaled(k);
             g.invisible = r.invisible();
             if (r.direction() != direction) {
-                rotated.add(relocate(g, r, toDisplay, crop));
+                rotated.add(relocate(g, r, toDisplay, crop, direction));
             } else if (r.invisible()) {
                 hidden.add(g);
             } else {
@@ -139,7 +139,7 @@ public final class PageReader {
                 widgets(page));
     }
 
-    private static Glyph relocate(Glyph g, RawGlyph r, AffineTransform toDisplay, PDRectangle crop) {
+    private static Glyph relocate(Glyph g, RawGlyph r, AffineTransform toDisplay, PDRectangle crop, int direction) {
         Point2D.Float p = new Point2D.Float();
         toDisplay.transform(
                 new Point2D.Double(
@@ -149,7 +149,7 @@ public final class PageReader {
                 new Glyph(
                         g.text, p.x, g.width, p.y, g.size, g.ascent, g.descent, g.font, g.rgb,
                         g.seq, g.spaceWidth, g.bold, g.italic);
-        moved.vertAlign = r.direction();
+        moved.vertAlign = Math.floorMod(r.direction() - direction, 360);
         moved.hscale = g.hscale;
         moved.invisible = g.invisible;
         return moved;
@@ -157,12 +157,15 @@ public final class PageReader {
 
     private static int dominantDirection(List<RawGlyph> raw) {
         Map<Integer, Integer> counts = new HashMap<>();
+        int visible = 0;
         for (RawGlyph r : raw) {
             if (!r.invisible()) {
                 counts.merge(r.direction(), 1, Integer::sum);
+                visible++;
             }
         }
-        if (counts.isEmpty()) {
+        if (visible * 10 < raw.size()) {
+            counts.clear();
             for (RawGlyph r : raw) {
                 counts.merge(r.direction(), 1, Integer::sum);
             }
