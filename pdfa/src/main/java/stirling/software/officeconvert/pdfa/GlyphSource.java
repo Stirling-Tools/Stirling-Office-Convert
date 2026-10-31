@@ -1,6 +1,5 @@
 package stirling.software.officeconvert.pdfa;
 
-import java.awt.geom.AffineTransform;
 import java.awt.geom.GeneralPath;
 import java.io.Closeable;
 import java.io.IOException;
@@ -12,12 +11,12 @@ import java.util.Optional;
 
 import org.apache.fontbox.ttf.CmapLookup;
 import org.apache.fontbox.ttf.CmapSubtable;
-import org.apache.fontbox.ttf.GlyphData;
 import org.apache.fontbox.ttf.TrueTypeFont;
 
 import stirling.software.officeconvert.topdf.font.EmbeddableFont;
 import stirling.software.officeconvert.topdf.font.FontFace;
 import stirling.software.officeconvert.topdf.font.FontLibrary;
+import stirling.software.officeconvert.topdf.font.GlyphOutlines;
 
 final class GlyphSource implements Closeable {
 
@@ -33,7 +32,9 @@ final class GlyphSource implements Closeable {
 
     private final List<EmbeddableFont> opened = new ArrayList<>();
 
-    private final Map<String, Optional<EmbeddableFont>> fallbacks = new HashMap<>();
+    private final List<GlyphOutlines> outlines = new ArrayList<>();
+
+    private final Map<String, Optional<GlyphOutlines>> fallbacks = new HashMap<>();
 
     private GlyphSource(FontLibrary library, EmbeddableFont primary, boolean bold, boolean italic, boolean symbol) {
         this.library = library;
@@ -121,35 +122,27 @@ final class GlyphSource implements Closeable {
         if (face == null) {
             return null;
         }
-        EmbeddableFont f = fallbacks.computeIfAbsent(key(face), k -> {
-            EmbeddableFont t = truetype(face);
-            if (t != null) {
-                opened.add(t);
+        GlyphOutlines f = fallbacks.computeIfAbsent(key(face), k -> {
+            try {
+                GlyphOutlines t = GlyphOutlines.open(face);
+                outlines.add(t);
+                return Optional.of(t);
+            } catch (IOException | RuntimeException e) {
+                return Optional.empty();
             }
-            return Optional.ofNullable(t);
         }).orElse(null);
         if (f == null) {
             return null;
         }
         try {
-            TrueTypeFont ttf = f.font();
-            CmapLookup cmap = ttf.getUnicodeCmapLookup(false);
-            int gid = cmap == null ? 0 : cmap.getGlyphId(cp);
-            GlyphData g = gid > 0 ? ttf.getGlyph().getGlyph(gid) : null;
-            if (g == null) {
-                return null;
-            }
-            GeneralPath p = g.getPath();
-            double k = unitsPerEm / (double) ttf.getUnitsPerEm();
-            p.transform(AffineTransform.getScaleInstance(k, k));
-            return p;
+            return f.path(cp, unitsPerEm);
         } catch (IOException | RuntimeException e) {
             return null;
         }
     }
 
     int fontsOpen() {
-        return opened.size();
+        return opened.size() + outlines.size();
     }
 
     private static String key(FontFace face) {
@@ -162,6 +155,12 @@ final class GlyphSource implements Closeable {
         for (EmbeddableFont f : opened) {
             try {
                 f.close();
+            } catch (IOException ignored) {
+            }
+        }
+        for (GlyphOutlines o : outlines) {
+            try {
+                o.close();
             } catch (IOException ignored) {
             }
         }

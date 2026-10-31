@@ -5,6 +5,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.WeakHashMap;
 
 import org.apache.fontbox.cmap.CMap;
@@ -13,7 +14,9 @@ import org.apache.fontbox.ttf.TrueTypeFont;
 import org.apache.pdfbox.cos.COSBase;
 import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.cos.COSStream;
+import org.apache.pdfbox.pdmodel.font.PDCIDFont;
 import org.apache.pdfbox.pdmodel.font.PDCIDFontType2;
+import org.apache.pdfbox.pdmodel.font.PDCIDSystemInfo;
 import org.apache.pdfbox.pdmodel.font.PDFont;
 import org.apache.pdfbox.pdmodel.font.PDSimpleFont;
 import org.apache.pdfbox.pdmodel.font.PDTrueTypeFont;
@@ -50,7 +53,7 @@ final class UnicodeGuess {
             CMap cmap = MAPS.computeIfAbsent(s, k -> Optional.ofNullable(CodeReader.cmap(k))).orElse(null);
             return cmap == null ? null : cmap.toUnicode(code);
         }
-        if (font instanceof PDType0Font || font instanceof PDType3Font) {
+        if (font instanceof PDType0Font t0 && !adobeCjk(t0) || font instanceof PDType3Font) {
             return null;
         }
         try {
@@ -58,6 +61,15 @@ final class UnicodeGuess {
         } catch (RuntimeException e) {
             return null;
         }
+    }
+
+    private static final Set<String> CJK_ORDERINGS = Set.of("GB1", "CNS1", "Japan1", "Korea1");
+
+    /** An Adobe CJK collection fixes each CID's meaning, so its UCS2 map is the spec's own answer. */
+    private static boolean adobeCjk(PDType0Font font) {
+        PDCIDFont cid = font.getDescendantFont();
+        PDCIDSystemInfo info = cid == null ? null : cid.getCIDSystemInfo();
+        return info != null && "Adobe".equals(info.getRegistry()) && CJK_ORDERINGS.contains(info.getOrdering());
     }
 
     static String of(PDFont font, int code) {
