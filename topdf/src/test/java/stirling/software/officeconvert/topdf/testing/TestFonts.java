@@ -131,7 +131,7 @@ public final class TestFonts {
         return b.array();
     }
 
-    private static byte[] replaced(byte[] ttf, String table, byte[] data) {
+    public static byte[] replaced(byte[] ttf, String table, byte[] data) {
         ByteBuffer in = ByteBuffer.wrap(ttf);
         int tables = in.getShort(4) & 0xFFFF;
         for (int i = 0; i < tables; i++) {
