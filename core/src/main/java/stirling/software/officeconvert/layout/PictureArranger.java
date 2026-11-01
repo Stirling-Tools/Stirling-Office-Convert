@@ -163,18 +163,25 @@ final class PictureArranger {
         float gapLeft = Float.MAX_VALUE;
         float gapRight = Float.MAX_VALUE;
         boolean inLineGap = false;
+        int beside = 0;
+        int covered = 0;
         for (Line l : lines) {
             if (l.top >= b.bottom() - 1 || l.bottom <= b.top() + 1) {
                 continue;
             }
             if (l.right <= b.x() + 1) {
                 gapLeft = Math.min(gapLeft, b.x() - l.right);
+                beside++;
             } else if (l.x >= b.right() - 1) {
                 gapRight = Math.min(gapRight, l.x - b.right());
-            } else {
-                inLineGap |= clearOfWords(l, b) || coversWords(l, b);
+                beside++;
+            } else if (clearOfWords(l, b)) {
+                inLineGap = true;
+            } else if (coversWords(l, b)) {
+                covered++;
             }
         }
+        inLineGap |= covered > 0 && covered >= beside;
         for (PageLayout.Item t : solids) {
             float h = b.bottom() - b.top();
             boolean column = t.top() <= b.top() && t.bottom() >= b.bottom() && t.bottom() - t.top() > 3 * h;

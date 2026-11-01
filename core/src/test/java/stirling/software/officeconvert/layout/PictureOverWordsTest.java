@@ -46,4 +46,12 @@ class PictureOverWordsTest {
         List<Line> lines = List.of(line("short line", 54, 575), line("another one", 54, 592));
         assertFalse(arranged(picture, lines).overlay());
     }
+
+    @Test
+    void oneWordGrazingAPictureDoesNotStopTheLinesBesideItFromWrapping() {
+        Box picture = new Box(200, 560, 300, 640);
+        List<Line> lines = List.of(line("left text", 54, 575), line("left text", 54, 590), line("left text", 54, 605),
+                line("grazing word", 150, 620));
+        assertFalse(arranged(picture, lines).overlay());
+    }
 }
