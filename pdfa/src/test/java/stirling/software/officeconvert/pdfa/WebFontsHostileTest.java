@@ -1,7 +1,6 @@
 package stirling.software.officeconvert.pdfa;
 
 import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.ByteArrayOutputStream;
@@ -109,7 +108,7 @@ class WebFontsHostileTest {
     }
 
     private static void assertRejected(byte[] program, WebFonts.FontKind kind) {
-        assertTimeoutPreemptively(Duration.ofSeconds(20),
+        CpuBudget.onThisThread(Duration.ofSeconds(20),
                 () -> assertThrows(IOException.class, () -> WebFonts.toTrueType(program, kind, Map.of())));
     }
 
