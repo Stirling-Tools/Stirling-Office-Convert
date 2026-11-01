@@ -37,7 +37,9 @@ class PictureOverWordsTest {
     void aPicturePaintedOverTheWordsOfALineIsLaidOverTheText() {
         Box icon = new Box(133, 566, 160, 592);
         List<Line> lines = List.of(line("1. Introduction", 54, 577), line("Dynamic languages such as these", 54, 592));
-        assertTrue(arranged(icon, lines).overlay());
+        PageLayout.FloatItem placed = arranged(icon, lines);
+        assertTrue(placed.overlay());
+        assertTrue(placed.overWords(), "the picture stays in front of the words it was painted over");
     }
 
     @Test

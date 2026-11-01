@@ -564,7 +564,7 @@ public final class DocumentBuilder {
         floats.stack(pic);
         pic.wrap = fi.overlay() ? Picture.Wrap.NONE
                 : column != null && blocksColumn(fi, column) ? Picture.Wrap.TOP_BOTTOM : Picture.Wrap.SQUARE;
-        pic.behind = fi.overlay();
+        pic.behind = fi.overlay() && !fi.overWords();
         pic.x = fi.x();
         pic.y = fi.top();
         pic.wrapGap = fi.gap();

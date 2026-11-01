@@ -194,7 +194,7 @@ final class PictureArranger {
             }
         }
         if (inLineGap) {
-            out.add(new PageLayout.FloatItem(b, 0f, true));
+            out.add(new PageLayout.FloatItem(b, 0f, true, covered > 0 && covered >= beside));
         } else if (gapLeft == Float.MAX_VALUE && gapRight == Float.MAX_VALUE) {
             inFlow.add(b);
         } else {
