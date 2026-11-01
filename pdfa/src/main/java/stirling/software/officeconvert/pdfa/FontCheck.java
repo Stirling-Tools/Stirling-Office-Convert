@@ -81,8 +81,19 @@ final class FontCheck {
     }
 
     private static boolean glyphsAndWidths(PDFont font, Set<Integer> codes) throws IOException {
+        StrictGlyphs strict = null;
+        if (font instanceof PDTrueTypeFont tt) {
+            PDFontDescriptor fd = tt.getFontDescriptor();
+            strict = StrictGlyphs.of(tt.getCOSObject(), fd != null && fd.isSymbolic(), tt.getTrueTypeFont());
+            if (strict == null) {
+                return false;
+            }
+        }
         for (int code : codes) {
             if (!present(font, code)) {
+                return false;
+            }
+            if (strict != null && strict.gid(code) != ((PDTrueTypeFont) font).codeToGID(code)) {
                 return false;
             }
             float dict = font.getWidth(code);
