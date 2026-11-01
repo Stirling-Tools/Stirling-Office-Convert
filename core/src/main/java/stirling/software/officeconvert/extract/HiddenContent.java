@@ -19,8 +19,7 @@ public final class HiddenContent {
             OperatorName.FILL_NON_ZERO_AND_STROKE, OperatorName.FILL_EVEN_ODD_AND_STROKE,
             OperatorName.CLOSE_FILL_NON_ZERO_AND_STROKE, OperatorName.CLOSE_FILL_EVEN_ODD_AND_STROKE);
     private static final Set<String> PAINTING = Set.of(OperatorName.SHADING_FILL, OperatorName.DRAW_OBJECT,
-            OperatorName.BEGIN_INLINE_IMAGE, OperatorName.SHOW_TEXT, OperatorName.SHOW_TEXT_ADJUSTED,
-            OperatorName.SHOW_TEXT_LINE, OperatorName.SHOW_TEXT_LINE_AND_SPACE);
+            OperatorName.BEGIN_INLINE_IMAGE);
     private static final Operator END_PATH = Operator.getOperator(OperatorName.ENDPATH);
 
     private final OptionalContent layers;

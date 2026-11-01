@@ -44,18 +44,23 @@ public final class StrictFilters {
         }
         for (int i = 0; i < filters.size(); i++) {
             COSName f = filters.get(i);
+            try {
+                FilterFactory.INSTANCE.getFilter(f);
+            } catch (IOException e) {
+                return false;
+            }
             boolean hex = COSName.ASCII_HEX_DECODE.equals(f) || AHX.equals(f);
             boolean a85 = COSName.ASCII85_DECODE.equals(f) || A85.equals(f);
             if (!hex && !a85) {
                 continue;
             }
-            byte[] input;
             try {
-                input = firstStages(s, filters, i);
+                boolean text = i == 0 ? rawText(s, hex) : hex ? hexText(firstStages(s, filters, i))
+                        : a85Text(firstStages(s, filters, i));
+                if (!text) {
+                    return false;
+                }
             } catch (IOException | RuntimeException e) {
-                return false;
-            }
-            if (hex ? !hexText(input) : !a85Text(input)) {
                 return false;
             }
         }
@@ -63,30 +68,41 @@ public final class StrictFilters {
     }
 
     public static boolean hexText(byte[] data) {
-        for (byte b : data) {
-            int c = b & 0xFF;
-            if (c == '>') {
-                return true;
-            }
-            if (!whitespace(c) && Character.digit(c, 16) < 0) {
-                return false;
-            }
-        }
-        return true;
+        return scan(data, 0, data.length, true) >= 0;
     }
 
     public static boolean a85Text(byte[] data) {
         int start = data.length >= 2 && data[0] == '<' && data[1] == '~' ? 2 : 0;
-        for (int i = start; i < data.length; i++) {
+        return scan(data, start, data.length, false) >= 0;
+    }
+
+    private static int scan(byte[] data, int from, int to, boolean hex) {
+        for (int i = from; i < to; i++) {
             int c = data[i] & 0xFF;
-            if (c == '~') {
-                return true;
+            if (hex ? c == '>' : c == '~') {
+                return 1;
             }
-            if (!whitespace(c) && c != 'z' && (c < '!' || c > 'u')) {
-                return false;
+            if (!whitespace(c) && (hex ? Character.digit(c, 16) < 0 : c != 'z' && (c < '!' || c > 'u'))) {
+                return -1;
             }
         }
-        return true;
+        return 0;
+    }
+
+    private static boolean rawText(COSStream s, boolean hex) throws IOException {
+        try (InputStream raw = s.createRawInputStream()) {
+            byte[] buffer = new byte[8192];
+            boolean first = true;
+            for (int n; (n = raw.readNBytes(buffer, 0, buffer.length)) > 0; ) {
+                int from = first && !hex && n >= 2 && buffer[0] == '<' && buffer[1] == '~' ? 2 : 0;
+                first = false;
+                int result = scan(buffer, from, n, hex);
+                if (result != 0) {
+                    return result > 0;
+                }
+            }
+            return true;
+        }
     }
 
     private static List<COSName> filters(COSStream s) {
