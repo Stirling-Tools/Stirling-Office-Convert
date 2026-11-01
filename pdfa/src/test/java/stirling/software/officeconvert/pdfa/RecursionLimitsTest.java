@@ -3,7 +3,6 @@ package stirling.software.officeconvert.pdfa;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
@@ -16,7 +15,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 class RecursionLimitsTest {
 
-    private static final Duration WALK_ONCE = Duration.ofSeconds(20);
+    private static final Duration WALK_ONCE = CpuBudget.HANG;
 
     @TempDir
     Path dir;
@@ -100,7 +99,7 @@ class RecursionLimitsTest {
     }
 
     private void finishesInTime(String name, RawPdf raw) {
-        assertTimeoutPreemptively(Duration.ofMinutes(1), () -> {
+        CpuBudget.inThisProcess(Duration.ofMinutes(1), () -> {
             Path in = Hostile.write(dir, name, raw);
             try {
                 PdfToPdfA.convert(in, dir.resolve(name + "-out.pdf"),

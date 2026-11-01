@@ -145,6 +145,23 @@ class AdmissionTest {
             assertEquals(List.of(in), left.toList(), "no .part file is left behind");
         }
         assertEquals(1, OfficeToPdf.convert(in, out).pages());
+        assertReleased(out);
+        assertReleased(in);
+    }
+
+    private static void assertReleased(Path file) {
+        long until = System.nanoTime() + TimeUnit.SECONDS.toNanos(30);
+        while (true) {
+            try {
+                Files.deleteIfExists(file);
+                return;
+            } catch (IOException e) {
+                if (System.nanoTime() > until) {
+                    throw new AssertionError(file.getFileName() + " is still held open", e);
+                }
+                Thread.onSpinWait();
+            }
+        }
     }
 
     @Test
