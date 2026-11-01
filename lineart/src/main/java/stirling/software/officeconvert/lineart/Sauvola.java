@@ -20,6 +20,10 @@ final class Sauvola {
 
     private static final long GATHER = 0x8040201008040201L;
 
+    private static final double BLUE_DEFICIT_WEIGHT = 0.2;
+
+    private static final float PAPER_LIFT_PER_BLUE_DEFICIT = (float) (BLUE_DEFICIT_WEIGHT / Paper.SOLID);
+
     private final int width;
 
     private final int height;
@@ -31,6 +35,8 @@ final class Sauvola {
     private final double k;
 
     private final byte[] ring;
+
+    private final Tint tint;
 
     private final float[] paper;
 
@@ -54,12 +60,13 @@ final class Sauvola {
 
     private int next = -1;
 
-    Sauvola(int width, int height, int window, double k) {
+    Sauvola(int width, int height, int window, double k, Tint tint) {
         this.width = width;
         this.height = height;
         this.radius = window / 2;
         this.span = window + 1;
         this.k = k;
+        this.tint = tint;
         this.ring = new byte[Math.multiplyExact(span, width)];
         this.paper = new float[width];
         this.pad = radius + 1;
@@ -93,10 +100,19 @@ final class Sauvola {
                 slide(buffer, capacity, y);
             }
             surface.row(y, paper);
+            if (tint != null && tint.row(y)) {
+                lift(buffer, (y % capacity) * width);
+            }
             classify(y, Math.min(height - 1, y + r) - Math.max(0, y - r) + 1, y * out.stride(), out.packed(),
                     core.packed(), edge.packed());
         }
         next = to;
+    }
+
+    private void lift(float[] buffer, int row) {
+        for (int x = 0; x < width; x++) {
+            paper[x] += PAPER_LIFT_PER_BLUE_DEFICIT * Binarizer.blueDeficit(buffer[row + x]);
+        }
     }
 
     private void slide(float[] buffer, int capacity, int y) {

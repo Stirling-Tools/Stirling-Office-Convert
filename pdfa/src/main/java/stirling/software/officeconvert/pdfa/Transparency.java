@@ -10,6 +10,7 @@ import java.util.Collections;
 import java.util.Deque;
 import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 import org.apache.pdfbox.contentstream.operator.Operator;
@@ -34,6 +35,8 @@ import stirling.software.officeconvert.extract.PdfFiles;
 final class Transparency {
 
     static final long MAX_PIXELS = 40_000_000L;
+
+    private static final float MASK_REACH = 100_000f;
 
     private final PDDocument doc;
 
@@ -60,19 +63,50 @@ final class Transparency {
 
     static void run(PDDocument doc, float dpi, Report report) throws IOException {
         Transparency t = new Transparency(doc, dpi, report);
-        int index = 0;
-        for (PDPage page : doc.getPages()) {
-            PdfFiles.stopIfInterrupted();
-            try {
-                t.page(page, index);
-            } catch (IOException | RuntimeException e) {
+        Map<COSStream, COSBase> boxes = transferredMaskBoxes(doc);
+        try {
+            int index = 0;
+            for (PDPage page : doc.getPages()) {
                 PdfFiles.stopIfInterrupted();
-                throw new IOException("The transparency on page " + (index + 1) + " could not be flattened for "
-                        + "PDF/A-1 (" + e.getMessage() + "); use PDF/A-2 or 3, which keep it", e);
+                try {
+                    t.page(page, index);
+                } catch (IOException | RuntimeException e) {
+                    PdfFiles.stopIfInterrupted();
+                    throw new IOException("The transparency on page " + (index + 1) + " could not be flattened for "
+                            + "PDF/A-1 (" + e.getMessage() + "); use PDF/A-2 or 3, which keep it", e);
+                }
+                index++;
             }
-            index++;
+        } finally {
+            for (Map.Entry<COSStream, COSBase> e : boxes.entrySet()) {
+                e.getKey().setItem(COSName.BBOX, e.getValue());
+            }
         }
         t.neutralise();
+    }
+
+    private static Map<COSStream, COSBase> transferredMaskBoxes(PDDocument doc) throws IOException {
+        Map<COSStream, COSBase> boxes = new IdentityHashMap<>();
+        CosWalk.walk(doc, b -> {
+            if (!(b instanceof COSDictionary mask) || !(mask.getDictionaryObject(COSName.G) instanceof COSStream g)
+                    || mask.getDictionaryObject(COSName.TR) == null || COSName.IDENTITY.equals(
+                            mask.getDictionaryObject(COSName.TR)) || boxes.containsKey(g)) {
+                return;
+            }
+            COSName s = mask.getCOSName(COSName.S);
+            if (!COSName.ALPHA.equals(s) && !COSName.LUMINOSITY.equals(s)) {
+                return;
+            }
+            boxes.put(g, g.getItem(COSName.BBOX));
+        });
+        COSArray everywhere = new COSArray();
+        for (float v : new float[] {-MASK_REACH, -MASK_REACH, MASK_REACH, MASK_REACH}) {
+            everywhere.add(new COSFloat(v));
+        }
+        for (COSStream g : boxes.keySet()) {
+            g.setItem(COSName.BBOX, everywhere);
+        }
+        return boxes;
     }
 
     private void page(PDPage page, int index) throws IOException {

@@ -423,6 +423,23 @@ class LineArtTest {
     }
 
     @Test
+    void sauvolaKeepsLightYellowAndOrangeFillsSolidAndHighlightsPaper() {
+        int w = 600;
+        int h = 400;
+        for (Color fill : new Color[] {new Color(242, 172, 0), new Color(226, 168, 45), new Color(236, 160, 20)}) {
+            Bitmap bitmap = LineArt.binarize(panel(w, h, fill, Color.WHITE), LineArt.Options.defaults());
+            assertTrue(inside(bitmap, 40, 30, 500, 180) > 0.97, fill + ": " + inside(bitmap, 40, 30, 500, 180));
+            assertTrue(inside(bitmap, 0, 260, w, 140) < 0.1, fill.toString());
+        }
+        for (Color highlight : new Color[] {new Color(255, 255, 0), new Color(255, 240, 80), new Color(255, 230, 200),
+                new Color(130, 185, 235), new Color(170, 240, 255)}) {
+            Bitmap bitmap = LineArt.binarize(panel(w, h, highlight, Color.BLACK), LineArt.Options.defaults());
+            double ink = inside(bitmap, 40, 30, 500, 180);
+            assertTrue(ink > 0.005 && ink < 0.2, highlight + ": " + ink);
+        }
+    }
+
+    @Test
     void sauvolaKeepsHatchingOnAMidToneAsLines() {
         BufferedImage image = new BufferedImage(400, 300, BufferedImage.TYPE_INT_RGB);
         Graphics2D g = image.createGraphics();

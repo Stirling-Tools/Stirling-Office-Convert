@@ -40,6 +40,8 @@ final class ColourFixer {
 
     private final List<COSDictionary> shadings = new ArrayList<>();
 
+    private final Map<COSName, COSArray> spaces = new HashMap<>();
+
     private ColourFixer(PDDocument doc, PdfALevel level, Report report, DeviceColours colours) {
         this.doc = doc;
         this.level = level;
@@ -61,10 +63,10 @@ final class ColourFixer {
         c.shadings(components);
         Map<COSName, COSArray> fallbacks = new LinkedHashMap<>();
         if (components != 4 && colours.cmyk()) {
-            fallbacks.put(DEFAULT_CMYK, c.iccBased(IccProfiles.cmyk(), 4));
+            fallbacks.put(DEFAULT_CMYK, c.profiled(COSName.DEVICECMYK, components));
         }
         if (components != 3 && colours.rgb()) {
-            fallbacks.put(DEFAULT_RGB, c.iccBased(IccProfiles.srgb(), 3));
+            fallbacks.put(DEFAULT_RGB, c.profiled(COSName.DEVICERGB, components));
         }
         for (Map.Entry<COSName, COSArray> f : fallbacks.entrySet()) {
             for (COSDictionary res : graph.resources()) {
@@ -149,24 +151,57 @@ final class ColourFixer {
     }
 
     private void shadings(int components) throws IOException {
-        Map<COSName, COSArray> spaces = new HashMap<>();
         for (COSDictionary shading : shadings) {
-            if (!(shading.getDictionaryObject(COSName.COLORSPACE) instanceof COSName name)) {
-                continue;
+            COSBase cs = shading.getDictionaryObject(COSName.COLORSPACE);
+            if (cs instanceof COSName name) {
+                COSArray space = profiled(name, components);
+                if (space != null) {
+                    shading.setItem(COSName.COLORSPACE, space);
+                }
+            } else if (cs instanceof COSArray a && a.size() >= 4) {
+                alternates(a, components);
             }
-            int n = COSName.DEVICECMYK.equals(name) ? 4 : COSName.DEVICERGB.equals(name) ? 3
-                    : COSName.DEVICEGRAY.equals(name) ? 1 : 0;
-            if (n == 0 || n == components) {
-                continue;
-            }
-            COSArray space = spaces.get(name);
-            if (space == null) {
-                byte[] profile = n == 4 ? IccProfiles.cmyk() : n == 3 ? IccProfiles.srgb() : IccProfiles.gray();
-                space = iccBased(profile, n);
-                spaces.put(name, space);
-            }
-            shading.setItem(COSName.COLORSPACE, space);
         }
+    }
+
+    private void alternates(COSArray space, int components) throws IOException {
+        COSBase type = space.getObject(0);
+        if (!COSName.DEVICEN.equals(type) && !COSName.SEPARATION.equals(type)) {
+            return;
+        }
+        if (space.getObject(2) instanceof COSName alternate) {
+            COSArray replacement = profiled(alternate, components);
+            if (replacement != null) {
+                space.set(2, replacement);
+            }
+        }
+        if (!COSName.DEVICEN.equals(type) || space.size() < 5) {
+            return;
+        }
+        COSDictionary attributes = ContentGraph.dict(space.getObject(4));
+        COSDictionary process = attributes == null ? null
+                : ContentGraph.dict(attributes.getDictionaryObject(COSName.getPDFName("Process")));
+        if (process != null && process.getDictionaryObject(COSName.COLORSPACE) instanceof COSName name) {
+            COSArray replacement = profiled(name, components);
+            if (replacement != null) {
+                process.setItem(COSName.COLORSPACE, replacement);
+            }
+        }
+    }
+
+    private COSArray profiled(COSName name, int components) throws IOException {
+        int n = COSName.DEVICECMYK.equals(name) ? 4 : COSName.DEVICERGB.equals(name) ? 3
+                : COSName.DEVICEGRAY.equals(name) ? 1 : 0;
+        if (n == 0 || n == components) {
+            return null;
+        }
+        COSArray space = spaces.get(name);
+        if (space == null) {
+            byte[] profile = n == 4 ? IccProfiles.cmyk() : n == 3 ? IccProfiles.srgb() : IccProfiles.gray();
+            space = iccBased(profile, n);
+            spaces.put(name, space);
+        }
+        return space;
     }
 
     private COSArray iccBased(byte[] profile, int n) throws IOException {

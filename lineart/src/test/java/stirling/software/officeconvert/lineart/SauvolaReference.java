@@ -6,19 +6,23 @@ final class SauvolaReference {
 
     private SauvolaReference() {}
 
-    static Bitmap binarize(float[] grey, int w, int h, int window, double k) {
+    static Bitmap binarize(float[] grey, Tint tint, int w, int h, int window, double k) {
+        int[] deficits = new int[grey.length];
+        for (int i = 0; i < grey.length; i++) {
+            deficits[i] = tint.row(i / w) ? Float.floatToRawIntBits(grey[i]) & 0xFF : 0;
+        }
         Surface paper = new Surface(w, h, window);
         Bitmap out = Bitmap.blank(w, h);
         Bitmap core = Bitmap.blank(w, h);
         Bitmap edge = Bitmap.blank(w, h);
         paper.feed(grey, 0, h);
-        sauvola(grey, 0, w, h, 0, h, window, k, paper, out, core, edge);
+        sauvola(grey, deficits, 0, w, h, 0, h, window, k, paper, out, core, edge);
         grow(out, core, edge, window);
         return out;
     }
 
-    private static void sauvola(float[] buffer, int first, int w, int h, int from, int to, int window, double k,
-            Surface surface, Bitmap out, Bitmap core, Bitmap edge) {
+    private static void sauvola(float[] buffer, int[] deficits, int first, int w, int h, int from, int to,
+            int window, double k, Surface surface, Bitmap out, Bitmap core, Bitmap edge) {
         int r = window / 2;
         float[] paper = new float[w];
         long[] columnSum = new long[w];
@@ -60,7 +64,8 @@ final class SauvolaReference {
                 double deviation = Math.sqrt(Math.max(0, (double) squares / count - mean * mean));
                 double level = mean * (1 + k * (deviation / 128 - 1));
                 int v = eight(buffer[base + x]);
-                double solid = Paper.SOLID * paper[x];
+                int deficit = deficits[base + x];
+                double solid = Paper.SOLID * (paper[x] + (float) (0.2 / Paper.SOLID) * deficit);
                 boolean flat = deviation < Paper.FLAT;
                 if (flat && mean <= solid) {
                     core.set(x, y);
