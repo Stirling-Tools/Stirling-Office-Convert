@@ -68,6 +68,33 @@ class RuleRepairsTest {
     }
 
     @Test
+    void aCMapStreamWithAHigherSupplementRaisesItsCidFontToMatch() throws Exception {
+        Path in = dir.resolve("supplement.pdf");
+        try (PDDocument d = new PDDocument()) {
+            PDType0Font font = PDType0Font.load(d, Samples.liberation(), false);
+            COSStream cmap = FontSamples.cmap(d, "Spaced", 0, 0, "", 36);
+            ((COSDictionary) cmap.getDictionaryObject(COSName.CIDSYSTEMINFO)).setInt(COSName.SUPPLEMENT, 5);
+            font.getCOSObject().setItem(COSName.ENCODING, cmap);
+            COSDictionary cid = (COSDictionary) ((COSArray) font.getCOSObject()
+                    .getDictionaryObject(COSName.DESCENDANT_FONTS)).getObject(0);
+            ((COSDictionary) cid.getDictionaryObject(COSName.CIDSYSTEMINFO)).setInt(COSName.SUPPLEMENT, 0);
+            d.addPage(FontSamples.page(d, "BT /A 12 Tf 72 700 Td <0041> Tj ET", font));
+            d.save(in.toFile());
+        }
+        Path out = convert(in, PdfALevel.A2B);
+        try (PDDocument d = Loader.loadPDF(out.toFile())) {
+            COSDictionary font = d.getPage(0).getResources().getFont(COSName.getPDFName("A")).getCOSObject();
+            COSDictionary cid = (COSDictionary) ((COSArray) font.getDictionaryObject(COSName.DESCENDANT_FONTS)).getObject(0);
+            int cidSupplement = ((COSDictionary) cid.getDictionaryObject(COSName.CIDSYSTEMINFO)).getInt(COSName.SUPPLEMENT);
+            if (font.getDictionaryObject(COSName.ENCODING) instanceof COSStream stream) {
+                int cmapSupplement = ((COSDictionary) stream.getDictionaryObject(COSName.CIDSYSTEMINFO))
+                        .getInt(COSName.SUPPLEMENT);
+                assertTrue(cidSupplement >= cmapSupplement, cidSupplement + " < " + cmapSupplement);
+            }
+        }
+    }
+
+    @Test
     void markedContentNamingMissingPropertiesKeepsItsTag() throws Exception {
         Path in = dir.resolve("properties.pdf");
         try (PDDocument d = new PDDocument()) {
