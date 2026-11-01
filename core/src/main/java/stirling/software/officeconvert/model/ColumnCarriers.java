@@ -8,7 +8,7 @@ public final class ColumnCarriers {
 
     public static boolean carrier(Paragraph p) {
         return p.inlines.size() == 1 && p.inlines.getFirst() instanceof Inline.ColumnBreak && p.endsSection == null
-                && p.bookmark == null && !p.pageBreakBefore;
+                && p.bookmark == null && p.anchors.isEmpty() && !p.pageBreakBefore;
     }
 
     public static boolean takesBreak(Paragraph p) {
