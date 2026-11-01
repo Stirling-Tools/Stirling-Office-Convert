@@ -114,6 +114,15 @@ public final class FontNames {
         return rest.toLowerCase(Locale.ROOT);
     }
 
+    static String camelStyle(String ps) {
+        if (!basePart(ps).equals(ps)) {
+            return "";
+        }
+        String base = trimPsSuffix(ps);
+        String stripped = stripStyleWords(base);
+        return base.substring(stripped.length()).toLowerCase(Locale.ROOT);
+    }
+
     public static String family(String candidate, String postScriptName) {
         String fromCandidate = candidate == null ? null : resolve(candidate);
         if (fromCandidate != null) {

@@ -43,6 +43,9 @@ public final class FontResolver {
         }
         PDFontDescriptor fd = font.getFontDescriptor();
         String style = FontNames.stylePart(ps);
+        if (style.isEmpty()) {
+            style = FontNames.camelStyle(ps);
+        }
         String lowerPs = ps.toLowerCase(Locale.ROOT);
 
         String candidate = null;

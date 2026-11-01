@@ -53,7 +53,7 @@ public final class DocxWriter implements DocSink, Closeable {
     private long mediaBytes;
     private final SpillFile spill = new SpillFile("office-convert-media");
     private HeaderFooterSet running;
-    private Paragraph columnCarrier;
+    private final ColumnCarriers columnCarriers = new ColumnCarriers(this::writeBlock);
     private final StringBuilder footnotes = new StringBuilder();
 
     @Override
@@ -134,25 +134,15 @@ public final class DocxWriter implements DocSink, Closeable {
 
     @Override
     public void block(Block block) throws IOException {
+        columnCarriers.block(block);
+    }
+
+    private void writeBlock(Block block) throws IOException {
         StringBuilder sb = new StringBuilder(512);
-        Paragraph carrier = columnCarrier;
-        columnCarrier = null;
-        if (block instanceof Paragraph p && ColumnCarriers.carrier(p)) {
-            if (carrier != null) {
-                body.paragraph(sb, carrier, true);
-            }
-            columnCarrier = p;
-        } else if (block instanceof Paragraph p && carrier != null && ColumnCarriers.takesBreak(p)) {
-            ColumnCarriers.withBreakFirst(p, () -> body.paragraph(sb, p, true));
-        } else {
-            if (carrier != null) {
-                body.paragraph(sb, carrier, true);
-            }
-            if (block instanceof Paragraph p) {
-                body.paragraph(sb, p, true);
-            } else if (block instanceof Table t) {
-                body.table(sb, t);
-            }
+        if (block instanceof Paragraph p) {
+            body.paragraph(sb, p, true);
+        } else if (block instanceof Table t) {
+            body.table(sb, t);
         }
         out.write(sb.toString());
     }
@@ -160,11 +150,8 @@ public final class DocxWriter implements DocSink, Closeable {
     @Override
     public void finish(Section last, HeaderFooterSet runningSet, Numbering numbering, StyleSheet styleSheet,
             String title, String author) throws IOException {
+        columnCarriers.flush();
         StringBuilder sb = new StringBuilder();
-        if (columnCarrier != null) {
-            body.paragraph(sb, columnCarrier, true);
-            columnCarrier = null;
-        }
         body.sectPr(sb, last);
         out.write(sb.toString());
         out.write("</w:body></w:document>");
