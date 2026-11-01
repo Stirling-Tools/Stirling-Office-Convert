@@ -48,7 +48,16 @@ final class PageSize {
             COSBase value = box.equals(COSName.MEDIA_BOX) || box.equals(COSName.CROP_BOX)
                     ? org.apache.pdfbox.pdmodel.PDPageTree.getInheritableAttribute(page, box)
                     : page.getDictionaryObject(box);
-            if (!(value instanceof COSArray a) || a.toList().stream().noneMatch(v -> v instanceof COSObject)) {
+            if (!(value instanceof COSArray a)) {
+                continue;
+            }
+            if (a.size() != 4) {
+                if (OPTIONAL.contains(box)) {
+                    page.removeItem(box);
+                }
+                continue;
+            }
+            if (a.toList().stream().noneMatch(v -> v instanceof COSObject)) {
                 continue;
             }
             COSArray direct = new COSArray();

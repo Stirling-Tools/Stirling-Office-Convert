@@ -61,27 +61,30 @@ final class FormAppearances {
         if (form.getDefaultAppearance() == null || form.getDefaultAppearance().isBlank()) {
             form.setDefaultAppearance("/Helv 0 Tf 0 g");
         }
+        Set<PDField> failed = Collections.newSetFromMap(new IdentityHashMap<>());
         for (PDField field : missing) {
-            refresh(form, field);
+            if (!refresh(form, field)) {
+                failed.add(field);
+            }
         }
         for (PDField field : missing) {
-            if (!field.getValueAsString().isEmpty()
-                    && field.getWidgets().stream().anyMatch(widget -> widget.getNormalAppearanceStream() == null)) {
+            if (!field.getValueAsString().isEmpty() && (failed.contains(field)
+                    || field.getWidgets().stream().anyMatch(widget -> widget.getNormalAppearanceStream() == null))) {
                 throw new IOException("A form field's value could not be given a visible appearance");
             }
         }
         report.warn("Generated form appearances from the stored text and choice values");
     }
 
-    private static void refresh(PDAcroForm form, PDField field) throws IOException {
+    private static boolean refresh(PDAcroForm form, PDField field) throws IOException {
         try {
             form.refreshAppearances(List.of(field));
-            return;
+            return true;
         } catch (IOException | IllegalArgumentException | IllegalStateException e) {
             PdfFiles.stopIfInterrupted();
         }
         if (!(field instanceof PDVariableText text)) {
-            return;
+            return false;
         }
         text.setDefaultAppearance(withStandardFont(text.getDefaultAppearance()));
         for (PDAnnotationWidget widget : field.getWidgets()) {
@@ -91,8 +94,10 @@ final class FormAppearances {
         }
         try {
             form.refreshAppearances(List.of(field));
+            return true;
         } catch (IOException | IllegalArgumentException | IllegalStateException e) {
             PdfFiles.stopIfInterrupted();
+            return false;
         }
     }
 
