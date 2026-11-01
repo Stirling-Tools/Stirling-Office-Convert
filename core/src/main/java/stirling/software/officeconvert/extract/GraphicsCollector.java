@@ -35,7 +35,9 @@ import org.apache.pdfbox.pdmodel.graphics.image.PDImage;
 import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
 import org.apache.pdfbox.pdmodel.graphics.state.PDGraphicsState;
 import org.apache.pdfbox.pdmodel.graphics.state.RenderingMode;
+import org.apache.pdfbox.pdmodel.graphics.color.PDColor;
 import org.apache.pdfbox.pdmodel.interactive.annotation.PDAnnotation;
+import org.apache.pdfbox.pdmodel.interactive.annotation.PDAnnotationHighlight;
 import org.apache.pdfbox.pdmodel.interactive.annotation.PDAppearanceStream;
 import org.apache.pdfbox.util.Matrix;
 import org.apache.pdfbox.util.Vector;
@@ -220,7 +222,41 @@ final class GraphicsCollector extends PDFGraphicsStreamEngine {
 
     @Override
     protected void processAnnotation(PDAnnotation annotation, PDAppearanceStream appearance) throws IOException {
+        if (annotation instanceof PDAnnotationHighlight highlight && highlightQuads(highlight)) {
+            return;
+        }
         runner.processAnnotation(annotation, appearance);
+    }
+
+    private boolean highlightQuads(PDAnnotationHighlight highlight) {
+        float[] quads = highlight.getQuadPoints();
+        PDColor colour = highlight.getColor();
+        if (quads == null || quads.length < 8 || colour == null || colour.getComponents().length == 0) {
+            return false;
+        }
+        int rgb = onPaper(PdfColours.toRgb(colour, 0xFFFF00), highlight.getConstantOpacity());
+        for (int q = 0; q + 8 <= quads.length; q += 8) {
+            float minX = Float.MAX_VALUE;
+            float minY = Float.MAX_VALUE;
+            float maxX = -Float.MAX_VALUE;
+            float maxY = -Float.MAX_VALUE;
+            for (int i = q; i < q + 8; i += 2) {
+                Point2D.Float p = display(quads[i], quads[i + 1]);
+                minX = Math.min(minX, p.x);
+                minY = Math.min(minY, p.y);
+                maxX = Math.max(maxX, p.x);
+                maxY = Math.max(maxY, p.y);
+            }
+            if (maxX - minX < 0.5f || maxY - minY < 0.5f || !Float.isFinite(minX + minY + maxX + maxY)) {
+                continue;
+            }
+            Fill fill = new Fill(minX, minY, maxX, maxY, rgb);
+            fills.add(fill);
+            paintOrder.put(fill, painted);
+            seeThrough.add(fill);
+        }
+        painted++;
+        return true;
     }
 
     @Override
