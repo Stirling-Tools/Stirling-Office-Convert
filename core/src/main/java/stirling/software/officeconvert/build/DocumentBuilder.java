@@ -327,11 +327,19 @@ public final class DocumentBuilder {
         PageLayout.Column col = band.columns().get(ci);
         float prevBottom = at.refBottom;
         boolean columnTop = ci > 0 && !flowOn;
+        float wrappedBottom = Float.NaN;
         for (int ii = 0; ii < col.items().size(); ii++) {
             PageLayout.Item item = col.items().get(ii);
             if (placeOutOfFlow(item, layout, toDisplay)) {
+                if (blocksColumn(item, col) && item.top() >= prevBottom - 1) {
+                    wrappedBottom = Float.isNaN(wrappedBottom) ? item.bottom() : Math.max(wrappedBottom, item.bottom());
+                }
                 continue;
             }
+            if (!Float.isNaN(wrappedBottom) && !at.pageTop && item.top() >= wrappedBottom - 1) {
+                prevBottom = Math.max(prevBottom, wrappedBottom);
+            }
+            wrappedBottom = Float.NaN;
             if (item instanceof PageLayout.TableItem) {
                 pinnedOver(item, col, ii, layout, toDisplay);
             }
@@ -450,6 +458,16 @@ public final class DocumentBuilder {
 
     private static final float GROWN_LINE = 1.15f;
 
+    static boolean blocksColumn(PageLayout.Item item, PageLayout.Column col) {
+        boolean wraps = item instanceof PageLayout.TextBoxItem tb && !tb.overlay()
+                || item instanceof PageLayout.FloatItem f && !f.overlay();
+        float width = col.right() - col.left();
+        float room = Math.max(item.x() - col.left(), col.right() - item.right());
+        return wraps && width > 0 && room < BESIDE_ROOM * width;
+    }
+
+    private static final float BESIDE_ROOM = 0.25f;
+
     private static boolean besideWrap(PageLayout.Item item, PageLayout.Column col) {
         for (PageLayout.Item it : col.items()) {
             boolean wraps = it instanceof PageLayout.TextBoxItem tb && !tb.overlay();
@@ -522,7 +540,7 @@ public final class DocumentBuilder {
                 emit(p);
                 bottom += growth(p);
                 if (!under.isEmpty()) {
-                    bottom = underRow(under, bottom);
+                    bottom = underRow(under, bottom, insideWrap(under, col));
                 }
             }
         } else {
@@ -920,10 +938,10 @@ public final class DocumentBuilder {
         return next instanceof PageLayout.ParaItem np ? floats.takeUnder(d, bottom, paragraphs.wordTop(np.para())) : List.of();
     }
 
-    private float underRow(List<Inline.Shape> shapes, float top) throws IOException {
+    private float underRow(List<Inline.Shape> shapes, float top, boolean wrapped) throws IOException {
         float bottom = top;
         for (Inline.Shape s : shapes) {
-            bottom = Math.max(bottom, s.y() + s.height());
+            bottom = wrapped ? top : Math.max(bottom, s.y() + s.height());
         }
         Paragraph row = hairline(Math.max(1f, bottom - top));
         row.sourceTop = top;
@@ -934,6 +952,24 @@ public final class DocumentBuilder {
         emit(row);
         return row.sourceBottom;
     }
+
+    static boolean insideWrap(List<Inline.Shape> shapes, PageLayout.Column col) {
+        for (Inline.Shape s : shapes) {
+            boolean inside = false;
+            for (PageLayout.Item it : col.items()) {
+                boolean wraps = it instanceof PageLayout.TextBoxItem tb && !tb.overlay()
+                        || it instanceof PageLayout.FloatItem f && !f.overlay();
+                inside |= wraps && s.x() >= it.x() - WRAP_SLACK && s.x() + s.width() <= it.right() + WRAP_SLACK
+                        && s.y() >= it.top() - WRAP_SLACK && s.y() + s.height() <= it.bottom() + WRAP_SLACK;
+            }
+            if (!inside) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static final float WRAP_SLACK = 2f;
 
     private Paragraph hairline(float height) {
         Paragraph p = new Paragraph();
