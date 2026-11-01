@@ -19,7 +19,7 @@ final class Decorations {
         Iterator<Rule> it = rules.iterator();
         while (it.hasNext()) {
             Rule r = it.next();
-            if (!r.horizontal() || r.length() < 2f) {
+            if (!r.horizontal() || r.length() < 2f || framed(r, rules)) {
                 continue;
             }
             if (apply(r, segments)) {
@@ -27,6 +27,20 @@ final class Decorations {
             }
         }
     }
+
+    private static boolean framed(Rule r, List<Rule> rules) {
+        boolean left = false;
+        boolean right = false;
+        for (Rule v : rules) {
+            if (!v.horizontal() && v.start() <= r.pos() + FRAME_SLACK && v.end() >= r.pos() - FRAME_SLACK) {
+                left |= Math.abs(v.pos() - r.start()) <= FRAME_SLACK;
+                right |= Math.abs(v.pos() - r.end()) <= FRAME_SLACK;
+            }
+        }
+        return left && right;
+    }
+
+    private static final float FRAME_SLACK = 1.5f;
 
     private static boolean spansWords(Rule r, Line seg) {
         boolean starts = false;
