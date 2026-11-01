@@ -287,17 +287,12 @@ final class Binarizer {
                 LineArt.checkpoint();
                 int offset = (y + dy) * model.getScanlineStride() + dx * step + bytes.getOffset();
                 if (vivid && sampledDeficit(data, offset, step, bands, w)) {
-                    int any = 0;
+                    tint.mark(top + y);
                     for (int x = 0; x < w; x++, offset += step) {
                         int r = data[offset + bands[0]] & 0xFF;
                         int g = data[offset + bands[1]] & 0xFF;
                         int b = data[offset + bands[2]] & 0xFF;
-                        int deficit = deficit(r, g, b);
-                        grey[y * w + x] = vivid(r, g, b, deficit);
-                        any |= deficit;
-                    }
-                    if (any != 0) {
-                        tint.mark(top + y);
+                        grey[y * w + x] = vivid(r, g, b, deficit(r, g, b));
                     }
                 } else {
                     for (int x = 0; x < w; x++, offset += step) {
@@ -322,18 +317,13 @@ final class Binarizer {
             int[] pixels = packed ? data : row;
             int start = packed ? offset : 0;
             if (vivid && sampledDeficit(pixels, start, w)) {
-                int any = 0;
+                tint.mark(top + y);
                 for (int x = 0; x < w; x++) {
                     int p = pixels[start + x];
                     int r = (p >>> 16) & 0xFF;
                     int g = (p >>> 8) & 0xFF;
                     int b = p & 0xFF;
-                    int deficit = deficit(r, g, b);
-                    grey[y * w + x] = vivid(r, g, b, deficit);
-                    any |= deficit;
-                }
-                if (any != 0) {
-                    tint.mark(top + y);
+                    grey[y * w + x] = vivid(r, g, b, deficit(r, g, b));
                 }
             } else {
                 for (int x = 0; x < w; x++) {

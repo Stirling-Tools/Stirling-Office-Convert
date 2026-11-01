@@ -22,6 +22,8 @@ final class Sauvola {
 
     private static final double BLUE_DEFICIT_WEIGHT = 0.2;
 
+    private static final int LIFT_BLOCK = 8;
+
     private static final float PAPER_LIFT_PER_BLUE_DEFICIT = (float) (BLUE_DEFICIT_WEIGHT / Paper.SOLID);
 
     private final int width;
@@ -110,7 +112,19 @@ final class Sauvola {
     }
 
     private void lift(float[] buffer, int row) {
-        for (int x = 0; x < width; x++) {
+        int x = 0;
+        for (; x + LIFT_BLOCK <= width; x += LIFT_BLOCK) {
+            int any = 0;
+            for (int i = 0; i < LIFT_BLOCK; i++) {
+                any |= Float.floatToRawIntBits(buffer[row + x + i]);
+            }
+            if ((any & 0xFF) != 0) {
+                for (int i = x; i < x + LIFT_BLOCK; i++) {
+                    paper[i] += PAPER_LIFT_PER_BLUE_DEFICIT * Binarizer.blueDeficit(buffer[row + i]);
+                }
+            }
+        }
+        for (; x < width; x++) {
             paper[x] += PAPER_LIFT_PER_BLUE_DEFICIT * Binarizer.blueDeficit(buffer[row + x]);
         }
     }
