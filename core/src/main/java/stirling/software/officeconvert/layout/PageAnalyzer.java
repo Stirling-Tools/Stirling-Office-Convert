@@ -215,7 +215,8 @@ public final class PageAnalyzer {
         List<Box> pictured = figures;
         blocks.removeIf(b -> b instanceof PageLayout.TextBoxItem tb && boxes.boxes().contains(tb) && labels(tb)
                 && Regions.insideAny(tb.box(), pictured, 2f));
-        figures.addAll(Decorations.overCap(freeFills, freeRules, concat(figures, backdrops), tableBoxes, tinted, segments));
+        figures.addAll(Decorations.overCap(freeFills, freeRules, concat(figures, backdrops), tableBoxes, tinted, segments,
+                turned.stream().map(RotatedText.Block::onPage).toList()));
         List<Box> drawn = concat(figures, backdrops);
         addImages(page, gfx.images(), drawn, ocr, segments, blocks);
         for (Box f : figures) {

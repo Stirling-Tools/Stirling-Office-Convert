@@ -71,6 +71,7 @@ final class GraphicsCollector extends PDFGraphicsStreamEngine {
     private boolean pathCurved;
     private final Map<Object, Integer> paintOrder = new IdentityHashMap<>();
     private int painted;
+    private int stencilRules;
     private final Set<Object> seeThrough = Collections.newSetFromMap(new IdentityHashMap<>());
     private final Map<Object, PageGraphics.Outline> outlines = new IdentityHashMap<>();
     private final Map<Object, Shape> lettering = new IdentityHashMap<>();
@@ -551,27 +552,32 @@ final class GraphicsCollector extends PDFGraphicsStreamEngine {
         float h = maxY - minY;
         float thick = Math.min(w, h);
         float length = Math.max(w, h);
+        PDGraphicsState gs = getGraphicsState();
         if (thick >= RULE_STENCIL_THICK || length < RULE_STENCIL_RATIO * Math.max(thick, 0.1f)
-                || (long) image.getWidth() * image.getHeight() > RULE_STENCIL_PIXELS || !mostlyPainted(image)) {
+                || (long) image.getWidth() * image.getHeight() > RULE_STENCIL_PIXELS
+                || stencilRules >= MAX_IMAGES || gs.getNonStrokingColorSpace() instanceof PDPattern
+                || gs.getSoftMask() != null || !ImageBudget.affordable(image) || !solid(image)) {
             return false;
         }
         float[] clip = clipBox();
         boolean horizontal = w >= h;
         float start = horizontal ? Math.max(minX, clip[0]) : Math.max(minY, clip[1]);
         float end = horizontal ? Math.min(maxX, clip[2]) : Math.min(maxY, clip[3]);
-        float pos = horizontal ? (minY + maxY) / 2f : (minX + maxX) / 2f;
-        boolean inside = horizontal ? pos >= clip[1] && pos <= clip[3] : pos >= clip[0] && pos <= clip[2];
-        if (end - start < 0.5f || !inside || getGraphicsState().getNonStrokeAlphaConstant() <= 0.01f) {
+        float near = horizontal ? Math.max(minY, clip[1]) : Math.max(minX, clip[0]);
+        float far = horizontal ? Math.min(maxY, clip[3]) : Math.min(maxX, clip[2]);
+        if (end - start < 0.5f || far < near || gs.getNonStrokeAlphaConstant() <= 0.01f) {
             return true;
         }
-        PageGraphics.Rule rule = new PageGraphics.Rule(horizontal, pos, start, end, Math.max(thick, 0.1f),
-                PdfColours.toRgb(getGraphicsState().getNonStrokingColor(), 0));
+        PageGraphics.Rule rule = new PageGraphics.Rule(horizontal, (near + far) / 2f, start, end,
+                Math.max(far - near, 0.1f),
+                onPaper(PdfColours.toRgb(gs.getNonStrokingColor(), 0), gs.getNonStrokeAlphaConstant()));
         rules.add(rule);
+        stencilRules++;
         paintOrder.put(rule, painted++);
         return true;
     }
 
-    private static boolean mostlyPainted(PDImage image) {
+    private static boolean solid(PDImage image) {
         try {
             BufferedImage mask = image.getStencilImage(java.awt.Color.BLACK);
             int painted = 0;
@@ -580,7 +586,7 @@ final class GraphicsCollector extends PDFGraphicsStreamEngine {
                     painted += (mask.getRGB(x, y) >>> 24) > 127 ? 1 : 0;
                 }
             }
-            return painted * 2 > mask.getWidth() * mask.getHeight();
+            return painted * 20L >= mask.getWidth() * (long) mask.getHeight() * 19;
         } catch (IOException | RuntimeException e) {
             return false;
         }
