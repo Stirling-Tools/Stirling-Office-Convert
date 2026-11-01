@@ -131,6 +131,10 @@ final class UnicodeGuess {
             ttf = tt.getTrueTypeFont();
             gid = tt.codeToGID(code);
         } else if (font instanceof PDType0Font t0 && t0.getDescendantFont() instanceof PDCIDFontType2 c2) {
+            if (!c2.isEmbedded()) {
+                // An unembedded CID font's glyph ids index PDFBox's stand-in, not the author's font
+                return null;
+            }
             ttf = c2.getTrueTypeFont();
             gid = c2.codeToGID(code);
         } else if (font instanceof PDType1Font t1) {
