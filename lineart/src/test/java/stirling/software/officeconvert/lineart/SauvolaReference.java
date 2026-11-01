@@ -9,7 +9,7 @@ final class SauvolaReference {
     static Bitmap binarize(float[] grey, Tint tint, int w, int h, int window, double k) {
         int[] deficits = new int[grey.length];
         for (int i = 0; i < grey.length; i++) {
-            deficits[i] = tint.row(i / w) ? Float.floatToRawIntBits(grey[i]) & 0xFF : 0;
+            deficits[i] = tint.block(i / w, i % w / Tint.BLOCK) ? Float.floatToRawIntBits(grey[i]) & 0xFF : 0;
         }
         Surface paper = new Surface(w, h, window);
         Bitmap out = Bitmap.blank(w, h);
