@@ -48,6 +48,8 @@ final class FontFixer {
 
     private final Report report;
 
+    private final Map<COSDictionary, Set<Integer>> silent = new IdentityHashMap<>();
+
     private static final Map<String, Integer> PDF17_SUPPLEMENTS = Map.of("GBK2K-H", 4, "GBK2K-V", 4, "UniGB-UTF16-H",
             4, "UniGB-UTF16-V", 4, "HKscs-B5-H", 3, "HKscs-B5-V", 3, "UniCNS-UTF16-H", 4, "UniCNS-UTF16-V", 4,
             "UniJIS-UTF16-H", 5, "UniJIS-UTF16-V", 5);
@@ -88,6 +90,7 @@ final class FontFixer {
                 }
             }
         }
+        usage.silent().putAll(f.silent);
     }
 
     private static Map<COSDictionary, List<COSDictionary>> sharedDescendants(FontUsage usage) {
@@ -590,6 +593,9 @@ final class FontFixer {
             if (!usable(t)) {
                 complete = false;
                 t = fallback(font, code, t);
+                if (t.equals(ToUnicodeWriter.unknown(code, level))) {
+                    silent.computeIfAbsent(font.getCOSObject(), k -> new TreeSet<>()).add(code);
+                }
             } else {
                 t = UnicodeGuess.searchable(font, code, t);
             }

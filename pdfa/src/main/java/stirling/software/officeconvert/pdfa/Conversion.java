@@ -69,6 +69,7 @@ final class Conversion {
         FontFixer.dropUnreadable(graph, report);
         ContentFixer.run(graph, level, report, usage, colours);
         FontFixer.run(doc, usage, level, options::fontLibrary, report);
+        SilentGlyphs.run(graph, usage.silent(), level);
         TransferBaking.run(doc, graph, report);
         PdfFiles.stopIfInterrupted();
         FontCompaction compaction = new FontCompaction(doc, usage, level);
