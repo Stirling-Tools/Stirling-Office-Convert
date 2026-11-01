@@ -245,7 +245,7 @@ final class GraphicsCollector extends PDFGraphicsStreamEngine {
 
     @Override
     public void showTransparencyGroup(PDTransparencyGroup form) throws IOException {
-        if (!budget.form()) {
+        if (!budget.form() || hiddenContent.hidden(form)) {
             return;
         }
         boolean masked = getGraphicsState().getSoftMask() != null;

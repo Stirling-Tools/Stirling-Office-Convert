@@ -7,7 +7,9 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.WeakHashMap;
+import java.util.regex.Pattern;
 import java.util.zip.DataFormatException;
 import java.util.zip.Inflater;
 
@@ -20,7 +22,9 @@ import org.apache.pdfbox.cos.COSBase;
 import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.cos.COSStream;
 import org.apache.pdfbox.io.RandomAccessReadBuffer;
+import org.apache.pdfbox.pdmodel.font.PDCIDFont;
 import org.apache.pdfbox.pdmodel.font.PDCIDFontType2;
+import org.apache.pdfbox.pdmodel.font.PDCIDSystemInfo;
 import org.apache.pdfbox.pdmodel.font.PDFont;
 import org.apache.pdfbox.pdmodel.font.PDSimpleFont;
 import org.apache.pdfbox.pdmodel.font.PDTrueTypeFont;
@@ -32,6 +36,7 @@ import org.apache.pdfbox.pdmodel.font.encoding.DictionaryEncoding;
 import org.apache.pdfbox.pdmodel.font.encoding.GlyphList;
 import org.apache.pdfbox.pdmodel.font.encoding.WinAnsiEncoding;
 
+import stirling.software.officeconvert.extract.LigatureNames;
 import stirling.software.officeconvert.fonts.CodeReader;
 
 final class UnicodeGuess {
@@ -43,7 +48,7 @@ final class UnicodeGuess {
     }
 
     static String text(PDFont font, int code, int bytesPerCode) {
-        return of(font, code, bytesPerCode, !standIn(font) || unreadableMap(font));
+        return of(font, code, bytesPerCode, !standIn(font));
     }
 
     private static boolean unreadableMap(PDFont font) {
@@ -158,7 +163,10 @@ final class UnicodeGuess {
             String t = cmap.toUnicode(code);
             return t != null || code > 0xFFFFFF ? t : cmap.toUnicode(code, 4);
         }
-        if (font instanceof PDType0Font || font instanceof PDType3Font) {
+        if (font instanceof PDType0Font t0) {
+            return adobeCjk(t0) || t0.getCMapUCS2() != null ? cjk(t0, code) : null;
+        }
+        if (font instanceof PDType3Font) {
             return null;
         }
         try {
@@ -166,6 +174,56 @@ final class UnicodeGuess {
         } catch (RuntimeException e) {
             return null;
         }
+    }
+
+    private static final Set<String> CJK_ORDERINGS = Set.of("GB1", "CNS1", "Japan1", "Korea1");
+
+    private static final Pattern UNICODE_CMAP = Pattern.compile("Uni[A-Za-z0-9]+-(UCS2|UTF16)(-HW)?-[HV]");
+
+    /** Unicode CMaps carry the text in the code itself; the CID round trip would lose some of it. */
+    private static String cjk(PDType0Font font, int code) {
+        String cmap = font.getCOSObject().getNameAsString(COSName.ENCODING);
+        String t;
+        if (cmap != null && UNICODE_CMAP.matcher(cmap).matches()) {
+            t = (code & 0xFFFF0000) == 0 ? String.valueOf((char) code)
+                    : new String(new char[] {(char) (code >>> 16), (char) code});
+            if (privateUse(t) && font.getCMapUCS2() != null) {
+                String collected = font.getCMapUCS2().toUnicode(CidLookup.cid(font, code));
+                t = collected != null && !privateUse(collected) ? collected : t;
+            }
+        } else {
+            try {
+                t = font.getCMapUCS2() != null ? font.getCMapUCS2().toUnicode(CidLookup.cid(font, code))
+                        : font.toUnicode(code);
+            } catch (RuntimeException e) {
+                return null;
+            }
+        }
+        return t == null || t.indexOf('\uFFFD') >= 0 || !pairedSurrogates(t) ? null : t;
+    }
+
+    private static boolean privateUse(String t) {
+        int cp = t.codePointAt(0);
+        return t.length() == Character.charCount(cp) && Character.getType(cp) == Character.PRIVATE_USE;
+    }
+
+    private static boolean pairedSurrogates(String t) {
+        for (int i = 0; i < t.length(); i++) {
+            char c = t.charAt(i);
+            if (Character.isHighSurrogate(c) && i + 1 < t.length() && Character.isLowSurrogate(t.charAt(i + 1))) {
+                i++;
+            } else if (Character.isSurrogate(c)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /** An Adobe CJK collection fixes each CID's meaning, so its UCS2 map is the spec's own answer. */
+    private static boolean adobeCjk(PDType0Font font) {
+        PDCIDFont cid = font.getDescendantFont();
+        PDCIDSystemInfo info = cid == null ? null : cid.getCIDSystemInfo();
+        return info != null && "Adobe".equals(info.getRegistry()) && CJK_ORDERINGS.contains(info.getOrdering());
     }
 
     static String of(PDFont font, int code) {
@@ -183,12 +241,6 @@ final class UnicodeGuess {
     private static String fromProgram(PDFont font, int code) throws IOException {
         TrueTypeFont ttf = null;
         int gid = 0;
-        if (font instanceof PDType0Font t0 && t0.getCMapUCS2() != null && (!t0.isEmbedded() || !identity(t0))) {
-            String u = t0.getCMapUCS2().toUnicode(CidLookup.cid(t0, code));
-            if (ToUnicodeWriter.valid(u) && u.indexOf('�') < 0) {
-                return u;
-            }
-        }
         if (font instanceof PDTrueTypeFont tt) {
             ttf = tt.getTrueTypeFont();
             gid = tt.codeToGID(code);
@@ -240,15 +292,15 @@ final class UnicodeGuess {
     }
 
     static boolean standIn(PDFont font) {
-        return font instanceof PDType0Font t0 && t0.getDescendantFont() instanceof PDCIDFontType2 && !t0.isEmbedded();
+        return font instanceof PDType0Font t0 && t0.getDescendantFont() instanceof PDCIDFontType2 c2
+                && !c2.isEmbedded() && !unreadableMap(font);
     }
 
     private static String collection(PDType0Font t0, int code) {
-        int cid = CidLookup.cid(t0, code);
-        if (t0.getCMapUCS2() != null) {
-            String u = t0.getCMapUCS2().toUnicode(cid);
-            return u != null && u.indexOf('\uFFFD') < 0 ? u : null;
+        if (adobeCjk(t0) || t0.getCMapUCS2() != null) {
+            return cjk(t0, code);
         }
+        int cid = CidLookup.cid(t0, code);
         String ordering = t0.getDescendantFont() == null || t0.getDescendantFont().getCIDSystemInfo() == null ? null
                 : t0.getDescendantFont().getCIDSystemInfo().getOrdering();
         if (ordering != null && !"Identity".equals(ordering) && !"UCS".equals(ordering)
@@ -317,11 +369,6 @@ final class UnicodeGuess {
         return c >= 'a' && c <= 'f' || c >= 'A' && c <= 'F';
     }
 
-    private static boolean identity(PDType0Font font) {
-        return font.getCOSObject().getDictionaryObject(COSName.ENCODING) instanceof COSName n
-                && n.getName().startsWith("Identity-");
-    }
-
     private static boolean named(PDFont font, int code) {
         return font instanceof PDSimpleFont simple && simple.getEncoding() instanceof DictionaryEncoding e
                 && e.getDifferences().containsKey(code);
@@ -335,48 +382,7 @@ final class UnicodeGuess {
         if (ToUnicodeWriter.valid(u)) {
             return u;
         }
-        int dot = name.indexOf('.');
-        String base = dot >= 0 ? name.substring(0, dot) : name;
-        if (base.isEmpty() || base.indexOf('_') < 0 && !base.startsWith("uni")) {
-            return null;
-        }
-        StringBuilder b = new StringBuilder();
-        for (String part : base.split("_", -1)) {
-            String p = component(part);
-            if (p == null) {
-                return null;
-            }
-            b.append(p);
-        }
-        return ToUnicodeWriter.valid(b.toString()) ? b.toString() : null;
-    }
-
-    private static String component(String part) {
-        if (part.isEmpty()) {
-            return null;
-        }
-        if (part.startsWith("uni") && part.length() > 3 && (part.length() - 3) % 4 == 0) {
-            StringBuilder b = new StringBuilder();
-            for (int i = 3; i < part.length(); i += 4) {
-                int cp = hex(part.substring(i, i + 4));
-                if (cp < 0 || cp >= 0xD800 && cp <= 0xDFFF) {
-                    return null;
-                }
-                b.append((char) cp);
-            }
-            return b.toString();
-        }
-        if (part.length() >= 5 && part.length() <= 7 && part.charAt(0) == 'u') {
-            int cp = hex(part.substring(1));
-            if (cp >= 0 && cp <= Character.MAX_CODE_POINT && !(cp >= 0xD800 && cp <= 0xDFFF)) {
-                return new String(Character.toChars(cp));
-            }
-        }
-        String u = GlyphList.getAdobeGlyphList().toUnicode(part);
-        return u == null || u.isEmpty() ? null : u;
-    }
-
-    private static int hex(String s) {
-        return !s.isEmpty() && s.chars().allMatch(UnicodeGuess::hexDigit) ? Integer.parseInt(s, 16) : -1;
+        String t = LigatureNames.text(name, GlyphList.getAdobeGlyphList());
+        return ToUnicodeWriter.valid(t) ? t : null;
     }
 }

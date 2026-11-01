@@ -43,8 +43,9 @@ import org.apache.pdfbox.util.Matrix;
 import org.apache.pdfbox.util.Vector;
 
 import stirling.software.officeconvert.extract.HiddenContent;
-import stirling.software.officeconvert.extract.PdfColours;
 import stirling.software.officeconvert.extract.OperatorBudget;
+import stirling.software.officeconvert.extract.PdfColours;
+import stirling.software.officeconvert.extract.StrictFilters;
 import stirling.software.officeconvert.layout.Box;
 
 final class PaintOrder extends PDFGraphicsStreamEngine {
@@ -320,7 +321,7 @@ final class PaintOrder extends PDFGraphicsStreamEngine {
         formClips.push(clips());
         transparentGroups++;
         try {
-            if (budget.form()) {
+            if (budget.form() && (hiddenContent == null || !hiddenContent.hidden(form))) {
                 transparencyGroup(form);
             }
         } finally {
@@ -936,7 +937,8 @@ final class PaintOrder extends PDFGraphicsStreamEngine {
 
     @Override
     public void drawImage(PDImage pdImage) {
-        if (hiddenContent != null && pdImage instanceof PDXObject x && hiddenContent.hidden(x)) {
+        if (hiddenContent != null && pdImage instanceof PDXObject x && hiddenContent.hidden(x)
+                || pdImage instanceof PDImageXObject image && !StrictFilters.decodable(image.getCOSObject())) {
             return;
         }
         AffineTransform ctm = getGraphicsState().getCurrentTransformationMatrix().createAffineTransform();
@@ -949,6 +951,9 @@ final class PaintOrder extends PDFGraphicsStreamEngine {
 
     @Override
     protected void showGlyph(Matrix textRenderingMatrix, PDFont font, int code, Vector displacement) throws IOException {
+        if (hiddenContent != null && hiddenContent.active()) {
+            return;
+        }
         RenderingMode mode = getGraphicsState().getTextState().getRenderingMode();
         if (mode == RenderingMode.NEITHER || mode == RenderingMode.NEITHER_CLIP) {
             clipsText |= mode == RenderingMode.NEITHER_CLIP;

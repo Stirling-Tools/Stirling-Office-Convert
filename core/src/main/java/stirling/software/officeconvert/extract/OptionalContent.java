@@ -31,6 +31,7 @@ final class OptionalContent {
     private static final COSName OFF = COSName.getPDFName("OFF");
     private static final int MAX_GROUPS = 256;
     private static final int MAX_DEPTH = 16;
+    private static final int MAX_OPERANDS = 4096;
 
     private final PDOptionalContentProperties properties;
     private final Map<COSDictionary, Boolean> viewStates;
@@ -64,7 +65,7 @@ final class OptionalContent {
 
     private boolean visible(COSDictionary ocmd) {
         if (resolve(ocmd.getDictionaryObject(VE)) instanceof COSArray expression) {
-            return expression(expression, 0);
+            return expression(expression, 0, new int[] {MAX_OPERANDS});
         }
         COSBase groups = resolve(ocmd.getDictionaryObject(COSName.OCGS));
         int on = 0;
@@ -102,19 +103,19 @@ final class OptionalContent {
         return on > 0;
     }
 
-    private boolean expression(COSArray expression, int depth) {
+    private boolean expression(COSArray expression, int depth, int[] budget) {
         if (expression.size() < 2 || depth > MAX_DEPTH || !(resolve(expression.get(0)) instanceof COSName op)) {
             return true;
         }
         if (NOT.equals(op)) {
-            return !operand(expression.get(1), depth);
+            return !operand(expression.get(1), depth, budget);
         }
         boolean and = AND.equals(op);
         if (!and && !OR.equals(op)) {
             return true;
         }
         for (int i = 1; i < Math.min(expression.size(), MAX_GROUPS); i++) {
-            boolean on = operand(expression.get(i), depth);
+            boolean on = operand(expression.get(i), depth, budget);
             if (and != on) {
                 return on;
             }
@@ -122,10 +123,13 @@ final class OptionalContent {
         return and;
     }
 
-    private boolean operand(COSBase item, int depth) {
+    private boolean operand(COSBase item, int depth, int[] budget) {
+        if (--budget[0] < 0) {
+            throw new IllegalStateException("visibility expression too large");
+        }
         COSBase value = resolve(item);
         if (value instanceof COSArray nested) {
-            return expression(nested, depth + 1);
+            return expression(nested, depth + 1, budget);
         }
         return !(value instanceof COSDictionary group) || !off(group);
     }

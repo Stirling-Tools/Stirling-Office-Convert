@@ -20,6 +20,8 @@ class LigatureNamesTest {
         assertEquals("Th", LigatureNames.text("T_h", TextPositions.GLYPHS));
         assertEquals("ft", LigatureNames.text("f_t.alt", TextPositions.GLYPHS));
         assertEquals("Ая", LigatureNames.text("uni0410_uni044F", TextPositions.GLYPHS));
+        assertEquals("fi", LigatureNames.text("uni00660069", TextPositions.GLYPHS));
+        assertEquals("\uD83D\uDE00a", LigatureNames.text("u1F600_a", TextPositions.GLYPHS));
     }
 
     @Test
@@ -28,6 +30,8 @@ class LigatureNamesTest {
         assertNull(LigatureNames.text("_f", TextPositions.GLYPHS));
         assertNull(LigatureNames.text("f_", TextPositions.GLYPHS));
         assertNull(LigatureNames.text("fi", TextPositions.GLYPHS));
+        assertNull(LigatureNames.text("uni0066_uniD800", TextPositions.GLYPHS));
+        assertNull(LigatureNames.text("a_b_c_d_e_f_g_h_i", TextPositions.GLYPHS));
     }
 
     @Test
