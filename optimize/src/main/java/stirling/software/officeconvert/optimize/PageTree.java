@@ -22,6 +22,7 @@ import org.apache.pdfbox.cos.COSObject;
 import org.apache.pdfbox.cos.COSObjectKey;
 import org.apache.pdfbox.cos.COSStream;
 
+import stirling.software.officeconvert.extract.PageNodes;
 import stirling.software.officeconvert.extract.PdfFiles;
 
 final class PageTree {
@@ -29,9 +30,6 @@ final class PageTree {
     static final int MAX_DEPTH = 1024;
 
     private static final int MAX_WALKS = 1_000_000;
-
-    private static final COSName[] INHERITED = {COSName.RESOURCES, COSName.MEDIA_BOX, COSName.CROP_BOX,
-            COSName.ROTATE};
 
     private final Index index;
 
@@ -163,7 +161,7 @@ final class PageTree {
         int top = catalog.getItem(COSName.PAGES) instanceof COSObject o && o.getKey() != null
                 ? index.id(o.getKey()) : -1;
         COSDictionary topDict = top < 0 ? null : dict(top);
-        if (topDict != null && intermediate(topDict)) {
+        if (topDict != null && PageNodes.intermediate(topDict)) {
             declared = Math.max(0, topDict.getInt(COSName.COUNT, 0));
             walk(top, 0);
             if (!slots.isEmpty()) {
@@ -183,7 +181,7 @@ final class PageTree {
                 created.clear();
             }
         }
-        if (topDict == null || !intermediate(topDict)) {
+        if (topDict == null || !PageNodes.intermediate(topDict)) {
             List<Integer> pages = roles.pageObjects();
             if (pages.isEmpty()) {
                 return;
@@ -204,7 +202,7 @@ final class PageTree {
             notes.add("its page tree was rebuilt from the " + all.size() + " pages found in the file");
             top = fresh;
         }
-        normalize(top, -1, new COSBase[INHERITED.length], 0);
+        normalize(top, -1, new COSBase[PageNodes.INHERITED.size()], 0);
         if (counts > 0) {
             notes.add("its page count" + (counts == 1 ? " was" : "s were") + " corrected");
         }
@@ -237,7 +235,7 @@ final class PageTree {
             if (entry instanceof COSObject o && o.getKey() != null) {
                 int kid = index.id(o.getKey());
                 COSDictionary k = dict(kid);
-                if (k != null && intermediate(k)) {
+                if (k != null && PageNodes.intermediate(k)) {
                     if (path.contains(kid) || depth + 1 >= MAX_DEPTH) {
                         rewired.add(node);
                         cut = true;
@@ -261,13 +259,13 @@ final class PageTree {
                     walk(kid, depth + 1);
                     continue;
                 }
-                if (k != null && leaf(k)) {
+                if (k != null && PageNodes.leaf(k)) {
                     out.add(kid);
                     leaves.add(kid);
                     placed++;
                     continue;
                 }
-            } else if (entry instanceof COSDictionary direct && !(entry instanceof COSStream) && leaf(direct)) {
+            } else if (entry instanceof COSDictionary direct && !(entry instanceof COSStream) && PageNodes.leaf(direct)) {
                 int kid = create(copy(direct));
                 out.add(kid);
                 leaves.add(kid);
@@ -373,12 +371,12 @@ final class PageTree {
         PdfFiles.stopIfInterrupted();
         COSDictionary d = current(node);
         COSBase[] here = above.clone();
-        for (int k = 0; k < INHERITED.length; k++) {
-            COSBase own = usable(INHERITED[k], d.getDictionaryObject(INHERITED[k]));
+        for (int k = 0; k < PageNodes.INHERITED.size(); k++) {
+            COSBase own = usable(PageNodes.INHERITED.get(k), d.getDictionaryObject(PageNodes.INHERITED.get(k)));
             if (own != null) {
                 here[k] = own;
-            } else if (d.getItem(INHERITED[k]) != null) {
-                edit(node).removeItem(INHERITED[k]);
+            } else if (d.getItem(PageNodes.INHERITED.get(k)) != null) {
+                edit(node).removeItem(PageNodes.INHERITED.get(k));
             }
         }
         int count = 0;
@@ -421,8 +419,8 @@ final class PageTree {
 
     private void page(int page, int parent, COSBase[] above) throws IOException {
         boolean away = moved.contains(page);
-        for (int k = 0; k < INHERITED.length; k++) {
-            COSName key = INHERITED[k];
+        for (int k = 0; k < PageNodes.INHERITED.size(); k++) {
+            COSName key = PageNodes.INHERITED.get(k);
             if (current(page).getItem(key) == null && (away || above[k] == null)) {
                 COSBase value = usable(key, inherited(page, key));
                 if (value != null) {
@@ -505,26 +503,6 @@ final class PageTree {
         a.add(COSInteger.get(612));
         a.add(COSInteger.get(792));
         return a;
-    }
-
-    private static boolean intermediate(COSDictionary d) {
-        return COSName.PAGES.equals(d.getCOSName(COSName.TYPE)) || d.containsKey(COSName.KIDS)
-                && !COSName.PAGE.equals(d.getCOSName(COSName.TYPE));
-    }
-
-    private static boolean leaf(COSDictionary d) {
-        COSName type = d.getCOSName(COSName.TYPE);
-        if (COSName.PAGE.equals(type)) {
-            return true;
-        }
-        if (d.containsKey(COSName.KIDS) || COSName.PAGES.equals(type)) {
-            return false;
-        }
-        if (type == null) {
-            return d.containsKey(COSName.CONTENTS) || d.containsKey(COSName.MEDIA_BOX) || d.containsKey(COSName.PARENT);
-        }
-        COSBase contents = d.getDictionaryObject(COSName.CONTENTS);
-        return d.containsKey(COSName.MEDIA_BOX) || contents instanceof COSStream || contents instanceof COSArray;
     }
 
     private COSDictionary dict(int id) throws IOException {
