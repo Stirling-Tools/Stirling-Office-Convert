@@ -47,6 +47,7 @@ public final class PageReader {
     private final ParsedStreams parsed = new ParsedStreams();
     private final PageIndex pages;
     private final OptionalContent layers;
+    private final Map<Integer, Integer> annotationSeqs = new HashMap<>();
 
     public PageReader(PDDocument document) {
         this.document = document;
@@ -77,6 +78,9 @@ public final class PageReader {
 
     private PageData build(int index, PDPage page, List<RawGlyph> raw, int annotationSeq, boolean withGraphics)
             throws IOException {
+        if (!withGraphics) {
+            annotationSeqs.put(index, annotationSeq);
+        }
         int direction = raw.isEmpty() ? Math.floorMod(page.getRotation(), 360) / 90 * 90 : dominantDirection(raw);
         PDRectangle crop = page.getCropBox();
         boolean swapped = direction == 90 || direction == 270;
@@ -162,7 +166,8 @@ public final class PageReader {
                 glyphsOnly.rotated(),
                 graphics,
                 links(page, toDisplay, glyphsOnly.width(), glyphsOnly.height()),
-                widgets(page, toDisplay, content(glyphsOnly.glyphs(), Integer.MAX_VALUE)));
+                widgets(page, toDisplay, content(glyphsOnly.glyphs(),
+                        annotationSeqs.getOrDefault(glyphsOnly.index(), Integer.MAX_VALUE))));
     }
 
     private static Glyph relocate(Glyph g, RawGlyph r, AffineTransform toDisplay, PDRectangle crop, int direction) {

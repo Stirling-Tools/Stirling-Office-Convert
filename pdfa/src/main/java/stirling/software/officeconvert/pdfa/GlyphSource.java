@@ -109,10 +109,13 @@ final class GlyphSource implements Closeable {
             return null;
         }
         String n = baseFont == null ? "" : baseFont.toLowerCase(Locale.ROOT);
-        boolean sans = n.contains("gothic") || n.contains("hei") || n.contains("goth") || n.contains("dotum")
-                || n.contains("gulim") || n.contains("sans") || n.contains("kaku");
-        boolean serif = !sans && (n.contains("min") || n.contains("song") || n.contains("sun") || n.contains("kai")
-                || n.contains("batang") || n.contains("fang") || n.contains("serif") || (flags & 2) != 0);
+        boolean mincho = n.contains("heiseimin") || n.contains("mincho") || n.contains("myeongjo")
+                || n.contains("myungjo");
+        boolean sans = !mincho && (n.contains("gothic") || n.contains("hei") || n.contains("goth")
+                || n.contains("dotum") || n.contains("gulim") || n.contains("sans") || n.contains("kaku"));
+        boolean serif = mincho || !sans && (n.contains("min") || n.contains("song") || n.contains("sun")
+                || n.contains("kai") || n.contains("batang") || n.contains("fang") || n.contains("serif")
+                || (flags & 2) != 0);
         return switch (ordering) {
             case "Japan1", "Japan2" -> serif ? "MS Mincho" : "MS Gothic";
             case "GB1" -> serif ? "SimSun" : "SimHei";
@@ -166,16 +169,26 @@ final class GlyphSource implements Closeable {
         if (face == null) {
             return null;
         }
+        EmbeddableFont f;
         try {
-            EmbeddableFont f = EmbeddableFont.open(face);
-            if (f.font().getUnicodeCmapLookup(false) == null && !f.trueTypeOutlines()) {
-                f.close();
-                return null;
-            }
-            return f;
+            f = EmbeddableFont.open(face);
         } catch (IOException | RuntimeException e) {
             return null;
         }
+        boolean keep;
+        try {
+            keep = f.font().getUnicodeCmapLookup(false) != null || f.trueTypeOutlines();
+        } catch (IOException | RuntimeException e) {
+            keep = false;
+        }
+        if (keep) {
+            return f;
+        }
+        try {
+            f.close();
+        } catch (IOException | RuntimeException e) {
+        }
+        return null;
     }
 
     TrueTypeFont font() {
