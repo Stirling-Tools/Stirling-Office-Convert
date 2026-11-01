@@ -9,6 +9,7 @@ import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.PDPageContentStream;
 import org.apache.pdfbox.pdmodel.common.PDRectangle;
+import org.apache.pdfbox.pdmodel.documentinterchange.markedcontent.PDPropertyList;
 import org.apache.pdfbox.pdmodel.interactive.annotation.PDAnnotation;
 import org.apache.pdfbox.pdmodel.interactive.annotation.PDAppearanceStream;
 import org.apache.pdfbox.util.Matrix;
@@ -42,6 +43,10 @@ final class AnnotationFlatten {
         float ty = rect.getLowerLeftY() - (float) bounds.getMinY() * sy;
         try (PDPageContentStream content = new PDPageContentStream(doc, page,
                 PDPageContentStream.AppendMode.APPEND, true, true)) {
+            COSDictionary layer = ContentGraph.dict(dictionary.getDictionaryObject(COSName.OC));
+            if (layer != null) {
+                content.beginMarkedContent(COSName.OC, PDPropertyList.create(layer));
+            }
             content.beginMarkedContent(COSName.ARTIFACT);
             content.saveGraphicsState();
             content.addRect(rect.getLowerLeftX(), rect.getLowerLeftY(), rect.getWidth(), rect.getHeight());
@@ -50,6 +55,9 @@ final class AnnotationFlatten {
             content.drawForm(appearance);
             content.restoreGraphicsState();
             content.endMarkedContent();
+            if (layer != null) {
+                content.endMarkedContent();
+            }
         }
     }
 }

@@ -83,6 +83,27 @@ class AnnotationFlattenTest {
         }
     }
 
+    @ParameterizedTest
+    @CsvSource({"A1B,OFF,0xFFFFFFFF", "A2B,OFF,0xFFFFFFFF", "A1B,ON,0xFFFF0000", "A2B,ON,0xFFFF0000"})
+    void aPosterInALayerKeepsTheLayersVisibility(PdfALevel level, String state, String expected) throws Exception {
+        RawPdf pdf = RawPdf.page("", "");
+        pdf.add("<</Type/Annot/Subtype/Screen/Rect[20 20 80 80]/F 4/OC 7 0 R/AP<</N 6 0 R>>>>");
+        pdf.add(RawPdf.stream("/Type/XObject/Subtype/Form/BBox[0 0 60 60]/Resources<<>>",
+                "1 0 0 rg 0 0 60 60 re f"));
+        pdf.add("<</Type/OCG/Name(Poster)>>");
+        pdf.set(1, "<</Type/Catalog/Pages 2 0 R/OCProperties<</OCGs[7 0 R]/D<</Name(Default)/" + state
+                + "[7 0 R]>>>>>>");
+        pdf.set(3, "<</Type/Page/Parent 2 0 R/MediaBox[0 0 100 100]/Resources<<>>/Contents 4 0 R/Annots[5 0 R]>>");
+        String name = "layer-" + level + "-" + state;
+        Path output = dir.resolve(name + "-out.pdf");
+        PdfToPdfA.convert(Hostile.write(dir, name, pdf), output, PdfToPdfA.Options.defaults().level(level));
+        VeraPdf.assertCompliant(output, level);
+        try (PDDocument doc = Loader.loadPDF(output.toFile())) {
+            assertEquals(0, doc.getPage(0).getAnnotations().size());
+            assertEquals(Long.decode(expected).intValue(), new PDFRenderer(doc).renderImage(0).getRGB(50, 50));
+        }
+    }
+
     private Path poster(String type, PdfALevel level, int flags) throws Exception {
         RawPdf pdf = RawPdf.page("", "");
         pdf.add("<</Type/Annot/Subtype/" + type + "/Rect[20 20 80 80]/F " + flags
