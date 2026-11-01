@@ -26,6 +26,19 @@ class PartialTextMapTest {
 
     @Test
     void glyphsTheTextMapLeavesOutAreStillDrawn() throws IOException {
+        List<Glyph> glyphs = glyphs("0061");
+        assertEquals(2, glyphs.size());
+        assertEquals("a", glyphs.getFirst().text);
+    }
+
+    @Test
+    void aJoiningScriptFontLeavesItsUnmappedGlyphsOut() throws IOException {
+        List<Glyph> glyphs = glyphs("0628");
+        assertEquals(1, glyphs.size());
+        assertEquals("\u0628", glyphs.getFirst().text);
+    }
+
+    private static List<Glyph> glyphs(String mapped) throws IOException {
         try (PDDocument document = new PDDocument()) {
             PDPage page = new PDPage(PDRectangle.LETTER);
             document.addPage(page);
@@ -39,7 +52,7 @@ class PartialTextMapTest {
             int h = unencoded(ttf);
             String code = String.format("%04X", a);
             String map = "/CIDInit /ProcSet findresource begin 12 dict begin begincmap /CMapType 2 def /CMapName /P def "
-                    + "1 begincodespacerange <0000> <FFFF> endcodespacerange 1 beginbfchar <" + code + "> <0061> "
+                    + "1 begincodespacerange <0000> <FFFF> endcodespacerange 1 beginbfchar <" + code + "> <" + mapped + "> "
                     + "endbfchar endcmap CMapName currentdict /CMap defineresource pop end end";
             COSStream stream = document.getDocument().createCOSStream();
             try (OutputStream out = stream.createOutputStream()) {
@@ -57,9 +70,7 @@ class PartialTextMapTest {
             page.setContents(content);
             List<PageData> pages = new ArrayList<>();
             new PageReader(document).read(0, 0, false, pages::add);
-            List<Glyph> glyphs = pages.getFirst().glyphs();
-            assertEquals(2, glyphs.size());
-            assertEquals("a", glyphs.getFirst().text);
+            return pages.getFirst().glyphs();
         }
     }
 
