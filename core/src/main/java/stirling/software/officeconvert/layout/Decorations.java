@@ -339,7 +339,7 @@ final class Decorations {
     }
 
     static List<Box> overCap(List<Fill> fills, List<Rule> rules, List<Box> figures, List<Box> tables, boolean tinted,
-            List<Line> segments) {
+            List<Line> segments, List<Box> rotated) {
         List<PageLayout.Decoration> shapes = shapes(fills, rules, figures, tables, tinted, o -> 0);
         if (shapes.size() <= MAX_SHAPES) {
             return List.of();
@@ -351,10 +351,17 @@ final class Decorations {
                 dropped.add(d.box());
             }
         }
+        List<Box> clusters = FigureFinder.cluster(dropped, OVER_CAP_GAP);
+        for (float gap = 2 * OVER_CAP_GAP; clusters.size() > MAX_OVER_CAP_FIGURES && gap <= MAX_OVER_CAP_GAP; gap *= 2) {
+            clusters = FigureFinder.cluster(dropped, gap);
+        }
         List<Box> out = new ArrayList<>();
-        for (Box b : FigureFinder.cluster(dropped, OVER_CAP_GAP)) {
+        for (Box b : clusters) {
+            Box claimed = new Box(b.x() - CLAIM_SLACK, b.top() - CLAIM_SLACK, b.right() + CLAIM_SLACK,
+                    b.bottom() + CLAIM_SLACK);
             if (b.width() >= FigureFinder.MIN_SIDE && b.height() >= FigureFinder.MIN_SIDE
-                    && FigureFinder.wordsInside(b, segments) == 0) {
+                    && FigureFinder.wordsInside(claimed, segments) == 0
+                    && rotated.stream().noneMatch(r -> claimed.contains(r.centreX(), r.centreY()))) {
                 out.add(b);
             }
         }
@@ -362,6 +369,12 @@ final class Decorations {
     }
 
     private static final float OVER_CAP_GAP = 4f;
+
+    private static final float MAX_OVER_CAP_GAP = 4096f;
+
+    private static final int MAX_OVER_CAP_FIGURES = 32;
+
+    private static final float CLAIM_SLACK = 0.5f;
 
     private static List<PageLayout.Decoration> shapes(List<Fill> fills, List<Rule> rules, List<Box> figures,
             List<Box> tables, boolean tinted, ToIntFunction<Object> order) {
