@@ -2,7 +2,6 @@ package stirling.software.officeconvert.pdfa;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.awt.geom.Rectangle2D;
@@ -337,7 +336,7 @@ class WebFontsCff2Test {
             t.putInt(r % 2 == 0 ? 0 : glyphs).putShort((short) 0);
         }
         t.putInt(glyphs);
-        assertTimeoutPreemptively(Duration.ofSeconds(3), () -> assertThrows(IOException.class,
+        CpuBudget.onThisThread(Duration.ofSeconds(3), () -> assertThrows(IOException.class,
                 () -> new Cff2(t.array())));
     }
     @Test
@@ -364,7 +363,7 @@ class WebFontsCff2Test {
             byte[] table = FontPrograms.concat(op(2, 0, 5, 0, top), topDict, index2(), charstrings, index2(fdArray),
                     privates.toByteArray(), subrs);
             assertEquals(subrsAt + subrs.length, table.length);
-            assertTimeoutPreemptively(Duration.ofSeconds(10), () -> {
+            CpuBudget.onThisThread(Duration.ofSeconds(10), () -> {
                 Cff2 cff2 = new Cff2(table);
                 assertEquals(1, cff2.count());
                 assertEquals(1, cff2.localSubrs(0).length);
@@ -390,7 +389,7 @@ class WebFontsCff2Test {
         byte[] table = FontPrograms.concat(op(2, 0, 5, 0, top), ops(FontPrograms.int5(charstringsAt), op(17),
                 FontPrograms.int5(fdArrayAt), op(12, 36)), index2(), charstrings, index2(fdArray), numbers);
         assertEquals(privatesAt + numbers.length, table.length);
-        assertTimeoutPreemptively(Duration.ofSeconds(5), () -> assertThrows(IOException.class, () -> new Cff2(table)));
+        CpuBudget.onThisThread(Duration.ofSeconds(5), () -> assertThrows(IOException.class, () -> new Cff2(table)));
     }
 
     @Test
