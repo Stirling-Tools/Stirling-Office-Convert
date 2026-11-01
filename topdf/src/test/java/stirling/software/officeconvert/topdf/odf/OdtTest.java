@@ -233,6 +233,16 @@ class OdtTest {
     }
 
     @Test
+    void aPageSmallerThanHalfAnInchKeepsItsSize() throws IOException {
+        String styles = OdfFixtures.styles("", "<style:page-layout style:name=\"pm1\"><style:page-layout-properties"
+                + " fo:page-width=\"20pt\" fo:page-height=\"20pt\" fo:margin-top=\"1pt\" fo:margin-bottom=\"1pt\""
+                + " fo:margin-left=\"1pt\" fo:margin-right=\"1pt\"/></style:page-layout>",
+                "<style:master-page style:name=\"Standard\" style:page-layout-name=\"pm1\"/>");
+        String xml = OdfFixtures.rewrite(odt("", "<text:p/>", styles)).get("word/document.xml");
+        assertTrue(xml.contains("<w:pgSz w:w=\"400\" w:h=\"400\"/>"), xml);
+    }
+
+    @Test
     void theGutterIsPartOfTheLeftMarginNotAddedToIt() throws IOException {
         String styles = OdfFixtures.styles("", "<style:page-layout style:name=\"pm1\"><style:page-layout-properties"
                 + " fo:page-width=\"8.5in\" fo:page-height=\"11in\" fo:margin-left=\"1.25in\" fo:margin-right=\"1in\""

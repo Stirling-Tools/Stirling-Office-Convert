@@ -67,18 +67,16 @@ final class WordPages {
         return Math.max(1, Math.min(45, Dom.integer(columns, Ns.FO, "column-count", 1)));
     }
 
+    private static final double SMALLEST_PAGE = 7.2;
+
     String sectPr(String master, Element columns, boolean continuous, String pageStart) {
         Element m = w.styles.master(master);
         Element layout = w.styles.pageLayout(Dom.attr(m, Ns.STYLE, "page-layout-name"));
         Props p = layout(master);
         double width = p.pt("fo:page-width", 612);
         double height = p.pt("fo:page-height", 792);
-        if (!(width > 36 && width < 14400)) {
-            width = 612;
-        }
-        if (!(height > 36 && height < 14400)) {
-            height = 792;
-        }
+        width = width > 0 && width < 14400 ? Math.max(width, SMALLEST_PAGE) : 612;
+        height = height > 0 && height < 14400 ? Math.max(height, SMALLEST_PAGE) : 792;
         double top = p.pt("fo:margin-top", 56.7);
         double bottom = p.pt("fo:margin-bottom", 56.7);
         double left = p.pt("fo:margin-left", 56.7);
