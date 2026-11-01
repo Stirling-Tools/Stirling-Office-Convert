@@ -53,4 +53,27 @@ class FlatteningTest {
         String text = Converted.text(out);
         assertTrue(text.contains("Plain text") && text.contains("Text inside a group"), text);
     }
+
+    @Test
+    void aSoftMaskTransferAppliesOutsideTheMaskGroupBox() throws Exception {
+        RawPdf pdf = RawPdf.page("/ExtGState<</GS1 5 0 R>>",
+                "q /GS1 gs 0.2 0.6 0.9 rg 0 0 595 842 re f Q");
+        pdf.add("<</Type/ExtGState/SMask<</Type/Mask/S/Alpha/G 6 0 R"
+                + "/TR<</FunctionType 2/Domain[0 1]/C0[0.5]/C1[1]/N 1>>>>>>");
+        pdf.add(RawPdf.stream("/Type/XObject/Subtype/Form/BBox[50 50 150 150]"
+                + "/Group<</S/Transparency/CS/DeviceGray>>", "1 g 50 50 100 100 re f"));
+        Path in = Hostile.write(dir, "mask-transfer", pdf);
+        Path out = dir.resolve("mask-transfer-1b.pdf");
+        PdfToPdfA.convert(in, out, PdfToPdfA.Options.defaults().level(PdfALevel.A1B));
+        VeraPdf.assertCompliant(out, PdfALevel.A1B);
+        try (PDDocument d = Loader.loadPDF(out.toFile())) {
+            java.awt.image.BufferedImage img = new PDFRenderer(d).renderImage(0);
+            int outside = img.getRGB(400, 842 - 600);
+            int inside = img.getRGB(100, 842 - 100);
+            assertTrue(Math.abs((outside & 0xFF) - 242) < 10 && Math.abs((outside >> 16 & 0xFF) - 153) < 10,
+                    Integer.toHexString(outside));
+            assertTrue(Math.abs((inside & 0xFF) - 230) < 10 && Math.abs((inside >> 16 & 0xFF) - 51) < 10,
+                    Integer.toHexString(inside));
+        }
+    }
 }
