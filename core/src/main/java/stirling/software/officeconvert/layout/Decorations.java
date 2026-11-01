@@ -353,11 +353,29 @@ final class Decorations {
             out.add(new PageLayout.Decoration(Regions.of(r.rule()), r.rule().rgb(), -1, 0, false, false, r.order()));
         }
         if (out.size() > MAX_SHAPES) {
-            out.clear();
+            out = backdrops(out);
         }
         out.addAll(dots(dots, figures, tables, order));
         return out;
     }
+
+    private static List<PageLayout.Decoration> backdrops(List<PageLayout.Decoration> shapes) {
+        Box extent = shapes.getFirst().box();
+        for (PageLayout.Decoration d : shapes) {
+            extent = extent.union(d.box());
+        }
+        List<PageLayout.Decoration> kept = new ArrayList<>();
+        for (PageLayout.Decoration d : shapes) {
+            if (d.box().area() >= BACKDROP_SHARE * extent.area()) {
+                kept.add(d);
+            }
+        }
+        return kept.size() > MAX_BACKDROPS ? new ArrayList<>() : kept;
+    }
+
+    private static final float BACKDROP_SHARE = 0.25f;
+
+    private static final int MAX_BACKDROPS = 4;
 
     private static List<PageLayout.Decoration> dots(
             List<VectorMark> dots, List<Box> figures, List<Box> tables, ToIntFunction<Object> order) {

@@ -10,6 +10,7 @@ import java.util.Map;
 
 import org.junit.jupiter.api.Test;
 
+import stirling.software.officeconvert.extract.PageGraphics.Fill;
 import stirling.software.officeconvert.extract.PageGraphics.Rule;
 
 class BoxedLinesTest {
@@ -39,5 +40,21 @@ class BoxedLinesTest {
         List<PageLayout.Decoration> shown = Decorations.leftovers(List.of(), rules, List.of(), List.of(), List.of(),
                 false, o -> 0);
         assertEquals(2, shown.size());
+    }
+
+    @Test
+    void aPageBackdropStaysWhenTheShapesOnTopOfItAreOverTheCap() {
+        List<Fill> fills = new ArrayList<>();
+        fills.add(new Fill(0, 0, 612, 792, 0x70D0E0));
+        for (int i = 0; i < 200; i++) {
+            float x = 20 + (i % 20) * 28;
+            float y = 20 + (i / 20) * 28;
+            fills.add(new Fill(x, y, x + 20, y + 20, 0x0000FF));
+        }
+        List<PageLayout.Decoration> shown = Decorations.leftovers(fills, List.of(), List.of(), List.of(), List.of(),
+                false, o -> 0);
+        assertEquals(1, shown.size());
+        assertEquals(0x70D0E0, shown.getFirst().rgb());
+        assertEquals(612, shown.getFirst().box().width(), 0.01f);
     }
 }
