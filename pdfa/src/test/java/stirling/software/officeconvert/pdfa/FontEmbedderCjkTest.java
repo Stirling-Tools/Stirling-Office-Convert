@@ -90,6 +90,7 @@ class FontEmbedderCjkTest {
                     new byte[] {(byte) 0xBE, (byte) 0xC8}))) {
                 PDType0Font font = (PDType0Font) d.getPage(0).getResources().getFont(COSName.getPDFName("F1"));
                 assertEquals(null, UnicodeGuess.of(font, 0xBEC8), subtype.getName());
+                assertEquals("A", UnicodeGuess.of(font, 0x41), subtype.getName());
             }
         }
         COSDictionary uni = cidFont(COSName.CID_FONT_TYPE0, "Batang", "Adobe", "Korea1", 2);
