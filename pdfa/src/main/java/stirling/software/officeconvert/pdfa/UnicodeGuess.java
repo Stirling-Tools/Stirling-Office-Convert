@@ -48,6 +48,12 @@ final class UnicodeGuess {
 
     private static final Map<COSStream, Optional<CMap>> MAPS = Collections.synchronizedMap(new WeakHashMap<>());
 
+    private static boolean unreadableMap(PDFont font) {
+        return font.getCOSObject().getDictionaryObject(COSName.TO_UNICODE) instanceof COSStream s
+                && !MAPS.computeIfAbsent(s, k -> Optional.ofNullable(CodeReader.cmap(k)))
+                        .map(CMap::hasUnicodeMappings).orElse(false);
+    }
+
     static String declared(PDFont font, int code) {
         COSBase tu = font.getCOSObject().getDictionaryObject(COSName.TO_UNICODE);
         if (tu instanceof COSStream s) {
@@ -136,8 +142,9 @@ final class UnicodeGuess {
             ttf = tt.getTrueTypeFont();
             gid = tt.codeToGID(code);
         } else if (font instanceof PDType0Font t0 && t0.getDescendantFont() instanceof PDCIDFontType2 c2) {
-            if (!c2.isEmbedded()) {
-                // An unembedded CID font's glyph ids index PDFBox's stand-in, not the author's font
+            if (!c2.isEmbedded() && !unreadableMap(font)) {
+                // An unembedded CID font's glyph ids index PDFBox's stand-in, not the author's font;
+                // only an unreadable ToUnicode leaves the stand-in as the best guess
                 return null;
             }
             ttf = c2.getTrueTypeFont();
