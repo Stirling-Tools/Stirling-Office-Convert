@@ -2,8 +2,10 @@ package stirling.software.officeconvert.pdfa;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Deque;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
@@ -58,7 +60,8 @@ final class SilentGlyphs {
                 Decoded.rethrowFatal(e);
                 continue;
             }
-            List<Object> out = s.rewrite(tokens, fontRes);
+            List<Object> out = s.rewrite(tokens, fontRes,
+                    ContentGraph.dict(res.getDictionaryObject(COSName.PROPERTIES)));
             if (out != null) {
                 ContentTokens.replace(n, out);
             }
@@ -75,7 +78,9 @@ final class SilentGlyphs {
         return false;
     }
 
-    private List<Object> rewrite(List<Object> tokens, COSDictionary fontRes) {
+    private List<Object> rewrite(List<Object> tokens, COSDictionary fontRes, COSDictionary properties) {
+        Deque<Boolean> spans = new ArrayDeque<>();
+        int actual = 0;
         List<Object> out = new ArrayList<>(tokens.size());
         boolean changed = false;
         COSDictionary current = null;
@@ -87,10 +92,19 @@ final class SilentGlyphs {
             List<Object> operation = tokens.subList(start, i + 1);
             start = i + 1;
             String name = op.getName();
+            if ("BMC".equals(name)) {
+                spans.push(false);
+            } else if ("BDC".equals(name)) {
+                boolean has = operation.size() == 3 && actualText(operation.get(1), properties);
+                spans.push(has);
+                actual += has ? 1 : 0;
+            } else if ("EMC".equals(name) && !spans.isEmpty()) {
+                actual -= spans.pop() ? 1 : 0;
+            }
             if ("Tf".equals(name) && operation.size() == 3 && operation.get(0) instanceof COSName f) {
                 current = ContentGraph.dict(fontRes.getDictionaryObject(f));
             }
-            Set<Integer> codes = current == null ? null : silent.get(current);
+            Set<Integer> codes = current == null || actual > 0 ? null : silent.get(current);
             PDFont font = codes == null ? null : font(current);
             List<Object> split = font == null ? null : split(operation, name, font, codes);
             if (split != null) {
@@ -104,6 +118,13 @@ final class SilentGlyphs {
             out.addAll(tokens.subList(start, tokens.size()));
         }
         return changed ? out : null;
+    }
+
+    private static boolean actualText(Object operand, COSDictionary properties) {
+        COSDictionary d = operand instanceof COSDictionary inline ? inline
+                : operand instanceof COSName n && properties != null ? ContentGraph.dict(properties.getDictionaryObject(n))
+                : null;
+        return d != null && d.containsKey(ACTUAL_TEXT);
     }
 
     private PDFont font(COSDictionary dict) {

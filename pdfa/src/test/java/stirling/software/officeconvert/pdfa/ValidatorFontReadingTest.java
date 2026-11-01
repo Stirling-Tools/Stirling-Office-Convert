@@ -477,46 +477,7 @@ class ValidatorFontReadingTest {
     void glyphsReadersExtractAsNothingKeepAnEmptyActualText(PdfALevel level) throws Exception {
         Path in = dir.resolve("silent.pdf");
         try (PDDocument d = new PDDocument()) {
-            COSDictionary procs = new COSDictionary();
-            for (String g : List.of("blob", "A")) {
-                COSStream proc = d.getDocument().createCOSStream();
-                try (OutputStream o = proc.createOutputStream()) {
-                    o.write("500 0 0 0 400 700 d1 0 0 400 700 re f".getBytes(StandardCharsets.US_ASCII));
-                }
-                procs.setItem(g, proc);
-            }
-            COSDictionary f = new COSDictionary();
-            f.setItem(COSName.TYPE, COSName.FONT);
-            f.setItem(COSName.SUBTYPE, COSName.TYPE3);
-            f.setItem(COSName.FONT_BBOX, new org.apache.pdfbox.pdmodel.common.PDRectangle(0, 0, 500, 700)
-                    .getCOSArray());
-            COSArray matrix = new COSArray();
-            for (float v : new float[] {0.001f, 0, 0, 0.001f, 0, 0}) {
-                matrix.add(new org.apache.pdfbox.cos.COSFloat(v));
-            }
-            f.setItem(COSName.FONT_MATRIX, matrix);
-            f.setItem(COSName.CHAR_PROCS, procs);
-            COSDictionary enc = new COSDictionary();
-            COSArray diff = new COSArray();
-            diff.add(COSInteger.ZERO);
-            diff.add(COSName.getPDFName("blob"));
-            diff.add(COSName.getPDFName("A"));
-            enc.setItem(COSName.DIFFERENCES, diff);
-            f.setItem(COSName.ENCODING, enc);
-            f.setInt(COSName.FIRST_CHAR, 0);
-            f.setInt(COSName.LAST_CHAR, 1);
-            COSArray w = new COSArray();
-            w.add(COSInteger.get(500));
-            w.add(COSInteger.get(500));
-            f.setItem(COSName.WIDTHS, w);
-            COSStream tu = d.getDocument().createCOSStream();
-            try (OutputStream o = tu.createOutputStream(COSName.FLATE_DECODE)) {
-                o.write(("/CIDInit /ProcSet findresource begin\n12 dict begin\nbegincmap\n/CMapName /Partial def\n"
-                        + "/CMapType 2 def\n1 begincodespacerange\n<00> <FF>\nendcodespacerange\n1 beginbfchar\n"
-                        + "<01> <0041>\nendbfchar\nendcmap\nCMapName currentdict /CMap defineresource pop\nend\nend\n")
-                        .getBytes(StandardCharsets.US_ASCII));
-            }
-            f.setItem(COSName.TO_UNICODE, tu);
+            COSDictionary f = silentType3(d);
             FontSamples.page(d, "BT /A 24 Tf 50 700 Td <01010001> Tj ET", PDFontFactory.createFont(f));
             d.save(in.toFile());
         }
@@ -527,6 +488,94 @@ class ValidatorFontReadingTest {
             assertTrue(content.matches("(?s).*/Span <</ActualText \\(\\) ?>> BDC.*"), content);
         }
         assertSameLook(in, out);
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = PdfALevel.class, names = {"A2A", "A3A", "A2U"})
+    void shapedClustersWithAnActualTextKeepTheirText(PdfALevel level) throws Exception {
+        Path in = dir.resolve("cluster.pdf");
+        try (PDDocument d = new PDDocument()) {
+            PDPage p = FontSamples.page(d, "/P <</MCID 0>> BDC BT /A 24 Tf 50 700 Td /Span <</ActualText (AB)>> BDC "
+                    + "<0100> Tj EMC <01> Tj ET EMC", PDFontFactory.createFont(silentType3(d)));
+            COSDictionary root = new COSDictionary();
+            root.setItem(COSName.TYPE, COSName.STRUCT_TREE_ROOT);
+            COSDictionary para = new COSDictionary();
+            para.setItem(COSName.TYPE, COSName.getPDFName("StructElem"));
+            para.setItem(COSName.S, COSName.P);
+            para.setItem(COSName.P, root);
+            para.setItem(COSName.PG, p.getCOSObject());
+            para.setInt(COSName.K, 0);
+            root.setItem(COSName.K, para);
+            COSDictionary tree = new COSDictionary();
+            COSArray nums = new COSArray();
+            nums.add(COSInteger.ZERO);
+            COSArray kids = new COSArray();
+            kids.add(para);
+            nums.add(kids);
+            tree.setItem(COSName.NUMS, nums);
+            root.setItem(COSName.PARENT_TREE, tree);
+            p.getCOSObject().setInt(COSName.STRUCT_PARENTS, 0);
+            d.getDocumentCatalog().getCOSObject().setItem(COSName.STRUCT_TREE_ROOT, root);
+            COSDictionary mark = new COSDictionary();
+            mark.setBoolean(COSName.getPDFName("Marked"), true);
+            d.getDocumentCatalog().getCOSObject().setItem(COSName.MARK_INFO, mark);
+            d.getDocumentCatalog().setLanguage("en");
+            d.save(in.toFile());
+        }
+        Path out = convert(in, level);
+        VeraPdf.assertCompliant(out, level);
+        try (PDDocument d = Loader.loadPDF(out.toFile())) {
+            String content = new String(d.getPage(0).getContents().readAllBytes(), StandardCharsets.ISO_8859_1);
+            assertTrue(content.matches("(?s).*/ActualText \\(AB\\).*"), content);
+            int cluster = content.indexOf("(AB)");
+            int end = content.indexOf("EMC", cluster);
+            assertFalse(content.substring(cluster, end).contains("ActualText ()"), content);
+        }
+        assertSameLook(in, out);
+    }
+
+    private static COSDictionary silentType3(PDDocument d) throws Exception {
+        COSDictionary procs = new COSDictionary();
+        for (String g : List.of("blob", "A")) {
+            COSStream proc = d.getDocument().createCOSStream();
+            try (OutputStream o = proc.createOutputStream()) {
+                o.write("500 0 0 0 400 700 d1 0 0 400 700 re f".getBytes(StandardCharsets.US_ASCII));
+            }
+            procs.setItem(g, proc);
+        }
+        COSDictionary f = new COSDictionary();
+        f.setItem(COSName.TYPE, COSName.FONT);
+        f.setItem(COSName.SUBTYPE, COSName.TYPE3);
+        f.setItem(COSName.FONT_BBOX, new org.apache.pdfbox.pdmodel.common.PDRectangle(0, 0, 500, 700)
+                .getCOSArray());
+        COSArray matrix = new COSArray();
+        for (float v : new float[] {0.001f, 0, 0, 0.001f, 0, 0}) {
+            matrix.add(new org.apache.pdfbox.cos.COSFloat(v));
+        }
+        f.setItem(COSName.FONT_MATRIX, matrix);
+        f.setItem(COSName.CHAR_PROCS, procs);
+        COSDictionary enc = new COSDictionary();
+        COSArray diff = new COSArray();
+        diff.add(COSInteger.ZERO);
+        diff.add(COSName.getPDFName("blob"));
+        diff.add(COSName.getPDFName("A"));
+        enc.setItem(COSName.DIFFERENCES, diff);
+        f.setItem(COSName.ENCODING, enc);
+        f.setInt(COSName.FIRST_CHAR, 0);
+        f.setInt(COSName.LAST_CHAR, 1);
+        COSArray w = new COSArray();
+        w.add(COSInteger.get(500));
+        w.add(COSInteger.get(500));
+        f.setItem(COSName.WIDTHS, w);
+        COSStream tu = d.getDocument().createCOSStream();
+        try (OutputStream o = tu.createOutputStream(COSName.FLATE_DECODE)) {
+            o.write(("/CIDInit /ProcSet findresource begin\n12 dict begin\nbegincmap\n/CMapName /Partial def\n"
+                    + "/CMapType 2 def\n1 begincodespacerange\n<00> <FF>\nendcodespacerange\n1 beginbfchar\n"
+                    + "<01> <0041>\nendbfchar\nendcmap\nCMapName currentdict /CMap defineresource pop\nend\nend\n")
+                    .getBytes(StandardCharsets.US_ASCII));
+        }
+        f.setItem(COSName.TO_UNICODE, tu);
+        return f;
     }
 
     private Path convert(Path in, PdfALevel level) throws Exception {
