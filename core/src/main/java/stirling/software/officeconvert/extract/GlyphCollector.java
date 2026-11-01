@@ -67,6 +67,7 @@ import org.apache.pdfbox.pdmodel.font.PDSimpleFont;
 import org.apache.pdfbox.pdmodel.font.PDType3Font;
 import org.apache.pdfbox.pdmodel.font.PDVectorFont;
 import org.apache.pdfbox.pdmodel.graphics.color.PDColor;
+import org.apache.pdfbox.pdmodel.graphics.color.PDPattern;
 import org.apache.pdfbox.pdmodel.graphics.form.PDFormXObject;
 import org.apache.pdfbox.pdmodel.graphics.form.PDTransparencyGroup;
 import org.apache.pdfbox.pdmodel.graphics.state.PDGraphicsState;
@@ -244,7 +245,7 @@ final class GlyphCollector extends PDFStreamEngine {
             }
             hiddenContent.operator(operator.getName(), operands, getResources());
             super.processOperator(operator, TextObjects.sized(operator, operands));
-            clips.operator(operator.getName());
+            clips.operator(operator.getName(), this::clipPaintRgb);
         } catch (IOException | RuntimeException e) {
             BrokenOperators.skip(operator, e);
         }
@@ -507,9 +508,30 @@ final class GlyphCollector extends PDFStreamEngine {
         for (int i = 0; i < glyphs.size(); i++) {
             RawGlyph r = glyphs.get(i);
             if (r.invisible() && clips.painted(r.glyph())) {
-                glyphs.set(i, new RawGlyph(r.glyph(), r.direction(), false, r.originX(), r.originY()));
+                Glyph g = recoloured(r.glyph(), clips.colour(r.glyph()));
+                glyphs.set(i, new RawGlyph(g, r.direction(), false, r.originX(), r.originY()));
             }
         }
+    }
+
+    private Glyph recoloured(Glyph glyph, int colour) {
+        if (colour == TextClips.KEEP || colour == glyph.rgb) {
+            return glyph;
+        }
+        Glyph g = glyph.withColour(colour);
+        if (marks.remove(glyph)) {
+            marks.add(g);
+        }
+        String alternative = alternatives.remove(glyph);
+        if (alternative != null) {
+            alternatives.put(g, alternative);
+        }
+        return g;
+    }
+
+    private int clipPaintRgb() {
+        PDColor colour = getGraphicsState().getNonStrokingColor();
+        return colour.getColorSpace() instanceof PDPattern ? TextClips.KEEP : PdfColours.toRgb(colour, 0);
     }
 
     private void composeMarks(List<RawGlyph> glyphs) {

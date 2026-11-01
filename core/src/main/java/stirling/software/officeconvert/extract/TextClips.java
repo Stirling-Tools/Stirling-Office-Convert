@@ -1,21 +1,23 @@
 package stirling.software.officeconvert.extract;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.IdentityHashMap;
 import java.util.List;
-import java.util.Set;
+import java.util.Map;
+import java.util.function.IntSupplier;
 
 import org.apache.pdfbox.contentstream.operator.OperatorName;
 
 final class TextClips {
+
+    static final int KEEP = -1;
 
     private static final int MAX_PENDING = 20_000;
 
     private record Pending(Glyph glyph, int level) {}
 
     private final List<Pending> pending = new ArrayList<>();
-    private final Set<Glyph> painted = Collections.newSetFromMap(new IdentityHashMap<>());
+    private final Map<Glyph, Integer> painted = new IdentityHashMap<>();
     private int level;
 
     void reset() {
@@ -39,10 +41,11 @@ final class TextClips {
         }
     }
 
-    void operator(String name) {
+    void operator(String name, IntSupplier fillRgb) {
         if (!pending.isEmpty() && paints(name)) {
+            int colour = fills(name) ? fillRgb.getAsInt() : KEEP;
             for (Pending p : pending) {
-                painted.add(p.glyph());
+                painted.put(p.glyph(), colour);
             }
             pending.clear();
         }
@@ -64,7 +67,20 @@ final class TextClips {
     }
 
     boolean painted(Glyph glyph) {
-        return !painted.isEmpty() && painted.contains(glyph);
+        return !painted.isEmpty() && painted.containsKey(glyph);
+    }
+
+    int colour(Glyph glyph) {
+        return painted.getOrDefault(glyph, KEEP);
+    }
+
+    private static boolean fills(String name) {
+        return switch (name) {
+            case OperatorName.FILL_NON_ZERO, OperatorName.LEGACY_FILL_NON_ZERO, OperatorName.FILL_EVEN_ODD,
+                    OperatorName.FILL_NON_ZERO_AND_STROKE, OperatorName.FILL_EVEN_ODD_AND_STROKE,
+                    OperatorName.CLOSE_FILL_NON_ZERO_AND_STROKE, OperatorName.CLOSE_FILL_EVEN_ODD_AND_STROKE -> true;
+            default -> false;
+        };
     }
 
     private static boolean paints(String name) {
