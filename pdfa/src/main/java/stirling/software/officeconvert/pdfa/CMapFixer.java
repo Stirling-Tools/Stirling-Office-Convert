@@ -208,8 +208,80 @@ final class CMapFixer {
             }
         } else if (!cmap.hasCIDMappings() && cmap.hasUnicodeMappings() && flatten(font, cid, cmap, codes, text)) {
             note = "Rewrote a CMap that maps codes to CIDs with bfchar entries as cidchar entries";
+        } else if (!strays(codes, codespaces(text)).isEmpty() && flatten(font, cid, cmap, codes, text)) {
+            note = "Rewrote a CMap whose codespace does not hold every code the text shows";
         }
         return note;
+    }
+
+    private static List<int[]> strays(Set<Integer> codes, List<int[]> spaces) {
+        List<int[]> out = new ArrayList<>();
+        int shortest = 4;
+        for (int[] sp : spaces) {
+            shortest = Math.min(shortest, sp[2]);
+        }
+        if (shortest != 1) {
+            return out;
+        }
+        for (int code : codes) {
+            if (code > 0xFF || contained(code, spaces)) {
+                continue;
+            }
+            boolean prefix = false;
+            for (int other : codes) {
+                int n = contained(other, spaces) ? length(other, spaces) : 1;
+                if (n > 1 && other >>> (8 * (n - 1)) == code) {
+                    prefix = true;
+                    break;
+                }
+            }
+            if (!prefix) {
+                out.add(new int[] {code, code, 1});
+            }
+        }
+        return out;
+    }
+
+    private static List<int[]> withStrays(Set<Integer> codes, List<int[]> spaces) {
+        List<int[]> strays = strays(codes, spaces);
+        if (strays.isEmpty()) {
+            return spaces;
+        }
+        Set<Integer> lead = new HashSet<>();
+        for (int[] st : strays) {
+            lead.add(st[0]);
+        }
+        List<int[]> out = new ArrayList<>();
+        for (int[] sp : spaces) {
+            if (sp[2] == 1) {
+                out.add(sp);
+                continue;
+            }
+            int shift = 8 * (sp[2] - 1);
+            int mask = (1 << shift) - 1;
+            int lo = sp[0] >>> shift & 0xFF;
+            int hi = sp[1] >>> shift & 0xFF;
+            int from = lo;
+            for (int b = lo; b <= hi + 1; b++) {
+                if (b > hi || lead.contains(b)) {
+                    if (from < b) {
+                        out.add(new int[] {from << shift | sp[0] & mask, (b - 1) << shift | sp[1] & mask, sp[2]});
+                    }
+                    from = b + 1;
+                }
+            }
+        }
+        out.addAll(strays);
+        return out;
+    }
+
+    private static boolean contained(int code, List<int[]> spaces) {
+        for (int[] sp : spaces) {
+            if (inRange(code, sp)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static boolean showsCidZero(PDType0Font font, Set<Integer> codes) {
@@ -281,7 +353,7 @@ final class CMapFixer {
 
     private boolean flatten(PDType0Font font, PDCIDFont cid, CMap cmap, Set<Integer> codes, String text)
             throws IOException {
-        List<int[]> spaces = codespaces(text);
+        List<int[]> spaces = withStrays(codes, codespaces(text));
         int width = 0;
         for (int[] sp : spaces) {
             width = Math.max(width, sp[2]);
