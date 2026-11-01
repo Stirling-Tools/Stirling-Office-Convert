@@ -37,6 +37,7 @@ import org.apache.pdfbox.pdmodel.graphics.image.LosslessFactory;
 import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
 import org.apache.pdfbox.pdmodel.graphics.image.PDInlineImage;
 
+import stirling.software.officeconvert.extract.ImageBudget;
 import stirling.software.officeconvert.extract.PdfFiles;
 
 final class TransferBaking {
@@ -353,6 +354,7 @@ final class TransferBaking {
                         if (st.fill.known) {
                             emit(out, st.fill, false, next, resources, pdRes, depth);
                         }
+                        lost |= !next.identity() && (!st.stroke.known || !st.fill.known);
                         changed = true;
                         continue;
                     }
@@ -434,6 +436,7 @@ final class TransferBaking {
                         }
                     }
                 }
+                case "sh" -> lost |= !st.transfer.identity();
                 case "Do" -> {
                     if (operands.size() == 1 && operands.get(0) instanceof COSName xn) {
                         COSName replacement = xobject(xn, t, resources, depth);
@@ -592,16 +595,6 @@ final class TransferBaking {
         if (!COSName.FORM.equals(sub) || t.identity() && !containsTransfer(s, 0)) {
             return null;
         }
-        if (t.identity()) {
-            if (baked.putIfAbsent(new Key(s, t), s) == null) {
-                List<Object> out = content(List.of(s), ContentGraph.dict(s.getDictionaryObject(COSName.RESOURCES)), t,
-                        depth + 1, false);
-                if (out != null) {
-                    ContentTokens.write(s, out);
-                }
-            }
-            return null;
-        }
         COSBase form = baked.get(new Key(s, t));
         if (form == null) {
             COSStream copy = copyStream(s);
@@ -664,6 +657,7 @@ final class TransferBaking {
         if (replacement == null) {
             if (p.getInt(COSName.PATTERN_TYPE, 1) == 2) {
                 replacement = p;
+                lost |= !t.identity();
             } else if (p instanceof COSStream ps && p.getInt(COSName.PAINT_TYPE, 1) == 1) {
                 COSStream copy = copyStream(ps);
                 baked.put(new Key(p, t), copy);
@@ -714,6 +708,10 @@ final class TransferBaking {
         BufferedImage masked = null;
         try {
             PDImageXObject img = new PDImageXObject(new PDStream(s), null);
+            if (!ImageBudget.affordable(img)) {
+                lost = true;
+                return null;
+            }
             opaque = img.getOpaqueImage();
             if (s.getDictionaryObject(COSName.MASK) instanceof COSArray) {
                 masked = img.getImage();
@@ -781,7 +779,12 @@ final class TransferBaking {
         }
         BufferedImage img;
         try {
-            img = new PDInlineImage(params, op.getImageData(), res).getImage();
+            PDInlineImage inline = new PDInlineImage(params, op.getImageData(), res);
+            if (!ImageBudget.affordable(inline)) {
+                lost = true;
+                return null;
+            }
+            img = inline.getImage();
         } catch (IOException | RuntimeException e) {
             Decoded.rethrowFatal(e instanceof IOException io ? io : new IOException(e));
             lost = true;
