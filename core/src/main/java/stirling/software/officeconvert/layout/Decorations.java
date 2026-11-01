@@ -330,6 +330,41 @@ final class Decorations {
 
     static List<PageLayout.Decoration> leftovers(List<Fill> fills, List<Rule> rules, List<VectorMark> dots,
             List<Box> figures, List<Box> tables, boolean tinted, ToIntFunction<Object> order) {
+        List<PageLayout.Decoration> out = shapes(fills, rules, figures, tables, tinted, order);
+        if (out.size() > MAX_SHAPES) {
+            out = backdrops(out);
+        }
+        out.addAll(dots(dots, figures, tables, order));
+        return out;
+    }
+
+    static List<Box> overCap(List<Fill> fills, List<Rule> rules, List<Box> figures, List<Box> tables, boolean tinted,
+            List<Line> segments) {
+        List<PageLayout.Decoration> shapes = shapes(fills, rules, figures, tables, tinted, o -> 0);
+        if (shapes.size() <= MAX_SHAPES) {
+            return List.of();
+        }
+        List<PageLayout.Decoration> kept = backdrops(shapes);
+        List<Box> dropped = new ArrayList<>();
+        for (PageLayout.Decoration d : shapes) {
+            if (!kept.contains(d)) {
+                dropped.add(d.box());
+            }
+        }
+        List<Box> out = new ArrayList<>();
+        for (Box b : FigureFinder.cluster(dropped, OVER_CAP_GAP)) {
+            if (b.width() >= FigureFinder.MIN_SIDE && b.height() >= FigureFinder.MIN_SIDE
+                    && FigureFinder.wordsInside(b, segments) == 0) {
+                out.add(b);
+            }
+        }
+        return out;
+    }
+
+    private static final float OVER_CAP_GAP = 4f;
+
+    private static List<PageLayout.Decoration> shapes(List<Fill> fills, List<Rule> rules, List<Box> figures,
+            List<Box> tables, boolean tinted, ToIntFunction<Object> order) {
         List<PageLayout.Decoration> out = new ArrayList<>();
         for (Fill f : fills) {
             Box b = Regions.of(f);
@@ -352,10 +387,6 @@ final class Decorations {
         for (Ruled r : shown) {
             out.add(new PageLayout.Decoration(Regions.of(r.rule()), r.rule().rgb(), -1, 0, false, false, r.order()));
         }
-        if (out.size() > MAX_SHAPES) {
-            out = backdrops(out);
-        }
-        out.addAll(dots(dots, figures, tables, order));
         return out;
     }
 
