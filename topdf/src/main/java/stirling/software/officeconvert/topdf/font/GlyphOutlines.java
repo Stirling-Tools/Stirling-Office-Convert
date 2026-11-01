@@ -65,12 +65,13 @@ public final class GlyphOutlines implements Closeable {
             if (g == null) {
                 return null;
             }
-            p = g.getPath();
+            p = new GeneralPath(g.getPath());
             k = unitsPerEm / (double) ttf.getUnitsPerEm();
         } else {
             int selector = cff instanceof CFFCIDFont ? cff.getCharset().getCIDForGID(gid) : gid;
-            p = cff instanceof CFFCIDFont cid ? cid.getType2CharString(selector).getPath()
-                    : ((CFFType1Font) cff).getType2CharString(selector).getPath();
+            // PDFBox caches charstring paths, so scale a copy, never the cached one
+            p = new GeneralPath(cff instanceof CFFCIDFont cid ? cid.getType2CharString(selector).getPath()
+                    : ((CFFType1Font) cff).getType2CharString(selector).getPath());
             List<Number> m = cff.getFontMatrix();
             double scale = m == null || m.isEmpty() ? 0.001 : m.get(0).doubleValue();
             k = unitsPerEm * scale;

@@ -30,6 +30,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import stirling.software.officeconvert.topdf.font.FontSet;
+import stirling.software.officeconvert.topdf.font.GlyphOutlines;
 
 class FontEmbedderCjkTest {
 
@@ -53,6 +54,19 @@ class FontEmbedderCjkTest {
         FontSet fonts = FontSet.builder().systemFonts(false).font(liberation()).directory(cff).build();
         assertDrawn(embed(identity(), fonts, true));
         assertDrawn(embed(predefined(), fonts, true));
+    }
+
+    @Test
+    void askingForTheSameCffOutlineTwiceDoesNotScaleItTwice() throws Exception {
+        Path cff = cffCjkDirectory();
+        assumeTrue(cff != null, "no CFF-outline CJK font found");
+        FontSet fonts = FontSet.builder().systemFonts(false).font(liberation()).directory(cff).build();
+        try (GlyphOutlines outlines = GlyphOutlines.open(fonts.library().fallback(0x65E5, false, false))) {
+            Rectangle2D first = outlines.path(0x65E5, 2048).getBounds2D();
+            Rectangle2D second = outlines.path(0x65E5, 2048).getBounds2D();
+            assertFalse(first.isEmpty());
+            assertEquals(first, second);
+        }
     }
 
     @Test
@@ -91,6 +105,12 @@ class FontEmbedderCjkTest {
                 PDType0Font font = (PDType0Font) d.getPage(0).getResources().getFont(COSName.getPDFName("F1"));
                 assertEquals(null, UnicodeGuess.of(font, 0xBEC8), subtype.getName());
                 assertEquals("A", UnicodeGuess.of(font, 0x41), subtype.getName());
+            }
+            COSDictionary identity = cidFont(subtype, "Batang", "Adobe", "Korea1", 2);
+            try (PDDocument d = Loader.loadPDF(document(type0("Batang", "Identity-H", identity, null),
+                    new byte[] {0x00, 0x41}))) {
+                PDType0Font font = (PDType0Font) d.getPage(0).getResources().getFont(COSName.getPDFName("F1"));
+                assertEquals(null, UnicodeGuess.of(font, 0x41), "an Identity code is a CID, not ASCII");
             }
         }
         COSDictionary uni = cidFont(COSName.CID_FONT_TYPE0, "Batang", "Adobe", "Korea1", 2);

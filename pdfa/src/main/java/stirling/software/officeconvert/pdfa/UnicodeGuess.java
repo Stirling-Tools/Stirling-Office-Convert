@@ -81,9 +81,10 @@ final class UnicodeGuess {
             t = (code & 0xFFFF0000) == 0 ? String.valueOf((char) code)
                     : new String(new char[] {(char) (code >>> 16), (char) code});
         } else if (KOREA1.equals(font.getDescendantFont().getCIDSystemInfo().getOrdering())) {
-            // PDFBox's Adobe-Korea1-UCS2 map is shifted (CID 1 gives U+0000); only the one-byte ASCII range is safe
-            boolean won = code == 0x5C && cmap != null && cmap.startsWith("KSCpc");
-            return cmap != null && code >= 0x20 && code < 0x7F && !won ? String.valueOf((char) code) : null;
+            // PDFBox's Adobe-Korea1-UCS2 map is shifted (CID 1 gives U+0000); only legacy one-byte ASCII is safe
+            boolean legacy = cmap != null && !cmap.startsWith("Identity");
+            boolean won = code == 0x5C && legacy && cmap.startsWith("KSCpc");
+            return legacy && code >= 0x20 && code < 0x7F && !won ? String.valueOf((char) code) : null;
         } else {
             try {
                 t = font.toUnicode(code);
