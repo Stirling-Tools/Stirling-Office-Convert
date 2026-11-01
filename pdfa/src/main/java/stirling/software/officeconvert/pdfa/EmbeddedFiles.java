@@ -72,6 +72,8 @@ final class EmbeddedFiles {
                 }
                 if (d.containsKey(COSName.EF)) {
                     specifications.add(d);
+                } else if (level.part() == 3 && COSName.FILESPEC.equals(d.getCOSName(COSName.TYPE))) {
+                    d.removeItem(COSName.TYPE);
                 }
             }
         });
@@ -81,6 +83,9 @@ final class EmbeddedFiles {
         for (COSDictionary fs : specifications) {
             if (!keep(fs)) {
                 fs.removeItem(COSName.EF);
+                if (level.part() == 3) {
+                    fs.removeItem(COSName.TYPE);
+                }
                 report.warn("Removed an embedded file that could not be retained safely for " + level.label());
             }
         }
