@@ -478,7 +478,8 @@ final class GraphicsCollector extends PDFGraphicsStreamEngine {
                 Math.min(Math.abs(upX), Math.abs(upY)) > upLen * 0.02
                         || Math.min(Math.abs(rightX), Math.abs(rightY)) > rightLen * 0.02
                         || gs.getSoftMask() != null
-                        || maskedGroups == 0 && shapedClip(at);
+                        || maskedGroups == 0 && shapedClip(at)
+                        || pdImage.isStencil() && gs.getNonStrokingColorSpace() instanceof PDPattern;
 
         int stencil = -1;
         if (pdImage.isStencil()) {
