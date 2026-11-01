@@ -255,7 +255,7 @@ class RepairTest {
     }
 
     @Test
-    void aPageTreeLoopIsCutAndTheRealPagesStay() throws Exception {
+    void aPageTreeLoopIsCutAndKeepsTheDeclaredCountWithABlankPage() throws Exception {
         RawPdf raw = pages(1);
         raw.set(2, "<</Type/Pages/Kids[3 0 R 5 0 R]/Count 2/MediaBox[0 0 200 300]>>");
         raw.add("<</Type/Pages/Kids[6 0 R]/Count 1>>");
@@ -263,8 +263,40 @@ class RepairTest {
         Path in = raw.write(dir, "loop");
         Path out = dir.resolve("out.pdf");
         PdfOptimizer.optimize(in, out, PdfOptimizer.Options.defaults());
+        assertSoundTree(out, 2);
+        RawPdf expected = pages(1);
+        expected.set(2, "<</Type/Pages/Kids[3 0 R 5 0 R]/Count 2/MediaBox[0 0 200 300]>>");
+        expected.add("<</Type/Page/Parent 2 0 R/Resources<<>>>>");
+        Pages.assertSameRendering(expected.write(dir, "good"), out);
+    }
+
+    @Test
+    void aPageTreeLoopWithoutRoomInTheCountKeepsOnlyTheRealPages() throws Exception {
+        RawPdf raw = pages(1);
+        raw.set(2, "<</Type/Pages/Kids[3 0 R 5 0 R]/Count 1/MediaBox[0 0 200 300]>>");
+        raw.add("<</Type/Pages/Kids[6 0 R]/Count 1>>");
+        raw.add("<</Type/Pages/Kids[5 0 R]/Count 1>>");
+        Path in = raw.write(dir, "loop");
+        Path out = dir.resolve("out.pdf");
+        PdfOptimizer.optimize(in, out, PdfOptimizer.Options.defaults());
         assertSoundTree(out, 1);
         Pages.assertSameRendering(pages(1).write(dir, "good"), out);
+    }
+
+    @Test
+    void aPageTreeNodeListedTwiceKeepsItsPagesBothTimes() throws Exception {
+        RawPdf raw = pages(1);
+        raw.set(2, "<</Type/Pages/Kids[5 0 R 5 0 R]/Count 2/MediaBox[0 0 200 300]>>");
+        raw.set(3, "<</Type/Page/Parent 5 0 R/Resources<<>>/Contents 4 0 R>>");
+        raw.add("<</Type/Pages/Parent 2 0 R/Kids[3 0 R]/Count 1>>");
+        Path in = raw.write(dir, "twice");
+        Path out = dir.resolve("out.pdf");
+        PdfOptimizer.optimize(in, out, PdfOptimizer.Options.defaults());
+        assertSoundTree(out, 2);
+        RawPdf expected = pages(1);
+        expected.set(2, "<</Type/Pages/Kids[3 0 R 5 0 R]/Count 2/MediaBox[0 0 200 300]>>");
+        expected.add("<</Type/Page/Parent 2 0 R/Resources<<>>/Contents 4 0 R>>");
+        Pages.assertSameRendering(expected.write(dir, "good"), out);
     }
 
     @Test
