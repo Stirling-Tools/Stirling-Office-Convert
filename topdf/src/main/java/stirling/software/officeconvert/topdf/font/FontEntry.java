@@ -174,7 +174,7 @@ final class FontEntry {
         if (p == null) {
             try {
                 if (postScript && !outlinesChecked) {
-                    CffSubsetter.check(FontScanner.table(this, "CFF ", FontProgram.MAX_WHOLE_BYTES));
+                    FontScanner.checkCff(this, FontProgram.MAX_WHOLE_BYTES);
                     outlinesChecked = true;
                 }
                 p = FontProgram.load(this);

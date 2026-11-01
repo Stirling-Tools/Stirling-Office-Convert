@@ -81,6 +81,15 @@ final class JpxImages {
                     && !(level.part() < 4 && smaskInData != 0 && h.channels() == 4 && components(colourSpace) < 4)) {
                 return;
             }
+            if (h != null && h.wrappable() && !s.getBoolean(COSName.IMAGE_MASK, false) && s.getInt(SMASK_IN_DATA, 0) == 0) {
+                byte[] wrapped = JpxHeader.wrap(encoded, size[0], size[1]);
+                s.removeItem(COSName.DECODE_PARMS);
+                s.setItem(COSName.FILTER, COSName.JPX_DECODE);
+                try (OutputStream out = s.createRawOutputStream()) {
+                    out.write(wrapped);
+                }
+                return;
+            }
         }
         if (s.getBoolean(COSName.IMAGE_MASK, false)) {
             throw new IOException("The PDF has a JPEG 2000 image mask, which " + level.label() + " does not allow");

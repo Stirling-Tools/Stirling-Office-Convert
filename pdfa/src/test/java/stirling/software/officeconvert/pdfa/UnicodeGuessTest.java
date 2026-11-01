@@ -13,13 +13,12 @@ class UnicodeGuessTest {
     Path dir;
 
     @Test
-    void type3ShapesWithoutUnicodeCluesGetPrivateUseValuesNotLetters() throws Exception {
+    void type3ShapesWithoutUnicodeCluesKeepTheTextReadersExtractFromTheirCodes() throws Exception {
         Path in = Hostile.write(dir, "type3", Hostile.type3Shapes());
         Path out = dir.resolve("type3-2u.pdf");
         PdfToPdfA.convert(in, out, PdfToPdfA.Options.defaults().level(PdfALevel.A2U));
         VeraPdf.assertCompliant(out, PdfALevel.A2U);
         String text = Converted.text(out).strip();
-        assertEquals(4, text.length(), text);
-        text.chars().forEach(c -> assertEquals(Character.PRIVATE_USE, Character.getType(c), text));
+        assertEquals("ABAB", text);
     }
 }

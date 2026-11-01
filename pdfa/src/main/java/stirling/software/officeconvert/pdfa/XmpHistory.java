@@ -11,10 +11,29 @@ final class XmpHistory {
 
     private static final String EVENT = "http://ns.adobe.com/xap/1.0/sType/ResourceEvent#";
 
-    private static final Map<String, String> TYPES = Map.of("action", "Text", "changed", "Text",
-            "instanceID", "URI", "parameters", "Text", "softwareAgent", "AgentName", "when", "Date");
+    private static final Map<String, String> TYPES = Map.of("action", "Text", "instanceID", "URI", "parameters",
+            "Text", "softwareAgent", "AgentName", "when", "Date");
 
     private XmpHistory() {}
+
+    static Element repaired(Element property) {
+        Element copy = (Element) property.cloneNode(true);
+        var containers = XmpCarryOver.children(copy);
+        if (containers.size() != 1) {
+            return null;
+        }
+        for (Node item : XmpCarryOver.children(containers.getFirst())) {
+            for (Node field : XmpCarryOver.children(item)) {
+                if (!EVENT.equals(field.getNamespaceURI()) || !TYPES.containsKey(field.getLocalName())) {
+                    item.removeChild(field);
+                }
+            }
+            if (XmpCarryOver.children(item).isEmpty()) {
+                containers.getFirst().removeChild(item);
+            }
+        }
+        return !XmpCarryOver.children(containers.getFirst()).isEmpty() && valid(copy) ? copy : null;
+    }
 
     static boolean valid(Element property) {
         var containers = XmpCarryOver.children(property);
