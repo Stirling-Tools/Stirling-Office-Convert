@@ -115,7 +115,7 @@ final class FigureFinder {
         return n;
     }
 
-    private static int wordsInside(Box region, List<Line> segments) {
+    static int wordsInside(Box region, List<Line> segments) {
         int n = 0;
         for (Line l : segments) {
             for (Word w : l.words) {

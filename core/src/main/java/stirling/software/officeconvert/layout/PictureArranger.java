@@ -172,7 +172,7 @@ final class PictureArranger {
             } else if (l.x >= b.right() - 1) {
                 gapRight = Math.min(gapRight, l.x - b.right());
             } else {
-                inLineGap |= clearOfWords(l, b);
+                inLineGap |= clearOfWords(l, b) || coversWords(l, b);
             }
         }
         for (PageLayout.Item t : solids) {
@@ -202,6 +202,23 @@ final class PictureArranger {
         return b.x() <= sheet.x() + 1 || b.right() >= sheet.right() - 1 || b.top() <= sheet.top() + 1
                 || b.bottom() >= sheet.bottom() - 1;
     }
+
+    private static boolean coversWords(Line l, PageLayout.Item b) {
+        float across = Math.min(l.bottom, b.bottom()) - Math.max(l.top, b.top());
+        if (across < COVERED_SHARE * (l.bottom - l.top)) {
+            return false;
+        }
+        for (Word w : l.words) {
+            if (Math.min(w.right, b.right()) - Math.max(w.x, b.x()) > COVERED_WIDTH) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static final float COVERED_SHARE = 0.5f;
+
+    private static final float COVERED_WIDTH = 2f;
 
     private static boolean clearOfWords(Line l, PageLayout.Item b) {
         for (Word w : l.words) {

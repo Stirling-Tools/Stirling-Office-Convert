@@ -57,4 +57,27 @@ class BoxedLinesTest {
         assertEquals(0x70D0E0, shown.getFirst().rgb());
         assertEquals(612, shown.getFirst().box().width(), 0.01f);
     }
+
+    @Test
+    void shapesOverTheCapBecomeOneFigurePerCluster() {
+        List<Fill> fills = new ArrayList<>();
+        fills.add(new Fill(0, 0, 612, 792, 0x70D0E0));
+        for (int i = 0; i < 200; i++) {
+            float x = 20 + (i % 20) * 28;
+            float y = 20 + (i / 20) * 28;
+            fills.add(new Fill(x, y, x + 20, y + 20, 0x0000FF));
+        }
+        List<Box> figures = Decorations.overCap(fills, List.of(), List.of(), List.of(), false, List.of());
+        assertEquals(200, figures.size());
+        assertEquals(20, figures.getFirst().width(), 0.01f);
+        List<PageLayout.Decoration> shown = Decorations.leftovers(fills, List.of(), List.of(), figures, List.of(),
+                false, o -> 0);
+        assertEquals(1, shown.size());
+    }
+
+    @Test
+    void shapesUnderTheCapMakeNoFigures() {
+        List<Fill> fills = List.of(new Fill(20, 20, 40, 40, 0x0000FF), new Fill(60, 20, 80, 40, 0x0000FF));
+        assertTrue(Decorations.overCap(fills, List.of(), List.of(), List.of(), false, List.of()).isEmpty());
+    }
 }
