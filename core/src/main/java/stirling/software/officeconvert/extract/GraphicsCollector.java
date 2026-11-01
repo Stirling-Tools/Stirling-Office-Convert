@@ -7,6 +7,7 @@ import java.awt.geom.Path2D;
 import java.awt.geom.PathIterator;
 import java.awt.geom.Point2D;
 import java.awt.geom.Rectangle2D;
+import java.awt.image.BufferedImage;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -439,6 +440,9 @@ final class GraphicsCollector extends PDFGraphicsStreamEngine {
         float maxX = Math.max(Math.max(o.x, r.x), Math.max(u.x, ur.x));
         float minY = Math.min(Math.min(o.y, r.y), Math.min(u.y, ur.y));
         float maxY = Math.max(Math.max(o.y, r.y), Math.max(u.y, ur.y));
+        if (pdImage.isStencil() && stencilRule(pdImage, minX, minY, maxX, maxY)) {
+            return;
+        }
         if (maxX - minX < 0.5f || maxY - minY < 0.5f) {
             return;
         }
@@ -495,6 +499,52 @@ final class GraphicsCollector extends PDFGraphicsStreamEngine {
         images.add(draw);
         paintOrder.put(draw, painted++);
     }
+
+    private boolean stencilRule(PDImage image, float minX, float minY, float maxX, float maxY) {
+        float w = maxX - minX;
+        float h = maxY - minY;
+        float thick = Math.min(w, h);
+        float length = Math.max(w, h);
+        if (thick >= RULE_STENCIL_THICK || length < RULE_STENCIL_RATIO * Math.max(thick, 0.1f)
+                || (long) image.getWidth() * image.getHeight() > RULE_STENCIL_PIXELS || !mostlyPainted(image)) {
+            return false;
+        }
+        float[] clip = clipBox();
+        boolean horizontal = w >= h;
+        float start = horizontal ? Math.max(minX, clip[0]) : Math.max(minY, clip[1]);
+        float end = horizontal ? Math.min(maxX, clip[2]) : Math.min(maxY, clip[3]);
+        float pos = horizontal ? (minY + maxY) / 2f : (minX + maxX) / 2f;
+        boolean inside = horizontal ? pos >= clip[1] && pos <= clip[3] : pos >= clip[0] && pos <= clip[2];
+        if (end - start < 0.5f || !inside || getGraphicsState().getNonStrokeAlphaConstant() <= 0.01f) {
+            return true;
+        }
+        PageGraphics.Rule rule = new PageGraphics.Rule(horizontal, pos, start, end, Math.max(thick, 0.1f),
+                PdfColours.toRgb(getGraphicsState().getNonStrokingColor(), 0));
+        rules.add(rule);
+        paintOrder.put(rule, painted++);
+        return true;
+    }
+
+    private static boolean mostlyPainted(PDImage image) {
+        try {
+            BufferedImage mask = image.getStencilImage(java.awt.Color.BLACK);
+            int painted = 0;
+            for (int y = 0; y < mask.getHeight(); y++) {
+                for (int x = 0; x < mask.getWidth(); x++) {
+                    painted += (mask.getRGB(x, y) >>> 24) > 127 ? 1 : 0;
+                }
+            }
+            return painted * 2 > mask.getWidth() * mask.getHeight();
+        } catch (IOException | RuntimeException e) {
+            return false;
+        }
+    }
+
+    private static final float RULE_STENCIL_THICK = 3f;
+
+    private static final float RULE_STENCIL_RATIO = 8f;
+
+    private static final long RULE_STENCIL_PIXELS = 4096;
 
     private Point2D.Float unit(AffineTransform ctm, double x, double y) {
         Point2D.Double user = new Point2D.Double();
