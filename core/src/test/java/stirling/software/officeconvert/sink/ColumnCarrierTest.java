@@ -39,26 +39,19 @@ class ColumnCarrierTest {
     }
 
     @Test
-    void wordFoldsAnEmptySpacerAfterTheBreakIntoTheNextColumnsFirstParagraph() throws IOException {
-        Paragraph right = paragraph("Right column text.");
-        right.spaceBefore = 4;
-        String xml = docx(paragraph("Left column text."), carrier(), spacer(26), right);
-        assertFalse(CARRIER.matcher(xml).find(), xml);
-        assertFalse(xml.contains("w:line=\"520\""), xml);
-        assertTrue(Pattern.compile("<w:spacing w:before=\"600\"(?:(?!</w:p>).)*<w:br w:type=\"column\"/></w:r>"
-                + "(?:(?!</w:p>).)*Right column text\\.").matcher(xml).find(), xml);
-        assertEquals(4f, right.spaceBefore);
+    void wordPutsTheBreakInAnEmptySpacerAndMovesItsHeightBelowTheBreak() throws IOException {
+        Paragraph spacer = spacer(26);
+        String xml = docx(paragraph("Left column text."), carrier(), spacer, paragraph("Right column text."));
+        assertEquals(1, xml.split("w:type=\"column\"", -1).length - 1, xml);
+        assertTrue(Pattern.compile("<w:spacing w:before=\"0\" w:after=\"500\" w:line=\"20\" w:lineRule=\"exact\"/>"
+                + "(?:(?!</w:p>).)*<w:br w:type=\"column\"/></w:r></w:p>").matcher(xml).find(), xml);
+        assertTrue(xml.indexOf("w:type=\"column\"") < xml.indexOf("Right column text."), xml);
+        assertEquals(26f, spacer.lineHeight);
+        assertEquals(0f, spacer.spaceAfter);
     }
 
     @Test
-    void wordKeepsTheSpacerWhenNoParagraphFollowsIt() throws IOException {
-        String xml = docx(paragraph("Left column text."), carrier(), spacer(26));
-        assertTrue(CARRIER.matcher(xml).find(), xml);
-        assertTrue(xml.contains("w:line=\"520\""), xml);
-    }
-
-    @Test
-    void rtfFoldsAnEmptySpacerAfterTheBreakIntoTheNextColumnsFirstParagraph() throws IOException {
+    void rtfPutsTheBreakInAnEmptySpacer() throws IOException {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         try (RtfWriter w = new RtfWriter(out)) {
             write(w, paragraph("Left column text."), carrier(), spacer(26), paragraph("Right column text."));
@@ -66,8 +59,7 @@ class ColumnCarrierTest {
         String rtf = out.toString(StandardCharsets.ISO_8859_1);
         int brk = rtf.indexOf("\\column ");
         assertTrue(brk > rtf.indexOf("Left column text."), rtf);
-        assertFalse(rtf.substring(brk, rtf.indexOf("Right column text.")).contains("\\par"), rtf);
-        assertTrue(rtf.contains("\\sb520"), rtf);
+        assertTrue(rtf.substring(rtf.lastIndexOf("\\pard", brk), brk).contains("\\sa500"), rtf);
     }
 
     @Test

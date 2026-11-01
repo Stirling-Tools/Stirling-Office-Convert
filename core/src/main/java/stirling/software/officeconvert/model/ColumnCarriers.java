@@ -1,12 +1,10 @@
 package stirling.software.officeconvert.model;
 
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.List;
 
 public final class ColumnCarriers {
 
-    private static final int MAX_SPACERS = 3;
+    private static final float HAIRLINE = 1f;
 
     public interface Write {
         void block(Block block) throws IOException;
@@ -16,8 +14,6 @@ public final class ColumnCarriers {
 
     private Paragraph carrier;
 
-    private final List<Paragraph> spacers = new ArrayList<>();
-
     public ColumnCarriers(Write write) {
         this.write = write;
     }
@@ -26,16 +22,12 @@ public final class ColumnCarriers {
         if (block instanceof Paragraph p && carrier(p)) {
             flush();
             carrier = p;
-        } else if (carrier != null && block instanceof Paragraph p && spacer(p) && spacers.size() < MAX_SPACERS) {
-            spacers.add(p);
-        } else if (carrier != null && block instanceof Paragraph p && takesBreak(p)) {
-            float room = 0;
-            for (Paragraph s : spacers) {
-                room += s.spaceBefore + s.lineHeight + s.spaceAfter;
-            }
+        } else if (carrier != null && block instanceof Paragraph p && spacer(p)) {
             carrier = null;
-            spacers.clear();
-            withBreakFirst(p, room);
+            spacerWithBreak(p);
+        } else if (carrier != null && block instanceof Paragraph p && takesBreak(p)) {
+            carrier = null;
+            withBreakFirst(p);
         } else {
             flush();
             write.block(block);
@@ -47,21 +39,32 @@ public final class ColumnCarriers {
             write.block(carrier);
             carrier = null;
         }
-        for (Paragraph s : spacers) {
-            write.block(s);
-        }
-        spacers.clear();
     }
 
-    private void withBreakFirst(Paragraph p, float room) throws IOException {
+    private void spacerWithBreak(Paragraph p) throws IOException {
+        float line = p.lineHeight;
         float before = p.spaceBefore;
+        float after = p.spaceAfter;
         p.inlines.addFirst(new Inline.ColumnBreak());
-        p.spaceBefore += room;
+        p.spaceBefore = 0;
+        p.spaceAfter = before + after + Math.max(0, line - HAIRLINE);
+        p.lineHeight = Math.min(line, HAIRLINE);
         try {
             write.block(p);
         } finally {
             p.inlines.removeFirst();
+            p.lineHeight = line;
             p.spaceBefore = before;
+            p.spaceAfter = after;
+        }
+    }
+
+    private void withBreakFirst(Paragraph p) throws IOException {
+        p.inlines.addFirst(new Inline.ColumnBreak());
+        try {
+            write.block(p);
+        } finally {
+            p.inlines.removeFirst();
         }
     }
 
