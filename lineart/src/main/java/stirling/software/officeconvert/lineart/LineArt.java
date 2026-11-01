@@ -31,6 +31,7 @@ import org.apache.pdfbox.pdmodel.graphics.color.PDSeparation;
 import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
 
 import stirling.software.officeconvert.extract.PdfFiles;
+import stirling.software.officeconvert.extract.StrictFilters;
 import stirling.software.officeconvert.jpx.JpxImageIO;
 import stirling.software.officeconvert.memory.Admission;
 
@@ -279,7 +280,8 @@ public final class LineArt {
     private static Codecs.Encoded convert(PDDocument document, ImageWalk.Found f, Options options, List<String> warnings)
             throws IOException {
         COSStream stream = f.stream();
-        if (stream.getBoolean(COSName.IMAGE_MASK, false) || stream.getDictionaryObject(COSName.F) != null) {
+        if (stream.getBoolean(COSName.IMAGE_MASK, false) || stream.getDictionaryObject(COSName.F) != null
+                || !StrictFilters.decodable(stream)) {
             return null;
         }
         PDImageXObject image = new PDImageXObject(new PDStream(stream), f.resources());

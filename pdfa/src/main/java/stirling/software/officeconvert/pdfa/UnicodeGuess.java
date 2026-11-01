@@ -36,6 +36,7 @@ import org.apache.pdfbox.pdmodel.font.encoding.DictionaryEncoding;
 import org.apache.pdfbox.pdmodel.font.encoding.GlyphList;
 import org.apache.pdfbox.pdmodel.font.encoding.WinAnsiEncoding;
 
+import stirling.software.officeconvert.extract.LigatureNames;
 import stirling.software.officeconvert.fonts.CodeReader;
 
 final class UnicodeGuess {
@@ -381,48 +382,7 @@ final class UnicodeGuess {
         if (ToUnicodeWriter.valid(u)) {
             return u;
         }
-        int dot = name.indexOf('.');
-        String base = dot >= 0 ? name.substring(0, dot) : name;
-        if (base.isEmpty() || base.indexOf('_') < 0 && !base.startsWith("uni")) {
-            return null;
-        }
-        StringBuilder b = new StringBuilder();
-        for (String part : base.split("_", -1)) {
-            String p = component(part);
-            if (p == null) {
-                return null;
-            }
-            b.append(p);
-        }
-        return ToUnicodeWriter.valid(b.toString()) ? b.toString() : null;
-    }
-
-    private static String component(String part) {
-        if (part.isEmpty()) {
-            return null;
-        }
-        if (part.startsWith("uni") && part.length() > 3 && (part.length() - 3) % 4 == 0) {
-            StringBuilder b = new StringBuilder();
-            for (int i = 3; i < part.length(); i += 4) {
-                int cp = hex(part.substring(i, i + 4));
-                if (cp < 0 || cp >= 0xD800 && cp <= 0xDFFF) {
-                    return null;
-                }
-                b.append((char) cp);
-            }
-            return b.toString();
-        }
-        if (part.length() >= 5 && part.length() <= 7 && part.charAt(0) == 'u') {
-            int cp = hex(part.substring(1));
-            if (cp >= 0 && cp <= Character.MAX_CODE_POINT && !(cp >= 0xD800 && cp <= 0xDFFF)) {
-                return new String(Character.toChars(cp));
-            }
-        }
-        String u = GlyphList.getAdobeGlyphList().toUnicode(part);
-        return u == null || u.isEmpty() ? null : u;
-    }
-
-    private static int hex(String s) {
-        return !s.isEmpty() && s.chars().allMatch(UnicodeGuess::hexDigit) ? Integer.parseInt(s, 16) : -1;
+        String t = LigatureNames.text(name, GlyphList.getAdobeGlyphList());
+        return ToUnicodeWriter.valid(t) ? t : null;
     }
 }

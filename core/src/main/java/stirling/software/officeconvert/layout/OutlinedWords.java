@@ -118,10 +118,9 @@ final class OutlinedWords {
                 if (anchors.containsKey(m)) {
                     continue;
                 }
-                for (Map.Entry<VectorMark, Glyph> e : new ArrayList<>(anchors.entrySet())) {
-                    Glyph g = e.getValue();
-                    VectorMark n = e.getKey();
-                    if (fits(m, g) && gap(m, n.x(), n.right()) <= REACH * g.size) {
+                for (VectorMark n : candidates) {
+                    Glyph g = anchors.get(n);
+                    if (g != null && fits(m, g) && gap(m, n.x(), n.right()) <= REACH * g.size) {
                         anchors.put(m, g);
                         grew = true;
                         break;

@@ -27,6 +27,7 @@ import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.font.PDFont;
 import org.apache.pdfbox.pdmodel.font.PDType3CharProc;
 import org.apache.pdfbox.pdmodel.font.PDType3Font;
+import org.apache.pdfbox.pdmodel.graphics.PDXObject;
 import org.apache.pdfbox.pdmodel.graphics.blend.BlendMode;
 import org.apache.pdfbox.pdmodel.graphics.color.PDColor;
 import org.apache.pdfbox.pdmodel.graphics.color.PDPattern;
@@ -41,6 +42,8 @@ import org.apache.pdfbox.pdmodel.graphics.state.RenderingMode;
 import org.apache.pdfbox.util.Matrix;
 import org.apache.pdfbox.util.Vector;
 
+import stirling.software.officeconvert.extract.HiddenContent;
+import stirling.software.officeconvert.extract.StrictFilters;
 import stirling.software.officeconvert.extract.OperatorBudget;
 import stirling.software.officeconvert.layout.Box;
 
@@ -81,6 +84,7 @@ final class PaintOrder extends PDFGraphicsStreamEngine {
     private static final int MAX_PAGE_SEGMENTS = 3000;
 
     private final AffineTransform toDisplay;
+    private HiddenContent hiddenContent;
     private final float width;
     private final float height;
     private final List<Mark> marks = new ArrayList<>();
@@ -106,8 +110,10 @@ final class PaintOrder extends PDFGraphicsStreamEngine {
         this.height = height;
     }
 
-    static PaintOrder read(PDPage page, AffineTransform toDisplay, float width, float height) {
+    static PaintOrder read(PDPage page, AffineTransform toDisplay, float width, float height, HiddenContent hidden) {
         PaintOrder p = new PaintOrder(page, toDisplay, width, height);
+        p.hiddenContent = hidden;
+        hidden.reset();
         try {
             p.processPage(page);
         } catch (IOException | RuntimeException | StackOverflowError e) {
@@ -282,7 +288,10 @@ final class PaintOrder extends PDFGraphicsStreamEngine {
             return;
         }
         try {
-            super.processOperator(operator, operands);
+            Operator painted = hiddenContent == null ? operator : hiddenContent.painted(operator, operands, getResources());
+            if (painted != null) {
+                super.processOperator(painted, painted == operator ? operands : List.of());
+            }
         } catch (InterruptedIOException e) {
             throw e;
         } catch (IOException | RuntimeException e) {
@@ -291,6 +300,9 @@ final class PaintOrder extends PDFGraphicsStreamEngine {
 
     @Override
     public void showForm(PDFormXObject form) throws IOException {
+        if (hiddenContent != null && hiddenContent.hidden(form)) {
+            return;
+        }
         int span = enterGroup();
         formClips.push(clips());
         try {
@@ -305,6 +317,9 @@ final class PaintOrder extends PDFGraphicsStreamEngine {
 
     @Override
     public void showTransparencyGroup(PDTransparencyGroup form) throws IOException {
+        if (hiddenContent != null && hiddenContent.hidden(form)) {
+            return;
+        }
         int span = enterGroup();
         formClips.push(clips());
         transparentGroups++;
@@ -903,6 +918,10 @@ final class PaintOrder extends PDFGraphicsStreamEngine {
 
     @Override
     public void drawImage(PDImage pdImage) {
+        if (hiddenContent != null && pdImage instanceof PDXObject x && hiddenContent.hidden(x)
+                || pdImage instanceof PDImageXObject image && !StrictFilters.decodable(image.getCOSObject())) {
+            return;
+        }
         AffineTransform ctm = getGraphicsState().getCurrentTransformationMatrix().createAffineTransform();
         float alpha = (float) getGraphicsState().getNonStrokeAlphaConstant();
         boolean opaque = alpha >= 0.99f && getGraphicsState().getSoftMask() == null && !pdImage.isStencil()
@@ -913,6 +932,9 @@ final class PaintOrder extends PDFGraphicsStreamEngine {
 
     @Override
     protected void showGlyph(Matrix textRenderingMatrix, PDFont font, int code, Vector displacement) throws IOException {
+        if (hiddenContent != null && hiddenContent.active()) {
+            return;
+        }
         RenderingMode mode = getGraphicsState().getTextState().getRenderingMode();
         if (mode == RenderingMode.NEITHER || mode == RenderingMode.NEITHER_CLIP) {
             return;

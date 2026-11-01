@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Deque;
 import java.util.IdentityHashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -29,7 +30,7 @@ final class FontUsage {
 
     static final int MAX_CODES_PER_FONT = 70_000;
 
-    private final Map<COSDictionary, TreeSet<Integer>> codes = new IdentityHashMap<>();
+    private final Map<COSDictionary, TreeSet<Integer>> codes = new LinkedHashMap<>();
 
     private final Map<COSDictionary, CodeReader> readers = new IdentityHashMap<>();
 
@@ -37,11 +38,11 @@ final class FontUsage {
 
     private final Map<COSDictionary, PDFont> unchanged = new IdentityHashMap<>();
 
-    private final Map<COSDictionary, List<byte[]>> inheritedText = new IdentityHashMap<>();
+    private final Map<COSDictionary, List<byte[]>> inheritedText = new LinkedHashMap<>();
 
-    private final Map<COSDictionary, Set<COSDictionary>> entryFonts = new IdentityHashMap<>();
+    private final Map<COSDictionary, Set<COSDictionary>> entryFonts = new LinkedHashMap<>();
 
-    private final Map<COSDictionary, Set<COSDictionary>> callers = new IdentityHashMap<>();
+    private final Map<COSDictionary, Set<COSDictionary>> callers = new LinkedHashMap<>();
 
     FontUsage() {}
 
@@ -158,13 +159,13 @@ final class FontUsage {
     }
 
     private Map<COSDictionary, Set<COSDictionary>> inheritedFonts() throws InterruptedIOException {
-        Map<COSDictionary, Set<COSDictionary>> called = new IdentityHashMap<>();
+        Map<COSDictionary, Set<COSDictionary>> called = new LinkedHashMap<>();
         for (Map.Entry<COSDictionary, Set<COSDictionary>> e : callers.entrySet()) {
             for (COSDictionary caller : e.getValue()) {
                 called.computeIfAbsent(caller, k -> identitySet()).add(e.getKey());
             }
         }
-        Map<COSDictionary, Set<COSDictionary>> fonts = new IdentityHashMap<>();
+        Map<COSDictionary, Set<COSDictionary>> fonts = new LinkedHashMap<>();
         Deque<COSDictionary> todo = new ArrayDeque<>();
         for (Map.Entry<COSDictionary, Set<COSDictionary>> e : entryFonts.entrySet()) {
             fonts.computeIfAbsent(e.getKey(), k -> identitySet()).addAll(e.getValue());
@@ -187,7 +188,7 @@ final class FontUsage {
     }
 
     private static Set<COSDictionary> identitySet() {
-        return Collections.newSetFromMap(new IdentityHashMap<>());
+        return Collections.newSetFromMap(new LinkedHashMap<>());
     }
 
     private void record(COSDictionary font, byte[] bytes) {

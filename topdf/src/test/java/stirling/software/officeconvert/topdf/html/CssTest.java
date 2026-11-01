@@ -229,4 +229,14 @@ class CssTest {
         Vars.resolve(d, fresh);
         assertEquals("1px", d.get("margin"));
     }
+
+    @Test
+    void shorthandsHoldingVarExpandInAFixedOrder() {
+        Map<String, String> d = new HashMap<>();
+        d.put("background", "red");
+        d.put("background-image", "linear-gradient(blue, green)");
+        Css.expandShorthands(d);
+        assertEquals("linear-gradient(blue, green)", d.get("background-gradient"));
+        assertEquals("blue", d.get("background-color"));
+    }
 }

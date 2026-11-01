@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import stirling.software.officeconvert.layout.Box;
 import stirling.software.officeconvert.layout.DocStats;
 import stirling.software.officeconvert.layout.HeaderFooter;
 import stirling.software.officeconvert.layout.Line;
@@ -15,6 +16,7 @@ import stirling.software.officeconvert.layout.OcrText;
 import stirling.software.officeconvert.layout.PageLayout;
 import stirling.software.officeconvert.layout.ParaDraft;
 import stirling.software.officeconvert.layout.RunningLine;
+import stirling.software.officeconvert.layout.Word;
 import stirling.software.officeconvert.sheet.PageBlocks.Block;
 
 final class PageItems {
@@ -57,6 +59,7 @@ final class PageItems {
             }
         }
         List<Object> items = new ArrayList<>();
+        Set<Word> claimed = Collections.newSetFromMap(new IdentityHashMap<>());
         for (Block b : PageBlocks.of(layout, taken)) {
             switch (b) {
                 case PageBlocks.Grid g -> {
@@ -69,6 +72,12 @@ final class PageItems {
                                 document, prior, typed, dropHyphens);
                         if (grid != null) {
                             items.add(grid);
+                        } else {
+                            PageLayout.TableItem table = (PageLayout.TableItem) part;
+                            Box box = new Box(table.x(), table.top(), table.right(), table.bottom());
+                            for (ParaDraft p : captions(FigureText.lines(box, segments, strict, claimed))) {
+                                items.add(para(p, dropHyphens, false));
+                            }
                         }
                     }
                 }
@@ -79,9 +88,7 @@ final class PageItems {
                     }
                 }
                 case PageBlocks.Figure f -> {
-                    for (Line l : FigureText.lines(f.box(), segments, strict)) {
-                        ParaDraft p = new ParaDraft(l.x, l.right);
-                        p.lines.add(l);
+                    for (ParaDraft p : captions(FigureText.lines(f.box(), segments, strict, claimed))) {
                         items.add(para(p, dropHyphens, true));
                     }
                 }
@@ -107,6 +114,54 @@ final class PageItems {
             }
         }
         return offered;
+    }
+
+    static List<ParaDraft> captions(List<Line> lines) {
+        List<ParaDraft> out = new ArrayList<>();
+        Line previous = null;
+        for (Line l : lines) {
+            if (previous != null && brokenWord(previous, l)) {
+                ParaDraft p = out.getLast();
+                p.lines.add(l);
+            } else {
+                ParaDraft p = new ParaDraft(l.x, l.right);
+                p.lines.add(l);
+                out.add(p);
+            }
+            previous = l;
+        }
+        return out;
+    }
+
+    private static boolean brokenWord(Line above, Line below) {
+        String last = above.words.getLast().text;
+        return !last.isEmpty() && (last.endsWith("-") || last.endsWith("\u00AD")) && last.length() > 1
+                && Character.isLetter(last.charAt(last.length() - 2)) && !below.words.isEmpty()
+                && !below.words.getFirst().text.isEmpty()
+                && Character.isLowerCase(below.words.getFirst().text.codePointAt(0))
+                && below.top - above.bottom < Math.max(above.size, below.size)
+                && firstSegmentRight(below) > lastSegmentLeft(above) && below.x < above.right;
+    }
+
+    private static float lastSegmentLeft(Line line) {
+        int start = 0;
+        for (int i = 1; i < line.words.size(); i++) {
+            if (line.gaps[i] != Line.SPACE) {
+                start = i;
+            }
+        }
+        return line.words.get(start).x;
+    }
+
+    private static float firstSegmentRight(Line line) {
+        int end = line.words.size();
+        for (int i = 1; i < line.words.size(); i++) {
+            if (line.gaps[i] != Line.SPACE) {
+                end = i;
+                break;
+            }
+        }
+        return line.words.get(end - 1).right;
     }
 
     private static Para para(ParaDraft p, boolean dropHyphens, boolean figure) {

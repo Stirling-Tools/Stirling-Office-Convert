@@ -6,6 +6,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.IdentityHashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -80,7 +81,7 @@ public final class FontEmbedder {
             usage.scan(tokens, n.resources(), n.owner());
         }
         usage.resolve();
-        Map<COSDictionary, TreeSet<Integer>> targets = new IdentityHashMap<>(usage.codes());
+        Map<COSDictionary, TreeSet<Integer>> targets = new LinkedHashMap<>(usage.codes());
         Set<COSDictionary> unknown = Collections.newSetFromMap(new IdentityHashMap<>());
         for (ContentGraph.Node n : graph.nodes()) {
             COSDictionary dict = n.resources() == null ? null

@@ -214,11 +214,11 @@ final class StructTree {
 
     void rebuildParentTree() {
         int next = 0;
-        Set<COSDictionary> owners = Collections.newSetFromMap(new IdentityHashMap<>());
+        Set<COSDictionary> owners = Collections.newSetFromMap(new LinkedHashMap<>());
         for (Mcr m : mcrs) {
             owners.add(m.owner());
         }
-        Set<COSDictionary> keyed = Collections.newSetFromMap(new IdentityHashMap<>());
+        Set<COSDictionary> keyed = Collections.newSetFromMap(new LinkedHashMap<>());
         keyed.addAll(owners);
         for (Objr o : objrs) {
             keyed.add(o.object());
