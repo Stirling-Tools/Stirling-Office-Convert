@@ -140,7 +140,28 @@ final class PageItems {
                 && !below.words.getFirst().text.isEmpty()
                 && Character.isLowerCase(below.words.getFirst().text.codePointAt(0))
                 && below.top - above.bottom < Math.max(above.size, below.size)
-                && below.x < above.right && below.right > above.x;
+                && firstSegmentRight(below) > lastSegmentLeft(above) && below.x < above.right;
+    }
+
+    private static float lastSegmentLeft(Line line) {
+        int start = 0;
+        for (int i = 1; i < line.words.size(); i++) {
+            if (line.gaps[i] != Line.SPACE) {
+                start = i;
+            }
+        }
+        return line.words.get(start).x;
+    }
+
+    private static float firstSegmentRight(Line line) {
+        int end = line.words.size();
+        for (int i = 1; i < line.words.size(); i++) {
+            if (line.gaps[i] != Line.SPACE) {
+                end = i;
+                break;
+            }
+        }
+        return line.words.get(end - 1).right;
     }
 
     private static Para para(ParaDraft p, boolean dropHyphens, boolean figure) {

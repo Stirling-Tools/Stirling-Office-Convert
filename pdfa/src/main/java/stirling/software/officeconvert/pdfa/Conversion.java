@@ -9,6 +9,7 @@ import java.security.NoSuchAlgorithmException;
 import org.apache.pdfbox.cos.COSArray;
 import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.cos.COSString;
+import org.apache.pdfbox.pdmodel.DefaultResourceCache;
 import org.apache.pdfbox.pdmodel.PDDocument;
 
 import stirling.software.officeconvert.extract.PdfFiles;
@@ -69,6 +70,7 @@ final class Conversion {
         FontFixer.dropUnreadable(graph, report);
         ContentFixer.run(graph, level, report, usage, colours);
         FontFixer.run(doc, usage, level, options::fontLibrary, report);
+        doc.setResourceCache(new DefaultResourceCache());
         SilentGlyphs.run(graph, usage.silent(), level);
         TransferBaking.run(doc, graph, report, colours);
         PdfFiles.stopIfInterrupted();
