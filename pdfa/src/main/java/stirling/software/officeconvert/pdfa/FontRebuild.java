@@ -66,7 +66,8 @@ final class FontRebuild {
         TrueTypeFont own = mode == Mode.OWN ? ownTrueType(font) : null;
         TrueTypeWriter w;
         if (mode == Mode.SUBSTITUTE) {
-            w = new TrueTypeWriter(substitute.font());
+            w = substitute.copies() ? new TrueTypeWriter(substitute.font())
+                    : new TrueTypeWriter(substitute.font().getUnitsPerEm());
         } else if (own != null) {
             w = new TrueTypeWriter(own);
         } else {
@@ -80,16 +81,23 @@ final class FontRebuild {
         TreeMap<Integer, String> unicode = new TreeMap<>();
         TreeMap<Integer, Float> widths = new TreeMap<>();
         int missing = 0;
+        boolean standIn = UnicodeGuess.standIn(font);
         for (int code : codes) {
             PdfFiles.stopIfInterrupted();
-            int key = type0 ? cid.codeToCID(code) : code;
+            int key = type0 ? CidLookup.cid((PDType0Font) font, code) : code;
+            int inherited = type0 ? cid.codeToCID(code) : code;
             String text = UnicodeGuess.of(font, code, type0 ? bytesPerCode : 1);
             if (!ToUnicodeWriter.valid(text) || ToUnicodeWriter.privateUse(text)) {
                 String s = ToUnicodeWriter.symbol(text, original, code);
                 text = s != null ? s : text;
             }
-            if (ToUnicodeWriter.valid(text) && !(level.tagged() && ToUnicodeWriter.privateUse(text))) {
-                unicode.put(code, text);
+            String mapped = standIn ? UnicodeGuess.text(font, code, type0 ? bytesPerCode : 1) : text;
+            boolean guessed = standIn && ToUnicodeWriter.valid(text) && !text.isBlank() && !ToUnicodeWriter.valid(mapped);
+            if (guessed) {
+                missing++;
+            }
+            if (ToUnicodeWriter.valid(mapped) && !(level.tagged() && ToUnicodeWriter.privateUse(mapped))) {
+                unicode.put(code, mapped);
             } else if (level.unicode()) {
                 unicode.put(code, ToUnicodeWriter.unknown(code, level));
             }
@@ -103,13 +111,14 @@ final class FontRebuild {
             if (mode == Mode.SUBSTITUTE) {
                 String name = font instanceof PDSimpleFont s && s.getEncoding() != null ? s.getEncoding().getName(code) : null;
                 int gid = substitute.glyph(code, name, text);
-                if (gid > 0) {
+                if (gid > 0 && substitute.copies()) {
                     slot = w.addCopy(gid, advance);
                 } else {
-                    GeneralPath p = substitute.fallback(text, w.unitsPerEm());
+                    GeneralPath p = gid > 0 ? substitute.outline(gid, w.unitsPerEm()) : null;
+                    p = p != null ? p : substitute.fallback(text, w.unitsPerEm());
                     slot = p != null ? w.addOutline(p, advance) : w.addEmpty(advance);
                     // A character nothing could name is lost just the same, so it counts
-                    if (p == null && (text == null || !text.isBlank())) {
+                    if (p == null && !guessed && (text == null || !text.isBlank())) {
                         missing++;
                     }
                 }
@@ -121,6 +130,9 @@ final class FontRebuild {
                 slot = p == null ? w.addEmpty(advance) : w.addOutline(p, advance);
             }
             slots.put(key, slot);
+            if (inherited != key && inherited > 0) {
+                slots.putIfAbsent(inherited, slot);
+            }
         }
         String base = cleanName(type0 ? cid.getBaseFont() : font.getName());
         String name = tag(slots, base) + base;

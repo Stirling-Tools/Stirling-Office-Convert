@@ -16,10 +16,9 @@ import java.util.Objects;
 import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.cos.COSObject;
 import org.apache.pdfbox.pdmodel.PDDocument;
-import org.apache.pdfbox.pdmodel.encryption.InvalidPasswordException;
 
-import stirling.software.officeconvert.extract.BrotliBudget;
 import stirling.software.officeconvert.extract.PdfFiles;
+import stirling.software.officeconvert.extract.Salvage;
 import stirling.software.officeconvert.memory.Admission;
 import stirling.software.officeconvert.memory.Deadline;
 
@@ -172,36 +171,8 @@ public final class PdfOptimizer {
                     + (restored == 1 ? " stream was restored to its declared length"
                             : " streams were restored to their declared lengths"));
         }
-        PDDocument doc;
-        Path rebuilt = null;
-        Salvage.Rebuilt salvaged = null;
-        try {
-            doc = PdfFiles.openAsStored(source, options.password());
-        } catch (InvalidPasswordException | InterruptedIOException e) {
-            throw e;
-        } catch (IOException e) {
-            if (e.getCause() instanceof BrotliBudget.Spent) {
-                throw e;
-            }
-            rebuilt = Files.createTempFile(folder, ".salvage-", ".part");
-            boolean opened = false;
-            try {
-                salvaged = Salvage.rebuild(source, rebuilt);
-                if (salvaged == null) {
-                    throw e;
-                }
-                try {
-                    doc = PdfFiles.openAsStored(rebuilt, options.password());
-                } catch (IOException again) {
-                    throw e;
-                }
-                opened = true;
-            } finally {
-                if (!opened) {
-                    Files.deleteIfExists(rebuilt);
-                }
-            }
-        }
+        PDDocument doc = PdfFiles.openAsStored(source, options.password());
+        Salvage.Rebuilt salvaged = PdfFiles.repairs(doc).salvaged();
         try (PDDocument open = doc) {
             if (salvaged == null) {
                 shown[0] = PageTree.census(open.getDocument(), false);
@@ -229,15 +200,11 @@ public final class PdfOptimizer {
                 Rewrite.Run r = Rewrite.run(open, os, options, size);
                 return repaired(r, salvaged, notes);
             }
-        } finally {
-            if (rebuilt != null) {
-                Files.deleteIfExists(rebuilt);
-            }
         }
     }
 
     static int check(Path pdf, String password, int pages) throws IOException {
-        try (PDDocument doc = PdfFiles.openAsStored(pdf, password)) {
+        try (PDDocument doc = PdfFiles.openUnrepaired(pdf, password)) {
             int found = PageTree.census(doc.getDocument(), true);
             if (found < pages) {
                 throw new IOException("it has " + found + " usable pages where the input has " + pages);

@@ -22,6 +22,7 @@ import org.apache.pdfbox.pdmodel.PDPage;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import stirling.software.officeconvert.extract.Salvage;
 import stirling.software.officeconvert.memory.Admission;
 
 class OptimizerApiTest {

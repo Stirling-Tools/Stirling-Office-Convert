@@ -92,7 +92,7 @@ final class GlyphCollector extends PDFStreamEngine {
     private static final float ITALIC_SHEAR = 0.12f;
 
     interface PageSink {
-        void accept(int pageIndex, PDPage page, List<RawGlyph> glyphs) throws IOException;
+        void accept(int pageIndex, PDPage page, List<RawGlyph> glyphs, int firstAnnotationSeq) throws IOException;
     }
 
     record RawGlyph(Glyph glyph, int direction, boolean invisible, float originX, float originY) {}
@@ -127,16 +127,19 @@ final class GlyphCollector extends PDFStreamEngine {
     private final Set<Glyph> marks = Collections.newSetFromMap(new IdentityHashMap<>());
     private boolean inPage;
     private int seq;
+    private int annotationSeq;
     private int pageIndex;
 
     private int rotation;
     private int nextIndex;
     private PDDocument document;
+    private OptionalContent layers;
     private OperatorBudget budget = new OperatorBudget("reading text");
     private final StreamRunner runner;
     private final TextPositions positions;
     private final ClipPath clipPath = new ClipPath();
     private final ClipArea clipArea = new ClipArea();
+    private final TextClips clips = new TextClips();
     private int currentPageNo;
     private int startPage;
     private int endPage;
@@ -211,12 +214,13 @@ final class GlyphCollector extends PDFStreamEngine {
             throws IOException {
         GlyphCollector collector = new GlyphCollector(fonts, sink, parsed);
         collector.document = doc;
+        collector.layers = OptionalContent.of(doc);
         collector.startPage = first + 1;
         collector.endPage = last + 1;
         collector.nextIndex = first;
         collector.currentPageNo = 1;
         for (PDPage page : doc.getPages()) {
-            if (page.hasContents()) {
+            if (page.hasContents() || Annotations.any(page)) {
                 collector.processPage(page);
             }
             collector.currentPageNo++;
@@ -230,16 +234,38 @@ final class GlyphCollector extends PDFStreamEngine {
             return;
         }
         try {
-            super.processOperator(operator, operands);
+            if (TextObjects.opensImplicitly(this, operator)) {
+                super.processOperator(TextObjects.BEGIN, List.of());
+            }
+            super.processOperator(operator, TextObjects.sized(operator, operands));
+            clips.operator(operator.getName());
         } catch (IOException | RuntimeException e) {
             BrokenOperators.skip(operator, e);
         }
     }
 
     @Override
+    public void saveGraphicsState() {
+        super.saveGraphicsState();
+        clips.save();
+    }
+
+    @Override
+    public void restoreGraphicsState() {
+        super.restoreGraphicsState();
+        clips.restore();
+    }
+
+    @Override
     public void showForm(PDFormXObject form) throws IOException {
         if (budget.form()) {
-            runner.showForm(form);
+            int mark = clips.mark();
+            int level = clips.level();
+            try {
+                runner.showForm(form);
+            } finally {
+                clips.leave(mark, level);
+            }
         }
     }
 
@@ -252,12 +278,24 @@ final class GlyphCollector extends PDFStreamEngine {
 
     @Override
     protected void processTransparencyGroup(PDTransparencyGroup group) throws IOException {
-        runner.processTransparencyGroup(group);
+        int mark = clips.mark();
+        int level = clips.level();
+        try {
+            runner.processTransparencyGroup(group);
+        } finally {
+            clips.leave(mark, level);
+        }
     }
 
     @Override
     protected void processAnnotation(PDAnnotation annotation, PDAppearanceStream appearance) throws IOException {
-        runner.processAnnotation(annotation, appearance);
+        int mark = clips.mark();
+        int level = clips.level();
+        try {
+            runner.processAnnotation(annotation, appearance);
+        } finally {
+            clips.leave(mark, level);
+        }
     }
 
     @Override
@@ -289,7 +327,8 @@ final class GlyphCollector extends PDFStreamEngine {
             startPage(page);
             positions.page(page);
             runner.processPage(page);
-            Annotations.show(this, page);
+            annotationSeq = seq;
+            Annotations.show(this, page, layers);
             endPage(page);
             page.removePageResourceFromCache();
         } catch (IOException e) {
@@ -308,11 +347,13 @@ final class GlyphCollector extends PDFStreamEngine {
         rotation = page.getRotation();
         blankPagesBefore(pageIndex);
         current = new ArrayList<>();
+        clips.reset();
         spans.clear();
         outerActual = null;
         actualDepth = 0;
         untracked = 0;
         seq = 0;
+        annotationSeq = Integer.MAX_VALUE;
     }
 
     @Override
@@ -442,11 +483,21 @@ final class GlyphCollector extends PDFStreamEngine {
         inPage = false;
         List<RawGlyph> glyphs = current;
         glyphs.removeIf(r -> r.glyph().text == HIDDEN);
+        revealClipText(glyphs);
         composeMarks(glyphs);
         settleAlternatives(glyphs);
         current = new ArrayList<>();
         nextIndex = pageIndex + 1;
-        sink.accept(pageIndex, page, glyphs);
+        sink.accept(pageIndex, page, glyphs, annotationSeq);
+    }
+
+    private void revealClipText(List<RawGlyph> glyphs) {
+        for (int i = 0; i < glyphs.size(); i++) {
+            RawGlyph r = glyphs.get(i);
+            if (r.invisible() && clips.painted(r.glyph())) {
+                glyphs.set(i, new RawGlyph(r.glyph(), r.direction(), false, r.originX(), r.originY()));
+            }
+        }
     }
 
     private void composeMarks(List<RawGlyph> glyphs) {
@@ -503,7 +554,7 @@ final class GlyphCollector extends PDFStreamEngine {
     private void blankPagesBefore(int index) throws IOException {
         while (nextIndex < index) {
             int blank = nextIndex++;
-            sink.accept(blank, document.getPage(blank), List.of());
+            sink.accept(blank, document.getPage(blank), List.of(), Integer.MAX_VALUE);
         }
     }
 
@@ -586,6 +637,9 @@ final class GlyphCollector extends PDFStreamEngine {
         if (WordContext.mark(unicode) && codes != null && codes.length == 1
                 && (positions.mapped(pdFont, codes[0]) || positions.unmapped.shapeRead(pdFont, codes[0], unicode))) {
             marks.add(g);
+        }
+        if (mode == RenderingMode.NEITHER_CLIP) {
+            clips.clip(g);
         }
         Matrix tm = tp.getTextMatrix();
         if (current.size() >= MAX_PAGE_GLYPHS) {

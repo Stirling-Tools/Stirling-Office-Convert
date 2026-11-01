@@ -127,10 +127,15 @@ final class GraphicsCollector extends PDFGraphicsStreamEngine {
 
     static PageGraphics read(PDPage page, AffineTransform toDisplay, float width, float height, ParsedStreams parsed)
             throws IOException {
+        return read(page, toDisplay, width, height, parsed, OptionalContent.of(null));
+    }
+
+    static PageGraphics read(PDPage page, AffineTransform toDisplay, float width, float height, ParsedStreams parsed,
+            OptionalContent layers) throws IOException {
         GraphicsCollector c = new GraphicsCollector(page, toDisplay, width, height, parsed);
         try {
             c.processPage(page);
-            Annotations.show(c, page);
+            Annotations.show(c, page, layers);
         } catch (IOException e) {
             BrokenOperators.brokenStream(e);
         }
@@ -173,7 +178,10 @@ final class GraphicsCollector extends PDFGraphicsStreamEngine {
             return;
         }
         try {
-            super.processOperator(operator, operands);
+            if (TextObjects.opensImplicitly(this, operator)) {
+                super.processOperator(TextObjects.BEGIN, List.of());
+            }
+            super.processOperator(operator, TextObjects.sized(operator, operands));
         } catch (IOException | RuntimeException e) {
             BrokenOperators.skip(operator, e);
         }

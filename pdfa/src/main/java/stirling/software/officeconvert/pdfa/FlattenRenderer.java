@@ -4,6 +4,7 @@ import java.awt.geom.PathIterator;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.Collections;
 import java.util.IdentityHashMap;
@@ -13,6 +14,8 @@ import org.apache.pdfbox.cos.COSBase;
 import org.apache.pdfbox.cos.COSStream;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.graphics.form.PDTransparencyGroup;
+import org.apache.pdfbox.pdmodel.graphics.image.PDImage;
+import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
 import org.apache.pdfbox.rendering.ImageType;
 import org.apache.pdfbox.rendering.PageDrawer;
 import org.apache.pdfbox.rendering.PageDrawerParameters;
@@ -30,6 +33,8 @@ final class FlattenRenderer extends GuardedRenderer {
     private boolean recursiveGroup;
 
     private Drawer drawer;
+
+    private final Map<COSStream, Boolean> decodable = new IdentityHashMap<>();
 
     FlattenRenderer(PDDocument doc) {
         super(doc, "flattening transparency");
@@ -98,6 +103,15 @@ final class FlattenRenderer extends GuardedRenderer {
                 recursiveGroup = true;
                 throw new IOException("A transparency group or soft mask is recursive or nested too deeply");
             }
+        }
+
+        @Override
+        public void drawImage(PDImage image) throws IOException {
+            if (image instanceof PDImageXObject x
+                    && !decodable.computeIfAbsent(x.getCOSObject(), StrictFilters::decodable)) {
+                return;
+            }
+            super.drawImage(image);
         }
 
         @Override

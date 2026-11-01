@@ -48,6 +48,25 @@ final class UnicodeGuess {
 
     private static final Map<COSStream, Optional<CMap>> MAPS = Collections.synchronizedMap(new WeakHashMap<>());
 
+    static boolean standIn(PDFont font) {
+        return font instanceof PDType0Font t0 && t0.getDescendantFont() instanceof PDCIDFontType2 c2
+                && !c2.isEmbedded() && !unreadableMap(font);
+    }
+
+    static String text(PDFont font, int code, int bytesPerCode) {
+        if (!standIn(font)) {
+            return of(font, code, bytesPerCode);
+        }
+        String t = declared(font, code);
+        return ToUnicodeWriter.valid(t) ? t : null;
+    }
+
+    private static boolean unreadableMap(PDFont font) {
+        return font.getCOSObject().getDictionaryObject(COSName.TO_UNICODE) instanceof COSStream s
+                && !MAPS.computeIfAbsent(s, k -> Optional.ofNullable(CodeReader.cmap(k)))
+                        .map(CMap::hasUnicodeMappings).orElse(false);
+    }
+
     static String declared(PDFont font, int code) {
         COSBase tu = font.getCOSObject().getDictionaryObject(COSName.TO_UNICODE);
         if (tu instanceof COSStream s) {
@@ -55,7 +74,7 @@ final class UnicodeGuess {
             return cmap == null ? null : cmap.toUnicode(code);
         }
         if (font instanceof PDType0Font t0) {
-            return adobeCjk(t0) ? cjk(t0, code) : null;
+            return adobeCjk(t0) || t0.getCMapUCS2() != null ? cjk(t0, code) : null;
         }
         if (font instanceof PDType3Font) {
             return null;
@@ -67,9 +86,7 @@ final class UnicodeGuess {
         }
     }
 
-    private static final String KOREA1 = "Korea1";
-
-    private static final Set<String> CJK_ORDERINGS = Set.of("GB1", "CNS1", "Japan1", KOREA1);
+    private static final Set<String> CJK_ORDERINGS = Set.of("GB1", "CNS1", "Japan1", "Korea1");
 
     private static final Pattern UNICODE_CMAP = Pattern.compile("Uni[A-Za-z0-9]+-(UCS2|UTF16)(-HW)?-[HV]");
 
@@ -80,19 +97,24 @@ final class UnicodeGuess {
         if (cmap != null && UNICODE_CMAP.matcher(cmap).matches()) {
             t = (code & 0xFFFF0000) == 0 ? String.valueOf((char) code)
                     : new String(new char[] {(char) (code >>> 16), (char) code});
-        } else if (KOREA1.equals(font.getDescendantFont().getCIDSystemInfo().getOrdering())) {
-            // PDFBox's Adobe-Korea1-UCS2 map is shifted (CID 1 gives U+0000); only legacy one-byte ASCII is safe
-            boolean legacy = cmap != null && !cmap.startsWith("Identity");
-            boolean won = code == 0x5C && legacy && cmap.startsWith("KSCpc");
-            return legacy && code >= 0x20 && code < 0x7F && !won ? String.valueOf((char) code) : null;
+            if (privateUse(t) && font.getCMapUCS2() != null) {
+                String collected = font.getCMapUCS2().toUnicode(CidLookup.cid(font, code));
+                t = collected != null && !privateUse(collected) ? collected : t;
+            }
         } else {
             try {
-                t = font.toUnicode(code);
+                t = font.getCMapUCS2() != null ? font.getCMapUCS2().toUnicode(CidLookup.cid(font, code))
+                        : font.toUnicode(code);
             } catch (RuntimeException e) {
                 return null;
             }
         }
         return t == null || t.indexOf('\uFFFD') >= 0 || !pairedSurrogates(t) ? null : t;
+    }
+
+    private static boolean privateUse(String t) {
+        int cp = t.codePointAt(0);
+        return t.length() == Character.charCount(cp) && Character.getType(cp) == Character.PRIVATE_USE;
     }
 
     private static boolean pairedSurrogates(String t) {
@@ -133,10 +155,6 @@ final class UnicodeGuess {
             ttf = tt.getTrueTypeFont();
             gid = tt.codeToGID(code);
         } else if (font instanceof PDType0Font t0 && t0.getDescendantFont() instanceof PDCIDFontType2 c2) {
-            if (!c2.isEmbedded()) {
-                // An unembedded CID font's glyph ids index PDFBox's stand-in, not the author's font
-                return null;
-            }
             ttf = c2.getTrueTypeFont();
             gid = c2.codeToGID(code);
         } else if (font instanceof PDType1Font t1) {

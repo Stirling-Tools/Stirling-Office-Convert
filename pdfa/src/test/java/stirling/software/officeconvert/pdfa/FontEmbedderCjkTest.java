@@ -30,7 +30,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import stirling.software.officeconvert.topdf.font.FontSet;
-import stirling.software.officeconvert.topdf.font.GlyphOutlines;
 
 class FontEmbedderCjkTest {
 
@@ -61,9 +60,9 @@ class FontEmbedderCjkTest {
         Path cff = cffCjkDirectory();
         assumeTrue(cff != null, "no CFF-outline CJK font found");
         FontSet fonts = FontSet.builder().systemFonts(false).font(liberation()).directory(cff).build();
-        try (GlyphOutlines outlines = GlyphOutlines.open(fonts.library().fallback(0x65E5, false, false))) {
-            Rectangle2D first = outlines.path(0x65E5, 2048).getBounds2D();
-            Rectangle2D second = outlines.path(0x65E5, 2048).getBounds2D();
+        try (GlyphSource source = GlyphSource.open(fonts.library(), BaseFontName.parse("LiberationSans", 0, 400))) {
+            Rectangle2D first = source.fallback("\u65E5", 2048).getBounds2D();
+            Rectangle2D second = source.fallback("\u65E5", 2048).getBounds2D();
             assertFalse(first.isEmpty());
             assertEquals(first, second);
         }
@@ -97,20 +96,31 @@ class FontEmbedderCjkTest {
     }
 
     @Test
-    void koreanThroughALegacyCMapIsNotGuessedFromAShiftedMap() throws Exception {
+    void aPrivateUseUnicodeCMapCodeReadsTheCharacterItsCollectionGivesIt() throws Exception {
+        COSDictionary cid = cidFont(COSName.CID_FONT_TYPE2, "PMingLiU", "Adobe", "CNS1", 4);
+        try (PDDocument d = Loader.loadPDF(document(type0("PMingLiU", "UniCNS-UTF16-H", cid, null),
+                new byte[] {(byte) 0xE6, (byte) 0x87}))) {
+            PDType0Font font = (PDType0Font) d.getPage(0).getResources().getFont(COSName.getPDFName("F1"));
+            assertEquals(new String(Character.toChars(0x2555B)), UnicodeGuess.of(font, 0xE687));
+            assertEquals("\u80E1", UnicodeGuess.of(font, 0x80E1));
+        }
+    }
+
+    @Test
+    void koreanThroughALegacyCMapReadsItsCollection() throws Exception {
         for (COSName subtype : new COSName[] {COSName.CID_FONT_TYPE0, COSName.CID_FONT_TYPE2}) {
             COSDictionary cid = cidFont(subtype, "Batang", "Adobe", "Korea1", 2);
             try (PDDocument d = Loader.loadPDF(document(type0("Batang-KSCms-UHC-H", "KSCms-UHC-H", cid, null),
                     new byte[] {(byte) 0xBE, (byte) 0xC8}))) {
                 PDType0Font font = (PDType0Font) d.getPage(0).getResources().getFont(COSName.getPDFName("F1"));
-                assertEquals(null, UnicodeGuess.of(font, 0xBEC8), subtype.getName());
+                assertEquals("\uC548", UnicodeGuess.of(font, 0xBEC8), subtype.getName());
                 assertEquals("A", UnicodeGuess.of(font, 0x41), subtype.getName());
             }
             COSDictionary identity = cidFont(subtype, "Batang", "Adobe", "Korea1", 2);
             try (PDDocument d = Loader.loadPDF(document(type0("Batang", "Identity-H", identity, null),
                     new byte[] {0x00, 0x41}))) {
                 PDType0Font font = (PDType0Font) d.getPage(0).getResources().getFont(COSName.getPDFName("F1"));
-                assertEquals(null, UnicodeGuess.of(font, 0x41), "an Identity code is a CID, not ASCII");
+                assertEquals("`", UnicodeGuess.of(font, 0x41), "an Identity code is a CID, not ASCII");
             }
         }
         COSDictionary uni = cidFont(COSName.CID_FONT_TYPE0, "Batang", "Adobe", "Korea1", 2);
@@ -118,6 +128,23 @@ class FontEmbedderCjkTest {
                 new byte[] {(byte) 0xC5, 0x48}))) {
             PDType0Font font = (PDType0Font) d.getPage(0).getResources().getFont(COSName.getPDFName("F1"));
             assertEquals("안", UnicodeGuess.of(font, 0xC548));
+        }
+    }
+
+    @Test
+    void koreanThroughALegacyCMapIsDrawnAndExtracted() throws Exception {
+        FontSet fonts = FontSet.system();
+        assumeTrue(fonts.library().fallback(0xC548, false, false) != null, "no Korean fallback font installed");
+        for (COSName subtype : new COSName[] {COSName.CID_FONT_TYPE0, COSName.CID_FONT_TYPE2}) {
+            COSDictionary cid = cidFont(subtype, "Batang", "Adobe", "Korea1", 2);
+            Path out = embed(document(type0("Batang-KSCms-UHC-H", "KSCms-UHC-H", cid, null),
+                    new byte[] {(byte) 0xBE, (byte) 0xC8}), fonts, true);
+            try (PDDocument d = Loader.loadPDF(out.toFile())) {
+                PDType0Font font = (PDType0Font) d.getPage(0).getResources().getFont(COSName.getPDFName("F1"));
+                assertTrue(font.isEmbedded(), subtype.getName());
+                assertFalse(((PDVectorFont) font).getPath(0xBEC8).getBounds2D().isEmpty(), subtype.getName());
+                assertEquals("\uC548", new org.apache.pdfbox.text.PDFTextStripper().getText(d).strip(), subtype.getName());
+            }
         }
     }
 
