@@ -233,6 +233,16 @@ class TransferBakingTest {
     }
 
     @Test
+    void bakedColoursAreRecordedAsDeviceRgbUse() throws Exception {
+        Path in = page("0 g /GT gs 0 0 100 100 re f", resources("ExtGState", "GT", invert()));
+        try (PDDocument d = Loader.loadPDF(in.toFile())) {
+            DeviceColours colours = new DeviceColours();
+            TransferBaking.run(d, ContentGraph.of(d), new Report(), colours);
+            assertTrue(colours.rgb());
+        }
+    }
+
+    @Test
     void aSoftMaskKeepsItsTransferFunction() throws Exception {
         COSStream group = new COSStream();
         try (OutputStream o = group.createOutputStream()) {

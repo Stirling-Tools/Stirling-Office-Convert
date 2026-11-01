@@ -148,11 +148,13 @@ final class TransferBaking {
 
     private boolean lost;
 
+    private boolean wroteRgb;
+
     private TransferBaking(PDDocument doc) {
         this.doc = doc;
     }
 
-    static void run(PDDocument doc, ContentGraph graph, Report report) throws IOException {
+    static void run(PDDocument doc, ContentGraph graph, Report report, DeviceColours colours) throws IOException {
         TransferBaking b = new TransferBaking(doc);
         boolean any = false;
         for (COSDictionary res : graph.resources()) {
@@ -182,6 +184,9 @@ final class TransferBaking {
             }
         }
         b.dropReplaced(graph);
+        if (b.wroteRgb) {
+            colours.operator("rg");
+        }
         report.warn("Applied transfer functions, which PDF/A does not allow, to the colours they change");
         if (b.lost) {
             report.warn("Some transfer functions could not be applied to the content they change");
@@ -513,6 +518,7 @@ final class TransferBaking {
             out.add(new COSFloat(Math.round(t.apply(i, rgb[i]) * 10000) / 10000f));
         }
         out.add(Operator.getOperator(stroke ? "RG" : "rg"));
+        wroteRgb = true;
     }
 
     private static float[] toRgb(PDColorSpace cs, float[] v) {
@@ -690,6 +696,7 @@ final class TransferBaking {
             space.add(COSName.PATTERN);
             space.add(COSName.DEVICERGB);
             out.add(register(resources, COSName.COLORSPACE, COSName.getPDFName("PatternRGB"), space));
+            wroteRgb = true;
             out.add(Operator.getOperator(stroke ? "CS" : "cs"));
             for (int i = 0; i < 3; i++) {
                 out.add(new COSFloat(Math.round(t.apply(i, rgb[i]) * 10000) / 10000f));
@@ -726,6 +733,7 @@ final class TransferBaking {
         BufferedImage rgb = transferred(opaque, t);
         boolean jpeg = COSName.DCT_DECODE.equals(lastFilter(s)) && Transparency.photographic(rgb);
         PDImageXObject out = jpeg ? JPEGFactory.createFromImage(doc, rgb, 0.92f) : LosslessFactory.createFromImage(doc, rgb);
+        wroteRgb = true;
         COSStream o = out.getCOSObject();
         for (COSName k : List.of(COSName.SMASK, COSName.INTENT, COSName.STRUCT_PARENT, COSName.METADATA)) {
             if (s.getItem(k) != null) {
@@ -791,6 +799,7 @@ final class TransferBaking {
             return null;
         }
         BufferedImage rgb = transferred(img, t);
+        wroteRgb = true;
         int w = rgb.getWidth();
         int h = rgb.getHeight();
         ByteArrayOutputStream data = new ByteArrayOutputStream();
