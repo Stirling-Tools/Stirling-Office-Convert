@@ -1,14 +1,12 @@
 package stirling.software.officeconvert.extract;
 
-import java.io.IOException;
-import java.io.InputStream;
-
 import org.apache.fontbox.cmap.CMap;
-import org.apache.fontbox.cmap.CMapParser;
+import org.apache.pdfbox.cos.COSBase;
 import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.cos.COSStream;
-import org.apache.pdfbox.io.RandomAccessReadBuffer;
 import org.apache.pdfbox.pdmodel.font.PDType0Font;
+
+import stirling.software.officeconvert.fonts.CodeReader;
 
 final class CollectionText {
 
@@ -26,14 +24,9 @@ final class CollectionText {
             return null;
         }
         try {
-            CMap toUnicode = null;
-            if (font.getCOSObject().getDictionaryObject(COSName.TO_UNICODE) instanceof COSStream stream) {
-                try (InputStream in = stream.createInputStream()) {
-                    toUnicode = new CMapParser().parse(new RandomAccessReadBuffer(in));
-                }
-            }
-            return new CollectionText(font, toUnicode);
-        } catch (IOException | RuntimeException e) {
+            COSBase declared = font.getCOSObject().getDictionaryObject(COSName.TO_UNICODE);
+            return new CollectionText(font, declared instanceof COSStream ? CodeReader.cmap(declared) : null);
+        } catch (RuntimeException e) {
             return null;
         }
     }
