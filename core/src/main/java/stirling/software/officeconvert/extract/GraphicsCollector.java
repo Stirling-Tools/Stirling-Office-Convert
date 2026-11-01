@@ -94,6 +94,12 @@ final class GraphicsCollector extends PDFGraphicsStreamEngine {
 
     private final List<Rule> rules = new ArrayList<>();
     private final List<Fill> fills = new ArrayList<>();
+
+    private static final int MAX_DOTS = 50_000;
+
+    private final List<Fill> dots = new ArrayList<>();
+
+    private final Map<Object, Integer> dotOrder = new IdentityHashMap<>();
     private final List<ImageDraw> images = new ArrayList<>();
     private final List<VectorMark> marks = new ArrayList<>();
     private final List<PageGraphics.Area> masked = new ArrayList<>();
@@ -150,6 +156,10 @@ final class GraphicsCollector extends PDFGraphicsStreamEngine {
             Annotations.show(c, page, layers);
         } catch (IOException e) {
             BrokenOperators.brokenStream(e);
+        }
+        for (Fill dot : TouchingDots.keep(c.dots)) {
+            c.fills.add(dot);
+            c.paintOrder.put(dot, c.dotOrder.get(dot));
         }
         HiddenFills.removeRules(c.rules, c.fills, c.paintOrder, c.seeThrough);
         HiddenFills.remove(c.fills, c.paintOrder, c.seeThrough);
@@ -715,6 +725,12 @@ final class GraphicsCollector extends PDFGraphicsStreamEngine {
         }
         rules.addAll(shapes.rules());
         fills.addAll(shapes.fills());
+        for (Fill dot : shapes.dots()) {
+            if (dots.size() < MAX_DOTS) {
+                dots.add(dot);
+                dotOrder.put(dot, painted);
+            }
+        }
         if (shapes.mark() != null) {
             marks.add(shapes.mark());
             paintOrder.put(shapes.mark(), painted);
