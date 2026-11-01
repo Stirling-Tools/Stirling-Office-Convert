@@ -59,6 +59,34 @@ class UndecodableImageTest {
         assertFalse(StrictFilters.a85Text("9jq{".getBytes(StandardCharsets.US_ASCII)));
     }
 
+    @Test
+    void anUnknownFilterIsNotDecodable() throws IOException {
+        try (PDDocument doc = new PDDocument()) {
+            COSStream s = raw(doc, COSName.getPDFName("NoSuchDecode"), "abc");
+            assertFalse(StrictFilters.decodable(s));
+        }
+    }
+
+    @Test
+    void aLongTextStageIsCheckedPastItsFirstBlock() throws IOException {
+        String body = "00".repeat(20_000);
+        try (PDDocument doc = new PDDocument()) {
+            assertTrue(StrictFilters.decodable(raw(doc, COSName.ASCII_HEX_DECODE, body + ">")));
+            assertFalse(StrictFilters.decodable(raw(doc, COSName.ASCII_HEX_DECODE, body + "\u0001>")));
+            assertTrue(StrictFilters.decodable(raw(doc, COSName.ASCII85_DECODE, "<~" + "z".repeat(20_000) + "~>")));
+            assertFalse(StrictFilters.decodable(raw(doc, COSName.ASCII85_DECODE, "z".repeat(20_000) + "{~>")));
+        }
+    }
+
+    private static COSStream raw(PDDocument doc, COSName filter, String data) throws IOException {
+        COSStream s = doc.getDocument().createCOSStream();
+        s.setItem(COSName.FILTER, filter);
+        try (OutputStream out = s.createRawOutputStream()) {
+            out.write(data.getBytes(StandardCharsets.ISO_8859_1));
+        }
+        return s;
+    }
+
     private static PDDocument page(int hexFilters) throws IOException {
         PDDocument doc = new PDDocument();
         PDPage page = new PDPage(PDRectangle.LETTER);

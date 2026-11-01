@@ -43,6 +43,7 @@ import org.apache.pdfbox.util.Matrix;
 import org.apache.pdfbox.util.Vector;
 
 import stirling.software.officeconvert.extract.HiddenContent;
+import stirling.software.officeconvert.extract.StrictFilters;
 import stirling.software.officeconvert.extract.OperatorBudget;
 import stirling.software.officeconvert.layout.Box;
 
@@ -911,7 +912,8 @@ final class PaintOrder extends PDFGraphicsStreamEngine {
 
     @Override
     public void drawImage(PDImage pdImage) {
-        if (hiddenContent != null && pdImage instanceof PDXObject x && hiddenContent.hidden(x)) {
+        if (hiddenContent != null && pdImage instanceof PDXObject x && hiddenContent.hidden(x)
+                || pdImage instanceof PDImageXObject image && !StrictFilters.decodable(image.getCOSObject())) {
             return;
         }
         AffineTransform ctm = getGraphicsState().getCurrentTransformationMatrix().createAffineTransform();
