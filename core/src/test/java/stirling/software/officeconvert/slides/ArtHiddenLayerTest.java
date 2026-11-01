@@ -44,17 +44,28 @@ class ArtHiddenLayerTest {
             named.setItem(COSName.getPDFName("L1"), group);
             resources.getCOSObject().setItem(COSName.PROPERTIES, named);
             page.setResources(resources);
+            org.apache.pdfbox.pdmodel.graphics.form.PDFormXObject hidden =
+                    new org.apache.pdfbox.pdmodel.graphics.form.PDFormXObject(doc);
+            hidden.setBBox(new PDRectangle(720, 405));
+            try (java.io.OutputStream out = hidden.getContentStream().createOutputStream()) {
+                out.write("1 0 0 rg 400 100 200 200 re f".getBytes(java.nio.charset.StandardCharsets.US_ASCII));
+            }
+            hidden.getCOSObject().setItem(COSName.OC, group);
+            org.apache.pdfbox.pdmodel.graphics.form.PDFormXObject visible =
+                    new org.apache.pdfbox.pdmodel.graphics.form.PDFormXObject(doc);
+            visible.setBBox(new PDRectangle(720, 405));
+            try (java.io.OutputStream out = visible.getContentStream().createOutputStream()) {
+                out.write("0 0 1 RG 6 w 0 50 m 100 300 260 300 360 50 c S"
+                        .getBytes(java.nio.charset.StandardCharsets.US_ASCII));
+            }
             try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
                 cs.beginMarkedContent(COSName.OC, group);
                 cs.setNonStrokingColor(1f, 0f, 0f);
                 cs.addRect(400, 100, 200, 200);
                 cs.fill();
                 cs.endMarkedContent();
-                cs.setStrokingColor(0f, 0f, 1f);
-                cs.setLineWidth(6);
-                cs.moveTo(0, 50);
-                cs.curveTo(100, 300, 260, 300, 360, 50);
-                cs.stroke();
+                cs.drawForm(hidden);
+                cs.drawForm(visible);
             }
             AffineTransform toDisplay = new AffineTransform(1, 0, 0, -1, 0, 405);
             PaintOrder paint = PaintOrder.read(page, toDisplay, 720, 405, HiddenContent.of(doc));

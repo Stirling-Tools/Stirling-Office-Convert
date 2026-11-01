@@ -29,7 +29,7 @@ public final class LigatureNames {
         }
         int dot = name.indexOf('.');
         String base = dot >= 0 ? name.substring(0, dot) : name;
-        if (base.isEmpty() || base.indexOf('_') < 0 && !base.startsWith("uni")) {
+        if (base.isEmpty() || base.indexOf('_') < 0 && !base.startsWith("uni") && !codePointName(base)) {
             return null;
         }
         String[] parts = base.split("_", MAX_PARTS + 1);
@@ -45,6 +45,10 @@ public final class LigatureNames {
             text.append(piece);
         }
         return text.toString();
+    }
+
+    private static boolean codePointName(String base) {
+        return base.length() >= 5 && base.length() <= 7 && base.charAt(0) == 'u' && hex(base.substring(1)) >= 0;
     }
 
     private static String component(String part, GlyphList glyphs) {

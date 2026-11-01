@@ -21,6 +21,7 @@ class LigatureNamesTest {
         assertEquals("ft", LigatureNames.text("f_t.alt", TextPositions.GLYPHS));
         assertEquals("Ая", LigatureNames.text("uni0410_uni044F", TextPositions.GLYPHS));
         assertEquals("fi", LigatureNames.text("uni00660069", TextPositions.GLYPHS));
+        assertEquals("\uD83D\uDE00", LigatureNames.text("u1F600", TextPositions.GLYPHS));
         assertEquals("\uD83D\uDE00a", LigatureNames.text("u1F600_a", TextPositions.GLYPHS));
     }
 
