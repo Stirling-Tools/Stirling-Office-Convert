@@ -43,6 +43,7 @@ import org.apache.pdfbox.util.Matrix;
 import org.apache.pdfbox.util.Vector;
 
 import stirling.software.officeconvert.extract.HiddenContent;
+import stirling.software.officeconvert.extract.PdfColours;
 import stirling.software.officeconvert.extract.OperatorBudget;
 import stirling.software.officeconvert.layout.Box;
 
@@ -624,11 +625,7 @@ final class PaintOrder extends PDFGraphicsStreamEngine {
         if (colour == null || colour.getColorSpace() instanceof PDPattern) {
             return -1;
         }
-        try {
-            return colour.toRGB() & 0xFFFFFF;
-        } catch (IOException | RuntimeException e) {
-            return -1;
-        }
+        return PdfColours.toRgb(colour, -1);
     }
 
     private LineShape straight() {
@@ -657,10 +654,8 @@ final class PaintOrder extends PDFGraphicsStreamEngine {
         if (segments != 2) {
             return null;
         }
-        int rgb;
-        try {
-            rgb = state.getStrokingColor().toRGB() & 0xFFFFFF;
-        } catch (IOException | RuntimeException e) {
+        int rgb = PdfColours.toRgb(state.getStrokingColor(), -1);
+        if (rgb < 0) {
             return null;
         }
         AffineTransform ctm = state.getCurrentTransformationMatrix().createAffineTransform();

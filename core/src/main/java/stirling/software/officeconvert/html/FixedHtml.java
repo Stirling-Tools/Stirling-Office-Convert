@@ -49,6 +49,7 @@ import org.apache.pdfbox.util.Vector;
 
 import stirling.software.officeconvert.build.RgbPixels;
 import stirling.software.officeconvert.extract.GuardedRenderer;
+import stirling.software.officeconvert.extract.PdfColours;
 import stirling.software.officeconvert.memory.Admission;
 import stirling.software.officeconvert.sink.KeepOpen;
 import stirling.software.officeconvert.sink.Links;
@@ -353,7 +354,7 @@ public final class FixedHtml {
                     invisible = state.getTextState().getRenderingMode() == RenderingMode.NEITHER
                             || unmapped(text.getFont(), text.getCharacterCodes());
                     var color = state.getNonStrokingColor();
-                    rgb = color == null ? 0 : color.toRGB();
+                    rgb = PdfColours.toRgb(color, 0);
                 } catch (IOException | RuntimeException ignored) {
                     rgb = 0;
                 }
