@@ -49,6 +49,7 @@ import org.apache.pdfbox.util.Vector;
 
 import stirling.software.officeconvert.build.RgbPixels;
 import stirling.software.officeconvert.extract.GuardedRenderer;
+import stirling.software.officeconvert.extract.PdfColours;
 import stirling.software.officeconvert.memory.Admission;
 import stirling.software.officeconvert.sink.KeepOpen;
 import stirling.software.officeconvert.sink.Links;
@@ -353,7 +354,7 @@ public final class FixedHtml {
                     invisible = state.getTextState().getRenderingMode() == RenderingMode.NEITHER
                             || unmapped(text.getFont(), text.getCharacterCodes());
                     var color = state.getNonStrokingColor();
-                    rgb = color == null ? 0 : color.toRGB();
+                    rgb = PdfColours.toRgb(color, 0);
                 } catch (IOException | RuntimeException ignored) {
                     rgb = 0;
                 }
@@ -571,7 +572,7 @@ public final class FixedHtml {
                 @Override
                 protected void showFontGlyph(Matrix matrix, PDFont font, int code, Vector displacement)
                         throws IOException {
-                    if (getGraphicsState().getTextState().getRenderingMode().isClip() || font.toUnicode(code) == null) {
+                    if (inPattern() || getGraphicsState().getTextState().getRenderingMode().isClip() || font.toUnicode(code) == null) {
                         super.showFontGlyph(matrix, font, code, displacement);
                     }
                 }
@@ -579,7 +580,7 @@ public final class FixedHtml {
                 @Override
                 protected void showType3Glyph(Matrix matrix, PDType3Font font, int code, Vector displacement)
                         throws IOException {
-                    if (getGraphicsState().getTextState().getRenderingMode().isClip() || font.toUnicode(code) == null) {
+                    if (inPattern() || getGraphicsState().getTextState().getRenderingMode().isClip() || font.toUnicode(code) == null) {
                         super.showType3Glyph(matrix, font, code, displacement);
                     }
                 }

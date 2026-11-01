@@ -78,7 +78,15 @@ public final class Glyph {
     }
 
     Glyph withText(String replacement) {
-        Glyph g = new Glyph(replacement, x, width, baseline, size, ascent, descent, font, rgb, seq, spaceWidth, bold,
+        return copy(replacement, rgb);
+    }
+
+    Glyph withColour(int colour) {
+        return copy(text, colour);
+    }
+
+    private Glyph copy(String replacement, int colour) {
+        Glyph g = new Glyph(replacement, x, width, baseline, size, ascent, descent, font, colour, seq, spaceWidth, bold,
                 italic);
         g.underline = underline;
         g.strike = strike;

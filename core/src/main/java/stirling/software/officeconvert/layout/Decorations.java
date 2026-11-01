@@ -1,6 +1,7 @@
 package stirling.software.officeconvert.layout;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
@@ -323,6 +324,10 @@ final class Decorations {
 
     private static final float MAX_DOT = 24f;
 
+    private static final int MAX_SHAPES = 150;
+
+    private static final float JOIN_SLACK = 0.5f;
+
     static List<PageLayout.Decoration> leftovers(List<Fill> fills, List<Rule> rules, List<VectorMark> dots,
             List<Box> figures, List<Box> tables, boolean tinted, ToIntFunction<Object> order) {
         List<PageLayout.Decoration> out = new ArrayList<>();
@@ -333,14 +338,21 @@ final class Decorations {
             }
             out.add(new PageLayout.Decoration(b, f.rgb(), -1, 0, false, false, order.applyAsInt(f)));
         }
+        List<Ruled> shown = new ArrayList<>();
         for (Rule r : rules) {
             Box b = Regions.of(r);
             if (r.length() < 6 || Regions.insideAny(b, figures, 1f) || Regions.insideAny(b, tables, 2f) || isWhite(r.rgb())) {
                 continue;
             }
-            out.add(new PageLayout.Decoration(b, r.rgb(), -1, 0, false, false, order.applyAsInt(r)));
+            shown.add(new Ruled(r, order.applyAsInt(r)));
         }
-        if (out.size() > 150) {
+        if (out.size() + shown.size() > MAX_SHAPES) {
+            shown = joined(shown);
+        }
+        for (Ruled r : shown) {
+            out.add(new PageLayout.Decoration(Regions.of(r.rule()), r.rule().rgb(), -1, 0, false, false, r.order()));
+        }
+        if (out.size() > MAX_SHAPES) {
             out.clear();
         }
         out.addAll(dots(dots, figures, tables, order));
@@ -362,8 +374,41 @@ final class Decorations {
             }
             out.add(new PageLayout.Decoration(b, fill, line, line < 0 ? 0 : m.lineWidth(), false, true, order.applyAsInt(m)));
         }
-        return out.size() > 150 ? new ArrayList<>() : out;
+        return out.size() > MAX_SHAPES ? new ArrayList<>() : out;
     }
+
+    record Ruled(Rule rule, int order) {}
+
+    static List<Ruled> joined(List<Ruled> rules) {
+        List<Ruled> sorted = new ArrayList<>(rules);
+        sorted.sort(Comparator.comparing((Ruled r) -> r.rule().horizontal()).thenComparingInt(r -> r.rule().rgb())
+                .thenComparingLong(r -> lane(r.rule())).thenComparingDouble(r -> r.rule().start()));
+        List<Ruled> out = new ArrayList<>();
+        Ruled run = null;
+        for (Ruled next : sorted) {
+            Rule a = run == null ? null : run.rule();
+            Rule r = next.rule();
+            if (a != null && a.horizontal() == r.horizontal() && a.rgb() == r.rgb() && lane(a) == lane(r)
+                    && Math.abs(a.thickness() - r.thickness()) <= JOIN_SLACK && r.start() <= a.end() + JOIN_SLACK) {
+                run = new Ruled(new Rule(a.horizontal(), a.pos(), a.start(), Math.max(a.end(), r.end()),
+                        Math.max(a.thickness(), r.thickness()), a.rgb()), Math.min(run.order(), next.order()));
+                continue;
+            }
+            if (run != null) {
+                out.add(run);
+            }
+            run = next;
+        }
+        if (run != null) {
+            out.add(run);
+        }
+        return out;
+    }
+
+    private static long lane(Rule r) {
+        return Math.round(r.pos() / JOIN_SLACK);
+    }
+
 
     public static boolean isWhite(int rgb) {
         return ((rgb >> 16) & 0xFF) >= 0xFB && ((rgb >> 8) & 0xFF) >= 0xFB && (rgb & 0xFF) >= 0xFB;

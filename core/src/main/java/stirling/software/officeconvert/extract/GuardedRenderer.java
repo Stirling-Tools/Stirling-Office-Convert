@@ -1,12 +1,14 @@
 package stirling.software.officeconvert.extract;
 
 import java.awt.Graphics2D;
+import java.awt.Paint;
 import java.awt.Shape;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import org.apache.fontbox.FontBoxFont;
 import org.apache.pdfbox.contentstream.operator.Operator;
@@ -16,6 +18,8 @@ import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.font.PDFont;
 import org.apache.pdfbox.pdmodel.font.PDType1Font;
 import org.apache.pdfbox.pdmodel.font.PDType3Font;
+import org.apache.pdfbox.pdmodel.graphics.color.PDColor;
+import org.apache.pdfbox.pdmodel.graphics.color.PDPattern;
 import org.apache.pdfbox.pdmodel.graphics.form.PDFormXObject;
 import org.apache.pdfbox.pdmodel.graphics.form.PDTransparencyGroup;
 import org.apache.pdfbox.pdmodel.graphics.image.PDImage;
@@ -66,9 +70,12 @@ public class GuardedRenderer extends PDFRenderer {
 
         private static final int MAX_FONTS = 256;
 
+        private static final Set<String> PAINTS = Set.of("sh", "f", "F", "f*", "B", "B*", "b", "b*", "S", "s");
+
         private final OperatorBudget budget;
         private int annotations;
         private int type3;
+        private int patterns;
         private boolean left;
         private final Map<COSDictionary, String[]> builtIn = new HashMap<>();
 
@@ -81,11 +88,37 @@ public class GuardedRenderer extends PDFRenderer {
             return left;
         }
 
+        protected boolean inPattern() {
+            return patterns > 0;
+        }
+
+        @Override
+        protected Paint getPaint(PDColor color) throws IOException {
+            if (!(color.getColorSpace() instanceof PDPattern)) {
+                return super.getPaint(color);
+            }
+            patterns++;
+            try {
+                return super.getPaint(color);
+            } finally {
+                patterns--;
+            }
+        }
+
         @Override
         protected void processOperator(Operator operator, List<COSBase> operands) throws IOException {
-            if (budget.run(operator)) {
+            if (!budget.run(operator)) {
+                left = true;
+                return;
+            }
+            if (!PAINTS.contains(operator.getName())) {
                 super.processOperator(operator, operands);
-            } else {
+                return;
+            }
+            try {
+                super.processOperator(operator, operands);
+            } catch (RuntimeException e) {
+                getLinePath().reset();
                 left = true;
             }
         }
