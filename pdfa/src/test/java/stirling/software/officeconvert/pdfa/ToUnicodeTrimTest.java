@@ -34,7 +34,7 @@ class ToUnicodeTrimTest {
                 map.put(code, code == 'i' ? "ı" : String.valueOf((char) code));
             }
             font.getCOSObject().setItem(COSName.TO_UNICODE, ToUnicodeWriter.write(d, map, 1));
-            d.addPage(FontSamples.page(d, "BT /A 12 Tf 50 700 Td (Hi) Tj ET", font));
+            FontSamples.page(d, "BT /A 12 Tf 50 700 Td (Hi) Tj ET", font);
             d.save(in.toFile());
         }
         PdfToPdfA.convert(in, out, PdfToPdfA.Options.defaults().level(PdfALevel.A2B));

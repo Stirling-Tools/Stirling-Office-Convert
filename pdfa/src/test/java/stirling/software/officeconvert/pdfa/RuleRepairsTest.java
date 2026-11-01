@@ -36,7 +36,7 @@ class RuleRepairsTest {
             font.getCOSObject().removeItem(COSName.TYPE);
             font.getCOSObject().setItem(COSName.BASE_FONT, new COSString("ABCDEF+\0Liberation\0Sans"));
             font.getFontDescriptor().getCOSObject().setItem(COSName.FONT_NAME, new COSString("ABCDEF+LiberationSans"));
-            d.addPage(FontSamples.page(d, "BT /A 12 Tf 72 700 Td (Names) Tj ET", font));
+            FontSamples.page(d, "BT /A 12 Tf 72 700 Td (Names) Tj ET", font);
             d.save(in.toFile());
         }
         Path out = convert(in, PdfALevel.A2B);
@@ -61,7 +61,7 @@ class RuleRepairsTest {
             COSDictionary cid = (COSDictionary) ((COSArray) font.getCOSObject()
                     .getDictionaryObject(COSName.DESCENDANT_FONTS)).getObject(0);
             ((COSDictionary) cid.getDictionaryObject(COSName.CIDSYSTEMINFO)).setInt(COSName.SUPPLEMENT, 3);
-            d.addPage(FontSamples.page(d, "BT /A 12 Tf 72 700 Td <0041> Tj ET", font));
+            FontSamples.page(d, "BT /A 12 Tf 72 700 Td <0041> Tj ET", font);
             d.save(in.toFile());
         }
         convert(in, PdfALevel.A2B);
@@ -72,8 +72,8 @@ class RuleRepairsTest {
         Path in = dir.resolve("properties.pdf");
         try (PDDocument d = new PDDocument()) {
             PDFont font = FontSamples.trueType(d);
-            d.addPage(FontSamples.page(d, "/OC /oc7 BDC BT /A 12 Tf 72 700 Td (Shown) Tj ET EMC "
-                    + "/Note /gone DP", font));
+            FontSamples.page(d, "/OC /oc7 BDC BT /A 12 Tf 72 700 Td (Shown) Tj ET EMC "
+                    + "/Note /gone DP", font);
             d.save(in.toFile());
         }
         Path out = convert(in, PdfALevel.A4);

@@ -77,8 +77,8 @@ class DamagedInputsTest {
             PDFont good = FontSamples.trueType(d);
             PDType0Font broken = PDType0Font.load(d, Samples.liberation(), false);
             broken.getCOSObject().setItem(COSName.DESCENDANT_FONTS, new COSArray());
-            d.addPage(FontSamples.page(d, "BT /A 12 Tf 72 700 Td (Kept) Tj /B 12 Tf 0 -20 Td <0041> Tj ET", good,
-                    broken));
+            FontSamples.page(d, "BT /A 12 Tf 72 700 Td (Kept) Tj /B 12 Tf 0 -20 Td <0041> Tj ET", good,
+                    broken);
             d.save(in.toFile());
         }
         Path out = dir.resolve("type0-2b.pdf");
@@ -99,7 +99,7 @@ class DamagedInputsTest {
             }
             bad.setItem(COSName.FILTER, COSName.ASCII85_DECODE);
             fd.setItem(COSName.FONT_FILE2, bad);
-            d.addPage(FontSamples.page(d, "BT /A 12 Tf 72 700 Td (Readable) Tj ET", font));
+            FontSamples.page(d, "BT /A 12 Tf 72 700 Td (Readable) Tj ET", font);
             d.save(in.toFile());
         }
         Path out = dir.resolve("a85-2b.pdf");
