@@ -52,13 +52,15 @@ final class Paper {
 
     private int fed;
 
+    private static final long MAX_TILES = 1 << 16;
+
     Paper(int width, int height, int window) {
         this.width = width;
         this.height = height;
-        this.tile = window;
+        this.tile = tile(width, height, window);
         this.across = Math.ceilDiv(width, tile);
         this.down = Math.ceilDiv(height, tile);
-        this.reach = reach(width, height, window);
+        this.reach = reach(width, height, tile);
         this.soften = soften(reach);
         this.widened = new int[across * down];
         this.raised = new int[across * down];
@@ -78,8 +80,13 @@ final class Paper {
     }
 
     static int lookahead(int width, int height, int window) {
-        int reach = reach(width, height, window);
-        return (int) Math.min(height, ((long) reach + soften(reach) + 2) * window);
+        int tile = tile(width, height, window);
+        int reach = reach(width, height, tile);
+        return (int) Math.min(height, ((long) reach + soften(reach) + 2) * tile);
+    }
+
+    static int tile(int width, int height, int window) {
+        return Math.max(window, (int) Math.ceil(Math.sqrt((double) width * height / MAX_TILES)));
     }
 
     private static int soften(int reach) {
