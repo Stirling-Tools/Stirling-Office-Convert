@@ -7,6 +7,7 @@ import java.io.IOException;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import org.apache.fontbox.FontBoxFont;
 import org.apache.pdfbox.contentstream.operator.Operator;
@@ -66,6 +67,8 @@ public class GuardedRenderer extends PDFRenderer {
 
         private static final int MAX_FONTS = 256;
 
+        private static final Set<String> PAINTS = Set.of("sh", "f", "F", "f*", "B", "B*", "b", "b*", "S", "s");
+
         private final OperatorBudget budget;
         private int annotations;
         private int type3;
@@ -83,9 +86,18 @@ public class GuardedRenderer extends PDFRenderer {
 
         @Override
         protected void processOperator(Operator operator, List<COSBase> operands) throws IOException {
-            if (budget.run(operator)) {
+            if (!budget.run(operator)) {
+                left = true;
+                return;
+            }
+            if (!PAINTS.contains(operator.getName())) {
                 super.processOperator(operator, operands);
-            } else {
+                return;
+            }
+            try {
+                super.processOperator(operator, operands);
+            } catch (RuntimeException e) {
+                getLinePath().reset();
                 left = true;
             }
         }
