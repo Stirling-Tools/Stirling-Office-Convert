@@ -101,6 +101,50 @@ class HiddenLayerContentTest {
     }
 
     @Test
+    void aTransparencyGroupInALayerThatIsOffIsLeftOut() throws IOException {
+        try (PDDocument doc = layered(false, null)) {
+            PDFormXObject form = new PDFormXObject(doc);
+            form.setBBox(new PDRectangle(612, 792));
+            form.setResources(doc.getPage(0).getResources());
+            try (OutputStream out = form.getContentStream().createOutputStream()) {
+                out.write(("BT /F1 12 Tf 72 650 Td (" + HIDDEN + ") Tj ET").getBytes(StandardCharsets.US_ASCII));
+            }
+            COSDictionary transparency = new COSDictionary();
+            transparency.setItem(COSName.S, COSName.TRANSPARENCY);
+            form.getCOSObject().setItem(COSName.GROUP, transparency);
+            form.getCOSObject().setItem(COSName.OC, group(doc));
+            doc.getPage(0).getResources().put(COSName.getPDFName("Fm1"), form);
+            doc.getPage(0).setContents(stream(doc, "BT /F1 12 Tf 72 700 Td (" + SHOWN + ") Tj ET /Fm1 Do"));
+            String text = text(doc);
+            assertTrue(text.contains(SHOWN), text);
+            assertFalse(text.contains("Secret"), text);
+            String docx = words(docx(doc));
+            assertTrue(docx.contains(SHOWN), docx);
+            assertFalse(docx.contains("Secret"), docx);
+        }
+    }
+
+    @Test
+    void aSelfReferencingVisibilityExpressionStopsAndShows() throws IOException {
+        try (PDDocument doc = layered(true, null)) {
+            COSArray and = new COSArray();
+            and.add(COSName.getPDFName("And"));
+            org.apache.pdfbox.cos.COSObject self = new org.apache.pdfbox.cos.COSObject(and);
+            for (int i = 0; i < 255; i++) {
+                and.add(self);
+            }
+            COSDictionary ocmd = new COSDictionary();
+            ocmd.setItem(COSName.TYPE, COSName.getPDFName("OCMD"));
+            ocmd.setItem(COSName.getPDFName("VE"), and);
+            properties(doc).setItem(COSName.getPDFName("M1"), ocmd);
+            doc.getPage(0).setContents(stream(doc, "/OC /M1 BDC BT /F1 12 Tf 72 650 Td (" + HIDDEN + ") Tj ET EMC"));
+            String text = org.junit.jupiter.api.Assertions.assertTimeoutPreemptively(
+                    java.time.Duration.ofSeconds(20), () -> text(doc));
+            assertTrue(text.contains(HIDDEN), text);
+        }
+    }
+
+    @Test
     void aPictureInALayerThatIsOffIsLeftOut() throws IOException {
         try (PDDocument doc = layered(false, null)) {
             java.awt.image.BufferedImage pixels = new java.awt.image.BufferedImage(40, 40,

@@ -274,7 +274,7 @@ final class GlyphCollector extends PDFStreamEngine {
 
     @Override
     public void showTransparencyGroup(PDTransparencyGroup form) throws IOException {
-        if (budget.form()) {
+        if (budget.form() && !hiddenContent.hidden(form)) {
             super.showTransparencyGroup(form);
         }
     }

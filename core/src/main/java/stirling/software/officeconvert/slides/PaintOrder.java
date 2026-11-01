@@ -317,7 +317,7 @@ final class PaintOrder extends PDFGraphicsStreamEngine {
         formClips.push(clips());
         transparentGroups++;
         try {
-            if (budget.form()) {
+            if (budget.form() && (hiddenContent == null || !hiddenContent.hidden(form))) {
                 transparencyGroup(form);
             }
         } finally {
