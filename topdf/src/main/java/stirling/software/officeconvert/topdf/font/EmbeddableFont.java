@@ -26,7 +26,13 @@ public final class EmbeddableFont implements Closeable {
 
     private static final Lru<FontEntry, SoftReference<CFFFont>> PARSED = new Lru<>(4);
 
+    private static final Lru<FontEntry, SoftReference<LazyCidCff>> LAZY = new Lru<>(8);
+
+    private static final Lru<FontEntry, Boolean> NOT_LAZY = new Lru<>(64);
+
     private CFFFont outlines;
+
+    private LazyCidCff lazy;
 
     private EmbeddableFont(FontProgram.Opened opened, FontEntry entry) {
         this.opened = opened;
@@ -66,16 +72,26 @@ public final class EmbeddableFont implements Closeable {
             GlyphData g = glyf == null ? null : glyf.getGlyph(gid);
             return g == null ? null : g.getPath();
         }
-        CFFFont cff = cff();
-        if (gid >= cff.getNumCharStrings()) {
-            return null;
-        }
-        int selector = cff instanceof CFFCIDFont cid ? cid.getCharset().getCIDForGID(gid) : gid;
+        LazyCidCff cidOutlines = lazy();
         GeneralPath p;
-        synchronized (cff) {
-            p = new GeneralPath(cff.getType2CharString(selector).getPath());
+        List<Number> matrix;
+        if (cidOutlines != null) {
+            if (gid >= cidOutlines.glyphCount()) {
+                return null;
+            }
+            p = new GeneralPath(cidOutlines.path(gid));
+            matrix = cidOutlines.fontMatrix();
+        } else {
+            CFFFont cff = cff();
+            if (gid >= cff.getNumCharStrings()) {
+                return null;
+            }
+            int selector = cff instanceof CFFCIDFont cid ? cid.getCharset().getCIDForGID(gid) : gid;
+            synchronized (cff) {
+                p = new GeneralPath(cff.getType2CharString(selector).getPath());
+            }
+            matrix = cff.getFontMatrix();
         }
-        List<Number> matrix = cff.getFontMatrix();
         if (matrix != null && matrix.size() == 6) {
             double k = font().getUnitsPerEm() * matrix.get(0).doubleValue();
             if (k > 0 && Math.abs(k - 1) > 1e-6) {
@@ -83,6 +99,23 @@ public final class EmbeddableFont implements Closeable {
             }
         }
         return p;
+    }
+
+    private LazyCidCff lazy() {
+        if (lazy != null || NOT_LAZY.get(entry) != null) {
+            return lazy;
+        }
+        SoftReference<LazyCidCff> known = LAZY.get(entry);
+        lazy = known == null ? null : known.get();
+        if (lazy == null) {
+            try {
+                lazy = LazyCidCff.open(entry);
+                LAZY.put(entry, new SoftReference<>(lazy));
+            } catch (IOException e) {
+                NOT_LAZY.put(entry, Boolean.TRUE);
+            }
+        }
+        return lazy;
     }
 
     private CFFFont cff() throws IOException {
