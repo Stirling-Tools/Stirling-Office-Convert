@@ -66,6 +66,7 @@ import org.apache.pdfbox.pdmodel.font.PDFontDescriptor;
 import org.apache.pdfbox.pdmodel.font.PDSimpleFont;
 import org.apache.pdfbox.pdmodel.font.PDType3Font;
 import org.apache.pdfbox.pdmodel.font.PDVectorFont;
+import org.apache.pdfbox.pdmodel.font.encoding.DictionaryEncoding;
 import org.apache.pdfbox.pdmodel.graphics.color.PDColor;
 import org.apache.pdfbox.pdmodel.graphics.color.PDPattern;
 import org.apache.pdfbox.pdmodel.graphics.form.PDFormXObject;
@@ -600,6 +601,9 @@ final class GlyphCollector extends PDFStreamEngine {
     }
 
     private void processTextPosition(TextPosition tp) {
+        if (notdef(tp)) {
+            return;
+        }
         String unicode = clean(recovery.text(tp, tp.getUnicode()));
         if (unicode == null && outerActual != null) {
             unicode = HIDDEN;
@@ -695,6 +699,22 @@ final class GlyphCollector extends PDFStreamEngine {
                         tm.getTranslateX(),
                         tm.getTranslateY()));
     }
+
+    private static boolean notdef(TextPosition tp) {
+        int[] codes = tp.getCharacterCodes();
+        if (codes == null || codes.length != 1 || !(tp.getFont() instanceof PDSimpleFont simple)
+                || simple instanceof PDType3Font
+                || !(simple.getEncoding() instanceof DictionaryEncoding encoding)) {
+            return false;
+        }
+        try {
+            return NOTDEF.equals(encoding.getDifferences().get(codes[0])) && simple.toUnicode(codes[0]) == null;
+        } catch (RuntimeException e) {
+            return false;
+        }
+    }
+
+    private static final String NOTDEF = ".notdef";
 
     private static boolean belowSymbolRange(String unicode) {
         return unicode.length() == 1 && unicode.charAt(0) >= SYMBOL_BASE && unicode.charAt(0) < SYMBOL_FIRST;
