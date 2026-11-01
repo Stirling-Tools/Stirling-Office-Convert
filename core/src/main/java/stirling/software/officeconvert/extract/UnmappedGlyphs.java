@@ -229,13 +229,11 @@ final class UnmappedGlyphs {
     }
 
     private boolean handled(PDFont font) throws IOException {
-        if (font.getCOSObject().containsKey(COSName.TO_UNICODE)) {
-            return false;
-        }
         if (font instanceof PDType0Font t0) {
             return t0.isEmbedded() && t0.getDescendantFont() != null;
         }
-        if (!(font instanceof PDSimpleFont simple) || !(font instanceof PDType3Font) && !font.isEmbedded()) {
+        if (font.getCOSObject().containsKey(COSName.TO_UNICODE)
+                || !(font instanceof PDSimpleFont simple) || !(font instanceof PDType3Font) && !font.isEmbedded()) {
             return false;
         }
         int[] codes = codes(simple);
