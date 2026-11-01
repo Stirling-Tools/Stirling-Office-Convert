@@ -924,6 +924,9 @@ final class PaintOrder extends PDFGraphicsStreamEngine {
 
     @Override
     protected void showGlyph(Matrix textRenderingMatrix, PDFont font, int code, Vector displacement) throws IOException {
+        if (hiddenContent != null && hiddenContent.active()) {
+            return;
+        }
         RenderingMode mode = getGraphicsState().getTextState().getRenderingMode();
         if (mode == RenderingMode.NEITHER || mode == RenderingMode.NEITHER_CLIP) {
             return;
