@@ -5,6 +5,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Optional;
 import java.util.function.IntFunction;
 
 import org.apache.fontbox.ttf.CmapSubtable;
@@ -41,6 +42,13 @@ final class UnicodeRecovery {
         }
     };
 
+    private final Map<COSDictionary, Optional<CollectionText>> collections = new LinkedHashMap<>(16, 0.75f, true) {
+        @Override
+        protected boolean removeEldestEntry(Map.Entry<COSDictionary, Optional<CollectionText>> eldest) {
+            return size() > MAX_LOOKUPS;
+        }
+    };
+
     UnicodeRecovery(FontResolver fonts) {
         this.fonts = fonts;
     }
@@ -48,6 +56,13 @@ final class UnicodeRecovery {
     String text(TextPosition tp, String unicode) {
         if (unicode == null || tp.getCharacterCodes().length != 1) {
             return unicode;
+        }
+        if (tp.getFont() instanceof PDType0Font t0) {
+            String collected = collections.computeIfAbsent(t0.getCOSObject(), k -> Optional.ofNullable(CollectionText.of(t0)))
+                    .map(c -> c.text(tp.getCharacterCodes()[0], unicode)).orElse(null);
+            if (collected != null) {
+                return collected;
+            }
         }
         boolean pua = privateUse(unicode);
         boolean mark = !pua && unicode.codePointCount(0, unicode.length()) == 1;
