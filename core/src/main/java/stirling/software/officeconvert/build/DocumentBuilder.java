@@ -59,6 +59,7 @@ public final class DocumentBuilder {
     private Paragraph joined;
     private final Map<ParaDraft, PageLayout> homePage = new IdentityHashMap<>();
     private final Map<Paragraph, Object> shadedOn = new IdentityHashMap<>();
+    private final Set<Section> flowingSections = Collections.newSetFromMap(new IdentityHashMap<>());
     private final List<Block> held = new ArrayList<>();
     private final List<Spaced> spaced = new ArrayList<>();
     private final List<Integer> bandColumns = new ArrayList<>();
@@ -182,6 +183,9 @@ public final class DocumentBuilder {
                 if (ci > 0 && !flowOn) {
                     columnBreak();
                 }
+                if (flowOn) {
+                    flowingSections.add(section);
+                }
                 bandAt = bandColumns.size() - 1;
                 columnAt = ci;
                 paragraphs.innerColumn(ci + 1 < band.columns().size());
@@ -198,6 +202,9 @@ public final class DocumentBuilder {
         if (section == null) {
             section = base.copy();
             section.pageNumberStart = running.pageNumberStart();
+        }
+        if (!layout.notes().isEmpty()) {
+            flowingSections.add(section);
         }
         paragraphs.fitting(false);
         flowing = false;
@@ -477,6 +484,7 @@ public final class DocumentBuilder {
         if (table != null && pageBreak && pending instanceof Table prev && !prev.floating() && !table.floating()
                 && TableContinuation.continues(prev, table)) {
             if (TableContinuation.join(prev, table, pageBookmark)) {
+                flowingSections.add(section);
                 pageBookmark = null;
                 return item.bottom();
             }
@@ -731,7 +739,20 @@ public final class DocumentBuilder {
 
     private static final float FIT_SHRINK = 0.75f;
 
+    private void settleBottom() {
+        boolean footer = footerHeight > 0
+                || !Float.isNaN(stats.frame(section.pageWidth, section.pageHeight).footerBaseline());
+        boolean reserved = reservedFor == section && section.marginBottom > reservedBottom;
+        if (!footer && !reserved && !flowingSections.contains(section) && section.marginBottom > FREE_BOTTOM) {
+            section.marginBottom = FREE_BOTTOM;
+            section.footerDistance = Math.min(section.footerDistance, FREE_BOTTOM / 2);
+        }
+    }
+
+    private static final float FREE_BOTTOM = 4f;
+
     private void closeSection() throws IOException {
+        settleBottom();
         if (pending instanceof Paragraph p && p.endsSection == null) {
             p.endsSection = section;
         } else {
@@ -757,6 +778,8 @@ public final class DocumentBuilder {
             section.pageHeight = 792;
             section.marginTop = section.marginBottom = section.marginLeft = section.marginRight = 72;
             section.columns.add(new float[] {468, 0});
+        } else {
+            settleBottom();
         }
         if (pending == null || pending instanceof Table) {
             emit(hairline(1));
@@ -816,7 +839,11 @@ public final class DocumentBuilder {
     private void mergeCarry(ParaDraft next) throws IOException {
         Carry c = carry;
         carry = null;
-        ParaDraft merged = Continuation.join(c.draft(), next, keepsPage(c, next));
+        boolean keepPage = keepsPage(c, next);
+        if (!keepPage) {
+            flowingSections.add(section);
+        }
+        ParaDraft merged = Continuation.join(c.draft(), next, keepPage);
         floats.rehost(c.draft(), merged);
         floats.unhost(next);
         float spaceBefore = Float.isNaN(c.ref()) ? c.spaceBefore() : Math.max(0, paragraphs.wordTop(merged) - c.ref());
