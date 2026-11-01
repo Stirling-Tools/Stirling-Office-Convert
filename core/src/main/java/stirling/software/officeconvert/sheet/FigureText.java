@@ -15,7 +15,7 @@ final class FigureText {
 
     private FigureText() {}
 
-    static List<Line> lines(Box box, List<Line> segments, Set<Line> skip) {
+    static List<Line> lines(Box box, List<Line> segments, Set<Line> skip, Set<Word> claimed) {
         List<Line> out = new ArrayList<>();
         for (Line seg : segments) {
             if (skip.contains(seg)) {
@@ -30,7 +30,7 @@ final class FigureText {
             for (int i = 0; i < seg.words.size(); i++) {
                 Word w = seg.words.get(i);
                 float cx = (w.x + w.right) / 2f;
-                if (cx >= box.x() - SLACK && cx <= box.right() + SLACK) {
+                if (cx >= box.x() - SLACK && cx <= box.right() + SLACK && claimed.add(w)) {
                     gaps.add(words.isEmpty() ? Line.SPACE : seg.gaps[i]);
                     words.add(w);
                 }
