@@ -120,6 +120,8 @@ final class GlyphCollector extends PDFStreamEngine {
     private final Map<org.apache.pdfbox.cos.COSDictionary, float[]> metrics = new WeakHashMap<>();
     private final Map<COSDictionary, Map<Integer, float[]>> inks = new WeakHashMap<>();
     private final Map<COSDictionary, Float> type3Scales = new WeakHashMap<>();
+
+    private final Map<COSDictionary, Float> outlineScales = new WeakHashMap<>();
     private final Deque<Span> spans = new ArrayDeque<>();
     private Span outerActual;
     private int actualDepth;
@@ -620,7 +622,8 @@ final class GlyphCollector extends PDFStreamEngine {
         if (drawnSize > 0 && pdFont.toUnicode(codes[0], TextPositions.GLYPHS) != null) {
             drawnSize = Float.NaN;
         }
-        float size = drawnSize > 0 && drawnSize < 400f ? drawnSize : fontSize(tp, type3Scale(pdFont));
+        float size = drawnSize > 0 && drawnSize < 400f ? drawnSize
+                : fontSize(tp, type3Scale(pdFont) * outlineScale(pdFont));
         float[] m = metrics(pdFont);
         float space = spaceWidth(tp, pdFont, size, m[2]);
 
@@ -801,6 +804,13 @@ final class GlyphCollector extends PDFStreamEngine {
             return 1f;
         }
         return type3Scales.computeIfAbsent(font.getCOSObject(), k -> Type3Size.scale(t3, positions.unmapped));
+    }
+
+    private float outlineScale(PDFont font) {
+        if (font == null || font instanceof PDType3Font) {
+            return 1f;
+        }
+        return outlineScales.computeIfAbsent(font.getCOSObject(), k -> OutlineScale.of(font));
     }
 
     private float[] metrics(PDFont font) {
