@@ -176,11 +176,16 @@ final class GlyphShapes {
             return Float.NaN;
         }
         try {
-            float w = font.getWidth(code) / 1000f;
+            float w = (unmappedSpace(font, code) ? font.getWidthFromFont(code) : font.getWidth(code)) / 1000f;
             return w > 0 ? w : Float.NaN;
         } catch (IOException | RuntimeException e) {
             return Float.NaN;
         }
+    }
+
+    private static boolean unmappedSpace(PDFont font, int code) {
+        COSStream toUnicode = font.getCOSObject().getCOSStream(COSName.TO_UNICODE);
+        return toUnicode != null && font.isEmbedded() && mappedCode(toUnicode, " ") == null;
     }
 
     private static Integer codeFor(PDFont font, String letter) {
