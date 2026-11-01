@@ -4,7 +4,6 @@ import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.nio.charset.StandardCharsets;
@@ -85,8 +84,11 @@ class ObjectMetadataHeaderTest {
                 + ">>/Contents 4 0 R/Metadata 6 0 R>>");
         Path input = Hostile.write(dir, "huge-xpacket", pdf);
         Path output = dir.resolve("huge-xpacket-a1b.pdf");
-        PdfToPdfA.Result result = assertTimeoutPreemptively(Duration.ofSeconds(30), () -> PdfToPdfA.convert(input,
-                output, PdfToPdfA.Options.defaults().level(PdfALevel.A1B).timeout(Duration.ofSeconds(25))));
+        java.util.concurrent.atomic.AtomicReference<PdfToPdfA.Result> converted =
+                new java.util.concurrent.atomic.AtomicReference<>();
+        CpuBudget.inThisProcess(Duration.ofSeconds(30), () -> converted.set(PdfToPdfA.convert(input, output,
+                PdfToPdfA.Options.defaults().level(PdfALevel.A1B).timeout(CpuBudget.HANG))));
+        PdfToPdfA.Result result = converted.get();
         assertTrue(result.warnings().stream().anyMatch(w -> w.startsWith("Removed metadata of pages")),
                 result.warnings().toString());
         try (PDDocument doc = Loader.loadPDF(output.toFile())) {
