@@ -1,6 +1,7 @@
 package stirling.software.officeconvert.extract;
 
 import java.io.IOException;
+import java.io.InterruptedIOException;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -264,7 +265,7 @@ public final class Salvage {
     }
 
     private static void unpack(byte[] data, int start, int end, String head, Map<Integer, String> packed,
-            Map<Integer, Long> order, BrotliBudget budget, long[] left) {
+            Map<Integer, Long> order, BrotliBudget budget, long[] left) throws IOException {
         int cap = (int) Math.min(MAX_UNPACKED, left[0]);
         Matcher n = COUNT.matcher(head);
         Matcher first = FIRST.matcher(head);
@@ -511,7 +512,7 @@ public final class Salvage {
         return found;
     }
 
-    private static byte[] brotli(byte[] raw, int cap, BrotliBudget budget) {
+    static byte[] brotli(byte[] raw, int cap, BrotliBudget budget) throws IOException {
         java.io.ByteArrayOutputStream plain = new java.io.ByteArrayOutputStream();
         try (BrotliInputStream z = new BrotliInputStream(new java.io.ByteArrayInputStream(raw))) {
             byte[] buffer = new byte[1 << 16];
@@ -523,6 +524,8 @@ public final class Salvage {
                 }
                 plain.write(buffer, 0, n);
             }
+        } catch (InterruptedIOException e) {
+            throw e;
         } catch (IOException | RuntimeException e) {
             return null;
         }
