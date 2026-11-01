@@ -23,6 +23,7 @@ import org.apache.pdfbox.pdmodel.graphics.shading.PDShading;
 import org.apache.pdfbox.pdmodel.graphics.shading.PDShadingType3;
 import org.junit.jupiter.api.Test;
 
+import stirling.software.officeconvert.extract.HiddenContent;
 import stirling.software.officeconvert.build.PlacedContent;
 import stirling.software.officeconvert.model.Picture;
 
@@ -54,7 +55,7 @@ class ArtShadingTest {
 
     private static float dpi(PDDocument doc, int index) {
         AffineTransform toDisplay = new AffineTransform(1, 0, 0, -1, 0, 405);
-        PaintOrder paint = PaintOrder.read(doc.getPage(index), toDisplay, 720, 405);
+        PaintOrder paint = PaintOrder.read(doc.getPage(index), toDisplay, 720, 405, HiddenContent.of(null));
         Store store = new Store();
         List<Art.Piece> pieces = new Art(doc, store, 150f, false, g -> false).pieces(paint, Set.of(), index, toDisplay, 720, 405);
         assertEquals(1, pieces.size());

@@ -86,6 +86,16 @@ final class UndefinedResources {
             case "sh" -> {
                 return dropIfMissing(operation, COSName.SHADING);
             }
+            case "BDC" -> {
+                if (operation.size() == 3 && operation.get(1) instanceof COSName name
+                        && !defined(COSName.PROPERTIES, name)) {
+                    removed++;
+                    return List.of(operation.get(0), Operator.getOperator("BMC"));
+                }
+            }
+            case "DP" -> {
+                return dropIfMissing(operation, COSName.PROPERTIES);
+            }
             case "Tj", "TJ" -> {
                 if (textOff) {
                     removed++;

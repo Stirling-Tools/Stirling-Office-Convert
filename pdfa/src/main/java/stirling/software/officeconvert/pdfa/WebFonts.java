@@ -189,7 +189,7 @@ public final class WebFonts {
         return name == null || ".notdef".equals(name) ? 0 : ttf.nameToGID(name);
     }
 
-    private static FontKind sniff(byte[] data) {
+    static FontKind sniff(byte[] data) {
         if (data == null || data.length < 4) {
             return null;
         }

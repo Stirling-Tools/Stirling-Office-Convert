@@ -21,6 +21,14 @@ final class TrueTypeSanity {
         return b != null && sane(b);
     }
 
+    static boolean cffOutlines(PDFontDescriptor fd) {
+        if (fd == null || fd.getFontFile2() == null) {
+            return false;
+        }
+        byte[] b = StreamFixer.read(fd.getFontFile2().getCOSObject());
+        return b != null && b.length >= 4 && b[0] == 'O' && b[1] == 'T' && b[2] == 'T' && b[3] == 'O';
+    }
+
     static boolean sane(byte[] b) {
         if (b.length < 12) {
             return false;

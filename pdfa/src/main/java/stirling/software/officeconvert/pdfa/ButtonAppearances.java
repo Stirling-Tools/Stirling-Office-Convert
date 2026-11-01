@@ -5,6 +5,7 @@ import java.io.IOException;
 import org.apache.pdfbox.cos.COSBase;
 import org.apache.pdfbox.cos.COSDictionary;
 import org.apache.pdfbox.cos.COSName;
+import org.apache.pdfbox.cos.COSStream;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDFormContentStream;
 import org.apache.pdfbox.pdmodel.PDResources;
@@ -19,7 +20,7 @@ final class ButtonAppearances {
 
     static void run(PDDocument doc, COSDictionary widget, Report report) throws IOException {
         COSDictionary ap = ContentGraph.dict(widget.getDictionaryObject(COSName.AP));
-        if (ap != null && ap.getDictionaryObject(COSName.N) != null) {
+        if (ap != null && drawn(ap.getDictionaryObject(COSName.N))) {
             return;
         }
         COSBase flags = inherited(widget, COSName.FF);
@@ -46,6 +47,21 @@ final class ButtonAppearances {
         widget.setItem(COSName.AP, ap);
         widget.setItem(COSName.AS, checked ? on : OFF);
         report.warn("Generated the on and off appearances of a " + (radio ? "radio button" : "checkbox"));
+    }
+
+    private static boolean drawn(COSBase normal) {
+        if (normal instanceof COSStream) {
+            return true;
+        }
+        if (!(normal instanceof COSDictionary states) || states.size() == 0) {
+            return false;
+        }
+        for (COSName k : states.keySet()) {
+            if (!(states.getDictionaryObject(k) instanceof COSStream)) {
+                return false;
+            }
+        }
+        return true;
     }
 
     static COSBase inherited(COSDictionary widget, COSName key) {
