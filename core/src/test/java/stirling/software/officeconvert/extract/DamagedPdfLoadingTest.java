@@ -110,7 +110,7 @@ class DamagedPdfLoadingTest {
                 .object(1, "<< /Kids [2 0 R 2 0 R] /Type /Pages /Count 2 >>")), null)) {
             assertEquals(2, doc.getNumberOfPages());
             assertTrue(doc.getPage(0).getCOSObject() != doc.getPage(1).getCOSObject());
-            assertEquals("Hello PDF-world!\nHello PDF-world!", text(doc));
+            assertEquals("Hello PDF-world!\nHello PDF-world!", text(doc).replace("\r\n", "\n"));
         }
     }
 
@@ -122,7 +122,7 @@ class DamagedPdfLoadingTest {
                 .object(6, "<< /Kids [2 0 R] /Parent 1 0 R /Type /Pages /Count 1 >>");
         try (PDDocument doc = PdfFiles.open(write(pdf), null)) {
             assertEquals(2, doc.getNumberOfPages());
-            assertEquals("Hello PDF-world!\nHello PDF-world!", text(doc));
+            assertEquals("Hello PDF-world!\nHello PDF-world!", text(doc).replace("\r\n", "\n"));
         }
     }
 
