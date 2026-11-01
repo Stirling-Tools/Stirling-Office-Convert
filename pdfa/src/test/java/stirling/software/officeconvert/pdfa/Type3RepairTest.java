@@ -75,8 +75,10 @@ class Type3RepairTest {
             Path output = dir.resolve("shared-encoding-" + run + ".pdf");
             PdfToPdfA.convert(input, output, PdfToPdfA.Options.defaults());
             try (PDDocument doc = Loader.loadPDF(output.toFile())) {
-                PDType3Font font = (PDType3Font) doc.getPage(0).getResources().getFont(COSName.getPDFName("T1"));
-                assertEquals(108, font.getWidthFromFont(98));
+                for (int i = 1; i <= 8; i++) {
+                    PDType3Font font = (PDType3Font) doc.getPage(0).getResources().getFont(COSName.getPDFName("T" + i));
+                    assertEquals(100 + i, font.getWidthFromFont(98), "T" + i);
+                }
             }
         }
     }
@@ -100,17 +102,14 @@ class Type3RepairTest {
             pdf.add(RawPdf.stream("/Type/XObject/Subtype/Form/BBox[0 0 595 842]", "BT 20 " + (10 * i) + " Td (ab) Tj ET"));
         }
         Path input = Hostile.write(dir, "form-encoding", pdf);
-        Integer first = null;
-        for (int run = 0; run < 6; run++) {
+        for (int run = 0; run < 3; run++) {
             Path output = dir.resolve("form-encoding-" + run + ".pdf");
             PdfToPdfA.convert(input, output, PdfToPdfA.Options.defaults());
             try (PDDocument doc = Loader.loadPDF(output.toFile())) {
-                PDType3Font font = (PDType3Font) doc.getPage(0).getResources().getFont(COSName.getPDFName("T1"));
-                int width = Math.round(font.getWidthFromFont(98));
-                if (first == null) {
-                    first = width;
+                for (int i = 1; i <= 8; i++) {
+                    PDType3Font font = (PDType3Font) doc.getPage(0).getResources().getFont(COSName.getPDFName("T" + i));
+                    assertEquals(100 + i, font.getWidthFromFont(98), "T" + i);
                 }
-                assertEquals(first, width);
             }
         }
     }

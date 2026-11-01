@@ -18,9 +18,11 @@ import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.common.PDRectangle;
 import org.apache.pdfbox.pdmodel.font.PDFont;
 import org.apache.pdfbox.pdmodel.font.PDType3Font;
+import org.apache.pdfbox.pdmodel.graphics.PDXObject;
 import org.apache.pdfbox.pdmodel.graphics.form.PDFormXObject;
 import org.apache.pdfbox.pdmodel.graphics.form.PDTransparencyGroup;
 import org.apache.pdfbox.pdmodel.graphics.image.PDImage;
+import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
 import org.apache.pdfbox.pdmodel.graphics.state.RenderingMode;
 import org.apache.pdfbox.pdmodel.interactive.annotation.PDAnnotation;
 import org.apache.pdfbox.rendering.PDFRenderer;
@@ -30,7 +32,9 @@ import org.apache.pdfbox.util.Matrix;
 import org.apache.pdfbox.util.Vector;
 
 import stirling.software.officeconvert.extract.GuardedRenderer;
+import stirling.software.officeconvert.extract.HiddenContent;
 import stirling.software.officeconvert.extract.RgbGroup;
+import stirling.software.officeconvert.extract.StrictFilters;
 import stirling.software.officeconvert.layout.Box;
 
 final class ArtRenderer extends PDFRenderer {
@@ -38,16 +42,19 @@ final class ArtRenderer extends PDFRenderer {
     private IntPredicate keep = order -> false;
     private List<int[]> groups = List.of();
     private long operators;
+    private final HiddenContent hidden;
 
     ArtRenderer(PDDocument document) {
         super(document);
         setSubsamplingAllowed(true);
+        hidden = HiddenContent.of(document);
     }
 
     BufferedImage render(PDPage page, int pageIndex, AffineTransform toDisplay, Box box, float scale, IntPredicate keep,
             List<int[]> groups) throws IOException {
         this.keep = keep;
         this.groups = groups;
+        hidden.reset();
         int w = Math.max(1, Math.round(box.width() * scale));
         int h = Math.max(1, Math.round(box.height() * scale));
         BufferedImage img = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
@@ -119,11 +126,17 @@ final class ArtRenderer extends PDFRenderer {
         @Override
         protected void processOperator(Operator operator, List<COSBase> operands) throws IOException {
             operators++;
-            super.processOperator(operator, operands);
+            Operator painted = hidden.painted(operator, operands, getResources());
+            if (painted != null) {
+                super.processOperator(painted, painted == operator ? operands : List.of());
+            }
         }
 
         @Override
         public void showForm(PDFormXObject form) throws IOException {
+            if (nested == 0 && hidden.hidden(form)) {
+                return;
+            }
             int[] span = enterGroup();
             try {
                 super.showForm(form);
@@ -134,6 +147,9 @@ final class ArtRenderer extends PDFRenderer {
 
         @Override
         public void showTransparencyGroup(PDTransparencyGroup form) throws IOException {
+            if (nested == 0 && hidden.hidden(form)) {
+                return;
+            }
             int[] span = enterGroup();
             try {
                 super.showTransparencyGroup(RgbGroup.of(form));
@@ -224,6 +240,10 @@ final class ArtRenderer extends PDFRenderer {
 
         @Override
         public void drawImage(PDImage pdImage) throws IOException {
+            if (nested == 0 && (pdImage instanceof PDXObject x && hidden.hidden(x)
+                    || pdImage instanceof PDImageXObject image && !StrictFilters.decodable(image.getCOSObject()))) {
+                return;
+            }
             if (kept()) {
                 paint(() -> super.drawImage(pdImage));
             }
@@ -234,6 +254,9 @@ final class ArtRenderer extends PDFRenderer {
                 throws IOException {
             if (nested > 0) {
                 super.showGlyph(textRenderingMatrix, font, code, displacement);
+                return;
+            }
+            if (hidden.active()) {
                 return;
             }
             RenderingMode mode = getGraphicsState().getTextState().getRenderingMode();
