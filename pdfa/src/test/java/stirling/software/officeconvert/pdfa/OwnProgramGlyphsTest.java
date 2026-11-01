@@ -119,7 +119,7 @@ class OwnProgramGlyphsTest {
             font.setItem(COSName.ENCODING, COSName.IDENTITY_H);
             font.setItem(COSName.DESCENDANT_FONTS, new COSArray(List.of(cid)));
             PDFont f = PDFontFactory.createFont(font);
-            d.addPage(FontSamples.page(d, "BT /A 24 Tf 72 700 Td <00010002> Tj ET", f));
+            FontSamples.page(d, "BT /A 24 Tf 72 700 Td <00010002> Tj ET", f);
             d.save(in.toFile());
         }
         Path out = dir.resolve(name + "-2b.pdf");

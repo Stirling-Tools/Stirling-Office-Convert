@@ -171,6 +171,49 @@ class AnnotationAppearanceTest {
         }
     }
 
+    @Test
+    void listBoxRowsAllFitTheTextBoxTheyAreWrittenTo() throws IOException {
+        try (PDDocument d = document(null, List.of())) {
+            COSArray annots = new COSArray();
+            StringBuilder rows = new StringBuilder("BT /F1 12 Tf 0 g 2 73 Td");
+            for (int i = 1; i <= 6; i++) {
+                rows.append(i == 1 ? "" : " 0 -13.5 Td").append(" (Item").append(i).append(") Tj");
+            }
+            annots.add(widget(d, COSName.CH, new PDRectangle(72, 600, 120, 84), rows.append(" ET").toString(), 120, 84));
+            for (int i = 0; i < 4; i++) {
+                annots.add(widget(d, COSName.BTN, new PDRectangle(220, 670 - i * 22, 80, 18),
+                        "0.75 g 0 0 80 18 re f BT /F1 12 Tf 0 g 4 4 Td (Button" + i + ") Tj ET", 80, 18));
+            }
+            d.getPage(0).getCOSObject().setItem(COSName.ANNOTS, annots);
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            PdfToDocx.convert(d, out, PdfToDocx.Options.defaults());
+            String xml = part(out, "word/document.xml");
+            Matcher box = Pattern.compile("(?s)<wp:extent cx=\"\\d+\" cy=\"(\\d+)\"/>(?:(?!<wp:extent ).)*?Item6").matcher(xml);
+            assertTrue(box.find(), xml);
+            Matcher lines = Pattern.compile("w:line=\"(\\d+)\" w:lineRule=\"exact\"/>(?:(?!<w:p>).)*?Item\\d").matcher(
+                    xml.substring(box.start()));
+            int twips = 0;
+            for (int i = 0; i < 6 && lines.find(); i++) {
+                twips += Integer.parseInt(lines.group(1));
+            }
+            assertTrue(Long.parseLong(box.group(1)) >= twips * 635L - 12700, box.group(1) + " < " + twips * 635L);
+        }
+    }
+
+    private static PDAnnotationWidget widget(PDDocument d, COSName type, PDRectangle rect, String content, float w,
+            float h) throws IOException {
+        PDAnnotationWidget field = new PDAnnotationWidget();
+        field.getCOSObject().setItem(COSName.FT, type);
+        field.setRectangle(rect);
+        PDAppearanceStream appearance = new PDAppearanceStream(stream(d, content).getCOSObject());
+        appearance.setBBox(new PDRectangle(w, h));
+        appearance.setResources(d.getPage(0).getResources());
+        PDAppearanceDictionary ap = new PDAppearanceDictionary();
+        ap.setNormalAppearance(appearance);
+        field.setAppearance(ap);
+        return field;
+    }
+
     private record Note(String text, int flags, Boolean layerOn) {}
 
     private static PDDocument document(String content, List<Note> notes) throws IOException {

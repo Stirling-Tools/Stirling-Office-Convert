@@ -106,7 +106,7 @@ class UnicodeLevelTextTest {
         Path in = dir.resolve("t3.pdf");
         try (PDDocument d = new PDDocument()) {
             PDFont font = type3(d, true, "a73", "square", "a75");
-            d.addPage(FontSamples.page(d, "BT /A 12 Tf 72 700 Td <414243> Tj ET", font));
+            FontSamples.page(d, "BT /A 12 Tf 72 700 Td <414243> Tj ET", font);
             d.save(in.toFile());
         }
         Path out = dir.resolve("t3-u.pdf");
@@ -120,7 +120,7 @@ class UnicodeLevelTextTest {
         Path in = dir.resolve("t3b.pdf");
         try (PDDocument d = new PDDocument()) {
             PDFont font = type3(d, false, "eacute", "Aring", "C");
-            d.addPage(FontSamples.page(d, "BT /A 12 Tf 72 700 Td <414243> Tj ET", font));
+            FontSamples.page(d, "BT /A 12 Tf 72 700 Td <414243> Tj ET", font);
             d.save(in.toFile());
         }
         Path out = dir.resolve("t3-b.pdf");

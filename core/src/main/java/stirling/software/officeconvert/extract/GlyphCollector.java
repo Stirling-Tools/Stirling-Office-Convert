@@ -141,6 +141,8 @@ final class GlyphCollector extends PDFStreamEngine {
     private final ClipPath clipPath = new ClipPath();
     private final ClipArea clipArea = new ClipArea();
     private final TextClips clips = new TextClips();
+
+    private final TextObjects textObjects = new TextObjects();
     private int currentPageNo;
     private int startPage;
     private int endPage;
@@ -236,8 +238,9 @@ final class GlyphCollector extends PDFStreamEngine {
             return;
         }
         try {
-            if (TextObjects.opensImplicitly(this, operator)) {
-                super.processOperator(TextObjects.BEGIN, List.of());
+            Operator implied = textObjects.before(this, operator);
+            if (implied != null) {
+                super.processOperator(implied, List.of());
             }
             hiddenContent.operator(operator.getName(), operands, getResources());
             super.processOperator(operator, TextObjects.sized(operator, operands));
@@ -352,6 +355,7 @@ final class GlyphCollector extends PDFStreamEngine {
         blankPagesBefore(pageIndex);
         current = new ArrayList<>();
         clips.reset();
+        textObjects.reset();
         hiddenContent.reset();
         spans.clear();
         outerActual = null;

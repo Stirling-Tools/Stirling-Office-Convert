@@ -97,6 +97,8 @@ final class GraphicsCollector extends PDFGraphicsStreamEngine {
     private final StreamRunner runner;
     private HiddenContent hiddenContent = new HiddenContent(OptionalContent.of(null));
 
+    private final TextObjects textObjects = new TextObjects();
+
     private GraphicsCollector(PDPage page, AffineTransform toDisplay, float w, float h, ParsedStreams parsed) {
         super(page);
         this.runner = new StreamRunner(new StreamRunner.Host() {
@@ -182,8 +184,9 @@ final class GraphicsCollector extends PDFGraphicsStreamEngine {
             return;
         }
         try {
-            if (TextObjects.opensImplicitly(this, operator)) {
-                super.processOperator(TextObjects.BEGIN, List.of());
+            Operator implied = textObjects.before(this, operator);
+            if (implied != null) {
+                super.processOperator(implied, List.of());
             }
             Operator painted = hiddenContent.painted(operator, operands, getResources());
             if (painted != null) {
