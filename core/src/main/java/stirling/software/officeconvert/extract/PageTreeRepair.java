@@ -28,9 +28,6 @@ public final class PageTreeRepair {
 
     private static final int MAX_PAGES = 1_000_000;
 
-    private static final COSName[] INHERITED = {COSName.RESOURCES, COSName.MEDIA_BOX, COSName.CROP_BOX,
-            COSName.ROTATE};
-
     private record Slot(int at, COSDictionary node, COSBase[] above) {}
 
     private final List<COSDictionary> pages = new ArrayList<>();
@@ -56,7 +53,7 @@ public final class PageTreeRepair {
         PageTreeRepair tree = new PageTreeRepair();
         tree.damaged = root == null;
         if (root != null) {
-            tree.collect(root, 0, new COSBase[INHERITED.length]);
+            tree.collect(root, 0, new COSBase[PageNodes.INHERITED.size()]);
         }
         if (!tree.slots.isEmpty() || tree.pages.isEmpty() && tree.damaged) {
             tree.recover(scan(doc.getDocument()));
@@ -135,17 +132,17 @@ public final class PageTreeRepair {
             return;
         }
         COSBase[] here = above.clone();
-        for (int k = 0; k < INHERITED.length; k++) {
-            COSBase value = usable(INHERITED[k], node.getDictionaryObject(INHERITED[k]));
+        for (int k = 0; k < PageNodes.INHERITED.size(); k++) {
+            COSBase value = usable(PageNodes.INHERITED.get(k), node.getDictionaryObject(PageNodes.INHERITED.get(k)));
             if (value != null) {
                 here[k] = value;
             }
         }
         for (int i = 0; i < kids.size() && pages.size() < MAX_PAGES; i++) {
             COSDictionary kid = dict(kids.getObject(i));
-            if (kid != null && !(kid instanceof COSStream) && intermediate(kid)) {
+            if (kid != null && !(kid instanceof COSStream) && PageNodes.intermediate(kid)) {
                 collect(kid, depth + 1, here);
-            } else if (kid != null && !(kid instanceof COSStream) && leaf(kid) && !reached.contains(kid)) {
+            } else if (kid != null && !(kid instanceof COSStream) && PageNodes.leaf(kid) && !reached.contains(kid)) {
                 inherit(kid, here);
                 reached.add(kid);
                 pages.add(kid);
@@ -166,7 +163,7 @@ public final class PageTreeRepair {
         }
         if (pages.isEmpty()) {
             for (COSDictionary page : orphans) {
-                inherit(page, new COSBase[INHERITED.length]);
+                inherit(page, new COSBase[PageNodes.INHERITED.size()]);
             }
             pages.addAll(orphans);
             return;
@@ -192,7 +189,7 @@ public final class PageTreeRepair {
         for (int k = 0; k < orphans.size(); k++) {
             COSDictionary parent = dict(orphans.get(k).getDictionaryObject(COSName.PARENT));
             if (!used[k] && parent != null && nodes.contains(parent)) {
-                inherit(orphans.get(k), new COSBase[INHERITED.length]);
+                inherit(orphans.get(k), new COSBase[PageNodes.INHERITED.size()]);
                 pages.add(orphans.get(k));
             }
         }
@@ -233,26 +230,9 @@ public final class PageTreeRepair {
         return found;
     }
 
-    private static boolean intermediate(COSDictionary d) {
-        return COSName.PAGES.equals(d.getCOSName(COSName.TYPE))
-                || d.containsKey(COSName.KIDS) && !COSName.PAGE.equals(d.getCOSName(COSName.TYPE));
-    }
-
-    private static boolean leaf(COSDictionary d) {
-        COSName type = d.getCOSName(COSName.TYPE);
-        if (COSName.PAGE.equals(type)) {
-            return true;
-        }
-        if (type == null) {
-            return d.containsKey(COSName.CONTENTS) || d.containsKey(COSName.MEDIA_BOX) || d.containsKey(COSName.PARENT);
-        }
-        COSBase contents = d.getDictionaryObject(COSName.CONTENTS);
-        return d.containsKey(COSName.MEDIA_BOX) || contents instanceof COSStream || contents instanceof COSArray;
-    }
-
     private static void inherit(COSDictionary page, COSBase[] above) {
-        for (int k = 0; k < INHERITED.length; k++) {
-            COSName key = INHERITED[k];
+        for (int k = 0; k < PageNodes.INHERITED.size(); k++) {
+            COSName key = PageNodes.INHERITED.get(k);
             if (usable(key, page.getDictionaryObject(key)) != null) {
                 continue;
             }
