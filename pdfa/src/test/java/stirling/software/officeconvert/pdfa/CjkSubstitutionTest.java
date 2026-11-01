@@ -28,6 +28,7 @@ import org.apache.pdfbox.pdmodel.font.PDType0Font;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import stirling.software.officeconvert.extract.CidLookup;
 import stirling.software.officeconvert.topdf.font.FontSet;
 
 class CjkSubstitutionTest {

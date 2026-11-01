@@ -29,6 +29,7 @@ import org.apache.pdfbox.pdmodel.font.PDFontDescriptor;
 import org.apache.pdfbox.pdmodel.font.PDTrueTypeFont;
 import org.apache.pdfbox.pdmodel.font.PDType0Font;
 
+import stirling.software.officeconvert.extract.CidLookup;
 import stirling.software.officeconvert.extract.PdfFiles;
 
 final class FontCompaction {
