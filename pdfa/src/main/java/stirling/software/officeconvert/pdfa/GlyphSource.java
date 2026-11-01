@@ -72,6 +72,12 @@ final class GlyphSource implements Closeable {
             }
             candidates.add(named);
             Set<Integer> wanted = new LinkedHashSet<>(needed);
+            if (eastAsian && !wanted.isEmpty() && coversAll(candidates.get(0), wanted)) {
+                EmbeddableFont f = usable(candidates.get(0));
+                if (f != null) {
+                    return new GlyphSource(library, f, b, i, symbol);
+                }
+            }
             if (!wanted.isEmpty()) {
                 int probes = 0;
                 for (int cp : wanted) {
@@ -155,6 +161,15 @@ final class GlyphSource implements Closeable {
             out.add(unique.get(k));
         }
         return out;
+    }
+
+    private static boolean coversAll(FontFace face, Set<Integer> wanted) {
+        for (int cp : wanted) {
+            if (!face.covers(cp)) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private static boolean sameProgram(FontFace a, FontFace b) {
