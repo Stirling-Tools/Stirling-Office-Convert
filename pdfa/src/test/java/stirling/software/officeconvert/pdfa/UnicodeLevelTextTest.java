@@ -137,6 +137,9 @@ class UnicodeLevelTextTest {
             assertEquals("ř", UnicodeGuess.extracted(identity, 0x159));
             PDType0Font japanese = cidFont(d, "Japan1", null);
             assertEquals("T", UnicodeGuess.extracted(japanese, 53));
+            PDType0Font korean = cidFont(d, "Korea1", null);
+            assertEquals("\uC548", UnicodeGuess.extracted(korean, 2441));
+            assertEquals("\uC548", UnicodeGuess.of(korean, 2441, 2));
             COSStream declared = ToUnicodeWriter.write(d, new TreeMap<>(java.util.Map.of(0x41, "A")), 2);
             PDType0Font mapped = cidFont(d, "Identity", declared);
             assertNull(UnicodeGuess.extracted(mapped, 0x56));
