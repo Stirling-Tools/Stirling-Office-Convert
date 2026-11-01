@@ -3,7 +3,6 @@ package stirling.software.officeconvert.pdfa;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.awt.Font;
@@ -12,8 +11,6 @@ import java.awt.geom.Rectangle2D;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
-import java.lang.management.ManagementFactory;
-import java.lang.management.ThreadMXBean;
 import java.time.Duration;
 
 import org.apache.fontbox.ttf.CmapSubtable;
@@ -29,13 +26,10 @@ import org.apache.pdfbox.pdmodel.font.PDFont;
 import org.apache.pdfbox.pdmodel.font.PDType0Font;
 import org.apache.pdfbox.rendering.PDFRenderer;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.function.Executable;
 
 class WebFontsType3Test {
 
     private static final String GLYPHS = "<</a 5 0 R/ring 6 0 R/line 7 0 R/bits 8 0 R>>";
-
-    private static final Duration HANG = Duration.ofMinutes(2);
 
     private static RawPdf type3(String matrix, String widths, String... procs) {
         RawPdf pdf = RawPdf.page("/Font<</T3<</Type/Font/Subtype/Type3/Name/T3/FontBBox[0 0 0 0]/FontMatrix[" + matrix
@@ -362,18 +356,8 @@ class WebFontsType3Test {
         assertStopsQuickly(pdf);
     }
 
-    private static void assertWithinCpu(Duration cpu, Executable work) {
-        assertTimeoutPreemptively(HANG, () -> {
-            ThreadMXBean threads = ManagementFactory.getThreadMXBean();
-            long start = threads.getCurrentThreadCpuTime();
-            work.execute();
-            long spent = threads.getCurrentThreadCpuTime() - start;
-            assertTrue(spent <= cpu.toNanos(), () -> "used " + spent / 1_000_000 + " ms of CPU, more than " + cpu);
-        });
-    }
-
     private static void assertStopsQuickly(RawPdf pdf) {
-        assertWithinCpu(Duration.ofSeconds(15), () -> {
+        CpuBudget.onThisThread(Duration.ofSeconds(15), () -> {
             try (PDDocument doc = Loader.loadPDF(pdf.bytes())) {
                 PDFont font = doc.getPage(0).getResources().getFont(COSName.getPDFName("T3"));
                 IOException e = assertThrows(IOException.class, () -> WebFonts.toTrueType(font));
@@ -397,7 +381,7 @@ class WebFontsType3Test {
         pdf.add(RawPdf.stream("", "1000 0 0 0 1000 1000 d1 " + crossing + "f"));
         pdf.add(RawPdf.stream("", "900 0 0 0 1000 1000 d1 " + crossing + "W n 0 0 1000 1000 re f"));
         pdf.add(RawPdf.stream("", "800 0 0 0 1000 1000 d1 100 100 500 500 re f"));
-        assertWithinCpu(Duration.ofSeconds(10), () -> {
+        CpuBudget.onThisThread(Duration.ofSeconds(10), () -> {
             try (TrueTypeFont ttf = convert(pdf)) {
                 assertEquals(1000, ttf.getAdvanceWidth(gid(ttf, 'a')));
                 assertEquals(900, ttf.getAdvanceWidth(gid(ttf, 'b')));
@@ -423,7 +407,7 @@ class WebFontsType3Test {
                 + "/FontMatrix[0.001 0 0 0.001 0 0]/CharProcs<</a 5 0 R>>/Encoding<</Type/Encoding/Differences[97/a]>>"
                 + "/FirstChar 97/LastChar 97/Widths[1000]>>>>", "BT /T3 50 Tf 20 100 Td (a) Tj ET");
         pdf.add(RawPdf.stream("", proc.toString()));
-        assertWithinCpu(Duration.ofSeconds(10), () -> {
+        CpuBudget.onThisThread(Duration.ofSeconds(10), () -> {
             try (TrueTypeFont ttf = convert(pdf)) {
                 assertEquals(2, ttf.getNumberOfGlyphs());
                 assertEquals(1000, ttf.getAdvanceWidth(gid(ttf, 'a')));
