@@ -24,7 +24,9 @@ final class Binarizer {
 
     private static final double[] BLUE = weights(0.072186);
 
-    private static final int MIN_BLUE_DEFICIT = 32;
+    private static final int MIN_BLUE_DEFICIT = 48;
+
+    private static final int SAMPLE_STEP = 8;
 
     private static final float[] RED_FLOAT = floats(RED);
 
@@ -284,7 +286,7 @@ final class Binarizer {
             for (int y = 0; y < h; y++) {
                 LineArt.checkpoint();
                 int offset = (y + dy) * model.getScanlineStride() + dx * step + bytes.getOffset();
-                if (vivid) {
+                if (vivid && sampledDeficit(data, offset, step, bands, w)) {
                     int any = 0;
                     for (int x = 0; x < w; x++, offset += step) {
                         int r = data[offset + bands[0]] & 0xFF;
@@ -319,7 +321,7 @@ final class Binarizer {
             }
             int[] pixels = packed ? data : row;
             int start = packed ? offset : 0;
-            if (vivid) {
+            if (vivid && sampledDeficit(pixels, start, w)) {
                 int any = 0;
                 for (int x = 0; x < w; x++) {
                     int p = pixels[start + x];
@@ -341,6 +343,26 @@ final class Binarizer {
             }
         }
         return grey;
+    }
+
+    private static boolean sampledDeficit(byte[] data, int offset, int step, int[] bands, int w) {
+        for (int x = 0; x < w; x += SAMPLE_STEP, offset += SAMPLE_STEP * step) {
+            if (deficit(data[offset + bands[0]] & 0xFF, data[offset + bands[1]] & 0xFF,
+                    data[offset + bands[2]] & 0xFF) != 0) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean sampledDeficit(int[] pixels, int start, int w) {
+        for (int x = 0; x < w; x += SAMPLE_STEP) {
+            int p = pixels[start + x];
+            if (deficit((p >>> 16) & 0xFF, (p >>> 8) & 0xFF, p & 0xFF) != 0) {
+                return true;
+            }
+        }
+        return false;
     }
 
     static int deficit(int r, int g, int b) {

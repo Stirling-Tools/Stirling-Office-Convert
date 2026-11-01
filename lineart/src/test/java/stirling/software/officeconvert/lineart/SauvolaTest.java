@@ -38,7 +38,7 @@ class SauvolaTest {
             for (int window : new int[] {0, 3, 15, 51}) {
                 for (double k : new double[] {0, 0.2, 0.5, 1}) {
                     LineArt.Options options = LineArt.Options.defaults().window(window).k(k);
-                    Bitmap expected = SauvolaReference.binarize(grey, tint.any(), w, h, Binarizer.window(window, w, h), k);
+                    Bitmap expected = SauvolaReference.binarize(grey, tint, w, h, Binarizer.window(window, w, h), k);
                     assertEquals(expected, Binarizer.binarize(picture, options),
                             w + "x" + h + " window " + window + " k " + k);
                 }
@@ -55,7 +55,7 @@ class SauvolaTest {
         float[] grey = Binarizer.grey(picture, null, tint, 0);
         for (int window : new int[] {0, 9, 31}) {
             LineArt.Options options = LineArt.Options.defaults().window(window);
-            Bitmap expected = SauvolaReference.binarize(grey, tint.any(), w, h, Binarizer.window(window, w, h),
+            Bitmap expected = SauvolaReference.binarize(grey, tint, w, h, Binarizer.window(window, w, h),
                     options.k());
             for (int rows : new int[] {2, 7, 64, 300, 996}) {
                 Source banded = new Source(w, h) {
