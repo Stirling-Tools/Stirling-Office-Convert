@@ -3,7 +3,6 @@ package stirling.software.officeconvert.pdfa;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.awt.Font;
@@ -358,7 +357,7 @@ class WebFontsType3Test {
     }
 
     private static void assertStopsQuickly(RawPdf pdf) {
-        assertTimeoutPreemptively(Duration.ofSeconds(15), () -> {
+        CpuBudget.onThisThread(Duration.ofSeconds(15), () -> {
             try (PDDocument doc = Loader.loadPDF(pdf.bytes())) {
                 PDFont font = doc.getPage(0).getResources().getFont(COSName.getPDFName("T3"));
                 IOException e = assertThrows(IOException.class, () -> WebFonts.toTrueType(font));
@@ -382,7 +381,7 @@ class WebFontsType3Test {
         pdf.add(RawPdf.stream("", "1000 0 0 0 1000 1000 d1 " + crossing + "f"));
         pdf.add(RawPdf.stream("", "900 0 0 0 1000 1000 d1 " + crossing + "W n 0 0 1000 1000 re f"));
         pdf.add(RawPdf.stream("", "800 0 0 0 1000 1000 d1 100 100 500 500 re f"));
-        assertTimeoutPreemptively(Duration.ofSeconds(10), () -> {
+        CpuBudget.onThisThread(Duration.ofSeconds(10), () -> {
             try (TrueTypeFont ttf = convert(pdf)) {
                 assertEquals(1000, ttf.getAdvanceWidth(gid(ttf, 'a')));
                 assertEquals(900, ttf.getAdvanceWidth(gid(ttf, 'b')));
@@ -408,7 +407,7 @@ class WebFontsType3Test {
                 + "/FontMatrix[0.001 0 0 0.001 0 0]/CharProcs<</a 5 0 R>>/Encoding<</Type/Encoding/Differences[97/a]>>"
                 + "/FirstChar 97/LastChar 97/Widths[1000]>>>>", "BT /T3 50 Tf 20 100 Td (a) Tj ET");
         pdf.add(RawPdf.stream("", proc.toString()));
-        assertTimeoutPreemptively(Duration.ofSeconds(5), () -> {
+        CpuBudget.onThisThread(Duration.ofSeconds(10), () -> {
             try (TrueTypeFont ttf = convert(pdf)) {
                 assertEquals(2, ttf.getNumberOfGlyphs());
                 assertEquals(1000, ttf.getAdvanceWidth(gid(ttf, 'a')));

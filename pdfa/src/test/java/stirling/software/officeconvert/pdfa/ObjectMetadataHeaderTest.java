@@ -63,7 +63,7 @@ class ObjectMetadataHeaderTest {
         String header = "<?xpacket begin=\"\" id=\"W5M0MpCehiHzreSzNTczkc9d\"" + spaces + "bytes=\"1\"" + spaces
                 + "byte" + spaces + "?>";
         String text = header + "<x:xmpmeta xmlns:x=\"adobe:ns:meta/\"/>";
-        assertTimeoutPreemptively(Duration.ofSeconds(2), () -> {
+        CpuBudget.onThisThread(Duration.ofSeconds(2), () -> {
             assertArrayEquals(new int[] {0, header.length()}, ObjectMetadata.header(text));
             String stripped = ObjectMetadata.withoutSizeAttributes(header);
             assertEquals(header.length() - spaces.length() - "bytes=\"1\"".length(), stripped.length());
