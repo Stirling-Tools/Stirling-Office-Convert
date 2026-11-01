@@ -1,6 +1,7 @@
 package stirling.software.officeconvert.extract;
 
 import java.awt.Graphics2D;
+import java.awt.Paint;
 import java.awt.Shape;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
@@ -17,6 +18,8 @@ import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.font.PDFont;
 import org.apache.pdfbox.pdmodel.font.PDType1Font;
 import org.apache.pdfbox.pdmodel.font.PDType3Font;
+import org.apache.pdfbox.pdmodel.graphics.color.PDColor;
+import org.apache.pdfbox.pdmodel.graphics.color.PDPattern;
 import org.apache.pdfbox.pdmodel.graphics.form.PDFormXObject;
 import org.apache.pdfbox.pdmodel.graphics.form.PDTransparencyGroup;
 import org.apache.pdfbox.pdmodel.graphics.image.PDImage;
@@ -72,6 +75,7 @@ public class GuardedRenderer extends PDFRenderer {
         private final OperatorBudget budget;
         private int annotations;
         private int type3;
+        private int patterns;
         private boolean left;
         private final Map<COSDictionary, String[]> builtIn = new HashMap<>();
 
@@ -82,6 +86,23 @@ public class GuardedRenderer extends PDFRenderer {
 
         public boolean leftOut() {
             return left;
+        }
+
+        protected boolean inPattern() {
+            return patterns > 0;
+        }
+
+        @Override
+        protected Paint getPaint(PDColor color) throws IOException {
+            if (!(color.getColorSpace() instanceof PDPattern)) {
+                return super.getPaint(color);
+            }
+            patterns++;
+            try {
+                return super.getPaint(color);
+            } finally {
+                patterns--;
+            }
         }
 
         @Override

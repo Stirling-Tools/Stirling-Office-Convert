@@ -175,7 +175,7 @@ final class FigureRenderer extends PDFRenderer {
                     throws IOException {
                 PDTextState state = getGraphicsState().getTextState();
                 RenderingMode mode = state.getRenderingMode();
-                if (text || masks > 0) {
+                if (text || masks > 0 || inPattern()) {
                     super.showFontGlyph(textRenderingMatrix, font, code, displacement);
                 } else if (mode.isClip()) {
                     state.setRenderingMode(RenderingMode.NEITHER_CLIP);
@@ -190,7 +190,7 @@ final class FigureRenderer extends PDFRenderer {
             @Override
             protected void showType3Glyph(Matrix textRenderingMatrix, PDType3Font font, int code, Vector displacement)
                     throws IOException {
-                if (text || masks > 0) {
+                if (text || masks > 0 || inPattern()) {
                     super.showType3Glyph(textRenderingMatrix, font, code, displacement);
                 }
             }

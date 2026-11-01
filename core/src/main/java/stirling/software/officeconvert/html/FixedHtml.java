@@ -571,7 +571,7 @@ public final class FixedHtml {
                 @Override
                 protected void showFontGlyph(Matrix matrix, PDFont font, int code, Vector displacement)
                         throws IOException {
-                    if (getGraphicsState().getTextState().getRenderingMode().isClip() || font.toUnicode(code) == null) {
+                    if (inPattern() || getGraphicsState().getTextState().getRenderingMode().isClip() || font.toUnicode(code) == null) {
                         super.showFontGlyph(matrix, font, code, displacement);
                     }
                 }
@@ -579,7 +579,7 @@ public final class FixedHtml {
                 @Override
                 protected void showType3Glyph(Matrix matrix, PDType3Font font, int code, Vector displacement)
                         throws IOException {
-                    if (getGraphicsState().getTextState().getRenderingMode().isClip() || font.toUnicode(code) == null) {
+                    if (inPattern() || getGraphicsState().getTextState().getRenderingMode().isClip() || font.toUnicode(code) == null) {
                         super.showType3Glyph(matrix, font, code, displacement);
                     }
                 }
