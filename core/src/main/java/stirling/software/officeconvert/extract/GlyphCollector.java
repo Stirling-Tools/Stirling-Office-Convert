@@ -106,6 +106,7 @@ final class GlyphCollector extends PDFStreamEngine {
         float hi = -Float.MAX_VALUE;
         float hiddenWidth;
         float hiddenBaseline;
+        boolean partlyHidden;
 
         Span(String actual, int start) {
             this.actual = actual;
@@ -261,7 +262,9 @@ final class GlyphCollector extends PDFStreamEngine {
 
     @Override
     public void showForm(PDFormXObject form) throws IOException {
-        if (budget.form() && !hiddenContent.hidden(form)) {
+        if (hiddenContent.hidden(form)) {
+            skippedHidden();
+        } else if (budget.form()) {
             int mark = clips.mark();
             int level = clips.level();
             try {
@@ -274,7 +277,9 @@ final class GlyphCollector extends PDFStreamEngine {
 
     @Override
     public void showTransparencyGroup(PDTransparencyGroup form) throws IOException {
-        if (budget.form() && !hiddenContent.hidden(form)) {
+        if (hiddenContent.hidden(form)) {
+            skippedHidden();
+        } else if (budget.form()) {
             super.showTransparencyGroup(form);
         }
     }
@@ -396,6 +401,7 @@ final class GlyphCollector extends PDFStreamEngine {
     @Override
     protected void showGlyph(Matrix trm, PDFont font, int code, Vector displacement) throws IOException {
         if (hiddenContent.active()) {
+            skippedHidden();
             return;
         }
         TextPosition position = clippedAway(trm, displacement) ? null
@@ -437,8 +443,14 @@ final class GlyphCollector extends PDFStreamEngine {
             return;
         }
         List<RawGlyph> span = current.subList(s.start, current.size());
-        if (!merge(s, span)) {
+        if (s.partlyHidden || !merge(s, span)) {
             span.removeIf(r -> r.glyph().text == HIDDEN);
+        }
+    }
+
+    private void skippedHidden() {
+        if (outerActual != null) {
+            outerActual.partlyHidden = true;
         }
     }
 

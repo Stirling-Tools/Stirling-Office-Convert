@@ -145,6 +145,17 @@ class HiddenLayerContentTest {
     }
 
     @Test
+    void actualTextOverAPartlyHiddenSpanDoesNotBringBackTheHiddenWords() throws IOException {
+        try (PDDocument doc = layered(false, null)) {
+            doc.getPage(0).setContents(stream(doc, "/Span << /ActualText (" + SHOWN + " " + HIDDEN + ") >> BDC "
+                    + "BT /F1 12 Tf 72 650 Td (" + SHOWN + " ) Tj /OC /L1 BDC (" + HIDDEN + ") Tj EMC ET EMC"));
+            String text = text(doc);
+            assertTrue(text.contains(SHOWN), text);
+            assertFalse(text.contains("Secret"), text);
+        }
+    }
+
+    @Test
     void aPictureInALayerThatIsOffIsLeftOut() throws IOException {
         try (PDDocument doc = layered(false, null)) {
             java.awt.image.BufferedImage pixels = new java.awt.image.BufferedImage(40, 40,
