@@ -436,6 +436,7 @@ final class FontFixer {
             aligned.setString(COSName.ORDERING, info.getString(COSName.ORDERING));
             aligned.setInt(COSName.SUPPLEMENT, supplement);
             stream.setItem(COSName.CIDSYSTEMINFO, aligned);
+            info.setInt(COSName.SUPPLEMENT, supplement);
         }
     }
 

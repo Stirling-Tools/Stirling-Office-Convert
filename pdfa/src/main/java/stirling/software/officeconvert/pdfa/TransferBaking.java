@@ -37,6 +37,7 @@ import org.apache.pdfbox.pdmodel.graphics.image.LosslessFactory;
 import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
 import org.apache.pdfbox.pdmodel.graphics.image.PDInlineImage;
 
+import stirling.software.officeconvert.extract.ImageBudget;
 import stirling.software.officeconvert.extract.PdfFiles;
 
 final class TransferBaking {
@@ -147,11 +148,13 @@ final class TransferBaking {
 
     private boolean lost;
 
+    private boolean wroteRgb;
+
     private TransferBaking(PDDocument doc) {
         this.doc = doc;
     }
 
-    static void run(PDDocument doc, ContentGraph graph, Report report) throws IOException {
+    static void run(PDDocument doc, ContentGraph graph, Report report, DeviceColours colours) throws IOException {
         TransferBaking b = new TransferBaking(doc);
         boolean any = false;
         for (COSDictionary res : graph.resources()) {
@@ -181,6 +184,9 @@ final class TransferBaking {
             }
         }
         b.dropReplaced(graph);
+        if (b.wroteRgb) {
+            colours.operator("rg");
+        }
         report.warn("Applied transfer functions, which PDF/A does not allow, to the colours they change");
         if (b.lost) {
             report.warn("Some transfer functions could not be applied to the content they change");
@@ -353,6 +359,7 @@ final class TransferBaking {
                         if (st.fill.known) {
                             emit(out, st.fill, false, next, resources, pdRes, depth);
                         }
+                        lost |= !next.identity() && (!st.stroke.known || !st.fill.known);
                         changed = true;
                         continue;
                     }
@@ -434,6 +441,7 @@ final class TransferBaking {
                         }
                     }
                 }
+                case "sh" -> lost |= !st.transfer.identity();
                 case "Do" -> {
                     if (operands.size() == 1 && operands.get(0) instanceof COSName xn) {
                         COSName replacement = xobject(xn, t, resources, depth);
@@ -510,6 +518,7 @@ final class TransferBaking {
             out.add(new COSFloat(Math.round(t.apply(i, rgb[i]) * 10000) / 10000f));
         }
         out.add(Operator.getOperator(stroke ? "RG" : "rg"));
+        wroteRgb = true;
     }
 
     private static float[] toRgb(PDColorSpace cs, float[] v) {
@@ -592,16 +601,6 @@ final class TransferBaking {
         if (!COSName.FORM.equals(sub) || t.identity() && !containsTransfer(s, 0)) {
             return null;
         }
-        if (t.identity()) {
-            if (baked.putIfAbsent(new Key(s, t), s) == null) {
-                List<Object> out = content(List.of(s), ContentGraph.dict(s.getDictionaryObject(COSName.RESOURCES)), t,
-                        depth + 1, false);
-                if (out != null) {
-                    ContentTokens.write(s, out);
-                }
-            }
-            return null;
-        }
         COSBase form = baked.get(new Key(s, t));
         if (form == null) {
             COSStream copy = copyStream(s);
@@ -664,6 +663,7 @@ final class TransferBaking {
         if (replacement == null) {
             if (p.getInt(COSName.PATTERN_TYPE, 1) == 2) {
                 replacement = p;
+                lost |= !t.identity();
             } else if (p instanceof COSStream ps && p.getInt(COSName.PAINT_TYPE, 1) == 1) {
                 COSStream copy = copyStream(ps);
                 baked.put(new Key(p, t), copy);
@@ -696,6 +696,7 @@ final class TransferBaking {
             space.add(COSName.PATTERN);
             space.add(COSName.DEVICERGB);
             out.add(register(resources, COSName.COLORSPACE, COSName.getPDFName("PatternRGB"), space));
+            wroteRgb = true;
             out.add(Operator.getOperator(stroke ? "CS" : "cs"));
             for (int i = 0; i < 3; i++) {
                 out.add(new COSFloat(Math.round(t.apply(i, rgb[i]) * 10000) / 10000f));
@@ -714,6 +715,10 @@ final class TransferBaking {
         BufferedImage masked = null;
         try {
             PDImageXObject img = new PDImageXObject(new PDStream(s), null);
+            if (!ImageBudget.affordable(img)) {
+                lost = true;
+                return null;
+            }
             opaque = img.getOpaqueImage();
             if (s.getDictionaryObject(COSName.MASK) instanceof COSArray) {
                 masked = img.getImage();
@@ -728,6 +733,7 @@ final class TransferBaking {
         BufferedImage rgb = transferred(opaque, t);
         boolean jpeg = COSName.DCT_DECODE.equals(lastFilter(s)) && Transparency.photographic(rgb);
         PDImageXObject out = jpeg ? JPEGFactory.createFromImage(doc, rgb, 0.92f) : LosslessFactory.createFromImage(doc, rgb);
+        wroteRgb = true;
         COSStream o = out.getCOSObject();
         for (COSName k : List.of(COSName.SMASK, COSName.INTENT, COSName.STRUCT_PARENT, COSName.METADATA)) {
             if (s.getItem(k) != null) {
@@ -781,13 +787,19 @@ final class TransferBaking {
         }
         BufferedImage img;
         try {
-            img = new PDInlineImage(params, op.getImageData(), res).getImage();
+            PDInlineImage inline = new PDInlineImage(params, op.getImageData(), res);
+            if (!ImageBudget.affordable(inline)) {
+                lost = true;
+                return null;
+            }
+            img = inline.getImage();
         } catch (IOException | RuntimeException e) {
             Decoded.rethrowFatal(e instanceof IOException io ? io : new IOException(e));
             lost = true;
             return null;
         }
         BufferedImage rgb = transferred(img, t);
+        wroteRgb = true;
         int w = rgb.getWidth();
         int h = rgb.getHeight();
         ByteArrayOutputStream data = new ByteArrayOutputStream();

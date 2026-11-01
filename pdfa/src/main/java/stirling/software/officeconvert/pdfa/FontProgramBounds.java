@@ -19,17 +19,24 @@ final class FontProgramBounds {
 
     static void run(PDDocument doc) throws IOException {
         Set<COSStream> seen = Collections.newSetFromMap(new IdentityHashMap<>());
+        Set<COSStream> failed = Collections.newSetFromMap(new IdentityHashMap<>());
         CosWalk.walk(doc, object -> {
             if (!(object instanceof COSDictionary dictionary)) {
                 return;
             }
             for (COSName key : new COSName[] {COSName.FONT_FILE, COSName.FONT_FILE2, COSName.FONT_FILE3}) {
-                if (dictionary.getDictionaryObject(key) instanceof COSStream stream && seen.add(stream)) {
+                if (!(dictionary.getDictionaryObject(key) instanceof COSStream stream)) {
+                    continue;
+                }
+                if (failed.contains(stream)) {
+                    dictionary.removeItem(key);
+                } else if (seen.add(stream)) {
                     byte[] bytes;
                     try {
                         bytes = Decoded.bytes(stream, MAX_BYTES, "A font program");
                     } catch (IOException e) {
                         Decoded.rethrowFatal(e);
+                        failed.add(stream);
                         dictionary.removeItem(key);
                         continue;
                     }

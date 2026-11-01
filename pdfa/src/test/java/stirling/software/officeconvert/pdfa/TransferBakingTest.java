@@ -194,6 +194,55 @@ class TransferBakingTest {
     }
 
     @Test
+    void aFormWithItsOwnTransferIsBakedOnceWhereverItIsDrawn() throws Exception {
+        COSStream form = new COSStream();
+        try (OutputStream o = form.createOutputStream()) {
+            o.write("1 0 0 rg /GT gs 0 0 100 100 re f".getBytes(StandardCharsets.US_ASCII));
+        }
+        form.setItem(COSName.TYPE, COSName.XOBJECT);
+        form.setItem(COSName.SUBTYPE, COSName.FORM);
+        form.setItem(COSName.BBOX, new PDRectangle(0, 0, 100, 100).getCOSArray());
+        form.setItem(COSName.RESOURCES, resources("ExtGState", "GT", invert()));
+        COSDictionary res = resources("ExtGState", "GT", invert());
+        COSDictionary xo = new COSDictionary();
+        xo.setItem(COSName.getPDFName("Fm"), form);
+        res.setItem(COSName.XOBJECT, xo);
+        Path in = page("/Fm Do q 1 0 0 1 100 0 cm /GT gs /Fm Do Q", res);
+        Path out = dir.resolve("form-own-transfer.pdf");
+        PdfToPdfA.convert(in, out, PdfToPdfA.Options.defaults().level(PdfALevel.A2B));
+        assertColour(0x00FFFF, rgb(out, 50, 50));
+        assertColour(0x00FFFF, rgb(out, 150, 50));
+    }
+
+    @Test
+    void contentTheTransferCannotReachIsReported() throws Exception {
+        COSDictionary shading = new COSDictionary();
+        shading.setInt(COSName.SHADING_TYPE, 2);
+        shading.setItem(COSName.COLORSPACE, COSName.DEVICERGB);
+        shading.setItem(COSName.COORDS, numbers(0, 0, 200, 0));
+        COSDictionary fn = function(0, 1);
+        fn.setItem(COSName.C0, numbers(1, 0, 0));
+        fn.setItem(COSName.C1, numbers(0, 0, 1));
+        shading.setItem(COSName.FUNCTION, fn);
+        COSDictionary res = resources("ExtGState", "GT", invert());
+        res.setItem(COSName.SHADING, resources("X", "Sh", shading).getDictionaryObject(COSName.getPDFName("X")));
+        Path in = page("q /GT gs /Sh sh Q", res);
+        Path out = dir.resolve("shading.pdf");
+        var r = PdfToPdfA.convert(in, out, PdfToPdfA.Options.defaults().level(PdfALevel.A2B));
+        assertTrue(r.warnings().stream().anyMatch(w -> w.contains("could not be applied")), r.warnings().toString());
+    }
+
+    @Test
+    void bakedColoursAreRecordedAsDeviceRgbUse() throws Exception {
+        Path in = page("0 g /GT gs 0 0 100 100 re f", resources("ExtGState", "GT", invert()));
+        try (PDDocument d = Loader.loadPDF(in.toFile())) {
+            DeviceColours colours = new DeviceColours();
+            TransferBaking.run(d, ContentGraph.of(d), new Report(), colours);
+            assertTrue(colours.rgb());
+        }
+    }
+
+    @Test
     void aSoftMaskKeepsItsTransferFunction() throws Exception {
         COSStream group = new COSStream();
         try (OutputStream o = group.createOutputStream()) {

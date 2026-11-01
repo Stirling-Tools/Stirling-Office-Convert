@@ -70,7 +70,7 @@ final class Conversion {
         ContentFixer.run(graph, level, report, usage, colours);
         FontFixer.run(doc, usage, level, options::fontLibrary, report);
         SilentGlyphs.run(graph, usage.silent(), level);
-        TransferBaking.run(doc, graph, report);
+        TransferBaking.run(doc, graph, report, colours);
         PdfFiles.stopIfInterrupted();
         FontCompaction compaction = new FontCompaction(doc, usage, level);
         CosWalk.Visitor jpx = JpxImages.visitor(doc, level, report);

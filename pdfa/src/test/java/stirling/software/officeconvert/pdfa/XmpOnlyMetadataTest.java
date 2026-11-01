@@ -76,7 +76,8 @@ class XmpOnlyMetadataTest {
             try (PDDocument doc = Loader.loadPDF(output.toFile())) {
                 String xmp = new String(doc.getDocumentCatalog().getMetadata().toByteArray(), StandardCharsets.UTF_8);
                 assertTrue(xmp.contains("History") && xmp.contains("saved"), xmp);
-                assertFalse(xmp.contains("changed"), xmp);
+                assertFalse(xmp.contains("stEvt:changed"), xmp);
+                assertTrue(xmp.contains("changed: /"), "the changed parts survive in the parameters: " + xmp);
             }
         }
     }
