@@ -133,6 +133,8 @@ final class GlyphCollector extends PDFStreamEngine {
     private int pageIndex;
 
     private int rotation;
+    private float cropX;
+    private float cropY;
     private int nextIndex;
     private PDDocument document;
     private OptionalContent layers;
@@ -354,6 +356,8 @@ final class GlyphCollector extends PDFStreamEngine {
         inPage = true;
         pageIndex = currentPageNo - 1;
         rotation = page.getRotation();
+        cropX = page.getCropBox().getLowerLeftX();
+        cropY = page.getCropBox().getLowerLeftY();
         blankPagesBefore(pageIndex);
         current = new ArrayList<>();
         clips.reset();
@@ -606,7 +610,7 @@ final class GlyphCollector extends PDFStreamEngine {
         boolean invisible = mode == RenderingMode.NEITHER || mode == RenderingMode.NEITHER_CLIP;
         PDColor colour =
                 mode.isStroke() && !mode.isFill() ? gs.getStrokingColor() : gs.getNonStrokingColor();
-        int rgb = PdfColours.toRgb(colour, 0);
+        int rgb = colour.getColorSpace() instanceof PDPattern ? patternRgb(colour, tp) : PdfColours.toRgb(colour, 0);
 
         PDFont pdFont = tp.getFont();
         FontInfo font = fonts.resolve(pdFont);
@@ -782,6 +786,14 @@ final class GlyphCollector extends PDFStreamEngine {
         Matrix tm = tp.getTextMatrix();
         float d = tm.getScaleY();
         return d > 0 && Math.abs(tm.getShearY()) < 0.01f * d && Math.abs(tm.getShearX() / d) > ITALIC_SHEAR;
+    }
+
+    private int patternRgb(PDColor colour, TextPosition tp) {
+        Matrix trm = tp.getTextMatrix();
+        float[] centre = {trm.getTranslateX() + cropX + 0.25f * trm.getScaleX() + 0.3f * trm.getShearX(),
+            trm.getTranslateY() + cropY + 0.25f * trm.getShearY() + 0.3f * trm.getScaleY()};
+        int tone = PatternPaint.at(colour, getResources(), centre[0], centre[1]);
+        return tone >= 0 ? tone : PdfColours.toRgb(colour, 0);
     }
 
     private float type3Scale(PDFont font) {
