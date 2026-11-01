@@ -67,9 +67,7 @@ final class UnicodeGuess {
         }
     }
 
-    private static final String KOREA1 = "Korea1";
-
-    private static final Set<String> CJK_ORDERINGS = Set.of("GB1", "CNS1", "Japan1", KOREA1);
+    private static final Set<String> CJK_ORDERINGS = Set.of("GB1", "CNS1", "Japan1", "Korea1");
 
     private static final Pattern UNICODE_CMAP = Pattern.compile("Uni[A-Za-z0-9]+-(UCS2|UTF16)(-HW)?-[HV]");
 
@@ -84,11 +82,6 @@ final class UnicodeGuess {
                 String collected = font.getCMapUCS2().toUnicode(CidLookup.cid(font, code));
                 t = collected != null && !privateUse(collected) ? collected : t;
             }
-        } else if (korean(font)) {
-            // PDFBox's Adobe-Korea1-UCS2 map is shifted (CID 1 gives U+0000); only legacy one-byte ASCII is safe
-            boolean legacy = cmap != null && !cmap.startsWith("Identity");
-            boolean won = code == 0x5C && legacy && cmap.startsWith("KSCpc");
-            return legacy && code >= 0x20 && code < 0x7F && !won ? String.valueOf((char) code) : null;
         } else {
             try {
                 t = font.getCMapUCS2() != null ? font.getCMapUCS2().toUnicode(CidLookup.cid(font, code))
@@ -103,14 +96,6 @@ final class UnicodeGuess {
     private static boolean privateUse(String t) {
         int cp = t.codePointAt(0);
         return t.length() == Character.charCount(cp) && Character.getType(cp) == Character.PRIVATE_USE;
-    }
-
-    private static boolean korean(PDType0Font font) {
-        PDCIDFont cid = font.getDescendantFont();
-        PDCIDSystemInfo info = cid == null ? null : cid.getCIDSystemInfo();
-        CMap ucs2 = font.getCMapUCS2();
-        return info != null && KOREA1.equals(info.getOrdering())
-                || ucs2 != null && ucs2.getName() != null && ucs2.getName().contains(KOREA1);
     }
 
     private static boolean pairedSurrogates(String t) {
