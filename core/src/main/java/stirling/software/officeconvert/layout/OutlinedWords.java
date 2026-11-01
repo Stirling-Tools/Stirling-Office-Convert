@@ -75,7 +75,6 @@ final class OutlinedWords {
         float reach = maxSize;
         candidates.removeIf(m -> overText(m, ink, baselines, reach) || !clear(m, gfx, lettered, ink, baselines, pageArea));
         Map<VectorMark, Glyph> anchors = new IdentityHashMap<>();
-        List<VectorMark> anchored = new ArrayList<>();
         for (VectorMark m : candidates) {
             Glyph best = null;
             float bestGap = Float.MAX_VALUE;
@@ -98,7 +97,6 @@ final class OutlinedWords {
             }
             if (best != null) {
                 anchors.put(m, plain != null ? plain : best);
-                anchored.add(m);
             }
         }
         for (Map.Entry<VectorMark, Glyph> e : anchors.entrySet()) {
@@ -111,7 +109,6 @@ final class OutlinedWords {
                 Glyph g = standalone(m, gfx.lettering(m), ink, baselines);
                 if (g != null) {
                     anchors.put(m, g);
-                    anchored.add(m);
                 }
             }
         }
@@ -121,11 +118,10 @@ final class OutlinedWords {
                 if (anchors.containsKey(m)) {
                     continue;
                 }
-                for (VectorMark n : List.copyOf(anchored)) {
+                for (VectorMark n : candidates) {
                     Glyph g = anchors.get(n);
-                    if (fits(m, g) && gap(m, n.x(), n.right()) <= REACH * g.size) {
+                    if (g != null && fits(m, g) && gap(m, n.x(), n.right()) <= REACH * g.size) {
                         anchors.put(m, g);
-                        anchored.add(m);
                         grew = true;
                         break;
                     }
