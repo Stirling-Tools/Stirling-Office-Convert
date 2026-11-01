@@ -219,5 +219,9 @@ class CjkSubstitutionTest {
         assertEquals("PMingLiU", GlyphSource.eastAsianFamily("CNS1", "MingLiU", 0));
         assertEquals("Malgun Gothic", GlyphSource.eastAsianFamily("Korea1", "Dotum", 0));
         assertEquals(null, GlyphSource.eastAsianFamily("Identity", "Arial", 0));
+        assertEquals("MS Mincho", GlyphSource.eastAsianFamily("Japan1", "HeiseiMin-W3", 0));
+        assertEquals("MS Gothic", GlyphSource.eastAsianFamily("Japan1", "HeiseiKakuGo-W5", 0));
+        assertEquals("Batang", GlyphSource.eastAsianFamily("Korea1", "HYSMyeongJo-Medium", 0));
+        assertEquals("Malgun Gothic", GlyphSource.eastAsianFamily("Korea1", "HYGoThic-Medium", 0));
     }
 }
