@@ -38,6 +38,38 @@ class FigureTextTest {
         assertEquals("A transparent film", CellText.of(List.of(paras.getFirst()), true).text());
     }
 
+    @Test
+    void aBrokenWordInTheRightColumnDoesNotJoinTheLeftColumnBelow() {
+        Line left = line(100, "Left", "text");
+        Line right = line(100, "inter-");
+        Line above = joined(left, shifted(right, 200));
+        Line below = joined(line(112, "national", "words"), shifted(line(112, "more"), 200));
+        List<ParaDraft> paras = PageItems.captions(List.of(above, below));
+        assertEquals(2, paras.size());
+    }
+
+    private static Line shifted(Line l, float dx) {
+        List<Word> out = new ArrayList<>();
+        for (Word w : l.words) {
+            List<Glyph> glyphs = new ArrayList<>();
+            for (Glyph g : w.glyphs) {
+                glyphs.add(new Glyph(g.text, g.x + dx, g.width, g.baseline, g.size, g.ascent, g.descent, FONT, 0, g.seq,
+                        3, false, false));
+            }
+            out.add(new Word(glyphs));
+        }
+        return new Line(out, l.gaps.clone());
+    }
+
+    private static Line joined(Line a, Line b) {
+        List<Word> words = new ArrayList<>(a.words);
+        words.addAll(b.words);
+        byte[] gaps = new byte[words.size()];
+        java.util.Arrays.fill(gaps, Line.SPACE);
+        gaps[a.words.size()] = Line.TAB;
+        return new Line(words, gaps);
+    }
+
     private static Line line(float baseline, String... words) {
         List<Word> out = new ArrayList<>();
         float x = 72;
