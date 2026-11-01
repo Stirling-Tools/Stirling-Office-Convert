@@ -136,9 +136,11 @@ public final class FontEmbedder {
             try {
                 boolean declared = leader.containsKey(COSName.TO_UNICODE);
                 TreeMap<Integer, String> text = new TreeMap<>();
+                boolean standIn = UnicodeGuess.standIn(font);
                 for (int code : codes) {
                     try {
-                        String unicode = font.toUnicode(code);
+                        String unicode = standIn ? UnicodeGuess.text(font, code, usage.bytesPerCode(leader))
+                                : font.toUnicode(code);
                         if (unicode != null && !unicode.isEmpty()) {
                             text.put(code, unicode);
                         }

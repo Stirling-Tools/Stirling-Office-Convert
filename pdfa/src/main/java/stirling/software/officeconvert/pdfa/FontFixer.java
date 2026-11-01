@@ -458,7 +458,7 @@ final class FontFixer {
         boolean complete = declared != null && ToUnicodeWriter.wellFormed(declared);
         for (int code : codes) {
             PdfFiles.stopIfInterrupted();
-            String t = UnicodeGuess.of(font, code, bytesPerCode);
+            String t = UnicodeGuess.text(font, code, bytesPerCode);
             if (complete && !ToUnicodeWriter.valid(UnicodeGuess.declared(font, code))) {
                 complete = false;
             }
