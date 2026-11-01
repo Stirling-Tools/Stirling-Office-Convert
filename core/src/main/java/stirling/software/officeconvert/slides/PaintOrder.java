@@ -300,10 +300,13 @@ final class PaintOrder extends PDFGraphicsStreamEngine {
 
     @Override
     public void showForm(PDFormXObject form) throws IOException {
+        if (hiddenContent != null && hiddenContent.hidden(form)) {
+            return;
+        }
         int span = enterGroup();
         formClips.push(clips());
         try {
-            if (budget.form() && (hiddenContent == null || !hiddenContent.hidden(form))) {
+            if (budget.form()) {
                 super.showForm(form);
             }
         } finally {
@@ -314,11 +317,14 @@ final class PaintOrder extends PDFGraphicsStreamEngine {
 
     @Override
     public void showTransparencyGroup(PDTransparencyGroup form) throws IOException {
+        if (hiddenContent != null && hiddenContent.hidden(form)) {
+            return;
+        }
         int span = enterGroup();
         formClips.push(clips());
         transparentGroups++;
         try {
-            if (budget.form() && (hiddenContent == null || !hiddenContent.hidden(form))) {
+            if (budget.form()) {
                 transparencyGroup(form);
             }
         } finally {
