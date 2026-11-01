@@ -40,6 +40,8 @@ final class SectionProps {
     String lineNumberRestart = "newPage";
     String footnoteRestart;
 
+    static final float SMALLEST_PAGE = 7.2f;
+
     static SectionProps parse(XEl sectPr) {
         SectionProps s = new SectionProps();
         if (sectPr == null) {
@@ -50,11 +52,11 @@ final class SectionProps {
                 case "w:pgSz" -> {
                     Float w = Ooxml.twips(k.attr("w"));
                     Float h = Ooxml.twips(k.attr("h"));
-                    if (w != null && w >= 36) {
-                        s.pageW = Math.min(w, 14_400);
+                    if (w != null && w > 0) {
+                        s.pageW = Math.clamp(w, SMALLEST_PAGE, 14_400);
                     }
-                    if (h != null && h >= 36) {
-                        s.pageH = Math.min(h, 14_400);
+                    if (h != null && h > 0) {
+                        s.pageH = Math.clamp(h, SMALLEST_PAGE, 14_400);
                     }
                 }
                 case "w:pgMar" -> {

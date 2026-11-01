@@ -121,5 +121,18 @@ class DocxMarginRulesTest {
         // The cell's own paragraph sizes the row, not the end-of-row mark with its 20 pt space after
         assertEquals(11.5, r.word("After").y() - r.word("Cell").y(), 0.1);
     }
+
+    @Test
+    void aPageSmallerThanHalfAnInchKeepsItsSize() throws IOException {
+        String section = "<w:sectPr><w:pgSz w:w=\"400\" w:h=\"400\"/><w:pgMar w:top=\"40\" w:right=\"10\""
+                + " w:bottom=\"80\" w:left=\"40\" w:header=\"20\" w:footer=\"40\" w:gutter=\"0\"/></w:sectPr>";
+        DocxDoc.Rendered tiny = DocxDoc.render(dir, "tiny",
+                new DocxDoc().styles(DEFAULTS).body("<w:p/>").section(section).bytes());
+        assertEquals(20, tiny.height(1), 0.01);
+        String speck = section.replace("w:w=\"400\" w:h=\"400\"", "w:w=\"60\" w:h=\"60\"");
+        DocxDoc.Rendered smallest = DocxDoc.render(dir, "speck",
+                new DocxDoc().styles(DEFAULTS).body("<w:p/>").section(speck).bytes());
+        assertEquals(SectionProps.SMALLEST_PAGE, smallest.height(1), 0.01);
+    }
 }
 
