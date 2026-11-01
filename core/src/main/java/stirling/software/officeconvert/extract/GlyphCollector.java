@@ -119,6 +119,7 @@ final class GlyphCollector extends PDFStreamEngine {
     private final UnicodeRecovery recovery;
     private final Map<org.apache.pdfbox.cos.COSDictionary, float[]> metrics = new WeakHashMap<>();
     private final Map<COSDictionary, Map<Integer, float[]>> inks = new WeakHashMap<>();
+    private final Map<COSDictionary, Float> type3Scales = new WeakHashMap<>();
     private final Deque<Span> spans = new ArrayDeque<>();
     private Span outerActual;
     private int actualDepth;
@@ -615,7 +616,7 @@ final class GlyphCollector extends PDFStreamEngine {
         if (drawnSize > 0 && pdFont.toUnicode(codes[0], TextPositions.GLYPHS) != null) {
             drawnSize = Float.NaN;
         }
-        float size = drawnSize > 0 && drawnSize < 400f ? drawnSize : fontSize(tp);
+        float size = drawnSize > 0 && drawnSize < 400f ? drawnSize : fontSize(tp, type3Scale(pdFont));
         float[] m = metrics(pdFont);
         float space = spaceWidth(tp, pdFont, size, m[2]);
 
@@ -783,6 +784,13 @@ final class GlyphCollector extends PDFStreamEngine {
         return d > 0 && Math.abs(tm.getShearY()) < 0.01f * d && Math.abs(tm.getShearX() / d) > ITALIC_SHEAR;
     }
 
+    private float type3Scale(PDFont font) {
+        if (!(font instanceof PDType3Font t3)) {
+            return 1f;
+        }
+        return type3Scales.computeIfAbsent(font.getCOSObject(), k -> Type3Size.scale(t3, positions.unmapped));
+    }
+
     private float[] metrics(PDFont font) {
         if (font == null) {
             return new float[] {0.8f, 0.2f, Float.NaN};
@@ -822,11 +830,12 @@ final class GlyphCollector extends PDFStreamEngine {
         return Float.isFinite(s) && s > 0.2f && s < 5f ? s : 1f;
     }
 
-    static float fontSize(TextPosition tp) {
+    static float fontSize(TextPosition tp, float scale) {
         float size = Math.abs(tp.getYScale());
         if (Math.round(tp.getDir()) % 180 != 0) {
             size = Math.abs(tp.getXScale());
         }
+        size *= scale;
         if (size <= 0.5f || size > 400f) {
             size = tp.getFontSizeInPt();
         }
