@@ -46,12 +46,23 @@ class PatternStencilTest {
         assertEquals(0xFF0000, draws.getFirst().stencilRgb());
     }
 
+    @Test
+    void aThinStencilPaintedWithAShadingIsNotABlackRule() throws IOException {
+        List<ImageDraw> draws = draws(true, true);
+        assertEquals(1, draws.size());
+        assertTrue(draws.getFirst().skewed());
+    }
+
     private static List<ImageDraw> draws(boolean shaded) throws IOException {
+        return draws(shaded, false);
+    }
+
+    private static List<ImageDraw> draws(boolean shaded, boolean thin) throws IOException {
         try (PDDocument document = new PDDocument()) {
             PDPage page = new PDPage(PDRectangle.LETTER);
             document.addPage(page);
             page.setResources(new PDResources());
-            PDImageXObject mask = stencil(document);
+            PDImageXObject mask = thin ? solid(document) : stencil(document);
             try (PDPageContentStream cs = new PDPageContentStream(document, page)) {
                 if (shaded) {
                     PDShadingPattern pattern = new PDShadingPattern();
@@ -62,7 +73,7 @@ class PatternStencilTest {
                 } else {
                     cs.setNonStrokingColor(1f, 0f, 0f);
                 }
-                cs.drawImage(mask, 100, 300, 200, 200);
+                cs.drawImage(mask, 100, 300, 200, thin ? 1 : 200);
             }
             return GraphicsCollector.read(page, PageReader.displayTransform(page.getCropBox(), 0), 612, 792,
                     new ParsedStreams()).images();
@@ -90,6 +101,19 @@ class PatternStencilTest {
             a.add(new COSFloat(v));
         }
         return a;
+    }
+
+    private static PDImageXObject solid(PDDocument document) throws IOException {
+        PDStream stream = new PDStream(document);
+        try (OutputStream out = stream.createOutputStream()) {
+            out.write(new byte[] {0});
+        }
+        PDImageXObject image = new PDImageXObject(stream, new PDResources());
+        image.setWidth(1);
+        image.setHeight(1);
+        image.setBitsPerComponent(1);
+        image.getCOSObject().setBoolean(COSName.IMAGE_MASK, true);
+        return image;
     }
 
     private static PDImageXObject stencil(PDDocument document) throws IOException {
