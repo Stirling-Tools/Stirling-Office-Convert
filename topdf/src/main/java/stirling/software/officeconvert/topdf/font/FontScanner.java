@@ -106,6 +106,16 @@ final class FontScanner {
         }
     }
 
+    static long[] tableRange(FontEntry entry, String tag) throws IOException {
+        try (Source src = entry.file() != null ? Source.of(entry.file()) : Source.of(entry.data())) {
+            long[] t = tables(src, entry.offset()).get(tag);
+            if (t == null) {
+                throw new IOException("the font has no " + tag.strip() + " table");
+            }
+            return t.clone();
+        }
+    }
+
     static byte[] table(FontEntry entry, String tag, long maxBytes) throws IOException {
         try (Source src = entry.file() != null ? Source.of(entry.file()) : Source.of(entry.data())) {
             long[] t = tables(src, entry.offset()).get(tag);

@@ -25,6 +25,7 @@ import org.apache.pdfbox.cos.COSStream;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.font.PDCIDFontType2;
 import org.apache.pdfbox.pdmodel.font.PDFont;
+import org.apache.pdfbox.pdmodel.font.PDFontDescriptor;
 import org.apache.pdfbox.pdmodel.font.PDTrueTypeFont;
 import org.apache.pdfbox.pdmodel.font.PDType0Font;
 
@@ -168,7 +169,14 @@ final class FontCompaction {
             remap.put(gid, w.addCopy(gid, hmtx == null ? 0 : hmtx.getAdvanceWidth(gid)));
         }
         String name = ttf.getName() == null ? "Font" : ttf.getName();
-        byte[] font = w.build(FontRebuild.cleanName(name), cmap(ttf, remap, unicode, macRoman));
+        byte[] table = cmap(ttf, remap, unicode, macRoman, false);
+        if (!cid && !strictlyFound(loaded, table, remap)) {
+            table = cmap(ttf, remap, unicode, macRoman, true);
+            if (!strictlyFound(loaded, table, remap)) {
+                return;
+            }
+        }
+        byte[] font = w.build(FontRebuild.cleanName(name), table);
         byte[] packed = PdfWriter.deflate(font);
         long before = program.getLength();
         if (packed.length > before * MAX_RATIO || before - packed.length < MIN_SAVING) {
@@ -204,7 +212,7 @@ final class FontCompaction {
         if (COSName.FONT_FILE.equals(key)) {
             COSStream cff = OutlineCompaction.type1ToCff(doc, loaded, usage.codes());
             long best = file == null ? program.getLength() - MIN_SAVING : file.getLength();
-            if (cff != null && cff.getLength() <= best) {
+            if (cff != null && (cff.getLength() <= best || plainCharStrings(program))) {
                 file = cff;
                 target = COSName.FONT_FILE3;
             }
@@ -222,6 +230,12 @@ final class FontCompaction {
             fd.setItem(target, file);
             retag(f, fd, tag);
         }
+    }
+
+    private static boolean plainCharStrings(COSStream program) {
+        byte[] data = StreamFixer.read(program);
+        return data != null && Type1Lenient.plainCharStrings(data, program.getInt(COSName.LENGTH1),
+                program.getInt(COSName.LENGTH2));
     }
 
     private static COSName programKey(PDFont f, COSStream program) {
@@ -254,10 +268,40 @@ final class FontCompaction {
         return ContentGraph.dict(owner.getDictionaryObject(COSName.FONT_DESC));
     }
 
+    private boolean strictlyFound(List<PDFont> loaded, byte[] table, Map<Integer, Integer> remap)
+            throws IOException {
+        for (PDFont f : loaded) {
+            PDTrueTypeFont tt = (PDTrueTypeFont) f;
+            PDFontDescriptor fd = tt.getFontDescriptor();
+            StrictGlyphs strict = StrictGlyphs.of(tt.getCOSObject(), fd != null && fd.isSymbolic(), table,
+                    remap.size());
+            if (strict == null) {
+                return false;
+            }
+            for (int code : usage.codes().get(f.getCOSObject())) {
+                int gid = remap.getOrDefault(tt.codeToGID(code), 0);
+                if (gid > 0 && strict.gid(code) != gid) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
     private static byte[] cmap(TrueTypeFont ttf, Map<Integer, Integer> remap, Map<Integer, Integer> unicode,
-            Map<Integer, Integer> macRoman) throws IOException {
+            Map<Integer, Integer> macRoman, boolean addUnicode) throws IOException {
         CmapTable table = ttf.getCmap();
         List<Cmaps.Subtable> subs = new ArrayList<>();
+        if (addUnicode && (table == null || table.getSubtable(3, 1) == null)) {
+            TreeMap<Integer, Integer> map = new TreeMap<>();
+            for (Map.Entry<Integer, Integer> e : unicode.entrySet()) {
+                Integer gid = remap.get(e.getValue());
+                if (gid != null && gid > 0) {
+                    map.put(e.getKey(), gid);
+                }
+            }
+            subs.add(new Cmaps.Subtable(3, 1, map));
+        }
         if (table != null) {
             for (CmapSubtable s : table.getCmaps()) {
                 TreeMap<Integer, Integer> map = new TreeMap<>();

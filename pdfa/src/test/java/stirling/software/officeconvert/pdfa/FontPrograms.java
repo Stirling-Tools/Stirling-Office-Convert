@@ -25,6 +25,14 @@ final class FontPrograms {
     }
 
     static Type1 type1(String fontName, int subrPadding, int widthTenths) {
+        return type1(fontName, subrPadding, widthTenths, false);
+    }
+
+    static Type1 plainType1(String fontName) {
+        return type1(fontName, 0, 0, true);
+    }
+
+    private static Type1 type1(String fontName, int subrPadding, int widthTenths, boolean plain) {
         StringBuilder clear = new StringBuilder();
         clear.append("%!PS-AdobeFont-1.0: ").append(fontName).append(" 001\n")
                 .append("12 dict begin\n/FontInfo 2 dict dup begin /FullName (").append(fontName)
@@ -32,23 +40,24 @@ final class FontPrograms {
                 .append("/Encoding StandardEncoding def\n/PaintType 0 def\n/FontType 1 def\n")
                 .append("/FontMatrix [0.001 0 0 0.001 0 0] readonly def\n/FontBBox {0 -10 900 760} readonly def\n")
                 .append("currentdict end\ncurrentfile eexec\n");
-        ByteArrayOutputStream plain = new ByteArrayOutputStream();
-        write(plain, "dup /Private 9 dict dup begin\n/RD{string currentfile exch readstring pop}executeonly def\n"
-                + "/ND{noaccess def}executeonly def\n/NP{noaccess put}executeonly def\n/lenIV 4 def\n"
+        ByteArrayOutputStream priv = new ByteArrayOutputStream();
+        write(priv, "dup /Private 9 dict dup begin\n/RD{string currentfile exch readstring pop}executeonly def\n"
+                + "/ND{noaccess def}executeonly def\n/NP{noaccess put}executeonly def\n/lenIV " + (plain ? -1 : 4)
+                + " def\n"
                 + "/BlueValues [] def\n/MinFeature{16 16}def\n/password 5839 def\n");
         int subrs = 5 + subrPadding;
-        write(plain, "/Subrs " + subrs + " array\n");
+        write(priv, "/Subrs " + subrs + " array\n");
         for (int i = 0; i < subrs; i++) {
             byte[] cs = i == 4 ? concat(num(0), num(700), new byte[] {5}, num(400), num(0), new byte[] {5}, num(0),
                     num(-700), new byte[] {5, 11})
                     : i >= 5 ? concat(repeat(num(1), 40), new byte[] {11}) : new byte[] {11};
-            byte[] enc = charstring(cs);
-            write(plain, "dup " + i + " " + enc.length + " RD ");
-            plain.writeBytes(enc);
-            write(plain, " NP\n");
+            byte[] enc = plain ? cs : charstring(cs);
+            write(priv, "dup " + i + " " + enc.length + " RD ");
+            priv.writeBytes(enc);
+            write(priv, " NP\n");
         }
-        write(plain, "ND\n2 index /CharStrings " + (NAMES.size() + 1) + " dict dup begin\n");
-        glyph(plain, ".notdef", concat(num(0), num(250), new byte[] {13, 14}));
+        write(priv, "ND\n2 index /CharStrings " + (NAMES.size() + 1) + " dict dup begin\n");
+        glyph(priv, plain, ".notdef", concat(num(0), num(250), new byte[] {13, 14}));
         for (String n : NAMES) {
             byte[] body;
             if ("space".equals(n)) {
@@ -65,11 +74,11 @@ final class FontPrograms {
                         repeat(concat(num(10), num(0), new byte[] {5}, num(-10), num(0), new byte[] {5}), 30),
                         new byte[] {14});
             }
-            glyph(plain, n, body);
+            glyph(priv, plain, n, body);
         }
-        write(plain, "end\nend\nreadonly put\nnoaccess put\ndup/FontName get exch definefont pop\n"
+        write(priv, "end\nend\nreadonly put\nnoaccess put\ndup/FontName get exch definefont pop\n"
                 + "mark currentfile closefile\n");
-        byte[] encrypted = eexec(plain.toByteArray());
+        byte[] encrypted = eexec(priv.toByteArray());
         String tail = ("0".repeat(64) + "\n").repeat(8) + "cleartomark\n";
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         byte[] head = clear.toString().getBytes(StandardCharsets.ISO_8859_1);
@@ -79,8 +88,8 @@ final class FontPrograms {
         return new Type1(out.toByteArray(), head.length, encrypted.length, tail.length());
     }
 
-    private static void glyph(ByteArrayOutputStream plain, String name, byte[] body) {
-        byte[] enc = charstring(body);
+    private static void glyph(ByteArrayOutputStream plain, boolean unencrypted, String name, byte[] body) {
+        byte[] enc = unencrypted ? body : charstring(body);
         write(plain, "/" + name + " " + enc.length + " RD ");
         plain.writeBytes(enc);
         write(plain, " ND\n");
