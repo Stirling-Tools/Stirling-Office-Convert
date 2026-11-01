@@ -34,9 +34,9 @@ final class Sauvola {
 
     private final byte[] ring;
 
-    private final byte[] deficits;
+    private float[] greys;
 
-    private final int[] rowDeficits;
+    private int greysCapacity;
 
     private final float[] paper;
 
@@ -56,21 +56,20 @@ final class Sauvola {
 
     private final long[] flatLimits;
 
-    private boolean tinted;
+    private final Tint tint;
 
     private int counted = -1;
 
     private int next = -1;
 
-    Sauvola(int width, int height, int window, double k) {
+    Sauvola(int width, int height, int window, double k, Tint tint) {
         this.width = width;
         this.height = height;
         this.radius = window / 2;
         this.span = window + 1;
         this.k = k;
+        this.tint = tint;
         this.ring = new byte[Math.multiplyExact(span, width)];
-        this.deficits = new byte[ring.length];
-        this.rowDeficits = new int[span];
         this.paper = new float[width];
         this.pad = radius + 1;
         this.columnSum = new int[width + 2 * pad];
@@ -85,11 +84,9 @@ final class Sauvola {
         }
     }
 
-    void tinted(boolean tinted) {
-        this.tinted = tinted;
-    }
-
     void rows(float[] buffer, int capacity, int from, int to, Paper surface, Bitmap out, Bitmap core, Bitmap edge) {
+        greys = buffer;
+        greysCapacity = capacity;
         int r = radius;
         if (from != next) {
             Arrays.fill(columnSum, 0);
@@ -129,54 +126,23 @@ final class Sauvola {
         int row = (entering % capacity) * width;
         int in = (entering % span) * width;
         int out = (leaving % span) * width;
-        if (!tinted) {
-            for (int x = 0; x < width; x++) {
-                int v = Binarizer.eight(buffer[row + x]);
-                int old = ring[out + x] & 0xFF;
-                ring[in + x] = (byte) v;
-                columnSum[pad + x] += v - old;
-                columnSquares[pad + x] += v * v - old * old;
-            }
-            return;
-        }
-        int any = 0;
         for (int x = 0; x < width; x++) {
-            float value = buffer[row + x];
-            int deficit = Binarizer.blueDeficit(value);
-            int v = Binarizer.eight(value);
+            int v = Binarizer.eight(buffer[row + x]);
             int old = ring[out + x] & 0xFF;
             ring[in + x] = (byte) v;
-            deficits[in + x] = (byte) deficit;
-            any |= deficit;
             columnSum[pad + x] += v - old;
             columnSquares[pad + x] += v * v - old * old;
         }
-        rowDeficits[entering % span] = any;
     }
 
     private void enter(float[] buffer, int row, int y) {
         int slot = (y % span) * width;
-        if (!tinted) {
-            for (int x = 0; x < width; x++) {
-                int v = Binarizer.eight(buffer[row + x]);
-                ring[slot + x] = (byte) v;
-                columnSum[pad + x] += v;
-                columnSquares[pad + x] += v * v;
-            }
-            return;
-        }
-        int any = 0;
         for (int x = 0; x < width; x++) {
-            float value = buffer[row + x];
-            int deficit = Binarizer.blueDeficit(value);
-            int v = Binarizer.eight(value);
+            int v = Binarizer.eight(buffer[row + x]);
             ring[slot + x] = (byte) v;
-            deficits[slot + x] = (byte) deficit;
-            any |= deficit;
             columnSum[pad + x] += v;
             columnSquares[pad + x] += v * v;
         }
-        rowDeficits[y % span] = any;
     }
 
     private void leave(int y) {
@@ -208,18 +174,20 @@ final class Sauvola {
             sum += sums[pad + x];
             squares += squaresByColumn[pad + x];
         }
-        boolean coloured = tinted && rowDeficits[y % span] != 0;
+        boolean coloured = tint != null && tint.row(y);
+        float[] source = greys;
+        int deficitRow = (y % greysCapacity) * w;
         for (int x = 0; x < w; x++) {
             sum += sums[x + reach] - sums[x];
             squares += squaresByColumn[x + reach] - squaresByColumn[x];
             int v = ring[values + x] & 0xFF;
             long count = counts[x];
             double solid = Paper.SOLID * paper[x];
-            int deficit = coloured ? deficits[values + x] & 0xFF : 0;
+            if (coloured) {
+                solid += BLUE_DEFICIT_WEIGHT * Binarizer.blueDeficit(source[deficitRow + x]);
+            }
             int code;
-            if (deficit != 0) {
-                code = code(sum, squares, count, v, solid + BLUE_DEFICIT_WEIGHT * deficit);
-            } else if (squares * count - sum * sum < flatLimits[x]) {
+            if (squares * count - sum * sum < flatLimits[x]) {
                 double edge = solid * count;
                 if (sum > edge * ABOVE && v * count > sum * paperCeiling) {
                     code = 0;
