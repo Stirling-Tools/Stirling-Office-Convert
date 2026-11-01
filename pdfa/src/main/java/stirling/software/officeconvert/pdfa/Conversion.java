@@ -66,8 +66,10 @@ final class Conversion {
         DeviceNReduction.run(doc, census, graph, level, report);
         SpotColours.run(doc, census, level, report);
         FontFixer.repairSubtypes(graph, report);
+        FontFixer.dropUnreadable(graph, report);
         ContentFixer.run(graph, level, report, usage, colours);
         FontFixer.run(doc, usage, level, options::fontLibrary, report);
+        TransferBaking.run(doc, graph, report, colours);
         PdfFiles.stopIfInterrupted();
         FontCompaction compaction = new FontCompaction(doc, usage, level);
         CosWalk.Visitor jpx = JpxImages.visitor(doc, level, report);

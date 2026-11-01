@@ -9,6 +9,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -90,6 +91,22 @@ final class FontScanner {
         }
     }
 
+    static void checkCff(FontEntry entry, long maxBytes) throws IOException {
+        try (Source src = entry.file() != null ? Source.of(entry.file()) : Source.of(entry.data())) {
+            long[] t = tables(src, entry.offset()).get("CFF ");
+            if (t == null) {
+                throw new IOException("the font has no CFF table");
+            }
+            if (t[1] > maxBytes) {
+                throw new IOException("the CFF table is too large");
+            }
+            CffSubsetter.check((int) t[1], (into, from, to) -> {
+                byte[] b = src.slice(t[0] + from, to - from).bytes;
+                System.arraycopy(b, 0, into, from, b.length);
+            });
+        }
+    }
+
     static byte[] table(FontEntry entry, String tag, long maxBytes) throws IOException {
         try (Source src = entry.file() != null ? Source.of(entry.file()) : Source.of(entry.data())) {
             long[] t = tables(src, entry.offset()).get(tag);
@@ -140,7 +157,7 @@ final class FontScanner {
             long[] cmap = tables(src, entry.offset()).get("cmap");
             return cmap == null ? new int[0] : ranges(src, cmap, entry.symbolCmap());
         } catch (IOException | RuntimeException e) {
-            return new int[0];
+            return new int[] {0, Character.MAX_CODE_POINT};
         }
     }
 
@@ -352,33 +369,13 @@ final class FontScanner {
         return unicode ? 1 : symbol ? 2 : 0;
     }
 
-    private static int[] ranges(Source src, long[] cmap, boolean symbolOnly) throws IOException {
-        Slice t = src.slice(cmap[0], (int) Math.min(cmap[1], MAX_CMAP_BYTES));
-        int count = t.u16(2);
-        int best = -1;
-        int bestRank = Integer.MAX_VALUE;
-        for (int i = 0; i < count && 4 + 8 * i + 8 <= t.length(); i++) {
-            int platform = t.u16(4 + 8 * i);
-            int encoding = t.u16(6 + 8 * i);
-            int rank = platform == 0 && encoding == 4 ? 0 : platform == 3 && encoding == 10 ? 1
-                    : platform == 0 && encoding == 3 ? 2 : platform == 3 && encoding == 1 ? 3
-                    : platform == 3 && encoding == 0 ? 4 : platform == 0 ? 5 : Integer.MAX_VALUE;
-            long at = t.u32(8 + 8 * i);
-            if (rank < bestRank && at + 2 <= t.length()) {
-                bestRank = rank;
-                best = (int) at;
-            }
-        }
-        if (best < 0) {
-            return new int[0];
-        }
-        List<int[]> out = new ArrayList<>();
-        int format = t.u16(best);
-        if (format == 4 && best + 14 <= t.length()) {
-            int segments = t.u16(best + 6) / 2;
+    private static void subtable(Slice t, int at, List<int[]> out) throws IOException {
+        int format = t.u16(at);
+        if (format == 4 && at + 14 <= t.length()) {
+            int segments = t.u16(at + 6) / 2;
             for (int s = 0; s < segments && out.size() < MAX_RANGES; s++) {
-                int endAt = best + 14 + 2 * s;
-                int startAt = best + 16 + 2 * segments + 2 * s;
+                int endAt = at + 14 + 2 * s;
+                int startAt = at + 16 + 2 * segments + 2 * s;
                 if (startAt + 2 > t.length()) {
                     break;
                 }
@@ -388,10 +385,10 @@ final class FontScanner {
                     out.add(new int[] {start, end});
                 }
             }
-        } else if ((format == 12 || format == 13) && best + 16 <= t.length()) {
-            long groups = Math.min(t.u32(best + 12), MAX_RANGES);
+        } else if ((format == 12 || format == 13) && at + 16 <= t.length()) {
+            long groups = Math.min(t.u32(at + 12), MAX_RANGES);
             for (int g = 0; g < groups; g++) {
-                int rec = best + 16 + 12 * g;
+                int rec = at + 16 + 12 * g;
                 if (rec + 8 > t.length()) {
                     break;
                 }
@@ -401,15 +398,34 @@ final class FontScanner {
                     out.add(new int[] {(int) start, (int) end});
                 }
             }
-        } else if (format == 6 && best + 10 <= t.length()) {
-            int first = t.u16(best + 6);
-            int entries = t.u16(best + 8);
+        } else if (format == 6 && at + 10 <= t.length()) {
+            int first = t.u16(at + 6);
+            int entries = t.u16(at + 8);
             if (entries > 0) {
                 out.add(new int[] {first, first + entries - 1});
             }
         } else if (format == 0) {
             out.add(new int[] {0, 255});
         } else {
+            out.add(new int[] {0, Character.MAX_CODE_POINT});
+        }
+    }
+
+    private static int[] ranges(Source src, long[] cmap, boolean symbolOnly) throws IOException {
+        Slice t = src.slice(cmap[0], (int) Math.min(cmap[1], MAX_CMAP_BYTES));
+        int count = t.u16(2);
+        List<int[]> out = new ArrayList<>();
+        Set<Integer> read = new HashSet<>();
+        for (int i = 0; i < count && 4 + 8 * i + 8 <= t.length(); i++) {
+            int platform = t.u16(4 + 8 * i);
+            int encoding = t.u16(6 + 8 * i);
+            boolean unicode = platform == 0 || platform == 3 && (encoding == 0 || encoding == 1 || encoding == 10);
+            long at = t.u32(8 + 8 * i);
+            if (unicode && at + 2 <= t.length() && read.add((int) at)) {
+                subtable(t, (int) at, out);
+            }
+        }
+        if (out.size() >= MAX_RANGES || cmap[1] > MAX_CMAP_BYTES) {
             out.add(new int[] {0, Character.MAX_CODE_POINT});
         }
         if (symbolOnly) {

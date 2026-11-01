@@ -95,8 +95,15 @@ final class Binarizer {
             }
             case SAUVOLA -> {
                 int window = window(options.window(), w, h);
-                scan(greys, w, h, window / 2,
-                        (buffer, first, from, to) -> sauvola(buffer, first, w, h, from, to, window, options.k(), out));
+                Paper paper = new Paper(w, h, window);
+                Bitmap core = Bitmap.blank(w, h);
+                Bitmap edge = Bitmap.blank(w, h);
+                int ahead = window / 2 + Paper.lookahead(w, h, window);
+                scan(greys, w, h, window / 2, ahead, (buffer, first, from, to) -> {
+                    paper.feed(buffer, first, Math.min(h, to + ahead));
+                    sauvola(buffer, first, w, h, from, to, window, options.k(), paper, out, core, edge);
+                });
+                Paper.grow(out, core, edge, window);
             }
             case EDGES -> edges(greys, w, h, options.edgeLevel(), options.threshold(), out, keepEdges);
         }
@@ -105,7 +112,10 @@ final class Binarizer {
 
     static int context(LineArt.Options options, int w, int h) {
         return switch (options.method()) {
-            case SAUVOLA -> window(options.window(), w, h) / 2 + 1;
+            case SAUVOLA -> {
+                int window = window(options.window(), w, h);
+                yield window / 2 + 1 + Math.ceilDiv(Paper.lookahead(w, h, window), 2);
+            }
             case EDGES -> 2 * options.edgeLevel() + 1;
             case FIXED, OTSU -> 0;
         };
@@ -134,6 +144,10 @@ final class Binarizer {
     }
 
     static void scan(Greys greys, int w, int h, int radius, Rows sink) throws IOException {
+        scan(greys, w, h, radius, radius, sink);
+    }
+
+    static void scan(Greys greys, int w, int h, int behind, int ahead, Rows sink) throws IOException {
         int[] state = new int[3];
         float[][] holder = {new float[0]};
         greys.each((y, grey, n) -> {
@@ -153,12 +167,12 @@ final class Binarizer {
             count += n;
             int available = first + count;
             int done = state[2];
-            int to = available >= h ? h : available - radius;
+            int to = available >= h ? h : available - ahead;
             if (to > done) {
                 sink.process(buffer, first, done, to);
                 done = to;
             }
-            int keep = Math.max(first, done - radius);
+            int keep = Math.max(first, done - behind);
             if (keep > first && done < h) {
                 int drop = keep - first;
                 System.arraycopy(buffer, drop * w, buffer, 0, (count - drop) * w);
@@ -417,8 +431,10 @@ final class Binarizer {
         return level;
     }
 
-    private static void sauvola(float[] buffer, int first, int w, int h, int from, int to, int window, double k, Bitmap out) {
+    private static void sauvola(float[] buffer, int first, int w, int h, int from, int to, int window, double k,
+            Paper surface, Bitmap out, Bitmap core, Bitmap edge) {
         int r = window / 2;
+        float[] paper = new float[w];
         long[] columnSum = new long[w];
         long[] columnSquares = new long[w];
         int top = Math.max(0, from - r);
@@ -445,6 +461,7 @@ final class Binarizer {
                 squares += columnSquares[x];
             }
             int base = (y - first) * w;
+            surface.row(y, paper);
             for (int x = 0; x < w; x++) {
                 if (x + r < w) {
                     sum += columnSum[x + r];
@@ -458,8 +475,16 @@ final class Binarizer {
                 double mean = (double) sum / count;
                 double deviation = Math.sqrt(Math.max(0, (double) squares / count - mean * mean));
                 double level = mean * (1 + k * (deviation / 128 - 1));
-                if (eight(buffer[base + x]) <= level) {
+                int v = eight(buffer[base + x]);
+                double solid = Paper.SOLID * paper[x];
+                boolean flat = deviation < Paper.FLAT;
+                if (flat && mean <= solid) {
+                    core.set(x, y);
                     out.set(x, y);
+                } else if (v <= level) {
+                    out.set(x, y);
+                } else if (!flat && v <= solid) {
+                    edge.set(x, y);
                 }
             }
         }

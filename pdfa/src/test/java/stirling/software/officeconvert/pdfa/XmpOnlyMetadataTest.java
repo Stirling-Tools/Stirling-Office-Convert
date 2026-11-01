@@ -62,6 +62,27 @@ class XmpOnlyMetadataTest {
     }
 
     @Test
+    void historyEventsKeepTheirPredefinedFieldsAndLoseTheOthers() throws Exception {
+        RawPdf pdf = sample(false);
+        for (int i = 0; i < pdf.objects.size(); i++) {
+            pdf.objects.set(i, pdf.objects.get(i).replace("<stEvt:when>",
+                    "<stEvt:changed>/</stEvt:changed><stEvt:when>"));
+        }
+        Path input = Hostile.write(dir, "history", pdf);
+        for (PdfALevel level : new PdfALevel[] {PdfALevel.A1B, PdfALevel.A2B}) {
+            Path output = dir.resolve("history-" + level + ".pdf");
+            PdfToPdfA.convert(input, output, PdfToPdfA.Options.defaults().level(level));
+            VeraPdf.assertCompliant(output, level);
+            try (PDDocument doc = Loader.loadPDF(output.toFile())) {
+                String xmp = new String(doc.getDocumentCatalog().getMetadata().toByteArray(), StandardCharsets.UTF_8);
+                assertTrue(xmp.contains("History") && xmp.contains("saved"), xmp);
+                assertFalse(xmp.contains("stEvt:changed"), xmp);
+                assertTrue(xmp.contains("changed: /"), "the changed parts survive in the parameters: " + xmp);
+            }
+        }
+    }
+
+    @Test
     void incorrectlyTypedPredefinedPropertiesAreDropped() throws Exception {
         Path output = dir.resolve("invalid.pdf");
         PdfToPdfA.convert(Hostile.write(dir, "invalid", sample(true)), output, PdfToPdfA.Options.defaults());

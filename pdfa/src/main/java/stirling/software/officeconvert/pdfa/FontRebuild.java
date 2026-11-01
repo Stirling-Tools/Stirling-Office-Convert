@@ -1,5 +1,6 @@
 package stirling.software.officeconvert.pdfa;
 
+import java.awt.geom.AffineTransform;
 import java.awt.geom.GeneralPath;
 import java.io.IOException;
 import java.io.OutputStream;
@@ -77,6 +78,8 @@ final class FontRebuild {
             w.dropHinting();
         }
         double scale = w.unitsPerEm() / 1000.0;
+        FontProgram type1 = mode == Mode.OWN && own == null ? unloadedType1(font) : null;
+        AffineTransform type1Em = type1 == null ? null : unitsOf(type1, w.unitsPerEm());
         TreeMap<Integer, Integer> slots = new TreeMap<>();
         TreeMap<Integer, String> unicode = new TreeMap<>();
         TreeMap<Integer, Float> widths = new TreeMap<>();
@@ -96,10 +99,11 @@ final class FontRebuild {
             if (guessed) {
                 missing++;
             }
-            if (ToUnicodeWriter.valid(mapped) && !(level.tagged() && ToUnicodeWriter.privateUse(mapped))) {
-                unicode.put(code, mapped);
+            if (usable(mapped)) {
+                unicode.put(code, UnicodeGuess.searchable(font, code, mapped));
             } else if (level.unicode()) {
-                unicode.put(code, ToUnicodeWriter.unknown(code, level));
+                String e = UnicodeGuess.extracted(font, code);
+                unicode.put(code, usable(e) || e != null && !level.tagged() ? e : ToUnicodeWriter.unknown(code, level));
             }
             if (slots.containsKey(key)) {
                 continue;
@@ -125,6 +129,10 @@ final class FontRebuild {
             } else if (own != null) {
                 int gid = ownGid(font, code);
                 slot = w.addCopy(gid > 0 && gid < own.getNumberOfGlyphs() ? gid : 0, advance);
+            } else if (type1 != null) {
+                int gid = type0 ? type1.gidForCid(key) : type1.gid(encodingName(font, code));
+                GeneralPath p = gid > 0 && gid < type1.count() ? type1.path(gid, type1Em) : null;
+                slot = p == null ? w.addEmpty(advance) : w.addOutline(p, advance);
             } else {
                 GeneralPath p = font instanceof PDVectorFont v ? v.getNormalizedPath(code) : null;
                 slot = p == null ? w.addEmpty(advance) : w.addOutline(p, advance);
@@ -155,7 +163,7 @@ final class FontRebuild {
             updateSimple(font, name, fd, codes, widths);
         }
         if (!unicode.isEmpty()) {
-            font.getCOSObject().setItem(COSName.TO_UNICODE, ToUnicodeWriter.write(doc, unicode, type0 ? bytesPerCode : 1));
+            font.getCOSObject().setItem(COSName.TO_UNICODE, ToUnicodeWriter.preserve(doc, unicode, font, type0 ? bytesPerCode : 1));
         }
         String note = mode == Mode.SUBSTITUTE ? cleanName(original) + " as " + substitute.description()
                 : null;
@@ -163,6 +171,43 @@ final class FontRebuild {
             note += ", " + missing + (missing == 1 ? " character" : " characters") + " not in it";
         }
         return new Rebuilt(note, missing);
+    }
+
+    private boolean usable(String text) {
+        return ToUnicodeWriter.valid(text) && !(level.tagged() && ToUnicodeWriter.privateUse(text));
+    }
+
+    private static FontProgram unloadedType1(PDFont font) throws IOException {
+        PDFontDescriptor fd = font.getFontDescriptor();
+        if (font.isEmbedded() || fd == null || fd.getFontFile() == null) {
+            return null;
+        }
+        try {
+            COSStream s = fd.getFontFile().getCOSObject();
+            byte[] data = Decoded.bytes(s, FontProgramBounds.MAX_BYTES, "A font program");
+            WebFonts.FontKind kind = WebFonts.sniff(data);
+            if (kind == WebFonts.FontKind.TRUETYPE) {
+                return null;
+            }
+            boolean cff = kind == WebFonts.FontKind.CFF;
+            return FontProgram.read(data, cff ? kind : WebFonts.FontKind.TYPE1, cff ? -1 : s.getInt(COSName.LENGTH1),
+                    cff ? -1 : s.getInt(COSName.LENGTH2));
+        } catch (IOException | RuntimeException e) {
+            Decoded.rethrowFatal(e instanceof IOException io ? io : new IOException(e));
+            PdfFiles.stopIfInterrupted();
+            return null;
+        }
+    }
+
+    private static AffineTransform unitsOf(FontProgram program, int unitsPerEm) {
+        AffineTransform t = AffineTransform.getScaleInstance(unitsPerEm / (double) WebFonts.UNITS_PER_EM,
+                unitsPerEm / (double) WebFonts.UNITS_PER_EM);
+        t.concatenate(program.toEm());
+        return t;
+    }
+
+    private static String encodingName(PDFont font, int code) {
+        return font instanceof PDSimpleFont s && s.getEncoding() != null ? s.getEncoding().getName(code) : null;
     }
 
     private static TrueTypeFont ownTrueType(PDFont font) {

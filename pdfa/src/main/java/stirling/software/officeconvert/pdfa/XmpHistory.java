@@ -11,10 +11,55 @@ final class XmpHistory {
 
     private static final String EVENT = "http://ns.adobe.com/xap/1.0/sType/ResourceEvent#";
 
-    private static final Map<String, String> TYPES = Map.of("action", "Text", "changed", "Text",
-            "instanceID", "URI", "parameters", "Text", "softwareAgent", "AgentName", "when", "Date");
+    private static final Map<String, String> TYPES = Map.of("action", "Text", "instanceID", "URI", "parameters",
+            "Text", "softwareAgent", "AgentName", "when", "Date");
 
     private XmpHistory() {}
+
+    static Element repaired(Element property) {
+        Element copy = (Element) property.cloneNode(true);
+        var containers = XmpCarryOver.children(copy);
+        if (containers.size() != 1) {
+            return null;
+        }
+        for (Node item : XmpCarryOver.children(containers.getFirst())) {
+            for (Node field : XmpCarryOver.children(item)) {
+                if (!EVENT.equals(field.getNamespaceURI()) || !TYPES.containsKey(field.getLocalName())) {
+                    if (EVENT.equals(field.getNamespaceURI()) && "changed".equals(field.getLocalName())) {
+                        keepChanged(item, field);
+                    }
+                    item.removeChild(field);
+                }
+            }
+            if (XmpCarryOver.children(item).isEmpty()) {
+                containers.getFirst().removeChild(item);
+            }
+        }
+        return !XmpCarryOver.children(containers.getFirst()).isEmpty() && valid(copy) ? copy : null;
+    }
+
+    private static void keepChanged(Node item, Node changed) {
+        String parts = changed.getTextContent() == null ? "" : changed.getTextContent().strip();
+        if (parts.isEmpty() || XmpCarryOver.children(changed).size() > 0) {
+            return;
+        }
+        Node parameters = null;
+        for (Node field : XmpCarryOver.children(item)) {
+            if (EVENT.equals(field.getNamespaceURI()) && "parameters".equals(field.getLocalName())) {
+                parameters = field;
+            }
+        }
+        if (parameters == null) {
+            String prefix = changed.getPrefix();
+            parameters = item.getOwnerDocument().createElementNS(EVENT,
+                    (prefix == null ? "" : prefix + ":") + "parameters");
+            item.appendChild(parameters);
+            parameters.setTextContent("changed: " + parts);
+        } else if (XmpCarryOver.children(parameters).isEmpty()) {
+            String existing = parameters.getTextContent() == null ? "" : parameters.getTextContent().strip();
+            parameters.setTextContent(existing.isEmpty() ? "changed: " + parts : existing + "; changed: " + parts);
+        }
+    }
 
     static boolean valid(Element property) {
         var containers = XmpCarryOver.children(property);

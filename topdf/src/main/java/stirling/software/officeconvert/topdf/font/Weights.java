@@ -75,7 +75,11 @@ final class Weights {
     }
 
     static boolean tooLight(String family, FontFace f) {
-        return weight(f.weight()) < 300 && of(family) >= 350;
+        return tooLight(family, f.weight());
+    }
+
+    static boolean tooLight(String family, int weight) {
+        return weight(weight) < 300 && of(family) >= 350;
     }
 
     private static float stroke(int wanted, FontFace f) {
