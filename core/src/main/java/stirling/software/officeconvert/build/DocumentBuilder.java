@@ -60,6 +60,8 @@ public final class DocumentBuilder {
     private final Map<ParaDraft, PageLayout> homePage = new IdentityHashMap<>();
     private final Map<Paragraph, Object> shadedOn = new IdentityHashMap<>();
     private final Set<Section> flowingSections = Collections.newSetFromMap(new IdentityHashMap<>());
+    private final Map<Section, Float> lowestLines = new IdentityHashMap<>();
+    private float rewrapRoom;
     private final List<Block> held = new ArrayList<>();
     private final List<Spaced> spaced = new ArrayList<>();
     private final List<Integer> bandColumns = new ArrayList<>();
@@ -189,8 +191,12 @@ public final class DocumentBuilder {
                 bandAt = bandColumns.size() - 1;
                 columnAt = ci;
                 paragraphs.innerColumn(ci + 1 < band.columns().size());
+                rewrapRoom = 0;
                 float columnBottom = column(layout, band, ci, flowOn, base, at, toDisplay);
                 fit(columnBottom);
+                if (columnBottom != Float.MAX_VALUE) {
+                    lowestLines.merge(section, columnBottom - pageShift + rewrapRoom, Math::max);
+                }
                 bandBottom = Math.max(bandBottom, columnBottom);
             }
             at.refBottom = bandBottom;
@@ -509,6 +515,9 @@ public final class DocumentBuilder {
                         !layout.notes().isEmpty());
             } else {
                 List<Inline.Shape> under = shapesUnder(d, bottom, nextInFlow(col, item));
+                if (d.lines.size() > 1 && !Continuation.exactFonts(d)) {
+                    rewrapRoom += REWRAP_SHARE * d.lines.size() * paragraphs.lineHeight(d);
+                }
                 Paragraph p = flowParagraph(d, col.left(), col.right(), spaceBefore, pageBreak);
                 emit(p);
                 bottom += growth(p);
@@ -743,13 +752,24 @@ public final class DocumentBuilder {
         boolean footer = footerHeight > 0
                 || !Float.isNaN(stats.frame(section.pageWidth, section.pageHeight).footerBaseline());
         boolean reserved = reservedFor == section && section.marginBottom > reservedBottom;
-        if (!footer && !reserved && !flowingSections.contains(section) && section.marginBottom > FREE_BOTTOM) {
-            section.marginBottom = FREE_BOTTOM;
-            section.footerDistance = Math.min(section.footerDistance, FREE_BOTTOM / 2);
+        Float lowest = lowestLines.get(section);
+        if (footer || reserved || lowest == null || flowingSections.contains(section)) {
+            return;
+        }
+        float room = section.pageHeight - lowest - LINE_ALLOWANCE * stats.pitchFor(stats.bodySize) - LINE_SLACK;
+        if (room < section.marginBottom) {
+            section.marginBottom = Math.max(FREE_BOTTOM, room);
+            section.footerDistance = Math.min(section.footerDistance, section.marginBottom / 2);
         }
     }
 
     private static final float FREE_BOTTOM = 4f;
+
+    private static final float LINE_ALLOWANCE = 1f;
+
+    private static final float LINE_SLACK = 2f;
+
+    private static final float REWRAP_SHARE = 0.1f;
 
     private void closeSection() throws IOException {
         settleBottom();

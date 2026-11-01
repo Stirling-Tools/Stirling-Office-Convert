@@ -30,29 +30,42 @@ class FreeBottomMarginTest {
     @TempDir Path dir;
 
     @Test
-    void pagesThatEndInAHardBreakGiveTheirLastLineTheRoomBelowIt() throws Exception {
-        Path pdf = pages(false);
+    void aPageWhoseLastLineFitsKeepsTheMarginTakenFromTheSource() throws Exception {
         Path docx = dir.resolve("p.docx");
-        PdfToDocx.convert(pdf, docx, PdfToDocx.Options.defaults());
+        PdfToDocx.convert(pages(false, 20), docx, PdfToDocx.Options.defaults());
         String body = entry(docx, "word/document.xml");
         assertEquals(1, count(body, "<w:pageBreakBefore/>"), "the second page starts with a hard break");
-        assertEquals(80, bottom(body), "4 pt bottom margin");
-        Path rtf = dir.resolve("p.rtf");
-        PdfToRtf.convert(pdf, rtf, PdfToDocx.Options.defaults());
+        assertTrue(bottom(body) > 3000, "the measured margin stays: " + bottom(body));
+    }
+
+    @Test
+    void aPageWhoseLastLineSitsOnTheMarginGetsOnlyTheRoomItNeeds() throws Exception {
+        int fits = bottom(entry(convert(pages(false, 28), "fits.docx"), "word/document.xml"));
+        assertTrue(fits > 2000, "room for the last line and more of room below the last line keeps the measured margin: " + fits);
+        int tight = bottom(entry(convert(pages(false, 39), "tight.docx"), "word/document.xml"));
+        assertEquals(80, tight, "less than a line of room drops to the 4 pt floor");
+        Path rtf = dir.resolve("tight.rtf");
+        PdfToRtf.convert(pages(false, 39), rtf, PdfToDocx.Options.defaults());
         assertTrue(Files.readString(rtf, StandardCharsets.US_ASCII).contains("\\margb80"), "RTF bottom margin");
+    }
+
+    private Path convert(Path pdf, String name) throws IOException {
+        Path docx = dir.resolve(name);
+        PdfToDocx.convert(pdf, docx, PdfToDocx.Options.defaults());
+        return docx;
     }
 
     @Test
     void aTableThatFlowsOntoTheNextPageKeepsTheBottomMarginItBreaksAt() throws Exception {
         Path docx = dir.resolve("t.docx");
-        PdfToDocx.convert(pages(true), docx, PdfToDocx.Options.defaults());
+        PdfToDocx.convert(pages(true, 20), docx, PdfToDocx.Options.defaults());
         String body = entry(docx, "word/document.xml");
         assertEquals(1, count(body, "<w:tbl>"), "one joined table");
         assertTrue(bottom(body) > 1000, "the margin the table breaks at stays: " + bottom(body));
     }
 
-    private Path pages(boolean table) throws IOException {
-        Path pdf = dir.resolve(table ? "table.pdf" : "text.pdf");
+    private Path pages(boolean table, int rows) throws IOException {
+        Path pdf = dir.resolve((table ? "table" : "text") + rows + ".pdf");
         try (PDDocument doc = new PDDocument()) {
             PDType1Font font = new PDType1Font(Standard14Fonts.FontName.HELVETICA);
             int row = 0;
@@ -62,20 +75,20 @@ class FreeBottomMarginTest {
                 page.setResources(new PDResources());
                 COSName f = page.getResources().add(font);
                 StringBuilder cs = new StringBuilder();
-                int rows = 20;
                 float top = 720;
+                int lines = pg == 0 || table ? rows : 20;
                 if (table) {
                     cs.append("0.5 w\n");
-                    for (int r = 0; r <= rows; r++) {
+                    for (int r = 0; r <= lines; r++) {
                         cs.append("72 ").append(top - r * 18).append(" m 540 ").append(top - r * 18).append(" l S\n");
                     }
                     for (int x : new int[] {72, 200, 540}) {
                         cs.append(x).append(' ').append(top).append(" m ").append(x).append(' ')
-                                .append(top - rows * 18).append(" l S\n");
+                                .append(top - lines * 18).append(" l S\n");
                     }
                 }
                 cs.append("BT /").append(f.getName()).append(" 10 Tf\n");
-                for (int r = 0; r < rows; r++) {
+                for (int r = 0; r < lines; r++) {
                     float y = top - r * 18 - 13;
                     row++;
                     if (table) {
