@@ -206,6 +206,8 @@ final class CMapFixer {
             if (flatten(font, cid, cmap, codes, text)) {
                 note = "Rewrote a CMap that refers to another CMap or has CIDs past " + MAX_CID;
             }
+        } else if (!cmap.hasCIDMappings() && cmap.hasUnicodeMappings() && flatten(font, cid, cmap, codes, text)) {
+            note = "Rewrote a CMap that maps codes to CIDs with bfchar entries as cidchar entries";
         }
         return note;
     }
@@ -292,9 +294,10 @@ final class CMapFixer {
         Set<Integer> usedCids = new HashSet<>();
         TreeMap<Integer, Integer> lengths = new TreeMap<>();
         Map<Integer, Float> widths = new TreeMap<>();
+        boolean viaFont = !cmap.hasCIDMappings();
         for (int code : codes) {
             int len = length(code, spaces);
-            int c = cmap.toCID(code, len);
+            int c = viaFont ? font.codeToCID(code) : cmap.toCID(code, len);
             mapping.put(code, c);
             lengths.put(code, len);
             usedCids.add(c);
