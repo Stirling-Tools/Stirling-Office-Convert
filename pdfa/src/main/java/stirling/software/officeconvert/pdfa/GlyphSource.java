@@ -169,16 +169,26 @@ final class GlyphSource implements Closeable {
         if (face == null) {
             return null;
         }
+        EmbeddableFont f;
         try {
-            EmbeddableFont f = EmbeddableFont.open(face);
-            if (f.font().getUnicodeCmapLookup(false) == null && !f.trueTypeOutlines()) {
-                f.close();
-                return null;
-            }
-            return f;
+            f = EmbeddableFont.open(face);
         } catch (IOException | RuntimeException e) {
             return null;
         }
+        boolean keep;
+        try {
+            keep = f.font().getUnicodeCmapLookup(false) != null || f.trueTypeOutlines();
+        } catch (IOException | RuntimeException e) {
+            keep = false;
+        }
+        if (keep) {
+            return f;
+        }
+        try {
+            f.close();
+        } catch (IOException | RuntimeException e) {
+        }
+        return null;
     }
 
     TrueTypeFont font() {
