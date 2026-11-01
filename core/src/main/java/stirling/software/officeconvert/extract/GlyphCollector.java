@@ -613,10 +613,11 @@ final class GlyphCollector extends PDFStreamEngine {
     }
 
     private void processTextPosition(TextPosition tp) {
-        if (notdef(tp)) {
+        boolean notdef = notdef(tp);
+        if (notdef && outerActual == null) {
             return;
         }
-        String unicode = clean(recovery.text(tp, tp.getUnicode()));
+        String unicode = notdef ? null : clean(recovery.text(tp, tp.getUnicode()));
         if (unicode == null && outerActual != null) {
             unicode = HIDDEN;
         }

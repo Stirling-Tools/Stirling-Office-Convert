@@ -27,7 +27,17 @@ class NotdefCodeTest {
         assertEquals("2.Eat", text(new byte[] {(byte) 0xC2, (byte) 0xA0, '2', '.', 'E', 'a', 't'}));
     }
 
+    @Test
+    void anActualTextSpanOfNotdefCodesKeepsItsText() throws IOException {
+        assertEquals("fi", text("/Span << /ActualText (fi) >> BDC ".getBytes(StandardCharsets.US_ASCII),
+                new byte[] {(byte) 0xC2, (byte) 0xA0}, " EMC".getBytes(StandardCharsets.US_ASCII)));
+    }
+
     private static String text(byte[] shown) throws IOException {
+        return text(new byte[0], shown, new byte[0]);
+    }
+
+    private static String text(byte[] before, byte[] shown, byte[] after) throws IOException {
         try (PDDocument document = new PDDocument()) {
             PDPage page = new PDPage(PDRectangle.LETTER);
             document.addPage(page);
@@ -59,9 +69,11 @@ class NotdefCodeTest {
             page.setResources(resources);
             PDStream stream = new PDStream(document);
             try (OutputStream out = stream.createOutputStream()) {
+                out.write(before);
                 out.write("BT /F1 18 Tf 14 600 Td (".getBytes(StandardCharsets.US_ASCII));
                 out.write(shown);
                 out.write(") Tj ET".getBytes(StandardCharsets.US_ASCII));
+                out.write(after);
             }
             page.setContents(stream);
             List<PageData> pages = new ArrayList<>();
