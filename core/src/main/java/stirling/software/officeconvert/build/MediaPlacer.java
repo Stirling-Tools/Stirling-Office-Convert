@@ -35,12 +35,16 @@ final class MediaPlacer {
         this.paragraphs = paragraphs;
     }
 
+    private static final float OVERFLOW = 1f;
+
     Inline.TextBox textBox(PageLayout.TextBoxItem tb) {
         List<Paragraph> paras = new ArrayList<>();
         float prev = tb.box().top();
+        float flow = prev;
         for (ParaDraft d : tb.paras()) {
             float sb = Math.max(0, paragraphs.wordTop(d) - prev);
             paras.add(paragraphs.detached(d, tb.textLeft(), tb.textRight(), sb));
+            flow += sb + paragraphs.wordBottom(d) - paragraphs.wordTop(d);
             prev = paragraphs.wordBottom(d);
         }
         if (tb.turn() != null) {
@@ -50,7 +54,7 @@ final class MediaPlacer {
                     tb.turn().upright());
         }
         Box b = tb.box();
-        return new Inline.TextBox(b.x(), b.top(), b.width(), b.height(), tb.fillRgb(),
+        return new Inline.TextBox(b.x(), b.top(), b.width(), flow - b.bottom() > OVERFLOW ? flow - b.top() : b.height(), tb.fillRgb(),
                 tb.textLeft() - b.x(), Math.max(0, b.right() - tb.textRight()), tb.gap(), paras,
                 tb.lineRgb(), tb.lineWidth(), tb.rounded(), tb.overlay(), 0, tb.groundRgb(), false);
     }
