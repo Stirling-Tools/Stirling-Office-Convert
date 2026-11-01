@@ -280,10 +280,10 @@ final class FontFixer {
 
     static String substitute(PDDocument doc, PDFont font, Set<Integer> codes, PdfALevel level, FontLibrary library,
             int bytesPerCode) throws IOException {
-        return substitute(doc, font, codes, level, library, bytesPerCode, true);
+        return substitute(doc, font, codes, level, library, bytesPerCode, true).note();
     }
 
-    static String substitute(PDDocument doc, PDFont font, Set<Integer> codes, PdfALevel level, FontLibrary library,
+    static FontRebuild.Rebuilt substitute(PDDocument doc, PDFont font, Set<Integer> codes, PdfALevel level, FontLibrary library,
             int bytesPerCode, boolean hinting) throws IOException {
         PDFontDescriptor fd = font.getFontDescriptor();
         String baseFont = font instanceof PDType0Font t0 && t0.getDescendantFont() != null

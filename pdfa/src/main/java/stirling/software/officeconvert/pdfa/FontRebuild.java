@@ -46,17 +46,20 @@ final class FontRebuild {
         this.hinting = hinting;
     }
 
+    /** What a rebuild says about itself; {@code missing} counts characters drawn as empty glyphs. */
+    record Rebuilt(String note, int missing) {}
+
     static String rebuild(PDDocument doc, PDFont font, Set<Integer> codes, Mode mode, GlyphSource substitute,
             PdfALevel level, int bytesPerCode) throws IOException {
-        return new FontRebuild(doc, level, true).run(font, codes, mode, substitute, bytesPerCode);
+        return new FontRebuild(doc, level, true).run(font, codes, mode, substitute, bytesPerCode).note();
     }
 
-    static String substitute(PDDocument doc, PDFont font, Set<Integer> codes, GlyphSource substitute,
+    static Rebuilt substitute(PDDocument doc, PDFont font, Set<Integer> codes, GlyphSource substitute,
             PdfALevel level, int bytesPerCode, boolean hinting) throws IOException {
         return new FontRebuild(doc, level, hinting).run(font, codes, Mode.SUBSTITUTE, substitute, bytesPerCode);
     }
 
-    private String run(PDFont font, Set<Integer> codes, Mode mode, GlyphSource substitute, int bytesPerCode)
+    private Rebuilt run(PDFont font, Set<Integer> codes, Mode mode, GlyphSource substitute, int bytesPerCode)
             throws IOException {
         String original = font.getName();
         boolean type0 = font instanceof PDType0Font;
@@ -92,6 +95,10 @@ final class FontRebuild {
                 text = s != null ? s : text;
             }
             String mapped = standIn ? UnicodeGuess.text(font, code, type0 ? bytesPerCode : 1) : text;
+            boolean guessed = standIn && ToUnicodeWriter.valid(text) && !text.isBlank() && !ToUnicodeWriter.valid(mapped);
+            if (guessed) {
+                missing++;
+            }
             if (usable(mapped)) {
                 unicode.put(code, UnicodeGuess.searchable(font, code, mapped));
             } else if (level.unicode()) {
@@ -114,7 +121,8 @@ final class FontRebuild {
                     GeneralPath p = gid > 0 ? substitute.outline(gid, w.unitsPerEm()) : null;
                     p = p != null ? p : substitute.fallback(text, w.unitsPerEm());
                     slot = p != null ? w.addOutline(p, advance) : w.addEmpty(advance);
-                    if (p == null && text != null && !text.isBlank()) {
+                    // A character nothing could name is lost just the same, so it counts
+                    if (p == null && !guessed && (text == null || !text.isBlank())) {
                         missing++;
                     }
                 }
@@ -162,7 +170,7 @@ final class FontRebuild {
         if (missing > 0 && note != null) {
             note += ", " + missing + (missing == 1 ? " character" : " characters") + " not in it";
         }
-        return note;
+        return new Rebuilt(note, missing);
     }
 
     private boolean usable(String text) {
