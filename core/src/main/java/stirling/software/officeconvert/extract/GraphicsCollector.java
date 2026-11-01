@@ -232,6 +232,15 @@ final class GraphicsCollector extends PDFGraphicsStreamEngine {
     }
 
     @Override
+    public void showAnnotation(PDAnnotation annotation) throws IOException {
+        if (annotation instanceof PDAnnotationHighlight highlight && !annotation.isHidden() && !annotation.isNoView()
+                && annotation.getNormalAppearanceStream() == null && highlightQuads(highlight)) {
+            return;
+        }
+        super.showAnnotation(annotation);
+    }
+
+    @Override
     protected void processAnnotation(PDAnnotation annotation, PDAppearanceStream appearance) throws IOException {
         if (annotation instanceof PDAnnotationHighlight highlight && highlightQuads(highlight)) {
             return;
@@ -731,10 +740,17 @@ final class GraphicsCollector extends PDFGraphicsStreamEngine {
         }
         rules.addAll(shapes.rules());
         fills.addAll(shapes.fills());
+        BlendMode blend = gs.getBlendMode();
+        boolean blended = gs.getSoftMask() != null
+                || blend != null && blend != BlendMode.NORMAL && blend != BlendMode.COMPATIBLE;
+        boolean clear = pattern || gs.getNonStrokeAlphaConstant() < 0.99 || blended;
         for (Fill dot : shapes.dots()) {
             if (dots.size() < MAX_DOTS) {
                 dots.add(dot);
                 dotOrder.put(dot, painted);
+                if (clear) {
+                    seeThrough.add(dot);
+                }
             }
         }
         if (shapes.mark() != null) {
@@ -743,10 +759,7 @@ final class GraphicsCollector extends PDFGraphicsStreamEngine {
         }
         shapes.rules().forEach(r -> paintOrder.put(r, painted));
         shapes.fills().forEach(f -> paintOrder.put(f, painted));
-        BlendMode blend = gs.getBlendMode();
-        boolean blended = gs.getSoftMask() != null
-                || blend != null && blend != BlendMode.NORMAL && blend != BlendMode.COMPATIBLE;
-        if (pattern || gs.getNonStrokeAlphaConstant() < 0.99 || blended) {
+        if (clear) {
             seeThrough.addAll(shapes.fills());
         }
         boolean faint = fill ? gs.getNonStrokeAlphaConstant() < 0.99 : gs.getAlphaConstant() < 0.99;

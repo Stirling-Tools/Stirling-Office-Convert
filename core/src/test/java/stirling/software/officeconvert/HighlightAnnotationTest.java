@@ -61,7 +61,22 @@ class HighlightAnnotationTest {
         assertTrue(Pattern.compile("<w:r><w:t[^>]*>while the closing").matcher(xml).find(), xml);
     }
 
+    @Test
+    void aHighlightWithoutAnAppearanceStillShadesItsWords() throws IOException {
+        String xml;
+        try (PDDocument d = document(false)) {
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            PdfToDocx.convert(d, out, PdfToDocx.Options.defaults());
+            xml = part(out, "word/document.xml");
+        }
+        assertTrue(Pattern.compile("w:fill=\"FF[0-9A-F]{4}\"/></w:rPr><w:t[^>]*>The first highlighted").matcher(xml).find(), xml);
+    }
+
     private static PDDocument document() throws IOException {
+        return document(true);
+    }
+
+    private static PDDocument document(boolean drawn) throws IOException {
         PDDocument d = new PDDocument();
         PDPage page = new PDPage(PDRectangle.LETTER);
         d.addPage(page);
@@ -110,7 +125,9 @@ class HighlightAnnotationTest {
         }
         PDAppearanceDictionary ap = new PDAppearanceDictionary();
         ap.setNormalAppearance(appearance);
-        highlight.setAppearance(ap);
+        if (drawn) {
+            highlight.setAppearance(ap);
+        }
         page.getAnnotations().add(highlight);
         return d;
     }
