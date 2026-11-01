@@ -22,8 +22,6 @@ final class Sauvola {
 
     private static final double BLUE_DEFICIT_WEIGHT = 0.2;
 
-    private static final int LIFT_BLOCK = 8;
-
     private static final float PAPER_LIFT_PER_BLUE_DEFICIT = (float) (BLUE_DEFICIT_WEIGHT / Paper.SOLID);
 
     private final int width;
@@ -103,7 +101,7 @@ final class Sauvola {
             }
             surface.row(y, paper);
             if (tint != null && tint.row(y)) {
-                lift(buffer, (y % capacity) * width);
+                lift(buffer, (y % capacity) * width, y);
             }
             classify(y, Math.min(height - 1, y + r) - Math.max(0, y - r) + 1, y * out.stride(), out.packed(),
                     core.packed(), edge.packed());
@@ -111,21 +109,17 @@ final class Sauvola {
         next = to;
     }
 
-    private void lift(float[] buffer, int row) {
-        int x = 0;
-        for (; x + LIFT_BLOCK <= width; x += LIFT_BLOCK) {
-            int any = 0;
-            for (int i = 0; i < LIFT_BLOCK; i++) {
-                any |= Float.floatToRawIntBits(buffer[row + x + i]);
-            }
-            if ((any & 0xFF) != 0) {
-                for (int i = x; i < x + LIFT_BLOCK; i++) {
-                    paper[i] += PAPER_LIFT_PER_BLUE_DEFICIT * Binarizer.blueDeficit(buffer[row + i]);
+    private void lift(float[] buffer, int row, int y) {
+        for (int index = 0, words = tint.words(); index < words; index++) {
+            for (long bits = tint.word(y, index); bits != 0; ) {
+                int first = Long.numberOfTrailingZeros(bits);
+                int run = Long.numberOfTrailingZeros(~(bits >>> first));
+                bits &= run == 64 ? 0 : ~(((1L << run) - 1) << first);
+                int from = (index * 64 + first) * Tint.BLOCK;
+                for (int x = from, end = Math.min(width, from + run * Tint.BLOCK); x < end; x++) {
+                    paper[x] += PAPER_LIFT_PER_BLUE_DEFICIT * Binarizer.blueDeficit(buffer[row + x]);
                 }
             }
-        }
-        for (; x < width; x++) {
-            paper[x] += PAPER_LIFT_PER_BLUE_DEFICIT * Binarizer.blueDeficit(buffer[row + x]);
         }
     }
 

@@ -26,14 +26,6 @@ final class Binarizer {
 
     private static final int MIN_BLUE_DEFICIT = 48;
 
-    private static final int SAMPLE_STEP = 8;
-
-    private static final float[] RED_FLOAT = floats(RED);
-
-    private static final float[] GREEN_FLOAT = floats(GREEN);
-
-    private static final float[] BLUE_FLOAT = floats(BLUE);
-
     interface Rows {
         void process(float[] buffer, int first, int from, int to) throws IOException;
     }
@@ -72,7 +64,7 @@ final class Binarizer {
         LineArt.checkpoint();
         int w = source.width;
         int h = source.height;
-        Tint tint = options.method() == LineArt.Method.SAUVOLA ? new Tint(h) : null;
+        Tint tint = options.method() == LineArt.Method.SAUVOLA ? new Tint(w, h) : null;
         Greys greys = greys(source, rows, tint);
         Bitmap out = Bitmap.blank(w, h);
         switch (options.method()) {
@@ -286,19 +278,9 @@ final class Binarizer {
             for (int y = 0; y < h; y++) {
                 LineArt.checkpoint();
                 int offset = (y + dy) * model.getScanlineStride() + dx * step + bytes.getOffset();
-                if (vivid && sampledDeficit(data, offset, step, bands, w)) {
-                    tint.mark(top + y);
-                    for (int x = 0; x < w; x++, offset += step) {
-                        int r = data[offset + bands[0]] & 0xFF;
-                        int g = data[offset + bands[1]] & 0xFF;
-                        int b = data[offset + bands[2]] & 0xFF;
-                        grey[y * w + x] = vivid(r, g, b, deficit(r, g, b));
-                    }
-                } else {
-                    for (int x = 0; x < w; x++, offset += step) {
-                        grey[y * w + x] = (float) (RED[data[offset + bands[0]] & 0xFF]
-                                + GREEN[data[offset + bands[1]] & 0xFF] + BLUE[data[offset + bands[2]] & 0xFF]);
-                    }
+                plainRow(data, offset, step, bands, grey, y * w, w);
+                if (vivid && markBlocks(data, offset, step, bands, w, tint, top + y)) {
+                    vividBlocks(data, offset, step, bands, grey, y * w, w, tint, top + y);
                 }
             }
             return grey;
@@ -316,43 +298,90 @@ final class Binarizer {
             }
             int[] pixels = packed ? data : row;
             int start = packed ? offset : 0;
-            if (vivid && sampledDeficit(pixels, start, w)) {
-                tint.mark(top + y);
-                for (int x = 0; x < w; x++) {
-                    int p = pixels[start + x];
-                    int r = (p >>> 16) & 0xFF;
-                    int g = (p >>> 8) & 0xFF;
-                    int b = p & 0xFF;
-                    grey[y * w + x] = vivid(r, g, b, deficit(r, g, b));
-                }
-            } else {
-                for (int x = 0; x < w; x++) {
-                    int p = pixels[start + x];
-                    grey[y * w + x] = (float) (RED[(p >>> 16) & 0xFF] + GREEN[(p >>> 8) & 0xFF] + BLUE[p & 0xFF]);
-                }
+            plainRow(pixels, start, grey, y * w, w);
+            if (vivid && markBlocks(pixels, start, w, tint, top + y)) {
+                vividBlocks(pixels, start, grey, y * w, w, tint, top + y);
             }
         }
         return grey;
     }
 
-    private static boolean sampledDeficit(byte[] data, int offset, int step, int[] bands, int w) {
-        for (int x = 0; x < w; x += SAMPLE_STEP, offset += SAMPLE_STEP * step) {
-            if (deficit(data[offset + bands[0]] & 0xFF, data[offset + bands[1]] & 0xFF,
-                    data[offset + bands[2]] & 0xFF) != 0) {
-                return true;
-            }
+    private static void plainRow(byte[] data, int offset, int step, int[] bands, float[] grey, int row, int w) {
+        for (int x = 0, o = offset; x < w; x++, o += step) {
+            grey[row + x] = (float) (RED[data[o + bands[0]] & 0xFF] + GREEN[data[o + bands[1]] & 0xFF]
+                    + BLUE[data[o + bands[2]] & 0xFF]);
         }
-        return false;
     }
 
-    private static boolean sampledDeficit(int[] pixels, int start, int w) {
-        for (int x = 0; x < w; x += SAMPLE_STEP) {
+    private static void plainRow(int[] pixels, int start, float[] grey, int row, int w) {
+        for (int x = 0; x < w; x++) {
             int p = pixels[start + x];
-            if (deficit((p >>> 16) & 0xFF, (p >>> 8) & 0xFF, p & 0xFF) != 0) {
-                return true;
+            grey[row + x] = (float) (RED[(p >>> 16) & 0xFF] + GREEN[(p >>> 8) & 0xFF] + BLUE[p & 0xFF]);
+        }
+    }
+
+    private static void vividBlocks(byte[] data, int offset, int step, int[] bands, float[] grey, int row, int w,
+            Tint tint, int y) {
+        for (int index = 0, words = tint.words(); index < words; index++) {
+            for (long bits = tint.word(y, index); bits != 0; ) {
+                int first = Long.numberOfTrailingZeros(bits);
+                int run = Long.numberOfTrailingZeros(~(bits >>> first));
+                bits &= run == 64 ? 0 : ~(((1L << run) - 1) << first);
+                int from = (index * 64 + first) * Tint.BLOCK;
+                for (int x = from, end = Math.min(w, from + run * Tint.BLOCK), o = offset + from * step; x < end;
+                        x++, o += step) {
+                    grey[row + x] = tagged(grey[row + x], deficit(data[o + bands[0]] & 0xFF,
+                            data[o + bands[1]] & 0xFF, data[o + bands[2]] & 0xFF));
+                }
             }
         }
-        return false;
+    }
+
+    private static void vividBlocks(int[] pixels, int start, float[] grey, int row, int w, Tint tint, int y) {
+        for (int index = 0, words = tint.words(); index < words; index++) {
+            for (long bits = tint.word(y, index); bits != 0; ) {
+                int first = Long.numberOfTrailingZeros(bits);
+                int run = Long.numberOfTrailingZeros(~(bits >>> first));
+                bits &= run == 64 ? 0 : ~(((1L << run) - 1) << first);
+                int from = (index * 64 + first) * Tint.BLOCK;
+                for (int x = from, end = Math.min(w, from + run * Tint.BLOCK); x < end; x++) {
+                    int p = pixels[start + x];
+                    grey[row + x] = tagged(grey[row + x], deficit((p >>> 16) & 0xFF, (p >>> 8) & 0xFF, p & 0xFF));
+                }
+            }
+        }
+    }
+
+    private static boolean markBlocks(byte[] data, int offset, int step, int[] bands, int w, Tint tint, int y) {
+        boolean any = false;
+        for (int x = 0; x < w; x += Tint.BLOCK, offset += Tint.BLOCK * step) {
+            int b = data[offset + bands[2]] & 0xFF;
+            if ((data[offset + bands[0]] & 0xFF) - b >= MIN_BLUE_DEFICIT
+                    && (data[offset + bands[1]] & 0xFF) - b >= MIN_BLUE_DEFICIT) {
+                tint.mark(y, x / Tint.BLOCK);
+                if (x > 0) {
+                    tint.mark(y, x / Tint.BLOCK - 1);
+                }
+                any = true;
+            }
+        }
+        return any;
+    }
+
+    private static boolean markBlocks(int[] pixels, int start, int w, Tint tint, int y) {
+        boolean any = false;
+        for (int x = 0; x < w; x += Tint.BLOCK) {
+            int p = pixels[start + x];
+            int b = p & 0xFF;
+            if (((p >>> 16) & 0xFF) - b >= MIN_BLUE_DEFICIT && ((p >>> 8) & 0xFF) - b >= MIN_BLUE_DEFICIT) {
+                tint.mark(y, x / Tint.BLOCK);
+                if (x > 0) {
+                    tint.mark(y, x / Tint.BLOCK - 1);
+                }
+                any = true;
+            }
+        }
+        return any;
     }
 
     static int deficit(int r, int g, int b) {
@@ -360,21 +389,12 @@ final class Binarizer {
         return deficit & ~(deficit - MIN_BLUE_DEFICIT >> 31);
     }
 
-    static float vivid(int r, int g, int b, int deficit) {
-        return Float.intBitsToFloat(Float.floatToRawIntBits(RED_FLOAT[r] + GREEN_FLOAT[g] + BLUE_FLOAT[b]) & ~0xFF
-                | deficit);
+    static float tagged(float luminance, int deficit) {
+        return Float.intBitsToFloat(Float.floatToRawIntBits(luminance) & ~0xFF | deficit);
     }
 
-    static int blueDeficit(float vivid) {
-        return Float.floatToRawIntBits(vivid) & 0xFF;
-    }
-
-    private static float[] floats(double[] values) {
-        float[] out = new float[values.length];
-        for (int i = 0; i < values.length; i++) {
-            out[i] = (float) values[i];
-        }
-        return out;
+    static int blueDeficit(float tagged) {
+        return Float.floatToRawIntBits(tagged) & 0xFF;
     }
 
     private static double[] weights(double weight) {

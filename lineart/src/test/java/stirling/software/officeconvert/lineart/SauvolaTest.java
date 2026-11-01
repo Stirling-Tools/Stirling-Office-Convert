@@ -33,7 +33,7 @@ class SauvolaTest {
         for (BufferedImage picture : pictures()) {
             int w = picture.getWidth();
             int h = picture.getHeight();
-            Tint tint = new Tint(h);
+            Tint tint = new Tint(w, h);
             float[] grey = Binarizer.grey(picture, null, tint, 0);
             for (int window : new int[] {0, 3, 15, 51}) {
                 for (double k : new double[] {0, 0.2, 0.5, 1}) {
@@ -51,7 +51,7 @@ class SauvolaTest {
         BufferedImage picture = panels(301, 997, 7);
         int w = picture.getWidth();
         int h = picture.getHeight();
-        Tint tint = new Tint(h);
+        Tint tint = new Tint(w, h);
         float[] grey = Binarizer.grey(picture, null, tint, 0);
         for (int window : new int[] {0, 9, 31}) {
             LineArt.Options options = LineArt.Options.defaults().window(window);
