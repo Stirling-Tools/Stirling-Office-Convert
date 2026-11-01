@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import stirling.software.officeconvert.layout.Box;
 import stirling.software.officeconvert.layout.DocStats;
 import stirling.software.officeconvert.layout.HeaderFooter;
 import stirling.software.officeconvert.layout.Line;
@@ -69,6 +70,14 @@ final class PageItems {
                                 document, prior, typed, dropHyphens);
                         if (grid != null) {
                             items.add(grid);
+                        } else {
+                            PageLayout.TableItem table = (PageLayout.TableItem) part;
+                            Box box = new Box(table.x(), table.top(), table.right(), table.bottom());
+                            for (Line l : FigureText.lines(box, segments, strict)) {
+                                ParaDraft p = new ParaDraft(l.x, l.right);
+                                p.lines.add(l);
+                                items.add(para(p, dropHyphens, false));
+                            }
                         }
                     }
                 }

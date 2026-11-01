@@ -22,6 +22,7 @@ import org.apache.pdfbox.pdmodel.PDDocumentInformation;
 
 import stirling.software.officeconvert.PdfToPptx;
 import stirling.software.officeconvert.extract.Glyph;
+import stirling.software.officeconvert.extract.HiddenContent;
 import stirling.software.officeconvert.extract.PageData;
 import stirling.software.officeconvert.extract.PageReader;
 import stirling.software.officeconvert.extract.PdfFiles;
@@ -160,7 +161,8 @@ public final class SlideConversion {
         PageData page = fit.apply(read, size[0], size[1]);
         AffineTransform toDisplay = fit.toSlide(PageReader.displayTransform(
                 doc.getPage(page.index()).getCropBox(), page.direction()));
-        PaintOrder paint = PaintOrder.read(doc.getPage(page.index()), toDisplay, page.width(), page.height());
+        PaintOrder paint = PaintOrder.read(doc.getPage(page.index()), toDisplay, page.width(), page.height(),
+                HiddenContent.of(doc));
         SlantedText.Split slanted = SlantedText.split(unmasked(page, paint), paint);
         PageLayout layout;
         try {
@@ -196,7 +198,8 @@ public final class SlideConversion {
         PageFit fit = PageFit.of(read, size[0], size[1]);
         PageData page = fit.apply(read, size[0], size[1]);
         AffineTransform toDisplay = fit.toSlide(PageReader.displayTransform(doc.getPage(page.index()).getCropBox(), 0));
-        PaintOrder paint = PaintOrder.read(doc.getPage(page.index()), toDisplay, page.width(), page.height());
+        PaintOrder paint = PaintOrder.read(doc.getPage(page.index()), toDisplay, page.width(), page.height(),
+                HiddenContent.of(doc));
         return builder.build(FallbackPage.of(page), toDisplay, paint, List.of());
     }
 

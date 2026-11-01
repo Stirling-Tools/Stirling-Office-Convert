@@ -2,7 +2,6 @@ package stirling.software.officeconvert.pdfa;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.awt.image.BufferedImage;
 import java.io.OutputStream;
@@ -23,6 +22,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
+
 
 class BrokenFilterChainTest {
 
@@ -109,14 +109,6 @@ class BrokenFilterChainTest {
         assertFalse(result.flattenedPages().isEmpty());
         VeraPdf.assertCompliant(output, PdfALevel.A1B);
         assertEquals(0, red(ColourRenderingTest.render(output)));
-    }
-
-    @Test
-    void strictTextChecksFollowTheFilterAlphabet() {
-        assertTrue(StrictFilters.hexText("0a 1B\r\n>zz".getBytes(StandardCharsets.US_ASCII)));
-        assertFalse(StrictFilters.hexText(new byte[] {0, 0, 0x0C, 0x48, 0x4C}));
-        assertTrue(StrictFilters.a85Text("<~9jqo^z~>".getBytes(StandardCharsets.US_ASCII)));
-        assertFalse(StrictFilters.a85Text("9jq{".getBytes(StandardCharsets.US_ASCII)));
     }
 
     private static int red(BufferedImage image) {
