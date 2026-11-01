@@ -54,7 +54,7 @@ class SharedDescendantTest {
                     }
                 }
             }
-            assertEquals("AB\nCD", Converted.text(out).strip(), level.toString());
+            assertEquals("AB\nCD", Converted.text(out).strip().replace("\r\n", "\n"), level.toString());
         }
     }
 }
