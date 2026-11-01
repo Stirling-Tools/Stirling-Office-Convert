@@ -30,6 +30,14 @@ public final class JpxDecoder {
         return new JpxImage(raster, boxes, reduce);
     }
 
+    public static boolean palette(byte[] data) {
+        try {
+            return Jp2Boxes.read(data).palette != null;
+        } catch (JpxException e) {
+            return false;
+        }
+    }
+
     public static int[] size(byte[] data) throws IOException {
         Jp2Boxes boxes = Jp2Boxes.read(data);
         Siz siz = Codestream.header(data, boxes.codestreamStart, boxes.codestreamEnd);
