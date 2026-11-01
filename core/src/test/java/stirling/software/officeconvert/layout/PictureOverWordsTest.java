@@ -37,13 +37,23 @@ class PictureOverWordsTest {
     void aPicturePaintedOverTheWordsOfALineIsLaidOverTheText() {
         Box icon = new Box(133, 566, 160, 592);
         List<Line> lines = List.of(line("1. Introduction", 54, 577), line("Dynamic languages such as these", 54, 592));
-        assertTrue(arranged(icon, lines).overlay());
+        PageLayout.FloatItem placed = arranged(icon, lines);
+        assertTrue(placed.overlay());
+        assertTrue(placed.overWords(), "the picture stays in front of the words it was painted over");
     }
 
     @Test
     void aPictureBesideItsLinesStillPushesTheTextAside() {
         Box picture = new Box(200, 560, 260, 600);
         List<Line> lines = List.of(line("short line", 54, 575), line("another one", 54, 592));
+        assertFalse(arranged(picture, lines).overlay());
+    }
+
+    @Test
+    void oneWordGrazingAPictureDoesNotStopTheLinesBesideItFromWrapping() {
+        Box picture = new Box(200, 560, 300, 640);
+        List<Line> lines = List.of(line("left text", 54, 575), line("left text", 54, 590), line("left text", 54, 605),
+                line("grazing word", 150, 620));
         assertFalse(arranged(picture, lines).overlay());
     }
 }

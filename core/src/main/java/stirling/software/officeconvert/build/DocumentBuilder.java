@@ -330,7 +330,7 @@ public final class DocumentBuilder {
         float wrappedBottom = Float.NaN;
         for (int ii = 0; ii < col.items().size(); ii++) {
             PageLayout.Item item = col.items().get(ii);
-            if (placeOutOfFlow(item, layout, toDisplay)) {
+            if (placeOutOfFlow(item, layout, toDisplay, col)) {
                 if (blocksColumn(item, col) && item.top() >= prevBottom - 1) {
                     wrappedBottom = Float.isNaN(wrappedBottom) ? item.bottom() : Math.max(wrappedBottom, item.bottom());
                 }
@@ -428,13 +428,18 @@ public final class DocumentBuilder {
     }
 
     private boolean placeOutOfFlow(PageLayout.Item item, PageLayout layout, AffineTransform toDisplay) throws IOException {
+        return placeOutOfFlow(item, layout, toDisplay, null);
+    }
+
+    private boolean placeOutOfFlow(PageLayout.Item item, PageLayout layout, AffineTransform toDisplay,
+            PageLayout.Column column) throws IOException {
         if (placedEarly.contains(item)) {
             return true;
         }
         if (item instanceof PageLayout.TextBoxItem tb) {
             floats.add(placer.textBox(tb));
         } else if (item instanceof PageLayout.FloatItem fi) {
-            placeFloat(fi, layout, toDisplay);
+            placeFloat(fi, layout, toDisplay, column);
         } else if (item.behindText()) {
             placeBehind(item, layout, toDisplay);
         } else {
@@ -550,14 +555,16 @@ public final class DocumentBuilder {
         return bottom + overlap(offset, slot.ref());
     }
 
-    private void placeFloat(PageLayout.FloatItem fi, PageLayout layout, AffineTransform toDisplay) throws IOException {
+    private void placeFloat(PageLayout.FloatItem fi, PageLayout layout, AffineTransform toDisplay,
+            PageLayout.Column column) throws IOException {
         Picture pic = placer.picture(fi.picture(), layout, toDisplay);
         if (pic == null) {
             return;
         }
         floats.stack(pic);
-        pic.wrap = fi.overlay() ? Picture.Wrap.NONE : Picture.Wrap.SQUARE;
-        pic.behind = fi.overlay();
+        pic.wrap = fi.overlay() ? Picture.Wrap.NONE
+                : column != null && blocksColumn(fi, column) ? Picture.Wrap.TOP_BOTTOM : Picture.Wrap.SQUARE;
+        pic.behind = fi.overlay() && !fi.overWords();
         pic.x = fi.x();
         pic.y = fi.top();
         pic.wrapGap = fi.gap();

@@ -143,7 +143,11 @@ public record PageLayout(
         }
     }
 
-    public record FloatItem(Item picture, float gap, boolean overlay) implements Item {
+    public record FloatItem(Item picture, float gap, boolean overlay, boolean overWords) implements Item {
+        public FloatItem(Item picture, float gap, boolean overlay) {
+            this(picture, gap, overlay, false);
+        }
+
         public float top() {
             return picture.top();
         }
