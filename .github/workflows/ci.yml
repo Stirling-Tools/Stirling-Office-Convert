@@ -17,7 +17,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-15, windows-latest]
+        os: ${{ github.event_name == 'push' && fromJSON('["ubuntu-latest", "windows-latest", "macos-15"]') || fromJSON('["ubuntu-latest", "windows-latest"]') }}
         java: ['25']
     runs-on: ${{ matrix.os }}
     steps:
