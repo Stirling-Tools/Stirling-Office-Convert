@@ -62,6 +62,9 @@ public final class PageAnalyzer {
         boolean ocr = OcrText.dominates(page);
         List<Glyph> glyphs = OcrText.pageGlyphs(page);
         PageGraphics gfx = page.graphics();
+        FormulaLines.Rebuilt formulas = ocr ? new FormulaLines.Rebuilt(glyphs, Set.of())
+                : FormulaLines.rebuild(glyphs, gfx.rules(), gfx.fills());
+        glyphs = formulas.glyphs();
         if (glyphs.isEmpty() && page.rotated().isEmpty() && outlinedText(gfx)) {
             return FallbackPage.of(page);
         }
@@ -86,6 +89,8 @@ public final class PageAnalyzer {
 
         List<Rule> rules = new ArrayList<>(gfx.rules());
         List<Fill> fills = new ArrayList<>(gfx.fills());
+        rules.removeIf(formulas.consumed()::contains);
+        fills.removeIf(formulas.consumed()::contains);
         fills.removeIf(usedMarks::contains);
         Decorations.underlines(segments, rules);
         Decorations.highlights(segments, fills);
@@ -255,7 +260,7 @@ public final class PageAnalyzer {
         }
         groundTextBoxes(bands, furniture, decorations, gfx);
         return new PageLayout(page, bands, ocr, decorations, notes.notes(), notes.continuation(), furniture,
-                veiled.veils(), textPaint);
+                veiled.veils(), textPaint, formulas.consumed());
     }
 
     private PageLayout formPage(PageData page, boolean ocr, List<Line> lines, List<Rule> rules, List<Fill> fills,
@@ -299,7 +304,7 @@ public final class PageAnalyzer {
                 ? List.of()
                 : List.of(new PageLayout.Band(0, page.height(), List.of(new PageLayout.Column(0, page.width(), pictures))));
         return new PageLayout(page, bands, ocr, poster ? List.of() : FormPage.shapes(rules, fills, gfx), List.of(),
-                List.of(), boxes, List.of(), textPaint);
+                List.of(), boxes, List.of(), textPaint, Set.of());
     }
 
     private static List<Box> choiceFields(List<PageData.Widget> widgets, List<Box> tableBoxes) {

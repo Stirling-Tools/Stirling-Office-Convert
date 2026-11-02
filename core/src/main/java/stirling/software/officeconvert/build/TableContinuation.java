@@ -27,7 +27,8 @@ final class TableContinuation {
 
     static boolean join(Table prev, Table next, String pageBookmark) {
         List<Table.Row> rows = next.rows;
-        boolean header = text(rows.getFirst()).equals(text(prev.rows.getFirst())) && !text(rows.getFirst()).isBlank();
+        boolean header = text(rows.getFirst()).equals(text(prev.rows.getFirst())) && !text(rows.getFirst()).isBlank()
+                || headerRemnant(prev.rows.getFirst(), rows.getFirst());
         if (header) {
             rows = rows.subList(1, rows.size());
         }
@@ -64,6 +65,22 @@ final class TableContinuation {
             return 0;
         }
         return next.rows.removeFirst().height;
+    }
+
+    private static boolean headerRemnant(Table.Row header, Table.Row first) {
+        if (header.cells.size() != first.cells.size() || blank(first)) {
+            return false;
+        }
+        boolean gap = false;
+        for (int i = 0; i < first.cells.size(); i++) {
+            String cell = text(first.cells.get(i)).strip();
+            if (cell.isEmpty()) {
+                gap = true;
+            } else if (!cell.equals(text(header.cells.get(i)).strip())) {
+                return false;
+            }
+        }
+        return gap;
     }
 
     private static boolean blank(Table.Row row) {

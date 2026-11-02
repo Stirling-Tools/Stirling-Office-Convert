@@ -12,6 +12,12 @@ final class WordContext {
 
     private static final float MARK_OVERLAP = 0.3f;
 
+    private static final float RAISED_ACCENT = 0.5f;
+
+    private static final float RAISED_BAR = 0.2f;
+
+    private static final float BAR_ALIGN = 0.1f;
+
     private WordContext() {}
 
     static String choose(List<Glyph> glyphs, int index, String alternative, Map<Glyph, String> alternatives) {
@@ -69,9 +75,13 @@ final class WordContext {
                 : Character.isUpperCase(other) == capitals ? alternative : g.text;
     }
 
-    private static final String MARKS = "\u00B4`\u02C6\u02DC\u00A8\u02DA\u00B8\u02C7\u02D8\u00AF\u02D9\u02DD\u02DB";
+    private static final String MARKS = "\u00B4`\u02C6\u02DC\u00A8\u02DA\u00B8\u02C7\u02D8\u00AF\u02D9\u02DD\u02DB^~";
 
-    private static final String COMBINING = "\u0301\u0300\u0302\u0303\u0308\u030A\u0327\u030C\u0306\u0304\u0307\u030B\u0328";
+    private static final String COMBINING = "\u0301\u0300\u0302\u0303\u0308\u030A\u0327\u030C\u0306\u0304\u0307\u030B\u0328\u0302\u0303";
+
+    private static final String TYPED_MARKS = "^~";
+
+    private static final float TYPED_OVERLAP = 0.6f;
 
     static boolean mark(String text) {
         return text != null && text.length() == 1 && MARKS.indexOf(text.charAt(0)) >= 0;
@@ -86,12 +96,43 @@ final class WordContext {
         float overlap = Math.min(base.right(), mark.right()) - Math.max(base.x, mark.x);
         if (centre < base.x - slack || centre > base.right() + slack
                 || overlap < MARK_OVERLAP * Math.min(base.width, mark.width)
-                || Math.abs(base.baseline - mark.baseline) > LINE_SLACK * base.size) {
+                || !accentHeight(base.baseline - mark.baseline, base.size)) {
+            return null;
+        }
+        if (TYPED_MARKS.indexOf(mark.text.charAt(0)) >= 0
+                && overlap < TYPED_OVERLAP * Math.max(base.width, mark.width)) {
             return null;
         }
         char accent = COMBINING.charAt(MARKS.indexOf(mark.text.charAt(0)));
         String letter = accent != '\u0327' && base.text.equals("\u0131") ? "i" : base.text;
         return Normalizer.normalize(letter + accent, Normalizer.Form.NFC);
+    }
+
+    private static boolean accentHeight(float rise, float size) {
+        return rise >= -LINE_SLACK * size && rise <= RAISED_ACCENT * size;
+    }
+
+    static boolean exactlyUnder(Glyph base, Glyph bar) {
+        float size = Math.max(base.size, 1e-3f);
+        float rise = base.baseline - bar.baseline;
+        return base.text.codePointCount(0, base.text.length()) == 1 && Character.isLetter(base.text.codePointAt(0))
+                && Math.abs(base.size - bar.size) <= LINE_SLACK * size
+                && Math.abs(base.x - bar.x) <= BAR_ALIGN * size && Math.abs(base.width - bar.width) <= BAR_ALIGN * size
+                && rise >= RAISED_BAR * size && rise <= size;
+    }
+
+    static boolean under(Glyph base, Glyph bar) {
+        if (base.text.isBlank() || combiningOnly(base.text) || mark(base.text)) {
+            return false;
+        }
+        float size = Math.max(base.size, 1e-3f);
+        float overlap = Math.min(base.right(), bar.right()) - Math.max(base.x, bar.x);
+        float rise = base.baseline - bar.baseline;
+        return overlap >= MARK_OVERLAP * base.width && rise >= -LINE_SLACK * size && rise <= size;
+    }
+
+    private static boolean combiningOnly(String text) {
+        return text.codePoints().allMatch(cp -> Character.getType(cp) == Character.NON_SPACING_MARK);
     }
 
     private static String effective(Glyph g, Map<Glyph, String> alternatives) {

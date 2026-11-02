@@ -16,6 +16,7 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
 import stirling.software.officeconvert.sheet.CellValue;
+import stirling.software.officeconvert.sheet.ScriptMarks;
 import stirling.software.officeconvert.sheet.Row;
 import stirling.software.officeconvert.sheet.SheetXml;
 import stirling.software.officeconvert.sheet.SpillBuffer;
@@ -95,7 +96,9 @@ public final class XlsxWriter implements WorkbookSink {
             sb.append("/>");
         } else if (v.isText()) {
             String text = v.text().length() > MAX_TEXT ? v.text().substring(0, MAX_TEXT) : v.text();
-            sb.append(" t=\"s\"><v>").append(strings.add(text)).append("</v></c>");
+            int index = ScriptMarks.has(text) ? strings.addRich(text, styles.runFont(c.style(), ScriptMarks.strip(text)))
+                    : strings.add(text);
+            sb.append(" t=\"s\"><v>").append(index).append("</v></c>");
         } else {
             sb.append("><v>").append(SheetXml.number(v.number())).append("</v></c>");
         }

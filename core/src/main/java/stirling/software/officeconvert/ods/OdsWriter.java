@@ -20,6 +20,7 @@ import java.util.zip.ZipOutputStream;
 
 import stirling.software.officeconvert.sheet.CellStyle;
 import stirling.software.officeconvert.sheet.CellValue;
+import stirling.software.officeconvert.sheet.ScriptMarks;
 import stirling.software.officeconvert.sheet.NumberFormat;
 import stirling.software.officeconvert.sheet.Row;
 import stirling.software.officeconvert.sheet.SheetXml;
@@ -28,6 +29,11 @@ import stirling.software.officeconvert.sheet.WorkbookSink;
 import stirling.software.officeconvert.sink.ZipParts;
 
 public final class OdsWriter implements WorkbookSink {
+
+    static final String SUPER_STYLE = "Tsup";
+
+    static final String SUB_STYLE = "Tsub";
+
 
     static final String MIME = "application/vnd.oasis.opendocument.spreadsheet";
 
@@ -137,7 +143,7 @@ public final class OdsWriter implements WorkbookSink {
                 || s.horizontal() != CellStyle.HAlign.GENERAL && s.horizontal() != CellStyle.HAlign.LEFT) {
             return;
         }
-        String text = c.value().text();
+        String text = ScriptMarks.strip(c.value().text());
         int longest = 0;
         int run = 0;
         for (int i = 0; i < text.length(); i++) {
@@ -219,6 +225,7 @@ public final class OdsWriter implements WorkbookSink {
     }
 
     private void paragraphs(String text) {
+        boolean open = false;
         for (String line : text.split("\n", -1)) {
             sb.append("<text:p>");
             int spaces = 0;
@@ -229,13 +236,29 @@ public final class OdsWriter implements WorkbookSink {
                     continue;
                 }
                 spaces = flushSpaces(spaces, i - spaces == 0);
-                if (ch == '\t') {
+                if (ch == ScriptMarks.SUPER || ch == ScriptMarks.SUB) {
+                    if (open) {
+                        sb.append("</text:span>");
+                    }
+                    sb.append("<text:span text:style-name=\"").append(ch == ScriptMarks.SUPER ? SUPER_STYLE : SUB_STYLE)
+                            .append("\">");
+                    open = true;
+                } else if (ch == ScriptMarks.END) {
+                    if (open) {
+                        sb.append("</text:span>");
+                    }
+                    open = false;
+                } else if (ch == '\t') {
                     sb.append("<text:tab/>");
                 } else {
                     SheetXml.escape(sb, String.valueOf(ch));
                 }
             }
             flushSpaces(spaces, true);
+            if (open) {
+                sb.append("</text:span>");
+                open = false;
+            }
             sb.append("</text:p>");
         }
     }

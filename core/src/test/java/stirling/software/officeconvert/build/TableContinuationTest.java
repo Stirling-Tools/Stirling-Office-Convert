@@ -39,6 +39,16 @@ class TableContinuationTest {
     }
 
     @Test
+    void whatIsLeftOfARepeatedHeaderIsNotGluedIntoTheLastRow() {
+        Table prev = table(new String[] {"Name", "Formula", "Type"}, new String[] {"Mean", "x", "Discrete"});
+        Table next = table(new String[] {"", "", "Type"}, new String[] {"Median", "y", "Discrete"});
+        assertTrue(TableContinuation.join(prev, next, null));
+        assertEquals(3, prev.rows.size());
+        assertEquals(1, prev.rows.get(1).cells.get(2).paragraphs.size(), "Type is not appended to Discrete");
+        assertEquals("Median", ((Inline.Text) prev.rows.get(2).cells.getFirst().paragraphs.getFirst().inlines.getFirst()).text());
+    }
+
+    @Test
     void aRowCutAcrossThePageStaysOneRow() {
         Table prev = table(new String[] {"1", "one and"});
         Table next = table(new String[] {"", "more"}, new String[] {"2", "two"});

@@ -17,11 +17,12 @@ public record PageLayout(
         List<ParaDraft> noteContinuation,
         List<TextBoxItem> furniture,
         List<Veil> veils,
-        Set<Object> textPaint) {
+        Set<Object> textPaint,
+        Set<Object> formulaBars) {
 
     public PageLayout(PageData page, List<Band> bands, boolean ocrText, List<Decoration> decorations, List<Note> notes,
             List<ParaDraft> noteContinuation, List<TextBoxItem> furniture, List<Veil> veils) {
-        this(page, bands, ocrText, decorations, notes, noteContinuation, furniture, veils, Set.of());
+        this(page, bands, ocrText, decorations, notes, noteContinuation, furniture, veils, Set.of(), Set.of());
     }
 
     public record Veil(Box box, List<PageGraphics.VectorMark> marks, int order) {}
