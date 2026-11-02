@@ -32,6 +32,8 @@ public final class Glyph {
 
     public IconShape icon;
 
+    public String math;
+
     public Glyph(
             String text,
             float x,
@@ -74,6 +76,7 @@ public final class Glyph {
         g.hscale = hscale;
         g.invisible = invisible;
         g.icon = icon == null ? null : new IconShape(icon.scaled(k), icon.rgb(), icon.key() + "|" + k);
+        g.math = math;
         return g;
     }
 
@@ -99,6 +102,7 @@ public final class Glyph {
         g.upright = upright;
         g.invisible = invisible;
         g.icon = icon;
+        g.math = math;
         return g;
     }
 

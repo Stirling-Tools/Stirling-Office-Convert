@@ -26,6 +26,8 @@ final class LatticeFinder {
     private static final float LABEL_COLUMN = 0.3f;
     private static final int LABEL_WORDS = 6;
 
+    private static final float GUTTER_SLACK = 1f;
+
     private LatticeFinder() {}
 
     record Found(DraftTable table, Box region) {}
@@ -358,11 +360,20 @@ final class LatticeFinder {
         float[] edges = columns.edges();
         List<Float> gutters = new ArrayList<>();
         for (int c = 1; c < columns.count(); c++) {
-            if (edges[c] > left + 2f && edges[c] < right - 2f) {
+            if (edges[c] > left + 2f && edges[c] < right - 2f && !crossesWord(edges[c], words)) {
                 gutters.add(edges[c]);
             }
         }
         return gutters;
+    }
+
+    private static boolean crossesWord(float x, List<PdfWord> words) {
+        for (PdfWord w : words) {
+            if (w.x() < x - GUTTER_SLACK && w.right() > x + GUTTER_SLACK) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static float[] dropThinBands(float[] edges, List<PdfWord> words, boolean vertical) {
