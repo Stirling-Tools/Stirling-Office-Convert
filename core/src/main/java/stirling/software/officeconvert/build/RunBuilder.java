@@ -520,7 +520,8 @@ final class RunBuilder {
                 && !unmeasured(g)) {
             int scale = Math.round(s.scale() * fix.scale() / 100f);
             return new RunStyle(s.font(), s.size(), s.bold(), s.italic(), s.underline(), s.strike(), s.rgb(),
-                    s.highlight(), s.vertAlign(), s.symbol(), fix.spacing() - squeeze, scale, s.smallCaps(), s.border());
+                    s.highlight(), s.vertAlign(), s.symbol(), fix.spacing() - squeeze, scale, s.smallCaps(), s.border())
+                    .withMath(s.math());
         }
         return s;
     }
@@ -1012,7 +1013,7 @@ final class RunBuilder {
                 0f,
                 scaleOf(g),
                 g.font.smallCaps(),
-                g.boxRgb);
+                g.boxRgb).withMath(g.math);
     }
 
     static int scaleOf(Glyph g) {

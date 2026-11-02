@@ -12,6 +12,7 @@ import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import stirling.software.officeconvert.sheet.ScriptMarks;
 import stirling.software.officeconvert.sheet.SheetXml;
 import stirling.software.officeconvert.sheet.SpillBuffer;
 
@@ -45,6 +46,32 @@ final class SharedStrings implements AutoCloseable {
         out.write(sb.toString());
         if (index.size() < DEDUPE_LIMIT) {
             index.put(s, entries);
+        }
+        return entries++;
+    }
+
+    int addRich(String s, String font) throws IOException {
+        references++;
+        String key = s + '\u0000' + font;
+        Integer known = index.get(key);
+        if (known != null) {
+            return known;
+        }
+        sb.setLength(0);
+        sb.append("<si>");
+        for (ScriptMarks.Run run : ScriptMarks.runs(s)) {
+            sb.append("<r><rPr>").append(font);
+            if (run.level() != 0) {
+                sb.append("<vertAlign val=\"").append(run.level() > 0 ? "superscript" : "subscript").append("\"/>");
+            }
+            sb.append("</rPr><t xml:space=\"preserve\">");
+            SheetXml.escape(sb, encode(run.text()));
+            sb.append("</t></r>");
+        }
+        sb.append("</si>");
+        out.write(sb.toString());
+        if (index.size() < DEDUPE_LIMIT) {
+            index.put(key, entries);
         }
         return entries++;
     }

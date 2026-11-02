@@ -14,6 +14,8 @@ final class ClipArea {
     private int size;
     private int shapeSegments;
     private Rectangle2D box;
+    private Rectangle2D bounds;
+    private int boundsOf = -1;
     private final List<Path2D> shapes = new ArrayList<>();
 
     ClipArea of(List<Path2D> clips) {
@@ -22,6 +24,7 @@ final class ClipArea {
             size = 0;
             shapeSegments = 0;
             box = null;
+            bounds = null;
             shapes.clear();
         }
         for (; size < clips.size(); size++) {
@@ -37,6 +40,19 @@ final class ClipArea {
             }
         }
         return this;
+    }
+
+    Rectangle2D bounds() {
+        if (bounds != null && boundsOf == size) {
+            return bounds;
+        }
+        Rectangle2D b = box;
+        for (Path2D shape : shapes) {
+            b = b == null ? shape.getBounds2D() : b.createIntersection(shape.getBounds2D());
+        }
+        bounds = b;
+        boundsOf = size;
+        return b;
     }
 
     boolean contains(double x, double y) {
