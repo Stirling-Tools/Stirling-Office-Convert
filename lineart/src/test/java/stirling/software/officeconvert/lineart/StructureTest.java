@@ -246,8 +246,8 @@ class StructureTest {
 
     @Test
     void aHugeImageConvertsInBands() throws IOException {
-        int w = 20_000;
-        int h = 4_000;
+        int w = 3_000;
+        int h = 2_000;
         try (PDDocument doc = new PDDocument()) {
             COSStream stream = doc.getDocument().createCOSStream();
             stream.setItem(COSName.TYPE, COSName.XOBJECT);

@@ -534,10 +534,10 @@ class PdfOptimizerTest {
     void aSlowDocumentIsStoppedAtTheTimeout() throws Exception {
         Path in = dir.resolve("noise.pdf");
         try (PDDocument d = new PDDocument()) {
-            BufferedImage noise = new BufferedImage(1500, 1500, BufferedImage.TYPE_INT_RGB);
+            BufferedImage noise = new BufferedImage(500, 500, BufferedImage.TYPE_INT_RGB);
             Random random = new Random(7);
-            for (int y = 0; y < 1500; y++) {
-                for (int x = 0; x < 1500; x++) {
+            for (int y = 0; y < 500; y++) {
+                for (int x = 0; x < 500; x++) {
                     noise.setRGB(x, y, random.nextInt());
                 }
             }

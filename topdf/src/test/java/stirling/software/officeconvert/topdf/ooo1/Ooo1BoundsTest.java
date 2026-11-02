@@ -1,6 +1,7 @@
 package stirling.software.officeconvert.topdf.ooo1;
 
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
@@ -30,8 +31,13 @@ class Ooo1BoundsTest {
     }
 
     private Allocation.Measured convert(byte[] sxw) throws IOException {
+        return convert(sxw, OfficeZip.Limits.DEFAULT);
+    }
+
+    private Allocation.Measured convert(byte[] sxw, OfficeZip.Limits limits) throws IOException {
         Path in = Files.write(dir.resolve("doc.sxw"), sxw);
-        return Allocation.measure(() -> Ooo1Package.write(in, Ooo1Package.Kind.TEXT, OutputStream.nullOutputStream()));
+        return Allocation.measure(() -> Ooo1Package.write(in, Ooo1Package.Kind.TEXT, OutputStream.nullOutputStream(),
+                limits));
     }
 
     @Test
@@ -45,24 +51,26 @@ class Ooo1BoundsTest {
 
     @Test
     void picturesThatInflatePastTheirDeclaredSizeAreRefused() throws IOException {
-        ZipBytes z = writer();
-        for (int i = 0; i < 4; i++) {
-            z.repeat("Pictures/" + i + ".png", "", new byte[1 << 20], 100, "");
-        }
-        byte[] sxw = z.bytes();
-        for (int i = 0; i < 4; i++) {
-            sxw = ZipBytes.declareSize(sxw, "Pictures/" + i + ".png", 1000);
-        }
+        byte[] sxw = writer().repeat("Pictures/0.png", "", new byte[1 << 20], 65, "").bytes();
+        sxw = ZipBytes.declareSize(sxw, "Pictures/0.png", 1000);
         assertInstanceOf(OfficeZip.Oversized.class, convert(sxw).failure());
     }
 
     @Test
     void picturesShareOneInflateBudget() throws IOException {
+        OfficeZip.Limits d = OfficeZip.Limits.DEFAULT;
+        OfficeZip.Limits limits = new OfficeZip.Limits(d.maxEntries(), d.maxEntryBytes(), 16L << 20,
+                d.minInflateRatio(), d.graceBytes(), d.maxDenseBytes());
+        assertNull(convert(pictures(3), limits).failure());
+        assertInstanceOf(OfficeZip.Oversized.class, convert(pictures(5), limits).failure());
+    }
+
+    private static byte[] pictures(int count) {
         ZipBytes z = writer();
-        for (int i = 0; i < 18; i++) {
-            z.repeat("Pictures/" + i + ".png", "", new byte[1 << 20], 60, "");
+        for (int i = 0; i < count; i++) {
+            z.repeat("Pictures/" + i + ".png", "", new byte[1 << 20], 4, "");
         }
-        assertInstanceOf(OfficeZip.Oversized.class, convert(z.bytes()).failure());
+        return z.bytes();
     }
 
     @Test

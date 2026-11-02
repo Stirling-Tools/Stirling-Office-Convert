@@ -15,26 +15,47 @@ dependencies {
     testImplementation(testFixtures(project(":core")))
     testImplementation(platform(libs.junit.bom))
     testImplementation(libs.junit.jupiter)
-    testRuntimeOnly(libs.junit.platform.launcher)
+    testImplementation(libs.junit.platform.launcher)
 }
 
 base {
     archivesName.set("stirling-office-convert-topdf")
 }
 
+val networkScanTest =
+    "stirling.software.officeconvert.topdf.NetworkSafetyTest.everyModuleReferencesOnlyAllowedNetworkOrScriptCode"
+
 tasks.test {
-    val runtime = configurations.runtimeClasspath
-    inputs.files(runtime)
     systemProperty("topdf.expectJava", "25")
     systemProperty("topdf.reportDir", layout.buildDirectory.dir("reports").get().asFile.absolutePath)
+    val tmp = layout.buildDirectory.dir("tmp/test-java-io-tmpdir").get().asFile
+    systemProperty("java.io.tmpdir", tmp.absolutePath)
+    filter {
+        excludeTestsMatching(networkScanTest)
+    }
+    doFirst {
+        tmp.deleteRecursively()
+        tmp.mkdirs()
+    }
+}
+
+val networkScan by tasks.registering(Test::class) {
+    description = "Checks that no module references code that can reach the network or run scripts."
+    group = LifecycleBasePlugin.VERIFICATION_GROUP
+    testClassesDirs = sourceSets.test.get().output.classesDirs
+    classpath = sourceSets.test.get().runtimeClasspath
     val scanned = listOf("core", "legacy", "pdfa", "lineart", "cli", "app", "optimize")
     dependsOn(scanned.map { ":$it:classes" })
     val scannedDirs = scanned.map { rootProject.layout.projectDirectory.dir("$it/build/classes/java/main").asFile }
     inputs.files(scannedDirs).withPropertyName("scannedClasses")
     systemProperty("topdf.scanClasses", scannedDirs.joinToString(File.pathSeparator) { it.absolutePath })
-    doFirst {
-        systemProperty("topdf.runtimeClasspath", runtime.get().asPath)
+    filter {
+        includeTestsMatching(networkScanTest)
     }
+}
+
+tasks.check {
+    dependsOn(networkScan)
 }
 
 tasks.jar {

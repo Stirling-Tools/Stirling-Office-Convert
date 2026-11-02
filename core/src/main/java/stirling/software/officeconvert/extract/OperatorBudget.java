@@ -21,19 +21,29 @@ public final class OperatorBudget {
     private final String subject;
     private final String pass;
     private final String rest;
+    private final int maxForms;
     private long operators;
     private int forms;
     private boolean spent;
     private boolean interrupted;
 
     public OperatorBudget(String pass) {
-        this("A page", pass, "the rest of it is left out");
+        this(pass, MAX_FORMS);
+    }
+
+    OperatorBudget(String pass, int maxForms) {
+        this("A page", pass, "the rest of it is left out", maxForms);
     }
 
     OperatorBudget(String subject, String pass, String rest) {
+        this(subject, pass, rest, MAX_FORMS);
+    }
+
+    private OperatorBudget(String subject, String pass, String rest, int maxForms) {
         this.subject = subject;
         this.pass = pass;
         this.rest = rest;
+        this.maxForms = maxForms;
     }
 
     public boolean run(Operator operator) throws InterruptedIOException {
@@ -48,7 +58,7 @@ public final class OperatorBudget {
     }
 
     public boolean form() {
-        return ++forms <= MAX_FORMS && !spent || spend("forms");
+        return ++forms <= maxForms && !spent || spend("forms");
     }
 
     public boolean spent() {
@@ -58,7 +68,7 @@ public final class OperatorBudget {
     private boolean spend(String what) {
         if (!spent) {
             spent = true;
-            LOG.warn(subject + " ran past " + (what.equals("forms") ? MAX_FORMS : MAX_OPERATORS) + " " + what
+            LOG.warn(subject + " ran past " + (what.equals("forms") ? maxForms : MAX_OPERATORS) + " " + what
                     + " while " + pass + "; " + rest);
         }
         return false;

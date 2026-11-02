@@ -81,21 +81,14 @@ class PdfFootprintCoverageTest {
     @Test
     void aHugeContentStreamIsReadOnlyUpToTheScanLimit() throws IOException {
         try (PDDocument doc = new PDDocument()) {
-            COSStream content = doc.getDocument().createCOSStream();
-            byte[] spaces = new byte[1 << 20];
-            Arrays.fill(spaces, (byte) ' ');
-            try (OutputStream out = content.createOutputStream(COSName.FLATE_DECODE)) {
-                for (int i = 0; i < 300; i++) {
-                    out.write(spaces);
-                }
-            }
+            COSStream content = spaces(doc, HUGE);
             assertEquals(4097, StreamGuard.head(content, 4096).readAllBytes().length);
             page(doc).getCOSObject().setItem(COSName.CONTENTS, content);
             assertTrue(extra(doc) > 0);
         }
     }
 
-    private static final long HUGE = 300L << 20;
+    private static final long HUGE = 160L << 20;
 
     private static final long SCAN_ALLOWANCE = 2 * PdfFootprint.MAX_SCANNED_CONTENT;
 
@@ -103,7 +96,8 @@ class PdfFootprintCoverageTest {
         COSStream s = doc.getDocument().createCOSStream();
         byte[] chunk = new byte[1 << 20];
         Arrays.fill(chunk, (byte) ' ');
-        try (OutputStream out = s.createOutputStream(COSName.FLATE_DECODE)) {
+        s.setItem(COSName.FILTER, COSName.FLATE_DECODE);
+        try (OutputStream out = new DeflaterOutputStream(s.createRawOutputStream(), new Deflater(1))) {
             for (long written = 0; written < size; written += chunk.length) {
                 out.write(chunk);
             }

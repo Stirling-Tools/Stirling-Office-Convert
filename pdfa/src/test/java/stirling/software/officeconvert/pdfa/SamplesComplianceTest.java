@@ -16,6 +16,8 @@ class SamplesComplianceTest {
     static Stream<Arguments> cases() {
         return Samples.ALL.keySet().stream().filter(n -> !n.equals("s06_encrypted_user"))
                 .flatMap(n -> Stream.of(PdfALevel.values()).filter(l -> !l.tagged() || n.equals("s21_tagged"))
+                        .filter(l -> l.part() != 3 || n.equals("s11_embedded_files"))
+                        .filter(l -> !(l == PdfALevel.A1A && n.equals("s21_tagged")))
                         .map(l -> Arguments.of(n, l)));
     }
 

@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.awt.geom.Rectangle2D;
 import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
@@ -47,6 +48,8 @@ class PoiPackagesTest {
     private static final String ESCAPED = "a & b <c> \"d\"";
 
     private static final int CELLS = 60_000;
+
+    private static byte[] bigWorkbook;
 
     @TempDir
     Path dir;
@@ -130,18 +133,20 @@ class PoiPackagesTest {
     }
 
     private Path bigWorkbook() throws IOException {
-        Path file = dir.resolve("big.xlsx");
-        try (XSSFWorkbook wb = new XSSFWorkbook(); OutputStream out = Files.newOutputStream(file)) {
-            XSSFSheet sheet = wb.createSheet("Data");
-            for (int r = 0; r < CELLS / 4; r++) {
-                var row = sheet.createRow(r);
-                for (int c = 0; c < 4; c++) {
-                    row.createCell(c).setCellValue(ESCAPED + " " + r + "/" + c);
+        if (bigWorkbook == null) {
+            try (XSSFWorkbook wb = new XSSFWorkbook(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+                XSSFSheet sheet = wb.createSheet("Data");
+                for (int r = 0; r < CELLS / 4; r++) {
+                    var row = sheet.createRow(r);
+                    for (int c = 0; c < 4; c++) {
+                        row.createCell(c).setCellValue(ESCAPED + " " + r + "/" + c);
+                    }
                 }
+                wb.write(out);
+                bigWorkbook = out.toByteArray();
             }
-            wb.write(out);
         }
-        return file;
+        return Files.write(dir.resolve("big.xlsx"), bigWorkbook);
     }
 
     @Test

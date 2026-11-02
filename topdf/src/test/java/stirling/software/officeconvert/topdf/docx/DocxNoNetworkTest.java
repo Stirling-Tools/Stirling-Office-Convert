@@ -2,6 +2,7 @@ package stirling.software.officeconvert.topdf.docx;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.awt.Color;
@@ -19,6 +20,7 @@ import org.apache.pdfbox.pdmodel.interactive.annotation.PDAnnotationLink;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import stirling.software.officeconvert.topdf.OfficeToPdf;
 import stirling.software.officeconvert.topdf.testing.Emf;
 import stirling.software.officeconvert.topdf.testing.Fixtures;
 import stirling.software.officeconvert.topdf.testing.HostileImagePlugin;
@@ -226,11 +228,9 @@ class DocxNoNetworkTest {
     @Test
     void doctypeDocumentsAreRefusedWithoutFetchingTheDtd() throws IOException {
         try (NoNetwork net = NoNetwork.start()) {
-            try {
-                DocxDoc.render(dir, "doctype", Fixtures.doctypeDocx(net));
-            } catch (IOException expected) {
-                assertTrue(expected.getMessage() != null);
-            }
+            IOException refused = assertThrows(IOException.class,
+                    () -> DocxDoc.render(dir, "doctype", Fixtures.doctypeDocx(net)));
+            assertFalse(refused instanceof OfficeToPdf.TimedOut, refused.toString());
             net.assertNothingConnected();
         }
     }
