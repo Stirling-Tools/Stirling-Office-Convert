@@ -10,6 +10,7 @@ import java.util.Collections;
 import java.util.Deque;
 import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 import org.apache.pdfbox.contentstream.operator.Operator;
@@ -24,6 +25,7 @@ import org.apache.pdfbox.cos.COSStream;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.common.PDRectangle;
+import org.apache.pdfbox.pdmodel.common.function.PDFunction;
 import org.apache.pdfbox.pdmodel.graphics.image.JPEGFactory;
 import org.apache.pdfbox.pdmodel.graphics.image.LosslessFactory;
 import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
@@ -34,6 +36,10 @@ import stirling.software.officeconvert.extract.PdfFiles;
 final class Transparency {
 
     static final long MAX_PIXELS = 40_000_000L;
+
+    private static final float MASK_REACH = 100_000f;
+
+    private static final float OUTSIDE_EPSILON = 1f / 512;
 
     private final PDDocument doc;
 
@@ -60,19 +66,78 @@ final class Transparency {
 
     static void run(PDDocument doc, float dpi, Report report) throws IOException {
         Transparency t = new Transparency(doc, dpi, report);
-        int index = 0;
-        for (PDPage page : doc.getPages()) {
-            PdfFiles.stopIfInterrupted();
-            try {
-                t.page(page, index);
-            } catch (IOException | RuntimeException e) {
+        Map<COSDictionary, COSBase> groups = transferredMaskGroups(doc);
+        try {
+            int index = 0;
+            for (PDPage page : doc.getPages()) {
                 PdfFiles.stopIfInterrupted();
-                throw new IOException("The transparency on page " + (index + 1) + " could not be flattened for "
-                        + "PDF/A-1 (" + e.getMessage() + "); use PDF/A-2 or 3, which keep it", e);
+                try {
+                    t.page(page, index);
+                } catch (IOException | RuntimeException e) {
+                    PdfFiles.stopIfInterrupted();
+                    throw new IOException("The transparency on page " + (index + 1) + " could not be flattened for "
+                            + "PDF/A-1 (" + e.getMessage() + "); use PDF/A-2 or 3, which keep it", e);
+                }
+                index++;
             }
-            index++;
+        } finally {
+            for (Map.Entry<COSDictionary, COSBase> e : groups.entrySet()) {
+                e.getKey().setItem(COSName.G, e.getValue());
+            }
         }
         t.neutralise();
+    }
+
+    private static Map<COSDictionary, COSBase> transferredMaskGroups(PDDocument doc) throws IOException {
+        Map<COSDictionary, COSBase> groups = new IdentityHashMap<>();
+        CosWalk.walk(doc, b -> {
+            if (!(b instanceof COSDictionary mask) || !(mask.getDictionaryObject(COSName.G) instanceof COSStream)
+                    || mask.getDictionaryObject(COSName.TR) == null || COSName.IDENTITY.equals(
+                            mask.getDictionaryObject(COSName.TR)) || groups.containsKey(mask)) {
+                return;
+            }
+            COSName s = mask.getCOSName(COSName.S);
+            if ((COSName.ALPHA.equals(s) || COSName.LUMINOSITY.equals(s)) && transfersOutside(mask)) {
+                groups.put(mask, mask.getItem(COSName.G));
+            }
+        });
+        for (COSDictionary mask : groups.keySet()) {
+            mask.setItem(COSName.G, everywhere(doc, (COSStream) mask.getDictionaryObject(COSName.G)));
+        }
+        return groups;
+    }
+
+    static boolean transfersOutside(COSDictionary mask) {
+        if (COSName.LUMINOSITY.equals(mask.getCOSName(COSName.S)) && mask.containsKey(COSName.BC)) {
+            return true;
+        }
+        try {
+            float[] out = PDFunction.create(mask.getDictionaryObject(COSName.TR)).eval(new float[] {0f});
+            return out.length == 0 || out[0] > OUTSIDE_EPSILON;
+        } catch (IOException | RuntimeException e) {
+            return true;
+        }
+    }
+
+    private static COSStream everywhere(PDDocument doc, COSStream group) throws IOException {
+        COSArray box = new COSArray();
+        for (float v : new float[] {-MASK_REACH, -MASK_REACH, MASK_REACH, MASK_REACH}) {
+            box.add(new COSFloat(v));
+        }
+        COSStream wrapper = doc.getDocument().createCOSStream();
+        wrapper.setItem(COSName.TYPE, COSName.XOBJECT);
+        wrapper.setItem(COSName.SUBTYPE, COSName.FORM);
+        wrapper.setItem(COSName.BBOX, box);
+        wrapper.setItem(COSName.GROUP, group.getDictionaryObject(COSName.GROUP));
+        COSDictionary xobjects = new COSDictionary();
+        xobjects.setItem(COSName.getPDFName("G0"), group);
+        COSDictionary resources = new COSDictionary();
+        resources.setItem(COSName.XOBJECT, xobjects);
+        wrapper.setItem(COSName.RESOURCES, resources);
+        try (java.io.OutputStream out = wrapper.createOutputStream()) {
+            out.write("/G0 Do".getBytes(java.nio.charset.StandardCharsets.US_ASCII));
+        }
+        return wrapper;
     }
 
     private void page(PDPage page, int index) throws IOException {

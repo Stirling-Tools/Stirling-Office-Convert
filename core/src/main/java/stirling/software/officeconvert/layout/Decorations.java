@@ -330,6 +330,54 @@ final class Decorations {
 
     static List<PageLayout.Decoration> leftovers(List<Fill> fills, List<Rule> rules, List<VectorMark> dots,
             List<Box> figures, List<Box> tables, boolean tinted, ToIntFunction<Object> order) {
+        List<PageLayout.Decoration> out = shapes(fills, rules, figures, tables, tinted, order);
+        if (out.size() > MAX_SHAPES) {
+            out = backdrops(out);
+        }
+        out.addAll(dots(dots, figures, tables, order));
+        return out;
+    }
+
+    static List<Box> overCap(List<Fill> fills, List<Rule> rules, List<Box> figures, List<Box> tables, boolean tinted,
+            List<Line> segments, List<Box> rotated) {
+        List<PageLayout.Decoration> shapes = shapes(fills, rules, figures, tables, tinted, o -> 0);
+        if (shapes.size() <= MAX_SHAPES) {
+            return List.of();
+        }
+        List<PageLayout.Decoration> kept = backdrops(shapes);
+        List<Box> dropped = new ArrayList<>();
+        for (PageLayout.Decoration d : shapes) {
+            if (!kept.contains(d)) {
+                dropped.add(d.box());
+            }
+        }
+        List<Box> clusters = FigureFinder.cluster(dropped, OVER_CAP_GAP);
+        for (float gap = 2 * OVER_CAP_GAP; clusters.size() > MAX_OVER_CAP_FIGURES && gap <= MAX_OVER_CAP_GAP; gap *= 2) {
+            clusters = FigureFinder.cluster(dropped, gap);
+        }
+        List<Box> out = new ArrayList<>();
+        for (Box b : clusters) {
+            Box claimed = new Box(b.x() - CLAIM_SLACK, b.top() - CLAIM_SLACK, b.right() + CLAIM_SLACK,
+                    b.bottom() + CLAIM_SLACK);
+            if (b.width() >= FigureFinder.MIN_SIDE && b.height() >= FigureFinder.MIN_SIDE
+                    && FigureFinder.wordsInside(claimed, segments) == 0
+                    && rotated.stream().noneMatch(r -> claimed.contains(r.centreX(), r.centreY()))) {
+                out.add(b);
+            }
+        }
+        return out;
+    }
+
+    private static final float OVER_CAP_GAP = 4f;
+
+    private static final float MAX_OVER_CAP_GAP = 4096f;
+
+    private static final int MAX_OVER_CAP_FIGURES = 32;
+
+    private static final float CLAIM_SLACK = 0.5f;
+
+    private static List<PageLayout.Decoration> shapes(List<Fill> fills, List<Rule> rules, List<Box> figures,
+            List<Box> tables, boolean tinted, ToIntFunction<Object> order) {
         List<PageLayout.Decoration> out = new ArrayList<>();
         for (Fill f : fills) {
             Box b = Regions.of(f);
@@ -352,10 +400,6 @@ final class Decorations {
         for (Ruled r : shown) {
             out.add(new PageLayout.Decoration(Regions.of(r.rule()), r.rule().rgb(), -1, 0, false, false, r.order()));
         }
-        if (out.size() > MAX_SHAPES) {
-            out = backdrops(out);
-        }
-        out.addAll(dots(dots, figures, tables, order));
         return out;
     }
 

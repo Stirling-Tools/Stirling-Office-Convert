@@ -282,6 +282,49 @@ class ValidatorFontReadingTest {
     }
 
     @ParameterizedTest
+    @EnumSource(value = PdfALevel.class, names = {"A1B", "A2B", "A4"})
+    void codesOutsideTheCodespaceAreReadAsPdfBoxDrawsThem(PdfALevel level) throws Exception {
+        TrueTypeFont lib = Samples.liberation();
+        CmapSubtable uni = lib.getCmap().getSubtable(3, 1);
+        Path in = dir.resolve("stray-codes.pdf");
+        try (PDDocument d = new PDDocument()) {
+            PDType0Font t0;
+            try (InputStream f = PDDocument.class.getResourceAsStream(LIBERATION)) {
+                t0 = PDType0Font.load(d, f, false);
+            }
+            String cmap = "/CIDInit /ProcSet findresource begin\n12 dict begin\nbegincmap\n"
+                    + "/CIDSystemInfo << /Registry (Adobe) /Ordering (Identity) /Supplement 0 >> def\n"
+                    + "/CMapName /Stray def\n/CMapType 1 def\n2 begincodespacerange\n<00> <7f>\n<e08080> <efbfbf>\n"
+                    + "endcodespacerange\n3 begincidchar\n<e0> " + uni.getGlyphId('C') + "\n<63> "
+                    + uni.getGlyphId('c') + "\n<6d> " + uni.getGlyphId('m') + "\nendcidchar\n"
+                    + "endcmap\nCMapName currentdict /CMap defineresource pop\nend\nend\n";
+            COSStream enc = d.getDocument().createCOSStream();
+            enc.setItem(COSName.TYPE, COSName.getPDFName("CMap"));
+            enc.setName(COSName.getPDFName("CMapName"), "Stray");
+            COSDictionary info = new COSDictionary();
+            info.setString(COSName.REGISTRY, "Adobe");
+            info.setString(COSName.ORDERING, "Identity");
+            info.setInt(COSName.SUPPLEMENT, 0);
+            enc.setItem(COSName.CIDSYSTEMINFO, info);
+            try (OutputStream o = enc.createOutputStream(COSName.FLATE_DECODE)) {
+                o.write(cmap.getBytes(StandardCharsets.US_ASCII));
+            }
+            t0.getCOSObject().setItem(COSName.ENCODING, enc);
+            t0.getCOSObject().removeItem(COSName.TO_UNICODE);
+            FontSamples.page(d, "BT /A 24 Tf 50 700 Td <e0e0e0636d> Tj ET", t0);
+            d.save(in.toFile());
+        }
+        Path out = convert(in, level);
+        VeraPdf.assertCompliant(out, level);
+        try (PDDocument d = Loader.loadPDF(out.toFile())) {
+            PDType0Font t0 = (PDType0Font) font(d);
+            assertEquals(uni.getGlyphId('C'), t0.codeToCID(0xe0));
+            assertEquals(uni.getGlyphId('m'), t0.codeToCID(0x6d));
+        }
+        assertSameLook(in, out);
+    }
+
+    @ParameterizedTest
     @EnumSource(value = PdfALevel.class, names = {"A2B", "A4"})
     void glyphsMovedOffCidZeroSurviveFontCompaction(PdfALevel level) throws Exception {
         TrueTypeFont lib = Samples.liberation();

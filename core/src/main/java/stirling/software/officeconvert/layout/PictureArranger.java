@@ -163,18 +163,25 @@ final class PictureArranger {
         float gapLeft = Float.MAX_VALUE;
         float gapRight = Float.MAX_VALUE;
         boolean inLineGap = false;
+        int beside = 0;
+        int covered = 0;
         for (Line l : lines) {
             if (l.top >= b.bottom() - 1 || l.bottom <= b.top() + 1) {
                 continue;
             }
             if (l.right <= b.x() + 1) {
                 gapLeft = Math.min(gapLeft, b.x() - l.right);
+                beside++;
             } else if (l.x >= b.right() - 1) {
                 gapRight = Math.min(gapRight, l.x - b.right());
-            } else {
-                inLineGap |= clearOfWords(l, b);
+                beside++;
+            } else if (clearOfWords(l, b)) {
+                inLineGap = true;
+            } else if (coversWords(l, b)) {
+                covered++;
             }
         }
+        inLineGap |= covered > 0 && covered >= beside;
         for (PageLayout.Item t : solids) {
             float h = b.bottom() - b.top();
             boolean column = t.top() <= b.top() && t.bottom() >= b.bottom() && t.bottom() - t.top() > 3 * h;
@@ -187,7 +194,7 @@ final class PictureArranger {
             }
         }
         if (inLineGap) {
-            out.add(new PageLayout.FloatItem(b, 0f, true));
+            out.add(new PageLayout.FloatItem(b, 0f, true, covered > 0 && covered >= beside));
         } else if (gapLeft == Float.MAX_VALUE && gapRight == Float.MAX_VALUE) {
             inFlow.add(b);
         } else {
@@ -202,6 +209,23 @@ final class PictureArranger {
         return b.x() <= sheet.x() + 1 || b.right() >= sheet.right() - 1 || b.top() <= sheet.top() + 1
                 || b.bottom() >= sheet.bottom() - 1;
     }
+
+    private static boolean coversWords(Line l, PageLayout.Item b) {
+        float across = Math.min(l.bottom, b.bottom()) - Math.max(l.top, b.top());
+        if (across < COVERED_SHARE * (l.bottom - l.top)) {
+            return false;
+        }
+        for (Word w : l.words) {
+            if (Math.min(w.right, b.right()) - Math.max(w.x, b.x()) > COVERED_WIDTH) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static final float COVERED_SHARE = 0.5f;
+
+    private static final float COVERED_WIDTH = 2f;
 
     private static boolean clearOfWords(Line l, PageLayout.Item b) {
         for (Word w : l.words) {

@@ -58,6 +58,37 @@ class BadgeOnLogoTest {
         assertTrue(m.group(1).equals("wrapSquare"), "text wraps round the logo: " + m.group(1));
     }
 
+    @Test
+    void aPictureLeavingNoRoomBesideItHoldsTheTextBelow() throws Exception {
+        Path pdf = dir.resolve("wide.pdf");
+        try (PDDocument doc = new PDDocument()) {
+            PDPage page = new PDPage(PDRectangle.A4);
+            doc.addPage(page);
+            PDType1Font plain = new PDType1Font(Standard14Fonts.FontName.HELVETICA);
+            try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
+                for (int i = 0; i < 6; i++) {
+                    text(cs, plain, 10, 72, 780 - i * 14, "Members are asked to keep their distance and to follow the signs in the hall.");
+                }
+                cs.drawImage(image(doc, 300, 150, new Color(20, 60, 160)), 72, 520, 380, 180);
+                text(cs, plain, 10, 462, 600, "Note");
+                for (int i = 0; i < 6; i++) {
+                    text(cs, plain, 10, 72, 490 - i * 14, "Members are asked to keep their distance and to follow the signs in the hall.");
+                }
+            }
+            doc.save(pdf.toFile());
+        }
+        Path docx = dir.resolve("wide.docx");
+        PdfToDocx.convert(pdf, docx, PdfToDocx.Options.defaults());
+        String xml;
+        try (ZipFile zip = new ZipFile(docx.toFile())) {
+            xml = new String(zip.getInputStream(zip.getEntry("word/document.xml")).readAllBytes(), StandardCharsets.UTF_8);
+        }
+        Matcher m = Pattern.compile("<wp:anchor [^>]*>(?:(?!</wp:anchor>).)*?<wp:extent cx=\"" + 380 * 12700
+                + "\"(?:(?!</wp:anchor>).)*?<wp:(wrap\\w+)").matcher(xml);
+        assertTrue(m.find(), "the picture is placed on the page: " + xml.replaceAll("<w:t[^>]*>[^<]*</w:t>", "").length());
+        assertTrue(m.group(1).equals("wrapTopAndBottom"), "text goes below the picture: " + m.group(1));
+    }
+
     private static PDImageXObject image(PDDocument doc, int w, int h, Color c) throws IOException {
         BufferedImage img = new BufferedImage(w, h, BufferedImage.TYPE_INT_RGB);
         Graphics2D g = img.createGraphics();

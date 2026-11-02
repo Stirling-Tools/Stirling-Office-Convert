@@ -107,11 +107,12 @@ public final class FontResolver {
     }
 
     private static boolean texBold(String ps) {
-        return ps.matches("(cm|ec|sf|tc)(bx|b|ssbx|ssdc)[a-z]*[0-9]*") || ps.startsWith("cmbx");
+        return ps.matches("adv[a-z]*[0-9a-f]+\\.(b|bi|ib)") || ps.matches("(cm|ec|sf|tc)(bx|b|ssbx|ssdc)[a-z]*[0-9]*")
+                || ps.startsWith("cmbx");
     }
 
     private static boolean texItalic(String ps) {
-        return ps.matches("(cm|ec|sf|tc)(ti|sl|mi|bxti|bxsl|itt|ssi|u)[0-9]*")
+        return ps.matches("adv[a-z]*[0-9a-f]+\\.(i|bi|ib)") || ps.matches("(cm|ec|sf|tc)(ti|sl|mi|bxti|bxsl|itt|ssi|u)[0-9]*")
                 || ps.matches("cmmib?[0-9]*");
     }
 

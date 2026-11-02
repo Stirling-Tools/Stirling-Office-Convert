@@ -123,6 +123,7 @@ final class GlyphCollector extends PDFStreamEngine {
     private final UnicodeRecovery recovery;
     private final Map<org.apache.pdfbox.cos.COSDictionary, float[]> metrics = new WeakHashMap<>();
     private final Map<COSDictionary, Map<Integer, float[]>> inks = new WeakHashMap<>();
+    private final Map<COSDictionary, Float> type3Scales = new WeakHashMap<>();
     private final Deque<Span> spans = new ArrayDeque<>();
     private Span outerActual;
     private int actualDepth;
@@ -138,6 +139,8 @@ final class GlyphCollector extends PDFStreamEngine {
     private int pageIndex;
 
     private int rotation;
+    private float cropX;
+    private float cropY;
     private int nextIndex;
     private PDDocument document;
     private OptionalContent layers;
@@ -363,6 +366,8 @@ final class GlyphCollector extends PDFStreamEngine {
         inPage = true;
         pageIndex = currentPageNo - 1;
         rotation = page.getRotation();
+        cropX = page.getCropBox().getLowerLeftX();
+        cropY = page.getCropBox().getLowerLeftY();
         blankPagesBefore(pageIndex);
         current = new ArrayList<>();
         clips.reset();
@@ -784,7 +789,7 @@ final class GlyphCollector extends PDFStreamEngine {
         boolean invisible = mode == RenderingMode.NEITHER || mode == RenderingMode.NEITHER_CLIP;
         PDColor colour =
                 mode.isStroke() && !mode.isFill() ? gs.getStrokingColor() : gs.getNonStrokingColor();
-        int rgb = PdfColours.toRgb(colour, 0);
+        int rgb = colour.getColorSpace() instanceof PDPattern ? patternRgb(colour, tp) : PdfColours.toRgb(colour, 0);
 
         PDFont pdFont = tp.getFont();
         FontInfo font = fonts.resolve(pdFont);
@@ -794,7 +799,7 @@ final class GlyphCollector extends PDFStreamEngine {
         if (drawnSize > 0 && pdFont.toUnicode(codes[0], TextPositions.GLYPHS) != null) {
             drawnSize = Float.NaN;
         }
-        float size = drawnSize > 0 && drawnSize < 400f ? drawnSize : fontSize(tp);
+        float size = drawnSize > 0 && drawnSize < 400f ? drawnSize : fontSize(tp, type3Scale(pdFont));
         float[] m = metrics(pdFont);
         float space = spaceWidth(tp, pdFont, size, m[2]);
 
@@ -1014,6 +1019,21 @@ final class GlyphCollector extends PDFStreamEngine {
         return d > 0 && Math.abs(tm.getShearY()) < 0.01f * d && Math.abs(tm.getShearX() / d) > ITALIC_SHEAR;
     }
 
+    private int patternRgb(PDColor colour, TextPosition tp) {
+        Matrix trm = tp.getTextMatrix();
+        float[] centre = {trm.getTranslateX() + cropX + 0.25f * trm.getScaleX() + 0.3f * trm.getShearX(),
+            trm.getTranslateY() + cropY + 0.25f * trm.getShearY() + 0.3f * trm.getScaleY()};
+        int tone = PatternPaint.at(colour, getResources(), centre[0], centre[1]);
+        return tone >= 0 ? tone : PdfColours.toRgb(colour, 0);
+    }
+
+    private float type3Scale(PDFont font) {
+        if (!(font instanceof PDType3Font t3)) {
+            return 1f;
+        }
+        return type3Scales.computeIfAbsent(font.getCOSObject(), k -> Type3Size.scale(t3, positions.unmapped));
+    }
+
     private float[] metrics(PDFont font) {
         if (font == null) {
             return new float[] {0.8f, 0.2f, Float.NaN};
@@ -1053,11 +1073,12 @@ final class GlyphCollector extends PDFStreamEngine {
         return Float.isFinite(s) && s > 0.2f && s < 5f ? s : 1f;
     }
 
-    static float fontSize(TextPosition tp) {
+    static float fontSize(TextPosition tp, float scale) {
         float size = Math.abs(tp.getYScale());
         if (Math.round(tp.getDir()) % 180 != 0) {
             size = Math.abs(tp.getXScale());
         }
+        size *= scale;
         if (size <= 0.5f || size > 400f) {
             size = tp.getFontSizeInPt();
         }
