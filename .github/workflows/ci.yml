@@ -41,15 +41,13 @@ jobs:
           distribution: 'temurin'
           java-version: '25'
       - uses: gradle/actions/setup-gradle@v4
-        with:
-          cache-disabled: true
       - name: Restore test font packages
         if: matrix.shard != 'assemble'
         id: fonts
         uses: actions/cache@v4
         with:
           path: ~/test-fonts
-          key: test-fonts-cold-measure-${{ runner.os }}-${{ runner.arch }}
+          key: test-fonts-v1-${{ runner.os }}-${{ runner.arch }}
       - name: Download test font packages
         if: matrix.shard != 'assemble' && steps.fonts.outputs.cache-hit != 'true'
         run: |
