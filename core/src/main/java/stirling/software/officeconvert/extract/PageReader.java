@@ -55,6 +55,7 @@ public final class PageReader {
         this.layers = OptionalContent.of(document);
         document.setResourceCache(new KeptResources());
         TextMaps.seed(document);
+        CalibratedColours.seed(document);
     }
 
     private Map<COSDictionary, Integer> pageIndex;

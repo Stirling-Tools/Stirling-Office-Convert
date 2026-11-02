@@ -26,7 +26,14 @@ final class PathShapes {
     record Paint(boolean fill, boolean stroke, boolean pattern, int fillRgb, int strokeRgb, float thickness, float rowThickness,
             float columnThickness, boolean evenOdd) {}
 
-    record Shapes(List<Rule> rules, List<Fill> fills, VectorMark mark) {}
+    record Shapes(List<Rule> rules, List<Fill> fills, VectorMark mark, List<Fill> dots) {
+
+        Shapes(List<Rule> rules, List<Fill> fills, VectorMark mark) {
+            this(rules, fills, mark, List.of());
+        }
+    }
+
+    private static final float DOT_MIN = 0.3f;
 
     private PathShapes() {}
 
@@ -39,6 +46,7 @@ final class PathShapes {
         boolean allRuled = !curved && !paint.pattern();
         List<Rule> pathRules = new ArrayList<>();
         List<Fill> pathFills = new ArrayList<>();
+        List<Fill> pathDots = new ArrayList<>();
         List<float[]> boxes = new ArrayList<>();
         List<Boolean> turns = new ArrayList<>();
         int segments = 0;
@@ -99,6 +107,8 @@ final class PathShapes {
                     pathRules.add(new Rule(false, (b[0] + b[2]) / 2f, b[1], b[3], Math.max(w, 0.1f), paint.fillRgb()));
                 } else if (w > RULE_MAX_THICKNESS && h > RULE_MAX_THICKNESS) {
                     pathFills.add(new Fill(b[0], b[1], b[2], b[3], paint.fillRgb()));
+                } else if (paint.fill() && w >= DOT_MIN && h >= DOT_MIN) {
+                    pathDots.add(new Fill(b[0], b[1], b[2], b[3], paint.fillRgb()));
                 }
             }
             List<Fill> clippedFills = new ArrayList<>();
@@ -108,7 +118,14 @@ final class PathShapes {
                     clippedFills.add(clipped);
                 }
             }
-            return new Shapes(clipRules(pathRules, clip), clippedFills, null);
+            List<Fill> clippedDots = new ArrayList<>();
+            for (Fill f : pathDots) {
+                Fill clipped = clipFill(f, clip);
+                if (clipped != null) {
+                    clippedDots.add(clipped);
+                }
+            }
+            return new Shapes(clipRules(pathRules, clip), clippedFills, null, clippedDots);
         }
         boolean round = isEllipse(subpaths, curved, minX, minY, maxX, maxY);
         boolean rounded = curved || isRoundedBox(subpaths, minX, minY, maxX, maxY);

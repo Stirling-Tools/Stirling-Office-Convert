@@ -229,13 +229,12 @@ final class UnmappedGlyphs {
     }
 
     private boolean handled(PDFont font) throws IOException {
-        if (font.getCOSObject().containsKey(COSName.TO_UNICODE)) {
-            return false;
-        }
         if (font instanceof PDType0Font t0) {
-            return t0.isEmbedded() && t0.getDescendantFont() != null;
+            return t0.isEmbedded() && t0.getDescendantFont() != null
+                    && (!font.getCOSObject().containsKey(COSName.TO_UNICODE) || !joiningScript(t0));
         }
-        if (!(font instanceof PDSimpleFont simple) || !(font instanceof PDType3Font) && !font.isEmbedded()) {
+        if (font.getCOSObject().containsKey(COSName.TO_UNICODE)
+                || !(font instanceof PDSimpleFont simple) || !(font instanceof PDType3Font) && !font.isEmbedded()) {
             return false;
         }
         int[] codes = codes(simple);
@@ -250,6 +249,24 @@ final class UnmappedGlyphs {
         }
         return unmapped >= UNMAPPED_SHARE * codes.length;
     }
+
+    private static boolean joiningScript(PDType0Font font) throws IOException {
+        for (int code = 0; code < JOINING_CODES; code++) {
+            String text = font.toUnicode(code);
+            if (text != null && !text.isEmpty() && joining(text.codePointAt(0))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean joining(int cp) {
+        Character.UnicodeScript script = Character.UnicodeScript.of(cp);
+        return script == Character.UnicodeScript.ARABIC || script == Character.UnicodeScript.SYRIAC
+                || script == Character.UnicodeScript.NKO || script == Character.UnicodeScript.MONGOLIAN;
+    }
+
+    private static final int JOINING_CODES = 0x10000;
 
     private static int[] codes(PDSimpleFont font) throws IOException {
         List<Integer> out = new ArrayList<>();

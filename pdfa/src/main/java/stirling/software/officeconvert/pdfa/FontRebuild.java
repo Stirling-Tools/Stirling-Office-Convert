@@ -25,6 +25,7 @@ import org.apache.pdfbox.pdmodel.font.PDTrueTypeFont;
 import org.apache.pdfbox.pdmodel.font.PDType0Font;
 import org.apache.pdfbox.pdmodel.font.PDVectorFont;
 
+import stirling.software.officeconvert.extract.CidLookup;
 import stirling.software.officeconvert.extract.PdfFiles;
 
 final class FontRebuild {

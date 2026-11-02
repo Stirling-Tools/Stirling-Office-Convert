@@ -45,7 +45,7 @@ public final class RtfWriter implements DocSink, Closeable {
     private int sectionIndex = -1;
     private boolean sectionOpen;
     private Section first;
-    private Paragraph columnCarrier;
+    private final ColumnCarriers columnCarriers = new ColumnCarriers(this::writeNow);
 
     public RtfWriter(OutputStream target) {
         this(target, Pictures.COMPACT);
@@ -131,21 +131,7 @@ public final class RtfWriter implements DocSink, Closeable {
     }
 
     private void write(Block b) throws IOException {
-        Paragraph carrier = columnCarrier;
-        columnCarrier = null;
-        if (b instanceof Paragraph p && ColumnCarriers.carrier(p)) {
-            if (carrier != null) {
-                writeNow(carrier);
-            }
-            columnCarrier = p;
-        } else if (b instanceof Paragraph p && carrier != null && ColumnCarriers.takesBreak(p)) {
-            ColumnCarriers.withBreakFirst(p, () -> writeNow(p));
-        } else {
-            if (carrier != null) {
-                writeNow(carrier);
-            }
-            writeNow(b);
-        }
+        columnCarriers.block(b);
     }
 
     private void writeNow(Block b) throws IOException {
@@ -197,10 +183,7 @@ public final class RtfWriter implements DocSink, Closeable {
         for (Block b : notes.drain()) {
             write(b);
         }
-        if (columnCarrier != null) {
-            writeNow(columnCarrier);
-            columnCarrier = null;
-        }
+        columnCarriers.flush();
         if (sectionOpen) {
             closeSection(last);
         }
