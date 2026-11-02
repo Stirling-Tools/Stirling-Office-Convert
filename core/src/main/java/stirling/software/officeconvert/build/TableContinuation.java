@@ -1,6 +1,8 @@
 package stirling.software.officeconvert.build;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import stirling.software.officeconvert.model.Inline;
 import stirling.software.officeconvert.model.Paragraph;
@@ -27,12 +29,14 @@ final class TableContinuation {
 
     static boolean join(Table prev, Table next, String pageBookmark) {
         List<Table.Row> rows = next.rows;
-        boolean header = text(rows.getFirst()).equals(text(prev.rows.getFirst())) && !text(rows.getFirst()).isBlank();
+        boolean remnant = headerRemnant(prev.rows.getFirst(), rows.getFirst());
+        boolean header = text(rows.getFirst()).equals(text(prev.rows.getFirst())) && !text(rows.getFirst()).isBlank()
+                || remnant;
         if (header) {
             rows = rows.subList(1, rows.size());
         }
         Table.Row cut = prev.rows.getLast();
-        boolean cutRow = !rows.isEmpty() && !blank(rows.getFirst()) && continuesRow(cut, rows.getFirst());
+        boolean cutRow = !remnant && !rows.isEmpty() && !blank(rows.getFirst()) && continuesRow(cut, rows.getFirst());
         if (!header && !cutRow) {
             return false;
         }
@@ -64,6 +68,69 @@ final class TableContinuation {
             return 0;
         }
         return next.rows.removeFirst().height;
+    }
+
+    private static boolean headerRemnant(Table.Row header, Table.Row first) {
+        if (!headerLike(header) || blank(first)) {
+            return false;
+        }
+        Map<Integer, Table.Cell> heading = byColumn(header);
+        boolean gap = false;
+        int column = 0;
+        for (Table.Cell cell : first.cells) {
+            String text = text(cell).strip();
+            if (text.isEmpty()) {
+                gap = true;
+            } else {
+                Table.Cell above = heading.get(column);
+                if (above == null || !text.equals(text(above).strip()) || !bold(cell)) {
+                    return false;
+                }
+            }
+            column += Math.max(1, cell.gridSpan);
+        }
+        return gap;
+    }
+
+    private static boolean headerLike(Table.Row row) {
+        if (row.header) {
+            return true;
+        }
+        boolean any = false;
+        for (Table.Cell cell : row.cells) {
+            if (!text(cell).isBlank()) {
+                if (!bold(cell)) {
+                    return false;
+                }
+                any = true;
+            }
+        }
+        return any;
+    }
+
+    private static Map<Integer, Table.Cell> byColumn(Table.Row row) {
+        Map<Integer, Table.Cell> out = new HashMap<>();
+        int column = 0;
+        for (Table.Cell cell : row.cells) {
+            out.put(column, cell);
+            column += Math.max(1, cell.gridSpan);
+        }
+        return out;
+    }
+
+    private static boolean bold(Table.Cell cell) {
+        boolean any = false;
+        for (Paragraph p : cell.paragraphs) {
+            for (Inline in : p.inlines) {
+                if (in instanceof Inline.Text t && !t.text().isBlank()) {
+                    if (t.style() == null || !t.style().bold()) {
+                        return false;
+                    }
+                    any = true;
+                }
+            }
+        }
+        return any;
     }
 
     private static boolean blank(Table.Row row) {

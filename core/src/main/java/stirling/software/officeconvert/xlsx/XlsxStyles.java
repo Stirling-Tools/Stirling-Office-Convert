@@ -54,6 +54,30 @@ final class XlsxStyles {
                 text != null && Scripts.rightToLeft(text)), k -> xfs.size());
     }
 
+    String runFont(CellStyle s, String text) {
+        StringBuilder sb = new StringBuilder(96);
+        sb.append("<rFont val=\"");
+        SheetXml.escape(sb, Scripts.cellFont(FONT, text, null));
+        sb.append("\"/>");
+        if (s.bold()) {
+            sb.append("<b/>");
+        }
+        if (s.italic()) {
+            sb.append("<i/>");
+        }
+        if (s.strike()) {
+            sb.append("<strike/>");
+        }
+        if (s.rgb() >= 0) {
+            sb.append("<color rgb=\"").append(argb(s.rgb())).append("\"/>");
+        }
+        sb.append("<sz val=\"").append(size(Math.round(s.size() * 2f) / 2f)).append("\"/>");
+        if (s.underline()) {
+            sb.append("<u/>");
+        }
+        return sb.toString();
+    }
+
     String xml() {
         StringBuilder sb = new StringBuilder(4096);
         sb.append("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n")

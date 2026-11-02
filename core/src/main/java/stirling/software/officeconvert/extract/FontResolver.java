@@ -1,6 +1,7 @@
 package stirling.software.officeconvert.extract;
 
 import java.util.Locale;
+import java.util.regex.Pattern;
 import java.util.Map;
 import java.util.WeakHashMap;
 
@@ -36,12 +37,20 @@ public final class FontResolver {
         return info;
     }
 
+    private static final Pattern WEB_MATH = Pattern.compile("(mathjax|katex|mjxtex|mjxzero|mjxc-tex).*");
+
     private FontInfo compute(PDFont font) {
         String ps = FontNames.stripSubset(font.getName());
         if (ps == null) {
             ps = "";
         }
         PDFontDescriptor fd = font.getFontDescriptor();
+        if (ps.isBlank() && font instanceof PDType3Font && fd != null && fd.getFontName() != null) {
+            String described = FontNames.stripSubset(fd.getFontName());
+            if (described != null && WEB_MATH.matcher(described.toLowerCase(Locale.ROOT)).matches()) {
+                ps = described;
+            }
+        }
         String style = FontNames.stylePart(ps);
         if (style.isEmpty()) {
             style = FontNames.camelStyle(ps);

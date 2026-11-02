@@ -25,6 +25,7 @@ import org.apache.pdfbox.cos.COSStream;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.common.PDRectangle;
+import org.apache.pdfbox.pdmodel.common.function.PDFunction;
 import org.apache.pdfbox.pdmodel.graphics.image.JPEGFactory;
 import org.apache.pdfbox.pdmodel.graphics.image.LosslessFactory;
 import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
@@ -37,6 +38,8 @@ final class Transparency {
     static final long MAX_PIXELS = 40_000_000L;
 
     private static final float MASK_REACH = 100_000f;
+
+    private static final float OUTSIDE_EPSILON = 1f / 512;
 
     private final PDDocument doc;
 
@@ -94,7 +97,7 @@ final class Transparency {
                 return;
             }
             COSName s = mask.getCOSName(COSName.S);
-            if (COSName.ALPHA.equals(s) || COSName.LUMINOSITY.equals(s)) {
+            if ((COSName.ALPHA.equals(s) || COSName.LUMINOSITY.equals(s)) && transfersOutside(mask)) {
                 groups.put(mask, mask.getItem(COSName.G));
             }
         });
@@ -102,6 +105,18 @@ final class Transparency {
             mask.setItem(COSName.G, everywhere(doc, (COSStream) mask.getDictionaryObject(COSName.G)));
         }
         return groups;
+    }
+
+    static boolean transfersOutside(COSDictionary mask) {
+        if (COSName.LUMINOSITY.equals(mask.getCOSName(COSName.S)) && mask.containsKey(COSName.BC)) {
+            return true;
+        }
+        try {
+            float[] out = PDFunction.create(mask.getDictionaryObject(COSName.TR)).eval(new float[] {0f});
+            return out.length == 0 || out[0] > OUTSIDE_EPSILON;
+        } catch (IOException | RuntimeException e) {
+            return true;
+        }
     }
 
     private static COSStream everywhere(PDDocument doc, COSStream group) throws IOException {

@@ -7,9 +7,12 @@ import java.awt.geom.Rectangle2D;
 import java.text.Normalizer;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.Deque;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
@@ -131,6 +134,8 @@ final class GlyphCollector extends PDFStreamEngine {
     private List<RawGlyph> current = new ArrayList<>();
     private final Map<Glyph, String> alternatives = new IdentityHashMap<>();
     private final Set<Glyph> marks = Collections.newSetFromMap(new IdentityHashMap<>());
+    private final Set<Glyph> overlines = Collections.newSetFromMap(new IdentityHashMap<>());
+    private final Set<Glyph> bars = Collections.newSetFromMap(new IdentityHashMap<>());
     private boolean inPage;
     private int seq;
     private int annotationSeq;
@@ -446,7 +451,19 @@ final class GlyphCollector extends PDFStreamEngine {
             return false;
         }
         Point2D.Float centre = trm.transformPoint(displacement.getX() / 2f, GLYPH_MIDDLE);
-        return !clipArea.of(clips).contains(centre.x, centre.y);
+        ClipArea area = clipArea.of(clips);
+        if (area.contains(centre.x, centre.y)) {
+            return false;
+        }
+        if (!(Math.abs(trm.getScaleX()) > STRETCHED * Math.abs(trm.getScaleY())) || trm.getShearX() != 0
+                || trm.getShearY() != 0) {
+            return true;
+        }
+        Rectangle2D bounds = area.bounds();
+        float left = trm.getTranslateX();
+        float right = left + displacement.getX() * trm.getScaleX();
+        return bounds == null || bounds.getMaxX() <= Math.min(left, right) || bounds.getMinX() >= Math.max(left, right)
+                || !area.contains(bounds.getCenterX(), centre.y);
     }
 
     private static final float GLYPH_MIDDLE = 0.3f;
@@ -517,6 +534,8 @@ final class GlyphCollector extends PDFStreamEngine {
         List<RawGlyph> glyphs = current;
         glyphs.removeIf(r -> r.glyph().text == HIDDEN);
         revealClipText(glyphs);
+        composeOverlines(glyphs);
+        assembleRadicals(glyphs);
         composeMarks(glyphs);
         settleAlternatives(glyphs);
         current = new ArrayList<>();
@@ -552,6 +571,154 @@ final class GlyphCollector extends PDFStreamEngine {
     private int clipPaintRgb() {
         PDColor colour = getGraphicsState().getNonStrokingColor();
         return colour.getColorSpace() instanceof PDPattern ? TextClips.KEEP : PdfColours.toRgb(colour, 0);
+    }
+
+    private void composeOverlines(List<RawGlyph> glyphs) {
+        if (!bars.isEmpty()) {
+            Map<Integer, List<Glyph>> byLeft = new HashMap<>();
+            for (RawGlyph r : glyphs) {
+                byLeft.computeIfAbsent(Math.round(r.glyph().x), k -> new ArrayList<>()).add(r.glyph());
+            }
+            for (Glyph bar : bars) {
+                if (alignedBase(bar, byLeft)) {
+                    overlines.add(bar);
+                }
+            }
+            bars.clear();
+        }
+        if (overlines.isEmpty() || overlines.size() > MAX_OVERLINES) {
+            overlines.clear();
+            return;
+        }
+        Integer[] byBaseline = new Integer[glyphs.size()];
+        for (int i = 0; i < byBaseline.length; i++) {
+            byBaseline[i] = i;
+        }
+        Arrays.sort(byBaseline, Comparator.comparingDouble(i -> glyphs.get(i).glyph().baseline));
+        float[] baselines = new float[byBaseline.length];
+        for (int i = 0; i < baselines.length; i++) {
+            baselines[i] = glyphs.get(byBaseline[i]).glyph().baseline;
+        }
+        Set<Integer> drop = new HashSet<>();
+        for (int i = 0; i < glyphs.size(); i++) {
+            Glyph bar = glyphs.get(i).glyph();
+            if (!overlines.contains(bar)) {
+                continue;
+            }
+            float size = Math.max(bar.size, 1e-3f);
+            int from = lowerBound(baselines, bar.baseline - 0.4f * size);
+            float nearest = Float.MAX_VALUE;
+            for (int k = from; k < baselines.length && baselines[k] <= bar.baseline + 1.5f * size; k++) {
+                Glyph g = glyphs.get(byBaseline[k]).glyph();
+                if (!overlines.contains(g) && WordContext.under(g, bar)) {
+                    nearest = Math.min(nearest, g.baseline);
+                }
+            }
+            if (nearest == Float.MAX_VALUE) {
+                continue;
+            }
+            int count = 0;
+            for (int k = from; k < baselines.length && baselines[k] <= nearest; k++) {
+                Glyph g = glyphs.get(byBaseline[k]).glyph();
+                count += !overlines.contains(g) && g.baseline == nearest && WordContext.under(g, bar) ? 1 : 0;
+            }
+            String accent = count == 1 ? "\u0304" : "\u0305";
+            for (int k = from; k < baselines.length && baselines[k] <= nearest; k++) {
+                int j = byBaseline[k];
+                Glyph g = glyphs.get(j).glyph();
+                if (overlines.contains(g) || g.baseline != nearest || !WordContext.under(g, bar)) {
+                    continue;
+                }
+                RawGlyph base = glyphs.get(j);
+                glyphs.set(j, new RawGlyph(g.withText(Normalizer.normalize(g.text + accent, Normalizer.Form.NFC)),
+                        base.direction(), base.invisible(), base.originX(), base.originY()));
+                alternatives.remove(g);
+            }
+            drop.add(i);
+        }
+        if (!drop.isEmpty()) {
+            List<RawGlyph> kept = new ArrayList<>(glyphs.size());
+            for (int i = 0; i < glyphs.size(); i++) {
+                if (!drop.contains(i)) {
+                    kept.add(glyphs.get(i));
+                }
+            }
+            glyphs.clear();
+            glyphs.addAll(kept);
+        }
+        overlines.clear();
+    }
+
+    private static int lowerBound(float[] sorted, float value) {
+        int lo = 0;
+        int hi = sorted.length;
+        while (lo < hi) {
+            int mid = (lo + hi) >>> 1;
+            if (sorted[mid] < value) {
+                lo = mid + 1;
+            } else {
+                hi = mid;
+            }
+        }
+        return lo;
+    }
+
+    private static void assembleRadicals(List<RawGlyph> glyphs) {
+        List<Glyph> bottoms = new ArrayList<>();
+        for (RawGlyph r : glyphs) {
+            if (r.glyph().text.equals(RADICAL_BOTTOM)) {
+                bottoms.add(r.glyph());
+            }
+        }
+        if (bottoms.isEmpty()) {
+            return;
+        }
+        Map<Integer, List<Glyph>> byLeft = new HashMap<>();
+        for (Glyph b : bottoms) {
+            byLeft.computeIfAbsent(Math.round(b.x), k -> new ArrayList<>()).add(b);
+        }
+        glyphs.removeIf(r -> privateUse(r.glyph().text) && stackedOnAny(r.glyph(), byLeft));
+        glyphs.replaceAll(r -> r.glyph().text.equals(RADICAL_BOTTOM)
+                ? new RawGlyph(r.glyph().withText("\u221A"), r.direction(), r.invisible(), r.originX(), r.originY())
+                : r);
+    }
+
+    private static boolean stackedOnAny(Glyph piece, Map<Integer, List<Glyph>> byLeft) {
+        int left = Math.round(piece.x);
+        for (int key = left - 1; key <= left + 1; key++) {
+            for (Glyph b : byLeft.getOrDefault(key, List.of())) {
+                if (stacked(piece, b)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private static boolean stacked(Glyph piece, Glyph bottom) {
+        float slack = BAR_SLACK * Math.max(bottom.size, 1e-3f);
+        return Math.abs(piece.x - bottom.x) <= slack && Math.abs(piece.width - bottom.width) <= slack
+                && piece.baseline < bottom.baseline;
+    }
+
+    private static boolean privateUse(String text) {
+        return text.length() == 1 && Character.getType(text.charAt(0)) == Character.PRIVATE_USE;
+    }
+
+    private static final String RADICAL_BOTTOM = "\u23B7";
+
+    private static final float BAR_SLACK = 0.1f;
+
+    private static boolean alignedBase(Glyph bar, Map<Integer, List<Glyph>> byLeft) {
+        int left = Math.round(bar.x);
+        for (int key = left - 1; key <= left + 1; key++) {
+            for (Glyph g : byLeft.getOrDefault(key, List.of())) {
+                if (g != bar && WordContext.exactlyUnder(g, bar)) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     private void composeMarks(List<RawGlyph> glyphs) {
@@ -664,6 +831,19 @@ final class GlyphCollector extends PDFStreamEngine {
             x += ink[0];
             width = Math.max(ink[1] - ink[0], size * 0.05f);
         }
+        boolean overline = false;
+        if (stretchedAcross(tp)) {
+            float[] shown = clippedSpan(tp.getTextMatrix(), width);
+            if (shown == null) {
+                return;
+            }
+            x += shown[0];
+            width = shown[1] - shown[0];
+            if (rule(unicode)) {
+                unicode = OVERLINE;
+                overline = true;
+            }
+        }
         Glyph g =
                 new Glyph(
                         unicode,
@@ -697,6 +877,11 @@ final class GlyphCollector extends PDFStreamEngine {
                 && (positions.mapped(pdFont, codes[0]) || positions.unmapped.shapeRead(pdFont, codes[0], unicode))) {
             marks.add(g);
         }
+        if (overline) {
+            overlines.add(g);
+        } else if (BARS.contains(unicode)) {
+            bars.add(g);
+        }
         if (mode == RenderingMode.NEITHER_CLIP) {
             clips.clip(g);
         }
@@ -728,6 +913,40 @@ final class GlyphCollector extends PDFStreamEngine {
     }
 
     private static final String NOTDEF = ".notdef";
+
+    private boolean stretchedAcross(TextPosition tp) {
+        Matrix m = tp.getTextMatrix();
+        return Math.round(tp.getDir()) == 0 && rotation % 360 == 0 && Math.abs(m.getShearX()) < 1e-3f
+                && Math.abs(m.getShearY()) < 1e-3f && Math.abs(m.getScaleX()) > STRETCHED * Math.abs(m.getScaleY());
+    }
+
+    private float[] clippedSpan(Matrix trm, float width) {
+        List<Path2D> paths = getGraphicsState().getCurrentClippingPaths();
+        Rectangle2D clip = paths.isEmpty() ? null : clipArea.of(paths).bounds();
+        if (clip == null) {
+            return new float[] {0, width};
+        }
+        float left = trm.getTranslateX();
+        float lo = Math.max(0, (float) clip.getMinX() - left);
+        float hi = Math.min(width, (float) clip.getMaxX() - left);
+        return hi > lo ? new float[] {lo, hi} : null;
+    }
+
+    private static boolean rule(String unicode) {
+        if (unicode.length() != 1) {
+            return false;
+        }
+        char c = unicode.charAt(0);
+        return Character.getType(c) == Character.DASH_PUNCTUATION || "_\u00AF\u203E\u2212\u2500".indexOf(c) >= 0;
+    }
+
+    private static final float STRETCHED = 20f;
+
+    private static final int MAX_OVERLINES = 2_000;
+
+    private static final String OVERLINE = "\u00AF";
+
+    private static final Set<String> BARS = Set.of("\u2013", "\u203E");
 
     private static boolean belowSymbolRange(String unicode) {
         return unicode.length() == 1 && unicode.charAt(0) >= SYMBOL_BASE && unicode.charAt(0) < SYMBOL_FIRST;

@@ -51,7 +51,9 @@ record CellText(
                     for (Glyph g : w.glyphs) {
                         int n = g.text.length();
                         chars += n;
-                        sizes.merge(Math.round(g.size * 2f) / 2f, n, Integer::sum);
+                        if (g.vertAlign == 0) {
+                            sizes.merge(Math.round(g.size * 2f) / 2f, n, Integer::sum);
+                        }
                         colours.merge(g.rgb, n, Integer::sum);
                         bold += g.bold ? n : 0;
                         italic += g.italic ? n : 0;
@@ -80,6 +82,9 @@ record CellText(
         for (int i = 0; i < p.lines.size(); i++) {
             Line line = p.lines.get(i);
             String text = LogicalText.of(line, 0, rtl);
+            if (!rtl) {
+                text = ScriptMarks.mark(line, text);
+            }
             String marker = line.words.isEmpty() ? "" : line.words.getFirst().text;
             if (i == 0 && p.marker != null && p.marker.isBullet() && !marker.isEmpty() && text.startsWith(marker)) {
                 text = bullet(marker) + text.substring(marker.length());
