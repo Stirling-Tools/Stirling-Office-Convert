@@ -4,6 +4,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -16,6 +17,8 @@ final class Type1Lenient {
 
     private static final Pattern ENTRY = Pattern.compile("\\G\\s*(?:(?:N[PD]|\\||\\|-|noaccess|def|put|readonly"
             + "|executeonly|dup\\s+(\\d+))\\s*)*?(?:/([^\\s/\\[\\]{}()<>%]*)\\s+)?(\\d+)\\s+(\\S+) ");
+
+    private static final Pattern LEN_IV = Pattern.compile("/lenIV\\s+(-?\\d{1,9})");
 
     final String fontName;
 
@@ -36,7 +39,7 @@ final class Type1Lenient {
         Type1Lenient font = new Type1Lenient(name.find() ? name.group(1) : "Type1", matrix(text));
         byte[] plain = decrypt(hex(binary), 55665, 4);
         String p = new String(plain, StandardCharsets.ISO_8859_1);
-        Matcher len = Pattern.compile("/lenIV\\s+(-?\\d+)").matcher(p);
+        Matcher len = LEN_IV.matcher(p);
         int lenIV = len.find() ? Integer.parseInt(len.group(1)) : 4;
         int subrsAt = p.indexOf("/Subrs");
         int charsAt = p.indexOf("/CharStrings");
@@ -94,6 +97,16 @@ final class Type1Lenient {
             at = data + length;
         }
         return out;
+    }
+
+    static boolean plainCharStrings(byte[] program, int length1, int length2) {
+        if (length1 <= 0 || length2 <= 0 || (long) length1 + length2 > program.length) {
+            return false;
+        }
+        byte[] binary = Arrays.copyOfRange(program, length1, length1 + length2);
+        String p = new String(decrypt(hex(binary), 55665, 4), StandardCharsets.ISO_8859_1);
+        Matcher len = LEN_IV.matcher(p);
+        return len.find() && Integer.parseInt(len.group(1)) < 0;
     }
 
     private static byte[] charString(byte[] encrypted, int lenIV) {

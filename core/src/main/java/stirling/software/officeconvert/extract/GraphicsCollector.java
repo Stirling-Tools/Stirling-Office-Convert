@@ -33,6 +33,7 @@ import org.apache.pdfbox.pdmodel.graphics.form.PDTransparencyGroup;
 import org.apache.pdfbox.pdmodel.graphics.image.PDImage;
 import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
 import org.apache.pdfbox.pdmodel.graphics.state.PDGraphicsState;
+import org.apache.pdfbox.pdmodel.graphics.state.RenderingMode;
 import org.apache.pdfbox.pdmodel.interactive.annotation.PDAnnotation;
 import org.apache.pdfbox.pdmodel.interactive.annotation.PDAppearanceStream;
 import org.apache.pdfbox.util.Matrix;
@@ -96,6 +97,10 @@ final class GraphicsCollector extends PDFGraphicsStreamEngine {
 
     private final StreamRunner runner;
     private HiddenContent hiddenContent = new HiddenContent(OptionalContent.of(null));
+
+    private final TextObjects textObjects = new TextObjects();
+    private final Set<PDGraphicsState> textClipped = Collections.newSetFromMap(new IdentityHashMap<>());
+    private boolean clipsText;
 
     private GraphicsCollector(PDPage page, AffineTransform toDisplay, float w, float h, ParsedStreams parsed) {
         super(page);
@@ -182,8 +187,9 @@ final class GraphicsCollector extends PDFGraphicsStreamEngine {
             return;
         }
         try {
-            if (TextObjects.opensImplicitly(this, operator)) {
-                super.processOperator(TextObjects.BEGIN, List.of());
+            Operator implied = textObjects.before(this, operator);
+            if (implied != null) {
+                super.processOperator(implied, List.of());
             }
             Operator painted = hiddenContent.painted(operator, operands, getResources());
             if (painted != null) {
@@ -257,7 +263,29 @@ final class GraphicsCollector extends PDFGraphicsStreamEngine {
 
     // Glyphs draw nothing here, so their codes are not decoded at all
     @Override
-    protected void showText(byte[] string) {}
+    protected void showText(byte[] string) {
+        if (getGraphicsState().getTextState().getRenderingMode() == RenderingMode.NEITHER_CLIP) {
+            clipsText = true;
+        }
+    }
+
+    @Override
+    public void endText() throws IOException {
+        super.endText();
+        if (clipsText) {
+            clipsText = false;
+            textClipped.add(getGraphicsState());
+        }
+    }
+
+    @Override
+    public void saveGraphicsState() {
+        boolean clipped = textClipped.contains(getGraphicsState());
+        super.saveGraphicsState();
+        if (clipped) {
+            textClipped.add(getGraphicsState());
+        }
+    }
 
     @Override
     protected void processType3Stream(PDType3CharProc charProc, Matrix textRenderingMatrix) {}
@@ -450,7 +478,8 @@ final class GraphicsCollector extends PDFGraphicsStreamEngine {
                 Math.min(Math.abs(upX), Math.abs(upY)) > upLen * 0.02
                         || Math.min(Math.abs(rightX), Math.abs(rightY)) > rightLen * 0.02
                         || gs.getSoftMask() != null
-                        || maskedGroups == 0 && shapedClip(at);
+                        || maskedGroups == 0 && shapedClip(at)
+                        || pdImage.isStencil() && gs.getNonStrokingColorSpace() instanceof PDPattern;
 
         int stencil = -1;
         if (pdImage.isStencil()) {
@@ -577,6 +606,10 @@ final class GraphicsCollector extends PDFGraphicsStreamEngine {
             return;
         }
         boolean pattern = fill && gs.getNonStrokingColor().getColorSpace() instanceof PDPattern;
+        if (fill && !pattern && textClipped.contains(gs)) {
+            painted++;
+            return;
+        }
         int fillRgb = onPaper(PdfColours.toRgb(gs.getNonStrokingColor(), 0xFFFFFF), gs.getNonStrokeAlphaConstant());
         if (pattern) {
             int tone = tones.computeIfAbsent(getResources(), k -> new HashMap<>())

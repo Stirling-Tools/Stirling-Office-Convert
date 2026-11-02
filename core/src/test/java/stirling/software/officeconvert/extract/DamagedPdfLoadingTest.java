@@ -91,6 +91,56 @@ class DamagedPdfLoadingTest {
     }
 
     @Test
+    void aLoopBelowARealPageKeepsTheDeclaredCountWithABlankPage() throws IOException {
+        DamagedPdf pdf = DamagedPdf.hello()
+                .object(1, "<< /Kids [2 0 R 6 0 R] /Type /Pages /Count 2 /MediaBox [0 0 595 842] >>")
+                .object(6, "<< /Kids [7 0 R] /Parent 1 0 R /Type /Pages /Count 1 >>")
+                .object(7, "<< /Kids [6 0 R] /Parent 6 0 R /Type /Pages /Count 1 >>");
+        try (PDDocument doc = PdfFiles.open(write(pdf), null)) {
+            assertEquals(2, doc.getNumberOfPages());
+            assertEquals("Hello PDF-world!", text(doc));
+            assertFalse(doc.getPage(1).hasContents());
+            assertEquals(595, doc.getPage(1).getMediaBox().getWidth());
+        }
+    }
+
+    @Test
+    void aPageListedTwiceIsShownTwice() throws IOException {
+        try (PDDocument doc = PdfFiles.open(write(DamagedPdf.hello()
+                .object(1, "<< /Kids [2 0 R 2 0 R] /Type /Pages /Count 2 >>")), null)) {
+            assertEquals(2, doc.getNumberOfPages());
+            assertTrue(doc.getPage(0).getCOSObject() != doc.getPage(1).getCOSObject());
+            assertEquals("Hello PDF-world!\nHello PDF-world!", text(doc).replace("\r\n", "\n"));
+        }
+    }
+
+    @Test
+    void aPageTreeNodeListedTwiceShowsItsPagesTwice() throws IOException {
+        DamagedPdf pdf = DamagedPdf.hello()
+                .object(1, "<< /Kids [6 0 R 6 0 R] /Type /Pages /Count 2 >>")
+                .object(2, PAGE.replace("/Parent 1 0 R", "/Parent 6 0 R"))
+                .object(6, "<< /Kids [2 0 R] /Parent 1 0 R /Type /Pages /Count 1 >>");
+        try (PDDocument doc = PdfFiles.open(write(pdf), null)) {
+            assertEquals(2, doc.getNumberOfPages());
+            assertEquals("Hello PDF-world!\nHello PDF-world!", text(doc).replace("\r\n", "\n"));
+        }
+    }
+
+    @Test
+    void repeatsBeyondTheDeclaredCountAreDropped() throws IOException {
+        assertReadsOnePage(DamagedPdf.hello().object(1, "<< /Kids [2 0 R 2 0 R] /Type /Pages /Count 1 >>"), false);
+        String chain = "<< /Kids [%1$d 0 R %1$d 0 R] /Type /Pages /Count 2 >>";
+        DamagedPdf deep = DamagedPdf.hello().object(1, String.format(chain, 6));
+        for (int n = 6; n < 66; n++) {
+            deep.object(n, String.format(chain, n + 1));
+        }
+        deep.object(66, "<< /Kids [] /Type /Pages /Count 0 >>");
+        try (PDDocument doc = PdfFiles.open(write(deep), null)) {
+            assertEquals(1, doc.getNumberOfPages());
+        }
+    }
+
+    @Test
     void aPageWithTheWrongTypeIsStillAPage() throws IOException {
         assertReadsOnePage(DamagedPdf.hello().object(2, PAGE.replace("/Type /Page", "/Type /Font")), false);
         assertReadsOnePage(DamagedPdf.hello().object(2, PAGE.replace("/Type /Page ", "")), false);

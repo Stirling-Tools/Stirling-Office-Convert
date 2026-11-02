@@ -69,7 +69,7 @@ final class UndefinedResources {
             case "q" -> saved.push(textOff);
             case "Q" -> textOff = saved.isEmpty() ? textOff : saved.pop();
             case "Tf" -> {
-                boolean missing = operation.size() >= 3 && operation.get(0) instanceof COSName name
+                boolean missing = operation.size() >= 2 && operation.get(0) instanceof COSName name
                         && !defined(COSName.FONT, name);
                 textOff = missing;
                 if (missing) {

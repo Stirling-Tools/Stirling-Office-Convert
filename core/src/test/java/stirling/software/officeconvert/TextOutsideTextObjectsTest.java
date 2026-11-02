@@ -38,6 +38,16 @@ class TextOutsideTextObjectsTest {
     }
 
     @Test
+    void streamBytesThatAreNotContentShowNoText() throws IOException {
+        assertEquals("", text("/F0 24 Tf 50 700 Td (Hello PDF-world!) Tj j3.bute27fc (r#gh) ' 9x Tq"));
+    }
+
+    @Test
+    void textObjectsInAGarbledStreamStillShow() throws IOException {
+        assertEquals("Hello PDF-world!", text(DamagedPdf.HELLO + " j3.bute27fc (r#gh) ' 9x Tq"));
+    }
+
+    @Test
     void aZeroFontSizeKeepsTheLettersInOrder() throws IOException {
         assertEquals("Hello PDF-world!", text(DamagedPdf.HELLO.replace("36.", ".")));
     }

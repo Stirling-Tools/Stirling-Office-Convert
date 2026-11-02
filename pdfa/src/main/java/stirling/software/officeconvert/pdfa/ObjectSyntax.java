@@ -23,6 +23,8 @@ import org.apache.pdfbox.pdfwriter.COSWriter;
 
 final class ObjectSyntax {
 
+    private static final COSName NAMESPACE = COSName.getPDFName("Namespace");
+
     interface Numbering {
         int number(COSBase indirect);
 
@@ -142,12 +144,16 @@ final class ObjectSyntax {
     }
 
     private boolean inline(COSDictionary d) {
-        return (d.isDirect() || numbering.single(d)) && path.size() < MAX_NESTING;
+        return (d.isDirect() || numbering.single(d)) && path.size() < MAX_NESTING && !namespace(d);
     }
 
     private boolean shared(COSBase target) {
-        return (target instanceof COSArray || target instanceof COSDictionary && !(target instanceof COSStream))
-                && path.size() < MAX_NESTING && !path.contains(target) && numbering.single(target);
+        return (target instanceof COSArray || target instanceof COSDictionary d && !(target instanceof COSStream)
+                && !namespace(d)) && path.size() < MAX_NESTING && !path.contains(target) && numbering.single(target);
+    }
+
+    private static boolean namespace(COSDictionary d) {
+        return NAMESPACE.equals(d.getCOSName(COSName.TYPE));
     }
 
     private boolean inline(COSArray a) {

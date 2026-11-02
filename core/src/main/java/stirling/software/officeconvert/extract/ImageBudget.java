@@ -25,9 +25,12 @@ import org.apache.pdfbox.filter.DecodeOptions;
 import org.apache.pdfbox.filter.FilterFactory;
 import org.apache.pdfbox.pdmodel.graphics.color.PDColorSpace;
 import org.apache.pdfbox.pdmodel.graphics.color.PDDeviceN;
+import org.apache.pdfbox.pdmodel.graphics.color.PDIndexed;
 import org.apache.pdfbox.pdmodel.graphics.color.PDSeparation;
 import org.apache.pdfbox.pdmodel.graphics.image.PDImage;
 import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
+
+import stirling.software.officeconvert.jpx.JpxDecoder;
 
 public final class ImageBudget {
 
@@ -50,7 +53,8 @@ public final class ImageBudget {
     public static PDImage fitted(PDImage image) {
         int step = step(image);
         if (step == 1) {
-            return image;
+            PDIndexed indexed = paletteOverridden(image);
+            return indexed == null ? image : new JpxIndexedImage((PDImageXObject) image, indexed);
         }
         if (step < 1 || !(image instanceof PDImageXObject x) || x.getCOSObject().containsKey(COSName.OC)) {
             return null;
@@ -229,6 +233,34 @@ public final class ImageBudget {
                 alpha.setSamples(0, y, w, 1, 0, row);
             }
             return out;
+        }
+    }
+
+    private static final Map<COSBase, Boolean> JP2_PALETTES = Collections.synchronizedMap(new WeakHashMap<>());
+
+    private static PDIndexed paletteOverridden(PDImage image) {
+        if (!(image instanceof PDImageXObject x) || !jpx(x.getCOSObject())) {
+            return null;
+        }
+        COSStream stream = x.getCOSObject();
+        if (stream.containsKey(COSName.SMASK) || stream.containsKey(COSName.MASK) || stream.containsKey(COSName.DECODE)
+                || !(stream.getDictionaryObject(COSName.COLORSPACE, COSName.CS) instanceof COSArray)) {
+            return null;
+        }
+        Boolean palette = JP2_PALETTES.computeIfAbsent(stream, s -> {
+            try {
+                return JpxDecoder.palette(jpxHeader(stream));
+            } catch (IOException | RuntimeException e) {
+                return false;
+            }
+        });
+        if (!palette) {
+            return null;
+        }
+        try {
+            return x.getColorSpace() instanceof PDIndexed indexed ? indexed : null;
+        } catch (IOException | RuntimeException e) {
+            return null;
         }
     }
 

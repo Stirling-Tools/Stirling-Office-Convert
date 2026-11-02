@@ -36,9 +36,15 @@ public final class PageTreeRepair {
 
     private final Set<COSDictionary> nodes = identitySet();
 
+    private final Set<COSDictionary> path = identitySet();
+
     private final List<Slot> slots = new ArrayList<>();
 
     private boolean damaged;
+
+    private int declared;
+
+    private int walks;
 
     private PageTreeRepair() {}
 
@@ -53,6 +59,7 @@ public final class PageTreeRepair {
         PageTreeRepair tree = new PageTreeRepair();
         tree.damaged = root == null;
         if (root != null) {
+            tree.declared = Math.clamp(root.getInt(COSName.COUNT, 0), 0, MAX_PAGES);
             tree.collect(root, 0, new COSBase[PageNodes.INHERITED.size()]);
         }
         if (!tree.slots.isEmpty() || tree.pages.isEmpty() && tree.damaged) {
@@ -122,13 +129,16 @@ public final class PageTreeRepair {
     }
 
     private void collect(COSDictionary node, int depth, COSBase[] above) {
-        if (depth > MAX_DEPTH || !nodes.add(node)) {
+        if (depth > MAX_DEPTH || !path.add(node)) {
             damaged = true;
             return;
         }
+        nodes.add(node);
+        walks++;
         COSArray kids = array(node.getDictionaryObject(COSName.KIDS));
         if (kids == null) {
             damaged = true;
+            path.remove(node);
             return;
         }
         COSBase[] here = above.clone();
@@ -140,18 +150,52 @@ public final class PageTreeRepair {
         }
         for (int i = 0; i < kids.size() && pages.size() < MAX_PAGES; i++) {
             COSDictionary kid = dict(kids.getObject(i));
-            if (kid != null && !(kid instanceof COSStream) && PageNodes.intermediate(kid)) {
-                collect(kid, depth + 1, here);
-            } else if (kid != null && !(kid instanceof COSStream) && PageNodes.leaf(kid) && !reached.contains(kid)) {
+            boolean usable = kid != null && !(kid instanceof COSStream);
+            if (usable && PageNodes.intermediate(kid)) {
+                if (path.contains(kid) || depth + 1 > MAX_DEPTH) {
+                    damaged = true;
+                    if (pages.size() < declared) {
+                        slot(node, here);
+                    }
+                } else if (!nodes.contains(kid) || pages.size() < declared && walks < MAX_PAGES) {
+                    collect(kid, depth + 1, here);
+                } else {
+                    damaged = true;
+                }
+            } else if (usable && PageNodes.leaf(kid) && !reached.contains(kid)) {
                 inherit(kid, here);
                 reached.add(kid);
                 pages.add(kid);
+            } else if (usable && PageNodes.leaf(kid)) {
+                damaged = true;
+                if (pages.size() < declared) {
+                    COSDictionary again = repeated(kid);
+                    inherit(again, here);
+                    pages.add(again);
+                }
             } else {
                 damaged = true;
-                slots.add(new Slot(pages.size(), node, here));
-                pages.add(placeholder(here));
+                slot(node, here);
             }
         }
+        path.remove(node);
+    }
+
+    private void slot(COSDictionary node, COSBase[] here) {
+        slots.add(new Slot(pages.size(), node, here));
+        pages.add(placeholder(here));
+    }
+
+    private static COSDictionary repeated(COSDictionary page) {
+        COSDictionary again = new COSDictionary(page);
+        if (page.getDictionaryObject(COSName.ANNOTS) instanceof COSArray annots) {
+            COSArray own = new COSArray();
+            for (int i = 0; i < annots.size(); i++) {
+                own.add(annots.get(i));
+            }
+            again.setItem(COSName.ANNOTS, own);
+        }
+        return again;
     }
 
     private void recover(List<COSDictionary> found) {

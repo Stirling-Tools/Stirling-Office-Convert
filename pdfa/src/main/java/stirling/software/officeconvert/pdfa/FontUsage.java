@@ -44,7 +44,13 @@ final class FontUsage {
 
     private final Map<COSDictionary, Set<COSDictionary>> callers = new LinkedHashMap<>();
 
+    private final Map<COSDictionary, Set<Integer>> silent = new IdentityHashMap<>();
+
     FontUsage() {}
+
+    Map<COSDictionary, Set<Integer>> silent() {
+        return silent;
+    }
 
     Map<COSDictionary, TreeSet<Integer>> codes() {
         return codes;

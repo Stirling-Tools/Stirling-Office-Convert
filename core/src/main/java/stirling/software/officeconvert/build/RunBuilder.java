@@ -310,6 +310,8 @@ final class RunBuilder {
         }
     }
 
+    private static final float MOST_CONDENSED = 0.1f;
+
     private static final float SQUEEZED = 0.06f;
 
     private static final float TRACKED = 0.02f;
@@ -405,7 +407,7 @@ final class RunBuilder {
             if (a[2] == 0) {
                 float perGlyph = a[12] < TRACKED_GLYPHS ? 0 : (a[10] - a[11]) / a[12];
                 if (Math.abs(perGlyph) >= TRACKED_BY && Math.abs(a[10] / a[11] - 1) >= TRACKED) {
-                    out.put(e.getKey(), new WidthFix((float) Math.floor(Math.clamp(perGlyph, -2f, 4f) * 20f + 0.5f) / 20f, 100));
+                    out.put(e.getKey(), new WidthFix((float) Math.floor(Math.clamp(perGlyph, -Math.max(2f, MOST_CONDENSED * a[13]), 4f) * 20f + 0.5f) / 20f, 100));
                 }
                 continue;
             }
@@ -435,7 +437,7 @@ final class RunBuilder {
                 out.put(e.getKey(), new WidthFix(0f, Math.min(150, (int) Math.floor(100 * pdf / a[8]))));
             } else {
                 float perChar = (pdf - a[1]) / a[2];
-                float steps = Math.clamp(perChar, -2f, 4f) * 20f;
+                float steps = Math.clamp(perChar, -Math.max(2f, MOST_CONDENSED * a[13]), 4f) * 20f;
                 boolean rtl = e.getKey().endsWith("|ar") || e.getKey().endsWith("|he");
                 out.put(e.getKey(), new WidthFix((rtl ? Math.round(steps) : (float) Math.floor(steps)) / 20f, 100));
             }
@@ -444,8 +446,9 @@ final class RunBuilder {
     }
 
     private static float[] look(Map<String, float[]> sums, Glyph g) {
-        float[] acc = sums.computeIfAbsent(lookKey(g), k -> new float[13]);
+        float[] acc = sums.computeIfAbsent(lookKey(g), k -> new float[14]);
         acc[5] = g.font.substituted() ? 1 : acc[5];
+        acc[13] = g.size;
         return acc;
     }
 

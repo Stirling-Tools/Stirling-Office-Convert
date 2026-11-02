@@ -43,8 +43,9 @@ import org.apache.pdfbox.util.Matrix;
 import org.apache.pdfbox.util.Vector;
 
 import stirling.software.officeconvert.extract.HiddenContent;
-import stirling.software.officeconvert.extract.StrictFilters;
 import stirling.software.officeconvert.extract.OperatorBudget;
+import stirling.software.officeconvert.extract.PdfColours;
+import stirling.software.officeconvert.extract.StrictFilters;
 import stirling.software.officeconvert.layout.Box;
 
 final class PaintOrder extends PDFGraphicsStreamEngine {
@@ -101,6 +102,8 @@ final class PaintOrder extends PDFGraphicsStreamEngine {
     private int shapes;
     private int pageSegments;
     private final Map<PDGraphicsState, List<Path2D>> clipped = new WeakHashMap<>();
+    private final Map<PDGraphicsState, Boolean> textClipped = new WeakHashMap<>();
+    private boolean clipsText;
     private final Deque<List<Path2D>> formClips = new ArrayDeque<>();
 
     private PaintOrder(PDPage page, AffineTransform toDisplay, float width, float height) {
@@ -453,8 +456,26 @@ final class PaintOrder extends PDFGraphicsStreamEngine {
     @Override
     public void saveGraphicsState() {
         List<Path2D> c = clips();
+        boolean textClip = textClipped.containsKey(getGraphicsState());
         super.saveGraphicsState();
         clipped.put(getGraphicsState(), c);
+        if (textClip) {
+            textClipped.put(getGraphicsState(), Boolean.TRUE);
+        }
+    }
+
+    @Override
+    public void endText() throws IOException {
+        super.endText();
+        if (clipsText) {
+            clipsText = false;
+            textClipped.put(getGraphicsState(), Boolean.TRUE);
+        }
+    }
+
+    private boolean solidThroughText() {
+        PDColor colour = getGraphicsState().getNonStrokingColor();
+        return textClipped.containsKey(getGraphicsState()) && !(colour != null && colour.getColorSpace() instanceof PDPattern);
     }
 
     private Outline outline(GeneralPath p) {
@@ -611,11 +632,7 @@ final class PaintOrder extends PDFGraphicsStreamEngine {
         if (colour == null || colour.getColorSpace() instanceof PDPattern) {
             return -1;
         }
-        try {
-            return colour.toRGB() & 0xFFFFFF;
-        } catch (IOException | RuntimeException e) {
-            return -1;
-        }
+        return PdfColours.toRgb(colour, -1);
     }
 
     private LineShape straight() {
@@ -644,10 +661,8 @@ final class PaintOrder extends PDFGraphicsStreamEngine {
         if (segments != 2) {
             return null;
         }
-        int rgb;
-        try {
-            rgb = state.getStrokingColor().toRGB() & 0xFFFFFF;
-        } catch (IOException | RuntimeException e) {
+        int rgb = PdfColours.toRgb(state.getStrokingColor(), -1);
+        if (rgb < 0) {
             return null;
         }
         AffineTransform ctm = state.getCurrentTransformationMatrix().createAffineTransform();
@@ -815,6 +830,11 @@ final class PaintOrder extends PDFGraphicsStreamEngine {
 
     @Override
     public void fillPath(int windingRule) {
+        if (solidThroughText()) {
+            order++;
+            path.reset();
+            return;
+        }
         Path2D shape = flat(windingRule);
         mark(Kind.FILL, path.getBounds2D(), shape, shape == null ? null : patterned(shape));
         path.reset();
@@ -849,6 +869,11 @@ final class PaintOrder extends PDFGraphicsStreamEngine {
 
     @Override
     public void fillAndStrokePath(int windingRule) {
+        if (solidThroughText()) {
+            order++;
+            path.reset();
+            return;
+        }
         mark(Kind.FILL, path.getBounds2D());
         path.reset();
     }
@@ -937,6 +962,7 @@ final class PaintOrder extends PDFGraphicsStreamEngine {
         }
         RenderingMode mode = getGraphicsState().getTextState().getRenderingMode();
         if (mode == RenderingMode.NEITHER || mode == RenderingMode.NEITHER_CLIP) {
+            clipsText |= mode == RenderingMode.NEITHER_CLIP;
             return;
         }
         AffineTransform trm = textRenderingMatrix.createAffineTransform();

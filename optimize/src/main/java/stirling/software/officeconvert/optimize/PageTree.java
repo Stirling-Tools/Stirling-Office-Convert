@@ -29,6 +29,8 @@ final class PageTree {
 
     static final int MAX_DEPTH = 1024;
 
+    private static final int MAX_WALKS = 1_000_000;
+
     private final Index index;
 
     private final Source source;
@@ -49,6 +51,8 @@ final class PageTree {
 
     private final Set<Integer> nodes = new HashSet<>();
 
+    private final Set<Integer> path = new HashSet<>();
+
     private final Set<Integer> leaves = new LinkedHashSet<>();
 
     private final List<int[]> slots = new ArrayList<>();
@@ -56,6 +60,12 @@ final class PageTree {
     private final Set<String> notes = new LinkedHashSet<>();
 
     private int next;
+
+    private int declared;
+
+    private int placed;
+
+    private int walks;
 
     private boolean cut;
 
@@ -152,6 +162,7 @@ final class PageTree {
                 ? index.id(o.getKey()) : -1;
         COSDictionary topDict = top < 0 ? null : dict(top);
         if (topDict != null && PageNodes.intermediate(topDict)) {
+            declared = Math.max(0, topDict.getInt(COSName.COUNT, 0));
             walk(top, 0);
             if (!slots.isEmpty()) {
                 reattach();
@@ -204,26 +215,44 @@ final class PageTree {
     private void walk(int node, int depth) throws IOException {
         PdfFiles.stopIfInterrupted();
         nodes.add(node);
+        path.add(node);
+        walks++;
         COSDictionary d = dict(node);
         List<Integer> out = new ArrayList<>();
         kids.put(node, out);
         if (!(d.getItem(COSName.KIDS) instanceof COSArray)) {
             rewired.add(node);
         }
-        if (!(d.getDictionaryObject(COSName.KIDS) instanceof COSArray array)) {
-            return;
+        if (d.getDictionaryObject(COSName.KIDS) instanceof COSArray array) {
+            walkKids(node, array, out, depth);
         }
+        path.remove(node);
+    }
+
+    private void walkKids(int node, COSArray array, List<Integer> out, int depth) throws IOException {
         for (int i = 0; i < array.size(); i++) {
             COSBase entry = array.get(i);
             if (entry instanceof COSObject o && o.getKey() != null) {
                 int kid = index.id(o.getKey());
                 COSDictionary k = dict(kid);
                 if (k != null && PageNodes.intermediate(k)) {
-                    if (nodes.contains(kid) || depth + 1 >= MAX_DEPTH) {
+                    if (path.contains(kid) || depth + 1 >= MAX_DEPTH) {
                         rewired.add(node);
                         cut = true;
-                        notes.add(nodes.contains(kid) ? "a loop in its page tree was cut"
+                        notes.add(path.contains(kid) ? "a loop in its page tree was cut"
                                 : "its page tree was cut where it nests too deeply");
+                        if (path.contains(kid) && placed < declared) {
+                            slot(node, out);
+                        }
+                        continue;
+                    }
+                    if (nodes.contains(kid)) {
+                        rewired.add(node);
+                        if (placed < declared && walks < MAX_WALKS) {
+                            int again = create(copy(k));
+                            out.add(again);
+                            walk(again, depth + 1);
+                        }
                         continue;
                     }
                     out.add(kid);
@@ -233,6 +262,7 @@ final class PageTree {
                 if (k != null && PageNodes.leaf(k)) {
                     out.add(kid);
                     leaves.add(kid);
+                    placed++;
                     continue;
                 }
             } else if (entry instanceof COSDictionary direct && !(entry instanceof COSStream) && PageNodes.leaf(direct)) {
@@ -240,12 +270,18 @@ final class PageTree {
                 out.add(kid);
                 leaves.add(kid);
                 rewired.add(node);
+                placed++;
                 continue;
             }
             rewired.add(node);
-            out.add(-1 - slots.size());
-            slots.add(new int[] {node, out.size() - 1});
+            slot(node, out);
         }
+    }
+
+    private void slot(int node, List<Integer> out) {
+        out.add(-1 - slots.size());
+        slots.add(new int[] {node, out.size() - 1});
+        placed++;
     }
 
     private void reattach() throws IOException {

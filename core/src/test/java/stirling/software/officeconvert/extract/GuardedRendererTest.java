@@ -107,6 +107,30 @@ public class GuardedRendererTest {
         }
     }
 
+    @Test
+    void aShadingThatCannotBeEvaluatedLeavesTheRestOfThePageDrawn() throws IOException {
+        try (PDDocument doc = new PDDocument()) {
+            PDPage page = page(doc, "q 0 0 100 100 re W n /Sh sh Q 1 0 0 rg 300 300 100 100 re f");
+            COSStream function = doc.getDocument().createCOSStream();
+            function.setInt(COSName.FUNCTION_TYPE, 4);
+            function.setItem(COSName.DOMAIN, numbers(0, 1, 0, 1));
+            function.setItem(COSName.RANGE, numbers(0, 1, 0, 1, 0, 1));
+            write(function, "{ pop pop 2.5 2 mod dup dup }");
+            COSDictionary shading = new COSDictionary();
+            shading.setInt(COSName.SHADING_TYPE, 1);
+            shading.setItem(COSName.COLORSPACE, COSName.DEVICERGB);
+            shading.setItem(COSName.FUNCTION, function);
+            shading.setItem(COSName.MATRIX, numbers(100, 0, 0, 100, 0, 0));
+            COSDictionary shadings = new COSDictionary();
+            shadings.setItem(COSName.getPDFName("Sh"), shading);
+            page.getResources().getCOSObject().setItem(COSName.SHADING, shadings);
+            Watched r = new Watched(doc);
+            BufferedImage image = r.draw(0, 1f, ImageType.RGB);
+            assertEquals(0xFF0000, image.getRGB(350, 792 - 350) & 0xFFFFFF);
+            assertTrue(r.drawer.leftOut());
+        }
+    }
+
     public static PDDocument fanOut() throws IOException {
         PDDocument doc = new PDDocument();
         PDFormXObject a = form(doc);
